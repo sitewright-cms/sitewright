@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import type { Entry } from '@sitewright/schema';
+import type { Entry, Page, Project } from '@sitewright/schema';
+import type { ProjectBundle } from '@sitewright/core';
 import {
   allRoutes,
   collectionRoutes,
@@ -13,6 +14,33 @@ import { knownBlockTypes, isKnownBlockType } from '../src/blocks/registry.js';
 
 function entry(values: Record<string, unknown>, id = 'e1'): Entry {
   return { id, dataset: 'd', status: 'published', values };
+}
+
+const PROJECT: Project = {
+  formatVersion: 1,
+  id: 'p',
+  name: 'P',
+  slug: 'p',
+  brand: { name: 'P', colors: {} },
+  settings: { defaultLocale: 'en', locales: ['en'] },
+};
+
+const COLLECTION_PAGE: Page = {
+  id: 'post',
+  path: '/posts/[slug]',
+  title: 'Post',
+  root: { id: 'r', type: 'Section' },
+  collection: { dataset: 'posts', param: 'slug' },
+};
+
+function postsBundle(entries: Entry[]): ProjectBundle {
+  return {
+    project: PROJECT,
+    pages: [COLLECTION_PAGE],
+    partials: [],
+    datasets: [{ id: 'd', name: 'Posts', slug: 'posts', fields: [] }],
+    entries,
+  };
 }
 
 describe('sample project loading', () => {
@@ -68,6 +96,36 @@ describe('entrySlug (path-traversal safe)', () => {
     expect(entrySlug(entry({ slug: '../../etc/passwd' }, 'safe-id'), 'slug')).toBe('safe-id');
     expect(entrySlug(entry({ slug: 'Has Spaces' }, 'safe-id'), 'slug')).toBe('safe-id');
     expect(entrySlug(entry({}, 'safe-id'), 'slug')).toBe('safe-id');
+  });
+
+  it('falls back to the entry id for an over-long slug', () => {
+    expect(entrySlug(entry({ slug: 'a'.repeat(200) }, 'safe-id'), 'slug')).toBe('safe-id');
+  });
+});
+
+describe('allRoutes / collectionRoutes edge cases', () => {
+  it('throws on two entries that resolve to the same slug', () => {
+    const bundle = postsBundle([
+      { id: 'a', dataset: 'posts', status: 'published', values: { slug: 'dup' } },
+      { id: 'b', dataset: 'posts', status: 'published', values: { slug: 'dup' } },
+    ]);
+    expect(() => allRoutes(bundle)).toThrow(/Duplicate route/);
+  });
+
+  it('generates no routes when every entry is a draft', () => {
+    const bundle = postsBundle([
+      { id: 'a', dataset: 'posts', status: 'draft', values: { slug: 'x' } },
+    ]);
+    expect(collectionRoutes(bundle)).toEqual([]);
+  });
+
+  it('preserves the collection page metadata on each route', () => {
+    const bundle = postsBundle([
+      { id: 'a', dataset: 'posts', status: 'published', values: { slug: 'hello' } },
+    ]);
+    const [route] = collectionRoutes(bundle);
+    expect(route?.slug).toBe('posts/hello');
+    expect(route?.page.collection?.dataset).toBe('posts');
   });
 });
 

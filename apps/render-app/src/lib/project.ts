@@ -41,6 +41,9 @@ function readJsonDir(dir: string): unknown[] {
  * Loads, schema-validates, and integrity-checks a project from disk (the
  * on-disk project format). Throws with a readable summary if validation fails.
  */
+/** Build-time guard against a project generating an unbounded number of pages. */
+const MAX_ENTRIES_PER_DATASET = 50_000;
+
 export function loadBundle(dir: string = projectDir()): ProjectBundle {
   const project: Project = ProjectSchema.parse(readJson(join(dir, 'sitewright.json')));
   const pages: Page[] = readJsonDir(join(dir, 'pages')).map((p) => PageSchema.parse(p));
@@ -56,8 +59,14 @@ export function loadBundle(dir: string = projectDir()): ProjectBundle {
       const datasetFile = join(datasetsDir, slug, 'dataset.json');
       if (!existsSync(datasetFile)) continue;
       datasets.push(DatasetSchema.parse(readJson(datasetFile)));
+      let entryCount = 0;
       for (const entry of readJsonDir(join(datasetsDir, slug, 'entries'))) {
         entries.push(EntrySchema.parse(entry));
+        if (++entryCount > MAX_ENTRIES_PER_DATASET) {
+          throw new Error(
+            `dataset "${slug}" exceeds the limit of ${MAX_ENTRIES_PER_DATASET} entries`,
+          );
+        }
       }
     }
   }
@@ -77,15 +86,23 @@ export interface ResolvedPage {
   root: Page['root'];
 }
 
+function buildPartialMap(bundle: ProjectBundle): Map<string, SitewrightPartial> {
+  return new Map(bundle.partials.map((partial) => [partial.id, partial]));
+}
+
 /** Expands partials for every non-collection page. */
 export function resolvedPages(bundle: ProjectBundle): ResolvedPage[] {
-  const partialMap = new Map(bundle.partials.map((partial) => [partial.id, partial]));
+  const partialMap = buildPartialMap(bundle);
   return bundle.pages
     .filter((page) => !page.collection)
     .map((page) => ({ page, root: resolvePartials(page.root, partialMap) }));
 }
 
-/** Groups entries by dataset slug for binding resolution. */
+/**
+ * Groups entries by dataset slug. NOTE: this is unfiltered (includes drafts);
+ * callers must gate by status before display. `resolveBinding` does this by
+ * default, which is why block bindings never surface draft content.
+ */
 export function datasetEntries(bundle: ProjectBundle): Record<string, Entry[]> {
   const map: Record<string, Entry[]> = {};
   for (const entry of bundle.entries) {
@@ -112,16 +129,20 @@ export interface Route {
 // A safe URL/path segment: lowercase alphanumeric + hyphens, no "/" or ".." so the
 // value cannot traverse outside the output directory when used as a file path.
 const SAFE_SEGMENT = /^[a-z0-9][a-z0-9-]*$/;
+const MAX_SLUG_LENGTH = 64;
 
 /**
  * Slug for a collection entry: its `[param]` field value when that value is a
- * safe path segment, otherwise the entry id (which the schema already constrains
- * to a safe identifier). `entry.values` are not slug-validated by the schema, so
- * this guards against path traversal in generated filenames.
+ * safe, length-bounded path segment, otherwise the entry id (which the schema
+ * already constrains to a safe identifier). `entry.values` are not slug-validated
+ * by the schema, so this guards against path traversal and over-long filenames in
+ * the generated output.
  */
 export function entrySlug(entry: Entry, param: string): string {
   const value = entry.values[param];
-  if (typeof value === 'string' && SAFE_SEGMENT.test(value)) return value;
+  if (typeof value === 'string' && value.length <= MAX_SLUG_LENGTH && SAFE_SEGMENT.test(value)) {
+    return value;
+  }
   return entry.id;
 }
 
@@ -135,7 +156,7 @@ function fillPath(path: string, param: string, value: string): string {
  * route per published entry, with that entry placed in render context.
  */
 export function collectionRoutes(bundle: ProjectBundle): Route[] {
-  const partialMap = new Map(bundle.partials.map((partial) => [partial.id, partial]));
+  const partialMap = buildPartialMap(bundle);
   const routes: Route[] = [];
   for (const page of bundle.pages) {
     if (!page.collection) continue;
@@ -156,12 +177,30 @@ export function collectionRoutes(bundle: ProjectBundle): Route[] {
   return routes;
 }
 
-/** All routes to render: static pages plus collection pages expanded per entry. */
+/**
+ * All routes to render: static pages plus collection pages expanded per entry.
+ * Throws on a duplicate route slug (two collection entries resolving to the same
+ * slug, or a collision with a static page) — otherwise Astro's `getStaticPaths`
+ * would fail cryptically, or silently overwrite one page with another.
+ */
 export function allRoutes(bundle: ProjectBundle): Route[] {
   const staticRoutes: Route[] = resolvedPages(bundle).map(({ page, root }) => ({
     slug: pathToSlug(page.path),
     page,
     root,
   }));
-  return [...staticRoutes, ...collectionRoutes(bundle)];
+  const routes = [...staticRoutes, ...collectionRoutes(bundle)];
+
+  const seen = new Set<string>();
+  for (const route of routes) {
+    const key = route.slug ?? '';
+    if (seen.has(key)) {
+      throw new Error(
+        `Duplicate route "/${key}" — two pages resolve to the same URL ` +
+          `(check collection entries for duplicate slug values).`,
+      );
+    }
+    seen.add(key);
+  }
+  return routes;
 }

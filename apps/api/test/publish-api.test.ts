@@ -66,6 +66,76 @@ describe('publish API', () => {
     expect((status.json() as { release: { routes: number } }).release.routes).toBe(1);
   });
 
+  it('exports the published site as a zip (409 before publishing)', async () => {
+    const { t, orgId, projectId } = await setup('a@acme.test', 'Acme');
+    const base = `/orgs/${orgId}/projects/${projectId}`;
+    const cookies = { sw_session: t };
+
+    const early = await app.inject({ method: 'GET', url: `${base}/publish/archive`, cookies });
+    expect(early.statusCode).toBe(409);
+
+    await app.inject({ method: 'PUT', url: `${base}/content/page/home`, cookies, payload: homePage });
+    await app.inject({ method: 'POST', url: `${base}/publish`, cookies });
+
+    const zip = await app.inject({ method: 'GET', url: `${base}/publish/archive`, cookies });
+    expect(zip.statusCode).toBe(200);
+    expect(zip.headers['content-type']).toBe('application/zip');
+    expect(zip.headers['content-disposition']).toContain('.zip');
+    // PK zip magic bytes.
+    expect(zip.rawPayload[0]).toBe(0x50);
+    expect(zip.rawPayload[1]).toBe(0x4b);
+  });
+
+  it('validates deploy config and requires a prior publish', async () => {
+    const { t, orgId, projectId } = await setup('a@acme.test', 'Acme');
+    const base = `/orgs/${orgId}/projects/${projectId}`;
+    const cookies = { sw_session: t };
+
+    // Not published yet → 409 regardless of body.
+    const notPublished = await app.inject({
+      method: 'POST',
+      url: `${base}/publish/deploy`,
+      cookies,
+      payload: { protocol: 'ftp', host: 'h', user: 'u', password: 'p' },
+    });
+    expect(notPublished.statusCode).toBe(409);
+
+    await app.inject({ method: 'PUT', url: `${base}/content/page/home`, cookies, payload: homePage });
+    await app.inject({ method: 'POST', url: `${base}/publish`, cookies });
+
+    // Published, but an unknown protocol is a 400.
+    const bad = await app.inject({
+      method: 'POST',
+      url: `${base}/publish/deploy`,
+      cookies,
+      payload: { protocol: 'telnet', host: 'h', user: 'u', password: 'p' },
+    });
+    expect(bad.statusCode).toBe(400);
+  });
+
+  it('forbids exporting another tenant’s archive', async () => {
+    const a = await setup('a@acme.test', 'Acme');
+    const b = await setup('b@globex.test', 'Globex');
+    const res = await app.inject({
+      method: 'GET',
+      url: `/orgs/${a.orgId}/projects/${a.projectId}/publish/archive`,
+      cookies: { sw_session: b.t },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('forbids deploying another tenant’s project', async () => {
+    const a = await setup('a@acme.test', 'Acme');
+    const b = await setup('b@globex.test', 'Globex');
+    const res = await app.inject({
+      method: 'POST',
+      url: `/orgs/${a.orgId}/projects/${a.projectId}/publish/deploy`,
+      cookies: { sw_session: b.t },
+      payload: { protocol: 'ftp', host: 'h', user: 'u', password: 'p' },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
   it('requires authentication and write role / tenant membership', async () => {
     const a = await setup('a@acme.test', 'Acme');
     const b = await setup('b@globex.test', 'Globex');

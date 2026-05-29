@@ -1,0 +1,13 @@
+---
+import type { PageNode } from '@sitewright/schema';
+
+interface Props {
+  node: PageNode;
+}
+const { node } = Astro.props;
+---
+
+{/* Unknown block type — render children so the tree is not lost. */}
+<div data-unknown-block={node.type}>
+  <slot />
+</div>

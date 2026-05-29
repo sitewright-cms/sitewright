@@ -1,0 +1,23 @@
+---
+import Base from '../layouts/Base.astro';
+import BlockTree from '../blocks/BlockTree.astro';
+import { brandToCss } from '../lib/brand-css';
+import { datasetEntries, loadBundle, pathToSlug, resolvedPages } from '../lib/project';
+
+export function getStaticPaths() {
+  const bundle = loadBundle();
+  const datasets = datasetEntries(bundle);
+  const brandCss = brandToCss(bundle.project.brand);
+
+  return resolvedPages(bundle).map(({ page, root }) => ({
+    params: { slug: pathToSlug(page.path) },
+    props: { page, root, datasets, brandCss, project: bundle.project },
+  }));
+}
+
+const { page, root, datasets, brandCss, project } = Astro.props;
+---
+
+<Base seo={page.seo} title={page.title} brandCss={brandCss} project={project}>
+  <BlockTree node={root} datasets={datasets} />
+</Base>

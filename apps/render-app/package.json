@@ -1,0 +1,27 @@
+{
+  "name": "@sitewright/render-app",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev --host 0.0.0.0 --port 2000",
+    "build": "astro build",
+    "preview": "astro preview --host 0.0.0.0 --port 2000",
+    "typecheck": "astro check",
+    "test": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@sitewright/core": "workspace:*",
+    "@sitewright/schema": "workspace:*",
+    "@tailwindcss/vite": "^4",
+    "astro": "^5",
+    "tailwindcss": "^4",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9",
+    "@vitest/coverage-v8": "^2.1.8",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

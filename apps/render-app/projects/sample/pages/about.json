@@ -1,0 +1,40 @@
+{
+  "id": "about",
+  "path": "/about",
+  "title": "About",
+  "seo": { "description": "About Northwind Studio." },
+  "root": {
+    "id": "root",
+    "type": "Section",
+    "props": { "tone": "surface" },
+    "children": [
+      { "id": "hdr-slot", "type": "Section", "partialRef": "site-header" },
+      {
+        "id": "about-hero",
+        "type": "Hero",
+        "props": {
+          "title": "About Northwind",
+          "subtitle": "A small studio with big performance standards."
+        }
+      },
+      {
+        "id": "about-text",
+        "type": "RichText",
+        "props": {
+          "text": "We design and build websites on Sitewright — an open-source platform for fast, optimized sites."
+        }
+      },
+      {
+        "id": "about-featured",
+        "type": "Heading",
+        "props": { "level": 3, "textField": "title" },
+        "binding": {
+          "dataset": "features",
+          "mode": "single",
+          "query": { "sort": { "field": "title", "dir": "asc" } }
+        }
+      },
+      { "id": "ftr-slot", "type": "Section", "partialRef": "site-footer" }
+    ]
+  }
+}

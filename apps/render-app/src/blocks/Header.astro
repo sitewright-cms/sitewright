@@ -1,0 +1,18 @@
+---
+import type { PageNode } from '@sitewright/schema';
+
+interface Props {
+  node: PageNode;
+}
+const { node } = Astro.props;
+const brand = typeof node.props?.brand === 'string' ? node.props.brand : '';
+---
+
+<header class="w-full border-b border-slate-100 bg-surface">
+  <div class="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
+    <span class="font-heading text-xl font-bold text-ink">{brand}</span>
+    <nav class="flex gap-6 text-sm text-muted">
+      <slot />
+    </nav>
+  </div>
+</header>

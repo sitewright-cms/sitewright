@@ -1,0 +1,68 @@
+---
+import type { Entry, PageNode } from '@sitewright/schema';
+import { resolveBinding } from '@sitewright/core';
+import Section from './Section.astro';
+import Hero from './Hero.astro';
+import Heading from './Heading.astro';
+import RichText from './RichText.astro';
+import ImageBlock from './Image.astro';
+import Grid from './Grid.astro';
+import Card from './Card.astro';
+import Button from './Button.astro';
+import Link from './Link.astro';
+import Header from './Header.astro';
+import Footer from './Footer.astro';
+import Fallback from './Fallback.astro';
+
+interface Props {
+  node: PageNode;
+  entry?: Entry;
+  datasets: Record<string, Entry[]>;
+}
+
+const { node, entry, datasets } = Astro.props;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- heterogeneous Astro component map
+const componentMap: Record<string, any> = {
+  Section,
+  Hero,
+  Heading,
+  RichText,
+  Image: ImageBlock,
+  Grid,
+  Card,
+  Button,
+  Link,
+  Header,
+  Footer,
+};
+const Component = componentMap[node.type] ?? Fallback;
+
+const boundPool = node.binding ? (datasets[node.binding.dataset] ?? []) : [];
+// A `list` binding repeats this node's children once per resolved entry.
+const listEntries =
+  node.binding?.mode === 'list' ? resolveBinding(node.binding, boundPool) : null;
+// A `single` binding places one entry into context for this node and its subtree.
+const singleEntry =
+  node.binding?.mode === 'single' ? resolveBinding(node.binding, boundPool)[0] : undefined;
+const selfEntry = singleEntry ?? entry;
+const children = node.children ?? [];
+---
+
+{
+  listEntries ? (
+    <Component node={node} entry={entry}>
+      {listEntries.map((boundEntry) =>
+        children.map((child) => (
+          <Astro.self node={child} entry={boundEntry} datasets={datasets} />
+        )),
+      )}
+    </Component>
+  ) : (
+    <Component node={node} entry={selfEntry}>
+      {children.map((child) => (
+        <Astro.self node={child} entry={selfEntry} datasets={datasets} />
+      ))}
+    </Component>
+  )
+}

@@ -1,0 +1,15 @@
+---
+import type { Entry, PageNode } from '@sitewright/schema';
+import { textProp, urlProp } from './props';
+
+interface Props {
+  node: PageNode;
+  entry?: Entry;
+}
+const { node, entry } = Astro.props;
+const props = node.props ?? {};
+const text = textProp(props, entry, 'text');
+const href = urlProp(props, entry, 'href', '#');
+---
+
+<a href={href} class="hover:text-ink">{text}<slot /></a>

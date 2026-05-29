@@ -1,0 +1,16 @@
+---
+import type { Entry, PageNode } from '@sitewright/schema';
+import { textProp } from './props';
+
+interface Props {
+  node: PageNode;
+  entry?: Entry;
+}
+const { node, entry } = Astro.props;
+const text = textProp(node.props ?? {}, entry, 'text');
+---
+
+<div class="text-base leading-relaxed text-ink">
+  {text && <p>{text}</p>}
+  <slot />
+</div>

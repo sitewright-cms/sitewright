@@ -9,6 +9,7 @@ export default tseslint.config(
       '**/node_modules/**',
       '**/.turbo/**',
       '**/coverage/**',
+      '**/.astro/**', // Astro-generated types/content
     ],
   },
   js.configs.recommended,
@@ -17,22 +18,31 @@ export default tseslint.config(
   // as runtime-bearing packages (api, renderer, cli) come online.
   security.configs.recommended,
   {
-    // Scoped to @sitewright/core only: it performs legitimate dynamic property
-    // access (tree walks, dataset field lookups) where this rule has a very high
-    // false-positive rate. Prototype-pollution is mitigated structurally at the
-    // schema boundary (see @sitewright/schema `safeRecord`). Future runtime
-    // packages (api, cli, renderer) keep the rule enabled.
-    files: ['packages/core/**/*.ts'],
+    // @sitewright/core and the render-app's build-time code perform legitimate
+    // dynamic property access (tree walks, dataset field lookups) where this rule
+    // has a very high false-positive rate. Prototype-pollution is mitigated
+    // structurally at the schema boundary (see @sitewright/schema `safeRecord`).
+    // Future runtime packages (api, cli) keep the rule enabled.
+    files: ['packages/core/**/*.ts', 'apps/render-app/src/**/*.ts'],
     rules: {
       'security/detect-object-injection': 'off',
     },
   },
   {
-    // Test files legitimately use dynamic property access (asserting API
-    // surfaces, building fixtures) and are not a runtime attack surface.
+    // Trusted build-time project-format loader: reads JSON from a known project
+    // directory. Not request-facing.
+    files: ['apps/render-app/src/lib/project.ts'],
+    rules: {
+      'security/detect-non-literal-fs-filename': 'off',
+    },
+  },
+  {
+    // Test files legitimately use dynamic property access and read fixtures /
+    // build output from disk; they are not a runtime attack surface.
     files: ['**/*.test.ts'],
     rules: {
       'security/detect-object-injection': 'off',
+      'security/detect-non-literal-fs-filename': 'off',
     },
   },
 );

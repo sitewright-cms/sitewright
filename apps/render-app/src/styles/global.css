@@ -1,0 +1,26 @@
+@import 'tailwindcss';
+
+/*
+ * Tailwind v4 theme tokens bound to the project's brand CSS custom properties
+ * (`--sw-*`), which are injected per-project at build time (see lib/brand-css.ts).
+ * Utilities like `bg-primary` therefore re-theme automatically when the brand
+ * changes — the design tokens remain the single source of truth.
+ */
+@theme {
+  --color-primary: var(--sw-color-primary, #0ea5e9);
+  --color-ink: var(--sw-color-ink, #0f172a);
+  --color-surface: var(--sw-color-surface, #ffffff);
+  --color-muted: var(--sw-color-muted, #64748b);
+  --color-accent: var(--sw-color-accent, #f59e0b);
+
+  --font-sans: var(--sw-font-body, ui-sans-serif, system-ui, sans-serif);
+  --font-heading: var(--sw-font-heading, var(--font-sans));
+
+  --radius-card: var(--sw-radius-card, 0.75rem);
+}
+
+html {
+  font-family: var(--font-sans);
+  color: var(--color-ink);
+  background: var(--color-surface);
+}

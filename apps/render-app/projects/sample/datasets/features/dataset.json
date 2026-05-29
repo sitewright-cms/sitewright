@@ -1,0 +1,9 @@
+{
+  "id": "features",
+  "name": "Features",
+  "slug": "features",
+  "fields": [
+    { "name": "title", "type": "text", "required": true },
+    { "name": "body", "type": "richtext" }
+  ]
+}

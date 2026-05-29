@@ -18,6 +18,10 @@ describe('SeoSchema', () => {
     expect(() => SeoSchema.parse({ canonical: 'not-a-url' })).toThrow();
   });
 
+  it('rejects a javascript: canonical (Zod .url() alone would accept it)', () => {
+    expect(() => SeoSchema.parse({ canonical: 'javascript:alert(1)' })).toThrow();
+  });
+
   it('rejects a javascript: ogImage (XSS surface)', () => {
     expect(() => SeoSchema.parse({ ogImage: 'javascript:alert(1)' })).toThrow();
   });

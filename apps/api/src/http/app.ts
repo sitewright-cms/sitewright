@@ -1,5 +1,6 @@
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import cookie from '@fastify/cookie';
+import fastifyStatic from '@fastify/static';
 import { z } from 'zod';
 import type { Database } from '../db/client.js';
 import { createSession, revokeSession, validateSession } from '../auth/sessions.js';
@@ -22,6 +23,12 @@ import type { ContentKind } from '../db/schema.js';
 
 const SESSION_COOKIE = 'sw_session';
 const IMPORT_BODY_LIMIT = 4 * 1024 * 1024; // 4 MiB for a full project import
+const API_PREFIXES = ['/auth', '/orgs', '/me', '/health'];
+
+function isApiPath(url: string): boolean {
+  const path = url.split('?')[0] ?? url;
+  return API_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
+}
 const CONTENT_KIND_SET: ReadonlySet<string> = new Set(CONTENT_KINDS);
 
 function parseKind(kind: string): ContentKind {
@@ -52,6 +59,8 @@ export interface AppOptions {
   cookieSecret?: string;
   secureCookies?: boolean;
   logger?: boolean;
+  /** Absolute path to the built editor SPA to serve at `/` (single-container mode). */
+  editorDist?: string;
 }
 
 export function createApp(opts: AppOptions): FastifyInstance {
@@ -62,6 +71,17 @@ export function createApp(opts: AppOptions): FastifyInstance {
   const app = Fastify({ logger: opts.logger ?? false });
 
   app.register(cookie, opts.cookieSecret ? { secret: opts.cookieSecret } : {});
+
+  // Baseline security headers (the API also serves the SPA in single-container mode).
+  app.addHook('onSend', async (_req, reply) => {
+    reply.header('x-content-type-options', 'nosniff');
+    reply.header('x-frame-options', 'DENY');
+    reply.header('referrer-policy', 'same-origin');
+    reply.header(
+      'content-security-policy',
+      "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+    );
+  });
 
   app.setErrorHandler((err, _req, reply) => {
     if (err instanceof UnauthorizedError) return reply.code(401).send({ error: err.message });
@@ -112,7 +132,7 @@ export function createApp(opts: AppOptions): FastifyInstance {
     const { token, expiresAt } = await createSession(db, userId);
     reply.setCookie(SESSION_COOKIE, token, {
       httpOnly: true,
-      sameSite: 'lax',
+      sameSite: 'strict',
       path: '/',
       secure: opts.secureCookies ?? false,
       signed,
@@ -127,7 +147,7 @@ export function createApp(opts: AppOptions): FastifyInstance {
     const { token, expiresAt } = await createSession(db, userId);
     reply.setCookie(SESSION_COOKIE, token, {
       httpOnly: true,
-      sameSite: 'lax',
+      sameSite: 'strict',
       path: '/',
       secure: opts.secureCookies ?? false,
       signed,
@@ -246,6 +266,18 @@ export function createApp(opts: AppOptions): FastifyInstance {
   );
 
   app.get('/health', async () => ({ ok: true }));
+
+  // Single-container mode: serve the editor SPA at `/`, with a fallback to
+  // index.html for non-API GET routes (client-side navigation / refresh).
+  if (opts.editorDist) {
+    app.register(fastifyStatic, { root: opts.editorDist, prefix: '/', wildcard: false });
+    app.setNotFoundHandler((req, reply) => {
+      if (req.method === 'GET' && !isApiPath(req.url)) {
+        return reply.sendFile('index.html');
+      }
+      return reply.code(404).send({ error: 'not found' });
+    });
+  }
 
   return app;
 }

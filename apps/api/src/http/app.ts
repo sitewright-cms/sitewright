@@ -1,15 +1,21 @@
+import { randomUUID } from 'node:crypto';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import cookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
+import multipart from '@fastify/multipart';
 import { z } from 'zod';
 import {
+  MediaAssetSchema,
   PageSchema,
   assertWithinTreeDepth,
   type Brand,
   type Entry,
+  type MediaAsset,
 } from '@sitewright/schema';
 import { renderDocument } from '@sitewright/blocks';
+import { optimizeImage } from '@sitewright/image-pipeline';
 import type { Database } from '../db/client.js';
+import { MediaStorage } from '../media/storage.js';
 import { createSession, revokeSession, validateSession } from '../auth/sessions.js';
 import {
   listOrgsForUser,
@@ -36,7 +42,37 @@ import type { ContentKind } from '../db/schema.js';
 const SESSION_COOKIE = 'sw_session';
 const IMPORT_BODY_LIMIT = 4 * 1024 * 1024; // 4 MiB for a full project import
 const PREVIEW_BODY_LIMIT = 2 * 1024 * 1024; // 2 MiB for a single draft page
+const MAX_UPLOAD_BYTES = 15 * 1024 * 1024; // 15 MiB per uploaded image
+const WRITE_ROLES: ReadonlySet<string> = new Set(['owner', 'admin']);
 const API_PREFIXES = ['/auth', '/orgs', '/me', '/health'];
+
+const MEDIA_CONTENT_TYPES = new Map<string, string>([
+  ['avif', 'image/avif'],
+  ['webp', 'image/webp'],
+  ['jpg', 'image/jpeg'],
+]);
+
+// Bound concurrent image optimization — each run spawns several sharp encoders,
+// so unbounded parallel uploads could saturate CPU/memory on the single
+// container. A slot is handed directly to the next waiter on release (never
+// over-admitting beyond MAX_CONCURRENT_OPTIMIZE).
+const MAX_CONCURRENT_OPTIMIZE = 3;
+let activeOptimizations = 0;
+const optimizeWaiters: Array<() => void> = [];
+async function withOptimizeSlot<T>(fn: () => Promise<T>): Promise<T> {
+  if (activeOptimizations < MAX_CONCURRENT_OPTIMIZE) {
+    activeOptimizations += 1;
+  } else {
+    await new Promise<void>((resolve) => optimizeWaiters.push(resolve));
+  }
+  try {
+    return await fn();
+  } finally {
+    const next = optimizeWaiters.shift();
+    if (next) next();
+    else activeOptimizations -= 1;
+  }
+}
 
 function isApiPath(url: string): boolean {
   const path = url.split('?')[0] ?? url;
@@ -47,6 +83,17 @@ const CONTENT_KIND_SET: ReadonlySet<string> = new Set(CONTENT_KINDS);
 function parseKind(kind: string): ContentKind {
   if (!CONTENT_KIND_SET.has(kind)) throw new NotFoundError(`unknown content kind: ${kind}`);
   return kind as ContentKind;
+}
+
+// Media rows are backed by on-disk binaries, so they must be created/deleted via
+// the dedicated /media endpoints — reject generic content writes to keep the row
+// and its files consistent (and to prevent a forged media `url`).
+function parseWritableKind(kind: string): ContentKind {
+  const parsed = parseKind(kind);
+  if (parsed === 'media') {
+    throw new ForbiddenError('media must be managed via the media endpoints');
+  }
+  return parsed;
 }
 
 const RegisterBody = z.object({
@@ -74,6 +121,8 @@ export interface AppOptions {
   logger?: boolean;
   /** Absolute path to the built editor SPA to serve at `/` (single-container mode). */
   editorDist?: string;
+  /** Absolute path to the media storage root; enables media upload/serve when set. */
+  mediaRoot?: string;
 }
 
 export function createApp(opts: AppOptions): FastifyInstance {
@@ -81,9 +130,13 @@ export function createApp(opts: AppOptions): FastifyInstance {
   const signed = Boolean(opts.cookieSecret);
   const projects = new ProjectRepository(db);
   const contentRepo = new ContentRepository(db);
+  const mediaStorage = opts.mediaRoot ? new MediaStorage(opts.mediaRoot) : undefined;
   const app = Fastify({ logger: opts.logger ?? false });
 
   app.register(cookie, opts.cookieSecret ? { secret: opts.cookieSecret } : {});
+  if (mediaStorage) {
+    app.register(multipart, { limits: { fileSize: MAX_UPLOAD_BYTES, files: 1, fields: 0 } });
+  }
 
   // Baseline security headers (the API also serves the SPA in single-container mode).
   app.addHook('onSend', async (_req, reply) => {
@@ -244,7 +297,7 @@ export function createApp(opts: AppOptions): FastifyInstance {
       const { ctx } = await resolveProject(req);
       const item = await contentRepo.put(
         ctx,
-        parseKind(req.params.kind),
+        parseWritableKind(req.params.kind),
         req.params.entityId,
         req.body,
       );
@@ -256,7 +309,7 @@ export function createApp(opts: AppOptions): FastifyInstance {
     '/orgs/:orgId/projects/:projectId/content/:kind/:entityId',
     async (req, reply) => {
       const { ctx } = await resolveProject(req);
-      await contentRepo.remove(ctx, parseKind(req.params.kind), req.params.entityId);
+      await contentRepo.remove(ctx, parseWritableKind(req.params.kind), req.params.entityId);
       return reply.code(204).send();
     },
   );
@@ -316,6 +369,118 @@ export function createApp(opts: AppOptions): FastifyInstance {
       return reply.send({ html });
     },
   );
+
+  // ---- Media (upload / list / delete + public serving) ----
+  if (mediaStorage) {
+    const storage = mediaStorage;
+
+    // Upload an image: validate + optimize (AVIF/WebP/LQIP) + store binaries +
+    // record tenant-scoped metadata. The pipeline rejects non-raster/SVG input.
+    app.post<{ Params: { orgId: string; projectId: string } }>(
+      '/orgs/:orgId/projects/:projectId/media',
+      async (req, reply) => {
+        const { ctx, project } = await resolveProject(req);
+        // Reject before reading the (potentially large) upload for non-writers.
+        if (!WRITE_ROLES.has(ctx.role)) {
+          return reply.code(403).send({ error: 'insufficient role for this operation' });
+        }
+        const file = await req.file();
+        if (!file) return reply.code(400).send({ error: 'no file uploaded' });
+
+        let buffer: Buffer;
+        try {
+          buffer = await file.toBuffer();
+        } catch {
+          // @fastify/multipart throws when the per-file size limit is exceeded.
+          return reply.code(413).send({ error: 'file exceeds size limit' });
+        }
+        if (file.file.truncated) {
+          return reply.code(413).send({ error: 'file exceeds size limit' });
+        }
+
+        const assetId = randomUUID();
+        const { assetDir, inputPath } = await storage.stageUpload(project.id, assetId, buffer);
+        try {
+          const optimized = await withOptimizeSlot(() => optimizeImage(inputPath, assetDir));
+          // Temp input is no longer needed once the variants exist.
+          await storage.clearUpload(inputPath);
+          const asset: MediaAsset = MediaAssetSchema.parse({
+            id: assetId,
+            filename: file.filename || 'upload',
+            format: file.mimetype || 'image/*',
+            bytes: buffer.length,
+            width: optimized.width,
+            height: optimized.height,
+            placeholder: optimized.placeholder,
+            variants: optimized.variants.map((v) => ({
+              format: v.format,
+              width: v.width,
+              height: v.height,
+              path: v.path,
+            })),
+            fallback: optimized.fallback,
+            url: `/media/${project.id}/${assetId}/${optimized.fallback}`,
+          });
+          const saved = await contentRepo.put(ctx, 'media', assetId, asset);
+          return reply.code(201).send({ item: saved });
+        } catch (err) {
+          // Any failure (bad image, validation, DB) → remove the whole asset dir
+          // so no orphaned binaries linger.
+          await storage.remove(project.id, assetId);
+          if (err instanceof Error && /format|pixel|dimension|size limit/i.test(err.message)) {
+            return reply.code(400).send({ error: 'unsupported or invalid image' });
+          }
+          throw err;
+        }
+      },
+    );
+
+    app.get<{ Params: { orgId: string; projectId: string } }>(
+      '/orgs/:orgId/projects/:projectId/media',
+      async (req, reply) => {
+        const { ctx } = await resolveProject(req);
+        return reply.send({ items: await contentRepo.list(ctx, 'media') });
+      },
+    );
+
+    app.delete<{ Params: { orgId: string; projectId: string; id: string } }>(
+      '/orgs/:orgId/projects/:projectId/media/:id',
+      async (req, reply) => {
+        const { ctx, project } = await resolveProject(req);
+        // DB first: a leaked binary (if fs removal fails) is harmless and GC-able,
+        // whereas a leaked DB row would block re-creating the same asset id.
+        await contentRepo.remove(ctx, 'media', req.params.id);
+        try {
+          await storage.remove(project.id, req.params.id);
+        } catch (err) {
+          app.log.error({ err }, 'media binary removal failed after DB delete');
+        }
+        return reply.code(204).send();
+      },
+    );
+
+    // Public serving of optimized binaries (published sites are public). The
+    // storage layer validates every segment and confines the path to the asset
+    // directory, so traversal is impossible.
+    app.get<{ Params: { projectId: string; assetId: string; file: string } }>(
+      '/media/:projectId/:assetId/:file',
+      async (req, reply) => {
+        const { projectId, assetId, file } = req.params;
+        let bytes: Buffer;
+        try {
+          bytes = await storage.read(projectId, assetId, file);
+        } catch {
+          return reply.code(404).send({ error: 'not found' });
+        }
+        const ext = file.split('.').pop() ?? '';
+        const type = MEDIA_CONTENT_TYPES.get(ext) ?? 'application/octet-stream';
+        return reply
+          .header('cache-control', 'public, max-age=31536000, immutable')
+          .type(type)
+          .send(bytes);
+      },
+    );
+  }
 
   app.get('/health', async () => ({ ok: true }));
 

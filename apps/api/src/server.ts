@@ -1,4 +1,6 @@
 import { existsSync } from 'node:fs';
+import { mkdir } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import { createApp } from './http/app.js';
 import { createDb, runMigrations } from './db/client.js';
 
@@ -6,6 +8,7 @@ const url = process.env.DATABASE_URL ?? 'file:./data/sitewright.db';
 const port = Number(process.env.PORT ?? 2002);
 const cookieSecret = process.env.COOKIE_SECRET;
 const isProduction = process.env.NODE_ENV === 'production';
+const mediaRoot = resolve(process.env.MEDIA_ROOT ?? './data/media');
 
 // A signing secret is mandatory in production; refuse to start without one.
 if (isProduction && !cookieSecret) {
@@ -17,10 +20,13 @@ if (isProduction && process.env.COOKIE_SECURE !== 'true') {
 
 const { db } = createDb(url);
 await runMigrations(db);
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- trusted startup env path
+await mkdir(mediaRoot, { recursive: true });
 
 const app = createApp({
   db,
   cookieSecret,
+  mediaRoot,
   // Secure cookies require HTTPS; gate on an explicit flag (not NODE_ENV) so the
   // HTTP DinD preview works. Set COOKIE_SECURE=true when served behind TLS.
   secureCookies: process.env.COOKIE_SECURE === 'true',

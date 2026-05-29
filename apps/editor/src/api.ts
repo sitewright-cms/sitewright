@@ -1,4 +1,4 @@
-import type { Dataset, Entry, Page } from '@sitewright/schema';
+import type { Dataset, Entry, MediaAsset, Page } from '@sitewright/schema';
 
 /** Base URL for the API. Empty = same origin (the API serves this SPA). */
 const BASE = import.meta.env.VITE_API_BASE ?? '';
@@ -13,6 +13,17 @@ export class ApiError extends Error {
   }
 }
 
+async function errorFromResponse(res: Response): Promise<ApiError> {
+  let message = res.statusText;
+  try {
+    const json = (await res.json()) as { error?: string };
+    if (json.error) message = json.error;
+  } catch {
+    // non-JSON error body — keep statusText
+  }
+  return new ApiError(res.status, message);
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method,
@@ -20,16 +31,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     headers: body === undefined ? {} : { 'content-type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  if (!res.ok) {
-    let message = res.statusText;
-    try {
-      const json = (await res.json()) as { error?: string };
-      if (json.error) message = json.error;
-    } catch {
-      // non-JSON error body — keep statusText
-    }
-    throw new ApiError(res.status, message);
-  }
+  if (!res.ok) throw await errorFromResponse(res);
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
 }
@@ -93,4 +95,21 @@ export const api = {
     ),
   deleteEntry: (orgId: string, projectId: string, id: string) =>
     request<void>('DELETE', `/orgs/${orgId}/projects/${projectId}/content/entry/${id}`),
+
+  // --- media ---
+  listMedia: (orgId: string, projectId: string) =>
+    request<{ items: MediaAsset[] }>('GET', `/orgs/${orgId}/projects/${projectId}/media`),
+  uploadMedia: async (orgId: string, projectId: string, file: File): Promise<{ item: MediaAsset }> => {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch(`${BASE}/orgs/${orgId}/projects/${projectId}/media`, {
+      method: 'POST',
+      credentials: 'include',
+      body: form, // the browser sets multipart/form-data with the boundary
+    });
+    if (!res.ok) throw await errorFromResponse(res);
+    return (await res.json()) as { item: MediaAsset };
+  },
+  deleteMedia: (orgId: string, projectId: string, id: string) =>
+    request<void>('DELETE', `/orgs/${orgId}/projects/${projectId}/media/${id}`),
 };

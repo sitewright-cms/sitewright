@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { Binding, Dataset, Page, PageNode } from '@sitewright/schema';
+import type { Binding, Dataset, MediaAsset, Page, PageNode } from '@sitewright/schema';
 import { BLOCK_DESCRIPTORS, isContainerType, type BlockCategory } from '@sitewright/blocks';
 import { api, type Org, type Project } from '../api';
 import { createBlock } from '../lib/node-factory';
@@ -40,13 +40,14 @@ export function PageEditor({ org, project, page, onClose }: PageEditorProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [datasets, setDatasets] = useState<Dataset[]>([]);
+  const [media, setMedia] = useState<MediaAsset[]>([]);
   const [preview, setPreview] = useState<{ html: string; loading: boolean; error: string | null }>({
     html: '',
     loading: true,
     error: null,
   });
 
-  // Project datasets power the binding UI (picker + field options).
+  // Project datasets + media power the binding UI and the image picker.
   useEffect(() => {
     let cancelled = false;
     api
@@ -56,6 +57,14 @@ export function PageEditor({ org, project, page, onClose }: PageEditorProps) {
       })
       .catch(() => {
         /* binding UI simply offers no datasets if this fails */
+      });
+    api
+      .listMedia(org.id, project.id)
+      .then((res) => {
+        if (!cancelled) setMedia(res.items);
+      })
+      .catch(() => {
+        /* image picker simply offers no media if this fails */
       });
     return () => {
       cancelled = true;
@@ -235,6 +244,7 @@ export function PageEditor({ org, project, page, onClose }: PageEditorProps) {
               depth={0}
               selectedId={selectedId}
               datasets={datasets}
+              media={media}
               onSelect={setSelectedId}
               onMove={(id, dir) => setRoot(moveWithinParent(root, id, dir))}
               onRemove={remove}

@@ -1,7 +1,8 @@
-import type { Binding, Dataset, PageNode } from '@sitewright/schema';
+import type { Binding, Dataset, MediaAsset, PageNode } from '@sitewright/schema';
 import { descriptorFor } from '@sitewright/blocks';
 import { PropsForm } from './PropsForm';
 import { BindingForm } from './BindingForm';
+import { MediaPicker } from '../media/MediaPicker';
 
 export interface BlockTreeProps {
   node: PageNode;
@@ -11,6 +12,7 @@ export interface BlockTreeProps {
   depth: number;
   selectedId: string | null;
   datasets: Dataset[];
+  media: MediaAsset[];
   onSelect: (id: string) => void;
   onMove: (id: string, dir: 'up' | 'down') => void;
   onRemove: (id: string) => void;
@@ -30,6 +32,7 @@ export function BlockTree(props: BlockTreeProps) {
     depth,
     selectedId,
     datasets,
+    media,
     onSelect,
     onMove,
     onRemove,
@@ -115,6 +118,14 @@ export function BlockTree(props: BlockTreeProps) {
           style={{ marginLeft: depth * 16 }}
         >
           <PropsForm node={node} onChange={(key, value) => onChangeProp(node.id, key, value)} />
+          {node.type === 'Image' && (
+            <div className="mt-3 border-t border-slate-200 pt-3">
+              <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Media
+              </h4>
+              <MediaPicker media={media} onPick={(url) => onChangeProp(node.id, 'src', url)} />
+            </div>
+          )}
           <BindingForm
             node={node}
             root={treeRoot}

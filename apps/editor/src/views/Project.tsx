@@ -3,6 +3,7 @@ import type { Page } from '@sitewright/schema';
 import { api, type Org, type Project } from '../api';
 import { PageEditor } from './PageEditor';
 import { DatasetManager } from './DatasetManager';
+import { MediaManager } from './MediaManager';
 
 interface ProjectViewProps {
   org: Org;
@@ -13,7 +14,7 @@ interface ProjectViewProps {
 export function ProjectView({ org, project, onBack }: ProjectViewProps) {
   const [pages, setPages] = useState<Page[]>([]);
   const [editing, setEditing] = useState<Page | null>(null);
-  const [tab, setTab] = useState<'pages' | 'data'>('pages');
+  const [tab, setTab] = useState<'pages' | 'data' | 'media'>('pages');
   const [slug, setSlug] = useState('');
   const [title, setTitle] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -78,7 +79,7 @@ export function ProjectView({ org, project, onBack }: ProjectViewProps) {
       </h2>
 
       <div className="mb-6 flex gap-1 border-b border-slate-200">
-        {(['pages', 'data'] as const).map((t) => (
+        {(['pages', 'data', 'media'] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -95,6 +96,8 @@ export function ProjectView({ org, project, onBack }: ProjectViewProps) {
 
       {tab === 'data' ? (
         <DatasetManager org={org} project={project} />
+      ) : tab === 'media' ? (
+        <MediaManager org={org} project={project} />
       ) : (
         <>
           <ul className="mb-8 flex flex-col gap-2">

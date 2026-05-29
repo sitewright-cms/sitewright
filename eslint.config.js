@@ -16,4 +16,23 @@ export default tseslint.config(
   // Catches injection foot-guns (eval, child_process, fs with tainted paths, etc.)
   // as runtime-bearing packages (api, renderer, cli) come online.
   security.configs.recommended,
+  {
+    // Scoped to @sitewright/core only: it performs legitimate dynamic property
+    // access (tree walks, dataset field lookups) where this rule has a very high
+    // false-positive rate. Prototype-pollution is mitigated structurally at the
+    // schema boundary (see @sitewright/schema `safeRecord`). Future runtime
+    // packages (api, cli, renderer) keep the rule enabled.
+    files: ['packages/core/**/*.ts'],
+    rules: {
+      'security/detect-object-injection': 'off',
+    },
+  },
+  {
+    // Test files legitimately use dynamic property access (asserting API
+    // surfaces, building fixtures) and are not a runtime attack surface.
+    files: ['**/*.test.ts'],
+    rules: {
+      'security/detect-object-injection': 'off',
+    },
+  },
 );

@@ -1,0 +1,77 @@
+import type { Binding, Entry } from '@sitewright/schema';
+
+export interface ResolveBindingOptions {
+  /** Include `draft` entries (default: published only — drafts are excluded from builds). */
+  includeDrafts?: boolean;
+}
+
+/**
+ * Resolves a binding against a pool of dataset entries, returning the entries to
+ * render. Bindings are resolved at **build time**.
+ *
+ * Only entries whose `dataset` matches the binding are considered, and (by
+ * default) only published ones. The binding's query applies `where` equality
+ * filters and an optional `sort`. Sorting is deterministic and
+ * locale-independent (Unicode code-point order for strings, numeric order for
+ * numbers) with a stable tie-break on `entry.id`, so builds are reproducible
+ * across machines. `mode: 'single'` returns at most one entry; `mode: 'list'`
+ * applies `binding.limit`.
+ */
+export function resolveBinding(
+  binding: Binding,
+  entries: readonly Entry[],
+  options: ResolveBindingOptions = {},
+): Entry[] {
+  let result = entries.filter((entry) => entry.dataset === binding.dataset);
+
+  if (!options.includeDrafts) {
+    result = result.filter((entry) => entry.status === 'published');
+  }
+
+  const where = binding.query?.where;
+  if (where) {
+    const filters = Object.entries(where);
+    result = result.filter((entry) =>
+      filters.every(([field, expected]) => valuesEqual(entry.values[field], expected)),
+    );
+  }
+
+  const sort = binding.query?.sort;
+  if (sort) {
+    const field = sort.field;
+    const direction = sort.dir === 'desc' ? -1 : 1;
+    result = [...result].sort((a, b) => {
+      const primary = compareValues(a.values[field], b.values[field]) * direction;
+      return primary !== 0 ? primary : compareStrings(a.id, b.id);
+    });
+  }
+
+  if (binding.mode === 'single') return result.slice(0, 1);
+  if (binding.limit !== undefined) return result.slice(0, binding.limit);
+  return result;
+}
+
+function valuesEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a !== null && b !== null && typeof a === 'object' && typeof b === 'object') {
+    try {
+      return JSON.stringify(a) === JSON.stringify(b);
+    } catch {
+      // Circular references / BigInt — treat as not equal rather than throwing.
+      return false;
+    }
+  }
+  return false;
+}
+
+function compareValues(a: unknown, b: unknown): number {
+  if (typeof a === 'number' && typeof b === 'number') return a - b;
+  return compareStrings(String(a ?? ''), String(b ?? ''));
+}
+
+/** Deterministic, locale-independent string comparison (Unicode code-point order). */
+function compareStrings(a: string, b: string): number {
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
+}

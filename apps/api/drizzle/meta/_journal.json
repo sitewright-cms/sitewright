@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1780079109711,
+      "tag": "0000_clammy_psynapse",
+      "breakpoints": true
+    }
+  ]
+}

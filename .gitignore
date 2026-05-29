@@ -19,6 +19,16 @@ coverage/
 # generated optimized media (produced by the optimize-media prebuild step)
 **/public/_sw-media/
 
+# local sqlite data
+*.db
+*.db-journal
+*.db-wal
+**/data/
+
+# playwright
+**/test-results/
+**/playwright-report/
+
 # logs / os
 *.log
 .DS_Store

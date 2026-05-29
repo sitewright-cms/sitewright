@@ -1,0 +1,10 @@
+node_modules
+test
+e2e
+src
+*.test.ts
+vitest.config.ts
+tsconfig*.json
+drizzle.config.ts
+.turbo
+coverage

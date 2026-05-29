@@ -1,0 +1,63 @@
+import { test, expect } from '@playwright/test';
+
+// Unique per run so re-runs against the same deployed DB don't collide.
+const stamp = Date.now();
+
+test('multi-tenant isolation over HTTP (the core guarantee)', async ({ playwright, baseURL }) => {
+  // Independent cookie jars = two separate logged-in tenants.
+  const a = await playwright.request.newContext({ baseURL });
+  const b = await playwright.request.newContext({ baseURL });
+
+  const regA = await a.post('/auth/register', {
+    data: { email: `a-${stamp}@e2e.test`, password: 'pw-secret-1', orgName: `Acme ${stamp}` },
+  });
+  expect(regA.status()).toBe(201);
+  const orgA = (await regA.json()).orgId as string;
+
+  const regB = await b.post('/auth/register', {
+    data: { email: `b-${stamp}@e2e.test`, password: 'pw-secret-1', orgName: `Globex ${stamp}` },
+  });
+  expect(regB.status()).toBe(201);
+
+  // A creates a project (session cookie carried by context `a`).
+  const created = await a.post(`/orgs/${orgA}/projects`, {
+    data: { name: 'Secret', slug: `secret-${stamp}` },
+  });
+  expect(created.status()).toBe(201);
+  const projectId = (await created.json()).project.id as string;
+
+  // A can read its own project.
+  expect((await a.get(`/orgs/${orgA}/projects/${projectId}`)).status()).toBe(200);
+
+  // B is not a member of A's org → forbidden on A's org routes.
+  expect((await b.get(`/orgs/${orgA}/projects`)).status()).toBe(403);
+  expect((await b.get(`/orgs/${orgA}/projects/${projectId}`)).status()).toBe(403);
+
+  await a.dispose();
+  await b.dispose();
+});
+
+test('unauthenticated access is rejected', async ({ playwright, baseURL }) => {
+  const anon = await playwright.request.newContext({ baseURL });
+  expect((await anon.get('/me')).status()).toBe(401);
+  await anon.dispose();
+});
+
+test('login flow issues a working session', async ({ playwright, baseURL }) => {
+  const ctx = await playwright.request.newContext({ baseURL });
+  const email = `login-${stamp}@e2e.test`;
+  expect(
+    (
+      await ctx.post('/auth/register', {
+        data: { email, password: 'pw-secret-1', orgName: `Login ${stamp}` },
+      })
+    ).status(),
+  ).toBe(201);
+  await ctx.post('/auth/logout');
+  const login = await ctx.post('/auth/login', {
+    data: { email, password: 'pw-secret-1' },
+  });
+  expect(login.status()).toBe(200);
+  expect((await ctx.get('/me')).status()).toBe(200);
+  await ctx.dispose();
+});

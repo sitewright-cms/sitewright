@@ -47,8 +47,9 @@ jobs:
       - name: Lint
         run: pnpm lint
 
-      - name: Test (with coverage gate)
-        run: pnpm test
-
+      # Build before test: the render-app integration test asserts on built output.
       - name: Build
         run: pnpm build
+
+      - name: Test (with coverage gate)
+        run: pnpm test

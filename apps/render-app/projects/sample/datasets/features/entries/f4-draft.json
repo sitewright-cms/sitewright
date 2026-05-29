@@ -1,0 +1,9 @@
+{
+  "id": "f4",
+  "dataset": "features",
+  "status": "draft",
+  "values": {
+    "title": "Unpublished draft feature",
+    "body": "This draft entry must NOT appear in the published build."
+  }
+}

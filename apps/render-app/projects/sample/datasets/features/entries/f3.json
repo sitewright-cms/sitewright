@@ -1,0 +1,9 @@
+{
+  "id": "f3",
+  "dataset": "features",
+  "status": "published",
+  "values": {
+    "title": "Built-in CMS",
+    "body": "Bind blocks to datasets; content is resolved at build time and shipped as static HTML."
+  }
+}

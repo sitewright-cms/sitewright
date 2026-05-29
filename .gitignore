@@ -13,6 +13,9 @@ coverage/
 # sitewright project build cache
 .sitewright/
 
+# astro generated
+.astro/
+
 # logs / os
 *.log
 .DS_Store

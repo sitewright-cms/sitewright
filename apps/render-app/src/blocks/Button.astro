@@ -1,0 +1,17 @@
+---
+import type { Entry, PageNode } from '@sitewright/schema';
+import { textProp } from './props';
+
+interface Props {
+  node: PageNode;
+  entry?: Entry;
+}
+const { node, entry } = Astro.props;
+const props = node.props ?? {};
+const text = textProp(props, entry, 'text');
+const href = textProp(props, entry, 'href', '#');
+---
+
+<a href={href} class="inline-block rounded-card bg-primary px-5 py-2.5 font-semibold text-white">
+  {text}<slot />
+</a>

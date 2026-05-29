@@ -1,0 +1,19 @@
+---
+import type { Entry, PageNode } from '@sitewright/schema';
+import { textProp } from './props';
+
+interface Props {
+  node: PageNode;
+  entry?: Entry;
+}
+const { node, entry } = Astro.props;
+const props = node.props ?? {};
+const src = textProp(props, entry, 'src');
+const alt = textProp(props, entry, 'alt');
+---
+
+{
+  src && (
+    <img src={src} alt={alt} loading="lazy" decoding="async" class="h-auto w-full rounded-card" />
+  )
+}

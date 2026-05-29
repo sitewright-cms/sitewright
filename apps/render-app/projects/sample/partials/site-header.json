@@ -1,0 +1,13 @@
+{
+  "id": "site-header",
+  "name": "Site Header",
+  "root": {
+    "id": "hdr",
+    "type": "Header",
+    "props": { "brand": "Northwind" },
+    "children": [
+      { "id": "nav-home", "type": "RichText", "props": { "text": "Home" } },
+      { "id": "nav-about", "type": "RichText", "props": { "text": "About" } }
+    ]
+  }
+}

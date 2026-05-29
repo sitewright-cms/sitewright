@@ -1,0 +1,24 @@
+{
+  "formatVersion": 1,
+  "id": "sample",
+  "name": "Northwind Studio",
+  "slug": "northwind",
+  "brand": {
+    "name": "Northwind Studio",
+    "colors": {
+      "primary": "#0ea5e9",
+      "ink": "#0f172a",
+      "surface": "#ffffff",
+      "muted": "#64748b",
+      "accent": "#f59e0b"
+    },
+    "typography": {
+      "fontFamilies": {
+        "body": "Inter, system-ui, sans-serif",
+        "heading": "Inter, system-ui, sans-serif"
+      }
+    },
+    "radii": { "card": "0.75rem" }
+  },
+  "settings": { "defaultLocale": "en", "locales": ["en"] }
+}

@@ -1,0 +1,22 @@
+---
+import type { PageNode } from '@sitewright/schema';
+
+interface Props {
+  node: PageNode;
+}
+const { node } = Astro.props;
+const columns = Math.min(Math.max(Number(node.props?.columns) || 3, 1), 6);
+// Static class strings so Tailwind can detect them at build time.
+const colClass =
+  columns >= 4
+    ? 'sm:grid-cols-2 lg:grid-cols-4'
+    : columns === 3
+      ? 'sm:grid-cols-2 lg:grid-cols-3'
+      : columns === 2
+        ? 'sm:grid-cols-2'
+        : 'grid-cols-1';
+---
+
+<div class={`grid grid-cols-1 gap-6 ${colClass}`}>
+  <slot />
+</div>

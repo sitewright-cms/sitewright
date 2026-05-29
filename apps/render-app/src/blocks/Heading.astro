@@ -1,0 +1,17 @@
+---
+import type { Entry, PageNode } from '@sitewright/schema';
+import { textProp } from './props';
+
+interface Props {
+  node: PageNode;
+  entry?: Entry;
+}
+const { node, entry } = Astro.props;
+const props = node.props ?? {};
+const text = textProp(props, entry, 'text');
+const level = Math.min(Math.max(Number(props.level) || 2, 1), 6);
+const Tag = `h${level}` as 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6';
+const sizeClass = level <= 2 ? 'text-3xl' : level === 3 ? 'text-xl' : 'text-lg';
+---
+
+<Tag class={`font-heading font-bold tracking-tight text-ink ${sizeClass}`}>{text}</Tag>

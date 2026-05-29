@@ -2,6 +2,13 @@ import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import cookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
 import { z } from 'zod';
+import {
+  PageSchema,
+  assertWithinTreeDepth,
+  type Brand,
+  type Entry,
+} from '@sitewright/schema';
+import { renderDocument } from '@sitewright/blocks';
 import type { Database } from '../db/client.js';
 import { createSession, revokeSession, validateSession } from '../auth/sessions.js';
 import {
@@ -11,7 +18,12 @@ import {
   tenantContext,
 } from '../repo/accounts.js';
 import { ProjectRepository } from '../repo/projects.js';
-import { ContentRepository, CONTENT_KINDS } from '../repo/content.js';
+import {
+  ContentRepository,
+  CONTENT_KINDS,
+  SETTINGS_ENTITY_ID,
+  type Settings,
+} from '../repo/content.js';
 import {
   ConflictError,
   ForbiddenError,
@@ -23,6 +35,7 @@ import type { ContentKind } from '../db/schema.js';
 
 const SESSION_COOKIE = 'sw_session';
 const IMPORT_BODY_LIMIT = 4 * 1024 * 1024; // 4 MiB for a full project import
+const PREVIEW_BODY_LIMIT = 2 * 1024 * 1024; // 2 MiB for a single draft page
 const API_PREFIXES = ['/auth', '/orgs', '/me', '/health'];
 
 function isApiPath(url: string): boolean {
@@ -262,6 +275,45 @@ export function createApp(opts: AppOptions): FastifyInstance {
     async (req, reply) => {
       const { ctx, project } = await resolveProject(req);
       return reply.send(await contentRepo.importBundle(ctx, project, req.body));
+    },
+  );
+
+  // Live SSR preview of a draft page. Renders an in-flight (possibly unsaved)
+  // page tree to a full, brand-themed, self-contained HTML document using the
+  // shared pure renderer. Tenant-scoped; any project member may preview.
+  app.post<{ Params: { orgId: string; projectId: string } }>(
+    '/orgs/:orgId/projects/:projectId/preview',
+    { bodyLimit: PREVIEW_BODY_LIMIT },
+    async (req, reply) => {
+      const { ctx, project } = await resolveProject(req);
+      // Guard recursion depth before the recursive Zod parse (untrusted tree).
+      assertWithinTreeDepth((req.body as { root?: unknown } | null)?.root);
+      const page = PageSchema.parse(req.body);
+
+      // Brand comes from the saved settings singleton; fall back to the project
+      // name with default tokens when settings have not been configured yet.
+      let brand: Brand = { name: project.name, colors: {} };
+      try {
+        const settings = (await contentRepo.get(ctx, 'settings', SETTINGS_ENTITY_ID)) as Settings;
+        brand = settings.brand;
+      } catch (err) {
+        if (!(err instanceof NotFoundError)) throw err;
+      }
+
+      // Group saved entries by dataset for binding resolution. Drafts are shown
+      // in the preview (unlike a published build) so authors see work-in-progress.
+      const entries = (await contentRepo.list(ctx, 'entry')) as Entry[];
+      const byDataset = new Map<string, Entry[]>();
+      for (const entry of entries) {
+        byDataset.set(entry.dataset, [...(byDataset.get(entry.dataset) ?? []), entry]);
+      }
+
+      const html = renderDocument(page, {
+        brand,
+        datasets: Object.fromEntries(byDataset),
+        includeDrafts: true,
+      });
+      return reply.send({ html });
     },
   );
 

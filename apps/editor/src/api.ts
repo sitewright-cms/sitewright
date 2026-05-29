@@ -67,4 +67,6 @@ export const api = {
     ),
   deletePage: (orgId: string, projectId: string, id: string) =>
     request<void>('DELETE', `/orgs/${orgId}/projects/${projectId}/content/page/${id}`),
+  preview: (orgId: string, projectId: string, page: Page) =>
+    request<{ html: string }>('POST', `/orgs/${orgId}/projects/${projectId}/preview`, page),
 };

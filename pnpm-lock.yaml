@@ -41,6 +41,9 @@ importers:
       '@libsql/client':
         specifier: ^0.14
         version: 0.14.0
+      '@sitewright/blocks':
+        specifier: workspace:*
+        version: link:../../packages/blocks
       '@sitewright/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -78,6 +81,9 @@ importers:
 
   apps/editor:
     dependencies:
+      '@sitewright/blocks':
+        specifier: workspace:*
+        version: link:../../packages/blocks
       '@sitewright/schema':
         specifier: workspace:*
         version: link:../../packages/schema
@@ -158,6 +164,28 @@ importers:
       '@astrojs/check':
         specifier: ^0.9
         version: 0.9.9(prettier@3.8.3)(typescript@5.9.3)
+      '@vitest/coverage-v8':
+        specifier: ^2.1.8
+        version: 2.1.9(vitest@2.1.9(@types/node@22.19.19)(jsdom@25.0.1)(lightningcss@1.32.0))
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.19.19)(jsdom@25.0.1)(lightningcss@1.32.0)
+
+  packages/blocks:
+    dependencies:
+      '@sitewright/core':
+        specifier: workspace:*
+        version: link:../core
+      '@sitewright/schema':
+        specifier: workspace:*
+        version: link:../schema
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.2
+        version: 22.19.19
       '@vitest/coverage-v8':
         specifier: ^2.1.8
         version: 2.1.9(vitest@2.1.9(@types/node@22.19.19)(jsdom@25.0.1)(lightningcss@1.32.0))

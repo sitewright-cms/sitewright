@@ -1,4 +1,13 @@
+// Mirrors apps/render-app/src/blocks/props.ts (text/field resolution). Kept here
+// so the shared renderer is self-contained; Phase F converges the Astro renderer
+// onto this package and removes the duplicate.
 import type { Entry } from '@sitewright/schema';
+import { safeUrl } from './url.js';
+
+/** Own-enumerable property read that avoids dynamic object indexing. */
+function read(obj: Record<string, unknown>, key: string): unknown {
+  return Object.entries(obj).find(([k]) => k === key)?.[1];
+}
 
 /**
  * Resolves a block prop, supporting CMS data binding: if `props["<key>Field"]`
@@ -10,11 +19,11 @@ export function fieldValue(
   entry: Entry | undefined,
   key: string,
 ): unknown {
-  const fieldRef = props[`${key}Field`];
+  const fieldRef = read(props, `${key}Field`);
   if (entry && typeof fieldRef === 'string') {
-    return entry.values[fieldRef];
+    return read(entry.values, fieldRef);
   }
-  return props[key];
+  return read(props, key);
 }
 
 /** Coerces an unknown value to a string, falling back when it is not a string. */
@@ -30,21 +39,6 @@ export function textProp(
   fallback = '',
 ): string {
   return str(fieldValue(props, entry, key), fallback);
-}
-
-// Allow only absolute http(s) URLs, root-relative paths, fragment links, and empty.
-// Blocks `javascript:`, `data:`, `vbscript:`, and other active/unknown schemes that
-// would become XSS or unwanted fetches when emitted into an href/src attribute.
-// The root-relative branch requires a single leading `/` NOT followed by another
-// `/`, so protocol-relative URLs (`//evil.com`, an off-site/open-redirect vector)
-// are rejected.
-const SAFE_URL = /^(?:https?:\/\/|\/(?!\/)|#)/i;
-
-/** Sanitizes a URL string for use in `href`/`src`; returns `fallback` if unsafe. */
-export function safeUrl(value: string, fallback = '#'): string {
-  const trimmed = value.trim();
-  if (trimmed === '') return fallback;
-  return SAFE_URL.test(trimmed) ? trimmed : fallback;
 }
 
 /** Reads a URL prop (with optional field binding) and sanitizes it. */

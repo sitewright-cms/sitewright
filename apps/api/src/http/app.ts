@@ -21,6 +21,7 @@ import { MediaStorage } from '../media/storage.js';
 import { buildSite, PublishError } from '../publish/build.js';
 import { PublishStore } from '../publish/store.js';
 import { archiveSite, deploySite, DeployConfigSchema } from '../publish/adapters.js';
+import { isNewer } from '../version/checker.js';
 import { createSession, revokeSession, validateSession } from '../auth/sessions.js';
 import {
   listOrgsForUser,
@@ -139,6 +140,12 @@ export interface AppOptions {
    * trusted proxy addresses. Leave unset for direct connections.
    */
   trustProxy?: boolean | string | string[];
+  /** Current running version (for the pull-based update check). */
+  version?: string;
+  /** Provider of the latest released version tag (cached; null when unavailable). */
+  latestVersion?: () => Promise<string | null>;
+  /** URL shown in the update banner linking to the latest release. */
+  releaseUrl?: string;
 }
 
 export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
@@ -649,6 +656,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   }
 
   app.get('/health', async () => ({ ok: true }));
+
+  // Pull-based update check for the in-app banner. Public + informational.
+  app.get('/version', async () => {
+    const current = opts.version ?? '0.0.0';
+    const latest = opts.latestVersion ? await opts.latestVersion() : null;
+    return {
+      current,
+      latest,
+      updateAvailable: latest ? isNewer(latest, current) : false,
+      releaseUrl: opts.releaseUrl ?? null,
+    };
+  });
 
   // Single-container mode: serve the editor SPA at `/`, with a fallback to
   // index.html for non-API GET routes (client-side navigation / refresh).

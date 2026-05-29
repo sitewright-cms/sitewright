@@ -87,6 +87,15 @@ describe('api client', () => {
     expect(await api.me()).toEqual({ userId: 'u', orgs: [] });
   });
 
+  it('GETs the version/update status', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(200, { current: '1.0.0', latest: '1.1.0', updateAvailable: true, releaseUrl: 'u' }),
+    );
+    const res = await api.version();
+    expect(res.updateAvailable).toBe(true);
+    expect(fetchMock.mock.calls[0]![0]).toBe('/version');
+  });
+
   it('POSTs a page to the preview endpoint and returns the html', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { html: '<!doctype html>…' }));
     const page = { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' } };

@@ -70,6 +70,11 @@ export const api = {
     request<{ userId: string }>('POST', '/auth/login', { email, password }),
   logout: () => request<void>('POST', '/auth/logout'),
   me: () => request<{ userId: string; orgs: Org[] }>('GET', '/me'),
+  version: () =>
+    request<{ current: string; latest: string | null; updateAvailable: boolean; releaseUrl: string | null }>(
+      'GET',
+      '/version',
+    ),
   projects: (orgId: string) =>
     request<{ projects: Project[] }>('GET', `/orgs/${orgId}/projects`),
   createProject: (orgId: string, name: string, slug: string) =>

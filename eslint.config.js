@@ -29,9 +29,9 @@ export default tseslint.config(
     },
   },
   {
-    // Trusted build-time project-format loader: reads JSON from a known project
-    // directory. Not request-facing.
-    files: ['apps/render-app/src/lib/project.ts'],
+    // Trusted build-time file I/O: the project-format loader and the image
+    // pipeline read/write files at known, operator-controlled paths. Not request-facing.
+    files: ['apps/render-app/src/lib/project.ts', 'packages/image-pipeline/src/optimize.ts'],
     rules: {
       'security/detect-non-literal-fs-filename': 'off',
     },

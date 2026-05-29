@@ -1,23 +1,42 @@
-import type { PageNode } from '@sitewright/schema';
+import type { Binding, Dataset, PageNode } from '@sitewright/schema';
 import { descriptorFor } from '@sitewright/blocks';
 import { PropsForm } from './PropsForm';
+import { BindingForm } from './BindingForm';
 
 export interface BlockTreeProps {
   node: PageNode;
+  /** The full page tree (constant across recursion) — used to resolve inherited bindings. */
+  treeRoot: PageNode;
   rootId: string;
   depth: number;
   selectedId: string | null;
+  datasets: Dataset[];
   onSelect: (id: string) => void;
   onMove: (id: string, dir: 'up' | 'down') => void;
   onRemove: (id: string) => void;
   onChangeProp: (id: string, key: string, value: unknown) => void;
+  onSetBinding: (id: string, binding: Binding | undefined) => void;
+  onBindField: (id: string, propKey: string, fieldName: string | undefined) => void;
   onDragStart: (id: string) => void;
   onDropOn: (targetId: string) => void;
 }
 
 /** Recursive block-tree outline with selection, reordering, removal and drag/drop. */
 export function BlockTree(props: BlockTreeProps) {
-  const { node, rootId, depth, selectedId, onSelect, onMove, onRemove, onChangeProp } = props;
+  const {
+    node,
+    treeRoot,
+    rootId,
+    depth,
+    selectedId,
+    datasets,
+    onSelect,
+    onMove,
+    onRemove,
+    onChangeProp,
+    onSetBinding,
+    onBindField,
+  } = props;
   const descriptor = descriptorFor(node.type);
   const isRoot = node.id === rootId;
   const selected = node.id === selectedId;
@@ -96,6 +115,13 @@ export function BlockTree(props: BlockTreeProps) {
           style={{ marginLeft: depth * 16 }}
         >
           <PropsForm node={node} onChange={(key, value) => onChangeProp(node.id, key, value)} />
+          <BindingForm
+            node={node}
+            root={treeRoot}
+            datasets={datasets}
+            onSetBinding={(binding) => onSetBinding(node.id, binding)}
+            onBindField={(propKey, fieldName) => onBindField(node.id, propKey, fieldName)}
+          />
         </div>
       )}
 

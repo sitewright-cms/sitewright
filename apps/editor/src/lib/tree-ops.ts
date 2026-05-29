@@ -1,7 +1,7 @@
 // Immutable operations on a page's block tree. Every function returns a new tree
 // and never mutates its input — this keeps React state updates predictable and
 // the operations trivially testable. Node identity is by `id`.
-import type { PageNode } from '@sitewright/schema';
+import type { Binding, PageNode } from '@sitewright/schema';
 
 /** Depth-first search for a node by id (inclusive of the given root). */
 export function findNode(root: PageNode, id: string): PageNode | undefined {
@@ -75,6 +75,33 @@ function findParent(root: PageNode, id: string): ParentLocation | undefined {
     if (deeper) return deeper;
   }
   return undefined;
+}
+
+/**
+ * The binding that governs a node's field resolution: its own binding, or the
+ * nearest ancestor's. A node bound by an ancestor `list`/`single` resolves its
+ * `<key>Field` props against that ancestor's dataset, so the binding UI needs to
+ * know which dataset is in scope even for unbound descendants.
+ */
+export function governingBinding(root: PageNode, id: string): Binding | undefined {
+  // Single DFS carrying the ancestor chain; on reaching the target, return the
+  // nearest binding from itself up to the root.
+  function walk(node: PageNode, ancestors: PageNode[]): Binding | undefined {
+    if (node.id === id) {
+      if (node.binding) return node.binding;
+      for (let i = ancestors.length - 1; i >= 0; i -= 1) {
+        const binding = ancestors.at(i)?.binding;
+        if (binding) return binding;
+      }
+      return undefined;
+    }
+    for (const child of node.children ?? []) {
+      const found = walk(child, [...ancestors, node]);
+      if (found) return found;
+    }
+    return undefined;
+  }
+  return walk(root, []);
 }
 
 /** Public parent lookup: the parent's id and the node's index within it. */

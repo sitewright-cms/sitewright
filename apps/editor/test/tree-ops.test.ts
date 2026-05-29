@@ -3,6 +3,7 @@ import type { PageNode } from '@sitewright/schema';
 import {
   appendChild,
   findNode,
+  governingBinding,
   insertChild,
   isDescendant,
   moveNode,
@@ -117,6 +118,36 @@ describe('isDescendant', () => {
     expect(isDescendant(root, 'b', 'b')).toBe(true);
     expect(isDescendant(root, 'b', 'a')).toBe(false);
     expect(isDescendant(root, 'ghost', 'a')).toBe(false);
+  });
+});
+
+describe('governingBinding', () => {
+  // root(Section) > grid(Grid, list-bound to posts) > head(Heading)
+  function bound(): PageNode {
+    return {
+      id: 'root',
+      type: 'Section',
+      children: [
+        {
+          id: 'grid',
+          type: 'Grid',
+          binding: { dataset: 'posts', mode: 'list' },
+          children: [{ id: 'head', type: 'Heading' }],
+        },
+      ],
+    };
+  }
+
+  it('returns a node’s own binding', () => {
+    expect(governingBinding(bound(), 'grid')?.dataset).toBe('posts');
+  });
+
+  it('inherits the nearest ancestor binding for an unbound descendant', () => {
+    expect(governingBinding(bound(), 'head')?.dataset).toBe('posts');
+  });
+
+  it('returns undefined when nothing in the ancestry is bound', () => {
+    expect(governingBinding(tree(), 'b1')).toBeUndefined();
   });
 });
 

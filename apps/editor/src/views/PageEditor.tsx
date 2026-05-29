@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { Page, PageNode } from '@sitewright/schema';
+import type { Binding, Dataset, Page, PageNode } from '@sitewright/schema';
 import { BLOCK_DESCRIPTORS, isContainerType, type BlockCategory } from '@sitewright/blocks';
 import { api, type Org, type Project } from '../api';
 import { createBlock } from '../lib/node-factory';
@@ -12,6 +12,7 @@ import {
   parentInfo,
   removeNode,
   setProps,
+  updateNode,
 } from '../lib/tree-ops';
 import { BlockTree } from './editor/BlockTree';
 import { PreviewPane } from './editor/PreviewPane';
@@ -38,11 +39,28 @@ export function PageEditor({ org, project, page, onClose }: PageEditorProps) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [preview, setPreview] = useState<{ html: string; loading: boolean; error: string | null }>({
     html: '',
     loading: true,
     error: null,
   });
+
+  // Project datasets power the binding UI (picker + field options).
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .listDatasets(org.id, project.id)
+      .then((res) => {
+        if (!cancelled) setDatasets(res.items);
+      })
+      .catch(() => {
+        /* binding UI simply offers no datasets if this fails */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [org.id, project.id]);
 
   // The page as currently edited — drives both save and live preview.
   const draft: Page = useMemo(() => ({ ...page, title, root }), [page, title, root]);
@@ -94,6 +112,32 @@ export function PageEditor({ org, project, page, onClose }: PageEditorProps) {
 
   function changeProp(id: string, key: string, value: unknown) {
     setRoot(setProps(root, id, { [key]: value }));
+  }
+
+  function setBinding(id: string, binding: Binding | undefined) {
+    setRoot(
+      updateNode(root, id, (node) => {
+        if (!binding) {
+          const next = { ...node };
+          delete next.binding;
+          return next;
+        }
+        return { ...node, binding };
+      }),
+    );
+  }
+
+  function bindField(id: string, key: string, fieldName: string | undefined) {
+    const fieldKey = `${key}Field`;
+    setRoot(
+      updateNode(root, id, (node) => {
+        const prev = node.props ?? {};
+        // Drop the existing binding key, then re-add it only when a field is chosen.
+        const rest = Object.fromEntries(Object.entries(prev).filter(([k]) => k !== fieldKey));
+        const props = fieldName ? { ...rest, [fieldKey]: fieldName } : rest;
+        return { ...node, props };
+      }),
+    );
   }
 
   function remove(id: string) {
@@ -186,13 +230,17 @@ export function PageEditor({ org, project, page, onClose }: PageEditorProps) {
           <div className="flex flex-col gap-1">
             <BlockTree
               node={root}
+              treeRoot={root}
               rootId={root.id}
               depth={0}
               selectedId={selectedId}
+              datasets={datasets}
               onSelect={setSelectedId}
               onMove={(id, dir) => setRoot(moveWithinParent(root, id, dir))}
               onRemove={remove}
               onChangeProp={changeProp}
+              onSetBinding={setBinding}
+              onBindField={bindField}
               onDragStart={setDraggingId}
               onDropOn={dropOn}
             />

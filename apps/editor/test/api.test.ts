@@ -97,4 +97,38 @@ describe('api client', () => {
     expect(init.method).toBe('POST');
     expect(JSON.parse(init.body)).toMatchObject({ id: 'home' });
   });
+
+  it('lists and PUTs datasets at the content path', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { items: [] }));
+    await api.listDatasets('o', 'p');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/orgs/o/projects/p/content/dataset');
+
+    fetchMock.mockResolvedValue(jsonResponse(200, { item: {} }));
+    await api.putDataset('o', 'p', { id: 'posts', name: 'Posts', slug: 'posts', fields: [] });
+    const [url, init] = fetchMock.mock.calls[1]!;
+    expect(url).toBe('/orgs/o/projects/p/content/dataset/posts');
+    expect(init.method).toBe('PUT');
+  });
+
+  it('lists, PUTs and DELETEs entries', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { items: [] }));
+    await api.listEntries('o', 'p');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/orgs/o/projects/p/content/entry');
+
+    fetchMock.mockResolvedValue(jsonResponse(200, { item: {} }));
+    await api.putEntry('o', 'p', { id: 'e1', dataset: 'posts', status: 'draft', values: {} });
+    expect(fetchMock.mock.calls[1]![0]).toBe('/orgs/o/projects/p/content/entry/e1');
+
+    fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
+    await api.deleteEntry('o', 'p', 'e1');
+    expect(fetchMock.mock.calls[2]![1].method).toBe('DELETE');
+  });
+
+  it('DELETEs a dataset', async () => {
+    fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
+    await api.deleteDataset('o', 'p', 'posts');
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/orgs/o/projects/p/content/dataset/posts');
+    expect(init.method).toBe('DELETE');
+  });
 });

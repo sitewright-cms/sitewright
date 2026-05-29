@@ -24,4 +24,23 @@ describe('BindingSchema', () => {
   it('rejects a missing dataset', () => {
     expect(() => BindingSchema.parse({ mode: 'single' })).toThrow();
   });
+
+  it('accepts a typed sort directive', () => {
+    const b = BindingSchema.parse({
+      dataset: 'products',
+      query: { sort: { field: 'price', dir: 'desc' } },
+    });
+    expect(b.query?.sort?.dir).toBe('desc');
+  });
+
+  it('rejects a sort field that is not a valid identifier', () => {
+    expect(() =>
+      BindingSchema.parse({ dataset: 'products', query: { sort: { field: '../x' } } }),
+    ).toThrow();
+  });
+
+  it('rejects a prototype-pollution key in a where filter', () => {
+    const where = JSON.parse('{"__proto__": 1}');
+    expect(() => BindingSchema.parse({ dataset: 'products', query: { where } })).toThrow();
+  });
 });

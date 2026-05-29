@@ -25,6 +25,8 @@ export const SlugSchema = z
   .string()
   .min(1)
   .max(64)
+  // eslint-disable-next-line security/detect-unsafe-regex -- linear: the "-" separator
+  // makes the two quantified groups non-overlapping, and input is length-capped by .max().
   .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'must be lowercase alphanumeric with hyphens');
 
 /** Block component type — resolved against the block registry. */
@@ -46,6 +48,8 @@ export const RoutePathSchema = z
   .string()
   .min(1)
   .max(512)
+  // eslint-disable-next-line security/detect-unsafe-regex -- linear: each iteration must
+  // start with "/" (not in the inner classes), so groups don't overlap; length-capped by .max().
   .regex(
     /^\/$|^(?:\/(?:[A-Za-z0-9._~%-]+|\[[A-Za-z0-9_]+\]))+\/?$/,
     'must be a root-relative URL path (optionally with [param] segments)',

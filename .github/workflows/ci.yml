@@ -35,6 +35,12 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
+      # Fails the build on high/critical advisories. Moderate dev-tooling
+      # advisories (e.g. vitest's transitive vite/esbuild dev-server issues) are
+      # not exploitable in CI/build and are tracked for the next vitest upgrade.
+      - name: Audit dependencies
+        run: pnpm audit --audit-level high
+
       - name: Typecheck
         run: pnpm typecheck
 

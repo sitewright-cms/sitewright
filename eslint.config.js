@@ -27,4 +27,12 @@ export default tseslint.config(
       'security/detect-object-injection': 'off',
     },
   },
+  {
+    // Test files legitimately use dynamic property access (asserting API
+    // surfaces, building fixtures) and are not a runtime attack surface.
+    files: ['**/*.test.ts'],
+    rules: {
+      'security/detect-object-injection': 'off',
+    },
+  },
 );

@@ -25,9 +25,9 @@ export const SlugSchema = z
   .string()
   .min(1)
   .max(64)
-  // eslint-disable-next-line security/detect-unsafe-regex -- linear: the "-" separator
-  // makes the two quantified groups non-overlapping, and input is length-capped by .max().
-  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'must be lowercase alphanumeric with hyphens');
+  // Linear: the "-" separator makes the two quantified groups non-overlapping, and input
+  // is length-capped by .max() above, so backtracking is bounded (not ReDoS).
+  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'must be lowercase alphanumeric with hyphens'); // eslint-disable-line security/detect-unsafe-regex
 
 /** Block component type — resolved against the block registry. */
 export const ComponentTypeSchema = z
@@ -48,12 +48,9 @@ export const RoutePathSchema = z
   .string()
   .min(1)
   .max(512)
-  // eslint-disable-next-line security/detect-unsafe-regex -- linear: each iteration must
-  // start with "/" (not in the inner classes), so groups don't overlap; length-capped by .max().
-  .regex(
-    /^\/$|^(?:\/(?:[A-Za-z0-9._~%-]+|\[[A-Za-z0-9_]+\]))+\/?$/,
-    'must be a root-relative URL path (optionally with [param] segments)',
-  );
+  // Linear: each iteration must start with "/" (not in the inner classes), so the groups
+  // don't overlap; length-capped by .max() above (not ReDoS).
+  .regex(/^\/$|^(?:\/(?:[A-Za-z0-9._~%-]+|\[[A-Za-z0-9_]+\]))+\/?$/, 'must be a root-relative URL path (optionally with [param] segments)'); // eslint-disable-line security/detect-unsafe-regex
 
 /** Asset reference: an absolute http(s) URL or a root-relative path. Rejects `javascript:`/`data:` URIs. */
 export const AssetRefSchema = z

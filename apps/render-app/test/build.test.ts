@@ -22,6 +22,7 @@ describe('static build (integration)', () => {
     // test is self-contained when run standalone. Check every required output so a
     // stale partial build triggers a rebuild rather than a confusing read error.
     if (![homePath, aboutPath, featurePath].every(existsSync)) {
+      await import('../scripts/optimize-media.mjs'); // prebuild: generate media + manifest
       const { build } = await import('astro');
       await build({ root, logLevel: 'error' });
     }
@@ -75,5 +76,19 @@ describe('static build (integration)', () => {
 
   it('does not generate detail pages for draft entries', () => {
     expect(existsSync(draftFeaturePath)).toBe(false);
+  });
+
+  it('optimizes media into a <picture> with AVIF/WebP sources and emits the variant files', () => {
+    expect(home).toContain('<picture');
+    expect(home).toContain('image/avif');
+    expect(home).toContain('image/webp');
+    expect(home).toContain('/_sw-media/hero/');
+    // intrinsic dimensions for CLS-free layout
+    expect(home).toMatch(/width="1600"/);
+    expect(home).toMatch(/height="900"/);
+    const variant = fileURLToPath(
+      new URL('../dist/_sw-media/hero/hero-800.webp', import.meta.url),
+    );
+    expect(existsSync(variant)).toBe(true);
   });
 });

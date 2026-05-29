@@ -1,6 +1,7 @@
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import security from 'eslint-plugin-security';
+import globals from 'globals';
 
 export default tseslint.config(
   {
@@ -29,11 +30,26 @@ export default tseslint.config(
     },
   },
   {
-    // Trusted build-time file I/O: the project-format loader and the image
-    // pipeline read/write files at known, operator-controlled paths. Not request-facing.
-    files: ['apps/render-app/src/lib/project.ts', 'packages/image-pipeline/src/optimize.ts'],
+    // Trusted build-time file I/O: the project-format loader, the media loader,
+    // and the image pipeline read/write files at known, operator-controlled paths.
+    files: [
+      'apps/render-app/src/lib/**/*.ts',
+      'packages/image-pipeline/src/optimize.ts',
+    ],
     rules: {
       'security/detect-non-literal-fs-filename': 'off',
+    },
+  },
+  {
+    // Node build scripts (plain ESM): provide Node globals and exempt their
+    // trusted, operator-controlled file I/O.
+    files: ['**/scripts/**/*.mjs'],
+    languageOptions: {
+      globals: globals.node,
+    },
+    rules: {
+      'security/detect-non-literal-fs-filename': 'off',
+      'security/detect-object-injection': 'off',
     },
   },
   {

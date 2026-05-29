@@ -19,6 +19,7 @@
           "ctaHref": "/about"
         }
       },
+      { "id": "hero-image", "type": "Image", "props": { "src": "hero.png", "alt": "Northwind Studio" } },
       { "id": "features-heading", "type": "Heading", "props": { "text": "What you get", "level": 2 } },
       {
         "id": "features-grid",

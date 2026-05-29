@@ -1,20 +1,57 @@
 ---
 import type { Entry, PageNode } from '@sitewright/schema';
+import { buildSrcset } from '@sitewright/image-pipeline/srcset';
 import { textProp, urlProp } from './props';
+import type { MediaManifest } from '../lib/media';
 
 interface Props {
   node: PageNode;
   entry?: Entry;
+  media?: MediaManifest;
 }
-const { node, entry } = Astro.props;
+const { node, entry, media = {} } = Astro.props;
 const props = node.props ?? {};
-// Empty fallback: an unsafe/empty src yields '' so the image is simply not rendered.
-const src = urlProp(props, entry, 'src', '');
+const rawSrc = textProp(props, entry, 'src');
 const alt = textProp(props, entry, 'alt');
+
+// A media reference resolves to optimized variants; anything else is a plain URL.
+const key = rawSrc.split('/').pop() ?? rawSrc;
+const asset = media[key];
+const externalSrc = urlProp(props, entry, 'src', '');
+
+const hasAvif = asset?.variants.some((v) => v.format === 'avif') ?? false;
+const hasWebp = asset?.variants.some((v) => v.format === 'webp') ?? false;
 ---
 
 {
-  src && (
-    <img src={src} alt={alt} loading="lazy" decoding="async" class="h-auto w-full rounded-card" />
+  asset ? (
+    <picture>
+      {hasAvif && (
+        <source type="image/avif" srcset={buildSrcset(asset.variants, 'avif', asset.dir)} />
+      )}
+      {hasWebp && (
+        <source type="image/webp" srcset={buildSrcset(asset.variants, 'webp', asset.dir)} />
+      )}
+      <img
+        src={`${asset.dir}${asset.fallback}`}
+        alt={alt}
+        width={asset.width}
+        height={asset.height}
+        loading="lazy"
+        decoding="async"
+        class="h-auto w-full rounded-card"
+        style={`background-size:cover;background-image:url(${asset.placeholder})`}
+      />
+    </picture>
+  ) : (
+    externalSrc && (
+      <img
+        src={externalSrc}
+        alt={alt}
+        loading="lazy"
+        decoding="async"
+        class="h-auto w-full rounded-card"
+      />
+    )
   )
 }

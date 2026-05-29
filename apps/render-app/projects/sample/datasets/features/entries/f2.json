@@ -4,6 +4,7 @@
   "status": "published",
   "values": {
     "title": "Reusable partials",
+    "slug": "reusable-partials",
     "body": "Shared headers, footers, and components stay in sync across every page."
   }
 }

@@ -4,6 +4,7 @@
   "status": "published",
   "values": {
     "title": "Static-first output",
+    "slug": "static-first-output",
     "body": "Astro islands ship near-zero JavaScript for top Lighthouse scores."
   }
 }

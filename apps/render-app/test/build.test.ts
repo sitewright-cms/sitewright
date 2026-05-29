@@ -5,21 +5,29 @@ import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const homePath = fileURLToPath(new URL('../dist/index.html', import.meta.url));
 const aboutPath = fileURLToPath(new URL('../dist/about/index.html', import.meta.url));
+const featurePath = fileURLToPath(
+  new URL('../dist/features/static-first-output/index.html', import.meta.url),
+);
+const draftFeaturePath = fileURLToPath(
+  new URL('../dist/features/draft-feature/index.html', import.meta.url),
+);
 
 let home = '';
 let about = '';
+let feature = '';
 
 describe('static build (integration)', () => {
   beforeAll(async () => {
     // In `verify`/CI the build has already run; only build here if needed so the
     // test is self-contained when run standalone. Check every required output so a
     // stale partial build triggers a rebuild rather than a confusing read error.
-    if (![homePath, aboutPath].every(existsSync)) {
+    if (![homePath, aboutPath, featurePath].every(existsSync)) {
       const { build } = await import('astro');
       await build({ root, logLevel: 'error' });
     }
     home = readFileSync(homePath, 'utf8');
     about = readFileSync(aboutPath, 'utf8');
+    feature = readFileSync(featurePath, 'utf8');
   }, 120000);
 
   it('renders the hero', () => {
@@ -58,5 +66,14 @@ describe('static build (integration)', () => {
   it('resolves a single-mode binding (about page featured heading)', () => {
     // about-featured binds one feature (sorted title asc -> "Built-in CMS").
     expect(about).toContain('Built-in CMS');
+  });
+
+  it('generates a collection-page detail route per published entry', () => {
+    expect(feature).toContain('Static-first output'); // title (field-bound)
+    expect(feature).toContain('near-zero JavaScript'); // body (field-bound)
+  });
+
+  it('does not generate detail pages for draft entries', () => {
+    expect(existsSync(draftFeaturePath)).toBe(false);
   });
 });

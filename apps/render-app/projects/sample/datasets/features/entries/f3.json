@@ -4,6 +4,7 @@
   "status": "published",
   "values": {
     "title": "Built-in CMS",
+    "slug": "built-in-cms",
     "body": "Bind blocks to datasets; content is resolved at build time and shipped as static HTML."
   }
 }

@@ -99,3 +99,69 @@ export function pathToSlug(path: string): string | undefined {
   const slug = path.replace(/^\/+/, '').replace(/\/+$/, '');
   return slug === '' ? undefined : slug;
 }
+
+/** A concrete page to render: an Astro route param, the (partial-expanded) tree, and an optional bound entry. */
+export interface Route {
+  slug: string | undefined;
+  page: Page;
+  root: Page['root'];
+  /** Present for collection-page routes: the dataset entry this page renders. */
+  entry?: Entry;
+}
+
+// A safe URL/path segment: lowercase alphanumeric + hyphens, no "/" or ".." so the
+// value cannot traverse outside the output directory when used as a file path.
+const SAFE_SEGMENT = /^[a-z0-9][a-z0-9-]*$/;
+
+/**
+ * Slug for a collection entry: its `[param]` field value when that value is a
+ * safe path segment, otherwise the entry id (which the schema already constrains
+ * to a safe identifier). `entry.values` are not slug-validated by the schema, so
+ * this guards against path traversal in generated filenames.
+ */
+export function entrySlug(entry: Entry, param: string): string {
+  const value = entry.values[param];
+  if (typeof value === 'string' && SAFE_SEGMENT.test(value)) return value;
+  return entry.id;
+}
+
+/** Substitutes `[param]` in a page path with a concrete value (no regex; param is a safe identifier). */
+function fillPath(path: string, param: string, value: string): string {
+  return path.split(`[${param}]`).join(value);
+}
+
+/**
+ * Expands every collection page (`{ collection: { dataset, param } }`) into one
+ * route per published entry, with that entry placed in render context.
+ */
+export function collectionRoutes(bundle: ProjectBundle): Route[] {
+  const partialMap = new Map(bundle.partials.map((partial) => [partial.id, partial]));
+  const routes: Route[] = [];
+  for (const page of bundle.pages) {
+    if (!page.collection) continue;
+    const { dataset, param } = page.collection;
+    const root = resolvePartials(page.root, partialMap);
+    const entries = bundle.entries.filter(
+      (entry) => entry.dataset === dataset && entry.status === 'published',
+    );
+    for (const entry of entries) {
+      routes.push({
+        slug: pathToSlug(fillPath(page.path, param, entrySlug(entry, param))),
+        page,
+        root,
+        entry,
+      });
+    }
+  }
+  return routes;
+}
+
+/** All routes to render: static pages plus collection pages expanded per entry. */
+export function allRoutes(bundle: ProjectBundle): Route[] {
+  const staticRoutes: Route[] = resolvedPages(bundle).map(({ page, root }) => ({
+    slug: pathToSlug(page.path),
+    page,
+    root,
+  }));
+  return [...staticRoutes, ...collectionRoutes(bundle)];
+}

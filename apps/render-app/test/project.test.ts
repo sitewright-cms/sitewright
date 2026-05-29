@@ -1,13 +1,26 @@
 import { describe, it, expect } from 'vitest';
-import { datasetEntries, loadBundle, pathToSlug, resolvedPages } from '../src/lib/project.js';
+import type { Entry } from '@sitewright/schema';
+import {
+  allRoutes,
+  collectionRoutes,
+  datasetEntries,
+  entrySlug,
+  loadBundle,
+  pathToSlug,
+  resolvedPages,
+} from '../src/lib/project.js';
 import { knownBlockTypes, isKnownBlockType } from '../src/blocks/registry.js';
+
+function entry(values: Record<string, unknown>, id = 'e1'): Entry {
+  return { id, dataset: 'd', status: 'published', values };
+}
 
 describe('sample project loading', () => {
   const bundle = loadBundle();
 
   it('loads and validates the sample project (no integrity issues)', () => {
     expect(bundle.project.name).toBe('Northwind Studio');
-    expect(bundle.pages.map((p) => p.id).sort()).toEqual(['about', 'home']);
+    expect(bundle.pages.map((p) => p.id).sort()).toEqual(['about', 'feature-detail', 'home']);
     expect(bundle.partials.map((p) => p.id).sort()).toEqual(['site-footer', 'site-header']);
     expect(bundle.datasets.map((d) => d.slug)).toEqual(['features']);
     expect(bundle.entries.length).toBe(4); // 3 published + 1 draft
@@ -23,6 +36,38 @@ describe('sample project loading', () => {
 
   it('groups dataset entries by slug', () => {
     expect(datasetEntries(bundle).features?.length).toBe(4);
+  });
+
+  it('expands a collection page into one route per published entry', () => {
+    const routes = collectionRoutes(bundle);
+    expect(routes.map((r) => r.slug).sort()).toEqual([
+      'features/built-in-cms',
+      'features/reusable-partials',
+      'features/static-first-output',
+    ]);
+    // draft entry excluded
+    expect(routes.some((r) => r.slug === 'features/draft-feature')).toBe(false);
+    // each route carries its bound entry
+    expect(routes.every((r) => r.entry !== undefined)).toBe(true);
+  });
+
+  it('allRoutes includes static pages and collection routes', () => {
+    const slugs = allRoutes(bundle).map((r) => r.slug);
+    expect(slugs).toContain(undefined); // home "/"
+    expect(slugs).toContain('about');
+    expect(slugs).toContain('features/built-in-cms');
+  });
+});
+
+describe('entrySlug (path-traversal safe)', () => {
+  it('uses a safe slug field value', () => {
+    expect(entrySlug(entry({ slug: 'my-post' }), 'slug')).toBe('my-post');
+  });
+
+  it('falls back to the entry id for unsafe slug values', () => {
+    expect(entrySlug(entry({ slug: '../../etc/passwd' }, 'safe-id'), 'slug')).toBe('safe-id');
+    expect(entrySlug(entry({ slug: 'Has Spaces' }, 'safe-id'), 'slug')).toBe('safe-id');
+    expect(entrySlug(entry({}, 'safe-id'), 'slug')).toBe('safe-id');
   });
 });
 

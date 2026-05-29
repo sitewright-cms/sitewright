@@ -4,6 +4,7 @@
   "status": "draft",
   "values": {
     "title": "Unpublished draft feature",
+    "slug": "draft-feature",
     "body": "This draft entry must NOT appear in the published build."
   }
 }

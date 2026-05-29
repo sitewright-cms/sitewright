@@ -1,0 +1,17 @@
+{
+  "id": "feature-detail",
+  "path": "/features/[slug]",
+  "title": "Feature",
+  "collection": { "dataset": "features", "param": "slug" },
+  "root": {
+    "id": "root",
+    "type": "Section",
+    "props": { "tone": "surface" },
+    "children": [
+      { "id": "hdr-slot", "type": "Section", "partialRef": "site-header" },
+      { "id": "f-title", "type": "Heading", "props": { "level": 1, "textField": "title" } },
+      { "id": "f-body", "type": "RichText", "props": { "textField": "body" } },
+      { "id": "ftr-slot", "type": "Section", "partialRef": "site-footer" }
+    ]
+  }
+}

@@ -57,4 +57,33 @@ export const sessions = sqliteTable('sessions', {
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 });
 
+/**
+ * Polymorphic per-project content store. One row per content entity (page,
+ * partial, dataset, entry) or the project's settings singleton. `data` holds the
+ * schema-validated JSON; the DB is the source of truth (the file format is
+ * export/import). Always scoped by `projectId`.
+ */
+export const content = sqliteTable(
+  'content',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id),
+    kind: text('kind', {
+      enum: ['settings', 'page', 'partial', 'dataset', 'entry'],
+    }).notNull(),
+    /** The entity's own id (or `settings` for the singleton). */
+    entityId: text('entity_id').notNull(),
+    data: text('data', { mode: 'json' }).notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [
+    uniqueIndex('uniq_content').on(t.projectId, t.kind, t.entityId),
+    index('content_project_kind_idx').on(t.projectId, t.kind),
+  ],
+);
+
 export type OrgRole = 'owner' | 'admin' | 'member';
+export type ContentKind = 'settings' | 'page' | 'partial' | 'dataset' | 'entry';

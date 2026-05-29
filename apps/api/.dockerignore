@@ -1,10 +1,13 @@
-node_modules
+# The image is built from a `pnpm deploy --prod` output, so node_modules + dist +
+# drizzle MUST be included. Exclude only dev/source cruft.
+src
 test
 e2e
-src
+coverage
+test-results
 *.test.ts
-vitest.config.ts
 tsconfig*.json
 drizzle.config.ts
+vitest.config.ts
+playwright.config.ts
 .turbo
-coverage

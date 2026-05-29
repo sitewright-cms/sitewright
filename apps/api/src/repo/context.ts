@@ -10,6 +10,11 @@ export interface TenantContext {
   role: OrgRole;
 }
 
+/** A tenant context narrowed to a specific project (verified to belong to the org). */
+export interface ProjectContext extends TenantContext {
+  projectId: string;
+}
+
 export class NotFoundError extends Error {
   constructor(message = 'not found') {
     super(message);

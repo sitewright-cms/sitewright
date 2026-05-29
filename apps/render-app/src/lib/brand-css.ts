@@ -1,8 +1,10 @@
 import type { Brand } from '@sitewright/schema';
 
 // Defense-in-depth: brand token keys/values are already schema-validated, but we
-// never emit anything that could break out of a CSS declaration.
-const SAFE = /^[^;{}<>]*$/;
+// never emit anything that could break out of a CSS declaration (`;{}<>`) or
+// invoke a CSS function such as `url()`/`expression()` (which could exfiltrate or
+// fetch) — so parentheses and quotes are rejected too.
+const SAFE = /^[^;{}<>()'"]*$/;
 
 function emit(
   prefix: string,

@@ -32,9 +32,20 @@ export const blockRegistry = {
     alt: z.string().optional(),
     altField: z.string().optional(),
   }),
-  Grid: z.object({ columns: z.number().int().min(1).max(6).optional() }),
+  Grid: z.object({ columns: z.number().int().min(1).max(4).optional() }),
   Card: z.object({}),
-  Button: z.object({ text: z.string().optional(), href: z.string().optional() }),
+  Button: z.object({
+    text: z.string().optional(),
+    textField: z.string().optional(),
+    href: z.string().optional(),
+    hrefField: z.string().optional(),
+  }),
+  Link: z.object({
+    text: z.string().optional(),
+    textField: z.string().optional(),
+    href: z.string().optional(),
+    hrefField: z.string().optional(),
+  }),
   Header: z.object({ brand: z.string().optional() }),
   Footer: z.object({ text: z.string().optional() }),
 } as const satisfies Record<string, z.ZodTypeAny>;

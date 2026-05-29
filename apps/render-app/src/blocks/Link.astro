@@ -12,6 +12,4 @@ const text = textProp(props, entry, 'text');
 const href = urlProp(props, entry, 'href', '#');
 ---
 
-<a href={href} class="inline-block rounded-card bg-primary px-5 py-2.5 font-semibold text-white">
-  {text}<slot />
-</a>
+<a href={href} class="hover:text-ink">{text}<slot /></a>

@@ -12,7 +12,7 @@
       "inputs": ["src/**", "test/**", "tsconfig*.json", "vitest.config.ts"]
     },
     "test": {
-      "dependsOn": ["^build"],
+      "dependsOn": ["^build", "build"],
       "inputs": ["src/**", "test/**", "tsconfig*.json", "vitest.config.ts"],
       "outputs": ["coverage/**"]
     }

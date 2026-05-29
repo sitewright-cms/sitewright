@@ -24,6 +24,16 @@
           "text": "We design and build websites on Sitewright — an open-source platform for fast, optimized sites."
         }
       },
+      {
+        "id": "about-featured",
+        "type": "Heading",
+        "props": { "level": 3, "textField": "title" },
+        "binding": {
+          "dataset": "features",
+          "mode": "single",
+          "query": { "sort": { "field": "title", "dir": "asc" } }
+        }
+      },
       { "id": "ftr-slot", "type": "Section", "partialRef": "site-footer" }
     ]
   }

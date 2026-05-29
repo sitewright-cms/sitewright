@@ -1,6 +1,6 @@
 ---
 import type { Entry, PageNode } from '@sitewright/schema';
-import { textProp } from './props';
+import { textProp, urlProp } from './props';
 
 interface Props {
   node: PageNode;
@@ -8,7 +8,8 @@ interface Props {
 }
 const { node, entry } = Astro.props;
 const props = node.props ?? {};
-const src = textProp(props, entry, 'src');
+// Empty fallback: an unsafe/empty src yields '' so the image is simply not rendered.
+const src = urlProp(props, entry, 'src', '');
 const alt = textProp(props, entry, 'alt');
 ---
 

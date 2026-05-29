@@ -1,6 +1,6 @@
 ---
 import type { Entry, PageNode } from '@sitewright/schema';
-import { textProp } from './props';
+import { textProp, urlProp } from './props';
 
 interface Props {
   node: PageNode;
@@ -11,7 +11,7 @@ const props = node.props ?? {};
 const title = textProp(props, entry, 'title');
 const subtitle = textProp(props, entry, 'subtitle');
 const ctaText = textProp(props, entry, 'ctaText');
-const ctaHref = textProp(props, entry, 'ctaHref', '#');
+const ctaHref = urlProp(props, entry, 'ctaHref', '#');
 ---
 
 <div class="mx-auto max-w-3xl py-10 text-center">

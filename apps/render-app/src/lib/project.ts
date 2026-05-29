@@ -17,6 +17,9 @@ import { resolvePartials, validateProject, type ProjectBundle } from '@sitewrigh
 
 const SAMPLE_DIR = fileURLToPath(new URL('../../projects/sample', import.meta.url));
 
+// SECURITY TODO: this loader trusts `dir` (a build-time operator setting). Before
+// it is ever driven by untrusted/multi-tenant input (e.g. an API request), confine
+// reads to an allowed root: `path.resolve(dir)` must start with the tenant's root.
 /** Absolute path of the project to render (override with SITEWRIGHT_PROJECT). */
 export function projectDir(): string {
   return process.env.SITEWRIGHT_PROJECT ?? SAMPLE_DIR;

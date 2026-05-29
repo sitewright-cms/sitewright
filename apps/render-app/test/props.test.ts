@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Entry } from '@sitewright/schema';
-import { fieldValue, str, textProp } from '../src/blocks/props.js';
+import { fieldValue, safeUrl, str, textProp, urlProp } from '../src/blocks/props.js';
 
 const entry: Entry = {
   id: 'e1',
@@ -38,5 +38,37 @@ describe('textProp', () => {
 
   it('uses the fallback for a non-string bound value', () => {
     expect(textProp({ valField: 'count' }, entry, 'val', 'n/a')).toBe('n/a');
+  });
+});
+
+describe('safeUrl', () => {
+  it.each(['https://example.com', 'http://x.io/a', '/about', '/', '#section'])(
+    'allows safe URL %s',
+    (url) => {
+      expect(safeUrl(url)).toBe(url);
+    },
+  );
+
+  it.each(['javascript:alert(1)', 'data:text/html,<script>', 'vbscript:x', 'ftp://x', 'mailto:a@b'])(
+    'rejects unsafe URL %s -> fallback',
+    (url) => {
+      expect(safeUrl(url)).toBe('#');
+    },
+  );
+
+  it('uses the provided fallback for unsafe/empty values', () => {
+    expect(safeUrl('javascript:alert(1)', '')).toBe('');
+    expect(safeUrl('   ', '')).toBe('');
+  });
+});
+
+describe('urlProp', () => {
+  it('sanitizes a bound href field', () => {
+    const evil: Entry = { id: 'x', dataset: 'd', status: 'published', values: { u: 'javascript:alert(1)' } };
+    expect(urlProp({ hrefField: 'u' }, evil, 'href', '#')).toBe('#');
+  });
+
+  it('passes through a safe static href', () => {
+    expect(urlProp({ href: '/contact' }, undefined, 'href')).toBe('/contact');
   });
 });

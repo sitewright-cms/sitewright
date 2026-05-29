@@ -12,8 +12,9 @@ let about = '';
 describe('static build (integration)', () => {
   beforeAll(async () => {
     // In `verify`/CI the build has already run; only build here if needed so the
-    // test is self-contained when run standalone.
-    if (!existsSync(homePath)) {
+    // test is self-contained when run standalone. Check every required output so a
+    // stale partial build triggers a rebuild rather than a confusing read error.
+    if (![homePath, aboutPath].every(existsSync)) {
       const { build } = await import('astro');
       await build({ root, logLevel: 'error' });
     }
@@ -52,5 +53,10 @@ describe('static build (integration)', () => {
 
   it('renders the about page', () => {
     expect(about).toContain('About Northwind');
+  });
+
+  it('resolves a single-mode binding (about page featured heading)', () => {
+    // about-featured binds one feature (sorted title asc -> "Built-in CMS").
+    expect(about).toContain('Built-in CMS');
   });
 });

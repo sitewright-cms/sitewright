@@ -31,3 +31,25 @@ export function textProp(
 ): string {
   return str(fieldValue(props, entry, key), fallback);
 }
+
+// Allow only absolute http(s) URLs, root-relative paths, fragment links, and empty.
+// Blocks `javascript:`, `data:`, `vbscript:`, and other active/unknown schemes that
+// would become XSS or unwanted fetches when emitted into an href/src attribute.
+const SAFE_URL = /^(?:https?:\/\/|\/|#)/i;
+
+/** Sanitizes a URL string for use in `href`/`src`; returns `fallback` if unsafe. */
+export function safeUrl(value: string, fallback = '#'): string {
+  const trimmed = value.trim();
+  if (trimmed === '') return fallback;
+  return SAFE_URL.test(trimmed) ? trimmed : fallback;
+}
+
+/** Reads a URL prop (with optional field binding) and sanitizes it. */
+export function urlProp(
+  props: Record<string, unknown>,
+  entry: Entry | undefined,
+  key: string,
+  fallback = '#',
+): string {
+  return safeUrl(str(fieldValue(props, entry, key)), fallback);
+}

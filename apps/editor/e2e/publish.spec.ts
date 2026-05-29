@@ -49,6 +49,11 @@ test('build a page, publish the project, and view the live site', async ({ page,
   await page.getByRole('button', { name: 'Deploy', exact: true }).click();
   await expect(page.getByText(/deploy failed/i)).toBeVisible({ timeout: 20_000 });
 
+  // Save the (FTP) connection as a reusable target — credentials encrypted at rest.
+  await page.getByLabel('Target name').fill('My Webspace');
+  await page.getByRole('button', { name: 'Save target' }).click();
+  await expect(page.getByRole('button', { name: 'Deploy to My Webspace' })).toBeVisible();
+
   // The published static page renders the content (in a separate tab).
   const live = await page.context().newPage();
   await live.goto(`${baseURL}${href}`);

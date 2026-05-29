@@ -174,6 +174,33 @@ describe('api client', () => {
     expect(init.method).toBe('DELETE');
   });
 
+  it('manages saved deploy targets', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { items: [] }));
+    await api.listDeployTargets('o', 'p');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/orgs/o/projects/p/deploy-targets');
+
+    fetchMock.mockResolvedValue(jsonResponse(201, { target: { id: 't1' } }));
+    await api.createDeployTarget('o', 'p', {
+      name: 'Prod',
+      protocol: 'sftp',
+      host: 'h',
+      user: 'u',
+      password: 'pw',
+    });
+    const [url, init] = fetchMock.mock.calls[1]!;
+    expect(url).toBe('/orgs/o/projects/p/deploy-targets');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body)).toMatchObject({ name: 'Prod', host: 'h' });
+
+    fetchMock.mockResolvedValue(jsonResponse(200, { deployed: { protocol: 'sftp', files: 4 } }));
+    await api.deployToTarget('o', 'p', 't1');
+    expect(fetchMock.mock.calls[2]![0]).toBe('/orgs/o/projects/p/deploy-targets/t1/deploy');
+
+    fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
+    await api.deleteDeployTarget('o', 'p', 't1');
+    expect(fetchMock.mock.calls[3]![1].method).toBe('DELETE');
+  });
+
   it('publishes and reads publish status', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { release: { routes: 2 }, url: '/sites/p/' }));
     const res = await api.publish('o', 'p');

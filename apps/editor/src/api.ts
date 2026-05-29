@@ -1,4 +1,6 @@
-import type { Dataset, Entry, MediaAsset, Page } from '@sitewright/schema';
+import type { Dataset, DeployTargetView, Entry, MediaAsset, Page } from '@sitewright/schema';
+
+export type { DeployTargetView };
 
 /** Base URL for the API. Empty = same origin (the API serves this SPA). */
 const BASE = import.meta.env.VITE_API_BASE ?? '';
@@ -149,5 +151,22 @@ export const api = {
       'POST',
       `/orgs/${orgId}/projects/${projectId}/publish/deploy`,
       config,
+    ),
+
+  // --- saved deploy targets ---
+  listDeployTargets: (orgId: string, projectId: string) =>
+    request<{ items: DeployTargetView[] }>('GET', `/orgs/${orgId}/projects/${projectId}/deploy-targets`),
+  createDeployTarget: (orgId: string, projectId: string, config: DeployConfig & { name: string }) =>
+    request<{ target: DeployTargetView }>(
+      'POST',
+      `/orgs/${orgId}/projects/${projectId}/deploy-targets`,
+      config,
+    ),
+  deleteDeployTarget: (orgId: string, projectId: string, id: string) =>
+    request<void>('DELETE', `/orgs/${orgId}/projects/${projectId}/deploy-targets/${id}`),
+  deployToTarget: (orgId: string, projectId: string, id: string) =>
+    request<{ deployed: { protocol: string; files: number } }>(
+      'POST',
+      `/orgs/${orgId}/projects/${projectId}/deploy-targets/${id}/deploy`,
     ),
 };

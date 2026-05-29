@@ -5,6 +5,7 @@ import {
   assertWithinTreeDepth,
   BrandSchema,
   DatasetSchema,
+  DeployTargetSchema,
   EntrySchema,
   MediaAssetSchema,
   PageSchema,
@@ -37,6 +38,9 @@ const SCHEMAS = new Map<ContentKind, z.ZodTypeAny>([
   // Media metadata is tenant-scoped CRUD like other content; the binaries live on
   // disk (see apps/api/src/media). Not yet part of export/import bundles.
   ['media', MediaAssetSchema],
+  // Saved deploy targets (encrypted credentials). Managed via dedicated endpoints,
+  // excluded from export/import bundles (never export secrets).
+  ['deploy_target', DeployTargetSchema],
 ]);
 
 /** The content kinds, derived from the schema map (single source of truth). */

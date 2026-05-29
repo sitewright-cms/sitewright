@@ -22,6 +22,7 @@ import { buildSite, PublishError } from '../publish/build.js';
 import { PublishStore } from '../publish/store.js';
 import { archiveSite, deploySite, DeployConfigSchema } from '../publish/adapters.js';
 import { isNewer } from '../version/checker.js';
+import { registerDeployTargetRoutes } from './deploy-targets.js';
 import { createSession, revokeSession, validateSession } from '../auth/sessions.js';
 import {
   listOrgsForUser,
@@ -94,13 +95,15 @@ function parseKind(kind: string): ContentKind {
   return kind as ContentKind;
 }
 
-// Media rows are backed by on-disk binaries, so they must be created/deleted via
-// the dedicated /media endpoints — reject generic content writes to keep the row
-// and its files consistent (and to prevent a forged media `url`).
-function parseWritableKind(kind: string): ContentKind {
+// Media binaries and deploy-target secrets are managed only through their
+// dedicated endpoints — the generic content routes must not read OR write them
+// (a generic read of `deploy_target` would otherwise leak the encrypted secret;
+// a write could forge a media `url` or an attacker-chosen secret blob).
+const DEDICATED_KINDS: ReadonlySet<ContentKind> = new Set(['media', 'deploy_target']);
+function parseGenericKind(kind: string): ContentKind {
   const parsed = parseKind(kind);
-  if (parsed === 'media') {
-    throw new ForbiddenError('media must be managed via the media endpoints');
+  if (DEDICATED_KINDS.has(parsed)) {
+    throw new ForbiddenError(`${parsed} must be accessed via its dedicated endpoints`);
   }
   return parsed;
 }
@@ -140,6 +143,10 @@ export interface AppOptions {
    * trusted proxy addresses. Leave unset for direct connections.
    */
   trustProxy?: boolean | string | string[];
+  /** 32-byte key for encrypting stored secrets (saved deploy-target passwords). */
+  encryptionKey?: Buffer;
+  /** When set, deploy targets are restricted to these exact hostnames (SaaS SSRF guard). */
+  deployAllowedHosts?: string[];
   /** Current running version (for the pull-based update check). */
   version?: string;
   /** Provider of the latest released version tag (cached; null when unavailable). */
@@ -244,6 +251,22 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     return { ctx: { ...tenant, projectId: project.id }, project };
   }
 
+  // Optional SSRF guard for deploy targets (multi-tenant SaaS): when an allow-list
+  // is configured, only those exact hosts may be deployed to. Default (self-hosted):
+  // any host, trusting the authenticated owner/admin operator.
+  function assertDeployHostAllowed(host: string): void {
+    const allow = opts.deployAllowedHosts;
+    if (!allow || allow.length === 0) return;
+    // Normalize for a case-insensitive, FQDN-trailing-dot-insensitive match. A
+    // host carrying a `:port` simply won't match a bare entry → rejected (fail closed).
+    const normalized = host.trim().toLowerCase().replace(/\.$/, '');
+    if (!allow.includes(normalized)) {
+      throw new ForbiddenError('deploy target host is not in the allowed list');
+    }
+  }
+  // Serialize deploys per project (shared by ad-hoc and saved-target deploys).
+  const activeDeploys = new Set<string>();
+
   app.post('/auth/register', { config: rl(10) }, async (req, reply) => {
     const body = RegisterBody.parse(req.body);
     const { userId, orgId } = await registerAccount(db, body.email, body.password, body.orgName);
@@ -330,7 +353,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     '/orgs/:orgId/projects/:projectId/content/:kind',
     async (req, reply) => {
       const { ctx } = await resolveProject(req);
-      return reply.send({ items: await contentRepo.list(ctx, parseKind(req.params.kind)) });
+      return reply.send({ items: await contentRepo.list(ctx, parseGenericKind(req.params.kind)) });
     },
   );
 
@@ -338,7 +361,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     '/orgs/:orgId/projects/:projectId/content/:kind/:entityId',
     async (req, reply) => {
       const { ctx } = await resolveProject(req);
-      const item = await contentRepo.get(ctx, parseKind(req.params.kind), req.params.entityId);
+      const item = await contentRepo.get(ctx, parseGenericKind(req.params.kind), req.params.entityId);
       return reply.send({ item });
     },
   );
@@ -349,7 +372,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const { ctx } = await resolveProject(req);
       const item = await contentRepo.put(
         ctx,
-        parseWritableKind(req.params.kind),
+        parseGenericKind(req.params.kind),
         req.params.entityId,
         req.body,
       );
@@ -361,7 +384,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     '/orgs/:orgId/projects/:projectId/content/:kind/:entityId',
     async (req, reply) => {
       const { ctx } = await resolveProject(req);
-      await contentRepo.remove(ctx, parseWritableKind(req.params.kind), req.params.entityId);
+      await contentRepo.remove(ctx, parseGenericKind(req.params.kind), req.params.entityId);
       return reply.code(204).send();
     },
   );
@@ -541,7 +564,6 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // Serialize builds/deploys per project: prevents concurrent operations from
     // racing on the same output directory (and bounds load).
     const activePublishes = new Set<string>();
-    const activeDeploys = new Set<string>();
 
     // Build/rebuild the project's static site from the current DB content.
     app.post<{ Params: { orgId: string; projectId: string } }>(
@@ -625,6 +647,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           return reply.code(409).send({ error: 'publish the site before deploying' });
         }
         const config = DeployConfigSchema.parse(req.body);
+        assertDeployHostAllowed(config.host);
         if (activeDeploys.has(project.id)) {
           return reply.code(409).send({ error: 'a deploy is already in progress for this project' });
         }
@@ -636,7 +659,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // Connection/auth/transfer failure against the operator's target server.
           // Log the detail server-side; return a generic message so the response
           // does not leak the target's banner/timing (SSRF oracle reduction).
-          app.log.error({ err, host: config.host, protocol: config.protocol }, 'deploy failed');
+          // Log only the message (not the raw err object) so a library error that
+          // happens to embed connection details can't reach the structured log.
+          app.log.error(
+            { host: config.host, protocol: config.protocol, errMsg: err instanceof Error ? err.message : String(err) },
+            'deploy failed',
+          );
           return reply.code(502).send({ error: 'deploy failed: could not connect or transfer to the target' });
         } finally {
           activeDeploys.delete(project.id);
@@ -653,6 +681,20 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         return reply.type('text/html').send(html);
       },
     );
+  }
+
+  // Saved deploy targets (encrypted credentials) — independent of publish serving.
+  if (opts.encryptionKey) {
+    registerDeployTargetRoutes(app, {
+      resolveProject,
+      contentRepo,
+      publishStore,
+      encryptionKey: opts.encryptionKey,
+      activeDeploys,
+      assertDeployHostAllowed,
+      isWriter: (ctx) => WRITE_ROLES.has(ctx.role),
+      rl,
+    });
   }
 
   app.get('/health', async () => ({ ok: true }));

@@ -3,6 +3,7 @@ export * from './binding.js';
 export * from './block.js';
 export * from './brand.js';
 export * from './dataset.js';
+export * from './deploy-target.js';
 export * from './media.js';
 export * from './page.js';
 export * from './partial.js';

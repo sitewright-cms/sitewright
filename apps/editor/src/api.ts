@@ -1,4 +1,4 @@
-import type { Page } from '@sitewright/schema';
+import type { Dataset, Entry, Page } from '@sitewright/schema';
 
 /** Base URL for the API. Empty = same origin (the API serves this SPA). */
 const BASE = import.meta.env.VITE_API_BASE ?? '';
@@ -69,4 +69,28 @@ export const api = {
     request<void>('DELETE', `/orgs/${orgId}/projects/${projectId}/content/page/${id}`),
   preview: (orgId: string, projectId: string, page: Page) =>
     request<{ html: string }>('POST', `/orgs/${orgId}/projects/${projectId}/preview`, page),
+
+  // --- datasets ---
+  listDatasets: (orgId: string, projectId: string) =>
+    request<{ items: Dataset[] }>('GET', `/orgs/${orgId}/projects/${projectId}/content/dataset`),
+  putDataset: (orgId: string, projectId: string, dataset: Dataset) =>
+    request<{ item: Dataset }>(
+      'PUT',
+      `/orgs/${orgId}/projects/${projectId}/content/dataset/${dataset.id}`,
+      dataset,
+    ),
+  deleteDataset: (orgId: string, projectId: string, id: string) =>
+    request<void>('DELETE', `/orgs/${orgId}/projects/${projectId}/content/dataset/${id}`),
+
+  // --- entries ---
+  listEntries: (orgId: string, projectId: string) =>
+    request<{ items: Entry[] }>('GET', `/orgs/${orgId}/projects/${projectId}/content/entry`),
+  putEntry: (orgId: string, projectId: string, entry: Entry) =>
+    request<{ item: Entry }>(
+      'PUT',
+      `/orgs/${orgId}/projects/${projectId}/content/entry/${entry.id}`,
+      entry,
+    ),
+  deleteEntry: (orgId: string, projectId: string, id: string) =>
+    request<void>('DELETE', `/orgs/${orgId}/projects/${projectId}/content/entry/${id}`),
 };

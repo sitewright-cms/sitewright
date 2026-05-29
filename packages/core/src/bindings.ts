@@ -32,7 +32,7 @@ export function resolveBinding(
   if (where) {
     const filters = Object.entries(where);
     result = result.filter((entry) =>
-      filters.every(([field, expected]) => valuesEqual(entry.values[field], expected)),
+      filters.every(([field, expected]) => valuesEqual(readValue(entry.values, field), expected)),
     );
   }
 
@@ -41,7 +41,7 @@ export function resolveBinding(
     const field = sort.field;
     const direction = sort.dir === 'desc' ? -1 : 1;
     result = [...result].sort((a, b) => {
-      const primary = compareValues(a.values[field], b.values[field]) * direction;
+      const primary = compareValues(readValue(a.values, field), readValue(b.values, field)) * direction;
       return primary !== 0 ? primary : compareStrings(a.id, b.id);
     });
   }
@@ -49,6 +49,16 @@ export function resolveBinding(
   if (binding.mode === 'single') return result.slice(0, 1);
   if (binding.limit !== undefined) return result.slice(0, binding.limit);
   return result;
+}
+
+/**
+ * Own-enumerable value read that avoids dynamic object indexing. Field names are
+ * already identifier-validated upstream, but reading via `values[field]` would
+ * still surface inherited prototype members (e.g. a `constructor` sort field);
+ * this lookup only sees the entry's own keys.
+ */
+function readValue(values: Record<string, unknown>, field: string): unknown {
+  return Object.entries(values).find(([key]) => key === field)?.[1];
 }
 
 function valuesEqual(a: unknown, b: unknown): boolean {

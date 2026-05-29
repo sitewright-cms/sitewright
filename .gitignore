@@ -1,0 +1,18 @@
+node_modules/
+dist/
+.turbo/
+coverage/
+*.tsbuildinfo
+.eslintcache
+
+# env
+.env
+.env.*
+!.env.example
+
+# sitewright project build cache
+.sitewright/
+
+# logs / os
+*.log
+.DS_Store

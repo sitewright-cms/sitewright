@@ -19,28 +19,45 @@ const key = rawSrc.split('/').pop() ?? rawSrc;
 const asset = media[key];
 const externalSrc = urlProp(props, entry, 'src', '');
 
+// LCP: above-the-fold images set `priority` to load eagerly at high priority.
+const priority = props.priority === true;
+const sizes = typeof props.sizes === 'string' ? props.sizes : '(min-width: 1280px) 1280px, 100vw';
+
 const hasAvif = asset?.variants.some((v) => v.format === 'avif') ?? false;
 const hasWebp = asset?.variants.some((v) => v.format === 'webp') ?? false;
 ---
 
 {
   asset ? (
-    <picture>
+    /* LQIP lives on the <picture> (a non-replaced element) so it shows while the
+       real image decodes; on the replaced <img> it would be invisible. */
+    <picture
+      class="block"
+      style={`background-size:cover;background-image:url(${asset.placeholder})`}
+    >
       {hasAvif && (
-        <source type="image/avif" srcset={buildSrcset(asset.variants, 'avif', asset.dir)} />
+        <source
+          type="image/avif"
+          sizes={sizes}
+          srcset={buildSrcset(asset.variants, 'avif', asset.dir)}
+        />
       )}
       {hasWebp && (
-        <source type="image/webp" srcset={buildSrcset(asset.variants, 'webp', asset.dir)} />
+        <source
+          type="image/webp"
+          sizes={sizes}
+          srcset={buildSrcset(asset.variants, 'webp', asset.dir)}
+        />
       )}
       <img
         src={`${asset.dir}${asset.fallback}`}
         alt={alt}
         width={asset.width}
         height={asset.height}
-        loading="lazy"
-        decoding="async"
-        class="h-auto w-full rounded-card"
-        style={`background-size:cover;background-image:url(${asset.placeholder})`}
+        loading={priority ? 'eager' : 'lazy'}
+        fetchpriority={priority ? 'high' : undefined}
+        decoding={priority ? undefined : 'async'}
+        class="block h-auto w-full rounded-card"
       />
     </picture>
   ) : (
@@ -48,7 +65,7 @@ const hasWebp = asset?.variants.some((v) => v.format === 'webp') ?? false;
       <img
         src={externalSrc}
         alt={alt}
-        loading="lazy"
+        loading={priority ? 'eager' : 'lazy'}
         decoding="async"
         class="h-auto w-full rounded-card"
       />

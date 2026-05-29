@@ -4,7 +4,7 @@
     "build": {
       "dependsOn": ["^build"],
       "inputs": ["src/**", "scripts/**", "projects/**", "astro.config.mjs", "tsconfig.json", "package.json"],
-      "outputs": ["dist/**"]
+      "outputs": ["dist/**", "public/_sw-media/**"]
     },
     "test": {
       "dependsOn": ["^build", "build"],

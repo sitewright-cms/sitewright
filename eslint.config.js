@@ -33,7 +33,8 @@ export default tseslint.config(
     // Trusted build-time file I/O: the project-format loader, the media loader,
     // and the image pipeline read/write files at known, operator-controlled paths.
     files: [
-      'apps/render-app/src/lib/**/*.ts',
+      'apps/render-app/src/lib/project.ts',
+      'apps/render-app/src/lib/media.ts',
       'packages/image-pipeline/src/optimize.ts',
     ],
     rules: {

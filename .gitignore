@@ -17,7 +17,7 @@ coverage/
 .astro/
 
 # generated optimized media (produced by the optimize-media prebuild step)
-public/_sw-media/
+**/public/_sw-media/
 
 # logs / os
 *.log

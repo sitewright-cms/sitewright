@@ -86,6 +86,8 @@ describe('static build (integration)', () => {
     // intrinsic dimensions for CLS-free layout
     expect(home).toMatch(/width="1600"/);
     expect(home).toMatch(/height="900"/);
+    // the hero is the LCP element → eager + high fetch priority
+    expect(home).toContain('fetchpriority="high"');
     const variant = fileURLToPath(
       new URL('../dist/_sw-media/hero/hero-800.webp', import.meta.url),
     );

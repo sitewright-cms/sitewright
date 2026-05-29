@@ -17,6 +17,9 @@ importers:
       eslint-plugin-security:
         specifier: ^3.0.1
         version: 3.0.1
+      globals:
+        specifier: ^15.14.0
+        version: 15.15.0
       turbo:
         specifier: ^2.3.3
         version: 2.9.16
@@ -32,6 +35,9 @@ importers:
       '@sitewright/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@sitewright/image-pipeline':
+        specifier: workspace:*
+        version: link:../../packages/image-pipeline
       '@sitewright/schema':
         specifier: workspace:*
         version: link:../../packages/schema
@@ -1807,6 +1813,10 @@ packages:
 
   globals@14.0.0:
     resolution: {integrity: sha512-oahGvuMGQlPw/ivIYBjVSrWAfWLBeku5tpPE2fOPLi+WHffIWbuh2tCjhyQhTBPMf5E9jDEH4FOmTYgYwbKwtQ==}
+    engines: {node: '>=18'}
+
+  globals@15.15.0:
+    resolution: {integrity: sha512-7ACyT3wmyp3I61S4fG682L0VA2RGD9otkqGJIwNUMF1SWUombIIk+af1unuDYgMm082aHYwD+mzJvv9Iu8dsgg==}
     engines: {node: '>=18'}
 
   graceful-fs@4.2.11:
@@ -4676,6 +4686,8 @@ snapshots:
       path-scurry: 1.11.1
 
   globals@14.0.0: {}
+
+  globals@15.15.0: {}
 
   graceful-fs@4.2.11: {}
 

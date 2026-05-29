@@ -3,12 +3,12 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "inputs": ["src/**", "projects/**", "astro.config.mjs", "tsconfig.json", "package.json"],
-      "outputs": ["dist/**"]
+      "inputs": ["src/**", "scripts/**", "projects/**", "astro.config.mjs", "tsconfig.json", "package.json"],
+      "outputs": ["dist/**", "public/_sw-media/**"]
     },
     "test": {
       "dependsOn": ["^build", "build"],
-      "inputs": ["src/**", "test/**", "projects/**", "vitest.config.ts", "tsconfig.json"],
+      "inputs": ["src/**", "scripts/**", "test/**", "projects/**", "vitest.config.ts", "tsconfig.json"],
       "outputs": ["coverage/**"]
     },
     "typecheck": {

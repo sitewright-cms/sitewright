@@ -1,6 +1,7 @@
 ---
 import type { Entry, PageNode } from '@sitewright/schema';
 import { resolveBinding } from '@sitewright/core';
+import type { MediaManifest } from '../lib/media';
 import Section from './Section.astro';
 import Hero from './Hero.astro';
 import Heading from './Heading.astro';
@@ -18,9 +19,10 @@ interface Props {
   node: PageNode;
   entry?: Entry;
   datasets: Record<string, Entry[]>;
+  media?: MediaManifest;
 }
 
-const { node, entry, datasets } = Astro.props;
+const { node, entry, datasets, media } = Astro.props;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- heterogeneous Astro component map
 const componentMap: Record<string, any> = {
@@ -51,17 +53,17 @@ const children = node.children ?? [];
 
 {
   listEntries ? (
-    <Component node={node} entry={entry}>
+    <Component node={node} entry={entry} media={media}>
       {listEntries.map((boundEntry) =>
         children.map((child) => (
-          <Astro.self node={child} entry={boundEntry} datasets={datasets} />
+          <Astro.self node={child} entry={boundEntry} datasets={datasets} media={media} />
         )),
       )}
     </Component>
   ) : (
-    <Component node={node} entry={selfEntry}>
+    <Component node={node} entry={selfEntry} media={media}>
       {children.map((child) => (
-        <Astro.self node={child} entry={selfEntry} datasets={datasets} />
+        <Astro.self node={child} entry={selfEntry} datasets={datasets} media={media} />
       ))}
     </Component>
   )

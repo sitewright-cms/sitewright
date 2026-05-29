@@ -4,14 +4,16 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "astro dev --host 0.0.0.0 --port 2000",
-    "build": "astro build",
+    "dev": "node scripts/optimize-media.mjs && astro dev --host 0.0.0.0 --port 2000",
+    "optimize:media": "node scripts/optimize-media.mjs",
+    "build": "node scripts/optimize-media.mjs && astro build",
     "preview": "astro preview --host 0.0.0.0 --port 2000",
     "typecheck": "astro check",
     "test": "vitest run --coverage"
   },
   "dependencies": {
     "@sitewright/core": "workspace:*",
+    "@sitewright/image-pipeline": "workspace:*",
     "@sitewright/schema": "workspace:*",
     "@tailwindcss/vite": "^4",
     "astro": "^5",

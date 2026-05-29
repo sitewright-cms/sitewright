@@ -16,6 +16,9 @@ coverage/
 # astro generated
 .astro/
 
+# generated optimized media (produced by the optimize-media prebuild step)
+**/public/_sw-media/
+
 # logs / os
 *.log
 .DS_Store

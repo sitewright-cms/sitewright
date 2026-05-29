@@ -91,6 +91,8 @@ function makeHostVerifier(fingerprint?: string): (hashedKey: string) => boolean 
   };
 }
 
+/* v8 ignore start -- thin I/O shims over basic-ftp / ssh2; exercised by manual
+   integration against real servers, not unit-testable without live infra. */
 class FtpTransport implements DeployTransport {
   private readonly client = new FtpClientImpl(CONNECT_TIMEOUT_MS);
   constructor(private readonly cfg: DeployConfig) {}
@@ -132,6 +134,7 @@ class SftpTransport implements DeployTransport {
     await this.client.end();
   }
 }
+/* v8 ignore stop */
 
 /** Picks the concrete transport for a protocol. */
 export function defaultTransport(cfg: DeployConfig): DeployTransport {

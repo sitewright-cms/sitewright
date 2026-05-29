@@ -35,7 +35,6 @@
     "@types/ssh2-sftp-client": "^9.0.6",
     "@vitest/coverage-v8": "^2.1.8",
     "drizzle-kit": "^0.31",
-    "ftp-srv": "^4",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
   }

@@ -11,6 +11,8 @@ COPY . .
 ENV NODE_ENV=production
 ENV DATABASE_URL=file:/data/sitewright.db
 ENV PORT=80
+# The editor SPA is copied into the deploy context as ./editor (see deploy step).
+ENV EDITOR_DIST=/app/editor
 
 # Run as the non-root `node` user (present in the base image); own the data dir.
 RUN mkdir -p /data && chown -R node:node /app /data

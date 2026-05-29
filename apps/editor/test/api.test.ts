@@ -1,0 +1,89 @@
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { api, ApiError } from '../src/api';
+
+const fetchMock = vi.fn();
+beforeEach(() => {
+  vi.stubGlobal('fetch', fetchMock);
+  fetchMock.mockReset();
+});
+afterEach(() => vi.unstubAllGlobals());
+
+function jsonResponse(status: number, body: unknown) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    statusText: 'x',
+    json: async () => body,
+  } as Response;
+}
+
+describe('api client', () => {
+  it('POSTs register with a JSON body and credentials', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(201, { userId: 'u', orgId: 'o' }));
+    const res = await api.register('a@b.co', 'pw-secret-1', 'Acme');
+    expect(res).toEqual({ userId: 'u', orgId: 'o' });
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/auth/register');
+    expect(init.method).toBe('POST');
+    expect(init.credentials).toBe('include');
+    expect(JSON.parse(init.body)).toEqual({ email: 'a@b.co', password: 'pw-secret-1', orgName: 'Acme' });
+  });
+
+  it('throws ApiError with the server error message on failure', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(403, { error: 'forbidden' }));
+    await expect(api.projects('o')).rejects.toMatchObject({ status: 403, message: 'forbidden' });
+    await expect(api.projects('o')).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it('returns undefined for 204 responses', async () => {
+    fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
+    expect(await api.logout()).toBeUndefined();
+  });
+
+  it('falls back to statusText when the error body is not JSON', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 500,
+      statusText: 'Server Error',
+      json: async () => {
+        throw new Error('not json');
+      },
+    } as unknown as Response);
+    await expect(api.me()).rejects.toMatchObject({ status: 500, message: 'Server Error' });
+  });
+
+  it('builds content paths correctly', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { items: [] }));
+    await api.listPages('org1', 'proj1');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/orgs/org1/projects/proj1/content/page');
+  });
+
+  it('creates a project (POST with body)', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(201, { project: { id: 'p', name: 'P', slug: 's' } }));
+    await api.createProject('o', 'P', 's');
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/orgs/o/projects');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body)).toEqual({ name: 'P', slug: 's' });
+  });
+
+  it('PUTs a page to its content path', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { item: {} }));
+    const page = { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' } };
+    await api.putPage('o', 'p', page);
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/orgs/o/projects/p/content/page/home');
+    expect(init.method).toBe('PUT');
+  });
+
+  it('DELETEs a page (204 → undefined)', async () => {
+    fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
+    expect(await api.deletePage('o', 'p', 'home')).toBeUndefined();
+    expect(fetchMock.mock.calls[0]![1].method).toBe('DELETE');
+  });
+
+  it('GETs the current user', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { userId: 'u', orgs: [] }));
+    expect(await api.me()).toEqual({ userId: 'u', orgs: [] });
+  });
+});

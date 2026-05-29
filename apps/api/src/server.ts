@@ -24,6 +24,7 @@ const app = createApp({
   // HTTP DinD preview works. Set COOKIE_SECURE=true when served behind TLS.
   secureCookies: process.env.COOKIE_SECURE === 'true',
   logger: isProduction,
+  editorDist: process.env.EDITOR_DIST,
 });
 
 await app.listen({ host: '0.0.0.0', port });

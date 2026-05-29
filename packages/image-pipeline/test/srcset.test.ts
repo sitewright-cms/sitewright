@@ -13,8 +13,9 @@ describe('buildSrcset', () => {
     expect(buildSrcset(variants, 'webp')).toBe('h-400.webp 400w, h-800.webp 800w');
   });
 
-  it('applies a base path', () => {
+  it('applies a base path (with or without a trailing slash)', () => {
     expect(buildSrcset(variants, 'avif', '/media/')).toBe('/media/h-400.avif 400w');
+    expect(buildSrcset(variants, 'avif', '/assets')).toBe('/assets/h-400.avif 400w');
   });
 
   it('returns an empty string when no variants match', () => {

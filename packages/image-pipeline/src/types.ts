@@ -15,7 +15,7 @@ export interface OptimizedImage {
   /** Tiny blurred inline data-URI placeholder (LQIP). */
   placeholder: string;
   /** Responsive AVIF/WebP variants. */
-  variants: ImageVariant[];
+  variants: readonly ImageVariant[];
   /** File name of the fallback (largest width, JPEG) for `<img>`. */
   fallback: string;
 }

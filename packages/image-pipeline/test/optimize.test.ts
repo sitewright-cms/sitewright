@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -58,9 +58,28 @@ describe('optimizeImage', () => {
     expect(result.variants.every((v) => v.width === 300)).toBe(true);
   });
 
+  it('writes a real JPEG fallback at the largest target width', async () => {
+    const result = await optimizeImage(srcPath, outDir);
+    const bytes = await readFile(join(outDir, result.fallback));
+    expect(result.fallback).toBe('hero-1200.jpg'); // max of [400,800,1200]
+    expect(bytes[0]).toBe(0xff); // JPEG magic
+    expect(bytes[1]).toBe(0xd8);
+  });
+
   it('throws for a non-image input', async () => {
     const bad = join(workDir, 'notimage.txt');
     await writeFile(bad, 'not an image');
     await expect(optimizeImage(bad, join(workDir, 'out-bad'))).rejects.toThrow();
+  });
+
+  it('rejects SVG input (SSRF-via-librsvg vector)', async () => {
+    const svg = join(workDir, 'logo.svg');
+    await writeFile(svg, '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"></svg>');
+    await expect(optimizeImage(svg, join(workDir, 'out-svg'))).rejects.toThrow(/format/);
+  });
+
+  it('rejects invalid options', async () => {
+    await expect(optimizeImage(srcPath, outDir, { widths: [0] })).rejects.toThrow(/width/);
+    await expect(optimizeImage(srcPath, outDir, { quality: 0 })).rejects.toThrow(/quality/);
   });
 });

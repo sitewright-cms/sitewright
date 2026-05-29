@@ -31,7 +31,7 @@ export default tseslint.config(
   {
     // Trusted build-time file I/O: the project-format loader and the image
     // pipeline read/write files at known, operator-controlled paths. Not request-facing.
-    files: ['apps/render-app/src/lib/project.ts', 'packages/image-pipeline/src/**/*.ts'],
+    files: ['apps/render-app/src/lib/project.ts', 'packages/image-pipeline/src/optimize.ts'],
     rules: {
       'security/detect-non-literal-fs-filename': 'off',
     },

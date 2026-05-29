@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1780077411355,
+      "tag": "0000_stiff_ser_duncan",
+      "breakpoints": true
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "name": "@sitewright/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/server.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --coverage",
+    "test:watch": "vitest",
+    "db:generate": "drizzle-kit generate",
+    "start": "node dist/server.js",
+    "e2e": "playwright test"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11",
+    "@libsql/client": "^0.14",
+    "drizzle-orm": "^0.38",
+    "fastify": "^5",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49",
+    "@types/node": "^22.10.2",
+    "@vitest/coverage-v8": "^2.1.8",
+    "drizzle-kit": "^0.30",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

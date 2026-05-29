@@ -131,4 +131,37 @@ describe('api client', () => {
     expect(url).toBe('/orgs/o/projects/p/content/dataset/posts');
     expect(init.method).toBe('DELETE');
   });
+
+  it('lists media and uploads a file as multipart FormData', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { items: [] }));
+    await api.listMedia('o', 'p');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/orgs/o/projects/p/media');
+
+    fetchMock.mockResolvedValue(jsonResponse(201, { item: { id: 'm1' } }));
+    const file = new File([new Uint8Array([1, 2, 3])], 'x.png', { type: 'image/png' });
+    const res = await api.uploadMedia('o', 'p', file);
+    expect(res.item.id).toBe('m1');
+    const [url, init] = fetchMock.mock.calls[1]!;
+    expect(url).toBe('/orgs/o/projects/p/media');
+    expect(init.method).toBe('POST');
+    expect(init.body).toBeInstanceOf(FormData);
+    expect(init.headers).toBeUndefined(); // browser sets the multipart boundary
+  });
+
+  it('throws ApiError when an upload fails', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(400, { error: 'unsupported or invalid image' }));
+    const file = new File([new Uint8Array([0])], 'x.txt', { type: 'text/plain' });
+    await expect(api.uploadMedia('o', 'p', file)).rejects.toMatchObject({
+      status: 400,
+      message: 'unsupported or invalid image',
+    });
+  });
+
+  it('DELETEs media', async () => {
+    fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
+    await api.deleteMedia('o', 'p', 'm1');
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/orgs/o/projects/p/media/m1');
+    expect(init.method).toBe('DELETE');
+  });
 });

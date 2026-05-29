@@ -6,6 +6,7 @@ import {
   BrandSchema,
   DatasetSchema,
   EntrySchema,
+  MediaAssetSchema,
   PageSchema,
   PartialSchema,
   ProjectSettingsSchema,
@@ -33,6 +34,9 @@ const SCHEMAS = new Map<ContentKind, z.ZodTypeAny>([
   ['partial', PartialSchema],
   ['dataset', DatasetSchema],
   ['entry', EntrySchema],
+  // Media metadata is tenant-scoped CRUD like other content; the binaries live on
+  // disk (see apps/api/src/media). Not yet part of export/import bundles.
+  ['media', MediaAssetSchema],
 ]);
 
 /** The content kinds, derived from the schema map (single source of truth). */

@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 const stamp = Date.now();
 
-test('register → create project → add a page (full UI flow)', async ({ page }) => {
+test('build a nested page with live preview, save, and reload', async ({ page }) => {
   await page.goto('/');
 
   // Register a new agency account.
@@ -18,21 +18,28 @@ test('register → create project → add a page (full UI flow)', async ({ page 
   await page.getByLabel('Project slug').fill(`client-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
 
-  // Open the project.
+  // Open the project and add a page.
   await page.getByRole('button', { name: /Client Site/ }).click();
-
-  // Add a page.
   await page.getByLabel('Page slug').fill('home');
   await page.getByLabel('Page title').fill('Home Page');
   await page.getByRole('button', { name: 'Add page' }).click();
-  await expect(page.getByRole('button', { name: /Home Page/ })).toBeVisible();
-
-  // Open the page editor and add a block.
   await page.getByRole('button', { name: /Home Page/ }).click();
-  await page.getByRole('button', { name: '+ Heading' }).click();
-  await page.getByLabel('Heading text').fill('Welcome');
-  await page.getByRole('button', { name: 'Save page' }).click();
 
-  // Back at the project page list.
+  // Visual editor: nest a Heading inside a Grid (root Section is selected by default).
+  await page.getByRole('button', { name: '+ Grid', exact: true }).click();
+  await page.getByRole('button', { name: '+ Heading', exact: true }).click();
+  await page.getByLabel('Text').fill('Welcome');
+
+  // The live SSR preview reflects the edit.
+  const preview = page.frameLocator('iframe[title="Live preview"]');
+  await expect(preview.locator('body')).toContainText('Welcome');
+
+  // Save and return to the project page list.
+  await page.getByRole('button', { name: 'Save page' }).click();
   await expect(page.getByRole('button', { name: /Home Page/ })).toBeVisible();
+
+  // Reopen the page — the nested block persisted.
+  await page.getByRole('button', { name: /Home Page/ }).click();
+  const previewReloaded = page.frameLocator('iframe[title="Live preview"]');
+  await expect(previewReloaded.locator('body')).toContainText('Welcome');
 });

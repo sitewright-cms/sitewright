@@ -86,4 +86,15 @@ describe('api client', () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { userId: 'u', orgs: [] }));
     expect(await api.me()).toEqual({ userId: 'u', orgs: [] });
   });
+
+  it('POSTs a page to the preview endpoint and returns the html', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { html: '<!doctype html>…' }));
+    const page = { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' } };
+    const res = await api.preview('o', 'p', page);
+    expect(res.html).toContain('<!doctype html>');
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/orgs/o/projects/p/preview');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body)).toMatchObject({ id: 'home' });
+  });
 });

@@ -17,9 +17,18 @@ export function Dashboard({ orgs, onOpen }: DashboardProps) {
 
   async function load(id: string) {
     if (!id) return;
-    const res = await api.projects(id);
-    setProjects(res.projects);
+    try {
+      const res = await api.projects(id);
+      setProjects(res.projects);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'failed to load projects');
+    }
   }
+
+  // Keep the selected org valid if the orgs prop changes (e.g. after re-login).
+  useEffect(() => {
+    setOrgId((current) => (orgs.some((o) => o.id === current) ? current : (orgs[0]?.id ?? '')));
+  }, [orgs]);
 
   useEffect(() => {
     void load(orgId);
@@ -93,7 +102,7 @@ export function Dashboard({ orgs, onOpen }: DashboardProps) {
             required
           />
         </div>
-        <button className="rounded-md bg-slate-900 px-4 py-2 font-semibold text-white">
+        <button type="submit" className="rounded-md bg-slate-900 px-4 py-2 font-semibold text-white">
           Create project
         </button>
       </form>

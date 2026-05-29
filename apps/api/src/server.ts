@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { createApp } from './http/app.js';
 import { createDb, runMigrations } from './db/client.js';
 
@@ -24,7 +25,13 @@ const app = createApp({
   // HTTP DinD preview works. Set COOKIE_SECURE=true when served behind TLS.
   secureCookies: process.env.COOKIE_SECURE === 'true',
   logger: isProduction,
-  editorDist: process.env.EDITOR_DIST,
+  // Only enable SPA serving if the dist actually exists (avoids a startup crash
+  // for API-only deployments that don't bake in the editor).
+  editorDist:
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- trusted startup env path
+    process.env.EDITOR_DIST && existsSync(process.env.EDITOR_DIST)
+      ? process.env.EDITOR_DIST
+      : undefined,
 });
 
 await app.listen({ host: '0.0.0.0', port });

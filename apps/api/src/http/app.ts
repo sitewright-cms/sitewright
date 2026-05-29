@@ -72,6 +72,17 @@ export function createApp(opts: AppOptions): FastifyInstance {
 
   app.register(cookie, opts.cookieSecret ? { secret: opts.cookieSecret } : {});
 
+  // Baseline security headers (the API also serves the SPA in single-container mode).
+  app.addHook('onSend', async (_req, reply) => {
+    reply.header('x-content-type-options', 'nosniff');
+    reply.header('x-frame-options', 'DENY');
+    reply.header('referrer-policy', 'same-origin');
+    reply.header(
+      'content-security-policy',
+      "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+    );
+  });
+
   app.setErrorHandler((err, _req, reply) => {
     if (err instanceof UnauthorizedError) return reply.code(401).send({ error: err.message });
     if (err instanceof ForbiddenError) return reply.code(403).send({ error: err.message });
@@ -121,7 +132,7 @@ export function createApp(opts: AppOptions): FastifyInstance {
     const { token, expiresAt } = await createSession(db, userId);
     reply.setCookie(SESSION_COOKIE, token, {
       httpOnly: true,
-      sameSite: 'lax',
+      sameSite: 'strict',
       path: '/',
       secure: opts.secureCookies ?? false,
       signed,
@@ -136,7 +147,7 @@ export function createApp(opts: AppOptions): FastifyInstance {
     const { token, expiresAt } = await createSession(db, userId);
     reply.setCookie(SESSION_COOKIE, token, {
       httpOnly: true,
-      sameSite: 'lax',
+      sameSite: 'strict',
       path: '/',
       secure: opts.secureCookies ?? false,
       signed,

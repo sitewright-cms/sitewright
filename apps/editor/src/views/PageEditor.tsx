@@ -13,8 +13,11 @@ const BLOCK_TYPES = ['Heading', 'RichText'] as const;
 
 // IdSchema-safe id that also works in insecure contexts (crypto.randomUUID is
 // secure-context-only, so it's undefined on plain-HTTP origins like the preview).
+// Monotonic counter avoids same-millisecond collisions.
+let blockSeq = 0;
 function genId(): string {
-  return `b-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  blockSeq += 1;
+  return `b-${Date.now().toString(36)}-${blockSeq.toString(36)}`;
 }
 
 export function PageEditor({ org, project, page, onClose }: PageEditorProps) {
@@ -42,13 +45,18 @@ export function PageEditor({ org, project, page, onClose }: PageEditorProps) {
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed to save');
+    } finally {
       setSaving(false);
     }
   }
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-8">
-      <button className="mb-4 text-sm text-slate-500 hover:text-slate-900" onClick={onClose}>
+      <button
+        aria-label="Back to project"
+        className="mb-4 text-sm text-slate-500 hover:text-slate-900"
+        onClick={onClose}
+      >
         ← {project.name}
       </button>
       <h2 className="mb-4 text-xl font-semibold">

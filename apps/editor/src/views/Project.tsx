@@ -17,13 +17,17 @@ export function ProjectView({ org, project, onBack }: ProjectViewProps) {
   const [error, setError] = useState<string | null>(null);
 
   async function load() {
-    const res = await api.listPages(org.id, project.id);
-    setPages(res.items);
+    try {
+      const res = await api.listPages(org.id, project.id);
+      setPages(res.items);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'failed to load pages');
+    }
   }
 
   useEffect(() => {
     void load();
-  }, [project.id]);
+  }, [org.id, project.id]);
 
   async function create(e: FormEvent) {
     e.preventDefault();
@@ -60,7 +64,11 @@ export function ProjectView({ org, project, onBack }: ProjectViewProps) {
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-8">
-      <button className="mb-4 text-sm text-slate-500 hover:text-slate-900" onClick={onBack}>
+      <button
+        aria-label="Back to projects"
+        className="mb-4 text-sm text-slate-500 hover:text-slate-900"
+        onClick={onBack}
+      >
         ← Projects
       </button>
       <h2 className="mb-4 text-xl font-semibold">
@@ -104,7 +112,9 @@ export function ProjectView({ org, project, onBack }: ProjectViewProps) {
             required
           />
         </div>
-        <button className="rounded-md bg-slate-900 px-4 py-2 font-semibold text-white">Add page</button>
+        <button type="submit" className="rounded-md bg-slate-900 px-4 py-2 font-semibold text-white">
+          Add page
+        </button>
       </form>
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
     </main>

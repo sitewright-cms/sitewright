@@ -42,7 +42,11 @@ export function App() {
       <button
         className="text-sm text-slate-500 hover:text-slate-900"
         onClick={async () => {
-          await api.logout();
+          try {
+            await api.logout();
+          } catch {
+            // best-effort; always return to the auth screen
+          }
           setStage({ name: 'auth' });
         }}
       >

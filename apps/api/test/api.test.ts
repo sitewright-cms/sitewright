@@ -121,3 +121,31 @@ describe('API — auth + tenant-scoped projects', () => {
     expect(me.statusCode).toBe(401);
   });
 });
+
+describe('signed sessions (cookieSecret configured)', () => {
+  it('round-trips a signed cookie and rejects a tampered one', async () => {
+    const db = await makeTestDb();
+    const signedApp = createApp({ db, cookieSecret: 'test-cookie-secret' });
+    await signedApp.ready();
+
+    const reg = await signedApp.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: { email: 's@x.test', password: 'pw-secret-1', orgName: 'Signed' },
+    });
+    expect(reg.statusCode).toBe(201);
+    const token = sessionToken(reg);
+
+    // A correctly-signed cookie authenticates.
+    const ok = await signedApp.inject({ method: 'GET', url: '/me', cookies: { sw_session: token } });
+    expect(ok.statusCode).toBe(200);
+
+    // A tampered cookie fails signature verification → unauthenticated.
+    const tampered = await signedApp.inject({
+      method: 'GET',
+      url: '/me',
+      cookies: { sw_session: `${token}x` },
+    });
+    expect(tampered.statusCode).toBe(401);
+  });
+});

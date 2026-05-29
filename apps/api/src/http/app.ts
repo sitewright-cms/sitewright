@@ -41,12 +41,14 @@ export interface AppOptions {
   db: Database;
   cookieSecret?: string;
   secureCookies?: boolean;
+  logger?: boolean;
 }
 
 export function createApp(opts: AppOptions): FastifyInstance {
   const { db } = opts;
+  const signed = Boolean(opts.cookieSecret);
   const projects = new ProjectRepository(db);
-  const app = Fastify({ logger: false });
+  const app = Fastify({ logger: opts.logger ?? false });
 
   app.register(cookie, opts.cookieSecret ? { secret: opts.cookieSecret } : {});
 
@@ -64,7 +66,12 @@ export function createApp(opts: AppOptions): FastifyInstance {
 
   function sessionToken(req: FastifyRequest): string | undefined {
     // eslint-disable-next-line security/detect-object-injection -- SESSION_COOKIE is a constant cookie name
-    return req.cookies[SESSION_COOKIE];
+    const raw = req.cookies[SESSION_COOKIE];
+    if (!raw) return undefined;
+    if (!signed) return raw;
+    // When a secret is configured, only accept correctly-signed cookies.
+    const unsigned = req.unsignCookie(raw);
+    return unsigned.valid ? (unsigned.value ?? undefined) : undefined;
   }
 
   async function requireUserId(req: FastifyRequest): Promise<string> {
@@ -83,6 +90,7 @@ export function createApp(opts: AppOptions): FastifyInstance {
       sameSite: 'lax',
       path: '/',
       secure: opts.secureCookies ?? false,
+      signed,
       expires: expiresAt,
     });
     return reply.code(201).send({ userId, orgId });
@@ -97,6 +105,7 @@ export function createApp(opts: AppOptions): FastifyInstance {
       sameSite: 'lax',
       path: '/',
       secure: opts.secureCookies ?? false,
+      signed,
       expires: expiresAt,
     });
     return reply.send({ userId });

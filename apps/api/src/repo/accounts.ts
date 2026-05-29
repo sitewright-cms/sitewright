@@ -46,11 +46,16 @@ export async function registerAccount(
   const passwordHash = await hashPassword(password);
   const slug = await uniqueOrgSlug(db, slugify(orgName));
 
-  await db.insert(users).values({ id: userId, email: normalizedEmail, passwordHash, createdAt: now });
-  await db.insert(organizations).values({ id: orgId, name: orgName, slug, createdAt: now });
-  await db
-    .insert(memberships)
-    .values({ id: randomUUID(), userId, orgId, role: 'owner', createdAt: now });
+  // Atomic: a crash mid-way must not leave an orphaned user or an owner-less org.
+  await db.transaction(async (tx) => {
+    await tx
+      .insert(users)
+      .values({ id: userId, email: normalizedEmail, passwordHash, createdAt: now });
+    await tx.insert(organizations).values({ id: orgId, name: orgName, slug, createdAt: now });
+    await tx
+      .insert(memberships)
+      .values({ id: randomUUID(), userId, orgId, role: 'owner', createdAt: now });
+  });
 
   return { userId, orgId };
 }

@@ -2,7 +2,12 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { makeTestDb } from './helpers.js';
 import { registerAccount, tenantContext } from '../src/repo/accounts.js';
 import { ProjectRepository } from '../src/repo/projects.js';
-import { ConflictError, NotFoundError, type TenantContext } from '../src/repo/context.js';
+import {
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+  type TenantContext,
+} from '../src/repo/context.js';
 import type { Database } from '../src/db/client.js';
 
 let db: Database;
@@ -39,6 +44,14 @@ describe('ProjectRepository — tenant isolation', () => {
     expect((await repo.list(ctxA)).length).toBe(1); // still there
     await repo.remove(ctxA, a.id); // owner can delete
     expect((await repo.list(ctxA)).length).toBe(0);
+  });
+
+  it('forbids a member role from writing, but allows reading (RBAC)', async () => {
+    const memberCtx: TenantContext = { ...ctxA, role: 'member' };
+    await expect(repo.create(memberCtx, { name: 'X', slug: 'x' })).rejects.toThrow(ForbiddenError);
+    const created = await repo.create(ctxA, { name: 'Y', slug: 'y' }); // owner can
+    await expect(repo.remove(memberCtx, created.id)).rejects.toThrow(ForbiddenError);
+    expect((await repo.list(memberCtx)).length).toBe(1); // members can still read
   });
 
   it('enforces unique slug within an org but allows the same slug across orgs', async () => {

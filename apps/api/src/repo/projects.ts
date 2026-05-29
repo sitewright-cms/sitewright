@@ -1,8 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
-import { projects } from '../db/schema.js';
-import { ConflictError, NotFoundError, type TenantContext } from './context.js';
+import { projects, type OrgRole } from '../db/schema.js';
+import { ConflictError, ForbiddenError, NotFoundError, type TenantContext } from './context.js';
+
+const WRITE_ROLES: ReadonlySet<OrgRole> = new Set(['owner', 'admin']);
+
+/** Guards write operations: only owners/admins may mutate; members are read-only. */
+function requireWriteRole(ctx: TenantContext): void {
+  if (!WRITE_ROLES.has(ctx.role)) {
+    throw new ForbiddenError('insufficient role for this operation');
+  }
+}
 
 export interface Project {
   id: string;
@@ -43,6 +52,7 @@ export class ProjectRepository {
 
   /** Creates a project in the caller's org. Slug must be unique within the org. */
   async create(ctx: TenantContext, input: CreateProjectInput): Promise<Project> {
+    requireWriteRole(ctx);
     const duplicate = await this.db
       .select()
       .from(projects)
@@ -63,6 +73,7 @@ export class ProjectRepository {
 
   /** Deletes a project, scoped to the caller's org; throws NotFound if absent or owned by another org. */
   async remove(ctx: TenantContext, id: string): Promise<void> {
+    requireWriteRole(ctx);
     await this.get(ctx, id); // enforces org ownership (NotFound otherwise)
     await this.db.delete(projects).where(and(eq(projects.id, id), eq(projects.orgId, ctx.orgId)));
   }

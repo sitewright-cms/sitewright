@@ -18,7 +18,7 @@ let mediaRoot: string;
 
 beforeEach(async () => {
   mediaRoot = await mkdtemp(join(tmpdir(), 'sw-media-api-'));
-  app = createApp({ db: await makeTestDb(), mediaRoot });
+  app = await createApp({ db: await makeTestDb(), mediaRoot });
   await app.ready();
 });
 afterEach(async () => {

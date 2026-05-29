@@ -16,6 +16,7 @@
   "dependencies": {
     "@fastify/cookie": "^11",
     "@fastify/multipart": "^9",
+    "@fastify/rate-limit": "^10",
     "@fastify/static": "^8",
     "@libsql/client": "^0.14",
     "@sitewright/blocks": "workspace:*",

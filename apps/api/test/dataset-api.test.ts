@@ -6,7 +6,7 @@ import { createApp } from '../src/http/app.js';
 let app: FastifyInstance;
 
 beforeEach(async () => {
-  app = createApp({ db: await makeTestDb() });
+  app = await createApp({ db: await makeTestDb() });
   await app.ready();
 });
 

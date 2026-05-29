@@ -4,6 +4,7 @@
   "slug": "features",
   "fields": [
     { "name": "title", "type": "text", "required": true },
+    { "name": "slug", "type": "text", "required": true },
     { "name": "body", "type": "richtext" }
   ]
 }

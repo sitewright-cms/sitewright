@@ -3,6 +3,7 @@ import { api, type Org, type Project } from './api';
 import { Login } from './views/Login';
 import { Dashboard } from './views/Dashboard';
 import { ProjectView } from './views/Project';
+import { UpdateBanner } from './views/UpdateBanner';
 
 type Stage =
   | { name: 'loading' }
@@ -57,6 +58,7 @@ export function App() {
 
   return (
     <div className="min-h-screen">
+      <UpdateBanner />
       {header}
       {stage.name === 'dashboard' && (
         <Dashboard

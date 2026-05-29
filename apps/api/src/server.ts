@@ -3,6 +3,9 @@ import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createApp } from './http/app.js';
 import { createDb, runMigrations } from './db/client.js';
+import { createReleaseChecker } from './version/checker.js';
+
+const RELEASE_REPO = 'sitewright-cms/sitewright';
 
 const url = process.env.DATABASE_URL ?? 'file:./data/sitewright.db';
 const port = Number(process.env.PORT ?? 2002);
@@ -45,6 +48,13 @@ const app = await createApp({
   mediaRoot,
   publishRoot,
   trustProxy,
+  version: process.env.SW_VERSION ?? '0.0.0',
+  // Pull-based release check (disable for air-gapped installs).
+  latestVersion:
+    process.env.SW_DISABLE_UPDATE_CHECK === 'true'
+      ? undefined
+      : createReleaseChecker({ repo: RELEASE_REPO }),
+  releaseUrl: `https://github.com/${RELEASE_REPO}/releases/latest`,
   logger: isProduction,
   // Only enable SPA serving if the dist actually exists (avoids a startup crash
   // for API-only deployments that don't bake in the editor).

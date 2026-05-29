@@ -164,4 +164,17 @@ describe('api client', () => {
     expect(url).toBe('/orgs/o/projects/p/media/m1');
     expect(init.method).toBe('DELETE');
   });
+
+  it('publishes and reads publish status', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { release: { routes: 2 }, url: '/sites/p/' }));
+    const res = await api.publish('o', 'p');
+    expect(res.url).toBe('/sites/p/');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/orgs/o/projects/p/publish');
+    expect(fetchMock.mock.calls[0]![1].method).toBe('POST');
+
+    fetchMock.mockResolvedValue(jsonResponse(200, { release: null, url: '/sites/p/' }));
+    const status = await api.publishStatus('o', 'p');
+    expect(status.release).toBeNull();
+    expect(fetchMock.mock.calls[1]![1].method ?? 'GET').toBe('GET');
+  });
 });

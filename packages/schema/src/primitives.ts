@@ -52,7 +52,12 @@ export const RoutePathSchema = z
   .max(512)
   // Linear: each iteration must start with "/" (not in the inner classes), so the groups
   // don't overlap; length-capped by .max() above (not ReDoS).
-  .regex(/^\/$|^(?:\/(?:[A-Za-z0-9._~%-]+|\[[A-Za-z0-9_]+\]))+\/?$/, 'must be a root-relative URL path (optionally with [param] segments)'); // eslint-disable-line security/detect-unsafe-regex
+  .regex(/^\/$|^(?:\/(?:[A-Za-z0-9._~%-]+|\[[A-Za-z0-9_]+\]))+\/?$/, 'must be a root-relative URL path (optionally with [param] segments)') // eslint-disable-line security/detect-unsafe-regex
+  // Reject `.`/`..` segments: never a legitimate page path, and they would be a
+  // path-traversal vector for the static publisher (it also guards independently).
+  .refine((path) => !path.split('/').some((seg) => seg === '.' || seg === '..'), {
+    message: 'path segments cannot be "." or ".."',
+  });
 
 /** Asset reference: an absolute http(s) URL or a root-relative path. Rejects `javascript:`/`data:` URIs. */
 export const AssetRefSchema = z

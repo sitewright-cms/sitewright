@@ -19,6 +19,7 @@ import type { Database } from '../db/client.js';
 import { MediaStorage } from '../media/storage.js';
 import { buildSite, PublishError } from '../publish/build.js';
 import { PublishStore } from '../publish/store.js';
+import { archiveSite, deploySite, DeployConfigSchema } from '../publish/adapters.js';
 import { createSession, revokeSession, validateSession } from '../auth/sessions.js';
 import {
   listOrgsForUser,
@@ -137,7 +138,11 @@ export function createApp(opts: AppOptions): FastifyInstance {
   const contentRepo = new ContentRepository(db);
   const mediaStorage = opts.mediaRoot ? new MediaStorage(opts.mediaRoot) : undefined;
   const publishStore = opts.publishRoot ? new PublishStore(opts.publishRoot) : undefined;
-  const app = Fastify({ logger: opts.logger ?? false });
+  const app = Fastify({
+    // Redact deploy credentials defensively (Fastify omits bodies by default, but
+    // guard against any future body logging).
+    logger: opts.logger ? { redact: ['req.body.password', 'req.body.hostFingerprint'] } : false,
+  });
 
   app.register(cookie, opts.cookieSecret ? { secret: opts.cookieSecret } : {});
   if (mediaStorage) {
@@ -491,9 +496,10 @@ export function createApp(opts: AppOptions): FastifyInstance {
   // ---- Publishing (build a static site + serve it) ----
   if (publishStore) {
     const store = publishStore;
-    // Serialize builds per project: prevents two concurrent publishes from
-    // racing on the same output directory (and bounds build load).
+    // Serialize builds/deploys per project: prevents concurrent operations from
+    // racing on the same output directory (and bounds load).
     const activePublishes = new Set<string>();
+    const activeDeploys = new Set<string>();
 
     // Build/rebuild the project's static site from the current DB content.
     app.post<{ Params: { orgId: string; projectId: string } }>(
@@ -541,6 +547,56 @@ export function createApp(opts: AppOptions): FastifyInstance {
       async (req, reply) => {
         const { project } = await resolveProject(req);
         return reply.send({ release: await store.readRelease(project.id), url: `/sites/${project.id}/` });
+      },
+    );
+
+    // Download the published site as a zip artifact (deploy it anywhere at a root).
+    // Member-readable: the archive is the already-public published output (also
+    // served unauthenticated at /sites/<id>/), so it needs no extra role gate.
+    app.get<{ Params: { orgId: string; projectId: string } }>(
+      '/orgs/:orgId/projects/:projectId/publish/archive',
+      async (req, reply) => {
+        const { project } = await resolveProject(req);
+        if ((await store.readRelease(project.id)) === null) {
+          return reply.code(409).send({ error: 'publish the site before exporting' });
+        }
+        const zip = await archiveSite(store.dirFor(project.id));
+        return reply
+          .header('content-disposition', `attachment; filename="${project.slug}-site.zip"`)
+          .type('application/zip')
+          .send(zip);
+      },
+    );
+
+    // Deploy the published site to an external target (FTP / FTPS / SFTP). The
+    // credentials in the body are used transiently and never persisted or logged.
+    app.post<{ Params: { orgId: string; projectId: string } }>(
+      '/orgs/:orgId/projects/:projectId/publish/deploy',
+      async (req, reply) => {
+        const { ctx, project } = await resolveProject(req);
+        if (!WRITE_ROLES.has(ctx.role)) {
+          return reply.code(403).send({ error: 'insufficient role for this operation' });
+        }
+        if ((await store.readRelease(project.id)) === null) {
+          return reply.code(409).send({ error: 'publish the site before deploying' });
+        }
+        const config = DeployConfigSchema.parse(req.body);
+        if (activeDeploys.has(project.id)) {
+          return reply.code(409).send({ error: 'a deploy is already in progress for this project' });
+        }
+        activeDeploys.add(project.id);
+        try {
+          const result = await deploySite(store.dirFor(project.id), config);
+          return reply.send({ deployed: result });
+        } catch (err) {
+          // Connection/auth/transfer failure against the operator's target server.
+          // Log the detail server-side; return a generic message so the response
+          // does not leak the target's banner/timing (SSRF oracle reduction).
+          app.log.error({ err, host: config.host, protocol: config.protocol }, 'deploy failed');
+          return reply.code(502).send({ error: 'deploy failed: could not connect or transfer to the target' });
+        } finally {
+          activeDeploys.delete(project.id);
+        }
       },
     );
 

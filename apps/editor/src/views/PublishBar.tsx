@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { api, type Org, type Project, type Release } from '../api';
+import { DeployForm } from './publish/DeployForm';
 
-/** Publish control: builds the static site and links to the live result. */
+/** Publish + export bar: build the static site, view it, download a zip, or deploy it. */
 export function PublishBar({ org, project }: { org: Org; project: Project }) {
   const [release, setRelease] = useState<Release | null>(null);
   const [url, setUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showDeploy, setShowDeploy] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -19,7 +21,7 @@ export function PublishBar({ org, project }: { org: Org; project: Project }) {
         }
       })
       .catch(() => {
-        /* no published site yet, or transient — the Publish button still works */
+        /* no published site yet, or transient — Publish still works */
       });
     return () => {
       active = false;
@@ -40,28 +42,50 @@ export function PublishBar({ org, project }: { org: Org; project: Project }) {
     }
   }
 
+  const published = release !== null;
+
   return (
-    <div className="flex items-center gap-3">
-      {release && url && (
-        <a
-          href={url}
-          target="_blank"
-          rel="noreferrer"
-          aria-label="View published site"
-          className="text-sm text-sky-700 underline hover:text-sky-900"
+    <div className="mb-6 rounded-lg border border-slate-200 bg-white p-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          onClick={publish}
+          disabled={busy}
+          className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
         >
-          View site
-        </a>
-      )}
-      {release && <span className="text-xs text-slate-400">{release.routes} pages</span>}
-      <button
-        onClick={publish}
-        disabled={busy}
-        className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
-      >
-        {busy ? 'Publishing…' : 'Publish'}
-      </button>
-      {error && <span className="text-xs text-red-600">{error}</span>}
+          {busy ? 'Publishing…' : 'Publish'}
+        </button>
+        {published && url && (
+          <a
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            aria-label="View published site"
+            className="text-sm text-sky-700 underline hover:text-sky-900"
+          >
+            View site
+          </a>
+        )}
+        {published && (
+          <a
+            href={api.archiveUrl(org.id, project.id)}
+            aria-label="Download site zip"
+            className="text-sm text-slate-600 underline hover:text-slate-900"
+          >
+            Download .zip
+          </a>
+        )}
+        {published && (
+          <button
+            onClick={() => setShowDeploy((s) => !s)}
+            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:border-slate-500"
+          >
+            Deploy…
+          </button>
+        )}
+        {release && <span className="text-xs text-slate-400">{release.routes} pages</span>}
+        {error && <span className="text-xs text-red-600">{error}</span>}
+      </div>
+      {published && showDeploy && <DeployForm org={org} project={project} />}
     </div>
   );
 }

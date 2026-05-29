@@ -52,6 +52,16 @@ export interface Release {
   routes: number;
   bytes: number;
 }
+export interface DeployConfig {
+  protocol: 'ftp' | 'ftps' | 'sftp';
+  host: string;
+  port?: number;
+  user: string;
+  password: string;
+  remoteDir?: string;
+  /** Optional SFTP host-key fingerprint (SHA-256) to pin the server. */
+  hostFingerprint?: string;
+}
 
 export const api = {
   register: (email: string, password: string, orgName: string) =>
@@ -125,5 +135,14 @@ export const api = {
     request<{ release: Release | null; url: string }>(
       'GET',
       `/orgs/${orgId}/projects/${projectId}/publish`,
+    ),
+  /** URL of the zip artifact (used as an <a href download> — sends the session cookie). */
+  archiveUrl: (orgId: string, projectId: string) =>
+    `${BASE}/orgs/${orgId}/projects/${projectId}/publish/archive`,
+  deploy: (orgId: string, projectId: string, config: DeployConfig) =>
+    request<{ deployed: { protocol: string; files: number } }>(
+      'POST',
+      `/orgs/${orgId}/projects/${projectId}/publish/deploy`,
+      config,
     ),
 };

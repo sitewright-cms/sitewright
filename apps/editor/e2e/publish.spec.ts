@@ -32,7 +32,26 @@ test('build a page, publish the project, and view the live site', async ({ page,
   const href = await viewLink.getAttribute('href');
   expect(href).toMatch(/^\/sites\/[\w-]+\/$/);
 
-  // The published static page renders the content.
-  await page.goto(`${baseURL}${href}`);
-  await expect(page.locator('body')).toContainText('We Are Live');
+  // The zip artifact downloads (stay on the editor — don't navigate away).
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByRole('link', { name: 'Download site zip' }).click(),
+  ]);
+  expect(await download.suggestedFilename()).toMatch(/\.zip$/);
+
+  // Deploy form: a connection to a closed port surfaces an error (full UI→API→adapter path).
+  await page.getByRole('button', { name: 'Deploy…' }).click();
+  await page.getByLabel('Deploy protocol').selectOption('ftp');
+  await page.getByLabel('Deploy host').fill('127.0.0.1');
+  await page.getByLabel('Deploy port').fill('1');
+  await page.getByLabel('Deploy user').fill('u');
+  await page.getByLabel('Deploy password').fill('pw');
+  await page.getByRole('button', { name: 'Deploy', exact: true }).click();
+  await expect(page.getByText(/deploy failed/i)).toBeVisible({ timeout: 20_000 });
+
+  // The published static page renders the content (in a separate tab).
+  const live = await page.context().newPage();
+  await live.goto(`${baseURL}${href}`);
+  await expect(live.locator('body')).toContainText('We Are Live');
+  await live.close();
 });

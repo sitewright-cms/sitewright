@@ -177,4 +177,22 @@ describe('api client', () => {
     expect(status.release).toBeNull();
     expect(fetchMock.mock.calls[1]![1].method ?? 'GET').toBe('GET');
   });
+
+  it('builds the archive download URL and POSTs a deploy config', async () => {
+    expect(api.archiveUrl('o', 'p')).toBe('/orgs/o/projects/p/publish/archive');
+
+    fetchMock.mockResolvedValue(jsonResponse(200, { deployed: { protocol: 'sftp', files: 3 } }));
+    const res = await api.deploy('o', 'p', {
+      protocol: 'sftp',
+      host: 'example.com',
+      user: 'u',
+      password: 'pw',
+      remoteDir: '/var/www',
+    });
+    expect(res.deployed.files).toBe(3);
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/orgs/o/projects/p/publish/deploy');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body)).toMatchObject({ protocol: 'sftp', host: 'example.com' });
+  });
 });

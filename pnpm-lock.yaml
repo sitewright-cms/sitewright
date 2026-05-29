@@ -38,6 +38,12 @@ importers:
       '@libsql/client':
         specifier: ^0.14
         version: 0.14.0
+      '@sitewright/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@sitewright/schema':
+        specifier: workspace:*
+        version: link:../../packages/schema
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@libsql/client@0.14.0)(gel@2.2.0)

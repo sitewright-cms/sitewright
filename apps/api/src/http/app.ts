@@ -10,14 +10,24 @@ import {
   tenantContext,
 } from '../repo/accounts.js';
 import { ProjectRepository } from '../repo/projects.js';
+import { ContentRepository, CONTENT_KINDS } from '../repo/content.js';
 import {
   ConflictError,
   ForbiddenError,
   NotFoundError,
   UnauthorizedError,
+  type ProjectContext,
 } from '../repo/context.js';
+import type { ContentKind } from '../db/schema.js';
 
 const SESSION_COOKIE = 'sw_session';
+const IMPORT_BODY_LIMIT = 4 * 1024 * 1024; // 4 MiB for a full project import
+const CONTENT_KIND_SET: ReadonlySet<string> = new Set(CONTENT_KINDS);
+
+function parseKind(kind: string): ContentKind {
+  if (!CONTENT_KIND_SET.has(kind)) throw new NotFoundError(`unknown content kind: ${kind}`);
+  return kind as ContentKind;
+}
 
 const RegisterBody = z.object({
   email: z.string().email(),
@@ -48,6 +58,7 @@ export function createApp(opts: AppOptions): FastifyInstance {
   const { db } = opts;
   const signed = Boolean(opts.cookieSecret);
   const projects = new ProjectRepository(db);
+  const contentRepo = new ContentRepository(db);
   const app = Fastify({ logger: opts.logger ?? false });
 
   app.register(cookie, opts.cookieSecret ? { secret: opts.cookieSecret } : {});
@@ -60,6 +71,8 @@ export function createApp(opts: AppOptions): FastifyInstance {
     if (err instanceof z.ZodError) {
       return reply.code(400).send({ error: 'invalid request', details: err.flatten() });
     }
+    // Tree-depth / range guards reject oversized input.
+    if (err instanceof RangeError) return reply.code(400).send({ error: 'input too large' });
     app.log.error(err);
     return reply.code(500).send({ error: 'internal error' });
   });
@@ -79,6 +92,18 @@ export function createApp(opts: AppOptions): FastifyInstance {
     const userId = token ? await validateSession(db, token) : null;
     if (!userId) throw new UnauthorizedError('authentication required');
     return userId;
+  }
+
+  // Resolves a project context: authenticates, verifies org membership, and
+  // confirms the project belongs to that org (404 otherwise). Returns the
+  // ProjectContext plus the project record (for export/import identity).
+  async function resolveProject(
+    req: FastifyRequest<{ Params: { orgId: string; projectId: string } }>,
+  ): Promise<{ ctx: ProjectContext; project: Awaited<ReturnType<ProjectRepository['get']>> }> {
+    const userId = await requireUserId(req);
+    const tenant = await tenantContext(db, userId, req.params.orgId);
+    const project = await projects.get(tenant, req.params.projectId);
+    return { ctx: { ...tenant, projectId: project.id }, project };
   }
 
   app.post('/auth/register', async (req, reply) => {
@@ -157,6 +182,66 @@ export function createApp(opts: AppOptions): FastifyInstance {
       const ctx = await tenantContext(db, userId, req.params.orgId);
       await projects.remove(ctx, req.params.id);
       return reply.code(204).send();
+    },
+  );
+
+  // ---- Project content (tenant + project scoped) ----
+  type ContentParams = { orgId: string; projectId: string; kind: string; entityId: string };
+
+  app.get<{ Params: Pick<ContentParams, 'orgId' | 'projectId' | 'kind'> }>(
+    '/orgs/:orgId/projects/:projectId/content/:kind',
+    async (req, reply) => {
+      const { ctx } = await resolveProject(req);
+      return reply.send({ items: await contentRepo.list(ctx, parseKind(req.params.kind)) });
+    },
+  );
+
+  app.get<{ Params: ContentParams }>(
+    '/orgs/:orgId/projects/:projectId/content/:kind/:entityId',
+    async (req, reply) => {
+      const { ctx } = await resolveProject(req);
+      const item = await contentRepo.get(ctx, parseKind(req.params.kind), req.params.entityId);
+      return reply.send({ item });
+    },
+  );
+
+  app.put<{ Params: ContentParams }>(
+    '/orgs/:orgId/projects/:projectId/content/:kind/:entityId',
+    async (req, reply) => {
+      const { ctx } = await resolveProject(req);
+      const item = await contentRepo.put(
+        ctx,
+        parseKind(req.params.kind),
+        req.params.entityId,
+        req.body,
+      );
+      return reply.send({ item });
+    },
+  );
+
+  app.delete<{ Params: ContentParams }>(
+    '/orgs/:orgId/projects/:projectId/content/:kind/:entityId',
+    async (req, reply) => {
+      const { ctx } = await resolveProject(req);
+      await contentRepo.remove(ctx, parseKind(req.params.kind), req.params.entityId);
+      return reply.code(204).send();
+    },
+  );
+
+  app.get<{ Params: { orgId: string; projectId: string } }>(
+    '/orgs/:orgId/projects/:projectId/export',
+    async (req, reply) => {
+      const { ctx, project } = await resolveProject(req);
+      return reply.send(await contentRepo.exportBundle(ctx, project));
+    },
+  );
+
+  app.post<{ Params: { orgId: string; projectId: string } }>(
+    '/orgs/:orgId/projects/:projectId/import',
+    { bodyLimit: IMPORT_BODY_LIMIT },
+    async (req, reply) => {
+      const { ctx, project } = await resolveProject(req);
+      return reply.send(await contentRepo.importBundle(ctx, project, req.body));
     },
   );
 

@@ -1,3 +1,16 @@
+CREATE TABLE `content` (
+	`id` text PRIMARY KEY NOT NULL,
+	`project_id` text NOT NULL,
+	`kind` text NOT NULL,
+	`entity_id` text NOT NULL,
+	`data` text NOT NULL,
+	`created_at` integer NOT NULL,
+	`updated_at` integer NOT NULL,
+	FOREIGN KEY (`project_id`) REFERENCES `projects`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `uniq_content` ON `content` (`project_id`,`kind`,`entity_id`);--> statement-breakpoint
+CREATE INDEX `content_project_kind_idx` ON `content` (`project_id`,`kind`);--> statement-breakpoint
 CREATE TABLE `memberships` (
 	`id` text PRIMARY KEY NOT NULL,
 	`user_id` text NOT NULL,

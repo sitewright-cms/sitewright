@@ -11,7 +11,7 @@ export const PROJECT_FORMAT_VERSION = 1;
 export const ProjectSettingsSchema = z
   .object({
     defaultLocale: z.string().max(35).default('en'),
-    locales: z.array(z.string().max(35)).min(1).default(['en']),
+    locales: z.array(z.string().max(35)).min(1).max(100).default(['en']),
   })
   .superRefine((settings, ctx) => {
     if (!settings.locales.includes(settings.defaultLocale)) {

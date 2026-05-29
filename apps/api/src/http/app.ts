@@ -14,8 +14,11 @@ import {
 } from '@sitewright/schema';
 import { renderDocument } from '@sitewright/blocks';
 import { optimizeImage } from '@sitewright/image-pipeline';
+import type { ProjectBundle } from '@sitewright/core';
 import type { Database } from '../db/client.js';
 import { MediaStorage } from '../media/storage.js';
+import { buildSite, PublishError } from '../publish/build.js';
+import { PublishStore } from '../publish/store.js';
 import { createSession, revokeSession, validateSession } from '../auth/sessions.js';
 import {
   listOrgsForUser,
@@ -123,6 +126,8 @@ export interface AppOptions {
   editorDist?: string;
   /** Absolute path to the media storage root; enables media upload/serve when set. */
   mediaRoot?: string;
+  /** Absolute path to the published-sites root; enables publish/serve when set. */
+  publishRoot?: string;
 }
 
 export function createApp(opts: AppOptions): FastifyInstance {
@@ -131,6 +136,7 @@ export function createApp(opts: AppOptions): FastifyInstance {
   const projects = new ProjectRepository(db);
   const contentRepo = new ContentRepository(db);
   const mediaStorage = opts.mediaRoot ? new MediaStorage(opts.mediaRoot) : undefined;
+  const publishStore = opts.publishRoot ? new PublishStore(opts.publishRoot) : undefined;
   const app = Fastify({ logger: opts.logger ?? false });
 
   app.register(cookie, opts.cookieSecret ? { secret: opts.cookieSecret } : {});
@@ -478,6 +484,73 @@ export function createApp(opts: AppOptions): FastifyInstance {
           .header('cache-control', 'public, max-age=31536000, immutable')
           .type(type)
           .send(bytes);
+      },
+    );
+  }
+
+  // ---- Publishing (build a static site + serve it) ----
+  if (publishStore) {
+    const store = publishStore;
+    // Serialize builds per project: prevents two concurrent publishes from
+    // racing on the same output directory (and bounds build load).
+    const activePublishes = new Set<string>();
+
+    // Build/rebuild the project's static site from the current DB content.
+    app.post<{ Params: { orgId: string; projectId: string } }>(
+      '/orgs/:orgId/projects/:projectId/publish',
+      async (req, reply) => {
+        const { ctx, project } = await resolveProject(req);
+        if (!WRITE_ROLES.has(ctx.role)) {
+          return reply.code(403).send({ error: 'insufficient role for this operation' });
+        }
+        if (activePublishes.has(project.id)) {
+          return reply.code(409).send({ error: 'a build is already in progress for this project' });
+        }
+        activePublishes.add(project.id);
+        try {
+          const exp = await contentRepo.exportBundle(ctx, project);
+          const bundle: ProjectBundle = {
+            // ExportBundle.project omits formatVersion (it's a format concern, not a
+            // DB field); re-add it to satisfy the ProjectBundle.project (Project) type.
+            project: { formatVersion: exp.formatVersion, ...exp.project },
+            pages: exp.pages,
+            partials: exp.partials,
+            datasets: exp.datasets,
+            entries: exp.entries,
+          };
+          const release = await buildSite({
+            outDir: store.dirFor(project.id),
+            bundle,
+            publishedAt: new Date().toISOString(),
+          });
+          return reply.send({ release, url: `/sites/${project.id}/` });
+        } catch (err) {
+          // A bad route graph (duplicate slugs, unsafe segment) is author-correctable.
+          if (err instanceof PublishError) {
+            return reply.code(409).send({ error: err.message });
+          }
+          throw err;
+        } finally {
+          activePublishes.delete(project.id);
+        }
+      },
+    );
+
+    app.get<{ Params: { orgId: string; projectId: string } }>(
+      '/orgs/:orgId/projects/:projectId/publish',
+      async (req, reply) => {
+        const { project } = await resolveProject(req);
+        return reply.send({ release: await store.readRelease(project.id), url: `/sites/${project.id}/` });
+      },
+    );
+
+    // Public serving of the published static site (path-safe, html only).
+    app.get<{ Params: { projectId: string; '*': string } }>(
+      '/sites/:projectId/*',
+      async (req, reply) => {
+        const html = await store.readHtml(req.params.projectId, req.params['*'] ?? '');
+        if (html === null) return reply.code(404).type('text/html').send('<h1>404 — not published</h1>');
+        return reply.type('text/html').send(html);
       },
     );
   }

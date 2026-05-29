@@ -47,6 +47,11 @@ export interface Project {
   name: string;
   slug: string;
 }
+export interface Release {
+  publishedAt: string;
+  routes: number;
+  bytes: number;
+}
 
 export const api = {
   register: (email: string, password: string, orgName: string) =>
@@ -112,4 +117,13 @@ export const api = {
   },
   deleteMedia: (orgId: string, projectId: string, id: string) =>
     request<void>('DELETE', `/orgs/${orgId}/projects/${projectId}/media/${id}`),
+
+  // --- publishing ---
+  publish: (orgId: string, projectId: string) =>
+    request<{ release: Release; url: string }>('POST', `/orgs/${orgId}/projects/${projectId}/publish`),
+  publishStatus: (orgId: string, projectId: string) =>
+    request<{ release: Release | null; url: string }>(
+      'GET',
+      `/orgs/${orgId}/projects/${projectId}/publish`,
+    ),
 };

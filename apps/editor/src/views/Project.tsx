@@ -4,6 +4,7 @@ import { api, type Org, type Project } from '../api';
 import { PageEditor } from './PageEditor';
 import { DatasetManager } from './DatasetManager';
 import { MediaManager } from './MediaManager';
+import { PublishBar } from './PublishBar';
 
 interface ProjectViewProps {
   org: Org;
@@ -74,9 +75,12 @@ export function ProjectView({ org, project, onBack }: ProjectViewProps) {
       >
         ← Projects
       </button>
-      <h2 className="mb-4 text-xl font-semibold">
-        {project.name} <span className="text-sm text-slate-400">/{project.slug}</span>
-      </h2>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h2 className="text-xl font-semibold">
+          {project.name} <span className="text-sm text-slate-400">/{project.slug}</span>
+        </h2>
+        <PublishBar org={org} project={project} />
+      </div>
 
       <div className="mb-6 flex gap-1 border-b border-slate-200">
         {(['pages', 'data', 'media'] as const).map((t) => (

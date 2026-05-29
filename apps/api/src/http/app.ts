@@ -3,6 +3,7 @@ import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import cookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
 import multipart from '@fastify/multipart';
+import rateLimit from '@fastify/rate-limit';
 import { z } from 'zod';
 import {
   MediaAssetSchema,
@@ -44,6 +45,9 @@ import {
 import type { ContentKind } from '../db/schema.js';
 
 const SESSION_COOKIE = 'sw_session';
+const RL_WINDOW = '1 minute';
+/** Per-route rate-limit config for an expensive/sensitive endpoint. */
+const rl = (max: number) => ({ rateLimit: { max, timeWindow: RL_WINDOW } });
 const IMPORT_BODY_LIMIT = 4 * 1024 * 1024; // 4 MiB for a full project import
 const PREVIEW_BODY_LIMIT = 2 * 1024 * 1024; // 2 MiB for a single draft page
 const MAX_UPLOAD_BYTES = 15 * 1024 * 1024; // 15 MiB per uploaded image
@@ -129,9 +133,15 @@ export interface AppOptions {
   mediaRoot?: string;
   /** Absolute path to the published-sites root; enables publish/serve when set. */
   publishRoot?: string;
+  /**
+   * Trust `X-Forwarded-For` so `req.ip` is the real client IP behind a reverse
+   * proxy (required for correct per-IP rate limiting). `true`, or a CIDR/list of
+   * trusted proxy addresses. Leave unset for direct connections.
+   */
+  trustProxy?: boolean | string | string[];
 }
 
-export function createApp(opts: AppOptions): FastifyInstance {
+export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const { db } = opts;
   const signed = Boolean(opts.cookieSecret);
   const projects = new ProjectRepository(db);
@@ -142,11 +152,17 @@ export function createApp(opts: AppOptions): FastifyInstance {
     // Redact deploy credentials defensively (Fastify omits bodies by default, but
     // guard against any future body logging).
     logger: opts.logger ? { redact: ['req.body.password', 'req.body.hostFingerprint'] } : false,
+    // Behind a reverse proxy, trust X-Forwarded-For so req.ip (the rate-limit key)
+    // is the real client IP instead of the proxy's (which would collapse all
+    // clients to one bucket).
+    trustProxy: opts.trustProxy ?? false,
   });
 
-  app.register(cookie, opts.cookieSecret ? { secret: opts.cookieSecret } : {});
+  // Plugins that integrate per-route (rate-limit hooks `onRoute`) must finish
+  // loading BEFORE routes are registered, so these are awaited up front.
+  await app.register(cookie, opts.cookieSecret ? { secret: opts.cookieSecret } : {});
   if (mediaStorage) {
-    app.register(multipart, { limits: { fileSize: MAX_UPLOAD_BYTES, files: 1, fields: 0 } });
+    await app.register(multipart, { limits: { fileSize: MAX_UPLOAD_BYTES, files: 1, fields: 0 } });
   }
 
   // Baseline security headers (the API also serves the SPA in single-container mode).
@@ -170,6 +186,12 @@ export function createApp(opts: AppOptions): FastifyInstance {
     }
     // Tree-depth / range guards reject oversized input.
     if (err instanceof RangeError) return reply.code(400).send({ error: 'input too large' });
+    // Known library errors that carry their own status: rate-limit (429) and
+    // body-too-large (413). Allowlisted (not the whole 4xx range) so a future
+    // plugin's error message can't leak through.
+    const status = (err as { statusCode?: number }).statusCode;
+    if (status === 429) return reply.code(429).send({ error: 'rate limit exceeded — slow down' });
+    if (status === 413) return reply.code(413).send({ error: 'request body too large' });
     app.log.error(err);
     return reply.code(500).send({ error: 'internal error' });
   });
@@ -183,6 +205,18 @@ export function createApp(opts: AppOptions): FastifyInstance {
     const unsigned = req.unsignCookie(raw);
     return unsigned.valid ? (unsigned.value ?? undefined) : undefined;
   }
+
+  // Rate limiting: a generous global cap keyed per-user (session) or per-IP, with
+  // stricter caps on expensive/sensitive routes (each route sets its own via config).
+  // NOTE: behind a reverse proxy, enable Fastify `trustProxy` so req.ip is the real
+  // client IP rather than the proxy's.
+  await app.register(rateLimit, {
+    global: true,
+    max: 200,
+    timeWindow: RL_WINDOW,
+    cache: 20_000, // explicit LRU key cap (bounds memory; documents intent)
+    keyGenerator: (req) => sessionToken(req) ?? req.ip,
+  });
 
   async function requireUserId(req: FastifyRequest): Promise<string> {
     const token = sessionToken(req);
@@ -203,7 +237,7 @@ export function createApp(opts: AppOptions): FastifyInstance {
     return { ctx: { ...tenant, projectId: project.id }, project };
   }
 
-  app.post('/auth/register', async (req, reply) => {
+  app.post('/auth/register', { config: rl(10) }, async (req, reply) => {
     const body = RegisterBody.parse(req.body);
     const { userId, orgId } = await registerAccount(db, body.email, body.password, body.orgName);
     const { token, expiresAt } = await createSession(db, userId);
@@ -218,7 +252,7 @@ export function createApp(opts: AppOptions): FastifyInstance {
     return reply.code(201).send({ userId, orgId });
   });
 
-  app.post('/auth/login', async (req, reply) => {
+  app.post('/auth/login', { config: rl(10) }, async (req, reply) => {
     const body = LoginBody.parse(req.body);
     const userId = await login(db, body.email, body.password);
     const { token, expiresAt } = await createSession(db, userId);
@@ -335,7 +369,7 @@ export function createApp(opts: AppOptions): FastifyInstance {
 
   app.post<{ Params: { orgId: string; projectId: string } }>(
     '/orgs/:orgId/projects/:projectId/import',
-    { bodyLimit: IMPORT_BODY_LIMIT },
+    { bodyLimit: IMPORT_BODY_LIMIT, config: rl(20) },
     async (req, reply) => {
       const { ctx, project } = await resolveProject(req);
       return reply.send(await contentRepo.importBundle(ctx, project, req.body));
@@ -347,7 +381,7 @@ export function createApp(opts: AppOptions): FastifyInstance {
   // shared pure renderer. Tenant-scoped; any project member may preview.
   app.post<{ Params: { orgId: string; projectId: string } }>(
     '/orgs/:orgId/projects/:projectId/preview',
-    { bodyLimit: PREVIEW_BODY_LIMIT },
+    { bodyLimit: PREVIEW_BODY_LIMIT, config: rl(120) },
     async (req, reply) => {
       const { ctx, project } = await resolveProject(req);
       // Guard recursion depth before the recursive Zod parse (untrusted tree).
@@ -389,6 +423,7 @@ export function createApp(opts: AppOptions): FastifyInstance {
     // record tenant-scoped metadata. The pipeline rejects non-raster/SVG input.
     app.post<{ Params: { orgId: string; projectId: string } }>(
       '/orgs/:orgId/projects/:projectId/media',
+      { config: rl(30) },
       async (req, reply) => {
         const { ctx, project } = await resolveProject(req);
         // Reject before reading the (potentially large) upload for non-writers.
@@ -504,6 +539,7 @@ export function createApp(opts: AppOptions): FastifyInstance {
     // Build/rebuild the project's static site from the current DB content.
     app.post<{ Params: { orgId: string; projectId: string } }>(
       '/orgs/:orgId/projects/:projectId/publish',
+      { config: rl(20) },
       async (req, reply) => {
         const { ctx, project } = await resolveProject(req);
         if (!WRITE_ROLES.has(ctx.role)) {
@@ -572,6 +608,7 @@ export function createApp(opts: AppOptions): FastifyInstance {
     // credentials in the body are used transiently and never persisted or logged.
     app.post<{ Params: { orgId: string; projectId: string } }>(
       '/orgs/:orgId/projects/:projectId/publish/deploy',
+      { config: rl(20) },
       async (req, reply) => {
         const { ctx, project } = await resolveProject(req);
         if (!WRITE_ROLES.has(ctx.role)) {
@@ -616,8 +653,9 @@ export function createApp(opts: AppOptions): FastifyInstance {
   // Single-container mode: serve the editor SPA at `/`, with a fallback to
   // index.html for non-API GET routes (client-side navigation / refresh).
   if (opts.editorDist) {
-    app.register(fastifyStatic, { root: opts.editorDist, prefix: '/', wildcard: false });
-    app.setNotFoundHandler((req, reply) => {
+    await app.register(fastifyStatic, { root: opts.editorDist, prefix: '/', wildcard: false });
+    // Rate-limit the catch-all so unknown-path probing/enumeration is throttled too.
+    app.setNotFoundHandler({ preHandler: app.rateLimit() }, (req, reply) => {
       if (req.method === 'GET' && !isApiPath(req.url)) {
         return reply.sendFile('index.html');
       }

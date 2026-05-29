@@ -18,6 +18,16 @@ if (isProduction && !cookieSecret) {
 if (isProduction && process.env.COOKIE_SECURE !== 'true') {
   process.stderr.write('[sitewright/api] WARNING: COOKIE_SECURE is not true in production\n');
 }
+// TRUST_PROXY=true (or a CIDR/comma list) when running behind a reverse proxy, so
+// rate limiting keys on the real client IP. Warn if likely misconfigured.
+const trustProxyEnv = process.env.TRUST_PROXY;
+const trustProxy: boolean | string[] =
+  trustProxyEnv === 'true' ? true : trustProxyEnv ? trustProxyEnv.split(',').map((s) => s.trim()) : false;
+if (isProduction && trustProxy === false) {
+  process.stderr.write(
+    '[sitewright/api] WARNING: TRUST_PROXY is not set; behind a proxy, per-IP rate limits key on the proxy IP\n',
+  );
+}
 
 const { db } = createDb(url);
 await runMigrations(db);
@@ -26,7 +36,7 @@ await mkdir(mediaRoot, { recursive: true });
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- trusted startup env path
 await mkdir(publishRoot, { recursive: true });
 
-const app = createApp({
+const app = await createApp({
   db,
   cookieSecret,
   // Secure cookies require HTTPS; gate on an explicit flag (not NODE_ENV) so the
@@ -34,6 +44,7 @@ const app = createApp({
   secureCookies: process.env.COOKIE_SECURE === 'true',
   mediaRoot,
   publishRoot,
+  trustProxy,
   logger: isProduction,
   // Only enable SPA serving if the dist actually exists (avoids a startup crash
   // for API-only deployments that don't bake in the editor).

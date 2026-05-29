@@ -7,7 +7,7 @@ let app: FastifyInstance;
 
 beforeEach(async () => {
   const db = await makeTestDb();
-  app = createApp({ db });
+  app = await createApp({ db });
   await app.ready();
 });
 
@@ -125,7 +125,7 @@ describe('API — auth + tenant-scoped projects', () => {
 describe('signed sessions (cookieSecret configured)', () => {
   it('round-trips a signed cookie and rejects a tampered one', async () => {
     const db = await makeTestDb();
-    const signedApp = createApp({ db, cookieSecret: 'test-cookie-secret' });
+    const signedApp = await createApp({ db, cookieSecret: 'test-cookie-secret' });
     await signedApp.ready();
 
     const reg = await signedApp.inject({

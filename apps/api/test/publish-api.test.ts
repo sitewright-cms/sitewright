@@ -11,7 +11,7 @@ let publishRoot: string;
 
 beforeEach(async () => {
   publishRoot = await mkdtemp(join(tmpdir(), 'sw-sites-'));
-  app = createApp({ db: await makeTestDb(), publishRoot });
+  app = await createApp({ db: await makeTestDb(), publishRoot });
   await app.ready();
 });
 afterEach(async () => {

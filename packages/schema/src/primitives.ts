@@ -10,6 +10,8 @@ export const MAX_IDENTIFIER_LENGTH = 128;
 export const MAX_RECORD_ENTRIES = 256;
 /** Max block-tree nesting depth (guards against parse-time stack overflow). */
 export const MAX_PAGE_TREE_DEPTH = 100;
+/** Max children per block node (guards against width-based parse-time exhaustion). */
+export const MAX_CHILDREN = 1000;
 
 const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 

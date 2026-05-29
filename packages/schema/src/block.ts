@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { BindingSchema, type Binding } from './binding.js';
-import { ComponentTypeSchema, IdSchema, safeRecord } from './primitives.js';
+import { ComponentTypeSchema, IdSchema, MAX_CHILDREN, safeRecord } from './primitives.js';
 
 /**
  * A node in a page's block tree. Recursive: a block may contain child blocks.
@@ -36,7 +36,7 @@ export const PageNodeSchema: z.ZodType<PageNode, z.ZodTypeDef, unknown> = z.lazy
     id: IdSchema,
     type: ComponentTypeSchema,
     props: safeRecord(z.unknown()).optional(),
-    children: z.array(PageNodeSchema).optional(),
+    children: z.array(PageNodeSchema).max(MAX_CHILDREN).optional(),
     partialRef: IdSchema.optional(),
     binding: BindingSchema.optional(),
     locked: z.boolean().optional(),

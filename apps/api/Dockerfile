@@ -11,7 +11,10 @@ COPY . .
 ENV NODE_ENV=production
 ENV DATABASE_URL=file:/data/sitewright.db
 ENV PORT=80
-RUN mkdir -p /data
+
+# Run as the non-root `node` user (present in the base image); own the data dir.
+RUN mkdir -p /data && chown -R node:node /app /data
+USER node
 
 EXPOSE 80
 CMD ["node", "dist/server.js"]

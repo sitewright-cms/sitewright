@@ -10,7 +10,7 @@ import {
   tenantContext,
 } from '../repo/accounts.js';
 import { ProjectRepository } from '../repo/projects.js';
-import { ContentRepository } from '../repo/content.js';
+import { ContentRepository, CONTENT_KINDS } from '../repo/content.js';
 import {
   ConflictError,
   ForbiddenError,
@@ -21,16 +21,11 @@ import {
 import type { ContentKind } from '../db/schema.js';
 
 const SESSION_COOKIE = 'sw_session';
-const CONTENT_KINDS: ReadonlySet<string> = new Set([
-  'settings',
-  'page',
-  'partial',
-  'dataset',
-  'entry',
-]);
+const IMPORT_BODY_LIMIT = 4 * 1024 * 1024; // 4 MiB for a full project import
+const CONTENT_KIND_SET: ReadonlySet<string> = new Set(CONTENT_KINDS);
 
 function parseKind(kind: string): ContentKind {
-  if (!CONTENT_KINDS.has(kind)) throw new NotFoundError(`unknown content kind: ${kind}`);
+  if (!CONTENT_KIND_SET.has(kind)) throw new NotFoundError(`unknown content kind: ${kind}`);
   return kind as ContentKind;
 }
 
@@ -76,6 +71,8 @@ export function createApp(opts: AppOptions): FastifyInstance {
     if (err instanceof z.ZodError) {
       return reply.code(400).send({ error: 'invalid request', details: err.flatten() });
     }
+    // Tree-depth / range guards reject oversized input.
+    if (err instanceof RangeError) return reply.code(400).send({ error: 'input too large' });
     app.log.error(err);
     return reply.code(500).send({ error: 'internal error' });
   });
@@ -241,6 +238,7 @@ export function createApp(opts: AppOptions): FastifyInstance {
 
   app.post<{ Params: { orgId: string; projectId: string } }>(
     '/orgs/:orgId/projects/:projectId/import',
+    { bodyLimit: IMPORT_BODY_LIMIT },
     async (req, reply) => {
       const { ctx, project } = await resolveProject(req);
       return reply.send(await contentRepo.importBundle(ctx, project, req.body));

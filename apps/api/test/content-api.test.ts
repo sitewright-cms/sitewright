@@ -79,6 +79,42 @@ describe('content API', () => {
     expect(unknown.statusCode).toBe(404);
   });
 
+  it('imports a bundle (200) and rejects an invalid one (409)', async () => {
+    const { t, orgId, projectId } = await setup('a@acme.test', 'Acme');
+    const base = `/orgs/${orgId}/projects/${projectId}`;
+
+    const ok = await app.inject({
+      method: 'POST',
+      url: `${base}/import`,
+      cookies: { sw_session: t },
+      payload: { pages: [page] },
+    });
+    expect(ok.statusCode).toBe(200);
+    expect((ok.json() as { imported: number }).imported).toBeGreaterThanOrEqual(1);
+
+    const bad = await app.inject({
+      method: 'POST',
+      url: `${base}/import`,
+      cookies: { sw_session: t },
+      payload: {
+        pages: [
+          { id: 'b', path: '/b', title: 'B', root: { id: 'r', type: 'Grid', binding: { dataset: 'ghost', mode: 'list' } } },
+        ],
+      },
+    });
+    expect(bad.statusCode).toBe(409);
+  });
+
+  it('deletes a page (204) and 404s afterwards', async () => {
+    const { t, orgId, projectId } = await setup('a@acme.test', 'Acme');
+    const base = `/orgs/${orgId}/projects/${projectId}`;
+    await app.inject({ method: 'PUT', url: `${base}/content/page/home`, cookies: { sw_session: t }, payload: page });
+    const del = await app.inject({ method: 'DELETE', url: `${base}/content/page/home`, cookies: { sw_session: t } });
+    expect(del.statusCode).toBe(204);
+    const get = await app.inject({ method: 'GET', url: `${base}/content/page/home`, cookies: { sw_session: t } });
+    expect(get.statusCode).toBe(404);
+  });
+
   it('isolates content across tenants (org B cannot touch org A’s project)', async () => {
     const a = await setup('a@acme.test', 'Acme');
     const b = await setup('b@globex.test', 'Globex');

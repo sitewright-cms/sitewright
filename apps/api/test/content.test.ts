@@ -79,6 +79,30 @@ describe('ContentRepository', () => {
     );
   });
 
+  it('isolates content across two projects in the SAME org', async () => {
+    // pctxA's org owns projA; create a second project in the same org.
+    const projects = new (await import('../src/repo/projects.js')).ProjectRepository(db);
+    const proj2 = await projects.create(
+      { userId: pctxA.userId, orgId: pctxA.orgId, role: pctxA.role },
+      { name: 'Site A2', slug: 'site-a2' },
+    );
+    const pctxA2: ProjectContext = { ...pctxA, projectId: proj2.id };
+    await content.put(pctxA, 'page', 'home', page);
+    await expect(content.get(pctxA2, 'page', 'home')).rejects.toThrow(NotFoundError);
+    expect(await content.list(pctxA2, 'page')).toHaveLength(0);
+  });
+
+  it('rejects an over-deep page tree before parsing (DoS guard)', async () => {
+    let node: Record<string, unknown> = { id: 'leaf', type: 'Leaf' };
+    for (let i = 0; i < 250; i++) node = { id: `n${i}`, type: 'Box', children: [node] };
+    const deep = { id: 'deep', path: '/deep', title: 'Deep', root: node };
+    await expect(content.put(pctxA, 'page', 'deep', deep)).rejects.toThrow(RangeError);
+  });
+
+  it('cannot delete the settings singleton', async () => {
+    await expect(content.remove(pctxA, 'settings', 'settings')).rejects.toThrow(ForbiddenError);
+  });
+
   it('imports a full bundle and exports it back', async () => {
     const bundle = {
       project: {

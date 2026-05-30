@@ -22,6 +22,8 @@ const RENDERED_TYPES = [
   'Header',
   'Footer',
   'Html',
+  'Carousel',
+  'Slide',
 ];
 
 describe('BLOCK_DESCRIPTORS', () => {
@@ -33,7 +35,7 @@ describe('BLOCK_DESCRIPTORS', () => {
   it('gives every descriptor a label and a known category', () => {
     for (const d of BLOCK_DESCRIPTORS) {
       expect(d.label.length).toBeGreaterThan(0);
-      expect(['layout', 'content', 'nav']).toContain(d.category);
+      expect(['layout', 'content', 'nav', 'component']).toContain(d.category);
     }
   });
 

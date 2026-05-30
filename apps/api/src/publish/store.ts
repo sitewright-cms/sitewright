@@ -5,10 +5,16 @@ import type { ReleaseManifest } from './build.js';
 const SEGMENT = /^[A-Za-z0-9_-]+$/;
 
 // Non-HTML static assets the builder emits alongside the pages and that the
-// public preview may serve (text only; binaries go through /media). The compiled
-// Tailwind utility sheet is the sole entry today. release.json (.json) and media
-// binaries are deliberately NOT here, so they remain unreachable via this route.
-const ASSET_CONTENT_TYPES = new Map<string, string>([['.css', 'text/css; charset=utf-8']]);
+// public preview may serve (text only; binaries go through /media). Today: the
+// compiled Tailwind sheet (.css) and the platform component bundle (.js). Both
+// are PLATFORM-GENERATED — the builder never writes tenant-controlled files of
+// these types (raw HTML embeds are inlined into pages, not written as .js/.css).
+// release.json (.json) and media binaries are deliberately absent, so they stay
+// unreachable via this route.
+const ASSET_CONTENT_TYPES = new Map<string, string>([
+  ['.css', 'text/css; charset=utf-8'],
+  ['.js', 'text/javascript; charset=utf-8'],
+]);
 
 /**
  * Locates and serves published static sites under `<root>/<projectId>/`. All
@@ -81,7 +87,10 @@ export class PublishStore {
     if (!contentType) return null;
     const dir = resolve(this.dirFor(projectId));
     const rel = requestPath.replace(/^\/+/, '').replace(/\/+$/, '');
-    if (rel.split('/').some((seg) => seg === '.' || seg === '..')) return null;
+    // The builder writes these assets ONLY at the site root (styles.css /
+    // components.js). Restrict serving to root-level files so no future write path
+    // into a subdirectory could become publicly served as CSS/JS.
+    if (rel.includes('/')) return null;
     const full = resolve(dir, rel);
     if (full !== dir && !full.startsWith(dir + sep)) return null;
     try {

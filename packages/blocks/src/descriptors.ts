@@ -18,8 +18,8 @@ export interface FieldDescriptor {
   placeholder?: string;
 }
 
-/** Palette grouping. */
-export type BlockCategory = 'layout' | 'content' | 'nav';
+/** Palette grouping. `component` = interactive, platform-authored components. */
+export type BlockCategory = 'layout' | 'content' | 'nav' | 'component';
 
 /** Editor + renderer metadata for one block type. */
 export interface BlockDescriptor {
@@ -179,6 +179,37 @@ export const BLOCK_DESCRIPTORS: ReadonlyArray<BlockDescriptor> = [
     category: 'nav',
     container: true,
     fields: [{ key: 'text', label: 'Text', input: 'text' }],
+  },
+  // --- components (interactive, platform-authored behavior) ---
+  {
+    // A slide-show. Holds Slide children; the platform ships its behavior + styling
+    // (only when used). End-users tweak the simple settings below; an author can
+    // `locked` the Carousel to leave only slide content editable.
+    type: 'Carousel',
+    label: 'Carousel',
+    category: 'component',
+    container: true,
+    fields: [
+      { key: 'label', label: 'Accessible label', input: 'text', placeholder: 'Featured work' },
+      { key: 'autoplay', label: 'Autoplay', input: 'boolean', default: false },
+      { key: 'interval', label: 'Autoplay interval (ms)', input: 'number', default: 5000 },
+      { key: 'loop', label: 'Loop', input: 'boolean', default: true },
+      { key: 'showArrows', label: 'Show arrows', input: 'boolean', default: true },
+      { key: 'showDots', label: 'Show dots', input: 'boolean', default: true },
+    ],
+  },
+  {
+    // One slide of a Carousel — image + caption is the simple end-user unit
+    // ("add a new slide with a caption").
+    type: 'Slide',
+    label: 'Slide',
+    category: 'component',
+    container: false,
+    fields: [
+      { key: 'image', label: 'Image URL', input: 'url', placeholder: '/photo.jpg' },
+      { key: 'alt', label: 'Alt text', input: 'text' },
+      { key: 'caption', label: 'Caption', input: 'text' },
+    ],
   },
 ];
 

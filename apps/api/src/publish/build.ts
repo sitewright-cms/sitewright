@@ -8,13 +8,20 @@ import {
   relativeRoot,
   type ProjectBundle,
 } from '@sitewright/core';
-import { renderDocument, resolveInternalUrl } from '@sitewright/blocks';
+import {
+  renderDocument,
+  resolveInternalUrl,
+  usedComponentTypes,
+  componentAssets,
+} from '@sitewright/blocks';
 import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
 import { companyToOrganization } from './company-seo.js';
 import type { MediaAsset } from '@sitewright/schema';
 
 /** The compiled utility stylesheet, written at the site root and linked per page. */
 const UTILITY_STYLESHEET = 'styles.css';
+/** The platform component-behavior bundle, written at the site root and linked per page. */
+const COMPONENT_SCRIPT = 'components.js';
 
 /** A client-correctable publish failure (bad route graph) → maps to HTTP 409. */
 export class PublishError extends Error {}
@@ -151,6 +158,11 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // rendered HTML) so the scan is bounded + free of skeleton/custom-HTML noise.
     const classNames = routes.flatMap((route) => collectClassNames(route.root));
     const usesUtilities = classNames.length > 0;
+    // Likewise, ship interactive-component CSS/JS only when a component is used.
+    // CSS is inlined per page (small, shared); JS is one bundle linked per page.
+    const componentTypes = [...new Set(routes.flatMap((route) => usedComponentTypes(route.root)))];
+    const usesComponents = componentTypes.length > 0;
+    const components = componentAssets(componentTypes);
     let bytes = 0;
 
     // Bundle media into the artifact so the export is self-contained + portable.
@@ -204,6 +216,10 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         // Link the root-level utility sheet, rebased to this page's depth so the
         // export stays portable. Only when the site uses utility classes.
         stylesheets: usesUtilities ? [`${siteRoot}${UTILITY_STYLESHEET}`] : undefined,
+        // Inline component CSS + link the (depth-rebased) component bundle — only
+        // when the site uses an interactive component.
+        inlineStyles: usesComponents && components.css ? [components.css] : undefined,
+        scripts: usesComponents && components.js ? [`${siteRoot}${COMPONENT_SCRIPT}`] : undefined,
       });
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to tmp (checked above)
       await writeFile(full, html, 'utf8');
@@ -220,6 +236,13 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
       await writeFile(join(tmp, UTILITY_STYLESHEET), css, 'utf8');
       bytes += Buffer.byteLength(css);
+    }
+
+    // One platform component bundle (first-party behavior; only-used-ships).
+    if (usesComponents && components.js) {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
+      await writeFile(join(tmp, COMPONENT_SCRIPT), components.js, 'utf8');
+      bytes += Buffer.byteLength(components.js);
     }
 
     const manifest: ReleaseManifest = { publishedAt, routes: routes.length, bytes };

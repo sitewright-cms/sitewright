@@ -43,6 +43,87 @@ describe('renderNode — Html (raw embed) block', () => {
   });
 });
 
+describe('renderNode — Carousel / Slide (interactive component)', () => {
+  it('renders the component hook, data attrs, track, slides, and PE controls', () => {
+    const html = renderNode(
+      node({
+        type: 'Carousel',
+        props: { label: 'Work', autoplay: true, interval: 3000, loop: false },
+        children: [
+          { id: 's1', type: 'Slide', props: { image: '/a.jpg', alt: 'A', caption: 'First' } },
+          { id: 's2', type: 'Slide', props: { image: '/b.jpg', alt: 'B' } },
+        ],
+      }),
+    );
+    expect(html).toContain('data-sw-block="Carousel"');
+    expect(html).toContain('data-sw-component="carousel"'); // JS enhancement hook
+    expect(html).toContain('data-autoplay="true"');
+    expect(html).toContain('data-interval="3000"');
+    expect(html).toContain('data-loop="false"');
+    expect(html).toContain('role="region"');
+    expect(html).toContain('aria-roledescription="carousel"');
+    expect(html).toContain('aria-label="Work"');
+    expect(html).toContain('data-sw-part="track"');
+    expect(html).toContain('data-sw-part="prev"');
+    expect(html).toContain('data-sw-part="next"');
+    expect(html).toContain('data-sw-part="dots"');
+    expect(html).toContain('data-sw-part="slide"');
+    expect(html).toContain('<figcaption>First</figcaption>');
+    expect(html).toContain('alt="A"');
+  });
+
+  it('clamps the interval and defaults loop/arrows/dots on', () => {
+    const html = renderNode(node({ type: 'Carousel', props: { interval: 99 } }));
+    expect(html).toContain('data-interval="1000"'); // clamped to the 1000ms floor
+    expect(html).toContain('data-loop="true"'); // default
+    expect(html).toContain('data-autoplay="false"'); // default
+    expect(html).toContain('data-sw-part="prev"'); // arrows default on
+    expect(html).toContain('data-sw-part="dots"'); // dots default on
+  });
+
+  it('omits arrows/dots when disabled', () => {
+    const html = renderNode(node({ type: 'Carousel', props: { showArrows: false, showDots: false } }));
+    expect(html).not.toContain('data-sw-part="prev"');
+    expect(html).not.toContain('data-sw-part="dots"');
+  });
+
+  it('Slide renders a figure with image + escaped caption', () => {
+    const html = renderNode(node({ type: 'Slide', props: { image: '/a.jpg', alt: 'x', caption: '<b>hi</b>' } }));
+    expect(html).toContain('data-sw-part="slide"');
+    expect(html).toContain('<figure>');
+    expect(html).toContain('alt="x"');
+    expect(html).toContain('&lt;b&gt;hi&lt;/b&gt;'); // caption escaped
+    expect(html).not.toContain('<b>hi</b>');
+  });
+
+  it('keeps the className on the carousel root', () => {
+    expect(renderNode(node({ type: 'Carousel', className: 'my-12' }))).toMatch(
+      /<div data-sw-block="Carousel" class="my-12"/,
+    );
+  });
+
+  it('Slide with a media-asset image renders an optimized <picture> (shared imageTag)', () => {
+    const asset = {
+      id: 'a1',
+      filename: 'x.png',
+      format: 'image/png',
+      bytes: 1,
+      width: 800,
+      height: 600,
+      variants: [{ format: 'webp' as const, width: 400, height: 300, path: 'a1.webp' }],
+      fallback: 'a1.jpg',
+      url: '/media/p/a1/a1.jpg',
+    };
+    const html = renderNode(
+      node({ type: 'Slide', props: { image: '/media/p/a1/a1.jpg', alt: 'X', caption: 'Cap' } }),
+      { media: [asset], mediaUrl: (a, f) => `media/${a.id}/${f}` },
+    );
+    expect(html).toContain('<picture');
+    expect(html).toContain('type="image/webp"');
+    expect(html).toContain('<figcaption>Cap</figcaption>');
+  });
+});
+
 describe('renderNode — brand/social icons (simple-icons)', () => {
   it('renders a brand icon as a filled-path SVG, labelled by the brand title', () => {
     const html = renderNode(node({ type: 'Icon', props: { name: 'brand:facebook' } }));
@@ -502,6 +583,18 @@ describe('renderPage / renderDocument', () => {
     const doc = renderDocument(page, { brand, stylesheets: ['a"><script>x'] });
     expect(doc).not.toContain('<script>x');
     expect(doc).toContain('&quot;');
+  });
+
+  it('links deferred scripts at the end of <body>, escaping the src', () => {
+    const doc = renderDocument(page, { brand, scripts: ['components.js'] });
+    expect(doc).toContain('<script defer src="components.js"></script>');
+    expect(doc.indexOf('<script defer')).toBeGreaterThan(doc.indexOf('<body>'));
+    expect(doc.indexOf('<script defer')).toBeLessThan(doc.indexOf('</body>'));
+    // none by default; href escaped
+    expect(renderDocument(page, { brand })).not.toContain('<script defer');
+    const evil = renderDocument(page, { brand, scripts: ['x"></script><script>alert(1)'] });
+    expect(evil).not.toContain('<script>alert(1)');
+    expect(evil).toContain('&quot;');
   });
 
   it('inlines inlineStyles as <style> blocks last in <head>, after critical CSS', () => {

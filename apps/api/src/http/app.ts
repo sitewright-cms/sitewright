@@ -504,10 +504,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const classNames = collectClassNames(page.root);
       const componentCss = componentAssets(usedComponentTypes(page.root)).css;
       const inlineStyles: string[] = [];
+      // Component CSS first, then Tailwind utilities last (so utilities win at
+      // equal specificity) — mirrors the publish order (inline component CSS,
+      // then the linked utility sheet).
+      if (componentCss) inlineStyles.push(componentCss);
       if (classNames.length > 0) {
         inlineStyles.push(await compileUtilityCss([classNames.join(' ')], brandToTailwindTheme(brand)));
       }
-      if (componentCss) inlineStyles.push(componentCss);
       const html = renderDocument(page, {
         brand,
         datasets: Object.fromEntries(byDataset),

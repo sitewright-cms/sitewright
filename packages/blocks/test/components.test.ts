@@ -29,6 +29,8 @@ describe('component registry', () => {
     expect(used.css).toContain('scroll-snap-type');
     expect(used.js).toContain('data-sw-component="carousel"');
     expect(used.js).toContain('data-sw-enhanced'); // progressive enhancement marker
+    expect(used.js).toContain('removeAttribute'); // un-hides the dots for screen readers
+    expect(used.js).toContain('relatedTarget'); // focus pause doesn't oscillate within the carousel
 
     const none = componentAssets([]);
     expect(none.css).toBe('');

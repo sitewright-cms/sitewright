@@ -101,6 +101,27 @@ describe('renderNode — Carousel / Slide (interactive component)', () => {
       /<div data-sw-block="Carousel" class="my-12"/,
     );
   });
+
+  it('Slide with a media-asset image renders an optimized <picture> (shared imageTag)', () => {
+    const asset = {
+      id: 'a1',
+      filename: 'x.png',
+      format: 'image/png',
+      bytes: 1,
+      width: 800,
+      height: 600,
+      variants: [{ format: 'webp' as const, width: 400, height: 300, path: 'a1.webp' }],
+      fallback: 'a1.jpg',
+      url: '/media/p/a1/a1.jpg',
+    };
+    const html = renderNode(
+      node({ type: 'Slide', props: { image: '/media/p/a1/a1.jpg', alt: 'X', caption: 'Cap' } }),
+      { media: [asset], mediaUrl: (a, f) => `media/${a.id}/${f}` },
+    );
+    expect(html).toContain('<picture');
+    expect(html).toContain('type="image/webp"');
+    expect(html).toContain('<figcaption>Cap</figcaption>');
+  });
 });
 
 describe('renderNode — brand/social icons (simple-icons)', () => {

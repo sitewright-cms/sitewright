@@ -16,6 +16,7 @@ import {
   type Page,
 } from '@sitewright/schema';
 import { renderDocument } from '@sitewright/blocks';
+import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
 import { optimizeImage } from '@sitewright/image-pipeline';
 import { buildNav, type ProjectBundle } from '@sitewright/core';
 import type { Database } from '../db/client.js';
@@ -495,7 +496,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         footer: buildNav(savedPages, 'footer'),
         mobile: buildNav(savedPages, 'mobile'),
       };
-      const html = renderDocument(page, {
+      let html = renderDocument(page, {
         brand,
         datasets: Object.fromEntries(byDataset),
         includeDrafts: true,
@@ -503,6 +504,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         nav,
         mediaUrl: (asset, file) => `/media/${project.id}/${asset.id}/${file}`,
       });
+      // Preview is a single, self-contained document (sandboxed iframe), so the
+      // compiled utility CSS is inlined rather than linked. Compile only when the
+      // page actually uses utility classes, and place it last in <head> so the
+      // utilities win by source order (parity with the linked sheet at publish).
+      if (html.includes(' class="')) {
+        const utilityCss = await compileUtilityCss([html], brandToTailwindTheme(brand));
+        html = html.replace('</head>', `<style>${utilityCss}</style>\n</head>`);
+      }
       return reply.send({ html });
     },
   );
@@ -740,11 +749,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       },
     );
 
-    // Public serving of the published static site (path-safe, html only).
+    // Public serving of the published static site (path-safe). HTML pages plus
+    // the allowlisted text assets emitted by the builder (the compiled utility
+    // sheet); binaries are served via /media.
     app.get<{ Params: { projectId: string; '*': string } }>(
       '/sites/:projectId/*',
       async (req, reply) => {
-        const html = await store.readHtml(req.params.projectId, req.params['*'] ?? '');
+        const path = req.params['*'] ?? '';
+        const asset = await store.readAsset(req.params.projectId, path);
+        if (asset !== null) return reply.type(asset.contentType).send(asset.body);
+        const html = await store.readHtml(req.params.projectId, path);
         if (html === null) return reply.code(404).type('text/html').send('<h1>404 — not published</h1>');
         return reply.type('text/html').send(html);
       },

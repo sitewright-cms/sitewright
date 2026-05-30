@@ -23,6 +23,7 @@
     "@sitewright/core": "workspace:*",
     "@sitewright/image-pipeline": "workspace:*",
     "@sitewright/schema": "workspace:*",
+    "@sitewright/tailwind": "workspace:*",
     "basic-ftp": "^5",
     "drizzle-orm": "^0.45.2",
     "fastify": "^5",

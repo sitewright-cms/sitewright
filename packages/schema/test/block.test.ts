@@ -47,4 +47,26 @@ describe('PageNodeSchema', () => {
   it('rejects a node without an id', () => {
     expect(() => PageNodeSchema.parse({ type: 'Card' })).toThrow();
   });
+
+  it('accepts Tailwind utility classes in className', () => {
+    const node = PageNodeSchema.parse({
+      id: 'a',
+      type: 'Section',
+      // arbitrary values, modifiers, opacity, and arbitrary props all occur in real usage
+      className: 'flex md:grid grid-cols-[1fr_2fr] bg-brand/80 text-[#0a0a0a] hover:underline py-8',
+    });
+    expect(node.className).toContain('md:grid');
+  });
+
+  it('rejects className containing attribute-breakout characters', () => {
+    for (const bad of ['"onload', "x'y", 'a<b', 'a>b', 'a{b}', 'a;b']) {
+      expect(() => PageNodeSchema.parse({ id: 'a', type: 'Section', className: bad })).toThrow();
+    }
+  });
+
+  it('rejects an over-long className', () => {
+    expect(() =>
+      PageNodeSchema.parse({ id: 'a', type: 'Section', className: 'x'.repeat(1001) }),
+    ).toThrow();
+  });
 });

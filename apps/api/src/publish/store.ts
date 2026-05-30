@@ -1,8 +1,14 @@
 import { readFile, rm } from 'node:fs/promises';
-import { join, resolve, sep } from 'node:path';
+import { extname, join, resolve, sep } from 'node:path';
 import type { ReleaseManifest } from './build.js';
 
 const SEGMENT = /^[A-Za-z0-9_-]+$/;
+
+// Non-HTML static assets the builder emits alongside the pages and that the
+// public preview may serve (text only; binaries go through /media). The compiled
+// Tailwind utility sheet is the sole entry today. release.json (.json) and media
+// binaries are deliberately NOT here, so they remain unreachable via this route.
+const ASSET_CONTENT_TYPES = new Map<string, string>([['.css', 'text/css; charset=utf-8']]);
 
 /**
  * Locates and serves published static sites under `<root>/<projectId>/`. All
@@ -57,6 +63,30 @@ export class PublishStore {
     try {
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- validated + confined above
       return await readFile(this.resolveHtml(projectId, requestPath), 'utf8');
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Reads a published non-HTML text asset (e.g. the compiled `styles.css`),
+   * returning its body + content type, or null if the path is not an allowlisted
+   * asset, is absent, or is out of bounds. The path is confined to the site dir.
+   */
+  async readAsset(
+    projectId: string,
+    requestPath: string,
+  ): Promise<{ body: string; contentType: string } | null> {
+    const contentType = ASSET_CONTENT_TYPES.get(extname(requestPath).toLowerCase());
+    if (!contentType) return null;
+    const dir = resolve(this.dirFor(projectId));
+    const rel = requestPath.replace(/^\/+/, '').replace(/\/+$/, '');
+    if (rel.split('/').some((seg) => seg === '.' || seg === '..')) return null;
+    const full = resolve(dir, rel);
+    if (full !== dir && !full.startsWith(dir + sep)) return null;
+    try {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- extension-allowlisted + confined above
+      return { body: await readFile(full, 'utf8'), contentType };
     } catch {
       return null;
     }

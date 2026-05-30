@@ -8,7 +8,7 @@ const PNG_1X1 = Buffer.from(
   'base64',
 );
 
-test('upload an image, pick it into an Image block, and see it in the preview', async ({ page }) => {
+test('upload an image, pick it into an Image block, and see it in the preview', async ({ page, baseURL }) => {
   await page.goto('/');
 
   await page.getByRole('button', { name: /Register/ }).click();
@@ -41,7 +41,27 @@ test('upload an image, pick it into an Image block, and see it in the preview', 
   await page.getByRole('button', { name: '+ Image', exact: true }).click();
   await page.getByRole('button', { name: 'Use hero.png' }).click();
 
-  // The preview renders the picked image from the media URL.
+  // The preview renders the picked image (as an optimized <picture>).
   const preview = page.frameLocator('iframe[title="Live preview"]');
-  await expect(preview.locator('img[src^="/media/"]')).toBeVisible();
+  await expect(preview.locator('picture img[src^="/media/"]')).toBeVisible();
+
+  // Save + publish, then confirm the EXPORTED page is self-contained: an
+  // optimized <picture> referencing bundled, page-relative media (no absolute
+  // /media/ URL that would 404 on an external webspace).
+  await page.getByRole('button', { name: 'Save page' }).click();
+  await expect(page.getByRole('button', { name: /Home Page/ })).toBeVisible();
+  await page.getByRole('button', { name: 'Publish' }).click();
+  const viewLink = page.getByRole('link', { name: 'View published site' });
+  await expect(viewLink).toBeVisible();
+  const href = await viewLink.getAttribute('href');
+  expect(href).toBeTruthy();
+
+  const live = await page.context().newPage();
+  const res = await live.goto(`${baseURL}${href}`);
+  expect(res?.status()).toBe(200);
+  const html = await live.content();
+  expect(html).toContain('<picture');
+  expect(html).toMatch(/srcset="media\/[\w-]+\/[\w-]+\.avif/);
+  expect(html).not.toContain('/media/'); // no absolute, API-only URLs in the export
+  await live.close();
 });

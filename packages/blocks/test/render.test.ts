@@ -118,6 +118,56 @@ describe('renderNode — per block', () => {
     expect(html).toContain('data-sw-empty');
   });
 
+  it('Image renders an optimized <picture> for a known media asset', () => {
+    const asset = {
+      id: 'a1',
+      filename: 'hero.png',
+      format: 'image/png',
+      bytes: 100,
+      width: 800,
+      height: 600,
+      variants: [
+        { format: 'avif' as const, width: 400, height: 300, path: 'a1-400.avif' },
+        { format: 'webp' as const, width: 400, height: 300, path: 'a1-400.webp' },
+      ],
+      fallback: 'a1-400.jpg',
+      url: '/media/p/a1/a1-400.jpg',
+    };
+    const html = renderNode(
+      node({ type: 'Image', props: { src: '/media/p/a1/a1-400.jpg', alt: 'Hero' } }),
+      { media: [asset], mediaUrl: (a, file) => `media/${a.id}/${file}` },
+    );
+    expect(html).toContain('<picture');
+    expect(html).toContain('type="image/avif"');
+    expect(html).toContain('media/a1/a1-400.avif 400w');
+    expect(html).toContain('src="media/a1/a1-400.jpg"');
+    expect(html).toContain('width="800"');
+    expect(html).toContain('Hero');
+  });
+
+  it('escapes the alt attribute in the <picture> fallback img', () => {
+    const asset = {
+      id: 'a1', filename: 'h.png', format: 'image/png', bytes: 1, width: 10, height: 10,
+      variants: [{ format: 'webp' as const, width: 10, height: 10, path: 'a1-10.webp' }],
+      fallback: 'a1-10.jpg', url: '/media/p/a1/a1-10.jpg',
+    };
+    const html = renderNode(
+      node({ type: 'Image', props: { src: '/media/p/a1/a1-10.jpg', alt: '"><script>x' } }),
+      { media: [asset], mediaUrl: (a, file) => `media/${a.id}/${file}` },
+    );
+    expect(html).not.toContain('<script>x');
+    expect(html).toContain('alt="&quot;&gt;&lt;script&gt;x"');
+  });
+
+  it('Image falls back to plain <img> when the asset is unknown', () => {
+    const html = renderNode(
+      node({ type: 'Image', props: { src: '/external/x.jpg', alt: 'X' } }),
+      { media: [], mediaUrl: (a, file) => `media/${a.id}/${file}` },
+    );
+    expect(html).toContain('<img data-sw-block="Image"');
+    expect(html).not.toContain('<picture');
+  });
+
   it('Link sanitizes its href', () => {
     const html = renderNode(node({ type: 'Link', props: { text: 'Home', href: '/home' } }));
     expect(html).toContain('data-sw-block="Link"');

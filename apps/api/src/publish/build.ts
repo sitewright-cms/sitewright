@@ -2,6 +2,7 @@ import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
 import { allRoutes, datasetEntries, type ProjectBundle } from '@sitewright/core';
 import { renderDocument } from '@sitewright/blocks';
+import type { MediaAsset } from '@sitewright/schema';
 
 /** A client-correctable publish failure (bad route graph) → maps to HTTP 409. */
 export class PublishError extends Error {}
@@ -36,6 +37,46 @@ export interface BuildSiteOptions {
   bundle: ProjectBundle;
   /** ISO timestamp for the release (injected for deterministic tests). */
   publishedAt: string;
+  /** Project media metadata (enables optimized, bundled `<picture>` output). */
+  media?: readonly MediaAsset[];
+  /** Reads a media binary (assetId, file) — used to copy assets into the artifact. */
+  readMedia?: (assetId: string, file: string) => Promise<Buffer>;
+}
+
+/** Number of path levels a route's index.html sits below the site root. */
+function slugDepth(slug: string | undefined): number {
+  return slug ? slug.split('/').length : 0;
+}
+
+/** Copies every media asset's files into `<base>/media/<assetId>/` (path-safe). */
+async function copyMedia(
+  base: string,
+  media: readonly MediaAsset[],
+  readMedia: (assetId: string, file: string) => Promise<Buffer>,
+): Promise<void> {
+  for (const asset of media) {
+    const files = [asset.fallback, ...asset.variants.map((v) => v.path)];
+    const dir = join(base, 'media', asset.id);
+    // asset.id is IdSchema-validated; file names are FileNameSchema-validated.
+    /* v8 ignore next -- defensive: validated id can't escape */
+    if (!resolve(dir).startsWith(base + sep)) continue;
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to base/media
+    await mkdir(dir, { recursive: true });
+    for (const file of files) {
+      const target = resolve(dir, file);
+      /* v8 ignore next -- defensive: validated file name can't escape */
+      if (!target.startsWith(resolve(dir) + sep)) continue;
+      try {
+        const data = await readMedia(asset.id, file);
+        // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to base/media/<id>
+        await writeFile(target, data);
+      } catch (err) {
+        // A missing variant is tolerable; any other I/O error (disk full,
+        // permissions) must fail the build so a partial artifact isn't swapped in.
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+      }
+    }
+  }
 }
 
 /**
@@ -44,19 +85,22 @@ export interface BuildSiteOptions {
  * the pure `@sitewright/blocks` renderer. Drafts are excluded (published build).
  * Pure Node — no Astro toolchain — so it runs inside the single API container.
  *
- * NOTE (v1 fidelity): the published output uses the framework-free renderer
- * (semantic HTML + brand-variable CSS), NOT the Astro pipeline (Tailwind,
- * `<picture>`/srcset, etc.), so it intentionally differs from the Astro dev
- * preview. NOTE (serving): pages are served under `/sites/<projectId>/`, so
- * root-relative links/assets authored as `/foo` resolve at the host root, not
- * under the prefix — the build artifact is the canonical deploy target (deploy
- * it at a real root via a publish adapter). Both are tracked for a later phase.
+ * The artifact is SELF-CONTAINED: uploaded media is copied into `media/` and
+ * referenced by page-relative paths, and Image blocks render optimized
+ * `<picture>` (AVIF/WebP + fallback), so the export works unchanged on any
+ * external webspace (the product exports; it does not host).
+ *
+ * NOTE (fidelity): styling uses the framework-free renderer's brand-variable CSS
+ * rather than a full Tailwind build — close, not byte-identical to a hypothetical
+ * Astro build. NOTE (in-container preview): `/sites/<projectId>/` is a build
+ * preview only; the downloadable/deployable artifact is the product.
  *
  * The site is built into a sibling temp dir and swapped in via `rename`, so a
  * mid-build failure leaves the previously-published site intact.
  */
 export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest> {
   const { outDir, bundle, publishedAt } = opts;
+  const media = opts.media ?? [];
   const base = resolve(outDir);
   const tmp = `${base}.tmp`;
 
@@ -76,6 +120,11 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     const brand = bundle.project.brand;
     let bytes = 0;
 
+    // Bundle media into the artifact so the export is self-contained + portable.
+    if (media.length > 0 && opts.readMedia) {
+      await copyMedia(tmp, media, opts.readMedia);
+    }
+
     for (const route of routes) {
       const full = resolve(tmp, relPathForSlug(route.slug));
       if (full !== tmp && !full.startsWith(tmp + sep)) {
@@ -84,7 +133,16 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to tmp (checked above)
       await mkdir(dirname(full), { recursive: true });
       const page = { ...route.page, root: route.root };
-      const html = renderDocument(page, { brand, datasets, entry: route.entry, includeDrafts: false });
+      // Media URLs are relative to this page's depth, so the bundle works at any root.
+      const prefix = '../'.repeat(slugDepth(route.slug));
+      const html = renderDocument(page, {
+        brand,
+        datasets,
+        entry: route.entry,
+        includeDrafts: false,
+        media,
+        mediaUrl: (asset, file) => `${prefix}media/${asset.id}/${file}`,
+      });
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to tmp (checked above)
       await writeFile(full, html, 'utf8');
       bytes += Buffer.byteLength(html);

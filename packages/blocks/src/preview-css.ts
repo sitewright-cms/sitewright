@@ -35,7 +35,8 @@ h4[data-sw-block="Heading"],h5[data-sw-block="Heading"],h6[data-sw-block="Headin
 [data-sw-block="Card"]{display:flex;flex-direction:column;gap:.75rem;border-radius:var(--sw-radius-card,.75rem);background:var(--sw-color-surface,#fff);padding:1.5rem;box-shadow:0 1px 2px rgba(0,0,0,.05);outline:1px solid rgba(0,0,0,.05)}
 [data-sw-block="Button"]{display:inline-block;border-radius:var(--sw-radius-card,.75rem);background:var(--sw-color-primary,#0ea5e9);color:#fff;padding:.625rem 1.25rem;font-weight:600;text-decoration:none}
 [data-sw-block="Link"]{color:var(--sw-color-primary,#0ea5e9);text-decoration:none}
-img[data-sw-block="Image"]{max-width:100%;height:auto;display:block}
+img[data-sw-block="Image"],[data-sw-block="Image"] img{max-width:100%;height:auto;display:block}
+picture[data-sw-block="Image"]{display:block}
 [data-sw-block="Image"][data-sw-empty]{min-height:8rem;background:#f1f5f9;border:1px dashed #cbd5e1;border-radius:.5rem}
 [data-sw-block="Header"]{width:100%;border-bottom:1px solid #f1f5f9;background:var(--sw-color-surface,#fff)}
 [data-sw-block="Header"]>[data-sw-part="container"]{max-width:64rem;margin:0 auto;display:flex;align-items:center;justify-content:space-between;padding:1rem 1.5rem}

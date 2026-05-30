@@ -85,6 +85,114 @@ describe('buildSite', () => {
     await expect(readFile(join(outDir, 'blog', 'second', 'index.html'), 'utf8')).rejects.toBeTruthy();
   });
 
+  it('bundles media and renders an optimized, page-relative <picture>', async () => {
+    const asset = {
+      id: 'a1',
+      filename: 'hero.png',
+      format: 'image/png',
+      bytes: 10,
+      width: 800,
+      height: 600,
+      variants: [
+        { format: 'avif' as const, width: 400, height: 300, path: 'a1-400.avif' },
+        { format: 'webp' as const, width: 400, height: 300, path: 'a1-400.webp' },
+      ],
+      fallback: 'a1-400.jpg',
+      url: '/media/p/a1/a1-400.jpg',
+    };
+    const reads: string[] = [];
+    await buildSite({
+      publishedAt: '2026-05-30T00:00:00.000Z',
+      outDir,
+      media: [asset],
+      readMedia: async (assetId, file) => {
+        reads.push(`${assetId}/${file}`);
+        return Buffer.from(`bytes:${file}`);
+      },
+      bundle: bundle({
+        pages: [
+          { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Image', props: { src: '/media/p/a1/a1-400.jpg', alt: 'Hero' } } },
+          { id: 'about', path: '/about', title: 'About', root: { id: 'r2', type: 'Image', props: { src: '/media/p/a1/a1-400.jpg', alt: 'Hero' } } },
+        ],
+      }),
+    });
+
+    // Binaries copied into the artifact.
+    expect(reads.sort()).toEqual(['a1/a1-400.avif', 'a1/a1-400.jpg', 'a1/a1-400.webp']);
+    expect((await readFile(join(outDir, 'media', 'a1', 'a1-400.jpg'), 'utf8'))).toContain('bytes:a1-400.jpg');
+
+    // Root page references media/… ; the /about page (one level deep) uses ../media/…
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).toContain('<picture');
+    expect(home).toContain('srcset="media/a1/a1-400.avif 400w"');
+    const about = await readFile(join(outDir, 'about', 'index.html'), 'utf8');
+    expect(about).toContain('../media/a1/a1-400.avif 400w');
+  });
+
+  it('tolerates a missing media variant without failing the build', async () => {
+    const asset = {
+      id: 'a2',
+      filename: 'x.png',
+      format: 'image/png',
+      bytes: 10,
+      width: 100,
+      height: 100,
+      variants: [{ format: 'webp' as const, width: 100, height: 100, path: 'a2-100.webp' }],
+      fallback: 'a2-100.jpg',
+      url: '/media/p/a2/a2-100.jpg',
+    };
+    const manifest = await buildSite({
+      publishedAt: '2026-05-30T00:00:00.000Z',
+      outDir,
+      media: [asset],
+      readMedia: async (_assetId, file) => {
+        if (file === 'a2-100.webp') throw Object.assign(new Error('missing'), { code: 'ENOENT' });
+        return Buffer.from('img');
+      },
+      bundle: bundle({
+        pages: [{ id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' } }],
+      }),
+    });
+    expect(manifest.routes).toBe(1);
+    // The present file was copied; the missing one was skipped.
+    await expect(readFile(join(outDir, 'media', 'a2', 'a2-100.jpg'), 'utf8')).resolves.toBe('img');
+    await expect(readFile(join(outDir, 'media', 'a2', 'a2-100.webp'), 'utf8')).rejects.toBeTruthy();
+  });
+
+  it('fails the build on a non-missing media read error (no partial artifact)', async () => {
+    const asset = {
+      id: 'a4', filename: 'x.png', format: 'image/png', bytes: 1, width: 10, height: 10,
+      variants: [], fallback: 'a4-10.jpg', url: '/media/p/a4/a4-10.jpg',
+    };
+    await expect(
+      buildSite({
+        publishedAt: '2026-05-30T00:00:00.000Z',
+        outDir,
+        media: [asset],
+        readMedia: async () => {
+          throw Object.assign(new Error('disk full'), { code: 'ENOSPC' });
+        },
+        bundle: bundle({ pages: [{ id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' } }] }),
+      }),
+    ).rejects.toThrow('disk full');
+    // The previous (absent) build dir was not replaced with a partial one.
+    await expect(readFile(join(outDir, 'index.html'), 'utf8')).rejects.toBeTruthy();
+  });
+
+  it('ignores media when no reader is provided (no copy)', async () => {
+    const asset = {
+      id: 'a3', filename: 'x.png', format: 'image/png', bytes: 1, width: 10, height: 10,
+      variants: [], fallback: 'a3-10.jpg', url: '/media/p/a3/a3-10.jpg',
+    };
+    await buildSite({
+      publishedAt: '2026-05-30T00:00:00.000Z',
+      outDir,
+      media: [asset], // no readMedia
+      bundle: bundle({ pages: [{ id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' } }] }),
+    });
+    await expect(readFile(join(outDir, 'media', 'a3', 'a3-10.jpg'), 'utf8')).rejects.toBeTruthy();
+  });
+
   it('rebuilds cleanly, removing files from a previous build', async () => {
     const opts = {
       publishedAt: '2026-05-29T00:00:00.000Z',

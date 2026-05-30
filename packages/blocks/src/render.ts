@@ -3,7 +3,7 @@
 // stylesheet targets. ALL text and attributes are escaped, and URLs are passed
 // through an allowlist — the output is safe to drop into a sandboxed preview
 // iframe even when the page tree contains hostile content.
-import type { Brand, Entry, Page, PageNode } from '@sitewright/schema';
+import type { Brand, Entry, MediaAsset, Page, PageNode } from '@sitewright/schema';
 import { resolveBinding } from '@sitewright/core';
 import { escapeAttr, escapeHtml } from './escape.js';
 import { textProp, urlProp } from './props.js';
@@ -18,6 +18,42 @@ export interface RenderContext {
   entry?: Entry;
   /** Include `draft` entries (preview), otherwise only `published` (parity with publish). */
   includeDrafts?: boolean;
+  /** Project media (matched by `asset.url`) — enables optimized `<picture>` for Image blocks. */
+  media?: readonly MediaAsset[];
+  /**
+   * Resolves the emitted URL for a file of a media asset. Preview returns the
+   * API-served absolute URL; the publisher returns a path relative to the page
+   * so the exported artifact is self-contained and portable.
+   */
+  mediaUrl?: (asset: MediaAsset, file: string) => string;
+}
+
+const PICTURE_SIZES = '(min-width: 1280px) 1280px, 100vw';
+
+/** Builds an optimized `<picture>` for a known media asset (variants + fallback). */
+function renderPicture(
+  asset: MediaAsset,
+  alt: string,
+  loading: string,
+  mediaUrl: (asset: MediaAsset, file: string) => string,
+): string {
+  const srcsetFor = (format: 'avif' | 'webp'): string =>
+    asset.variants
+      .filter((v) => v.format === format)
+      .slice()
+      .sort((a, b) => a.width - b.width)
+      .map((v) => `${escapeAttr(mediaUrl(asset, v.path))} ${v.width}w`)
+      .join(', ');
+  const avif = srcsetFor('avif');
+  const webp = srcsetFor('webp');
+  const fallback = escapeAttr(mediaUrl(asset, asset.fallback));
+  return (
+    `<picture data-sw-block="Image">` +
+    (avif ? `<source type="image/avif" srcset="${avif}" sizes="${PICTURE_SIZES}" />` : '') +
+    (webp ? `<source type="image/webp" srcset="${webp}" sizes="${PICTURE_SIZES}" />` : '') +
+    `<img src="${fallback}" alt="${escapeAttr(alt)}" width="${asset.width}" height="${asset.height}" loading="${loading}" />` +
+    `</picture>`
+  );
 }
 
 const TONES = new Set(['surface', 'primary', 'muted']);
@@ -111,6 +147,9 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
       const alt = textProp(props, selfEntry, 'alt');
       if (!src) return `<div data-sw-block="Image" data-sw-empty="1"></div>`;
       const loading = props.priority === true ? 'eager' : 'lazy';
+      // A known uploaded asset (matched by url) → optimized <picture>; else plain <img>.
+      const asset = ctx.media?.find((m) => m.url === src);
+      if (asset && ctx.mediaUrl) return renderPicture(asset, alt, loading, ctx.mediaUrl);
       return `<img data-sw-block="Image" src="${escapeAttr(src)}" alt="${escapeAttr(alt)}" loading="${loading}" />`;
     }
     case 'Button': {

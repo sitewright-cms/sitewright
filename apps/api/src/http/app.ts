@@ -18,7 +18,8 @@ import { optimizeImage } from '@sitewright/image-pipeline';
 import type { ProjectBundle } from '@sitewright/core';
 import type { Database } from '../db/client.js';
 import { MediaStorage } from '../media/storage.js';
-import { buildSite, PublishError } from '../publish/build.js';
+import { PublishError } from '../publish/build.js';
+import { InProcessBuildRunner, type BuildRunner } from '../publish/runner.js';
 import { PublishStore } from '../publish/store.js';
 import { archiveSite, deploySite, DeployConfigSchema } from '../publish/adapters.js';
 import { isNewer } from '../version/checker.js';
@@ -153,6 +154,8 @@ export interface AppOptions {
   latestVersion?: () => Promise<string | null>;
   /** URL shown in the update banner linking to the latest release. */
   releaseUrl?: string;
+  /** Build executor (default: in-process). Swap for an isolated worker in SaaS. */
+  buildRunner?: BuildRunner;
 }
 
 export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
@@ -162,6 +165,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const contentRepo = new ContentRepository(db);
   const mediaStorage = opts.mediaRoot ? new MediaStorage(opts.mediaRoot) : undefined;
   const publishStore = opts.publishRoot ? new PublishStore(opts.publishRoot) : undefined;
+  const buildRunner = opts.buildRunner ?? new InProcessBuildRunner();
   const app = Fastify({
     // Redact deploy credentials defensively (Fastify omits bodies by default, but
     // guard against any future body logging).
@@ -436,10 +440,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         byDataset.set(entry.dataset, [...(byDataset.get(entry.dataset) ?? []), entry]);
       }
 
+      // Media powers optimized <picture> in the preview too, via the API-served URLs.
+      const media = mediaStorage ? ((await contentRepo.list(ctx, 'media')) as MediaAsset[]) : [];
       const html = renderDocument(page, {
         brand,
         datasets: Object.fromEntries(byDataset),
         includeDrafts: true,
+        media,
+        mediaUrl: (asset, file) => `/media/${project.id}/${asset.id}/${file}`,
       });
       return reply.send({ html });
     },
@@ -589,10 +597,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             datasets: exp.datasets,
             entries: exp.entries,
           };
-          const release = await buildSite({
+          const media = mediaStorage ? ((await contentRepo.list(ctx, 'media')) as MediaAsset[]) : [];
+          const release = await buildRunner.run({
             outDir: store.dirFor(project.id),
             bundle,
             publishedAt: new Date().toISOString(),
+            media,
+            readMedia: mediaStorage
+              ? (assetId, file) => mediaStorage.read(project.id, assetId, file)
+              : undefined,
           });
           return reply.send({ release, url: `/sites/${project.id}/` });
         } catch (err) {

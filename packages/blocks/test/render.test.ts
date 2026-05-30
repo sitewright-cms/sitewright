@@ -321,4 +321,14 @@ describe('renderPage / renderDocument', () => {
     const doc = renderDocument(page, { brand, seo: { title: '' } });
     expect(doc).toContain('<title>Home</title>');
   });
+
+  it('inlines project-wide critical CSS in <head> after the brand styles', () => {
+    const doc = renderDocument(page, { brand, criticalCss: '.hero{color:red}' });
+    expect(doc).toContain('<style>.hero{color:red}</style>');
+    // brand-token style block still present and precedes the critical CSS
+    expect(doc.indexOf('--sw-color-primary')).toBeLessThan(doc.indexOf('.hero{color:red}'));
+    expect(doc.indexOf('.hero{color:red}')).toBeLessThan(doc.indexOf('</head>'));
+    // omitted when not provided
+    expect(renderDocument(page, { brand })).not.toContain('<style>.hero');
+  });
 });

@@ -117,6 +117,8 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // Corporate identity is project-level (same for every page): compute once.
     const company = bundle.project.company;
     const baseOrg = companyToOrganization(company, bundle.project.name);
+    // Project-wide website settings (critical CSS + custom head/footer) — same for every page.
+    const website = bundle.project.website;
     let bytes = 0;
 
     // Bundle media into the artifact so the export is self-contained + portable.
@@ -163,6 +165,9 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           favicon: rel(company?.icon ?? brand.logo?.favicon),
         },
         organization,
+        criticalCss: website?.criticalCss,
+        customHead: website?.customHead,
+        customFooter: website?.customFooter,
       });
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to tmp (checked above)
       await writeFile(full, html, 'utf8');

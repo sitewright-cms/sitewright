@@ -212,6 +212,12 @@ export interface RenderDocumentOptions extends RenderContext {
    */
   customHead?: string;
   customFooter?: string;
+  /**
+   * Project-wide critical CSS, inlined in `<head>` after the brand styles
+   * (contentBase's `critical_css`). Same raw-trust model as customHead/customFooter
+   * (@security above): tenant's own CSS, owner/admin-set, sandboxed/exported only.
+   */
+  criticalCss?: string;
 }
 
 /**
@@ -221,7 +227,8 @@ export interface RenderDocumentOptions extends RenderContext {
  * tenant's own custom head/footer. Safe to drop into a sandboxed preview iframe.
  */
 export function renderDocument(page: Page, opts: RenderDocumentOptions): string {
-  const { brand, lang = 'en', seo, organization, customHead, customFooter, ...ctx } = opts;
+  const { brand, lang = 'en', seo, organization, customHead, customFooter, criticalCss, ...ctx } =
+    opts;
   const body = renderPage(page, ctx);
   const css = `${previewStyles()}\n${brandToCss(brand)}`;
   // `||` not `??`: an empty-string SEO title must fall back to the page title.
@@ -239,6 +246,7 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     (jsonLd ? `${jsonLd}\n` : '') +
     (customHead ? `${customHead}\n` : '') +
     `<style>${css}</style>\n` +
+    (criticalCss ? `<style>${criticalCss}</style>\n` : '') +
     `</head>\n` +
     `<body>${body}${customFooter ?? ''}</body>\n` +
     `</html>`

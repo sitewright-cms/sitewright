@@ -8,6 +8,7 @@ import { resolveBinding } from '@sitewright/core';
 import { escapeAttr, escapeHtml } from './escape.js';
 import { textProp, urlProp } from './props.js';
 import { resolveInternalUrl } from './url.js';
+import { iconBody } from './icons.js';
 import { metaTags, schemaOrgJsonLd, type SeoMeta, type SchemaOrgInfo } from './head.js';
 import { brandToCss } from './brand-css.js';
 import { previewStyles } from './preview-css.js';
@@ -200,6 +201,21 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
         )
         .join('');
       return `<nav data-sw-block="Nav" data-slot="${escapeAttr(slot)}">${links}${inner}</nav>`;
+    }
+    case 'Icon': {
+      // Inline a built-in Lucide SVG (only used icons ship — no font download).
+      // The icon body is trusted static markup; `name` only selects it (unknown
+      // → empty placeholder). Size is clamped; an accessible label is escaped.
+      const body = iconBody(textProp(props, selfEntry, 'name'));
+      if (!body) return `<span data-sw-block="Icon" data-sw-empty="1"></span>`;
+      const size = clamp(Number(props.size) || 24, 8, 256);
+      const label = textProp(props, selfEntry, 'label');
+      const a11y = label ? ` role="img" aria-label="${escapeAttr(label)}"` : ' aria-hidden="true"';
+      return (
+        `<svg data-sw-block="Icon" xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" ` +
+        `viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ` +
+        `stroke-linecap="round" stroke-linejoin="round"${a11y}>${body}</svg>`
+      );
     }
     case 'Outlet':
       // Template content-slot marker; normally consumed by resolveTemplate before

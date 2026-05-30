@@ -55,6 +55,21 @@ describe('renderNode — per block', () => {
     expect(btn).toContain('Buy');
   });
 
+  it('Icon inlines a built-in SVG (sized + accessible); placeholder for unknown', () => {
+    const html = renderNode(node({ type: 'Icon', props: { name: 'menu', size: 32 } }));
+    expect(html).toContain('data-sw-block="Icon"');
+    expect(html).toContain('viewBox="0 0 24 24"');
+    expect(html).toContain('width="32"');
+    expect(html).toContain('aria-hidden="true"'); // decorative when no label
+    expect(html).toContain('<line'); // the menu icon body
+    const labeled = renderNode(node({ type: 'Icon', props: { name: 'search', label: 'Search "x"' } }));
+    expect(labeled).toContain('role="img"');
+    expect(labeled).toContain('aria-label="Search &quot;x&quot;"'); // escaped
+    // unknown name → empty placeholder, clamped size
+    expect(renderNode(node({ type: 'Icon', props: { name: 'no-such' } }))).toContain('data-sw-empty="1"');
+    expect(renderNode(node({ type: 'Icon', props: { name: 'menu', size: 9999 } }))).toContain('width="256"');
+  });
+
   it('Grid carries the clamped column count as a data attribute', () => {
     expect(renderNode(node({ type: 'Grid', props: { columns: 4 } }))).toContain('data-columns="4"');
     expect(renderNode(node({ type: 'Grid', props: { columns: 99 } }))).toContain('data-columns="6"');

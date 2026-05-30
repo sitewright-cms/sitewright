@@ -135,6 +135,9 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       // All internal links + asset paths are relative to this page's depth, so the
       // exported bundle is portable (webspace root, a subfolder, or /sites/<slug>/).
       const siteRoot = relativeRoot(route.slug);
+      // Rebase a root-relative asset path so the export is portable at any base path.
+      const rel = (src: string | undefined): string | undefined =>
+        src ? resolveInternalUrl(src, siteRoot) : undefined;
       const html = renderDocument(page, {
         brand,
         datasets,
@@ -147,17 +150,12 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // `||` not `??`: an empty SEO title must fall back to the page title.
           title: page.seo?.title || page.title,
           description: page.seo?.description,
-          // Rebase root-relative asset paths so the export is portable at any base path.
           // og:image falls back to the company image; favicon to the company icon.
-          ogImage: ((src) => (src ? resolveInternalUrl(src, siteRoot) : undefined))(
-            page.seo?.ogImage ?? company?.image,
-          ),
+          ogImage: rel(page.seo?.ogImage ?? company?.image),
           url: page.seo?.canonical,
           noindex: page.seo?.noindex,
           themeColor: brand.colors.primary,
-          favicon: ((src) => (src ? resolveInternalUrl(src, siteRoot) : undefined))(
-            company?.icon ?? brand.logo?.favicon,
-          ),
+          favicon: rel(company?.icon ?? brand.logo?.favicon),
         },
         organization,
       });

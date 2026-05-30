@@ -1,9 +1,20 @@
 import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
-import { allRoutes, buildNav, datasetEntries, relativeRoot, type ProjectBundle } from '@sitewright/core';
+import {
+  allRoutes,
+  buildNav,
+  collectClassNames,
+  datasetEntries,
+  relativeRoot,
+  type ProjectBundle,
+} from '@sitewright/core';
 import { renderDocument, resolveInternalUrl } from '@sitewright/blocks';
+import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
 import { companyToOrganization } from './company-seo.js';
 import type { MediaAsset } from '@sitewright/schema';
+
+/** The compiled utility stylesheet, written at the site root and linked per page. */
+const UTILITY_STYLESHEET = 'styles.css';
 
 /** A client-correctable publish failure (bad route graph) → maps to HTTP 409. */
 export class PublishError extends Error {}
@@ -125,6 +136,12 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       footer: buildNav(bundle.pages, 'footer'),
       mobile: buildNav(bundle.pages, 'mobile'),
     };
+    // Compile a Tailwind utility sheet only when the site actually uses utility
+    // classes — sites that don't get exactly the previous output (no extra file,
+    // no extra request). Collect the class lists from the resolved trees (not the
+    // rendered HTML) so the scan is bounded + free of skeleton/custom-HTML noise.
+    const classNames = routes.flatMap((route) => collectClassNames(route.root));
+    const usesUtilities = classNames.length > 0;
     let bytes = 0;
 
     // Bundle media into the artifact so the export is self-contained + portable.
@@ -175,10 +192,22 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         criticalCss: website?.criticalCss,
         customHead: website?.customHead,
         customFooter: website?.customFooter,
+        // Link the root-level utility sheet, rebased to this page's depth so the
+        // export stays portable. Only when the site uses utility classes.
+        stylesheets: usesUtilities ? [`${siteRoot}${UTILITY_STYLESHEET}`] : undefined,
       });
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to tmp (checked above)
       await writeFile(full, html, 'utf8');
       bytes += Buffer.byteLength(html);
+    }
+
+    // One minimal stylesheet for the whole site (shared + cacheable across pages),
+    // containing only the utilities actually used, with brand tokens in the theme.
+    if (usesUtilities) {
+      const css = await compileUtilityCss([classNames.join(' ')], brandToTailwindTheme(brand));
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
+      await writeFile(join(tmp, UTILITY_STYLESHEET), css, 'utf8');
+      bytes += Buffer.byteLength(css);
     }
 
     const manifest: ReleaseManifest = { publishedAt, routes: routes.length, bytes };

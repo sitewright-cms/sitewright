@@ -1,6 +1,12 @@
 import { z } from 'zod';
 import { BindingSchema, type Binding } from './binding.js';
-import { ComponentTypeSchema, IdSchema, MAX_CHILDREN, safeRecord } from './primitives.js';
+import {
+  ClassNameSchema,
+  ComponentTypeSchema,
+  IdSchema,
+  MAX_CHILDREN,
+  safeRecord,
+} from './primitives.js';
 
 /**
  * A node in a page's block tree. Recursive: a block may contain child blocks.
@@ -11,6 +17,9 @@ import { ComponentTypeSchema, IdSchema, MAX_CHILDREN, safeRecord } from './primi
  *   build time.
  * - `binding`, when set, pulls dataset data into this node at build time.
  * - `locked` hides the node from the end-user/client editing role.
+ * - `className`, when set, is a Tailwind utility-class list emitted onto the
+ *   block's root element; the publish/preview pipeline compiles only the
+ *   classes actually used into a minimal stylesheet.
  *
  * Untrusted input MUST be passed through `assertWithinTreeDepth` (see
  * `primitives.ts`) before parsing, since Zod parses this tree recursively.
@@ -23,6 +32,7 @@ export interface PageNode {
   partialRef?: string;
   binding?: Binding;
   locked?: boolean;
+  className?: string;
 }
 
 // The explicit 3-arg annotation is required for a recursive `z.lazy` schema:
@@ -40,5 +50,6 @@ export const PageNodeSchema: z.ZodType<PageNode, z.ZodTypeDef, unknown> = z.lazy
     partialRef: IdSchema.optional(),
     binding: BindingSchema.optional(),
     locked: z.boolean().optional(),
+    className: ClassNameSchema.optional(),
   }),
 );

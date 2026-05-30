@@ -50,6 +50,7 @@ function renderPicture(
   alt: string,
   loading: string,
   mediaUrl: (asset: MediaAsset, file: string) => string,
+  cls = '',
 ): string {
   const srcsetFor = (format: 'avif' | 'webp'): string =>
     asset.variants
@@ -62,7 +63,7 @@ function renderPicture(
   const webp = srcsetFor('webp');
   const fallback = escapeAttr(mediaUrl(asset, asset.fallback));
   return (
-    `<picture data-sw-block="Image">` +
+    `<picture data-sw-block="Image"${cls}>` +
     (avif ? `<source type="image/avif" srcset="${avif}" sizes="${PICTURE_SIZES}" />` : '') +
     (webp ? `<source type="image/webp" srcset="${webp}" sizes="${PICTURE_SIZES}" />` : '') +
     `<img src="${fallback}" alt="${escapeAttr(alt)}" width="${asset.width}" height="${asset.height}" loading="${loading}" />` +
@@ -75,6 +76,15 @@ const TONES = new Set(['surface', 'primary', 'muted']);
 function clamp(value: number, min: number, max: number): number {
   const n = Number.isFinite(value) ? value : min;
   return Math.min(Math.max(n, min), max);
+}
+
+/**
+ * The author-supplied Tailwind utility classes for a block, as a ` class="…"`
+ * attribute fragment (or `''`). Schema-validated to a safe charset, and escaped
+ * here too as defense-in-depth so a raw/un-validated node can never break out.
+ */
+function classAttr(node: PageNode): string {
+  return node.className ? ` class="${escapeAttr(node.className)}"` : '';
 }
 
 /** Safe dataset lookup that avoids dynamic object indexing. */
@@ -119,26 +129,28 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
   const selfEntry = ownEntry(node, ctx);
   const inner = renderChildren(node, ctx, selfEntry);
   const root = ctx.root ?? '';
+  // Author-supplied utility classes for this block's root element (Tailwind layer).
+  const cls = classAttr(node);
 
   switch (node.type) {
     case 'Section': {
       const toneRaw = String(props.tone ?? 'surface');
       const tone = TONES.has(toneRaw) ? toneRaw : 'surface';
-      return `<section data-sw-block="Section" data-tone="${tone}"><div data-sw-part="container">${inner}</div></section>`;
+      return `<section data-sw-block="Section"${cls} data-tone="${tone}"><div data-sw-part="container">${inner}</div></section>`;
     }
     case 'Grid': {
       const columns = clamp(Number(props.columns) || 3, 1, 6);
-      return `<div data-sw-block="Grid" data-columns="${columns}">${inner}</div>`;
+      return `<div data-sw-block="Grid"${cls} data-columns="${columns}">${inner}</div>`;
     }
     case 'Card':
-      return `<div data-sw-block="Card">${inner}</div>`;
+      return `<div data-sw-block="Card"${cls}>${inner}</div>`;
     case 'Hero': {
       const title = textProp(props, selfEntry, 'title');
       const subtitle = textProp(props, selfEntry, 'subtitle');
       const ctaText = textProp(props, selfEntry, 'ctaText');
       const ctaHref = resolveInternalUrl(urlProp(props, selfEntry, 'ctaHref', '#'), root);
       return (
-        `<div data-sw-block="Hero">` +
+        `<div data-sw-block="Hero"${cls}>` +
         (title ? `<h1 data-sw-part="title">${escapeHtml(title)}</h1>` : '') +
         (subtitle ? `<p data-sw-part="subtitle">${escapeHtml(subtitle)}</p>` : '') +
         (ctaText
@@ -151,40 +163,40 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
     case 'Heading': {
       const level = clamp(Number(props.level) || 2, 1, 6);
       const text = escapeHtml(textProp(props, selfEntry, 'text'));
-      return `<h${level} data-sw-block="Heading">${text}</h${level}>`;
+      return `<h${level} data-sw-block="Heading"${cls}>${text}</h${level}>`;
     }
     case 'RichText': {
       const text = textProp(props, selfEntry, 'text');
-      return `<div data-sw-block="RichText">${text ? `<p>${escapeHtml(text)}</p>` : ''}${inner}</div>`;
+      return `<div data-sw-block="RichText"${cls}>${text ? `<p>${escapeHtml(text)}</p>` : ''}${inner}</div>`;
     }
     case 'Image': {
       const src = urlProp(props, selfEntry, 'src', '');
       const alt = textProp(props, selfEntry, 'alt');
-      if (!src) return `<div data-sw-block="Image" data-sw-empty="1"></div>`;
+      if (!src) return `<div data-sw-block="Image"${cls} data-sw-empty="1"></div>`;
       const loading = props.priority === true ? 'eager' : 'lazy';
       // A known uploaded asset (matched by url) → optimized <picture>; else plain <img>.
       const asset = ctx.media?.find((m) => m.url === src);
-      if (asset && ctx.mediaUrl) return renderPicture(asset, alt, loading, ctx.mediaUrl);
+      if (asset && ctx.mediaUrl) return renderPicture(asset, alt, loading, ctx.mediaUrl, cls);
       const imgSrc = resolveInternalUrl(src, root);
-      return `<img data-sw-block="Image" src="${escapeAttr(imgSrc)}" alt="${escapeAttr(alt)}" loading="${loading}" />`;
+      return `<img data-sw-block="Image"${cls} src="${escapeAttr(imgSrc)}" alt="${escapeAttr(alt)}" loading="${loading}" />`;
     }
     case 'Button': {
       const text = textProp(props, selfEntry, 'text');
       const href = resolveInternalUrl(urlProp(props, selfEntry, 'href', '#'), root);
-      return `<a data-sw-block="Button" href="${escapeAttr(href)}">${escapeHtml(text)}${inner}</a>`;
+      return `<a data-sw-block="Button"${cls} href="${escapeAttr(href)}">${escapeHtml(text)}${inner}</a>`;
     }
     case 'Link': {
       const text = textProp(props, selfEntry, 'text');
       const href = resolveInternalUrl(urlProp(props, selfEntry, 'href', '#'), root);
-      return `<a data-sw-block="Link" href="${escapeAttr(href)}">${escapeHtml(text)}${inner}</a>`;
+      return `<a data-sw-block="Link"${cls} href="${escapeAttr(href)}">${escapeHtml(text)}${inner}</a>`;
     }
     case 'Header': {
       const brand = textProp(props, selfEntry, 'brand');
-      return `<header data-sw-block="Header"><div data-sw-part="container"><span data-sw-part="brand">${escapeHtml(brand)}</span><nav data-sw-part="nav">${inner}</nav></div></header>`;
+      return `<header data-sw-block="Header"${cls}><div data-sw-part="container"><span data-sw-part="brand">${escapeHtml(brand)}</span><nav data-sw-part="nav">${inner}</nav></div></header>`;
     }
     case 'Footer': {
       const text = textProp(props, selfEntry, 'text');
-      return `<footer data-sw-block="Footer"><div data-sw-part="container">${escapeHtml(text)}${inner}</div></footer>`;
+      return `<footer data-sw-block="Footer"${cls}><div data-sw-part="container">${escapeHtml(text)}${inner}</div></footer>`;
     }
     case 'Nav': {
       // Auto-nav: render the page-tree-derived menu for this slot. Each item's
@@ -200,19 +212,19 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
             `<a data-sw-part="nav-link" href="${escapeAttr(resolveInternalUrl(item.path, root))}">${escapeHtml(item.label)}</a>`,
         )
         .join('');
-      return `<nav data-sw-block="Nav" data-slot="${escapeAttr(slot)}">${links}${inner}</nav>`;
+      return `<nav data-sw-block="Nav"${cls} data-slot="${escapeAttr(slot)}">${links}${inner}</nav>`;
     }
     case 'Icon': {
       // Inline a built-in Lucide SVG (only used icons ship — no font download).
       // The icon body is trusted static markup; `name` only selects it (unknown
       // → empty placeholder). Size is clamped; an accessible label is escaped.
       const body = iconBody(textProp(props, selfEntry, 'name'));
-      if (!body) return `<span data-sw-block="Icon" data-sw-empty="1"></span>`;
+      if (!body) return `<span data-sw-block="Icon"${cls} data-sw-empty="1"></span>`;
       const size = clamp(Number(props.size) || 24, 8, 256);
       const label = textProp(props, selfEntry, 'label');
       const a11y = label ? ` role="img" aria-label="${escapeAttr(label)}"` : ' aria-hidden="true"';
       return (
-        `<svg data-sw-block="Icon" xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" ` +
+        `<svg data-sw-block="Icon"${cls} xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" ` +
         `viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ` +
         `stroke-linecap="round" stroke-linejoin="round"${a11y}>${body}</svg>`
       );
@@ -222,7 +234,7 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
       // render. A stray Outlet (page without a template) renders nothing.
       return inner;
     default:
-      return `<div data-sw-block="Unknown" data-type="${escapeAttr(node.type)}">Unknown block: ${escapeHtml(node.type)}${inner}</div>`;
+      return `<div data-sw-block="Unknown"${cls} data-type="${escapeAttr(node.type)}">Unknown block: ${escapeHtml(node.type)}${inner}</div>`;
   }
 }
 
@@ -259,6 +271,20 @@ export interface RenderDocumentOptions extends RenderContext {
    * (@security above): tenant's own CSS, owner/admin-set, sandboxed/exported only.
    */
   criticalCss?: string;
+  /**
+   * External stylesheet hrefs linked at the END of `<head>` (after the inline
+   * brand + critical CSS) — the compiled Tailwind utility sheet. Placed last so
+   * equal-specificity utilities win by source order. Hrefs are relative to the
+   * page (use the page `root`) so the exported bundle stays portable.
+   */
+  stylesheets?: readonly string[];
+  /**
+   * CSS inlined as `<style>` blocks at the END of `<head>` (after the brand +
+   * critical CSS, alongside `stylesheets`) — the preview's self-contained
+   * equivalent of the linked utility sheet. Trusted, machine-generated CSS only
+   * (the compiled Tailwind output); never raw user input.
+   */
+  inlineStyles?: readonly string[];
 }
 
 /**
@@ -268,8 +294,18 @@ export interface RenderDocumentOptions extends RenderContext {
  * tenant's own custom head/footer. Safe to drop into a sandboxed preview iframe.
  */
 export function renderDocument(page: Page, opts: RenderDocumentOptions): string {
-  const { brand, lang = 'en', seo, organization, customHead, customFooter, criticalCss, ...ctx } =
-    opts;
+  const {
+    brand,
+    lang = 'en',
+    seo,
+    organization,
+    customHead,
+    customFooter,
+    criticalCss,
+    stylesheets,
+    inlineStyles,
+    ...ctx
+  } = opts;
   const body = renderPage(page, ctx);
   const css = `${previewStyles()}\n${brandToCss(brand)}`;
   // `||` not `??`: an empty-string SEO title must fall back to the page title.
@@ -288,6 +324,10 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     (customHead ? `${customHead}\n` : '') +
     `<style>${css}</style>\n` +
     (criticalCss ? `<style>${criticalCss}</style>\n` : '') +
+    (inlineStyles ?? []).map((style) => `<style>${style}</style>\n`).join('') +
+    (stylesheets ?? [])
+      .map((href) => `<link rel="stylesheet" href="${escapeAttr(href)}" />\n`)
+      .join('') +
     `</head>\n` +
     `<body>${body}${customFooter ?? ''}</body>\n` +
     `</html>`

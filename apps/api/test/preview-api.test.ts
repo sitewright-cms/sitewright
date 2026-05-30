@@ -156,4 +156,48 @@ describe('preview API', () => {
     expect(html).toContain('--sw-color-primary: #abcdef;');
     expect(html).toContain('Draft Post'); // drafts shown in preview
   });
+
+  it('inlines compiled Tailwind utilities (incl. brand) when the page uses classes', async () => {
+    const { t, orgId, projectId } = await setup('a@acme.test', 'Acme');
+    const base = `/orgs/${orgId}/projects/${projectId}`;
+    await app.inject({
+      method: 'PUT',
+      url: `${base}/content/settings/settings`,
+      cookies: { sw_session: t },
+      payload: { brand: { name: 'Acme', colors: { primary: '#abcdef' } }, settings: {} },
+    });
+    const res = await app.inject({
+      method: 'POST',
+      url: `${base}/preview`,
+      cookies: { sw_session: t },
+      payload: {
+        id: 'home',
+        path: '/',
+        title: 'Home',
+        root: { id: 'r', type: 'Section', className: 'flex bg-primary', children: [] },
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const html = (res.json() as { html: string }).html;
+    expect(html).toContain('class="flex bg-primary"');
+    // The Tailwind compile ran and was inlined (banner + the compiled utility),
+    // with the brand color mapped into the Tailwind theme.
+    expect(html).toContain('/*! tailwindcss');
+    expect(html).toContain('.bg-primary');
+    expect(html).toContain('--color-primary:#abcdef');
+    // No external stylesheet link in preview — it is fully self-contained.
+    expect(html).not.toContain('rel="stylesheet"');
+  });
+
+  it('does not inline a utility stylesheet when the page uses no classes', async () => {
+    const { t, orgId, projectId } = await setup('a@acme.test', 'Acme');
+    const res = await app.inject({
+      method: 'POST',
+      url: `/orgs/${orgId}/projects/${projectId}/preview`,
+      cookies: { sw_session: t },
+      payload: page,
+    });
+    const html = (res.json() as { html: string }).html;
+    expect(html).not.toContain('tailwindcss'); // the compiler never ran
+  });
 });

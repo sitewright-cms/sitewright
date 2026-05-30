@@ -6,6 +6,35 @@ function node(partial: Partial<PageNode> & { type: string }): PageNode {
   return { id: partial.id ?? 'n1', ...partial };
 }
 
+describe('renderNode — className (Tailwind utility layer)', () => {
+  it('emits a class attribute on the block root element', () => {
+    const html = renderNode(node({ type: 'Section', className: 'flex gap-4 md:grid' }));
+    expect(html).toMatch(/<section[^>]*\sclass="flex gap-4 md:grid"/);
+  });
+
+  it('puts the class on the outer element for wrapper blocks (Hero/Heading/Image/Button)', () => {
+    expect(renderNode(node({ type: 'Hero', className: 'py-20', props: { title: 'Hi' } }))).toMatch(
+      /<div data-sw-block="Hero" class="py-20"/,
+    );
+    expect(renderNode(node({ type: 'Heading', className: 'text-3xl', props: { text: 'H' } }))).toMatch(
+      /<h2 data-sw-block="Heading" class="text-3xl"/,
+    );
+    expect(renderNode(node({ type: 'Button', className: 'btn', props: { text: 'Go' } }))).toMatch(
+      /<a data-sw-block="Button" class="btn"/,
+    );
+  });
+
+  it('escapes class to prevent attribute breakout', () => {
+    const html = renderNode(node({ type: 'Section', className: 'x" onmouseover="evil()' }));
+    expect(html).not.toContain('onmouseover="evil()"');
+    expect(html).toContain('&quot;');
+  });
+
+  it('emits no class attribute when className is absent', () => {
+    expect(renderNode(node({ type: 'Section' }))).not.toContain('class=');
+  });
+});
+
 describe('renderNode — per block', () => {
   it('Heading renders the right level and escapes the text', () => {
     const html = renderNode(node({ type: 'Heading', props: { text: '<b>Hi</b>', level: 3 } }));
@@ -367,5 +396,39 @@ describe('renderPage / renderDocument', () => {
     expect(doc.indexOf('.hero{color:red}')).toBeLessThan(doc.indexOf('</head>'));
     // omitted when not provided
     expect(renderDocument(page, { brand })).not.toContain('<style>.hero');
+  });
+
+  it('links external stylesheets last in <head> so utilities win by source order', () => {
+    const doc = renderDocument(page, {
+      brand,
+      criticalCss: '.hero{color:red}',
+      stylesheets: ['styles.css', '../styles.css'],
+    });
+    expect(doc).toContain('<link rel="stylesheet" href="styles.css" />');
+    expect(doc).toContain('<link rel="stylesheet" href="../styles.css" />');
+    // The stylesheet link comes AFTER the inline brand + critical CSS (later in the
+    // cascade) and still inside <head>.
+    expect(doc.indexOf('.hero{color:red}')).toBeLessThan(doc.indexOf('href="styles.css"'));
+    expect(doc.indexOf('href="styles.css"')).toBeLessThan(doc.indexOf('</head>'));
+    // none emitted by default
+    expect(renderDocument(page, { brand })).not.toContain('rel="stylesheet"');
+  });
+
+  it('escapes a stylesheet href', () => {
+    const doc = renderDocument(page, { brand, stylesheets: ['a"><script>x'] });
+    expect(doc).not.toContain('<script>x');
+    expect(doc).toContain('&quot;');
+  });
+
+  it('inlines inlineStyles as <style> blocks last in <head>, after critical CSS', () => {
+    const doc = renderDocument(page, {
+      brand,
+      criticalCss: '.hero{color:red}',
+      inlineStyles: ['.flex{display:flex}'],
+    });
+    expect(doc).toContain('<style>.flex{display:flex}</style>');
+    expect(doc.indexOf('.hero{color:red}')).toBeLessThan(doc.indexOf('.flex{display:flex}'));
+    expect(doc.indexOf('.flex{display:flex}')).toBeLessThan(doc.indexOf('</head>'));
+    expect(renderDocument(page, { brand })).not.toContain('.flex{display:flex}');
   });
 });

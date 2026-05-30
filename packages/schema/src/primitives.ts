@@ -94,6 +94,20 @@ export const CssStringSchema = z
   .regex(/^[^;{}<>]*$/, 'invalid CSS value');
 
 /**
+ * A space-separated list of Tailwind utility classes for a block's root element.
+ * The charset covers real-world utilities — modifiers (`md:`, `hover:`), arbitrary
+ * values (`grid-cols-[1fr_2fr]`, `text-[#0a0a0a]`), opacity (`bg-brand/80`),
+ * functions (`bg-[url(...)]`), and arbitrary variants (`[&>*]`) — while excluding
+ * the characters that could break out of an HTML attribute or a CSS selector
+ * (`" ' < > { } ;`). The renderer additionally escapes this before emitting it.
+ */
+export const ClassNameSchema = z
+  .string()
+  .min(1)
+  .max(1000)
+  .regex(/^[A-Za-z0-9 \-_:/[\]().,%#!@*+&=]+$/, 'contains invalid class characters');
+
+/**
  * Builds a record schema that rejects prototype-pollution keys (`__proto__`,
  * `constructor`, `prototype`) and caps cardinality. Use for any user-supplied
  * "property bag" map (props, values, config, query, design tokens).

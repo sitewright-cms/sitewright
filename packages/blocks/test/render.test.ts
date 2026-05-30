@@ -215,6 +215,14 @@ describe('renderNode — per block', () => {
     const empty = renderNode(node({ type: 'Nav', props: { slot: 'footer' } }), { nav });
     expect(empty).toContain('data-sw-block="Nav"');
     expect(empty).not.toContain('data-sw-part="nav-link"');
+
+    // author-placed children render inside the <nav> after the auto-links (container)
+    const withChild = renderNode(
+      node({ type: 'Nav', props: { slot: 'header' }, children: [node({ id: 'b', type: 'Heading', props: { text: 'Brand' } })] }),
+      { nav },
+    );
+    expect(withChild).toContain('Brand');
+    expect(withChild.indexOf('nav-link')).toBeLessThan(withChild.indexOf('Brand'));
   });
 
   it('Footer renders nested children alongside its text', () => {

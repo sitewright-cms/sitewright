@@ -70,6 +70,34 @@ describe('auto-nav → publish', () => {
     expect(about).toContain('href="../about"'); // About
   });
 
+  it('renders footer-slot menus and excludes collection pages', async () => {
+    const proj = client.project(projectId);
+    // A page with a footer Nav block; two pages placed in the footer slot; a
+    // collection page also flagged for the footer (must NOT appear).
+    const footerHome = {
+      id: 'home',
+      path: '/',
+      title: 'Home',
+      nav: { slots: ['footer'], order: 0 },
+      root: { id: 'hr', type: 'Section', children: [{ id: 'hn', type: 'Nav', props: { slot: 'footer' } }] },
+    };
+    expect((await proj.putContent('page', 'home', footerHome)).statusCode).toBe(200);
+    expect((await proj.putContent('page', 'terms', { id: 'terms', path: '/terms', title: 'Terms', nav: { slots: ['footer'], order: 1 }, root: { id: 'tr', type: 'Section' } })).statusCode).toBe(200);
+    // dataset + collection page flagged for the footer slot — excluded from nav.
+    expect((await proj.putContent('dataset', 'posts', { id: 'posts', slug: 'posts', name: 'Posts', fields: [] })).statusCode).toBe(200);
+    expect(
+      (await proj.putContent('page', 'post', { id: 'post', path: '/posts/[slug]', title: 'Post', collection: { dataset: 'posts', param: 'slug' }, nav: { slots: ['footer'] }, root: { id: 'pr', type: 'Section' } })).statusCode,
+    ).toBe(200);
+    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
+
+    const home = await fetchSite('index.html');
+    expect(home).toContain('data-slot="footer"');
+    expect(home).toContain('href="./"'); // Home
+    expect(home).toContain('href="terms"'); // Terms
+    expect(home).toContain('>Terms<');
+    expect(home).not.toContain('posts/'); // collection page excluded from nav
+  });
+
   it('omits pages without nav placement from the menu', async () => {
     const proj = client.project(projectId);
     expect((await proj.putContent('page', 'home', navBlockPage('home', '/', 'Home', { slots: ['header'] }))).statusCode).toBe(200);

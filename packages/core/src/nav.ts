@@ -18,11 +18,11 @@ export interface NavItem {
 export function buildNav(pages: readonly Page[], slot: NavSlot): NavItem[] {
   return pages
     .filter((page) => !page.collection && (page.nav?.slots.includes(slot) ?? false))
-    .slice()
     .sort((a, b) => {
       const ao = a.nav?.order ?? 0;
       const bo = b.nav?.order ?? 0;
-      return ao - bo || a.title.localeCompare(b.title);
+      // Explicit 'en' locale → deterministic ordering across environments (ICU data varies).
+      return ao - bo || a.title.localeCompare(b.title, 'en');
     })
     .map((page) => ({ label: page.nav?.title || page.title, path: page.path }));
 }

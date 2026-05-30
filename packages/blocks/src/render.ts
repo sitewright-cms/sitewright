@@ -188,6 +188,8 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
     case 'Nav': {
       // Auto-nav: render the page-tree-derived menu for this slot. Each item's
       // href is rebased relative to the current page (portable), label escaped.
+      // Author-placed child blocks (`inner`) render AFTER the auto-links inside
+      // the <nav> wrapper (e.g. a brand mark or CTA) — the block is a container.
       const slot = String(props.slot ?? 'header');
       // Safe lookup (no dynamic object indexing), mirroring poolFor.
       const items = ctx.nav ? (Object.entries(ctx.nav).find(([k]) => k === slot)?.[1] ?? []) : [];

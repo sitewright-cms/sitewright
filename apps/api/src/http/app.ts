@@ -12,10 +12,11 @@ import {
   type Brand,
   type Entry,
   type MediaAsset,
+  type Page,
 } from '@sitewright/schema';
 import { renderDocument } from '@sitewright/blocks';
 import { optimizeImage } from '@sitewright/image-pipeline';
-import type { ProjectBundle } from '@sitewright/core';
+import { buildNav, type ProjectBundle } from '@sitewright/core';
 import type { Database } from '../db/client.js';
 import { MediaStorage } from '../media/storage.js';
 import { PublishError } from '../publish/build.js';
@@ -455,11 +456,20 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
       // Media powers optimized <picture> in the preview too, via the API-served URLs.
       const media = mediaStorage ? ((await contentRepo.list(ctx, 'media')) as MediaAsset[]) : [];
+      // Auto-nav from the saved pages so Nav blocks render their menu in preview
+      // (WYSIWYG parity with publish; an unsaved new page isn't in its own nav yet).
+      const savedPages = (await contentRepo.list(ctx, 'page')) as Page[];
+      const nav = {
+        header: buildNav(savedPages, 'header'),
+        footer: buildNav(savedPages, 'footer'),
+        mobile: buildNav(savedPages, 'mobile'),
+      };
       const html = renderDocument(page, {
         brand,
         datasets: Object.fromEntries(byDataset),
         includeDrafts: true,
         media,
+        nav,
         mediaUrl: (asset, file) => `/media/${project.id}/${asset.id}/${file}`,
       });
       return reply.send({ html });

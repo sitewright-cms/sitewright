@@ -27,7 +27,11 @@ export const PageSchema = z
       .object({
         /** Menu label; falls back to the page title. */
         title: z.string().max(200).optional(),
-        slots: z.array(z.enum(NAV_SLOTS)).min(1).max(NAV_SLOTS.length),
+        slots: z
+          .array(z.enum(NAV_SLOTS))
+          .min(1)
+          .max(NAV_SLOTS.length)
+          .refine((s) => new Set(s).size === s.length, 'slots must not contain duplicates'),
         /** Sort order within a slot (ascending; ties broken by title). */
         order: z.number().int().min(0).max(100_000).optional(),
       })

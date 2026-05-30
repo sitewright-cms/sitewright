@@ -116,7 +116,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     const brand = bundle.project.brand;
     // Corporate identity is project-level (same for every page): compute once.
     const company = bundle.project.company;
-    const organization = companyToOrganization(company, bundle.project.name);
+    const baseOrg = companyToOrganization(company, bundle.project.name);
     let bytes = 0;
 
     // Bundle media into the artifact so the export is self-contained + portable.
@@ -138,6 +138,11 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       // Rebase a root-relative asset path so the export is portable at any base path.
       const rel = (src: string | undefined): string | undefined =>
         src ? resolveInternalUrl(src, siteRoot) : undefined;
+      // schema.org logo/image are asset paths too — rebase per page depth so the
+      // JSON-LD resolves correctly when the site is exported to a subfolder.
+      const organization = baseOrg
+        ? { ...baseOrg, logo: rel(baseOrg.logo), image: rel(baseOrg.image) }
+        : undefined;
       const html = renderDocument(page, {
         brand,
         datasets,

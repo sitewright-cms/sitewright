@@ -90,4 +90,19 @@ describe('schemaOrgJsonLd', () => {
     expect(html).not.toContain('</script><script>alert(1)');
     expect(html).toContain('\\u003c/script');
   });
+
+  it('escapes breakout attempts in every field (type, telephone, geo, address)', () => {
+    const html = schemaOrgJsonLd({
+      name: 'Acme',
+      type: '</script><script>a',
+      telephone: '</script>b',
+      email: '</script>c',
+      address: { locality: '</script>d' },
+      geo: { latitude: '</script>e', longitude: '</script>f' },
+      sameAs: ['https://x.io/</script>'],
+    });
+    expect(html).not.toContain('</script><script>');
+    expect(html).not.toMatch(/<\/script>[a-f]/); // none of the field payloads leak literally
+    expect(html).toContain('\\u003c/script');
+  });
 });

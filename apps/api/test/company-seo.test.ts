@@ -2,9 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { companyToOrganization } from '../src/publish/company-seo.js';
 
 describe('companyToOrganization', () => {
-  it('returns undefined with no company or the "disabled" sentinel', () => {
+  it('returns undefined with no company or the "disabled" sentinel (any case/whitespace)', () => {
     expect(companyToOrganization(undefined, 'Fallback')).toBeUndefined();
     expect(companyToOrganization({ businessType: 'disabled', legalName: 'X' }, 'F')).toBeUndefined();
+    expect(companyToOrganization({ businessType: 'DISABLED', legalName: 'X' }, 'F')).toBeUndefined();
+    expect(companyToOrganization({ businessType: ' Disabled ', legalName: 'X' }, 'F')).toBeUndefined();
   });
 
   it('resolves name as legalName → shortName → fallback', () => {

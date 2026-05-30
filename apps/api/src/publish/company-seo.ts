@@ -11,7 +11,9 @@ export function companyToOrganization(
   company: Company | undefined,
   fallbackName: string,
 ): SchemaOrgInfo | undefined {
-  if (!company || company.businessType === 'disabled') return undefined;
+  if (!company || company.businessType?.trim().toLowerCase() === 'disabled') return undefined;
+  // fallbackName is the project name (schema-validated min(1)), so this is a
+  // defensive guard — `name` is never empty in practice.
   const name = company.legalName || company.shortName || fallbackName;
   if (!name) return undefined;
 

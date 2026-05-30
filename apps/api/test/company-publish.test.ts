@@ -85,9 +85,37 @@ describe('company → schema.org + favicon on publish', () => {
     expect(html).not.toContain('application/ld+json');
   });
 
-  it('omits schema.org JSON-LD when businessType is "disabled"', async () => {
-    await putSettings({ businessType: 'disabled', legalName: 'ClassCar Hire CC' });
+  it('omits schema.org JSON-LD when businessType is "disabled" (any case)', async () => {
+    await putSettings({ businessType: 'DISABLED', legalName: 'ClassCar Hire CC' });
     const html = await publishAndFetchHome();
     expect(html).not.toContain('application/ld+json');
+  });
+
+  it('falls back to company.image for og:image, and a page seo.ogImage overrides it', async () => {
+    await putSettings({ legalName: 'ClassCar', image: '/brand/og.png' });
+    expect(await publishAndFetchHome()).toContain('property="og:image" content="brand/og.png"');
+
+    // A page-level og image takes precedence over the company image.
+    const withPageOg = { ...home, seo: { ogImage: '/page/og.png' } };
+    expect((await client.project(projectId).putContent('page', 'home', withPageOg)).statusCode).toBe(200);
+    const html = await publishAndFetchHome();
+    expect(html).toContain('property="og:image" content="page/og.png"');
+    // Assert on the og:image META specifically: company.image still legitimately
+    // appears in the schema.org JSON-LD `image` field, so a bare-substring check
+    // would be a false negative.
+    expect(html).not.toContain('property="og:image" content="brand/og.png"');
+  });
+
+  it('preserves company across an import → export round-trip', async () => {
+    const proj = client.project(projectId);
+    const company = { legalName: 'Imported Co', businessType: 'LocalBusiness', social: ['https://x.io/co'] };
+    const imp = await proj.importBundle({
+      project: { brand: { name: 'B', colors: {} }, company, settings: { defaultLocale: 'en', locales: ['en'] } },
+      pages: [home],
+    });
+    expect(imp.statusCode).toBe(200);
+    const exp = await proj.exportBundle();
+    expect(exp.statusCode).toBe(200);
+    expect((exp.json() as { project: { company: unknown } }).project.company).toEqual(company);
   });
 });

@@ -16,3 +16,23 @@ export function safeUrl(value: string, fallback = '#'): string {
   if (trimmed === '') return fallback;
   return SAFE_URL.test(trimmed) ? trimmed : fallback;
 }
+
+/**
+ * Rewrites an author-supplied href for portable output. Internal, root-relative
+ * links (`/about`, `/`) are rebased onto `root` — the relative path from the
+ * current page to the site root (see `relativeRoot` in @sitewright/core) — so
+ * the exported site works at any base path. External (`http(s)://`) and fragment
+ * (`#`) links pass through unchanged. Unsafe or protocol-relative URLs fall back
+ * to `#`.
+ */
+export function resolveInternalUrl(href: string, root: string): string {
+  const safe = safeUrl(href, '');
+  if (safe === '') return '#';
+  if (safe.startsWith('#') || /^https?:\/\//i.test(safe)) return safe;
+  // Reject root-relative paths that traverse above the site root (`/../x`,
+  // `/a/../b`) — they'd resolve off-root in the exported artifact.
+  if (/(?:^|\/)\.\.(?:\/|$)/.test(safe)) return '#';
+  // Root-relative internal link: drop the leading '/' and rebase onto `root`.
+  const rebased = root + safe.slice(1);
+  return rebased === '' ? './' : rebased;
+}

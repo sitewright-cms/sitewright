@@ -42,7 +42,7 @@ describe('renderNode — per block', () => {
 
   it('Image escapes the alt and only accepts safe src', () => {
     const ok = renderNode(node({ type: 'Image', props: { src: '/img/a.png', alt: 'A "cat"' } }));
-    expect(ok).toContain('src="/img/a.png"');
+    expect(ok).toContain('src="img/a.png"'); // root-relative src rebased onto page root ('' = home)
     expect(ok).toContain('alt="A &quot;cat&quot;"');
     const bad = renderNode(node({ type: 'Image', props: { src: 'javascript:1', alt: '' } }));
     expect(bad).not.toContain('javascript:');
@@ -171,8 +171,36 @@ describe('renderNode — per block', () => {
   it('Link sanitizes its href', () => {
     const html = renderNode(node({ type: 'Link', props: { text: 'Home', href: '/home' } }));
     expect(html).toContain('data-sw-block="Link"');
-    expect(html).toContain('href="/home"');
+    expect(html).toContain('href="home"'); // root-relative internal link rebased onto page root
     expect(html).toContain('Home');
+  });
+
+  it('rebases internal links and image src onto the page root for portable output', () => {
+    const link = renderNode(node({ type: 'Link', props: { text: 'About', href: '/about' } }), {
+      root: '../',
+    });
+    expect(link).toContain('href="../about"');
+
+    const btn = renderNode(node({ type: 'Button', props: { text: 'Home', href: '/' } }), {
+      root: '../',
+    });
+    expect(btn).toContain('href="../"');
+
+    const img = renderNode(node({ type: 'Image', props: { src: '/img/a.png', alt: 'A' } }), {
+      root: '../../',
+    });
+    expect(img).toContain('src="../../img/a.png"');
+
+    const hero = renderNode(
+      node({ type: 'Hero', props: { title: 'T', ctaText: 'Go', ctaHref: '/contact' } }),
+      { root: '../' },
+    );
+    expect(hero).toContain('href="../contact"');
+
+    const ext = renderNode(node({ type: 'Link', props: { text: 'X', href: 'https://x.io/y' } }), {
+      root: '../',
+    });
+    expect(ext).toContain('href="https://x.io/y"'); // external untouched
   });
 
   it('Footer renders nested children alongside its text', () => {
@@ -262,5 +290,35 @@ describe('renderPage / renderDocument', () => {
       { brand },
     );
     expect(doc).not.toContain('<script>alert(1)</script>');
+  });
+
+  it('emits SEO meta, schema.org JSON-LD, and raw custom head/footer', () => {
+    const doc = renderDocument(page, {
+      brand,
+      seo: { title: 'Custom Title', description: 'Desc', themeColor: '#0a7', favicon: '/i.png' },
+      organization: { name: 'Acme', url: 'https://acme.test/' },
+      customHead: '<!-- analytics-head -->',
+      customFooter: '<!-- analytics-foot -->',
+    });
+    expect(doc).toContain('<title>Custom Title</title>'); // seo.title overrides page.title
+    expect(doc).toContain('name="description" content="Desc"');
+    expect(doc).toContain('name="theme-color" content="#0a7"');
+    expect(doc).toContain('rel="icon" href="/i.png"');
+    expect(doc).toContain('<script type="application/ld+json">');
+    expect(doc).toContain('"name":"Acme"');
+    expect(doc).toContain('<!-- analytics-head -->');
+    expect(doc).toContain('<!-- analytics-foot -->');
+  });
+
+  it('falls back to the page title and omits optional head bits by default', () => {
+    const doc = renderDocument(page, { brand });
+    expect(doc).toContain('<title>Home</title>');
+    expect(doc).not.toContain('application/ld+json');
+    expect(doc).not.toContain('rel="icon"');
+  });
+
+  it('falls back to the page title when the SEO title is an empty string', () => {
+    const doc = renderDocument(page, { brand, seo: { title: '' } });
+    expect(doc).toContain('<title>Home</title>');
   });
 });

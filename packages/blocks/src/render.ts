@@ -7,6 +7,8 @@ import type { Brand, Entry, MediaAsset, Page, PageNode } from '@sitewright/schem
 import { resolveBinding } from '@sitewright/core';
 import { escapeAttr, escapeHtml } from './escape.js';
 import { textProp, urlProp } from './props.js';
+import { resolveInternalUrl } from './url.js';
+import { metaTags, schemaOrgJsonLd, type SeoMeta, type SchemaOrgInfo } from './head.js';
 import { brandToCss } from './brand-css.js';
 import { previewStyles } from './preview-css.js';
 
@@ -26,6 +28,12 @@ export interface RenderContext {
    * so the exported artifact is self-contained and portable.
    */
   mediaUrl?: (asset: MediaAsset, file: string) => string;
+  /**
+   * Relative path from the current page to the site root (`''` home, `'../'` one
+   * level deep, …). Internal root-relative links and asset paths are rebased onto
+   * this so the exported site is portable. See `relativeRoot` in @sitewright/core.
+   */
+  root?: string;
 }
 
 const PICTURE_SIZES = '(min-width: 1280px) 1280px, 100vw';
@@ -104,6 +112,7 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
   const props = node.props ?? {};
   const selfEntry = ownEntry(node, ctx);
   const inner = renderChildren(node, ctx, selfEntry);
+  const root = ctx.root ?? '';
 
   switch (node.type) {
     case 'Section': {
@@ -121,7 +130,7 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
       const title = textProp(props, selfEntry, 'title');
       const subtitle = textProp(props, selfEntry, 'subtitle');
       const ctaText = textProp(props, selfEntry, 'ctaText');
-      const ctaHref = urlProp(props, selfEntry, 'ctaHref', '#');
+      const ctaHref = resolveInternalUrl(urlProp(props, selfEntry, 'ctaHref', '#'), root);
       return (
         `<div data-sw-block="Hero">` +
         (title ? `<h1 data-sw-part="title">${escapeHtml(title)}</h1>` : '') +
@@ -150,16 +159,17 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
       // A known uploaded asset (matched by url) → optimized <picture>; else plain <img>.
       const asset = ctx.media?.find((m) => m.url === src);
       if (asset && ctx.mediaUrl) return renderPicture(asset, alt, loading, ctx.mediaUrl);
-      return `<img data-sw-block="Image" src="${escapeAttr(src)}" alt="${escapeAttr(alt)}" loading="${loading}" />`;
+      const imgSrc = resolveInternalUrl(src, root);
+      return `<img data-sw-block="Image" src="${escapeAttr(imgSrc)}" alt="${escapeAttr(alt)}" loading="${loading}" />`;
     }
     case 'Button': {
       const text = textProp(props, selfEntry, 'text');
-      const href = urlProp(props, selfEntry, 'href', '#');
+      const href = resolveInternalUrl(urlProp(props, selfEntry, 'href', '#'), root);
       return `<a data-sw-block="Button" href="${escapeAttr(href)}">${escapeHtml(text)}${inner}</a>`;
     }
     case 'Link': {
       const text = textProp(props, selfEntry, 'text');
-      const href = urlProp(props, selfEntry, 'href', '#');
+      const href = resolveInternalUrl(urlProp(props, selfEntry, 'href', '#'), root);
       return `<a data-sw-block="Link" href="${escapeAttr(href)}">${escapeHtml(text)}${inner}</a>`;
     }
     case 'Header': {
@@ -185,26 +195,52 @@ export interface RenderDocumentOptions extends RenderContext {
   brand: Brand;
   /** Document language attribute (defaults to `en`). */
   lang?: string;
+  /** SEO/Open-Graph metadata; `title` falls back to the page title. */
+  seo?: Partial<SeoMeta>;
+  /** Auto-generated schema.org Organization block (from company data). */
+  organization?: SchemaOrgInfo;
+  /**
+   * Raw HTML injected into `<head>` / before `</body>` (e.g. analytics tags) —
+   * the contentBase `global_head` / `global_bottom` equivalent.
+   *
+   * @security Intentionally NOT escaped. This is the tenant's own content for
+   * their own exported site. Two invariants MUST hold: (1) only owner/admin
+   * roles may set these fields, and (2) `renderDocument` output is served to a
+   * browser ONLY inside a sandboxed iframe (preview) or written to the exported
+   * artifact — NEVER returned as a same-origin `text/html` response in the
+   * editor, or raw injection becomes stored XSS against the authed session.
+   */
+  customHead?: string;
+  customFooter?: string;
 }
 
 /**
- * Renders a complete, self-contained, brand-themed HTML document for the live
- * preview iframe. Pure inline CSS + escaped content; no scripts.
+ * Renders a complete, self-contained, brand-themed HTML document — the platform
+ * skeleton. The `<head>` (meta/Open-Graph, theme-color, favicon, schema.org
+ * JSON-LD) is data-driven; page content is escaped; the only raw HTML is the
+ * tenant's own custom head/footer. Safe to drop into a sandboxed preview iframe.
  */
 export function renderDocument(page: Page, opts: RenderDocumentOptions): string {
-  const { brand, lang = 'en', ...ctx } = opts;
+  const { brand, lang = 'en', seo, organization, customHead, customFooter, ...ctx } = opts;
   const body = renderPage(page, ctx);
   const css = `${previewStyles()}\n${brandToCss(brand)}`;
+  // `||` not `??`: an empty-string SEO title must fall back to the page title.
+  const title = seo?.title || page.title;
+  const meta = metaTags({ ...seo, title });
+  const jsonLd = schemaOrgJsonLd(organization);
   return (
     `<!doctype html>\n` +
     `<html lang="${escapeAttr(lang)}">\n` +
     `<head>\n` +
     `<meta charset="utf-8" />\n` +
     `<meta name="viewport" content="width=device-width, initial-scale=1" />\n` +
-    `<title>${escapeHtml(page.title)}</title>\n` +
+    `<title>${escapeHtml(title)}</title>\n` +
+    `${meta}\n` +
+    (jsonLd ? `${jsonLd}\n` : '') +
+    (customHead ? `${customHead}\n` : '') +
     `<style>${css}</style>\n` +
     `</head>\n` +
-    `<body>${body}</body>\n` +
+    `<body>${body}${customFooter ?? ''}</body>\n` +
     `</html>`
   );
 }

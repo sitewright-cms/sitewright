@@ -9,6 +9,7 @@ import { escapeAttr, escapeHtml } from './escape.js';
 import { textProp, urlProp } from './props.js';
 import { resolveInternalUrl } from './url.js';
 import { iconBody } from './icons.js';
+import { brandIcon } from './brand-icons.js';
 import { metaTags, schemaOrgJsonLd, type SeoMeta, type SchemaOrgInfo } from './head.js';
 import { brandToCss } from './brand-css.js';
 import { previewStyles } from './preview-css.js';
@@ -215,13 +216,29 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
       return `<nav data-sw-block="Nav"${cls} data-slot="${escapeAttr(slot)}">${links}${inner}</nav>`;
     }
     case 'Icon': {
-      // Inline a built-in Lucide SVG (only used icons ship — no font download).
-      // The icon body is trusted static markup; `name` only selects it (unknown
-      // → empty placeholder). Size is clamped; an accessible label is escaped.
-      const body = iconBody(textProp(props, selfEntry, 'name'));
-      if (!body) return `<span data-sw-block="Icon"${cls} data-sw-empty="1"></span>`;
+      // Inline a built-in SVG (only used icons ship — no font download). `name`
+      // only selects trusted static markup (unknown → empty placeholder). Size is
+      // clamped; the accessible label is escaped.
       const size = clamp(Number(props.size) || 24, 8, 256);
       const label = textProp(props, selfEntry, 'label');
+      const name = textProp(props, selfEntry, 'name');
+      // Brand/social logos (simple-icons): `brand:<slug>` → a single FILL path.
+      // Default to `currentColor` (themeable via className/text color); opt into
+      // the official brand color with `brandColor: true`. Brand icons are usually
+      // the sole content of a link, so they default to a title aria-label.
+      if (name.startsWith('brand:')) {
+        const brand = brandIcon(name.slice('brand:'.length));
+        if (!brand) return `<span data-sw-block="Icon"${cls} data-sw-empty="1"></span>`;
+        const fill = props.brandColor === true ? brand.hex : 'currentColor';
+        return (
+          `<svg data-sw-block="Icon"${cls} xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" ` +
+          `viewBox="0 0 24 24" fill="${escapeAttr(fill)}" role="img" ` +
+          `aria-label="${escapeAttr(label || brand.title)}"><path d="${brand.path}"/></svg>`
+        );
+      }
+      // Lucide (stroke-based) UI glyphs.
+      const body = iconBody(name);
+      if (!body) return `<span data-sw-block="Icon"${cls} data-sw-empty="1"></span>`;
       const a11y = label ? ` role="img" aria-label="${escapeAttr(label)}"` : ' aria-hidden="true"';
       return (
         `<svg data-sw-block="Icon"${cls} xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" ` +

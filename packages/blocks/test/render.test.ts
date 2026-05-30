@@ -6,6 +6,45 @@ function node(partial: Partial<PageNode> & { type: string }): PageNode {
   return { id: partial.id ?? 'n1', ...partial };
 }
 
+describe('renderNode — brand/social icons (simple-icons)', () => {
+  it('renders a brand icon as a filled-path SVG, labelled by the brand title', () => {
+    const html = renderNode(node({ type: 'Icon', props: { name: 'brand:facebook' } }));
+    expect(html).toContain('<svg data-sw-block="Icon"');
+    expect(html).toContain('viewBox="0 0 24 24"');
+    expect(html).toContain('fill="currentColor"'); // themeable by default
+    expect(html).not.toContain('stroke='); // brand icons are fill-based, not stroke
+    expect(html).toContain('role="img"');
+    expect(html).toContain('aria-label="Facebook"'); // defaults to the brand title
+    expect(html).toMatch(/<path d="M9\.101/); // the real simple-icons path
+  });
+
+  it('uses the official brand color when brandColor is set', () => {
+    const html = renderNode(node({ type: 'Icon', props: { name: 'brand:facebook', brandColor: true } }));
+    expect(html).toContain('fill="#0866ff"');
+  });
+
+  it('lets an explicit label override the brand-title default', () => {
+    const html = renderNode(node({ type: 'Icon', props: { name: 'brand:github', label: 'Our code' } }));
+    expect(html).toContain('aria-label="Our code"');
+  });
+
+  it('renders an empty placeholder for an unknown brand slug', () => {
+    const html = renderNode(node({ type: 'Icon', props: { name: 'brand:nope-not-real' } }));
+    expect(html).toContain('data-sw-empty="1"');
+  });
+
+  it('keeps the className on a brand icon root', () => {
+    const html = renderNode(node({ type: 'Icon', className: 'h-6 w-6', props: { name: 'brand:x' } }));
+    expect(html).toMatch(/<svg data-sw-block="Icon" class="h-6 w-6"/);
+  });
+
+  it('still renders Lucide (stroke) icons unchanged', () => {
+    const html = renderNode(node({ type: 'Icon', props: { name: 'star' } }));
+    expect(html).toContain('stroke="currentColor"');
+    expect(html).toContain('fill="none"');
+  });
+});
+
 describe('renderNode — className (Tailwind utility layer)', () => {
   it('emits a class attribute on the block root element', () => {
     const html = renderNode(node({ type: 'Section', className: 'flex gap-4 md:grid' }));

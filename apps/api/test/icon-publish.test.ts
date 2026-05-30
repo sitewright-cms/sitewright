@@ -51,4 +51,34 @@ describe('icon block → publish', () => {
     expect(res.body).toContain('aria-label="Call us"');
     expect(res.body).toContain('stroke="currentColor"');
   });
+
+  it('inlines a brand/social icon (simple-icons) into the exported HTML', async () => {
+    const proj = client.project(projectId);
+    const page = {
+      id: 'home',
+      path: '/',
+      title: 'Home',
+      root: {
+        id: 'r',
+        type: 'Footer',
+        children: [
+          { id: 'gh', type: 'Icon', props: { name: 'brand:github' } },
+          { id: 'ig', type: 'Icon', props: { name: 'brand:instagram', brandColor: true } },
+        ],
+      },
+    };
+    expect((await proj.putContent('page', 'home', page)).statusCode).toBe(200);
+    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
+
+    const res = await client.get(`/sites/${projectId}/index.html`);
+    expect(res.statusCode).toBe(200);
+    // GitHub icon: fill-based, themeable (currentColor), titled for a11y.
+    expect(res.body).toContain('aria-label="GitHub"');
+    expect(res.body).toContain('fill="currentColor"');
+    expect(res.body).toContain('<path d="M12 .297'); // the real GitHub path
+    // Instagram with brandColor uses the official hex; no icon-font request.
+    expect(res.body).toContain('aria-label="Instagram"');
+    expect(res.body).toMatch(/fill="#[0-9a-f]{6}"/);
+    expect(res.body).not.toContain('stroke="currentColor"'); // brand icons aren't stroke-based
+  });
 });

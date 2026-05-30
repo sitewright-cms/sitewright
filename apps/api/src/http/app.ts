@@ -346,6 +346,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const userId = await requireUserId(req);
       const ctx = await tenantContext(db, userId, req.params.orgId);
       await projects.remove(ctx, req.params.id);
+      // Best-effort on-disk cleanup: the published site + media directories have no
+      // DB-level cascade. A failure here must NOT fail the delete (the rows are
+      // already gone) — log and continue. Optional chaining no-ops when unconfigured.
+      await publishStore
+        ?.removeProject(req.params.id)
+        .catch((err: unknown) => req.log.warn({ err }, 'publish dir cleanup failed on project delete'));
+      await mediaStorage
+        ?.removeProject(req.params.id)
+        .catch((err: unknown) => req.log.warn({ err }, 'media dir cleanup failed on project delete'));
       return reply.code(204).send();
     },
   );

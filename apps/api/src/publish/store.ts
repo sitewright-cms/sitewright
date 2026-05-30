@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, rm } from 'node:fs/promises';
 import { join, resolve, sep } from 'node:path';
 import type { ReleaseManifest } from './build.js';
 
@@ -16,6 +16,12 @@ export class PublishStore {
   dirFor(projectId: string): string {
     if (!SEGMENT.test(projectId)) throw new Error('invalid project id');
     return join(this.root, projectId);
+  }
+
+  /** Deletes a project's published-site directory (idempotent). Used on project delete. */
+  async removeProject(projectId: string): Promise<void> {
+    // dirFor validates the projectId charset and confines the path to `root`.
+    await rm(this.dirFor(projectId), { recursive: true, force: true });
   }
 
   /** Reads the current release manifest, or null if the project was never published. */

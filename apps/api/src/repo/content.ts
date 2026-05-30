@@ -11,6 +11,7 @@ import {
   MediaAssetSchema,
   PageSchema,
   PartialSchema,
+  TemplateSchema,
   ProjectSettingsSchema,
   WebsiteSettingsSchema,
   PROJECT_FORMAT_VERSION,
@@ -22,6 +23,7 @@ import {
   type Page,
   type ProjectSettings,
   type SitewrightPartial,
+  type Template,
 } from '@sitewright/schema';
 import { validateProject, type ProjectBundle } from '@sitewright/core';
 import type { Database } from '../db/client.js';
@@ -42,6 +44,7 @@ const SCHEMAS = new Map<ContentKind, z.ZodTypeAny>([
   ['settings', SettingsSchema],
   ['page', PageSchema],
   ['partial', PartialSchema],
+  ['template', TemplateSchema],
   ['dataset', DatasetSchema],
   ['entry', EntrySchema],
   // Media metadata is tenant-scoped CRUD like other content; the binaries live on
@@ -58,7 +61,7 @@ export const CONTENT_KINDS = [...SCHEMAS.keys()];
 const SETTINGS_ENTITY_ID = 'settings';
 const WRITE_ROLES: ReadonlySet<string> = new Set(['owner', 'admin']);
 // Per-bundle caps (defense-in-depth alongside the route body limit).
-const MAX_BUNDLE = { pages: 2000, partials: 500, datasets: 500, entries: 50_000 } as const;
+const MAX_BUNDLE = { pages: 2000, partials: 500, templates: 500, datasets: 500, entries: 50_000 } as const;
 
 function requireWriteRole(ctx: ProjectContext): void {
   if (!WRITE_ROLES.has(ctx.role)) throw new ForbiddenError('insufficient role for this operation');
@@ -97,6 +100,7 @@ export interface ExportBundle {
   };
   pages: Page[];
   partials: SitewrightPartial[];
+  templates: Template[];
   datasets: Dataset[];
   entries: Entry[];
 }
@@ -164,6 +168,7 @@ export class ContentRepository {
       },
       pages: (await this.list(ctx, 'page')) as Page[],
       partials: (await this.list(ctx, 'partial')) as SitewrightPartial[],
+      templates: (await this.list(ctx, 'template')) as Template[],
       datasets: (await this.list(ctx, 'dataset')) as Dataset[],
       entries: (await this.list(ctx, 'entry')) as Entry[],
     };
@@ -186,6 +191,8 @@ export class ContentRepository {
     for (const item of toArray(envelope.pages)) assertWithinTreeDepth((item as { root?: unknown })?.root);
     for (const item of toArray(envelope.partials))
       assertWithinTreeDepth((item as { root?: unknown })?.root);
+    for (const item of toArray(envelope.templates))
+      assertWithinTreeDepth((item as { root?: unknown })?.root);
 
     const input = z
       .object({
@@ -199,6 +206,7 @@ export class ContentRepository {
           .optional(),
         pages: z.array(PageSchema).max(MAX_BUNDLE.pages).default([]),
         partials: z.array(PartialSchema).max(MAX_BUNDLE.partials).default([]),
+        templates: z.array(TemplateSchema).max(MAX_BUNDLE.templates).default([]),
         datasets: z.array(DatasetSchema).max(MAX_BUNDLE.datasets).default([]),
         entries: z.array(EntrySchema).max(MAX_BUNDLE.entries).default([]),
       })
@@ -217,6 +225,7 @@ export class ContentRepository {
       },
       pages: input.pages,
       partials: input.partials,
+      templates: input.templates,
       datasets: input.datasets,
       entries: input.entries,
     };
@@ -238,6 +247,10 @@ export class ContentRepository {
       }
       for (const partial of input.partials) {
         await this.writeRow(exec, ctx, 'partial', partial.id, partial);
+        imported += 1;
+      }
+      for (const template of input.templates) {
+        await this.writeRow(exec, ctx, 'template', template.id, template);
         imported += 1;
       }
       for (const dataset of input.datasets) {

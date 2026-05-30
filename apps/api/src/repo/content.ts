@@ -12,10 +12,12 @@ import {
   PageSchema,
   PartialSchema,
   ProjectSettingsSchema,
+  WebsiteSettingsSchema,
   PROJECT_FORMAT_VERSION,
   type Brand,
   type Company,
   type Dataset,
+  type WebsiteSettings,
   type Entry,
   type Page,
   type ProjectSettings,
@@ -26,10 +28,11 @@ import type { Database } from '../db/client.js';
 import { content, type ContentKind } from '../db/schema.js';
 import { ConflictError, ForbiddenError, NotFoundError, type ProjectContext } from './context.js';
 
-/** The project's settings singleton (brand + corporate identity + locale settings). */
+/** The project's settings singleton (brand + corporate identity + website settings + locale). */
 export const SettingsSchema = z.object({
   brand: BrandSchema,
   company: CompanySchema.optional(),
+  website: WebsiteSettingsSchema.optional(),
   settings: ProjectSettingsSchema,
 });
 export type Settings = z.infer<typeof SettingsSchema>;
@@ -89,6 +92,7 @@ export interface ExportBundle {
     slug: string;
     brand: Brand;
     company?: Company;
+    website?: WebsiteSettings;
     settings: ProjectSettings;
   };
   pages: Page[];
@@ -155,6 +159,7 @@ export class ContentRepository {
         slug: project.slug,
         brand: settings?.brand ?? { name: project.name, colors: {} },
         company: settings?.company,
+        website: settings?.website,
         settings: settings?.settings ?? { defaultLocale: 'en', locales: ['en'] },
       },
       pages: (await this.list(ctx, 'page')) as Page[],
@@ -185,7 +190,12 @@ export class ContentRepository {
     const input = z
       .object({
         project: z
-          .object({ brand: BrandSchema, company: CompanySchema.optional(), settings: ProjectSettingsSchema })
+          .object({
+            brand: BrandSchema,
+            company: CompanySchema.optional(),
+            website: WebsiteSettingsSchema.optional(),
+            settings: ProjectSettingsSchema,
+          })
           .optional(),
         pages: z.array(PageSchema).max(MAX_BUNDLE.pages).default([]),
         partials: z.array(PartialSchema).max(MAX_BUNDLE.partials).default([]),
@@ -202,6 +212,7 @@ export class ContentRepository {
         slug: project.slug,
         brand: input.project?.brand ?? { name: project.name, colors: {} },
         company: input.project?.company,
+        website: input.project?.website,
         settings: input.project?.settings ?? { defaultLocale: 'en', locales: ['en'] },
       },
       pages: input.pages,

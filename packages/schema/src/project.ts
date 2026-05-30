@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { BrandSchema } from './brand.js';
 import { CompanySchema } from './company.js';
+import { WebsiteSettingsSchema } from './website.js';
 import { IdSchema, SlugSchema } from './primitives.js';
 
 /**
@@ -34,6 +35,8 @@ export const ProjectSchema = z.object({
   brand: BrandSchema,
   /** Corporate identity (the `company.*` namespace); drives schema.org + favicon/OG. */
   company: CompanySchema.optional(),
+  /** Project-wide website settings (the `website.*` namespace): critical CSS, custom head/footer. */
+  website: WebsiteSettingsSchema.optional(),
   settings: ProjectSettingsSchema.default({}),
 });
 export type Project = z.infer<typeof ProjectSchema>;

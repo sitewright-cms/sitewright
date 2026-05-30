@@ -2,6 +2,7 @@ import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
 import { allRoutes, datasetEntries, relativeRoot, type ProjectBundle } from '@sitewright/core';
 import { renderDocument, resolveInternalUrl } from '@sitewright/blocks';
+import { companyToOrganization } from './company-seo.js';
 import type { MediaAsset } from '@sitewright/schema';
 
 /** A client-correctable publish failure (bad route graph) → maps to HTTP 409. */
@@ -113,6 +114,9 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
   try {
     const datasets = datasetEntries(bundle);
     const brand = bundle.project.brand;
+    // Corporate identity is project-level (same for every page): compute once.
+    const company = bundle.project.company;
+    const organization = companyToOrganization(company, bundle.project.name);
     let bytes = 0;
 
     // Bundle media into the artifact so the export is self-contained + portable.
@@ -144,14 +148,18 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           title: page.seo?.title || page.title,
           description: page.seo?.description,
           // Rebase root-relative asset paths so the export is portable at any base path.
-          ogImage: page.seo?.ogImage ? resolveInternalUrl(page.seo.ogImage, siteRoot) : undefined,
+          // og:image falls back to the company image; favicon to the company icon.
+          ogImage: ((src) => (src ? resolveInternalUrl(src, siteRoot) : undefined))(
+            page.seo?.ogImage ?? company?.image,
+          ),
           url: page.seo?.canonical,
           noindex: page.seo?.noindex,
           themeColor: brand.colors.primary,
-          favicon: brand.logo?.favicon
-            ? resolveInternalUrl(brand.logo.favicon, siteRoot)
-            : undefined,
+          favicon: ((src) => (src ? resolveInternalUrl(src, siteRoot) : undefined))(
+            company?.icon ?? brand.logo?.favicon,
+          ),
         },
+        organization,
       });
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to tmp (checked above)
       await writeFile(full, html, 'utf8');

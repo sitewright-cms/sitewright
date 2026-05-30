@@ -67,4 +67,10 @@ export class MediaStorage {
   async remove(projectId: string, assetId: string): Promise<void> {
     await rm(this.assetDir(projectId, assetId), { recursive: true, force: true });
   }
+
+  /** Deletes a project's entire media directory (idempotent). Used on project delete. */
+  async removeProject(projectId: string): Promise<void> {
+    if (!SEGMENT.test(projectId)) throw new Error('invalid media project id');
+    await rm(join(this.root, projectId), { recursive: true, force: true });
+  }
 }

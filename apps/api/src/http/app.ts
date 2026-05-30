@@ -342,10 +342,23 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
   app.delete<{ Params: { orgId: string; id: string } }>(
     '/orgs/:orgId/projects/:id',
+    { config: rl(20) },
     async (req, reply) => {
       const userId = await requireUserId(req);
       const ctx = await tenantContext(db, userId, req.params.orgId);
       await projects.remove(ctx, req.params.id);
+      // Best-effort on-disk cleanup: the published site + media directories have no
+      // DB-level cascade. A failure here must NOT fail the delete (the rows are
+      // already gone) — log and continue. Optional chaining no-ops when unconfigured.
+      // Log only the error code/message (not the full error, which carries the
+      // absolute fs path) to keep internal paths out of the logs.
+      const onCleanupError = (what: string) => (err: unknown) =>
+        req.log.warn(
+          { what, errCode: (err as NodeJS.ErrnoException).code, errMsg: err instanceof Error ? err.message : String(err) },
+          'project asset cleanup failed on delete',
+        );
+      await publishStore?.removeProject(req.params.id).catch(onCleanupError('publish'));
+      await mediaStorage?.removeProject(req.params.id).catch(onCleanupError('media'));
       return reply.code(204).send();
     },
   );

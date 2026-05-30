@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { createApp } from './http/app.js';
 import { createDb, runMigrations } from './db/client.js';
 import { createReleaseChecker } from './version/checker.js';
+import { parseKey } from './crypto/secret.js';
 
 const RELEASE_REPO = 'sitewright-cms/sitewright';
 
@@ -32,6 +33,16 @@ if (isProduction && trustProxy === false) {
   );
 }
 
+// Optional secret-encryption key (enables saved deploy targets) + deploy SSRF allow-list.
+const encryptionKey = process.env.SW_ENCRYPTION_KEY
+  ? parseKey(process.env.SW_ENCRYPTION_KEY)
+  : undefined;
+const deployAllowedHosts = process.env.SW_DEPLOY_ALLOWED_HOSTS
+  ? process.env.SW_DEPLOY_ALLOWED_HOSTS.split(',')
+      .map((h) => h.trim().toLowerCase().replace(/\.$/, ''))
+      .filter(Boolean)
+  : undefined;
+
 const { db } = createDb(url);
 await runMigrations(db);
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- trusted startup env path
@@ -48,6 +59,8 @@ const app = await createApp({
   mediaRoot,
   publishRoot,
   trustProxy,
+  encryptionKey,
+  deployAllowedHosts,
   version: process.env.SW_VERSION ?? '0.0.0',
   // Pull-based release check (disable for air-gapped installs).
   latestVersion:

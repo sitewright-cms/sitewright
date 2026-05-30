@@ -71,7 +71,7 @@ export const content = sqliteTable(
       .notNull()
       .references(() => projects.id),
     kind: text('kind', {
-      enum: ['settings', 'page', 'partial', 'dataset', 'entry', 'media'],
+      enum: ['settings', 'page', 'partial', 'dataset', 'entry', 'media', 'deploy_target'],
     }).notNull(),
     /** The entity's own id (or `settings` for the singleton). */
     entityId: text('entity_id').notNull(),
@@ -86,4 +86,11 @@ export const content = sqliteTable(
 );
 
 export type OrgRole = 'owner' | 'admin' | 'member';
-export type ContentKind = 'settings' | 'page' | 'partial' | 'dataset' | 'entry' | 'media';
+export type ContentKind =
+  | 'settings'
+  | 'page'
+  | 'partial'
+  | 'dataset'
+  | 'entry'
+  | 'media'
+  | 'deploy_target';

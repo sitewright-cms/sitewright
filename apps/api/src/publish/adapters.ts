@@ -24,12 +24,13 @@ export const DeployConfigSchema = z.object({
   port: z.number().int().min(1).max(65535).optional(),
   user: z.string().min(1).max(255),
   password: z.string().min(1).max(1024),
-  // Remote target directory: bounded length, no control characters.
+  // Remote target directory: bounded length, no control characters, no traversal.
   remoteDir: z
     .string()
     .min(1)
     .max(1024)
     .refine((dir) => !hasControlChars(dir), 'remoteDir contains control characters')
+    .refine((dir) => !dir.split('/').some((seg) => seg === '..'), 'remoteDir must not contain ".." segments')
     .default('/'),
   /**
    * Optional SFTP host-key fingerprint (SHA-256 hex, colons optional). When set,

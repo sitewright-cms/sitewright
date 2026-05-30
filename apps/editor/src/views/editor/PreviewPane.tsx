@@ -8,7 +8,18 @@ interface PreviewPaneProps {
  * Renders the server-produced preview HTML in a fully sandboxed iframe. The
  * `sandbox=""` attribute blocks scripts, forms and same-origin access, so even
  * if hostile content slipped past escaping it cannot execute — the preview is
- * pure styled markup.
+ * pure styled markup. Interactive components (Carousel/Lightbox/…) therefore show
+ * their progressive-enhancement fallback here; their behavior runs on the
+ * published/exported site.
+ *
+ * NOTE (WYSIWYG-with-scripts): simply switching to `sandbox="allow-scripts"` does
+ * NOT make the preview interactive — a `srcDoc` document INHERITS the editor
+ * page's CSP (`default-src 'self'`, no inline-script), which blocks the inlined
+ * component JS regardless of the sandbox. True script-running preview requires
+ * loading the preview from a SEPARATE origin, or via `src` from an endpoint that
+ * serves the document under a `Content-Security-Policy: sandbox allow-scripts`
+ * header (forcing an opaque, isolated origin even on direct navigation). That is
+ * a deliberate, security-reviewed change tracked separately — not a one-liner.
  */
 export function PreviewPane({ html, loading, error }: PreviewPaneProps) {
   return (

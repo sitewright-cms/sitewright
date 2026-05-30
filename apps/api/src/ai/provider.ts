@@ -26,6 +26,21 @@ export interface AiProvider {
   complete(req: AiCompleteRequest): Promise<AiCompletion>;
 }
 
+/**
+ * Raised when an upstream provider returns a non-success status. Carries the
+ * upstream status so the HTTP layer can distinguish a transient upstream issue
+ * (429/5xx → 502/503, retryable) from a real server fault (opaque 500).
+ */
+export class AiProviderError extends Error {
+  constructor(
+    message: string,
+    readonly upstreamStatus: number,
+  ) {
+    super(message);
+    this.name = 'AiProviderError';
+  }
+}
+
 type FetchLike = typeof fetch;
 
 // Haiku by default — cheap/fast for the bulk in-editor ops (model tiering); the
@@ -64,7 +79,7 @@ export class AnthropicProvider implements AiProvider {
     });
     if (!res.ok) {
       const detail = await res.text().catch(() => '');
-      throw new Error(`AI provider error ${res.status}: ${detail.slice(0, 200)}`);
+      throw new AiProviderError(`AI provider error ${res.status}: ${detail.slice(0, 200)}`, res.status);
     }
     const data = (await res.json()) as {
       content?: ReadonlyArray<{ type: string; text?: string }>;

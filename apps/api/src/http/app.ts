@@ -22,7 +22,7 @@ import type { Database } from '../db/client.js';
 import { MediaStorage } from '../media/storage.js';
 import { PublishError } from '../publish/build.js';
 import { InProcessBuildRunner, type BuildRunner } from '../publish/runner.js';
-import type { AiProvider } from '../ai/provider.js';
+import { AiProviderError, type AiProvider } from '../ai/provider.js';
 import { PublishStore } from '../publish/store.js';
 import { archiveSite, deploySite, DeployConfigSchema } from '../publish/adapters.js';
 import { isNewer } from '../version/checker.js';
@@ -125,7 +125,9 @@ const LoginBody = z.object({
 const AiGenerateBody = z.object({
   instruction: z.string().min(1).max(4000),
   target: z.enum(['blocks', 'copy']).default('copy'),
-  model: z.string().max(80).optional(),
+  // No client-selectable model: the agency operator pins the funded model via
+  // SW_AI_MODEL. Quotas meter tokens, not dollars, so letting a caller pick a
+  // premium model would let it drain the budget faster within the same cap.
 });
 
 /** Start of the current UTC month — the window for monthly AI token quotas. */
@@ -226,6 +228,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     }
     // Tree-depth / range guards reject oversized input.
     if (err instanceof RangeError) return reply.code(400).send({ error: 'input too large' });
+    // Upstream AI provider failures are transient/external, not server faults:
+    // surface 5xx/429 as 503 (overloaded/retryable) and other 4xx as 502 (bad
+    // gateway) — never the raw upstream body (could carry provider detail).
+    if (err instanceof AiProviderError) {
+      const code = err.upstreamStatus >= 500 || err.upstreamStatus === 429 ? 503 : 502;
+      app.log.error(err);
+      return reply.code(code).send({ error: 'AI provider unavailable — please try again' });
+    }
     // Known library errors that carry their own status: rate-limit (429) and
     // body-too-large (413). Allowlisted (not the whole 4xx range) so a future
     // plugin's error message can't leak through.
@@ -787,7 +797,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       if (!aiProvider) return reply.code(501).send({ error: 'AI is not configured' });
       const body = AiGenerateBody.parse(req.body);
 
-      // Enforce monthly token caps BEFORE spending (agency-funded budget).
+      // Enforce monthly token caps BEFORE spending (agency-funded budget). This
+      // is check-then-spend, not atomic: concurrent calls that both pass the
+      // check can overshoot the cap by ~one completion each. Bounded by rl(30)
+      // and a single self-hosted budget owner, so the worst case is a few cents
+      // of overshoot per minute — acceptable here. Tighten with a serialized
+      // per-org write if ever deployed under external per-tenant billing.
       const quota = await aiQuotaStatus(ctx);
       if (quota.orgOver) {
         return reply.code(429).send({ error: 'organization AI quota exhausted for this month' });
@@ -801,16 +816,20 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         body.target === 'blocks'
           ? 'Generate Sitewright page content as ONE JSON object with the block-tree shape {id,type,props?,children?}. Output ONLY JSON — no prose, no code fences. Use semantic blocks; never inline styles.'
           : 'You are a concise corporate-website copywriter. Output plain text only — no markdown.';
-      const completion = await aiProvider.complete({ system, prompt: body.instruction, model: body.model });
+      const completion = await aiProvider.complete({ system, prompt: body.instruction });
       await aiUsageRepo.record(ctx.orgId, ctx.userId, ctx.projectId, completion.model, completion.usage);
 
       let result: { text: string } | { node: unknown } = { text: completion.text };
       if (body.target === 'blocks') {
         try {
-          const parsed = PageNodeSchema.safeParse(JSON.parse(completion.text));
+          const raw: unknown = JSON.parse(completion.text);
+          // Bound recursion BEFORE Zod parses — a pathologically deep tree from
+          // the model would otherwise overflow the stack during safeParse.
+          assertWithinTreeDepth(raw);
+          const parsed = PageNodeSchema.safeParse(raw);
           if (parsed.success) result = { node: parsed.data };
         } catch {
-          // Model returned non-JSON; fall back to the raw text result.
+          // Model returned non-JSON or an over-deep tree; fall back to raw text.
         }
       }
       return reply.send({ result, usage: completion.usage, model: completion.model });
@@ -822,6 +841,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     const userId = await requireUserId(req);
     const tenant = await tenantContext(db, userId, req.params.orgId);
     const since = startOfMonthUTC(new Date());
+    // Both queries always run (unlike the generate path, which short-circuits
+    // when no cap is set): the dashboard reports actual usage even with no cap.
     const orgUsed = await aiUsageRepo.tokensSince(tenant.orgId, since);
     const userUsed = await aiUsageRepo.tokensSince(tenant.orgId, since, userId);
     return reply.send({

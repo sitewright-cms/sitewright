@@ -63,13 +63,23 @@ const buildRunner =
 const aiProvider = process.env.SW_AI_API_KEY
   ? new AnthropicProvider(process.env.SW_AI_API_KEY, process.env.SW_AI_MODEL)
   : undefined;
-const aiNumber = (v: string | undefined): number | undefined => {
+// Parse a positive-integer token cap. A set-but-invalid value (0, negative,
+// non-numeric) yields `undefined` — which means UNLIMITED — so warn loudly:
+// an operator who sets "0" to block AI spend must not silently get no cap.
+const aiNumber = (v: string | undefined, name: string): number | undefined => {
+  if (!v) return undefined;
   const n = Number(v);
-  return v && Number.isFinite(n) && n > 0 ? n : undefined;
+  if (!Number.isFinite(n) || n <= 0) {
+    process.stderr.write(
+      `[sitewright/api] WARNING: ${name}="${v}" is not a positive integer; AI quota is UNLIMITED\n`,
+    );
+    return undefined;
+  }
+  return n;
 };
 const aiQuota = {
-  orgMonthlyTokens: aiNumber(process.env.SW_AI_ORG_MONTHLY_TOKENS),
-  userMonthlyTokens: aiNumber(process.env.SW_AI_USER_MONTHLY_TOKENS),
+  orgMonthlyTokens: aiNumber(process.env.SW_AI_ORG_MONTHLY_TOKENS, 'SW_AI_ORG_MONTHLY_TOKENS'),
+  userMonthlyTokens: aiNumber(process.env.SW_AI_USER_MONTHLY_TOKENS, 'SW_AI_USER_MONTHLY_TOKENS'),
 };
 
 const { db } = createDb(url);

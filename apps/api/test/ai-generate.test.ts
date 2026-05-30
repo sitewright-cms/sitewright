@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { makeHarness, type Harness } from './harness.js';
-import type { AiProvider, AiCompleteRequest, AiUsage } from '../src/ai/provider.js';
+import { AiProviderError, type AiProvider, type AiCompleteRequest, type AiUsage } from '../src/ai/provider.js';
 
 /** A deterministic provider for tests — records calls, returns canned text+usage. */
 class FakeProvider implements AiProvider {
@@ -12,6 +12,14 @@ class FakeProvider implements AiProvider {
   async complete(req: AiCompleteRequest) {
     this.calls.push(req);
     return { text: this.text, model: 'fake-model', usage: this.usage };
+  }
+}
+
+/** A provider that simulates an upstream (Anthropic) non-ok response. */
+class ThrowingProvider implements AiProvider {
+  constructor(private readonly status = 429) {}
+  async complete(): Promise<never> {
+    throw new AiProviderError(`AI provider error ${this.status}: upstream`, this.status);
   }
 }
 
@@ -54,12 +62,14 @@ describe('AI generate + usage + quota', () => {
 
   it('parses a blocks target into a validated node', async () => {
     const node = { id: 'n', type: 'Section', children: [{ id: 'hh', type: 'Heading', props: { text: 'Hi' } }] };
-    h = await makeHarness({ aiProvider: new FakeProvider(JSON.stringify(node)) });
+    const provider = new FakeProvider(JSON.stringify(node));
+    h = await makeHarness({ aiProvider: provider });
     const a = await h.signup();
     const proj = a.project(await a.createProject());
     const res = await a.post(`${proj.base}/ai/generate`, { instruction: 'a hero section', target: 'blocks' });
     expect(res.statusCode).toBe(200);
     expect((res.json() as { result: { node?: unknown } }).result).toHaveProperty('node');
+    expect(provider.calls[0]?.system).toContain('JSON'); // blocks system prompt differs from copy
   });
 
   it('falls back to text when a blocks target returns non-JSON', async () => {
@@ -91,6 +101,48 @@ describe('AI generate + usage + quota', () => {
     const b = await h.signup();
     const projectId = await a.createProject();
     const res = await b.post(`/orgs/${a.orgId}/projects/${projectId}/ai/generate`, { instruction: 'x' });
-    expect([403, 404]).toContain(res.statusCode);
+    expect(res.statusCode).toBe(403); // tenantContext throws Forbidden for a non-member — deterministic
+  });
+
+  it('enforces the per-org monthly token quota across users', async () => {
+    const provider = new FakeProvider('x', { inputTokens: 40, outputTokens: 0 });
+    h = await makeHarness({ aiProvider: provider, aiQuota: { orgMonthlyTokens: 30 } });
+    const a = await h.signup();
+    const proj = a.project(await a.createProject());
+
+    // First call by the org owner spends 40, pushing the ORG total past 30.
+    expect((await a.post(`${proj.base}/ai/generate`, { instruction: 'one' })).statusCode).toBe(200);
+    // Second call (same org) is blocked on the org cap before spending again.
+    const over = await a.post(`${proj.base}/ai/generate`, { instruction: 'two' });
+    expect(over.statusCode).toBe(429);
+    expect(over.json()).toMatchObject({ error: expect.stringContaining('organization') });
+    expect(provider.calls).toHaveLength(1);
+  });
+
+  it('maps an upstream provider error to 503 (not an opaque 500)', async () => {
+    h = await makeHarness({ aiProvider: new ThrowingProvider(429) });
+    const a = await h.signup();
+    const proj = a.project(await a.createProject());
+    const res = await a.post(`${proj.base}/ai/generate`, { instruction: 'x' });
+    expect(res.statusCode).toBe(503);
+    expect((res.json() as { error: string }).error).not.toContain('upstream'); // no upstream detail leaked
+  });
+
+  it('reports usage limits via the usage endpoint', async () => {
+    h = await makeHarness({
+      aiProvider: new FakeProvider(),
+      aiQuota: { orgMonthlyTokens: 1000, userMonthlyTokens: 500 },
+    });
+    const a = await h.signup();
+    const usage = await a.get(`/orgs/${a.orgId}/ai/usage`);
+    expect(usage.statusCode).toBe(200);
+    const u = usage.json() as {
+      enabled: boolean;
+      org: { used: number; limit: number | null };
+      user: { used: number; limit: number | null };
+    };
+    expect(u.enabled).toBe(true);
+    expect(u.org).toEqual({ used: 0, limit: 1000 });
+    expect(u.user).toEqual({ used: 0, limit: 500 });
   });
 });

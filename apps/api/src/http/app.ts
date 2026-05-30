@@ -8,6 +8,7 @@ import { z } from 'zod';
 import {
   MediaAssetSchema,
   PageSchema,
+  PageNodeSchema,
   assertWithinTreeDepth,
   type Brand,
   type Entry,
@@ -21,6 +22,7 @@ import type { Database } from '../db/client.js';
 import { MediaStorage } from '../media/storage.js';
 import { PublishError } from '../publish/build.js';
 import { InProcessBuildRunner, type BuildRunner } from '../publish/runner.js';
+import type { AiProvider } from '../ai/provider.js';
 import { PublishStore } from '../publish/store.js';
 import { archiveSite, deploySite, DeployConfigSchema } from '../publish/adapters.js';
 import { isNewer } from '../version/checker.js';
@@ -33,6 +35,7 @@ import {
   tenantContext,
 } from '../repo/accounts.js';
 import { ProjectRepository } from '../repo/projects.js';
+import { AiUsageRepository } from '../repo/ai-usage.js';
 import {
   ContentRepository,
   CONTENT_KINDS,
@@ -119,6 +122,17 @@ const LoginBody = z.object({
   email: z.string().email(),
   password: z.string().min(1).max(200),
 });
+const AiGenerateBody = z.object({
+  instruction: z.string().min(1).max(4000),
+  target: z.enum(['blocks', 'copy']).default('copy'),
+  model: z.string().max(80).optional(),
+});
+
+/** Start of the current UTC month — the window for monthly AI token quotas. */
+function startOfMonthUTC(now: Date): Date {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+}
+
 const CreateProjectBody = z.object({
   name: z.string().min(1).max(200),
   slug: z
@@ -157,6 +171,10 @@ export interface AppOptions {
   releaseUrl?: string;
   /** Build executor (default: in-process). Swap for an isolated worker in SaaS. */
   buildRunner?: BuildRunner;
+  /** Online AI completion provider (agency-funded). Omit to disable the AI endpoints. */
+  aiProvider?: AiProvider;
+  /** Monthly token quotas for agency-funded metering. Unset/0 = unlimited. */
+  aiQuota?: { orgMonthlyTokens?: number; userMonthlyTokens?: number };
 }
 
 export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
@@ -167,6 +185,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const mediaStorage = opts.mediaRoot ? new MediaStorage(opts.mediaRoot) : undefined;
   const publishStore = opts.publishRoot ? new PublishStore(opts.publishRoot) : undefined;
   const buildRunner = opts.buildRunner ?? new InProcessBuildRunner();
+  const aiProvider = opts.aiProvider;
+  const aiUsageRepo = new AiUsageRepository(db);
+  const aiQuota = opts.aiQuota ?? {};
   const app = Fastify({
     // Redact deploy credentials defensively (Fastify omits bodies by default, but
     // guard against any future body logging).
@@ -733,6 +754,83 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       rl,
     });
   }
+
+  // ---- AI (online generation — agency-funded, metered, quota-gated) ----
+  // Resolves the org+user's month-to-date token usage against the configured caps.
+  async function aiQuotaStatus(ctx: ProjectContext): Promise<{
+    orgUsed: number;
+    userUsed: number;
+    orgOver: boolean;
+    userOver: boolean;
+  }> {
+    const since = startOfMonthUTC(new Date());
+    const orgUsed = aiQuota.orgMonthlyTokens ? await aiUsageRepo.tokensSince(ctx.orgId, since) : 0;
+    const userUsed = aiQuota.userMonthlyTokens
+      ? await aiUsageRepo.tokensSince(ctx.orgId, since, ctx.userId)
+      : 0;
+    return {
+      orgUsed,
+      userUsed,
+      orgOver: Boolean(aiQuota.orgMonthlyTokens) && orgUsed >= (aiQuota.orgMonthlyTokens ?? 0),
+      userOver: Boolean(aiQuota.userMonthlyTokens) && userUsed >= (aiQuota.userMonthlyTokens ?? 0),
+    };
+  }
+
+  app.post<{ Params: { orgId: string; projectId: string } }>(
+    '/orgs/:orgId/projects/:projectId/ai/generate',
+    { config: rl(30) },
+    async (req, reply) => {
+      const { ctx } = await resolveProject(req);
+      if (!WRITE_ROLES.has(ctx.role)) {
+        return reply.code(403).send({ error: 'insufficient role for this operation' });
+      }
+      if (!aiProvider) return reply.code(501).send({ error: 'AI is not configured' });
+      const body = AiGenerateBody.parse(req.body);
+
+      // Enforce monthly token caps BEFORE spending (agency-funded budget).
+      const quota = await aiQuotaStatus(ctx);
+      if (quota.orgOver) {
+        return reply.code(429).send({ error: 'organization AI quota exhausted for this month' });
+      }
+      if (quota.userOver) {
+        return reply.code(429).send({ error: 'your AI quota is exhausted for this month' });
+      }
+
+      // Token-minimizing contract: blocks → JSON tree; copy → plain text.
+      const system =
+        body.target === 'blocks'
+          ? 'Generate Sitewright page content as ONE JSON object with the block-tree shape {id,type,props?,children?}. Output ONLY JSON — no prose, no code fences. Use semantic blocks; never inline styles.'
+          : 'You are a concise corporate-website copywriter. Output plain text only — no markdown.';
+      const completion = await aiProvider.complete({ system, prompt: body.instruction, model: body.model });
+      await aiUsageRepo.record(ctx.orgId, ctx.userId, ctx.projectId, completion.model, completion.usage);
+
+      let result: { text: string } | { node: unknown } = { text: completion.text };
+      if (body.target === 'blocks') {
+        try {
+          const parsed = PageNodeSchema.safeParse(JSON.parse(completion.text));
+          if (parsed.success) result = { node: parsed.data };
+        } catch {
+          // Model returned non-JSON; fall back to the raw text result.
+        }
+      }
+      return reply.send({ result, usage: completion.usage, model: completion.model });
+    },
+  );
+
+  // Month-to-date AI usage + limits (for a usage dashboard). Any org member may read.
+  app.get<{ Params: { orgId: string } }>('/orgs/:orgId/ai/usage', async (req, reply) => {
+    const userId = await requireUserId(req);
+    const tenant = await tenantContext(db, userId, req.params.orgId);
+    const since = startOfMonthUTC(new Date());
+    const orgUsed = await aiUsageRepo.tokensSince(tenant.orgId, since);
+    const userUsed = await aiUsageRepo.tokensSince(tenant.orgId, since, userId);
+    return reply.send({
+      enabled: Boolean(aiProvider),
+      period: 'month',
+      org: { used: orgUsed, limit: aiQuota.orgMonthlyTokens ?? null },
+      user: { used: userUsed, limit: aiQuota.userMonthlyTokens ?? null },
+    });
+  });
 
   app.get('/health', async () => ({ ok: true }));
 

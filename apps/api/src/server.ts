@@ -5,6 +5,7 @@ import { createApp } from './http/app.js';
 import { createDb, runMigrations } from './db/client.js';
 import { createReleaseChecker } from './version/checker.js';
 import { parseKey } from './crypto/secret.js';
+import { WorkerBuildRunner } from './publish/worker-runner.js';
 
 const RELEASE_REPO = 'sitewright-cms/sitewright';
 
@@ -43,6 +44,18 @@ const deployAllowedHosts = process.env.SW_DEPLOY_ALLOWED_HOSTS
       .filter(Boolean)
   : undefined;
 
+// Opt-in isolated build worker (multi-tenant SaaS / once builds run untrusted
+// code). Default: in-process build (single-container). Requires the docker CLI +
+// DOCKER_HOST, and the API image available as the worker image.
+const buildRunner =
+  process.env.SW_BUILD_WORKER === 'true'
+    ? new WorkerBuildRunner({
+        image: process.env.SW_BUILD_WORKER_IMAGE ?? 'sitewright-api',
+        memory: process.env.SW_BUILD_WORKER_MEMORY,
+        cpus: process.env.SW_BUILD_WORKER_CPUS,
+      })
+    : undefined;
+
 const { db } = createDb(url);
 await runMigrations(db);
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- trusted startup env path
@@ -61,6 +74,7 @@ const app = await createApp({
   trustProxy,
   encryptionKey,
   deployAllowedHosts,
+  buildRunner,
   version: process.env.SW_VERSION ?? '0.0.0',
   // Pull-based release check (disable for air-gapped installs).
   latestVersion:

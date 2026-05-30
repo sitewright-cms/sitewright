@@ -4,6 +4,7 @@ import { z } from 'zod';
 import {
   assertWithinTreeDepth,
   BrandSchema,
+  CompanySchema,
   DatasetSchema,
   DeployTargetSchema,
   EntrySchema,
@@ -13,6 +14,7 @@ import {
   ProjectSettingsSchema,
   PROJECT_FORMAT_VERSION,
   type Brand,
+  type Company,
   type Dataset,
   type Entry,
   type Page,
@@ -24,8 +26,12 @@ import type { Database } from '../db/client.js';
 import { content, type ContentKind } from '../db/schema.js';
 import { ConflictError, ForbiddenError, NotFoundError, type ProjectContext } from './context.js';
 
-/** The project's settings singleton (brand + locale settings). */
-export const SettingsSchema = z.object({ brand: BrandSchema, settings: ProjectSettingsSchema });
+/** The project's settings singleton (brand + corporate identity + locale settings). */
+export const SettingsSchema = z.object({
+  brand: BrandSchema,
+  company: CompanySchema.optional(),
+  settings: ProjectSettingsSchema,
+});
 export type Settings = z.infer<typeof SettingsSchema>;
 
 /** Per-kind validation schema. Map (not object index) to avoid dynamic-key access. */
@@ -77,7 +83,14 @@ export interface ProjectIdentity {
 
 export interface ExportBundle {
   formatVersion: typeof PROJECT_FORMAT_VERSION;
-  project: { id: string; name: string; slug: string; brand: Brand; settings: ProjectSettings };
+  project: {
+    id: string;
+    name: string;
+    slug: string;
+    brand: Brand;
+    company?: Company;
+    settings: ProjectSettings;
+  };
   pages: Page[];
   partials: SitewrightPartial[];
   datasets: Dataset[];
@@ -141,6 +154,7 @@ export class ContentRepository {
         name: project.name,
         slug: project.slug,
         brand: settings?.brand ?? { name: project.name, colors: {} },
+        company: settings?.company,
         settings: settings?.settings ?? { defaultLocale: 'en', locales: ['en'] },
       },
       pages: (await this.list(ctx, 'page')) as Page[],
@@ -170,7 +184,9 @@ export class ContentRepository {
 
     const input = z
       .object({
-        project: z.object({ brand: BrandSchema, settings: ProjectSettingsSchema }).optional(),
+        project: z
+          .object({ brand: BrandSchema, company: CompanySchema.optional(), settings: ProjectSettingsSchema })
+          .optional(),
         pages: z.array(PageSchema).max(MAX_BUNDLE.pages).default([]),
         partials: z.array(PartialSchema).max(MAX_BUNDLE.partials).default([]),
         datasets: z.array(DatasetSchema).max(MAX_BUNDLE.datasets).default([]),
@@ -185,6 +201,7 @@ export class ContentRepository {
         name: project.name,
         slug: project.slug,
         brand: input.project?.brand ?? { name: project.name, colors: {} },
+        company: input.project?.company,
         settings: input.project?.settings ?? { defaultLocale: 'en', locales: ['en'] },
       },
       pages: input.pages,

@@ -2,6 +2,7 @@ export * from './primitives.js';
 export * from './binding.js';
 export * from './block.js';
 export * from './brand.js';
+export * from './company.js';
 export * from './dataset.js';
 export * from './deploy-target.js';
 export * from './media.js';

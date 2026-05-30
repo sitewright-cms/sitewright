@@ -2,6 +2,7 @@ import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
 import { allRoutes, datasetEntries, relativeRoot, type ProjectBundle } from '@sitewright/core';
 import { renderDocument, resolveInternalUrl } from '@sitewright/blocks';
+import { companyToOrganization } from './company-seo.js';
 import type { MediaAsset } from '@sitewright/schema';
 
 /** A client-correctable publish failure (bad route graph) → maps to HTTP 409. */
@@ -113,6 +114,9 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
   try {
     const datasets = datasetEntries(bundle);
     const brand = bundle.project.brand;
+    // Corporate identity is project-level (same for every page): compute once.
+    const company = bundle.project.company;
+    const baseOrg = companyToOrganization(company, bundle.project.name);
     let bytes = 0;
 
     // Bundle media into the artifact so the export is self-contained + portable.
@@ -131,6 +135,14 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       // All internal links + asset paths are relative to this page's depth, so the
       // exported bundle is portable (webspace root, a subfolder, or /sites/<slug>/).
       const siteRoot = relativeRoot(route.slug);
+      // Rebase a root-relative asset path so the export is portable at any base path.
+      const rel = (src: string | undefined): string | undefined =>
+        src ? resolveInternalUrl(src, siteRoot) : undefined;
+      // schema.org logo/image are asset paths too — rebase per page depth so the
+      // JSON-LD resolves correctly when the site is exported to a subfolder.
+      const organization = baseOrg
+        ? { ...baseOrg, logo: rel(baseOrg.logo), image: rel(baseOrg.image) }
+        : undefined;
       const html = renderDocument(page, {
         brand,
         datasets,
@@ -143,15 +155,14 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // `||` not `??`: an empty SEO title must fall back to the page title.
           title: page.seo?.title || page.title,
           description: page.seo?.description,
-          // Rebase root-relative asset paths so the export is portable at any base path.
-          ogImage: page.seo?.ogImage ? resolveInternalUrl(page.seo.ogImage, siteRoot) : undefined,
+          // og:image falls back to the company image; favicon to the company icon.
+          ogImage: rel(page.seo?.ogImage ?? company?.image),
           url: page.seo?.canonical,
           noindex: page.seo?.noindex,
           themeColor: brand.colors.primary,
-          favicon: brand.logo?.favicon
-            ? resolveInternalUrl(brand.logo.favicon, siteRoot)
-            : undefined,
+          favicon: rel(company?.icon ?? brand.logo?.favicon),
         },
+        organization,
       });
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to tmp (checked above)
       await writeFile(full, html, 'utf8');

@@ -185,10 +185,10 @@ describe('publish portability', () => {
   });
 
   it('omits the schema.org JSON-LD block when no organization data drives it', async () => {
-    // schemaOrgJsonLd is gated: it renders ONLY when renderDocument receives an
-    // `organization`. The publish pipeline (buildSite) does not pass one, so the
-    // published output never contains a JSON-LD block. We assert ABSENCE here
-    // (see the report: there is no wiring to populate it during publish).
+    // schemaOrgJsonLd is gated on an `organization`, which buildSite derives from
+    // the settings singleton's `company`. This test sets only brand (no company),
+    // so no organization is produced and no JSON-LD is emitted. (The populated
+    // case is covered in company-publish.test.ts.)
     await putSettings({ name: 'Acme', colors: { primary: '#0a7' } });
     await putHomeAndAbout();
     await publish(2);

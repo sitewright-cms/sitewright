@@ -122,6 +122,20 @@ export const BLOCK_DESCRIPTORS: ReadonlyArray<BlockDescriptor> = [
       { key: 'brandColor', label: 'Use brand color', input: 'boolean' },
     ],
   },
+  {
+    // Raw HTML embed (maps, forms, video, third-party widgets) — the contentBase
+    // "code snippet" equivalent. Output is intentionally NOT escaped; it is the
+    // tenant's own trusted content (owner/admin-only, like Critical CSS / custom
+    // head-footer) and is only ever served to a sandboxed preview iframe or the
+    // exported artifact. See the @security note in render.ts.
+    type: 'Html',
+    label: 'Raw HTML / embed',
+    category: 'content',
+    container: false,
+    fields: [
+      { key: 'html', label: 'HTML', input: 'textarea', placeholder: '<iframe …></iframe>' },
+    ],
+  },
   // --- nav ---
   {
     type: 'Link',

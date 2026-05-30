@@ -58,6 +58,22 @@ describe('buildSite', () => {
     expect(release.publishedAt).toBe('2026-05-29T00:00:00.000Z');
   });
 
+  it('aborts when the build exceeds maxOutputBytes (disk-fill DoS guard)', async () => {
+    const big = 'x'.repeat(5000);
+    await expect(
+      buildSite({
+        publishedAt: '2026-05-29T00:00:00.000Z',
+        outDir,
+        maxOutputBytes: 1024, // tiny cap → the first page already overflows
+        bundle: bundle({
+          pages: [
+            { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Html', props: { html: big } } },
+          ],
+        }),
+      }),
+    ).rejects.toThrow(/maximum output size/);
+  });
+
   it('expands a collection page per published entry and excludes drafts', async () => {
     await buildSite({
       publishedAt: '2026-05-29T00:00:00.000Z',

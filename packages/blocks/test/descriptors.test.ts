@@ -21,6 +21,7 @@ const RENDERED_TYPES = [
   'Nav',
   'Header',
   'Footer',
+  'Html',
 ];
 
 describe('BLOCK_DESCRIPTORS', () => {

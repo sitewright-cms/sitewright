@@ -199,6 +199,25 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
       const text = textProp(props, selfEntry, 'text');
       return `<footer data-sw-block="Footer"${cls}><div data-sw-part="container">${escapeHtml(text)}${inner}</div></footer>`;
     }
+    case 'Html': {
+      // Raw HTML embed (map / form / video / third-party widget) — the contentBase
+      // "code snippet" equivalent.
+      //
+      // @security Intentionally NOT escaped. This is the tenant's OWN trusted
+      // content for their own exported site. The same two invariants as
+      // customHead/customFooter/criticalCss MUST hold: (1) only owner/admin roles
+      // can write it — every content write goes through `requireWriteRole` — and
+      // (2) `renderDocument` output is served to a browser ONLY inside a sandboxed
+      // iframe (preview) or written to the exported artifact, NEVER as a
+      // same-origin `text/html` response injected into the editor. The same-origin
+      // `/sites/<id>/` preview is additionally covered by the global CSP
+      // (`default-src 'self'` with no `script-src` relaxation, so inline + external
+      // scripts are both blocked; `img-src 'self' data:` blocks external CSS exfil),
+      // so embedded scripts don't run there; they run only on the customer's own
+      // webspace after export.
+      const raw = textProp(props, selfEntry, 'html');
+      return `<div data-sw-block="Html"${cls}>${raw}</div>`;
+    }
     case 'Nav': {
       // Auto-nav: render the page-tree-derived menu for this slot. Each item's
       // href is rebased relative to the current page (portable), label escaped.

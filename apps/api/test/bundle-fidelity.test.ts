@@ -19,14 +19,12 @@ import { makeHarness, type Harness, type TestClient } from './harness.js';
 
 let harness: Harness;
 let client: TestClient;
-let base: string;
 let projectId: string;
 
 beforeEach(async () => {
   harness = await makeHarness();
   client = await harness.signup({ orgName: 'Acme' });
   projectId = await client.createProject('Site', 'site');
-  base = client.project(projectId).base;
 });
 
 /** Imports `bundle` into the active project and returns the response. */

@@ -6,6 +6,7 @@ import { createDb, runMigrations } from './db/client.js';
 import { createReleaseChecker } from './version/checker.js';
 import { parseKey } from './crypto/secret.js';
 import { WorkerBuildRunner } from './publish/worker-runner.js';
+import { AnthropicProvider } from './ai/provider.js';
 
 const RELEASE_REPO = 'sitewright-cms/sitewright';
 
@@ -56,6 +57,31 @@ const buildRunner =
       })
     : undefined;
 
+// Online AI (agency-funded). Enabled only when a single global agency API key is
+// set; the platform meters all usage against it and enforces monthly per-org /
+// per-user token quotas so no one client drains the budget.
+const aiProvider = process.env.SW_AI_API_KEY
+  ? new AnthropicProvider(process.env.SW_AI_API_KEY, process.env.SW_AI_MODEL)
+  : undefined;
+// Parse a positive-integer token cap. A set-but-invalid value (0, negative,
+// non-numeric) yields `undefined` — which means UNLIMITED — so warn loudly:
+// an operator who sets "0" to block AI spend must not silently get no cap.
+const aiNumber = (v: string | undefined, name: string): number | undefined => {
+  if (!v) return undefined;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0) {
+    process.stderr.write(
+      `[sitewright/api] WARNING: ${name}="${v}" is not a positive integer; AI quota is UNLIMITED\n`,
+    );
+    return undefined;
+  }
+  return n;
+};
+const aiQuota = {
+  orgMonthlyTokens: aiNumber(process.env.SW_AI_ORG_MONTHLY_TOKENS, 'SW_AI_ORG_MONTHLY_TOKENS'),
+  userMonthlyTokens: aiNumber(process.env.SW_AI_USER_MONTHLY_TOKENS, 'SW_AI_USER_MONTHLY_TOKENS'),
+};
+
 const { db } = createDb(url);
 await runMigrations(db);
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- trusted startup env path
@@ -75,6 +101,8 @@ const app = await createApp({
   encryptionKey,
   deployAllowedHosts,
   buildRunner,
+  aiProvider,
+  aiQuota,
   version: process.env.SW_VERSION ?? '0.0.0',
   // Pull-based release check (disable for air-gapped installs).
   latestVersion:

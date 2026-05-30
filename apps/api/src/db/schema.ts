@@ -85,6 +85,32 @@ export const content = sqliteTable(
   ],
 );
 
+/**
+ * Per-call AI usage ledger (online generation). Powers agency-funded metering +
+ * per-org/per-user monthly token quotas. `projectId` is nullable for org-level ops.
+ */
+export const aiUsage = sqliteTable(
+  'ai_usage',
+  {
+    id: text('id').primaryKey(),
+    orgId: text('org_id')
+      .notNull()
+      .references(() => organizations.id),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id),
+    projectId: text('project_id'),
+    model: text('model').notNull(),
+    inputTokens: integer('input_tokens').notNull(),
+    outputTokens: integer('output_tokens').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [
+    index('ai_usage_org_created_idx').on(t.orgId, t.createdAt),
+    index('ai_usage_user_created_idx').on(t.userId, t.createdAt),
+  ],
+);
+
 export type OrgRole = 'owner' | 'admin' | 'member';
 export type ContentKind =
   | 'settings'

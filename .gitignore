@@ -32,3 +32,6 @@ coverage/
 # logs / os
 *.log
 .DS_Store
+
+# Local reference material (proprietary contentBase screenshots — not for the OSS repo)
+/contentbase-screenshots/

@@ -82,6 +82,12 @@ export function validateProject(bundle: ProjectBundle): ValidationIssue[] {
     'entry id',
     issues,
   );
+  reportDuplicates(
+    (bundle.templates ?? []).map((template) => template.id),
+    'duplicate_template_id',
+    'template id',
+    issues,
+  );
 
   for (const entry of bundle.entries) {
     if (!datasetSlugs.has(entry.dataset)) {
@@ -142,6 +148,10 @@ export function validateProject(bundle: ProjectBundle): ValidationIssue[] {
 
   for (const partial of bundle.partials) {
     checkTree(partial.root, `partials/${partial.id}`, `partial "${partial.id}"`);
+  }
+
+  for (const template of bundle.templates ?? []) {
+    checkTree(template.root, `templates/${template.id}`, `template "${template.id}"`);
   }
 
   return issues;

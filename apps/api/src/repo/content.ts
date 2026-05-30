@@ -73,9 +73,9 @@ function schemaFor(kind: ContentKind): z.ZodTypeAny {
   return schema;
 }
 
-/** Guards recursive (page/partial) trees before Zod's recursive parse, to prevent stack overflow. */
+/** Guards recursive (page/partial/template) trees before Zod's recursive parse, to prevent stack overflow. */
 function assertTreeSafe(kind: ContentKind, raw: unknown): void {
-  if (kind === 'page' || kind === 'partial') {
+  if (kind === 'page' || kind === 'partial' || kind === 'template') {
     assertWithinTreeDepth((raw as { root?: unknown })?.root);
   }
 }

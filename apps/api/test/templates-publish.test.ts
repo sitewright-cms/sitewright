@@ -104,6 +104,21 @@ describe('templates → publish', () => {
     expect(res.body).toContain('unknown_template');
   });
 
+  it('rejects importing duplicate template ids (409 duplicate_template_id)', async () => {
+    const t1 = { id: 'dup', name: 'A', root: { id: 'a', type: 'Section', children: [{ id: 'o', type: 'Outlet' }] } };
+    const t2 = { id: 'dup', name: 'B', root: { id: 'b', type: 'Section', children: [{ id: 'o2', type: 'Outlet' }] } };
+    const res = await client.project(projectId).importBundle({ templates: [t1, t2] });
+    expect(res.statusCode).toBe(409);
+    expect(res.body).toContain('duplicate_template_id');
+  });
+
+  it('rejects importing a template that references an unknown partial (409 unknown_partial)', async () => {
+    const template = { id: 'main', name: 'Main', root: { id: 'lay', type: 'Section', children: [{ id: 'p', type: 'Section', partialRef: 'ghost' }, { id: 'o', type: 'Outlet' }] } };
+    const res = await client.project(projectId).importBundle({ templates: [template] });
+    expect(res.statusCode).toBe(409);
+    expect(res.body).toContain('unknown_partial'); // proves validateProject now checks template trees
+  });
+
   it('round-trips templates through import → export', async () => {
     const proj = client.project(projectId);
     const template = { id: 'main', name: 'Main', root: { id: 'lay', type: 'Section', children: [{ id: 'out', type: 'Outlet' }] } };

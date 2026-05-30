@@ -41,6 +41,11 @@ describe('resolveTemplate', () => {
     expect(result.children?.[0]?.children?.[0]).toBe(pageRoot);
   });
 
+  it('treats a template whose root IS an Outlet as an identity wrap (returns the page root)', () => {
+    const t = tmpl({ id: 'o', type: 'Outlet' });
+    expect(resolveTemplate(pageRoot, 't1', map(t))).toBe(pageRoot);
+  });
+
   it('throws on an unknown template', () => {
     expect(() => resolveTemplate(pageRoot, 'missing', new Map())).toThrow(TemplateResolutionError);
   });

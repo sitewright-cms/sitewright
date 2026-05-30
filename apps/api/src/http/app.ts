@@ -15,7 +15,7 @@ import {
   type MediaAsset,
   type Page,
 } from '@sitewright/schema';
-import { renderDocument } from '@sitewright/blocks';
+import { renderDocument, usedComponentTypes, componentAssets } from '@sitewright/blocks';
 import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
 import { optimizeImage } from '@sitewright/image-pipeline';
 import { buildNav, collectClassNames, type ProjectBundle } from '@sitewright/core';
@@ -496,16 +496,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         footer: buildNav(savedPages, 'footer'),
         mobile: buildNav(savedPages, 'mobile'),
       };
-      // Preview is a single, self-contained document (sandboxed iframe), so the
-      // compiled utility CSS is INLINED (vs linked at publish). Compile from the
-      // page's own class lists — only when it uses any — and pass them as
-      // inlineStyles so renderDocument places them last in <head> (utilities win
-      // by source order; no fragile string surgery on the rendered output).
+      // Preview is a single, self-contained document (sandboxed iframe), so styles
+      // are INLINED (vs linked at publish) and NO scripts are emitted — interactive
+      // components show their progressive-enhancement fallback here. Compile the
+      // utility CSS + gather component CSS only when the page uses them, and pass
+      // as inlineStyles (placed last in <head>, so utilities win by source order).
       const classNames = collectClassNames(page.root);
-      const inlineStyles =
-        classNames.length > 0
-          ? [await compileUtilityCss([classNames.join(' ')], brandToTailwindTheme(brand))]
-          : undefined;
+      const componentCss = componentAssets(usedComponentTypes(page.root)).css;
+      const inlineStyles: string[] = [];
+      if (classNames.length > 0) {
+        inlineStyles.push(await compileUtilityCss([classNames.join(' ')], brandToTailwindTheme(brand)));
+      }
+      if (componentCss) inlineStyles.push(componentCss);
       const html = renderDocument(page, {
         brand,
         datasets: Object.fromEntries(byDataset),
@@ -513,7 +515,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         media,
         nav,
         mediaUrl: (asset, file) => `/media/${project.id}/${asset.id}/${file}`,
-        inlineStyles,
+        inlineStyles: inlineStyles.length > 0 ? inlineStyles : undefined,
       });
       return reply.send({ html });
     },

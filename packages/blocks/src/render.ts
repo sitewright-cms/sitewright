@@ -88,6 +88,24 @@ function classAttr(node: PageNode): string {
   return node.className ? ` class="${escapeAttr(node.className)}"` : '';
 }
 
+/**
+ * Renders an image as an optimized `<picture>` when its src matches a known media
+ * asset, else a plain `<img>`. Shared by the Image block and Slide (Carousel).
+ */
+function imageTag(
+  src: string,
+  alt: string,
+  loading: string,
+  ctx: RenderContext,
+  root: string,
+  cls = '',
+): string {
+  const asset = ctx.media?.find((m) => m.url === src);
+  if (asset && ctx.mediaUrl) return renderPicture(asset, alt, loading, ctx.mediaUrl, cls);
+  const imgSrc = resolveInternalUrl(src, root);
+  return `<img data-sw-block="Image"${cls} src="${escapeAttr(imgSrc)}" alt="${escapeAttr(alt)}" loading="${loading}" />`;
+}
+
 /** Safe dataset lookup that avoids dynamic object indexing. */
 function poolFor(ctx: RenderContext, dataset: string): readonly Entry[] {
   const datasets = ctx.datasets;
@@ -175,11 +193,7 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
       const alt = textProp(props, selfEntry, 'alt');
       if (!src) return `<div data-sw-block="Image"${cls} data-sw-empty="1"></div>`;
       const loading = props.priority === true ? 'eager' : 'lazy';
-      // A known uploaded asset (matched by url) → optimized <picture>; else plain <img>.
-      const asset = ctx.media?.find((m) => m.url === src);
-      if (asset && ctx.mediaUrl) return renderPicture(asset, alt, loading, ctx.mediaUrl, cls);
-      const imgSrc = resolveInternalUrl(src, root);
-      return `<img data-sw-block="Image"${cls} src="${escapeAttr(imgSrc)}" alt="${escapeAttr(alt)}" loading="${loading}" />`;
+      return imageTag(src, alt, loading, ctx, root, cls);
     }
     case 'Button': {
       const text = textProp(props, selfEntry, 'text');
@@ -217,6 +231,47 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
       // webspace after export.
       const raw = textProp(props, selfEntry, 'html');
       return `<div data-sw-block="Html"${cls}>${raw}</div>`;
+    }
+    case 'Carousel': {
+      // Interactive component. Renders PE-first semantic HTML (a scroll-snap track
+      // that swipes with no JS); the platform's `components.js` (shipped only when
+      // a component is used, from the site's own origin) enhances it with autoplay/
+      // arrows/dots/keyboard. Settings come from typed props (end-user-editable).
+      const label = textProp(props, selfEntry, 'label');
+      const autoplay = props.autoplay === true;
+      const loop = props.loop !== false; // default on
+      const interval = clamp(Number(props.interval) || 5000, 1000, 60000);
+      const a11y = label ? ` aria-label="${escapeAttr(label)}"` : '';
+      const arrows =
+        props.showArrows !== false
+          ? `<button type="button" data-sw-part="prev" aria-label="Previous slide">‹</button>` +
+            `<button type="button" data-sw-part="next" aria-label="Next slide">›</button>`
+          : '';
+      // The dots are built by JS (so the no-JS fallback shows none); the container
+      // is decorative until enhanced.
+      const dots = props.showDots !== false ? `<div data-sw-part="dots" aria-hidden="true"></div>` : '';
+      return (
+        `<div data-sw-block="Carousel"${cls} data-sw-component="carousel" ` +
+        `data-autoplay="${autoplay}" data-interval="${interval}" data-loop="${loop}" ` +
+        `role="region" aria-roledescription="carousel"${a11y}>` +
+        `<div data-sw-part="track">${inner}</div>${arrows}${dots}</div>`
+      );
+    }
+    case 'Slide': {
+      // One carousel slide: an optional optimized image + an escaped caption. Any
+      // author-placed child blocks render after the figure.
+      const caption = textProp(props, selfEntry, 'caption');
+      const src = urlProp(props, selfEntry, 'image', '');
+      const alt = textProp(props, selfEntry, 'alt');
+      const img = src ? imageTag(src, alt, 'lazy', ctx, root) : '';
+      const figure =
+        img || caption
+          ? `<figure>${img}${caption ? `<figcaption>${escapeHtml(caption)}</figcaption>` : ''}</figure>`
+          : '';
+      return (
+        `<div data-sw-block="Slide"${cls} data-sw-part="slide" role="group" ` +
+        `aria-roledescription="slide">${figure}${inner}</div>`
+      );
     }
     case 'Nav': {
       // Auto-nav: render the page-tree-derived menu for this slot. Each item's
@@ -323,6 +378,14 @@ export interface RenderDocumentOptions extends RenderContext {
    * (the compiled Tailwind output); never raw user input.
    */
   inlineStyles?: readonly string[];
+  /**
+   * Deferred external script srcs linked just before `</body>` — the platform's
+   * `components.js` (interactive-component behavior), served from the site's own
+   * origin so it loads under the `default-src 'self'` CSP. First-party, audited
+   * code only; never tenant input. Omitted in the sandboxed editor preview (which
+   * runs no scripts), so components show their progressive-enhancement fallback.
+   */
+  scripts?: readonly string[];
 }
 
 /**
@@ -342,6 +405,7 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     criticalCss,
     stylesheets,
     inlineStyles,
+    scripts,
     ...ctx
   } = opts;
   const body = renderPage(page, ctx);
@@ -367,7 +431,11 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
       .map((href) => `<link rel="stylesheet" href="${escapeAttr(href)}" />\n`)
       .join('') +
     `</head>\n` +
-    `<body>${body}${customFooter ?? ''}</body>\n` +
+    `<body>${body}${customFooter ?? ''}` +
+    (scripts ?? [])
+      .map((src) => `<script defer src="${escapeAttr(src)}"></script>`)
+      .join('') +
+    `</body>\n` +
     `</html>`
   );
 }

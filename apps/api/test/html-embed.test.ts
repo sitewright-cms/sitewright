@@ -56,9 +56,14 @@ describe('Html (raw embed) block', () => {
     expect(res.body).not.toContain('&lt;iframe');
   });
 
-  it('renders the raw embed in the live preview', async () => {
+  it('returns preview as a JSON payload (never a same-origin text/html response)', async () => {
+    // Preview is readable by any project member, but the raw HTML is only ever
+    // returned as JSON for the client's OWN sandboxed iframe — never served as a
+    // same-origin text/html document that could script the editor session.
     const res = await client.post(`/orgs/${client.orgId}/projects/${projectId}/preview`, pageWithEmbed);
     expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toContain('application/json');
+    expect(res.headers['content-type']).not.toContain('text/html');
     const html = (res.json() as { html: string }).html;
     expect(html).toContain(EMBED);
   });
@@ -69,12 +74,21 @@ describe('Html (raw embed) block', () => {
     await client.post(`${proj.base}/publish`);
 
     const res = await client.get(`/sites/${projectId}/index.html`);
-    const csp = res.headers['content-security-policy'];
+    const csp = res.headers['content-security-policy'] as string;
     expect(csp).toBeTruthy();
+    // The operative invariant: no script-src is declared, so scripts fall back to
+    // `default-src 'self'` — blocking BOTH inline and external scripts. Assert the
+    // policy never relaxes scripts, and never widens the default beyond 'self'.
     expect(csp).toContain("default-src 'self'");
-    // No `script-src` relaxation → inline embed scripts cannot execute on the
-    // same-origin preview (they run only on the customer's own webspace export).
-    expect(csp).not.toContain("script-src 'unsafe-inline'");
+    expect(csp).not.toMatch(/script-src[^;]*unsafe-inline/);
     expect(csp).not.toContain('unsafe-eval');
+    expect(csp).not.toMatch(/default-src[^;]*unsafe-inline/);
+    expect(csp).not.toMatch(/default-src[^;]*\*/);
+    // External CSS exfil is closed too: images/fonts/connect fall back to 'self'.
+    expect(csp).toContain("img-src 'self' data:");
+    expect(csp).toContain("object-src 'none'");
+    // style-src DOES allow inline (the renderer's own <style> blocks need it) —
+    // documented + harmless for XSS since scripts and external loads are blocked.
+    expect(csp).toContain("style-src 'self' 'unsafe-inline'");
   });
 });

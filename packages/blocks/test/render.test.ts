@@ -27,6 +27,14 @@ describe('renderNode — Html (raw embed) block', () => {
     expect(html).toContain('</div>');
   });
 
+  it('escapes the wrapper className even though the body is raw', () => {
+    const html = renderNode(
+      node({ type: 'Html', className: 'x" onmouseover="evil()', props: { html: '<b>x</b>' } }),
+    );
+    expect(html).not.toContain('onmouseover="evil()"');
+    expect(html).toContain('&quot;');
+  });
+
   it('resolves the html from a dataset binding field', () => {
     const html = renderNode(node({ type: 'Html', props: { htmlField: 'embed' } }), {
       entry: { id: 'e', dataset: 'd', status: 'published', values: { embed: '<span>bound</span>' } },

@@ -32,6 +32,12 @@ export interface ReleaseManifest {
 // would be written but never reachably served.
 const SAFE_OUT_SEGMENT = /^[A-Za-z0-9._~-]+$/;
 
+// Bound the total bytes a single build writes to disk. A pathological project
+// (e.g. a large raw-HTML embed repeated across a big collection) could otherwise
+// fill the disk during the in-process build, before the 100 MiB archive cap that
+// only applies at export time. Matches that archive cap; operator-configurable.
+const DEFAULT_MAX_OUTPUT_BYTES = 100 * 1024 * 1024;
+
 function relPathForSlug(slug: string | undefined): string {
   if (!slug) return 'index.html';
   const segments = slug.split('/');
@@ -53,6 +59,8 @@ export interface BuildSiteOptions {
   media?: readonly MediaAsset[];
   /** Reads a media binary (assetId, file) — used to copy assets into the artifact. */
   readMedia?: (assetId: string, file: string) => Promise<Buffer>;
+  /** Max total HTML/CSS bytes written before aborting (default 100 MiB). */
+  maxOutputBytes?: number;
 }
 
 /** Copies every media asset's files into `<base>/media/<assetId>/` (path-safe). */
@@ -108,6 +116,7 @@ async function copyMedia(
 export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest> {
   const { outDir, bundle, publishedAt } = opts;
   const media = opts.media ?? [];
+  const maxOutputBytes = opts.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
   const base = resolve(outDir);
   const tmp = `${base}.tmp`;
 
@@ -199,6 +208,9 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to tmp (checked above)
       await writeFile(full, html, 'utf8');
       bytes += Buffer.byteLength(html);
+      if (bytes > maxOutputBytes) {
+        throw new PublishError('published site exceeds the maximum output size');
+      }
     }
 
     // One minimal stylesheet for the whole site (shared + cacheable across pages),

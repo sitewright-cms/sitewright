@@ -211,8 +211,10 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
       // iframe (preview) or written to the exported artifact, NEVER as a
       // same-origin `text/html` response injected into the editor. The same-origin
       // `/sites/<id>/` preview is additionally covered by the global CSP
-      // (`default-src 'self'`, no inline-script), so embedded scripts don't run
-      // there; they run only on the customer's own webspace after export.
+      // (`default-src 'self'` with no `script-src` relaxation, so inline + external
+      // scripts are both blocked; `img-src 'self' data:` blocks external CSS exfil),
+      // so embedded scripts don't run there; they run only on the customer's own
+      // webspace after export.
       const raw = textProp(props, selfEntry, 'html');
       return `<div data-sw-block="Html"${cls}>${raw}</div>`;
     }

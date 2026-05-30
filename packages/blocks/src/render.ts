@@ -273,6 +273,45 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
         `aria-roledescription="slide">${figure}${inner}</div>`
       );
     }
+    case 'Accordion':
+      // Zero-JS disclosure group (native <details> children). CSS-only component.
+      return `<div data-sw-block="Accordion"${cls}>${inner}</div>`;
+    case 'AccordionItem': {
+      const title = textProp(props, selfEntry, 'title');
+      const open = props.open === true ? ' open' : '';
+      return (
+        `<details data-sw-block="AccordionItem"${cls}${open}>` +
+        `<summary>${escapeHtml(title)}</summary>` +
+        `<div data-sw-part="content">${inner}</div></details>`
+      );
+    }
+    case 'Lightbox': {
+      // A thumbnail grid; the platform JS opens a full-screen overlay. PE-first:
+      // the empty overlay is hidden until enhanced; items are plain anchors that,
+      // with no JS, just open the full image.
+      const label = textProp(props, selfEntry, 'label');
+      const a11y = label ? ` aria-label="${escapeAttr(label)}"` : '';
+      return (
+        `<div data-sw-block="Lightbox"${cls} data-sw-component="lightbox" role="group"${a11y}>` +
+        `<div data-sw-part="grid">${inner}</div>` +
+        `<div data-sw-part="overlay" aria-hidden="true"></div></div>`
+      );
+    }
+    case 'LightboxItem': {
+      const full = urlProp(props, selfEntry, 'image', '');
+      if (!full) return `<a data-sw-block="LightboxItem"${cls} data-sw-empty="1"></a>`;
+      const thumb = urlProp(props, selfEntry, 'thumb', '') || full;
+      const alt = textProp(props, selfEntry, 'alt');
+      const caption = textProp(props, selfEntry, 'caption');
+      const href = escapeAttr(resolveInternalUrl(full, root));
+      const data = caption ? ` data-caption="${escapeAttr(caption)}"` : '';
+      // The thumbnail reuses the optimized <picture>/<img> path; the anchor's href
+      // (the full image) is the no-JS fallback and the overlay's source.
+      return (
+        `<a data-sw-block="LightboxItem"${cls} data-sw-part="item" href="${href}"${data}>` +
+        `${imageTag(thumb, alt, 'lazy', ctx, root)}</a>`
+      );
+    }
     case 'Nav': {
       // Auto-nav: render the page-tree-derived menu for this slot. Each item's
       // href is rebased relative to the current page (portable), label escaped.

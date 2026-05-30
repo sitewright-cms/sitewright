@@ -79,9 +79,82 @@ const CAROUSEL_JS = `(function(){
   if(document.readyState!=='loading'){init();}else{document.addEventListener('DOMContentLoaded',init);}
 })();`;
 
+// --- Accordion --------------------------------------------------------------
+// ZERO JavaScript: built on native <details>/<summary>, so it is fully
+// interactive everywhere — including the editor's sandboxed (script-free)
+// preview. The registry entry contributes styling only.
+const ACCORDION_CSS = [
+  '[data-sw-block="Accordion"]{display:block}',
+  '[data-sw-block="AccordionItem"]{border:1px solid rgba(0,0,0,.12);border-radius:.375rem;margin-bottom:.5rem;overflow:hidden}',
+  '[data-sw-block="AccordionItem"]>summary{cursor:pointer;padding:.75rem 1rem;font-weight:600;list-style:none;display:flex;justify-content:space-between;align-items:center}',
+  '[data-sw-block="AccordionItem"]>summary::-webkit-details-marker{display:none}',
+  '[data-sw-block="AccordionItem"]>summary::after{content:"+";font-weight:400;margin-left:1rem}',
+  '[data-sw-block="AccordionItem"][open]>summary::after{content:"\\2013"}',
+  '[data-sw-block="AccordionItem"] [data-sw-part="content"]{padding:0 1rem 1rem}',
+].join('');
+
+// --- Lightbox ----------------------------------------------------------------
+// A thumbnail grid that opens a full-screen overlay. PE-first: each item is an
+// anchor to the full image, so with no JS clicking simply opens the image. The
+// overlay is hidden until JS marks the root enhanced.
+const LIGHTBOX_CSS = [
+  '[data-sw-block="Lightbox"]{display:block}',
+  '[data-sw-block="Lightbox"] [data-sw-part="grid"]{display:grid;grid-template-columns:repeat(auto-fill,minmax(8rem,1fr));gap:.5rem}',
+  '[data-sw-block="Lightbox"] [data-sw-part="item"]{display:block}',
+  '[data-sw-block="Lightbox"] [data-sw-part="item"] img{display:block;width:100%;height:100%;object-fit:cover;aspect-ratio:1}',
+  '[data-sw-block="Lightbox"] [data-sw-part="overlay"]{display:none}',
+  '[data-sw-block="Lightbox"][data-sw-enhanced="true"] [data-sw-part="overlay"][data-open="true"]{display:flex;position:fixed;inset:0;z-index:9999;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,.92)}',
+  '[data-sw-block="Lightbox"] [data-sw-part="overlay"] img{max-width:90vw;max-height:80vh;object-fit:contain}',
+  '[data-sw-block="Lightbox"] [data-sw-part="overlay"] figcaption{color:#fff;padding:.5rem 1rem;text-align:center}',
+  '[data-sw-block="Lightbox"] [data-sw-part="overlay"] button{position:absolute;background:none;border:0;color:#fff;font-size:2.5rem;line-height:1;cursor:pointer;padding:.5rem}',
+  '[data-sw-block="Lightbox"] [data-sw-part="overlay"] [data-sw-part="close"]{top:.5rem;right:1rem}',
+  '[data-sw-block="Lightbox"] [data-sw-part="overlay"] [data-sw-part="lb-prev"]{left:.5rem;top:50%;transform:translateY(-50%)}',
+  '[data-sw-block="Lightbox"] [data-sw-part="overlay"] [data-sw-part="lb-next"]{right:.5rem;top:50%;transform:translateY(-50%)}',
+].join('');
+
+// Dependency-free. Builds the overlay via the DOM (no innerHTML beyond a one-time
+// clear) and shows the full image from each item's own href + data-caption.
+// Focus moves into the overlay on open and returns to the trigger on close;
+// Escape / arrow keys are handled while open.
+const LIGHTBOX_JS = `(function(){
+  function enhance(root){
+    var items=Array.prototype.slice.call(root.querySelectorAll('[data-sw-part="item"]'));
+    var overlay=root.querySelector('[data-sw-part="overlay"]');
+    if(!items.length||!overlay)return;
+    var idx=0,lastFocus=null;
+    function mkBtn(part,label,txt){var b=document.createElement('button');b.type='button';b.setAttribute('data-sw-part',part);b.setAttribute('aria-label',label);b.textContent=txt;return b;}
+    overlay.innerHTML='';
+    overlay.setAttribute('role','dialog');overlay.setAttribute('aria-modal','true');
+    var btnClose=mkBtn('close','Close','\\u00d7'),btnPrev=mkBtn('lb-prev','Previous','\\u2039'),btnNext=mkBtn('lb-next','Next','\\u203a');
+    var img=document.createElement('img'),cap=document.createElement('figcaption');
+    overlay.appendChild(btnClose);overlay.appendChild(btnPrev);overlay.appendChild(img);overlay.appendChild(cap);overlay.appendChild(btnNext);
+    function show(i){
+      idx=(i+items.length)%items.length;var a=items[idx],thumb=a.querySelector('img');
+      img.setAttribute('src',a.getAttribute('href'));img.setAttribute('alt',thumb?thumb.getAttribute('alt')||'':'');
+      var c=a.getAttribute('data-caption')||'';cap.textContent=c;cap.style.display=c?'block':'none';
+      overlay.setAttribute('data-open','true');overlay.removeAttribute('aria-hidden');btnClose.focus();
+    }
+    function close(){overlay.removeAttribute('data-open');overlay.setAttribute('aria-hidden','true');if(lastFocus){lastFocus.focus();}}
+    items.forEach(function(a,i){a.addEventListener('click',function(e){e.preventDefault();lastFocus=a;show(i);});});
+    btnClose.addEventListener('click',close);
+    btnPrev.addEventListener('click',function(){show(idx-1);});
+    btnNext.addEventListener('click',function(){show(idx+1);});
+    overlay.addEventListener('click',function(e){if(e.target===overlay){close();}});
+    document.addEventListener('keydown',function(e){if(overlay.getAttribute('data-open')!=='true')return;if(e.key==='Escape'){close();}else if(e.key==='ArrowLeft'){show(idx-1);}else if(e.key==='ArrowRight'){show(idx+1);}});
+    root.setAttribute('data-sw-enhanced','true');
+  }
+  function init(){Array.prototype.forEach.call(document.querySelectorAll('[data-sw-component="lightbox"]'),enhance);}
+  if(document.readyState!=='loading'){init();}else{document.addEventListener('DOMContentLoaded',init);}
+})();`;
+
 // Registry keyed by block `type`. Only blocks with behavior/styling belong here
-// (Slide is a plain child block — no entry). Insertion order = bundle order.
-const COMPONENTS = new Map<string, ComponentAsset>([['Carousel', { css: CAROUSEL_CSS, js: CAROUSEL_JS }]]);
+// (child blocks like Slide/AccordionItem/LightboxItem are styled by their parent's
+// entry — no entry of their own). Insertion order = bundle order.
+const COMPONENTS = new Map<string, ComponentAsset>([
+  ['Carousel', { css: CAROUSEL_CSS, js: CAROUSEL_JS }],
+  ['Accordion', { css: ACCORDION_CSS, js: '' }],
+  ['Lightbox', { css: LIGHTBOX_CSS, js: LIGHTBOX_JS }],
+]);
 
 /** Block types that are interactive components (have bundled CSS/JS). */
 export const COMPONENT_TYPES: ReadonlySet<string> = new Set(COMPONENTS.keys());

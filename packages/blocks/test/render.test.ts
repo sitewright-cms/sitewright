@@ -124,6 +124,70 @@ describe('renderNode — Carousel / Slide (interactive component)', () => {
   });
 });
 
+describe('renderNode — Accordion (native, zero-JS)', () => {
+  it('renders details/summary items with escaped titles and a content slot', () => {
+    const html = renderNode(
+      node({
+        type: 'Accordion',
+        children: [
+          {
+            id: 'i1',
+            type: 'AccordionItem',
+            props: { title: 'Q <1>', open: true },
+            children: [{ id: 'c', type: 'RichText', props: { text: 'Answer' } }],
+          },
+          { id: 'i2', type: 'AccordionItem', props: { title: 'Q2' } },
+        ],
+      }),
+    );
+    expect(html).toContain('data-sw-block="Accordion"');
+    expect(html).toMatch(/<details data-sw-block="AccordionItem" open>/); // open by default
+    expect(html).toContain('<summary>Q &lt;1&gt;</summary>'); // escaped
+    expect(html).toContain('data-sw-part="content"');
+    expect(html).toContain('Answer');
+    expect(html).toMatch(/<details data-sw-block="AccordionItem">/); // 2nd item closed (no open)
+  });
+});
+
+describe('renderNode — Lightbox (gallery + overlay)', () => {
+  it('renders the component hook, a thumbnail grid, item anchors, and a hidden overlay', () => {
+    const html = renderNode(
+      node({
+        type: 'Lightbox',
+        props: { label: 'Portfolio' },
+        children: [
+          { id: 'p1', type: 'LightboxItem', props: { image: '/full1.jpg', alt: 'One', caption: 'First' } },
+          { id: 'p2', type: 'LightboxItem', props: { image: '/full2.jpg', thumb: '/thumb2.jpg', alt: 'Two' } },
+        ],
+      }),
+    );
+    expect(html).toContain('data-sw-block="Lightbox"');
+    expect(html).toContain('data-sw-component="lightbox"');
+    expect(html).toContain('aria-label="Portfolio"');
+    expect(html).toContain('data-sw-part="grid"');
+    expect(html).toContain('data-sw-part="overlay"');
+    // PE: each item is an anchor to the FULL image (opens with no JS); caption in data
+    expect(html).toContain('data-sw-part="item" href="full1.jpg"');
+    expect(html).toContain('data-caption="First"');
+    expect(html).toContain('src="full1.jpg"'); // p1 has no thumb → falls back to the full image
+    expect(html).toContain('href="full2.jpg"'); // p2 links to its full image
+  });
+
+  it('uses the thumbnail when provided, and escapes a hostile caption', () => {
+    const html = renderNode(
+      node({ type: 'LightboxItem', props: { image: '/f.jpg', thumb: '/t.jpg', caption: '"><x' } }),
+    );
+    expect(html).toContain('src="t.jpg"'); // thumb used for the visible image
+    expect(html).toContain('href="f.jpg"'); // full image is the link target
+    expect(html).not.toContain('"><x');
+    expect(html).toContain('&quot;');
+  });
+
+  it('renders an empty placeholder LightboxItem with no image', () => {
+    expect(renderNode(node({ type: 'LightboxItem', props: {} }))).toContain('data-sw-empty="1"');
+  });
+});
+
 describe('renderNode — brand/social icons (simple-icons)', () => {
   it('renders a brand icon as a filled-path SVG, labelled by the brand title', () => {
     const html = renderNode(node({ type: 'Icon', props: { name: 'brand:facebook' } }));

@@ -24,6 +24,10 @@ const RENDERED_TYPES = [
   'Html',
   'Carousel',
   'Slide',
+  'Accordion',
+  'AccordionItem',
+  'Lightbox',
+  'LightboxItem',
 ];
 
 describe('BLOCK_DESCRIPTORS', () => {

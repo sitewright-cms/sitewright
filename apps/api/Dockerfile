@@ -5,6 +5,17 @@
 #   docker build -t sitewright-api -f apps/api/Dockerfile <dir>
 FROM node:22-slim
 
+# Docker CLI — only used when the optional isolated build worker is enabled
+# (SW_BUILD_WORKER=true) to spawn worker containers; harmless otherwise. Static
+# client binary only (no daemon). Build offline? this layer can be dropped.
+ARG DOCKER_CLI_VERSION=27.3.1
+RUN set -eux; \
+    ARCH="$(dpkg --print-architecture | sed 's/amd64/x86_64/; s/arm64/aarch64/')"; \
+    apt-get update && apt-get install -y --no-install-recommends ca-certificates curl; \
+    curl -fsSL "https://download.docker.com/linux/static/stable/${ARCH}/docker-${DOCKER_CLI_VERSION}.tgz" \
+      | tar -xz -C /usr/local/bin --strip-components=1 docker/docker; \
+    apt-get purge -y --auto-remove curl; rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 COPY . .
 

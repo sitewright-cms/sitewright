@@ -1,6 +1,6 @@
 import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
-import { allRoutes, datasetEntries, relativeRoot, type ProjectBundle } from '@sitewright/core';
+import { allRoutes, buildNav, datasetEntries, relativeRoot, type ProjectBundle } from '@sitewright/core';
 import { renderDocument, resolveInternalUrl } from '@sitewright/blocks';
 import { companyToOrganization } from './company-seo.js';
 import type { MediaAsset } from '@sitewright/schema';
@@ -119,6 +119,12 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     const baseOrg = companyToOrganization(company, bundle.project.name);
     // Project-wide website settings (critical CSS + custom head/footer) — same for every page.
     const website = bundle.project.website;
+    // Auto-nav: page-tree-derived menus per slot (same for every page; Nav blocks consume it).
+    const nav = {
+      header: buildNav(bundle.pages, 'header'),
+      footer: buildNav(bundle.pages, 'footer'),
+      mobile: buildNav(bundle.pages, 'mobile'),
+    };
     let bytes = 0;
 
     // Bundle media into the artifact so the export is self-contained + portable.
@@ -152,6 +158,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         includeDrafts: false,
         media,
         root: siteRoot,
+        nav,
         mediaUrl: (asset, file) => `${siteRoot}media/${asset.id}/${file}`,
         seo: {
           // `||` not `??`: an empty SEO title must fall back to the page title.

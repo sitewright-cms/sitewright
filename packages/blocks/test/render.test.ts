@@ -203,6 +203,20 @@ describe('renderNode — per block', () => {
     expect(ext).toContain('href="https://x.io/y"'); // external untouched
   });
 
+  it('Nav renders the slot menu from ctx.nav (rebased hrefs, escaped labels)', () => {
+    const nav = { header: [{ label: 'Home', path: '/' }, { label: 'A & B', path: '/about' }] };
+    const html = renderNode(node({ type: 'Nav', props: { slot: 'header' } }), { root: '../', nav });
+    expect(html).toContain('data-sw-block="Nav"');
+    expect(html).toContain('data-slot="header"');
+    expect(html).toContain('href="../"'); // home rebased to the page root
+    expect(html).toContain('href="../about"');
+    expect(html).toContain('A &amp; B'); // label escaped
+    // a slot with no items still renders the <nav> wrapper, no links
+    const empty = renderNode(node({ type: 'Nav', props: { slot: 'footer' } }), { nav });
+    expect(empty).toContain('data-sw-block="Nav"');
+    expect(empty).not.toContain('data-sw-part="nav-link"');
+  });
+
   it('Footer renders nested children alongside its text', () => {
     const html = renderNode(
       node({

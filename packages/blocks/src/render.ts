@@ -34,6 +34,11 @@ export interface RenderContext {
    * this so the exported site is portable. See `relativeRoot` in @sitewright/core.
    */
   root?: string;
+  /**
+   * Page-tree-derived navigation items per slot (`buildNav` in @sitewright/core),
+   * consumed by `Nav` blocks. Keyed by slot (`header`/`footer`/`mobile`).
+   */
+  nav?: Record<string, ReadonlyArray<{ label: string; path: string }>>;
 }
 
 const PICTURE_SIZES = '(min-width: 1280px) 1280px, 100vw';
@@ -179,6 +184,20 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
     case 'Footer': {
       const text = textProp(props, selfEntry, 'text');
       return `<footer data-sw-block="Footer"><div data-sw-part="container">${escapeHtml(text)}${inner}</div></footer>`;
+    }
+    case 'Nav': {
+      // Auto-nav: render the page-tree-derived menu for this slot. Each item's
+      // href is rebased relative to the current page (portable), label escaped.
+      const slot = String(props.slot ?? 'header');
+      // Safe lookup (no dynamic object indexing), mirroring poolFor.
+      const items = ctx.nav ? (Object.entries(ctx.nav).find(([k]) => k === slot)?.[1] ?? []) : [];
+      const links = items
+        .map(
+          (item) =>
+            `<a data-sw-part="nav-link" href="${escapeAttr(resolveInternalUrl(item.path, root))}">${escapeHtml(item.label)}</a>`,
+        )
+        .join('');
+      return `<nav data-sw-block="Nav" data-slot="${escapeAttr(slot)}">${links}${inner}</nav>`;
     }
     case 'Outlet':
       // Template content-slot marker; normally consumed by resolveTemplate before

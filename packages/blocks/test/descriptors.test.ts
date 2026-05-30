@@ -17,6 +17,7 @@ const RENDERED_TYPES = [
   'Card',
   'Button',
   'Link',
+  'Nav',
   'Header',
   'Footer',
 ];

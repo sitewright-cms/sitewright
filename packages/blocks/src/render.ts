@@ -278,6 +278,13 @@ export interface RenderDocumentOptions extends RenderContext {
    * page (use the page `root`) so the exported bundle stays portable.
    */
   stylesheets?: readonly string[];
+  /**
+   * CSS inlined as `<style>` blocks at the END of `<head>` (after the brand +
+   * critical CSS, alongside `stylesheets`) — the preview's self-contained
+   * equivalent of the linked utility sheet. Trusted, machine-generated CSS only
+   * (the compiled Tailwind output); never raw user input.
+   */
+  inlineStyles?: readonly string[];
 }
 
 /**
@@ -296,6 +303,7 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     customFooter,
     criticalCss,
     stylesheets,
+    inlineStyles,
     ...ctx
   } = opts;
   const body = renderPage(page, ctx);
@@ -316,6 +324,7 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     (customHead ? `${customHead}\n` : '') +
     `<style>${css}</style>\n` +
     (criticalCss ? `<style>${criticalCss}</style>\n` : '') +
+    (inlineStyles ?? []).map((style) => `<style>${style}</style>\n`).join('') +
     (stylesheets ?? [])
       .map((href) => `<link rel="stylesheet" href="${escapeAttr(href)}" />\n`)
       .join('') +

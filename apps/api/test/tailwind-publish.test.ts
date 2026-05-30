@@ -91,4 +91,25 @@ describe('Tailwind utility layer → publish', () => {
     const sheet = await client.get(`/sites/${projectId}/styles.css`);
     expect(sheet.statusCode).toBe(404); // never written
   });
+
+  it('serves only the .css asset — never release.json, and not via traversal', async () => {
+    const proj = client.project(projectId);
+    const page = {
+      id: 'home',
+      path: '/',
+      title: 'Home',
+      root: { id: 'r', type: 'Section', className: 'flex', children: [] },
+    };
+    expect((await proj.putContent('page', 'home', page)).statusCode).toBe(200);
+    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
+
+    // The build manifest (.json) is not an allowlisted asset → not served.
+    expect((await client.get(`/sites/${projectId}/release.json`)).statusCode).toBe(404);
+    // Traversal attempts out of the site dir are rejected.
+    expect((await client.get(`/sites/${projectId}/../../etc/passwd`)).statusCode).toBe(404);
+    // The legitimate stylesheet is served with the css content type.
+    const sheet = await client.get(`/sites/${projectId}/styles.css`);
+    expect(sheet.statusCode).toBe(200);
+    expect(sheet.headers['content-type']).toContain('text/css');
+  });
 });

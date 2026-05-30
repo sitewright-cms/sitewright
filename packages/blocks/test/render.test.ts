@@ -419,4 +419,16 @@ describe('renderPage / renderDocument', () => {
     expect(doc).not.toContain('<script>x');
     expect(doc).toContain('&quot;');
   });
+
+  it('inlines inlineStyles as <style> blocks last in <head>, after critical CSS', () => {
+    const doc = renderDocument(page, {
+      brand,
+      criticalCss: '.hero{color:red}',
+      inlineStyles: ['.flex{display:flex}'],
+    });
+    expect(doc).toContain('<style>.flex{display:flex}</style>');
+    expect(doc.indexOf('.hero{color:red}')).toBeLessThan(doc.indexOf('.flex{display:flex}'));
+    expect(doc.indexOf('.flex{display:flex}')).toBeLessThan(doc.indexOf('</head>'));
+    expect(renderDocument(page, { brand })).not.toContain('.flex{display:flex}');
+  });
 });

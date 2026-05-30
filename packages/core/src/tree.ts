@@ -53,6 +53,20 @@ export function collectIds(root: PageNode): string[] {
   return ids;
 }
 
+/**
+ * Every author utility-class list in the tree (one entry per node that sets
+ * `className`), in document order. The Tailwind pipeline scans these to compile
+ * a minimal stylesheet — collecting them from the tree (rather than the rendered
+ * HTML) avoids false positives from skeleton CSS or raw custom head/footer.
+ */
+export function collectClassNames(root: PageNode): string[] {
+  const classNames: string[] = [];
+  walk(root, (node) => {
+    if (node.className) classNames.push(node.className);
+  });
+  return classNames;
+}
+
 /** Ids that appear more than once in the tree. */
 export function findDuplicateIds(root: PageNode): string[] {
   const seen = new Set<string>();

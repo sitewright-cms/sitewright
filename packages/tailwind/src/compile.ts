@@ -19,8 +19,14 @@ const TAILWIND_BASE = dirname(require.resolve('tailwindcss/theme.css'));
 const BASE_INPUT = `@import "tailwindcss/theme.css" layer(theme);\n@import "tailwindcss/utilities.css";`;
 
 // A theme variable name must be a safe CSS identifier — defense-in-depth against
-// a key smuggling characters into the generated `@theme { … }` block.
-const SAFE_TOKEN = /^[a-zA-Z][a-zA-Z0-9-]*$/;
+// a key smuggling characters into the generated `@theme { … }` block. Accepts the
+// same `-`/`_` alphabet as the schema's KeyNameSchema (both are valid CSS ident
+// chars) so a valid brand key is never silently dropped here.
+// Caveat: Tailwind treats `_` as a space inside class candidates, so an
+// underscore key (e.g. `nav_bg`) emits the `--color-nav_bg` var but is not
+// reachable as a bare `bg-nav_bg` utility — use it via `bg-[var(--color-nav_bg)]`,
+// or prefer single-word / camelCase brand token names for clean utilities.
+const SAFE_TOKEN = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
 
 export interface CompileOptions {
   /** Minify the output with Lightning CSS (default true). */

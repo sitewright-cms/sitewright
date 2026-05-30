@@ -18,7 +18,7 @@ import {
 import { renderDocument } from '@sitewright/blocks';
 import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
 import { optimizeImage } from '@sitewright/image-pipeline';
-import { buildNav, type ProjectBundle } from '@sitewright/core';
+import { buildNav, collectClassNames, type ProjectBundle } from '@sitewright/core';
 import type { Database } from '../db/client.js';
 import { MediaStorage } from '../media/storage.js';
 import { PublishError } from '../publish/build.js';
@@ -496,22 +496,25 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         footer: buildNav(savedPages, 'footer'),
         mobile: buildNav(savedPages, 'mobile'),
       };
-      let html = renderDocument(page, {
+      // Preview is a single, self-contained document (sandboxed iframe), so the
+      // compiled utility CSS is INLINED (vs linked at publish). Compile from the
+      // page's own class lists — only when it uses any — and pass them as
+      // inlineStyles so renderDocument places them last in <head> (utilities win
+      // by source order; no fragile string surgery on the rendered output).
+      const classNames = collectClassNames(page.root);
+      const inlineStyles =
+        classNames.length > 0
+          ? [await compileUtilityCss([classNames.join(' ')], brandToTailwindTheme(brand))]
+          : undefined;
+      const html = renderDocument(page, {
         brand,
         datasets: Object.fromEntries(byDataset),
         includeDrafts: true,
         media,
         nav,
         mediaUrl: (asset, file) => `/media/${project.id}/${asset.id}/${file}`,
+        inlineStyles,
       });
-      // Preview is a single, self-contained document (sandboxed iframe), so the
-      // compiled utility CSS is inlined rather than linked. Compile only when the
-      // page actually uses utility classes, and place it last in <head> so the
-      // utilities win by source order (parity with the linked sheet at publish).
-      if (html.includes(' class="')) {
-        const utilityCss = await compileUtilityCss([html], brandToTailwindTheme(brand));
-        html = html.replace('</head>', `<style>${utilityCss}</style>\n</head>`);
-      }
       return reply.send({ html });
     },
   );

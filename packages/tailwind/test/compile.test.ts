@@ -56,4 +56,17 @@ describe('compileUtilityCss', () => {
     expect(css).not.toContain('evil');
     expect(css).not.toContain('color:red');
   });
+
+  it('keeps safe-but-underscored token names as a CSS var (aligned with KeyNameSchema)', async () => {
+    // `nav_bg` is a valid brand key; it must not be silently dropped. It emits the
+    // var (usable via bg-[var(--color-nav_bg)]) even though `bg-nav_bg` itself is
+    // not a Tailwind utility (Tailwind treats `_` as a space in candidates).
+    const css = await compileUtilityCss(
+      ['<div class="bg-[var(--color-nav_bg)]">x</div>'],
+      { colors: { nav_bg: '#123456' } },
+      { minify: false },
+    );
+    expect(css).toContain('--color-nav_bg');
+    expect(css).toContain('#123456');
+  });
 });

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
-import { projects, type OrgRole } from '../db/schema.js';
+import { content, projects, type OrgRole } from '../db/schema.js';
 import { ConflictError, ForbiddenError, NotFoundError, type TenantContext } from './context.js';
 
 const WRITE_ROLES: ReadonlySet<OrgRole> = new Set(['owner', 'admin']);
@@ -71,10 +71,21 @@ export class ProjectRepository {
     return project;
   }
 
-  /** Deletes a project, scoped to the caller's org; throws NotFound if absent or owned by another org. */
+  /**
+   * Deletes a project (scoped to the caller's org); throws NotFound if absent or
+   * owned by another org. Cascades to the project's `content` rows in one
+   * transaction — `content.project_id` has no DB-level `ON DELETE CASCADE`, so
+   * deleting the project row alone would violate the FK (and used to 500). NOTE:
+   * on-disk media/publish artifacts are not removed here (follow-up).
+   */
   async remove(ctx: TenantContext, id: string): Promise<void> {
     requireWriteRole(ctx);
     await this.get(ctx, id); // enforces org ownership (NotFound otherwise)
-    await this.db.delete(projects).where(and(eq(projects.id, id), eq(projects.orgId, ctx.orgId)));
+    await this.db.transaction(async (tx) => {
+      // Safe to delete by projectId alone: get() above proved this project (a
+      // globally-unique UUID) belongs to ctx.orgId, so no other org's content matches.
+      await tx.delete(content).where(eq(content.projectId, id));
+      await tx.delete(projects).where(and(eq(projects.id, id), eq(projects.orgId, ctx.orgId)));
+    });
   }
 }

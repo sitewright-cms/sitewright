@@ -233,7 +233,9 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
         return (
           `<svg data-sw-block="Icon"${cls} xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" ` +
           `viewBox="0 0 24 24" fill="${escapeAttr(fill)}" role="img" ` +
-          `aria-label="${escapeAttr(label || brand.title)}"><path d="${brand.path}"/></svg>`
+          // `path` is a trusted build-time constant (no `"` in SVG path data), but
+          // escape it anyway so the attribute-escaping policy is uniform.
+          `aria-label="${escapeAttr(label || brand.title)}"><path d="${escapeAttr(brand.path)}"/></svg>`
         );
       }
       // Lucide (stroke-based) UI glyphs.

@@ -41,6 +41,10 @@ jobs:
       - name: Audit dependencies
         run: pnpm audit --audit-level high
 
+      # Guard against hand-edits / upstream drift of the generated brand-icons set.
+      - name: Check generated brand icons are up to date
+        run: pnpm --filter @sitewright/blocks gen:brand-icons:check
+
       - name: Typecheck
         run: pnpm typecheck
 

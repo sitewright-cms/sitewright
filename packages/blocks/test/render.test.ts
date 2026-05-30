@@ -43,6 +43,14 @@ describe('renderNode — brand/social icons (simple-icons)', () => {
     expect(html).toContain('stroke="currentColor"');
     expect(html).toContain('fill="none"');
   });
+
+  it('routes the bare name "x" to the Lucide close icon, not brand:x', () => {
+    // `x` exists in BOTH sets; only the `brand:` prefix selects the brand logo.
+    const html = renderNode(node({ type: 'Icon', props: { name: 'x' } }));
+    expect(html).toContain('stroke="currentColor"'); // Lucide (stroke), not brand
+    expect(html).toContain('fill="none"');
+    expect(html).not.toContain('role="img"');
+  });
 });
 
 describe('renderNode — className (Tailwind utility layer)', () => {

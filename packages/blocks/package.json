@@ -19,7 +19,9 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run --coverage",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "gen:brand-icons": "node scripts/gen-brand-icons.mjs",
+    "gen:brand-icons:check": "node scripts/gen-brand-icons.mjs && git diff --exit-code src/brand-icons.ts"
   },
   "dependencies": {
     "@sitewright/core": "workspace:*",

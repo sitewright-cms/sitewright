@@ -1,6 +1,15 @@
 import { z } from 'zod';
 import { IdSchema } from './primitives.js';
 
+/** True if `value` contains an ASCII control character (mirrors DeployConfigSchema). */
+function hasControlChars(value: string): boolean {
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i);
+    if (code <= 0x1f || code === 0x7f) return true;
+  }
+  return false;
+}
+
 /** Encrypted-at-rest secret envelope (AES-256-GCM, base64 fields). */
 export const EncryptedSecretSchema = z.object({
   iv: z.string().min(1).max(64),
@@ -26,6 +35,9 @@ export const DeployTargetSchema = z.object({
     .string()
     .min(1)
     .max(1024)
+    // Parity with DeployConfigSchema: the stored target feeds the FTP/SFTP transport
+    // directly, so reject control chars (command/path injection) AND traversal here.
+    .refine((v) => !hasControlChars(v), 'remoteDir must not contain control characters')
     .refine((v) => !v.split('/').some((seg) => seg === '..'), 'remoteDir must not contain ".." segments')
     .default('/'),
   /** SFTP host-key fingerprint (not secret). */

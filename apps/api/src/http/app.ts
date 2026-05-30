@@ -607,6 +607,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             project: { formatVersion: exp.formatVersion, ...exp.project },
             pages: exp.pages,
             partials: exp.partials,
+            templates: exp.templates,
             datasets: exp.datasets,
             entries: exp.entries,
           };

@@ -16,6 +16,8 @@ export const PageSchema = z
     path: RoutePathSchema,
     title: z.string().min(1).max(300),
     seo: SeoSchema.optional(),
+    /** Optional reusable layout: the template wraps this page at its Outlet node. */
+    template: IdSchema.optional(),
     /** Root of the block tree rendered for this page. */
     root: PageNodeSchema,
     /** Present when this page is generated once per dataset entry. */

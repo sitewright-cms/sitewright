@@ -180,6 +180,10 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
       const text = textProp(props, selfEntry, 'text');
       return `<footer data-sw-block="Footer"><div data-sw-part="container">${escapeHtml(text)}${inner}</div></footer>`;
     }
+    case 'Outlet':
+      // Template content-slot marker; normally consumed by resolveTemplate before
+      // render. A stray Outlet (page without a template) renders nothing.
+      return inner;
     default:
       return `<div data-sw-block="Unknown" data-type="${escapeAttr(node.type)}">Unknown block: ${escapeHtml(node.type)}${inner}</div>`;
   }

@@ -1,4 +1,4 @@
-import type { Dataset, Entry, Page, Project, SitewrightPartial } from '@sitewright/schema';
+import type { Dataset, Entry, Page, Project, SitewrightPartial, Template } from '@sitewright/schema';
 import { findDuplicateIds, walk } from './tree.js';
 
 /** A complete project: the manifest plus all of its content entities. */
@@ -6,6 +6,8 @@ export interface ProjectBundle {
   project: Project;
   pages: readonly Page[];
   partials: readonly SitewrightPartial[];
+  /** Reusable page layouts (optional; older bundles omit it). */
+  templates?: readonly Template[];
   datasets: readonly Dataset[];
   entries: readonly Entry[];
 }
@@ -48,6 +50,7 @@ export function validateProject(bundle: ProjectBundle): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const datasetSlugs = new Set(bundle.datasets.map((dataset) => dataset.slug));
   const partialIds = new Set(bundle.partials.map((partial) => partial.id));
+  const templateIds = new Set((bundle.templates ?? []).map((template) => template.id));
 
   reportDuplicates(
     bundle.pages.map((page) => page.id),
@@ -79,6 +82,12 @@ export function validateProject(bundle: ProjectBundle): ValidationIssue[] {
     'entry id',
     issues,
   );
+  reportDuplicates(
+    (bundle.templates ?? []).map((template) => template.id),
+    'duplicate_template_id',
+    'template id',
+    issues,
+  );
 
   for (const entry of bundle.entries) {
     if (!datasetSlugs.has(entry.dataset)) {
@@ -86,6 +95,16 @@ export function validateProject(bundle: ProjectBundle): ValidationIssue[] {
         code: 'unknown_dataset',
         message: `entry "${entry.id}" references unknown dataset "${entry.dataset}"`,
         path: `entries/${entry.id}`,
+      });
+    }
+  }
+
+  for (const page of bundle.pages) {
+    if (page.template !== undefined && !templateIds.has(page.template)) {
+      issues.push({
+        code: 'unknown_template',
+        message: `page "${page.id}" references unknown template "${page.template}"`,
+        path: `pages/${page.id}`,
       });
     }
   }
@@ -129,6 +148,10 @@ export function validateProject(bundle: ProjectBundle): ValidationIssue[] {
 
   for (const partial of bundle.partials) {
     checkTree(partial.root, `partials/${partial.id}`, `partial "${partial.id}"`);
+  }
+
+  for (const template of bundle.templates ?? []) {
+    checkTree(template.root, `templates/${template.id}`, `template "${template.id}"`);
   }
 
   return issues;

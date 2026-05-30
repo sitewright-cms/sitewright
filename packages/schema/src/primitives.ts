@@ -65,8 +65,10 @@ export const AssetRefSchema = z
   .min(1)
   .max(2048)
   .refine(
-    (v) => /^https?:\/\//i.test(v) || v.startsWith('/'),
-    'must be an absolute http(s) URL or a root-relative path',
+    // Absolute http(s), or a single-slash root-relative path — NOT protocol-relative
+    // (`//host`, an off-site/open-redirect vector), matching safeUrl in @sitewright/blocks.
+    (v) => /^https?:\/\//i.test(v) || (v.startsWith('/') && !v.startsWith('//')),
+    'must be an absolute http(s) URL or a root-relative path (not protocol-relative)',
   );
 
 /** CSS color value: hex, rgb(a)/hsl(a) function, or a bare keyword. Cannot break out of a declaration. */

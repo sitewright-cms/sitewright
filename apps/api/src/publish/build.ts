@@ -1,7 +1,7 @@
 import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
-import { allRoutes, datasetEntries, type ProjectBundle } from '@sitewright/core';
-import { renderDocument } from '@sitewright/blocks';
+import { allRoutes, datasetEntries, relativeRoot, type ProjectBundle } from '@sitewright/core';
+import { renderDocument, resolveInternalUrl } from '@sitewright/blocks';
 import type { MediaAsset } from '@sitewright/schema';
 
 /** A client-correctable publish failure (bad route graph) → maps to HTTP 409. */
@@ -41,11 +41,6 @@ export interface BuildSiteOptions {
   media?: readonly MediaAsset[];
   /** Reads a media binary (assetId, file) — used to copy assets into the artifact. */
   readMedia?: (assetId: string, file: string) => Promise<Buffer>;
-}
-
-/** Number of path levels a route's index.html sits below the site root. */
-function slugDepth(slug: string | undefined): number {
-  return slug ? slug.split('/').length : 0;
 }
 
 /** Copies every media asset's files into `<base>/media/<assetId>/` (path-safe). */
@@ -133,15 +128,30 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to tmp (checked above)
       await mkdir(dirname(full), { recursive: true });
       const page = { ...route.page, root: route.root };
-      // Media URLs are relative to this page's depth, so the bundle works at any root.
-      const prefix = '../'.repeat(slugDepth(route.slug));
+      // All internal links + asset paths are relative to this page's depth, so the
+      // exported bundle is portable (webspace root, a subfolder, or /sites/<slug>/).
+      const siteRoot = relativeRoot(route.slug);
       const html = renderDocument(page, {
         brand,
         datasets,
         entry: route.entry,
         includeDrafts: false,
         media,
-        mediaUrl: (asset, file) => `${prefix}media/${asset.id}/${file}`,
+        root: siteRoot,
+        mediaUrl: (asset, file) => `${siteRoot}media/${asset.id}/${file}`,
+        seo: {
+          // `||` not `??`: an empty SEO title must fall back to the page title.
+          title: page.seo?.title || page.title,
+          description: page.seo?.description,
+          // Rebase root-relative asset paths so the export is portable at any base path.
+          ogImage: page.seo?.ogImage ? resolveInternalUrl(page.seo.ogImage, siteRoot) : undefined,
+          url: page.seo?.canonical,
+          noindex: page.seo?.noindex,
+          themeColor: brand.colors.primary,
+          favicon: brand.logo?.favicon
+            ? resolveInternalUrl(brand.logo.favicon, siteRoot)
+            : undefined,
+        },
       });
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to tmp (checked above)
       await writeFile(full, html, 'utf8');

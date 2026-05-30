@@ -47,7 +47,7 @@ describe('AssetRefSchema', () => {
   it.each(['https://cdn.example.com/a.png', '/media/logo.svg'])('accepts %s', (v) => {
     expect(AssetRefSchema.parse(v)).toBe(v);
   });
-  it.each(['javascript:alert(1)', 'data:text/html,<script>', 'ftp://x', 'relative.png'])(
+  it.each(['javascript:alert(1)', 'data:text/html,<script>', 'ftp://x', 'relative.png', '//evil.com'])(
     'rejects %s',
     (v) => {
       expect(() => AssetRefSchema.parse(v)).toThrow();

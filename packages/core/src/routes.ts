@@ -43,6 +43,18 @@ export function pathToSlug(path: string): string | undefined {
   return slug === '' ? undefined : slug;
 }
 
+/**
+ * The relative path from a page at `slug` back to the site root: `''` for the
+ * home page, `'../'` one level deep, `'../../'` two, etc. Prefix internal links
+ * and asset paths with this so the exported site is portable — it works
+ * unchanged at the webspace root, in a subfolder, or at the `/sites/<slug>/`
+ * preview path (contentBase's `$root` / `dirOffset`).
+ */
+export function relativeRoot(slug: string | undefined): string {
+  if (!slug) return '';
+  return '../'.repeat(slug.split('/').length);
+}
+
 /** A concrete page to render: a route slug, the (partial-expanded) tree, and an optional bound entry. */
 export interface Route {
   slug: string | undefined;

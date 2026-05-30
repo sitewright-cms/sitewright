@@ -119,6 +119,25 @@ export const BLOCK_DESCRIPTORS: ReadonlyArray<BlockDescriptor> = [
     ],
   },
   {
+    type: 'Nav',
+    label: 'Navigation',
+    category: 'nav',
+    container: true,
+    fields: [
+      {
+        key: 'slot',
+        label: 'Menu',
+        input: 'select',
+        options: [
+          { value: 'header', label: 'Header' },
+          { value: 'footer', label: 'Footer' },
+          { value: 'mobile', label: 'Mobile' },
+        ],
+        default: 'header',
+      },
+    ],
+  },
+  {
     type: 'Header',
     label: 'Header',
     category: 'nav',

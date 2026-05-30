@@ -26,6 +26,8 @@ describe('component registry', () => {
     expect(used.js).toContain('data-sw-component="lightbox"');
     expect(used.js).toContain('createElement'); // overlay built via DOM, not innerHTML of user data
     expect(used.js).not.toMatch(/innerHTML\s*=\s*[^']/); // only the one-time `innerHTML=''` clear
+    expect(used.js).toContain('Image viewer'); // dialog has an accessible name (WCAG 4.1.2)
+    expect(used.js).toContain("'Tab'"); // focus trap honors the aria-modal contract
   });
 
   it('bundles only the JS of used components (Accordion alone → no JS)', () => {

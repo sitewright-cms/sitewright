@@ -124,10 +124,11 @@ const LIGHTBOX_JS = `(function(){
     var idx=0,lastFocus=null;
     function mkBtn(part,label,txt){var b=document.createElement('button');b.type='button';b.setAttribute('data-sw-part',part);b.setAttribute('aria-label',label);b.textContent=txt;return b;}
     overlay.innerHTML='';
-    overlay.setAttribute('role','dialog');overlay.setAttribute('aria-modal','true');
+    overlay.setAttribute('role','dialog');overlay.setAttribute('aria-modal','true');overlay.setAttribute('aria-label','Image viewer');
     var btnClose=mkBtn('close','Close','\\u00d7'),btnPrev=mkBtn('lb-prev','Previous','\\u2039'),btnNext=mkBtn('lb-next','Next','\\u203a');
     var img=document.createElement('img'),cap=document.createElement('figcaption');
     overlay.appendChild(btnClose);overlay.appendChild(btnPrev);overlay.appendChild(img);overlay.appendChild(cap);overlay.appendChild(btnNext);
+    if(items.length<2){btnPrev.style.display='none';btnNext.style.display='none';}
     function show(i){
       idx=(i+items.length)%items.length;var a=items[idx],thumb=a.querySelector('img');
       img.setAttribute('src',a.getAttribute('href'));img.setAttribute('alt',thumb?thumb.getAttribute('alt')||'':'');
@@ -140,7 +141,7 @@ const LIGHTBOX_JS = `(function(){
     btnPrev.addEventListener('click',function(){show(idx-1);});
     btnNext.addEventListener('click',function(){show(idx+1);});
     overlay.addEventListener('click',function(e){if(e.target===overlay){close();}});
-    document.addEventListener('keydown',function(e){if(overlay.getAttribute('data-open')!=='true')return;if(e.key==='Escape'){close();}else if(e.key==='ArrowLeft'){show(idx-1);}else if(e.key==='ArrowRight'){show(idx+1);}});
+    document.addEventListener('keydown',function(e){if(overlay.getAttribute('data-open')!=='true')return;if(e.key==='Escape'){close();}else if(e.key==='ArrowLeft'){show(idx-1);}else if(e.key==='ArrowRight'){show(idx+1);}else if(e.key==='Tab'){var f=[btnClose,btnPrev,btnNext].filter(function(b){return b.style.display!=='none';}),first=f[0],last=f[f.length-1];if(e.shiftKey){if(document.activeElement===first){e.preventDefault();last.focus();}}else if(document.activeElement===last){e.preventDefault();first.focus();}}});
     root.setAttribute('data-sw-enhanced','true');
   }
   function init(){Array.prototype.forEach.call(document.querySelectorAll('[data-sw-component="lightbox"]'),enhance);}

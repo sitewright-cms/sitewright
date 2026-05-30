@@ -186,6 +186,27 @@ describe('renderNode — Lightbox (gallery + overlay)', () => {
   it('renders an empty placeholder LightboxItem with no image', () => {
     expect(renderNode(node({ type: 'LightboxItem', props: {} }))).toContain('data-sw-empty="1"');
   });
+
+  it('LightboxItem with a media-asset image renders an optimized <picture> thumbnail', () => {
+    const asset = {
+      id: 'a1',
+      filename: 'x.png',
+      format: 'image/png',
+      bytes: 1,
+      width: 800,
+      height: 600,
+      variants: [{ format: 'webp' as const, width: 400, height: 300, path: 'a1.webp' }],
+      fallback: 'a1.jpg',
+      url: '/media/p/a1/a1.jpg',
+    };
+    const html = renderNode(
+      node({ type: 'LightboxItem', props: { image: '/media/p/a1/a1.jpg', alt: 'X' } }),
+      { media: [asset], mediaUrl: (a, f) => `media/${a.id}/${f}` },
+    );
+    expect(html).toContain('<picture'); // optimized thumbnail
+    expect(html).toContain('type="image/webp"');
+    expect(html).toContain('href="media/p/a1/a1.jpg"'); // anchor links to the full image (root-rebased)
+  });
 });
 
 describe('renderNode — brand/social icons (simple-icons)', () => {

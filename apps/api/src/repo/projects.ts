@@ -82,6 +82,8 @@ export class ProjectRepository {
     requireWriteRole(ctx);
     await this.get(ctx, id); // enforces org ownership (NotFound otherwise)
     await this.db.transaction(async (tx) => {
+      // Safe to delete by projectId alone: get() above proved this project (a
+      // globally-unique UUID) belongs to ctx.orgId, so no other org's content matches.
       await tx.delete(content).where(eq(content.projectId, id));
       await tx.delete(projects).where(and(eq(projects.id, id), eq(projects.orgId, ctx.orgId)));
     });

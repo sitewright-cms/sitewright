@@ -1,6 +1,7 @@
 export * from './escape.js';
 export * from './url.js';
 export * from './head.js';
+export * from './icons.js';
 export * from './props.js';
 export * from './brand-css.js';
 export * from './descriptors.js';

@@ -107,6 +107,17 @@ export const BLOCK_DESCRIPTORS: ReadonlyArray<BlockDescriptor> = [
       { key: 'href', label: 'Link', input: 'url', placeholder: '/' },
     ],
   },
+  {
+    type: 'Icon',
+    label: 'Icon',
+    category: 'content',
+    container: false,
+    fields: [
+      { key: 'name', label: 'Icon name', input: 'text', placeholder: 'menu', default: 'star' },
+      { key: 'size', label: 'Size (px)', input: 'number', default: 24 },
+      { key: 'label', label: 'Accessible label', input: 'text' },
+    ],
+  },
   // --- nav ---
   {
     type: 'Link',

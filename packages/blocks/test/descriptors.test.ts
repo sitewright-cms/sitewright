@@ -16,6 +16,7 @@ const RENDERED_TYPES = [
   'Grid',
   'Card',
   'Button',
+  'Icon',
   'Link',
   'Nav',
   'Header',

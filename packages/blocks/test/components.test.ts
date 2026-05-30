@@ -3,10 +3,36 @@ import type { PageNode } from '@sitewright/schema';
 import { COMPONENT_TYPES, usedComponentTypes, componentAssets } from '../src/components.js';
 
 describe('component registry', () => {
-  it('registers Carousel as an interactive component (Slide is a plain block)', () => {
+  it('registers interactive components (container types; child blocks are plain)', () => {
     expect(COMPONENT_TYPES.has('Carousel')).toBe(true);
+    expect(COMPONENT_TYPES.has('Accordion')).toBe(true);
+    expect(COMPONENT_TYPES.has('Lightbox')).toBe(true);
+    // child / plain blocks have no registry entry of their own
     expect(COMPONENT_TYPES.has('Slide')).toBe(false);
+    expect(COMPONENT_TYPES.has('AccordionItem')).toBe(false);
+    expect(COMPONENT_TYPES.has('LightboxItem')).toBe(false);
     expect(COMPONENT_TYPES.has('Section')).toBe(false);
+  });
+
+  it('Accordion contributes CSS but no JS (native <details>, zero-JS)', () => {
+    const used = componentAssets(['Accordion']);
+    expect(used.css).toContain('[data-sw-block="AccordionItem"]');
+    expect(used.js).toBe(''); // no behavior bundle
+  });
+
+  it('Lightbox contributes CSS + JS (DOM-built overlay, no innerHTML injection)', () => {
+    const used = componentAssets(['Lightbox']);
+    expect(used.css).toContain('[data-sw-part="overlay"]');
+    expect(used.js).toContain('data-sw-component="lightbox"');
+    expect(used.js).toContain('createElement'); // overlay built via DOM, not innerHTML of user data
+    expect(used.js).not.toMatch(/innerHTML\s*=\s*[^']/); // only the one-time `innerHTML=''` clear
+    expect(used.js).toContain('Image viewer'); // dialog has an accessible name (WCAG 4.1.2)
+    expect(used.js).toContain("'Tab'"); // focus trap honors the aria-modal contract
+  });
+
+  it('bundles only the JS of used components (Accordion alone → no JS)', () => {
+    expect(componentAssets(['Accordion']).js).toBe('');
+    expect(componentAssets(['Accordion', 'Lightbox']).js).toContain('lightbox');
   });
 
   it('collects distinct component types used in a tree (deduped, ignores non-components)', () => {

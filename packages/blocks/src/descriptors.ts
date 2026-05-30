@@ -211,6 +211,48 @@ export const BLOCK_DESCRIPTORS: ReadonlyArray<BlockDescriptor> = [
       { key: 'caption', label: 'Caption', input: 'text' },
     ],
   },
+  {
+    // FAQ / expandable sections. Native <details> — fully interactive with no JS
+    // (works even in the sandboxed preview). Holds AccordionItem children.
+    type: 'Accordion',
+    label: 'Accordion',
+    category: 'component',
+    container: true,
+    fields: [],
+  },
+  {
+    // One expandable item: a title + rich content (child blocks).
+    type: 'AccordionItem',
+    label: 'Accordion item',
+    category: 'component',
+    container: true,
+    fields: [
+      { key: 'title', label: 'Title', input: 'text' },
+      { key: 'open', label: 'Open by default', input: 'boolean', default: false },
+    ],
+  },
+  {
+    // A thumbnail gallery that opens a full-screen overlay (portfolio galleries).
+    // Holds LightboxItem children. Behavior ships only when used.
+    type: 'Lightbox',
+    label: 'Lightbox gallery',
+    category: 'component',
+    container: true,
+    fields: [{ key: 'label', label: 'Accessible label', input: 'text', placeholder: 'Gallery' }],
+  },
+  {
+    // One gallery image: a thumbnail linking to the full image (+ optional caption).
+    type: 'LightboxItem',
+    label: 'Gallery image',
+    category: 'component',
+    container: false,
+    fields: [
+      { key: 'image', label: 'Full image URL', input: 'url', placeholder: '/photo-large.jpg' },
+      { key: 'thumb', label: 'Thumbnail URL (optional)', input: 'url' },
+      { key: 'alt', label: 'Alt text', input: 'text' },
+      { key: 'caption', label: 'Caption', input: 'text' },
+    ],
+  },
 ];
 
 const BY_TYPE = new Map<string, BlockDescriptor>(BLOCK_DESCRIPTORS.map((d) => [d.type, d]));

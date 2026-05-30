@@ -6,6 +6,35 @@ function node(partial: Partial<PageNode> & { type: string }): PageNode {
   return { id: partial.id ?? 'n1', ...partial };
 }
 
+describe('renderNode — Html (raw embed) block', () => {
+  it('emits the raw HTML unescaped inside a block wrapper', () => {
+    const embed = '<iframe src="https://maps.example/?q=1" title="Map"></iframe>';
+    const html = renderNode(node({ type: 'Html', props: { html: embed } }));
+    expect(html).toContain('<div data-sw-block="Html"');
+    expect(html).toContain(embed); // raw, NOT escaped
+    expect(html).not.toContain('&lt;iframe');
+  });
+
+  it('keeps the className on the Html block wrapper', () => {
+    const html = renderNode(node({ type: 'Html', className: 'my-8', props: { html: '<b>x</b>' } }));
+    expect(html).toMatch(/<div data-sw-block="Html" class="my-8"/);
+    expect(html).toContain('<b>x</b>');
+  });
+
+  it('renders an empty Html wrapper when no html is provided', () => {
+    const html = renderNode(node({ type: 'Html', props: {} }));
+    expect(html).toContain('data-sw-block="Html"');
+    expect(html).toContain('</div>');
+  });
+
+  it('resolves the html from a dataset binding field', () => {
+    const html = renderNode(node({ type: 'Html', props: { htmlField: 'embed' } }), {
+      entry: { id: 'e', dataset: 'd', status: 'published', values: { embed: '<span>bound</span>' } },
+    });
+    expect(html).toContain('<span>bound</span>');
+  });
+});
+
 describe('renderNode — brand/social icons (simple-icons)', () => {
   it('renders a brand icon as a filled-path SVG, labelled by the brand title', () => {
     const html = renderNode(node({ type: 'Icon', props: { name: 'brand:facebook' } }));

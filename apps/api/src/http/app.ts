@@ -40,6 +40,8 @@ import {
 import { ProjectRepository } from '../repo/projects.js';
 import { AiUsageRepository } from '../repo/ai-usage.js';
 import { ApiKeyRepository, type ResolvedApiKey } from '../repo/api-keys.js';
+import { OAuthRepository } from '../repo/oauth.js';
+import { registerOAuthRoutes } from './oauth-routes.js';
 import { ProjectEventBus } from '../events/bus.js';
 import {
   ContentRepository,
@@ -216,6 +218,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const aiProvider = opts.aiProvider;
   const aiUsageRepo = new AiUsageRepository(db);
   const apiKeysRepo = new ApiKeyRepository(db);
+  const oauthRepo = new OAuthRepository(db);
   const aiQuota = opts.aiQuota ?? {};
   const app = Fastify({
     // Redact deploy credentials defensively (Fastify omits bodies by default, but
@@ -233,6 +236,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   if (mediaStorage) {
     await app.register(multipart, { limits: { fileSize: MAX_UPLOAD_BYTES, files: 1, fields: 0 } });
   }
+  // Parse `application/x-www-form-urlencoded` (the OAuth token endpoint + the
+  // consent form post). Our forms carry no repeated keys, so a flat object is fine.
+  app.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (_req, body, done) => {
+    try {
+      done(null, Object.fromEntries(new URLSearchParams(body as string)));
+    } catch (err) {
+      done(err as Error);
+    }
+  });
 
   // Baseline security headers (the API also serves the SPA in single-container mode).
   app.addHook('onSend', async (_req, reply) => {
@@ -314,6 +326,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     const userId = token ? await validateSession(db, token) : null;
     if (!userId) throw new UnauthorizedError('authentication required');
     return userId;
+  }
+
+  // Soft variant for the OAuth authorize page: resolve the session user, or null
+  // (so we can render a sign-in prompt rather than throw a JSON 401).
+  async function currentUserId(req: FastifyRequest): Promise<string | null> {
+    const token = sessionToken(req);
+    return token ? await validateSession(db, token) : null;
   }
 
   // The access a project route requires. A `Capability` is enforced for bearer
@@ -588,6 +607,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       return reply.code(204).send();
     },
   );
+
+  // ---- OAuth 2.1 (issues the same scoped tokens; for the CLI / hosted MCP clients) ----
+  registerOAuthRoutes(app, { db, oauth: oauthRepo, projects, currentUserId, rl });
 
   app.get<{ Params: { orgId: string; projectId: string } }>(
     '/orgs/:orgId/projects/:projectId/export',

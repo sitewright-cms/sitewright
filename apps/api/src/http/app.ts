@@ -25,6 +25,7 @@ import { PublishError } from '../publish/build.js';
 import { InProcessBuildRunner, type BuildRunner } from '../publish/runner.js';
 import { AiProviderError, type AiProvider } from '../ai/provider.js';
 import { PublishStore } from '../publish/store.js';
+import { PreviewStore } from './preview-store.js';
 import { archiveSite, deploySite, DeployConfigSchema } from '../publish/adapters.js';
 import { isNewer } from '../version/checker.js';
 import { registerDeployTargetRoutes } from './deploy-targets.js';
@@ -187,6 +188,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const contentRepo = new ContentRepository(db);
   const mediaStorage = opts.mediaRoot ? new MediaStorage(opts.mediaRoot) : undefined;
   const publishStore = opts.publishRoot ? new PublishStore(opts.publishRoot) : undefined;
+  // Short-lived store of rendered preview docs, so they can be served (via a token
+  // URL) under a `Content-Security-Policy: sandbox` for true WYSIWYG interactivity.
+  const previewStore = new PreviewStore();
   const buildRunner = opts.buildRunner ?? new InProcessBuildRunner();
   const aiProvider = opts.aiProvider;
   const aiUsageRepo = new AiUsageRepository(db);
@@ -211,12 +215,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // Baseline security headers (the API also serves the SPA in single-container mode).
   app.addHook('onSend', async (_req, reply) => {
     reply.header('x-content-type-options', 'nosniff');
-    reply.header('x-frame-options', 'DENY');
     reply.header('referrer-policy', 'same-origin');
-    reply.header(
-      'content-security-policy',
-      "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
-    );
+    // A route may set its OWN Content-Security-Policy (the sandboxed preview-doc,
+    // which needs `sandbox allow-scripts` + to be framable by the editor). When it
+    // does, don't override its CSP — and skip the default DENY framing too, since
+    // that route opts into its own framing policy.
+    if (!reply.hasHeader('content-security-policy')) {
+      reply.header('x-frame-options', 'DENY');
+      reply.header(
+        'content-security-policy',
+        "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+      );
+    }
   });
 
   app.setErrorHandler((err, _req, reply) => {
@@ -496,13 +506,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         footer: buildNav(savedPages, 'footer'),
         mobile: buildNav(savedPages, 'mobile'),
       };
-      // Preview is a single, self-contained document (sandboxed iframe), so styles
-      // are INLINED (vs linked at publish) and NO scripts are emitted — interactive
-      // components show their progressive-enhancement fallback here. Compile the
-      // utility CSS + gather component CSS only when the page uses them, and pass
-      // as inlineStyles (placed last in <head>, so utilities win by source order).
+      // The preview document is served (via a token URL) under `CSP: sandbox
+      // allow-scripts` — an opaque, isolated origin — so styles AND the platform
+      // component JS are INLINED to make it self-contained + truly interactive
+      // (WYSIWYG). Gather component CSS/JS + utility CSS only when used.
       const classNames = collectClassNames(page.root);
-      const componentCss = componentAssets(usedComponentTypes(page.root)).css;
+      const { css: componentCss, js: componentJs } = componentAssets(usedComponentTypes(page.root));
       const inlineStyles: string[] = [];
       // Component CSS first, then Tailwind utilities last (so utilities win at
       // equal specificity) — mirrors the publish order (inline component CSS,
@@ -519,8 +528,41 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         nav,
         mediaUrl: (asset, file) => `/media/${project.id}/${asset.id}/${file}`,
         inlineStyles: inlineStyles.length > 0 ? inlineStyles : undefined,
+        inlineScripts: componentJs ? [componentJs] : undefined,
       });
-      return reply.send({ html });
+      // Store the rendered doc behind an opaque token; the editor loads it via the
+      // GET route below (which serves it under a sandbox CSP). `html` is still
+      // returned for API consumers/tests that want it directly.
+      const token = previewStore.put(html, { orgId: ctx.orgId, projectId: project.id, userId: ctx.userId });
+      return reply.send({ html, token });
+    },
+  );
+
+  // Serves a previously-rendered preview document for an opaque token. Returned as
+  // `text/html` under `Content-Security-Policy: sandbox allow-scripts` — which
+  // forces an OPAQUE, isolated origin even on direct navigation, so its scripts
+  // (the inlined component behavior) run but cannot read the editor's cookies/
+  // session or make credentialed API calls. The editor loads this via the iframe
+  // `src` (NOT `srcDoc`), so the document uses THIS CSP rather than inheriting the
+  // editor page's stricter one. The token is unguessable, short-lived, and bound
+  // to (org, project, user); any member of the project may preview.
+  app.get<{ Params: { orgId: string; projectId: string; token: string } }>(
+    '/orgs/:orgId/projects/:projectId/preview/:token',
+    async (req, reply) => {
+      const { ctx, project } = await resolveProject(req);
+      const html = previewStore.get(req.params.token, {
+        orgId: ctx.orgId,
+        projectId: project.id,
+        userId: ctx.userId,
+      });
+      if (html === null) {
+        return reply.code(404).type('text/html').send('<!doctype html><title>Preview expired</title>');
+      }
+      // `sandbox allow-scripts` (no `allow-same-origin`) → opaque origin: scripts
+      // run, isolated. SAMEORIGIN framing lets the editor embed it; no third party.
+      reply.header('content-security-policy', 'sandbox allow-scripts');
+      reply.header('x-frame-options', 'SAMEORIGIN');
+      return reply.type('text/html').send(html);
     },
   );
 

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Binding, Dataset, MediaAsset, Page, PageNode } from '@sitewright/schema';
 import { BLOCK_DESCRIPTORS, isContainerType, type BlockCategory } from '@sitewright/blocks';
-import { api, type Org, type Project } from '../api';
+import { api, previewDocUrl, type Org, type Project } from '../api';
 import { createBlock } from '../lib/node-factory';
 import {
   appendChild,
@@ -41,8 +41,8 @@ export function PageEditor({ org, project, page, onClose }: PageEditorProps) {
   const [error, setError] = useState<string | null>(null);
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [media, setMedia] = useState<MediaAsset[]>([]);
-  const [preview, setPreview] = useState<{ html: string; loading: boolean; error: string | null }>({
-    html: '',
+  const [preview, setPreview] = useState<{ src: string; loading: boolean; error: string | null }>({
+    src: '',
     loading: true,
     error: null,
   });
@@ -83,7 +83,9 @@ export function PageEditor({ org, project, page, onClose }: PageEditorProps) {
       api
         .preview(org.id, project.id, draft)
         .then((res) => {
-          if (!cancelled) setPreview({ html: res.html, loading: false, error: null });
+          if (!cancelled) {
+            setPreview({ src: previewDocUrl(org.id, project.id, res.token), loading: false, error: null });
+          }
         })
         .catch((err: unknown) => {
           if (!cancelled) {
@@ -259,7 +261,7 @@ export function PageEditor({ org, project, page, onClose }: PageEditorProps) {
 
         {/* Right: live preview */}
         <section className="w-1/2 min-w-0">
-          <PreviewPane html={preview.html} loading={preview.loading} error={preview.error} />
+          <PreviewPane src={preview.src} loading={preview.loading} error={preview.error} />
         </section>
       </div>
     </main>

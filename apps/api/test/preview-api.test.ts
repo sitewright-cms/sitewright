@@ -46,7 +46,7 @@ const page = {
 };
 
 describe('preview API', () => {
-  it('renders a draft page to a full HTML document', async () => {
+  it('renders a draft page to a full HTML document + a preview token', async () => {
     const { t, orgId, projectId } = await setup('a@acme.test', 'Acme');
     const res = await app.inject({
       method: 'POST',
@@ -55,10 +55,74 @@ describe('preview API', () => {
       payload: page,
     });
     expect(res.statusCode).toBe(200);
-    const html = (res.json() as { html: string }).html;
-    expect(html.startsWith('<!doctype html>')).toBe(true);
-    expect(html).toContain('Hello world');
-    expect(html).toContain('data-sw-block="Section"');
+    const body = res.json() as { html: string; token: string };
+    expect(body.html.startsWith('<!doctype html>')).toBe(true);
+    expect(body.html).toContain('Hello world');
+    expect(body.html).toContain('data-sw-block="Section"');
+    expect(body.token).toMatch(/^[0-9a-f-]{36}$/); // an opaque uuid token
+  });
+
+  it('serves the preview document for a token under a sandbox CSP (isolated, framable)', async () => {
+    const { t, orgId, projectId } = await setup('a@acme.test', 'Acme');
+    const token = (
+      await app.inject({
+        method: 'POST',
+        url: `/orgs/${orgId}/projects/${projectId}/preview`,
+        cookies: { sw_session: t },
+        payload: page,
+      })
+    ).json().token as string;
+
+    const doc = await app.inject({
+      method: 'GET',
+      url: `/orgs/${orgId}/projects/${projectId}/preview/${token}`,
+      cookies: { sw_session: t },
+    });
+    expect(doc.statusCode).toBe(200);
+    expect(doc.headers['content-type']).toContain('text/html');
+    // `sandbox allow-scripts` forces an opaque origin (isolated) yet runs scripts;
+    // the editor must be able to frame it (SAMEORIGIN, not the default DENY).
+    expect(doc.headers['content-security-policy']).toBe('sandbox allow-scripts');
+    expect(doc.headers['x-frame-options']).toBe('SAMEORIGIN');
+    expect(doc.body).toContain('Hello world');
+  });
+
+  it('does not serve a preview token to another tenant, or an unknown/expired token', async () => {
+    const a = await setup('a@acme.test', 'Acme');
+    const b = await setup('b@globex.test', 'Globex');
+    const token = (
+      await app.inject({
+        method: 'POST',
+        url: `/orgs/${a.orgId}/projects/${a.projectId}/preview`,
+        cookies: { sw_session: a.t },
+        payload: page,
+      })
+    ).json().token as string;
+
+    // B cannot even reach A's project (not a member) → 403, before any token lookup.
+    const intoA = await app.inject({
+      method: 'GET',
+      url: `/orgs/${a.orgId}/projects/${a.projectId}/preview/${token}`,
+      cookies: { sw_session: b.t },
+    });
+    expect(intoA.statusCode).toBe(403);
+
+    // And A's token presented under B's own (authorized) scope fails the token's
+    // org/project/user binding → 404 (the store rejects it).
+    const cross = await app.inject({
+      method: 'GET',
+      url: `/orgs/${b.orgId}/projects/${b.projectId}/preview/${token}`,
+      cookies: { sw_session: b.t },
+    });
+    expect(cross.statusCode).toBe(404);
+
+    // An unknown token under A's own scope is a 404.
+    const unknown = await app.inject({
+      method: 'GET',
+      url: `/orgs/${a.orgId}/projects/${a.projectId}/preview/does-not-exist`,
+      cookies: { sw_session: a.t },
+    });
+    expect(unknown.statusCode).toBe(404);
   });
 
   it('requires authentication', async () => {

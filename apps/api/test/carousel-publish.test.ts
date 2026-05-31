@@ -7,7 +7,7 @@ import { makeHarness, type Harness, type TestClient } from './harness.js';
 // Integration: an interactive Carousel component flows through publish — its
 // behavior (components.js, only-used-ships, served from the site's own origin so
 // it runs under default-src 'self') + its inlined CSS — and through preview as a
-// script-free progressive-enhancement fallback.
+// inlined behavior (the preview doc is served under CSP: sandbox allow-scripts).
 
 describe('Carousel component → publish + preview', () => {
   let harness: Harness;
@@ -89,12 +89,16 @@ describe('Carousel component → publish + preview', () => {
     expect((await client.get(`/sites/${projectId}/components.js`)).statusCode).toBe(404);
   });
 
-  it('previews the carousel script-free (PE fallback) with inlined component CSS', async () => {
+  it('previews the carousel live — inlined component CSS + behavior (sandbox-CSS doc)', async () => {
     const res = await client.post(`/orgs/${client.orgId}/projects/${projectId}/preview`, carouselPage);
     expect(res.statusCode).toBe(200);
-    const html = (res.json() as { html: string }).html;
-    expect(html).toContain('data-sw-component="carousel"'); // semantic HTML present
-    expect(html).toContain('scroll-snap-type'); // component CSS inlined for the fallback
-    expect(html).not.toContain('<script'); // sandboxed preview runs no scripts
+    const body = res.json() as { html: string; token: string };
+    expect(body.html).toContain('data-sw-component="carousel"'); // semantic HTML present
+    expect(body.html).toContain('scroll-snap-type'); // component CSS inlined
+    // The preview doc is served under CSP: sandbox allow-scripts, so behavior is inlined.
+    expect(body.html).toContain('<script>');
+    expect(body.html).toContain('data-sw-enhanced'); // the carousel enhancer is present inline
+    expect(body.html).not.toContain('<script defer'); // preview inlines; never LINKS a bundle
+    expect(body.token).toBeTruthy();
   });
 });

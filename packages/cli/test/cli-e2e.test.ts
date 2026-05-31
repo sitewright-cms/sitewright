@@ -31,13 +31,13 @@ suite('sitewright login — end to end', () => {
       body: JSON.stringify({ email: `cli-${stamp}@e2e.test`, password: 'pw-secret-1', orgName: `CLI ${stamp}` }),
     });
     cookie = (reg.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
-    orgId = (await reg.json()).orgId;
+    orgId = ((await reg.json()) as { orgId: string }).orgId;
     const proj = await fetch(`${url}/orgs/${orgId}/projects`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie },
       body: JSON.stringify({ name: 'CLI Site', slug: `cli-${stamp}` }),
     });
-    projectId = (await proj.json()).project.id;
+    projectId = ((await proj.json()) as { project: { id: string } }).project.id;
   });
 
   afterAll(() => {
@@ -81,6 +81,6 @@ suite('sitewright login — end to end', () => {
     const access = await ensureAccessToken(url);
     const whoami = await fetch(`${url}/api-key/self`, { headers: { authorization: `Bearer ${access}` } });
     expect(whoami.status).toBe(200);
-    expect((await whoami.json()).projectId).toBe(projectId);
+    expect(((await whoami.json()) as { projectId: string }).projectId).toBe(projectId);
   });
 });

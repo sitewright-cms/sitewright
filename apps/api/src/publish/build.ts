@@ -16,6 +16,7 @@ import {
 } from '@sitewright/blocks';
 import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
 import { companyToOrganization } from './company-seo.js';
+import { renderSitemap, renderRobots, renderHtaccess, renderNetlifyRedirects, siteUrlFor, siteBase } from './seo.js';
 import type { MediaAsset, PageTranslation } from '@sitewright/schema';
 
 /** The compiled utility stylesheet, written at the site root and linked per page. */
@@ -179,6 +180,10 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     const usesComponents = componentTypes.length > 0;
     const components = componentAssets(componentTypes);
     let bytes = 0;
+    // Absolute URLs for sitemap.xml (when a production site URL is configured);
+    // noindex pages are excluded.
+    const siteUrl = website?.siteUrl;
+    const sitemapUrls: Array<{ loc: string; lastmod?: string }> = [];
 
     // Bundle media into the artifact so the export is self-contained + portable.
     if (media.length > 0 && opts.readMedia) {
@@ -201,6 +206,11 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           throw new PublishError(`output path collision at "/${outSlug ?? ''}" — a page path conflicts with a locale prefix`);
         }
         writtenPaths.add(full);
+        // Sitemap: indexable pages only (skip noindex), absolute URLs. lastmod is a
+        // W3C date (YYYY-MM-DD) — the subset crawlers reliably accept.
+        if (siteUrl && !route.page.seo?.noindex) {
+          sitemapUrls.push({ loc: siteUrlFor(siteUrl, outSlug), lastmod: publishedAt.slice(0, 10) });
+        }
         // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to tmp (checked above)
         await mkdir(dirname(full), { recursive: true });
         // Localized content (root + title) for non-default locales; else the page.
@@ -273,6 +283,38 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
       await writeFile(join(tmp, COMPONENT_SCRIPT), components.js, 'utf8');
       bytes += Buffer.byteLength(components.js);
+    }
+
+    // robots.txt (always) + sitemap.xml (only when a production site URL is set).
+    // The Sitemap line is built from the SAME `siteBase` as the sitemap <loc>s so
+    // the two can never drift.
+    const robots = renderRobots(siteUrl ? `${siteBase(siteUrl)}/sitemap.xml` : undefined);
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
+    await writeFile(join(tmp, 'robots.txt'), robots, 'utf8');
+    bytes += Buffer.byteLength(robots);
+    if (siteUrl && sitemapUrls.length > 0) {
+      const sitemap = renderSitemap(sitemapUrls);
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
+      await writeFile(join(tmp, 'sitemap.xml'), sitemap, 'utf8');
+      bytes += Buffer.byteLength(sitemap);
+    }
+
+    // Redirect rules (Apache + Netlify) when configured.
+    const redirects = website?.redirects;
+    if (redirects && redirects.length > 0) {
+      const htaccess = renderHtaccess(redirects);
+      const netlify = renderNetlifyRedirects(redirects);
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
+      await writeFile(join(tmp, '.htaccess'), htaccess, 'utf8');
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
+      await writeFile(join(tmp, '_redirects'), netlify, 'utf8');
+      bytes += Buffer.byteLength(htaccess) + Buffer.byteLength(netlify);
+    }
+
+    // The page loop enforces the size cap per page; re-check after the SEO/redirect
+    // files so a site that squeaks under the cap can't exceed it via these tail writes.
+    if (bytes > maxOutputBytes) {
+      throw new PublishError('published site exceeds the maximum output size');
     }
 
     // Total emitted pages = routes × locales (one set of routes per locale).

@@ -7,6 +7,7 @@ import { deploySite } from '../publish/adapters.js';
 import type { ContentRepository } from '../repo/content.js';
 import type { PublishStore } from '../publish/store.js';
 import type { ProjectContext } from '../repo/context.js';
+import type { ApiKeyCapability } from '../db/schema.js';
 
 const CreateDeployTargetBody = z.object({
   name: z.string().min(1).max(120),
@@ -22,7 +23,10 @@ const CreateDeployTargetBody = z.object({
 type ProjectReq = FastifyRequest<{ Params: { orgId: string; projectId: string } }>;
 
 export interface DeployTargetDeps {
-  resolveProject: (req: ProjectReq) => Promise<{ ctx: ProjectContext; project: { id: string } }>;
+  resolveProject: (
+    req: ProjectReq,
+    access: ApiKeyCapability | 'session-only',
+  ) => Promise<{ ctx: ProjectContext; project: { id: string } }>;
   contentRepo: ContentRepository;
   publishStore?: PublishStore;
   encryptionKey: Buffer;
@@ -49,7 +53,7 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
     '/orgs/:orgId/projects/:projectId/deploy-targets',
     { config: rl(20) },
     async (req, reply) => {
-      const { ctx } = await resolveProject(req);
+      const { ctx } = await resolveProject(req, 'deploy');
       if (!isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
       const body = CreateDeployTargetBody.parse(req.body);
       assertDeployHostAllowed(body.host);
@@ -73,7 +77,7 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
   app.get<{ Params: { orgId: string; projectId: string } }>(
     '/orgs/:orgId/projects/:projectId/deploy-targets',
     async (req, reply) => {
-      const { ctx } = await resolveProject(req);
+      const { ctx } = await resolveProject(req, 'deploy');
       // Targets expose infrastructure metadata (host/user) — writers only.
       if (!isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
       const items = (await contentRepo.list(ctx, 'deploy_target')) as DeployTarget[];
@@ -84,7 +88,7 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
   app.delete<{ Params: { orgId: string; projectId: string; id: string } }>(
     '/orgs/:orgId/projects/:projectId/deploy-targets/:id',
     async (req, reply) => {
-      const { ctx } = await resolveProject(req);
+      const { ctx } = await resolveProject(req, 'deploy');
       await contentRepo.remove(ctx, 'deploy_target', req.params.id); // enforces write role
       return reply.code(204).send();
     },
@@ -95,7 +99,7 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
     '/orgs/:orgId/projects/:projectId/deploy-targets/:id/deploy',
     { config: rl(20) },
     async (req, reply) => {
-      const { ctx, project } = await resolveProject(req);
+      const { ctx, project } = await resolveProject(req, 'deploy');
       if (!isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
       const store = deps.publishStore;
       if (!store) return reply.code(503).send({ error: 'publishing is not configured' });

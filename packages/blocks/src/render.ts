@@ -312,6 +312,39 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
         `${imageTag(thumb, alt, 'lazy', ctx, root)}</a>`
       );
     }
+    case 'Modal': {
+      // A trigger button + a native <dialog> (the platform JS wires open/close;
+      // <dialog> itself provides focus trap, Escape, and ::backdrop). PE: without
+      // JS the dialog stays closed; the trigger is visible.
+      const trigger = textProp(props, selfEntry, 'trigger') || 'Open';
+      const label = textProp(props, selfEntry, 'label');
+      const a11y = label ? ` aria-label="${escapeAttr(label)}"` : '';
+      return (
+        `<div data-sw-block="Modal"${cls} data-sw-component="modal">` +
+        `<button type="button" data-sw-part="open">${escapeHtml(trigger)}</button>` +
+        `<dialog data-sw-part="dialog"${a11y}>` +
+        `<button type="button" data-sw-part="close" aria-label="Close">×</button>` +
+        `<div data-sw-part="content">${inner}</div></dialog></div>`
+      );
+    }
+    case 'CookieConsent': {
+      // Dismissable banner, rendered `hidden`; the platform JS reveals it only when
+      // consent isn't already stored, and remembers dismissal. With no JS: no banner.
+      const message =
+        textProp(props, selfEntry, 'message') || 'We use cookies to improve your experience.';
+      const acceptText = textProp(props, selfEntry, 'acceptText') || 'Accept';
+      const policyHref = urlProp(props, selfEntry, 'policyHref', '');
+      const policyText = textProp(props, selfEntry, 'policyText') || 'Learn more';
+      const link = policyHref
+        ? ` <a href="${escapeAttr(resolveInternalUrl(policyHref, root))}">${escapeHtml(policyText)}</a>`
+        : '';
+      return (
+        `<div data-sw-block="CookieConsent"${cls} data-sw-component="cookie-consent" ` +
+        `role="region" aria-label="Cookie consent" hidden>` +
+        `<p>${escapeHtml(message)}${link}</p>` +
+        `<button type="button" data-sw-part="accept">${escapeHtml(acceptText)}</button></div>`
+      );
+    }
     case 'Nav': {
       // Auto-nav: render the page-tree-derived menu for this slot. Each item's
       // href is rebased relative to the current page (portable), label escaped.

@@ -28,6 +28,8 @@ const RENDERED_TYPES = [
   'AccordionItem',
   'Lightbox',
   'LightboxItem',
+  'Modal',
+  'CookieConsent',
 ];
 
 describe('BLOCK_DESCRIPTORS', () => {

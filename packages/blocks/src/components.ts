@@ -148,6 +148,54 @@ const LIGHTBOX_JS = `(function(){
   if(document.readyState!=='loading'){init();}else{document.addEventListener('DOMContentLoaded',init);}
 })();`;
 
+// --- Modal -------------------------------------------------------------------
+// A trigger button that opens a native <dialog> (which provides focus trap,
+// Escape, ::backdrop, and background inerting for free). JS only wires open/close.
+const MODAL_CSS = [
+  '[data-sw-block="Modal"]{display:inline-block}',
+  '[data-sw-block="Modal"] dialog{position:relative;border:0;border-radius:.5rem;padding:1.5rem;max-width:min(90vw,32rem);box-shadow:0 10px 40px rgba(0,0,0,.2)}',
+  '[data-sw-block="Modal"] dialog::backdrop{background:rgba(0,0,0,.5)}',
+  '[data-sw-block="Modal"] [data-sw-part="close"]{position:absolute;top:.5rem;right:.75rem;border:0;background:none;font-size:1.5rem;line-height:1;cursor:pointer}',
+].join('');
+
+const MODAL_JS = `(function(){
+  function enhance(root){
+    var dialog=root.querySelector('[data-sw-part="dialog"]'),openBtn=root.querySelector('[data-sw-part="open"]');
+    if(!dialog||!openBtn||typeof dialog.showModal!=='function')return;
+    var closeBtn=root.querySelector('[data-sw-part="close"]');
+    openBtn.addEventListener('click',function(){dialog.showModal();});
+    if(closeBtn)closeBtn.addEventListener('click',function(){dialog.close();});
+    dialog.addEventListener('click',function(e){if(e.target===dialog){dialog.close();}});
+    root.setAttribute('data-sw-enhanced','true');
+  }
+  function init(){Array.prototype.forEach.call(document.querySelectorAll('[data-sw-component="modal"]'),enhance);}
+  if(document.readyState!=='loading'){init();}else{document.addEventListener('DOMContentLoaded',init);}
+})();`;
+
+// --- CookieConsent -----------------------------------------------------------
+// A dismissable banner, hidden until JS confirms consent isn't yet stored. PE-safe:
+// rendered with the `hidden` attribute, so with no JS there is no banner (and no
+// JS means nothing to consent to). localStorage access is guarded (sandboxed
+// preview / disabled storage).
+const COOKIE_CONSENT_CSS = [
+  '[data-sw-block="CookieConsent"][hidden]{display:none}',
+  '[data-sw-block="CookieConsent"]{position:fixed;left:1rem;right:1rem;bottom:1rem;z-index:9998;display:flex;flex-wrap:wrap;align-items:center;gap:1rem;padding:1rem 1.25rem;background:#fff;border:1px solid rgba(0,0,0,.12);border-radius:.5rem;box-shadow:0 6px 24px rgba(0,0,0,.15)}',
+  '[data-sw-block="CookieConsent"] p{margin:0;flex:1;min-width:12rem;font-size:.875rem}',
+  '[data-sw-block="CookieConsent"] [data-sw-part="accept"]{border:0;border-radius:.375rem;padding:.5rem 1rem;background:var(--sw-color-primary,#0a7a5a);color:#fff;cursor:pointer}',
+].join('');
+
+const COOKIE_CONSENT_JS = `(function(){
+  var KEY='sw-cookie-consent';
+  function enhance(root){
+    try{if(localStorage.getItem(KEY)==='1'){return;}}catch(e){}
+    root.removeAttribute('hidden');
+    var accept=root.querySelector('[data-sw-part="accept"]');
+    if(accept)accept.addEventListener('click',function(){try{localStorage.setItem(KEY,'1');}catch(e){}root.setAttribute('hidden','');});
+  }
+  function init(){Array.prototype.forEach.call(document.querySelectorAll('[data-sw-component="cookie-consent"]'),enhance);}
+  if(document.readyState!=='loading'){init();}else{document.addEventListener('DOMContentLoaded',init);}
+})();`;
+
 // Registry keyed by block `type`. Only blocks with behavior/styling belong here
 // (child blocks like Slide/AccordionItem/LightboxItem are styled by their parent's
 // entry — no entry of their own). Insertion order = bundle order.
@@ -155,6 +203,8 @@ const COMPONENTS = new Map<string, ComponentAsset>([
   ['Carousel', { css: CAROUSEL_CSS, js: CAROUSEL_JS }],
   ['Accordion', { css: ACCORDION_CSS, js: '' }],
   ['Lightbox', { css: LIGHTBOX_CSS, js: LIGHTBOX_JS }],
+  ['Modal', { css: MODAL_CSS, js: MODAL_JS }],
+  ['CookieConsent', { css: COOKIE_CONSENT_CSS, js: COOKIE_CONSENT_JS }],
 ]);
 
 /** Block types that are interactive components (have bundled CSS/JS). */

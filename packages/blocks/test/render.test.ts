@@ -209,6 +209,49 @@ describe('renderNode — Lightbox (gallery + overlay)', () => {
   });
 });
 
+describe('renderNode — Modal + CookieConsent (interactive components)', () => {
+  it('Modal renders a trigger + a native <dialog> with a close control + content', () => {
+    const html = renderNode(
+      node({
+        type: 'Modal',
+        props: { trigger: 'Contact us', label: 'Contact' },
+        children: [{ id: 'c', type: 'RichText', props: { text: 'Hi' } }],
+      }),
+    );
+    expect(html).toContain('data-sw-component="modal"');
+    expect(html).toContain('<button type="button" data-sw-part="open">Contact us</button>');
+    expect(html).toMatch(/<dialog data-sw-part="dialog" aria-label="Contact">/);
+    expect(html).toContain('data-sw-part="close"');
+    expect(html).toContain('Hi'); // content rendered
+  });
+
+  it('Modal escapes the trigger and defaults it', () => {
+    expect(renderNode(node({ type: 'Modal', props: { trigger: '<b>x</b>' } }))).toContain('&lt;b&gt;x&lt;/b&gt;');
+    expect(renderNode(node({ type: 'Modal', props: {} }))).toContain('>Open</button>'); // default
+  });
+
+  it('CookieConsent renders a hidden banner with message, accept, and an optional policy link', () => {
+    const html = renderNode(
+      node({
+        type: 'CookieConsent',
+        props: { message: 'We use cookies.', acceptText: 'OK', policyHref: '/privacy', policyText: 'Privacy' },
+      }),
+    );
+    expect(html).toContain('data-sw-component="cookie-consent"');
+    expect(html).toMatch(/<div data-sw-block="CookieConsent"[^>]*hidden>/); // hidden until JS reveals
+    expect(html).toContain('We use cookies.');
+    expect(html).toContain('data-sw-part="accept"');
+    expect(html).toContain('>OK</button>');
+    expect(html).toContain('href="privacy"'); // policy link (root-rebased)
+  });
+
+  it('CookieConsent uses sensible defaults + escapes the message', () => {
+    const html = renderNode(node({ type: 'CookieConsent', props: { message: '<i>x</i>' } }));
+    expect(html).toContain('&lt;i&gt;x&lt;/i&gt;');
+    expect(html).toContain('>Accept</button>'); // default accept text
+  });
+});
+
 describe('renderNode — brand/social icons (simple-icons)', () => {
   it('renders a brand icon as a filled-path SVG, labelled by the brand title', () => {
     const html = renderNode(node({ type: 'Icon', props: { name: 'brand:facebook' } }));

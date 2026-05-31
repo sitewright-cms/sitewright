@@ -1,4 +1,4 @@
-import type { Dataset, DeployTargetView, Entry, MediaAsset, Page } from '@sitewright/schema';
+import type { Dataset, DeployTargetView, Entry, MediaAsset, Page, Pattern } from '@sitewright/schema';
 
 export type { DeployTargetView };
 
@@ -106,6 +106,18 @@ export const api = {
       `/orgs/${orgId}/projects/${projectId}/preview`,
       page,
     ),
+
+  // --- patterns (reusable, fork-on-insert block subtrees) ---
+  listPatterns: (orgId: string, projectId: string) =>
+    request<{ items: Pattern[] }>('GET', `/orgs/${orgId}/projects/${projectId}/content/pattern`),
+  putPattern: (orgId: string, projectId: string, pattern: Pattern) =>
+    request<{ item: Pattern }>(
+      'PUT',
+      `/orgs/${orgId}/projects/${projectId}/content/pattern/${pattern.id}`,
+      pattern,
+    ),
+  deletePattern: (orgId: string, projectId: string, id: string) =>
+    request<void>('DELETE', `/orgs/${orgId}/projects/${projectId}/content/pattern/${id}`),
 
   // --- datasets ---
   listDatasets: (orgId: string, projectId: string) =>

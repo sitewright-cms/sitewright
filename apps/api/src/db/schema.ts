@@ -71,7 +71,8 @@ export const content = sqliteTable(
       .notNull()
       .references(() => projects.id),
     kind: text('kind', {
-      enum: ['settings', 'page', 'partial', 'template', 'dataset', 'entry', 'media', 'deploy_target'],
+      // text column (no SQL CHECK) — adding a kind is a type-level change, no migration.
+      enum: ['settings', 'page', 'partial', 'template', 'dataset', 'entry', 'media', 'deploy_target', 'pattern'],
     }).notNull(),
     /** The entity's own id (or `settings` for the singleton). */
     entityId: text('entity_id').notNull(),
@@ -117,6 +118,7 @@ export type ContentKind =
   | 'page'
   | 'partial'
   | 'template'
+  | 'pattern'
   | 'dataset'
   | 'entry'
   | 'media'

@@ -38,6 +38,9 @@ export const WebsiteSettingsSchema = z.object({
     .url()
     .refine((u) => /^https?:\/\//i.test(u), 'siteUrl must be http(s)')
     .refine((u) => !/[#?]/.test(u), 'siteUrl must not contain a query or fragment')
+    // Zod's `.url()` does NOT reject embedded whitespace; a literal newline here
+    // would inject a directive into robots.txt / break the sitemap <loc>. Reject all.
+    .refine((u) => !/\s/.test(u), 'siteUrl must not contain whitespace')
     .optional(),
   /**
    * Redirect rules emitted to `.htaccess` (Apache) + `_redirects` (Netlify) on
@@ -50,12 +53,16 @@ export const WebsiteSettingsSchema = z.object({
           .string()
           .min(1)
           .max(2048)
-          .regex(/^\/[^\s]*$/, 'from must be a path starting with "/" (no spaces)'),
+          .regex(/^\/[^\s]*$/, 'from must be a path starting with "/" (no spaces)')
+          // Percent-encoded CR/LF can't inject a directive (the file holds the literal
+          // text) but yields a redirect that never matches a real request — reject it.
+          .refine((v) => !/%0[ad]/i.test(v), 'from must not contain encoded newlines'),
         to: z
           .string()
           .min(1)
           .max(2048)
-          .regex(/^(\/[^\s]*|https?:\/\/[^\s]+)$/i, 'to must be a path or http(s) URL (no spaces)'),
+          .regex(/^(\/[^\s]*|https?:\/\/[^\s]+)$/i, 'to must be a path or http(s) URL (no spaces)')
+          .refine((v) => !/%0[ad]/i.test(v), 'to must not contain encoded newlines'),
         status: z.union([z.literal(301), z.literal(302), z.literal(307), z.literal(308)]).default(301),
       }),
     )

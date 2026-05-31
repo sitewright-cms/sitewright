@@ -47,5 +47,10 @@ test('publish emits sitemap.xml, robots.txt, and redirect rules', async ({ playw
   expect(robots.status()).toBe(200);
   expect(await robots.text()).toContain('Sitemap: https://acme.example/sitemap.xml');
 
+  // Redirect rules ship in the export ZIP only — extensionless files are NOT
+  // served over the public /sites/ route (regression guard for the allowlist).
+  expect((await api.get(`/sites/${projectId}/.htaccess`)).status()).toBe(404);
+  expect((await api.get(`/sites/${projectId}/_redirects`)).status()).toBe(404);
+
   await api.dispose();
 });

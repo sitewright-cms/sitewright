@@ -21,6 +21,8 @@ describe('isAcceptableRedirectUri', () => {
     expect(isAcceptableRedirectUri('ftp://x/y')).toBe(false);
     expect(isAcceptableRedirectUri('not a url')).toBe(false);
     expect(isAcceptableRedirectUri(`https://x/${'a'.repeat(3000)}`)).toBe(false); // too long
+    expect(isAcceptableRedirectUri('https://user:pass@app.example.com/cb')).toBe(false); // userinfo
+    expect(isAcceptableRedirectUri('https://singlelabel/cb')).toBe(false); // no dot in host
   });
 });
 

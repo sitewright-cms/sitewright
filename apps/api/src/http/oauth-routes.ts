@@ -5,7 +5,7 @@ import { isValidS256Challenge } from '../auth/pkce.js';
 import { API_KEY_CAPABILITIES, type ApiKeyCapability } from '../db/schema.js';
 import { listOrgsForUser, tenantContext } from '../repo/accounts.js';
 import type { ProjectRepository } from '../repo/projects.js';
-import { OAuthClientError, type OAuthClientRepository } from '../repo/oauth-clients.js';
+import { OAuthClientError, isLoopbackHttp, type OAuthClientRepository } from '../repo/oauth-clients.js';
 import { ForbiddenError, NotFoundError } from '../repo/context.js';
 
 /** The built-in public client for the `sitewright` CLI (loopback redirect, PKCE, no secret). */
@@ -55,18 +55,6 @@ function issuerOf(req: FastifyRequest): string {
   return `${req.protocol}://${host}`;
 }
 
-/** RFC 8252 loopback redirect (any port/path on localhost) — the only redirect the CLI client may use. */
-function isLoopbackRedirect(uri: string): boolean {
-  let url: URL;
-  try {
-    url = new URL(uri);
-  } catch {
-    return false;
-  }
-  if (url.protocol !== 'http:') return false;
-  return ['127.0.0.1', 'localhost', '[::1]', '::1'].includes(url.hostname);
-}
-
 
 /** Granted scope = the requested capabilities ∩ the known set (canonical order). */
 function parseScope(raw: string | undefined): ApiKeyCapability[] {
@@ -110,7 +98,7 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
   // (exact-match against its registered URIs). Null = unknown client.
   async function resolveClient(clientId: string): Promise<ResolvedClient | null> {
     if (clientId === CLI_CLIENT_ID) {
-      return { name: 'Sitewright CLI', allowsRedirect: isLoopbackRedirect };
+      return { name: 'Sitewright CLI', allowsRedirect: isLoopbackHttp };
     }
     const client = await clients.get(clientId);
     if (!client) return null;
@@ -148,7 +136,7 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
     async (req, reply) => {
       const body = req.body ?? {};
       const name = typeof body.client_name === 'string' ? body.client_name : '';
-      const redirectUris = Array.isArray(body.redirect_uris) ? (body.redirect_uris as string[]) : [];
+      const redirectUris: unknown[] = Array.isArray(body.redirect_uris) ? body.redirect_uris : [];
       try {
         const client = await clients.register({ name, redirectUris });
         return reply.code(201).send({

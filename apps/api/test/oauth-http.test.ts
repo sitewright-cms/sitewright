@@ -292,6 +292,44 @@ describe('OAuth full authorization-code + PKCE flow', () => {
     expect((await refresh(rt2)).statusCode).toBe(400);
   });
 
+  it('completes the full flow for a dynamically-registered client', async () => {
+    const { session, orgId, projectId } = await setup();
+    const reg = await app.inject({
+      method: 'POST',
+      url: '/oauth/register',
+      payload: { client_name: 'Hosted', redirect_uris: ['https://hosted.example.test/cb'] },
+    });
+    const clientId = (reg.json() as { client_id: string }).client_id;
+    const HREDIRECT = 'https://hosted.example.test/cb';
+
+    const consent = await app.inject({
+      method: 'POST',
+      url: '/oauth/authorize',
+      cookies: { sw_session: session },
+      ...form({
+        client_id: clientId,
+        redirect_uri: HREDIRECT,
+        response_type: 'code',
+        code_challenge: CHALLENGE,
+        code_challenge_method: 'S256',
+        scope: 'content:read',
+        state: 's',
+        project: `${orgId}:${projectId}`,
+        decision: 'approve',
+      }),
+    });
+    expect(consent.statusCode).toBe(302);
+    const code = new URL(consent.headers.location as string).searchParams.get('code');
+
+    const tok = await app.inject({
+      method: 'POST',
+      url: '/oauth/token',
+      ...form({ grant_type: 'authorization_code', code: code!, client_id: clientId, redirect_uri: HREDIRECT, code_verifier: VERIFIER }),
+    });
+    expect(tok.statusCode).toBe(200);
+    expect((tok.json() as { access_token: string }).access_token.startsWith('swk_')).toBe(true);
+  });
+
   it('rejects an unsupported grant type', async () => {
     const res = await app.inject({ method: 'POST', url: '/oauth/token', ...form({ grant_type: 'password' }) });
     expect(res.statusCode).toBe(400);

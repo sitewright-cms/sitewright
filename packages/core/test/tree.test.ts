@@ -6,6 +6,7 @@ import {
   collectClassNames,
   collectIds,
   findDuplicateIds,
+  reIdTree,
   findNode,
   getAncestors,
   insertChild,
@@ -64,6 +65,33 @@ describe('walk / find / ancestors / ids', () => {
       ],
     };
     expect(findDuplicateIds(dup)).toEqual(['x']);
+  });
+
+  it('reIdTree deep-clones with fresh ids, preserving structure + props (fork-on-insert)', () => {
+    let n = 0;
+    const idGen = () => `new-${n++}`;
+    const pattern: PageNode = {
+      id: 'p',
+      type: 'Section',
+      props: { tone: 'primary' },
+      className: 'py-8',
+      children: [{ id: 'h', type: 'Heading', props: { text: 'Hi' } }],
+    };
+    const a = reIdTree(pattern, idGen);
+    const b = reIdTree(pattern, idGen); // a second insert → distinct ids, no collision
+
+    // Fresh ids throughout, none shared with the source or each other.
+    expect(collectIds(a)).toEqual(['new-0', 'new-1']);
+    expect(collectIds(b)).toEqual(['new-2', 'new-3']);
+    expect(findDuplicateIds({ id: 'r', type: 'S', children: [a, b] })).toEqual([]);
+    // Structure, props, and className preserved.
+    expect(a.type).toBe('Section');
+    expect(a.props).toEqual({ tone: 'primary' });
+    expect(a.className).toBe('py-8');
+    expect(a.children?.[0]?.props).toEqual({ text: 'Hi' });
+    // Immutable: the source is untouched.
+    expect(pattern.id).toBe('p');
+    expect(pattern.children?.[0]?.id).toBe('h');
   });
 
   it('collects className lists in document order, skipping nodes without one', () => {

@@ -6,7 +6,8 @@ import { defaultPropsFor } from '@sitewright/blocks';
 // still satisfies IdSchema and never collides within a session. `seq` is an
 // intentional session-lifetime counter (internal to this module).
 let seq = 0;
-function genId(): string {
+/** A fresh, collision-free block id for this session (also used to re-id inserted patterns). */
+export function genId(): string {
   seq += 1;
   return `b-${Date.now().toString(36)}-${seq.toString(36)}`;
 }

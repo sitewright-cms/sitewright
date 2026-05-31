@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { Binding, Dataset, MediaAsset, Page, PageNode } from '@sitewright/schema';
+import type { Binding, Dataset, MediaAsset, Page, PageNode, Pattern } from '@sitewright/schema';
 import { BLOCK_DESCRIPTORS, isContainerType, type BlockCategory } from '@sitewright/blocks';
+import { reIdTree } from '@sitewright/core';
 import { api, previewDocUrl, type Org, type Project } from '../api';
-import { createBlock } from '../lib/node-factory';
+import { createBlock, genId } from '../lib/node-factory';
 import {
   appendChild,
   findNode,
@@ -27,6 +28,7 @@ interface PageEditorProps {
 const CATEGORIES: ReadonlyArray<{ key: BlockCategory; label: string }> = [
   { key: 'layout', label: 'Layout' },
   { key: 'content', label: 'Content' },
+  { key: 'component', label: 'Components' },
   { key: 'nav', label: 'Navigation' },
 ];
 
@@ -41,6 +43,7 @@ export function PageEditor({ org, project, page, onClose }: PageEditorProps) {
   const [error, setError] = useState<string | null>(null);
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [media, setMedia] = useState<MediaAsset[]>([]);
+  const [patterns, setPatterns] = useState<Pattern[]>([]);
   const [preview, setPreview] = useState<{ src: string; loading: boolean; error: string | null }>({
     src: '',
     loading: true,
@@ -65,6 +68,14 @@ export function PageEditor({ org, project, page, onClose }: PageEditorProps) {
       })
       .catch(() => {
         /* image picker simply offers no media if this fails */
+      });
+    api
+      .listPatterns(org.id, project.id)
+      .then((res) => {
+        if (!cancelled) setPatterns(res.items);
+      })
+      .catch(() => {
+        /* the patterns panel simply shows none if this fails */
       });
     return () => {
       cancelled = true;
@@ -103,8 +114,10 @@ export function PageEditor({ org, project, page, onClose }: PageEditorProps) {
     };
   }, [org.id, project.id, draft]);
 
-  function addBlock(type: string) {
-    const child = createBlock(type);
+  // Places a new node inside the selected container, else after the selection,
+  // else at the end of the root — then selects it. Shared by Add block + Insert
+  // pattern.
+  function insertNode(child: PageNode) {
     const selected = selectedId ? findNode(root, selectedId) : undefined;
     let next: PageNode;
     if (selected && isContainerType(selected.type)) {
@@ -119,6 +132,41 @@ export function PageEditor({ org, project, page, onClose }: PageEditorProps) {
     }
     setRoot(next);
     setSelectedId(child.id);
+  }
+
+  function addBlock(type: string) {
+    insertNode(createBlock(type));
+  }
+
+  // Insert a pattern as a fork: deep-clone its subtree with fresh ids so the
+  // inserted copy is independent (and the same pattern can be inserted many times).
+  function insertPattern(pattern: Pattern) {
+    insertNode(reIdTree(pattern.root, genId));
+  }
+
+  // Capture the selected subtree as a reusable, project-scoped pattern.
+  async function saveAsPattern() {
+    if (!selectedId) return;
+    const selected = findNode(root, selectedId);
+    if (!selected) return;
+    const name = (window.prompt('Pattern name', `Pattern ${patterns.length + 1}`) ?? '').trim();
+    if (!name) return;
+    const pattern: Pattern = { id: genId(), name, root: selected };
+    try {
+      await api.putPattern(org.id, project.id, pattern);
+      setPatterns((prev) => [...prev, pattern]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'failed to save pattern');
+    }
+  }
+
+  async function deletePattern(id: string) {
+    try {
+      await api.deletePattern(org.id, project.id, id);
+      setPatterns((prev) => prev.filter((p) => p.id !== id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'failed to delete pattern');
+    }
   }
 
   function changeProp(id: string, key: string, value: unknown) {
@@ -236,6 +284,46 @@ export function PageEditor({ org, project, page, onClose }: PageEditorProps) {
             <p className="mt-2 text-[11px] text-slate-400">
               Adds inside the selected container, otherwise after the selection.
             </p>
+          </div>
+
+          <div className="rounded-lg border border-slate-200 bg-white p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Patterns</h3>
+              <button
+                className="rounded-md border border-slate-300 bg-white px-2 py-0.5 text-[11px] hover:border-slate-500 disabled:opacity-40"
+                onClick={saveAsPattern}
+                disabled={!selectedId}
+                title="Save the selected block (and its contents) as a reusable pattern"
+              >
+                + Save selection
+              </button>
+            </div>
+            {patterns.length === 0 ? (
+              <p className="text-[11px] text-slate-400">
+                Save a selection as a pattern, then insert it (forked) anywhere.
+              </p>
+            ) : (
+              <div className="flex flex-col gap-1">
+                {patterns.map((p) => (
+                  <div key={p.id} className="flex items-center gap-1">
+                    <button
+                      className="flex-1 truncate rounded-md border border-slate-300 bg-white px-2 py-1 text-left text-xs hover:border-slate-500"
+                      onClick={() => insertPattern(p)}
+                      title="Insert a forked copy into the selection"
+                    >
+                      {p.name}
+                    </button>
+                    <button
+                      aria-label={`Delete pattern ${p.name}`}
+                      className="rounded px-1 text-xs text-red-400 hover:text-red-700"
+                      onClick={() => deletePattern(p.id)}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="flex flex-col gap-1">

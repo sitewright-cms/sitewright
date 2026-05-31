@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@sitewright/blocks": "workspace:*",
+    "@sitewright/core": "workspace:*",
     "@sitewright/schema": "workspace:*",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"

@@ -11,6 +11,7 @@ import {
   MediaAssetSchema,
   PageSchema,
   PartialSchema,
+  PatternSchema,
   TemplateSchema,
   ProjectSettingsSchema,
   WebsiteSettingsSchema,
@@ -45,6 +46,8 @@ const SCHEMAS = new Map<ContentKind, z.ZodTypeAny>([
   ['page', PageSchema],
   ['partial', PartialSchema],
   ['template', TemplateSchema],
+  // A reusable pre-composed block subtree (fork-on-insert library); tree-bearing.
+  ['pattern', PatternSchema],
   ['dataset', DatasetSchema],
   ['entry', EntrySchema],
   // Media metadata is tenant-scoped CRUD like other content; the binaries live on
@@ -75,7 +78,7 @@ function schemaFor(kind: ContentKind): z.ZodTypeAny {
 
 /** Guards recursive (page/partial/template) trees before Zod's recursive parse, to prevent stack overflow. */
 function assertTreeSafe(kind: ContentKind, raw: unknown): void {
-  if (kind === 'page' || kind === 'partial' || kind === 'template') {
+  if (kind === 'page' || kind === 'partial' || kind === 'template' || kind === 'pattern') {
     assertWithinTreeDepth((raw as { root?: unknown })?.root);
   }
 }
@@ -171,6 +174,8 @@ export class ContentRepository {
       templates: (await this.list(ctx, 'template')) as Template[],
       datasets: (await this.list(ctx, 'dataset')) as Dataset[],
       entries: (await this.list(ctx, 'entry')) as Entry[],
+      // `pattern` is intentionally NOT bundled — it's a project-scoped editor aid
+      // (fork-on-insert library), not part of the publishable/portable artifact.
     };
   }
 

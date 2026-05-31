@@ -67,6 +67,22 @@ export function collectClassNames(root: PageNode): string[] {
   return classNames;
 }
 
+/**
+ * Deep-clones a subtree, assigning every node a FRESH id from `idGen`. This is the
+ * "fork on insert" primitive for the Patterns library: inserting a pattern (or the
+ * same pattern twice) yields independent nodes with no id collisions and no link
+ * back to the source. Immutable — the input is not mutated.
+ */
+export function reIdTree(node: PageNode, idGen: () => string): PageNode {
+  assertWithinTreeDepth(node);
+  const recur = (n: PageNode): PageNode => ({
+    ...n,
+    id: idGen(),
+    children: n.children?.map(recur),
+  });
+  return recur(node);
+}
+
 /** Ids that appear more than once in the tree. */
 export function findDuplicateIds(root: PageNode): string[] {
   const seen = new Set<string>();

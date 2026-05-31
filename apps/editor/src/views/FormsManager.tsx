@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import type { Form, FormField, FormMode } from '@sitewright/schema';
 import { api, type Org, type Project } from '../api';
 import { identifierize, slugify } from '../lib/entry-form';
+import { ProjectSmtp } from './ProjectSmtp';
 
 const FIELD_TYPES: ReadonlyArray<FormField['type']> = ['text', 'email', 'tel', 'url', 'number', 'textarea', 'select'];
 
@@ -358,6 +359,8 @@ export function FormsManager({ org, project }: { org: Org; project: Project }) {
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Per-project SMTP config — only relevant when the admin enabled the userSmtp mode. */}
+      {enabledModes.userSmtp && <ProjectSmtp org={org} project={project} />}
       {error && <p className="text-sm text-red-600">{error}</p>}
       {saved && <p className="text-sm text-green-600">Saved.</p>}
       <ul className="flex flex-col gap-2">

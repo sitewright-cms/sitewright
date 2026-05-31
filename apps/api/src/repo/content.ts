@@ -9,6 +9,7 @@ import {
   DeployTargetSchema,
   EntrySchema,
   FormSchema,
+  SmtpStoredSchema,
   MediaAssetSchema,
   PageSchema,
   PartialSchema,
@@ -58,6 +59,9 @@ const SCHEMAS = new Map<ContentKind, z.ZodTypeAny>([
   // Web form definitions (fields + inline messages + server-side recipient/mode).
   // The recipient is never rendered into exported HTML (see the Form renderer).
   ['form', FormSchema],
+  // Per-project SMTP for the `userSmtp` form mode (encrypted password). Singleton
+  // per project; managed via dedicated routes (excluded from generic content).
+  ['project_smtp', SmtpStoredSchema],
   // Media metadata is tenant-scoped CRUD like other content; the binaries live on
   // disk (see apps/api/src/media). Not yet part of export/import bundles.
   ['media', MediaAssetSchema],
@@ -294,9 +298,11 @@ export class ContentRepository {
     return { imported };
   }
 
-  /** The storage key for an entity: the settings singleton id, or the entity's own id (which must match the path). */
+  /** The storage key for an entity: a singleton's fixed id, or the entity's own id (which must match the path). */
   private entityKey(kind: ContentKind, entityId: string, data: unknown): string {
     if (kind === 'settings') return SETTINGS_ENTITY_ID;
+    // project_smtp is a per-project singleton with no `id` field (keyed by the path).
+    if (kind === 'project_smtp') return entityId;
     const id = (data as { id?: string }).id;
     if (id !== entityId) {
       throw new ConflictError(`${kind} id "${id ?? ''}" does not match path "${entityId}"`);

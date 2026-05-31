@@ -239,7 +239,7 @@ export const content = sqliteTable(
       .references(() => projects.id),
     kind: text('kind', {
       // text column (no SQL CHECK) — adding a kind is a type-level change, no migration.
-      enum: ['settings', 'page', 'partial', 'template', 'dataset', 'entry', 'media', 'deploy_target', 'pattern', 'translation', 'form'],
+      enum: ['settings', 'page', 'partial', 'template', 'dataset', 'entry', 'media', 'deploy_target', 'pattern', 'translation', 'form', 'project_smtp'],
     }).notNull(),
     /** The entity's own id (or `settings` for the singleton). */
     entityId: text('entity_id').notNull(),
@@ -293,6 +293,9 @@ export const instanceSettings = sqliteTable('instance_settings', {
 /** The fixed primary key of the instance-settings singleton row. */
 export const INSTANCE_SETTINGS_ID = 'instance';
 
+/** The fixed entity id of a project's SMTP-config singleton (content kind `project_smtp`). */
+export const PROJECT_SMTP_ENTITY_ID = 'smtp';
+
 /**
  * Web-form submissions (text fields only — never binaries/attachments). Project-
  * scoped; `formId` is the `form` content entity. Captured even when email delivery
@@ -327,4 +330,5 @@ export type ContentKind =
   | 'entry'
   | 'media'
   | 'deploy_target'
-  | 'form';
+  | 'form'
+  | 'project_smtp';

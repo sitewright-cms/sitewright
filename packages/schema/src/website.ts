@@ -27,5 +27,39 @@ export const WebsiteSettingsSchema = z.object({
   customHead: z.string().max(HTML_MAX).optional(),
   /** Raw HTML injected before `</body>` (contentBase `global_bottom`). */
   customFooter: z.string().max(HTML_MAX).optional(),
+  /**
+   * The site's production base URL (e.g. `https://acme.com`). Required for an
+   * absolute-URL `sitemap.xml` + the `robots.txt` Sitemap line; omit to skip the
+   * sitemap. No trailing slash needed (normalized at build time).
+   */
+  siteUrl: z
+    .string()
+    .max(2048)
+    .url()
+    .refine((u) => /^https?:\/\//i.test(u), 'siteUrl must be http(s)')
+    .refine((u) => !/[#?]/.test(u), 'siteUrl must not contain a query or fragment')
+    .optional(),
+  /**
+   * Redirect rules emitted to `.htaccess` (Apache) + `_redirects` (Netlify) on
+   * publish. `from` is a path; `to` is a path or absolute URL.
+   */
+  redirects: z
+    .array(
+      z.object({
+        from: z
+          .string()
+          .min(1)
+          .max(2048)
+          .regex(/^\/[^\s]*$/, 'from must be a path starting with "/" (no spaces)'),
+        to: z
+          .string()
+          .min(1)
+          .max(2048)
+          .regex(/^(\/[^\s]*|https?:\/\/[^\s]+)$/i, 'to must be a path or http(s) URL (no spaces)'),
+        status: z.union([z.literal(301), z.literal(302), z.literal(307), z.literal(308)]).default(301),
+      }),
+    )
+    .max(500)
+    .optional(),
 });
 export type WebsiteSettings = z.infer<typeof WebsiteSettingsSchema>;

@@ -19,6 +19,7 @@ export default defineConfig({
         'src/lib/tree-ops.ts',
         'src/lib/entry-form.ts',
         'src/lib/translation-draft.ts',
+        'src/lib/live-target.ts',
       ],
       reporter: ['text', 'lcov'],
       thresholds: { lines: 90, statements: 90, functions: 90, branches: 80 },

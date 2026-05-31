@@ -40,6 +40,7 @@ import {
 import { ProjectRepository } from '../repo/projects.js';
 import { AiUsageRepository } from '../repo/ai-usage.js';
 import { ApiKeyRepository, type ResolvedApiKey } from '../repo/api-keys.js';
+import { ProjectEventBus } from '../events/bus.js';
 import {
   ContentRepository,
   CONTENT_KINDS,
@@ -57,6 +58,8 @@ import { API_KEY_CAPABILITIES, type ApiKeyCapability, type ContentKind } from '.
 
 const SESSION_COOKIE = 'sw_session';
 const RL_WINDOW = '1 minute';
+/** Cap concurrent live-preview (SSE) connections per project (bounds sockets + listeners). */
+const MAX_EVENT_SUBSCRIBERS_PER_PROJECT = 20;
 /** Per-route rate-limit config for an expensive/sensitive endpoint. */
 const rl = (max: number) => ({ rateLimit: { max, timeWindow: RL_WINDOW } });
 const IMPORT_BODY_LIMIT = 4 * 1024 * 1024; // 4 MiB for a full project import
@@ -200,7 +203,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const { db } = opts;
   const signed = Boolean(opts.cookieSecret);
   const projects = new ProjectRepository(db);
-  const contentRepo = new ContentRepository(db);
+  // In-process change bus: content writes (from any channel) publish here; the
+  // SSE endpoint below relays them to live-preview clients.
+  const events = new ProjectEventBus();
+  const contentRepo = new ContentRepository(db, events);
   const mediaStorage = opts.mediaRoot ? new MediaStorage(opts.mediaRoot) : undefined;
   const publishStore = opts.publishRoot ? new PublishStore(opts.publishRoot) : undefined;
   // Short-lived store of rendered preview docs, so they can be served (via a token
@@ -698,6 +704,55 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       reply.header('content-security-policy', 'sandbox allow-scripts');
       reply.header('x-frame-options', 'SAMEORIGIN');
       return reply.type('text/html').send(html);
+    },
+  );
+
+  // Live content-change stream (Server-Sent Events). The editor's live-preview
+  // surface subscribes here and re-renders when ANY channel (editor/CLI/MCP)
+  // writes to the project — so an agent's edits show up in an open preview. The
+  // parent (same-origin, authenticated) page holds this connection and swaps the
+  // sandboxed iframe; the events carry ids only (never content), so nothing leaks.
+  app.get<{ Params: { orgId: string; projectId: string } }>(
+    '/orgs/:orgId/projects/:projectId/events',
+    { config: rl(30) },
+    async (req, reply) => {
+      const { ctx } = await resolveProject(req, 'content:read');
+      // Bound concurrent streams per project so a client can't open unbounded
+      // long-lived connections (each holds a socket + a bus listener).
+      if (events.subscriberCount(ctx.projectId) >= MAX_EVENT_SUBSCRIBERS_PER_PROJECT) {
+        return reply.code(429).send({ error: 'too many live-preview connections for this project' });
+      }
+      reply.hijack();
+      const raw = reply.raw;
+      raw.writeHead(200, {
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-cache, no-transform',
+        connection: 'keep-alive',
+        // Defeat proxy buffering so events arrive promptly.
+        'x-accel-buffering': 'no',
+        // hijack() bypasses the onSend security-headers hook — replicate the baseline.
+        'x-content-type-options': 'nosniff',
+        'referrer-policy': 'same-origin',
+        'x-frame-options': 'DENY',
+      });
+      raw.write(': connected\n\n');
+      const unsubscribe = events.subscribe(ctx.projectId, (change) => {
+        // Guard against a write racing socket teardown (EPIPE/ERR_STREAM_DESTROYED).
+        if (raw.writable) raw.write(`event: content\ndata: ${JSON.stringify(change)}\n\n`);
+      });
+      // Heartbeat keeps intermediaries from idling the connection out.
+      const heartbeat = setInterval(() => {
+        if (!raw.writable) {
+          clearInterval(heartbeat);
+          return;
+        }
+        raw.write(': ping\n\n');
+      }, 25_000);
+      heartbeat.unref();
+      req.raw.on('close', () => {
+        clearInterval(heartbeat);
+        unsubscribe();
+      });
     },
   );
 

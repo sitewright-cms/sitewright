@@ -240,6 +240,31 @@ describe('api client', () => {
     expect(JSON.parse(init.body)).toMatchObject({ protocol: 'sftp', host: 'example.com' });
   });
 
+  it('lists, creates (token once) and revokes project API keys', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { items: [] }));
+    await api.listApiKeys('o', 'p');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/orgs/o/projects/p/api-keys');
+
+    fetchMock.mockResolvedValue(jsonResponse(201, { token: 'swk_x', key: { id: 'k1', name: 'CI' } }));
+    const created = await api.createApiKey('o', 'p', {
+      name: 'CI',
+      role: 'admin',
+      capabilities: ['content:read', 'content:write'],
+      expiresInDays: 30,
+    });
+    expect(created.token).toBe('swk_x');
+    const [createUrl, createInit] = fetchMock.mock.calls[1]!;
+    expect(createUrl).toBe('/orgs/o/projects/p/api-keys');
+    expect(createInit.method).toBe('POST');
+    expect(JSON.parse(createInit.body)).toMatchObject({ name: 'CI', role: 'admin', expiresInDays: 30 });
+
+    fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
+    await api.deleteApiKey('o', 'p', 'k1');
+    const [delUrl, delInit] = fetchMock.mock.calls[2]!;
+    expect(delUrl).toBe('/orgs/o/projects/p/api-keys/k1');
+    expect(delInit.method).toBe('DELETE');
+  });
+
   it('reads project settings (locales) from the settings singleton', async () => {
     fetchMock.mockResolvedValue(
       jsonResponse(200, { item: { settings: { defaultLocale: 'en', locales: ['en', 'de'] } } }),

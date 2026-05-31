@@ -1,7 +1,5 @@
 #!/usr/bin/env node
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { SitewrightClient } from './client.js';
-import { createSitewrightMcpServer } from './server.js';
+import { runStdioBridge } from './run.js';
 
 /** Reads `--flag value` / `--flag=value` from argv, falling back to an env var. */
 function arg(name: string, env: string): string | undefined {
@@ -31,20 +29,15 @@ async function main(): Promise<void> {
     );
   }
 
-  const client = new SitewrightClient(url, token);
-  // Fail fast (and out of band of the MCP protocol) on a bad token, and learn the
-  // project scope so the toolset matches the token's capabilities.
+  // Fail fast (out of band of the MCP protocol) on a bad token; introspect + connect.
   let scope;
   try {
-    scope = await client.introspect();
+    scope = await runStdioBridge({ url, token });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'unknown error';
     process.stderr.write(`sitewright-mcp: could not authenticate to ${url}: ${message}\n`);
     process.exit(1);
   }
-
-  const server = createSitewrightMcpServer(client, scope);
-  await server.connect(new StdioServerTransport());
   process.stderr.write(
     `sitewright-mcp: connected to project ${scope.projectId} (role ${scope.role}, caps ${scope.capabilities.join(',')})\n`,
   );

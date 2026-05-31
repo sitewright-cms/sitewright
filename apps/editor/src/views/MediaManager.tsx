@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import type { MediaAsset } from '@sitewright/schema';
 import { api, type Org, type Project } from '../api';
+import { StockPicker } from './media/StockPicker';
 
 export function MediaManager({ org, project }: { org: Org; project: Project }) {
   const [media, setMedia] = useState<MediaAsset[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [source, setSource] = useState<'upload' | 'stock'>('upload');
   const fileInput = useRef<HTMLInputElement>(null);
 
   async function load(isActive: () => boolean = () => true) {
@@ -53,25 +55,50 @@ export function MediaManager({ org, project }: { org: Org; project: Project }) {
 
   return (
     <div>
-      <div className="mb-4 flex flex-col gap-1 rounded-lg border border-slate-200 bg-white p-4">
-        <label htmlFor="media-upload" className="text-xs font-medium text-slate-500">
-          Upload image
-        </label>
-        <input
-          id="media-upload"
-          ref={fileInput}
-          aria-label="Upload image"
-          type="file"
-          accept="image/png,image/jpeg,image/webp,image/avif,image/gif"
-          disabled={uploading}
-          onChange={onUpload}
-          className="text-sm"
-        />
-        {uploading && <span className="text-xs text-slate-400">optimizing…</span>}
-        <p className="text-[11px] text-slate-400">
-          Images are optimized to AVIF/WebP with a JPEG fallback. SVG is not accepted.
-        </p>
+      <div className="mb-4 flex gap-2" role="tablist" aria-label="Media source">
+        <button
+          role="tab"
+          aria-selected={source === 'upload'}
+          onClick={() => setSource('upload')}
+          className={`rounded-md px-3 py-1.5 text-sm font-medium ${source === 'upload' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'}`}
+        >
+          Upload
+        </button>
+        <button
+          role="tab"
+          aria-selected={source === 'stock'}
+          onClick={() => setSource('stock')}
+          className={`rounded-md px-3 py-1.5 text-sm font-medium ${source === 'stock' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'}`}
+        >
+          Stock images
+        </button>
       </div>
+
+      {source === 'upload' ? (
+        <div className="mb-4 flex flex-col gap-1 rounded-lg border border-slate-200 bg-white p-4">
+          <label htmlFor="media-upload" className="text-xs font-medium text-slate-500">
+            Upload image
+          </label>
+          <input
+            id="media-upload"
+            ref={fileInput}
+            aria-label="Upload image"
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/avif,image/gif"
+            disabled={uploading}
+            onChange={onUpload}
+            className="text-sm"
+          />
+          {uploading && <span className="text-xs text-slate-400">optimizing…</span>}
+          <p className="text-[11px] text-slate-400">
+            Images are optimized to AVIF/WebP with a JPEG fallback. SVG is not accepted.
+          </p>
+        </div>
+      ) : (
+        <div className="mb-4">
+          <StockPicker orgId={org.id} projectId={project.id} onImported={() => load()} />
+        </div>
+      )}
 
       {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
 

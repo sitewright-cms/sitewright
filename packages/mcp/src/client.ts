@@ -175,4 +175,23 @@ export class SitewrightClient {
     const qs = params.toString();
     return this.request('GET', this.projectPath(`/submissions${qs ? `?${qs}` : ''}`));
   }
+
+  async stockProviders(): Promise<unknown> {
+    return this.request('GET', this.projectPath('/stock/providers'));
+  }
+
+  async stockSearch(provider: string, query: string, page = 1): Promise<unknown> {
+    const params = new URLSearchParams({ provider, q: query, page: String(page) });
+    return this.request('GET', this.projectPath(`/stock/search?${params.toString()}`));
+  }
+
+  /** Import a stock photo: the server downloads, optimizes, and self-hosts it as a media asset. */
+  async importStock(provider: string, id: string, alt?: string): Promise<unknown> {
+    const res = await this.request<{ item: unknown }>(
+      'POST',
+      this.projectPath('/stock/import'),
+      { provider, id, ...(alt ? { alt } : {}) },
+    );
+    return res.item;
+  }
 }

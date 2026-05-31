@@ -16,6 +16,9 @@ function fakeClient(overrides: Partial<Record<keyof SitewrightClient, unknown>> 
     publish: vi.fn(async () => ({ release: { routes: 1 }, url: '/sites/p/' })),
     publishStatus: vi.fn(async () => ({ release: null })),
     listSubmissions: vi.fn(async () => ({ items: [{ id: 's1', formId: 'contact', fields: { email: 'a@b.co' } }], total: 1 })),
+    stockProviders: vi.fn(async () => ({ providers: [{ name: 'openverse', available: true, requiresKey: false }] })),
+    stockSearch: vi.fn(async () => ({ provider: 'openverse', page: 1, results: [{ provider: 'openverse', id: 'ov1', author: 'Ann' }] })),
+    importStock: vi.fn(async () => ({ id: 'asset1', url: '/media/p/asset1/x.jpg' })),
     ...overrides,
   } as unknown as SitewrightClient & Record<string, ReturnType<typeof vi.fn>>;
 }
@@ -59,6 +62,43 @@ describe('createSitewrightMcpServer — capability gating', () => {
   it('exposes list_submissions to a read-only token', async () => {
     const mcp = await connect(fakeClient(), readScope);
     expect(await toolNames(mcp)).toContain('list_submissions');
+  });
+
+  it('exposes stock search/providers to a read token but import only to a write token', async () => {
+    const reader = await toolNames(await connect(fakeClient(), readScope));
+    expect(reader).toContain('list_stock_providers');
+    expect(reader).toContain('search_stock_images');
+    expect(reader).not.toContain('import_stock_image');
+
+    const writer = await toolNames(await connect(fakeClient(), writeScope));
+    expect(writer).toContain('import_stock_image');
+  });
+});
+
+describe('createSitewrightMcpServer — stock over MCP', () => {
+  it('search_stock_images forwards provider/query/page to the client', async () => {
+    const client = fakeClient();
+    const mcp = await connect(client, readScope);
+    const res = await mcp.callTool({ name: 'search_stock_images', arguments: { provider: 'openverse', query: 'cats', page: 2 } });
+    expect((client as unknown as Record<string, ReturnType<typeof vi.fn>>).stockSearch).toHaveBeenCalledWith('openverse', 'cats', 2);
+    expect(res.isError).toBeFalsy();
+  });
+
+  it('import_stock_image forwards provider/id/alt and returns the imported asset', async () => {
+    const client = fakeClient();
+    const mcp = await connect(client, writeScope);
+    const res = await mcp.callTool({ name: 'import_stock_image', arguments: { provider: 'openverse', id: 'ov1', alt: 'a cat' } });
+    expect((client as unknown as Record<string, ReturnType<typeof vi.fn>>).importStock).toHaveBeenCalledWith('openverse', 'ov1', 'a cat');
+    expect((res.content as Array<{ text: string }>)[0]!.text).toContain('asset1');
+    expect(res.isError).toBeFalsy();
+  });
+
+  it('rejects an unknown stock provider via inputSchema (no client call)', async () => {
+    const client = fakeClient();
+    const mcp = await connect(client, readScope);
+    const res = await mcp.callTool({ name: 'search_stock_images', arguments: { provider: 'bogus', query: 'x' } });
+    expect(res.isError).toBe(true);
+    expect((client as unknown as Record<string, ReturnType<typeof vi.fn>>).stockSearch).not.toHaveBeenCalled();
   });
 });
 

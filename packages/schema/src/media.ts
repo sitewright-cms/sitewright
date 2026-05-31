@@ -45,5 +45,17 @@ export const MediaAssetSchema = z.object({
     .min(1)
     .max(2048)
     .regex(/^\/media\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\.(avif|webp|jpg)$/),
+  /**
+   * Stock-image attribution (when imported from a provider). Recorded to satisfy the
+   * provider's license terms; surfaced in the editor and (later) credited on export.
+   */
+  attribution: z
+    .object({
+      provider: z.string().min(1).max(40),
+      author: z.string().max(200),
+      sourceUrl: z.string().url().max(2048),
+      license: z.string().max(120),
+    })
+    .optional(),
 });
 export type MediaAsset = z.infer<typeof MediaAssetSchema>;

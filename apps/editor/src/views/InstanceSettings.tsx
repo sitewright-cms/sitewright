@@ -39,6 +39,12 @@ export function InstanceSettings() {
   const [hcSecret, setHcSecret] = useState('');
   const [hasSecret, setHasSecret] = useState(false);
 
+  const [stockEnabled, setStockEnabled] = useState(false);
+  const [unsplashKey, setUnsplashKey] = useState('');
+  const [pexelsKey, setPexelsKey] = useState('');
+  const [hasUnsplash, setHasUnsplash] = useState(false);
+  const [hasPexels, setHasPexels] = useState(false);
+
   function hydrate(s: InstanceSettingsPublic) {
     setModes(s.formModes);
     setSmtpEnabled(Boolean(s.smtp));
@@ -54,6 +60,11 @@ export function InstanceSettings() {
     setSiteKey(s.hcaptcha?.siteKey ?? '');
     setHasSecret(s.hcaptcha?.hasSecret ?? false);
     setHcSecret('');
+    setStockEnabled(Boolean(s.stock));
+    setHasUnsplash(s.stock?.hasUnsplash ?? false);
+    setHasPexels(s.stock?.hasPexels ?? false);
+    setUnsplashKey('');
+    setPexelsKey('');
   }
 
   useEffect(() => {
@@ -94,6 +105,9 @@ export function InstanceSettings() {
     input.hcaptcha = hcaptchaEnabled
       ? { siteKey, ...(hcSecret ? { secret: hcSecret } : {}) }
       : null;
+    input.stock = stockEnabled
+      ? { ...(unsplashKey ? { unsplash: unsplashKey } : {}), ...(pexelsKey ? { pexels: pexelsKey } : {}) }
+      : null; // disabling clears both keys
     try {
       const res = await api.putInstanceSettings(input);
       hydrate(res.settings);
@@ -235,6 +249,49 @@ export function InstanceSettings() {
                 value={hcSecret}
                 placeholder={hasSecret ? '•••••• (leave blank to keep)' : ''}
                 onChange={(e) => setHcSecret(e.target.value)}
+              />
+            </label>
+          </div>
+        )}
+      </fieldset>
+
+      <fieldset className="rounded-lg border border-slate-200 bg-white p-4">
+        <legend className="px-1 text-sm font-semibold">Stock image providers</legend>
+        <p className="mb-2 text-xs text-slate-500">
+          Openverse needs no key. Add an Unsplash and/or Pexels API key to enable those providers in the media
+          stock picker. Keys are encrypted at rest and never leave the server.
+        </p>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            aria-label="Configure stock provider keys"
+            checked={stockEnabled}
+            onChange={(e) => setStockEnabled(e.target.checked)}
+          />
+          Configure Unsplash / Pexels API keys
+        </label>
+        {stockEnabled && (
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            <label className="flex flex-col text-xs text-slate-500">
+              Unsplash access key
+              <input
+                className={field}
+                aria-label="Unsplash access key"
+                type="password"
+                value={unsplashKey}
+                placeholder={hasUnsplash ? '•••••• (leave blank to keep)' : ''}
+                onChange={(e) => setUnsplashKey(e.target.value)}
+              />
+            </label>
+            <label className="flex flex-col text-xs text-slate-500">
+              Pexels API key
+              <input
+                className={field}
+                aria-label="Pexels API key"
+                type="password"
+                value={pexelsKey}
+                placeholder={hasPexels ? '•••••• (leave blank to keep)' : ''}
+                onChange={(e) => setPexelsKey(e.target.value)}
               />
             </label>
           </div>

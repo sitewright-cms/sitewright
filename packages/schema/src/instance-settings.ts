@@ -75,10 +75,18 @@ export const HcaptchaStoredSchema = z.object({
 });
 export type HcaptchaStored = z.infer<typeof HcaptchaStoredSchema>;
 
+/** Stock-image provider API keys as stored (each an encrypted envelope, or absent). */
+export const StockKeysStoredSchema = z.object({
+  unsplash: EncryptedSecretSchema.optional(),
+  pexels: EncryptedSecretSchema.optional(),
+});
+export type StockKeysStored = z.infer<typeof StockKeysStoredSchema>;
+
 /** The persisted instance-settings document (secrets encrypted at rest). */
 export const InstanceSettingsStoredSchema = z.object({
   smtp: SmtpStoredSchema.optional(),
   hcaptcha: HcaptchaStoredSchema.optional(),
+  stock: StockKeysStoredSchema.optional(),
   formModes: FormModesSchema.default(DEFAULT_FORM_MODES),
 });
 export type InstanceSettingsStored = z.infer<typeof InstanceSettingsStoredSchema>;
@@ -102,9 +110,17 @@ export const HcaptchaInputSchema = z.object({
 });
 export type HcaptchaInput = z.infer<typeof HcaptchaInputSchema>;
 
+/** Stock provider keys (plaintext on input; omit a key to keep the stored one). */
+export const StockKeysInputSchema = z.object({
+  unsplash: z.string().min(1).max(512).optional(),
+  pexels: z.string().min(1).max(512).optional(),
+});
+export type StockKeysInput = z.infer<typeof StockKeysInputSchema>;
+
 export const InstanceSettingsInputSchema = z.object({
   smtp: SmtpInputSchema.nullable().optional(),
   hcaptcha: HcaptchaInputSchema.nullable().optional(),
+  stock: StockKeysInputSchema.nullable().optional(),
   // Merge-only (not nullable): an absent formModes leaves modes unchanged; a
   // partial one merges. To disable every mode, send all four explicitly false —
   // there is no "clear the whole section" semantic for formModes.
@@ -131,9 +147,16 @@ export interface HcaptchaPublic {
   hasSecret: boolean;
 }
 
+/** Masked stock keys — presence only (keys are secret, never returned). */
+export interface StockKeysPublic {
+  hasUnsplash: boolean;
+  hasPexels: boolean;
+}
+
 export interface InstanceSettingsPublic {
   smtp?: SmtpPublic;
   hcaptcha?: HcaptchaPublic;
+  stock?: StockKeysPublic;
   formModes: FormModes;
 }
 
@@ -149,6 +172,12 @@ export function maskInstanceSettings(stored: InstanceSettingsStored): InstanceSe
   if (stored.smtp) result.smtp = maskSmtp(stored.smtp);
   if (stored.hcaptcha) {
     result.hcaptcha = { siteKey: stored.hcaptcha.siteKey, hasSecret: stored.hcaptcha.secret !== undefined };
+  }
+  if (stored.stock) {
+    result.stock = {
+      hasUnsplash: stored.stock.unsplash !== undefined,
+      hasPexels: stored.stock.pexels !== undefined,
+    };
   }
   return result;
 }

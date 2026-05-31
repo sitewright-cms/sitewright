@@ -8,6 +8,7 @@ import {
   type InstanceSettingsPublic,
   type SmtpStored,
   type HcaptchaStored,
+  type StockKeysStored,
 } from '@sitewright/schema';
 import type { Database } from '../db/client.js';
 import { instanceSettings, INSTANCE_SETTINGS_ID } from '../db/schema.js';
@@ -102,6 +103,23 @@ export class InstanceSettingsRepository {
       next.hcaptcha = hcaptcha;
     }
 
+    if (input.stock === null) {
+      // cleared
+    } else if (input.stock === undefined) {
+      if (current.stock) next.stock = current.stock;
+    } else {
+      // Per-provider: a provided key is encrypted; an omitted one retains the stored.
+      const unsplash =
+        input.stock.unsplash !== undefined ? this.encrypt(input.stock.unsplash) : current.stock?.unsplash;
+      const pexels =
+        input.stock.pexels !== undefined ? this.encrypt(input.stock.pexels) : current.stock?.pexels;
+      const stock: StockKeysStored = {
+        ...(unsplash !== undefined ? { unsplash } : {}),
+        ...(pexels !== undefined ? { pexels } : {}),
+      };
+      next.stock = stock;
+    }
+
     // Validate the merged document before persisting (defense in depth).
     const validated = InstanceSettingsStoredSchema.parse(next);
     const now = new Date();
@@ -125,6 +143,13 @@ export class InstanceSettingsRepository {
   async getHcaptchaSecret(): Promise<string | null> {
     const stored = await this.getStored();
     return stored.hcaptcha?.secret ? this.decrypt(stored.hcaptcha.secret) : null;
+  }
+
+  /** Decrypted stock-provider API key for server-side search/import, or null if unset. */
+  async getStockKey(provider: 'unsplash' | 'pexels'): Promise<string | null> {
+    const stored = await this.getStored();
+    const enc = provider === 'unsplash' ? stored.stock?.unsplash : stored.stock?.pexels;
+    return enc ? this.decrypt(enc) : null;
   }
 
   private encrypt(plaintext: string): ReturnType<typeof encryptSecret> {

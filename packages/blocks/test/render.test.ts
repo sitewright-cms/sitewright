@@ -220,14 +220,17 @@ describe('renderNode — Modal + CookieConsent (interactive components)', () => 
     );
     expect(html).toContain('data-sw-component="modal"');
     expect(html).toContain('<button type="button" data-sw-part="open">Contact us</button>');
-    expect(html).toMatch(/<dialog data-sw-part="dialog" aria-label="Contact">/);
+    expect(html).toMatch(/<dialog data-sw-part="dialog" aria-label="Contact" aria-modal="true">/);
     expect(html).toContain('data-sw-part="close"');
     expect(html).toContain('Hi'); // content rendered
   });
 
-  it('Modal escapes the trigger and defaults it', () => {
+  it('Modal escapes the trigger + the aria-label, and defaults the trigger', () => {
     expect(renderNode(node({ type: 'Modal', props: { trigger: '<b>x</b>' } }))).toContain('&lt;b&gt;x&lt;/b&gt;');
     expect(renderNode(node({ type: 'Modal', props: {} }))).toContain('>Open</button>'); // default
+    expect(renderNode(node({ type: 'Modal', props: { label: 'a"b' } }))).toContain(
+      'aria-label="a&quot;b"',
+    );
   });
 
   it('CookieConsent renders a hidden banner with message, accept, and an optional policy link', () => {
@@ -249,6 +252,22 @@ describe('renderNode — Modal + CookieConsent (interactive components)', () => 
     const html = renderNode(node({ type: 'CookieConsent', props: { message: '<i>x</i>' } }));
     expect(html).toContain('&lt;i&gt;x&lt;/i&gt;');
     expect(html).toContain('>Accept</button>'); // default accept text
+  });
+
+  it('omits the policy link entirely for an unsafe policyHref', () => {
+    const html = renderNode(
+      node({ type: 'CookieConsent', props: { policyHref: 'javascript:evil()', policyText: 'Read' } }),
+    );
+    expect(html).not.toContain('javascript:');
+    expect(html).not.toContain('<a '); // unsafe href → link dropped (urlProp falls back to '')
+  });
+
+  it('renders + escapes the policy link when the href is safe', () => {
+    const html = renderNode(
+      node({ type: 'CookieConsent', props: { policyHref: '/privacy', policyText: '<b>x</b>' } }),
+    );
+    expect(html).toContain('href="privacy"'); // root-rebased
+    expect(html).toContain('&lt;b&gt;x&lt;/b&gt;'); // policy text escaped
   });
 });
 

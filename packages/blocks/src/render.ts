@@ -322,7 +322,7 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
       return (
         `<div data-sw-block="Modal"${cls} data-sw-component="modal">` +
         `<button type="button" data-sw-part="open">${escapeHtml(trigger)}</button>` +
-        `<dialog data-sw-part="dialog"${a11y}>` +
+        `<dialog data-sw-part="dialog"${a11y} aria-modal="true">` +
         `<button type="button" data-sw-part="close" aria-label="Close">×</button>` +
         `<div data-sw-part="content">${inner}</div></dialog></div>`
       );

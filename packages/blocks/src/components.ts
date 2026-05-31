@@ -166,7 +166,6 @@ const MODAL_JS = `(function(){
     openBtn.addEventListener('click',function(){dialog.showModal();});
     if(closeBtn)closeBtn.addEventListener('click',function(){dialog.close();});
     dialog.addEventListener('click',function(e){if(e.target===dialog){dialog.close();}});
-    root.setAttribute('data-sw-enhanced','true');
   }
   function init(){Array.prototype.forEach.call(document.querySelectorAll('[data-sw-component="modal"]'),enhance);}
   if(document.readyState!=='loading'){init();}else{document.addEventListener('DOMContentLoaded',init);}
@@ -184,6 +183,8 @@ const COOKIE_CONSENT_CSS = [
   '[data-sw-block="CookieConsent"] [data-sw-part="accept"]{border:0;border-radius:.375rem;padding:.5rem 1rem;background:var(--sw-color-primary,#0a7a5a);color:#fff;cursor:pointer}',
 ].join('');
 
+// State is carried by the \`hidden\` attribute (already in the server HTML and
+// toggled here) rather than a \`data-sw-enhanced\` marker — no separate flag needed.
 const COOKIE_CONSENT_JS = `(function(){
   var KEY='sw-cookie-consent';
   function enhance(root){

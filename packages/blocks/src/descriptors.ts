@@ -273,9 +273,14 @@ export const BLOCK_DESCRIPTORS: ReadonlyArray<BlockDescriptor> = [
     category: 'component',
     container: false,
     fields: [
-      { key: 'message', label: 'Message', input: 'textarea' },
+      {
+        key: 'message',
+        label: 'Message',
+        input: 'textarea',
+        default: 'We use cookies to improve your experience.',
+      },
       { key: 'acceptText', label: 'Accept button', input: 'text', default: 'Accept' },
-      { key: 'policyText', label: 'Policy link text', input: 'text' },
+      { key: 'policyText', label: 'Policy link text', input: 'text', default: 'Learn more' },
       { key: 'policyHref', label: 'Policy link URL', input: 'url', placeholder: '/privacy' },
     ],
   },

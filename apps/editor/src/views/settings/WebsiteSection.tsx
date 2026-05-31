@@ -1,0 +1,71 @@
+import type { Patch, SettingsForm } from './model';
+import { Field, GlassCard, TextArea } from './ui';
+import { RedirectsEditor } from './RedirectsEditor';
+import { StringListEditor } from './StringListEditor';
+
+/** Website settings: production URL, injected CSS/HTML, redirects, and localization. */
+export function WebsiteSection({ form, patch }: { form: SettingsForm; patch: Patch }) {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2">
+      <GlassCard title="Site" icon="🌐" wide>
+        <Field
+          label="Production URL (for sitemap.xml + robots.txt)"
+          value={form.siteUrl}
+          onChange={(v) => patch({ siteUrl: v })}
+          type="url"
+          placeholder="https://acme.com"
+        />
+      </GlassCard>
+
+      <GlassCard title="Critical CSS" icon="◐" wide>
+        <TextArea
+          label="Project-wide CSS inlined in <head> (after brand tokens)"
+          value={form.criticalCss}
+          onChange={(v) => patch({ criticalCss: v })}
+          rows={5}
+          mono
+          placeholder=".hero { ... }"
+        />
+      </GlassCard>
+
+      <GlassCard title="Custom head HTML" icon="⟨⟩">
+        <TextArea
+          label="Injected into <head> (analytics, meta)"
+          value={form.customHead}
+          onChange={(v) => patch({ customHead: v })}
+          rows={5}
+          mono
+          placeholder="<meta ... />"
+        />
+      </GlassCard>
+
+      <GlassCard title="Custom footer HTML" icon="⟨/⟩">
+        <TextArea
+          label="Injected before </body>"
+          value={form.customFooter}
+          onChange={(v) => patch({ customFooter: v })}
+          rows={5}
+          mono
+          placeholder="<script ... ></script>"
+        />
+      </GlassCard>
+
+      <GlassCard title="Redirects" icon="↪" wide>
+        <p className="mb-2 text-xs text-slate-500">Emitted to <code>.htaccess</code> + <code>_redirects</code> on publish.</p>
+        <RedirectsEditor rows={form.redirects} onChange={(redirects) => patch({ redirects })} />
+      </GlassCard>
+
+      <GlassCard title="Localization" icon="🗺" wide>
+        <Field label="Default locale" value={form.defaultLocale} onChange={(v) => patch({ defaultLocale: v })} placeholder="en" />
+        <p className="mb-2 mt-3 text-xs font-medium uppercase tracking-wide text-slate-400">Locales</p>
+        <StringListEditor
+          items={form.locales}
+          onChange={(locales) => patch({ locales })}
+          placeholder="en"
+          ariaLabel="Locale"
+          addLabel="+ Add locale"
+        />
+      </GlassCard>
+    </div>
+  );
+}

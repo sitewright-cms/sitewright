@@ -7,6 +7,7 @@ import { MediaManager } from './MediaManager';
 import { ApiKeysManager } from './ApiKeysManager';
 import { FormsManager } from './FormsManager';
 import { SubmissionsInbox } from './SubmissionsInbox';
+import { SettingsView } from './settings/SettingsView';
 import { PublishBar } from './PublishBar';
 
 interface ProjectViewProps {
@@ -18,7 +19,7 @@ interface ProjectViewProps {
 export function ProjectView({ org, project, onBack }: ProjectViewProps) {
   const [pages, setPages] = useState<Page[]>([]);
   const [editing, setEditing] = useState<Page | null>(null);
-  const [tab, setTab] = useState<'pages' | 'data' | 'media' | 'forms' | 'inbox' | 'access'>('pages');
+  const [tab, setTab] = useState<'pages' | 'data' | 'media' | 'forms' | 'inbox' | 'settings' | 'access'>('pages');
   const [slug, setSlug] = useState('');
   const [title, setTitle] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -84,7 +85,7 @@ export function ProjectView({ org, project, onBack }: ProjectViewProps) {
       <PublishBar org={org} project={project} />
 
       <div className="mb-6 flex gap-1 border-b border-slate-200">
-        {(['pages', 'data', 'media', 'forms', 'inbox', 'access'] as const).map((t) => (
+        {(['pages', 'data', 'media', 'forms', 'inbox', 'settings', 'access'] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -107,6 +108,8 @@ export function ProjectView({ org, project, onBack }: ProjectViewProps) {
         <FormsManager key={`${org.id}/${project.id}`} org={org} project={project} />
       ) : tab === 'inbox' ? (
         <SubmissionsInbox key={`${org.id}/${project.id}`} org={org} project={project} />
+      ) : tab === 'settings' ? (
+        <SettingsView key={`${org.id}/${project.id}`} org={org} project={project} />
       ) : tab === 'access' ? (
         // Remount on project/org switch → all state (incl. the one-time token banner) resets.
         <ApiKeysManager key={`${org.id}/${project.id}`} org={org} project={project} />

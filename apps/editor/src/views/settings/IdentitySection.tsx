@@ -1,0 +1,92 @@
+import type { Patch, SettingsForm } from './model';
+import { Field, GlassCard, SubLabel, TextArea } from './ui';
+import { TokenEditor } from './TokenEditor';
+import { StringListEditor } from './StringListEditor';
+
+/**
+ * Corporate Identity: the unified company + brand record. Grouped into frosted
+ * cards — Identity basics, Brand tokens, Logos & images, Contact & location, Social.
+ */
+export function IdentitySection({ form, patch }: { form: SettingsForm; patch: Patch }) {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2">
+      <GlassCard title="Identity" icon="◆">
+        <div className="flex flex-col gap-3">
+          <Field label="Display name" value={form.name} onChange={(v) => patch({ name: v })} placeholder="Acme" required />
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Legal name" value={form.legalName} onChange={(v) => patch({ legalName: v })} placeholder="Acme Inc." />
+            <Field label="Short name" value={form.shortName} onChange={(v) => patch({ shortName: v })} placeholder="Acme" />
+          </div>
+          <Field label="Slogan" value={form.slogan} onChange={(v) => patch({ slogan: v })} placeholder="We build the future" />
+          <TextArea label="Description" value={form.description} onChange={(v) => patch({ description: v })} rows={3} />
+          <Field
+            label="Business type (schema.org @type; “disabled” hides JSON-LD)"
+            value={form.businessType}
+            onChange={(v) => patch({ businessType: v })}
+            placeholder="Organization"
+          />
+        </div>
+      </GlassCard>
+
+      <GlassCard title="Brand tokens" icon="✦">
+        <SubLabel>Colors</SubLabel>
+        <TokenEditor
+          rows={form.colors}
+          onChange={(colors) => patch({ colors })}
+          keyPlaceholder="primary"
+          valuePlaceholder="#0ea5e9"
+          swatch
+          addLabel="+ Add color"
+        />
+        <SubLabel>Fonts</SubLabel>
+        <TokenEditor
+          rows={form.fonts}
+          onChange={(fonts) => patch({ fonts })}
+          keyPlaceholder="body"
+          valuePlaceholder="Inter, sans-serif"
+          addLabel="+ Add font"
+        />
+      </GlassCard>
+
+      <GlassCard title="Logos & images" icon="▣">
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Logo" value={form.logo} onChange={(v) => patch({ logo: v })} placeholder="/logo.svg" />
+          <Field label="Favicon" value={form.favicon} onChange={(v) => patch({ favicon: v })} placeholder="/favicon.ico" />
+          <Field label="Icon (favicon source)" value={form.icon} onChange={(v) => patch({ icon: v })} placeholder="/icon.png" />
+          <Field label="Share image (OG)" value={form.image} onChange={(v) => patch({ image: v })} placeholder="/og.png" />
+        </div>
+      </GlassCard>
+
+      <GlassCard title="Contact & location" icon="✉">
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Email" value={form.email} onChange={(v) => patch({ email: v })} type="email" placeholder="hi@acme.com" />
+          <Field label="Telephone" value={form.telephone} onChange={(v) => patch({ telephone: v })} placeholder="+1 555 0100" />
+        </div>
+        <SubLabel>Address</SubLabel>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Street" value={form.street} onChange={(v) => patch({ street: v })} />
+          <Field label="Locality" value={form.locality} onChange={(v) => patch({ locality: v })} />
+          <Field label="Region" value={form.region} onChange={(v) => patch({ region: v })} />
+          <Field label="Country" value={form.country} onChange={(v) => patch({ country: v })} />
+          <Field label="Postal code" value={form.postalCode} onChange={(v) => patch({ postalCode: v })} />
+        </div>
+        <SubLabel>Geo</SubLabel>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Latitude" value={form.latitude} onChange={(v) => patch({ latitude: v })} placeholder="34.05" />
+          <Field label="Longitude" value={form.longitude} onChange={(v) => patch({ longitude: v })} placeholder="-118.24" />
+        </div>
+      </GlassCard>
+
+      <GlassCard title="Social profiles" icon="🜨" wide>
+        <p className="mb-2 text-xs text-slate-500">Absolute https URLs — emitted as schema.org <code>sameAs</code>.</p>
+        <StringListEditor
+          items={form.social}
+          onChange={(social) => patch({ social })}
+          placeholder="https://x.com/acme"
+          ariaLabel="Social URL"
+          addLabel="+ Add profile"
+        />
+      </GlassCard>
+    </div>
+  );
+}

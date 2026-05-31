@@ -80,7 +80,7 @@ export interface ApiKeyView {
   role: 'owner' | 'admin' | 'member';
   capabilities: ApiKeyCapability[];
   tokenPrefix: string;
-  expiresAt: string;
+  expiresAt: string | null;
   revokedAt: string | null;
   lastUsedAt: string | null;
   createdAt: string;

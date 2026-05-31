@@ -22,18 +22,23 @@ export function ApiKeysManager({ org, project }: ApiKeysManagerProps) {
   const [issued, setIssued] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function load() {
+  async function load(isActive: () => boolean = () => true) {
     try {
       // Revoke is a soft-revoke server-side (keeps the row for audit); the manager
       // shows only active keys.
       const items = (await api.listApiKeys(org.id, project.id)).items;
+      if (!isActive()) return; // a tab switch may have unmounted us mid-fetch
       setKeys(items.filter((k) => !k.revokedAt));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'failed to load API keys');
+      if (isActive()) setError(err instanceof Error ? err.message : 'failed to load API keys');
     }
   }
   useEffect(() => {
-    void load();
+    let active = true;
+    void load(() => active);
+    return () => {
+      active = false;
+    };
   }, [org.id, project.id]);
 
   function toggleCap(cap: ApiKeyCapability) {
@@ -68,7 +73,16 @@ export function ApiKeysManager({ org, project }: ApiKeysManagerProps) {
     <div className="flex flex-col gap-6">
       {issued && (
         <div className="rounded-lg border border-amber-300 bg-amber-50 p-4">
-          <p className="text-sm font-semibold text-amber-900">Copy your new token now — it won’t be shown again.</p>
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-sm font-semibold text-amber-900">Copy your new token now — it won’t be shown again.</p>
+            <button
+              aria-label="Dismiss token"
+              className="text-amber-700 hover:text-amber-900"
+              onClick={() => setIssued(null)}
+            >
+              ✕
+            </button>
+          </div>
           <code className="mt-2 block break-all rounded bg-white px-3 py-2 text-xs" aria-label="New API token">
             {issued}
           </code>
@@ -112,7 +126,10 @@ export function ApiKeysManager({ org, project }: ApiKeysManagerProps) {
             max={365}
             className="w-24 rounded-md border border-slate-300 px-3 py-2 text-sm"
             value={expiresInDays}
-            onChange={(e) => setExpiresInDays(Number(e.target.value))}
+            onChange={(e) => {
+              const v = parseInt(e.target.value, 10);
+              if (!Number.isNaN(v) && v >= 1 && v <= 365) setExpiresInDays(v);
+            }}
           />
         </div>
         <fieldset className="flex flex-col">

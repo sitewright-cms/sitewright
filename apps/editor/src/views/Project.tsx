@@ -102,7 +102,8 @@ export function ProjectView({ org, project, onBack }: ProjectViewProps) {
       ) : tab === 'media' ? (
         <MediaManager org={org} project={project} />
       ) : tab === 'access' ? (
-        <ApiKeysManager org={org} project={project} />
+        // Remount on project/org switch → all state (incl. the one-time token banner) resets.
+        <ApiKeysManager key={`${org.id}/${project.id}`} org={org} project={project} />
       ) : (
         <>
           <ul className="mb-8 flex flex-col gap-2">

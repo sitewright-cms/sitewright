@@ -1,9 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { Binding, Dataset, MediaAsset, Page, PageNode, Pattern } from '@sitewright/schema';
+import type {
+  Binding,
+  Dataset,
+  MediaAsset,
+  Page,
+  PageNode,
+  PageTranslation,
+  Pattern,
+} from '@sitewright/schema';
 import { BLOCK_DESCRIPTORS, isContainerType, type BlockCategory } from '@sitewright/blocks';
 import { reIdTree } from '@sitewright/core';
 import { api, previewDocUrl, type Org, type Project } from '../api';
 import { createBlock, genId } from '../lib/node-factory';
+import { localeDraft, toTranslation } from '../lib/translation-draft';
 import {
   appendChild,
   findNode,
@@ -49,6 +58,24 @@ export function PageEditor({ org, project, page, onClose }: PageEditorProps) {
     loading: true,
     error: null,
   });
+  // Multilingual: the project's configured locales and the currently-edited one.
+  // `locale === ''` (or the default locale) means we are editing the page itself;
+  // any other locale edits that locale's PageTranslation.
+  const [settings, setSettings] = useState<{ locales: string[]; defaultLocale: string } | null>(
+    null,
+  );
+  const [locale, setLocale] = useState('');
+  const [translations, setTranslations] = useState<PageTranslation[]>([]);
+  const [localeIsNew, setLocaleIsNew] = useState(false);
+  // The last loaded/saved content for the current locale — used to detect unsaved
+  // edits before switching locales (tree-ops return new node references on edit).
+  const [baseline, setBaseline] = useState<{ title: string; root: PageNode }>({
+    title: page.title,
+    root: page.root,
+  });
+
+  const defaultLocale = settings?.defaultLocale ?? '';
+  const isDefaultLocale = locale === '' || locale === defaultLocale;
 
   // Project datasets + media power the binding UI and the image picker.
   useEffect(() => {
@@ -77,10 +104,29 @@ export function PageEditor({ org, project, page, onClose }: PageEditorProps) {
       .catch(() => {
         /* the patterns panel simply shows none if this fails */
       });
+    api
+      .getSettings(org.id, project.id)
+      .then((res) => {
+        if (cancelled) return;
+        const { locales, defaultLocale: def } = res.item.settings;
+        setSettings({ locales, defaultLocale: def });
+        setLocale(def); // start on the default locale (the page's own content)
+      })
+      .catch(() => {
+        /* no settings singleton yet → single-locale; the switcher stays hidden */
+      });
+    api
+      .listTranslations(org.id, project.id)
+      .then((res) => {
+        if (!cancelled) setTranslations(res.items.filter((t) => t.pageId === page.id));
+      })
+      .catch(() => {
+        /* no translations available → non-default locales seed from the default */
+      });
     return () => {
       cancelled = true;
     };
-  }, [org.id, project.id]);
+  }, [org.id, project.id, page.id]);
 
   // The page as currently edited — drives both save and live preview.
   const draft: Page = useMemo(() => ({ ...page, title, root }), [page, title, root]);
@@ -218,11 +264,43 @@ export function PageEditor({ org, project, page, onClose }: PageEditorProps) {
     }
   }
 
+  function localeLabel(loc: string): string {
+    return loc === defaultLocale ? `${loc} (default)` : loc;
+  }
+
+  // Edits change `root`/`title` references away from the loaded baseline.
+  function isDirty(): boolean {
+    return title !== baseline.title || root !== baseline.root;
+  }
+
+  // Switch the edited locale: load that locale's content (the page for the
+  // default; the translation, or a fresh-id copy of the default, otherwise).
+  function switchLocale(next: string) {
+    if (next === locale) return;
+    if (isDirty() && !window.confirm(`Discard unsaved changes to "${localeLabel(locale)}"?`)) {
+      return;
+    }
+    const draftForLocale = localeDraft(page, defaultLocale, next, translations, genId);
+    setLocale(next);
+    setTitle(draftForLocale.title);
+    setRoot(draftForLocale.root);
+    setSelectedId(draftForLocale.root.id);
+    setLocaleIsNew(draftForLocale.isNew);
+    setBaseline({ title: draftForLocale.title, root: draftForLocale.root });
+    setError(null);
+  }
+
   async function save() {
     setSaving(true);
     setError(null);
     try {
-      await api.putPage(org.id, project.id, draft);
+      if (isDefaultLocale) {
+        await api.putPage(org.id, project.id, draft);
+      } else {
+        const translation = toTranslation(page, locale, title, root);
+        await api.putTranslation(org.id, project.id, translation);
+        setTranslations((prev) => [...prev.filter((t) => t.id !== translation.id), translation]);
+      }
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed to save');
@@ -248,12 +326,35 @@ export function PageEditor({ org, project, page, onClose }: PageEditorProps) {
           onChange={(e) => setTitle(e.target.value)}
         />
         <span className="text-xs text-slate-400">{page.path}</span>
+        {settings && settings.locales.length > 1 && (
+          <label className="flex items-center gap-1.5 text-xs text-slate-500">
+            Locale
+            <select
+              aria-label="Editing locale"
+              className="rounded-md border border-slate-300 px-2 py-1 text-sm"
+              value={locale}
+              onChange={(e) => switchLocale(e.target.value)}
+            >
+              {settings.locales.map((loc) => (
+                <option key={loc} value={loc}>
+                  {localeLabel(loc)}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {!isDefaultLocale && (
+          <span className="rounded bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800">
+            translating {locale}
+            {localeIsNew && !isDirty() ? ' · copied from default' : ''}
+          </span>
+        )}
         <button
           onClick={save}
           disabled={saving}
           className="ml-auto rounded-md bg-slate-900 px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
         >
-          {saving ? 'Saving…' : 'Save page'}
+          {saving ? 'Saving…' : isDefaultLocale ? 'Save page' : 'Save translation'}
         </button>
       </div>
       {error && <p className="mb-2 text-sm text-red-600">{error}</p>}

@@ -231,4 +231,34 @@ describe('api client', () => {
     expect(init.method).toBe('POST');
     expect(JSON.parse(init.body)).toMatchObject({ protocol: 'sftp', host: 'example.com' });
   });
+
+  it('reads project settings (locales) from the settings singleton', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(200, { item: { settings: { defaultLocale: 'en', locales: ['en', 'de'] } } }),
+    );
+    const res = await api.getSettings('o', 'p');
+    expect(res.item.settings.locales).toEqual(['en', 'de']);
+    expect(fetchMock.mock.calls[0]![0]).toBe('/orgs/o/projects/p/content/settings/settings');
+    expect(fetchMock.mock.calls[0]![1].method ?? 'GET').toBe('GET');
+  });
+
+  it('lists, puts and deletes page translations on the generic content/translation route', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { items: [] }));
+    await api.listTranslations('o', 'p');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/orgs/o/projects/p/content/translation');
+
+    const tr = { id: 'home__de', pageId: 'home', locale: 'de', root: { id: 'r', type: 'Section' } };
+    fetchMock.mockResolvedValue(jsonResponse(200, { item: tr }));
+    await api.putTranslation('o', 'p', tr);
+    const [putUrl, putInit] = fetchMock.mock.calls[1]!;
+    expect(putUrl).toBe('/orgs/o/projects/p/content/translation/home__de');
+    expect(putInit.method).toBe('PUT');
+    expect(JSON.parse(putInit.body)).toEqual(tr);
+
+    fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
+    await api.deleteTranslation('o', 'p', 'home__de');
+    const [delUrl, delInit] = fetchMock.mock.calls[2]!;
+    expect(delUrl).toBe('/orgs/o/projects/p/content/translation/home__de');
+    expect(delInit.method).toBe('DELETE');
+  });
 });

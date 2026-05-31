@@ -1,4 +1,13 @@
-import type { Dataset, DeployTargetView, Entry, MediaAsset, Page, Pattern } from '@sitewright/schema';
+import type {
+  Dataset,
+  DeployTargetView,
+  Entry,
+  MediaAsset,
+  Page,
+  PageTranslation,
+  Pattern,
+  ProjectSettings,
+} from '@sitewright/schema';
 
 export type { DeployTargetView };
 
@@ -118,6 +127,31 @@ export const api = {
     ),
   deletePattern: (orgId: string, projectId: string, id: string) =>
     request<void>('DELETE', `/orgs/${orgId}/projects/${projectId}/content/pattern/${id}`),
+
+  // --- project settings (locales live here) ---
+  getSettings: (orgId: string, projectId: string) =>
+    request<{ item: { settings: ProjectSettings } }>(
+      'GET',
+      `/orgs/${orgId}/projects/${projectId}/content/settings/settings`,
+    ),
+
+  // --- page translations (per-locale content overrides) ---
+  listTranslations: (orgId: string, projectId: string) =>
+    request<{ items: PageTranslation[] }>(
+      'GET',
+      `/orgs/${orgId}/projects/${projectId}/content/translation`,
+    ),
+  putTranslation: (orgId: string, projectId: string, translation: PageTranslation) =>
+    request<{ item: PageTranslation }>(
+      'PUT',
+      `/orgs/${orgId}/projects/${projectId}/content/translation/${encodeURIComponent(translation.id)}`,
+      translation,
+    ),
+  deleteTranslation: (orgId: string, projectId: string, id: string) =>
+    request<void>(
+      'DELETE',
+      `/orgs/${orgId}/projects/${projectId}/content/translation/${encodeURIComponent(id)}`,
+    ),
 
   // --- datasets ---
   listDatasets: (orgId: string, projectId: string) =>

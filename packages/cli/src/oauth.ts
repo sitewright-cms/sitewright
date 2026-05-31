@@ -138,15 +138,31 @@ export async function startDeviceAuthorization(
     body: new URLSearchParams({ client_id: CLI_CLIENT_ID, scope: opts.scope }).toString(),
   });
   const text = await res.text();
-  if (!res.ok) throw new OAuthTokenError('device_authorization_failed', res.statusText || `HTTP ${res.status}`);
+  if (!res.ok) {
+    let code = 'invalid_request';
+    let message = res.statusText || `HTTP ${res.status}`;
+    try {
+      const j = JSON.parse(text) as { error?: string; error_description?: string };
+      if (typeof j.error === 'string') {
+        code = j.error;
+        message = j.error_description ?? j.error;
+      }
+    } catch {
+      /* non-JSON body → keep the status fallback */
+    }
+    throw new OAuthTokenError(code, message);
+  }
   const d = JSON.parse(text) as {
-    device_code: string;
-    user_code: string;
-    verification_uri: string;
+    device_code?: string;
+    user_code?: string;
+    verification_uri?: string;
     verification_uri_complete?: string;
     interval?: number;
     expires_in?: number;
   };
+  if (!d.device_code || !d.user_code || !d.verification_uri) {
+    throw new OAuthTokenError('invalid_response', 'device authorization response is missing required fields');
+  }
   return {
     deviceCode: d.device_code,
     userCode: d.user_code,

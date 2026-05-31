@@ -386,7 +386,7 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
       const result = (title: string, msg: string) =>
         reply.code(200).type('text/html').send(htmlPage(title, `<h1>${escapeHtml(title)}</h1><p>${escapeHtml(msg)}</p>`));
 
-      if (!userCode) return result('Invalid code', 'No code was entered.');
+      if (!/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(userCode)) return result('Invalid code', 'Enter the code exactly as shown in your terminal.');
       const pending = await oauth.findDeviceByUserCode(userCode);
       if (!pending) return result('Unknown or expired code', 'Check the code in your terminal and try again.');
 

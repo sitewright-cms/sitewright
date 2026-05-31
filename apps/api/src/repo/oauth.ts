@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, lt } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
 import {
   apiKeys,
@@ -63,11 +63,15 @@ function mintToken(prefix: string): { token: string; hash: string } {
 
 /** A short, unambiguous, human-typable user code, e.g. `WDJB-MJHT`. */
 function generateUserCode(): string {
-  const bytes = randomBytes(8);
+  // Rejection sampling — discard bytes in the biased tail so every alphabet char
+  // is equally likely (no modulo bias).
+  const maxValid = 256 - (256 % USER_CODE_ALPHABET.length);
   let out = '';
-  for (let i = 0; i < 8; i += 1) {
+  while (out.length < 8) {
+    const b = randomBytes(1)[0]!;
+    if (b >= maxValid) continue;
     // eslint-disable-next-line security/detect-object-injection -- numeric modulo index into a constant string
-    out += USER_CODE_ALPHABET[bytes[i]! % USER_CODE_ALPHABET.length];
+    out += USER_CODE_ALPHABET[b % USER_CODE_ALPHABET.length];
   }
   return `${out.slice(0, 4)}-${out.slice(4)}`;
 }
@@ -213,6 +217,9 @@ export class OAuthRepository {
     input: { clientId: string; scope: ApiKeyCapability[] },
     now: Date = new Date(),
   ): Promise<{ deviceCode: string; userCode: string; expiresAt: Date; interval: number }> {
+    // Opportunistic GC so the table can't grow unbounded (expired + leftover
+    // pending codes whose project may since have been deleted).
+    await this.db.delete(oauthDeviceCodes).where(lt(oauthDeviceCodes.expiresAt, now));
     const { token: deviceCode, hash } = mintToken('swd_');
     const userCode = generateUserCode();
     const expiresAt = new Date(now.getTime() + DEVICE_CODE_TTL_MS);
@@ -295,13 +302,17 @@ export class OAuthRepository {
       await this.db.update(oauthDeviceCodes).set({ lastPolledAt: now }).where(eq(oauthDeviceCodes.id, id));
       throw new OAuthError(tooFast ? 'slow_down' : 'authorization_pending', 'authorization pending');
     }
-    // Approved → the grant fields are set; atomically consume (single-use) + issue.
+    // Approved → the grant fields must be set. Fail loud (not a degraded token)
+    // if a data-integrity issue ever produced an approved row with null grant.
+    if (!row.userId || !row.orgId || !row.projectId || !row.role) {
+      throw new OAuthError('server_error', 'approved device grant is missing required fields');
+    }
     const grant: Grant = {
       clientId: row.clientId,
-      userId: row.userId ?? '',
-      orgId: row.orgId ?? '',
-      projectId: row.projectId ?? '',
-      role: row.role ?? 'member',
+      userId: row.userId,
+      orgId: row.orgId,
+      projectId: row.projectId,
+      role: row.role,
       scope: row.scope,
     };
     return this.db.transaction(async (tx) => {

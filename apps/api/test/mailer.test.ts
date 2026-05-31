@@ -37,7 +37,7 @@ describe('GlobalSmtpMailer', () => {
     const ok = await mailer.send({ recipient: 'sales@acme.com', subject: 'New lead', formName: 'Contact', fields: { email: 'a@b.co' }, replyTo: 'a@b.co' });
     expect(ok).toBe(true);
     expect(sent).toHaveLength(1);
-    expect(sent[0]).toMatchObject({ from: 'Acme <no-reply@acme.com>', to: 'sales@acme.com', subject: 'New lead', replyTo: 'a@b.co' });
+    expect(sent[0]).toMatchObject({ from: { name: 'Acme', address: 'no-reply@acme.com' }, to: 'sales@acme.com', subject: 'New lead', replyTo: 'a@b.co' });
     expect(String(sent[0]!.text)).toContain('email:\n  a@b.co');
   });
 

@@ -1,9 +1,18 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import type { Form, FormField } from '@sitewright/schema';
+import type { Form, FormField, FormMode } from '@sitewright/schema';
 import { api, type Org, type Project } from '../api';
 import { identifierize, slugify } from '../lib/entry-form';
 
 const FIELD_TYPES: ReadonlyArray<FormField['type']> = ['text', 'email', 'tel', 'url', 'number', 'textarea', 'select'];
+
+const MODE_LABELS: ReadonlyArray<{ value: FormMode; label: string }> = [
+  { value: 'globalSmtp', label: 'Platform email (global SMTP)' },
+  { value: 'userSmtp', label: 'Platform email (project SMTP)' },
+  { value: 'contactPhp', label: 'contact.php (host mail)' },
+  { value: 'thirdParty', label: 'Third-party endpoint' },
+];
+
+type EnabledModes = Record<FormMode, boolean>;
 
 /** A fresh form definition with sensible defaults (matches the schema defaults). */
 function emptyForm(id: string, name: string): Form {
@@ -28,6 +37,9 @@ function emptyForm(id: string, name: string): Form {
  */
 export function FormsManager({ org, project }: { org: Org; project: Project }) {
   const [forms, setForms] = useState<Form[]>([]);
+  // Matches the server default (all off); the real values arrive from api.formModes
+  // before the editor is reachable (the list view is gated on `loading`).
+  const [enabledModes, setEnabledModes] = useState<EnabledModes>({ globalSmtp: false, userSmtp: false, contactPhp: false, thirdParty: false });
   const [draft, setDraft] = useState<Form | null>(null);
   const [newName, setNewName] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -36,8 +48,10 @@ export function FormsManager({ org, project }: { org: Org; project: Project }) {
 
   async function load(isActive: () => boolean = () => true) {
     try {
-      const res = await api.listForms(org.id, project.id);
-      if (isActive()) setForms(res.items);
+      const [res, fm] = await Promise.all([api.listForms(org.id, project.id), api.formModes(org.id, project.id)]);
+      if (!isActive()) return;
+      setForms(res.items);
+      setEnabledModes(fm.formModes);
     } catch (err) {
       if (isActive()) setError(err instanceof Error ? err.message : 'failed to load forms');
     } finally {
@@ -299,14 +313,37 @@ export function FormsManager({ org, project }: { org: Org; project: Project }) {
           </label>
         </div>
 
+        <label className="flex max-w-sm flex-col text-xs text-slate-500">
+          Delivery mode
+          <select
+            aria-label="Delivery mode"
+            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            value={draft.mode}
+            onChange={(e) => patch({ mode: e.target.value as FormMode })}
+          >
+            {MODE_LABELS.filter((m) => enabledModes[m.value] || m.value === draft.mode).map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+          <span className="mt-1 text-[11px] text-slate-400">
+            Only modes enabled by an instance admin are listed.
+          </span>
+        </label>
+
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
             aria-label="Require hCaptcha"
             checked={draft.hcaptcha}
+            disabled={draft.mode === 'contactPhp'}
             onChange={(e) => patch({ hcaptcha: e.target.checked })}
           />
-          Require hCaptcha (uses the instance hCaptcha keys; configured by an admin)
+          <span className={draft.mode === 'contactPhp' ? 'text-slate-400' : ''}>
+            Require hCaptcha (uses the instance hCaptcha keys; configured by an admin)
+            {draft.mode === 'contactPhp' && ' — not available for contact.php forms'}
+          </span>
         </label>
 
         <div className="flex items-center gap-3">

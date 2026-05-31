@@ -325,6 +325,11 @@ describe('api client', () => {
     fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
     await api.deleteForm('o', 'p', 'contact');
     expect(fetchMock.mock.calls[2]![1].method).toBe('DELETE');
+
+    fetchMock.mockResolvedValue(jsonResponse(200, { formModes: { globalSmtp: true, userSmtp: false, contactPhp: true, thirdParty: false } }));
+    const fm = await api.formModes('o', 'p');
+    expect(fm.formModes.contactPhp).toBe(true);
+    expect(fetchMock.mock.calls[3]![0]).toBe('/orgs/o/projects/p/form-modes');
   });
 
   it('lists and deletes submissions, passing the formId filter', async () => {

@@ -17,6 +17,7 @@ import {
 import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
 import { companyToOrganization } from './company-seo.js';
 import { renderSitemap, renderRobots, renderHtaccess, renderNetlifyRedirects, siteUrlFor, siteBase } from './seo.js';
+import { renderContactPhp, hasContactPhpForm } from './contact-php.js';
 import { toPublicForm, type FormPublic, type MediaAsset, type PageTranslation } from '@sitewright/schema';
 
 /** The compiled utility stylesheet, written at the site root and linked per page. */
@@ -328,6 +329,16 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
       await writeFile(join(tmp, '_redirects'), netlify, 'utf8');
       bytes += Buffer.byteLength(htaccess) + Buffer.byteLength(netlify);
+    }
+
+    // contact.php (Mode B): one PHP mail() handler for every `contactPhp` form.
+    // Recipients are baked SERVER-SIDE in the PHP (never in the page HTML).
+    const allForms = bundle.forms ?? [];
+    if (hasContactPhpForm(allForms)) {
+      const php = renderContactPhp(allForms);
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
+      await writeFile(join(tmp, 'contact.php'), php, 'utf8');
+      bytes += Buffer.byteLength(php);
     }
 
     // The page loop enforces the size cap per page; re-check after the SEO/redirect

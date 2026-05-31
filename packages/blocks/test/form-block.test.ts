@@ -18,6 +18,7 @@ const contactForm: FormPublic = {
   successMessage: 'Thanks!',
   errorMessage: 'Oops.',
   hcaptcha: false,
+  mode: 'globalSmtp',
 };
 
 const ctx = {
@@ -60,6 +61,28 @@ describe('renderNode — Form', () => {
     // output carries no email-looking recipient injected via any field.
     const html = renderNode(node({ type: 'Form', props: { formId: 'contact' } }), ctx);
     expect(html).not.toContain('recipient');
+  });
+
+  it('points a contactPhp form at the exported contact.php (relative to root) with a _form field', () => {
+    const php: FormPublic = { ...contactForm, mode: 'contactPhp' };
+    const html = renderNode(node({ type: 'Form', props: { formId: 'contact' } }), {
+      forms: { contact: php },
+      formEndpoint: () => 'https://cms.example/f/p/contact', // ignored for contactPhp
+      root: '../',
+    });
+    expect(html).toContain('data-sw-endpoint="../contact.php"');
+    expect(html).not.toContain('cms.example');
+    expect(html).toContain('<input type="hidden" name="_form" value="contact" />');
+  });
+
+  it('omits the hCaptcha widget for contactPhp (Sitewright cannot verify on the customer host)', () => {
+    const php: FormPublic = { ...contactForm, mode: 'contactPhp', hcaptcha: true };
+    const html = renderNode(node({ type: 'Form', props: { formId: 'contact' } }), {
+      forms: { contact: php },
+      formEndpoint: () => '/f/p/contact',
+      hcaptchaSiteKey: 'site-abc',
+    });
+    expect(html).not.toContain('h-captcha');
   });
 
   it('renders an empty placeholder when the form id is unknown', () => {

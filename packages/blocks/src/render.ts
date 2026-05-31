@@ -4,7 +4,7 @@
 // through an allowlist — the output is safe to drop into a sandboxed preview
 // iframe even when the page tree contains hostile content.
 import type { Brand, Entry, FormField, FormPublic, MediaAsset, Page, PageNode } from '@sitewright/schema';
-import { HONEYPOT_FIELD } from '@sitewright/schema';
+import { HONEYPOT_FIELD, FORM_ID_FIELD } from '@sitewright/schema';
 import { resolveBinding } from '@sitewright/core';
 import { escapeAttr, escapeHtml } from './escape.js';
 import { textProp, urlProp } from './props.js';
@@ -470,7 +470,11 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
       // Safe lookup (no dynamic object indexing), mirroring the Nav slot pattern.
       const form = ctx.forms ? Object.entries(ctx.forms).find(([k]) => k === formId)?.[1] : undefined;
       if (!form) return `<div data-sw-block="Form"${cls} data-sw-empty="1"></div>`;
-      const endpoint = ctx.formEndpoint ? ctx.formEndpoint(formId) : '';
+      // Endpoint by delivery mode: `contactPhp` posts to the exported contact.php on
+      // the customer's own host (relative to the site root); every other mode posts
+      // to the Sitewright platform endpoint resolved by the build/preview.
+      const isPhp = form.mode === 'contactPhp';
+      const endpoint = isPhp ? `${root}contact.php` : ctx.formEndpoint ? ctx.formEndpoint(formId) : '';
       const redirect = form.redirectUrl ? ` data-sw-redirect="${escapeAttr(form.redirectUrl)}"` : '';
       const fields = form.fields.map(renderFormField).join('');
       // Honeypot: visually hidden (component CSS), bait for bots; the endpoint drops
@@ -478,17 +482,20 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
       const honeypot =
         `<div data-sw-part="hp" aria-hidden="true">` +
         `<label>Leave this field empty<input type="text" name="${escapeAttr(HONEYPOT_FIELD)}" tabindex="-1" autocomplete="off" /></label></div>`;
-      // hCaptcha widget — only when the form opts in AND the instance site key is
-      // configured. The `h-captcha` class is what hCaptcha's script auto-renders;
-      // the platform JS injects that script (see components.ts). The site key is
-      // public by design.
+      // contact.php dispatches by form id (one contact.php handles every form).
+      const formIdField = isPhp
+        ? `<input type="hidden" name="${escapeAttr(FORM_ID_FIELD)}" value="${escapeAttr(formId)}" />`
+        : '';
+      // hCaptcha widget — only when the form opts in, the instance site key is
+      // configured, AND the form is platform-routed (contact.php can't be verified
+      // server-side by Sitewright, so hCaptcha applies only to SW-routed modes).
       const captcha =
-        form.hcaptcha && ctx.hcaptchaSiteKey
+        form.hcaptcha && ctx.hcaptchaSiteKey && !isPhp
           ? `<div class="h-captcha" data-sw-part="hcaptcha" data-sitekey="${escapeAttr(ctx.hcaptchaSiteKey)}"></div>`
           : '';
       return (
         `<form data-sw-block="Form"${cls} data-sw-component="form" data-sw-endpoint="${escapeAttr(endpoint)}"${redirect} novalidate>` +
-        `<div data-sw-part="fields">${fields}${honeypot}</div>` +
+        `<div data-sw-part="fields">${fields}${formIdField}${honeypot}</div>` +
         captcha +
         `<button type="submit" data-sw-part="submit">${escapeHtml(form.submitLabel)}</button>` +
         `<p data-sw-part="success" role="status" hidden>${escapeHtml(form.successMessage)}</p>` +

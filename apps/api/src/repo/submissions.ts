@@ -37,6 +37,15 @@ export class SubmissionRepository {
     return submission;
   }
 
+  /** Number of stored submissions for a form (for the per-form storage cap). */
+  async countForForm(projectId: string, formId: string): Promise<number> {
+    const [row] = await this.db
+      .select({ total: sql<number>`count(*)` })
+      .from(formSubmissions)
+      .where(and(eq(formSubmissions.projectId, projectId), eq(formSubmissions.formId, formId)));
+    return row?.total ?? 0;
+  }
+
   /** Newest-first page of a project's submissions, optionally filtered by form. */
   async list(
     projectId: string,

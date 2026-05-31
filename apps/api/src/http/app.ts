@@ -1166,6 +1166,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     mailer,
     hcaptcha: hcaptchaVerifier,
     getHcaptchaSecret: () => instanceSettingsRepo.getHcaptchaSecret(),
+    getFormModes: () => instanceSettingsRepo.getFormModes(),
     resolveProject,
     isWriter: (ctx) => WRITE_ROLES.has(ctx.role),
     rl,

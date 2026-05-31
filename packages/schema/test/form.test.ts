@@ -66,9 +66,11 @@ describe('toPublicForm', () => {
     });
     const pub = toPublicForm(form);
     const serialized = JSON.stringify(pub);
+    // recipient + subject are server-side and stripped; mode is intentionally kept
+    // (the renderer needs it to pick the submission endpoint — it isn't sensitive).
     expect(serialized).not.toContain('secret@acme.com');
     expect(serialized).not.toContain('New lead');
-    expect(serialized).not.toContain('globalSmtp');
+    expect(pub.mode).toBe('globalSmtp');
     expect(pub.redirectUrl).toBe('/thanks');
     expect(pub.fields[0]?.name).toBe('email');
   });

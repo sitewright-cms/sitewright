@@ -1,6 +1,16 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { and, eq } from 'drizzle-orm';
-import { FormSchema, IdSchema, HONEYPOT_FIELD, TIMETRAP_FIELD, HCAPTCHA_RESPONSE_FIELD, type Form } from '@sitewright/schema';
+import {
+  FormSchema,
+  IdSchema,
+  HONEYPOT_FIELD,
+  TIMETRAP_FIELD,
+  HCAPTCHA_RESPONSE_FIELD,
+  MIN_SUBMIT_ELAPSED_MS,
+  MAX_SUBMISSIONS_PER_FORM,
+  type Form,
+  type FormModes,
+} from '@sitewright/schema';
 import type { Database } from '../db/client.js';
 import { content } from '../db/schema.js';
 import type { SubmissionRepository } from '../repo/submissions.js';
@@ -14,8 +24,9 @@ const MAX_FIELDS = 60;
 const MAX_KEY_LEN = 100;
 const MAX_VALUE_LEN = 10_000;
 const MAX_TOTAL_BYTES = 64 * 1024;
-/** Reject submissions completed faster than a human plausibly could (bot trap). */
-const MIN_ELAPSED_MS = 1200;
+/** Hard cap on the raw request body (rejected by Fastify pre-parse). Headroom over
+ *  MAX_TOTAL_BYTES for the captcha token + JSON overhead, but bounds memory. */
+const MAX_BODY_BYTES = 96 * 1024;
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -28,6 +39,8 @@ export interface FormRoutesDeps {
   hcaptcha: HcaptchaVerifier;
   /** Returns the decrypted instance hCaptcha secret, or null when unconfigured. */
   getHcaptchaSecret: () => Promise<string | null>;
+  /** Returns the instance-admin-enabled form mail modes (so authors pick among them). */
+  getFormModes: () => Promise<FormModes>;
   resolveProject: (
     req: ProjectReq,
     access: ApiKeyCapability | 'session-only',
@@ -131,7 +144,7 @@ export function registerFormRoutes(app: FastifyInstance, deps: FormRoutesDeps): 
 
   app.post<{ Params: { projectId: string; formId: string } }>(
     '/f/:projectId/:formId',
-    { config: rl(20) },
+    { config: rl(20), bodyLimit: MAX_BODY_BYTES },
     async (req, reply) => {
       setSubmissionCors(reply);
       const { projectId, formId } = req.params;
@@ -148,7 +161,7 @@ export function registerFormRoutes(app: FastifyInstance, deps: FormRoutesDeps): 
       // platform form JS always sends `_elapsed`; an absent value means the post
       // didn't come through the form (a headless bot), so treat it as instant.
       const elapsed = parsed.elapsed ?? 0;
-      if (parsed.honeypotFilled || elapsed < MIN_ELAPSED_MS) {
+      if (parsed.honeypotFilled || elapsed < MIN_SUBMIT_ELAPSED_MS) {
         return reply.send({ ok: true });
       }
 
@@ -172,6 +185,13 @@ export function registerFormRoutes(app: FastifyInstance, deps: FormRoutesDeps): 
         }
         const verified = await hcaptcha.verify(secret, parsed.captchaToken, req.ip);
         if (!verified) return reply.code(400).send({ error: 'captcha verification failed' });
+      }
+
+      // Storage-exhaustion bound: cap stored submissions per form. Over the cap,
+      // silently accept-and-drop (don't store or email, don't signal the limit).
+      if ((await submissions.countForForm(projectId, formId)) >= MAX_SUBMISSIONS_PER_FORM) {
+        app.log.warn({ projectId, formId }, 'submission dropped: per-form storage cap reached');
+        return reply.send({ ok: true });
       }
 
       // Store first — the inbox is the source of truth even if email is unconfigured.
@@ -202,6 +222,19 @@ export function registerFormRoutes(app: FastifyInstance, deps: FormRoutesDeps): 
     },
   );
 
+  // Which mail-delivery modes the instance admin permits — so a project author can
+  // pick among them when authoring a form. Any project member may read this.
+  app.get<{ Params: { orgId: string; projectId: string } }>(
+    '/orgs/:orgId/projects/:projectId/form-modes',
+    { config: rl(30) },
+    async (req, reply) => {
+      await resolveProject(req, 'content:read');
+      // Changes rarely; let the editor cache it across tab switches.
+      reply.header('cache-control', 'private, max-age=60');
+      return reply.send({ formModes: await deps.getFormModes() });
+    },
+  );
+
   // ---- Submissions inbox (authenticated) ----
   app.get<{ Params: { orgId: string; projectId: string } }>(
     '/orgs/:orgId/projects/:projectId/submissions',
@@ -220,6 +253,7 @@ export function registerFormRoutes(app: FastifyInstance, deps: FormRoutesDeps): 
 
   app.get<{ Params: { orgId: string; projectId: string; id: string } }>(
     '/orgs/:orgId/projects/:projectId/submissions/:id',
+    { config: rl(60) },
     async (req, reply) => {
       const { project } = await resolveProject(req, 'content:read');
       const item = await submissions.get(project.id, req.params.id);
@@ -230,6 +264,7 @@ export function registerFormRoutes(app: FastifyInstance, deps: FormRoutesDeps): 
 
   app.delete<{ Params: { orgId: string; projectId: string; id: string } }>(
     '/orgs/:orgId/projects/:projectId/submissions/:id',
+    { config: rl(30) },
     async (req, reply) => {
       const { ctx, project } = await resolveProject(req, 'content:write');
       if (!isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });

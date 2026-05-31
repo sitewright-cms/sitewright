@@ -280,6 +280,12 @@ const FORM_JS = `(function(){
     form.addEventListener('submit',function(e){
       e.preventDefault();
       if(error)error.hidden=true;
+      // If this form has an hCaptcha that hasn't been solved yet, prompt instead of
+      // posting a token-less submission that the server would reject (fail-closed).
+      if(form.querySelector('.h-captcha')){
+        var token=(window.hcaptcha&&window.hcaptcha.getResponse)?window.hcaptcha.getResponse():'';
+        if(!token){if(error){error.textContent='Please complete the captcha.';error.hidden=false;}return;}
+      }
       var data={};
       Array.prototype.forEach.call(form.querySelectorAll('input,textarea,select'),function(el){
         if(!el.name||el.type==='submit'||el.type==='button')return;

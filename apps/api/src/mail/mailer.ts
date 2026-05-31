@@ -19,7 +19,7 @@ export interface SubmissionMailer {
 /** Minimal transport surface (so tests can inject a fake instead of a live SMTP). */
 export interface MailTransport {
   sendMail(message: {
-    from: string;
+    from: string | { name: string; address: string };
     to: string;
     subject: string;
     text: string;
@@ -80,7 +80,9 @@ export class GlobalSmtpMailer implements SubmissionMailer {
     const config: TransportConfig = { host: smtp.host, port: smtp.port, secure: smtp.secure };
     if (smtp.user && password) config.auth = { user: smtp.user, pass: password };
     const transport = this.transportFactory(config);
-    const from = smtp.fromName ? `${smtp.fromName} <${smtp.fromEmail}>` : smtp.fromEmail;
+    // Structured form so nodemailer encodes the display name (a fromName with
+    // special chars like <>" cannot break the From header).
+    const from = smtp.fromName ? { name: smtp.fromName, address: smtp.fromEmail } : smtp.fromEmail;
     await transport.sendMail({
       from,
       to: mail.recipient,

@@ -49,6 +49,11 @@ export class InstanceSettingsRepository {
     return maskInstanceSettings(await this.getStored());
   }
 
+  /** The enabled web-form mail modes (non-secret; for the project form-mode selector). */
+  async getFormModes(): Promise<InstanceSettingsStored['formModes']> {
+    return (await this.getStored()).formModes;
+  }
+
   /**
    * Merges `input` onto the current document and persists it. Provided plaintext
    * secrets are encrypted; an omitted secret retains the stored one; a `null`

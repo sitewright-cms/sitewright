@@ -1,8 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
 import { HttpHcaptchaVerifier } from '../src/mail/hcaptcha.js';
 
-function fakeFetch(impl: () => Promise<{ ok: boolean; json: () => Promise<unknown> }>) {
-  return vi.fn((_url: string, _init: { method: string; headers: Record<string, string>; body: string }) => impl());
+type FetchResult = { ok: boolean; json: () => Promise<unknown> };
+type FetchInit = { method: string; headers: Record<string, string>; body: string };
+
+function fakeFetch(impl: () => Promise<FetchResult>) {
+  // Typed as a 2-arg fn so `mock.calls[0]` is `[url, init]`; the impl ignores them.
+  return vi.fn<(url: string, init: FetchInit) => Promise<FetchResult>>(() => impl());
 }
 
 describe('HttpHcaptchaVerifier', () => {

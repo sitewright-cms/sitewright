@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { PageNodeSchema } from './block.js';
 import { IdSchema } from './primitives.js';
+import { LocaleSchema } from './project.js';
 
 /**
  * A per-locale override of a page's content. The default locale uses the page's
@@ -14,7 +15,7 @@ import { IdSchema } from './primitives.js';
 export const PageTranslationSchema = z.object({
   id: IdSchema,
   pageId: IdSchema,
-  locale: z.string().min(1).max(35),
+  locale: LocaleSchema,
   title: z.string().max(200).optional(),
   root: PageNodeSchema,
 });

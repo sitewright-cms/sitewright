@@ -185,6 +185,10 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       await copyMedia(tmp, media, opts.readMedia);
     }
 
+    // Guard against two (locale, route) pairs resolving to the same output file —
+    // e.g. a page at `/de` colliding with the `de` locale's home. Catch it as a
+    // PublishError instead of silently overwriting one with the other.
+    const writtenPaths = new Set<string>();
     for (const locale of locales) {
       const localePrefix = locale === defaultLocale ? '' : `${locale}/`;
       for (const route of routes) {
@@ -193,6 +197,10 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         if (full !== tmp && !full.startsWith(tmp + sep)) {
           throw new PublishError('route output escapes the publish directory');
         }
+        if (writtenPaths.has(full)) {
+          throw new PublishError(`output path collision at "/${outSlug ?? ''}" — a page path conflicts with a locale prefix`);
+        }
+        writtenPaths.add(full);
         // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to tmp (checked above)
         await mkdir(dirname(full), { recursive: true });
         // Localized content (root + title) for non-default locales; else the page.

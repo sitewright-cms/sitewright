@@ -13,7 +13,7 @@ export const PROJECT_FORMAT_VERSION = 1;
 // A BCP-47-ish locale tag. Constrained because the locale is used as a URL path
 // segment + directory name in the published output (e.g. `/de/…`), so it must be
 // a safe identifier — no slashes, dots, or traversal.
-const LocaleSchema = z
+export const LocaleSchema = z
   .string()
   .min(1)
   .max(35)

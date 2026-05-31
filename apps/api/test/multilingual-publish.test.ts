@@ -108,6 +108,62 @@ describe('multilingual publish', () => {
     expect(deAbout.body).toContain('<html lang="de">');
   });
 
+  it('prefixes auto-nav links per locale and ignores a default-locale translation', async () => {
+    const proj = client.project(projectId);
+    await proj.putContent('settings', 'settings', {
+      brand: { name: 'Acme', colors: { primary: '#0a7' } },
+      settings: { defaultLocale: 'en', locales: ['en', 'de'] },
+    });
+    // Two header-nav pages; home renders the auto-nav.
+    await proj.putContent('page', 'home', {
+      id: 'home',
+      path: '/',
+      title: 'Home',
+      nav: { slots: ['header'], order: 1 },
+      root: { id: 'r', type: 'Nav', props: { slot: 'header' } },
+    });
+    await proj.putContent('page', 'about', {
+      id: 'about',
+      path: '/about',
+      title: 'About',
+      nav: { slots: ['header'], order: 2 },
+      root: { id: 'r2', type: 'Heading', props: { text: 'About' } },
+    });
+    // A translation stored for the DEFAULT locale must be ignored (default uses page.root).
+    await proj.putContent('translation', 'home__en', {
+      id: 'home__en',
+      pageId: 'home',
+      locale: 'en',
+      root: { id: 'r', type: 'Heading', props: { text: 'SHOULD-NOT-APPEAR' } },
+    });
+    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
+
+    // Default home: nav link to /about is root-relative, and the default-locale
+    // translation was ignored (the Nav root, not the translated Heading, rendered).
+    const enHome = await client.get(`/sites/${projectId}/index.html`);
+    expect(enHome.body).toContain('data-sw-block="Nav"');
+    expect(enHome.body).toContain('href="about"');
+    expect(enHome.body).not.toContain('SHOULD-NOT-APPEAR');
+
+    // German home: the auto-nav link to /about is kept inside /de/.
+    const deHome = await client.get(`/sites/${projectId}/de/index.html`);
+    expect(deHome.body).toContain('href="../de/about"');
+  });
+
+  it('rejects a publish where a page path collides with a locale prefix', async () => {
+    const proj = client.project(projectId);
+    await proj.putContent('settings', 'settings', {
+      brand: { name: 'Acme', colors: { primary: '#0a7' } },
+      settings: { defaultLocale: 'en', locales: ['en', 'de'] },
+    });
+    // A page at /de collides with the 'de' locale's home (both → de/index.html).
+    await proj.putContent('page', 'de-page', { id: 'de-page', path: '/de', title: 'DE', root: { id: 'r', type: 'Section' } });
+    await proj.putContent('page', 'home', { id: 'home', path: '/', title: 'Home', root: { id: 'r2', type: 'Section' } });
+    const res = await client.post(`${proj.base}/publish`);
+    expect(res.statusCode).toBe(409); // PublishError → conflict, not a silent overwrite
+    expect((res.json() as { error: string }).error).toMatch(/collision/i);
+  });
+
   it('a single-locale project publishes only at the root (no locale prefix)', async () => {
     const proj = client.project(projectId);
     // Default project settings are { defaultLocale: 'en', locales: ['en'] }.

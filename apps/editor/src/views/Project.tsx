@@ -4,6 +4,7 @@ import { api, type Org, type Project } from '../api';
 import { PageEditor } from './PageEditor';
 import { DatasetManager } from './DatasetManager';
 import { MediaManager } from './MediaManager';
+import { ApiKeysManager } from './ApiKeysManager';
 import { PublishBar } from './PublishBar';
 
 interface ProjectViewProps {
@@ -15,7 +16,7 @@ interface ProjectViewProps {
 export function ProjectView({ org, project, onBack }: ProjectViewProps) {
   const [pages, setPages] = useState<Page[]>([]);
   const [editing, setEditing] = useState<Page | null>(null);
-  const [tab, setTab] = useState<'pages' | 'data' | 'media'>('pages');
+  const [tab, setTab] = useState<'pages' | 'data' | 'media' | 'access'>('pages');
   const [slug, setSlug] = useState('');
   const [title, setTitle] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -81,7 +82,7 @@ export function ProjectView({ org, project, onBack }: ProjectViewProps) {
       <PublishBar org={org} project={project} />
 
       <div className="mb-6 flex gap-1 border-b border-slate-200">
-        {(['pages', 'data', 'media'] as const).map((t) => (
+        {(['pages', 'data', 'media', 'access'] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -100,6 +101,8 @@ export function ProjectView({ org, project, onBack }: ProjectViewProps) {
         <DatasetManager org={org} project={project} />
       ) : tab === 'media' ? (
         <MediaManager org={org} project={project} />
+      ) : tab === 'access' ? (
+        <ApiKeysManager org={org} project={project} />
       ) : (
         <>
           <ul className="mb-8 flex flex-col gap-2">

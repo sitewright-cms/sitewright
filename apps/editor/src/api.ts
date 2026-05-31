@@ -72,6 +72,25 @@ export interface Project {
   name: string;
   slug: string;
 }
+export type ApiKeyCapability = 'content:read' | 'content:write' | 'publish' | 'deploy';
+/** Redacted view of a project API key (the management list never returns the token). */
+export interface ApiKeyView {
+  id: string;
+  name: string;
+  role: 'owner' | 'admin' | 'member';
+  capabilities: ApiKeyCapability[];
+  tokenPrefix: string;
+  expiresAt: string;
+  revokedAt: string | null;
+  lastUsedAt: string | null;
+  createdAt: string;
+}
+export interface CreateApiKeyBody {
+  name: string;
+  role: 'owner' | 'admin' | 'member';
+  capabilities: ApiKeyCapability[];
+  expiresInDays: number;
+}
 export interface Release {
   publishedAt: string;
   routes: number;
@@ -161,6 +180,21 @@ export const api = {
     request<void>(
       'DELETE',
       `/orgs/${orgId}/projects/${projectId}/content/translation/${encodeURIComponent(id)}`,
+    ),
+
+  // --- project API keys (bearer tokens for the CLI / MCP bridge) ---
+  listApiKeys: (orgId: string, projectId: string) =>
+    request<{ items: ApiKeyView[] }>('GET', `/orgs/${orgId}/projects/${projectId}/api-keys`),
+  createApiKey: (orgId: string, projectId: string, body: CreateApiKeyBody) =>
+    request<{ token: string; key: ApiKeyView }>(
+      'POST',
+      `/orgs/${orgId}/projects/${projectId}/api-keys`,
+      body,
+    ),
+  deleteApiKey: (orgId: string, projectId: string, id: string) =>
+    request<void>(
+      'DELETE',
+      `/orgs/${orgId}/projects/${projectId}/api-keys/${encodeURIComponent(id)}`,
     ),
 
   // --- datasets ---

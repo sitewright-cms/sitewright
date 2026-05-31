@@ -6,3 +6,4 @@ export {
   type FetchLike,
 } from './client.js';
 export { createSitewrightMcpServer } from './server.js';
+export { runStdioBridge } from './run.js';

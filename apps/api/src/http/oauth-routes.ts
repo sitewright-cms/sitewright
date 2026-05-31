@@ -5,6 +5,7 @@ import { isValidS256Challenge } from '../auth/pkce.js';
 import { API_KEY_CAPABILITIES, type ApiKeyCapability } from '../db/schema.js';
 import { listOrgsForUser, tenantContext } from '../repo/accounts.js';
 import type { ProjectRepository } from '../repo/projects.js';
+import { OAuthClientError, type OAuthClientRepository } from '../repo/oauth-clients.js';
 import { ForbiddenError, NotFoundError } from '../repo/context.js';
 
 /** The built-in public client for the `sitewright` CLI (loopback redirect, PKCE, no secret). */
@@ -13,10 +14,17 @@ export const CLI_CLIENT_ID = 'sitewright-cli';
 export interface OAuthDeps {
   db: Database;
   oauth: OAuthRepository;
+  clients: OAuthClientRepository;
   projects: ProjectRepository;
   /** Resolves the session user id, or null when unauthenticated. */
   currentUserId: (req: FastifyRequest) => Promise<string | null>;
   rl: (max: number) => { rateLimit: { max: number; timeWindow: string } };
+}
+
+/** The display name + redirect validator for a resolved client (CLI or registered). */
+interface ResolvedClient {
+  name: string;
+  allowsRedirect: (uri: string) => boolean;
 }
 
 type AuthorizeQuery = {
@@ -59,9 +67,6 @@ function isLoopbackRedirect(uri: string): boolean {
   return ['127.0.0.1', 'localhost', '[::1]', '::1'].includes(url.hostname);
 }
 
-function isValidRedirect(clientId: string, redirectUri: string): boolean {
-  return clientId === CLI_CLIENT_ID && isLoopbackRedirect(redirectUri);
-}
 
 /** Granted scope = the requested capabilities ∩ the known set (canonical order). */
 function parseScope(raw: string | undefined): ApiKeyCapability[] {
@@ -98,7 +103,19 @@ function redirectWith(redirectUri: string, params: Record<string, string>): stri
  * rest of the API validates.
  */
 export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void {
-  const { oauth, db, projects, currentUserId, rl } = deps;
+  const { oauth, clients, db, projects, currentUserId, rl } = deps;
+
+  // Resolves a client_id to its display name + redirect validator: the built-in
+  // CLI client (loopback redirects), or a dynamically-registered client
+  // (exact-match against its registered URIs). Null = unknown client.
+  async function resolveClient(clientId: string): Promise<ResolvedClient | null> {
+    if (clientId === CLI_CLIENT_ID) {
+      return { name: 'Sitewright CLI', allowsRedirect: isLoopbackRedirect };
+    }
+    const client = await clients.get(clientId);
+    if (!client) return null;
+    return { name: client.name, allowsRedirect: (uri) => client.redirectUris.includes(uri) };
+  }
 
   // ---- Discovery (RFC 8414 + RFC 9728) ----
   app.get('/.well-known/oauth-authorization-server', async (req, reply) => {
@@ -107,6 +124,7 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
       issuer,
       authorization_endpoint: `${issuer}/oauth/authorize`,
       token_endpoint: `${issuer}/oauth/token`,
+      registration_endpoint: `${issuer}/oauth/register`,
       response_types_supported: ['code'],
       grant_types_supported: ['authorization_code', 'refresh_token'],
       code_challenge_methods_supported: ['S256'],
@@ -120,6 +138,36 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
     return reply.send({ resource: issuer, authorization_servers: [issuer] });
   });
 
+  // ---- Dynamic Client Registration (RFC 7591) ----
+  // Open registration (public clients, PKCE, no secret) so hosted MCP clients
+  // (claude.ai / ChatGPT) self-register. The user still authenticates + consents,
+  // and redirect URIs are matched EXACTLY at the authorization endpoint.
+  app.post<{ Body: { client_name?: unknown; redirect_uris?: unknown } }>(
+    '/oauth/register',
+    { config: rl(10) },
+    async (req, reply) => {
+      const body = req.body ?? {};
+      const name = typeof body.client_name === 'string' ? body.client_name : '';
+      const redirectUris = Array.isArray(body.redirect_uris) ? (body.redirect_uris as string[]) : [];
+      try {
+        const client = await clients.register({ name, redirectUris });
+        return reply.code(201).send({
+          client_id: client.id,
+          client_name: client.name,
+          redirect_uris: client.redirectUris,
+          token_endpoint_auth_method: 'none',
+          grant_types: ['authorization_code', 'refresh_token'],
+          response_types: ['code'],
+        });
+      } catch (err) {
+        if (err instanceof OAuthClientError) {
+          return reply.code(400).send({ error: 'invalid_client_metadata', error_description: err.message });
+        }
+        throw err;
+      }
+    },
+  );
+
   // ---- Authorization endpoint ----
   // Validates the request, then either prompts the user to sign in or renders a
   // consent page (project picker). PKCE is mandatory; only the loopback CLI client
@@ -132,7 +180,8 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
       const clientId = q.client_id ?? '';
       const redirectUri = q.redirect_uri ?? '';
       // A bad client_id / redirect_uri must NOT redirect (open-redirect guard) — render.
-      if (!isValidRedirect(clientId, redirectUri)) {
+      const client = await resolveClient(clientId);
+      if (!client || !client.allowsRedirect(redirectUri)) {
         return reply.code(400).type('text/html').send(
           htmlPage('Invalid request', '<h1>Invalid authorization request</h1><p>Unknown client or redirect URI.</p>'),
         );
@@ -183,7 +232,7 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
       return reply.code(200).type('text/html').send(
         htmlPage(
           'Authorize access',
-          `<h1>Authorize <strong>${escapeHtml(clientId)}</strong></h1>
+          `<h1>Authorize <strong>${escapeHtml(client.name)}</strong></h1>
            <p>It will be able to act on the selected project with these permissions:</p>
            <div class="card">
              <form method="post" action="/oauth/authorize">
@@ -215,7 +264,8 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
       const b = req.body ?? {};
       const clientId = b.client_id ?? '';
       const redirectUri = b.redirect_uri ?? '';
-      if (!isValidRedirect(clientId, redirectUri)) {
+      const client = await resolveClient(clientId);
+      if (!client || !client.allowsRedirect(redirectUri)) {
         return reply.code(400).type('text/html').send(htmlPage('Invalid request', '<h1>Invalid request</h1>'));
       }
       const state = b.state;

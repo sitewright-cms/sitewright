@@ -41,6 +41,7 @@ import { ProjectRepository } from '../repo/projects.js';
 import { AiUsageRepository } from '../repo/ai-usage.js';
 import { ApiKeyRepository, type ResolvedApiKey } from '../repo/api-keys.js';
 import { OAuthRepository } from '../repo/oauth.js';
+import { OAuthClientRepository } from '../repo/oauth-clients.js';
 import { registerOAuthRoutes } from './oauth-routes.js';
 import { ProjectEventBus } from '../events/bus.js';
 import {
@@ -219,6 +220,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const aiUsageRepo = new AiUsageRepository(db);
   const apiKeysRepo = new ApiKeyRepository(db);
   const oauthRepo = new OAuthRepository(db);
+  const oauthClients = new OAuthClientRepository(db);
   const aiQuota = opts.aiQuota ?? {};
   const app = Fastify({
     // Redact deploy credentials defensively (Fastify omits bodies by default, but
@@ -609,7 +611,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   );
 
   // ---- OAuth 2.1 (issues the same scoped tokens; for the CLI / hosted MCP clients) ----
-  registerOAuthRoutes(app, { db, oauth: oauthRepo, projects, currentUserId, rl });
+  registerOAuthRoutes(app, { db, oauth: oauthRepo, clients: oauthClients, projects, currentUserId, rl });
 
   app.get<{ Params: { orgId: string; projectId: string } }>(
     '/orgs/:orgId/projects/:projectId/export',

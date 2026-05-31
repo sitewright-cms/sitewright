@@ -115,6 +115,19 @@ export const apiKeys = sqliteTable(
 export type ApiKeySource = 'pat' | 'oauth';
 
 /**
+ * OAuth 2.1 dynamically-registered clients (RFC 7591) — e.g. claude.ai / ChatGPT
+ * connecting as remote MCP clients. Public clients (PKCE, no secret); each carries
+ * an exact-match allowlist of redirect URIs. The built-in `sitewright-cli` client
+ * is NOT stored here (it's a hardcoded loopback client).
+ */
+export const oauthClients = sqliteTable('oauth_clients', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  redirectUris: text('redirect_uris', { mode: 'json' }).notNull().$type<string[]>(),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+/**
  * OAuth 2.1 authorization codes (PKCE). Short-lived (~60s), single-use. The row id
  * is the SHA-256 of the code; the raw code is shown once in the redirect. Binds the
  * grant to a user, ONE project, the granted capabilities, the client's redirect URI,

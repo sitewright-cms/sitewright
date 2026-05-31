@@ -33,7 +33,10 @@ export interface StockProvider {
   resolve(id: string, key: string | null): Promise<ResolvedStock | null>;
 }
 
-const PAGE_SIZE = 24;
+// 20 is the hard cap for Openverse's keyless (anonymous) tier: an anonymous request
+// with page_size > 20 is rejected with 401. Unsplash (max 30) and Pexels (max 80)
+// both accept 20, so one shared page size keeps all three providers working.
+const PAGE_SIZE = 20;
 const str = (v: unknown): string => (typeof v === 'string' ? v : '');
 const num = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
 /** Provider-supplied URL, but only if it is https — else '' (defense-in-depth: these

@@ -29,6 +29,16 @@ describe('OpenverseProvider', () => {
     await expect(new OpenverseProvider(jsonFetch({}, false)).search('x', 1)).rejects.toThrow();
   });
 
+  it('requests page_size <= 20 (Openverse rejects anonymous requests above 20 with 401)', async () => {
+    let calledUrl = '';
+    const capture: FetchLike = async (url) => {
+      calledUrl = url;
+      return { ok: true, status: 200, json: async () => ({ results: [] }), arrayBuffer: async () => new ArrayBuffer(0), headers: { get: () => null } };
+    };
+    await new OpenverseProvider(capture).search('cats', 1);
+    expect(Number(new URL(calledUrl).searchParams.get('page_size'))).toBeLessThanOrEqual(20);
+  });
+
   it('drops results whose URLs are not https (defense-in-depth)', async () => {
     const search = jsonFetch({ results: [{ id: 'ov1', thumbnail: 'http://insecure/ov1', url: 'http://insecure/ov1' }] });
     expect(await new OpenverseProvider(search).search('cats', 1)).toEqual([]);

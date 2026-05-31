@@ -118,4 +118,13 @@ describe('SitewrightClient', () => {
     );
     await expect(client.listContent('page')).rejects.toMatchObject({ status: 500, message: 'Server Error' });
   });
+
+  it('falls back to a numeric message when statusText is empty (HTTP/2) and body is not JSON', async () => {
+    const { client } = await introspected((input) =>
+      input.endsWith('/api-key/self')
+        ? { status: 200, body: JSON.stringify(scope) }
+        : { status: 502, statusText: '', body: '' },
+    );
+    await expect(client.listContent('page')).rejects.toMatchObject({ status: 502, message: 'HTTP 502' });
+  });
 });

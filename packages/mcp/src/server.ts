@@ -148,6 +148,9 @@ export function createSitewrightMcpServer(client: SitewrightClient, scope: Scope
   }
 
   // --- publish (only when the token may publish) ---
+  // NB: `deploy` is intentionally NOT exposed as a tool — pushing to a customer's
+  // external webspace (FTP/SFTP credentials) from an autonomous agent is out of
+  // scope for the bridge; deploy stays a deliberate, human-driven action.
   if (can('publish')) {
     server.registerTool(
       'publish_project',

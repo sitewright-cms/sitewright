@@ -64,11 +64,13 @@ export class SitewrightClient {
       parsed = undefined;
     }
     if (!res.ok) {
+      // `||` (not `??`): an HTTP/2 proxy yields an empty `statusText`, which must
+      // still fall through to the numeric fallback rather than become an empty message.
       const message =
         (parsed && typeof parsed === 'object' && 'error' in parsed && typeof parsed.error === 'string'
           ? parsed.error
-          : undefined) ??
-        res.statusText ??
+          : '') ||
+        res.statusText ||
         `HTTP ${res.status}`;
       throw new SitewrightApiError(res.status, message);
     }

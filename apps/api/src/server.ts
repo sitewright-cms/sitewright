@@ -44,6 +44,12 @@ const deployAllowedHosts = process.env.SW_DEPLOY_ALLOWED_HOSTS
       .map((h) => h.trim().toLowerCase().replace(/\.$/, ''))
       .filter(Boolean)
   : undefined;
+// Optional SSRF allowlist for per-project SMTP hosts (multi-tenant SaaS).
+const smtpAllowedHosts = process.env.SW_SMTP_ALLOWED_HOSTS
+  ? process.env.SW_SMTP_ALLOWED_HOSTS.split(',')
+      .map((h) => h.trim().toLowerCase().replace(/\.$/, ''))
+      .filter(Boolean)
+  : undefined;
 
 // Instance admins: a comma-separated email allowlist. These users may read/write
 // instance settings (global SMTP, hCaptcha keys, enabled web-form mail modes).
@@ -124,6 +130,7 @@ const app = await createApp({
   trustProxy,
   encryptionKey,
   deployAllowedHosts,
+  smtpAllowedHosts,
   adminEmails,
   // Public base URL baked into exported forms (so static sites post submissions
   // back to this platform). Validated above; trailing slash normalized at build time.

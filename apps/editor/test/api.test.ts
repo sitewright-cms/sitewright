@@ -332,6 +332,23 @@ describe('api client', () => {
     expect(fetchMock.mock.calls[3]![0]).toBe('/orgs/o/projects/p/form-modes');
   });
 
+  it('reads, writes, and deletes the per-project SMTP config', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { smtp: null }));
+    expect((await api.getProjectSmtp('o', 'p')).smtp).toBeNull();
+    expect(fetchMock.mock.calls[0]![0]).toBe('/orgs/o/projects/p/smtp');
+
+    fetchMock.mockResolvedValue(jsonResponse(200, { smtp: { host: 'h', port: 587, secure: false, fromEmail: 'a@b.co', hasPassword: true } }));
+    await api.putProjectSmtp('o', 'p', { host: 'h', port: 587, secure: false, fromEmail: 'a@b.co', password: 'pw' });
+    const [putUrl, putInit] = fetchMock.mock.calls[1]!;
+    expect(putUrl).toBe('/orgs/o/projects/p/smtp');
+    expect(putInit.method).toBe('PUT');
+    expect(JSON.parse(putInit.body)).toMatchObject({ host: 'h', password: 'pw' });
+
+    fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
+    await api.deleteProjectSmtp('o', 'p');
+    expect(fetchMock.mock.calls[2]![1].method).toBe('DELETE');
+  });
+
   it('lists and deletes submissions, passing the formId filter', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { items: [], total: 0 }));
     await api.listSubmissions('o', 'p');

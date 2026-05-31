@@ -14,7 +14,7 @@ import {
 import type { Database } from '../db/client.js';
 import { content } from '../db/schema.js';
 import type { SubmissionRepository } from '../repo/submissions.js';
-import type { SubmissionMailer } from '../mail/mailer.js';
+import type { SubmissionMailer, ProjectMailer } from '../mail/mailer.js';
 import type { HcaptchaVerifier } from '../mail/hcaptcha.js';
 import type { ProjectContext } from '../repo/context.js';
 import type { ApiKeyCapability } from '../db/schema.js';
@@ -36,6 +36,8 @@ export interface FormRoutesDeps {
   db: Database;
   submissions: SubmissionRepository;
   mailer: SubmissionMailer;
+  /** Per-project SMTP mailer for `userSmtp` forms (Mode B). */
+  projectMailer: ProjectMailer;
   hcaptcha: HcaptchaVerifier;
   /** Returns the decrypted instance hCaptcha secret, or null when unconfigured. */
   getHcaptchaSecret: () => Promise<string | null>;
@@ -133,7 +135,7 @@ function setSubmissionCors(reply: FastifyReply): void {
  * via Mode A (global SMTP); spam is filtered by honeypot + time-trap + rate limit.
  */
 export function registerFormRoutes(app: FastifyInstance, deps: FormRoutesDeps): void {
-  const { db, submissions, mailer, hcaptcha, getHcaptchaSecret, resolveProject, isWriter, rl } = deps;
+  const { db, submissions, mailer, projectMailer, hcaptcha, getHcaptchaSecret, resolveProject, isWriter, rl } = deps;
 
   // CORS preflight for cross-origin submissions from exported sites (rate-limited
   // like the POST so it can't be used to burn a shared global budget).
@@ -197,25 +199,32 @@ export function registerFormRoutes(app: FastifyInstance, deps: FormRoutesDeps): 
       // Store first — the inbox is the source of truth even if email is unconfigured.
       await submissions.create(projectId, formId, parsed.fields);
 
-      // Mode A delivery (best-effort): never fail the visitor's request on a mail error.
-      if (form.mode === 'globalSmtp') {
-        try {
-          const replyTo = pickReplyTo(parsed.fields);
-          const sent = await mailer.send({
-            recipient: form.recipient,
-            subject: form.subject || `New "${form.name}" submission`,
-            formName: form.name,
-            fields: parsed.fields,
-            ...(replyTo ? { replyTo } : {}),
-          });
-          if (!sent) {
-            app.log.warn({ projectId, formId }, 'submission stored but global SMTP is not configured/enabled');
-          }
-        } catch (err) {
-          app.log.error({ projectId, formId, err }, 'form submission email failed');
+      // Delivery (best-effort): never fail the visitor's request on a mail error.
+      // globalSmtp → instance SMTP; userSmtp → the project's own SMTP. (contactPhp /
+      // thirdParty forms post elsewhere and never reach this endpoint.)
+      const replyTo = pickReplyTo(parsed.fields);
+      const mail = {
+        recipient: form.recipient,
+        subject: form.subject || `New "${form.name}" submission`,
+        formName: form.name,
+        fields: parsed.fields,
+        ...(replyTo ? { replyTo } : {}),
+      };
+      try {
+        let sent = false;
+        if (form.mode === 'globalSmtp') sent = await mailer.send(mail);
+        else if (form.mode === 'userSmtp') sent = await projectMailer.send(projectId, mail);
+        else app.log.warn({ projectId, formId, mode: form.mode }, 'submission stored; this mode is not server-routed');
+        if (!sent && (form.mode === 'globalSmtp' || form.mode === 'userSmtp')) {
+          app.log.warn({ projectId, formId, mode: form.mode }, 'submission stored but not emailed (SMTP not configured/enabled)');
         }
-      } else {
-        app.log.warn({ projectId, formId, mode: form.mode }, 'submission stored; this mode is not yet server-routed');
+      } catch (err) {
+        // Log only the message — a nodemailer error can carry the SMTP banner / resolved
+        // IP, which we don't want in structured logs (esp. for project/user SMTP hosts).
+        app.log.error(
+          { projectId, formId, errMsg: err instanceof Error ? err.message : String(err) },
+          'form submission email failed',
+        );
       }
 
       return reply.send({ ok: true });

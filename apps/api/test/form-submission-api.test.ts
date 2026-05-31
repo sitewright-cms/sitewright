@@ -7,7 +7,7 @@ import { memberships, formSubmissions } from '../src/db/schema.js';
 import { MAX_SUBMISSIONS_PER_FORM } from '@sitewright/schema';
 import { SubmissionRepository } from '../src/repo/submissions.js';
 import type { Database } from '../src/db/client.js';
-import type { SubmissionMail, SubmissionMailer } from '../src/mail/mailer.js';
+import type { SubmissionMail, SubmissionMailer, ProjectMailer } from '../src/mail/mailer.js';
 
 class FakeMailer implements SubmissionMailer {
   sent: SubmissionMail[] = [];
@@ -18,9 +18,19 @@ class FakeMailer implements SubmissionMailer {
   }
 }
 
+class FakeProjectMailer implements ProjectMailer {
+  sent: Array<{ projectId: string; mail: SubmissionMail }> = [];
+  result = true;
+  async send(projectId: string, mail: SubmissionMail): Promise<boolean> {
+    this.sent.push({ projectId, mail });
+    return this.result;
+  }
+}
+
 let app: FastifyInstance;
 let db: Database;
 let mailer: FakeMailer;
+let projectMailer: FakeProjectMailer;
 let t: string;
 let orgId: string;
 let projectId: string;
@@ -43,8 +53,9 @@ const form = {
 
 beforeEach(async () => {
   mailer = new FakeMailer();
+  projectMailer = new FakeProjectMailer();
   db = await makeTestDb();
-  app = await createApp({ db, mailer });
+  app = await createApp({ db, mailer, projectMailer });
   await app.ready();
   const reg = await app.inject({
     method: 'POST',
@@ -91,6 +102,20 @@ describe('public form submission endpoint', () => {
     expect(mailer.sent).toHaveLength(1);
     expect(mailer.sent[0]).toMatchObject({ recipient: 'sales@acme.com', formName: 'Contact form', replyTo: 'lead@x.co' });
     expect(mailer.sent[0]!.fields).not.toHaveProperty('_elapsed'); // trap field stripped
+  });
+
+  it('routes a userSmtp form to the project mailer (not the global mailer)', async () => {
+    await app.inject({
+      method: 'PUT',
+      url: `/orgs/${orgId}/projects/${projectId}/content/form/lead`,
+      cookies: { sw_session: t },
+      payload: { id: 'lead', name: 'Lead', fields: [{ name: 'email', label: 'Email', type: 'email' }], recipient: 'sales@acme.com', mode: 'userSmtp' },
+    });
+    const res = await app.inject({ method: 'POST', url: `/f/${projectId}/lead`, payload: { email: 'p@x.co', _elapsed: '5000' } });
+    expect(res.statusCode).toBe(200);
+    expect(projectMailer.sent).toHaveLength(1);
+    expect(projectMailer.sent[0]).toMatchObject({ projectId, mail: { recipient: 'sales@acme.com' } });
+    expect(mailer.sent).toHaveLength(0); // global mailer not used
   });
 
   it('drops (silently 200) a honeypot-filled submission', async () => {

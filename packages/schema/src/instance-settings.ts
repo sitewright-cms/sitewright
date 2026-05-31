@@ -137,13 +137,16 @@ export interface InstanceSettingsPublic {
   formModes: FormModes;
 }
 
+/** Masks a stored SMTP config to its public view (password → hasPassword flag). */
+export function maskSmtp(smtp: SmtpStored): SmtpPublic {
+  const { password, ...rest } = smtp;
+  return { ...rest, hasPassword: password !== undefined };
+}
+
 /** Projects the persisted document to its masked public view (no secrets). */
 export function maskInstanceSettings(stored: InstanceSettingsStored): InstanceSettingsPublic {
   const result: InstanceSettingsPublic = { formModes: stored.formModes };
-  if (stored.smtp) {
-    const { password, ...rest } = stored.smtp;
-    result.smtp = { ...rest, hasPassword: password !== undefined };
-  }
+  if (stored.smtp) result.smtp = maskSmtp(stored.smtp);
   if (stored.hcaptcha) {
     result.hcaptcha = { siteKey: stored.hcaptcha.siteKey, hasSecret: stored.hcaptcha.secret !== undefined };
   }

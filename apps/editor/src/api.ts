@@ -12,9 +12,20 @@ import type {
   PageTranslation,
   Pattern,
   ProjectSettings,
+  SmtpInput,
+  SmtpPublic,
 } from '@sitewright/schema';
 
-export type { DeployTargetView, Form, FormModes, FormSubmission, InstanceSettingsInput, InstanceSettingsPublic };
+export type {
+  DeployTargetView,
+  Form,
+  FormModes,
+  FormSubmission,
+  InstanceSettingsInput,
+  InstanceSettingsPublic,
+  SmtpInput,
+  SmtpPublic,
+};
 
 /** Base URL for the API. Empty = same origin (the API serves this SPA). */
 const BASE = import.meta.env.VITE_API_BASE ?? '';
@@ -298,6 +309,14 @@ export const api = {
   /** Which mail-delivery modes the instance admin permits (for the form-mode selector). */
   formModes: (orgId: string, projectId: string) =>
     request<{ formModes: FormModes }>('GET', `/orgs/${orgId}/projects/${projectId}/form-modes`),
+
+  // --- per-project SMTP (for the userSmtp form mode) ---
+  getProjectSmtp: (orgId: string, projectId: string) =>
+    request<{ smtp: SmtpPublic | null }>('GET', `/orgs/${orgId}/projects/${projectId}/smtp`),
+  putProjectSmtp: (orgId: string, projectId: string, body: SmtpInput) =>
+    request<{ smtp: SmtpPublic }>('PUT', `/orgs/${orgId}/projects/${projectId}/smtp`, body),
+  deleteProjectSmtp: (orgId: string, projectId: string) =>
+    request<void>('DELETE', `/orgs/${orgId}/projects/${projectId}/smtp`),
 
   // --- form submissions (inbox) ---
   listSubmissions: (orgId: string, projectId: string, formId?: string) =>

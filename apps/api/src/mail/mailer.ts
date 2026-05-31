@@ -1,5 +1,9 @@
 import nodemailer from 'nodemailer';
-import type { InstanceSettingsStored } from '@sitewright/schema';
+import { and, eq } from 'drizzle-orm';
+import { SmtpStoredSchema, type InstanceSettingsStored, type SmtpStored } from '@sitewright/schema';
+import { decryptSecret } from '../crypto/secret.js';
+import { content, PROJECT_SMTP_ENTITY_ID } from '../db/schema.js';
+import type { Database } from '../db/client.js';
 
 /** A form submission to deliver by email. */
 export interface SubmissionMail {
@@ -36,7 +40,10 @@ export interface TransportConfig {
 
 export type TransportFactory = (config: TransportConfig) => MailTransport;
 
-const defaultTransportFactory: TransportFactory = (config) => nodemailer.createTransport(config);
+// Fail fast: a userSmtp/global form submission must not stall the request for
+// nodemailer's 2-minute default when the SMTP host is unreachable/black-holed.
+const defaultTransportFactory: TransportFactory = (config) =>
+  nodemailer.createTransport({ ...config, connectionTimeout: 10_000, greetingTimeout: 10_000, socketTimeout: 15_000 });
 
 /** The instance-settings surface the mailer needs (decoupled from the repo class). */
 export interface MailerSettings {
@@ -54,6 +61,28 @@ export function formatSubmissionText(formName: string, fields: Record<string, st
   return `New submission for "${formName}"\n\n${lines.join('\n\n')}\n`;
 }
 
+/** Builds a transport from an SMTP config + decrypted password and sends the mail. */
+async function sendViaSmtp(
+  smtp: SmtpStored,
+  password: string | null,
+  mail: SubmissionMail,
+  transportFactory: TransportFactory,
+): Promise<void> {
+  const config: TransportConfig = { host: smtp.host, port: smtp.port, secure: smtp.secure };
+  if (smtp.user && password) config.auth = { user: smtp.user, pass: password };
+  const transport = transportFactory(config);
+  // Structured form so nodemailer encodes the display name (a fromName with special
+  // chars like <>" cannot break the From header).
+  const from = smtp.fromName ? { name: smtp.fromName, address: smtp.fromEmail } : smtp.fromEmail;
+  await transport.sendMail({
+    from,
+    to: mail.recipient,
+    subject: mail.subject,
+    text: formatSubmissionText(mail.formName, mail.fields),
+    ...(mail.replyTo ? { replyTo: mail.replyTo } : {}),
+  });
+}
+
 /**
  * Mode A mailer: sends via the instance's GLOBAL SMTP. Returns false (rather than
  * throwing) when the global-SMTP mode is disabled, no SMTP is configured, or the
@@ -69,7 +98,6 @@ export class GlobalSmtpMailer implements SubmissionMailer {
   async send(mail: SubmissionMail): Promise<boolean> {
     const stored = await this.settings.getStored();
     if (!stored.formModes.globalSmtp || !stored.smtp) return false;
-    const smtp = stored.smtp;
     let password: string | null;
     try {
       password = await this.settings.getSmtpPassword();
@@ -77,19 +105,55 @@ export class GlobalSmtpMailer implements SubmissionMailer {
       // Decryption failed (e.g. SW_ENCRYPTION_KEY rotated) — can't authenticate.
       return false;
     }
-    const config: TransportConfig = { host: smtp.host, port: smtp.port, secure: smtp.secure };
-    if (smtp.user && password) config.auth = { user: smtp.user, pass: password };
-    const transport = this.transportFactory(config);
-    // Structured form so nodemailer encodes the display name (a fromName with
-    // special chars like <>" cannot break the From header).
-    const from = smtp.fromName ? { name: smtp.fromName, address: smtp.fromEmail } : smtp.fromEmail;
-    await transport.sendMail({
-      from,
-      to: mail.recipient,
-      subject: mail.subject,
-      text: formatSubmissionText(mail.formName, mail.fields),
-      ...(mail.replyTo ? { replyTo: mail.replyTo } : {}),
-    });
+    await sendViaSmtp(stored.smtp, password, mail, this.transportFactory);
+    return true;
+  }
+}
+
+/** Delivers a submission via a PROJECT's own SMTP (Mode B / `userSmtp`). */
+export interface ProjectMailer {
+  send(projectId: string, mail: SubmissionMail): Promise<boolean>;
+}
+
+/** Reads a project's stored SMTP config (server-side, no tenant context), or null. */
+async function loadProjectSmtp(db: Database, projectId: string): Promise<SmtpStored | null> {
+  const [row] = await db
+    .select()
+    .from(content)
+    .where(and(eq(content.projectId, projectId), eq(content.kind, 'project_smtp'), eq(content.entityId, PROJECT_SMTP_ENTITY_ID)));
+  if (!row) return null;
+  const parsed = SmtpStoredSchema.safeParse(row.data);
+  return parsed.success ? parsed.data : null;
+}
+
+/**
+ * Mode B (`userSmtp`) mailer: sends via the PROJECT's own SMTP. Returns false when
+ * the userSmtp mode is disabled instance-wide, the project has no SMTP configured,
+ * or the password can't be decrypted — fail-soft, like the global mailer.
+ */
+export class ProjectSmtpMailer implements ProjectMailer {
+  constructor(
+    private readonly db: Database,
+    private readonly settings: Pick<MailerSettings, 'getStored'>,
+    private readonly encryptionKey: Buffer | undefined,
+    private readonly transportFactory: TransportFactory = defaultTransportFactory,
+  ) {}
+
+  async send(projectId: string, mail: SubmissionMail): Promise<boolean> {
+    const stored = await this.settings.getStored();
+    if (!stored.formModes.userSmtp) return false;
+    const smtp = await loadProjectSmtp(this.db, projectId);
+    if (!smtp) return false;
+    let password: string | null = null;
+    if (smtp.password) {
+      if (!this.encryptionKey) return false;
+      try {
+        password = decryptSecret(smtp.password, this.encryptionKey);
+      } catch {
+        return false;
+      }
+    }
+    await sendViaSmtp(smtp, password, mail, this.transportFactory);
     return true;
   }
 }

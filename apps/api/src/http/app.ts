@@ -35,8 +35,9 @@ import { archiveSite, deploySite, DeployConfigSchema } from '../publish/adapters
 import { isNewer } from '../version/checker.js';
 import { registerDeployTargetRoutes } from './deploy-targets.js';
 import { registerFormRoutes } from './form-routes.js';
+import { registerProjectSmtpRoutes } from './project-smtp-routes.js';
 import { SubmissionRepository } from '../repo/submissions.js';
-import { GlobalSmtpMailer, type SubmissionMailer } from '../mail/mailer.js';
+import { GlobalSmtpMailer, ProjectSmtpMailer, type SubmissionMailer, type ProjectMailer } from '../mail/mailer.js';
 import { HttpHcaptchaVerifier, type HcaptchaVerifier } from '../mail/hcaptcha.js';
 import { createSession, revokeSession, validateSession } from '../auth/sessions.js';
 import {
@@ -124,7 +125,7 @@ function parseKind(kind: string): ContentKind {
 // dedicated endpoints — the generic content routes must not read OR write them
 // (a generic read of `deploy_target` would otherwise leak the encrypted secret;
 // a write could forge a media `url` or an attacker-chosen secret blob).
-const DEDICATED_KINDS: ReadonlySet<ContentKind> = new Set(['media', 'deploy_target']);
+const DEDICATED_KINDS: ReadonlySet<ContentKind> = new Set(['media', 'deploy_target', 'project_smtp']);
 function parseGenericKind(kind: string): ContentKind {
   const parsed = parseKind(kind);
   if (DEDICATED_KINDS.has(parsed)) {
@@ -198,6 +199,8 @@ export interface AppOptions {
   encryptionKey?: Buffer;
   /** When set, deploy targets are restricted to these exact hostnames (SaaS SSRF guard). */
   deployAllowedHosts?: string[];
+  /** When set, per-project SMTP hosts are restricted to these exact hostnames (SaaS SSRF guard). */
+  smtpAllowedHosts?: string[];
   /**
    * Normalized (lowercased) email allowlist designating instance admins — the
    * users who may read/write instance settings. Empty/unset = no instance admins.
@@ -215,6 +218,8 @@ export interface AppOptions {
   aiProvider?: AiProvider;
   /** Form-submission mailer (Mode A). Defaults to the global-SMTP mailer; tests inject a fake. */
   mailer?: SubmissionMailer;
+  /** Per-project SMTP mailer (Mode B / userSmtp). Defaults to ProjectSmtpMailer; tests inject a fake. */
+  projectMailer?: ProjectMailer;
   /** hCaptcha verifier for form submissions. Defaults to the live siteverify client; tests inject a fake. */
   hcaptcha?: HcaptchaVerifier;
   /**
@@ -249,6 +254,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const instanceSettingsRepo = new InstanceSettingsRepository(db, opts.encryptionKey);
   const submissionsRepo = new SubmissionRepository(db);
   const mailer = opts.mailer ?? new GlobalSmtpMailer(instanceSettingsRepo);
+  const projectMailer = opts.projectMailer ?? new ProjectSmtpMailer(db, instanceSettingsRepo, opts.encryptionKey);
   const hcaptchaVerifier = opts.hcaptcha ?? new HttpHcaptchaVerifier();
   // Normalized once at startup; membership is a constant-time-ish Set lookup per request.
   const adminEmails: ReadonlySet<string> = new Set(
@@ -261,6 +267,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     logger: opts.logger
       ? {
           redact: [
+            // Covers the auth login/register password AND the project-SMTP PUT
+            // (SmtpInput.password is top-level) AND deploy-target create.
             'req.body.password',
             'req.body.hostFingerprint',
             // Instance-settings PUT carries plaintext secrets in nested fields.
@@ -473,6 +481,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     const normalized = host.trim().toLowerCase().replace(/\.$/, '');
     if (!allow.includes(normalized)) {
       throw new ForbiddenError('deploy target host is not in the allowed list');
+    }
+  }
+
+  // Optional SSRF guard for per-project SMTP hosts (multi-tenant SaaS): when set,
+  // only these exact hosts may be saved as a project's SMTP. Default: any host
+  // (the owner/admin is trusted, single-tenant). Checked when SMTP config is saved.
+  function assertSmtpHostAllowed(host: string): void {
+    const allow = opts.smtpAllowedHosts;
+    if (!allow || allow.length === 0) return;
+    const normalized = host.trim().toLowerCase().replace(/\.$/, '');
+    if (!allow.includes(normalized)) {
+      throw new ForbiddenError('SMTP host is not in the allowed list');
     }
   }
   // Serialize deploys per project (shared by ad-hoc and saved-target deploys).
@@ -1156,6 +1176,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       isWriter: (ctx) => WRITE_ROLES.has(ctx.role),
       rl,
     });
+    // Per-project SMTP config (for the userSmtp form mode) — encrypted, like deploy targets.
+    registerProjectSmtpRoutes(app, {
+      resolveProject,
+      contentRepo,
+      encryptionKey: opts.encryptionKey,
+      isWriter: (ctx) => WRITE_ROLES.has(ctx.role),
+      assertHostAllowed: assertSmtpHostAllowed,
+      rl,
+    });
   }
 
   // Web forms: the public submission endpoint (/f/:projectId/:formId) + the
@@ -1164,6 +1193,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     db,
     submissions: submissionsRepo,
     mailer,
+    projectMailer,
     hcaptcha: hcaptchaVerifier,
     getHcaptchaSecret: () => instanceSettingsRepo.getHcaptchaSecret(),
     getFormModes: () => instanceSettingsRepo.getFormModes(),

@@ -3,8 +3,8 @@ import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   assertWithinTreeDepth,
-  BrandSchema,
-  CompanySchema,
+  CorporateIdentitySchema,
+  mergeLegacyIdentity,
   DatasetSchema,
   DeployTargetSchema,
   EntrySchema,
@@ -19,8 +19,7 @@ import {
   ProjectSettingsSchema,
   WebsiteSettingsSchema,
   PROJECT_FORMAT_VERSION,
-  type Brand,
-  type Company,
+  type CorporateIdentity,
   type Dataset,
   type WebsiteSettings,
   type Entry,
@@ -35,13 +34,19 @@ import { content, type ContentKind } from '../db/schema.js';
 import { ConflictError, ForbiddenError, NotFoundError, type ProjectContext } from './context.js';
 import type { ProjectEventBus } from '../events/bus.js';
 
-/** The project's settings singleton (brand + corporate identity + website settings + locale). */
-export const SettingsSchema = z.object({
-  brand: BrandSchema,
-  company: CompanySchema.optional(),
-  website: WebsiteSettingsSchema.optional(),
-  settings: ProjectSettingsSchema,
-});
+/**
+ * The project's settings singleton (Corporate Identity + website settings + locale).
+ * `mergeLegacyIdentity` runs first so a row written in the old `{brand,company}`
+ * shape upgrades to `{identity}` transparently on read (it re-persists on next put).
+ */
+export const SettingsSchema = z.preprocess(
+  mergeLegacyIdentity,
+  z.object({
+    identity: CorporateIdentitySchema,
+    website: WebsiteSettingsSchema.optional(),
+    settings: ProjectSettingsSchema,
+  }),
+);
 export type Settings = z.infer<typeof SettingsSchema>;
 
 /** Per-kind validation schema. Map (not object index) to avoid dynamic-key access. */
@@ -114,8 +119,7 @@ export interface ExportBundle {
     id: string;
     name: string;
     slug: string;
-    brand: Brand;
-    company?: Company;
+    identity: CorporateIdentity;
     website?: WebsiteSettings;
     settings: ProjectSettings;
   };
@@ -192,8 +196,7 @@ export class ContentRepository {
         id: project.id,
         name: project.name,
         slug: project.slug,
-        brand: settings?.brand ?? { name: project.name, colors: {} },
-        company: settings?.company,
+        identity: settings?.identity ?? { name: project.name, colors: {} },
         website: settings?.website,
         settings: settings?.settings ?? { defaultLocale: 'en', locales: ['en'] },
       },
@@ -229,13 +232,17 @@ export class ContentRepository {
 
     const input = z
       .object({
+        // Accept a v2 `{identity}` project OR a legacy `{brand,company}` one
+        // (mergeLegacyIdentity folds the latter), so old exported bundles import.
         project: z
-          .object({
-            brand: BrandSchema,
-            company: CompanySchema.optional(),
-            website: WebsiteSettingsSchema.optional(),
-            settings: ProjectSettingsSchema,
-          })
+          .preprocess(
+            mergeLegacyIdentity,
+            z.object({
+              identity: CorporateIdentitySchema,
+              website: WebsiteSettingsSchema.optional(),
+              settings: ProjectSettingsSchema,
+            }),
+          )
           .optional(),
         pages: z.array(PageSchema).max(MAX_BUNDLE.pages).default([]),
         partials: z.array(PartialSchema).max(MAX_BUNDLE.partials).default([]),
@@ -251,8 +258,7 @@ export class ContentRepository {
         id: project.id,
         name: project.name,
         slug: project.slug,
-        brand: input.project?.brand ?? { name: project.name, colors: {} },
-        company: input.project?.company,
+        identity: input.project?.identity ?? { name: project.name, colors: {} },
         website: input.project?.website,
         settings: input.project?.settings ?? { defaultLocale: 'en', locales: ['en'] },
       },

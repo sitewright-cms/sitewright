@@ -22,7 +22,9 @@ const pageTitle = seo?.title ?? `${title} · ${project.name}`;
     {seo?.description && <meta name="description" content={seo.description} />}
     {seo?.canonical && <link rel="canonical" href={seo.canonical} />}
     {seo?.noindex && <meta name="robots" content="noindex" />}
-    {project.brand.logo?.favicon && <link rel="icon" href={project.brand.logo.favicon} />}
+    {(project.identity.icon ?? project.identity.favicon) && (
+      <link rel="icon" href={project.identity.icon ?? project.identity.favicon} />
+    )}
     {/* Per-project brand tokens -> CSS custom properties (single source of truth). */}
     <style set:html={brandCss}></style>
   </head>

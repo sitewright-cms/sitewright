@@ -17,10 +17,11 @@ afterEach(async () => {
 function bundle(over: Partial<ProjectBundle> = {}): ProjectBundle {
   return {
     project: {
+      formatVersion: 2 as const,
       id: 'p',
       name: 'Acme',
       slug: 'acme',
-      brand: { name: 'Acme', colors: { primary: '#0a7' } },
+      identity: { name: 'Acme', colors: { primary: '#0a7' } },
       settings: { defaultLocale: 'en', locales: ['en'] },
     },
     pages: [],

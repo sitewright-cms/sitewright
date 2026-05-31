@@ -3,11 +3,11 @@ import type { Dataset, Page, Project } from '@sitewright/schema';
 import { validateProject, type ProjectBundle } from '../src/index.js';
 
 const project: Project = {
-  formatVersion: 1,
+  formatVersion: 2,
   id: 'p1',
   name: 'Acme',
   slug: 'acme',
-  brand: { name: 'Acme', colors: {} },
+  identity: { name: 'Acme', colors: {} },
   settings: { defaultLocale: 'en', locales: ['en'] },
 };
 

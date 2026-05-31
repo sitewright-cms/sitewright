@@ -11,7 +11,7 @@ live in Git and edits are diffable, reviewable, and AI-friendly).
 
 ```
 my-project/
-├─ sitewright.json            # Project manifest: id, name, slug, brand, settings, formatVersion
+├─ sitewright.json            # Project manifest: id, name, slug, identity, settings, formatVersion
 ├─ pages/
 │  ├─ index.json              # Page: route "/", a block tree (+ optional SEO)
 │  ├─ about.json
@@ -41,8 +41,11 @@ my-project/
   so the published output stays static.
 - **Collection pages** — a page with a `collection` (`{ dataset, param }`) and a `[param]`
   segment in its `path` is generated once per dataset entry (e.g. `/products/[slug]`).
-- **Brand** — per-project corporate identity (colors, typography, spacing, logo) compiled to
-  CSS variables at build time. Editable by developers; lockable for client roles.
+- **Corporate Identity** (`identity`) — the single per-project record that unifies the company
+  info (legal/short name, slogan, logo, favicon/OG image, address, geo, social → schema.org
+  JSON-LD) and the brand tokens (colors, typography, spacing, radii → CSS variables + Tailwind
+  theme). `name` is always present; everything else is optional. Editable by developers;
+  lockable for client roles.
 
 ## Versioning
 
@@ -50,3 +53,7 @@ my-project/
 changes; the CLI and API refuse to open a project with a newer format than they understand and
 provide a migration path. The current version is exported as `PROJECT_FORMAT_VERSION` from
 `@sitewright/schema`.
+
+- **v2** — merged the separate `brand` and `company` objects into a single `identity` record
+  (the unified Corporate Identity). Legacy v1 `{brand, company}` data is normalized to
+  `{identity}` transparently on read (DB settings rows, imported bundles) by `mergeLegacyIdentity`.

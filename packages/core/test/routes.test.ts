@@ -21,10 +21,11 @@ function page(partial: Partial<Page> & { id: string; path: string }): Page {
 function bundle(over: Partial<ProjectBundle> = {}): ProjectBundle {
   return {
     project: {
+      formatVersion: 2,
       id: 'p',
       name: 'P',
       slug: 'p',
-      brand: { name: 'P', colors: {} },
+      identity: { name: 'P', colors: {} },
       settings: { defaultLocale: 'en', locales: ['en'] },
     },
     pages: [],

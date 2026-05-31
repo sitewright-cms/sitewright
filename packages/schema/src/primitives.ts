@@ -81,17 +81,21 @@ export const CssColorSchema = z
     'must be a valid CSS color value',
   );
 
+// A CSS token value cannot contain the declaration break-out characters
+// (`;{}<>`), a BACKSLASH (CSS hex escapes like `\3b` decode to `;`, reconstructing
+// a blocked char), or whitespace controls / NUL (which could straddle a comment).
+// Mirrors the renderer's `SAFE` guard (brand-css.ts) at the schema boundary.
+// eslint-disable-next-line no-control-regex -- intentionally denying NUL/control chars
+const CSS_VALUE_SAFE = /^[^;{}<>\\\n\r\t\f\x00]*$/;
+
 /** A short design-token value (string or number); strings cannot contain CSS-breaking characters. */
 export const TokenValueSchema = z.union([
   z.number(),
-  z.string().max(64).regex(/^[^;{}<>]*$/, 'invalid token value'),
+  z.string().max(64).regex(CSS_VALUE_SAFE, 'invalid token value'),
 ]);
 
 /** A CSS string value (e.g. a font-family stack) with no declaration break-out characters. */
-export const CssStringSchema = z
-  .string()
-  .max(200)
-  .regex(/^[^;{}<>]*$/, 'invalid CSS value');
+export const CssStringSchema = z.string().max(200).regex(CSS_VALUE_SAFE, 'invalid CSS value');
 
 /**
  * A space-separated list of Tailwind utility classes for a block's root element.

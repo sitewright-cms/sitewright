@@ -151,10 +151,11 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
   await mkdir(tmp, { recursive: true });
   try {
     const datasets = datasetEntries(bundle);
-    const brand = bundle.project.brand;
-    // Corporate identity is project-level (same for every page): compute once.
-    const company = bundle.project.company;
-    const baseOrg = companyToOrganization(company, bundle.project.name);
+    // The unified Corporate Identity drives BOTH the brand tokens (CSS vars/theme)
+    // and the schema.org/favicon/OG fields; it's project-level, computed once.
+    const identity = bundle.project.identity;
+    const brand = identity;
+    const baseOrg = companyToOrganization(identity, bundle.project.name);
     // Project-wide website settings (critical CSS + custom head/footer) — same for every page.
     const website = bundle.project.website;
     // Auto-nav: page-tree-derived menus per slot (same for every page; Nav blocks consume it).
@@ -264,12 +265,12 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
             // `||` not `??`: an empty SEO title must fall back to the page title.
             title: page.seo?.title || page.title,
             description: page.seo?.description,
-            // og:image falls back to the company image; favicon to the company icon.
-            ogImage: rel(page.seo?.ogImage ?? company?.image),
+            // og:image falls back to the identity image; favicon to icon then favicon.
+            ogImage: rel(page.seo?.ogImage ?? identity.image),
             url: page.seo?.canonical,
             noindex: page.seo?.noindex,
-            themeColor: brand.colors.primary,
-            favicon: rel(company?.icon ?? brand.logo?.favicon),
+            themeColor: identity.colors.primary,
+            favicon: rel(identity.icon ?? identity.favicon),
           },
           organization,
           criticalCss: website?.criticalCss,

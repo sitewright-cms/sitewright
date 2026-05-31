@@ -3,7 +3,7 @@
 // stylesheet targets. ALL text and attributes are escaped, and URLs are passed
 // through an allowlist — the output is safe to drop into a sandboxed preview
 // iframe even when the page tree contains hostile content.
-import type { Brand, Entry, FormField, FormPublic, MediaAsset, Page, PageNode } from '@sitewright/schema';
+import type { BrandTokens, Entry, FormField, FormPublic, MediaAsset, Page, PageNode } from '@sitewright/schema';
 import { HONEYPOT_FIELD, FORM_ID_FIELD } from '@sitewright/schema';
 import { resolveBinding } from '@sitewright/core';
 import { escapeAttr, escapeHtml } from './escape.js';
@@ -529,7 +529,7 @@ export function renderPage(page: Page, ctx: RenderContext = {}): string {
 
 /** Options for {@link renderDocument}. */
 export interface RenderDocumentOptions extends RenderContext {
-  brand: Brand;
+  brand: BrandTokens;
   /** Document language attribute (defaults to `en`). */
   lang?: string;
   /** SEO/Open-Graph metadata; `title` falls back to the page title. */

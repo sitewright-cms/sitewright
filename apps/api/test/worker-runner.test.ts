@@ -17,7 +17,7 @@ afterEach(async () => {
 });
 
 const bundle = {
-  project: { id: 'p', name: 'P', slug: 'p', brand: { name: 'P', colors: {} }, settings: { defaultLocale: 'en', locales: ['en'] } },
+  project: { formatVersion: 2 as const, id: 'p', name: 'P', slug: 'p', identity: { name: 'P', colors: {} }, settings: { defaultLocale: 'en', locales: ['en'] } },
   pages: [],
   partials: [],
   datasets: [],

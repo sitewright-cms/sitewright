@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { PageNodeSchema, type PageNode } from './block.js';
+import { PageNodeSchema } from './block.js';
 import { IdSchema } from './primitives.js';
 
 /**
@@ -10,14 +10,11 @@ import { IdSchema } from './primitives.js';
  * Like other tree-bearing content, untrusted input MUST be passed through
  * `assertWithinTreeDepth` on `root` before parsing (Zod parses recursively).
  */
-export interface Pattern {
-  id: string;
-  name: string;
-  root: PageNode;
-}
-
-export const PatternSchema: z.ZodType<Pattern, z.ZodTypeDef, unknown> = z.object({
+export const PatternSchema = z.object({
   id: IdSchema,
-  name: z.string().min(1).max(200),
+  // `.trim()` so a whitespace-only name can't pass `.min(1)` and persist blank.
+  name: z.string().trim().min(1).max(200),
   root: PageNodeSchema,
 });
+
+export type Pattern = z.infer<typeof PatternSchema>;

@@ -149,7 +149,7 @@ export function PageEditor({ org, project, page, onClose }: PageEditorProps) {
     if (!selectedId) return;
     const selected = findNode(root, selectedId);
     if (!selected) return;
-    const name = window.prompt('Pattern name', `Pattern ${patterns.length + 1}`);
+    const name = (window.prompt('Pattern name', `Pattern ${patterns.length + 1}`) ?? '').trim();
     if (!name) return;
     const pattern: Pattern = { id: genId(), name, root: selected };
     try {
@@ -164,8 +164,8 @@ export function PageEditor({ org, project, page, onClose }: PageEditorProps) {
     try {
       await api.deletePattern(org.id, project.id, id);
       setPatterns((prev) => prev.filter((p) => p.id !== id));
-    } catch {
-      /* leave the list as-is on failure */
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'failed to delete pattern');
     }
   }
 

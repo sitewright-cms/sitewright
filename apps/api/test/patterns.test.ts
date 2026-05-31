@@ -55,7 +55,7 @@ describe('Patterns library (pattern content kind)', () => {
     h = await makeHarness();
     const a = await h.signup();
     const proj = a.project(await a.createProject());
-    // Just over the 100-level tree-depth limit — enough to trip the guard, shallow
+    // 200 levels — well over the 100-level (MAX_PAGE_TREE_DEPTH) guard, yet shallow
     // enough that the test injector can still serialize the payload.
     let deep: unknown = { id: 'leaf', type: 'Section' };
     for (let i = 0; i < 200; i++) deep = { id: `n${i}`, type: 'Section', children: [deep] };

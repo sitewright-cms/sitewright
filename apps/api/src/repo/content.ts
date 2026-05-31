@@ -174,6 +174,8 @@ export class ContentRepository {
       templates: (await this.list(ctx, 'template')) as Template[],
       datasets: (await this.list(ctx, 'dataset')) as Dataset[],
       entries: (await this.list(ctx, 'entry')) as Entry[],
+      // `pattern` is intentionally NOT bundled — it's a project-scoped editor aid
+      // (fork-on-insert library), not part of the publishable/portable artifact.
     };
   }
 

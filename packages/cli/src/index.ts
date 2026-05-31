@@ -1,5 +1,5 @@
 export { runLogin, type LoginOptions } from './login.js';
-export { ensureAccessToken } from './session.js';
+export { ensureAccessToken, forceRefreshAccessToken } from './session.js';
 export {
   loadCredentials,
   saveCredentials,

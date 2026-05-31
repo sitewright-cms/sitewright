@@ -108,6 +108,18 @@ describe('ApiKeyRepository.list / revoke', () => {
     expect(listA[0]).not.toHaveProperty('tokenHash');
   });
 
+  it('excludes revoked keys from the management list (active keys only)', async () => {
+    const { key } = await keys.create(pctxA, {
+      name: 'x',
+      role: 'admin',
+      capabilities: ['content:read'],
+      expiresAt: future(),
+    });
+    expect(await keys.list(pctxA)).toHaveLength(1);
+    await keys.revoke(pctxA, key.id);
+    expect(await keys.list(pctxA)).toHaveLength(0); // revoked → not listed (still in DB for audit)
+  });
+
   it('revokes a key so it no longer resolves, scoped to the project', async () => {
     const { token, key } = await keys.create(pctxA, {
       name: 'x',

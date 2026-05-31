@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
 import {
   apiKeys,
@@ -146,6 +146,9 @@ export class ApiKeyRepository {
           eq(apiKeys.projectId, ctx.projectId),
           // Only user-minted PATs; ephemeral OAuth access tokens are not "keys" to manage.
           eq(apiKeys.source, 'pat'),
+          // The management list shows ACTIVE keys; revoked rows are retained for audit
+          // but never listed (a revoked key is dead).
+          isNull(apiKeys.revokedAt),
         ),
       );
     return rows.map(toView);

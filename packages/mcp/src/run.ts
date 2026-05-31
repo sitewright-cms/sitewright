@@ -8,8 +8,13 @@ import { createSitewrightMcpServer } from './server.js';
  * can't be resolved (caller maps that to a fatal startup error). Shared by the
  * `@sitewright/mcp` bin and the `sitewright mcp` CLI command.
  */
-export async function runStdioBridge(opts: { url: string; token: string }): Promise<Scope> {
-  const client = new SitewrightClient(opts.url, opts.token);
+export async function runStdioBridge(opts: {
+  url: string;
+  token: string;
+  /** Optional refresh hook for short-lived OAuth tokens (returns null to give up). */
+  onUnauthorized?: () => Promise<string | null>;
+}): Promise<Scope> {
+  const client = new SitewrightClient(opts.url, opts.token, undefined, opts.onUnauthorized);
   const scope = await client.introspect();
   const server = createSitewrightMcpServer(client, scope);
   await server.connect(new StdioServerTransport());

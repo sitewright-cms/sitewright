@@ -37,17 +37,30 @@ export type FetchLike = (
 
 export class SitewrightClient {
   private scope: Scope | undefined;
+  private readonly baseUrl: string;
+  private token: string;
+  private readonly fetchImpl: FetchLike;
+  private readonly onUnauthorized?: () => Promise<string | null>;
 
+  /**
+   * @param onUnauthorized optional hook called once on a 401 to obtain a fresh
+   *   access token (e.g. the CLI refreshing an expired OAuth token mid-session);
+   *   returning null gives up and surfaces the 401.
+   */
   constructor(
-    private readonly baseUrl: string,
-    private readonly token: string,
-    private readonly fetchImpl: FetchLike = globalThis.fetch as unknown as FetchLike,
+    baseUrl: string,
+    token: string,
+    fetchImpl: FetchLike = globalThis.fetch as unknown as FetchLike,
+    onUnauthorized?: () => Promise<string | null>,
   ) {
     // Trim a trailing slash so `${baseUrl}${path}` never double-slashes.
     this.baseUrl = baseUrl.replace(/\/+$/, '');
+    this.token = token;
+    this.fetchImpl = fetchImpl;
+    this.onUnauthorized = onUnauthorized;
   }
 
-  private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  private async request<T>(method: string, path: string, body?: unknown, retried = false): Promise<T> {
     const headers: Record<string, string> = { authorization: `Bearer ${this.token}` };
     if (body !== undefined) headers['content-type'] = 'application/json';
     const res = await this.fetchImpl(`${this.baseUrl}${path}`, {
@@ -55,6 +68,14 @@ export class SitewrightClient {
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
+    // A short-lived OAuth token may expire mid-session: refresh once and retry.
+    if (res.status === 401 && this.onUnauthorized && !retried) {
+      const fresh = await this.onUnauthorized();
+      if (fresh) {
+        this.token = fresh;
+        return this.request<T>(method, path, body, true);
+      }
+    }
     if (res.status === 204) return undefined as T;
     const text = await res.text();
     let parsed: unknown;

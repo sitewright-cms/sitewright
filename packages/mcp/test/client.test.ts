@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { SitewrightClient, SitewrightApiError, type FetchLike, type Scope } from '../src/client.js';
 
 interface Canned {
@@ -81,6 +81,41 @@ describe('SitewrightClient', () => {
       message: /content:write/,
     });
     await expect(client.putContent('page', 'home', {})).rejects.toBeInstanceOf(SitewrightApiError);
+  });
+
+  it('refreshes once on a 401 and retries with the new token', async () => {
+    let call = 0;
+    const seen: Array<string | undefined> = [];
+    const impl: FetchLike = async (input, init) => {
+      seen.push(init?.headers?.authorization);
+      call += 1;
+      if (input.endsWith('/api-key/self')) return { ok: true, status: 200, statusText: 'x', text: async () => JSON.stringify(scope) };
+      // First content call 401s; after refresh, succeeds.
+      if (call <= 2) return { ok: false, status: 401, statusText: 'x', text: async () => '{"error":"invalid or expired API key"}' };
+      return { ok: true, status: 200, statusText: 'x', text: async () => '{"items":[]}' };
+    };
+    const onUnauthorized = vi.fn(async () => 'swk_fresh');
+    const client = new SitewrightClient('https://cms.test', 'swk_old', impl, onUnauthorized);
+    await client.introspect();
+    await client.listContent('page');
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
+    // The retry used the refreshed token.
+    expect(seen[seen.length - 1]).toBe('Bearer swk_fresh');
+  });
+
+  it('surfaces the 401 when there is no refresh hook or refresh gives up', async () => {
+    const impl: FetchLike = async (input) =>
+      input.endsWith('/api-key/self')
+        ? { ok: true, status: 200, statusText: 'x', text: async () => JSON.stringify(scope) }
+        : { ok: false, status: 401, statusText: 'x', text: async () => '{"error":"expired"}' };
+    // No hook → 401 propagates.
+    const noHook = new SitewrightClient('https://cms.test', 'swk_old', impl);
+    await noHook.introspect();
+    await expect(noHook.listContent('page')).rejects.toMatchObject({ status: 401 });
+    // Hook returns null (refresh failed) → 401 still propagates (no infinite retry).
+    const giveUp = new SitewrightClient('https://cms.test', 'swk_old', impl, async () => null);
+    await giveUp.introspect();
+    await expect(giveUp.listContent('page')).rejects.toMatchObject({ status: 401 });
   });
 
   it('refuses scoped calls before introspection', async () => {

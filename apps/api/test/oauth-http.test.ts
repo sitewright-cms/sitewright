@@ -127,6 +127,72 @@ describe('OAuth discovery + authorize', () => {
   });
 });
 
+describe('OAuth Dynamic Client Registration (RFC 7591)', () => {
+  it('advertises the registration endpoint in metadata', async () => {
+    const md = (await app.inject({ method: 'GET', url: '/.well-known/oauth-authorization-server' })).json();
+    expect(md.registration_endpoint).toMatch(/\/oauth\/register$/);
+  });
+
+  it('registers a public client and rejects bad client metadata', async () => {
+    const ok = await app.inject({
+      method: 'POST',
+      url: '/oauth/register',
+      payload: { client_name: 'Claude', redirect_uris: ['https://claude.ai/cb'] },
+    });
+    expect(ok.statusCode).toBe(201);
+    const body = ok.json() as { client_id: string; token_endpoint_auth_method: string };
+    expect(body.client_id).toMatch(/^swcid_/);
+    expect(body.token_endpoint_auth_method).toBe('none');
+
+    const bad = await app.inject({
+      method: 'POST',
+      url: '/oauth/register',
+      payload: { client_name: 'Evil', redirect_uris: ['http://evil.example.com/cb'] },
+    });
+    expect(bad.statusCode).toBe(400);
+    expect((bad.json() as { error: string }).error).toBe('invalid_client_metadata');
+  });
+
+  it('authorizes a registered client only at its exact redirect URI', async () => {
+    const { session } = await setup();
+    const reg = await app.inject({
+      method: 'POST',
+      url: '/oauth/register',
+      payload: { client_name: 'Hosted <b>App</b>', redirect_uris: ['https://app.example.test/cb'] },
+    });
+    const clientId = (reg.json() as { client_id: string }).client_id;
+    const q = (redirect: string) =>
+      new URLSearchParams({
+        client_id: clientId,
+        redirect_uri: redirect,
+        response_type: 'code',
+        code_challenge: CHALLENGE,
+        code_challenge_method: 'S256',
+        scope: 'content:read',
+        state: 's',
+      }).toString();
+
+    // Exact registered redirect → consent page, showing the (escaped) client name.
+    const okRes = await app.inject({
+      method: 'GET',
+      url: `/oauth/authorize?${q('https://app.example.test/cb')}`,
+      cookies: { sw_session: session },
+    });
+    expect(okRes.statusCode).toBe(200);
+    expect(okRes.body).toContain('Hosted &lt;b&gt;App&lt;/b&gt;'); // name escaped, not raw HTML
+    expect(okRes.body).not.toContain('Hosted <b>App</b>');
+
+    // A different (unregistered) redirect → 400, no redirect (open-redirect guard).
+    const badRes = await app.inject({
+      method: 'GET',
+      url: `/oauth/authorize?${q('https://app.example.test/other')}`,
+      cookies: { sw_session: session },
+    });
+    expect(badRes.statusCode).toBe(400);
+    expect(badRes.headers.location).toBeUndefined();
+  });
+});
+
 describe('OAuth full authorization-code + PKCE flow', () => {
   async function getCode(session: string, project: string): Promise<string> {
     const res = await app.inject({
@@ -224,6 +290,44 @@ describe('OAuth full authorization-code + PKCE flow', () => {
     expect((reuse.json() as { error: string }).error).toBe('invalid_grant');
     // …and the live successor rt2 is now revoked too.
     expect((await refresh(rt2)).statusCode).toBe(400);
+  });
+
+  it('completes the full flow for a dynamically-registered client', async () => {
+    const { session, orgId, projectId } = await setup();
+    const reg = await app.inject({
+      method: 'POST',
+      url: '/oauth/register',
+      payload: { client_name: 'Hosted', redirect_uris: ['https://hosted.example.test/cb'] },
+    });
+    const clientId = (reg.json() as { client_id: string }).client_id;
+    const HREDIRECT = 'https://hosted.example.test/cb';
+
+    const consent = await app.inject({
+      method: 'POST',
+      url: '/oauth/authorize',
+      cookies: { sw_session: session },
+      ...form({
+        client_id: clientId,
+        redirect_uri: HREDIRECT,
+        response_type: 'code',
+        code_challenge: CHALLENGE,
+        code_challenge_method: 'S256',
+        scope: 'content:read',
+        state: 's',
+        project: `${orgId}:${projectId}`,
+        decision: 'approve',
+      }),
+    });
+    expect(consent.statusCode).toBe(302);
+    const code = new URL(consent.headers.location as string).searchParams.get('code');
+
+    const tok = await app.inject({
+      method: 'POST',
+      url: '/oauth/token',
+      ...form({ grant_type: 'authorization_code', code: code!, client_id: clientId, redirect_uri: HREDIRECT, code_verifier: VERIFIER }),
+    });
+    expect(tok.statusCode).toBe(200);
+    expect((tok.json() as { access_token: string }).access_token.startsWith('swk_')).toBe(true);
   });
 
   it('rejects an unsupported grant type', async () => {

@@ -5,6 +5,15 @@ export type { DeployTargetView };
 /** Base URL for the API. Empty = same origin (the API serves this SPA). */
 const BASE = import.meta.env.VITE_API_BASE ?? '';
 
+/**
+ * Absolute URL of the sandboxed preview document for a token — loaded via the
+ * preview iframe's `src` (not `srcDoc`), so the document is served under its own
+ * `Content-Security-Policy: sandbox` rather than inheriting the editor's CSP.
+ */
+export function previewDocUrl(orgId: string, projectId: string, token: string): string {
+  return `${BASE}/orgs/${orgId}/projects/${projectId}/preview/${encodeURIComponent(token)}`;
+}
+
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
@@ -92,7 +101,11 @@ export const api = {
   deletePage: (orgId: string, projectId: string, id: string) =>
     request<void>('DELETE', `/orgs/${orgId}/projects/${projectId}/content/page/${id}`),
   preview: (orgId: string, projectId: string, page: Page) =>
-    request<{ html: string }>('POST', `/orgs/${orgId}/projects/${projectId}/preview`, page),
+    request<{ html: string; token: string }>(
+      'POST',
+      `/orgs/${orgId}/projects/${projectId}/preview`,
+      page,
+    ),
 
   // --- datasets ---
   listDatasets: (orgId: string, projectId: string) =>

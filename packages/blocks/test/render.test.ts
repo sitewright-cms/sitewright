@@ -682,6 +682,16 @@ describe('renderPage / renderDocument', () => {
     expect(evil).toContain('&quot;');
   });
 
+  it('inlines scripts at the end of <body>, neutralizing a nested </script>', () => {
+    const doc = renderDocument(page, { brand, inlineScripts: ['console.log(1)'] });
+    expect(doc).toContain('<script>console.log(1)</script>');
+    expect(doc.indexOf('<script>console.log(1)')).toBeLessThan(doc.indexOf('</body>'));
+    expect(renderDocument(page, { brand })).not.toContain('<script>'); // none by default
+    const tricky = renderDocument(page, { brand, inlineScripts: ['var s="</script><img onerror=x>"'] });
+    expect(tricky).toContain('<\\/script');
+    expect(tricky).not.toContain('</script><img');
+  });
+
   it('inlines inlineStyles as <style> blocks last in <head>, after critical CSS', () => {
     const doc = renderDocument(page, {
       brand,

@@ -421,10 +421,18 @@ export interface RenderDocumentOptions extends RenderContext {
    * Deferred external script srcs linked just before `</body>` — the platform's
    * `components.js` (interactive-component behavior), served from the site's own
    * origin so it loads under the `default-src 'self'` CSP. First-party, audited
-   * code only; never tenant input. Omitted in the sandboxed editor preview (which
-   * runs no scripts), so components show their progressive-enhancement fallback.
+   * code only; never tenant input. The publish path links these.
    */
   scripts?: readonly string[];
+  /**
+   * JavaScript inlined in `<script>` blocks just before `</body>` — the preview's
+   * self-contained equivalent of `scripts` (the preview document is served under
+   * `Content-Security-Policy: sandbox`, an opaque isolated origin, so its inline
+   * scripts run but cannot touch the editor). First-party, audited platform code
+   * only (the bundled component behavior); never tenant input. The `</script`
+   * sequence is neutralized so a future component can't break out of the tag.
+   */
+  inlineScripts?: readonly string[];
 }
 
 /**
@@ -445,6 +453,7 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     stylesheets,
     inlineStyles,
     scripts,
+    inlineScripts,
     ...ctx
   } = opts;
   const body = renderPage(page, ctx);
@@ -473,6 +482,10 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     `<body>${body}${customFooter ?? ''}` +
     (scripts ?? [])
       .map((src) => `<script defer src="${escapeAttr(src)}"></script>`)
+      .join('') +
+    (inlineScripts ?? [])
+      // Neutralize any `</script` so trusted bundled JS can't close the tag early.
+      .map((js) => `<script>${js.replace(/<\/(script)/gi, '<\\/$1')}</script>`)
       .join('') +
     `</body>\n` +
     `</html>`

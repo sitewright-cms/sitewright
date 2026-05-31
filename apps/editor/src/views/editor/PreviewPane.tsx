@@ -1,27 +1,23 @@
 interface PreviewPaneProps {
-  html: string;
+  /** URL of the sandboxed preview document (served under `CSP: sandbox`). */
+  src: string;
   loading: boolean;
   error: string | null;
 }
 
 /**
- * Renders the server-produced preview HTML in a fully sandboxed iframe. The
- * `sandbox=""` attribute blocks scripts, forms and same-origin access, so even
- * if hostile content slipped past escaping it cannot execute — the preview is
- * pure styled markup. Interactive components (Carousel/Lightbox/…) therefore show
- * their progressive-enhancement fallback here; their behavior runs on the
- * published/exported site.
+ * Renders the live preview in a sandboxed iframe loaded via `src` from the
+ * preview-document endpoint.
  *
- * NOTE (WYSIWYG-with-scripts): simply switching to `sandbox="allow-scripts"` does
- * NOT make the preview interactive — a `srcDoc` document INHERITS the editor
- * page's CSP (`default-src 'self'`, no inline-script), which blocks the inlined
- * component JS regardless of the sandbox. True script-running preview requires
- * loading the preview from a SEPARATE origin, or via `src` from an endpoint that
- * serves the document under a `Content-Security-Policy: sandbox allow-scripts`
- * header (forcing an opaque, isolated origin even on direct navigation). That is
- * a deliberate, security-reviewed change tracked separately — not a one-liner.
+ * Why `src` (not `srcDoc`): a `srcDoc` document inherits the editor page's CSP
+ * (`default-src 'self'`, no inline-script), which would block the interactive
+ * components' inlined JS. Loading via `src` lets the document use its OWN response
+ * CSP — the endpoint serves it under `Content-Security-Policy: sandbox
+ * allow-scripts`, an OPAQUE origin, so component scripts run (true WYSIWYG) yet
+ * cannot reach the editor's `window`, cookies, or session. `sandbox="allow-scripts"`
+ * on the iframe is belt-and-suspenders; `allow-same-origin` must NEVER be added.
  */
-export function PreviewPane({ html, loading, error }: PreviewPaneProps) {
+export function PreviewPane({ src, loading, error }: PreviewPaneProps) {
   return (
     <div className="relative h-full">
       {error && (
@@ -32,8 +28,8 @@ export function PreviewPane({ html, loading, error }: PreviewPaneProps) {
       <iframe
         title="Live preview"
         aria-label="Live preview"
-        sandbox=""
-        srcDoc={html}
+        sandbox="allow-scripts"
+        src={src || 'about:blank'}
         className="h-full w-full rounded-lg border border-slate-200 bg-white"
       />
       {loading && (

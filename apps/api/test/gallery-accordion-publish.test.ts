@@ -93,7 +93,7 @@ describe('Accordion + Lightbox → publish', () => {
     expect(bundle.body).toContain('data-sw-component="lightbox"');
   });
 
-  it('previews a Lightbox script-free with inlined CSS (PE fallback)', async () => {
+  it('previews a Lightbox live — inlined CSS + behavior (sandbox-CSP doc)', async () => {
     const page = {
       id: 'home',
       path: '/',
@@ -106,9 +106,11 @@ describe('Accordion + Lightbox → publish', () => {
     };
     const res = await client.post(`/orgs/${client.orgId}/projects/${projectId}/preview`, page);
     expect(res.statusCode).toBe(200);
-    const html = (res.json() as { html: string }).html;
-    expect(html).toContain('data-sw-component="lightbox"');
-    expect(html).toContain('[data-sw-part="overlay"]'); // CSS inlined for the fallback
-    expect(html).not.toContain('<script'); // sandboxed preview: no scripts
+    const body = res.json() as { html: string; token: string };
+    expect(body.html).toContain('data-sw-component="lightbox"');
+    expect(body.html).toContain('[data-sw-part="overlay"]'); // CSS inlined
+    expect(body.html).toContain('<script>'); // behavior inlined (preview runs scripts)
+    expect(body.html).toContain('Image viewer'); // lightbox dialog enhancer present inline
+    expect(body.token).toBeTruthy(); // a preview token is issued for the doc endpoint
   });
 });

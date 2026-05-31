@@ -24,6 +24,13 @@ async function main(): Promise<void> {
     process.exit(2);
   }
 
+  // Prefer the env var: a token on the command line is visible in `ps`/proc.
+  if (process.argv.slice(2).some((a) => a === '--token' || a.startsWith('--token='))) {
+    process.stderr.write(
+      'sitewright-mcp: warning: --token is visible in the process list; prefer SITEWRIGHT_TOKEN.\n',
+    );
+  }
+
   const client = new SitewrightClient(url, token);
   // Fail fast (and out of band of the MCP protocol) on a bad token, and learn the
   // project scope so the toolset matches the token's capabilities.

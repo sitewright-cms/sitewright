@@ -162,7 +162,7 @@ describe('project API keys — bearer auth + capabilities', () => {
   });
 
   it('introspects its own scope via GET /api-key/self (no secret leaked)', async () => {
-    const { token, orgId, projectId } = await keyWith(['content:read', 'publish']);
+    const { token, orgId, projectId, t } = await keyWith(['content:read', 'publish']);
     const res = await app.inject({ method: 'GET', url: '/api-key/self', headers: bearer(token) });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({
@@ -175,6 +175,11 @@ describe('project API keys — bearer auth + capabilities', () => {
     expect((await app.inject({ method: 'GET', url: '/api-key/self' })).statusCode).toBe(401);
     expect(
       (await app.inject({ method: 'GET', url: '/api-key/self', headers: bearer('swk_nope') })).statusCode,
+    ).toBe(401);
+    // Ambiguous dual-credential (cookie + bearer) → 401, consistent with project routes.
+    expect(
+      (await app.inject({ method: 'GET', url: '/api-key/self', headers: bearer(token), cookies: { sw_session: t } }))
+        .statusCode,
     ).toBe(401);
   });
 

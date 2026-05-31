@@ -105,6 +105,19 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
     return { name: client.name, allowsRedirect: (uri) => client.redirectUris.includes(uri) };
   }
 
+  // The user's (org:project) options for a consent/device picker. (2 queries/org —
+  // fine for an agency with a handful of orgs; batch if multi-tenant scales this.)
+  async function projectOptions(userId: string): Promise<Array<{ value: string; label: string }>> {
+    const options: Array<{ value: string; label: string }> = [];
+    for (const org of await listOrgsForUser(db, userId)) {
+      const ctx = await tenantContext(db, userId, org.id);
+      for (const project of await projects.list(ctx)) {
+        options.push({ value: `${org.id}:${project.id}`, label: `${project.name} — ${org.name}` });
+      }
+    }
+    return options;
+  }
+
   // ---- Discovery (RFC 8414 + RFC 9728) ----
   app.get('/.well-known/oauth-authorization-server', async (req, reply) => {
     const issuer = issuerOf(req);
@@ -113,8 +126,13 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
       authorization_endpoint: `${issuer}/oauth/authorize`,
       token_endpoint: `${issuer}/oauth/token`,
       registration_endpoint: `${issuer}/oauth/register`,
+      device_authorization_endpoint: `${issuer}/oauth/device_authorization`,
       response_types_supported: ['code'],
-      grant_types_supported: ['authorization_code', 'refresh_token'],
+      grant_types_supported: [
+        'authorization_code',
+        'refresh_token',
+        'urn:ietf:params:oauth:grant-type:device_code',
+      ],
       code_challenge_methods_supported: ['S256'],
       token_endpoint_auth_methods_supported: ['none'],
       scopes_supported: API_KEY_CAPABILITIES,
@@ -194,16 +212,7 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
         );
       }
 
-      // Build the project picker from the user's memberships. (2 queries/org — fine
-      // for an agency with a handful of orgs; batch if multi-tenant scales this.)
-      const orgs = await listOrgsForUser(db, userId);
-      const options: Array<{ value: string; label: string }> = [];
-      for (const org of orgs) {
-        const ctx = await tenantContext(db, userId, org.id);
-        for (const project of await projects.list(ctx)) {
-          options.push({ value: `${org.id}:${project.id}`, label: `${project.name} — ${org.name}` });
-        }
-      }
+      const options = await projectOptions(userId);
       if (options.length === 0) {
         return reply.code(200).type('text/html').send(
           htmlPage('No projects', '<h1>No projects</h1><p>Create a project in the editor first, then retry.</p>'),
@@ -294,6 +303,117 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
     },
   );
 
+  // ---- Device Authorization Grant (RFC 8628) — headless / SSH CLI ----
+  app.post<{ Body: Record<string, string> }>(
+    '/oauth/device_authorization',
+    { config: rl(20) },
+    async (req, reply) => {
+      const b = req.body ?? {};
+      const clientId = b.client_id ?? '';
+      if (clientId !== CLI_CLIENT_ID && !(await clients.get(clientId))) {
+        return reply.code(400).send({ error: 'invalid_client' });
+      }
+      const scope = parseScope(b.scope);
+      if (scope.length === 0) return reply.code(400).send({ error: 'invalid_scope' });
+      const issuer = issuerOf(req);
+      const { deviceCode, userCode, expiresAt, interval } = await oauth.startDeviceAuthorization({ clientId, scope });
+      return reply.send({
+        device_code: deviceCode,
+        user_code: userCode,
+        verification_uri: `${issuer}/oauth/device`,
+        verification_uri_complete: `${issuer}/oauth/device?user_code=${encodeURIComponent(userCode)}`,
+        expires_in: Math.floor((expiresAt.getTime() - Date.now()) / 1000),
+        interval,
+      });
+    },
+  );
+
+  // The browser page where the user enters/confirms the user code + picks a project.
+  app.get<{ Querystring: { user_code?: string } }>(
+    '/oauth/device',
+    { config: rl(30) },
+    async (req, reply) => {
+      const userId = await currentUserId(req);
+      if (!userId) {
+        return reply.code(401).type('text/html').send(
+          htmlPage(
+            'Sign in required',
+            `<h1>Sign in to authorize a device</h1><p>Open the <a href="/">Sitewright editor</a>, sign in, then return here.</p>`,
+          ),
+        );
+      }
+      const prefilled = req.query.user_code ?? '';
+      const options = await projectOptions(userId);
+      if (options.length === 0) {
+        return reply.code(200).type('text/html').send(
+          htmlPage('No projects', '<h1>No projects</h1><p>Create a project first, then retry.</p>'),
+        );
+      }
+      const optionsHtml = options
+        .map((o) => `<option value="${escapeHtml(o.value)}">${escapeHtml(o.label)}</option>`)
+        .join('');
+      return reply.code(200).type('text/html').send(
+        htmlPage(
+          'Authorize device',
+          `<h1>Authorize a device</h1>
+           <p>Enter the code shown in your terminal and choose the project to grant access to.</p>
+           <div class="card">
+             <form method="post" action="/oauth/device">
+               <label for="user_code">Code</label>
+               <input id="user_code" name="user_code" value="${escapeHtml(prefilled)}" required
+                 style="width:100%;padding:.5rem;border:1px solid #cbd5e1;border-radius:.5rem;font:inherit;text-transform:uppercase">
+               <label for="project">Project</label>
+               <select id="project" name="project" required>${optionsHtml}</select>
+               <div class="row">
+                 <button class="primary" type="submit" name="decision" value="approve">Approve</button>
+                 <button type="submit" name="decision" value="deny">Deny</button>
+               </div>
+             </form>
+           </div>`,
+        ),
+      );
+    },
+  );
+
+  app.post<{ Body: Record<string, string> }>(
+    '/oauth/device',
+    { config: rl(30) },
+    async (req, reply) => {
+      const userId = await currentUserId(req);
+      if (!userId) return reply.code(401).type('text/html').send(htmlPage('Sign in required', '<h1>Sign in required</h1>'));
+      const b = req.body ?? {};
+      const userCode = (b.user_code ?? '').trim().toUpperCase();
+      const result = (title: string, msg: string) =>
+        reply.code(200).type('text/html').send(htmlPage(title, `<h1>${escapeHtml(title)}</h1><p>${escapeHtml(msg)}</p>`));
+
+      if (!/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(userCode)) return result('Invalid code', 'Enter the code exactly as shown in your terminal.');
+      const pending = await oauth.findDeviceByUserCode(userCode);
+      if (!pending) return result('Unknown or expired code', 'Check the code in your terminal and try again.');
+
+      if (b.decision !== 'approve') {
+        await oauth.denyDevice(userCode);
+        return result('Request denied', 'You can close this window.');
+      }
+      const projectField = b.project ?? '';
+      const sep = projectField.indexOf(':');
+      const orgId = sep > 0 ? projectField.slice(0, sep) : '';
+      const projectId = sep > 0 ? projectField.slice(sep + 1) : '';
+      if (!orgId || !projectId) return result('Invalid request', 'No project was selected.');
+      try {
+        const ctx = await tenantContext(db, userId, orgId);
+        await projects.get(ctx, projectId);
+        await oauth.approveDevice({ userCode, userId, orgId, projectId, role: ctx.role });
+      } catch (err) {
+        if (err instanceof ForbiddenError || err instanceof NotFoundError) {
+          return result('Not allowed', 'You are not a member of that project.');
+        }
+        if (err instanceof OAuthError) return result('Could not authorize', err.message);
+        throw err;
+      }
+      return result('Device authorized', 'Return to your terminal — the CLI will continue automatically.');
+    },
+  );
+
   // ---- Token endpoint ----
   app.post<{ Body: Record<string, string> }>(
     '/oauth/token',
@@ -332,7 +452,18 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
             scope: tokens.scope.join(' '),
           });
         }
-        return fail(400, 'unsupported_grant_type', 'grant_type must be authorization_code or refresh_token');
+        if (b.grant_type === 'urn:ietf:params:oauth:grant-type:device_code') {
+          if (!b.device_code || !b.client_id) return fail(400, 'invalid_request', 'missing required parameter');
+          const tokens = await oauth.redeemDeviceCode({ deviceCode: b.device_code, clientId: b.client_id });
+          return reply.send({
+            access_token: tokens.accessToken,
+            token_type: 'Bearer',
+            expires_in: tokens.expiresInSeconds,
+            refresh_token: tokens.refreshToken,
+            scope: tokens.scope.join(' '),
+          });
+        }
+        return fail(400, 'unsupported_grant_type', 'unsupported grant_type');
       } catch (err) {
         if (err instanceof OAuthError) return fail(400, err.code, err.message);
         throw err;

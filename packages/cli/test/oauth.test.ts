@@ -5,6 +5,7 @@ import {
   parseCallback,
   exchangeCode,
   refreshTokens,
+  startDeviceAuthorization,
   type FetchLike,
 } from '../src/oauth.js';
 import { createHash } from 'node:crypto';
@@ -83,7 +84,21 @@ describe('token exchange + refresh', () => {
 
   it('throws with the server error on failure', async () => {
     const fake = fakeFetch(() => ({ status: 400, body: JSON.stringify({ error: 'invalid_grant' }) }));
-    await expect(refreshTokens({ issuer: 'https://cms.test', refreshToken: 'x' }, fake.impl)).rejects.toThrow(/invalid_grant/);
+    await expect(refreshTokens({ issuer: 'https://cms.test', refreshToken: 'x' }, fake.impl)).rejects.toMatchObject({
+      code: 'invalid_grant',
+    });
+  });
+
+  it('starts device authorization (with defaults) and reports failures', async () => {
+    const okFake = fakeFetch(() => ({ status: 200, body: JSON.stringify({ device_code: 'swd_x', user_code: 'WDJB-MJHT', verification_uri: 'https://cms.test/oauth/device' }) }));
+    const auth = await startDeviceAuthorization({ issuer: 'https://cms.test', scope: 'content:read' }, okFake.impl);
+    expect(auth.deviceCode).toBe('swd_x');
+    expect(auth.interval).toBe(5); // default
+    expect(auth.expiresIn).toBe(600); // default
+    expect(new URLSearchParams(okFake.calls[0]!.body).get('client_id')).toBe('sitewright-cli');
+
+    const failFake = fakeFetch(() => ({ status: 400, body: '{}' }));
+    await expect(startDeviceAuthorization({ issuer: 'https://cms.test', scope: 'content:read' }, failFake.impl)).rejects.toThrow();
   });
 
   it('rejects a malformed success response missing the tokens', async () => {

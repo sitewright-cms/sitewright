@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runLogin } from '../src/login.js';
+import { runDeviceLogin } from '../src/device.js';
 import { loadCredentials } from '../src/credentials.js';
 import { ensureAccessToken } from '../src/session.js';
 
@@ -82,5 +83,28 @@ suite('sitewright login — end to end', () => {
     const whoami = await fetch(`${url}/api-key/self`, { headers: { authorization: `Bearer ${access}` } });
     expect(whoami.status).toBe(200);
     expect(((await whoami.json()) as { projectId: string }).projectId).toBe(projectId);
+  });
+
+  it('logs in via the device grant (poll → approve → tokens)', async () => {
+    const url = BASE_URL!;
+    // Approve in a "browser" the moment the CLI shows the user code.
+    const approve = async (userCode: string) => {
+      await fetch(`${url}/oauth/device`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded', cookie },
+        body: new URLSearchParams({ user_code: userCode, project: `${orgId}:${projectId}`, decision: 'approve' }).toString(),
+      });
+    };
+    const tokens = await runDeviceLogin({
+      issuer: url,
+      scope: 'content:read content:write',
+      prompt: (auth) => {
+        void approve(auth.userCode);
+      },
+      sleep: () => new Promise((r) => setTimeout(r, 50)), // poll fast in the test
+    });
+    expect(tokens.accessToken).toMatch(/^swk_/);
+    const whoami = await fetch(`${url}/api-key/self`, { headers: { authorization: `Bearer ${tokens.accessToken}` } });
+    expect(whoami.status).toBe(200);
   });
 });

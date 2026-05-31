@@ -128,6 +128,35 @@ export const oauthClients = sqliteTable('oauth_clients', {
 });
 
 /**
+ * OAuth 2.0 Device Authorization Grant (RFC 8628) — for headless/SSH CLI logins
+ * with no loopback browser. The CLI polls with the `device_code` (id = its SHA-256)
+ * while the user approves in a browser by entering the short `user_code`. On
+ * approval the row carries the grant (project + role + scope, frozen at consent).
+ */
+export const oauthDeviceCodes = sqliteTable(
+  'oauth_device_codes',
+  {
+    id: text('id').primaryKey(),
+    userCode: text('user_code').notNull().unique(),
+    clientId: text('client_id').notNull(),
+    scope: text('scope', { mode: 'json' }).notNull().$type<ApiKeyCapability[]>(),
+    status: text('status', { enum: ['pending', 'approved', 'denied'] }).notNull(),
+    // Grant — null until approved.
+    userId: text('user_id'),
+    orgId: text('org_id'),
+    projectId: text('project_id'),
+    role: text('role', { enum: ['owner', 'admin', 'member'] }),
+    expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+    /** Set when the device_code is redeemed for tokens (single-use). */
+    consumedAt: integer('consumed_at', { mode: 'timestamp_ms' }),
+    /** Last poll time — enforces the minimum polling interval (slow_down). */
+    lastPolledAt: integer('last_polled_at', { mode: 'timestamp_ms' }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [index('oauth_device_codes_expires_idx').on(t.expiresAt)],
+);
+
+/**
  * OAuth 2.1 authorization codes (PKCE). Short-lived (~60s), single-use. The row id
  * is the SHA-256 of the code; the raw code is shown once in the redirect. Binds the
  * grant to a user, ONE project, the granted capabilities, the client's redirect URI,

@@ -1,0 +1,92 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import type { InstanceSettingsInput, InstanceSettingsPublic } from '../src/api';
+
+// Mock the API module so the view's load/save go through spies.
+const getInstanceSettings = vi.fn();
+const putInstanceSettings = vi.fn();
+vi.mock('../src/api', () => ({
+  api: {
+    getInstanceSettings: () => getInstanceSettings(),
+    putInstanceSettings: (body: InstanceSettingsInput) => putInstanceSettings(body),
+  },
+}));
+
+import { InstanceSettings } from '../src/views/InstanceSettings';
+
+const DEFAULTS: InstanceSettingsPublic = {
+  formModes: { globalSmtp: false, userSmtp: false, contactPhp: false, thirdParty: false },
+};
+
+beforeEach(() => {
+  getInstanceSettings.mockReset();
+  putInstanceSettings.mockReset();
+  putInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
+});
+
+describe('InstanceSettings', () => {
+  it('loads settings and renders the form-mode toggles', async () => {
+    getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
+    render(<InstanceSettings />);
+    expect(await screen.findByLabelText('Global SMTP')).toBeInTheDocument();
+    expect(screen.getByLabelText('Project SMTP')).toBeInTheDocument();
+    expect(screen.getByLabelText('contact.php')).toBeInTheDocument();
+    expect(screen.getByLabelText('Third-party')).toBeInTheDocument();
+  });
+
+  it('saves a toggled form mode and clears disabled sections to null', async () => {
+    getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
+    render(<InstanceSettings />);
+    const globalSmtp = await screen.findByLabelText('Global SMTP');
+    fireEvent.click(globalSmtp);
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(putInstanceSettings).toHaveBeenCalledTimes(1));
+    const body = putInstanceSettings.mock.calls[0]![0] as InstanceSettingsInput;
+    expect(body.formModes).toEqual({ globalSmtp: true, userSmtp: false, contactPhp: false, thirdParty: false });
+    // SMTP and hCaptcha were never enabled → explicitly cleared.
+    expect(body.smtp).toBeNull();
+    expect(body.hcaptcha).toBeNull();
+  });
+
+  it('omits the password when an SMTP edit leaves it blank, but sends it when filled', async () => {
+    const withSmtp: InstanceSettingsPublic = {
+      formModes: DEFAULTS.formModes,
+      smtp: { host: 'smtp.acme.com', port: 587, secure: false, fromEmail: 'a@acme.com', hasPassword: true },
+    };
+    getInstanceSettings.mockResolvedValue({ settings: withSmtp });
+    // Each save re-hydrates from the response; keep SMTP present so the section stays.
+    putInstanceSettings.mockResolvedValue({ settings: withSmtp });
+    render(<InstanceSettings />);
+    // The SMTP section is already enabled (settings.smtp present).
+    expect(await screen.findByLabelText('SMTP host')).toHaveValue('smtp.acme.com');
+
+    // Save without touching the password → password omitted (retain server-side).
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(putInstanceSettings).toHaveBeenCalledTimes(1));
+    let body = putInstanceSettings.mock.calls[0]![0] as InstanceSettingsInput;
+    expect(body.smtp).toMatchObject({ host: 'smtp.acme.com', port: 587, fromEmail: 'a@acme.com' });
+    expect(body.smtp && 'password' in body.smtp).toBe(false);
+
+    // Now type a password and save → it is included.
+    fireEvent.change(screen.getByLabelText('SMTP password'), { target: { value: 'new-pw' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(putInstanceSettings).toHaveBeenCalledTimes(2));
+    body = putInstanceSettings.mock.calls[1]![0] as InstanceSettingsInput;
+    expect(body.smtp).toMatchObject({ password: 'new-pw' });
+  });
+
+  it('surfaces a save error (e.g. 503 when no encryption key)', async () => {
+    getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
+    putInstanceSettings.mockRejectedValue(new Error('secret storage is not configured (set SW_ENCRYPTION_KEY)'));
+    render(<InstanceSettings />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Save settings' }));
+    expect(await screen.findByText(/secret storage is not configured/)).toBeInTheDocument();
+  });
+
+  it('surfaces a load failure instead of rendering the form', async () => {
+    getInstanceSettings.mockRejectedValue(new Error('forbidden'));
+    render(<InstanceSettings />);
+    expect(await screen.findByText('forbidden')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save settings' })).not.toBeInTheDocument();
+  });
+});

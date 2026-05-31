@@ -279,6 +279,20 @@ export const aiUsage = sqliteTable(
   ],
 );
 
+/**
+ * Instance-wide settings, configured by an instance admin (global mail transport,
+ * hCaptcha keys, permitted web-form mail modes). A singleton: exactly one row keyed
+ * by {@link INSTANCE_SETTINGS_ID}. Secrets inside `data` are encrypted at rest.
+ */
+export const instanceSettings = sqliteTable('instance_settings', {
+  id: text('id').primaryKey(),
+  data: text('data', { mode: 'json' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+/** The fixed primary key of the instance-settings singleton row. */
+export const INSTANCE_SETTINGS_ID = 'instance';
+
 export type OrgRole = 'owner' | 'admin' | 'member';
 export type ContentKind =
   | 'settings'

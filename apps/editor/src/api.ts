@@ -2,6 +2,8 @@ import type {
   Dataset,
   DeployTargetView,
   Entry,
+  InstanceSettingsInput,
+  InstanceSettingsPublic,
   MediaAsset,
   Page,
   PageTranslation,
@@ -9,7 +11,7 @@ import type {
   ProjectSettings,
 } from '@sitewright/schema';
 
-export type { DeployTargetView };
+export type { DeployTargetView, InstanceSettingsInput, InstanceSettingsPublic };
 
 /** Base URL for the API. Empty = same origin (the API serves this SPA). */
 const BASE = import.meta.env.VITE_API_BASE ?? '';
@@ -113,7 +115,7 @@ export const api = {
   login: (email: string, password: string) =>
     request<{ userId: string }>('POST', '/auth/login', { email, password }),
   logout: () => request<void>('POST', '/auth/logout'),
-  me: () => request<{ userId: string; orgs: Org[] }>('GET', '/me'),
+  me: () => request<{ userId: string; orgs: Org[]; isInstanceAdmin: boolean }>('GET', '/me'),
   version: () =>
     request<{ current: string; latest: string | null; updateAvailable: boolean; releaseUrl: string | null }>(
       'GET',
@@ -272,4 +274,10 @@ export const api = {
       'POST',
       `/orgs/${orgId}/projects/${projectId}/deploy-targets/${id}/deploy`,
     ),
+
+  // --- instance admin settings (global mail / hCaptcha / enabled form modes) ---
+  getInstanceSettings: () =>
+    request<{ settings: InstanceSettingsPublic }>('GET', '/admin/settings'),
+  putInstanceSettings: (body: InstanceSettingsInput) =>
+    request<{ settings: InstanceSettingsPublic }>('PUT', '/admin/settings', body),
 };

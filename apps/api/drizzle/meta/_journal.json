@@ -43,6 +43,13 @@
       "when": 1780219104436,
       "tag": "0005_spicy_slyde",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1780229575895,
+      "tag": "0006_instance_settings",
+      "breakpoints": true
     }
   ]
 }

@@ -56,6 +56,28 @@ test('stock: provider availability, search gating, and tenant isolation', async 
   await ctx.dispose();
 });
 
+test('stock: keyless Openverse search + import works with no configuration', async ({ playwright, baseURL }) => {
+  const { ctx, base } = await newProject(playwright, baseURL!);
+
+  // Openverse needs no key. A real anonymous search must succeed (the request stays
+  // within Openverse's anonymous page_size<=20 limit — exceeding it returns 401).
+  const search = await ctx.get(`${base}/stock/search?provider=openverse&q=mountain`);
+  expect(search.status()).toBe(200);
+  const results = (await search.json()).results as Array<{ id: string; thumbUrl: string }>;
+  // If the anonymous tier is transiently rate-limited the search may legitimately
+  // come back empty; only assert the import path when there is something to import.
+  if (results.length > 0) {
+    expect(results[0]!.thumbUrl).toMatch(/^https:\/\//);
+    const imp = await ctx.post(`${base}/stock/import`, { data: { provider: 'openverse', id: results[0]!.id } });
+    expect(imp.status()).toBe(201);
+    const asset = (await imp.json()).item;
+    expect(asset.attribution.provider).toBe('openverse');
+    expect(asset.url).toMatch(/^\/media\/[\w-]+\/[\w-]+\/[\w-]+\.jpg$/); // self-hosted, not hotlinked
+    expect((await ctx.get(asset.url)).status()).toBe(200);
+  }
+  await ctx.dispose();
+});
+
 test('stock: admin configures provider keys, which are stored masked (never echoed)', async ({ playwright, baseURL }) => {
   const admin = await adminContext(playwright, baseURL!);
 

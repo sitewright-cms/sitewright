@@ -209,6 +209,42 @@ describe('renderNode — Lightbox (gallery + overlay)', () => {
   });
 });
 
+describe('renderNode — Tabs (tablist generated client-side)', () => {
+  it('renders the component hook, an empty tablist, and titled panels (PE: stacked)', () => {
+    const html = renderNode(
+      node({
+        type: 'Tabs',
+        children: [
+          {
+            id: 't1',
+            type: 'Tab',
+            props: { title: 'One' },
+            children: [{ id: 'c1', type: 'RichText', props: { text: 'First panel' } }],
+          },
+          { id: 't2', type: 'Tab', props: { title: 'Two <x>' }, children: [] },
+        ],
+      }),
+    );
+    expect(html).toContain('data-sw-component="tabs"');
+    expect(html).toContain('<div data-sw-part="tablist" role="tablist"></div>'); // JS fills it
+    expect(html).toMatch(/data-sw-block="Tab"[^>]*role="tabpanel" tabindex="0"/); // keyboard-reachable
+    expect(html).toContain('data-sw-title="One"');
+    expect(html).toContain('data-sw-title="Two &lt;x&gt;"'); // title escaped in the attr
+    expect(html).toContain('First panel'); // panel content rendered (visible without JS)
+  });
+
+  it('gives the tablist an accessible name when labelled', () => {
+    const html = renderNode(node({ type: 'Tabs', props: { label: 'Topics' } }));
+    expect(html).toContain('<div data-sw-part="tablist" role="tablist" aria-label="Topics">');
+  });
+
+  it('keeps className on the Tabs root', () => {
+    expect(renderNode(node({ type: 'Tabs', className: 'mt-8' }))).toMatch(
+      /<div data-sw-block="Tabs" class="mt-8"/,
+    );
+  });
+});
+
 describe('renderNode — Modal + CookieConsent (interactive components)', () => {
   it('Modal renders a trigger + a native <dialog> with a close control + content', () => {
     const html = renderNode(

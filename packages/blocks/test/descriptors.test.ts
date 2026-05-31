@@ -30,6 +30,8 @@ const RENDERED_TYPES = [
   'LightboxItem',
   'Modal',
   'CookieConsent',
+  'Tabs',
+  'Tab',
 ];
 
 describe('BLOCK_DESCRIPTORS', () => {

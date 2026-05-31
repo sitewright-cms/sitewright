@@ -284,6 +284,23 @@ export const BLOCK_DESCRIPTORS: ReadonlyArray<BlockDescriptor> = [
       { key: 'policyHref', label: 'Policy link URL', input: 'url', placeholder: '/privacy' },
     ],
   },
+  {
+    // Tabbed sections. Holds Tab children; the JS builds the tablist from their
+    // titles. With no JS, all panels render stacked.
+    type: 'Tabs',
+    label: 'Tabs',
+    category: 'component',
+    container: true,
+    fields: [{ key: 'label', label: 'Accessible label', input: 'text', placeholder: 'Topics' }],
+  },
+  {
+    // One tab panel: a title (the tab button label) + content (child blocks).
+    type: 'Tab',
+    label: 'Tab',
+    category: 'component',
+    container: true,
+    fields: [{ key: 'title', label: 'Tab title', input: 'text' }],
+  },
 ];
 
 const BY_TYPE = new Map<string, BlockDescriptor>(BLOCK_DESCRIPTORS.map((d) => [d.type, d]));

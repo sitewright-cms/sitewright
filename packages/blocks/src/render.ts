@@ -345,6 +345,27 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
         `<button type="button" data-sw-part="accept">${escapeHtml(acceptText)}</button></div>`
       );
     }
+    case 'Tabs': {
+      // The JS builds the tablist from the panels' titles. PE: no JS → the tablist
+      // stays hidden (CSS) and all panels render stacked. The tablist carries an
+      // accessible name (APG) when a label is provided.
+      const label = textProp(props, selfEntry, 'label');
+      const a11y = label ? ` aria-label="${escapeAttr(label)}"` : '';
+      return (
+        `<div data-sw-block="Tabs"${cls} data-sw-component="tabs">` +
+        `<div data-sw-part="tablist" role="tablist"${a11y}></div>${inner}</div>`
+      );
+    }
+    case 'Tab': {
+      // A tab panel; its `title` (escaped) becomes the generated tab button label.
+      // `tabindex="0"` keeps the panel keyboard-reachable even when its content has
+      // no natively focusable element (APG Tabs).
+      const title = textProp(props, selfEntry, 'title');
+      return (
+        `<div data-sw-block="Tab"${cls} data-sw-part="panel" role="tabpanel" tabindex="0" ` +
+        `data-sw-title="${escapeAttr(title)}">${inner}</div>`
+      );
+    }
     case 'Nav': {
       // Auto-nav: render the page-tree-derived menu for this slot. Each item's
       // href is rebased relative to the current page (portable), label escaped.

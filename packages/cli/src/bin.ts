@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import { runStdioBridge } from '@sitewright/mcp';
 import { runLogin } from './login.js';
 import { clearCredentials } from './credentials.js';
-import { ensureAccessToken } from './session.js';
+import { ensureAccessToken, forceRefreshAccessToken } from './session.js';
 
 /** Scopes requested by the CLI login (the consent screen lets the user pick the project). */
 const DEFAULT_SCOPE = 'content:read content:write publish';
@@ -77,7 +77,8 @@ async function main(): Promise<void> {
       const token = await ensureAccessToken(url);
       let scope;
       try {
-        scope = await runStdioBridge({ url, token });
+        // Refresh the OAuth token in-session if it expires while the bridge runs.
+        scope = await runStdioBridge({ url, token, onUnauthorized: () => forceRefreshAccessToken(url) });
       } catch (err) {
         die(`could not connect to ${url}: ${err instanceof Error ? err.message : 'unknown error'}`);
       }

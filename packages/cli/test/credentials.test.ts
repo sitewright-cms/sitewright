@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadCredentials, saveCredentials, clearCredentials, configDir } from '../src/credentials.js';
-import { ensureAccessToken } from '../src/session.js';
+import { ensureAccessToken, forceRefreshAccessToken } from '../src/session.js';
 import type { FetchLike, TokenSet } from '../src/oauth.js';
 
 let dir: string;
@@ -69,6 +69,28 @@ describe('ensureAccessToken', () => {
 
   it('throws a helpful error when not logged in', async () => {
     await expect(ensureAccessToken('https://a.test', noFetch)).rejects.toThrow(/sitewright login/);
+  });
+
+  describe('forceRefreshAccessToken', () => {
+    const okFetch: FetchLike = async () => ({
+      ok: true,
+      status: 200,
+      statusText: 'x',
+      text: async () => JSON.stringify({ access_token: 'swk_forced', refresh_token: 'swr_n2', expires_in: 3600, scope: '' }),
+    });
+
+    it('always refreshes (even when not near expiry) and persists the rotation', async () => {
+      saveCredentials('https://a.test', tokens); // expiry far in the future
+      expect(await forceRefreshAccessToken('https://a.test', okFetch)).toBe('swk_forced');
+      expect(loadCredentials('https://a.test')?.refreshToken).toBe('swr_n2');
+    });
+
+    it('returns null when not logged in or the refresh fails (caller surfaces the 401)', async () => {
+      expect(await forceRefreshAccessToken('https://a.test', okFetch)).toBeNull(); // no creds
+      saveCredentials('https://a.test', tokens);
+      const failing: FetchLike = async () => ({ ok: false, status: 400, statusText: 'x', text: async () => '{"error":"invalid_grant"}' });
+      expect(await forceRefreshAccessToken('https://a.test', failing)).toBeNull();
+    });
   });
 
   it('propagates a refresh failure (expired/revoked refresh token)', async () => {

@@ -18,3 +18,20 @@ export async function ensureAccessToken(issuer: string, fetchImpl?: FetchLike): 
   saveCredentials(issuer, next);
   return next.accessToken;
 }
+
+/**
+ * Forces a refresh regardless of cached expiry, persisting the rotation. Returns
+ * the new access token, or null if not logged in / the refresh fails — used as
+ * the bridge's on-401 hook so a long MCP session survives token expiry.
+ */
+export async function forceRefreshAccessToken(issuer: string, fetchImpl?: FetchLike): Promise<string | null> {
+  const creds = loadCredentials(issuer);
+  if (!creds) return null;
+  try {
+    const next = await refreshTokens({ issuer, refreshToken: creds.refreshToken }, fetchImpl);
+    saveCredentials(issuer, next);
+    return next.accessToken;
+  } catch {
+    return null; // refresh expired/revoked → surface the original 401 to the caller
+  }
+}

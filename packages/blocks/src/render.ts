@@ -345,6 +345,21 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
         `<button type="button" data-sw-part="accept">${escapeHtml(acceptText)}</button></div>`
       );
     }
+    case 'Tabs':
+      // The JS builds the tablist from the panels' titles. PE: no JS → the tablist
+      // stays hidden (CSS) and all panels render stacked.
+      return (
+        `<div data-sw-block="Tabs"${cls} data-sw-component="tabs">` +
+        `<div data-sw-part="tablist" role="tablist"></div>${inner}</div>`
+      );
+    case 'Tab': {
+      // A tab panel; its `title` (escaped) becomes the generated tab button label.
+      const title = textProp(props, selfEntry, 'title');
+      return (
+        `<div data-sw-block="Tab"${cls} data-sw-part="panel" role="tabpanel" ` +
+        `data-sw-title="${escapeAttr(title)}">${inner}</div>`
+      );
+    }
     case 'Nav': {
       // Auto-nav: render the page-tree-derived menu for this slot. Each item's
       // href is rebased relative to the current page (portable), label escaped.

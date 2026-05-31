@@ -197,15 +197,60 @@ const COOKIE_CONSENT_JS = `(function(){
   if(document.readyState!=='loading'){init();}else{document.addEventListener('DOMContentLoaded',init);}
 })();`;
 
+// --- Tabs --------------------------------------------------------------------
+// A tablist + panels (APG Tabs pattern). The JS builds the tablist from each
+// panel's title, wires roving-tabindex + arrow-key navigation + aria, and shows
+// one panel at a time. PE-first: with no JS the tablist stays hidden and ALL
+// panels render stacked (fully readable content).
+const TABS_CSS = [
+  '[data-sw-block="Tabs"] [data-sw-part="tablist"]{display:none}',
+  '[data-sw-block="Tabs"][data-sw-enhanced="true"] [data-sw-part="tablist"]{display:flex;flex-wrap:wrap;gap:.25rem;border-bottom:1px solid rgba(0,0,0,.12);margin-bottom:1rem}',
+  '[data-sw-block="Tabs"] [data-sw-part="tab"]{border:0;background:none;padding:.5rem 1rem;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}',
+  '[data-sw-block="Tabs"] [data-sw-part="tab"][aria-selected="true"]{border-bottom-color:var(--sw-color-primary,#0a7a5a);font-weight:600}',
+  '[data-sw-block="Tabs"][data-sw-enhanced="true"] [data-sw-part="panel"]:not([data-active]){display:none}',
+].join('');
+
+const TABS_JS = `(function(){
+  var uid=0;
+  function enhance(root){
+    var panels=Array.prototype.slice.call(root.querySelectorAll('[data-sw-part="panel"]'));
+    var tablist=root.querySelector('[data-sw-part="tablist"]');
+    if(!tablist||panels.length<2)return;
+    var gid='sw-tabs-'+(uid++),tabs=[];
+    function select(i){
+      for(var j=0;j<panels.length;j++){
+        var on=j===i;
+        if(on){panels[j].setAttribute('data-active','');}else{panels[j].removeAttribute('data-active');}
+        tabs[j].setAttribute('aria-selected',on?'true':'false');tabs[j].tabIndex=on?0:-1;
+      }
+    }
+    panels.forEach(function(panel,i){
+      var pid=gid+'-p'+i,tid=gid+'-t'+i;
+      panel.id=pid;panel.setAttribute('aria-labelledby',tid);
+      var btn=document.createElement('button');
+      btn.type='button';btn.id=tid;btn.setAttribute('role','tab');btn.setAttribute('data-sw-part','tab');btn.setAttribute('aria-controls',pid);
+      btn.textContent=panel.getAttribute('data-sw-title')||('Tab '+(i+1));
+      btn.addEventListener('click',function(){select(i);tabs[i].focus();});
+      btn.addEventListener('keydown',function(e){var n=-1;if(e.key==='ArrowRight'){n=(i+1)%tabs.length;}else if(e.key==='ArrowLeft'){n=(i-1+tabs.length)%tabs.length;}if(n>=0){e.preventDefault();select(n);tabs[n].focus();}});
+      tablist.appendChild(btn);tabs.push(btn);
+    });
+    root.setAttribute('data-sw-enhanced','true');
+    select(0);
+  }
+  function init(){Array.prototype.forEach.call(document.querySelectorAll('[data-sw-component="tabs"]'),enhance);}
+  if(document.readyState!=='loading'){init();}else{document.addEventListener('DOMContentLoaded',init);}
+})();`;
+
 // Registry keyed by block `type`. Only blocks with behavior/styling belong here
-// (child blocks like Slide/AccordionItem/LightboxItem are styled by their parent's
-// entry — no entry of their own). Insertion order = bundle order.
+// (child blocks like Slide/AccordionItem/LightboxItem/Tab are styled by their
+// parent's entry — no entry of their own). Insertion order = bundle order.
 const COMPONENTS = new Map<string, ComponentAsset>([
   ['Carousel', { css: CAROUSEL_CSS, js: CAROUSEL_JS }],
   ['Accordion', { css: ACCORDION_CSS, js: '' }],
   ['Lightbox', { css: LIGHTBOX_CSS, js: LIGHTBOX_JS }],
   ['Modal', { css: MODAL_CSS, js: MODAL_JS }],
   ['CookieConsent', { css: COOKIE_CONSENT_CSS, js: COOKIE_CONSENT_JS }],
+  ['Tabs', { css: TABS_CSS, js: TABS_JS }],
 ]);
 
 /** Block types that are interactive components (have bundled CSS/JS). */

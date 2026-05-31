@@ -1,0 +1,212 @@
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { randomBytes } from 'node:crypto';
+import type { FastifyInstance } from 'fastify';
+import { makeTestDb } from './helpers.js';
+import { createApp } from '../src/http/app.js';
+
+const VERIFIER = 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk';
+const CHALLENGE = 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM';
+const REDIRECT = 'http://127.0.0.1:8976/callback';
+const CLIENT = 'sitewright-cli';
+
+let app: FastifyInstance;
+let publishRoot: string;
+
+beforeEach(async () => {
+  publishRoot = await mkdtemp(join(tmpdir(), 'sw-oauth-'));
+  app = await createApp({ db: await makeTestDb(), publishRoot, encryptionKey: randomBytes(32) });
+  await app.ready();
+});
+afterEach(async () => {
+  await rm(publishRoot, { recursive: true, force: true });
+});
+
+function cookie(res: { cookies: Array<{ name: string; value: string }> }): string {
+  const t = res.cookies.find((c) => c.name === 'sw_session')?.value;
+  if (!t) throw new Error('no session');
+  return t;
+}
+
+async function setup() {
+  const reg = await app.inject({
+    method: 'POST',
+    url: '/auth/register',
+    payload: { email: `a-${Date.now()}@e2e.test`, password: 'pw-secret-1', orgName: 'Acme' },
+  });
+  const session = cookie(reg);
+  const orgId = (reg.json() as { orgId: string }).orgId;
+  const proj = await app.inject({
+    method: 'POST',
+    url: `/orgs/${orgId}/projects`,
+    cookies: { sw_session: session },
+    payload: { name: 'Site<X>', slug: 'site' },
+  });
+  const projectId = (proj.json() as { project: { id: string } }).project.id;
+  return { session, orgId, projectId };
+}
+
+const authorizeQuery = (extra: Record<string, string> = {}) =>
+  new URLSearchParams({
+    client_id: CLIENT,
+    redirect_uri: REDIRECT,
+    response_type: 'code',
+    code_challenge: CHALLENGE,
+    code_challenge_method: 'S256',
+    scope: 'content:read content:write',
+    state: 'xyz-state',
+    ...extra,
+  }).toString();
+
+function form(data: Record<string, string>) {
+  return {
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    payload: new URLSearchParams(data).toString(),
+  };
+}
+
+describe('OAuth discovery + authorize', () => {
+  it('publishes authorization-server + protected-resource metadata', async () => {
+    const md = (await app.inject({ method: 'GET', url: '/.well-known/oauth-authorization-server' })).json();
+    expect(md.code_challenge_methods_supported).toEqual(['S256']);
+    expect(md.grant_types_supported).toContain('authorization_code');
+    expect(md.token_endpoint).toMatch(/\/oauth\/token$/);
+    const pr = (await app.inject({ method: 'GET', url: '/.well-known/oauth-protected-resource' })).json();
+    expect(pr.authorization_servers).toHaveLength(1);
+  });
+
+  it('rejects an unknown client / non-loopback redirect without redirecting', async () => {
+    const bad = await app.inject({ method: 'GET', url: `/oauth/authorize?${authorizeQuery({ redirect_uri: 'https://evil.example.com/cb' })}` });
+    expect(bad.statusCode).toBe(400);
+    expect(bad.headers['content-type']).toMatch(/text\/html/);
+    expect(bad.headers.location).toBeUndefined(); // no open redirect
+  });
+
+  it('prompts for sign-in when unauthenticated', async () => {
+    const res = await app.inject({ method: 'GET', url: `/oauth/authorize?${authorizeQuery()}` });
+    expect(res.statusCode).toBe(401);
+    expect(res.body).toMatch(/sign in/i);
+  });
+
+  it('renders an HTML-escaped consent page for an authenticated user', async () => {
+    const { session } = await setup();
+    const res = await app.inject({
+      method: 'GET',
+      url: `/oauth/authorize?${authorizeQuery()}`,
+      cookies: { sw_session: session },
+    });
+    expect(res.statusCode).toBe(200);
+    // The project name "Site<X>" must be escaped (no raw <X> tag injected).
+    expect(res.body).toContain('Site&lt;X&gt;');
+    expect(res.body).not.toContain('Site<X>');
+    expect(res.body).toContain('content:read');
+  });
+
+  it('redirects with error=access_denied (carrying state) when consent is denied', async () => {
+    const { session, orgId, projectId } = await setup();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/oauth/authorize',
+      cookies: { sw_session: session },
+      ...form({
+        client_id: CLIENT,
+        redirect_uri: REDIRECT,
+        code_challenge: CHALLENGE,
+        scope: 'content:read',
+        state: 'xyz-state',
+        project: `${orgId}:${projectId}`,
+        decision: 'deny',
+      }),
+    });
+    expect(res.statusCode).toBe(302);
+    const loc = new URL(res.headers.location as string);
+    expect(loc.searchParams.get('error')).toBe('access_denied');
+    expect(loc.searchParams.get('state')).toBe('xyz-state');
+  });
+});
+
+describe('OAuth full authorization-code + PKCE flow', () => {
+  async function getCode(session: string, project: string): Promise<string> {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/oauth/authorize',
+      cookies: { sw_session: session },
+      ...form({
+        client_id: CLIENT,
+        redirect_uri: REDIRECT,
+        code_challenge: CHALLENGE,
+        code_challenge_method: 'S256',
+        scope: 'content:read content:write',
+        state: 'xyz-state',
+        project,
+        decision: 'approve',
+      }),
+    });
+    expect(res.statusCode).toBe(302);
+    const loc = new URL(res.headers.location as string);
+    expect(loc.searchParams.get('state')).toBe('xyz-state');
+    const code = loc.searchParams.get('code');
+    if (!code) throw new Error(`no code in redirect: ${res.headers.location}`);
+    return code;
+  }
+
+  it('exchanges code → access + refresh, and the access token works on the API; refresh rotates', async () => {
+    const { session, orgId, projectId } = await setup();
+    const code = await getCode(session, `${orgId}:${projectId}`);
+
+    const tokRes = await app.inject({
+      method: 'POST',
+      url: '/oauth/token',
+      ...form({ grant_type: 'authorization_code', code, client_id: CLIENT, redirect_uri: REDIRECT, code_verifier: VERIFIER }),
+    });
+    expect(tokRes.statusCode).toBe(200);
+    const tok = tokRes.json() as { access_token: string; refresh_token: string; token_type: string; scope: string };
+    expect(tok.token_type).toBe('Bearer');
+    expect(tok.access_token.startsWith('swk_')).toBe(true);
+    expect(tok.scope).toBe('content:read content:write');
+
+    // The access token authenticates a normal bearer API call.
+    const use = await app.inject({
+      method: 'GET',
+      url: `/orgs/${orgId}/projects/${projectId}/content/page`,
+      headers: { authorization: `Bearer ${tok.access_token}` },
+    });
+    expect(use.statusCode).toBe(200);
+
+    // Refresh rotates to a new pair.
+    const refRes = await app.inject({
+      method: 'POST',
+      url: '/oauth/token',
+      ...form({ grant_type: 'refresh_token', refresh_token: tok.refresh_token, client_id: CLIENT }),
+    });
+    expect(refRes.statusCode).toBe(200);
+    expect((refRes.json() as { refresh_token: string }).refresh_token).not.toBe(tok.refresh_token);
+  });
+
+  it('rejects a reused authorization code and a bad PKCE verifier', async () => {
+    const { session, orgId, projectId } = await setup();
+    const code = await getCode(session, `${orgId}:${projectId}`);
+    const exchange = (verifier: string) =>
+      app.inject({
+        method: 'POST',
+        url: '/oauth/token',
+        ...form({ grant_type: 'authorization_code', code, client_id: CLIENT, redirect_uri: REDIRECT, code_verifier: verifier }),
+      });
+    // Wrong verifier does not consume the code…
+    expect((await exchange('x'.repeat(43))).statusCode).toBe(400);
+    // …correct verifier succeeds…
+    expect((await exchange(VERIFIER)).statusCode).toBe(200);
+    // …and the code is now single-use.
+    const reused = await exchange(VERIFIER);
+    expect(reused.statusCode).toBe(400);
+    expect((reused.json() as { error: string }).error).toBe('invalid_grant');
+  });
+
+  it('rejects an unsupported grant type', async () => {
+    const res = await app.inject({ method: 'POST', url: '/oauth/token', ...form({ grant_type: 'password' }) });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: string }).error).toBe('unsupported_grant_type');
+  });
+});

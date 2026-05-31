@@ -75,6 +75,41 @@ describe('InstanceSettings', () => {
     expect(body.smtp).toMatchObject({ password: 'new-pw' });
   });
 
+  it('sends a stock key when entered and clears stock to null when disabled', async () => {
+    getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
+    render(<InstanceSettings />);
+    // Enable the stock section, type an Unsplash key, save → key is sent.
+    fireEvent.click(await screen.findByLabelText('Configure stock provider keys'));
+    fireEvent.change(screen.getByLabelText('Unsplash access key'), { target: { value: 'unsplash-abc' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(putInstanceSettings).toHaveBeenCalledTimes(1));
+    let body = putInstanceSettings.mock.calls[0]![0] as InstanceSettingsInput;
+    expect(body.stock).toEqual({ unsplash: 'unsplash-abc' });
+
+    // Re-hydrate kept stock disabled (DEFAULTS has no stock) → toggling off sends null.
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(putInstanceSettings).toHaveBeenCalledTimes(2));
+    body = putInstanceSettings.mock.calls[1]![0] as InstanceSettingsInput;
+    expect(body.stock).toBeNull();
+  });
+
+  it('keeps an existing key (placeholder) and omits it when left blank', async () => {
+    const withStock: InstanceSettingsPublic = {
+      formModes: DEFAULTS.formModes,
+      stock: { hasUnsplash: true, hasPexels: false },
+    };
+    getInstanceSettings.mockResolvedValue({ settings: withStock });
+    putInstanceSettings.mockResolvedValue({ settings: withStock });
+    render(<InstanceSettings />);
+    // Section is pre-enabled (settings.stock present); save without typing → empty merge object (keep).
+    const unsplash = await screen.findByLabelText('Unsplash access key');
+    expect(unsplash).toHaveAttribute('placeholder', expect.stringContaining('leave blank to keep'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(putInstanceSettings).toHaveBeenCalledTimes(1));
+    const body = putInstanceSettings.mock.calls[0]![0] as InstanceSettingsInput;
+    expect(body.stock).toEqual({}); // no keys provided → merge keeps stored ones
+  });
+
   it('surfaces a save error (e.g. 503 when no encryption key)', async () => {
     getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
     putInstanceSettings.mockRejectedValue(new Error('secret storage is not configured (set SW_ENCRYPTION_KEY)'));

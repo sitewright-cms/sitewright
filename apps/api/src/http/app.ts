@@ -26,6 +26,7 @@ import { optimizeImage } from '@sitewright/image-pipeline';
 import { buildNav, collectClassNames, type ProjectBundle } from '@sitewright/core';
 import type { Database } from '../db/client.js';
 import { MediaStorage } from '../media/storage.js';
+import { MediaValidationError } from '../media/errors.js';
 import { PublishError } from '../publish/build.js';
 import { InProcessBuildRunner, type BuildRunner } from '../publish/runner.js';
 import { AiProviderError, type AiProvider } from '../ai/provider.js';
@@ -36,6 +37,9 @@ import { isNewer } from '../version/checker.js';
 import { registerDeployTargetRoutes } from './deploy-targets.js';
 import { registerFormRoutes } from './form-routes.js';
 import { registerProjectSmtpRoutes } from './project-smtp-routes.js';
+import { registerStockRoutes, type StockServiceLike } from './stock-routes.js';
+import { StockService } from '../stock/service.js';
+import { defaultStockProviders } from '../stock/providers.js';
 import { SubmissionRepository } from '../repo/submissions.js';
 import { GlobalSmtpMailer, ProjectSmtpMailer, type SubmissionMailer, type ProjectMailer } from '../mail/mailer.js';
 import { HttpHcaptchaVerifier, type HcaptchaVerifier } from '../mail/hcaptcha.js';
@@ -222,6 +226,8 @@ export interface AppOptions {
   projectMailer?: ProjectMailer;
   /** hCaptcha verifier for form submissions. Defaults to the live siteverify client; tests inject a fake. */
   hcaptcha?: HcaptchaVerifier;
+  /** Stock-image search/import service. Defaults to the live providers; tests inject a fake. */
+  stockService?: StockServiceLike;
   /**
    * The platform's public base URL (e.g. `https://cms.agency.com`). Baked into
    * exported `Form` blocks so the static site posts submissions back here. Unset
@@ -256,6 +262,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const mailer = opts.mailer ?? new GlobalSmtpMailer(instanceSettingsRepo);
   const projectMailer = opts.projectMailer ?? new ProjectSmtpMailer(db, instanceSettingsRepo, opts.encryptionKey);
   const hcaptchaVerifier = opts.hcaptcha ?? new HttpHcaptchaVerifier();
+  const stockService = opts.stockService ?? new StockService(defaultStockProviders(), instanceSettingsRepo);
   // Normalized once at startup; membership is a constant-time-ish Set lookup per request.
   const adminEmails: ReadonlySet<string> = new Set(
     (opts.adminEmails ?? []).map((e) => e.trim().toLowerCase()).filter(Boolean),
@@ -274,6 +281,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             // Instance-settings PUT carries plaintext secrets in nested fields.
             'req.body.smtp.password',
             'req.body.hcaptcha.secret',
+            'req.body.stock.unsplash',
+            'req.body.stock.pexels',
           ],
         }
       : false,
@@ -309,9 +318,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // that route opts into its own framing policy.
     if (!reply.hasHeader('content-security-policy')) {
       reply.header('x-frame-options', 'DENY');
+      // `img-src … https:` lets the editor's stock picker preview provider-CDN
+      // thumbnails (Unsplash/Pexels/Openverse sources). Their terms require
+      // hotlinking previews (no proxy/cache); imported images are still downloaded
+      // + self-hosted under 'self'. Published exports reference 'self' images only.
       reply.header(
         'content-security-policy',
-        "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+        "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
       );
     }
   });
@@ -905,8 +918,45 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   if (mediaStorage) {
     const storage = mediaStorage;
 
-    // Upload an image: validate + optimize (AVIF/WebP/LQIP) + store binaries +
-    // record tenant-scoped metadata. The pipeline rejects non-raster/SVG input.
+    // Optimize a raw image buffer (AVIF/WebP/LQIP), store the binaries, and record
+    // the tenant-scoped metadata. Shared by the upload route AND the stock import.
+    async function createMediaAsset(
+      ctx: ProjectContext,
+      projectId: string,
+      buffer: Buffer,
+      meta: { filename: string; mimetype: string; alt?: string; attribution?: MediaAsset['attribution'] },
+    ): Promise<MediaAsset> {
+      const assetId = randomUUID();
+      const { assetDir, inputPath } = await storage.stageUpload(projectId, assetId, buffer);
+      try {
+        const optimized = await withOptimizeSlot(() => optimizeImage(inputPath, assetDir));
+        await storage.clearUpload(inputPath);
+        const asset = MediaAssetSchema.parse({
+          id: assetId,
+          filename: meta.filename,
+          format: meta.mimetype,
+          bytes: buffer.length,
+          width: optimized.width,
+          height: optimized.height,
+          placeholder: optimized.placeholder,
+          variants: optimized.variants.map((v) => ({ format: v.format, width: v.width, height: v.height, path: v.path })),
+          fallback: optimized.fallback,
+          url: `/media/${projectId}/${assetId}/${optimized.fallback}`,
+          ...(meta.alt ? { alt: meta.alt } : {}),
+          ...(meta.attribution ? { attribution: meta.attribution } : {}),
+        });
+        return (await contentRepo.put(ctx, 'media', assetId, asset)) as MediaAsset;
+      } catch (err) {
+        // Any failure (bad image, validation, DB) → remove the whole asset dir.
+        await storage.remove(projectId, assetId);
+        if (err instanceof Error && /format|pixel|dimension|size limit/i.test(err.message)) {
+          throw new MediaValidationError('unsupported or invalid image');
+        }
+        throw err;
+      }
+    }
+
+    // Upload an image: validate + optimize + store. The pipeline rejects non-raster/SVG.
     app.post<{ Params: { orgId: string; projectId: string } }>(
       '/orgs/:orgId/projects/:projectId/media',
       { config: rl(30) },
@@ -930,42 +980,28 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           return reply.code(413).send({ error: 'file exceeds size limit' });
         }
 
-        const assetId = randomUUID();
-        const { assetDir, inputPath } = await storage.stageUpload(project.id, assetId, buffer);
         try {
-          const optimized = await withOptimizeSlot(() => optimizeImage(inputPath, assetDir));
-          // Temp input is no longer needed once the variants exist.
-          await storage.clearUpload(inputPath);
-          const asset: MediaAsset = MediaAssetSchema.parse({
-            id: assetId,
+          const saved = await createMediaAsset(ctx, project.id, buffer, {
             filename: file.filename || 'upload',
-            format: file.mimetype || 'image/*',
-            bytes: buffer.length,
-            width: optimized.width,
-            height: optimized.height,
-            placeholder: optimized.placeholder,
-            variants: optimized.variants.map((v) => ({
-              format: v.format,
-              width: v.width,
-              height: v.height,
-              path: v.path,
-            })),
-            fallback: optimized.fallback,
-            url: `/media/${project.id}/${assetId}/${optimized.fallback}`,
+            mimetype: file.mimetype || 'image/*',
           });
-          const saved = await contentRepo.put(ctx, 'media', assetId, asset);
           return reply.code(201).send({ item: saved });
         } catch (err) {
-          // Any failure (bad image, validation, DB) → remove the whole asset dir
-          // so no orphaned binaries linger.
-          await storage.remove(project.id, assetId);
-          if (err instanceof Error && /format|pixel|dimension|size limit/i.test(err.message)) {
-            return reply.code(400).send({ error: 'unsupported or invalid image' });
-          }
+          if (err instanceof MediaValidationError) return reply.code(400).send({ error: err.message });
           throw err;
         }
       },
     );
+
+    // Stock-image search + import (Openverse/Unsplash/Pexels). Imports land as normal
+    // media assets (downloaded + optimized + self-hosted) so the export stays portable.
+    registerStockRoutes(app, {
+      resolveProject,
+      isWriter: (ctx) => WRITE_ROLES.has(ctx.role),
+      stockService,
+      createMediaAsset,
+      rl,
+    });
 
     app.get<{ Params: { orgId: string; projectId: string } }>(
       '/orgs/:orgId/projects/:projectId/media',

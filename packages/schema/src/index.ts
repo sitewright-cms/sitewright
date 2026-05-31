@@ -13,6 +13,7 @@ export * from './partial.js';
 export * from './pattern.js';
 export * from './project.js';
 export * from './seo.js';
+export * from './stock.js';
 export * from './template.js';
 export * from './translation.js';
 export * from './website.js';

@@ -128,6 +128,29 @@ export function createSitewrightMcpServer(client: SitewrightClient, scope: Scope
       },
       async ({ formId, limit, offset }) => run(() => client.listSubmissions({ formId, limit, offset })),
     );
+
+    server.registerTool(
+      'list_stock_providers',
+      {
+        description:
+          'List the configured stock-image providers and whether each is available (openverse needs no key; unsplash/pexels need an instance-admin key).',
+      },
+      async () => run(() => client.stockProviders()),
+    );
+
+    server.registerTool(
+      'search_stock_images',
+      {
+        description:
+          'Search a stock-image provider for photos. Returns provider-hosted thumbnails to preview; use import_stock_image to bring one into the project.',
+        inputSchema: {
+          provider: z.enum(['openverse', 'unsplash', 'pexels']),
+          query: z.string().min(1).max(200),
+          page: z.number().int().min(1).max(100).optional(),
+        },
+      },
+      async ({ provider, query, page }) => run(() => client.stockSearch(provider, query, page ?? 1)),
+    );
   }
 
   // --- writes (only when the token may write) ---
@@ -163,6 +186,20 @@ export function createSitewrightMcpServer(client: SitewrightClient, scope: Scope
         inputSchema: { kind: GENERIC_KIND, id: z.string() },
       },
       async ({ kind, id }) => run(() => client.deleteContent(kind, id).then(() => ({ deleted: `${kind}/${id}` }))),
+    );
+
+    server.registerTool(
+      'import_stock_image',
+      {
+        description:
+          'Import a stock photo (by provider + id from search_stock_images) into the project. The server downloads, optimizes, and self-hosts it as a media asset with attribution — never a hotlink.',
+        inputSchema: {
+          provider: z.enum(['openverse', 'unsplash', 'pexels']),
+          id: z.string().min(1).max(256),
+          alt: z.string().max(500).optional(),
+        },
+      },
+      async ({ provider, id, alt }) => run(() => client.importStock(provider, id, alt)),
     );
   }
 

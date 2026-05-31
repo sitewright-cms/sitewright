@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { IdSchema, KeyNameSchema } from './primitives.js';
+import { IdSchema, KeyNameSchema, targetsPrivateHost } from './primitives.js';
 
 /** True if `value` contains an ASCII control character (mirrors DeployTargetSchema). */
 function hasControlChars(value: string): boolean {
@@ -8,35 +8,6 @@ function hasControlChars(value: string): boolean {
     if (code <= 0x1f || code === 0x7f) return true;
   }
   return false;
-}
-
-/**
- * True if `url`'s host is localhost / link-local / a private (RFC 1918) range —
- * not a public "third-party" endpoint. Unparseable → treated as blocked. (A string
- * check, so DNS-rebinding to a private IP isn't covered — defense-in-depth, matching
- * the deploy-host posture.)
- */
-function targetsPrivateHost(url: string): boolean {
-  let host: string;
-  try {
-    host = new URL(url).hostname.toLowerCase().replace(/^\[|\]$/g, '');
-  } catch {
-    return true;
-  }
-  return (
-    host === 'localhost' ||
-    host === '169.254.169.254' ||
-    host === '::1' ||
-    host.startsWith('127.') ||
-    host.startsWith('10.') ||
-    host.startsWith('fc') ||
-    host.startsWith('fd') ||
-    host.startsWith('fe80:') ||
-    /^192\.168\./.test(host) ||
-    /^172\.(1[6-9]|2\d|3[01])\./.test(host) ||
-    host.endsWith('.internal') ||
-    host.endsWith('.local')
-  );
 }
 
 // Web forms (contact / lead capture). A form is a content kind authored per

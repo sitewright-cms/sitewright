@@ -14,6 +14,9 @@ import type {
   ProjectSettings,
   SmtpInput,
   SmtpPublic,
+  StockProviderName,
+  StockProvidersStatus,
+  StockSearchResult,
 } from '@sitewright/schema';
 
 export type {
@@ -25,6 +28,9 @@ export type {
   InstanceSettingsPublic,
   SmtpInput,
   SmtpPublic,
+  StockProviderName,
+  StockProvidersStatus,
+  StockSearchResult,
 };
 
 /** Base URL for the API. Empty = same origin (the API serves this SPA). */
@@ -253,6 +259,20 @@ export const api = {
   },
   deleteMedia: (orgId: string, projectId: string, id: string) =>
     request<void>('DELETE', `/orgs/${orgId}/projects/${projectId}/media/${id}`),
+
+  // --- stock images (search provider-hosted photos; import = download+optimize+self-host) ---
+  stockProviders: (orgId: string, projectId: string) =>
+    request<StockProvidersStatus>('GET', `/orgs/${orgId}/projects/${projectId}/stock/providers`),
+  searchStock: (orgId: string, projectId: string, provider: StockProviderName, q: string, page = 1) => {
+    const params = new URLSearchParams({ provider, q, page: String(page) });
+    return request<StockSearchResult>('GET', `/orgs/${orgId}/projects/${projectId}/stock/search?${params.toString()}`);
+  },
+  importStock: (orgId: string, projectId: string, provider: StockProviderName, id: string, alt?: string) =>
+    request<{ item: MediaAsset }>('POST', `/orgs/${orgId}/projects/${projectId}/stock/import`, {
+      provider,
+      id,
+      ...(alt ? { alt } : {}),
+    }),
 
   // --- publishing ---
   publish: (orgId: string, projectId: string) =>

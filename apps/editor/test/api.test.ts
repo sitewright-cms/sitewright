@@ -58,6 +58,22 @@ describe('api client', () => {
     expect(fetchMock.mock.calls[0]![0]).toBe('/orgs/org1/projects/proj1/content/page');
   });
 
+  it('builds the stock search URL with an encoded query + page', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { provider: 'openverse', page: 2, results: [] }));
+    await api.searchStock('o', 'p', 'openverse', 'cats & dogs', 2);
+    expect(fetchMock.mock.calls[0]![0]).toBe('/orgs/o/projects/p/stock/search?provider=openverse&q=cats+%26+dogs&page=2');
+  });
+
+  it('POSTs a stock import with provider/id/alt and returns the item', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(201, { item: { id: 'asset1' } }));
+    const res = await api.importStock('o', 'p', 'openverse', 'ov1', 'a cat');
+    expect(res).toEqual({ item: { id: 'asset1' } });
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/orgs/o/projects/p/stock/import');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body)).toEqual({ provider: 'openverse', id: 'ov1', alt: 'a cat' });
+  });
+
   it('gets a single page and builds the SSE events URL', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { item: { id: 'home' } }));
     const res = await api.getPage('o', 'p', 'home');

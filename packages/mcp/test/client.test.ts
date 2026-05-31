@@ -145,6 +145,27 @@ describe('SitewrightClient', () => {
     ]);
   });
 
+  it('builds stock provider/search/import paths and unwraps the imported item', async () => {
+    const asset = { id: 'a1', url: '/media/p1/a1/x.jpg' };
+    const { client, calls } = await introspected((input) => {
+      if (input.endsWith('/api-key/self')) return { status: 200, body: JSON.stringify(scope) };
+      if (input.includes('/stock/providers')) return { status: 200, body: JSON.stringify({ providers: [] }) };
+      if (input.includes('/stock/search')) return { status: 200, body: JSON.stringify({ provider: 'openverse', page: 1, results: [] }) };
+      if (input.includes('/stock/import')) return { status: 201, body: JSON.stringify({ item: asset }) };
+      return { status: 404 };
+    });
+    await client.stockProviders();
+    await client.stockSearch('openverse', 'cats & dogs', 2);
+    const imported = await client.importStock('openverse', 'ov1', 'a cat');
+    expect(imported).toEqual(asset); // unwrapped from { item }
+    const paths = calls.map((c) => `${c.init?.method} ${c.input.replace('https://cms.test', '')}`);
+    expect(paths[1]).toBe('GET /orgs/o1/projects/p1/stock/providers');
+    // query is URL-encoded
+    expect(paths[2]).toBe('GET /orgs/o1/projects/p1/stock/search?provider=openverse&q=cats+%26+dogs&page=2');
+    expect(paths[3]).toBe('POST /orgs/o1/projects/p1/stock/import');
+    expect(JSON.parse(calls[3]!.init!.body!)).toEqual({ provider: 'openverse', id: 'ov1', alt: 'a cat' });
+  });
+
   it('falls back to statusText when the error body is not JSON', async () => {
     const { client } = await introspected((input) =>
       input.endsWith('/api-key/self')

@@ -107,6 +107,62 @@ export const ClassNameSchema = z
   .max(1000)
   .regex(/^[A-Za-z0-9 \-_:/[\]().,%#!@*+&=]+$/, 'contains invalid class characters');
 
+/** True if a dotted-decimal IPv4 is loopback / private / link-local / CGNAT / wildcard. */
+function isPrivateIPv4(host: string): boolean {
+  return (
+    host.startsWith('0.') || // 0.0.0.0/8 (incl. the 0.0.0.0 wildcard → localhost on Linux)
+    host.startsWith('10.') || // RFC 1918
+    host.startsWith('127.') || // loopback
+    /^169\.254\./.test(host) || // link-local /16 (incl. 169.254.169.254 cloud metadata)
+    /^192\.168\./.test(host) || // RFC 1918
+    /^172\.(1[6-9]|2\d|3[01])\./.test(host) || // RFC 1918
+    /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(host) // RFC 6598 CGNAT 100.64.0.0/10
+  );
+}
+
+/** Decode an IPv4-mapped IPv6 host (`::ffff:7f00:1` or `::ffff:127.0.0.1`) to dotted IPv4, else null. */
+function ipv4MappedToDotted(host: string): string | null {
+  const m = /^::ffff:(.+)$/.exec(host);
+  const tail = m?.[1];
+  if (tail === undefined) return null;
+  if (tail.includes('.')) return tail; // already dotted (e.g. ::ffff:127.0.0.1)
+  const groups = tail.split(':'); // hex form: two 16-bit groups (e.g. 7f00:1)
+  if (groups.length !== 2) return null;
+  const hi = Number.parseInt(groups[0] ?? '', 16);
+  const lo = Number.parseInt(groups[1] ?? '', 16);
+  if (!Number.isFinite(hi) || !Number.isFinite(lo)) return null;
+  return `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
+}
+
+/**
+ * True if `url`'s host is localhost / link-local / a private (RFC 1918/6598) range —
+ * i.e. not a public host. Unparseable → treated as private (blocked). A string-level
+ * SSRF guard (DNS-rebinding to a private IP isn't covered — defense-in-depth, used
+ * for any server-fetched or browser-posted author-supplied URL). IPv4-mapped IPv6
+ * (`::ffff:a.b.c.d`) is decoded so it can't smuggle a private IPv4 past the checks.
+ */
+export function targetsPrivateHost(url: string): boolean {
+  let host: string;
+  try {
+    host = new URL(url).hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  } catch {
+    return true;
+  }
+  const mapped = ipv4MappedToDotted(host);
+  if (mapped && isPrivateIPv4(mapped)) return true;
+  return (
+    host === 'localhost' ||
+    host === '::' || // IPv6 unspecified (routes to loopback on many stacks)
+    host === '::1' || // IPv6 loopback
+    host.startsWith('fc') || // IPv6 ULA fc00::/7
+    host.startsWith('fd') ||
+    host.startsWith('fe80:') || // IPv6 link-local
+    host.endsWith('.internal') ||
+    host.endsWith('.local') ||
+    isPrivateIPv4(host)
+  );
+}
+
 /**
  * Builds a record schema that rejects prototype-pollution keys (`__proto__`,
  * `constructor`, `prototype`) and caps cardinality. Use for any user-supplied

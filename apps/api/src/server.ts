@@ -45,6 +45,14 @@ const deployAllowedHosts = process.env.SW_DEPLOY_ALLOWED_HOSTS
       .filter(Boolean)
   : undefined;
 
+// Instance admins: a comma-separated email allowlist. These users may read/write
+// instance settings (global SMTP, hCaptcha keys, enabled web-form mail modes).
+// Normalization (trim/lowercase) is owned by createApp — pass the raw split here
+// so there is a single source of truth for the matching rule.
+const adminEmails = process.env.SW_ADMIN_EMAILS
+  ? process.env.SW_ADMIN_EMAILS.split(',')
+  : undefined;
+
 // Opt-in isolated build worker (multi-tenant SaaS / once builds run untrusted
 // code). Default: in-process build (single-container). Requires the docker CLI +
 // DOCKER_HOST, and the API image available as the worker image.
@@ -100,6 +108,7 @@ const app = await createApp({
   trustProxy,
   encryptionKey,
   deployAllowedHosts,
+  adminEmails,
   buildRunner,
   aiProvider,
   aiQuota,

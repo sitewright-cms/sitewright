@@ -9,6 +9,7 @@ import {
   MediaAssetSchema,
   PageSchema,
   PageNodeSchema,
+  InstanceSettingsInputSchema,
   assertWithinTreeDepth,
   type Brand,
   type Entry,
@@ -32,11 +33,13 @@ import { isNewer } from '../version/checker.js';
 import { registerDeployTargetRoutes } from './deploy-targets.js';
 import { createSession, revokeSession, validateSession } from '../auth/sessions.js';
 import {
+  getUserEmail,
   listOrgsForUser,
   login,
   registerAccount,
   tenantContext,
 } from '../repo/accounts.js';
+import { InstanceSettingsRepository, EncryptionUnavailableError } from '../repo/instance-settings.js';
 import { ProjectRepository } from '../repo/projects.js';
 import { AiUsageRepository } from '../repo/ai-usage.js';
 import { ApiKeyRepository, type ResolvedApiKey } from '../repo/api-keys.js';
@@ -69,7 +72,7 @@ const IMPORT_BODY_LIMIT = 4 * 1024 * 1024; // 4 MiB for a full project import
 const PREVIEW_BODY_LIMIT = 2 * 1024 * 1024; // 2 MiB for a single draft page
 const MAX_UPLOAD_BYTES = 15 * 1024 * 1024; // 15 MiB per uploaded image
 const WRITE_ROLES: ReadonlySet<string> = new Set(['owner', 'admin']);
-const API_PREFIXES = ['/auth', '/orgs', '/me', '/health'];
+const API_PREFIXES = ['/auth', '/orgs', '/me', '/health', '/admin'];
 
 const MEDIA_CONTENT_TYPES = new Map<string, string>([
   ['avif', 'image/avif'],
@@ -188,6 +191,11 @@ export interface AppOptions {
   encryptionKey?: Buffer;
   /** When set, deploy targets are restricted to these exact hostnames (SaaS SSRF guard). */
   deployAllowedHosts?: string[];
+  /**
+   * Normalized (lowercased) email allowlist designating instance admins — the
+   * users who may read/write instance settings. Empty/unset = no instance admins.
+   */
+  adminEmails?: string[];
   /** Current running version (for the pull-based update check). */
   version?: string;
   /** Provider of the latest released version tag (cached; null when unavailable). */
@@ -221,11 +229,26 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const apiKeysRepo = new ApiKeyRepository(db);
   const oauthRepo = new OAuthRepository(db);
   const oauthClients = new OAuthClientRepository(db);
+  const instanceSettingsRepo = new InstanceSettingsRepository(db, opts.encryptionKey);
+  // Normalized once at startup; membership is a constant-time-ish Set lookup per request.
+  const adminEmails: ReadonlySet<string> = new Set(
+    (opts.adminEmails ?? []).map((e) => e.trim().toLowerCase()).filter(Boolean),
+  );
   const aiQuota = opts.aiQuota ?? {};
   const app = Fastify({
     // Redact deploy credentials defensively (Fastify omits bodies by default, but
     // guard against any future body logging).
-    logger: opts.logger ? { redact: ['req.body.password', 'req.body.hostFingerprint'] } : false,
+    logger: opts.logger
+      ? {
+          redact: [
+            'req.body.password',
+            'req.body.hostFingerprint',
+            // Instance-settings PUT carries plaintext secrets in nested fields.
+            'req.body.smtp.password',
+            'req.body.hcaptcha.secret',
+          ],
+        }
+      : false,
     // Behind a reverse proxy, trust X-Forwarded-For so req.ip (the rate-limit key)
     // is the real client IP instead of the proxy's (which would collapse all
     // clients to one bucket).
@@ -335,6 +358,28 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   async function currentUserId(req: FastifyRequest): Promise<string | null> {
     const token = sessionToken(req);
     return token ? await validateSession(db, token) : null;
+  }
+
+  // Instance admin = a session user whose email is in the operator's allowlist.
+  // Instance settings are global (not org/project-scoped), so this is decided by
+  // email membership, never by an org role. Bearer (API-key) callers are never
+  // instance admins — admin config is an interactive, session-only operation.
+  async function isInstanceAdmin(userId: string): Promise<boolean> {
+    if (adminEmails.size === 0) return false;
+    const email = await getUserEmail(db, userId);
+    return email !== null && adminEmails.has(email);
+  }
+
+  async function requireInstanceAdmin(req: FastifyRequest): Promise<string> {
+    // session-only: a Bearer token must never reach instance-admin operations.
+    if (bearerToken(req) !== undefined) {
+      throw new ForbiddenError('this operation requires an interactive session');
+    }
+    const userId = await requireUserId(req);
+    if (!(await isInstanceAdmin(userId))) {
+      throw new ForbiddenError('instance admin access required');
+    }
+    return userId;
   }
 
   // The access a project route requires. A `Capability` is enforced for bearer
@@ -452,7 +497,35 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
   app.get('/me', async (req, reply) => {
     const userId = await requireUserId(req);
-    return reply.send({ userId, orgs: await listOrgsForUser(db, userId) });
+    const [orgs, instanceAdmin] = await Promise.all([
+      listOrgsForUser(db, userId),
+      isInstanceAdmin(userId),
+    ]);
+    return reply.send({ userId, orgs, isInstanceAdmin: instanceAdmin });
+  });
+
+  // ---- Instance admin settings (global mail / hCaptcha / enabled form modes) ----
+  // Not org/project-scoped: gated on the instance-admin email allowlist. Secrets
+  // are encrypted at rest and never returned (the read view masks them).
+  app.get('/admin/settings', { config: rl(30) }, async (req, reply) => {
+    await requireInstanceAdmin(req);
+    return reply.send({ settings: await instanceSettingsRepo.getPublic() });
+  });
+
+  app.put('/admin/settings', { config: rl(30) }, async (req, reply) => {
+    const userId = await requireInstanceAdmin(req);
+    const input = InstanceSettingsInputSchema.parse(req.body);
+    try {
+      const settings = await instanceSettingsRepo.put(input);
+      // Audit trail for an instance-wide config change (userId only — no PII).
+      app.log.info({ userId }, 'instance settings updated');
+      return reply.send({ settings });
+    } catch (err) {
+      if (err instanceof EncryptionUnavailableError) {
+        return reply.code(503).send({ error: err.message });
+      }
+      throw err;
+    }
   });
 
   // Introspection for a project API key: a bearer client (the CLI / MCP bridge)

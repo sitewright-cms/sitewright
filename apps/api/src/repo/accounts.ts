@@ -75,6 +75,12 @@ export async function login(db: Database, email: string, password: string): Prom
   return user.id;
 }
 
+/** The user's normalized email, or null if the user no longer exists. */
+export async function getUserEmail(db: Database, userId: string): Promise<string | null> {
+  const [user] = await db.select({ email: users.email }).from(users).where(eq(users.id, userId));
+  return user?.email ?? null;
+}
+
 /** The user's role in an org, or null if they are not a member. */
 export async function getMembership(
   db: Database,

@@ -275,6 +275,31 @@ describe('api client', () => {
     expect(fetchMock.mock.calls[0]![1].method ?? 'GET').toBe('GET');
   });
 
+  it('reads and writes instance admin settings', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(200, { settings: { formModes: { globalSmtp: false, userSmtp: false, contactPhp: false, thirdParty: false } } }),
+    );
+    const got = await api.getInstanceSettings();
+    expect(got.settings.formModes.globalSmtp).toBe(false);
+    const [getUrl, getInit] = fetchMock.mock.calls[0]!;
+    expect(getUrl).toBe('/admin/settings');
+    expect(getInit.method).toBe('GET');
+    expect(getInit.credentials).toBe('include');
+
+    fetchMock.mockResolvedValue(
+      jsonResponse(200, { settings: { formModes: { globalSmtp: true, userSmtp: false, contactPhp: false, thirdParty: false }, smtp: { host: 'h', port: 587, secure: false, fromEmail: 'a@b.co', hasPassword: true } } }),
+    );
+    const saved = await api.putInstanceSettings({
+      formModes: { globalSmtp: true },
+      smtp: { host: 'h', port: 587, secure: false, fromEmail: 'a@b.co', password: 'pw' },
+    });
+    expect(saved.settings.smtp?.hasPassword).toBe(true);
+    const [putUrl, putInit] = fetchMock.mock.calls[1]!;
+    expect(putUrl).toBe('/admin/settings');
+    expect(putInit.method).toBe('PUT');
+    expect(JSON.parse(putInit.body)).toMatchObject({ smtp: { host: 'h', password: 'pw' } });
+  });
+
   it('lists, puts and deletes page translations on the generic content/translation route', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { items: [] }));
     await api.listTranslations('o', 'p');

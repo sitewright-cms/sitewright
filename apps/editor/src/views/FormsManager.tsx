@@ -320,7 +320,12 @@ export function FormsManager({ org, project }: { org: Org; project: Project }) {
             aria-label="Delivery mode"
             className="rounded-md border border-slate-300 px-3 py-2 text-sm"
             value={draft.mode}
-            onChange={(e) => patch({ mode: e.target.value as FormMode })}
+            onChange={(e) => {
+              const mode = e.target.value as FormMode;
+              // Drop the third-party URL when leaving thirdParty so it never lingers
+              // (and never reaches the published HTML) for another mode.
+              patch(mode === 'thirdParty' ? { mode } : { mode, thirdPartyUrl: undefined });
+            }}
           >
             {MODE_LABELS.filter((m) => enabledModes[m.value] || m.value === draft.mode).map((m) => (
               <option key={m.value} value={m.value}>
@@ -333,17 +338,33 @@ export function FormsManager({ org, project }: { org: Org; project: Project }) {
           </span>
         </label>
 
+        {draft.mode === 'thirdParty' && (
+          <label className="flex max-w-lg flex-col text-xs text-slate-500">
+            Third-party endpoint URL (the form posts here directly)
+            <input
+              aria-label="Third-party endpoint URL"
+              type="url"
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+              value={draft.thirdPartyUrl ?? ''}
+              onChange={(e) => patch({ thirdPartyUrl: e.target.value || undefined })}
+              placeholder="https://formspree.io/f/xxxx"
+              required
+            />
+          </label>
+        )}
+
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
             aria-label="Require hCaptcha"
             checked={draft.hcaptcha}
-            disabled={draft.mode === 'contactPhp'}
+            disabled={draft.mode === 'contactPhp' || draft.mode === 'thirdParty'}
             onChange={(e) => patch({ hcaptcha: e.target.checked })}
           />
-          <span className={draft.mode === 'contactPhp' ? 'text-slate-400' : ''}>
+          <span className={draft.mode === 'contactPhp' || draft.mode === 'thirdParty' ? 'text-slate-400' : ''}>
             Require hCaptcha (uses the instance hCaptcha keys; configured by an admin)
-            {draft.mode === 'contactPhp' && ' — not available for contact.php forms'}
+            {(draft.mode === 'contactPhp' || draft.mode === 'thirdParty') &&
+              ' — not available for this mode (Sitewright can’t verify a remote endpoint)'}
           </span>
         </label>
 

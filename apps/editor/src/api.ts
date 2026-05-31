@@ -1,4 +1,5 @@
 import type {
+  CorporateIdentity,
   Dataset,
   DeployTargetView,
   Entry,
@@ -17,21 +18,32 @@ import type {
   StockProviderName,
   StockProvidersStatus,
   StockSearchResult,
+  WebsiteSettings,
 } from '@sitewright/schema';
 
 export type {
+  CorporateIdentity,
   DeployTargetView,
   Form,
   FormModes,
   FormSubmission,
   InstanceSettingsInput,
   InstanceSettingsPublic,
+  ProjectSettings,
   SmtpInput,
   SmtpPublic,
   StockProviderName,
   StockProvidersStatus,
   StockSearchResult,
+  WebsiteSettings,
 };
+
+/** The project's settings singleton as read/written via the content API (the unified shape). */
+export interface SettingsBundle {
+  identity: CorporateIdentity;
+  website?: WebsiteSettings;
+  settings: ProjectSettings;
+}
 
 /** Base URL for the API. Empty = same origin (the API serves this SPA). */
 const BASE = import.meta.env.VITE_API_BASE ?? '';
@@ -179,11 +191,17 @@ export const api = {
   deletePattern: (orgId: string, projectId: string, id: string) =>
     request<void>('DELETE', `/orgs/${orgId}/projects/${projectId}/content/pattern/${id}`),
 
-  // --- project settings (locales live here) ---
+  // --- project settings singleton (Corporate Identity + website + locales) ---
   getSettings: (orgId: string, projectId: string) =>
-    request<{ item: { settings: ProjectSettings } }>(
+    request<{ item: SettingsBundle }>(
       'GET',
       `/orgs/${orgId}/projects/${projectId}/content/settings/settings`,
+    ),
+  putSettings: (orgId: string, projectId: string, bundle: SettingsBundle) =>
+    request<{ item: SettingsBundle }>(
+      'PUT',
+      `/orgs/${orgId}/projects/${projectId}/content/settings/settings`,
+      bundle,
     ),
 
   // --- page translations (per-locale content overrides) ---

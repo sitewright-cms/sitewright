@@ -12,6 +12,7 @@ import {
   PageSchema,
   PartialSchema,
   PatternSchema,
+  PageTranslationSchema,
   TemplateSchema,
   ProjectSettingsSchema,
   WebsiteSettingsSchema,
@@ -48,6 +49,8 @@ const SCHEMAS = new Map<ContentKind, z.ZodTypeAny>([
   ['template', TemplateSchema],
   // A reusable pre-composed block subtree (fork-on-insert library); tree-bearing.
   ['pattern', PatternSchema],
+  // A per-locale override of a page's content (multilingual); tree-bearing.
+  ['translation', PageTranslationSchema],
   ['dataset', DatasetSchema],
   ['entry', EntrySchema],
   // Media metadata is tenant-scoped CRUD like other content; the binaries live on
@@ -78,7 +81,13 @@ function schemaFor(kind: ContentKind): z.ZodTypeAny {
 
 /** Guards recursive (page/partial/template) trees before Zod's recursive parse, to prevent stack overflow. */
 function assertTreeSafe(kind: ContentKind, raw: unknown): void {
-  if (kind === 'page' || kind === 'partial' || kind === 'template' || kind === 'pattern') {
+  if (
+    kind === 'page' ||
+    kind === 'partial' ||
+    kind === 'template' ||
+    kind === 'pattern' ||
+    kind === 'translation'
+  ) {
     assertWithinTreeDepth((raw as { root?: unknown })?.root);
   }
 }

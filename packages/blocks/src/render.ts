@@ -41,6 +41,13 @@ export interface RenderContext {
    * consumed by `Nav` blocks. Keyed by slot (`header`/`footer`/`mobile`).
    */
   nav?: Record<string, ReadonlyArray<{ label: string; path: string }>>;
+  /**
+   * Locale URL prefix for the current locale (`''` for the default/single locale,
+   * `'de/'` for a non-default locale). Internal PAGE links are kept inside this
+   * locale subtree; shared assets (media/css/js) are NOT prefixed. See
+   * `resolveInternalUrl`.
+   */
+  localePrefix?: string;
 }
 
 const PICTURE_SIZES = '(min-width: 1280px) 1280px, 100vw';
@@ -148,6 +155,8 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
   const selfEntry = ownEntry(node, ctx);
   const inner = renderChildren(node, ctx, selfEntry);
   const root = ctx.root ?? '';
+  // Locale subtree prefix for internal page links (not assets). '' for default/single.
+  const lp = ctx.localePrefix ?? '';
   // Author-supplied utility classes for this block's root element (Tailwind layer).
   const cls = classAttr(node);
 
@@ -167,7 +176,7 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
       const title = textProp(props, selfEntry, 'title');
       const subtitle = textProp(props, selfEntry, 'subtitle');
       const ctaText = textProp(props, selfEntry, 'ctaText');
-      const ctaHref = resolveInternalUrl(urlProp(props, selfEntry, 'ctaHref', '#'), root);
+      const ctaHref = resolveInternalUrl(urlProp(props, selfEntry, 'ctaHref', '#'), root, lp);
       return (
         `<div data-sw-block="Hero"${cls}>` +
         (title ? `<h1 data-sw-part="title">${escapeHtml(title)}</h1>` : '') +
@@ -197,12 +206,12 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
     }
     case 'Button': {
       const text = textProp(props, selfEntry, 'text');
-      const href = resolveInternalUrl(urlProp(props, selfEntry, 'href', '#'), root);
+      const href = resolveInternalUrl(urlProp(props, selfEntry, 'href', '#'), root, lp);
       return `<a data-sw-block="Button"${cls} href="${escapeAttr(href)}">${escapeHtml(text)}${inner}</a>`;
     }
     case 'Link': {
       const text = textProp(props, selfEntry, 'text');
-      const href = resolveInternalUrl(urlProp(props, selfEntry, 'href', '#'), root);
+      const href = resolveInternalUrl(urlProp(props, selfEntry, 'href', '#'), root, lp);
       return `<a data-sw-block="Link"${cls} href="${escapeAttr(href)}">${escapeHtml(text)}${inner}</a>`;
     }
     case 'Header': {
@@ -336,7 +345,7 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
       const policyHref = urlProp(props, selfEntry, 'policyHref', '');
       const policyText = textProp(props, selfEntry, 'policyText') || 'Learn more';
       const link = policyHref
-        ? ` <a href="${escapeAttr(resolveInternalUrl(policyHref, root))}">${escapeHtml(policyText)}</a>`
+        ? ` <a href="${escapeAttr(resolveInternalUrl(policyHref, root, lp))}">${escapeHtml(policyText)}</a>`
         : '';
       return (
         `<div data-sw-block="CookieConsent"${cls} data-sw-component="cookie-consent" ` +
@@ -377,7 +386,7 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
       const links = items
         .map(
           (item) =>
-            `<a data-sw-part="nav-link" href="${escapeAttr(resolveInternalUrl(item.path, root))}">${escapeHtml(item.label)}</a>`,
+            `<a data-sw-part="nav-link" href="${escapeAttr(resolveInternalUrl(item.path, root, lp))}">${escapeHtml(item.label)}</a>`,
         )
         .join('');
       return `<nav data-sw-block="Nav"${cls} data-slot="${escapeAttr(slot)}">${links}${inner}</nav>`;

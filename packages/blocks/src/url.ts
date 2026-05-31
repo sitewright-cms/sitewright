@@ -24,15 +24,21 @@ export function safeUrl(value: string, fallback = '#'): string {
  * the exported site works at any base path. External (`http(s)://`) and fragment
  * (`#`) links pass through unchanged. Unsafe or protocol-relative URLs fall back
  * to `#`.
+ *
+ * `localePrefix` (e.g. `'de/'`) keeps internal PAGE links inside the current
+ * locale subtree: `/about` → `<root>de/about`. It defaults to `''` (single-locale
+ * / default-locale → identical to before). Pass it ONLY for page links, never for
+ * shared assets (media/css/js live at the site root, the same across locales).
  */
-export function resolveInternalUrl(href: string, root: string): string {
+export function resolveInternalUrl(href: string, root: string, localePrefix = ''): string {
   const safe = safeUrl(href, '');
   if (safe === '') return '#';
   if (safe.startsWith('#') || /^https?:\/\//i.test(safe)) return safe;
   // Reject root-relative paths that traverse above the site root (`/../x`,
   // `/a/../b`) — they'd resolve off-root in the exported artifact.
   if (/(?:^|\/)\.\.(?:\/|$)/.test(safe)) return '#';
-  // Root-relative internal link: drop the leading '/' and rebase onto `root`.
-  const rebased = root + safe.slice(1);
+  // Root-relative internal link: drop the leading '/' and rebase onto `root`,
+  // inside the locale subtree.
+  const rebased = root + localePrefix + safe.slice(1);
   return rebased === '' ? './' : rebased;
 }

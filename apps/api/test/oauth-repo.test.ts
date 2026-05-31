@@ -99,6 +99,23 @@ describe('OAuthRepository — authorization code', () => {
       oauth.redeemAuthCode({ code: 'swc_nope', clientId: CLIENT, redirectUri: REDIRECT, codeVerifier: VERIFIER }),
     ).rejects.toMatchObject({ code: 'invalid_grant' });
   });
+
+  it('does NOT burn the code on a failed PKCE attempt (intercepted-code resilience)', async () => {
+    const code = await authCode();
+    // An attacker with the code but not the verifier fails…
+    await expect(
+      oauth.redeemAuthCode({ code, clientId: CLIENT, redirectUri: REDIRECT, codeVerifier: 'x'.repeat(43) }),
+    ).rejects.toMatchObject({ code: 'invalid_grant' });
+    // …and the legitimate client can still redeem with the correct verifier.
+    const tokens = await oauth.redeemAuthCode({ code, clientId: CLIENT, redirectUri: REDIRECT, codeVerifier: VERIFIER });
+    expect(tokens.accessToken.startsWith('swk_')).toBe(true);
+  });
+
+  it('rejects an authorization request with a malformed PKCE challenge', async () => {
+    await expect(oauth.createAuthCode(grant, REDIRECT, 'too-short')).rejects.toMatchObject({
+      code: 'invalid_request',
+    });
+  });
 });
 
 describe('OAuthRepository — refresh rotation', () => {
@@ -127,6 +144,15 @@ describe('OAuthRepository — refresh rotation', () => {
     await expect(
       oauth.refresh({ refreshToken: second.refreshToken, clientId: CLIENT }),
     ).rejects.toMatchObject({ code: 'invalid_grant' });
+  });
+
+  it('revokes in-flight access tokens too when a chain is flagged stolen (no 1h bleed)', async () => {
+    const first = await firstTokens();
+    const second = await oauth.refresh({ refreshToken: first.refreshToken, clientId: CLIENT });
+    expect(await keys.resolve(second.accessToken)).not.toBeNull(); // currently valid
+    // Theft: reusing the rotated token revokes the chain AND the access tokens.
+    await expect(oauth.refresh({ refreshToken: first.refreshToken, clientId: CLIENT })).rejects.toThrow(OAuthError);
+    expect(await keys.resolve(second.accessToken)).toBeNull(); // access token now dead
   });
 
   it('keeps the original absolute expiry across rotations (no indefinite extension)', async () => {

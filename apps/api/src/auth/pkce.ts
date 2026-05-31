@@ -2,6 +2,13 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 
 /** RFC 7636 code-verifier charset + length (43–128 of unreserved chars). */
 const VERIFIER_RE = /^[A-Za-z0-9\-._~]{43,128}$/;
+/** A base64url-encoded SHA-256 digest (no padding) is exactly 43 chars. */
+const S256_CHALLENGE_RE = /^[A-Za-z0-9\-_]{43}$/;
+
+/** True when `challenge` is a well-formed S256 (base64url SHA-256) challenge. */
+export function isValidS256Challenge(challenge: string): boolean {
+  return S256_CHALLENGE_RE.test(challenge);
+}
 
 function base64url(buf: Buffer): string {
   return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');

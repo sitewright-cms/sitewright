@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "df5d1bc4-1b47-46e6-aa67-755a87fca07c",
+  "id": "161ce906-221c-4f27-9b62-b083f49567b5",
   "prevId": "16eca454-e370-4c0b-a58a-a76d5845b5c5",
   "tables": {
     "ai_usage": {
@@ -538,7 +538,15 @@
           "autoincrement": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "oauth_auth_codes_expires_idx": {
+          "name": "oauth_auth_codes_expires_idx",
+          "columns": [
+            "expires_at"
+          ],
+          "isUnique": false
+        }
+      },
       "foreignKeys": {
         "oauth_auth_codes_user_id_users_id_fk": {
           "name": "oauth_auth_codes_user_id_users_id_fk",
@@ -665,7 +673,23 @@
           "autoincrement": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "oauth_refresh_expires_idx": {
+          "name": "oauth_refresh_expires_idx",
+          "columns": [
+            "expires_at"
+          ],
+          "isUnique": false
+        },
+        "oauth_refresh_user_project_idx": {
+          "name": "oauth_refresh_user_project_idx",
+          "columns": [
+            "user_id",
+            "project_id"
+          ],
+          "isUnique": false
+        }
+      },
       "foreignKeys": {
         "oauth_refresh_tokens_user_id_users_id_fk": {
           "name": "oauth_refresh_tokens_user_id_users_id_fk",

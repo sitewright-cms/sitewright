@@ -16,6 +16,7 @@ CREATE TABLE `oauth_auth_codes` (
 	FOREIGN KEY (`project_id`) REFERENCES `projects`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
+CREATE INDEX `oauth_auth_codes_expires_idx` ON `oauth_auth_codes` (`expires_at`);--> statement-breakpoint
 CREATE TABLE `oauth_refresh_tokens` (
 	`id` text PRIMARY KEY NOT NULL,
 	`client_id` text NOT NULL,
@@ -33,4 +34,6 @@ CREATE TABLE `oauth_refresh_tokens` (
 	FOREIGN KEY (`project_id`) REFERENCES `projects`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
+CREATE INDEX `oauth_refresh_expires_idx` ON `oauth_refresh_tokens` (`expires_at`);--> statement-breakpoint
+CREATE INDEX `oauth_refresh_user_project_idx` ON `oauth_refresh_tokens` (`user_id`,`project_id`);--> statement-breakpoint
 ALTER TABLE `api_keys` ADD `source` text DEFAULT 'pat' NOT NULL;

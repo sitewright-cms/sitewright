@@ -300,6 +300,49 @@ describe('api client', () => {
     expect(JSON.parse(putInit.body)).toMatchObject({ smtp: { host: 'h', password: 'pw' } });
   });
 
+  it('lists, puts and deletes forms on the content/form route', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { items: [] }));
+    await api.listForms('o', 'p');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/orgs/o/projects/p/content/form');
+
+    const form = {
+      id: 'contact',
+      name: 'Contact',
+      fields: [{ name: 'email', label: 'Email', type: 'email' as const, required: false }],
+      recipient: 'a@b.co',
+      submitLabel: 'Send',
+      successMessage: 'ok',
+      errorMessage: 'err',
+      mode: 'globalSmtp' as const,
+      hcaptcha: false,
+    };
+    fetchMock.mockResolvedValue(jsonResponse(200, { item: form }));
+    await api.putForm('o', 'p', form);
+    const [putUrl, putInit] = fetchMock.mock.calls[1]!;
+    expect(putUrl).toBe('/orgs/o/projects/p/content/form/contact');
+    expect(putInit.method).toBe('PUT');
+
+    fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
+    await api.deleteForm('o', 'p', 'contact');
+    expect(fetchMock.mock.calls[2]![1].method).toBe('DELETE');
+  });
+
+  it('lists and deletes submissions, passing the formId filter', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { items: [], total: 0 }));
+    await api.listSubmissions('o', 'p');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/orgs/o/projects/p/submissions');
+
+    fetchMock.mockResolvedValue(jsonResponse(200, { items: [], total: 0 }));
+    await api.listSubmissions('o', 'p', 'contact');
+    expect(fetchMock.mock.calls[1]![0]).toBe('/orgs/o/projects/p/submissions?formId=contact');
+
+    fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
+    await api.deleteSubmission('o', 'p', 's1');
+    const [delUrl, delInit] = fetchMock.mock.calls[2]!;
+    expect(delUrl).toBe('/orgs/o/projects/p/submissions/s1');
+    expect(delInit.method).toBe('DELETE');
+  });
+
   it('lists, puts and deletes page translations on the generic content/translation route', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { items: [] }));
     await api.listTranslations('o', 'p');

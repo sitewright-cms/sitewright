@@ -2,6 +2,8 @@ import type {
   Dataset,
   DeployTargetView,
   Entry,
+  Form,
+  FormSubmission,
   InstanceSettingsInput,
   InstanceSettingsPublic,
   MediaAsset,
@@ -11,7 +13,7 @@ import type {
   ProjectSettings,
 } from '@sitewright/schema';
 
-export type { DeployTargetView, InstanceSettingsInput, InstanceSettingsPublic };
+export type { DeployTargetView, Form, FormSubmission, InstanceSettingsInput, InstanceSettingsPublic };
 
 /** Base URL for the API. Empty = same origin (the API serves this SPA). */
 const BASE = import.meta.env.VITE_API_BASE ?? '';
@@ -280,4 +282,28 @@ export const api = {
     request<{ settings: InstanceSettingsPublic }>('GET', '/admin/settings'),
   putInstanceSettings: (body: InstanceSettingsInput) =>
     request<{ settings: InstanceSettingsPublic }>('PUT', '/admin/settings', body),
+
+  // --- web forms (definitions live as `form` content) ---
+  listForms: (orgId: string, projectId: string) =>
+    request<{ items: Form[] }>('GET', `/orgs/${orgId}/projects/${projectId}/content/form`),
+  putForm: (orgId: string, projectId: string, form: Form) =>
+    request<{ item: Form }>(
+      'PUT',
+      `/orgs/${orgId}/projects/${projectId}/content/form/${encodeURIComponent(form.id)}`,
+      form,
+    ),
+  deleteForm: (orgId: string, projectId: string, id: string) =>
+    request<void>('DELETE', `/orgs/${orgId}/projects/${projectId}/content/form/${encodeURIComponent(id)}`),
+
+  // --- form submissions (inbox) ---
+  listSubmissions: (orgId: string, projectId: string, formId?: string) =>
+    request<{ items: FormSubmission[]; total: number }>(
+      'GET',
+      `/orgs/${orgId}/projects/${projectId}/submissions${formId ? `?formId=${encodeURIComponent(formId)}` : ''}`,
+    ),
+  deleteSubmission: (orgId: string, projectId: string, id: string) =>
+    request<void>(
+      'DELETE',
+      `/orgs/${orgId}/projects/${projectId}/submissions/${encodeURIComponent(id)}`,
+    ),
 };

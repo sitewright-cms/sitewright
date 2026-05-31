@@ -3,6 +3,7 @@ import type {
   DeployTargetView,
   Entry,
   Form,
+  FormModes,
   FormSubmission,
   InstanceSettingsInput,
   InstanceSettingsPublic,
@@ -13,7 +14,7 @@ import type {
   ProjectSettings,
 } from '@sitewright/schema';
 
-export type { DeployTargetView, Form, FormSubmission, InstanceSettingsInput, InstanceSettingsPublic };
+export type { DeployTargetView, Form, FormModes, FormSubmission, InstanceSettingsInput, InstanceSettingsPublic };
 
 /** Base URL for the API. Empty = same origin (the API serves this SPA). */
 const BASE = import.meta.env.VITE_API_BASE ?? '';
@@ -294,6 +295,9 @@ export const api = {
     ),
   deleteForm: (orgId: string, projectId: string, id: string) =>
     request<void>('DELETE', `/orgs/${orgId}/projects/${projectId}/content/form/${encodeURIComponent(id)}`),
+  /** Which mail-delivery modes the instance admin permits (for the form-mode selector). */
+  formModes: (orgId: string, projectId: string) =>
+    request<{ formModes: FormModes }>('GET', `/orgs/${orgId}/projects/${projectId}/form-modes`),
 
   // --- form submissions (inbox) ---
   listSubmissions: (orgId: string, projectId: string, formId?: string) =>

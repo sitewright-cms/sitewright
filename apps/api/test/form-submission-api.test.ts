@@ -3,7 +3,9 @@ import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
-import { memberships } from '../src/db/schema.js';
+import { memberships, formSubmissions } from '../src/db/schema.js';
+import { MAX_SUBMISSIONS_PER_FORM } from '@sitewright/schema';
+import { SubmissionRepository } from '../src/repo/submissions.js';
 import type { Database } from '../src/db/client.js';
 import type { SubmissionMail, SubmissionMailer } from '../src/mail/mailer.js';
 
@@ -139,6 +141,45 @@ describe('public form submission endpoint', () => {
     const res = await app.inject({ method: 'OPTIONS', url: `/f/${projectId}/contact` });
     expect(res.statusCode).toBe(204);
     expect(res.headers['access-control-allow-methods']).toContain('POST');
+  });
+
+  it('silently drops (200, not stored) once the per-form storage cap is reached', async () => {
+    // Seed the table to the cap with a chunked batch insert (fast), then a public
+    // submit must be silently dropped (200, no store, no email).
+    const now = new Date();
+    const rows = Array.from({ length: MAX_SUBMISSIONS_PER_FORM }, (_, i) => ({
+      id: `seed-${i}`,
+      projectId,
+      formId: 'contact',
+      data: { n: String(i) },
+      createdAt: now,
+    }));
+    for (let i = 0; i < rows.length; i += 5000) {
+      await db.insert(formSubmissions).values(rows.slice(i, i + 5000));
+    }
+    const res = await app.inject({
+      method: 'POST',
+      url: `/f/${projectId}/contact`,
+      payload: { email: 'over@cap.co', _elapsed: '5000' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ ok: true });
+    expect(mailer.sent).toHaveLength(0); // not emailed
+    const repo = new SubmissionRepository(db);
+    expect(await repo.countForForm(projectId, 'contact')).toBe(MAX_SUBMISSIONS_PER_FORM); // not stored beyond cap
+  });
+
+  it('exposes the instance form modes to a project member (default: all off)', async () => {
+    const unauth = await app.inject({ method: 'GET', url: `/orgs/${orgId}/projects/${projectId}/form-modes` });
+    expect(unauth.statusCode).toBe(401);
+    const res = await app.inject({ method: 'GET', url: `/orgs/${orgId}/projects/${projectId}/form-modes`, cookies: { sw_session: t } });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { formModes: Record<string, boolean> }).formModes).toEqual({
+      globalSmtp: false,
+      userSmtp: false,
+      contactPhp: false,
+      thirdParty: false,
+    });
   });
 });
 

@@ -36,6 +36,13 @@
       "when": 1780214133338,
       "tag": "0004_groovy_vulture",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1780219104436,
+      "tag": "0005_spicy_slyde",
+      "breakpoints": true
     }
   ]
 }

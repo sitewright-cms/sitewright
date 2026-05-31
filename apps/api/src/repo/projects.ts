@@ -5,6 +5,7 @@ import {
   apiKeys,
   content,
   oauthAuthCodes,
+  oauthDeviceCodes,
   oauthRefreshTokens,
   projects,
   type OrgRole,
@@ -97,6 +98,7 @@ export class ProjectRepository {
       await tx.delete(apiKeys).where(eq(apiKeys.projectId, id));
       await tx.delete(oauthAuthCodes).where(eq(oauthAuthCodes.projectId, id));
       await tx.delete(oauthRefreshTokens).where(eq(oauthRefreshTokens.projectId, id));
+      await tx.delete(oauthDeviceCodes).where(eq(oauthDeviceCodes.projectId, id));
       await tx.delete(projects).where(and(eq(projects.id, id), eq(projects.orgId, ctx.orgId)));
     });
   }

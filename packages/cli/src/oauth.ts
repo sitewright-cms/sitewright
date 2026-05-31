@@ -1,6 +1,26 @@
 /** The fixed public client id for the CLI (matches the API's built-in client). */
 export const CLI_CLIENT_ID = 'sitewright-cli';
 
+/** A token-endpoint error carrying the RFC 6749/8628 `error` code (e.g. authorization_pending). */
+export class OAuthTokenError extends Error {
+  constructor(
+    public readonly code: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'OAuthTokenError';
+  }
+}
+
+export interface DeviceAuthorization {
+  deviceCode: string;
+  userCode: string;
+  verificationUri: string;
+  verificationUriComplete?: string;
+  interval: number;
+  expiresIn: number;
+}
+
 export interface TokenSet {
   accessToken: string;
   refreshToken: string;
@@ -72,11 +92,10 @@ async function tokenRequest(
     json = undefined;
   }
   if (!res.ok) {
-    const err =
-      json && typeof json === 'object' && 'error' in json && typeof json.error === 'string'
-        ? json.error
-        : res.statusText || `HTTP ${res.status}`;
-    throw new Error(`token request failed: ${err}`);
+    const obj = json && typeof json === 'object' ? (json as Record<string, unknown>) : {};
+    const code = typeof obj.error === 'string' ? obj.error : 'invalid_request';
+    const message = typeof obj.error_description === 'string' ? obj.error_description : code;
+    throw new OAuthTokenError(code, message);
   }
   const t = json as { access_token?: string; refresh_token?: string; expires_in?: number; scope?: string };
   if (typeof t.access_token !== 'string' || typeof t.refresh_token !== 'string') {
@@ -103,6 +122,52 @@ export function exchangeCode(
       client_id: CLI_CLIENT_ID,
       redirect_uri: opts.redirectUri,
       code_verifier: opts.verifier,
+    },
+    fetchImpl,
+  );
+}
+
+/** Starts the device authorization grant (RFC 8628). */
+export async function startDeviceAuthorization(
+  opts: { issuer: string; scope: string },
+  fetchImpl: FetchLike = globalThis.fetch as unknown as FetchLike,
+): Promise<DeviceAuthorization> {
+  const res = await fetchImpl(`${trimUrl(opts.issuer)}/oauth/device_authorization`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ client_id: CLI_CLIENT_ID, scope: opts.scope }).toString(),
+  });
+  const text = await res.text();
+  if (!res.ok) throw new OAuthTokenError('device_authorization_failed', res.statusText || `HTTP ${res.status}`);
+  const d = JSON.parse(text) as {
+    device_code: string;
+    user_code: string;
+    verification_uri: string;
+    verification_uri_complete?: string;
+    interval?: number;
+    expires_in?: number;
+  };
+  return {
+    deviceCode: d.device_code,
+    userCode: d.user_code,
+    verificationUri: d.verification_uri,
+    verificationUriComplete: d.verification_uri_complete,
+    interval: d.interval ?? 5,
+    expiresIn: d.expires_in ?? 600,
+  };
+}
+
+/** One poll of the device token endpoint — throws OAuthTokenError (e.g. authorization_pending). */
+export function requestDeviceToken(
+  opts: { issuer: string; deviceCode: string },
+  fetchImpl: FetchLike = globalThis.fetch as unknown as FetchLike,
+): Promise<TokenSet> {
+  return tokenRequest(
+    opts.issuer,
+    {
+      grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+      device_code: opts.deviceCode,
+      client_id: CLI_CLIENT_ID,
     },
     fetchImpl,
   );

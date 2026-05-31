@@ -2,6 +2,7 @@
 import { spawn } from 'node:child_process';
 import { runStdioBridge } from '@sitewright/mcp';
 import { runLogin } from './login.js';
+import { runDeviceLogin } from './device.js';
 import { clearCredentials } from './credentials.js';
 import { ensureAccessToken, forceRefreshAccessToken } from './session.js';
 
@@ -51,6 +52,20 @@ async function main(): Promise<void> {
     case 'login': {
       const url = requireUrl();
       const scope = flag('scope') ?? DEFAULT_SCOPE;
+      // --device: headless / SSH (no loopback browser) — show a code to enter elsewhere.
+      if (process.argv.slice(3).includes('--device')) {
+        const tokens = await runDeviceLogin({
+          issuer: url,
+          scope,
+          prompt: (auth) => {
+            process.stderr.write(
+              `\nTo authorize, open:\n  ${auth.verificationUri}\nand enter the code:\n  ${auth.userCode}\n\nWaiting for approval…\n`,
+            );
+          },
+        });
+        process.stdout.write(`Signed in to ${url} (scope: ${tokens.scope || '—'}).\n`);
+        return;
+      }
       process.stderr.write('Opening your browser to sign in…\n');
       const tokens = await runLogin({ issuer: url, scope, open: openBrowser });
       process.stdout.write(`Signed in to ${url} (scope: ${tokens.scope || '—'}).\n`);

@@ -335,4 +335,41 @@ describe('OAuth full authorization-code + PKCE flow', () => {
     expect(res.statusCode).toBe(400);
     expect((res.json() as { error: string }).error).toBe('unsupported_grant_type');
   });
+
+  it('runs the device authorization grant: device_authorization → approve → token', async () => {
+    const { session, orgId, projectId } = await setup();
+    const da = await app.inject({
+      method: 'POST',
+      url: '/oauth/device_authorization',
+      ...form({ client_id: CLIENT, scope: 'content:read content:write' }),
+    });
+    expect(da.statusCode).toBe(200);
+    const auth = da.json() as { device_code: string; user_code: string; verification_uri: string; interval: number };
+    expect(auth.device_code).toMatch(/^swd_/);
+    expect(auth.verification_uri).toMatch(/\/oauth\/device$/);
+
+    const poll = () =>
+      app.inject({
+        method: 'POST',
+        url: '/oauth/token',
+        ...form({ grant_type: 'urn:ietf:params:oauth:grant-type:device_code', device_code: auth.device_code, client_id: CLIENT }),
+      });
+    const pending = await poll();
+    expect(pending.statusCode).toBe(400);
+    expect((pending.json() as { error: string }).error).toBe('authorization_pending');
+
+    // Approve in the browser (session).
+    const approve = await app.inject({
+      method: 'POST',
+      url: '/oauth/device',
+      cookies: { sw_session: session },
+      ...form({ user_code: auth.user_code, project: `${orgId}:${projectId}`, decision: 'approve' }),
+    });
+    expect(approve.statusCode).toBe(200);
+    expect(approve.body).toMatch(/authorized/i);
+
+    const tok = await poll();
+    expect(tok.statusCode).toBe(200);
+    expect((tok.json() as { access_token: string }).access_token).toMatch(/^swk_/);
+  });
 });

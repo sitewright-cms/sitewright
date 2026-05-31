@@ -106,10 +106,11 @@ describe('Accordion + Lightbox → publish', () => {
     };
     const res = await client.post(`/orgs/${client.orgId}/projects/${projectId}/preview`, page);
     expect(res.statusCode).toBe(200);
-    const html = (res.json() as { html: string }).html;
-    expect(html).toContain('data-sw-component="lightbox"');
-    expect(html).toContain('[data-sw-part="overlay"]'); // CSS inlined
-    expect(html).toContain('<script>'); // behavior inlined (preview runs scripts)
-    expect(html).toContain('Image viewer'); // lightbox dialog enhancer present inline
+    const body = res.json() as { html: string; token: string };
+    expect(body.html).toContain('data-sw-component="lightbox"');
+    expect(body.html).toContain('[data-sw-part="overlay"]'); // CSS inlined
+    expect(body.html).toContain('<script>'); // behavior inlined (preview runs scripts)
+    expect(body.html).toContain('Image viewer'); // lightbox dialog enhancer present inline
+    expect(body.token).toBeTruthy(); // a preview token is issued for the doc endpoint
   });
 });

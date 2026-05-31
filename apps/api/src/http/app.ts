@@ -545,9 +545,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // session or make credentialed API calls. The editor loads this via the iframe
   // `src` (NOT `srcDoc`), so the document uses THIS CSP rather than inheriting the
   // editor page's stricter one. The token is unguessable, short-lived, and bound
-  // to (org, project, user); any member of the project may preview.
+  // to (org, project, user) — so only the member who GENERATED it can fetch it.
   app.get<{ Params: { orgId: string; projectId: string; token: string } }>(
     '/orgs/:orgId/projects/:projectId/preview/:token',
+    { config: rl(120) },
     async (req, reply) => {
       const { ctx, project } = await resolveProject(req);
       const html = previewStore.get(req.params.token, {

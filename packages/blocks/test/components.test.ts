@@ -7,6 +7,8 @@ describe('component registry', () => {
     expect(COMPONENT_TYPES.has('Carousel')).toBe(true);
     expect(COMPONENT_TYPES.has('Accordion')).toBe(true);
     expect(COMPONENT_TYPES.has('Lightbox')).toBe(true);
+    expect(COMPONENT_TYPES.has('Modal')).toBe(true);
+    expect(COMPONENT_TYPES.has('CookieConsent')).toBe(true);
     // child / plain blocks have no registry entry of their own
     expect(COMPONENT_TYPES.has('Slide')).toBe(false);
     expect(COMPONENT_TYPES.has('AccordionItem')).toBe(false);
@@ -61,6 +63,15 @@ describe('component registry', () => {
     const none = componentAssets([]);
     expect(none.css).toBe('');
     expect(none.js).toBe('');
+  });
+
+  it('Modal uses the native <dialog> API; CookieConsent guards localStorage', () => {
+    const modal = componentAssets(['Modal']);
+    expect(modal.css).toContain('::backdrop');
+    expect(modal.js).toContain('showModal');
+    const cc = componentAssets(['CookieConsent']);
+    expect(cc.js).toContain('localStorage');
+    expect(cc.js).toContain('try{'); // storage access is guarded (sandbox/disabled)
   });
 
   it('ignores unknown component types', () => {

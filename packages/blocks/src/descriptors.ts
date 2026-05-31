@@ -253,6 +253,37 @@ export const BLOCK_DESCRIPTORS: ReadonlyArray<BlockDescriptor> = [
       { key: 'caption', label: 'Caption', input: 'text' },
     ],
   },
+  {
+    // A trigger button that opens a native <dialog> (focus trap / Escape / backdrop
+    // for free). Holds the modal content (child blocks).
+    type: 'Modal',
+    label: 'Modal',
+    category: 'component',
+    container: true,
+    fields: [
+      { key: 'trigger', label: 'Button label', input: 'text', default: 'Open' },
+      { key: 'label', label: 'Accessible title', input: 'text' },
+    ],
+  },
+  {
+    // A dismissable cookie-consent banner (hidden until consent is needed; remembers
+    // dismissal in localStorage). With no JS there is no banner (nothing to consent to).
+    type: 'CookieConsent',
+    label: 'Cookie consent',
+    category: 'component',
+    container: false,
+    fields: [
+      {
+        key: 'message',
+        label: 'Message',
+        input: 'textarea',
+        default: 'We use cookies to improve your experience.',
+      },
+      { key: 'acceptText', label: 'Accept button', input: 'text', default: 'Accept' },
+      { key: 'policyText', label: 'Policy link text', input: 'text', default: 'Learn more' },
+      { key: 'policyHref', label: 'Policy link URL', input: 'url', placeholder: '/privacy' },
+    ],
+  },
 ];
 
 const BY_TYPE = new Map<string, BlockDescriptor>(BLOCK_DESCRIPTORS.map((d) => [d.type, d]));

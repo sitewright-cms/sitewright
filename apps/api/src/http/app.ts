@@ -428,6 +428,27 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     return reply.send({ userId, orgs: await listOrgsForUser(db, userId) });
   });
 
+  // Introspection for a project API key: a bearer client (the CLI / MCP bridge)
+  // learns the scope it was granted — which org+project to address and what it may
+  // do — without being pre-configured with those ids. Reveals only the token's OWN
+  // scope; never a secret. Bearer-only (a session has no single project scope).
+  app.get('/api-key/self', { config: rl(30) }, async (req, reply) => {
+    const bearer = bearerToken(req);
+    if (bearer === undefined) throw new UnauthorizedError('API key required');
+    // Reject ambiguous dual-credential requests, consistent with resolveProject.
+    if (sessionToken(req) !== undefined) {
+      throw new UnauthorizedError('supply either a session cookie or a Bearer token, not both');
+    }
+    const key = await apiKeysRepo.resolve(bearer);
+    if (!key) throw new UnauthorizedError('invalid or expired API key');
+    return reply.send({
+      orgId: key.orgId,
+      projectId: key.projectId,
+      role: key.role,
+      capabilities: key.capabilities,
+    });
+  });
+
   app.get('/orgs', async (req, reply) => {
     const userId = await requireUserId(req);
     return reply.send({ orgs: await listOrgsForUser(db, userId) });

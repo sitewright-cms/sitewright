@@ -209,6 +209,29 @@ describe('renderNode — Lightbox (gallery + overlay)', () => {
   });
 });
 
+describe('renderNode — localePrefix (multilingual link rewriting)', () => {
+  it('prefixes internal page links but NOT shared asset paths', () => {
+    const ctx = { root: '../', localePrefix: 'de/' };
+    // Internal page links (Button/Link/Hero CTA) stay inside the locale subtree.
+    expect(renderNode(node({ type: 'Button', props: { text: 'Go', href: '/about' } }), ctx)).toContain(
+      'href="../de/about"',
+    );
+    expect(renderNode(node({ type: 'Link', props: { text: 'C', href: '/contact' } }), ctx)).toContain(
+      'href="../de/contact"',
+    );
+    // A raw Image src is a shared asset → rebased to the SITE root, NOT prefixed.
+    expect(renderNode(node({ type: 'Image', props: { src: '/photo.jpg', alt: 'x' } }), ctx)).toContain(
+      'src="../photo.jpg"',
+    );
+  });
+
+  it('default/empty localePrefix leaves links unchanged (single-locale)', () => {
+    expect(renderNode(node({ type: 'Button', props: { text: 'Go', href: '/about' } }), { root: '../' })).toContain(
+      'href="../about"',
+    );
+  });
+});
+
 describe('renderNode — Tabs (tablist generated client-side)', () => {
   it('renders the component hook, an empty tablist, and titled panels (PE: stacked)', () => {
     const html = renderNode(

@@ -1,4 +1,12 @@
-import type { Dataset, Entry, Page, Project, SitewrightPartial, Template } from '@sitewright/schema';
+import type {
+  Dataset,
+  Entry,
+  Page,
+  PageTranslation,
+  Project,
+  SitewrightPartial,
+  Template,
+} from '@sitewright/schema';
 import { findDuplicateIds, walk } from './tree.js';
 
 /** A complete project: the manifest plus all of its content entities. */
@@ -10,6 +18,8 @@ export interface ProjectBundle {
   templates?: readonly Template[];
   datasets: readonly Dataset[];
   entries: readonly Entry[];
+  /** Per-locale page content overrides (multilingual; default locale uses page.root). */
+  translations?: readonly PageTranslation[];
 }
 
 export interface ValidationIssue {

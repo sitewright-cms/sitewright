@@ -31,4 +31,18 @@ describe('resolveInternalUrl', () => {
     expect(resolveInternalUrl('/a/../b', '../')).toBe('#');
     expect(resolveInternalUrl('/..', '../')).toBe('#');
   });
+
+  it('keeps internal links inside the locale subtree via localePrefix', () => {
+    // From /de/index.html (root '../', prefix 'de/'): /about → ../de/about.
+    expect(resolveInternalUrl('/about', '../', 'de/')).toBe('../de/about');
+    // From /de/about/index.html (root '../../'): /contact → ../../de/contact.
+    expect(resolveInternalUrl('/contact', '../../', 'de/')).toBe('../../de/contact');
+    // Home within the locale.
+    expect(resolveInternalUrl('/', '../', 'de/')).toBe('../de/');
+    // Default/empty prefix is identical to no prefix (single-locale no-regression).
+    expect(resolveInternalUrl('/about', '../', '')).toBe('../about');
+    // External + fragment links ignore the prefix.
+    expect(resolveInternalUrl('https://x.io/a', '../', 'de/')).toBe('https://x.io/a');
+    expect(resolveInternalUrl('#top', '../', 'de/')).toBe('#top');
+  });
 });

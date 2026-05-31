@@ -10,10 +10,19 @@ import { IdSchema, SlugSchema } from './primitives.js';
  */
 export const PROJECT_FORMAT_VERSION = 1;
 
+// A BCP-47-ish locale tag. Constrained because the locale is used as a URL path
+// segment + directory name in the published output (e.g. `/de/…`), so it must be
+// a safe identifier — no slashes, dots, or traversal.
+export const LocaleSchema = z
+  .string()
+  .min(1)
+  .max(35)
+  .regex(/^[A-Za-z0-9-]+$/, 'locale must be alphanumeric with hyphens (e.g. en, de, pt-BR)');
+
 export const ProjectSettingsSchema = z
   .object({
-    defaultLocale: z.string().max(35).default('en'),
-    locales: z.array(z.string().max(35)).min(1).max(100).default(['en']),
+    defaultLocale: LocaleSchema.default('en'),
+    locales: z.array(LocaleSchema).min(1).max(100).default(['en']),
   })
   .superRefine((settings, ctx) => {
     if (!settings.locales.includes(settings.defaultLocale)) {

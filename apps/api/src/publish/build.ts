@@ -16,7 +16,7 @@ import {
 } from '@sitewright/blocks';
 import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
 import { companyToOrganization } from './company-seo.js';
-import type { MediaAsset } from '@sitewright/schema';
+import type { MediaAsset, PageTranslation } from '@sitewright/schema';
 
 /** The compiled utility stylesheet, written at the site root and linked per page. */
 const UTILITY_STYLESHEET = 'styles.css';
@@ -152,15 +152,30 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       footer: buildNav(bundle.pages, 'footer'),
       mobile: buildNav(bundle.pages, 'mobile'),
     };
-    // Compile a Tailwind utility sheet only when the site actually uses utility
-    // classes — sites that don't get exactly the previous output (no extra file,
-    // no extra request). Collect the class lists from the resolved trees (not the
-    // rendered HTML) so the scan is bounded + free of skeleton/custom-HTML noise.
-    const classNames = routes.flatMap((route) => collectClassNames(route.root));
+    // Locales: the default locale publishes at the site root; every other locale
+    // at `/<locale>/…`, using its translation's root (else falling back to the
+    // default page). A single-locale project → one pass with prefix '' → output
+    // identical to the pre-multilingual behavior.
+    const settings = bundle.project.settings;
+    const locales = settings?.locales?.length ? settings.locales : ['en'];
+    const defaultLocale = settings?.defaultLocale ?? locales[0] ?? 'en';
+    const translations = bundle.translations ?? [];
+    const translationFor = (pageId: string, locale: string): PageTranslation | undefined =>
+      translations.find((t) => t.pageId === pageId && t.locale === locale);
+    /** The output slug for a route in a locale: `<prefix><slug>` (home → undefined). */
+    const localeSlug = (prefix: string, slug: string | undefined): string | undefined => {
+      const composed = `${prefix}${slug ?? ''}`.replace(/\/+$/, '');
+      return composed === '' ? undefined : composed;
+    };
+
+    // Compile a Tailwind utility sheet / ship component CSS+JS only when used —
+    // scanning the default roots AND every translation root (a locale may use a
+    // class/component the default page doesn't). Sites using none get the previous
+    // output (no extra file/request).
+    const scanRoots = [...routes.map((r) => r.root), ...translations.map((t) => t.root)];
+    const classNames = scanRoots.flatMap(collectClassNames);
     const usesUtilities = classNames.length > 0;
-    // Likewise, ship interactive-component CSS/JS only when a component is used.
-    // CSS is inlined per page (small, shared); JS is one bundle linked per page.
-    const componentTypes = [...new Set(routes.flatMap((route) => usedComponentTypes(route.root)))];
+    const componentTypes = [...new Set(scanRoots.flatMap(usedComponentTypes))];
     const usesComponents = componentTypes.length > 0;
     const components = componentAssets(componentTypes);
     let bytes = 0;
@@ -170,62 +185,77 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       await copyMedia(tmp, media, opts.readMedia);
     }
 
-    for (const route of routes) {
-      const full = resolve(tmp, relPathForSlug(route.slug));
-      if (full !== tmp && !full.startsWith(tmp + sep)) {
-        throw new PublishError('route output escapes the publish directory');
-      }
-      // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to tmp (checked above)
-      await mkdir(dirname(full), { recursive: true });
-      const page = { ...route.page, root: route.root };
-      // All internal links + asset paths are relative to this page's depth, so the
-      // exported bundle is portable (webspace root, a subfolder, or /sites/<slug>/).
-      const siteRoot = relativeRoot(route.slug);
-      // Rebase a root-relative asset path so the export is portable at any base path.
-      const rel = (src: string | undefined): string | undefined =>
-        src ? resolveInternalUrl(src, siteRoot) : undefined;
-      // schema.org logo/image are asset paths too — rebase per page depth so the
-      // JSON-LD resolves correctly when the site is exported to a subfolder.
-      const organization = baseOrg
-        ? { ...baseOrg, logo: rel(baseOrg.logo), image: rel(baseOrg.image) }
-        : undefined;
-      const html = renderDocument(page, {
-        brand,
-        datasets,
-        entry: route.entry,
-        includeDrafts: false,
-        media,
-        root: siteRoot,
-        nav,
-        mediaUrl: (asset, file) => `${siteRoot}media/${asset.id}/${file}`,
-        seo: {
-          // `||` not `??`: an empty SEO title must fall back to the page title.
-          title: page.seo?.title || page.title,
-          description: page.seo?.description,
-          // og:image falls back to the company image; favicon to the company icon.
-          ogImage: rel(page.seo?.ogImage ?? company?.image),
-          url: page.seo?.canonical,
-          noindex: page.seo?.noindex,
-          themeColor: brand.colors.primary,
-          favicon: rel(company?.icon ?? brand.logo?.favicon),
-        },
-        organization,
-        criticalCss: website?.criticalCss,
-        customHead: website?.customHead,
-        customFooter: website?.customFooter,
-        // Link the root-level utility sheet, rebased to this page's depth so the
-        // export stays portable. Only when the site uses utility classes.
-        stylesheets: usesUtilities ? [`${siteRoot}${UTILITY_STYLESHEET}`] : undefined,
-        // Inline component CSS + link the (depth-rebased) component bundle — only
-        // when the site uses an interactive component.
-        inlineStyles: usesComponents && components.css ? [components.css] : undefined,
-        scripts: usesComponents && components.js ? [`${siteRoot}${COMPONENT_SCRIPT}`] : undefined,
-      });
-      // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to tmp (checked above)
-      await writeFile(full, html, 'utf8');
-      bytes += Buffer.byteLength(html);
-      if (bytes > maxOutputBytes) {
-        throw new PublishError('published site exceeds the maximum output size');
+    // Guard against two (locale, route) pairs resolving to the same output file —
+    // e.g. a page at `/de` colliding with the `de` locale's home. Catch it as a
+    // PublishError instead of silently overwriting one with the other.
+    const writtenPaths = new Set<string>();
+    for (const locale of locales) {
+      const localePrefix = locale === defaultLocale ? '' : `${locale}/`;
+      for (const route of routes) {
+        const outSlug = localeSlug(localePrefix, route.slug);
+        const full = resolve(tmp, relPathForSlug(outSlug));
+        if (full !== tmp && !full.startsWith(tmp + sep)) {
+          throw new PublishError('route output escapes the publish directory');
+        }
+        if (writtenPaths.has(full)) {
+          throw new PublishError(`output path collision at "/${outSlug ?? ''}" — a page path conflicts with a locale prefix`);
+        }
+        writtenPaths.add(full);
+        // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to tmp (checked above)
+        await mkdir(dirname(full), { recursive: true });
+        // Localized content (root + title) for non-default locales; else the page.
+        const tr = localePrefix === '' ? undefined : translationFor(route.page.id, locale);
+        const page = {
+          ...route.page,
+          root: tr?.root ?? route.root,
+          title: tr?.title || route.page.title,
+        };
+        // Internal page links + assets are relative to this page's depth (portable);
+        // assets are shared at the SITE root, so `rel`/`mediaUrl` carry NO locale
+        // prefix, while internal page links (via `localePrefix`) stay in-locale.
+        const siteRoot = relativeRoot(outSlug);
+        const rel = (src: string | undefined): string | undefined =>
+          src ? resolveInternalUrl(src, siteRoot) : undefined;
+        const organization = baseOrg
+          ? { ...baseOrg, logo: rel(baseOrg.logo), image: rel(baseOrg.image) }
+          : undefined;
+        const html = renderDocument(page, {
+          brand,
+          datasets,
+          entry: route.entry,
+          includeDrafts: false,
+          media,
+          root: siteRoot,
+          localePrefix,
+          lang: locale,
+          nav,
+          mediaUrl: (asset, file) => `${siteRoot}media/${asset.id}/${file}`,
+          seo: {
+            // `||` not `??`: an empty SEO title must fall back to the page title.
+            title: page.seo?.title || page.title,
+            description: page.seo?.description,
+            // og:image falls back to the company image; favicon to the company icon.
+            ogImage: rel(page.seo?.ogImage ?? company?.image),
+            url: page.seo?.canonical,
+            noindex: page.seo?.noindex,
+            themeColor: brand.colors.primary,
+            favicon: rel(company?.icon ?? brand.logo?.favicon),
+          },
+          organization,
+          criticalCss: website?.criticalCss,
+          customHead: website?.customHead,
+          customFooter: website?.customFooter,
+          // Shared assets (site root, NOT locale-prefixed), rebased to page depth.
+          stylesheets: usesUtilities ? [`${siteRoot}${UTILITY_STYLESHEET}`] : undefined,
+          inlineStyles: usesComponents && components.css ? [components.css] : undefined,
+          scripts: usesComponents && components.js ? [`${siteRoot}${COMPONENT_SCRIPT}`] : undefined,
+        });
+        // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to tmp (checked above)
+        await writeFile(full, html, 'utf8');
+        bytes += Buffer.byteLength(html);
+        if (bytes > maxOutputBytes) {
+          throw new PublishError('published site exceeds the maximum output size');
+        }
       }
     }
 
@@ -245,7 +275,8 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       bytes += Buffer.byteLength(components.js);
     }
 
-    const manifest: ReleaseManifest = { publishedAt, routes: routes.length, bytes };
+    // Total emitted pages = routes × locales (one set of routes per locale).
+    const manifest: ReleaseManifest = { publishedAt, routes: routes.length * locales.length, bytes };
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- tmp is a resolved, validated dir
     await writeFile(join(tmp, 'release.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
 

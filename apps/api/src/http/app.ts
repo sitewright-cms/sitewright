@@ -14,6 +14,7 @@ import {
   type Entry,
   type MediaAsset,
   type Page,
+  type PageTranslation,
 } from '@sitewright/schema';
 import { renderDocument, usedComponentTypes, componentAssets } from '@sitewright/blocks';
 import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
@@ -702,6 +703,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         activePublishes.add(project.id);
         try {
           const exp = await contentRepo.exportBundle(ctx, project);
+          // Per-locale page overrides (multilingual). Loaded here (not in the
+          // export bundle) — like media, a publish input rather than a portable
+          // project artifact in v1.
+          const translations = (await contentRepo.list(ctx, 'translation')) as PageTranslation[];
           const bundle: ProjectBundle = {
             // ExportBundle.project omits formatVersion (it's a format concern, not a
             // DB field); re-add it to satisfy the ProjectBundle.project (Project) type.
@@ -711,6 +716,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             templates: exp.templates,
             datasets: exp.datasets,
             entries: exp.entries,
+            translations,
           };
           const media = mediaStorage ? ((await contentRepo.list(ctx, 'media')) as MediaAsset[]) : [];
           const release = await buildRunner.run({

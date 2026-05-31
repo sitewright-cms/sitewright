@@ -1,7 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
-import { apiKeys, content, projects, type OrgRole } from '../db/schema.js';
+import {
+  apiKeys,
+  content,
+  oauthAuthCodes,
+  oauthRefreshTokens,
+  projects,
+  type OrgRole,
+} from '../db/schema.js';
 import { ConflictError, ForbiddenError, NotFoundError, type TenantContext } from './context.js';
 
 const WRITE_ROLES: ReadonlySet<OrgRole> = new Set(['owner', 'admin']);
@@ -85,9 +92,11 @@ export class ProjectRepository {
       // Safe to delete by projectId alone: get() above proved this project (a
       // globally-unique UUID) belongs to ctx.orgId, so no other org's content matches.
       await tx.delete(content).where(eq(content.projectId, id));
-      // Also drop the project's API keys so deleting a project revokes all of its
-      // tokens (no orphaned rows that would otherwise linger inertly).
+      // Also drop the project's API keys + OAuth grants so deleting a project
+      // revokes all of its tokens (no orphaned rows that would otherwise linger).
       await tx.delete(apiKeys).where(eq(apiKeys.projectId, id));
+      await tx.delete(oauthAuthCodes).where(eq(oauthAuthCodes.projectId, id));
+      await tx.delete(oauthRefreshTokens).where(eq(oauthRefreshTokens.projectId, id));
       await tx.delete(projects).where(and(eq(projects.id, id), eq(projects.orgId, ctx.orgId)));
     });
   }

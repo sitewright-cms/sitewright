@@ -99,9 +99,87 @@ export const apiKeys = sqliteTable(
     createdBy: text('created_by')
       .notNull()
       .references(() => users.id),
+    /**
+     * How the key was minted: `pat` = a long-lived token created in the editor
+     * (shown in the management UI); `oauth` = a short-lived access token issued by
+     * the OAuth flow (validated the same way, but hidden from the management list).
+     */
+    source: text('source', { enum: ['pat', 'oauth'] })
+      .notNull()
+      .default('pat'),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   },
   (t) => [index('api_keys_project_idx').on(t.projectId)],
+);
+
+export type ApiKeySource = 'pat' | 'oauth';
+
+/**
+ * OAuth 2.1 authorization codes (PKCE). Short-lived (~60s), single-use. The row id
+ * is the SHA-256 of the code; the raw code is shown once in the redirect. Binds the
+ * grant to a user, ONE project, the granted capabilities, the client's redirect URI,
+ * and the PKCE challenge — all verified at the token endpoint.
+ */
+export const oauthAuthCodes = sqliteTable(
+  'oauth_auth_codes',
+  {
+    id: text('id').primaryKey(),
+    clientId: text('client_id').notNull(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id),
+    orgId: text('org_id')
+      .notNull()
+      .references(() => organizations.id),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id),
+    /** The org role granted to issued tokens — the user's membership role at consent time. */
+    role: text('role', { enum: ['owner', 'admin', 'member'] }).notNull(),
+    scope: text('scope', { mode: 'json' }).notNull().$type<ApiKeyCapability[]>(),
+    redirectUri: text('redirect_uri').notNull(),
+    /** PKCE S256 challenge (base64url SHA-256 of the verifier). */
+    codeChallenge: text('code_challenge').notNull(),
+    expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+    /** Set the moment the code is redeemed — replay is detected and refused. */
+    consumedAt: integer('consumed_at', { mode: 'timestamp_ms' }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [index('oauth_auth_codes_expires_idx').on(t.expiresAt)],
+);
+
+/**
+ * OAuth 2.1 refresh tokens — rotating + single-use. The row id is the SHA-256 of the
+ * token. On refresh the old token is marked `rotatedTo` the new one; presenting an
+ * already-rotated token is treated as theft and revokes the whole chain.
+ */
+export const oauthRefreshTokens = sqliteTable(
+  'oauth_refresh_tokens',
+  {
+    id: text('id').primaryKey(),
+    clientId: text('client_id').notNull(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id),
+    orgId: text('org_id')
+      .notNull()
+      .references(() => organizations.id),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id),
+    role: text('role', { enum: ['owner', 'admin', 'member'] }).notNull(),
+    scope: text('scope', { mode: 'json' }).notNull().$type<ApiKeyCapability[]>(),
+    expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+    revokedAt: integer('revoked_at', { mode: 'timestamp_ms' }),
+    /** The token this one was rotated into (set on use); a marker for reuse-detection. */
+    rotatedTo: text('rotated_to'),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [
+    index('oauth_refresh_expires_idx').on(t.expiresAt),
+    // Theft response revokes a user's OAuth access tokens for a project.
+    index('oauth_refresh_user_project_idx').on(t.userId, t.projectId),
+  ],
 );
 
 /**

@@ -140,7 +140,14 @@ export class ApiKeyRepository {
     const rows = await this.db
       .select()
       .from(apiKeys)
-      .where(and(eq(apiKeys.orgId, ctx.orgId), eq(apiKeys.projectId, ctx.projectId)));
+      .where(
+        and(
+          eq(apiKeys.orgId, ctx.orgId),
+          eq(apiKeys.projectId, ctx.projectId),
+          // Only user-minted PATs; ephemeral OAuth access tokens are not "keys" to manage.
+          eq(apiKeys.source, 'pat'),
+        ),
+      );
     return rows.map(toView);
   }
 

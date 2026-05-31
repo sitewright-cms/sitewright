@@ -13,6 +13,7 @@ const GENERIC_KIND = z.enum([
   'translation',
   'dataset',
   'entry',
+  'form',
 ]);
 
 const INSTRUCTIONS = `This server exposes ONE Sitewright project's content over MCP.
@@ -110,6 +111,24 @@ export function createSitewrightMcpServer(client: SitewrightClient, scope: Scope
     { description: 'Read the project’s latest published release (or null if never published).' },
     async () => run(() => client.publishStatus()),
   );
+
+  // Submissions carry visitor PII; only advertise the tool to read-capable tokens
+  // (the API also enforces content:read, so this keeps the toolset honest).
+  if (can('content:read')) {
+    server.registerTool(
+      'list_submissions',
+      {
+        description:
+          'List form submissions for the project, newest first. Optionally filter by formId and paginate with limit/offset.',
+        inputSchema: {
+          formId: z.string().optional(),
+          limit: z.number().int().min(1).max(200).optional(),
+          offset: z.number().int().min(0).optional(),
+        },
+      },
+      async ({ formId, limit, offset }) => run(() => client.listSubmissions({ formId, limit, offset })),
+    );
+  }
 
   // --- writes (only when the token may write) ---
   if (can('content:write')) {

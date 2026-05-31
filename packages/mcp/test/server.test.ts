@@ -15,6 +15,7 @@ function fakeClient(overrides: Partial<Record<keyof SitewrightClient, unknown>> 
     preview: vi.fn(async () => ({ html: '<html></html>', token: 'tok' })),
     publish: vi.fn(async () => ({ release: { routes: 1 }, url: '/sites/p/' })),
     publishStatus: vi.fn(async () => ({ release: null })),
+    listSubmissions: vi.fn(async () => ({ items: [{ id: 's1', formId: 'contact', fields: { email: 'a@b.co' } }], total: 1 })),
     ...overrides,
   } as unknown as SitewrightClient & Record<string, ReturnType<typeof vi.fn>>;
 }
@@ -53,6 +54,40 @@ describe('createSitewrightMcpServer — capability gating', () => {
     expect(names).toContain('delete_page');
     expect(names).toContain('put_content');
     expect(names).toContain('publish_project');
+  });
+
+  it('exposes list_submissions to a read-only token', async () => {
+    const mcp = await connect(fakeClient(), readScope);
+    expect(await toolNames(mcp)).toContain('list_submissions');
+  });
+});
+
+describe('createSitewrightMcpServer — forms over MCP', () => {
+  it('list_submissions forwards filters to the client', async () => {
+    const client = fakeClient();
+    const mcp = await connect(client, readScope);
+    const res = await mcp.callTool({ name: 'list_submissions', arguments: { formId: 'contact', limit: 10 } });
+    expect((client as unknown as Record<string, ReturnType<typeof vi.fn>>).listSubmissions).toHaveBeenCalledWith({
+      formId: 'contact',
+      limit: 10,
+      offset: undefined,
+    });
+    expect((res.content as Array<{ text: string }>)[0]!.text).toContain('contact');
+    expect(res.isError).toBeFalsy();
+  });
+
+  it('put_content accepts the form kind (forms are authorable over MCP)', async () => {
+    const client = fakeClient();
+    const mcp = await connect(client, writeScope);
+    const formData = {
+      id: 'contact',
+      name: 'Contact',
+      fields: [{ name: 'email', label: 'Email', type: 'email' }],
+      recipient: 'sales@acme.com',
+    };
+    const res = await mcp.callTool({ name: 'put_content', arguments: { kind: 'form', id: 'contact', data: formData } });
+    expect((client as unknown as Record<string, ReturnType<typeof vi.fn>>).putContent).toHaveBeenCalledWith('form', 'contact', formData);
+    expect(res.isError).toBeFalsy();
   });
 });
 

@@ -11,8 +11,11 @@ import {
   PageNodeSchema,
   InstanceSettingsInputSchema,
   assertWithinTreeDepth,
+  toPublicForm,
   type Brand,
   type Entry,
+  type Form,
+  type FormPublic,
   type MediaAsset,
   type Page,
   type PageTranslation,
@@ -31,6 +34,9 @@ import { PreviewStore } from './preview-store.js';
 import { archiveSite, deploySite, DeployConfigSchema } from '../publish/adapters.js';
 import { isNewer } from '../version/checker.js';
 import { registerDeployTargetRoutes } from './deploy-targets.js';
+import { registerFormRoutes } from './form-routes.js';
+import { SubmissionRepository } from '../repo/submissions.js';
+import { GlobalSmtpMailer, type SubmissionMailer } from '../mail/mailer.js';
 import { createSession, revokeSession, validateSession } from '../auth/sessions.js';
 import {
   getUserEmail,
@@ -72,7 +78,7 @@ const IMPORT_BODY_LIMIT = 4 * 1024 * 1024; // 4 MiB for a full project import
 const PREVIEW_BODY_LIMIT = 2 * 1024 * 1024; // 2 MiB for a single draft page
 const MAX_UPLOAD_BYTES = 15 * 1024 * 1024; // 15 MiB per uploaded image
 const WRITE_ROLES: ReadonlySet<string> = new Set(['owner', 'admin']);
-const API_PREFIXES = ['/auth', '/orgs', '/me', '/health', '/admin'];
+const API_PREFIXES = ['/auth', '/orgs', '/me', '/health', '/admin', '/f'];
 
 const MEDIA_CONTENT_TYPES = new Map<string, string>([
   ['avif', 'image/avif'],
@@ -206,6 +212,14 @@ export interface AppOptions {
   buildRunner?: BuildRunner;
   /** Online AI completion provider (agency-funded). Omit to disable the AI endpoints. */
   aiProvider?: AiProvider;
+  /** Form-submission mailer (Mode A). Defaults to the global-SMTP mailer; tests inject a fake. */
+  mailer?: SubmissionMailer;
+  /**
+   * The platform's public base URL (e.g. `https://cms.agency.com`). Baked into
+   * exported `Form` blocks so the static site posts submissions back here. Unset
+   * → same-origin `/f/…` (works only when the platform serves the export).
+   */
+  publicUrl?: string;
   /** Monthly token quotas for agency-funded metering. Unset/0 = unlimited. */
   aiQuota?: { orgMonthlyTokens?: number; userMonthlyTokens?: number };
 }
@@ -230,6 +244,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const oauthRepo = new OAuthRepository(db);
   const oauthClients = new OAuthClientRepository(db);
   const instanceSettingsRepo = new InstanceSettingsRepository(db, opts.encryptionKey);
+  const submissionsRepo = new SubmissionRepository(db);
+  const mailer = opts.mailer ?? new GlobalSmtpMailer(instanceSettingsRepo);
   // Normalized once at startup; membership is a constant-time-ish Set lookup per request.
   const adminEmails: ReadonlySet<string> = new Set(
     (opts.adminEmails ?? []).map((e) => e.trim().toLowerCase()).filter(Boolean),
@@ -743,6 +759,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         footer: buildNav(savedPages, 'footer'),
         mobile: buildNav(savedPages, 'mobile'),
       };
+      // Public form definitions for any Form blocks; the preview posts same-origin.
+      const previewForms: Record<string, FormPublic> = Object.fromEntries(
+        ((await contentRepo.list(ctx, 'form')) as Form[]).map((f) => [f.id, toPublicForm(f)]),
+      );
       // The preview document is served (via a token URL) under `CSP: sandbox
       // allow-scripts` — an opaque, isolated origin — so styles AND the platform
       // component JS are INLINED to make it self-contained + truly interactive
@@ -763,6 +783,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         includeDrafts: true,
         media,
         nav,
+        forms: previewForms,
+        formEndpoint: (formId) => `/f/${project.id}/${formId}`,
         mediaUrl: (asset, file) => `/media/${project.id}/${asset.id}/${file}`,
         inlineStyles: inlineStyles.length > 0 ? inlineStyles : undefined,
         inlineScripts: componentJs ? [componentJs] : undefined,
@@ -992,6 +1014,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // export bundle) — like media, a publish input rather than a portable
           // project artifact in v1.
           const translations = (await contentRepo.list(ctx, 'translation')) as PageTranslation[];
+          // Form definitions — like translations, a publish input (the renderer emits
+          // the public form; the recipient is never written to the exported HTML).
+          const forms = (await contentRepo.list(ctx, 'form')) as Form[];
           const bundle: ProjectBundle = {
             // ExportBundle.project omits formatVersion (it's a format concern, not a
             // DB field); re-add it to satisfy the ProjectBundle.project (Project) type.
@@ -1002,6 +1027,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             datasets: exp.datasets,
             entries: exp.entries,
             translations,
+            forms,
           };
           const media = mediaStorage ? ((await contentRepo.list(ctx, 'media')) as MediaAsset[]) : [];
           const release = await buildRunner.run({
@@ -1009,6 +1035,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             bundle,
             publishedAt: new Date().toISOString(),
             media,
+            // Exported Form blocks post to this absolute platform endpoint.
+            ...(opts.publicUrl ? { publicBaseUrl: opts.publicUrl } : {}),
             readMedia: mediaStorage
               ? (assetId, file) => mediaStorage.read(project.id, assetId, file)
               : undefined,
@@ -1120,6 +1148,17 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       rl,
     });
   }
+
+  // Web forms: the public submission endpoint (/f/:projectId/:formId) + the
+  // authenticated submissions inbox. Always registered (no secret/key dependency).
+  registerFormRoutes(app, {
+    db,
+    submissions: submissionsRepo,
+    mailer,
+    resolveProject,
+    isWriter: (ctx) => WRITE_ROLES.has(ctx.role),
+    rl,
+  });
 
   // ---- AI (online generation — agency-funded, metered, quota-gated) ----
   // Resolves the org+user's month-to-date token usage against the configured caps.

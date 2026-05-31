@@ -4,6 +4,7 @@ import type { Database } from '../db/client.js';
 import {
   apiKeys,
   content,
+  formSubmissions,
   oauthAuthCodes,
   oauthDeviceCodes,
   oauthRefreshTokens,
@@ -93,6 +94,10 @@ export class ProjectRepository {
       // Safe to delete by projectId alone: get() above proved this project (a
       // globally-unique UUID) belongs to ctx.orgId, so no other org's content matches.
       await tx.delete(content).where(eq(content.projectId, id));
+      // Form submissions reference the project (FK, no DB cascade) and hold visitor
+      // PII — drop them with the project (else the project delete would FK-fail, and
+      // the PII would linger). Deleted before the project row for FK ordering.
+      await tx.delete(formSubmissions).where(eq(formSubmissions.projectId, id));
       // Also drop the project's API keys + OAuth grants so deleting a project
       // revokes all of its tokens (no orphaned rows that would otherwise linger).
       await tx.delete(apiKeys).where(eq(apiKeys.projectId, id));

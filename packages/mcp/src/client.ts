@@ -166,4 +166,13 @@ export class SitewrightClient {
   async publishStatus(): Promise<unknown> {
     return this.request('GET', this.projectPath('/publish'));
   }
+
+  async listSubmissions(opts: { formId?: string; limit?: number; offset?: number } = {}): Promise<unknown> {
+    const params = new URLSearchParams();
+    if (opts.formId) params.set('formId', opts.formId);
+    if (opts.limit !== undefined) params.set('limit', String(opts.limit));
+    if (opts.offset !== undefined) params.set('offset', String(opts.offset));
+    const qs = params.toString();
+    return this.request('GET', this.projectPath(`/submissions${qs ? `?${qs}` : ''}`));
+  }
 }

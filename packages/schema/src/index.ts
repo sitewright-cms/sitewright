@@ -5,6 +5,7 @@ export * from './brand.js';
 export * from './company.js';
 export * from './dataset.js';
 export * from './deploy-target.js';
+export * from './form.js';
 export * from './instance-settings.js';
 export * from './media.js';
 export * from './page.js';

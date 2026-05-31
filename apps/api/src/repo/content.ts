@@ -8,6 +8,7 @@ import {
   DatasetSchema,
   DeployTargetSchema,
   EntrySchema,
+  FormSchema,
   MediaAssetSchema,
   PageSchema,
   PartialSchema,
@@ -54,6 +55,9 @@ const SCHEMAS = new Map<ContentKind, z.ZodTypeAny>([
   ['translation', PageTranslationSchema],
   ['dataset', DatasetSchema],
   ['entry', EntrySchema],
+  // Web form definitions (fields + inline messages + server-side recipient/mode).
+  // The recipient is never rendered into exported HTML (see the Form renderer).
+  ['form', FormSchema],
   // Media metadata is tenant-scoped CRUD like other content; the binaries live on
   // disk (see apps/api/src/media). Not yet part of export/import bundles.
   ['media', MediaAssetSchema],

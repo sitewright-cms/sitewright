@@ -241,6 +241,61 @@ const TABS_JS = `(function(){
   if(document.readyState!=='loading'){init();}else{document.addEventListener('DOMContentLoaded',init);}
 })();`;
 
+// --- Form --------------------------------------------------------------------
+// A web form with NO `action=` attribute — submission is JS-only. The handler
+// posts the fields as JSON to `data-sw-endpoint` (the Sitewright platform), adds
+// a time-trap (`_elapsed` ms since load) the server uses to reject instant bot
+// posts, then shows the inline success/error message or follows `data-sw-redirect`.
+// PE note: with no JS the form simply cannot submit (no action), by design.
+const FORM_CSS = [
+  '[data-sw-block="Form"] [data-sw-part="field"]{display:block;margin-bottom:1rem}',
+  '[data-sw-block="Form"] [data-sw-part="label"]{display:block;margin-bottom:.25rem;font-size:.875rem}',
+  '[data-sw-block="Form"] input,[data-sw-block="Form"] textarea,[data-sw-block="Form"] select{width:100%;padding:.5rem .625rem;border:1px solid rgba(0,0,0,.2);border-radius:.375rem;font:inherit}',
+  '[data-sw-block="Form"] [data-sw-part="submit"]{border:0;border-radius:.375rem;padding:.5rem 1.25rem;background:var(--sw-color-primary,#0a7a5a);color:#fff;cursor:pointer}',
+  '[data-sw-block="Form"] [data-sw-part="submit"][disabled]{opacity:.6;cursor:progress}',
+  // Honeypot: take it out of the layout + the a11y tree, off-screen (not display:none,
+  // which some bots skip). Real users never see or tab to it.
+  '[data-sw-block="Form"] [data-sw-part="hp"]{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}',
+  '[data-sw-block="Form"] [data-sw-part="success"]{color:#0a7a5a;margin-top:.75rem}',
+  '[data-sw-block="Form"] [data-sw-part="error"]{color:#b00020;margin-top:.75rem}',
+].join('');
+
+const FORM_JS = `(function(){
+  function enhance(form){
+    var endpoint=form.getAttribute('data-sw-endpoint');
+    if(!endpoint)return;
+    var started=Date.now();
+    var success=form.querySelector('[data-sw-part="success"]');
+    var error=form.querySelector('[data-sw-part="error"]');
+    var submit=form.querySelector('[data-sw-part="submit"]');
+    form.addEventListener('submit',function(e){
+      e.preventDefault();
+      if(error)error.hidden=true;
+      var data={};
+      Array.prototype.forEach.call(form.querySelectorAll('input,textarea,select'),function(el){
+        if(!el.name||el.type==='submit'||el.type==='button')return;
+        data[el.name]=el.value;
+      });
+      data['_elapsed']=String(Date.now()-started);
+      if(submit)submit.disabled=true;
+      fetch(endpoint,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(data)}).then(function(res){
+        if(!res.ok)throw new Error('bad status');
+        var redirect=form.getAttribute('data-sw-redirect');
+        if(redirect){window.location.assign(redirect);return;}
+        form.reset();
+        if(success)success.hidden=false;
+        form.setAttribute('data-sw-submitted','true');
+      }).catch(function(){
+        if(error)error.hidden=false;
+      }).then(function(){
+        if(submit)submit.disabled=false;
+      });
+    });
+  }
+  function init(){Array.prototype.forEach.call(document.querySelectorAll('form[data-sw-component="form"]'),enhance);}
+  if(document.readyState!=='loading'){init();}else{document.addEventListener('DOMContentLoaded',init);}
+})();`;
+
 // Registry keyed by block `type`. Only blocks with behavior/styling belong here
 // (child blocks like Slide/AccordionItem/LightboxItem/Tab are styled by their
 // parent's entry — no entry of their own). Insertion order = bundle order.
@@ -251,6 +306,7 @@ const COMPONENTS = new Map<string, ComponentAsset>([
   ['Modal', { css: MODAL_CSS, js: MODAL_JS }],
   ['CookieConsent', { css: COOKIE_CONSENT_CSS, js: COOKIE_CONSENT_JS }],
   ['Tabs', { css: TABS_CSS, js: TABS_JS }],
+  ['Form', { css: FORM_CSS, js: FORM_JS }],
 ]);
 
 /** Block types that are interactive components (have bundled CSS/JS). */

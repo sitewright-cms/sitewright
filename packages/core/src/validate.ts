@@ -1,6 +1,7 @@
 import type {
   Dataset,
   Entry,
+  Form,
   Page,
   PageTranslation,
   Project,
@@ -20,6 +21,8 @@ export interface ProjectBundle {
   entries: readonly Entry[];
   /** Per-locale page content overrides (multilingual; default locale uses page.root). */
   translations?: readonly PageTranslation[];
+  /** Web form definitions (optional; consumed by the renderer for `Form` blocks). */
+  forms?: readonly Form[];
 }
 
 export interface ValidationIssue {

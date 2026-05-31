@@ -44,9 +44,11 @@ export function parseCallback(
   query: URLSearchParams,
   expectedState: string,
 ): { code: string } | { error: string } {
+  // Verify state FIRST — even on error responses — so a co-located process that
+  // hits the loopback without the (unguessable) state can't abort the login.
+  if (query.get('state') !== expectedState) return { error: 'state_mismatch' };
   const error = query.get('error');
   if (error) return { error };
-  if (query.get('state') !== expectedState) return { error: 'state_mismatch' };
   const code = query.get('code');
   if (!code) return { error: 'missing_code' };
   return { code };
@@ -76,7 +78,10 @@ async function tokenRequest(
         : res.statusText || `HTTP ${res.status}`;
     throw new Error(`token request failed: ${err}`);
   }
-  const t = json as { access_token: string; refresh_token: string; expires_in: number; scope: string };
+  const t = json as { access_token?: string; refresh_token?: string; expires_in?: number; scope?: string };
+  if (typeof t.access_token !== 'string' || typeof t.refresh_token !== 'string') {
+    throw new Error('token response missing access_token or refresh_token');
+  }
   return {
     accessToken: t.access_token,
     refreshToken: t.refresh_token,

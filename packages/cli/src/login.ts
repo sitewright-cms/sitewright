@@ -27,7 +27,13 @@ export async function runLogin(opts: LoginOptions): Promise<TokenSet> {
   const state = generateState();
 
   const server = createServer();
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject); // bind failures emit 'error', not the listen callback
+    server.listen(0, '127.0.0.1', () => {
+      server.off('error', reject);
+      resolve();
+    });
+  });
   const port = (server.address() as AddressInfo).port;
   const redirectUri = `http://127.0.0.1:${port}/callback`;
   const authorizeUrl = buildAuthorizeUrl({ issuer: opts.issuer, redirectUri, challenge, scope: opts.scope, state });
@@ -66,6 +72,9 @@ export async function runLogin(opts: LoginOptions): Promise<TokenSet> {
     saveCredentials(opts.issuer, tokens);
     return tokens;
   } finally {
+    // Destroy lingering keep-alive sockets (a real browser holds one open),
+    // otherwise close() leaves the event loop alive and the CLI appears to hang.
+    server.closeAllConnections?.();
     server.close();
   }
 }

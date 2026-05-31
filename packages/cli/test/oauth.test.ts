@@ -36,11 +36,13 @@ describe('buildAuthorizeUrl', () => {
 });
 
 describe('parseCallback', () => {
-  it('extracts a code only when state matches', () => {
+  it('verifies state first, then extracts the code or error', () => {
     expect(parseCallback(new URLSearchParams('code=abc&state=S'), 'S')).toEqual({ code: 'abc' });
     expect(parseCallback(new URLSearchParams('code=abc&state=X'), 'S')).toEqual({ error: 'state_mismatch' });
     expect(parseCallback(new URLSearchParams('state=S'), 'S')).toEqual({ error: 'missing_code' });
     expect(parseCallback(new URLSearchParams('error=access_denied&state=S'), 'S')).toEqual({ error: 'access_denied' });
+    // An error WITHOUT the right state (a forged/stray callback) is refused as state_mismatch.
+    expect(parseCallback(new URLSearchParams('error=access_denied&state=X'), 'S')).toEqual({ error: 'state_mismatch' });
   });
 });
 
@@ -82,5 +84,12 @@ describe('token exchange + refresh', () => {
   it('throws with the server error on failure', async () => {
     const fake = fakeFetch(() => ({ status: 400, body: JSON.stringify({ error: 'invalid_grant' }) }));
     await expect(refreshTokens({ issuer: 'https://cms.test', refreshToken: 'x' }, fake.impl)).rejects.toThrow(/invalid_grant/);
+  });
+
+  it('rejects a malformed success response missing the tokens', async () => {
+    const fake = fakeFetch(() => ({ status: 200, body: JSON.stringify({ expires_in: 3600 }) }));
+    await expect(
+      exchangeCode({ issuer: 'https://cms.test', code: 'c', redirectUri: 'http://127.0.0.1:9/cb', verifier: 'v' }, fake.impl),
+    ).rejects.toThrow(/missing access_token/);
   });
 });

@@ -75,7 +75,12 @@ async function main(): Promise<void> {
     case 'mcp': {
       const url = requireUrl();
       const token = await ensureAccessToken(url);
-      const scope = await runStdioBridge({ url, token });
+      let scope;
+      try {
+        scope = await runStdioBridge({ url, token });
+      } catch (err) {
+        die(`could not connect to ${url}: ${err instanceof Error ? err.message : 'unknown error'}`);
+      }
       process.stderr.write(`sitewright mcp: connected to project ${scope.projectId}\n`);
       return;
     }

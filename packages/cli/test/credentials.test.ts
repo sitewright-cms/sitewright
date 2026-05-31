@@ -70,4 +70,15 @@ describe('ensureAccessToken', () => {
   it('throws a helpful error when not logged in', async () => {
     await expect(ensureAccessToken('https://a.test', noFetch)).rejects.toThrow(/sitewright login/);
   });
+
+  it('propagates a refresh failure (expired/revoked refresh token)', async () => {
+    saveCredentials('https://a.test', { ...tokens, expiresAt: Date.now() + 1000 });
+    const failing: FetchLike = async () => ({
+      ok: false,
+      status: 400,
+      statusText: 'x',
+      text: async () => JSON.stringify({ error: 'invalid_grant' }),
+    });
+    await expect(ensureAccessToken('https://a.test', failing)).rejects.toThrow(/invalid_grant/);
+  });
 });

@@ -470,11 +470,21 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
       // Safe lookup (no dynamic object indexing), mirroring the Nav slot pattern.
       const form = ctx.forms ? Object.entries(ctx.forms).find(([k]) => k === formId)?.[1] : undefined;
       if (!form) return `<div data-sw-block="Form"${cls} data-sw-empty="1"></div>`;
-      // Endpoint by delivery mode: `contactPhp` posts to the exported contact.php on
-      // the customer's own host (relative to the site root); every other mode posts
-      // to the Sitewright platform endpoint resolved by the build/preview.
+      // Endpoint by delivery mode:
+      //  - contactPhp → the exported contact.php on the customer's host (root-relative)
+      //  - thirdParty → the author's external endpoint (Mode C), posted to directly
+      //  - globalSmtp / userSmtp → the Sitewright platform endpoint (build/preview)
       const isPhp = form.mode === 'contactPhp';
-      const endpoint = isPhp ? `${root}contact.php` : ctx.formEndpoint ? ctx.formEndpoint(formId) : '';
+      const isThirdParty = form.mode === 'thirdParty';
+      // Platform-routed modes are the only ones Sitewright can server-side verify.
+      const swRouted = form.mode === 'globalSmtp' || form.mode === 'userSmtp';
+      const endpoint = isPhp
+        ? `${root}contact.php`
+        : isThirdParty
+          ? (form.thirdPartyUrl ?? '')
+          : ctx.formEndpoint
+            ? ctx.formEndpoint(formId)
+            : '';
       const redirect = form.redirectUrl ? ` data-sw-redirect="${escapeAttr(form.redirectUrl)}"` : '';
       const fields = form.fields.map(renderFormField).join('');
       // Honeypot: visually hidden (component CSS), bait for bots; the endpoint drops
@@ -487,10 +497,10 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
         ? `<input type="hidden" name="${escapeAttr(FORM_ID_FIELD)}" value="${escapeAttr(formId)}" />`
         : '';
       // hCaptcha widget — only when the form opts in, the instance site key is
-      // configured, AND the form is platform-routed (contact.php can't be verified
-      // server-side by Sitewright, so hCaptcha applies only to SW-routed modes).
+      // configured, AND the form is platform-routed (Sitewright can't verify a solve
+      // for contact.php or a third-party endpoint, so hCaptcha applies only there).
       const captcha =
-        form.hcaptcha && ctx.hcaptchaSiteKey && !isPhp
+        form.hcaptcha && ctx.hcaptchaSiteKey && swRouted
           ? `<div class="h-captcha" data-sw-part="hcaptcha" data-sitekey="${escapeAttr(ctx.hcaptchaSiteKey)}"></div>`
           : '';
       return (

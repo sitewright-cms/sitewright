@@ -233,6 +233,13 @@ export function registerFormRoutes(app: FastifyInstance, deps: FormRoutesDeps): 
 
   // Which mail-delivery modes the instance admin permits — so a project author can
   // pick among them when authoring a form. Any project member may read this.
+  //
+  // NOTE: formModes is an editor affordance + an email-delivery gate (the global/
+  // project mailers only send when the mode is enabled), NOT a hard write-time ACL.
+  // It is deliberately not enforced on the form PUT: modes default to all-off and
+  // forms still function (store-always), so a fresh instance must be able to save a
+  // (globalSmtp) form. Form writes are already restricted to owner/admin (a trusted
+  // role). A hard per-mode publish/store ACL would be a cross-phase design change.
   app.get<{ Params: { orgId: string; projectId: string } }>(
     '/orgs/:orgId/projects/:projectId/form-modes',
     { config: rl(30) },

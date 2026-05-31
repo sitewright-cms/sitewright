@@ -75,6 +75,19 @@ describe('renderNode — Form', () => {
     expect(html).toContain('<input type="hidden" name="_form" value="contact" />');
   });
 
+  it('posts a thirdParty form directly to its external endpoint (no _form, no hCaptcha widget)', () => {
+    const tp: FormPublic = { ...contactForm, mode: 'thirdParty', thirdPartyUrl: 'https://formspree.io/f/abc', hcaptcha: true };
+    const html = renderNode(node({ type: 'Form', props: { formId: 'contact' } }), {
+      forms: { contact: tp },
+      formEndpoint: () => '/f/p/contact', // ignored for thirdParty
+      hcaptchaSiteKey: 'site-abc',
+    });
+    expect(html).toContain('data-sw-endpoint="https://formspree.io/f/abc"');
+    expect(html).not.toContain('/f/p/contact');
+    expect(html).not.toContain('name="_form"');
+    expect(html).not.toContain('h-captcha');
+  });
+
   it('omits the hCaptcha widget for contactPhp (Sitewright cannot verify on the customer host)', () => {
     const php: FormPublic = { ...contactForm, mode: 'contactPhp', hcaptcha: true };
     const html = renderNode(node({ type: 'Form', props: { formId: 'contact' } }), {

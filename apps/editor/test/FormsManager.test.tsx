@@ -95,6 +95,21 @@ describe('FormsManager', () => {
     expect((putForm.mock.calls[0]![0] as Form).mode).toBe('contactPhp');
   });
 
+  it('shows the third-party URL field and saves it when mode is thirdParty', async () => {
+    formModes.mockResolvedValue({ formModes: { globalSmtp: true, userSmtp: false, contactPhp: false, thirdParty: true } });
+    render(<FormsManager org={org} project={project} />);
+    fireEvent.change(await screen.findByLabelText('New form name'), { target: { value: 'Lead' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create form' }));
+    fireEvent.change(await screen.findByLabelText('Delivery mode'), { target: { value: 'thirdParty' } });
+    fireEvent.change(screen.getByLabelText('Third-party endpoint URL'), { target: { value: 'https://formspree.io/f/abc' } });
+    fireEvent.change(screen.getByLabelText('Recipient email'), { target: { value: 'a@b.co' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save form' }));
+    await waitFor(() => expect(putForm).toHaveBeenCalled());
+    const saved = putForm.mock.calls[0]![0] as Form;
+    expect(saved.mode).toBe('thirdParty');
+    expect(saved.thirdPartyUrl).toBe('https://formspree.io/f/abc');
+  });
+
   it('deletes a form after confirmation', async () => {
     vi.stubGlobal('confirm', () => true);
     deleteForm.mockResolvedValue(undefined);

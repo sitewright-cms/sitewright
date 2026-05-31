@@ -44,6 +44,28 @@ describe('FormSchema', () => {
     expect(() => FormSchema.parse({ ...base, recipient: 'not-an-email' })).toThrow();
   });
 
+  it('requires an https thirdPartyUrl when mode is thirdParty', () => {
+    expect(() => FormSchema.parse({ ...base, mode: 'thirdParty' })).toThrow(); // missing url
+    expect(() => FormSchema.parse({ ...base, mode: 'thirdParty', thirdPartyUrl: 'http://x.co' })).toThrow(); // not https
+    expect(() => FormSchema.parse({ ...base, mode: 'thirdParty', thirdPartyUrl: 'not a url' })).toThrow();
+    const ok = FormSchema.parse({ ...base, mode: 'thirdParty', thirdPartyUrl: 'https://formspree.io/f/abc' });
+    expect(ok.thirdPartyUrl).toBe('https://formspree.io/f/abc');
+    // thirdPartyUrl is allowed (ignored) for other modes.
+    expect(FormSchema.parse({ ...base, thirdPartyUrl: 'https://x.co' }).mode).toBe('globalSmtp');
+  });
+
+  it('rejects a thirdPartyUrl that targets a private/local host or carries credentials', () => {
+    const tp = (url: string) => FormSchema.parse({ ...base, mode: 'thirdParty', thirdPartyUrl: url });
+    expect(() => tp('https://localhost/submit')).toThrow();
+    expect(() => tp('https://127.0.0.1/submit')).toThrow();
+    expect(() => tp('https://192.168.1.10/submit')).toThrow();
+    expect(() => tp('https://169.254.169.254/latest/meta-data')).toThrow();
+    expect(() => tp('https://api.internal/submit')).toThrow();
+    expect(() => tp('https://user:pass@formspree.io/f/abc')).toThrow();
+    // A public host is fine.
+    expect(tp('https://formspree.io/f/abc').thirdPartyUrl).toBe('https://formspree.io/f/abc');
+  });
+
   it('accepts a path or http(s) redirectUrl but rejects junk', () => {
     expect(FormSchema.parse({ ...base, redirectUrl: '/thanks' }).redirectUrl).toBe('/thanks');
     expect(FormSchema.parse({ ...base, redirectUrl: 'https://acme.com/thanks' }).redirectUrl).toBe(
@@ -73,6 +95,20 @@ describe('toPublicForm', () => {
     expect(pub.mode).toBe('globalSmtp');
     expect(pub.redirectUrl).toBe('/thanks');
     expect(pub.fields[0]?.name).toBe('email');
+  });
+
+  it('passes thirdPartyUrl through to the public projection (the renderer needs it)', () => {
+    const form: Form = FormSchema.parse({
+      id: 'contact',
+      name: 'Contact',
+      fields: [{ name: 'email', label: 'Email', type: 'email' }],
+      recipient: 'a@b.co',
+      mode: 'thirdParty',
+      thirdPartyUrl: 'https://formspree.io/f/abc',
+    });
+    const pub = toPublicForm(form);
+    expect(pub.mode).toBe('thirdParty');
+    expect(pub.thirdPartyUrl).toBe('https://formspree.io/f/abc');
   });
 });
 

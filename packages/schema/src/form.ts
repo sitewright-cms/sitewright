@@ -10,6 +10,35 @@ function hasControlChars(value: string): boolean {
   return false;
 }
 
+/**
+ * True if `url`'s host is localhost / link-local / a private (RFC 1918) range —
+ * not a public "third-party" endpoint. Unparseable → treated as blocked. (A string
+ * check, so DNS-rebinding to a private IP isn't covered — defense-in-depth, matching
+ * the deploy-host posture.)
+ */
+function targetsPrivateHost(url: string): boolean {
+  let host: string;
+  try {
+    host = new URL(url).hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  } catch {
+    return true;
+  }
+  return (
+    host === 'localhost' ||
+    host === '169.254.169.254' ||
+    host === '::1' ||
+    host.startsWith('127.') ||
+    host.startsWith('10.') ||
+    host.startsWith('fc') ||
+    host.startsWith('fd') ||
+    host.startsWith('fe80:') ||
+    /^192\.168\./.test(host) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(host) ||
+    host.endsWith('.internal') ||
+    host.endsWith('.local')
+  );
+}
+
 // Web forms (contact / lead capture). A form is a content kind authored per
 // project; its definition holds the PUBLIC presentation (fields, labels, inline
 // messages) AND the server-side delivery config (recipient, mode, subject). The
@@ -80,8 +109,34 @@ export const FormSchema = z.object({
     .refine((v) => !hasControlChars(v), 'subject must not contain control characters')
     .optional(),
   mode: FormModeSchema.default('globalSmtp'),
-  /** Require an hCaptcha solve (verification wired in Phase 4). */
+  /** Require an hCaptcha solve (only enforced for platform-routed modes). */
   hcaptcha: z.boolean().default(false),
+  /**
+   * Third-party submission endpoint (Mode C). The exported form posts directly here
+   * (cross-origin) — Sitewright is not involved. Must be https; required when
+   * `mode === 'thirdParty'`.
+   */
+  thirdPartyUrl: z
+    .string()
+    .max(2048)
+    .url()
+    .refine((u) => /^https:\/\//i.test(u), 'thirdPartyUrl must be an https URL')
+    // `.url()` trims leading/trailing C0/space before validating, so guard the raw value.
+    .refine((u) => !/\s/.test(u), 'thirdPartyUrl must not contain whitespace')
+    // Reject embedded credentials — they'd be published in the exported HTML.
+    .refine((u) => {
+      try {
+        return !new URL(u).username && !new URL(u).password;
+      } catch {
+        return false;
+      }
+    }, 'thirdPartyUrl must not contain credentials')
+    // Must be a public host (not localhost / link-local / private) — it's an external endpoint.
+    .refine((u) => !targetsPrivateHost(u), 'thirdPartyUrl must be a public host')
+    .optional(),
+}).refine((f) => f.mode !== 'thirdParty' || !!f.thirdPartyUrl, {
+  message: 'thirdPartyUrl is required when mode is "thirdParty"',
+  path: ['thirdPartyUrl'],
 });
 export type Form = z.infer<typeof FormSchema>;
 
@@ -100,6 +155,8 @@ export interface FormPublic {
   redirectUrl?: string;
   hcaptcha: boolean;
   mode: FormMode;
+  /** Third-party endpoint (Mode C) — the exported form posts here directly. */
+  thirdPartyUrl?: string;
 }
 
 /** Strips the server-side delivery fields, leaving only what may be rendered. */
@@ -114,6 +171,7 @@ export function toPublicForm(form: Form): FormPublic {
     mode: form.mode,
   };
   if (form.redirectUrl !== undefined) pub.redirectUrl = form.redirectUrl;
+  if (form.thirdPartyUrl !== undefined) pub.thirdPartyUrl = form.thirdPartyUrl;
   return pub;
 }
 

@@ -8,7 +8,7 @@ import { allRoutes, datasetEntries, loadBundle } from '../lib/project';
 export function getStaticPaths() {
   const bundle = loadBundle();
   const datasets = datasetEntries(bundle);
-  const brandCss = brandToCss(bundle.project.brand);
+  const brandCss = brandToCss(bundle.project.identity);
   const media = loadMediaManifest();
 
   return allRoutes(bundle).map(({ slug, page, root, entry }) => ({

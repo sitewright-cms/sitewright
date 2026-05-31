@@ -106,7 +106,7 @@ describe('ContentRepository', () => {
   it('imports a full bundle and exports it back', async () => {
     const bundle = {
       project: {
-        brand: { name: 'Acme', colors: { primary: '#0a7' } },
+        identity: { name: 'Acme', colors: { primary: '#0a7' } },
         settings: { defaultLocale: 'en', locales: ['en'] },
       },
       pages: [page],
@@ -120,7 +120,7 @@ describe('ContentRepository', () => {
     expect(res.imported).toBe(5); // settings + page + partial + dataset + entry
 
     const out = await content.exportBundle(pctxA, projA);
-    expect(out.project.brand).toMatchObject({ name: 'Acme' });
+    expect(out.project.identity).toMatchObject({ name: 'Acme' });
     expect(out.partials).toHaveLength(1);
     expect(out.datasets).toHaveLength(1);
     expect(out.entries).toHaveLength(1);

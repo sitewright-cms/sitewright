@@ -1,4 +1,4 @@
-import type { Brand } from '@sitewright/schema';
+import type { BrandTokens } from '@sitewright/schema';
 
 /** Brand tokens mapped into the subset of the Tailwind theme we expose as utilities. */
 export interface TailwindTheme {
@@ -9,11 +9,11 @@ export interface TailwindTheme {
 }
 
 /**
- * Projects a {@link Brand} onto the Tailwind theme so a project's own colors and
+ * Projects brand tokens onto the Tailwind theme so a project's own colors and
  * fonts become first-class utilities (e.g. `bg-primary`, `font-display`). Only
  * colors and font families are mapped — the high-value, low-risk brand surface.
  */
-export function brandToTailwindTheme(brand: Brand): TailwindTheme {
+export function brandToTailwindTheme(brand: BrandTokens): TailwindTheme {
   return {
     colors: { ...brand.colors },
     fonts: { ...(brand.typography?.fontFamilies ?? {}) },

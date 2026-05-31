@@ -12,7 +12,7 @@ import {
   InstanceSettingsInputSchema,
   assertWithinTreeDepth,
   toPublicForm,
-  type Brand,
+  type CorporateIdentity,
   type Entry,
   type Form,
   type FormPublic,
@@ -768,12 +768,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       assertWithinTreeDepth((req.body as { root?: unknown } | null)?.root);
       const page = PageSchema.parse(req.body);
 
-      // Brand comes from the saved settings singleton; fall back to the project
-      // name with default tokens when settings have not been configured yet.
-      let brand: Brand = { name: project.name, colors: {} };
+      // Brand tokens come from the saved Corporate Identity singleton; fall back to
+      // the project name with default tokens when settings aren't configured yet.
+      let brand: CorporateIdentity = { name: project.name, colors: {} };
       try {
         const settings = (await contentRepo.get(ctx, 'settings', SETTINGS_ENTITY_ID)) as Settings;
-        brand = settings.brand;
+        brand = settings.identity;
       } catch (err) {
         if (!(err instanceof NotFoundError)) throw err;
       }

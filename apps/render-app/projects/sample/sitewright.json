@@ -1,9 +1,9 @@
 {
-  "formatVersion": 1,
+  "formatVersion": 2,
   "id": "sample",
   "name": "Northwind Studio",
   "slug": "northwind",
-  "brand": {
+  "identity": {
     "name": "Northwind Studio",
     "colors": {
       "primary": "#0ea5e9",

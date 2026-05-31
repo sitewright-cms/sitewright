@@ -9,9 +9,12 @@ import {
 } from './primitives.js';
 
 /**
- * Per-project corporate identity. Compiled to CSS custom properties at build
- * time. Editable by developers; lockable for the client editing role. Token
- * values are constrained so they cannot break out of a CSS declaration.
+ * @deprecated Merged into {@link CorporateIdentitySchema} (the unified `identity`
+ * record) as of project format v2. Retained only as a building block for the
+ * legacy `{brand,company}` → identity migration (see migrate-identity.ts).
+ *
+ * Per-project brand tokens. Compiled to CSS custom properties at build time.
+ * Token values are constrained so they cannot break out of a CSS declaration.
  */
 export const BrandSchema = z.object({
   name: z.string().min(1).max(200),

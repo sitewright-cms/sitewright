@@ -10,10 +10,12 @@ const AbsoluteUrlSchema = z
   .refine((v) => /^https?:\/\//i.test(v), 'must be an absolute http(s) URL');
 
 /**
- * Per-project corporate identity — the `company.*` namespace (contentBase's
- * company.json). Drives the auto schema.org JSON-LD, the favicon / OG image, and
- * (later) template variables. Every field is optional: a project may publish
- * without any company data, in which case no structured data is emitted.
+ * @deprecated Merged into {@link CorporateIdentitySchema} (the unified `identity`
+ * record) as of project format v2. Retained only as a building block for the
+ * legacy `{brand,company}` → identity migration (see migrate-identity.ts).
+ *
+ * The old `company.*` namespace (contentBase's company.json): corporate info that
+ * drives schema.org JSON-LD + favicon / OG image. Every field optional.
  */
 export const CompanySchema = z.object({
   /** schema.org `@type` (rendered as `Organization` by default; `disabled` suppresses JSON-LD). */

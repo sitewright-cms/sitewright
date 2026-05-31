@@ -42,8 +42,7 @@ async function exportBundle() {
       id: string;
       name: string;
       slug: string;
-      brand: { name: string; colors: Record<string, string> };
-      company?: { legalName?: string; email?: string; social?: string[] };
+      identity: { name: string; colors: Record<string, string>; legalName?: string; email?: string; social?: string[] };
       settings: { defaultLocale: string; locales: string[] };
     };
     pages: Array<{ id: string; path: string; title: string; root: unknown; collection?: unknown }>;
@@ -63,12 +62,10 @@ async function exportBundle() {
 function richBundle() {
   return {
     project: {
-      brand: {
+      identity: {
         name: 'Acme',
         colors: { primary: '#0a7', accent: '#f50' },
         typography: { fontFamilies: { body: 'Inter, sans-serif' } },
-      },
-      company: {
         legalName: 'Acme Incorporated',
         email: 'hello@acme.test',
         social: ['https://example.com/acme'],
@@ -127,10 +124,9 @@ describe('bundle export/import fidelity (HTTP)', () => {
 
     const out = await exportBundle();
 
-    // ---- Project manifest: brand, company, settings ----
-    expect(out.project.brand).toEqual(bundle.project.brand);
-    expect(out.project.company).toMatchObject(bundle.project.company);
-    expect(out.project.company?.social).toEqual(['https://example.com/acme']);
+    // ---- Project manifest: identity, settings ----
+    expect(out.project.identity).toMatchObject(bundle.project.identity);
+    expect(out.project.identity.social).toEqual(['https://example.com/acme']);
     expect(out.project.settings).toEqual(bundle.project.settings);
     // Identity is the project's own (from the URL/record), not anything in the bundle.
     expect(out.project.id).toBe(projectId);
@@ -180,7 +176,7 @@ describe('bundle export/import fidelity (HTTP)', () => {
     // ---- Idempotent re-round-trip: exporting the just-imported bundle and
     // re-importing it produces an identical export (stable fidelity). ----
     const reimport = await importBundle({
-      project: { brand: out.project.brand, company: out.project.company, settings: out.project.settings },
+      project: { identity: out.project.identity, settings: out.project.settings },
       pages: out.pages,
       partials: out.partials,
       datasets: out.datasets,
@@ -190,7 +186,7 @@ describe('bundle export/import fidelity (HTTP)', () => {
     const out2 = await exportBundle();
     expect(out2.pages.map((p) => p.id).sort()).toEqual(out.pages.map((p) => p.id).sort());
     expect(out2.entries.map((e) => e.id).sort()).toEqual(out.entries.map((e) => e.id).sort());
-    expect(out2.project.brand).toEqual(out.project.brand);
+    expect(out2.project.identity).toEqual(out.project.identity);
   });
 
   describe('referential-integrity rejection (409)', () => {
@@ -282,7 +278,7 @@ describe('bundle export/import fidelity (HTTP)', () => {
     //    different brand. It fails integrity (unknown_partial), so NOTHING from it
     //    must be written — and nothing prior must be removed.
     const failing = await importBundle({
-      project: { brand: { name: 'Hijacked', colors: {} }, settings: { defaultLocale: 'en', locales: ['en'] } },
+      project: { identity: { name: 'Hijacked', colors: {} }, settings: { defaultLocale: 'en', locales: ['en'] } },
       pages: [
         { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' } },
         {
@@ -299,7 +295,7 @@ describe('bundle export/import fidelity (HTTP)', () => {
     const after = await exportBundle();
     expect(after.pages.map((p) => p.id).sort()).toEqual(['blog-post', 'home']);
     expect(after.pages.find((p) => p.id === 'injected')).toBeUndefined();
-    expect(after.project.brand.name).toBe('Acme');
+    expect(after.project.identity.name).toBe('Acme');
     expect(after.entries).toHaveLength(2);
   });
 

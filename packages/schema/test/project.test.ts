@@ -6,15 +6,15 @@ const base = {
   id: 'p1',
   name: 'Acme',
   slug: 'acme',
-  brand: { name: 'Acme' },
+  identity: { name: 'Acme' },
 };
 
 describe('ProjectSchema', () => {
-  it('parses a project and applies setting + brand defaults', () => {
+  it('parses a project and applies setting + identity defaults', () => {
     const p = ProjectSchema.parse(base);
     expect(p.settings.defaultLocale).toBe('en');
     expect(p.settings.locales).toEqual(['en']);
-    expect(p.brand.colors).toEqual({});
+    expect(p.identity.colors).toEqual({});
   });
 
   it('preserves explicit settings', () => {
@@ -30,8 +30,8 @@ describe('ProjectSchema', () => {
     expect(() => ProjectSchema.parse({ ...base, formatVersion: 999 })).toThrow();
   });
 
-  it('requires a brand name', () => {
-    expect(() => ProjectSchema.parse({ ...base, brand: {} })).toThrow();
+  it('requires an identity name', () => {
+    expect(() => ProjectSchema.parse({ ...base, identity: {} })).toThrow();
   });
 
   it('rejects a defaultLocale that is not in locales', () => {

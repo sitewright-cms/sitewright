@@ -91,6 +91,29 @@ describe('company → schema.org + favicon on publish', () => {
     expect(html).not.toContain('application/ld+json');
   });
 
+  it('upgrades a legacy {brand,company} settings payload to a unified identity on store (format v2 migration)', async () => {
+    const proj = client.project(projectId);
+    const legacy = {
+      brand: { name: 'ClassCar', colors: { primary: '#e11' }, logo: { favicon: '/fav.ico', light: '/light.svg' } },
+      company: { legalName: 'ClassCar Hire CC', icon: '/brand/icon.png', social: ['https://x.com/cc'] },
+      settings: { defaultLocale: 'en', locales: ['en'] },
+    };
+    expect((await proj.putContent('settings', 'settings', legacy)).statusCode).toBe(200);
+    const item = ((await proj.getContent('settings', 'settings')).json() as { item: Record<string, unknown> }).item;
+    // The split brand/company keys are gone; everything lands in one identity record.
+    expect(item.brand).toBeUndefined();
+    expect(item.company).toBeUndefined();
+    expect(item.identity).toMatchObject({
+      name: 'ClassCar', // from brand.name
+      legalName: 'ClassCar Hire CC', // from company
+      icon: '/brand/icon.png', // company.icon
+      favicon: '/fav.ico', // brand.logo.favicon
+      logoLight: '/light.svg', // brand.logo.light
+      colors: { primary: '#e11' }, // brand tokens
+      social: ['https://x.com/cc'],
+    });
+  });
+
   it('falls back to company.image for og:image, and a page seo.ogImage overrides it', async () => {
     await putSettings({ legalName: 'ClassCar', image: '/brand/og.png' });
     expect(await publishAndFetchHome()).toContain('property="og:image" content="brand/og.png"');
@@ -110,12 +133,12 @@ describe('company → schema.org + favicon on publish', () => {
     const proj = client.project(projectId);
     const company = { legalName: 'Imported Co', businessType: 'LocalBusiness', social: ['https://x.io/co'] };
     const imp = await proj.importBundle({
-      project: { brand: { name: 'B', colors: {} }, company, settings: { defaultLocale: 'en', locales: ['en'] } },
+      project: { identity: { name: 'B', colors: {}, ...company }, settings: { defaultLocale: 'en', locales: ['en'] } },
       pages: [home],
     });
     expect(imp.statusCode).toBe(200);
     const exp = await proj.exportBundle();
     expect(exp.statusCode).toBe(200);
-    expect((exp.json() as { project: { company: unknown } }).project.company).toEqual(company);
+    expect((exp.json() as { project: { identity: unknown } }).project.identity).toMatchObject(company);
   });
 });

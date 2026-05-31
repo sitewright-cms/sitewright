@@ -17,11 +17,11 @@ function entry(values: Record<string, unknown>, id = 'e1'): Entry {
 }
 
 const PROJECT: Project = {
-  formatVersion: 1,
+  formatVersion: 2,
   id: 'p',
   name: 'P',
   slug: 'p',
-  brand: { name: 'P', colors: {} },
+  identity: { name: 'P', colors: {} },
   settings: { defaultLocale: 'en', locales: ['en'] },
 };
 

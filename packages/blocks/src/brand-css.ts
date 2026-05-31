@@ -1,7 +1,7 @@
 // Mirrors apps/render-app/src/lib/brand-css.ts. Kept here so the shared renderer
 // can produce a brand-themed preview document on its own; Phase F converges the
 // Astro renderer onto this package and removes the duplicate.
-import type { Brand } from '@sitewright/schema';
+import type { BrandTokens } from '@sitewright/schema';
 
 // Defense-in-depth: brand token keys/values are already schema-validated, but we
 // never emit anything that could break out of a CSS declaration (`;{}<>`) or
@@ -30,7 +30,7 @@ function emit(
  * properties. These feed the preview stylesheet's theme variables, so the
  * preview re-themes from the same single source of truth as the published site.
  */
-export function brandToCss(brand: Brand): string {
+export function brandToCss(brand: BrandTokens): string {
   const lines: string[] = [];
   emit('color', brand.colors, lines);
   emit('font', brand.typography?.fontFamilies, lines);

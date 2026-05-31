@@ -1,10 +1,12 @@
-import type { Brand } from '@sitewright/schema';
+import type { BrandTokens } from '@sitewright/schema';
 
 // Defense-in-depth: brand token keys/values are already schema-validated, but we
-// never emit anything that could break out of a CSS declaration (`;{}<>`) or
-// invoke a CSS function such as `url()`/`expression()` (which could exfiltrate or
-// fetch) — so parentheses and quotes are rejected too.
-const SAFE = /^[^;{}<>()'"]*$/;
+// never emit anything that could break out of a CSS declaration (`;{}<>`) or invoke
+// a CSS function such as `url()`/`expression()` (parentheses + quotes rejected). A
+// backslash (CSS hex escapes like `\28` → `(`), whitespace controls and NUL are
+// denied too so a value can't reconstruct a blocked char. Mirrors packages/blocks.
+// eslint-disable-next-line no-control-regex -- intentionally denying NUL/control chars
+const SAFE = /^[^;{}<>()'"\\\n\r\t\f\x00]*$/;
 
 function emit(
   prefix: string,
@@ -24,7 +26,7 @@ function emit(
  * properties. These feed the Tailwind `@theme` variables in global.css, so the
  * whole site re-themes from a single source of truth.
  */
-export function brandToCss(brand: Brand): string {
+export function brandToCss(brand: BrandTokens): string {
   const lines: string[] = [];
   emit('color', brand.colors, lines);
   emit('font', brand.typography?.fontFamilies, lines);

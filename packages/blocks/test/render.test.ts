@@ -227,10 +227,15 @@ describe('renderNode — Tabs (tablist generated client-side)', () => {
     );
     expect(html).toContain('data-sw-component="tabs"');
     expect(html).toContain('<div data-sw-part="tablist" role="tablist"></div>'); // JS fills it
-    expect(html).toMatch(/data-sw-block="Tab"[^>]*data-sw-part="panel"[^>]*role="tabpanel"/);
+    expect(html).toMatch(/data-sw-block="Tab"[^>]*role="tabpanel" tabindex="0"/); // keyboard-reachable
     expect(html).toContain('data-sw-title="One"');
     expect(html).toContain('data-sw-title="Two &lt;x&gt;"'); // title escaped in the attr
     expect(html).toContain('First panel'); // panel content rendered (visible without JS)
+  });
+
+  it('gives the tablist an accessible name when labelled', () => {
+    const html = renderNode(node({ type: 'Tabs', props: { label: 'Topics' } }));
+    expect(html).toContain('<div data-sw-part="tablist" role="tablist" aria-label="Topics">');
   });
 
   it('keeps className on the Tabs root', () => {

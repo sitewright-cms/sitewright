@@ -81,7 +81,9 @@ describe('component registry', () => {
     expect(tabs.css).toContain('[data-sw-part="tab"]');
     expect(tabs.js).toContain("role','tab'");
     expect(tabs.js).toContain('ArrowRight'); // keyboard navigation
+    expect(tabs.js).toContain('Home'); // + Home/End (APG)
     expect(tabs.js).toContain('aria-controls');
+    expect(tabs.js).not.toContain('innerHTML'); // tab labels via textContent, not innerHTML
   });
 
   it('ignores unknown component types', () => {

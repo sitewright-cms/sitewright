@@ -291,7 +291,7 @@ export const BLOCK_DESCRIPTORS: ReadonlyArray<BlockDescriptor> = [
     label: 'Tabs',
     category: 'component',
     container: true,
-    fields: [],
+    fields: [{ key: 'label', label: 'Accessible label', input: 'text', placeholder: 'Topics' }],
   },
   {
     // One tab panel: a title (the tab button label) + content (child blocks).

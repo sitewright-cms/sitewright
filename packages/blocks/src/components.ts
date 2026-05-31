@@ -231,7 +231,7 @@ const TABS_JS = `(function(){
       btn.type='button';btn.id=tid;btn.setAttribute('role','tab');btn.setAttribute('data-sw-part','tab');btn.setAttribute('aria-controls',pid);
       btn.textContent=panel.getAttribute('data-sw-title')||('Tab '+(i+1));
       btn.addEventListener('click',function(){select(i);tabs[i].focus();});
-      btn.addEventListener('keydown',function(e){var n=-1;if(e.key==='ArrowRight'){n=(i+1)%tabs.length;}else if(e.key==='ArrowLeft'){n=(i-1+tabs.length)%tabs.length;}if(n>=0){e.preventDefault();select(n);tabs[n].focus();}});
+      btn.addEventListener('keydown',function(e){var n=-1;if(e.key==='ArrowRight'){n=(i+1)%tabs.length;}else if(e.key==='ArrowLeft'){n=(i-1+tabs.length)%tabs.length;}else if(e.key==='Home'){n=0;}else if(e.key==='End'){n=tabs.length-1;}if(n>=0){e.preventDefault();select(n);tabs[n].focus();}});
       tablist.appendChild(btn);tabs.push(btn);
     });
     root.setAttribute('data-sw-enhanced','true');

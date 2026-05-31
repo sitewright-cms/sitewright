@@ -32,6 +32,7 @@ const RENDERED_TYPES = [
   'CookieConsent',
   'Tabs',
   'Tab',
+  'Form',
 ];
 
 describe('BLOCK_DESCRIPTORS', () => {

@@ -53,6 +53,22 @@ const adminEmails = process.env.SW_ADMIN_EMAILS
   ? process.env.SW_ADMIN_EMAILS.split(',')
   : undefined;
 
+// The platform's public base URL, baked into exported forms as the absolute
+// submission endpoint. A malformed value would silently misdirect every form's
+// submissions, so validate it as an http(s) URL at startup and refuse to boot.
+const publicUrl = process.env.SW_PUBLIC_URL;
+if (publicUrl) {
+  let parsedPublicUrl: URL | undefined;
+  try {
+    parsedPublicUrl = new URL(publicUrl);
+  } catch {
+    throw new Error(`SW_PUBLIC_URL="${publicUrl}" is not a valid URL`);
+  }
+  if (parsedPublicUrl.protocol !== 'https:' && parsedPublicUrl.protocol !== 'http:') {
+    throw new Error(`SW_PUBLIC_URL must be an http(s) URL; got "${publicUrl}"`);
+  }
+}
+
 // Opt-in isolated build worker (multi-tenant SaaS / once builds run untrusted
 // code). Default: in-process build (single-container). Requires the docker CLI +
 // DOCKER_HOST, and the API image available as the worker image.
@@ -109,6 +125,9 @@ const app = await createApp({
   encryptionKey,
   deployAllowedHosts,
   adminEmails,
+  // Public base URL baked into exported forms (so static sites post submissions
+  // back to this platform). Validated above; trailing slash normalized at build time.
+  publicUrl,
   buildRunner,
   aiProvider,
   aiQuota,

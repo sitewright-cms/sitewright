@@ -239,7 +239,7 @@ export const content = sqliteTable(
       .references(() => projects.id),
     kind: text('kind', {
       // text column (no SQL CHECK) — adding a kind is a type-level change, no migration.
-      enum: ['settings', 'page', 'partial', 'template', 'dataset', 'entry', 'media', 'deploy_target', 'pattern', 'translation'],
+      enum: ['settings', 'page', 'partial', 'template', 'dataset', 'entry', 'media', 'deploy_target', 'pattern', 'translation', 'form'],
     }).notNull(),
     /** The entity's own id (or `settings` for the singleton). */
     entityId: text('entity_id').notNull(),
@@ -293,6 +293,28 @@ export const instanceSettings = sqliteTable('instance_settings', {
 /** The fixed primary key of the instance-settings singleton row. */
 export const INSTANCE_SETTINGS_ID = 'instance';
 
+/**
+ * Web-form submissions (text fields only — never binaries/attachments). Project-
+ * scoped; `formId` is the `form` content entity. Captured even when email delivery
+ * is unconfigured, so the inbox is the source of truth.
+ */
+export const formSubmissions = sqliteTable(
+  'form_submissions',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id),
+    formId: text('form_id').notNull(),
+    data: text('data', { mode: 'json' }).$type<Record<string, string>>().notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [
+    index('form_submissions_project_created_idx').on(t.projectId, t.createdAt),
+    index('form_submissions_project_form_idx').on(t.projectId, t.formId),
+  ],
+);
+
 export type OrgRole = 'owner' | 'admin' | 'member';
 export type ContentKind =
   | 'settings'
@@ -304,4 +326,5 @@ export type ContentKind =
   | 'dataset'
   | 'entry'
   | 'media'
-  | 'deploy_target';
+  | 'deploy_target'
+  | 'form';

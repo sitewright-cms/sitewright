@@ -301,6 +301,15 @@ export const BLOCK_DESCRIPTORS: ReadonlyArray<BlockDescriptor> = [
     container: true,
     fields: [{ key: 'title', label: 'Tab title', input: 'text' }],
   },
+  {
+    // Web form. References a project form by id; the fields/messages/recipient
+    // live in the form definition (content kind `form`), not in these props.
+    type: 'Form',
+    label: 'Form',
+    category: 'component',
+    container: false,
+    fields: [{ key: 'formId', label: 'Form', input: 'text', placeholder: 'contact' }],
+  },
 ];
 
 const BY_TYPE = new Map<string, BlockDescriptor>(BLOCK_DESCRIPTORS.map((d) => [d.type, d]));

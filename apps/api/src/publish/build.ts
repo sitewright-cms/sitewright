@@ -17,7 +17,7 @@ import {
 import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
 import { companyToOrganization } from './company-seo.js';
 import { renderSitemap, renderRobots, renderHtaccess, renderNetlifyRedirects, siteUrlFor, siteBase } from './seo.js';
-import type { MediaAsset, PageTranslation } from '@sitewright/schema';
+import { toPublicForm, type FormPublic, type MediaAsset, type PageTranslation } from '@sitewright/schema';
 
 /** The compiled utility stylesheet, written at the site root and linked per page. */
 const UTILITY_STYLESHEET = 'styles.css';
@@ -69,6 +69,13 @@ export interface BuildSiteOptions {
   readMedia?: (assetId: string, file: string) => Promise<Buffer>;
   /** Max total HTML/CSS bytes written before aborting (default 100 MiB). */
   maxOutputBytes?: number;
+  /**
+   * The Sitewright platform's public base URL (e.g. `https://cms.agency.com`).
+   * Exported `Form` blocks post to `<publicBaseUrl>/f/<projectId>/<formId>`; when
+   * unset, a same-origin `/f/…` path is emitted (works only when the export is
+   * served by the platform itself, e.g. the in-container preview).
+   */
+  publicBaseUrl?: string;
 }
 
 /** Copies every media asset's files into `<base>/media/<assetId>/` (path-safe). */
@@ -179,6 +186,13 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     const componentTypes = [...new Set(scanRoots.flatMap(usedComponentTypes))];
     const usesComponents = componentTypes.length > 0;
     const components = componentAssets(componentTypes);
+    // Public form definitions (recipient stripped) + the absolute submission
+    // endpoint for exported `Form` blocks. Built once (same for every page).
+    const forms: Record<string, FormPublic> = Object.fromEntries(
+      (bundle.forms ?? []).map((f) => [f.id, toPublicForm(f)]),
+    );
+    const formBase = (opts.publicBaseUrl ?? '').replace(/\/+$/, '');
+    const formEndpoint = (formId: string): string => `${formBase}/f/${bundle.project.id}/${formId}`;
     let bytes = 0;
     // Absolute URLs for sitemap.xml (when a production site URL is configured);
     // noindex pages are excluded.
@@ -239,6 +253,8 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           localePrefix,
           lang: locale,
           nav,
+          forms,
+          formEndpoint,
           mediaUrl: (asset, file) => `${siteRoot}media/${asset.id}/${file}`,
           seo: {
             // `||` not `??`: an empty SEO title must fall back to the page title.

@@ -3,7 +3,8 @@
 // stylesheet targets. ALL text and attributes are escaped, and URLs are passed
 // through an allowlist — the output is safe to drop into a sandboxed preview
 // iframe even when the page tree contains hostile content.
-import type { Brand, Entry, MediaAsset, Page, PageNode } from '@sitewright/schema';
+import type { Brand, Entry, FormField, FormPublic, MediaAsset, Page, PageNode } from '@sitewright/schema';
+import { HONEYPOT_FIELD } from '@sitewright/schema';
 import { resolveBinding } from '@sitewright/core';
 import { escapeAttr, escapeHtml } from './escape.js';
 import { textProp, urlProp } from './props.js';
@@ -48,9 +49,39 @@ export interface RenderContext {
    * `resolveInternalUrl`.
    */
   localePrefix?: string;
+  /**
+   * Public form definitions (recipient already stripped) keyed by form id, for
+   * rendering `Form` blocks. The renderer NEVER receives or emits the recipient.
+   */
+  forms?: Record<string, FormPublic>;
+  /**
+   * Resolves the absolute (or same-origin) submission endpoint for a form id.
+   * Publish passes the platform's public base so exported sites post to the
+   * Sitewright instance; preview passes a same-origin path.
+   */
+  formEndpoint?: (formId: string) => string;
 }
 
 const PICTURE_SIZES = '(min-width: 1280px) 1280px, 100vw';
+
+/** Renders one form control wrapped in its label (no `id`/`for` needed). */
+function renderFormField(field: FormField): string {
+  const name = escapeAttr(field.name);
+  const required = field.required ? ' required' : '';
+  const ph = field.placeholder ? ` placeholder="${escapeAttr(field.placeholder)}"` : '';
+  let control: string;
+  if (field.type === 'textarea') {
+    control = `<textarea name="${name}"${required}${ph}></textarea>`;
+  } else if (field.type === 'select') {
+    const opts = (field.options ?? [])
+      .map((o) => `<option value="${escapeAttr(o)}">${escapeHtml(o)}</option>`)
+      .join('');
+    control = `<select name="${name}"${required}><option value="">—</option>${opts}</select>`;
+  } else {
+    control = `<input type="${field.type}" name="${name}"${required}${ph} />`;
+  }
+  return `<label data-sw-part="field"><span data-sw-part="label">${escapeHtml(field.label)}</span>${control}</label>`;
+}
 
 /** Builds an optimized `<picture>` for a known media asset (variants + fallback). */
 function renderPicture(
@@ -422,6 +453,33 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
         `<svg data-sw-block="Icon"${cls} xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" ` +
         `viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ` +
         `stroke-linecap="round" stroke-linejoin="round"${a11y}>${body}</svg>`
+      );
+    }
+    case 'Form': {
+      // Web form. The PUBLIC form definition (no recipient) comes from context;
+      // the recipient is resolved SERVER-SIDE by the submission endpoint. There is
+      // deliberately NO `action=` attribute — submission is JS-only (the platform
+      // `components.js` posts to `data-sw-endpoint`). A page with no JS shows the
+      // form but cannot submit (no `action`), which is the intended behavior.
+      const formId = String(props.formId ?? '');
+      // Safe lookup (no dynamic object indexing), mirroring the Nav slot pattern.
+      const form = ctx.forms ? Object.entries(ctx.forms).find(([k]) => k === formId)?.[1] : undefined;
+      if (!form) return `<div data-sw-block="Form"${cls} data-sw-empty="1"></div>`;
+      const endpoint = ctx.formEndpoint ? ctx.formEndpoint(formId) : '';
+      const redirect = form.redirectUrl ? ` data-sw-redirect="${escapeAttr(form.redirectUrl)}"` : '';
+      const fields = form.fields.map(renderFormField).join('');
+      // Honeypot: visually hidden (component CSS), bait for bots; the endpoint drops
+      // any submission where it is filled.
+      const honeypot =
+        `<div data-sw-part="hp" aria-hidden="true">` +
+        `<label>Leave this field empty<input type="text" name="${escapeAttr(HONEYPOT_FIELD)}" tabindex="-1" autocomplete="off" /></label></div>`;
+      return (
+        `<form data-sw-block="Form"${cls} data-sw-component="form" data-sw-endpoint="${escapeAttr(endpoint)}"${redirect} novalidate>` +
+        `<div data-sw-part="fields">${fields}${honeypot}</div>` +
+        `<button type="submit" data-sw-part="submit">${escapeHtml(form.submitLabel)}</button>` +
+        `<p data-sw-part="success" role="status" hidden>${escapeHtml(form.successMessage)}</p>` +
+        `<p data-sw-part="error" role="alert" hidden>${escapeHtml(form.errorMessage)}</p>` +
+        `</form>`
       );
     }
     case 'Outlet':

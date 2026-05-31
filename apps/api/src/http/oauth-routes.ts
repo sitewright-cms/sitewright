@@ -39,6 +39,9 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
+// Self-hosted single-origin: derive the issuer from the request. Behind a reverse
+// proxy, enable trustProxy + a fixed Host so this isn't attacker-controllable; the
+// actual security boundary is the loopback redirect allowlist, not the issuer URL.
 function issuerOf(req: FastifyRequest): string {
   const host = req.headers.host ?? 'localhost';
   return `${req.protocol}://${host}`;
@@ -154,7 +157,8 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
         );
       }
 
-      // Build the project picker from the user's memberships.
+      // Build the project picker from the user's memberships. (2 queries/org — fine
+      // for an agency with a handful of orgs; batch if multi-tenant scales this.)
       const orgs = await listOrgsForUser(db, userId);
       const options: Array<{ value: string; label: string }> = [];
       for (const org of orgs) {
@@ -218,10 +222,14 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
       const back = (params: Record<string, string>): FastifyReply =>
         reply.redirect(redirectWith(redirectUri, { ...params, ...(state ? { state } : {}) }));
 
-      if (b.decision !== 'approve') return back({ error: 'access_denied' });
-
+      // Auth first, so an unauthenticated POST always 401s (never a misleading
+      // access_denied that looks like a user decision).
       const userId = await currentUserId(req);
       if (!userId) return reply.code(401).type('text/html').send(htmlPage('Sign in required', '<h1>Sign in required</h1>'));
+      if (b.decision !== 'approve') return back({ error: 'access_denied' });
+      // Re-validate the same params the GET enforced (a client can POST directly).
+      if (b.response_type !== 'code') return back({ error: 'unsupported_response_type' });
+      if (b.code_challenge_method !== 'S256') return back({ error: 'invalid_request' });
       if (!b.code_challenge || !isValidS256Challenge(b.code_challenge)) return back({ error: 'invalid_request' });
       const scope = parseScope(b.scope);
       if (scope.length === 0) return back({ error: 'invalid_scope' });

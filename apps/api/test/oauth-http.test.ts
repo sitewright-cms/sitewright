@@ -136,6 +136,7 @@ describe('OAuth full authorization-code + PKCE flow', () => {
       ...form({
         client_id: CLIENT,
         redirect_uri: REDIRECT,
+        response_type: 'code',
         code_challenge: CHALLENGE,
         code_challenge_method: 'S256',
         scope: 'content:read content:write',
@@ -202,6 +203,27 @@ describe('OAuth full authorization-code + PKCE flow', () => {
     const reused = await exchange(VERIFIER);
     expect(reused.statusCode).toBe(400);
     expect((reused.json() as { error: string }).error).toBe('invalid_grant');
+  });
+
+  it('refresh-token reuse is rejected and revokes the live successor (theft response)', async () => {
+    const { session, orgId, projectId } = await setup();
+    const code = await getCode(session, `${orgId}:${projectId}`);
+    const exchange = await app.inject({
+      method: 'POST',
+      url: '/oauth/token',
+      ...form({ grant_type: 'authorization_code', code, client_id: CLIENT, redirect_uri: REDIRECT, code_verifier: VERIFIER }),
+    });
+    const rt1 = (exchange.json() as { refresh_token: string }).refresh_token;
+    const refresh = (rt: string) =>
+      app.inject({ method: 'POST', url: '/oauth/token', ...form({ grant_type: 'refresh_token', refresh_token: rt, client_id: CLIENT }) });
+
+    const rt2 = (await refresh(rt1).then((r) => r.json() as { refresh_token: string })).refresh_token;
+    // Reusing the rotated rt1 is rejected…
+    const reuse = await refresh(rt1);
+    expect(reuse.statusCode).toBe(400);
+    expect((reuse.json() as { error: string }).error).toBe('invalid_grant');
+    // …and the live successor rt2 is now revoked too.
+    expect((await refresh(rt2)).statusCode).toBe(400);
   });
 
   it('rejects an unsupported grant type', async () => {

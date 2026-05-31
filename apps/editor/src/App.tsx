@@ -3,7 +3,19 @@ import { api, type Org, type Project } from './api';
 import { Login } from './views/Login';
 import { Dashboard } from './views/Dashboard';
 import { ProjectView } from './views/Project';
+import { LivePreview } from './views/LivePreview';
 import { UpdateBanner } from './views/UpdateBanner';
+import { parseLiveTarget } from './lib/live-target';
+
+/**
+ * Routes to the standalone pop-out live preview when the URL carries `?live=…`;
+ * otherwise the normal editor app. Branching here (not inside MainApp) keeps each
+ * view's hooks unconditional.
+ */
+export function App() {
+  const liveTarget = parseLiveTarget(window.location.search);
+  return liveTarget ? <LivePreview target={liveTarget} /> : <MainApp />;
+}
 
 type Stage =
   | { name: 'loading' }
@@ -11,7 +23,7 @@ type Stage =
   | { name: 'dashboard' }
   | { name: 'project'; org: Org; project: Project };
 
-export function App() {
+function MainApp() {
   const [stage, setStage] = useState<Stage>({ name: 'loading' });
   const [orgs, setOrgs] = useState<Org[]>([]);
 

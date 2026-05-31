@@ -13,6 +13,7 @@ import { reIdTree } from '@sitewright/core';
 import { api, previewDocUrl, type Org, type Project } from '../api';
 import { createBlock, genId } from '../lib/node-factory';
 import { localeDraft, toTranslation } from '../lib/translation-draft';
+import { buildLiveUrl } from '../lib/live-target';
 import {
   appendChild,
   findNode,
@@ -350,9 +351,26 @@ export function PageEditor({ org, project, page, onClose }: PageEditorProps) {
           </span>
         )}
         <button
+          className="ml-auto rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:border-slate-500"
+          title="Open a live preview window that auto-reloads on any change (incl. CLI/agent edits)"
+          onClick={() =>
+            window.open(
+              buildLiveUrl(window.location.origin, window.location.pathname, {
+                orgId: org.id,
+                projectId: project.id,
+                pageId: page.id,
+              }),
+              '_blank',
+              'noopener',
+            )
+          }
+        >
+          ⧉ Live preview
+        </button>
+        <button
           onClick={save}
           disabled={saving}
-          className="ml-auto rounded-md bg-slate-900 px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+          className="rounded-md bg-slate-900 px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
         >
           {saving ? 'Saving…' : isDefaultLocale ? 'Save page' : 'Save translation'}
         </button>

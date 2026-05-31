@@ -23,6 +23,11 @@ export function previewDocUrl(orgId: string, projectId: string, token: string): 
   return `${BASE}/orgs/${orgId}/projects/${projectId}/preview/${encodeURIComponent(token)}`;
 }
 
+/** URL of the project's Server-Sent-Events change stream (for `EventSource`). */
+export function eventsUrl(orgId: string, projectId: string): string {
+  return `${BASE}/orgs/${orgId}/projects/${projectId}/events`;
+}
+
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
@@ -101,6 +106,11 @@ export const api = {
     request<{ project: Project }>('POST', `/orgs/${orgId}/projects`, { name, slug }),
   listPages: (orgId: string, projectId: string) =>
     request<{ items: Page[] }>('GET', `/orgs/${orgId}/projects/${projectId}/content/page`),
+  getPage: (orgId: string, projectId: string, id: string) =>
+    request<{ item: Page }>(
+      'GET',
+      `/orgs/${orgId}/projects/${projectId}/content/page/${encodeURIComponent(id)}`,
+    ),
   putPage: (orgId: string, projectId: string, page: Page) =>
     request<{ item: Page }>(
       'PUT',

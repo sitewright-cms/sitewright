@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { api, ApiError } from '../src/api';
+import { api, ApiError, eventsUrl } from '../src/api';
 
 const fetchMock = vi.fn();
 beforeEach(() => {
@@ -56,6 +56,14 @@ describe('api client', () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { items: [] }));
     await api.listPages('org1', 'proj1');
     expect(fetchMock.mock.calls[0]![0]).toBe('/orgs/org1/projects/proj1/content/page');
+  });
+
+  it('gets a single page and builds the SSE events URL', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { item: { id: 'home' } }));
+    const res = await api.getPage('o', 'p', 'home');
+    expect(res.item.id).toBe('home');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/orgs/o/projects/p/content/page/home');
+    expect(eventsUrl('o', 'p')).toBe('/orgs/o/projects/p/events');
   });
 
   it('creates a project (POST with body)', async () => {

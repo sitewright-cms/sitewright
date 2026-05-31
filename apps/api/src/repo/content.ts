@@ -31,6 +31,7 @@ import { validateProject, type ProjectBundle } from '@sitewright/core';
 import type { Database } from '../db/client.js';
 import { content, type ContentKind } from '../db/schema.js';
 import { ConflictError, ForbiddenError, NotFoundError, type ProjectContext } from './context.js';
+import type { ProjectEventBus } from '../events/bus.js';
 
 /** The project's settings singleton (brand + corporate identity + website settings + locale). */
 export const SettingsSchema = z.object({
@@ -126,7 +127,15 @@ type Executor = Database;
  * validate the payload against the content schema for its kind.
  */
 export class ContentRepository {
-  constructor(private readonly db: Database) {}
+  /**
+   * @param events optional change bus — when present, successful writes publish a
+   *   {@link ContentChange} so live-preview clients can reload. Omitted in unit
+   *   tests that don't exercise the stream.
+   */
+  constructor(
+    private readonly db: Database,
+    private readonly events?: ProjectEventBus,
+  ) {}
 
   async list(ctx: ProjectContext, kind: ContentKind): Promise<unknown[]> {
     const rows = await this.db
@@ -149,6 +158,7 @@ export class ContentRepository {
     const data = schemaFor(kind).parse(raw);
     const key = this.entityKey(kind, entityId, data);
     await this.writeRow(this.db, ctx, kind, key, data);
+    this.events?.emit(ctx.projectId, { kind, entityId: key, op: 'put' });
     return data;
   }
 
@@ -162,6 +172,7 @@ export class ContentRepository {
     await this.db
       .delete(content)
       .where(and(eq(content.id, row.id), eq(content.projectId, ctx.projectId)));
+    this.events?.emit(ctx.projectId, { kind, entityId, op: 'delete' });
   }
 
   /** Assembles the full project as an on-disk-format bundle (the export side of D11). */

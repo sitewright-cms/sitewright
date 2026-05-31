@@ -60,6 +60,11 @@ export interface RenderContext {
    * Sitewright instance; preview passes a same-origin path.
    */
   formEndpoint?: (formId: string) => string;
+  /**
+   * The instance hCaptcha site key (public). When set, a `Form` with `hcaptcha`
+   * enabled renders the hCaptcha widget; absent → no widget (the flag is inert).
+   */
+  hcaptchaSiteKey?: string;
 }
 
 const PICTURE_SIZES = '(min-width: 1280px) 1280px, 100vw';
@@ -473,9 +478,18 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
       const honeypot =
         `<div data-sw-part="hp" aria-hidden="true">` +
         `<label>Leave this field empty<input type="text" name="${escapeAttr(HONEYPOT_FIELD)}" tabindex="-1" autocomplete="off" /></label></div>`;
+      // hCaptcha widget — only when the form opts in AND the instance site key is
+      // configured. The `h-captcha` class is what hCaptcha's script auto-renders;
+      // the platform JS injects that script (see components.ts). The site key is
+      // public by design.
+      const captcha =
+        form.hcaptcha && ctx.hcaptchaSiteKey
+          ? `<div class="h-captcha" data-sw-part="hcaptcha" data-sitekey="${escapeAttr(ctx.hcaptchaSiteKey)}"></div>`
+          : '';
       return (
         `<form data-sw-block="Form"${cls} data-sw-component="form" data-sw-endpoint="${escapeAttr(endpoint)}"${redirect} novalidate>` +
         `<div data-sw-part="fields">${fields}${honeypot}</div>` +
+        captcha +
         `<button type="submit" data-sw-part="submit">${escapeHtml(form.submitLabel)}</button>` +
         `<p data-sw-part="success" role="status" hidden>${escapeHtml(form.successMessage)}</p>` +
         `<p data-sw-part="error" role="alert" hidden>${escapeHtml(form.errorMessage)}</p>` +

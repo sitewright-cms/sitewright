@@ -261,6 +261,15 @@ const FORM_CSS = [
 ].join('');
 
 const FORM_JS = `(function(){
+  function ensureHcaptcha(){
+    if(!document.querySelector('.h-captcha'))return;
+    if(window.hcaptcha)return;
+    if(document.querySelector('script[data-sw-hcaptcha]'))return;
+    var s=document.createElement('script');
+    s.src='https://js.hcaptcha.com/1/api.js';s.async=true;s.defer=true;
+    s.setAttribute('data-sw-hcaptcha','');
+    document.head.appendChild(s);
+  }
   function enhance(form){
     var endpoint=form.getAttribute('data-sw-endpoint');
     if(!endpoint)return;
@@ -292,7 +301,7 @@ const FORM_JS = `(function(){
       });
     });
   }
-  function init(){Array.prototype.forEach.call(document.querySelectorAll('form[data-sw-component="form"]'),enhance);}
+  function init(){ensureHcaptcha();Array.prototype.forEach.call(document.querySelectorAll('form[data-sw-component="form"]'),enhance);}
   if(document.readyState!=='loading'){init();}else{document.addEventListener('DOMContentLoaded',init);}
 })();`;
 

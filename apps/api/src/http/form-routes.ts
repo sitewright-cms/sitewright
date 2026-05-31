@@ -1,10 +1,11 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { and, eq } from 'drizzle-orm';
-import { FormSchema, IdSchema, HONEYPOT_FIELD, TIMETRAP_FIELD, type Form } from '@sitewright/schema';
+import { FormSchema, IdSchema, HONEYPOT_FIELD, TIMETRAP_FIELD, HCAPTCHA_RESPONSE_FIELD, type Form } from '@sitewright/schema';
 import type { Database } from '../db/client.js';
 import { content } from '../db/schema.js';
 import type { SubmissionRepository } from '../repo/submissions.js';
 import type { SubmissionMailer } from '../mail/mailer.js';
+import type { HcaptchaVerifier } from '../mail/hcaptcha.js';
 import type { ProjectContext } from '../repo/context.js';
 import type { ApiKeyCapability } from '../db/schema.js';
 
@@ -24,6 +25,9 @@ export interface FormRoutesDeps {
   db: Database;
   submissions: SubmissionRepository;
   mailer: SubmissionMailer;
+  hcaptcha: HcaptchaVerifier;
+  /** Returns the decrypted instance hCaptcha secret, or null when unconfigured. */
+  getHcaptchaSecret: () => Promise<string | null>;
   resolveProject: (
     req: ProjectReq,
     access: ApiKeyCapability | 'session-only',
@@ -49,6 +53,7 @@ interface ParsedSubmission {
   fields: Record<string, string>;
   honeypotFilled: boolean;
   elapsed: number | undefined;
+  captchaToken: string | undefined;
 }
 
 /** Validates the public submission body: a flat map of text values only. */
@@ -59,11 +64,19 @@ function parseSubmission(raw: unknown): ParsedSubmission | null {
   const fields: Record<string, string> = {};
   let honeypotFilled = false;
   let elapsed: number | undefined;
+  let captchaToken: string | undefined;
   let total = 0;
   for (const [key, value] of entries) {
     if (key.length > MAX_KEY_LEN) return null;
     // Text fields ONLY — reject arrays/objects/null/binary (no attachments).
     if (typeof value !== 'string') return null;
+    // The captcha token is large; pull it out before the per-field length cap
+    // (verified server-side, never stored). Real hCaptcha tokens are < 2 KB —
+    // ignore an implausibly large value (it would fail verification anyway).
+    if (key === HCAPTCHA_RESPONSE_FIELD) {
+      captchaToken = value.length <= 8192 ? value : undefined;
+      continue;
+    }
     if (value.length > MAX_VALUE_LEN) return null;
     if (key === HONEYPOT_FIELD) {
       honeypotFilled = value.trim() !== '';
@@ -83,7 +96,7 @@ function parseSubmission(raw: unknown): ParsedSubmission | null {
     // eslint-disable-next-line security/detect-object-injection -- value is a string (checked) and prototype keys are excluded above
     fields[key] = value;
   }
-  return { fields, honeypotFilled, elapsed };
+  return { fields, honeypotFilled, elapsed, captchaToken };
 }
 
 /** Picks a safe Reply-To from a submitted `email` field, if present and valid. */
@@ -107,7 +120,7 @@ function setSubmissionCors(reply: FastifyReply): void {
  * via Mode A (global SMTP); spam is filtered by honeypot + time-trap + rate limit.
  */
 export function registerFormRoutes(app: FastifyInstance, deps: FormRoutesDeps): void {
-  const { db, submissions, mailer, resolveProject, isWriter, rl } = deps;
+  const { db, submissions, mailer, hcaptcha, getHcaptchaSecret, resolveProject, isWriter, rl } = deps;
 
   // CORS preflight for cross-origin submissions from exported sites (rate-limited
   // like the POST so it can't be used to burn a shared global budget).
@@ -127,23 +140,38 @@ export function registerFormRoutes(app: FastifyInstance, deps: FormRoutesDeps): 
       // for forms that actually exist (no spraying arbitrary project ids).
       if (!form) return reply.code(404).send({ error: 'form not found' });
 
-      if (form.hcaptcha) {
-        // TODO(Phase 4): verify the submitted hCaptcha token here. Until then the
-        // per-form flag is a no-op — log it so an operator who enables hCaptcha knows
-        // it is not yet enforced (rather than assuming protection that isn't there).
-        app.log.warn({ projectId, formId }, 'hcaptcha is enabled on this form but verification is not yet implemented (Phase 4)');
-      }
-
       const parsed = parseSubmission(req.body);
       if (!parsed) return reply.code(400).send({ error: 'invalid submission' });
 
-      // Honeypot filled or submitted implausibly fast → accept silently but DROP
-      // (don't tip off bots that they were filtered). The platform form JS always
-      // sends `_elapsed`; an absent value means the post didn't come through the
-      // form (a headless bot), so treat it as instant.
+      // Cheap bot filters first (silent 200 drop, no network): honeypot filled or
+      // submitted implausibly fast. Don't tip off bots that they were filtered. The
+      // platform form JS always sends `_elapsed`; an absent value means the post
+      // didn't come through the form (a headless bot), so treat it as instant.
       const elapsed = parsed.elapsed ?? 0;
       if (parsed.honeypotFilled || elapsed < MIN_ELAPSED_MS) {
         return reply.send({ ok: true });
+      }
+
+      // hCaptcha: enforced when the form requires it. Fail-CLOSED — if the instance
+      // secret is not configured we cannot verify, so reject rather than silently
+      // accept an UNPROTECTED submission (the admin explicitly opted into a captcha).
+      // A failed/absent token is rejected so the visitor can retry.
+      if (form.hcaptcha) {
+        let secret: string | null;
+        try {
+          secret = await getHcaptchaSecret();
+        } catch {
+          // Decryption failed (e.g. SW_ENCRYPTION_KEY removed/rotated after the secret
+          // was stored) — cannot verify, so reject rather than 500 or wave through.
+          app.log.error({ projectId, formId }, 'hCaptcha secret decryption failed; rejecting submission');
+          return reply.code(503).send({ error: 'captcha verification is unavailable' });
+        }
+        if (!secret) {
+          app.log.warn({ projectId, formId }, 'form requires hCaptcha but no instance secret is configured');
+          return reply.code(503).send({ error: 'captcha verification is unavailable' });
+        }
+        const verified = await hcaptcha.verify(secret, parsed.captchaToken, req.ip);
+        if (!verified) return reply.code(400).send({ error: 'captcha verification failed' });
       }
 
       // Store first — the inbox is the source of truth even if email is unconfigured.

@@ -76,6 +76,8 @@ export interface BuildSiteOptions {
    * served by the platform itself, e.g. the in-container preview).
    */
   publicBaseUrl?: string;
+  /** Instance hCaptcha site key (public) — rendered into forms that require hCaptcha. */
+  hcaptchaSiteKey?: string;
 }
 
 /** Copies every media asset's files into `<base>/media/<assetId>/` (path-safe). */
@@ -255,6 +257,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           nav,
           forms,
           formEndpoint,
+          hcaptchaSiteKey: opts.hcaptchaSiteKey,
           mediaUrl: (asset, file) => `${siteRoot}media/${asset.id}/${file}`,
           seo: {
             // `||` not `??`: an empty SEO title must fall back to the page title.

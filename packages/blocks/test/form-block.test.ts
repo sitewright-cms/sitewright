@@ -68,6 +68,31 @@ describe('renderNode — Form', () => {
     expect(html).not.toContain('<input');
   });
 
+  it('renders the hCaptcha widget only when the form requires it AND a site key is set', () => {
+    const hc: FormPublic = { ...contactForm, hcaptcha: true };
+    const withKey = renderNode(node({ type: 'Form', props: { formId: 'contact' } }), {
+      forms: { contact: hc },
+      formEndpoint: () => '/f/p/contact',
+      hcaptchaSiteKey: 'site-abc',
+    });
+    expect(withKey).toContain('class="h-captcha" data-sw-part="hcaptcha" data-sitekey="site-abc"');
+
+    // hcaptcha enabled but no site key → no widget (flag is inert).
+    const noKey = renderNode(node({ type: 'Form', props: { formId: 'contact' } }), {
+      forms: { contact: hc },
+      formEndpoint: () => '/f/p/contact',
+    });
+    expect(noKey).not.toContain('h-captcha');
+
+    // site key present but form doesn't require it → no widget.
+    const notRequired = renderNode(node({ type: 'Form', props: { formId: 'contact' } }), {
+      forms: { contact: contactForm },
+      formEndpoint: () => '/f/p/contact',
+      hcaptchaSiteKey: 'site-abc',
+    });
+    expect(notRequired).not.toContain('h-captcha');
+  });
+
   it('escapes field labels and select options', () => {
     const evil: FormPublic = {
       ...contactForm,
@@ -90,6 +115,7 @@ describe('Form component assets', () => {
     expect(assets.js).toContain("data-sw-component=\"form\"");
     expect(assets.js).toContain('_elapsed'); // time-trap
     expect(assets.js).toContain('preventDefault');
+    expect(assets.js).toContain('js.hcaptcha.com/1/api.js'); // injects the hCaptcha script
     expect(assets.js).not.toContain('innerHTML'); // no unsafe DOM writes
     expect(assets.css).toContain('left:-9999px'); // honeypot hidden
   });

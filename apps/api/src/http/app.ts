@@ -37,6 +37,7 @@ import { registerDeployTargetRoutes } from './deploy-targets.js';
 import { registerFormRoutes } from './form-routes.js';
 import { SubmissionRepository } from '../repo/submissions.js';
 import { GlobalSmtpMailer, type SubmissionMailer } from '../mail/mailer.js';
+import { HttpHcaptchaVerifier, type HcaptchaVerifier } from '../mail/hcaptcha.js';
 import { createSession, revokeSession, validateSession } from '../auth/sessions.js';
 import {
   getUserEmail,
@@ -214,6 +215,8 @@ export interface AppOptions {
   aiProvider?: AiProvider;
   /** Form-submission mailer (Mode A). Defaults to the global-SMTP mailer; tests inject a fake. */
   mailer?: SubmissionMailer;
+  /** hCaptcha verifier for form submissions. Defaults to the live siteverify client; tests inject a fake. */
+  hcaptcha?: HcaptchaVerifier;
   /**
    * The platform's public base URL (e.g. `https://cms.agency.com`). Baked into
    * exported `Form` blocks so the static site posts submissions back here. Unset
@@ -246,6 +249,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const instanceSettingsRepo = new InstanceSettingsRepository(db, opts.encryptionKey);
   const submissionsRepo = new SubmissionRepository(db);
   const mailer = opts.mailer ?? new GlobalSmtpMailer(instanceSettingsRepo);
+  const hcaptchaVerifier = opts.hcaptcha ?? new HttpHcaptchaVerifier();
   // Normalized once at startup; membership is a constant-time-ish Set lookup per request.
   const adminEmails: ReadonlySet<string> = new Set(
     (opts.adminEmails ?? []).map((e) => e.trim().toLowerCase()).filter(Boolean),
@@ -763,6 +767,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const previewForms: Record<string, FormPublic> = Object.fromEntries(
         ((await contentRepo.list(ctx, 'form')) as Form[]).map((f) => [f.id, toPublicForm(f)]),
       );
+      const previewHcaptchaSiteKey = (await instanceSettingsRepo.getStored()).hcaptcha?.siteKey;
       // The preview document is served (via a token URL) under `CSP: sandbox
       // allow-scripts` — an opaque, isolated origin — so styles AND the platform
       // component JS are INLINED to make it self-contained + truly interactive
@@ -785,6 +790,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         nav,
         forms: previewForms,
         formEndpoint: (formId) => `/f/${project.id}/${formId}`,
+        ...(previewHcaptchaSiteKey ? { hcaptchaSiteKey: previewHcaptchaSiteKey } : {}),
         mediaUrl: (asset, file) => `/media/${project.id}/${asset.id}/${file}`,
         inlineStyles: inlineStyles.length > 0 ? inlineStyles : undefined,
         inlineScripts: componentJs ? [componentJs] : undefined,
@@ -1030,6 +1036,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             forms,
           };
           const media = mediaStorage ? ((await contentRepo.list(ctx, 'media')) as MediaAsset[]) : [];
+          // Instance hCaptcha site key (public) — baked into forms that require it.
+          const hcaptchaSiteKey = (await instanceSettingsRepo.getStored()).hcaptcha?.siteKey;
           const release = await buildRunner.run({
             outDir: store.dirFor(project.id),
             bundle,
@@ -1037,6 +1045,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             media,
             // Exported Form blocks post to this absolute platform endpoint.
             ...(opts.publicUrl ? { publicBaseUrl: opts.publicUrl } : {}),
+            ...(hcaptchaSiteKey ? { hcaptchaSiteKey } : {}),
             readMedia: mediaStorage
               ? (assetId, file) => mediaStorage.read(project.id, assetId, file)
               : undefined,
@@ -1155,6 +1164,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     db,
     submissions: submissionsRepo,
     mailer,
+    hcaptcha: hcaptchaVerifier,
+    getHcaptchaSecret: () => instanceSettingsRepo.getHcaptchaSecret(),
     resolveProject,
     isWriter: (ctx) => WRITE_ROLES.has(ctx.role),
     rl,

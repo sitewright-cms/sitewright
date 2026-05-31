@@ -94,6 +94,8 @@ export function toPublicForm(form: Form): FormPublic {
 /** The honeypot + time-trap field names the renderer emits and the endpoint strips. */
 export const HONEYPOT_FIELD = '_hpt';
 export const TIMETRAP_FIELD = '_elapsed';
+/** The hCaptcha response token field (injected by the hCaptcha widget); verified + not stored. */
+export const HCAPTCHA_RESPONSE_FIELD = 'h-captcha-response';
 
 /** A stored form submission — text fields only (no binaries). */
 export const FormSubmissionSchema = z.object({

@@ -81,4 +81,13 @@ describe('buildSite — Form blocks', () => {
     const html = await readFile(join(outDir, 'contact', 'index.html'), 'utf8');
     expect(html).toContain('data-sw-endpoint="/f/proj1/contact"');
   });
+
+  it('renders the hCaptcha widget on a hcaptcha-required form when a site key is configured', async () => {
+    const b = bundle();
+    b.forms![0]!.hcaptcha = true;
+    await buildSite({ publishedAt: '2026-05-31T00:00:00.000Z', outDir, bundle: b, hcaptchaSiteKey: 'site-xyz' });
+    const html = await readFile(join(outDir, 'contact', 'index.html'), 'utf8');
+    expect(html).toContain('class="h-captcha"');
+    expect(html).toContain('data-sitekey="site-xyz"');
+  });
 });

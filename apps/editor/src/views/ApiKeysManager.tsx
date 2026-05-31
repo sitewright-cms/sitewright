@@ -24,11 +24,11 @@ export function ApiKeysManager({ org, project }: ApiKeysManagerProps) {
 
   async function load(isActive: () => boolean = () => true) {
     try {
-      // Revoke is a soft-revoke server-side (keeps the row for audit); the manager
-      // shows only active keys.
+      // The list endpoint returns active keys only (revoked rows are retained
+      // server-side for audit but excluded from list()).
       const items = (await api.listApiKeys(org.id, project.id)).items;
       if (!isActive()) return; // a tab switch may have unmounted us mid-fetch
-      setKeys(items.filter((k) => !k.revokedAt));
+      setKeys(items);
     } catch (err) {
       if (isActive()) setError(err instanceof Error ? err.message : 'failed to load API keys');
     }

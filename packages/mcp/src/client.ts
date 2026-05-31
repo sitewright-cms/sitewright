@@ -41,6 +41,8 @@ export class SitewrightClient {
   private token: string;
   private readonly fetchImpl: FetchLike;
   private readonly onUnauthorized?: () => Promise<string | null>;
+  /** In-flight refresh, so concurrent 401s share ONE refresh (no double rotation). */
+  private refreshPromise: Promise<string | null> | null = null;
 
   /**
    * @param onUnauthorized optional hook called once on a 401 to obtain a fresh
@@ -69,8 +71,14 @@ export class SitewrightClient {
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
     // A short-lived OAuth token may expire mid-session: refresh once and retry.
+    // Concurrent 401s coalesce into a single refresh so the rotating refresh token
+    // isn't consumed twice (which the server would treat as theft).
     if (res.status === 401 && this.onUnauthorized && !retried) {
-      const fresh = await this.onUnauthorized();
+      const refresh = this.onUnauthorized;
+      this.refreshPromise ??= refresh().finally(() => {
+        this.refreshPromise = null;
+      });
+      const fresh = await this.refreshPromise;
       if (fresh) {
         this.token = fresh;
         return this.request<T>(method, path, body, true);

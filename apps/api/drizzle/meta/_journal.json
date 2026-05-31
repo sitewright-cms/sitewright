@@ -15,6 +15,13 @@
       "when": 1780170994350,
       "tag": "0001_ai_usage",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1780204062149,
+      "tag": "0002_secret_scarlet_spider",
+      "breakpoints": true
     }
   ]
 }

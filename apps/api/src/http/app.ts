@@ -39,6 +39,7 @@ import {
 } from '../repo/accounts.js';
 import { ProjectRepository } from '../repo/projects.js';
 import { AiUsageRepository } from '../repo/ai-usage.js';
+import { ApiKeyRepository, type ResolvedApiKey } from '../repo/api-keys.js';
 import {
   ContentRepository,
   CONTENT_KINDS,
@@ -52,7 +53,7 @@ import {
   UnauthorizedError,
   type ProjectContext,
 } from '../repo/context.js';
-import type { ContentKind } from '../db/schema.js';
+import { API_KEY_CAPABILITIES, type ApiKeyCapability, type ContentKind } from '../db/schema.js';
 
 const SESSION_COOKIE = 'sw_session';
 const RL_WINDOW = '1 minute';
@@ -147,6 +148,19 @@ const CreateProjectBody = z.object({
     .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'slug must be lowercase alphanumeric with hyphens'),
 });
 
+const CreateApiKeyBody = z.object({
+  name: z.string().min(1).max(120),
+  // The token's base role; the repo refuses to mint above the creator's role.
+  role: z.enum(['owner', 'admin', 'member']).default('admin'),
+  capabilities: z
+    .array(z.enum(API_KEY_CAPABILITIES as unknown as [ApiKeyCapability, ...ApiKeyCapability[]]))
+    .min(1)
+    .max(API_KEY_CAPABILITIES.length),
+  // Expressed as a TTL in days (clearer for clients than an absolute timestamp;
+  // the repo enforces the absolute max).
+  expiresInDays: z.number().int().min(1).max(365),
+});
+
 export interface AppOptions {
   db: Database;
   cookieSecret?: string;
@@ -195,6 +209,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const buildRunner = opts.buildRunner ?? new InProcessBuildRunner();
   const aiProvider = opts.aiProvider;
   const aiUsageRepo = new AiUsageRepository(db);
+  const apiKeysRepo = new ApiKeyRepository(db);
   const aiQuota = opts.aiQuota ?? {};
   const app = Fastify({
     // Redact deploy credentials defensively (Fastify omits bodies by default, but
@@ -268,6 +283,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     return unsigned.valid ? (unsigned.value ?? undefined) : undefined;
   }
 
+  /** Extracts a `Authorization: Bearer swk_…` project API token, if present. */
+  function bearerToken(req: FastifyRequest): string | undefined {
+    const header = req.headers.authorization;
+    if (!header) return undefined;
+    const match = /^Bearer\s+(\S+)$/i.exec(header);
+    return match ? match[1] : undefined;
+  }
+
   // Rate limiting: a generous global cap keyed per-user (session) or per-IP, with
   // stricter caps on expensive/sensitive routes (each route sets its own via config).
   // NOTE: behind a reverse proxy, enable Fastify `trustProxy` so req.ip is the real
@@ -277,7 +300,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     max: 200,
     timeWindow: RL_WINDOW,
     cache: 20_000, // explicit LRU key cap (bounds memory; documents intent)
-    keyGenerator: (req) => sessionToken(req) ?? req.ip,
+    keyGenerator: (req) => sessionToken(req) ?? bearerToken(req) ?? req.ip,
   });
 
   async function requireUserId(req: FastifyRequest): Promise<string> {
@@ -287,16 +310,64 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     return userId;
   }
 
-  // Resolves a project context: authenticates, verifies org membership, and
-  // confirms the project belongs to that org (404 otherwise). Returns the
-  // ProjectContext plus the project record (for export/import identity).
+  // The access a project route requires. A `Capability` is enforced for bearer
+  // (API-key) requests — the key must hold it — and ignored for interactive
+  // sessions (which are gated by role as before). `'session-only'` forbids the
+  // bearer path entirely (key management, agency-funded AI): operations a
+  // non-interactive token must never perform.
+  type RequiredAccess = ApiKeyCapability | 'session-only';
+
+  // Resolves a project context for either auth path:
+  //  - session cookie → verify org membership + project ownership (role-gated);
+  //  - `Authorization: Bearer swk_…` → resolve the project-scoped key, confirm it
+  //    is bound to THIS org+project, and enforce the route's capability.
+  // Returns the ProjectContext, the project record, and whether the caller is an
+  // API key (so routes can apply extra restraint to non-interactive callers).
   async function resolveProject(
     req: FastifyRequest<{ Params: { orgId: string; projectId: string } }>,
-  ): Promise<{ ctx: ProjectContext; project: Awaited<ReturnType<ProjectRepository['get']>> }> {
+    access: RequiredAccess,
+  ): Promise<{
+    ctx: ProjectContext;
+    project: Awaited<ReturnType<ProjectRepository['get']>>;
+    apiKey: ResolvedApiKey | null;
+  }> {
+    const bearer = bearerToken(req);
+    // Reject ambiguous dual-credential requests rather than silently letting one
+    // win — so an injected Authorization header can never override a session (or
+    // vice-versa).
+    if (bearer !== undefined && sessionToken(req) !== undefined) {
+      throw new UnauthorizedError('supply either a session cookie or a Bearer token, not both');
+    }
+    if (bearer !== undefined) {
+      if (access === 'session-only') {
+        throw new ForbiddenError('this operation requires an interactive session');
+      }
+      const key = await apiKeysRepo.resolve(bearer);
+      if (!key) throw new UnauthorizedError('invalid or expired API key');
+      // The key is bound to one project; reject any other route (no cross-project
+      // reach). 404 — not 403 — so a key cannot probe which projects exist.
+      if (key.orgId !== req.params.orgId || key.projectId !== req.params.projectId) {
+        throw new NotFoundError('project not found');
+      }
+      if (!key.capabilities.includes(access)) {
+        throw new ForbiddenError(`this API key lacks the "${access}" capability`);
+      }
+      const ctx: ProjectContext = {
+        userId: key.createdBy,
+        orgId: key.orgId,
+        role: key.role,
+        projectId: key.projectId,
+      };
+      // Re-load the project through the tenant-scoped repo so a stale key whose
+      // project was deleted resolves to a clean 404.
+      const project = await projects.get(ctx, req.params.projectId);
+      return { ctx, project, apiKey: key };
+    }
+
     const userId = await requireUserId(req);
     const tenant = await tenantContext(db, userId, req.params.orgId);
     const project = await projects.get(tenant, req.params.projectId);
-    return { ctx: { ...tenant, projectId: project.id }, project };
+    return { ctx: { ...tenant, projectId: project.id }, project, apiKey: null };
   }
 
   // Optional SSRF guard for deploy targets (multi-tenant SaaS): when an allow-list
@@ -413,7 +484,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   app.get<{ Params: Pick<ContentParams, 'orgId' | 'projectId' | 'kind'> }>(
     '/orgs/:orgId/projects/:projectId/content/:kind',
     async (req, reply) => {
-      const { ctx } = await resolveProject(req);
+      const { ctx } = await resolveProject(req, 'content:read');
       return reply.send({ items: await contentRepo.list(ctx, parseGenericKind(req.params.kind)) });
     },
   );
@@ -421,7 +492,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   app.get<{ Params: ContentParams }>(
     '/orgs/:orgId/projects/:projectId/content/:kind/:entityId',
     async (req, reply) => {
-      const { ctx } = await resolveProject(req);
+      const { ctx } = await resolveProject(req, 'content:read');
       const item = await contentRepo.get(ctx, parseGenericKind(req.params.kind), req.params.entityId);
       return reply.send({ item });
     },
@@ -430,7 +501,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   app.put<{ Params: ContentParams }>(
     '/orgs/:orgId/projects/:projectId/content/:kind/:entityId',
     async (req, reply) => {
-      const { ctx } = await resolveProject(req);
+      const { ctx } = await resolveProject(req, 'content:write');
       const item = await contentRepo.put(
         ctx,
         parseGenericKind(req.params.kind),
@@ -444,8 +515,49 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   app.delete<{ Params: ContentParams }>(
     '/orgs/:orgId/projects/:projectId/content/:kind/:entityId',
     async (req, reply) => {
-      const { ctx } = await resolveProject(req);
+      const { ctx } = await resolveProject(req, 'content:write');
       await contentRepo.remove(ctx, parseGenericKind(req.params.kind), req.params.entityId);
+      return reply.code(204).send();
+    },
+  );
+
+  // ---- Project API keys (bearer tokens for the CLI / MCP bridge) ----
+  // Management is `session-only`: a token can never mint, list, or revoke tokens
+  // (no self-escalation / persistence). Owner/admin only (enforced by the repo).
+  app.post<{ Params: { orgId: string; projectId: string } }>(
+    '/orgs/:orgId/projects/:projectId/api-keys',
+    { config: rl(20) },
+    async (req, reply) => {
+      const { ctx } = await resolveProject(req, 'session-only');
+      const body = CreateApiKeyBody.parse(req.body);
+      const expiresAt = new Date(Date.now() + body.expiresInDays * 24 * 60 * 60 * 1000);
+      const { token, key } = await apiKeysRepo.create(ctx, {
+        name: body.name,
+        role: body.role,
+        capabilities: body.capabilities,
+        expiresAt,
+      });
+      // `token` is the ONLY time the raw secret is returned — clients store it now.
+      return reply.code(201).send({ token, key });
+    },
+  );
+
+  app.get<{ Params: { orgId: string; projectId: string } }>(
+    '/orgs/:orgId/projects/:projectId/api-keys',
+    { config: rl(30) },
+    async (req, reply) => {
+      const { ctx } = await resolveProject(req, 'session-only');
+      // `apiKeysRepo.list` is itself writer-gated; this is the fast-fail path.
+      return reply.send({ items: await apiKeysRepo.list(ctx) });
+    },
+  );
+
+  app.delete<{ Params: { orgId: string; projectId: string; id: string } }>(
+    '/orgs/:orgId/projects/:projectId/api-keys/:id',
+    { config: rl(20) },
+    async (req, reply) => {
+      const { ctx } = await resolveProject(req, 'session-only');
+      await apiKeysRepo.revoke(ctx, req.params.id);
       return reply.code(204).send();
     },
   );
@@ -453,7 +565,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   app.get<{ Params: { orgId: string; projectId: string } }>(
     '/orgs/:orgId/projects/:projectId/export',
     async (req, reply) => {
-      const { ctx, project } = await resolveProject(req);
+      const { ctx, project } = await resolveProject(req, 'content:read');
       return reply.send(await contentRepo.exportBundle(ctx, project));
     },
   );
@@ -462,7 +574,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     '/orgs/:orgId/projects/:projectId/import',
     { bodyLimit: IMPORT_BODY_LIMIT, config: rl(20) },
     async (req, reply) => {
-      const { ctx, project } = await resolveProject(req);
+      const { ctx, project } = await resolveProject(req, 'content:write');
       return reply.send(await contentRepo.importBundle(ctx, project, req.body));
     },
   );
@@ -474,7 +586,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     '/orgs/:orgId/projects/:projectId/preview',
     { bodyLimit: PREVIEW_BODY_LIMIT, config: rl(120) },
     async (req, reply) => {
-      const { ctx, project } = await resolveProject(req);
+      const { ctx, project } = await resolveProject(req, 'content:read');
       // Guard recursion depth before the recursive Zod parse (untrusted tree).
       assertWithinTreeDepth((req.body as { root?: unknown } | null)?.root);
       const page = PageSchema.parse(req.body);
@@ -551,7 +663,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     '/orgs/:orgId/projects/:projectId/preview/:token',
     { config: rl(120) },
     async (req, reply) => {
-      const { ctx, project } = await resolveProject(req);
+      const { ctx, project } = await resolveProject(req, 'content:read');
       const html = previewStore.get(req.params.token, {
         orgId: ctx.orgId,
         projectId: project.id,
@@ -578,7 +690,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       '/orgs/:orgId/projects/:projectId/media',
       { config: rl(30) },
       async (req, reply) => {
-        const { ctx, project } = await resolveProject(req);
+        const { ctx, project } = await resolveProject(req, 'content:write');
         // Reject before reading the (potentially large) upload for non-writers.
         if (!WRITE_ROLES.has(ctx.role)) {
           return reply.code(403).send({ error: 'insufficient role for this operation' });
@@ -637,7 +749,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     app.get<{ Params: { orgId: string; projectId: string } }>(
       '/orgs/:orgId/projects/:projectId/media',
       async (req, reply) => {
-        const { ctx } = await resolveProject(req);
+        const { ctx } = await resolveProject(req, 'content:read');
         return reply.send({ items: await contentRepo.list(ctx, 'media') });
       },
     );
@@ -645,7 +757,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     app.delete<{ Params: { orgId: string; projectId: string; id: string } }>(
       '/orgs/:orgId/projects/:projectId/media/:id',
       async (req, reply) => {
-        const { ctx, project } = await resolveProject(req);
+        const { ctx, project } = await resolveProject(req, 'content:write');
         // DB first: a leaked binary (if fs removal fails) is harmless and GC-able,
         // whereas a leaked DB row would block re-creating the same asset id.
         await contentRepo.remove(ctx, 'media', req.params.id);
@@ -693,7 +805,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       '/orgs/:orgId/projects/:projectId/publish',
       { config: rl(20) },
       async (req, reply) => {
-        const { ctx, project } = await resolveProject(req);
+        const { ctx, project } = await resolveProject(req, 'publish');
         if (!WRITE_ROLES.has(ctx.role)) {
           return reply.code(403).send({ error: 'insufficient role for this operation' });
         }
@@ -744,7 +856,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     app.get<{ Params: { orgId: string; projectId: string } }>(
       '/orgs/:orgId/projects/:projectId/publish',
       async (req, reply) => {
-        const { project } = await resolveProject(req);
+        const { project } = await resolveProject(req, 'content:read');
         return reply.send({ release: await store.readRelease(project.id), url: `/sites/${project.id}/` });
       },
     );
@@ -755,7 +867,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     app.get<{ Params: { orgId: string; projectId: string } }>(
       '/orgs/:orgId/projects/:projectId/publish/archive',
       async (req, reply) => {
-        const { project } = await resolveProject(req);
+        const { project } = await resolveProject(req, 'content:read');
         if ((await store.readRelease(project.id)) === null) {
           return reply.code(409).send({ error: 'publish the site before exporting' });
         }
@@ -773,7 +885,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       '/orgs/:orgId/projects/:projectId/publish/deploy',
       { config: rl(20) },
       async (req, reply) => {
-        const { ctx, project } = await resolveProject(req);
+        const { ctx, project } = await resolveProject(req, 'deploy');
         if (!WRITE_ROLES.has(ctx.role)) {
           return reply.code(403).send({ error: 'insufficient role for this operation' });
         }
@@ -861,7 +973,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     '/orgs/:orgId/projects/:projectId/ai/generate',
     { config: rl(30) },
     async (req, reply) => {
-      const { ctx } = await resolveProject(req);
+      const { ctx } = await resolveProject(req, 'session-only');
       if (!WRITE_ROLES.has(ctx.role)) {
         return reply.code(403).send({ error: 'insufficient role for this operation' });
       }

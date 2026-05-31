@@ -58,6 +58,53 @@ export const sessions = sqliteTable('sessions', {
 });
 
 /**
+ * Capabilities a project API key may carry. They NARROW access below the key's
+ * role — a key's effective permission is `role ∩ capabilities`, never more than
+ * its role. `deploy` (external egress) is never granted by default.
+ */
+export const API_KEY_CAPABILITIES = ['content:read', 'content:write', 'publish', 'deploy'] as const;
+export type ApiKeyCapability = (typeof API_KEY_CAPABILITIES)[number];
+
+/**
+ * Project-scoped, capability-restricted, time-limited access tokens for
+ * non-browser clients (the CLI / MCP bridge). Only the SHA-256 of the token is
+ * stored — the raw `swk_…` token is shown once at creation. A key is bound to
+ * exactly one project, carries a role (never above its creator's), and a set of
+ * capabilities that narrow access below that role. Keys can be revoked before
+ * they expire.
+ */
+export const apiKeys = sqliteTable(
+  'api_keys',
+  {
+    id: text('id').primaryKey(),
+    orgId: text('org_id')
+      .notNull()
+      .references(() => organizations.id),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id),
+    name: text('name').notNull(),
+    role: text('role', { enum: ['owner', 'admin', 'member'] }).notNull(),
+    /** JSON array of {@link ApiKeyCapability}. */
+    capabilities: text('capabilities', { mode: 'json' }).notNull().$type<ApiKeyCapability[]>(),
+    /** SHA-256 hex of the raw token; the token itself is never stored. */
+    tokenHash: text('token_hash').notNull().unique(),
+    /** Short, non-secret identifying prefix shown in the UI (e.g. `swk_a1b2c3d4`). */
+    tokenPrefix: text('token_prefix').notNull(),
+    expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+    /** Set when the key is revoked before its expiry (null = active). */
+    revokedAt: integer('revoked_at', { mode: 'timestamp_ms' }),
+    /** Best-effort last-use timestamp for audit (null until first use). */
+    lastUsedAt: integer('last_used_at', { mode: 'timestamp_ms' }),
+    createdBy: text('created_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [index('api_keys_project_idx').on(t.projectId)],
+);
+
+/**
  * Polymorphic per-project content store. One row per content entity (page,
  * partial, dataset, entry) or the project's settings singleton. `data` holds the
  * schema-validated JSON; the DB is the source of truth (the file format is

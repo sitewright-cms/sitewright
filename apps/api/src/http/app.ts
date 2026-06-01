@@ -86,6 +86,7 @@ import {
   UnauthorizedError,
   type ProjectContext,
 } from '../repo/context.js';
+import { RenderPool, RenderUnavailableError } from '../render/render-pool.js';
 import { API_KEY_CAPABILITIES, type ApiKeyCapability, type ContentKind } from '../db/schema.js';
 
 const SESSION_COOKIE = 'sw_session';
@@ -208,6 +209,8 @@ export interface AppOptions {
   cookieSecret?: string;
   secureCookies?: boolean;
   logger?: boolean;
+  /** Isolated template render pool (child-process workers). Absent → /render-template 503s. */
+  renderPool?: RenderPool;
   /** Absolute path to the built editor SPA to serve at `/` (single-container mode). */
   editorDist?: string;
   /** Absolute path to the media storage root; enables media upload/serve when set. */
@@ -289,6 +292,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     (opts.adminEmails ?? []).map((e) => e.trim().toLowerCase()).filter(Boolean),
   );
   const aiQuota = opts.aiQuota ?? {};
+  // Isolated template renderer (child-process worker pool). Injected in tests; in
+  // production server.ts constructs one. Absent → the render route returns 503.
+  const renderPool = opts.renderPool;
   const app = Fastify({
     // Redact deploy credentials defensively (Fastify omits bodies by default, but
     // guard against any future body logging).
@@ -1528,6 +1534,70 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         return reply.sendFile('index.html');
       }
       return reply.code(404).send({ error: 'not found' });
+    });
+  }
+
+  // ---- Isolated template render (Handlebars in a child-process worker pool) ----
+  // The live-preview backend for the code-first template editor: renders a supplied
+  // template against the project's Corporate Identity + datasets, inside a memory-capped
+  // worker. Owner/admin only — template authoring is a developer action.
+  const RenderTemplateBody = z.object({
+    template: z.string().max(256 * 1024),
+    page: z.object({ title: z.string().max(300), path: z.string().max(2048) }).partial().optional(),
+  });
+  app.post<{ Params: { orgId: string; projectId: string } }>(
+    '/orgs/:orgId/projects/:projectId/render-template',
+    // 30/min — aligned with the small worker pool's throughput (avoids a deep parent queue).
+    { bodyLimit: 512 * 1024, config: rl(30) },
+    async (req, reply) => {
+      const { ctx, project } = await resolveProject(req, 'content:read');
+      if (!WRITE_ROLES.has(ctx.role)) {
+        throw new ForbiddenError('template authoring requires an owner/admin role');
+      }
+      if (!renderPool) return reply.code(503).send({ error: 'rendering is not available' });
+      const body = RenderTemplateBody.parse(req.body);
+
+      // Binding context: company (identity), website (public fields only), page, datasets→data.
+      let company: Record<string, unknown> = { name: project.name };
+      let website: Record<string, unknown> | undefined;
+      try {
+        const settings = (await contentRepo.get(ctx, 'settings', SETTINGS_ENTITY_ID)) as Settings;
+        company = settings.identity as unknown as Record<string, unknown>;
+        website = settings.website ? { siteUrl: settings.website.siteUrl } : undefined;
+      } catch (err) {
+        if (!(err instanceof NotFoundError)) throw err;
+      }
+      const byDataset = new Map<string, Entry[]>();
+      for (const entry of (await contentRepo.list(ctx, 'entry')) as Entry[]) {
+        byDataset.set(entry.dataset, [...(byDataset.get(entry.dataset) ?? []), entry]);
+      }
+      const data = Object.fromEntries(byDataset);
+      // Bound the IPC payload serialized in THIS (parent) process — a large dataset must
+      // not spike the API's heap (only the worker carries a --max-old-space ceiling).
+      if (JSON.stringify(data).length > 4 * 1024 * 1024) {
+        return reply.code(413).send({ error: 'project data is too large to render' });
+      }
+
+      try {
+        const html = await renderPool.render(body.template, {
+          company,
+          website,
+          page: body.page ?? { title: project.name, path: '/' },
+          data,
+        });
+        return reply.send({ html });
+      } catch (err) {
+        // Infra (worker/timeout) → 503; a template validation/compile/render error → 400.
+        if (err instanceof RenderUnavailableError) return reply.code(503).send({ error: err.message });
+        return reply.code(400).send({ error: err instanceof Error ? err.message : 'render failed' });
+      }
+    },
+  );
+
+  // Graceful shutdown for k8s: drain + terminate render workers when Fastify closes.
+  if (renderPool) {
+    app.addHook('onClose', async () => {
+      await renderPool.shutdown();
     });
   }
 

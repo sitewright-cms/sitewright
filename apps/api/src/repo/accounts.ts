@@ -1,9 +1,18 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
 import { memberships, organizations, users, type OrgRole } from '../db/schema.js';
 import { hashPassword, verifyPassword } from '../auth/password.js';
-import { ConflictError, ForbiddenError, UnauthorizedError, type TenantContext } from './context.js';
+import {
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+  UnauthorizedError,
+  type TenantContext,
+} from './context.js';
+
+/** Org roles permitted to manage the org's membership (add/list/remove clients). */
+const MANAGE_ROLES: ReadonlySet<OrgRole> = new Set<OrgRole>(['owner', 'admin']);
 
 function slugify(name: string): string {
   const slug = name
@@ -113,6 +122,109 @@ export async function listOrgsForUser(db: Database, userId: string): Promise<Org
     .from(memberships)
     .innerJoin(organizations, eq(memberships.orgId, organizations.id))
     .where(eq(memberships.userId, userId));
+}
+
+export interface OrgMember {
+  userId: string;
+  email: string;
+  role: OrgRole;
+  createdAt: Date;
+}
+
+/** Lists the members of an org with their email + role. Owner/admin only. */
+export async function listOrgMembers(db: Database, ctx: TenantContext): Promise<OrgMember[]> {
+  if (!MANAGE_ROLES.has(ctx.role)) {
+    throw new ForbiddenError('insufficient role to manage members');
+  }
+  return db
+    .select({
+      userId: users.id,
+      email: users.email,
+      role: memberships.role,
+      createdAt: memberships.createdAt,
+    })
+    .from(memberships)
+    .innerJoin(users, eq(memberships.userId, users.id))
+    .where(eq(memberships.orgId, ctx.orgId));
+}
+
+/**
+ * Adds a client (member) to the org. If no user with that email exists yet, creates
+ * one with a generated temporary password — returned ONCE so the inviter can share it
+ * out-of-band (no email infra). An already-registered user is added without touching
+ * their password. Owner/admin only, and only ever grants the `member` role (this
+ * surface can never escalate anyone to admin/owner).
+ *
+ * Known trade-off (accepted for the trusted-agency model; tracked for SaaS hardening):
+ * the response carries `tempPassword` only for a brand-new email, so an authenticated
+ * owner/admin can use it as a weak instance-wide account-existence oracle, and adding
+ * an already-registered stranger silently grants them a membership they did not accept.
+ * The SaaS-grade fix is a pending-invite + acceptance-token flow (deferred: needs email
+ * infra); until then the add route is tightly rate-limited.
+ */
+export async function addOrgMember(
+  db: Database,
+  ctx: TenantContext,
+  email: string,
+): Promise<{ member: OrgMember; tempPassword?: string }> {
+  if (!MANAGE_ROLES.has(ctx.role)) {
+    throw new ForbiddenError('insufficient role to manage members');
+  }
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!normalizedEmail) throw new ConflictError('email is required');
+
+  const now = new Date();
+  const [existingUser] = await db.select().from(users).where(eq(users.email, normalizedEmail));
+
+  let userId: string;
+  let tempPassword: string | undefined;
+  if (existingUser) {
+    userId = existingUser.id;
+    if (await getMembership(db, userId, ctx.orgId)) {
+      throw new ConflictError('user is already a member of this organization');
+    }
+    await db
+      .insert(memberships)
+      .values({ id: randomUUID(), userId, orgId: ctx.orgId, role: 'member', createdAt: now });
+  } else {
+    userId = randomUUID();
+    tempPassword = randomBytes(12).toString('base64url');
+    const passwordHash = await hashPassword(tempPassword);
+    // Atomic: never leave an orphaned user without their membership.
+    await db.transaction(async (tx) => {
+      await tx
+        .insert(users)
+        .values({ id: userId, email: normalizedEmail, passwordHash, createdAt: now });
+      await tx
+        .insert(memberships)
+        .values({ id: randomUUID(), userId, orgId: ctx.orgId, role: 'member', createdAt: now });
+    });
+  }
+
+  return { member: { userId, email: normalizedEmail, role: 'member', createdAt: now }, tempPassword };
+}
+
+/**
+ * Removes a member from the org. Owner/admin only. You cannot remove yourself, and an
+ * `owner` membership can never be removed through this surface (owners are protected).
+ */
+export async function removeOrgMember(
+  db: Database,
+  ctx: TenantContext,
+  userId: string,
+): Promise<void> {
+  if (!MANAGE_ROLES.has(ctx.role)) {
+    throw new ForbiddenError('insufficient role to manage members');
+  }
+  if (userId === ctx.userId) {
+    throw new ForbiddenError('you cannot remove yourself from the organization');
+  }
+  const target = await getMembership(db, userId, ctx.orgId);
+  if (!target) throw new NotFoundError('membership not found');
+  if (target === 'owner') throw new ForbiddenError('an owner cannot be removed');
+  await db
+    .delete(memberships)
+    .where(and(eq(memberships.userId, userId), eq(memberships.orgId, ctx.orgId)));
 }
 
 /** Builds a {@link TenantContext} iff the user is a member of the org; else throws Forbidden. */

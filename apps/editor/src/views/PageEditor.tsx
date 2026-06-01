@@ -268,6 +268,11 @@ export function PageEditor({ org, project, page, onClose }: PageEditorProps) {
     );
   }
 
+  // Mark/unmark a node as client-editable (the member role may edit only these).
+  function toggleEditable(id: string, value: boolean) {
+    setRoot(updateNode(root, id, (node) => ({ ...node, editable: value || undefined })));
+  }
+
   function remove(id: string) {
     setRoot(removeNode(root, id));
     if (selectedId === id) setSelectedId(null);
@@ -577,6 +582,7 @@ export function PageEditor({ org, project, page, onClose }: PageEditorProps) {
               onMove={(id, dir) => setRoot(moveWithinParent(root, id, dir))}
               onRemove={remove}
               onChangeProp={changeProp}
+              onToggleEditable={toggleEditable}
               onSetBinding={setBinding}
               onBindField={bindField}
               onDragStart={setDraggingId}

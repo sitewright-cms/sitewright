@@ -32,6 +32,7 @@ import { validateProject, type ProjectBundle } from '@sitewright/core';
 import type { Database } from '../db/client.js';
 import { content, type ContentKind } from '../db/schema.js';
 import { ConflictError, ForbiddenError, NotFoundError, type ProjectContext } from './context.js';
+import { assertClientEditAllowed } from './client-edit.js';
 import type { ProjectEventBus } from '../events/bus.js';
 
 /**
@@ -163,11 +164,42 @@ export class ContentRepository {
     return row.data;
   }
 
+  /**
+   * Write authorization: owner/admin may write anything; a `member` (the constrained
+   * client editing role) may update an EXISTING page only when the change edits the
+   * content of `editable` nodes and nothing else (assertClientEditAllowed). Members
+   * cannot create pages or write any other content kind.
+   */
+  private async authorizeWrite(ctx: ProjectContext, kind: ContentKind, entityId: string, data: unknown): Promise<void> {
+    if (WRITE_ROLES.has(ctx.role)) return;
+    if (ctx.role === 'member' && kind === 'page') {
+      const prev = await this.row(this.db, ctx, 'page', entityId);
+      if (prev) {
+        // Re-parse the stored page through PageSchema so the comparison runs on two
+        // identically-normalized Page values — never on an un-normalized DB blob that a
+        // prior migration or direct write could have left in an off-schema shape.
+        const prevParsed = PageSchema.safeParse(prev.data);
+        if (!prevParsed.success) {
+          throw new ForbiddenError('the stored page is not valid; cannot authorize a client edit');
+        }
+        assertClientEditAllowed(prevParsed.data, data as Page);
+        return;
+      }
+    }
+    throw new ForbiddenError('insufficient role for this operation');
+  }
+
   /** Validates `raw` against the kind's schema, then upserts. Returns the parsed value. */
   async put(ctx: ProjectContext, kind: ContentKind, entityId: string, raw: unknown): Promise<unknown> {
-    requireWriteRole(ctx);
+    // Authorization gate BEFORE schema validation: a non-write role may only ever attempt
+    // a page write (the member client-edit path). Reject any other kind up front so a
+    // member cannot probe a kind's schema by reading back its Zod validation errors.
+    if (!WRITE_ROLES.has(ctx.role) && kind !== 'page') {
+      throw new ForbiddenError('insufficient role for this operation');
+    }
     assertTreeSafe(kind, raw);
     const data = schemaFor(kind).parse(raw);
+    await this.authorizeWrite(ctx, kind, entityId, data);
     const key = this.entityKey(kind, entityId, data);
     await this.writeRow(this.db, ctx, kind, key, data);
     this.events?.emit(ctx.projectId, { kind, entityId: key, op: 'put' });

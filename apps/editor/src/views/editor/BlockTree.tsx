@@ -17,6 +17,8 @@ export interface BlockTreeProps {
   onMove: (id: string, dir: 'up' | 'down') => void;
   onRemove: (id: string) => void;
   onChangeProp: (id: string, key: string, value: unknown) => void;
+  /** Toggle a node's client-editable flag (constrained client/member editing). */
+  onToggleEditable: (id: string, value: boolean) => void;
   onSetBinding: (id: string, binding: Binding | undefined) => void;
   onBindField: (id: string, propKey: string, fieldName: string | undefined) => void;
   onDragStart: (id: string) => void;
@@ -37,6 +39,7 @@ export function BlockTree(props: BlockTreeProps) {
     onMove,
     onRemove,
     onChangeProp,
+    onToggleEditable,
     onSetBinding,
     onBindField,
   } = props;
@@ -133,6 +136,17 @@ export function BlockTree(props: BlockTreeProps) {
             onSetBinding={(binding) => onSetBinding(node.id, binding)}
             onBindField={(propKey, fieldName) => onBindField(node.id, propKey, fieldName)}
           />
+          {!isRoot && (
+            <label className="mt-3 flex items-center gap-2 border-t border-slate-200 pt-3 text-xs text-slate-600">
+              <input
+                type="checkbox"
+                aria-label="Editable by client"
+                checked={node.editable ?? false}
+                onChange={(e) => onToggleEditable(node.id, e.target.checked)}
+              />
+              Editable by client <span className="text-slate-400">(the member role may edit this block)</span>
+            </label>
+          )}
         </div>
       )}
 

@@ -19,7 +19,7 @@ export interface ResolvePartialsOptions {
  * A `partialRef` node is treated as a **placeholder**: it is replaced wholesale
  * by the partial's subtree, and only the host node's `id` is preserved (so two
  * references to the same partial keep distinct ids). Any other fields on the
- * host node (`props`, `children`, `binding`, `locked`) are intentionally
+ * host node (`props`, `children`, `binding`, `editable`) are intentionally
  * ignored.
  *
  * Throws {@link PartialResolutionError} on a missing partial, a reference cycle,

@@ -1,12 +1,16 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
+import { memberships } from '../src/db/schema.js';
 
 let app: FastifyInstance;
+let db: Awaited<ReturnType<typeof makeTestDb>>;
 
 beforeEach(async () => {
-  app = await createApp({ db: await makeTestDb() });
+  db = await makeTestDb();
+  app = await createApp({ db });
   await app.ready();
 });
 
@@ -37,6 +41,46 @@ async function setup(email: string, orgName: string) {
 const page = { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' } };
 
 describe('content API', () => {
+  it('member (client role) edits an editable node over HTTP, but not structure or a locked node', async () => {
+    const { t, orgId, projectId } = await setup('owner@acme.test', 'Acme');
+    const base = `/orgs/${orgId}/projects/${projectId}`;
+    const editablePage = {
+      id: 'home',
+      path: '/',
+      title: 'Home',
+      root: {
+        id: 'r',
+        type: 'Section',
+        children: [
+          { id: 'h', type: 'Heading', props: { text: 'Locked', level: 2 } },
+          { id: 't', type: 'RichText', editable: true, props: { text: 'Edit me' } },
+        ],
+      },
+    };
+    expect((await app.inject({ method: 'PUT', url: `${base}/content/page/home`, cookies: { sw_session: t }, payload: editablePage })).statusCode).toBe(200);
+
+    // A second user added to this org as a member (the constrained client role).
+    const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'client@acme.test', password: 'pw-secret-1', orgName: 'Client Org' } });
+    const memberT = token(reg);
+    const memberUserId = (reg.json() as { userId: string }).userId;
+    await db.insert(memberships).values({ id: randomUUID(), userId: memberUserId, orgId, role: 'member', createdAt: new Date() });
+
+    const edit = (mut: (p: typeof editablePage) => void) => {
+      const next = JSON.parse(JSON.stringify(editablePage));
+      mut(next);
+      return app.inject({ method: 'PUT', url: `${base}/content/page/home`, cookies: { sw_session: memberT }, payload: next });
+    };
+
+    // Editable node content → allowed.
+    expect((await edit((p) => { p.root.children[1]!.props.text = 'Client wrote this'; })).statusCode).toBe(200);
+    // Locked node → 403; structural change → 403.
+    expect((await edit((p) => { p.root.children[0]!.props.text = 'Hacked'; })).statusCode).toBe(403);
+    expect((await edit((p) => { p.root.children.pop(); })).statusCode).toBe(403);
+    // A member cannot write a non-page kind.
+    const partial = await app.inject({ method: 'PUT', url: `${base}/content/partial/x`, cookies: { sw_session: memberT }, payload: { id: 'x', name: 'X', root: { id: 'xr', type: 'Section' } } });
+    expect(partial.statusCode).toBe(403);
+  });
+
   it('rate-limits the content routes tighter than the global cap (writes 60, reads 120)', async () => {
     const { t, orgId, projectId } = await setup('rl@acme.test', 'Acme');
     const base = `/orgs/${orgId}/projects/${projectId}`;

@@ -108,6 +108,46 @@ describe('multilingual publish', () => {
     expect(deAbout.body).toContain('<html lang="de">');
   });
 
+  it('emits hreflang alternates (+ x-default) on every locale variant when a site URL is set', async () => {
+    const proj = client.project(projectId);
+    await proj.putContent('settings', 'settings', {
+      brand: { name: 'Acme', colors: { primary: '#0a7' } },
+      website: { siteUrl: 'https://acme.example' },
+      settings: { defaultLocale: 'en', locales: ['en', 'de'] },
+    });
+    await proj.putContent('page', 'home', { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' } });
+    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
+
+    // Both the en (root) and de variants carry the SAME alternate set (absolute URLs).
+    for (const path of ['index.html', 'de/index.html']) {
+      const html = (await client.get(`/sites/${projectId}/${path}`)).body;
+      expect(html).toContain('<link rel="alternate" hreflang="en" href="https://acme.example/" />');
+      expect(html).toContain('<link rel="alternate" hreflang="de" href="https://acme.example/de/" />');
+      expect(html).toContain('<link rel="alternate" hreflang="x-default" href="https://acme.example/" />');
+    }
+  });
+
+  it('emits no hreflang for a single-locale site, or when no site URL is set', async () => {
+    const proj = client.project(projectId);
+    // Multilingual but no siteUrl → hreflang needs absolute URLs, so none.
+    await proj.putContent('settings', 'settings', {
+      brand: { name: 'Acme', colors: { primary: '#0a7' } },
+      settings: { defaultLocale: 'en', locales: ['en', 'de'] },
+    });
+    await proj.putContent('page', 'home', { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' } });
+    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
+    expect((await client.get(`/sites/${projectId}/index.html`)).body).not.toContain('hreflang');
+
+    // Single locale + siteUrl → still no hreflang (nothing to alternate to).
+    await proj.putContent('settings', 'settings', {
+      brand: { name: 'Acme', colors: { primary: '#0a7' } },
+      website: { siteUrl: 'https://acme.example' },
+      settings: { defaultLocale: 'en', locales: ['en'] },
+    });
+    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
+    expect((await client.get(`/sites/${projectId}/index.html`)).body).not.toContain('hreflang');
+  });
+
   it('prefixes auto-nav links per locale and ignores a default-locale translation', async () => {
     const proj = client.project(projectId);
     await proj.putContent('settings', 'settings', {

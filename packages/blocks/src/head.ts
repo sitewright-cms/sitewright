@@ -18,6 +18,12 @@ export interface SeoMeta {
   /** Favicon URL (company icon). */
   favicon?: string;
   noindex?: boolean;
+  /**
+   * Multilingual alternate links (`<link rel="alternate" hreflang>`). Each href is
+   * an absolute URL to this page in a given locale; include an `x-default` entry.
+   * Emitted only by the multilingual publish when a site URL is configured.
+   */
+  alternates?: ReadonlyArray<{ hreflang: string; href: string }>;
 }
 
 /** Inputs for the auto-generated schema.org Organization block (from company data). */
@@ -62,6 +68,11 @@ export function metaTags(seo: SeoMeta): string {
   meta('name', 'twitter:card', seo.ogImage ? 'summary_large_image' : 'summary');
   if (seo.themeColor) meta('name', 'theme-color', seo.themeColor);
   if (seo.favicon) tags.push(`<link rel="icon" href="${escapeAttr(seo.favicon)}" />`);
+  // hreflang alternates (attribute-escaped; href is an absolute URL built from the
+  // configured site URL + a safe route slug, so it can't break out of the attribute).
+  for (const alt of seo.alternates ?? []) {
+    tags.push(`<link rel="alternate" hreflang="${escapeAttr(alt.hreflang)}" href="${escapeAttr(alt.href)}" />`);
+  }
   return tags.join('\n');
 }
 

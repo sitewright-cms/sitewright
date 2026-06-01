@@ -48,6 +48,26 @@ describe('metaTags', () => {
     expect(html).toContain('&quot;&gt;&lt;script&gt;x');
     expect(html).toContain('a &quot;quote&quot;');
   });
+
+  it('renders hreflang alternate links and attribute-escapes them', () => {
+    const html = metaTags({
+      title: 'T',
+      alternates: [
+        { hreflang: 'en', href: 'https://acme.example/' },
+        { hreflang: 'de', href: 'https://acme.example/de/' },
+        { hreflang: 'x-default', href: 'https://acme.example/' },
+      ],
+    });
+    expect(html).toContain('<link rel="alternate" hreflang="en" href="https://acme.example/" />');
+    expect(html).toContain('<link rel="alternate" hreflang="de" href="https://acme.example/de/" />');
+    expect(html).toContain('<link rel="alternate" hreflang="x-default" href="https://acme.example/" />');
+    // No alternates → no alternate links.
+    expect(metaTags({ title: 'T' })).not.toContain('hreflang');
+    // A malicious href can't break out of the attribute.
+    const evil = metaTags({ title: 'T', alternates: [{ hreflang: 'en', href: '"><script>x</script>' }] });
+    expect(evil).not.toContain('<script>x');
+    expect(evil).toContain('&quot;&gt;&lt;script&gt;');
+  });
 });
 
 describe('schemaOrgJsonLd', () => {

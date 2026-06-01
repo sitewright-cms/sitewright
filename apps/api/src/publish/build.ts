@@ -253,6 +253,19 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         const organization = baseOrg
           ? { ...baseOrg, logo: rel(baseOrg.logo), image: rel(baseOrg.image) }
           : undefined;
+        // hreflang alternates: every locale variant of THIS route + x-default, as
+        // absolute URLs (Google requires absolute hreflang hrefs). Only for a
+        // multilingual site with a configured site URL, and not for noindex pages.
+        const alternates =
+          siteUrl && locales.length > 1 && !page.seo?.noindex
+            ? [
+                ...locales.map((l) => ({
+                  hreflang: l,
+                  href: siteUrlFor(siteUrl, localeSlug(l === defaultLocale ? '' : `${l}/`, route.slug)),
+                })),
+                { hreflang: 'x-default', href: siteUrlFor(siteUrl, localeSlug('', route.slug)) },
+              ]
+            : undefined;
         const html = renderDocument(page, {
           brand,
           datasets,
@@ -277,6 +290,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
             noindex: page.seo?.noindex,
             themeColor: identity.colors.primary,
             favicon: rel(identity.icon ?? identity.favicon),
+            alternates,
           },
           organization,
           criticalCss: website?.criticalCss,

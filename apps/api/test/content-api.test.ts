@@ -37,6 +37,21 @@ async function setup(email: string, orgName: string) {
 const page = { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' } };
 
 describe('content API', () => {
+  it('rate-limits the content routes tighter than the global cap (writes 60, reads 120)', async () => {
+    const { t, orgId, projectId } = await setup('rl@acme.test', 'Acme');
+    const base = `/orgs/${orgId}/projects/${projectId}`;
+    const cookies = { sw_session: t };
+    const put = await app.inject({ method: 'PUT', url: `${base}/content/page/home`, cookies, payload: page });
+    expect(put.statusCode).toBe(200);
+    expect(Number(put.headers['x-ratelimit-limit'])).toBe(60);
+    const del = await app.inject({ method: 'DELETE', url: `${base}/content/page/home`, cookies });
+    expect(Number(del.headers['x-ratelimit-limit'])).toBe(60);
+    const list = await app.inject({ method: 'GET', url: `${base}/content/page`, cookies });
+    expect(Number(list.headers['x-ratelimit-limit'])).toBe(120);
+    const get = await app.inject({ method: 'GET', url: `${base}/content/dataset/none`, cookies });
+    expect(Number(get.headers['x-ratelimit-limit'])).toBe(120);
+  });
+
   it('PUT → GET → list → export a page', async () => {
     const { t, orgId, projectId } = await setup('a@acme.test', 'Acme');
     const base = `/orgs/${orgId}/projects/${projectId}`;

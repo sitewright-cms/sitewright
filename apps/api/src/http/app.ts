@@ -655,8 +655,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // ---- Project content (tenant + project scoped) ----
   type ContentParams = { orgId: string; projectId: string; kind: string; entityId: string };
 
+  // The generic content routes are the incremental authoring API (editor saves,
+  // MCP edits). Cap them tighter than the global 200/min — reads generously, writes
+  // at 60/min (ample for interactive + agent editing; large imports use the dedicated
+  // bundle endpoint, not per-entity PUTs). This bounds a compromised token's ability
+  // to flood the site-wide settings (criticalCss/customHead/customFooter) write.
   app.get<{ Params: Pick<ContentParams, 'orgId' | 'projectId' | 'kind'> }>(
     '/orgs/:orgId/projects/:projectId/content/:kind',
+    { config: rl(120) },
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'content:read');
       return reply.send({ items: await contentRepo.list(ctx, parseGenericKind(req.params.kind)) });
@@ -665,6 +671,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
   app.get<{ Params: ContentParams }>(
     '/orgs/:orgId/projects/:projectId/content/:kind/:entityId',
+    { config: rl(120) },
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'content:read');
       const item = await contentRepo.get(ctx, parseGenericKind(req.params.kind), req.params.entityId);
@@ -674,6 +681,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
   app.put<{ Params: ContentParams }>(
     '/orgs/:orgId/projects/:projectId/content/:kind/:entityId',
+    { config: rl(60) },
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'content:write');
       const item = await contentRepo.put(
@@ -688,6 +696,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
   app.delete<{ Params: ContentParams }>(
     '/orgs/:orgId/projects/:projectId/content/:kind/:entityId',
+    { config: rl(60) },
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'content:write');
       await contentRepo.remove(ctx, parseGenericKind(req.params.kind), req.params.entityId);

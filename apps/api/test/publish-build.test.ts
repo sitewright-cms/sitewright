@@ -59,6 +59,42 @@ describe('buildSite', () => {
     expect(release.publishedAt).toBe('2026-05-29T00:00:00.000Z');
   });
 
+  it('renders a code-first source-page (Handlebars) to static HTML + feeds its classes to the shared sheet', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        pages: [
+          {
+            id: 'home', path: '/', title: 'Home',
+            root: { id: 'r', type: 'Section' }, // placeholder block tree, ignored when source is set
+            source: '<main class="grid"><h1>{{ company.name }}</h1></main>',
+          },
+        ],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home.startsWith('<!doctype html>')).toBe(true);
+    // Rendered from the Handlebars source ({{ company.name }} → Acme); block tree NOT rendered.
+    expect(home).toContain('<body><main class="grid"><h1>Acme</h1></main>');
+    expect(home).not.toContain('<section data-sw-block="Section"');
+    // The source's literal Tailwind class is compiled into the shared, root-linked sheet.
+    expect(home).toContain('<link rel="stylesheet" href="styles.css" />');
+    expect(await readFile(join(outDir, 'styles.css'), 'utf8')).toContain('display:grid');
+  });
+
+  it('fails the publish with a page-scoped error when a source-page is unsafe', async () => {
+    await expect(
+      buildSite({
+        publishedAt: '2026-05-29T00:00:00.000Z',
+        outDir,
+        bundle: bundle({
+          pages: [{ id: 'bad', path: '/', title: 'Bad', root: { id: 'r', type: 'Section' }, source: '<script>x()</script>' }],
+        }),
+      }),
+    ).rejects.toThrow(/page "bad"/);
+  });
+
   it('aborts when the build exceeds maxOutputBytes (disk-fill DoS guard)', async () => {
     const big = 'x'.repeat(5000);
     await expect(

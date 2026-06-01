@@ -721,6 +721,14 @@ describe('renderPage / renderDocument', () => {
     expect(doc).toContain('</html>');
   });
 
+  it('uses bodyHtml (a code-first source render) INSTEAD of the block tree, keeping the head shell', () => {
+    const doc = renderDocument(page, { brand, bodyHtml: '<main><h1>From source</h1></main>' });
+    expect(doc).toContain('<body><main><h1>From source</h1></main>');
+    expect(doc).not.toContain('Hello'); // the block tree's Heading was NOT rendered
+    expect(doc).toContain('<title>Home</title>'); // head/SEO shell still applied
+    expect(doc).toContain('--sw-color-primary: #0a7;');
+  });
+
   it('escapes the document title', () => {
     const doc = renderDocument(
       { ...page, title: '</title><script>alert(1)</script>' },

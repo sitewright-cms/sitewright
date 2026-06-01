@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { api, type Org, type Project } from './api';
+import { api, type Org, type Project, type ProjectAccess } from './api';
 import { Login } from './views/Login';
 import { Dashboard } from './views/Dashboard';
 import { ProjectView } from './views/Project';
+import { AcceptInvite } from './views/AcceptInvite';
 import { InstanceSettings } from './views/InstanceSettings';
 import { LivePreview } from './views/LivePreview';
 import { UpdateBanner } from './views/UpdateBanner';
@@ -15,7 +16,9 @@ import { parseLiveTarget } from './lib/live-target';
  */
 export function App() {
   const liveTarget = parseLiveTarget(window.location.search);
-  return liveTarget ? <LivePreview target={liveTarget} /> : <MainApp />;
+  if (liveTarget) return <LivePreview target={liveTarget} />;
+  const inviteToken = new URLSearchParams(window.location.search).get('invite');
+  return <MainApp inviteToken={inviteToken} />;
 }
 
 type Stage =
@@ -25,15 +28,18 @@ type Stage =
   | { name: 'admin' }
   | { name: 'project'; org: Org; project: Project };
 
-function MainApp() {
+function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | null }) {
   const [stage, setStage] = useState<Stage>({ name: 'loading' });
+  const [inviteToken, setInviteToken] = useState<string | null>(initialInviteToken);
   const [orgs, setOrgs] = useState<Org[]>([]);
+  const [projectAccess, setProjectAccess] = useState<ProjectAccess[]>([]);
   const [isInstanceAdmin, setIsInstanceAdmin] = useState(false);
 
   async function refresh(): Promise<void> {
     try {
       const me = await api.me();
       setOrgs(me.orgs);
+      setProjectAccess(me.projectAccess);
       setIsInstanceAdmin(me.isInstanceAdmin);
       setStage({ name: 'dashboard' });
     } catch {
@@ -47,6 +53,22 @@ function MainApp() {
 
   if (stage.name === 'loading') {
     return <div className="p-8 text-slate-500">Loading…</div>;
+  }
+
+  // An invite link short-circuits the normal app until accepted or dismissed.
+  if (inviteToken) {
+    return (
+      <AcceptInvite
+        token={inviteToken}
+        authed={stage.name !== 'auth'}
+        onAuthed={() => void refresh()}
+        onDone={() => {
+          setInviteToken(null);
+          window.history.replaceState({}, '', window.location.pathname);
+          void refresh();
+        }}
+      />
+    );
   }
 
   if (stage.name === 'auth') {
@@ -92,6 +114,7 @@ function MainApp() {
       {stage.name === 'dashboard' && (
         <Dashboard
           orgs={orgs}
+          projectAccess={projectAccess}
           onOpen={(org, project) => setStage({ name: 'project', org, project })}
         />
       )}

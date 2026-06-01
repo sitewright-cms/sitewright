@@ -57,6 +57,13 @@
       "when": 1780231763975,
       "tag": "0007_form_submissions",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1780324289788,
+      "tag": "0008_invites_project_members",
+      "breakpoints": true
     }
   ]
 }

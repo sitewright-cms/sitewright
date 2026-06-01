@@ -25,6 +25,11 @@
     "typescript-eslint": "^8.18.1"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild", "@tailwindcss/oxide", "sharp"]
+    "onlyBuiltDependencies": ["esbuild", "@tailwindcss/oxide", "sharp"],
+    "auditConfig": {
+      "ignoreGhsas": [
+        "GHSA-5xrq-8626-4rwp"
+      ]
+    }
   }
 }

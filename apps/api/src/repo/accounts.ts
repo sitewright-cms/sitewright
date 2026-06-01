@@ -1,7 +1,14 @@
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
-import { memberships, organizations, users, type OrgRole } from '../db/schema.js';
+import {
+  memberships,
+  organizations,
+  projectMembers,
+  projects,
+  users,
+  type OrgRole,
+} from '../db/schema.js';
 import { hashPassword, verifyPassword } from '../auth/password.js';
 import {
   ConflictError,
@@ -149,62 +156,6 @@ export async function listOrgMembers(db: Database, ctx: TenantContext): Promise<
 }
 
 /**
- * Adds a client (member) to the org. If no user with that email exists yet, creates
- * one with a generated temporary password — returned ONCE so the inviter can share it
- * out-of-band (no email infra). An already-registered user is added without touching
- * their password. Owner/admin only, and only ever grants the `member` role (this
- * surface can never escalate anyone to admin/owner).
- *
- * Known trade-off (accepted for the trusted-agency model; tracked for SaaS hardening):
- * the response carries `tempPassword` only for a brand-new email, so an authenticated
- * owner/admin can use it as a weak instance-wide account-existence oracle, and adding
- * an already-registered stranger silently grants them a membership they did not accept.
- * The SaaS-grade fix is a pending-invite + acceptance-token flow (deferred: needs email
- * infra); until then the add route is tightly rate-limited.
- */
-export async function addOrgMember(
-  db: Database,
-  ctx: TenantContext,
-  email: string,
-): Promise<{ member: OrgMember; tempPassword?: string }> {
-  if (!MANAGE_ROLES.has(ctx.role)) {
-    throw new ForbiddenError('insufficient role to manage members');
-  }
-  const normalizedEmail = email.trim().toLowerCase();
-  if (!normalizedEmail) throw new ConflictError('email is required');
-
-  const now = new Date();
-  const [existingUser] = await db.select().from(users).where(eq(users.email, normalizedEmail));
-
-  let userId: string;
-  let tempPassword: string | undefined;
-  if (existingUser) {
-    userId = existingUser.id;
-    if (await getMembership(db, userId, ctx.orgId)) {
-      throw new ConflictError('user is already a member of this organization');
-    }
-    await db
-      .insert(memberships)
-      .values({ id: randomUUID(), userId, orgId: ctx.orgId, role: 'member', createdAt: now });
-  } else {
-    userId = randomUUID();
-    tempPassword = randomBytes(12).toString('base64url');
-    const passwordHash = await hashPassword(tempPassword);
-    // Atomic: never leave an orphaned user without their membership.
-    await db.transaction(async (tx) => {
-      await tx
-        .insert(users)
-        .values({ id: userId, email: normalizedEmail, passwordHash, createdAt: now });
-      await tx
-        .insert(memberships)
-        .values({ id: randomUUID(), userId, orgId: ctx.orgId, role: 'member', createdAt: now });
-    });
-  }
-
-  return { member: { userId, email: normalizedEmail, role: 'member', createdAt: now }, tempPassword };
-}
-
-/**
  * Removes a member from the org. Owner/admin only. You cannot remove yourself, and an
  * `owner` membership can never be removed through this surface (owners are protected).
  */
@@ -225,6 +176,54 @@ export async function removeOrgMember(
   await db
     .delete(memberships)
     .where(and(eq(memberships.userId, userId), eq(memberships.orgId, ctx.orgId)));
+}
+
+/** A user's role on a specific project via a project-scoped membership (client), or null. */
+export async function getProjectMembership(
+  db: Database,
+  userId: string,
+  projectId: string,
+): Promise<OrgRole | null> {
+  const [m] = await db
+    .select()
+    .from(projectMembers)
+    .where(and(eq(projectMembers.userId, userId), eq(projectMembers.projectId, projectId)));
+  return m?.role ?? null;
+}
+
+export interface ProjectAccess {
+  orgId: string;
+  orgName: string;
+  orgSlug: string;
+  projectId: string;
+  projectName: string;
+  projectSlug: string;
+  role: OrgRole;
+}
+
+/**
+ * Projects a user can reach via a project-scoped membership (the client tier), each
+ * with its org info — so the dashboard can show a client only their own site(s) even
+ * though they hold no org membership.
+ */
+export async function listProjectAccessForUser(
+  db: Database,
+  userId: string,
+): Promise<ProjectAccess[]> {
+  return db
+    .select({
+      orgId: organizations.id,
+      orgName: organizations.name,
+      orgSlug: organizations.slug,
+      projectId: projects.id,
+      projectName: projects.name,
+      projectSlug: projects.slug,
+      role: projectMembers.role,
+    })
+    .from(projectMembers)
+    .innerJoin(projects, eq(projectMembers.projectId, projects.id))
+    .innerJoin(organizations, eq(projects.orgId, organizations.id))
+    .where(eq(projectMembers.userId, userId));
 }
 
 /** Builds a {@link TenantContext} iff the user is a member of the org; else throws Forbidden. */

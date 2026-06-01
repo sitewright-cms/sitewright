@@ -111,24 +111,59 @@ describe('api client', () => {
     expect(await api.me()).toEqual({ userId: 'u', orgs: [] });
   });
 
-  it('manages org members (list / add / remove)', async () => {
+  it('lists and removes org members', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { members: [] }));
     await api.listMembers('o');
     expect(fetchMock.mock.calls[0]![0]).toBe('/orgs/o/members');
 
-    fetchMock.mockResolvedValue(jsonResponse(201, { member: { userId: 'u', email: 'c@a.co', role: 'member', createdAt: '' }, tempPassword: 'pw' }));
-    const added = await api.addMember('o', 'c@a.co');
-    expect(added.tempPassword).toBe('pw');
-    const [addUrl, addInit] = fetchMock.mock.calls[1]!;
-    expect(addUrl).toBe('/orgs/o/members');
-    expect(addInit.method).toBe('POST');
-    expect(JSON.parse(addInit.body)).toEqual({ email: 'c@a.co' });
-
     fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
     expect(await api.removeMember('o', 'u-1')).toBeUndefined();
-    const [delUrl, delInit] = fetchMock.mock.calls[2]!;
+    const [delUrl, delInit] = fetchMock.mock.calls[1]!;
     expect(delUrl).toBe('/orgs/o/members/u-1');
     expect(delInit.method).toBe('DELETE');
+  });
+
+  it('creates developer + client invites, lists/revokes, peeks, and accepts', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(201, { invite: { id: 'i' }, token: 'swi_x' }));
+    const dev = await api.inviteDeveloper('o', 'dev@a.co');
+    expect(dev.token).toBe('swi_x');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/orgs/o/invites');
+    expect(JSON.parse(fetchMock.mock.calls[0]![1].body)).toEqual({ email: 'dev@a.co' });
+
+    await api.inviteClient('o', 'p', 'client@a.co');
+    expect(fetchMock.mock.calls[1]![0]).toBe('/orgs/o/projects/p/invites');
+
+    fetchMock.mockResolvedValue(jsonResponse(200, { invites: [] }));
+    await api.listInvites('o', 'p');
+    expect(fetchMock.mock.calls[2]![0]).toBe('/orgs/o/invites?projectId=p');
+    await api.listInvites('o');
+    expect(fetchMock.mock.calls[3]![0]).toBe('/orgs/o/invites');
+
+    fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
+    await api.revokeInvite('o', 'i-1');
+    expect(fetchMock.mock.calls[4]![0]).toBe('/orgs/o/invites/i-1');
+    expect(fetchMock.mock.calls[4]![1].method).toBe('DELETE');
+
+    fetchMock.mockResolvedValue(jsonResponse(200, { invite: { email: 'c@a.co', role: 'member', orgName: 'Acme', projectName: 'Site', expired: false, accepted: false } }));
+    await api.peekInvite('swi_x');
+    expect(fetchMock.mock.calls[5]![0]).toBe('/invites/peek?token=swi_x');
+
+    fetchMock.mockResolvedValue(jsonResponse(200, { orgId: 'o', projectId: 'p', role: 'member' }));
+    const accepted = await api.acceptInvite('swi_x');
+    expect(accepted.projectId).toBe('p');
+    expect(fetchMock.mock.calls[6]![0]).toBe('/invites/accept');
+    expect(JSON.parse(fetchMock.mock.calls[6]![1].body)).toEqual({ token: 'swi_x' });
+  });
+
+  it('lists and removes project clients (project-scoped members)', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { members: [] }));
+    await api.listProjectMembers('o', 'p');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/orgs/o/projects/p/members');
+
+    fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
+    await api.removeProjectMember('o', 'p', 'u-1');
+    expect(fetchMock.mock.calls[1]![0]).toBe('/orgs/o/projects/p/members/u-1');
+    expect(fetchMock.mock.calls[1]![1].method).toBe('DELETE');
   });
 
   it('GETs the version/update status', async () => {

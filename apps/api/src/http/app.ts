@@ -45,15 +45,26 @@ import { GlobalSmtpMailer, ProjectSmtpMailer, type SubmissionMailer, type Projec
 import { HttpHcaptchaVerifier, type HcaptchaVerifier } from '../mail/hcaptcha.js';
 import { createSession, revokeSession, validateSession } from '../auth/sessions.js';
 import {
-  addOrgMember,
+  getMembership,
+  getProjectMembership,
   getUserEmail,
   listOrgMembers,
   listOrgsForUser,
+  listProjectAccessForUser,
   removeOrgMember,
   login,
   registerAccount,
   tenantContext,
 } from '../repo/accounts.js';
+import {
+  acceptInvite,
+  createInvite,
+  listInvites,
+  listProjectMembers,
+  peekInvite,
+  removeProjectMember,
+  revokeInvite,
+} from '../repo/invites.js';
 import { InstanceSettingsRepository, EncryptionUnavailableError } from '../repo/instance-settings.js';
 import { ProjectRepository } from '../repo/projects.js';
 import { AiUsageRepository } from '../repo/ai-usage.js';
@@ -87,7 +98,7 @@ const IMPORT_BODY_LIMIT = 4 * 1024 * 1024; // 4 MiB for a full project import
 const PREVIEW_BODY_LIMIT = 2 * 1024 * 1024; // 2 MiB for a single draft page
 const MAX_UPLOAD_BYTES = 15 * 1024 * 1024; // 15 MiB per uploaded image
 const WRITE_ROLES: ReadonlySet<string> = new Set(['owner', 'admin']);
-const API_PREFIXES = ['/auth', '/orgs', '/me', '/health', '/admin', '/f'];
+const API_PREFIXES = ['/auth', '/orgs', '/me', '/health', '/admin', '/f', '/invites'];
 
 const MEDIA_CONTENT_TYPES = new Map<string, string>([
   ['avif', 'image/avif'],
@@ -163,8 +174,11 @@ function startOfMonthUTC(now: Date): Date {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 }
 
-const AddMemberBody = z.object({
+const InviteBody = z.object({
   email: z.string().email(),
+});
+const AcceptInviteBody = z.object({
+  token: z.string().min(1).max(200),
 });
 
 const CreateProjectBody = z.object({
@@ -485,9 +499,28 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     }
 
     const userId = await requireUserId(req);
-    const tenant = await tenantContext(db, userId, req.params.orgId);
-    const project = await projects.get(tenant, req.params.projectId);
-    return { ctx: { ...tenant, projectId: project.id }, project, apiKey: null };
+    // Org members (the agency's developers/staff) reach any project in their org.
+    const orgRole = await getMembership(db, userId, req.params.orgId);
+    if (orgRole) {
+      const tenant = { userId, orgId: req.params.orgId, role: orgRole };
+      const project = await projects.get(tenant, req.params.projectId);
+      return { ctx: { ...tenant, projectId: project.id }, project, apiKey: null };
+    }
+    // A project-scoped client (no org membership) reaches ONLY the project they belong
+    // to. projects.get filters by ctx.orgId, so it also confirms the project really is
+    // in the claimed org (else a clean 404 — the client cannot probe other orgs/projects).
+    const projectRole = await getProjectMembership(db, userId, req.params.projectId);
+    if (projectRole) {
+      const ctx: ProjectContext = {
+        userId,
+        orgId: req.params.orgId,
+        role: projectRole,
+        projectId: req.params.projectId,
+      };
+      const project = await projects.get(ctx, req.params.projectId);
+      return { ctx: { ...ctx, projectId: project.id }, project, apiKey: null };
+    }
+    throw new ForbiddenError('you do not have access to this project');
   }
 
   // Optional SSRF guard for deploy targets (multi-tenant SaaS): when an allow-list
@@ -557,11 +590,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
   app.get('/me', async (req, reply) => {
     const userId = await requireUserId(req);
-    const [orgs, instanceAdmin] = await Promise.all([
+    const [orgs, projectAccess, instanceAdmin] = await Promise.all([
       listOrgsForUser(db, userId),
+      // Projects reachable via a project-scoped membership (the client tier) — so the
+      // dashboard can show a client only their own site(s) without an org membership.
+      listProjectAccessForUser(db, userId),
       isInstanceAdmin(userId),
     ]);
-    return reply.send({ userId, orgs, isInstanceAdmin: instanceAdmin });
+    return reply.send({ userId, orgs, projectAccess, isInstanceAdmin: instanceAdmin });
   });
 
   // ---- Instance admin settings (global mail / hCaptcha / enabled form modes) ----
@@ -620,7 +656,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     return reply.send({ projects: await projects.list(ctx) });
   });
 
-  // ---- Org membership (the agency adds clients as the constrained `member` role) ----
+  // ---- Org membership (the agency's developers/staff: owner/admin, org-wide) ----
   app.get<{ Params: { orgId: string } }>(
     '/orgs/:orgId/members',
     { config: rl(30) },
@@ -631,24 +667,6 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     },
   );
 
-  app.post<{ Params: { orgId: string } }>(
-    '/orgs/:orgId/members',
-    // Tighter than other writes (10/min): the response shape differs for a new vs.
-    // already-registered email, which is a weak account-existence oracle for an
-    // authenticated owner/admin. A low cap blunts enumeration until invite-acceptance
-    // tokens replace this direct-add flow (see addOrgMember).
-    { config: rl(10) },
-    async (req, reply) => {
-      const userId = await requireUserId(req);
-      const ctx = await tenantContext(db, userId, req.params.orgId);
-      const body = AddMemberBody.parse(req.body);
-      const result = await addOrgMember(db, ctx, body.email);
-      // `tempPassword` is present only for a freshly-created user and is returned ONCE
-      // (never stored, never re-derivable) — the inviter shares it with the client.
-      return reply.code(201).send(result);
-    },
-  );
-
   app.delete<{ Params: { orgId: string; userId: string } }>(
     '/orgs/:orgId/members/:userId',
     { config: rl(20) },
@@ -656,6 +674,104 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const callerId = await requireUserId(req);
       const ctx = await tenantContext(db, callerId, req.params.orgId);
       await removeOrgMember(db, ctx, req.params.userId);
+      return reply.code(204).send();
+    },
+  );
+
+  // ---- Invites: a developer (org admin) or a client (project member) joins only by
+  // accepting an invite while signed in as the invited email — no direct add, so there
+  // is no account-existence oracle and no unaccepted membership. ----
+  app.post<{ Params: { orgId: string } }>(
+    '/orgs/:orgId/invites',
+    { config: rl(20) },
+    async (req, reply) => {
+      const userId = await requireUserId(req);
+      const ctx = await tenantContext(db, userId, req.params.orgId);
+      const body = InviteBody.parse(req.body);
+      // Org-level developer invite → admin.
+      const result = await createInvite(db, ctx, { email: body.email, role: 'admin' });
+      return reply.code(201).send(result);
+    },
+  );
+
+  app.post<{ Params: { orgId: string; projectId: string } }>(
+    '/orgs/:orgId/projects/:projectId/invites',
+    { config: rl(20) },
+    async (req, reply) => {
+      const userId = await requireUserId(req);
+      const ctx = await tenantContext(db, userId, req.params.orgId);
+      const body = InviteBody.parse(req.body);
+      // Project-scoped client invite → member.
+      const result = await createInvite(db, ctx, {
+        email: body.email,
+        role: 'member',
+        projectId: req.params.projectId,
+      });
+      return reply.code(201).send(result);
+    },
+  );
+
+  app.get<{ Params: { orgId: string }; Querystring: { projectId?: string } }>(
+    '/orgs/:orgId/invites',
+    { config: rl(30) },
+    async (req, reply) => {
+      const userId = await requireUserId(req);
+      const ctx = await tenantContext(db, userId, req.params.orgId);
+      return reply.send({ invites: await listInvites(db, ctx, { projectId: req.query.projectId }) });
+    },
+  );
+
+  app.delete<{ Params: { orgId: string; id: string } }>(
+    '/orgs/:orgId/invites/:id',
+    { config: rl(20) },
+    async (req, reply) => {
+      const userId = await requireUserId(req);
+      const ctx = await tenantContext(db, userId, req.params.orgId);
+      await revokeInvite(db, ctx, req.params.id);
+      return reply.code(204).send();
+    },
+  );
+
+  // Accept an invite (interactive session only — never a Bearer key) for the signed-in
+  // user; the repo enforces the email match.
+  app.post('/invites/accept', { config: rl(20) }, async (req, reply) => {
+    const userId = await requireUserId(req);
+    const body = AcceptInviteBody.parse(req.body);
+    return reply.send(await acceptInvite(db, userId, body.token));
+  });
+
+  // Public peek so the accept screen can show context to a token holder (no auth: they
+  // already hold the token; this leaks nothing they were not sent).
+  app.get<{ Querystring: { token?: string } }>(
+    '/invites/peek',
+    { config: rl(30) },
+    async (req, reply) => {
+      const token = req.query.token;
+      if (!token) throw new NotFoundError('invite not found');
+      const peek = await peekInvite(db, token);
+      if (!peek) throw new NotFoundError('invite not found');
+      return reply.send({ invite: peek });
+    },
+  );
+
+  // ---- Project clients (project-scoped members) management (owner/admin) ----
+  app.get<{ Params: { orgId: string; projectId: string } }>(
+    '/orgs/:orgId/projects/:projectId/members',
+    { config: rl(30) },
+    async (req, reply) => {
+      const userId = await requireUserId(req);
+      const ctx = await tenantContext(db, userId, req.params.orgId);
+      return reply.send({ members: await listProjectMembers(db, ctx, req.params.projectId) });
+    },
+  );
+
+  app.delete<{ Params: { orgId: string; projectId: string; userId: string } }>(
+    '/orgs/:orgId/projects/:projectId/members/:userId',
+    { config: rl(20) },
+    async (req, reply) => {
+      const callerId = await requireUserId(req);
+      const ctx = await tenantContext(db, callerId, req.params.orgId);
+      await removeProjectMember(db, ctx, req.params.projectId, req.params.userId);
       return reply.code(204).send();
     },
   );

@@ -541,6 +541,11 @@ export function renderPage(page: Page, ctx: RenderContext = {}): string {
 /** Options for {@link renderDocument}. */
 export interface RenderDocumentOptions extends RenderContext {
   brand: BrandTokens;
+  /**
+   * Pre-rendered `<body>` HTML for a code-first (Handlebars `source`) page — used INSTEAD
+   * of rendering the block tree. The same head/SEO/CSS/script shell is applied.
+   */
+  bodyHtml?: string;
   /** Document language attribute (defaults to `en`). */
   lang?: string;
   /** SEO/Open-Graph metadata; `title` falls back to the page title. */
@@ -607,6 +612,7 @@ export interface RenderDocumentOptions extends RenderContext {
 export function renderDocument(page: Page, opts: RenderDocumentOptions): string {
   const {
     brand,
+    bodyHtml,
     lang = 'en',
     seo,
     organization,
@@ -619,7 +625,7 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     inlineScripts,
     ...ctx
   } = opts;
-  const body = renderPage(page, ctx);
+  const body = bodyHtml ?? renderPage(page, ctx);
   const css = `${previewStyles()}\n${brandToCss(brand)}`;
   // `||` not `??`: an empty-string SEO title must fall back to the page title.
   const title = seo?.title || page.title;
@@ -637,7 +643,9 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     (customHead ? `${customHead}\n` : '') +
     `<style>${css}</style>\n` +
     (criticalCss ? `<style>${criticalCss}</style>\n` : '') +
-    (inlineStyles ?? []).map((style) => `<style>${style}</style>\n`).join('') +
+    // Neutralize any `</style` so inlined CSS can't break out of the <style> element
+    // (defense-in-depth; mirrors the inlineScripts guard below).
+    (inlineStyles ?? []).map((style) => `<style>${style.replace(/<\/(style)/gi, '<\\/$1')}</style>\n`).join('') +
     (stylesheets ?? [])
       .map((href) => `<link rel="stylesheet" href="${escapeAttr(href)}" />\n`)
       .join('') +

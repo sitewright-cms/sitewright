@@ -11,6 +11,8 @@ import {
 } from '@sitewright/core';
 import {
   renderDocument,
+  renderTemplate,
+  TemplateError,
   resolveInternalUrl,
   usedComponentTypes,
   componentAssets,
@@ -57,6 +59,22 @@ function relPathForSlug(slug: string | undefined): string {
     }
   }
   return join(...segments, 'index.html');
+}
+
+/**
+ * Tailwind class tokens from the literal `class="…"` attributes of a code-first page
+ * `source`, so they feed the shared utility stylesheet (the same static-extraction model
+ * Tailwind itself uses). `{{ }}` expressions are stripped first.
+ */
+function extractSourceClassNames(source: string): string[] {
+  const out: string[] = [];
+  const re = /class\s*=\s*"([^"]*)"|class\s*=\s*'([^']*)'/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(source)) !== null) {
+    const value = (m[1] ?? m[2] ?? '').replace(/\{\{[^}]*\}\}/g, ' ');
+    for (const token of value.split(/\s+/)) if (token) out.push(token);
+  }
+  return out;
 }
 
 export interface BuildSiteOptions {
@@ -191,7 +209,11 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // class/component the default page doesn't). Sites using none get the previous
     // output (no extra file/request).
     const scanRoots = [...routes.map((r) => r.root), ...translations.map((t) => t.root)];
-    const classNames = scanRoots.flatMap(collectClassNames);
+    // Code-first source-pages contribute their literal Tailwind classes to the shared sheet.
+    const sourceClassNames = routes
+      .filter((r) => r.page.source)
+      .flatMap((r) => extractSourceClassNames(r.page.source as string));
+    const classNames = [...scanRoots.flatMap(collectClassNames), ...sourceClassNames];
     const usesUtilities = classNames.length > 0;
     const componentTypes = [...new Set(scanRoots.flatMap(usedComponentTypes))];
     const usesComponents = componentTypes.length > 0;
@@ -266,8 +288,29 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
                 { hreflang: 'x-default', href: siteUrlFor(siteUrl, localeSlug('', route.slug)) },
               ]
             : undefined;
+        // Code-first page: render the Handlebars `source` to a body, then wrap it in the
+        // SAME document shell (head/SEO/CSS/nav). Validated by renderTemplate; a bad
+        // source fails the publish with a clear, page-scoped error.
+        let bodyHtml: string | undefined;
+        if (page.source) {
+          try {
+            bodyHtml = renderTemplate(page.source, {
+              company: identity as unknown as Record<string, unknown>,
+              website: { siteUrl: website?.siteUrl },
+              page: { title: page.title, path: page.path },
+              data: datasets as Record<string, unknown>,
+            });
+          } catch (err) {
+            throw new PublishError(
+              err instanceof TemplateError
+                ? `page "${page.id}" template error: ${err.message}`
+                : `page "${page.id}" failed to render`,
+            );
+          }
+        }
         const html = renderDocument(page, {
           brand,
+          bodyHtml,
           // {{ company.* }}/{{ website.* }}/{{ page.* }} substitution in text props.
           // `website` is projected to only its public fields — never the raw
           // head/footer/CSS blobs, which aren't meant to be surfaced via a variable.

@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createApp } from './http/app.js';
+import { RenderPool } from './render/render-pool.js';
 import { createDb, runMigrations } from './db/client.js';
 import { createReleaseChecker } from './version/checker.js';
 import { parseKey } from './crypto/secret.js';
@@ -112,6 +113,19 @@ const aiQuota = {
   userMonthlyTokens: aiNumber(process.env.SW_AI_USER_MONTHLY_TOKENS, 'SW_AI_USER_MONTHLY_TOKENS'),
 };
 
+// Isolated template render pool: warm child-process workers inside this container, each
+// with a hard V8 heap ceiling. Tunable for k8s resource limits.
+const renderEnvInt = (v: string | undefined, fallback: number): number => {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+};
+const renderPool = new RenderPool({
+  size: renderEnvInt(process.env.SW_RENDER_WORKERS, 2),
+  memoryLimitMb: renderEnvInt(process.env.SW_RENDER_MEMORY_MB, 128),
+  renderTimeoutMs: renderEnvInt(process.env.SW_RENDER_TIMEOUT_MS, 5000),
+  maxRendersPerWorker: renderEnvInt(process.env.SW_RENDER_MAX_RENDERS, 500),
+});
+
 const { db } = createDb(url);
 await runMigrations(db);
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- trusted startup env path
@@ -132,6 +146,7 @@ const app = await createApp({
   deployAllowedHosts,
   smtpAllowedHosts,
   adminEmails,
+  renderPool,
   // Public base URL baked into exported forms (so static sites post submissions
   // back to this platform). Validated above; trailing slash normalized at build time.
   publicUrl,
@@ -157,3 +172,11 @@ const app = await createApp({
 
 await app.listen({ host: '0.0.0.0', port });
 process.stdout.write(`[sitewright/api] listening on :${port}\n`);
+
+// Graceful shutdown for k8s: on SIGTERM/SIGINT, close Fastify (which drains + terminates
+// the render workers via the onClose hook), then exit.
+for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+  process.once(signal, () => {
+    void app.close().then(() => process.exit(0));
+  });
+}

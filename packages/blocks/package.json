@@ -25,7 +25,8 @@
   },
   "dependencies": {
     "@sitewright/core": "workspace:*",
-    "@sitewright/schema": "workspace:*"
+    "@sitewright/schema": "workspace:*",
+    "handlebars": "^4.7.9"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

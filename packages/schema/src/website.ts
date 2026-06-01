@@ -41,6 +41,10 @@ export const WebsiteSettingsSchema = z.object({
     // Zod's `.url()` does NOT reject embedded whitespace; a literal newline here
     // would inject a directive into robots.txt / break the sitemap <loc>. Reject all.
     .refine((u) => !/\s/.test(u), 'siteUrl must not contain whitespace')
+    // Defense-in-depth: `.url()` also permits `"<>'&` — harmless where the value is
+    // escaped (hreflang/sitemap), but reject at the boundary so it can never reach a
+    // future unescaped sink. Real site base URLs never contain these.
+    .refine((u) => !/["<>'&]/.test(u), 'siteUrl must not contain HTML-significant characters')
     .optional(),
   /**
    * Redirect rules emitted to `.htaccess` (Apache) + `_redirects` (Netlify) on

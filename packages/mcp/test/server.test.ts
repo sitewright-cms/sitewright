@@ -171,3 +171,98 @@ describe('createSitewrightMcpServer — tool wiring', () => {
     expect((client as unknown as Record<string, ReturnType<typeof vi.fn>>).putContent).not.toHaveBeenCalled();
   });
 });
+
+describe('createSitewrightMcpServer — every tool forwards to the client', () => {
+  const calls = (c: SitewrightClient) => c as unknown as Record<string, ReturnType<typeof vi.fn>>;
+  const text = (res: Awaited<ReturnType<Client['callTool']>>) =>
+    (res.content as Array<{ text: string }>)[0]!.text;
+
+  it('get_scope returns the caller’s scope', async () => {
+    const mcp = await connect(fakeClient(), readScope);
+    const res = await mcp.callTool({ name: 'get_scope', arguments: {} });
+    expect(res.isError).toBeFalsy();
+    expect(text(res)).toContain('"projectId": "p"');
+  });
+
+  it('list_pages forwards to listContent(page)', async () => {
+    const client = fakeClient();
+    const res = await (await connect(client, readScope)).callTool({ name: 'list_pages', arguments: {} });
+    expect(calls(client).listContent).toHaveBeenCalledWith('page');
+    expect(res.isError).toBeFalsy();
+  });
+
+  it('list_content forwards the requested kind', async () => {
+    const client = fakeClient();
+    await (await connect(client, readScope)).callTool({ name: 'list_content', arguments: { kind: 'dataset' } });
+    expect(calls(client).listContent).toHaveBeenCalledWith('dataset');
+  });
+
+  it('get_content forwards kind + id', async () => {
+    const client = fakeClient();
+    await (await connect(client, readScope)).callTool({ name: 'get_content', arguments: { kind: 'dataset', id: 'x' } });
+    expect(calls(client).getContent).toHaveBeenCalledWith('dataset', 'x');
+  });
+
+  it('preview_page forwards the page to preview', async () => {
+    const client = fakeClient();
+    const res = await (await connect(client, readScope)).callTool({ name: 'preview_page', arguments: { page } });
+    expect(calls(client).preview).toHaveBeenCalledWith(page);
+    expect(text(res)).toContain('tok');
+  });
+
+  it('get_publish_status forwards to publishStatus', async () => {
+    const client = fakeClient();
+    await (await connect(client, readScope)).callTool({ name: 'get_publish_status', arguments: {} });
+    expect(calls(client).publishStatus).toHaveBeenCalled();
+  });
+
+  it('list_stock_providers forwards to stockProviders', async () => {
+    const client = fakeClient();
+    await (await connect(client, readScope)).callTool({ name: 'list_stock_providers', arguments: {} });
+    expect(calls(client).stockProviders).toHaveBeenCalled();
+  });
+
+  it('delete_page forwards to deleteContent(page, id) and reports the deletion', async () => {
+    const client = fakeClient();
+    const res = await (await connect(client, writeScope)).callTool({ name: 'delete_page', arguments: { id: 'home' } });
+    expect(calls(client).deleteContent).toHaveBeenCalledWith('page', 'home');
+    expect(text(res)).toContain('home');
+  });
+
+  it('delete_content forwards kind + id and reports the deletion', async () => {
+    const client = fakeClient();
+    const res = await (await connect(client, writeScope)).callTool({ name: 'delete_content', arguments: { kind: 'dataset', id: 'x' } });
+    expect(calls(client).deleteContent).toHaveBeenCalledWith('dataset', 'x');
+    expect(text(res)).toContain('dataset/x');
+  });
+
+  it('publish_project forwards to publish', async () => {
+    const client = fakeClient();
+    await (await connect(client, writeScope)).callTool({ name: 'publish_project', arguments: {} });
+    expect(calls(client).publish).toHaveBeenCalled();
+  });
+
+  it('maps a generic Error (not a SitewrightApiError) to an MCP tool error', async () => {
+    const client = fakeClient({ getContent: vi.fn(async () => { throw new Error('boom'); }) });
+    const res = await (await connect(client, readScope)).callTool({ name: 'get_page', arguments: { id: 'home' } });
+    expect(res.isError).toBe(true);
+    expect(text(res)).toBe('Error: boom');
+  });
+
+  it('maps a non-Error throw to an "unknown error" tool error', async () => {
+    const client = fakeClient({ getContent: vi.fn(async () => { throw 'nope'; }) });
+    const res = await (await connect(client, readScope)).callTool({ name: 'get_page', arguments: { id: 'home' } });
+    expect(res.isError).toBe(true);
+    expect(text(res)).toBe('Error: unknown error');
+  });
+
+  it('list_submissions omits absent filters but forwards the ones provided', async () => {
+    const none = fakeClient();
+    await (await connect(none, readScope)).callTool({ name: 'list_submissions', arguments: {} });
+    expect(calls(none).listSubmissions).toHaveBeenCalledWith({ formId: undefined, limit: undefined, offset: undefined });
+
+    const all = fakeClient();
+    await (await connect(all, readScope)).callTool({ name: 'list_submissions', arguments: { formId: 'c', limit: 1, offset: 2 } });
+    expect(calls(all).listSubmissions).toHaveBeenCalledWith({ formId: 'c', limit: 1, offset: 2 });
+  });
+});

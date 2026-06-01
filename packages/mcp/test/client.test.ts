@@ -183,4 +183,16 @@ describe('SitewrightClient', () => {
     );
     await expect(client.listContent('page')).rejects.toMatchObject({ status: 502, message: 'HTTP 502' });
   });
+
+  it('listSubmissions includes only the provided filters in the query string', async () => {
+    const ok = (input: string) =>
+      input.endsWith('/api-key/self') ? { status: 200, body: JSON.stringify(scope) } : { status: 200, body: '{"items":[]}' };
+    const all = await introspected(ok);
+    await all.client.listSubmissions({ formId: 'contact', limit: 10, offset: 5 });
+    expect(all.calls.at(-1)!.input).toBe('https://cms.test/orgs/o1/projects/p1/submissions?formId=contact&limit=10&offset=5');
+
+    const none = await introspected(ok);
+    await none.client.listSubmissions();
+    expect(none.calls.at(-1)!.input).toBe('https://cms.test/orgs/o1/projects/p1/submissions');
+  });
 });

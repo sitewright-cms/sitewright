@@ -73,6 +73,10 @@ describe('assertClientEditAllowed', () => {
   it('rejects changing the collection binding (dataset/param)', () => {
     rejected((p) => { p.collection = { dataset: 'products', param: 'slug' }; });
   });
+
+  it('rejects a client changing the page template source (source is dev-owned)', () => {
+    rejected((p) => { p.source = '<section>{{ company.name }}</section>'; });
+  });
 });
 
 describe('hasEditableNode', () => {

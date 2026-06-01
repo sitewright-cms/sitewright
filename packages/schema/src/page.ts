@@ -45,6 +45,13 @@ export const PageSchema = z
       .optional(),
     /** Root of the block tree rendered for this page. */
     root: PageNodeSchema,
+    /**
+     * Code-first authoring: when set, this page is rendered from a Handlebars TEMPLATE
+     * (HTML + Tailwind + `{{ }}`) instead of the block tree — the templating pivot's page
+     * model. Validated (no scripts/handlers/unsafe contexts) and rendered in an isolated
+     * worker. The `root` stays for back-compat; `source` wins when present.
+     */
+    source: z.string().max(256 * 1024).optional(),
     /** Present when this page is generated once per dataset entry. */
     collection: z
       .object({

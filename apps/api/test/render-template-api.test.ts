@@ -86,6 +86,46 @@ describe('render-template API (isolated worker)', () => {
     expect((res.json() as { error: string }).error).toMatch(/script/i);
   });
 
+  it('renders a STORED source-page by pageId (the page = template model)', async () => {
+    const { t, orgId, projectId } = await setup();
+    await app.inject({
+      method: 'PUT',
+      url: `/orgs/${orgId}/projects/${projectId}/content/page/home`,
+      cookies: { sw_session: t },
+      payload: {
+        id: 'home', path: '/', title: 'Welcome',
+        root: { id: 'root', type: 'Section' },
+        source: '<h1>{{ company.name }}</h1><p>{{ page.title }}</p>',
+      },
+    });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/orgs/${orgId}/projects/${projectId}/render-template`,
+      cookies: { sw_session: t },
+      payload: { pageId: 'home' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { html: string }).html).toBe('<h1>Site</h1><p>Welcome</p>');
+  });
+
+  it('rejects rendering a page that has no template source (400)', async () => {
+    const { t, orgId, projectId } = await setup();
+    await app.inject({
+      method: 'PUT',
+      url: `/orgs/${orgId}/projects/${projectId}/content/page/blocky`,
+      cookies: { sw_session: t },
+      payload: { id: 'blocky', path: '/blocky', title: 'Block', root: { id: 'root', type: 'Section' } },
+    });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/orgs/${orgId}/projects/${projectId}/render-template`,
+      cookies: { sw_session: t },
+      payload: { pageId: 'blocky' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: string }).error).toMatch(/no template source/i);
+  });
+
   it('rejects an unsafe template with 400 (the validator runs in the worker)', async () => {
     const { t, orgId, projectId } = await setup();
     const res = await app.inject({

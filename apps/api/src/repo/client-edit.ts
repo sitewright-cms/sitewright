@@ -45,6 +45,7 @@ export function assertClientEditAllowed(prev: Page, next: Page): void {
     prev.title === next.title &&
     (prev.status ?? undefined) === (next.status ?? undefined) &&
     prev.template === next.template &&
+    prev.source === next.source &&
     isDeepStrictEqual(prev.nav, next.nav) &&
     isDeepStrictEqual(prev.seo, next.seo) &&
     isDeepStrictEqual(prev.collection, next.collection);

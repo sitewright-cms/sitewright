@@ -14,6 +14,17 @@ describe('PageSchema', () => {
     expect(page.root.children?.[0]?.type).toBe('RichText');
   });
 
+  it('accepts an optional code-first Handlebars `source` alongside the block tree', () => {
+    const page = PageSchema.parse({
+      id: 'home', path: '/', title: 'Home',
+      root: { id: 'r', type: 'Section' },
+      source: '<section><h1>{{ company.name }}</h1></section>',
+    });
+    expect(page.source).toContain('{{ company.name }}');
+    // Absent by default (existing block pages are unaffected).
+    expect(PageSchema.parse({ id: 'p', path: '/', title: 'P', root: { id: 'r', type: 'Section' } }).source).toBeUndefined();
+  });
+
   it('treats status as optional (absent = published) and accepts draft/published', () => {
     expect(PageSchema.parse({ id: 'p', path: '/', title: 'P', root: { id: 'r', type: 'Section' } }).status).toBeUndefined();
     expect(PageSchema.parse({ id: 'p', path: '/', title: 'P', status: 'draft', root: { id: 'r', type: 'Section' } }).status).toBe('draft');

@@ -1542,10 +1542,17 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // The live-preview backend for the code-first template editor: renders a supplied
   // template against the project's Corporate Identity + datasets, inside a memory-capped
   // worker. Owner/admin only — template authoring is a developer action.
-  const RenderTemplateBody = z.object({
-    template: z.string().max(256 * 1024),
-    page: z.object({ title: z.string().max(300), path: z.string().max(2048) }).partial().optional(),
-  });
+  const RenderTemplateBody = z
+    .object({
+      // Ad-hoc source (the live editing loop) OR a stored source-page by id.
+      template: z.string().max(256 * 1024).optional(),
+      pageId: z.string().max(200).optional(),
+      page: z.object({ title: z.string().max(300), path: z.string().max(2048) }).partial().optional(),
+    })
+    .refine(
+      (b) => (b.template !== undefined) !== (b.pageId !== undefined),
+      'provide exactly one of template or pageId',
+    );
   app.post<{ Params: { orgId: string; projectId: string } }>(
     '/orgs/:orgId/projects/:projectId/render-template',
     // 30/min — aligned with the small worker pool's throughput (avoids a deep parent queue).
@@ -1557,6 +1564,20 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       }
       if (!renderPool) return reply.code(503).send({ error: 'rendering is not available' });
       const body = RenderTemplateBody.parse(req.body);
+
+      // Resolve the template source + page context: a stored source-page (by id) or ad-hoc.
+      let templateSource: string;
+      let pageCtx: Record<string, unknown> = body.page ?? { title: project.name, path: '/' };
+      if (body.pageId !== undefined) {
+        // Re-parse the stored page (not a bare cast) so a dirty/legacy DB row can't reach
+        // the render path unvalidated; NotFound → 404.
+        const page = PageSchema.parse(await contentRepo.get(ctx, 'page', body.pageId));
+        if (!page.source) return reply.code(400).send({ error: 'this page has no template source' });
+        templateSource = page.source;
+        pageCtx = { title: page.title, path: page.path };
+      } else {
+        templateSource = body.template as string; // refine guarantees one of template/pageId
+      }
 
       // Binding context: company (identity), website (public fields only), page, datasets→data.
       let company: Record<string, unknown> = { name: project.name };
@@ -1584,10 +1605,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       }
 
       try {
-        const html = await renderPool.render(body.template, {
+        const html = await renderPool.render(templateSource, {
           company,
           website,
-          page: body.page ?? { title: project.name, path: '/' },
+          page: pageCtx,
           data,
           partials,
         });

@@ -16,7 +16,9 @@ import {
  * - `partialRef`, when set, replaces this node with a shared partial subtree at
  *   build time.
  * - `binding`, when set, pulls dataset data into this node at build time.
- * - `locked` hides the node from the end-user/client editing role.
+ * - `editable`, when `true`, marks this node as client-editable: the constrained
+ *   client (member) editing role may change ONLY the props of editable nodes —
+ *   never the tree structure or any other node (enforced server-side).
  * - `className`, when set, is a Tailwind utility-class list emitted onto the
  *   block's root element; the publish/preview pipeline compiles only the
  *   classes actually used into a minimal stylesheet.
@@ -31,7 +33,8 @@ export interface PageNode {
   children?: PageNode[];
   partialRef?: string;
   binding?: Binding;
-  locked?: boolean;
+  /** Marks this node as client-editable (see the doc above). */
+  editable?: boolean;
   className?: string;
 }
 
@@ -49,7 +52,7 @@ export const PageNodeSchema: z.ZodType<PageNode, z.ZodTypeDef, unknown> = z.lazy
     children: z.array(PageNodeSchema).max(MAX_CHILDREN).optional(),
     partialRef: IdSchema.optional(),
     binding: BindingSchema.optional(),
-    locked: z.boolean().optional(),
+    editable: z.boolean().optional(),
     className: ClassNameSchema.optional(),
   }),
 );

@@ -50,9 +50,48 @@ describe('ContentRepository', () => {
     expect(await content.list(pctxB, 'page')).toHaveLength(0);
   });
 
-  it('forbids a member role from writing', async () => {
+  it('lets a member (client role) edit ONLY editable-node content of an existing page', async () => {
     const member: ProjectContext = { ...pctxA, role: 'member' };
-    await expect(member && content.put(member, 'page', 'home', page)).rejects.toThrow(ForbiddenError);
+    // A member cannot CREATE a page (no prior version to constrain the edit against).
+    await expect(content.put(member, 'page', 'home', page)).rejects.toThrow(ForbiddenError);
+
+    // Owner authors a page with one editable node (RichText) and one locked (Heading).
+    const editablePage = {
+      id: 'home',
+      path: '/',
+      title: 'Home',
+      root: {
+        id: 'r',
+        type: 'Section',
+        children: [
+          { id: 'h', type: 'Heading', props: { text: 'Locked', level: 2 } },
+          { id: 't', type: 'RichText', editable: true, props: { text: 'Edit me' } },
+        ],
+      },
+    };
+    await content.put(pctxA, 'page', 'home', editablePage);
+
+    // Member edits the editable node's content → allowed + persisted.
+    const edited = JSON.parse(JSON.stringify(editablePage));
+    edited.root.children[1].props.text = 'Client edit';
+    await content.put(member, 'page', 'home', edited);
+    const stored = (await content.get(member, 'page', 'home')) as { root: { children: Array<{ props: { text: string } }> } };
+    expect(stored.root.children[1]!.props.text).toBe('Client edit');
+
+    // Member edits the LOCKED node → rejected.
+    const hacked = JSON.parse(JSON.stringify(editablePage));
+    hacked.root.children[0].props.text = 'Hacked';
+    await expect(content.put(member, 'page', 'home', hacked)).rejects.toThrow(ForbiddenError);
+
+    // Member changes structure (removes a node) → rejected.
+    const restructured = JSON.parse(JSON.stringify(editablePage));
+    restructured.root.children.pop();
+    await expect(content.put(member, 'page', 'home', restructured)).rejects.toThrow(ForbiddenError);
+
+    // Member writes a non-page content kind → rejected.
+    await expect(
+      content.put(member, 'partial', 'p', { id: 'p', name: 'P', root: { id: 'pr', type: 'Section' } }),
+    ).rejects.toThrow(ForbiddenError);
   });
 
   it('exports a bundle containing the project’s content', async () => {

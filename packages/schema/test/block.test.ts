@@ -34,10 +34,10 @@ describe('PageNodeSchema', () => {
       id: 'h',
       type: 'Slot',
       partialRef: 'site-header',
-      locked: true,
+      editable: true,
     });
     expect(node.partialRef).toBe('site-header');
-    expect(node.locked).toBe(true);
+    expect(node.editable).toBe(true);
   });
 
   it('rejects an empty type', () => {

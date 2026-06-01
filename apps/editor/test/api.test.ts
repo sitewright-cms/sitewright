@@ -82,6 +82,24 @@ describe('api client', () => {
     expect(eventsUrl('o', 'p')).toBe('/orgs/o/projects/p/events');
   });
 
+  it('POSTs render-template with the template, page context, and document flag', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { html: '<!doctype html>…' }));
+    const res = await api.renderTemplate('o', 'p', {
+      template: '<h1>{{ company.name }}</h1>',
+      page: { title: 'Home', path: '/' },
+      document: true,
+    });
+    expect(res).toEqual({ html: '<!doctype html>…' });
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/orgs/o/projects/p/render-template');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body)).toEqual({
+      template: '<h1>{{ company.name }}</h1>',
+      page: { title: 'Home', path: '/' },
+      document: true,
+    });
+  });
+
   it('creates a project (POST with body)', async () => {
     fetchMock.mockResolvedValue(jsonResponse(201, { project: { id: 'p', name: 'P', slug: 's' } }));
     await api.createProject('o', 'P', 's');

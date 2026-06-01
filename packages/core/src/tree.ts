@@ -67,6 +67,37 @@ export function collectClassNames(root: PageNode): string[] {
   return classNames;
 }
 
+/** Upper bound on distinct class tokens extracted from one HTML/source string. */
+export const MAX_EXTRACTED_CLASS_TOKENS = 2048;
+
+/**
+ * Extract the literal CSS class tokens from `class="…"` / `class='…'` attributes in an HTML
+ * string or a Handlebars template source — the Tailwind JIT compiler's candidate set for
+ * code-first pages (the analogue of {@link collectClassNames} for raw markup rather than a
+ * block tree). Used by both the publish build and the editor's live-preview endpoint, so the
+ * extraction stays identical across the two paths.
+ *
+ * Handlebars `{{ … }}` expressions inside a class value are stripped first — a dynamic class
+ * value can't be precompiled, so it must not leak a half-token into the candidate set. The
+ * result is deduplicated and capped at `max` tokens: a rendered body can be up to ~1 MiB of
+ * attacker-authored markup, and an uncapped synthetic class list would let an owner/admin
+ * spike Tailwind's compiler. Real pages use far fewer than the cap.
+ */
+export function extractClassNames(html: string, max: number = MAX_EXTRACTED_CLASS_TOKENS): string[] {
+  const re = /class\s*=\s*"([^"]*)"|class\s*=\s*'([^']*)'/g;
+  const tokens = new Set<string>();
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    const value = (m[1] ?? m[2] ?? '').replace(/\{\{[^}]*\}\}/g, ' ');
+    for (const token of value.split(/\s+/)) {
+      if (!token) continue;
+      tokens.add(token);
+      if (tokens.size >= max) return [...tokens];
+    }
+  }
+  return [...tokens];
+}
+
 /**
  * Deep-clones a subtree, assigning every node a FRESH id from `idGen`. This is the
  * "fork on insert" primitive for the Patterns library: inserting a pattern (or the

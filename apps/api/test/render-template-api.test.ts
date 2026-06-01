@@ -68,6 +68,23 @@ describe('render-template API (isolated worker)', () => {
     expect((res.json() as { html: string }).html).toBe('<ul><li>Site</li></ul>');
   });
 
+  it('wraps the render in a full styled document when document:true (the editor preview)', async () => {
+    const { t, orgId, projectId } = await setup();
+    const res = await app.inject({
+      method: 'POST',
+      url: `/orgs/${orgId}/projects/${projectId}/render-template`,
+      cookies: { sw_session: t },
+      payload: { template: '<main class="grid"><h1>{{ company.name }}</h1></main>', document: true },
+    });
+    expect(res.statusCode).toBe(200);
+    const html = (res.json() as { html: string }).html;
+    // A complete document shell wrapping the rendered source body…
+    expect(html.startsWith('<!doctype html>')).toBe(true);
+    expect(html).toContain('<main class="grid"><h1>Site</h1></main>');
+    // …with the source's literal Tailwind class compiled + inlined so the preview is STYLED.
+    expect(html).toContain('display:grid');
+  });
+
   it('rejects rendering when a SAVED snippet is unsafe (partials are validated too)', async () => {
     const { t, orgId, projectId } = await setup();
     await app.inject({

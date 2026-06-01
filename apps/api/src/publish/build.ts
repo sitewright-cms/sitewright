@@ -5,6 +5,7 @@ import {
   buildNav,
   collectClassNames,
   datasetEntries,
+  extractClassNames,
   publishedPages,
   relativeRoot,
   type ProjectBundle,
@@ -59,22 +60,6 @@ function relPathForSlug(slug: string | undefined): string {
     }
   }
   return join(...segments, 'index.html');
-}
-
-/**
- * Tailwind class tokens from the literal `class="…"` attributes of a code-first page
- * `source`, so they feed the shared utility stylesheet (the same static-extraction model
- * Tailwind itself uses). `{{ }}` expressions are stripped first.
- */
-function extractSourceClassNames(source: string): string[] {
-  const out: string[] = [];
-  const re = /class\s*=\s*"([^"]*)"|class\s*=\s*'([^']*)'/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(source)) !== null) {
-    const value = (m[1] ?? m[2] ?? '').replace(/\{\{[^}]*\}\}/g, ' ');
-    for (const token of value.split(/\s+/)) if (token) out.push(token);
-  }
-  return out;
 }
 
 export interface BuildSiteOptions {
@@ -212,7 +197,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // Code-first source-pages contribute their literal Tailwind classes to the shared sheet.
     const sourceClassNames = routes
       .filter((r) => r.page.source)
-      .flatMap((r) => extractSourceClassNames(r.page.source as string));
+      .flatMap((r) => extractClassNames(r.page.source as string));
     const classNames = [...scanRoots.flatMap(collectClassNames), ...sourceClassNames];
     const usesUtilities = classNames.length > 0;
     const componentTypes = [...new Set(scanRoots.flatMap(usedComponentTypes))];

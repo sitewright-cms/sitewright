@@ -47,6 +47,62 @@ export const projects = sqliteTable(
   (t) => [uniqueIndex('uniq_org_slug').on(t.orgId, t.slug), index('projects_org_idx').on(t.orgId)],
 );
 
+/**
+ * Project-scoped membership: a CLIENT (the constrained `member` role) tied to ONE
+ * project (their own website), distinct from the org-level {@link memberships} used by
+ * the agency's developers/staff. A client with a row here reaches only that project —
+ * never the rest of the org's projects.
+ */
+export const projectMembers = sqliteTable(
+  'project_members',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id),
+    role: text('role', { enum: ['member'] }).notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [
+    uniqueIndex('uniq_user_project').on(t.userId, t.projectId),
+    index('project_members_project_idx').on(t.projectId),
+  ],
+);
+
+/**
+ * A pending invitation. It materializes into a membership ONLY when the invitee accepts
+ * while signed in as the invited email — so a leaked link is useless without that
+ * account, and there is no account-existence oracle. Org-level (projectId null, role
+ * owner/admin) invites a developer/staff member; project-scoped (projectId set, role
+ * member) invites a client to one project. The token is stored hashed; it is one-time
+ * and time-limited.
+ */
+export const invites = sqliteTable(
+  'invites',
+  {
+    id: text('id').primaryKey(),
+    orgId: text('org_id')
+      .notNull()
+      .references(() => organizations.id),
+    // Null → an org-level developer invite; set → a project-scoped client invite.
+    projectId: text('project_id').references(() => projects.id),
+    email: text('email').notNull(),
+    role: text('role', { enum: ['owner', 'admin', 'member'] }).notNull(),
+    tokenHash: text('token_hash').notNull().unique(),
+    invitedBy: text('invited_by')
+      .notNull()
+      .references(() => users.id),
+    expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+    acceptedAt: integer('accepted_at', { mode: 'timestamp_ms' }),
+    acceptedBy: text('accepted_by').references(() => users.id),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [index('invites_org_idx').on(t.orgId), index('invites_project_idx').on(t.projectId)],
+);
+
 /** Server-side sessions (token id is stored hashed). */
 export const sessions = sqliteTable('sessions', {
   id: text('id').primaryKey(),

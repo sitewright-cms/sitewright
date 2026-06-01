@@ -5,9 +5,11 @@ import {
   apiKeys,
   content,
   formSubmissions,
+  invites,
   oauthAuthCodes,
   oauthDeviceCodes,
   oauthRefreshTokens,
+  projectMembers,
   projects,
   type OrgRole,
 } from '../db/schema.js';
@@ -104,6 +106,10 @@ export class ProjectRepository {
       await tx.delete(oauthAuthCodes).where(eq(oauthAuthCodes.projectId, id));
       await tx.delete(oauthRefreshTokens).where(eq(oauthRefreshTokens.projectId, id));
       await tx.delete(oauthDeviceCodes).where(eq(oauthDeviceCodes.projectId, id));
+      // Project-scoped client memberships + any (pending or accepted) project invites:
+      // drop them so a deleted project leaves no orphaned access rows or dangling tokens.
+      await tx.delete(projectMembers).where(eq(projectMembers.projectId, id));
+      await tx.delete(invites).where(eq(invites.projectId, id));
       await tx.delete(projects).where(and(eq(projects.id, id), eq(projects.orgId, ctx.orgId)));
     });
   }

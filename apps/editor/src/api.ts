@@ -106,12 +106,41 @@ export interface Project {
   name: string;
   slug: string;
 }
-/** A user's membership in an org (the agency's owner/admin + the clients they add). */
+/** A user's membership in an org (the agency's owner/admin + invited developers). */
 export interface OrgMember {
   userId: string;
   email: string;
   role: 'owner' | 'admin' | 'member';
   createdAt: string;
+}
+/** A project a user can reach via a project-scoped membership (the client tier). */
+export interface ProjectAccess {
+  orgId: string;
+  orgName: string;
+  orgSlug: string;
+  projectId: string;
+  projectName: string;
+  projectSlug: string;
+  role: 'owner' | 'admin' | 'member';
+}
+/** A pending invite (the management list never returns the token). */
+export interface Invite {
+  id: string;
+  email: string;
+  role: 'owner' | 'admin' | 'member';
+  projectId: string | null;
+  expiresAt: string;
+  acceptedAt: string | null;
+  createdAt: string;
+}
+/** Public context shown on the accept screen to an invite-token holder. */
+export interface InvitePeek {
+  email: string;
+  role: 'owner' | 'admin' | 'member';
+  orgName: string;
+  projectName: string | null;
+  expired: boolean;
+  accepted: boolean;
 }
 export type ApiKeyCapability = 'content:read' | 'content:write' | 'publish' | 'deploy';
 /** Redacted view of a project API key (the management list never returns the token). */
@@ -154,7 +183,11 @@ export const api = {
   login: (email: string, password: string) =>
     request<{ userId: string }>('POST', '/auth/login', { email, password }),
   logout: () => request<void>('POST', '/auth/logout'),
-  me: () => request<{ userId: string; orgs: Org[]; isInstanceAdmin: boolean }>('GET', '/me'),
+  me: () =>
+    request<{ userId: string; orgs: Org[]; projectAccess: ProjectAccess[]; isInstanceAdmin: boolean }>(
+      'GET',
+      '/me',
+    ),
   version: () =>
     request<{ current: string; latest: string | null; updateAvailable: boolean; releaseUrl: string | null }>(
       'GET',
@@ -162,12 +195,36 @@ export const api = {
     ),
   projects: (orgId: string) =>
     request<{ projects: Project[] }>('GET', `/orgs/${orgId}/projects`),
+  // Org members = the agency's developers/staff (owner/admin).
   listMembers: (orgId: string) =>
     request<{ members: OrgMember[] }>('GET', `/orgs/${orgId}/members`),
-  addMember: (orgId: string, email: string) =>
-    request<{ member: OrgMember; tempPassword?: string }>('POST', `/orgs/${orgId}/members`, { email }),
   removeMember: (orgId: string, userId: string) =>
     request<void>('DELETE', `/orgs/${orgId}/members/${encodeURIComponent(userId)}`),
+  // Invites: developer (org admin) and client (project member). The raw token is
+  // returned ONCE; the UI builds an invite link from it.
+  inviteDeveloper: (orgId: string, email: string) =>
+    request<{ invite: Invite; token: string }>('POST', `/orgs/${orgId}/invites`, { email }),
+  inviteClient: (orgId: string, projectId: string, email: string) =>
+    request<{ invite: Invite; token: string }>('POST', `/orgs/${orgId}/projects/${projectId}/invites`, { email }),
+  listInvites: (orgId: string, projectId?: string) =>
+    request<{ invites: Invite[] }>(
+      'GET',
+      `/orgs/${orgId}/invites${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''}`,
+    ),
+  revokeInvite: (orgId: string, id: string) =>
+    request<void>('DELETE', `/orgs/${orgId}/invites/${encodeURIComponent(id)}`),
+  peekInvite: (token: string) =>
+    request<{ invite: InvitePeek }>('GET', `/invites/peek?token=${encodeURIComponent(token)}`),
+  acceptInvite: (token: string) =>
+    request<{ orgId: string; projectId: string | null; role: string }>('POST', '/invites/accept', { token }),
+  // Project clients (project-scoped members).
+  listProjectMembers: (orgId: string, projectId: string) =>
+    request<{ members: OrgMember[] }>('GET', `/orgs/${orgId}/projects/${projectId}/members`),
+  removeProjectMember: (orgId: string, projectId: string, userId: string) =>
+    request<void>(
+      'DELETE',
+      `/orgs/${orgId}/projects/${projectId}/members/${encodeURIComponent(userId)}`,
+    ),
   createProject: (orgId: string, name: string, slug: string) =>
     request<{ project: Project }>('POST', `/orgs/${orgId}/projects`, { name, slug }),
   listPages: (orgId: string, projectId: string) =>

@@ -14,6 +14,7 @@ vi.mock('../src/views/PageEditor', () => ({ PageEditor: () => <div>FULL EDITOR</
 vi.mock('../src/views/ClientPageEditor', () => ({ ClientPageEditor: () => <div>CLIENT EDITOR</div> }));
 vi.mock('../src/views/PublishBar', () => ({ PublishBar: () => <div>PUBLISH BAR</div> }));
 vi.mock('../src/views/TeamManager', () => ({ TeamManager: () => <div>TEAM MANAGER</div> }));
+vi.mock('../src/views/ClientsManager', () => ({ ClientsManager: () => <div>CLIENTS MANAGER</div> }));
 vi.mock('../src/views/DatasetManager', () => ({ DatasetManager: () => <div /> }));
 vi.mock('../src/views/MediaManager', () => ({ MediaManager: () => <div /> }));
 vi.mock('../src/views/ApiKeysManager', () => ({ ApiKeysManager: () => <div /> }));

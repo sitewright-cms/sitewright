@@ -10,6 +10,7 @@ import { FormsManager } from './FormsManager';
 import { SubmissionsInbox } from './SubmissionsInbox';
 import { SettingsView } from './settings/SettingsView';
 import { TeamManager } from './TeamManager';
+import { ClientsManager } from './ClientsManager';
 import { PublishBar } from './PublishBar';
 
 interface ProjectViewProps {
@@ -19,7 +20,7 @@ interface ProjectViewProps {
 }
 
 // The constrained client role only ever sees the pages list + the restricted editor.
-const MANAGE_TABS = ['pages', 'data', 'media', 'forms', 'inbox', 'settings', 'team', 'access'] as const;
+const MANAGE_TABS = ['pages', 'data', 'media', 'forms', 'inbox', 'settings', 'clients', 'team', 'access'] as const;
 type Tab = (typeof MANAGE_TABS)[number];
 
 export function ProjectView({ org, project, onBack }: ProjectViewProps) {
@@ -122,6 +123,8 @@ export function ProjectView({ org, project, onBack }: ProjectViewProps) {
         <SubmissionsInbox key={`${org.id}/${project.id}`} org={org} project={project} />
       ) : tab === 'settings' ? (
         <SettingsView key={`${org.id}/${project.id}`} org={org} project={project} />
+      ) : tab === 'clients' ? (
+        <ClientsManager key={`${org.id}/${project.id}`} org={org} project={project} />
       ) : tab === 'team' ? (
         <TeamManager key={org.id} org={org} />
       ) : tab === 'access' ? (

@@ -1,12 +1,13 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { api, type Org, type Project } from '../api';
+import { api, type Org, type Project, type ProjectAccess } from '../api';
 
 interface DashboardProps {
   orgs: Org[];
+  projectAccess: ProjectAccess[];
   onOpen: (org: Org, project: Project) => void;
 }
 
-export function Dashboard({ orgs, onOpen }: DashboardProps) {
+export function Dashboard({ orgs, projectAccess, onOpen }: DashboardProps) {
   const [orgId, setOrgId] = useState(orgs[0]?.id ?? '');
   const [projects, setProjects] = useState<Project[]>([]);
   const [name, setName] = useState('');
@@ -49,6 +50,35 @@ export function Dashboard({ orgs, onOpen }: DashboardProps) {
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-8">
+      {/* Sites a client can edit (project-scoped access), shown above any org they own. */}
+      {projectAccess.length > 0 && (
+        <section className="mb-8">
+          <h2 className="mb-3 text-xl font-semibold">Your sites</h2>
+          <ul className="flex flex-col gap-2">
+            {projectAccess.map((pa) => (
+              <li key={pa.projectId}>
+                <button
+                  className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-left hover:border-indigo-400"
+                  onClick={() =>
+                    onOpen(
+                      { id: pa.orgId, name: pa.orgName, slug: pa.orgSlug, role: pa.role },
+                      { id: pa.projectId, name: pa.projectName, slug: pa.projectSlug },
+                    )
+                  }
+                >
+                  <span className="font-medium">{pa.projectName}</span>{' '}
+                  <span className="text-sm text-slate-400">· {pa.orgName}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {orgs.length === 0 ? (
+        projectAccess.length === 0 && <p className="text-sm text-slate-400">No projects yet.</p>
+      ) : (
+        <>
       {orgs.length > 1 && (
         <select
           aria-label="Organization"
@@ -107,6 +137,8 @@ export function Dashboard({ orgs, onOpen }: DashboardProps) {
         </button>
       </form>
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+        </>
+      )}
     </main>
   );
 }

@@ -147,7 +147,8 @@ describe('company → schema.org + favicon on publish', () => {
     await proj.putContent('settings', 'settings', {
       brand: { name: 'ClassCar', colors: { primary: '#e11' } },
       company: { legalName: 'ClassCar Hire CC' },
-      website: { siteUrl: 'https://classcar.example' },
+      // customHead is a raw blob exposed only to the <head> — NOT via a variable.
+      website: { siteUrl: 'https://classcar.example', customHead: '<meta name="x" content="head-only" />' },
       settings: { defaultLocale: 'en', locales: ['en'] },
     });
     await proj.putContent('page', 'home', {
@@ -159,13 +160,18 @@ describe('company → schema.org + favicon on publish', () => {
         type: 'Section',
         children: [
           { id: 'h', type: 'Heading', props: { text: '© {{ company.legalName }} — {{ page.title }}', level: 2 } },
-          { id: 't', type: 'RichText', props: { text: 'Visit {{ website.siteUrl }} · {{ company.unknown }}' } },
+          { id: 't', type: 'RichText', props: { text: 'Visit {{ website.siteUrl }} · {{ company.unknown }} · {{ website.customHead }}' } },
         ],
       },
     });
     const html = await publishAndFetchHome();
     expect(html).toContain('© ClassCar Hire CC — Welcome'); // company + page vars
-    expect(html).toContain('Visit https://classcar.example'); // website var
+    expect(html).toContain('Visit https://classcar.example'); // website.siteUrl (the public field)
     expect(html).toContain('{{ company.unknown }}'); // unknown var left literal, not blanked
+    // `website.*` exposes ONLY siteUrl: the raw customHead is not reachable as a
+    // variable — the placeholder stays literal in the RichText body.
+    const body = html.slice(html.indexOf('<body'));
+    expect(body).toContain('{{ website.customHead }}'); // not substituted in the body
+    expect(body).not.toContain('head-only'); // the raw blob never reaches page text
   });
 });

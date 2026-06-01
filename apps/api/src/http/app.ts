@@ -830,7 +830,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const html = renderDocument(page, {
         brand,
         // {{ company.* }}/{{ website.* }}/{{ page.* }} substitution (WYSIWYG parity with publish).
-        vars: { company: brand, website: website ?? {}, page: { title: page.title, path: page.path } },
+        // `website` is projected to only its public fields (not the raw head/footer/CSS blobs).
+        vars: { company: brand, website: { siteUrl: website?.siteUrl }, page: { title: page.title, path: page.path } },
         datasets: Object.fromEntries(byDataset),
         includeDrafts: true,
         media,

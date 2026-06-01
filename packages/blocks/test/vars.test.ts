@@ -27,9 +27,12 @@ describe('substituteVars', () => {
     expect(substituteVars('{{ company.address }}', vars)).toBe('{{ company.address }}'); // object leaf, not stringified
   });
 
-  it('never traverses prototype-pollution keys', () => {
+  it('never traverses prototype-pollution keys or inherited methods', () => {
     expect(substituteVars('{{ company.__proto__.x }}', vars)).toBe('{{ company.__proto__.x }}');
     expect(substituteVars('{{ company.constructor.name }}', vars)).toBe('{{ company.constructor.name }}');
+    expect(substituteVars('{{ company.prototype.x }}', vars)).toBe('{{ company.prototype.x }}');
+    // Inherited non-enumerable methods are unreachable (own-enumerable lookup only).
+    expect(substituteVars('{{ company.toString }}', vars)).toBe('{{ company.toString }}');
   });
 
   it('returns raw text (no escaping — the renderer escapes); dangerous values pass through verbatim for the caller to escape', () => {

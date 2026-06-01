@@ -262,6 +262,9 @@ const DEFAULT_MAX_OUTPUT = 1_048_576; // 1 MiB
  */
 export function renderTemplate(source: string, ctx: TemplateContext = {}, opts: RenderOptions = {}): string {
   validateTemplate(source);
+  // Partials are rendered verbatim too — validate each so a malicious `{{> snippet}}`
+  // cannot smuggle a <script>/handler/unsafe-context past the main-template check.
+  if (ctx.partials) for (const partialSource of Object.values(ctx.partials)) validateTemplate(partialSource);
   const template = compileCached(source);
   const data = { company: ctx.company, website: ctx.website, page: ctx.page, data: ctx.data };
   let html: string;
@@ -273,6 +276,11 @@ export function renderTemplate(source: string, ctx: TemplateContext = {}, opts: 
       allowProtoMethodsByDefault: false,
     });
   } catch (err) {
+    // A circular/too-deep {{> partial}} chain overflows the stack — turn it into a clear,
+    // bounded error (it is caught here, so the worker is never crashed by it).
+    if (err instanceof RangeError) {
+      throw new TemplateError('render failed: a circular or too-deeply-nested {{> partial}} include');
+    }
     throw new TemplateError(err instanceof Error ? `render error: ${err.message}` : 'render error');
   }
   const max = opts.maxOutput ?? DEFAULT_MAX_OUTPUT;

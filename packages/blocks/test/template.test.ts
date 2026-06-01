@@ -59,6 +59,16 @@ describe('renderTemplate — Handlebars features', () => {
       '<ul><li>Widget (9)</li><li>Gadget (12)</li></ul>',
     );
   });
+
+  it('VALIDATES partial sources too (an unsafe partial is rejected, not just the main template)', () => {
+    const c: TemplateContext = { partials: { evil: '<script>steal()</script>' } };
+    expect(() => renderTemplate('<div>{{> evil}}</div>', c)).toThrow(TemplateError);
+  });
+
+  it('turns a circular {{> partial}} chain into a clear error (not a worker crash)', () => {
+    const c: TemplateContext = { partials: { a: '{{> b}}', b: '{{> a}}' } };
+    expect(() => renderTemplate('{{> a}}', c)).toThrow(/circular|partial/i);
+  });
 });
 
 describe('renderTemplate — curated helpers (extensibility)', () => {

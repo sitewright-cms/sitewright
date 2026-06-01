@@ -50,6 +50,42 @@ describe('render-template API (isolated worker)', () => {
     expect((res.json() as { html: string }).html).toBe('<h1>Site</h1><p>Site</p>');
   });
 
+  it('renders a template that includes a saved snippet (Handlebars partial)', async () => {
+    const { t, orgId, projectId } = await setup();
+    await app.inject({
+      method: 'PUT',
+      url: `/orgs/${orgId}/projects/${projectId}/content/snippet/card`,
+      cookies: { sw_session: t },
+      payload: { id: 'card', name: 'card', source: '<li>{{ company.name }}</li>' },
+    });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/orgs/${orgId}/projects/${projectId}/render-template`,
+      cookies: { sw_session: t },
+      payload: { template: '<ul>{{> card}}</ul>' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { html: string }).html).toBe('<ul><li>Site</li></ul>');
+  });
+
+  it('rejects rendering when a SAVED snippet is unsafe (partials are validated too)', async () => {
+    const { t, orgId, projectId } = await setup();
+    await app.inject({
+      method: 'PUT',
+      url: `/orgs/${orgId}/projects/${projectId}/content/snippet/evil`,
+      cookies: { sw_session: t },
+      payload: { id: 'evil', name: 'evil', source: '<script>steal()</script>' },
+    });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/orgs/${orgId}/projects/${projectId}/render-template`,
+      cookies: { sw_session: t },
+      payload: { template: '<div>{{> evil}}</div>' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error: string }).error).toMatch(/script/i);
+  });
+
   it('rejects an unsafe template with 400 (the validator runs in the worker)', async () => {
     const { t, orgId, projectId } = await setup();
     const res = await app.inject({

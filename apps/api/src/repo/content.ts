@@ -13,6 +13,7 @@ import {
   MediaAssetSchema,
   PageSchema,
   PartialSchema,
+  SnippetSchema,
   PatternSchema,
   PageTranslationSchema,
   TemplateSchema,
@@ -56,6 +57,9 @@ const SCHEMAS = new Map<ContentKind, z.ZodTypeAny>([
   ['page', PageSchema],
   ['partial', PartialSchema],
   ['template', TemplateSchema],
+  // Code-first reusable Handlebars fragment (the templating pivot's partial), included
+  // via {{> name}}; source validated at render time.
+  ['snippet', SnippetSchema],
   // A reusable pre-composed block subtree (fork-on-insert library); tree-bearing.
   ['pattern', PatternSchema],
   // A per-locale override of a page's content (multilingual); tree-bearing.

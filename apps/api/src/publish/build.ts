@@ -268,6 +268,10 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
             : undefined;
         const html = renderDocument(page, {
           brand,
+          // {{ company.* }}/{{ website.* }}/{{ page.* }} substitution in text props.
+          // `website` is projected to only its public fields — never the raw
+          // head/footer/CSS blobs, which aren't meant to be surfaced via a variable.
+          vars: { company: identity, website: { siteUrl: website?.siteUrl }, page: { title: page.title, path: page.path } },
           datasets,
           entry: route.entry,
           includeDrafts: false,

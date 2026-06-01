@@ -780,9 +780,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // Brand tokens come from the saved Corporate Identity singleton; fall back to
       // the project name with default tokens when settings aren't configured yet.
       let brand: CorporateIdentity = { name: project.name, colors: {} };
+      let website: Settings['website'];
       try {
         const settings = (await contentRepo.get(ctx, 'settings', SETTINGS_ENTITY_ID)) as Settings;
         brand = settings.identity;
+        website = settings.website;
       } catch (err) {
         if (!(err instanceof NotFoundError)) throw err;
       }
@@ -827,6 +829,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       }
       const html = renderDocument(page, {
         brand,
+        // {{ company.* }}/{{ website.* }}/{{ page.* }} substitution (WYSIWYG parity with publish).
+        // `website` is projected to only its public fields (not the raw head/footer/CSS blobs).
+        vars: { company: brand, website: { siteUrl: website?.siteUrl }, page: { title: page.title, path: page.path } },
         datasets: Object.fromEntries(byDataset),
         includeDrafts: true,
         media,

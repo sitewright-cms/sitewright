@@ -5,6 +5,7 @@ export * from './icons.js';
 export * from './brand-icons.js';
 export * from './components.js';
 export * from './props.js';
+export * from './vars.js';
 export * from './brand-css.js';
 export * from './descriptors.js';
 export * from './preview-css.js';

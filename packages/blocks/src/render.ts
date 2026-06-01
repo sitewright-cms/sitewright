@@ -8,6 +8,7 @@ import { HONEYPOT_FIELD, FORM_ID_FIELD } from '@sitewright/schema';
 import { resolveBinding } from '@sitewright/core';
 import { escapeAttr, escapeHtml } from './escape.js';
 import { textProp, urlProp } from './props.js';
+import { substituteVars, type VarContext } from './vars.js';
 import { resolveInternalUrl } from './url.js';
 import { iconBody } from './icons.js';
 import { brandIcon } from './brand-icons.js';
@@ -65,6 +66,12 @@ export interface RenderContext {
    * enabled renders the hCaptcha widget; absent → no widget (the flag is inert).
    */
   hcaptchaSiteKey?: string;
+  /**
+   * Variable context for `{{ company.* }}` / `{{ website.* }}` / `{{ page.* }}`
+   * substitution in text props (see vars.ts). Absent → no substitution. Never
+   * applied to the raw `Html` block (its content is emitted unescaped).
+   */
+  vars?: VarContext;
 }
 
 const PICTURE_SIZES = '(min-width: 1280px) 1280px, 100vw';
@@ -189,6 +196,10 @@ function renderChildren(node: PageNode, ctx: RenderContext, selfEntry: Entry | u
 export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
   const props = node.props ?? {};
   const selfEntry = ownEntry(node, ctx);
+  // Read a text prop with `{{ … }}` variable substitution applied. Output is still
+  // escaped by each call site, so a substituted value can never inject markup. NOT
+  // used for the raw Html block (which emits unescaped).
+  const tp = (key: string, fallback = ''): string => substituteVars(textProp(props, selfEntry, key, fallback), ctx.vars);
   const inner = renderChildren(node, ctx, selfEntry);
   const root = ctx.root ?? '';
   // Locale subtree prefix for internal page links (not assets). '' for default/single.
@@ -209,9 +220,9 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
     case 'Card':
       return `<div data-sw-block="Card"${cls}>${inner}</div>`;
     case 'Hero': {
-      const title = textProp(props, selfEntry, 'title');
-      const subtitle = textProp(props, selfEntry, 'subtitle');
-      const ctaText = textProp(props, selfEntry, 'ctaText');
+      const title = tp('title');
+      const subtitle = tp('subtitle');
+      const ctaText = tp('ctaText');
       const ctaHref = resolveInternalUrl(urlProp(props, selfEntry, 'ctaHref', '#'), root, lp);
       return (
         `<div data-sw-block="Hero"${cls}>` +
@@ -226,36 +237,36 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
     }
     case 'Heading': {
       const level = clamp(Number(props.level) || 2, 1, 6);
-      const text = escapeHtml(textProp(props, selfEntry, 'text'));
+      const text = escapeHtml(tp('text'));
       return `<h${level} data-sw-block="Heading"${cls}>${text}</h${level}>`;
     }
     case 'RichText': {
-      const text = textProp(props, selfEntry, 'text');
+      const text = tp('text');
       return `<div data-sw-block="RichText"${cls}>${text ? `<p>${escapeHtml(text)}</p>` : ''}${inner}</div>`;
     }
     case 'Image': {
       const src = urlProp(props, selfEntry, 'src', '');
-      const alt = textProp(props, selfEntry, 'alt');
+      const alt = tp('alt');
       if (!src) return `<div data-sw-block="Image"${cls} data-sw-empty="1"></div>`;
       const loading = props.priority === true ? 'eager' : 'lazy';
       return imageTag(src, alt, loading, ctx, root, cls);
     }
     case 'Button': {
-      const text = textProp(props, selfEntry, 'text');
+      const text = tp('text');
       const href = resolveInternalUrl(urlProp(props, selfEntry, 'href', '#'), root, lp);
       return `<a data-sw-block="Button"${cls} href="${escapeAttr(href)}">${escapeHtml(text)}${inner}</a>`;
     }
     case 'Link': {
-      const text = textProp(props, selfEntry, 'text');
+      const text = tp('text');
       const href = resolveInternalUrl(urlProp(props, selfEntry, 'href', '#'), root, lp);
       return `<a data-sw-block="Link"${cls} href="${escapeAttr(href)}">${escapeHtml(text)}${inner}</a>`;
     }
     case 'Header': {
-      const brand = textProp(props, selfEntry, 'brand');
+      const brand = tp('brand');
       return `<header data-sw-block="Header"${cls}><div data-sw-part="container"><span data-sw-part="brand">${escapeHtml(brand)}</span><nav data-sw-part="nav">${inner}</nav></div></header>`;
     }
     case 'Footer': {
-      const text = textProp(props, selfEntry, 'text');
+      const text = tp('text');
       return `<footer data-sw-block="Footer"${cls}><div data-sw-part="container">${escapeHtml(text)}${inner}</div></footer>`;
     }
     case 'Html': {
@@ -274,7 +285,7 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
       // scripts are both blocked; `img-src 'self' data:` blocks external CSS exfil),
       // so embedded scripts don't run there; they run only on the customer's own
       // webspace after export.
-      const raw = textProp(props, selfEntry, 'html');
+      const raw = textProp(props, selfEntry, 'html'); /* RAW: emitted unescaped — no var substitution */
       return `<div data-sw-block="Html"${cls}>${raw}</div>`;
     }
     case 'Carousel': {
@@ -282,7 +293,7 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
       // that swipes with no JS); the platform's `components.js` (shipped only when
       // a component is used, from the site's own origin) enhances it with autoplay/
       // arrows/dots/keyboard. Settings come from typed props (end-user-editable).
-      const label = textProp(props, selfEntry, 'label');
+      const label = tp('label');
       const autoplay = props.autoplay === true;
       const loop = props.loop !== false; // default on
       const interval = clamp(Number(props.interval) || 5000, 1000, 60000);
@@ -305,9 +316,9 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
     case 'Slide': {
       // One carousel slide: an optional optimized image + an escaped caption. Any
       // author-placed child blocks render after the figure.
-      const caption = textProp(props, selfEntry, 'caption');
+      const caption = tp('caption');
       const src = urlProp(props, selfEntry, 'image', '');
-      const alt = textProp(props, selfEntry, 'alt');
+      const alt = tp('alt');
       const img = src ? imageTag(src, alt, 'lazy', ctx, root) : '';
       const figure =
         img || caption
@@ -322,7 +333,7 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
       // Zero-JS disclosure group (native <details> children). CSS-only component.
       return `<div data-sw-block="Accordion"${cls}>${inner}</div>`;
     case 'AccordionItem': {
-      const title = textProp(props, selfEntry, 'title');
+      const title = tp('title');
       const open = props.open === true ? ' open' : '';
       return (
         `<details data-sw-block="AccordionItem"${cls}${open}>` +
@@ -334,7 +345,7 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
       // A thumbnail grid; the platform JS opens a full-screen overlay. PE-first:
       // the empty overlay is hidden until enhanced; items are plain anchors that,
       // with no JS, just open the full image.
-      const label = textProp(props, selfEntry, 'label');
+      const label = tp('label');
       const a11y = label ? ` aria-label="${escapeAttr(label)}"` : '';
       return (
         `<div data-sw-block="Lightbox"${cls} data-sw-component="lightbox" role="group"${a11y}>` +
@@ -346,8 +357,8 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
       const full = urlProp(props, selfEntry, 'image', '');
       if (!full) return `<a data-sw-block="LightboxItem"${cls} data-sw-empty="1"></a>`;
       const thumb = urlProp(props, selfEntry, 'thumb', '') || full;
-      const alt = textProp(props, selfEntry, 'alt');
-      const caption = textProp(props, selfEntry, 'caption');
+      const alt = tp('alt');
+      const caption = tp('caption');
       const href = escapeAttr(resolveInternalUrl(full, root));
       const data = caption ? ` data-caption="${escapeAttr(caption)}"` : '';
       // The thumbnail reuses the optimized <picture>/<img> path; the anchor's href
@@ -361,8 +372,8 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
       // A trigger button + a native <dialog> (the platform JS wires open/close;
       // <dialog> itself provides focus trap, Escape, and ::backdrop). PE: without
       // JS the dialog stays closed; the trigger is visible.
-      const trigger = textProp(props, selfEntry, 'trigger') || 'Open';
-      const label = textProp(props, selfEntry, 'label');
+      const trigger = tp('trigger') || 'Open';
+      const label = tp('label');
       const a11y = label ? ` aria-label="${escapeAttr(label)}"` : '';
       return (
         `<div data-sw-block="Modal"${cls} data-sw-component="modal">` +
@@ -376,10 +387,10 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
       // Dismissable banner, rendered `hidden`; the platform JS reveals it only when
       // consent isn't already stored, and remembers dismissal. With no JS: no banner.
       const message =
-        textProp(props, selfEntry, 'message') || 'We use cookies to improve your experience.';
-      const acceptText = textProp(props, selfEntry, 'acceptText') || 'Accept';
+        tp('message') || 'We use cookies to improve your experience.';
+      const acceptText = tp('acceptText') || 'Accept';
       const policyHref = urlProp(props, selfEntry, 'policyHref', '');
-      const policyText = textProp(props, selfEntry, 'policyText') || 'Learn more';
+      const policyText = tp('policyText') || 'Learn more';
       const link = policyHref
         ? ` <a href="${escapeAttr(resolveInternalUrl(policyHref, root, lp))}">${escapeHtml(policyText)}</a>`
         : '';
@@ -394,7 +405,7 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
       // The JS builds the tablist from the panels' titles. PE: no JS → the tablist
       // stays hidden (CSS) and all panels render stacked. The tablist carries an
       // accessible name (APG) when a label is provided.
-      const label = textProp(props, selfEntry, 'label');
+      const label = tp('label');
       const a11y = label ? ` aria-label="${escapeAttr(label)}"` : '';
       return (
         `<div data-sw-block="Tabs"${cls} data-sw-component="tabs">` +
@@ -405,7 +416,7 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
       // A tab panel; its `title` (escaped) becomes the generated tab button label.
       // `tabindex="0"` keeps the panel keyboard-reachable even when its content has
       // no natively focusable element (APG Tabs).
-      const title = textProp(props, selfEntry, 'title');
+      const title = tp('title');
       return (
         `<div data-sw-block="Tab"${cls} data-sw-part="panel" role="tabpanel" tabindex="0" ` +
         `data-sw-title="${escapeAttr(title)}">${inner}</div>`
@@ -432,8 +443,8 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
       // only selects trusted static markup (unknown → empty placeholder). Size is
       // clamped; the accessible label is escaped.
       const size = clamp(Number(props.size) || 24, 8, 256);
-      const label = textProp(props, selfEntry, 'label');
-      const name = textProp(props, selfEntry, 'name');
+      const label = tp('label');
+      const name = tp('name');
       // Brand/social logos (simple-icons): `brand:<slug>` → a single FILL path.
       // Default to `currentColor` (themeable via className/text color); opt into
       // the official brand color with `brandColor: true`. Brand icons are usually

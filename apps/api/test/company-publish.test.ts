@@ -141,4 +141,31 @@ describe('company → schema.org + favicon on publish', () => {
     expect(exp.statusCode).toBe(200);
     expect((exp.json() as { project: { identity: unknown } }).project.identity).toMatchObject(company);
   });
+
+  it('substitutes {{ company.* }} / {{ website.* }} / {{ page.* }} variables in published text', async () => {
+    const proj = client.project(projectId);
+    await proj.putContent('settings', 'settings', {
+      brand: { name: 'ClassCar', colors: { primary: '#e11' } },
+      company: { legalName: 'ClassCar Hire CC' },
+      website: { siteUrl: 'https://classcar.example' },
+      settings: { defaultLocale: 'en', locales: ['en'] },
+    });
+    await proj.putContent('page', 'home', {
+      id: 'home',
+      path: '/',
+      title: 'Welcome',
+      root: {
+        id: 'r',
+        type: 'Section',
+        children: [
+          { id: 'h', type: 'Heading', props: { text: '© {{ company.legalName }} — {{ page.title }}', level: 2 } },
+          { id: 't', type: 'RichText', props: { text: 'Visit {{ website.siteUrl }} · {{ company.unknown }}' } },
+        ],
+      },
+    });
+    const html = await publishAndFetchHome();
+    expect(html).toContain('© ClassCar Hire CC — Welcome'); // company + page vars
+    expect(html).toContain('Visit https://classcar.example'); // website var
+    expect(html).toContain('{{ company.unknown }}'); // unknown var left literal, not blanked
+  });
 });

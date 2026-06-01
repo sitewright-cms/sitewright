@@ -268,6 +268,8 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
             : undefined;
         const html = renderDocument(page, {
           brand,
+          // {{ company.* }}/{{ website.* }}/{{ page.* }} substitution in text props.
+          vars: { company: identity, website: website ?? {}, page: { title: page.title, path: page.path } },
           datasets,
           entry: route.entry,
           includeDrafts: false,

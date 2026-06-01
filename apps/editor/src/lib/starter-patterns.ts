@@ -67,11 +67,18 @@ export const STARTER_PATTERNS: Pattern[] = [
     name: 'Two-column split',
     root: {
       id: 'split-root',
-      type: 'Grid',
-      props: { columns: 2 },
+      type: 'Section',
+      props: { tone: 'surface' },
       children: [
-        { id: 'split-c1', type: 'Card', children: [heading('split-c1h', 'A focused headline', 2), richText('split-c1t', 'Supporting copy that explains the value in a sentence or two.'), button('split-c1b', 'Learn more')] },
-        { id: 'split-c2', type: 'Card', children: [heading('split-c2h', 'A second column', 3), richText('split-c2t', 'Pair the copy with a feature list, image, or testimonial.')] },
+        {
+          id: 'split-grid',
+          type: 'Grid',
+          props: { columns: 2 },
+          children: [
+            { id: 'split-c1', type: 'Card', children: [heading('split-c1h', 'A focused headline', 2), richText('split-c1t', 'Supporting copy that explains the value in a sentence or two.'), button('split-c1b', 'Learn more')] },
+            { id: 'split-c2', type: 'Card', children: [heading('split-c2h', 'A second column', 3), richText('split-c2t', 'Pair the copy with a feature list, image, or testimonial.')] },
+          ],
+        },
       ],
     },
   },

@@ -45,8 +45,11 @@ import { GlobalSmtpMailer, ProjectSmtpMailer, type SubmissionMailer, type Projec
 import { HttpHcaptchaVerifier, type HcaptchaVerifier } from '../mail/hcaptcha.js';
 import { createSession, revokeSession, validateSession } from '../auth/sessions.js';
 import {
+  addOrgMember,
   getUserEmail,
+  listOrgMembers,
   listOrgsForUser,
+  removeOrgMember,
   login,
   registerAccount,
   tenantContext,
@@ -159,6 +162,10 @@ const AiGenerateBody = z.object({
 function startOfMonthUTC(now: Date): Date {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 }
+
+const AddMemberBody = z.object({
+  email: z.string().email(),
+});
 
 const CreateProjectBody = z.object({
   name: z.string().min(1).max(200),
@@ -612,6 +619,46 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     const ctx = await tenantContext(db, userId, req.params.orgId);
     return reply.send({ projects: await projects.list(ctx) });
   });
+
+  // ---- Org membership (the agency adds clients as the constrained `member` role) ----
+  app.get<{ Params: { orgId: string } }>(
+    '/orgs/:orgId/members',
+    { config: rl(30) },
+    async (req, reply) => {
+      const userId = await requireUserId(req);
+      const ctx = await tenantContext(db, userId, req.params.orgId);
+      return reply.send({ members: await listOrgMembers(db, ctx) });
+    },
+  );
+
+  app.post<{ Params: { orgId: string } }>(
+    '/orgs/:orgId/members',
+    // Tighter than other writes (10/min): the response shape differs for a new vs.
+    // already-registered email, which is a weak account-existence oracle for an
+    // authenticated owner/admin. A low cap blunts enumeration until invite-acceptance
+    // tokens replace this direct-add flow (see addOrgMember).
+    { config: rl(10) },
+    async (req, reply) => {
+      const userId = await requireUserId(req);
+      const ctx = await tenantContext(db, userId, req.params.orgId);
+      const body = AddMemberBody.parse(req.body);
+      const result = await addOrgMember(db, ctx, body.email);
+      // `tempPassword` is present only for a freshly-created user and is returned ONCE
+      // (never stored, never re-derivable) — the inviter shares it with the client.
+      return reply.code(201).send(result);
+    },
+  );
+
+  app.delete<{ Params: { orgId: string; userId: string } }>(
+    '/orgs/:orgId/members/:userId',
+    { config: rl(20) },
+    async (req, reply) => {
+      const callerId = await requireUserId(req);
+      const ctx = await tenantContext(db, callerId, req.params.orgId);
+      await removeOrgMember(db, ctx, req.params.userId);
+      return reply.code(204).send();
+    },
+  );
 
   app.post<{ Params: { orgId: string } }>('/orgs/:orgId/projects', async (req, reply) => {
     const userId = await requireUserId(req);

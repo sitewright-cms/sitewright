@@ -111,6 +111,26 @@ describe('api client', () => {
     expect(await api.me()).toEqual({ userId: 'u', orgs: [] });
   });
 
+  it('manages org members (list / add / remove)', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { members: [] }));
+    await api.listMembers('o');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/orgs/o/members');
+
+    fetchMock.mockResolvedValue(jsonResponse(201, { member: { userId: 'u', email: 'c@a.co', role: 'member', createdAt: '' }, tempPassword: 'pw' }));
+    const added = await api.addMember('o', 'c@a.co');
+    expect(added.tempPassword).toBe('pw');
+    const [addUrl, addInit] = fetchMock.mock.calls[1]!;
+    expect(addUrl).toBe('/orgs/o/members');
+    expect(addInit.method).toBe('POST');
+    expect(JSON.parse(addInit.body)).toEqual({ email: 'c@a.co' });
+
+    fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
+    expect(await api.removeMember('o', 'u-1')).toBeUndefined();
+    const [delUrl, delInit] = fetchMock.mock.calls[2]!;
+    expect(delUrl).toBe('/orgs/o/members/u-1');
+    expect(delInit.method).toBe('DELETE');
+  });
+
   it('GETs the version/update status', async () => {
     fetchMock.mockResolvedValue(
       jsonResponse(200, { current: '1.0.0', latest: '1.1.0', updateAvailable: true, releaseUrl: 'u' }),

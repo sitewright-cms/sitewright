@@ -106,6 +106,13 @@ export interface Project {
   name: string;
   slug: string;
 }
+/** A user's membership in an org (the agency's owner/admin + the clients they add). */
+export interface OrgMember {
+  userId: string;
+  email: string;
+  role: 'owner' | 'admin' | 'member';
+  createdAt: string;
+}
 export type ApiKeyCapability = 'content:read' | 'content:write' | 'publish' | 'deploy';
 /** Redacted view of a project API key (the management list never returns the token). */
 export interface ApiKeyView {
@@ -155,6 +162,12 @@ export const api = {
     ),
   projects: (orgId: string) =>
     request<{ projects: Project[] }>('GET', `/orgs/${orgId}/projects`),
+  listMembers: (orgId: string) =>
+    request<{ members: OrgMember[] }>('GET', `/orgs/${orgId}/members`),
+  addMember: (orgId: string, email: string) =>
+    request<{ member: OrgMember; tempPassword?: string }>('POST', `/orgs/${orgId}/members`, { email }),
+  removeMember: (orgId: string, userId: string) =>
+    request<void>('DELETE', `/orgs/${orgId}/members/${encodeURIComponent(userId)}`),
   createProject: (orgId: string, name: string, slug: string) =>
     request<{ project: Project }>('POST', `/orgs/${orgId}/projects`, { name, slug }),
   listPages: (orgId: string, projectId: string) =>

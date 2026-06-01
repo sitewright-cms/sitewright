@@ -124,6 +124,9 @@ export function ProjectView({ org, project, onBack }: ProjectViewProps) {
                 >
                   <span className="font-medium">{p.title}</span>{' '}
                   <span className="text-sm text-slate-400">{p.path}</span>
+                  {p.status === 'draft' && (
+                    <span className="ml-2 rounded bg-slate-200 px-1.5 py-0.5 text-[11px] font-medium text-slate-600">draft</span>
+                  )}
                 </button>
               </li>
             ))}

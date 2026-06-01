@@ -30,6 +30,15 @@ function resolveRoot(
   return resolvePartials(resolveTemplate(page.root, page.template, templateMap), partialMap);
 }
 
+/**
+ * The pages a published build should include: everything except `draft`s. Filter a
+ * bundle's pages with this at the publish boundary (the preview/editor keep drafts
+ * visible). Status defaults to `published`, so pages predating the field are kept.
+ */
+export function publishedPages(pages: readonly Page[]): Page[] {
+  return pages.filter((page) => page.status !== 'draft');
+}
+
 /** Expands templates + partials for every non-collection page. */
 export function resolvedPages(bundle: ProjectBundle): ResolvedPage[] {
   const partialMap = buildPartialMap(bundle);

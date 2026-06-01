@@ -7,6 +7,7 @@ import {
   datasetEntries,
   entrySlug,
   pathToSlug,
+  publishedPages,
   resolvedPages,
 } from '../src/routes.js';
 
@@ -17,6 +18,17 @@ function page(partial: Partial<Page> & { id: string; path: string }): Page {
     ...partial,
   } as Page;
 }
+
+describe('publishedPages', () => {
+  it('drops draft pages and keeps published + status-absent (legacy) pages', () => {
+    const pages = [
+      page({ id: 'home', path: '/' }), // no status → published
+      page({ id: 'live', path: '/live', status: 'published' }),
+      page({ id: 'wip', path: '/wip', status: 'draft' }),
+    ];
+    expect(publishedPages(pages).map((p) => p.id)).toEqual(['home', 'live']);
+  });
+});
 
 function bundle(over: Partial<ProjectBundle> = {}): ProjectBundle {
   return {

@@ -14,6 +14,12 @@ describe('PageSchema', () => {
     expect(page.root.children?.[0]?.type).toBe('RichText');
   });
 
+  it('treats status as optional (absent = published) and accepts draft/published', () => {
+    expect(PageSchema.parse({ id: 'p', path: '/', title: 'P', root: { id: 'r', type: 'Section' } }).status).toBeUndefined();
+    expect(PageSchema.parse({ id: 'p', path: '/', title: 'P', status: 'draft', root: { id: 'r', type: 'Section' } }).status).toBe('draft');
+    expect(() => PageSchema.parse({ id: 'p', path: '/', title: 'P', status: 'archived', root: { id: 'r', type: 'Section' } })).toThrow();
+  });
+
   it('parses a collection page', () => {
     const page = PageSchema.parse({
       id: 'product',

@@ -66,7 +66,7 @@ describe('invites API', () => {
 
   it('developer invite → accept → org-wide admin access', async () => {
     const { t, orgId } = await registerOwner('owner@acme.test', 'Acme');
-    const proj = await makeProject(t, orgId, 'site');
+    await makeProject(t, orgId, 'site');
     const inv = await app.inject({ method: 'POST', url: `/orgs/${orgId}/invites`, cookies: { sw_session: t }, payload: { email: 'dev@acme.test' } });
     const inviteToken = (inv.json() as { token: string }).token;
 

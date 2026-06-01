@@ -4,6 +4,7 @@ import {
   NodeNotFoundError,
   TreeOperationError,
   collectClassNames,
+  extractClassNames,
   collectIds,
   findDuplicateIds,
   reIdTree,
@@ -106,6 +107,27 @@ describe('walk / find / ancestors / ids', () => {
     };
     expect(collectClassNames(tree)).toEqual(['flex gap-4', 'rounded-lg']);
     expect(collectClassNames(sample())).toEqual([]); // none set
+  });
+});
+
+describe('extractClassNames (code-first / raw markup)', () => {
+  it('pulls deduplicated tokens from double- and single-quoted class attributes', () => {
+    const html = `<main class="grid gap-4"><h1 class='text-xl grid'>x</h1></main>`;
+    expect(extractClassNames(html)).toEqual(['grid', 'gap-4', 'text-xl']);
+  });
+
+  it('strips Handlebars expressions so a dynamic class value leaks no half-token', () => {
+    // `{{ theme }}` is removed; only the literal `px-4` survives as a candidate.
+    expect(extractClassNames('<div class="{{ theme }} px-4">x</div>')).toEqual(['px-4']);
+  });
+
+  it('caps the candidate set (DoS guard against a synthetic class list)', () => {
+    const many = Array.from({ length: 5000 }, (_, i) => `c${i}`).join(' ');
+    expect(extractClassNames(`<div class="${many}">x</div>`, 100)).toHaveLength(100);
+  });
+
+  it('returns nothing for markup with no class attributes', () => {
+    expect(extractClassNames('<section><p>hi</p></section>')).toEqual([]);
   });
 });
 

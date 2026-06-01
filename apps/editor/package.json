@@ -12,9 +12,13 @@
     "e2e": "playwright test"
   },
   "dependencies": {
+    "@codemirror/lang-html": "^6.4.9",
+    "@codemirror/state": "^6.5.2",
+    "@codemirror/view": "^6.36.2",
     "@sitewright/blocks": "workspace:*",
     "@sitewright/core": "workspace:*",
     "@sitewright/schema": "workspace:*",
+    "codemirror": "^6.0.1",
     "motion": "^12.40.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"

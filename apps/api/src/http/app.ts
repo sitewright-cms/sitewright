@@ -24,7 +24,7 @@ import {
 import { renderDocument, usedComponentTypes, componentAssets } from '@sitewright/blocks';
 import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
 import { optimizeImage } from '@sitewright/image-pipeline';
-import { buildNav, collectClassNames, publishedPages, type ProjectBundle } from '@sitewright/core';
+import { buildNav, collectClassNames, extractClassNames, publishedPages, type ProjectBundle } from '@sitewright/core';
 import type { Database } from '../db/client.js';
 import { MediaStorage } from '../media/storage.js';
 import { MediaValidationError } from '../media/errors.js';
@@ -1548,6 +1548,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       template: z.string().max(256 * 1024).optional(),
       pageId: z.string().max(200).optional(),
       page: z.object({ title: z.string().max(300), path: z.string().max(2048) }).partial().optional(),
+      // When true, wrap the rendered body in a full styled <!doctype> document (the doc
+      // shell + the source's compiled Tailwind utilities inlined) so the editor preview is
+      // STYLED. Default false → the bare rendered body (used by API consumers/tests).
+      document: z.boolean().optional(),
     })
     .refine(
       (b) => (b.template !== undefined) !== (b.pageId !== undefined),
@@ -1582,9 +1586,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // Binding context: company (identity), website (public fields only), page, datasets→data.
       let company: Record<string, unknown> = { name: project.name };
       let website: Record<string, unknown> | undefined;
+      let brand: CorporateIdentity = { name: project.name, colors: {} };
       try {
         const settings = (await contentRepo.get(ctx, 'settings', SETTINGS_ENTITY_ID)) as Settings;
         company = settings.identity as unknown as Record<string, unknown>;
+        brand = settings.identity;
         website = settings.website ? { siteUrl: settings.website.siteUrl } : undefined;
       } catch (err) {
         if (!(err instanceof NotFoundError)) throw err;
@@ -1605,13 +1611,30 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       }
 
       try {
-        const html = await renderPool.render(templateSource, {
+        const rendered = await renderPool.render(templateSource, {
           company,
           website,
           page: pageCtx,
           data,
           partials,
         });
+        if (!body.document) return reply.send({ html: rendered });
+        // Styled-document preview: wrap the rendered body in the same doc shell publish uses
+        // and inline the source's literal Tailwind utilities. `extractClassNames` (the shared
+        // publish helper) dedupes + caps the candidate set, so an adversarial class list can't
+        // spike the compiler — mirroring Tailwind's own JIT model on the rendered body.
+        const classNames = extractClassNames(rendered);
+        const inlineStyles =
+          classNames.length > 0
+            ? [await compileUtilityCss([classNames.join(' ')], brandToTailwindTheme(brand))]
+            : undefined;
+        const previewPage: Page = {
+          id: 'preview',
+          path: String(pageCtx.path ?? '/'),
+          title: String(pageCtx.title ?? project.name),
+          root: { id: 'preview-root', type: 'Section' },
+        };
+        const html = renderDocument(previewPage, { brand, bodyHtml: rendered, inlineStyles });
         return reply.send({ html });
       } catch (err) {
         // Infra (worker/timeout) → 503; a template validation/compile/render error → 400.

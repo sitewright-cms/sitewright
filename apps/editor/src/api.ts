@@ -248,6 +248,24 @@ export const api = {
       `/orgs/${orgId}/projects/${projectId}/preview`,
       page,
     ),
+  // Live-preview backend for the code-first template editor: render a Handlebars `template`
+  // against the project context inside the isolated worker pool. `document: true` returns a
+  // full styled <!doctype> document (the doc shell + the source's compiled Tailwind inlined).
+  renderTemplate: (
+    orgId: string,
+    projectId: string,
+    body: {
+      template?: string;
+      pageId?: string;
+      page?: { title?: string; path?: string };
+      document?: boolean;
+    },
+  ) =>
+    request<{ html: string }>(
+      'POST',
+      `/orgs/${orgId}/projects/${projectId}/render-template`,
+      body,
+    ),
 
   // --- patterns (reusable, fork-on-insert block subtrees) ---
   listPatterns: (orgId: string, projectId: string) =>

@@ -17,6 +17,7 @@ import {
   type Form,
   type FormPublic,
   type MediaAsset,
+  type Snippet,
   type Page,
   type PageTranslation,
 } from '@sitewright/schema';
@@ -1572,9 +1573,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         byDataset.set(entry.dataset, [...(byDataset.get(entry.dataset) ?? []), entry]);
       }
       const data = Object.fromEntries(byDataset);
+      // Reusable Handlebars partials the template can {{> name}} (validated at render).
+      const partials = Object.fromEntries(
+        ((await contentRepo.list(ctx, 'snippet')) as Snippet[]).map((s) => [s.name, s.source]),
+      );
       // Bound the IPC payload serialized in THIS (parent) process — a large dataset must
       // not spike the API's heap (only the worker carries a --max-old-space ceiling).
-      if (JSON.stringify(data).length > 4 * 1024 * 1024) {
+      if (JSON.stringify(data).length + JSON.stringify(partials).length > 4 * 1024 * 1024) {
         return reply.code(413).send({ error: 'project data is too large to render' });
       }
 
@@ -1584,6 +1589,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           website,
           page: body.page ?? { title: project.name, path: '/' },
           data,
+          partials,
         });
         return reply.send({ html });
       } catch (err) {

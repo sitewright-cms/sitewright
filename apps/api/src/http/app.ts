@@ -23,7 +23,7 @@ import {
 import { renderDocument, usedComponentTypes, componentAssets } from '@sitewright/blocks';
 import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
 import { optimizeImage } from '@sitewright/image-pipeline';
-import { buildNav, collectClassNames, type ProjectBundle } from '@sitewright/core';
+import { buildNav, collectClassNames, publishedPages, type ProjectBundle } from '@sitewright/core';
 import type { Database } from '../db/client.js';
 import { MediaStorage } from '../media/storage.js';
 import { MediaValidationError } from '../media/errors.js';
@@ -790,7 +790,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const media = mediaStorage ? ((await contentRepo.list(ctx, 'media')) as MediaAsset[]) : [];
       // Auto-nav from the saved pages so Nav blocks render their menu in preview
       // (WYSIWYG parity with publish; an unsaved new page isn't in its own nav yet).
-      const savedPages = (await contentRepo.list(ctx, 'page')) as Page[];
+      // Drafts are excluded from nav here too, matching the published output.
+      const savedPages = publishedPages((await contentRepo.list(ctx, 'page')) as Page[]);
       const nav = {
         header: buildNav(savedPages, 'header'),
         footer: buildNav(savedPages, 'footer'),

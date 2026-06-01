@@ -19,6 +19,13 @@ export const PageSchema = z
     id: IdSchema,
     path: RoutePathSchema,
     title: z.string().min(1).max(300),
+    /**
+     * Publication status. `draft` pages are excluded from the published site, its
+     * sitemap, and the auto-nav — but stay editable and visible in the preview.
+     * Optional: an absent status means published, so existing pages (and the
+     * API/MCP) keep working unchanged. `publishedPages` keys off `!== 'draft'`.
+     */
+    status: z.enum(['draft', 'published']).optional(),
     seo: SeoSchema.optional(),
     /** Optional reusable layout: the template wraps this page at its Outlet node. */
     template: IdSchema.optional(),

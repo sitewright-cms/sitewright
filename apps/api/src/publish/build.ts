@@ -5,6 +5,7 @@ import {
   buildNav,
   collectClassNames,
   datasetEntries,
+  publishedPages,
   relativeRoot,
   type ProjectBundle,
 } from '@sitewright/core';
@@ -138,9 +139,14 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
   const base = resolve(outDir);
   const tmp = `${base}.tmp`;
 
+  // Drafts are excluded from the published site: filter once, so routes, auto-nav,
+  // and the sitemap all see only published pages. Draft *collection pages* are
+  // excluded here too (collectionRoutes iterates this filtered set); draft
+  // *collection entries* are filtered separately inside collectionRoutes.
+  const pubBundle: ProjectBundle = { ...bundle, pages: publishedPages(bundle.pages) };
   let routes;
   try {
-    routes = allRoutes(bundle);
+    routes = allRoutes(pubBundle);
   } catch (err) {
     // e.g. duplicate route slugs — author-correctable.
     throw new PublishError(err instanceof Error ? err.message : 'invalid route graph');
@@ -160,9 +166,9 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     const website = bundle.project.website;
     // Auto-nav: page-tree-derived menus per slot (same for every page; Nav blocks consume it).
     const nav = {
-      header: buildNav(bundle.pages, 'header'),
-      footer: buildNav(bundle.pages, 'footer'),
-      mobile: buildNav(bundle.pages, 'mobile'),
+      header: buildNav(pubBundle.pages, 'header'),
+      footer: buildNav(pubBundle.pages, 'footer'),
+      mobile: buildNav(pubBundle.pages, 'mobile'),
     };
     // Locales: the default locale publishes at the site root; every other locale
     // at `/<locale>/…`, using its translation's root (else falling back to the

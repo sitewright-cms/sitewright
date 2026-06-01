@@ -98,6 +98,23 @@ describe('auto-nav → publish', () => {
     expect(home).not.toContain('posts/'); // collection page excluded from nav
   });
 
+  it('excludes draft pages from the published site, its routes, and the nav', async () => {
+    const proj = client.project(projectId);
+    expect((await proj.putContent('page', 'home', navBlockPage('home', '/', 'Home', { slots: ['header'], order: 0 }))).statusCode).toBe(200);
+    // A draft page placed in the header nav — must NOT publish, route, or appear in the menu.
+    expect(
+      (await proj.putContent('page', 'secret', { ...navBlockPage('secret', '/secret', 'Secret', { slots: ['header'], order: 1 }), status: 'draft' })).statusCode,
+    ).toBe(200);
+    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
+
+    const home = await fetchSite('index.html');
+    expect(home).toContain('href="./"'); // Home is published
+    expect(home).not.toContain('>Secret<'); // draft excluded from the menu
+    expect(home).not.toContain('href="secret"');
+    // No route is generated for the draft page.
+    expect((await client.get(`/sites/${projectId}/secret/index.html`)).statusCode).toBe(404);
+  });
+
   it('omits pages without nav placement from the menu', async () => {
     const proj = client.project(projectId);
     expect((await proj.putContent('page', 'home', navBlockPage('home', '/', 'Home', { slots: ['header'] }))).statusCode).toBe(200);

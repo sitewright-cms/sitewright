@@ -3,11 +3,13 @@ import type {
   Binding,
   Dataset,
   MediaAsset,
+  NavSlot,
   Page,
   PageNode,
   PageTranslation,
   Pattern,
 } from '@sitewright/schema';
+import { NAV_SLOTS } from '@sitewright/schema';
 import { BLOCK_DESCRIPTORS, isContainerType, type BlockCategory } from '@sitewright/blocks';
 import { reIdTree } from '@sitewright/core';
 import { api, previewDocUrl, type Org, type Project } from '../api';
@@ -47,6 +49,13 @@ const PREVIEW_DEBOUNCE_MS = 400;
 export function PageEditor({ org, project, page, onClose }: PageEditorProps) {
   const [title, setTitle] = useState(page.title);
   const [root, setRoot] = useState<PageNode>(page.root);
+  // Page-level settings (status + nav placement). Page settings are not per-locale,
+  // so this panel is shown only when editing the default locale.
+  const [status, setStatus] = useState<'draft' | 'published'>(page.status ?? 'published');
+  const [navSlots, setNavSlots] = useState<NavSlot[]>(page.nav?.slots ?? []);
+  const [navTitle, setNavTitle] = useState(page.nav?.title ?? '');
+  const [navOrder, setNavOrder] = useState<number>(page.nav?.order ?? 0);
+  const [showSettings, setShowSettings] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(page.root.id);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -129,8 +138,20 @@ export function PageEditor({ org, project, page, onClose }: PageEditorProps) {
     };
   }, [org.id, project.id, page.id]);
 
-  // The page as currently edited — drives both save and live preview.
-  const draft: Page = useMemo(() => ({ ...page, title, root }), [page, title, root]);
+  // The page as currently edited — drives both save and live preview. Page-level
+  // settings (status, nav) override the loaded page; `undefined` clears the field.
+  const draft: Page = useMemo(
+    () => ({
+      ...page,
+      title,
+      root,
+      status,
+      // `order` is always included when there are slots — a truthiness check would
+      // drop an explicit `order: 0` (0 is falsy) on every save, losing the value.
+      nav: navSlots.length ? { slots: navSlots, ...(navTitle ? { title: navTitle } : {}), order: navOrder } : undefined,
+    }),
+    [page, title, root, status, navSlots, navTitle, navOrder],
+  );
 
   // Debounced server-side preview render. The loading flag is set inside the
   // timeout so rapidly-superseded keystrokes don't flash the spinner.
@@ -327,6 +348,9 @@ export function PageEditor({ org, project, page, onClose }: PageEditorProps) {
           onChange={(e) => setTitle(e.target.value)}
         />
         <span className="text-xs text-slate-400">{page.path}</span>
+        {isDefaultLocale && status === 'draft' && (
+          <span className="rounded bg-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-600">draft</span>
+        )}
         {settings && settings.locales.length > 1 && (
           <label className="flex items-center gap-1.5 text-xs text-slate-500">
             Locale
@@ -350,8 +374,18 @@ export function PageEditor({ org, project, page, onClose }: PageEditorProps) {
             {localeIsNew && !isDirty() ? ' · copied from default' : ''}
           </span>
         )}
+        {isDefaultLocale && (
+          <button
+            aria-label="Page settings"
+            aria-expanded={showSettings}
+            onClick={() => setShowSettings((s) => !s)}
+            className={`ml-auto rounded-md border px-3 py-1.5 text-sm ${showSettings ? 'border-slate-500 bg-slate-100' : 'border-slate-300 bg-white hover:border-slate-500'}`}
+          >
+            ⚙ Page settings
+          </button>
+        )}
         <button
-          className="ml-auto rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:border-slate-500"
+          className={`${isDefaultLocale ? '' : 'ml-auto '}rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm hover:border-slate-500`}
           title="Open a live preview window that auto-reloads on any change (incl. CLI/agent edits)"
           onClick={() =>
             window.open(
@@ -376,6 +410,74 @@ export function PageEditor({ org, project, page, onClose }: PageEditorProps) {
         </button>
       </div>
       {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
+
+      {showSettings && isDefaultLocale && (
+        <div className="mb-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <p className="mb-1.5 text-xs font-semibold text-slate-700">Status</p>
+              <div className="inline-flex rounded-md border border-slate-300 p-0.5">
+                {(['published', 'draft'] as const).map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    aria-pressed={status === s}
+                    onClick={() => setStatus(s)}
+                    className={`rounded px-3 py-1 text-sm capitalize ${status === s ? 'bg-slate-900 text-white' : 'text-slate-600'}`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1.5 text-[11px] text-slate-400">Drafts are excluded from the published site, sitemap, and menus (still previewable).</p>
+            </div>
+            <div>
+              <p className="mb-1.5 text-xs font-semibold text-slate-700">Navigation</p>
+              <div className="flex flex-wrap gap-3">
+                {NAV_SLOTS.map((slot) => (
+                  <label key={slot} className="flex items-center gap-1.5 text-sm capitalize">
+                    <input
+                      type="checkbox"
+                      aria-label={`Nav: ${slot}`}
+                      checked={navSlots.includes(slot)}
+                      onChange={(e) => setNavSlots((prev) => (e.target.checked ? [...prev, slot] : prev.filter((x) => x !== slot)))}
+                    />
+                    {slot}
+                  </label>
+                ))}
+              </div>
+              {navSlots.length > 0 && (
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <label className="flex flex-col text-[11px] text-slate-500">
+                    Menu label
+                    <input
+                      aria-label="Nav menu label"
+                      className="rounded-md border border-slate-300 px-2 py-1 text-sm"
+                      value={navTitle}
+                      placeholder={title}
+                      onChange={(e) => setNavTitle(e.target.value)}
+                    />
+                  </label>
+                  <label className="flex flex-col text-[11px] text-slate-500">
+                    Order
+                    <input
+                      aria-label="Nav order"
+                      type="number"
+                      className="rounded-md border border-slate-300 px-2 py-1 text-sm"
+                      value={navOrder}
+                      onChange={(e) => {
+                        const v = parseInt(e.target.value, 10);
+                        if (!Number.isNaN(v)) setNavOrder(v);
+                      }}
+                    />
+                  </label>
+                </div>
+              )}
+            </div>
+          </div>
+          <p className="mt-3 text-[11px] text-slate-400">Template selection arrives with the templates feature (Phase 3).</p>
+        </div>
+      )}
 
       <div className="flex min-h-0 flex-1 gap-4">
         {/* Left: palette + block outline */}

@@ -284,6 +284,8 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
               website: { siteUrl: website?.siteUrl },
               page: { title: page.title, path: page.path },
               data: datasets as Record<string, unknown>,
+              // Client-edited region overrides ({{edit "key"}}) baked into the static output.
+              content: page.content,
             });
           } catch (err) {
             throw new PublishError(

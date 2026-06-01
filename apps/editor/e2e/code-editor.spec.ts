@@ -26,10 +26,10 @@ test('code-first authoring: CodeMirror editor, live styled preview, save + persi
 
   // The CodeMirror editor shows the starter Handlebars source…
   await expect(page.locator('.cm-content')).toContainText('{{ company.name }}');
-  // …and the live STYLED preview renders the bound values (company name + page title).
+  // …and the live STYLED preview renders the bound company name + the scaffold's {{edit}} region.
   const preview = page.frameLocator('iframe[title="Preview"]');
   await expect(preview.getByRole('heading', { level: 1 })).toHaveText('Code Site');
-  await expect(preview.getByText('Home', { exact: true })).toBeVisible();
+  await expect(preview.getByText('Edit this tagline', { exact: true })).toBeVisible();
 
   // Edit the source (plain text sidesteps CodeMirror's bracket auto-close); preview updates.
   await page.locator('.cm-content').click();

@@ -77,6 +77,48 @@ describe('assertClientEditAllowed', () => {
   it('rejects a client changing the page template source (source is dev-owned)', () => {
     rejected((p) => { p.source = '<section>{{ company.name }}</section>'; });
   });
+
+  it('rejects a client adding content to a BLOCK page (content is a source-page surface only)', () => {
+    rejected((p) => { p.content = { sneaky: 'value' }; });
+  });
+});
+
+// A code-first source page: the client's editable surface is `content` (bound `{{edit}}`
+// regions), never the template.
+const sourcePage = (): Page => ({
+  id: 'home',
+  path: '/',
+  title: 'Home',
+  root: { id: 'r', type: 'Section' },
+  source: '<h1>{{edit "headline" "Welcome"}}</h1>',
+  content: { headline: 'Current copy' },
+});
+
+describe('assertClientEditAllowed — code-first source page', () => {
+  it('allows the client to change bound region content', () => {
+    const next = clone(sourcePage());
+    next.content = { headline: 'Client rewrote the headline' };
+    expect(() => assertClientEditAllowed(sourcePage(), next)).not.toThrow();
+  });
+
+  it('allows adding content for a new region key', () => {
+    const next = clone(sourcePage());
+    next.content = { headline: 'Current copy', tagline: 'Added by the client' };
+    expect(() => assertClientEditAllowed(sourcePage(), next)).not.toThrow();
+  });
+
+  it('still rejects changing the template source (even alongside a content edit)', () => {
+    const next = clone(sourcePage());
+    next.content = { headline: 'New' };
+    next.source = '<h1>{{edit "headline" "Welcome"}}</h1><script>x()</script>';
+    expect(() => assertClientEditAllowed(sourcePage(), next)).toThrow(ForbiddenError);
+  });
+
+  it('rejects changing page settings on a source page', () => {
+    const next = clone(sourcePage());
+    next.title = 'Renamed';
+    expect(() => assertClientEditAllowed(sourcePage(), next)).toThrow(ForbiddenError);
+  });
 });
 
 describe('hasEditableNode', () => {

@@ -2,13 +2,17 @@ import { isDeepStrictEqual } from 'node:util';
 import type { Page, PageNode } from '@sitewright/schema';
 import { ForbiddenError } from './context.js';
 
-// Server-side enforcement of the constrained client (member) editing role: a member
-// may change ONLY the props of `editable: true` nodes, and nothing else. This is the
-// authoritative guard — the client UI is advisory, so the rule cannot be bypassed by
-// crafting a request. The two trees must be structurally identical (same ids/types/
-// order/children/partialRef/binding/className/editable-flags); only editable nodes'
-// props may differ; and all page-level fields (title/path/status/nav/template/seo/
-// collection) must be unchanged.
+// Server-side enforcement of the constrained client (member) editing role. A member may
+// change ONLY:
+//   • the props of `editable: true` blocks (the block-page model), and/or
+//   • the `content` map — the bound region overrides of a code-first (`source`) page, where
+//     the developer marked `{{edit "key"}}` regions; the template `source` itself stays frozen.
+// Nothing else may change. This is the authoritative guard — the client UI is advisory, so the
+// rule cannot be bypassed by crafting a request. The two trees must be structurally identical
+// (same ids/types/order/children/partialRef/binding/className/editable-flags); only editable
+// nodes' props may differ; and all page-level fields (title/path/status/nav/template/source/
+// seo/collection) must be unchanged. `content` is deliberately NOT frozen — it is the client's
+// editable surface on a source page (bounded by the schema + HTML-escaped at render).
 
 /** True if `next` is a valid client edit of `prev` (structure identical; only editable nodes' props changed). */
 function nodeEditAllowed(prev: PageNode, next: PageNode): boolean {
@@ -48,9 +52,15 @@ export function assertClientEditAllowed(prev: Page, next: Page): void {
     prev.source === next.source &&
     isDeepStrictEqual(prev.nav, next.nav) &&
     isDeepStrictEqual(prev.seo, next.seo) &&
-    isDeepStrictEqual(prev.collection, next.collection);
+    isDeepStrictEqual(prev.collection, next.collection) &&
+    // `content` is the editable surface ONLY on a source page ({{edit}} regions). On a block
+    // page it has no render effect, so freeze it — a member must not write outside the
+    // designed surface (keeps the member's write footprint to exactly what it can change).
+    (prev.source !== undefined || isDeepStrictEqual(prev.content, next.content));
   if (!pageFieldsEqual || !nodeEditAllowed(prev.root, next.root)) {
-    throw new ForbiddenError('the client role may edit only the content of editable blocks');
+    throw new ForbiddenError(
+      "the client role may edit only editable-block content or a source page's bound regions",
+    );
   }
 }
 

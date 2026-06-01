@@ -34,6 +34,12 @@ export interface TemplateContext {
   data?: Record<string, unknown>;
   /** Named partials, included via `{{> name}}`; passed per-render (no global state). */
   partials?: Record<string, string>;
+  /**
+   * Client-editable region overrides for `{{edit "key" "default"}}`: key → text (matches the
+   * `page.content` schema). A set key replaces that region's default; the value is HTML-escaped
+   * at render (it is client-authored).
+   */
+  content?: Record<string, string>;
 }
 
 const URL_ATTRS = new Set(['href', 'src', 'action', 'formaction', 'poster', 'cite', 'background', 'xlink:href']);
@@ -217,6 +223,20 @@ function createInstance(): typeof Handlebars {
     const n = typeof max === 'number' && Number.isFinite(max) ? max : 100;
     return s.length > n ? `${s.slice(0, Math.max(0, n - 1))}…` : s;
   });
+  // {{edit "key" "default"}} → a client-editable region. Returns the override `content[key]`
+  // when set, else the literal default. The return is a plain string, so Handlebars
+  // HTML-escapes it (double-stache) — the override is client-authored and must never inject
+  // markup. Own-property lookup only (no prototype access). Use in BODY/text context; in an
+  // attribute the save-time validator rejects a bare `{{ }}`, so this can't break out.
+  hb.registerHelper('edit', function editHelper(this: unknown, ...args: unknown[]) {
+    const options = args[args.length - 1] as Handlebars.HelperOptions | undefined;
+    const key = typeof args[0] === 'string' ? args[0] : '';
+    const def = args.length > 2 && typeof args[1] === 'string' ? args[1] : '';
+    const root = (options?.data?.root ?? {}) as { content?: Record<string, unknown> };
+    const content = root.content && typeof root.content === 'object' ? root.content : {};
+    const override = Object.prototype.hasOwnProperty.call(content, key) ? content[key] : undefined;
+    return typeof override === 'string' ? override : def;
+  });
   return hb;
 }
 
@@ -266,7 +286,7 @@ export function renderTemplate(source: string, ctx: TemplateContext = {}, opts: 
   // cannot smuggle a <script>/handler/unsafe-context past the main-template check.
   if (ctx.partials) for (const partialSource of Object.values(ctx.partials)) validateTemplate(partialSource);
   const template = compileCached(source);
-  const data = { company: ctx.company, website: ctx.website, page: ctx.page, data: ctx.data };
+  const data = { company: ctx.company, website: ctx.website, page: ctx.page, data: ctx.data, content: ctx.content };
   let html: string;
   try {
     html = template(data, {

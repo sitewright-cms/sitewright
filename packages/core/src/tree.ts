@@ -67,6 +67,38 @@ export function collectClassNames(root: PageNode): string[] {
   return classNames;
 }
 
+/** A client-editable region declared in a code-first template via `{{edit "key" "default"}}`. */
+export interface EditRegion {
+  key: string;
+  /** The developer's default text, shown until a client overrides it (via `page.content`). */
+  default: string;
+}
+
+// Matches `{{edit "key" "default"}}` with double- OR single-quoted args (Handlebars accepts
+// both), default optional. Key: group 1|2. Default: group 3|4.
+const EDIT_REGION_RE =
+  /\{\{\s*edit\s+(?:"([^"]*)"|'([^']*)')(?:\s+(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'))?\s*\}\}/g;
+
+/**
+ * The client-editable regions declared in a code-first template source — one entry per
+ * distinct `{{edit "key" "default"}}` (first occurrence wins; a repeated key is the same
+ * region). Lets the client editor build a content form from the marked regions WITHOUT
+ * exposing the template structure as something the client may change. Both quote styles are
+ * recognized. Note: only the page's OWN source is scanned — `{{edit}}` inside an included
+ * `{{> partial}}` renders correctly but is not (yet) surfaced as a client field.
+ */
+export function extractEditRegions(source: string): EditRegion[] {
+  const out: EditRegion[] = [];
+  const seen = new Set<string>();
+  for (const m of source.matchAll(EDIT_REGION_RE)) {
+    const key = m[1] ?? m[2] ?? '';
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push({ key, default: (m[3] ?? m[4] ?? '').replace(/\\(['"])/g, '$1') });
+  }
+  return out;
+}
+
 /** Upper bound on distinct class tokens extracted from one HTML/source string. */
 export const MAX_EXTRACTED_CLASS_TOKENS = 2048;
 

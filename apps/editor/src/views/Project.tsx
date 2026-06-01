@@ -4,6 +4,7 @@ import { api, type Org, type Project } from '../api';
 import { PageEditor } from './PageEditor';
 import { CodePageEditor } from './CodePageEditor';
 import { ClientPageEditor } from './ClientPageEditor';
+import { ClientSourceEditor } from './ClientSourceEditor';
 import { DatasetManager } from './DatasetManager';
 import { MediaManager } from './MediaManager';
 import { ApiKeysManager } from './ApiKeysManager';
@@ -25,10 +26,13 @@ const MANAGE_TABS = ['pages', 'data', 'media', 'forms', 'inbox', 'settings', 'cl
 type Tab = (typeof MANAGE_TABS)[number];
 
 // A new code page opens with a small, valid Handlebars + Tailwind scaffold so the live
-// preview is immediately meaningful (and demonstrates the {{ company.* }}/{{ page.* }} vars).
+// preview is immediately meaningful: it demonstrates the {{ company.* }} bindings AND an
+// {{edit "key" "default"}} region — the marker that makes a piece of text client-editable
+// (the re-targeted client model), so a freshly created page already has something a client
+// can edit without the developer wiring anything up.
 const CODE_PAGE_STARTER = `<main class="mx-auto max-w-3xl px-6 py-16">
   <h1 class="text-4xl font-bold tracking-tight text-slate-900">{{ company.name }}</h1>
-  <p class="mt-4 text-lg text-slate-600">{{ page.title }}</p>
+  <p class="mt-4 text-lg text-slate-600">{{edit "tagline" "Edit this tagline"}}</p>
 </main>
 `;
 
@@ -85,7 +89,12 @@ export function ProjectView({ org, project, onBack }: ProjectViewProps) {
       await load();
     };
     if (isClient) {
-      return <ClientPageEditor org={org} project={project} page={editing} onClose={onClose} />;
+      // A client edits a code page's bound regions (content); a block page's editable nodes.
+      return editing.source != null ? (
+        <ClientSourceEditor org={org} project={project} page={editing} onClose={onClose} />
+      ) : (
+        <ClientPageEditor org={org} project={project} page={editing} onClose={onClose} />
+      );
     }
     // A page authored with a Handlebars `source` opens in the code editor; a block page
     // opens in the visual editor.

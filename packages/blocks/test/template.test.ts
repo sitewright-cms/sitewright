@@ -16,6 +16,36 @@ const ctx: TemplateContext = {
   },
 };
 
+describe('{{edit}} — client-editable bound content', () => {
+  it('renders the default when no override is set for the key', () => {
+    expect(renderTemplate('<h1>{{edit "headline" "Welcome"}}</h1>', ctx)).toBe('<h1>Welcome</h1>');
+  });
+
+  it('renders the content override when present, falling back per-key', () => {
+    const c: TemplateContext = { ...ctx, content: { headline: 'Hello there' } };
+    expect(renderTemplate('<h1>{{edit "headline" "Welcome"}}</h1><p>{{edit "sub" "Default sub"}}</p>', c)).toBe(
+      '<h1>Hello there</h1><p>Default sub</p>',
+    );
+  });
+
+  it('HTML-escapes the (client-authored) override — no markup injection', () => {
+    const c: TemplateContext = { ...ctx, content: { x: '<script>alert(1)</script>' } };
+    expect(renderTemplate('<div>{{edit "x" "d"}}</div>', c)).toBe(
+      '<div>&lt;script&gt;alert(1)&lt;/script&gt;</div>',
+    );
+  });
+
+  it('treats an empty default + missing override as empty, and ignores a non-own key', () => {
+    expect(renderTemplate('<p>{{edit "missing"}}</p>', ctx)).toBe('<p></p>');
+    // A key that only exists on Object.prototype must not leak (no proto access).
+    expect(renderTemplate('<p>{{edit "toString" "fallback"}}</p>', ctx)).toBe('<p>fallback</p>');
+  });
+
+  it('passes the save-time validator in body context', () => {
+    expect(() => validateTemplate('<h1>{{edit "k" "Some default text"}}</h1>')).not.toThrow();
+  });
+});
+
 describe('renderTemplate — Handlebars features', () => {
   it('passes literal HTML through and interpolates + HTML-escapes values', () => {
     expect(renderTemplate('<div class="grid">{{ page.title }}</div>', ctx)).toBe('<div class="grid">Home</div>');

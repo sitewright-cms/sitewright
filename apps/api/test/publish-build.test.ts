@@ -83,6 +83,25 @@ describe('buildSite', () => {
     expect(await readFile(join(outDir, 'styles.css'), 'utf8')).toContain('display:grid');
   });
 
+  it('bakes client-edited region content ({{edit}} overrides) into a source-page build', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        pages: [
+          {
+            id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' },
+            source: '<main><h1>{{edit "headline" "Default headline"}}</h1></main>',
+            content: { headline: 'Client wrote this' },
+          },
+        ],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).toContain('<h1>Client wrote this</h1>'); // override applied
+    expect(home).not.toContain('Default headline'); // the template default replaced
+  });
+
   it('fails the publish with a page-scoped error when a source-page is unsafe', async () => {
     await expect(
       buildSite({

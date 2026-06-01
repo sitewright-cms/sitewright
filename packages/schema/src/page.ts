@@ -52,6 +52,18 @@ export const PageSchema = z
      * worker. The `root` stays for back-compat; `source` wins when present.
      */
     source: z.string().max(256 * 1024).optional(),
+    /**
+     * Client-editable bound content for a code-first (`source`) page: region key →
+     * text. A developer marks editable regions in the template with the `{{edit "key"
+     * "default"}}` helper; the value here OVERRIDES that default (HTML-escaped at render).
+     * This is the ONLY field a client/member may change on a source page — the template
+     * itself stays immutable to them (the re-targeted `data-sw-edit` client model). Bounded
+     * to keep a member edit from bloating the page.
+     */
+    content: z
+      .record(z.string().max(200), z.string().max(20_000))
+      .refine((obj) => Object.keys(obj).length <= 500, 'too many content regions')
+      .optional(),
     /** Present when this page is generated once per dataset entry. */
     collection: z
       .object({

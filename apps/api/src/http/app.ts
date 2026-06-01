@@ -176,6 +176,22 @@ function startOfMonthUTC(now: Date): Date {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 }
 
+/**
+ * Wrap a worker-rendered code-first body in the publish document shell + inline the body's
+ * own Tailwind utilities — the shared "styled document" used by both the editor preview
+ * (render-template `document:true`) and the member-facing source-page preview (`/preview`).
+ * `extractClassNames` dedupes + caps the candidate set, so an adversarial class list cannot
+ * spike the Tailwind compiler.
+ */
+async function styledSourceDocument(page: Page, brand: CorporateIdentity, body: string): Promise<string> {
+  const classNames = extractClassNames(body);
+  const inlineStyles =
+    classNames.length > 0
+      ? [await compileUtilityCss([classNames.join(' ')], brandToTailwindTheme(brand))]
+      : undefined;
+  return renderDocument(page, { brand, bodyHtml: body, inlineStyles });
+}
+
 const InviteBody = z.object({
   email: z.string().email(),
 });
@@ -967,6 +983,42 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         byDataset.set(entry.dataset, [...(byDataset.get(entry.dataset) ?? []), entry]);
       }
 
+      // A code-first (`source`) page previews through the isolated worker — with the page's
+      // client-edited region content — then through the shared styled-document shell. This is
+      // the member-accessible preview the client content editor uses (render-template is
+      // owner-only), so the same token/sandbox flow as block pages applies below.
+      if (page.source) {
+        if (!renderPool) return reply.code(503).send({ error: 'rendering is not available' });
+        const partials = Object.fromEntries(
+          ((await contentRepo.list(ctx, 'snippet')) as Snippet[]).map((s) => [s.name, s.source]),
+        );
+        const sourceData = Object.fromEntries(byDataset);
+        // Bound the IPC payload serialized in THIS (parent) process — a large dataset/partial
+        // set must not spike the API's heap (only the worker carries a memory ceiling). Mirrors
+        // the owner render-template guard.
+        if (JSON.stringify(sourceData).length + JSON.stringify(partials).length > 4 * 1024 * 1024) {
+          return reply.code(413).send({ error: 'project data is too large to render' });
+        }
+        try {
+          const rendered = await renderPool.render(page.source, {
+            company: brand as unknown as Record<string, unknown>,
+            website: { siteUrl: website?.siteUrl },
+            page: { title: page.title, path: page.path },
+            data: sourceData,
+            partials,
+            content: page.content,
+          });
+          // Wrap + inline Tailwind INSIDE the try so a compile failure returns the error
+          // envelope (not a raw 500), consistent with the rest of this handler.
+          const sourceHtml = await styledSourceDocument(page, brand, rendered);
+          const sourceToken = previewStore.put(sourceHtml, { orgId: ctx.orgId, projectId: project.id, userId: ctx.userId });
+          return reply.send({ html: sourceHtml, token: sourceToken });
+        } catch (err) {
+          if (err instanceof RenderUnavailableError) return reply.code(503).send({ error: err.message });
+          return reply.code(400).send({ error: err instanceof Error ? err.message : 'render failed' });
+        }
+      }
+
       // Media powers optimized <picture> in the preview too, via the API-served URLs.
       const media = mediaStorage ? ((await contentRepo.list(ctx, 'media')) as MediaAsset[]) : [];
       // Auto-nav from the saved pages so Nav blocks render their menu in preview
@@ -1572,6 +1624,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // Resolve the template source + page context: a stored source-page (by id) or ad-hoc.
       let templateSource: string;
       let pageCtx: Record<string, unknown> = body.page ?? { title: project.name, path: '/' };
+      let pageContent: Record<string, string> | undefined;
       if (body.pageId !== undefined) {
         // Re-parse the stored page (not a bare cast) so a dirty/legacy DB row can't reach
         // the render path unvalidated; NotFound → 404.
@@ -1579,6 +1632,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         if (!page.source) return reply.code(400).send({ error: 'this page has no template source' });
         templateSource = page.source;
         pageCtx = { title: page.title, path: page.path };
+        // Render the stored page WITH its client-edited region content (WYSIWYG parity).
+        pageContent = page.content;
       } else {
         templateSource = body.template as string; // refine guarantees one of template/pageId
       }
@@ -1617,24 +1672,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           page: pageCtx,
           data,
           partials,
+          content: pageContent,
         });
         if (!body.document) return reply.send({ html: rendered });
-        // Styled-document preview: wrap the rendered body in the same doc shell publish uses
-        // and inline the source's literal Tailwind utilities. `extractClassNames` (the shared
-        // publish helper) dedupes + caps the candidate set, so an adversarial class list can't
-        // spike the compiler — mirroring Tailwind's own JIT model on the rendered body.
-        const classNames = extractClassNames(rendered);
-        const inlineStyles =
-          classNames.length > 0
-            ? [await compileUtilityCss([classNames.join(' ')], brandToTailwindTheme(brand))]
-            : undefined;
+        // Styled-document preview: wrap the rendered body in the publish doc shell + inline
+        // the source's own Tailwind utilities (shared with the member `/preview` path).
         const previewPage: Page = {
           id: 'preview',
           path: String(pageCtx.path ?? '/'),
           title: String(pageCtx.title ?? project.name),
           root: { id: 'preview-root', type: 'Section' },
         };
-        const html = renderDocument(previewPage, { brand, bodyHtml: rendered, inlineStyles });
+        const html = await styledSourceDocument(previewPage, brand, rendered);
         return reply.send({ html });
       } catch (err) {
         // Infra (worker/timeout) → 503; a template validation/compile/render error → 400.

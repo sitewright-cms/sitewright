@@ -1,7 +1,11 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
 import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
+import { RenderPool } from '../src/render/render-pool.js';
+
+const workerPath = fileURLToPath(new URL('./fixtures/blocks-render-worker.mjs', import.meta.url));
 
 let app: FastifyInstance;
 
@@ -16,15 +20,15 @@ function token(res: { cookies: Array<{ name: string; value: string }> }): string
   return t;
 }
 
-async function setup(email: string, orgName: string) {
-  const reg = await app.inject({
+async function setup(email: string, orgName: string, instance: FastifyInstance = app) {
+  const reg = await instance.inject({
     method: 'POST',
     url: '/auth/register',
     payload: { email, password: 'pw-secret-1', orgName },
   });
   const t = token(reg);
   const orgId = (reg.json() as { orgId: string }).orgId;
-  const proj = await app.inject({
+  const proj = await instance.inject({
     method: 'POST',
     url: `/orgs/${orgId}/projects`,
     cookies: { sw_session: t },
@@ -263,5 +267,51 @@ describe('preview API', () => {
     });
     const html = (res.json() as { html: string }).html;
     expect(html).not.toContain('tailwindcss'); // the compiler never ran
+  });
+});
+
+describe('preview API — code-first source page', () => {
+  let poolApp: FastifyInstance;
+  beforeEach(async () => {
+    poolApp = await createApp({ db: await makeTestDb(), renderPool: new RenderPool({ size: 1, workerPath }) });
+    await poolApp.ready();
+  });
+  afterEach(async () => {
+    await poolApp.close(); // drains + terminates the render worker
+  });
+
+  it('renders a source page through the worker, applying client-edited content, styled + tokenized', async () => {
+    const { t, orgId, projectId } = await setup('a@acme.test', 'Acme', poolApp);
+    const res = await poolApp.inject({
+      method: 'POST',
+      url: `/orgs/${orgId}/projects/${projectId}/preview`,
+      cookies: { sw_session: t },
+      payload: {
+        id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' },
+        source: '<main class="grid"><h1>{{edit "headline" "Default headline"}}</h1></main>',
+        content: { headline: 'Edited headline' },
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { html: string; token: string };
+    expect(body.html.startsWith('<!doctype html>')).toBe(true);
+    // The {{edit}} override replaced the template default; the block tree was not rendered.
+    expect(body.html).toContain('<main class="grid"><h1>Edited headline</h1></main>');
+    expect(body.html).not.toContain('Default headline');
+    expect(body.html).not.toContain('<section data-sw-block="Section"'); // the block tree was not rendered
+    // The source's literal Tailwind class compiled + inlined.
+    expect(body.html).toContain('display:grid');
+    expect(body.token).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it('returns 503 for a source-page preview when no render pool is configured', async () => {
+    const { t, orgId, projectId } = await setup('b@acme.test', 'Beta'); // module `app` has no pool
+    const res = await app.inject({
+      method: 'POST',
+      url: `/orgs/${orgId}/projects/${projectId}/preview`,
+      cookies: { sw_session: t },
+      payload: { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<p>hi</p>' },
+    });
+    expect(res.statusCode).toBe(503);
   });
 });

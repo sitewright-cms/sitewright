@@ -146,9 +146,9 @@ export function PageEditor({ org, project, page, onClose }: PageEditorProps) {
       title,
       root,
       status,
-      nav: navSlots.length
-        ? { slots: navSlots, ...(navTitle ? { title: navTitle } : {}), ...(navOrder ? { order: navOrder } : {}) }
-        : undefined,
+      // `order` is always included when there are slots — a truthiness check would
+      // drop an explicit `order: 0` (0 is falsy) on every save, losing the value.
+      nav: navSlots.length ? { slots: navSlots, ...(navTitle ? { title: navTitle } : {}), order: navOrder } : undefined,
     }),
     [page, title, root, status, navSlots, navTitle, navOrder],
   );

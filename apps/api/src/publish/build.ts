@@ -140,8 +140,9 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
   const tmp = `${base}.tmp`;
 
   // Drafts are excluded from the published site: filter once, so routes, auto-nav,
-  // and the sitemap all see only published pages. (Collection-entry drafts are
-  // filtered separately in collectionRoutes.)
+  // and the sitemap all see only published pages. Draft *collection pages* are
+  // excluded here too (collectionRoutes iterates this filtered set); draft
+  // *collection entries* are filtered separately inside collectionRoutes.
   const pubBundle: ProjectBundle = { ...bundle, pages: publishedPages(bundle.pages) };
   let routes;
   try {

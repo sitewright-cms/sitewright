@@ -14,6 +14,7 @@ import { BLOCK_DESCRIPTORS, isContainerType, type BlockCategory } from '@sitewri
 import { reIdTree } from '@sitewright/core';
 import { api, previewDocUrl, type Org, type Project } from '../api';
 import { createBlock, genId } from '../lib/node-factory';
+import { STARTER_PATTERNS } from '../lib/starter-patterns';
 import { localeDraft, toTranslation } from '../lib/translation-draft';
 import { buildLiveUrl } from '../lib/live-target';
 import {
@@ -505,6 +506,22 @@ export function PageEditor({ org, project, page, onClose }: PageEditorProps) {
             <p className="mt-2 text-[11px] text-slate-400">
               Adds inside the selected container, otherwise after the selection.
             </p>
+          </div>
+
+          <div className="rounded-lg border border-slate-200 bg-white p-3">
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Starter library</h3>
+            <div className="flex flex-col gap-1">
+              {STARTER_PATTERNS.map((p) => (
+                <button
+                  key={p.id}
+                  className="truncate rounded-md border border-slate-300 bg-white px-2 py-1 text-left text-xs hover:border-indigo-400"
+                  onClick={() => insertPattern(p)}
+                  title={`Insert the "${p.name}" starter block (forked copy)`}
+                >
+                  {p.name}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="rounded-lg border border-slate-200 bg-white p-3">

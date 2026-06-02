@@ -1701,7 +1701,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // Single-container mode: serve the editor SPA at `/`, with a fallback to
   // index.html for non-API GET routes (client-side navigation / refresh).
   if (opts.editorDist) {
-    await app.register(fastifyStatic, { root: opts.editorDist, prefix: '/', wildcard: false });
+    // `dotfiles: 'deny'` makes the posture explicit (don't rely on @fastify/send's 'ignore'
+    // default): a dotfile under editorDist (e.g. a stray .env) is never served.
+    await app.register(fastifyStatic, { root: opts.editorDist, prefix: '/', wildcard: false, dotfiles: 'deny' });
     // Rate-limit the catch-all so unknown-path probing/enumeration is throttled too.
     app.setNotFoundHandler({ preHandler: app.rateLimit() }, (req, reply) => {
       if (req.method === 'GET' && !isApiPath(req.url)) {

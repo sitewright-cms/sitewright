@@ -304,6 +304,65 @@ describe('preview API — code-first source page', () => {
     expect(body.token).toMatch(/^[0-9a-f-]{36}$/);
   });
 
+  it('renders the project skeleton slots (topNav/footer) around a source-page preview (WYSIWYG)', async () => {
+    const { t, orgId, projectId } = await setup('slots@acme.test', 'Acme', poolApp);
+    const base = `/orgs/${orgId}/projects/${projectId}`;
+    await poolApp.inject({
+      method: 'PUT',
+      url: `${base}/content/settings/settings`,
+      cookies: { sw_session: t },
+      payload: {
+        identity: { name: 'Acme', colors: { primary: '#0a7' } },
+        website: {
+          topNav: '<nav class="navbar">{{ company.name }}</nav>',
+          footer: '<footer class="footer">© {{ company.name }}</footer>',
+        },
+        settings: {},
+      },
+    });
+    const res = await poolApp.inject({
+      method: 'POST',
+      url: `${base}/preview`,
+      cookies: { sw_session: t },
+      payload: { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<main><h1>Body</h1></main>' },
+    });
+    expect(res.statusCode).toBe(200);
+    const html = (res.json() as { html: string }).html;
+    expect(html).toContain('<nav class="navbar">Acme</nav>'); // shared topNav, {{ company.name }} bound
+    expect(html).toContain('<footer class="footer">© Acme</footer>'); // shared footer
+    // Source order: topNav before the page body, footer after it.
+    expect(html.indexOf('class="navbar"')).toBeLessThan(html.indexOf('<h1>Body</h1>'));
+    expect(html.indexOf('<h1>Body</h1>')).toBeLessThan(html.indexOf('class="footer"'));
+    expect(html).toMatch(/\.navbar/); // the slot's DaisyUI classes compiled into the inlined sheet
+  });
+
+  it('skips a broken/unsafe slot in preview without failing the page (publish still hard-validates)', async () => {
+    const { t, orgId, projectId } = await setup('broken@acme.test', 'Acme', poolApp);
+    const base = `/orgs/${orgId}/projects/${projectId}`;
+    await poolApp.inject({
+      method: 'PUT',
+      url: `${base}/content/settings/settings`,
+      cookies: { sw_session: t },
+      payload: {
+        identity: { name: 'Acme', colors: {} },
+        // topNav is unsafe (a <script> — rejected by the no-JS validator); footer is fine.
+        website: { topNav: '<nav><script>x()</script></nav>', footer: '<footer class="footer">ok</footer>' },
+        settings: {},
+      },
+    });
+    const res = await poolApp.inject({
+      method: 'POST',
+      url: `${base}/preview`,
+      cookies: { sw_session: t },
+      payload: { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<main><h1>Body</h1></main>' },
+    });
+    expect(res.statusCode).toBe(200); // the page preview still renders
+    const html = (res.json() as { html: string }).html;
+    expect(html).toContain('<h1>Body</h1>'); // body intact
+    expect(html).not.toContain('<script>x()'); // the broken slot was skipped, not injected
+    expect(html).toContain('<footer class="footer">ok</footer>'); // the good slot still renders
+  });
+
   it('returns 503 for a source-page preview when no render pool is configured', async () => {
     const { t, orgId, projectId } = await setup('b@acme.test', 'Beta'); // module `app` has no pool
     const res = await app.inject({

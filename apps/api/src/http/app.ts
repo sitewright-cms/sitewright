@@ -179,19 +179,46 @@ function startOfMonthUTC(now: Date): Date {
 }
 
 /**
- * Wrap a worker-rendered code-first body in the publish document shell + inline the body's
- * own Tailwind utilities — the shared "styled document" used by both the editor preview
- * (render-template `document:true`) and the member-facing source-page preview (`/preview`).
- * `extractClassNames` dedupes + caps the candidate set, so an adversarial class list cannot
- * spike the Tailwind compiler.
+ * The project-wide skeleton shell around a source-page preview — the validated slots (already
+ * rendered to HTML) plus the raw owner-only head/criticalCss/scripts. Gives the editor WYSIWYG
+ * parity with publish: the author sees their page inside the shared header/footer/sidebars.
  */
-async function styledSourceDocument(page: Page, brand: CorporateIdentity, body: string): Promise<string> {
-  const classNames = extractClassNames(body);
+interface PreviewShell {
+  topNav?: string;
+  mobileNav?: string;
+  sidebarLeft?: string;
+  sidebarRight?: string;
+  footer?: string;
+  bottom?: string;
+  head?: string;
+  criticalCss?: string;
+  customScripts?: string;
+}
+
+/**
+ * Wrap a worker-rendered code-first body in the publish document shell (+ the skeleton `shell`)
+ * and inline the body's + slots' own Tailwind utilities — the shared "styled document" used by
+ * both the editor preview (render-template `document:true`) and the member-facing source-page
+ * preview (`/preview`). `extractClassNames` dedupes + caps the candidate set, so an adversarial
+ * class list cannot spike the Tailwind compiler.
+ */
+async function styledSourceDocument(
+  page: Page,
+  brand: CorporateIdentity,
+  body: string,
+  shell: PreviewShell = {},
+): Promise<string> {
+  // The slots' Tailwind/DaisyUI classes must be in the inlined preview sheet too, else the shared
+  // header/footer renders unstyled in the editor.
+  const slotHtml = [shell.topNav, shell.mobileNav, shell.sidebarLeft, shell.sidebarRight, shell.footer, shell.bottom]
+    .filter(Boolean)
+    .join(' ');
+  const classNames = extractClassNames(`${body} ${slotHtml}`);
   const inlineStyles =
     classNames.length > 0
       ? [await compileUtilityCss([classNames.join(' ')], brandToTailwindTheme(brand))]
       : undefined;
-  return renderDocument(page, { brand, bodyHtml: body, inlineStyles });
+  return renderDocument(page, { brand, bodyHtml: body, inlineStyles, ...shell });
 }
 
 const InviteBody = z.object({
@@ -1034,9 +1061,62 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             partials,
             content: page.content,
           });
+          // WYSIWYG parity: render the project-wide skeleton slots around the page body. Auto-nav
+          // comes from the saved pages (drafts excluded, like publish). Slots render through the
+          // SAME isolated worker; a broken slot is skipped here (publish still hard-validates it) so
+          // it can never break the page preview. `json_data` is NOT fetched in preview (no network
+          // per keystroke) — `{{ website.json_data }}` renders empty until publish.
+          const savedPages = publishedPages((await contentRepo.list(ctx, 'page')) as Page[]);
+          const slotNav = {
+            header: buildNav(savedPages, 'header'),
+            footer: buildNav(savedPages, 'footer'),
+            mobile: buildNav(savedPages, 'mobile'),
+          };
+          // No `partials`/`content`: slots are project-wide (not client-edited), and — matching the
+          // publish slot context in build.ts — they don't compose snippets, so `{{> snippet}}` is
+          // intentionally unavailable in a slot (same in preview and publish, so no WYSIWYG drift).
+          const slotCtx = {
+            company: brand as unknown as Record<string, unknown>,
+            website: { siteUrl: website?.siteUrl },
+            page: { title: page.title, path: page.path },
+            data: sourceData,
+            nav: slotNav as unknown as Record<string, unknown>,
+          };
+          // Each slot reuses slotCtx (which carries `sourceData`) over IPC; that payload is already
+          // bounded by the page-render size guard above, and the pool (capped workers + queue depth)
+          // serializes the renders, so the six calls can't amplify into a parallel memory spike.
+          const renderSlot = async (name: string, src: string | undefined): Promise<string | undefined> => {
+            if (!src) return undefined;
+            try {
+              return await renderPool.render(src, slotCtx);
+            } catch (err) {
+              // Best-effort in preview — a broken slot is omitted (publish hard-validates it). Log at
+              // debug so it's visible to an operator rather than silently swallowed.
+              req.log?.debug({ slot: name, err: err instanceof Error ? err.message : String(err) }, 'preview slot skipped');
+              return undefined;
+            }
+          };
+          const [topNav, mobileNav, sidebarLeft, sidebarRight, footer, bottom] = await Promise.all([
+            renderSlot('topNav', website?.topNav),
+            renderSlot('mobileNav', website?.mobileNav),
+            renderSlot('sidebarLeft', website?.sidebarLeft),
+            renderSlot('sidebarRight', website?.sidebarRight),
+            renderSlot('footer', website?.footer),
+            renderSlot('bottom', website?.bottom),
+          ]);
           // Wrap + inline Tailwind INSIDE the try so a compile failure returns the error
           // envelope (not a raw 500), consistent with the rest of this handler.
-          const sourceHtml = await styledSourceDocument(page, brand, rendered);
+          const sourceHtml = await styledSourceDocument(page, brand, rendered, {
+            topNav,
+            mobileNav,
+            sidebarLeft,
+            sidebarRight,
+            footer,
+            bottom,
+            head: website?.head,
+            criticalCss: website?.criticalCss,
+            customScripts: website?.scripts,
+          });
           const sourceToken = previewStore.put(sourceHtml, { orgId: ctx.orgId, projectId: project.id, userId: ctx.userId });
           return reply.send({ html: sourceHtml, token: sourceToken });
         } catch (err) {

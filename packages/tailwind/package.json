@@ -12,7 +12,9 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json",
@@ -23,6 +25,7 @@
     "@sitewright/schema": "workspace:*",
     "@tailwindcss/node": "^4.3.0",
     "@tailwindcss/oxide": "^4.3.0",
+    "daisyui": "~5.5",
     "tailwindcss": "^4.3.0"
   },
   "devDependencies": {

@@ -3,6 +3,8 @@ import { dirname } from 'node:path';
 import { compile, optimize } from '@tailwindcss/node';
 import { Scanner } from '@tailwindcss/oxide';
 import type { TailwindTheme } from './theme.js';
+import { brandVars, renderThemeBlock } from './tokens.js';
+import { DAISY_PLUGIN_PATH, daisyThemeVars, usesDaisyComponents } from './daisy.js';
 
 // Resolve Tailwind's own install directory so `@import "tailwindcss/*"` resolves
 // from there regardless of the process cwd — robust in the repo, under vitest,
@@ -18,34 +20,11 @@ const TAILWIND_BASE = dirname(require.resolve('tailwindcss/theme.css'));
 // the skeleton's unlayered rules).
 const BASE_INPUT = `@import "tailwindcss/theme.css" layer(theme);\n@import "tailwindcss/utilities.css";`;
 
-// A theme variable name must be a safe CSS identifier — defense-in-depth against
-// a key smuggling characters into the generated `@theme { … }` block. Accepts the
-// same `-`/`_` alphabet as the schema's KeyNameSchema (both are valid CSS ident
-// chars) so a valid brand key is never silently dropped here.
-// Caveat: Tailwind treats `_` as a space inside class candidates, so an
-// underscore key (e.g. `nav_bg`) emits the `--color-nav_bg` var but is not
-// reachable as a bare `bg-nav_bg` utility — use it via `bg-[var(--color-nav_bg)]`,
-// or prefer single-word / camelCase brand token names for clean utilities.
-const SAFE_TOKEN = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
-
 export interface CompileOptions {
   /** Minify the output with Lightning CSS (default true). */
   minify?: boolean;
   /** Directory from which `@import "tailwindcss/*"` is resolved (default: Tailwind's install dir). */
   base?: string;
-}
-
-/** Build the `@theme { … }` override block from brand tokens (skipping unsafe keys). */
-function themeBlock(theme: TailwindTheme): string {
-  const lines = [
-    ...Object.entries(theme.colors ?? {})
-      .filter(([k]) => SAFE_TOKEN.test(k))
-      .map(([k, v]) => `  --color-${k}: ${v};`),
-    ...Object.entries(theme.fonts ?? {})
-      .filter(([k]) => SAFE_TOKEN.test(k))
-      .map(([k, v]) => `  --font-${k}: ${v};`),
-  ];
-  return lines.length ? `\n@theme {\n${lines.join('\n')}\n}` : '';
 }
 
 /**
@@ -63,16 +42,23 @@ export async function compileUtilityCss(
   opts: CompileOptions = {},
 ): Promise<string> {
   const { minify = true, base = TAILWIND_BASE } = opts;
-  const input = `${BASE_INPUT}${themeBlock(theme)}`;
-
-  // Build the compiler (auto-resolves `@import "tailwindcss/*"` from node_modules).
-  const compiler = await compile(input, { base, onDependency: () => {} });
 
   // Extract the candidate class names actually used in the HTML (in-memory, no FS).
   const scanner = new Scanner({});
   const candidates = scanner.scanFiles(
     htmlStrings.map((content) => ({ content, extension: 'html' })),
   );
+
+  // Include the DaisyUI component layer ONLY when the HTML actually uses a DaisyUI class —
+  // pure-Tailwind pages stay at their minimal size. DaisyUI runs with `themes:false` (no
+  // theme block of its own) and we supply the full var set, brand colors overriding the
+  // palette, so `btn-primary` etc. are brand-themed with no cascade fight.
+  const input = usesDaisyComponents(candidates)
+    ? `${BASE_INPUT}\n@plugin "${DAISY_PLUGIN_PATH}" {\n  themes: false;\n}${renderThemeBlock(daisyThemeVars(theme))}`
+    : `${BASE_INPUT}${renderThemeBlock(brandVars(theme))}`;
+
+  // Build the compiler (auto-resolves `@import "tailwindcss/*"` from node_modules).
+  const compiler = await compile(input, { base, onDependency: () => {} });
 
   const css = compiler.build(candidates);
   return minify ? optimize(css, { minify: true }).code : css;

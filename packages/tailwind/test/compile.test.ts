@@ -57,6 +57,37 @@ describe('compileUtilityCss', () => {
     expect(css).not.toContain('color:red');
   });
 
+  it('emits DaisyUI component CSS when a daisyUI class is used, themed by the brand', async () => {
+    const css = await compileUtilityCss(
+      ['<button class="btn btn-primary">Go</button><div class="card bg-base-100"><div class="card-body">x</div></div>'],
+      { colors: { primary: '#e11d48' } },
+      { minify: false },
+    );
+    // The component classes are present…
+    expect(css).toMatch(/\.btn(\s|\{|,)/);
+    expect(css).toContain('.card-body');
+    // …the brand color themes `--color-primary` (and NOT DaisyUI's default indigo)…
+    expect(css).toContain('#e11d48');
+    expect(css).not.toContain('oklch(45% 0.24 277.023)');
+    // …and DaisyUI's required base palette is supplied so components look right.
+    expect(css).toContain('--color-base-100');
+  });
+
+  it('pulls in DaisyUI when only its surface colors are used (e.g. bg-base-200)', async () => {
+    const css = await compileUtilityCss(['<div class="bg-base-200 text-base-content">x</div>'], {}, { minify: false });
+    // The DaisyUI palette is supplied, so the surface-color utilities actually resolve.
+    expect(css).toContain('--color-base-200');
+    expect(css).toContain('--color-base-content');
+  });
+
+  it('does NOT pull in DaisyUI for a pure-Tailwind page (keeps minimal output)', async () => {
+    const css = await compileUtilityCss(['<div class="flex gap-4 px-6">x</div>'], { colors: { primary: '#e11d48' } });
+    expect(css).not.toContain('--color-base-100'); // no DaisyUI base layer
+    expect(css).not.toMatch(/\.btn\b/);
+    // Plain utilities still compile as before.
+    expect(css).toContain('display:flex');
+  });
+
   it('keeps safe-but-underscored token names as a CSS var (aligned with KeyNameSchema)', async () => {
     // `nav_bg` is a valid brand key; it must not be silently dropped. It emits the
     // var (usable via bg-[var(--color-nav_bg)]) even though `bg-nav_bg` itself is

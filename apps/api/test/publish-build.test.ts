@@ -83,6 +83,33 @@ describe('buildSite', () => {
     expect(await readFile(join(outDir, 'styles.css'), 'utf8')).toContain('display:grid');
   });
 
+  it('compiles brand-themed DaisyUI components into the shared sheet for a source page', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: { primary: '#0a7fae' } },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+        },
+        pages: [
+          {
+            id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' },
+            source: '<main><button class="btn btn-primary">Sign up</button></main>',
+          },
+        ],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).toContain('<button class="btn btn-primary">Sign up</button>');
+    expect(home).toContain('<link rel="stylesheet" href="styles.css" />');
+    const sheet = await readFile(join(outDir, 'styles.css'), 'utf8');
+    expect(sheet).toMatch(/\.btn/); // the DaisyUI component compiled into the shared sheet
+    expect(sheet).toContain('#0a7fae'); // themed by the brand primary, not DaisyUI's default
+    expect(sheet).not.toContain('oklch(45% 0.24 277.023)'); // DaisyUI's indigo default is gone
+  });
+
   it('bakes client-edited region content ({{edit}} overrides) into a source-page build', async () => {
     await buildSite({
       publishedAt: '2026-05-29T00:00:00.000Z',

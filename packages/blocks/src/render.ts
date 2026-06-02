@@ -274,8 +274,8 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
       // "code snippet" equivalent.
       //
       // @security Intentionally NOT escaped. This is the tenant's OWN trusted
-      // content for their own exported site. The same two invariants as
-      // customHead/customFooter/criticalCss MUST hold: (1) only owner/admin roles
+      // content for their own exported site. The same two invariants as the raw
+      // head/criticalCss/customScripts slots MUST hold: (1) only owner/admin roles
       // can write it — every content write goes through `requireWriteRole` — and
       // (2) `renderDocument` output is served to a browser ONLY inside a sandboxed
       // iframe (preview) or written to the exported artifact, NEVER as a
@@ -552,7 +552,7 @@ export interface RenderDocumentOptions extends RenderContext {
    *   `topNav`, `mobileNav`, [body], `sidebarLeft`, `sidebarRight`, `footer`, `bottom`.
    * Shared by every page of a multi-page site (authored once in Website settings). Sidebars
    * render after the body and position themselves via their own classes; `bottom` sits after
-   * the footer (global modals / schema.org) and before any `customFooter`.
+   * the footer (global modals / schema.org) and before the raw `customScripts` slot.
    */
   topNav?: string;
   mobileNav?: string;
@@ -567,8 +567,10 @@ export interface RenderDocumentOptions extends RenderContext {
   /** Auto-generated schema.org Organization block (from company data). */
   organization?: SchemaOrgInfo;
   /**
-   * Raw HTML injected into `<head>` / before `</body>` (e.g. analytics tags) —
-   * the contentBase `global_head` / `global_bottom` equivalent.
+   * Raw HTML injected into `<head>` (`head`) and after the page body (`customScripts`) — the
+   * contentBase `global_head` / `global_bottom` equivalent (the `website.head` / `website.scripts`
+   * raw owner-only slots). Unlike the validated skeleton slots, these are NOT run through the no-JS
+   * template validator.
    *
    * @security Intentionally NOT escaped. This is the tenant's own content for
    * their own exported site. Two invariants MUST hold: (1) only owner/admin
@@ -577,12 +579,12 @@ export interface RenderDocumentOptions extends RenderContext {
    * artifact — NEVER returned as a same-origin `text/html` response in the
    * editor, or raw injection becomes stored XSS against the authed session.
    */
-  customHead?: string;
-  customFooter?: string;
+  head?: string;
+  customScripts?: string;
   /**
    * Project-wide critical CSS, inlined in `<head>` after the brand styles
-   * (contentBase's `critical_css`). Same raw-trust model as customHead/customFooter
-   * (@security above): tenant's own CSS, owner/admin-set, sandboxed/exported only.
+   * (contentBase's `critical_css`). Same raw-trust model as the head/customScripts
+   * slots (@security above): tenant's own CSS, owner/admin-set, sandboxed/exported only.
    */
   criticalCss?: string;
   /**
@@ -636,8 +638,8 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     lang = 'en',
     seo,
     organization,
-    customHead,
-    customFooter,
+    head,
+    customScripts,
     criticalCss,
     stylesheets,
     inlineStyles,
@@ -660,7 +662,7 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     `<title>${escapeHtml(title)}</title>\n` +
     `${meta}\n` +
     (jsonLd ? `${jsonLd}\n` : '') +
-    (customHead ? `${customHead}\n` : '') +
+    (head ? `${head}\n` : '') +
     `<style>${css}</style>\n` +
     (criticalCss ? `<style>${criticalCss}</style>\n` : '') +
     // Neutralize any `</style` so inlined CSS can't break out of the <style> element
@@ -671,9 +673,10 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
       .join('') +
     `</head>\n` +
     // Skeleton slot order: TOP_NAV, MOBILE_NAV, [body], SIDEBAR_L, SIDEBAR_R, FOOTER, BOTTOM,
-    // then the legacy raw customFooter (retired into a `scripts` slot in a later increment).
+    // then SCRIPTS (the raw `website.scripts` slot — 3rd-party widgets), before the platform's
+    // own component <script> tags.
     `<body>${topNav ?? ''}${mobileNav ?? ''}${body}${sidebarLeft ?? ''}${sidebarRight ?? ''}` +
-    `${footer ?? ''}${bottom ?? ''}${customFooter ?? ''}` +
+    `${footer ?? ''}${bottom ?? ''}${customScripts ?? ''}` +
     (scripts ?? [])
       .map((src) => `<script defer src="${escapeAttr(src)}"></script>`)
       .join('') +

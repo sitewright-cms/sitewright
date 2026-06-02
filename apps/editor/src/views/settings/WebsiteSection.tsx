@@ -28,22 +28,22 @@ export function WebsiteSection({ form, patch }: { form: SettingsForm; patch: Pat
         />
       </GlassCard>
 
-      <GlassCard title="Custom head HTML" icon="⟨⟩">
+      <GlassCard title="Head HTML" icon="⟨⟩">
         <TextArea
-          label="Injected into <head> (analytics, meta)"
-          value={form.customHead}
-          onChange={(v) => patch({ customHead: v })}
+          label="Raw HTML injected into <head> (analytics, meta)"
+          value={form.head}
+          onChange={(v) => patch({ head: v })}
           rows={5}
           mono
           placeholder="<meta ... />"
         />
       </GlassCard>
 
-      <GlassCard title="Custom footer HTML" icon="⟨/⟩">
+      <GlassCard title="Scripts" icon="⟨/⟩">
         <TextArea
-          label="Injected before </body>"
-          value={form.customFooter}
-          onChange={(v) => patch({ customFooter: v })}
+          label="Raw HTML injected after the page body (3rd-party scripts/widgets)"
+          value={form.scripts}
+          onChange={(v) => patch({ scripts: v })}
           rows={5}
           mono
           placeholder="<script ... ></script>"

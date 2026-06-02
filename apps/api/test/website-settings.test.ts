@@ -55,20 +55,35 @@ describe('website settings → publish', () => {
     return res.body;
   }
 
-  it('inlines critical CSS and injects custom head/footer into the exported site', async () => {
+  it('inlines critical CSS and injects the raw head/scripts blobs into the exported site', async () => {
     await putSettings({
       criticalCss: '.hero{color:#e11}',
-      customHead: '<!-- plausible-analytics -->',
-      customFooter: '<script id="cf">/*footer*/</script>',
+      head: '<!-- plausible-analytics -->',
+      scripts: '<script id="cf">/*footer*/</script>',
     });
     const html = await publishAndFetchHome();
 
     expect(html).toContain('<style>.hero{color:#e11}</style>');
     expect(html).toContain('<!-- plausible-analytics -->');
     expect(html).toContain('<script id="cf">/*footer*/</script>');
-    // critical CSS sits in <head>; footer sits before </body>
+    // critical CSS + head sit in <head>; the scripts blob sits after the body
     expect(html.indexOf('.hero{color:#e11}')).toBeLessThan(html.indexOf('</head>'));
     expect(html.indexOf('id="cf"')).toBeGreaterThan(html.indexOf('</head>'));
+  });
+
+  it('migrates legacy customHead/customFooter on the write path (old clients keep working)', async () => {
+    // A PUT carrying the retired field names is migrated by the schema before storage.
+    await putSettings({ customHead: '<!-- legacy-head -->', customFooter: '<i id="lf">legacy</i>' });
+    const html = await publishAndFetchHome();
+    expect(html).toContain('<!-- legacy-head -->'); // mapped to head → <head>
+    expect(html).toContain('<i id="lf">legacy</i>'); // mapped to scripts → after body
+    expect(html.indexOf('legacy-head')).toBeLessThan(html.indexOf('</head>'));
+    // And it is stored/exported under the NEW names.
+    const exp = await client.project(projectId).exportBundle();
+    const w = (exp.json() as { project: { website: Record<string, unknown> } }).project.website;
+    expect(w.head).toBe('<!-- legacy-head -->');
+    expect(w.scripts).toBe('<i id="lf">legacy</i>');
+    expect('customHead' in w).toBe(false);
   });
 
   it('omits the optional website injections when not configured', async () => {
@@ -80,7 +95,7 @@ describe('website settings → publish', () => {
 
   it('preserves website settings across an import → export round-trip', async () => {
     const proj = client.project(projectId);
-    const website = { criticalCss: '.x{}', customHead: '<meta name="x">', customFooter: '<b>f</b>' };
+    const website = { criticalCss: '.x{}', head: '<meta name="x">', scripts: '<b>f</b>' };
     const imp = await proj.importBundle({
       project: { brand: { name: 'B', colors: {} }, website, settings: { defaultLocale: 'en', locales: ['en'] } },
       pages: [home],

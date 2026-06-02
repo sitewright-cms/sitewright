@@ -14,19 +14,23 @@ const HTML_MAX = 20_000;
  * fields (canonical url, container width, partial-slot assignments) arrive with
  * Phase 3 (partials).
  */
-export const WebsiteSettingsSchema = z.object({
+const WebsiteSettingsObject = z.object({
+  // --- RAW owner-only slots: injected UNESCAPED, NOT run through the no-JS template validator.
+  // They hold the tenant's own trusted head/CSS/script content for their own exported site — same
+  // @security invariants as the `Html` block (owner/admin-set; rendered only inside the sandboxed
+  // preview or written to the exported artifact, never as a same-origin text/html editor response).
   /** Project-wide CSS inlined in `<head>` after the brand styles (contentBase `critical_css`). */
   criticalCss: z
     .string()
     .max(CSS_MAX)
-    // Inlined inside `<style>` — reject a `</style>` breakout. (customHead/
-    // customFooter are intentionally raw HTML and carry no such restriction.)
+    // Inlined inside `<style>` — reject a `</style>` breakout. (head/scripts are
+    // intentionally raw HTML and carry no such restriction.)
     .refine((v) => !/<\/style/i.test(v), 'criticalCss must not contain "</style"')
     .optional(),
-  /** Raw HTML injected into `<head>` — analytics/meta (contentBase `global_head`). */
-  customHead: z.string().max(HTML_MAX).optional(),
-  /** Raw HTML injected before `</body>` (contentBase `global_bottom`). */
-  customFooter: z.string().max(HTML_MAX).optional(),
+  /** Raw HTML injected into `<head>` — analytics/meta (contentBase `global_head`; was `customHead`). */
+  head: z.string().max(HTML_MAX).optional(),
+  /** Raw HTML injected after the page body — 3rd-party scripts/widgets (contentBase `global_bottom`; was `customFooter`). */
+  scripts: z.string().max(HTML_MAX).optional(),
   /**
    * Project-wide skeleton SLOTS — Handlebars partials rendered into every page at fixed
    * positions, so a multi-page site shares one header/footer authored once. They run through
@@ -97,4 +101,28 @@ export const WebsiteSettingsSchema = z.object({
     .max(500)
     .optional(),
 });
+
+/**
+ * Migrate the RETIRED raw-field names (`customHead`→`head`, `customFooter`→`scripts`) so settings
+ * stored under the old schema keep their content on the next read/write. Idempotent: runs on every
+ * parse, the new name wins if both are present, and the legacy keys are dropped. Safe to remove
+ * once all stored settings have been re-saved. Non-object input passes through untouched.
+ */
+function migrateRetiredWebsiteFields(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const v = value as Record<string, unknown>;
+  if (!('customHead' in v) && !('customFooter' in v)) return value; // fast path: already migrated
+  const out: Record<string, unknown> = { ...v };
+  if ('customHead' in out) {
+    if (out.head === undefined) out.head = out.customHead;
+    delete out.customHead;
+  }
+  if ('customFooter' in out) {
+    if (out.scripts === undefined) out.scripts = out.customFooter;
+    delete out.customFooter;
+  }
+  return out;
+}
+
+export const WebsiteSettingsSchema = z.preprocess(migrateRetiredWebsiteFields, WebsiteSettingsObject);
 export type WebsiteSettings = z.infer<typeof WebsiteSettingsSchema>;

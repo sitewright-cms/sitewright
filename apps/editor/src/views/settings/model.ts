@@ -57,8 +57,8 @@ export interface SettingsForm {
   // website
   siteUrl: string;
   criticalCss: string;
-  customHead: string;
-  customFooter: string;
+  head: string;
+  scripts: string;
   redirects: KeyedRedirect[];
   // localization
   defaultLocale: string;
@@ -114,8 +114,8 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
     fonts: recordToPairs(id.typography?.fontFamilies),
     siteUrl: w?.siteUrl ?? '',
     criticalCss: w?.criticalCss ?? '',
-    customHead: w?.customHead ?? '',
-    customFooter: w?.customFooter ?? '',
+    head: w?.head ?? '',
+    scripts: w?.scripts ?? '',
     redirects: (w?.redirects ?? []).map((r) => ({ id: rowId(), from: r.from, to: r.to, status: r.status })),
     defaultLocale: bundle.settings.defaultLocale ?? 'en',
     locales: strsToKeyed(bundle.settings.locales ?? ['en']),
@@ -181,8 +181,8 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
   const w = stripEmpty({
     siteUrl: trimmed(form.siteUrl),
     criticalCss: trimmed(form.criticalCss),
-    customHead: trimmed(form.customHead),
-    customFooter: trimmed(form.customFooter),
+    head: trimmed(form.head),
+    scripts: trimmed(form.scripts),
   });
   if (w || redirects.length) website = { ...(w ?? {}), ...(redirects.length ? { redirects } : {}) };
 

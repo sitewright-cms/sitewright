@@ -166,7 +166,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     const identity = bundle.project.identity;
     const brand = identity;
     const baseOrg = companyToOrganization(identity, bundle.project.name);
-    // Project-wide website settings (critical CSS + custom head/footer) — same for every page.
+    // Project-wide website settings (raw head/criticalCss/scripts + validated slots) — same for every page.
     const website = bundle.project.website;
     // Auto-nav: page-tree-derived menus per slot (same for every page; consumed by Nav blocks
     // and code-first skeleton slots via `{{#each nav.header}}`).
@@ -383,8 +383,8 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           },
           organization,
           criticalCss: website?.criticalCss,
-          customHead: website?.customHead,
-          customFooter: website?.customFooter,
+          head: website?.head,
+          customScripts: website?.scripts,
           // Shared assets (site root, NOT locale-prefixed), rebased to page depth.
           stylesheets: usesUtilities ? [`${siteRoot}${UTILITY_STYLESHEET}`] : undefined,
           inlineStyles: usesComponents && components.css ? [components.css] : undefined,

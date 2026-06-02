@@ -60,6 +60,7 @@ import {
 import {
   acceptInvite,
   createInvite,
+  hasPendingInvite,
   listInvites,
   listProjectMembers,
   peekInvite,
@@ -251,6 +252,13 @@ export interface AppOptions {
    * users who may read/write instance settings. Empty/unset = no instance admins.
    */
   adminEmails?: string[];
+  /**
+   * Whether public `POST /auth/register` is open. Default `true` (the embeddable factory + the
+   * test suite). The production entry point (`server.ts`) sets this from `SW_OPEN_REGISTRATION`
+   * and defaults it CLOSED — a closed instance is invitation-only (an email must hold a pending
+   * invite), with the first admin seeded out-of-band (see seed.ts).
+   */
+  openRegistration?: boolean;
   /** Current running version (for the pull-based update check). */
   version?: string;
   /** Provider of the latest released version tag (cached; null when unavailable). */
@@ -335,6 +343,17 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // clients to one bucket).
     trustProxy: opts.trustProxy ?? false,
   });
+
+  // Public registration is open unless the embedder closes it. Leaving the default open is
+  // safe for the test harness but a footgun for a direct `createApp` consumer who forgot to
+  // set it, so surface it loudly (the production entry point always passes an explicit value,
+  // so this never fires there).
+  if (opts.openRegistration === undefined) {
+    app.log.warn(
+      '[sitewright/api] openRegistration left at its default (OPEN); anyone may self-register. ' +
+        'Pass openRegistration:false (set SW_OPEN_REGISTRATION to opt in) for an invite-only instance.',
+    );
+  }
 
   // Plugins that integrate per-route (rate-limit hooks `onRoute`) must finish
   // loading BEFORE routes are registered, so these are awaited up front.
@@ -576,6 +595,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
   app.post('/auth/register', { config: rl(10) }, async (req, reply) => {
     const body = RegisterBody.parse(req.body);
+    // When registration is closed, it is invitation-only: only an email holding a pending invite
+    // may register (then accept it). The instance admin is seeded out-of-band (seed.ts), never
+    // registered, so closing this never locks the operator out.
+    if (!(opts.openRegistration ?? true) && !(await hasPendingInvite(db, body.email))) {
+      return reply.code(403).send({ error: 'registration is by invitation only' });
+    }
     const { userId, orgId } = await registerAccount(db, body.email, body.password, body.orgName);
     const { token, expiresAt } = await createSession(db, userId);
     reply.setCookie(SESSION_COOKIE, token, {

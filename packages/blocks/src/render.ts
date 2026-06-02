@@ -546,6 +546,14 @@ export interface RenderDocumentOptions extends RenderContext {
    * of rendering the block tree. The same head/SEO/CSS/script shell is applied.
    */
   bodyHtml?: string;
+  /**
+   * Pre-rendered project-wide skeleton SLOTS (already validated + Handlebars-rendered HTML),
+   * injected around the page body: `topNav` at the top of `<body>`, `footer` after the body.
+   * Shared by every page of a multi-page site (authored once in Website settings).
+   */
+  topNav?: string;
+  /** See {@link RenderDocumentOptions.topNav} — injected after the page body, before `customFooter`. */
+  footer?: string;
   /** Document language attribute (defaults to `en`). */
   lang?: string;
   /** SEO/Open-Graph metadata; `title` falls back to the page title. */
@@ -613,6 +621,8 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
   const {
     brand,
     bodyHtml,
+    topNav,
+    footer,
     lang = 'en',
     seo,
     organization,
@@ -650,7 +660,7 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
       .map((href) => `<link rel="stylesheet" href="${escapeAttr(href)}" />\n`)
       .join('') +
     `</head>\n` +
-    `<body>${body}${customFooter ?? ''}` +
+    `<body>${topNav ?? ''}${body}${footer ?? ''}${customFooter ?? ''}` +
     (scripts ?? [])
       .map((src) => `<script defer src="${escapeAttr(src)}"></script>`)
       .join('') +

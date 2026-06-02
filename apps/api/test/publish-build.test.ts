@@ -110,6 +110,106 @@ describe('buildSite', () => {
     expect(sheet).not.toContain('oklch(45% 0.24 277.023)'); // DaisyUI's indigo default is gone
   });
 
+  it('renders project-wide skeleton slots (topNav/footer + auto-nav) into every page', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: { primary: '#0a7' } },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+          website: {
+            topNav:
+              '<nav class="navbar bg-base-100"><a class="btn btn-ghost" href="/">{{ company.name }}</a>' +
+              '<ul class="menu menu-horizontal">{{#each nav.header}}<li><a href="{{url path}}">{{label}}</a></li>{{/each}}</ul></nav>',
+            footer: '<footer class="footer">© {{ company.name }}</footer>',
+          },
+        },
+        pages: [
+          { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<main>Home body</main>', nav: { slots: ['header'], order: 1 } },
+          { id: 'about', path: '/about', title: 'About', root: { id: 'r2', type: 'Section' }, source: '<main>About body</main>', nav: { slots: ['header'], order: 2 } },
+        ],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).toContain('Home body'); // the page's own source
+    expect(home).toContain('<nav class="navbar bg-base-100">'); // the shared topNav slot
+    // The auto-nav lists BOTH pages (built from each page's nav settings).
+    expect(home).toContain('<a href="/">Home</a>');
+    expect(home).toContain('<a href="/about">About</a>');
+    expect(home).toContain('<footer class="footer">© Acme</footer>'); // shared footer + brand
+    expect(home).toContain('<link rel="stylesheet" href="styles.css" />');
+    // The slot's DaisyUI/Tailwind classes are compiled into the shared sheet.
+    const sheet = await readFile(join(outDir, 'styles.css'), 'utf8');
+    expect(sheet).toMatch(/\.btn/);
+
+    // A second page shares the exact same nav + footer (authored once).
+    const about = await readFile(join(outDir, 'about', 'index.html'), 'utf8');
+    expect(about).toContain('About body');
+    expect(about).toContain('<a href="/about">About</a>');
+    expect(about).toContain('<footer class="footer">© Acme</footer>');
+  });
+
+  it('locale-prefixes skeleton-slot nav links for non-default locales', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: {} },
+          settings: { defaultLocale: 'en', locales: ['en', 'de'] },
+          website: { topNav: '<nav>{{#each nav.header}}<a href="{{url path}}">{{label}}</a>{{/each}}</nav>' },
+        },
+        pages: [
+          { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<main>h</main>', nav: { slots: ['header'], order: 1 } },
+          { id: 'about', path: '/about', title: 'About', root: { id: 'r2', type: 'Section' }, source: '<main>a</main>', nav: { slots: ['header'], order: 2 } },
+        ],
+      }),
+    });
+    // Default locale at the root → root-relative nav links.
+    expect(await readFile(join(outDir, 'index.html'), 'utf8')).toContain('href="/about"');
+    // Non-default locale under /de/ → its shared nav points at the in-locale page.
+    const de = await readFile(join(outDir, 'de', 'index.html'), 'utf8');
+    expect(de).toContain('href="/de/about"');
+    expect(de).not.toContain('href="/about"');
+  });
+
+  it('fails the publish with a template-error message when a skeleton slot is malformed', async () => {
+    await expect(
+      buildSite({
+        publishedAt: '2026-05-29T00:00:00.000Z',
+        outDir,
+        bundle: bundle({
+          project: {
+            formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+            identity: { name: 'Acme', colors: {} }, settings: { defaultLocale: 'en', locales: ['en'] },
+            website: { topNav: '<nav>{{#each nav.header}}<a>{{label}}</a></nav>' }, // unclosed {{#each}}
+          },
+          pages: [{ id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<main>x</main>' }],
+        }),
+      }),
+    ).rejects.toThrow(/website topNav template error/);
+  });
+
+  it('fails the publish with a clear error when a skeleton slot is unsafe', async () => {
+    await expect(
+      buildSite({
+        publishedAt: '2026-05-29T00:00:00.000Z',
+        outDir,
+        bundle: bundle({
+          project: {
+            formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+            identity: { name: 'Acme', colors: {} }, settings: { defaultLocale: 'en', locales: ['en'] },
+            website: { topNav: '<nav>{{#each nav.header}}<a href="{{url path}}">{{label}}</a>{{/each}}</nav><script>x()</script>' },
+          },
+          pages: [{ id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<main>x</main>' }],
+        }),
+      }),
+    ).rejects.toThrow(/website topNav/);
+  });
+
   it('bakes client-edited region content ({{edit}} overrides) into a source-page build', async () => {
     await buildSite({
       publishedAt: '2026-05-29T00:00:00.000Z',

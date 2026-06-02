@@ -15,6 +15,8 @@ export interface WorkerJob {
   publishedAt: string;
   /** Media metadata, each with its files (fallback + variants) inlined as base64. */
   media: ReadonlyArray<{ asset: MediaAsset; files: Record<string, string> }>;
+  /** Publish-time JSON snapshot (`website.jsonDataUrl`), fetched in the main process. */
+  jsonData?: unknown;
 }
 
 /** The worker's result: the release manifest + every built file as base64. */
@@ -44,6 +46,7 @@ export async function runWorker(job: WorkerJob): Promise<WorkerResult> {
       bundle: job.bundle,
       publishedAt: job.publishedAt,
       media,
+      jsonData: job.jsonData,
       readMedia: async (assetId, file) => {
         const b64 = readBase64(filesByAsset.get(assetId) ?? {}, file);
         if (b64 === undefined) throw Object.assign(new Error('missing'), { code: 'ENOENT' });

@@ -29,6 +29,7 @@ import type { Database } from '../db/client.js';
 import { MediaStorage } from '../media/storage.js';
 import { MediaValidationError } from '../media/errors.js';
 import { PublishError } from '../publish/build.js';
+import { fetchJsonData, JsonDataError } from '../publish/json-data.js';
 import { InProcessBuildRunner, type BuildRunner } from '../publish/runner.js';
 import { AiProviderError, type AiProvider } from '../ai/provider.js';
 import { PublishStore } from '../publish/store.js';
@@ -1356,6 +1357,20 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           const media = mediaStorage ? ((await contentRepo.list(ctx, 'media')) as MediaAsset[]) : [];
           // Instance hCaptcha site key (public) — baked into forms that require it.
           const hcaptchaSiteKey = (await instanceSettingsRepo.getStored()).hcaptcha?.siteKey;
+          // Publish-time JSON snapshot: fetch + parse `website.jsonDataUrl` in THIS (networked) process
+          // — SSRF-guarded — then pass the parsed value into the build job. The `--network none` worker
+          // and the exported static site never fetch anything. A bad URL fails the publish (author-fixable).
+          let jsonData: unknown;
+          const jsonDataUrl = bundle.project.website?.jsonDataUrl;
+          if (jsonDataUrl) {
+            try {
+              jsonData = await fetchJsonData(jsonDataUrl);
+            } catch (err) {
+              return reply
+                .code(409)
+                .send({ error: err instanceof JsonDataError ? err.message : 'JSON data fetch failed' });
+            }
+          }
           const release = await buildRunner.run({
             outDir: store.dirFor(project.id),
             bundle,
@@ -1364,6 +1379,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             // Exported Form blocks post to this absolute platform endpoint.
             ...(opts.publicUrl ? { publicBaseUrl: opts.publicUrl } : {}),
             ...(hcaptchaSiteKey ? { hcaptchaSiteKey } : {}),
+            ...(jsonData !== undefined ? { jsonData } : {}),
             readMedia: mediaStorage
               ? (assetId, file) => mediaStorage.read(project.id, assetId, file)
               : undefined,

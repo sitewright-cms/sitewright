@@ -32,6 +32,14 @@ describe('WebsiteSettingsSchema', () => {
     expect(WebsiteSettingsSchema.parse({})).toEqual({});
   });
 
+  it('accepts an https jsonDataUrl (with query) and rejects non-https / malformed', () => {
+    const url = 'https://en.wikipedia.org/api/rest_v1/page/summary/Berlin?redirect=true';
+    expect(WebsiteSettingsSchema.parse({ jsonDataUrl: url }).jsonDataUrl).toBe(url);
+    expect(() => WebsiteSettingsSchema.parse({ jsonDataUrl: 'http://example.com/d.json' })).toThrow();
+    expect(() => WebsiteSettingsSchema.parse({ jsonDataUrl: 'not-a-url' })).toThrow();
+    expect(() => WebsiteSettingsSchema.parse({ jsonDataUrl: `https://x.test/${'a'.repeat(2048)}` })).toThrow();
+  });
+
   it('accepts the full set of validated skeleton slots', () => {
     const w = {
       topNav: '<nav class="navbar">x</nav>',

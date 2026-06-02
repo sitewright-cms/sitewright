@@ -24,6 +24,7 @@ const full: SettingsBundle = {
   },
   website: {
     siteUrl: 'https://acme.com',
+    jsonDataUrl: 'https://api.acme.com/data.json',
     criticalCss: '.hero{}',
     head: '<meta>',
     scripts: '<script></script>',

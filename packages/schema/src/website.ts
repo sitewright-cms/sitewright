@@ -56,6 +56,19 @@ const WebsiteSettingsObject = z.object({
   footer: z.string().max(HTML_MAX).optional(),
   bottom: z.string().max(HTML_MAX).optional(),
   /**
+   * URL to an external JSON file fetched once at PUBLISH time (SSRF-guarded, public-https-only) and
+   * decoded into `{{ website.json_data }}` — e.g. a code-first page can render `{{ website.json_data.title }}`
+   * or `{{#each website.json_data.items}}…{{/each}}`. The result is snapshotted into the static
+   * output; the exported site never fetches it itself. Query strings are allowed (it is an API URL).
+   */
+  jsonDataUrl: z
+    .string()
+    .max(2048)
+    .url()
+    .refine((u) => /^https:\/\//i.test(u), 'jsonDataUrl must be an https URL')
+    .refine((u) => !/\s/.test(u), 'jsonDataUrl must not contain whitespace')
+    .optional(),
+  /**
    * The site's production base URL (e.g. `https://acme.com`). Required for an
    * absolute-URL `sitemap.xml` + the `robots.txt` Sitemap line; omit to skip the
    * sitemap. No trailing slash needed (normalized at build time).

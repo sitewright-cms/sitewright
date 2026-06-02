@@ -84,6 +84,11 @@ export interface BuildSiteOptions {
   publicBaseUrl?: string;
   /** Instance hCaptcha site key (public) — rendered into forms that require hCaptcha. */
   hcaptchaSiteKey?: string;
+  /**
+   * The publish-time JSON snapshot fetched from `website.jsonDataUrl` (already SSRF-guarded,
+   * fetched + parsed in the main process). Exposed to templates as `{{ website.json_data }}`.
+   */
+  jsonData?: unknown;
 }
 
 /** Copies every media asset's files into `<base>/media/<assetId>/` (path-safe). */
@@ -318,7 +323,10 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         // is the (locale-prefixed) auto-menu so a nav slot lists pages via {{#each nav.header}}.
         const renderCtx = {
           company: identity as unknown as Record<string, unknown>,
-          website: { siteUrl: website?.siteUrl },
+          // `json_data` is the publish-time snapshot of `website.jsonDataUrl` (full object — a
+          // code-first page/slot can `{{#each website.json_data.items}}`). siteUrl is the only
+          // OTHER website field exposed; the raw head/criticalCss/scripts blobs are never surfaced.
+          website: { siteUrl: website?.siteUrl, json_data: opts.jsonData },
           page: { title: page.title, path: page.path },
           data: datasets as Record<string, unknown>,
           nav: navForLocale as unknown as Record<string, unknown>,
@@ -356,7 +364,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // {{ company.* }}/{{ website.* }}/{{ page.* }} substitution in text props.
           // `website` is projected to only its public fields — never the raw
           // head/footer/CSS blobs, which aren't meant to be surfaced via a variable.
-          vars: { company: identity, website: { siteUrl: website?.siteUrl }, page: { title: page.title, path: page.path } },
+          vars: { company: identity, website: { siteUrl: website?.siteUrl, json_data: opts.jsonData }, page: { title: page.title, path: page.path } },
           datasets,
           entry: route.entry,
           includeDrafts: false,

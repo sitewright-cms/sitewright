@@ -71,6 +71,15 @@ describe('website settings → publish', () => {
     expect(html.indexOf('id="cf"')).toBeGreaterThan(html.indexOf('</head>'));
   });
 
+  it('fails the publish with 409 when jsonDataUrl targets a private host (SSRF guard)', async () => {
+    // The URL passes the schema (valid https) but the publish-time fetch refuses a private host —
+    // hermetic: targetsPrivateHost rejects it before any network call.
+    await putSettings({ jsonDataUrl: 'https://localhost/data.json' });
+    const pub = await client.post(`${client.project(projectId).base}/publish`);
+    expect(pub.statusCode).toBe(409);
+    expect((pub.json() as { error: string }).error).toMatch(/public https/i);
+  });
+
   it('migrates legacy customHead/customFooter on the write path (old clients keep working)', async () => {
     // A PUT carrying the retired field names is migrated by the schema before storage.
     await putSettings({ customHead: '<!-- legacy-head -->', customFooter: '<i id="lf">legacy</i>' });

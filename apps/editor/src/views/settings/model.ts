@@ -56,6 +56,7 @@ export interface SettingsForm {
   fonts: KeyedPair[];
   // website
   siteUrl: string;
+  jsonDataUrl: string;
   criticalCss: string;
   head: string;
   scripts: string;
@@ -113,6 +114,7 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
     colors: recordToPairs(id.colors),
     fonts: recordToPairs(id.typography?.fontFamilies),
     siteUrl: w?.siteUrl ?? '',
+    jsonDataUrl: w?.jsonDataUrl ?? '',
     criticalCss: w?.criticalCss ?? '',
     head: w?.head ?? '',
     scripts: w?.scripts ?? '',
@@ -180,6 +182,7 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
     .map((r) => ({ from: r.from.trim(), to: r.to.trim(), status: r.status as 301 | 302 | 307 | 308 }));
   const w = stripEmpty({
     siteUrl: trimmed(form.siteUrl),
+    jsonDataUrl: trimmed(form.jsonDataUrl),
     criticalCss: trimmed(form.criticalCss),
     head: trimmed(form.head),
     scripts: trimmed(form.scripts),

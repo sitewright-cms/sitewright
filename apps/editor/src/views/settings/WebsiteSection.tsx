@@ -15,6 +15,15 @@ export function WebsiteSection({ form, patch }: { form: SettingsForm; patch: Pat
           type="url"
           placeholder="https://acme.com"
         />
+        <div className="mt-3">
+          <Field
+            label="JSON data URL → {{ website.json_data }} (fetched at publish)"
+            value={form.jsonDataUrl}
+            onChange={(v) => patch({ jsonDataUrl: v })}
+            type="url"
+            placeholder="https://api.example.com/data.json"
+          />
+        </div>
       </GlassCard>
 
       <GlassCard title="Critical CSS" icon="◐" wide>

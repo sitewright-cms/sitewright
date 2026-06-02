@@ -151,6 +151,55 @@ describe('buildSite', () => {
     expect(about).toContain('<footer class="footer">© Acme</footer>');
   });
 
+  it('decodes the publish-time JSON snapshot into {{ website.json_data }} (source page + slot)', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      // The snapshot is fetched in the main process and passed into the build job.
+      jsonData: { title: 'Berlin', extract: 'Capital of Germany', tags: ['a', 'b'] },
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: { primary: '#0a7' } },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+          website: {
+            jsonDataUrl: 'https://en.wikipedia.org/api/rest_v1/page/summary/Berlin',
+            footer: '<footer>{{ website.json_data.title }} tags: {{#each website.json_data.tags}}{{this}}{{/each}}</footer>',
+          },
+        },
+        pages: [
+          { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<main><h1>{{ website.json_data.title }}</h1><p>{{ website.json_data.extract }}</p></main>', nav: { slots: ['header'], order: 1 } },
+        ],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).toContain('<h1>Berlin</h1>'); // source page reads the snapshot
+    expect(home).toContain('<p>Capital of Germany</p>');
+    expect(home).toContain('<footer>Berlin tags: ab</footer>'); // a slot can {{#each}} the array
+  });
+
+  it('HTML-escapes json_data string values (the snapshot is untrusted external input)', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      jsonData: { title: '<script>alert(1)</script>', note: '"&<>' },
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: { primary: '#0a7' } },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+        },
+        pages: [
+          { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<main><h1>{{ website.json_data.title }}</h1><p>{{ website.json_data.note }}</p></main>' },
+        ],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    const body = home.slice(home.indexOf('<body'));
+    expect(body).not.toContain('<script>alert(1)</script>'); // never injected raw
+    expect(body).toContain('&lt;script&gt;alert(1)&lt;/script&gt;'); // HTML-escaped
+  });
+
   it('renders all validated skeleton slots (mobileNav/sidebars/bottom) in source order', async () => {
     await buildSite({
       publishedAt: '2026-05-29T00:00:00.000Z',

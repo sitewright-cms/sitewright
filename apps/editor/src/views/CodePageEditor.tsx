@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Page } from '@sitewright/schema';
 import { api, type Org, type Project } from '../api';
 import { CodeEditor } from '../lib/code-editor';
+import { CODE_PATTERNS } from '../lib/code-patterns';
 
 interface CodePageEditorProps {
   org: Org;
@@ -29,6 +30,7 @@ export function CodePageEditor({ org, project, page, onClose }: CodePageEditorPr
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [patternKey, setPatternKey] = useState(''); // controlled value of the "Insert pattern" select
   const dirty = source !== savedSource;
 
   // Guards async setState after the editor is closed (the view unmounts when another page
@@ -46,6 +48,15 @@ export function CodePageEditor({ org, project, page, onClose }: CodePageEditorPr
   function edit(next: string) {
     setSource(next);
     setSaved(false);
+  }
+
+  /** Append a built-in DaisyUI starter pattern to the template (a page is built top-to-bottom). */
+  function insertPattern(id: string) {
+    const pattern = CODE_PATTERNS.find((p) => p.id === id);
+    if (!pattern) return;
+    setSaved(false);
+    // Functional update → always appends to the latest committed source, never a stale closure.
+    setSource((prev) => (prev.trim() ? `${prev.trimEnd()}\n${pattern.source}\n` : `${pattern.source}\n`));
   }
 
   useEffect(() => {
@@ -108,6 +119,24 @@ export function CodePageEditor({ org, project, page, onClose }: CodePageEditorPr
           {page.title} <span className="font-normal text-slate-400">{page.path}</span>
         </h2>
         <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[11px] font-medium text-white">code</span>
+        <select
+          aria-label="Insert pattern"
+          className="rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-700"
+          value={patternKey}
+          onChange={(e) => {
+            insertPattern(e.target.value);
+            setPatternKey(''); // reset to the placeholder via state (not DOM mutation)
+          }}
+        >
+          <option value="" disabled>
+            Insert pattern…
+          </option>
+          {CODE_PATTERNS.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
         <div className="ml-auto flex items-center gap-3">
           {saved && !dirty && <span className="text-xs text-emerald-600">Saved</span>}
           {saveError && <span className="text-xs text-red-600">{saveError}</span>}

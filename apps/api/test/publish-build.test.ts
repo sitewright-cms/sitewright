@@ -151,6 +151,58 @@ describe('buildSite', () => {
     expect(about).toContain('<footer class="footer">© Acme</footer>');
   });
 
+  it('renders all validated skeleton slots (mobileNav/sidebars/bottom) in source order', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: { primary: '#0a7' } },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+          website: {
+            topNav: '<nav id="slot-top" class="navbar">top</nav>',
+            mobileNav: '<nav id="slot-mob" class="drawer">mobile</nav>',
+            sidebarLeft: '<aside id="slot-sl" class="menu">left</aside>',
+            sidebarRight: '<aside id="slot-sr" class="menu">right</aside>',
+            footer: '<footer id="slot-foot" class="footer">foot</footer>',
+            bottom: '<div id="slot-bottom" class="modal">{{ company.name }}</div>',
+          },
+        },
+        pages: [
+          { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<main id="page-body">Home body</main>', nav: { slots: ['header'], order: 1 } },
+        ],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    const order = ['slot-top', 'slot-mob', 'page-body', 'slot-sl', 'slot-sr', 'slot-foot', 'slot-bottom'].map((id) => home.indexOf(id));
+    order.forEach((p) => expect(p).toBeGreaterThanOrEqual(0));
+    expect(order).toEqual([...order].sort((a, b) => a - b)); // strictly increasing
+    expect(home).toContain('>Acme</div>'); // the bottom slot got the company-name binding
+    // Every validated slot's classes feed the shared utility sheet.
+    const sheet = await readFile(join(outDir, 'styles.css'), 'utf8');
+    expect(sheet).toMatch(/\.drawer/);
+    expect(sheet).toMatch(/\.menu/);
+  });
+
+  it('fails the publish when a NEW validated slot (e.g. bottom) is unsafe', async () => {
+    await expect(
+      buildSite({
+        publishedAt: '2026-05-29T00:00:00.000Z',
+        outDir,
+        bundle: bundle({
+          project: {
+            formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+            identity: { name: 'Acme', colors: { primary: '#0a7' } },
+            settings: { defaultLocale: 'en', locales: ['en'] },
+            website: { bottom: '<div>{{website.json}}</div><script>x()</script>' },
+          },
+          pages: [{ id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<main>h</main>' }],
+        }),
+      }),
+    ).rejects.toThrow(/website bottom/);
+  });
+
   it('locale-prefixes skeleton-slot nav links for non-default locales', async () => {
     await buildSite({
       publishedAt: '2026-05-29T00:00:00.000Z',

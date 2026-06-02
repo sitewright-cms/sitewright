@@ -200,8 +200,15 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     const sourceClassNames = routes
       .filter((r) => r.page.source)
       .flatMap((r) => extractClassNames(r.page.source as string));
-    // Project-wide skeleton slots (topNav/footer) feed the shared sheet too.
-    const slotClassNames = [website?.topNav, website?.footer]
+    // Project-wide skeleton slots feed the shared sheet too.
+    const slotClassNames = [
+      website?.topNav,
+      website?.mobileNav,
+      website?.sidebarLeft,
+      website?.sidebarRight,
+      website?.footer,
+      website?.bottom,
+    ]
       .filter((s): s is string => Boolean(s))
       .flatMap((s) => extractClassNames(s));
     const classNames = [...scanRoots.flatMap(collectClassNames), ...sourceClassNames, ...slotClassNames];
@@ -227,7 +234,8 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       await copyMedia(tmp, media, opts.readMedia);
     }
 
-    // Render a project-wide skeleton slot (topNav/footer) for a page, validated; an unsafe or
+    // Render a project-wide skeleton slot (topNav/mobileNav/sidebarLeft/sidebarRight/footer/bottom)
+    // for a page, validated; an unsafe or
     // invalid slot fails the publish with a clear, slot-scoped error. Hoisted above the loops
     // so the closure isn't rebuilt per page.
     const renderSlot = (src: string | undefined, name: string, ctx: TemplateContext): string | undefined => {
@@ -307,7 +315,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         // SAME document shell (head/SEO/CSS/nav). Validated by renderTemplate; a bad
         // source fails the publish with a clear, page-scoped error.
         // Render context shared by the page body AND the project-wide skeleton slots — `nav`
-        // is the (locale-prefixed) auto-menu so a topNav/footer lists pages via {{#each nav.header}}.
+        // is the (locale-prefixed) auto-menu so a nav slot lists pages via {{#each nav.header}}.
         const renderCtx = {
           company: identity as unknown as Record<string, unknown>,
           website: { siteUrl: website?.siteUrl },
@@ -331,12 +339,20 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         // Project-wide skeleton slots, validated + rendered per page (the page binding lets a
         // nav highlight the active link).
         const topNavHtml = renderSlot(website?.topNav, 'topNav', renderCtx);
+        const mobileNavHtml = renderSlot(website?.mobileNav, 'mobileNav', renderCtx);
+        const sidebarLeftHtml = renderSlot(website?.sidebarLeft, 'sidebarLeft', renderCtx);
+        const sidebarRightHtml = renderSlot(website?.sidebarRight, 'sidebarRight', renderCtx);
         const footerHtml = renderSlot(website?.footer, 'footer', renderCtx);
+        const bottomHtml = renderSlot(website?.bottom, 'bottom', renderCtx);
         const html = renderDocument(page, {
           brand,
           bodyHtml,
           topNav: topNavHtml,
+          mobileNav: mobileNavHtml,
+          sidebarLeft: sidebarLeftHtml,
+          sidebarRight: sidebarRightHtml,
           footer: footerHtml,
+          bottom: bottomHtml,
           // {{ company.* }}/{{ website.* }}/{{ page.* }} substitution in text props.
           // `website` is projected to only its public fields — never the raw
           // head/footer/CSS blobs, which aren't meant to be surfaced via a variable.

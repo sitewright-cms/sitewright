@@ -548,12 +548,18 @@ export interface RenderDocumentOptions extends RenderContext {
   bodyHtml?: string;
   /**
    * Pre-rendered project-wide skeleton SLOTS (already validated + Handlebars-rendered HTML),
-   * injected around the page body: `topNav` at the top of `<body>`, `footer` after the body.
-   * Shared by every page of a multi-page site (authored once in Website settings).
+   * injected around the page body in this source order:
+   *   `topNav`, `mobileNav`, [body], `sidebarLeft`, `sidebarRight`, `footer`, `bottom`.
+   * Shared by every page of a multi-page site (authored once in Website settings). Sidebars
+   * render after the body and position themselves via their own classes; `bottom` sits after
+   * the footer (global modals / schema.org) and before any `customFooter`.
    */
   topNav?: string;
-  /** See {@link RenderDocumentOptions.topNav} — injected after the page body, before `customFooter`. */
+  mobileNav?: string;
+  sidebarLeft?: string;
+  sidebarRight?: string;
   footer?: string;
+  bottom?: string;
   /** Document language attribute (defaults to `en`). */
   lang?: string;
   /** SEO/Open-Graph metadata; `title` falls back to the page title. */
@@ -622,7 +628,11 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     brand,
     bodyHtml,
     topNav,
+    mobileNav,
+    sidebarLeft,
+    sidebarRight,
     footer,
+    bottom,
     lang = 'en',
     seo,
     organization,
@@ -660,7 +670,10 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
       .map((href) => `<link rel="stylesheet" href="${escapeAttr(href)}" />\n`)
       .join('') +
     `</head>\n` +
-    `<body>${topNav ?? ''}${body}${footer ?? ''}${customFooter ?? ''}` +
+    // Skeleton slot order: TOP_NAV, MOBILE_NAV, [body], SIDEBAR_L, SIDEBAR_R, FOOTER, BOTTOM,
+    // then the legacy raw customFooter (retired into a `scripts` slot in a later increment).
+    `<body>${topNav ?? ''}${mobileNav ?? ''}${body}${sidebarLeft ?? ''}${sidebarRight ?? ''}` +
+    `${footer ?? ''}${bottom ?? ''}${customFooter ?? ''}` +
     (scripts ?? [])
       .map((src) => `<script defer src="${escapeAttr(src)}"></script>`)
       .join('') +

@@ -33,12 +33,24 @@ export const WebsiteSettingsSchema = z.object({
    * the SAME no-JS template validator as a page `source` (HTML + Tailwind + DaisyUI) and get
    * the page render context PLUS `nav` — the auto-menu built from each page's nav settings:
    *   {{#each nav.header}}<a href="{{url path}}">{{label}}</a>{{/each}}
-   * `topNav` renders at the top of `<body>`; `footer` below the page body (above customFooter).
-   * Nav links use root-absolute paths (`{{url path}}`); on a multilingual site they are
-   * auto-prefixed with the current locale at publish.
+   * Body source order: `topNav`, `mobileNav`, [page body], `sidebarLeft`, `sidebarRight`,
+   * `footer`, `bottom`. Nav links use root-absolute paths (`{{url path}}`); on a multilingual
+   * site they are auto-prefixed with the current locale at publish.
+   *
+   * - `topNav` / `mobileNav` — main + mobile navigation, top of `<body>`.
+   * - `sidebarLeft` / `sidebarRight` — rendered AFTER the page body (position via the slot's own
+   *   Tailwind classes, e.g. fixed/absolute) so they don't disturb body flow.
+   * - `footer` — below the page body and sidebars.
+   * - `bottom` — after the footer (global modals, schema.org *microdata* markup, etc.); usually a
+   *   no-show. (A `<script type="application/ld+json">` block is NOT allowed here — the no-JS slot
+   *   validator rejects all `<script>`; the platform emits JSON-LD in `<head>` from company data.)
    */
   topNav: z.string().max(HTML_MAX).optional(),
+  mobileNav: z.string().max(HTML_MAX).optional(),
+  sidebarLeft: z.string().max(HTML_MAX).optional(),
+  sidebarRight: z.string().max(HTML_MAX).optional(),
   footer: z.string().max(HTML_MAX).optional(),
+  bottom: z.string().max(HTML_MAX).optional(),
   /**
    * The site's production base URL (e.g. `https://acme.com`). Required for an
    * absolute-URL `sitemap.xml` + the `robots.txt` Sitemap line; omit to skip the

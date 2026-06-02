@@ -755,6 +755,38 @@ describe('renderPage / renderDocument', () => {
     expect(doc).toContain('<!-- analytics-foot -->');
   });
 
+  it('injects the validated skeleton slots in source order around the page body', () => {
+    const doc = renderDocument(page, {
+      brand,
+      topNav: '<nav id="slot-top"></nav>',
+      mobileNav: '<nav id="slot-mob"></nav>',
+      sidebarLeft: '<aside id="slot-sl"></aside>',
+      sidebarRight: '<aside id="slot-sr"></aside>',
+      footer: '<footer id="slot-foot"></footer>',
+      bottom: '<div id="slot-bottom"></div>',
+    });
+    // TOP_NAV, MOBILE_NAV, [body], SIDEBAR_L, SIDEBAR_R, FOOTER, BOTTOM
+    const positions = [
+      'id="slot-top"',
+      'id="slot-mob"',
+      'Hello', // the page body (block tree Heading)
+      'id="slot-sl"',
+      'id="slot-sr"',
+      'id="slot-foot"',
+      'id="slot-bottom"',
+    ].map((needle) => doc.indexOf(needle));
+    positions.forEach((p) => expect(p).toBeGreaterThanOrEqual(0));
+    expect(positions).toEqual([...positions].sort((a, b) => a - b)); // strictly increasing
+  });
+
+  it('omits the skeleton slots when not provided', () => {
+    const doc = renderDocument(page, { brand });
+    expect(doc).not.toContain('<aside'); // no sidebars
+    // Nothing is injected before the body: <body> is immediately followed by the page render
+    // (no empty topNav/mobileNav fragments leak in).
+    expect(doc).toContain('<body><section');
+  });
+
   it('falls back to the page title and omits optional head bits by default', () => {
     const doc = renderDocument(page, { brand });
     expect(doc).toContain('<title>Home</title>');

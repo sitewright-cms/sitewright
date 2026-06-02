@@ -63,9 +63,3 @@ export function assertClientEditAllowed(prev: Page, next: Page): void {
     );
   }
 }
-
-/** Whether a page exposes any client-editable node (used to decide if a member may open it). */
-export function hasEditableNode(node: PageNode): boolean {
-  if (node.editable) return true;
-  return (node.children ?? []).some(hasEditableNode);
-}

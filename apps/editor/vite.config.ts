@@ -12,13 +12,11 @@ export default defineConfig({
     include: ['test/**/*.test.{ts,tsx}'],
     coverage: {
       provider: 'v8',
-      // Gate the pure logic (API client + tree operations). UI flows are covered
+      // Gate the pure logic (API client + dataset/preview helpers). UI flows are covered
       // by the Playwright browser E2E against the deployed app.
       include: [
         'src/api.ts',
-        'src/lib/tree-ops.ts',
         'src/lib/entry-form.ts',
-        'src/lib/translation-draft.ts',
         'src/lib/live-target.ts',
       ],
       reporter: ['text', 'lcov'],

@@ -24,8 +24,7 @@ const PREVIEW_DEBOUNCE_MS = 500;
  */
 export function CodePageEditor({ org, project, page, onClose }: CodePageEditorProps) {
   const [source, setSource] = useState(page.source ?? '');
-  // Page-level settings (parity with the block editor's "Page settings" panel) — a code page
-  // is a first-class page, so it carries the same title/status/nav config.
+  // Page-level settings — a code page is a first-class page, carrying its own title/status/nav.
   const [title, setTitle] = useState(page.title);
   const [status, setStatus] = useState<'draft' | 'published'>(page.status ?? 'published');
   const [navSlots, setNavSlots] = useState<NavSlot[]>(page.nav?.slots ?? []);

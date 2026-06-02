@@ -20,8 +20,7 @@ test('insert a DaisyUI starter pattern into a code page → renders in the previ
   // Create a code page and open it.
   await page.getByLabel('Page slug').fill('home');
   await page.getByLabel('Page title').fill('Home');
-  await page.getByLabel('Code page').check();
-  await page.getByRole('button', { name: 'Add code page' }).click();
+  await page.getByRole('button', { name: 'Add page' }).click();
   await page.getByRole('button', { name: /Home/ }).click();
 
   // Insert the Hero pattern; its source lands in the editor…

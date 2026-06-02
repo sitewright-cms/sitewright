@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 const stamp = Date.now();
 
-test('build a page, publish the project, and view the live site', async ({ page, baseURL }) => {
+test('build a code page, publish the project, and view the live site', async ({ page, baseURL }) => {
   await page.goto('/');
 
   await page.getByRole('button', { name: /Register/ }).click();
@@ -15,14 +15,18 @@ test('build a page, publish the project, and view the live site', async ({ page,
   await page.getByRole('button', { name: 'Create project' }).click();
   await page.getByRole('button', { name: /Live Site/ }).click();
 
-  // Build a home page with a heading.
+  // Build a home page: every new page is code-first. Replace the scaffold with identifiable
+  // text (plain text sidesteps CodeMirror bracket auto-close) and save.
   await page.getByLabel('Page slug').fill('home');
   await page.getByLabel('Page title').fill('Home Page');
   await page.getByRole('button', { name: 'Add page' }).click();
   await page.getByRole('button', { name: /Home Page/ }).click();
-  await page.getByRole('button', { name: '+ Heading', exact: true }).click();
-  await page.getByLabel('Text').fill('We Are Live');
-  await page.getByRole('button', { name: 'Save page' }).click();
+  await page.locator('.cm-content').click();
+  await page.keyboard.press('ControlOrMeta+a');
+  await page.keyboard.type('We Are Live');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByText('Saved')).toBeVisible();
+  await page.getByRole('button', { name: 'Back to pages' }).click();
 
   // Publish, then visit the live site link.
   await page.getByRole('button', { name: 'Publish' }).click();
@@ -54,7 +58,7 @@ test('build a page, publish the project, and view the live site', async ({ page,
   await page.getByRole('button', { name: 'Save target' }).click();
   await expect(page.getByRole('button', { name: 'Deploy to My Webspace' })).toBeVisible();
 
-  // The published static page renders the content (in a separate tab).
+  // The published static page renders the code-authored content (in a separate tab).
   const live = await page.context().newPage();
   await live.goto(`${baseURL}${href}`);
   await expect(live.locator('body')).toContainText('We Are Live');

@@ -870,7 +870,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // MCP edits). Cap them tighter than the global 200/min — reads generously, writes
   // at 60/min (ample for interactive + agent editing; large imports use the dedicated
   // bundle endpoint, not per-entity PUTs). This bounds a compromised token's ability
-  // to flood the site-wide settings (criticalCss/customHead/customFooter) write.
+  // to flood the site-wide settings (criticalCss/head/scripts) write.
   app.get<{ Params: Pick<ContentParams, 'orgId' | 'projectId' | 'kind'> }>(
     '/orgs/:orgId/projects/:projectId/content/:kind',
     { config: rl(120) },

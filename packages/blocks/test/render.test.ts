@@ -737,13 +737,13 @@ describe('renderPage / renderDocument', () => {
     expect(doc).not.toContain('<script>alert(1)</script>');
   });
 
-  it('emits SEO meta, schema.org JSON-LD, and raw custom head/footer', () => {
+  it('emits SEO meta, schema.org JSON-LD, and the raw head / scripts blobs', () => {
     const doc = renderDocument(page, {
       brand,
       seo: { title: 'Custom Title', description: 'Desc', themeColor: '#0a7', favicon: '/i.png' },
       organization: { name: 'Acme', url: 'https://acme.test/' },
-      customHead: '<!-- analytics-head -->',
-      customFooter: '<!-- analytics-foot -->',
+      head: '<!-- analytics-head -->',
+      customScripts: '<!-- analytics-foot -->',
     });
     expect(doc).toContain('<title>Custom Title</title>'); // seo.title overrides page.title
     expect(doc).toContain('name="description" content="Desc"');
@@ -751,8 +751,20 @@ describe('renderPage / renderDocument', () => {
     expect(doc).toContain('rel="icon" href="/i.png"');
     expect(doc).toContain('<script type="application/ld+json">');
     expect(doc).toContain('"name":"Acme"');
-    expect(doc).toContain('<!-- analytics-head -->');
-    expect(doc).toContain('<!-- analytics-foot -->');
+    expect(doc).toContain('<!-- analytics-head -->'); // raw head in <head>
+    expect(doc).toContain('<!-- analytics-foot -->'); // raw scripts after the body
+    // raw head sits in <head>; raw scripts sit after the body
+    expect(doc.indexOf('<!-- analytics-head -->')).toBeLessThan(doc.indexOf('</head>'));
+    expect(doc.indexOf('<!-- analytics-foot -->')).toBeGreaterThan(doc.indexOf('</head>'));
+  });
+
+  it('injects the raw scripts slot AFTER the bottom slot (SCRIPTS comes last in the body)', () => {
+    const doc = renderDocument(page, {
+      brand,
+      bottom: '<div id="slot-bottom"></div>',
+      customScripts: '<script id="raw-scripts"></script>',
+    });
+    expect(doc.indexOf('id="slot-bottom"')).toBeLessThan(doc.indexOf('id="raw-scripts"'));
   });
 
   it('injects the validated skeleton slots in source order around the page body', () => {

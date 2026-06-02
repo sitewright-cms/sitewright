@@ -25,8 +25,8 @@ const full: SettingsBundle = {
   website: {
     siteUrl: 'https://acme.com',
     criticalCss: '.hero{}',
-    customHead: '<meta>',
-    customFooter: '<script></script>',
+    head: '<meta>',
+    scripts: '<script></script>',
     redirects: [{ from: '/old', to: '/new', status: 301 }],
   },
   settings: { defaultLocale: 'en', locales: ['en', 'de'] },

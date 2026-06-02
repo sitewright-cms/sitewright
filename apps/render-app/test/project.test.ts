@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { existsSync } from 'node:fs';
 import type { Entry, Page, Project } from '@sitewright/schema';
 import type { ProjectBundle } from '@sitewright/core';
 import {
@@ -8,6 +9,7 @@ import {
   entrySlug,
   loadBundle,
   pathToSlug,
+  projectDir,
   resolvedPages,
 } from '../src/lib/project.js';
 import { knownBlockTypes, isKnownBlockType } from '../src/blocks/registry.js';
@@ -45,6 +47,12 @@ function postsBundle(entries: Entry[]): ProjectBundle {
 
 describe('sample project loading', () => {
   const bundle = loadBundle();
+
+  it('projectDir() resolves to a real directory (pins the process.cwd() path invariant)', () => {
+    // Guards the Astro-6 fix: a cwd regression (or out-of-tree invocation) would make this fail
+    // here instead of crashing the build with an ENOENT deep in static-route generation.
+    expect(existsSync(projectDir())).toBe(true);
+  });
 
   it('loads and validates the sample project (no integrity issues)', () => {
     expect(bundle.project.name).toBe('Northwind Studio');

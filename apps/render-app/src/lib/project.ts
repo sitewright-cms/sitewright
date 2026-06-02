@@ -1,6 +1,5 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join, resolve } from 'node:path';
 import {
   DatasetSchema,
   EntrySchema,
@@ -28,7 +27,10 @@ export {
   type Route,
 } from '@sitewright/core';
 
-const SAMPLE_DIR = fileURLToPath(new URL('../../projects/sample', import.meta.url));
+// Resolved from the package working directory (the render-app root during build/dev/preview), NOT
+// `import.meta.url`: Astro 6 bundles `getStaticPaths` into `dist/.prerender/chunks/`, where an
+// import.meta-relative path would resolve into `dist/`. `process.cwd()` is stable across that.
+const SAMPLE_DIR = resolve(process.cwd(), 'projects/sample');
 
 // SECURITY TODO: this loader trusts `dir` (a build-time operator setting). Before
 // it is ever driven by untrusted/multi-tenant input (e.g. an API request), confine

@@ -59,6 +59,82 @@ export function WebsiteSection({ form, patch }: { form: SettingsForm; patch: Pat
         />
       </GlassCard>
 
+      <div className="sm:col-span-2 mt-2">
+        <h3 className="text-xs font-medium uppercase tracking-wide text-slate-400">
+          Skeleton slots — shared Handlebars partials rendered around every page
+        </h3>
+        <p className="mt-1 text-xs text-slate-500">
+          Validated (no JS): HTML + Tailwind/DaisyUI + <code>{'{{ company.* }}'}</code>,{' '}
+          <code>{'{{#each nav.header}}'}</code>, <code>{'{{ website.json_data.* }}'}</code>.
+        </p>
+      </div>
+
+      <GlassCard title="Top navigation" icon="≡">
+        <TextArea
+          label="topNav — top of every page"
+          value={form.topNav}
+          onChange={(v) => patch({ topNav: v })}
+          rows={4}
+          mono
+          placeholder={'<nav class="navbar">{{ company.name }}</nav>'}
+        />
+      </GlassCard>
+
+      <GlassCard title="Mobile navigation" icon="☰">
+        <TextArea
+          label="mobileNav — after topNav"
+          value={form.mobileNav}
+          onChange={(v) => patch({ mobileNav: v })}
+          rows={4}
+          mono
+          placeholder={'<nav class="drawer">…</nav>'}
+        />
+      </GlassCard>
+
+      <GlassCard title="Left sidebar" icon="◧">
+        <TextArea
+          label="sidebarLeft — after the page body (position via classes)"
+          value={form.sidebarLeft}
+          onChange={(v) => patch({ sidebarLeft: v })}
+          rows={4}
+          mono
+          placeholder={'<aside class="menu">…</aside>'}
+        />
+      </GlassCard>
+
+      <GlassCard title="Right sidebar" icon="◨">
+        <TextArea
+          label="sidebarRight — after the page body (position via classes)"
+          value={form.sidebarRight}
+          onChange={(v) => patch({ sidebarRight: v })}
+          rows={4}
+          mono
+          placeholder={'<aside class="menu">…</aside>'}
+        />
+      </GlassCard>
+
+      <GlassCard title="Footer" icon="▁">
+        <TextArea
+          label="footer — below body + sidebars"
+          value={form.footer}
+          onChange={(v) => patch({ footer: v })}
+          rows={4}
+          mono
+          placeholder={'<footer class="footer">© {{ company.name }}</footer>'}
+        />
+      </GlassCard>
+
+      <GlassCard title="Bottom" icon="▾">
+        <TextArea
+          label="bottom — after the footer (global modals, schema.org microdata)"
+          value={form.bottom}
+          onChange={(v) => patch({ bottom: v })}
+          rows={4}
+          mono
+          placeholder={'<div class="modal">…</div>'}
+        />
+      </GlassCard>
+
       <GlassCard title="Redirects" icon="↪" wide>
         <p className="mb-2 text-xs text-slate-500">Emitted to <code>.htaccess</code> + <code>_redirects</code> on publish.</p>
         <RedirectsEditor rows={form.redirects} onChange={(redirects) => patch({ redirects })} />

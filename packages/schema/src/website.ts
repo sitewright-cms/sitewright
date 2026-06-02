@@ -28,6 +28,18 @@ export const WebsiteSettingsSchema = z.object({
   /** Raw HTML injected before `</body>` (contentBase `global_bottom`). */
   customFooter: z.string().max(HTML_MAX).optional(),
   /**
+   * Project-wide skeleton SLOTS — Handlebars partials rendered into every page at fixed
+   * positions, so a multi-page site shares one header/footer authored once. They run through
+   * the SAME no-JS template validator as a page `source` (HTML + Tailwind + DaisyUI) and get
+   * the page render context PLUS `nav` — the auto-menu built from each page's nav settings:
+   *   {{#each nav.header}}<a href="{{url path}}">{{label}}</a>{{/each}}
+   * `topNav` renders at the top of `<body>`; `footer` below the page body (above customFooter).
+   * Nav links use root-absolute paths (`{{url path}}`); on a multilingual site they are
+   * auto-prefixed with the current locale at publish.
+   */
+  topNav: z.string().max(HTML_MAX).optional(),
+  footer: z.string().max(HTML_MAX).optional(),
+  /**
    * The site's production base URL (e.g. `https://acme.com`). Required for an
    * absolute-URL `sitemap.xml` + the `robots.txt` Sitemap line; omit to skip the
    * sitemap. No trailing slash needed (normalized at build time).

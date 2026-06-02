@@ -34,6 +34,8 @@ export interface TemplateContext {
   data?: Record<string, unknown>;
   /** Named partials, included via `{{> name}}`; passed per-render (no global state). */
   partials?: Record<string, string>;
+  /** Auto-built navigation menus per slot — `{{#each nav.header}}…{{/each}}` (the skeleton slots + page source). */
+  nav?: Record<string, unknown>;
   /**
    * Client-editable region overrides for `{{edit "key" "default"}}`: key → text (matches the
    * `page.content` schema). A set key replaces that region's default; the value is HTML-escaped
@@ -286,7 +288,7 @@ export function renderTemplate(source: string, ctx: TemplateContext = {}, opts: 
   // cannot smuggle a <script>/handler/unsafe-context past the main-template check.
   if (ctx.partials) for (const partialSource of Object.values(ctx.partials)) validateTemplate(partialSource);
   const template = compileCached(source);
-  const data = { company: ctx.company, website: ctx.website, page: ctx.page, data: ctx.data, content: ctx.content };
+  const data = { company: ctx.company, website: ctx.website, page: ctx.page, data: ctx.data, content: ctx.content, nav: ctx.nav };
   let html: string;
   try {
     html = template(data, {

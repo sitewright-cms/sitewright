@@ -14,6 +14,7 @@ import {
   renderDocument,
   renderTemplate,
   TemplateError,
+  type TemplateContext,
   resolveInternalUrl,
   usedComponentTypes,
   componentAssets,
@@ -167,7 +168,8 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     const baseOrg = companyToOrganization(identity, bundle.project.name);
     // Project-wide website settings (critical CSS + custom head/footer) — same for every page.
     const website = bundle.project.website;
-    // Auto-nav: page-tree-derived menus per slot (same for every page; Nav blocks consume it).
+    // Auto-nav: page-tree-derived menus per slot (same for every page; consumed by Nav blocks
+    // and code-first skeleton slots via `{{#each nav.header}}`).
     const nav = {
       header: buildNav(pubBundle.pages, 'header'),
       footer: buildNav(pubBundle.pages, 'footer'),
@@ -198,7 +200,11 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     const sourceClassNames = routes
       .filter((r) => r.page.source)
       .flatMap((r) => extractClassNames(r.page.source as string));
-    const classNames = [...scanRoots.flatMap(collectClassNames), ...sourceClassNames];
+    // Project-wide skeleton slots (topNav/footer) feed the shared sheet too.
+    const slotClassNames = [website?.topNav, website?.footer]
+      .filter((s): s is string => Boolean(s))
+      .flatMap((s) => extractClassNames(s));
+    const classNames = [...scanRoots.flatMap(collectClassNames), ...sourceClassNames, ...slotClassNames];
     const usesUtilities = classNames.length > 0;
     const componentTypes = [...new Set(scanRoots.flatMap(usedComponentTypes))];
     const usesComponents = componentTypes.length > 0;
@@ -221,12 +227,36 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       await copyMedia(tmp, media, opts.readMedia);
     }
 
+    // Render a project-wide skeleton slot (topNav/footer) for a page, validated; an unsafe or
+    // invalid slot fails the publish with a clear, slot-scoped error. Hoisted above the loops
+    // so the closure isn't rebuilt per page.
+    const renderSlot = (src: string | undefined, name: string, ctx: TemplateContext): string | undefined => {
+      if (!src) return undefined;
+      try {
+        return renderTemplate(src, ctx);
+      } catch (err) {
+        throw new PublishError(
+          err instanceof TemplateError ? `website ${name} template error: ${err.message}` : `website ${name} failed to render`,
+        );
+      }
+    };
+
     // Guard against two (locale, route) pairs resolving to the same output file —
     // e.g. a page at `/de` colliding with the `de` locale's home. Catch it as a
     // PublishError instead of silently overwriting one with the other.
     const writtenPaths = new Set<string>();
     for (const locale of locales) {
       const localePrefix = locale === defaultLocale ? '' : `${locale}/`;
+      // Locale-prefixed nav for THIS locale's skeleton slot links — non-default locales publish
+      // under `/<locale>/`, so a shared topNav must point at the in-locale page (not the root one).
+      const navForLocale =
+        localePrefix === ''
+          ? nav
+          : {
+              header: nav.header.map((i) => ({ ...i, path: `/${localePrefix}${i.path.replace(/^\//, '')}` })),
+              footer: nav.footer.map((i) => ({ ...i, path: `/${localePrefix}${i.path.replace(/^\//, '')}` })),
+              mobile: nav.mobile.map((i) => ({ ...i, path: `/${localePrefix}${i.path.replace(/^\//, '')}` })),
+            };
       for (const route of routes) {
         const outSlug = localeSlug(localePrefix, route.slug);
         const full = resolve(tmp, relPathForSlug(outSlug));
@@ -276,17 +306,20 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         // Code-first page: render the Handlebars `source` to a body, then wrap it in the
         // SAME document shell (head/SEO/CSS/nav). Validated by renderTemplate; a bad
         // source fails the publish with a clear, page-scoped error.
+        // Render context shared by the page body AND the project-wide skeleton slots — `nav`
+        // is the (locale-prefixed) auto-menu so a topNav/footer lists pages via {{#each nav.header}}.
+        const renderCtx = {
+          company: identity as unknown as Record<string, unknown>,
+          website: { siteUrl: website?.siteUrl },
+          page: { title: page.title, path: page.path },
+          data: datasets as Record<string, unknown>,
+          nav: navForLocale as unknown as Record<string, unknown>,
+        };
         let bodyHtml: string | undefined;
         if (page.source) {
           try {
-            bodyHtml = renderTemplate(page.source, {
-              company: identity as unknown as Record<string, unknown>,
-              website: { siteUrl: website?.siteUrl },
-              page: { title: page.title, path: page.path },
-              data: datasets as Record<string, unknown>,
-              // Client-edited region overrides ({{edit "key"}}) baked into the static output.
-              content: page.content,
-            });
+            // Client-edited region overrides ({{edit "key"}}) baked into the static output.
+            bodyHtml = renderTemplate(page.source, { ...renderCtx, content: page.content });
           } catch (err) {
             throw new PublishError(
               err instanceof TemplateError
@@ -295,9 +328,15 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
             );
           }
         }
+        // Project-wide skeleton slots, validated + rendered per page (the page binding lets a
+        // nav highlight the active link).
+        const topNavHtml = renderSlot(website?.topNav, 'topNav', renderCtx);
+        const footerHtml = renderSlot(website?.footer, 'footer', renderCtx);
         const html = renderDocument(page, {
           brand,
           bodyHtml,
+          topNav: topNavHtml,
+          footer: footerHtml,
           // {{ company.* }}/{{ website.* }}/{{ page.* }} substitution in text props.
           // `website` is projected to only its public fields — never the raw
           // head/footer/CSS blobs, which aren't meant to be surfaced via a variable.

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Page } from '@sitewright/schema';
-import { assertClientEditAllowed, hasEditableNode } from '../src/repo/client-edit.js';
+import { assertClientEditAllowed } from '../src/repo/client-edit.js';
 import { ForbiddenError } from '../src/repo/context.js';
 
 // A page with one editable node (the RichText) and one locked node (the Heading).
@@ -118,12 +118,5 @@ describe('assertClientEditAllowed — code-first source page', () => {
     const next = clone(sourcePage());
     next.title = 'Renamed';
     expect(() => assertClientEditAllowed(sourcePage(), next)).toThrow(ForbiddenError);
-  });
-});
-
-describe('hasEditableNode', () => {
-  it('detects an editable node anywhere in the tree', () => {
-    expect(hasEditableNode(base().root)).toBe(true);
-    expect(hasEditableNode({ id: 'r', type: 'Section', children: [{ id: 'h', type: 'Heading' }] })).toBe(false);
   });
 });

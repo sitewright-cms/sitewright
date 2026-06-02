@@ -23,8 +23,7 @@ test('client edits a code page’s bound region (content), template stays immuta
 
   await page.getByLabel('Page slug').fill('home');
   await page.getByLabel('Page title').fill('Home');
-  await page.getByLabel('Code page').check();
-  await page.getByRole('button', { name: 'Add code page' }).click();
+  await page.getByRole('button', { name: 'Add page' }).click();
 
   // --- Owner: invite a client, capture the invite link ---
   await page.getByRole('button', { name: 'clients' }).click();

@@ -1,9 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import type { Page } from '@sitewright/schema';
 import { api, type Org, type Project } from '../api';
-import { PageEditor } from './PageEditor';
 import { CodePageEditor } from './CodePageEditor';
-import { ClientPageEditor } from './ClientPageEditor';
 import { ClientSourceEditor } from './ClientSourceEditor';
 import { DatasetManager } from './DatasetManager';
 import { MediaManager } from './MediaManager';
@@ -44,7 +42,6 @@ export function ProjectView({ org, project, onBack }: ProjectViewProps) {
   const [tab, setTab] = useState<Tab>('pages');
   const [slug, setSlug] = useState('');
   const [title, setTitle] = useState('');
-  const [codePage, setCodePage] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function load() {
@@ -67,16 +64,15 @@ export function ProjectView({ org, project, onBack }: ProjectViewProps) {
       id: slug,
       path: slug === 'home' || slug === 'index' ? '/' : `/${slug}`,
       title,
-      // A code page carries a Handlebars `source` (rendered instead of the block tree); the
-      // root stays a valid placeholder so the unified page model is satisfied either way.
+      // Every page is code-first: it carries a Handlebars `source` (the block tree is retired).
+      // `root` stays a valid placeholder so the unified page model is satisfied.
       root: { id: 'root', type: 'Section', children: [] },
-      ...(codePage ? { source: CODE_PAGE_STARTER } : {}),
+      source: CODE_PAGE_STARTER,
     };
     try {
       await api.putPage(org.id, project.id, page);
       setSlug('');
       setTitle('');
-      setCodePage(false);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed to create page');
@@ -88,20 +84,13 @@ export function ProjectView({ org, project, onBack }: ProjectViewProps) {
       setEditing(null);
       await load();
     };
-    if (isClient) {
-      // A client edits a code page's bound regions (content); a block page's editable nodes.
-      return editing.source != null ? (
-        <ClientSourceEditor org={org} project={project} page={editing} onClose={onClose} />
-      ) : (
-        <ClientPageEditor org={org} project={project} page={editing} onClose={onClose} />
-      );
-    }
-    // A page authored with a Handlebars `source` opens in the code editor; a block page
-    // opens in the visual editor.
-    return editing.source != null ? (
-      <CodePageEditor org={org} project={project} page={editing} onClose={onClose} />
+    // Code-first is the only authoring model: a client edits the page's bound `{{edit}}`
+    // regions; an owner edits the Handlebars source. (A legacy block page — no `source` —
+    // opens with an empty editor; its `root` keeps publishing until source is authored.)
+    return isClient ? (
+      <ClientSourceEditor org={org} project={project} page={editing} onClose={onClose} />
     ) : (
-      <PageEditor org={org} project={project} page={editing} onClose={onClose} />
+      <CodePageEditor org={org} project={project} page={editing} onClose={onClose} />
     );
   }
 
@@ -169,9 +158,6 @@ export function ProjectView({ org, project, onBack }: ProjectViewProps) {
                 >
                   <span className="font-medium">{p.title}</span>{' '}
                   <span className="text-sm text-slate-400">{p.path}</span>
-                  {p.source != null && (
-                    <span className="ml-2 rounded bg-slate-800 px-1.5 py-0.5 text-[11px] font-medium text-white">code</span>
-                  )}
                   {p.status === 'draft' && (
                     <span className="ml-2 rounded bg-slate-200 px-1.5 py-0.5 text-[11px] font-medium text-slate-600">draft</span>
                   )}
@@ -203,17 +189,8 @@ export function ProjectView({ org, project, onBack }: ProjectViewProps) {
                 required
               />
             </div>
-            <label className="flex items-center gap-2 text-sm text-slate-600">
-              <input
-                type="checkbox"
-                aria-label="Code page"
-                checked={codePage}
-                onChange={(e) => setCodePage(e.target.checked)}
-              />
-              Code page (HTML + Handlebars)
-            </label>
             <button type="submit" className="rounded-md bg-slate-900 px-4 py-2 font-semibold text-white">
-              {codePage ? 'Add code page' : 'Add page'}
+              Add page
             </button>
           </form>
           {error && <p className="mt-2 text-sm text-red-600">{error}</p>}

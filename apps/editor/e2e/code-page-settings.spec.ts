@@ -2,9 +2,8 @@ import { test, expect } from '@playwright/test';
 
 const stamp = Date.now();
 
-// A code page is a first-class page: its "Page settings" panel sets status + nav placement
-// (the parity that lets the code-first editor replace the block editor). Set draft + header
-// nav, save, and confirm it persists across reopen.
+// A code page is a first-class page: its "Page settings" panel sets status + nav placement.
+// Set draft + header nav, save, and confirm it persists across reopen.
 
 test('code page settings: set draft + nav placement, persisted across reopen', async ({ page }) => {
   await page.goto('/');
@@ -21,8 +20,7 @@ test('code page settings: set draft + nav placement, persisted across reopen', a
   // Create a code page and open it.
   await page.getByLabel('Page slug').fill('about');
   await page.getByLabel('Page title').fill('About');
-  await page.getByLabel('Code page').check();
-  await page.getByRole('button', { name: 'Add code page' }).click();
+  await page.getByRole('button', { name: 'Add page' }).click();
   await page.getByRole('button', { name: /About/ }).click();
 
   // Page settings → draft + header nav + order.

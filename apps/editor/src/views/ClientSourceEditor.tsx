@@ -33,8 +33,8 @@ export function ClientSourceEditor({ org, project, page, onClose }: ClientSource
 
   const draft: Page = useMemo(() => ({ ...page, content }), [page, content]);
 
-  // Same debounced, sandboxed server-side preview the block client editor uses — `/preview`
-  // renders a source page (with this in-progress content) through the isolated worker.
+  // Debounced, sandboxed server-side preview — `/preview` renders this source page (with the
+  // in-progress content) through the isolated worker, served under its own sandbox CSP.
   useEffect(() => {
     let cancelled = false;
     const handle = setTimeout(() => {

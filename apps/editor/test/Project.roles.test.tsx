@@ -15,9 +15,8 @@ vi.mock('../src/api', () => ({
     putPage: (o: string, p: string, page: Page) => putPage(o, p, page),
   },
 }));
-vi.mock('../src/views/PageEditor', () => ({ PageEditor: () => <div>FULL EDITOR</div> }));
 vi.mock('../src/views/CodePageEditor', () => ({ CodePageEditor: () => <div>CODE EDITOR</div> }));
-vi.mock('../src/views/ClientPageEditor', () => ({ ClientPageEditor: () => <div>CLIENT EDITOR</div> }));
+vi.mock('../src/views/ClientSourceEditor', () => ({ ClientSourceEditor: () => <div>CLIENT SOURCE EDITOR</div> }));
 vi.mock('../src/views/PublishBar', () => ({ PublishBar: () => <div>PUBLISH BAR</div> }));
 vi.mock('../src/views/TeamManager', () => ({ TeamManager: () => <div>TEAM MANAGER</div> }));
 vi.mock('../src/views/ClientsManager', () => ({ ClientsManager: () => <div>CLIENTS MANAGER</div> }));
@@ -63,30 +62,33 @@ describe('ProjectView role gating', () => {
     expect(screen.getByRole('button', { name: /Home/ })).toBeInTheDocument();
   });
 
-  it('opens a code page (one with `source`) in the code editor, not the block editor', async () => {
+  it('opens any page in the code editor (block authoring is retired)', async () => {
     const org = { id: 'o', name: 'O', slug: 'o', role: 'admin' };
-    listPages.mockResolvedValue({
-      items: [{ id: 'codey', path: '/codey', title: 'Codey', root: { id: 'r', type: 'Section' }, source: '<h1>x</h1>' }],
-    });
     render(<ProjectView org={org} project={project} onBack={() => {}} />);
     await waitFor(() => expect(listPages).toHaveBeenCalled());
-    fireEvent.click(screen.getByRole('button', { name: /Codey/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Home/ }));
     expect(screen.getByText('CODE EDITOR')).toBeInTheDocument();
-    expect(screen.queryByText('FULL EDITOR')).toBeNull();
   });
 
-  it('the "Code page" toggle creates a page carrying a Handlebars source', async () => {
+  it('opens a member on a page in the client source editor (bound regions only)', async () => {
+    const org = { id: 'o', name: 'O', slug: 'o', role: 'member' };
+    render(<ProjectView org={org} project={project} onBack={() => {}} />);
+    await waitFor(() => expect(listPages).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: /Home/ }));
+    expect(screen.getByText('CLIENT SOURCE EDITOR')).toBeInTheDocument();
+  });
+
+  it('"Add page" creates a code-first page carrying a Handlebars source', async () => {
     const org = { id: 'o', name: 'O', slug: 'o', role: 'admin' };
     render(<ProjectView org={org} project={project} onBack={() => {}} />);
     await waitFor(() => expect(listPages).toHaveBeenCalled());
     fireEvent.change(screen.getByLabelText('Page slug'), { target: { value: 'landing' } });
     fireEvent.change(screen.getByLabelText('Page title'), { target: { value: 'Landing' } });
-    fireEvent.click(screen.getByLabelText('Code page'));
-    fireEvent.click(screen.getByRole('button', { name: 'Add code page' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add page' }));
     await waitFor(() => expect(putPage).toHaveBeenCalledTimes(1));
     const created = putPage.mock.calls[0]![2] as Page;
     expect(created.id).toBe('landing');
     expect(typeof created.source).toBe('string');
-    expect(created.source).toContain('{{ company.name }}'); // the starter scaffold
+    expect(created.source).toContain('{{ company.name }}'); // every new page is code-first
   });
 });

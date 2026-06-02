@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 import { z } from 'zod';
 
 // Validate the generated manifest at load — it is trusted (we write it), but this
@@ -28,9 +28,9 @@ export type MediaAsset = z.infer<typeof MediaAssetSchema>;
 /** Map of original media filename (e.g. `hero.png`) → optimized asset. */
 export type MediaManifest = z.infer<typeof MediaManifestSchema>;
 
-const MANIFEST_PATH = fileURLToPath(
-  new URL('../../public/_sw-media/manifest.json', import.meta.url),
-);
+// From the package working directory (NOT `import.meta.url`): Astro 6 bundles getStaticPaths into
+// `dist/.prerender/chunks/`, where an import.meta-relative path would resolve into `dist/`.
+const MANIFEST_PATH = resolve(process.cwd(), 'public/_sw-media/manifest.json');
 
 /**
  * Loads + validates the media manifest produced by the `optimize-media` prebuild.

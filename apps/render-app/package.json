@@ -16,7 +16,7 @@
     "@sitewright/image-pipeline": "workspace:*",
     "@sitewright/schema": "workspace:*",
     "@tailwindcss/vite": "^4",
-    "astro": "^5",
+    "astro": "^6",
     "tailwindcss": "^4",
     "zod": "^3.24.1"
   },

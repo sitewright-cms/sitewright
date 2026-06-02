@@ -94,6 +94,21 @@ describe('CodePageEditor', () => {
     expect(picker.value).toBe('');
   });
 
+  it('edits page settings (status + nav) and persists them on save', async () => {
+    render(<CodePageEditor org={org} project={project} page={page} onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Page settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'draft' }));
+    fireEvent.click(screen.getByLabelText('Nav: header'));
+    fireEvent.change(screen.getByLabelText('Nav order'), { target: { value: '3' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(putPage).toHaveBeenCalledTimes(1));
+    const saved = putPage.mock.calls[0]![2] as Page;
+    expect(saved.status).toBe('draft');
+    expect(saved.nav).toEqual({ slots: ['header'], order: 3 });
+    expect(saved.source).toBe(page.source); // settings-only edit leaves the template untouched
+  });
+
   it('inserts a pattern as the whole source when the editor is empty', () => {
     const blank: Page = { ...page, source: '   ' };
     render(<CodePageEditor org={org} project={project} page={blank} onClose={() => {}} />);

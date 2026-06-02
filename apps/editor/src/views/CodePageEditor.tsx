@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Page } from '@sitewright/schema';
+import { NAV_SLOTS, type NavSlot, type Page } from '@sitewright/schema';
 import { api, type Org, type Project } from '../api';
 import { CodeEditor } from '../lib/code-editor';
 import { CODE_PATTERNS } from '../lib/code-patterns';
@@ -24,14 +24,29 @@ const PREVIEW_DEBOUNCE_MS = 500;
  */
 export function CodePageEditor({ org, project, page, onClose }: CodePageEditorProps) {
   const [source, setSource] = useState(page.source ?? '');
-  const [savedSource, setSavedSource] = useState(page.source ?? '');
+  // Page-level settings (parity with the block editor's "Page settings" panel) — a code page
+  // is a first-class page, so it carries the same title/status/nav config.
+  const [title, setTitle] = useState(page.title);
+  const [status, setStatus] = useState<'draft' | 'published'>(page.status ?? 'published');
+  const [navSlots, setNavSlots] = useState<NavSlot[]>(page.nav?.slots ?? []);
+  const [navTitle, setNavTitle] = useState(page.nav?.title ?? '');
+  const [navOrder, setNavOrder] = useState<number>(page.nav?.order ?? 0);
+  const [showSettings, setShowSettings] = useState(false);
   const [previewHtml, setPreviewHtml] = useState('');
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [patternKey, setPatternKey] = useState(''); // controlled value of the "Insert pattern" select
-  const dirty = source !== savedSource;
+
+  // The nav object as it will be persisted (undefined = not in any menu).
+  const nav = navSlots.length
+    ? { slots: navSlots, ...(navTitle ? { title: navTitle } : {}), order: navOrder }
+    : undefined;
+  // One key over every editable field → dirty + post-save snapshot in one place.
+  const stateKey = JSON.stringify({ source, title, status, nav });
+  const [savedKey, setSavedKey] = useState(stateKey);
+  const dirty = stateKey !== savedKey;
 
   // Guards async setState after the editor is closed (the view unmounts when another page
   // is opened) — both the debounced preview and the save can resolve post-unmount.
@@ -43,18 +58,21 @@ export function CodePageEditor({ org, project, page, onClose }: CodePageEditorPr
     };
   }, []);
 
-  // Any edit clears a prior "Saved" flag (including an undo back to the saved value, so the
-  // banner doesn't linger or reappear).
+  // Any change to ANY field (source or a setting) clears a prior "Saved" flag uniformly —
+  // including an undo back to the saved value, so the banner doesn't linger or reappear. A
+  // save leaves `stateKey` unchanged (only `savedKey` advances), so this doesn't fire then.
+  useEffect(() => {
+    setSaved(false);
+  }, [stateKey]);
+
   function edit(next: string) {
     setSource(next);
-    setSaved(false);
   }
 
   /** Append a built-in DaisyUI starter pattern to the template (a page is built top-to-bottom). */
   function insertPattern(id: string) {
     const pattern = CODE_PATTERNS.find((p) => p.id === id);
     if (!pattern) return;
-    setSaved(false);
     // Functional update → always appends to the latest committed source, never a stale closure.
     setSource((prev) => (prev.trim() ? `${prev.trimEnd()}\n${pattern.source}\n` : `${pattern.source}\n`));
   }
@@ -71,7 +89,7 @@ export function CodePageEditor({ org, project, page, onClose }: CodePageEditorPr
       void api
         .renderTemplate(org.id, project.id, {
           template: source,
-          page: { title: page.title, path: page.path },
+          page: { title, path: page.path },
           document: true,
         })
         .then(({ html }) => {
@@ -88,15 +106,15 @@ export function CodePageEditor({ org, project, page, onClose }: CodePageEditorPr
       cancelled = true;
       clearTimeout(handle);
     };
-  }, [source, org.id, project.id, page.title, page.path]);
+  }, [source, title, org.id, project.id, page.path]);
 
   async function save() {
     setSaving(true);
     setSaveError(null);
     try {
-      await api.putPage(org.id, project.id, { ...page, source });
+      await api.putPage(org.id, project.id, { ...page, source, title, status, nav });
       if (!mounted.current) return;
-      setSavedSource(source);
+      setSavedKey(stateKey);
       setSaved(true);
     } catch (err) {
       if (mounted.current) setSaveError(err instanceof Error ? err.message : 'failed to save');
@@ -116,9 +134,22 @@ export function CodePageEditor({ org, project, page, onClose }: CodePageEditorPr
           ← Pages
         </button>
         <h2 className="text-sm font-semibold">
-          {page.title} <span className="font-normal text-slate-400">{page.path}</span>
+          {title} <span className="font-normal text-slate-400">{page.path}</span>
         </h2>
         <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[11px] font-medium text-white">code</span>
+        {status === 'draft' && (
+          <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[11px] font-medium text-slate-600">draft</span>
+        )}
+        <button
+          aria-label="Page settings"
+          aria-expanded={showSettings}
+          className={`rounded-md border px-2 py-1 text-sm ${
+            showSettings ? 'border-slate-900 text-slate-900' : 'border-slate-300 text-slate-600'
+          }`}
+          onClick={() => setShowSettings((s) => !s)}
+        >
+          Page settings
+        </button>
         <select
           aria-label="Insert pattern"
           className="rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-700"
@@ -149,6 +180,84 @@ export function CodePageEditor({ org, project, page, onClose }: CodePageEditorPr
           </button>
         </div>
       </header>
+      {showSettings && (
+        <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+          <div className="grid gap-4 sm:grid-cols-3">
+            <label className="flex flex-col text-xs font-semibold text-slate-700">
+              Title
+              <input
+                aria-label="Page title"
+                className="mt-1.5 rounded-md border border-slate-300 px-2 py-1 text-sm font-normal"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+              />
+            </label>
+            <div>
+              <p className="mb-1.5 text-xs font-semibold text-slate-700">Status</p>
+              <div className="inline-flex rounded-md border border-slate-300 p-0.5">
+                {(['published', 'draft'] as const).map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    aria-pressed={status === s}
+                    onClick={() => setStatus(s)}
+                    className={`rounded px-3 py-1 text-sm capitalize ${
+                      status === s ? 'bg-slate-900 text-white' : 'text-slate-600'
+                    }`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="mb-1.5 text-xs font-semibold text-slate-700">Navigation</p>
+              <div className="flex flex-wrap gap-3">
+                {NAV_SLOTS.map((slot) => (
+                  <label key={slot} className="flex items-center gap-1.5 text-sm capitalize">
+                    <input
+                      type="checkbox"
+                      aria-label={`Nav: ${slot}`}
+                      checked={navSlots.includes(slot)}
+                      onChange={(e) =>
+                        setNavSlots((prev) => (e.target.checked ? [...prev, slot] : prev.filter((x) => x !== slot)))
+                      }
+                    />
+                    {slot}
+                  </label>
+                ))}
+              </div>
+              {navSlots.length > 0 && (
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <label className="flex flex-col text-[11px] text-slate-500">
+                    Menu label
+                    <input
+                      aria-label="Nav menu label"
+                      className="rounded-md border border-slate-300 px-2 py-1 text-sm"
+                      value={navTitle}
+                      placeholder={title}
+                      onChange={(e) => setNavTitle(e.target.value)}
+                    />
+                  </label>
+                  <label className="flex flex-col text-[11px] text-slate-500">
+                    Order
+                    <input
+                      aria-label="Nav order"
+                      type="number"
+                      className="rounded-md border border-slate-300 px-2 py-1 text-sm"
+                      value={navOrder}
+                      onChange={(e) => {
+                        const v = parseInt(e.target.value, 10);
+                        if (!Number.isNaN(v)) setNavOrder(v);
+                      }}
+                    />
+                  </label>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
       <div className="grid min-h-0 flex-1 grid-cols-2">
         <div className="min-h-0 border-r border-slate-200">
           <CodeEditor value={source} onChange={edit} ariaLabel="Template source" />

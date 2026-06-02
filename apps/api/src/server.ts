@@ -2,6 +2,8 @@ import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createApp } from './http/app.js';
+import { seedInstance } from './seed.js';
+import { users } from './db/schema.js';
 import { RenderPool } from './render/render-pool.js';
 import { createDb, runMigrations } from './db/client.js';
 import { createReleaseChecker } from './version/checker.js';
@@ -56,9 +58,16 @@ const smtpAllowedHosts = process.env.SW_SMTP_ALLOWED_HOSTS
 // instance settings (global SMTP, hCaptcha keys, enabled web-form mail modes).
 // Normalization (trim/lowercase) is owned by createApp — pass the raw split here
 // so there is a single source of truth for the matching rule.
-const adminEmails = process.env.SW_ADMIN_EMAILS
-  ? process.env.SW_ADMIN_EMAILS.split(',')
-  : undefined;
+// The bootstrap super-admin (SW_ADMIN_EMAIL, seeded on first boot) is always an instance admin.
+const seedAdminEmail = process.env.SW_ADMIN_EMAIL?.trim();
+const adminEmails = [
+  ...(process.env.SW_ADMIN_EMAILS ? process.env.SW_ADMIN_EMAILS.split(',') : []),
+  ...(seedAdminEmail ? [seedAdminEmail] : []),
+];
+
+// Public registration is CLOSED by default (invitation-only + a seeded admin); an operator
+// who wants open self-signup sets SW_OPEN_REGISTRATION=true.
+const openRegistration = process.env.SW_OPEN_REGISTRATION === 'true';
 
 // The platform's public base URL, baked into exported forms as the absolute
 // submission endpoint. A malformed value would silently misdirect every form's
@@ -146,6 +155,7 @@ const app = await createApp({
   deployAllowedHosts,
   smtpAllowedHosts,
   adminEmails,
+  openRegistration,
   renderPool,
   // Public base URL baked into exported forms (so static sites post submissions
   // back to this platform). Validated above; trailing slash normalized at build time.
@@ -169,6 +179,48 @@ const app = await createApp({
       ? process.env.EDITOR_DIST
       : undefined,
 });
+
+// First-boot bootstrap: seed the super-admin + showcase "Example Project" when the instance is
+// empty. Registration is invite-only, so this is the only path to the first admin. The seed is a
+// convenience, NOT a correctness invariant — a transient failure (DB blip, etc.) must not crash
+// the container into a restart loop, so swallow-and-warn rather than letting the reject propagate.
+if (seedAdminEmail) {
+  try {
+    await seedInstance({
+      db,
+      adminEmail: seedAdminEmail,
+      adminPassword: process.env.SW_ADMIN_PASSWORD,
+      // Bootstrap notices are operational diagnostics — and the one-time GENERATED password is a
+      // secret. Emit on stderr so log pipelines treat it as diagnostics (not indexed app output).
+      log: (m) => process.stderr.write(`${m}\n`),
+    });
+  } catch (err) {
+    process.stderr.write(
+      `[sitewright/seed] WARNING: bootstrap seed failed — ${err instanceof Error ? err.message : String(err)}\n` +
+        '[sitewright/seed] the server will still start; re-deploy to retry the seed.\n',
+    );
+  }
+} else {
+  process.stderr.write(
+    '[sitewright/seed] SW_ADMIN_EMAIL is not set — no bootstrap admin created. On a fresh ' +
+      'instance, registration is invite-only, so set SW_ADMIN_EMAIL (+ SW_ADMIN_PASSWORD) to get in.\n',
+  );
+}
+
+// Refuse to boot into a permanently-locked state: closed registration with NO users means nobody
+// can ever sign in (no admin was seeded and no invite can be created). Mirror the COOKIE_SECRET
+// fail-fast. We check the DB (not just the env) so removing SW_ADMIN_EMAIL after a successful first
+// boot — when an admin already exists — still restarts cleanly.
+if (!openRegistration) {
+  const anyUser = await db.select({ id: users.id }).from(users).limit(1);
+  if (anyUser.length === 0) {
+    throw new Error(
+      'Registration is closed (SW_OPEN_REGISTRATION is not "true") and the instance has no users — ' +
+        'nobody could ever sign in. Set SW_ADMIN_EMAIL (+ SW_ADMIN_PASSWORD) to seed the first admin, ' +
+        'or SW_OPEN_REGISTRATION=true to allow public self-signup.',
+    );
+  }
+}
 
 await app.listen({ host: '0.0.0.0', port });
 process.stdout.write(`[sitewright/api] listening on :${port}\n`);

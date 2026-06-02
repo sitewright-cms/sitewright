@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, gt, isNull } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
 import {
   invites,
@@ -122,6 +122,21 @@ export async function createInvite(
   };
   await db.insert(invites).values(row);
   return { invite: toView(row), token };
+}
+
+/**
+ * Whether `email` has at least one pending (unaccepted, unexpired) invite in ANY org. Public
+ * registration is invitation-only, so the register route uses this to admit only invited
+ * emails — the instance admin is seeded out-of-band, not registered.
+ */
+export async function hasPendingInvite(db: Database, email: string): Promise<boolean> {
+  const normalized = email.trim().toLowerCase();
+  const rows = await db
+    .select({ id: invites.id })
+    .from(invites)
+    .where(and(eq(invites.email, normalized), isNull(invites.acceptedAt), gt(invites.expiresAt, new Date())))
+    .limit(1);
+  return rows.length > 0;
 }
 
 /** Lists the org's PENDING (unaccepted) invites; optionally only a project's. Owner/admin. */

@@ -16,15 +16,36 @@ const GENERIC_KIND = z.enum([
   'form',
 ]);
 
-const INSTRUCTIONS = `This server exposes ONE Sitewright project's content over MCP.
-A Sitewright project is a tree of content entities addressed by (kind, id):
-page, partial, template, pattern, translation, dataset, entry, settings.
-Pages hold a block tree (\`root\`); reuse comes from partials/templates; data
-comes from datasets+entries. Author by reading the relevant entities, editing
-them, writing them back, and calling preview_page to see the rendered result.
-All writes are validated server-side (schema + tree-safety); you cannot bypass
-the project's role/capability limits. Call get_scope first to see what this
-token may do.`;
+const INSTRUCTIONS = `This server exposes ONE Sitewright project over MCP for building a
+CODE-FIRST static website. You'll work with these content kinds (kind, id): settings, page,
+dataset, entry, form. Call get_scope first to see what this token may do.
+
+AUTHOR PAGES IN CODE. A page renders from its Handlebars \`source\` (HTML + Tailwind CSS +
+DaisyUI v5 component classes). The \`root\` field is a legacy placeholder — set a minimal
+root ({"id":"root","type":"Section"}) and put the real design in \`source\`.
+
+In \`source\`:
+- Use DaisyUI components for UI (btn / btn-primary, card, navbar, hero, badge, footer,
+  menu, alert…) plus Tailwind utilities for layout. Components are brand-themed
+  automatically — name the brand's main color \`primary\`.
+- Bind data: {{ company.* }} exposes the Corporate Identity you set (e.g. {{ company.name }}
+  and any contact/address fields on \`identity\`); {{ page.title }}; {{ website.siteUrl }}; and
+  {{#each data.<dataset>}}…{{/each}} for collections.
+- Mark text a CLIENT may later edit with {{edit "key" "Default text"}}.
+- NO JavaScript: no <script>, no on* handlers, no {{{triple-stache}}}. For interactivity use
+  DaisyUI's CSS-only patterns (<details>, the popover attribute, checkbox). Put URLs in
+  href/src as literal paths or via the {{url …}} helper.
+
+SET THE BRAND with put_content("settings","settings",{ identity:{ name, colors:{ primary:"#…" } },
+settings:{ defaultLocale:"en", locales:["en"] } }).
+PAGE SETTINGS live on the page: title, path, status ("draft"|"published"), nav
+{ slots:["header"|"footer"|"mobile"], order, title }.
+IMAGES: search_stock_images then import_stock_image (self-hosted + attributed); reference the
+returned media url in \`source\`.
+
+Typical flow: get_scope → set the Corporate Identity → put_page(s) with \`source\` →
+preview_page (returns { html, … } — read \`html\` to check the render) → publish_project. All writes are validated
+server-side (schema + no-JS template safety); you cannot exceed the token's role/capabilities.`;
 
 type ToolResult = { content: Array<{ type: 'text'; text: string }>; isError?: boolean };
 
@@ -74,7 +95,11 @@ export function createSitewrightMcpServer(client: SitewrightClient, scope: Scope
 
   server.registerTool(
     'get_page',
-    { description: 'Get one page by id (includes its block tree).', inputSchema: { id: z.string() } },
+    {
+      description:
+        'Get one page by id. For code-first pages the design is in the `source` field; `root` is a legacy placeholder.',
+      inputSchema: { id: z.string() },
+    },
     async ({ id }) => run(() => client.getContent('page', id)),
   );
 

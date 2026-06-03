@@ -7,13 +7,12 @@ const stamp = Date.now();
 test('publish emits sitemap.xml, robots.txt, and redirect rules', async ({ playwright, baseURL }) => {
   const api = await playwright.request.newContext({ baseURL });
   const reg = await api.post('/auth/register', {
-    data: { email: `seo-${stamp}@e2e.test`, password: 'pw-secret-1', orgName: `SEO ${stamp}` },
+    data: { email: `seo-${stamp}@e2e.test`, password: 'pw-secret-1' },
   });
   expect(reg.status()).toBe(201);
-  const orgId = (await reg.json()).orgId as string;
-  const proj = await api.post(`/orgs/${orgId}/projects`, { data: { name: 'SEO Site', slug: `seo-${stamp}` } });
+  const proj = await api.post(`/projects`, { data: { name: 'SEO Site', slug: `seo-${stamp}` } });
   const projectId = (await proj.json()).project.id as string;
-  const base = `/orgs/${orgId}/projects/${projectId}`;
+  const base = `/projects/${projectId}`;
 
   // Settings singleton with a production site URL + a redirect.
   const settings = await api.put(`${base}/content/settings/settings`, {

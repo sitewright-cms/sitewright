@@ -8,7 +8,6 @@ test('define a dataset, its schema, and add an entry', async ({ page }) => {
   await page.goto('/');
 
   await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Organization name').fill(`Data Agency ${stamp}`);
   await page.getByLabel('Email').fill(`data-${stamp}@e2e.test`);
   await page.getByLabel('Password').fill('pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();

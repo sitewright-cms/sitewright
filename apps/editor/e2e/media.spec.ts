@@ -15,7 +15,6 @@ test('upload an image into the media library and see the optimized thumbnail', a
   await page.goto('/');
 
   await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Organization name').fill(`Media Agency ${stamp}`);
   await page.getByLabel('Email').fill(`media-${stamp}@e2e.test`);
   await page.getByLabel('Password').fill('pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();

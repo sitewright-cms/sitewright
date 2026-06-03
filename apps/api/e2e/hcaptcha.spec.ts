@@ -11,14 +11,12 @@ test('hcaptcha: configured keys render the widget and gate submissions', async (
   const stamp = Date.now();
 
   // Register-or-login the configured admin (idempotent across runs).
-  const reg = await admin.post('/auth/register', { data: { email: 'admin@e2e.test', password: PW, orgName: 'HC Admin' } });
+  const reg = await admin.post('/auth/register', { data: { email: 'admin@e2e.test', password: PW } });
   if (reg.status() === 409) {
     expect((await admin.post('/auth/login', { data: { email: 'admin@e2e.test', password: PW } })).status()).toBe(200);
   } else {
     expect(reg.status()).toBe(201);
   }
-  const orgId = (await (await admin.get('/me')).json()).orgs[0].id as string;
-
   // Configure instance hCaptcha keys (secret encrypted at rest).
   const settings = await admin.put('/admin/settings', {
     data: { hcaptcha: { siteKey: `hcsite-${stamp}`, secret: 'hc-secret-xyz' } },
@@ -26,9 +24,9 @@ test('hcaptcha: configured keys render the widget and gate submissions', async (
   expect(settings.status()).toBe(200);
 
   // A project with a form that requires hCaptcha + a page embedding it.
-  const proj = await admin.post(`/orgs/${orgId}/projects`, { data: { name: 'HC Site', slug: `hc-${stamp}` } });
+  const proj = await admin.post(`/projects`, { data: { name: 'HC Site', slug: `hc-${stamp}` } });
   const projectId = (await proj.json()).project.id as string;
-  const base = `/orgs/${orgId}/projects/${projectId}`;
+  const base = `/projects/${projectId}`;
   await admin.put(`${base}/content/form/contact`, {
     data: { id: 'contact', name: 'Contact', fields: [{ name: 'email', label: 'Email', type: 'email', required: true }], recipient: 'leads@acme.example', hcaptcha: true },
   });

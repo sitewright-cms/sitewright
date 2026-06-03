@@ -14,7 +14,7 @@ const PEXELS_KEY = process.env.SW_E2E_PEXELS_KEY;
 
 async function adminContext(playwright: PwFixture, baseURL: string): Promise<APIRequestContext> {
   const admin = await playwright.request.newContext({ baseURL });
-  const reg = await admin.post('/auth/register', { data: { email: ADMIN_EMAIL, password: PW, orgName: 'Admin Org' } });
+  const reg = await admin.post('/auth/register', { data: { email: ADMIN_EMAIL, password: PW } });
   if (reg.status() === 409) {
     expect((await admin.post('/auth/login', { data: { email: ADMIN_EMAIL, password: PW } })).status()).toBe(200);
   } else {
@@ -26,13 +26,12 @@ async function adminContext(playwright: PwFixture, baseURL: string): Promise<API
 async function newProject(playwright: PwFixture, baseURL: string) {
   const ctx = await playwright.request.newContext({ baseURL });
   const stamp = Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36);
-  const reg = await ctx.post('/auth/register', { data: { email: `u-${stamp}@e2e.test`, password: PW, orgName: `Org ${stamp}` } });
+  const reg = await ctx.post('/auth/register', { data: { email: `u-${stamp}@e2e.test`, password: PW } });
   expect(reg.status()).toBe(201);
-  const orgId = (await reg.json()).orgId as string;
-  const proj = await ctx.post(`/orgs/${orgId}/projects`, { data: { name: 'Site', slug: `s${stamp}` } });
+  const proj = await ctx.post(`/projects`, { data: { name: 'Site', slug: `s${stamp}` } });
   expect(proj.status()).toBe(201);
   const projectId = (await proj.json()).project.id as string;
-  return { ctx, orgId, projectId, base: `/orgs/${orgId}/projects/${projectId}` };
+  return { ctx, projectId, base: `/projects/${projectId}` };
 }
 
 test('stock: provider availability, search gating, and tenant isolation', async ({ playwright, baseURL }) => {

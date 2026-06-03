@@ -6,7 +6,6 @@ test('build a code page, publish the project, and view the live site', async ({ 
   await page.goto('/');
 
   await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Organization name').fill(`Publish Agency ${stamp}`);
   await page.getByLabel('Email').fill(`publish-${stamp}@e2e.test`);
   await page.getByLabel('Password').fill('pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();

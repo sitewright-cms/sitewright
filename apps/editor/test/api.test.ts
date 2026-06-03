@@ -18,21 +18,21 @@ function jsonResponse(status: number, body: unknown) {
 }
 
 describe('api client', () => {
-  it('POSTs register with a JSON body and credentials', async () => {
-    fetchMock.mockResolvedValue(jsonResponse(201, { userId: 'u', orgId: 'o' }));
-    const res = await api.register('a@b.co', 'pw-secret-1', 'Acme');
-    expect(res).toEqual({ userId: 'u', orgId: 'o' });
+  it('POSTs register with a JSON body and credentials (no org)', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(201, { userId: 'u' }));
+    const res = await api.register('a@b.co', 'pw-secret-1');
+    expect(res).toEqual({ userId: 'u' });
     const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toBe('/auth/register');
     expect(init.method).toBe('POST');
     expect(init.credentials).toBe('include');
-    expect(JSON.parse(init.body)).toEqual({ email: 'a@b.co', password: 'pw-secret-1', orgName: 'Acme' });
+    expect(JSON.parse(init.body)).toEqual({ email: 'a@b.co', password: 'pw-secret-1' });
   });
 
   it('throws ApiError with the server error message on failure', async () => {
     fetchMock.mockResolvedValue(jsonResponse(403, { error: 'forbidden' }));
-    await expect(api.projects('o')).rejects.toMatchObject({ status: 403, message: 'forbidden' });
-    await expect(api.projects('o')).rejects.toBeInstanceOf(ApiError);
+    await expect(api.projects()).rejects.toMatchObject({ status: 403, message: 'forbidden' });
+    await expect(api.projects()).rejects.toBeInstanceOf(ApiError);
   });
 
   it('returns undefined for 204 responses', async () => {
@@ -52,46 +52,52 @@ describe('api client', () => {
     await expect(api.me()).rejects.toMatchObject({ status: 500, message: 'Server Error' });
   });
 
+  it('lists accessible projects at the flat route', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { projects: [] }));
+    await api.projects();
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects');
+  });
+
   it('builds content paths correctly', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { items: [] }));
-    await api.listPages('org1', 'proj1');
-    expect(fetchMock.mock.calls[0]![0]).toBe('/orgs/org1/projects/proj1/content/page');
+    await api.listPages('proj1');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/proj1/content/page');
   });
 
   it('builds the stock search URL with an encoded query + page', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { provider: 'openverse', page: 2, results: [] }));
-    await api.searchStock('o', 'p', 'openverse', 'cats & dogs', 2);
-    expect(fetchMock.mock.calls[0]![0]).toBe('/orgs/o/projects/p/stock/search?provider=openverse&q=cats+%26+dogs&page=2');
+    await api.searchStock('p', 'openverse', 'cats & dogs', 2);
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p/stock/search?provider=openverse&q=cats+%26+dogs&page=2');
   });
 
   it('POSTs a stock import with provider/id/alt and returns the item', async () => {
     fetchMock.mockResolvedValue(jsonResponse(201, { item: { id: 'asset1' } }));
-    const res = await api.importStock('o', 'p', 'openverse', 'ov1', 'a cat');
+    const res = await api.importStock('p', 'openverse', 'ov1', 'a cat');
     expect(res).toEqual({ item: { id: 'asset1' } });
     const [url, init] = fetchMock.mock.calls[0]!;
-    expect(url).toBe('/orgs/o/projects/p/stock/import');
+    expect(url).toBe('/projects/p/stock/import');
     expect(init.method).toBe('POST');
     expect(JSON.parse(init.body)).toEqual({ provider: 'openverse', id: 'ov1', alt: 'a cat' });
   });
 
   it('gets a single page and builds the SSE events URL', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { item: { id: 'home' } }));
-    const res = await api.getPage('o', 'p', 'home');
+    const res = await api.getPage('p', 'home');
     expect(res.item.id).toBe('home');
-    expect(fetchMock.mock.calls[0]![0]).toBe('/orgs/o/projects/p/content/page/home');
-    expect(eventsUrl('o', 'p')).toBe('/orgs/o/projects/p/events');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p/content/page/home');
+    expect(eventsUrl('p')).toBe('/projects/p/events');
   });
 
   it('POSTs render-template with the template, page context, and document flag', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { html: '<!doctype html>…' }));
-    const res = await api.renderTemplate('o', 'p', {
+    const res = await api.renderTemplate('p', {
       template: '<h1>{{ company.name }}</h1>',
       page: { title: 'Home', path: '/' },
       document: true,
     });
     expect(res).toEqual({ html: '<!doctype html>…' });
     const [url, init] = fetchMock.mock.calls[0]!;
-    expect(url).toBe('/orgs/o/projects/p/render-template');
+    expect(url).toBe('/projects/p/render-template');
     expect(init.method).toBe('POST');
     expect(JSON.parse(init.body)).toEqual({
       template: '<h1>{{ company.name }}</h1>',
@@ -100,73 +106,84 @@ describe('api client', () => {
     });
   });
 
-  it('creates a project (POST with body)', async () => {
-    fetchMock.mockResolvedValue(jsonResponse(201, { project: { id: 'p', name: 'P', slug: 's' } }));
-    await api.createProject('o', 'P', 's');
+  it('creates a project (POST with body, no org)', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(201, { project: { id: 'p', name: 'P', slug: 's', role: 'owner' } }));
+    await api.createProject('P', 's');
     const [url, init] = fetchMock.mock.calls[0]!;
-    expect(url).toBe('/orgs/o/projects');
+    expect(url).toBe('/projects');
     expect(init.method).toBe('POST');
     expect(JSON.parse(init.body)).toEqual({ name: 'P', slug: 's' });
+  });
+
+  it('deletes a project', async () => {
+    fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
+    expect(await api.deleteProject('p')).toBeUndefined();
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/projects/p');
+    expect(init.method).toBe('DELETE');
   });
 
   it('PUTs a page to its content path', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { item: {} }));
     const page = { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' } };
-    await api.putPage('o', 'p', page);
+    await api.putPage('p', page);
     const [url, init] = fetchMock.mock.calls[0]!;
-    expect(url).toBe('/orgs/o/projects/p/content/page/home');
+    expect(url).toBe('/projects/p/content/page/home');
     expect(init.method).toBe('PUT');
   });
 
   it('DELETEs a page (204 → undefined)', async () => {
     fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
-    expect(await api.deletePage('o', 'p', 'home')).toBeUndefined();
+    expect(await api.deletePage('p', 'home')).toBeUndefined();
     expect(fetchMock.mock.calls[0]![1].method).toBe('DELETE');
   });
 
-  it('GETs the current user', async () => {
-    fetchMock.mockResolvedValue(jsonResponse(200, { userId: 'u', orgs: [] }));
-    expect(await api.me()).toEqual({ userId: 'u', orgs: [] });
+  it('GETs the current user (flat shape)', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(200, { userId: 'u', platformRole: null, isInstanceAdmin: false, projects: [] }),
+    );
+    expect(await api.me()).toEqual({ userId: 'u', platformRole: null, isInstanceAdmin: false, projects: [] });
+    expect(fetchMock.mock.calls[0]![0]).toBe('/me');
   });
 
-  it('lists and removes org members', async () => {
+  it('lists and removes platform-staff via the admin routes', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { members: [] }));
-    await api.listMembers('o');
-    expect(fetchMock.mock.calls[0]![0]).toBe('/orgs/o/members');
+    await api.listMembers();
+    expect(fetchMock.mock.calls[0]![0]).toBe('/admin/users');
 
     fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
-    expect(await api.removeMember('o', 'u-1')).toBeUndefined();
+    expect(await api.removeMember('u-1')).toBeUndefined();
     const [delUrl, delInit] = fetchMock.mock.calls[1]!;
-    expect(delUrl).toBe('/orgs/o/members/u-1');
+    expect(delUrl).toBe('/admin/users/u-1');
     expect(delInit.method).toBe('DELETE');
   });
 
-  it('creates developer + client invites, lists/revokes, peeks, and accepts', async () => {
+  it('creates developer + client invites, lists/revokes, peeks, and accepts (flat)', async () => {
     fetchMock.mockResolvedValue(jsonResponse(201, { invite: { id: 'i' }, token: 'swi_x' }));
-    const dev = await api.inviteDeveloper('o', 'dev@a.co');
+    const dev = await api.inviteDeveloper('dev@a.co');
     expect(dev.token).toBe('swi_x');
-    expect(fetchMock.mock.calls[0]![0]).toBe('/orgs/o/invites');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/admin/invites');
     expect(JSON.parse(fetchMock.mock.calls[0]![1].body)).toEqual({ email: 'dev@a.co' });
 
-    await api.inviteClient('o', 'p', 'client@a.co');
-    expect(fetchMock.mock.calls[1]![0]).toBe('/orgs/o/projects/p/invites');
+    await api.inviteClient('p', 'client@a.co');
+    expect(fetchMock.mock.calls[1]![0]).toBe('/projects/p/invites');
 
     fetchMock.mockResolvedValue(jsonResponse(200, { invites: [] }));
-    await api.listInvites('o', 'p');
-    expect(fetchMock.mock.calls[2]![0]).toBe('/orgs/o/invites?projectId=p');
-    await api.listInvites('o');
-    expect(fetchMock.mock.calls[3]![0]).toBe('/orgs/o/invites');
+    await api.listProjectInvites('p');
+    expect(fetchMock.mock.calls[2]![0]).toBe('/projects/p/invites');
+    await api.listInvites();
+    expect(fetchMock.mock.calls[3]![0]).toBe('/admin/invites');
 
     fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
-    await api.revokeInvite('o', 'i-1');
-    expect(fetchMock.mock.calls[4]![0]).toBe('/orgs/o/invites/i-1');
+    await api.revokeInvite('i-1');
+    expect(fetchMock.mock.calls[4]![0]).toBe('/invites/i-1');
     expect(fetchMock.mock.calls[4]![1].method).toBe('DELETE');
 
-    fetchMock.mockResolvedValue(jsonResponse(200, { invite: { email: 'c@a.co', role: 'member', orgName: 'Acme', projectName: 'Site', expired: false, accepted: false } }));
+    fetchMock.mockResolvedValue(jsonResponse(200, { invite: { email: 'c@a.co', role: 'member', projectName: 'Site', expired: false, accepted: false } }));
     await api.peekInvite('swi_x');
     expect(fetchMock.mock.calls[5]![0]).toBe('/invites/peek?token=swi_x');
 
-    fetchMock.mockResolvedValue(jsonResponse(200, { orgId: 'o', projectId: 'p', role: 'member' }));
+    fetchMock.mockResolvedValue(jsonResponse(200, { projectId: 'p', role: 'member' }));
     const accepted = await api.acceptInvite('swi_x');
     expect(accepted.projectId).toBe('p');
     expect(fetchMock.mock.calls[6]![0]).toBe('/invites/accept');
@@ -175,12 +192,12 @@ describe('api client', () => {
 
   it('lists and removes project clients (project-scoped members)', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { members: [] }));
-    await api.listProjectMembers('o', 'p');
-    expect(fetchMock.mock.calls[0]![0]).toBe('/orgs/o/projects/p/members');
+    await api.listProjectMembers('p');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p/members');
 
     fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
-    await api.removeProjectMember('o', 'p', 'u-1');
-    expect(fetchMock.mock.calls[1]![0]).toBe('/orgs/o/projects/p/members/u-1');
+    await api.removeProjectMember('p', 'u-1');
+    expect(fetchMock.mock.calls[1]![0]).toBe('/projects/p/members/u-1');
     expect(fetchMock.mock.calls[1]![1].method).toBe('DELETE');
   });
 
@@ -196,59 +213,59 @@ describe('api client', () => {
   it('POSTs a page to the preview endpoint and returns the html', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { html: '<!doctype html>…' }));
     const page = { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' } };
-    const res = await api.preview('o', 'p', page);
+    const res = await api.preview('p', page);
     expect(res.html).toContain('<!doctype html>');
     const [url, init] = fetchMock.mock.calls[0]!;
-    expect(url).toBe('/orgs/o/projects/p/preview');
+    expect(url).toBe('/projects/p/preview');
     expect(init.method).toBe('POST');
     expect(JSON.parse(init.body)).toMatchObject({ id: 'home' });
   });
 
   it('lists and PUTs datasets at the content path', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { items: [] }));
-    await api.listDatasets('o', 'p');
-    expect(fetchMock.mock.calls[0]![0]).toBe('/orgs/o/projects/p/content/dataset');
+    await api.listDatasets('p');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p/content/dataset');
 
     fetchMock.mockResolvedValue(jsonResponse(200, { item: {} }));
-    await api.putDataset('o', 'p', { id: 'posts', name: 'Posts', slug: 'posts', fields: [] });
+    await api.putDataset('p', { id: 'posts', name: 'Posts', slug: 'posts', fields: [] });
     const [url, init] = fetchMock.mock.calls[1]!;
-    expect(url).toBe('/orgs/o/projects/p/content/dataset/posts');
+    expect(url).toBe('/projects/p/content/dataset/posts');
     expect(init.method).toBe('PUT');
   });
 
   it('lists, PUTs and DELETEs entries', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { items: [] }));
-    await api.listEntries('o', 'p');
-    expect(fetchMock.mock.calls[0]![0]).toBe('/orgs/o/projects/p/content/entry');
+    await api.listEntries('p');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p/content/entry');
 
     fetchMock.mockResolvedValue(jsonResponse(200, { item: {} }));
-    await api.putEntry('o', 'p', { id: 'e1', dataset: 'posts', status: 'draft', values: {} });
-    expect(fetchMock.mock.calls[1]![0]).toBe('/orgs/o/projects/p/content/entry/e1');
+    await api.putEntry('p', { id: 'e1', dataset: 'posts', status: 'draft', values: {} });
+    expect(fetchMock.mock.calls[1]![0]).toBe('/projects/p/content/entry/e1');
 
     fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
-    await api.deleteEntry('o', 'p', 'e1');
+    await api.deleteEntry('p', 'e1');
     expect(fetchMock.mock.calls[2]![1].method).toBe('DELETE');
   });
 
   it('DELETEs a dataset', async () => {
     fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
-    await api.deleteDataset('o', 'p', 'posts');
+    await api.deleteDataset('p', 'posts');
     const [url, init] = fetchMock.mock.calls[0]!;
-    expect(url).toBe('/orgs/o/projects/p/content/dataset/posts');
+    expect(url).toBe('/projects/p/content/dataset/posts');
     expect(init.method).toBe('DELETE');
   });
 
   it('lists media and uploads a file as multipart FormData', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { items: [] }));
-    await api.listMedia('o', 'p');
-    expect(fetchMock.mock.calls[0]![0]).toBe('/orgs/o/projects/p/media');
+    await api.listMedia('p');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p/media');
 
     fetchMock.mockResolvedValue(jsonResponse(201, { item: { id: 'm1' } }));
     const file = new File([new Uint8Array([1, 2, 3])], 'x.png', { type: 'image/png' });
-    const res = await api.uploadMedia('o', 'p', file);
+    const res = await api.uploadMedia('p', file);
     expect(res.item.id).toBe('m1');
     const [url, init] = fetchMock.mock.calls[1]!;
-    expect(url).toBe('/orgs/o/projects/p/media');
+    expect(url).toBe('/projects/p/media');
     expect(init.method).toBe('POST');
     expect(init.body).toBeInstanceOf(FormData);
     expect(init.headers).toBeUndefined(); // browser sets the multipart boundary
@@ -257,7 +274,7 @@ describe('api client', () => {
   it('throws ApiError when an upload fails', async () => {
     fetchMock.mockResolvedValue(jsonResponse(400, { error: 'unsupported or invalid image' }));
     const file = new File([new Uint8Array([0])], 'x.txt', { type: 'text/plain' });
-    await expect(api.uploadMedia('o', 'p', file)).rejects.toMatchObject({
+    await expect(api.uploadMedia('p', file)).rejects.toMatchObject({
       status: 400,
       message: 'unsupported or invalid image',
     });
@@ -265,19 +282,19 @@ describe('api client', () => {
 
   it('DELETEs media', async () => {
     fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
-    await api.deleteMedia('o', 'p', 'm1');
+    await api.deleteMedia('p', 'm1');
     const [url, init] = fetchMock.mock.calls[0]!;
-    expect(url).toBe('/orgs/o/projects/p/media/m1');
+    expect(url).toBe('/projects/p/media/m1');
     expect(init.method).toBe('DELETE');
   });
 
   it('manages saved deploy targets', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { items: [] }));
-    await api.listDeployTargets('o', 'p');
-    expect(fetchMock.mock.calls[0]![0]).toBe('/orgs/o/projects/p/deploy-targets');
+    await api.listDeployTargets('p');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p/deploy-targets');
 
     fetchMock.mockResolvedValue(jsonResponse(201, { target: { id: 't1' } }));
-    await api.createDeployTarget('o', 'p', {
+    await api.createDeployTarget('p', {
       name: 'Prod',
       protocol: 'sftp',
       host: 'h',
@@ -285,37 +302,37 @@ describe('api client', () => {
       password: 'pw',
     });
     const [url, init] = fetchMock.mock.calls[1]!;
-    expect(url).toBe('/orgs/o/projects/p/deploy-targets');
+    expect(url).toBe('/projects/p/deploy-targets');
     expect(init.method).toBe('POST');
     expect(JSON.parse(init.body)).toMatchObject({ name: 'Prod', host: 'h' });
 
     fetchMock.mockResolvedValue(jsonResponse(200, { deployed: { protocol: 'sftp', files: 4 } }));
-    await api.deployToTarget('o', 'p', 't1');
-    expect(fetchMock.mock.calls[2]![0]).toBe('/orgs/o/projects/p/deploy-targets/t1/deploy');
+    await api.deployToTarget('p', 't1');
+    expect(fetchMock.mock.calls[2]![0]).toBe('/projects/p/deploy-targets/t1/deploy');
 
     fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
-    await api.deleteDeployTarget('o', 'p', 't1');
+    await api.deleteDeployTarget('p', 't1');
     expect(fetchMock.mock.calls[3]![1].method).toBe('DELETE');
   });
 
   it('publishes and reads publish status', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { release: { routes: 2 }, url: '/sites/p/' }));
-    const res = await api.publish('o', 'p');
+    const res = await api.publish('p');
     expect(res.url).toBe('/sites/p/');
-    expect(fetchMock.mock.calls[0]![0]).toBe('/orgs/o/projects/p/publish');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p/publish');
     expect(fetchMock.mock.calls[0]![1].method).toBe('POST');
 
     fetchMock.mockResolvedValue(jsonResponse(200, { release: null, url: '/sites/p/' }));
-    const status = await api.publishStatus('o', 'p');
+    const status = await api.publishStatus('p');
     expect(status.release).toBeNull();
     expect(fetchMock.mock.calls[1]![1].method ?? 'GET').toBe('GET');
   });
 
   it('builds the archive download URL and POSTs a deploy config', async () => {
-    expect(api.archiveUrl('o', 'p')).toBe('/orgs/o/projects/p/publish/archive');
+    expect(api.archiveUrl('p')).toBe('/projects/p/publish/archive');
 
     fetchMock.mockResolvedValue(jsonResponse(200, { deployed: { protocol: 'sftp', files: 3 } }));
-    const res = await api.deploy('o', 'p', {
+    const res = await api.deploy('p', {
       protocol: 'sftp',
       host: 'example.com',
       user: 'u',
@@ -324,33 +341,33 @@ describe('api client', () => {
     });
     expect(res.deployed.files).toBe(3);
     const [url, init] = fetchMock.mock.calls[0]!;
-    expect(url).toBe('/orgs/o/projects/p/publish/deploy');
+    expect(url).toBe('/projects/p/publish/deploy');
     expect(init.method).toBe('POST');
     expect(JSON.parse(init.body)).toMatchObject({ protocol: 'sftp', host: 'example.com' });
   });
 
   it('lists, creates (token once) and revokes project API keys', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { items: [] }));
-    await api.listApiKeys('o', 'p');
-    expect(fetchMock.mock.calls[0]![0]).toBe('/orgs/o/projects/p/api-keys');
+    await api.listApiKeys('p');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p/api-keys');
 
     fetchMock.mockResolvedValue(jsonResponse(201, { token: 'swk_x', key: { id: 'k1', name: 'CI' } }));
-    const created = await api.createApiKey('o', 'p', {
+    const created = await api.createApiKey('p', {
       name: 'CI',
-      role: 'admin',
+      role: 'owner',
       capabilities: ['content:read', 'content:write'],
       expiresInDays: 30,
     });
     expect(created.token).toBe('swk_x');
     const [createUrl, createInit] = fetchMock.mock.calls[1]!;
-    expect(createUrl).toBe('/orgs/o/projects/p/api-keys');
+    expect(createUrl).toBe('/projects/p/api-keys');
     expect(createInit.method).toBe('POST');
-    expect(JSON.parse(createInit.body)).toMatchObject({ name: 'CI', role: 'admin', expiresInDays: 30 });
+    expect(JSON.parse(createInit.body)).toMatchObject({ name: 'CI', role: 'owner', expiresInDays: 30 });
 
     fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
-    await api.deleteApiKey('o', 'p', 'k1');
+    await api.deleteApiKey('p', 'k1');
     const [delUrl, delInit] = fetchMock.mock.calls[2]!;
-    expect(delUrl).toBe('/orgs/o/projects/p/api-keys/k1');
+    expect(delUrl).toBe('/projects/p/api-keys/k1');
     expect(delInit.method).toBe('DELETE');
   });
 
@@ -358,9 +375,9 @@ describe('api client', () => {
     fetchMock.mockResolvedValue(
       jsonResponse(200, { item: { settings: { defaultLocale: 'en', locales: ['en', 'de'] } } }),
     );
-    const res = await api.getSettings('o', 'p');
+    const res = await api.getSettings('p');
     expect(res.item.settings.locales).toEqual(['en', 'de']);
-    expect(fetchMock.mock.calls[0]![0]).toBe('/orgs/o/projects/p/content/settings/settings');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p/content/settings/settings');
     expect(fetchMock.mock.calls[0]![1].method ?? 'GET').toBe('GET');
   });
 
@@ -391,8 +408,8 @@ describe('api client', () => {
 
   it('lists, puts and deletes forms on the content/form route', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { items: [] }));
-    await api.listForms('o', 'p');
-    expect(fetchMock.mock.calls[0]![0]).toBe('/orgs/o/projects/p/content/form');
+    await api.listForms('p');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p/content/form');
 
     const form = {
       id: 'contact',
@@ -406,71 +423,71 @@ describe('api client', () => {
       hcaptcha: false,
     };
     fetchMock.mockResolvedValue(jsonResponse(200, { item: form }));
-    await api.putForm('o', 'p', form);
+    await api.putForm('p', form);
     const [putUrl, putInit] = fetchMock.mock.calls[1]!;
-    expect(putUrl).toBe('/orgs/o/projects/p/content/form/contact');
+    expect(putUrl).toBe('/projects/p/content/form/contact');
     expect(putInit.method).toBe('PUT');
 
     fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
-    await api.deleteForm('o', 'p', 'contact');
+    await api.deleteForm('p', 'contact');
     expect(fetchMock.mock.calls[2]![1].method).toBe('DELETE');
 
     fetchMock.mockResolvedValue(jsonResponse(200, { formModes: { globalSmtp: true, userSmtp: false, contactPhp: true, thirdParty: false } }));
-    const fm = await api.formModes('o', 'p');
+    const fm = await api.formModes('p');
     expect(fm.formModes.contactPhp).toBe(true);
-    expect(fetchMock.mock.calls[3]![0]).toBe('/orgs/o/projects/p/form-modes');
+    expect(fetchMock.mock.calls[3]![0]).toBe('/projects/p/form-modes');
   });
 
   it('reads, writes, and deletes the per-project SMTP config', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { smtp: null }));
-    expect((await api.getProjectSmtp('o', 'p')).smtp).toBeNull();
-    expect(fetchMock.mock.calls[0]![0]).toBe('/orgs/o/projects/p/smtp');
+    expect((await api.getProjectSmtp('p')).smtp).toBeNull();
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p/smtp');
 
     fetchMock.mockResolvedValue(jsonResponse(200, { smtp: { host: 'h', port: 587, secure: false, fromEmail: 'a@b.co', hasPassword: true } }));
-    await api.putProjectSmtp('o', 'p', { host: 'h', port: 587, secure: false, fromEmail: 'a@b.co', password: 'pw' });
+    await api.putProjectSmtp('p', { host: 'h', port: 587, secure: false, fromEmail: 'a@b.co', password: 'pw' });
     const [putUrl, putInit] = fetchMock.mock.calls[1]!;
-    expect(putUrl).toBe('/orgs/o/projects/p/smtp');
+    expect(putUrl).toBe('/projects/p/smtp');
     expect(putInit.method).toBe('PUT');
     expect(JSON.parse(putInit.body)).toMatchObject({ host: 'h', password: 'pw' });
 
     fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
-    await api.deleteProjectSmtp('o', 'p');
+    await api.deleteProjectSmtp('p');
     expect(fetchMock.mock.calls[2]![1].method).toBe('DELETE');
   });
 
   it('lists and deletes submissions, passing the formId filter', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { items: [], total: 0 }));
-    await api.listSubmissions('o', 'p');
-    expect(fetchMock.mock.calls[0]![0]).toBe('/orgs/o/projects/p/submissions');
+    await api.listSubmissions('p');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p/submissions');
 
     fetchMock.mockResolvedValue(jsonResponse(200, { items: [], total: 0 }));
-    await api.listSubmissions('o', 'p', 'contact');
-    expect(fetchMock.mock.calls[1]![0]).toBe('/orgs/o/projects/p/submissions?formId=contact');
+    await api.listSubmissions('p', 'contact');
+    expect(fetchMock.mock.calls[1]![0]).toBe('/projects/p/submissions?formId=contact');
 
     fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
-    await api.deleteSubmission('o', 'p', 's1');
+    await api.deleteSubmission('p', 's1');
     const [delUrl, delInit] = fetchMock.mock.calls[2]!;
-    expect(delUrl).toBe('/orgs/o/projects/p/submissions/s1');
+    expect(delUrl).toBe('/projects/p/submissions/s1');
     expect(delInit.method).toBe('DELETE');
   });
 
   it('lists, puts and deletes page translations on the generic content/translation route', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { items: [] }));
-    await api.listTranslations('o', 'p');
-    expect(fetchMock.mock.calls[0]![0]).toBe('/orgs/o/projects/p/content/translation');
+    await api.listTranslations('p');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p/content/translation');
 
     const tr = { id: 'home__de', pageId: 'home', locale: 'de', root: { id: 'r', type: 'Section' } };
     fetchMock.mockResolvedValue(jsonResponse(200, { item: tr }));
-    await api.putTranslation('o', 'p', tr);
+    await api.putTranslation('p', tr);
     const [putUrl, putInit] = fetchMock.mock.calls[1]!;
-    expect(putUrl).toBe('/orgs/o/projects/p/content/translation/home__de');
+    expect(putUrl).toBe('/projects/p/content/translation/home__de');
     expect(putInit.method).toBe('PUT');
     expect(JSON.parse(putInit.body)).toEqual(tr);
 
     fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
-    await api.deleteTranslation('o', 'p', 'home__de');
+    await api.deleteTranslation('p', 'home__de');
     const [delUrl, delInit] = fetchMock.mock.calls[2]!;
-    expect(delUrl).toBe('/orgs/o/projects/p/content/translation/home__de');
+    expect(delUrl).toBe('/projects/p/content/translation/home__de');
     expect(delInit.method).toBe('DELETE');
   });
 });

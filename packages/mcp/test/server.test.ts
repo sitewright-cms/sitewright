@@ -32,8 +32,8 @@ async function connect(client: SitewrightClient, scope: Scope) {
   return mcp;
 }
 
-const readScope: Scope = { orgId: 'o', projectId: 'p', role: 'member', capabilities: ['content:read'] };
-const writeScope: Scope = { orgId: 'o', projectId: 'p', role: 'admin', capabilities: ['content:read', 'content:write', 'publish'] };
+const readScope: Scope = { projectId: 'p', role: 'member', capabilities: ['content:read'] };
+const writeScope: Scope = { projectId: 'p', role: 'admin', capabilities: ['content:read', 'content:write', 'publish'] };
 
 async function toolNames(mcp: Client): Promise<string[]> {
   return (await mcp.listTools()).tools.map((t) => t.name).sort();

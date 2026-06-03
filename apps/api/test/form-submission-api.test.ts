@@ -32,7 +32,6 @@ let db: Database;
 let mailer: FakeMailer;
 let projectMailer: FakeProjectMailer;
 let t: string;
-let orgId: string;
 let projectId: string;
 
 function token(res: { cookies: Array<{ name: string; value: string }> }): string {
@@ -60,13 +59,12 @@ beforeEach(async () => {
   const reg = await app.inject({
     method: 'POST',
     url: '/auth/register',
-    payload: { email: 'owner@acme.test', password: 'pw-secret-1', orgName: 'Acme' },
+    payload: { email: 'owner@acme.test', password: 'pw-secret-1'},
   });
   t = token(reg);
-  orgId = (reg.json() as { orgId: string }).orgId;
   const proj = await app.inject({
     method: 'POST',
-    url: `/orgs/${orgId}/projects`,
+    url: `/projects`,
     cookies: { sw_session: t },
     payload: { name: 'Site', slug: 'site' },
   });
@@ -74,7 +72,7 @@ beforeEach(async () => {
   // Author the form (owner) via the generic content route.
   const put = await app.inject({
     method: 'PUT',
-    url: `/orgs/${orgId}/projects/${projectId}/content/form/contact`,
+    url: `/projects/${projectId}/content/form/contact`,
     cookies: { sw_session: t },
     payload: form,
   });
@@ -94,7 +92,7 @@ describe('public form submission endpoint', () => {
     // CORS for cross-origin posting from the exported site.
     expect(res.headers['access-control-allow-origin']).toBe('*');
     // Stored
-    const list = await app.inject({ method: 'GET', url: `/orgs/${orgId}/projects/${projectId}/submissions`, cookies: { sw_session: t } });
+    const list = await app.inject({ method: 'GET', url: `/projects/${projectId}/submissions`, cookies: { sw_session: t } });
     const body = list.json() as { items: Array<{ fields: Record<string, string> }>; total: number };
     expect(body.total).toBe(1);
     expect(body.items[0]!.fields).toEqual({ email: 'lead@x.co', message: 'Hello there' });
@@ -107,7 +105,7 @@ describe('public form submission endpoint', () => {
   it('routes a userSmtp form to the project mailer (not the global mailer)', async () => {
     await app.inject({
       method: 'PUT',
-      url: `/orgs/${orgId}/projects/${projectId}/content/form/lead`,
+      url: `/projects/${projectId}/content/form/lead`,
       cookies: { sw_session: t },
       payload: { id: 'lead', name: 'Lead', fields: [{ name: 'email', label: 'Email', type: 'email' }], recipient: 'sales@acme.com', mode: 'userSmtp' },
     });
@@ -126,7 +124,7 @@ describe('public form submission endpoint', () => {
     });
     expect(res.statusCode).toBe(200);
     expect(mailer.sent).toHaveLength(0);
-    const list = await app.inject({ method: 'GET', url: `/orgs/${orgId}/projects/${projectId}/submissions`, cookies: { sw_session: t } });
+    const list = await app.inject({ method: 'GET', url: `/projects/${projectId}/submissions`, cookies: { sw_session: t } });
     expect((list.json() as { total: number }).total).toBe(0);
   });
 
@@ -158,7 +156,7 @@ describe('public form submission endpoint', () => {
       payload: { email: 'lead@x.co', _elapsed: '5000' },
     });
     expect(res.statusCode).toBe(200);
-    const list = await app.inject({ method: 'GET', url: `/orgs/${orgId}/projects/${projectId}/submissions`, cookies: { sw_session: t } });
+    const list = await app.inject({ method: 'GET', url: `/projects/${projectId}/submissions`, cookies: { sw_session: t } });
     expect((list.json() as { total: number }).total).toBe(1);
   });
 
@@ -195,9 +193,9 @@ describe('public form submission endpoint', () => {
   });
 
   it('exposes the instance form modes to a project member (default: all off)', async () => {
-    const unauth = await app.inject({ method: 'GET', url: `/orgs/${orgId}/projects/${projectId}/form-modes` });
+    const unauth = await app.inject({ method: 'GET', url: `/projects/${projectId}/form-modes` });
     expect(unauth.statusCode).toBe(401);
-    const res = await app.inject({ method: 'GET', url: `/orgs/${orgId}/projects/${projectId}/form-modes`, cookies: { sw_session: t } });
+    const res = await app.inject({ method: 'GET', url: `/projects/${projectId}/form-modes`, cookies: { sw_session: t } });
     expect(res.statusCode).toBe(200);
     expect((res.json() as { formModes: Record<string, boolean> }).formModes).toEqual({
       globalSmtp: false,
@@ -214,18 +212,18 @@ describe('submissions inbox (authenticated)', () => {
   });
 
   it('requires authentication (401 without a session)', async () => {
-    const res = await app.inject({ method: 'GET', url: `/orgs/${orgId}/projects/${projectId}/submissions` });
+    const res = await app.inject({ method: 'GET', url: `/projects/${projectId}/submissions` });
     expect(res.statusCode).toBe(401);
   });
 
   it('lists, reads one, and deletes a submission', async () => {
-    const list = await app.inject({ method: 'GET', url: `/orgs/${orgId}/projects/${projectId}/submissions`, cookies: { sw_session: t } });
+    const list = await app.inject({ method: 'GET', url: `/projects/${projectId}/submissions`, cookies: { sw_session: t } });
     const id = (list.json() as { items: Array<{ id: string }> }).items[0]!.id;
-    const one = await app.inject({ method: 'GET', url: `/orgs/${orgId}/projects/${projectId}/submissions/${id}`, cookies: { sw_session: t } });
+    const one = await app.inject({ method: 'GET', url: `/projects/${projectId}/submissions/${id}`, cookies: { sw_session: t } });
     expect((one.json() as { item: { fields: Record<string, string> } }).item.fields.email).toBe('a@x.co');
-    const del = await app.inject({ method: 'DELETE', url: `/orgs/${orgId}/projects/${projectId}/submissions/${id}`, cookies: { sw_session: t } });
+    const del = await app.inject({ method: 'DELETE', url: `/projects/${projectId}/submissions/${id}`, cookies: { sw_session: t } });
     expect(del.statusCode).toBe(204);
-    const after = await app.inject({ method: 'GET', url: `/orgs/${orgId}/projects/${projectId}/submissions`, cookies: { sw_session: t } });
+    const after = await app.inject({ method: 'GET', url: `/projects/${projectId}/submissions`, cookies: { sw_session: t } });
     expect((after.json() as { total: number }).total).toBe(0);
   });
 
@@ -234,16 +232,16 @@ describe('submissions inbox (authenticated)', () => {
     const memberReg = await app.inject({
       method: 'POST',
       url: '/auth/register',
-      payload: { email: 'member@x.test', password: 'pw-secret-1', orgName: 'Member Org' },
+      payload: { email: 'member@x.test', password: 'pw-secret-1'},
     });
     const memberT = token(memberReg);
     const memberUserId = (memberReg.json() as { userId: string }).userId;
     await db.insert(projectMembers).values({ id: randomUUID(), userId: memberUserId, projectId, role: 'member', createdAt: new Date() });
 
-    const list = await app.inject({ method: 'GET', url: `/orgs/${orgId}/projects/${projectId}/submissions`, cookies: { sw_session: memberT } });
+    const list = await app.inject({ method: 'GET', url: `/projects/${projectId}/submissions`, cookies: { sw_session: memberT } });
     expect(list.statusCode).toBe(200); // members can read
     const id = (list.json() as { items: Array<{ id: string }> }).items[0]!.id;
-    const del = await app.inject({ method: 'DELETE', url: `/orgs/${orgId}/projects/${projectId}/submissions/${id}`, cookies: { sw_session: memberT } });
+    const del = await app.inject({ method: 'DELETE', url: `/projects/${projectId}/submissions/${id}`, cookies: { sw_session: memberT } });
     expect(del.statusCode).toBe(204); // a member is now a writer and may delete
   });
 
@@ -251,14 +249,13 @@ describe('submissions inbox (authenticated)', () => {
     const other = await app.inject({
       method: 'POST',
       url: '/auth/register',
-      payload: { email: 'other@x.test', password: 'pw-secret-1', orgName: 'Other' },
+      payload: { email: 'other@x.test', password: 'pw-secret-1'},
     });
     const ot = token(other);
-    const otherOrg = (other.json() as { orgId: string }).orgId;
     // A user who holds no membership on this project cannot reach it over a session (403).
     const res = await app.inject({
       method: 'GET',
-      url: `/orgs/${otherOrg}/projects/${projectId}/submissions`,
+      url: `/projects/${projectId}/submissions`,
       cookies: { sw_session: ot },
     });
     expect(res.statusCode).toBe(403);

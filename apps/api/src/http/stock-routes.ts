@@ -16,7 +16,7 @@ import type { ApiKeyCapability } from '../db/schema.js';
 
 const MAX_QUERY_LEN = 200;
 
-type ProjectReq = FastifyRequest<{ Params: { orgId: string; projectId: string } }>;
+type ProjectReq = FastifyRequest<{ Params: { projectId: string } }>;
 
 /** The subset of StockService the routes use (so tests can inject a fake). */
 export interface StockServiceLike {
@@ -53,8 +53,8 @@ export interface StockRoutesDeps {
 export function registerStockRoutes(app: FastifyInstance, deps: StockRoutesDeps): void {
   const { resolveProject, isWriter, stockService, createMediaAsset, rl } = deps;
 
-  app.get<{ Params: { orgId: string; projectId: string } }>(
-    '/orgs/:orgId/projects/:projectId/stock/providers',
+  app.get<{ Params: { projectId: string } }>(
+    '/projects/:projectId/stock/providers',
     { config: rl(60) },
     async (req, reply) => {
       await resolveProject(req, 'content:read');
@@ -62,8 +62,8 @@ export function registerStockRoutes(app: FastifyInstance, deps: StockRoutesDeps)
     },
   );
 
-  app.get<{ Params: { orgId: string; projectId: string } }>(
-    '/orgs/:orgId/projects/:projectId/stock/search',
+  app.get<{ Params: { projectId: string } }>(
+    '/projects/:projectId/stock/search',
     { config: rl(30) },
     async (req, reply) => {
       await resolveProject(req, 'content:read');
@@ -81,8 +81,8 @@ export function registerStockRoutes(app: FastifyInstance, deps: StockRoutesDeps)
     },
   );
 
-  app.post<{ Params: { orgId: string; projectId: string } }>(
-    '/orgs/:orgId/projects/:projectId/stock/import',
+  app.post<{ Params: { projectId: string } }>(
+    '/projects/:projectId/stock/import',
     { config: rl(20) },
     async (req, reply) => {
       const { ctx, project } = await resolveProject(req, 'content:write');

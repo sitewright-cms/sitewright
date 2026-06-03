@@ -7,7 +7,6 @@ const stamp = Date.now();
 test('author a form in the editor and see a submission in the inbox', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Organization name').fill(`Forms Agency ${stamp}`);
   await page.getByLabel('Email').fill(`forms-ui-${stamp}@e2e.test`);
   await page.getByLabel('Password').fill('pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();
@@ -28,9 +27,7 @@ test('author a form in the editor and see a submission in the inbox', async ({ p
 
   // Resolve the projectId via the API (shares the browser session cookie) and
   // submit to the public endpoint, then check the inbox.
-  const me = await page.context().request.get('/me');
-  const orgId = (await me.json()).orgs[0].id as string;
-  const projects = await page.context().request.get(`/orgs/${orgId}/projects`);
+  const projects = await page.context().request.get('/projects');
   const project = (await projects.json()).projects.find((p: { slug: string }) => p.slug === `forms-ui-${stamp}`);
   const submit = await page.context().request.post(`/f/${project.id}/contact`, {
     data: { email: 'visitor@example.com', _elapsed: '5000' },

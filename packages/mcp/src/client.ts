@@ -8,7 +8,6 @@
 export type Capability = 'content:read' | 'content:write' | 'publish' | 'deploy';
 
 export interface Scope {
-  orgId: string;
   projectId: string;
   role: 'owner' | 'admin' | 'member';
   capabilities: Capability[];
@@ -112,11 +111,11 @@ export class SitewrightClient {
   }
 
   private projectPath(suffix: string): string {
-    const { orgId, projectId } = this.requireScope();
-    return `/orgs/${encodeURIComponent(orgId)}/projects/${encodeURIComponent(projectId)}${suffix}`;
+    const { projectId } = this.requireScope();
+    return `/projects/${encodeURIComponent(projectId)}${suffix}`;
   }
 
-  /** Learns (and caches) the token's scope: which org/project + role + capabilities. */
+  /** Learns (and caches) the token's scope: which project + role + capabilities. */
   async introspect(): Promise<Scope> {
     const scope = await this.request<Scope>('GET', '/api-key/self');
     this.scope = scope;

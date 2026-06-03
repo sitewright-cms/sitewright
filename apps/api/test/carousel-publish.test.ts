@@ -90,7 +90,7 @@ describe('Carousel component → publish + preview', () => {
   });
 
   it('previews the carousel live — inlined component CSS + behavior (sandbox-CSS doc)', async () => {
-    const res = await client.post(`/orgs/${client.orgId}/projects/${projectId}/preview`, carouselPage);
+    const res = await client.post(`/projects/${projectId}/preview`, carouselPage);
     expect(res.statusCode).toBe(200);
     const body = res.json() as { html: string; token: string };
     expect(body.html).toContain('data-sw-component="carousel"'); // semantic HTML present

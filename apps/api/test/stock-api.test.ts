@@ -36,18 +36,17 @@ async function makeApp(stockService?: StockServiceLike): Promise<FastifyInstance
   return app;
 }
 
-async function setup(app: FastifyInstance, email: string, orgName: string, slug = 'site') {
-  const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email, password: 'pw-secret-1', orgName } });
+async function setup(app: FastifyInstance, email: string, slug = 'site') {
+  const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email, password: 'pw-secret-1' } });
   const t = token(reg);
-  const orgId = (reg.json() as { orgId: string }).orgId;
   const proj = await app.inject({
     method: 'POST',
-    url: `/orgs/${orgId}/projects`,
+    url: `/projects`,
     cookies: { sw_session: t },
     payload: { name: 'Site', slug },
   });
   const projectId = (proj.json() as { project: { id: string } }).project.id;
-  return { t, orgId, projectId, base: `/orgs/${orgId}/projects/${projectId}` };
+  return { t, projectId, base: `/projects/${projectId}` };
 }
 
 /** A fake stock service so route tests never touch the network. */
@@ -79,7 +78,7 @@ function fakeStock(overrides: Partial<StockServiceLike> = {}): StockServiceLike 
 describe('stock API — real service (no network needed for gating)', () => {
   it('reports openverse available and keyed providers unavailable without keys', async () => {
     const app = await makeApp();
-    const { t, base } = await setup(app, 'a@acme.test', 'Acme');
+    const { t, base } = await setup(app, 'a@acme.test');
     const res = await app.inject({ method: 'GET', url: `${base}/stock/providers`, cookies: { sw_session: t } });
     expect(res.statusCode).toBe(200);
     const by = Object.fromEntries((res.json() as { providers: Array<{ name: string; available: boolean }> }).providers.map((p) => [p.name, p.available]));
@@ -88,28 +87,28 @@ describe('stock API — real service (no network needed for gating)', () => {
 
   it('rejects searching a keyed provider that has no key configured (400)', async () => {
     const app = await makeApp();
-    const { t, base } = await setup(app, 'a@acme.test', 'Acme');
+    const { t, base } = await setup(app, 'a@acme.test');
     const res = await app.inject({ method: 'GET', url: `${base}/stock/search?provider=unsplash&q=cats`, cookies: { sw_session: t } });
     expect(res.statusCode).toBe(400);
   });
 
   it('rejects an unknown provider (400)', async () => {
     const app = await makeApp();
-    const { t, base } = await setup(app, 'a@acme.test', 'Acme');
+    const { t, base } = await setup(app, 'a@acme.test');
     const res = await app.inject({ method: 'GET', url: `${base}/stock/search?provider=bogus&q=cats`, cookies: { sw_session: t } });
     expect(res.statusCode).toBe(400);
   });
 
   it('rejects a missing/empty query (400)', async () => {
     const app = await makeApp();
-    const { t, base } = await setup(app, 'a@acme.test', 'Acme');
+    const { t, base } = await setup(app, 'a@acme.test');
     const res = await app.inject({ method: 'GET', url: `${base}/stock/search?provider=openverse&q=`, cookies: { sw_session: t } });
     expect(res.statusCode).toBe(400);
   });
 
   it('requires authentication for providers/search/import', async () => {
     const app = await makeApp();
-    const { base } = await setup(app, 'a@acme.test', 'Acme');
+    const { base } = await setup(app, 'a@acme.test');
     expect((await app.inject({ method: 'GET', url: `${base}/stock/providers` })).statusCode).toBe(401);
     expect((await app.inject({ method: 'GET', url: `${base}/stock/search?provider=openverse&q=cats` })).statusCode).toBe(401);
     expect((await app.inject({ method: 'POST', url: `${base}/stock/import`, payload: { provider: 'openverse', id: 'x' } })).statusCode).toBe(401);
@@ -117,8 +116,8 @@ describe('stock API — real service (no network needed for gating)', () => {
 
   it('forbids another tenant from using stock endpoints (403)', async () => {
     const app = await makeApp();
-    const a = await setup(app, 'a@acme.test', 'Acme', 'site-a');
-    const b = await setup(app, 'b@globex.test', 'Globex', 'site-b');
+    const a = await setup(app, 'a@acme.test', 'site-a');
+    const b = await setup(app, 'b@globex.test', 'site-b');
     const res = await app.inject({ method: 'GET', url: `${a.base}/stock/providers`, cookies: { sw_session: b.t } });
     expect(res.statusCode).toBe(403);
   });
@@ -127,7 +126,7 @@ describe('stock API — real service (no network needed for gating)', () => {
 describe('stock API — injected fake service', () => {
   it('searches and returns provider-hosted thumbnails', async () => {
     const app = await makeApp(fakeStock());
-    const { t, base } = await setup(app, 'a@acme.test', 'Acme');
+    const { t, base } = await setup(app, 'a@acme.test');
     const res = await app.inject({ method: 'GET', url: `${base}/stock/search?provider=openverse&q=cats`, cookies: { sw_session: t } });
     expect(res.statusCode).toBe(200);
     const body = res.json() as { provider: string; results: Array<{ id: string; thumbUrl: string }> };
@@ -137,7 +136,7 @@ describe('stock API — injected fake service', () => {
 
   it('imports a stock image: downloads → optimizes → self-hosts with attribution', async () => {
     const app = await makeApp(fakeStock());
-    const { t, base } = await setup(app, 'a@acme.test', 'Acme');
+    const { t, base } = await setup(app, 'a@acme.test');
     const res = await app.inject({
       method: 'POST',
       url: `${base}/stock/import`,
@@ -162,7 +161,7 @@ describe('stock API — injected fake service', () => {
 
   it('returns 404 when the provider cannot resolve the id', async () => {
     const app = await makeApp(fakeStock({ fetchForImport: async () => null }));
-    const { t, base } = await setup(app, 'a@acme.test', 'Acme');
+    const { t, base } = await setup(app, 'a@acme.test');
     const res = await app.inject({
       method: 'POST',
       url: `${base}/stock/import`,
@@ -174,7 +173,7 @@ describe('stock API — injected fake service', () => {
 
   it('rejects an import body that fails schema validation (400)', async () => {
     const app = await makeApp(fakeStock());
-    const { t, base } = await setup(app, 'a@acme.test', 'Acme');
+    const { t, base } = await setup(app, 'a@acme.test');
     const res = await app.inject({
       method: 'POST',
       url: `${base}/stock/import`,
@@ -186,20 +185,20 @@ describe('stock API — injected fake service', () => {
 
   it('maps a provider failure to 502 and an encryption outage to 503', async () => {
     const provFail = await makeApp(fakeStock({ fetchForImport: async () => { throw new StockProviderError('boom'); } }));
-    const a = await setup(provFail, 'a@acme.test', 'Acme');
+    const a = await setup(provFail, 'a@acme.test');
     const r502 = await provFail.inject({ method: 'POST', url: `${a.base}/stock/import`, cookies: { sw_session: a.t }, payload: { provider: 'openverse', id: 'x' } });
     expect(r502.statusCode).toBe(502);
     expect((r502.json() as { error: string }).error).not.toContain('boom'); // generic message, no upstream leak
 
     const encFail = await makeApp(fakeStock({ fetchForImport: async () => { throw new EncryptionUnavailableError(); } }));
-    const b = await setup(encFail, 'b@globex.test', 'Globex');
+    const b = await setup(encFail, 'b@globex.test');
     const r503 = await encFail.inject({ method: 'POST', url: `${b.base}/stock/import`, cookies: { sw_session: b.t }, payload: { provider: 'unsplash', id: 'y' } });
     expect(r503.statusCode).toBe(503);
   });
 
   it('maps a provider failure on search to 502', async () => {
     const app = await makeApp(fakeStock({ search: async () => { throw new StockProviderError('boom'); } }));
-    const { t, base } = await setup(app, 'a@acme.test', 'Acme');
+    const { t, base } = await setup(app, 'a@acme.test');
     const res = await app.inject({ method: 'GET', url: `${base}/stock/search?provider=openverse&q=cats`, cookies: { sw_session: t } });
     expect(res.statusCode).toBe(502);
   });

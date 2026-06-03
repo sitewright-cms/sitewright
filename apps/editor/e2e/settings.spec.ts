@@ -9,7 +9,6 @@ const stamp = Date.now();
 test('edit Corporate Identity + Website settings, save, and persist across reload', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Organization name').fill(`Settings Agency ${stamp}`);
   await page.getByLabel('Email').fill(`settings-${stamp}@e2e.test`);
   await page.getByLabel('Password').fill('pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();

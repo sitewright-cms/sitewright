@@ -30,13 +30,12 @@ function token(res: { cookies: Array<{ name: string; value: string }> }): string
   if (!t) throw new Error('no session cookie');
   return t;
 }
-async function setup(email: string, orgName: string, slug = 'site') {
-  const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email, password: 'pw-secret-1', orgName } });
+async function setup(email: string, slug = 'site') {
+  const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email, password: 'pw-secret-1' } });
   const t = token(reg);
-  const orgId = (reg.json() as { orgId: string }).orgId;
-  const proj = await app.inject({ method: 'POST', url: `/orgs/${orgId}/projects`, cookies: { sw_session: t }, payload: { name: 'Site', slug } });
+  const proj = await app.inject({ method: 'POST', url: `/projects`, cookies: { sw_session: t }, payload: { name: 'Site', slug } });
   const projectId = (proj.json() as { project: { id: string } }).project.id;
-  return { t, orgId, projectId };
+  return { t, projectId };
 }
 
 const target = {
@@ -50,8 +49,8 @@ const target = {
 
 describe('saved deploy targets', () => {
   it('creates a target (encrypting the password) and never returns the secret', async () => {
-    const { t, orgId, projectId } = await setup('a@acme.test', 'Acme');
-    const base = `/orgs/${orgId}/projects/${projectId}`;
+    const { t, projectId } = await setup('a@acme.test');
+    const base = `/projects/${projectId}`;
     const cookies = { sw_session: t };
 
     const create = await app.inject({ method: 'POST', url: `${base}/deploy-targets`, cookies, payload: target });
@@ -70,10 +69,10 @@ describe('saved deploy targets', () => {
   });
 
   it('rejects a target whose host is not allow-listed (SSRF guard)', async () => {
-    const { t, orgId, projectId } = await setup('a@acme.test', 'Acme');
+    const { t, projectId } = await setup('a@acme.test');
     const res = await app.inject({
       method: 'POST',
-      url: `/orgs/${orgId}/projects/${projectId}/deploy-targets`,
+      url: `/projects/${projectId}/deploy-targets`,
       cookies: { sw_session: t },
       payload: { ...target, host: 'evil.internal' },
     });
@@ -81,8 +80,8 @@ describe('saved deploy targets', () => {
   });
 
   it('deletes a target, and deploy-by-id 409s before publishing', async () => {
-    const { t, orgId, projectId } = await setup('a@acme.test', 'Acme');
-    const base = `/orgs/${orgId}/projects/${projectId}`;
+    const { t, projectId } = await setup('a@acme.test');
+    const base = `/projects/${projectId}`;
     const cookies = { sw_session: t };
     const id = (
       (await app.inject({ method: 'POST', url: `${base}/deploy-targets`, cookies, payload: target })).json() as {
@@ -100,11 +99,11 @@ describe('saved deploy targets', () => {
   });
 
   it('blocks reading and writing deploy_target via the generic content endpoint', async () => {
-    const { t, orgId, projectId } = await setup('a@acme.test', 'Acme');
+    const { t, projectId } = await setup('a@acme.test');
     const cookies = { sw_session: t };
-    const base = `/orgs/${orgId}/projects/${projectId}/content/deploy_target`;
+    const base = `/projects/${projectId}/content/deploy_target`;
     // Create a real target so there is a secret that must not leak.
-    await app.inject({ method: 'POST', url: `/orgs/${orgId}/projects/${projectId}/deploy-targets`, cookies, payload: target });
+    await app.inject({ method: 'POST', url: `/projects/${projectId}/deploy-targets`, cookies, payload: target });
 
     const write = await app.inject({ method: 'PUT', url: `${base}/x`, cookies, payload: { id: 'x' } });
     expect(write.statusCode).toBe(403);
@@ -115,10 +114,10 @@ describe('saved deploy targets', () => {
   });
 
   it('isolates targets across tenants', async () => {
-    const a = await setup('a@acme.test', 'Acme', 'site-a');
-    const b = await setup('b@globex.test', 'Globex', 'site-b');
-    await app.inject({ method: 'POST', url: `/orgs/${a.orgId}/projects/${a.projectId}/deploy-targets`, cookies: { sw_session: a.t }, payload: target });
-    const bReads = await app.inject({ method: 'GET', url: `/orgs/${a.orgId}/projects/${a.projectId}/deploy-targets`, cookies: { sw_session: b.t } });
+    const a = await setup('a@acme.test', 'site-a');
+    const b = await setup('b@globex.test', 'site-b');
+    await app.inject({ method: 'POST', url: `/projects/${a.projectId}/deploy-targets`, cookies: { sw_session: a.t }, payload: target });
+    const bReads = await app.inject({ method: 'GET', url: `/projects/${a.projectId}/deploy-targets`, cookies: { sw_session: b.t } });
     expect(bReads.statusCode).toBe(403);
   });
 });

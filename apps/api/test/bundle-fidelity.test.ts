@@ -23,7 +23,7 @@ let projectId: string;
 
 beforeEach(async () => {
   harness = await makeHarness();
-  client = await harness.signup({ orgName: 'Acme' });
+  client = await harness.signup();
   projectId = await client.createProject('Site', 'site');
 });
 
@@ -300,9 +300,9 @@ describe('bundle export/import fidelity (HTTP)', () => {
   });
 
   describe('RBAC + tenancy', () => {
-    it('forbids a cross-tenant client from importing into another org’s project (403)', async () => {
-      // Client B belongs to a different org and is not a member of A's org.
-      const clientB = await harness.signup({ orgName: 'Globex' });
+    it('forbids a cross-tenant client from importing into another user’s project (403)', async () => {
+      // Client B is a different user and is not a member of A's project.
+      const clientB = await harness.signup();
       await client.project(projectId).putContent('page', 'home', {
         id: 'home',
         path: '/',
@@ -310,10 +310,9 @@ describe('bundle export/import fidelity (HTTP)', () => {
         root: { id: 'r', type: 'Section' },
       });
 
-      // B targets A's ORG path (not B's own) → tenantContext membership check
-      // fails for B in A's org → ForbiddenError → 403. (The ProjectClient helper
-      // always uses the client's own orgId, so build the cross-org URL directly.)
-      const res = await clientB.post(`/orgs/${client.orgId}/projects/${projectId}/import`, {
+      // B targets A's project (B holds no membership) → project membership check
+      // fails for B → ForbiddenError → 403.
+      const res = await clientB.post(`/projects/${projectId}/import`, {
         pages: [{ id: 'x', path: '/x', title: 'X', root: { id: 'r', type: 'Section' } }],
       });
       expect(res.statusCode).toBe(403);
@@ -324,11 +323,11 @@ describe('bundle export/import fidelity (HTTP)', () => {
     });
 
     it('forbids a session user importing into a project they are not a member of (403)', async () => {
-      const clientB = await harness.signup({ orgName: 'Initech' });
-      // Flat model: `:orgId` is vestigial. A signed-in user who holds no membership for the
-      // target project is denied at the project gate (resolveProject → no role → 403) — not 404,
-      // which is reserved for the bearer/API-key cross-project probe path.
-      const url = `/orgs/${clientB.orgId}/projects/${projectId}/import`;
+      const clientB = await harness.signup();
+      // Flat model: a signed-in user who holds no membership for the target project is denied at
+      // the project gate (resolveProject → no role → 403) — not 404, which is reserved for the
+      // bearer/API-key cross-project probe path.
+      const url = `/projects/${projectId}/import`;
       const res = await clientB.post(url, {
         pages: [{ id: 'x', path: '/x', title: 'X', root: { id: 'r', type: 'Section' } }],
       });

@@ -75,7 +75,7 @@ describe('project delete — on-disk cleanup', () => {
     expect(existsSync(join(mediaRoot, projectId))).toBe(true);
 
     // Delete the project.
-    expect((await client.del(`/orgs/${client.orgId}/projects/${projectId}`)).statusCode).toBe(204);
+    expect((await client.del(`/projects/${projectId}`)).statusCode).toBe(204);
 
     // The on-disk directories are gone (not merely 404 at the HTTP layer)...
     expect(existsSync(join(publishRoot, projectId))).toBe(false);

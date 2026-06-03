@@ -20,7 +20,7 @@ const CreateDeployTargetBody = z.object({
   hostFingerprint: z.string().min(1).max(256).optional(),
 });
 
-type ProjectReq = FastifyRequest<{ Params: { orgId: string; projectId: string } }>;
+type ProjectReq = FastifyRequest<{ Params: { projectId: string } }>;
 
 export interface DeployTargetDeps {
   resolveProject: (
@@ -49,8 +49,8 @@ function sanitize(t: DeployTarget): Record<string, unknown> {
 export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTargetDeps): void {
   const { resolveProject, contentRepo, encryptionKey, activeDeploys, assertDeployHostAllowed, isWriter, rl } = deps;
 
-  app.post<{ Params: { orgId: string; projectId: string } }>(
-    '/orgs/:orgId/projects/:projectId/deploy-targets',
+  app.post<{ Params: { projectId: string } }>(
+    '/projects/:projectId/deploy-targets',
     { config: rl(20) },
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'deploy');
@@ -74,8 +74,8 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
     },
   );
 
-  app.get<{ Params: { orgId: string; projectId: string } }>(
-    '/orgs/:orgId/projects/:projectId/deploy-targets',
+  app.get<{ Params: { projectId: string } }>(
+    '/projects/:projectId/deploy-targets',
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'deploy');
       // Targets expose infrastructure metadata (host/user) — writers only.
@@ -85,8 +85,8 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
     },
   );
 
-  app.delete<{ Params: { orgId: string; projectId: string; id: string } }>(
-    '/orgs/:orgId/projects/:projectId/deploy-targets/:id',
+  app.delete<{ Params: { projectId: string; id: string } }>(
+    '/projects/:projectId/deploy-targets/:id',
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'deploy');
       await contentRepo.remove(ctx, 'deploy_target', req.params.id); // enforces write role
@@ -95,8 +95,8 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
   );
 
   // Deploy the published site using a saved target (decrypt password at use).
-  app.post<{ Params: { orgId: string; projectId: string; id: string } }>(
-    '/orgs/:orgId/projects/:projectId/deploy-targets/:id/deploy',
+  app.post<{ Params: { projectId: string; id: string } }>(
+    '/projects/:projectId/deploy-targets/:id/deploy',
     { config: rl(20) },
     async (req, reply) => {
       const { ctx, project } = await resolveProject(req, 'deploy');

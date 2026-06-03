@@ -2,17 +2,15 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import type { Page } from '@sitewright/schema';
 
-const { listPages, listMembers, putPage } = vi.hoisted(() => ({
+const { listPages, putPage } = vi.hoisted(() => ({
   listPages: vi.fn(),
-  listMembers: vi.fn(),
   putPage: vi.fn(),
 }));
 // Stub the heavy child views so this test focuses on ProjectView's role gating.
 vi.mock('../src/api', () => ({
   api: {
-    listPages: (o: string, p: string) => listPages(o, p),
-    listMembers: (o: string) => listMembers(o),
-    putPage: (o: string, p: string, page: Page) => putPage(o, p, page),
+    listPages: (p: string) => listPages(p),
+    putPage: (p: string, page: Page) => putPage(p, page),
   },
 }));
 vi.mock('../src/views/CodePageEditor', () => ({ CodePageEditor: () => <div>CODE EDITOR</div> }));
@@ -29,22 +27,20 @@ vi.mock('../src/views/settings/SettingsView', () => ({ SettingsView: () => <div 
 
 import { ProjectView } from '../src/views/Project';
 
-const project = { id: 'p', name: 'Acme', slug: 'acme' };
+const ownerProject = { id: 'p', name: 'Acme', slug: 'acme', role: 'owner' as const };
+const memberProject = { id: 'p', name: 'Acme', slug: 'acme', role: 'member' as const };
 const pages: Page[] = [{ id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' } }];
 
 beforeEach(() => {
   listPages.mockReset();
-  listMembers.mockReset();
   putPage.mockReset();
   listPages.mockResolvedValue({ items: pages });
-  listMembers.mockResolvedValue({ members: [] });
   putPage.mockResolvedValue({ item: pages[0] });
 });
 
 describe('ProjectView role gating', () => {
-  it('gives owner/admin the full studio: publish bar, tabs, and the add-page form', async () => {
-    const org = { id: 'o', name: 'O', slug: 'o', role: 'admin' };
-    render(<ProjectView org={org} project={project} onBack={() => {}} />);
+  it('gives an owner the full studio: publish bar, tabs, and the add-page form', async () => {
+    render(<ProjectView project={ownerProject} onBack={() => {}} />);
     await waitFor(() => expect(listPages).toHaveBeenCalled());
     expect(screen.getByText('PUBLISH BAR')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'team' })).toBeInTheDocument();
@@ -52,8 +48,7 @@ describe('ProjectView role gating', () => {
   });
 
   it('gives a member the restricted surface: no publish bar, no tabs, no add-page form', async () => {
-    const org = { id: 'o', name: 'O', slug: 'o', role: 'member' };
-    render(<ProjectView org={org} project={project} onBack={() => {}} />);
+    render(<ProjectView project={memberProject} onBack={() => {}} />);
     await waitFor(() => expect(listPages).toHaveBeenCalled());
     expect(screen.queryByText('PUBLISH BAR')).toBeNull();
     expect(screen.queryByRole('button', { name: 'team' })).toBeNull();
@@ -63,30 +58,27 @@ describe('ProjectView role gating', () => {
   });
 
   it('opens any page in the code editor (block authoring is retired)', async () => {
-    const org = { id: 'o', name: 'O', slug: 'o', role: 'admin' };
-    render(<ProjectView org={org} project={project} onBack={() => {}} />);
+    render(<ProjectView project={ownerProject} onBack={() => {}} />);
     await waitFor(() => expect(listPages).toHaveBeenCalled());
     fireEvent.click(screen.getByRole('button', { name: /Home/ }));
     expect(screen.getByText('CODE EDITOR')).toBeInTheDocument();
   });
 
   it('opens a member on a page in the client source editor (bound regions only)', async () => {
-    const org = { id: 'o', name: 'O', slug: 'o', role: 'member' };
-    render(<ProjectView org={org} project={project} onBack={() => {}} />);
+    render(<ProjectView project={memberProject} onBack={() => {}} />);
     await waitFor(() => expect(listPages).toHaveBeenCalled());
     fireEvent.click(screen.getByRole('button', { name: /Home/ }));
     expect(screen.getByText('CLIENT SOURCE EDITOR')).toBeInTheDocument();
   });
 
   it('"Add page" creates a code-first page carrying a Handlebars source', async () => {
-    const org = { id: 'o', name: 'O', slug: 'o', role: 'admin' };
-    render(<ProjectView org={org} project={project} onBack={() => {}} />);
+    render(<ProjectView project={ownerProject} onBack={() => {}} />);
     await waitFor(() => expect(listPages).toHaveBeenCalled());
     fireEvent.change(screen.getByLabelText('Page slug'), { target: { value: 'landing' } });
     fireEvent.change(screen.getByLabelText('Page title'), { target: { value: 'Landing' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add page' }));
     await waitFor(() => expect(putPage).toHaveBeenCalledTimes(1));
-    const created = putPage.mock.calls[0]![2] as Page;
+    const created = putPage.mock.calls[0]![1] as Page;
     expect(created.id).toBe('landing');
     expect(typeof created.source).toBe('string');
     expect(created.source).toContain('{{ company.name }}'); // every new page is code-first

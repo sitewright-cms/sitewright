@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { api, type DeployConfig, type DeployTargetView, type Org, type Project } from '../../api';
+import { api, type DeployConfig, type DeployTargetView, type Project } from '../../api';
 
 const PROTOCOLS: ReadonlyArray<{ value: DeployConfig['protocol']; label: string }> = [
   { value: 'ftp', label: 'FTP' },
@@ -8,7 +8,7 @@ const PROTOCOLS: ReadonlyArray<{ value: DeployConfig['protocol']; label: string 
 ];
 
 /** Deploy the published site to an external FTP/FTPS/SFTP target (ad-hoc or saved). */
-export function DeployForm({ org, project }: { org: Org; project: Project }) {
+export function DeployForm({ project }: { project: Project }) {
   const [protocol, setProtocol] = useState<DeployConfig['protocol']>('sftp');
   const [host, setHost] = useState('');
   const [port, setPort] = useState('');
@@ -24,7 +24,7 @@ export function DeployForm({ org, project }: { org: Org; project: Project }) {
 
   async function loadTargets() {
     try {
-      const res = await api.listDeployTargets(org.id, project.id);
+      const res = await api.listDeployTargets(project.id);
       setTargets(res.items);
     } catch {
       setTargets(null); // saved targets disabled (no encryption key configured)
@@ -33,7 +33,7 @@ export function DeployForm({ org, project }: { org: Org; project: Project }) {
   useEffect(() => {
     let active = true;
     api
-      .listDeployTargets(org.id, project.id)
+      .listDeployTargets(project.id)
       .then((res) => {
         if (active) setTargets(res.items);
       })
@@ -43,7 +43,7 @@ export function DeployForm({ org, project }: { org: Org; project: Project }) {
     return () => {
       active = false;
     };
-  }, [org.id, project.id]);
+  }, [project.id]);
 
   function buildConfig(): DeployConfig | null {
     let portNum: number | undefined;
@@ -83,7 +83,7 @@ export function DeployForm({ org, project }: { org: Org; project: Project }) {
     const config = buildConfig();
     if (!config) return;
     await run(
-      () => api.deploy(org.id, project.id, config),
+      () => api.deploy(project.id, config),
       (r) => setResult(`Deployed ${r.deployed.files} files via ${r.deployed.protocol.toUpperCase()}.`),
     );
   }
@@ -96,7 +96,7 @@ export function DeployForm({ org, project }: { org: Org; project: Project }) {
       return;
     }
     await run(
-      () => api.createDeployTarget(org.id, project.id, { ...config, name: name.trim() }),
+      () => api.createDeployTarget(project.id, { ...config, name: name.trim() }),
       () => {
         setResult('Target saved.');
         setName('');
@@ -125,7 +125,7 @@ export function DeployForm({ org, project }: { org: Org; project: Project }) {
                   aria-label={`Deploy to ${t.name}`}
                   onClick={() =>
                     run(
-                      () => api.deployToTarget(org.id, project.id, t.id),
+                      () => api.deployToTarget(project.id, t.id),
                       (r) => setResult(`Deployed ${r.deployed.files} files to ${t.name}.`),
                     )
                   }
@@ -137,7 +137,7 @@ export function DeployForm({ org, project }: { org: Org; project: Project }) {
                   aria-label={`Delete target ${t.name}`}
                   onClick={() =>
                     run(
-                      () => api.deleteDeployTarget(org.id, project.id, t.id),
+                      () => api.deleteDeployTarget(project.id, t.id),
                       () => void loadTargets(),
                     )
                   }

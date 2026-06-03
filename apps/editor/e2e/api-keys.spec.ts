@@ -7,7 +7,6 @@ const stamp = Date.now();
 test('create, view, and revoke a project API key from the editor', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Organization name').fill(`Agency ${stamp}`);
   await page.getByLabel('Email').fill(`keys-ui-${stamp}@e2e.test`);
   await page.getByLabel('Password').fill('pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();

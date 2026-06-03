@@ -17,24 +17,27 @@ function sessionToken(res: { cookies: Array<{ name: string; value: string }> }):
   return token;
 }
 
-async function register(email: string, orgName: string) {
+async function register(email: string) {
   const res = await app.inject({
     method: 'POST',
     url: '/auth/register',
-    payload: { email, password: 'pw-secret-1', orgName },
+    payload: { email, password: 'pw-secret-1' },
   });
-  return { res, token: sessionToken(res), body: res.json() as { userId: string; orgId: string } };
+  return { res, token: sessionToken(res), body: res.json() as { userId: string } };
 }
 
 describe('API — auth + tenant-scoped projects', () => {
   it('registers, sets a session, and returns the current user', async () => {
-    const { res, token, body } = await register('a@acme.test', 'Acme');
+    const { res, token, body } = await register('a@acme.test');
     expect(res.statusCode).toBe(201);
-    expect(body.orgId).toBeTruthy();
+    expect(body.userId).toBeTruthy();
 
     const me = await app.inject({ method: 'GET', url: '/me', cookies: { sw_session: token } });
     expect(me.statusCode).toBe(200);
-    expect((me.json() as { orgs: unknown[] }).orgs).toHaveLength(1);
+    const meBody = me.json() as { userId: string; projects: unknown[] };
+    expect(meBody.userId).toBe(body.userId);
+    // A fresh user holds no project memberships until they create or are invited to one.
+    expect(meBody.projects).toHaveLength(0);
   });
 
   it('requires authentication for /me', async () => {
@@ -43,7 +46,7 @@ describe('API — auth + tenant-scoped projects', () => {
   });
 
   it('rejects login with a wrong password', async () => {
-    await register('a@acme.test', 'Acme');
+    await register('a@acme.test');
     const res = await app.inject({
       method: 'POST',
       url: '/auth/login',
@@ -56,16 +59,16 @@ describe('API — auth + tenant-scoped projects', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/auth/register',
-      payload: { email: 'not-an-email', password: 'short', orgName: '' },
+      payload: { email: 'not-an-email', password: 'short'},
     });
     expect(res.statusCode).toBe(400);
   });
 
-  it('creates and lists projects within the caller’s org', async () => {
-    const { token, body } = await register('a@acme.test', 'Acme');
+  it('creates and lists projects for the caller', async () => {
+    const { token } = await register('a@acme.test');
     const created = await app.inject({
       method: 'POST',
-      url: `/orgs/${body.orgId}/projects`,
+      url: `/projects`,
       cookies: { sw_session: token },
       payload: { name: 'Client Site', slug: 'client-site' },
     });
@@ -73,28 +76,28 @@ describe('API — auth + tenant-scoped projects', () => {
 
     const list = await app.inject({
       method: 'GET',
-      url: `/orgs/${body.orgId}/projects`,
+      url: `/projects`,
       cookies: { sw_session: token },
     });
     expect((list.json() as { projects: unknown[] }).projects).toHaveLength(1);
   });
 
   it('isolates tenants by project: B’s project list excludes A’s project and B cannot read it', async () => {
-    const a = await register('a@acme.test', 'Acme');
-    const b = await register('b@globex.test', 'Globex');
+    const a = await register('a@acme.test');
+    const b = await register('b@globex.test');
     const created = await app.inject({
       method: 'POST',
-      url: `/orgs/${a.body.orgId}/projects`,
+      url: `/projects`,
       cookies: { sw_session: a.token },
       payload: { name: 'Secret', slug: 'secret-a' },
     });
     const projectId = (created.json() as { project: { id: string } }).project.id;
 
-    // Flat tenancy: A and B share the synthetic platform org, but the project list
+    // Flat tenancy: the project list
     // is per-user (each sees only memberships they own). B has its own project…
     const bCreated = await app.inject({
       method: 'POST',
-      url: `/orgs/${b.body.orgId}/projects`,
+      url: `/projects`,
       cookies: { sw_session: b.token },
       payload: { name: 'Bee', slug: 'secret-b' },
     });
@@ -103,7 +106,7 @@ describe('API — auth + tenant-scoped projects', () => {
     // …and B's list must contain only B's project, never A's.
     const bLists = await app.inject({
       method: 'GET',
-      url: `/orgs/${b.body.orgId}/projects`,
+      url: `/projects`,
       cookies: { sw_session: b.token },
     });
     expect(bLists.statusCode).toBe(200);
@@ -114,7 +117,7 @@ describe('API — auth + tenant-scoped projects', () => {
     // B reading A's project by id is forbidden (not a member) → 403, no leak.
     const bReadsA = await app.inject({
       method: 'GET',
-      url: `/orgs/${b.body.orgId}/projects/${projectId}`,
+      url: `/projects/${projectId}`,
       cookies: { sw_session: b.token },
     });
     expect(bReadsA.statusCode).toBe(403);
@@ -122,7 +125,7 @@ describe('API — auth + tenant-scoped projects', () => {
   });
 
   it('logs out (session no longer valid)', async () => {
-    const { token } = await register('a@acme.test', 'Acme');
+    const { token } = await register('a@acme.test');
     await app.inject({ method: 'POST', url: '/auth/logout', cookies: { sw_session: token } });
     const me = await app.inject({ method: 'GET', url: '/me', cookies: { sw_session: token } });
     expect(me.statusCode).toBe(401);
@@ -138,7 +141,7 @@ describe('signed sessions (cookieSecret configured)', () => {
     const reg = await signedApp.inject({
       method: 'POST',
       url: '/auth/register',
-      payload: { email: 's@x.test', password: 'pw-secret-1', orgName: 'Signed' },
+      payload: { email: 's@x.test', password: 'pw-secret-1'},
     });
     expect(reg.statusCode).toBe(201);
     const token = sessionToken(reg);

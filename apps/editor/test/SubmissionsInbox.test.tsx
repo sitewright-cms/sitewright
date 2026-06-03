@@ -6,14 +6,13 @@ const deleteSubmission = vi.fn();
 vi.mock('../src/api', () => ({
   api: {
     listSubmissions: () => listSubmissions(),
-    deleteSubmission: (_o: string, _p: string, id: string) => deleteSubmission(id),
+    deleteSubmission: (_p: string, id: string) => deleteSubmission(id),
   },
 }));
 
 import { SubmissionsInbox } from '../src/views/SubmissionsInbox';
 
-const org = { id: 'o', name: 'O', slug: 'o', role: 'admin' };
-const project = { id: 'p', name: 'P', slug: 'p' };
+const project = { id: 'p', name: 'P', slug: 'p', role: 'owner' as const };
 
 beforeEach(() => {
   listSubmissions.mockReset();
@@ -28,7 +27,7 @@ describe('SubmissionsInbox', () => {
       items: [{ id: 's1', formId: 'contact', fields: { email: 'lead@x.co', message: '<b>hi</b>' }, createdAt: '2026-05-31T00:00:00.000Z' }],
       total: 1,
     });
-    render(<SubmissionsInbox org={org} project={project} />);
+    render(<SubmissionsInbox project={project} />);
     expect(await screen.findByText('1 submission')).toBeInTheDocument();
     // Expand (the `message` field only appears once expanded).
     fireEvent.click(screen.getByText('contact'));
@@ -41,7 +40,7 @@ describe('SubmissionsInbox', () => {
     listSubmissions
       .mockResolvedValueOnce({ items: [{ id: 's1', formId: 'contact', fields: { email: 'a@x.co' }, createdAt: '2026-05-31T00:00:00.000Z' }], total: 1 })
       .mockResolvedValueOnce({ items: [], total: 0 });
-    render(<SubmissionsInbox org={org} project={project} />);
+    render(<SubmissionsInbox project={project} />);
     fireEvent.click(await screen.findByLabelText('Delete submission s1'));
     await waitFor(() => expect(deleteSubmission).toHaveBeenCalledWith('s1'));
     expect(await screen.findByText('No submissions yet.')).toBeInTheDocument();
@@ -49,7 +48,7 @@ describe('SubmissionsInbox', () => {
 
   it('shows an empty state when there are no submissions', async () => {
     listSubmissions.mockResolvedValue({ items: [], total: 0 });
-    render(<SubmissionsInbox org={org} project={project} />);
+    render(<SubmissionsInbox project={project} />);
     expect(await screen.findByText('No submissions yet.')).toBeInTheDocument();
   });
 });

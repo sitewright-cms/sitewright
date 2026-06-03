@@ -30,7 +30,7 @@ const MAX_BODY_BYTES = 96 * 1024;
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-type ProjectReq = FastifyRequest<{ Params: { orgId: string; projectId: string } }>;
+type ProjectReq = FastifyRequest<{ Params: { projectId: string } }>;
 
 export interface FormRoutesDeps {
   db: Database;
@@ -240,8 +240,8 @@ export function registerFormRoutes(app: FastifyInstance, deps: FormRoutesDeps): 
   // forms still function (store-always), so a fresh instance must be able to save a
   // (globalSmtp) form. Form writes are already restricted to owner/admin (a trusted
   // role). A hard per-mode publish/store ACL would be a cross-phase design change.
-  app.get<{ Params: { orgId: string; projectId: string } }>(
-    '/orgs/:orgId/projects/:projectId/form-modes',
+  app.get<{ Params: { projectId: string } }>(
+    '/projects/:projectId/form-modes',
     { config: rl(30) },
     async (req, reply) => {
       await resolveProject(req, 'content:read');
@@ -252,8 +252,8 @@ export function registerFormRoutes(app: FastifyInstance, deps: FormRoutesDeps): 
   );
 
   // ---- Submissions inbox (authenticated) ----
-  app.get<{ Params: { orgId: string; projectId: string } }>(
-    '/orgs/:orgId/projects/:projectId/submissions',
+  app.get<{ Params: { projectId: string } }>(
+    '/projects/:projectId/submissions',
     { config: rl(60) },
     async (req, reply) => {
       const { project } = await resolveProject(req, 'content:read');
@@ -267,8 +267,8 @@ export function registerFormRoutes(app: FastifyInstance, deps: FormRoutesDeps): 
     },
   );
 
-  app.get<{ Params: { orgId: string; projectId: string; id: string } }>(
-    '/orgs/:orgId/projects/:projectId/submissions/:id',
+  app.get<{ Params: { projectId: string; id: string } }>(
+    '/projects/:projectId/submissions/:id',
     { config: rl(60) },
     async (req, reply) => {
       const { project } = await resolveProject(req, 'content:read');
@@ -278,8 +278,8 @@ export function registerFormRoutes(app: FastifyInstance, deps: FormRoutesDeps): 
     },
   );
 
-  app.delete<{ Params: { orgId: string; projectId: string; id: string } }>(
-    '/orgs/:orgId/projects/:projectId/submissions/:id',
+  app.delete<{ Params: { projectId: string; id: string } }>(
+    '/projects/:projectId/submissions/:id',
     { config: rl(30) },
     async (req, reply) => {
       const { ctx, project } = await resolveProject(req, 'content:write');

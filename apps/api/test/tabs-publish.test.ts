@@ -59,7 +59,7 @@ describe('Tabs component → publish + preview', () => {
     expect(bundle.body).toContain('data-sw-component="tabs"'); // tabs enhancer present
 
     // Preview inlines the behavior (doc runs scripts under CSP: sandbox).
-    const prev = await client.post(`/orgs/${client.orgId}/projects/${projectId}/preview`, page);
+    const prev = await client.post(`/projects/${projectId}/preview`, page);
     expect((prev.json() as { html: string }).html).toContain("role','tab'");
   });
 });

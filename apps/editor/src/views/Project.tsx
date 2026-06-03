@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import type { Page } from '@sitewright/schema';
-import { api, type Org, type Project } from '../api';
+import { api, type Project } from '../api';
 import { CodePageEditor } from './CodePageEditor';
 import { ClientSourceEditor } from './ClientSourceEditor';
 import { DatasetManager } from './DatasetManager';
@@ -14,7 +14,6 @@ import { ClientsManager } from './ClientsManager';
 import { PublishBar } from './PublishBar';
 
 interface ProjectViewProps {
-  org: Org;
   project: Project;
   onBack: () => void;
 }
@@ -34,9 +33,9 @@ const CODE_PAGE_STARTER = `<main class="mx-auto max-w-3xl px-6 py-16">
 </main>
 `;
 
-export function ProjectView({ org, project, onBack }: ProjectViewProps) {
-  // Owner/admin get the full studio; a `member` is a client with a restricted surface.
-  const isClient = org.role === 'member';
+export function ProjectView({ project, onBack }: ProjectViewProps) {
+  // An owner gets the full studio; a `member` is a client with a restricted surface.
+  const isClient = project.role === 'member';
   const [pages, setPages] = useState<Page[]>([]);
   const [editing, setEditing] = useState<Page | null>(null);
   const [tab, setTab] = useState<Tab>('pages');
@@ -46,7 +45,7 @@ export function ProjectView({ org, project, onBack }: ProjectViewProps) {
 
   async function load() {
     try {
-      const res = await api.listPages(org.id, project.id);
+      const res = await api.listPages(project.id);
       setPages(res.items);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed to load pages');
@@ -55,7 +54,7 @@ export function ProjectView({ org, project, onBack }: ProjectViewProps) {
 
   useEffect(() => {
     void load();
-  }, [org.id, project.id]);
+  }, [project.id]);
 
   async function create(e: FormEvent) {
     e.preventDefault();
@@ -70,7 +69,7 @@ export function ProjectView({ org, project, onBack }: ProjectViewProps) {
       source: CODE_PAGE_STARTER,
     };
     try {
-      await api.putPage(org.id, project.id, page);
+      await api.putPage(project.id, page);
       setSlug('');
       setTitle('');
       await load();
@@ -88,9 +87,9 @@ export function ProjectView({ org, project, onBack }: ProjectViewProps) {
     // regions; an owner edits the Handlebars source. (A legacy block page — no `source` —
     // opens with an empty editor; its `root` keeps publishing until source is authored.)
     return isClient ? (
-      <ClientSourceEditor org={org} project={project} page={editing} onClose={onClose} />
+      <ClientSourceEditor project={project} page={editing} onClose={onClose} />
     ) : (
-      <CodePageEditor org={org} project={project} page={editing} onClose={onClose} />
+      <CodePageEditor project={project} page={editing} onClose={onClose} />
     );
   }
 
@@ -106,8 +105,8 @@ export function ProjectView({ org, project, onBack }: ProjectViewProps) {
       <h2 className="mb-4 text-xl font-semibold">
         {project.name} <span className="text-sm text-slate-400">/{project.slug}</span>
       </h2>
-      {/* Publishing is an owner/admin action; clients only edit content. */}
-      {!isClient && <PublishBar org={org} project={project} />}
+      {/* Publishing is an owner action; clients only edit content. */}
+      {!isClient && <PublishBar project={project} />}
 
       {/* Clients see no tab bar — just their editable pages. */}
       {!isClient && (
@@ -131,22 +130,22 @@ export function ProjectView({ org, project, onBack }: ProjectViewProps) {
       {isClient ? (
         <ClientPagesList pages={pages} onOpen={setEditing} />
       ) : tab === 'data' ? (
-        <DatasetManager org={org} project={project} />
+        <DatasetManager project={project} />
       ) : tab === 'media' ? (
-        <MediaManager org={org} project={project} />
+        <MediaManager project={project} />
       ) : tab === 'forms' ? (
-        <FormsManager key={`${org.id}/${project.id}`} org={org} project={project} />
+        <FormsManager key={project.id} project={project} />
       ) : tab === 'inbox' ? (
-        <SubmissionsInbox key={`${org.id}/${project.id}`} org={org} project={project} />
+        <SubmissionsInbox key={project.id} project={project} />
       ) : tab === 'settings' ? (
-        <SettingsView key={`${org.id}/${project.id}`} org={org} project={project} />
+        <SettingsView key={project.id} project={project} />
       ) : tab === 'clients' ? (
-        <ClientsManager key={`${org.id}/${project.id}`} org={org} project={project} />
+        <ClientsManager key={project.id} project={project} />
       ) : tab === 'team' ? (
-        <TeamManager key={org.id} org={org} />
+        <TeamManager />
       ) : tab === 'access' ? (
-        // Remount on project/org switch → all state (incl. the one-time token banner) resets.
-        <ApiKeysManager key={`${org.id}/${project.id}`} org={org} project={project} />
+        // Remount on project switch → all state (incl. the one-time token banner) resets.
+        <ApiKeysManager key={project.id} project={project} />
       ) : (
         <>
           <ul className="mb-8 flex flex-col gap-2">

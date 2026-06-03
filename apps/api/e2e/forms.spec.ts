@@ -11,13 +11,12 @@ test('author → publish → public submit → inbox', async ({ playwright, base
   const stamp = Date.now();
 
   const reg = await api.post('/auth/register', {
-    data: { email: `forms-${stamp}@e2e.test`, password: 'pw-secret-1', orgName: `Forms ${stamp}` },
+    data: { email: `forms-${stamp}@e2e.test`, password: 'pw-secret-1' },
   });
   expect(reg.status()).toBe(201);
-  const orgId = (await reg.json()).orgId as string;
-  const proj = await api.post(`/orgs/${orgId}/projects`, { data: { name: 'Forms Site', slug: `forms-${stamp}` } });
+  const proj = await api.post(`/projects`, { data: { name: 'Forms Site', slug: `forms-${stamp}` } });
   const projectId = (await proj.json()).project.id as string;
-  const base = `/orgs/${orgId}/projects/${projectId}`;
+  const base = `/projects/${projectId}`;
 
   // Author the form (recipient is server-side only).
   const putForm = await api.put(`${base}/content/form/contact`, {

@@ -60,7 +60,7 @@ describe('Html (raw embed) block', () => {
     // Preview is readable by any project member, but the raw HTML is only ever
     // returned as JSON for the client's OWN sandboxed iframe — never served as a
     // same-origin text/html document that could script the editor session.
-    const res = await client.post(`/orgs/${client.orgId}/projects/${projectId}/preview`, pageWithEmbed);
+    const res = await client.post(`/projects/${projectId}/preview`, pageWithEmbed);
     expect(res.statusCode).toBe(200);
     expect(res.headers['content-type']).toContain('application/json');
     expect(res.headers['content-type']).not.toContain('text/html');

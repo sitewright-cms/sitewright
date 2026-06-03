@@ -22,7 +22,7 @@ function fakeFetch(handler: (input: string, init?: { method?: string; headers?: 
   return { impl, calls };
 }
 
-const scope: Scope = { orgId: 'o1', projectId: 'p1', role: 'admin', capabilities: ['content:read', 'content:write'] };
+const scope: Scope = { projectId: 'p1', role: 'admin', capabilities: ['content:read', 'content:write'] };
 
 async function introspected(handler: Parameters<typeof fakeFetch>[0]) {
   const fake = fakeFetch(handler);
@@ -44,7 +44,7 @@ describe('SitewrightClient', () => {
       input.endsWith('/api-key/self') ? { status: 200, body: JSON.stringify(scope) } : { status: 200, body: '{"items":[]}' },
     );
     await client.listContent('page');
-    expect(calls[1]!.input).toBe('https://cms.test/orgs/o1/projects/p1/content/page');
+    expect(calls[1]!.input).toBe('https://cms.test/projects/p1/content/page');
   });
 
   it('PUTs JSON with a content-type and returns the item', async () => {
@@ -57,7 +57,7 @@ describe('SitewrightClient', () => {
     const item = await client.putContent('page', 'home', page);
     expect(item).toEqual(page);
     const put = calls[1]!;
-    expect(put.input).toBe('https://cms.test/orgs/o1/projects/p1/content/page/home');
+    expect(put.input).toBe('https://cms.test/projects/p1/content/page/home');
     expect(put.init?.method).toBe('PUT');
     expect(put.init?.headers?.['content-type']).toBe('application/json');
     expect(JSON.parse(put.init!.body!)).toEqual(page);
@@ -138,10 +138,10 @@ describe('SitewrightClient', () => {
     expect(await client.publishStatus()).toEqual({ release: { routes: 2 }, url: '/sites/p1/' });
     expect(calls.map((c) => `${c.init?.method} ${c.input.replace('https://cms.test', '')}`)).toEqual([
       'GET /api-key/self',
-      'GET /orgs/o1/projects/p1/content/page/home',
-      'POST /orgs/o1/projects/p1/preview',
-      'POST /orgs/o1/projects/p1/publish',
-      'GET /orgs/o1/projects/p1/publish',
+      'GET /projects/p1/content/page/home',
+      'POST /projects/p1/preview',
+      'POST /projects/p1/publish',
+      'GET /projects/p1/publish',
     ]);
   });
 
@@ -159,10 +159,10 @@ describe('SitewrightClient', () => {
     const imported = await client.importStock('openverse', 'ov1', 'a cat');
     expect(imported).toEqual(asset); // unwrapped from { item }
     const paths = calls.map((c) => `${c.init?.method} ${c.input.replace('https://cms.test', '')}`);
-    expect(paths[1]).toBe('GET /orgs/o1/projects/p1/stock/providers');
+    expect(paths[1]).toBe('GET /projects/p1/stock/providers');
     // query is URL-encoded
-    expect(paths[2]).toBe('GET /orgs/o1/projects/p1/stock/search?provider=openverse&q=cats+%26+dogs&page=2');
-    expect(paths[3]).toBe('POST /orgs/o1/projects/p1/stock/import');
+    expect(paths[2]).toBe('GET /projects/p1/stock/search?provider=openverse&q=cats+%26+dogs&page=2');
+    expect(paths[3]).toBe('POST /projects/p1/stock/import');
     expect(JSON.parse(calls[3]!.init!.body!)).toEqual({ provider: 'openverse', id: 'ov1', alt: 'a cat' });
   });
 
@@ -189,10 +189,10 @@ describe('SitewrightClient', () => {
       input.endsWith('/api-key/self') ? { status: 200, body: JSON.stringify(scope) } : { status: 200, body: '{"items":[]}' };
     const all = await introspected(ok);
     await all.client.listSubmissions({ formId: 'contact', limit: 10, offset: 5 });
-    expect(all.calls.at(-1)!.input).toBe('https://cms.test/orgs/o1/projects/p1/submissions?formId=contact&limit=10&offset=5');
+    expect(all.calls.at(-1)!.input).toBe('https://cms.test/projects/p1/submissions?formId=contact&limit=10&offset=5');
 
     const none = await introspected(ok);
     await none.client.listSubmissions();
-    expect(none.calls.at(-1)!.input).toBe('https://cms.test/orgs/o1/projects/p1/submissions');
+    expect(none.calls.at(-1)!.input).toBe('https://cms.test/projects/p1/submissions');
   });
 });

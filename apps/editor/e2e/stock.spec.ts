@@ -11,7 +11,6 @@ test('media manager exposes a Stock images picker with a loaded provider list', 
   await page.goto('/');
 
   await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Organization name').fill(`Stock Agency ${stamp}`);
   await page.getByLabel('Email').fill(`stock-${stamp}@e2e.test`);
   await page.getByLabel('Password').fill('pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();

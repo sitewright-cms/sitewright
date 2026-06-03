@@ -8,8 +8,7 @@ vi.mock('../src/api', () => ({
     renderTemplate: (...args: unknown[]) => renderTemplate(...args),
     putPage: (...args: unknown[]) => putPage(...args),
   },
-  previewDocUrl: (orgId: string, projectId: string, token: string) =>
-    `/orgs/${orgId}/projects/${projectId}/preview/${token}`,
+  previewDocUrl: (projectId: string, token: string) => `/projects/${projectId}/preview/${token}`,
 }));
 // Swap the CodeMirror widget for a plain textarea so the authoring flow is exercisable in
 // jsdom; the real CodeMirror editor is covered by the Playwright browser E2E.
@@ -21,8 +20,7 @@ vi.mock('../src/lib/code-editor', () => ({
 
 import { CodePageEditor } from '../src/views/CodePageEditor';
 
-const org = { id: 'o', name: 'O', slug: 'o', role: 'owner' };
-const project = { id: 'p', name: 'Acme', slug: 'acme' };
+const project = { id: 'p', name: 'Acme', slug: 'acme', role: 'owner' as const };
 const page: Page = {
   id: 'home',
   path: '/',
@@ -40,11 +38,11 @@ beforeEach(() => {
 
 describe('CodePageEditor', () => {
   it('renders a debounced preview loaded via an opaque-origin iframe src (not srcDoc)', async () => {
-    render(<CodePageEditor org={org} project={project} page={page} onClose={() => {}} />);
+    render(<CodePageEditor project={project} page={page} onClose={() => {}} />);
     // Debounced — the render is not requested synchronously on mount.
     expect(renderTemplate).not.toHaveBeenCalled();
     await waitFor(() =>
-      expect(renderTemplate).toHaveBeenCalledWith('o', 'p', {
+      expect(renderTemplate).toHaveBeenCalledWith('p', {
         template: '<h1>{{ company.name }}</h1>',
         page: { title: 'Home', path: '/' },
         document: true,
@@ -54,16 +52,16 @@ describe('CodePageEditor', () => {
     // Loaded by URL (token endpoint) under the iframe's own sandbox CSP — NEVER inlined as srcDoc.
     expect(iframe.getAttribute('sandbox')).toBe('allow-scripts');
     expect(iframe.hasAttribute('srcdoc')).toBe(false);
-    await waitFor(() => expect(iframe.getAttribute('src')).toBe('/orgs/o/projects/p/preview/tok-123'));
+    await waitFor(() => expect(iframe.getAttribute('src')).toBe('/projects/p/preview/tok-123'));
   });
 
   it('saves edited source via putPage, preserving page identity, and shows a saved state', async () => {
-    render(<CodePageEditor org={org} project={project} page={page} onClose={() => {}} />);
+    render(<CodePageEditor project={project} page={page} onClose={() => {}} />);
     fireEvent.change(screen.getByLabelText('Template source'), { target: { value: '<h2>New body</h2>' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(() => expect(putPage).toHaveBeenCalledTimes(1));
-    const saved = putPage.mock.calls[0]![2] as Page;
+    const saved = putPage.mock.calls[0]![1] as Page;
     expect(saved.source).toBe('<h2>New body</h2>');
     expect(saved.id).toBe('home'); // identity + the rest of the page are preserved
     expect(saved.title).toBe('Home');
@@ -72,7 +70,7 @@ describe('CodePageEditor', () => {
 
   it('surfaces a preview error and clears the loading state', async () => {
     renderTemplate.mockRejectedValue(new Error('unsafe template: <script> is not allowed'));
-    render(<CodePageEditor org={org} project={project} page={page} onClose={() => {}} />);
+    render(<CodePageEditor project={project} page={page} onClose={() => {}} />);
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toContain('unsafe template');
     // The "updating…" indicator is gone once the request settles (loading cleared on error).
@@ -80,14 +78,14 @@ describe('CodePageEditor', () => {
   });
 
   it('disables Save until the source is edited', () => {
-    render(<CodePageEditor org={org} project={project} page={page} onClose={() => {}} />);
+    render(<CodePageEditor project={project} page={page} onClose={() => {}} />);
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
     fireEvent.change(screen.getByLabelText('Template source'), { target: { value: '<p>changed</p>' } });
     expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
   });
 
   it('appends a DaisyUI starter pattern to existing source, and resets the picker', () => {
-    render(<CodePageEditor org={org} project={project} page={page} onClose={() => {}} />);
+    render(<CodePageEditor project={project} page={page} onClose={() => {}} />);
     const editor = screen.getByLabelText('Template source') as HTMLTextAreaElement;
     const picker = screen.getByLabelText('Insert pattern') as HTMLSelectElement;
     fireEvent.change(editor, { target: { value: '<header>existing</header>' } });
@@ -101,7 +99,7 @@ describe('CodePageEditor', () => {
   });
 
   it('edits page settings (status + nav) and persists them on save', async () => {
-    render(<CodePageEditor org={org} project={project} page={page} onClose={() => {}} />);
+    render(<CodePageEditor project={project} page={page} onClose={() => {}} />);
     fireEvent.click(screen.getByRole('button', { name: 'Page settings' }));
     fireEvent.click(screen.getByRole('button', { name: 'draft' }));
     fireEvent.click(screen.getByLabelText('Nav: header'));
@@ -109,7 +107,7 @@ describe('CodePageEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(() => expect(putPage).toHaveBeenCalledTimes(1));
-    const saved = putPage.mock.calls[0]![2] as Page;
+    const saved = putPage.mock.calls[0]![1] as Page;
     expect(saved.status).toBe('draft');
     expect(saved.nav).toEqual({ slots: ['header'], order: 3 });
     expect(saved.source).toBe(page.source); // settings-only edit leaves the template untouched
@@ -117,7 +115,7 @@ describe('CodePageEditor', () => {
 
   it('inserts a pattern as the whole source when the editor is empty', () => {
     const blank: Page = { ...page, source: '   ' };
-    render(<CodePageEditor org={org} project={project} page={blank} onClose={() => {}} />);
+    render(<CodePageEditor project={project} page={blank} onClose={() => {}} />);
     const editor = screen.getByLabelText('Template source') as HTMLTextAreaElement;
     fireEvent.change(screen.getByLabelText('Insert pattern'), { target: { value: 'navbar' } });
     // No leading whitespace/blank lines from the previously-empty source.

@@ -5,16 +5,15 @@ import type { Page } from '@sitewright/schema';
 const { preview, putPage } = vi.hoisted(() => ({ preview: vi.fn(), putPage: vi.fn() }));
 vi.mock('../src/api', () => ({
   api: {
-    preview: (o: string, p: string, page: Page) => preview(o, p, page),
-    putPage: (o: string, p: string, page: Page) => putPage(o, p, page),
+    preview: (p: string, page: Page) => preview(p, page),
+    putPage: (p: string, page: Page) => putPage(p, page),
   },
-  previewDocUrl: (o: string, p: string, token: string) => `/orgs/${o}/projects/${p}/preview/${token}`,
+  previewDocUrl: (p: string, token: string) => `/projects/${p}/preview/${token}`,
 }));
 
 import { ClientSourceEditor } from '../src/views/ClientSourceEditor';
 
-const org = { id: 'o', name: 'Acme', slug: 'acme', role: 'member' };
-const project = { id: 'p', name: 'Acme', slug: 'acme' };
+const project = { id: 'p', name: 'Acme', slug: 'acme', role: 'member' as const };
 
 const sourcePage: Page = {
   id: 'home',
@@ -34,7 +33,7 @@ beforeEach(() => {
 
 describe('ClientSourceEditor', () => {
   it('surfaces the template edit regions with current/default values (not the source)', () => {
-    render(<ClientSourceEditor org={org} project={project} page={sourcePage} onClose={() => {}} />);
+    render(<ClientSourceEditor project={project} page={sourcePage} onClose={() => {}} />);
     // The override shows for `headline`; the default shows for the untouched `sub`.
     expect((screen.getByLabelText('headline') as HTMLTextAreaElement).value).toBe('Saved headline');
     expect((screen.getByLabelText('sub') as HTMLTextAreaElement).value).toBe('A subtitle');
@@ -44,12 +43,12 @@ describe('ClientSourceEditor', () => {
 
   it('saves an edited region into page.content (source untouched)', async () => {
     const onClose = vi.fn();
-    render(<ClientSourceEditor org={org} project={project} page={sourcePage} onClose={onClose} />);
+    render(<ClientSourceEditor project={project} page={sourcePage} onClose={onClose} />);
     fireEvent.change(screen.getByLabelText('headline'), { target: { value: 'Client rewrote this' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
     await waitFor(() => expect(putPage).toHaveBeenCalledTimes(1));
-    const saved = putPage.mock.calls[0]![2] as Page;
+    const saved = putPage.mock.calls[0]![1] as Page;
     expect(saved.content).toEqual({ headline: 'Client rewrote this' });
     // An untouched region keeps the template default as its source of truth — it is NOT
     // pre-written into content on mount.
@@ -59,9 +58,9 @@ describe('ClientSourceEditor', () => {
   });
 
   it('previews the draft (with edits) through the sandboxed preview pane', async () => {
-    render(<ClientSourceEditor org={org} project={project} page={sourcePage} onClose={() => {}} />);
+    render(<ClientSourceEditor project={project} page={sourcePage} onClose={() => {}} />);
     await waitFor(() => expect(preview).toHaveBeenCalled());
-    const draft = preview.mock.calls[0]![2] as Page;
+    const draft = preview.mock.calls[0]![1] as Page;
     expect(draft.content).toEqual({ headline: 'Saved headline' });
     await waitFor(() =>
       expect((screen.getByTitle('Live preview') as HTMLIFrameElement).getAttribute('src')).toContain('/preview/tok'),
@@ -70,7 +69,7 @@ describe('ClientSourceEditor', () => {
 
   it('shows an empty state + disables save when the template has no edit regions', () => {
     const noRegions: Page = { ...sourcePage, source: '<h1>{{ company.name }}</h1>', content: {} };
-    render(<ClientSourceEditor org={org} project={project} page={noRegions} onClose={() => {}} />);
+    render(<ClientSourceEditor project={project} page={noRegions} onClose={() => {}} />);
     expect(screen.getByText(/no editable regions/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
   });

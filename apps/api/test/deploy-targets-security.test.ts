@@ -45,11 +45,11 @@ async function boot(deployAllowedHosts?: string[]): Promise<Harness> {
 }
 
 /** Signs up an owner and creates a project; returns the client + its target base path. */
-async function ownerWithProject(harness: Harness): Promise<{ client: TestClient; orgId: string; projectId: string; base: string }> {
+async function ownerWithProject(harness: Harness): Promise<{ client: TestClient; projectId: string; base: string }> {
   const client = await harness.signup();
   const projectId = await client.createProject();
-  const base = `/orgs/${client.orgId}/projects/${projectId}`;
-  return { client, orgId: client.orgId, projectId, base };
+  const base = `/projects/${projectId}`;
+  return { client, projectId, base };
 }
 
 afterEach(async () => {
@@ -293,7 +293,7 @@ describe('saved deploy targets — RBAC and cross-tenant isolation', () => {
     const a = await h.signup();
     const b = await h.signup();
     const aProjectId = await a.createProject();
-    const aBase = `/orgs/${a.orgId}/projects/${aProjectId}`;
+    const aBase = `/projects/${aProjectId}`;
 
     const id = (
       (await a.post(`${aBase}/deploy-targets`, target)).json() as { target: { id: string } }

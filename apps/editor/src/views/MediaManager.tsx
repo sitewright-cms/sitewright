@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import type { MediaAsset } from '@sitewright/schema';
-import { api, type Org, type Project } from '../api';
+import { api, type Project } from '../api';
 import { StockPicker } from './media/StockPicker';
 
-export function MediaManager({ org, project }: { org: Org; project: Project }) {
+export function MediaManager({ project }: { project: Project }) {
   const [media, setMedia] = useState<MediaAsset[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -12,7 +12,7 @@ export function MediaManager({ org, project }: { org: Org; project: Project }) {
 
   async function load(isActive: () => boolean = () => true) {
     try {
-      const res = await api.listMedia(org.id, project.id);
+      const res = await api.listMedia(project.id);
       if (isActive()) setMedia(res.items);
     } catch (err) {
       if (isActive()) setError(err instanceof Error ? err.message : 'failed to load media');
@@ -25,7 +25,7 @@ export function MediaManager({ org, project }: { org: Org; project: Project }) {
     return () => {
       active = false;
     };
-  }, [org.id, project.id]);
+  }, [project.id]);
 
   async function onUpload(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -33,7 +33,7 @@ export function MediaManager({ org, project }: { org: Org; project: Project }) {
     setUploading(true);
     setError(null);
     try {
-      await api.uploadMedia(org.id, project.id, file);
+      await api.uploadMedia(project.id, file);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'upload failed');
@@ -46,7 +46,7 @@ export function MediaManager({ org, project }: { org: Org; project: Project }) {
   async function remove(id: string) {
     setError(null);
     try {
-      await api.deleteMedia(org.id, project.id, id);
+      await api.deleteMedia(project.id, id);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed to delete media');
@@ -96,7 +96,7 @@ export function MediaManager({ org, project }: { org: Org; project: Project }) {
         </div>
       ) : (
         <div className="mb-4">
-          <StockPicker orgId={org.id} projectId={project.id} onImported={() => load()} />
+          <StockPicker projectId={project.id} onImported={() => load()} />
         </div>
       )}
 

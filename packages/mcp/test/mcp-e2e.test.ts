@@ -26,14 +26,13 @@ suite('@sitewright/mcp bridge — end to end', () => {
       body: JSON.stringify({ email: `mcp-${stamp}@e2e.test`, password: 'pw-secret-1', orgName: `MCP ${stamp}` }),
     });
     const cookie = (reg.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
-    const { orgId } = (await reg.json()) as { orgId: string };
-    const proj = await fetch(`${url}/orgs/${orgId}/projects`, {
+    const proj = await fetch(`${url}/projects`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie },
       body: JSON.stringify({ name: 'MCP Site', slug: `mcp-${stamp}` }),
     });
     projectId = ((await proj.json()) as { project: { id: string } }).project.id;
-    const keyRes = await fetch(`${url}/orgs/${orgId}/projects/${projectId}/api-keys`, {
+    const keyRes = await fetch(`${url}/projects/${projectId}/api-keys`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie },
       body: JSON.stringify({
@@ -150,14 +149,13 @@ suite('@sitewright/mcp bridge — end to end', () => {
       body: JSON.stringify({ email: `mcpro-${stamp}@e2e.test`, password: 'pw-secret-1', orgName: `MCPRO ${stamp}` }),
     });
     const cookie = (reg.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
-    const { orgId } = (await reg.json()) as { orgId: string };
-    const proj = await fetch(`${url}/orgs/${orgId}/projects`, {
+    const proj = await fetch(`${url}/projects`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie },
       body: JSON.stringify({ name: 'RO', slug: `ro-${stamp}` }),
     });
     const projectId = ((await proj.json()) as { project: { id: string } }).project.id;
-    const keyRes = await fetch(`${url}/orgs/${orgId}/projects/${projectId}/api-keys`, {
+    const keyRes = await fetch(`${url}/projects/${projectId}/api-keys`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie },
       body: JSON.stringify({ name: 'ro', role: 'member', capabilities: ['content:read'], expiresInDays: 1 }),

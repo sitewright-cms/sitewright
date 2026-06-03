@@ -20,22 +20,21 @@ function token(res: { cookies: Array<{ name: string; value: string }> }): string
   return t;
 }
 
-async function setup(email: string, orgName: string, instance: FastifyInstance = app, slug = 'site') {
+async function setup(email: string, instance: FastifyInstance = app, slug = 'site') {
   const reg = await instance.inject({
     method: 'POST',
     url: '/auth/register',
-    payload: { email, password: 'pw-secret-1', orgName },
+    payload: { email, password: 'pw-secret-1' },
   });
   const t = token(reg);
-  const orgId = (reg.json() as { orgId: string }).orgId;
   const proj = await instance.inject({
     method: 'POST',
-    url: `/orgs/${orgId}/projects`,
+    url: `/projects`,
     cookies: { sw_session: t },
     payload: { name: 'Site', slug },
   });
   const projectId = (proj.json() as { project: { id: string } }).project.id;
-  return { t, orgId, projectId };
+  return { t, projectId };
 }
 
 const page = {
@@ -51,10 +50,10 @@ const page = {
 
 describe('preview API', () => {
   it('renders a draft page to a full HTML document + a preview token', async () => {
-    const { t, orgId, projectId } = await setup('a@acme.test', 'Acme');
+    const { t, projectId } = await setup('a@acme.test');
     const res = await app.inject({
       method: 'POST',
-      url: `/orgs/${orgId}/projects/${projectId}/preview`,
+      url: `/projects/${projectId}/preview`,
       cookies: { sw_session: t },
       payload: page,
     });
@@ -67,11 +66,11 @@ describe('preview API', () => {
   });
 
   it('serves the preview document for a token under a sandbox CSP (isolated, framable)', async () => {
-    const { t, orgId, projectId } = await setup('a@acme.test', 'Acme');
+    const { t, projectId } = await setup('a@acme.test');
     const token = (
       await app.inject({
         method: 'POST',
-        url: `/orgs/${orgId}/projects/${projectId}/preview`,
+        url: `/projects/${projectId}/preview`,
         cookies: { sw_session: t },
         payload: page,
       })
@@ -79,7 +78,7 @@ describe('preview API', () => {
 
     const doc = await app.inject({
       method: 'GET',
-      url: `/orgs/${orgId}/projects/${projectId}/preview/${token}`,
+      url: `/projects/${projectId}/preview/${token}`,
       cookies: { sw_session: t },
     });
     expect(doc.statusCode).toBe(200);
@@ -92,12 +91,12 @@ describe('preview API', () => {
   });
 
   it('does not serve a preview token to another tenant, or an unknown/expired token', async () => {
-    const a = await setup('a@acme.test', 'Acme', app, 'site-a');
-    const b = await setup('b@globex.test', 'Globex', app, 'site-b');
+    const a = await setup('a@acme.test', app, 'site-a');
+    const b = await setup('b@globex.test', app, 'site-b');
     const token = (
       await app.inject({
         method: 'POST',
-        url: `/orgs/${a.orgId}/projects/${a.projectId}/preview`,
+        url: `/projects/${a.projectId}/preview`,
         cookies: { sw_session: a.t },
         payload: page,
       })
@@ -106,7 +105,7 @@ describe('preview API', () => {
     // B cannot even reach A's project (not a member) → 403, before any token lookup.
     const intoA = await app.inject({
       method: 'GET',
-      url: `/orgs/${a.orgId}/projects/${a.projectId}/preview/${token}`,
+      url: `/projects/${a.projectId}/preview/${token}`,
       cookies: { sw_session: b.t },
     });
     expect(intoA.statusCode).toBe(403);
@@ -115,7 +114,7 @@ describe('preview API', () => {
     // org/project/user binding → 404 (the store rejects it).
     const cross = await app.inject({
       method: 'GET',
-      url: `/orgs/${b.orgId}/projects/${b.projectId}/preview/${token}`,
+      url: `/projects/${b.projectId}/preview/${token}`,
       cookies: { sw_session: b.t },
     });
     expect(cross.statusCode).toBe(404);
@@ -123,28 +122,28 @@ describe('preview API', () => {
     // An unknown token under A's own scope is a 404.
     const unknown = await app.inject({
       method: 'GET',
-      url: `/orgs/${a.orgId}/projects/${a.projectId}/preview/does-not-exist`,
+      url: `/projects/${a.projectId}/preview/does-not-exist`,
       cookies: { sw_session: a.t },
     });
     expect(unknown.statusCode).toBe(404);
   });
 
   it('requires authentication', async () => {
-    const { orgId, projectId } = await setup('a@acme.test', 'Acme');
+    const { projectId } = await setup('a@acme.test');
     const res = await app.inject({
       method: 'POST',
-      url: `/orgs/${orgId}/projects/${projectId}/preview`,
+      url: `/projects/${projectId}/preview`,
       payload: page,
     });
     expect(res.statusCode).toBe(401);
   });
 
   it('forbids previewing another tenant’s project', async () => {
-    const a = await setup('a@acme.test', 'Acme', app, 'site-a');
-    const b = await setup('b@globex.test', 'Globex', app, 'site-b');
+    const a = await setup('a@acme.test', app, 'site-a');
+    const b = await setup('b@globex.test', app, 'site-b');
     const res = await app.inject({
       method: 'POST',
-      url: `/orgs/${a.orgId}/projects/${a.projectId}/preview`,
+      url: `/projects/${a.projectId}/preview`,
       cookies: { sw_session: b.t },
       payload: page,
     });
@@ -152,10 +151,10 @@ describe('preview API', () => {
   });
 
   it('rejects an invalid page (400)', async () => {
-    const { t, orgId, projectId } = await setup('a@acme.test', 'Acme');
+    const { t, projectId } = await setup('a@acme.test');
     const res = await app.inject({
       method: 'POST',
-      url: `/orgs/${orgId}/projects/${projectId}/preview`,
+      url: `/projects/${projectId}/preview`,
       cookies: { sw_session: t },
       payload: { id: 'x', title: 'no root' },
     });
@@ -163,10 +162,10 @@ describe('preview API', () => {
   });
 
   it('escapes hostile content in the rendered HTML', async () => {
-    const { t, orgId, projectId } = await setup('a@acme.test', 'Acme');
+    const { t, projectId } = await setup('a@acme.test');
     const res = await app.inject({
       method: 'POST',
-      url: `/orgs/${orgId}/projects/${projectId}/preview`,
+      url: `/projects/${projectId}/preview`,
       cookies: { sw_session: t },
       payload: {
         id: 'x',
@@ -186,8 +185,8 @@ describe('preview API', () => {
   });
 
   it('applies the project brand and resolves dataset bindings (incl. drafts)', async () => {
-    const { t, orgId, projectId } = await setup('a@acme.test', 'Acme');
-    const base = `/orgs/${orgId}/projects/${projectId}`;
+    const { t, projectId } = await setup('a@acme.test');
+    const base = `/projects/${projectId}`;
     // Save brand settings.
     await app.inject({
       method: 'PUT',
@@ -226,8 +225,8 @@ describe('preview API', () => {
   });
 
   it('inlines compiled Tailwind utilities (incl. brand) when the page uses classes', async () => {
-    const { t, orgId, projectId } = await setup('a@acme.test', 'Acme');
-    const base = `/orgs/${orgId}/projects/${projectId}`;
+    const { t, projectId } = await setup('a@acme.test');
+    const base = `/projects/${projectId}`;
     await app.inject({
       method: 'PUT',
       url: `${base}/content/settings/settings`,
@@ -258,10 +257,10 @@ describe('preview API', () => {
   });
 
   it('does not inline a utility stylesheet when the page uses no classes', async () => {
-    const { t, orgId, projectId } = await setup('a@acme.test', 'Acme');
+    const { t, projectId } = await setup('a@acme.test');
     const res = await app.inject({
       method: 'POST',
-      url: `/orgs/${orgId}/projects/${projectId}/preview`,
+      url: `/projects/${projectId}/preview`,
       cookies: { sw_session: t },
       payload: page,
     });
@@ -281,10 +280,10 @@ describe('preview API — code-first source page', () => {
   });
 
   it('renders a source page through the worker, applying client-edited content, styled + tokenized', async () => {
-    const { t, orgId, projectId } = await setup('a@acme.test', 'Acme', poolApp);
+    const { t, projectId } = await setup('a@acme.test', poolApp);
     const res = await poolApp.inject({
       method: 'POST',
-      url: `/orgs/${orgId}/projects/${projectId}/preview`,
+      url: `/projects/${projectId}/preview`,
       cookies: { sw_session: t },
       payload: {
         id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' },
@@ -305,8 +304,8 @@ describe('preview API — code-first source page', () => {
   });
 
   it('renders the project skeleton slots (topNav/footer) around a source-page preview (WYSIWYG)', async () => {
-    const { t, orgId, projectId } = await setup('slots@acme.test', 'Acme', poolApp);
-    const base = `/orgs/${orgId}/projects/${projectId}`;
+    const { t, projectId } = await setup('slots@acme.test', poolApp);
+    const base = `/projects/${projectId}`;
     await poolApp.inject({
       method: 'PUT',
       url: `${base}/content/settings/settings`,
@@ -337,8 +336,8 @@ describe('preview API — code-first source page', () => {
   });
 
   it('skips a broken/unsafe slot in preview without failing the page (publish still hard-validates)', async () => {
-    const { t, orgId, projectId } = await setup('broken@acme.test', 'Acme', poolApp);
-    const base = `/orgs/${orgId}/projects/${projectId}`;
+    const { t, projectId } = await setup('broken@acme.test', poolApp);
+    const base = `/projects/${projectId}`;
     await poolApp.inject({
       method: 'PUT',
       url: `${base}/content/settings/settings`,
@@ -364,10 +363,10 @@ describe('preview API — code-first source page', () => {
   });
 
   it('returns 503 for a source-page preview when no render pool is configured', async () => {
-    const { t, orgId, projectId } = await setup('b@acme.test', 'Beta'); // module `app` has no pool
+    const { t, projectId } = await setup('b@acme.test'); // module `app` has no pool
     const res = await app.inject({
       method: 'POST',
-      url: `/orgs/${orgId}/projects/${projectId}/preview`,
+      url: `/projects/${projectId}/preview`,
       cookies: { sw_session: t },
       payload: { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<p>hi</p>' },
     });

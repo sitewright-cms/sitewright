@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import type { Form, FormField, FormMode } from '@sitewright/schema';
-import { api, type Org, type Project } from '../api';
+import { api, type Project } from '../api';
 import { identifierize, slugify } from '../lib/entry-form';
 import { ProjectSmtp } from './ProjectSmtp';
 
@@ -36,7 +36,7 @@ function emptyForm(id: string, name: string): Form {
  * config — it round-trips here for authoring but is never rendered into the
  * exported site.
  */
-export function FormsManager({ org, project }: { org: Org; project: Project }) {
+export function FormsManager({ project }: { project: Project }) {
   const [forms, setForms] = useState<Form[]>([]);
   // Matches the server default (all off); the real values arrive from api.formModes
   // before the editor is reachable (the list view is gated on `loading`).
@@ -49,7 +49,7 @@ export function FormsManager({ org, project }: { org: Org; project: Project }) {
 
   async function load(isActive: () => boolean = () => true) {
     try {
-      const [res, fm] = await Promise.all([api.listForms(org.id, project.id), api.formModes(org.id, project.id)]);
+      const [res, fm] = await Promise.all([api.listForms(project.id), api.formModes(project.id)]);
       if (!isActive()) return;
       setForms(res.items);
       setEnabledModes(fm.formModes);
@@ -65,7 +65,7 @@ export function FormsManager({ org, project }: { org: Org; project: Project }) {
     return () => {
       active = false;
     };
-  }, [org.id, project.id]);
+  }, [project.id]);
 
   function create(e: FormEvent) {
     e.preventDefault();
@@ -130,7 +130,7 @@ export function FormsManager({ org, project }: { org: Org; project: Project }) {
       return;
     }
     try {
-      await api.putForm(org.id, project.id, form);
+      await api.putForm(project.id, form);
       setSaved(true);
       setDraft(null);
       await load();
@@ -143,7 +143,7 @@ export function FormsManager({ org, project }: { org: Org; project: Project }) {
     if (!window.confirm(`Delete form "${id}"? Existing submissions are kept.`)) return;
     setError(null);
     try {
-      await api.deleteForm(org.id, project.id, id);
+      await api.deleteForm(project.id, id);
       if (draft?.id === id) setDraft(null);
       await load();
     } catch (err) {
@@ -381,7 +381,7 @@ export function FormsManager({ org, project }: { org: Org; project: Project }) {
   return (
     <div className="flex flex-col gap-4">
       {/* Per-project SMTP config — only relevant when the admin enabled the userSmtp mode. */}
-      {enabledModes.userSmtp && <ProjectSmtp org={org} project={project} />}
+      {enabledModes.userSmtp && <ProjectSmtp project={project} />}
       {error && <p className="text-sm text-red-600">{error}</p>}
       {saved && <p className="text-sm text-green-600">Saved.</p>}
       <ul className="flex flex-col gap-2">

@@ -8,7 +8,6 @@ const stamp = Date.now();
 test('insert a DaisyUI starter pattern into a code page → renders in the preview', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Organization name').fill(`Patterns Agency ${stamp}`);
   await page.getByLabel('Email').fill(`patterns-${stamp}@e2e.test`);
   await page.getByLabel('Password').fill('pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();

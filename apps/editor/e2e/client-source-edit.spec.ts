@@ -25,7 +25,8 @@ test('client edits a code page’s bound region (content), template stays immuta
   await page.getByRole('button', { name: 'Add page' }).click();
 
   // --- Owner: invite a client, capture the invite link ---
-  await page.getByRole('button', { name: 'clients' }).click();
+  await page.getByRole('tab', { name: 'Admin' }).click();
+  await page.getByRole('tab', { name: 'Clients' }).click();
   await page.getByLabel('Client email').fill(clientEmail);
   await page.getByRole('button', { name: 'Invite client' }).click();
   const link = (await page.locator('code').first().textContent())?.trim();

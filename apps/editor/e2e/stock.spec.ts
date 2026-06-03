@@ -19,9 +19,9 @@ test('media manager exposes a Stock images picker with a loaded provider list', 
   await page.getByRole('button', { name: 'Create project' }).click();
   await page.getByRole('button', { name: /Stock Site/ }).click();
 
-  await page.getByRole('button', { name: 'media', exact: true }).click();
+  await page.getByRole('tab', { name: 'Media' }).click();
 
-  // Switch from Upload to the Stock images tab.
+  // Switch from Upload to the Stock images tab (inner tab of the Media manager).
   await page.getByRole('tab', { name: 'Stock images' }).click();
 
   // The provider select loads from the API and defaults to the keyless Openverse.

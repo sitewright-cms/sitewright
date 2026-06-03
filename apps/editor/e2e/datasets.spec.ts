@@ -17,7 +17,7 @@ test('define a dataset, its schema, and add an entry', async ({ page }) => {
   await page.getByRole('button', { name: /Data Site/ }).click();
 
   // Data tab: create a "Posts" dataset with a "title" field.
-  await page.getByRole('button', { name: 'data', exact: true }).click();
+  await page.getByRole('tab', { name: 'Data' }).click();
   await page.getByLabel('Dataset name').fill('Posts');
   await page.getByRole('button', { name: 'Create dataset' }).click();
   await page.getByLabel('New field name').fill('title');

@@ -43,7 +43,9 @@ describe('ProjectView role gating', () => {
     render(<ProjectView project={ownerProject} onBack={() => {}} />);
     await waitFor(() => expect(listPages).toHaveBeenCalled());
     expect(screen.getByText('PUBLISH BAR')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'team' })).toBeInTheDocument();
+    // The owner sees the top tab bar — e.g. the grouped Admin tab (Clients/Team/Access live under it).
+    expect(screen.getByRole('tab', { name: 'Admin' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Corporate Identity' })).toBeInTheDocument();
     expect(screen.getByLabelText('Page slug')).toBeInTheDocument();
   });
 
@@ -51,7 +53,7 @@ describe('ProjectView role gating', () => {
     render(<ProjectView project={memberProject} onBack={() => {}} />);
     await waitFor(() => expect(listPages).toHaveBeenCalled());
     expect(screen.queryByText('PUBLISH BAR')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'team' })).toBeNull();
+    expect(screen.queryByRole('tab', { name: 'Admin' })).toBeNull();
     expect(screen.queryByLabelText('Page slug')).toBeNull();
     // The client still sees their pages to open.
     expect(screen.getByRole('button', { name: /Home/ })).toBeInTheDocument();

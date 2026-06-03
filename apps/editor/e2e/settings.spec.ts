@@ -17,9 +17,8 @@ test('edit Corporate Identity + Website settings, save, and persist across reloa
   await page.getByRole('button', { name: 'Create project' }).click();
   await page.getByRole('button', { name: /Acme Site/ }).click();
 
-  // Open the Settings tab → Corporate Identity section.
-  await page.getByRole('button', { name: 'settings', exact: true }).click();
-  await expect(page.getByRole('tab', { name: 'Corporate Identity' })).toBeVisible();
+  // Open the Corporate Identity top tab → edit identity + a brand color directly.
+  await page.getByRole('tab', { name: 'Corporate Identity' }).click();
 
   await page.getByLabel('Display name').fill('Acme');
   await page.getByLabel('Legal name').fill('Acme Corporation');
@@ -28,20 +27,23 @@ test('edit Corporate Identity + Website settings, save, and persist across reloa
   await page.getByLabel('primary 1', { exact: true }).fill('primary');
   await page.getByLabel('#0ea5e9 1', { exact: true }).fill('#0ea5e9');
 
-  // Website section: set the production URL.
-  await page.getByRole('tab', { name: 'Website' }).click();
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.getByText('✓ Saved')).toBeVisible();
+
+  // Website Settings top tab: set the production URL.
+  await page.getByRole('tab', { name: 'Website Settings' }).click();
   await page.getByLabel(/Production URL/).fill('https://acme.example');
 
   await page.getByRole('button', { name: 'Save changes' }).click();
   await expect(page.getByText('✓ Saved')).toBeVisible();
 
-  // Reload → re-open the project + Settings → values persisted via the API.
+  // Reload → re-open the project → values persisted via the API.
   await page.reload();
   await page.getByRole('button', { name: /Acme Site/ }).click();
-  await page.getByRole('button', { name: 'settings', exact: true }).click();
+  await page.getByRole('tab', { name: 'Corporate Identity' }).click();
   await expect(page.getByLabel('Legal name')).toHaveValue('Acme Corporation');
   await expect(page.getByLabel('primary 1', { exact: true })).toHaveValue('primary');
   await expect(page.getByLabel('#0ea5e9 1', { exact: true })).toHaveValue('#0ea5e9');
-  await page.getByRole('tab', { name: 'Website' }).click();
+  await page.getByRole('tab', { name: 'Website Settings' }).click();
   await expect(page.getByLabel(/Production URL/)).toHaveValue('https://acme.example');
 });

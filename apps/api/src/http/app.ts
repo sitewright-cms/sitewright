@@ -1515,7 +1515,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
               ? (assetId, file) => mediaStorage.read(project.id, assetId, file)
               : undefined,
           });
-          return reply.send({ release, url: `/sites/${project.slug}/` });
+          // Just published → nothing newer than this release, so the site is not dirty.
+          return reply.send({ release, url: `/sites/${project.slug}/`, dirty: false });
         } catch (err) {
           // A bad route graph (duplicate slugs, unsafe segment) is author-correctable.
           if (err instanceof PublishError) {
@@ -1531,8 +1532,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     app.get<{ Params: { projectId: string } }>(
       '/projects/:projectId/publish',
       async (req, reply) => {
-        const { project } = await resolveProject(req, 'content:read');
-        return reply.send({ release: await store.readRelease(project.slug), url: `/sites/${project.slug}/` });
+        const { ctx, project } = await resolveProject(req, 'content:read');
+        const release = await store.readRelease(project.slug);
+        // Dirty = there is publishable content AND it changed since the last release (or there is
+        // no release yet). Drives the editor's green "unpublished changes" publish button.
+        const latest = await contentRepo.latestContentUpdate(ctx);
+        const dirty =
+          latest !== null && (release === null || latest.getTime() > Date.parse(release.publishedAt));
+        return reply.send({ release, url: `/sites/${project.slug}/`, dirty });
       },
     );
 

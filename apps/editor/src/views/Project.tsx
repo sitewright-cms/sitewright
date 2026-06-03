@@ -118,11 +118,13 @@ export function ProjectView({ project, onBack }: ProjectViewProps) {
       >
         ← Projects
       </button>
-      <h2 className="mb-4 text-xl font-semibold">
-        {project.name} <span className="text-sm text-slate-400">/{project.slug}</span>
-      </h2>
-      {/* Publishing is an owner action; clients only edit content. */}
-      {!isClient && <PublishBar project={project} />}
+      {/* Header: title on the left, the single Publish control pinned top-right (owners only). */}
+      <div className="mb-4 flex items-start justify-between gap-4">
+        <h2 className="text-xl font-semibold">
+          {project.name} <span className="text-sm text-slate-400">/{project.slug}</span>
+        </h2>
+        {!isClient && <PublishBar project={project} />}
+      </div>
 
       {/* Clients see no tab bar — just their editable pages. */}
       {!isClient && (

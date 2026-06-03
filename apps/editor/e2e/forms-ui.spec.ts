@@ -24,7 +24,10 @@ test('author a form in the editor and see a submission in its submissions list',
   await page.getByRole('button', { name: 'Create form' }).click();
   await page.getByLabel('Recipient email').fill('leads@acme.example');
   await page.getByRole('button', { name: 'Save form' }).click();
-  await expect(page.getByText('Contact')).toBeVisible();
+  // The saved form appears as a row whose name is exactly "Contact" (a button). `exact` avoids both
+  // the row's "Show submissions for contact"/"Delete form contact" buttons and any globally-enabled
+  // `contact.php` delivery-mode option.
+  await expect(page.getByRole('button', { name: 'Contact', exact: true })).toBeVisible();
 
   // Resolve the projectId via the API (shares the browser session cookie) and
   // submit to the public endpoint, then reveal it in the form's submissions list.

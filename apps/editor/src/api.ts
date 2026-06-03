@@ -106,18 +106,23 @@ export interface Project {
 export type ProjectRole = 'owner' | 'member';
 /** The platform-staff role for a user (developer/admin), or null for a pure client. */
 export type PlatformRole = 'admin' | 'developer' | null;
-/** A platform-staff member (instance-wide developers/admins), listed under /admin/users. */
+/** The role an invite/membership can carry: a project tier (owner|member) or a platform tier (admin|developer). */
+export type Role = 'owner' | 'member' | 'admin' | 'developer';
+/**
+ * A member returned by a management list. Shared by two surfaces: `/admin/users` (platform staff —
+ * role `admin`|`developer`) and `/projects/:id/members` (the project team — role `owner`|`member`).
+ */
 export interface OrgMember {
   userId: string;
   email: string;
-  role: string;
+  role: Role;
   createdAt: string;
 }
 /** A pending invite (the management list never returns the token). */
 export interface Invite {
   id: string;
   email: string;
-  role: string;
+  role: Role;
   projectId: string | null;
   expiresAt: string;
   acceptedAt: string | null;
@@ -126,7 +131,7 @@ export interface Invite {
 /** Public context shown on the accept screen to an invite-token holder. */
 export interface InvitePeek {
   email: string;
-  role: string;
+  role: Role;
   projectName: string | null;
   expired: boolean;
   accepted: boolean;
@@ -208,7 +213,8 @@ export const api = {
   peekInvite: (token: string) =>
     request<{ invite: InvitePeek }>('GET', `/invites/peek?token=${encodeURIComponent(token)}`),
   acceptInvite: (token: string) =>
-    request<{ projectId: string; role: string }>('POST', '/invites/accept', { token }),
+    // `projectId` is null for a platform-staff invite (which sets the user's platform role).
+    request<{ projectId: string | null; role: Role }>('POST', '/invites/accept', { token }),
   // Project clients (project-scoped members).
   listProjectMembers: (projectId: string) =>
     request<{ members: OrgMember[] }>('GET', `/projects/${projectId}/members`),

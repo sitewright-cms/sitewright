@@ -664,7 +664,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     return reply.code(204).send();
   });
 
-  app.get('/me', async (req, reply) => {
+  app.get('/me', { config: rl(60) }, async (req, reply) => {
     const userId = await requireUserId(req);
     const [platformRole, access, instanceAdmin] = await Promise.all([
       getPlatformRole(db, userId),
@@ -738,7 +738,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     return { userId, role, projectId };
   }
 
-  app.get('/projects', async (req, reply) => {
+  app.get('/projects', { config: rl(60) }, async (req, reply) => {
     const userId = await requireUserId(req);
     const access = await listProjectAccessForUser(db, userId);
     // Map to the project shape the editor expects (id/name/slug) plus the caller's role.
@@ -1719,7 +1719,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
   // Month-to-date AI usage + limits (for a usage dashboard). Any signed-in user may read their own
   // usage + the platform total.
-  app.get('/ai/usage', async (req, reply) => {
+  app.get('/ai/usage', { config: rl(30) }, async (req, reply) => {
     const userId = await requireUserId(req);
     const since = startOfMonthUTC(new Date());
     // Both queries always run (unlike the generate path, which short-circuits

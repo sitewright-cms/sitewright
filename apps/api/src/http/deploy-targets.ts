@@ -26,7 +26,7 @@ export interface DeployTargetDeps {
   resolveProject: (
     req: ProjectReq,
     access: ApiKeyCapability | 'session-only',
-  ) => Promise<{ ctx: ProjectContext; project: { id: string } }>;
+  ) => Promise<{ ctx: ProjectContext; project: { id: string; slug: string } }>;
   contentRepo: ContentRepository;
   publishStore?: PublishStore;
   encryptionKey: Buffer;
@@ -113,11 +113,11 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
         // global handler — not the deploy 502 below.
         const target = (await contentRepo.get(ctx, 'deploy_target', req.params.id)) as DeployTarget;
         assertDeployHostAllowed(target.host);
-        if ((await store.readRelease(project.id)) === null) {
+        if ((await store.readRelease(project.slug)) === null) {
           return reply.code(409).send({ error: 'publish the site before deploying' });
         }
         try {
-          const result = await deploySite(store.dirFor(project.id), {
+          const result = await deploySite(store.dirFor(project.slug), {
             protocol: target.protocol,
             host: target.host,
             port: target.port,

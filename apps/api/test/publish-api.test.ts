@@ -29,7 +29,7 @@ async function setup(email: string, slug = 'site') {
   const t = token(reg);
   const proj = await app.inject({ method: 'POST', url: `/projects`, cookies: { sw_session: t }, payload: { name: 'Site', slug } });
   const projectId = (proj.json() as { project: { id: string } }).project.id;
-  return { t, projectId };
+  return { t, projectId, slug };
 }
 
 const homePage = {
@@ -41,7 +41,7 @@ const homePage = {
 
 describe('publish API', () => {
   it('publishes a project and serves the built site', async () => {
-    const { t, projectId } = await setup('a@acme.test');
+    const { t, projectId, slug } = await setup('a@acme.test');
     const base = `/projects/${projectId}`;
     const cookies = { sw_session: t };
 
@@ -51,10 +51,10 @@ describe('publish API', () => {
     expect(pub.statusCode).toBe(200);
     const body = pub.json() as { release: { routes: number }; url: string };
     expect(body.release.routes).toBe(1);
-    expect(body.url).toBe(`/sites/${projectId}/`);
+    expect(body.url).toBe(`/sites/${slug}/`);
 
     // The published home page is publicly servable and contains the rendered content.
-    const served = await app.inject({ method: 'GET', url: `/sites/${projectId}/` });
+    const served = await app.inject({ method: 'GET', url: `/sites/${slug}/` });
     expect(served.statusCode).toBe(200);
     expect(served.headers['content-type']).toContain('text/html');
     expect(served.body).toContain('Live Site');
@@ -151,12 +151,12 @@ describe('publish API', () => {
   });
 
   it('404s for an unpublished site and rejects path traversal in the serve route', async () => {
-    const { projectId } = await setup('a@acme.test');
-    const notPublished = await app.inject({ method: 'GET', url: `/sites/${projectId}/` });
+    const { slug } = await setup('a@acme.test');
+    const notPublished = await app.inject({ method: 'GET', url: `/sites/${slug}/` });
     expect(notPublished.statusCode).toBe(404);
 
     // A traversal attempt resolves outside the site dir → 404 (never escapes).
-    const traversal = await app.inject({ method: 'GET', url: `/sites/${projectId}/..%2f..%2frelease` });
+    const traversal = await app.inject({ method: 'GET', url: `/sites/${slug}/..%2f..%2frelease` });
     expect([404]).toContain(traversal.statusCode);
   });
 });

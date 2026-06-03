@@ -65,6 +65,7 @@ describe('publish portability', () => {
   let harness: Harness;
   let client: TestClient;
   let projectId: string;
+  const slug = 'portable-site';
   let publishRoot: string;
   let mediaRoot: string;
 
@@ -74,7 +75,7 @@ describe('publish portability', () => {
     // In-process build runner (default): no SW_BUILD_WORKER → runs without Docker.
     harness = await makeHarness({ publishRoot, mediaRoot });
     client = await harness.signup();
-    projectId = await client.createProject('Portable Site', 'portable-site');
+    projectId = await client.createProject('Portable Site', slug);
   });
 
   afterEach(async () => {
@@ -88,14 +89,14 @@ describe('publish portability', () => {
     const pub = await client.post(`${client.project(projectId).base}/publish`);
     expect(pub.statusCode).toBe(200);
     const body = pub.json() as { release: { routes: number }; url: string };
-    expect(body.url).toBe(`/sites/${projectId}/`);
+    expect(body.url).toBe(`/sites/${slug}/`);
     expect(body.release.routes).toBe(expectedRoutes);
     return body;
   }
 
-  /** Fetches an exported HTML document at `/sites/<projectId>/<path>`. */
+  /** Fetches an exported HTML document at `/sites/<slug>/<path>`. */
   async function fetchSite(path: string): Promise<string> {
-    const res = await client.get(`/sites/${projectId}/${path}`);
+    const res = await client.get(`/sites/${slug}/${path}`);
     expect(res.statusCode).toBe(200);
     expect(res.headers['content-type']).toContain('text/html');
     return res.body;
@@ -207,8 +208,8 @@ describe('publish portability', () => {
     // The publish response carries the manifest.
     expect(body.release.routes).toBe(2);
 
-    // release.json is present in the published output directory.
-    const siteDir = join(publishRoot, projectId);
+    // release.json is present in the published output directory (keyed by slug).
+    const siteDir = join(publishRoot, slug);
     const entries = await readdir(siteDir);
     expect(entries).toContain('release.json');
     const manifest = JSON.parse(await readFile(join(siteDir, 'release.json'), 'utf8')) as {
@@ -254,8 +255,9 @@ describe('publish portability', () => {
     expect((await project.putContent('page', 'about', imagePage('about', '/about', 'About'))).statusCode).toBe(200);
     await publish(2);
 
-    // The binaries were copied into the artifact under media/<assetId>/.
-    const mediaDir = await readdir(join(publishRoot, projectId, 'media', asset.id));
+    // The binaries were copied into the artifact under media/<assetId>/ (the
+    // published-site dir is keyed by slug).
+    const mediaDir = await readdir(join(publishRoot, slug, 'media', asset.id));
     expect(mediaDir.length).toBeGreaterThan(0);
 
     // Home (site root): <picture> srcset references are bare-relative `media/...`.

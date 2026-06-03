@@ -29,12 +29,13 @@ let publishRoot: string;
 let client: TestClient;
 let project: ProjectClient;
 let base: string;
+const slug = 'preview-depth-site';
 
 beforeEach(async () => {
   publishRoot = await mkdtemp(join(tmpdir(), 'sw-preview-depth-'));
   harness = await makeHarness({ publishRoot });
   client = await harness.signup();
-  const projectId = await client.createProject();
+  const projectId = await client.createProject('Site', slug);
   project = client.project(projectId);
   base = project.base;
 });
@@ -152,7 +153,7 @@ describe('preview endpoint — depth', () => {
 
     const served = await harness.app.inject({
       method: 'GET',
-      url: `/sites/${project.projectId}/`,
+      url: `/sites/${slug}/`,
     });
     expect(served.statusCode).toBe(200);
     expect(served.headers['content-type']).toContain('text/html');

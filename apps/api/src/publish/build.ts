@@ -141,7 +141,7 @@ async function copyMedia(
  *
  * NOTE (fidelity): styling uses the framework-free renderer's brand-variable CSS
  * rather than a full Tailwind build — close, not byte-identical to a hypothetical
- * Astro build. NOTE (in-container preview): `/sites/<projectId>/` is a build
+ * Astro build. NOTE (in-container preview): `/sites/<slug>/` is a build
  * preview only; the downloadable/deployable artifact is the product.
  *
  * The site is built into a sibling temp dir and swapped in via `rename`, so a

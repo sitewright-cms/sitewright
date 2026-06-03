@@ -12,6 +12,7 @@ describe('multilingual publish', () => {
   let harness: Harness;
   let client: TestClient;
   let projectId: string;
+  const slug = 'site';
   let publishRoot: string;
   let mediaRoot: string;
 
@@ -20,7 +21,7 @@ describe('multilingual publish', () => {
     mediaRoot = await mkdtemp(join(tmpdir(), 'sw-i18n-media-'));
     harness = await makeHarness({ publishRoot, mediaRoot });
     client = await harness.signup();
-    projectId = await client.createProject('Site', 'site');
+    projectId = await client.createProject('Site', slug);
   });
 
   afterEach(async () => {
@@ -84,14 +85,14 @@ describe('multilingual publish', () => {
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
 
     // Default locale at the site root, untouched (no /en/ prefix).
-    const enHome = await client.get(`/sites/${projectId}/index.html`);
+    const enHome = await client.get(`/sites/${slug}/index.html`);
     expect(enHome.statusCode).toBe(200);
     expect(enHome.body).toContain('Welcome');
     expect(enHome.body).toContain('href="about"'); // root-relative, no locale prefix
     expect(enHome.body).toContain('<html lang="en">');
 
     // German home uses the translated content + lang + a de-prefixed internal link.
-    const deHome = await client.get(`/sites/${projectId}/de/index.html`);
+    const deHome = await client.get(`/sites/${slug}/de/index.html`);
     expect(deHome.statusCode).toBe(200);
     expect(deHome.body).toContain('Willkommen');
     expect(deHome.body).not.toContain('Welcome');
@@ -102,7 +103,7 @@ describe('multilingual publish', () => {
 
     // German About FALLS BACK to the default-locale content (no translation),
     // but is still published under /de/about/.
-    const deAbout = await client.get(`/sites/${projectId}/de/about/index.html`);
+    const deAbout = await client.get(`/sites/${slug}/de/about/index.html`);
     expect(deAbout.statusCode).toBe(200);
     expect(deAbout.body).toContain('About us'); // default content (fallback)
     expect(deAbout.body).toContain('<html lang="de">');
@@ -120,7 +121,7 @@ describe('multilingual publish', () => {
 
     // Both the en (root) and de variants carry the SAME alternate set (absolute URLs).
     for (const path of ['index.html', 'de/index.html']) {
-      const html = (await client.get(`/sites/${projectId}/${path}`)).body;
+      const html = (await client.get(`/sites/${slug}/${path}`)).body;
       expect(html).toContain('<link rel="alternate" hreflang="en" href="https://acme.example/" />');
       expect(html).toContain('<link rel="alternate" hreflang="de" href="https://acme.example/de/" />');
       expect(html).toContain('<link rel="alternate" hreflang="x-default" href="https://acme.example/" />');
@@ -136,7 +137,7 @@ describe('multilingual publish', () => {
     });
     await proj.putContent('page', 'home', { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' } });
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
-    expect((await client.get(`/sites/${projectId}/index.html`)).body).not.toContain('hreflang');
+    expect((await client.get(`/sites/${slug}/index.html`)).body).not.toContain('hreflang');
 
     // Single locale + siteUrl → still no hreflang (nothing to alternate to).
     await proj.putContent('settings', 'settings', {
@@ -145,7 +146,7 @@ describe('multilingual publish', () => {
       settings: { defaultLocale: 'en', locales: ['en'] },
     });
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
-    expect((await client.get(`/sites/${projectId}/index.html`)).body).not.toContain('hreflang');
+    expect((await client.get(`/sites/${slug}/index.html`)).body).not.toContain('hreflang');
   });
 
   it('prefixes auto-nav links per locale and ignores a default-locale translation', async () => {
@@ -180,13 +181,13 @@ describe('multilingual publish', () => {
 
     // Default home: nav link to /about is root-relative, and the default-locale
     // translation was ignored (the Nav root, not the translated Heading, rendered).
-    const enHome = await client.get(`/sites/${projectId}/index.html`);
+    const enHome = await client.get(`/sites/${slug}/index.html`);
     expect(enHome.body).toContain('data-sw-block="Nav"');
     expect(enHome.body).toContain('href="about"');
     expect(enHome.body).not.toContain('SHOULD-NOT-APPEAR');
 
     // German home: the auto-nav link to /about is kept inside /de/.
-    const deHome = await client.get(`/sites/${projectId}/de/index.html`);
+    const deHome = await client.get(`/sites/${slug}/de/index.html`);
     expect(deHome.body).toContain('href="../de/about"');
   });
 
@@ -216,7 +217,7 @@ describe('multilingual publish', () => {
     expect((await proj.putContent('page', 'home', page)).statusCode).toBe(200);
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
 
-    expect((await client.get(`/sites/${projectId}/index.html`)).statusCode).toBe(200);
-    expect((await client.get(`/sites/${projectId}/en/index.html`)).statusCode).toBe(404); // no prefix dir
+    expect((await client.get(`/sites/${slug}/index.html`)).statusCode).toBe(200);
+    expect((await client.get(`/sites/${slug}/en/index.html`)).statusCode).toBe(404); // no prefix dir
   });
 });

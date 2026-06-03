@@ -14,6 +14,7 @@ describe('Html (raw embed) block', () => {
   let harness: Harness;
   let client: TestClient;
   let projectId: string;
+  const slug = 'site';
   let publishRoot: string;
   let mediaRoot: string;
 
@@ -24,7 +25,7 @@ describe('Html (raw embed) block', () => {
     mediaRoot = await mkdtemp(join(tmpdir(), 'sw-html-media-'));
     harness = await makeHarness({ publishRoot, mediaRoot });
     client = await harness.signup();
-    projectId = await client.createProject('Site', 'site');
+    projectId = await client.createProject('Site', slug);
   });
 
   afterEach(async () => {
@@ -49,7 +50,7 @@ describe('Html (raw embed) block', () => {
     expect((await proj.putContent('page', 'home', pageWithEmbed)).statusCode).toBe(200);
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
 
-    const res = await client.get(`/sites/${projectId}/index.html`);
+    const res = await client.get(`/sites/${slug}/index.html`);
     expect(res.statusCode).toBe(200);
     expect(res.body).toContain('<div data-sw-block="Html"');
     expect(res.body).toContain(EMBED); // raw, not escaped
@@ -73,7 +74,7 @@ describe('Html (raw embed) block', () => {
     await proj.putContent('page', 'home', pageWithEmbed);
     await client.post(`${proj.base}/publish`);
 
-    const res = await client.get(`/sites/${projectId}/index.html`);
+    const res = await client.get(`/sites/${slug}/index.html`);
     const csp = res.headers['content-security-policy'] as string;
     expect(csp).toBeTruthy();
     // The operative invariant: no script-src is declared, so scripts fall back to

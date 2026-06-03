@@ -13,6 +13,7 @@ describe('Carousel component → publish + preview', () => {
   let harness: Harness;
   let client: TestClient;
   let projectId: string;
+  const slug = 'site';
   let publishRoot: string;
   let mediaRoot: string;
 
@@ -42,7 +43,7 @@ describe('Carousel component → publish + preview', () => {
     mediaRoot = await mkdtemp(join(tmpdir(), 'sw-car-media-'));
     harness = await makeHarness({ publishRoot, mediaRoot });
     client = await harness.signup();
-    projectId = await client.createProject('Site', 'site');
+    projectId = await client.createProject('Site', slug);
   });
 
   afterEach(async () => {
@@ -56,7 +57,7 @@ describe('Carousel component → publish + preview', () => {
     expect((await proj.putContent('page', 'home', carouselPage)).statusCode).toBe(200);
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
 
-    const index = await client.get(`/sites/${projectId}/index.html`);
+    const index = await client.get(`/sites/${slug}/index.html`);
     expect(index.statusCode).toBe(200);
     expect(index.body).toContain('data-sw-component="carousel"');
     expect(index.body).toContain('data-autoplay="true"');
@@ -66,7 +67,7 @@ describe('Carousel component → publish + preview', () => {
     expect(index.body).toContain('<script defer src="components.js"></script>');
 
     // The bundle is served from the site's own origin (so it runs under the CSP).
-    const bundle = await client.get(`/sites/${projectId}/components.js`);
+    const bundle = await client.get(`/sites/${slug}/components.js`);
     expect(bundle.statusCode).toBe(200);
     expect(bundle.headers['content-type']).toContain('javascript');
     expect(bundle.body).toContain('data-sw-component="carousel"');
@@ -84,9 +85,9 @@ describe('Carousel component → publish + preview', () => {
     expect((await proj.putContent('page', 'home', plain)).statusCode).toBe(200);
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
 
-    const index = await client.get(`/sites/${projectId}/index.html`);
+    const index = await client.get(`/sites/${slug}/index.html`);
     expect(index.body).not.toContain('<script defer');
-    expect((await client.get(`/sites/${projectId}/components.js`)).statusCode).toBe(404);
+    expect((await client.get(`/sites/${slug}/components.js`)).statusCode).toBe(404);
   });
 
   it('previews the carousel live — inlined component CSS + behavior (sandbox-CSS doc)', async () => {

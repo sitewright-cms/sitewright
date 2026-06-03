@@ -63,15 +63,16 @@ async function publish(client: TestClient, projectId: string) {
   return client.post(`${client.project(projectId).base}/publish`);
 }
 
-/** Fetches the served home page HTML for a project (public route). */
-async function servedHome(harnessApp: Harness, projectId: string) {
-  return harnessApp.app.inject({ method: 'GET', url: `/sites/${projectId}/` });
+/** Fetches the served home page HTML for a project by its slug (public route). */
+async function servedHome(harnessApp: Harness, slug: string) {
+  return harnessApp.app.inject({ method: 'GET', url: `/sites/${slug}/` });
 }
 
 describe('partials expansion (HTTP)', () => {
   it('creates a partial, references it from a page, and expands it through publish', async () => {
     const client = await harness.signup();
-    const projectId = await client.createProject();
+    const slug = 'partials-single';
+    const projectId = await client.createProject('Site', slug);
     const proj = client.project(projectId);
 
     // 1. Create a reusable partial whose root renders visible text.
@@ -95,7 +96,7 @@ describe('partials expansion (HTTP)', () => {
     expect(pub.statusCode).toBe(200);
     expect((pub.json() as { release: { routes: number } }).release.routes).toBe(1);
 
-    const served = await servedHome(harness, projectId);
+    const served = await servedHome(harness, slug);
     expect(served.statusCode).toBe(200);
     expect(served.body).toContain('Reusable CTA');
     // The Heading from the partial is rendered in-place (partialRef consumed).
@@ -104,7 +105,8 @@ describe('partials expansion (HTTP)', () => {
 
   it('renders one partial referenced by multiple pages in each (reuse)', async () => {
     const client = await harness.signup();
-    const projectId = await client.createProject();
+    const slug = 'partials-reuse';
+    const projectId = await client.createProject('Site', slug);
     const proj = client.project(projectId);
 
     await proj.putContent(
@@ -124,17 +126,18 @@ describe('partials expansion (HTTP)', () => {
     expect(pub.statusCode).toBe(200);
     expect((pub.json() as { release: { routes: number } }).release.routes).toBe(2);
 
-    const home = await servedHome(harness, projectId);
+    const home = await servedHome(harness, slug);
     expect(home.body).toContain('Shared Footer Mark');
 
-    const about = await harness.app.inject({ method: 'GET', url: `/sites/${projectId}/about/` });
+    const about = await harness.app.inject({ method: 'GET', url: `/sites/${slug}/about/` });
     expect(about.statusCode).toBe(200);
     expect(about.body).toContain('Shared Footer Mark');
   });
 
   it('expands nested partials (partial A includes partial B)', async () => {
     const client = await harness.signup();
-    const projectId = await client.createProject();
+    const slug = 'partials-nested';
+    const projectId = await client.createProject('Site', slug);
     const proj = client.project(projectId);
 
     // Partial B: a leaf with visible text.
@@ -166,7 +169,7 @@ describe('partials expansion (HTTP)', () => {
     const pub = await publish(client, projectId);
     expect(pub.statusCode).toBe(200);
 
-    const served = await servedHome(harness, projectId);
+    const served = await servedHome(harness, slug);
     expect(served.statusCode).toBe(200);
     // Both the outer (A) and the nested inner (B) partial content render.
     expect(served.body).toContain('Outer Header');

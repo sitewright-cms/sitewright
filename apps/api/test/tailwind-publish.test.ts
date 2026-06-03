@@ -13,6 +13,7 @@ describe('Tailwind utility layer → publish', () => {
   let harness: Harness;
   let client: TestClient;
   let projectId: string;
+  const slug = 'site';
   let publishRoot: string;
   let mediaRoot: string;
 
@@ -21,7 +22,7 @@ describe('Tailwind utility layer → publish', () => {
     mediaRoot = await mkdtemp(join(tmpdir(), 'sw-tw-media-'));
     harness = await makeHarness({ publishRoot, mediaRoot });
     client = await harness.signup();
-    projectId = await client.createProject('Site', 'site');
+    projectId = await client.createProject('Site', slug);
   });
 
   afterEach(async () => {
@@ -54,18 +55,18 @@ describe('Tailwind utility layer → publish', () => {
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
 
     // Home page: class emitted + stylesheet linked at the site root.
-    const index = await client.get(`/sites/${projectId}/index.html`);
+    const index = await client.get(`/sites/${slug}/index.html`);
     expect(index.statusCode).toBe(200);
     expect(index.body).toContain('class="flex gap-4"');
     expect(index.body).toContain('<link rel="stylesheet" href="styles.css" />');
 
     // Nested page links the SAME sheet, rebased to its depth (about/index.html).
-    const aboutPage = await client.get(`/sites/${projectId}/about/index.html`);
+    const aboutPage = await client.get(`/sites/${slug}/about/index.html`);
     expect(aboutPage.statusCode).toBe(200);
     expect(aboutPage.body).toContain('<link rel="stylesheet" href="../styles.css" />');
 
     // The compiled sheet contains only the utilities actually used across pages.
-    const sheet = await client.get(`/sites/${projectId}/styles.css`);
+    const sheet = await client.get(`/sites/${slug}/styles.css`);
     expect(sheet.statusCode).toBe(200);
     expect(sheet.body).toContain('display:flex'); // .flex (minified)
     expect(sheet.body).toContain('.text-center');
@@ -84,11 +85,11 @@ describe('Tailwind utility layer → publish', () => {
     expect((await proj.putContent('page', 'home', page)).statusCode).toBe(200);
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
 
-    const index = await client.get(`/sites/${projectId}/index.html`);
+    const index = await client.get(`/sites/${slug}/index.html`);
     expect(index.statusCode).toBe(200);
     expect(index.body).not.toContain('rel="stylesheet"');
 
-    const sheet = await client.get(`/sites/${projectId}/styles.css`);
+    const sheet = await client.get(`/sites/${slug}/styles.css`);
     expect(sheet.statusCode).toBe(404); // never written
   });
 
@@ -104,11 +105,11 @@ describe('Tailwind utility layer → publish', () => {
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
 
     // The build manifest (.json) is not an allowlisted asset → not served.
-    expect((await client.get(`/sites/${projectId}/release.json`)).statusCode).toBe(404);
+    expect((await client.get(`/sites/${slug}/release.json`)).statusCode).toBe(404);
     // Traversal attempts out of the site dir are rejected.
-    expect((await client.get(`/sites/${projectId}/../../etc/passwd`)).statusCode).toBe(404);
+    expect((await client.get(`/sites/${slug}/../../etc/passwd`)).statusCode).toBe(404);
     // The legitimate stylesheet is served with the css content type.
-    const sheet = await client.get(`/sites/${projectId}/styles.css`);
+    const sheet = await client.get(`/sites/${slug}/styles.css`);
     expect(sheet.statusCode).toBe(200);
     expect(sheet.headers['content-type']).toContain('text/css');
   });

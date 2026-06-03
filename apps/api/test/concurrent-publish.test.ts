@@ -96,13 +96,20 @@ const homePage = {
   },
 };
 
-/** Stages a project with one valid page so a publish has something to build. */
-async function makeProject(client: TestClient): Promise<ProjectClient> {
-  const projectId = await client.createProject();
+let slugSeq = 0;
+
+/**
+ * Stages a project with one valid page so a publish has something to build.
+ * Returns the {@link ProjectClient} plus the project's `slug` — the
+ * published site is served (and stored) under `/sites/<slug>/`.
+ */
+async function makeProject(client: TestClient): Promise<{ proj: ProjectClient; slug: string }> {
+  const slug = `cp-site-${slugSeq++}`;
+  const projectId = await client.createProject('Site', slug);
   const proj = client.project(projectId);
   const put = await proj.putContent('page', 'home', homePage);
   expect(put.statusCode).toBeLessThan(300);
-  return proj;
+  return { proj, slug };
 }
 
 describe('concurrent publish guard (per-project, HTTP layer)', () => {
@@ -129,7 +136,7 @@ describe('concurrent publish guard (per-project, HTTP layer)', () => {
 
   it('rejects a second publish of project P while one is in flight, then allows a fresh one after release', async () => {
     const client = await harness.signup();
-    const proj = await makeProject(client);
+    const { proj, slug } = await makeProject(client);
 
     // Publish #1 — do not await; it parks on the runner gate (build in flight).
     const pub1 = client.post(`${proj.base}/publish`);
@@ -150,7 +157,7 @@ describe('concurrent publish guard (per-project, HTTP layer)', () => {
     expect(r1.statusCode).toBe(200);
     const body1 = r1.json() as { release: ReleaseManifest; url: string };
     expect(body1.release).toEqual(VALID_MANIFEST);
-    expect(body1.url).toBe(`/sites/${proj.projectId}/`);
+    expect(body1.url).toBe(`/sites/${slug}/`);
 
     // A fresh publish of P is now permitted (guard released in `finally`).
     const pub3 = client.post(`${proj.base}/publish`);
@@ -163,8 +170,8 @@ describe('concurrent publish guard (per-project, HTTP layer)', () => {
 
   it('does not block concurrent publishes of DIFFERENT projects', async () => {
     const client = await harness.signup();
-    const projA = await makeProject(client);
-    const projB = await makeProject(client);
+    const { proj: projA } = await makeProject(client);
+    const { proj: projB } = await makeProject(client);
 
     // Both publishes parked simultaneously — neither blocks the other.
     const pubA = client.post(`${projA.base}/publish`);
@@ -184,7 +191,7 @@ describe('concurrent publish guard (per-project, HTTP layer)', () => {
 
   it('releases the guard when the build runner throws (subsequent publish of P succeeds)', async () => {
     const client = await harness.signup();
-    const proj = await makeProject(client);
+    const { proj } = await makeProject(client);
 
     // Publish #1 fails inside the runner (non-PublishError → bubbles to 500).
     const pub1 = client.post(`${proj.base}/publish`);
@@ -208,7 +215,7 @@ describe('concurrent publish guard (per-project, HTTP layer)', () => {
   it('is per-project + tenant-scoped: another tenant cannot observe or affect P’s in-flight guard', async () => {
     const tenantA = await harness.signup();
     const tenantB = await harness.signup();
-    const projA = await makeProject(tenantA);
+    const { proj: projA } = await makeProject(tenantA);
 
     // Tenant A starts a publish of its project P; hold it in flight.
     const pubA = tenantA.post(`${projA.base}/publish`);
@@ -224,7 +231,7 @@ describe('concurrent publish guard (per-project, HTTP layer)', () => {
 
     // Tenant B publishing ITS OWN, different project proceeds unaffected by A's
     // in-flight build (independent guard key) → reaches the runner.
-    const projB = await makeProject(tenantB);
+    const { proj: projB } = await makeProject(tenantB);
     const pubB = tenantB.post(`${projB.base}/publish`);
     await runner.whenStarted(2);
     expect(runner.gates).toHaveLength(2);

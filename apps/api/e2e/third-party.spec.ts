@@ -18,7 +18,8 @@ test('thirdParty: enabled mode points the exported form at the external endpoint
   }
   expect((await api.put('/admin/settings', { data: { formModes: { thirdParty: true } } })).status()).toBe(200);
 
-  const proj = await api.post(`/projects`, { data: { name: 'TP Site', slug: `tp-${stamp}` } });
+  const slug = `tp-${stamp}`;
+  const proj = await api.post(`/projects`, { data: { name: 'TP Site', slug } });
   const projectId = (await proj.json()).project.id as string;
   const base = `/projects/${projectId}`;
 
@@ -33,7 +34,7 @@ test('thirdParty: enabled mode points the exported form at the external endpoint
   });
   expect((await api.post(`${base}/publish`)).status()).toBe(200);
 
-  const html = await (await api.get(`/sites/${projectId}/contact/`)).text();
+  const html = await (await api.get(`/sites/${slug}/contact/`)).text();
   expect(html).toContain(`data-sw-endpoint="${endpoint}"`);
   expect(html).not.toContain(`/f/${projectId}/`); // not the platform endpoint
   expect(html).not.toContain('contact.php');

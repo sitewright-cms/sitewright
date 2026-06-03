@@ -5,15 +5,16 @@ import {
   apiKeys,
   API_KEY_CAPABILITIES,
   type ApiKeyCapability,
-  type OrgRole,
+  type ProjectRole,
 } from '../db/schema.js';
 import { generateApiToken, hashApiToken, isApiTokenFormat } from '../auth/api-keys.js';
 import { ForbiddenError, NotFoundError, type ProjectContext } from './context.js';
 
-const WRITE_ROLES: ReadonlySet<OrgRole> = new Set(['owner', 'admin']);
+/** Only a project owner (a platform admin resolves to owner) may mint/list/revoke keys. */
+const WRITE_ROLES: ReadonlySet<ProjectRole> = new Set(['owner']);
 
 /** Role precedence — a key may never be minted above its creator's role. */
-const ROLE_RANK: Record<OrgRole, number> = { member: 1, admin: 2, owner: 3 };
+const ROLE_RANK: Record<ProjectRole, number> = { member: 1, owner: 2 };
 
 /** Maximum lifetime of a key from creation: one year. */
 export const MAX_API_KEY_TTL_MS = 1000 * 60 * 60 * 24 * 365;
@@ -22,7 +23,7 @@ const CAPABILITY_SET: ReadonlySet<string> = new Set(API_KEY_CAPABILITIES);
 
 export interface CreateApiKeyInput {
   name: string;
-  role: OrgRole;
+  role: ProjectRole;
   capabilities: ApiKeyCapability[];
   expiresAt: Date;
 }
@@ -31,7 +32,7 @@ export interface CreateApiKeyInput {
 export interface ApiKeyView {
   id: string;
   name: string;
-  role: OrgRole;
+  role: ProjectRole;
   capabilities: ApiKeyCapability[];
   tokenPrefix: string;
   expiresAt: Date;
@@ -43,9 +44,8 @@ export interface ApiKeyView {
 /** What a successfully-resolved bearer token grants. */
 export interface ResolvedApiKey {
   keyId: string;
-  orgId: string;
   projectId: string;
-  role: OrgRole;
+  role: ProjectRole;
   capabilities: ApiKeyCapability[];
   createdBy: string;
 }
@@ -65,11 +65,11 @@ function toView(row: typeof apiKeys.$inferSelect): ApiKeyView {
 }
 
 /**
- * Tenant- and project-scoped store for project API keys. Management operations
+ * Project-scoped store for project API keys. Management operations
  * ({@link create}/{@link list}/{@link revoke}) require a verified
- * {@link ProjectContext} and filter by `orgId`+`projectId`. {@link resolve} is
- * the unscoped auth entry point: it looks a token up by hash and returns its
- * scope, which the HTTP layer then matches against the requested project.
+ * {@link ProjectContext} and filter by `projectId`. {@link resolve} is the
+ * unscoped auth entry point: it looks a token up by hash and returns its scope,
+ * which the HTTP layer then matches against the requested project.
  */
 export class ApiKeyRepository {
   constructor(private readonly db: Database) {}
@@ -101,7 +101,6 @@ export class ApiKeyRepository {
     const capabilities = API_KEY_CAPABILITIES.filter((c) => input.capabilities.includes(c));
     const row: typeof apiKeys.$inferInsert = {
       id,
-      orgId: ctx.orgId,
       projectId: ctx.projectId,
       name: input.name,
       role: input.role,
@@ -142,7 +141,6 @@ export class ApiKeyRepository {
       .from(apiKeys)
       .where(
         and(
-          eq(apiKeys.orgId, ctx.orgId),
           eq(apiKeys.projectId, ctx.projectId),
           // Only user-minted PATs; ephemeral OAuth access tokens are not "keys" to manage.
           eq(apiKeys.source, 'pat'),
@@ -163,7 +161,7 @@ export class ApiKeyRepository {
       .select()
       .from(apiKeys)
       .where(
-        and(eq(apiKeys.id, keyId), eq(apiKeys.orgId, ctx.orgId), eq(apiKeys.projectId, ctx.projectId)),
+        and(eq(apiKeys.id, keyId), eq(apiKeys.projectId, ctx.projectId)),
       );
     if (!row) throw new NotFoundError('api key not found');
     await this.db.update(apiKeys).set({ revokedAt: now }).where(eq(apiKeys.id, keyId));
@@ -192,7 +190,6 @@ export class ApiKeyRepository {
       .catch(() => {});
     return {
       keyId: row.id,
-      orgId: row.orgId,
       projectId: row.projectId,
       role: row.role,
       capabilities: row.capabilities,

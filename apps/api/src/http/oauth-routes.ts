@@ -3,7 +3,7 @@ import type { Database } from '../db/client.js';
 import { OAuthError, OAuthRepository, type Grant } from '../repo/oauth.js';
 import { isValidS256Challenge } from '../auth/pkce.js';
 import { API_KEY_CAPABILITIES, type ApiKeyCapability } from '../db/schema.js';
-import { listOrgsForUser, tenantContext } from '../repo/accounts.js';
+import { listProjectAccessForUser, resolveProjectRole } from '../repo/accounts.js';
 import type { ProjectRepository } from '../repo/projects.js';
 import { OAuthClientError, isLoopbackHttp, type OAuthClientRepository } from '../repo/oauth-clients.js';
 import { ForbiddenError, NotFoundError } from '../repo/context.js';
@@ -105,17 +105,11 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
     return { name: client.name, allowsRedirect: (uri) => client.redirectUris.includes(uri) };
   }
 
-  // The user's (org:project) options for a consent/device picker. (2 queries/org —
-  // fine for an agency with a handful of orgs; batch if multi-tenant scales this.)
+  // The user's project options for a consent/device picker — every project they can reach (a
+  // platform admin → all; everyone else → their memberships). The option value is the project id.
   async function projectOptions(userId: string): Promise<Array<{ value: string; label: string }>> {
-    const options: Array<{ value: string; label: string }> = [];
-    for (const org of await listOrgsForUser(db, userId)) {
-      const ctx = await tenantContext(db, userId, org.id);
-      for (const project of await projects.list(ctx)) {
-        options.push({ value: `${org.id}:${project.id}`, label: `${project.name} — ${org.name}` });
-      }
-    }
-    return options;
+    const access = await listProjectAccessForUser(db, userId);
+    return access.map((p) => ({ value: p.projectId, label: p.projectName }));
   }
 
   // ---- Discovery (RFC 8414 + RFC 9728) ----
@@ -281,18 +275,16 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
       const scope = parseScope(b.scope);
       if (scope.length === 0) return back({ error: 'invalid_scope' });
 
-      const projectField = b.project ?? '';
-      const sep = projectField.indexOf(':');
-      const orgId = sep > 0 ? projectField.slice(0, sep) : '';
-      const projectId = sep > 0 ? projectField.slice(sep + 1) : '';
-      if (!orgId || !projectId) return back({ error: 'invalid_request' });
+      const projectId = b.project ?? '';
+      if (!projectId) return back({ error: 'invalid_request' });
 
-      // Verify the user is a member of the chosen project's org, resolve their role
-      // (frozen into the grant), and issue the code — all under one error guard.
+      // Verify the user can reach the chosen project, resolve their effective role (frozen into the
+      // grant), and issue the code — all under one error guard.
       try {
-        const ctx = await tenantContext(db, userId, orgId);
-        await projects.get(ctx, projectId); // 404 if the project isn't in this org
-        const grant: Grant = { clientId, userId, orgId, projectId, role: ctx.role, scope };
+        const role = await resolveProjectRole(db, userId, projectId);
+        if (!role) return back({ error: 'access_denied' });
+        await projects.get(projectId); // 404 if the project no longer exists
+        const grant: Grant = { clientId, userId, projectId, role, scope };
         const code = await oauth.createAuthCode(grant, redirectUri, b.code_challenge);
         return back({ code });
       } catch (err) {
@@ -394,15 +386,13 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
         await oauth.denyDevice(userCode);
         return result('Request denied', 'You can close this window.');
       }
-      const projectField = b.project ?? '';
-      const sep = projectField.indexOf(':');
-      const orgId = sep > 0 ? projectField.slice(0, sep) : '';
-      const projectId = sep > 0 ? projectField.slice(sep + 1) : '';
-      if (!orgId || !projectId) return result('Invalid request', 'No project was selected.');
+      const projectId = b.project ?? '';
+      if (!projectId) return result('Invalid request', 'No project was selected.');
       try {
-        const ctx = await tenantContext(db, userId, orgId);
-        await projects.get(ctx, projectId);
-        await oauth.approveDevice({ userCode, userId, orgId, projectId, role: ctx.role });
+        const role = await resolveProjectRole(db, userId, projectId);
+        if (!role) return result('Not allowed', 'You do not have access to that project.');
+        await projects.get(projectId);
+        await oauth.approveDevice({ userCode, userId, projectId, role });
       } catch (err) {
         if (err instanceof ForbiddenError || err instanceof NotFoundError) {
           return result('Not allowed', 'You are not a member of that project.');

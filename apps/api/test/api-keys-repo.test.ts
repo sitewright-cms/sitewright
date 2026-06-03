@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { makeTestDb } from './helpers.js';
-import { registerAccount, tenantContext } from '../src/repo/accounts.js';
+import { registerAccount, addProjectMember } from '../src/repo/accounts.js';
 import { ProjectRepository } from '../src/repo/projects.js';
 import { ApiKeyRepository, MAX_API_KEY_TTL_MS } from '../src/repo/api-keys.js';
 import { ForbiddenError, NotFoundError, type ProjectContext } from '../src/repo/context.js';
@@ -10,8 +10,8 @@ import type { Database } from '../src/db/client.js';
 let db: Database;
 let keys: ApiKeyRepository;
 let pctxA: ProjectContext; // owner of project A
-let pctxB: ProjectContext; // owner of project B (different org)
-let memberCtxA: ProjectContext; // a 'member' (read-only) in org A
+let pctxB: ProjectContext; // owner of project B (a different project — isolation is by projectId)
+let memberCtxA: ProjectContext; // a 'member' (cannot manage keys) on project A
 
 const future = () => new Date(Date.now() + 1000 * 60 * 60 * 24); // +1 day
 
@@ -20,14 +20,14 @@ beforeEach(async () => {
   keys = new ApiKeyRepository(db);
   const projects = new ProjectRepository(db);
 
-  const a = await registerAccount(db, 'a@acme.test', 'pw-secret-1', 'Acme');
-  const b = await registerAccount(db, 'b@globex.test', 'pw-secret-1', 'Globex');
-  const ctxA = await tenantContext(db, a.userId, a.orgId);
-  const ctxB = await tenantContext(db, b.userId, b.orgId);
-  const projA = await projects.create(ctxA, { name: 'Site A', slug: 'site-a' });
-  const projB = await projects.create(ctxB, { name: 'Site B', slug: 'site-b' });
-  pctxA = { ...ctxA, projectId: projA.id };
-  pctxB = { ...ctxB, projectId: projB.id };
+  const a = await registerAccount(db, 'a@acme.test', 'pw-secret-1');
+  const b = await registerAccount(db, 'b@globex.test', 'pw-secret-1');
+  const projA = await projects.create({ name: 'Site A', slug: 'site-a' });
+  const projB = await projects.create({ name: 'Site B', slug: 'site-b' });
+  await addProjectMember(db, a.userId, projA.id, 'owner');
+  await addProjectMember(db, b.userId, projB.id, 'owner');
+  pctxA = { userId: a.userId, projectId: projA.id, role: 'owner' };
+  pctxB = { userId: b.userId, projectId: projB.id, role: 'owner' };
   memberCtxA = { ...pctxA, role: 'member' };
 });
 
@@ -35,7 +35,7 @@ describe('ApiKeyRepository.create', () => {
   it('returns the raw token once and stores only its hash', async () => {
     const { token, key } = await keys.create(pctxA, {
       name: 'CI',
-      role: 'admin',
+      role: 'owner',
       capabilities: ['content:read', 'content:write'],
       expiresAt: future(),
     });
@@ -59,10 +59,11 @@ describe('ApiKeyRepository.create', () => {
   });
 
   it('refuses to mint a key above the creator’s own role (no escalation)', async () => {
-    // An admin cannot mint an owner-scoped key.
-    const adminCtx: ProjectContext = { ...pctxA, role: 'admin' };
+    // The project role set is now just {owner, member} (no 'admin' project role). A 'member'
+    // ranks below 'owner', so a member-scoped caller can never mint an owner-scoped key — this
+    // is rejected (the member also fails the write-role gate, so either guard forbids it).
     await expect(
-      keys.create(adminCtx, { name: 'x', role: 'owner', capabilities: ['content:read'], expiresAt: future() }),
+      keys.create(memberCtxA, { name: 'x', role: 'owner', capabilities: ['content:read'], expiresAt: future() }),
     ).rejects.toThrow(ForbiddenError);
   });
 
@@ -70,7 +71,7 @@ describe('ApiKeyRepository.create', () => {
     await expect(
       keys.create(pctxA, {
         name: 'x',
-        role: 'admin',
+        role: 'owner',
         capabilities: ['content:read', 'admin:everything' as never],
         expiresAt: future(),
       }),
@@ -79,18 +80,18 @@ describe('ApiKeyRepository.create', () => {
 
   it('rejects an empty capability set', async () => {
     await expect(
-      keys.create(pctxA, { name: 'x', role: 'admin', capabilities: [], expiresAt: future() }),
+      keys.create(pctxA, { name: 'x', role: 'owner', capabilities: [], expiresAt: future() }),
     ).rejects.toThrow();
   });
 
   it('rejects an expiry in the past or beyond the max TTL', async () => {
     await expect(
-      keys.create(pctxA, { name: 'x', role: 'admin', capabilities: ['content:read'], expiresAt: new Date(Date.now() - 1000) }),
+      keys.create(pctxA, { name: 'x', role: 'owner', capabilities: ['content:read'], expiresAt: new Date(Date.now() - 1000) }),
     ).rejects.toThrow();
     await expect(
       keys.create(pctxA, {
         name: 'x',
-        role: 'admin',
+        role: 'owner',
         capabilities: ['content:read'],
         expiresAt: new Date(Date.now() + MAX_API_KEY_TTL_MS + 60_000),
       }),
@@ -100,7 +101,7 @@ describe('ApiKeyRepository.create', () => {
 
 describe('ApiKeyRepository.list / revoke', () => {
   it('lists keys for the project only (never another project’s), redacted', async () => {
-    await keys.create(pctxA, { name: 'A-key', role: 'admin', capabilities: ['content:read'], expiresAt: future() });
+    await keys.create(pctxA, { name: 'A-key', role: 'owner', capabilities: ['content:read'], expiresAt: future() });
     await keys.create(pctxB, { name: 'B-key', role: 'owner', capabilities: ['content:read'], expiresAt: future() });
     const listA = await keys.list(pctxA);
     expect(listA).toHaveLength(1);
@@ -111,7 +112,7 @@ describe('ApiKeyRepository.list / revoke', () => {
   it('excludes revoked keys from the management list (active keys only)', async () => {
     const { key } = await keys.create(pctxA, {
       name: 'x',
-      role: 'admin',
+      role: 'owner',
       capabilities: ['content:read'],
       expiresAt: future(),
     });
@@ -123,7 +124,7 @@ describe('ApiKeyRepository.list / revoke', () => {
   it('revokes a key so it no longer resolves, scoped to the project', async () => {
     const { token, key } = await keys.create(pctxA, {
       name: 'x',
-      role: 'admin',
+      role: 'owner',
       capabilities: ['content:read'],
       expiresAt: future(),
     });
@@ -140,7 +141,7 @@ describe('ApiKeyRepository.resolve', () => {
     expect(await keys.resolve('swk_nope')).toBeNull();
     const { token } = await keys.create(pctxA, {
       name: 'soon',
-      role: 'admin',
+      role: 'owner',
       capabilities: ['content:read'],
       // Already expired by the time we resolve with a later `now`.
       expiresAt: new Date(Date.now() + 1000),
@@ -151,15 +152,14 @@ describe('ApiKeyRepository.resolve', () => {
   it('returns the token’s scope + capabilities and stamps last-used', async () => {
     const { token, key } = await keys.create(pctxA, {
       name: 'x',
-      role: 'admin',
+      role: 'owner',
       capabilities: ['content:read', 'publish'],
       expiresAt: future(),
     });
     const resolved = await keys.resolve(token);
     expect(resolved).toMatchObject({
-      orgId: pctxA.orgId,
       projectId: pctxA.projectId,
-      role: 'admin',
+      role: 'owner',
       createdBy: pctxA.userId,
     });
     expect(resolved?.capabilities).toEqual(['content:read', 'publish']);

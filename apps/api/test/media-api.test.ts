@@ -31,7 +31,7 @@ function token(res: { cookies: Array<{ name: string; value: string }> }): string
   return t;
 }
 
-async function setup(email: string, orgName: string) {
+async function setup(email: string, orgName: string, slug = 'site') {
   const reg = await app.inject({
     method: 'POST',
     url: '/auth/register',
@@ -43,7 +43,7 @@ async function setup(email: string, orgName: string) {
     method: 'POST',
     url: `/orgs/${orgId}/projects`,
     cookies: { sw_session: t },
-    payload: { name: 'Site', slug: 'site' },
+    payload: { name: 'Site', slug },
   });
   const projectId = (proj.json() as { project: { id: string } }).project.id;
   return { t, orgId, projectId };
@@ -137,8 +137,8 @@ describe('media API', () => {
   });
 
   it('forbids uploading to / listing another tenant’s project', async () => {
-    const a = await setup('a@acme.test', 'Acme');
-    const b = await setup('b@globex.test', 'Globex');
+    const a = await setup('a@acme.test', 'Acme', 'site-a');
+    const b = await setup('b@globex.test', 'Globex', 'site-b');
     const upload = await app.inject({
       method: 'POST',
       url: `/orgs/${a.orgId}/projects/${a.projectId}/media`,

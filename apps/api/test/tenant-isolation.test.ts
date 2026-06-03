@@ -45,11 +45,11 @@ async function seedAllKinds(a: TestClient, projectId: string): Promise<void> {
   expect((await proj.putContent('settings', 'settings', settings)).statusCode).toBe(200);
 }
 
-// Cross-tenant probes are sent to A's exact org/project path BUT with B's
-// session. They must be rejected either at the org gate (tenantContext →
-// ForbiddenError → 403, because B is not a member of A's org) or, when B uses
-// its own org with A's projectId, at the project gate (projects.get →
-// NotFoundError → 404). Either is acceptable isolation; we assert one of [403, 404].
+// Cross-tenant probes are sent to A's exact project path BUT with B's session. In the flat model B
+// is not a member of A's project, so the single access gate (resolveProjectRole → null) rejects
+// with 403. (A Bearer key bound to another project would 404 instead — that path is covered by the
+// API-key suite; these probes are session-based.) We assert one of [403, 404] to stay robust to the
+// per-route choice, but for a session probe the expected code is 403.
 const ISOLATION_CODES = [403, 404];
 
 describe('multi-tenant isolation + role enforcement (HTTP layer)', () => {
@@ -117,21 +117,24 @@ describe('multi-tenant isolation + role enforcement (HTTP layer)', () => {
     const projectId = await a.createProject('Site', 'site-a');
     await a.project(projectId).putContent('page', 'home', page);
 
-    // B lists A's projects (A's org path, B's session) → blocked (403, not a member).
+    // Flat model: the list returns the CALLER's accessible projects (orgId is vestigial), so B's
+    // list is its own — 200, empty, and never leaks A's project.
     const bListProjects = await b.get(`/orgs/${a.orgId}/projects`);
-    expect(ISOLATION_CODES).toContain(bListProjects.statusCode);
+    expect(bListProjects.statusCode).toBe(200);
+    expect((bListProjects.json() as { projects: unknown[] }).projects).toHaveLength(0);
     expect(bListProjects.body).not.toContain(projectId);
 
-    // B reads A's single project by id → blocked.
+    // B reads A's single project by id → blocked (non-member → 403).
     const bGetProject = await b.get(`/orgs/${a.orgId}/projects/${projectId}`);
     expect(ISOLATION_CODES).toContain(bGetProject.statusCode);
 
-    // B tries to create a project under A's orgId → blocked at the org gate.
+    // B "creating under A's org" only creates B's OWN project (orgId is vestigial); it never
+    // touches A's tenant. Confirm A's list is unchanged at exactly its one project.
     const bCreate = await b.post(`/orgs/${a.orgId}/projects`, { name: 'Intruder', slug: 'intruder' });
-    expect(ISOLATION_CODES).toContain(bCreate.statusCode);
-    // And confirm nothing was actually created in A's org (A's own list stays at 1).
+    expect(bCreate.statusCode).toBe(201);
     const aProjects = await a.get(`/orgs/${a.orgId}/projects`);
-    expect((aProjects.json() as { projects: unknown[] }).projects).toHaveLength(1);
+    const aProjectIds = (aProjects.json() as { projects: Array<{ id: string }> }).projects.map((p) => p.id);
+    expect(aProjectIds).toEqual([projectId]);
 
     // B deletes A's project → blocked.
     const bDeleteProject = await b.del(`/orgs/${a.orgId}/projects/${projectId}`);

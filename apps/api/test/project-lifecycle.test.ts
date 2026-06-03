@@ -9,22 +9,19 @@ afterEach(async () => {
   await h?.close();
 });
 
-// Cross-tenant probes hit A's exact org/project path with B's session. They are
-// rejected either at the org gate (tenantContext → ForbiddenError → 403, because
-// B is not a member of A's org) or, when B uses its own org with A's projectId,
-// at the project gate (projects.get → NotFoundError → 404). Either is acceptable
-// isolation; we assert one of [403, 404]. (Mirrors tenant-isolation.test.ts.)
-const ISOLATION_CODES = [403, 404];
+// Flat tenancy: `:orgId` in the path is vestigial. A signed-in non-member hitting a
+// specific project they don't belong to is denied with 403 (they cannot probe other
+// projects). (Mirrors tenant-isolation.test.ts.)
 
 // A minimal valid page payload (mirrors the existing content suites).
 const page = { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' } };
 
 interface ProjectShape {
   id: string;
-  orgId: string;
   name: string;
   slug: string;
-  createdAt: string;
+  createdAt?: string;
+  role?: string;
 }
 interface OrgSummary {
   id: string;
@@ -35,7 +32,7 @@ interface OrgSummary {
 
 describe('organization + project lifecycle (HTTP layer)', () => {
   // ---- 1. Create → echo → list → get-by-id ----
-  it('creates a project that echoes name/slug, appears in the org list, and is fetchable by id', async () => {
+  it('creates a project that echoes name/slug, appears in the accessible-project list, and is fetchable by id', async () => {
     h = await makeHarness();
     const a = await h.signup({ orgName: 'Acme' });
 
@@ -43,9 +40,10 @@ describe('organization + project lifecycle (HTTP layer)', () => {
     expect(create.statusCode).toBe(201);
     const created = (create.json() as { project: ProjectShape }).project;
     expect(created.id).toBeTruthy();
-    expect(created).toMatchObject({ orgId: a.orgId, name: 'My Site', slug: 'my-site' });
+    // Flat model: the project record carries no orgId — just name/slug.
+    expect(created).toMatchObject({ name: 'My Site', slug: 'my-site' });
 
-    // Appears in the org's project list.
+    // Appears in the caller's accessible-project list (creator is the owner).
     const list = await a.get(`/orgs/${a.orgId}/projects`);
     expect(list.statusCode).toBe(200);
     const projects = (list.json() as { projects: ProjectShape[] }).projects;
@@ -62,12 +60,13 @@ describe('organization + project lifecycle (HTTP layer)', () => {
       slug: 'my-site',
     });
 
-    // GET-by-id for an unknown project id → 404 (no leak).
+    // GET-by-id for an unknown project id → 403 (the caller holds no membership for it;
+    // a clean deny that does not reveal whether the project exists).
     const missing = await a.get(`/orgs/${a.orgId}/projects/${randomUUID()}`);
-    expect(missing.statusCode).toBe(404);
+    expect(missing.statusCode).toBe(403);
   });
 
-  // ---- 2. Slug rules (org-scoped) ----
+  // ---- 2. Slug rules (instance-unique) ----
   it('rejects invalid slugs (uppercase / spaces / special chars) with 400', async () => {
     h = await makeHarness();
     const a = await h.signup({ orgName: 'Acme' });
@@ -82,36 +81,39 @@ describe('organization + project lifecycle (HTTP layer)', () => {
     expect((list.json() as { projects: unknown[] }).projects).toHaveLength(0);
   });
 
-  it('accepts a valid slug but rejects a duplicate slug within the same org with 409', async () => {
+  it('accepts a valid slug but rejects a duplicate slug from the same caller with 409', async () => {
     h = await makeHarness();
     const a = await h.signup({ orgName: 'Acme' });
 
     const first = await a.post(`/orgs/${a.orgId}/projects`, { name: 'Site One', slug: 'shared-slug' });
     expect(first.statusCode).toBe(201);
 
-    // Duplicate slug in the SAME org → ConflictError → 409.
+    // Duplicate slug → ConflictError → 409 (slugs are instance-unique).
     const dup = await a.post(`/orgs/${a.orgId}/projects`, { name: 'Site Two', slug: 'shared-slug' });
     expect(dup.statusCode).toBe(409);
 
-    // The org still has exactly the one original project (the dup was not created).
+    // The caller still has exactly the one original project (the dup was not created).
     const list = await a.get(`/orgs/${a.orgId}/projects`);
     expect((list.json() as { projects: unknown[] }).projects).toHaveLength(1);
   });
 
-  it('allows the SAME slug in a DIFFERENT org (slugs are org-scoped)', async () => {
+  it('rejects a duplicate slug even from a DIFFERENT user (slugs are instance-unique)', async () => {
     h = await makeHarness();
     const a = await h.signup({ orgName: 'Acme' });
     const b = await h.signup({ orgName: 'Globex' });
 
     expect((await a.post(`/orgs/${a.orgId}/projects`, { name: 'A Site', slug: 'shared-slug' })).statusCode).toBe(201);
-    // Same slug, different org → allowed (tenant isolation).
+    // Flat model: slugs are instance-unique — a different user reusing the slug is REJECTED (409).
     const bCreate = await b.post(`/orgs/${b.orgId}/projects`, { name: 'B Site', slug: 'shared-slug' });
-    expect(bCreate.statusCode).toBe(201);
-    expect((bCreate.json() as { project: ProjectShape }).project.slug).toBe('shared-slug');
+    expect(bCreate.statusCode).toBe(409);
+
+    // B created nothing.
+    const bList = await b.get(`/orgs/${b.orgId}/projects`);
+    expect((bList.json() as { projects: unknown[] }).projects).toHaveLength(0);
   });
 
   // ---- 3. Delete lifecycle ----
-  it('deletes an (empty) project so it leaves the list and is no longer fetchable (404)', async () => {
+  it('deletes an (empty) project so it leaves the list and is no longer reachable (403)', async () => {
     h = await makeHarness();
     const a = await h.signup({ orgName: 'Acme' });
     const projectId = await a.createProject('Site', 'site-a');
@@ -128,12 +130,13 @@ describe('organization + project lifecycle (HTTP layer)', () => {
     const list = await a.get(`/orgs/${a.orgId}/projects`);
     expect((list.json() as { projects: ProjectShape[] }).projects).toHaveLength(0);
 
-    // GET-by-id of the deleted project → 404.
-    expect((await a.get(`/orgs/${a.orgId}/projects/${projectId}`)).statusCode).toBe(404);
+    // Delete also removed the owner's membership row, so the (former) owner now resolves
+    // no role for the gone project → 403 (a clean deny that doesn't reveal existence).
+    expect((await a.get(`/orgs/${a.orgId}/projects/${projectId}`)).statusCode).toBe(403);
 
-    // Its (would-be) content is no longer accessible: resolveProject → projects.get → 404.
-    expect((await a.get(`${base}/content/page/home`)).statusCode).toBe(404);
-    expect((await a.get(`${base}/content/page`)).statusCode).toBe(404);
+    // Its (would-be) content is no longer accessible: resolveProject → no role → 403.
+    expect((await a.get(`${base}/content/page/home`)).statusCode).toBe(403);
+    expect((await a.get(`${base}/content/page`)).statusCode).toBe(403);
   });
 
   // Regression: a project with content must be deletable. `content.project_id`
@@ -154,17 +157,20 @@ describe('organization + project lifecycle (HTTP layer)', () => {
     const del = await a.del(`/orgs/${a.orgId}/projects/${projectId}`);
     expect(del.statusCode).toBe(204);
 
-    // The project and its content are gone.
-    expect((await a.get(`/orgs/${a.orgId}/projects/${projectId}`)).statusCode).toBe(404);
-    expect((await a.get(`${base}/content/page/home`)).statusCode).toBe(404);
+    // The project and its content are gone; the (former) owner's membership went with it,
+    // so re-reading now resolves no role → 403.
+    expect((await a.get(`/orgs/${a.orgId}/projects/${projectId}`)).statusCode).toBe(403);
+    expect((await a.get(`${base}/content/page/home`)).statusCode).toBe(403);
   });
 
-  it('returns 404 when deleting a non-existent project', async () => {
+  it('returns 403 when deleting a project the caller has no membership for (incl. non-existent)', async () => {
     h = await makeHarness();
     const a = await h.signup({ orgName: 'Acme' });
 
+    // No membership for a random/unknown project id → resolveProjectRole null → 403
+    // (a clean deny that does not reveal whether the project exists).
     const del = await a.del(`/orgs/${a.orgId}/projects/${randomUUID()}`);
-    expect(del.statusCode).toBe(404);
+    expect(del.statusCode).toBe(403);
   });
 
   // ---- 4. Rename / update ----
@@ -176,8 +182,8 @@ describe('organization + project lifecycle (HTTP layer)', () => {
     // Intentionally empty: no update route to exercise.
   });
 
-  // ---- 5. /me + /orgs reflect the user's orgs and owner role ----
-  it('exposes the user’s org with owner role via /me and /orgs', async () => {
+  // ---- 5. /me + /orgs reflect the synthetic platform org + owner role ----
+  it('exposes the synthetic platform org with owner role via /me and /orgs', async () => {
     h = await makeHarness();
     const a = await h.signup({ orgName: 'Acme' });
 
@@ -185,65 +191,66 @@ describe('organization + project lifecycle (HTTP layer)', () => {
     expect(me.statusCode).toBe(200);
     const meBody = me.json() as { userId: string; orgs: OrgSummary[] };
     expect(meBody.userId).toBe(a.userId);
+    // Flat model: a single synthetic platform org that every user "owns" (orgName is ignored).
     expect(meBody.orgs).toHaveLength(1);
-    expect(meBody.orgs[0]).toMatchObject({ id: a.orgId, name: 'Acme', role: 'owner' });
-    expect(meBody.orgs[0]?.slug).toBe('acme');
+    expect(meBody.orgs[0]).toMatchObject({ id: a.orgId, role: 'owner' });
 
     const orgs = await a.get('/orgs');
     expect(orgs.statusCode).toBe(200);
     const orgsBody = orgs.json() as { orgs: OrgSummary[] };
     expect(orgsBody.orgs).toHaveLength(1);
-    expect(orgsBody.orgs[0]).toMatchObject({ id: a.orgId, name: 'Acme', role: 'owner' });
+    expect(orgsBody.orgs[0]).toMatchObject({ id: a.orgId, role: 'owner' });
   });
 
-  it('does not reveal another tenant’s org via /me or /orgs', async () => {
+  it('does not reveal another tenant’s projects via /me (project-scoped access is isolated)', async () => {
     h = await makeHarness();
     const a = await h.signup({ orgName: 'Acme' });
     const b = await h.signup({ orgName: 'Globex' });
+    const aProjectId = await a.createProject('Secret Site', 'secret-site');
 
-    // B's /me and /orgs list only B's org, never A's.
+    // Flat model: every user shares the same synthetic platform org, but isolation lives at the
+    // PROJECT layer. B's /me surfaces no project access at all (B owns none) and never leaks A's.
     const bMe = await b.get('/me');
-    const bMeOrgs = (bMe.json() as { orgs: OrgSummary[] }).orgs;
-    expect(bMeOrgs).toHaveLength(1);
-    expect(bMeOrgs[0]?.id).toBe(b.orgId);
-    expect(bMe.body).not.toContain(a.orgId);
-    expect(bMe.body).not.toContain('Acme');
+    const bBody = bMe.json() as { projectAccess: Array<{ projectId: string }> };
+    expect(bBody.projectAccess).toHaveLength(0);
+    expect(bMe.body).not.toContain(aProjectId);
+    expect(bMe.body).not.toContain('secret-site');
 
-    const bOrgs = await b.get('/orgs');
-    expect((bOrgs.json() as { orgs: OrgSummary[] }).orgs.map((o) => o.id)).toEqual([b.orgId]);
-    expect(bOrgs.body).not.toContain(a.orgId);
+    // A's own /me does surface A's project; B's does not.
+    const aMe = await a.get('/me');
+    const aAccess = (aMe.json() as { projectAccess: Array<{ projectId: string }> }).projectAccess;
+    expect(aAccess.map((p) => p.projectId)).toEqual([aProjectId]);
   });
 
   // ---- 6. Cross-tenant project access + anonymous auth ----
-  it('blocks tenant B from create/list/get/delete against tenant A’s org and project (403/404)', async () => {
+  it('isolates tenant B from get/delete of tenant A’s project; B’s list never leaks A’s data', async () => {
     h = await makeHarness();
     const a = await h.signup({ orgName: 'Acme' });
     const b = await h.signup({ orgName: 'Globex' });
     const projectId = await a.createProject('Secret Site', 'secret-site');
 
-    // B lists A's projects → blocked, no leak.
+    // Flat model: the project list returns the CALLER's accessible projects (orgId is vestigial),
+    // so B's list is its own — 200, empty, and never leaks A's project.
     const bList = await b.get(`/orgs/${a.orgId}/projects`);
-    expect(ISOLATION_CODES).toContain(bList.statusCode);
+    expect(bList.statusCode).toBe(200);
+    expect((bList.json() as { projects: ProjectShape[] }).projects).toHaveLength(0);
     expect(bList.body).not.toContain(projectId);
     expect(bList.body).not.toContain('secret-site');
 
-    // B gets A's project by id → blocked.
+    // B gets A's project by id → 403 (non-member; no leak).
     const bGet = await b.get(`/orgs/${a.orgId}/projects/${projectId}`);
-    expect(ISOLATION_CODES).toContain(bGet.statusCode);
+    expect(bGet.statusCode).toBe(403);
     expect(bGet.body).not.toContain('secret-site');
 
-    // B creates a project under A's org → blocked at the org gate.
-    const bCreate = await b.post(`/orgs/${a.orgId}/projects`, { name: 'Intruder', slug: 'intruder' });
-    expect(ISOLATION_CODES).toContain(bCreate.statusCode);
-
-    // B deletes A's project → blocked.
+    // B deletes A's project → 403 (non-member).
     const bDel = await b.del(`/orgs/${a.orgId}/projects/${projectId}`);
-    expect(ISOLATION_CODES).toContain(bDel.statusCode);
+    expect(bDel.statusCode).toBe(403);
 
-    // Sanity: nothing changed in A's org — the project is still there for A.
+    // Sanity: A's project is untouched — still there for A, and B's own list is empty.
     const aList = await a.get(`/orgs/${a.orgId}/projects`);
     expect((aList.json() as { projects: ProjectShape[] }).projects).toHaveLength(1);
     expect((await a.get(`/orgs/${a.orgId}/projects/${projectId}`)).statusCode).toBe(200);
+    expect((await b.get(`/orgs/${b.orgId}/projects`)).json()).toMatchObject({ projects: [] });
   });
 
   it('rejects anonymous (no-cookie) requests to the project lifecycle routes with 401', async () => {

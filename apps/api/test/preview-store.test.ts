@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { PreviewStore } from '../src/http/preview-store.js';
 
-const scope = { orgId: 'o', projectId: 'p', userId: 'u' };
+const scope = { projectId: 'p', userId: 'u' };
 
 describe('PreviewStore', () => {
   it('round-trips html for a valid, scope-matching token', () => {
@@ -14,10 +14,9 @@ describe('PreviewStore', () => {
     expect(new PreviewStore().get('nope', scope)).toBeNull();
   });
 
-  it('rejects a token used from a different org/project/user', () => {
+  it('rejects a token used from a different project/user', () => {
     const store = new PreviewStore();
     const token = store.put('x', scope);
-    expect(store.get(token, { ...scope, orgId: 'other' })).toBeNull();
     expect(store.get(token, { ...scope, projectId: 'other' })).toBeNull();
     expect(store.get(token, { ...scope, userId: 'other' })).toBeNull();
   });

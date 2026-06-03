@@ -5,8 +5,13 @@ import { createApp } from '../src/http/app.js';
 
 let app: FastifyInstance;
 
+// The owner registers as `owner@acme.test`; listing it in `adminEmails` makes that user a
+// platform (instance) admin, which is the easy way to exercise the platform-admin endpoints
+// (platform invites, platform invite listing) in an HTTP test.
+const ADMIN_EMAIL = 'owner@acme.test';
+
 beforeEach(async () => {
-  app = await createApp({ db: await makeTestDb() });
+  app = await createApp({ db: await makeTestDb(), adminEmails: [ADMIN_EMAIL] });
   await app.ready();
 });
 
@@ -40,12 +45,13 @@ describe('invites API', () => {
     const inviteToken = (inv.json() as { token: string }).token;
 
     // The token holder can peek to see context — but the email is masked, not disclosed.
+    // Flat model: the peek no longer carries an orgName (there is no org layer).
     const peek = await app.inject({ method: 'GET', url: `/invites/peek?token=${inviteToken}` });
-    expect(peek.json()).toMatchObject({ invite: { role: 'member', orgName: 'Acme', projectName: 'site-a' } });
+    expect(peek.json()).toMatchObject({ invite: { role: 'member', projectName: 'site-a' } });
     expect((peek.json() as { invite: { email: string } }).invite.email).not.toBe('client@acme.test');
 
-    // The client registers (their own throwaway org) and accepts.
-    const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'client@acme.test', password: 'pw-secret-1', orgName: 'Client Personal' } });
+    // The client registers (orgName is optional/ignored) and accepts.
+    const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'client@acme.test', password: 'pw-secret-1' } });
     const clientT = token(reg);
     const accept = await app.inject({ method: 'POST', url: '/invites/accept', cookies: { sw_session: clientT }, payload: { token: inviteToken } });
     expect(accept.statusCode).toBe(200);
@@ -58,26 +64,49 @@ describe('invites API', () => {
 
     // The client can read project A …
     expect((await app.inject({ method: 'GET', url: `/orgs/${orgId}/projects/${projA}/content/page/home`, cookies: { sw_session: clientT } })).statusCode).toBe(200);
-    // … but NOT project B in the same org (no membership → 403).
+    // … but NOT project B (no membership → 403).
     expect((await app.inject({ method: 'GET', url: `/orgs/${orgId}/projects/${projB}/content/page/home`, cookies: { sw_session: clientT } })).statusCode).toBe(403);
-    // … and is not an org member (cannot list org projects).
-    expect((await app.inject({ method: 'GET', url: `/orgs/${orgId}/projects`, cookies: { sw_session: clientT } })).statusCode).toBe(403);
+    // … and the project list returns ONLY the client's membership (project A), never project B.
+    const projList = await app.inject({ method: 'GET', url: `/orgs/${orgId}/projects`, cookies: { sw_session: clientT } });
+    expect(projList.statusCode).toBe(200);
+    expect((projList.json() as { projects: Array<{ id: string }> }).projects.map((p) => p.id)).toEqual([projA]);
   });
 
-  it('developer invite → accept → org-wide admin access', async () => {
+  it('platform-admin invite → accept → instance admin reaching ALL projects', async () => {
+    // Owner (an instance admin via adminEmails) owns a project nobody else is a member of.
     const { t, orgId } = await registerOwner('owner@acme.test', 'Acme');
-    await makeProject(t, orgId, 'site');
-    const inv = await app.inject({ method: 'POST', url: `/orgs/${orgId}/invites`, cookies: { sw_session: t }, payload: { email: 'dev@acme.test' } });
+    const ownerProject = await makeProject(t, orgId, 'site');
+
+    // A PLATFORM invite (no projectId) with role:'admin' — requires a platform-admin caller.
+    const inv = await app.inject({ method: 'POST', url: `/orgs/${orgId}/invites`, cookies: { sw_session: t }, payload: { email: 'dev@acme.test', role: 'admin' } });
+    expect(inv.statusCode).toBe(201);
     const inviteToken = (inv.json() as { token: string }).token;
 
-    const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'dev@acme.test', password: 'pw-secret-1', orgName: 'Dev Personal' } });
+    const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'dev@acme.test', password: 'pw-secret-1' } });
+    const devT = token(reg);
+    await app.inject({ method: 'POST', url: '/invites/accept', cookies: { sw_session: devT }, payload: { token: inviteToken } });
+
+    // The accepted user is now an instance admin: /me reflects it, and they reach EVERY project —
+    // including the owner's project they were never explicitly added to → 200 (real authz signal).
+    const me = await app.inject({ method: 'GET', url: '/me', cookies: { sw_session: devT } });
+    expect(me.json()).toMatchObject({ platformRole: 'admin', isInstanceAdmin: true });
+    expect((await app.inject({ method: 'GET', url: `/orgs/${orgId}/projects/${ownerProject}`, cookies: { sw_session: devT } })).statusCode).toBe(200);
+  });
+
+  it('plain developer invite → accept → platformRole:developer (not an instance admin)', async () => {
+    const { t, orgId } = await registerOwner('owner@acme.test', 'Acme');
+    // A PLATFORM invite with no role defaults to developer.
+    const inv = await app.inject({ method: 'POST', url: `/orgs/${orgId}/invites`, cookies: { sw_session: t }, payload: { email: 'dev@acme.test' } });
+    expect(inv.statusCode).toBe(201);
+    const inviteToken = (inv.json() as { token: string }).token;
+
+    const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'dev@acme.test', password: 'pw-secret-1' } });
     const devT = token(reg);
     await app.inject({ method: 'POST', url: '/invites/accept', cookies: { sw_session: devT }, payload: { token: inviteToken } });
 
     const me = await app.inject({ method: 'GET', url: '/me', cookies: { sw_session: devT } });
-    expect((me.json() as { orgs: Array<{ id: string; role: string }> }).orgs).toContainEqual(expect.objectContaining({ id: orgId, role: 'admin' }));
-    // An admin can list the org's projects.
-    expect((await app.inject({ method: 'GET', url: `/orgs/${orgId}/projects`, cookies: { sw_session: devT } })).statusCode).toBe(200);
+    // A developer is platform staff but NOT an instance admin (no all-projects reach).
+    expect(me.json()).toMatchObject({ platformRole: 'developer', isInstanceAdmin: false });
   });
 
   it('rejects acceptance by the wrong email and enforces owner/admin to invite', async () => {
@@ -96,16 +125,18 @@ describe('invites API', () => {
     expect((await app.inject({ method: 'POST', url: '/invites/accept', payload: { token: inviteToken } })).statusCode).toBe(401);
   });
 
-  it('lists and revokes pending invites (owner/admin)', async () => {
+  it('lists and revokes pending PROJECT invites (owner) scoped by projectId', async () => {
     const { t, orgId } = await registerOwner('owner@acme.test', 'Acme');
     const proj = await makeProject(t, orgId, 'site');
     const inv = await app.inject({ method: 'POST', url: `/orgs/${orgId}/projects/${proj}/invites`, cookies: { sw_session: t }, payload: { email: 'client@acme.test' } });
     const inviteId = (inv.json() as { invite: { id: string } }).invite.id;
 
-    const list = await app.inject({ method: 'GET', url: `/orgs/${orgId}/invites`, cookies: { sw_session: t } });
+    // Project invites are listed via the platform invites route, scoped to the project (owner/admin).
+    const list = await app.inject({ method: 'GET', url: `/orgs/${orgId}/invites?projectId=${proj}`, cookies: { sw_session: t } });
     expect((list.json() as { invites: unknown[] }).invites).toHaveLength(1);
+    // Revoke via DELETE /orgs/platform/invites/:id (owner for a project invite).
     expect((await app.inject({ method: 'DELETE', url: `/orgs/${orgId}/invites/${inviteId}`, cookies: { sw_session: t } })).statusCode).toBe(204);
-    const after = await app.inject({ method: 'GET', url: `/orgs/${orgId}/invites`, cookies: { sw_session: t } });
+    const after = await app.inject({ method: 'GET', url: `/orgs/${orgId}/invites?projectId=${proj}`, cookies: { sw_session: t } });
     expect((after.json() as { invites: unknown[] }).invites).toHaveLength(0);
   });
 });

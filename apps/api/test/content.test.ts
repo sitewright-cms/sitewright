@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { makeTestDb } from './helpers.js';
-import { registerAccount, tenantContext } from '../src/repo/accounts.js';
+import { registerAccount, addProjectMember } from '../src/repo/accounts.js';
 import { ProjectRepository } from '../src/repo/projects.js';
 import { ContentRepository } from '../src/repo/content.js';
-import { ConflictError, ForbiddenError, NotFoundError, type ProjectContext } from '../src/repo/context.js';
+import { ConflictError, NotFoundError, ForbiddenError, type ProjectContext } from '../src/repo/context.js';
 import type { Database } from '../src/db/client.js';
 
 let db: Database;
@@ -19,14 +19,14 @@ beforeEach(async () => {
   content = new ContentRepository(db);
   const projects = new ProjectRepository(db);
 
-  const a = await registerAccount(db, 'a@acme.test', 'pw-secret-1', 'Acme');
-  const b = await registerAccount(db, 'b@globex.test', 'pw-secret-1', 'Globex');
-  const ctxA = await tenantContext(db, a.userId, a.orgId);
-  const ctxB = await tenantContext(db, b.userId, b.orgId);
-  projA = await projects.create(ctxA, { name: 'Site A', slug: 'site-a' });
-  const projB = await projects.create(ctxB, { name: 'Site B', slug: 'site-b' });
-  pctxA = { ...ctxA, projectId: projA.id };
-  pctxB = { ...ctxB, projectId: projB.id };
+  const a = await registerAccount(db, 'a@acme.test', 'pw-secret-1');
+  const b = await registerAccount(db, 'b@globex.test', 'pw-secret-1');
+  projA = await projects.create({ name: 'Site A', slug: 'site-a' });
+  const projB = await projects.create({ name: 'Site B', slug: 'site-b' });
+  await addProjectMember(db, a.userId, projA.id, 'owner');
+  await addProjectMember(db, b.userId, projB.id, 'owner');
+  pctxA = { userId: a.userId, projectId: projA.id, role: 'owner' };
+  pctxB = { userId: b.userId, projectId: projB.id, role: 'owner' };
 });
 
 describe('ContentRepository', () => {
@@ -50,13 +50,19 @@ describe('ContentRepository', () => {
     expect(await content.list(pctxB, 'page')).toHaveLength(0);
   });
 
-  it('lets a member (client role) edit ONLY editable-node content of an existing page', async () => {
+  it('lets a member write content freely (the constrained client-write gate was removed)', async () => {
+    // NOTE: in the old org model a 'member' was a read-only/editable-node-only client and the
+    // assertions below threw ForbiddenError. The constrained client-write gate has been REMOVED:
+    // any project role ('owner' or 'member') may now write any content kind. These assertions are
+    // FLIPPED accordingly — what used to be forbidden is now allowed.
     const member: ProjectContext = { ...pctxA, role: 'member' };
-    // A member cannot CREATE a page (no prior version to constrain the edit against).
-    await expect(content.put(member, 'page', 'home', page)).rejects.toThrow(ForbiddenError);
 
-    // Owner authors a page with one editable node (RichText) and one locked (Heading).
-    const editablePage = {
+    // A member can CREATE a page (no prior version required).
+    await content.put(member, 'page', 'home', page);
+    expect(await content.get(member, 'page', 'home')).toMatchObject({ title: 'Home' });
+
+    // Author a page with two nodes; a member may freely edit either node...
+    const richPage = {
       id: 'home',
       path: '/',
       title: 'Home',
@@ -64,34 +70,32 @@ describe('ContentRepository', () => {
         id: 'r',
         type: 'Section',
         children: [
-          { id: 'h', type: 'Heading', props: { text: 'Locked', level: 2 } },
-          { id: 't', type: 'RichText', editable: true, props: { text: 'Edit me' } },
+          { id: 'h', type: 'Heading', props: { text: 'Heading', level: 2 } },
+          { id: 't', type: 'RichText', props: { text: 'Edit me' } },
         ],
       },
     };
-    await content.put(pctxA, 'page', 'home', editablePage);
+    await content.put(member, 'page', 'home', richPage);
 
-    // Member edits the editable node's content → allowed + persisted.
-    const edited = JSON.parse(JSON.stringify(editablePage));
-    edited.root.children[1].props.text = 'Client edit';
+    // ...edit any node's content → allowed + persisted.
+    const edited = JSON.parse(JSON.stringify(richPage));
+    edited.root.children[0].props.text = 'Member edit';
     await content.put(member, 'page', 'home', edited);
-    const stored = (await content.get(member, 'page', 'home')) as { root: { children: Array<{ props: { text: string } }> } };
-    expect(stored.root.children[1]!.props.text).toBe('Client edit');
+    const stored = (await content.get(member, 'page', 'home')) as {
+      root: { children: Array<{ props: { text: string } }> };
+    };
+    expect(stored.root.children[0]!.props.text).toBe('Member edit');
 
-    // Member edits the LOCKED node → rejected.
-    const hacked = JSON.parse(JSON.stringify(editablePage));
-    hacked.root.children[0].props.text = 'Hacked';
-    await expect(content.put(member, 'page', 'home', hacked)).rejects.toThrow(ForbiddenError);
-
-    // Member changes structure (removes a node) → rejected.
-    const restructured = JSON.parse(JSON.stringify(editablePage));
+    // ...restructure the tree (remove a node) → allowed.
+    const restructured = JSON.parse(JSON.stringify(richPage));
     restructured.root.children.pop();
-    await expect(content.put(member, 'page', 'home', restructured)).rejects.toThrow(ForbiddenError);
+    await content.put(member, 'page', 'home', restructured);
+    const after = (await content.get(member, 'page', 'home')) as { root: { children: unknown[] } };
+    expect(after.root.children).toHaveLength(1);
 
-    // Member writes a non-page content kind → rejected.
-    await expect(
-      content.put(member, 'partial', 'p', { id: 'p', name: 'P', root: { id: 'pr', type: 'Section' } }),
-    ).rejects.toThrow(ForbiddenError);
+    // ...write a non-page content kind → allowed.
+    await content.put(member, 'partial', 'p', { id: 'p', name: 'P', root: { id: 'pr', type: 'Section' } });
+    expect(await content.get(member, 'partial', 'p')).toMatchObject({ name: 'P' });
   });
 
   it('exports a bundle containing the project’s content', async () => {
@@ -118,13 +122,11 @@ describe('ContentRepository', () => {
     );
   });
 
-  it('isolates content across two projects in the SAME org', async () => {
-    // pctxA's org owns projA; create a second project in the same org.
-    const projects = new (await import('../src/repo/projects.js')).ProjectRepository(db);
-    const proj2 = await projects.create(
-      { userId: pctxA.userId, orgId: pctxA.orgId, role: pctxA.role },
-      { name: 'Site A2', slug: 'site-a2' },
-    );
+  it('isolates content across two projects owned by the same user', async () => {
+    // Tenancy is now the project (no org layer). The same user owns a second project;
+    // content must still not leak between their projects — isolation is strictly by projectId.
+    const proj2 = await new ProjectRepository(db).create({ name: 'Site A2', slug: 'site-a2' });
+    await addProjectMember(db, pctxA.userId, proj2.id, 'owner');
     const pctxA2: ProjectContext = { ...pctxA, projectId: proj2.id };
     await content.put(pctxA, 'page', 'home', page);
     await expect(content.get(pctxA2, 'page', 'home')).rejects.toThrow(NotFoundError);

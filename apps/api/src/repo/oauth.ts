@@ -8,7 +8,7 @@ import {
   oauthRefreshTokens,
   API_KEY_CAPABILITIES,
   type ApiKeyCapability,
-  type OrgRole,
+  type ProjectRole,
 } from '../db/schema.js';
 import { generateApiToken, hashApiToken } from '../auth/api-keys.js';
 import { isValidS256Challenge, verifyPkceS256 } from '../auth/pkce.js';
@@ -43,9 +43,8 @@ type Executor = Database;
 export interface Grant {
   clientId: string;
   userId: string;
-  orgId: string;
   projectId: string;
-  role: OrgRole;
+  role: ProjectRole;
   scope: ApiKeyCapability[];
 }
 
@@ -70,7 +69,6 @@ function generateUserCode(): string {
   while (out.length < 8) {
     const b = randomBytes(1)[0]!;
     if (b >= maxValid) continue;
-    // eslint-disable-next-line security/detect-object-injection -- numeric modulo index into a constant string
     out += USER_CODE_ALPHABET[b % USER_CODE_ALPHABET.length];
   }
   return `${out.slice(0, 4)}-${out.slice(4)}`;
@@ -109,7 +107,6 @@ export class OAuthRepository {
       id: hash,
       clientId: grant.clientId,
       userId: grant.userId,
-      orgId: grant.orgId,
       projectId: grant.projectId,
       role: grant.role,
       scope: clampScope(grant.scope),
@@ -146,7 +143,6 @@ export class OAuthRepository {
     const grant: Grant = {
       clientId: row.clientId,
       userId: row.userId,
-      orgId: row.orgId,
       projectId: row.projectId,
       role: row.role,
       scope: row.scope,
@@ -190,7 +186,6 @@ export class OAuthRepository {
     const grant: Grant = {
       clientId: row.clientId,
       userId: row.userId,
-      orgId: row.orgId,
       projectId: row.projectId,
       role: row.role,
       scope: row.scope,
@@ -230,7 +225,6 @@ export class OAuthRepository {
       scope: clampScope(input.scope),
       status: 'pending',
       userId: null,
-      orgId: null,
       projectId: null,
       role: null,
       expiresAt,
@@ -256,7 +250,7 @@ export class OAuthRepository {
 
   /** Approves a pending device authorization, freezing the grant (project/role). */
   async approveDevice(
-    input: { userCode: string; userId: string; orgId: string; projectId: string; role: OrgRole },
+    input: { userCode: string; userId: string; projectId: string; role: ProjectRole },
     now: Date = new Date(),
   ): Promise<void> {
     const [row] = await this.db
@@ -267,7 +261,7 @@ export class OAuthRepository {
     if (row.expiresAt.getTime() <= now.getTime()) throw new OAuthError('expired_token', 'user code expired');
     const updated = await this.db
       .update(oauthDeviceCodes)
-      .set({ status: 'approved', userId: input.userId, orgId: input.orgId, projectId: input.projectId, role: input.role })
+      .set({ status: 'approved', userId: input.userId, projectId: input.projectId, role: input.role })
       .where(and(eq(oauthDeviceCodes.userCode, input.userCode), eq(oauthDeviceCodes.status, 'pending')))
       .returning({ userCode: oauthDeviceCodes.userCode });
     if (updated.length === 0) throw new OAuthError('invalid_request', 'code already decided');
@@ -304,13 +298,12 @@ export class OAuthRepository {
     }
     // Approved → the grant fields must be set. Fail loud (not a degraded token)
     // if a data-integrity issue ever produced an approved row with null grant.
-    if (!row.userId || !row.orgId || !row.projectId || !row.role) {
+    if (!row.userId || !row.projectId || !row.role) {
       throw new OAuthError('server_error', 'approved device grant is missing required fields');
     }
     const grant: Grant = {
       clientId: row.clientId,
       userId: row.userId,
-      orgId: row.orgId,
       projectId: row.projectId,
       role: row.role,
       scope: row.scope,
@@ -337,7 +330,6 @@ export class OAuthRepository {
     const access = generateApiToken();
     await exec.insert(apiKeys).values({
       id: randomUUID(),
-      orgId: grant.orgId,
       projectId: grant.projectId,
       name: `oauth:${grant.clientId}`,
       role: grant.role,
@@ -356,7 +348,6 @@ export class OAuthRepository {
       id: refresh.hash,
       clientId: grant.clientId,
       userId: grant.userId,
-      orgId: grant.orgId,
       projectId: grant.projectId,
       role: grant.role,
       scope,

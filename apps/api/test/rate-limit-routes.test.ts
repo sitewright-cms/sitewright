@@ -135,10 +135,11 @@ describe('per-route rate limiting', () => {
 
   it('enforces rl(20) on DELETE /orgs/:orgId/projects/:id (over-cap => 429)', async () => {
     const client: TestClient = await harness.signup();
-    // Hit a non-existent project id under the user's own org. The rate-limit
-    // hook runs at `onRequest` (before the handler), so each request is counted
-    // regardless of the 404 the handler would otherwise produce. Using a single
-    // fixed missing id keeps every pre-cap response a uniform 404.
+    // Hit a non-existent project id. The rate-limit hook runs at `onRequest`
+    // (before the handler), so each request is counted regardless of the response
+    // the handler would otherwise produce. In the flat model a non-member (the
+    // caller is not the owner of — and cannot even see — this id) is rejected with
+    // a uniform 403 BEFORE any existence check, so there is no 404 existence oracle.
     const missingId = `proj-${randomUUID()}`;
     const url = `/orgs/${client.orgId}/projects/${missingId}`;
 
@@ -148,9 +149,9 @@ describe('per-route rate limiting', () => {
       codes.push(res.statusCode);
     }
 
-    // Pre-cap: authenticated + authorized, but project missing => 404, never 429.
+    // Pre-cap: authenticated but not an owner/admin of this id => 403, never 429.
     expect(codes.slice(0, PROJECT_DELETE_CAP).every((c) => c !== 429)).toBe(true);
-    expect(codes.slice(0, PROJECT_DELETE_CAP).every((c) => c === 404)).toBe(true);
+    expect(codes.slice(0, PROJECT_DELETE_CAP).every((c) => c === 403)).toBe(true);
     // Over-cap request is rejected by the per-route limiter.
     expect(codes[PROJECT_DELETE_CAP]).toBe(429);
   });

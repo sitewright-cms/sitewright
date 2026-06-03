@@ -64,6 +64,13 @@
       "when": 1780324289788,
       "tag": "0008_invites_project_members",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1780475590913,
+      "tag": "0009_melted_roland_deschain",
+      "breakpoints": true
     }
   ]
 }

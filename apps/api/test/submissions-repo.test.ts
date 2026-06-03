@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { makeTestDb } from './helpers.js';
 import { SubmissionRepository } from '../src/repo/submissions.js';
-import { projects, organizations } from '../src/db/schema.js';
+import { projects } from '../src/db/schema.js';
 import type { Database } from '../src/db/client.js';
 
 let db: Database;
@@ -11,11 +11,10 @@ let projectA: string;
 let projectB: string;
 
 async function makeProject(db: Database): Promise<string> {
-  const orgId = randomUUID();
   const projectId = randomUUID();
   const now = new Date();
-  await db.insert(organizations).values({ id: orgId, name: 'O', slug: `o-${projectId.slice(0, 8)}`, createdAt: now });
-  await db.insert(projects).values({ id: projectId, orgId, name: 'P', slug: 'p', createdAt: now });
+  // Slug is now instance-unique (no org); derive a unique one per project.
+  await db.insert(projects).values({ id: projectId, name: 'P', slug: `p-${projectId.slice(0, 8)}`, createdAt: now });
   return projectId;
 }
 

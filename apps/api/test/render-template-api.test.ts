@@ -5,7 +5,7 @@ import type { FastifyInstance } from 'fastify';
 import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
 import { RenderPool } from '../src/render/render-pool.js';
-import { memberships } from '../src/db/schema.js';
+import { projectMembers } from '../src/db/schema.js';
 
 const workerPath = fileURLToPath(new URL('./fixtures/blocks-render-worker.mjs', import.meta.url));
 
@@ -181,19 +181,21 @@ describe('render-template API (isolated worker)', () => {
     expect((res.json() as { error: string }).error).toMatch(/unsafe|unquoted/i);
   });
 
-  it('forbids a non-owner/admin (client member) from rendering', async () => {
+  it('lets a project member render a template (constrained client-write removed)', async () => {
     const { orgId, projectId } = await setup();
     const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'client@acme.test', password: 'pw-secret-1', orgName: 'Client' } });
     const memberT = token(reg);
     const memberId = (reg.json() as { userId: string }).userId;
-    await db.insert(memberships).values({ id: randomUUID(), userId: memberId, orgId, role: 'member', createdAt: new Date() });
+    await db.insert(projectMembers).values({ id: randomUUID(), userId: memberId, projectId, role: 'member', createdAt: new Date() });
     const res = await app.inject({
       method: 'POST',
       url: `/orgs/${orgId}/projects/${projectId}/render-template`,
       cookies: { sw_session: memberT },
       payload: { template: '<p>{{ company.name }}</p>' },
     });
-    expect(res.statusCode).toBe(403);
+    // A member is now a writer, so rendering is permitted.
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { html: string }).html).toBe('<p>Site</p>');
   });
 
   it('returns 503 when no render pool is configured', async () => {

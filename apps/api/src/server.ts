@@ -156,6 +156,9 @@ const app = await createApp({
   smtpAllowedHosts,
   adminEmails,
   openRegistration,
+  // Per-IP auth rate cap; defaults to 10/min. Raise via SW_AUTH_RATE_LIMIT_MAX only for the
+  // integration/E2E harness (many registrations from one IP).
+  authRateMax: process.env.SW_AUTH_RATE_LIMIT_MAX ? Number(process.env.SW_AUTH_RATE_LIMIT_MAX) : undefined,
   renderPool,
   // Public base URL baked into exported forms (so static sites post submissions
   // back to this platform). Validated above; trailing slash normalized at build time.

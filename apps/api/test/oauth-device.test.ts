@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { makeTestDb } from './helpers.js';
-import { registerAccount, tenantContext } from '../src/repo/accounts.js';
+import { registerAccount, addProjectMember } from '../src/repo/accounts.js';
 import { ProjectRepository } from '../src/repo/projects.js';
 import { ApiKeyRepository } from '../src/repo/api-keys.js';
 import { OAuthRepository, DEVICE_CODE_TTL_MS } from '../src/repo/oauth.js';
@@ -18,10 +18,10 @@ beforeEach(async () => {
   db = await makeTestDb();
   oauth = new OAuthRepository(db);
   keys = new ApiKeyRepository(db);
-  const a = await registerAccount(db, 'a@acme.test', 'pw-secret-1', 'Acme');
-  const tenant = await tenantContext(db, a.userId, a.orgId);
-  const project = await new ProjectRepository(db).create(tenant, { name: 'A', slug: 'a' });
-  pctx = { ...tenant, projectId: project.id };
+  const a = await registerAccount(db, 'a@acme.test', 'pw-secret-1');
+  const project = await new ProjectRepository(db).create({ name: 'A', slug: 'a' });
+  await addProjectMember(db, a.userId, project.id, 'owner');
+  pctx = { userId: a.userId, projectId: project.id, role: 'owner' };
 });
 
 async function start() {
@@ -31,9 +31,8 @@ async function approve(userCode: string) {
   await oauth.approveDevice({
     userCode,
     userId: pctx.userId,
-    orgId: pctx.orgId,
     projectId: pctx.projectId,
-    role: 'admin',
+    role: 'owner',
   });
 }
 
@@ -57,7 +56,7 @@ describe('OAuthRepository — device authorization grant', () => {
     const tokens = await poll();
     expect(tokens.accessToken.startsWith('swk_')).toBe(true);
     const resolved = await keys.resolve(tokens.accessToken);
-    expect(resolved).toMatchObject({ projectId: pctx.projectId, role: 'admin' });
+    expect(resolved).toMatchObject({ projectId: pctx.projectId, role: 'owner' });
     // Single-use: redeeming again fails.
     await expect(poll()).rejects.toMatchObject({ code: 'invalid_grant' });
   });
@@ -90,7 +89,7 @@ describe('OAuthRepository — device authorization grant', () => {
     await approve(auth.userCode);
     await expect(approve(auth.userCode)).rejects.toMatchObject({ code: 'invalid_request' }); // already approved
     await expect(
-      oauth.approveDevice({ userCode: 'ZZZZ-ZZZZ', userId: pctx.userId, orgId: pctx.orgId, projectId: pctx.projectId, role: 'admin' }),
+      oauth.approveDevice({ userCode: 'ZZZZ-ZZZZ', userId: pctx.userId, projectId: pctx.projectId, role: 'owner' }),
     ).rejects.toMatchObject({ code: 'invalid_request' });
   });
 });

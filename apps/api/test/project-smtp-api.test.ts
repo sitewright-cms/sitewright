@@ -3,7 +3,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
-import { memberships } from '../src/db/schema.js';
+import { projectMembers } from '../src/db/schema.js';
 import type { Database } from '../src/db/client.js';
 
 const ENC_KEY = randomBytes(32);
@@ -71,13 +71,14 @@ describe('per-project SMTP API', () => {
     expect((await (await app.inject({ method: 'GET', url: `${base}/smtp`, cookies: { sw_session: t } })).json() as { smtp: unknown }).smtp).toBeNull();
   });
 
-  it('forbids a member (read-only role) from reading or writing SMTP (403)', async () => {
+  it('lets a project member read and write SMTP (constrained client-write removed)', async () => {
     const memberReg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'member@x.test', password: 'pw-secret-1', orgName: 'Member' } });
     const mt = token(memberReg);
     const mUser = (memberReg.json() as { userId: string }).userId;
-    await db.insert(memberships).values({ id: randomUUID(), userId: mUser, orgId, role: 'member', createdAt: new Date() });
-    expect((await app.inject({ method: 'GET', url: `${base}/smtp`, cookies: { sw_session: mt } })).statusCode).toBe(403);
-    expect((await app.inject({ method: 'PUT', url: `${base}/smtp`, cookies: { sw_session: mt }, payload: { host: 'h', port: 25, secure: false, fromEmail: 'a@b.co' } })).statusCode).toBe(403);
+    await db.insert(projectMembers).values({ id: randomUUID(), userId: mUser, projectId, role: 'member', createdAt: new Date() });
+    // Any project member may now manage SMTP — the old owner/admin-only gate is gone.
+    expect((await app.inject({ method: 'GET', url: `${base}/smtp`, cookies: { sw_session: mt } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'PUT', url: `${base}/smtp`, cookies: { sw_session: mt }, payload: { host: 'h', port: 25, secure: false, fromEmail: 'a@b.co' } })).statusCode).toBe(200);
   });
 
   it('rejects an invalid SMTP body (400)', async () => {

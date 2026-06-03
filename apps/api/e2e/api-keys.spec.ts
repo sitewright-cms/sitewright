@@ -25,9 +25,10 @@ test('project API key: mint via session, use as Bearer, enforce scope + revoke',
   const projectId = (await created.json()).project.id as string;
   const base = `/orgs/${orgId}/projects/${projectId}`;
 
-  // Mint a read+write token (the raw token is returned exactly once).
+  // Mint a read+write token (the raw token is returned exactly once). The minter is the project
+  // owner, so an 'owner'-role key is allowed ('admin' is no longer a project role).
   const mint = await session.post(`${base}/api-keys`, {
-    data: { name: 'ci', role: 'admin', capabilities: ['content:read', 'content:write'], expiresInDays: 7 },
+    data: { name: 'ci', role: 'owner', capabilities: ['content:read', 'content:write'], expiresInDays: 7 },
   });
   expect(mint.status()).toBe(201);
   const { token, key } = await mint.json();

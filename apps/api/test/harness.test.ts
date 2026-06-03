@@ -9,18 +9,21 @@ afterEach(async () => {
 const page = { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' } };
 
 describe('integration harness', () => {
-  it('signs up isolated tenants, each scoped to its own org', async () => {
+  it('signs up distinct users, all sharing the single platform org (isolation is by project)', async () => {
     h = await makeHarness();
     const a = await h.signup({ orgName: 'Alpha' });
     const b = await h.signup({ orgName: 'Beta' });
-    expect(a.orgId).not.toBe(b.orgId);
+    // Flat tenancy: there is one synthetic org ('platform') for everyone; users
+    // are distinct and isolation is enforced per-project (see the cross-tenant tests).
+    expect(a.orgId).toBe('platform');
+    expect(b.orgId).toBe('platform');
     expect(a.userId).not.toBe(b.userId);
 
     const me = await a.get('/me');
     expect(me.statusCode).toBe(200);
     const orgs = (me.json() as { orgs: Array<{ id: string; role: string }> }).orgs;
     expect(orgs).toHaveLength(1);
-    expect(orgs[0]).toMatchObject({ id: a.orgId, role: 'owner' });
+    expect(orgs[0]).toMatchObject({ id: 'platform', role: 'owner' });
   });
 
   it('round-trips a page through the content API of a created project', async () => {

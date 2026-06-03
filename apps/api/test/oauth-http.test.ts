@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
@@ -31,18 +31,21 @@ function cookie(res: { cookies: Array<{ name: string; value: string }> }): strin
 }
 
 async function setup() {
+  const uid = randomUUID().slice(0, 8);
   const reg = await app.inject({
     method: 'POST',
     url: '/auth/register',
-    payload: { email: `a-${Date.now()}@e2e.test`, password: 'pw-secret-1', orgName: 'Acme' },
+    payload: { email: `a-${uid}@e2e.test`, password: 'pw-secret-1' },
   });
   const session = cookie(reg);
+  // `:orgId` in the path is vestigial in the flat model; always the constant 'platform'.
   const orgId = (reg.json() as { orgId: string }).orgId;
   const proj = await app.inject({
     method: 'POST',
     url: `/orgs/${orgId}/projects`,
     cookies: { sw_session: session },
-    payload: { name: 'Site<X>', slug: 'site' },
+    // Slugs are instance-unique; keep each setup() call's slug distinct.
+    payload: { name: 'Site<X>', slug: `site-${uid}` },
   });
   const projectId = (proj.json() as { project: { id: string } }).project.id;
   return { session, orgId, projectId };
@@ -105,7 +108,7 @@ describe('OAuth discovery + authorize', () => {
   });
 
   it('redirects with error=access_denied (carrying state) when consent is denied', async () => {
-    const { session, orgId, projectId } = await setup();
+    const { session, projectId } = await setup();
     const res = await app.inject({
       method: 'POST',
       url: '/oauth/authorize',
@@ -116,7 +119,8 @@ describe('OAuth discovery + authorize', () => {
         code_challenge: CHALLENGE,
         scope: 'content:read',
         state: 'xyz-state',
-        project: `${orgId}:${projectId}`,
+        // The consent picker value is now just the projectId (no orgId prefix).
+        project: projectId,
         decision: 'deny',
       }),
     });
@@ -221,7 +225,7 @@ describe('OAuth full authorization-code + PKCE flow', () => {
 
   it('exchanges code → access + refresh, and the access token works on the API; refresh rotates', async () => {
     const { session, orgId, projectId } = await setup();
-    const code = await getCode(session, `${orgId}:${projectId}`);
+    const code = await getCode(session, projectId);
 
     const tokRes = await app.inject({
       method: 'POST',
@@ -253,8 +257,8 @@ describe('OAuth full authorization-code + PKCE flow', () => {
   });
 
   it('rejects a reused authorization code and a bad PKCE verifier', async () => {
-    const { session, orgId, projectId } = await setup();
-    const code = await getCode(session, `${orgId}:${projectId}`);
+    const { session, projectId } = await setup();
+    const code = await getCode(session, projectId);
     const exchange = (verifier: string) =>
       app.inject({
         method: 'POST',
@@ -272,8 +276,8 @@ describe('OAuth full authorization-code + PKCE flow', () => {
   });
 
   it('refresh-token reuse is rejected and revokes the live successor (theft response)', async () => {
-    const { session, orgId, projectId } = await setup();
-    const code = await getCode(session, `${orgId}:${projectId}`);
+    const { session, projectId } = await setup();
+    const code = await getCode(session, projectId);
     const exchange = await app.inject({
       method: 'POST',
       url: '/oauth/token',
@@ -293,7 +297,7 @@ describe('OAuth full authorization-code + PKCE flow', () => {
   });
 
   it('completes the full flow for a dynamically-registered client', async () => {
-    const { session, orgId, projectId } = await setup();
+    const { session, projectId } = await setup();
     const reg = await app.inject({
       method: 'POST',
       url: '/oauth/register',
@@ -314,7 +318,7 @@ describe('OAuth full authorization-code + PKCE flow', () => {
         code_challenge_method: 'S256',
         scope: 'content:read',
         state: 's',
-        project: `${orgId}:${projectId}`,
+        project: projectId,
         decision: 'approve',
       }),
     });
@@ -337,7 +341,7 @@ describe('OAuth full authorization-code + PKCE flow', () => {
   });
 
   it('runs the device authorization grant: device_authorization → approve → token', async () => {
-    const { session, orgId, projectId } = await setup();
+    const { session, projectId } = await setup();
     const da = await app.inject({
       method: 'POST',
       url: '/oauth/device_authorization',
@@ -363,7 +367,7 @@ describe('OAuth full authorization-code + PKCE flow', () => {
       method: 'POST',
       url: '/oauth/device',
       cookies: { sw_session: session },
-      ...form({ user_code: auth.user_code, project: `${orgId}:${projectId}`, decision: 'approve' }),
+      ...form({ user_code: auth.user_code, project: projectId, decision: 'approve' }),
     });
     expect(approve.statusCode).toBe(200);
     expect(approve.body).toMatch(/authorized/i);

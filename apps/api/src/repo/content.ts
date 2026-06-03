@@ -33,7 +33,6 @@ import { validateProject, type ProjectBundle } from '@sitewright/core';
 import type { Database } from '../db/client.js';
 import { content, type ContentKind } from '../db/schema.js';
 import { ConflictError, ForbiddenError, NotFoundError, type ProjectContext } from './context.js';
-import { assertClientEditAllowed } from './client-edit.js';
 import type { ProjectEventBus } from '../events/bus.js';
 
 /**
@@ -84,13 +83,8 @@ const SCHEMAS = new Map<ContentKind, z.ZodTypeAny>([
 export const CONTENT_KINDS = [...SCHEMAS.keys()];
 
 const SETTINGS_ENTITY_ID = 'settings';
-const WRITE_ROLES: ReadonlySet<string> = new Set(['owner', 'admin']);
 // Per-bundle caps (defense-in-depth alongside the route body limit).
 const MAX_BUNDLE = { pages: 2000, partials: 500, templates: 500, datasets: 500, entries: 50_000 } as const;
-
-function requireWriteRole(ctx: ProjectContext): void {
-  if (!WRITE_ROLES.has(ctx.role)) throw new ForbiddenError('insufficient role for this operation');
-}
 
 function schemaFor(kind: ContentKind): z.ZodTypeAny {
   const schema = SCHEMAS.get(kind);
@@ -169,41 +163,14 @@ export class ContentRepository {
   }
 
   /**
-   * Write authorization: owner/admin may write anything; a `member` (the constrained
-   * client editing role) may update an EXISTING page only when the change edits the
-   * content of `editable` nodes and nothing else (assertClientEditAllowed). Members
-   * cannot create pages or write any other content kind.
+   * Validates `raw` against the kind's schema, then upserts. Returns the parsed value. Any user with
+   * project access (owner or member) may write any content kind — the source⇄content distinction is
+   * a UI default (toggle), not a write restriction. Project administration (delete project, manage
+   * team) is gated separately at the route layer.
    */
-  private async authorizeWrite(ctx: ProjectContext, kind: ContentKind, entityId: string, data: unknown): Promise<void> {
-    if (WRITE_ROLES.has(ctx.role)) return;
-    if (ctx.role === 'member' && kind === 'page') {
-      const prev = await this.row(this.db, ctx, 'page', entityId);
-      if (prev) {
-        // Re-parse the stored page through PageSchema so the comparison runs on two
-        // identically-normalized Page values — never on an un-normalized DB blob that a
-        // prior migration or direct write could have left in an off-schema shape.
-        const prevParsed = PageSchema.safeParse(prev.data);
-        if (!prevParsed.success) {
-          throw new ForbiddenError('the stored page is not valid; cannot authorize a client edit');
-        }
-        assertClientEditAllowed(prevParsed.data, data as Page);
-        return;
-      }
-    }
-    throw new ForbiddenError('insufficient role for this operation');
-  }
-
-  /** Validates `raw` against the kind's schema, then upserts. Returns the parsed value. */
   async put(ctx: ProjectContext, kind: ContentKind, entityId: string, raw: unknown): Promise<unknown> {
-    // Authorization gate BEFORE schema validation: a non-write role may only ever attempt
-    // a page write (the member client-edit path). Reject any other kind up front so a
-    // member cannot probe a kind's schema by reading back its Zod validation errors.
-    if (!WRITE_ROLES.has(ctx.role) && kind !== 'page') {
-      throw new ForbiddenError('insufficient role for this operation');
-    }
     assertTreeSafe(kind, raw);
     const data = schemaFor(kind).parse(raw);
-    await this.authorizeWrite(ctx, kind, entityId, data);
     const key = this.entityKey(kind, entityId, data);
     await this.writeRow(this.db, ctx, kind, key, data);
     this.events?.emit(ctx.projectId, { kind, entityId: key, op: 'put' });
@@ -211,7 +178,6 @@ export class ContentRepository {
   }
 
   async remove(ctx: ProjectContext, kind: ContentKind, entityId: string): Promise<void> {
-    requireWriteRole(ctx);
     if (kind === 'settings') {
       throw new ForbiddenError('the settings singleton cannot be deleted');
     }
@@ -256,8 +222,6 @@ export class ContentRepository {
     project: ProjectIdentity,
     raw: unknown,
   ): Promise<{ imported: number }> {
-    requireWriteRole(ctx);
-
     // Guard recursive trees before the recursive Zod parse below.
     const envelope = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
     for (const item of toArray(envelope.pages)) assertWithinTreeDepth((item as { root?: unknown })?.root);

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { makeTestDb } from './helpers.js';
-import { registerAccount, tenantContext } from '../src/repo/accounts.js';
+import { registerAccount, addProjectMember } from '../src/repo/accounts.js';
 import { ProjectRepository } from '../src/repo/projects.js';
 import { ApiKeyRepository } from '../src/repo/api-keys.js';
 import { OAuthRepository, OAuthError, ACCESS_TTL_MS, REFRESH_TTL_MS, type Grant } from '../src/repo/oauth.js';
@@ -25,16 +25,15 @@ beforeEach(async () => {
   db = await makeTestDb();
   oauth = new OAuthRepository(db);
   keys = new ApiKeyRepository(db);
-  const a = await registerAccount(db, 'a@acme.test', 'pw-secret-1', 'Acme');
-  const tenant = await tenantContext(db, a.userId, a.orgId);
-  const project = await new ProjectRepository(db).create(tenant, { name: 'A', slug: 'a' });
-  pctx = { ...tenant, projectId: project.id };
+  const a = await registerAccount(db, 'a@acme.test', 'pw-secret-1');
+  const project = await new ProjectRepository(db).create({ name: 'A', slug: 'a' });
+  await addProjectMember(db, a.userId, project.id, 'owner');
+  pctx = { userId: a.userId, projectId: project.id, role: 'owner' };
   grant = {
     clientId: CLIENT,
     userId: a.userId,
-    orgId: a.orgId,
     projectId: project.id,
-    role: 'admin',
+    role: 'owner',
     scope: ['content:read', 'content:write'],
   };
 });
@@ -52,7 +51,7 @@ describe('OAuthRepository — authorization code', () => {
     expect(tokens.expiresInSeconds).toBe(Math.floor(ACCESS_TTL_MS / 1000));
     // The access token resolves on the normal bearer path with the granted scope.
     const resolved = await keys.resolve(tokens.accessToken);
-    expect(resolved).toMatchObject({ projectId: pctx.projectId, role: 'admin' });
+    expect(resolved).toMatchObject({ projectId: pctx.projectId, role: 'owner' });
     expect(resolved?.capabilities).toEqual(['content:read', 'content:write']);
   });
 

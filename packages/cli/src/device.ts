@@ -18,11 +18,11 @@ export interface DeviceLoginOptions {
   sleep?: (ms: number) => Promise<void>;
 }
 
-const defaultSleep = (ms: number): Promise<void> =>
-  new Promise((resolve) => {
-    const t = setTimeout(resolve, ms);
-    t.unref?.();
-  });
+// NOT unref'd on purpose: while waiting between polls this timer is the only thing keeping the CLI
+// alive. Unref'ing it let the process exit 0 during the very first sleep — before any poll — so
+// `sitewright login --device` returned without ever persisting a token. (Injected sleeps in tests
+// never exercised this, which is why it went unnoticed; the cli-e2e spawns the real bin to guard it.)
+const defaultSleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Device authorization grant (RFC 8628) for headless/SSH logins: requests a

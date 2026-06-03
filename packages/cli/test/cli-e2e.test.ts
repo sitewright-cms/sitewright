@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync, readFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { runLogin } from '../src/login.js';
 import { runDeviceLogin } from '../src/device.js';
 import { loadCredentials } from '../src/credentials.js';
@@ -107,4 +109,54 @@ suite('sitewright login — end to end', () => {
     const whoami = await fetch(`${url}/api-key/self`, { headers: { authorization: `Bearer ${tokens.accessToken}` } });
     expect(whoami.status).toBe(200);
   });
+
+  // Spawns the REAL built bin (not runDeviceLogin in-process) — the only way to catch the regression
+  // where an unref'd poll-sleep timer let the process exit 0 during the first sleep, before it ever
+  // polled or persisted a token. An in-process test can't see it (vitest keeps the loop alive).
+  it('the built `login --device` bin keeps the process alive and persists the token', async () => {
+    const url = BASE_URL!;
+    const bin = fileURLToPath(new URL('../dist/bin.js', import.meta.url));
+    const subConfig = mkdtempSync(join(tmpdir(), 'sw-cli-sub-'));
+    const child = spawn('node', [bin, 'login', '--device', '--url', url], {
+      env: { ...process.env, SITEWRIGHT_CONFIG_DIR: subConfig },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    try {
+      let out = '';
+      child.stdout.on('data', (d: Buffer) => (out += d.toString()));
+      child.stderr.on('data', (d: Buffer) => (out += d.toString()));
+      let exited: number | null = null;
+      child.on('exit', (code) => (exited = code));
+
+      // Approve the moment the user code appears (simulating the browser); fail if the bin dies first.
+      const code = await new Promise<string>((resolve, reject) => {
+        const timer = setInterval(() => {
+          const m = out.match(/[A-Z0-9]{4}-[A-Z0-9]{4}/);
+          if (m) {
+            clearInterval(timer);
+            resolve(m[0]);
+          } else if (exited !== null) {
+            clearInterval(timer);
+            reject(new Error(`bin exited (code ${exited}) before showing a code:\n${out}`));
+          }
+        }, 50);
+      });
+      await fetch(`${url}/oauth/device`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded', cookie },
+        body: new URLSearchParams({ user_code: code, project: `${orgId}:${projectId}`, decision: 'approve' }).toString(),
+      });
+      const exitCode = await new Promise<number>((resolve) =>
+        exited !== null ? resolve(exited) : child.on('exit', (c) => resolve(c ?? -1)),
+      );
+      expect(exitCode).toBe(0);
+      // The crucial check: the SUBPROCESS persisted a token (it didn't exit early during the sleep).
+      const credsPath = join(subConfig, 'credentials.json');
+      expect(existsSync(credsPath)).toBe(true);
+      expect(readFileSync(credsPath, 'utf8')).toContain('swk_');
+    } finally {
+      child.kill();
+      rmSync(subConfig, { recursive: true, force: true });
+    }
+  }, 30_000);
 });

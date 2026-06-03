@@ -28,4 +28,15 @@ describe('PreviewPane', () => {
     rerender(<PreviewPane src="/x" loading={false} error="boom" />);
     expect(getByText(/Preview error: boom/)).toBeTruthy();
   });
+
+  it('titles the iframe — defaults to "Live preview", overridable per context', () => {
+    const { container, rerender } = render(<PreviewPane src="/x" loading={false} error={null} />);
+    let iframe = container.querySelector('iframe');
+    expect(iframe?.getAttribute('title')).toBe('Live preview');
+    expect(iframe?.getAttribute('aria-label')).toBe('Live preview');
+    rerender(<PreviewPane src="/x" loading={false} error={null} title="Preview" />);
+    iframe = container.querySelector('iframe');
+    expect(iframe?.getAttribute('title')).toBe('Preview');
+    expect(iframe?.getAttribute('aria-label')).toBe('Preview');
+  });
 });

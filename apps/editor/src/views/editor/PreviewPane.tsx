@@ -3,6 +3,9 @@ interface PreviewPaneProps {
   src: string;
   loading: boolean;
   error: string | null;
+  /** Accessible name for the preview iframe — distinguishes contexts (e.g. "Preview" for the
+   *  source editor vs "Live preview" for the client/live panes). Defaults to "Live preview". */
+  title?: string;
 }
 
 /**
@@ -17,7 +20,7 @@ interface PreviewPaneProps {
  * cannot reach the editor's `window`, cookies, or session. `sandbox="allow-scripts"`
  * on the iframe is belt-and-suspenders; `allow-same-origin` must NEVER be added.
  */
-export function PreviewPane({ src, loading, error }: PreviewPaneProps) {
+export function PreviewPane({ src, loading, error, title = 'Live preview' }: PreviewPaneProps) {
   return (
     <div className="relative h-full overflow-hidden rounded-2xl border border-white/50 bg-white/40 p-1 shadow-xl shadow-slate-900/5 backdrop-blur-xl">
       {error && (
@@ -26,8 +29,8 @@ export function PreviewPane({ src, loading, error }: PreviewPaneProps) {
         </div>
       )}
       <iframe
-        title="Live preview"
-        aria-label="Live preview"
+        title={title}
+        aria-label={title}
         sandbox="allow-scripts"
         src={src || 'about:blank'}
         className="h-full w-full rounded-xl border border-white/60 bg-white"

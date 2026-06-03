@@ -282,7 +282,7 @@ export function CodePageEditor({ project, page, onClose, modeToggle }: CodePageE
           <CodeEditor value={source} onChange={edit} ariaLabel="Template source" />
         </div>
         <div className="min-h-0">
-          <PreviewPane src={previewSrc} loading={previewLoading} error={previewError} />
+          <PreviewPane src={previewSrc} loading={previewLoading} error={previewError} title="Preview" />
         </div>
       </div>
     </main>

@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { EditorView } from '@codemirror/view';
 import { EditorState } from '@codemirror/state';
+import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
+import { tags as t } from '@lezer/highlight';
 import { basicSetup } from 'codemirror';
 import { html } from '@codemirror/lang-html';
 
@@ -9,6 +11,55 @@ interface CodeEditorProps {
   onChange: (value: string) => void;
   ariaLabel?: string;
 }
+
+/** The single editor accent — used for the gutter border, cursor, selection, and code tokens. */
+const ACCENT = '#818cf8'; // indigo-400
+
+/**
+ * The Sitewright code-editor look: a black canvas with ONE accent (indigo). The gutter carries the
+ * accent as its right border; the cursor, selection, and active-line gutter pick it up too. Added
+ * AFTER `basicSetup` so it wins the theme + highlight facets.
+ */
+const blackTheme = EditorView.theme(
+  {
+    '&': { height: '100%', fontSize: '13px', backgroundColor: '#0a0a0f', color: '#e4e4e7' },
+    '.cm-scroller': { overflow: 'auto', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', lineHeight: '1.6' },
+    '.cm-content': { caretColor: ACCENT },
+    '&.cm-focused': { outline: 'none' },
+    '.cm-cursor, .cm-dropCursor': { borderLeftColor: ACCENT, borderLeftWidth: '2px' },
+    '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
+      backgroundColor: 'rgba(129,140,248,0.28)',
+    },
+    '.cm-gutters': {
+      backgroundColor: '#0a0a0f',
+      color: '#3f3f46',
+      border: 'none',
+      borderRight: `2px solid ${ACCENT}`,
+    },
+    '.cm-activeLine': { backgroundColor: 'rgba(255,255,255,0.035)' },
+    '.cm-activeLineGutter': { backgroundColor: 'transparent', color: ACCENT },
+    '.cm-lineNumbers .cm-gutterElement': { color: '#3f3f46' },
+    '.cm-foldPlaceholder': { backgroundColor: '#27272a', color: '#a1a1aa', border: 'none' },
+    '.cm-matchingBracket, &.cm-focused .cm-matchingBracket': {
+      backgroundColor: 'rgba(129,140,248,0.25)',
+      color: 'inherit',
+      outline: `1px solid ${ACCENT}`,
+    },
+  },
+  { dark: true },
+);
+
+/** A single-accent syntax palette: tags/keywords in the accent, everything else a calm light grey. */
+const blackHighlight = HighlightStyle.define([
+  { tag: [t.keyword, t.tagName, t.operatorKeyword, t.moduleKeyword], color: ACCENT },
+  { tag: [t.attributeName, t.propertyName], color: '#c7d2fe' },
+  { tag: [t.string, t.special(t.string), t.attributeValue, t.regexp], color: '#a5b4fc' },
+  { tag: [t.comment, t.lineComment, t.blockComment, t.meta], color: '#52525b', fontStyle: 'italic' },
+  { tag: [t.number, t.bool, t.atom, t.null], color: '#e4e4e7' },
+  { tag: [t.bracket, t.angleBracket, t.punctuation, t.separator], color: '#71717a' },
+  { tag: [t.heading, t.strong], color: '#f4f4f5', fontWeight: 'bold' },
+  { tag: t.link, color: ACCENT, textDecoration: 'underline' },
+]);
 
 /**
  * A thin CodeMirror 6 wrapper for authoring HTML + Handlebars template source.
@@ -47,10 +98,9 @@ export function CodeEditor({ value, onChange, ariaLabel }: CodeEditorProps) {
             lastEmitted.current = doc;
             onChangeRef.current(doc);
           }),
-          EditorView.theme({
-            '&': { height: '100%', fontSize: '13px' },
-            '.cm-scroller': { overflow: 'auto', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' },
-          }),
+          // Added after basicSetup so the black theme + single-accent highlight win.
+          blackTheme,
+          syntaxHighlighting(blackHighlight),
         ],
       }),
     });

@@ -1,7 +1,12 @@
 import type { Patch, SettingsForm } from './model';
-import { Field, GlassCard, TextArea } from './ui';
+import { Field, GlassCard } from './ui';
+import { CodeField } from '../ui/CodeField';
 import { RedirectsEditor } from './RedirectsEditor';
 import { StringListEditor } from './StringListEditor';
+
+/** Shared bindings hint for the validated skeleton-slot editors. */
+const SLOT_HINT =
+  'HTML + Tailwind/DaisyUI (no JS). Bindings: {{ company.* }}, {{#each nav.header}}…{{/each}}, {{ website.json_data.* }}.';
 
 /** Website settings: production URL, injected CSS/HTML, redirects, and localization. */
 export function WebsiteSection({ form, patch }: { form: SettingsForm; patch: Patch }) {
@@ -27,34 +32,31 @@ export function WebsiteSection({ form, patch }: { form: SettingsForm; patch: Pat
       </GlassCard>
 
       <GlassCard title="Critical CSS" icon="◐" wide>
-        <TextArea
+        <CodeField
           label="Project-wide CSS inlined in <head> (after brand tokens)"
+          title="Critical CSS"
           value={form.criticalCss}
           onChange={(v) => patch({ criticalCss: v })}
-          rows={5}
-          mono
           placeholder=".hero { ... }"
         />
       </GlassCard>
 
       <GlassCard title="Head HTML" icon="⟨⟩">
-        <TextArea
+        <CodeField
           label="Raw HTML injected into <head> (analytics, meta)"
+          title="Head HTML"
           value={form.head}
           onChange={(v) => patch({ head: v })}
-          rows={5}
-          mono
           placeholder="<meta ... />"
         />
       </GlassCard>
 
       <GlassCard title="Scripts" icon="⟨/⟩">
-        <TextArea
+        <CodeField
           label="Raw HTML injected after the page body (3rd-party scripts/widgets)"
+          title="Scripts"
           value={form.scripts}
           onChange={(v) => patch({ scripts: v })}
-          rows={5}
-          mono
           placeholder="<script ... ></script>"
         />
       </GlassCard>
@@ -70,67 +72,67 @@ export function WebsiteSection({ form, patch }: { form: SettingsForm; patch: Pat
       </div>
 
       <GlassCard title="Top navigation" icon="≡">
-        <TextArea
+        <CodeField
           label="topNav — top of every page"
+          title="topNav partial"
+          hint={SLOT_HINT}
           value={form.topNav}
           onChange={(v) => patch({ topNav: v })}
-          rows={4}
-          mono
           placeholder={'<nav class="navbar">{{ company.name }}</nav>'}
         />
       </GlassCard>
 
       <GlassCard title="Mobile navigation" icon="☰">
-        <TextArea
+        <CodeField
           label="mobileNav — after topNav"
+          title="mobileNav partial"
+          hint={SLOT_HINT}
           value={form.mobileNav}
           onChange={(v) => patch({ mobileNav: v })}
-          rows={4}
-          mono
           placeholder={'<nav class="drawer">…</nav>'}
         />
       </GlassCard>
 
       <GlassCard title="Left sidebar" icon="◧">
-        <TextArea
+        <CodeField
           label="sidebarLeft — after the page body (position via classes)"
+          title="sidebarLeft partial"
+          hint={SLOT_HINT}
           value={form.sidebarLeft}
           onChange={(v) => patch({ sidebarLeft: v })}
-          rows={4}
-          mono
           placeholder={'<aside class="menu">…</aside>'}
         />
       </GlassCard>
 
       <GlassCard title="Right sidebar" icon="◨">
-        <TextArea
+        <CodeField
           label="sidebarRight — after the page body (position via classes)"
+          title="sidebarRight partial"
+          hint={SLOT_HINT}
           value={form.sidebarRight}
           onChange={(v) => patch({ sidebarRight: v })}
-          rows={4}
-          mono
           placeholder={'<aside class="menu">…</aside>'}
         />
       </GlassCard>
 
       <GlassCard title="Footer" icon="▁">
-        <TextArea
+        <CodeField
           label="footer — below body + sidebars"
+          title="footer partial"
+          hint={SLOT_HINT}
           value={form.footer}
           onChange={(v) => patch({ footer: v })}
-          rows={4}
-          mono
           placeholder={'<footer class="footer">© {{ company.name }}</footer>'}
         />
       </GlassCard>
 
       <GlassCard title="Bottom" icon="▾">
-        <TextArea
+        <CodeField
           label="bottom — after the footer (global modals, schema.org microdata)"
+          title="bottom partial"
+          hint={SLOT_HINT}
           value={form.bottom}
           onChange={(v) => patch({ bottom: v })}
-          rows={4}
-          mono
           placeholder={'<div class="modal">…</div>'}
         />
       </GlassCard>

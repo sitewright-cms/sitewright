@@ -294,6 +294,12 @@ export interface AppOptions {
    */
   adminEmails?: string[];
   /**
+   * Per-IP request cap (per minute) for the auth routes (`/auth/register`, `/auth/login`). Defaults
+   * to 10 — the safe production value. Raise it ONLY for the integration/E2E harness, which drives
+   * many registrations from a single IP and would otherwise exhaust the shared bucket.
+   */
+  authRateMax?: number;
+  /**
    * Whether public `POST /auth/register` is open. Default `true` (the embeddable factory + the
    * test suite). The production entry point (`server.ts`) sets this from `SW_OPEN_REGISTRATION`
    * and defaults it CLOSED — a closed instance is invitation-only (an email must hold a pending
@@ -620,7 +626,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // Serialize deploys per project (shared by ad-hoc and saved-target deploys).
   const activeDeploys = new Set<string>();
 
-  app.post('/auth/register', { config: rl(10) }, async (req, reply) => {
+  // Auth routes share a per-IP cap; defaults to 10/min (production), raisable for the E2E harness.
+  const authRl = rl(opts.authRateMax ?? 10);
+
+  app.post('/auth/register', { config: authRl }, async (req, reply) => {
     const body = RegisterBody.parse(req.body);
     // When registration is closed, it is invitation-only: only an email holding a pending invite
     // may register (then accept it). The instance admin is seeded out-of-band (seed.ts), never
@@ -642,7 +651,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     return reply.code(201).send({ userId, orgId: PLATFORM_ORG_ID });
   });
 
-  app.post('/auth/login', { config: rl(10) }, async (req, reply) => {
+  app.post('/auth/login', { config: authRl }, async (req, reply) => {
     const body = LoginBody.parse(req.body);
     const userId = await login(db, body.email, body.password);
     const { token, expiresAt } = await createSession(db, userId);

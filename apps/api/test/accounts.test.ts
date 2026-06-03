@@ -45,6 +45,20 @@ describe('registerAccount', () => {
     await registerAccount(db, 'a@acme.test', 'pw-secret');
     await expect(registerAccount(db, 'A@ACME.test', 'pw-secret')).rejects.toThrow(ConflictError);
   });
+
+  it('maps a concurrent duplicate registration to a clean ConflictError (not a raw 500)', async () => {
+    // Both calls pass the racy pre-check against the empty table, then collide on the UNIQUE(email)
+    // insert — exactly one must win, the other must surface as a ConflictError.
+    const results = await Promise.allSettled([
+      registerAccount(db, 'race@acme.test', 'pw-secret'),
+      registerAccount(db, 'race@acme.test', 'pw-secret'),
+    ]);
+    const fulfilled = results.filter((r) => r.status === 'fulfilled');
+    const rejected = results.filter((r) => r.status === 'rejected') as PromiseRejectedResult[];
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]?.reason).toBeInstanceOf(ConflictError);
+  });
 });
 
 describe('login', () => {

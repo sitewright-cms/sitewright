@@ -16,6 +16,20 @@ export interface RegisteredAccount {
 }
 
 /**
+ * Whether an error (or any error in its `cause` chain) is a SQLite UNIQUE-constraint violation.
+ * Drizzle wraps the driver error, so the "UNIQUE constraint failed" text lives on `.cause`, not the
+ * top-level message — we walk the chain (bounded) to find it.
+ */
+function isUniqueViolation(err: unknown): boolean {
+  let e: unknown = err;
+  for (let depth = 0; depth < 5 && e instanceof Error; depth += 1) {
+    if (/unique constraint failed|sqlite_constraint_unique/i.test(e.message)) return true;
+    e = (e as { cause?: unknown }).cause;
+  }
+  return false;
+}
+
+/**
  * Registers a user (email must be unique). A self-registered user is a plain account with NO
  * platform role and NO projects until invited; the seed passes `platformRole: 'admin'` to bootstrap
  * the agency owner.
@@ -32,9 +46,17 @@ export async function registerAccount(
   const now = new Date();
   const userId = randomUUID();
   const passwordHash = await hashPassword(password);
-  await db
-    .insert(users)
-    .values({ id: userId, email: normalizedEmail, passwordHash, platformRole: opts.platformRole ?? null, createdAt: now });
+  try {
+    await db
+      .insert(users)
+      .values({ id: userId, email: normalizedEmail, passwordHash, platformRole: opts.platformRole ?? null, createdAt: now });
+  } catch (err) {
+    // The pre-check above is racy: two concurrent registrations of the same email both pass it and
+    // one loses the UNIQUE(email) insert. Map that to a clean ConflictError (409) instead of letting
+    // a raw DB error surface as a 500. The constraint is the real guard; this is just the friendly face.
+    if (isUniqueViolation(err)) throw new ConflictError('email already registered');
+    throw err;
+  }
   return { userId };
 }
 

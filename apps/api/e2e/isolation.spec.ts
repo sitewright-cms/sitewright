@@ -29,8 +29,14 @@ test('multi-tenant isolation over HTTP (the core guarantee)', async ({ playwrigh
   // A can read its own project.
   expect((await a.get(`/orgs/${orgA}/projects/${projectId}`)).status()).toBe(200);
 
-  // B is not a member of A's org → forbidden on A's org routes.
-  expect((await b.get(`/orgs/${orgA}/projects`)).status()).toBe(403);
+  // Flat model: the project list is per-user. B's list succeeds (200) but contains only B's own
+  // projects — never A's (no cross-tenant leak).
+  const bList = await b.get(`/orgs/${orgA}/projects`);
+  expect(bList.status()).toBe(200);
+  const bProjects = (await bList.json()).projects as Array<{ id: string }>;
+  expect(bProjects.some((p) => p.id === projectId)).toBe(false);
+
+  // B is not a member of A's project → reading it directly is forbidden (403, no existence oracle).
   expect((await b.get(`/orgs/${orgA}/projects/${projectId}`)).status()).toBe(403);
 
   await a.dispose();

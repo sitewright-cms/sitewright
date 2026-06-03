@@ -116,7 +116,7 @@ export class WorkerBuildRunner implements BuildRunner {
       }
       out.push({ asset, files: Object.fromEntries(entries) });
     }
-    return { bundle: job.bundle, publishedAt: job.publishedAt, media: out, jsonData: job.jsonData };
+    return { bundle: job.bundle, publishedAt: job.publishedAt, media: out, jsonData: job.jsonData, snippets: job.snippets };
   }
 
   private spawnWorker(args: string[], stdin: string): Promise<string> {

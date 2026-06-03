@@ -151,6 +151,69 @@ describe('buildSite', () => {
     expect(about).toContain('<footer class="footer">© Acme</footer>');
   });
 
+  it('composes {{> snippet}} Handlebars partials into a published source page', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      snippets: { promo: '<aside class="alert">{{ company.name }} promo</aside>' },
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: { primary: '#0a7' } },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+        },
+        pages: [
+          { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<main><h1>Home</h1>{{> promo}}</main>' },
+        ],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).toContain('<aside class="alert">Acme promo</aside>'); // the snippet expanded + bound
+    // The snippet's classes feed the shared utility sheet (compiled output lives in styles.css).
+    const sheet = await readFile(join(outDir, 'styles.css'), 'utf8');
+    expect(sheet).toMatch(/\.alert/);
+  });
+
+  it('fails the publish when a referenced snippet is undefined', async () => {
+    await expect(
+      buildSite({
+        publishedAt: '2026-05-29T00:00:00.000Z',
+        outDir,
+        bundle: bundle({
+          pages: [{ id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<main>{{> missing}}</main>' }],
+        }),
+      }),
+    ).rejects.toThrow(/page "home" template error.*missing/); // pins the cause: the named partial
+  });
+
+  it('fails the publish (does not crash) on mutually-recursive snippets', async () => {
+    // a → b → a passes per-snippet validation but recurses at render; renderTemplate catches the
+    // stack overflow and the publish fails gracefully with a clear, page-scoped error.
+    await expect(
+      buildSite({
+        publishedAt: '2026-05-29T00:00:00.000Z',
+        outDir,
+        snippets: { a: '<div>{{> b}}</div>', b: '<div>{{> a}}</div>' },
+        bundle: bundle({
+          pages: [{ id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<main>{{> a}}</main>' }],
+        }),
+      }),
+    ).rejects.toThrow(/page "home" template error/);
+  });
+
+  it('fails the publish when a snippet is unsafe (partials are validated too)', async () => {
+    await expect(
+      buildSite({
+        publishedAt: '2026-05-29T00:00:00.000Z',
+        outDir,
+        snippets: { evil: '<div>{{x}}</div><script>steal()</script>' },
+        bundle: bundle({
+          pages: [{ id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<main>{{> evil}}</main>' }],
+        }),
+      }),
+    ).rejects.toThrow(/page "home" template error.*script/i); // pins the cause: the validator rejects <script>
+  });
+
   it('decodes the publish-time JSON snapshot into {{ website.json_data }} (source page + slot)', async () => {
     await buildSite({
       publishedAt: '2026-05-29T00:00:00.000Z',

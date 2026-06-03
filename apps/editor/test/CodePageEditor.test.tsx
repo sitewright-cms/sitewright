@@ -48,7 +48,7 @@ describe('CodePageEditor', () => {
         document: true,
       }),
     );
-    const iframe = screen.getByTitle('Live preview') as HTMLIFrameElement;
+    const iframe = screen.getByTitle('Preview') as HTMLIFrameElement;
     // Loaded by URL (token endpoint) under the iframe's own sandbox CSP — NEVER inlined as srcDoc.
     expect(iframe.getAttribute('sandbox')).toBe('allow-scripts');
     expect(iframe.hasAttribute('srcdoc')).toBe(false);

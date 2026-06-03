@@ -1,18 +1,16 @@
 import { useEffect, useState } from 'react';
-import { api, type Org, type Project, type OrgMember, type Invite } from '../api';
+import { api, type Project, type OrgMember, type Invite } from '../api';
 import { InvitePanel } from './InvitePanel';
 
 interface ClientsManagerProps {
-  org: Org;
   project: Project;
 }
 
 /**
- * Owner/admin surface to manage a PROJECT's clients (project-scoped members). A client
- * invited here can edit only this project's editable regions — never the rest of the
- * org's projects.
+ * Owner surface to manage a PROJECT's clients (project-scoped members). A client
+ * invited here can edit only this project's editable regions — never any other project.
  */
-export function ClientsManager({ org, project }: ClientsManagerProps) {
+export function ClientsManager({ project }: ClientsManagerProps) {
   const [members, setMembers] = useState<OrgMember[]>([]);
   const [invites, setInvites] = useState<Invite[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -20,8 +18,8 @@ export function ClientsManager({ org, project }: ClientsManagerProps) {
   async function load() {
     try {
       const [m, inv] = await Promise.all([
-        api.listProjectMembers(org.id, project.id),
-        api.listInvites(org.id, project.id),
+        api.listProjectMembers(project.id),
+        api.listProjectInvites(project.id),
       ]);
       setMembers(m.members);
       setInvites(inv.invites);
@@ -32,12 +30,12 @@ export function ClientsManager({ org, project }: ClientsManagerProps) {
 
   useEffect(() => {
     void load();
-  }, [org.id, project.id]);
+  }, [project.id]);
 
   async function remove(userId: string) {
     setError(null);
     try {
-      await api.removeProjectMember(org.id, project.id, userId);
+      await api.removeProjectMember(project.id, userId);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed to remove client');
@@ -74,8 +72,8 @@ export function ClientsManager({ org, project }: ClientsManagerProps) {
       <InvitePanel
         kind="client"
         invites={invites}
-        onInvite={(email) => api.inviteClient(org.id, project.id, email)}
-        onRevoke={(id) => api.revokeInvite(org.id, id)}
+        onInvite={(email) => api.inviteClient(project.id, email)}
+        onRevoke={(id) => api.revokeInvite(id)}
         onChanged={load}
       />
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}

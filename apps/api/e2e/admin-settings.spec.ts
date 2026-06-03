@@ -14,7 +14,7 @@ test('instance admin settings: gating, persistence, and secret masking', async (
 
   // --- A normal (non-admin) user is denied. ---
   const userReg = await api.post('/auth/register', {
-    data: { email: `user-${stamp}@e2e.test`, password: PW, orgName: `User ${stamp}` },
+    data: { email: `user-${stamp}@e2e.test`, password: PW },
   });
   expect(userReg.status()).toBe(201);
   const userMe = await api.get('/me');
@@ -26,7 +26,7 @@ test('instance admin settings: gating, persistence, and secret masking', async (
   // idempotency across repeated runs against the same (persistent) container. ---
   const admin = await playwright.request.newContext({ baseURL });
   const reg = await admin.post('/auth/register', {
-    data: { email: ADMIN_EMAIL, password: PW, orgName: 'Admin Org' },
+    data: { email: ADMIN_EMAIL, password: PW },
   });
   if (reg.status() === 409) {
     const login = await admin.post('/auth/login', { data: { email: ADMIN_EMAIL, password: PW } });

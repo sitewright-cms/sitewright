@@ -9,16 +9,15 @@ const formModes = vi.fn();
 vi.mock('../src/api', () => ({
   api: {
     listForms: () => listForms(),
-    putForm: (_o: string, _p: string, form: Form) => putForm(form),
-    deleteForm: (_o: string, _p: string, id: string) => deleteForm(id),
+    putForm: (_p: string, form: Form) => putForm(form),
+    deleteForm: (_p: string, id: string) => deleteForm(id),
     formModes: () => formModes(),
   },
 }));
 
 import { FormsManager } from '../src/views/FormsManager';
 
-const org = { id: 'o', name: 'O', slug: 'o', role: 'admin' };
-const project = { id: 'p', name: 'P', slug: 'p' };
+const project = { id: 'p', name: 'P', slug: 'p', role: 'owner' as const };
 
 beforeEach(() => {
   listForms.mockReset();
@@ -35,12 +34,12 @@ describe('FormsManager', () => {
     listForms.mockResolvedValue({
       items: [{ id: 'contact', name: 'Contact', fields: [{ name: 'email', label: 'Email', type: 'email' }], recipient: 'a@b.co', submitLabel: 'Send', successMessage: 'ok', errorMessage: 'no', mode: 'globalSmtp', hcaptcha: false }],
     });
-    render(<FormsManager org={org} project={project} />);
+    render(<FormsManager project={project} />);
     expect(await screen.findByText('Contact')).toBeInTheDocument();
   });
 
   it('creates a form, edits fields + recipient, and saves a valid definition', async () => {
-    render(<FormsManager org={org} project={project} />);
+    render(<FormsManager project={project} />);
     // Create → opens the editor with a default email field.
     fireEvent.change(await screen.findByLabelText('New form name'), { target: { value: 'Contact' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create form' }));
@@ -56,7 +55,7 @@ describe('FormsManager', () => {
   });
 
   it('normalizes a typed field name to a safe identifier on save', async () => {
-    render(<FormsManager org={org} project={project} />);
+    render(<FormsManager project={project} />);
     fireEvent.change(await screen.findByLabelText('New form name'), { target: { value: 'Lead' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create form' }));
     await screen.findByLabelText('Recipient email');
@@ -69,7 +68,7 @@ describe('FormsManager', () => {
   });
 
   it('blocks saving a form whose only field has a blank name (inline error, no API call)', async () => {
-    render(<FormsManager org={org} project={project} />);
+    render(<FormsManager project={project} />);
     fireEvent.change(await screen.findByLabelText('New form name'), { target: { value: 'Lead' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create form' }));
     await screen.findByLabelText('Recipient email');
@@ -81,7 +80,7 @@ describe('FormsManager', () => {
   });
 
   it('lists only the instance-enabled delivery modes in the selector and saves the choice', async () => {
-    render(<FormsManager org={org} project={project} />);
+    render(<FormsManager project={project} />);
     fireEvent.change(await screen.findByLabelText('New form name'), { target: { value: 'Contact' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create form' }));
     const modeSelect = (await screen.findByLabelText('Delivery mode')) as HTMLSelectElement;
@@ -97,7 +96,7 @@ describe('FormsManager', () => {
 
   it('shows the third-party URL field and saves it when mode is thirdParty', async () => {
     formModes.mockResolvedValue({ formModes: { globalSmtp: true, userSmtp: false, contactPhp: false, thirdParty: true } });
-    render(<FormsManager org={org} project={project} />);
+    render(<FormsManager project={project} />);
     fireEvent.change(await screen.findByLabelText('New form name'), { target: { value: 'Lead' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create form' }));
     fireEvent.change(await screen.findByLabelText('Delivery mode'), { target: { value: 'thirdParty' } });
@@ -118,14 +117,14 @@ describe('FormsManager', () => {
         items: [{ id: 'contact', name: 'Contact', fields: [{ name: 'email', label: 'Email', type: 'email', required: false }], recipient: 'a@b.co', submitLabel: 'Send', successMessage: 'ok', errorMessage: 'no', mode: 'globalSmtp', hcaptcha: false }],
       })
       .mockResolvedValue({ items: [] });
-    render(<FormsManager org={org} project={project} />);
+    render(<FormsManager project={project} />);
     fireEvent.click(await screen.findByLabelText('Delete form contact'));
     await waitFor(() => expect(deleteForm).toHaveBeenCalledWith('contact'));
     expect(await screen.findByText(/No forms yet/)).toBeInTheDocument();
   });
 
   it('adds and removes fields in the editor', async () => {
-    render(<FormsManager org={org} project={project} />);
+    render(<FormsManager project={project} />);
     fireEvent.change(await screen.findByLabelText('New form name'), { target: { value: 'Lead' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create form' }));
     await screen.findByLabelText('Recipient email');

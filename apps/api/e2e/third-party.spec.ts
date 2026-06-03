@@ -10,19 +10,17 @@ test('thirdParty: enabled mode points the exported form at the external endpoint
   const api = await playwright.request.newContext({ baseURL });
   const stamp = Date.now();
 
-  const reg = await api.post('/auth/register', { data: { email: 'admin@e2e.test', password: PW, orgName: 'TP Admin' } });
+  const reg = await api.post('/auth/register', { data: { email: 'admin@e2e.test', password: PW } });
   if (reg.status() === 409) {
     expect((await api.post('/auth/login', { data: { email: 'admin@e2e.test', password: PW } })).status()).toBe(200);
   } else {
     expect(reg.status()).toBe(201);
   }
-  const orgId = (await (await api.get('/me')).json()).orgs[0].id as string;
-
   expect((await api.put('/admin/settings', { data: { formModes: { thirdParty: true } } })).status()).toBe(200);
 
-  const proj = await api.post(`/orgs/${orgId}/projects`, { data: { name: 'TP Site', slug: `tp-${stamp}` } });
+  const proj = await api.post(`/projects`, { data: { name: 'TP Site', slug: `tp-${stamp}` } });
   const projectId = (await proj.json()).project.id as string;
-  const base = `/orgs/${orgId}/projects/${projectId}`;
+  const base = `/projects/${projectId}`;
 
   expect((await (await api.get(`${base}/form-modes`)).json()).formModes.thirdParty).toBe(true);
 

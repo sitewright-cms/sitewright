@@ -38,17 +38,15 @@ async function setup() {
     payload: { email: `a-${uid}@e2e.test`, password: 'pw-secret-1' },
   });
   const session = cookie(reg);
-  // `:orgId` in the path is vestigial in the flat model; always the constant 'platform'.
-  const orgId = (reg.json() as { orgId: string }).orgId;
   const proj = await app.inject({
     method: 'POST',
-    url: `/orgs/${orgId}/projects`,
+    url: `/projects`,
     cookies: { sw_session: session },
     // Slugs are instance-unique; keep each setup() call's slug distinct.
     payload: { name: 'Site<X>', slug: `site-${uid}` },
   });
   const projectId = (proj.json() as { project: { id: string } }).project.id;
-  return { session, orgId, projectId };
+  return { session, projectId };
 }
 
 const authorizeQuery = (extra: Record<string, string> = {}) =>
@@ -119,7 +117,7 @@ describe('OAuth discovery + authorize', () => {
         code_challenge: CHALLENGE,
         scope: 'content:read',
         state: 'xyz-state',
-        // The consent picker value is now just the projectId (no orgId prefix).
+        // The consent picker value is just the projectId.
         project: projectId,
         decision: 'deny',
       }),
@@ -224,7 +222,7 @@ describe('OAuth full authorization-code + PKCE flow', () => {
   }
 
   it('exchanges code → access + refresh, and the access token works on the API; refresh rotates', async () => {
-    const { session, orgId, projectId } = await setup();
+    const { session, projectId } = await setup();
     const code = await getCode(session, projectId);
 
     const tokRes = await app.inject({
@@ -241,7 +239,7 @@ describe('OAuth full authorization-code + PKCE flow', () => {
     // The access token authenticates a normal bearer API call.
     const use = await app.inject({
       method: 'GET',
-      url: `/orgs/${orgId}/projects/${projectId}/content/page`,
+      url: `/projects/${projectId}/content/page`,
       headers: { authorization: `Bearer ${tok.access_token}` },
     });
     expect(use.statusCode).toBe(200);

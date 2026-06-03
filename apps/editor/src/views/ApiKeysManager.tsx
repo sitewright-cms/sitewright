@@ -1,10 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { api, type ApiKeyCapability, type ApiKeyView, type Org, type Project } from '../api';
+import { api, type ApiKeyCapability, type ApiKeyView, type Project, type ProjectRole } from '../api';
 
 const ALL_CAPABILITIES: ApiKeyCapability[] = ['content:read', 'content:write', 'publish', 'deploy'];
 
 interface ApiKeysManagerProps {
-  org: Org;
   project: Project;
 }
 
@@ -13,10 +12,10 @@ interface ApiKeysManagerProps {
  * tokens (PATs) used by CI and headless tools. The raw token is shown exactly
  * once on creation; thereafter only its prefix is visible.
  */
-export function ApiKeysManager({ org, project }: ApiKeysManagerProps) {
+export function ApiKeysManager({ project }: ApiKeysManagerProps) {
   const [keys, setKeys] = useState<ApiKeyView[]>([]);
   const [name, setName] = useState('');
-  const [role, setRole] = useState<'owner' | 'admin' | 'member'>('admin');
+  const [role, setRole] = useState<ProjectRole>('owner');
   const [caps, setCaps] = useState<ApiKeyCapability[]>(['content:read', 'content:write']);
   const [expiresInDays, setExpiresInDays] = useState(30);
   const [issued, setIssued] = useState<string | null>(null);
@@ -26,7 +25,7 @@ export function ApiKeysManager({ org, project }: ApiKeysManagerProps) {
     try {
       // The list endpoint returns active keys only (revoked rows are retained
       // server-side for audit but excluded from list()).
-      const items = (await api.listApiKeys(org.id, project.id)).items;
+      const items = (await api.listApiKeys(project.id)).items;
       if (!isActive()) return; // a tab switch may have unmounted us mid-fetch
       setKeys(items);
     } catch (err) {
@@ -39,7 +38,7 @@ export function ApiKeysManager({ org, project }: ApiKeysManagerProps) {
     return () => {
       active = false;
     };
-  }, [org.id, project.id]);
+  }, [project.id]);
 
   function toggleCap(cap: ApiKeyCapability) {
     setCaps((prev) => (prev.includes(cap) ? prev.filter((c) => c !== cap) : [...prev, cap]));
@@ -50,7 +49,7 @@ export function ApiKeysManager({ org, project }: ApiKeysManagerProps) {
     setError(null);
     setIssued(null);
     try {
-      const res = await api.createApiKey(org.id, project.id, { name, role, capabilities: caps, expiresInDays });
+      const res = await api.createApiKey(project.id, { name, role, capabilities: caps, expiresInDays });
       setIssued(res.token); // shown ONCE
       setName('');
       await load();
@@ -62,7 +61,7 @@ export function ApiKeysManager({ org, project }: ApiKeysManagerProps) {
   async function revoke(id: string) {
     if (!window.confirm('Revoke this API key? Any client using it will stop working immediately.')) return;
     try {
-      await api.deleteApiKey(org.id, project.id, id);
+      await api.deleteApiKey(project.id, id);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed to revoke API key');
@@ -109,9 +108,8 @@ export function ApiKeysManager({ org, project }: ApiKeysManagerProps) {
             aria-label="API key role"
             className="rounded-md border border-slate-300 px-3 py-2 text-sm"
             value={role}
-            onChange={(e) => setRole(e.target.value as 'owner' | 'admin' | 'member')}
+            onChange={(e) => setRole(e.target.value as ProjectRole)}
           >
-            <option value="admin">admin</option>
             <option value="owner">owner</option>
             <option value="member">member (read-only)</option>
           </select>

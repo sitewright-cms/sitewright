@@ -26,22 +26,21 @@ function sessionCookie(res: { cookies: Array<{ name: string; value: string }> })
   return t;
 }
 
-async function setup(email: string, orgName: string, slug = 'site') {
+async function setup(email: string, slug = 'site') {
   const reg = await app.inject({
     method: 'POST',
     url: '/auth/register',
-    payload: { email, password: 'pw-secret-1', orgName },
+    payload: { email, password: 'pw-secret-1' },
   });
   const t = sessionCookie(reg);
-  const orgId = (reg.json() as { orgId: string }).orgId;
   const proj = await app.inject({
     method: 'POST',
-    url: `/orgs/${orgId}/projects`,
+    url: `/projects`,
     cookies: { sw_session: t },
     payload: { name: 'Site', slug },
   });
   const projectId = (proj.json() as { project: { id: string } }).project.id;
-  return { t, orgId, projectId };
+  return { t, projectId };
 }
 
 function createKey(base: string, cookie: string, body: Record<string, unknown>) {
@@ -58,8 +57,8 @@ const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
 
 describe('project API keys — management', () => {
   it('creates a key (token returned once, never on list) and lists it redacted', async () => {
-    const { t, orgId, projectId } = await setup('a@acme.test', 'Acme');
-    const base = `/orgs/${orgId}/projects/${projectId}`;
+    const { t, projectId } = await setup('a@acme.test');
+    const base = `/projects/${projectId}`;
 
     const created = await createKey(base, t, { capabilities: ['content:read', 'content:write'] });
     expect(created.statusCode).toBe(201);
@@ -75,8 +74,8 @@ describe('project API keys — management', () => {
   });
 
   it('requires a session to manage keys, and lets the owner mint an owner-scoped key', async () => {
-    const { t, orgId, projectId } = await setup('a@acme.test', 'Acme');
-    const base = `/orgs/${orgId}/projects/${projectId}`;
+    const { t, projectId } = await setup('a@acme.test');
+    const base = `/projects/${projectId}`;
     // No auth at all → 401 (the member/non-writer role gate is covered in the repo suite).
     expect((await app.inject({ method: 'GET', url: `${base}/api-keys` })).statusCode).toBe(401);
     // The registering user is the org owner, so an owner-scoped key is permitted.
@@ -89,11 +88,11 @@ describe('project API keys — bearer auth + capabilities', () => {
   async function keyWith(caps: string[], role = 'owner') {
     seq += 1;
     // Distinct, instance-unique slug per call so two tenants in one test don't collide.
-    const { t, orgId, projectId } = await setup(`u${seq}@acme.test`, `Acme ${seq}`, `site-${seq}`);
-    const base = `/orgs/${orgId}/projects/${projectId}`;
+    const { t, projectId } = await setup(`u${seq}@acme.test`, `site-${seq}`);
+    const base = `/projects/${projectId}`;
     const res = await createKey(base, t, { capabilities: caps, role });
     const token = (res.json() as { token: string }).token;
-    return { token, base, orgId, projectId, t };
+    return { token, base, projectId, t };
   }
 
   it('authenticates content reads with a content:read token', async () => {
@@ -127,10 +126,10 @@ describe('project API keys — bearer auth + capabilities', () => {
   it('confines a token to its own project (cross-project → 404)', async () => {
     const a = await keyWith(['content:read', 'content:write']);
     // A second project (distinct instance-unique slug); A's token must not reach it.
-    const b = await setup('b@globex.test', 'Globex', 'globex-site');
+    const b = await setup('b@globex.test', 'globex-site');
     const res = await app.inject({
       method: 'GET',
-      url: `/orgs/${b.orgId}/projects/${b.projectId}/content/page`,
+      url: `/projects/${b.projectId}/content/page`,
       headers: bearer(a.token),
     });
     expect(res.statusCode).toBe(404);
@@ -164,12 +163,10 @@ describe('project API keys — bearer auth + capabilities', () => {
   });
 
   it('introspects its own scope via GET /api-key/self (no secret leaked)', async () => {
-    const { token, orgId, projectId, t } = await keyWith(['content:read', 'publish']);
+    const { token, projectId, t } = await keyWith(['content:read', 'publish']);
     const res = await app.inject({ method: 'GET', url: '/api-key/self', headers: bearer(token) });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({
-      orgId,
-      projectId,
+    expect(res.json()).toEqual({ projectId,
       role: 'owner',
       capabilities: ['content:read', 'publish'],
     });

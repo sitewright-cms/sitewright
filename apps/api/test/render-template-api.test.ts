@@ -28,20 +28,19 @@ function token(res: { cookies: Array<{ name: string; value: string }> }): string
 }
 
 async function setup() {
-  const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'owner@acme.test', password: 'pw-secret-1', orgName: 'Acme' } });
+  const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'owner@acme.test', password: 'pw-secret-1'} });
   const t = token(reg);
-  const orgId = (reg.json() as { orgId: string }).orgId;
-  const proj = await app.inject({ method: 'POST', url: `/orgs/${orgId}/projects`, cookies: { sw_session: t }, payload: { name: 'Site', slug: 'site' } });
+  const proj = await app.inject({ method: 'POST', url: `/projects`, cookies: { sw_session: t }, payload: { name: 'Site', slug: 'site' } });
   const projectId = (proj.json() as { project: { id: string } }).project.id;
-  return { t, orgId, projectId };
+  return { t, projectId };
 }
 
 describe('render-template API (isolated worker)', () => {
   it('renders a Handlebars template against the project context (owner)', async () => {
-    const { t, orgId, projectId } = await setup();
+    const { t, projectId } = await setup();
     const res = await app.inject({
       method: 'POST',
-      url: `/orgs/${orgId}/projects/${projectId}/render-template`,
+      url: `/projects/${projectId}/render-template`,
       cookies: { sw_session: t },
       payload: { template: '<h1>{{ company.name }}</h1><p>{{ page.title }}</p>' },
     });
@@ -51,16 +50,16 @@ describe('render-template API (isolated worker)', () => {
   });
 
   it('renders a template that includes a saved snippet (Handlebars partial)', async () => {
-    const { t, orgId, projectId } = await setup();
+    const { t, projectId } = await setup();
     await app.inject({
       method: 'PUT',
-      url: `/orgs/${orgId}/projects/${projectId}/content/snippet/card`,
+      url: `/projects/${projectId}/content/snippet/card`,
       cookies: { sw_session: t },
       payload: { id: 'card', name: 'card', source: '<li>{{ company.name }}</li>' },
     });
     const res = await app.inject({
       method: 'POST',
-      url: `/orgs/${orgId}/projects/${projectId}/render-template`,
+      url: `/projects/${projectId}/render-template`,
       cookies: { sw_session: t },
       payload: { template: '<ul>{{> card}}</ul>' },
     });
@@ -69,10 +68,10 @@ describe('render-template API (isolated worker)', () => {
   });
 
   it('wraps the render in a full styled document when document:true (the editor preview)', async () => {
-    const { t, orgId, projectId } = await setup();
+    const { t, projectId } = await setup();
     const res = await app.inject({
       method: 'POST',
-      url: `/orgs/${orgId}/projects/${projectId}/render-template`,
+      url: `/projects/${projectId}/render-template`,
       cookies: { sw_session: t },
       payload: { template: '<main class="grid"><h1>{{ company.name }}</h1></main>', document: true },
     });
@@ -90,7 +89,7 @@ describe('render-template API (isolated worker)', () => {
     expect(body.token).toMatch(/^[0-9a-f-]{36}$/);
     const served = await app.inject({
       method: 'GET',
-      url: `/orgs/${orgId}/projects/${projectId}/preview/${body.token}`,
+      url: `/projects/${projectId}/preview/${body.token}`,
       cookies: { sw_session: t },
     });
     expect(served.statusCode).toBe(200);
@@ -100,10 +99,10 @@ describe('render-template API (isolated worker)', () => {
   });
 
   it('does NOT mint a token for a bare (document:false) render', async () => {
-    const { t, orgId, projectId } = await setup();
+    const { t, projectId } = await setup();
     const res = await app.inject({
       method: 'POST',
-      url: `/orgs/${orgId}/projects/${projectId}/render-template`,
+      url: `/projects/${projectId}/render-template`,
       cookies: { sw_session: t },
       payload: { template: '<p>{{ company.name }}</p>' },
     });
@@ -112,16 +111,16 @@ describe('render-template API (isolated worker)', () => {
   });
 
   it('rejects rendering when a SAVED snippet is unsafe (partials are validated too)', async () => {
-    const { t, orgId, projectId } = await setup();
+    const { t, projectId } = await setup();
     await app.inject({
       method: 'PUT',
-      url: `/orgs/${orgId}/projects/${projectId}/content/snippet/evil`,
+      url: `/projects/${projectId}/content/snippet/evil`,
       cookies: { sw_session: t },
       payload: { id: 'evil', name: 'evil', source: '<script>steal()</script>' },
     });
     const res = await app.inject({
       method: 'POST',
-      url: `/orgs/${orgId}/projects/${projectId}/render-template`,
+      url: `/projects/${projectId}/render-template`,
       cookies: { sw_session: t },
       payload: { template: '<div>{{> evil}}</div>' },
     });
@@ -130,10 +129,10 @@ describe('render-template API (isolated worker)', () => {
   });
 
   it('renders a STORED source-page by pageId (the page = template model)', async () => {
-    const { t, orgId, projectId } = await setup();
+    const { t, projectId } = await setup();
     await app.inject({
       method: 'PUT',
-      url: `/orgs/${orgId}/projects/${projectId}/content/page/home`,
+      url: `/projects/${projectId}/content/page/home`,
       cookies: { sw_session: t },
       payload: {
         id: 'home', path: '/', title: 'Welcome',
@@ -143,7 +142,7 @@ describe('render-template API (isolated worker)', () => {
     });
     const res = await app.inject({
       method: 'POST',
-      url: `/orgs/${orgId}/projects/${projectId}/render-template`,
+      url: `/projects/${projectId}/render-template`,
       cookies: { sw_session: t },
       payload: { pageId: 'home' },
     });
@@ -152,16 +151,16 @@ describe('render-template API (isolated worker)', () => {
   });
 
   it('rejects rendering a page that has no template source (400)', async () => {
-    const { t, orgId, projectId } = await setup();
+    const { t, projectId } = await setup();
     await app.inject({
       method: 'PUT',
-      url: `/orgs/${orgId}/projects/${projectId}/content/page/blocky`,
+      url: `/projects/${projectId}/content/page/blocky`,
       cookies: { sw_session: t },
       payload: { id: 'blocky', path: '/blocky', title: 'Block', root: { id: 'root', type: 'Section' } },
     });
     const res = await app.inject({
       method: 'POST',
-      url: `/orgs/${orgId}/projects/${projectId}/render-template`,
+      url: `/projects/${projectId}/render-template`,
       cookies: { sw_session: t },
       payload: { pageId: 'blocky' },
     });
@@ -170,10 +169,10 @@ describe('render-template API (isolated worker)', () => {
   });
 
   it('rejects an unsafe template with 400 (the validator runs in the worker)', async () => {
-    const { t, orgId, projectId } = await setup();
+    const { t, projectId } = await setup();
     const res = await app.inject({
       method: 'POST',
-      url: `/orgs/${orgId}/projects/${projectId}/render-template`,
+      url: `/projects/${projectId}/render-template`,
       cookies: { sw_session: t },
       payload: { template: '<div class={{ company.name }}>x</div>' }, // unquoted attribute
     });
@@ -182,14 +181,14 @@ describe('render-template API (isolated worker)', () => {
   });
 
   it('lets a project member render a template (constrained client-write removed)', async () => {
-    const { orgId, projectId } = await setup();
-    const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'client@acme.test', password: 'pw-secret-1', orgName: 'Client' } });
+    const { projectId } = await setup();
+    const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'client@acme.test', password: 'pw-secret-1'} });
     const memberT = token(reg);
     const memberId = (reg.json() as { userId: string }).userId;
     await db.insert(projectMembers).values({ id: randomUUID(), userId: memberId, projectId, role: 'member', createdAt: new Date() });
     const res = await app.inject({
       method: 'POST',
-      url: `/orgs/${orgId}/projects/${projectId}/render-template`,
+      url: `/projects/${projectId}/render-template`,
       cookies: { sw_session: memberT },
       payload: { template: '<p>{{ company.name }}</p>' },
     });
@@ -201,12 +200,11 @@ describe('render-template API (isolated worker)', () => {
   it('returns 503 when no render pool is configured', async () => {
     const noPool = await createApp({ db: await makeTestDb() });
     await noPool.ready();
-    const reg = await noPool.inject({ method: 'POST', url: '/auth/register', payload: { email: 'o@a.test', password: 'pw-secret-1', orgName: 'A' } });
+    const reg = await noPool.inject({ method: 'POST', url: '/auth/register', payload: { email: 'o@a.test', password: 'pw-secret-1'} });
     const t = token(reg);
-    const orgId = (reg.json() as { orgId: string }).orgId;
-    const proj = await noPool.inject({ method: 'POST', url: `/orgs/${orgId}/projects`, cookies: { sw_session: t }, payload: { name: 'S', slug: 's' } });
+    const proj = await noPool.inject({ method: 'POST', url: `/projects`, cookies: { sw_session: t }, payload: { name: 'S', slug: 's' } });
     const projectId = (proj.json() as { project: { id: string } }).project.id;
-    const res = await noPool.inject({ method: 'POST', url: `/orgs/${orgId}/projects/${projectId}/render-template`, cookies: { sw_session: t }, payload: { template: '<p>x</p>' } });
+    const res = await noPool.inject({ method: 'POST', url: `/projects/${projectId}/render-template`, cookies: { sw_session: t }, payload: { template: '<p>x</p>' } });
     expect(res.statusCode).toBe(503);
     await noPool.close();
   });

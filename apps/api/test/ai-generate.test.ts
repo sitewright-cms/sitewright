@@ -52,7 +52,7 @@ describe('AI generate + usage + quota', () => {
     expect(provider.calls).toHaveLength(1);
     expect(provider.calls[0]?.system).toContain('copywriter'); // copy system prompt
 
-    const usage = await a.get(`/orgs/${a.orgId}/ai/usage`);
+    const usage = await a.get(`/ai/usage`);
     expect(usage.statusCode).toBe(200);
     const u = usage.json() as { enabled: boolean; org: { used: number }; user: { used: number } };
     expect(u.enabled).toBe(true);
@@ -100,7 +100,7 @@ describe('AI generate + usage + quota', () => {
     const a = await h.signup();
     const b = await h.signup();
     const projectId = await a.createProject();
-    const res = await b.post(`/orgs/${a.orgId}/projects/${projectId}/ai/generate`, { instruction: 'x' });
+    const res = await b.post(`/projects/${projectId}/ai/generate`, { instruction: 'x' });
     expect(res.statusCode).toBe(403); // tenantContext throws Forbidden for a non-member — deterministic
   });
 
@@ -134,7 +134,7 @@ describe('AI generate + usage + quota', () => {
       aiQuota: { orgMonthlyTokens: 1000, userMonthlyTokens: 500 },
     });
     const a = await h.signup();
-    const usage = await a.get(`/orgs/${a.orgId}/ai/usage`);
+    const usage = await a.get(`/ai/usage`);
     expect(usage.statusCode).toBe(200);
     const u = usage.json() as {
       enabled: boolean;

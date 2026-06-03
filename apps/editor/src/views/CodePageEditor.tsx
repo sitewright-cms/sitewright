@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { NAV_SLOTS, type NavSlot, type Page } from '@sitewright/schema';
-import { api, previewDocUrl, type Org, type Project } from '../api';
+import { api, previewDocUrl, type Project } from '../api';
 import { CodeEditor } from '../lib/code-editor';
 import { CODE_PATTERNS } from '../lib/code-patterns';
 import { PreviewPane } from './editor/PreviewPane';
 
 interface CodePageEditorProps {
-  org: Org;
   project: Project;
   page: Page;
   onClose: () => void;
@@ -24,7 +23,7 @@ const PREVIEW_DEBOUNCE_MS = 500;
  * under its own `Content-Security-Policy: sandbox` (an opaque origin), so the preview can never
  * reach the editor's window/cookies/session — defense-in-depth beyond the no-JS validator.
  */
-export function CodePageEditor({ org, project, page, onClose }: CodePageEditorProps) {
+export function CodePageEditor({ project, page, onClose }: CodePageEditorProps) {
   const [source, setSource] = useState(page.source ?? '');
   // Page-level settings — a code page is a first-class page, carrying its own title/status/nav.
   const [title, setTitle] = useState(page.title);
@@ -94,7 +93,7 @@ export function CodePageEditor({ org, project, page, onClose }: CodePageEditorPr
       // request — matching ClientSourceEditor — and is reset by the cleanup below.
       setPreviewLoading(true);
       void api
-        .renderTemplate(org.id, project.id, {
+        .renderTemplate(project.id, {
           template: source,
           page: { title, path: page.path },
           document: true,
@@ -103,7 +102,7 @@ export function CodePageEditor({ org, project, page, onClose }: CodePageEditorPr
           if (cancelled) return;
           // document:true always returns a token; the `|| ''` is a defensive guard against an API
           // regression (PreviewPane then loads about:blank). Load the doc under its own sandbox CSP.
-          setPreviewSrc(token ? previewDocUrl(org.id, project.id, token) : '');
+          setPreviewSrc(token ? previewDocUrl(project.id, token) : '');
           setPreviewError(null);
           setPreviewLoading(false);
         })
@@ -120,13 +119,13 @@ export function CodePageEditor({ org, project, page, onClose }: CodePageEditorPr
       // .then/.catch will early-return without touching state.
       setPreviewLoading(false);
     };
-  }, [source, title, org.id, project.id, page.path]);
+  }, [source, title, project.id, page.path]);
 
   async function save() {
     setSaving(true);
     setSaveError(null);
     try {
-      await api.putPage(org.id, project.id, { ...page, source, title, status, nav });
+      await api.putPage(project.id, { ...page, source, title, status, nav });
       if (!mounted.current) return;
       setSavedKey(stateKey);
       setSaved(true);

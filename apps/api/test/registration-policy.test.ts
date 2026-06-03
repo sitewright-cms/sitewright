@@ -17,7 +17,7 @@ describe('registration policy', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/auth/register',
-      payload: { email: 'anyone@x.test', password: 'pw-secret-1', orgName: 'X' },
+      payload: { email: 'anyone@x.test', password: 'pw-secret-1'},
     });
     expect(res.statusCode).toBe(201);
     await app.close();
@@ -37,7 +37,7 @@ describe('registration policy', () => {
       const res = await app.inject({
         method: 'POST',
         url: '/auth/register',
-        payload: { email: 'stranger@x.test', password: 'pw-secret-1', orgName: 'S' },
+        payload: { email: 'stranger@x.test', password: 'pw-secret-1'},
       });
       expect(res.statusCode).toBe(403);
       await app.close();
@@ -47,13 +47,12 @@ describe('registration policy', () => {
       // Admin logs in and invites a developer.
       const login = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'admin@sitewright.example', password: 'pw-secret-1' } });
       const adminCookie = token(login);
-      const orgId = ((await (await app.inject({ method: 'GET', url: '/me', cookies: { sw_session: adminCookie } })).json()) as { orgs: Array<{ id: string }> }).orgs[0]!.id;
       const invited = 'invitee@x.test';
-      const inv = await app.inject({ method: 'POST', url: `/orgs/${orgId}/invites`, cookies: { sw_session: adminCookie }, payload: { email: invited } });
+      const inv = await app.inject({ method: 'POST', url: `/admin/invites`, cookies: { sw_session: adminCookie }, payload: { email: invited } });
       expect(inv.statusCode).toBe(201);
 
       // The invited email may now register (then it would accept the invite).
-      const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: invited, password: 'pw-secret-1', orgName: 'Invitee' } });
+      const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: invited, password: 'pw-secret-1' } });
       expect(reg.statusCode).toBe(201);
       await app.close();
     });

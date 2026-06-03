@@ -13,17 +13,15 @@ test('project API key: mint via session, use as Bearer, enforce scope + revoke',
   const session = await playwright.request.newContext({ baseURL });
 
   const reg = await session.post('/auth/register', {
-    data: { email: `keys-${stamp}@e2e.test`, password: 'pw-secret-1', orgName: `Keys ${stamp}` },
+    data: { email: `keys-${stamp}@e2e.test`, password: 'pw-secret-1' },
   });
   expect(reg.status()).toBe(201);
-  const orgId = (await reg.json()).orgId as string;
-
-  const created = await session.post(`/orgs/${orgId}/projects`, {
+  const created = await session.post(`/projects`, {
     data: { name: 'Keyed', slug: `keyed-${stamp}` },
   });
   expect(created.status()).toBe(201);
   const projectId = (await created.json()).project.id as string;
-  const base = `/orgs/${orgId}/projects/${projectId}`;
+  const base = `/projects/${projectId}`;
 
   // Mint a read+write token (the raw token is returned exactly once). The minter is the project
   // owner, so an 'owner'-role key is allowed ('admin' is no longer a project role).
@@ -53,15 +51,14 @@ test('project API key: mint via session, use as Bearer, enforce scope + revoke',
   expect((await bot.post(`${base}/publish`)).status()).toBe(403);
   expect((await bot.get(`${base}/api-keys`)).status()).toBe(403); // session-only
 
-  // Confinement: a second org/project is unreachable with this token (404, not 403).
+  // Confinement: a second user's project is unreachable with this token (404, not 403).
   const other = await playwright.request.newContext({ baseURL });
-  const regO = await other.post('/auth/register', {
-    data: { email: `other-${stamp}@e2e.test`, password: 'pw-secret-1', orgName: `Other ${stamp}` },
+  await other.post('/auth/register', {
+    data: { email: `other-${stamp}@e2e.test`, password: 'pw-secret-1' },
   });
-  const orgO = (await regO.json()).orgId as string;
-  const projO = await other.post(`/orgs/${orgO}/projects`, { data: { name: 'O', slug: `o-${stamp}` } });
+  const projO = await other.post(`/projects`, { data: { name: 'O', slug: `o-${stamp}` } });
   const projectO = (await projO.json()).project.id as string;
-  expect((await bot.get(`/orgs/${orgO}/projects/${projectO}/content/page`)).status()).toBe(404);
+  expect((await bot.get(`/projects/${projectO}/content/page`)).status()).toBe(404);
 
   // Revoke via the session → the Bearer token stops working immediately.
   expect((await session.delete(`${base}/api-keys/${key.id}`)).status()).toBe(204);

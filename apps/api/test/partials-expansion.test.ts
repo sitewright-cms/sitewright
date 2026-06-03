@@ -242,8 +242,8 @@ describe('partials expansion (HTTP)', () => {
   });
 
   it('isolates partials across tenants (tenant B cannot read or write tenant A’s partials)', async () => {
-    const a = await harness.signup({ email: 'a-partials@acme.test', orgName: 'Acme' });
-    const b = await harness.signup({ email: 'b-partials@globex.test', orgName: 'Globex' });
+    const a = await harness.signup({ email: 'a-partials@acme.test'});
+    const b = await harness.signup({ email: 'b-partials@globex.test'});
     const projectId = await a.createProject();
     const projA = a.project(projectId);
 
@@ -253,9 +253,9 @@ describe('partials expansion (HTTP)', () => {
       partial('secret', { id: 'secret-root', type: 'Heading', props: { text: 'A only' } }),
     );
 
-    const base = projA.base; // /orgs/<A.orgId>/projects/<projectId>
+    const base = projA.base; // /projects/<projectId>
 
-    // B reads A's partial via A's org path → blocked (B is not a member of A's org).
+    // B reads A's partial → blocked (B is not a member of A's project).
     const bRead = await b.get(`${base}/content/partial/secret`);
     expect(bRead.statusCode).toBe(403);
 

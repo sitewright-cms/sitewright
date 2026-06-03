@@ -56,7 +56,7 @@ describe('Modal + CookieConsent → publish + preview', () => {
     expect(bundle.body).toContain('showModal'); // native dialog behavior
 
     // Preview: behavior is inlined (the doc runs scripts under CSP: sandbox).
-    const prev = await client.post(`/orgs/${client.orgId}/projects/${projectId}/preview`, page);
+    const prev = await client.post(`/projects/${projectId}/preview`, page);
     expect((prev.json() as { html: string }).html).toContain('showModal');
   });
 

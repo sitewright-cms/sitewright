@@ -6,17 +6,15 @@ test('content lifecycle + export over HTTP', async ({ playwright, baseURL }) => 
   const ctx = await playwright.request.newContext({ baseURL });
 
   const reg = await ctx.post('/auth/register', {
-    data: { email: `content-${stamp}@e2e.test`, password: 'pw-secret-1', orgName: `Content ${stamp}` },
+    data: { email: `content-${stamp}@e2e.test`, password: 'pw-secret-1' },
   });
   expect(reg.status()).toBe(201);
-  const orgId = (await reg.json()).orgId as string;
-
-  const proj = await ctx.post(`/orgs/${orgId}/projects`, {
+  const proj = await ctx.post(`/projects`, {
     data: { name: 'Site', slug: `site-${stamp}` },
   });
   expect(proj.status()).toBe(201);
   const projectId = (await proj.json()).project.id as string;
-  const base = `/orgs/${orgId}/projects/${projectId}`;
+  const base = `/projects/${projectId}`;
 
   const page = { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' } };
   const put = await ctx.put(`${base}/content/page/home`, { data: page });

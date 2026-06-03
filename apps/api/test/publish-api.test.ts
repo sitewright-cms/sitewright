@@ -24,13 +24,12 @@ function token(res: { cookies: Array<{ name: string; value: string }> }): string
   return t;
 }
 
-async function setup(email: string, orgName: string, slug = 'site') {
-  const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email, password: 'pw-secret-1', orgName } });
+async function setup(email: string, slug = 'site') {
+  const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email, password: 'pw-secret-1' } });
   const t = token(reg);
-  const orgId = (reg.json() as { orgId: string }).orgId;
-  const proj = await app.inject({ method: 'POST', url: `/orgs/${orgId}/projects`, cookies: { sw_session: t }, payload: { name: 'Site', slug } });
+  const proj = await app.inject({ method: 'POST', url: `/projects`, cookies: { sw_session: t }, payload: { name: 'Site', slug } });
   const projectId = (proj.json() as { project: { id: string } }).project.id;
-  return { t, orgId, projectId };
+  return { t, projectId };
 }
 
 const homePage = {
@@ -42,8 +41,8 @@ const homePage = {
 
 describe('publish API', () => {
   it('publishes a project and serves the built site', async () => {
-    const { t, orgId, projectId } = await setup('a@acme.test', 'Acme');
-    const base = `/orgs/${orgId}/projects/${projectId}`;
+    const { t, projectId } = await setup('a@acme.test');
+    const base = `/projects/${projectId}`;
     const cookies = { sw_session: t };
 
     await app.inject({ method: 'PUT', url: `${base}/content/page/home`, cookies, payload: homePage });
@@ -67,8 +66,8 @@ describe('publish API', () => {
   });
 
   it('exports the published site as a zip (409 before publishing)', async () => {
-    const { t, orgId, projectId } = await setup('a@acme.test', 'Acme');
-    const base = `/orgs/${orgId}/projects/${projectId}`;
+    const { t, projectId } = await setup('a@acme.test');
+    const base = `/projects/${projectId}`;
     const cookies = { sw_session: t };
 
     const early = await app.inject({ method: 'GET', url: `${base}/publish/archive`, cookies });
@@ -87,8 +86,8 @@ describe('publish API', () => {
   });
 
   it('validates deploy config and requires a prior publish', async () => {
-    const { t, orgId, projectId } = await setup('a@acme.test', 'Acme');
-    const base = `/orgs/${orgId}/projects/${projectId}`;
+    const { t, projectId } = await setup('a@acme.test');
+    const base = `/projects/${projectId}`;
     const cookies = { sw_session: t };
 
     // Not published yet → 409 regardless of body.
@@ -114,22 +113,22 @@ describe('publish API', () => {
   });
 
   it('forbids exporting another tenant’s archive', async () => {
-    const a = await setup('a@acme.test', 'Acme', 'site-a');
-    const b = await setup('b@globex.test', 'Globex', 'site-b');
+    const a = await setup('a@acme.test', 'site-a');
+    const b = await setup('b@globex.test', 'site-b');
     const res = await app.inject({
       method: 'GET',
-      url: `/orgs/${a.orgId}/projects/${a.projectId}/publish/archive`,
+      url: `/projects/${a.projectId}/publish/archive`,
       cookies: { sw_session: b.t },
     });
     expect(res.statusCode).toBe(403);
   });
 
   it('forbids deploying another tenant’s project', async () => {
-    const a = await setup('a@acme.test', 'Acme', 'site-a');
-    const b = await setup('b@globex.test', 'Globex', 'site-b');
+    const a = await setup('a@acme.test', 'site-a');
+    const b = await setup('b@globex.test', 'site-b');
     const res = await app.inject({
       method: 'POST',
-      url: `/orgs/${a.orgId}/projects/${a.projectId}/publish/deploy`,
+      url: `/projects/${a.projectId}/publish/deploy`,
       cookies: { sw_session: b.t },
       payload: { protocol: 'ftp', host: 'h', user: 'u', password: 'p' },
     });
@@ -137,22 +136,22 @@ describe('publish API', () => {
   });
 
   it('requires authentication and tenant membership', async () => {
-    const a = await setup('a@acme.test', 'Acme', 'site-a');
-    const b = await setup('b@globex.test', 'Globex', 'site-b');
+    const a = await setup('a@acme.test', 'site-a');
+    const b = await setup('b@globex.test', 'site-b');
 
-    const unauth = await app.inject({ method: 'POST', url: `/orgs/${a.orgId}/projects/${a.projectId}/publish` });
+    const unauth = await app.inject({ method: 'POST', url: `/projects/${a.projectId}/publish` });
     expect(unauth.statusCode).toBe(401);
 
     const crossTenant = await app.inject({
       method: 'POST',
-      url: `/orgs/${a.orgId}/projects/${a.projectId}/publish`,
+      url: `/projects/${a.projectId}/publish`,
       cookies: { sw_session: b.t },
     });
     expect(crossTenant.statusCode).toBe(403);
   });
 
   it('404s for an unpublished site and rejects path traversal in the serve route', async () => {
-    const { projectId } = await setup('a@acme.test', 'Acme');
+    const { projectId } = await setup('a@acme.test');
     const notPublished = await app.inject({ method: 'GET', url: `/sites/${projectId}/` });
     expect(notPublished.statusCode).toBe(404);
 

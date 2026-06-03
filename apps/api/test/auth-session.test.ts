@@ -43,7 +43,7 @@ describe('auth + session lifecycle (HTTP)', () => {
   // 1. Duplicate email + normalization -------------------------------------
   it('rejects registering a duplicate email with 409 (case-insensitive)', async () => {
     const email = `dup-${randomUUID()}@test.local`;
-    const first = await register({ email, password: 'pw-secret-1', orgName: 'Acme' });
+    const first = await register({ email, password: 'pw-secret-1'});
     expect(first.statusCode).toBe(201);
 
     // Same address in a different case must collide, because registerAccount
@@ -51,7 +51,7 @@ describe('auth + session lifecycle (HTTP)', () => {
     // whitespace can't be tested here: z.string().email() rejects it at the HTTP
     // boundary with a 400 before the repo's .trim() runs.)
     const variant = email.toUpperCase();
-    const dup = await register({ email: variant, password: 'pw-secret-1', orgName: 'Acme2' });
+    const dup = await register({ email: variant, password: 'pw-secret-1'});
     expect(dup.statusCode).toBe(409);
     expect(dup.json()).toMatchObject({ error: expect.any(String) });
     // A conflict must not mint a session cookie.
@@ -61,7 +61,7 @@ describe('auth + session lifecycle (HTTP)', () => {
   // 2. Login failures (no user enumeration) --------------------------------
   it('returns 401 for a wrong password and an unknown email, indistinguishably', async () => {
     const email = `enum-${randomUUID()}@test.local`;
-    expect((await register({ email, password: 'pw-secret-1', orgName: 'Acme' })).statusCode).toBe(
+    expect((await register({ email, password: 'pw-secret-1'})).statusCode).toBe(
       201,
     );
 
@@ -79,7 +79,7 @@ describe('auth + session lifecycle (HTTP)', () => {
 
   it('logs in successfully with correct credentials and a differently-cased email', async () => {
     const email = `ok-${randomUUID()}@test.local`;
-    const reg = await register({ email, password: 'pw-secret-1', orgName: 'Acme' });
+    const reg = await register({ email, password: 'pw-secret-1'});
     const { userId } = reg.json() as { userId: string };
 
     // Mixed-case email still authenticates against the stored normalized one
@@ -96,7 +96,6 @@ describe('auth + session lifecycle (HTTP)', () => {
     const res = await register({
       email: `cookie-${randomUUID()}@test.local`,
       password: 'pw-secret-1',
-      orgName: 'Acme',
     });
     expect(res.statusCode).toBe(201);
 
@@ -174,7 +173,6 @@ describe('auth + session lifecycle (HTTP)', () => {
     const res = await register({
       email: `weak-${randomUUID()}@test.local`,
       password: 'short7!', // 7 chars
-      orgName: 'Acme',
     });
     expect(res.statusCode).toBe(400);
     expect(res.json()).toMatchObject({ error: 'invalid request' });
@@ -184,7 +182,6 @@ describe('auth + session lifecycle (HTTP)', () => {
     const res = await register({
       email: 'not-an-email',
       password: 'pw-secret-1',
-      orgName: 'Acme',
     });
     expect(res.statusCode).toBe(400);
     expect(res.json()).toMatchObject({ error: 'invalid request' });

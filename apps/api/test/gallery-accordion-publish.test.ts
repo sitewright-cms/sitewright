@@ -104,7 +104,7 @@ describe('Accordion + Lightbox → publish', () => {
         children: [{ id: 'p1', type: 'LightboxItem', props: { image: '/f.jpg', alt: 'A' } }],
       },
     };
-    const res = await client.post(`/orgs/${client.orgId}/projects/${projectId}/preview`, page);
+    const res = await client.post(`/projects/${projectId}/preview`, page);
     expect(res.statusCode).toBe(200);
     const body = res.json() as { html: string; token: string };
     expect(body.html).toContain('data-sw-component="lightbox"');

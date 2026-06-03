@@ -48,7 +48,9 @@ describe('SPA serving (@fastify/static + SPA fallback)', () => {
   });
 
   it('falls back to index.html for an unknown client-side route (SPA refresh)', async () => {
-    const res = await app.inject({ method: 'GET', url: '/projects/abc/settings' });
+    // A non-API GET path (the editor is a state/query-driven SPA; `/projects` is now an
+    // API prefix, so use a path that does not collide with the flat API surface).
+    const res = await app.inject({ method: 'GET', url: '/dashboard/settings' });
     expect(res.statusCode).toBe(200);
     expect(res.body).toContain('id=app'); // index.html, not a 404
   });

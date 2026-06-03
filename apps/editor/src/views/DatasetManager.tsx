@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { Dataset, Entry, Field, FieldType } from '@sitewright/schema';
-import { api, type Org, type Project } from '../api';
+import { api, type Project } from '../api';
 import { defaultEntryValues, entryLabel, identifierize, slugify } from '../lib/entry-form';
 import { EntryEditor } from './datasets/EntryEditor';
 
@@ -28,7 +28,7 @@ function newEntryId(slug: string): string {
   return `${slug}-${Date.now().toString(36)}-${entrySeq.toString(36)}-${rand}`;
 }
 
-export function DatasetManager({ org, project }: { org: Org; project: Project }) {
+export function DatasetManager({ project }: { project: Project }) {
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [selId, setSelId] = useState<string | null>(null);
@@ -45,8 +45,8 @@ export function DatasetManager({ org, project }: { org: Org; project: Project })
   async function load(isActive: () => boolean = () => true) {
     try {
       const [ds, en] = await Promise.all([
-        api.listDatasets(org.id, project.id),
-        api.listEntries(org.id, project.id),
+        api.listDatasets(project.id),
+        api.listEntries(project.id),
       ]);
       if (!isActive()) return;
       setDatasets(ds.items);
@@ -62,7 +62,7 @@ export function DatasetManager({ org, project }: { org: Org; project: Project })
     return () => {
       active = false;
     };
-  }, [org.id, project.id]);
+  }, [project.id]);
 
   // Reset the schema draft ONLY when the selection actually changes — never on a
   // background data reload (which would discard the user's unsaved schema edits).
@@ -85,7 +85,7 @@ export function DatasetManager({ org, project }: { org: Org; project: Project })
       // `id` is the stable storage key and is kept equal to `slug`; the slug is
       // not editable in the UI, so entry/binding references (which use the slug)
       // stay valid. A future rename feature must migrate those references.
-      await api.putDataset(org.id, project.id, { id: slug, name: newName, slug, fields: [] });
+      await api.putDataset(project.id, { id: slug, name: newName, slug, fields: [] });
       setNewName('');
       await load();
       setSelId(slug);
@@ -113,7 +113,7 @@ export function DatasetManager({ org, project }: { org: Org; project: Project })
     if (!selected) return;
     setError(null);
     try {
-      await api.putDataset(org.id, project.id, { ...selected, fields: draftFields });
+      await api.putDataset(project.id, { ...selected, fields: draftFields });
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed to save schema');
@@ -123,7 +123,7 @@ export function DatasetManager({ org, project }: { org: Org; project: Project })
   async function removeDataset(id: string) {
     setError(null);
     try {
-      await api.deleteDataset(org.id, project.id, id);
+      await api.deleteDataset(project.id, id);
       if (selId === id) setSelId(null);
       await load();
     } catch (err) {
@@ -133,7 +133,7 @@ export function DatasetManager({ org, project }: { org: Org; project: Project })
 
   async function saveEntry(entry: Entry) {
     try {
-      await api.putEntry(org.id, project.id, entry);
+      await api.putEntry(project.id, entry);
       await load();
       setEditingEntry(null);
     } catch (err) {
@@ -144,7 +144,7 @@ export function DatasetManager({ org, project }: { org: Org; project: Project })
 
   async function removeEntry(id: string) {
     try {
-      await api.deleteEntry(org.id, project.id, id);
+      await api.deleteEntry(project.id, id);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed to delete entry');

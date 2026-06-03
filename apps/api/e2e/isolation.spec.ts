@@ -9,35 +9,33 @@ test('multi-tenant isolation over HTTP (the core guarantee)', async ({ playwrigh
   const b = await playwright.request.newContext({ baseURL });
 
   const regA = await a.post('/auth/register', {
-    data: { email: `a-${stamp}@e2e.test`, password: 'pw-secret-1', orgName: `Acme ${stamp}` },
+    data: { email: `a-${stamp}@e2e.test`, password: 'pw-secret-1' },
   });
   expect(regA.status()).toBe(201);
-  const orgA = (await regA.json()).orgId as string;
-
   const regB = await b.post('/auth/register', {
-    data: { email: `b-${stamp}@e2e.test`, password: 'pw-secret-1', orgName: `Globex ${stamp}` },
+    data: { email: `b-${stamp}@e2e.test`, password: 'pw-secret-1' },
   });
   expect(regB.status()).toBe(201);
 
   // A creates a project (session cookie carried by context `a`).
-  const created = await a.post(`/orgs/${orgA}/projects`, {
+  const created = await a.post(`/projects`, {
     data: { name: 'Secret', slug: `secret-${stamp}` },
   });
   expect(created.status()).toBe(201);
   const projectId = (await created.json()).project.id as string;
 
   // A can read its own project.
-  expect((await a.get(`/orgs/${orgA}/projects/${projectId}`)).status()).toBe(200);
+  expect((await a.get(`/projects/${projectId}`)).status()).toBe(200);
 
   // Flat model: the project list is per-user. B's list succeeds (200) but contains only B's own
   // projects — never A's (no cross-tenant leak).
-  const bList = await b.get(`/orgs/${orgA}/projects`);
+  const bList = await b.get(`/projects`);
   expect(bList.status()).toBe(200);
   const bProjects = (await bList.json()).projects as Array<{ id: string }>;
   expect(bProjects.some((p) => p.id === projectId)).toBe(false);
 
   // B is not a member of A's project → reading it directly is forbidden (403, no existence oracle).
-  expect((await b.get(`/orgs/${orgA}/projects/${projectId}`)).status()).toBe(403);
+  expect((await b.get(`/projects/${projectId}`)).status()).toBe(403);
 
   await a.dispose();
   await b.dispose();
@@ -55,7 +53,7 @@ test('login flow issues a working session', async ({ playwright, baseURL }) => {
   expect(
     (
       await ctx.post('/auth/register', {
-        data: { email, password: 'pw-secret-1', orgName: `Login ${stamp}` },
+        data: { email, password: 'pw-secret-1' },
       })
     ).status(),
   ).toBe(201);

@@ -9,7 +9,6 @@ export function Login({ onAuthed }: LoginProps) {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [orgName, setOrgName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -18,7 +17,7 @@ export function Login({ onAuthed }: LoginProps) {
     setError(null);
     setBusy(true);
     try {
-      if (mode === 'register') await api.register(email, password, orgName);
+      if (mode === 'register') await api.register(email, password);
       else await api.login(email, password);
       onAuthed();
     } catch (err) {
@@ -32,19 +31,9 @@ export function Login({ onAuthed }: LoginProps) {
     <div className="mx-auto mt-24 max-w-sm rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
       <h1 className="mb-1 text-2xl font-bold tracking-tight">Sitewright</h1>
       <p className="mb-6 text-sm text-slate-500">
-        {mode === 'register' ? 'Create your agency account' : 'Sign in to your account'}
+        {mode === 'register' ? 'Create your account' : 'Sign in to your account'}
       </p>
       <form onSubmit={submit} className="flex flex-col gap-3">
-        {mode === 'register' && (
-          <input
-            aria-label="Organization name"
-            className="rounded-md border border-slate-300 px-3 py-2"
-            placeholder="Agency / organization name"
-            value={orgName}
-            onChange={(e) => setOrgName(e.target.value)}
-            required
-          />
-        )}
         <input
           aria-label="Email"
           type="email"

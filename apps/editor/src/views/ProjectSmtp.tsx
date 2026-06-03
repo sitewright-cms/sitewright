@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { api, type Org, type Project, type SmtpInput } from '../api';
+import { api, type Project, type SmtpInput } from '../api';
 
 /**
  * Per-project SMTP config — used by forms whose delivery mode is "Project SMTP"
@@ -7,7 +7,7 @@ import { api, type Org, type Project, type SmtpInput } from '../api';
  * leave it blank to keep the stored one). Owner/admin only; a non-writer gets a 403
  * which we surface as a notice.
  */
-export function ProjectSmtp({ org, project }: { org: Org; project: Project }) {
+export function ProjectSmtp({ project }: { project: Project }) {
   const [loading, setLoading] = useState(true);
   const [enabled, setEnabled] = useState(false);
   const [host, setHost] = useState('');
@@ -26,7 +26,7 @@ export function ProjectSmtp({ org, project }: { org: Org; project: Project }) {
     let active = true;
     (async () => {
       try {
-        const { smtp } = await api.getProjectSmtp(org.id, project.id);
+        const { smtp } = await api.getProjectSmtp(project.id);
         if (!active) return;
         if (smtp) {
           setEnabled(true);
@@ -47,7 +47,7 @@ export function ProjectSmtp({ org, project }: { org: Org; project: Project }) {
     return () => {
       active = false;
     };
-  }, [org.id, project.id]);
+  }, [project.id]);
 
   async function save(e: FormEvent) {
     e.preventDefault();
@@ -55,13 +55,13 @@ export function ProjectSmtp({ org, project }: { org: Org; project: Project }) {
     setSaved(false);
     try {
       if (!enabled) {
-        await api.deleteProjectSmtp(org.id, project.id);
+        await api.deleteProjectSmtp(project.id);
         setHasPassword(false);
         setSaved(true);
         return;
       }
       const body: SmtpInput = { host, port, secure, fromEmail, ...(user ? { user } : {}), ...(fromName ? { fromName } : {}), ...(password ? { password } : {}) };
-      const { smtp } = await api.putProjectSmtp(org.id, project.id, body);
+      const { smtp } = await api.putProjectSmtp(project.id, body);
       setHasPassword(smtp.hasPassword);
       setPassword('');
       setSaved(true);

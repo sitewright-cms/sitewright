@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, type Org, type Project, type ProjectAccess } from './api';
+import { api, type Project } from './api';
 import { Login } from './views/Login';
 import { Dashboard } from './views/Dashboard';
 import { ProjectView } from './views/Project';
@@ -26,20 +26,18 @@ type Stage =
   | { name: 'auth' }
   | { name: 'dashboard' }
   | { name: 'admin' }
-  | { name: 'project'; org: Org; project: Project };
+  | { name: 'project'; project: Project };
 
 function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | null }) {
   const [stage, setStage] = useState<Stage>({ name: 'loading' });
   const [inviteToken, setInviteToken] = useState<string | null>(initialInviteToken);
-  const [orgs, setOrgs] = useState<Org[]>([]);
-  const [projectAccess, setProjectAccess] = useState<ProjectAccess[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [isInstanceAdmin, setIsInstanceAdmin] = useState(false);
 
   async function refresh(): Promise<void> {
     try {
       const me = await api.me();
-      setOrgs(me.orgs);
-      setProjectAccess(me.projectAccess);
+      setProjects(me.projects);
       setIsInstanceAdmin(me.isInstanceAdmin);
       setStage({ name: 'dashboard' });
     } catch {
@@ -113,18 +111,14 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
       {header}
       {stage.name === 'dashboard' && (
         <Dashboard
-          orgs={orgs}
-          projectAccess={projectAccess}
-          onOpen={(org, project) => setStage({ name: 'project', org, project })}
+          projects={projects}
+          onOpen={(project) => setStage({ name: 'project', project })}
+          onProjectsChanged={() => void refresh()}
         />
       )}
       {stage.name === 'admin' && <InstanceSettings />}
       {stage.name === 'project' && (
-        <ProjectView
-          org={stage.org}
-          project={stage.project}
-          onBack={() => setStage({ name: 'dashboard' })}
-        />
+        <ProjectView project={stage.project} onBack={() => setStage({ name: 'dashboard' })} />
       )}
     </div>
   );

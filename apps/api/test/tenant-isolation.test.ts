@@ -55,12 +55,12 @@ const ISOLATION_CODES = [403, 404];
 describe('multi-tenant isolation + role enforcement (HTTP layer)', () => {
   it('blocks tenant B from GET/PUT/DELETE across every content kind (incl. settings) in A’s project, while A retains access', async () => {
     h = await makeHarness();
-    const a = await h.signup({ orgName: 'Acme' });
-    const b = await h.signup({ orgName: 'Globex' });
+    const a = await h.signup();
+    const b = await h.signup();
     const projectId = await a.createProject('Site', 'site-a');
     await seedAllKinds(a, projectId);
 
-    const aBase = `/orgs/${a.orgId}/projects/${projectId}`;
+    const aBase = `/projects/${projectId}`;
 
     // Each generic kind has a representative existing entityId; settings uses its singleton id.
     const probes: Array<{ kind: string; entityId: string; writeBody: unknown }> = [
@@ -112,41 +112,41 @@ describe('multi-tenant isolation + role enforcement (HTTP layer)', () => {
 
   it('prevents B from listing A’s projects, creating under A’s org, or reading A’s export / writing A’s import', async () => {
     h = await makeHarness();
-    const a = await h.signup({ orgName: 'Acme' });
-    const b = await h.signup({ orgName: 'Globex' });
+    const a = await h.signup();
+    const b = await h.signup();
     const projectId = await a.createProject('Site', 'site-a');
     await a.project(projectId).putContent('page', 'home', page);
 
-    // Flat model: the list returns the CALLER's accessible projects (orgId is vestigial), so B's
+    // Flat model: the list returns the CALLER's accessible projects, so B's
     // list is its own — 200, empty, and never leaks A's project.
-    const bListProjects = await b.get(`/orgs/${a.orgId}/projects`);
+    const bListProjects = await b.get(`/projects`);
     expect(bListProjects.statusCode).toBe(200);
     expect((bListProjects.json() as { projects: unknown[] }).projects).toHaveLength(0);
     expect(bListProjects.body).not.toContain(projectId);
 
     // B reads A's single project by id → blocked (non-member → 403).
-    const bGetProject = await b.get(`/orgs/${a.orgId}/projects/${projectId}`);
+    const bGetProject = await b.get(`/projects/${projectId}`);
     expect(ISOLATION_CODES).toContain(bGetProject.statusCode);
 
-    // B "creating under A's org" only creates B's OWN project (orgId is vestigial); it never
-    // touches A's tenant. Confirm A's list is unchanged at exactly its one project.
-    const bCreate = await b.post(`/orgs/${a.orgId}/projects`, { name: 'Intruder', slug: 'intruder' });
+    // B creating a project only creates B's OWN project; it never touches A's data.
+    // Confirm A's list is unchanged at exactly its one project.
+    const bCreate = await b.post(`/projects`, { name: 'Intruder', slug: 'intruder' });
     expect(bCreate.statusCode).toBe(201);
-    const aProjects = await a.get(`/orgs/${a.orgId}/projects`);
+    const aProjects = await a.get(`/projects`);
     const aProjectIds = (aProjects.json() as { projects: Array<{ id: string }> }).projects.map((p) => p.id);
     expect(aProjectIds).toEqual([projectId]);
 
     // B deletes A's project → blocked.
-    const bDeleteProject = await b.del(`/orgs/${a.orgId}/projects/${projectId}`);
+    const bDeleteProject = await b.del(`/projects/${projectId}`);
     expect(ISOLATION_CODES).toContain(bDeleteProject.statusCode);
 
     // B reads A's export bundle → blocked, no leakage.
-    const bExport = await b.get(`/orgs/${a.orgId}/projects/${projectId}/export`);
+    const bExport = await b.get(`/projects/${projectId}/export`);
     expect(ISOLATION_CODES).toContain(bExport.statusCode);
     expect(bExport.body).not.toContain('Home');
 
     // B writes A's import → blocked.
-    const bImport = await b.post(`/orgs/${a.orgId}/projects/${projectId}/import`, { pages: [page] });
+    const bImport = await b.post(`/projects/${projectId}/import`, { pages: [page] });
     expect(ISOLATION_CODES).toContain(bImport.statusCode);
 
     // Sanity: A can still export its own project and see the seeded page.
@@ -159,9 +159,9 @@ describe('multi-tenant isolation + role enforcement (HTTP layer)', () => {
     // A 32-byte key enables the saved-deploy-target routes (see app.ts opts.encryptionKey).
     const encryptionKey = randomBytes(32);
     h = await makeHarness({ encryptionKey, deployAllowedHosts: [ALLOWED_HOST] });
-    const a = await h.signup({ orgName: 'Acme' });
+    const a = await h.signup();
     const projectId = await a.createProject('Site', 'site-a');
-    const base = `/orgs/${a.orgId}/projects/${projectId}`;
+    const base = `/projects/${projectId}`;
 
     // Create a real saved target (encrypts the password) via its dedicated route.
     const create = await a.post(`${base}/deploy-targets`, deployTarget);
@@ -203,17 +203,16 @@ describe('multi-tenant isolation + role enforcement (HTTP layer)', () => {
   it('rejects anonymous (no-cookie) requests to protected routes with 401', async () => {
     const encryptionKey = randomBytes(32);
     h = await makeHarness({ encryptionKey, deployAllowedHosts: [ALLOWED_HOST] });
-    // Seed a real org/project so the routes would otherwise resolve to data.
-    const a = await h.signup({ orgName: 'Acme' });
+    // Seed a real project so the routes would otherwise resolve to data.
+    const a = await h.signup();
     const projectId = await a.createProject('Site', 'site-a');
-    const base = `/orgs/${a.orgId}/projects/${projectId}`;
+    const base = `/projects/${projectId}`;
 
     // Every probe uses the bare app (no session cookie attached).
     const protectedRoutes: InjectOptions[] = [
       { method: 'GET', url: '/me' },
-      { method: 'GET', url: '/orgs' },
-      { method: 'GET', url: `/orgs/${a.orgId}/projects` },
-      { method: 'POST', url: `/orgs/${a.orgId}/projects`, payload: { name: 'X', slug: 'x' } },
+      { method: 'GET', url: `/projects` },
+      { method: 'POST', url: `/projects`, payload: { name: 'X', slug: 'x' } },
       { method: 'GET', url: `${base}/content/page` },
       { method: 'GET', url: `${base}/content/page/home` },
       { method: 'PUT', url: `${base}/content/page/home`, payload: page },

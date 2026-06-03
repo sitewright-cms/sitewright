@@ -17,7 +17,6 @@ function token(res: { cookies: Array<{ name: string; value: string }> }): string
 let app: FastifyInstance;
 let db: Database;
 let t: string;
-let orgId: string;
 let projectId: string;
 let base: string;
 
@@ -25,12 +24,11 @@ beforeEach(async () => {
   db = await makeTestDb();
   app = await createApp({ db, encryptionKey: ENC_KEY });
   await app.ready();
-  const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'owner@acme.test', password: 'pw-secret-1', orgName: 'Acme' } });
+  const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'owner@acme.test', password: 'pw-secret-1'} });
   t = token(reg);
-  orgId = (reg.json() as { orgId: string }).orgId;
-  const proj = await app.inject({ method: 'POST', url: `/orgs/${orgId}/projects`, cookies: { sw_session: t }, payload: { name: 'Site', slug: 'site' } });
+  const proj = await app.inject({ method: 'POST', url: `/projects`, cookies: { sw_session: t }, payload: { name: 'Site', slug: 'site' } });
   projectId = (proj.json() as { project: { id: string } }).project.id;
-  base = `/orgs/${orgId}/projects/${projectId}`;
+  base = `/projects/${projectId}`;
 });
 
 describe('per-project SMTP API', () => {
@@ -72,7 +70,7 @@ describe('per-project SMTP API', () => {
   });
 
   it('lets a project member read and write SMTP (constrained client-write removed)', async () => {
-    const memberReg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'member@x.test', password: 'pw-secret-1', orgName: 'Member' } });
+    const memberReg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'member@x.test', password: 'pw-secret-1'} });
     const mt = token(memberReg);
     const mUser = (memberReg.json() as { userId: string }).userId;
     await db.insert(projectMembers).values({ id: randomUUID(), userId: mUser, projectId, role: 'member', createdAt: new Date() });
@@ -97,12 +95,11 @@ describe('per-project SMTP API with a host allowlist', () => {
     const adb = await makeTestDb();
     const app2 = await createApp({ db: adb, encryptionKey: ENC_KEY, smtpAllowedHosts: ['mail.allowed.com'] });
     await app2.ready();
-    const reg = await app2.inject({ method: 'POST', url: '/auth/register', payload: { email: 'o@a.test', password: 'pw-secret-1', orgName: 'A' } });
+    const reg = await app2.inject({ method: 'POST', url: '/auth/register', payload: { email: 'o@a.test', password: 'pw-secret-1'} });
     const tok = token(reg);
-    const oid = (reg.json() as { orgId: string }).orgId;
-    const proj = await app2.inject({ method: 'POST', url: `/orgs/${oid}/projects`, cookies: { sw_session: tok }, payload: { name: 'S', slug: 's' } });
+    const proj = await app2.inject({ method: 'POST', url: `/projects`, cookies: { sw_session: tok }, payload: { name: 'S', slug: 's' } });
     const pid = (proj.json() as { project: { id: string } }).project.id;
-    const b = `/orgs/${oid}/projects/${pid}`;
+    const b = `/projects/${pid}`;
     const blocked = await app2.inject({ method: 'PUT', url: `${b}/smtp`, cookies: { sw_session: tok }, payload: { host: 'evil.example', port: 587, secure: false, fromEmail: 'a@b.co' } });
     expect(blocked.statusCode).toBe(403);
     const allowed = await app2.inject({ method: 'PUT', url: `${b}/smtp`, cookies: { sw_session: tok }, payload: { host: 'mail.allowed.com', port: 587, secure: false, fromEmail: 'a@b.co' } });

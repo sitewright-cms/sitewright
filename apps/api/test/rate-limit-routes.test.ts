@@ -16,7 +16,7 @@ import { makeHarness, type Harness, type TestClient } from './harness.js';
  * Caps confirmed from source (apps/api/src/http/app.ts):
  *   - POST /auth/register .......................... rl(10)
  *   - POST /auth/login ............................. rl(10)
- *   - DELETE /orgs/:orgId/projects/:id ............. rl(20)   <-- newly added
+ *   - DELETE /projects/:id ......................... rl(20)   <-- newly added
  *   - POST .../media ............................... rl(30)
  *   - POST .../publish, .../publish/deploy, .../import . rl(20)
  *   - POST .../preview ............................. rl(120)
@@ -108,7 +108,6 @@ describe('per-route rate limiting', () => {
       payload: {
         email: `indep-${randomUUID()}@test.local`,
         password: 'pw-secret-1',
-        orgName: `Org ${randomUUID().slice(0, 8)}`,
       },
     });
     expect(reg.statusCode).not.toBe(429);
@@ -122,7 +121,7 @@ describe('per-route rate limiting', () => {
       '/auth/register',
       // Reuse a colliding payload: pre-cap these return 409 (conflict) or 201;
       // the only assertion that matters is the cap boundary below.
-      { email: `dup-${randomUUID()}@test.local`, password: 'pw-secret-1', orgName: 'Dup Org' },
+      { email: `dup-${randomUUID()}@test.local`, password: 'pw-secret-1'},
       REGISTER_CAP, // 1 already consumed + this many => crosses the cap on the last
     );
     // We've now issued 1 + REGISTER_CAP = cap+1 register requests total. The
@@ -133,7 +132,7 @@ describe('per-route rate limiting', () => {
     expect(more.slice(0, REGISTER_CAP - 1).some((c) => c !== 429)).toBe(true);
   });
 
-  it('enforces rl(20) on DELETE /orgs/:orgId/projects/:id (over-cap => 429)', async () => {
+  it('enforces rl(20) on DELETE /projects/:id (over-cap => 429)', async () => {
     const client: TestClient = await harness.signup();
     // Hit a non-existent project id. The rate-limit hook runs at `onRequest`
     // (before the handler), so each request is counted regardless of the response
@@ -141,7 +140,7 @@ describe('per-route rate limiting', () => {
     // caller is not the owner of — and cannot even see — this id) is rejected with
     // a uniform 403 BEFORE any existence check, so there is no 404 existence oracle.
     const missingId = `proj-${randomUUID()}`;
-    const url = `/orgs/${client.orgId}/projects/${missingId}`;
+    const url = `/projects/${missingId}`;
 
     const codes: number[] = [];
     for (let i = 0; i < PROJECT_DELETE_CAP + 1; i += 1) {

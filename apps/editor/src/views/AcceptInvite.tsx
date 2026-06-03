@@ -74,7 +74,7 @@ export function AcceptInvite({ token, authed, onAuthed, onDone }: AcceptInvitePr
   const target =
     peek.role === 'member' && peek.projectName
       ? `to edit “${peek.projectName}”`
-      : `to join ${peek.orgName} as a ${peek.role}`;
+      : `to join as a ${peek.role}`;
 
   if (peek.accepted) {
     return card(
@@ -91,7 +91,7 @@ export function AcceptInvite({ token, authed, onAuthed, onDone }: AcceptInvitePr
     return card(
       <>
         <h1 className="mb-2 text-xl font-bold">Invitation expired</h1>
-        <p className="text-sm text-slate-600">Ask {peek.orgName} to send a new invite link.</p>
+        <p className="text-sm text-slate-600">Ask the sender to send a new invite link.</p>
         <button className="mt-4 text-sm text-slate-500 hover:text-slate-900" onClick={onDone}>
           ← Continue to Sitewright
         </button>
@@ -103,8 +103,8 @@ export function AcceptInvite({ token, authed, onAuthed, onDone }: AcceptInvitePr
     return (
       <div>
         <div className="mx-auto mt-16 max-w-md rounded-xl border border-indigo-200 bg-indigo-50 p-4 text-center text-sm text-indigo-900">
-          <strong>{peek.orgName}</strong> invited <strong>{peek.email}</strong> {target}. Sign in
-          or create an account with that email to accept.
+          You’ve been invited as <strong>{peek.email}</strong> {target}. Sign in or create an
+          account with that email to accept.
         </div>
         <Login onAuthed={onAuthed} />
       </div>
@@ -115,7 +115,7 @@ export function AcceptInvite({ token, authed, onAuthed, onDone }: AcceptInvitePr
     <>
       <h1 className="mb-1 text-xl font-bold">You’re invited</h1>
       <p className="mb-4 text-sm text-slate-600">
-        <strong>{peek.orgName}</strong> invited <strong>{peek.email}</strong> {target}.
+        <strong>{peek.email}</strong> was invited {target}.
       </p>
       {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
       <div className="flex items-center gap-3">

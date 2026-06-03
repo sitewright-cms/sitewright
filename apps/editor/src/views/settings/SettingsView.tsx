@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { AnimatePresence, motion, MotionConfig } from 'motion/react';
-import { ApiError, api, type Org, type Project, type SettingsBundle } from '../../api';
+import { ApiError, api, type Project, type SettingsBundle } from '../../api';
 import { toForm, toBundle, type SettingsForm } from './model';
 import { IdentitySection } from './IdentitySection';
 import { WebsiteSection } from './WebsiteSection';
@@ -22,7 +22,7 @@ function emptyBundle(project: Project): SettingsBundle {
  * Corporate Identity (company + brand) and Website settings, over the existing
  * settings-singleton content API. `prefers-reduced-motion` is honored globally.
  */
-export function SettingsView({ org, project }: { org: Org; project: Project }) {
+export function SettingsView({ project }: { project: Project }) {
   const [form, setForm] = useState<SettingsForm | null>(null);
   // The last-loaded bundle — the baseline for fields the form doesn't surface
   // (logoLight/logoDark, spacing, radii, typography.scale) so a save never drops them.
@@ -38,7 +38,7 @@ export function SettingsView({ org, project }: { org: Org; project: Project }) {
     let active = true;
     (async () => {
       try {
-        const res = await api.getSettings(org.id, project.id);
+        const res = await api.getSettings(project.id);
         if (active) {
           setBase(res.item);
           setForm(toForm(res.item));
@@ -59,7 +59,7 @@ export function SettingsView({ org, project }: { org: Org; project: Project }) {
     return () => {
       active = false;
     };
-  }, [org.id, project.id]);
+  }, [project.id]);
 
   // Auto-dismiss the "Saved" confirmation so it doesn't linger as a stale label.
   useEffect(() => {
@@ -78,7 +78,7 @@ export function SettingsView({ org, project }: { org: Org; project: Project }) {
     setSaving(true);
     setSaveError(null);
     try {
-      const res = await api.putSettings(org.id, project.id, toBundle(form, base ?? undefined));
+      const res = await api.putSettings(project.id, toBundle(form, base ?? undefined));
       setBase(res.item);
       setForm(toForm(res.item));
       setSaved(true);

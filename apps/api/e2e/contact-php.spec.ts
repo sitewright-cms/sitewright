@@ -10,20 +10,18 @@ test('contactPhp: enabled mode publishes a contact.php and points the form at it
   const admin = await playwright.request.newContext({ baseURL });
   const stamp = Date.now();
 
-  const reg = await admin.post('/auth/register', { data: { email: 'admin@e2e.test', password: PW, orgName: 'CP Admin' } });
+  const reg = await admin.post('/auth/register', { data: { email: 'admin@e2e.test', password: PW } });
   if (reg.status() === 409) {
     expect((await admin.post('/auth/login', { data: { email: 'admin@e2e.test', password: PW } })).status()).toBe(200);
   } else {
     expect(reg.status()).toBe(201);
   }
-  const orgId = (await (await admin.get('/me')).json()).orgs[0].id as string;
-
   // Enable the contactPhp mode instance-wide.
   expect((await admin.put('/admin/settings', { data: { formModes: { contactPhp: true } } })).status()).toBe(200);
 
-  const proj = await admin.post(`/orgs/${orgId}/projects`, { data: { name: 'CP Site', slug: `cp-${stamp}` } });
+  const proj = await admin.post(`/projects`, { data: { name: 'CP Site', slug: `cp-${stamp}` } });
   const projectId = (await proj.json()).project.id as string;
-  const base = `/orgs/${orgId}/projects/${projectId}`;
+  const base = `/projects/${projectId}`;
 
   // The form-modes endpoint reflects the admin's choice.
   const modes = await admin.get(`${base}/form-modes`);

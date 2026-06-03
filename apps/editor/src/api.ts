@@ -53,13 +53,13 @@ const BASE = import.meta.env.VITE_API_BASE ?? '';
  * preview iframe's `src` (not `srcDoc`), so the document is served under its own
  * `Content-Security-Policy: sandbox` rather than inheriting the editor's CSP.
  */
-export function previewDocUrl(orgId: string, projectId: string, token: string): string {
-  return `${BASE}/orgs/${orgId}/projects/${projectId}/preview/${encodeURIComponent(token)}`;
+export function previewDocUrl(projectId: string, token: string): string {
+  return `${BASE}/projects/${projectId}/preview/${encodeURIComponent(token)}`;
 }
 
 /** URL of the project's Server-Sent-Events change stream (for `EventSource`). */
-export function eventsUrl(orgId: string, projectId: string): string {
-  return `${BASE}/orgs/${orgId}/projects/${projectId}/events`;
+export function eventsUrl(projectId: string): string {
+  return `${BASE}/projects/${projectId}/events`;
 }
 
 export class ApiError extends Error {
@@ -95,39 +95,34 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return (await res.json()) as T;
 }
 
-export interface Org {
-  id: string;
-  name: string;
-  slug: string;
-  role: string;
-}
+/** A project the user can reach, with their role in it (the flat surface). */
 export interface Project {
   id: string;
   name: string;
   slug: string;
+  role: ProjectRole;
 }
-/** A user's membership in an org (the agency's owner/admin + invited developers). */
+/** A user's role within a single project. */
+export type ProjectRole = 'owner' | 'member';
+/** The platform-staff role for a user (developer/admin), or null for a pure client. */
+export type PlatformRole = 'admin' | 'developer' | null;
+/** The role an invite/membership can carry: a project tier (owner|member) or a platform tier (admin|developer). */
+export type Role = 'owner' | 'member' | 'admin' | 'developer';
+/**
+ * A member returned by a management list. Shared by two surfaces: `/admin/users` (platform staff —
+ * role `admin`|`developer`) and `/projects/:id/members` (the project team — role `owner`|`member`).
+ */
 export interface OrgMember {
   userId: string;
   email: string;
-  role: 'owner' | 'admin' | 'member';
+  role: Role;
   createdAt: string;
-}
-/** A project a user can reach via a project-scoped membership (the client tier). */
-export interface ProjectAccess {
-  orgId: string;
-  orgName: string;
-  orgSlug: string;
-  projectId: string;
-  projectName: string;
-  projectSlug: string;
-  role: 'owner' | 'admin' | 'member';
 }
 /** A pending invite (the management list never returns the token). */
 export interface Invite {
   id: string;
   email: string;
-  role: 'owner' | 'admin' | 'member';
+  role: Role;
   projectId: string | null;
   expiresAt: string;
   acceptedAt: string | null;
@@ -136,8 +131,7 @@ export interface Invite {
 /** Public context shown on the accept screen to an invite-token holder. */
 export interface InvitePeek {
   email: string;
-  role: 'owner' | 'admin' | 'member';
-  orgName: string;
+  role: Role;
   projectName: string | null;
   expired: boolean;
   accepted: boolean;
@@ -147,7 +141,7 @@ export type ApiKeyCapability = 'content:read' | 'content:write' | 'publish' | 'd
 export interface ApiKeyView {
   id: string;
   name: string;
-  role: 'owner' | 'admin' | 'member';
+  role: ProjectRole;
   capabilities: ApiKeyCapability[];
   tokenPrefix: string;
   expiresAt: string | null;
@@ -157,7 +151,7 @@ export interface ApiKeyView {
 }
 export interface CreateApiKeyBody {
   name: string;
-  role: 'owner' | 'admin' | 'member';
+  role: ProjectRole;
   capabilities: ApiKeyCapability[];
   expiresInDays: number;
 }
@@ -178,81 +172,71 @@ export interface DeployConfig {
 }
 
 export const api = {
-  register: (email: string, password: string, orgName: string) =>
-    request<{ userId: string; orgId: string }>('POST', '/auth/register', { email, password, orgName }),
+  register: (email: string, password: string) =>
+    request<{ userId: string }>('POST', '/auth/register', { email, password }),
   login: (email: string, password: string) =>
     request<{ userId: string }>('POST', '/auth/login', { email, password }),
   logout: () => request<void>('POST', '/auth/logout'),
   me: () =>
-    request<{ userId: string; orgs: Org[]; projectAccess: ProjectAccess[]; isInstanceAdmin: boolean }>(
-      'GET',
-      '/me',
-    ),
+    request<{
+      userId: string;
+      platformRole: PlatformRole;
+      isInstanceAdmin: boolean;
+      projects: Project[];
+    }>('GET', '/me'),
   version: () =>
     request<{ current: string; latest: string | null; updateAvailable: boolean; releaseUrl: string | null }>(
       'GET',
       '/version',
     ),
-  projects: (orgId: string) =>
-    request<{ projects: Project[] }>('GET', `/orgs/${orgId}/projects`),
-  // Org members = the agency's developers/staff (owner/admin).
-  listMembers: (orgId: string) =>
-    request<{ members: OrgMember[] }>('GET', `/orgs/${orgId}/members`),
-  removeMember: (orgId: string, userId: string) =>
-    request<void>('DELETE', `/orgs/${orgId}/members/${encodeURIComponent(userId)}`),
-  // Invites: developer (org admin) and client (project member). The raw token is
-  // returned ONCE; the UI builds an invite link from it.
-  inviteDeveloper: (orgId: string, email: string) =>
-    request<{ invite: Invite; token: string }>('POST', `/orgs/${orgId}/invites`, { email }),
-  inviteClient: (orgId: string, projectId: string, email: string) =>
-    request<{ invite: Invite; token: string }>('POST', `/orgs/${orgId}/projects/${projectId}/invites`, { email }),
-  listInvites: (orgId: string, projectId?: string) =>
-    request<{ invites: Invite[] }>(
-      'GET',
-      `/orgs/${orgId}/invites${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''}`,
-    ),
-  revokeInvite: (orgId: string, id: string) =>
-    request<void>('DELETE', `/orgs/${orgId}/invites/${encodeURIComponent(id)}`),
+  projects: () => request<{ projects: Project[] }>('GET', '/projects'),
+  // Platform staff (instance-wide developers/admins) live under /admin/users.
+  listMembers: () => request<{ members: OrgMember[] }>('GET', '/admin/users'),
+  removeMember: (userId: string) =>
+    request<void>('DELETE', `/admin/users/${encodeURIComponent(userId)}`),
+  // Invites: a platform-staff (developer) invite and a project-scoped (client) invite.
+  // The raw token is returned ONCE; the UI builds an invite link from it.
+  inviteDeveloper: (email: string, role?: string) =>
+    request<{ invite: Invite; token: string }>('POST', '/admin/invites', {
+      email,
+      ...(role ? { role } : {}),
+    }),
+  inviteClient: (projectId: string, email: string) =>
+    request<{ invite: Invite; token: string }>('POST', `/projects/${projectId}/invites`, { email }),
+  /** Platform-staff invites (instance-wide). */
+  listInvites: () => request<{ invites: Invite[] }>('GET', '/admin/invites'),
+  /** A project's pending (client) invites. */
+  listProjectInvites: (projectId: string) =>
+    request<{ invites: Invite[] }>('GET', `/projects/${projectId}/invites`),
+  revokeInvite: (id: string) =>
+    request<void>('DELETE', `/invites/${encodeURIComponent(id)}`),
   peekInvite: (token: string) =>
     request<{ invite: InvitePeek }>('GET', `/invites/peek?token=${encodeURIComponent(token)}`),
   acceptInvite: (token: string) =>
-    request<{ orgId: string; projectId: string | null; role: string }>('POST', '/invites/accept', { token }),
+    // `projectId` is null for a platform-staff invite (which sets the user's platform role).
+    request<{ projectId: string | null; role: Role }>('POST', '/invites/accept', { token }),
   // Project clients (project-scoped members).
-  listProjectMembers: (orgId: string, projectId: string) =>
-    request<{ members: OrgMember[] }>('GET', `/orgs/${orgId}/projects/${projectId}/members`),
-  removeProjectMember: (orgId: string, projectId: string, userId: string) =>
-    request<void>(
-      'DELETE',
-      `/orgs/${orgId}/projects/${projectId}/members/${encodeURIComponent(userId)}`,
-    ),
-  createProject: (orgId: string, name: string, slug: string) =>
-    request<{ project: Project }>('POST', `/orgs/${orgId}/projects`, { name, slug }),
-  listPages: (orgId: string, projectId: string) =>
-    request<{ items: Page[] }>('GET', `/orgs/${orgId}/projects/${projectId}/content/page`),
-  getPage: (orgId: string, projectId: string, id: string) =>
-    request<{ item: Page }>(
-      'GET',
-      `/orgs/${orgId}/projects/${projectId}/content/page/${encodeURIComponent(id)}`,
-    ),
-  putPage: (orgId: string, projectId: string, page: Page) =>
-    request<{ item: Page }>(
-      'PUT',
-      `/orgs/${orgId}/projects/${projectId}/content/page/${page.id}`,
-      page,
-    ),
-  deletePage: (orgId: string, projectId: string, id: string) =>
-    request<void>('DELETE', `/orgs/${orgId}/projects/${projectId}/content/page/${id}`),
-  preview: (orgId: string, projectId: string, page: Page) =>
-    request<{ html: string; token: string }>(
-      'POST',
-      `/orgs/${orgId}/projects/${projectId}/preview`,
-      page,
-    ),
+  listProjectMembers: (projectId: string) =>
+    request<{ members: OrgMember[] }>('GET', `/projects/${projectId}/members`),
+  removeProjectMember: (projectId: string, userId: string) =>
+    request<void>('DELETE', `/projects/${projectId}/members/${encodeURIComponent(userId)}`),
+  createProject: (name: string, slug: string) =>
+    request<{ project: Project }>('POST', '/projects', { name, slug }),
+  deleteProject: (id: string) => request<void>('DELETE', `/projects/${id}`),
+  listPages: (projectId: string) =>
+    request<{ items: Page[] }>('GET', `/projects/${projectId}/content/page`),
+  getPage: (projectId: string, id: string) =>
+    request<{ item: Page }>('GET', `/projects/${projectId}/content/page/${encodeURIComponent(id)}`),
+  putPage: (projectId: string, page: Page) =>
+    request<{ item: Page }>('PUT', `/projects/${projectId}/content/page/${page.id}`, page),
+  deletePage: (projectId: string, id: string) =>
+    request<void>('DELETE', `/projects/${projectId}/content/page/${id}`),
+  preview: (projectId: string, page: Page) =>
+    request<{ html: string; token: string }>('POST', `/projects/${projectId}/preview`, page),
   // Live-preview backend for the code-first template editor: render a Handlebars `template`
   // against the project context inside the isolated worker pool. `document: true` returns a
   // full styled <!doctype> document (the doc shell + the source's compiled Tailwind inlined).
   renderTemplate: (
-    orgId: string,
     projectId: string,
     body: {
       template?: string;
@@ -263,101 +247,72 @@ export const api = {
   ) =>
     // `token` is present when `document: true` — load the styled doc via an iframe `src`
     // (opaque-origin sandbox CSP) instead of `srcDoc`.
-    request<{ html: string; token?: string }>(
-      'POST',
-      `/orgs/${orgId}/projects/${projectId}/render-template`,
-      body,
-    ),
+    request<{ html: string; token?: string }>('POST', `/projects/${projectId}/render-template`, body),
 
   // --- patterns (reusable, fork-on-insert block subtrees) ---
-  listPatterns: (orgId: string, projectId: string) =>
-    request<{ items: Pattern[] }>('GET', `/orgs/${orgId}/projects/${projectId}/content/pattern`),
-  putPattern: (orgId: string, projectId: string, pattern: Pattern) =>
-    request<{ item: Pattern }>(
-      'PUT',
-      `/orgs/${orgId}/projects/${projectId}/content/pattern/${pattern.id}`,
-      pattern,
-    ),
-  deletePattern: (orgId: string, projectId: string, id: string) =>
-    request<void>('DELETE', `/orgs/${orgId}/projects/${projectId}/content/pattern/${id}`),
+  listPatterns: (projectId: string) =>
+    request<{ items: Pattern[] }>('GET', `/projects/${projectId}/content/pattern`),
+  putPattern: (projectId: string, pattern: Pattern) =>
+    request<{ item: Pattern }>('PUT', `/projects/${projectId}/content/pattern/${pattern.id}`, pattern),
+  deletePattern: (projectId: string, id: string) =>
+    request<void>('DELETE', `/projects/${projectId}/content/pattern/${id}`),
 
   // --- project settings singleton (Corporate Identity + website + locales) ---
-  getSettings: (orgId: string, projectId: string) =>
-    request<{ item: SettingsBundle }>(
-      'GET',
-      `/orgs/${orgId}/projects/${projectId}/content/settings/settings`,
-    ),
-  putSettings: (orgId: string, projectId: string, bundle: SettingsBundle) =>
+  getSettings: (projectId: string) =>
+    request<{ item: SettingsBundle }>('GET', `/projects/${projectId}/content/settings/settings`),
+  putSettings: (projectId: string, bundle: SettingsBundle) =>
     request<{ item: SettingsBundle }>(
       'PUT',
-      `/orgs/${orgId}/projects/${projectId}/content/settings/settings`,
+      `/projects/${projectId}/content/settings/settings`,
       bundle,
     ),
 
   // --- page translations (per-locale content overrides) ---
-  listTranslations: (orgId: string, projectId: string) =>
-    request<{ items: PageTranslation[] }>(
-      'GET',
-      `/orgs/${orgId}/projects/${projectId}/content/translation`,
-    ),
-  putTranslation: (orgId: string, projectId: string, translation: PageTranslation) =>
+  listTranslations: (projectId: string) =>
+    request<{ items: PageTranslation[] }>('GET', `/projects/${projectId}/content/translation`),
+  putTranslation: (projectId: string, translation: PageTranslation) =>
     request<{ item: PageTranslation }>(
       'PUT',
-      `/orgs/${orgId}/projects/${projectId}/content/translation/${encodeURIComponent(translation.id)}`,
+      `/projects/${projectId}/content/translation/${encodeURIComponent(translation.id)}`,
       translation,
     ),
-  deleteTranslation: (orgId: string, projectId: string, id: string) =>
+  deleteTranslation: (projectId: string, id: string) =>
     request<void>(
       'DELETE',
-      `/orgs/${orgId}/projects/${projectId}/content/translation/${encodeURIComponent(id)}`,
+      `/projects/${projectId}/content/translation/${encodeURIComponent(id)}`,
     ),
 
   // --- project API keys (bearer tokens for the CLI / MCP bridge) ---
-  listApiKeys: (orgId: string, projectId: string) =>
-    request<{ items: ApiKeyView[] }>('GET', `/orgs/${orgId}/projects/${projectId}/api-keys`),
-  createApiKey: (orgId: string, projectId: string, body: CreateApiKeyBody) =>
-    request<{ token: string; key: ApiKeyView }>(
-      'POST',
-      `/orgs/${orgId}/projects/${projectId}/api-keys`,
-      body,
-    ),
-  deleteApiKey: (orgId: string, projectId: string, id: string) =>
-    request<void>(
-      'DELETE',
-      `/orgs/${orgId}/projects/${projectId}/api-keys/${encodeURIComponent(id)}`,
-    ),
+  listApiKeys: (projectId: string) =>
+    request<{ items: ApiKeyView[] }>('GET', `/projects/${projectId}/api-keys`),
+  createApiKey: (projectId: string, body: CreateApiKeyBody) =>
+    request<{ token: string; key: ApiKeyView }>('POST', `/projects/${projectId}/api-keys`, body),
+  deleteApiKey: (projectId: string, id: string) =>
+    request<void>('DELETE', `/projects/${projectId}/api-keys/${encodeURIComponent(id)}`),
 
   // --- datasets ---
-  listDatasets: (orgId: string, projectId: string) =>
-    request<{ items: Dataset[] }>('GET', `/orgs/${orgId}/projects/${projectId}/content/dataset`),
-  putDataset: (orgId: string, projectId: string, dataset: Dataset) =>
-    request<{ item: Dataset }>(
-      'PUT',
-      `/orgs/${orgId}/projects/${projectId}/content/dataset/${dataset.id}`,
-      dataset,
-    ),
-  deleteDataset: (orgId: string, projectId: string, id: string) =>
-    request<void>('DELETE', `/orgs/${orgId}/projects/${projectId}/content/dataset/${id}`),
+  listDatasets: (projectId: string) =>
+    request<{ items: Dataset[] }>('GET', `/projects/${projectId}/content/dataset`),
+  putDataset: (projectId: string, dataset: Dataset) =>
+    request<{ item: Dataset }>('PUT', `/projects/${projectId}/content/dataset/${dataset.id}`, dataset),
+  deleteDataset: (projectId: string, id: string) =>
+    request<void>('DELETE', `/projects/${projectId}/content/dataset/${id}`),
 
   // --- entries ---
-  listEntries: (orgId: string, projectId: string) =>
-    request<{ items: Entry[] }>('GET', `/orgs/${orgId}/projects/${projectId}/content/entry`),
-  putEntry: (orgId: string, projectId: string, entry: Entry) =>
-    request<{ item: Entry }>(
-      'PUT',
-      `/orgs/${orgId}/projects/${projectId}/content/entry/${entry.id}`,
-      entry,
-    ),
-  deleteEntry: (orgId: string, projectId: string, id: string) =>
-    request<void>('DELETE', `/orgs/${orgId}/projects/${projectId}/content/entry/${id}`),
+  listEntries: (projectId: string) =>
+    request<{ items: Entry[] }>('GET', `/projects/${projectId}/content/entry`),
+  putEntry: (projectId: string, entry: Entry) =>
+    request<{ item: Entry }>('PUT', `/projects/${projectId}/content/entry/${entry.id}`, entry),
+  deleteEntry: (projectId: string, id: string) =>
+    request<void>('DELETE', `/projects/${projectId}/content/entry/${id}`),
 
   // --- media ---
-  listMedia: (orgId: string, projectId: string) =>
-    request<{ items: MediaAsset[] }>('GET', `/orgs/${orgId}/projects/${projectId}/media`),
-  uploadMedia: async (orgId: string, projectId: string, file: File): Promise<{ item: MediaAsset }> => {
+  listMedia: (projectId: string) =>
+    request<{ items: MediaAsset[] }>('GET', `/projects/${projectId}/media`),
+  uploadMedia: async (projectId: string, file: File): Promise<{ item: MediaAsset }> => {
     const form = new FormData();
     form.append('file', file);
-    const res = await fetch(`${BASE}/orgs/${orgId}/projects/${projectId}/media`, {
+    const res = await fetch(`${BASE}/projects/${projectId}/media`, {
       method: 'POST',
       credentials: 'include',
       body: form, // the browser sets multipart/form-data with the boundary
@@ -365,56 +320,48 @@ export const api = {
     if (!res.ok) throw await errorFromResponse(res);
     return (await res.json()) as { item: MediaAsset };
   },
-  deleteMedia: (orgId: string, projectId: string, id: string) =>
-    request<void>('DELETE', `/orgs/${orgId}/projects/${projectId}/media/${id}`),
+  deleteMedia: (projectId: string, id: string) =>
+    request<void>('DELETE', `/projects/${projectId}/media/${id}`),
 
   // --- stock images (search provider-hosted photos; import = download+optimize+self-host) ---
-  stockProviders: (orgId: string, projectId: string) =>
-    request<StockProvidersStatus>('GET', `/orgs/${orgId}/projects/${projectId}/stock/providers`),
-  searchStock: (orgId: string, projectId: string, provider: StockProviderName, q: string, page = 1) => {
+  stockProviders: (projectId: string) =>
+    request<StockProvidersStatus>('GET', `/projects/${projectId}/stock/providers`),
+  searchStock: (projectId: string, provider: StockProviderName, q: string, page = 1) => {
     const params = new URLSearchParams({ provider, q, page: String(page) });
-    return request<StockSearchResult>('GET', `/orgs/${orgId}/projects/${projectId}/stock/search?${params.toString()}`);
+    return request<StockSearchResult>('GET', `/projects/${projectId}/stock/search?${params.toString()}`);
   },
-  importStock: (orgId: string, projectId: string, provider: StockProviderName, id: string, alt?: string) =>
-    request<{ item: MediaAsset }>('POST', `/orgs/${orgId}/projects/${projectId}/stock/import`, {
+  importStock: (projectId: string, provider: StockProviderName, id: string, alt?: string) =>
+    request<{ item: MediaAsset }>('POST', `/projects/${projectId}/stock/import`, {
       provider,
       id,
       ...(alt ? { alt } : {}),
     }),
 
   // --- publishing ---
-  publish: (orgId: string, projectId: string) =>
-    request<{ release: Release; url: string }>('POST', `/orgs/${orgId}/projects/${projectId}/publish`),
-  publishStatus: (orgId: string, projectId: string) =>
-    request<{ release: Release | null; url: string }>(
-      'GET',
-      `/orgs/${orgId}/projects/${projectId}/publish`,
-    ),
+  publish: (projectId: string) =>
+    request<{ release: Release; url: string }>('POST', `/projects/${projectId}/publish`),
+  publishStatus: (projectId: string) =>
+    request<{ release: Release | null; url: string }>('GET', `/projects/${projectId}/publish`),
   /** URL of the zip artifact (used as an <a href download> — sends the session cookie). */
-  archiveUrl: (orgId: string, projectId: string) =>
-    `${BASE}/orgs/${orgId}/projects/${projectId}/publish/archive`,
-  deploy: (orgId: string, projectId: string, config: DeployConfig) =>
+  archiveUrl: (projectId: string) => `${BASE}/projects/${projectId}/publish/archive`,
+  deploy: (projectId: string, config: DeployConfig) =>
     request<{ deployed: { protocol: string; files: number } }>(
       'POST',
-      `/orgs/${orgId}/projects/${projectId}/publish/deploy`,
+      `/projects/${projectId}/publish/deploy`,
       config,
     ),
 
   // --- saved deploy targets ---
-  listDeployTargets: (orgId: string, projectId: string) =>
-    request<{ items: DeployTargetView[] }>('GET', `/orgs/${orgId}/projects/${projectId}/deploy-targets`),
-  createDeployTarget: (orgId: string, projectId: string, config: DeployConfig & { name: string }) =>
-    request<{ target: DeployTargetView }>(
-      'POST',
-      `/orgs/${orgId}/projects/${projectId}/deploy-targets`,
-      config,
-    ),
-  deleteDeployTarget: (orgId: string, projectId: string, id: string) =>
-    request<void>('DELETE', `/orgs/${orgId}/projects/${projectId}/deploy-targets/${id}`),
-  deployToTarget: (orgId: string, projectId: string, id: string) =>
+  listDeployTargets: (projectId: string) =>
+    request<{ items: DeployTargetView[] }>('GET', `/projects/${projectId}/deploy-targets`),
+  createDeployTarget: (projectId: string, config: DeployConfig & { name: string }) =>
+    request<{ target: DeployTargetView }>('POST', `/projects/${projectId}/deploy-targets`, config),
+  deleteDeployTarget: (projectId: string, id: string) =>
+    request<void>('DELETE', `/projects/${projectId}/deploy-targets/${id}`),
+  deployToTarget: (projectId: string, id: string) =>
     request<{ deployed: { protocol: string; files: number } }>(
       'POST',
-      `/orgs/${orgId}/projects/${projectId}/deploy-targets/${id}/deploy`,
+      `/projects/${projectId}/deploy-targets/${id}/deploy`,
     ),
 
   // --- instance admin settings (global mail / hCaptcha / enabled form modes) ---
@@ -424,37 +371,34 @@ export const api = {
     request<{ settings: InstanceSettingsPublic }>('PUT', '/admin/settings', body),
 
   // --- web forms (definitions live as `form` content) ---
-  listForms: (orgId: string, projectId: string) =>
-    request<{ items: Form[] }>('GET', `/orgs/${orgId}/projects/${projectId}/content/form`),
-  putForm: (orgId: string, projectId: string, form: Form) =>
+  listForms: (projectId: string) =>
+    request<{ items: Form[] }>('GET', `/projects/${projectId}/content/form`),
+  putForm: (projectId: string, form: Form) =>
     request<{ item: Form }>(
       'PUT',
-      `/orgs/${orgId}/projects/${projectId}/content/form/${encodeURIComponent(form.id)}`,
+      `/projects/${projectId}/content/form/${encodeURIComponent(form.id)}`,
       form,
     ),
-  deleteForm: (orgId: string, projectId: string, id: string) =>
-    request<void>('DELETE', `/orgs/${orgId}/projects/${projectId}/content/form/${encodeURIComponent(id)}`),
+  deleteForm: (projectId: string, id: string) =>
+    request<void>('DELETE', `/projects/${projectId}/content/form/${encodeURIComponent(id)}`),
   /** Which mail-delivery modes the instance admin permits (for the form-mode selector). */
-  formModes: (orgId: string, projectId: string) =>
-    request<{ formModes: FormModes }>('GET', `/orgs/${orgId}/projects/${projectId}/form-modes`),
+  formModes: (projectId: string) =>
+    request<{ formModes: FormModes }>('GET', `/projects/${projectId}/form-modes`),
 
   // --- per-project SMTP (for the userSmtp form mode) ---
-  getProjectSmtp: (orgId: string, projectId: string) =>
-    request<{ smtp: SmtpPublic | null }>('GET', `/orgs/${orgId}/projects/${projectId}/smtp`),
-  putProjectSmtp: (orgId: string, projectId: string, body: SmtpInput) =>
-    request<{ smtp: SmtpPublic }>('PUT', `/orgs/${orgId}/projects/${projectId}/smtp`, body),
-  deleteProjectSmtp: (orgId: string, projectId: string) =>
-    request<void>('DELETE', `/orgs/${orgId}/projects/${projectId}/smtp`),
+  getProjectSmtp: (projectId: string) =>
+    request<{ smtp: SmtpPublic | null }>('GET', `/projects/${projectId}/smtp`),
+  putProjectSmtp: (projectId: string, body: SmtpInput) =>
+    request<{ smtp: SmtpPublic }>('PUT', `/projects/${projectId}/smtp`, body),
+  deleteProjectSmtp: (projectId: string) =>
+    request<void>('DELETE', `/projects/${projectId}/smtp`),
 
   // --- form submissions (inbox) ---
-  listSubmissions: (orgId: string, projectId: string, formId?: string) =>
+  listSubmissions: (projectId: string, formId?: string) =>
     request<{ items: FormSubmission[]; total: number }>(
       'GET',
-      `/orgs/${orgId}/projects/${projectId}/submissions${formId ? `?formId=${encodeURIComponent(formId)}` : ''}`,
+      `/projects/${projectId}/submissions${formId ? `?formId=${encodeURIComponent(formId)}` : ''}`,
     ),
-  deleteSubmission: (orgId: string, projectId: string, id: string) =>
-    request<void>(
-      'DELETE',
-      `/orgs/${orgId}/projects/${projectId}/submissions/${encodeURIComponent(id)}`,
-    ),
+  deleteSubmission: (projectId: string, id: string) =>
+    request<void>('DELETE', `/projects/${projectId}/submissions/${encodeURIComponent(id)}`),
 };

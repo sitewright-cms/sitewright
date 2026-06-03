@@ -1,48 +1,26 @@
-import { useEffect, useState, type FormEvent } from 'react';
-import { api, type Org, type Project, type ProjectAccess } from '../api';
+import { useState, type FormEvent } from 'react';
+import { api, type Project } from '../api';
 
 interface DashboardProps {
-  orgs: Org[];
-  projectAccess: ProjectAccess[];
-  onOpen: (org: Org, project: Project) => void;
+  projects: Project[];
+  onOpen: (project: Project) => void;
+  /** Called after a project is created so the app can re-resolve the project list. */
+  onProjectsChanged: () => void | Promise<void>;
 }
 
-export function Dashboard({ orgs, projectAccess, onOpen }: DashboardProps) {
-  const [orgId, setOrgId] = useState(orgs[0]?.id ?? '');
-  const [projects, setProjects] = useState<Project[]>([]);
+export function Dashboard({ projects, onOpen, onProjectsChanged }: DashboardProps) {
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
   const [error, setError] = useState<string | null>(null);
-
-  const org = orgs.find((o) => o.id === orgId);
-
-  async function load(id: string) {
-    if (!id) return;
-    try {
-      const res = await api.projects(id);
-      setProjects(res.projects);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'failed to load projects');
-    }
-  }
-
-  // Keep the selected org valid if the orgs prop changes (e.g. after re-login).
-  useEffect(() => {
-    setOrgId((current) => (orgs.some((o) => o.id === current) ? current : (orgs[0]?.id ?? '')));
-  }, [orgs]);
-
-  useEffect(() => {
-    void load(orgId);
-  }, [orgId]);
 
   async function create(e: FormEvent) {
     e.preventDefault();
     setError(null);
     try {
-      await api.createProject(orgId, name, slug);
+      await api.createProject(name, slug);
       setName('');
       setSlug('');
-      await load(orgId);
+      await onProjectsChanged();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed to create project');
     }
@@ -50,57 +28,14 @@ export function Dashboard({ orgs, projectAccess, onOpen }: DashboardProps) {
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-8">
-      {/* Sites a client can edit (project-scoped access), shown above any org they own. */}
-      {projectAccess.length > 0 && (
-        <section className="mb-8">
-          <h2 className="mb-3 text-xl font-semibold">Your sites</h2>
-          <ul className="flex flex-col gap-2">
-            {projectAccess.map((pa) => (
-              <li key={pa.projectId}>
-                <button
-                  className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-left hover:border-indigo-400"
-                  onClick={() =>
-                    onOpen(
-                      { id: pa.orgId, name: pa.orgName, slug: pa.orgSlug, role: pa.role },
-                      { id: pa.projectId, name: pa.projectName, slug: pa.projectSlug },
-                    )
-                  }
-                >
-                  <span className="font-medium">{pa.projectName}</span>{' '}
-                  <span className="text-sm text-slate-400">· {pa.orgName}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {orgs.length === 0 ? (
-        projectAccess.length === 0 && <p className="text-sm text-slate-400">No projects yet.</p>
-      ) : (
-        <>
-      {orgs.length > 1 && (
-        <select
-          aria-label="Organization"
-          className="mb-4 rounded-md border border-slate-300 px-3 py-2"
-          value={orgId}
-          onChange={(e) => setOrgId(e.target.value)}
-        >
-          {orgs.map((o) => (
-            <option key={o.id} value={o.id}>
-              {o.name}
-            </option>
-          ))}
-        </select>
-      )}
-      <h2 className="mb-4 text-xl font-semibold">{org?.name} — Projects</h2>
+      <h2 className="mb-4 text-xl font-semibold">Your sites</h2>
 
       <ul className="mb-8 flex flex-col gap-2">
         {projects.map((p) => (
           <li key={p.id}>
             <button
-              className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-left hover:border-slate-400"
-              onClick={() => org && onOpen(org, p)}
+              className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-left hover:border-indigo-400"
+              onClick={() => onOpen(p)}
             >
               <span className="font-medium">{p.name}</span>{' '}
               <span className="text-sm text-slate-400">/{p.slug}</span>
@@ -137,8 +72,6 @@ export function Dashboard({ orgs, projectAccess, onOpen }: DashboardProps) {
         </button>
       </form>
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
-        </>
-      )}
     </main>
   );
 }

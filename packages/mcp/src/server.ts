@@ -83,7 +83,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, scope: Scope
   // --- always available (orientation + reads) ---
   server.registerTool(
     'get_scope',
-    { description: 'Show which org/project this token addresses, its role, and its capabilities.' },
+    { description: 'Show which project this token addresses, its role, and its capabilities.' },
     async () => ok(scope),
   );
 

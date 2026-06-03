@@ -17,7 +17,7 @@ interface LivePreviewProps {
  * just swaps the iframe `src`).
  */
 export function LivePreview({ target }: LivePreviewProps) {
-  const { orgId, projectId, pageId } = target;
+  const { projectId, pageId } = target;
   const [preview, setPreview] = useState<{ src: string; loading: boolean; error: string | null }>({
     src: '',
     loading: true,
@@ -29,9 +29,9 @@ export function LivePreview({ target }: LivePreviewProps) {
   const render = useCallback(async () => {
     setPreview((prev) => ({ ...prev, loading: true }));
     try {
-      const { item } = await api.getPage(orgId, projectId, pageId);
-      const res = await api.preview(orgId, projectId, item);
-      setPreview({ src: previewDocUrl(orgId, projectId, res.token), loading: false, error: null });
+      const { item } = await api.getPage(projectId, pageId);
+      const res = await api.preview(projectId, item);
+      setPreview({ src: previewDocUrl(projectId, res.token), loading: false, error: null });
     } catch (err) {
       setPreview((prev) => ({
         ...prev,
@@ -39,7 +39,7 @@ export function LivePreview({ target }: LivePreviewProps) {
         error: err instanceof Error ? err.message : 'failed to load preview',
       }));
     }
-  }, [orgId, projectId, pageId]);
+  }, [projectId, pageId]);
 
   useEffect(() => {
     void render();
@@ -47,7 +47,7 @@ export function LivePreview({ target }: LivePreviewProps) {
 
   // Subscribe to the change stream; coalesce bursts of edits into one reload.
   useEffect(() => {
-    const source = new EventSource(eventsUrl(orgId, projectId), { withCredentials: true });
+    const source = new EventSource(eventsUrl(projectId), { withCredentials: true });
     source.onopen = () => setConnected(true);
     source.onerror = () => setConnected(false);
     let handle: ReturnType<typeof setTimeout> | undefined;
@@ -59,7 +59,7 @@ export function LivePreview({ target }: LivePreviewProps) {
       if (handle) clearTimeout(handle);
       source.close();
     };
-  }, [orgId, projectId, render]);
+  }, [projectId, render]);
 
   return (
     <div className="flex h-screen flex-col">

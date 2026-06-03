@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Page } from '@sitewright/schema';
 import { extractEditRegions } from '@sitewright/core';
-import { api, previewDocUrl, type Org, type Project } from '../api';
+import { api, previewDocUrl, type Project } from '../api';
 import { PreviewPane } from './editor/PreviewPane';
 
 interface ClientSourceEditorProps {
-  org: Org;
   project: Project;
   page: Page;
   onClose: () => void;
@@ -20,7 +19,7 @@ const PREVIEW_DEBOUNCE_MS = 400;
  * the page with an updated `content` map; the server independently enforces that only
  * `content` changed (assertClientEditAllowed), so the template/structure stay immutable.
  */
-export function ClientSourceEditor({ org, project, page, onClose }: ClientSourceEditorProps) {
+export function ClientSourceEditor({ project, page, onClose }: ClientSourceEditorProps) {
   const regions = useMemo(() => extractEditRegions(page.source ?? ''), [page.source]);
   const [content, setContent] = useState<Record<string, string>>({ ...(page.content ?? {}) });
   const [saving, setSaving] = useState(false);
@@ -40,10 +39,10 @@ export function ClientSourceEditor({ org, project, page, onClose }: ClientSource
     const handle = setTimeout(() => {
       setPreview((prev) => ({ ...prev, loading: true }));
       api
-        .preview(org.id, project.id, draft)
+        .preview(project.id, draft)
         .then((res) => {
           if (!cancelled) {
-            setPreview({ src: previewDocUrl(org.id, project.id, res.token), loading: false, error: null });
+            setPreview({ src: previewDocUrl(project.id, res.token), loading: false, error: null });
           }
         })
         .catch((err: unknown) => {
@@ -60,7 +59,7 @@ export function ClientSourceEditor({ org, project, page, onClose }: ClientSource
       cancelled = true;
       clearTimeout(handle);
     };
-  }, [org.id, project.id, draft]);
+  }, [project.id, draft]);
 
   function valueFor(key: string, def: string): string {
     return Object.prototype.hasOwnProperty.call(content, key) ? content[key]! : def;
@@ -74,7 +73,7 @@ export function ClientSourceEditor({ org, project, page, onClose }: ClientSource
     setSaving(true);
     setError(null);
     try {
-      await api.putPage(org.id, project.id, draft);
+      await api.putPage(project.id, draft);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed to save');

@@ -16,9 +16,9 @@ async function register(app: FastifyInstance, email: string) {
   const reg = await app.inject({
     method: 'POST',
     url: '/auth/register',
-    payload: { email, password: 'pw-secret-1', orgName: 'Org' },
+    payload: { email, password: 'pw-secret-1'},
   });
-  return { t: token(reg), orgId: (reg.json() as { orgId: string }).orgId };
+  return { t: token(reg) };
 }
 
 describe('admin settings API', () => {

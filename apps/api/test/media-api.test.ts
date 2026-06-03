@@ -31,22 +31,21 @@ function token(res: { cookies: Array<{ name: string; value: string }> }): string
   return t;
 }
 
-async function setup(email: string, orgName: string, slug = 'site') {
+async function setup(email: string, slug = 'site') {
   const reg = await app.inject({
     method: 'POST',
     url: '/auth/register',
-    payload: { email, password: 'pw-secret-1', orgName },
+    payload: { email, password: 'pw-secret-1' },
   });
   const t = token(reg);
-  const orgId = (reg.json() as { orgId: string }).orgId;
   const proj = await app.inject({
     method: 'POST',
-    url: `/orgs/${orgId}/projects`,
+    url: `/projects`,
     cookies: { sw_session: t },
     payload: { name: 'Site', slug },
   });
   const projectId = (proj.json() as { project: { id: string } }).project.id;
-  return { t, orgId, projectId };
+  return { t, projectId };
 }
 
 function multipart(filename: string, mime: string, content: Buffer) {
@@ -64,8 +63,8 @@ function multipart(filename: string, mime: string, content: Buffer) {
 
 describe('media API', () => {
   it('uploads → optimizes → lists → serves → deletes an image', async () => {
-    const { t, orgId, projectId } = await setup('a@acme.test', 'Acme');
-    const base = `/orgs/${orgId}/projects/${projectId}`;
+    const { t, projectId } = await setup('a@acme.test');
+    const base = `/projects/${projectId}`;
     const cookies = { sw_session: t };
 
     const up = await app.inject({
@@ -95,10 +94,10 @@ describe('media API', () => {
   });
 
   it('rejects writing media via the generic content endpoint (must use /media)', async () => {
-    const { t, orgId, projectId } = await setup('a@acme.test', 'Acme');
+    const { t, projectId } = await setup('a@acme.test');
     const res = await app.inject({
       method: 'PUT',
-      url: `/orgs/${orgId}/projects/${projectId}/content/media/forged`,
+      url: `/projects/${projectId}/content/media/forged`,
       cookies: { sw_session: t },
       payload: {
         id: 'forged',
@@ -116,10 +115,10 @@ describe('media API', () => {
   });
 
   it('rejects a non-image upload (400)', async () => {
-    const { t, orgId, projectId } = await setup('a@acme.test', 'Acme');
+    const { t, projectId } = await setup('a@acme.test');
     const res = await app.inject({
       method: 'POST',
-      url: `/orgs/${orgId}/projects/${projectId}/media`,
+      url: `/projects/${projectId}/media`,
       cookies: { sw_session: t },
       ...multipart('notes.txt', 'text/plain', Buffer.from('this is not an image')),
     });
@@ -127,21 +126,21 @@ describe('media API', () => {
   });
 
   it('requires authentication to upload', async () => {
-    const { orgId, projectId } = await setup('a@acme.test', 'Acme');
+    const { projectId } = await setup('a@acme.test');
     const res = await app.inject({
       method: 'POST',
-      url: `/orgs/${orgId}/projects/${projectId}/media`,
+      url: `/projects/${projectId}/media`,
       ...multipart('red.png', 'image/png', PNG_1X1),
     });
     expect(res.statusCode).toBe(401);
   });
 
   it('forbids uploading to / listing another tenant’s project', async () => {
-    const a = await setup('a@acme.test', 'Acme', 'site-a');
-    const b = await setup('b@globex.test', 'Globex', 'site-b');
+    const a = await setup('a@acme.test', 'site-a');
+    const b = await setup('b@globex.test', 'site-b');
     const upload = await app.inject({
       method: 'POST',
-      url: `/orgs/${a.orgId}/projects/${a.projectId}/media`,
+      url: `/projects/${a.projectId}/media`,
       cookies: { sw_session: b.t },
       ...multipart('red.png', 'image/png', PNG_1X1),
     });
@@ -149,7 +148,7 @@ describe('media API', () => {
 
     const list = await app.inject({
       method: 'GET',
-      url: `/orgs/${a.orgId}/projects/${a.projectId}/media`,
+      url: `/projects/${a.projectId}/media`,
       cookies: { sw_session: b.t },
     });
     expect(list.statusCode).toBe(403);

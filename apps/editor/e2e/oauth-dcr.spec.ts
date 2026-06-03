@@ -10,11 +10,10 @@ const CLIENT_REDIRECT = 'https://hosted.example.test/oauth/callback';
 test('dynamically-registered client completes the OAuth flow', async ({ page, playwright, baseURL }) => {
   const api = page.request;
 
-  const reg = await api.post('/auth/register', {
-    data: { email: `dcr-${stamp}@e2e.test`, password: 'pw-secret-1', orgName: `DCR ${stamp}` },
+  await api.post('/auth/register', {
+    data: { email: `dcr-${stamp}@e2e.test`, password: 'pw-secret-1' },
   });
-  const orgId = (await reg.json()).orgId as string;
-  const proj = await api.post(`/orgs/${orgId}/projects`, { data: { name: 'DCR Site', slug: `dcr-${stamp}` } });
+  const proj = await api.post('/projects', { data: { name: 'DCR Site', slug: `dcr-${stamp}` } });
   const projectId = (await proj.json()).project.id as string;
 
   // Self-register the client (open DCR, no auth).
@@ -60,7 +59,7 @@ test('dynamically-registered client completes the OAuth flow', async ({ page, pl
     })
   ).json();
   expect(tok.access_token).toMatch(/^swk_/);
-  const use = await bot.get(`/orgs/${orgId}/projects/${projectId}/content/page`, {
+  const use = await bot.get(`/projects/${projectId}/content/page`, {
     headers: { authorization: `Bearer ${tok.access_token}` },
   });
   expect(use.status()).toBe(200);

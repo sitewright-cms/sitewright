@@ -20,30 +20,29 @@ function token(res: { cookies: Array<{ name: string; value: string }> }): string
   return t;
 }
 
-async function setup(email: string, orgName: string, slug = 'site') {
+async function setup(email: string, slug = 'site') {
   const reg = await app.inject({
     method: 'POST',
     url: '/auth/register',
-    payload: { email, password: 'pw-secret-1', orgName },
+    payload: { email, password: 'pw-secret-1' },
   });
   const t = token(reg);
-  const orgId = (reg.json() as { orgId: string }).orgId;
   const proj = await app.inject({
     method: 'POST',
-    url: `/orgs/${orgId}/projects`,
+    url: `/projects`,
     cookies: { sw_session: t },
     payload: { name: 'Site', slug },
   });
   const projectId = (proj.json() as { project: { id: string } }).project.id;
-  return { t, orgId, projectId };
+  return { t, projectId };
 }
 
 const page = { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' } };
 
 describe('content API', () => {
   it('a project member may write any content kind (constrained client-write removed)', async () => {
-    const { t, orgId, projectId } = await setup('owner@acme.test', 'Acme');
-    const base = `/orgs/${orgId}/projects/${projectId}`;
+    const { t, projectId } = await setup('owner@acme.test');
+    const base = `/projects/${projectId}`;
     const editablePage = {
       id: 'home',
       path: '/',
@@ -60,7 +59,7 @@ describe('content API', () => {
     expect((await app.inject({ method: 'PUT', url: `${base}/content/page/home`, cookies: { sw_session: t }, payload: editablePage })).statusCode).toBe(200);
 
     // A second user granted access to this project as a member.
-    const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'client@acme.test', password: 'pw-secret-1', orgName: 'Client Org' } });
+    const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'client@acme.test', password: 'pw-secret-1'} });
     const memberT = token(reg);
     const memberUserId = (reg.json() as { userId: string }).userId;
     await db.insert(projectMembers).values({ id: randomUUID(), userId: memberUserId, projectId, role: 'member', createdAt: new Date() });
@@ -84,8 +83,8 @@ describe('content API', () => {
   });
 
   it('rate-limits the content routes tighter than the global cap (writes 60, reads 120)', async () => {
-    const { t, orgId, projectId } = await setup('rl@acme.test', 'Acme');
-    const base = `/orgs/${orgId}/projects/${projectId}`;
+    const { t, projectId } = await setup('rl@acme.test');
+    const base = `/projects/${projectId}`;
     const cookies = { sw_session: t };
     const put = await app.inject({ method: 'PUT', url: `${base}/content/page/home`, cookies, payload: page });
     expect(put.statusCode).toBe(200);
@@ -99,8 +98,8 @@ describe('content API', () => {
   });
 
   it('PUT → GET → list → export a page', async () => {
-    const { t, orgId, projectId } = await setup('a@acme.test', 'Acme');
-    const base = `/orgs/${orgId}/projects/${projectId}`;
+    const { t, projectId } = await setup('a@acme.test');
+    const base = `/projects/${projectId}`;
 
     const put = await app.inject({
       method: 'PUT',
@@ -121,8 +120,8 @@ describe('content API', () => {
   });
 
   it('rejects an invalid payload (400) and an unknown kind (404)', async () => {
-    const { t, orgId, projectId } = await setup('a@acme.test', 'Acme');
-    const base = `/orgs/${orgId}/projects/${projectId}`;
+    const { t, projectId } = await setup('a@acme.test');
+    const base = `/projects/${projectId}`;
 
     const bad = await app.inject({
       method: 'PUT',
@@ -141,8 +140,8 @@ describe('content API', () => {
   });
 
   it('imports a bundle (200) and rejects an invalid one (409)', async () => {
-    const { t, orgId, projectId } = await setup('a@acme.test', 'Acme');
-    const base = `/orgs/${orgId}/projects/${projectId}`;
+    const { t, projectId } = await setup('a@acme.test');
+    const base = `/projects/${projectId}`;
 
     const ok = await app.inject({
       method: 'POST',
@@ -167,8 +166,8 @@ describe('content API', () => {
   });
 
   it('deletes a page (204) and 404s afterwards', async () => {
-    const { t, orgId, projectId } = await setup('a@acme.test', 'Acme');
-    const base = `/orgs/${orgId}/projects/${projectId}`;
+    const { t, projectId } = await setup('a@acme.test');
+    const base = `/projects/${projectId}`;
     await app.inject({ method: 'PUT', url: `${base}/content/page/home`, cookies: { sw_session: t }, payload: page });
     const del = await app.inject({ method: 'DELETE', url: `${base}/content/page/home`, cookies: { sw_session: t } });
     expect(del.statusCode).toBe(204);
@@ -177,18 +176,18 @@ describe('content API', () => {
   });
 
   it('isolates content across tenants (a non-member cannot touch another owner’s project)', async () => {
-    const a = await setup('a@acme.test', 'Acme', 'site-a');
-    const b = await setup('b@globex.test', 'Globex', 'site-b');
+    const a = await setup('a@acme.test', 'site-a');
+    const b = await setup('b@globex.test', 'site-b');
     await app.inject({
       method: 'PUT',
-      url: `/orgs/${a.orgId}/projects/${a.projectId}/content/page/home`,
+      url: `/projects/${a.projectId}/content/page/home`,
       cookies: { sw_session: a.t },
       payload: page,
     });
 
     const bReadsA = await app.inject({
       method: 'GET',
-      url: `/orgs/${a.orgId}/projects/${a.projectId}/content/page`,
+      url: `/projects/${a.projectId}/content/page`,
       cookies: { sw_session: b.t },
     });
     expect(bReadsA.statusCode).toBe(403);

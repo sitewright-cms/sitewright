@@ -92,22 +92,21 @@ function token(res: { cookies: Array<{ name: string; value: string }> }): string
   return t;
 }
 
-async function setup(email: string, orgName: string) {
+async function setup(email: string) {
   const reg = await app.inject({
     method: 'POST',
     url: '/auth/register',
-    payload: { email, password: 'pw-secret-1', orgName },
+    payload: { email, password: 'pw-secret-1' },
   });
   const t = token(reg);
-  const orgId = (reg.json() as { orgId: string }).orgId;
   const proj = await app.inject({
     method: 'POST',
-    url: `/orgs/${orgId}/projects`,
+    url: `/projects`,
     cookies: { sw_session: t },
     payload: { name: 'Site', slug: `s-${Math.random().toString(36).slice(2, 8)}` },
   });
   const projectId = (proj.json() as { project: { id: string } }).project.id;
-  return { t, orgId, projectId, base: `/orgs/${orgId}/projects/${projectId}` };
+  return { t, projectId, base: `/projects/${projectId}` };
 }
 
 interface MediaVariant {
@@ -142,7 +141,7 @@ describe('media pipeline (HTTP layer)', () => {
   // (1) A valid raster image produces avif + webp variants at widths <= source,
   // a jpeg fallback, an LQIP data URI, and correct source width/height metadata.
   it('optimizes a 1000x500 PNG into responsive avif/webp variants + jpeg fallback + LQIP', async () => {
-    const { t, base } = await setup('a@acme.test', 'Acme');
+    const { t, base } = await setup('a@acme.test');
     const png = makePng(1000, 500, [200, 30, 30]);
 
     const up = await upload(base, t, 'banner.png', 'image/png', png);
@@ -197,7 +196,7 @@ describe('media pipeline (HTTP layer)', () => {
   // (1b) When the source is narrower than every default width, the single source
   // width is used (no upscale, no empty variant set).
   it('falls back to the source width when it is below all default widths (no upscale)', async () => {
-    const { t, base } = await setup('a@acme.test', 'Acme');
+    const { t, base } = await setup('a@acme.test');
     const png = makePng(120, 90, [10, 120, 200]);
 
     const up = await upload(base, t, 'thumb.png', 'image/png', png);
@@ -214,7 +213,7 @@ describe('media pipeline (HTTP layer)', () => {
   // (2) SVG is intentionally excluded for SSRF reasons; a text file with an image
   // content-type is also rejected. Both surface as 400 (unsupported/invalid image).
   it('rejects an SVG upload (SSRF-excluded format) with 400', async () => {
-    const { t, base } = await setup('a@acme.test', 'Acme');
+    const { t, base } = await setup('a@acme.test');
     const svg = Buffer.from(
       '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10"/></svg>',
     );
@@ -223,7 +222,7 @@ describe('media pipeline (HTTP layer)', () => {
   });
 
   it('rejects a non-image payload sent with an image content-type (400)', async () => {
-    const { t, base } = await setup('a@acme.test', 'Acme');
+    const { t, base } = await setup('a@acme.test');
     const res = await upload(base, t, 'fake.png', 'image/png', Buffer.from('not really a png at all'));
     expect(res.statusCode).toBe(400);
   });
@@ -232,7 +231,7 @@ describe('media pipeline (HTTP layer)', () => {
   // rejected. 8000x7000 = 56MP; the solid-colour PNG deflates to ~0.2 MiB so it
   // is well under the 15 MiB multipart limit and reaches the pipeline's check.
   it('rejects an image over the decoded pixel limit (8000x7000 > 50MP) with 400', async () => {
-    const { t, base } = await setup('a@acme.test', 'Acme');
+    const { t, base } = await setup('a@acme.test');
     const huge = makePng(8000, 7000, [5, 5, 5]);
     expect(huge.length).toBeLessThan(15 * 1024 * 1024); // safely under the multipart cap
     const res = await upload(base, t, 'enormous.png', 'image/png', huge);
@@ -243,7 +242,7 @@ describe('media pipeline (HTTP layer)', () => {
   // 413 by @fastify/multipart's truncation, before the pipeline ever runs. We pad
   // a tiny valid PNG header with incompressible random bytes to exceed the cap.
   it('rejects an upload exceeding the 15 MiB multipart limit with 413', async () => {
-    const { t, base } = await setup('a@acme.test', 'Acme');
+    const { t, base } = await setup('a@acme.test');
     // 16 MiB of random (incompressible) bytes — content is irrelevant since the
     // size limit trips during streaming, before any image decode.
     const oversized = Buffer.alloc(16 * 1024 * 1024);
@@ -255,8 +254,8 @@ describe('media pipeline (HTTP layer)', () => {
   // (4) Listing returns uploaded assets for the owner; a second tenant cannot
   // list (or otherwise read) another org's project media (cross-tenant 403).
   it('lists uploaded assets for the owner and forbids cross-tenant listing', async () => {
-    const a = await setup('a@acme.test', 'Acme');
-    const b = await setup('b@globex.test', 'Globex');
+    const a = await setup('a@acme.test');
+    const b = await setup('b@globex.test');
 
     const up1 = await upload(a.base, a.t, 'one.png', 'image/png', makePng(500, 400, [1, 2, 3]));
     const up2 = await upload(a.base, a.t, 'two.png', 'image/png', makePng(640, 480, [9, 8, 7]));
@@ -293,7 +292,7 @@ describe('media pipeline (HTTP layer)', () => {
   // (5) The owner can delete their media: the DB row goes away (list shrinks) and
   // the served binaries 404 afterwards.
   it('lets the owner delete media, removing both the record and the binaries', async () => {
-    const { t, base } = await setup('a@acme.test', 'Acme');
+    const { t, base } = await setup('a@acme.test');
     const up = await upload(base, t, 'gone.png', 'image/png', makePng(900, 600, [44, 55, 66]));
     expect(up.statusCode).toBe(201);
     const asset = (up.json() as { item: MediaAsset }).item;

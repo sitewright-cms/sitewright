@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { api, type Org, type Project, type Release } from '../api';
+import { api, type Project, type Release } from '../api';
 import { DeployForm } from './publish/DeployForm';
 
 /** Publish + export bar: build the static site, view it, download a zip, or deploy it. */
-export function PublishBar({ org, project }: { org: Org; project: Project }) {
+export function PublishBar({ project }: { project: Project }) {
   const [release, setRelease] = useState<Release | null>(null);
   const [url, setUrl] = useState('');
   const [busy, setBusy] = useState(false);
@@ -13,7 +13,7 @@ export function PublishBar({ org, project }: { org: Org; project: Project }) {
   useEffect(() => {
     let active = true;
     api
-      .publishStatus(org.id, project.id)
+      .publishStatus(project.id)
       .then((res) => {
         if (active) {
           setRelease(res.release);
@@ -26,13 +26,13 @@ export function PublishBar({ org, project }: { org: Org; project: Project }) {
     return () => {
       active = false;
     };
-  }, [org.id, project.id]);
+  }, [project.id]);
 
   async function publish() {
     setBusy(true);
     setError(null);
     try {
-      const res = await api.publish(org.id, project.id);
+      const res = await api.publish(project.id);
       setRelease(res.release);
       setUrl(res.url);
     } catch (err) {
@@ -67,7 +67,7 @@ export function PublishBar({ org, project }: { org: Org; project: Project }) {
         )}
         {published && (
           <a
-            href={api.archiveUrl(org.id, project.id)}
+            href={api.archiveUrl(project.id)}
             aria-label="Download site zip"
             className="text-sm text-slate-600 underline hover:text-slate-900"
           >
@@ -85,7 +85,7 @@ export function PublishBar({ org, project }: { org: Org; project: Project }) {
         {release && <span className="text-xs text-slate-400">{release.routes} pages</span>}
         {error && <span className="text-xs text-red-600">{error}</span>}
       </div>
-      {published && showDeploy && <DeployForm org={org} project={project} />}
+      {published && showDeploy && <DeployForm project={project} />}
     </div>
   );
 }

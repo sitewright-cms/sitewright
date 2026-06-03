@@ -8,7 +8,6 @@ const stamp = Date.now();
 test('code page settings: set draft + nav placement, persisted across reopen', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Organization name').fill(`Code Settings ${stamp}`);
   await page.getByLabel('Email').fill(`cset-${stamp}@e2e.test`);
   await page.getByLabel('Password').fill('pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();

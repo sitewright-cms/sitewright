@@ -104,14 +104,7 @@ const MAX_UPLOAD_BYTES = 15 * 1024 * 1024; // 15 MiB per uploaded image
 // "content-only" surface is a UI default, not a hard gate (see PR1 security note). Bearer keys
 // are additionally constrained by capabilities in resolveProject.
 const WRITE_ROLES: ReadonlySet<string> = new Set(['owner', 'member']);
-const API_PREFIXES = ['/auth', '/orgs', '/me', '/health', '/admin', '/f', '/invites'];
-
-// PR1 compat: the org layer is gone, but the editor/MCP/CLI still address routes as
-// `/orgs/:orgId/...` and read an org from `/me` + `/api-key/self`. We synthesize ONE constant
-// platform "org" so those clients keep working unchanged; `:orgId` is vestigial (ignored). PR2
-// flattens the routes and removes this shim.
-const PLATFORM_ORG_ID = 'platform';
-const PLATFORM_ORG_NAME = 'Platform';
+const API_PREFIXES = ['/auth', '/projects', '/me', '/health', '/admin', '/f', '/invites', '/ai', '/api-key'];
 
 const MEDIA_CONTENT_TYPES = new Map<string, string>([
   ['avif', 'image/avif'],
@@ -547,11 +540,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   //    `project_members` row), or 403 if they have no access;
   //  - `Authorization: Bearer swk_…` → resolve the project-scoped key, confirm it is bound to THIS
   //    project, and enforce the route's capability.
-  // `:orgId` in the path is vestigial (PR1 compat) and ignored. Returns the ProjectContext, the
-  // project record, and the resolved key (so routes can apply extra restraint to non-interactive
-  // callers).
+  // Returns the ProjectContext, the project record, and the resolved key (so routes can apply extra
+  // restraint to non-interactive callers).
   async function resolveProject(
-    req: FastifyRequest<{ Params: { orgId: string; projectId: string } }>,
+    req: FastifyRequest<{ Params: { projectId: string } }>,
     access: RequiredAccess,
   ): Promise<{
     ctx: ProjectContext;
@@ -647,8 +639,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       signed,
       expires: expiresAt,
     });
-    // `orgId` retained in the response for client compat (PR1); always the constant platform id.
-    return reply.code(201).send({ userId, orgId: PLATFORM_ORG_ID });
+    return reply.code(201).send({ userId });
   });
 
   app.post('/auth/login', { config: authRl }, async (req, reply) => {
@@ -673,20 +664,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     return reply.code(204).send();
   });
 
-  app.get('/me', async (req, reply) => {
+  app.get('/me', { config: rl(60) }, async (req, reply) => {
     const userId = await requireUserId(req);
-    const [platformRole, projectAccess, instanceAdmin] = await Promise.all([
+    const [platformRole, access, instanceAdmin] = await Promise.all([
       getPlatformRole(db, userId),
       // Projects the caller can reach: a platform admin → all; everyone else → their memberships.
       listProjectAccessForUser(db, userId),
       isInstanceAdmin(userId),
     ]);
-    // PR1 compat: synthesize the single platform "org" so the unchanged editor keeps working. Every
-    // user "owns" the synthetic org (all may create/manage their own projects); true platform-admin
-    // surfaces are gated separately by `isInstanceAdmin`. PR2 replaces this with
-    // `{ userId, platformRole, projects }`.
-    const orgs = [{ id: PLATFORM_ORG_ID, name: PLATFORM_ORG_NAME, role: 'owner' }];
-    return reply.send({ userId, platformRole, orgs, projectAccess, isInstanceAdmin: instanceAdmin });
+    const projects = access.map((a) => ({ id: a.projectId, name: a.projectName, slug: a.projectSlug, role: a.role }));
+    return reply.send({ userId, platformRole, isInstanceAdmin: instanceAdmin, projects });
   });
 
   // ---- Instance admin settings (global mail / hCaptcha / enabled form modes) ----
@@ -714,9 +701,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   });
 
   // Introspection for a project API key: a bearer client (the CLI / MCP bridge)
-  // learns the scope it was granted — which org+project to address and what it may
-  // do — without being pre-configured with those ids. Reveals only the token's OWN
-  // scope; never a secret. Bearer-only (a session has no single project scope).
+  // learns the scope it was granted — which project to address and what it may do —
+  // without being pre-configured with those ids. Reveals only the token's OWN scope;
+  // never a secret. Bearer-only (a session has no single project scope).
   app.get('/api-key/self', { config: rl(30) }, async (req, reply) => {
     const bearer = bearerToken(req);
     if (bearer === undefined) throw new UnauthorizedError('API key required');
@@ -727,8 +714,6 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     const key = await apiKeysRepo.resolve(bearer);
     if (!key) throw new UnauthorizedError('invalid or expired API key');
     return reply.send({
-      // `orgId` retained for client compat (PR1); always the constant platform id.
-      orgId: PLATFORM_ORG_ID,
       projectId: key.projectId,
       role: key.role,
       capabilities: key.capabilities,
@@ -753,13 +738,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     return { userId, role, projectId };
   }
 
-  app.get('/orgs', async (req, reply) => {
-    await requireUserId(req);
-    // PR1 compat: a single synthetic platform org, "owned" by every user (see /me).
-    return reply.send({ orgs: [{ id: PLATFORM_ORG_ID, name: PLATFORM_ORG_NAME, role: 'owner' }] });
-  });
-
-  app.get<{ Params: { orgId: string } }>('/orgs/:orgId/projects', async (req, reply) => {
+  app.get('/projects', { config: rl(60) }, async (req, reply) => {
     const userId = await requireUserId(req);
     const access = await listProjectAccessForUser(db, userId);
     // Map to the project shape the editor expects (id/name/slug) plus the caller's role.
@@ -768,22 +747,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   });
 
   // ---- Platform team (admins/developers). Managed by a platform admin only. ----
-  app.get<{ Params: { orgId: string } }>(
-    '/orgs/:orgId/members',
-    { config: rl(30) },
-    async (req, reply) => {
-      await requireInstanceAdmin(req);
-      const users = await listPlatformUsers(db);
-      // Only the staff tier (admins/developers) — plain clients are not "platform members".
-      const members = users
-        .filter((u) => u.platformRole !== null)
-        .map((u) => ({ userId: u.userId, email: u.email, role: u.platformRole, createdAt: u.createdAt }));
-      return reply.send({ members });
-    },
-  );
+  app.get('/admin/users', { config: rl(30) }, async (req, reply) => {
+    await requireInstanceAdmin(req);
+    const users = await listPlatformUsers(db);
+    // Only the staff tier (admins/developers) — plain clients are not "platform members".
+    const members = users
+      .filter((u) => u.platformRole !== null)
+      .map((u) => ({ userId: u.userId, email: u.email, role: u.platformRole, createdAt: u.createdAt }));
+    return reply.send({ members });
+  });
 
-  app.delete<{ Params: { orgId: string; userId: string } }>(
-    '/orgs/:orgId/members/:userId',
+  app.delete<{ Params: { userId: string } }>(
+    '/admin/users/:userId',
     { config: rl(20) },
     async (req, reply) => {
       const callerId = await requireInstanceAdmin(req);
@@ -799,25 +774,27 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // ---- Invites: staff (platform admin/developer) or a project member joins only by accepting an
   // invite while signed in as the invited email — no direct add, so there is no account-existence
   // oracle and no unaccepted membership. ----
-  app.post<{ Params: { orgId: string } }>(
-    '/orgs/:orgId/invites',
-    { config: rl(20) },
-    async (req, reply) => {
-      const userId = await requireInstanceAdmin(req);
-      const body = InviteBody.parse(req.body);
-      // Platform staff invite → developer by default; a platform admin may invite another admin.
-      const result = await createInvite(db, userId, { email: body.email, role: body.role ?? 'developer' });
-      return reply.code(201).send(result);
-    },
-  );
+  // Platform staff invites (admin/developer) — platform admin only.
+  app.post('/admin/invites', { config: rl(20) }, async (req, reply) => {
+    const userId = await requireInstanceAdmin(req);
+    const body = InviteBody.parse(req.body);
+    // Platform staff invite → developer by default; a platform admin may invite another admin.
+    const result = await createInvite(db, userId, { email: body.email, role: body.role ?? 'developer' });
+    return reply.code(201).send(result);
+  });
 
-  app.post<{ Params: { orgId: string; projectId: string } }>(
-    '/orgs/:orgId/projects/:projectId/invites',
+  app.get('/admin/invites', { config: rl(30) }, async (req, reply) => {
+    await requireInstanceAdmin(req);
+    return reply.send({ invites: await listInvites(db, {}) });
+  });
+
+  // Project-scoped client invites (member) — the project owner or a platform admin.
+  app.post<{ Params: { projectId: string } }>(
+    '/projects/:projectId/invites',
     { config: rl(20) },
     async (req, reply) => {
       const ctx = await requireProjectAccess(req, req.params.projectId, true);
       const body = InviteBody.parse(req.body);
-      // Project-scoped client invite → member.
       const result = await createInvite(db, ctx.userId, {
         email: body.email,
         role: 'member',
@@ -827,23 +804,17 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     },
   );
 
-  app.get<{ Params: { orgId: string }; Querystring: { projectId?: string } }>(
-    '/orgs/:orgId/invites',
+  app.get<{ Params: { projectId: string } }>(
+    '/projects/:projectId/invites',
     { config: rl(30) },
     async (req, reply) => {
-      const projectId = req.query.projectId;
-      if (projectId) {
-        await requireProjectAccess(req, projectId, true);
-        return reply.send({ invites: await listInvites(db, { projectId }) });
-      }
-      // Platform invites (no project) — platform admin only.
-      await requireInstanceAdmin(req);
-      return reply.send({ invites: await listInvites(db, {}) });
+      await requireProjectAccess(req, req.params.projectId, true);
+      return reply.send({ invites: await listInvites(db, { projectId: req.params.projectId }) });
     },
   );
 
-  app.delete<{ Params: { orgId: string; id: string } }>(
-    '/orgs/:orgId/invites/:id',
+  app.delete<{ Params: { id: string } }>(
+    '/invites/:id',
     { config: rl(20) },
     async (req, reply) => {
       // Require an authenticated session BEFORE the lookup, so an anonymous caller can't probe
@@ -889,8 +860,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   );
 
   // ---- Project members (the project's team) management (owner or platform admin) ----
-  app.get<{ Params: { orgId: string; projectId: string } }>(
-    '/orgs/:orgId/projects/:projectId/members',
+  app.get<{ Params: { projectId: string } }>(
+    '/projects/:projectId/members',
     { config: rl(30) },
     async (req, reply) => {
       const ctx = await requireProjectAccess(req, req.params.projectId, true);
@@ -898,8 +869,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     },
   );
 
-  app.delete<{ Params: { orgId: string; projectId: string; userId: string } }>(
-    '/orgs/:orgId/projects/:projectId/members/:userId',
+  app.delete<{ Params: { projectId: string; userId: string } }>(
+    '/projects/:projectId/members/:userId',
     { config: rl(20) },
     async (req, reply) => {
       const ctx = await requireProjectAccess(req, req.params.projectId, true);
@@ -908,7 +879,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     },
   );
 
-  app.post<{ Params: { orgId: string } }>('/orgs/:orgId/projects', async (req, reply) => {
+  app.post('/projects', async (req, reply) => {
     // Session-only (a non-interactive token must not create projects); check the bearer first for
     // consistency with the other management gates. Any authenticated user may create a project and
     // becomes its owner — restricting creation to platform staff is deferred to a later PR
@@ -924,8 +895,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     return reply.code(201).send({ project });
   });
 
-  app.get<{ Params: { orgId: string; id: string } }>(
-    '/orgs/:orgId/projects/:id',
+  app.get<{ Params: { id: string } }>(
+    '/projects/:id',
     async (req, reply) => {
       const userId = await requireUserId(req);
       const role = await resolveProjectRole(db, userId, req.params.id);
@@ -934,8 +905,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     },
   );
 
-  app.delete<{ Params: { orgId: string; id: string } }>(
-    '/orgs/:orgId/projects/:id',
+  app.delete<{ Params: { id: string } }>(
+    '/projects/:id',
     { config: rl(20) },
     async (req, reply) => {
       // A project may be deleted by its owner or a platform admin (both resolve to owner).
@@ -960,15 +931,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   );
 
   // ---- Project content (tenant + project scoped) ----
-  type ContentParams = { orgId: string; projectId: string; kind: string; entityId: string };
+  type ContentParams = { projectId: string; kind: string; entityId: string };
 
   // The generic content routes are the incremental authoring API (editor saves,
   // MCP edits). Cap them tighter than the global 200/min — reads generously, writes
   // at 60/min (ample for interactive + agent editing; large imports use the dedicated
   // bundle endpoint, not per-entity PUTs). This bounds a compromised token's ability
   // to flood the site-wide settings (criticalCss/head/scripts) write.
-  app.get<{ Params: Pick<ContentParams, 'orgId' | 'projectId' | 'kind'> }>(
-    '/orgs/:orgId/projects/:projectId/content/:kind',
+  app.get<{ Params: Pick<ContentParams, 'projectId' | 'kind'> }>(
+    '/projects/:projectId/content/:kind',
     { config: rl(120) },
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'content:read');
@@ -977,7 +948,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   );
 
   app.get<{ Params: ContentParams }>(
-    '/orgs/:orgId/projects/:projectId/content/:kind/:entityId',
+    '/projects/:projectId/content/:kind/:entityId',
     { config: rl(120) },
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'content:read');
@@ -987,7 +958,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   );
 
   app.put<{ Params: ContentParams }>(
-    '/orgs/:orgId/projects/:projectId/content/:kind/:entityId',
+    '/projects/:projectId/content/:kind/:entityId',
     { config: rl(60) },
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'content:write');
@@ -1002,7 +973,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   );
 
   app.delete<{ Params: ContentParams }>(
-    '/orgs/:orgId/projects/:projectId/content/:kind/:entityId',
+    '/projects/:projectId/content/:kind/:entityId',
     { config: rl(60) },
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'content:write');
@@ -1014,8 +985,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // ---- Project API keys (bearer tokens for the CLI / MCP bridge) ----
   // Management is `session-only`: a token can never mint, list, or revoke tokens
   // (no self-escalation / persistence). Owner/admin only (enforced by the repo).
-  app.post<{ Params: { orgId: string; projectId: string } }>(
-    '/orgs/:orgId/projects/:projectId/api-keys',
+  app.post<{ Params: { projectId: string } }>(
+    '/projects/:projectId/api-keys',
     { config: rl(20) },
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'session-only');
@@ -1032,8 +1003,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     },
   );
 
-  app.get<{ Params: { orgId: string; projectId: string } }>(
-    '/orgs/:orgId/projects/:projectId/api-keys',
+  app.get<{ Params: { projectId: string } }>(
+    '/projects/:projectId/api-keys',
     { config: rl(30) },
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'session-only');
@@ -1042,8 +1013,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     },
   );
 
-  app.delete<{ Params: { orgId: string; projectId: string; id: string } }>(
-    '/orgs/:orgId/projects/:projectId/api-keys/:id',
+  app.delete<{ Params: { projectId: string; id: string } }>(
+    '/projects/:projectId/api-keys/:id',
     { config: rl(20) },
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'session-only');
@@ -1055,16 +1026,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // ---- OAuth 2.1 (issues the same scoped tokens; for the CLI / hosted MCP clients) ----
   registerOAuthRoutes(app, { db, oauth: oauthRepo, clients: oauthClients, projects, currentUserId, rl });
 
-  app.get<{ Params: { orgId: string; projectId: string } }>(
-    '/orgs/:orgId/projects/:projectId/export',
+  app.get<{ Params: { projectId: string } }>(
+    '/projects/:projectId/export',
     async (req, reply) => {
       const { ctx, project } = await resolveProject(req, 'content:read');
       return reply.send(await contentRepo.exportBundle(ctx, project));
     },
   );
 
-  app.post<{ Params: { orgId: string; projectId: string } }>(
-    '/orgs/:orgId/projects/:projectId/import',
+  app.post<{ Params: { projectId: string } }>(
+    '/projects/:projectId/import',
     { bodyLimit: IMPORT_BODY_LIMIT, config: rl(20) },
     async (req, reply) => {
       const { ctx, project } = await resolveProject(req, 'content:write');
@@ -1075,8 +1046,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // Live SSR preview of a draft page. Renders an in-flight (possibly unsaved)
   // page tree to a full, brand-themed, self-contained HTML document using the
   // shared pure renderer. Tenant-scoped; any project member may preview.
-  app.post<{ Params: { orgId: string; projectId: string } }>(
-    '/orgs/:orgId/projects/:projectId/preview',
+  app.post<{ Params: { projectId: string } }>(
+    '/projects/:projectId/preview',
     { bodyLimit: PREVIEW_BODY_LIMIT, config: rl(120) },
     async (req, reply) => {
       const { ctx, project } = await resolveProject(req, 'content:read');
@@ -1255,8 +1226,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // `src` (NOT `srcDoc`), so the document uses THIS CSP rather than inheriting the
   // editor page's stricter one. The token is unguessable, short-lived, and bound
   // to (org, project, user) — so only the member who GENERATED it can fetch it.
-  app.get<{ Params: { orgId: string; projectId: string; token: string } }>(
-    '/orgs/:orgId/projects/:projectId/preview/:token',
+  app.get<{ Params: { projectId: string; token: string } }>(
+    '/projects/:projectId/preview/:token',
     { config: rl(120) },
     async (req, reply) => {
       const { ctx, project } = await resolveProject(req, 'content:read');
@@ -1285,8 +1256,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // writes to the project — so an agent's edits show up in an open preview. The
   // parent (same-origin, authenticated) page holds this connection and swaps the
   // sandboxed iframe; the events carry ids only (never content), so nothing leaks.
-  app.get<{ Params: { orgId: string; projectId: string } }>(
-    '/orgs/:orgId/projects/:projectId/events',
+  app.get<{ Params: { projectId: string } }>(
+    '/projects/:projectId/events',
     { config: rl(30) },
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'content:read');
@@ -1372,8 +1343,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     }
 
     // Upload an image: validate + optimize + store. The pipeline rejects non-raster/SVG.
-    app.post<{ Params: { orgId: string; projectId: string } }>(
-      '/orgs/:orgId/projects/:projectId/media',
+    app.post<{ Params: { projectId: string } }>(
+      '/projects/:projectId/media',
       { config: rl(30) },
       async (req, reply) => {
         const { ctx, project } = await resolveProject(req, 'content:write');
@@ -1418,16 +1389,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       rl,
     });
 
-    app.get<{ Params: { orgId: string; projectId: string } }>(
-      '/orgs/:orgId/projects/:projectId/media',
+    app.get<{ Params: { projectId: string } }>(
+      '/projects/:projectId/media',
       async (req, reply) => {
         const { ctx } = await resolveProject(req, 'content:read');
         return reply.send({ items: await contentRepo.list(ctx, 'media') });
       },
     );
 
-    app.delete<{ Params: { orgId: string; projectId: string; id: string } }>(
-      '/orgs/:orgId/projects/:projectId/media/:id',
+    app.delete<{ Params: { projectId: string; id: string } }>(
+      '/projects/:projectId/media/:id',
       async (req, reply) => {
         const { ctx, project } = await resolveProject(req, 'content:write');
         // DB first: a leaked binary (if fs removal fails) is harmless and GC-able,
@@ -1473,8 +1444,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     const activePublishes = new Set<string>();
 
     // Build/rebuild the project's static site from the current DB content.
-    app.post<{ Params: { orgId: string; projectId: string } }>(
-      '/orgs/:orgId/projects/:projectId/publish',
+    app.post<{ Params: { projectId: string } }>(
+      '/projects/:projectId/publish',
       { config: rl(20) },
       async (req, reply) => {
         const { ctx, project } = await resolveProject(req, 'publish');
@@ -1554,8 +1525,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       },
     );
 
-    app.get<{ Params: { orgId: string; projectId: string } }>(
-      '/orgs/:orgId/projects/:projectId/publish',
+    app.get<{ Params: { projectId: string } }>(
+      '/projects/:projectId/publish',
       async (req, reply) => {
         const { project } = await resolveProject(req, 'content:read');
         return reply.send({ release: await store.readRelease(project.id), url: `/sites/${project.id}/` });
@@ -1565,8 +1536,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // Download the published site as a zip artifact (deploy it anywhere at a root).
     // Member-readable: the archive is the already-public published output (also
     // served unauthenticated at /sites/<id>/), so it needs no extra role gate.
-    app.get<{ Params: { orgId: string; projectId: string } }>(
-      '/orgs/:orgId/projects/:projectId/publish/archive',
+    app.get<{ Params: { projectId: string } }>(
+      '/projects/:projectId/publish/archive',
       async (req, reply) => {
         const { project } = await resolveProject(req, 'content:read');
         if ((await store.readRelease(project.id)) === null) {
@@ -1582,8 +1553,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
     // Deploy the published site to an external target (FTP / FTPS / SFTP). The
     // credentials in the body are used transiently and never persisted or logged.
-    app.post<{ Params: { orgId: string; projectId: string } }>(
-      '/orgs/:orgId/projects/:projectId/publish/deploy',
+    app.post<{ Params: { projectId: string } }>(
+      '/projects/:projectId/publish/deploy',
       { config: rl(20) },
       async (req, reply) => {
         const { ctx, project } = await resolveProject(req, 'deploy');
@@ -1696,8 +1667,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     };
   }
 
-  app.post<{ Params: { orgId: string; projectId: string } }>(
-    '/orgs/:orgId/projects/:projectId/ai/generate',
+  app.post<{ Params: { projectId: string } }>(
+    '/projects/:projectId/ai/generate',
     { config: rl(30) },
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'session-only');
@@ -1747,8 +1718,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   );
 
   // Month-to-date AI usage + limits (for a usage dashboard). Any signed-in user may read their own
-  // usage + the platform total. `:orgId` is vestigial (PR1 compat).
-  app.get<{ Params: { orgId: string } }>('/orgs/:orgId/ai/usage', async (req, reply) => {
+  // usage + the platform total.
+  app.get('/ai/usage', { config: rl(30) }, async (req, reply) => {
     const userId = await requireUserId(req);
     const since = startOfMonthUTC(new Date());
     // Both queries always run (unlike the generate path, which short-circuits
@@ -1811,8 +1782,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       (b) => (b.template !== undefined) !== (b.pageId !== undefined),
       'provide exactly one of template or pageId',
     );
-  app.post<{ Params: { orgId: string; projectId: string } }>(
-    '/orgs/:orgId/projects/:projectId/render-template',
+  app.post<{ Params: { projectId: string } }>(
+    '/projects/:projectId/render-template',
     // 30/min — aligned with the small worker pool's throughput (avoids a deep parent queue).
     { bodyLimit: 512 * 1024, config: rl(30) },
     async (req, reply) => {

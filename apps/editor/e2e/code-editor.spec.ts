@@ -8,7 +8,6 @@ const stamp = Date.now();
 test('code-first authoring: CodeMirror editor, live styled preview, save + persist', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Organization name').fill(`Code Agency ${stamp}`);
   await page.getByLabel('Email').fill(`code-${stamp}@e2e.test`);
   await page.getByLabel('Password').fill('pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();

@@ -13,11 +13,10 @@ test('OAuth consent → code → token, then the access token works', async ({ p
   const api = page.request; // shares the browser cookie jar
 
   const reg = await api.post('/auth/register', {
-    data: { email: `oauth-${stamp}@e2e.test`, password: 'pw-secret-1', orgName: `OAuth ${stamp}` },
+    data: { email: `oauth-${stamp}@e2e.test`, password: 'pw-secret-1' },
   });
   expect(reg.status()).toBe(201);
-  const orgId = (await reg.json()).orgId as string;
-  const proj = await api.post(`/orgs/${orgId}/projects`, { data: { name: 'OAuth Site', slug: `oauth-${stamp}` } });
+  const proj = await api.post('/projects', { data: { name: 'OAuth Site', slug: `oauth-${stamp}` } });
   const projectId = (await proj.json()).project.id as string;
 
   // The CLI's loopback redirect has no real listener — stub it so the browser's
@@ -64,7 +63,7 @@ test('OAuth consent → code → token, then the access token works', async ({ p
   expect(tok.access_token).toMatch(/^swk_/);
 
   // The access token authenticates a normal bearer API call.
-  const use = await bot.get(`/orgs/${orgId}/projects/${projectId}/content/page`, {
+  const use = await bot.get(`/projects/${projectId}/content/page`, {
     headers: { authorization: `Bearer ${tok.access_token}` },
   });
   expect(use.status()).toBe(200);

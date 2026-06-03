@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import type { FormSubmission } from '@sitewright/schema';
-import { api, type Org, type Project } from '../api';
+import { api, type Project } from '../api';
 
 /**
  * Submissions inbox: the form submissions captured by the public endpoint, newest
  * first. Values are plain text (the engine stores text only) and rendered via
  * React (escaped by default), so visitor-supplied content cannot inject markup.
  */
-export function SubmissionsInbox({ org, project }: { org: Org; project: Project }) {
+export function SubmissionsInbox({ project }: { project: Project }) {
   const [items, setItems] = useState<FormSubmission[]>([]);
   const [total, setTotal] = useState(0);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -16,7 +16,7 @@ export function SubmissionsInbox({ org, project }: { org: Org; project: Project 
 
   async function load(isActive: () => boolean = () => true) {
     try {
-      const res = await api.listSubmissions(org.id, project.id);
+      const res = await api.listSubmissions(project.id);
       if (!isActive()) return;
       setItems(res.items);
       setTotal(res.total);
@@ -32,12 +32,12 @@ export function SubmissionsInbox({ org, project }: { org: Org; project: Project 
     return () => {
       active = false;
     };
-  }, [org.id, project.id]);
+  }, [project.id]);
 
   async function remove(id: string) {
     if (!window.confirm('Delete this submission?')) return;
     try {
-      await api.deleteSubmission(org.id, project.id, id);
+      await api.deleteSubmission(project.id, id);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed to delete submission');

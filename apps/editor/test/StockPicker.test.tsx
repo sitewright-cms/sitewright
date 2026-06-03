@@ -8,9 +8,9 @@ const importStock = vi.fn();
 vi.mock('../src/api', () => ({
   api: {
     stockProviders: () => stockProviders(),
-    searchStock: (_o: string, _p: string, provider: StockProviderName, q: string, page?: number) =>
+    searchStock: (_p: string, provider: StockProviderName, q: string, page?: number) =>
       searchStock(provider, q, page),
-    importStock: (_o: string, _p: string, provider: StockProviderName, id: string, alt?: string) =>
+    importStock: (_p: string, provider: StockProviderName, id: string, alt?: string) =>
       importStock(provider, id, alt),
   },
 }));
@@ -43,7 +43,7 @@ beforeEach(() => {
 });
 
 function renderPicker(onImported = vi.fn()) {
-  render(<StockPicker orgId="o" projectId="p" onImported={onImported} />);
+  render(<StockPicker projectId="p" onImported={onImported} />);
   return onImported;
 }
 

@@ -20,7 +20,6 @@ const suite = BASE_URL ? describe : describe.skip;
 suite('sitewright login — end to end', () => {
   let configDir: string;
   let cookie = '';
-  let orgId = '';
   let projectId = '';
 
   beforeAll(async () => {
@@ -31,11 +30,10 @@ suite('sitewright login — end to end', () => {
     const reg = await fetch(`${url}/auth/register`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ email: `cli-${stamp}@e2e.test`, password: 'pw-secret-1', orgName: `CLI ${stamp}` }),
+      body: JSON.stringify({ email: `cli-${stamp}@e2e.test`, password: 'pw-secret-1' }),
     });
     cookie = (reg.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
-    orgId = ((await reg.json()) as { orgId: string }).orgId;
-    const proj = await fetch(`${url}/orgs/${orgId}/projects`, {
+    const proj = await fetch(`${url}/projects`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie },
       body: JSON.stringify({ name: 'CLI Site', slug: `cli-${stamp}` }),
@@ -62,7 +60,7 @@ suite('sitewright login — end to end', () => {
         code_challenge_method: 'S256',
         scope: p.get('scope')!,
         state: p.get('state')!,
-        project: `${orgId}:${projectId}`,
+        project: projectId,
         decision: 'approve',
       });
       const res = await fetch(`${url}/oauth/authorize`, {
@@ -94,7 +92,7 @@ suite('sitewright login — end to end', () => {
       await fetch(`${url}/oauth/device`, {
         method: 'POST',
         headers: { 'content-type': 'application/x-www-form-urlencoded', cookie },
-        body: new URLSearchParams({ user_code: userCode, project: `${orgId}:${projectId}`, decision: 'approve' }).toString(),
+        body: new URLSearchParams({ user_code: userCode, project: projectId, decision: 'approve' }).toString(),
       });
     };
     const tokens = await runDeviceLogin({
@@ -144,7 +142,7 @@ suite('sitewright login — end to end', () => {
       await fetch(`${url}/oauth/device`, {
         method: 'POST',
         headers: { 'content-type': 'application/x-www-form-urlencoded', cookie },
-        body: new URLSearchParams({ user_code: code, project: `${orgId}:${projectId}`, decision: 'approve' }).toString(),
+        body: new URLSearchParams({ user_code: code, project: projectId, decision: 'approve' }).toString(),
       });
       const exitCode = await new Promise<number>((resolve) =>
         exited !== null ? resolve(exited) : child.on('exit', (c) => resolve(c ?? -1)),

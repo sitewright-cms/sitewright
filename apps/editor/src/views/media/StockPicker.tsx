@@ -15,11 +15,9 @@ type Result = StockSearchResult['results'][number];
  * records attribution; provider keys live in instance settings and never reach here.
  */
 export function StockPicker({
-  orgId,
   projectId,
   onImported,
 }: {
-  orgId: string;
   projectId: string;
   onImported: () => void | Promise<void>;
 }) {
@@ -37,7 +35,7 @@ export function StockPicker({
     let active = true;
     (async () => {
       try {
-        const res = await api.stockProviders(orgId, projectId);
+        const res = await api.stockProviders(projectId);
         if (!active) return;
         setProviders(res.providers);
         // Default to the first available provider (openverse is always available).
@@ -52,7 +50,7 @@ export function StockPicker({
     return () => {
       active = false;
     };
-  }, [orgId, projectId]);
+  }, [projectId]);
 
   const selectedAvailable = useMemo(
     () => providers.find((p) => p.name === provider)?.available ?? false,
@@ -67,7 +65,7 @@ export function StockPicker({
     setError(null);
     setSearched(true);
     try {
-      const res = await api.searchStock(orgId, projectId, provider, q);
+      const res = await api.searchStock(projectId, provider, q);
       setResults(res.results);
     } catch (err) {
       setResults([]);
@@ -81,7 +79,7 @@ export function StockPicker({
     setImportingId(r.id);
     setError(null);
     try {
-      await api.importStock(orgId, projectId, r.provider, r.id);
+      await api.importStock(projectId, r.provider, r.id);
       await onImported();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'import failed');

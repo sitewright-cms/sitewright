@@ -12,7 +12,6 @@ test('client edits a code page’s bound region (content), template stays immuta
   // --- Owner: register, make a CODE page (the scaffold carries an {{edit}} region) ---
   await page.goto('/');
   await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Organization name').fill(`Code Agency ${stamp}`);
   await page.getByLabel('Email').fill(ownerEmail);
   await page.getByLabel('Password').fill('pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();
@@ -38,7 +37,6 @@ test('client edits a code page’s bound region (content), template stays immuta
   await page.goto(link!);
   await expect(page.getByText(/invited/)).toBeVisible();
   await page.getByRole('button', { name: /Register/ }).click();
-  await page.getByLabel('Organization name').fill(`Client Personal ${stamp}`);
   await page.getByLabel('Email', { exact: true }).fill(clientEmail);
   await page.getByLabel('Password', { exact: true }).fill('pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();

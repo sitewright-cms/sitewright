@@ -8,15 +8,14 @@ const deleteProjectSmtp = vi.fn();
 vi.mock('../src/api', () => ({
   api: {
     getProjectSmtp: () => getProjectSmtp(),
-    putProjectSmtp: (_o: string, _p: string, body: SmtpInput) => putProjectSmtp(body),
+    putProjectSmtp: (_p: string, body: SmtpInput) => putProjectSmtp(body),
     deleteProjectSmtp: () => deleteProjectSmtp(),
   },
 }));
 
 import { ProjectSmtp } from '../src/views/ProjectSmtp';
 
-const org = { id: 'o', name: 'O', slug: 'o', role: 'admin' };
-const project = { id: 'p', name: 'P', slug: 'p' };
+const project = { id: 'p', name: 'P', slug: 'p', role: 'owner' as const };
 
 beforeEach(() => {
   getProjectSmtp.mockReset();
@@ -29,7 +28,7 @@ beforeEach(() => {
 describe('ProjectSmtp', () => {
   it('saves a new SMTP config (password included only when typed)', async () => {
     getProjectSmtp.mockResolvedValue({ smtp: null });
-    render(<ProjectSmtp org={org} project={project} />);
+    render(<ProjectSmtp project={project} />);
     fireEvent.click(await screen.findByLabelText('Configure project SMTP')); // enable → fields appear
     fireEvent.change(screen.getByLabelText('SMTP host'), { target: { value: 'smtp.acme.com' } });
     fireEvent.change(screen.getByLabelText('SMTP from email'), { target: { value: 'no-reply@acme.com' } });
@@ -42,7 +41,7 @@ describe('ProjectSmtp', () => {
 
   it('hydrates an existing config and omits the password on save when left blank', async () => {
     getProjectSmtp.mockResolvedValue({ smtp: { host: 'smtp.acme.com', port: 465, secure: true, user: 'mailer', fromEmail: 'no-reply@acme.com', hasPassword: true } });
-    render(<ProjectSmtp org={org} project={project} />);
+    render(<ProjectSmtp project={project} />);
     expect(await screen.findByLabelText('SMTP host')).toHaveValue('smtp.acme.com');
     fireEvent.click(screen.getByRole('button', { name: 'Save SMTP' }));
     await waitFor(() => expect(putProjectSmtp).toHaveBeenCalled());
@@ -53,7 +52,7 @@ describe('ProjectSmtp', () => {
 
   it('does not error when saving an already-absent config (idempotent delete)', async () => {
     getProjectSmtp.mockResolvedValue({ smtp: null }); // never configured → enabled stays false
-    render(<ProjectSmtp org={org} project={project} />);
+    render(<ProjectSmtp project={project} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Save SMTP' }));
     await waitFor(() => expect(deleteProjectSmtp).toHaveBeenCalled());
     expect(putProjectSmtp).not.toHaveBeenCalled();
@@ -62,13 +61,13 @@ describe('ProjectSmtp', () => {
 
   it('surfaces a load failure (e.g. 403 for a non-writer)', async () => {
     getProjectSmtp.mockRejectedValue(new Error('insufficient role for this operation'));
-    render(<ProjectSmtp org={org} project={project} />);
+    render(<ProjectSmtp project={project} />);
     expect(await screen.findByText(/insufficient role/)).toBeInTheDocument();
   });
 
   it('deletes the config when unchecked + saved', async () => {
     getProjectSmtp.mockResolvedValue({ smtp: { host: 'h', port: 25, secure: false, fromEmail: 'a@b.co', hasPassword: false } });
-    render(<ProjectSmtp org={org} project={project} />);
+    render(<ProjectSmtp project={project} />);
     fireEvent.click(await screen.findByLabelText('Configure project SMTP')); // uncheck (was enabled)
     fireEvent.click(screen.getByRole('button', { name: 'Save SMTP' }));
     await waitFor(() => expect(deleteProjectSmtp).toHaveBeenCalled());

@@ -1,26 +1,21 @@
 import { useEffect, useState } from 'react';
-import { api, type Org, type OrgMember, type Invite } from '../api';
+import { api, type OrgMember, type Invite } from '../api';
 import { InvitePanel } from './InvitePanel';
 
-interface TeamManagerProps {
-  org: Org;
-}
-
 /**
- * Owner/admin surface for the agency's own team: list staff (owner/admin) and invite a
- * DEVELOPER (org-level admin) via a one-time link. Clients are invited per-project from
- * the project's Clients tab, not here.
+ * Platform-staff surface: list the instance's staff and invite a DEVELOPER via a
+ * one-time link. Clients are invited per-project from the project's Clients tab, not here.
  */
-export function TeamManager({ org }: TeamManagerProps) {
+export function TeamManager() {
   const [members, setMembers] = useState<OrgMember[]>([]);
   const [invites, setInvites] = useState<Invite[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   async function load() {
     try {
-      const [m, inv] = await Promise.all([api.listMembers(org.id), api.listInvites(org.id)]);
+      const [m, inv] = await Promise.all([api.listMembers(), api.listInvites()]);
       setMembers(m.members);
-      // Only org-level (developer) invites belong on this tab.
+      // Only platform-staff (developer) invites belong on this tab.
       setInvites(inv.invites.filter((i) => i.projectId === null));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed to load team');
@@ -29,12 +24,12 @@ export function TeamManager({ org }: TeamManagerProps) {
 
   useEffect(() => {
     void load();
-  }, [org.id]);
+  }, []);
 
   async function remove(userId: string) {
     setError(null);
     try {
-      await api.removeMember(org.id, userId);
+      await api.removeMember(userId);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed to remove member');
@@ -45,8 +40,8 @@ export function TeamManager({ org }: TeamManagerProps) {
     <div className="max-w-2xl">
       <h3 className="mb-1 text-lg font-semibold">Team</h3>
       <p className="mb-4 text-sm text-slate-500">
-        Your agency’s staff. Invite a <strong>developer</strong> to give them full access to every
-        project in this organization.
+        Your platform staff. Invite a <strong>developer</strong> to give them full access to every
+        project on this instance.
       </p>
 
       <ul className="mb-6 flex flex-col gap-2">
@@ -78,8 +73,8 @@ export function TeamManager({ org }: TeamManagerProps) {
       <InvitePanel
         kind="developer"
         invites={invites}
-        onInvite={(email) => api.inviteDeveloper(org.id, email)}
-        onRevoke={(id) => api.revokeInvite(org.id, id)}
+        onInvite={(email) => api.inviteDeveloper(email)}
+        onRevoke={(id) => api.revokeInvite(id)}
         onChanged={load}
       />
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}

@@ -69,7 +69,7 @@ describe('Patterns library (pattern content kind)', () => {
     const b = await h.signup();
     const projectId = await a.createProject();
     await a.project(projectId).putContent('pattern', pattern.id, pattern);
-    const cross = await b.get(`/orgs/${a.orgId}/projects/${projectId}/content/pattern/${pattern.id}`);
+    const cross = await b.get(`/projects/${projectId}/content/pattern/${pattern.id}`);
     expect([403, 404]).toContain(cross.statusCode);
   });
 });

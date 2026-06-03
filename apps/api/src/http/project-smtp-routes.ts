@@ -7,7 +7,7 @@ import { PROJECT_SMTP_ENTITY_ID, type ApiKeyCapability } from '../db/schema.js';
 
 export { PROJECT_SMTP_ENTITY_ID };
 
-type ProjectReq = FastifyRequest<{ Params: { orgId: string; projectId: string } }>;
+type ProjectReq = FastifyRequest<{ Params: { projectId: string } }>;
 
 export interface ProjectSmtpDeps {
   resolveProject: (
@@ -40,8 +40,8 @@ async function loadStored(contentRepo: ContentRepository, ctx: ProjectContext): 
 export function registerProjectSmtpRoutes(app: FastifyInstance, deps: ProjectSmtpDeps): void {
   const { resolveProject, contentRepo, encryptionKey, isWriter, assertHostAllowed, rl } = deps;
 
-  app.get<{ Params: { orgId: string; projectId: string } }>(
-    '/orgs/:orgId/projects/:projectId/smtp',
+  app.get<{ Params: { projectId: string } }>(
+    '/projects/:projectId/smtp',
     { config: rl(60) },
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'content:read');
@@ -51,8 +51,8 @@ export function registerProjectSmtpRoutes(app: FastifyInstance, deps: ProjectSmt
     },
   );
 
-  app.put<{ Params: { orgId: string; projectId: string } }>(
-    '/orgs/:orgId/projects/:projectId/smtp',
+  app.put<{ Params: { projectId: string } }>(
+    '/projects/:projectId/smtp',
     { config: rl(30) },
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'content:write');
@@ -76,8 +76,8 @@ export function registerProjectSmtpRoutes(app: FastifyInstance, deps: ProjectSmt
     },
   );
 
-  app.delete<{ Params: { orgId: string; projectId: string } }>(
-    '/orgs/:orgId/projects/:projectId/smtp',
+  app.delete<{ Params: { projectId: string } }>(
+    '/projects/:projectId/smtp',
     { config: rl(30) },
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'content:write');

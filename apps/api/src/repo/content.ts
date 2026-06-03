@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
+import { and, desc, eq, notInArray } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   assertWithinTreeDepth,
@@ -154,6 +154,27 @@ export class ContentRepository {
       .from(content)
       .where(and(eq(content.projectId, ctx.projectId), eq(content.kind, kind)));
     return rows.map((row) => row.data);
+  }
+
+  /**
+   * The newest content `updatedAt` for the project, EXCLUDING the non-published config kinds
+   * (deploy_target / project_smtp — credentials, not site content). Null when there is no
+   * publishable content yet. Powers the publish "dirty" signal (has the site changed since the last
+   * release?). Uses an indexed order-by + limit so the column mapper returns a real Date.
+   */
+  async latestContentUpdate(ctx: ProjectContext): Promise<Date | null> {
+    const [row] = await this.db
+      .select({ updatedAt: content.updatedAt })
+      .from(content)
+      .where(
+        and(
+          eq(content.projectId, ctx.projectId),
+          notInArray(content.kind, ['deploy_target', 'project_smtp']),
+        ),
+      )
+      .orderBy(desc(content.updatedAt))
+      .limit(1);
+    return row?.updatedAt ?? null;
   }
 
   async get(ctx: ProjectContext, kind: ContentKind, entityId: string): Promise<unknown> {

@@ -65,6 +65,36 @@ describe('publish API', () => {
     expect((status.json() as { release: { routes: number } }).release.routes).toBe(1);
   });
 
+  it('reports the publish dirty signal (content changed since the last release)', async () => {
+    const { t, projectId } = await setup('dirty@acme.test');
+    const base = `/projects/${projectId}`;
+    const cookies = { sw_session: t };
+    const statusDirty = async () =>
+      (await app.inject({ method: 'GET', url: `${base}/publish`, cookies })).json() as { dirty: boolean };
+
+    // Content exists but was never published → dirty.
+    await app.inject({ method: 'PUT', url: `${base}/content/page/home`, cookies, payload: homePage });
+    expect((await statusDirty()).dirty).toBe(true);
+
+    // Publishing clears it (the POST response + the status both report clean).
+    const pub = await app.inject({ method: 'POST', url: `${base}/publish`, cookies });
+    expect((pub.json() as { dirty: boolean }).dirty).toBe(false);
+    expect((await statusDirty()).dirty).toBe(false);
+
+    // A later content edit makes it dirty again…
+    await app.inject({
+      method: 'PUT',
+      url: `${base}/content/page/home`,
+      cookies,
+      payload: { ...homePage, title: 'Home (edited)' },
+    });
+    expect((await statusDirty()).dirty).toBe(true);
+
+    // …and re-publishing clears it once more.
+    await app.inject({ method: 'POST', url: `${base}/publish`, cookies });
+    expect((await statusDirty()).dirty).toBe(false);
+  });
+
   it('exports the published site as a zip (409 before publishing)', async () => {
     const { t, projectId } = await setup('a@acme.test');
     const base = `/projects/${projectId}`;

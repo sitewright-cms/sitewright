@@ -1,24 +1,41 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, type Project, type Release } from '../api';
 import { DeployForm } from './publish/DeployForm';
 
-/** Publish + export bar: build the static site, view it, download a zip, or deploy it. */
+/** Cloud-upload glyph for the publish action. */
+function PublishIcon() {
+  return (
+    <svg aria-hidden viewBox="0 0 20 20" fill="none" className="h-4 w-4" stroke="currentColor" strokeWidth="1.7">
+      <path d="M10 13V5m0 0L7 8m3-3 3 3" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M5 13.5A3.5 3.5 0 0 1 5.5 6.6 4.5 4.5 0 0 1 14 7a3 3 0 0 1 1 5.83" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/**
+ * Compact publish control (top-right): a single Publish button — GREEN only when there are
+ * unpublished changes (`dirty`), neutral otherwise — with the secondary actions (view, download,
+ * deploy) tucked behind a "…" menu so the header stays focused on the one primary action.
+ */
 export function PublishBar({ project }: { project: Project }) {
   const [release, setRelease] = useState<Release | null>(null);
   const [url, setUrl] = useState('');
+  const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [showDeploy, setShowDeploy] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let active = true;
     api
       .publishStatus(project.id)
       .then((res) => {
-        if (active) {
-          setRelease(res.release);
-          setUrl(res.url);
-        }
+        if (!active) return;
+        setRelease(res.release);
+        setUrl(res.url);
+        setDirty(res.dirty);
       })
       .catch(() => {
         /* no published site yet, or transient — Publish still works */
@@ -28,6 +45,16 @@ export function PublishBar({ project }: { project: Project }) {
     };
   }, [project.id]);
 
+  // Close the actions menu on an outside click.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [menuOpen]);
+
   async function publish() {
     setBusy(true);
     setError(null);
@@ -35,6 +62,7 @@ export function PublishBar({ project }: { project: Project }) {
       const res = await api.publish(project.id);
       setRelease(res.release);
       setUrl(res.url);
+      setDirty(res.dirty); // false right after a successful publish
     } catch (err) {
       setError(err instanceof Error ? err.message : 'publish failed');
     } finally {
@@ -45,47 +73,85 @@ export function PublishBar({ project }: { project: Project }) {
   const published = release !== null;
 
   return (
-    <div className="mb-6 rounded-lg border border-slate-200 bg-white p-3">
-      <div className="flex flex-wrap items-center gap-3">
+    <div className="flex flex-col items-end gap-1">
+      <div className="flex items-center gap-2">
         <button
           onClick={publish}
           disabled={busy}
-          className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+          title={dirty ? 'You have unpublished changes' : 'Everything is published'}
+          className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-semibold transition disabled:opacity-50 ${
+            dirty
+              ? 'bg-emerald-600 text-white shadow-sm hover:bg-emerald-700'
+              : 'border border-slate-300 bg-white text-slate-700 hover:border-slate-400'
+          }`}
         >
+          <PublishIcon />
           {busy ? 'Publishing…' : 'Publish'}
+          {dirty && <span aria-hidden className="ml-0.5 h-1.5 w-1.5 rounded-full bg-white/90" />}
         </button>
-        {published && url && (
-          <a
-            href={url}
-            target="_blank"
-            rel="noreferrer"
-            aria-label="View published site"
-            className="text-sm text-sky-700 underline hover:text-sky-900"
-          >
-            View site
-          </a>
-        )}
+
         {published && (
-          <a
-            href={api.archiveUrl(project.id)}
-            aria-label="Download site zip"
-            className="text-sm text-slate-600 underline hover:text-slate-900"
-          >
-            Download .zip
-          </a>
+          <div className="relative" ref={menuRef}>
+            <button
+              aria-label="Publish actions"
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              onClick={() => setMenuOpen((o) => !o)}
+              className="cursor-pointer rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-600 hover:border-slate-400"
+            >
+              ⋯
+            </button>
+            {menuOpen && (
+              <div
+                role="menu"
+                className="absolute right-0 z-10 mt-1 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+              >
+                {url && (
+                  <a
+                    role="menuitem"
+                    href={url}
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label="View published site"
+                    className="block cursor-pointer px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                  >
+                    View site ↗
+                  </a>
+                )}
+                <a
+                  role="menuitem"
+                  href={api.archiveUrl(project.id)}
+                  aria-label="Download site zip"
+                  className="block cursor-pointer px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                >
+                  Download .zip
+                </a>
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setShowDeploy((s) => !s);
+                    setMenuOpen(false);
+                  }}
+                  className="block w-full cursor-pointer px-3 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-50"
+                >
+                  Deploy…
+                </button>
+              </div>
+            )}
+          </div>
         )}
-        {published && (
-          <button
-            onClick={() => setShowDeploy((s) => !s)}
-            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:border-slate-500"
-          >
-            Deploy…
-          </button>
-        )}
-        {release && <span className="text-xs text-slate-400">{release.routes} pages</span>}
-        {error && <span className="text-xs text-red-600">{error}</span>}
       </div>
-      {published && showDeploy && <DeployForm project={project} />}
+      {release && (
+        <span className="text-[11px] text-slate-400">
+          {dirty ? 'Unpublished changes' : `Published · ${release.routes} pages`}
+        </span>
+      )}
+      {error && <span className="text-xs text-red-600">{error}</span>}
+      {published && showDeploy && (
+        <div className="mt-2 w-full max-w-md">
+          <DeployForm project={project} />
+        </div>
+      )}
     </div>
   );
 }

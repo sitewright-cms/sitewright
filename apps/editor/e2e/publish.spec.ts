@@ -27,23 +27,26 @@ test('build a code page, publish the project, and view the live site', async ({ 
   await expect(page.getByText('Saved')).toBeVisible();
   await page.getByRole('button', { name: 'Back to pages' }).click();
 
-  // Publish, then visit the live site link.
+  // Publish, then open the "…" actions menu (secondary actions live behind it now).
   await page.getByRole('button', { name: 'Publish' }).click();
-  const viewLink = page.getByRole('link', { name: 'View published site' });
-  await expect(viewLink).toBeVisible();
+  await page.getByRole('button', { name: 'Publish actions' }).click();
 
+  // Menu items carry role="menuitem" (the links/buttons live inside a role="menu").
+  const viewLink = page.getByRole('menuitem', { name: 'View published site' });
+  await expect(viewLink).toBeVisible();
   const href = await viewLink.getAttribute('href');
   expect(href).toMatch(/^\/sites\/[\w-]+\/$/);
 
   // The zip artifact downloads (stay on the editor — don't navigate away).
   const [download] = await Promise.all([
     page.waitForEvent('download'),
-    page.getByRole('link', { name: 'Download site zip' }).click(),
+    page.getByRole('menuitem', { name: 'Download site zip' }).click(),
   ]);
   expect(await download.suggestedFilename()).toMatch(/\.zip$/);
 
   // Deploy form: a connection to a closed port surfaces an error (full UI→API→adapter path).
-  await page.getByRole('button', { name: 'Deploy…' }).click();
+  // (Clicking a menu link doesn't close the menu, so Deploy is still reachable.)
+  await page.getByRole('menuitem', { name: 'Deploy…' }).click();
   await page.getByLabel('Deploy protocol').selectOption('ftp');
   await page.getByLabel('Deploy host').fill('127.0.0.1');
   await page.getByLabel('Deploy port').fill('1');

@@ -339,9 +339,10 @@ export const api = {
 
   // --- publishing ---
   publish: (projectId: string) =>
-    request<{ release: Release; url: string }>('POST', `/projects/${projectId}/publish`),
+    request<{ release: Release; url: string; dirty: boolean }>('POST', `/projects/${projectId}/publish`),
   publishStatus: (projectId: string) =>
-    request<{ release: Release | null; url: string }>('GET', `/projects/${projectId}/publish`),
+    // `dirty` = there are unpublished content changes (drives the green publish button).
+    request<{ release: Release | null; url: string; dirty: boolean }>('GET', `/projects/${projectId}/publish`),
   /** URL of the zip artifact (used as an <a href download> — sends the session cookie). */
   archiveUrl: (projectId: string) => `${BASE}/projects/${projectId}/publish/archive`,
   deploy: (projectId: string, config: DeployConfig) =>

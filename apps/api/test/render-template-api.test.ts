@@ -77,12 +77,38 @@ describe('render-template API (isolated worker)', () => {
       payload: { template: '<main class="grid"><h1>{{ company.name }}</h1></main>', document: true },
     });
     expect(res.statusCode).toBe(200);
-    const html = (res.json() as { html: string }).html;
+    const body = res.json() as { html: string; token: string };
+    const html = body.html;
     // A complete document shell wrapping the rendered source body…
     expect(html.startsWith('<!doctype html>')).toBe(true);
     expect(html).toContain('<main class="grid"><h1>Site</h1></main>');
     // …with the source's literal Tailwind class compiled + inlined so the preview is STYLED.
     expect(html).toContain('display:grid');
+
+    // It also mints a previewStore token so the editor can load the doc via an iframe `src`
+    // (served under an opaque-origin sandbox CSP) instead of `srcDoc` (which inherits the editor CSP).
+    expect(body.token).toMatch(/^[0-9a-f-]{36}$/);
+    const served = await app.inject({
+      method: 'GET',
+      url: `/orgs/${orgId}/projects/${projectId}/preview/${body.token}`,
+      cookies: { sw_session: t },
+    });
+    expect(served.statusCode).toBe(200);
+    // Exact value (not just "contains sandbox") so a future broadening to allow-same-origin fails here.
+    expect(served.headers['content-security-policy']).toBe('sandbox allow-scripts');
+    expect(served.body).toBe(html); // the token serves the exact same document
+  });
+
+  it('does NOT mint a token for a bare (document:false) render', async () => {
+    const { t, orgId, projectId } = await setup();
+    const res = await app.inject({
+      method: 'POST',
+      url: `/orgs/${orgId}/projects/${projectId}/render-template`,
+      cookies: { sw_session: t },
+      payload: { template: '<p>{{ company.name }}</p>' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { token?: string }).token).toBeUndefined();
   });
 
   it('rejects rendering when a SAVED snippet is unsafe (partials are validated too)', async () => {

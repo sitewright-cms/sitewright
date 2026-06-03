@@ -1192,6 +1192,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     { config: rl(120) },
     async (req, reply) => {
       const { ctx, project } = await resolveProject(req, 'content:read');
+      // Tokens are randomUUID (36 chars); bound the param before the store lookup (defense-in-depth,
+      // consistent with the other token params). A malformed token just misses → 404 below.
+      if (req.params.token.length > 64) {
+        return reply.code(404).type('text/html').send('<!doctype html><title>Preview expired</title>');
+      }
       const html = previewStore.get(req.params.token, {
         orgId: ctx.orgId,
         projectId: project.id,
@@ -1807,7 +1812,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           root: { id: 'preview-root', type: 'Section' },
         };
         const html = await styledSourceDocument(previewPage, brand, rendered);
-        return reply.send({ html });
+        // Mint a previewStore token so the editor loads the doc via an iframe `src` (served under an
+        // opaque-origin `sandbox` CSP) instead of `srcDoc` (which inherits the editor's own CSP).
+        // `html` is still returned for API consumers/tests.
+        const token = previewStore.put(html, { orgId: ctx.orgId, projectId: project.id, userId: ctx.userId });
+        return reply.send({ html, token });
       } catch (err) {
         // Infra (worker/timeout) → 503; a template validation/compile/render error → 400.
         if (err instanceof RenderUnavailableError) return reply.code(503).send({ error: err.message });

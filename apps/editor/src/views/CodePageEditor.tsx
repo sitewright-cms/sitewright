@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { NAV_SLOTS, type NavSlot, type Page } from '@sitewright/schema';
-import { api, type Org, type Project } from '../api';
+import { api, previewDocUrl, type Org, type Project } from '../api';
 import { CodeEditor } from '../lib/code-editor';
 import { CODE_PATTERNS } from '../lib/code-patterns';
+import { PreviewPane } from './editor/PreviewPane';
 
 interface CodePageEditorProps {
   org: Org;
@@ -18,9 +19,10 @@ const PREVIEW_DEBOUNCE_MS = 500;
  * the left, see a live STYLED preview on the right, and save it back to `page.source`.
  *
  * The preview renders the current source in the isolated worker pool (`document: true` →
- * a full styled document) and shows it in a `sandbox`ed iframe — no scripts run (the
- * validator forbids tenant JS and the empty sandbox blocks execution besides), while the
- * editor's `style-src 'unsafe-inline'` lets the inlined Tailwind paint.
+ * a full styled document), stored behind an opaque token, and shown in the shared
+ * {@link PreviewPane} via an iframe `src` (NOT `srcDoc`): the token endpoint serves the doc
+ * under its own `Content-Security-Policy: sandbox` (an opaque origin), so the preview can never
+ * reach the editor's window/cookies/session — defense-in-depth beyond the no-JS validator.
  */
 export function CodePageEditor({ org, project, page, onClose }: CodePageEditorProps) {
   const [source, setSource] = useState(page.source ?? '');
@@ -31,7 +33,9 @@ export function CodePageEditor({ org, project, page, onClose }: CodePageEditorPr
   const [navTitle, setNavTitle] = useState(page.nav?.title ?? '');
   const [navOrder, setNavOrder] = useState<number>(page.nav?.order ?? 0);
   const [showSettings, setShowSettings] = useState(false);
-  const [previewHtml, setPreviewHtml] = useState('');
+  // The sandboxed preview is loaded by URL (token endpoint), not inlined as srcDoc.
+  const [previewSrc, setPreviewSrc] = useState('');
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -79,31 +83,42 @@ export function CodePageEditor({ org, project, page, onClose }: CodePageEditorPr
   useEffect(() => {
     // An empty template needs no round-trip — show a blank preview pane immediately.
     if (source.trim() === '') {
-      setPreviewHtml('');
+      setPreviewSrc('');
       setPreviewError(null);
+      setPreviewLoading(false);
       return;
     }
     let cancelled = false;
     const handle = setTimeout(() => {
+      // Set loading INSIDE the timeout (not synchronously) so it tracks the actual in-flight
+      // request — matching ClientSourceEditor — and is reset by the cleanup below.
+      setPreviewLoading(true);
       void api
         .renderTemplate(org.id, project.id, {
           template: source,
           page: { title, path: page.path },
           document: true,
         })
-        .then(({ html }) => {
+        .then(({ token }) => {
           if (cancelled) return;
-          setPreviewHtml(html);
+          // document:true always returns a token; the `|| ''` is a defensive guard against an API
+          // regression (PreviewPane then loads about:blank). Load the doc under its own sandbox CSP.
+          setPreviewSrc(token ? previewDocUrl(org.id, project.id, token) : '');
           setPreviewError(null);
+          setPreviewLoading(false);
         })
         .catch((err: unknown) => {
           if (cancelled) return;
           setPreviewError(err instanceof Error ? err.message : 'preview failed');
+          setPreviewLoading(false);
         });
     }, PREVIEW_DEBOUNCE_MS);
     return () => {
       cancelled = true;
       clearTimeout(handle);
+      // Clear loading if a source change (or unmount) races an in-flight request, whose guarded
+      // .then/.catch will early-return without touching state.
+      setPreviewLoading(false);
     };
   }, [source, title, org.id, project.id, page.path]);
 
@@ -261,16 +276,8 @@ export function CodePageEditor({ org, project, page, onClose }: CodePageEditorPr
         <div className="min-h-0 border-r border-slate-200">
           <CodeEditor value={source} onChange={edit} ariaLabel="Template source" />
         </div>
-        <div className="relative min-h-0 bg-white">
-          {previewError && (
-            <div
-              role="alert"
-              className="absolute inset-x-0 top-0 z-10 max-h-32 overflow-auto whitespace-pre-wrap bg-red-50 px-3 py-2 font-mono text-xs text-red-700"
-            >
-              {previewError}
-            </div>
-          )}
-          <iframe title="Preview" srcDoc={previewHtml} sandbox="" className="h-full w-full border-0" />
+        <div className="min-h-0 bg-white p-2">
+          <PreviewPane src={previewSrc} loading={previewLoading} error={previewError} />
         </div>
       </div>
     </main>

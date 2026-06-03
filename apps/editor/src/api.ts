@@ -261,7 +261,9 @@ export const api = {
       document?: boolean;
     },
   ) =>
-    request<{ html: string }>(
+    // `token` is present when `document: true` — load the styled doc via an iframe `src`
+    // (opaque-origin sandbox CSP) instead of `srcDoc`.
+    request<{ html: string; token?: string }>(
       'POST',
       `/orgs/${orgId}/projects/${projectId}/render-template`,
       body,

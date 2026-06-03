@@ -8,6 +8,8 @@ vi.mock('../src/api', () => ({
     renderTemplate: (...args: unknown[]) => renderTemplate(...args),
     putPage: (...args: unknown[]) => putPage(...args),
   },
+  previewDocUrl: (orgId: string, projectId: string, token: string) =>
+    `/orgs/${orgId}/projects/${projectId}/preview/${token}`,
 }));
 // Swap the CodeMirror widget for a plain textarea so the authoring flow is exercisable in
 // jsdom; the real CodeMirror editor is covered by the Playwright browser E2E.
@@ -32,12 +34,12 @@ const page: Page = {
 beforeEach(() => {
   renderTemplate.mockReset();
   putPage.mockReset();
-  renderTemplate.mockResolvedValue({ html: '<!doctype html><body><h1>Acme</h1></body>' });
+  renderTemplate.mockResolvedValue({ html: '<!doctype html><body><h1>Acme</h1></body>', token: 'tok-123' });
   putPage.mockResolvedValue({ item: page });
 });
 
 describe('CodePageEditor', () => {
-  it('renders a debounced, styled preview of the current source in a sandboxed iframe', async () => {
+  it('renders a debounced preview loaded via an opaque-origin iframe src (not srcDoc)', async () => {
     render(<CodePageEditor org={org} project={project} page={page} onClose={() => {}} />);
     // Debounced — the render is not requested synchronously on mount.
     expect(renderTemplate).not.toHaveBeenCalled();
@@ -48,9 +50,11 @@ describe('CodePageEditor', () => {
         document: true,
       }),
     );
-    const iframe = screen.getByTitle('Preview') as HTMLIFrameElement;
-    expect(iframe.getAttribute('sandbox')).toBe(''); // no scripts run in the preview
-    await waitFor(() => expect(iframe.getAttribute('srcdoc')).toContain('<h1>Acme</h1>'));
+    const iframe = screen.getByTitle('Live preview') as HTMLIFrameElement;
+    // Loaded by URL (token endpoint) under the iframe's own sandbox CSP — NEVER inlined as srcDoc.
+    expect(iframe.getAttribute('sandbox')).toBe('allow-scripts');
+    expect(iframe.hasAttribute('srcdoc')).toBe(false);
+    await waitFor(() => expect(iframe.getAttribute('src')).toBe('/orgs/o/projects/p/preview/tok-123'));
   });
 
   it('saves edited source via putPage, preserving page identity, and shows a saved state', async () => {
@@ -66,11 +70,13 @@ describe('CodePageEditor', () => {
     await screen.findByText('Saved');
   });
 
-  it('surfaces a preview error (e.g. an unsafe template the validator rejected)', async () => {
+  it('surfaces a preview error and clears the loading state', async () => {
     renderTemplate.mockRejectedValue(new Error('unsafe template: <script> is not allowed'));
     render(<CodePageEditor org={org} project={project} page={page} onClose={() => {}} />);
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toContain('unsafe template');
+    // The "updating…" indicator is gone once the request settles (loading cleared on error).
+    await waitFor(() => expect(screen.queryByText('updating…')).toBeNull());
   });
 
   it('disables Save until the source is edited', () => {

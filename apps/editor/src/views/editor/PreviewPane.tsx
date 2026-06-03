@@ -21,7 +21,7 @@ export function PreviewPane({ src, loading, error }: PreviewPaneProps) {
   return (
     <div className="relative h-full">
       {error && (
-        <div className="absolute inset-x-0 top-0 z-10 bg-red-50 px-3 py-2 text-xs text-red-700">
+        <div role="alert" className="absolute inset-x-0 top-0 z-10 bg-red-50 px-3 py-2 text-xs text-red-700">
           Preview error: {error}
         </div>
       )}

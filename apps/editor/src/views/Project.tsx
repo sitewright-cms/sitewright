@@ -51,10 +51,13 @@ const CODE_PAGE_STARTER = `<main class="mx-auto max-w-3xl px-6 py-16">
 `;
 
 export function ProjectView({ project, onBack }: ProjectViewProps) {
-  // An owner gets the full studio; a `member` is a client with a restricted surface.
+  // An owner gets the full studio; a `member` is a client with a content-first default surface.
   const isClient = project.role === 'member';
   const [pages, setPages] = useState<Page[]>([]);
   const [editing, setEditing] = useState<Page | null>(null);
+  // Source⇄content is a UI DEFAULT, not a hard restriction (flat tenancy): everyone may switch.
+  // Owners/staff default to the full source editor; clients default to the focused content editor.
+  const [editMode, setEditMode] = useState<'source' | 'content'>(isClient ? 'content' : 'source');
   const [tab, setTab] = useState<Tab>('pages');
   const [slug, setSlug] = useState('');
   const [title, setTitle] = useState('');
@@ -100,13 +103,33 @@ export function ProjectView({ project, onBack }: ProjectViewProps) {
       setEditing(null);
       await load();
     };
-    // Code-first is the only authoring model: a client edits the page's bound `{{edit}}`
-    // regions; an owner edits the Handlebars source. (A legacy block page — no `source` —
-    // opens with an empty editor; its `root` keeps publishing until source is authored.)
-    return isClient ? (
-      <ClientSourceEditor project={project} page={editing} onClose={onClose} />
+    // Source⇄content toggle (everyone may switch): `source` = the full Handlebars editor; `content`
+    // = only the developer-marked `{{edit}}` regions. The chosen editor renders this control in its
+    // header so the author can flip without leaving the page.
+    const modeToggle = (
+      <div
+        role="group"
+        aria-label="Edit mode"
+        className="flex items-center rounded-xl border border-white/60 bg-white/50 p-0.5 text-xs font-medium shadow-sm backdrop-blur-xl"
+      >
+        {(['source', 'content'] as const).map((m) => (
+          <button
+            key={m}
+            aria-pressed={editMode === m}
+            onClick={() => setEditMode(m)}
+            className={`rounded-lg px-2.5 py-1 capitalize transition ${
+              editMode === m ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            {m}
+          </button>
+        ))}
+      </div>
+    );
+    return editMode === 'content' ? (
+      <ClientSourceEditor project={project} page={editing} onClose={onClose} modeToggle={modeToggle} />
     ) : (
-      <CodePageEditor project={project} page={editing} onClose={onClose} />
+      <CodePageEditor project={project} page={editing} onClose={onClose} modeToggle={modeToggle} />
     );
   }
 

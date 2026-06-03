@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { NAV_SLOTS, type NavSlot, type Page } from '@sitewright/schema';
 import { api, previewDocUrl, type Project } from '../api';
 import { CodeEditor } from '../lib/code-editor';
@@ -10,6 +10,8 @@ interface CodePageEditorProps {
   project: Project;
   page: Page;
   onClose: () => void;
+  /** Optional source⇄content switch, rendered in the header (provided by ProjectView). */
+  modeToggle?: ReactNode;
 }
 
 const PREVIEW_DEBOUNCE_MS = 500;
@@ -24,7 +26,7 @@ const PREVIEW_DEBOUNCE_MS = 500;
  * under its own `Content-Security-Policy: sandbox` (an opaque origin), so the preview can never
  * reach the editor's window/cookies/session — defense-in-depth beyond the no-JS validator.
  */
-export function CodePageEditor({ project, page, onClose }: CodePageEditorProps) {
+export function CodePageEditor({ project, page, onClose, modeToggle }: CodePageEditorProps) {
   const [source, setSource] = useState(page.source ?? '');
   // Page-level settings — a code page is a first-class page, carrying its own title/status/nav.
   const [title, setTitle] = useState(page.title);
@@ -183,6 +185,7 @@ export function CodePageEditor({ project, page, onClose }: CodePageEditorProps) 
           ))}
         </select>
         <div className="ml-auto flex items-center gap-3">
+          {modeToggle}
           {saved && !dirty && <span className="text-xs text-emerald-600">Saved</span>}
           {saveError && <span className="text-xs text-red-600">{saveError}</span>}
           <button

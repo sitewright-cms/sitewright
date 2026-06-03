@@ -1,79 +1,41 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
-import {
-  memberships,
-  organizations,
-  projectMembers,
-  projects,
-  users,
-  type OrgRole,
-} from '../db/schema.js';
+import { projectMembers, projects, users, type PlatformRole, type ProjectRole } from '../db/schema.js';
 import { hashPassword, verifyPassword } from '../auth/password.js';
 import {
   ConflictError,
   ForbiddenError,
   NotFoundError,
   UnauthorizedError,
-  type TenantContext,
+  type ProjectContext,
 } from './context.js';
-
-/** Org roles permitted to manage the org's membership (add/list/remove clients). */
-const MANAGE_ROLES: ReadonlySet<OrgRole> = new Set<OrgRole>(['owner', 'admin']);
-
-function slugify(name: string): string {
-  const slug = name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 60);
-  return slug || 'org';
-}
-
-async function uniqueOrgSlug(db: Database, base: string): Promise<string> {
-  let slug = base;
-  let n = 1;
-  while ((await db.select().from(organizations).where(eq(organizations.slug, slug))).length > 0) {
-    n += 1;
-    slug = `${base}-${n}`;
-  }
-  return slug;
-}
 
 export interface RegisteredAccount {
   userId: string;
-  orgId: string;
 }
 
-/** Registers a user and their initial organization (as `owner`). Email must be unique. */
+/**
+ * Registers a user (email must be unique). A self-registered user is a plain account with NO
+ * platform role and NO projects until invited; the seed passes `platformRole: 'admin'` to bootstrap
+ * the agency owner.
+ */
 export async function registerAccount(
   db: Database,
   email: string,
   password: string,
-  orgName: string,
+  opts: { platformRole?: PlatformRole } = {},
 ): Promise<RegisteredAccount> {
   const normalizedEmail = email.trim().toLowerCase();
   const existing = await db.select().from(users).where(eq(users.email, normalizedEmail));
   if (existing.length > 0) throw new ConflictError('email already registered');
-
   const now = new Date();
   const userId = randomUUID();
-  const orgId = randomUUID();
   const passwordHash = await hashPassword(password);
-  const slug = await uniqueOrgSlug(db, slugify(orgName));
-
-  // Atomic: a crash mid-way must not leave an orphaned user or an owner-less org.
-  await db.transaction(async (tx) => {
-    await tx
-      .insert(users)
-      .values({ id: userId, email: normalizedEmail, passwordHash, createdAt: now });
-    await tx.insert(organizations).values({ id: orgId, name: orgName, slug, createdAt: now });
-    await tx
-      .insert(memberships)
-      .values({ id: randomUUID(), userId, orgId, role: 'owner', createdAt: now });
-  });
-
-  return { userId, orgId };
+  await db
+    .insert(users)
+    .values({ id: userId, email: normalizedEmail, passwordHash, platformRole: opts.platformRole ?? null, createdAt: now });
+  return { userId };
 }
 
 /** Verifies credentials and returns the userId, or throws {@link UnauthorizedError}. */
@@ -97,93 +59,18 @@ export async function getUserEmail(db: Database, userId: string): Promise<string
   return user?.email ?? null;
 }
 
-/** The user's role in an org, or null if they are not a member. */
-export async function getMembership(
-  db: Database,
-  userId: string,
-  orgId: string,
-): Promise<OrgRole | null> {
-  const [m] = await db
-    .select()
-    .from(memberships)
-    .where(and(eq(memberships.userId, userId), eq(memberships.orgId, orgId)));
-  return m?.role ?? null;
+/** The user's platform-staff role (`admin`/`developer`), or null for a client. */
+export async function getPlatformRole(db: Database, userId: string): Promise<PlatformRole | null> {
+  const [u] = await db.select({ role: users.platformRole }).from(users).where(eq(users.id, userId));
+  return u?.role ?? null;
 }
 
-export interface OrgSummary {
-  id: string;
-  name: string;
-  slug: string;
-  role: OrgRole;
-}
-
-/** Organizations the user belongs to, with their role. */
-export async function listOrgsForUser(db: Database, userId: string): Promise<OrgSummary[]> {
-  return db
-    .select({
-      id: organizations.id,
-      name: organizations.name,
-      slug: organizations.slug,
-      role: memberships.role,
-    })
-    .from(memberships)
-    .innerJoin(organizations, eq(memberships.orgId, organizations.id))
-    .where(eq(memberships.userId, userId));
-}
-
-export interface OrgMember {
-  userId: string;
-  email: string;
-  role: OrgRole;
-  createdAt: Date;
-}
-
-/** Lists the members of an org with their email + role. Owner/admin only. */
-export async function listOrgMembers(db: Database, ctx: TenantContext): Promise<OrgMember[]> {
-  if (!MANAGE_ROLES.has(ctx.role)) {
-    throw new ForbiddenError('insufficient role to manage members');
-  }
-  return db
-    .select({
-      userId: users.id,
-      email: users.email,
-      role: memberships.role,
-      createdAt: memberships.createdAt,
-    })
-    .from(memberships)
-    .innerJoin(users, eq(memberships.userId, users.id))
-    .where(eq(memberships.orgId, ctx.orgId));
-}
-
-/**
- * Removes a member from the org. Owner/admin only. You cannot remove yourself, and an
- * `owner` membership can never be removed through this surface (owners are protected).
- */
-export async function removeOrgMember(
-  db: Database,
-  ctx: TenantContext,
-  userId: string,
-): Promise<void> {
-  if (!MANAGE_ROLES.has(ctx.role)) {
-    throw new ForbiddenError('insufficient role to manage members');
-  }
-  if (userId === ctx.userId) {
-    throw new ForbiddenError('you cannot remove yourself from the organization');
-  }
-  const target = await getMembership(db, userId, ctx.orgId);
-  if (!target) throw new NotFoundError('membership not found');
-  if (target === 'owner') throw new ForbiddenError('an owner cannot be removed');
-  await db
-    .delete(memberships)
-    .where(and(eq(memberships.userId, userId), eq(memberships.orgId, ctx.orgId)));
-}
-
-/** A user's role on a specific project via a project-scoped membership (client), or null. */
+/** A user's role on a specific project via a project membership, or null. */
 export async function getProjectMembership(
   db: Database,
   userId: string,
   projectId: string,
-): Promise<OrgRole | null> {
+): Promise<ProjectRole | null> {
   const [m] = await db
     .select()
     .from(projectMembers)
@@ -191,30 +78,40 @@ export async function getProjectMembership(
   return m?.role ?? null;
 }
 
+/**
+ * The caller's EFFECTIVE role on a project, or null if they can't reach it. A platform `admin`
+ * reaches every project as `owner`; a `developer` or client reaches only projects they're a member
+ * of. This is the single project-access gate (used by both the session and API-key paths).
+ */
+export async function resolveProjectRole(
+  db: Database,
+  userId: string,
+  projectId: string,
+): Promise<ProjectRole | null> {
+  if ((await getPlatformRole(db, userId)) === 'admin') return 'owner';
+  return getProjectMembership(db, userId, projectId);
+}
+
 export interface ProjectAccess {
-  orgId: string;
-  orgName: string;
-  orgSlug: string;
   projectId: string;
   projectName: string;
   projectSlug: string;
-  role: OrgRole;
+  role: ProjectRole;
 }
 
 /**
- * Projects a user can reach via a project-scoped membership (the client tier), each
- * with its org info — so the dashboard can show a client only their own site(s) even
- * though they hold no org membership.
+ * Projects a user can reach: a platform `admin` sees ALL projects (as `owner`); everyone else sees
+ * only the projects they hold a `project_members` row for. Powers the dashboard project list.
  */
-export async function listProjectAccessForUser(
-  db: Database,
-  userId: string,
-): Promise<ProjectAccess[]> {
+export async function listProjectAccessForUser(db: Database, userId: string): Promise<ProjectAccess[]> {
+  if ((await getPlatformRole(db, userId)) === 'admin') {
+    const all = await db
+      .select({ projectId: projects.id, projectName: projects.name, projectSlug: projects.slug })
+      .from(projects);
+    return all.map((p) => ({ ...p, role: 'owner' as ProjectRole }));
+  }
   return db
     .select({
-      orgId: organizations.id,
-      orgName: organizations.name,
-      orgSlug: organizations.slug,
       projectId: projects.id,
       projectName: projects.name,
       projectSlug: projects.slug,
@@ -222,17 +119,60 @@ export async function listProjectAccessForUser(
     })
     .from(projectMembers)
     .innerJoin(projects, eq(projectMembers.projectId, projects.id))
-    .innerJoin(organizations, eq(projects.orgId, organizations.id))
     .where(eq(projectMembers.userId, userId));
 }
 
-/** Builds a {@link TenantContext} iff the user is a member of the org; else throws Forbidden. */
-export async function tenantContext(
-  db: Database,
-  userId: string,
-  orgId: string,
-): Promise<TenantContext> {
-  const role = await getMembership(db, userId, orgId);
-  if (!role) throw new ForbiddenError('not a member of this organization');
-  return { userId, orgId, role };
+export interface ProjectMemberView {
+  userId: string;
+  email: string;
+  role: ProjectRole;
+  createdAt: Date;
+}
+
+/** Members of a project (email + role). Project owner (or a platform admin, who resolves to owner) only. */
+export async function listProjectMembers(db: Database, ctx: ProjectContext): Promise<ProjectMemberView[]> {
+  if (ctx.role !== 'owner') throw new ForbiddenError('insufficient role to manage members');
+  return db
+    .select({
+      userId: users.id,
+      email: users.email,
+      role: projectMembers.role,
+      createdAt: projectMembers.createdAt,
+    })
+    .from(projectMembers)
+    .innerJoin(users, eq(projectMembers.userId, users.id))
+    .where(eq(projectMembers.projectId, ctx.projectId));
+}
+
+/** Removes a member from a project. Owner only; you cannot remove yourself or the project owner. */
+export async function removeProjectMember(db: Database, ctx: ProjectContext, userId: string): Promise<void> {
+  if (ctx.role !== 'owner') throw new ForbiddenError('insufficient role to manage members');
+  if (userId === ctx.userId) throw new ForbiddenError('you cannot remove yourself from the project');
+  const target = await getProjectMembership(db, userId, ctx.projectId);
+  if (!target) throw new NotFoundError('membership not found');
+  if (target === 'owner') throw new ForbiddenError('the project owner cannot be removed');
+  await db
+    .delete(projectMembers)
+    .where(and(eq(projectMembers.userId, userId), eq(projectMembers.projectId, ctx.projectId)));
+}
+
+export interface PlatformUser {
+  userId: string;
+  email: string;
+  platformRole: PlatformRole | null;
+  createdAt: Date;
+}
+
+/** Every user with their platform role — for the platform-admin user-management surface. */
+export async function listPlatformUsers(db: Database): Promise<PlatformUser[]> {
+  return db
+    .select({ userId: users.id, email: users.email, platformRole: users.platformRole, createdAt: users.createdAt })
+    .from(users);
+}
+
+/** Promote/demote a user's platform role (or null to demote to a plain client). Platform-admin only (gated at the route). */
+export async function setPlatformRole(db: Database, targetUserId: string, role: PlatformRole | null): Promise<void> {
+  const [u] = await db.select({ id: users.id }).from(users).where(eq(users.id, targetUserId));
+  if (!u) throw new NotFoundError('user not found');
+  await db.update(users).set({ platformRole: role }).where(eq(users.id, targetUserId));
 }

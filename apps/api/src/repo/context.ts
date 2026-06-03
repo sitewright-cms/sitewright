@@ -1,18 +1,15 @@
-import type { OrgRole } from '../db/schema.js';
+import type { ProjectRole } from '../db/schema.js';
 
 /**
- * The tenant context every scoped repository operation requires. There is no
- * data-access path that omits this — that is the multi-tenant isolation guarantee.
+ * The context every project-scoped repository operation requires — the tenancy boundary is the
+ * project (there is one implicit platform). `role` is the caller's EFFECTIVE role on this project: a
+ * platform admin resolves to `owner`; everyone else carries their `project_members` role. There is no
+ * data-access path that omits this — that is the isolation guarantee.
  */
-export interface TenantContext {
+export interface ProjectContext {
   userId: string;
-  orgId: string;
-  role: OrgRole;
-}
-
-/** A tenant context narrowed to a specific project (verified to belong to the org). */
-export interface ProjectContext extends TenantContext {
   projectId: string;
+  role: ProjectRole;
 }
 
 export class NotFoundError extends Error {

@@ -1,57 +1,35 @@
 import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
-/** A tenant — an agency/organization. The top of the isolation hierarchy. */
-export const organizations = sqliteTable('organizations', {
-  id: text('id').primaryKey(),
-  name: text('name').notNull(),
-  slug: text('slug').notNull().unique(),
-  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
-});
-
 export const users = sqliteTable('users', {
   id: text('id').primaryKey(),
   email: text('email').notNull().unique(),
   passwordHash: text('password_hash').notNull(),
+  /**
+   * Platform-staff role (the single agency). `admin` = full control of every project + instance
+   * settings + user management (seeded from SW_ADMIN_EMAIL). `developer` = agency staff that reaches
+   * only the projects they're a member of. NULL = a client (reaches only their own project(s)).
+   */
+  platformRole: text('platform_role', { enum: ['admin', 'developer'] }),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 });
 
-/** Links a user to an organization with an org-level role. */
-export const memberships = sqliteTable(
-  'memberships',
-  {
-    id: text('id').primaryKey(),
-    userId: text('user_id')
-      .notNull()
-      .references(() => users.id),
-    orgId: text('org_id')
-      .notNull()
-      .references(() => organizations.id),
-    role: text('role', { enum: ['owner', 'admin', 'member'] }).notNull(),
-    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
-  },
-  (t) => [uniqueIndex('uniq_user_org').on(t.userId, t.orgId)],
-);
-
-/** A client website project, owned by exactly one organization (tenant). */
+/** A client website project — the tenancy boundary (there is one implicit platform). */
 export const projects = sqliteTable(
   'projects',
   {
     id: text('id').primaryKey(),
-    orgId: text('org_id')
-      .notNull()
-      .references(() => organizations.id),
     name: text('name').notNull(),
-    slug: text('slug').notNull(),
+    /** Instance-unique (there is one platform); the published site serves at `/sites/<slug>/`. */
+    slug: text('slug').notNull().unique(),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   },
-  (t) => [uniqueIndex('uniq_org_slug').on(t.orgId, t.slug), index('projects_org_idx').on(t.orgId)],
+  () => [],
 );
 
 /**
- * Project-scoped membership: a CLIENT (the constrained `member` role) tied to ONE
- * project (their own website), distinct from the org-level {@link memberships} used by
- * the agency's developers/staff. A client with a row here reaches only that project —
- * never the rest of the org's projects.
+ * Project membership: who can reach a project and their project role. `owner` = the client who owns
+ * the project (manages its team); `member` = any other user granted access (an agency developer, or
+ * an additional client-side user). Platform admins reach every project WITHOUT a row here.
  */
 export const projectMembers = sqliteTable(
   'project_members',
@@ -63,7 +41,7 @@ export const projectMembers = sqliteTable(
     projectId: text('project_id')
       .notNull()
       .references(() => projects.id),
-    role: text('role', { enum: ['member'] }).notNull(),
+    role: text('role', { enum: ['owner', 'member'] }).notNull(),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   },
   (t) => [
@@ -84,13 +62,11 @@ export const invites = sqliteTable(
   'invites',
   {
     id: text('id').primaryKey(),
-    orgId: text('org_id')
-      .notNull()
-      .references(() => organizations.id),
-    // Null → an org-level developer invite; set → a project-scoped client invite.
+    // Null → a PLATFORM invite (grants `platform_role` admin|developer); set → a PROJECT invite
+    // (grants the project role owner|member).
     projectId: text('project_id').references(() => projects.id),
     email: text('email').notNull(),
-    role: text('role', { enum: ['owner', 'admin', 'member'] }).notNull(),
+    role: text('role', { enum: ['admin', 'developer', 'owner', 'member'] }).notNull(),
     tokenHash: text('token_hash').notNull().unique(),
     invitedBy: text('invited_by')
       .notNull()
@@ -100,7 +76,7 @@ export const invites = sqliteTable(
     acceptedBy: text('accepted_by').references(() => users.id),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   },
-  (t) => [index('invites_org_idx').on(t.orgId), index('invites_project_idx').on(t.projectId)],
+  (t) => [index('invites_project_idx').on(t.projectId)],
 );
 
 /** Server-side sessions (token id is stored hashed). */
@@ -133,14 +109,11 @@ export const apiKeys = sqliteTable(
   'api_keys',
   {
     id: text('id').primaryKey(),
-    orgId: text('org_id')
-      .notNull()
-      .references(() => organizations.id),
     projectId: text('project_id')
       .notNull()
       .references(() => projects.id),
     name: text('name').notNull(),
-    role: text('role', { enum: ['owner', 'admin', 'member'] }).notNull(),
+    role: text('role', { enum: ['owner', 'member'] }).notNull(),
     /** JSON array of {@link ApiKeyCapability}. */
     capabilities: text('capabilities', { mode: 'json' }).notNull().$type<ApiKeyCapability[]>(),
     /** SHA-256 hex of the raw token; the token itself is never stored. */
@@ -199,9 +172,8 @@ export const oauthDeviceCodes = sqliteTable(
     status: text('status', { enum: ['pending', 'approved', 'denied'] }).notNull(),
     // Grant — null until approved.
     userId: text('user_id'),
-    orgId: text('org_id'),
     projectId: text('project_id'),
-    role: text('role', { enum: ['owner', 'admin', 'member'] }),
+    role: text('role', { enum: ['owner', 'member'] }),
     expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
     /** Set when the device_code is redeemed for tokens (single-use). */
     consumedAt: integer('consumed_at', { mode: 'timestamp_ms' }),
@@ -226,14 +198,11 @@ export const oauthAuthCodes = sqliteTable(
     userId: text('user_id')
       .notNull()
       .references(() => users.id),
-    orgId: text('org_id')
-      .notNull()
-      .references(() => organizations.id),
     projectId: text('project_id')
       .notNull()
       .references(() => projects.id),
-    /** The org role granted to issued tokens — the user's membership role at consent time. */
-    role: text('role', { enum: ['owner', 'admin', 'member'] }).notNull(),
+    /** The project role granted to issued tokens — the user's project role at consent time. */
+    role: text('role', { enum: ['owner', 'member'] }).notNull(),
     scope: text('scope', { mode: 'json' }).notNull().$type<ApiKeyCapability[]>(),
     redirectUri: text('redirect_uri').notNull(),
     /** PKCE S256 challenge (base64url SHA-256 of the verifier). */
@@ -259,13 +228,10 @@ export const oauthRefreshTokens = sqliteTable(
     userId: text('user_id')
       .notNull()
       .references(() => users.id),
-    orgId: text('org_id')
-      .notNull()
-      .references(() => organizations.id),
     projectId: text('project_id')
       .notNull()
       .references(() => projects.id),
-    role: text('role', { enum: ['owner', 'admin', 'member'] }).notNull(),
+    role: text('role', { enum: ['owner', 'member'] }).notNull(),
     scope: text('scope', { mode: 'json' }).notNull().$type<ApiKeyCapability[]>(),
     expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
     revokedAt: integer('revoked_at', { mode: 'timestamp_ms' }),
@@ -317,9 +283,6 @@ export const aiUsage = sqliteTable(
   'ai_usage',
   {
     id: text('id').primaryKey(),
-    orgId: text('org_id')
-      .notNull()
-      .references(() => organizations.id),
     userId: text('user_id')
       .notNull()
       .references(() => users.id),
@@ -329,10 +292,7 @@ export const aiUsage = sqliteTable(
     outputTokens: integer('output_tokens').notNull(),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   },
-  (t) => [
-    index('ai_usage_org_created_idx').on(t.orgId, t.createdAt),
-    index('ai_usage_user_created_idx').on(t.userId, t.createdAt),
-  ],
+  (t) => [index('ai_usage_user_created_idx').on(t.userId, t.createdAt)],
 );
 
 /**
@@ -374,7 +334,10 @@ export const formSubmissions = sqliteTable(
   ],
 );
 
-export type OrgRole = 'owner' | 'admin' | 'member';
+/** Platform-staff role (the single agency): full admin, or a developer scoped to assigned projects. */
+export type PlatformRole = 'admin' | 'developer';
+/** A user's role within a single project. */
+export type ProjectRole = 'owner' | 'member';
 export type ContentKind =
   | 'settings'
   | 'page'

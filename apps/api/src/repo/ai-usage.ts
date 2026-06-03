@@ -4,13 +4,12 @@ import type { Database } from '../db/client.js';
 import { aiUsage } from '../db/schema.js';
 import type { AiUsage } from '../ai/provider.js';
 
-/** Append-only AI usage ledger + monthly aggregation for quota enforcement. */
+/** Append-only AI usage ledger + monthly aggregation for quota enforcement (per-user + global). */
 export class AiUsageRepository {
   constructor(private readonly db: Database) {}
 
-  /** Records one completion's token usage. `projectId` is null for org-level ops. */
+  /** Records one completion's token usage. `projectId` is null for non-project ops. */
   async record(
-    orgId: string,
     userId: string,
     projectId: string | null,
     model: string,
@@ -18,7 +17,6 @@ export class AiUsageRepository {
   ): Promise<void> {
     await this.db.insert(aiUsage).values({
       id: randomUUID(),
-      orgId,
       userId,
       projectId,
       model,
@@ -29,13 +27,13 @@ export class AiUsageRepository {
   }
 
   /**
-   * Total tokens (input + output) charged to an org since `since`, optionally
-   * scoped to a single user — the basis for monthly per-org/per-user quotas.
+   * Total tokens (input + output) charged since `since` — across the whole platform, or scoped to a
+   * single user when `userId` is given. The basis for the monthly platform/per-user quotas.
    */
-  async tokensSince(orgId: string, since: Date, userId?: string): Promise<number> {
+  async tokensSince(since: Date, userId?: string): Promise<number> {
     const where = userId
-      ? and(eq(aiUsage.orgId, orgId), eq(aiUsage.userId, userId), gte(aiUsage.createdAt, since))
-      : and(eq(aiUsage.orgId, orgId), gte(aiUsage.createdAt, since));
+      ? and(eq(aiUsage.userId, userId), gte(aiUsage.createdAt, since))
+      : gte(aiUsage.createdAt, since);
     const [row] = await this.db
       .select({
         total: sql<number>`coalesce(sum(${aiUsage.inputTokens} + ${aiUsage.outputTokens}), 0)`,

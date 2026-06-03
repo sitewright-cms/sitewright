@@ -5,7 +5,14 @@ import { registerAccount } from './repo/accounts.js';
 import { ProjectRepository } from './repo/projects.js';
 import { ContentRepository } from './repo/content.js';
 import { ProjectEventBus } from './events/bus.js';
-import { EXAMPLE_IDENTITY, EXAMPLE_WEBSITE, EXAMPLE_PAGES } from './seed-data.js';
+import {
+  EXAMPLE_IDENTITY,
+  EXAMPLE_WEBSITE,
+  EXAMPLE_PAGES,
+  EXAMPLE_DATASETS,
+  EXAMPLE_ENTRIES,
+  EXAMPLE_FORMS,
+} from './seed-data.js';
 
 export interface SeedOptions {
   db: Database;
@@ -56,8 +63,25 @@ export async function seedInstance({ db, adminEmail, adminPassword, log = () => 
     website: EXAMPLE_WEBSITE,
     settings: { defaultLocale: 'en', locales: ['en'] },
   });
+  // CMS: dataset schemas + their entries (services / work / team / testimonials), then the
+  // contact form, then the pages (which bind the datasets via `{{#each data.<slug>}}` and host the
+  // Form block). Order doesn't matter for storage; an entry's `dataset` field (= the dataset slug)
+  // keys the `data.*` namespace at build.
+  for (const dataset of EXAMPLE_DATASETS) {
+    await contentRepo.put(ctx, 'dataset', dataset.id, dataset);
+  }
+  for (const entry of EXAMPLE_ENTRIES) {
+    await contentRepo.put(ctx, 'entry', entry.id, entry);
+  }
+  for (const form of EXAMPLE_FORMS) {
+    await contentRepo.put(ctx, 'form', form.id, form);
+  }
   for (const page of EXAMPLE_PAGES) {
     await contentRepo.put(ctx, 'page', page.id, page);
   }
-  log(`[sitewright/seed] seeded "Example Project" (${EXAMPLE_PAGES.length} pages) — delete it from the editor once you've explored it.`);
+  log(
+    `[sitewright/seed] seeded "Example Project" (${EXAMPLE_PAGES.length} pages, ` +
+      `${EXAMPLE_DATASETS.length} datasets, ${EXAMPLE_ENTRIES.length} entries, ${EXAMPLE_FORMS.length} form) ` +
+      `— delete it from the editor once you've explored it.`,
+  );
 }

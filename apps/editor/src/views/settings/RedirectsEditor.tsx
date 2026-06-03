@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { glassInput, ghostButton } from './glass';
+import { glassInput, ghostButton } from '../../theme';
 import { newRedirect, type KeyedRedirect } from './model';
 
 const STATUSES = [301, 302, 307, 308] as const;

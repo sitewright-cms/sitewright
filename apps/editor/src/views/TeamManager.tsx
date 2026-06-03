@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, type OrgMember, type Invite } from '../api';
 import { InvitePanel } from './InvitePanel';
+import { glassPanel, dangerButton } from '../theme';
 
 /**
  * Platform-staff surface: list the instance's staff and invite a DEVELOPER via a
@@ -48,18 +49,18 @@ export function TeamManager() {
         {members.map((m) => (
           <li
             key={m.userId}
-            className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-2.5"
+            className={`flex items-center justify-between ${glassPanel} px-4 py-2.5`}
           >
             <span>
-              <span className="font-medium">{m.email}</span>{' '}
-              <span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-600">
+              <span className="font-medium text-slate-800">{m.email}</span>{' '}
+              <span className="ml-1 rounded-full border border-white/60 bg-white/60 px-2 py-0.5 text-[11px] font-medium text-slate-600">
                 {m.role}
               </span>
             </span>
             {m.role !== 'owner' && (
               <button
                 aria-label={`Remove ${m.email}`}
-                className="text-xs text-red-500 hover:text-red-700"
+                className={dangerButton}
                 onClick={() => remove(m.userId)}
               >
                 Remove

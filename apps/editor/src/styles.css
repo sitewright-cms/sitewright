@@ -6,6 +6,29 @@
 body {
   margin: 0;
   font-family: ui-sans-serif, system-ui, sans-serif;
-  background: #f8fafc;
+  /* Morph-glass shell: a vivid indigo→sky→fuchsia gradient behind the frosted views.
+     `fixed` keeps it stable while content scrolls. */
+  background: linear-gradient(to bottom right, #e0e7ff 0%, #f0f9ff 45%, #fdf2ff 100%) fixed;
   color: #0f172a;
+  min-height: 100vh;
+}
+
+/* The morph-glass restyle: every interactive element shows a pointer cursor. */
+button:not(:disabled),
+[role='button'],
+[role='tab'],
+[role='menuitem'],
+[role='switch'],
+a[href],
+summary,
+select,
+input[type='checkbox'],
+input[type='radio'],
+input[type='file'],
+input[type='color'] {
+  cursor: pointer;
+}
+button:disabled,
+[aria-disabled='true'] {
+  cursor: not-allowed;
 }

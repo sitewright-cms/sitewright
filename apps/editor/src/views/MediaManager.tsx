@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import type { MediaAsset } from '@sitewright/schema';
 import { api, type Project } from '../api';
 import { StockPicker } from './media/StockPicker';
+import { glassCard, fieldLabel, dangerButton } from '../theme';
 
 export function MediaManager({ project }: { project: Project }) {
   const [media, setMedia] = useState<MediaAsset[]>([]);
@@ -60,7 +61,7 @@ export function MediaManager({ project }: { project: Project }) {
           role="tab"
           aria-selected={source === 'upload'}
           onClick={() => setSource('upload')}
-          className={`rounded-md px-3 py-1.5 text-sm font-medium ${source === 'upload' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'}`}
+          className={`rounded-xl px-4 py-1.5 text-sm font-medium transition ${source === 'upload' ? 'bg-white text-slate-900 shadow-md shadow-slate-900/5' : 'border border-white/50 bg-white/40 text-slate-600 backdrop-blur-xl hover:bg-white/60'}`}
         >
           Upload
         </button>
@@ -68,15 +69,15 @@ export function MediaManager({ project }: { project: Project }) {
           role="tab"
           aria-selected={source === 'stock'}
           onClick={() => setSource('stock')}
-          className={`rounded-md px-3 py-1.5 text-sm font-medium ${source === 'stock' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'}`}
+          className={`rounded-xl px-4 py-1.5 text-sm font-medium transition ${source === 'stock' ? 'bg-white text-slate-900 shadow-md shadow-slate-900/5' : 'border border-white/50 bg-white/40 text-slate-600 backdrop-blur-xl hover:bg-white/60'}`}
         >
           Stock images
         </button>
       </div>
 
       {source === 'upload' ? (
-        <div className="mb-4 flex flex-col gap-1 rounded-lg border border-slate-200 bg-white p-4">
-          <label htmlFor="media-upload" className="text-xs font-medium text-slate-500">
+        <div className={`mb-4 flex flex-col gap-1 ${glassCard} p-4`}>
+          <label htmlFor="media-upload" className={fieldLabel}>
             Upload image
           </label>
           <input
@@ -104,7 +105,7 @@ export function MediaManager({ project }: { project: Project }) {
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-6">
         {media.map((m) => (
-          <figure key={m.id} className="rounded-lg border border-slate-200 bg-white p-2">
+          <figure key={m.id} className={`${glassCard} p-2`}>
             <img
               src={m.url}
               alt={m.alt ?? m.filename}
@@ -117,7 +118,7 @@ export function MediaManager({ project }: { project: Project }) {
               </span>
               <button
                 aria-label={`Delete ${m.filename}`}
-                className="text-[11px] text-red-400 hover:text-red-700"
+                className={`${dangerButton} px-1.5 py-0.5 text-[11px]`}
                 onClick={() => remove(m.id)}
               >
                 ✕

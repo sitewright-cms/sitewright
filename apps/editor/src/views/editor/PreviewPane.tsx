@@ -19,9 +19,9 @@ interface PreviewPaneProps {
  */
 export function PreviewPane({ src, loading, error }: PreviewPaneProps) {
   return (
-    <div className="relative h-full">
+    <div className="relative h-full overflow-hidden rounded-2xl border border-white/50 bg-white/40 p-1 shadow-xl shadow-slate-900/5 backdrop-blur-xl">
       {error && (
-        <div role="alert" className="absolute inset-x-0 top-0 z-10 bg-red-50 px-3 py-2 text-xs text-red-700">
+        <div role="alert" className="absolute inset-x-1 top-1 z-10 rounded-t-xl bg-rose-50/90 px-3 py-2 text-xs text-rose-700 backdrop-blur-sm">
           Preview error: {error}
         </div>
       )}
@@ -30,10 +30,10 @@ export function PreviewPane({ src, loading, error }: PreviewPaneProps) {
         aria-label="Live preview"
         sandbox="allow-scripts"
         src={src || 'about:blank'}
-        className="h-full w-full rounded-lg border border-slate-200 bg-white"
+        className="h-full w-full rounded-xl border border-white/60 bg-white"
       />
       {loading && (
-        <span className="absolute bottom-2 right-3 rounded bg-white/80 px-2 py-0.5 text-xs text-slate-400">
+        <span className="absolute bottom-3 right-4 rounded-lg bg-white/80 px-2 py-0.5 text-xs text-slate-500 shadow-sm backdrop-blur-sm">
           updating…
         </span>
       )}

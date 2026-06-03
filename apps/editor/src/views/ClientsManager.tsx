@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, type Project, type OrgMember, type Invite } from '../api';
 import { InvitePanel } from './InvitePanel';
+import { glassPanel, dangerButton } from '../theme';
 
 interface ClientsManagerProps {
   project: Project;
@@ -54,12 +55,12 @@ export function ClientsManager({ project }: ClientsManagerProps) {
         {members.map((m) => (
           <li
             key={m.userId}
-            className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-2.5"
+            className={`flex items-center justify-between ${glassPanel} px-4 py-2.5`}
           >
-            <span className="font-medium">{m.email}</span>
+            <span className="font-medium text-slate-800">{m.email}</span>
             <button
               aria-label={`Remove ${m.email}`}
-              className="text-xs text-red-500 hover:text-red-700"
+              className={dangerButton}
               onClick={() => remove(m.userId)}
             >
               Remove

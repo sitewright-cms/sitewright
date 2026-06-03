@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { api, ApiError } from '../api';
+import { glassCard, glassInput, primaryButton } from '../theme';
 
 interface LoginProps {
   onAuthed: () => void;
@@ -28,7 +29,7 @@ export function Login({ onAuthed }: LoginProps) {
   }
 
   return (
-    <div className="mx-auto mt-24 max-w-sm rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
+    <div className={`mx-auto mt-24 max-w-sm ${glassCard} p-8`}>
       <h1 className="mb-1 text-2xl font-bold tracking-tight">Sitewright</h1>
       <p className="mb-6 text-sm text-slate-500">
         {mode === 'register' ? 'Create your account' : 'Sign in to your account'}
@@ -37,7 +38,7 @@ export function Login({ onAuthed }: LoginProps) {
         <input
           aria-label="Email"
           type="email"
-          className="rounded-md border border-slate-300 px-3 py-2"
+          className={glassInput}
           placeholder="you@agency.com"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
@@ -46,7 +47,7 @@ export function Login({ onAuthed }: LoginProps) {
         <input
           aria-label="Password"
           type="password"
-          className="rounded-md border border-slate-300 px-3 py-2"
+          className={glassInput}
           placeholder="Password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
@@ -56,7 +57,7 @@ export function Login({ onAuthed }: LoginProps) {
         <button
           type="submit"
           disabled={busy}
-          className="rounded-md bg-slate-900 px-4 py-2 font-semibold text-white disabled:opacity-50"
+          className={`${primaryButton} w-full`}
         >
           {mode === 'register' ? 'Create account' : 'Sign in'}
         </button>

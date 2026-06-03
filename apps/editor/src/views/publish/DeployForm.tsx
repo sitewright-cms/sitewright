@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, type DeployConfig, type DeployTargetView, type Project } from '../../api';
+import { glassInput, primaryButton, ghostButton, dangerButton } from '../../theme';
 
 const PROTOCOLS: ReadonlyArray<{ value: DeployConfig['protocol']; label: string }> = [
   { value: 'ftp', label: 'FTP' },
@@ -105,22 +106,22 @@ export function DeployForm({ project }: { project: Project }) {
     );
   }
 
-  const field = 'rounded-md border border-slate-300 px-2 py-1.5 text-sm';
+  const field = `mt-1 ${glassInput}`;
 
   return (
-    <div className="mt-3 border-t border-slate-200 pt-3">
+    <div className="mt-3 border-t border-white/40 pt-3">
       {targets && targets.length > 0 && (
         <div className="mb-3">
           <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">Saved targets</h4>
           <ul className="flex flex-col gap-1">
             {targets.map((t) => (
               <li key={t.id} className="flex items-center gap-2 text-sm">
-                <span className="font-medium">{t.name}</span>
+                <span className="font-medium text-slate-800">{t.name}</span>
                 <span className="text-xs text-slate-400">
                   {t.protocol.toUpperCase()}@{t.host}
                 </span>
                 <button
-                  className="ml-auto rounded-md border border-slate-300 px-2 py-0.5 text-xs hover:border-slate-500"
+                  className={`ml-auto ${ghostButton} px-2 py-0.5 text-xs`}
                   disabled={busy}
                   aria-label={`Deploy to ${t.name}`}
                   onClick={() =>
@@ -133,7 +134,7 @@ export function DeployForm({ project }: { project: Project }) {
                   Deploy
                 </button>
                 <button
-                  className="text-xs text-red-400 hover:text-red-700"
+                  className={`${dangerButton} px-1.5 py-0.5 text-xs`}
                   aria-label={`Delete target ${t.name}`}
                   onClick={() =>
                     run(
@@ -182,7 +183,7 @@ export function DeployForm({ project }: { project: Project }) {
             Remote dir
             <input aria-label="Deploy remote directory" className={field} value={remoteDir} onChange={(e) => setRemoteDir(e.target.value)} />
           </label>
-          <button type="submit" disabled={busy} className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50">
+          <button type="submit" disabled={busy} className={`${primaryButton} disabled:opacity-50`}>
             {busy ? 'Working…' : 'Deploy'}
           </button>
         </div>
@@ -198,7 +199,7 @@ export function DeployForm({ project }: { project: Project }) {
               Save as target
               <input aria-label="Target name" className={field} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Production" />
             </label>
-            <button type="button" disabled={busy} onClick={saveTarget} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:border-slate-500">
+            <button type="button" disabled={busy} onClick={saveTarget} className={ghostButton}>
               Save target
             </button>
           </div>

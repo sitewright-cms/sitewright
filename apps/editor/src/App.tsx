@@ -74,8 +74,8 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
   }
 
   const header = (
-    <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-3">
-      <button className="font-bold tracking-tight" onClick={() => setStage({ name: 'dashboard' })}>
+    <header className="sticky top-0 z-20 flex items-center justify-between border-b border-white/40 bg-white/60 px-6 py-3 shadow-sm backdrop-blur-xl">
+      <button className="font-bold tracking-tight text-slate-900" onClick={() => setStage({ name: 'dashboard' })}>
         Sitewright
       </button>
       <nav className="flex items-center gap-4">
@@ -106,7 +106,10 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
   );
 
   return (
-    <div className="min-h-screen">
+    <div className="relative min-h-screen">
+      {/* Soft blurred accent blobs over the gradient shell (decorative, behind content). */}
+      <div aria-hidden className="pointer-events-none fixed -right-32 -top-32 -z-10 h-96 w-96 rounded-full bg-fuchsia-300/20 blur-3xl" />
+      <div aria-hidden className="pointer-events-none fixed -bottom-32 -left-32 -z-10 h-96 w-96 rounded-full bg-sky-300/20 blur-3xl" />
       <UpdateBanner />
       {header}
       {stage.name === 'dashboard' && (

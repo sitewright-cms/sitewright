@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { glassInput, ghostButton } from './glass';
+import { glassInput, ghostButton } from '../../theme';
 import { newStr, type KeyedStr } from './model';
 
 /** A controlled list of single string values (social URLs, locale tags), keyed on a stable id. */

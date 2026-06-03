@@ -36,7 +36,7 @@ async function makeApp(stockService?: StockServiceLike): Promise<FastifyInstance
   return app;
 }
 
-async function setup(app: FastifyInstance, email: string, orgName: string) {
+async function setup(app: FastifyInstance, email: string, orgName: string, slug = 'site') {
   const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email, password: 'pw-secret-1', orgName } });
   const t = token(reg);
   const orgId = (reg.json() as { orgId: string }).orgId;
@@ -44,7 +44,7 @@ async function setup(app: FastifyInstance, email: string, orgName: string) {
     method: 'POST',
     url: `/orgs/${orgId}/projects`,
     cookies: { sw_session: t },
-    payload: { name: 'Site', slug: 'site' },
+    payload: { name: 'Site', slug },
   });
   const projectId = (proj.json() as { project: { id: string } }).project.id;
   return { t, orgId, projectId, base: `/orgs/${orgId}/projects/${projectId}` };
@@ -117,8 +117,8 @@ describe('stock API — real service (no network needed for gating)', () => {
 
   it('forbids another tenant from using stock endpoints (403)', async () => {
     const app = await makeApp();
-    const a = await setup(app, 'a@acme.test', 'Acme');
-    const b = await setup(app, 'b@globex.test', 'Globex');
+    const a = await setup(app, 'a@acme.test', 'Acme', 'site-a');
+    const b = await setup(app, 'b@globex.test', 'Globex', 'site-b');
     const res = await app.inject({ method: 'GET', url: `${a.base}/stock/providers`, cookies: { sw_session: b.t } });
     expect(res.statusCode).toBe(403);
   });

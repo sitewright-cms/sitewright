@@ -1,8 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
-/** Tenant scope a preview token is bound to (so a token can't be used cross-tenant). */
+/** Project scope a preview token is bound to (so a token can't be used cross-project). */
 export interface PreviewScope {
-  orgId: string;
   projectId: string;
   userId: string;
 }
@@ -65,7 +64,7 @@ export class PreviewStore {
       this.entries.delete(token);
       return null;
     }
-    if (entry.orgId !== scope.orgId || entry.projectId !== scope.projectId || entry.userId !== scope.userId) {
+    if (entry.projectId !== scope.projectId || entry.userId !== scope.userId) {
       return null;
     }
     return entry.html;

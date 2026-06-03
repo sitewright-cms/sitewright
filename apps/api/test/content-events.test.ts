@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { makeTestDb } from './helpers.js';
-import { registerAccount, tenantContext } from '../src/repo/accounts.js';
+import { registerAccount, addProjectMember } from '../src/repo/accounts.js';
 import { ProjectRepository } from '../src/repo/projects.js';
 import { ContentRepository } from '../src/repo/content.js';
 import { ProjectEventBus, type ContentChange } from '../src/events/bus.js';
@@ -18,10 +18,10 @@ beforeEach(async () => {
   db = await makeTestDb();
   bus = new ProjectEventBus();
   content = new ContentRepository(db, bus);
-  const a = await registerAccount(db, 'a@acme.test', 'pw-secret-1', 'Acme');
-  const tenant = await tenantContext(db, a.userId, a.orgId);
-  const project = await new ProjectRepository(db).create(tenant, { name: 'A', slug: 'a' });
-  ctx = { ...tenant, projectId: project.id };
+  const a = await registerAccount(db, 'a@acme.test', 'pw-secret-1');
+  const project = await new ProjectRepository(db).create({ name: 'A', slug: 'a' });
+  await addProjectMember(db, a.userId, project.id, 'owner');
+  ctx = { userId: a.userId, projectId: project.id, role: 'owner' };
 });
 
 describe('ContentRepository change events', () => {

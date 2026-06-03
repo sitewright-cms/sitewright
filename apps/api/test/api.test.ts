@@ -79,39 +79,46 @@ describe('API — auth + tenant-scoped projects', () => {
     expect((list.json() as { projects: unknown[] }).projects).toHaveLength(1);
   });
 
-  it('isolates tenants: org B cannot list or read org A’s projects', async () => {
+  it('isolates tenants by project: B’s project list excludes A’s project and B cannot read it', async () => {
     const a = await register('a@acme.test', 'Acme');
     const b = await register('b@globex.test', 'Globex');
     const created = await app.inject({
       method: 'POST',
       url: `/orgs/${a.body.orgId}/projects`,
       cookies: { sw_session: a.token },
-      payload: { name: 'Secret', slug: 'secret' },
+      payload: { name: 'Secret', slug: 'secret-a' },
     });
     const projectId = (created.json() as { project: { id: string } }).project.id;
 
-    // B is not a member of A's org → 403 on A's org routes
-    const bListsA = await app.inject({
+    // Flat tenancy: A and B share the synthetic platform org, but the project list
+    // is per-user (each sees only memberships they own). B has its own project…
+    const bCreated = await app.inject({
+      method: 'POST',
+      url: `/orgs/${b.body.orgId}/projects`,
+      cookies: { sw_session: b.token },
+      payload: { name: 'Bee', slug: 'secret-b' },
+    });
+    const bProjectId = (bCreated.json() as { project: { id: string } }).project.id;
+
+    // …and B's list must contain only B's project, never A's.
+    const bLists = await app.inject({
       method: 'GET',
-      url: `/orgs/${a.body.orgId}/projects`,
+      url: `/orgs/${b.body.orgId}/projects`,
       cookies: { sw_session: b.token },
     });
-    expect(bListsA.statusCode).toBe(403);
+    expect(bLists.statusCode).toBe(200);
+    const bIds = (bLists.json() as { projects: Array<{ id: string }> }).projects.map((p) => p.id);
+    expect(bIds).toContain(bProjectId);
+    expect(bIds).not.toContain(projectId);
 
+    // B reading A's project by id is forbidden (not a member) → 403, no leak.
     const bReadsA = await app.inject({
-      method: 'GET',
-      url: `/orgs/${a.body.orgId}/projects/${projectId}`,
-      cookies: { sw_session: b.token },
-    });
-    expect(bReadsA.statusCode).toBe(403);
-
-    // Even via B's own org, A's project id is not found (no cross-tenant leak)
-    const bReadsViaOwnOrg = await app.inject({
       method: 'GET',
       url: `/orgs/${b.body.orgId}/projects/${projectId}`,
       cookies: { sw_session: b.token },
     });
-    expect(bReadsViaOwnOrg.statusCode).toBe(404);
+    expect(bReadsA.statusCode).toBe(403);
+    expect(bReadsA.body).not.toContain('Secret');
   });
 
   it('logs out (session no longer valid)', async () => {

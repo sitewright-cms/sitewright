@@ -176,3 +176,31 @@ export async function setPlatformRole(db: Database, targetUserId: string, role: 
   if (!u) throw new NotFoundError('user not found');
   await db.update(users).set({ platformRole: role }).where(eq(users.id, targetUserId));
 }
+
+/**
+ * Grants `userId` a membership on `projectId` (idempotent — updates the role if a row already
+ * exists). Used when a user creates a project (→ `owner`) and when seeding the Example Project. The
+ * route gates WHO may add members; this is the raw write.
+ */
+export async function addProjectMember(
+  db: Database,
+  userId: string,
+  projectId: string,
+  role: ProjectRole,
+): Promise<void> {
+  const existing = await getProjectMembership(db, userId, projectId);
+  if (existing) {
+    await db
+      .update(projectMembers)
+      .set({ role })
+      .where(and(eq(projectMembers.userId, userId), eq(projectMembers.projectId, projectId)));
+    return;
+  }
+  await db.insert(projectMembers).values({
+    id: randomUUID(),
+    userId,
+    projectId,
+    role,
+    createdAt: new Date(),
+  });
+}

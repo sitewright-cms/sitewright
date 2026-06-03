@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import type { Database } from './db/client.js';
-import { users, type OrgRole } from './db/schema.js';
-import { registerAccount } from './repo/accounts.js';
+import { users } from './db/schema.js';
+import { registerAccount, addProjectMember } from './repo/accounts.js';
 import { ProjectRepository } from './repo/projects.js';
 import { ContentRepository } from './repo/content.js';
 import { ProjectEventBus } from './events/bus.js';
@@ -33,7 +33,9 @@ export async function seedInstance({ db, adminEmail, adminPassword, log = () => 
   const generated = !adminPassword;
   const password = adminPassword || randomBytes(12).toString('base64url');
 
-  const { userId, orgId } = await registerAccount(db, adminEmail, password, 'Sitewright');
+  // The seeded super-admin holds the platform `admin` role (full access to every project +
+  // instance settings); registration is otherwise invitation-only.
+  const { userId } = await registerAccount(db, adminEmail, password, { platformRole: 'admin' });
   log(
     generated
       ? `[sitewright/seed] created admin "${adminEmail}" with a GENERATED password: ${password}\n` +
@@ -41,12 +43,13 @@ export async function seedInstance({ db, adminEmail, adminPassword, log = () => 
       : `[sitewright/seed] created admin "${adminEmail}".`,
   );
 
-  // Seed the showcase project via the repos (same validation/tenant-scoping as the API).
+  // Seed the showcase project via the repos (same validation as the API). The admin is added as its
+  // owner so the project list + member management behave exactly as a user-created project.
   const projects = new ProjectRepository(db);
   const contentRepo = new ContentRepository(db, new ProjectEventBus());
-  const tenantCtx = { userId, orgId, role: 'owner' as OrgRole };
-  const project = await projects.create(tenantCtx, { name: 'Example Project', slug: 'example' });
-  const ctx = { ...tenantCtx, projectId: project.id };
+  const project = await projects.create({ name: 'Example Project', slug: 'example' });
+  await addProjectMember(db, userId, project.id, 'owner');
+  const ctx = { userId, projectId: project.id, role: 'owner' as const };
 
   await contentRepo.put(ctx, 'settings', 'settings', {
     identity: EXAMPLE_IDENTITY,

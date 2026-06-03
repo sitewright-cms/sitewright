@@ -30,11 +30,11 @@ function token(res: { cookies: Array<{ name: string; value: string }> }): string
   if (!t) throw new Error('no session cookie');
   return t;
 }
-async function setup(email: string, orgName: string) {
+async function setup(email: string, orgName: string, slug = 'site') {
   const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email, password: 'pw-secret-1', orgName } });
   const t = token(reg);
   const orgId = (reg.json() as { orgId: string }).orgId;
-  const proj = await app.inject({ method: 'POST', url: `/orgs/${orgId}/projects`, cookies: { sw_session: t }, payload: { name: 'Site', slug: 'site' } });
+  const proj = await app.inject({ method: 'POST', url: `/orgs/${orgId}/projects`, cookies: { sw_session: t }, payload: { name: 'Site', slug } });
   const projectId = (proj.json() as { project: { id: string } }).project.id;
   return { t, orgId, projectId };
 }
@@ -115,8 +115,8 @@ describe('saved deploy targets', () => {
   });
 
   it('isolates targets across tenants', async () => {
-    const a = await setup('a@acme.test', 'Acme');
-    const b = await setup('b@globex.test', 'Globex');
+    const a = await setup('a@acme.test', 'Acme', 'site-a');
+    const b = await setup('b@globex.test', 'Globex', 'site-b');
     await app.inject({ method: 'POST', url: `/orgs/${a.orgId}/projects/${a.projectId}/deploy-targets`, cookies: { sw_session: a.t }, payload: target });
     const bReads = await app.inject({ method: 'GET', url: `/orgs/${a.orgId}/projects/${a.projectId}/deploy-targets`, cookies: { sw_session: b.t } });
     expect(bReads.statusCode).toBe(403);

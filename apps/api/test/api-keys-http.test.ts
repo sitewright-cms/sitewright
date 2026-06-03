@@ -26,7 +26,7 @@ function sessionCookie(res: { cookies: Array<{ name: string; value: string }> })
   return t;
 }
 
-async function setup(email: string, orgName: string) {
+async function setup(email: string, orgName: string, slug = 'site') {
   const reg = await app.inject({
     method: 'POST',
     url: '/auth/register',
@@ -38,7 +38,7 @@ async function setup(email: string, orgName: string) {
     method: 'POST',
     url: `/orgs/${orgId}/projects`,
     cookies: { sw_session: t },
-    payload: { name: 'Site', slug: 'site' },
+    payload: { name: 'Site', slug },
   });
   const projectId = (proj.json() as { project: { id: string } }).project.id;
   return { t, orgId, projectId };
@@ -49,7 +49,8 @@ function createKey(base: string, cookie: string, body: Record<string, unknown>) 
     method: 'POST',
     url: `${base}/api-keys`,
     cookies: { sw_session: cookie },
-    payload: { name: 'k', role: 'admin', expiresInDays: 30, ...body },
+    // The registering user is the project owner, so they may mint an owner-scoped key.
+    payload: { name: 'k', role: 'owner', expiresInDays: 30, ...body },
   });
 }
 
@@ -85,9 +86,10 @@ describe('project API keys — management', () => {
 
 describe('project API keys — bearer auth + capabilities', () => {
   let seq = 0;
-  async function keyWith(caps: string[], role = 'admin') {
+  async function keyWith(caps: string[], role = 'owner') {
     seq += 1;
-    const { t, orgId, projectId } = await setup(`u${seq}@acme.test`, `Acme ${seq}`);
+    // Distinct, instance-unique slug per call so two tenants in one test don't collide.
+    const { t, orgId, projectId } = await setup(`u${seq}@acme.test`, `Acme ${seq}`, `site-${seq}`);
     const base = `/orgs/${orgId}/projects/${projectId}`;
     const res = await createKey(base, t, { capabilities: caps, role });
     const token = (res.json() as { token: string }).token;
@@ -124,8 +126,8 @@ describe('project API keys — bearer auth + capabilities', () => {
 
   it('confines a token to its own project (cross-project → 404)', async () => {
     const a = await keyWith(['content:read', 'content:write']);
-    // A second org/project; A's token must not reach it.
-    const b = await setup('b@globex.test', 'Globex');
+    // A second project (distinct instance-unique slug); A's token must not reach it.
+    const b = await setup('b@globex.test', 'Globex', 'globex-site');
     const res = await app.inject({
       method: 'GET',
       url: `/orgs/${b.orgId}/projects/${b.projectId}/content/page`,
@@ -168,7 +170,7 @@ describe('project API keys — bearer auth + capabilities', () => {
     expect(res.json()).toEqual({
       orgId,
       projectId,
-      role: 'admin',
+      role: 'owner',
       capabilities: ['content:read', 'publish'],
     });
     // Unauthenticated / unknown token → 401.

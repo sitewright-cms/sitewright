@@ -20,7 +20,7 @@ function token(res: { cookies: Array<{ name: string; value: string }> }): string
   return t;
 }
 
-async function setup(email: string, orgName: string, instance: FastifyInstance = app) {
+async function setup(email: string, orgName: string, instance: FastifyInstance = app, slug = 'site') {
   const reg = await instance.inject({
     method: 'POST',
     url: '/auth/register',
@@ -32,7 +32,7 @@ async function setup(email: string, orgName: string, instance: FastifyInstance =
     method: 'POST',
     url: `/orgs/${orgId}/projects`,
     cookies: { sw_session: t },
-    payload: { name: 'Site', slug: 'site' },
+    payload: { name: 'Site', slug },
   });
   const projectId = (proj.json() as { project: { id: string } }).project.id;
   return { t, orgId, projectId };
@@ -92,8 +92,8 @@ describe('preview API', () => {
   });
 
   it('does not serve a preview token to another tenant, or an unknown/expired token', async () => {
-    const a = await setup('a@acme.test', 'Acme');
-    const b = await setup('b@globex.test', 'Globex');
+    const a = await setup('a@acme.test', 'Acme', app, 'site-a');
+    const b = await setup('b@globex.test', 'Globex', app, 'site-b');
     const token = (
       await app.inject({
         method: 'POST',
@@ -140,8 +140,8 @@ describe('preview API', () => {
   });
 
   it('forbids previewing another tenant’s project', async () => {
-    const a = await setup('a@acme.test', 'Acme');
-    const b = await setup('b@globex.test', 'Globex');
+    const a = await setup('a@acme.test', 'Acme', app, 'site-a');
+    const b = await setup('b@globex.test', 'Globex', app, 'site-b');
     const res = await app.inject({
       method: 'POST',
       url: `/orgs/${a.orgId}/projects/${a.projectId}/preview`,

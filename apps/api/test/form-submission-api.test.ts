@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
-import { memberships, formSubmissions } from '../src/db/schema.js';
+import { projectMembers, formSubmissions } from '../src/db/schema.js';
 import { MAX_SUBMISSIONS_PER_FORM } from '@sitewright/schema';
 import { SubmissionRepository } from '../src/repo/submissions.js';
 import type { Database } from '../src/db/client.js';
@@ -229,8 +229,8 @@ describe('submissions inbox (authenticated)', () => {
     expect((after.json() as { total: number }).total).toBe(0);
   });
 
-  it('forbids a member (read-only role) from deleting a submission (403)', async () => {
-    // A second user, added to THIS org as a member (read-only).
+  it('lets a project member read and delete a submission (constrained client-write removed)', async () => {
+    // A second user, granted access to THIS project as a member.
     const memberReg = await app.inject({
       method: 'POST',
       url: '/auth/register',
@@ -238,16 +238,16 @@ describe('submissions inbox (authenticated)', () => {
     });
     const memberT = token(memberReg);
     const memberUserId = (memberReg.json() as { userId: string }).userId;
-    await db.insert(memberships).values({ id: randomUUID(), userId: memberUserId, orgId, role: 'member', createdAt: new Date() });
+    await db.insert(projectMembers).values({ id: randomUUID(), userId: memberUserId, projectId, role: 'member', createdAt: new Date() });
 
     const list = await app.inject({ method: 'GET', url: `/orgs/${orgId}/projects/${projectId}/submissions`, cookies: { sw_session: memberT } });
     expect(list.statusCode).toBe(200); // members can read
     const id = (list.json() as { items: Array<{ id: string }> }).items[0]!.id;
     const del = await app.inject({ method: 'DELETE', url: `/orgs/${orgId}/projects/${projectId}/submissions/${id}`, cookies: { sw_session: memberT } });
-    expect(del.statusCode).toBe(403); // but not delete
+    expect(del.statusCode).toBe(204); // a member is now a writer and may delete
   });
 
-  it('isolates another org from these submissions (404 project)', async () => {
+  it('isolates a non-member from these submissions (403 project)', async () => {
     const other = await app.inject({
       method: 'POST',
       url: '/auth/register',
@@ -255,12 +255,12 @@ describe('submissions inbox (authenticated)', () => {
     });
     const ot = token(other);
     const otherOrg = (other.json() as { orgId: string }).orgId;
-    // The other org cannot address this project (404 — not 403, to avoid project probing).
+    // A user who holds no membership on this project cannot reach it over a session (403).
     const res = await app.inject({
       method: 'GET',
       url: `/orgs/${otherOrg}/projects/${projectId}/submissions`,
       cookies: { sw_session: ot },
     });
-    expect(res.statusCode).toBe(404);
+    expect(res.statusCode).toBe(403);
   });
 });

@@ -69,7 +69,6 @@ function generateUserCode(): string {
   while (out.length < 8) {
     const b = randomBytes(1)[0]!;
     if (b >= maxValid) continue;
-    // eslint-disable-next-line security/detect-object-injection -- numeric modulo index into a constant string
     out += USER_CODE_ALPHABET[b % USER_CODE_ALPHABET.length];
   }
   return `${out.slice(0, 4)}-${out.slice(4)}`;

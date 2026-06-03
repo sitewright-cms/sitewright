@@ -24,11 +24,11 @@ function token(res: { cookies: Array<{ name: string; value: string }> }): string
   return t;
 }
 
-async function setup(email: string, orgName: string) {
+async function setup(email: string, orgName: string, slug = 'site') {
   const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email, password: 'pw-secret-1', orgName } });
   const t = token(reg);
   const orgId = (reg.json() as { orgId: string }).orgId;
-  const proj = await app.inject({ method: 'POST', url: `/orgs/${orgId}/projects`, cookies: { sw_session: t }, payload: { name: 'Site', slug: 'site' } });
+  const proj = await app.inject({ method: 'POST', url: `/orgs/${orgId}/projects`, cookies: { sw_session: t }, payload: { name: 'Site', slug } });
   const projectId = (proj.json() as { project: { id: string } }).project.id;
   return { t, orgId, projectId };
 }
@@ -114,8 +114,8 @@ describe('publish API', () => {
   });
 
   it('forbids exporting another tenant’s archive', async () => {
-    const a = await setup('a@acme.test', 'Acme');
-    const b = await setup('b@globex.test', 'Globex');
+    const a = await setup('a@acme.test', 'Acme', 'site-a');
+    const b = await setup('b@globex.test', 'Globex', 'site-b');
     const res = await app.inject({
       method: 'GET',
       url: `/orgs/${a.orgId}/projects/${a.projectId}/publish/archive`,
@@ -125,8 +125,8 @@ describe('publish API', () => {
   });
 
   it('forbids deploying another tenant’s project', async () => {
-    const a = await setup('a@acme.test', 'Acme');
-    const b = await setup('b@globex.test', 'Globex');
+    const a = await setup('a@acme.test', 'Acme', 'site-a');
+    const b = await setup('b@globex.test', 'Globex', 'site-b');
     const res = await app.inject({
       method: 'POST',
       url: `/orgs/${a.orgId}/projects/${a.projectId}/publish/deploy`,
@@ -136,9 +136,9 @@ describe('publish API', () => {
     expect(res.statusCode).toBe(403);
   });
 
-  it('requires authentication and write role / tenant membership', async () => {
-    const a = await setup('a@acme.test', 'Acme');
-    const b = await setup('b@globex.test', 'Globex');
+  it('requires authentication and tenant membership', async () => {
+    const a = await setup('a@acme.test', 'Acme', 'site-a');
+    const b = await setup('b@globex.test', 'Globex', 'site-b');
 
     const unauth = await app.inject({ method: 'POST', url: `/orgs/${a.orgId}/projects/${a.projectId}/publish` });
     expect(unauth.statusCode).toBe(401);

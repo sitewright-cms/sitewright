@@ -189,20 +189,4 @@ describe('auth + session lifecycle (HTTP)', () => {
     expect(res.statusCode).toBe(400);
     expect(res.json()).toMatchObject({ error: 'invalid request' });
   });
-
-  it('rejects a missing/empty orgName with 400', async () => {
-    const missing = await register({
-      email: `noorg-${randomUUID()}@test.local`,
-      password: 'pw-secret-1',
-    });
-    expect(missing.statusCode).toBe(400);
-
-    const empty = await register({
-      email: `emptyorg-${randomUUID()}@test.local`,
-      password: 'pw-secret-1',
-      orgName: '',
-    });
-    expect(empty.statusCode).toBe(400);
-    expect(empty.json()).toMatchObject({ error: 'invalid request' });
-  });
 });

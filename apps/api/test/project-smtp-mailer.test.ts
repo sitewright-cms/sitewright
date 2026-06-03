@@ -3,7 +3,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { makeTestDb } from './helpers.js';
 import { ProjectSmtpMailer, type MailTransport, type SubmissionMail } from '../src/mail/mailer.js';
 import { encryptSecret } from '../src/crypto/secret.js';
-import { organizations, projects, content } from '../src/db/schema.js';
+import { projects, content } from '../src/db/schema.js';
 import type { Database } from '../src/db/client.js';
 import type { InstanceSettingsStored, SmtpStored } from '@sitewright/schema';
 
@@ -30,9 +30,7 @@ beforeEach(async () => {
   db = await makeTestDb();
   projectId = randomUUID();
   const now = new Date();
-  const orgId = randomUUID();
-  await db.insert(organizations).values({ id: orgId, name: 'O', slug: `o-${projectId.slice(0, 8)}`, createdAt: now });
-  await db.insert(projects).values({ id: projectId, orgId, name: 'P', slug: 'p', createdAt: now });
+  await db.insert(projects).values({ id: projectId, name: 'P', slug: 'p', createdAt: now });
 });
 
 describe('ProjectSmtpMailer', () => {

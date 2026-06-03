@@ -323,15 +323,16 @@ describe('bundle export/import fidelity (HTTP)', () => {
       expect((list.json() as { items: unknown[] }).items).toHaveLength(1);
     });
 
-    it('returns 404 when a client imports using its OWN org but another org’s projectId', async () => {
+    it('forbids a session user importing into a project they are not a member of (403)', async () => {
       const clientB = await harness.signup({ orgName: 'Initech' });
-      // B is a member of its own org, so tenantContext passes; but projectId
-      // belongs to A's org, so projects.get() under B's context → NotFound → 404.
+      // Flat model: `:orgId` is vestigial. A signed-in user who holds no membership for the
+      // target project is denied at the project gate (resolveProject → no role → 403) — not 404,
+      // which is reserved for the bearer/API-key cross-project probe path.
       const url = `/orgs/${clientB.orgId}/projects/${projectId}/import`;
       const res = await clientB.post(url, {
         pages: [{ id: 'x', path: '/x', title: 'X', root: { id: 'r', type: 'Section' } }],
       });
-      expect(res.statusCode).toBe(404);
+      expect(res.statusCode).toBe(403);
     });
 
     it.skip(

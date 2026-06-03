@@ -47,25 +47,25 @@ import { GlobalSmtpMailer, ProjectSmtpMailer, type SubmissionMailer, type Projec
 import { HttpHcaptchaVerifier, type HcaptchaVerifier } from '../mail/hcaptcha.js';
 import { createSession, revokeSession, validateSession } from '../auth/sessions.js';
 import {
-  getMembership,
-  getProjectMembership,
+  addProjectMember,
+  getPlatformRole,
   getUserEmail,
-  listOrgMembers,
-  listOrgsForUser,
+  listPlatformUsers,
   listProjectAccessForUser,
-  removeOrgMember,
+  listProjectMembers,
   login,
   registerAccount,
-  tenantContext,
+  removeProjectMember,
+  resolveProjectRole,
+  setPlatformRole,
 } from '../repo/accounts.js';
 import {
   acceptInvite,
   createInvite,
+  getInvite,
   hasPendingInvite,
   listInvites,
-  listProjectMembers,
   peekInvite,
-  removeProjectMember,
   revokeInvite,
 } from '../repo/invites.js';
 import { InstanceSettingsRepository, EncryptionUnavailableError } from '../repo/instance-settings.js';
@@ -101,8 +101,18 @@ const rl = (max: number) => ({ rateLimit: { max, timeWindow: RL_WINDOW } });
 const IMPORT_BODY_LIMIT = 4 * 1024 * 1024; // 4 MiB for a full project import
 const PREVIEW_BODY_LIMIT = 2 * 1024 * 1024; // 2 MiB for a single draft page
 const MAX_UPLOAD_BYTES = 15 * 1024 * 1024; // 15 MiB per uploaded image
-const WRITE_ROLES: ReadonlySet<string> = new Set(['owner', 'admin']);
+// In the flat tenancy model every project member (owner OR member) may write — the safe
+// "content-only" surface is a UI default, not a hard gate (see PR1 security note). Bearer keys
+// are additionally constrained by capabilities in resolveProject.
+const WRITE_ROLES: ReadonlySet<string> = new Set(['owner', 'member']);
 const API_PREFIXES = ['/auth', '/orgs', '/me', '/health', '/admin', '/f', '/invites'];
+
+// PR1 compat: the org layer is gone, but the editor/MCP/CLI still address routes as
+// `/orgs/:orgId/...` and read an org from `/me` + `/api-key/self`. We synthesize ONE constant
+// platform "org" so those clients keep working unchanged; `:orgId` is vestigial (ignored). PR2
+// flattens the routes and removes this shim.
+const PLATFORM_ORG_ID = 'platform';
+const PLATFORM_ORG_NAME = 'Platform';
 
 const MEDIA_CONTENT_TYPES = new Map<string, string>([
   ['avif', 'image/avif'],
@@ -159,7 +169,8 @@ function parseGenericKind(kind: string): ContentKind {
 const RegisterBody = z.object({
   email: z.string().email(),
   password: z.string().min(8).max(200),
-  orgName: z.string().min(1).max(120),
+  // Accepted for backward compatibility with older clients but ignored — there is no org to name.
+  orgName: z.string().min(1).max(120).optional(),
 });
 const LoginBody = z.object({
   email: z.string().email(),
@@ -223,6 +234,9 @@ async function styledSourceDocument(
 
 const InviteBody = z.object({
   email: z.string().email(),
+  // Optional, platform invites only (admin|developer). Project invites always grant `member`.
+  // Defaults to `developer` when omitted.
+  role: z.enum(['admin', 'developer']).optional(),
 });
 const AcceptInviteBody = z.object({
   token: z.string().min(1).max(200),
@@ -240,7 +254,7 @@ const CreateProjectBody = z.object({
 const CreateApiKeyBody = z.object({
   name: z.string().min(1).max(120),
   // The token's base role; the repo refuses to mint above the creator's role.
-  role: z.enum(['owner', 'admin', 'member']).default('admin'),
+  role: z.enum(['owner', 'member']).default('member'),
   capabilities: z
     .array(z.enum(API_KEY_CAPABILITIES as unknown as [ApiKeyCapability, ...ApiKeyCapability[]]))
     .min(1)
@@ -492,11 +506,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     return token ? await validateSession(db, token) : null;
   }
 
-  // Instance admin = a session user whose email is in the operator's allowlist.
-  // Instance settings are global (not org/project-scoped), so this is decided by
-  // email membership, never by an org role. Bearer (API-key) callers are never
-  // instance admins — admin config is an interactive, session-only operation.
+  // Instance/platform admin = a user whose DB `platform_role` is `admin` (seeded from
+  // SW_ADMIN_EMAIL, granted via a platform invite). The legacy `adminEmails` allowlist is still
+  // honored as a fallback so an operator can designate admins by env without a DB role (and so the
+  // test harness keeps working). Instance settings are global, decided here — never by a project
+  // role. Bearer (API-key) callers are never instance admins — admin config is session-only.
   async function isInstanceAdmin(userId: string): Promise<boolean> {
+    if ((await getPlatformRole(db, userId)) === 'admin') return true;
     if (adminEmails.size === 0) return false;
     const email = await getUserEmail(db, userId);
     return email !== null && adminEmails.has(email);
@@ -522,11 +538,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   type RequiredAccess = ApiKeyCapability | 'session-only';
 
   // Resolves a project context for either auth path:
-  //  - session cookie → verify org membership + project ownership (role-gated);
-  //  - `Authorization: Bearer swk_…` → resolve the project-scoped key, confirm it
-  //    is bound to THIS org+project, and enforce the route's capability.
-  // Returns the ProjectContext, the project record, and whether the caller is an
-  // API key (so routes can apply extra restraint to non-interactive callers).
+  //  - session cookie → the caller's effective project role (platform admin → owner; else a
+  //    `project_members` row), or 403 if they have no access;
+  //  - `Authorization: Bearer swk_…` → resolve the project-scoped key, confirm it is bound to THIS
+  //    project, and enforce the route's capability.
+  // `:orgId` in the path is vestigial (PR1 compat) and ignored. Returns the ProjectContext, the
+  // project record, and the resolved key (so routes can apply extra restraint to non-interactive
+  // callers).
   async function resolveProject(
     req: FastifyRequest<{ Params: { orgId: string; projectId: string } }>,
     access: RequiredAccess,
@@ -550,7 +568,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       if (!key) throw new UnauthorizedError('invalid or expired API key');
       // The key is bound to one project; reject any other route (no cross-project
       // reach). 404 — not 403 — so a key cannot probe which projects exist.
-      if (key.orgId !== req.params.orgId || key.projectId !== req.params.projectId) {
+      if (key.projectId !== req.params.projectId) {
         throw new NotFoundError('project not found');
       }
       if (!key.capabilities.includes(access)) {
@@ -558,39 +576,21 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       }
       const ctx: ProjectContext = {
         userId: key.createdBy,
-        orgId: key.orgId,
         role: key.role,
         projectId: key.projectId,
       };
-      // Re-load the project through the tenant-scoped repo so a stale key whose
-      // project was deleted resolves to a clean 404.
-      const project = await projects.get(ctx, req.params.projectId);
+      // Re-load the project so a stale key whose project was deleted resolves to a clean 404.
+      const project = await projects.get(req.params.projectId);
       return { ctx, project, apiKey: key };
     }
 
     const userId = await requireUserId(req);
-    // Org members (the agency's developers/staff) reach any project in their org.
-    const orgRole = await getMembership(db, userId, req.params.orgId);
-    if (orgRole) {
-      const tenant = { userId, orgId: req.params.orgId, role: orgRole };
-      const project = await projects.get(tenant, req.params.projectId);
-      return { ctx: { ...tenant, projectId: project.id }, project, apiKey: null };
-    }
-    // A project-scoped client (no org membership) reaches ONLY the project they belong
-    // to. projects.get filters by ctx.orgId, so it also confirms the project really is
-    // in the claimed org (else a clean 404 — the client cannot probe other orgs/projects).
-    const projectRole = await getProjectMembership(db, userId, req.params.projectId);
-    if (projectRole) {
-      const ctx: ProjectContext = {
-        userId,
-        orgId: req.params.orgId,
-        role: projectRole,
-        projectId: req.params.projectId,
-      };
-      const project = await projects.get(ctx, req.params.projectId);
-      return { ctx: { ...ctx, projectId: project.id }, project, apiKey: null };
-    }
-    throw new ForbiddenError('you do not have access to this project');
+    // A platform admin reaches every project as owner; everyone else reaches only the projects they
+    // hold a membership for (a clean 403 otherwise — they cannot probe other projects).
+    const role = await resolveProjectRole(db, userId, req.params.projectId);
+    if (!role) throw new ForbiddenError('you do not have access to this project');
+    const project = await projects.get(req.params.projectId);
+    return { ctx: { userId, role, projectId: project.id }, project, apiKey: null };
   }
 
   // Optional SSRF guard for deploy targets (multi-tenant SaaS): when an allow-list
@@ -629,7 +629,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     if (!(opts.openRegistration ?? true) && !(await hasPendingInvite(db, body.email))) {
       return reply.code(403).send({ error: 'registration is by invitation only' });
     }
-    const { userId, orgId } = await registerAccount(db, body.email, body.password, body.orgName);
+    const { userId } = await registerAccount(db, body.email, body.password);
     const { token, expiresAt } = await createSession(db, userId);
     reply.setCookie(SESSION_COOKIE, token, {
       httpOnly: true,
@@ -639,7 +639,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       signed,
       expires: expiresAt,
     });
-    return reply.code(201).send({ userId, orgId });
+    // `orgId` retained in the response for client compat (PR1); always the constant platform id.
+    return reply.code(201).send({ userId, orgId: PLATFORM_ORG_ID });
   });
 
   app.post('/auth/login', { config: rl(10) }, async (req, reply) => {
@@ -666,14 +667,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
   app.get('/me', async (req, reply) => {
     const userId = await requireUserId(req);
-    const [orgs, projectAccess, instanceAdmin] = await Promise.all([
-      listOrgsForUser(db, userId),
-      // Projects reachable via a project-scoped membership (the client tier) — so the
-      // dashboard can show a client only their own site(s) without an org membership.
+    const [platformRole, projectAccess, instanceAdmin] = await Promise.all([
+      getPlatformRole(db, userId),
+      // Projects the caller can reach: a platform admin → all; everyone else → their memberships.
       listProjectAccessForUser(db, userId),
       isInstanceAdmin(userId),
     ]);
-    return reply.send({ userId, orgs, projectAccess, isInstanceAdmin: instanceAdmin });
+    // PR1 compat: synthesize the single platform "org" so the unchanged editor keeps working. Every
+    // user "owns" the synthetic org (all may create/manage their own projects); true platform-admin
+    // surfaces are gated separately by `isInstanceAdmin`. PR2 replaces this with
+    // `{ userId, platformRole, projects }`.
+    const orgs = [{ id: PLATFORM_ORG_ID, name: PLATFORM_ORG_NAME, role: 'owner' }];
+    return reply.send({ userId, platformRole, orgs, projectAccess, isInstanceAdmin: instanceAdmin });
   });
 
   // ---- Instance admin settings (global mail / hCaptcha / enabled form modes) ----
@@ -714,32 +719,58 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     const key = await apiKeysRepo.resolve(bearer);
     if (!key) throw new UnauthorizedError('invalid or expired API key');
     return reply.send({
-      orgId: key.orgId,
+      // `orgId` retained for client compat (PR1); always the constant platform id.
+      orgId: PLATFORM_ORG_ID,
       projectId: key.projectId,
       role: key.role,
       capabilities: key.capabilities,
     });
   });
 
-  app.get('/orgs', async (req, reply) => {
+  // Session-only project access for management ops (invites, members). Resolves the caller's
+  // effective project role (platform admin → owner) and, when `ownerOnly`, requires owner. A Bearer
+  // token must never reach these interactive operations.
+  async function requireProjectAccess(
+    req: FastifyRequest,
+    projectId: string,
+    ownerOnly: boolean,
+  ): Promise<ProjectContext> {
+    if (bearerToken(req) !== undefined) {
+      throw new ForbiddenError('this operation requires an interactive session');
+    }
     const userId = await requireUserId(req);
-    return reply.send({ orgs: await listOrgsForUser(db, userId) });
+    const role = await resolveProjectRole(db, userId, projectId);
+    if (!role) throw new ForbiddenError('you do not have access to this project');
+    if (ownerOnly && role !== 'owner') throw new ForbiddenError('insufficient role for this operation');
+    return { userId, role, projectId };
+  }
+
+  app.get('/orgs', async (req, reply) => {
+    await requireUserId(req);
+    // PR1 compat: a single synthetic platform org, "owned" by every user (see /me).
+    return reply.send({ orgs: [{ id: PLATFORM_ORG_ID, name: PLATFORM_ORG_NAME, role: 'owner' }] });
   });
 
   app.get<{ Params: { orgId: string } }>('/orgs/:orgId/projects', async (req, reply) => {
     const userId = await requireUserId(req);
-    const ctx = await tenantContext(db, userId, req.params.orgId);
-    return reply.send({ projects: await projects.list(ctx) });
+    const access = await listProjectAccessForUser(db, userId);
+    // Map to the project shape the editor expects (id/name/slug) plus the caller's role.
+    const list = access.map((a) => ({ id: a.projectId, name: a.projectName, slug: a.projectSlug, role: a.role }));
+    return reply.send({ projects: list });
   });
 
-  // ---- Org membership (the agency's developers/staff: owner/admin, org-wide) ----
+  // ---- Platform team (admins/developers). Managed by a platform admin only. ----
   app.get<{ Params: { orgId: string } }>(
     '/orgs/:orgId/members',
     { config: rl(30) },
     async (req, reply) => {
-      const userId = await requireUserId(req);
-      const ctx = await tenantContext(db, userId, req.params.orgId);
-      return reply.send({ members: await listOrgMembers(db, ctx) });
+      await requireInstanceAdmin(req);
+      const users = await listPlatformUsers(db);
+      // Only the staff tier (admins/developers) — plain clients are not "platform members".
+      const members = users
+        .filter((u) => u.platformRole !== null)
+        .map((u) => ({ userId: u.userId, email: u.email, role: u.platformRole, createdAt: u.createdAt }));
+      return reply.send({ members });
     },
   );
 
@@ -747,25 +778,27 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     '/orgs/:orgId/members/:userId',
     { config: rl(20) },
     async (req, reply) => {
-      const callerId = await requireUserId(req);
-      const ctx = await tenantContext(db, callerId, req.params.orgId);
-      await removeOrgMember(db, ctx, req.params.userId);
+      const callerId = await requireInstanceAdmin(req);
+      if (req.params.userId === callerId) {
+        throw new ForbiddenError('you cannot remove your own platform role');
+      }
+      // Demote to a plain client (revokes admin/developer staff access).
+      await setPlatformRole(db, req.params.userId, null);
       return reply.code(204).send();
     },
   );
 
-  // ---- Invites: a developer (org admin) or a client (project member) joins only by
-  // accepting an invite while signed in as the invited email — no direct add, so there
-  // is no account-existence oracle and no unaccepted membership. ----
+  // ---- Invites: staff (platform admin/developer) or a project member joins only by accepting an
+  // invite while signed in as the invited email — no direct add, so there is no account-existence
+  // oracle and no unaccepted membership. ----
   app.post<{ Params: { orgId: string } }>(
     '/orgs/:orgId/invites',
     { config: rl(20) },
     async (req, reply) => {
-      const userId = await requireUserId(req);
-      const ctx = await tenantContext(db, userId, req.params.orgId);
+      const userId = await requireInstanceAdmin(req);
       const body = InviteBody.parse(req.body);
-      // Org-level developer invite → admin.
-      const result = await createInvite(db, ctx, { email: body.email, role: 'admin' });
+      // Platform staff invite → developer by default; a platform admin may invite another admin.
+      const result = await createInvite(db, userId, { email: body.email, role: body.role ?? 'developer' });
       return reply.code(201).send(result);
     },
   );
@@ -774,11 +807,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     '/orgs/:orgId/projects/:projectId/invites',
     { config: rl(20) },
     async (req, reply) => {
-      const userId = await requireUserId(req);
-      const ctx = await tenantContext(db, userId, req.params.orgId);
+      const ctx = await requireProjectAccess(req, req.params.projectId, true);
       const body = InviteBody.parse(req.body);
       // Project-scoped client invite → member.
-      const result = await createInvite(db, ctx, {
+      const result = await createInvite(db, ctx.userId, {
         email: body.email,
         role: 'member',
         projectId: req.params.projectId,
@@ -791,9 +823,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     '/orgs/:orgId/invites',
     { config: rl(30) },
     async (req, reply) => {
-      const userId = await requireUserId(req);
-      const ctx = await tenantContext(db, userId, req.params.orgId);
-      return reply.send({ invites: await listInvites(db, ctx, { projectId: req.query.projectId }) });
+      const projectId = req.query.projectId;
+      if (projectId) {
+        await requireProjectAccess(req, projectId, true);
+        return reply.send({ invites: await listInvites(db, { projectId }) });
+      }
+      // Platform invites (no project) — platform admin only.
+      await requireInstanceAdmin(req);
+      return reply.send({ invites: await listInvites(db, {}) });
     },
   );
 
@@ -801,9 +838,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     '/orgs/:orgId/invites/:id',
     { config: rl(20) },
     async (req, reply) => {
-      const userId = await requireUserId(req);
-      const ctx = await tenantContext(db, userId, req.params.orgId);
-      await revokeInvite(db, ctx, req.params.id);
+      const invite = await getInvite(db, req.params.id);
+      if (!invite) throw new NotFoundError('invite not found');
+      // A project invite is revocable by that project's owner (or a platform admin); a platform
+      // invite only by a platform admin.
+      if (invite.projectId) {
+        await requireProjectAccess(req, invite.projectId, true);
+      } else {
+        await requireInstanceAdmin(req);
+      }
+      await revokeInvite(db, req.params.id);
       return reply.code(204).send();
     },
   );
@@ -830,14 +874,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     },
   );
 
-  // ---- Project clients (project-scoped members) management (owner/admin) ----
+  // ---- Project members (the project's team) management (owner or platform admin) ----
   app.get<{ Params: { orgId: string; projectId: string } }>(
     '/orgs/:orgId/projects/:projectId/members',
     { config: rl(30) },
     async (req, reply) => {
-      const userId = await requireUserId(req);
-      const ctx = await tenantContext(db, userId, req.params.orgId);
-      return reply.send({ members: await listProjectMembers(db, ctx, req.params.projectId) });
+      const ctx = await requireProjectAccess(req, req.params.projectId, true);
+      return reply.send({ members: await listProjectMembers(db, ctx) });
     },
   );
 
@@ -845,26 +888,32 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     '/orgs/:orgId/projects/:projectId/members/:userId',
     { config: rl(20) },
     async (req, reply) => {
-      const callerId = await requireUserId(req);
-      const ctx = await tenantContext(db, callerId, req.params.orgId);
-      await removeProjectMember(db, ctx, req.params.projectId, req.params.userId);
+      const ctx = await requireProjectAccess(req, req.params.projectId, true);
+      await removeProjectMember(db, ctx, req.params.userId);
       return reply.code(204).send();
     },
   );
 
   app.post<{ Params: { orgId: string } }>('/orgs/:orgId/projects', async (req, reply) => {
+    // Any authenticated user may create a project and becomes its owner. (Curated-platform policy —
+    // restricting creation to staff — is a route-level decision deferred to a later PR.)
     const userId = await requireUserId(req);
-    const ctx = await tenantContext(db, userId, req.params.orgId);
+    if (bearerToken(req) !== undefined) {
+      throw new ForbiddenError('this operation requires an interactive session');
+    }
     const body = CreateProjectBody.parse(req.body);
-    return reply.code(201).send({ project: await projects.create(ctx, body) });
+    const project = await projects.create(body);
+    await addProjectMember(db, userId, project.id, 'owner');
+    return reply.code(201).send({ project });
   });
 
   app.get<{ Params: { orgId: string; id: string } }>(
     '/orgs/:orgId/projects/:id',
     async (req, reply) => {
       const userId = await requireUserId(req);
-      const ctx = await tenantContext(db, userId, req.params.orgId);
-      return reply.send({ project: await projects.get(ctx, req.params.id) });
+      const role = await resolveProjectRole(db, userId, req.params.id);
+      if (!role) throw new ForbiddenError('you do not have access to this project');
+      return reply.send({ project: await projects.get(req.params.id) });
     },
   );
 
@@ -872,9 +921,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     '/orgs/:orgId/projects/:id',
     { config: rl(20) },
     async (req, reply) => {
+      // A project may be deleted by its owner or a platform admin (both resolve to owner).
       const userId = await requireUserId(req);
-      const ctx = await tenantContext(db, userId, req.params.orgId);
-      await projects.remove(ctx, req.params.id);
+      const role = await resolveProjectRole(db, userId, req.params.id);
+      if (role !== 'owner') throw new ForbiddenError('insufficient role to delete this project');
+      await projects.remove(req.params.id);
       // Best-effort on-disk cleanup: the published site + media directories have no
       // DB-level cascade. A failure here must NOT fail the delete (the rows are
       // already gone) — log and continue. Optional chaining no-ops when unconfigured.
@@ -1117,7 +1168,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             criticalCss: website?.criticalCss,
             customScripts: website?.scripts,
           });
-          const sourceToken = previewStore.put(sourceHtml, { orgId: ctx.orgId, projectId: project.id, userId: ctx.userId });
+          const sourceToken = previewStore.put(sourceHtml, { projectId: project.id, userId: ctx.userId });
           return reply.send({ html: sourceHtml, token: sourceToken });
         } catch (err) {
           if (err instanceof RenderUnavailableError) return reply.code(503).send({ error: err.message });
@@ -1174,7 +1225,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // Store the rendered doc behind an opaque token; the editor loads it via the
       // GET route below (which serves it under a sandbox CSP). `html` is still
       // returned for API consumers/tests that want it directly.
-      const token = previewStore.put(html, { orgId: ctx.orgId, projectId: project.id, userId: ctx.userId });
+      const token = previewStore.put(html, { projectId: project.id, userId: ctx.userId });
       return reply.send({ html, token });
     },
   );
@@ -1198,7 +1249,6 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         return reply.code(404).type('text/html').send('<!doctype html><title>Preview expired</title>');
       }
       const html = previewStore.get(req.params.token, {
-        orgId: ctx.orgId,
         projectId: project.id,
         userId: ctx.userId,
       });
@@ -1615,9 +1665,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     userOver: boolean;
   }> {
     const since = startOfMonthUTC(new Date());
-    const orgUsed = aiQuota.orgMonthlyTokens ? await aiUsageRepo.tokensSince(ctx.orgId, since) : 0;
+    // `orgMonthlyTokens` is now the PLATFORM-wide cap (global usage); `userMonthlyTokens` the
+    // per-user cap. The org dimension is gone — there is one platform budget.
+    const orgUsed = aiQuota.orgMonthlyTokens ? await aiUsageRepo.tokensSince(since) : 0;
     const userUsed = aiQuota.userMonthlyTokens
-      ? await aiUsageRepo.tokensSince(ctx.orgId, since, ctx.userId)
+      ? await aiUsageRepo.tokensSince(since, ctx.userId)
       : 0;
     return {
       orgUsed,
@@ -1658,7 +1710,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           ? 'Generate Sitewright page content as ONE JSON object with the block-tree shape {id,type,props?,children?}. Output ONLY JSON — no prose, no code fences. Use semantic blocks; never inline styles.'
           : 'You are a concise corporate-website copywriter. Output plain text only — no markdown.';
       const completion = await aiProvider.complete({ system, prompt: body.instruction });
-      await aiUsageRepo.record(ctx.orgId, ctx.userId, ctx.projectId, completion.model, completion.usage);
+      await aiUsageRepo.record(ctx.userId, ctx.projectId, completion.model, completion.usage);
 
       let result: { text: string } | { node: unknown } = { text: completion.text };
       if (body.target === 'blocks') {
@@ -1677,15 +1729,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     },
   );
 
-  // Month-to-date AI usage + limits (for a usage dashboard). Any org member may read.
+  // Month-to-date AI usage + limits (for a usage dashboard). Any signed-in user may read their own
+  // usage + the platform total. `:orgId` is vestigial (PR1 compat).
   app.get<{ Params: { orgId: string } }>('/orgs/:orgId/ai/usage', async (req, reply) => {
     const userId = await requireUserId(req);
-    const tenant = await tenantContext(db, userId, req.params.orgId);
     const since = startOfMonthUTC(new Date());
     // Both queries always run (unlike the generate path, which short-circuits
     // when no cap is set): the dashboard reports actual usage even with no cap.
-    const orgUsed = await aiUsageRepo.tokensSince(tenant.orgId, since);
-    const userUsed = await aiUsageRepo.tokensSince(tenant.orgId, since, userId);
+    const orgUsed = await aiUsageRepo.tokensSince(since);
+    const userUsed = await aiUsageRepo.tokensSince(since, userId);
     return reply.send({
       enabled: Boolean(aiProvider),
       period: 'month',
@@ -1820,7 +1872,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // Mint a previewStore token so the editor loads the doc via an iframe `src` (served under an
         // opaque-origin `sandbox` CSP) instead of `srcDoc` (which inherits the editor's own CSP).
         // `html` is still returned for API consumers/tests.
-        const token = previewStore.put(html, { orgId: ctx.orgId, projectId: project.id, userId: ctx.userId });
+        const token = previewStore.put(html, { projectId: project.id, userId: ctx.userId });
         return reply.send({ html, token });
       } catch (err) {
         // Infra (worker/timeout) → 503; a template validation/compile/render error → 400.

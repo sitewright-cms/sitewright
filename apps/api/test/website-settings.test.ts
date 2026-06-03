@@ -19,6 +19,7 @@ describe('website settings → publish', () => {
   let harness: Harness;
   let client: TestClient;
   let projectId: string;
+  const slug = 'classcar';
   let publishRoot: string;
   let mediaRoot: string;
 
@@ -27,7 +28,7 @@ describe('website settings → publish', () => {
     mediaRoot = await mkdtemp(join(tmpdir(), 'sw-website-media-'));
     harness = await makeHarness({ publishRoot, mediaRoot });
     client = await harness.signup();
-    projectId = await client.createProject('ClassCar', 'classcar');
+    projectId = await client.createProject('ClassCar', slug);
   });
 
   afterEach(async () => {
@@ -50,7 +51,7 @@ describe('website settings → publish', () => {
   async function publishAndFetchHome(): Promise<string> {
     const pub = await client.post(`${client.project(projectId).base}/publish`);
     expect(pub.statusCode).toBe(200);
-    const res = await client.get(`/sites/${projectId}/index.html`);
+    const res = await client.get(`/sites/${slug}/index.html`);
     expect(res.statusCode).toBe(200);
     return res.body;
   }

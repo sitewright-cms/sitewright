@@ -11,6 +11,7 @@ describe('icon block → publish', () => {
   let harness: Harness;
   let client: TestClient;
   let projectId: string;
+  const slug = 'site';
   let publishRoot: string;
   let mediaRoot: string;
 
@@ -19,7 +20,7 @@ describe('icon block → publish', () => {
     mediaRoot = await mkdtemp(join(tmpdir(), 'sw-icon-media-'));
     harness = await makeHarness({ publishRoot, mediaRoot });
     client = await harness.signup();
-    projectId = await client.createProject('Site', 'site');
+    projectId = await client.createProject('Site', slug);
   });
 
   afterEach(async () => {
@@ -43,7 +44,7 @@ describe('icon block → publish', () => {
     expect((await proj.putContent('page', 'home', page)).statusCode).toBe(200);
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
 
-    const res = await client.get(`/sites/${projectId}/index.html`);
+    const res = await client.get(`/sites/${slug}/index.html`);
     expect(res.statusCode).toBe(200);
     expect(res.body).toContain('<svg data-sw-block="Icon"');
     expect(res.body).toContain('width="20"');
@@ -70,7 +71,7 @@ describe('icon block → publish', () => {
     expect((await proj.putContent('page', 'home', page)).statusCode).toBe(200);
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
 
-    const res = await client.get(`/sites/${projectId}/index.html`);
+    const res = await client.get(`/sites/${slug}/index.html`);
     expect(res.statusCode).toBe(200);
     // GitHub icon: fill-based, themeable (currentColor), titled for a11y.
     expect(res.body).toContain('aria-label="GitHub"');

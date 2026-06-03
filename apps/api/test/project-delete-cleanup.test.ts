@@ -39,6 +39,7 @@ describe('project delete — on-disk cleanup', () => {
   let harness: Harness;
   let client: TestClient;
   let projectId: string;
+  const slug = 'site';
   let publishRoot: string;
   let mediaRoot: string;
 
@@ -47,7 +48,7 @@ describe('project delete — on-disk cleanup', () => {
     mediaRoot = await mkdtemp(join(tmpdir(), 'sw-del-media-'));
     harness = await makeHarness({ publishRoot, mediaRoot });
     client = await harness.signup();
-    projectId = await client.createProject('Site', 'site');
+    projectId = await client.createProject('Site', slug);
   });
 
   afterEach(async () => {
@@ -59,10 +60,10 @@ describe('project delete — on-disk cleanup', () => {
   it('removes the published-site and media directories when the project is deleted', async () => {
     const proj = client.project(projectId);
 
-    // Publish a site (creates publishRoot/<projectId>/) ...
+    // Publish a site (creates publishRoot/<slug>/) ...
     expect((await proj.putContent('page', 'home', page)).statusCode).toBe(200);
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
-    expect((await client.get(`/sites/${projectId}/index.html`)).statusCode).toBe(200);
+    expect((await client.get(`/sites/${slug}/index.html`)).statusCode).toBe(200);
 
     // ... and upload media (creates mediaRoot/<projectId>/<assetId>/).
     const up = await client.inject({ method: 'POST', url: `${proj.base}/media`, ...multipart('a.png', 'image/png', PNG_1X1) });
@@ -70,18 +71,19 @@ describe('project delete — on-disk cleanup', () => {
     const asset = (up.json() as { item: { id: string; url: string } }).item;
     expect((await client.get(asset.url)).statusCode).toBe(200);
 
-    // Positive proof: both directories exist on disk before delete.
-    expect(existsSync(join(publishRoot, projectId))).toBe(true);
+    // Positive proof: both directories exist on disk before delete (published
+    // site keyed by slug; media keyed by project id).
+    expect(existsSync(join(publishRoot, slug))).toBe(true);
     expect(existsSync(join(mediaRoot, projectId))).toBe(true);
 
     // Delete the project.
     expect((await client.del(`/projects/${projectId}`)).statusCode).toBe(204);
 
     // The on-disk directories are gone (not merely 404 at the HTTP layer)...
-    expect(existsSync(join(publishRoot, projectId))).toBe(false);
+    expect(existsSync(join(publishRoot, slug))).toBe(false);
     expect(existsSync(join(mediaRoot, projectId))).toBe(false);
     // ... and the served URLs 404.
-    expect((await client.get(`/sites/${projectId}/index.html`)).statusCode).toBe(404);
+    expect((await client.get(`/sites/${slug}/index.html`)).statusCode).toBe(404);
     expect((await client.get(asset.url)).statusCode).toBe(404);
   });
 });

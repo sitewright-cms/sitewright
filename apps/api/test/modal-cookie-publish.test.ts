@@ -12,6 +12,7 @@ describe('Modal + CookieConsent → publish + preview', () => {
   let harness: Harness;
   let client: TestClient;
   let projectId: string;
+  const slug = 'site';
   let publishRoot: string;
   let mediaRoot: string;
 
@@ -20,7 +21,7 @@ describe('Modal + CookieConsent → publish + preview', () => {
     mediaRoot = await mkdtemp(join(tmpdir(), 'sw-mc-media-'));
     harness = await makeHarness({ publishRoot, mediaRoot });
     client = await harness.signup();
-    projectId = await client.createProject('Site', 'site');
+    projectId = await client.createProject('Site', slug);
   });
 
   afterEach(async () => {
@@ -45,13 +46,13 @@ describe('Modal + CookieConsent → publish + preview', () => {
     expect((await proj.putContent('page', 'home', page)).statusCode).toBe(200);
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
 
-    const index = await client.get(`/sites/${projectId}/index.html`);
+    const index = await client.get(`/sites/${slug}/index.html`);
     expect(index.body).toContain('data-sw-component="modal"');
     expect(index.body).toContain('<dialog data-sw-part="dialog"');
     expect(index.body).toContain('::backdrop'); // modal CSS inlined
     expect(index.body).toContain('<script defer src="components.js"></script>');
 
-    const bundle = await client.get(`/sites/${projectId}/components.js`);
+    const bundle = await client.get(`/sites/${slug}/components.js`);
     expect(bundle.statusCode).toBe(200);
     expect(bundle.body).toContain('showModal'); // native dialog behavior
 
@@ -75,13 +76,13 @@ describe('Modal + CookieConsent → publish + preview', () => {
     expect((await proj.putContent('page', 'home', page)).statusCode).toBe(200);
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
 
-    const index = await client.get(`/sites/${projectId}/index.html`);
+    const index = await client.get(`/sites/${slug}/index.html`);
     expect(index.body).toContain('data-sw-component="cookie-consent"');
     expect(index.body).toMatch(/<div data-sw-block="CookieConsent"[^>]*hidden>/); // hidden until consented
     expect(index.body).toContain('We use cookies.');
     expect(index.body).toContain('href="privacy"'); // policy link
 
-    const bundle = await client.get(`/sites/${projectId}/components.js`);
+    const bundle = await client.get(`/sites/${slug}/components.js`);
     expect(bundle.body).toContain('localStorage'); // remembers dismissal
   });
 });

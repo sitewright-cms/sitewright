@@ -19,7 +19,7 @@ const ASSET_CONTENT_TYPES = new Map<string, string>([
 ]);
 
 /**
- * Locates and serves published static sites under `<root>/<projectId>/`. All
+ * Locates and serves published static sites under `<root>/<slug>/`. All
  * inputs are charset-validated and resolved paths are confined to the project's
  * site directory; only `.html` files are served (binaries go through /media).
  */
@@ -27,22 +27,22 @@ export class PublishStore {
   constructor(private readonly root: string) {}
 
   /** The output directory for a project's site (also the build target). */
-  dirFor(projectId: string): string {
-    if (!SEGMENT.test(projectId)) throw new Error('invalid project id');
-    return join(this.root, projectId);
+  dirFor(slug: string): string {
+    if (!SEGMENT.test(slug)) throw new Error('invalid site slug');
+    return join(this.root, slug);
   }
 
   /** Deletes a project's published-site directory (idempotent). Used on project delete. */
-  async removeProject(projectId: string): Promise<void> {
-    // dirFor validates the projectId charset and confines the path to `root`.
-    await rm(this.dirFor(projectId), { recursive: true, force: true });
+  async removeProject(slug: string): Promise<void> {
+    // dirFor validates the slug charset and confines the path to `root`.
+    await rm(this.dirFor(slug), { recursive: true, force: true });
   }
 
   /** Reads the current release manifest, or null if the project was never published. */
-  async readRelease(projectId: string): Promise<ReleaseManifest | null> {
+  async readRelease(slug: string): Promise<ReleaseManifest | null> {
     try {
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- validated, confined path
-      const raw = await readFile(join(this.dirFor(projectId), 'release.json'), 'utf8');
+      const raw = await readFile(join(this.dirFor(slug), 'release.json'), 'utf8');
       return JSON.parse(raw) as ReleaseManifest;
     } catch {
       return null;
@@ -50,8 +50,8 @@ export class PublishStore {
   }
 
   /** Maps a request path to an HTML file inside the site (mirrors the builder's URL→file map). */
-  resolveHtml(projectId: string, requestPath: string): string {
-    const dir = resolve(this.dirFor(projectId));
+  resolveHtml(slug: string, requestPath: string): string {
+    const dir = resolve(this.dirFor(slug));
     let rel = requestPath.replace(/^\/+/, '').replace(/\/+$/, '');
     // Defense-in-depth: reject obvious traversal segments before resolving (the
     // confinement check below is the authoritative guard).
@@ -67,10 +67,10 @@ export class PublishStore {
   }
 
   /** Reads a published HTML page, or null if absent / out of bounds. */
-  async readHtml(projectId: string, requestPath: string): Promise<string | null> {
+  async readHtml(slug: string, requestPath: string): Promise<string | null> {
     try {
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- validated + confined above
-      return await readFile(this.resolveHtml(projectId, requestPath), 'utf8');
+      return await readFile(this.resolveHtml(slug, requestPath), 'utf8');
     } catch {
       return null;
     }
@@ -82,12 +82,12 @@ export class PublishStore {
    * asset, is absent, or is out of bounds. The path is confined to the site dir.
    */
   async readAsset(
-    projectId: string,
+    slug: string,
     requestPath: string,
   ): Promise<{ body: string; contentType: string } | null> {
     const contentType = ASSET_CONTENT_TYPES.get(extname(requestPath).toLowerCase());
     if (!contentType) return null;
-    const dir = resolve(this.dirFor(projectId));
+    const dir = resolve(this.dirFor(slug));
     const rel = requestPath.replace(/^\/+/, '').replace(/\/+$/, '');
     // The builder writes these assets ONLY at the site root (styles.css /
     // components.js). Restrict serving to root-level files so no future write path

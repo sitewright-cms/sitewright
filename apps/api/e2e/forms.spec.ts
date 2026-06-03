@@ -14,7 +14,8 @@ test('author → publish → public submit → inbox', async ({ playwright, base
     data: { email: `forms-${stamp}@e2e.test`, password: 'pw-secret-1' },
   });
   expect(reg.status()).toBe(201);
-  const proj = await api.post(`/projects`, { data: { name: 'Forms Site', slug: `forms-${stamp}` } });
+  const slug = `forms-${stamp}`;
+  const proj = await api.post(`/projects`, { data: { name: 'Forms Site', slug } });
   const projectId = (await proj.json()).project.id as string;
   const base = `/projects/${projectId}`;
 
@@ -47,7 +48,7 @@ test('author → publish → public submit → inbox', async ({ playwright, base
 
   // The exported page carries the JS-only form pointing at the platform endpoint;
   // the recipient is NOT in the HTML.
-  const exported = await api.get(`/sites/${projectId}/contact/`);
+  const exported = await api.get(`/sites/${slug}/contact/`);
   expect(exported.status()).toBe(200);
   const html = await exported.text();
   expect(html).toContain('data-sw-component="form"');

@@ -21,12 +21,13 @@ let publishRoot: string;
 let client: TestClient;
 let project: ProjectClient;
 let base: string;
+const slug = 'collection-site';
 
 beforeEach(async () => {
   publishRoot = await mkdtemp(join(tmpdir(), 'sw-collection-'));
   harness = await makeHarness({ publishRoot });
   client = await harness.signup();
-  const projectId = await client.createProject();
+  const projectId = await client.createProject('Site', slug);
   project = client.project(projectId);
   base = project.base;
 });
@@ -85,9 +86,9 @@ async function publish(): Promise<{ release: { routes: number; bytes: number }; 
   return res.json() as { release: { routes: number; bytes: number }; url: string };
 }
 
-/** Fetches an exported HTML file from the public serve route. */
-function served(projectId: string, path: string) {
-  return harness.app.inject({ method: 'GET', url: `/sites/${projectId}/${path}` });
+/** Fetches an exported HTML file from the public serve route (keyed by slug). */
+function served(siteSlug: string, path: string) {
+  return harness.app.inject({ method: 'GET', url: `/sites/${siteSlug}/${path}` });
 }
 
 describe('collection page routing through publish', () => {
@@ -109,14 +110,14 @@ describe('collection page routing through publish', () => {
     expect(entrySlug(published1, 'slug')).toBe('alpha');
     expect(entrySlug(published2, 'slug')).toBe('beta');
 
-    const alpha = await served(project.projectId, 'products/alpha/');
-    const beta = await served(project.projectId, 'products/beta/');
+    const alpha = await served(slug, 'products/alpha/');
+    const beta = await served(slug, 'products/beta/');
     expect(alpha.statusCode).toBe(200);
     expect(beta.statusCode).toBe(200);
     expect(alpha.headers['content-type']).toContain('text/html');
 
     // The DRAFT entry produces NO page (drafts are excluded from a published build).
-    const gamma = await served(project.projectId, `products/${entrySlug(draft, 'slug')}/`);
+    const gamma = await served(slug, `products/${entrySlug(draft, 'slug')}/`);
     expect(gamma.statusCode).toBe(404);
   });
 
@@ -129,8 +130,8 @@ describe('collection page routing through publish', () => {
     await project.putContent('page', collectionPage.id, collectionPage);
     await publish();
 
-    const alphaHtml = (await served(project.projectId, 'products/alpha/')).body;
-    const betaHtml = (await served(project.projectId, 'products/beta/')).body;
+    const alphaHtml = (await served(slug, 'products/alpha/')).body;
+    const betaHtml = (await served(slug, 'products/beta/')).body;
 
     // Each generated page renders ITS OWN entry's bound `title` field.
     expect(alphaHtml).toContain('Alpha Widget');
@@ -164,9 +165,9 @@ describe('collection page routing through publish', () => {
     expect((status.json() as { release: { routes: number } }).release.routes).toBe(3);
 
     // The static home and both expanded routes are all servable.
-    expect((await served(project.projectId, '')).statusCode).toBe(200);
-    expect((await served(project.projectId, 'products/alpha/')).statusCode).toBe(200);
-    expect((await served(project.projectId, 'products/beta/')).statusCode).toBe(200);
+    expect((await served(slug, '')).statusCode).toBe(200);
+    expect((await served(slug, 'products/alpha/')).statusCode).toBe(200);
+    expect((await served(slug, 'products/beta/')).statusCode).toBe(200);
   });
 
   it('rejects a collection page whose collection/[param] definition is inconsistent (400)', async () => {
@@ -215,7 +216,7 @@ describe('collection page routing through publish', () => {
     const { release } = await publish();
     // Only the static home page renders; the unknown-dataset collection expands to nothing.
     expect(release.routes).toBe(1);
-    expect((await served(project.projectId, '')).statusCode).toBe(200);
+    expect((await served(slug, '')).statusCode).toBe(200);
   });
 
   it('handles entries that would collide on slug deterministically (entrySlug falls back to entry id)', async () => {
@@ -239,8 +240,8 @@ describe('collection page routing through publish', () => {
     const { release } = await publish();
     expect(release.routes).toBe(2);
 
-    const pageA = await served(project.projectId, 'products/collide-a/');
-    const pageB = await served(project.projectId, 'products/collide-b/');
+    const pageA = await served(slug, 'products/collide-a/');
+    const pageB = await served(slug, 'products/collide-b/');
     expect(pageA.statusCode).toBe(200);
     expect(pageB.statusCode).toBe(200);
     expect(pageA.body).toContain('First');

@@ -11,6 +11,7 @@ describe('Accordion + Lightbox → publish', () => {
   let harness: Harness;
   let client: TestClient;
   let projectId: string;
+  const slug = 'site';
   let publishRoot: string;
   let mediaRoot: string;
 
@@ -19,7 +20,7 @@ describe('Accordion + Lightbox → publish', () => {
     mediaRoot = await mkdtemp(join(tmpdir(), 'sw-ga-media-'));
     harness = await makeHarness({ publishRoot, mediaRoot });
     client = await harness.signup();
-    projectId = await client.createProject('Site', 'site');
+    projectId = await client.createProject('Site', slug);
   });
 
   afterEach(async () => {
@@ -50,14 +51,14 @@ describe('Accordion + Lightbox → publish', () => {
     expect((await proj.putContent('page', 'home', page)).statusCode).toBe(200);
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
 
-    const index = await client.get(`/sites/${projectId}/index.html`);
+    const index = await client.get(`/sites/${slug}/index.html`);
     expect(index.statusCode).toBe(200);
     expect(index.body).toContain('<details data-sw-block="AccordionItem" open>');
     expect(index.body).toContain('<summary>What?</summary>');
     expect(index.body).toContain('[data-sw-block="AccordionItem"]'); // component CSS inlined
     // No JS bundle for a zero-JS component.
     expect(index.body).not.toContain('<script defer');
-    expect((await client.get(`/sites/${projectId}/components.js`)).statusCode).toBe(404);
+    expect((await client.get(`/sites/${slug}/components.js`)).statusCode).toBe(404);
   });
 
   it('Lightbox publishes a thumbnail grid (PE anchors) + a served components.js overlay', async () => {
@@ -79,7 +80,7 @@ describe('Accordion + Lightbox → publish', () => {
     expect((await proj.putContent('page', 'home', page)).statusCode).toBe(200);
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
 
-    const index = await client.get(`/sites/${projectId}/index.html`);
+    const index = await client.get(`/sites/${slug}/index.html`);
     expect(index.body).toContain('data-sw-component="lightbox"');
     // PE fallback: each item is an anchor to the full image (works with no JS).
     expect(index.body).toContain('data-sw-part="item" href="full1.jpg"');
@@ -87,7 +88,7 @@ describe('Accordion + Lightbox → publish', () => {
     expect(index.body).toContain('[data-sw-part="overlay"]'); // component CSS inlined
     expect(index.body).toContain('<script defer src="components.js"></script>');
 
-    const bundle = await client.get(`/sites/${projectId}/components.js`);
+    const bundle = await client.get(`/sites/${slug}/components.js`);
     expect(bundle.statusCode).toBe(200);
     expect(bundle.headers['content-type']).toContain('javascript');
     expect(bundle.body).toContain('data-sw-component="lightbox"');

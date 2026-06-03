@@ -26,6 +26,7 @@ describe('auto-nav → publish', () => {
   let harness: Harness;
   let client: TestClient;
   let projectId: string;
+  const slug = 'site';
   let publishRoot: string;
   let mediaRoot: string;
 
@@ -34,7 +35,7 @@ describe('auto-nav → publish', () => {
     mediaRoot = await mkdtemp(join(tmpdir(), 'sw-nav-media-'));
     harness = await makeHarness({ publishRoot, mediaRoot });
     client = await harness.signup();
-    projectId = await client.createProject('Site', 'site');
+    projectId = await client.createProject('Site', slug);
   });
 
   afterEach(async () => {
@@ -44,7 +45,7 @@ describe('auto-nav → publish', () => {
   });
 
   async function fetchSite(path: string): Promise<string> {
-    const res = await client.get(`/sites/${projectId}/${path}`);
+    const res = await client.get(`/sites/${slug}/${path}`);
     expect(res.statusCode).toBe(200);
     return res.body;
   }
@@ -112,7 +113,7 @@ describe('auto-nav → publish', () => {
     expect(home).not.toContain('>Secret<'); // draft excluded from the menu
     expect(home).not.toContain('href="secret"');
     // No route is generated for the draft page.
-    expect((await client.get(`/sites/${projectId}/secret/index.html`)).statusCode).toBe(404);
+    expect((await client.get(`/sites/${slug}/secret/index.html`)).statusCode).toBe(404);
   });
 
   it('omits pages without nav placement from the menu', async () => {

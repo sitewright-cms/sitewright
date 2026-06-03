@@ -24,7 +24,8 @@ test('hcaptcha: configured keys render the widget and gate submissions', async (
   expect(settings.status()).toBe(200);
 
   // A project with a form that requires hCaptcha + a page embedding it.
-  const proj = await admin.post(`/projects`, { data: { name: 'HC Site', slug: `hc-${stamp}` } });
+  const slug = `hc-${stamp}`;
+  const proj = await admin.post(`/projects`, { data: { name: 'HC Site', slug } });
   const projectId = (await proj.json()).project.id as string;
   const base = `/projects/${projectId}`;
   await admin.put(`${base}/content/form/contact`, {
@@ -36,7 +37,7 @@ test('hcaptcha: configured keys render the widget and gate submissions', async (
   expect((await admin.post(`${base}/publish`)).status()).toBe(200);
 
   // The exported page carries the hCaptcha widget with the configured site key.
-  const html = await (await admin.get(`/sites/${projectId}/contact/`)).text();
+  const html = await (await admin.get(`/sites/${slug}/contact/`)).text();
   expect(html).toContain('class="h-captcha"');
   expect(html).toContain(`data-sitekey="hcsite-${stamp}"`);
 

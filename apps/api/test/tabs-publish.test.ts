@@ -11,6 +11,7 @@ describe('Tabs component → publish + preview', () => {
   let harness: Harness;
   let client: TestClient;
   let projectId: string;
+  const slug = 'site';
   let publishRoot: string;
   let mediaRoot: string;
 
@@ -33,7 +34,7 @@ describe('Tabs component → publish + preview', () => {
     mediaRoot = await mkdtemp(join(tmpdir(), 'sw-tabs-media-'));
     harness = await makeHarness({ publishRoot, mediaRoot });
     client = await harness.signup();
-    projectId = await client.createProject('Site', 'site');
+    projectId = await client.createProject('Site', slug);
   });
 
   afterEach(async () => {
@@ -47,14 +48,14 @@ describe('Tabs component → publish + preview', () => {
     expect((await proj.putContent('page', 'home', page)).statusCode).toBe(200);
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
 
-    const index = await client.get(`/sites/${projectId}/index.html`);
+    const index = await client.get(`/sites/${slug}/index.html`);
     expect(index.body).toContain('data-sw-component="tabs"');
     expect(index.body).toContain('data-sw-title="Overview"');
     expect(index.body).toContain('Intro'); // panel content present (PE: visible without JS)
     expect(index.body).toContain('Plans');
     expect(index.body).toContain('<script defer src="components.js"></script>');
 
-    const bundle = await client.get(`/sites/${projectId}/components.js`);
+    const bundle = await client.get(`/sites/${slug}/components.js`);
     expect(bundle.statusCode).toBe(200);
     expect(bundle.body).toContain('data-sw-component="tabs"'); // tabs enhancer present
 

@@ -36,13 +36,14 @@ let mediaRoot: string;
 let client: TestClient;
 let project: ProjectClient;
 let base: string;
+const slug = 'binding-site';
 
 beforeEach(async () => {
   publishRoot = await mkdtemp(join(tmpdir(), 'sw-binding-pub-'));
   mediaRoot = await mkdtemp(join(tmpdir(), 'sw-binding-media-'));
   harness = await makeHarness({ publishRoot, mediaRoot });
   client = await harness.signup();
-  const projectId = await client.createProject();
+  const projectId = await client.createProject('Site', slug);
   project = client.project(projectId);
   base = project.base;
 });
@@ -81,9 +82,9 @@ async function publish(): Promise<{ release: { routes: number; bytes: number }; 
   return res.json() as { release: { routes: number; bytes: number }; url: string };
 }
 
-/** Fetches an exported HTML file from the public serve route. */
+/** Fetches an exported HTML file from the public serve route (keyed by slug). */
 function served(path: string) {
-  return harness.app.inject({ method: 'GET', url: `/sites/${project.projectId}/${path}` });
+  return harness.app.inject({ method: 'GET', url: `/sites/${slug}/${path}` });
 }
 
 /** Counts non-overlapping occurrences of `needle` in `haystack`. */

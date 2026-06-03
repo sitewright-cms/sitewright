@@ -913,6 +913,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const userId = await requireUserId(req);
       const role = await resolveProjectRole(db, userId, req.params.id);
       if (role !== 'owner') throw new ForbiddenError('insufficient role to delete this project');
+      // Capture the slug BEFORE the row is gone — the published site directory is keyed by slug.
+      const project = await projects.get(req.params.id);
       await projects.remove(req.params.id);
       // Best-effort on-disk cleanup: the published site + media directories have no
       // DB-level cascade. A failure here must NOT fail the delete (the rows are
@@ -924,7 +926,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           { what, errCode: (err as NodeJS.ErrnoException).code, errMsg: err instanceof Error ? err.message : String(err) },
           'project asset cleanup failed on delete',
         );
-      await publishStore?.removeProject(req.params.id).catch(onCleanupError('publish'));
+      // Published site is keyed by slug; media storage stays keyed by project id.
+      await publishStore?.removeProject(project.slug).catch(onCleanupError('publish'));
       await mediaStorage?.removeProject(req.params.id).catch(onCleanupError('media'));
       return reply.code(204).send();
     },
@@ -1499,7 +1502,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             ((await contentRepo.list(ctx, 'snippet')) as Snippet[]).map((s) => [s.name, s.source]),
           );
           const release = await buildRunner.run({
-            outDir: store.dirFor(project.id),
+            outDir: store.dirFor(project.slug),
             bundle,
             publishedAt: new Date().toISOString(),
             media,
@@ -1512,7 +1515,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
               ? (assetId, file) => mediaStorage.read(project.id, assetId, file)
               : undefined,
           });
-          return reply.send({ release, url: `/sites/${project.id}/` });
+          return reply.send({ release, url: `/sites/${project.slug}/` });
         } catch (err) {
           // A bad route graph (duplicate slugs, unsafe segment) is author-correctable.
           if (err instanceof PublishError) {
@@ -1529,7 +1532,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       '/projects/:projectId/publish',
       async (req, reply) => {
         const { project } = await resolveProject(req, 'content:read');
-        return reply.send({ release: await store.readRelease(project.id), url: `/sites/${project.id}/` });
+        return reply.send({ release: await store.readRelease(project.slug), url: `/sites/${project.slug}/` });
       },
     );
 
@@ -1540,10 +1543,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       '/projects/:projectId/publish/archive',
       async (req, reply) => {
         const { project } = await resolveProject(req, 'content:read');
-        if ((await store.readRelease(project.id)) === null) {
+        if ((await store.readRelease(project.slug)) === null) {
           return reply.code(409).send({ error: 'publish the site before exporting' });
         }
-        const zip = await archiveSite(store.dirFor(project.id));
+        const zip = await archiveSite(store.dirFor(project.slug));
         return reply
           .header('content-disposition', `attachment; filename="${project.slug}-site.zip"`)
           .type('application/zip')
@@ -1561,7 +1564,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         if (!WRITE_ROLES.has(ctx.role)) {
           return reply.code(403).send({ error: 'insufficient role for this operation' });
         }
-        if ((await store.readRelease(project.id)) === null) {
+        if ((await store.readRelease(project.slug)) === null) {
           return reply.code(409).send({ error: 'publish the site before deploying' });
         }
         const config = DeployConfigSchema.parse(req.body);
@@ -1571,7 +1574,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         }
         activeDeploys.add(project.id);
         try {
-          const result = await deploySite(store.dirFor(project.id), config);
+          const result = await deploySite(store.dirFor(project.slug), config);
           return reply.send({ deployed: result });
         } catch (err) {
           // Connection/auth/transfer failure against the operator's target server.
@@ -1593,13 +1596,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // Public serving of the published static site (path-safe). HTML pages plus
     // the allowlisted text assets emitted by the builder (the compiled utility
     // sheet); binaries are served via /media.
-    app.get<{ Params: { projectId: string; '*': string } }>(
-      '/sites/:projectId/*',
+    app.get<{ Params: { slug: string; '*': string } }>(
+      '/sites/:slug/*',
       async (req, reply) => {
         const path = req.params['*'] ?? '';
-        const asset = await store.readAsset(req.params.projectId, path);
+        const asset = await store.readAsset(req.params.slug, path);
         if (asset !== null) return reply.type(asset.contentType).send(asset.body);
-        const html = await store.readHtml(req.params.projectId, path);
+        const html = await store.readHtml(req.params.slug, path);
         if (html === null) return reply.code(404).type('text/html').send('<h1>404 — not published</h1>');
         return reply.type('text/html').send(html);
       },

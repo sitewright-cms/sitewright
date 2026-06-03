@@ -19,7 +19,8 @@ test('contactPhp: enabled mode publishes a contact.php and points the form at it
   // Enable the contactPhp mode instance-wide.
   expect((await admin.put('/admin/settings', { data: { formModes: { contactPhp: true } } })).status()).toBe(200);
 
-  const proj = await admin.post(`/projects`, { data: { name: 'CP Site', slug: `cp-${stamp}` } });
+  const slug = `cp-${stamp}`;
+  const proj = await admin.post(`/projects`, { data: { name: 'CP Site', slug } });
   const projectId = (await proj.json()).project.id as string;
   const base = `/projects/${projectId}`;
 
@@ -37,13 +38,13 @@ test('contactPhp: enabled mode publishes a contact.php and points the form at it
   expect((await admin.post(`${base}/publish`)).status()).toBe(200);
 
   // The exported page posts to contact.php (root-relative); the recipient is NOT in the HTML.
-  const html = await (await admin.get(`/sites/${projectId}/contact/`)).text();
+  const html = await (await admin.get(`/sites/${slug}/contact/`)).text();
   expect(html).toContain('data-sw-endpoint="../contact.php"');
   expect(html).toContain('name="_form" value="contact"');
   expect(html).not.toContain('leads@acme.example');
 
   // contact.php is part of the export but NOT served over /sites (no executable PHP host here).
-  expect((await admin.get(`/sites/${projectId}/contact.php`)).status()).toBe(404);
+  expect((await admin.get(`/sites/${slug}/contact.php`)).status()).toBe(404);
 
   await admin.dispose();
 });

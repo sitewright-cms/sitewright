@@ -4,7 +4,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 const { publishStatus, publish, archiveUrl } = vi.hoisted(() => ({
   publishStatus: vi.fn(),
   publish: vi.fn(),
-  archiveUrl: vi.fn((_id: string) => '/projects/p/publish/archive'),
+  archiveUrl: vi.fn<(id: string) => string>(() => '/projects/p/publish/archive'),
 }));
 vi.mock('../src/api', () => ({
   api: {

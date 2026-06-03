@@ -45,11 +45,11 @@ async function seedAllKinds(a: TestClient, projectId: string): Promise<void> {
   expect((await proj.putContent('settings', 'settings', settings)).statusCode).toBe(200);
 }
 
-// Cross-tenant probes are sent to A's exact org/project path BUT with B's
-// session. They must be rejected either at the org gate (tenantContext →
-// ForbiddenError → 403, because B is not a member of A's org) or, when B uses
-// its own org with A's projectId, at the project gate (projects.get →
-// NotFoundError → 404). Either is acceptable isolation; we assert one of [403, 404].
+// Cross-tenant probes are sent to A's exact project path BUT with B's session. In the flat model B
+// is not a member of A's project, so the single access gate (resolveProjectRole → null) rejects
+// with 403. (A Bearer key bound to another project would 404 instead — that path is covered by the
+// API-key suite; these probes are session-based.) We assert one of [403, 404] to stay robust to the
+// per-route choice, but for a session probe the expected code is 403.
 const ISOLATION_CODES = [403, 404];
 
 describe('multi-tenant isolation + role enforcement (HTTP layer)', () => {

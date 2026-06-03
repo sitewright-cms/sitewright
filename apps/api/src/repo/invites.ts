@@ -11,7 +11,6 @@ const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 /** The role an invite can grant — a platform role (no project) or a project role (with a project). */
 export type InviteRole = PlatformRole | ProjectRole;
 const PLATFORM_ROLES = new Set<string>(['admin', 'developer']);
-const PROJECT_ROLES = new Set<string>(['owner', 'member']);
 
 export interface InviteView {
   id: string;
@@ -58,7 +57,10 @@ export async function createInvite(
   if (!email) throw new ConflictError('email is required');
 
   if (params.projectId) {
-    if (!PROJECT_ROLES.has(params.role)) throw new ConflictError('a project invite must grant owner|member');
+    // A project invite only ever grants `member`. The project's single `owner` is its client (set
+    // at creation / via membership management) — there is no "invite a co-owner" path, so the role
+    // is fixed here rather than trusted from the caller.
+    if (params.role !== 'member') throw new ConflictError('a project invite may only grant the member role');
     const [project] = await db.select({ id: projects.id }).from(projects).where(eq(projects.id, params.projectId));
     if (!project) throw new NotFoundError('project not found');
   } else {
@@ -102,11 +104,16 @@ export async function hasPendingInvite(db: Database, email: string): Promise<boo
   return rows.length > 0;
 }
 
-/** Pending invites: all platform invites, or a single project's (when `projectId` is given). Route-gated. */
+/**
+ * Pending (unaccepted, unexpired) invites: all platform invites, or a single project's (when
+ * `projectId` is given). Expired-but-unaccepted rows are excluded — they can't be acted on, so the
+ * management list shows only live invites. Route-gated.
+ */
 export async function listInvites(db: Database, opts: { projectId?: string } = {}): Promise<InviteView[]> {
+  const live = and(isNull(invites.acceptedAt), gt(invites.expiresAt, new Date()));
   const where = opts.projectId
-    ? and(isNull(invites.acceptedAt), eq(invites.projectId, opts.projectId))
-    : and(isNull(invites.acceptedAt), isNull(invites.projectId));
+    ? and(live, eq(invites.projectId, opts.projectId))
+    : and(live, isNull(invites.projectId));
   const rows = await db.select().from(invites).where(where);
   return rows.map(toView);
 }
@@ -213,6 +220,13 @@ export async function acceptInvite(
           role: invite.role as ProjectRole,
           createdAt: now,
         });
+      } else {
+        // Already a member — apply the (possibly upgraded) role so accepting a fresh invite is a
+        // true upsert, consistent with addProjectMember.
+        await tx
+          .update(projectMembers)
+          .set({ role: invite.role as ProjectRole })
+          .where(and(eq(projectMembers.userId, userId), eq(projectMembers.projectId, invite.projectId)));
       }
     } else {
       // Platform invite → set the user's platform role (admin|developer).

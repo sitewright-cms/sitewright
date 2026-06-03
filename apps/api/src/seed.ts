@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import type { Database } from './db/client.js';
 import { users } from './db/schema.js';
-import { registerAccount, addProjectMember } from './repo/accounts.js';
+import { registerAccount } from './repo/accounts.js';
 import { ProjectRepository } from './repo/projects.js';
 import { ContentRepository } from './repo/content.js';
 import { ProjectEventBus } from './events/bus.js';
@@ -47,8 +47,8 @@ export async function seedInstance({ db, adminEmail, adminPassword, log = () => 
   // owner so the project list + member management behave exactly as a user-created project.
   const projects = new ProjectRepository(db);
   const contentRepo = new ContentRepository(db, new ProjectEventBus());
-  const project = await projects.create({ name: 'Example Project', slug: 'example' });
-  await addProjectMember(db, userId, project.id, 'owner');
+  // Atomic create + owner membership (same invariant as the API create route).
+  const project = await projects.create({ name: 'Example Project', slug: 'example' }, userId);
   const ctx = { userId, projectId: project.id, role: 'owner' as const };
 
   await contentRepo.put(ctx, 'settings', 'settings', {

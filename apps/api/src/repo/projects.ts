@@ -35,8 +35,13 @@ export interface CreateProjectInput {
 export class ProjectRepository {
   constructor(private readonly db: Database) {}
 
-  /** Creates a project. Slug must be unique across the instance (there is one platform). */
-  async create(input: CreateProjectInput): Promise<Project> {
+  /**
+   * Creates a project. Slug must be unique across the instance (there is one platform). When
+   * `ownerUserId` is given, the project row and the creator's `owner` membership are written in ONE
+   * transaction — so a project never exists without an owner (the invariant every access gate
+   * relies on). Repo-layer tests that don't care about membership omit `ownerUserId`.
+   */
+  async create(input: CreateProjectInput, ownerUserId?: string): Promise<Project> {
     const duplicate = await this.db.select().from(projects).where(eq(projects.slug, input.slug));
     if (duplicate.length > 0) {
       throw new ConflictError('a project with this slug already exists');
@@ -47,7 +52,20 @@ export class ProjectRepository {
       slug: input.slug,
       createdAt: new Date(),
     };
-    await this.db.insert(projects).values(project);
+    if (ownerUserId === undefined) {
+      await this.db.insert(projects).values(project);
+      return project;
+    }
+    await this.db.transaction(async (tx) => {
+      await tx.insert(projects).values(project);
+      await tx.insert(projectMembers).values({
+        id: randomUUID(),
+        userId: ownerUserId,
+        projectId: project.id,
+        role: 'owner',
+        createdAt: project.createdAt,
+      });
+    });
     return project;
   }
 

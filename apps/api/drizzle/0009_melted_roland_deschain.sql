@@ -1,3 +1,7 @@
+UPDATE `api_keys` SET `role` = 'owner' WHERE `role` = 'admin';--> statement-breakpoint
+UPDATE `oauth_auth_codes` SET `role` = 'owner' WHERE `role` = 'admin';--> statement-breakpoint
+UPDATE `oauth_refresh_tokens` SET `role` = 'owner' WHERE `role` = 'admin';--> statement-breakpoint
+UPDATE `oauth_device_codes` SET `role` = 'owner' WHERE `role` = 'admin';--> statement-breakpoint
 DROP TABLE `memberships`;--> statement-breakpoint
 DROP TABLE `organizations`;--> statement-breakpoint
 PRAGMA foreign_keys=OFF;--> statement-breakpoint

@@ -47,7 +47,6 @@ import { GlobalSmtpMailer, ProjectSmtpMailer, type SubmissionMailer, type Projec
 import { HttpHcaptchaVerifier, type HcaptchaVerifier } from '../mail/hcaptcha.js';
 import { createSession, revokeSession, validateSession } from '../auth/sessions.js';
 import {
-  addProjectMember,
   getPlatformRole,
   getUserEmail,
   listPlatformUsers,
@@ -838,6 +837,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     '/orgs/:orgId/invites/:id',
     { config: rl(20) },
     async (req, reply) => {
+      // Require an authenticated session BEFORE the lookup, so an anonymous caller can't probe
+      // whether an invite id exists (404 vs 401). Revoking is session-only anyway.
+      if (bearerToken(req) !== undefined) {
+        throw new ForbiddenError('this operation requires an interactive session');
+      }
+      await requireUserId(req);
       const invite = await getInvite(db, req.params.id);
       if (!invite) throw new NotFoundError('invite not found');
       // A project invite is revocable by that project's owner (or a platform admin); a platform
@@ -895,15 +900,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   );
 
   app.post<{ Params: { orgId: string } }>('/orgs/:orgId/projects', async (req, reply) => {
-    // Any authenticated user may create a project and becomes its owner. (Curated-platform policy —
-    // restricting creation to staff — is a route-level decision deferred to a later PR.)
-    const userId = await requireUserId(req);
+    // Session-only (a non-interactive token must not create projects); check the bearer first for
+    // consistency with the other management gates. Any authenticated user may create a project and
+    // becomes its owner — restricting creation to platform staff is deferred to a later PR
+    // (production registration is invitation-only by default, so this is not openly exploitable).
     if (bearerToken(req) !== undefined) {
       throw new ForbiddenError('this operation requires an interactive session');
     }
+    const userId = await requireUserId(req);
     const body = CreateProjectBody.parse(req.body);
-    const project = await projects.create(body);
-    await addProjectMember(db, userId, project.id, 'owner');
+    // Atomic: the project + the creator's owner membership are written together (never an
+    // ownerless, unreachable project).
+    const project = await projects.create(body, userId);
     return reply.code(201).send({ project });
   });
 

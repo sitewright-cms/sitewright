@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError, type InvitePeek } from '../api';
+import { glassCard, primaryButton } from '../theme';
 import { Login } from './Login';
 
 interface AcceptInviteProps {
@@ -52,7 +53,7 @@ export function AcceptInvite({ token, authed, onAuthed, onDone }: AcceptInvitePr
   }
 
   const card = (children: React.ReactNode) => (
-    <div className="mx-auto mt-24 max-w-md rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
+    <div className={`mx-auto mt-24 max-w-md ${glassCard} p-8`}>
       {children}
     </div>
   );
@@ -102,7 +103,7 @@ export function AcceptInvite({ token, authed, onAuthed, onDone }: AcceptInvitePr
   if (!authed) {
     return (
       <div>
-        <div className="mx-auto mt-16 max-w-md rounded-xl border border-indigo-200 bg-indigo-50 p-4 text-center text-sm text-indigo-900">
+        <div className="mx-auto mt-16 max-w-md rounded-2xl border border-indigo-200/60 bg-indigo-50/70 p-4 text-center text-sm text-indigo-900 shadow-sm backdrop-blur-xl">
           You’ve been invited as <strong>{peek.email}</strong> {target}. Sign in or create an
           account with that email to accept.
         </div>
@@ -122,7 +123,7 @@ export function AcceptInvite({ token, authed, onAuthed, onDone }: AcceptInvitePr
         <button
           onClick={accept}
           disabled={accepting}
-          className="rounded-md bg-slate-900 px-4 py-2 font-semibold text-white disabled:opacity-50"
+          className={primaryButton}
         >
           {accepting ? 'Accepting…' : 'Accept invitation'}
         </button>

@@ -29,7 +29,7 @@ export function UpdateBanner() {
   if (!info || dismissed) return null;
 
   return (
-    <div className="flex items-center justify-center gap-3 bg-amber-100 px-4 py-2 text-sm text-amber-900">
+    <div className="flex items-center justify-center gap-3 border-b border-amber-200/60 bg-amber-100/70 px-4 py-2 text-sm text-amber-900 backdrop-blur-xl">
       <span>
         A new Sitewright release ({info.latest}) is available.{' '}
         {info.url && (

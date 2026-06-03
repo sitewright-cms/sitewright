@@ -4,6 +4,7 @@ import { api, previewDocUrl, type Project } from '../api';
 import { CodeEditor } from '../lib/code-editor';
 import { CODE_PATTERNS } from '../lib/code-patterns';
 import { PreviewPane } from './editor/PreviewPane';
+import { glassPanel, glassInput, primaryButton } from '../theme';
 
 interface CodePageEditorProps {
   project: Project;
@@ -138,7 +139,7 @@ export function CodePageEditor({ project, page, onClose }: CodePageEditorProps) 
 
   return (
     <main className="flex h-screen flex-col">
-      <header className="flex items-center gap-3 border-b border-slate-200 px-4 py-2">
+      <header className={`m-2 mb-0 flex items-center gap-3 px-4 py-2 ${glassPanel}`}>
         <button
           aria-label="Back to pages"
           className="text-sm text-slate-500 hover:text-slate-900"
@@ -146,18 +147,18 @@ export function CodePageEditor({ project, page, onClose }: CodePageEditorProps) 
         >
           ← Pages
         </button>
-        <h2 className="text-sm font-semibold">
+        <h2 className="text-sm font-semibold text-slate-800">
           {title} <span className="font-normal text-slate-400">{page.path}</span>
         </h2>
-        <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[11px] font-medium text-white">code</span>
+        <span className="rounded-lg bg-slate-800 px-1.5 py-0.5 text-[11px] font-medium text-white">code</span>
         {status === 'draft' && (
-          <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[11px] font-medium text-slate-600">draft</span>
+          <span className="rounded-lg bg-slate-200/80 px-1.5 py-0.5 text-[11px] font-medium text-slate-600">draft</span>
         )}
         <button
           aria-label="Page settings"
           aria-expanded={showSettings}
-          className={`rounded-md border px-2 py-1 text-sm ${
-            showSettings ? 'border-slate-900 text-slate-900' : 'border-slate-300 text-slate-600'
+          className={`rounded-xl border px-2 py-1 text-sm transition ${
+            showSettings ? 'border-indigo-400 bg-white/70 text-slate-900' : 'border-white/60 bg-white/40 text-slate-600 hover:bg-white/70'
           }`}
           onClick={() => setShowSettings((s) => !s)}
         >
@@ -165,7 +166,7 @@ export function CodePageEditor({ project, page, onClose }: CodePageEditorProps) 
         </button>
         <select
           aria-label="Insert pattern"
-          className="rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-700"
+          className={`${glassInput} w-auto`}
           value={patternKey}
           onChange={(e) => {
             insertPattern(e.target.value);
@@ -185,7 +186,7 @@ export function CodePageEditor({ project, page, onClose }: CodePageEditorProps) 
           {saved && !dirty && <span className="text-xs text-emerald-600">Saved</span>}
           {saveError && <span className="text-xs text-red-600">{saveError}</span>}
           <button
-            className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-40"
+            className={`${primaryButton} disabled:opacity-40`}
             disabled={saving || !dirty}
             onClick={() => void save()}
           >
@@ -194,28 +195,28 @@ export function CodePageEditor({ project, page, onClose }: CodePageEditorProps) 
         </div>
       </header>
       {showSettings && (
-        <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+        <div className={`mx-2 mt-2 px-4 py-3 ${glassPanel}`}>
           <div className="grid gap-4 sm:grid-cols-3">
             <label className="flex flex-col text-xs font-semibold text-slate-700">
               Title
               <input
                 aria-label="Page title"
-                className="mt-1.5 rounded-md border border-slate-300 px-2 py-1 text-sm font-normal"
+                className={`mt-1.5 font-normal ${glassInput}`}
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
               />
             </label>
             <div>
               <p className="mb-1.5 text-xs font-semibold text-slate-700">Status</p>
-              <div className="inline-flex rounded-md border border-slate-300 p-0.5">
+              <div className="inline-flex rounded-xl border border-white/60 bg-white/40 p-0.5">
                 {(['published', 'draft'] as const).map((s) => (
                   <button
                     key={s}
                     type="button"
                     aria-pressed={status === s}
                     onClick={() => setStatus(s)}
-                    className={`rounded px-3 py-1 text-sm capitalize ${
-                      status === s ? 'bg-slate-900 text-white' : 'text-slate-600'
+                    className={`rounded-lg px-3 py-1 text-sm capitalize transition ${
+                      status === s ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-white/60'
                     }`}
                   >
                     {s}
@@ -246,7 +247,7 @@ export function CodePageEditor({ project, page, onClose }: CodePageEditorProps) 
                     Menu label
                     <input
                       aria-label="Nav menu label"
-                      className="rounded-md border border-slate-300 px-2 py-1 text-sm"
+                      className={glassInput}
                       value={navTitle}
                       placeholder={title}
                       onChange={(e) => setNavTitle(e.target.value)}
@@ -257,7 +258,7 @@ export function CodePageEditor({ project, page, onClose }: CodePageEditorProps) 
                     <input
                       aria-label="Nav order"
                       type="number"
-                      className="rounded-md border border-slate-300 px-2 py-1 text-sm"
+                      className={glassInput}
                       value={navOrder}
                       onChange={(e) => {
                         const v = parseInt(e.target.value, 10);
@@ -271,11 +272,13 @@ export function CodePageEditor({ project, page, onClose }: CodePageEditorProps) 
           </div>
         </div>
       )}
-      <div className="grid min-h-0 flex-1 grid-cols-2">
-        <div className="min-h-0 border-r border-slate-200">
+      <div className="grid min-h-0 flex-1 grid-cols-2 gap-2 p-2">
+        {/* The CodeMirror surface stays on its own light background for legibility; only the
+            frame around it is frosted. */}
+        <div className="min-h-0 overflow-hidden rounded-2xl border border-white/50 bg-white shadow-xl shadow-slate-900/5">
           <CodeEditor value={source} onChange={edit} ariaLabel="Template source" />
         </div>
-        <div className="min-h-0 bg-white p-2">
+        <div className="min-h-0">
           <PreviewPane src={previewSrc} loading={previewLoading} error={previewError} />
         </div>
       </div>

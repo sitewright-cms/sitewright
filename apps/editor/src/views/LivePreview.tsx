@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, eventsUrl, previewDocUrl } from '../api';
 import type { LiveTarget } from '../lib/live-target';
 import { PreviewPane } from './editor/PreviewPane';
+import { glassPanel } from '../theme';
 
 const RELOAD_DEBOUNCE_MS = 250;
 
@@ -63,9 +64,9 @@ export function LivePreview({ target }: LivePreviewProps) {
 
   return (
     <div className="flex h-screen flex-col">
-      <div className="flex items-center gap-2 border-b border-slate-200 bg-white px-4 py-2 text-xs">
-        <span className="font-semibold tracking-tight">Live preview</span>
-        <span className={connected ? 'text-green-600' : 'text-slate-400'} aria-label="connection status">
+      <div className={`m-2 mb-0 flex items-center gap-2 px-4 py-2.5 text-xs ${glassPanel}`}>
+        <span className="font-semibold tracking-tight text-slate-800">Live preview</span>
+        <span className={connected ? 'text-emerald-600' : 'text-slate-400'} aria-label="connection status">
           {connected ? '● live' : '○ connecting…'}
         </span>
         <span className="ml-auto text-slate-400">{pageId}</span>

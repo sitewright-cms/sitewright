@@ -1,6 +1,6 @@
 import { motion } from 'motion/react';
 import type { ReactNode } from 'react';
-import { glassCard, glassInput, fieldLabel, accentChip } from './glass';
+import { glassCard, glassInput, fieldLabel, accentChip } from '../../theme';
 import { cardVariants, cardHover } from './motion';
 
 /** A frosted-glass card with a gradient accent chip + title; lifts on hover. */

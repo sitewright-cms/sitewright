@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, type InstanceSettingsInput, type InstanceSettingsPublic } from '../api';
+import { glassCard, glassInput, primaryButton } from '../theme';
 
 const FORM_MODE_LABELS: Array<{ key: keyof InstanceSettingsPublic['formModes']; label: string; hint: string }> = [
   { key: 'globalSmtp', label: 'Global SMTP', hint: 'Platform sends form mail via the SMTP configured below.' },
@@ -120,13 +121,13 @@ export function InstanceSettings() {
   if (loading) return <div className="p-8 text-slate-500">Loading settings…</div>;
   if (loadError) return <div className="p-8 text-red-600">{loadError}</div>;
 
-  const field = 'rounded-md border border-slate-300 px-3 py-2 text-sm';
+  const field = glassInput;
 
   return (
     <form onSubmit={save} className="mx-auto flex max-w-2xl flex-col gap-6 p-6">
       <h1 className="text-lg font-semibold">Instance settings</h1>
 
-      <fieldset className="rounded-lg border border-slate-200 bg-white p-4">
+      <fieldset className={`${glassCard} p-4`}>
         <legend className="px-1 text-sm font-semibold">Web-form mail modes</legend>
         <p className="mb-3 text-xs text-slate-500">Choose which delivery modes projects may use for their forms.</p>
         <div className="flex flex-col gap-2">
@@ -152,7 +153,7 @@ export function InstanceSettings() {
         </div>
       </fieldset>
 
-      <fieldset className="rounded-lg border border-slate-200 bg-white p-4">
+      <fieldset className={`${glassCard} p-4`}>
         <legend className="px-1 text-sm font-semibold">Global SMTP</legend>
         <label className="flex items-center gap-2 text-sm">
           <input
@@ -223,7 +224,7 @@ export function InstanceSettings() {
         )}
       </fieldset>
 
-      <fieldset className="rounded-lg border border-slate-200 bg-white p-4">
+      <fieldset className={`${glassCard} p-4`}>
         <legend className="px-1 text-sm font-semibold">hCaptcha</legend>
         <label className="flex items-center gap-2 text-sm">
           <input
@@ -255,7 +256,7 @@ export function InstanceSettings() {
         )}
       </fieldset>
 
-      <fieldset className="rounded-lg border border-slate-200 bg-white p-4">
+      <fieldset className={`${glassCard} p-4`}>
         <legend className="px-1 text-sm font-semibold">Stock image providers</legend>
         <p className="mb-2 text-xs text-slate-500">
           Openverse needs no key. Add an Unsplash and/or Pexels API key to enable those providers in the media
@@ -299,7 +300,7 @@ export function InstanceSettings() {
       </fieldset>
 
       <div className="flex items-center gap-3">
-        <button type="submit" className="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white">
+        <button type="submit" className={primaryButton}>
           Save settings
         </button>
         {saved && <span className="text-sm text-green-600">Saved.</span>}

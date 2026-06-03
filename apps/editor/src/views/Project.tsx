@@ -9,6 +9,7 @@ import { FormsManager } from './FormsManager';
 import { SettingsView } from './settings/SettingsView';
 import { AdminView } from './AdminView';
 import { PublishBar } from './PublishBar';
+import { glassCard, glassInput, fieldLabel, primaryButton } from '../theme';
 
 interface ProjectViewProps {
   project: Project;
@@ -128,17 +129,17 @@ export function ProjectView({ project, onBack }: ProjectViewProps) {
 
       {/* Clients see no tab bar — just their editable pages. */}
       {!isClient && (
-        <div role="tablist" aria-label="Project sections" className="mb-6 flex gap-1 border-b border-slate-200">
+        <div role="tablist" aria-label="Project sections" className="mb-6 flex flex-wrap gap-1 rounded-2xl border border-white/50 bg-white/50 p-1 shadow-sm backdrop-blur-xl">
           {MANAGE_TABS.map((t) => (
             <button
               key={t}
               role="tab"
               aria-selected={tab === t}
               onClick={() => setTab(t)}
-              className={`-mb-px cursor-pointer border-b-2 px-3 py-2 text-sm ${
+              className={`rounded-xl px-3 py-1.5 text-sm transition ${
                 tab === t
-                  ? 'border-slate-900 font-semibold text-slate-900'
-                  : 'border-transparent text-slate-500 hover:text-slate-800'
+                  ? 'bg-white font-semibold text-slate-900 shadow-md shadow-slate-900/5'
+                  : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               {/* eslint-disable-next-line security/detect-object-injection -- t is a typed Tab literal */}
@@ -174,13 +175,13 @@ export function ProjectView({ project, onBack }: ProjectViewProps) {
             {pages.map((p) => (
               <li key={p.id}>
                 <button
-                  className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-left hover:border-slate-400"
+                  className={`w-full ${glassCard} px-4 py-3 text-left transition hover:bg-white/80`}
                   onClick={() => setEditing(p)}
                 >
                   <span className="font-medium">{p.title}</span>{' '}
                   <span className="text-sm text-slate-400">{p.path}</span>
                   {p.status === 'draft' && (
-                    <span className="ml-2 rounded bg-slate-200 px-1.5 py-0.5 text-[11px] font-medium text-slate-600">draft</span>
+                    <span className="ml-2 rounded-full bg-slate-200/80 px-2 py-0.5 text-[11px] font-medium text-slate-600">draft</span>
                   )}
                 </button>
               </li>
@@ -188,12 +189,12 @@ export function ProjectView({ project, onBack }: ProjectViewProps) {
             {pages.length === 0 && <li className="text-sm text-slate-400">No pages yet.</li>}
           </ul>
 
-          <form onSubmit={create} className="flex flex-wrap items-end gap-2 rounded-lg border border-slate-200 bg-white p-4">
+          <form onSubmit={create} className={`flex flex-wrap items-end gap-2 ${glassCard} p-4`}>
             <div className="flex flex-col">
-              <label className="text-xs text-slate-500">Page slug (id)</label>
+              <label className={fieldLabel}>Page slug (id)</label>
               <input
                 aria-label="Page slug"
-                className="rounded-md border border-slate-300 px-3 py-2"
+                className={glassInput}
                 value={slug}
                 onChange={(e) => setSlug(e.target.value)}
                 placeholder="home"
@@ -201,16 +202,16 @@ export function ProjectView({ project, onBack }: ProjectViewProps) {
               />
             </div>
             <div className="flex flex-col">
-              <label className="text-xs text-slate-500">Title</label>
+              <label className={fieldLabel}>Title</label>
               <input
                 aria-label="Page title"
-                className="rounded-md border border-slate-300 px-3 py-2"
+                className={glassInput}
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 required
               />
             </div>
-            <button type="submit" className="rounded-md bg-slate-900 px-4 py-2 font-semibold text-white">
+            <button type="submit" className={primaryButton}>
               Add page
             </button>
           </form>
@@ -235,7 +236,7 @@ function ClientPagesList({ pages, onOpen }: ClientPagesListProps) {
         {pages.map((p) => (
           <li key={p.id}>
             <button
-              className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-left hover:border-slate-400"
+              className={`w-full ${glassCard} px-4 py-3 text-left transition hover:bg-white/80`}
               onClick={() => onOpen(p)}
             >
               <span className="font-medium">{p.title}</span>{' '}

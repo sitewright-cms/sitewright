@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { api, type Project } from '../api';
+import { glassCard, glassInput, fieldLabel, primaryButton } from '../theme';
 
 interface DashboardProps {
   projects: Project[];
@@ -34,7 +35,7 @@ export function Dashboard({ projects, onOpen, onProjectsChanged }: DashboardProp
         {projects.map((p) => (
           <li key={p.id}>
             <button
-              className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-left hover:border-indigo-400"
+              className={`w-full ${glassCard} px-4 py-3 text-left transition hover:bg-white/80`}
               onClick={() => onOpen(p)}
             >
               <span className="font-medium">{p.name}</span>{' '}
@@ -45,29 +46,29 @@ export function Dashboard({ projects, onOpen, onProjectsChanged }: DashboardProp
         {projects.length === 0 && <li className="text-sm text-slate-400">No projects yet.</li>}
       </ul>
 
-      <form onSubmit={create} className="flex flex-wrap items-end gap-2 rounded-lg border border-slate-200 bg-white p-4">
+      <form onSubmit={create} className={`flex flex-wrap items-end gap-2 ${glassCard} p-4`}>
         <div className="flex flex-col">
-          <label className="text-xs text-slate-500">Project name</label>
+          <label className={fieldLabel}>Project name</label>
           <input
             aria-label="Project name"
-            className="rounded-md border border-slate-300 px-3 py-2"
+            className={glassInput}
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
           />
         </div>
         <div className="flex flex-col">
-          <label className="text-xs text-slate-500">Slug</label>
+          <label className={fieldLabel}>Slug</label>
           <input
             aria-label="Project slug"
-            className="rounded-md border border-slate-300 px-3 py-2"
+            className={glassInput}
             value={slug}
             onChange={(e) => setSlug(e.target.value)}
             placeholder="my-client"
             required
           />
         </div>
-        <button type="submit" className="rounded-md bg-slate-900 px-4 py-2 font-semibold text-white">
+        <button type="submit" className={primaryButton}>
           Create project
         </button>
       </form>

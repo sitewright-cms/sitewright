@@ -3,6 +3,7 @@ import type { Page } from '@sitewright/schema';
 import { extractEditRegions } from '@sitewright/core';
 import { api, previewDocUrl, type Project } from '../api';
 import { PreviewPane } from './editor/PreviewPane';
+import { glassPanel, glassInput, primaryButton } from '../theme';
 
 interface ClientSourceEditorProps {
   project: Project;
@@ -84,7 +85,7 @@ export function ClientSourceEditor({ project, page, onClose }: ClientSourceEdito
 
   return (
     <main className="mx-auto flex h-[calc(100vh-3.25rem)] max-w-7xl flex-col px-4 py-3">
-      <div className="mb-3 flex flex-wrap items-center gap-3">
+      <div className={`mb-3 flex flex-wrap items-center gap-3 px-4 py-2.5 ${glassPanel}`}>
         <button
           aria-label="Back to project"
           className="text-sm text-slate-500 hover:text-slate-900"
@@ -92,15 +93,15 @@ export function ClientSourceEditor({ project, page, onClose }: ClientSourceEdito
         >
           ← {project.name}
         </button>
-        <span className="font-medium">{page.title}</span>
+        <span className="font-medium text-slate-800">{page.title}</span>
         <span className="text-xs text-slate-400">{page.path}</span>
-        <span className="rounded bg-indigo-100 px-2 py-0.5 text-[11px] font-medium text-indigo-700">
+        <span className="rounded-lg bg-indigo-100/80 px-2 py-0.5 text-[11px] font-medium text-indigo-700">
           Client editor
         </span>
         <button
           onClick={save}
           disabled={saving || regions.length === 0}
-          className="ml-auto rounded-md bg-slate-900 px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+          className={`ml-auto ${primaryButton} px-4 disabled:opacity-50`}
         >
           {saving ? 'Saving…' : 'Save changes'}
         </button>
@@ -111,19 +112,19 @@ export function ClientSourceEditor({ project, page, onClose }: ClientSourceEdito
         {/* Left: only the developer-marked editable regions */}
         <section className="flex w-1/2 min-w-0 flex-col gap-3 overflow-auto pr-1">
           {regions.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-500">
+            <div className="rounded-2xl border border-dashed border-white/70 bg-white/40 p-6 text-center text-sm text-slate-500 backdrop-blur-xl">
               This page has no editable regions yet. Ask your developer to mark the text you
               should be able to edit with <code>{'{{edit "…"}}'}</code>.
             </div>
           ) : (
             regions.map((region) => (
-              <label key={region.key} className="block rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+              <label key={region.key} className={`block p-3 ${glassPanel}`}>
                 <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">
                   {region.key}
                 </span>
                 <textarea
                   aria-label={region.key}
-                  className="w-full resize-y rounded-md border border-slate-300 px-3 py-2 text-sm"
+                  className={`resize-y ${glassInput}`}
                   rows={2}
                   value={valueFor(region.key, region.default)}
                   onChange={(e) => changeRegion(region.key, e.target.value)}

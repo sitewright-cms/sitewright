@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { glassInput, ghostButton } from './glass';
+import { glassInput, ghostButton } from '../../theme';
 import { newPair, type KeyedPair } from './model';
 
 // A valid CSS color for the swatch preview (hex / rgb(a) / hsl(a) / keyword) — mirrors

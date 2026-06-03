@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, type Project, type SmtpInput } from '../api';
+import { glassCard, glassInput, primaryButton } from '../theme';
 
 /**
  * Per-project SMTP config — used by forms whose delivery mode is "Project SMTP"
@@ -72,11 +73,11 @@ export function ProjectSmtp({ project }: { project: Project }) {
 
   if (loading) return null;
 
-  const field = 'rounded-md border border-slate-300 px-2 py-1 text-sm';
+  const field = `${glassInput} px-2 py-1`;
 
   return (
     <details
-      className="mb-4 rounded-lg border border-slate-200 bg-white p-3"
+      className={`mb-4 ${glassCard} p-3`}
       open={open}
       onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}
     >
@@ -140,7 +141,7 @@ export function ProjectSmtp({ project }: { project: Project }) {
           </div>
         )}
         <div className="flex items-center gap-3">
-          <button type="submit" className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white">
+          <button type="submit" className={primaryButton}>
             Save SMTP
           </button>
           {saved && <span className="text-sm text-green-600">Saved.</span>}

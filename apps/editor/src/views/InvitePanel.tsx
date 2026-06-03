@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import type { Invite } from '../api';
+import { glassCard, glassPanel, glassInput, fieldLabel, primaryButton, dangerButton } from '../theme';
 
 interface InvitePanelProps {
   kind: 'developer' | 'client';
@@ -66,7 +67,7 @@ export function InvitePanel({ kind, invites, onInvite, onRevoke, onChanged }: In
   return (
     <div>
       {link && (
-        <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm">
+        <div className="mb-4 rounded-2xl border border-amber-300/60 bg-amber-50/70 p-3 text-sm shadow-sm backdrop-blur-xl">
           <p className="font-medium text-amber-900">Invite link for {link.email}</p>
           <p className="mt-1 text-amber-800">
             Send this link to your {noun}. They accept by signing in (or registering) with that email.
@@ -93,7 +94,7 @@ export function InvitePanel({ kind, invites, onInvite, onRevoke, onChanged }: In
           {invites.map((inv) => (
             <li
               key={inv.id}
-              className="flex items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2 text-sm"
+              className={`flex items-center justify-between ${glassPanel} px-3 py-2 text-sm`}
             >
               <span className="text-slate-600">
                 {inv.email}
@@ -101,7 +102,7 @@ export function InvitePanel({ kind, invites, onInvite, onRevoke, onChanged }: In
               </span>
               <button
                 aria-label={`Revoke invite for ${inv.email}`}
-                className="text-xs text-red-500 hover:text-red-700"
+                className={dangerButton}
                 onClick={() => revoke(inv.id)}
               >
                 Revoke
@@ -111,16 +112,16 @@ export function InvitePanel({ kind, invites, onInvite, onRevoke, onChanged }: In
         </ul>
       )}
 
-      <form onSubmit={invite} className="flex flex-wrap items-end gap-2 rounded-lg border border-slate-200 bg-white p-4">
+      <form onSubmit={invite} className={`flex flex-wrap items-end gap-2 ${glassCard} p-4`}>
         <div className="flex flex-col">
-          <label className="text-xs text-slate-500" htmlFor={`invite-email-${kind}`}>
+          <label className={fieldLabel} htmlFor={`invite-email-${kind}`}>
             {kind === 'developer' ? 'Developer email' : 'Client email'}
           </label>
           <input
             id={`invite-email-${kind}`}
             aria-label={kind === 'developer' ? 'Developer email' : 'Client email'}
             type="email"
-            className="rounded-md border border-slate-300 px-3 py-2"
+            className={glassInput}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder={kind === 'developer' ? 'dev@agency.com' : 'client@example.com'}
@@ -130,7 +131,7 @@ export function InvitePanel({ kind, invites, onInvite, onRevoke, onChanged }: In
         <button
           type="submit"
           disabled={busy}
-          className="rounded-md bg-slate-900 px-4 py-2 font-semibold text-white disabled:opacity-50"
+          className={primaryButton}
         >
           {busy ? 'Inviting…' : `Invite ${noun}`}
         </button>

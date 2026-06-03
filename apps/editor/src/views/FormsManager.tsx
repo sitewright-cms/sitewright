@@ -4,6 +4,7 @@ import { api, type Project } from '../api';
 import { identifierize, slugify } from '../lib/entry-form';
 import { ProjectSmtp } from './ProjectSmtp';
 import { SubmissionsInbox } from './SubmissionsInbox';
+import { glassCard, glassPanel, glassInput, primaryButton, ghostButton, dangerButton } from '../theme';
 
 const FIELD_TYPES: ReadonlyArray<FormField['type']> = ['text', 'email', 'tel', 'url', 'number', 'textarea', 'select'];
 
@@ -158,12 +159,12 @@ export function FormsManager({ project }: { project: Project }) {
 
   if (draft) {
     return (
-      <div className="flex flex-col gap-5 rounded-lg border border-slate-200 bg-white p-5">
+      <div className={`flex flex-col gap-5 ${glassCard} p-5`}>
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-slate-700">
             Edit form <code className="text-xs text-slate-400">{draft.id}</code>
           </h3>
-          <button className="text-xs text-slate-500 hover:text-slate-900" onClick={() => setDraft(null)}>
+          <button className={ghostButton} onClick={() => setDraft(null)}>
             Cancel
           </button>
         </div>
@@ -172,7 +173,7 @@ export function FormsManager({ project }: { project: Project }) {
           Name
           <input
             aria-label="Form name"
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            className={`${glassInput} mt-1`}
             value={draft.name}
             onChange={(e) => patch({ name: e.target.value })}
           />
@@ -183,7 +184,7 @@ export function FormsManager({ project }: { project: Project }) {
           <input
             aria-label="Recipient email"
             type="email"
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            className={`${glassInput} mt-1`}
             value={draft.recipient}
             onChange={(e) => patch({ recipient: e.target.value })}
             placeholder="leads@acme.com"
@@ -191,7 +192,7 @@ export function FormsManager({ project }: { project: Project }) {
           />
         </label>
 
-        <fieldset className="rounded-md border border-slate-200 p-3">
+        <fieldset className={`${glassPanel} p-3`}>
           <legend className="px-1 text-xs font-semibold text-slate-500">Fields</legend>
           <ul className="flex flex-col gap-2">
             {draft.fields.map((field, i) => (
@@ -199,21 +200,21 @@ export function FormsManager({ project }: { project: Project }) {
                 <div className="flex flex-wrap items-center gap-2">
                   <input
                     aria-label={`Field ${i + 1} name`}
-                    className="w-32 rounded-md border border-slate-300 px-2 py-1 font-mono text-xs"
+                    className={`${glassInput} w-32 px-2 py-1 font-mono text-xs`}
                     value={field.name}
                     onChange={(e) => patchField(i, { name: e.target.value })}
                     placeholder="email"
                   />
                   <input
                     aria-label={`Field ${i + 1} label`}
-                    className="w-40 rounded-md border border-slate-300 px-2 py-1 text-xs"
+                    className={`${glassInput} w-40 px-2 py-1 text-xs`}
                     value={field.label}
                     onChange={(e) => patchField(i, { label: e.target.value })}
                     placeholder="Your email"
                   />
                   <select
                     aria-label={`Field ${i + 1} type`}
-                    className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+                    className={`${glassInput} w-auto px-2 py-1 text-xs`}
                     value={field.type}
                     onChange={(e) => patchField(i, { type: e.target.value as FormField['type'] })}
                   >
@@ -234,7 +235,7 @@ export function FormsManager({ project }: { project: Project }) {
                   </label>
                   <button
                     aria-label={`Remove field ${i + 1}`}
-                    className="ml-auto text-xs text-red-400 hover:text-red-700"
+                    className={`${dangerButton} ml-auto px-2 py-0.5 text-xs`}
                     onClick={() => removeField(i)}
                   >
                     ✕
@@ -243,7 +244,7 @@ export function FormsManager({ project }: { project: Project }) {
                 <div className="flex flex-wrap items-center gap-2 pl-1">
                   <input
                     aria-label={`Field ${i + 1} placeholder`}
-                    className="w-40 rounded-md border border-slate-200 px-2 py-1 text-xs"
+                    className={`${glassInput} w-40 px-2 py-1 text-xs`}
                     value={field.placeholder ?? ''}
                     onChange={(e) => patchField(i, { placeholder: e.target.value || undefined })}
                     placeholder="placeholder (optional)"
@@ -251,7 +252,7 @@ export function FormsManager({ project }: { project: Project }) {
                   {field.type === 'select' && (
                     <input
                       aria-label={`Field ${i + 1} options`}
-                      className="flex-1 rounded-md border border-slate-200 px-2 py-1 text-xs"
+                      className={`${glassInput} flex-1 px-2 py-1 text-xs`}
                       value={(field.options ?? []).join(', ')}
                       onChange={(e) =>
                         patchField(i, {
@@ -271,7 +272,7 @@ export function FormsManager({ project }: { project: Project }) {
           <button
             type="button"
             onClick={addField}
-            className="mt-2 rounded-md border border-slate-300 px-3 py-1 text-xs hover:border-slate-500"
+            className={`${ghostButton} mt-2`}
           >
             Add field
           </button>
@@ -282,7 +283,7 @@ export function FormsManager({ project }: { project: Project }) {
             Submit button label
             <input
               aria-label="Submit label"
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+              className={`${glassInput} mt-1`}
               value={draft.submitLabel}
               onChange={(e) => patch({ submitLabel: e.target.value })}
             />
@@ -291,7 +292,7 @@ export function FormsManager({ project }: { project: Project }) {
             Thank-you redirect (optional; overrides the inline message)
             <input
               aria-label="Redirect URL"
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+              className={`${glassInput} mt-1`}
               value={draft.redirectUrl ?? ''}
               onChange={(e) => patch({ redirectUrl: e.target.value || undefined })}
               placeholder="/thank-you"
@@ -301,7 +302,7 @@ export function FormsManager({ project }: { project: Project }) {
             Success message
             <input
               aria-label="Success message"
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+              className={`${glassInput} mt-1`}
               value={draft.successMessage}
               onChange={(e) => patch({ successMessage: e.target.value })}
             />
@@ -310,7 +311,7 @@ export function FormsManager({ project }: { project: Project }) {
             Error message
             <input
               aria-label="Error message"
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+              className={`${glassInput} mt-1`}
               value={draft.errorMessage}
               onChange={(e) => patch({ errorMessage: e.target.value })}
             />
@@ -321,7 +322,7 @@ export function FormsManager({ project }: { project: Project }) {
           Delivery mode
           <select
             aria-label="Delivery mode"
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            className={`${glassInput} mt-1`}
             value={draft.mode}
             onChange={(e) => {
               const mode = e.target.value as FormMode;
@@ -347,7 +348,7 @@ export function FormsManager({ project }: { project: Project }) {
             <input
               aria-label="Third-party endpoint URL"
               type="url"
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+              className={`${glassInput} mt-1`}
               value={draft.thirdPartyUrl ?? ''}
               onChange={(e) => patch({ thirdPartyUrl: e.target.value || undefined })}
               placeholder="https://formspree.io/f/xxxx"
@@ -372,7 +373,7 @@ export function FormsManager({ project }: { project: Project }) {
         </label>
 
         <div className="flex items-center gap-3">
-          <button onClick={save} className="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white">
+          <button onClick={save} className={primaryButton}>
             Save form
           </button>
           {error && <span className="text-sm text-red-600">{error}</span>}
@@ -393,7 +394,7 @@ export function FormsManager({ project }: { project: Project }) {
           return (
             <li
               key={f.id}
-              className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm"
+              className={`flex flex-col gap-3 ${glassCard} px-4 py-3 text-sm`}
             >
               <div className="flex items-center gap-3">
                 <button
@@ -412,14 +413,14 @@ export function FormsManager({ project }: { project: Project }) {
                 <button
                   aria-label={`${showing ? 'Hide' : 'Show'} submissions for ${f.id}`}
                   aria-expanded={showing}
-                  className="ml-auto text-xs font-medium text-slate-600 hover:text-slate-900"
+                  className={`${ghostButton} ml-auto text-xs`}
                   onClick={() => setSubmissionsFor(showing ? null : f.id)}
                 >
                   {showing ? 'Hide submissions' : 'Show submissions'}
                 </button>
                 <button
                   aria-label={`Delete form ${f.id}`}
-                  className="text-xs text-red-500 hover:text-red-700"
+                  className={dangerButton}
                   onClick={() => remove(f.id)}
                 >
                   Delete
@@ -436,19 +437,19 @@ export function FormsManager({ project }: { project: Project }) {
         {forms.length === 0 && <li className="text-sm text-slate-400">No forms yet. Create one, then add a Form block to a page.</li>}
       </ul>
 
-      <form onSubmit={create} className="flex flex-wrap items-end gap-2 rounded-lg border border-slate-200 bg-white p-4">
+      <form onSubmit={create} className={`flex flex-wrap items-end gap-2 ${glassCard} p-4`}>
         <div className="flex flex-col">
           <label className="text-xs text-slate-500">New form name</label>
           <input
             aria-label="New form name"
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            className={`${glassInput} mt-1`}
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             placeholder="Contact"
             required
           />
         </div>
-        <button type="submit" className="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white">
+        <button type="submit" className={primaryButton}>
           Create form
         </button>
       </form>

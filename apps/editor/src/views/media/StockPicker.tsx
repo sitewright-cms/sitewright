@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { api, type StockProviderName, type StockProvidersStatus, type StockSearchResult } from '../../api';
+import { glassCard, glassPanel, glassInput, primaryButton, ghostButton } from '../../theme';
 
 const PROVIDER_LABELS: Record<StockProviderName, string> = {
   openverse: 'Openverse (CC)',
@@ -88,10 +89,10 @@ export function StockPicker({
     }
   }
 
-  const field = 'rounded-md border border-slate-300 px-3 py-2 text-sm';
+  const field = glassInput;
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4">
+    <div className={`${glassCard} p-4`}>
       <form onSubmit={search} className="flex flex-wrap items-end gap-2">
         <label className="flex flex-col text-xs text-slate-500">
           Provider
@@ -122,7 +123,7 @@ export function StockPicker({
         <button
           type="submit"
           disabled={searching || !selectedAvailable || !query.trim()}
-          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
+          className={primaryButton}
         >
           {searching ? 'Searching…' : 'Search'}
         </button>
@@ -137,7 +138,7 @@ export function StockPicker({
 
       <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-5">
         {results.map((r) => (
-          <figure key={`${r.provider}:${r.id}`} className="flex flex-col rounded-lg border border-slate-200 p-2">
+          <figure key={`${r.provider}:${r.id}`} className={`flex flex-col ${glassPanel} p-2`}>
             <img src={r.thumbUrl} alt={`Stock photo by ${r.author}`} className="h-24 w-full rounded object-cover" loading="lazy" />
             <figcaption className="mt-1 truncate text-[11px] text-slate-500" title={`${r.author} · ${r.license}`}>
               {r.author} · {r.license}
@@ -145,7 +146,7 @@ export function StockPicker({
             <button
               onClick={() => importImage(r)}
               disabled={importingId !== null}
-              className="mt-1 rounded bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-200 disabled:opacity-40"
+              className={`${ghostButton} mt-1 px-2 py-1 text-[11px]`}
             >
               {importingId === r.id ? 'Importing…' : 'Import'}
             </button>

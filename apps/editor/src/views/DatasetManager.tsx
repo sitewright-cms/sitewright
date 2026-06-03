@@ -3,6 +3,7 @@ import type { Dataset, Entry, Field, FieldType } from '@sitewright/schema';
 import { api, type Project } from '../api';
 import { defaultEntryValues, entryLabel, identifierize, slugify } from '../lib/entry-form';
 import { EntryEditor } from './datasets/EntryEditor';
+import { glassCard, glassPanel, glassInput, fieldLabel, primaryButton, ghostButton, dangerButton } from '../theme';
 
 const FIELD_TYPES: ReadonlyArray<FieldType> = [
   'text',
@@ -163,8 +164,8 @@ export function DatasetManager({ project }: { project: Project }) {
           {datasets.map((d) => (
             <li key={d.id}>
               <button
-                className={`w-full rounded-md border px-3 py-2 text-left text-sm ${
-                  d.id === selId ? 'border-slate-900 bg-slate-50' : 'border-slate-200 bg-white hover:border-slate-300'
+                className={`w-full rounded-xl border px-3 py-2 text-left text-sm transition ${
+                  d.id === selId ? 'border-indigo-400/60 bg-white/80 shadow-sm backdrop-blur-xl' : 'border-white/50 bg-white/40 backdrop-blur-xl hover:bg-white/60'
                 }`}
                 onClick={() => setSelId(d.id)}
               >
@@ -175,17 +176,17 @@ export function DatasetManager({ project }: { project: Project }) {
           ))}
           {datasets.length === 0 && <li className="text-sm text-slate-400">No datasets yet.</li>}
         </ul>
-        <form onSubmit={createDataset} className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-3">
-          <label className="text-xs font-medium text-slate-500">New dataset</label>
+        <form onSubmit={createDataset} className={`flex flex-col gap-2 ${glassCard} p-3`}>
+          <label className={fieldLabel}>New dataset</label>
           <input
             aria-label="Dataset name"
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            className={glassInput}
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             placeholder="Posts"
             required
           />
-          <button type="submit" className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-semibold text-white">
+          <button type="submit" className={primaryButton}>
             Create dataset
           </button>
         </form>
@@ -199,14 +200,14 @@ export function DatasetManager({ project }: { project: Project }) {
         {selected && (
           <div className="flex flex-col gap-6">
             {/* Schema editor */}
-            <div className="rounded-lg border border-slate-200 bg-white p-4">
+            <div className={`${glassCard} p-4`}>
               <div className="mb-3 flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-slate-700">
                   {selected.name} <span className="text-xs text-slate-400">schema</span>
                 </h3>
                 <button
                   aria-label="Delete dataset"
-                  className="text-xs text-red-500 hover:text-red-700"
+                  className={dangerButton}
                   onClick={() => removeDataset(selected.id)}
                 >
                   Delete dataset
@@ -219,7 +220,7 @@ export function DatasetManager({ project }: { project: Project }) {
                     <span className="w-40 font-mono text-xs">{field.name}</span>
                     <select
                       aria-label={`Type of ${field.name}`}
-                      className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+                      className={`${glassInput} w-auto px-2 py-1 text-xs`}
                       value={field.type}
                       onChange={(e) =>
                         setDraftFields(
@@ -252,7 +253,7 @@ export function DatasetManager({ project }: { project: Project }) {
                     </label>
                     <button
                       aria-label={`Remove field ${field.name}`}
-                      className="ml-auto text-xs text-red-400 hover:text-red-700"
+                      className={`${dangerButton} ml-auto px-2 py-0.5 text-xs`}
                       onClick={() => setDraftFields(draftFields.filter((f) => f.name !== field.name))}
                     >
                       ✕
@@ -265,14 +266,14 @@ export function DatasetManager({ project }: { project: Project }) {
               <div className="flex flex-wrap items-end gap-2">
                 <input
                   aria-label="New field name"
-                  className="rounded-md border border-slate-300 px-3 py-1.5 text-sm"
+                  className={`${glassInput} w-auto`}
                   value={newFieldName}
                   onChange={(e) => setNewFieldName(e.target.value)}
                   placeholder="title"
                 />
                 <select
                   aria-label="New field type"
-                  className="rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+                  className={`${glassInput} w-auto`}
                   value={newFieldType}
                   onChange={(e) => setNewFieldType(e.target.value as FieldType)}
                 >
@@ -285,14 +286,14 @@ export function DatasetManager({ project }: { project: Project }) {
                 <button
                   type="button"
                   onClick={addField}
-                  className="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:border-slate-500"
+                  className={ghostButton}
                 >
                   Add field
                 </button>
                 <button
                   type="button"
                   onClick={saveSchema}
-                  className="ml-auto rounded-md bg-slate-900 px-4 py-1.5 text-sm font-semibold text-white"
+                  className={`${primaryButton} ml-auto`}
                 >
                   Save schema
                 </button>
@@ -300,7 +301,7 @@ export function DatasetManager({ project }: { project: Project }) {
             </div>
 
             {/* Entries */}
-            <div className="rounded-lg border border-slate-200 bg-white p-4">
+            <div className={`${glassCard} p-4`}>
               <div className="mb-3 flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-slate-700">Entries</h3>
                 <button
@@ -313,7 +314,7 @@ export function DatasetManager({ project }: { project: Project }) {
                       values: defaultEntryValues(selected),
                     })
                   }
-                  className="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:border-slate-500"
+                  className={ghostButton}
                 >
                   New entry
                 </button>
@@ -321,7 +322,7 @@ export function DatasetManager({ project }: { project: Project }) {
 
               <ul className="mb-3 flex flex-col gap-1">
                 {datasetEntries.map((e) => (
-                  <li key={e.id} className="flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-sm">
+                  <li key={e.id} className={`flex items-center gap-2 ${glassPanel} px-3 py-2 text-sm`}>
                     <button className="text-left hover:underline" onClick={() => setEditingEntry(e)}>
                       {entryLabel(selected, e)}
                     </button>
@@ -334,7 +335,7 @@ export function DatasetManager({ project }: { project: Project }) {
                     </span>
                     <button
                       aria-label={`Delete entry ${e.id}`}
-                      className="ml-auto text-xs text-red-400 hover:text-red-700"
+                      className={`${dangerButton} ml-auto px-2 py-0.5 text-xs`}
                       onClick={() => removeEntry(e.id)}
                     >
                       ✕

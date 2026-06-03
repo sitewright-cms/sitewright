@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { FormSubmission } from '@sitewright/schema';
 import { api, type Project } from '../api';
+import { glassCard, dangerButton } from '../theme';
 
 /**
  * Submissions inbox: the form submissions captured by the public endpoint, newest
@@ -61,7 +62,7 @@ export function SubmissionsInbox({ project, formId }: { project: Project; formId
           const open = openId === s.id;
           const summary = Object.values(s.fields)[0] ?? '';
           return (
-            <li key={s.id} className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm">
+            <li key={s.id} className={`${glassCard} px-4 py-3 text-sm`}>
               <div className="flex items-center gap-3">
                 <button
                   className="flex-1 text-left"
@@ -75,7 +76,7 @@ export function SubmissionsInbox({ project, formId }: { project: Project; formId
                 </button>
                 <button
                   aria-label={`Delete submission ${s.id}`}
-                  className="text-xs text-red-500 hover:text-red-700"
+                  className={dangerButton}
                   onClick={() => remove(s.id)}
                 >
                   Delete

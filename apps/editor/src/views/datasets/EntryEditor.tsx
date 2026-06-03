@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import type { Dataset, Entry, Field } from '@sitewright/schema';
 import { coerceFieldValue, readValue } from '../../lib/entry-form';
+import { glassCard, glassInput, primaryButton, ghostButton } from '../../theme';
 
 interface EntryEditorProps {
   dataset: Dataset;
@@ -25,7 +26,7 @@ function FieldInput({
       return (
         <textarea
           {...common}
-          className="min-h-20 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+          className={`${glassInput} min-h-20`}
           value={typeof value === 'string' ? value : ''}
           onChange={(e) => onRaw(e.target.value)}
         />
@@ -34,7 +35,7 @@ function FieldInput({
       return (
         <textarea
           {...common}
-          className="min-h-20 w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-xs"
+          className={`${glassInput} min-h-20 font-mono text-xs`}
           value={typeof value === 'string' ? value : value === undefined ? '' : JSON.stringify(value, null, 2)}
           onChange={(e) => onRaw(e.target.value)}
         />
@@ -44,7 +45,7 @@ function FieldInput({
         <input
           {...common}
           type="number"
-          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+          className={glassInput}
           value={typeof value === 'number' ? value : ''}
           onChange={(e) => onRaw(e.target.value)}
         />
@@ -63,7 +64,7 @@ function FieldInput({
         <input
           {...common}
           type="date"
-          className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+          className={glassInput}
           value={typeof value === 'string' ? value : ''}
           onChange={(e) => onRaw(e.target.value)}
         />
@@ -74,7 +75,7 @@ function FieldInput({
         <input
           {...common}
           type="text"
-          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+          className={glassInput}
           value={typeof value === 'string' ? value : ''}
           placeholder={field.type === 'image' ? '/photo.jpg' : undefined}
           onChange={(e) => onRaw(e.target.value)}
@@ -108,12 +109,12 @@ export function EntryEditor({ dataset, entry, onSave, onCancel }: EntryEditorPro
   }
 
   return (
-    <form onSubmit={submit} className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-4">
+    <form onSubmit={submit} className={`flex flex-col gap-3 ${glassCard} p-4`}>
       <div className="flex items-center justify-between">
         <h4 className="text-sm font-semibold text-slate-700">Entry</h4>
         <select
           aria-label="Entry status"
-          className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+          className={`${glassInput} w-auto px-2 py-1 text-xs`}
           value={status}
           onChange={(e) => setStatus(e.target.value === 'published' ? 'published' : 'draft')}
         >
@@ -142,11 +143,11 @@ export function EntryEditor({ dataset, entry, onSave, onCancel }: EntryEditorPro
         <button
           type="submit"
           disabled={saving}
-          className="rounded-md bg-slate-900 px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+          className={primaryButton}
         >
           {saving ? 'Saving…' : 'Save entry'}
         </button>
-        <button type="button" onClick={onCancel} className="text-sm text-slate-500 hover:text-slate-900">
+        <button type="button" onClick={onCancel} className={ghostButton}>
           Cancel
         </button>
       </div>

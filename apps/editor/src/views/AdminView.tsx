@@ -21,17 +21,17 @@ export function AdminView({ project }: { project: Project }) {
   const [sub, setSub] = useState<SubTab>('clients');
   return (
     <div className="flex flex-col gap-5">
-      <div role="tablist" aria-label="Admin sections" className="flex gap-1 border-b border-slate-200">
+      <div role="tablist" aria-label="Admin sections" className="flex w-fit items-center gap-1 rounded-2xl border border-white/50 bg-white/50 p-1 shadow-sm backdrop-blur-xl">
         {SUB_TABS.map((t) => (
           <button
             key={t.key}
             role="tab"
             aria-selected={sub === t.key}
             onClick={() => setSub(t.key)}
-            className={`-mb-px cursor-pointer border-b-2 px-3 py-2 text-sm ${
+            className={`rounded-xl px-4 py-1.5 text-sm transition ${
               sub === t.key
-                ? 'border-slate-900 font-semibold text-slate-900'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
+                ? 'bg-white font-semibold text-slate-900 shadow-md shadow-slate-900/5'
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             {t.label}

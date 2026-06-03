@@ -40,6 +40,7 @@ describe('runWorker', () => {
 
   it('reconstructs media from inlined base64 and bundles it into the artifact', async () => {
     const asset = {
+      kind: 'image' as const, folder: '',
       id: 'a1', filename: 'h.png', format: 'image/png', bytes: 3, width: 80, height: 60,
       variants: [{ format: 'webp' as const, width: 40, height: 30, path: 'a1-40.webp' }],
       fallback: 'a1-40.jpg', url: '/media/p/a1/a1-40.jpg',

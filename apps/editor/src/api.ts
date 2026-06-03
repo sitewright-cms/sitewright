@@ -309,10 +309,12 @@ export const api = {
   // --- media ---
   listMedia: (projectId: string) =>
     request<{ items: MediaAsset[] }>('GET', `/projects/${projectId}/media`),
-  uploadMedia: async (projectId: string, file: File): Promise<{ item: MediaAsset }> => {
+  uploadMedia: async (projectId: string, file: File, folder = ''): Promise<{ item: MediaAsset }> => {
     const form = new FormData();
     form.append('file', file);
-    const res = await fetch(`${BASE}/projects/${projectId}/media`, {
+    // The virtual folder rides as a query param (the multipart config admits no extra fields).
+    const qs = folder ? `?folder=${encodeURIComponent(folder)}` : '';
+    const res = await fetch(`${BASE}/projects/${projectId}/media${qs}`, {
       method: 'POST',
       credentials: 'include',
       body: form, // the browser sets multipart/form-data with the boundary

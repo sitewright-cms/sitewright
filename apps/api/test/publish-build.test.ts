@@ -450,6 +450,8 @@ describe('buildSite', () => {
 
   it('bundles media and renders an optimized, page-relative <picture>', async () => {
     const asset = {
+      kind: 'image' as const,
+      folder: '',
       id: 'a1',
       filename: 'hero.png',
       format: 'image/png',
@@ -494,6 +496,8 @@ describe('buildSite', () => {
 
   it('tolerates a missing media variant without failing the build', async () => {
     const asset = {
+      kind: 'image' as const,
+      folder: '',
       id: 'a2',
       filename: 'x.png',
       format: 'image/png',
@@ -524,6 +528,7 @@ describe('buildSite', () => {
 
   it('fails the build on a non-missing media read error (no partial artifact)', async () => {
     const asset = {
+      kind: 'image' as const, folder: '',
       id: 'a4', filename: 'x.png', format: 'image/png', bytes: 1, width: 10, height: 10,
       variants: [], fallback: 'a4-10.jpg', url: '/media/p/a4/a4-10.jpg',
     };
@@ -544,6 +549,7 @@ describe('buildSite', () => {
 
   it('ignores media when no reader is provided (no copy)', async () => {
     const asset = {
+      kind: 'image' as const, folder: '',
       id: 'a3', filename: 'x.png', format: 'image/png', bytes: 1, width: 10, height: 10,
       variants: [], fallback: 'a3-10.jpg', url: '/media/p/a3/a3-10.jpg',
     };

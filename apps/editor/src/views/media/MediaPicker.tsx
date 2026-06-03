@@ -7,12 +7,14 @@ interface MediaPickerProps {
 
 /** A compact thumbnail grid for choosing an uploaded image (sets a block's src). */
 export function MediaPicker({ media, onPick }: MediaPickerProps) {
-  if (media.length === 0) {
-    return <p className="text-xs text-slate-400">No media yet — upload some in the Media tab.</p>;
+  // Only images can be a block's <img> src; raw file assets are not pickable here.
+  const images = media.filter((m) => m.kind === 'image');
+  if (images.length === 0) {
+    return <p className="text-xs text-slate-400">No images yet — upload some in the Assets tab.</p>;
   }
   return (
     <div className="flex flex-wrap gap-2">
-      {media.map((m) => (
+      {images.map((m) => (
         <button
           key={m.id}
           type="button"

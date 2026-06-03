@@ -105,7 +105,8 @@ export class WorkerBuildRunner implements BuildRunner {
     const out: Array<{ asset: MediaAsset; files: Record<string, string> }> = [];
     for (const asset of media) {
       const entries = new Map<string, string>();
-      const names = [asset.fallback, ...asset.variants.map((v) => v.path)];
+      const names =
+        asset.kind === 'image' ? [asset.fallback, ...asset.variants.map((v) => v.path)] : [asset.storedName];
       for (const name of names) {
         if (!job.readMedia) break;
         try {

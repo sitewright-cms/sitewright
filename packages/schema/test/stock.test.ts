@@ -47,6 +47,7 @@ describe('instance-settings stock keys', () => {
 
 describe('MediaAsset attribution', () => {
   const base = {
+    kind: 'image' as const,
     id: 'm1',
     filename: 'cat.jpg',
     format: 'jpeg',

@@ -104,6 +104,8 @@ describe('renderNode — Carousel / Slide (interactive component)', () => {
 
   it('Slide with a media-asset image renders an optimized <picture> (shared imageTag)', () => {
     const asset = {
+      kind: 'image' as const,
+      folder: '',
       id: 'a1',
       filename: 'x.png',
       format: 'image/png',
@@ -189,6 +191,8 @@ describe('renderNode — Lightbox (gallery + overlay)', () => {
 
   it('LightboxItem with a media-asset image renders an optimized <picture> thumbnail', () => {
     const asset = {
+      kind: 'image' as const,
+      folder: '',
       id: 'a1',
       filename: 'x.png',
       format: 'image/png',
@@ -535,6 +539,8 @@ describe('renderNode — per block', () => {
 
   it('Image renders an optimized <picture> for a known media asset', () => {
     const asset = {
+      kind: 'image' as const,
+      folder: '',
       id: 'a1',
       filename: 'hero.png',
       format: 'image/png',
@@ -562,6 +568,8 @@ describe('renderNode — per block', () => {
 
   it('escapes the alt attribute in the <picture> fallback img', () => {
     const asset = {
+      kind: 'image' as const,
+      folder: '',
       id: 'a1', filename: 'h.png', format: 'image/png', bytes: 1, width: 10, height: 10,
       variants: [{ format: 'webp' as const, width: 10, height: 10, path: 'a1-10.webp' }],
       fallback: 'a1-10.jpg', url: '/media/p/a1/a1-10.jpg',

@@ -185,7 +185,8 @@ export function ProjectView({ project, onBack }: ProjectViewProps) {
       ) : tab === 'data' ? (
         <DatasetManager project={project} />
       ) : tab === 'media' ? (
-        <MediaManager project={project} />
+        // key resets folder/view state when switching projects (like the sibling managers).
+        <MediaManager key={project.id} project={project} />
       ) : tab === 'forms' ? (
         // Submissions are folded in per-form (each row's "Show submissions").
         <FormsManager key={project.id} project={project} />

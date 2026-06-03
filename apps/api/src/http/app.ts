@@ -1411,8 +1411,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         }
 
         const meta = { filename: file.filename || 'upload', mimetype: file.mimetype || 'application/octet-stream', folder };
-        // An `image/*` upload is optimized (and rejected if it is not a decodable raster — SVG and
-        // corrupt/oversized images still 400). Any other type is stored as-is (download-only).
+        // An optimizable raster `image/*` upload is optimized (corrupt/oversized images 400). SVG is
+        // NEVER optimized — explicitly rejected here, so safety doesn't hinge on the pipeline
+        // rejecting it. Any other type is stored as-is (download-only).
+        const isSvg = meta.mimetype === 'image/svg+xml' || meta.mimetype === 'image/svg';
+        if (isSvg) return reply.code(400).send({ error: 'SVG is not accepted' });
         if (meta.mimetype.startsWith('image/')) {
           try {
             const saved = await createMediaAsset(ctx, project.id, buffer, meta);
@@ -1422,8 +1425,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             throw err;
           }
         }
-        const saved = await createFileAsset(ctx, project.id, buffer, meta);
-        return reply.code(201).send({ item: saved });
+        try {
+          const saved = await createFileAsset(ctx, project.id, buffer, meta);
+          return reply.code(201).send({ item: saved });
+        } catch (err) {
+          // A bad client-supplied contentType (the only externally-shaped field) → clean 400,
+          // never the global handler's field-name-leaking ZodError envelope.
+          if (err instanceof z.ZodError) return reply.code(400).send({ error: 'invalid upload' });
+          throw err;
+        }
       },
     );
 
@@ -1498,7 +1508,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         } catch {
           return reply.code(404).send({ error: 'not found' });
         }
-        // `file` is STORED_FILE-validated (no quotes/CRLF), so it is safe in the header.
+        // `file` is the STORED_FILE-validated stored name (no quotes/CRLF/Unicode) — safe in the
+        // header. Do NOT swap in the asset's original `filename`, which is unsanitized (255 chars,
+        // arbitrary Unicode/quotes) and would enable header injection.
         return reply
           .header('cache-control', 'public, max-age=31536000, immutable')
           .header('x-content-type-options', 'nosniff')

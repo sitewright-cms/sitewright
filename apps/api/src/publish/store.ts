@@ -53,10 +53,17 @@ export class PublishStore {
   resolveHtml(slug: string, requestPath: string): string {
     const dir = resolve(this.dirFor(slug));
     let rel = requestPath.replace(/^\/+/, '').replace(/\/+$/, '');
+    const segments = rel.split('/');
     // Defense-in-depth: reject obvious traversal segments before resolving (the
     // confinement check below is the authoritative guard).
-    if (rel.split('/').some((seg) => seg === '.' || seg === '..')) {
+    if (segments.some((seg) => seg === '.' || seg === '..')) {
       throw new Error('invalid site path segment');
+    }
+    // `media/` holds copied asset binaries (incl. raw user files like `report.html`). It must
+    // NEVER be served as inline HTML on this (cookie-bearing) origin — that would be stored XSS.
+    // Published pages never live under /media/, so this prefix is safe to exclude.
+    if (segments[0] === 'media') {
+      throw new Error('media path is not servable as html');
     }
     if (!rel.endsWith('.html')) rel = rel === '' ? 'index.html' : `${rel}/index.html`;
     const full = resolve(dir, rel);

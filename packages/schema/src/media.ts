@@ -26,12 +26,16 @@ export const MediaVariantSchema = z.object({
 });
 export type MediaVariant = z.infer<typeof MediaVariantSchema>;
 
+// One folder path segment — a single linear character class (no nested quantifier → no ReDoS).
+const FOLDER_SEGMENT = /^[A-Za-z0-9 _-]+$/;
+
 // A VIRTUAL folder path: purely a grouping label for the editor (on-disk storage stays flat at
 // `<projectId>/<assetId>/`). Slash-delimited safe segments, no leading/trailing slash; '' = root.
+// Validated per-segment (not via a nested-quantifier regex) so a hostile query param can't ReDoS.
 export const MediaFolderSchema = z
   .string()
   .max(200)
-  .regex(/^(?:[A-Za-z0-9 _-]+(?:\/[A-Za-z0-9 _-]+)*)?$/, 'invalid folder path');
+  .refine((v) => v === '' || v.split('/').every((seg) => FOLDER_SEGMENT.test(seg)), 'invalid folder path');
 const FolderSchema = MediaFolderSchema.default('');
 
 /** Stock-image attribution, recorded to satisfy a provider's license terms. */

@@ -19,7 +19,7 @@ test('media manager exposes a Stock images picker with a loaded provider list', 
   await page.getByRole('button', { name: 'Create project' }).click();
   await page.getByRole('button', { name: /Stock Site/ }).click();
 
-  await page.getByRole('tab', { name: 'Media' }).click();
+  await page.getByRole('tab', { name: 'Assets' }).click();
 
   // Open the stock picker in a modal (it replaced the inner "Stock images" tab).
   await page.getByRole('button', { name: 'Search stock images' }).click();

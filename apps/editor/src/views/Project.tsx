@@ -33,7 +33,7 @@ const TAB_LABELS: Record<Tab, string> = {
   'corporate-identity': 'Corporate Identity',
   'website-settings': 'Website Settings',
   pages: 'Pages',
-  media: 'Media',
+  media: 'Assets',
   forms: 'Forms',
   data: 'Data',
   admin: 'Admin',

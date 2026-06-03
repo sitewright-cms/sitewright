@@ -22,12 +22,20 @@ function emptyBundle(project: Project): SettingsBundle {
  * Corporate Identity (company + brand) and Website settings, over the existing
  * settings-singleton content API. `prefers-reduced-motion` is honored globally.
  */
-export function SettingsView({ project }: { project: Project }) {
+/**
+ * @param section When provided, the view renders ONLY that section and hides the internal
+ *   segmented switcher — the project's top-level tabs (Corporate Identity / Website Settings)
+ *   own the switching. Omitted, the legacy self-switching surface is shown.
+ */
+export function SettingsView({ project, section: fixedSection }: { project: Project; section?: Section }) {
   const [form, setForm] = useState<SettingsForm | null>(null);
   // The last-loaded bundle — the baseline for fields the form doesn't surface
   // (logoLight/logoDark, spacing, radii, typography.scale) so a save never drops them.
   const [base, setBase] = useState<SettingsBundle | null>(null);
-  const [section, setSection] = useState<Section>('identity');
+  const [internalSection, setSection] = useState<Section>('identity');
+  // When the parent fixes the section (top-tab driven), use it and hide the switcher.
+  const section = fixedSection ?? internalSection;
+  const showSwitcher = fixedSection === undefined;
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -113,6 +121,7 @@ export function SettingsView({ project }: { project: Project }) {
         <div className="p-5 sm:p-7">
           {/* Header: title + animated segmented switcher + save control. */}
           <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+            {showSwitcher ? (
             <div role="tablist" aria-label="Settings sections" className="flex items-center gap-2 rounded-2xl border border-white/50 bg-white/50 p-1 shadow-sm backdrop-blur-xl">
               {SECTIONS.map((s, i) => (
                 <button
@@ -141,6 +150,10 @@ export function SettingsView({ project }: { project: Project }) {
                 </button>
               ))}
             </div>
+            ) : (
+              // Section is fixed by the parent tab; keep the header layout (save control stays right).
+              <div />
+            )}
 
             <div className="flex items-center gap-3">
               <AnimatePresence>

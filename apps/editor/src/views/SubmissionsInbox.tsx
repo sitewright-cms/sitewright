@@ -6,8 +6,11 @@ import { api, type Project } from '../api';
  * Submissions inbox: the form submissions captured by the public endpoint, newest
  * first. Values are plain text (the engine stores text only) and rendered via
  * React (escaped by default), so visitor-supplied content cannot inject markup.
+ *
+ * `formId` scopes the inbox to one form (the Forms tab folds this in per-row); omitted,
+ * it shows every form's submissions.
  */
-export function SubmissionsInbox({ project }: { project: Project }) {
+export function SubmissionsInbox({ project, formId }: { project: Project; formId?: string }) {
   const [items, setItems] = useState<FormSubmission[]>([]);
   const [total, setTotal] = useState(0);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -18,8 +21,10 @@ export function SubmissionsInbox({ project }: { project: Project }) {
     try {
       const res = await api.listSubmissions(project.id);
       if (!isActive()) return;
-      setItems(res.items);
-      setTotal(res.total);
+      // Scope to one form when asked (the Forms-tab "Show submissions" action).
+      const scoped = formId ? res.items.filter((s) => s.formId === formId) : res.items;
+      setItems(scoped);
+      setTotal(formId ? scoped.length : res.total);
     } catch (err) {
       if (isActive()) setError(err instanceof Error ? err.message : 'failed to load submissions');
     } finally {
@@ -32,7 +37,7 @@ export function SubmissionsInbox({ project }: { project: Project }) {
     return () => {
       active = false;
     };
-  }, [project.id]);
+  }, [project.id, formId]);
 
   async function remove(id: string) {
     if (!window.confirm('Delete this submission?')) return;
@@ -63,7 +68,7 @@ export function SubmissionsInbox({ project }: { project: Project }) {
                   aria-label={`${open ? 'Collapse' : 'Expand'} submission from ${s.formId}`}
                   onClick={() => setOpenId(open ? null : s.id)}
                 >
-                  <code className="text-xs text-slate-400">{s.formId}</code>{' '}
+                  {!formId && <code className="text-xs text-slate-400">{s.formId}</code>}{!formId && ' '}
                   <span className="text-slate-700">{summary.slice(0, 80)}</span>
                   <span className="ml-2 text-xs text-slate-400">{new Date(s.createdAt).toLocaleString()}</span>
                 </button>

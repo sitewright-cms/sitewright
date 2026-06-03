@@ -24,7 +24,7 @@ test('upload an image into the media library and see the optimized thumbnail', a
   await page.getByRole('button', { name: /Media Site/ }).click();
 
   // Media tab: upload an image; the optimized thumbnail appears once processing finishes.
-  await page.getByRole('button', { name: 'media', exact: true }).click();
+  await page.getByRole('tab', { name: 'Media' }).click();
   await page.getByLabel('Upload image').setInputFiles({
     name: 'hero.png',
     mimeType: 'image/png',

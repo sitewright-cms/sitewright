@@ -5,12 +5,9 @@ import { CodePageEditor } from './CodePageEditor';
 import { ClientSourceEditor } from './ClientSourceEditor';
 import { DatasetManager } from './DatasetManager';
 import { MediaManager } from './MediaManager';
-import { ApiKeysManager } from './ApiKeysManager';
 import { FormsManager } from './FormsManager';
-import { SubmissionsInbox } from './SubmissionsInbox';
 import { SettingsView } from './settings/SettingsView';
-import { TeamManager } from './TeamManager';
-import { ClientsManager } from './ClientsManager';
+import { AdminView } from './AdminView';
 import { PublishBar } from './PublishBar';
 
 interface ProjectViewProps {
@@ -18,9 +15,28 @@ interface ProjectViewProps {
   onBack: () => void;
 }
 
-// The constrained client role only ever sees the pages list + the restricted editor.
-const MANAGE_TABS = ['pages', 'data', 'media', 'forms', 'inbox', 'settings', 'clients', 'team', 'access'] as const;
+// The owner's top-level tabs. Settings is lifted into the two leading tabs (Corporate Identity /
+// Website Settings); Clients/Team/Access are grouped under Admin; the submissions Inbox is folded
+// into Forms. The constrained client role sees none of these — just the pages list + restricted editor.
+const MANAGE_TABS = [
+  'corporate-identity',
+  'website-settings',
+  'pages',
+  'media',
+  'forms',
+  'data',
+  'admin',
+] as const;
 type Tab = (typeof MANAGE_TABS)[number];
+const TAB_LABELS: Record<Tab, string> = {
+  'corporate-identity': 'Corporate Identity',
+  'website-settings': 'Website Settings',
+  pages: 'Pages',
+  media: 'Media',
+  forms: 'Forms',
+  data: 'Data',
+  admin: 'Admin',
+};
 
 // A new code page opens with a small, valid Handlebars + Tailwind scaffold so the live
 // preview is immediately meaningful: it demonstrates the {{ company.* }} bindings AND an
@@ -110,18 +126,21 @@ export function ProjectView({ project, onBack }: ProjectViewProps) {
 
       {/* Clients see no tab bar — just their editable pages. */}
       {!isClient && (
-        <div className="mb-6 flex gap-1 border-b border-slate-200">
+        <div role="tablist" aria-label="Project sections" className="mb-6 flex gap-1 border-b border-slate-200">
           {MANAGE_TABS.map((t) => (
             <button
               key={t}
+              role="tab"
+              aria-selected={tab === t}
               onClick={() => setTab(t)}
-              className={`-mb-px border-b-2 px-3 py-2 text-sm capitalize ${
+              className={`-mb-px cursor-pointer border-b-2 px-3 py-2 text-sm ${
                 tab === t
                   ? 'border-slate-900 font-semibold text-slate-900'
                   : 'border-transparent text-slate-500 hover:text-slate-800'
               }`}
             >
-              {t}
+              {/* eslint-disable-next-line security/detect-object-injection -- t is a typed Tab literal */}
+              {TAB_LABELS[t]}
             </button>
           ))}
         </div>
@@ -129,23 +148,20 @@ export function ProjectView({ project, onBack }: ProjectViewProps) {
 
       {isClient ? (
         <ClientPagesList pages={pages} onOpen={setEditing} />
+      ) : tab === 'corporate-identity' ? (
+        <SettingsView key={project.id} project={project} section="identity" />
+      ) : tab === 'website-settings' ? (
+        <SettingsView key={project.id} project={project} section="website" />
       ) : tab === 'data' ? (
         <DatasetManager project={project} />
       ) : tab === 'media' ? (
         <MediaManager project={project} />
       ) : tab === 'forms' ? (
+        // Submissions are folded in per-form (each row's "Show submissions").
         <FormsManager key={project.id} project={project} />
-      ) : tab === 'inbox' ? (
-        <SubmissionsInbox key={project.id} project={project} />
-      ) : tab === 'settings' ? (
-        <SettingsView key={project.id} project={project} />
-      ) : tab === 'clients' ? (
-        <ClientsManager key={project.id} project={project} />
-      ) : tab === 'team' ? (
-        <TeamManager />
-      ) : tab === 'access' ? (
-        // Remount on project switch → all state (incl. the one-time token banner) resets.
-        <ApiKeysManager key={project.id} project={project} />
+      ) : tab === 'admin' ? (
+        // Clients · Team · Access, grouped under sub-tabs.
+        <AdminView key={project.id} project={project} />
       ) : (
         <>
           <ul className="mb-8 flex flex-col gap-2">

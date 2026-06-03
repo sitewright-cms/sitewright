@@ -3,6 +3,7 @@ import type { Form, FormField, FormMode } from '@sitewright/schema';
 import { api, type Project } from '../api';
 import { identifierize, slugify } from '../lib/entry-form';
 import { ProjectSmtp } from './ProjectSmtp';
+import { SubmissionsInbox } from './SubmissionsInbox';
 
 const FIELD_TYPES: ReadonlyArray<FormField['type']> = ['text', 'email', 'tel', 'url', 'number', 'textarea', 'select'];
 
@@ -46,6 +47,8 @@ export function FormsManager({ project }: { project: Project }) {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
+  // Which form's submissions are expanded inline (the folded-in inbox).
+  const [submissionsFor, setSubmissionsFor] = useState<string | null>(null);
 
   async function load(isActive: () => boolean = () => true) {
     try {
@@ -385,33 +388,51 @@ export function FormsManager({ project }: { project: Project }) {
       {error && <p className="text-sm text-red-600">{error}</p>}
       {saved && <p className="text-sm text-green-600">Saved.</p>}
       <ul className="flex flex-col gap-2">
-        {forms.map((f) => (
-          <li
-            key={f.id}
-            className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm"
-          >
-            <button
-              className="text-left font-medium hover:underline"
-              onClick={() => {
-                setSaved(false);
-                // Clone (incl. each field) so editing the draft never aliases the list row.
-                setDraft({ ...f, fields: f.fields.map((field) => ({ ...field })) });
-              }}
+        {forms.map((f) => {
+          const showing = submissionsFor === f.id;
+          return (
+            <li
+              key={f.id}
+              className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm"
             >
-              {f.name}
-            </button>
-            <code className="text-xs text-slate-400">{f.id}</code>
-            <span className="text-xs text-slate-500">{f.fields.length} fields</span>
-            {f.hcaptcha && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] uppercase">hCaptcha</span>}
-            <button
-              aria-label={`Delete form ${f.id}`}
-              className="ml-auto text-xs text-red-500 hover:text-red-700"
-              onClick={() => remove(f.id)}
-            >
-              Delete
-            </button>
-          </li>
-        ))}
+              <div className="flex items-center gap-3">
+                <button
+                  className="text-left font-medium hover:underline"
+                  onClick={() => {
+                    setSaved(false);
+                    // Clone (incl. each field) so editing the draft never aliases the list row.
+                    setDraft({ ...f, fields: f.fields.map((field) => ({ ...field })) });
+                  }}
+                >
+                  {f.name}
+                </button>
+                <code className="text-xs text-slate-400">{f.id}</code>
+                <span className="text-xs text-slate-500">{f.fields.length} fields</span>
+                {f.hcaptcha && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] uppercase">hCaptcha</span>}
+                <button
+                  aria-label={`${showing ? 'Hide' : 'Show'} submissions for ${f.id}`}
+                  aria-expanded={showing}
+                  className="ml-auto text-xs font-medium text-slate-600 hover:text-slate-900"
+                  onClick={() => setSubmissionsFor(showing ? null : f.id)}
+                >
+                  {showing ? 'Hide submissions' : 'Show submissions'}
+                </button>
+                <button
+                  aria-label={`Delete form ${f.id}`}
+                  className="text-xs text-red-500 hover:text-red-700"
+                  onClick={() => remove(f.id)}
+                >
+                  Delete
+                </button>
+              </div>
+              {showing && (
+                <div className="border-t border-slate-100 pt-3">
+                  <SubmissionsInbox key={f.id} project={project} formId={f.id} />
+                </div>
+              )}
+            </li>
+          );
+        })}
         {forms.length === 0 && <li className="text-sm text-slate-400">No forms yet. Create one, then add a Form block to a page.</li>}
       </ul>
 

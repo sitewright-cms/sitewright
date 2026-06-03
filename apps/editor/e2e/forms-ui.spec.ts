@@ -3,8 +3,9 @@ import { test, expect } from '@playwright/test';
 const stamp = Date.now();
 
 // Forms tab: author a form in the editor UI, then (via a public submission) see it
-// land in the Inbox tab — the full Phase 3b loop through the real stack.
-test('author a form in the editor and see a submission in the inbox', async ({ page }) => {
+// land in the form's folded-in submissions list — the full Phase 3b loop through the
+// real stack.
+test('author a form in the editor and see a submission in its submissions list', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: /Register/ }).click();
   await page.getByLabel('Email').fill(`forms-ui-${stamp}@e2e.test`);
@@ -16,7 +17,7 @@ test('author a form in the editor and see a submission in the inbox', async ({ p
   await page.getByRole('button', { name: 'Create project' }).click();
 
   await page.getByRole('button', { name: /Forms UI Site/ }).click();
-  await page.getByRole('button', { name: 'forms' }).click();
+  await page.getByRole('tab', { name: 'Forms' }).click();
 
   // Create + save a form.
   await page.getByLabel('New form name').fill('Contact');
@@ -26,7 +27,7 @@ test('author a form in the editor and see a submission in the inbox', async ({ p
   await expect(page.getByText('Contact')).toBeVisible();
 
   // Resolve the projectId via the API (shares the browser session cookie) and
-  // submit to the public endpoint, then check the inbox.
+  // submit to the public endpoint, then reveal it in the form's submissions list.
   const projects = await page.context().request.get('/projects');
   const project = (await projects.json()).projects.find((p: { slug: string }) => p.slug === `forms-ui-${stamp}`);
   const submit = await page.context().request.post(`/f/${project.id}/contact`, {
@@ -34,8 +35,9 @@ test('author a form in the editor and see a submission in the inbox', async ({ p
   });
   expect(submit.status()).toBe(200);
 
-  // Inbox tab shows the submission (the summary shows the first field value).
-  await page.getByRole('button', { name: 'inbox' }).click();
+  // Submissions are now folded into the Forms tab: expand the Contact form's inline
+  // submissions list (the only form here, so a single match is unambiguous).
+  await page.getByRole('button', { name: /Show submissions/ }).click();
   await expect(page.getByText('1 submission')).toBeVisible();
   await expect(page.getByText('visitor@example.com')).toBeVisible();
   // Expanding reveals the field breakdown (the `email` dt label is expand-only).

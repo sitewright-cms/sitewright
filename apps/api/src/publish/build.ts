@@ -89,6 +89,12 @@ export interface BuildSiteOptions {
    * fetched + parsed in the main process). Exposed to templates as `{{ website.json_data }}`.
    */
   jsonData?: unknown;
+  /**
+   * Reusable Handlebars partials (snippet name → source) a source page can compose with
+   * `{{> name}}`. Validated by `renderTemplate` like the page source. Matches the editor preview,
+   * which already loads these — this closes the publish-side gap.
+   */
+  snippets?: Record<string, string>;
 }
 
 /** Copies every media asset's files into `<base>/media/<assetId>/` (path-safe). */
@@ -216,7 +222,14 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     ]
       .filter((s): s is string => Boolean(s))
       .flatMap((s) => extractClassNames(s));
-    const classNames = [...scanRoots.flatMap(collectClassNames), ...sourceClassNames, ...slotClassNames];
+    // {{> snippet}} partials a source page composes contribute their classes too.
+    const snippetClassNames = Object.values(opts.snippets ?? {}).flatMap((s) => extractClassNames(s));
+    const classNames = [
+      ...scanRoots.flatMap(collectClassNames),
+      ...sourceClassNames,
+      ...slotClassNames,
+      ...snippetClassNames,
+    ];
     const usesUtilities = classNames.length > 0;
     const componentTypes = [...new Set(scanRoots.flatMap(usedComponentTypes))];
     const usesComponents = componentTypes.length > 0;
@@ -334,8 +347,9 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         let bodyHtml: string | undefined;
         if (page.source) {
           try {
-            // Client-edited region overrides ({{edit "key"}}) baked into the static output.
-            bodyHtml = renderTemplate(page.source, { ...renderCtx, content: page.content });
+            // Client-edited region overrides ({{edit "key"}}) baked into the static output, plus the
+            // project snippets the page can {{> compose}} (validated by renderTemplate, like preview).
+            bodyHtml = renderTemplate(page.source, { ...renderCtx, content: page.content, partials: opts.snippets });
           } catch (err) {
             throw new PublishError(
               err instanceof TemplateError

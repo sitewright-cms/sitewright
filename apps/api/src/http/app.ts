@@ -1456,6 +1456,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
                 .send({ error: err instanceof JsonDataError ? err.message : 'JSON data fetch failed' });
             }
           }
+          // Reusable Handlebars partials a source page can {{> compose}} (same as the editor preview).
+          const snippets = Object.fromEntries(
+            ((await contentRepo.list(ctx, 'snippet')) as Snippet[]).map((s) => [s.name, s.source]),
+          );
           const release = await buildRunner.run({
             outDir: store.dirFor(project.id),
             bundle,
@@ -1465,6 +1469,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             ...(opts.publicUrl ? { publicBaseUrl: opts.publicUrl } : {}),
             ...(hcaptchaSiteKey ? { hcaptchaSiteKey } : {}),
             ...(jsonData !== undefined ? { jsonData } : {}),
+            ...(Object.keys(snippets).length ? { snippets } : {}),
             readMedia: mediaStorage
               ? (assetId, file) => mediaStorage.read(project.id, assetId, file)
               : undefined,

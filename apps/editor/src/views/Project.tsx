@@ -148,10 +148,14 @@ export function ProjectView({ project, onBack }: ProjectViewProps) {
 
       {isClient ? (
         <ClientPagesList pages={pages} onOpen={setEditing} />
-      ) : tab === 'corporate-identity' ? (
-        <SettingsView key={project.id} project={project} section="identity" />
-      ) : tab === 'website-settings' ? (
-        <SettingsView key={project.id} project={project} section="website" />
+      ) : tab === 'corporate-identity' || tab === 'website-settings' ? (
+        // ONE SettingsView instance across both settings tabs (section is a prop, not a remount),
+        // so switching Corporate Identity ↔ Website Settings preserves the in-progress form.
+        <SettingsView
+          key={project.id}
+          project={project}
+          section={tab === 'corporate-identity' ? 'identity' : 'website'}
+        />
       ) : tab === 'data' ? (
         <DatasetManager project={project} />
       ) : tab === 'media' ? (

@@ -19,12 +19,13 @@ export function SubmissionsInbox({ project, formId }: { project: Project; formId
 
   async function load(isActive: () => boolean = () => true) {
     try {
-      const res = await api.listSubmissions(project.id);
+      // Scope server-side when asked (the Forms-tab "Show submissions" action) so the page +
+      // `total` are correct per form — the endpoint paginates (newest 50), so filtering client-side
+      // would both miscount and miss older submissions.
+      const res = await api.listSubmissions(project.id, formId);
       if (!isActive()) return;
-      // Scope to one form when asked (the Forms-tab "Show submissions" action).
-      const scoped = formId ? res.items.filter((s) => s.formId === formId) : res.items;
-      setItems(scoped);
-      setTotal(formId ? scoped.length : res.total);
+      setItems(res.items);
+      setTotal(res.total);
     } catch (err) {
       if (isActive()) setError(err instanceof Error ? err.message : 'failed to load submissions');
     } finally {

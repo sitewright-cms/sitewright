@@ -160,7 +160,8 @@ export class ContentRepository {
    * The newest content `updatedAt` for the project, EXCLUDING the non-published config kinds
    * (deploy_target / project_smtp — credentials, not site content). Null when there is no
    * publishable content yet. Powers the publish "dirty" signal (has the site changed since the last
-   * release?). Uses an indexed order-by + limit so the column mapper returns a real Date.
+   * release?). Filters by the indexed `project_id`, then order-by/limit so the column mapper
+   * returns a real Date (there is no index on `updated_at` — fine at these row counts).
    */
   async latestContentUpdate(ctx: ProjectContext): Promise<Date | null> {
     const [row] = await this.db

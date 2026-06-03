@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { Page } from '@sitewright/schema';
 import { extractEditRegions } from '@sitewright/core';
 import { api, previewDocUrl, type Project } from '../api';
@@ -9,18 +9,20 @@ interface ClientSourceEditorProps {
   project: Project;
   page: Page;
   onClose: () => void;
+  /** Optional source⇄content switch, rendered in the header (provided by ProjectView). */
+  modeToggle?: ReactNode;
 }
 
 const PREVIEW_DEBOUNCE_MS = 400;
 
 /**
- * The constrained client (member) editor for a CODE-FIRST (`source`) page. The developer
- * marked editable regions in the template with `{{edit "key" "default"}}`; this surfaces ONLY
- * those regions as content fields — the template source is never editable here. Saving PUTs
- * the page with an updated `content` map; the server independently enforces that only
- * `content` changed (assertClientEditAllowed), so the template/structure stay immutable.
+ * The CONTENT-mode editor for a code-first (`source`) page: the developer marked editable regions
+ * in the template with `{{edit "key" "default"}}`, and this surfaces ONLY those regions as content
+ * fields — a safe, focused surface for a client. It is a UI DEFAULT, not a hard restriction: in the
+ * flat-tenancy model any project member may also switch to the full source editor (the toggle). The
+ * server no longer constrains client writes — the safe surface lives here, in the UI.
  */
-export function ClientSourceEditor({ project, page, onClose }: ClientSourceEditorProps) {
+export function ClientSourceEditor({ project, page, onClose, modeToggle }: ClientSourceEditorProps) {
   const regions = useMemo(() => extractEditRegions(page.source ?? ''), [page.source]);
   const [content, setContent] = useState<Record<string, string>>({ ...(page.content ?? {}) });
   const [saving, setSaving] = useState(false);
@@ -98,13 +100,16 @@ export function ClientSourceEditor({ project, page, onClose }: ClientSourceEdito
         <span className="rounded-lg bg-indigo-100/80 px-2 py-0.5 text-[11px] font-medium text-indigo-700">
           Client editor
         </span>
-        <button
-          onClick={save}
-          disabled={saving || regions.length === 0}
-          className={`ml-auto ${primaryButton} px-4 disabled:opacity-50`}
-        >
-          {saving ? 'Saving…' : 'Save changes'}
-        </button>
+        <div className="ml-auto flex items-center gap-3">
+          {modeToggle}
+          <button
+            onClick={save}
+            disabled={saving || regions.length === 0}
+            className={`${primaryButton} px-4 disabled:opacity-50`}
+          >
+            {saving ? 'Saving…' : 'Save changes'}
+          </button>
+        </div>
       </div>
       {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
 

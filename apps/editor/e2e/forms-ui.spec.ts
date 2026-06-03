@@ -40,7 +40,7 @@ test('author a form in the editor and see a submission in its submissions list',
   await page.getByRole('button', { name: /Show submissions/ }).click();
   await expect(page.getByText('1 submission')).toBeVisible();
   await expect(page.getByText('visitor@example.com')).toBeVisible();
-  // Expanding reveals the field breakdown (the `email` dt label is expand-only).
-  await page.getByText('contact').click();
+  // Expanding the submission reveals the field breakdown (the `email` dt label is expand-only).
+  await page.getByRole('button', { name: /Expand submission from contact/ }).click();
   await expect(page.getByText('email', { exact: true })).toBeVisible();
 });

@@ -18,9 +18,12 @@ type Result = StockSearchResult['results'][number];
 export function StockPicker({
   projectId,
   onImported,
+  bare = false,
 }: {
   projectId: string;
   onImported: () => void | Promise<void>;
+  /** Drop the glass-card chrome — for rendering inside the Modal, which supplies the panel. */
+  bare?: boolean;
 }) {
   const [providers, setProviders] = useState<StockProvidersStatus['providers']>([]);
   const [loaded, setLoaded] = useState(false);
@@ -92,7 +95,7 @@ export function StockPicker({
   const field = glassInput;
 
   return (
-    <div className={`${glassCard} p-4`}>
+    <div className={bare ? '' : `${glassCard} p-4`}>
       <form onSubmit={search} className="flex flex-wrap items-end gap-2">
         <label className="flex flex-col text-xs text-slate-500">
           Provider

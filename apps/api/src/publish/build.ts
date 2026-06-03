@@ -104,7 +104,9 @@ async function copyMedia(
   readMedia: (assetId: string, file: string) => Promise<Buffer>,
 ): Promise<void> {
   for (const asset of media) {
-    const files = [asset.fallback, ...asset.variants.map((v) => v.path)];
+    // Image assets carry optimized variants + a fallback; a raw file is a single stored blob.
+    const files =
+      asset.kind === 'image' ? [asset.fallback, ...asset.variants.map((v) => v.path)] : [asset.storedName];
     const dir = join(base, 'media', asset.id);
     // asset.id is IdSchema-validated; file names are FileNameSchema-validated.
     /* v8 ignore next -- defensive: validated id can't escape */

@@ -3,7 +3,7 @@
 // stylesheet targets. ALL text and attributes are escaped, and URLs are passed
 // through an allowlist — the output is safe to drop into a sandboxed preview
 // iframe even when the page tree contains hostile content.
-import type { BrandTokens, Entry, FormField, FormPublic, MediaAsset, Page, PageNode } from '@sitewright/schema';
+import type { BrandTokens, Entry, FormField, FormPublic, ImageAsset, MediaAsset, Page, PageNode } from '@sitewright/schema';
 import { HONEYPOT_FIELD, FORM_ID_FIELD } from '@sitewright/schema';
 import { resolveBinding } from '@sitewright/core';
 import { escapeAttr, escapeHtml } from './escape.js';
@@ -95,9 +95,9 @@ function renderFormField(field: FormField): string {
   return `<label data-sw-part="field"><span data-sw-part="label">${escapeHtml(field.label)}</span>${control}</label>`;
 }
 
-/** Builds an optimized `<picture>` for a known media asset (variants + fallback). */
+/** Builds an optimized `<picture>` for a known IMAGE asset (variants + fallback). */
 function renderPicture(
-  asset: MediaAsset,
+  asset: ImageAsset,
   alt: string,
   loading: string,
   mediaUrl: (asset: MediaAsset, file: string) => string,
@@ -151,7 +151,8 @@ function imageTag(
   cls = '',
 ): string {
   const asset = ctx.media?.find((m) => m.url === src);
-  if (asset && ctx.mediaUrl) return renderPicture(asset, alt, loading, ctx.mediaUrl, cls);
+  // Only IMAGE assets become an optimized <picture>; a raw file url never matches an Image src.
+  if (asset && asset.kind === 'image' && ctx.mediaUrl) return renderPicture(asset, alt, loading, ctx.mediaUrl, cls);
   const imgSrc = resolveInternalUrl(src, root);
   return `<img data-sw-block="Image"${cls} src="${escapeAttr(imgSrc)}" alt="${escapeAttr(alt)}" loading="${loading}" />`;
 }

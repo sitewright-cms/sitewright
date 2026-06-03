@@ -6,7 +6,9 @@ import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
 import { z } from 'zod';
 import {
-  MediaAssetSchema,
+  MediaFolderSchema,
+  ImageAssetSchema,
+  FileAssetSchema,
   PageSchema,
   PageNodeSchema,
   InstanceSettingsInputSchema,
@@ -14,8 +16,10 @@ import {
   toPublicForm,
   type CorporateIdentity,
   type Entry,
+  type FileAsset,
   type Form,
   type FormPublic,
+  type ImageAsset,
   type MediaAsset,
   type Snippet,
   type Page,
@@ -1313,16 +1317,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       ctx: ProjectContext,
       projectId: string,
       buffer: Buffer,
-      meta: { filename: string; mimetype: string; alt?: string; attribution?: MediaAsset['attribution'] },
-    ): Promise<MediaAsset> {
+      meta: { filename: string; mimetype: string; folder?: string; alt?: string; attribution?: MediaAsset['attribution'] },
+    ): Promise<ImageAsset> {
       const assetId = randomUUID();
       const { assetDir, inputPath } = await storage.stageUpload(projectId, assetId, buffer);
       try {
         const optimized = await withOptimizeSlot(() => optimizeImage(inputPath, assetDir));
         await storage.clearUpload(inputPath);
-        const asset = MediaAssetSchema.parse({
+        const asset = ImageAssetSchema.parse({
+          kind: 'image',
           id: assetId,
           filename: meta.filename,
+          folder: meta.folder ?? '',
           format: meta.mimetype,
           bytes: buffer.length,
           width: optimized.width,
@@ -1334,7 +1340,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           ...(meta.alt ? { alt: meta.alt } : {}),
           ...(meta.attribution ? { attribution: meta.attribution } : {}),
         });
-        return (await contentRepo.put(ctx, 'media', assetId, asset)) as MediaAsset;
+        return (await contentRepo.put(ctx, 'media', assetId, asset)) as ImageAsset;
       } catch (err) {
         // Any failure (bad image, validation, DB) → remove the whole asset dir.
         await storage.remove(projectId, assetId);
@@ -1345,8 +1351,38 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       }
     }
 
-    // Upload an image: validate + optimize + store. The pipeline rejects non-raster/SVG.
-    app.post<{ Params: { projectId: string } }>(
+    // Store a NON-image upload as-is (any file type). Served download-only (attachment + nosniff),
+    // so an uploaded HTML/SVG can never execute on the API/site origin.
+    async function createFileAsset(
+      ctx: ProjectContext,
+      projectId: string,
+      buffer: Buffer,
+      meta: { filename: string; mimetype: string; folder?: string },
+    ): Promise<FileAsset> {
+      const assetId = randomUUID();
+      const storedName = MediaStorage.safeStoredName(meta.filename || 'file');
+      try {
+        await storage.storeFile(projectId, assetId, storedName, buffer);
+        const asset = FileAssetSchema.parse({
+          kind: 'file',
+          id: assetId,
+          filename: meta.filename || storedName,
+          folder: meta.folder ?? '',
+          bytes: buffer.length,
+          contentType: meta.mimetype || 'application/octet-stream',
+          storedName,
+          url: `/media/${projectId}/${assetId}/file/${storedName}`,
+        });
+        return (await contentRepo.put(ctx, 'media', assetId, asset)) as FileAsset;
+      } catch (err) {
+        await storage.remove(projectId, assetId);
+        throw err;
+      }
+    }
+
+    // Upload ANY file: images are optimized (AVIF/WebP/LQIP); everything else is stored as-is
+    // (download-only). The optional `?folder=` query files the asset under a virtual folder.
+    app.post<{ Params: { projectId: string }; Querystring: { folder?: string } }>(
       '/projects/:projectId/media',
       { config: rl(30) },
       async (req, reply) => {
@@ -1355,6 +1391,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         if (!WRITE_ROLES.has(ctx.role)) {
           return reply.code(403).send({ error: 'insufficient role for this operation' });
         }
+        // Validate the virtual folder up front (purely a metadata label; storage stays flat).
+        const folderParsed = MediaFolderSchema.safeParse(req.query.folder ?? '');
+        if (!folderParsed.success) return reply.code(400).send({ error: 'invalid folder' });
+        const folder = folderParsed.data;
+
         const file = await req.file();
         if (!file) return reply.code(400).send({ error: 'no file uploaded' });
 
@@ -1369,16 +1410,20 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           return reply.code(413).send({ error: 'file exceeds size limit' });
         }
 
-        try {
-          const saved = await createMediaAsset(ctx, project.id, buffer, {
-            filename: file.filename || 'upload',
-            mimetype: file.mimetype || 'image/*',
-          });
-          return reply.code(201).send({ item: saved });
-        } catch (err) {
-          if (err instanceof MediaValidationError) return reply.code(400).send({ error: err.message });
-          throw err;
+        const meta = { filename: file.filename || 'upload', mimetype: file.mimetype || 'application/octet-stream', folder };
+        // An `image/*` upload is optimized (and rejected if it is not a decodable raster — SVG and
+        // corrupt/oversized images still 400). Any other type is stored as-is (download-only).
+        if (meta.mimetype.startsWith('image/')) {
+          try {
+            const saved = await createMediaAsset(ctx, project.id, buffer, meta);
+            return reply.code(201).send({ item: saved });
+          } catch (err) {
+            if (err instanceof MediaValidationError) return reply.code(400).send({ error: err.message });
+            throw err;
+          }
         }
+        const saved = await createFileAsset(ctx, project.id, buffer, meta);
+        return reply.code(201).send({ item: saved });
       },
     );
 
@@ -1416,9 +1461,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       },
     );
 
-    // Public serving of optimized binaries (published sites are public). The
-    // storage layer validates every segment and confines the path to the asset
-    // directory, so traversal is impossible.
+    // Public serving of optimized IMAGE binaries (published sites are public). The storage layer
+    // validates every segment and confines the path to the asset directory, so traversal is
+    // impossible; `read` only accepts the image-servable charset (avif/webp/jpg). `nosniff` keeps
+    // the browser from re-interpreting the bytes as anything other than the declared image type.
     app.get<{ Params: { projectId: string; assetId: string; file: string } }>(
       '/media/:projectId/:assetId/:file',
       async (req, reply) => {
@@ -1433,7 +1479,31 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const type = MEDIA_CONTENT_TYPES.get(ext) ?? 'application/octet-stream';
         return reply
           .header('cache-control', 'public, max-age=31536000, immutable')
+          .header('x-content-type-options', 'nosniff')
           .type(type)
+          .send(bytes);
+      },
+    );
+
+    // Public serving of RAW (non-image) file assets. ALWAYS download-only: octet-stream +
+    // `Content-Disposition: attachment` + `nosniff`, so an uploaded HTML/SVG/script can never
+    // render or execute on this (cookie-bearing) origin. Distinct `/file/` path segment.
+    app.get<{ Params: { projectId: string; assetId: string; file: string } }>(
+      '/media/:projectId/:assetId/file/:file',
+      async (req, reply) => {
+        const { projectId, assetId, file } = req.params;
+        let bytes: Buffer;
+        try {
+          bytes = await storage.readStored(projectId, assetId, file);
+        } catch {
+          return reply.code(404).send({ error: 'not found' });
+        }
+        // `file` is STORED_FILE-validated (no quotes/CRLF), so it is safe in the header.
+        return reply
+          .header('cache-control', 'public, max-age=31536000, immutable')
+          .header('x-content-type-options', 'nosniff')
+          .header('content-disposition', `attachment; filename="${file}"`)
+          .type('application/octet-stream')
           .send(bytes);
       },
     );
@@ -1511,8 +1581,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             ...(hcaptchaSiteKey ? { hcaptchaSiteKey } : {}),
             ...(jsonData !== undefined ? { jsonData } : {}),
             ...(Object.keys(snippets).length ? { snippets } : {}),
+            // readStored accepts both image variant names AND raw file names (superset),
+            // so file-kind assets are copied into the published artifact too.
             readMedia: mediaStorage
-              ? (assetId, file) => mediaStorage.read(project.id, assetId, file)
+              ? (assetId, file) => mediaStorage.readStored(project.id, assetId, file)
               : undefined,
           });
           // Just published → nothing newer than this release, so the site is not dirty.

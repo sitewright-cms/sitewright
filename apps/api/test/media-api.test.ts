@@ -114,15 +114,53 @@ describe('media API', () => {
     expect(res.statusCode).toBe(403);
   });
 
-  it('rejects a non-image upload (400)', async () => {
+  it('stores a non-image upload as a downloadable file asset (attachment + nosniff)', async () => {
     const { t, projectId } = await setup('a@acme.test');
-    const res = await app.inject({
+    const base = `/projects/${projectId}`;
+    const cookies = { sw_session: t };
+
+    const up = await app.inject({
       method: 'POST',
-      url: `/projects/${projectId}/media`,
-      cookies: { sw_session: t },
+      url: `${base}/media`,
+      cookies,
       ...multipart('notes.txt', 'text/plain', Buffer.from('this is not an image')),
     });
-    expect(res.statusCode).toBe(400);
+    expect(up.statusCode).toBe(201);
+    const asset = (up.json() as { item: { kind: string; url: string; storedName: string; contentType: string; bytes: number } }).item;
+    expect(asset.kind).toBe('file');
+    expect(asset.contentType).toBe('text/plain');
+    expect(asset.url).toMatch(/^\/media\/[\w-]+\/[\w-]+\/file\/notes\.txt$/);
+
+    // Served download-only: octet-stream + attachment + nosniff (never inline on this origin).
+    const served = await app.inject({ method: 'GET', url: asset.url });
+    expect(served.statusCode).toBe(200);
+    expect(served.headers['content-type']).toBe('application/octet-stream');
+    expect(served.headers['content-disposition']).toContain('attachment');
+    expect(served.headers['x-content-type-options']).toBe('nosniff');
+    expect(served.rawPayload.toString()).toBe('this is not an image');
+  });
+
+  it('files an upload under a virtual folder (and rejects an unsafe folder)', async () => {
+    const { t, projectId } = await setup('a@acme.test');
+    const base = `/projects/${projectId}`;
+    const cookies = { sw_session: t };
+
+    const ok = await app.inject({
+      method: 'POST',
+      url: `${base}/media?folder=${encodeURIComponent('Docs/2026')}`,
+      cookies,
+      ...multipart('brochure.pdf', 'application/pdf', Buffer.from('%PDF-1.4 fake')),
+    });
+    expect(ok.statusCode).toBe(201);
+    expect((ok.json() as { item: { folder: string } }).item.folder).toBe('Docs/2026');
+
+    const bad = await app.inject({
+      method: 'POST',
+      url: `${base}/media?folder=${encodeURIComponent('../escape')}`,
+      cookies,
+      ...multipart('red.png', 'image/png', PNG_1X1),
+    });
+    expect(bad.statusCode).toBe(400);
   });
 
   it('requires authentication to upload', async () => {

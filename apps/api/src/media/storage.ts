@@ -6,6 +6,9 @@ import { join, resolve, sep } from 'node:path';
 // `\`, so a value can never escape its directory.
 const SEGMENT = /^[A-Za-z0-9_-]+$/;
 const SERVABLE_FILE = /^[A-Za-z0-9_-]+\.(avif|webp|jpg)$/;
+// A stored RAW file name: a sanitized base + a short original extension. Superset of
+// SERVABLE_FILE; still no slashes or dot-segments, so it stays confined to its asset dir.
+const STORED_FILE = /^[A-Za-z0-9_-]+\.[A-Za-z0-9]{1,12}$/;
 
 /**
  * Tenant/project-scoped media storage on the local filesystem (single-container
@@ -43,6 +46,57 @@ export class MediaStorage {
   /** Removes the temp input file after optimization (best-effort). */
   async clearUpload(inputPath: string): Promise<void> {
     await rm(inputPath, { force: true });
+  }
+
+  /**
+   * Sanitizes an arbitrary upload file name into a path-safe `<base>.<ext>` stored name. The base
+   * is reduced to `[A-Za-z0-9_-]` (other chars → `-`, collapsed, trimmed, capped); a missing or
+   * unsafe extension falls back to `bin`. Always returns a value that matches STORED_FILE.
+   */
+  static safeStoredName(filename: string): string {
+    const dot = filename.lastIndexOf('.');
+    const rawExt = dot > 0 ? filename.slice(dot + 1).toLowerCase() : '';
+    const ext = /^[A-Za-z0-9]{1,12}$/.test(rawExt) ? rawExt : 'bin';
+    const rawBase = dot > 0 ? filename.slice(0, dot) : filename;
+    const base =
+      rawBase
+        .replace(/[^A-Za-z0-9_-]+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '')
+        .slice(0, 60) || 'file';
+    return `${base}.${ext}`;
+  }
+
+  /** Writes a raw (non-image) upload under `<root>/<projectId>/<assetId>/<storedName>`. */
+  async storeFile(projectId: string, assetId: string, storedName: string, data: Buffer): Promise<void> {
+    if (!STORED_FILE.test(storedName)) throw new Error('invalid stored file name');
+    const assetDir = this.assetDir(projectId, assetId); // segments are charset-validated
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined, validated path
+    await mkdir(assetDir, { recursive: true, mode: 0o750 });
+    const target = this.resolveStoredPath(projectId, assetId, storedName);
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined, validated path
+    await writeFile(target, data);
+  }
+
+  /** Resolves a stored raw-file path (broader charset than servable images), confined to its dir. */
+  resolveStoredPath(projectId: string, assetId: string, file: string): string {
+    if (!STORED_FILE.test(file)) throw new Error('invalid stored file name');
+    const dir = resolve(this.assetDir(projectId, assetId));
+    const full = resolve(dir, file);
+    if (full !== join(dir, file) || !full.startsWith(dir + sep)) {
+      throw new Error('resolved media path escapes its directory');
+    }
+    return full;
+  }
+
+  /**
+   * Reads any stored file by its (broad) stored name — raw uploads AND image variants. Used by the
+   * attachment-only raw serve route and by the publish copier (NOT the inline image route, which
+   * keeps the strict image-servable `read`).
+   */
+  async readStored(projectId: string, assetId: string, file: string): Promise<Buffer> {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- path validated + confined above
+    return readFile(this.resolveStoredPath(projectId, assetId, file));
   }
 
   /** Resolves a servable file path, throwing on any invalid or escaping input. */

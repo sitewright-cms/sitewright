@@ -97,7 +97,7 @@ describe('deviceLogin (RFC 8628)', () => {
         : { status: 400, body: { error: 'authorization_pending' } },
     );
     await expect(
-      deviceLogin({ url: URL, fetchImpl: impl, sleep: async () => c.advance(1000), now: c.now, notify: () => {} }),
+      deviceLogin({ url: URL, fetchImpl: impl, sleep: async () => { c.advance(1000); }, now: c.now, notify: () => {} }),
     ).rejects.toThrow(/timed out/);
   });
 });

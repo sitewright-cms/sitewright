@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import type { Page, Template } from '@sitewright/schema';
 import { pagePath, pagesById } from '@sitewright/core';
 import { api, previewDocUrl, type Project } from '../api';
@@ -12,6 +12,7 @@ import { FormsManager } from './FormsManager';
 import { SettingsView } from './settings/SettingsView';
 import { AdminView } from './AdminView';
 import { glassCard, glassInput, fieldLabel, primaryButton } from '../theme';
+import { orderPagesByTree, canReorder, reorderWithinParent, orderedSiblings } from './pages-order';
 
 interface ProjectViewProps {
   project: Project;
@@ -60,6 +61,17 @@ const rowIcon = (paths: ReactNode) => (
   </svg>
 );
 const HOME_ICON = rowIcon(<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM9 22V12h6v10" />);
+// Six-dot grip — the drag affordance for reordering a page within its sibling group.
+const GRIP_ICON = rowIcon(
+  <>
+    <circle cx="9" cy="6" r="1" />
+    <circle cx="9" cy="12" r="1" />
+    <circle cx="9" cy="18" r="1" />
+    <circle cx="15" cy="6" r="1" />
+    <circle cx="15" cy="12" r="1" />
+    <circle cx="15" cy="18" r="1" />
+  </>,
+);
 const PAGE_ICON = rowIcon(
   <>
     <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5z" />
@@ -113,62 +125,6 @@ const TEMPLATE_ICON = rowIcon(
 const ROW_ACTION =
   'inline-flex cursor-pointer items-center justify-center rounded-lg p-1.5 text-slate-400 transition hover:bg-white hover:text-slate-900';
 
-/** A page with its depth in the page tree (0 = top-level), for indented display. */
-interface TreeRow {
-  page: Page;
-  depth: number;
-}
-
-/** Hard cap on tree recursion (mirrors the schema's page-tree depth bound). */
-const MAX_TREE_DEPTH = 100;
-
-/**
- * Sibling order: Home (the empty-slug root) first; then default-locale pages before other
- * locales (so a locale's pages stay grouped, not interleaved); within a locale by `nav.order`
- * then title — matching the published nav order.
- */
-function bySiblingOrder(a: Page, b: Page, defaultLocale: string): number {
-  const aHome = a.path === '';
-  const bHome = b.path === '';
-  if (aHome !== bHome) return aHome ? -1 : 1;
-  const la = a.locale ?? defaultLocale;
-  const lb = b.locale ?? defaultLocale;
-  const ra = la === defaultLocale ? 0 : 1;
-  const rb = lb === defaultLocale ? 0 : 1;
-  if (ra !== rb) return ra - rb; // default-locale pages first
-  if (la !== lb) return la.localeCompare(lb, 'en'); // then grouped by locale
-  return (a.nav?.order ?? 0) - (b.nav?.order ?? 0) || a.title.localeCompare(b.title, 'en');
-}
-
-/**
- * Flattens the pages into page-tree order — each parent immediately followed by its
- * descendants — carrying a `depth` so the list can indent sub-pages. A page whose
- * `parent` isn't in the set is treated as a root; parent cycles are broken (each
- * page appears once), recursion is depth-capped, and any unreached page is appended flat.
- */
-function orderPagesByTree(pages: readonly Page[], defaultLocale: string): TreeRow[] {
-  const present = new Set(pages.map((p) => p.id));
-  const childrenOf = new Map<string | undefined, Page[]>();
-  for (const p of pages) {
-    const key = p.parent && present.has(p.parent) ? p.parent : undefined;
-    childrenOf.set(key, [...(childrenOf.get(key) ?? []), p]);
-  }
-  const rows: TreeRow[] = [];
-  const seen = new Set<string>();
-  const visit = (parentId: string | undefined, depth: number): void => {
-    if (depth > MAX_TREE_DEPTH) return; // guard a pathologically deep chain (stack safety)
-    for (const page of [...(childrenOf.get(parentId) ?? [])].sort((a, b) => bySiblingOrder(a, b, defaultLocale))) {
-      if (seen.has(page.id)) continue; // cycle guard
-      seen.add(page.id);
-      rows.push({ page, depth });
-      visit(page.id, depth + 1);
-    }
-  };
-  visit(undefined, 0);
-  for (const p of pages) if (!seen.has(p.id)) rows.push({ page: p, depth: 0 });
-  return rows;
-}
-
 export function ProjectView({ project, tab }: ProjectViewProps) {
   const { confirm, dialog } = useDialogs();
   // An owner gets the full studio; a `member` is a client with a content-first default surface.
@@ -186,6 +142,16 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
   const [locales, setLocales] = useState<string[]>(['en']);
   const defaultLocale = locales[0] ?? 'en';
   const multilingual = locales.length > 1;
+  // Drag&drop reordering of sibling pages (same parent + locale). `dragId` is the page being
+  // dragged; `drop` marks where it will land (a row + which side) so the list opens a gap there.
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [drop, setDrop] = useState<{ id: string; pos: 'before' | 'after' } | null>(null);
+  // Screen-reader announcement for a completed reorder (drag or keyboard).
+  const [reorderMsg, setReorderMsg] = useState('');
+  // Always-current `pages` for the reorder handlers: they must compute against the latest
+  // committed list, never a stale render closure (rapid keyboard moves / in-flight saves).
+  const pagesRef = useRef<Page[]>(pages);
+  pagesRef.current = pages;
   // Pages in page-tree order (parents followed by their children) with a depth for
   // indenting sub-pages in the list.
   const orderedPages = useMemo(() => orderPagesByTree(pages, defaultLocale), [pages, defaultLocale]);
@@ -221,6 +187,38 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
         /* settings may not exist yet → single default locale */
       });
   }, [project.id]);
+
+  /** Commits a drag: reorder the sibling group, apply optimistically, persist moved pages. */
+  async function persistReorder(sourceId: string, targetId: string, pos: 'before' | 'after') {
+    const current = pagesRef.current; // latest committed list, not a stale closure
+    const updated = reorderWithinParent(current, sourceId, targetId, pos, defaultLocale);
+    if (updated.length === 0) return;
+    const updatedById = new Map(updated.map((p) => [p.id, p] as const));
+    const next = current.map((p) => updatedById.get(p.id) ?? p);
+    pagesRef.current = next;
+    setPages(next); // optimistic
+    // Announce the move for assistive tech (the DOM reorder is otherwise silent).
+    const srcTitle = current.find((p) => p.id === sourceId)?.title ?? 'page';
+    const tgtTitle = current.find((p) => p.id === targetId)?.title ?? '';
+    setReorderMsg(`Moved ${srcTitle} ${pos} ${tgtTitle}`.trim());
+    try {
+      await Promise.all(updated.map((p) => api.putPage(project.id, p)));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'failed to reorder pages');
+      await load(); // resync from the server on failure
+    }
+  }
+
+  /** Keyboard reordering parity for the drag handle: Arrow Up/Down move within the sibling group. */
+  function moveByKey(p: Page, dir: 'up' | 'down') {
+    const group = orderedSiblings(pagesRef.current, p.id, defaultLocale);
+    const i = group.findIndex((g) => g.id === p.id);
+    if (i < 0) return;
+    const prev = group[i - 1];
+    const next = group[i + 1];
+    if (dir === 'up' && prev) void persistReorder(p.id, prev.id, 'before');
+    if (dir === 'down' && next) void persistReorder(p.id, next.id, 'after');
+  }
 
   async function create(e: FormEvent) {
     e.preventDefault();
@@ -476,14 +474,74 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
           <ul className="mb-8 flex flex-col gap-2">
             {orderedPages.map(({ page: p, depth }) => {
               const isHome = p.path === '';
+              // Indent sub-pages per the page tree — a left margin shrinks the card so nested
+              // rows sit inside their parent (capped so deep trees stay readable).
+              const indent = depth > 0 ? { marginLeft: `${Math.min(depth, 6) * 1.5}rem` } : undefined;
+              // The animated gap the list opens (at the row's own indent) where a dragged page
+              // would land — the "make space" drop indicator.
+              const gap = (side: 'before' | 'after') =>
+                drop && drop.id === p.id && drop.pos === side ? (
+                  <li aria-hidden style={indent} className="h-12 rounded-xl border-2 border-dashed border-indigo-400 bg-indigo-50/60 transition" />
+                ) : null;
               return (
-                <li
-                  key={p.id}
-                  // Indent sub-pages per the page tree — a left margin shrinks the card so
-                  // nested rows sit inside their parent (capped so deep trees stay readable).
-                  style={depth > 0 ? { marginLeft: `${Math.min(depth, 6) * 1.5}rem` } : undefined}
-                  className={`flex items-center gap-1 ${glassCard} px-3 py-2 transition hover:bg-white/80`}
-                >
+                <Fragment key={p.id}>
+                  {gap('before')}
+                  <li
+                    style={indent}
+                    // Only non-Home pages reorder (Home is pinned first). The whole row is the
+                    // drag source; the grip is the visible affordance + keyboard entry point.
+                    draggable={!isHome}
+                    onDragStart={(e) => {
+                      if (isHome) return;
+                      setDragId(p.id);
+                      e.dataTransfer.effectAllowed = 'move';
+                      e.dataTransfer.setData('text/plain', p.id);
+                    }}
+                    onDragOver={(e) => {
+                      if (!dragId || !canReorder(pages, dragId, p.id, defaultLocale)) return;
+                      e.preventDefault(); // mark this row a valid drop target
+                      const r = e.currentTarget.getBoundingClientRect();
+                      const pos = e.clientY < r.top + r.height / 2 ? 'before' : 'after';
+                      setDrop((d) => (d && d.id === p.id && d.pos === pos ? d : { id: p.id, pos }));
+                    }}
+                    onDragLeave={(e) => {
+                      // Clear this row's gap only when the pointer leaves the row entirely (not
+                      // when crossing onto a child element), so the indicator never lingers.
+                      if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                        setDrop((d) => (d?.id === p.id ? null : d));
+                      }
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      if (dragId && drop) void persistReorder(dragId, drop.id, drop.pos);
+                      setDragId(null);
+                      setDrop(null);
+                    }}
+                    onDragEnd={() => {
+                      setDragId(null);
+                      setDrop(null);
+                    }}
+                    className={`flex items-center gap-1 ${glassCard} px-3 py-2 transition hover:bg-white/80 ${dragId === p.id ? 'opacity-40' : ''}`}
+                  >
+                  {!isHome && (
+                    <button
+                      type="button"
+                      aria-label={`Reorder ${p.title}`}
+                      title="Drag to reorder — or focus and use ↑/↓"
+                      className="inline-flex shrink-0 cursor-grab items-center justify-center rounded-lg p-1.5 text-slate-300 transition hover:bg-white hover:text-slate-600 active:cursor-grabbing"
+                      onKeyDown={(e) => {
+                        if (e.key === 'ArrowUp') {
+                          e.preventDefault();
+                          moveByKey(p, 'up');
+                        } else if (e.key === 'ArrowDown') {
+                          e.preventDefault();
+                          moveByKey(p, 'down');
+                        }
+                      }}
+                    >
+                      {GRIP_ICON}
+                    </button>
+                  )}
                   <button
                     className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 px-1 py-1 text-left"
                     onClick={() => setEditing(p)}
@@ -555,11 +613,17 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
                       </button>
                     )}
                   </div>
-                </li>
+                  </li>
+                  {gap('after')}
+                </Fragment>
               );
             })}
             {pages.length === 0 && <li className="text-sm text-slate-400">No pages yet.</li>}
           </ul>
+          {/* Announces a completed reorder to assistive tech (the list re-sort is otherwise silent). */}
+          <div role="status" aria-live="polite" className="sr-only">
+            {reorderMsg}
+          </div>
 
           <form onSubmit={create} className={`flex flex-wrap items-end gap-2 ${glassCard} p-4`}>
             <div className="flex flex-col">

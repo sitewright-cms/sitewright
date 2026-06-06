@@ -11,9 +11,15 @@ export interface NavItem {
   children?: NavItem[];
 }
 
-/** `nav.order` then title — explicit 'en' locale for deterministic ordering across environments. */
+/**
+ * Sibling order then title — explicit 'en' locale for deterministic ordering across
+ * environments. Prefers the page-tree `order` (set by drag-reordering the pages list) so the
+ * menu follows the list, falling back to the legacy `nav.order` when it is absent.
+ */
 function byNavOrder(a: Page, b: Page): number {
-  return (a.nav?.order ?? 0) - (b.nav?.order ?? 0) || a.title.localeCompare(b.title, 'en');
+  const av = a.order ?? a.nav?.order ?? 0;
+  const bv = b.order ?? b.nav?.order ?? 0;
+  return av - bv || a.title.localeCompare(b.title, 'en');
 }
 
 function toItem(page: Page, byId: ReadonlyMap<string, Page>): NavItem {

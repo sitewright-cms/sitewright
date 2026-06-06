@@ -45,6 +45,13 @@ export const PageSchema = z
      */
     parent: IdSchema.optional(),
     /**
+     * Sibling sort order within the same parent (ascending; ties broken by title). Set by
+     * drag-reordering the pages list; the canonical page-tree order, independent of nav
+     * membership. The list and the auto-nav both prefer this, falling back to the legacy
+     * `nav.order` then title when it is absent.
+     */
+    order: z.number().int().min(0).max(100_000).optional(),
+    /**
      * The page's language. Absent → the project's default locale. A LOCALE VARIANT
      * of a page is itself a Page with its own `path`/`title`/`seo`/`content`; it
      * usually shares structure by referencing the same `template` (template-reuse),

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Page } from '@sitewright/schema';
-import { localizedDatasetName, resolveLocaleDatasets, translationsOf } from '../src/index.js';
+import { localizedDatasetName, resolveLocaleDatasets, translationsOf, localeOf, pagesInLocale } from '../src/index.js';
 
 const page = (over: Partial<Page>): Page =>
   ({ id: 'p', path: '/', title: 'T', root: { id: 'r', type: 'Section' }, ...over }) as Page;
@@ -53,5 +53,24 @@ describe('translationsOf (language switcher / hreflang group)', () => {
 
   it('a page with no translationGroup stands alone (no alternates)', () => {
     expect(translationsOf(pages, pages[3]!, 'en')).toEqual([]);
+  });
+});
+
+describe('localeOf / pagesInLocale (per-locale nav)', () => {
+  const pages: Page[] = [
+    page({ id: 'home', path: '/', title: 'Home' }), // default (locale unset)
+    page({ id: 'about', path: '/about', title: 'About' }), // default
+    page({ id: 'home-de', path: '/de', title: 'Start', locale: 'de' }),
+    page({ id: 'services-de', path: '/de/services', title: 'Leistungen', locale: 'de' }),
+  ];
+
+  it('localeOf falls back to the project default when a page has no locale', () => {
+    expect(localeOf(pages[0]!, 'en')).toBe('en'); // unset → default
+    expect(localeOf(pages[2]!, 'en')).toBe('de'); // explicit
+  });
+
+  it('pagesInLocale returns only the pages of that language (default = the unset ones)', () => {
+    expect(pagesInLocale(pages, 'en', 'en').map((p) => p.id)).toEqual(['home', 'about']);
+    expect(pagesInLocale(pages, 'de', 'en').map((p) => p.id)).toEqual(['home-de', 'services-de']);
   });
 });

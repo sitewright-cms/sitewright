@@ -40,6 +40,24 @@ export function resolveLocaleDatasets<T>(
   return out;
 }
 
+/** A page's effective locale: its own `locale`, or the project default when unset. */
+export function localeOf(page: Pick<Page, 'locale'>, defaultLocale: string): string {
+  return page.locale ?? defaultLocale;
+}
+
+/**
+ * The subset of `pages` belonging to `locale` — used to build a per-locale nav so a
+ * menu lists only the pages that exist in that language. Default-locale pages carry
+ * no explicit `locale`, so they match when `locale === defaultLocale`.
+ */
+export function pagesInLocale<T extends Pick<Page, 'locale'>>(
+  pages: readonly T[],
+  locale: string,
+  defaultLocale: string,
+): T[] {
+  return pages.filter((p) => localeOf(p, defaultLocale) === locale);
+}
+
 /** One member of a translation group, for a language switcher. */
 export interface TranslationLink {
   locale: string;

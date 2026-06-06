@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import type { Page, Template } from '@sitewright/schema';
 import { api, previewDocUrl, type Project } from '../api';
 import { CodePageEditor } from './CodePageEditor';
@@ -112,6 +112,48 @@ const TEMPLATE_ICON = rowIcon(
 const ROW_ACTION =
   'inline-flex cursor-pointer items-center justify-center rounded-lg p-1.5 text-slate-400 transition hover:bg-white hover:text-slate-900';
 
+/** A page with its depth in the page tree (0 = top-level), for indented display. */
+interface TreeRow {
+  page: Page;
+  depth: number;
+}
+
+/** Home ('/') first, then by nav order, then title — a stable, total sibling order. */
+function bySiblingOrder(a: Page, b: Page): number {
+  const aHome = a.path === '/';
+  const bHome = b.path === '/';
+  if (aHome !== bHome) return aHome ? -1 : 1;
+  return (a.nav?.order ?? 0) - (b.nav?.order ?? 0) || a.title.localeCompare(b.title, 'en');
+}
+
+/**
+ * Flattens the pages into page-tree order — each parent immediately followed by its
+ * descendants — carrying a `depth` so the list can indent sub-pages. A page whose
+ * `parent` isn't in the set is treated as a root; parent cycles are broken (each
+ * page appears once) and any unreached page is appended flat.
+ */
+function orderPagesByTree(pages: readonly Page[]): TreeRow[] {
+  const present = new Set(pages.map((p) => p.id));
+  const childrenOf = new Map<string | undefined, Page[]>();
+  for (const p of pages) {
+    const key = p.parent && present.has(p.parent) ? p.parent : undefined;
+    childrenOf.set(key, [...(childrenOf.get(key) ?? []), p]);
+  }
+  const rows: TreeRow[] = [];
+  const seen = new Set<string>();
+  const visit = (parentId: string | undefined, depth: number): void => {
+    for (const page of (childrenOf.get(parentId) ?? []).slice().sort(bySiblingOrder)) {
+      if (seen.has(page.id)) continue; // cycle guard
+      seen.add(page.id);
+      rows.push({ page, depth });
+      visit(page.id, depth + 1);
+    }
+  };
+  visit(undefined, 0);
+  for (const p of pages) if (!seen.has(p.id)) rows.push({ page: p, depth: 0 });
+  return rows;
+}
+
 export function ProjectView({ project, tab }: ProjectViewProps) {
   const { confirm, dialog } = useDialogs();
   // An owner gets the full studio; a `member` is a client with a content-first default surface.
@@ -129,6 +171,9 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
   const [locales, setLocales] = useState<string[]>(['en']);
   const defaultLocale = locales[0] ?? 'en';
   const multilingual = locales.length > 1;
+  // Pages in page-tree order (parents followed by their children) with a depth for
+  // indenting sub-pages in the list.
+  const orderedPages = useMemo(() => orderPagesByTree(pages), [pages]);
 
   async function load() {
     try {
@@ -363,10 +408,16 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
       ) : (
         <>
           <ul className="mb-8 flex flex-col gap-2">
-            {pages.map((p) => {
+            {orderedPages.map(({ page: p, depth }) => {
               const isHome = p.path === '/';
               return (
-                <li key={p.id} className={`flex items-center gap-1 ${glassCard} px-3 py-2 transition hover:bg-white/80`}>
+                <li
+                  key={p.id}
+                  // Indent sub-pages per the page tree — a left margin shrinks the card so
+                  // nested rows sit inside their parent (capped so deep trees stay readable).
+                  style={depth > 0 ? { marginLeft: `${Math.min(depth, 6) * 1.5}rem` } : undefined}
+                  className={`flex items-center gap-1 ${glassCard} px-3 py-2 transition hover:bg-white/80`}
+                >
                   <button
                     className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 px-1 py-1 text-left"
                     onClick={() => setEditing(p)}

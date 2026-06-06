@@ -11,6 +11,8 @@ import {
   resolveTemplateSource,
   resolveLocaleDatasets,
   translationsOf,
+  localeOf as localeOfPage,
+  pagesInLocale,
   type ProjectBundle,
 } from '@sitewright/core';
 import type { Page, Template } from '@sitewright/schema';
@@ -217,7 +219,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // drives the hreflang alternates. No per-locale loop / tree overrides.
     const settings = bundle.project.settings;
     const defaultLocale = settings?.defaultLocale ?? 'en';
-    const localeOf = (p: Page): string => p.locale ?? defaultLocale;
+    const localeOf = (p: Page): string => localeOfPage(p, defaultLocale);
     /** A page path → its output slug (home '/' → undefined; else the path without the leading '/'). */
     const slugForPath = (p: string): string | undefined => {
       const s = p.replace(/^\/+/, '').replace(/\/+$/, '');
@@ -227,7 +229,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // pages, using their own (already-localized) paths. No link rebasing.
     const navByLocale = new Map<string, typeof nav>();
     for (const loc of new Set(pubBundle.pages.map(localeOf))) {
-      const pagesIn = pubBundle.pages.filter((p) => localeOf(p) === loc);
+      const pagesIn = pagesInLocale(pubBundle.pages, loc, defaultLocale);
       navByLocale.set(loc, {
         header: buildNav(pagesIn, 'header'),
         footer: buildNav(pagesIn, 'footer'),

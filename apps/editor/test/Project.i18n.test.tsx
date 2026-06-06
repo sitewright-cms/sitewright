@@ -31,8 +31,9 @@ import { ProjectView } from '../src/views/Project';
 
 const project = { id: 'p', name: 'Acme', slug: 'acme', role: 'owner' as const };
 
-const home: Page = { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<h1>{{edit "h" "Hi"}}</h1>' };
-const about: Page = { id: 'about', path: '/about', title: 'About', root: { id: 'r', type: 'Section' }, source: '<h1>About</h1>' };
+const root = { id: 'r', type: 'Section' as const };
+const home: Page = { id: 'home', path: '/', title: 'Home', root, source: '<h1>{{edit "h" "Hi"}}</h1>' };
+const about: Page = { id: 'about', path: '/about', title: 'About', root, source: '<h1>About</h1>' };
 
 beforeEach(() => {
   listPages.mockReset().mockResolvedValue({ items: [home, about] });
@@ -78,6 +79,27 @@ describe('ProjectView i18n actions', () => {
     await waitFor(() => expect(putPage).toHaveBeenCalled());
     const de = putPage.mock.calls.map((c) => c[1] as Page).find((p) => p.id === 'about-de')!;
     expect(de.path).toBe('/de/about');
+  });
+
+  it('orders the pages list as a tree and indents sub-pages by depth', async () => {
+    getSettings.mockResolvedValue({ item: { settings: { defaultLocale: 'en', locales: ['en'] } } });
+    // about → child → grandchild; the list flattens to tree order with rising indent.
+    const child: Page = { id: 'child', path: '/about/team', title: 'Team', root, parent: 'about', source: '<h1>T</h1>' };
+    const grandchild: Page = { id: 'gc', path: '/about/team/lead', title: 'Lead', root, parent: 'child', source: '<h1>L</h1>' };
+    // Deliberately unsorted input → the view must re-order by the tree, not input order.
+    listPages.mockResolvedValue({ items: [grandchild, about, home, child] });
+    render(<ProjectView project={project} tab="pages" />);
+    await waitFor(() => expect(document.querySelectorAll('ul.mb-8 > li').length).toBe(4));
+
+    const rows = Array.from(document.querySelectorAll('ul.mb-8 > li')) as HTMLLIElement[];
+    const titleOf = (li: HTMLLIElement) => li.querySelector('.font-medium')?.textContent;
+    // Tree order: Home (root), About (root), then its descendants nested under it.
+    expect(rows.map(titleOf)).toEqual(['Home', 'About', 'Team', 'Lead']);
+    const ml = (li: HTMLLIElement) => li.style.marginLeft || '0rem';
+    expect(ml(rows[0]!)).toBe('0rem'); // Home — top level
+    expect(ml(rows[1]!)).toBe('0rem'); // About — top level
+    expect(ml(rows[2]!)).toBe('1.5rem'); // Team — depth 1
+    expect(ml(rows[3]!)).toBe('3rem'); // Lead — depth 2
   });
 
   it('"Save as template" promotes the page source into a shared template and references it', async () => {

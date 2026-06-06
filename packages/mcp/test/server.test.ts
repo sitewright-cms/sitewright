@@ -4,7 +4,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createSitewrightMcpServer } from '../src/server.js';
 import { SitewrightApiError, type Scope, type SitewrightClient } from '../src/client.js';
 
-const page = { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' } };
+const page = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' } };
 
 function fakeClient(overrides: Partial<Record<keyof SitewrightClient, unknown>> = {}) {
   return {

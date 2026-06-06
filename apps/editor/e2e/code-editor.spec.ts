@@ -17,7 +17,7 @@ test('code-first authoring: CodeMirror editor, live styled preview, save + persi
   await page.getByRole('button', { name: 'Create project' }).click();
 
   // Create a fresh CODE page (the project already has an auto-created home), then open it.
-  await page.getByLabel('Page path').fill('/about');
+  await page.getByLabel('Page path').fill('about');
   await page.getByLabel('Page title').fill('About');
   await page.getByRole('button', { name: 'Add page' }).click();
   await page.getByRole('button', { name: /^About/ }).click();

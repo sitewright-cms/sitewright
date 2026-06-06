@@ -6,6 +6,8 @@ import {
   collectionRoutes,
   datasetEntries,
   entrySlug,
+  pagePath,
+  pagesById,
   pathToSlug,
   publishedPages,
   resolvedPages,
@@ -22,9 +24,9 @@ function page(partial: Partial<Page> & { id: string; path: string }): Page {
 describe('publishedPages', () => {
   it('drops draft pages and keeps published + status-absent (legacy) pages', () => {
     const pages = [
-      page({ id: 'home', path: '/' }), // no status → published
-      page({ id: 'live', path: '/live', status: 'published' }),
-      page({ id: 'wip', path: '/wip', status: 'draft' }),
+      page({ id: 'home', path: '' }), // no status → published
+      page({ id: 'live', path: 'live', status: 'published' }),
+      page({ id: 'wip', path: 'wip', status: 'draft' }),
     ];
     expect(publishedPages(pages).map((p) => p.id)).toEqual(['home', 'live']);
   });
@@ -56,6 +58,29 @@ describe('pathToSlug', () => {
   });
 });
 
+describe('pagePath', () => {
+  it('computes the full route from the parent chain (slug segments)', () => {
+    const pages = [
+      page({ id: 'home', path: '' }),
+      page({ id: 'about', path: 'about', parent: 'home' }),
+      page({ id: 'de', path: 'de', parent: 'home' }),
+      page({ id: 'leistungen', path: 'leistungen', parent: 'de' }),
+      page({ id: 'orphan', path: 'x', parent: 'missing' }), // unknown parent → treated as root
+    ];
+    const byId = pagesById(pages);
+    expect(pagePath(pages[0]!, byId)).toBe('/'); // home (empty slug, no parent)
+    expect(pagePath(pages[1]!, byId)).toBe('/about');
+    expect(pagePath(pages[3]!, byId)).toBe('/de/leistungen'); // two levels deep
+    expect(pagePath(pages[4]!, byId)).toBe('/x'); // parent not found → root
+  });
+
+  it('is cycle-safe (a broken parent chain stops at the first repeat)', () => {
+    const pages = [page({ id: 'a', path: 'a', parent: 'b' }), page({ id: 'b', path: 'b', parent: 'a' })];
+    const byId = pagesById(pages);
+    expect(() => pagePath(pages[0]!, byId)).not.toThrow();
+  });
+});
+
 describe('entrySlug', () => {
   const entry: Entry = { id: 'e1', dataset: 'posts', status: 'published', values: { slug: 'hello-world' } };
   it('uses a safe field value', () => {
@@ -81,23 +106,25 @@ describe('datasetEntries', () => {
 });
 
 describe('resolvedPages / allRoutes', () => {
-  it('returns static page routes', () => {
-    const b = bundle({ pages: [page({ id: 'home', path: '/' }), page({ id: 'about', path: '/about' })] });
+  it('returns static page routes (slugs computed from the parent chain)', () => {
+    const b = bundle({ pages: [page({ id: 'home', path: '' }), page({ id: 'about', path: 'about', parent: 'home' })] });
     expect(resolvedPages(b)).toHaveLength(2);
     expect(allRoutes(b).map((r) => r.slug)).toEqual([undefined, 'about']);
   });
 
   it('throws on duplicate routes', () => {
-    const b = bundle({ pages: [page({ id: 'a', path: '/dup' }), page({ id: 'b', path: '/dup' })] });
+    const b = bundle({ pages: [page({ id: 'a', path: 'dup' }), page({ id: 'b', path: 'dup' })] });
     expect(() => allRoutes(b)).toThrow(/Duplicate/);
   });
 });
 
 describe('collectionRoutes', () => {
-  it('expands a collection page once per published entry', () => {
+  it('expands a collection page once per published entry, nested under its parent', () => {
+    const blog = page({ id: 'blog', path: 'blog' });
     const posts = page({
       id: 'post',
-      path: '/blog/[slug]',
+      path: '[slug]',
+      parent: 'blog',
       collection: { dataset: 'posts', param: 'slug' },
     });
     const entries: Entry[] = [
@@ -105,7 +132,7 @@ describe('collectionRoutes', () => {
       { id: 'p2', dataset: 'posts', status: 'published', values: { slug: 'second' } },
       { id: 'p3', dataset: 'posts', status: 'draft', values: { slug: 'hidden' } },
     ];
-    const routes = collectionRoutes(bundle({ pages: [posts], entries }));
+    const routes = collectionRoutes(bundle({ pages: [blog, posts], entries }));
     expect(routes.map((r) => r.slug).sort()).toEqual(['blog/first', 'blog/second']);
     expect(routes.every((r) => r.entry)).toBe(true);
   });

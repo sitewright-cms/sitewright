@@ -30,7 +30,7 @@ function multipart(filename: string, mime: string, content: Buffer) {
 
 const page = {
   id: 'home',
-  path: '/',
+  path: '',
   title: 'Home',
   root: { id: 'r', type: 'Section', children: [{ id: 'h', type: 'Heading', props: { text: 'Hi', level: 1 } }] },
 };

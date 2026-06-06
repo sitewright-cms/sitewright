@@ -35,7 +35,7 @@ describe('Tailwind utility layer → publish', () => {
     const proj = client.project(projectId);
     const home = {
       id: 'home',
-      path: '/',
+      path: '',
       title: 'Home',
       root: {
         id: 'r',
@@ -46,7 +46,7 @@ describe('Tailwind utility layer → publish', () => {
     };
     const about = {
       id: 'about',
-      path: '/about',
+      path: 'about',
       title: 'About',
       root: { id: 'r2', type: 'Section', className: 'grid', children: [] },
     };
@@ -78,7 +78,7 @@ describe('Tailwind utility layer → publish', () => {
     const proj = client.project(projectId);
     const page = {
       id: 'home',
-      path: '/',
+      path: '',
       title: 'Home',
       root: { id: 'r', type: 'Section', children: [{ id: 'h', type: 'Heading', props: { text: 'Hi' } }] },
     };
@@ -97,7 +97,7 @@ describe('Tailwind utility layer → publish', () => {
     const proj = client.project(projectId);
     const page = {
       id: 'home',
-      path: '/',
+      path: '',
       title: 'Home',
       root: { id: 'r', type: 'Section', className: 'flex', children: [] },
     };

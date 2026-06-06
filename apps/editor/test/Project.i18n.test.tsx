@@ -32,8 +32,8 @@ import { ProjectView } from '../src/views/Project';
 const project = { id: 'p', name: 'Acme', slug: 'acme', role: 'owner' as const };
 
 const root = { id: 'r', type: 'Section' as const };
-const home: Page = { id: 'home', path: '/', title: 'Home', root, source: '<h1>{{edit "h" "Hi"}}</h1>' };
-const about: Page = { id: 'about', path: '/about', title: 'About', root, source: '<h1>About</h1>' };
+const home: Page = { id: 'home', path: '', title: 'Home', root, source: '<h1>{{edit "h" "Hi"}}</h1>' };
+const about: Page = { id: 'about', path: 'about', parent: 'home', title: 'About', root, source: '<h1>About</h1>' };
 
 beforeEach(() => {
   listPages.mockReset().mockResolvedValue({ items: [home, about] });
@@ -66,27 +66,32 @@ describe('ProjectView i18n actions', () => {
     expect(primary.locale).toBeUndefined();
     // The German variant is a sibling at /de with its own locale + group.
     const de = written.find((p) => p.id === 'home-de')!;
-    expect(de).toMatchObject({ id: 'home-de', locale: 'de', translationGroup: 'home', path: '/de' });
+    expect(de).toMatchObject({ id: 'home-de', locale: 'de', translationGroup: 'home', path: 'de' });
     expect(de.parent).toBe('home'); // a locale variant parents to the home root
     expect(de.source).toBe(home.source); // template-reuse: starts from the primary's code
   });
 
-  it('a non-home page translates under /<locale>/<path>', async () => {
+  it('a non-home page keeps its slug and nests under the locale home when one exists', async () => {
     getSettings.mockResolvedValue({ item: { settings: { defaultLocale: 'en', locales: ['en', 'de'] } } });
+    // A German home already exists (translation of the root home) → the German About nests under it.
+    const homeDe: Page = { id: 'home-de', path: 'de', parent: 'home', title: 'Start', locale: 'de', translationGroup: 'home', root, source: '<h1>Start</h1>' };
+    const homeGrouped: Page = { ...home, translationGroup: 'home' };
+    listPages.mockResolvedValue({ items: [homeGrouped, about, homeDe] });
     render(<ProjectView project={project} tab="pages" />);
     await waitFor(() => expect(screen.getByLabelText('Add translations for About')).toBeInTheDocument());
 
     fireEvent.click(screen.getByLabelText('Add translations for About'));
     await waitFor(() => expect(putPage).toHaveBeenCalled());
     const de = putPage.mock.calls.map((c) => c[1] as Page).find((p) => p.id === 'about-de')!;
-    expect(de.path).toBe('/de/about');
+    expect(de.path).toBe('about'); // SAME slug — the locale comes from the parent chain
+    expect(de.parent).toBe('home-de'); // nested under the German home → computed /de/about
   });
 
   it('orders the pages list as a tree and indents sub-pages by depth', async () => {
     getSettings.mockResolvedValue({ item: { settings: { defaultLocale: 'en', locales: ['en'] } } });
     // about → child → grandchild; the list flattens to tree order with rising indent.
-    const child: Page = { id: 'child', path: '/about/team', title: 'Team', root, parent: 'about', source: '<h1>T</h1>' };
-    const grandchild: Page = { id: 'gc', path: '/about/team/lead', title: 'Lead', root, parent: 'child', source: '<h1>L</h1>' };
+    const child: Page = { id: 'child', path: 'team', title: 'Team', root, parent: 'about', source: '<h1>T</h1>' };
+    const grandchild: Page = { id: 'gc', path: 'lead', title: 'Lead', root, parent: 'child', source: '<h1>L</h1>' };
     // Deliberately unsorted input → the view must re-order by the tree, not input order.
     listPages.mockResolvedValue({ items: [grandchild, about, home, child] });
     render(<ProjectView project={project} tab="pages" />);
@@ -94,13 +99,13 @@ describe('ProjectView i18n actions', () => {
 
     const rows = Array.from(document.querySelectorAll('ul.mb-8 > li')) as HTMLLIElement[];
     const titleOf = (li: HTMLLIElement) => li.querySelector('.font-medium')?.textContent;
-    // Tree order: Home (root), About (root), then its descendants nested under it.
+    // Tree order: Home (root) → About (under home) → Team → Lead, each one level deeper.
     expect(rows.map(titleOf)).toEqual(['Home', 'About', 'Team', 'Lead']);
     const ml = (li: HTMLLIElement) => li.style.marginLeft || '0rem';
-    expect(ml(rows[0]!)).toBe('0rem'); // Home — top level
-    expect(ml(rows[1]!)).toBe('0rem'); // About — top level
-    expect(ml(rows[2]!)).toBe('1.5rem'); // Team — depth 1
-    expect(ml(rows[3]!)).toBe('3rem'); // Lead — depth 2
+    expect(ml(rows[0]!)).toBe('0rem'); // Home — root (depth 0)
+    expect(ml(rows[1]!)).toBe('1.5rem'); // About — depth 1 (under home)
+    expect(ml(rows[2]!)).toBe('3rem'); // Team — depth 2
+    expect(ml(rows[3]!)).toBe('4.5rem'); // Lead — depth 3
   });
 
   it('"Save as template" promotes the page source into a shared template and references it', async () => {

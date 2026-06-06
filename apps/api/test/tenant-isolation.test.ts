@@ -10,7 +10,7 @@ afterEach(async () => {
 });
 
 // ---- Valid per-kind payloads (mirroring the existing content/dataset suites) ----
-const page = { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' } };
+const page = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' } };
 const partial = { id: 'hero', name: 'Hero', root: { id: 'r', type: 'Section' } };
 const dataset = {
   id: 'posts',

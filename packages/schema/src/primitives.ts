@@ -59,6 +59,19 @@ export const RoutePathSchema = z
     message: 'path segments cannot be "." or ".."',
   });
 
+/**
+ * A page's OWN path segment (its slug) — NOT the full route. The full URL is computed by
+ * joining the slugs of the page and its ancestors ({root}/{parent slugs}/{slug}); see
+ * `pagePath` in @sitewright/core. Allowed: the EMPTY string (the home page / tree root, at
+ * `/`), a single lowercase slug segment (`about`, `web-design`), or a single `[param]`
+ * segment for a collection page's leaf. No slashes — nesting comes from `parent`, not the path.
+ */
+export const PageSlugSchema = z
+  .string()
+  .max(64)
+  // Linear: alternation of anchored, non-overlapping single-segment forms; length-capped above.
+  .regex(/^$|^[a-z0-9]+(?:-[a-z0-9]+)*$|^\[[A-Za-z0-9_]+\]$/, 'must be empty (home) or a single lowercase slug segment (no slashes)'); // eslint-disable-line security/detect-unsafe-regex
+
 /** Asset reference: an absolute http(s) URL or a root-relative path. Rejects `javascript:`/`data:` URIs. */
 export const AssetRefSchema = z
   .string()

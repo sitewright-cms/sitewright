@@ -57,7 +57,7 @@ function previewHtml(res: { json: () => unknown }): string {
 
 const savedHomePage = {
   id: 'home',
-  path: '/',
+  path: '',
   title: 'Home',
   root: {
     id: 'r',
@@ -76,7 +76,7 @@ describe('preview endpoint — depth', () => {
 
     const res = await preview({
       id: 'p',
-      path: '/p',
+      path: 'p',
       title: 'Themed & "Quoted" Title',
       root: {
         id: 'r',
@@ -128,7 +128,7 @@ describe('preview endpoint — depth', () => {
     // A home page whose Grid list-binds the posts dataset and renders each title.
     const listPage = {
       id: 'home',
-      path: '/',
+      path: '',
       title: 'Blog',
       root: {
         id: 'r',
@@ -190,7 +190,7 @@ describe('preview endpoint — depth', () => {
   it('uses the brand from the settings singleton (set via PUT settings → preview shows the color var)', async () => {
     const page = {
       id: 'p',
-      path: '/p',
+      path: 'p',
       title: 'P',
       root: { id: 'r', type: 'Section', children: [] },
     };
@@ -226,7 +226,7 @@ describe('preview endpoint — depth', () => {
   it('escapes hostile content in a SAVED page when previewed (safe for the sandboxed iframe)', async () => {
     const hostilePage = {
       id: 'home',
-      path: '/',
+      path: '',
       title: 'Home',
       root: {
         id: 'r',
@@ -255,7 +255,7 @@ describe('preview endpoint — depth', () => {
   it('cross-tenant: tenant B cannot preview tenant A’s project (403/404); anonymous → 401', async () => {
     const page = {
       id: 'p',
-      path: '/p',
+      path: 'p',
       title: 'P',
       root: { id: 'r', type: 'Section', children: [] },
     };

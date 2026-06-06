@@ -102,7 +102,7 @@ describe('project API keys — bearer auth + capabilities', () => {
   });
 
   it('denies writes to a read-only token but allows them with content:write', async () => {
-    const page = { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' } };
+    const page = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' } };
 
     const ro = await keyWith(['content:read']);
     const denied = await app.inject({

@@ -19,10 +19,8 @@ test('client edits a code page’s bound region (content), template stays immuta
   await page.getByLabel('Project name').fill('Code Site');
   await page.getByLabel('Project slug').fill(`cs-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
-
-  await page.getByLabel('Page path').fill('home');
-  await page.getByLabel('Page title').fill('Home');
-  await page.getByRole('button', { name: 'Add page' }).click();
+  // The auto-created HOME page (empty-slug root) already carries an {{edit}} region the
+  // client will edit later — no need to add one.
 
   // --- Owner: invite a client, capture the invite link ---
   await page.getByRole('tab', { name: 'Admin' }).click();
@@ -52,7 +50,7 @@ test('client edits a code page’s bound region (content), template stays immuta
   // The editable region (the scaffold's `tagline`) is surfaced with its default; the raw
   // template source is NOT presented as editable.
   const region = page.getByLabel('tagline');
-  await expect(region).toHaveValue('Edit this tagline');
+  await expect(region).toHaveValue('Welcome — edit this tagline.'); // the auto-home's {{edit}} default
   await region.fill('A client-written tagline');
 
   // The sandboxed live preview reflects the edit.

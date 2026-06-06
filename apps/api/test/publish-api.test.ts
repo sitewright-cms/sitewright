@@ -34,7 +34,7 @@ async function setup(email: string, slug = 'site') {
 
 const homePage = {
   id: 'home',
-  path: '/',
+  path: '',
   title: 'Home',
   root: { id: 'r', type: 'Section', children: [{ id: 'h', type: 'Heading', props: { text: 'Live Site' } }] },
 };

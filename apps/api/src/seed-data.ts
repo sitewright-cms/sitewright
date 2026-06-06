@@ -267,7 +267,7 @@ export const EXAMPLE_PAGES: Page[] = [
   // ---------------------------------------------------------------- HOME
   {
     id: 'home',
-    path: '/',
+    path: '',
     title: 'Northwind Web Studio — Websites that mean business',
     root: placeholderRoot,
     nav: { title: 'Home', slots: ['header'], order: 1 },
@@ -387,7 +387,7 @@ export const EXAMPLE_PAGES: Page[] = [
   // ---------------------------------------------------------------- WORK
   {
     id: 'work',
-    path: '/work',
+    path: 'work',
     title: 'Our Work',
     root: placeholderRoot,
     parent: 'home', // home is the tree root — every page nests under it
@@ -419,7 +419,7 @@ export const EXAMPLE_PAGES: Page[] = [
   // ---------------------------------------------------------------- SERVICES
   {
     id: 'services',
-    path: '/services',
+    path: 'services',
     title: 'Services',
     root: placeholderRoot,
     parent: 'home', // home is the tree root
@@ -465,7 +465,7 @@ export const EXAMPLE_PAGES: Page[] = [
   // own nav slot.
   {
     id: 'service-web-design',
-    path: '/services/web-design',
+    path: 'web-design',
     title: 'Web Design',
     root: placeholderRoot,
     // A sub-page: it nests under Services (the dropdown label falls back to this title)
@@ -485,7 +485,7 @@ export const EXAMPLE_PAGES: Page[] = [
   },
   {
     id: 'service-seo',
-    path: '/services/seo',
+    path: 'seo',
     title: 'SEO & Performance',
     root: placeholderRoot,
     parent: 'services',
@@ -505,7 +505,7 @@ export const EXAMPLE_PAGES: Page[] = [
   // ---------------------------------------------------------------- ABOUT
   {
     id: 'about',
-    path: '/about',
+    path: 'about',
     title: 'About',
     root: placeholderRoot,
     parent: 'home', // home is the tree root
@@ -551,7 +551,7 @@ export const EXAMPLE_PAGES: Page[] = [
   // ---------------------------------------------------------------- CONTACT (block-tree: hosts the Form block)
   {
     id: 'contact',
-    path: '/contact',
+    path: 'contact',
     title: 'Contact',
     parent: 'home', // home is the tree root
     nav: { slots: ['header'], order: 5 },
@@ -609,7 +609,7 @@ export const EXAMPLE_PAGES: Page[] = [
   // ---------------------------------------------------------------- HOME (de)
   {
     id: 'home-de',
-    path: '/de',
+    path: 'de',
     title: 'Northwind Web Studio — Websites, die Geschäft machen',
     root: placeholderRoot,
     locale: 'de',
@@ -675,12 +675,13 @@ export const EXAMPLE_PAGES: Page[] = [
   // ---------------------------------------------------------------- SERVICES (de)
   {
     id: 'services-de-page',
-    path: '/de/services',
+    path: 'leistungen',
     title: 'Leistungen',
     root: placeholderRoot,
     locale: 'de',
     translationGroup: 'services',
-    parent: 'home', // locale variants parent to the home root (per the page-tree rule)
+    // Nested under the GERMAN home (`home-de`, slug `de`) → computed route /de/leistungen.
+    parent: 'home-de',
     nav: { title: 'Leistungen', slots: ['header'], order: 2 },
     source: `<section class="mx-auto max-w-6xl px-6 pt-20 pb-8">
   <div class="nw-rise max-w-2xl">

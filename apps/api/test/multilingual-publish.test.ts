@@ -42,11 +42,11 @@ describe('multilingual publish (locale variants are pages)', () => {
     });
     // The English (default) home and its German variant — separate pages, linked by group.
     await proj.putContent('page', 'home', {
-      id: 'home', path: '/', title: 'Home', root, translationGroup: 'home',
+      id: 'home', path: '', title: 'Home', root, translationGroup: 'home',
       source: '<main><h1>Welcome</h1></main>',
     });
     await proj.putContent('page', 'home-de', {
-      id: 'home-de', path: '/de', title: 'Startseite', locale: 'de', translationGroup: 'home', root,
+      id: 'home-de', path: 'de', parent: 'home', title: 'Startseite', locale: 'de', translationGroup: 'home', root,
       source: '<main><h1>Willkommen</h1></main>',
     });
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
@@ -69,8 +69,8 @@ describe('multilingual publish (locale variants are pages)', () => {
       website: { siteUrl: 'https://acme.example' },
       settings: { defaultLocale: 'en', locales: ['en', 'de'] },
     });
-    await proj.putContent('page', 'home', { id: 'home', path: '/', title: 'Home', root, translationGroup: 'home', source: '<h1>Hi</h1>' });
-    await proj.putContent('page', 'home-de', { id: 'home-de', path: '/de', title: 'Start', locale: 'de', translationGroup: 'home', root, source: '<h1>Hallo</h1>' });
+    await proj.putContent('page', 'home', { id: 'home', path: '', title: 'Home', root, translationGroup: 'home', source: '<h1>Hi</h1>' });
+    await proj.putContent('page', 'home-de', { id: 'home-de', path: 'de', parent: 'home', title: 'Start', locale: 'de', translationGroup: 'home', root, source: '<h1>Hallo</h1>' });
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
 
     for (const path of ['index.html', 'de/index.html']) {
@@ -88,8 +88,8 @@ describe('multilingual publish (locale variants are pages)', () => {
       settings: { defaultLocale: 'en', locales: ['en', 'de'] },
     });
     // Grouped variants but no siteUrl → hreflang needs absolute URLs → none.
-    await proj.putContent('page', 'home', { id: 'home', path: '/', title: 'Home', root, translationGroup: 'home', source: '<h1>Hi</h1>' });
-    await proj.putContent('page', 'home-de', { id: 'home-de', path: '/de', title: 'Start', locale: 'de', translationGroup: 'home', root, source: '<h1>Hallo</h1>' });
+    await proj.putContent('page', 'home', { id: 'home', path: '', title: 'Home', root, translationGroup: 'home', source: '<h1>Hi</h1>' });
+    await proj.putContent('page', 'home-de', { id: 'home-de', path: 'de', parent: 'home', title: 'Start', locale: 'de', translationGroup: 'home', root, source: '<h1>Hallo</h1>' });
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
     expect((await client.get(`/sites/${slug}/index.html`)).body).not.toContain('hreflang');
   });
@@ -108,8 +108,8 @@ describe('multilingual publish (locale variants are pages)', () => {
 
     // The SAME source on both locale variants — auto-suffix picks the right dataset.
     const listSource = '<ul>{{#each data.services}}<li>{{ this.values.name }}</li>{{/each}}</ul>';
-    await proj.putContent('page', 'home', { id: 'home', path: '/', title: 'Home', root, translationGroup: 'home', source: listSource });
-    await proj.putContent('page', 'home-de', { id: 'home-de', path: '/de', title: 'Start', locale: 'de', translationGroup: 'home', root, source: listSource });
+    await proj.putContent('page', 'home', { id: 'home', path: '', title: 'Home', root, translationGroup: 'home', source: listSource });
+    await proj.putContent('page', 'home-de', { id: 'home-de', path: 'de', parent: 'home', title: 'Start', locale: 'de', translationGroup: 'home', root, source: listSource });
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
 
     expect((await client.get(`/sites/${slug}/index.html`)).body).toContain('<li>Web Design</li>'); // base
@@ -125,8 +125,8 @@ describe('multilingual publish (locale variants are pages)', () => {
       settings: { defaultLocale: 'en', locales: ['en', 'de'] },
     });
     const switcher = '<p>{{ page.locale }}</p><nav>{{#each page.translations}}<a href="{{url path}}">{{ locale }}</a>{{/each}}</nav>';
-    await proj.putContent('page', 'home', { id: 'home', path: '/', title: 'Home', root, translationGroup: 'home', source: switcher });
-    await proj.putContent('page', 'home-de', { id: 'home-de', path: '/de', title: 'Start', locale: 'de', translationGroup: 'home', root, source: switcher });
+    await proj.putContent('page', 'home', { id: 'home', path: '', title: 'Home', root, translationGroup: 'home', source: switcher });
+    await proj.putContent('page', 'home-de', { id: 'home-de', path: 'de', parent: 'home', title: 'Start', locale: 'de', translationGroup: 'home', root, source: switcher });
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
 
     const en = (await client.get(`/sites/${slug}/index.html`)).body;
@@ -139,8 +139,8 @@ describe('multilingual publish (locale variants are pages)', () => {
 
   it('rejects a publish where two pages resolve to the same URL', async () => {
     const proj = client.project(projectId);
-    await proj.putContent('page', 'a', { id: 'a', path: '/x', title: 'A', root, source: '<p>a</p>' });
-    await proj.putContent('page', 'b', { id: 'b', path: '/x', title: 'B', root, source: '<p>b</p>' });
+    await proj.putContent('page', 'a', { id: 'a', path: 'x', title: 'A', root, source: '<p>a</p>' });
+    await proj.putContent('page', 'b', { id: 'b', path: 'x', title: 'B', root, source: '<p>b</p>' });
     const res = await client.post(`${proj.base}/publish`);
     expect(res.statusCode).toBe(409);
     expect((res.json() as { error: string }).error).toMatch(/collision|duplicate/i);

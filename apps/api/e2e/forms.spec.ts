@@ -37,7 +37,7 @@ test('author → publish → public submit → inbox', async ({ playwright, base
   const putPage = await api.put(`${base}/content/page/contact`, {
     data: {
       id: 'contact',
-      path: '/contact',
+      path: 'contact',
       title: 'Contact',
       root: { id: 'r', type: 'Section', children: [{ id: 'f', type: 'Form', props: { formId: 'contact' } }] },
     },

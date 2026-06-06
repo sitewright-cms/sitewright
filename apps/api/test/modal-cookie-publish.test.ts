@@ -34,7 +34,7 @@ describe('Modal + CookieConsent → publish + preview', () => {
     const proj = client.project(projectId);
     const page = {
       id: 'home',
-      path: '/',
+      path: '',
       title: 'Home',
       root: {
         id: 'r',
@@ -65,7 +65,7 @@ describe('Modal + CookieConsent → publish + preview', () => {
     const proj = client.project(projectId);
     const page = {
       id: 'home',
-      path: '/',
+      path: '',
       title: 'Home',
       root: {
         id: 'r',

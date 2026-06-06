@@ -37,14 +37,14 @@ describe('scroll-reveal animations → publish + preview', () => {
     const proj = client.project(projectId);
     const home = {
       id: 'home',
-      path: '/',
+      path: '',
       title: 'Home',
       root: { id: 'r', type: 'Section' },
       source: '<main><h1 data-aos="fade-up">Hi</h1><p data-aos="fade-up" data-aos-delay="200">There</p></main>',
     };
     const about = {
       id: 'about',
-      path: '/about',
+      path: 'about',
       title: 'About',
       root: { id: 'r2', type: 'Section' },
       source: '<main><h2>Plain page on the same site</h2></main>',
@@ -77,7 +77,7 @@ describe('scroll-reveal animations → publish + preview', () => {
     const proj = client.project(projectId);
     const page = {
       id: 'home',
-      path: '/',
+      path: '',
       title: 'Home',
       root: {
         id: 'r',
@@ -107,7 +107,7 @@ describe('scroll-reveal animations → publish + preview', () => {
     ).toBe(200);
     const page = {
       id: 'home',
-      path: '/',
+      path: '',
       title: 'Home',
       root: { id: 'r', type: 'Section' },
       source: '<main><h1>No animation in the page itself</h1></main>',
@@ -124,7 +124,7 @@ describe('scroll-reveal animations → publish + preview', () => {
     const proj = client.project(projectId);
     const page = {
       id: 'home',
-      path: '/',
+      path: '',
       title: 'Home',
       root: { id: 'r', type: 'Section' },
       source: '<main><h1>Plain</h1></main>',
@@ -141,7 +141,7 @@ describe('scroll-reveal animations → publish + preview', () => {
   it('inlines the runtime into the sandboxed block-tree preview (WYSIWYG parity)', async () => {
     const page = {
       id: 'home',
-      path: '/',
+      path: '',
       title: 'Home',
       root: {
         id: 'r',
@@ -159,7 +159,7 @@ describe('scroll-reveal animations → publish + preview', () => {
   });
 
   it('keeps the preview clean for a page without animations', async () => {
-    const page = { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' } };
+    const page = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' } };
     const res = await client.post(`/projects/${projectId}/preview`, page);
     expect(res.statusCode).toBe(200);
     const html = (res.json() as { html: string }).html;

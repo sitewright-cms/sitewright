@@ -14,12 +14,9 @@ test('build a code page, publish the project, and view the live site', async ({ 
   await page.getByLabel('Project slug').fill(`live-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
 
-  // Build a home page: every new page is code-first. Replace the scaffold with identifiable
-  // text (plain text sidesteps CodeMirror bracket auto-close) and save.
-  await page.getByLabel('Page path').fill('home');
-  await page.getByLabel('Page title').fill('Home Page');
-  await page.getByRole('button', { name: 'Add page' }).click();
-  await page.getByRole('button', { name: /^Home Page/ }).click();
+  // Edit the auto-created HOME page (the empty-slug root). Replace the scaffold with
+  // identifiable text (plain text sidesteps CodeMirror bracket auto-close) and save.
+  await page.getByRole('button', { name: /^Home/ }).click();
   await page.locator('.cm-content').click();
   await page.keyboard.press('ControlOrMeta+a');
   await page.keyboard.type('We Are Live');

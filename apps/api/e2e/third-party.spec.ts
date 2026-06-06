@@ -30,7 +30,7 @@ test('thirdParty: enabled mode points the exported form at the external endpoint
     data: { id: 'contact', name: 'Contact', fields: [{ name: 'email', label: 'Email', type: 'email', required: true }], recipient: 'unused@acme.example', mode: 'thirdParty', thirdPartyUrl: endpoint },
   });
   await api.put(`${base}/content/page/contact`, {
-    data: { id: 'contact', path: '/contact', title: 'Contact', root: { id: 'r', type: 'Section', children: [{ id: 'f', type: 'Form', props: { formId: 'contact' } }] } },
+    data: { id: 'contact', path: 'contact', title: 'Contact', root: { id: 'r', type: 'Section', children: [{ id: 'f', type: 'Form', props: { formId: 'contact' } }] } },
   });
   expect((await api.post(`${base}/publish`)).status()).toBe(200);
 

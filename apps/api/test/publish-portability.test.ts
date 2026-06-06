@@ -107,7 +107,7 @@ describe('publish portability', () => {
     const project = client.project(projectId);
     const home = sectionPage({
       id: 'home',
-      path: '/',
+      path: '',
       title: 'Home',
       heading: 'Welcome Home',
       linkHref: '/about', // root-relative internal link
@@ -116,7 +116,7 @@ describe('publish portability', () => {
     });
     const about = sectionPage({
       id: 'about',
-      path: '/about',
+      path: 'about',
       title: 'About',
       heading: 'About Page',
       linkHref: '/', // root-relative internal link back to home
@@ -251,8 +251,8 @@ describe('publish portability', () => {
         children: [{ id: `${id}-img`, type: 'Image', props: { src: asset.url, alt: 'Hero' } }],
       },
     });
-    expect((await project.putContent('page', 'home', imagePage('home', '/', 'Home'))).statusCode).toBe(200);
-    expect((await project.putContent('page', 'about', imagePage('about', '/about', 'About'))).statusCode).toBe(200);
+    expect((await project.putContent('page', 'home', imagePage('home', '', 'Home'))).statusCode).toBe(200);
+    expect((await project.putContent('page', 'about', imagePage('about', 'about', 'About'))).statusCode).toBe(200);
     await publish(2);
 
     // The binaries were copied into the artifact under media/<assetId>/ (the

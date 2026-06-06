@@ -6,7 +6,7 @@ afterEach(async () => {
   await h?.close();
 });
 
-const page = { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' } };
+const page = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' } };
 
 describe('integration harness', () => {
   it('signs up distinct users with no project access until they create one (isolation is by project)', async () => {

@@ -1,0 +1,23 @@
+{
+  "id": "features",
+  "path": "features",
+  "parent": "home",
+  "title": "Features",
+  "seo": { "description": "What Sitewright gives you." },
+  "root": {
+    "id": "root",
+    "type": "Section",
+    "props": { "tone": "surface" },
+    "children": [
+      { "id": "hdr-slot", "type": "Section", "partialRef": "site-header" },
+      { "id": "features-heading", "type": "Heading", "props": { "text": "Features", "level": 1 } },
+      {
+        "id": "features-list",
+        "type": "Grid",
+        "binding": { "dataset": "features", "mode": "list", "query": { "sort": { "field": "title", "dir": "asc" } } },
+        "children": [{ "id": "feature-row", "type": "Heading", "props": { "level": 3, "textField": "title" } }]
+      },
+      { "id": "ftr-slot", "type": "Section", "partialRef": "site-footer" }
+    ]
+  }
+}

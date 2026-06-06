@@ -53,9 +53,18 @@ const productsDataset = {
 // `/products/<entrySlug>`. The Heading binds to the entry's `title` field
 // (props.textField -> entry.values.title), and the Link is an internal
 // root-relative link that must be rebased page-relative ("../") in the export.
+// A `products` landing page; the collection detail page nests under it (slug `[slug]`),
+// so each entry renders at the computed route /products/<entrySlug>.
+const productsPage = {
+  id: 'products',
+  path: 'products',
+  title: 'Products',
+  root: { id: 'pr', type: 'Section' },
+};
 const collectionPage = {
   id: 'product-detail',
-  path: '/products/[slug]',
+  path: '[slug]',
+  parent: 'products',
   title: 'Product',
   collection: { dataset: 'products', param: 'slug' },
   root: {
@@ -70,7 +79,7 @@ const collectionPage = {
 
 const homePage = {
   id: 'home',
-  path: '/',
+  path: '',
   title: 'Home',
   root: { id: 'hr', type: 'Section', children: [{ id: 'hh', type: 'Heading', props: { text: 'Welcome' } }] },
 };
@@ -100,11 +109,12 @@ describe('collection page routing through publish', () => {
     await project.putContent('entry', published1.id, published1);
     await project.putContent('entry', published2.id, published2);
     await project.putContent('entry', draft.id, draft);
+    await project.putContent('page', 'products', productsPage);
     await project.putContent('page', collectionPage.id, collectionPage);
 
     const { release } = await publish();
     // One route per published entry, plus the auto-created HOME page every project starts with.
-    expect(release.routes).toBe(3);
+    expect(release.routes).toBe(4);
 
     // Slugs derive via entrySlug: safe `slug` value wins -> /products/alpha, /products/beta.
     expect(entrySlug(published1, 'slug')).toBe('alpha');
@@ -127,6 +137,7 @@ describe('collection page routing through publish', () => {
     const beta = entry('p-beta', 'beta', 'Beta Widget', 'published');
     await project.putContent('entry', alpha.id, alpha);
     await project.putContent('entry', beta.id, beta);
+    await project.putContent('page', 'products', productsPage);
     await project.putContent('page', collectionPage.id, collectionPage);
     await publish();
 
@@ -154,15 +165,16 @@ describe('collection page routing through publish', () => {
     await project.putContent('entry', alpha.id, alpha);
     await project.putContent('entry', beta.id, beta);
     await project.putContent('page', homePage.id, homePage);
+    await project.putContent('page', 'products', productsPage);
     await project.putContent('page', collectionPage.id, collectionPage);
 
     const { release } = await publish();
     // 1 static (home) + 2 expanded collection routes = 3.
-    expect(release.routes).toBe(3);
+    expect(release.routes).toBe(4);
 
     // GET /publish reports the same release.routes count.
     const status = await client.get(`${base}/publish`);
-    expect((status.json() as { release: { routes: number } }).release.routes).toBe(3);
+    expect((status.json() as { release: { routes: number } }).release.routes).toBe(4);
 
     // The static home and both expanded routes are all servable.
     expect((await served(slug, '')).statusCode).toBe(200);
@@ -177,7 +189,7 @@ describe('collection page routing through publish', () => {
     const collectionWithoutParam = {
       ...collectionPage,
       id: 'no-param',
-      path: '/products',
+      path: 'products',
     };
     const resA = await project.putContent('page', collectionWithoutParam.id, collectionWithoutParam);
     expect(resA.statusCode).toBe(400);
@@ -185,7 +197,7 @@ describe('collection page routing through publish', () => {
     // (b) path HAS a [param] segment but no collection definition -> 400.
     const paramWithoutCollection = {
       id: 'no-collection',
-      path: '/products/[slug]',
+      path: '[slug]',
       title: 'Orphan',
       root: { id: 'r2', type: 'Section', children: [] },
     };
@@ -205,7 +217,7 @@ describe('collection page routing through publish', () => {
     // finds none, so the page contributes zero routes (no 409, no crash).
     const ghostCollection = {
       id: 'ghost-detail',
-      path: '/ghosts/[slug]',
+      path: '[slug]',
       title: 'Ghost',
       collection: { dataset: 'ghosts', param: 'slug' },
       root: { id: 'gr', type: 'Section', children: [{ id: 'gh', type: 'Heading', props: { textField: 'title' } }] },
@@ -234,11 +246,12 @@ describe('collection page routing through publish', () => {
 
     await project.putContent('entry', a.id, a);
     await project.putContent('entry', b.id, b);
+    await project.putContent('page', 'products', productsPage);
     await project.putContent('page', collectionPage.id, collectionPage);
 
     // No crash: both routes render at distinct, id-derived output paths (+ the auto-created home).
     const { release } = await publish();
-    expect(release.routes).toBe(3);
+    expect(release.routes).toBe(4);
 
     const pageA = await served(slug, 'products/collide-a/');
     const pageB = await served(slug, 'products/collide-b/');
@@ -261,6 +274,7 @@ describe('collection page routing through publish', () => {
 
     await project.putContent('entry', a.id, a);
     await project.putContent('entry', b.id, b);
+    await project.putContent('page', 'products', productsPage);
     await project.putContent('page', collectionPage.id, collectionPage);
 
     const res = await client.post(`${base}/publish`);

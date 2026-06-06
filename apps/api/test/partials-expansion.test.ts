@@ -88,7 +88,7 @@ describe('partials expansion (HTTP)', () => {
     expect(putPartial.statusCode).toBe(200);
 
     // 2. Reference it from a page tree via `partialRef`.
-    const putPage = await proj.putContent('page', 'home', pageWithPartialRef('home', '/', 'cta'));
+    const putPage = await proj.putContent('page', 'home', pageWithPartialRef('home', '', 'cta'));
     expect(putPage.statusCode).toBe(200);
 
     // 3. Publish → the partial's rendered content appears in the exported HTML.
@@ -119,8 +119,8 @@ describe('partials expansion (HTTP)', () => {
       }),
     );
     // Two distinct pages both reference the SAME partial id.
-    await proj.putContent('page', 'home', pageWithPartialRef('home', '/', 'footer', 'host-a'));
-    await proj.putContent('page', 'about', pageWithPartialRef('about', '/about', 'footer', 'host-b'));
+    await proj.putContent('page', 'home', pageWithPartialRef('home', '', 'footer', 'host-a'));
+    await proj.putContent('page', 'about', pageWithPartialRef('about', 'about', 'footer', 'host-b'));
 
     const pub = await publish(client, projectId);
     expect(pub.statusCode).toBe(200);
@@ -164,7 +164,7 @@ describe('partials expansion (HTTP)', () => {
       }),
     );
     // Page references partial A.
-    await proj.putContent('page', 'home', pageWithPartialRef('home', '/', 'header'));
+    await proj.putContent('page', 'home', pageWithPartialRef('home', '', 'header'));
 
     const pub = await publish(client, projectId);
     expect(pub.statusCode).toBe(200);
@@ -197,7 +197,7 @@ describe('partials expansion (HTTP)', () => {
     );
     expect(putB.statusCode).toBe(200);
 
-    await proj.putContent('page', 'home', pageWithPartialRef('home', '/', 'cyc-a'));
+    await proj.putContent('page', 'home', pageWithPartialRef('home', '', 'cyc-a'));
 
     // `validateProject` (run on import) does NOT detect cycles — its own comment
     // defers cycle detection to `resolvePartials`. At publish, `resolvePartials`
@@ -214,7 +214,7 @@ describe('partials expansion (HTTP)', () => {
         partial('cyc-a', { id: 'a-root', type: 'Slot', partialRef: 'cyc-b' }),
         partial('cyc-b', { id: 'b-root', type: 'Slot', partialRef: 'cyc-a' }),
       ],
-      pages: [pageWithPartialRef('home', '/', 'cyc-a')],
+      pages: [pageWithPartialRef('home', '', 'cyc-a')],
     });
     expect(imp.statusCode).toBe(200);
   });
@@ -227,7 +227,7 @@ describe('partials expansion (HTTP)', () => {
     // Import: a page referencing a partial that does not exist in the bundle is
     // caught by `validateProject` (code `unknown_partial`) → 409.
     const imp = await proj.importBundle({
-      pages: [pageWithPartialRef('home', '/', 'ghost')],
+      pages: [pageWithPartialRef('home', '', 'ghost')],
       partials: [],
     });
     expect(imp.statusCode).toBe(409);
@@ -236,7 +236,7 @@ describe('partials expansion (HTTP)', () => {
     // Persisted directly (the generic PUT validates only the page's own schema,
     // not cross-entity references), then published: `resolvePartials` throws on
     // the missing partial → `PublishError` → 409.
-    const putPage = await proj.putContent('page', 'home', pageWithPartialRef('home', '/', 'ghost'));
+    const putPage = await proj.putContent('page', 'home', pageWithPartialRef('home', '', 'ghost'));
     expect(putPage.statusCode).toBe(200);
 
     const pub = await publish(client, projectId);

@@ -87,7 +87,7 @@ class GatedBuildRunner implements BuildRunner {
 
 const homePage = {
   id: 'home',
-  path: '/',
+  path: '',
   title: 'Home',
   root: {
     id: 'r',

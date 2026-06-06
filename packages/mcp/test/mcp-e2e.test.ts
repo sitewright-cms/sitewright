@@ -69,7 +69,7 @@ suite('@sitewright/mcp bridge — end to end', () => {
     // A code-first page: the design lives in `source` (Handlebars + Tailwind), root is a placeholder.
     const page = {
       id: 'home',
-      path: '/',
+      path: '',
       title: 'Hallo Welt',
       root: { id: 'root', type: 'Section' },
       source: '<main class="p-8"><h1 class="text-3xl font-bold">Hallo {{ company.name }}</h1></main>',
@@ -118,7 +118,7 @@ suite('@sitewright/mcp bridge — end to end', () => {
       '  </div>',
       '</div>',
     ].join('\n');
-    const page = { id: 'home', path: '/', title: 'Windhoek Plumbing', root: { id: 'root', type: 'Section' }, source };
+    const page = { id: 'home', path: '', title: 'Windhoek Plumbing', root: { id: 'root', type: 'Section' }, source };
     const put = (await mcp.callTool({ name: 'put_page', arguments: { page } })) as TextResult;
     expect(put.isError).toBeFalsy();
 

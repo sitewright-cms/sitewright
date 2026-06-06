@@ -39,7 +39,7 @@ async function setup(email: string, instance: FastifyInstance = app, slug = 'sit
 
 const page = {
   id: 'home',
-  path: '/',
+  path: '',
   title: 'Home',
   root: {
     id: 'r',
@@ -169,7 +169,7 @@ describe('preview API', () => {
       cookies: { sw_session: t },
       payload: {
         id: 'x',
-        path: '/x',
+        path: 'x',
         title: 'X',
         root: {
           id: 'r',
@@ -208,7 +208,7 @@ describe('preview API', () => {
       cookies: { sw_session: t },
       payload: {
         id: 'blog',
-        path: '/blog',
+        path: 'blog',
         title: 'Blog',
         root: {
           id: 'r',
@@ -239,7 +239,7 @@ describe('preview API', () => {
       cookies: { sw_session: t },
       payload: {
         id: 'home',
-        path: '/',
+        path: '',
         title: 'Home',
         root: { id: 'r', type: 'Section', className: 'flex bg-primary', children: [] },
       },
@@ -286,7 +286,7 @@ describe('preview API — code-first source page', () => {
       url: `/projects/${projectId}/preview`,
       cookies: { sw_session: t },
       payload: {
-        id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' },
+        id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
         source: '<main class="grid"><h1>{{edit "headline" "Default headline"}}</h1></main>',
         content: { headline: 'Edited headline' },
       },
@@ -323,7 +323,7 @@ describe('preview API — code-first source page', () => {
       method: 'POST',
       url: `${base}/preview`,
       cookies: { sw_session: t },
-      payload: { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<main><h1>Body</h1></main>' },
+      payload: { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<main><h1>Body</h1></main>' },
     });
     expect(res.statusCode).toBe(200);
     const html = (res.json() as { html: string }).html;
@@ -352,8 +352,8 @@ describe('preview API — code-first source page', () => {
     });
     const root = { id: 'r', type: 'Section' };
     // English (default) + German variant, linked by group; each carries a header nav item.
-    await put('page', 'home', { id: 'home', path: '/', title: 'Home', root, translationGroup: 'home', nav: { title: 'Home', slots: ['header'], order: 1 }, source: '<main><h1>EN</h1></main>' });
-    const gde = { id: 'home-de', path: '/de', title: 'Start', locale: 'de', translationGroup: 'home', root, nav: { title: 'Start', slots: ['header'], order: 1 }, source: '<main><h1>DE</h1></main>' };
+    await put('page', 'home', { id: 'home', path: '', title: 'Home', root, translationGroup: 'home', nav: { title: 'Home', slots: ['header'], order: 1 }, source: '<main><h1>EN</h1></main>' });
+    const gde = { id: 'home-de', path: 'de', title: 'Start', locale: 'de', translationGroup: 'home', root, nav: { title: 'Start', slots: ['header'], order: 1 }, source: '<main><h1>DE</h1></main>' };
     await put('page', 'home-de', gde);
 
     // Preview the GERMAN page → its nav must list only German pages.
@@ -374,7 +374,7 @@ describe('preview API — code-first source page', () => {
       url: `/projects/${projectId}/preview`,
       cookies: { sw_session: t },
       payload: {
-        id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' },
+        id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
         source: '<main><h1 data-aos="fade-up">Reveal</h1></main>',
       },
     });
@@ -391,7 +391,7 @@ describe('preview API — code-first source page', () => {
       url: `/projects/${projectId}/preview`,
       cookies: { sw_session: t },
       payload: {
-        id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' },
+        id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
         source: '<main><h1>Static</h1></main>',
       },
     });
@@ -416,7 +416,7 @@ describe('preview API — code-first source page', () => {
       method: 'POST',
       url: `${base}/preview`,
       cookies: { sw_session: t },
-      payload: { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<main><h1>Body</h1></main>' },
+      payload: { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<main><h1>Body</h1></main>' },
     });
     expect(res.statusCode).toBe(200); // the page preview still renders
     const html = (res.json() as { html: string }).html;
@@ -431,7 +431,7 @@ describe('preview API — code-first source page', () => {
       method: 'POST',
       url: `/projects/${projectId}/preview`,
       cookies: { sw_session: t },
-      payload: { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<p>hi</p>' },
+      payload: { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<p>hi</p>' },
     });
     expect(res.statusCode).toBe(503);
   });

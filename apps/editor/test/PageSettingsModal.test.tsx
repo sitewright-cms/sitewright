@@ -5,7 +5,7 @@ import { PageSettingsModal, applyPageSettings, pageSettingsFromPage } from '../s
 
 const base: Page = {
   id: 'about',
-  path: '/about',
+  path: 'about',
   title: 'About',
   // Explicit status: applyPageSettings always writes one (absent = published in the
   // schema), so the round-trip normalizes to the explicit form.
@@ -43,7 +43,7 @@ describe('pageSettingsFromPage ⇄ applyPageSettings', () => {
   });
 
   it('emits dropdown only when true and an entirely-empty seo as undefined', () => {
-    const plain: Page = { id: 'p', path: '/p', title: 'P', root: { id: 'r', type: 'Section' } };
+    const plain: Page = { id: 'p', path: 'p', title: 'P', root: { id: 'r', type: 'Section' } };
     const values = { ...pageSettingsFromPage(plain), navSlots: ['header' as const], navDropdown: false };
     const next = applyPageSettings(plain, values);
     expect(next.nav).toEqual({ slots: ['header'], order: 0 }); // no `dropdown: false` noise
@@ -53,7 +53,7 @@ describe('pageSettingsFromPage ⇄ applyPageSettings', () => {
   it('round-trips locale and preserves the translation group it does not edit', () => {
     const de: Page = {
       id: 'about-de',
-      path: '/de/about',
+      path: 'about',
       title: 'Über uns',
       status: 'published',
       root: { id: 'r', type: 'Section' },
@@ -66,7 +66,7 @@ describe('pageSettingsFromPage ⇄ applyPageSettings', () => {
   it('clears the locale back to the project default (empty → undefined)', () => {
     const de: Page = {
       id: 'about-de',
-      path: '/de/about',
+      path: 'about',
       title: 'Über uns',
       status: 'published',
       root: { id: 'r', type: 'Section' },
@@ -80,8 +80,8 @@ describe('pageSettingsFromPage ⇄ applyPageSettings', () => {
 });
 
 describe('PageSettingsModal parent selector — home is the tree root', () => {
-  const home: Page = { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' } };
-  const other: Page = { id: 'about', path: '/about', title: 'About', root: { id: 'r', type: 'Section' } };
+  const home: Page = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' } };
+  const other: Page = { id: 'about', path: 'about', title: 'About', root: { id: 'r', type: 'Section' } };
 
   it('offers no "None" choice for a non-home page and defaults + submits Home', () => {
     const onSubmit = vi.fn();

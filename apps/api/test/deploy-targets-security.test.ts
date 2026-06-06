@@ -30,7 +30,7 @@ const target = {
 // the deploy transport past the publish-required 409 gate).
 const homePage = {
   id: 'home',
-  path: '/',
+  path: '',
   title: 'Home',
   root: { id: 'r', type: 'Section', children: [{ id: 'h', type: 'Heading', props: { text: 'Live Site' } }] },
 };

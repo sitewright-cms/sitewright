@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import type { Page, Template } from '@sitewright/schema';
+import { pagePath, pagesById } from '@sitewright/core';
 import { api, previewDocUrl, type Project } from '../api';
 import { CodePageEditor } from './CodePageEditor';
 import { PageSettingsModal, applyPageSettings, pageSettingsFromPage, type PageSettingsValues } from './PageSettingsModal';
@@ -122,13 +123,13 @@ interface TreeRow {
 const MAX_TREE_DEPTH = 100;
 
 /**
- * Sibling order: Home ('/') first; then default-locale pages before other locales
- * (so a locale's pages stay grouped, not interleaved); within a locale by `nav.order`
+ * Sibling order: Home (the empty-slug root) first; then default-locale pages before other
+ * locales (so a locale's pages stay grouped, not interleaved); within a locale by `nav.order`
  * then title — matching the published nav order.
  */
 function bySiblingOrder(a: Page, b: Page, defaultLocale: string): number {
-  const aHome = a.path === '/';
-  const bHome = b.path === '/';
+  const aHome = a.path === '';
+  const bHome = b.path === '';
   if (aHome !== bHome) return aHome ? -1 : 1;
   const la = a.locale ?? defaultLocale;
   const lb = b.locale ?? defaultLocale;
@@ -188,9 +189,12 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
   // Pages in page-tree order (parents followed by their children) with a depth for
   // indenting sub-pages in the list.
   const orderedPages = useMemo(() => orderPagesByTree(pages, defaultLocale), [pages, defaultLocale]);
-  // The HOME page (path '/') is the tree root: every other page parents to it by
-  // default, and "no parent" isn't offered for non-home pages.
-  const homeId = pages.find((p) => p.path === '/')?.id ?? 'home';
+  // The HOME page (empty slug = the tree root) is the default parent for every other
+  // page; "no parent" isn't offered for non-home pages.
+  const homeId = pages.find((p) => p.path === '')?.id ?? 'home';
+  // Index for computing each page's full route ({root}/{parent slugs}/{slug}) for display.
+  const pageById = useMemo(() => pagesById(pages), [pages]);
+  const fullPath = (p: Page): string => pagePath(p, pageById);
 
   async function load() {
     try {
@@ -221,18 +225,30 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
   async function create(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    // The form takes a PAGE PATH ("/about" or "about"); the id derives from it.
-    // "home" / "index" / "/" map to the home page (replacing the auto-created one).
-    const trimmed = slug.trim().replace(/^\/+/, '').replace(/\/+$/, '');
-    const path = trimmed === '' || trimmed === 'home' || trimmed === 'index' ? '/' : `/${trimmed}`;
-    const id = path === '/' ? 'home' : trimmed.replace(/\//g, '-');
+    // The form takes a SLUG (one segment, no slashes) — the full URL is computed from the
+    // parent. Slugify the input: lowercase, spaces/slashes/invalid → hyphens, trimmed.
+    const seg = slug
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+    if (!seg) {
+      setError('Enter a page slug (e.g. "about").');
+      return;
+    }
+    // The id derives from the slug; refuse to clobber an existing page (notably the
+    // reserved "home" root, whose id is "home").
+    if (pages.some((p) => p.id === seg)) {
+      setError(seg === 'home' ? '"home" is reserved for the site root — pick another slug.' : `A page "${seg}" already exists.`);
+      return;
+    }
     const page: Page = {
-      id,
-      path,
+      id: seg,
+      path: seg,
       title,
-      // A new page defaults to HOME as its parent (home is the tree root); only the
-      // home page itself is parentless.
-      parent: path === '/' ? undefined : homeId,
+      // A new page defaults to HOME as its parent (home is the tree root); its full route is
+      // computed as `/<…parents>/<slug>`.
+      parent: homeId,
       // Every page is code-first: it carries a Handlebars `source` (the block tree is retired).
       // `root` stays a valid placeholder so the unified page model is satisfied.
       root: { id: 'root', type: 'Section', children: [] },
@@ -296,7 +312,8 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
     const copy: Page = {
       ...p,
       id: `${p.id}-${rand}`,
-      path: p.path === '/' ? `/home-${rand}` : `${p.path}-${rand}`,
+      // Slug-only suffix (the home copy gets a real slug — it can't be the empty root).
+      path: p.path === '' ? `home-${rand}` : `${p.path}-${rand}`,
       title: `${p.title} (Copy)`,
       // A copy is its own page, not a translation sibling.
       translationGroup: undefined,
@@ -312,46 +329,66 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
     }
   }
 
+  /** The non-default locales a page is still missing a translation for (drives the action + its gating). */
+  function missingLocalesFor(primary: Page): string[] {
+    const group = primary.translationGroup ?? primary.id;
+    const inGroup = pages.filter((p) => p.translationGroup === group || p.id === primary.id);
+    const present = new Set(inGroup.map((p) => p.locale ?? defaultLocale));
+    return locales.filter((l) => l !== defaultLocale && !present.has(l));
+  }
+
   /**
-   * Creates the missing locale variants of a page (template-reuse / copy-as-translation):
-   * each variant is a sibling Page sharing the translation group, with its own
-   * `/<locale>/<path>` and `locale`, copying the page's template ref (shared structure)
-   * or its source (a per-locale copy), and starting from the same {{edit}} content.
+   * Creates the missing locale variants of a page (copy-as-translation): each variant is a
+   * Page sharing the translation group + the SAME slug, parented under that LOCALE'S HOME
+   * (the translated root home) when it exists — so its computed route is `/<locale>/…`. If
+   * the locale home doesn't exist yet, the variant lands under the root home and we warn to
+   * translate the home first. Translating the home page itself CREATES the locale home
+   * (slug = the locale code, parent = the root home).
    */
   async function addTranslations(primary: Page) {
     setError(null);
     const group = primary.translationGroup ?? primary.id;
-    // The group's current members: pages already tagged with it, plus the primary
-    // itself (which may not be tagged yet on first "Add translation").
-    const inGroup = pages.filter((p) => p.translationGroup === group || p.id === primary.id);
-    const present = new Set(inGroup.map((p) => p.locale ?? defaultLocale));
-    const missing = locales.filter((l) => l !== defaultLocale && !present.has(l));
+    const missing = missingLocalesFor(primary);
     if (missing.length === 0) return;
+    const rootHome = pages.find((p) => p.id === homeId);
+    const isRootHome = primary.path === '' || primary.id === homeId;
+    const noLocaleHome: string[] = [];
     try {
       const ops: Promise<unknown>[] = [];
       // Tie the primary into the group (its locale stays the default).
       if (!primary.translationGroup) ops.push(api.putPage(project.id, { ...primary, translationGroup: group }));
       for (const loc of missing) {
-        const path = primary.path === '/' ? `/${loc}` : `/${loc}${primary.path}`;
-        // Copy-as-translation: the variant inherits the primary's structure (template/
-        // source) AND its {{edit}} content as the starting point for translation — the
-        // translator then edits the text in place. Every locale variant parents to HOME
-        // (the tree root) — including the home page's own variant (e.g. `/de`), which is
-        // a distinct page from the root home; only id/locale/group/path/parent differ.
-        // (Deeper placement, if wanted, is a one-click re-parent in Page Settings.)
+        // The home's variant IS the locale home → its slug is the locale code, parented to
+        // the root home. Other pages keep their slug and nest under the locale home.
+        let parent = homeId;
+        if (!isRootHome) {
+          const localeHome = pages.find(
+            (p) => p.locale === loc && !!rootHome?.translationGroup && p.translationGroup === rootHome.translationGroup,
+          );
+          if (localeHome) parent = localeHome.id;
+          else noLocaleHome.push(loc);
+        }
         ops.push(
           api.putPage(project.id, {
-            ...primary,
+            ...primary, // inherits template/source + {{edit}} content as the translation start point
             id: `${primary.id}-${loc}`,
             locale: loc,
             translationGroup: group,
-            path,
-            parent: homeId,
+            // The locale home's slug is the locale code, lowercased to satisfy the slug schema
+            // (locales may be mixed-case like `pt-BR`); other variants keep the primary's slug.
+            path: isRootHome ? loc.toLowerCase() : primary.path,
+            parent,
           }),
         );
       }
       await Promise.all(ops);
       await load();
+      if (noLocaleHome.length > 0) {
+        setError(
+          `No home page yet for ${noLocaleHome.join(', ')} — these translations were placed under the site root. ` +
+            `Use "Add translation" on the Home page first so they nest under /<locale>.`,
+        );
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed to add translation');
     }
@@ -378,13 +415,13 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
     }
   }
 
-  /** Deletes a page — every page EXCEPT home (path "/"), which is permanent. */
+  /** Deletes a page — every page EXCEPT home (the empty-slug root), which is permanent. */
   async function removePage(p: Page) {
-    if (p.path === '/') return;
+    if (p.path === '') return;
     if (
       !(await confirm({
         title: 'Delete page',
-        message: `Delete page "${p.title}" (${p.path})? This cannot be undone.`,
+        message: `Delete page "${p.title}" (${fullPath(p)})? This cannot be undone.`,
         confirmLabel: 'Delete',
       }))
     )
@@ -438,7 +475,7 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
         <>
           <ul className="mb-8 flex flex-col gap-2">
             {orderedPages.map(({ page: p, depth }) => {
-              const isHome = p.path === '/';
+              const isHome = p.path === '';
               return (
                 <li
                   key={p.id}
@@ -455,7 +492,7 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
                       {isHome ? HOME_ICON : PAGE_ICON}
                     </span>
                     <span className="truncate font-medium">{p.title}</span>
-                    <span className="truncate text-sm text-slate-400">{p.path}</span>
+                    <span className="truncate text-sm text-slate-400">{fullPath(p)}</span>
                     {p.status === 'draft' && (
                       <span className="rounded-full bg-slate-200/80 px-2 py-0.5 text-[11px] font-medium text-slate-600">draft</span>
                     )}
@@ -478,10 +515,11 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
                     <button aria-label={`Settings for ${p.title}`} title="Edit page settings" className={ROW_ACTION} onClick={() => void openSettings(p)}>
                       {GEAR_ICON}
                     </button>
-                    {/* i18n actions — only for default-locale pages in a multilingual project.
-                        "Add translation" fans out the missing locale variants; a translated
-                        variant page hides it (you manage translations from the primary). */}
-                    {multilingual && !p.locale && (
+                    {/* i18n actions — only for default-locale pages in a multilingual project
+                        that are STILL MISSING at least one language variant. "Add translation"
+                        fans out the missing locales; once all exist (or on a variant page), the
+                        action disappears (you manage translations from the primary). */}
+                    {multilingual && !p.locale && missingLocalesFor(p).length > 0 && (
                       <button
                         aria-label={`Add translations for ${p.title}`}
                         title="Create the missing language variants"
@@ -525,13 +563,14 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
 
           <form onSubmit={create} className={`flex flex-wrap items-end gap-2 ${glassCard} p-4`}>
             <div className="flex flex-col">
-              <label className={fieldLabel}>Page path</label>
+              <label className={fieldLabel}>Page slug</label>
               <input
                 aria-label="Page path"
                 className={glassInput}
                 value={slug}
                 onChange={(e) => setSlug(e.target.value)}
-                placeholder="/about"
+                placeholder="about"
+                title="One slug segment (no slashes) — it nests under Home; the URL is built from the page tree."
                 required
               />
             </div>
@@ -596,6 +635,7 @@ interface ClientPagesListProps {
 
 /** The client's read-only list of pages — pick one to open the restricted editor. */
 function ClientPagesList({ pages, onOpen }: ClientPagesListProps) {
+  const byId = pagesById(pages);
   return (
     <>
       <p className="mb-3 text-sm text-slate-500">Choose a page to edit its content.</p>
@@ -607,7 +647,7 @@ function ClientPagesList({ pages, onOpen }: ClientPagesListProps) {
               onClick={() => onOpen(p)}
             >
               <span className="font-medium">{p.title}</span>{' '}
-              <span className="text-sm text-slate-400">{p.path}</span>
+              <span className="text-sm text-slate-400">{pagePath(p, byId)}</span>
             </button>
           </li>
         ))}

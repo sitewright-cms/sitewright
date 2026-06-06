@@ -38,7 +38,7 @@ test('project invite → member edits freely; isolation holds; platform invite i
   expect(
     (
       await admin.put(`/projects/${projectId}/content/page/home`, {
-        data: { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' } },
+        data: { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' } },
       })
     ).status(),
   ).toBe(200);
@@ -77,7 +77,7 @@ test('project invite → member edits freely; isolation holds; platform invite i
   expect(
     (
       await client.put(`/projects/${projectId}/content/page/about`, {
-        data: { id: 'about', path: '/about', title: 'About', root: { id: 'r', type: 'Section' } },
+        data: { id: 'about', path: 'about', title: 'About', root: { id: 'r', type: 'Section' } },
       })
     ).status(),
   ).toBe(200);

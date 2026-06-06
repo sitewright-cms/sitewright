@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { GLOBAL_TEMPLATES } from '@sitewright/core';
+import { GLOBAL_TEMPLATES, pagePath, pagesById } from '@sitewright/core';
 import { NAV_SLOTS, type NavSlot, type Page, type Template } from '@sitewright/schema';
 import { Modal } from './ui/Modal';
 import { glassInput } from '../theme';
@@ -116,15 +116,17 @@ interface PageSettingsModalProps {
 export function PageSettingsModal({ page, initial, pages, templates, locales = [], saving = false, onClose, onSubmit }: PageSettingsModalProps) {
   const [v, setV] = useState<PageSettingsValues>(initial);
   const patch = (next: Partial<PageSettingsValues>) => setV((prev) => ({ ...prev, ...next }));
-  const isHome = page.path === '/';
-  // HOME (path '/') is the tree root: every other page must have a parent, defaulting
-  // to home — so non-home pages are never offered a "None (top-level)" choice. The
-  // literal fallback matches the create/copy defaults so the select always has a value.
-  const homeId = pages.find((p) => p.path === '/')?.id ?? 'home';
+  const isHome = page.path === '';
+  // HOME (the empty-slug root) is the tree root: every other page must have a parent,
+  // defaulting to home — so non-home pages are never offered a "None (top-level)" choice.
+  // The literal fallback matches the create/copy defaults so the select always has a value.
+  const homeId = pages.find((p) => p.path === '')?.id ?? 'home';
   const invalidParents = selfAndDescendants(page.id, pages);
   const parentChoices = pages.filter((p) => !invalidParents.has(p.id) && !p.collection);
   // The effective parent the form will submit for a non-home page (defaults to home).
   const effectiveParent = isHome ? '' : v.parent || homeId || '';
+  // Index for the live "full URL" preview as the slug/parent are edited.
+  const previewById = pagesById(pages);
   const childCount = pages.filter((p) => p.parent === page.id).length;
   // Sibling locale variants (same translation group), for context.
   const siblings = page.translationGroup ? pages.filter((p) => p.translationGroup === page.translationGroup && p.id !== page.id) : [];
@@ -152,16 +154,26 @@ export function PageSettingsModal({ page, initial, pages, templates, locales = [
             />
           </label>
           <label className="flex flex-col text-xs font-semibold text-slate-700">
-            Page Path
+            Page Slug
             <input
               aria-label="Page path"
               className={`mt-1.5 font-mono font-normal ${glassInput}`}
               value={v.path}
               disabled={isHome}
-              title={isHome ? 'The home page always lives at "/"' : undefined}
-              onChange={(e) => patch({ path: e.target.value })}
+              placeholder="about"
+              title={isHome ? 'The home page is the site root' : 'One segment, no slashes — the URL is built from the parent chain'}
+              // No slashes: lowercase + slugify as you type. Nesting comes from the parent.
+              onChange={(e) => patch({ path: e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+/, '') })}
             />
-            {isHome && <span className="mt-1 font-normal text-[11px] text-slate-400">The home page always lives at “/”.</span>}
+            <span className="mt-1 font-normal text-[11px] text-slate-400">
+              {isHome ? (
+                'The home page is the site root (/).'
+              ) : (
+                <>
+                  URL: <code>{pagePath({ ...page, path: v.path, parent: effectiveParent || undefined }, previewById)}</code> — built from the parent chain + this slug.
+                </>
+              )}
+            </span>
           </label>
         </div>
 
@@ -208,7 +220,7 @@ export function PageSettingsModal({ page, initial, pages, templates, locales = [
               ) : (
                 parentChoices.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.title} ({p.path})
+                    {p.title} ({pagePath(p, previewById)})
                   </option>
                 ))
               )}

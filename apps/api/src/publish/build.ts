@@ -13,6 +13,8 @@ import {
   translationsOf,
   localeOf as localeOfPage,
   pagesInLocale,
+  pagePath,
+  pagesById,
   type ProjectBundle,
 } from '@sitewright/core';
 import type { Page, Template } from '@sitewright/schema';
@@ -237,6 +239,9 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         mobile: buildNav(pagesIn, 'mobile'),
       });
     }
+    // Index for computing each page's full route (`{root}/{parent slugs}/{slug}`) — a
+    // page's `path` is only its own slug segment.
+    const byId = pagesById(pubBundle.pages);
 
     // Compile a Tailwind utility sheet / ship component CSS+JS only when used.
     // Sites using none get the previous output (no extra file/request).
@@ -384,6 +389,9 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         // accepts `/…`/`http(s)`/`#`) emits a real link rather than its `#` fallback.
         const localeData = resolveLocaleDatasets(datasets, page.locale);
         const pageTranslations = group.map((m) => ({ locale: m.locale, path: m.path, title: m.title }));
+        // `{{ page.path }}` is the page's FULL route (computed from the parent chain), not
+        // its bare slug — so a code-first page can reference its own URL.
+        const pageFullPath = pagePath(page, byId);
         // Code-first page: render the Handlebars `source` to a body, then wrap it in the
         // SAME document shell (head/SEO/CSS/nav). Validated by renderTemplate; a bad
         // source fails the publish with a clear, page-scoped error.
@@ -393,7 +401,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // code-first page/slot can `{{#each website.json_data.items}}`). siteUrl is the only
           // OTHER website field exposed; the raw head/criticalCss/scripts blobs are never surfaced.
           website: { siteUrl: website?.siteUrl, json_data: opts.jsonData },
-          page: { title: page.title, path: page.path, locale: pageLocale, translations: pageTranslations },
+          page: { title: page.title, path: pageFullPath, locale: pageLocale, translations: pageTranslations },
           data: localeData as Record<string, unknown>,
           nav: navForPage as unknown as Record<string, unknown>,
         };
@@ -446,7 +454,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // {{ company.* }}/{{ website.* }}/{{ page.* }} substitution in text props.
           // `website` is projected to only its public fields — never the raw
           // head/footer/CSS blobs, which aren't meant to be surfaced via a variable.
-          vars: { company: identity, website: { siteUrl: website?.siteUrl, json_data: opts.jsonData }, page: { title: page.title, path: page.path, locale: pageLocale, translations: pageTranslations } },
+          vars: { company: identity, website: { siteUrl: website?.siteUrl, json_data: opts.jsonData }, page: { title: page.title, path: pageFullPath, locale: pageLocale, translations: pageTranslations } },
           datasets: localeData,
           entry: route.entry,
           includeDrafts: false,

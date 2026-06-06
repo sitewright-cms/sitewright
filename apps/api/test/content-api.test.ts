@@ -37,7 +37,7 @@ async function setup(email: string, slug = 'site') {
   return { t, projectId };
 }
 
-const page = { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' } };
+const page = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' } };
 
 describe('content API', () => {
   it('a project member may write any content kind (constrained client-write removed)', async () => {
@@ -45,7 +45,7 @@ describe('content API', () => {
     const base = `/projects/${projectId}`;
     const editablePage = {
       id: 'home',
-      path: '/',
+      path: '',
       title: 'Home',
       root: {
         id: 'r',
@@ -158,7 +158,7 @@ describe('content API', () => {
       cookies: { sw_session: t },
       payload: {
         pages: [
-          { id: 'b', path: '/b', title: 'B', root: { id: 'r', type: 'Grid', binding: { dataset: 'ghost', mode: 'list' } } },
+          { id: 'b', path: 'b', title: 'B', root: { id: 'r', type: 'Grid', binding: { dataset: 'ghost', mode: 'list' } } },
         ],
       },
     });

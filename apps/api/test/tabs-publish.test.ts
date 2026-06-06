@@ -17,7 +17,7 @@ describe('Tabs component → publish + preview', () => {
 
   const page = {
     id: 'home',
-    path: '/',
+    path: '',
     title: 'Docs',
     root: {
       id: 'r',

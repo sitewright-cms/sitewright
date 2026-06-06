@@ -28,7 +28,7 @@ import { CodePageEditor } from '../src/views/CodePageEditor';
 const project = { id: 'p', name: 'Acme', slug: 'acme', role: 'owner' as const };
 const page: Page = {
   id: 'home',
-  path: '/',
+  path: '',
   title: 'Home',
   root: { id: 'r', type: 'Section' },
   source: '<h1>{{ company.name }}</h1>',
@@ -134,8 +134,8 @@ describe('CodePageEditor', () => {
   it('persists meta description, OG image, parent, and template via the settings modal', async () => {
     // The subject is a NON-home page (home is the tree root and can't be re-parented);
     // its parent can be set to any sibling.
-    const subject: Page = { ...page, id: 'blog', path: '/blog', title: 'Blog' };
-    const about: Page = { ...page, id: 'about', path: '/about', title: 'About' };
+    const subject: Page = { ...page, id: 'blog', path: 'blog', title: 'Blog' };
+    const about: Page = { ...page, id: 'about', path: 'about', title: 'About' };
     render(<CodePageEditor project={project} page={subject} pages={[page, about, subject]} onClose={() => {}} />);
     fireEvent.click(screen.getByRole('button', { name: 'Page settings' }));
     fireEvent.change(screen.getByLabelText('Meta description'), { target: { value: 'Crisp summary.' } });

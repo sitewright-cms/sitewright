@@ -16,7 +16,7 @@ test('content lifecycle + export over HTTP', async ({ playwright, baseURL }) => 
   const projectId = (await proj.json()).project.id as string;
   const base = `/projects/${projectId}`;
 
-  const page = { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' } };
+  const page = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' } };
   const put = await ctx.put(`${base}/content/page/home`, { data: page });
   expect(put.status()).toBe(200);
 

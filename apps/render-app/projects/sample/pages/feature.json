@@ -1,6 +1,7 @@
 {
   "id": "feature-detail",
-  "path": "/features/[slug]",
+  "path": "[slug]",
+  "parent": "features",
   "title": "Feature",
   "collection": { "dataset": "features", "param": "slug" },
   "root": {

@@ -21,7 +21,9 @@
     "test": "vitest run --coverage",
     "test:watch": "vitest",
     "gen:brand-icons": "node scripts/gen-brand-icons.mjs",
-    "gen:brand-icons:check": "node scripts/gen-brand-icons.mjs && git diff --exit-code src/brand-icons.ts"
+    "gen:brand-icons:check": "node scripts/gen-brand-icons.mjs && git diff --exit-code src/brand-icons.ts",
+    "gen:lucide-icons": "node scripts/gen-lucide-icons.mjs",
+    "gen:lucide-icons:check": "node scripts/gen-lucide-icons.mjs && git diff --exit-code src/icons.ts"
   },
   "dependencies": {
     "@sitewright/core": "workspace:*",
@@ -33,6 +35,7 @@
     "@vitest/coverage-v8": "^4.1.8",
     "simple-icons": "^16.21.0",
     "typescript": "^5.7.2",
-    "vitest": "^4.1.8"
+    "vitest": "^4.1.8",
+    "lucide-static": "^0.544.0"
   }
 }

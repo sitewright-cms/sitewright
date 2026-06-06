@@ -56,9 +56,12 @@ RIPPLE (Material "waves") click effect: add class="waves-effect" to a button/lin
 waves-effect waves-light"). The platform ships its own ripple runtime when it sees
 waves-effect — never add Waves.js. Respects prefers-reduced-motion.
 
-ICONS: inline a built-in Lucide icon with {{icon "name" "h-5 w-5"}} (the 2nd arg is the CSS
-class). Names include: menu, x, search, chevron-down/-up/-left/-right, arrow-right/-left/-up-right,
-check, mail, phone, map-pin, external-link, calendar, clock, star. Unknown names render nothing.
+ICONS: inline an icon with {{icon "name" "h-5 w-5"}} (the 2nd arg is the CSS class). "name"
+is ANY Lucide icon name (the full ~1865-icon set, kebab-case — e.g. menu, x, search,
+arrow-right, chevron-down, mail, phone, map-pin, calendar, star, home, user, heart,
+shopping-cart, rocket, sparkles). Brand/social logos use the "brand:" prefix —
+{{icon "brand:github"}}, brand:x, brand:youtube, brand:instagram, brand:facebook,
+brand:whatsapp, brand:tiktok, etc. Unknown names render nothing.
 
 SET THE BRAND with put_content("settings","settings",{ identity:{ name, colors:{ primary:"#…" } },
 settings:{ defaultLocale:"en", locales:["en"] } }).

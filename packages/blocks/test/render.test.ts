@@ -465,7 +465,7 @@ describe('renderNode — per block', () => {
     expect(html).toContain('viewBox="0 0 24 24"');
     expect(html).toContain('width="32"');
     expect(html).toContain('aria-hidden="true"'); // decorative when no label
-    expect(html).toContain('<line'); // the menu icon body
+    expect(html).toContain('<path d="M4 5h16"'); // the menu icon body (Lucide)
     const labeled = renderNode(node({ type: 'Icon', props: { name: 'search', label: 'Search "x"' } }));
     expect(labeled).toContain('role="img"');
     expect(labeled).toContain('aria-label="Search &quot;x&quot;"'); // escaped

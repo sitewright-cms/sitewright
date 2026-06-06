@@ -50,7 +50,7 @@ describe('LibraryPanel', () => {
   it('lazy-loads the whole icon pack and copies an icon snippet on click', async () => {
     render(<LibraryPanel />);
     fireEvent.mouseEnter(screen.getByLabelText('Library'));
-    fireEvent.click(screen.getByRole('button', { name: /Icons/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Icons/ }));
     const dialog = await screen.findByRole('dialog', { name: 'Icons' });
 
     // Icons arrive via a dynamic import (code-split) — wait for the grid.
@@ -58,9 +58,19 @@ describe('LibraryPanel', () => {
     fireEvent.click(iconBtn);
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('{{icon "arrow-right" "h-5 w-5"}}');
 
-    // Search narrows the grid (the expanded pack includes "home").
-    fireEvent.change(within(dialog).getByLabelText('Search Icons'), { target: { value: 'home' } });
-    expect(await within(dialog).findByRole('button', { name: 'Copy home icon snippet' })).toBeInTheDocument();
+    // Search narrows the grid — by name AND by Lucide keyword tags ("photo" finds "image").
+    fireEvent.change(within(dialog).getByLabelText('Search Icons'), { target: { value: 'photo' } });
+    expect(await within(dialog).findByRole('button', { name: 'Copy image icon snippet' })).toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: 'Copy arrow-right icon snippet' })).toBeNull();
+  });
+
+  it('lazy-loads the brand icons and copies a brand: snippet', async () => {
+    render(<LibraryPanel />);
+    fireEvent.mouseEnter(screen.getByLabelText('Library'));
+    fireEvent.click(screen.getByRole('button', { name: /Brand icons/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'Brand icons' });
+    const gh = await within(dialog).findByRole('button', { name: 'Copy GitHub icon snippet' });
+    fireEvent.click(gh);
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('{{icon "brand:github" "h-6 w-6"}}');
   });
 });

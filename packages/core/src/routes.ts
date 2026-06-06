@@ -123,8 +123,13 @@ export function collectionRoutes(bundle: ProjectBundle): Route[] {
     if (!page.collection) continue;
     const { dataset, param } = page.collection;
     const root = resolveRoot(page, partialMap);
+    // Locale-suffix resolution: a `de` collection variant expands over `<dataset>-de`
+    // when those entries exist, else the base dataset (auto-suffix, like data bindings).
+    const localized = page.locale ? `${dataset}-${page.locale.toLowerCase()}` : undefined;
+    const effectiveDataset =
+      localized && bundle.entries.some((e) => e.dataset === localized) ? localized : dataset;
     const entries = bundle.entries.filter(
-      (entry) => entry.dataset === dataset && entry.status === 'published',
+      (entry) => entry.dataset === effectiveDataset && entry.status === 'published',
     );
     for (const entry of entries) {
       routes.push({

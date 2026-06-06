@@ -37,10 +37,10 @@ Adopt a **document-level, template-reuse** model (the "contentBase way"):
 - **A "copy as translation" quick-start** clones a page's `source` into a new locale variant
   (own source from the start) and can later be **promoted to a template** so its siblings
   share it.
-- **Datasets are duplicated per locale** (`services` → `services_de`) and resolved by
-  **auto locale-suffix** at render: on a `de` page, `data.services` resolves to `services_de`
+- **Datasets are duplicated per locale** (`services` → `services-de`) and resolved by
+  **auto locale-suffix** at render: on a `de` page, `data.services` resolves to `services-de`
   when it exists, else falls back to `services`. A **manual escape hatch** stays available
-  (`{{#each data.services_de}}`, or `{{ page.locale }}` + `lookup`).
+  (`{{#each data.services-de}}`, or `{{ page.locale }}` + `lookup`).
 
 The legacy `PageTranslation` content kind and the per-locale publish loop are **retired**; each
 locale variant publishes once, as an ordinary page at its own path.
@@ -57,7 +57,7 @@ the *primary* model because the document-level model:
 - supports **per-locale layout variation** natively (a forked variant), which field-level can't.
 
 The accepted cost: more page + dataset objects, and a dataset's *field schema* is duplicated
-across `services`/`services_de` (adding a field means adding it to each). Mitigated by a
+across `services`/`services-de` (adding a field means adding it to each). Mitigated by a
 "duplicate dataset for locale" action that clones the schema at creation. For an agency tool
 with a handful of locales per client, this trade is right.
 
@@ -81,7 +81,7 @@ translationGroup?: IdSchema              // shared id linking all locale variant
 ### Dataset (no schema change)
 
 Localization is by **convention**, not by the `localized` field flag (which we leave as a
-no-op/forward-compat hint or remove): a locale's dataset is `"<slug>_<locale>"`. The
+no-op/forward-compat hint or remove): a locale's dataset is `"<slug>-<locale>"`. The
 `localized` flag may later drive the "duplicate for locale" UI default.
 
 ---
@@ -92,11 +92,11 @@ no-op/forward-compat hint or remove): a locale's dataset is `"<slug>_<locale>"`.
    `PageTranslation` lookup/override, and `localeSlug`/`localePrefix` derivation. Every page
    (including each locale variant) renders **once** at its own `path`.
 2. **Locale-aware dataset resolution.** Build the per-page `data` namespace so `data.<name>`
-   prefers `<name>_<page.locale>` when that dataset exists, else `<name>`. Implement in the
+   prefers `<name>-<page.locale>` when that dataset exists, else `<name>`. Implement in the
    render-context assembly (a small locale-aware view over `datasetEntries(bundle)`), keeping
-   explicit `data.<name>_<locale>` working as the manual override.
+   explicit `data.<name>-<locale>` working as the manual override.
 3. **Collection pages** honor the same suffix: a collection variant whose `page.locale` is `de`
-   expands over `<dataset>_de` when present.
+   expands over `<dataset>-de` when present.
 4. **`<html lang>`** = `page.locale ?? defaultLocale`.
 5. **hreflang / x-default** comes from the **translation group**: for each page, emit one
    `<link rel="alternate" hreflang="<member.locale>" href="<member.path>">` per group member
@@ -131,10 +131,10 @@ no-op/forward-compat hint or remove): a locale's dataset is `"<slug>_<locale>"`.
 
 - Teach the model in `packages/mcp/src/server.ts` INSTRUCTIONS: locale variants are pages
   linked by a translation group and (usually) sharing a template; datasets are duplicated as
-  `<slug>_<locale>` and addressed via auto-suffix (or explicitly); `{{ page.translations }}`
+  `<slug>-<locale>` and addressed via auto-suffix (or explicitly); `{{ page.translations }}`
   for a language switcher.
 - Seed: extend the Example Project with a second locale (e.g. `de`) — a template-shared home
-  + a `services_de` dataset — to demonstrate and to give E2E something real.
+  + a `services-de` dataset — to demonstrate and to give E2E something real.
 
 ---
 

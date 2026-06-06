@@ -9,6 +9,8 @@ import {
   publishedPages,
   relativeRoot,
   resolveTemplateSource,
+  resolveLocaleDatasets,
+  translationsOf,
   type ProjectBundle,
 } from '@sitewright/core';
 import type { Page, Template } from '@sitewright/schema';
@@ -37,7 +39,7 @@ import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
 import { companyToOrganization } from './company-seo.js';
 import { renderSitemap, renderRobots, renderHtaccess, renderNetlifyRedirects, siteUrlFor, siteBase } from './seo.js';
 import { renderContactPhp, hasContactPhpForm } from './contact-php.js';
-import { toPublicForm, type FormPublic, type MediaAsset, type PageTranslation } from '@sitewright/schema';
+import { toPublicForm, type FormPublic, type MediaAsset } from '@sitewright/schema';
 
 /** The compiled utility stylesheet, written at the site root and linked per page. */
 const UTILITY_STYLESHEET = 'styles.css';
@@ -208,27 +210,34 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       footer: buildNav(pubBundle.pages, 'footer'),
       mobile: buildNav(pubBundle.pages, 'mobile'),
     };
-    // Locales: the default locale publishes at the site root; every other locale
-    // at `/<locale>/…`, using its translation's root (else falling back to the
-    // default page). A single-locale project → one pass with prefix '' → output
-    // identical to the pre-multilingual behavior.
+    // Multilingual model (see docs/i18n-content-model.md): a locale VARIANT of a
+    // page is itself a Page (own path/title/seo/content), so each route renders
+    // ONCE at its own path. The page's `locale` drives `<html lang>` + which
+    // dataset variant (`<slug>_<locale>`) its bindings resolve to; `translationGroup`
+    // drives the hreflang alternates. No per-locale loop / tree overrides.
     const settings = bundle.project.settings;
-    const locales = settings?.locales?.length ? settings.locales : ['en'];
-    const defaultLocale = settings?.defaultLocale ?? locales[0] ?? 'en';
-    const translations = bundle.translations ?? [];
-    const translationFor = (pageId: string, locale: string): PageTranslation | undefined =>
-      translations.find((t) => t.pageId === pageId && t.locale === locale);
-    /** The output slug for a route in a locale: `<prefix><slug>` (home → undefined). */
-    const localeSlug = (prefix: string, slug: string | undefined): string | undefined => {
-      const composed = `${prefix}${slug ?? ''}`.replace(/\/+$/, '');
-      return composed === '' ? undefined : composed;
+    const defaultLocale = settings?.defaultLocale ?? 'en';
+    const localeOf = (p: Page): string => p.locale ?? defaultLocale;
+    /** A page path → its output slug (home '/' → undefined; else the path without the leading '/'). */
+    const slugForPath = (p: string): string | undefined => {
+      const s = p.replace(/^\/+/, '').replace(/\/+$/, '');
+      return s === '' ? undefined : s;
     };
+    // Auto-nav is built PER LOCALE — each locale's menus list only that locale's
+    // pages, using their own (already-localized) paths. No link rebasing.
+    const navByLocale = new Map<string, typeof nav>();
+    for (const loc of new Set(pubBundle.pages.map(localeOf))) {
+      const pagesIn = pubBundle.pages.filter((p) => localeOf(p) === loc);
+      navByLocale.set(loc, {
+        header: buildNav(pagesIn, 'header'),
+        footer: buildNav(pagesIn, 'footer'),
+        mobile: buildNav(pagesIn, 'mobile'),
+      });
+    }
 
-    // Compile a Tailwind utility sheet / ship component CSS+JS only when used —
-    // scanning the default roots AND every translation root (a locale may use a
-    // class/component the default page doesn't). Sites using none get the previous
-    // output (no extra file/request).
-    const scanRoots = [...routes.map((r) => r.root), ...translations.map((t) => t.root)];
+    // Compile a Tailwind utility sheet / ship component CSS+JS only when used.
+    // Sites using none get the previous output (no extra file/request).
+    const scanRoots = routes.map((r) => r.root);
     // A page's EFFECTIVE source: its referenced template's (project entity or built-in
     // global) when set, else its own. An unknown reference is an author-correctable
     // publish failure — never a silently blank page.
@@ -320,89 +329,70 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       }
     };
 
-    // Guard against two (locale, route) pairs resolving to the same output file —
-    // e.g. a page at `/de` colliding with the `de` locale's home. Catch it as a
-    // PublishError instead of silently overwriting one with the other.
+    // Each route (incl. every locale variant, which is its own Page) renders ONCE
+    // at its own path. Guard against two routes resolving to the same output file.
     const writtenPaths = new Set<string>();
-    for (const locale of locales) {
-      const localePrefix = locale === defaultLocale ? '' : `${locale}/`;
-      // Locale-prefixed nav for THIS locale's skeleton slot links — non-default locales publish
-      // under `/<locale>/`, so a shared topNav must point at the in-locale page (not the root one).
-      // Rebase a nav item INCLUDING its dropdown children — a shallow spread would
-      // keep child paths pointing at the root locale.
-      const rebaseNavItem = <T extends { path: string; children?: T[] }>(item: T): T => ({
-        ...item,
-        path: `/${localePrefix}${item.path.replace(/^\//, '')}`,
-        ...(item.children ? { children: item.children.map(rebaseNavItem) } : {}),
-      });
-      const navForLocale =
-        localePrefix === ''
-          ? nav
-          : {
-              header: nav.header.map(rebaseNavItem),
-              footer: nav.footer.map(rebaseNavItem),
-              mobile: nav.mobile.map(rebaseNavItem),
-            };
+    {
       for (const route of routes) {
-        const outSlug = localeSlug(localePrefix, route.slug);
+        // `route.root` is the page's block tree with partials expanded (used for
+        // block-tree pages; code-first pages render from `source` instead).
+        const page = { ...route.page, root: route.root };
+        const pageLocale = localeOf(page);
+        const navForPage = navByLocale.get(pageLocale) ?? nav;
+        const outSlug = route.slug;
         const full = resolve(tmp, relPathForSlug(outSlug));
         if (full !== tmp && !full.startsWith(tmp + sep)) {
           throw new PublishError('route output escapes the publish directory');
         }
         if (writtenPaths.has(full)) {
-          throw new PublishError(`output path collision at "/${outSlug ?? ''}" — a page path conflicts with a locale prefix`);
+          throw new PublishError(`output path collision at "/${outSlug ?? ''}" — two pages resolve to the same URL`);
         }
         writtenPaths.add(full);
         // Sitemap: indexable pages only (skip noindex), absolute URLs. lastmod is a
         // W3C date (YYYY-MM-DD) — the subset crawlers reliably accept.
-        if (siteUrl && !route.page.seo?.noindex) {
+        if (siteUrl && !page.seo?.noindex) {
           sitemapUrls.push({ loc: siteUrlFor(siteUrl, outSlug), lastmod: publishedAt.slice(0, 10) });
         }
         // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to tmp (checked above)
         await mkdir(dirname(full), { recursive: true });
-        // Localized content (root + title) for non-default locales; else the page.
-        const tr = localePrefix === '' ? undefined : translationFor(route.page.id, locale);
-        const page = {
-          ...route.page,
-          root: tr?.root ?? route.root,
-          title: tr?.title || route.page.title,
-        };
-        // Internal page links + assets are relative to this page's depth (portable);
-        // assets are shared at the SITE root, so `rel`/`mediaUrl` carry NO locale
-        // prefix, while internal page links (via `localePrefix`) stay in-locale.
+        // Internal page links + assets are relative to this page's depth (portable).
         const siteRoot = relativeRoot(outSlug);
         const rel = (src: string | undefined): string | undefined =>
           src ? resolveInternalUrl(src, siteRoot) : undefined;
         const organization = baseOrg
           ? { ...baseOrg, logo: rel(baseOrg.logo), image: rel(baseOrg.image) }
           : undefined;
-        // hreflang alternates: every locale variant of THIS route + x-default, as
-        // absolute URLs (Google requires absolute hreflang hrefs). Only for a
-        // multilingual site with a configured site URL, and not for noindex pages.
+        // hreflang alternates from the page's translation group (its locale variants),
+        // as absolute URLs (Google requires absolute hreflang hrefs); x-default points
+        // at the default-locale variant. Only for a configured site URL + indexable pages.
+        const group = translationsOf(pubBundle.pages, page, defaultLocale);
+        const xDefault = group.find((m) => m.locale === defaultLocale);
         const alternates =
-          siteUrl && locales.length > 1 && !page.seo?.noindex
+          siteUrl && group.length > 1 && !page.seo?.noindex
             ? [
-                ...locales.map((l) => ({
-                  hreflang: l,
-                  href: siteUrlFor(siteUrl, localeSlug(l === defaultLocale ? '' : `${l}/`, route.slug)),
-                })),
-                { hreflang: 'x-default', href: siteUrlFor(siteUrl, localeSlug('', route.slug)) },
+                ...group.map((m) => ({ hreflang: m.locale, href: siteUrlFor(siteUrl, slugForPath(m.path)) })),
+                ...(xDefault ? [{ hreflang: 'x-default', href: siteUrlFor(siteUrl, slugForPath(xDefault.path)) }] : []),
               ]
             : undefined;
+        // `data.<name>` resolves to this page's locale variant (`<name>-<locale>`) when
+        // present, else the base dataset (auto locale-suffix). Translation links for a
+        // language switcher (`{{#each page.translations}}<a href="{{url path}}">`) use the
+        // ROOT-RELATIVE page path — same as nav — so the `{{url}}` helper (which only
+        // accepts `/…`/`http(s)`/`#`) emits a real link rather than its `#` fallback.
+        const localeData = resolveLocaleDatasets(datasets, page.locale);
+        const pageTranslations = group.map((m) => ({ locale: m.locale, path: m.path, title: m.title }));
         // Code-first page: render the Handlebars `source` to a body, then wrap it in the
         // SAME document shell (head/SEO/CSS/nav). Validated by renderTemplate; a bad
         // source fails the publish with a clear, page-scoped error.
-        // Render context shared by the page body AND the project-wide skeleton slots — `nav`
-        // is the (locale-prefixed) auto-menu so a nav slot lists pages via {{#each nav.header}}.
         const renderCtx = {
           company: identity as unknown as Record<string, unknown>,
           // `json_data` is the publish-time snapshot of `website.jsonDataUrl` (full object — a
           // code-first page/slot can `{{#each website.json_data.items}}`). siteUrl is the only
           // OTHER website field exposed; the raw head/criticalCss/scripts blobs are never surfaced.
           website: { siteUrl: website?.siteUrl, json_data: opts.jsonData },
-          page: { title: page.title, path: page.path },
-          data: datasets as Record<string, unknown>,
-          nav: navForLocale as unknown as Record<string, unknown>,
+          page: { title: page.title, path: page.path, locale: pageLocale, translations: pageTranslations },
+          data: localeData as Record<string, unknown>,
+          nav: navForPage as unknown as Record<string, unknown>,
         };
         let bodyHtml: string | undefined;
         // The page's own source, or its referenced template's (the page then contributes
@@ -453,15 +443,14 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // {{ company.* }}/{{ website.* }}/{{ page.* }} substitution in text props.
           // `website` is projected to only its public fields — never the raw
           // head/footer/CSS blobs, which aren't meant to be surfaced via a variable.
-          vars: { company: identity, website: { siteUrl: website?.siteUrl, json_data: opts.jsonData }, page: { title: page.title, path: page.path } },
-          datasets,
+          vars: { company: identity, website: { siteUrl: website?.siteUrl, json_data: opts.jsonData }, page: { title: page.title, path: page.path, locale: pageLocale, translations: pageTranslations } },
+          datasets: localeData,
           entry: route.entry,
           includeDrafts: false,
           media,
           root: siteRoot,
-          localePrefix,
-          lang: locale,
-          nav,
+          lang: pageLocale,
+          nav: navForPage,
           forms,
           formEndpoint,
           hcaptchaSiteKey: opts.hcaptchaSiteKey,
@@ -576,8 +565,8 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       throw new PublishError('published site exceeds the maximum output size');
     }
 
-    // Total emitted pages = routes × locales (one set of routes per locale).
-    const manifest: ReleaseManifest = { publishedAt, routes: routes.length * locales.length, bytes };
+    // One emitted page per route (locale variants are their own routes/pages now).
+    const manifest: ReleaseManifest = { publishedAt, routes: routes.length, bytes };
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- tmp is a resolved, validated dir
     await writeFile(join(tmp, 'release.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
 

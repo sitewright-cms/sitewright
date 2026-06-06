@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { PageNodeSchema } from './block.js';
 import { SeoSchema } from './seo.js';
 import { TemplateRefSchema } from './template.js';
+import { LocaleSchema } from './project.js';
 import { IdSchema, KeyNameSchema, RoutePathSchema, SlugSchema } from './primitives.js';
 
 const COLLECTION_PARAM = /\[[A-Za-z0-9_]+\]/;
@@ -41,6 +42,21 @@ export const PageSchema = z
      * nav item (no own `nav.slots` needed).
      */
     parent: IdSchema.optional(),
+    /**
+     * The page's language. Absent → the project's default locale. A LOCALE VARIANT
+     * of a page is itself a Page with its own `path`/`title`/`seo`/`content`; it
+     * usually shares structure by referencing the same `template` (template-reuse),
+     * or forks its own `source` for a per-locale layout variation. See
+     * docs/i18n-content-model.md.
+     */
+    locale: LocaleSchema.optional(),
+    /**
+     * Links all locale variants of one page (a stable shared id — by convention the
+     * primary/default-locale page's id). Publish groups by this to emit `hreflang`
+     * alternates + `x-default`, and to expose `{{ page.translations }}` for a
+     * language switcher. Absent → the page stands alone (no alternates).
+     */
+    translationGroup: IdSchema.optional(),
     /** Navigation placement: which menu slots this page appears in (auto-nav). */
     nav: z
       .object({

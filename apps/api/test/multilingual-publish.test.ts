@@ -4,11 +4,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { makeHarness, type Harness, type TestClient } from './harness.js';
 
-// Integration: a project with locales ['en','de'] (default 'en') publishes the
-// default locale at the site root and 'de' under /de/, using per-page translations
-// with default-locale fallback, and locale-prefixed internal links.
+// Integration: the document-level multilingual model (docs/i18n-content-model.md).
+// A locale VARIANT of a page is its own Page (own path/title/locale), variants are
+// linked by `translationGroup`. Each renders once at its own path with `<html lang>`;
+// hreflang/x-default come from the group; datasets are duplicated per locale
+// (`<slug>-<locale>`) and resolved by auto-suffix.
 
-describe('multilingual publish', () => {
+describe('multilingual publish (locale variants are pages)', () => {
   let harness: Harness;
   let client: TestClient;
   let projectId: string;
@@ -30,96 +32,47 @@ describe('multilingual publish', () => {
     await rm(mediaRoot, { recursive: true, force: true });
   });
 
-  it('emits per-locale output with translation, fallback, and locale-prefixed links', async () => {
-    const proj = client.project(projectId);
-    // Two locales; en is default.
-    expect(
-      (
-        await proj.putContent('settings', 'settings', {
-          brand: { name: 'Acme', colors: { primary: '#0a7' } },
-          settings: { defaultLocale: 'en', locales: ['en', 'de'] },
-        })
-      ).statusCode,
-    ).toBe(200);
+  const root = { id: 'r', type: 'Section' as const };
 
-    // Home + About, each with an internal link to the other.
-    const home = {
-      id: 'home',
-      path: '/',
-      title: 'Home',
-      root: {
-        id: 'r',
-        type: 'Section',
-        children: [
-          { id: 'h', type: 'Heading', props: { text: 'Welcome' } },
-          { id: 'l', type: 'Link', props: { text: 'About', href: '/about' } },
-        ],
-      },
-    };
-    const about = {
-      id: 'about',
-      path: '/about',
-      title: 'About',
-      root: { id: 'r2', type: 'Section', children: [{ id: 'h2', type: 'Heading', props: { text: 'About us' } }] },
-    };
-    expect((await proj.putContent('page', 'home', home)).statusCode).toBe(200);
-    expect((await proj.putContent('page', 'about', about)).statusCode).toBe(200);
-
-    // A German translation of the HOME page only (About is untranslated → fallback).
-    const homeDe = {
-      id: 'home__de',
-      pageId: 'home',
-      locale: 'de',
-      title: 'Startseite',
-      root: {
-        id: 'r',
-        type: 'Section',
-        children: [
-          { id: 'h', type: 'Heading', props: { text: 'Willkommen' } },
-          { id: 'l', type: 'Link', props: { text: 'Über uns', href: '/about' } },
-        ],
-      },
-    };
-    expect((await proj.putContent('translation', 'home__de', homeDe)).statusCode).toBe(200);
-
-    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
-
-    // Default locale at the site root, untouched (no /en/ prefix).
-    const enHome = await client.get(`/sites/${slug}/index.html`);
-    expect(enHome.statusCode).toBe(200);
-    expect(enHome.body).toContain('Welcome');
-    expect(enHome.body).toContain('href="about"'); // root-relative, no locale prefix
-    expect(enHome.body).toContain('<html lang="en">');
-
-    // German home uses the translated content + lang + a de-prefixed internal link.
-    const deHome = await client.get(`/sites/${slug}/de/index.html`);
-    expect(deHome.statusCode).toBe(200);
-    expect(deHome.body).toContain('Willkommen');
-    expect(deHome.body).not.toContain('Welcome');
-    expect(deHome.body).toContain('<html lang="de">');
-    // Portable relative link, routed via the site root, staying inside /de/:
-    // from /de/index.html, ../de/about resolves to /de/about.
-    expect(deHome.body).toContain('href="../de/about"');
-
-    // German About FALLS BACK to the default-locale content (no translation),
-    // but is still published under /de/about/.
-    const deAbout = await client.get(`/sites/${slug}/de/about/index.html`);
-    expect(deAbout.statusCode).toBe(200);
-    expect(deAbout.body).toContain('About us'); // default content (fallback)
-    expect(deAbout.body).toContain('<html lang="de">');
-  });
-
-  it('emits hreflang alternates (+ x-default) on every locale variant when a site URL is set', async () => {
+  it('renders each locale variant once at its own path, with its own lang + content', async () => {
     const proj = client.project(projectId);
     await proj.putContent('settings', 'settings', {
-      brand: { name: 'Acme', colors: { primary: '#0a7' } },
+      identity: { name: 'Acme', colors: { primary: '#0a7' } },
+      settings: { defaultLocale: 'en', locales: ['en', 'de'] },
+    });
+    // The English (default) home and its German variant — separate pages, linked by group.
+    await proj.putContent('page', 'home', {
+      id: 'home', path: '/', title: 'Home', root, translationGroup: 'home',
+      source: '<main><h1>Welcome</h1></main>',
+    });
+    await proj.putContent('page', 'home-de', {
+      id: 'home-de', path: '/de', title: 'Startseite', locale: 'de', translationGroup: 'home', root,
+      source: '<main><h1>Willkommen</h1></main>',
+    });
+    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
+
+    const en = await client.get(`/sites/${slug}/index.html`);
+    expect(en.body).toContain('<html lang="en">');
+    expect(en.body).toContain('Welcome');
+
+    const de = await client.get(`/sites/${slug}/de/index.html`);
+    expect(de.statusCode).toBe(200);
+    expect(de.body).toContain('<html lang="de">'); // page.locale drives lang
+    expect(de.body).toContain('Willkommen');
+    expect(de.body).not.toContain('Welcome');
+  });
+
+  it('emits hreflang + x-default from the translation group (with a site URL)', async () => {
+    const proj = client.project(projectId);
+    await proj.putContent('settings', 'settings', {
+      identity: { name: 'Acme', colors: { primary: '#0a7' } },
       website: { siteUrl: 'https://acme.example' },
       settings: { defaultLocale: 'en', locales: ['en', 'de'] },
     });
-    await proj.putContent('page', 'home', { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' } });
+    await proj.putContent('page', 'home', { id: 'home', path: '/', title: 'Home', root, translationGroup: 'home', source: '<h1>Hi</h1>' });
+    await proj.putContent('page', 'home-de', { id: 'home-de', path: '/de', title: 'Start', locale: 'de', translationGroup: 'home', root, source: '<h1>Hallo</h1>' });
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
 
-    // Both the en (root) and de variants carry the SAME alternate set (absolute URLs).
     for (const path of ['index.html', 'de/index.html']) {
       const html = (await client.get(`/sites/${slug}/${path}`)).body;
       expect(html).toContain('<link rel="alternate" hreflang="en" href="https://acme.example/" />');
@@ -128,96 +81,68 @@ describe('multilingual publish', () => {
     }
   });
 
-  it('emits no hreflang for a single-locale site, or when no site URL is set', async () => {
+  it('emits no hreflang for an ungrouped page or when no site URL is set', async () => {
     const proj = client.project(projectId);
-    // Multilingual but no siteUrl → hreflang needs absolute URLs, so none.
     await proj.putContent('settings', 'settings', {
-      brand: { name: 'Acme', colors: { primary: '#0a7' } },
+      identity: { name: 'Acme', colors: { primary: '#0a7' } },
       settings: { defaultLocale: 'en', locales: ['en', 'de'] },
     });
-    await proj.putContent('page', 'home', { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' } });
-    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
-    expect((await client.get(`/sites/${slug}/index.html`)).body).not.toContain('hreflang');
-
-    // Single locale + siteUrl → still no hreflang (nothing to alternate to).
-    await proj.putContent('settings', 'settings', {
-      brand: { name: 'Acme', colors: { primary: '#0a7' } },
-      website: { siteUrl: 'https://acme.example' },
-      settings: { defaultLocale: 'en', locales: ['en'] },
-    });
+    // Grouped variants but no siteUrl → hreflang needs absolute URLs → none.
+    await proj.putContent('page', 'home', { id: 'home', path: '/', title: 'Home', root, translationGroup: 'home', source: '<h1>Hi</h1>' });
+    await proj.putContent('page', 'home-de', { id: 'home-de', path: '/de', title: 'Start', locale: 'de', translationGroup: 'home', root, source: '<h1>Hallo</h1>' });
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
     expect((await client.get(`/sites/${slug}/index.html`)).body).not.toContain('hreflang');
   });
 
-  it('prefixes auto-nav links per locale and ignores a default-locale translation', async () => {
+  it('auto-resolves data.<name> to the <name>-<locale> dataset for a locale variant', async () => {
     const proj = client.project(projectId);
     await proj.putContent('settings', 'settings', {
-      brand: { name: 'Acme', colors: { primary: '#0a7' } },
+      identity: { name: 'Acme', colors: { primary: '#0a7' } },
       settings: { defaultLocale: 'en', locales: ['en', 'de'] },
     });
-    // Two header-nav pages; home renders the auto-nav.
-    await proj.putContent('page', 'home', {
-      id: 'home',
-      path: '/',
-      title: 'Home',
-      nav: { slots: ['header'], order: 1 },
-      root: { id: 'r', type: 'Nav', props: { slot: 'header' } },
-    });
-    await proj.putContent('page', 'about', {
-      id: 'about',
-      path: '/about',
-      title: 'About',
-      nav: { slots: ['header'], order: 2 },
-      root: { id: 'r2', type: 'Heading', props: { text: 'About' } },
-    });
-    // A translation stored for the DEFAULT locale must be ignored (default uses page.root).
-    await proj.putContent('translation', 'home__en', {
-      id: 'home__en',
-      pageId: 'home',
-      locale: 'en',
-      root: { id: 'r', type: 'Heading', props: { text: 'SHOULD-NOT-APPEAR' } },
-    });
+    // Two datasets: the base and its German duplicate.
+    await proj.putContent('dataset', 'services', { id: 'services', name: 'Services', slug: 'services', fields: [{ name: 'name', type: 'text' }] });
+    await proj.putContent('dataset', 'services-de', { id: 'services-de', name: 'Services (DE)', slug: 'services-de', fields: [{ name: 'name', type: 'text' }] });
+    await proj.putContent('entry', 'svc-en', { id: 'svc-en', dataset: 'services', status: 'published', values: { name: 'Web Design' } });
+    await proj.putContent('entry', 'svc-de', { id: 'svc-de', dataset: 'services-de', status: 'published', values: { name: 'Webdesign' } });
+
+    // The SAME source on both locale variants — auto-suffix picks the right dataset.
+    const listSource = '<ul>{{#each data.services}}<li>{{ this.values.name }}</li>{{/each}}</ul>';
+    await proj.putContent('page', 'home', { id: 'home', path: '/', title: 'Home', root, translationGroup: 'home', source: listSource });
+    await proj.putContent('page', 'home-de', { id: 'home-de', path: '/de', title: 'Start', locale: 'de', translationGroup: 'home', root, source: listSource });
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
 
-    // Default home: nav link to /about is root-relative, and the default-locale
-    // translation was ignored (the Nav root, not the translated Heading, rendered).
-    const enHome = await client.get(`/sites/${slug}/index.html`);
-    expect(enHome.body).toContain('data-sw-block="Nav"');
-    expect(enHome.body).toContain('href="about"');
-    expect(enHome.body).not.toContain('SHOULD-NOT-APPEAR');
-
-    // German home: the auto-nav link to /about is kept inside /de/.
-    const deHome = await client.get(`/sites/${slug}/de/index.html`);
-    expect(deHome.body).toContain('href="../de/about"');
+    expect((await client.get(`/sites/${slug}/index.html`)).body).toContain('<li>Web Design</li>'); // base
+    const de = (await client.get(`/sites/${slug}/de/index.html`)).body;
+    expect(de).toContain('<li>Webdesign</li>'); // resolved services-de
+    expect(de).not.toContain('Web Design');
   });
 
-  it('rejects a publish where a page path collides with a locale prefix', async () => {
+  it('exposes {{ page.locale }} and {{#each page.translations}} for a language switcher', async () => {
     const proj = client.project(projectId);
     await proj.putContent('settings', 'settings', {
-      brand: { name: 'Acme', colors: { primary: '#0a7' } },
+      identity: { name: 'Acme', colors: { primary: '#0a7' } },
       settings: { defaultLocale: 'en', locales: ['en', 'de'] },
     });
-    // A page at /de collides with the 'de' locale's home (both → de/index.html).
-    await proj.putContent('page', 'de-page', { id: 'de-page', path: '/de', title: 'DE', root: { id: 'r', type: 'Section' } });
-    await proj.putContent('page', 'home', { id: 'home', path: '/', title: 'Home', root: { id: 'r2', type: 'Section' } });
+    const switcher = '<p>{{ page.locale }}</p><nav>{{#each page.translations}}<a href="{{url path}}">{{ locale }}</a>{{/each}}</nav>';
+    await proj.putContent('page', 'home', { id: 'home', path: '/', title: 'Home', root, translationGroup: 'home', source: switcher });
+    await proj.putContent('page', 'home-de', { id: 'home-de', path: '/de', title: 'Start', locale: 'de', translationGroup: 'home', root, source: switcher });
+    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
+
+    const en = (await client.get(`/sites/${slug}/index.html`)).body;
+    expect(en).toContain('<p>en</p>');
+    expect(en).toContain('>en</a>');
+    expect(en).toContain('>de</a>'); // links to the German variant
+    const de = (await client.get(`/sites/${slug}/de/index.html`)).body;
+    expect(de).toContain('<p>de</p>');
+  });
+
+  it('rejects a publish where two pages resolve to the same URL', async () => {
+    const proj = client.project(projectId);
+    await proj.putContent('page', 'a', { id: 'a', path: '/x', title: 'A', root, source: '<p>a</p>' });
+    await proj.putContent('page', 'b', { id: 'b', path: '/x', title: 'B', root, source: '<p>b</p>' });
     const res = await client.post(`${proj.base}/publish`);
-    expect(res.statusCode).toBe(409); // PublishError → conflict, not a silent overwrite
-    expect((res.json() as { error: string }).error).toMatch(/collision/i);
-  });
-
-  it('a single-locale project publishes only at the root (no locale prefix)', async () => {
-    const proj = client.project(projectId);
-    // Default project settings are { defaultLocale: 'en', locales: ['en'] }.
-    const page = {
-      id: 'home',
-      path: '/',
-      title: 'Home',
-      root: { id: 'r', type: 'Section', children: [{ id: 'h', type: 'Heading', props: { text: 'Hi' } }] },
-    };
-    expect((await proj.putContent('page', 'home', page)).statusCode).toBe(200);
-    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
-
-    expect((await client.get(`/sites/${slug}/index.html`)).statusCode).toBe(200);
-    expect((await client.get(`/sites/${slug}/en/index.html`)).statusCode).toBe(404); // no prefix dir
+    expect(res.statusCode).toBe(409);
+    expect((res.json() as { error: string }).error).toMatch(/collision|duplicate/i);
   });
 });

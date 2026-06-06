@@ -315,7 +315,9 @@ describe('buildSite', () => {
     ).rejects.toThrow(/website bottom/);
   });
 
-  it('locale-prefixes skeleton-slot nav links for non-default locales', async () => {
+  it('builds per-locale auto-nav from each locale\'s own pages', async () => {
+    // Locale variants are their own pages now; each locale's auto-nav lists only that
+    // locale's pages, using their own (already-localized) paths — no link rebasing.
     await buildSite({
       publishedAt: '2026-05-29T00:00:00.000Z',
       outDir,
@@ -327,14 +329,18 @@ describe('buildSite', () => {
           website: { topNav: '<nav>{{#each nav.header}}<a href="{{url path}}">{{label}}</a>{{/each}}</nav>' },
         },
         pages: [
-          { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<main>h</main>', nav: { slots: ['header'], order: 1 } },
+          { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<main>h</main>', nav: { slots: ['header'], order: 1 }, translationGroup: 'home' },
           { id: 'about', path: '/about', title: 'About', root: { id: 'r2', type: 'Section' }, source: '<main>a</main>', nav: { slots: ['header'], order: 2 } },
+          { id: 'home-de', path: '/de', title: 'Start', locale: 'de', translationGroup: 'home', root: { id: 'r3', type: 'Section' }, source: '<main>hd</main>', nav: { slots: ['header'], order: 1 } },
+          { id: 'about-de', path: '/de/about', title: 'Über', locale: 'de', root: { id: 'r4', type: 'Section' }, source: '<main>ad</main>', nav: { slots: ['header'], order: 2 } },
         ],
       }),
     });
-    // Default locale at the root → root-relative nav links.
-    expect(await readFile(join(outDir, 'index.html'), 'utf8')).toContain('href="/about"');
-    // Non-default locale under /de/ → its shared nav points at the in-locale page.
+    // The en home's nav lists the EN pages.
+    const en = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(en).toContain('href="/about"');
+    expect(en).not.toContain('href="/de/about"');
+    // The de home's nav lists the DE pages only.
     const de = await readFile(join(outDir, 'de', 'index.html'), 'utf8');
     expect(de).toContain('href="/de/about"');
     expect(de).not.toContain('href="/about"');

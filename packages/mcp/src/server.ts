@@ -71,6 +71,26 @@ own nav slots). Every new project already has a "home" page at path "/".
 TEMPLATES: set page.template to "global:landing", "global:text", or a project template id
 (kind "template": { id, name, source }) — the page then renders the TEMPLATE's source and
 contributes ONLY its {{edit}} \`content\`; leave page.source unset.
+
+MULTILINGUAL (document-level i18n): each language variant is ITS OWN page, not a field
+overlay. First declare the languages in settings: settings:{ defaultLocale:"en",
+locales:["en","de"] }. Then for a translated page create a sibling page that:
+- sets \`locale\` to its language ("de"); the default-locale page leaves \`locale\` unset.
+- shares a \`translationGroup\` (any stable id, e.g. the primary page's id) with all its
+  variants — this links them for the <link rel="alternate" hreflang> tags and any
+  language switcher, and is what {{#each page.translations}} iterates.
+- lives at its own \`path\` — convention is "/<locale>/…" (e.g. "/de" for the German home,
+  "/de/about" for German About). Each locale's nav lists only its own pages.
+SHARE STRUCTURE by giving the variants the SAME \`template\` (or copy the \`source\`); each
+supplies only its own translated {{edit}} text and \`title\`/\`seo\`. For a one-off layout
+difference, just give that variant its own \`source\`.
+LOCALIZED DATA: duplicate a dataset per locale as "<name>-<locale>" (lowercased), e.g.
+"services" + "services-de". A page with locale "de" auto-resolves {{#each data.services}}
+to "services-de" when it exists (else it falls back to "services"); address a specific
+variant explicitly with {{#each data.services-de}}. In source, expose the page's language
+as {{page.locale}} and its alternates as {{#each page.translations}} (each has \`locale\`,
+\`path\`, \`title\`). The "translation" content kind is legacy — do NOT use it; model
+languages as locale-variant pages instead.
 IMAGES: search_stock_images then import_stock_image (self-hosted + attributed); reference the
 returned media url in \`source\`.
 

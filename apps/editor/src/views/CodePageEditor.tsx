@@ -18,6 +18,8 @@ interface CodePageEditorProps {
   page: Page;
   /** All project pages — feeds the settings modal's Parent Page selector. */
   pages?: readonly Page[];
+  /** The project's configured locales — feeds the settings modal's Language selector. */
+  locales?: readonly string[];
   onClose: () => void;
   /**
    * The mode the modal OPENS in (owners default to `source`, clients to `content`).
@@ -83,7 +85,7 @@ const DEVICE_ICONS: Record<PreviewDeviceKey, ReactNode> = {
  * in a sandboxed iframe (`src` from the token endpoint under `CSP: sandbox`;
  * never srcDoc) that can't reach the editor's window/cookies/session.
  */
-export function CodePageEditor({ project, page, pages = [], onClose, initialMode = 'source' }: CodePageEditorProps) {
+export function CodePageEditor({ project, page, pages = [], locales = [], onClose, initialMode = 'source' }: CodePageEditorProps) {
   const { confirm, dialog } = useDialogs();
   const [mode, setMode] = useState<EditMode>(initialMode);
   const [source, setSource] = useState(page.source ?? '');
@@ -434,6 +436,7 @@ export function CodePageEditor({ project, page, pages = [], onClose, initialMode
           initial={settings}
           pages={pages}
           templates={templates}
+          locales={locales}
           onClose={() => setSettingsOpen(false)}
           onSubmit={(values) => {
             setSettings(values);

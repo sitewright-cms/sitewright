@@ -11,16 +11,16 @@ test('insert a DaisyUI starter pattern into a code page → renders in the previ
   await page.getByLabel('Email').fill(`patterns-${stamp}@e2e.test`);
   await page.getByLabel('Password').fill('pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();
+  await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Pattern Site');
   await page.getByLabel('Project slug').fill(`pat-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
-  await page.getByRole('button', { name: /Pattern Site/ }).click();
 
   // Create a code page and open it.
-  await page.getByLabel('Page slug').fill('home');
+  await page.getByLabel('Page path').fill('home');
   await page.getByLabel('Page title').fill('Home');
   await page.getByRole('button', { name: 'Add page' }).click();
-  await page.getByRole('button', { name: /Home/ }).click();
+  await page.getByRole('button', { name: /^Home/ }).click();
 
   // Insert the Hero pattern; its source lands in the editor…
   await page.getByLabel('Insert pattern').selectOption('hero');

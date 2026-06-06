@@ -14,10 +14,10 @@ test('media manager exposes a Stock images picker with a loaded provider list', 
   await page.getByLabel('Email').fill(`stock-${stamp}@e2e.test`);
   await page.getByLabel('Password').fill('pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();
+  await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Stock Site');
   await page.getByLabel('Project slug').fill(`stock-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
-  await page.getByRole('button', { name: /Stock Site/ }).click();
 
   await page.getByRole('tab', { name: 'Assets' }).click();
 

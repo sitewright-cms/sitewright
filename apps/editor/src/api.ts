@@ -9,6 +9,7 @@ import type {
   InstanceSettingsInput,
   InstanceSettingsPublic,
   MediaAsset,
+  MediaFolderRecord,
   Page,
   PageTranslation,
   Pattern,
@@ -18,6 +19,7 @@ import type {
   StockProviderName,
   StockProvidersStatus,
   StockSearchResult,
+  Template,
   WebsiteSettings,
 } from '@sitewright/schema';
 
@@ -231,23 +233,18 @@ export const api = {
     request<{ item: Page }>('PUT', `/projects/${projectId}/content/page/${page.id}`, page),
   deletePage: (projectId: string, id: string) =>
     request<void>('DELETE', `/projects/${projectId}/content/page/${id}`),
+  // Full-parity live preview: POST the (draft) page; the server renders it through the
+  // isolated worker WITH the project skeleton slots, website head/critical CSS, and the
+  // page's {{edit}} content — the same document publish produces. `token` loads the doc
+  // via an iframe `src` (opaque-origin sandbox CSP), never `srcDoc`.
   preview: (projectId: string, page: Page) =>
     request<{ html: string; token: string }>('POST', `/projects/${projectId}/preview`, page),
-  // Live-preview backend for the code-first template editor: render a Handlebars `template`
-  // against the project context inside the isolated worker pool. `document: true` returns a
-  // full styled <!doctype> document (the doc shell + the source's compiled Tailwind inlined).
-  renderTemplate: (
-    projectId: string,
-    body: {
-      template?: string;
-      pageId?: string;
-      page?: { title?: string; path?: string };
-      document?: boolean;
-    },
-  ) =>
-    // `token` is present when `document: true` — load the styled doc via an iframe `src`
-    // (opaque-origin sandbox CSP) instead of `srcDoc`.
-    request<{ html: string; token?: string }>('POST', `/projects/${projectId}/render-template`, body),
+
+  // --- templates (reusable code-first page layouts; globals ship in @sitewright/core) ---
+  listTemplates: (projectId: string) =>
+    request<{ items: Template[] }>('GET', `/projects/${projectId}/content/template`),
+  getTemplate: (projectId: string, id: string) =>
+    request<{ item: Template }>('GET', `/projects/${projectId}/content/template/${encodeURIComponent(id)}`),
 
   // --- patterns (reusable, fork-on-insert block subtrees) ---
   listPatterns: (projectId: string) =>
@@ -324,6 +321,27 @@ export const api = {
   },
   deleteMedia: (projectId: string, id: string) =>
     request<void>('DELETE', `/projects/${projectId}/media/${id}`),
+  /** Move (`folder`) and/or rename (`filename`) a single asset. */
+  patchMedia: (projectId: string, id: string, patch: { folder?: string; filename?: string }) =>
+    request<{ item: MediaAsset }>('PATCH', `/projects/${projectId}/media/${id}`, patch),
+  /** Duplicate an asset (optionally into another folder). */
+  copyMedia: (projectId: string, id: string, folder?: string) =>
+    request<{ item: MediaAsset }>('POST', `/projects/${projectId}/media/${id}/copy`, folder !== undefined ? { folder } : {}),
+
+  // --- media folders (first-class; empty folders persist) ---
+  listMediaFolders: (projectId: string) =>
+    request<{ items: MediaFolderRecord[] }>('GET', `/projects/${projectId}/media/folders`),
+  createMediaFolder: (projectId: string, path: string) =>
+    request<{ ok: true }>('POST', `/projects/${projectId}/media/folders`, { path }),
+  /** Rename or move a folder (re-roots its subtree + assets). */
+  renameMediaFolder: (projectId: string, from: string, to: string) =>
+    request<{ ok: true }>('POST', `/projects/${projectId}/media/folders/rename`, { from, to }),
+  /** Copy a folder subtree (records + duplicated assets) to a new path. */
+  copyMediaFolder: (projectId: string, from: string, to: string) =>
+    request<{ ok: true }>('POST', `/projects/${projectId}/media/folders/copy`, { from, to }),
+  /** Delete a folder recursively (its subfolders + assets + binaries). */
+  deleteMediaFolder: (projectId: string, path: string) =>
+    request<void>('DELETE', `/projects/${projectId}/media/folders`, { path }),
 
   // --- stock images (search provider-hosted photos; import = download+optimize+self-host) ---
   stockProviders: (projectId: string) =>
@@ -332,11 +350,12 @@ export const api = {
     const params = new URLSearchParams({ provider, q, page: String(page) });
     return request<StockSearchResult>('GET', `/projects/${projectId}/stock/search?${params.toString()}`);
   },
-  importStock: (projectId: string, provider: StockProviderName, id: string, alt?: string) =>
+  importStock: (projectId: string, provider: StockProviderName, id: string, alt?: string, folder?: string) =>
     request<{ item: MediaAsset }>('POST', `/projects/${projectId}/stock/import`, {
       provider,
       id,
       ...(alt ? { alt } : {}),
+      ...(folder ? { folder } : {}),
     }),
 
   // --- publishing ---

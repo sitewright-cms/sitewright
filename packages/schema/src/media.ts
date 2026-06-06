@@ -108,3 +108,15 @@ export type FileAsset = z.infer<typeof FileAssetSchema>;
 /** Any uploaded asset — an optimized image or a raw file — discriminated by `kind`. */
 export const MediaAssetSchema = z.discriminatedUnion('kind', [ImageAssetSchema, FileAssetSchema]);
 export type MediaAsset = z.infer<typeof MediaAssetSchema>;
+
+/**
+ * A PERSISTED folder record. Folders used to exist only implicitly (an asset's `folder`
+ * label), so an empty folder vanished on reload. A `mediafolder` record makes folders
+ * first-class: empty folders persist, and rename/move/delete operate on them. `path` is
+ * the full slash-delimited folder path (never `''` — the root needs no record).
+ */
+export const MediaFolderRecordSchema = z.object({
+  id: IdSchema,
+  path: MediaFolderSchema.refine((v) => v !== '', 'a folder record needs a non-empty path'),
+});
+export type MediaFolderRecord = z.infer<typeof MediaFolderRecordSchema>;

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { FormSubmission } from '@sitewright/schema';
 import { api, type Project } from '../api';
 import { glassCard, dangerButton } from '../theme';
+import { useDialogs } from './ui/Dialogs';
 
 /**
  * Submissions inbox: the form submissions captured by the public endpoint, newest
@@ -12,6 +13,7 @@ import { glassCard, dangerButton } from '../theme';
  * it shows every form's submissions.
  */
 export function SubmissionsInbox({ project, formId }: { project: Project; formId?: string }) {
+  const { confirm, dialog } = useDialogs();
   const [items, setItems] = useState<FormSubmission[]>([]);
   const [total, setTotal] = useState(0);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -42,7 +44,7 @@ export function SubmissionsInbox({ project, formId }: { project: Project; formId
   }, [project.id, formId]);
 
   async function remove(id: string) {
-    if (!window.confirm('Delete this submission?')) return;
+    if (!(await confirm({ title: 'Delete submission', message: 'Delete this submission?', confirmLabel: 'Delete' }))) return;
     try {
       await api.deleteSubmission(project.id, id);
       await load();
@@ -55,6 +57,7 @@ export function SubmissionsInbox({ project, formId }: { project: Project; formId
 
   return (
     <div className="flex flex-col gap-3">
+      {dialog}
       {error && <p className="text-sm text-red-600">{error}</p>}
       <p className="text-xs text-slate-500">{total} submission{total === 1 ? '' : 's'}</p>
       <ul className="flex flex-col gap-2">

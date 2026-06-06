@@ -1,0 +1,308 @@
+import { useState } from 'react';
+import { GLOBAL_TEMPLATES } from '@sitewright/core';
+import { NAV_SLOTS, type NavSlot, type Page, type Template } from '@sitewright/schema';
+import { Modal } from './ui/Modal';
+import { glassInput } from '../theme';
+
+/** The editable page-settings fields, flattened for form state. */
+export interface PageSettingsValues {
+  title: string;
+  path: string;
+  status: 'draft' | 'published';
+  navSlots: NavSlot[];
+  navTitle: string;
+  navOrder: number;
+  /** Show this page's CHILD pages in a dropdown under its nav item. */
+  navDropdown: boolean;
+  /** Parent page id ('' = top-level). */
+  parent: string;
+  /** Template reference ('' = none; 'global:<key>' or a project template id). */
+  template: string;
+  seoDescription: string;
+  seoOgImage: string;
+}
+
+/** Extracts the settings form values from a page. */
+export function pageSettingsFromPage(page: Page): PageSettingsValues {
+  return {
+    title: page.title,
+    path: page.path,
+    status: page.status ?? 'published',
+    navSlots: page.nav?.slots ?? [],
+    navTitle: page.nav?.title ?? '',
+    navOrder: page.nav?.order ?? 0,
+    navDropdown: page.nav?.dropdown ?? false,
+    parent: page.parent ?? '',
+    template: page.template ?? '',
+    seoDescription: page.seo?.description ?? '',
+    seoOgImage: page.seo?.ogImage ?? '',
+  };
+}
+
+/** Applies settings form values onto a page (immutably; empty fields are dropped). */
+export function applyPageSettings(page: Page, v: PageSettingsValues): Page {
+  const nav = v.navSlots.length
+    ? {
+        slots: v.navSlots,
+        ...(v.navTitle ? { title: v.navTitle } : {}),
+        order: v.navOrder,
+        ...(v.navDropdown ? { dropdown: true } : {}),
+      }
+    : undefined;
+  // Pure construction (no delete-mutation): the fields this modal does NOT manage
+  // (title/canonical/noindex) pass through; the managed ones come only from the form.
+  const { description: droppedDescription, ogImage: droppedOgImage, ...seoRest } = page.seo ?? {};
+  void droppedDescription;
+  void droppedOgImage;
+  const seo = {
+    ...seoRest,
+    ...(v.seoDescription ? { description: v.seoDescription } : {}),
+    ...(v.seoOgImage ? { ogImage: v.seoOgImage } : {}),
+  };
+  return {
+    ...page,
+    title: v.title,
+    path: v.path,
+    status: v.status,
+    nav,
+    parent: v.parent || undefined,
+    template: v.template || undefined,
+    seo: Object.keys(seo).length > 0 ? seo : undefined,
+  };
+}
+
+/** Ids of `page` and all its descendants (cycle-safe) — invalid parent choices. */
+function selfAndDescendants(pageId: string, pages: readonly Page[]): Set<string> {
+  const blocked = new Set([pageId]);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const p of pages) {
+      if (p.parent && blocked.has(p.parent) && !blocked.has(p.id)) {
+        blocked.add(p.id);
+        grew = true;
+      }
+    }
+  }
+  return blocked;
+}
+
+interface PageSettingsModalProps {
+  /** The page being configured (identity + home detection). */
+  page: Page;
+  initial: PageSettingsValues;
+  /** All project pages — feeds the parent selector. */
+  pages: readonly Page[];
+  /** Project templates (built-in globals are added automatically). */
+  templates: readonly Template[];
+  saving?: boolean;
+  onClose: () => void;
+  /** Receives the edited values; the CALLER persists (list) or applies to its draft (editor). */
+  onSubmit: (values: PageSettingsValues) => void;
+}
+
+/**
+ * Page settings in their OWN modal — it stacks above the page editor modal when
+ * opened from there (Esc/save act on the top modal only). Covers the full set:
+ * title, path, status, meta description, OG image, parent page, show-children-
+ * in-dropdown, template reference, and nav placement.
+ */
+export function PageSettingsModal({ page, initial, pages, templates, saving = false, onClose, onSubmit }: PageSettingsModalProps) {
+  const [v, setV] = useState<PageSettingsValues>(initial);
+  const patch = (next: Partial<PageSettingsValues>) => setV((prev) => ({ ...prev, ...next }));
+  const isHome = page.path === '/';
+  const invalidParents = selfAndDescendants(page.id, pages);
+  const parentChoices = pages.filter((p) => !invalidParents.has(p.id) && !p.collection);
+  const childCount = pages.filter((p) => p.parent === page.id).length;
+
+  return (
+    <Modal
+      title={`Page settings — ${initial.title}`}
+      size="lg"
+      onClose={onClose}
+      onSave={() => onSubmit(v)}
+      saving={saving}
+      saveLabel="Save settings"
+    >
+      <div className="flex flex-col gap-4 p-5">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="flex flex-col text-xs font-semibold text-slate-700">
+            Title
+            <input
+              aria-label="Page title"
+              className={`mt-1.5 font-normal ${glassInput}`}
+              value={v.title}
+              onChange={(e) => patch({ title: e.target.value })}
+            />
+          </label>
+          <label className="flex flex-col text-xs font-semibold text-slate-700">
+            Page Path
+            <input
+              aria-label="Page path"
+              className={`mt-1.5 font-mono font-normal ${glassInput}`}
+              value={v.path}
+              disabled={isHome}
+              title={isHome ? 'The home page always lives at "/"' : undefined}
+              onChange={(e) => patch({ path: e.target.value })}
+            />
+            {isHome && <span className="mt-1 font-normal text-[11px] text-slate-400">The home page always lives at “/”.</span>}
+          </label>
+        </div>
+
+        <label className="flex flex-col text-xs font-semibold text-slate-700">
+          Meta Description
+          <textarea
+            aria-label="Meta description"
+            className={`mt-1.5 resize-y font-normal ${glassInput}`}
+            rows={2}
+            maxLength={1000}
+            placeholder="Shown in search results — one or two crisp sentences."
+            value={v.seoDescription}
+            onChange={(e) => patch({ seoDescription: e.target.value })}
+          />
+        </label>
+
+        <label className="flex flex-col text-xs font-semibold text-slate-700">
+          Image (Open Graph)
+          <input
+            aria-label="OG image URL"
+            className={`mt-1.5 font-normal ${glassInput}`}
+            placeholder="https://… or /media/… (used in link previews)"
+            value={v.seoOgImage}
+            onChange={(e) => patch({ seoOgImage: e.target.value })}
+          />
+        </label>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="flex flex-col text-xs font-semibold text-slate-700">
+            Parent Page
+            <select
+              aria-label="Parent page"
+              className={`mt-1.5 font-normal ${glassInput}`}
+              value={v.parent}
+              // The HOME page is always top-level — it can never be nested under another page.
+              disabled={isHome}
+              title={isHome ? 'The home page is always top-level' : undefined}
+              onChange={(e) => patch({ parent: e.target.value })}
+            >
+              <option value="">None (top-level)</option>
+              {parentChoices.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.title} ({p.path})
+                </option>
+              ))}
+            </select>
+            {isHome && <span className="mt-1 font-normal text-[11px] text-slate-400">The home page is always top-level.</span>}
+          </label>
+          <label className="flex flex-col text-xs font-semibold text-slate-700">
+            Template
+            <select
+              aria-label="Page template"
+              className={`mt-1.5 font-normal ${glassInput}`}
+              value={v.template}
+              onChange={(e) => patch({ template: e.target.value })}
+            >
+              <option value="">None (own code)</option>
+              {GLOBAL_TEMPLATES.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+              {templates.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+            <span className="mt-1 font-normal text-[11px] text-slate-400">
+              A templated page renders the template’s code — its editor is locked (fork to customize).
+            </span>
+          </label>
+        </div>
+
+        <div className="rounded-2xl border border-white/60 bg-white/40 p-3">
+          <p className="mb-2 text-xs font-semibold text-slate-700">Navigation</p>
+          <div className="flex flex-wrap items-center gap-4">
+            {NAV_SLOTS.map((slot) => (
+              <label key={slot} className="flex items-center gap-1.5 text-sm capitalize">
+                <input
+                  type="checkbox"
+                  aria-label={`Nav: ${slot}`}
+                  checked={v.navSlots.includes(slot)}
+                  onChange={(e) =>
+                    patch({
+                      navSlots: e.target.checked ? [...v.navSlots, slot] : v.navSlots.filter((x) => x !== slot),
+                    })
+                  }
+                />
+                {slot}
+              </label>
+            ))}
+          </div>
+          {v.navSlots.length > 0 && (
+            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              <label className="flex flex-col text-[11px] text-slate-500">
+                Menu label
+                <input
+                  aria-label="Nav menu label"
+                  className={glassInput}
+                  value={v.navTitle}
+                  placeholder={v.title}
+                  onChange={(e) => patch({ navTitle: e.target.value })}
+                />
+              </label>
+              <label className="flex flex-col text-[11px] text-slate-500">
+                Order
+                <input
+                  aria-label="Nav order"
+                  type="number"
+                  className={glassInput}
+                  value={v.navOrder}
+                  onChange={(e) => {
+                    const n = parseInt(e.target.value, 10);
+                    if (!Number.isNaN(n)) patch({ navOrder: n });
+                  }}
+                />
+              </label>
+              <label className="flex items-end gap-2 pb-2 text-sm">
+                <input
+                  type="checkbox"
+                  aria-label="Show in dropdown"
+                  checked={v.navDropdown}
+                  onChange={(e) => patch({ navDropdown: e.target.checked })}
+                />
+                Show child pages in dropdown
+              </label>
+            </div>
+          )}
+          {v.navDropdown && (
+            <p className="mt-2 text-[11px] text-slate-400">
+              {childCount > 0
+                ? `${childCount} child page${childCount === 1 ? '' : 's'} will nest under this item.`
+                : 'Pages whose Parent Page is this page will nest under this nav item.'}
+            </p>
+          )}
+        </div>
+
+        <div>
+          <p className="mb-1.5 text-xs font-semibold text-slate-700">Status</p>
+          <div className="inline-flex rounded-xl border border-white/60 bg-white/40 p-0.5">
+            {(['published', 'draft'] as const).map((s) => (
+              <button
+                key={s}
+                type="button"
+                aria-pressed={v.status === s}
+                onClick={() => patch({ status: s })}
+                className={`rounded-lg px-3 py-1 text-sm capitalize transition ${
+                  v.status === s ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-white/60'
+                }`}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+}

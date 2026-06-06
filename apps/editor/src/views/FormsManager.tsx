@@ -4,6 +4,7 @@ import { api, type Project } from '../api';
 import { identifierize, slugify } from '../lib/entry-form';
 import { ProjectSmtp } from './ProjectSmtp';
 import { SubmissionsInbox } from './SubmissionsInbox';
+import { useDialogs } from './ui/Dialogs';
 import { glassCard, glassPanel, glassInput, primaryButton, ghostButton, dangerButton } from '../theme';
 
 const FIELD_TYPES: ReadonlyArray<FormField['type']> = ['text', 'email', 'tel', 'url', 'number', 'textarea', 'select'];
@@ -39,6 +40,7 @@ function emptyForm(id: string, name: string): Form {
  * exported site.
  */
 export function FormsManager({ project }: { project: Project }) {
+  const { confirm, dialog } = useDialogs();
   const [forms, setForms] = useState<Form[]>([]);
   // Matches the server default (all off); the real values arrive from api.formModes
   // before the editor is reachable (the list view is gated on `loading`).
@@ -144,7 +146,7 @@ export function FormsManager({ project }: { project: Project }) {
   }
 
   async function remove(id: string) {
-    if (!window.confirm(`Delete form "${id}"? Existing submissions are kept.`)) return;
+    if (!(await confirm({ title: 'Delete form', message: `Delete form "${id}"? Existing submissions are kept.`, confirmLabel: 'Delete' }))) return;
     setError(null);
     try {
       await api.deleteForm(project.id, id);
@@ -384,6 +386,7 @@ export function FormsManager({ project }: { project: Project }) {
 
   return (
     <div className="flex flex-col gap-4">
+      {dialog}
       {/* Per-project SMTP config — only relevant when the admin enabled the userSmtp mode. */}
       {enabledModes.userSmtp && <ProjectSmtp project={project} />}
       {error && <p className="text-sm text-red-600">{error}</p>}

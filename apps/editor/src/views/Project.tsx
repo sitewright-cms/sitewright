@@ -1,25 +1,27 @@
-import { useEffect, useState, type FormEvent } from 'react';
-import type { Page } from '@sitewright/schema';
-import { api, type Project } from '../api';
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import type { Page, Template } from '@sitewright/schema';
+import { api, previewDocUrl, type Project } from '../api';
 import { CodePageEditor } from './CodePageEditor';
-import { ClientSourceEditor } from './ClientSourceEditor';
+import { PageSettingsModal, applyPageSettings, pageSettingsFromPage, type PageSettingsValues } from './PageSettingsModal';
+import { useDialogs } from './ui/Dialogs';
+import { LibraryPanel } from './library/LibraryPanel';
 import { DatasetManager } from './DatasetManager';
 import { MediaManager } from './MediaManager';
 import { FormsManager } from './FormsManager';
 import { SettingsView } from './settings/SettingsView';
 import { AdminView } from './AdminView';
-import { PublishBar } from './PublishBar';
 import { glassCard, glassInput, fieldLabel, primaryButton } from '../theme';
 
 interface ProjectViewProps {
   project: Project;
-  onBack: () => void;
+  /** The active top-level tab (lifted to App so the tablist can live in the header bar). */
+  tab: Tab;
 }
 
 // The owner's top-level tabs. Settings is lifted into the two leading tabs (Corporate Identity /
 // Website Settings); Clients/Team/Access are grouped under Admin; the submissions Inbox is folded
 // into Forms. The constrained client role sees none of these — just the pages list + restricted editor.
-const MANAGE_TABS = [
+export const MANAGE_TABS = [
   'corporate-identity',
   'website-settings',
   'pages',
@@ -28,8 +30,8 @@ const MANAGE_TABS = [
   'data',
   'admin',
 ] as const;
-type Tab = (typeof MANAGE_TABS)[number];
-const TAB_LABELS: Record<Tab, string> = {
+export type Tab = (typeof MANAGE_TABS)[number];
+export const TAB_LABELS: Record<Tab, string> = {
   'corporate-identity': 'Corporate Identity',
   'website-settings': 'Website Settings',
   pages: 'Pages',
@@ -50,18 +52,67 @@ const CODE_PAGE_STARTER = `<main class="mx-auto max-w-3xl px-6 py-16">
 </main>
 `;
 
-export function ProjectView({ project, onBack }: ProjectViewProps) {
+// --- pages-list row icons (lucide-style outlines) -----------------------------
+const rowIcon = (paths: ReactNode) => (
+  <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    {paths}
+  </svg>
+);
+const HOME_ICON = rowIcon(<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM9 22V12h6v10" />);
+const PAGE_ICON = rowIcon(
+  <>
+    <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5z" />
+    <path d="M14 2v6h6" />
+  </>,
+);
+const PREVIEW_ICON = rowIcon(
+  <>
+    <path d="M15 3h6v6" />
+    <path d="M10 14 21 3" />
+    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+  </>,
+);
+const EDIT_ICON = rowIcon(
+  <>
+    <path d="m16 18 6-6-6-6" />
+    <path d="m8 6-6 6 6 6" />
+  </>,
+);
+const GEAR_ICON = rowIcon(
+  <>
+    <circle cx="12" cy="12" r="3" />
+    <path d="M12 1v3m0 16v3M4.2 4.2l2.1 2.1m11.4 11.4 2.1 2.1M1 12h3m16 0h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1" />
+  </>,
+);
+const COPY_ICON = rowIcon(
+  <>
+    <rect x="9" y="9" width="13" height="13" rx="2" />
+    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+  </>,
+);
+const TRASH_ICON = rowIcon(
+  <>
+    <path d="M3 6h18" />
+    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+  </>,
+);
+
+const ROW_ACTION =
+  'inline-flex cursor-pointer items-center justify-center rounded-lg p-1.5 text-slate-400 transition hover:bg-white hover:text-slate-900';
+
+export function ProjectView({ project, tab }: ProjectViewProps) {
+  const { confirm, dialog } = useDialogs();
   // An owner gets the full studio; a `member` is a client with a content-first default surface.
   const isClient = project.role === 'member';
   const [pages, setPages] = useState<Page[]>([]);
   const [editing, setEditing] = useState<Page | null>(null);
-  // Source⇄content is a UI DEFAULT, not a hard restriction (flat tenancy): everyone may switch.
-  // Owners/staff default to the full source editor; clients default to the focused content editor.
-  const [editMode, setEditMode] = useState<'source' | 'content'>(isClient ? 'content' : 'source');
-  const [tab, setTab] = useState<Tab>('pages');
   const [slug, setSlug] = useState('');
   const [title, setTitle] = useState('');
   const [error, setError] = useState<string | null>(null);
+  // Settings opened FROM THE LIST (persist-on-save); the editor stacks its own instance.
+  const [settingsFor, setSettingsFor] = useState<Page | null>(null);
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [settingsSaving, setSettingsSaving] = useState(false);
 
   async function load() {
     try {
@@ -79,9 +130,14 @@ export function ProjectView({ project, onBack }: ProjectViewProps) {
   async function create(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    // The form takes a PAGE PATH ("/about" or "about"); the id derives from it.
+    // "home" / "index" / "/" map to the home page (replacing the auto-created one).
+    const trimmed = slug.trim().replace(/^\/+/, '').replace(/\/+$/, '');
+    const path = trimmed === '' || trimmed === 'home' || trimmed === 'index' ? '/' : `/${trimmed}`;
+    const id = path === '/' ? 'home' : trimmed.replace(/\//g, '-');
     const page: Page = {
-      id: slug,
-      path: slug === 'home' || slug === 'index' ? '/' : `/${slug}`,
+      id,
+      path,
       title,
       // Every page is code-first: it carries a Handlebars `source` (the block tree is retired).
       // `root` stays a valid placeholder so the unified page model is satisfied.
@@ -98,80 +154,98 @@ export function ProjectView({ project, onBack }: ProjectViewProps) {
     }
   }
 
-  if (editing) {
-    const onClose = async () => {
-      setEditing(null);
-      await load();
-    };
-    // Source⇄content toggle (everyone may switch): `source` = the full Handlebars editor; `content`
-    // = only the developer-marked `{{edit}}` regions. The chosen editor renders this control in its
-    // header so the author can flip without leaving the page.
-    const modeToggle = (
-      <div
-        role="group"
-        aria-label="Edit mode"
-        className="flex items-center rounded-xl border border-white/60 bg-white/50 p-0.5 text-xs font-medium shadow-sm backdrop-blur-xl"
-      >
-        {(['source', 'content'] as const).map((m) => (
-          <button
-            key={m}
-            aria-pressed={editMode === m}
-            onClick={() => setEditMode(m)}
-            className={`rounded-lg px-2.5 py-1 capitalize transition ${
-              editMode === m ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            {m}
-          </button>
-        ))}
-      </div>
-    );
-    return editMode === 'content' ? (
-      <ClientSourceEditor project={project} page={editing} onClose={onClose} modeToggle={modeToggle} />
-    ) : (
-      <CodePageEditor project={project} page={editing} onClose={onClose} modeToggle={modeToggle} />
-    );
+  /** Renders the SAVED page via /preview and opens the sandboxed document in a new tab. */
+  async function previewInTab(p: Page) {
+    // Open synchronously (popup blockers require a user-gesture window), then navigate.
+    // No 'noopener': it would null the handle we need for the deferred navigation, and
+    // the preview document is served under `CSP: sandbox` (opaque origin) — its scripts
+    // cannot reach `window.opener` across that origin boundary anyway.
+    const win = window.open('', '_blank');
+    try {
+      const { token } = await api.preview(project.id, p);
+      if (win) win.location = previewDocUrl(project.id, token);
+    } catch (err) {
+      win?.close();
+      setError(err instanceof Error ? err.message : 'preview failed');
+    }
   }
 
+  /** Opens the page-settings modal (persist-on-save) with the template list loaded. */
+  async function openSettings(p: Page) {
+    try {
+      setTemplates((await api.listTemplates(project.id)).items);
+    } catch {
+      setTemplates([]); // globals still show
+    }
+    setSettingsFor(p);
+  }
+
+  async function saveSettings(values: PageSettingsValues) {
+    if (!settingsFor) return;
+    setSettingsSaving(true);
+    setError(null);
+    try {
+      await api.putPage(project.id, applyPageSettings(settingsFor, values));
+      setSettingsFor(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'failed to save settings');
+    } finally {
+      setSettingsSaving(false);
+    }
+  }
+
+  /** Duplicates a page under a fresh path/id (short random suffix). */
+  async function copyPage(p: Page) {
+    setError(null);
+    const rand = Math.random().toString(36).slice(2, 6);
+    const copy: Page = {
+      ...p,
+      id: `${p.id}-${rand}`,
+      path: p.path === '/' ? `/home-${rand}` : `${p.path}-${rand}`,
+      title: `${p.title} (Copy)`,
+    };
+    try {
+      await api.putPage(project.id, copy);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'failed to copy page');
+    }
+  }
+
+  /** Deletes a page — every page EXCEPT home (path "/"), which is permanent. */
+  async function removePage(p: Page) {
+    if (p.path === '/') return;
+    if (
+      !(await confirm({
+        title: 'Delete page',
+        message: `Delete page "${p.title}" (${p.path})? This cannot be undone.`,
+        confirmLabel: 'Delete',
+      }))
+    )
+      return;
+    setError(null);
+    try {
+      await api.deletePage(project.id, p.id);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'failed to delete page');
+    }
+  }
+
+  const closeEditor = async () => {
+    setEditing(null);
+    await load();
+  };
+
   return (
-    <main className="mx-auto max-w-5xl px-6 py-8">
-      <button
-        aria-label="Back to projects"
-        className="mb-4 text-sm text-slate-500 hover:text-slate-900"
-        onClick={onBack}
-      >
-        ← Projects
-      </button>
-      {/* Header: title on the left, the single Publish control pinned top-right (owners only). */}
-      <div className="mb-4 flex items-start justify-between gap-4">
-        <h2 className="text-xl font-semibold">
-          {project.name} <span className="text-sm text-slate-400">/{project.slug}</span>
-        </h2>
-        {!isClient && <PublishBar project={project} />}
-      </div>
-
-      {/* Clients see no tab bar — just their editable pages. */}
-      {!isClient && (
-        <div role="tablist" aria-label="Project sections" className="mb-6 flex flex-wrap gap-1 rounded-2xl border border-white/50 bg-white/50 p-1 shadow-sm backdrop-blur-xl">
-          {MANAGE_TABS.map((t) => (
-            <button
-              key={t}
-              role="tab"
-              aria-selected={tab === t}
-              onClick={() => setTab(t)}
-              className={`rounded-xl px-3 py-1.5 text-sm transition ${
-                tab === t
-                  ? 'bg-white font-semibold text-slate-900 shadow-md shadow-slate-900/5'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              {/* eslint-disable-next-line security/detect-object-injection -- t is a typed Tab literal */}
-              {TAB_LABELS[t]}
-            </button>
-          ))}
-        </div>
-      )}
-
+    <>
+    {/* `inert` while the editor modal is open: everything behind the blurred backdrop is
+        unfocusable/unclickable (belt-and-suspenders beyond the modal's focus trap). The
+        empty-string spread is the React 18 idiom for this boolean HTML attribute. */}
+    <main {...(editing ? ({ inert: '' } as object) : {})} className="mx-auto max-w-5xl px-6 py-8">
+      {dialog}
+      {/* The project name, tablist, and Publish control now live in the App header bar. */}
       {isClient ? (
         <ClientPagesList pages={pages} onOpen={setEditing} />
       ) : tab === 'corporate-identity' || tab === 'website-settings' ? (
@@ -196,32 +270,65 @@ export function ProjectView({ project, onBack }: ProjectViewProps) {
       ) : (
         <>
           <ul className="mb-8 flex flex-col gap-2">
-            {pages.map((p) => (
-              <li key={p.id}>
-                <button
-                  className={`w-full ${glassCard} px-4 py-3 text-left transition hover:bg-white/80`}
-                  onClick={() => setEditing(p)}
-                >
-                  <span className="font-medium">{p.title}</span>{' '}
-                  <span className="text-sm text-slate-400">{p.path}</span>
-                  {p.status === 'draft' && (
-                    <span className="ml-2 rounded-full bg-slate-200/80 px-2 py-0.5 text-[11px] font-medium text-slate-600">draft</span>
-                  )}
-                </button>
-              </li>
-            ))}
+            {pages.map((p) => {
+              const isHome = p.path === '/';
+              return (
+                <li key={p.id} className={`flex items-center gap-1 ${glassCard} px-3 py-2 transition hover:bg-white/80`}>
+                  <button
+                    className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 px-1 py-1 text-left"
+                    onClick={() => setEditing(p)}
+                  >
+                    <span aria-hidden className={isHome ? 'text-indigo-500' : 'text-slate-400'} title={isHome ? 'Home page' : 'Page'}>
+                      {isHome ? HOME_ICON : PAGE_ICON}
+                    </span>
+                    <span className="truncate font-medium">{p.title}</span>
+                    <span className="truncate text-sm text-slate-400">{p.path}</span>
+                    {p.status === 'draft' && (
+                      <span className="rounded-full bg-slate-200/80 px-2 py-0.5 text-[11px] font-medium text-slate-600">draft</span>
+                    )}
+                    {p.template && (
+                      <span className="rounded-full bg-indigo-100/80 px-2 py-0.5 text-[11px] font-medium text-indigo-700">template</span>
+                    )}
+                  </button>
+                  <div className="flex shrink-0 items-center gap-0.5">
+                    <button aria-label={`Preview ${p.title}`} title="Preview in a new tab" className={ROW_ACTION} onClick={() => void previewInTab(p)}>
+                      {PREVIEW_ICON}
+                    </button>
+                    <button aria-label={`Edit ${p.title}`} title="Open page editor" className={ROW_ACTION} onClick={() => setEditing(p)}>
+                      {EDIT_ICON}
+                    </button>
+                    <button aria-label={`Settings for ${p.title}`} title="Edit page settings" className={ROW_ACTION} onClick={() => void openSettings(p)}>
+                      {GEAR_ICON}
+                    </button>
+                    <button aria-label={`Copy ${p.title}`} title="Copy page" className={ROW_ACTION} onClick={() => void copyPage(p)}>
+                      {COPY_ICON}
+                    </button>
+                    {!isHome && (
+                      <button
+                        aria-label={`Delete ${p.title}`}
+                        title="Delete page"
+                        className={`${ROW_ACTION} hover:bg-rose-50 hover:text-rose-600`}
+                        onClick={() => void removePage(p)}
+                      >
+                        {TRASH_ICON}
+                      </button>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
             {pages.length === 0 && <li className="text-sm text-slate-400">No pages yet.</li>}
           </ul>
 
           <form onSubmit={create} className={`flex flex-wrap items-end gap-2 ${glassCard} p-4`}>
             <div className="flex flex-col">
-              <label className={fieldLabel}>Page slug (id)</label>
+              <label className={fieldLabel}>Page path</label>
               <input
-                aria-label="Page slug"
+                aria-label="Page path"
                 className={glassInput}
                 value={slug}
                 onChange={(e) => setSlug(e.target.value)}
-                placeholder="home"
+                placeholder="/about"
                 required
               />
             </div>
@@ -242,7 +349,38 @@ export function ProjectView({ project, onBack }: ProjectViewProps) {
           {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
         </>
       )}
+      {/* The page editor: a near-fullscreen modal portalled over this list (blurred
+          backdrop) — Esc/× returns here. BOTH edit modes live inside it; the initial
+          mode is a role-based UI default (owners → source, clients → content), and
+          the in-modal toggle switches losslessly. */}
+      {editing && (
+        <CodePageEditor
+          key={editing.id} // React-enforced remount per page — drafts can never bleed across pages
+          project={project}
+          page={editing}
+          pages={pages}
+          onClose={() => void closeEditor()}
+          initialMode={isClient ? 'content' : 'source'}
+        />
+      )}
+      {/* Page settings opened FROM THE LIST: persist-on-save (the editor's own settings
+          modal applies to its draft instead). */}
+      {settingsFor && (
+        <PageSettingsModal
+          page={settingsFor}
+          initial={pageSettingsFromPage(settingsFor)}
+          pages={pages}
+          templates={templates}
+          saving={settingsSaving}
+          onClose={() => setSettingsFor(null)}
+          onSubmit={(values) => void saveSettings(values)}
+        />
+      )}
     </main>
+    {/* The permanent project-level Library reference (owners/staff only — clients edit
+        content, not code). A fixed right-edge drawer, unaffected by the page list inert. */}
+    {!isClient && <LibraryPanel />}
+    </>
   );
 }
 

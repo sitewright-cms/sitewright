@@ -8,8 +8,10 @@ import {
   extractClassNames,
   publishedPages,
   relativeRoot,
+  resolveTemplateSource,
   type ProjectBundle,
 } from '@sitewright/core';
+import type { Page, Template } from '@sitewright/schema';
 import {
   renderDocument,
   renderTemplate,
@@ -18,6 +20,18 @@ import {
   resolveInternalUrl,
   usedComponentTypes,
   componentAssets,
+  usesAnimations,
+  treeUsesAnimations,
+  ANIMATION_CSS,
+  ANIMATION_JS,
+  usesLazyload,
+  treeUsesLazyload,
+  LAZYLOAD_CSS,
+  LAZYLOAD_JS,
+  usesRipple,
+  treeUsesRipple,
+  RIPPLE_CSS,
+  RIPPLE_JS,
 } from '@sitewright/blocks';
 import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
 import { companyToOrganization } from './company-seo.js';
@@ -29,6 +43,12 @@ import { toPublicForm, type FormPublic, type MediaAsset, type PageTranslation } 
 const UTILITY_STYLESHEET = 'styles.css';
 /** The platform component-behavior bundle, written at the site root and linked per page. */
 const COMPONENT_SCRIPT = 'components.js';
+/** The scroll-reveal (data-aos) runtime, written at the site root and linked per page. */
+const ANIMATION_SCRIPT = 'animations.js';
+/** The lazy-load (data-bg / lazyload) runtime, written at the site root and linked per page. */
+const LAZYLOAD_SCRIPT = 'lazyload.js';
+/** The ripple (waves-effect) runtime, written at the site root and linked per page. */
+const RIPPLE_SCRIPT = 'ripple.js';
 
 /** A client-correctable publish failure (bad route graph) → maps to HTTP 409. */
 export class PublishError extends Error {}
@@ -209,21 +229,34 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // class/component the default page doesn't). Sites using none get the previous
     // output (no extra file/request).
     const scanRoots = [...routes.map((r) => r.root), ...translations.map((t) => t.root)];
-    // Code-first source-pages contribute their literal Tailwind classes to the shared sheet.
-    const sourceClassNames = routes
-      .filter((r) => r.page.source)
-      .flatMap((r) => extractClassNames(r.page.source as string));
+    // A page's EFFECTIVE source: its referenced template's (project entity or built-in
+    // global) when set, else its own. An unknown reference is an author-correctable
+    // publish failure — never a silently blank page.
+    const templateMap = new Map<string, Template>((bundle.templates ?? []).map((t) => [t.id, t]));
+    const effectiveSource = (page: Page): string | undefined => {
+      if (!page.template) return page.source;
+      try {
+        return resolveTemplateSource(page.template, templateMap);
+      } catch (err) {
+        throw new PublishError(err instanceof Error ? err.message : `unknown template: ${page.template}`);
+      }
+    };
+    // Code-first source-pages (and the templates they reference) contribute their
+    // literal Tailwind classes to the shared sheet.
+    const sourceClassNames = routes.flatMap((r) => {
+      const src = effectiveSource(r.page);
+      return src ? extractClassNames(src) : [];
+    });
     // Project-wide skeleton slots feed the shared sheet too.
-    const slotClassNames = [
+    const slotSources = [
       website?.topNav,
       website?.mobileNav,
       website?.sidebarLeft,
       website?.sidebarRight,
       website?.footer,
       website?.bottom,
-    ]
-      .filter((s): s is string => Boolean(s))
-      .flatMap((s) => extractClassNames(s));
+    ].filter((s): s is string => Boolean(s));
+    const slotClassNames = slotSources.flatMap((s) => extractClassNames(s));
     // {{> snippet}} partials a source page composes contribute their classes too.
     const snippetClassNames = Object.values(opts.snippets ?? {}).flatMap((s) => extractClassNames(s));
     const classNames = [
@@ -236,6 +269,24 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     const componentTypes = [...new Set(scanRoots.flatMap(usedComponentTypes))];
     const usesComponents = componentTypes.length > 0;
     const components = componentAssets(componentTypes);
+    // Scroll-reveal animations (`data-aos`) ship the first-party runtime only when
+    // some authored surface uses the attribute — block trees (raw Html embeds),
+    // code-first page sources, skeleton slots, or snippets. Same only-used-ships
+    // discipline as components.js; unused sites get byte-identical output.
+    // Each platform runtime (animations / lazyload / ripple) ships only when some
+    // authored surface uses its marker — block trees (raw Html embeds), code-first
+    // page sources, skeleton slots, or snippets. Same only-used-ships discipline.
+    const usesMarker = (
+      treeFn: (r: Page['root']) => boolean,
+      strFn: (s: string | null | undefined) => boolean,
+    ): boolean =>
+      scanRoots.some(treeFn) ||
+      routes.some((r) => strFn(effectiveSource(r.page))) ||
+      slotSources.some(strFn) ||
+      Object.values(opts.snippets ?? {}).some(strFn);
+    const usesAnims = usesMarker(treeUsesAnimations, usesAnimations);
+    const usesLazy = usesMarker(treeUsesLazyload, usesLazyload);
+    const usesWaves = usesMarker(treeUsesRipple, usesRipple);
     // Public form definitions (recipient stripped) + the absolute submission
     // endpoint for exported `Form` blocks. Built once (same for every page).
     const forms: Record<string, FormPublic> = Object.fromEntries(
@@ -277,13 +328,20 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       const localePrefix = locale === defaultLocale ? '' : `${locale}/`;
       // Locale-prefixed nav for THIS locale's skeleton slot links — non-default locales publish
       // under `/<locale>/`, so a shared topNav must point at the in-locale page (not the root one).
+      // Rebase a nav item INCLUDING its dropdown children — a shallow spread would
+      // keep child paths pointing at the root locale.
+      const rebaseNavItem = <T extends { path: string; children?: T[] }>(item: T): T => ({
+        ...item,
+        path: `/${localePrefix}${item.path.replace(/^\//, '')}`,
+        ...(item.children ? { children: item.children.map(rebaseNavItem) } : {}),
+      });
       const navForLocale =
         localePrefix === ''
           ? nav
           : {
-              header: nav.header.map((i) => ({ ...i, path: `/${localePrefix}${i.path.replace(/^\//, '')}` })),
-              footer: nav.footer.map((i) => ({ ...i, path: `/${localePrefix}${i.path.replace(/^\//, '')}` })),
-              mobile: nav.mobile.map((i) => ({ ...i, path: `/${localePrefix}${i.path.replace(/^\//, '')}` })),
+              header: nav.header.map(rebaseNavItem),
+              footer: nav.footer.map(rebaseNavItem),
+              mobile: nav.mobile.map(rebaseNavItem),
             };
       for (const route of routes) {
         const outSlug = localeSlug(localePrefix, route.slug);
@@ -347,11 +405,14 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           nav: navForLocale as unknown as Record<string, unknown>,
         };
         let bodyHtml: string | undefined;
-        if (page.source) {
+        // The page's own source, or its referenced template's (the page then contributes
+        // only its {{edit}} content) — resolved once per route above for the asset scans.
+        const pageSource = effectiveSource(page);
+        if (pageSource) {
           try {
             // Client-edited region overrides ({{edit "key"}}) baked into the static output, plus the
             // project snippets the page can {{> compose}} (validated by renderTemplate, like preview).
-            bodyHtml = renderTemplate(page.source, { ...renderCtx, content: page.content, partials: opts.snippets });
+            bodyHtml = renderTemplate(pageSource, { ...renderCtx, content: page.content, partials: opts.snippets });
           } catch (err) {
             throw new PublishError(
               err instanceof TemplateError
@@ -368,6 +429,18 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         const sidebarRightHtml = renderSlot(website?.sidebarRight, 'sidebarRight', renderCtx);
         const footerHtml = renderSlot(website?.footer, 'footer', renderCtx);
         const bottomHtml = renderSlot(website?.bottom, 'bottom', renderCtx);
+        const pageInlineStyles = [
+          ...(usesComponents && components.css ? [components.css] : []),
+          ...(usesAnims ? [ANIMATION_CSS] : []),
+          ...(usesLazy ? [LAZYLOAD_CSS] : []),
+          ...(usesWaves ? [RIPPLE_CSS] : []),
+        ];
+        const pageScripts = [
+          ...(usesComponents && components.js ? [`${siteRoot}${COMPONENT_SCRIPT}`] : []),
+          ...(usesAnims ? [`${siteRoot}${ANIMATION_SCRIPT}`] : []),
+          ...(usesLazy ? [`${siteRoot}${LAZYLOAD_SCRIPT}`] : []),
+          ...(usesWaves ? [`${siteRoot}${RIPPLE_SCRIPT}`] : []),
+        ];
         const html = renderDocument(page, {
           brand,
           bodyHtml,
@@ -410,9 +483,12 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           head: website?.head,
           customScripts: website?.scripts,
           // Shared assets (site root, NOT locale-prefixed), rebased to page depth.
+          // Inline-style order: component CSS, then animation CSS; the linked
+          // utility sheet stays last so Tailwind wins at equal specificity.
           stylesheets: usesUtilities ? [`${siteRoot}${UTILITY_STYLESHEET}`] : undefined,
-          inlineStyles: usesComponents && components.css ? [components.css] : undefined,
-          scripts: usesComponents && components.js ? [`${siteRoot}${COMPONENT_SCRIPT}`] : undefined,
+          inlineStyles:
+            pageInlineStyles.length > 0 ? pageInlineStyles : undefined,
+          scripts: pageScripts.length > 0 ? pageScripts : undefined,
         });
         // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to tmp (checked above)
         await writeFile(full, html, 'utf8');
@@ -437,6 +513,25 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
       await writeFile(join(tmp, COMPONENT_SCRIPT), components.js, 'utf8');
       bytes += Buffer.byteLength(components.js);
+    }
+
+    // The scroll-reveal runtime (first-party behavior; only-used-ships).
+    if (usesAnims) {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
+      await writeFile(join(tmp, ANIMATION_SCRIPT), ANIMATION_JS, 'utf8');
+      bytes += Buffer.byteLength(ANIMATION_JS);
+    }
+    // The lazy-load runtime (first-party behavior; only-used-ships).
+    if (usesLazy) {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
+      await writeFile(join(tmp, LAZYLOAD_SCRIPT), LAZYLOAD_JS, 'utf8');
+      bytes += Buffer.byteLength(LAZYLOAD_JS);
+    }
+    // The ripple runtime (first-party behavior; only-used-ships).
+    if (usesWaves) {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
+      await writeFile(join(tmp, RIPPLE_SCRIPT), RIPPLE_JS, 'utf8');
+      bytes += Buffer.byteLength(RIPPLE_JS);
     }
 
     // robots.txt (always) + sitemap.xml (only when a production site URL is set).

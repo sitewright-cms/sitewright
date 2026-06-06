@@ -195,10 +195,11 @@ describe('preview endpoint — depth', () => {
       root: { id: 'r', type: 'Section', children: [] },
     };
 
-    // Before any settings: brand falls back to project defaults → no primary var.
+    // A new project is seeded with a DEFAULT blue brand, so the preview already carries
+    // a primary var (the default), but not our custom color yet.
     const before = await preview(page);
     expect(before.statusCode).toBe(200);
-    expect(previewHtml(before)).not.toContain('--sw-color-primary:');
+    expect(previewHtml(before)).not.toContain('--sw-color-primary: #123456;');
 
     // PUT the settings singleton with a brand primary color.
     const setRes = await project.putContent('settings', 'settings', {

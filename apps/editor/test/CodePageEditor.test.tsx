@@ -1,12 +1,17 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import type { Page } from '@sitewright/schema';
 
-const { renderTemplate, putPage } = vi.hoisted(() => ({ renderTemplate: vi.fn(), putPage: vi.fn() }));
+const { preview, putPage, listTemplates } = vi.hoisted(() => ({
+  preview: vi.fn(),
+  putPage: vi.fn(),
+  listTemplates: vi.fn(),
+}));
 vi.mock('../src/api', () => ({
   api: {
-    renderTemplate: (...args: unknown[]) => renderTemplate(...args),
+    preview: (...args: unknown[]) => preview(...args),
     putPage: (...args: unknown[]) => putPage(...args),
+    listTemplates: (...args: unknown[]) => listTemplates(...args),
   },
   previewDocUrl: (projectId: string, token: string) => `/projects/${projectId}/preview/${token}`,
 }));
@@ -28,25 +33,33 @@ const page: Page = {
   root: { id: 'r', type: 'Section' },
   source: '<h1>{{ company.name }}</h1>',
 };
+// A page whose source marks a client-editable region — content mode's subject.
+const editablePage: Page = {
+  ...page,
+  source: '<h1>{{ company.name }}</h1><p>{{edit "tagline" "Edit this tagline"}}</p>',
+};
 
 beforeEach(() => {
-  renderTemplate.mockReset();
+  preview.mockReset();
   putPage.mockReset();
-  renderTemplate.mockResolvedValue({ html: '<!doctype html><body><h1>Acme</h1></body>', token: 'tok-123' });
+  listTemplates.mockReset();
+  preview.mockResolvedValue({ html: '<!doctype html><body><h1>Acme</h1></body>', token: 'tok-123' });
   putPage.mockResolvedValue({ item: page });
+  listTemplates.mockResolvedValue({ items: [] });
 });
 
 describe('CodePageEditor', () => {
-  it('renders a debounced preview loaded via an opaque-origin iframe src (not srcDoc)', async () => {
+  it('renders a debounced FULL-PARITY preview (POST /preview with the whole draft) via iframe src', async () => {
     render(<CodePageEditor project={project} page={page} onClose={() => {}} />);
     // Debounced — the render is not requested synchronously on mount.
-    expect(renderTemplate).not.toHaveBeenCalled();
+    expect(preview).not.toHaveBeenCalled();
     await waitFor(() =>
-      expect(renderTemplate).toHaveBeenCalledWith('p', {
-        template: '<h1>{{ company.name }}</h1>',
-        page: { title: 'Home', path: '/' },
-        document: true,
-      }),
+      // The whole draft page goes to /preview — the endpoint that renders skeleton
+      // slots + website head + content (parity with the published document).
+      expect(preview).toHaveBeenCalledWith(
+        'p',
+        expect.objectContaining({ id: 'home', source: '<h1>{{ company.name }}</h1>', title: 'Home', content: {} }),
+      ),
     );
     const iframe = screen.getByTitle('Preview') as HTMLIFrameElement;
     // Loaded by URL (token endpoint) under the iframe's own sandbox CSP — NEVER inlined as srcDoc.
@@ -69,7 +82,7 @@ describe('CodePageEditor', () => {
   });
 
   it('surfaces a preview error and clears the loading state', async () => {
-    renderTemplate.mockRejectedValue(new Error('unsafe template: <script> is not allowed'));
+    preview.mockRejectedValue(new Error('unsafe template: <script> is not allowed'));
     render(<CodePageEditor project={project} page={page} onClose={() => {}} />);
     const alert = await screen.findByRole('alert');
     expect(alert.textContent).toContain('unsafe template');
@@ -98,19 +111,69 @@ describe('CodePageEditor', () => {
     expect(picker.value).toBe('');
   });
 
-  it('edits page settings (status + nav) and persists them on save', async () => {
+  it('edits page settings in the STACKED modal (status + nav + dropdown) and persists on save', async () => {
     render(<CodePageEditor project={project} page={page} onClose={() => {}} />);
     fireEvent.click(screen.getByRole('button', { name: 'Page settings' }));
+    // The settings modal stacks ABOVE the editor modal (two dialogs open).
+    expect(screen.getAllByRole('dialog')).toHaveLength(2);
     fireEvent.click(screen.getByRole('button', { name: 'draft' }));
     fireEvent.click(screen.getByLabelText('Nav: header'));
     fireEvent.change(screen.getByLabelText('Nav order'), { target: { value: '3' } });
+    fireEvent.click(screen.getByLabelText('Show in dropdown'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' })); // applies to the DRAFT
+    expect(screen.getAllByRole('dialog')).toHaveLength(1); // settings closed, editor stays
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' })); // ONE save persists all
+    await waitFor(() => expect(putPage).toHaveBeenCalledTimes(1));
+    const saved = putPage.mock.calls[0]![1] as Page;
+    expect(saved.status).toBe('draft');
+    expect(saved.nav).toEqual({ slots: ['header'], order: 3, dropdown: true });
+    expect(saved.source).toBe(page.source); // settings-only edit leaves the template untouched
+  });
+
+  it('persists meta description, OG image, parent, and template via the settings modal', async () => {
+    const sibling: Page = { ...page, id: 'about', path: '/about', title: 'About' };
+    render(<CodePageEditor project={project} page={page} pages={[page, sibling]} onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Page settings' }));
+    fireEvent.change(screen.getByLabelText('Meta description'), { target: { value: 'Crisp summary.' } });
+    fireEvent.change(screen.getByLabelText('OG image URL'), { target: { value: 'https://x.test/og.png' } });
+    fireEvent.change(screen.getByLabelText('Parent page'), { target: { value: 'about' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(() => expect(putPage).toHaveBeenCalledTimes(1));
     const saved = putPage.mock.calls[0]![1] as Page;
-    expect(saved.status).toBe('draft');
-    expect(saved.nav).toEqual({ slots: ['header'], order: 3 });
-    expect(saved.source).toBe(page.source); // settings-only edit leaves the template untouched
+    expect(saved.seo).toEqual({ description: 'Crisp summary.', ogImage: 'https://x.test/og.png' });
+    expect(saved.parent).toBe('about');
+  });
+
+  it('LOCKS the code surface for a template page; forking copies the source and unlocks', async () => {
+    const templated: Page = { ...page, source: undefined, template: 'global:text' };
+    render(<CodePageEditor project={project} page={templated} onClose={() => {}} />);
+    // No CodeMirror, no pattern insert — the lock panel explains + offers the fork.
+    expect(screen.queryByLabelText('Template source')).toBeNull();
+    expect(screen.queryByLabelText('Insert pattern')).toBeNull();
+    expect(screen.getByText(/renders the template/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Fork template into page' }));
+    // Forked: the template's source is now the PAGE's own code, reference dropped.
+    const editor = screen.getByLabelText('Template source') as HTMLTextAreaElement;
+    expect(editor.value).toContain('{{edit "heading"'); // global:text's source
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(putPage).toHaveBeenCalledTimes(1));
+    const saved = putPage.mock.calls[0]![1] as Page;
+    expect(saved.template).toBeUndefined();
+    expect(saved.source).toContain('{{edit "heading"');
+  });
+
+  it('content mode of a template page edits the TEMPLATE source regions', () => {
+    const templated: Page = { ...page, source: undefined, template: 'global:text' };
+    render(<CodePageEditor project={project} page={templated} onClose={() => {}} initialMode="content" />);
+    // Regions come from the referenced global template.
+    expect(screen.getByLabelText('heading')).toHaveValue('Page heading');
+    fireEvent.change(screen.getByLabelText('heading'), { target: { value: 'Imprint' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(putPage).toHaveBeenCalledWith('p', expect.objectContaining({ content: { heading: 'Imprint' }, template: 'global:text' }));
   });
 
   it('inserts a pattern as the whole source when the editor is empty', () => {
@@ -120,5 +183,146 @@ describe('CodePageEditor', () => {
     fireEvent.change(screen.getByLabelText('Insert pattern'), { target: { value: 'navbar' } });
     // No leading whitespace/blank lines from the previously-empty source.
     expect(editor.value.startsWith('<div class="navbar')).toBe(true);
+  });
+
+  it('opens with the authoring strip COLLAPSED; hover and focus expand it, leaving collapses it', () => {
+    render(<CodePageEditor project={project} page={page} onClose={() => {}} />);
+    const strip = screen.getByRole('region', { name: 'Template source editor' });
+    expect(strip.getAttribute('data-expanded')).toBe('false'); // collapsed on open
+    fireEvent.mouseEnter(strip);
+    expect(strip.getAttribute('data-expanded')).toBe('true'); // expands on hover
+    fireEvent.mouseLeave(strip);
+    expect(strip.getAttribute('data-expanded')).toBe('false');
+    // Keyboard path: focus inside (typing) keeps it open without the pointer.
+    fireEvent.focus(screen.getByLabelText('Template source'));
+    expect(strip.getAttribute('data-expanded')).toBe('true');
+  });
+
+  it('simulates device widths: large desktop is FLUID (modal full width), the rest are fixed', () => {
+    render(<CodePageEditor project={project} page={page} onClose={() => {}} />);
+    const viewport = () => screen.getByTestId('device-viewport') as HTMLDivElement;
+    // Default: large desktop = fluid — no simulated width, the preview fills the modal.
+    expect(screen.getByRole('button', { name: 'Preview: Large desktop' }).getAttribute('aria-pressed')).toBe('true');
+    expect(viewport().style.width).toBe('');
+    fireEvent.click(screen.getByRole('button', { name: 'Preview: Mobile' }));
+    expect(viewport().style.width).toBe('390px'); // below sm → base styles
+    fireEvent.click(screen.getByRole('button', { name: 'Preview: Tablet' }));
+    expect(viewport().style.width).toBe('768px'); // md
+    fireEvent.click(screen.getByRole('button', { name: 'Preview: Laptop' }));
+    expect(viewport().style.width).toBe('1024px'); // lg
+    fireEvent.click(screen.getByRole('button', { name: 'Preview: Large desktop' }));
+    expect(viewport().style.width).toBe(''); // back to fluid
+  });
+
+  it('saves via Ctrl+S WITHOUT closing, and the Save button keeps the modal open', async () => {
+    const onClose = vi.fn();
+    render(<CodePageEditor project={project} page={page} onClose={onClose} />);
+    fireEvent.change(screen.getByLabelText('Template source'), { target: { value: '<p>v2</p>' } });
+    fireEvent.keyDown(document, { key: 's', ctrlKey: true });
+    await waitFor(() => expect(putPage).toHaveBeenCalledTimes(1));
+    expect(onClose).not.toHaveBeenCalled(); // the authoring loop continues
+    await screen.findByText('Saved');
+
+    fireEvent.change(screen.getByLabelText('Template source'), { target: { value: '<p>v3</p>' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(putPage).toHaveBeenCalledTimes(2));
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('Escape closes a clean editor; a dirty editor asks via the discard DIALOG first', async () => {
+    const onClose = vi.fn();
+    render(<CodePageEditor project={project} page={page} onClose={onClose} />);
+
+    // Clean → closes immediately, no dialog.
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Discard changes' })).toBeNull();
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    // Dirty + Esc → the discard dialog appears (a stacked modal); cancel keeps it open.
+    fireEvent.change(screen.getByLabelText('Template source'), { target: { value: '<p>unsaved</p>' } });
+    fireEvent.keyDown(document, { key: 'Escape' });
+    const discard = await screen.findByRole('dialog', { name: 'Discard changes' });
+    fireEvent.click(within(discard).getByRole('button', { name: 'Cancel' }));
+    expect(onClose).toHaveBeenCalledTimes(1); // unchanged — close was refused
+
+    // Esc again → confirm Discard → onClose.
+    fireEvent.keyDown(document, { key: 'Escape' });
+    fireEvent.click(within(await screen.findByRole('dialog', { name: 'Discard changes' })).getByRole('button', { name: 'Discard' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(2));
+  });
+
+  it('the header CLOSE button discards without saving (confirming via the dialog)', async () => {
+    const onClose = vi.fn();
+    render(<CodePageEditor project={project} page={page} onClose={onClose} />);
+    fireEvent.change(screen.getByLabelText('Template source'), { target: { value: '<p>unsaved</p>' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    fireEvent.click(within(await screen.findByRole('dialog', { name: 'Discard changes' })).getByRole('button', { name: 'Discard' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(putPage).not.toHaveBeenCalled(); // discarded — never saved
+  });
+
+  it('a backdrop click on a dirty editor goes through the same discard dialog', async () => {
+    const onClose = vi.fn();
+    render(<CodePageEditor project={project} page={page} onClose={onClose} />);
+    fireEvent.change(screen.getByLabelText('Template source'), { target: { value: '<p>unsaved</p>' } });
+    // The presentation wrapper around the editor dialog panel is the backdrop click target.
+    fireEvent.mouseDown(screen.getAllByRole('dialog')[0]!.parentElement!);
+    const discard = await screen.findByRole('dialog', { name: 'Discard changes' });
+    fireEvent.click(within(discard).getByRole('button', { name: 'Cancel' }));
+    expect(onClose).not.toHaveBeenCalled(); // declined → still editing
+  });
+});
+
+describe('CodePageEditor — content mode (in-modal)', () => {
+  it('opens directly in content mode (the client default) showing only the {{edit}} regions', () => {
+    render(<CodePageEditor project={project} page={editablePage} onClose={() => {}} initialMode="content" />);
+    // The region field is surfaced with its default…
+    expect(screen.getByLabelText('tagline')).toHaveValue('Edit this tagline');
+    // …the raw template is NOT presented, and the code-authoring tools are hidden.
+    expect(screen.queryByLabelText('Template source')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Page settings' })).toBeNull();
+    expect(screen.queryByLabelText('Insert pattern')).toBeNull();
+  });
+
+  it('persists edited region content on save (alongside the untouched template)', async () => {
+    render(<CodePageEditor project={project} page={editablePage} onClose={() => {}} initialMode="content" />);
+    fireEvent.change(screen.getByLabelText('tagline'), { target: { value: 'A client-written tagline' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(putPage).toHaveBeenCalledTimes(1));
+    const saved = putPage.mock.calls[0]![1] as Page;
+    expect(saved.content).toEqual({ tagline: 'A client-written tagline' });
+    expect(saved.source).toBe(editablePage.source); // the template stays untouched
+  });
+
+  it('switches modes LOSSLESSLY — drafts in both modes survive the toggle', () => {
+    render(<CodePageEditor project={project} page={editablePage} onClose={() => {}} />);
+    // Source mode: edit the template, ADDING a new region.
+    fireEvent.change(screen.getByLabelText('Template source'), {
+      target: { value: '<p>{{edit "headline" "Big news"}}</p>' },
+    });
+    // → content: the freshly-typed region is there (regions derive from the DRAFT source).
+    fireEvent.click(screen.getByRole('button', { name: 'content' }));
+    const field = screen.getByLabelText('headline');
+    expect(field).toHaveValue('Big news');
+    fireEvent.change(field, { target: { value: 'Bigger news' } });
+    // → back to source: the template draft survived…
+    fireEvent.click(screen.getByRole('button', { name: 'source' }));
+    expect(screen.getByLabelText('Template source')).toHaveValue('<p>{{edit "headline" "Big news"}}</p>');
+    // …and back to content: the region draft survived too. No confirm dialog anywhere.
+    fireEvent.click(screen.getByRole('button', { name: 'content' }));
+    expect(screen.getByLabelText('headline')).toHaveValue('Bigger news');
+  });
+
+  it('shows the empty-state hint when the source marks no editable regions', () => {
+    render(<CodePageEditor project={project} page={page} onClose={() => {}} initialMode="content" />);
+    expect(screen.getByText(/no editable regions yet/)).toBeInTheDocument();
+  });
+
+  it('previews the draft content through the same full-parity pipeline', async () => {
+    render(<CodePageEditor project={project} page={editablePage} onClose={() => {}} initialMode="content" />);
+    fireEvent.change(screen.getByLabelText('tagline'), { target: { value: 'Live-typed' } });
+    await waitFor(() =>
+      expect(preview).toHaveBeenCalledWith('p', expect.objectContaining({ content: { tagline: 'Live-typed' } })),
+    );
   });
 });

@@ -36,4 +36,42 @@ describe('buildNav', () => {
     ];
     expect(buildNav(pages, 'header')).toEqual([]);
   });
+
+  it('nests child pages under a dropdown parent (no own slots needed), ordered by nav.order', () => {
+    const pages = [
+      page({ id: 'services', path: '/services', title: 'Services', nav: { slots: ['header'], order: 1, dropdown: true } }),
+      // Children: NO nav.slots of their own — nested purely via `parent`.
+      page({ id: 'seo', path: '/services/seo', title: 'SEO', parent: 'services', nav: { slots: ['footer'], order: 2 } }),
+      page({ id: 'web', path: '/services/web', title: 'Web', parent: 'services', nav: { slots: ['header'], order: 1 } }),
+      page({ id: 'about', path: '/about', title: 'About', nav: { slots: ['header'], order: 2 } }),
+    ];
+    expect(buildNav(pages, 'header')).toEqual([
+      {
+        label: 'Services',
+        path: '/services',
+        children: [
+          { label: 'Web', path: '/services/web' },
+          { label: 'SEO', path: '/services/seo' },
+        ],
+      },
+      { label: 'About', path: '/about' }, // a nested child ('web') never ALSO appears flat
+    ]);
+  });
+
+  it('children stay flat (own slots required) when the parent has no dropdown', () => {
+    const pages = [
+      page({ id: 'services', path: '/services', title: 'Services', nav: { slots: ['header'], order: 1 } }),
+      page({ id: 'web', path: '/services/web', title: 'Web', parent: 'services', nav: { slots: ['header'], order: 2 } }),
+      page({ id: 'silent', path: '/services/silent', title: 'Silent', parent: 'services' }), // no slots → absent
+    ];
+    expect(buildNav(pages, 'header')).toEqual([
+      { label: 'Services', path: '/services' },
+      { label: 'Web', path: '/services/web' },
+    ]);
+  });
+
+  it('a dropdown parent with no children renders as a plain item', () => {
+    const pages = [page({ id: 'p1', path: '/p1', title: 'P1', nav: { slots: ['header'], dropdown: true } })];
+    expect(buildNav(pages, 'header')).toEqual([{ label: 'P1', path: '/p1' }]);
+  });
 });

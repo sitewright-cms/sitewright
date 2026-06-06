@@ -15,12 +15,12 @@ test('client edits a code page’s bound region (content), template stays immuta
   await page.getByLabel('Email').fill(ownerEmail);
   await page.getByLabel('Password').fill('pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();
+  await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Code Site');
   await page.getByLabel('Project slug').fill(`cs-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
-  await page.getByRole('button', { name: /Code Site/ }).click();
 
-  await page.getByLabel('Page slug').fill('home');
+  await page.getByLabel('Page path').fill('home');
   await page.getByLabel('Page title').fill('Home');
   await page.getByRole('button', { name: 'Add page' }).click();
 
@@ -42,11 +42,12 @@ test('client edits a code page’s bound region (content), template stays immuta
   await page.getByLabel('Password', { exact: true }).fill('pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();
 
-  // --- Client accepts → opens the code page in the bound-content editor ---
+  // --- Client accepts → the page opens in the editor MODAL, defaulting to CONTENT mode ---
   await page.getByRole('button', { name: 'Accept invitation' }).click();
   await page.getByRole('button', { name: /Code Site/ }).click();
-  await page.getByRole('button', { name: /Home/ }).click();
-  await expect(page.getByText('Client editor')).toBeVisible();
+  await page.getByRole('button', { name: /^Home/ }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'content' })).toHaveAttribute('aria-pressed', 'true');
 
   // The editable region (the scaffold's `tagline`) is surfaced with its default; the raw
   // template source is NOT presented as editable.
@@ -55,12 +56,13 @@ test('client edits a code page’s bound region (content), template stays immuta
   await region.fill('A client-written tagline');
 
   // The sandboxed live preview reflects the edit.
-  const preview = page.frameLocator('iframe[title="Live preview"]');
+  const preview = page.frameLocator('iframe[title="Preview"]');
   await expect(preview.getByText('A client-written tagline')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Save changes' }).click();
-
-  // Reopen → the client's content edit persisted.
-  await page.getByRole('button', { name: /Home/ }).click();
+  // Save keeps the modal open (the loop continues); close, reopen → the edit persisted.
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByText('Saved')).toBeVisible();
+  await page.getByRole('button', { name: 'Close' }).click();
+  await page.getByRole('button', { name: /^Home/ }).click();
   await expect(page.getByLabel('tagline')).toHaveValue('A client-written tagline');
 });

@@ -18,10 +18,10 @@ test('upload an image into the media library and see the optimized thumbnail', a
   await page.getByLabel('Email').fill(`media-${stamp}@e2e.test`);
   await page.getByLabel('Password').fill('pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();
+  await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Media Site');
   await page.getByLabel('Project slug').fill(`media-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
-  await page.getByRole('button', { name: /Media Site/ }).click();
 
   // Assets tab: upload an image; the optimized thumbnail appears once processing finishes.
   await page.getByRole('tab', { name: 'Assets' }).click();
@@ -41,29 +41,41 @@ test('upload a non-image file into a folder and see it listed with a download li
   await page.getByLabel('Email').fill(`assets-${stamp}@e2e.test`);
   await page.getByLabel('Password').fill('pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();
+  await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Assets Site');
   await page.getByLabel('Project slug').fill(`assets-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
-  await page.getByRole('button', { name: /Assets Site/ }).click();
 
   await page.getByRole('tab', { name: 'Assets' }).click();
 
-  // Make a folder and upload a PDF into it.
+  // Create a PERSISTED folder (it shows immediately and survives reload), then enter it.
   await page.getByLabel('New folder name').fill('Docs');
   await page.getByRole('button', { name: '+ Folder' }).click();
+  // The folder row's open button (exact 'Docs' — distinct from its Rename/Copy/Delete actions).
+  await expect(page.getByRole('button', { name: 'Docs', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Docs', exact: true }).click();
+
+  // Upload a PDF into the open folder.
   await page.getByLabel('Upload files').setInputFiles({
     name: 'report.pdf',
     mimeType: 'application/pdf',
     buffer: Buffer.from('%PDF-1.4 hello'),
   });
 
-  // The file shows with a download link routed through the attachment-only /file/ handler.
-  const link = page.getByRole('link', { name: 'report.pdf' });
-  await expect(link).toBeVisible();
+  // The file row shows; its Download action links through the attachment-only /file/ handler.
+  await expect(page.getByRole('button', { name: 'report.pdf', exact: true })).toBeVisible();
+  const link = page.getByRole('link', { name: 'Download report.pdf' });
   await expect(link).toHaveAttribute('href', /\/media\/[\w-]+\/[\w-]+\/file\/report\.pdf$/);
 
-  // Back at root, the folder is shown and the file is not.
+  // Back at root (breadcrumb), the folder is shown and the file is not.
   await page.getByRole('button', { name: 'Assets', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Docs' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'report.pdf' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Docs', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'report.pdf', exact: true })).toHaveCount(0);
+
+  // The folder persists across a reload (the original bug it fixes). On reload the
+  // project selector auto-opens — reopen the project, then check the folder is still there.
+  await page.reload();
+  await page.getByRole('dialog', { name: 'Your projects' }).getByRole('button', { name: /Assets Site/ }).click();
+  await page.getByRole('tab', { name: 'Assets' }).click();
+  await expect(page.getByRole('button', { name: 'Docs', exact: true })).toBeVisible();
 });

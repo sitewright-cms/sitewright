@@ -11,6 +11,7 @@ import {
   FormSchema,
   SmtpStoredSchema,
   MediaAssetSchema,
+  MediaFolderRecordSchema,
   PageSchema,
   PartialSchema,
   SnippetSchema,
@@ -74,6 +75,10 @@ const SCHEMAS = new Map<ContentKind, z.ZodTypeAny>([
   // Media metadata is tenant-scoped CRUD like other content; the binaries live on
   // disk (see apps/api/src/media). Not yet part of export/import bundles.
   ['media', MediaAssetSchema],
+  // Persisted (incl. EMPTY) media folders — makes folders first-class so they survive
+  // a reload and can be renamed/moved/deleted. Managed via the dedicated /media/folders
+  // routes; excluded from export/import bundles (folders are implied by asset paths there).
+  ['mediafolder', MediaFolderRecordSchema],
   // Saved deploy targets (encrypted credentials). Managed via dedicated endpoints,
   // excluded from export/import bundles (never export secrets).
   ['deploy_target', DeployTargetSchema],

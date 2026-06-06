@@ -525,10 +525,6 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
         `</form>`
       );
     }
-    case 'Outlet':
-      // Template content-slot marker; normally consumed by resolveTemplate before
-      // render. A stray Outlet (page without a template) renders nothing.
-      return inner;
     default:
       return `<div data-sw-block="Unknown"${cls} data-type="${escapeAttr(node.type)}">Unknown block: ${escapeHtml(node.type)}${inner}</div>`;
   }

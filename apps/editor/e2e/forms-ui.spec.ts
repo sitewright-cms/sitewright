@@ -12,11 +12,11 @@ test('author a form in the editor and see a submission in its submissions list',
   await page.getByLabel('Password').fill('pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();
 
+  await page.getByRole('button', { name: 'New project' }).click();
+
   await page.getByLabel('Project name').fill('Forms UI Site');
   await page.getByLabel('Project slug').fill(`forms-ui-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
-
-  await page.getByRole('button', { name: /Forms UI Site/ }).click();
   await page.getByRole('tab', { name: 'Forms' }).click();
 
   // Create + save a form.

@@ -109,8 +109,7 @@ describe('FormsManager', () => {
     expect(saved.thirdPartyUrl).toBe('https://formspree.io/f/abc');
   });
 
-  it('deletes a form after confirmation', async () => {
-    vi.stubGlobal('confirm', () => true);
+  it('deletes a form after confirming in the dialog', async () => {
     deleteForm.mockResolvedValue(undefined);
     listForms
       .mockResolvedValueOnce({
@@ -119,6 +118,9 @@ describe('FormsManager', () => {
       .mockResolvedValue({ items: [] });
     render(<FormsManager project={project} />);
     fireEvent.click(await screen.findByLabelText('Delete form contact'));
+    // The modal confirm dialog must be accepted before the delete fires.
+    expect(deleteForm).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
     await waitFor(() => expect(deleteForm).toHaveBeenCalledWith('contact'));
     expect(await screen.findByText(/No forms yet/)).toBeInTheDocument();
   });

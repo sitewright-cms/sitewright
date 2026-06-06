@@ -18,10 +18,13 @@ type Result = StockSearchResult['results'][number];
 export function StockPicker({
   projectId,
   onImported,
+  folder = '',
   bare = false,
 }: {
   projectId: string;
   onImported: () => void | Promise<void>;
+  /** Virtual folder the import is filed into ('' = root) — the Assets view's current folder. */
+  folder?: string;
   /** Drop the glass-card chrome — for rendering inside the Modal, which supplies the panel. */
   bare?: boolean;
 }) {
@@ -83,7 +86,7 @@ export function StockPicker({
     setImportingId(r.id);
     setError(null);
     try {
-      await api.importStock(projectId, r.provider, r.id);
+      await api.importStock(projectId, r.provider, r.id, undefined, folder || undefined);
       await onImported();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'import failed');

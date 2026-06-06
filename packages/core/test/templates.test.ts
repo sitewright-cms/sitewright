@@ -1,66 +1,40 @@
 import { describe, it, expect } from 'vitest';
-import type { PageNode, Template } from '@sitewright/schema';
-import { resolveTemplate, TemplateResolutionError } from '../src/index.js';
+import type { Template } from '@sitewright/schema';
+import {
+  GLOBAL_TEMPLATES,
+  GLOBAL_TEMPLATE_PREFIX,
+  isGlobalTemplate,
+  resolveTemplateSource,
+  TemplateResolutionError,
+} from '../src/index.js';
 
-const pageRoot: PageNode = {
-  id: 'p',
-  type: 'Section',
-  children: [{ id: 'h', type: 'Heading', props: { text: 'Hi' } }],
-};
-const tmpl = (root: PageNode): Template => ({ id: 't1', name: 'T', root });
-const map = (t: Template) => new Map([[t.id, t]]);
+const projectTemplates = new Map<string, Template>([
+  ['legal', { id: 'legal', name: 'Legal', source: '<article>{{edit "body" "…"}}</article>' }],
+]);
 
-describe('resolveTemplate', () => {
-  it('returns the page root unchanged when no templateId', () => {
-    expect(resolveTemplate(pageRoot, undefined, new Map())).toBe(pageRoot);
+describe('resolveTemplateSource (code-first templates)', () => {
+  it('resolves a project template to its Handlebars source', () => {
+    expect(resolveTemplateSource('legal', projectTemplates)).toContain('{{edit "body"');
   });
 
-  it('injects the page root at the template Outlet, preserving layout order', () => {
-    const t = tmpl({
-      id: 'troot',
-      type: 'Layout',
-      children: [
-        { id: 'hdr', type: 'Header' },
-        { id: 'out', type: 'Outlet' },
-        { id: 'ftr', type: 'Footer' },
-      ],
-    });
-    const result = resolveTemplate(pageRoot, 't1', map(t));
-    expect(result.type).toBe('Layout');
-    expect(result.children?.map((c) => c.type)).toEqual(['Header', 'Section', 'Footer']);
-    expect(result.children?.[1]).toBe(pageRoot); // the outlet became the page content
+  it('resolves built-in global templates by prefix', () => {
+    for (const template of GLOBAL_TEMPLATES) {
+      expect(isGlobalTemplate(template.id)).toBe(true);
+      expect(resolveTemplateSource(template.id, new Map())).toBe(template.source);
+    }
   });
 
-  it('finds a nested Outlet', () => {
-    const t = tmpl({
-      id: 'troot',
-      type: 'Layout',
-      children: [{ id: 'main', type: 'Section', children: [{ id: 'o', type: 'Outlet' }] }],
-    });
-    const result = resolveTemplate(pageRoot, 't1', map(t));
-    expect(result.children?.[0]?.children?.[0]).toBe(pageRoot);
+  it('throws an author-correctable error for unknown references (never a blank page)', () => {
+    expect(() => resolveTemplateSource('missing', projectTemplates)).toThrow(TemplateResolutionError);
+    expect(() => resolveTemplateSource('global:missing', projectTemplates)).toThrow(TemplateResolutionError);
   });
 
-  it('treats a template whose root IS an Outlet as an identity wrap (returns the page root)', () => {
-    const t = tmpl({ id: 'o', type: 'Outlet' });
-    expect(resolveTemplate(pageRoot, 't1', map(t))).toBe(pageRoot);
-  });
-
-  it('throws on an unknown template', () => {
-    expect(() => resolveTemplate(pageRoot, 'missing', new Map())).toThrow(TemplateResolutionError);
-  });
-
-  it('throws when the template has zero or multiple Outlets', () => {
-    const none = tmpl({ id: 'r', type: 'Layout', children: [{ id: 'hdr', type: 'Header' }] });
-    expect(() => resolveTemplate(pageRoot, 't1', map(none))).toThrow(/exactly one Outlet/);
-    const two = tmpl({
-      id: 'r',
-      type: 'Layout',
-      children: [
-        { id: 'o1', type: 'Outlet' },
-        { id: 'o2', type: 'Outlet' },
-      ],
-    });
-    expect(() => resolveTemplate(pageRoot, 't1', map(two))).toThrow(/exactly one Outlet/);
+  it('global templates are valid, content-editable, code-first sources', () => {
+    for (const template of GLOBAL_TEMPLATES) {
+      expect(template.id.startsWith(GLOBAL_TEMPLATE_PREFIX)).toBe(true);
+      expect(template.name.length).toBeGreaterThan(0);
+      expect(template.source).toContain('{{edit '); // a referencing page can edit its content
+      expect(template.source).not.toContain('<script'); // same no-JS rule as page sources
+    }
   });
 });

@@ -103,8 +103,8 @@ describe('collection page routing through publish', () => {
     await project.putContent('page', collectionPage.id, collectionPage);
 
     const { release } = await publish();
-    // One route per published entry. No static page in this project.
-    expect(release.routes).toBe(2);
+    // One route per published entry, plus the auto-created HOME page every project starts with.
+    expect(release.routes).toBe(3);
 
     // Slugs derive via entrySlug: safe `slug` value wins -> /products/alpha, /products/beta.
     expect(entrySlug(published1, 'slug')).toBe('alpha');
@@ -236,9 +236,9 @@ describe('collection page routing through publish', () => {
     await project.putContent('entry', b.id, b);
     await project.putContent('page', collectionPage.id, collectionPage);
 
-    // No crash: both routes render at distinct, id-derived output paths.
+    // No crash: both routes render at distinct, id-derived output paths (+ the auto-created home).
     const { release } = await publish();
-    expect(release.routes).toBe(2);
+    expect(release.routes).toBe(3);
 
     const pageA = await served(slug, 'products/collide-a/');
     const pageB = await served(slug, 'products/collide-b/');

@@ -35,12 +35,12 @@ test('code-first authoring: CodeMirror editor, live styled preview, save + persi
   await page.keyboard.type('HELLOMARKER42');
   await expect(preview.getByText('HELLOMARKER42')).toBeVisible();
 
-  // Save → the saved state shows.
-  await page.getByRole('button', { name: 'Save' }).click();
+  // Save → the saved state shows. (`exact` avoids the pages-list "Save … as template" buttons.)
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('Saved')).toBeVisible();
 
   // Close the editor modal (clean — just saved), reopen → the edit persisted to page.source.
-  await page.getByRole('button', { name: 'Close' }).click();
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
   await page.getByRole('button', { name: /^About/ }).click();
   await expect(page.locator('.cm-content')).toContainText('HELLOMARKER42');
 });

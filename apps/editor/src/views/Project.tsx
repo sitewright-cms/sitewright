@@ -408,7 +408,9 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
     {/* `inert` while the editor modal is open: everything behind the blurred backdrop is
         unfocusable/unclickable (belt-and-suspenders beyond the modal's focus trap). The
         empty-string spread is the React 18 idiom for this boolean HTML attribute. */}
-    <main {...(editing ? ({ inert: '' } as object) : {})} className="mx-auto max-w-5xl px-6 py-8">
+    {/* Owners get the left Library rail (a fixed 44px strip); pad the content so it
+        never sits under the collapsed rail. */}
+    <main {...(editing ? ({ inert: '' } as object) : {})} className={`mx-auto max-w-5xl px-6 py-8${isClient ? '' : ' pl-14'}`}>
       {dialog}
       {/* The project name, tablist, and Publish control now live in the App header bar. */}
       {isClient ? (

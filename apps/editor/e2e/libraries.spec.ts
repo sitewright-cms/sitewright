@@ -15,23 +15,9 @@ test('library panel: open, search, and copy an example; lazyload + ripple publis
   await page.getByLabel('Project slug').fill(`lib-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
 
-  // The permanent Library handle is on the right edge; open it.
-  await page.getByRole('button', { name: 'Open library' }).click();
-  await expect(page.getByText('Ripple effect')).toBeVisible();
-
-  // Search narrows to ripple; open the item → details modal with the example.
-  await page.getByLabel('Search library').fill('ripple');
-  await expect(page.getByText('DaisyUI components')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Ripple on a primary button' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Ripple on a primary button' });
-  await expect(dialog.getByText(/waves-effect waves-light/)).toBeVisible();
-  // The Copy button is present (clipboard write itself needs a secure context, so the
-  // copy result is covered by the unit test, not here).
-  await expect(dialog.getByRole('button', { name: 'Copy' })).toBeVisible();
-  await page.keyboard.press('Escape'); // close the detail modal
-
   // Author a page that uses BOTH a data-bg lazyload background and a waves-effect CTA,
-  // then publish and assert both runtimes shipped.
+  // then publish and assert both runtimes shipped. (Done first, with the Library rail
+  // collapsed, so it can't overlay the add-page form.)
   await page.getByLabel('Page path').fill('/launch');
   await page.getByLabel('Page title').fill('Launch');
   await page.getByRole('button', { name: 'Add page' }).click();
@@ -39,7 +25,7 @@ test('library panel: open, search, and copy an example; lazyload + ripple publis
   await page.locator('.cm-content').click();
   await page.keyboard.press('ControlOrMeta+a');
   await page.keyboard.type('<section data-bg="/media/x.jpg" class="h-64"><a class="btn btn-primary waves-effect waves-light" href="/">Go</a></section>');
-  await page.getByRole('button', { name: 'Save' }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('Saved')).toBeVisible();
   await page.getByRole('button', { name: 'Close', exact: true }).click();
 
@@ -56,5 +42,30 @@ test('library panel: open, search, and copy an example; lazyload + ripple publis
   expect(body).toContain('waves-effect waves-light');
   expect(body).toContain('<script defer src="../lazyload.js"></script>');
   expect(body).toContain('<script defer src="../ripple.js"></script>');
+
+  // The Library is a LEFT hover-drawer; the "Open library" toggle expands the rail (also
+  // keyboard/touch-accessible) to reveal the section buttons. Each section title opens a
+  // searchable gallery modal.
+  await page.getByRole('button', { name: 'Open library' }).click();
+  await page.getByRole('button', { name: /Ripple effect/ }).click();
+  const ripple = page.getByRole('dialog', { name: 'Ripple effect' });
+  await expect(ripple.getByText('Ripple on a primary button')).toBeVisible();
+  await expect(ripple.getByText(/waves-effect waves-light/)).toBeVisible();
+  await expect(ripple.getByRole('button', { name: 'Copy' }).first()).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  // The Icons modal lazy-loads the whole pack and is searchable.
+  await page.getByRole('button', { name: /^Icons/ }).click();
+  const icons = page.getByRole('dialog', { name: 'Icons' });
+  await icons.getByLabel('Search Icons').fill('home');
+  await expect(icons.getByRole('button', { name: 'Copy home icon snippet' })).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  // DaisyUI components render a live preview inside the modal.
+  await page.getByRole('button', { name: /DaisyUI components/ }).click();
+  const daisy = page.getByRole('dialog', { name: 'DaisyUI components' });
+  await daisy.getByLabel('Search DaisyUI components').fill('button');
+  await expect(daisy.locator('.sw-preview .btn').first()).toBeVisible();
+  await page.keyboard.press('Escape');
   void context;
 });

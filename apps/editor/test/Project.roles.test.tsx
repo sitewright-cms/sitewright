@@ -67,14 +67,15 @@ describe('ProjectView role gating (tab is supplied by the App header)', () => {
     await waitFor(() => expect(listPages).toHaveBeenCalled());
     expect(screen.queryByLabelText('Page path')).toBeNull();
     // The code Library is an owner/staff aid — clients edit content, not code.
-    expect(screen.queryByRole('button', { name: /open library/i })).toBeNull();
+    expect(screen.queryByLabelText('Library')).toBeNull();
     expect(screen.getByRole('button', { name: /Home/ })).toBeInTheDocument();
   });
 
-  it('an owner gets the Library edge handle', async () => {
+  it('an owner gets the Library rail', async () => {
     render(<ProjectView project={ownerProject} tab="pages" />);
     await waitFor(() => expect(listPages).toHaveBeenCalled());
-    expect(screen.getByRole('button', { name: 'Open library' })).toBeInTheDocument();
+    // The left hover-drawer (collapsed rail) carries aria-label "Library".
+    expect(screen.getByLabelText('Library')).toBeInTheDocument();
   });
 
   it('opens an owner on a page in SOURCE mode (the staff default)', async () => {

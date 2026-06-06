@@ -62,7 +62,7 @@ test('pages list: auto-home, row actions, list settings, template lock + fork', 
   await page.getByRole('button', { name: 'source' }).click();
   await page.getByRole('button', { name: 'Fork template into page' }).click();
   await expect(page.locator('.cm-content')).toContainText('{{edit "heading"'); // unlocked, source copied
-  await page.getByRole('button', { name: 'Save' }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('Saved')).toBeVisible();
   await page.keyboard.press('Escape');
 

@@ -1,8 +1,10 @@
-import { ANIMATION_EFFECTS, ICON_NAMES, iconBody } from '@sitewright/blocks';
+import { ANIMATION_EFFECTS } from '@sitewright/blocks';
 
 // The Library catalog: a static, searchable reference of everything the platform
 // gives an author — icons, the AOS / lazyload / ripple vocabularies, and a curated
 // set of DaisyUI components. Each entry carries a copy-paste `example` snippet.
+// The icon set is large + self-contained, so it lives in `catalog-icons.ts` and is
+// LAZY-loaded (dynamic import) the first time the Icons modal opens.
 
 export type LibraryCategory = 'icons' | 'aos' | 'lazyload' | 'ripple' | 'daisyui';
 
@@ -15,7 +17,11 @@ export interface LibraryItem {
   keywords?: string;
   /** One-line description. */
   description: string;
-  /** The copy-paste example markup. */
+  /**
+   * The copy-paste example markup. MUST stay STATIC, trusted, in-repo content — it is
+   * rendered as a live preview via `dangerouslySetInnerHTML` (Handlebars neutralized). Never
+   * put `<script>`, event handlers, or user-supplied data here (would need DOMPurify first).
+   */
   example: string;
   /** Optional inline SVG preview (icons only). */
   svg?: string;
@@ -27,23 +33,13 @@ export interface LibrarySection {
   category: LibraryCategory;
   label: string;
   blurb: string;
+  /** Eagerly-bundled items. The `icons` section is empty here and lazy-loaded on open. */
   items: LibraryItem[];
+  /** When set, the section's items are fetched via dynamic import (code-split). */
+  lazy?: 'icons';
+  /** DaisyUI items render a live preview in the modal (themed via `.sw-preview`). */
+  preview?: boolean;
 }
-
-/** Wrap an icon body in the same <svg> the {{icon}} helper emits, for the preview. */
-function iconSvg(name: string, cls = 'h-6 w-6'): string {
-  const body = iconBody(name) ?? '';
-  return `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
-}
-
-const ICON_ITEMS: LibraryItem[] = ICON_NAMES.map((name) => ({
-  id: `icon-${name}`,
-  name,
-  keywords: 'icon svg lucide',
-  description: `The “${name}” Lucide icon, inlined as an SVG.`,
-  example: `{{icon "${name}" "h-5 w-5"}}`,
-  svg: iconSvg(name),
-}));
 
 const AOS_ITEMS: LibraryItem[] = ANIMATION_EFFECTS.map((effect) => ({
   id: `aos-${effect}`,
@@ -107,9 +103,9 @@ const DAISYUI_ITEMS: LibraryItem[] = [
 ];
 
 export const LIBRARY_SECTIONS: LibrarySection[] = [
-  { category: 'icons', label: 'Icons', blurb: 'Built-in Lucide icons. Insert with {{icon "name"}}.', items: ICON_ITEMS },
+  { category: 'icons', label: 'Icons', blurb: 'Built-in Lucide icons. Insert with {{icon "name"}}.', items: [], lazy: 'icons' },
   { category: 'aos', label: 'AOS (scroll reveal)', blurb: 'Animate elements as they scroll into view via data-aos.', items: AOS_ITEMS },
   { category: 'lazyload', label: 'Lazy-load', blurb: 'Defer offscreen images with data-bg / lazyload.', items: LAZYLOAD_ITEMS },
   { category: 'ripple', label: 'Ripple effect', blurb: 'Material “waves” click ripple via waves-effect.', items: RIPPLE_ITEMS },
-  { category: 'daisyui', label: 'DaisyUI components', blurb: 'Brand-themed component classes (Tailwind + DaisyUI).', items: DAISYUI_ITEMS },
+  { category: 'daisyui', label: 'DaisyUI components', blurb: 'Brand-themed component classes (Tailwind + DaisyUI).', items: DAISYUI_ITEMS, preview: true },
 ];

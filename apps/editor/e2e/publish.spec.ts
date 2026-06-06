@@ -23,9 +23,9 @@ test('build a code page, publish the project, and view the live site', async ({ 
   await page.locator('.cm-content').click();
   await page.keyboard.press('ControlOrMeta+a');
   await page.keyboard.type('We Are Live');
-  await page.getByRole('button', { name: 'Save' }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('Saved')).toBeVisible();
-  await page.getByRole('button', { name: 'Close' }).click();
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
 
   // Publish, then open the "…" actions menu (secondary actions live behind it now).
   await page.getByRole('button', { name: 'Publish' }).click();

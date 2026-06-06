@@ -77,8 +77,9 @@ test('edit a website partial in the code-editor modal, save, and persist across 
   await dialog.getByRole('button', { name: 'Save changes' }).click();
   await expect(dialog).toBeHidden();
 
-  // The CodeField preview now reflects the edited source.
-  await expect(page.getByText(`<nav>${marker}</nav>`)).toBeVisible();
+  // The compact CodeField shows a line count (no inline source preview); the source itself
+  // is verified by the reopen round-trip below.
+  await expect(page.getByText('1 line', { exact: true })).toBeVisible();
 
   // Persist the settings bundle, then reload and confirm the partial round-tripped.
   await page.getByRole('button', { name: 'Save changes' }).click();

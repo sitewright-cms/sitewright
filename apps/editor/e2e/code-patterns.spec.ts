@@ -30,7 +30,7 @@ test('insert a DaisyUI starter pattern into a code page → renders in the previ
   const preview = page.frameLocator('iframe[title="Preview"]');
   await expect(preview.getByRole('heading', { name: 'Build something people love' })).toBeVisible();
 
-  // Save persists it.
-  await page.getByRole('button', { name: 'Save' }).click();
+  // Save persists it. (`exact` avoids the pages-list "Save … as template" buttons.)
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('Saved')).toBeVisible();
 });

@@ -96,6 +96,18 @@ const TRASH_ICON = rowIcon(
     <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
   </>,
 );
+const GLOBE_ICON = rowIcon(
+  <>
+    <circle cx="12" cy="12" r="10" />
+    <path d="M2 12h20" />
+    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+  </>,
+);
+const TEMPLATE_ICON = rowIcon(
+  <>
+    <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+  </>,
+);
 
 const ROW_ACTION =
   'inline-flex cursor-pointer items-center justify-center rounded-lg p-1.5 text-slate-400 transition hover:bg-white hover:text-slate-900';
@@ -113,6 +125,10 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
   const [settingsFor, setSettingsFor] = useState<Page | null>(null);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [settingsSaving, setSettingsSaving] = useState(false);
+  // The project's configured locales (Website Settings) — drives the i18n actions.
+  const [locales, setLocales] = useState<string[]>(['en']);
+  const defaultLocale = locales[0] ?? 'en';
+  const multilingual = locales.length > 1;
 
   async function load() {
     try {
@@ -125,6 +141,19 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
 
   useEffect(() => {
     void load();
+    void api
+      .getSettings(project.id)
+      .then((res) => {
+        const s = res.item?.settings;
+        if (!s?.locales?.length) return;
+        // Keep the project's default locale first → `locales[0]` is the default
+        // everywhere (Project actions + PageSettingsModal's "Default (…)" label).
+        const ordered = [s.defaultLocale, ...s.locales.filter((l) => l !== s.defaultLocale)];
+        setLocales(ordered);
+      })
+      .catch(() => {
+        /* settings may not exist yet → single default locale */
+      });
   }, [project.id]);
 
   async function create(e: FormEvent) {
@@ -204,12 +233,76 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
       id: `${p.id}-${rand}`,
       path: p.path === '/' ? `/home-${rand}` : `${p.path}-${rand}`,
       title: `${p.title} (Copy)`,
+      // A copy is its own page, not a translation sibling.
+      translationGroup: undefined,
     };
     try {
       await api.putPage(project.id, copy);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed to copy page');
+    }
+  }
+
+  /**
+   * Creates the missing locale variants of a page (template-reuse / copy-as-translation):
+   * each variant is a sibling Page sharing the translation group, with its own
+   * `/<locale>/<path>` and `locale`, copying the page's template ref (shared structure)
+   * or its source (a per-locale copy), and starting from the same {{edit}} content.
+   */
+  async function addTranslations(primary: Page) {
+    setError(null);
+    const group = primary.translationGroup ?? primary.id;
+    // The group's current members: pages already tagged with it, plus the primary
+    // itself (which may not be tagged yet on first "Add translation").
+    const inGroup = pages.filter((p) => p.translationGroup === group || p.id === primary.id);
+    const present = new Set(inGroup.map((p) => p.locale ?? defaultLocale));
+    const missing = locales.filter((l) => l !== defaultLocale && !present.has(l));
+    if (missing.length === 0) return;
+    try {
+      const ops: Promise<unknown>[] = [];
+      // Tie the primary into the group (its locale stays the default).
+      if (!primary.translationGroup) ops.push(api.putPage(project.id, { ...primary, translationGroup: group }));
+      for (const loc of missing) {
+        const path = primary.path === '/' ? `/${loc}` : `/${loc}${primary.path}`;
+        // Copy-as-translation: the variant inherits the primary's structure (template/
+        // source) AND its {{edit}} content as the starting point for translation — the
+        // translator then edits the text in place. Only id/locale/group/path differ.
+        ops.push(
+          api.putPage(project.id, {
+            ...primary,
+            id: `${primary.id}-${loc}`,
+            locale: loc,
+            translationGroup: group,
+            path,
+          }),
+        );
+      }
+      await Promise.all(ops);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'failed to add translation');
+    }
+  }
+
+  /**
+   * Promotes a page's source into a reusable project TEMPLATE and converts the page
+   * (and its locale siblings) to reference it — so all locales share one structure
+   * and supply only their own {{edit}} content. No-op for a page that already
+   * references a template.
+   */
+  async function saveAsTemplate(p: Page) {
+    if (!p.source || p.template) return;
+    setError(null);
+    const tplId = `${p.id}-template`;
+    const group = p.translationGroup;
+    const targets = group ? pages.filter((pg) => pg.translationGroup === group) : [p];
+    try {
+      await api.putTemplate(project.id, { id: tplId, name: `${p.title} layout`, source: p.source });
+      await Promise.all(targets.map((pg) => api.putPage(project.id, { ...pg, template: tplId, source: undefined })));
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'failed to save as template');
     }
   }
 
@@ -289,6 +382,11 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
                     {p.template && (
                       <span className="rounded-full bg-indigo-100/80 px-2 py-0.5 text-[11px] font-medium text-indigo-700">template</span>
                     )}
+                    {multilingual && p.locale && (
+                      <span className="rounded-full bg-emerald-100/80 px-2 py-0.5 text-[11px] font-semibold uppercase text-emerald-700">
+                        {p.locale}
+                      </span>
+                    )}
                   </button>
                   <div className="flex shrink-0 items-center gap-0.5">
                     <button aria-label={`Preview ${p.title}`} title="Preview in a new tab" className={ROW_ACTION} onClick={() => void previewInTab(p)}>
@@ -300,6 +398,31 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
                     <button aria-label={`Settings for ${p.title}`} title="Edit page settings" className={ROW_ACTION} onClick={() => void openSettings(p)}>
                       {GEAR_ICON}
                     </button>
+                    {/* i18n actions — only for default-locale pages in a multilingual project.
+                        "Add translation" fans out the missing locale variants; a translated
+                        variant page hides it (you manage translations from the primary). */}
+                    {multilingual && !p.locale && (
+                      <button
+                        aria-label={`Add translations for ${p.title}`}
+                        title="Create the missing language variants"
+                        className={ROW_ACTION}
+                        onClick={() => void addTranslations(p)}
+                      >
+                        {GLOBE_ICON}
+                      </button>
+                    )}
+                    {/* "Save as template" — promote a page's own code into a reusable
+                        template shared by its locale siblings. Hidden once templated. */}
+                    {p.source && !p.template && (
+                      <button
+                        aria-label={`Save ${p.title} as template`}
+                        title="Promote this page's code to a reusable template"
+                        className={ROW_ACTION}
+                        onClick={() => void saveAsTemplate(p)}
+                      >
+                        {TEMPLATE_ICON}
+                      </button>
+                    )}
                     <button aria-label={`Copy ${p.title}`} title="Copy page" className={ROW_ACTION} onClick={() => void copyPage(p)}>
                       {COPY_ICON}
                     </button>
@@ -359,6 +482,7 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
           project={project}
           page={editing}
           pages={pages}
+          locales={locales}
           onClose={() => void closeEditor()}
           initialMode={isClient ? 'content' : 'source'}
         />
@@ -371,6 +495,7 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
           initial={pageSettingsFromPage(settingsFor)}
           pages={pages}
           templates={templates}
+          locales={locales}
           saving={settingsSaving}
           onClose={() => setSettingsFor(null)}
           onSubmit={(values) => void saveSettings(values)}

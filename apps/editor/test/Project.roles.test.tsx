@@ -2,14 +2,18 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import type { Page } from '@sitewright/schema';
 
-const { listPages, putPage } = vi.hoisted(() => ({
+const { listPages, putPage, getSettings, listTemplates } = vi.hoisted(() => ({
   listPages: vi.fn(),
   putPage: vi.fn(),
+  getSettings: vi.fn(),
+  listTemplates: vi.fn(),
 }));
 vi.mock('../src/api', () => ({
   api: {
     listPages: (p: string) => listPages(p),
     putPage: (p: string, page: Page) => putPage(p, page),
+    getSettings: (p: string) => getSettings(p),
+    listTemplates: (p: string) => listTemplates(p),
   },
 }));
 // The mock surfaces the role-driven `initialMode` so the default-mode contract is testable
@@ -34,8 +38,13 @@ const pages: Page[] = [{ id: 'home', path: '/', title: 'Home', root: { id: 'r', 
 beforeEach(() => {
   listPages.mockReset();
   putPage.mockReset();
+  getSettings.mockReset();
+  listTemplates.mockReset();
   listPages.mockResolvedValue({ items: pages });
   putPage.mockResolvedValue({ item: pages[0] });
+  // Single-locale project by default → i18n actions stay hidden.
+  getSettings.mockResolvedValue({ item: { settings: { defaultLocale: 'en', locales: ['en'] } } });
+  listTemplates.mockResolvedValue({ items: [] });
 });
 
 describe('ProjectView role gating (tab is supplied by the App header)', () => {

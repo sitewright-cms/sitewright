@@ -245,6 +245,8 @@ export const api = {
     request<{ items: Template[] }>('GET', `/projects/${projectId}/content/template`),
   getTemplate: (projectId: string, id: string) =>
     request<{ item: Template }>('GET', `/projects/${projectId}/content/template/${encodeURIComponent(id)}`),
+  putTemplate: (projectId: string, template: Template) =>
+    request<{ item: Template }>('PUT', `/projects/${projectId}/content/template/${encodeURIComponent(template.id)}`, template),
 
   // --- patterns (reusable, fork-on-insert block subtrees) ---
   listPatterns: (projectId: string) =>

@@ -75,7 +75,9 @@ export async function seedInstance({ db, adminEmail, adminPassword, log = () => 
   await contentRepo.put(ctx, 'settings', 'settings', {
     identity: EXAMPLE_IDENTITY,
     website: EXAMPLE_WEBSITE,
-    settings: { defaultLocale: 'en', locales: ['en'] },
+    // Bilingual demo (English default + German): the showcase includes `/de` locale-variant
+    // pages linked by `translationGroup`, a `services-de` dataset, and a language switcher.
+    settings: { defaultLocale: 'en', locales: ['en', 'de'] },
   });
   // CMS: dataset schemas + their entries (services / work / team / testimonials), then the
   // contact form, then the pages (which bind the datasets via `{{#each data.<slug>}}` and host the

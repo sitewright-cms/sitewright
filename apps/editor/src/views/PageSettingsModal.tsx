@@ -18,6 +18,8 @@ export interface PageSettingsValues {
   parent: string;
   /** Template reference ('' = none; 'global:<key>' or a project template id). */
   template: string;
+  /** The page's language ('' = the project default locale). */
+  locale: string;
   seoDescription: string;
   seoOgImage: string;
 }
@@ -34,6 +36,7 @@ export function pageSettingsFromPage(page: Page): PageSettingsValues {
     navDropdown: page.nav?.dropdown ?? false,
     parent: page.parent ?? '',
     template: page.template ?? '',
+    locale: page.locale ?? '',
     seoDescription: page.seo?.description ?? '',
     seoOgImage: page.seo?.ogImage ?? '',
   };
@@ -60,13 +63,14 @@ export function applyPageSettings(page: Page, v: PageSettingsValues): Page {
     ...(v.seoOgImage ? { ogImage: v.seoOgImage } : {}),
   };
   return {
-    ...page,
+    ...page, // preserves translationGroup (set by "Add translation", not edited here)
     title: v.title,
     path: v.path,
     status: v.status,
     nav,
     parent: v.parent || undefined,
     template: v.template || undefined,
+    locale: v.locale || undefined,
     seo: Object.keys(seo).length > 0 ? seo : undefined,
   };
 }
@@ -95,6 +99,8 @@ interface PageSettingsModalProps {
   pages: readonly Page[];
   /** Project templates (built-in globals are added automatically). */
   templates: readonly Template[];
+  /** The project's configured locales (Website Settings) — feeds the Language selector. */
+  locales?: readonly string[];
   saving?: boolean;
   onClose: () => void;
   /** Receives the edited values; the CALLER persists (list) or applies to its draft (editor). */
@@ -107,13 +113,15 @@ interface PageSettingsModalProps {
  * title, path, status, meta description, OG image, parent page, show-children-
  * in-dropdown, template reference, and nav placement.
  */
-export function PageSettingsModal({ page, initial, pages, templates, saving = false, onClose, onSubmit }: PageSettingsModalProps) {
+export function PageSettingsModal({ page, initial, pages, templates, locales = [], saving = false, onClose, onSubmit }: PageSettingsModalProps) {
   const [v, setV] = useState<PageSettingsValues>(initial);
   const patch = (next: Partial<PageSettingsValues>) => setV((prev) => ({ ...prev, ...next }));
   const isHome = page.path === '/';
   const invalidParents = selfAndDescendants(page.id, pages);
   const parentChoices = pages.filter((p) => !invalidParents.has(p.id) && !p.collection);
   const childCount = pages.filter((p) => p.parent === page.id).length;
+  // Sibling locale variants (same translation group), for context.
+  const siblings = page.translationGroup ? pages.filter((p) => p.translationGroup === page.translationGroup && p.id !== page.id) : [];
 
   return (
     <Modal
@@ -219,6 +227,31 @@ export function PageSettingsModal({ page, initial, pages, templates, saving = fa
             </span>
           </label>
         </div>
+
+        {locales.length > 1 && (
+          <label className="flex flex-col text-xs font-semibold text-slate-700">
+            Language
+            <select
+              aria-label="Page language"
+              className={`mt-1.5 font-normal ${glassInput}`}
+              value={v.locale}
+              onChange={(e) => patch({ locale: e.target.value })}
+            >
+              {/* The default locale is stored as ABSENCE (value ""); the explicit options
+                  are the non-default locales only — no duplicate entry for the default. */}
+              <option value="">Default ({locales[0]})</option>
+              {locales.slice(1).map((loc) => (
+                <option key={loc} value={loc}>
+                  {loc}
+                </option>
+              ))}
+            </select>
+            <span className="mt-1 font-normal text-[11px] text-slate-400">
+              Sets &lt;html lang&gt;; data bindings resolve to the matching <code>&lt;dataset&gt;-{v.locale || locales[0]}</code> variant.
+              {siblings.length > 0 && <> Linked translations: {siblings.map((s) => s.locale ?? locales[0]).join(', ')}.</>}
+            </span>
+          </label>
+        )}
 
         <div className="rounded-2xl border border-white/60 bg-white/40 p-3">
           <p className="mb-2 text-xs font-semibold text-slate-700">Navigation</p>

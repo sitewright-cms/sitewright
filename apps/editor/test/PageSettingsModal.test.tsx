@@ -48,4 +48,32 @@ describe('pageSettingsFromPage ⇄ applyPageSettings', () => {
     expect(next.nav).toEqual({ slots: ['header'], order: 0 }); // no `dropdown: false` noise
     expect(next.seo).toBeUndefined(); // nothing set → no empty object persisted
   });
+
+  it('round-trips locale and preserves the translation group it does not edit', () => {
+    const de: Page = {
+      id: 'about-de',
+      path: '/de/about',
+      title: 'Über uns',
+      status: 'published',
+      root: { id: 'r', type: 'Section' },
+      locale: 'de',
+      translationGroup: 'about', // set by "Add translation", NOT by this modal
+    };
+    expect(applyPageSettings(de, pageSettingsFromPage(de))).toEqual(de);
+  });
+
+  it('clears the locale back to the project default (empty → undefined)', () => {
+    const de: Page = {
+      id: 'about-de',
+      path: '/de/about',
+      title: 'Über uns',
+      status: 'published',
+      root: { id: 'r', type: 'Section' },
+      locale: 'de',
+      translationGroup: 'about',
+    };
+    const next = applyPageSettings(de, { ...pageSettingsFromPage(de), locale: '' });
+    expect(next.locale).toBeUndefined(); // default locale stored as absence
+    expect(next.translationGroup).toBe('about'); // group untouched
+  });
 });

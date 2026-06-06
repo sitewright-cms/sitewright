@@ -80,6 +80,7 @@ export const EXAMPLE_WEBSITE = {
     <ul class="menu menu-horizontal gap-1 px-1 font-medium">{{#each nav.header}}{{#if children}}<li><details><summary>{{label}}</summary><ul class="z-30 rounded-box bg-base-100 p-2 shadow-lg">{{#each children}}<li><a href="{{url path}}">{{label}}</a></li>{{/each}}</ul></details></li>{{else}}<li><a href="{{url path}}">{{label}}</a></li>{{/if}}{{/each}}</ul>
   </div>
   <div class="navbar-end gap-2">
+    {{#if page.translations}}<div class="hidden items-center gap-0.5 rounded-lg border border-base-200 p-0.5 sm:flex" aria-label="Language">{{#each page.translations}}<a class="btn btn-ghost btn-xs px-2 font-semibold uppercase" href="{{url path}}" hreflang="{{locale}}">{{locale}}</a>{{/each}}</div>{{/if}}
     <a class="btn btn-primary btn-sm gap-1.5 shadow-lg shadow-primary/20 waves-effect waves-light" href="/contact">Start a project ${icon('arrow-right', 'h-4 w-4')}</a>
   </div>
 </div>`,
@@ -150,6 +151,19 @@ export const EXAMPLE_DATASETS: Dataset[] = [
     ],
   },
   {
+    // German variant of `services` (auto-resolved for locale "de" pages via the
+    // `<slug>-<locale>` convention — see docs/i18n-content-model.md).
+    id: 'services-de',
+    name: 'Leistungen (DE)',
+    slug: 'services-de',
+    fields: [
+      { name: 'icon', type: 'text', required: false, localized: false },
+      { name: 'title', type: 'text', required: true, localized: false },
+      { name: 'summary', type: 'text', required: false, localized: false },
+      { name: 'price', type: 'text', required: false, localized: false },
+    ],
+  },
+  {
     id: 'projects',
     name: 'Work',
     slug: 'projects',
@@ -200,6 +214,13 @@ export const EXAMPLE_ENTRIES: Entry[] = [
   pub('services', 'svc-brand', { icon: '✨', title: 'Brand Identity', summary: 'Logos, type systems, and visual languages that scale across every touchpoint.', price: 'from $6k' }),
   pub('services', 'svc-seo', { icon: '📈', title: 'SEO & Performance', summary: 'Technical SEO, Core Web Vitals, and analytics wired in from day one.', price: 'from $3k' }),
   pub('services', 'svc-care', { icon: '🛟', title: 'Care Plans', summary: 'Ongoing edits, monitoring, and improvements so your site keeps earning.', price: '$450/mo' }),
+  // --- services-de (German variant; auto-resolved on /de pages via `data.services`) ---
+  pub('services-de', 'svc-strategy-de', { icon: '🧭', title: 'Strategie & UX', summary: 'Recherche, Positionierung und Nutzerführung, die Besucher zu Kunden machen.', price: 'ab 4.000 €' }),
+  pub('services-de', 'svc-design-de', { icon: '🎨', title: 'Webdesign', summary: 'Unverwechselbare, markengerechte Oberflächen – pixelgenau für jedes Display.', price: 'ab 8.000 €' }),
+  pub('services-de', 'svc-build-de', { icon: '⚡', title: 'Entwicklung', summary: 'Handgebaute, blitzschnelle statische Websites mit Top-Lighthouse-Werten.', price: 'ab 10.000 €' }),
+  pub('services-de', 'svc-brand-de', { icon: '✨', title: 'Markenidentität', summary: 'Logos, Schriftsysteme und Bildsprachen, die über jeden Kanal skalieren.', price: 'ab 6.000 €' }),
+  pub('services-de', 'svc-seo-de', { icon: '📈', title: 'SEO & Performance', summary: 'Technisches SEO, Core Web Vitals und Analytics – von Tag eins verdrahtet.', price: 'ab 3.000 €' }),
+  pub('services-de', 'svc-care-de', { icon: '🛟', title: 'Wartungspakete', summary: 'Laufende Pflege, Monitoring und Verbesserungen, damit Ihre Website weiter liefert.', price: '450 €/Monat' }),
   // --- projects / work (picsum seeded URLs always resolve) ---
   pub('projects', 'proj-harbor', { title: 'Harbor & Co.', client: 'Harbor Coffee Roasters', category: 'E-commerce', summary: 'A flavour-led storefront that lifted online orders by 38%.', image: 'https://picsum.photos/seed/nw-harbor/900/650', year: '2025' }),
   pub('projects', 'proj-vela', { title: 'Vela Health', client: 'Vela', category: 'Healthcare', summary: 'A calm, accessible patient portal and marketing site.', image: 'https://picsum.photos/seed/nw-vela/900/650', year: '2025' }),
@@ -250,6 +271,8 @@ export const EXAMPLE_PAGES: Page[] = [
     title: 'Northwind Web Studio — Websites that mean business',
     root: placeholderRoot,
     nav: { title: 'Home', slots: ['header'], order: 1 },
+    // Linked to its German variant (`home-de`) for hreflang + the language switcher.
+    translationGroup: 'home',
     source: `<section class="nw-aurora text-white">
   <div class="mx-auto grid max-w-6xl items-center gap-10 px-6 py-24 lg:grid-cols-2 lg:py-32">
     <div class="nw-rise">
@@ -399,6 +422,8 @@ export const EXAMPLE_PAGES: Page[] = [
     title: 'Services',
     root: placeholderRoot,
     nav: { slots: ['header'], order: 3 },
+    // Linked to its German variant (`services-de`) for hreflang + the language switcher.
+    translationGroup: 'services',
     source: `<section class="mx-auto max-w-6xl px-6 pt-20 pb-8">
   <div class="nw-rise max-w-2xl">
     <span class="text-sm font-semibold uppercase tracking-wide text-primary">{{edit "srv_eyebrow" "What we do"}}</span>
@@ -525,5 +550,115 @@ export const EXAMPLE_PAGES: Page[] = [
         },
       ],
     },
+  },
+
+  // ================================================================ GERMAN (de) VARIANTS
+  // Locale-variant PAGES (not field overlays): each is its own page with `locale: 'de'`,
+  // its own `/de…` path, and a shared `translationGroup` linking it to the English
+  // original for hreflang + the language switcher. The German Services page binds
+  // `data.services`, which auto-resolves to the `services-de` dataset for a `de` page.
+  // ---------------------------------------------------------------- HOME (de)
+  {
+    id: 'home-de',
+    path: '/de',
+    title: 'Northwind Web Studio — Websites, die Geschäft machen',
+    root: placeholderRoot,
+    locale: 'de',
+    translationGroup: 'home',
+    nav: { title: 'Start', slots: ['header'], order: 1 },
+    source: `<section class="nw-aurora text-white">
+  <div class="mx-auto grid max-w-6xl items-center gap-10 px-6 py-24 lg:grid-cols-2 lg:py-32">
+    <div class="nw-rise">
+      <span class="badge badge-lg border-white/30 bg-white/10 text-white">{{edit "hero_eyebrow" "Boutique-Webstudio · San Francisco"}}</span>
+      <h1 class="mt-6 text-5xl font-extrabold leading-[1.05] tracking-tight sm:text-6xl">{{edit "hero_title" "Websites, die Ihnen mehr Geschäft bringen."}}</h1>
+      <p class="mt-6 max-w-md text-lg text-white/80">{{edit "hero_sub" "Wir gestalten und bauen schnelle, schöne Websites für ambitionierte Marken — Strategie, Design und Entwicklung aus einer Hand."}}</p>
+      <div class="mt-8 flex flex-wrap gap-3">
+        <a class="btn btn-lg gap-2 border-0 bg-white text-primary shadow-xl hover:bg-white/90 waves-effect" href="/contact">{{edit "hero_cta" "Projekt starten"}} ${icon('arrow-right', 'h-5 w-5')}</a>
+        <a class="btn btn-lg btn-ghost gap-2 border-white/40 text-white hover:bg-white/10 waves-effect waves-light" href="/work">Arbeiten ansehen ${icon('arrow-up-right', 'h-5 w-5')}</a>
+      </div>
+    </div>
+    <div class="nw-float hidden lg:block">
+      <div class="overflow-hidden rounded-3xl border border-white/20 shadow-2xl nw-zoom">
+        <img class="lazyload h-full w-full object-cover" data-src="https://picsum.photos/seed/nw-hero/900/700" alt="Eine aktuelle Northwind-Website" />
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="border-y border-base-200 bg-base-100">
+  <dl class="nw-stagger mx-auto grid max-w-5xl grid-cols-2 gap-6 px-6 py-12 text-center md:grid-cols-4">
+    <div><dt class="text-4xl font-extrabold text-primary">{{edit "stat1_n" "120+"}}</dt><dd class="mt-1 text-sm text-base-content/60">{{edit "stat1_l" "Websites ausgeliefert"}}</dd></div>
+    <div><dt class="text-4xl font-extrabold text-primary">{{edit "stat2_n" "9"}}</dt><dd class="mt-1 text-sm text-base-content/60">{{edit "stat2_l" "Jahre am Markt"}}</dd></div>
+    <div><dt class="text-4xl font-extrabold text-primary">{{edit "stat3_n" "100"}}</dt><dd class="mt-1 text-sm text-base-content/60">{{edit "stat3_l" "Ø Lighthouse-Score"}}</dd></div>
+    <div><dt class="text-4xl font-extrabold text-primary">{{edit "stat4_n" "38%"}}</dt><dd class="mt-1 text-sm text-base-content/60">{{edit "stat4_l" "Ø mehr Anfragen"}}</dd></div>
+  </dl>
+</section>
+
+<section class="mx-auto max-w-6xl px-6 py-20">
+  <div class="max-w-2xl">
+    <h2 class="text-3xl font-bold tracking-tight sm:text-4xl">{{edit "svc_title" "Alles aus einer Hand"}}</h2>
+    <p class="mt-3 text-base-content/60">{{edit "svc_sub" "Strategie, Design und Entwicklung — keine Übergaben, keine Agentur-Ketten."}}</p>
+  </div>
+  <div class="nw-stagger mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+    {{#each data.services}}
+    <div class="card nw-card border border-base-200 bg-base-100 shadow-sm hover:shadow-xl">
+      <div class="card-body">
+        <div class="text-3xl">{{values.icon}}</div>
+        <h3 class="card-title mt-2">{{values.title}}</h3>
+        <p class="text-base-content/70">{{values.summary}}</p>
+        <p class="mt-2 text-sm font-semibold text-primary">{{values.price}}</p>
+      </div>
+    </div>
+    {{/each}}
+  </div>
+</section>
+
+<section class="bg-neutral text-neutral-content">
+  <div class="mx-auto flex max-w-4xl flex-col items-center gap-6 px-6 py-20 text-center">
+    <h2 class="text-3xl font-bold tracking-tight sm:text-4xl">{{edit "cta_title" "Sie haben ein Projekt im Kopf?"}}</h2>
+    <p class="max-w-xl text-neutral-content/70">{{edit "cta_sub" "Sagen Sie uns, wo Sie in zwölf Monaten stehen wollen — wir zeigen Ihnen, wie die richtige Website Sie dorthin bringt."}}</p>
+    <a class="btn btn-primary btn-lg gap-2 shadow-xl shadow-primary/30" href="/contact">${icon('calendar', 'h-5 w-5')} {{edit "cta_btn" "Kennenlern-Termin buchen"}}</a>
+  </div>
+</section>`,
+  },
+
+  // ---------------------------------------------------------------- SERVICES (de)
+  {
+    id: 'services-de-page',
+    path: '/de/services',
+    title: 'Leistungen',
+    root: placeholderRoot,
+    locale: 'de',
+    translationGroup: 'services',
+    nav: { title: 'Leistungen', slots: ['header'], order: 2 },
+    source: `<section class="mx-auto max-w-6xl px-6 pt-20 pb-8">
+  <div class="nw-rise max-w-2xl">
+    <span class="text-sm font-semibold uppercase tracking-wide text-primary">{{edit "srv_eyebrow" "Was wir tun"}}</span>
+    <h1 class="mt-3 text-4xl font-extrabold tracking-tight sm:text-5xl">{{edit "srv_h1" "Leistungen, die Ihr Geschäft wachsen lassen"}}</h1>
+    <p class="mt-4 text-lg text-base-content/60">{{edit "srv_intro" "Buchen Sie uns durchgängig oder für eine einzelne Phase. So oder so arbeiten Sie direkt mit den Menschen, die die Arbeit machen."}}</p>
+  </div>
+</section>
+<section class="mx-auto max-w-6xl px-6 pb-12">
+  <div class="nw-stagger grid gap-px overflow-hidden rounded-3xl border border-base-200 bg-base-200 sm:grid-cols-2">
+    {{#each data.services}}
+    <div class="bg-base-100 p-8 transition hover:bg-base-200/40">
+      <div class="text-3xl">{{values.icon}}</div>
+      <h2 class="mt-3 text-xl font-bold">{{values.title}}</h2>
+      <p class="mt-2 text-base-content/70">{{values.summary}}</p>
+      <p class="mt-4 text-sm font-semibold text-primary">{{values.price}}</p>
+    </div>
+    {{/each}}
+  </div>
+</section>
+<section class="mx-auto max-w-5xl px-6 py-20">
+  <h2 class="text-3xl font-bold tracking-tight">{{edit "proc_title" "Ein einfacher, bewährter Ablauf"}}</h2>
+  <ol class="nw-stagger mt-10 grid gap-6 md:grid-cols-4">
+    <li class="rounded-2xl border border-base-200 bg-base-100 p-6"><div class="text-sm font-bold text-primary">01</div><h3 class="mt-1 font-semibold">{{edit "p1_t" "Entdecken"}}</h3><p class="mt-1 text-sm text-base-content/60">{{edit "p1_b" "Ziele, Zielgruppe und die Kennzahlen, die zählen."}}</p></li>
+    <li class="rounded-2xl border border-base-200 bg-base-100 p-6"><div class="text-sm font-bold text-primary">02</div><h3 class="mt-1 font-semibold">{{edit "p2_t" "Gestalten"}}</h3><p class="mt-1 text-sm text-base-content/60">{{edit "p2_b" "Oberflächen und ein Markensystem, gemeinsam abgestimmt."}}</p></li>
+    <li class="rounded-2xl border border-base-200 bg-base-100 p-6"><div class="text-sm font-bold text-primary">03</div><h3 class="mt-1 font-semibold">{{edit "p3_t" "Bauen"}}</h3><p class="mt-1 text-sm text-base-content/60">{{edit "p3_b" "Schnell, barrierearm, pflegbar, SEO-bereit."}}</p></li>
+    <li class="rounded-2xl border border-base-200 bg-base-100 p-6"><div class="text-sm font-bold text-primary">04</div><h3 class="mt-1 font-semibold">{{edit "p4_t" "Launch & Pflege"}}</h3><p class="mt-1 text-sm text-base-content/60">{{edit "p4_b" "Wir veröffentlichen, messen und verbessern weiter."}}</p></li>
+  </ol>
+  <div class="mt-12"><a class="btn btn-primary btn-lg" href="/contact">{{edit "srv_cta" "Projekt starten"}}</a></div>
+</section>`,
   },
 ];

@@ -114,8 +114,8 @@ describe('seeded demo — German multilingual showcase publishes correctly', () 
     // The home is grouped → the switcher renders both locale links.
     const en = (await client.get(`/sites/${slug}/index.html`)).body;
     expect(en).toContain('aria-label="Language"');
-    // The switcher link is a REAL root-relative URL (not the {{url}} `#` fallback).
-    expect(en).toContain('href="/de"'); // points at the German home
+    // The switcher link is a REAL link, rebased page-relative (from the root: "/de" → "de").
+    expect(en).toContain('href="de"'); // points at the German home, portably
     expect(en).toMatch(/hreflang="de"[^>]*>de</); // switcher link to the German variant
     // The About page is English-only (ungrouped) → no switcher.
     const about = (await client.get(`/sites/${slug}/about/index.html`)).body;

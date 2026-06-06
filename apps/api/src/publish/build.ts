@@ -22,6 +22,7 @@ import {
   TemplateError,
   type TemplateContext,
   resolveInternalUrl,
+  relativizeInternalLinks,
   usedComponentTypes,
   componentAssets,
   usesAnimations,
@@ -481,9 +482,14 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
             pageInlineStyles.length > 0 ? pageInlineStyles : undefined,
           scripts: pageScripts.length > 0 ? pageScripts : undefined,
         });
+        // Rebase internal `/…` links onto this page's depth so the artifact is portable
+        // (works at a domain root, in a sub-folder, and at the `/sites/<slug>/` preview) —
+        // covers code-first `{{url}}` + literal `href="/…"`; block-tree links are already
+        // relative from render time.
+        const portableHtml = relativizeInternalLinks(html, siteRoot);
         // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to tmp (checked above)
-        await writeFile(full, html, 'utf8');
-        bytes += Buffer.byteLength(html);
+        await writeFile(full, portableHtml, 'utf8');
+        bytes += Buffer.byteLength(portableHtml);
         if (bytes > maxOutputBytes) {
           throw new PublishError('published site exceeds the maximum output size');
         }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveInternalUrl } from '../src/url.js';
+import { resolveInternalUrl, relativizeInternalLinks } from '../src/url.js';
 
 describe('resolveInternalUrl', () => {
   it('rewrites root-relative internal links to be page-relative', () => {
@@ -44,5 +44,43 @@ describe('resolveInternalUrl', () => {
     // External + fragment links ignore the prefix.
     expect(resolveInternalUrl('https://x.io/a', '../', 'de/')).toBe('https://x.io/a');
     expect(resolveInternalUrl('#top', '../', 'de/')).toBe('#top');
+  });
+});
+
+describe('relativizeInternalLinks', () => {
+  it('rebases internal href/src onto the page root; leaves external/relative untouched', () => {
+    const html =
+      '<a href="/about">A</a><a href="/de/services">B</a><img src="/media/x.jpg">' +
+      '<a href="https://x.io/a">ext</a><a href="//cdn/x">proto</a><a href="#top">frag</a>' +
+      '<a href="../already">rel</a><a href="/">home</a>';
+    // From a depth-1 page (root '../').
+    const out = relativizeInternalLinks(html, '../');
+    expect(out).toContain('<a href="../about">A</a>');
+    expect(out).toContain('<a href="../de/services">B</a>');
+    expect(out).toContain('<img src="../media/x.jpg">');
+    expect(out).toContain('<a href="../">home</a>'); // "/" → the page root
+    // Untouched:
+    expect(out).toContain('<a href="https://x.io/a">ext</a>');
+    expect(out).toContain('<a href="//cdn/x">proto</a>'); // protocol-relative left alone
+    expect(out).toContain('<a href="#top">frag</a>');
+    expect(out).toContain('<a href="../already">rel</a>');
+  });
+
+  it('at the site root (depth 0) drops the leading slash; home "/" → "./"', () => {
+    const out = relativizeInternalLinks('<a href="/about">A</a><a href="/">H</a>', '');
+    expect(out).toContain('<a href="about">A</a>');
+    expect(out).toContain('<a href="./">H</a>');
+  });
+
+  it('collapses traversing internal links to "#"', () => {
+    expect(relativizeInternalLinks('<a href="/a/../b">x</a>', '../')).toContain('<a href="#">x</a>');
+  });
+
+  it('neutralizes a TAB/newline scheme-bypass (would parse as javascript: once the slash is dropped)', () => {
+    // `/<TAB>javascript:…` survives safeUrl (starts with `/`); at the site root the leading
+    // slash is dropped → the browser strips the TAB → `javascript:` scheme. Must become "#".
+    expect(relativizeInternalLinks('<a href="/\tjavascript:alert(1)">x</a>', '')).toContain('<a href="#">x</a>');
+    expect(resolveInternalUrl('/\njavascript:alert(1)', '')).toBe('#');
+    expect(resolveInternalUrl('/\rdata:text/html,x', '../')).toBe('#');
   });
 });

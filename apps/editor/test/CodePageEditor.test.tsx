@@ -132,8 +132,11 @@ describe('CodePageEditor', () => {
   });
 
   it('persists meta description, OG image, parent, and template via the settings modal', async () => {
-    const sibling: Page = { ...page, id: 'about', path: '/about', title: 'About' };
-    render(<CodePageEditor project={project} page={page} pages={[page, sibling]} onClose={() => {}} />);
+    // The subject is a NON-home page (home is the tree root and can't be re-parented);
+    // its parent can be set to any sibling.
+    const subject: Page = { ...page, id: 'blog', path: '/blog', title: 'Blog' };
+    const about: Page = { ...page, id: 'about', path: '/about', title: 'About' };
+    render(<CodePageEditor project={project} page={subject} pages={[page, about, subject]} onClose={() => {}} />);
     fireEvent.click(screen.getByRole('button', { name: 'Page settings' }));
     fireEvent.change(screen.getByLabelText('Meta description'), { target: { value: 'Crisp summary.' } });
     fireEvent.change(screen.getByLabelText('OG image URL'), { target: { value: 'https://x.test/og.png' } });

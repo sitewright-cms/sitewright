@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
 import type { Page } from '@sitewright/schema';
-import { applyPageSettings, pageSettingsFromPage } from '../src/views/PageSettingsModal';
+import { PageSettingsModal, applyPageSettings, pageSettingsFromPage } from '../src/views/PageSettingsModal';
 
 const base: Page = {
   id: 'about',
@@ -75,5 +76,33 @@ describe('pageSettingsFromPage ⇄ applyPageSettings', () => {
     const next = applyPageSettings(de, { ...pageSettingsFromPage(de), locale: '' });
     expect(next.locale).toBeUndefined(); // default locale stored as absence
     expect(next.translationGroup).toBe('about'); // group untouched
+  });
+});
+
+describe('PageSettingsModal parent selector — home is the tree root', () => {
+  const home: Page = { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' } };
+  const other: Page = { id: 'about', path: '/about', title: 'About', root: { id: 'r', type: 'Section' } };
+
+  it('offers no "None" choice for a non-home page and defaults + submits Home', () => {
+    const onSubmit = vi.fn();
+    render(
+      <PageSettingsModal page={other} initial={pageSettingsFromPage(other)} pages={[home, other]} templates={[]} onClose={() => {}} onSubmit={onSubmit} />,
+    );
+    const select = screen.getByLabelText('Parent page') as HTMLSelectElement;
+    expect(select.disabled).toBe(false);
+    expect(Array.from(select.options).some((o) => /none/i.test(o.text))).toBe(false); // no top-level escape
+    expect(select.value).toBe('home'); // defaults to the home root
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ parent: 'home' }));
+  });
+
+  it('keeps the home page itself parentless (selector disabled)', () => {
+    const onSubmit = vi.fn();
+    render(
+      <PageSettingsModal page={home} initial={pageSettingsFromPage(home)} pages={[home, other]} templates={[]} onClose={() => {}} onSubmit={onSubmit} />,
+    );
+    expect((screen.getByLabelText('Parent page') as HTMLSelectElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ parent: '' }));
   });
 });

@@ -102,6 +102,7 @@ describe('ProjectView role gating (tab is supplied by the App header)', () => {
     await waitFor(() => expect(putPage).toHaveBeenCalledTimes(1));
     const created = putPage.mock.calls[0]![1] as Page;
     expect(created.id).toBe('landing');
+    expect(created.parent).toBe('home'); // a new page defaults to the home root as parent
     expect(created.source).toContain('{{ company.name }}');
   });
 });

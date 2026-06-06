@@ -88,6 +88,21 @@ describe('seeded demo — German multilingual showcase publishes correctly', () 
     expect(de.body).toContain('Wartungspakete');
   });
 
+  it('nests the service sub-pages under Services (page tree → nav dropdown + own routes)', async () => {
+    // The sub-pages publish at their nested paths.
+    const wd = await client.get(`/sites/${slug}/services/web-design/index.html`);
+    expect(wd.statusCode).toBe(200);
+    expect(wd.body).toContain('Web Design');
+    expect((await client.get(`/sites/${slug}/services/seo/index.html`)).statusCode).toBe(200);
+    // Services has dropdown:true → the nav renders it as a <details> with its children
+    // (Web Design, SEO & Performance) nested — proving the parent/child tree is wired.
+    const home = (await client.get(`/sites/${slug}/index.html`)).body;
+    const nav = home.match(/menu menu-horizontal[\s\S]*?<\/ul>/)?.[0] ?? '';
+    expect(nav).toContain('<details>');
+    expect(nav).toContain('Web Design');
+    expect(nav).toContain('SEO &amp; Performance');
+  });
+
   it('emits hreflang alternates + x-default for the linked home/services groups', async () => {
     const de = (await client.get(`/sites/${slug}/de/index.html`)).body;
     expect(de).toContain('<link rel="alternate" hreflang="en" href="https://northwind.example/" />');

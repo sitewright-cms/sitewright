@@ -118,11 +118,24 @@ interface TreeRow {
   depth: number;
 }
 
-/** Home ('/') first, then by nav order, then title — a stable, total sibling order. */
-function bySiblingOrder(a: Page, b: Page): number {
+/** Hard cap on tree recursion (mirrors the schema's page-tree depth bound). */
+const MAX_TREE_DEPTH = 100;
+
+/**
+ * Sibling order: Home ('/') first; then default-locale pages before other locales
+ * (so a locale's pages stay grouped, not interleaved); within a locale by `nav.order`
+ * then title — matching the published nav order.
+ */
+function bySiblingOrder(a: Page, b: Page, defaultLocale: string): number {
   const aHome = a.path === '/';
   const bHome = b.path === '/';
   if (aHome !== bHome) return aHome ? -1 : 1;
+  const la = a.locale ?? defaultLocale;
+  const lb = b.locale ?? defaultLocale;
+  const ra = la === defaultLocale ? 0 : 1;
+  const rb = lb === defaultLocale ? 0 : 1;
+  if (ra !== rb) return ra - rb; // default-locale pages first
+  if (la !== lb) return la.localeCompare(lb, 'en'); // then grouped by locale
   return (a.nav?.order ?? 0) - (b.nav?.order ?? 0) || a.title.localeCompare(b.title, 'en');
 }
 
@@ -130,9 +143,9 @@ function bySiblingOrder(a: Page, b: Page): number {
  * Flattens the pages into page-tree order — each parent immediately followed by its
  * descendants — carrying a `depth` so the list can indent sub-pages. A page whose
  * `parent` isn't in the set is treated as a root; parent cycles are broken (each
- * page appears once) and any unreached page is appended flat.
+ * page appears once), recursion is depth-capped, and any unreached page is appended flat.
  */
-function orderPagesByTree(pages: readonly Page[]): TreeRow[] {
+function orderPagesByTree(pages: readonly Page[], defaultLocale: string): TreeRow[] {
   const present = new Set(pages.map((p) => p.id));
   const childrenOf = new Map<string | undefined, Page[]>();
   for (const p of pages) {
@@ -142,7 +155,8 @@ function orderPagesByTree(pages: readonly Page[]): TreeRow[] {
   const rows: TreeRow[] = [];
   const seen = new Set<string>();
   const visit = (parentId: string | undefined, depth: number): void => {
-    for (const page of (childrenOf.get(parentId) ?? []).slice().sort(bySiblingOrder)) {
+    if (depth > MAX_TREE_DEPTH) return; // guard a pathologically deep chain (stack safety)
+    for (const page of [...(childrenOf.get(parentId) ?? [])].sort((a, b) => bySiblingOrder(a, b, defaultLocale))) {
       if (seen.has(page.id)) continue; // cycle guard
       seen.add(page.id);
       rows.push({ page, depth });
@@ -173,7 +187,10 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
   const multilingual = locales.length > 1;
   // Pages in page-tree order (parents followed by their children) with a depth for
   // indenting sub-pages in the list.
-  const orderedPages = useMemo(() => orderPagesByTree(pages), [pages]);
+  const orderedPages = useMemo(() => orderPagesByTree(pages, defaultLocale), [pages, defaultLocale]);
+  // The HOME page (path '/') is the tree root: every other page parents to it by
+  // default, and "no parent" isn't offered for non-home pages.
+  const homeId = pages.find((p) => p.path === '/')?.id ?? 'home';
 
   async function load() {
     try {
@@ -213,6 +230,9 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
       id,
       path,
       title,
+      // A new page defaults to HOME as its parent (home is the tree root); only the
+      // home page itself is parentless.
+      parent: path === '/' ? undefined : homeId,
       // Every page is code-first: it carries a Handlebars `source` (the block tree is retired).
       // `root` stays a valid placeholder so the unified page model is satisfied.
       root: { id: 'root', type: 'Section', children: [] },
@@ -280,6 +300,9 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
       title: `${p.title} (Copy)`,
       // A copy is its own page, not a translation sibling.
       translationGroup: undefined,
+      // The copy is never the home page, so it must have a parent — keep the original's,
+      // falling back to HOME (the tree root).
+      parent: p.parent ?? homeId,
     };
     try {
       await api.putPage(project.id, copy);
@@ -312,7 +335,10 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
         const path = primary.path === '/' ? `/${loc}` : `/${loc}${primary.path}`;
         // Copy-as-translation: the variant inherits the primary's structure (template/
         // source) AND its {{edit}} content as the starting point for translation — the
-        // translator then edits the text in place. Only id/locale/group/path differ.
+        // translator then edits the text in place. Every locale variant parents to HOME
+        // (the tree root) — including the home page's own variant (e.g. `/de`), which is
+        // a distinct page from the root home; only id/locale/group/path/parent differ.
+        // (Deeper placement, if wanted, is a one-click re-parent in Page Settings.)
         ops.push(
           api.putPage(project.id, {
             ...primary,
@@ -320,6 +346,7 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
             locale: loc,
             translationGroup: group,
             path,
+            parent: homeId,
           }),
         );
       }

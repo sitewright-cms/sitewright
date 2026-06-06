@@ -729,6 +729,25 @@ describe('renderPage / renderDocument', () => {
     expect(doc).toContain('</html>');
   });
 
+  it('injects the heading/body typography as the LAST head style (wins over preflight resets)', () => {
+    const doc = renderDocument(page, {
+      brand: { ...brand, typography: { fontFamilies: {}, heading: { source: 'system', family: 'serif', weight: 700 } } },
+      inlineStyles: ['.flex{display:flex}'],
+      stylesheets: ['styles.css'],
+    });
+    const head = doc.slice(0, doc.indexOf('</head>'));
+    expect(head).toContain('h1,h2,h3,h4,h5,h6{font-family:var(--sw-font-heading)');
+    expect(head).toContain('--sw-font-heading-weight:700');
+    // The typography style comes AFTER the brand-css, the inline utilities, and the stylesheet
+    // link — so it overrides later element resets (e.g. Tailwind preflight on h1).
+    const typoAt = head.indexOf('--sw-font-heading-weight');
+    expect(typoAt).toBeGreaterThan(head.indexOf('--sw-color-primary'));
+    expect(typoAt).toBeGreaterThan(head.indexOf('.flex{display:flex}'));
+    expect(typoAt).toBeGreaterThan(head.indexOf('rel="stylesheet"'));
+    // A code-first body still receives the body/heading rules.
+    expect(renderDocument(page, { brand, bodyHtml: '<h1>Hi</h1>' })).toContain('body{font-family:var(--sw-font-body)');
+  });
+
   it('uses bodyHtml (a code-first source render) INSTEAD of the block tree, keeping the head shell', () => {
     const doc = renderDocument(page, { brand, bodyHtml: '<main><h1>From source</h1></main>' });
     expect(doc).toContain('<body><main><h1>From source</h1></main>');

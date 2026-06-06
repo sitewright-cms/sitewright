@@ -15,6 +15,7 @@ import { brandIcon } from './brand-icons.js';
 import { metaTags, schemaOrgJsonLd, type SeoMeta, type SchemaOrgInfo } from './head.js';
 import { brandToCss } from './brand-css.js';
 import { previewStyles } from './preview-css.js';
+import { typographyCss } from './typography-css.js';
 
 /** Context threaded through the tree while rendering. */
 export interface RenderContext {
@@ -668,6 +669,11 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     (stylesheets ?? [])
       .map((href) => `<link rel="stylesheet" href="${escapeAttr(href)}" />\n`)
       .join('') +
+    // Heading/body fonts LAST so they win over Tailwind preflight's element resets (utility
+    // classes still override per-element). Applies in code-first + block-tree, preview + publish.
+    // No `</style` neutralization needed (unlike inlineStyles): the output is built only from
+    // hardcoded stacks + schema-validated weights + a regex-checked (no `<`) family name.
+    `<style>${typographyCss(brand?.typography)}</style>\n` +
     `</head>\n` +
     // Skeleton slot order: TOP_NAV, MOBILE_NAV, [body], SIDEBAR_L, SIDEBAR_R, FOOTER, BOTTOM,
     // then SCRIPTS (the raw `website.scripts` slot — 3rd-party widgets), before the platform's

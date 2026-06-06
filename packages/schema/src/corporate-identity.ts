@@ -26,6 +26,32 @@ const AddressSchema = z.object({
 
 const GeoSchema = z.object({ latitude: z.string().max(40), longitude: z.string().max(40) });
 
+/** Font weights the slot selector offers (100–900, the CSS numeric scale). */
+export const FONT_WEIGHTS = [100, 200, 300, 400, 500, 600, 700, 800, 900] as const;
+
+/**
+ * A typography slot (heading or body). `source` distinguishes a generic SYSTEM family
+ * (`serif`/`sans-serif`/`monospace`, mapped to a curated stack at render time) from a
+ * self-hosted `google` webfont (which carries a `fontId` referencing the bundled woff2).
+ * `family` is a single family name/keyword (NOT a full CSS stack), constrained so it can
+ * never break out of a CSS declaration. `weight` is one of the numeric CSS weights.
+ */
+export const FontSlotSchema = z.object({
+  source: z.enum(['system', 'google']).default('system'),
+  family: z
+    .string()
+    .min(1)
+    .max(100)
+    .regex(/^[A-Za-z0-9][A-Za-z0-9 '-]*$/, 'invalid font family name'),
+  weight: z
+    .number()
+    .int()
+    .refine((w): w is (typeof FONT_WEIGHTS)[number] => (FONT_WEIGHTS as readonly number[]).includes(w), 'invalid font weight'),
+  /** For `source: 'google'`: the self-hosted font record id (PR2). */
+  fontId: z.string().max(128).regex(/^[A-Za-z0-9_-]+$/).optional(),
+});
+export type FontSlot = z.infer<typeof FontSlotSchema>;
+
 /**
  * A project's **Corporate Identity** — the single cohesive record that merges
  * contentBase's company info and brand tokens (the old split `brand.*` +
@@ -74,6 +100,10 @@ export const CorporateIdentitySchema = z.object({
     .object({
       fontFamilies: safeRecord(CssStringSchema, KeyNameSchema).default({}),
       scale: safeRecord(TokenValueSchema, KeyNameSchema).optional(),
+      /** Heading-font slot (defaults to a serif at weight 700 when absent). */
+      heading: FontSlotSchema.optional(),
+      /** Body-font slot (defaults to a sans-serif at weight 400 when absent). */
+      body: FontSlotSchema.optional(),
     })
     .optional(),
   spacing: safeRecord(TokenValueSchema, KeyNameSchema).optional(),

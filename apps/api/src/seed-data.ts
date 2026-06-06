@@ -29,7 +29,9 @@ const STARS = Array.from({ length: 5 }, () => icon('star', 'h-4 w-4 fill-current
  *
  * Constraints honored so it renders identically in the in-container `/sites/<slug>/` preview AND
  * on an exported static host:
- *   - Motion is CSS-only (the preview CSP blocks inline JS); images use https URLs (allowed).
+ *   - Motion is CSS-only (the preview CSP blocks inline JS); images are LOCAL media assets
+ *     (generated + filed into folders by seed-assets.ts) referenced via `/media/...` URLs that
+ *     publish rewrites to `_assets/...` — no remote image hosts.
  *   - Page bodies pass the no-JS template validator (values only in text / quoted attrs; the
  *     `{{url …}}` helper for interpolated src/href).
  */
@@ -206,7 +208,15 @@ const pub = (dataset: string, id: string, values: Record<string, unknown>): Entr
   values,
 });
 
-export const EXAMPLE_ENTRIES: Entry[] = [
+export function exampleEntries(assetMap: Record<string, string>): Entry[] {
+  // Missing keys → '' (e.g. unit tests that seed without generating images) so no field ever
+  // becomes the literal string "undefined".
+  const assets = new Proxy(assetMap, {
+    // Named string keys → the URL or '' (so a missing image is never the literal "undefined");
+    // symbol keys (coercion/inspection) pass straight through to the target.
+    get: (t, k) => (typeof k === 'symbol' ? Reflect.get(t, k) : k in t ? Reflect.get(t, k) : ''),
+  }) as Record<string, string>;
+  return [
   // --- services ---
   pub('services', 'svc-strategy', { icon: '🧭', title: 'Strategy & UX', summary: 'Research, positioning, and user journeys that turn visitors into customers.', price: 'from $4k' }),
   pub('services', 'svc-design', { icon: '🎨', title: 'Web Design', summary: 'Distinctive, on-brand interfaces designed pixel-perfect for every screen.', price: 'from $8k' }),
@@ -221,23 +231,24 @@ export const EXAMPLE_ENTRIES: Entry[] = [
   pub('services-de', 'svc-brand-de', { icon: '✨', title: 'Markenidentität', summary: 'Logos, Schriftsysteme und Bildsprachen, die über jeden Kanal skalieren.', price: 'ab 6.000 €' }),
   pub('services-de', 'svc-seo-de', { icon: '📈', title: 'SEO & Performance', summary: 'Technisches SEO, Core Web Vitals und Analytics – von Tag eins verdrahtet.', price: 'ab 3.000 €' }),
   pub('services-de', 'svc-care-de', { icon: '🛟', title: 'Wartungspakete', summary: 'Laufende Pflege, Monitoring und Verbesserungen, damit Ihre Website weiter liefert.', price: '450 €/Monat' }),
-  // --- projects / work (picsum seeded URLs always resolve) ---
-  pub('projects', 'proj-harbor', { title: 'Harbor & Co.', client: 'Harbor Coffee Roasters', category: 'E-commerce', summary: 'A flavour-led storefront that lifted online orders by 38%.', image: 'https://picsum.photos/seed/nw-harbor/900/650', year: '2025' }),
-  pub('projects', 'proj-vela', { title: 'Vela Health', client: 'Vela', category: 'Healthcare', summary: 'A calm, accessible patient portal and marketing site.', image: 'https://picsum.photos/seed/nw-vela/900/650', year: '2025' }),
-  pub('projects', 'proj-lumen', { title: 'Lumen Capital', client: 'Lumen', category: 'Finance', summary: 'A trustworthy, data-rich site for a boutique investment firm.', image: 'https://picsum.photos/seed/nw-lumen/900/650', year: '2024' }),
-  pub('projects', 'proj-terra', { title: 'Terra Studio', client: 'Terra Architects', category: 'Portfolio', summary: 'An immersive, image-first showcase for an award-winning practice.', image: 'https://picsum.photos/seed/nw-terra/900/650', year: '2024' }),
-  pub('projects', 'proj-flint', { title: 'Flint & Steel', client: 'Flint BBQ', category: 'Hospitality', summary: 'A mouth-watering site with online booking for a fast-growing chain.', image: 'https://picsum.photos/seed/nw-flint/900/650', year: '2024' }),
-  pub('projects', 'proj-aria', { title: 'Aria Festival', client: 'Aria', category: 'Events', summary: 'A bold, high-energy festival site built to survive launch-day traffic.', image: 'https://picsum.photos/seed/nw-aria/900/650', year: '2023' }),
+  // --- projects / work (images are LOCAL assets, seeded into the Projects/ media folder) ---
+  pub('projects', 'proj-harbor', { title: 'Harbor & Co.', client: 'Harbor Coffee Roasters', category: 'E-commerce', summary: 'A flavour-led storefront that lifted online orders by 38%.', image: assets['proj-harbor'], year: '2025' }),
+  pub('projects', 'proj-vela', { title: 'Vela Health', client: 'Vela', category: 'Healthcare', summary: 'A calm, accessible patient portal and marketing site.', image: assets['proj-vela'], year: '2025' }),
+  pub('projects', 'proj-lumen', { title: 'Lumen Capital', client: 'Lumen', category: 'Finance', summary: 'A trustworthy, data-rich site for a boutique investment firm.', image: assets['proj-lumen'], year: '2024' }),
+  pub('projects', 'proj-terra', { title: 'Terra Studio', client: 'Terra Architects', category: 'Portfolio', summary: 'An immersive, image-first showcase for an award-winning practice.', image: assets['proj-terra'], year: '2024' }),
+  pub('projects', 'proj-flint', { title: 'Flint & Steel', client: 'Flint BBQ', category: 'Hospitality', summary: 'A mouth-watering site with online booking for a fast-growing chain.', image: assets['proj-flint'], year: '2024' }),
+  pub('projects', 'proj-aria', { title: 'Aria Festival', client: 'Aria', category: 'Events', summary: 'A bold, high-energy festival site built to survive launch-day traffic.', image: assets['proj-aria'], year: '2023' }),
   // --- team ---
-  pub('team', 'team-mara', { name: 'Mara Whitfield', role: 'Founder & Design Director', photo: 'https://picsum.photos/seed/nw-mara/400/400', bio: 'Twelve years shaping brands for studios and startups.' }),
-  pub('team', 'team-dev', { name: 'Devon Park', role: 'Lead Engineer', photo: 'https://picsum.photos/seed/nw-devon/400/400', bio: 'Performance obsessive; ships sites that score 100.' }),
-  pub('team', 'team-ines', { name: 'Inés Romero', role: 'UX Strategist', photo: 'https://picsum.photos/seed/nw-ines/400/400', bio: 'Turns fuzzy goals into journeys that convert.' }),
-  pub('team', 'team-sol', { name: 'Sol Nakamura', role: 'Brand Designer', photo: 'https://picsum.photos/seed/nw-sol/400/400', bio: 'Builds type systems and logos with staying power.' }),
+  pub('team', 'team-mara', { name: 'Mara Whitfield', role: 'Founder & Design Director', photo: assets['team-mara'], bio: 'Twelve years shaping brands for studios and startups.' }),
+  pub('team', 'team-dev', { name: 'Devon Park', role: 'Lead Engineer', photo: assets['team-devon'], bio: 'Performance obsessive; ships sites that score 100.' }),
+  pub('team', 'team-ines', { name: 'Inés Romero', role: 'UX Strategist', photo: assets['team-ines'], bio: 'Turns fuzzy goals into journeys that convert.' }),
+  pub('team', 'team-sol', { name: 'Sol Nakamura', role: 'Brand Designer', photo: assets['team-sol'], bio: 'Builds type systems and logos with staying power.' }),
   // --- testimonials ---
   pub('testimonials', 'tst-1', { quote: 'Northwind rebuilt our site in six weeks and our enquiries doubled. They are the rare studio that gets both design and engineering right.', author: 'Priya Anand', role: 'CEO, Harbor Coffee' }),
   pub('testimonials', 'tst-2', { quote: 'The fastest, most thoughtful team we have worked with. Our Lighthouse scores went from the 40s to a perfect 100.', author: 'Marcus Lee', role: 'CMO, Lumen Capital' }),
   pub('testimonials', 'tst-3', { quote: 'They treated our brand like their own. The new site finally looks like the company we are becoming.', author: 'Elena Fischer', role: 'Founder, Terra Architects' }),
-];
+  ];
+}
 
 // ---------------------------------------------------------------- contact form
 export const EXAMPLE_FORMS: Form[] = [
@@ -263,7 +274,14 @@ export const EXAMPLE_FORMS: Form[] = [
 // ---------------------------------------------------------------- pages
 const placeholderRoot = { id: 'root', type: 'Section' as const };
 
-export const EXAMPLE_PAGES: Page[] = [
+export function examplePages(assetMap: Record<string, string>): Page[] {
+  // Missing keys → '' so an unreferenced image never renders as `src="undefined"`.
+  const assets = new Proxy(assetMap, {
+    // Named string keys → the URL or '' (so a missing image is never the literal "undefined");
+    // symbol keys (coercion/inspection) pass straight through to the target.
+    get: (t, k) => (typeof k === 'symbol' ? Reflect.get(t, k) : k in t ? Reflect.get(t, k) : ''),
+  }) as Record<string, string>;
+  return [
   // ---------------------------------------------------------------- HOME
   {
     id: 'home',
@@ -287,7 +305,7 @@ export const EXAMPLE_PAGES: Page[] = [
     <div class="nw-float hidden lg:block">
       <div class="overflow-hidden rounded-3xl border border-white/20 shadow-2xl nw-zoom">
         <!-- Lazy-loaded (vanilla-lazyload vocabulary): the runtime swaps data-src → src on scroll-in, with a blur-up fade. -->
-        <img class="lazyload h-full w-full object-cover" data-src="https://picsum.photos/seed/nw-hero/900/700" alt="A recent Northwind website" />
+        <img class="lazyload h-full w-full object-cover" data-src="${assets.hero}" alt="A recent Northwind website" />
       </div>
     </div>
   </div>
@@ -518,7 +536,7 @@ export const EXAMPLE_PAGES: Page[] = [
     <p class="mt-4 text-base-content/70">{{edit "ab_p2" "We believe a great website is the hardest-working member of your team: fast, clear, and quietly persuasive. That belief shapes every decision we make."}}</p>
   </div>
   <div class="nw-zoom overflow-hidden rounded-3xl border border-base-200 shadow-xl">
-    <img src="https://picsum.photos/seed/nw-studio/800/700" alt="The Northwind studio" class="h-full w-full object-cover" loading="lazy" />
+    <img src="${assets.studio}" alt="The Northwind studio" class="h-full w-full object-cover" loading="lazy" />
   </div>
 </section>
 
@@ -629,7 +647,7 @@ export const EXAMPLE_PAGES: Page[] = [
     </div>
     <div class="nw-float hidden lg:block">
       <div class="overflow-hidden rounded-3xl border border-white/20 shadow-2xl nw-zoom">
-        <img class="lazyload h-full w-full object-cover" data-src="https://picsum.photos/seed/nw-hero/900/700" alt="Eine aktuelle Northwind-Website" />
+        <img class="lazyload h-full w-full object-cover" data-src="${assets.hero}" alt="Eine aktuelle Northwind-Website" />
       </div>
     </div>
   </div>
@@ -713,4 +731,5 @@ export const EXAMPLE_PAGES: Page[] = [
   <div class="mt-12"><a class="btn btn-primary btn-lg" href="/contact">{{edit "srv_cta" "Projekt starten"}}</a></div>
 </section>`,
   },
-];
+  ];
+}

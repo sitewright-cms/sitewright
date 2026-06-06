@@ -4,12 +4,14 @@ import { registerAccount } from './repo/accounts.js';
 import { ProjectRepository } from './repo/projects.js';
 import { ContentRepository } from './repo/content.js';
 import { ProjectEventBus } from './events/bus.js';
+import { MediaStorage } from './media/storage.js';
+import { seedExampleAssets } from './seed-assets.js';
 import {
   EXAMPLE_IDENTITY,
   EXAMPLE_WEBSITE,
-  EXAMPLE_PAGES,
+  examplePages,
   EXAMPLE_DATASETS,
-  EXAMPLE_ENTRIES,
+  exampleEntries,
   EXAMPLE_FORMS,
 } from './seed-data.js';
 
@@ -29,6 +31,10 @@ export interface SeedOptions {
   adminEmail: string;
   /** SW_ADMIN_PASSWORD; absent, empty, or whitespace-only → the FIXED default `123456` (warned about). */
   adminPassword?: string;
+  /** Media storage root (MEDIA_ROOT). When set, the demo's LOCAL images are generated + filed
+   *  into the project's media library; absent (e.g. in unit tests) → the demo seeds without
+   *  images (its image refs resolve to empty, never a remote host). */
+  mediaRoot?: string;
   /** Sink for the one-time bootstrap notices (defaults to stdout via the caller). */
   log?: (message: string) => void;
 }
@@ -43,7 +49,7 @@ export interface SeedOptions {
  * Idempotent by design: it returns immediately once ANY user exists, so re-deploys never
  * re-seed and a demo project the admin deleted stays deleted.
  */
-export async function seedInstance({ db, adminEmail, adminPassword, log = () => {} }: SeedOptions): Promise<void> {
+export async function seedInstance({ db, adminEmail, adminPassword, mediaRoot, log = () => {} }: SeedOptions): Promise<void> {
   const existing = await db.select({ id: users.id }).from(users).limit(1);
   if (existing.length > 0) return; // already bootstrapped — never re-seed
 
@@ -72,6 +78,25 @@ export async function seedInstance({ db, adminEmail, adminPassword, log = () => 
   const project = await projects.create({ name: 'Example Project', slug: 'example' }, userId);
   const ctx = { userId, projectId: project.id, role: 'owner' as const };
 
+  // Generate the demo's LOCAL imagery into the media library (Projects/, Team/, Brand/ folders)
+  // and reference it from the entries/pages below. BEST-EFFORT: image generation must never abort
+  // the content seed (the idempotency guard above would otherwise lock in a half-seeded demo) —
+  // on failure the demo simply seeds without images (missing keys default to '', never
+  // `undefined`). No MEDIA_ROOT (e.g. unit tests) → skip entirely.
+  let assets: Record<string, string> = {};
+  if (mediaRoot) {
+    try {
+      assets = await seedExampleAssets(ctx, contentRepo, new MediaStorage(mediaRoot));
+    } catch (err) {
+      log(
+        `[sitewright/seed] WARNING: demo image generation failed (${err instanceof Error ? err.message : String(err)}); ` +
+          `seeding the Example Project without images.`,
+      );
+    }
+  }
+  const entries = exampleEntries(assets);
+  const pages = examplePages(assets);
+
   await contentRepo.put(ctx, 'settings', 'settings', {
     identity: EXAMPLE_IDENTITY,
     website: EXAMPLE_WEBSITE,
@@ -86,18 +111,19 @@ export async function seedInstance({ db, adminEmail, adminPassword, log = () => 
   for (const dataset of EXAMPLE_DATASETS) {
     await contentRepo.put(ctx, 'dataset', dataset.id, dataset);
   }
-  for (const entry of EXAMPLE_ENTRIES) {
+  for (const entry of entries) {
     await contentRepo.put(ctx, 'entry', entry.id, entry);
   }
   for (const form of EXAMPLE_FORMS) {
     await contentRepo.put(ctx, 'form', form.id, form);
   }
-  for (const page of EXAMPLE_PAGES) {
+  for (const page of pages) {
     await contentRepo.put(ctx, 'page', page.id, page);
   }
+  const imageCount = Object.keys(assets).length;
   log(
-    `[sitewright/seed] seeded "Example Project" (${EXAMPLE_PAGES.length} pages, ` +
-      `${EXAMPLE_DATASETS.length} datasets, ${EXAMPLE_ENTRIES.length} entries, ${EXAMPLE_FORMS.length} form) ` +
-      `— delete it from the editor once you've explored it.`,
+    `[sitewright/seed] seeded "Example Project" (${pages.length} pages, ` +
+      `${EXAMPLE_DATASETS.length} datasets, ${entries.length} entries, ${EXAMPLE_FORMS.length} form` +
+      `${imageCount > 0 ? `, ${imageCount} local images` : ''}) — delete it from the editor once you've explored it.`,
   );
 }

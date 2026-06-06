@@ -195,6 +195,8 @@ try {
     db,
     adminEmail: seedAdminEmail,
     adminPassword: process.env.SW_ADMIN_PASSWORD,
+    // Generate the demo's local imagery into the same media root the app serves from.
+    mediaRoot,
     // Bootstrap notices are operational diagnostics. Emit on stderr so log pipelines
     // treat them as diagnostics (not indexed app output).
     log: (m) => process.stderr.write(`${m}\n`),

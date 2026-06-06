@@ -6,11 +6,15 @@ import { makeHarness, type Harness, type TestClient } from './harness.js';
 import {
   EXAMPLE_IDENTITY,
   EXAMPLE_WEBSITE,
-  EXAMPLE_PAGES,
+  examplePages,
   EXAMPLE_DATASETS,
-  EXAMPLE_ENTRIES,
+  exampleEntries,
   EXAMPLE_FORMS,
 } from '../src/seed-data.js';
+
+// Image URLs are irrelevant to the multilingual/publish assertions; seed with an empty asset map.
+const EXAMPLE_PAGES = examplePages({});
+const EXAMPLE_ENTRIES = exampleEntries({});
 
 /**
  * End-to-end guard for the SEEDED German showcase: pushes the real demo content

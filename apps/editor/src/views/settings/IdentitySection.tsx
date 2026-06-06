@@ -2,6 +2,7 @@ import type { Patch, SettingsForm } from './model';
 import { Field, GlassCard, SubLabel, TextArea } from './ui';
 import { TokenEditor } from './TokenEditor';
 import { StringListEditor } from './StringListEditor';
+import { FontSlotEditor } from './FontSlotEditor';
 
 /**
  * Corporate Identity: the unified company + brand record. Grouped into frosted
@@ -28,7 +29,7 @@ export function IdentitySection({ form, patch }: { form: SettingsForm; patch: Pa
         </div>
       </GlassCard>
 
-      <GlassCard title="Brand tokens" icon="✦">
+      <GlassCard title="Brand colors" icon="✦">
         <SubLabel>Colors</SubLabel>
         <TokenEditor
           rows={form.colors}
@@ -38,14 +39,17 @@ export function IdentitySection({ form, patch }: { form: SettingsForm; patch: Pa
           swatch
           addLabel="+ Add color"
         />
-        <SubLabel>Fonts</SubLabel>
-        <TokenEditor
-          rows={form.fonts}
-          onChange={(fonts) => patch({ fonts })}
-          keyPlaceholder="body"
-          valuePlaceholder="Inter, sans-serif"
-          addLabel="+ Add font"
-        />
+      </GlassCard>
+
+      <GlassCard title="Typography" icon="◐">
+        <p className="mb-3 text-xs text-slate-500">
+          The heading and body fonts applied across every page — in the editor preview and the
+          published site.
+        </p>
+        <div className="flex flex-col gap-3">
+          <FontSlotEditor label="Heading font" slot={form.heading} onChange={(heading) => patch({ heading })} />
+          <FontSlotEditor label="Body font" slot={form.body} onChange={(body) => patch({ body })} />
+        </div>
       </GlassCard>
 
       <GlassCard title="Logos & images" icon="▣">

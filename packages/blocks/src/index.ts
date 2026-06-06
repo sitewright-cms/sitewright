@@ -13,4 +13,5 @@ export * from './template.js';
 export * from './brand-css.js';
 export * from './descriptors.js';
 export * from './preview-css.js';
+export * from './typography-css.js';
 export * from './render.js';

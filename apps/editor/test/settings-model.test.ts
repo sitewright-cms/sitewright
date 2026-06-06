@@ -73,6 +73,8 @@ describe('settings model', () => {
     const back = toBundle(toForm(withExtra), withExtra);
     expect(back.identity.spacing).toEqual({ md: '1rem' });
     expect(back.identity.radii).toEqual({ lg: '12px' });
+    // Default heading/body slots are NOT persisted (the renderer applies them) — typography stays
+    // as it was.
     expect(back.identity.typography).toEqual({ fontFamilies: { body: 'Inter' }, scale: { base: '16px' } });
     expect(back.identity.logoLight).toBe('/light.svg');
     expect(back.identity.logoDark).toBe('/dark.svg');
@@ -89,6 +91,20 @@ describe('settings model', () => {
     const back = toBundle(form);
     expect(back.identity.colors).toEqual({ primary: '#000' });
     expect(back.identity.typography).toEqual({ fontFamilies: { body: 'Inter' } });
+  });
+
+  it('surfaces default heading/body slots but only PERSISTS them when customized', () => {
+    // Absent slots → platform defaults surface in the form…
+    const f = toForm(empty());
+    expect(f.heading).toEqual({ source: 'system', family: 'serif', weight: 700 });
+    expect(f.body).toEqual({ source: 'system', family: 'sans-serif', weight: 400 });
+    // …and unchanged defaults are NOT written back (project stays minimal, renderer applies them).
+    expect(toBundle(f).identity.typography).toBeUndefined();
+    // Customizing a slot persists it.
+    f.heading = { source: 'system', family: 'monospace', weight: 800 };
+    const back = toBundle(f);
+    expect(back.identity.typography?.heading).toEqual({ source: 'system', family: 'monospace', weight: 800 });
+    expect(back.identity.typography?.body).toBeUndefined(); // body still default → not written
   });
 
   it('only emits geo when both latitude and longitude are present', () => {

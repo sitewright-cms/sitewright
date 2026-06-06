@@ -21,6 +21,17 @@ export interface KeyedRedirect {
   status: number;
 }
 
+/** A typography slot (heading/body) as edited in the form — mirrors schema `FontSlot`. */
+export interface FontSlotForm {
+  source: 'system' | 'google';
+  family: string;
+  weight: number;
+  fontId?: string;
+}
+/** Platform defaults applied when a project has no typography configured yet. */
+export const DEFAULT_HEADING: FontSlotForm = { source: 'system', family: 'serif', weight: 700 };
+export const DEFAULT_BODY: FontSlotForm = { source: 'system', family: 'sans-serif', weight: 400 };
+
 // A monotonic counter — unique-per-session ids for React keys. (Not crypto.randomUUID:
 // that's only defined in a secure context, so it's absent over plain-HTTP previews.)
 let rowSeq = 0;
@@ -54,6 +65,9 @@ export interface SettingsForm {
   // identity — brand tokens
   colors: KeyedPair[];
   fonts: KeyedPair[];
+  // identity — typography slots (heading + body font + weight)
+  heading: FontSlotForm;
+  body: FontSlotForm;
   // website
   siteUrl: string;
   jsonDataUrl: string;
@@ -93,6 +107,22 @@ const pairsToRecord = (pairs: KeyedPair[]): Record<string, string> => {
   return out;
 };
 
+/** Normalizes a font slot for persistence — non-empty family, `fontId` only for google slots. */
+const cleanSlot = (s: FontSlotForm): FontSlotForm => ({
+  source: s.source,
+  family: s.family.trim() || 'sans-serif',
+  weight: s.weight,
+  ...(s.source === 'google' && s.fontId ? { fontId: s.fontId } : {}),
+});
+
+/**
+ * Whether a FORM slot (`a`) equals a DEFAULT constant (`b`) — so unchanged defaults aren't
+ * persisted. Directional: `a` is the (possibly whitespace-padded) form value, `b` the trimmed,
+ * fontId-less default constant. Always call as `slotEqual(form.slot, DEFAULT_x)`.
+ */
+const slotEqual = (a: FontSlotForm, b: FontSlotForm): boolean =>
+  a.source === b.source && a.family.trim() === b.family && a.weight === b.weight && !a.fontId;
+
 /** Hydrate the editable form from a settings bundle (empties for absent optionals). */
 export function toForm(bundle: SettingsBundle): SettingsForm {
   const id = bundle.identity;
@@ -120,6 +150,8 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
     social: strsToKeyed(id.social),
     colors: recordToPairs(id.colors),
     fonts: recordToPairs(id.typography?.fontFamilies),
+    heading: { ...DEFAULT_HEADING, ...id.typography?.heading },
+    body: { ...DEFAULT_BODY, ...id.typography?.body },
     siteUrl: w?.siteUrl ?? '',
     jsonDataUrl: w?.jsonDataUrl ?? '',
     criticalCss: w?.criticalCss ?? '',
@@ -176,11 +208,20 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
   const social = form.social.map((s) => s.value.trim()).filter(Boolean);
   if (social.length) identity = put(identity, 'social', social);
 
-  // typography: surfaced fontFamilies + preserved (unsurfaced) scale.
+  // typography: surfaced fontFamilies + preserved scale + heading/body slots. Only NON-default
+  // slots are written (the renderer applies the serif/700 + sans/400 defaults when absent), so a
+  // project that never touched fonts stays minimal.
   const fonts = pairsToRecord(form.fonts);
   const scale = baseId?.typography?.scale;
-  if (Object.keys(fonts).length || scale) {
-    identity = put(identity, 'typography', { fontFamilies: fonts, ...(scale ? { scale } : {}) });
+  const heading = slotEqual(form.heading, DEFAULT_HEADING) ? undefined : cleanSlot(form.heading);
+  const body = slotEqual(form.body, DEFAULT_BODY) ? undefined : cleanSlot(form.body);
+  if (Object.keys(fonts).length || scale || heading || body) {
+    identity = put(identity, 'typography', {
+      fontFamilies: fonts,
+      ...(scale ? { scale } : {}),
+      ...(heading ? { heading } : {}),
+      ...(body ? { body } : {}),
+    });
   }
   // Carry through token/asset fields the form doesn't expose.
   identity = put(identity, 'logoLight', baseId?.logoLight);

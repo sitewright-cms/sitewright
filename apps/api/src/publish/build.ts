@@ -124,7 +124,15 @@ export interface BuildSiteOptions {
   snippets?: Record<string, string>;
 }
 
-/** Copies every media asset's files into `<base>/media/<assetId>/` (path-safe). */
+/** The published directory that holds each project's bundled asset binaries. */
+export const ASSET_DIR = '_assets';
+
+/**
+ * Copies every media asset's files into `<base>/_assets/<assetId>/` (path-safe). Image
+ * variants/fallback land directly under the asset dir; a RAW (non-image) blob goes under a
+ * `file/` segment — mirroring the editor URL (`/media/<projectId>/<assetId>/file/<name>`), so
+ * the publish-time media rewrite maps both kinds to the right bundled path.
+ */
 async function copyMedia(
   base: string,
   media: readonly MediaAsset[],
@@ -134,19 +142,21 @@ async function copyMedia(
     // Image assets carry optimized variants + a fallback; a raw file is a single stored blob.
     const files =
       asset.kind === 'image' ? [asset.fallback, ...asset.variants.map((v) => v.path)] : [asset.storedName];
-    const dir = join(base, 'media', asset.id);
+    const dir = join(base, ASSET_DIR, asset.id);
+    // The raw blob is nested under `file/` so its bundled path matches its served URL.
+    const writeDir = asset.kind === 'image' ? dir : join(dir, 'file');
     // asset.id is IdSchema-validated; file names are FileNameSchema-validated.
     /* v8 ignore next -- defensive: validated id can't escape */
     if (!resolve(dir).startsWith(base + sep)) continue;
-    // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to base/media
-    await mkdir(dir, { recursive: true });
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to base/_assets
+    await mkdir(writeDir, { recursive: true });
     for (const file of files) {
-      const target = resolve(dir, file);
+      const target = resolve(writeDir, file);
       /* v8 ignore next -- defensive: validated file name can't escape */
-      if (!target.startsWith(resolve(dir) + sep)) continue;
+      if (!target.startsWith(resolve(writeDir) + sep)) continue;
       try {
         const data = await readMedia(asset.id, file);
-        // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to base/media/<id>
+        // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to base/_assets/<id>
         await writeFile(target, data);
       } catch (err) {
         // A missing variant is tolerable; any other I/O error (disk full,
@@ -465,7 +475,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           forms,
           formEndpoint,
           hcaptchaSiteKey: opts.hcaptchaSiteKey,
-          mediaUrl: (asset, file) => `${siteRoot}media/${asset.id}/${file}`,
+          mediaUrl: (asset, file) => `${siteRoot}${ASSET_DIR}/${asset.id}/${file}`,
           seo: {
             // `||` not `??`: an empty SEO title must fall back to the page title.
             title: page.seo?.title || page.title,
@@ -490,11 +500,24 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
             pageInlineStyles.length > 0 ? pageInlineStyles : undefined,
           scripts: pageScripts.length > 0 ? pageScripts : undefined,
         });
-        // Rebase internal `/…` links onto this page's depth so the artifact is portable
-        // (works at a domain root, in a sub-folder, and at the `/sites/<slug>/` preview) —
-        // covers code-first `{{url}}` + literal `href="/…"`; block-tree links are already
-        // relative from render time.
-        const portableHtml = relativizeInternalLinks(html, siteRoot);
+        // Rewrite editor media URLs (`/media/<projectId>/<assetId>/…`) to the page-relative
+        // bundled path (`<siteRoot>_assets/<assetId>/…`) — across ANY attribute (src, data-src,
+        // srcset, href, meta), so raw `<img>`/dataset-driven images resolve in both the
+        // `/sites/<slug>/` preview and a deployed copy. The project-id segment is dropped
+        // because the bundle namespaces by asset id only. Done BEFORE relativize so the result
+        // is already relative (and not re-touched).
+        //
+        // Deliberately a flat string replace (not attribute-anchored) so it also catches
+        // `data-bg`/`data-src`/`srcset` that `relativizeInternalLinks` misses. The prefix is a
+        // UUID-scoped literal, so a stray match in body text/an operator `<script>` string would
+        // only be a reference to THIS project's own media — i.e. one we want rebased anyway.
+        const mediaPrefix = `/media/${bundle.project.id}/`;
+        const mediaRebased = html.split(mediaPrefix).join(`${siteRoot}${ASSET_DIR}/`);
+        // Rebase the remaining internal `/…` links onto this page's depth so the artifact is
+        // portable (works at a domain root, in a sub-folder, and at the `/sites/<slug>/`
+        // preview) — covers code-first `{{url}}` + literal `href="/…"`; block-tree links are
+        // already relative from render time.
+        const portableHtml = relativizeInternalLinks(mediaRebased, siteRoot);
         // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to tmp (checked above)
         await writeFile(full, portableHtml, 'utf8');
         bytes += Buffer.byteLength(portableHtml);

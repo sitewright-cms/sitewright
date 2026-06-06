@@ -2000,11 +2000,41 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     app.get<{ Params: { slug: string; '*': string } }>(
       '/sites/:slug/*',
       async (req, reply) => {
+        const { slug } = req.params;
         const path = req.params['*'] ?? '';
-        const asset = await store.readAsset(req.params.slug, path);
+        // Bundled binary assets under `_assets/` (images inline; everything else download-only).
+        let binary = null;
+        try {
+          binary = await store.readBinary(slug, path);
+        } catch {
+          /* invalid slug → fall through to 404 below */
+        }
+        if (binary !== null) {
+          reply
+            .header('cache-control', 'public, max-age=31536000, immutable')
+            .header('x-content-type-options', 'nosniff');
+          if (binary.attachment) reply.header('content-disposition', 'attachment');
+          return reply.type(binary.contentType).send(binary.body);
+        }
+        const asset = await store.readAsset(slug, path);
         if (asset !== null) return reply.type(asset.contentType).send(asset.body);
-        const html = await store.readHtml(req.params.slug, path);
+        const html = await store.readHtml(slug, path);
         if (html === null) return reply.code(404).type('text/html').send('<h1>404 — not published</h1>');
+        // Redirect an EXTENSIONLESS page request that lacks its trailing slash to the canonical
+        // directory URL, so the page's RELATIVE asset/link paths (`../styles.css`, `_assets/…`)
+        // resolve against the right base instead of one level too high. Explicit file URLs
+        // (`…/index.html`) are served as-is.
+        const lastSegment = path.slice(path.lastIndexOf('/') + 1);
+        if (path !== '' && !path.endsWith('/') && !lastSegment.includes('.')) {
+          const q = req.url.indexOf('?');
+          const query = q === -1 ? '' : req.url.slice(q);
+          // Defence-in-depth: strip CR/LF/NUL before they reach the Location header. The
+          // wildcard param is percent-DECODED by the router, so `%0d%0a` arrives as raw CRLF;
+          // it's already unreachable here (a CRLF path maps to no published file → 404 above,
+          // never this branch), but the redirect target must never carry header-breaking bytes.
+          const safePath = path.replace(/[\r\n\0]/g, '');
+          return reply.redirect(`/sites/${slug}/${safePath}/${query}`, 301);
+        }
         return reply.type('text/html').send(html);
       },
     );

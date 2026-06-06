@@ -497,14 +497,14 @@ describe('buildSite', () => {
 
     // Binaries copied into the artifact.
     expect(reads.sort()).toEqual(['a1/a1-400.avif', 'a1/a1-400.jpg', 'a1/a1-400.webp']);
-    expect((await readFile(join(outDir, 'media', 'a1', 'a1-400.jpg'), 'utf8'))).toContain('bytes:a1-400.jpg');
+    expect((await readFile(join(outDir, '_assets', 'a1', 'a1-400.jpg'), 'utf8'))).toContain('bytes:a1-400.jpg');
 
-    // Root page references media/… ; the /about page (one level deep) uses ../media/…
+    // Root page references _assets/… ; the /about page (one level deep) uses ../_assets/…
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
     expect(home).toContain('<picture');
-    expect(home).toContain('srcset="media/a1/a1-400.avif 400w"');
+    expect(home).toContain('srcset="_assets/a1/a1-400.avif 400w"');
     const about = await readFile(join(outDir, 'about', 'index.html'), 'utf8');
-    expect(about).toContain('../media/a1/a1-400.avif 400w');
+    expect(about).toContain('../_assets/a1/a1-400.avif 400w');
   });
 
   it('tolerates a missing media variant without failing the build', async () => {
@@ -535,8 +535,8 @@ describe('buildSite', () => {
     });
     expect(manifest.routes).toBe(1);
     // The present file was copied; the missing one was skipped.
-    await expect(readFile(join(outDir, 'media', 'a2', 'a2-100.jpg'), 'utf8')).resolves.toBe('img');
-    await expect(readFile(join(outDir, 'media', 'a2', 'a2-100.webp'), 'utf8')).rejects.toBeTruthy();
+    await expect(readFile(join(outDir, '_assets', 'a2', 'a2-100.jpg'), 'utf8')).resolves.toBe('img');
+    await expect(readFile(join(outDir, '_assets', 'a2', 'a2-100.webp'), 'utf8')).rejects.toBeTruthy();
   });
 
   it('fails the build on a non-missing media read error (no partial artifact)', async () => {

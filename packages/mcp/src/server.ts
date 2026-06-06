@@ -64,10 +64,12 @@ SET THE BRAND with put_content("settings","settings",{ identity:{ name, colors:{
 settings:{ defaultLocale:"en", locales:["en"] } }).
 PAGE SETTINGS live on the page: title, path, status ("draft"|"published"),
 seo { description, ogImage }, parent (a parent page's id — makes this a sub-page), nav
-{ slots:["header"|"footer"|"mobile"], order, title, dropdown }. With dropdown:true the
-page's CHILD pages (parent = its id) nest under its nav item — a nav slot template renders
-them via {{#if children}}…{{#each children}} (DaisyUI <details> submenu; children need no
-own nav slots). Every new project already has a "home" page at path "/".
+{ slots:["header"|"footer"|"mobile"], order, title, dropdown }. The HOME page (path "/")
+is the page-tree ROOT: every OTHER page should set "parent" to a page's id, defaulting to
+the home page's id "home" (only home itself is parentless). With dropdown:true a page's
+CHILD pages (parent = its id) nest under its nav item — a nav slot template renders them
+via {{#if children}}…{{#each children}} (DaisyUI <details> submenu; children need no own
+nav slots). Every new project already has a "home" page at path "/".
 TEMPLATES: set page.template to "global:landing", "global:text", or a project template id
 (kind "template": { id, name, source }) — the page then renders the TEMPLATE's source and
 contributes ONLY its {{edit}} \`content\`; leave page.source unset.

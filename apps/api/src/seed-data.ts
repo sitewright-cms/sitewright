@@ -390,6 +390,7 @@ export const EXAMPLE_PAGES: Page[] = [
     path: '/work',
     title: 'Our Work',
     root: placeholderRoot,
+    parent: 'home', // home is the tree root — every page nests under it
     nav: { title: 'Work', slots: ['header'], order: 2 },
     source: `<section class="mx-auto max-w-6xl px-6 pt-20 pb-6">
   <div class="nw-rise max-w-2xl">
@@ -421,7 +422,10 @@ export const EXAMPLE_PAGES: Page[] = [
     path: '/services',
     title: 'Services',
     root: placeholderRoot,
-    nav: { slots: ['header'], order: 3 },
+    parent: 'home', // home is the tree root
+    // `dropdown: true` folds this page's CHILD pages (parent = 'services') into a
+    // nav dropdown — and the editor's pages list nests them under it (the page tree).
+    nav: { slots: ['header'], order: 3, dropdown: true },
     // Linked to its German variant (`services-de`) for hreflang + the language switcher.
     translationGroup: 'services',
     source: `<section class="mx-auto max-w-6xl px-6 pt-20 pb-8">
@@ -455,12 +459,56 @@ export const EXAMPLE_PAGES: Page[] = [
 </section>`,
   },
 
+  // -------------------------------------------------- SERVICE DETAIL (sub-pages of /services)
+  // Child pages (parent: 'services') — they nest under Services in the nav dropdown AND are
+  // indented under it in the editor's pages list. With the parent's dropdown ON they need no
+  // own nav slot.
+  {
+    id: 'service-web-design',
+    path: '/services/web-design',
+    title: 'Web Design',
+    root: placeholderRoot,
+    // A sub-page: it nests under Services (the dropdown label falls back to this title)
+    // and is indented under it in the editor's pages list. No own nav slot needed.
+    parent: 'services',
+    source: `<section class="mx-auto max-w-4xl px-6 py-20">
+  <a class="inline-flex items-center gap-1.5 text-sm font-medium text-primary nw-underline" href="/services">${icon('arrow-left', 'h-4 w-4')} {{edit "back" "All services"}}</a>
+  <span class="mt-6 block text-sm font-semibold uppercase tracking-wide text-primary">{{edit "wd_eyebrow" "Service"}}</span>
+  <h1 class="mt-2 text-4xl font-extrabold tracking-tight sm:text-5xl">{{edit "wd_h1" "Web Design"}}</h1>
+  <p class="mt-4 text-lg text-base-content/60">{{edit "wd_intro" "Distinctive, on-brand interfaces designed pixel-perfect for every screen — from first wireframe to a polished, accessible UI."}}</p>
+  <div class="nw-stagger mt-10 grid gap-4 sm:grid-cols-2">
+    <div class="rounded-2xl border border-base-200 bg-base-100 p-6"><h3 class="font-semibold">{{edit "wd_1t" "Design systems"}}</h3><p class="mt-1 text-sm text-base-content/60">{{edit "wd_1b" "Reusable components and tokens that scale with your brand."}}</p></div>
+    <div class="rounded-2xl border border-base-200 bg-base-100 p-6"><h3 class="font-semibold">{{edit "wd_2t" "Responsive by default"}}</h3><p class="mt-1 text-sm text-base-content/60">{{edit "wd_2b" "Every layout is crafted for mobile, tablet, and desktop."}}</p></div>
+  </div>
+  <div class="mt-10"><a class="btn btn-primary btn-lg" href="/contact">{{edit "wd_cta" "Start a project"}}</a></div>
+</section>`,
+  },
+  {
+    id: 'service-seo',
+    path: '/services/seo',
+    title: 'SEO & Performance',
+    root: placeholderRoot,
+    parent: 'services',
+    source: `<section class="mx-auto max-w-4xl px-6 py-20">
+  <a class="inline-flex items-center gap-1.5 text-sm font-medium text-primary nw-underline" href="/services">${icon('arrow-left', 'h-4 w-4')} {{edit "back" "All services"}}</a>
+  <span class="mt-6 block text-sm font-semibold uppercase tracking-wide text-primary">{{edit "seo_eyebrow" "Service"}}</span>
+  <h1 class="mt-2 text-4xl font-extrabold tracking-tight sm:text-5xl">{{edit "seo_h1" "SEO & Performance"}}</h1>
+  <p class="mt-4 text-lg text-base-content/60">{{edit "seo_intro" "Technical SEO, Core Web Vitals, and analytics wired in from day one — so the fast, beautiful site you launch is the one Google rewards."}}</p>
+  <div class="nw-stagger mt-10 grid gap-4 sm:grid-cols-2">
+    <div class="rounded-2xl border border-base-200 bg-base-100 p-6"><h3 class="font-semibold">{{edit "seo_1t" "Core Web Vitals"}}</h3><p class="mt-1 text-sm text-base-content/60">{{edit "seo_1b" "We tune LCP, CLS, and INP until the scores are green."}}</p></div>
+    <div class="rounded-2xl border border-base-200 bg-base-100 p-6"><h3 class="font-semibold">{{edit "seo_2t" "Technical SEO"}}</h3><p class="mt-1 text-sm text-base-content/60">{{edit "seo_2b" "Structured data, sitemaps, and clean, crawlable markup."}}</p></div>
+  </div>
+  <div class="mt-10"><a class="btn btn-primary btn-lg" href="/contact">{{edit "seo_cta" "Start a project"}}</a></div>
+</section>`,
+  },
+
   // ---------------------------------------------------------------- ABOUT
   {
     id: 'about',
     path: '/about',
     title: 'About',
     root: placeholderRoot,
+    parent: 'home', // home is the tree root
     nav: { slots: ['header'], order: 4 },
     source: `<section class="mx-auto grid max-w-6xl items-center gap-12 px-6 py-20 lg:grid-cols-2">
   <div class="nw-rise">
@@ -505,6 +553,7 @@ export const EXAMPLE_PAGES: Page[] = [
     id: 'contact',
     path: '/contact',
     title: 'Contact',
+    parent: 'home', // home is the tree root
     nav: { slots: ['header'], order: 5 },
     root: {
       id: 'contact-root',
@@ -565,6 +614,7 @@ export const EXAMPLE_PAGES: Page[] = [
     root: placeholderRoot,
     locale: 'de',
     translationGroup: 'home',
+    parent: 'home', // even a locale variant nests under the (default-locale) home root
     nav: { title: 'Start', slots: ['header'], order: 1 },
     source: `<section class="nw-aurora text-white">
   <div class="mx-auto grid max-w-6xl items-center gap-10 px-6 py-24 lg:grid-cols-2 lg:py-32">
@@ -630,6 +680,7 @@ export const EXAMPLE_PAGES: Page[] = [
     root: placeholderRoot,
     locale: 'de',
     translationGroup: 'services',
+    parent: 'home', // locale variants parent to the home root (per the page-tree rule)
     nav: { title: 'Leistungen', slots: ['header'], order: 2 },
     source: `<section class="mx-auto max-w-6xl px-6 pt-20 pb-8">
   <div class="nw-rise max-w-2xl">

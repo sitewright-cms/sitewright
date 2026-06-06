@@ -117,8 +117,14 @@ export function PageSettingsModal({ page, initial, pages, templates, locales = [
   const [v, setV] = useState<PageSettingsValues>(initial);
   const patch = (next: Partial<PageSettingsValues>) => setV((prev) => ({ ...prev, ...next }));
   const isHome = page.path === '/';
+  // HOME (path '/') is the tree root: every other page must have a parent, defaulting
+  // to home — so non-home pages are never offered a "None (top-level)" choice. The
+  // literal fallback matches the create/copy defaults so the select always has a value.
+  const homeId = pages.find((p) => p.path === '/')?.id ?? 'home';
   const invalidParents = selfAndDescendants(page.id, pages);
   const parentChoices = pages.filter((p) => !invalidParents.has(p.id) && !p.collection);
+  // The effective parent the form will submit for a non-home page (defaults to home).
+  const effectiveParent = isHome ? '' : v.parent || homeId || '';
   const childCount = pages.filter((p) => p.parent === page.id).length;
   // Sibling locale variants (same translation group), for context.
   const siblings = page.translationGroup ? pages.filter((p) => p.translationGroup === page.translationGroup && p.id !== page.id) : [];
@@ -128,7 +134,9 @@ export function PageSettingsModal({ page, initial, pages, templates, locales = [
       title={`Page settings — ${initial.title}`}
       size="lg"
       onClose={onClose}
-      onSave={() => onSubmit(v)}
+      // Coerce the parent: home stays parentless; a non-home page submits its chosen
+      // parent or falls back to home (there is no "None" for non-home pages).
+      onSave={() => onSubmit({ ...v, parent: effectiveParent })}
       saving={saving}
       saveLabel="Save settings"
     >
@@ -187,20 +195,29 @@ export function PageSettingsModal({ page, initial, pages, templates, locales = [
             <select
               aria-label="Parent page"
               className={`mt-1.5 font-normal ${glassInput}`}
-              value={v.parent}
-              // The HOME page is always top-level — it can never be nested under another page.
+              value={effectiveParent}
+              // The HOME page is always the root — it can never be nested under another page.
               disabled={isHome}
-              title={isHome ? 'The home page is always top-level' : undefined}
+              title={isHome ? 'The home page is the tree root' : undefined}
               onChange={(e) => patch({ parent: e.target.value })}
             >
-              <option value="">None (top-level)</option>
-              {parentChoices.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.title} ({p.path})
-                </option>
-              ))}
+              {/* Home is the root (parentless, disabled). Every other page must have a
+                  parent — no "None" option — defaulting to Home. */}
+              {isHome ? (
+                <option value="">None (home is the root)</option>
+              ) : (
+                parentChoices.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.title} ({p.path})
+                  </option>
+                ))
+              )}
             </select>
-            {isHome && <span className="mt-1 font-normal text-[11px] text-slate-400">The home page is always top-level.</span>}
+            {isHome ? (
+              <span className="mt-1 font-normal text-[11px] text-slate-400">The home page is the tree root.</span>
+            ) : (
+              <span className="mt-1 font-normal text-[11px] text-slate-400">Sub-pages nest under their parent; defaults to Home.</span>
+            )}
           </label>
           <label className="flex flex-col text-xs font-semibold text-slate-700">
             Template

@@ -67,6 +67,7 @@ describe('ProjectView i18n actions', () => {
     // The German variant is a sibling at /de with its own locale + group.
     const de = written.find((p) => p.id === 'home-de')!;
     expect(de).toMatchObject({ id: 'home-de', locale: 'de', translationGroup: 'home', path: '/de' });
+    expect(de.parent).toBe('home'); // a locale variant parents to the home root
     expect(de.source).toBe(home.source); // template-reuse: starts from the primary's code
   });
 

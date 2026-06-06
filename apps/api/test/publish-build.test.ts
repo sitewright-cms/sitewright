@@ -135,19 +135,21 @@ describe('buildSite', () => {
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
     expect(home).toContain('Home body'); // the page's own source
     expect(home).toContain('<nav class="navbar bg-base-100">'); // the shared topNav slot
-    // The auto-nav lists BOTH pages (built from each page's nav settings).
-    expect(home).toContain('<a href="/">Home</a>');
-    expect(home).toContain('<a href="/about">About</a>');
+    // The auto-nav lists BOTH pages (built from each page's nav settings); internal links
+    // are rebased page-relative (portable): from the home page, "/" → "./", "/about" → "about".
+    expect(home).toContain('<a href="./">Home</a>');
+    expect(home).toContain('<a href="about">About</a>');
     expect(home).toContain('<footer class="footer">© Acme</footer>'); // shared footer + brand
     expect(home).toContain('<link rel="stylesheet" href="styles.css" />');
     // The slot's DaisyUI/Tailwind classes are compiled into the shared sheet.
     const sheet = await readFile(join(outDir, 'styles.css'), 'utf8');
     expect(sheet).toMatch(/\.btn/);
 
-    // A second page shares the exact same nav + footer (authored once).
+    // A second page shares the exact same nav + footer (authored once); from /about/
+    // (depth 1) the internal links rebase onto '../'.
     const about = await readFile(join(outDir, 'about', 'index.html'), 'utf8');
     expect(about).toContain('About body');
-    expect(about).toContain('<a href="/about">About</a>');
+    expect(about).toContain('<a href="../about">About</a>');
     expect(about).toContain('<footer class="footer">© Acme</footer>');
   });
 
@@ -336,14 +338,15 @@ describe('buildSite', () => {
         ],
       }),
     });
-    // The en home's nav lists the EN pages.
+    // The en home's nav lists the EN pages; links are rebased page-relative (portable).
     const en = await readFile(join(outDir, 'index.html'), 'utf8');
-    expect(en).toContain('href="/about"');
-    expect(en).not.toContain('href="/de/about"');
-    // The de home's nav lists the DE pages only.
+    expect(en).toContain('href="about"'); // "/about" → "about" from the root
+    expect(en).not.toContain('href="/about"'); // not absolute
+    expect(en).not.toContain('de/about'); // EN nav lists only EN pages
+    // The de home (/de/index.html, depth 1) lists the DE pages only, rebased from '../'.
     const de = await readFile(join(outDir, 'de', 'index.html'), 'utf8');
-    expect(de).toContain('href="/de/about"');
-    expect(de).not.toContain('href="/about"');
+    expect(de).toContain('href="../de/about"'); // "/de/about" → "../de/about"
+    expect(de).not.toContain('href="/de/about"'); // not absolute
   });
 
   it('fails the publish with a template-error message when a skeleton slot is malformed', async () => {

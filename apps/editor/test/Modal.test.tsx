@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { Modal } from '../src/views/ui/Modal';
 
 describe('Modal', () => {
@@ -13,25 +13,41 @@ describe('Modal', () => {
     expect(screen.getByText('Body content')).toBeInTheDocument();
   });
 
-  it('closes on the Close button, Escape, and a backdrop click', () => {
+  // onClose fires after the exit animation (AnimatePresence.onExitComplete), so each path is
+  // checked on its own instance with waitFor.
+  it('closes (after the exit animation) on the Close button', async () => {
     const onClose = vi.fn();
     render(
       <Modal title="X" onClose={onClose}>
         <p>hi</p>
       </Modal>,
     );
-
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
-    expect(onClose).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
 
+  it('closes on Escape', async () => {
+    const onClose = vi.fn();
+    render(
+      <Modal title="X" onClose={onClose}>
+        <p>hi</p>
+      </Modal>,
+    );
     fireEvent.keyDown(document, { key: 'Escape' });
-    expect(onClose).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+  });
 
+  it('closes on a backdrop click', async () => {
+    const onClose = vi.fn();
+    render(
+      <Modal title="X" onClose={onClose}>
+        <p>hi</p>
+      </Modal>,
+    );
     // Backdrop = the presentation wrapper; a mousedown directly on it (not the panel) closes.
-    const dialog = screen.getByRole('dialog');
-    const backdrop = dialog.parentElement as HTMLElement;
+    const backdrop = screen.getByRole('dialog').parentElement as HTMLElement;
     fireEvent.mouseDown(backdrop);
-    expect(onClose).toHaveBeenCalledTimes(3);
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 
   it('does NOT close when the mousedown originates inside the panel', () => {
@@ -43,6 +59,32 @@ describe('Modal', () => {
     );
     fireEvent.mouseDown(screen.getByText('hi'));
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('consults onBeforeClose: a false guard vetoes the close', async () => {
+    const onClose = vi.fn();
+    const onBeforeClose = vi.fn().mockResolvedValue(false);
+    render(
+      <Modal title="X" onClose={onClose} onBeforeClose={onBeforeClose}>
+        <p>hi</p>
+      </Modal>,
+    );
+    fireEvent.mouseDown(screen.getByRole('dialog').parentElement as HTMLElement);
+    await waitFor(() => expect(onBeforeClose).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 40));
+    expect(onClose).not.toHaveBeenCalled(); // vetoed → stays open
+  });
+
+  it('consults onBeforeClose: a true guard allows the close', async () => {
+    const onClose = vi.fn();
+    const onBeforeClose = vi.fn().mockResolvedValue(true);
+    render(
+      <Modal title="X" onClose={onClose} onBeforeClose={onBeforeClose}>
+        <p>hi</p>
+      </Modal>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 
   it('only renders the Save button when onSave is given, and fires it on click + ⌘S', () => {

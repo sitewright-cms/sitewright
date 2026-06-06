@@ -16,17 +16,18 @@ export const glassInput =
 
 export const fieldLabel = 'mb-1 block text-xs font-medium text-slate-600';
 
-/** The primary action: indigo→sky gradient, soft glow. Pairs with `cursor-pointer` (global). */
+/** The primary action: indigo→sky gradient, soft glow. Pairs with `cursor-pointer` (global).
+ *  `waves-effect waves-light` adds the (white) ripple — see lib/ripple.ts. */
 export const primaryButton =
-  'inline-flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-br from-indigo-600 to-sky-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-indigo-600/30 transition hover:shadow-indigo-600/40 disabled:opacity-60';
+  'waves-effect waves-light inline-flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-br from-indigo-600 to-sky-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-indigo-600/30 transition hover:shadow-indigo-600/40 disabled:opacity-60';
 
 /** A quiet secondary action: frosted, lifts to solid white on hover. */
 export const ghostButton =
-  'inline-flex items-center justify-center gap-1.5 rounded-xl border border-white/60 bg-white/50 px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-white';
+  'waves-effect inline-flex items-center justify-center gap-1.5 rounded-xl border border-white/60 bg-white/50 px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-white';
 
 /** A subtle destructive action. */
 export const dangerButton =
-  'inline-flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-rose-600 transition hover:bg-rose-50';
+  'waves-effect inline-flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-rose-600 transition hover:bg-rose-50';
 
 /** Gradient pill used for section icons / accents. */
 export const accentChip =

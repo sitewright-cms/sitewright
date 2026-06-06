@@ -123,7 +123,7 @@ const TEMPLATE_ICON = rowIcon(
 );
 
 const ROW_ACTION =
-  'inline-flex cursor-pointer items-center justify-center rounded-lg p-1.5 text-slate-400 transition hover:bg-white hover:text-slate-900';
+  'waves-effect inline-flex cursor-pointer items-center justify-center rounded-lg p-1.5 text-slate-400 transition hover:bg-white hover:text-slate-900';
 
 export function ProjectView({ project, tab }: ProjectViewProps) {
   const { confirm, dialog } = useDialogs();
@@ -528,7 +528,7 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
                       type="button"
                       aria-label={`Reorder ${p.title}`}
                       title="Drag to reorder — or focus and use ↑/↓"
-                      className="inline-flex shrink-0 cursor-grab items-center justify-center rounded-lg p-1.5 text-slate-300 transition hover:bg-white hover:text-slate-600 active:cursor-grabbing"
+                      className="waves-effect inline-flex shrink-0 cursor-grab items-center justify-center rounded-lg p-1.5 text-slate-300 transition hover:bg-white hover:text-slate-600 active:cursor-grabbing"
                       onKeyDown={(e) => {
                         if (e.key === 'ArrowUp') {
                           e.preventDefault();
@@ -543,7 +543,7 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
                     </button>
                   )}
                   <button
-                    className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 px-1 py-1 text-left"
+                    className="waves-effect flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-lg px-1 py-1 text-left"
                     onClick={() => setEditing(p)}
                   >
                     <span aria-hidden className={isHome ? 'text-indigo-500' : 'text-slate-400'} title={isHome ? 'Home page' : 'Page'}>

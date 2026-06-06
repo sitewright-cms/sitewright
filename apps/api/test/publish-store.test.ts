@@ -23,17 +23,33 @@ describe('PublishStore HTML serving', () => {
     expect(await store.readHtml('site', '/')).toContain('home');
   });
 
-  it('refuses to serve a copied asset under media/ as inline HTML (stored-XSS guard)', async () => {
+  it('refuses to serve a copied asset under _assets/ as inline HTML (stored-XSS guard)', async () => {
     const dir = store.dirFor('site');
-    await mkdir(join(dir, 'media', 'asset1'), { recursive: true });
-    // A raw user file named report.html lands in the exported artifact's media dir…
-    await writeFile(join(dir, 'media', 'asset1', 'report.html'), '<script>steal()</script>');
+    await mkdir(join(dir, '_assets', 'asset1', 'file'), { recursive: true });
+    // A raw user file named report.html lands in the exported artifact's _assets dir…
+    await writeFile(join(dir, '_assets', 'asset1', 'file', 'report.html'), '<script>steal()</script>');
     // …but the /sites serving path must NOT render it as HTML on this origin.
-    expect(() => store.resolveHtml('site', '/media/asset1/report.html')).toThrow(/media path/);
-    expect(await store.readHtml('site', '/media/asset1/report.html')).toBeNull();
+    expect(() => store.resolveHtml('site', '/_assets/asset1/file/report.html')).toThrow(/asset path/);
+    expect(await store.readHtml('site', '/_assets/asset1/file/report.html')).toBeNull();
+    // It IS readable as a binary, but download-only (octet-stream + attachment) — never inline.
+    const bin = await store.readBinary('site', '/_assets/asset1/file/report.html');
+    expect(bin?.attachment).toBe(true);
+    expect(bin?.contentType).toBe('application/octet-stream');
+  });
+
+  it('serves a bundled image binary inline with its type; rejects non-_assets binary paths', async () => {
+    const dir = store.dirFor('site');
+    await mkdir(join(dir, '_assets', 'img1'), { recursive: true });
+    await writeFile(join(dir, '_assets', 'img1', 'p-40.webp'), Buffer.from('webpbytes'));
+    const img = await store.readBinary('site', '/_assets/img1/p-40.webp');
+    expect(img?.contentType).toBe('image/webp');
+    expect(img?.attachment).toBe(false);
+    // A path outside _assets/ is not binary-servable here (text assets go via readAsset).
+    expect(await store.readBinary('site', '/styles.css')).toBeNull();
   });
 
   it('still rejects traversal segments', () => {
     expect(() => store.resolveHtml('site', '/../../etc/passwd.html')).toThrow();
+    expect(store.readBinary('site', '/_assets/../../etc/passwd.png')).resolves.toBeNull();
   });
 });

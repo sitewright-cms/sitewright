@@ -255,21 +255,38 @@ describe('publish portability', () => {
     expect((await project.putContent('page', 'about', imagePage('about', 'about', 'About'))).statusCode).toBe(200);
     await publish(2);
 
-    // The binaries were copied into the artifact under media/<assetId>/ (the
+    // The binaries were copied into the artifact under _assets/<assetId>/ (the
     // published-site dir is keyed by slug).
-    const mediaDir = await readdir(join(publishRoot, slug, 'media', asset.id));
+    const mediaDir = await readdir(join(publishRoot, slug, '_assets', asset.id));
     expect(mediaDir.length).toBeGreaterThan(0);
 
-    // Home (site root): <picture> srcset references are bare-relative `media/...`.
+    // Home (site root): <picture> srcset references are bare-relative `_assets/...`.
     const home = await fetchSite('');
     expect(home).toContain('<picture');
-    expect(home).toContain(`src="media/${asset.id}/`);
+    expect(home).toContain(`src="_assets/${asset.id}/`);
     expect(home).not.toContain(`src="/media/${asset.id}/`);
 
-    // Subpage (one level deep): the same asset is referenced page-relative `../media/...`.
+    // Subpage (one level deep): the same asset is referenced page-relative `../_assets/...`.
     const about = await fetchSite('about/');
     expect(about).toContain('<picture');
-    expect(about).toContain(`../media/${asset.id}/`);
+    expect(about).toContain(`../_assets/${asset.id}/`);
     expect(about).not.toContain(`src="/media/${asset.id}/`);
+
+    // The bundled image binary is served over HTTP at /sites/<slug>/_assets/<id>/<file>,
+    // inline with an image content-type + nosniff (so the demo's LOCAL images actually load
+    // in the /sites preview, not just in a deployed copy).
+    const fallbackFile = asset.url.split('/').pop()!;
+    const bin = await client.get(`/sites/${slug}/_assets/${asset.id}/${fallbackFile}`);
+    expect(bin.statusCode).toBe(200);
+    expect(bin.headers['content-type']).toMatch(/^image\//);
+    expect(bin.headers['x-content-type-options']).toBe('nosniff');
+
+    // A page request lacking its trailing slash is redirected (301) to the canonical directory
+    // URL, so its relative asset paths resolve. Explicit .html URLs are served as-is.
+    const noSlash = await client.get(`/sites/${slug}/about`);
+    expect(noSlash.statusCode).toBe(301);
+    expect(noSlash.headers.location).toBe(`/sites/${slug}/about/`);
+    const explicit = await client.get(`/sites/${slug}/index.html`);
+    expect(explicit.statusCode).toBe(200);
   });
 });

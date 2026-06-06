@@ -18,6 +18,26 @@ const ASSET_CONTENT_TYPES = new Map<string, string>([
   ['.txt', 'text/plain; charset=utf-8'],
 ]);
 
+// Inline-servable image types for the bundled `_assets/` binaries. Anything NOT in this map
+// (raw uploads, .svg, .html, …) is served download-only (octet-stream + attachment), so an
+// uploaded file can never render/execute on this cookie-bearing origin. Mirrors the /media
+// route's image allowlist.
+const PUBLISHED_IMAGE_TYPES = new Map<string, string>([
+  ['.avif', 'image/avif'],
+  ['.webp', 'image/webp'],
+  ['.jpg', 'image/jpeg'],
+  ['.jpeg', 'image/jpeg'],
+  ['.png', 'image/png'],
+  ['.gif', 'image/gif'],
+]);
+
+/** A bundled binary asset to serve: its bytes, content type, and whether it's download-only. */
+export interface PublishedBinary {
+  body: Buffer;
+  contentType: string;
+  attachment: boolean;
+}
+
 /**
  * Locates and serves published static sites under `<root>/<slug>/`. All
  * inputs are charset-validated and resolved paths are confined to the project's
@@ -59,11 +79,12 @@ export class PublishStore {
     if (segments.some((seg) => seg === '.' || seg === '..')) {
       throw new Error('invalid site path segment');
     }
-    // `media/` holds copied asset binaries (incl. raw user files like `report.html`). It must
+    // `_assets/` holds copied asset binaries (incl. raw user files like `report.html`). It must
     // NEVER be served as inline HTML on this (cookie-bearing) origin — that would be stored XSS.
-    // Published pages never live under /media/, so this prefix is safe to exclude.
-    if (segments[0] === 'media') {
-      throw new Error('media path is not servable as html');
+    // Published pages never live under /_assets/, so this prefix is safe to exclude (binaries are
+    // served — download-only for non-images — via `readBinary`).
+    if (segments[0] === '_assets') {
+      throw new Error('asset path is not servable as html');
     }
     if (!rel.endsWith('.html')) rel = rel === '' ? 'index.html' : `${rel}/index.html`;
     const full = resolve(dir, rel);
@@ -81,6 +102,34 @@ export class PublishStore {
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Reads a bundled binary asset from the builder's `_assets/` tree (optimized image variants
+   * and raw uploads), or null if the path is outside `_assets/`, traverses, or is absent.
+   * Images are served inline with their type; everything else is download-only (octet-stream
+   * + attachment) so it can never render as HTML/script on this origin. The path is confined
+   * to the site directory.
+   */
+  async readBinary(slug: string, requestPath: string): Promise<PublishedBinary | null> {
+    const dir = resolve(this.dirFor(slug));
+    const rel = requestPath.replace(/^\/+/, '').replace(/\/+$/, '');
+    const segments = rel.split('/');
+    // Only the builder's bundled asset dir is binary-servable; reject traversal segments.
+    if (segments[0] !== '_assets' || segments.some((seg) => seg === '.' || seg === '..')) return null;
+    const full = resolve(dir, rel);
+    if (full !== dir && !full.startsWith(dir + sep)) return null;
+    let body: Buffer;
+    try {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to <site>/_assets above
+      body = await readFile(full);
+    } catch {
+      return null;
+    }
+    const imageType = PUBLISHED_IMAGE_TYPES.get(extname(rel).toLowerCase());
+    return imageType
+      ? { body, contentType: imageType, attachment: false }
+      : { body, contentType: 'application/octet-stream', attachment: true };
   }
 
   /**

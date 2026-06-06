@@ -55,8 +55,11 @@ describe('runWorker', () => {
     const result = await runWorker(job);
     const home = Buffer.from(result.files['index.html'] ?? '', 'base64').toString('utf8');
     expect(home).toContain('<picture');
-    // The media binary made it into the artifact, decoded correctly.
-    expect(Buffer.from(result.files['media/a1/a1-40.jpg'] ?? '', 'base64').toString('utf8')).toBe('jpgbytes');
-    expect(result.files['media/a1/a1-40.webp']).toBeDefined();
+    // The media binary made it into the artifact (under _assets/), decoded correctly.
+    expect(Buffer.from(result.files['_assets/a1/a1-40.jpg'] ?? '', 'base64').toString('utf8')).toBe('jpgbytes');
+    expect(result.files['_assets/a1/a1-40.webp']).toBeDefined();
+    // …and the rendered <picture> references the bundled path, not the editor /media URL.
+    expect(home).toContain('_assets/a1/');
+    expect(home).not.toContain('/media/p/');
   });
 });

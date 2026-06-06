@@ -53,6 +53,10 @@ import {
   isGlobalTemplate,
   publishedPages,
   resolveTemplateSource,
+  resolveLocaleDatasets,
+  translationsOf,
+  localeOf,
+  pagesInLocale,
   type ProjectBundle,
 } from '@sitewright/core';
 import type { Database } from '../db/client.js';
@@ -227,6 +231,8 @@ interface PreviewShell {
   head?: string;
   criticalCss?: string;
   customScripts?: string;
+  /** `<html lang>` for the preview — the previewed page's locale (publish parity). */
+  lang?: string;
 }
 
 /**
@@ -1137,10 +1143,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // the project name with default tokens when settings aren't configured yet.
       let brand: CorporateIdentity = { name: project.name, colors: {} };
       let website: Settings['website'];
+      // Drives per-locale nav + dataset resolution in the preview (WYSIWYG parity
+      // with publish): a previewed page's nav lists only its own language's pages.
+      let defaultLocale = 'en';
       try {
         const settings = (await contentRepo.get(ctx, 'settings', SETTINGS_ENTITY_ID)) as Settings;
         brand = settings.identity;
         website = settings.website;
+        defaultLocale = settings.settings?.defaultLocale ?? 'en';
       } catch (err) {
         if (!(err instanceof NotFoundError)) throw err;
       }
@@ -1186,33 +1196,45 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           return reply.code(413).send({ error: 'project data is too large to render' });
         }
         try {
+          // WYSIWYG parity with publish (drafts excluded, like publish): the previewed
+          // page's auto-nav lists ONLY its own language's pages, its bindings resolve to
+          // the locale dataset variant (`<name>-<locale>`), and `page.locale` /
+          // `page.translations` power a language switcher. `json_data` is NOT fetched in
+          // preview (no network per keystroke) — `{{ website.json_data }}` renders empty
+          // until publish.
+          const savedPages = publishedPages((await contentRepo.list(ctx, 'page')) as Page[]);
+          const previewLocale = localeOf(page, defaultLocale);
+          const navPages = pagesInLocale(savedPages, previewLocale, defaultLocale);
+          const slotNav = {
+            header: buildNav(navPages, 'header'),
+            footer: buildNav(navPages, 'footer'),
+            mobile: buildNav(navPages, 'mobile'),
+          };
+          const localeData = resolveLocaleDatasets(sourceData, page.locale);
+          const previewPage = {
+            title: page.title,
+            path: page.path,
+            locale: previewLocale,
+            translations: translationsOf(savedPages, page, defaultLocale),
+          };
           const rendered = await renderPool.render(pageSource, {
             company: brand as unknown as Record<string, unknown>,
             website: { siteUrl: website?.siteUrl },
-            page: { title: page.title, path: page.path },
-            data: sourceData,
+            page: previewPage,
+            data: localeData,
             partials,
             content: page.content,
           });
-          // WYSIWYG parity: render the project-wide skeleton slots around the page body. Auto-nav
-          // comes from the saved pages (drafts excluded, like publish). Slots render through the
-          // SAME isolated worker; a broken slot is skipped here (publish still hard-validates it) so
-          // it can never break the page preview. `json_data` is NOT fetched in preview (no network
-          // per keystroke) — `{{ website.json_data }}` renders empty until publish.
-          const savedPages = publishedPages((await contentRepo.list(ctx, 'page')) as Page[]);
-          const slotNav = {
-            header: buildNav(savedPages, 'header'),
-            footer: buildNav(savedPages, 'footer'),
-            mobile: buildNav(savedPages, 'mobile'),
-          };
-          // No `partials`/`content`: slots are project-wide (not client-edited), and — matching the
-          // publish slot context in build.ts — they don't compose snippets, so `{{> snippet}}` is
-          // intentionally unavailable in a slot (same in preview and publish, so no WYSIWYG drift).
+          // Slots render through the SAME isolated worker; a broken slot is skipped here
+          // (publish still hard-validates it) so it can never break the page preview. No
+          // `partials`/`content`: slots are project-wide (not client-edited), and — matching
+          // the publish slot context in build.ts — they don't compose snippets, so
+          // `{{> snippet}}` is intentionally unavailable in a slot (no WYSIWYG drift).
           const slotCtx = {
             company: brand as unknown as Record<string, unknown>,
             website: { siteUrl: website?.siteUrl },
-            page: { title: page.title, path: page.path },
-            data: sourceData,
+            page: previewPage,
+            data: localeData,
             nav: slotNav as unknown as Record<string, unknown>,
           };
           // Each slot reuses slotCtx (which carries `sourceData`) over IPC; that payload is already
@@ -1249,6 +1271,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             head: website?.head,
             criticalCss: website?.criticalCss,
             customScripts: website?.scripts,
+            lang: previewLocale, // `<html lang>` follows the previewed page's locale (publish parity)
           });
           const sourceToken = previewStore.put(sourceHtml, { projectId: project.id, userId: ctx.userId });
           return reply.send({ html: sourceHtml, token: sourceToken });
@@ -1262,12 +1285,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const media = mediaStorage ? ((await contentRepo.list(ctx, 'media')) as MediaAsset[]) : [];
       // Auto-nav from the saved pages so Nav blocks render their menu in preview
       // (WYSIWYG parity with publish; an unsaved new page isn't in its own nav yet).
-      // Drafts are excluded from nav here too, matching the published output.
+      // Drafts are excluded from nav here too, matching the published output; the menu
+      // lists only the previewed page's own language (per-locale nav, like publish).
       const savedPages = publishedPages((await contentRepo.list(ctx, 'page')) as Page[]);
+      const previewLocale = localeOf(page, defaultLocale);
+      const navPages = pagesInLocale(savedPages, previewLocale, defaultLocale);
       const nav = {
-        header: buildNav(savedPages, 'header'),
-        footer: buildNav(savedPages, 'footer'),
-        mobile: buildNav(savedPages, 'mobile'),
+        header: buildNav(navPages, 'header'),
+        footer: buildNav(navPages, 'footer'),
+        mobile: buildNav(navPages, 'mobile'),
       };
       // Public form definitions for any Form blocks; the preview posts same-origin.
       const previewForms: Record<string, FormPublic> = Object.fromEntries(
@@ -1299,10 +1325,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       }
       const html = renderDocument(page, {
         brand,
+        lang: previewLocale, // `<html lang>` follows the previewed page's locale (publish parity)
         // {{ company.* }}/{{ website.* }}/{{ page.* }} substitution (WYSIWYG parity with publish).
         // `website` is projected to only its public fields (not the raw head/footer/CSS blobs).
-        vars: { company: brand, website: { siteUrl: website?.siteUrl }, page: { title: page.title, path: page.path } },
-        datasets: Object.fromEntries(byDataset),
+        vars: {
+          company: brand,
+          website: { siteUrl: website?.siteUrl },
+          page: { title: page.title, path: page.path, locale: previewLocale, translations: translationsOf(savedPages, page, defaultLocale) },
+        },
+        // Bindings resolve to the page's locale dataset variant (`<name>-<locale>`), like publish.
+        datasets: resolveLocaleDatasets(Object.fromEntries(byDataset), page.locale),
         includeDrafts: true,
         media,
         nav,

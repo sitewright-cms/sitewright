@@ -335,6 +335,38 @@ describe('preview API — code-first source page', () => {
     expect(html).toMatch(/\.navbar/); // the slot's DaisyUI classes compiled into the inlined sheet
   });
 
+  it('builds the preview nav per-locale — only the previewed page language (WYSIWYG with publish)', async () => {
+    const { t, projectId } = await setup('i18n@acme.test', poolApp);
+    const base = `/projects/${projectId}`;
+    const put = (kind: string, key: string, payload: Record<string, unknown>) =>
+      poolApp.inject({ method: 'PUT', url: `${base}/content/${kind}/${key}`, cookies: { sw_session: t }, payload });
+    await put('settings', 'settings', {
+      identity: { name: 'Acme', colors: { primary: '#0a7' } },
+      // The shared nav lists nav.header labels; expose the locale + switcher too.
+      website: {
+        topNav:
+          '<nav class="navbar"><ul>{{#each nav.header}}<li><a href="{{url path}}">{{label}}</a></li>{{/each}}</ul>' +
+          '<span class="loc">{{page.locale}}</span>{{#each page.translations}}<a class="sw" href="{{url path}}">{{locale}}</a>{{/each}}</nav>',
+      },
+      settings: { defaultLocale: 'en', locales: ['en', 'de'] },
+    });
+    const root = { id: 'r', type: 'Section' };
+    // English (default) + German variant, linked by group; each carries a header nav item.
+    await put('page', 'home', { id: 'home', path: '/', title: 'Home', root, translationGroup: 'home', nav: { title: 'Home', slots: ['header'], order: 1 }, source: '<main><h1>EN</h1></main>' });
+    const gde = { id: 'home-de', path: '/de', title: 'Start', locale: 'de', translationGroup: 'home', root, nav: { title: 'Start', slots: ['header'], order: 1 }, source: '<main><h1>DE</h1></main>' };
+    await put('page', 'home-de', gde);
+
+    // Preview the GERMAN page → its nav must list only German pages.
+    const res = await poolApp.inject({ method: 'POST', url: `${base}/preview`, cookies: { sw_session: t }, payload: gde });
+    expect(res.statusCode).toBe(200);
+    const html = (res.json() as { html: string }).html;
+    expect(html).toContain('<html lang="de">'); // the previewed page's locale drives <html lang>
+    expect(html).toContain('>Start</a>'); // the German page's own nav item
+    expect(html).not.toContain('>Home</a>'); // NOT the English page's item
+    expect(html).toContain('<span class="loc">de</span>'); // page.locale in preview
+    expect(html).toContain('class="sw" href="/de">de</a>'); // switcher (root-relative link)
+  });
+
   it('inlines the scroll-reveal runtime when the source uses data-aos (and omits it otherwise)', async () => {
     const { t, projectId } = await setup('anim@acme.test', poolApp);
     const animated = await poolApp.inject({

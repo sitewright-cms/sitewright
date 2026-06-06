@@ -1,6 +1,6 @@
 {
   "id": "home",
-  "path": "/",
+  "path": "",
   "title": "Home",
   "seo": { "description": "Northwind Studio — fast, beautiful websites built with Sitewright." },
   "root": {

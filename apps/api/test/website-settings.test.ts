@@ -10,7 +10,7 @@ import { makeHarness, type Harness, type TestClient } from './harness.js';
 
 const home = {
   id: 'home',
-  path: '/',
+  path: '',
   title: 'Home',
   root: { id: 'r', type: 'Section', children: [{ id: 'h', type: 'Heading', props: { text: 'Hi', level: 1 } }] },
 };

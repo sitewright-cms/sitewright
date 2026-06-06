@@ -37,7 +37,7 @@ describe('invites API', () => {
     const projA = await makeProject(t, 'site-a');
     const projB = await makeProject(t, 'site-b');
     // Seed a page on project A so the client has something to read.
-    await app.inject({ method: 'PUT', url: `/projects/${projA}/content/page/home`, cookies: { sw_session: t }, payload: { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' } } });
+    await app.inject({ method: 'PUT', url: `/projects/${projA}/content/page/home`, cookies: { sw_session: t }, payload: { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' } } });
 
     // Owner invites a client to project A only.
     const inv = await app.inject({ method: 'POST', url: `/projects/${projA}/invites`, cookies: { sw_session: t }, payload: { email: 'client@acme.test' } });

@@ -135,7 +135,7 @@ describe('render-template API (isolated worker)', () => {
       url: `/projects/${projectId}/content/page/home`,
       cookies: { sw_session: t },
       payload: {
-        id: 'home', path: '/', title: 'Welcome',
+        id: 'home', path: '', title: 'Welcome',
         root: { id: 'root', type: 'Section' },
         source: '<h1>{{ company.name }}</h1><p>{{ page.title }}</p>',
       },
@@ -156,7 +156,7 @@ describe('render-template API (isolated worker)', () => {
       method: 'PUT',
       url: `/projects/${projectId}/content/page/blocky`,
       cookies: { sw_session: t },
-      payload: { id: 'blocky', path: '/blocky', title: 'Block', root: { id: 'root', type: 'Section' } },
+      payload: { id: 'blocky', path: 'blocky', title: 'Block', root: { id: 'root', type: 'Section' } },
     });
     const res = await app.inject({
       method: 'POST',

@@ -1,10 +1,11 @@
 import type { NavSlot, Page } from '@sitewright/schema';
+import { pagePath, pagesById } from './routes.js';
 
 export type { NavSlot };
 
 export interface NavItem {
   label: string;
-  /** Target page path (root-relative, e.g. '/about'); rebased per page at render. */
+  /** Target page route (root-relative, e.g. '/about'), computed from the page tree; rebased per page at render. */
   path: string;
   /** Child-page items, present when the page's `nav.dropdown` is on (render as a dropdown). */
   children?: NavItem[];
@@ -15,8 +16,8 @@ function byNavOrder(a: Page, b: Page): number {
   return (a.nav?.order ?? 0) - (b.nav?.order ?? 0) || a.title.localeCompare(b.title, 'en');
 }
 
-function toItem(page: Page): NavItem {
-  return { label: page.nav?.title || page.title, path: page.path };
+function toItem(page: Page, byId: ReadonlyMap<string, Page>): NavItem {
+  return { label: page.nav?.title || page.title, path: pagePath(page, byId) };
 }
 
 /**
@@ -35,6 +36,10 @@ function toItem(page: Page): NavItem {
  * just drop out of the nav until the cycle is fixed.
  */
 export function buildNav(pages: readonly Page[], slot: NavSlot): NavItem[] {
+  // Index for computing each item's full route from the page tree (`pagePath`). When a
+  // per-locale subset is passed (publish/preview), ancestors outside the subset are absent
+  // from `byId` → the chain ends there, which is the intended behavior.
+  const byId = pagesById(pages);
   // Pages whose children fold into a dropdown under them.
   const dropdownParents = new Set(pages.filter((p) => p.nav?.dropdown === true).map((p) => p.id));
   return pages
@@ -47,12 +52,12 @@ export function buildNav(pages: readonly Page[], slot: NavSlot): NavItem[] {
     )
     .sort(byNavOrder)
     .map((page) => {
-      const item = toItem(page);
+      const item = toItem(page, byId);
       if (page.nav?.dropdown !== true) return item;
       const children = pages
         .filter((child) => child.parent === page.id && !child.collection)
         .sort(byNavOrder)
-        .map(toItem);
+        .map((child) => toItem(child, byId));
       return children.length > 0 ? { ...item, children } : item;
     });
 }

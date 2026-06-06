@@ -10,6 +10,7 @@ import type {
 } from '@sitewright/schema';
 import { findDuplicateIds, walk } from './tree.js';
 import { GLOBAL_TEMPLATES, isGlobalTemplate } from './templates.js';
+import { pagePath, pagesById } from './routes.js';
 
 /** A complete project: the manifest plus all of its content entities. */
 export interface ProjectBundle {
@@ -72,8 +73,11 @@ export function validateProject(bundle: ProjectBundle): ValidationIssue[] {
     'page id',
     issues,
   );
+  // Compare the COMPUTED full routes (not the bare slug): two pages may share a slug
+  // under different parents, but their `{root}/{parents}/{slug}` routes must be unique.
+  const byId = pagesById(bundle.pages);
   reportDuplicates(
-    bundle.pages.map((page) => page.path),
+    bundle.pages.map((page) => pagePath(page, byId)),
     'duplicate_page_path',
     'page path',
     issues,

@@ -5,6 +5,7 @@
 // per locale (`<slug>-<locale>`) and resolved here by an auto locale-suffix
 // convention, with explicit `<slug>-<locale>` addressing still available.
 import type { Page } from '@sitewright/schema';
+import { pagePath, pagesById } from './routes.js';
 
 /**
  * The dataset slug a base name resolves to in `locale` — a slug-valid hyphen suffix
@@ -77,8 +78,9 @@ export function translationsOf(
   defaultLocale: string,
 ): TranslationLink[] {
   if (!page.translationGroup) return [];
+  const byId = pagesById(pages);
   return pages
     .filter((p) => p.translationGroup === page.translationGroup && !p.collection)
-    .map((p) => ({ locale: p.locale ?? defaultLocale, path: p.path, title: p.title }))
+    .map((p) => ({ locale: p.locale ?? defaultLocale, path: pagePath(p, byId), title: p.title }))
     .sort((a, b) => a.locale.localeCompare(b.locale, 'en'));
 }

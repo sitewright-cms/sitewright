@@ -33,7 +33,7 @@ describe('icon block → publish', () => {
     const proj = client.project(projectId);
     const page = {
       id: 'home',
-      path: '/',
+      path: '',
       title: 'Home',
       root: {
         id: 'r',
@@ -57,7 +57,7 @@ describe('icon block → publish', () => {
     const proj = client.project(projectId);
     const page = {
       id: 'home',
-      path: '/',
+      path: '',
       title: 'Home',
       root: {
         id: 'r',

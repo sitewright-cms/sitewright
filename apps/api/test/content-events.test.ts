@@ -7,7 +7,7 @@ import { ProjectEventBus, type ContentChange } from '../src/events/bus.js';
 import { type ProjectContext } from '../src/repo/context.js';
 import type { Database } from '../src/db/client.js';
 
-const page = { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' } };
+const page = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' } };
 
 let db: Database;
 let bus: ProjectEventBus;

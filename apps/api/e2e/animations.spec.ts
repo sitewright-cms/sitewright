@@ -23,7 +23,7 @@ test('publish ships the data-aos runtime for an animated code-first site', async
   // A code-first page authored exactly the way the MCP instructions teach an agent.
   const page = {
     id: 'home',
-    path: '/',
+    path: '',
     title: 'Home',
     root: { id: 'r', type: 'Section' },
     source:
@@ -80,7 +80,7 @@ test('a site without data-aos ships no animation assets', async ({ playwright, b
 
   const page = {
     id: 'home',
-    path: '/',
+    path: '',
     title: 'Home',
     root: { id: 'r', type: 'Section' },
     source: '<main><h1>Static content</h1></main>',

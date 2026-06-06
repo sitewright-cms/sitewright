@@ -12,7 +12,7 @@ let pctxA: ProjectContext;
 let pctxB: ProjectContext;
 let projA: { id: string; name: string; slug: string };
 
-const page = { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' } };
+const page = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' } };
 
 beforeEach(async () => {
   db = await makeTestDb();
@@ -64,7 +64,7 @@ describe('ContentRepository', () => {
     // Author a page with two nodes; a member may freely edit either node...
     const richPage = {
       id: 'home',
-      path: '/',
+      path: '',
       title: 'Home',
       root: {
         id: 'r',
@@ -113,7 +113,7 @@ describe('ContentRepository', () => {
     // page binds a dataset that doesn't exist → validateProject rejects
     const badPage = {
       id: 'bad',
-      path: '/bad',
+      path: 'bad',
       title: 'Bad',
       root: { id: 'r', type: 'Grid', binding: { dataset: 'ghost', mode: 'list' } },
     };
@@ -136,7 +136,7 @@ describe('ContentRepository', () => {
   it('rejects an over-deep page tree before parsing (DoS guard)', async () => {
     let node: Record<string, unknown> = { id: 'leaf', type: 'Leaf' };
     for (let i = 0; i < 250; i++) node = { id: `n${i}`, type: 'Box', children: [node] };
-    const deep = { id: 'deep', path: '/deep', title: 'Deep', root: node };
+    const deep = { id: 'deep', path: 'deep', title: 'Deep', root: node };
     await expect(content.put(pctxA, 'page', 'deep', deep)).rejects.toThrow(RangeError);
   });
 

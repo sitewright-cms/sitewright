@@ -18,9 +18,6 @@ test('page editor modal: collapsed code strip, device simulation, Ctrl+S, Esc-wi
   await page.getByLabel('Project slug').fill(`pemodal-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
 
-  await page.getByLabel('Page path').fill('home');
-  await page.getByLabel('Page title').fill('Home');
-  await page.getByRole('button', { name: 'Add page' }).click();
   await page.getByRole('button', { name: /^Home/ }).click();
 
   // The editor is a MODAL over the page list (the list stays in the DOM behind it).

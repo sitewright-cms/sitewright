@@ -75,7 +75,7 @@ function richBundle() {
     pages: [
       {
         id: 'home',
-        path: '/',
+        path: '',
         title: 'Home',
         root: {
           id: 'root',
@@ -85,7 +85,7 @@ function richBundle() {
       },
       {
         id: 'blog-post',
-        path: '/blog/[slug]',
+        path: '[slug]',
         title: 'Blog Post',
         collection: { dataset: 'posts', param: 'slug' },
         root: {
@@ -135,8 +135,8 @@ describe('bundle export/import fidelity (HTTP)', () => {
     // ---- Pages: ids + paths + the collection definition survive ----
     const pagesById = new Map(out.pages.map((p) => [p.id, p]));
     expect([...pagesById.keys()].sort()).toEqual(['blog-post', 'home']);
-    expect(pagesById.get('home')?.path).toBe('/');
-    expect(pagesById.get('blog-post')?.path).toBe('/blog/[slug]');
+    expect(pagesById.get('home')?.path).toBe('');
+    expect(pagesById.get('blog-post')?.path).toBe('[slug]');
     expect(pagesById.get('blog-post')?.collection).toEqual({ dataset: 'posts', param: 'slug' });
 
     // The partial reference on the home page is preserved in the tree.
@@ -195,7 +195,7 @@ describe('bundle export/import fidelity (HTTP)', () => {
         pages: [
           {
             id: 'home',
-            path: '/',
+            path: '',
             title: 'Home',
             root: { id: 'r', type: 'Box', children: [{ id: 'c', type: 'Box', partialRef: 'ghost' }] },
           },
@@ -211,7 +211,7 @@ describe('bundle export/import fidelity (HTTP)', () => {
         pages: [
           {
             id: 'p',
-            path: '/p/[slug]',
+            path: '[slug]',
             title: 'P',
             collection: { dataset: 'missing', param: 'slug' },
             root: { id: 'r', type: 'Section' },
@@ -224,9 +224,9 @@ describe('bundle export/import fidelity (HTTP)', () => {
     });
 
     it('rejects duplicate page ids (duplicate_page_id)', async () => {
-      const page = { id: 'dup', path: '/dup', title: 'Dup', root: { id: 'r', type: 'Section' } };
+      const page = { id: 'dup', path: 'dup', title: 'Dup', root: { id: 'r', type: 'Section' } };
       const res = await importBundle({
-        pages: [page, { ...page, path: '/dup-2' }],
+        pages: [page, { ...page, path: 'dup-2' }],
       });
       expect(res.statusCode).toBe(409);
       expect((res.json() as { error: string }).error).toContain('duplicate_page_id');
@@ -235,8 +235,8 @@ describe('bundle export/import fidelity (HTTP)', () => {
     it('rejects duplicate page paths (duplicate_page_path)', async () => {
       const res = await importBundle({
         pages: [
-          { id: 'a', path: '/same', title: 'A', root: { id: 'r1', type: 'Section' } },
-          { id: 'b', path: '/same', title: 'B', root: { id: 'r2', type: 'Section' } },
+          { id: 'a', path: 'same', title: 'A', root: { id: 'r1', type: 'Section' } },
+          { id: 'b', path: 'same', title: 'B', root: { id: 'r2', type: 'Section' } },
         ],
       });
       expect(res.statusCode).toBe(409);
@@ -280,10 +280,10 @@ describe('bundle export/import fidelity (HTTP)', () => {
     const failing = await importBundle({
       project: { identity: { name: 'Hijacked', colors: {} }, settings: { defaultLocale: 'en', locales: ['en'] } },
       pages: [
-        { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' } },
+        { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' } },
         {
           id: 'injected',
-          path: '/injected',
+          path: 'injected',
           title: 'Injected',
           root: { id: 'x', type: 'Box', partialRef: 'ghost' }, // unresolved → 409
         },
@@ -305,7 +305,7 @@ describe('bundle export/import fidelity (HTTP)', () => {
       const clientB = await harness.signup();
       await client.project(projectId).putContent('page', 'home', {
         id: 'home',
-        path: '/',
+        path: '',
         title: 'Home',
         root: { id: 'r', type: 'Section' },
       });
@@ -313,7 +313,7 @@ describe('bundle export/import fidelity (HTTP)', () => {
       // B targets A's project (B holds no membership) → project membership check
       // fails for B → ForbiddenError → 403.
       const res = await clientB.post(`/projects/${projectId}/import`, {
-        pages: [{ id: 'x', path: '/x', title: 'X', root: { id: 'r', type: 'Section' } }],
+        pages: [{ id: 'x', path: 'x', title: 'X', root: { id: 'r', type: 'Section' } }],
       });
       expect(res.statusCode).toBe(403);
 
@@ -329,7 +329,7 @@ describe('bundle export/import fidelity (HTTP)', () => {
       // bearer/API-key cross-project probe path.
       const url = `/projects/${projectId}/import`;
       const res = await clientB.post(url, {
-        pages: [{ id: 'x', path: '/x', title: 'X', root: { id: 'r', type: 'Section' } }],
+        pages: [{ id: 'x', path: 'x', title: 'X', root: { id: 'r', type: 'Section' } }],
       });
       expect(res.statusCode).toBe(403);
     });

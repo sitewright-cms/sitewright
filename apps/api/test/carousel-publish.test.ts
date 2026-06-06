@@ -19,7 +19,7 @@ describe('Carousel component → publish + preview', () => {
 
   const carouselPage = {
     id: 'home',
-    path: '/',
+    path: '',
     title: 'Home',
     root: {
       id: 'r',
@@ -78,7 +78,7 @@ describe('Carousel component → publish + preview', () => {
     const proj = client.project(projectId);
     const plain = {
       id: 'home',
-      path: '/',
+      path: '',
       title: 'Home',
       root: { id: 'r', type: 'Section', children: [{ id: 'h', type: 'Heading', props: { text: 'Hi' } }] },
     };

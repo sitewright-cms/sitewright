@@ -26,7 +26,7 @@ function bundle(): ProjectBundle {
     pages: [
       {
         id: 'contact',
-        path: '/contact',
+        path: 'contact',
         title: 'Contact',
         root: { id: 'r', type: 'Section', children: [{ id: 'f', type: 'Form', props: { formId: 'contact' } }] },
       },

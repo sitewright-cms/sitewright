@@ -70,9 +70,9 @@ describe('buildSite — SEO output', () => {
   });
 
   const pages = [
-    { id: 'home', path: '/', title: 'Home', root: { id: 'r1', type: 'Section' } },
-    { id: 'about', path: '/about', title: 'About', root: { id: 'r2', type: 'Section' } },
-    { id: 'secret', path: '/secret', title: 'Secret', seo: { noindex: true }, root: { id: 'r3', type: 'Section' } },
+    { id: 'home', path: '', title: 'Home', root: { id: 'r1', type: 'Section' } },
+    { id: 'about', path: 'about', title: 'About', root: { id: 'r2', type: 'Section' } },
+    { id: 'secret', path: 'secret', title: 'Secret', seo: { noindex: true }, root: { id: 'r3', type: 'Section' } },
   ];
 
   it('emits sitemap.xml (excluding noindex), a robots.txt with the Sitemap line, and redirect files', async () => {

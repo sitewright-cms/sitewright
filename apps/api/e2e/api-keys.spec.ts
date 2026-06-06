@@ -40,7 +40,7 @@ test('project API key: mint via session, use as Bearer, enforce scope + revoke',
 
   // Write a page, then read it back — the round-trip goes through the same
   // guarded content repo as the editor.
-  const page = { id: 'home', path: '/', title: 'Hallo', root: { id: 'r', type: 'Section' } };
+  const page = { id: 'home', path: '', title: 'Hallo', root: { id: 'r', type: 'Section' } };
   const put = await bot.put(`${base}/content/page/home`, { data: page });
   expect(put.status()).toBe(200);
   const got = await bot.get(`${base}/content/page/home`);

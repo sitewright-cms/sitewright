@@ -14,7 +14,7 @@ afterEach(async () => {
 // projects). (Mirrors tenant-isolation.test.ts.)
 
 // A minimal valid page payload (mirrors the existing content suites).
-const page = { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' } };
+const page = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' } };
 
 interface ProjectShape {
   id: string;

@@ -57,6 +57,8 @@ import {
   translationsOf,
   localeOf,
   pagesInLocale,
+  pagePath,
+  pagesById,
   type ProjectBundle,
 } from '@sitewright/core';
 import type { Database } from '../db/client.js';
@@ -958,12 +960,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       identity: { name: body.name, colors: { primary: '#2563eb' } },
       settings: { defaultLocale: 'en', locales: ['en'] },
     });
-    // Every project starts with a HOME page (path '/', header nav), so the pages list,
-    // auto-nav, and the first publish work out of the box. Same scaffold idea as the
-    // editor's "Add page" starter: a brand binding + one client-editable region.
+    // Every project starts with a HOME page (the tree root: empty slug → "/", header nav),
+    // so the pages list, auto-nav, and the first publish work out of the box. Same scaffold
+    // idea as the editor's "Add page" starter: a brand binding + one client-editable region.
     await contentRepo.put(ownerCtx, 'page', 'home', {
       id: 'home',
-      path: '/',
+      path: '',
       title: 'Home',
       root: { id: 'root', type: 'Section', children: [] },
       source:
@@ -1211,9 +1213,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             mobile: buildNav(navPages, 'mobile'),
           };
           const localeData = resolveLocaleDatasets(sourceData, page.locale);
+          // The page's FULL route is computed from the parent chain; include the (possibly
+          // unsaved/edited) previewed page in the index so its own slug/parent apply.
+          const previewById = pagesById(savedPages);
+          previewById.set(page.id, page);
           const previewPage = {
             title: page.title,
-            path: page.path,
+            path: pagePath(page, previewById),
             locale: previewLocale,
             translations: translationsOf(savedPages, page, defaultLocale),
           };
@@ -1323,6 +1329,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       if (classNames.length > 0) {
         inlineStyles.push(await compileUtilityCss([classNames.join(' ')], brandToTailwindTheme(brand)));
       }
+      const previewById = pagesById(savedPages);
+      previewById.set(page.id, page);
       const html = renderDocument(page, {
         brand,
         lang: previewLocale, // `<html lang>` follows the previewed page's locale (publish parity)
@@ -1331,7 +1339,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         vars: {
           company: brand,
           website: { siteUrl: website?.siteUrl },
-          page: { title: page.title, path: page.path, locale: previewLocale, translations: translationsOf(savedPages, page, defaultLocale) },
+          page: { title: page.title, path: pagePath(page, previewById), locale: previewLocale, translations: translationsOf(savedPages, page, defaultLocale) },
         },
         // Bindings resolve to the page's locale dataset variant (`<name>-<locale>`), like publish.
         datasets: resolveLocaleDatasets(Object.fromEntries(byDataset), page.locale),
@@ -2200,7 +2208,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const page = PageSchema.parse(await contentRepo.get(ctx, 'page', body.pageId));
         if (!page.source) return reply.code(400).send({ error: 'this page has no template source' });
         templateSource = page.source;
-        pageCtx = { title: page.title, path: page.path };
+        // `{{ page.path }}` is the full route computed from the parent chain (not the bare slug).
+        const allForPath = pagesById((await contentRepo.list(ctx, 'page')) as Page[]);
+        pageCtx = { title: page.title, path: pagePath(page, allForPath) };
         // Render the stored page WITH its client-edited region content (WYSIWYG parity).
         pageContent = page.content;
       } else {

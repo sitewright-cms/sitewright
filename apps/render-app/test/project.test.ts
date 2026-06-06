@@ -29,7 +29,7 @@ const PROJECT: Project = {
 
 const COLLECTION_PAGE: Page = {
   id: 'post',
-  path: '/posts/[slug]',
+  path: '[slug]',
   title: 'Post',
   root: { id: 'r', type: 'Section' },
   collection: { dataset: 'posts', param: 'slug' },
@@ -56,7 +56,7 @@ describe('sample project loading', () => {
 
   it('loads and validates the sample project (no integrity issues)', () => {
     expect(bundle.project.name).toBe('Northwind Studio');
-    expect(bundle.pages.map((p) => p.id).sort()).toEqual(['about', 'feature-detail', 'home']);
+    expect(bundle.pages.map((p) => p.id).sort()).toEqual(['about', 'feature-detail', 'features', 'home']);
     expect(bundle.partials.map((p) => p.id).sort()).toEqual(['site-footer', 'site-header']);
     expect(bundle.datasets.map((d) => d.slug)).toEqual(['features']);
     expect(bundle.entries.length).toBe(4); // 3 published + 1 draft
@@ -132,7 +132,7 @@ describe('allRoutes / collectionRoutes edge cases', () => {
       { id: 'a', dataset: 'posts', status: 'published', values: { slug: 'hello' } },
     ]);
     const [route] = collectionRoutes(bundle);
-    expect(route?.slug).toBe('posts/hello');
+    expect(route?.slug).toBe('hello');
     expect(route?.page.collection?.dataset).toBe('posts');
   });
 });

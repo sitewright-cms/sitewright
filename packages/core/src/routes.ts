@@ -55,10 +55,35 @@ export function datasetEntries(bundle: ProjectBundle): Record<string, Entry[]> {
   return Object.fromEntries(map);
 }
 
-/** Converts a page path (`/`, `/about`) to an Astro `[...slug]` param. */
+/** Converts a full route (`/`, `/about`, `/de/services`) to an Astro `[...slug]` param. */
 export function pathToSlug(path: string): string | undefined {
   const slug = path.replace(/^\/+/, '').replace(/\/+$/, '');
   return slug === '' ? undefined : slug;
+}
+
+/** Index pages by id for parent-chain lookups (e.g. {@link pagePath}). */
+export function pagesById(pages: readonly Page[]): Map<string, Page> {
+  return new Map(pages.map((p) => [p.id, p]));
+}
+
+/**
+ * The full root-relative route of a page, computed from its PARENT CHAIN:
+ * `{root}/{ancestor slugs}/{own slug}`. Each page's `path` is a single slug SEGMENT
+ * (empty for the home page / tree root). The home page (empty slug, no parent) → `/`;
+ * `about` under home → `/about`; `leistungen` under a `de` page under home → `/de/leistungen`.
+ * Cycle-safe — a broken parent chain stops at the first repeated id. A parent id that
+ * isn't in `byId` is treated as a root (the chain ends).
+ */
+export function pagePath(page: Page, byId: ReadonlyMap<string, Page>): string {
+  const segments: string[] = [];
+  const seen = new Set<string>();
+  let cur: Page | undefined = page;
+  while (cur && !seen.has(cur.id)) {
+    seen.add(cur.id);
+    if (cur.path) segments.unshift(cur.path); // skip the empty home/root slug
+    cur = cur.parent ? byId.get(cur.parent) : undefined;
+  }
+  return '/' + segments.join('/');
 }
 
 /**
@@ -118,6 +143,7 @@ function fillPath(path: string, param: string, value: string): string {
  */
 export function collectionRoutes(bundle: ProjectBundle): Route[] {
   const partialMap = buildPartialMap(bundle);
+  const byId = pagesById(bundle.pages);
   const routes: Route[] = [];
   for (const page of bundle.pages) {
     if (!page.collection) continue;
@@ -133,7 +159,8 @@ export function collectionRoutes(bundle: ProjectBundle): Route[] {
     );
     for (const entry of entries) {
       routes.push({
-        slug: pathToSlug(fillPath(page.path, param, entrySlug(entry, param))),
+        // The collection page's full route (from its parent chain) with `[param]` filled.
+        slug: pathToSlug(fillPath(pagePath(page, byId), param, entrySlug(entry, param))),
         page,
         root,
         entry,
@@ -150,8 +177,9 @@ export function collectionRoutes(bundle: ProjectBundle): Route[] {
  * silently overwrite one page with another.
  */
 export function allRoutes(bundle: ProjectBundle): Route[] {
+  const byId = pagesById(bundle.pages);
   const staticRoutes: Route[] = resolvedPages(bundle).map(({ page, root }) => ({
-    slug: pathToSlug(page.path),
+    slug: pathToSlug(pagePath(page, byId)),
     page,
     root,
   }));

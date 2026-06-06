@@ -52,9 +52,9 @@ describe('auto-nav → publish', () => {
 
   it('renders the header menu from the page tree, with page-relative links', async () => {
     const proj = client.project(projectId);
-    expect((await proj.putContent('page', 'home', navBlockPage('home', '/', 'Home', { slots: ['header'], order: 0 }))).statusCode).toBe(200);
+    expect((await proj.putContent('page', 'home', navBlockPage('home', '', 'Home', { slots: ['header'], order: 0 }))).statusCode).toBe(200);
     expect(
-      (await proj.putContent('page', 'about', navBlockPage('about', '/about', 'About Page', { title: 'About', slots: ['header'], order: 1 }))).statusCode,
+      (await proj.putContent('page', 'about', navBlockPage('about', 'about', 'About Page', { title: 'About', slots: ['header'], order: 1 }))).statusCode,
     ).toBe(200);
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
 
@@ -77,17 +77,17 @@ describe('auto-nav → publish', () => {
     // collection page also flagged for the footer (must NOT appear).
     const footerHome = {
       id: 'home',
-      path: '/',
+      path: '',
       title: 'Home',
       nav: { slots: ['footer'], order: 0 },
       root: { id: 'hr', type: 'Section', children: [{ id: 'hn', type: 'Nav', props: { slot: 'footer' } }] },
     };
     expect((await proj.putContent('page', 'home', footerHome)).statusCode).toBe(200);
-    expect((await proj.putContent('page', 'terms', { id: 'terms', path: '/terms', title: 'Terms', nav: { slots: ['footer'], order: 1 }, root: { id: 'tr', type: 'Section' } })).statusCode).toBe(200);
+    expect((await proj.putContent('page', 'terms', { id: 'terms', path: 'terms', title: 'Terms', nav: { slots: ['footer'], order: 1 }, root: { id: 'tr', type: 'Section' } })).statusCode).toBe(200);
     // dataset + collection page flagged for the footer slot — excluded from nav.
     expect((await proj.putContent('dataset', 'posts', { id: 'posts', slug: 'posts', name: 'Posts', fields: [] })).statusCode).toBe(200);
     expect(
-      (await proj.putContent('page', 'post', { id: 'post', path: '/posts/[slug]', title: 'Post', collection: { dataset: 'posts', param: 'slug' }, nav: { slots: ['footer'] }, root: { id: 'pr', type: 'Section' } })).statusCode,
+      (await proj.putContent('page', 'post', { id: 'post', path: '[slug]', title: 'Post', collection: { dataset: 'posts', param: 'slug' }, nav: { slots: ['footer'] }, root: { id: 'pr', type: 'Section' } })).statusCode,
     ).toBe(200);
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
 
@@ -101,10 +101,10 @@ describe('auto-nav → publish', () => {
 
   it('excludes draft pages from the published site, its routes, and the nav', async () => {
     const proj = client.project(projectId);
-    expect((await proj.putContent('page', 'home', navBlockPage('home', '/', 'Home', { slots: ['header'], order: 0 }))).statusCode).toBe(200);
+    expect((await proj.putContent('page', 'home', navBlockPage('home', '', 'Home', { slots: ['header'], order: 0 }))).statusCode).toBe(200);
     // A draft page placed in the header nav — must NOT publish, route, or appear in the menu.
     expect(
-      (await proj.putContent('page', 'secret', { ...navBlockPage('secret', '/secret', 'Secret', { slots: ['header'], order: 1 }), status: 'draft' })).statusCode,
+      (await proj.putContent('page', 'secret', { ...navBlockPage('secret', 'secret', 'Secret', { slots: ['header'], order: 1 }), status: 'draft' })).statusCode,
     ).toBe(200);
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
 
@@ -118,9 +118,9 @@ describe('auto-nav → publish', () => {
 
   it('omits pages without nav placement from the menu', async () => {
     const proj = client.project(projectId);
-    expect((await proj.putContent('page', 'home', navBlockPage('home', '/', 'Home', { slots: ['header'] }))).statusCode).toBe(200);
+    expect((await proj.putContent('page', 'home', navBlockPage('home', '', 'Home', { slots: ['header'] }))).statusCode).toBe(200);
     // 'secret' has no nav → not in the menu.
-    expect((await proj.putContent('page', 'secret', navBlockPage('secret', '/secret', 'Secret'))).statusCode).toBe(200);
+    expect((await proj.putContent('page', 'secret', navBlockPage('secret', 'secret', 'Secret'))).statusCode).toBe(200);
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
 
     const home = await fetchSite('index.html');

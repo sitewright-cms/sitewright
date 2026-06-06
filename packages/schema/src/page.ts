@@ -3,7 +3,7 @@ import { PageNodeSchema } from './block.js';
 import { SeoSchema } from './seo.js';
 import { TemplateRefSchema } from './template.js';
 import { LocaleSchema } from './project.js';
-import { IdSchema, KeyNameSchema, RoutePathSchema, SlugSchema } from './primitives.js';
+import { IdSchema, KeyNameSchema, PageSlugSchema, SlugSchema } from './primitives.js';
 
 const COLLECTION_PARAM = /\[[A-Za-z0-9_]+\]/;
 
@@ -12,14 +12,16 @@ export const NAV_SLOTS = ['header', 'footer', 'mobile'] as const;
 export type NavSlot = (typeof NAV_SLOTS)[number];
 
 /**
- * A page route. `path` may contain a `[param]` segment for collection pages
- * (e.g. `/products/[slug]`), in which case `collection` must be set — and a
- * `collection` requires a `[param]` segment. Both directions are enforced.
+ * A page. `path` is the page's OWN slug SEGMENT (no slashes) — the full URL is computed
+ * from the parent chain (see `pagePath` in @sitewright/core). The home page's slug is the
+ * empty string. A collection page's slug is a single `[param]` segment (e.g. `[slug]`),
+ * in which case `collection` must be set — and a `collection` requires the `[param]`. Both
+ * directions are enforced.
  */
 export const PageSchema = z
   .object({
     id: IdSchema,
-    path: RoutePathSchema,
+    path: PageSlugSchema,
     title: z.string().min(1).max(300),
     /**
      * Publication status. `draft` pages are excluded from the published site, its

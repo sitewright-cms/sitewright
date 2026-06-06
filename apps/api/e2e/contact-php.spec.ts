@@ -33,7 +33,7 @@ test('contactPhp: enabled mode publishes a contact.php and points the form at it
     data: { id: 'contact', name: 'Contact', fields: [{ name: 'email', label: 'Email', type: 'email', required: true }], recipient: 'leads@acme.example', mode: 'contactPhp' },
   });
   await admin.put(`${base}/content/page/contact`, {
-    data: { id: 'contact', path: '/contact', title: 'Contact', root: { id: 'r', type: 'Section', children: [{ id: 'f', type: 'Form', props: { formId: 'contact' } }] } },
+    data: { id: 'contact', path: 'contact', title: 'Contact', root: { id: 'r', type: 'Section', children: [{ id: 'f', type: 'Form', props: { formId: 'contact' } }] } },
   });
   expect((await admin.post(`${base}/publish`)).status()).toBe(200);
 

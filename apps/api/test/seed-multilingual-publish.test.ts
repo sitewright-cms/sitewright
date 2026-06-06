@@ -80,8 +80,10 @@ describe('seeded demo — German multilingual showcase publishes correctly', () 
     expect(de.body).not.toContain('Web Design');
   });
 
-  it('renders the German Services page at /de/services from the services-de dataset', async () => {
-    const de = await client.get(`/sites/${slug}/de/services/index.html`);
+  it('renders the German Services page at /de/leistungen (slug + parent chain) from the services-de dataset', async () => {
+    // The German Services page has slug `leistungen` and parents to the German home (`de`),
+    // so its computed route is /de/leistungen (the localized URL).
+    const de = await client.get(`/sites/${slug}/de/leistungen/index.html`);
     expect(de.statusCode).toBe(200);
     expect(de.body).toContain('<html lang="de">');
     expect(de.body).toContain('Strategie &amp; UX'); // German service title (HTML-escaped &)

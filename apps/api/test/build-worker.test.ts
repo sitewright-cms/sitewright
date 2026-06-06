@@ -27,7 +27,7 @@ describe('runWorker', () => {
       media: [],
       bundle: bundle({
         pages: [
-          { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section', children: [{ id: 'h', type: 'Heading', props: { text: 'Worker Built' } }] } },
+          { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section', children: [{ id: 'h', type: 'Heading', props: { text: 'Worker Built' } }] } },
         ],
       }),
     };
@@ -49,7 +49,7 @@ describe('runWorker', () => {
       publishedAt: '2026-05-30T00:00:00.000Z',
       media: [{ asset, files: { 'a1-40.jpg': Buffer.from('jpgbytes').toString('base64'), 'a1-40.webp': Buffer.from('webpbytes').toString('base64') } }],
       bundle: bundle({
-        pages: [{ id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Image', props: { src: '/media/p/a1/a1-40.jpg', alt: 'H' } } }],
+        pages: [{ id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Image', props: { src: '/media/p/a1/a1-40.jpg', alt: 'H' } } }],
       }),
     };
     const result = await runWorker(job);

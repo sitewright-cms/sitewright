@@ -33,7 +33,7 @@ import { ProjectView } from '../src/views/Project';
 
 const ownerProject = { id: 'p', name: 'Acme', slug: 'acme', role: 'owner' as const };
 const memberProject = { id: 'p', name: 'Acme', slug: 'acme', role: 'member' as const };
-const pages: Page[] = [{ id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' } }];
+const pages: Page[] = [{ id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' } }];
 
 beforeEach(() => {
   listPages.mockReset();
@@ -103,7 +103,27 @@ describe('ProjectView role gating (tab is supplied by the App header)', () => {
     await waitFor(() => expect(putPage).toHaveBeenCalledTimes(1));
     const created = putPage.mock.calls[0]![1] as Page;
     expect(created.id).toBe('landing');
+    expect(created.path).toBe('landing'); // slug only — no leading slash
     expect(created.parent).toBe('home'); // a new page defaults to the home root as parent
     expect(created.source).toContain('{{ company.name }}');
+  });
+
+  it('"Add page" slugifies input and refuses the reserved "home" slug (no clobbering the root)', async () => {
+    render(<ProjectView project={ownerProject} tab="pages" />);
+    await waitFor(() => expect(listPages).toHaveBeenCalled());
+    // A leading slash / spaces are slugified away…
+    fireEvent.change(screen.getByLabelText('Page path'), { target: { value: '/Web Design' } });
+    fireEvent.change(screen.getByLabelText('Page title'), { target: { value: 'WD' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add page' }));
+    await waitFor(() => expect(putPage).toHaveBeenCalledTimes(1));
+    expect((putPage.mock.calls[0]![1] as Page).path).toBe('web-design');
+
+    // …and "home" (the root's id) is rejected rather than overwriting the home page.
+    putPage.mockClear();
+    fireEvent.change(screen.getByLabelText('Page path'), { target: { value: 'home' } });
+    fireEvent.change(screen.getByLabelText('Page title'), { target: { value: 'Home 2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add page' }));
+    expect(await screen.findByText(/reserved for the site root/i)).toBeInTheDocument();
+    expect(putPage).not.toHaveBeenCalled();
   });
 });

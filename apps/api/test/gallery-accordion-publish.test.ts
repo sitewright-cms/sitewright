@@ -33,7 +33,7 @@ describe('Accordion + Lightbox → publish', () => {
     const proj = client.project(projectId);
     const page = {
       id: 'home',
-      path: '/',
+      path: '',
       title: 'FAQ',
       root: {
         id: 'r',
@@ -65,7 +65,7 @@ describe('Accordion + Lightbox → publish', () => {
     const proj = client.project(projectId);
     const page = {
       id: 'home',
-      path: '/',
+      path: '',
       title: 'Gallery',
       root: {
         id: 'r',
@@ -97,7 +97,7 @@ describe('Accordion + Lightbox → publish', () => {
   it('previews a Lightbox live — inlined CSS + behavior (sandbox-CSP doc)', async () => {
     const page = {
       id: 'home',
-      path: '/',
+      path: '',
       title: 'Gallery',
       root: {
         id: 'r',

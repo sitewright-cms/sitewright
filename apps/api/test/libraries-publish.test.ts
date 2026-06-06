@@ -32,7 +32,7 @@ describe('lazyload + ripple runtimes → publish', () => {
 
   async function publishWith(source: string): Promise<string> {
     const proj = client.project(projectId);
-    expect((await proj.putContent('page', 'home', { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' }, source })).statusCode).toBe(200);
+    expect((await proj.putContent('page', 'home', { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source })).statusCode).toBe(200);
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
     const res = await client.get(`/sites/${slug}/index.html`);
     expect(res.statusCode).toBe(200);

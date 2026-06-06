@@ -14,7 +14,7 @@ import { makeHarness, type Harness, type TestClient } from './harness.js';
 function templatePage(templateRef: string, content?: Record<string, string>) {
   return {
     id: 'tpl-page',
-    path: '/offer',
+    path: 'offer',
     title: 'Offer',
     template: templateRef,
     root: { id: 'pr', type: 'Section' },

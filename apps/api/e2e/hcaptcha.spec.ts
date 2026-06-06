@@ -32,7 +32,7 @@ test('hcaptcha: configured keys render the widget and gate submissions', async (
     data: { id: 'contact', name: 'Contact', fields: [{ name: 'email', label: 'Email', type: 'email', required: true }], recipient: 'leads@acme.example', hcaptcha: true },
   });
   await admin.put(`${base}/content/page/contact`, {
-    data: { id: 'contact', path: '/contact', title: 'Contact', root: { id: 'r', type: 'Section', children: [{ id: 'f', type: 'Form', props: { formId: 'contact' } }] } },
+    data: { id: 'contact', path: 'contact', title: 'Contact', root: { id: 'r', type: 'Section', children: [{ id: 'f', type: 'Form', props: { formId: 'contact' } }] } },
   });
   expect((await admin.post(`${base}/publish`)).status()).toBe(200);
 

@@ -64,12 +64,16 @@ SET THE BRAND with put_content("settings","settings",{ identity:{ name, colors:{
 settings:{ defaultLocale:"en", locales:["en"] } }).
 PAGE SETTINGS live on the page: title, path, status ("draft"|"published"),
 seo { description, ogImage }, parent (a parent page's id — makes this a sub-page), nav
-{ slots:["header"|"footer"|"mobile"], order, title, dropdown }. The HOME page (path "/")
-is the page-tree ROOT: every OTHER page should set "parent" to a page's id, defaulting to
-the home page's id "home" (only home itself is parentless). With dropdown:true a page's
+{ slots:["header"|"footer"|"mobile"], order, title, dropdown }. \`path\` is the page's OWN
+SLUG SEGMENT — one lowercase token, NO slashes (e.g. "about", "web-design"); the full URL
+is computed from the parent chain ({root}/{parent slugs}/{slug}). The HOME page is the
+page-tree ROOT: its slug is the EMPTY string "" (→ "/"), and every OTHER page sets "parent"
+to a page's id (defaulting to "home") — its route is /<…parent slugs>/<slug>. So a German
+home is { path:"de", parent:"home" } (→ /de) and a sub-page under it is
+{ path:"leistungen", parent:"home-de" } (→ /de/leistungen). With dropdown:true a page's
 CHILD pages (parent = its id) nest under its nav item — a nav slot template renders them
 via {{#if children}}…{{#each children}} (DaisyUI <details> submenu; children need no own
-nav slots). Every new project already has a "home" page at path "/".
+nav slots). Every new project already has the empty-slug "home" page.
 TEMPLATES: set page.template to "global:landing", "global:text", or a project template id
 (kind "template": { id, name, source }) — the page then renders the TEMPLATE's source and
 contributes ONLY its {{edit}} \`content\`; leave page.source unset.
@@ -81,8 +85,10 @@ locales:["en","de"] }. Then for a translated page create a sibling page that:
 - shares a \`translationGroup\` (any stable id, e.g. the primary page's id) with all its
   variants — this links them for the <link rel="alternate" hreflang> tags and any
   language switcher, and is what {{#each page.translations}} iterates.
-- lives at its own \`path\` — convention is "/<locale>/…" (e.g. "/de" for the German home,
-  "/de/about" for German About). Each locale's nav lists only its own pages.
+- nests under that locale's HOME so its route is "/<locale>/…": create a locale-home page
+  first ({ path:"<locale>", parent:"home" } → /<locale>, the localized home), then parent the
+  locale's other pages under it ({ path:"about", parent:"<locale>-home-id" } → /<locale>/about).
+  Each locale's nav lists only its own pages.
 SHARE STRUCTURE by giving the variants the SAME \`template\` (or copy the \`source\`); each
 supplies only its own translated {{edit}} text and \`title\`/\`seo\`. For a one-off layout
 difference, just give that variant its own \`source\`.

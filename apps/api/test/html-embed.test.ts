@@ -36,7 +36,7 @@ describe('Html (raw embed) block', () => {
 
   const pageWithEmbed = {
     id: 'home',
-    path: '/',
+    path: '',
     title: 'Home',
     root: {
       id: 'r',

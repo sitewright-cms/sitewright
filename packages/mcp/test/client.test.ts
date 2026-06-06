@@ -48,7 +48,7 @@ describe('SitewrightClient', () => {
   });
 
   it('PUTs JSON with a content-type and returns the item', async () => {
-    const page = { id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' } };
+    const page = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' } };
     const { client, calls } = await introspected((input) =>
       input.endsWith('/api-key/self')
         ? { status: 200, body: JSON.stringify(scope) }

@@ -2,8 +2,9 @@ import { describe, it, expect } from 'vitest';
 import type { Page } from '@sitewright/schema';
 import { localizedDatasetName, resolveLocaleDatasets, translationsOf, localeOf, pagesInLocale } from '../src/index.js';
 
+// `path` is a SLUG SEGMENT (empty for home); full routes are computed from the parent chain.
 const page = (over: Partial<Page>): Page =>
-  ({ id: 'p', path: '/', title: 'T', root: { id: 'r', type: 'Section' }, ...over }) as Page;
+  ({ id: 'p', path: '', title: 'T', root: { id: 'r', type: 'Section' }, ...over }) as Page;
 
 describe('resolveLocaleDatasets (auto locale-suffix)', () => {
   const data = {
@@ -37,17 +38,18 @@ describe('resolveLocaleDatasets (auto locale-suffix)', () => {
 
 describe('translationsOf (language switcher / hreflang group)', () => {
   const pages: Page[] = [
-    page({ id: 'home', path: '/', title: 'Home', translationGroup: 'home' }), // en (default, locale unset)
-    page({ id: 'home-de', path: '/de/start', title: 'Start', locale: 'de', translationGroup: 'home' }),
-    page({ id: 'home-fr', path: '/fr/accueil', title: 'Accueil', locale: 'fr', translationGroup: 'home' }),
-    page({ id: 'about', path: '/about', title: 'About' }), // ungrouped
+    page({ id: 'home', path: '', title: 'Home', translationGroup: 'home' }), // en (default, locale unset)
+    page({ id: 'home-de', path: 'de', parent: 'home', title: 'Start', locale: 'de', translationGroup: 'home' }),
+    page({ id: 'home-fr', path: 'fr', parent: 'home', title: 'Accueil', locale: 'fr', translationGroup: 'home' }),
+    page({ id: 'about', path: 'about', parent: 'home', title: 'About' }), // ungrouped
   ];
 
   it('returns all variants of the group (incl. self), sorted by locale, default filling unset', () => {
+    // The paths are COMPUTED from the parent chain: /de, /, /fr.
     expect(translationsOf(pages, pages[0]!, 'en')).toEqual([
-      { locale: 'de', path: '/de/start', title: 'Start' },
+      { locale: 'de', path: '/de', title: 'Start' },
       { locale: 'en', path: '/', title: 'Home' }, // self, locale ← default
-      { locale: 'fr', path: '/fr/accueil', title: 'Accueil' },
+      { locale: 'fr', path: '/fr', title: 'Accueil' },
     ]);
   });
 
@@ -58,10 +60,10 @@ describe('translationsOf (language switcher / hreflang group)', () => {
 
 describe('localeOf / pagesInLocale (per-locale nav)', () => {
   const pages: Page[] = [
-    page({ id: 'home', path: '/', title: 'Home' }), // default (locale unset)
-    page({ id: 'about', path: '/about', title: 'About' }), // default
-    page({ id: 'home-de', path: '/de', title: 'Start', locale: 'de' }),
-    page({ id: 'services-de', path: '/de/services', title: 'Leistungen', locale: 'de' }),
+    page({ id: 'home', path: '', title: 'Home' }), // default (locale unset)
+    page({ id: 'about', path: 'about', parent: 'home', title: 'About' }), // default
+    page({ id: 'home-de', path: 'de', parent: 'home', title: 'Start', locale: 'de' }),
+    page({ id: 'services-de', path: 'leistungen', parent: 'home-de', title: 'Leistungen', locale: 'de' }),
   ];
 
   it('localeOf falls back to the project default when a page has no locale', () => {

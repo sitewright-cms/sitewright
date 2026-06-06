@@ -1,6 +1,7 @@
 {
   "id": "about",
-  "path": "/about",
+  "path": "about",
+  "parent": "home",
   "title": "About",
   "seo": { "description": "About Northwind Studio." },
   "root": {

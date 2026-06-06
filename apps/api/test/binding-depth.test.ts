@@ -115,7 +115,7 @@ describe('dataset bindings through publish (HTTP layer)', () => {
     // node's children render once per resolved entry (renderChildren list branch).
     const listPage = {
       id: 'home',
-      path: '/',
+      path: '',
       title: 'Posts',
       root: {
         id: 'sec',
@@ -164,7 +164,7 @@ describe('dataset bindings through publish (HTTP layer)', () => {
     // and that entry threads down to the child Heading's textField.
     const singlePage = {
       id: 'home',
-      path: '/',
+      path: '',
       title: 'Featured',
       root: {
         id: 'sec',
@@ -194,7 +194,7 @@ describe('dataset bindings through publish (HTTP layer)', () => {
     // down the subtree (ctx.entry is forwarded by renderChildren's non-list branch).
     const nestedPage = {
       id: 'home',
-      path: '/',
+      path: '',
       title: 'Nested',
       root: {
         id: 'sec',
@@ -254,7 +254,7 @@ describe('dataset bindings through publish (HTTP layer)', () => {
     // entry fields (textField=title, hrefField=link -> urlProp reads key 'href').
     const linkPage = {
       id: 'blog',
-      path: '/blog',
+      path: 'blog',
       title: 'Blog',
       root: {
         id: 'sec',
@@ -302,7 +302,7 @@ describe('dataset bindings through publish (HTTP layer)', () => {
 
     const emptyPage = {
       id: 'home',
-      path: '/',
+      path: '',
       title: 'Empty',
       root: {
         id: 'sec',

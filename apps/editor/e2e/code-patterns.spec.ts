@@ -16,10 +16,7 @@ test('insert a DaisyUI starter pattern into a code page → renders in the previ
   await page.getByLabel('Project slug').fill(`pat-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
 
-  // Create a code page and open it.
-  await page.getByLabel('Page path').fill('home');
-  await page.getByLabel('Page title').fill('Home');
-  await page.getByRole('button', { name: 'Add page' }).click();
+  // Open the auto-created home page (the empty-slug root).
   await page.getByRole('button', { name: /^Home/ }).click();
 
   // Insert the Hero pattern; its source lands in the editor…

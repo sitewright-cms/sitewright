@@ -44,3 +44,38 @@ test('code-first authoring: CodeMirror editor, live styled preview, save + persi
   await page.getByRole('button', { name: /^About/ }).click();
   await expect(page.locator('.cm-content')).toContainText('HELLOMARKER42');
 });
+
+test('Shift+Tab auto-indents the selection to its syntactic depth (not a plain dedent)', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: /Register/ }).click();
+  await page.getByLabel('Email').fill(`indent-${stamp}@e2e.test`);
+  await page.getByLabel('Password').fill('pw-secret-1');
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await page.getByRole('button', { name: 'New project' }).click();
+  await page.getByLabel('Project name').fill('Indent Site');
+  await page.getByLabel('Project slug').fill(`indent-${stamp}`);
+  await page.getByRole('button', { name: 'Create project' }).click();
+
+  await page.getByLabel('Page path').fill('reindent');
+  await page.getByLabel('Page title').fill('Reindent');
+  await page.getByRole('button', { name: 'Add page' }).click();
+  await page.getByRole('button', { name: /^Reindent/ }).click();
+
+  // `insertText` injects the document verbatim — no per-line electric indent — so the nested
+  // markup lands FLUSH-LEFT, mis-indented on purpose.
+  await page.locator('.cm-content').click();
+  await page.keyboard.press('ControlOrMeta+a');
+  await page.keyboard.insertText('<section>\n<div>\n<p>Hi</p>\n</div>\n</section>');
+
+  // Select all, Shift+Tab → auto-indent (`indentSelection`) re-flows every line to the depth
+  // its syntax implies. The OLD binding (dedent) would have LEFT these lines flush-left.
+  await page.keyboard.press('ControlOrMeta+a');
+  await page.keyboard.press('Shift+Tab');
+
+  const lines = await page.locator('.cm-content .cm-line').allInnerTexts();
+  expect(lines[0]).toMatch(/^<section>/);
+  expect(lines[1]).toMatch(/^ {2}<div>/); // one indent unit (2 spaces) under <section>
+  expect(lines[2]).toMatch(/^ {4}<p>Hi<\/p>/); // two units under <div>
+  expect(lines[3]).toMatch(/^ {2}<\/div>/);
+  expect(lines[4]).toMatch(/^<\/section>/);
+});

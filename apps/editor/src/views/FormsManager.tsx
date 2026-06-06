@@ -5,6 +5,7 @@ import { identifierize, slugify } from '../lib/entry-form';
 import { ProjectSmtp } from './ProjectSmtp';
 import { SubmissionsInbox } from './SubmissionsInbox';
 import { useDialogs } from './ui/Dialogs';
+import { SkeletonList } from './ui/Skeleton';
 import { glassCard, glassPanel, glassInput, primaryButton, ghostButton, dangerButton } from '../theme';
 
 const FIELD_TYPES: ReadonlyArray<FormField['type']> = ['text', 'email', 'tel', 'url', 'number', 'textarea', 'select'];
@@ -157,7 +158,7 @@ export function FormsManager({ project }: { project: Project }) {
     }
   }
 
-  if (loading) return <p className="text-sm text-slate-400">Loading forms…</p>;
+  if (loading) return <SkeletonList rows={3} label="Loading forms…" />;
 
   if (draft) {
     return (

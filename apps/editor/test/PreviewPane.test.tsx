@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { render } from '@testing-library/react';
+import { render, fireEvent } from '@testing-library/react';
 import { PreviewPane } from '../src/views/editor/PreviewPane';
 
 describe('PreviewPane', () => {
@@ -22,9 +22,25 @@ describe('PreviewPane', () => {
     expect(iframe?.getAttribute('src')).toBe('about:blank');
   });
 
-  it('shows the loading hint and the error banner', () => {
-    const { getByText, rerender } = render(<PreviewPane src="" loading={true} error={null} />);
+  it('skeletons until first load, then shows the updating hint; surfaces errors', () => {
+    const { container, getByText, queryByText, rerender } = render(
+      <PreviewPane src="/x" loading={true} error={null} />,
+    );
+    // Before the first load an animated skeleton covers the frame — NOT the "updating…"
+    // pill (that would strobe on live-preview's per-edit refresh).
+    expect(container.querySelector('.skeleton')).toBeTruthy();
+    expect(queryByText('updating…')).toBeNull();
+
+    // The iframe reports its (real) src finished loading → skeleton clears for good.
+    fireEvent.load(container.querySelector('iframe')!);
+    expect(container.querySelector('.skeleton')).toBeNull();
+
+    // A later refresh now shows the lightweight pill, leaving the last frame in place.
+    rerender(<PreviewPane src="/x" loading={true} error={null} />);
     expect(getByText('updating…')).toBeTruthy();
+    expect(container.querySelector('.skeleton')).toBeNull();
+
+    // Errors surface in the banner (and never under a skeleton).
     rerender(<PreviewPane src="/x" loading={false} error="boom" />);
     expect(getByText(/Preview error: boom/)).toBeTruthy();
   });

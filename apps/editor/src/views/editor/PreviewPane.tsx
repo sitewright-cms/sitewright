@@ -1,3 +1,5 @@
+import { useState } from 'react';
+
 interface PreviewPaneProps {
   /** URL of the sandboxed preview document (served under `CSP: sandbox`). */
   src: string;
@@ -21,6 +23,15 @@ interface PreviewPaneProps {
  * on the iframe is belt-and-suspenders; `allow-same-origin` must NEVER be added.
  */
 export function PreviewPane({ src, loading, error, title = 'Live preview' }: PreviewPaneProps) {
+  // The iframe paints blank-white while it fetches/renders its document. Cover it with an
+  // animated skeleton until its FIRST real load completes (`about:blank` doesn't count), so
+  // the pane never flashes empty. Subsequent reloads keep the last frame + the "updating…"
+  // pill instead of re-skeletoning (that would strobe on live-preview's per-edit refresh).
+  // `everLoaded` is intentionally NOT reset on `src` change: each consumer mounts a fresh
+  // PreviewPane per page/target (the editor modal and LivePreview both remount), so a new
+  // page gets a new instance — and `src` only swaps in place for refreshes of the SAME page.
+  const [everLoaded, setEverLoaded] = useState(false);
+  const showSkeleton = !everLoaded && !error;
   return (
     <div className="relative h-full overflow-hidden rounded-2xl border border-white/50 bg-white/40 p-1 shadow-xl shadow-slate-900/5 backdrop-blur-xl">
       {error && (
@@ -33,9 +44,18 @@ export function PreviewPane({ src, loading, error, title = 'Live preview' }: Pre
         aria-label={title}
         sandbox="allow-scripts"
         src={src || 'about:blank'}
+        onLoad={() => {
+          if (src) setEverLoaded(true);
+        }}
         className="h-full w-full rounded-xl border border-white/60 bg-white"
       />
-      {loading && (
+      {showSkeleton && (
+        <div role="status" className="absolute inset-1">
+          <div aria-hidden className="skeleton h-full w-full rounded-xl" />
+          <span className="sr-only">Loading preview…</span>
+        </div>
+      )}
+      {loading && everLoaded && (
         <span className="absolute bottom-3 right-4 rounded-lg bg-white/80 px-2 py-0.5 text-xs text-slate-500 shadow-sm backdrop-blur-sm">
           updating…
         </span>

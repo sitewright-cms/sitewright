@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { EditorView, keymap, Decoration, ViewPlugin, MatchDecorator, type DecorationSet, type ViewUpdate } from '@codemirror/view';
 import { EditorState, type Extension } from '@codemirror/state';
 import { HighlightStyle, syntaxHighlighting, indentUnit } from '@codemirror/language';
-import { indentWithTab } from '@codemirror/commands';
+import { indentWithTab, indentSelection } from '@codemirror/commands';
 import { tags as t } from '@lezer/highlight';
 import { basicSetup } from 'codemirror';
 import { html } from '@codemirror/lang-html';
@@ -113,7 +113,8 @@ function languageExtensions(language: CodeLanguage): Extension[] {
  * and applies *external* resets. Echoes of the user's own edits (which flow back in via
  * `onChange` → parent state → `value`) are ignored, so fast typing is never reverted.
  *
- * Tab / Shift-Tab indent / dedent the selection (`indentWithTab`); the unit is two spaces.
+ * Tab indents the selection (`indentWithTab`); Shift-Tab auto-indents it (`indentSelection`,
+ * syntax-aware re-flow). The indent unit is two spaces.
  */
 export function CodeEditor({ value, onChange, ariaLabel, language = 'html' }: CodeEditorProps) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -138,8 +139,11 @@ export function CodeEditor({ value, onChange, ariaLabel, language = 'html' }: Co
           basicSetup,
           ...languageExtensions(languageRef.current),
           indentUnit.of('  '),
-          // Tab indents / Shift-Tab dedents the current line or selection.
-          keymap.of([indentWithTab]),
+          // Tab indents the current line/selection; Shift-Tab AUTO-INDENTS it — re-flowing
+          // each selected line to the indentation its syntax implies (`indentSelection`),
+          // not a plain dedent. The explicit binding precedes `indentWithTab` so it wins
+          // over that keymap's Shift-Tab=dedent; Tab still falls through to `indentWithTab`.
+          keymap.of([{ key: 'Shift-Tab', run: indentSelection }, indentWithTab]),
           EditorView.lineWrapping,
           EditorView.updateListener.of((u) => {
             if (!u.docChanged) return;

@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, type InstanceSettingsInput, type InstanceSettingsPublic } from '../api';
 import { glassCard, glassInput, primaryButton } from '../theme';
+import { SkeletonList } from './ui/Skeleton';
 
 const FORM_MODE_LABELS: Array<{ key: keyof InstanceSettingsPublic['formModes']; label: string; hint: string }> = [
   { key: 'globalSmtp', label: 'Global SMTP', hint: 'Platform sends form mail via the SMTP configured below.' },
@@ -118,7 +119,7 @@ export function InstanceSettings() {
     }
   }
 
-  if (loading) return <div className="p-8 text-slate-500">Loading settings…</div>;
+  if (loading) return <SkeletonList rows={5} className="mx-auto max-w-2xl p-8" label="Loading settings…" />;
   if (loadError) return <div className="p-8 text-red-600">{loadError}</div>;
 
   const field = glassInput;

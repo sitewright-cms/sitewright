@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, ApiError, type InvitePeek } from '../api';
 import { glassCard, primaryButton } from '../theme';
 import { Login } from './Login';
+import { SkeletonList } from './ui/Skeleton';
 
 interface AcceptInviteProps {
   token: string;
@@ -70,7 +71,7 @@ export function AcceptInvite({ token, authed, onAuthed, onDone }: AcceptInvitePr
     );
   }
 
-  if (!peek) return <div className="p-8 text-slate-500">Loading invitation…</div>;
+  if (!peek) return <SkeletonList rows={3} className="mx-auto max-w-md p-8" label="Loading invitation…" />;
 
   const target =
     peek.role === 'member' && peek.projectName

@@ -255,6 +255,9 @@ importers:
       '@vitest/coverage-v8':
         specifier: ^4.1.8
         version: 4.1.8(vitest@4.1.8)
+      lucide-static:
+        specifier: ^0.544.0
+        version: 0.544.0
       simple-icons:
         specifier: ^16.21.0
         version: 16.21.0
@@ -3379,6 +3382,9 @@ packages:
 
   lru-cache@5.1.1:
     resolution: {integrity: sha512-KpNARQA3Iwv+jTA0utUVVbrh+Jlrr1Fv0e56GGzAFOXN7dk/FviaDW8LHmK52DlcH4WP2n6gI8vN1aesBFgo9w==}
+
+  lucide-static@0.544.0:
+    resolution: {integrity: sha512-2PkMTYcjQkIzYbd5u2g7UtRaNDP7dLQT107MmYBdvnZZCO3Vj0nqH6HA5AkUS2Era8D1ITb/UxrOkfdH/qN2Ag==}
 
   lz-string@1.5.0:
     resolution: {integrity: sha512-h5bgJWpxJNswbU7qCrV0tIKQCaS3blPDrqKWx+QxzuzL1zGUzij9XCWLrSLsJPu5t+eWA/ycetzYAO5IOMcWAQ==}
@@ -7795,6 +7801,8 @@ snapshots:
   lru-cache@5.1.1:
     dependencies:
       yallist: 3.1.1
+
+  lucide-static@0.544.0: {}
 
   lz-string@1.5.0: {}
 

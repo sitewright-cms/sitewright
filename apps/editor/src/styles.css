@@ -9,10 +9,13 @@
   themes: false;
 }
 
-/* A self-contained light theme for DaisyUI component previews (the brand-default palette,
-   matching packages/tailwind's DAISY_THEME_DEFAULTS). Any DaisyUI markup inside
-   `.sw-preview` renders themed; nothing leaks to the rest of the editor. */
-.sw-preview {
+/* The brand-default DaisyUI palette (matching packages/tailwind's DAISY_THEME_DEFAULTS),
+   defined at :root so DaisyUI component classes work anywhere in the editor — notably
+   `.skeleton` for loading placeholders. The editor uses NO bare DaisyUI component tokens,
+   so these vars have no effect except where such a class is intentionally used (skeletons,
+   `.sw-preview`). `themes: false` means DaisyUI never sets a root background/color itself. */
+:root {
+  color-scheme: light;
   --color-base-100: oklch(100% 0 0);
   --color-base-200: oklch(98% 0 0);
   --color-base-300: oklch(95% 0 0);
@@ -41,12 +44,12 @@
   --border: 1px;
   --depth: 1;
   --noise: 0;
-  background-color: var(--color-base-100);
-  color: var(--color-base-content);
 }
 
-:root {
-  color-scheme: light;
+/* DaisyUI component previews render on a page-like surface (themed via the :root vars). */
+.sw-preview {
+  background-color: var(--color-base-100);
+  color: var(--color-base-content);
 }
 body {
   margin: 0;

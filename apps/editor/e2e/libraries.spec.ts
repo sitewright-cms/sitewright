@@ -43,26 +43,37 @@ test('library panel: open, search, and copy an example; lazyload + ripple publis
   expect(body).toContain('<script defer src="../lazyload.js"></script>');
   expect(body).toContain('<script defer src="../ripple.js"></script>');
 
-  // The Library is a LEFT hover-drawer; the "Open library" toggle expands the rail (also
-  // keyboard/touch-accessible) to reveal the section buttons. Each section title opens a
-  // searchable gallery modal.
-  await page.getByRole('button', { name: 'Open library' }).click();
-  await page.getByRole('button', { name: /Ripple effect/ }).click();
+  // The Library is a LEFT hover-drawer; hovering the rail expands it to reveal the section
+  // buttons (the width transition settles before the click). Each section title opens a
+  // searchable gallery modal. A small helper keeps the rail stable between modals.
+  const aside = page.getByRole('complementary', { name: 'Library' });
+  const openSection = async (name: RegExp) => {
+    await aside.hover();
+    await page.getByRole('button', { name }).click();
+  };
+
+  await openSection(/Ripple effect/);
   const ripple = page.getByRole('dialog', { name: 'Ripple effect' });
   await expect(ripple.getByText('Ripple on a primary button')).toBeVisible();
   await expect(ripple.getByText(/waves-effect waves-light/)).toBeVisible();
   await expect(ripple.getByRole('button', { name: 'Copy' }).first()).toBeVisible();
   await page.keyboard.press('Escape');
 
-  // The Icons modal lazy-loads the whole pack and is searchable.
-  await page.getByRole('button', { name: /^Icons/ }).click();
+  // The Icons modal lazy-loads the WHOLE Lucide pack and is searchable (by name + tags).
+  await openSection(/^Icons/);
   const icons = page.getByRole('dialog', { name: 'Icons' });
-  await icons.getByLabel('Search Icons').fill('home');
-  await expect(icons.getByRole('button', { name: 'Copy home icon snippet' })).toBeVisible();
+  await icons.getByLabel('Search Icons').fill('rocket'); // only in the full set, not the old 43
+  await expect(icons.getByRole('button', { name: 'Copy rocket icon snippet' })).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  // Brand icons live in their own lazy section, inserted with the brand: prefix.
+  await openSection(/Brand icons/);
+  const brand = page.getByRole('dialog', { name: 'Brand icons' });
+  await expect(brand.getByRole('button', { name: 'Copy GitHub icon snippet' })).toBeVisible();
   await page.keyboard.press('Escape');
 
   // DaisyUI components render a live preview inside the modal.
-  await page.getByRole('button', { name: /DaisyUI components/ }).click();
+  await openSection(/DaisyUI components/);
   const daisy = page.getByRole('dialog', { name: 'DaisyUI components' });
   await daisy.getByLabel('Search DaisyUI components').fill('button');
   await expect(daisy.locator('.sw-preview .btn').first()).toBeVisible();

@@ -94,21 +94,25 @@ export function LibraryPanel() {
   );
 }
 
+/** Max icons rendered at once (the full Lucide set is 1865) — search narrows below this. */
+const GRID_CAP = 360;
+
 /** A searchable gallery of one section's items (icons grid, or item cards with optional preview). */
 function SectionModal({ section, onClose }: { section: LibrarySection; onClose: () => void }) {
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<LibraryItem[]>(section.items);
-  const [loading, setLoading] = useState(section.lazy === 'icons');
+  const [loading, setLoading] = useState(!!section.lazy);
   const [error, setError] = useState(false);
 
-  // Lazy-load the (large) icon set the first time the Icons modal opens.
+  // Lazy-load the (large) icon / brand-icon sets the first time their modal opens.
   useEffect(() => {
-    if (section.lazy !== 'icons') return;
+    if (!section.lazy) return;
+    const lazy = section.lazy;
     let alive = true;
     void import('./catalog-icons')
       .then((m) => {
         if (alive) {
-          setItems(m.ICON_ITEMS);
+          setItems(lazy === 'brand' ? m.BRAND_ITEMS : m.ICON_ITEMS);
           setLoading(false);
         }
       })
@@ -137,6 +141,12 @@ function SectionModal({ section, onClose }: { section: LibrarySection; onClose: 
     [items, q],
   );
 
+  // A grid section (icons or brand logos) — capped so the 1865-icon set stays responsive;
+  // searching narrows it. Other sections show everything.
+  const isGrid = section.category === 'icons' || section.category === 'brand';
+  const shown = isGrid ? filtered.slice(0, GRID_CAP) : filtered;
+  const overflow = filtered.length - shown.length;
+
   return (
     <Modal title={section.label} size="full" onClose={onClose}>
       <div className="flex h-full flex-col gap-3 p-5">
@@ -151,19 +161,25 @@ function SectionModal({ section, onClose }: { section: LibrarySection; onClose: 
         />
         <div className="min-h-0 flex-1 overflow-auto pr-1">
           {error ? (
-            <p className="py-8 text-center text-sm text-rose-500">Couldn’t load icons. Close and reopen to retry.</p>
+            <p className="py-8 text-center text-sm text-rose-500">Couldn’t load the library set. Close and reopen to retry.</p>
           ) : loading ? (
-            <p className="py-8 text-center text-sm text-slate-400">Loading icons…</p>
+            // DaisyUI skeleton placeholder while the (large) icon set loads.
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(5rem,1fr))] gap-2">
+              {Array.from({ length: 36 }, (_, i) => (
+                <div key={i} className="skeleton h-[4.5rem] w-full rounded-xl" />
+              ))}
+            </div>
           ) : filtered.length === 0 ? (
             <p className="py-8 text-center text-sm text-slate-400">No matches.</p>
-          ) : section.category === 'icons' ? (
-            <IconGrid items={filtered} />
+          ) : isGrid ? (
+            <IconGrid items={shown} />
           ) : (
             <ItemList items={filtered} preview={section.preview ?? false} />
           )}
         </div>
         <p className="shrink-0 text-[11px] text-slate-400">
-          {filtered.length} {section.category === 'icons' ? 'icons' : 'items'} · click to copy the snippet.
+          {filtered.length} {isGrid ? 'icons' : 'items'}
+          {overflow > 0 ? ` · showing ${shown.length} — search to narrow` : ''} · click to copy the snippet.
         </p>
       </div>
     </Modal>

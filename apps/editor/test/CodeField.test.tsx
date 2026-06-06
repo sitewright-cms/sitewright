@@ -12,17 +12,18 @@ vi.mock('../src/lib/code-editor', () => ({
 import { CodeField } from '../src/views/ui/CodeField';
 
 describe('CodeField', () => {
-  it('shows the placeholder + "empty" when the value is blank', () => {
+  it('shows the title, an empty indicator (with the placeholder), and an Edit button when blank', () => {
     render(<CodeField label="topNav" value="" onChange={() => {}} placeholder="<nav>…</nav>" />);
-    expect(screen.getByText('<nav>…</nav>')).toBeInTheDocument();
-    expect(screen.getByText('empty')).toBeInTheDocument();
+    expect(screen.getByText('topNav')).toBeInTheDocument();
+    expect(screen.getByText(/Empty · e\.g\. <nav>…<\/nav>/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Edit/ })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).toBeNull(); // editor only opens on Edit
   });
 
-  it('previews the first lines and counts them', () => {
+  it('shows the line count and NO inline code preview (the modal is the only surface)', () => {
     render(<CodeField label="topNav" value={'a\nb\nc\nd'} onChange={() => {}} />);
     expect(screen.getByText('4 lines')).toBeInTheDocument();
-    // The preview clamps to the first 3 lines.
-    expect(screen.getByText(/a\s+b\s+c/)).toBeInTheDocument();
+    expect(screen.queryByText(/a\s+b\s+c/)).toBeNull();
   });
 
   it('opens the editor modal on Edit, then saves the edited value and closes', () => {

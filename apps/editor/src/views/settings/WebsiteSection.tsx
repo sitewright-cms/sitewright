@@ -35,6 +35,7 @@ export function WebsiteSection({ form, patch }: { form: SettingsForm; patch: Pat
         <CodeField
           label="Project-wide CSS inlined in <head> (after brand tokens)"
           title="Critical CSS"
+          language="css"
           value={form.criticalCss}
           onChange={(v) => patch({ criticalCss: v })}
           placeholder=".hero { ... }"

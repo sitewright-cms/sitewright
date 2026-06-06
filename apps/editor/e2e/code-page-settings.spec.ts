@@ -33,11 +33,11 @@ test('code page settings: stacked modal sets draft + nav, persisted across reope
   await page.getByRole('button', { name: 'Save settings' }).click(); // applies to the DRAFT
   await expect(page.getByRole('dialog')).toHaveCount(1); // settings closed, editor stays
 
-  await page.getByRole('button', { name: 'Save' }).click(); // ONE save persists everything
+  await page.getByRole('button', { name: 'Save', exact: true }).click(); // ONE save persists everything
   await expect(page.getByText('Saved')).toBeVisible();
 
   // Close the editor modal — the page list behind it shows the draft badge.
-  await page.getByRole('button', { name: 'Close' }).click();
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(page.getByText('draft')).toBeVisible();
 
   // Reopen → the settings persisted (incl. the dropdown toggle).

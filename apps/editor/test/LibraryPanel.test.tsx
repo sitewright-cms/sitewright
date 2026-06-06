@@ -8,44 +8,59 @@ beforeEach(() => {
 });
 
 describe('LibraryPanel', () => {
-  it('opens from the edge handle and lists the library sections', () => {
+  it('expands on hover and lists the section buttons', () => {
     render(<LibraryPanel />);
-    fireEvent.click(screen.getByRole('button', { name: 'Open library' }));
-    // The category headings are present.
-    expect(screen.getByText('Icons')).toBeInTheDocument();
-    expect(screen.getByText('AOS (scroll reveal)')).toBeInTheDocument();
-    expect(screen.getByText('Lazy-load')).toBeInTheDocument();
-    expect(screen.getByText('Ripple effect')).toBeInTheDocument();
-    expect(screen.getByText('DaisyUI components')).toBeInTheDocument();
+    fireEvent.mouseEnter(screen.getByLabelText('Library'));
+    for (const name of [/Icons/, /AOS/, /Lazy-load/, /Ripple effect/, /DaisyUI components/]) {
+      expect(screen.getByRole('button', { name })).toBeInTheDocument();
+    }
   });
 
-  it('searches across items (e.g. "ripple") and filters out non-matches', () => {
+  it('opens a section gallery modal, searches within it, and copies an example', async () => {
     render(<LibraryPanel />);
-    fireEvent.click(screen.getByRole('button', { name: 'Open library' }));
-    fireEvent.change(screen.getByLabelText('Search library'), { target: { value: 'ripple' } });
-    expect(screen.getByText('Ripple effect')).toBeInTheDocument();
-    expect(screen.queryByText('DaisyUI components')).toBeNull();
-    expect(screen.queryByText('Icons')).toBeNull();
-  });
+    fireEvent.mouseEnter(screen.getByLabelText('Library'));
+    fireEvent.click(screen.getByRole('button', { name: /DaisyUI components/ }));
 
-  it('opens an item details modal with the example + copies it', async () => {
-    render(<LibraryPanel />);
-    fireEvent.click(screen.getByRole('button', { name: 'Open library' }));
-    // A DaisyUI Card item → details modal.
-    fireEvent.click(screen.getByRole('button', { name: 'Card' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Card' });
-    expect(within(dialog).getByText(/Example/)).toBeInTheDocument();
-    expect(within(dialog).getByText(/card-body/)).toBeInTheDocument(); // the example markup, as text
+    const dialog = await screen.findByRole('dialog', { name: 'DaisyUI components' });
+    expect(within(dialog).getByText('Card')).toBeInTheDocument();
+    expect(within(dialog).getByText('Hero')).toBeInTheDocument();
+
+    // Search filters within the section.
+    fireEvent.change(within(dialog).getByLabelText('Search DaisyUI components'), { target: { value: 'hero' } });
+    expect(within(dialog).getByText('Hero')).toBeInTheDocument();
+    expect(within(dialog).queryByText('Card')).toBeNull();
+
     fireEvent.click(within(dialog).getByRole('button', { name: 'Copy' }));
-    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expect.stringContaining('card bg-base-100'));
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expect.stringContaining('hero'));
     expect(await within(dialog).findByText('Copied!')).toBeInTheDocument();
   });
 
-  it('an icon item shows the {{icon}} snippet to copy', async () => {
+  it('renders a live preview for DaisyUI components (real markup, Handlebars neutralized)', async () => {
     render(<LibraryPanel />);
-    fireEvent.click(screen.getByRole('button', { name: 'Open library' }));
-    fireEvent.click(screen.getByRole('button', { name: 'arrow-right' }));
-    const dialog = await screen.findByRole('dialog', { name: 'arrow-right' });
-    expect(within(dialog).getByText('{{icon "arrow-right" "h-5 w-5"}}')).toBeInTheDocument();
+    fireEvent.mouseEnter(screen.getByLabelText('Library'));
+    fireEvent.click(screen.getByRole('button', { name: /DaisyUI components/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'DaisyUI components' });
+    fireEvent.change(within(dialog).getByLabelText('Search DaisyUI components'), { target: { value: 'navbar' } });
+    // The Navbar example interpolates {{ company.name }} → neutralized in the preview.
+    const preview = dialog.querySelector('.sw-preview')!;
+    expect(preview.querySelector('.navbar')).not.toBeNull();
+    expect(preview.innerHTML).not.toContain('{{');
+  });
+
+  it('lazy-loads the whole icon pack and copies an icon snippet on click', async () => {
+    render(<LibraryPanel />);
+    fireEvent.mouseEnter(screen.getByLabelText('Library'));
+    fireEvent.click(screen.getByRole('button', { name: /Icons/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'Icons' });
+
+    // Icons arrive via a dynamic import (code-split) — wait for the grid.
+    const iconBtn = await within(dialog).findByRole('button', { name: 'Copy arrow-right icon snippet' });
+    fireEvent.click(iconBtn);
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('{{icon "arrow-right" "h-5 w-5"}}');
+
+    // Search narrows the grid (the expanded pack includes "home").
+    fireEvent.change(within(dialog).getByLabelText('Search Icons'), { target: { value: 'home' } });
+    expect(await within(dialog).findByRole('button', { name: 'Copy home icon snippet' })).toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: 'Copy arrow-right icon snippet' })).toBeNull();
   });
 });

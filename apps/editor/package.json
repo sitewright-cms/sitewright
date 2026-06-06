@@ -12,6 +12,8 @@
     "e2e": "playwright test"
   },
   "dependencies": {
+    "@codemirror/commands": "^6.10.3",
+    "@codemirror/lang-css": "^6.3.1",
     "@codemirror/lang-html": "^6.4.9",
     "@codemirror/language": "^6.12.3",
     "@codemirror/state": "^6.5.2",
@@ -35,6 +37,7 @@
     "@types/react-dom": "^18.3",
     "@vitejs/plugin-react": "^4.7",
     "@vitest/coverage-v8": "^4.1.8",
+    "daisyui": "~5.5",
     "jsdom": "^25.0",
     "tailwindcss": "^4",
     "typescript": "^5.7.2",

@@ -1,24 +1,31 @@
 import { useEffect, useRef } from 'react';
-import { EditorView } from '@codemirror/view';
-import { EditorState } from '@codemirror/state';
-import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
+import { EditorView, keymap, Decoration, ViewPlugin, MatchDecorator, type DecorationSet, type ViewUpdate } from '@codemirror/view';
+import { EditorState, type Extension } from '@codemirror/state';
+import { HighlightStyle, syntaxHighlighting, indentUnit } from '@codemirror/language';
+import { indentWithTab } from '@codemirror/commands';
 import { tags as t } from '@lezer/highlight';
 import { basicSetup } from 'codemirror';
 import { html } from '@codemirror/lang-html';
+import { css } from '@codemirror/lang-css';
+
+export type CodeLanguage = 'html' | 'css';
 
 interface CodeEditorProps {
   value: string;
   onChange: (value: string) => void;
   ariaLabel?: string;
+  /** Syntax mode — `html` (HTML + Handlebars, the default) or `css` (e.g. critical CSS). */
+  language?: CodeLanguage;
 }
 
-/** The single editor accent — used for the gutter border, cursor, selection, and code tokens. */
+/** The editor accent — gutter border, cursor, selection, active-line gutter. */
 const ACCENT = '#818cf8'; // indigo-400
 
 /**
- * The Sitewright code-editor look: a black canvas with ONE accent (indigo). The gutter carries the
- * accent as its right border; the cursor, selection, and active-line gutter pick it up too. Added
- * AFTER `basicSetup` so it wins the theme + highlight facets.
+ * The Sitewright code-editor look: a black canvas with the indigo accent for chrome
+ * (gutter border, cursor, selection) and a MULTI-COLOUR syntax palette so HTML tags,
+ * attributes, values, and Handlebars expressions each read distinctly. Added AFTER
+ * `basicSetup` so it wins the theme + highlight facets.
  */
 const blackTheme = EditorView.theme(
   {
@@ -32,37 +39,71 @@ const blackTheme = EditorView.theme(
     },
     '.cm-gutters': {
       backgroundColor: '#0a0a0f',
-      color: '#3f3f46',
+      color: '#71717a', // lighter line numbers (was #3f3f46 — too dark)
       border: 'none',
       borderRight: `2px solid ${ACCENT}`,
     },
     '.cm-activeLine': { backgroundColor: 'rgba(255,255,255,0.035)' },
-    '.cm-activeLineGutter': { backgroundColor: 'transparent', color: ACCENT },
-    '.cm-lineNumbers .cm-gutterElement': { color: '#3f3f46' },
+    '.cm-activeLineGutter': { backgroundColor: 'transparent', color: '#e4e4e7' },
+    '.cm-lineNumbers .cm-gutterElement': { color: '#71717a' },
     '.cm-foldPlaceholder': { backgroundColor: '#27272a', color: '#a1a1aa', border: 'none' },
     '.cm-matchingBracket, &.cm-focused .cm-matchingBracket': {
       backgroundColor: 'rgba(129,140,248,0.25)',
       color: 'inherit',
       outline: `1px solid ${ACCENT}`,
     },
+    // Handlebars expressions ({{ … }}) — decorated separately from the HTML grammar.
+    '.cm-handlebars': { color: '#f0abfc', fontWeight: '500' }, // fuchsia-300
   },
   { dark: true },
 );
 
-/** A single-accent syntax palette: tags/keywords in the accent, everything else a calm light grey. */
-const blackHighlight = HighlightStyle.define([
-  { tag: [t.keyword, t.tagName, t.operatorKeyword, t.moduleKeyword], color: ACCENT },
-  { tag: [t.attributeName, t.propertyName], color: '#c7d2fe' },
-  { tag: [t.string, t.special(t.string), t.attributeValue, t.regexp], color: '#a5b4fc' },
-  { tag: [t.comment, t.lineComment, t.blockComment, t.meta], color: '#52525b', fontStyle: 'italic' },
-  { tag: [t.number, t.bool, t.atom, t.null], color: '#e4e4e7' },
-  { tag: [t.bracket, t.angleBracket, t.punctuation, t.separator], color: '#71717a' },
+/**
+ * A readable multi-colour palette on the near-black canvas: tags, attribute names,
+ * attribute/string values, comments, numbers, and keywords each get their own hue.
+ */
+const richHighlight = HighlightStyle.define([
+  { tag: [t.tagName, t.standard(t.tagName)], color: '#7dd3fc' }, // sky-300 — HTML tags
+  { tag: [t.angleBracket, t.bracket, t.punctuation, t.separator], color: '#6b7280' }, // gray-500
+  { tag: [t.attributeName, t.propertyName], color: '#fcd34d' }, // amber-300 — attributes
+  { tag: [t.attributeValue, t.string, t.special(t.string), t.regexp], color: '#86efac' }, // green-300 — values (incl. class="…")
+  { tag: [t.keyword, t.operatorKeyword, t.moduleKeyword, t.controlKeyword], color: '#c4b5fd' }, // violet-300
+  { tag: [t.comment, t.lineComment, t.blockComment, t.meta], color: '#6b7280', fontStyle: 'italic' },
+  { tag: [t.number, t.bool, t.atom, t.null, t.unit], color: '#fdba74' }, // orange-300
   { tag: [t.heading, t.strong], color: '#f4f4f5', fontWeight: 'bold' },
   { tag: t.link, color: ACCENT, textDecoration: 'underline' },
+  { tag: t.variableName, color: '#e4e4e7' },
 ]);
 
 /**
- * A thin CodeMirror 6 wrapper for authoring HTML + Handlebars template source.
+ * Decorates `{{ … }}` / `{{{ … }}}` Handlebars expressions with the `cm-handlebars`
+ * mark — `@codemirror/lang-html` treats them as plain text, so this overlay gives
+ * template expressions their own colour without a bespoke language grammar.
+ */
+const handlebarsMatcher = new MatchDecorator({
+  regexp: /\{\{\{?[^{}]*\}?\}\}/g,
+  decoration: Decoration.mark({ class: 'cm-handlebars' }),
+});
+const handlebarsHighlight = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
+    constructor(view: EditorView) {
+      this.decorations = handlebarsMatcher.createDeco(view);
+    }
+    update(u: ViewUpdate) {
+      this.decorations = handlebarsMatcher.updateDeco(u, this.decorations);
+    }
+  },
+  { decorations: (v) => v.decorations },
+);
+
+/** Language extensions per mode (HTML carries the Handlebars overlay; CSS does not). */
+function languageExtensions(language: CodeLanguage): Extension[] {
+  return language === 'css' ? [css()] : [html(), handlebarsHighlight];
+}
+
+/**
+ * A thin CodeMirror 6 wrapper for authoring HTML + Handlebars template source (or CSS).
  *
  * Bundled, not CDN-loaded: the editor SPA is served under `default-src 'self'`, so a
  * runtime CDN editor (e.g. Monaco's default loader) is blocked — CodeMirror ships in the
@@ -71,8 +112,10 @@ const blackHighlight = HighlightStyle.define([
  * It is intentionally NOT a controlled component: `value` only seeds the initial document
  * and applies *external* resets. Echoes of the user's own edits (which flow back in via
  * `onChange` → parent state → `value`) are ignored, so fast typing is never reverted.
+ *
+ * Tab / Shift-Tab indent / dedent the selection (`indentWithTab`); the unit is two spaces.
  */
-export function CodeEditor({ value, onChange, ariaLabel }: CodeEditorProps) {
+export function CodeEditor({ value, onChange, ariaLabel, language = 'html' }: CodeEditorProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   // The last document we emitted upward — used to distinguish our own echo from a genuine
@@ -80,6 +123,9 @@ export function CodeEditor({ value, onChange, ariaLabel }: CodeEditorProps) {
   const lastEmitted = useRef(value);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  // Mode is fixed at mount (CodeMirror owns the document thereafter). Callers never change
+  // `language` on a live instance; if that's ever needed, remount via a React `key`.
+  const languageRef = useRef(language);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -90,7 +136,10 @@ export function CodeEditor({ value, onChange, ariaLabel }: CodeEditorProps) {
         doc: value,
         extensions: [
           basicSetup,
-          html(),
+          ...languageExtensions(languageRef.current),
+          indentUnit.of('  '),
+          // Tab indents / Shift-Tab dedents the current line or selection.
+          keymap.of([indentWithTab]),
           EditorView.lineWrapping,
           EditorView.updateListener.of((u) => {
             if (!u.docChanged) return;
@@ -98,9 +147,9 @@ export function CodeEditor({ value, onChange, ariaLabel }: CodeEditorProps) {
             lastEmitted.current = doc;
             onChangeRef.current(doc);
           }),
-          // Added after basicSetup so the black theme + single-accent highlight win.
+          // Added after basicSetup so the black theme + rich highlight win.
           blackTheme,
-          syntaxHighlighting(blackHighlight),
+          syntaxHighlighting(richHighlight),
         ],
       }),
     });

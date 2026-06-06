@@ -81,7 +81,9 @@ describe('MediaManager (Assets)', () => {
     expect(screen.getByLabelText('Upload files')).toHaveAttribute('multiple');
     // List view is the default → a table with a Size column.
     expect(await screen.findByRole('columnheader', { name: 'Size' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'hero.png' })).toBeInTheDocument();
+    // Await the asset row itself: the table shell (and its 'Size' header) can render before
+    // the async asset load resolves, so don't assume the rows are present yet.
+    expect(await screen.findByRole('button', { name: 'hero.png' })).toBeInTheDocument();
     expect(within(screen.getByRole('table')).getByText('application/pdf')).toBeInTheDocument();
     expect(screen.getByText('1.0 MB')).toBeInTheDocument();
     // The empty folder record persists into the list (the bug fix).

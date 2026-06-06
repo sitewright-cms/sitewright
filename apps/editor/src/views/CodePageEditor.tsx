@@ -246,13 +246,13 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   }
 
   /**
-   * Esc / header × / backdrop: back to the page list — confirming first when dirty.
-   * The Modal's onClose doesn't itself close (the parent unmounts us via onClose), so we
-   * can show the stacked confirm dialog and only call onClose() once the user confirms.
+   * Esc / header × / backdrop close guard: when dirty, confirm via the stacked discard DIALOG
+   * first. Returning false keeps the editor open (the Modal aborts its close before animating
+   * out); true lets the Modal play its exit and then call `onClose` (the parent unmounts us).
    */
-  async function requestClose() {
-    if (dirty && !(await confirm({ title: 'Discard changes', message: 'Discard unsaved changes?', confirmLabel: 'Discard' }))) return;
-    onClose();
+  async function confirmClose(): Promise<boolean> {
+    if (!dirty) return true;
+    return confirm({ title: 'Discard changes', message: 'Discard unsaved changes?', confirmLabel: 'Discard' });
   }
 
   const headerExtra = (
@@ -327,7 +327,8 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
     <Modal
       title={settings.title}
       size="screen"
-      onClose={requestClose}
+      onClose={onClose}
+      onBeforeClose={confirmClose}
       onSave={() => void save()}
       saving={saving}
       saveDisabled={!dirty}

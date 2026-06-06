@@ -232,26 +232,32 @@ describe('CodePageEditor', () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  it('Escape closes a clean editor; a dirty editor asks via the discard DIALOG first', async () => {
+  it('Escape closes a clean editor with no discard dialog', async () => {
+    const onClose = vi.fn();
+    render(<CodePageEditor project={project} page={page} onClose={onClose} />);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Discard changes' })).toBeNull();
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1)); // closes after the exit animation
+  });
+
+  it('a dirty editor asks via the discard DIALOG: cancel keeps it open, Discard closes', async () => {
     const onClose = vi.fn();
     render(<CodePageEditor project={project} page={page} onClose={onClose} />);
 
-    // Clean → closes immediately, no dialog.
-    fireEvent.keyDown(document, { key: 'Escape' });
-    expect(screen.queryByRole('dialog', { name: 'Discard changes' })).toBeNull();
-    expect(onClose).toHaveBeenCalledTimes(1);
-
-    // Dirty + Esc → the discard dialog appears (a stacked modal); cancel keeps it open.
     fireEvent.change(screen.getByLabelText('Template source'), { target: { value: '<p>unsaved</p>' } });
+    // Esc → the discard dialog appears (a stacked modal); cancel keeps the editor open.
     fireEvent.keyDown(document, { key: 'Escape' });
     const discard = await screen.findByRole('dialog', { name: 'Discard changes' });
     fireEvent.click(within(discard).getByRole('button', { name: 'Cancel' }));
-    expect(onClose).toHaveBeenCalledTimes(1); // unchanged — close was refused
+    // The discard dialog closes and the editor stays open (the close was refused).
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Discard changes' })).toBeNull());
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Template source')).toBeInTheDocument(); // still editing
 
-    // Esc again → confirm Discard → onClose.
+    // Esc again → confirm Discard → closes.
     fireEvent.keyDown(document, { key: 'Escape' });
     fireEvent.click(within(await screen.findByRole('dialog', { name: 'Discard changes' })).getByRole('button', { name: 'Discard' }));
-    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 
   it('the header CLOSE button discards without saving (confirming via the dialog)', async () => {

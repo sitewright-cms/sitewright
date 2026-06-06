@@ -11,6 +11,7 @@ import { LivePreview } from './views/LivePreview';
 import { UpdateBanner } from './views/UpdateBanner';
 import { parseLiveTarget } from './lib/live-target';
 import { SkeletonList } from './views/ui/Skeleton';
+import { installRipple } from './lib/ripple';
 
 /**
  * Routes to the standalone pop-out live preview when the URL carries `?live=…`;
@@ -62,6 +63,9 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
       void ps;
     });
   }, []);
+
+  // Delegated ripple ("waves") feedback for every `.waves-effect` element across the admin UI.
+  useEffect(() => installRipple(), []);
 
   function openProject(project: Project) {
     setTab('pages');
@@ -122,7 +126,7 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
               role="tab"
               aria-selected={tab === t}
               onClick={() => setTab(t)}
-              className={`rounded-xl px-3 py-1.5 text-sm transition ${
+              className={`waves-effect rounded-xl px-3 py-1.5 text-sm transition ${
                 tab === t ? 'bg-white font-semibold text-slate-900 shadow-md shadow-slate-900/5' : 'text-slate-600 hover:text-slate-900'
               }`}
             >

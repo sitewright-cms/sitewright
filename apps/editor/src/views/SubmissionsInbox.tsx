@@ -3,6 +3,7 @@ import type { FormSubmission } from '@sitewright/schema';
 import { api, type Project } from '../api';
 import { glassCard, dangerButton } from '../theme';
 import { useDialogs } from './ui/Dialogs';
+import { SkeletonList } from './ui/Skeleton';
 
 /**
  * Submissions inbox: the form submissions captured by the public endpoint, newest
@@ -53,7 +54,7 @@ export function SubmissionsInbox({ project, formId }: { project: Project; formId
     }
   }
 
-  if (loading) return <p className="text-sm text-slate-400">Loading submissions…</p>;
+  if (loading) return <SkeletonList rows={3} label="Loading submissions…" />;
 
   return (
     <div className="flex flex-col gap-3">

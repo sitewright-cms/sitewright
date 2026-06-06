@@ -10,6 +10,7 @@ import { InstanceSettings } from './views/InstanceSettings';
 import { LivePreview } from './views/LivePreview';
 import { UpdateBanner } from './views/UpdateBanner';
 import { parseLiveTarget } from './lib/live-target';
+import { SkeletonList } from './views/ui/Skeleton';
 
 /**
  * Routes to the standalone pop-out live preview when the URL carries `?live=…`;
@@ -69,7 +70,7 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
   }
 
   if (stage.name === 'loading') {
-    return <div className="p-8 text-slate-500">Loading…</div>;
+    return <SkeletonList rows={4} className="mx-auto max-w-md p-8" label="Loading the editor…" />;
   }
 
   // An invite link short-circuits the normal app until accepted or dismissed.

@@ -5,6 +5,7 @@ import { StockPicker } from './media/StockPicker';
 import { FileTypeIcon, FolderIcon } from './media/file-icons';
 import { Modal } from './ui/Modal';
 import { useDialogs } from './ui/Dialogs';
+import { SkeletonImage } from './ui/Skeleton';
 import { glassCard, glassPanel, ghostButton } from '../theme';
 
 /** Human-readable byte size (1 KB = 1024 B). */
@@ -365,7 +366,7 @@ export function MediaManager({ project }: { project: Project }) {
                     title={m.filename}
                   >
                     {m.kind === 'image' ? (
-                      <img src={m.url} alt="" className="h-6 w-6 shrink-0 rounded object-cover" loading="lazy" />
+                      <SkeletonImage src={m.url} alt="" className="h-6 w-6 shrink-0 rounded" />
                     ) : (
                       <FileTypeIcon filename={m.filename} className="h-5 w-5 shrink-0" />
                     )}
@@ -423,7 +424,7 @@ export function MediaManager({ project }: { project: Project }) {
             >
               <button type="button" onClick={() => (m.kind === 'image' ? setPreview(m) : window.open(m.url, '_blank', 'noopener,noreferrer'))} className="block">
                 {m.kind === 'image' ? (
-                  <img src={m.url} alt={m.alt ?? m.filename} className="h-24 w-full rounded object-cover" loading="lazy" />
+                  <SkeletonImage src={m.url} alt={m.alt ?? m.filename} className="h-24 w-full rounded" />
                 ) : (
                   <div className="flex h-24 w-full items-center justify-center rounded bg-white/40">
                     <FileTypeIcon filename={m.filename} className="h-10 w-10" />

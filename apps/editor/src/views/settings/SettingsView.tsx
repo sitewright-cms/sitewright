@@ -5,6 +5,7 @@ import { toForm, toBundle, type SettingsForm } from './model';
 import { IdentitySection } from './IdentitySection';
 import { WebsiteSection } from './WebsiteSection';
 import { sectionVariants } from './motion';
+import { SkeletonList } from '../ui/Skeleton';
 
 type Section = 'identity' | 'website';
 const SECTIONS: Array<{ key: Section; label: string }> = [
@@ -108,18 +109,14 @@ export function SettingsView({ project, section: fixedSection }: { project: Proj
   }
 
   if (loadError) return <p className="p-6 text-sm text-red-600">{loadError}</p>;
-  if (!form) return <p className="p-6 text-sm text-slate-400">Loading settings…</p>;
+  if (!form) return <SkeletonList rows={5} className="max-w-2xl" label="Loading settings…" />;
 
   return (
     <MotionConfig reducedMotion="user">
-      <div className="relative overflow-hidden rounded-3xl">
-        {/* Vivid gradient backdrop behind the frosted cards. */}
-        <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-br from-indigo-100 via-sky-50 to-fuchsia-100" />
-        <div aria-hidden className="pointer-events-none absolute -right-24 -top-24 -z-10 h-72 w-72 rounded-full bg-fuchsia-300/30 blur-3xl" />
-        <div aria-hidden className="pointer-events-none absolute -bottom-24 -left-24 -z-10 h-72 w-72 rounded-full bg-sky-300/30 blur-3xl" />
-
-        <div className="p-5 sm:p-7">
-          {/* Header: title + animated segmented switcher + save control. */}
+      {/* No own chrome/background or extra padding: the cards sit flush on the page
+          surface that `<main>` already pads — settings match the other tabs. */}
+      <div>
+        {/* Header: title + animated segmented switcher + save control. */}
           <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
             {showSwitcher ? (
             <div role="tablist" aria-label="Settings sections" className="flex items-center gap-2 rounded-2xl border border-white/50 bg-white/50 p-1 shadow-sm backdrop-blur-xl">
@@ -198,7 +195,6 @@ export function SettingsView({ project, section: fixedSection }: { project: Proj
               {section === 'identity' ? <IdentitySection form={form} patch={patch} /> : <WebsiteSection form={form} patch={patch} />}
             </motion.div>
           </AnimatePresence>
-        </div>
       </div>
     </MotionConfig>
   );

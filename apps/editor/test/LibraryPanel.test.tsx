@@ -55,14 +55,19 @@ describe('LibraryPanel', () => {
 
     // Narrow via search BEFORE the (large) pack finishes loading: the search input is
     // always present (only the grid shows a skeleton), so the grid renders the tiny
-    // filtered set instead of all 360 capped icons. This keeps the accessible-name scan
-    // small and deterministic regardless of how slow the code-split import resolves under
-    // CI's parallel-coverage load (the un-capped 360-button render can exceed findBy's
-    // default 1s poll on a loaded runner).
+    // filtered set instead of all 360 capped icons.
     fireEvent.change(within(dialog).getByLabelText('Search Icons'), { target: { value: 'arrow-right' } });
 
-    // Icons arrive via a dynamic import (code-split) — wait for the (now-filtered) grid.
-    const iconBtn = await within(dialog).findByRole('button', { name: 'Copy arrow-right icon snippet' });
+    // Icons arrive via a code-split `import('./catalog-icons')` that pulls in the whole
+    // 1865-entry icon module — vitest's first transform+eval of it under CI's parallel
+    // coverage load can take several seconds, well past findBy's default 1s poll. Give this
+    // first post-import query a generous timeout (the per-test timeout below is raised to
+    // match); subsequent queries hit the now-warm module cache and resolve instantly.
+    const iconBtn = await within(dialog).findByRole(
+      'button',
+      { name: 'Copy arrow-right icon snippet' },
+      { timeout: 15000 },
+    );
     fireEvent.click(iconBtn);
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('{{icon "arrow-right" "h-5 w-5"}}');
 
@@ -70,15 +75,17 @@ describe('LibraryPanel', () => {
     fireEvent.change(within(dialog).getByLabelText('Search Icons'), { target: { value: 'photo' } });
     expect(await within(dialog).findByRole('button', { name: 'Copy image icon snippet' })).toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: 'Copy arrow-right icon snippet' })).toBeNull();
-  });
+  }, 20000);
 
   it('lazy-loads the brand icons and copies a brand: snippet', async () => {
     render(<LibraryPanel />);
     fireEvent.mouseEnter(screen.getByLabelText('Library'));
     fireEvent.click(screen.getByRole('button', { name: /Brand icons/ }));
     const dialog = await screen.findByRole('dialog', { name: 'Brand icons' });
-    const gh = await within(dialog).findByRole('button', { name: 'Copy GitHub icon snippet' });
+    // Same code-split module as the icon pack — generous timeout in case this test is the
+    // first to trigger the (slow-under-CI) `import('./catalog-icons')`.
+    const gh = await within(dialog).findByRole('button', { name: 'Copy GitHub icon snippet' }, { timeout: 15000 });
     fireEvent.click(gh);
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('{{icon "brand:github" "h-6 w-6"}}');
-  });
+  }, 20000);
 });

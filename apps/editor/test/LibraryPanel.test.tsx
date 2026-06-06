@@ -53,12 +53,20 @@ describe('LibraryPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Icons/ }));
     const dialog = await screen.findByRole('dialog', { name: 'Icons' });
 
-    // Icons arrive via a dynamic import (code-split) — wait for the grid.
+    // Narrow via search BEFORE the (large) pack finishes loading: the search input is
+    // always present (only the grid shows a skeleton), so the grid renders the tiny
+    // filtered set instead of all 360 capped icons. This keeps the accessible-name scan
+    // small and deterministic regardless of how slow the code-split import resolves under
+    // CI's parallel-coverage load (the un-capped 360-button render can exceed findBy's
+    // default 1s poll on a loaded runner).
+    fireEvent.change(within(dialog).getByLabelText('Search Icons'), { target: { value: 'arrow-right' } });
+
+    // Icons arrive via a dynamic import (code-split) — wait for the (now-filtered) grid.
     const iconBtn = await within(dialog).findByRole('button', { name: 'Copy arrow-right icon snippet' });
     fireEvent.click(iconBtn);
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('{{icon "arrow-right" "h-5 w-5"}}');
 
-    // Search narrows the grid — by name AND by Lucide keyword tags ("photo" finds "image").
+    // Search by Lucide keyword tags too — "photo" finds "image".
     fireEvent.change(within(dialog).getByLabelText('Search Icons'), { target: { value: 'photo' } });
     expect(await within(dialog).findByRole('button', { name: 'Copy image icon snippet' })).toBeInTheDocument();
     expect(within(dialog).queryByRole('button', { name: 'Copy arrow-right icon snippet' })).toBeNull();

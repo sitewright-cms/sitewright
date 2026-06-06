@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
-import { seedInstance } from '../src/seed.js';
+import { seedInstance, DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASSWORD } from '../src/seed.js';
 import { users, projects } from '../src/db/schema.js';
 
 describe('seedInstance — first-boot bootstrap', () => {
@@ -50,16 +50,35 @@ describe('seedInstance — first-boot bootstrap', () => {
     await app.close();
   });
 
-  it('generates (and logs once) a password when none is configured', async () => {
+  it('uses the FIXED default credentials when none are configured — and warns loudly', async () => {
+    // Deliberate product decision: the first-boot credentials are always
+    // admin@sitewright.example / 123456 — predictable, never auto-generated.
     const db = await makeTestDb();
     const log: string[] = [];
-    await seedInstance({ db, adminEmail: 'admin@x.test', log: (m) => log.push(m) });
-    expect(log.join('\n')).toMatch(/GENERATED password:/);
-    // No default password: a wrong/empty guess must not log in.
+    await seedInstance({ db, adminEmail: DEFAULT_ADMIN_EMAIL, log: (m) => log.push(m) });
+    expect(log.join('\n')).toMatch(/WARNING/); // grep-discoverable on the credential notice itself
+    expect(log.join('\n')).toMatch(/DEFAULT password/);
+    expect(log.join('\n')).toMatch(/change it after first login/i);
+
     const app = await createApp({ db });
     await app.ready();
-    const bad = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'admin@x.test', password: '123456' } });
-    expect(bad.statusCode).not.toBe(200);
+    const login = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { email: DEFAULT_ADMIN_EMAIL, password: DEFAULT_ADMIN_PASSWORD },
+    });
+    expect(login.statusCode).toBe(200);
+    // An explicit SW_ADMIN_PASSWORD still wins over the default (no warning)…
+    const db2 = await makeTestDb();
+    const log2: string[] = [];
+    await seedInstance({ db: db2, adminEmail: DEFAULT_ADMIN_EMAIL, adminPassword: 'pw-secret-1', log: (m) => log2.push(m) });
+    expect(log2.join('\n')).not.toMatch(/DEFAULT password/);
+    // …but a whitespace-only value means "use the default" (warned), never a
+    // whitespace password that locks everyone out.
+    const db3 = await makeTestDb();
+    const log3: string[] = [];
+    await seedInstance({ db: db3, adminEmail: DEFAULT_ADMIN_EMAIL, adminPassword: '   ', log: (m) => log3.push(m) });
+    expect(log3.join('\n')).toMatch(/DEFAULT password/);
     await app.close();
   });
 });

@@ -11,16 +11,16 @@ test('code-first authoring: CodeMirror editor, live styled preview, save + persi
   await page.getByLabel('Email').fill(`code-${stamp}@e2e.test`);
   await page.getByLabel('Password').fill('pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();
+  await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Code Site');
   await page.getByLabel('Project slug').fill(`code-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
-  await page.getByRole('button', { name: /Code Site/ }).click();
 
-  // Create a CODE page (HTML + Handlebars), then open it.
-  await page.getByLabel('Page slug').fill('home');
-  await page.getByLabel('Page title').fill('Home');
+  // Create a fresh CODE page (the project already has an auto-created home), then open it.
+  await page.getByLabel('Page path').fill('/about');
+  await page.getByLabel('Page title').fill('About');
   await page.getByRole('button', { name: 'Add page' }).click();
-  await page.getByRole('button', { name: /Home/ }).click();
+  await page.getByRole('button', { name: /^About/ }).click();
 
   // The CodeMirror editor shows the starter Handlebars source…
   await expect(page.locator('.cm-content')).toContainText('{{ company.name }}');
@@ -39,8 +39,8 @@ test('code-first authoring: CodeMirror editor, live styled preview, save + persi
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByText('Saved')).toBeVisible();
 
-  // Back to the pages list, reopen → the edit persisted to page.source.
-  await page.getByRole('button', { name: 'Back to pages' }).click();
-  await page.getByRole('button', { name: /Home/ }).click();
+  // Close the editor modal (clean — just saved), reopen → the edit persisted to page.source.
+  await page.getByRole('button', { name: 'Close' }).click();
+  await page.getByRole('button', { name: /^About/ }).click();
   await expect(page.locator('.cm-content')).toContainText('HELLOMARKER42');
 });

@@ -39,7 +39,7 @@ export interface StockRoutesDeps {
     ctx: ProjectContext,
     projectId: string,
     buffer: Buffer,
-    meta: { filename: string; mimetype: string; alt?: string; attribution?: MediaAsset['attribution'] },
+    meta: { filename: string; mimetype: string; folder?: string; alt?: string; attribution?: MediaAsset['attribution'] },
   ) => Promise<MediaAsset>;
   rl: (max: number) => { rateLimit: { max: number; timeWindow: string } };
 }
@@ -96,6 +96,7 @@ export function registerStockRoutes(app: FastifyInstance, deps: StockRoutesDeps)
           // characters so the stored filename stays clean.
           filename: `${body.provider}-${body.id.replace(/[^a-zA-Z0-9._-]/g, '_')}`,
           mimetype: fetched.contentType,
+          ...(body.folder ? { folder: body.folder } : {}),
           ...(body.alt ? { alt: body.alt } : {}),
           attribution: fetched.attribution,
         });

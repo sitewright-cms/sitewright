@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { PageNodeSchema } from './block.js';
 import { SeoSchema } from './seo.js';
+import { TemplateRefSchema } from './template.js';
 import { IdSchema, KeyNameSchema, RoutePathSchema, SlugSchema } from './primitives.js';
 
 const COLLECTION_PARAM = /\[[A-Za-z0-9_]+\]/;
@@ -27,8 +28,19 @@ export const PageSchema = z
      */
     status: z.enum(['draft', 'published']).optional(),
     seo: SeoSchema.optional(),
-    /** Optional reusable layout: the template wraps this page at its Outlet node. */
-    template: IdSchema.optional(),
+    /**
+     * Code-first template reference: when set, this page renders the TEMPLATE's
+     * Handlebars source (a project `template` entity, or a built-in `global:<key>`),
+     * contributing only its own {{edit}} `content` + settings. The page editor
+     * locks the code surface for such pages (fork the template to customize).
+     */
+    template: TemplateRefSchema.optional(),
+    /**
+     * Parent page (sub-page nesting). Drives the auto-nav: when the PARENT's
+     * `nav.dropdown` is on, this page nests in a dropdown under the parent's
+     * nav item (no own `nav.slots` needed).
+     */
+    parent: IdSchema.optional(),
     /** Navigation placement: which menu slots this page appears in (auto-nav). */
     nav: z
       .object({
@@ -41,6 +53,8 @@ export const PageSchema = z
           .refine((s) => new Set(s).size === s.length, 'slots must not contain duplicates'),
         /** Sort order within a slot (ascending; ties broken by title). */
         order: z.number().int().min(0).max(100_000).optional(),
+        /** Show this page's CHILD pages (pages whose `parent` is this page) in a dropdown under its nav item. */
+        dropdown: z.boolean().optional(),
       })
       .optional(),
     /** Root of the block tree rendered for this page. */

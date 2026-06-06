@@ -11,11 +11,11 @@ test('create, view, and revoke a project API key from the editor', async ({ page
   await page.getByLabel('Password').fill('pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();
 
+  await page.getByRole('button', { name: 'New project' }).click();
+
   await page.getByLabel('Project name').fill('Keyed Site');
   await page.getByLabel('Project slug').fill(`keyed-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
-
-  await page.getByRole('button', { name: /Keyed Site/ }).click();
   await page.getByRole('tab', { name: 'Admin' }).click();
   await page.getByRole('tab', { name: 'Access' }).click();
 
@@ -31,9 +31,9 @@ test('create, view, and revoke a project API key from the editor', async ({ page
   // …and the key now appears in the list.
   await expect(page.getByText('CI deploy')).toBeVisible();
 
-  // Revoke it (the confirm is auto-accepted) → it disappears from the list.
-  page.on('dialog', (d) => void d.accept());
+  // Revoke it → confirm in the modal dialog → it disappears from the list.
   await page.getByRole('button', { name: 'Revoke CI deploy' }).click();
+  await page.getByRole('dialog', { name: 'Revoke API key' }).getByRole('button', { name: 'Revoke' }).click();
   await expect(page.getByRole('button', { name: 'Revoke CI deploy' })).toHaveCount(0);
   await expect(page.getByText('No API keys yet.', { exact: false })).toBeVisible();
 });

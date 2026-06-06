@@ -88,24 +88,6 @@ describe('api client', () => {
     expect(eventsUrl('p')).toBe('/projects/p/events');
   });
 
-  it('POSTs render-template with the template, page context, and document flag', async () => {
-    fetchMock.mockResolvedValue(jsonResponse(200, { html: '<!doctype html>…' }));
-    const res = await api.renderTemplate('p', {
-      template: '<h1>{{ company.name }}</h1>',
-      page: { title: 'Home', path: '/' },
-      document: true,
-    });
-    expect(res).toEqual({ html: '<!doctype html>…' });
-    const [url, init] = fetchMock.mock.calls[0]!;
-    expect(url).toBe('/projects/p/render-template');
-    expect(init.method).toBe('POST');
-    expect(JSON.parse(init.body)).toEqual({
-      template: '<h1>{{ company.name }}</h1>',
-      page: { title: 'Home', path: '/' },
-      document: true,
-    });
-  });
-
   it('creates a project (POST with body, no org)', async () => {
     fetchMock.mockResolvedValue(jsonResponse(201, { project: { id: 'p', name: 'P', slug: 's', role: 'owner' } }));
     await api.createProject('P', 's');
@@ -219,6 +201,58 @@ describe('api client', () => {
     expect(url).toBe('/projects/p/preview');
     expect(init.method).toBe('POST');
     expect(JSON.parse(init.body)).toMatchObject({ id: 'home' });
+  });
+
+  it('drives the media operation endpoints (patch/copy asset, folder CRUD, stock folder)', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { item: {}, items: [], ok: true }));
+
+    await api.patchMedia('p', 'a1', { folder: 'Docs', filename: 'x.pdf' });
+    let [url, init] = fetchMock.mock.calls.at(-1)!;
+    expect(url).toBe('/projects/p/media/a1');
+    expect(init.method).toBe('PATCH');
+    expect(JSON.parse(init.body)).toEqual({ folder: 'Docs', filename: 'x.pdf' });
+
+    await api.copyMedia('p', 'a1', 'Copies');
+    [url, init] = fetchMock.mock.calls.at(-1)!;
+    expect(url).toBe('/projects/p/media/a1/copy');
+    expect(JSON.parse(init.body)).toEqual({ folder: 'Copies' });
+
+    await api.listMediaFolders('p');
+    expect(fetchMock.mock.calls.at(-1)![0]).toBe('/projects/p/media/folders');
+
+    await api.createMediaFolder('p', 'Brand');
+    [url, init] = fetchMock.mock.calls.at(-1)!;
+    expect(url).toBe('/projects/p/media/folders');
+    expect(JSON.parse(init.body)).toEqual({ path: 'Brand' });
+
+    await api.renameMediaFolder('p', 'Old', 'New');
+    expect(fetchMock.mock.calls.at(-1)![0]).toBe('/projects/p/media/folders/rename');
+    expect(JSON.parse(fetchMock.mock.calls.at(-1)![1].body)).toEqual({ from: 'Old', to: 'New' });
+
+    await api.copyMediaFolder('p', 'Src', 'Dst');
+    expect(fetchMock.mock.calls.at(-1)![0]).toBe('/projects/p/media/folders/copy');
+
+    fetchMock.mockResolvedValue(jsonResponse(204, {}));
+    await api.deleteMediaFolder('p', 'Trash');
+    [url, init] = fetchMock.mock.calls.at(-1)!;
+    expect(url).toBe('/projects/p/media/folders');
+    expect(init.method).toBe('DELETE');
+    expect(JSON.parse(init.body)).toEqual({ path: 'Trash' });
+
+    fetchMock.mockResolvedValue(jsonResponse(201, { item: {} }));
+    await api.importStock('p', 'openverse', 'ov1', 'a cat', 'Stock');
+    expect(JSON.parse(fetchMock.mock.calls.at(-1)![1].body)).toEqual({ provider: 'openverse', id: 'ov1', alt: 'a cat', folder: 'Stock' });
+  });
+
+  it('lists templates and gets one (id URL-encoded) at the content path', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { items: [] }));
+    await api.listTemplates('p');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p/content/template');
+
+    fetchMock.mockResolvedValue(jsonResponse(200, { item: { id: 'promo', name: 'Promo', source: '<p/>' } }));
+    const res = await api.getTemplate('p', 'promo');
+    expect(res.item.id).toBe('promo');
+    expect(fetchMock.mock.calls[1]![0]).toBe('/projects/p/content/template/promo');
   });
 
   it('lists and PUTs datasets at the content path', async () => {

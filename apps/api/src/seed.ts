@@ -1,4 +1,3 @@
-import { randomBytes } from 'node:crypto';
 import type { Database } from './db/client.js';
 import { users } from './db/schema.js';
 import { registerAccount } from './repo/accounts.js';
@@ -14,11 +13,21 @@ import {
   EXAMPLE_FORMS,
 } from './seed-data.js';
 
+/** The built-in first-boot admin identity (override with SW_ADMIN_EMAIL). */
+export const DEFAULT_ADMIN_EMAIL = 'admin@sitewright.example';
+/**
+ * The FIXED first-boot password (override with SW_ADMIN_PASSWORD). A deliberate,
+ * documented product decision: the initial credentials are always the same and
+ * never auto-generated, so a fresh instance is predictably reachable. The seed
+ * warns loudly when this default is in use — change it after first login.
+ */
+export const DEFAULT_ADMIN_PASSWORD = '123456';
+
 export interface SeedOptions {
   db: Database;
   /** The super-admin email (SW_ADMIN_EMAIL). Must also be in the instance-admin allowlist. */
   adminEmail: string;
-  /** SW_ADMIN_PASSWORD; if empty, a strong password is generated and logged once. */
+  /** SW_ADMIN_PASSWORD; absent, empty, or whitespace-only → the FIXED default `123456` (warned about). */
   adminPassword?: string;
   /** Sink for the one-time bootstrap notices (defaults to stdout via the caller). */
   log?: (message: string) => void;
@@ -27,8 +36,9 @@ export interface SeedOptions {
 /**
  * First-boot bootstrap. When the instance has NO users yet, create the super-admin and a
  * showcase "Example Project". Because public registration is invitation-only, this is the ONLY
- * way the first admin is created — there is no default password baked in: SW_ADMIN_PASSWORD is
- * used as-is, or a strong one is generated and printed to the log once.
+ * way the first admin is created. The credentials default to the well-known
+ * `admin@sitewright.example` / `123456` (never auto-generated); SW_ADMIN_EMAIL /
+ * SW_ADMIN_PASSWORD override them.
  *
  * Idempotent by design: it returns immediately once ANY user exists, so re-deploys never
  * re-seed and a demo project the admin deleted stays deleted.
@@ -37,16 +47,20 @@ export async function seedInstance({ db, adminEmail, adminPassword, log = () => 
   const existing = await db.select({ id: users.id }).from(users).limit(1);
   if (existing.length > 0) return; // already bootstrapped — never re-seed
 
-  const generated = !adminPassword;
-  const password = adminPassword || randomBytes(12).toString('base64url');
+  // Trimmed: a whitespace-only env value must mean "use the default" (with the
+  // warning), never an unguessable whitespace password that locks everyone out.
+  const configured = adminPassword?.trim();
+  const usingDefault = !configured;
+  const password = configured || DEFAULT_ADMIN_PASSWORD;
 
   // The seeded super-admin holds the platform `admin` role (full access to every project +
   // instance settings); registration is otherwise invitation-only.
   const { userId } = await registerAccount(db, adminEmail, password, { platformRole: 'admin' });
   log(
-    generated
-      ? `[sitewright/seed] created admin "${adminEmail}" with a GENERATED password: ${password}\n` +
-          `[sitewright/seed] ^ change it after first login (set SW_ADMIN_PASSWORD to choose your own).`
+    usingDefault
+      ? `[sitewright/seed] WARNING: created admin "${adminEmail}" with the DEFAULT password ` +
+          `"${DEFAULT_ADMIN_PASSWORD}" — anyone who can reach this instance can sign in with it. ` +
+          `Change it after first login (or set SW_ADMIN_PASSWORD before first boot).`
       : `[sitewright/seed] created admin "${adminEmail}".`,
   );
 

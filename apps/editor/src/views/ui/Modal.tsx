@@ -28,7 +28,14 @@ const SIZES = {
   lg: 'max-w-2xl',
   xl: 'max-w-4xl',
   full: 'max-w-6xl h-[90vh]',
+  /** Near-fullscreen workbench (the page editor): full width, fixed 90vh. */
+  screen: 'max-w-none h-[90vh]',
 } as const;
+
+// Open-modal stack (top = last). Modals MAY stack (e.g. page settings over the page
+// editor): later portals render above earlier ones in DOM order, and the global
+// shortcuts (Escape / ⌘S) act on the TOP modal only, so Esc unwinds one at a time.
+const MODAL_STACK: object[] = [];
 
 interface ModalProps {
   title: string;
@@ -36,6 +43,8 @@ interface ModalProps {
   /** When provided, the header shows a SAVE icon button that calls this. */
   onSave?: () => void;
   saving?: boolean;
+  /** Disables the SAVE button + the ⌘/Ctrl+S shortcut (e.g. nothing to save yet). */
+  saveDisabled?: boolean;
   /** Accessible label for the save button (default "Save"). */
   saveLabel?: string;
   size?: keyof typeof SIZES;
@@ -50,7 +59,7 @@ interface ModalProps {
  * (✓) when `onSave` is given. Escape and a backdrop click both close it; focus moves into the panel
  * on open. Sized via `size` ('md'|'lg'|'xl'|'full').
  */
-export function Modal({ title, onClose, onSave, saving = false, saveLabel = 'Save', size = 'lg', children, headerExtra }: ModalProps) {
+export function Modal({ title, onClose, onSave, saving = false, saveDisabled = false, saveLabel = 'Save', size = 'lg', children, headerExtra }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
   // Stabilise the handlers so the keydown effect only re-binds when `saving` flips — inline
@@ -60,6 +69,20 @@ export function Modal({ title, onClose, onSave, saving = false, saveLabel = 'Sav
   onCloseRef.current = onClose;
   const onSaveRef = useRef(onSave);
   onSaveRef.current = onSave;
+  const saveDisabledRef = useRef(saveDisabled);
+  saveDisabledRef.current = saveDisabled;
+  // Identity token on the modal stack (see MODAL_STACK above).
+  const stackId = useRef<object>({});
+
+  // Mount-only: register on the modal stack (top = shortcut owner).
+  useEffect(() => {
+    const id = stackId.current;
+    MODAL_STACK.push(id);
+    return () => {
+      const at = MODAL_STACK.indexOf(id);
+      if (at !== -1) MODAL_STACK.splice(at, 1);
+    };
+  }, []);
 
   // Mount-only: lock body scroll, move focus into the panel, and trap Tab inside the dialog.
   useEffect(() => {
@@ -93,15 +116,19 @@ export function Modal({ title, onClose, onSave, saving = false, saveLabel = 'Sav
   }, []);
 
   // Global shortcuts: Escape closes, Cmd/Ctrl+S saves (when wired and not already saving).
+  // Only the TOP modal on the stack reacts, so stacked modals unwind one Esc at a time.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (MODAL_STACK[MODAL_STACK.length - 1] !== stackId.current) return;
       if (e.key === 'Escape') {
         e.stopPropagation();
         onCloseRef.current();
       }
       if (onSaveRef.current && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+        // preventDefault even when disabled — the browser's own "save page" dialog
+        // must never appear over the editor.
         e.preventDefault();
-        if (!saving) onSaveRef.current!();
+        if (!saving && !saveDisabledRef.current) onSaveRef.current!();
       }
     };
     document.addEventListener('keydown', onKey);
@@ -134,7 +161,7 @@ export function Modal({ title, onClose, onSave, saving = false, saveLabel = 'Sav
               type="button"
               aria-label={saveLabel}
               title={`${saveLabel} (${IS_MAC ? '⌘' : 'Ctrl+'}S)`}
-              disabled={saving}
+              disabled={saving || saveDisabled}
               onClick={onSave}
               className="inline-flex cursor-pointer items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-sky-500 p-2 text-white shadow-lg shadow-indigo-600/30 transition hover:shadow-indigo-600/40 disabled:opacity-60"
             >

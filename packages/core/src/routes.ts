@@ -2,14 +2,13 @@
 // collection) into the concrete set of routes to render. Used by both the Astro
 // renderer and the API's static-site publisher, so it lives in core (not in an
 // app). No filesystem or framework dependencies.
-import type { Entry, Page, SitewrightPartial, Template } from '@sitewright/schema';
+import type { Entry, Page, SitewrightPartial } from '@sitewright/schema';
 import { resolvePartials } from './partials.js';
-import { resolveTemplate } from './templates.js';
 import type { ProjectBundle } from './validate.js';
 
 export interface ResolvedPage {
   page: Page;
-  /** Block tree with the template applied + partials expanded (bindings resolve at render). */
+  /** Block tree with partials expanded (bindings resolve at render). */
   root: Page['root'];
 }
 
@@ -17,17 +16,13 @@ function buildPartialMap(bundle: ProjectBundle): Map<string, SitewrightPartial> 
   return new Map(bundle.partials.map((partial) => [partial.id, partial]));
 }
 
-function buildTemplateMap(bundle: ProjectBundle): Map<string, Template> {
-  return new Map((bundle.templates ?? []).map((template) => [template.id, template]));
-}
-
-/** Applies a page's template (Outlet wrap) then expands partials. */
-function resolveRoot(
-  page: Page,
-  templateMap: ReadonlyMap<string, Template>,
-  partialMap: ReadonlyMap<string, SitewrightPartial>,
-): Page['root'] {
-  return resolvePartials(resolveTemplate(page.root, page.template, templateMap), partialMap);
+/**
+ * Expands partials in a page's block tree. (Code-first `Page.template` references
+ * resolve to a Handlebars SOURCE at render — see templates.ts — never to a tree;
+ * the legacy Outlet wrap is retired.)
+ */
+function resolveRoot(page: Page, partialMap: ReadonlyMap<string, SitewrightPartial>): Page['root'] {
+  return resolvePartials(page.root, partialMap);
 }
 
 /**
@@ -39,13 +34,12 @@ export function publishedPages(pages: readonly Page[]): Page[] {
   return pages.filter((page) => page.status !== 'draft');
 }
 
-/** Expands templates + partials for every non-collection page. */
+/** Expands partials for every non-collection page. */
 export function resolvedPages(bundle: ProjectBundle): ResolvedPage[] {
   const partialMap = buildPartialMap(bundle);
-  const templateMap = buildTemplateMap(bundle);
   return bundle.pages
     .filter((page) => !page.collection)
-    .map((page) => ({ page, root: resolveRoot(page, templateMap, partialMap) }));
+    .map((page) => ({ page, root: resolveRoot(page, partialMap) }));
 }
 
 /**
@@ -124,12 +118,11 @@ function fillPath(path: string, param: string, value: string): string {
  */
 export function collectionRoutes(bundle: ProjectBundle): Route[] {
   const partialMap = buildPartialMap(bundle);
-  const templateMap = buildTemplateMap(bundle);
   const routes: Route[] = [];
   for (const page of bundle.pages) {
     if (!page.collection) continue;
     const { dataset, param } = page.collection;
-    const root = resolveRoot(page, templateMap, partialMap);
+    const root = resolveRoot(page, partialMap);
     const entries = bundle.entries.filter(
       (entry) => entry.dataset === dataset && entry.status === 'published',
     );

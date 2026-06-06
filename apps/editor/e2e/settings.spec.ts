@@ -12,10 +12,10 @@ test('edit Corporate Identity + Website settings, save, and persist across reloa
   await page.getByLabel('Email').fill(`settings-${stamp}@e2e.test`);
   await page.getByLabel('Password').fill('pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();
+  await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Acme Site');
   await page.getByLabel('Project slug').fill(`acme-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
-  await page.getByRole('button', { name: /Acme Site/ }).click();
 
   // Open the Corporate Identity top tab → edit identity + a brand color directly.
   await page.getByRole('tab', { name: 'Corporate Identity' }).click();
@@ -58,10 +58,10 @@ test('edit a website partial in the code-editor modal, save, and persist across 
   await page.getByLabel('Email').fill(`partials-${stamp}@e2e.test`);
   await page.getByLabel('Password').fill('pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();
+  await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Partials Site');
   await page.getByLabel('Project slug').fill(`partials-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
-  await page.getByRole('button', { name: /Partials Site/ }).click();
 
   await page.getByRole('tab', { name: 'Website Settings' }).click();
 

@@ -16,6 +16,8 @@
 // worker that runs this — see apps/api/src/render. This module is pure + synchronous.
 import Handlebars from 'handlebars';
 import { safeUrl } from './url.js';
+import { escapeAttr } from './escape.js';
+import { iconBody } from './icons.js';
 
 /** Thrown for an unsafe interpolation context, a Handlebars compile error, or a render error. */
 export class TemplateError extends Error {
@@ -218,6 +220,20 @@ function createInstance(): typeof Handlebars {
     if (Number.isNaN(d.getTime())) return '';
     if (format === 'iso') return d.toISOString();
     return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+  });
+  // {{icon "arrow-right" "h-5 w-5"}} → inline a built-in Lucide icon as an <svg>. The
+  // body comes ONLY from the trusted `iconBody` map (unknown name → empty, NEVER user
+  // input), and the optional class string is attribute-escaped — so this emits a
+  // SafeString (raw SVG) without ever reflecting tenant markup. Author-supplied DATA is
+  // just the icon NAME (a map key) + a class list. Use in element context.
+  hb.registerHelper('icon', (name: unknown, cls?: unknown) => {
+    const body = typeof name === 'string' ? iconBody(name) : undefined;
+    if (body === undefined) return new Handlebars.SafeString('');
+    const klass = typeof cls === 'string' ? cls : 'h-5 w-5';
+    const svg =
+      `<svg class="${escapeAttr(klass)}" viewBox="0 0 24 24" fill="none" stroke="currentColor" ` +
+      `stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
+    return new Handlebars.SafeString(svg);
   });
   // {{truncate text 80}} → clip to N chars with an ellipsis.
   hb.registerHelper('truncate', (value: unknown, max: unknown) => {

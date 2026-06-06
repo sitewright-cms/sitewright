@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createApp } from './http/app.js';
-import { seedInstance } from './seed.js';
+import { seedInstance, DEFAULT_ADMIN_EMAIL } from './seed.js';
 import { users } from './db/schema.js';
 import { RenderPool } from './render/render-pool.js';
 import { createDb, runMigrations } from './db/client.js';
@@ -58,11 +58,12 @@ const smtpAllowedHosts = process.env.SW_SMTP_ALLOWED_HOSTS
 // instance settings (global SMTP, hCaptcha keys, enabled web-form mail modes).
 // Normalization (trim/lowercase) is owned by createApp — pass the raw split here
 // so there is a single source of truth for the matching rule.
-// The bootstrap super-admin (SW_ADMIN_EMAIL, seeded on first boot) is always an instance admin.
-const seedAdminEmail = process.env.SW_ADMIN_EMAIL?.trim();
+// The bootstrap super-admin (seeded on first boot) is always an instance admin.
+// SW_ADMIN_EMAIL overrides the well-known default identity.
+const seedAdminEmail = process.env.SW_ADMIN_EMAIL?.trim() || DEFAULT_ADMIN_EMAIL;
 const adminEmails = [
   ...(process.env.SW_ADMIN_EMAILS ? process.env.SW_ADMIN_EMAILS.split(',') : []),
-  ...(seedAdminEmail ? [seedAdminEmail] : []),
+  seedAdminEmail,
 ];
 
 // Public registration is CLOSED by default (invitation-only + a seeded admin); an operator
@@ -184,29 +185,24 @@ const app = await createApp({
 });
 
 // First-boot bootstrap: seed the super-admin + showcase "Example Project" when the instance is
-// empty. Registration is invite-only, so this is the only path to the first admin. The seed is a
-// convenience, NOT a correctness invariant — a transient failure (DB blip, etc.) must not crash
-// the container into a restart loop, so swallow-and-warn rather than letting the reject propagate.
-if (seedAdminEmail) {
-  try {
-    await seedInstance({
-      db,
-      adminEmail: seedAdminEmail,
-      adminPassword: process.env.SW_ADMIN_PASSWORD,
-      // Bootstrap notices are operational diagnostics — and the one-time GENERATED password is a
-      // secret. Emit on stderr so log pipelines treat it as diagnostics (not indexed app output).
-      log: (m) => process.stderr.write(`${m}\n`),
-    });
-  } catch (err) {
-    process.stderr.write(
-      `[sitewright/seed] WARNING: bootstrap seed failed — ${err instanceof Error ? err.message : String(err)}\n` +
-        '[sitewright/seed] the server will still start; re-deploy to retry the seed.\n',
-    );
-  }
-} else {
+// empty. Registration is invite-only, so this is the only path to the first admin. The identity
+// defaults to the well-known admin@sitewright.example / 123456 (SW_ADMIN_EMAIL/SW_ADMIN_PASSWORD
+// override; the seed warns when the default password is in use). The seed is a convenience, NOT a
+// correctness invariant — a transient failure (DB blip, etc.) must not crash the container into a
+// restart loop, so swallow-and-warn rather than letting the reject propagate.
+try {
+  await seedInstance({
+    db,
+    adminEmail: seedAdminEmail,
+    adminPassword: process.env.SW_ADMIN_PASSWORD,
+    // Bootstrap notices are operational diagnostics. Emit on stderr so log pipelines
+    // treat them as diagnostics (not indexed app output).
+    log: (m) => process.stderr.write(`${m}\n`),
+  });
+} catch (err) {
   process.stderr.write(
-    '[sitewright/seed] SW_ADMIN_EMAIL is not set — no bootstrap admin created. On a fresh ' +
-      'instance, registration is invite-only, so set SW_ADMIN_EMAIL (+ SW_ADMIN_PASSWORD) to get in.\n',
+    `[sitewright/seed] WARNING: bootstrap seed failed — ${err instanceof Error ? err.message : String(err)}\n` +
+      '[sitewright/seed] the server will still start; re-deploy to retry the seed.\n',
   );
 }
 
@@ -219,8 +215,9 @@ if (!openRegistration) {
   if (anyUser.length === 0) {
     throw new Error(
       'Registration is closed (SW_OPEN_REGISTRATION is not "true") and the instance has no users — ' +
-        'nobody could ever sign in. Set SW_ADMIN_EMAIL (+ SW_ADMIN_PASSWORD) to seed the first admin, ' +
-        'or SW_OPEN_REGISTRATION=true to allow public self-signup.',
+        'nobody could ever sign in. The first-boot admin seed must have failed (check the ' +
+        '"[sitewright/seed]" entries on stderr); fix the cause and re-deploy, or set ' +
+        'SW_OPEN_REGISTRATION=true to allow public self-signup.',
     );
   }
 }

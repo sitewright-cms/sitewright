@@ -1,0 +1,77 @@
+import { describe, it, expect } from 'vitest';
+import type { PageNode } from '@sitewright/schema';
+import { LAZYLOAD_CSS, LAZYLOAD_JS, usesLazyload, treeUsesLazyload } from '../src/lazyload.js';
+
+describe('lazyload stylesheet', () => {
+  it('gates the fade behind prefers-reduced-motion: no-preference', () => {
+    expect(LAZYLOAD_CSS.startsWith('@media (prefers-reduced-motion: no-preference){')).toBe(true);
+    expect(LAZYLOAD_CSS.trimEnd().endsWith('}')).toBe(true);
+  });
+
+  it('only hides via the runtime-added .lazyloading class (PE: no-JS shows content)', () => {
+    for (const line of LAZYLOAD_CSS.split('\n')) {
+      if (line.includes('opacity:0')) expect(line).toContain('.lazyloading');
+    }
+  });
+
+  it('reveals to opacity:1 via .lazyloaded', () => {
+    expect(LAZYLOAD_CSS).toContain('.lazyloaded');
+    expect(LAZYLOAD_CSS).toMatch(/\.lazyloaded[^{]*\{opacity:1\}/);
+  });
+
+  it('cannot break out of a <style> block', () => {
+    expect(LAZYLOAD_CSS.toLowerCase()).not.toContain('</style');
+  });
+});
+
+describe('lazyload runtime', () => {
+  it('uses IntersectionObserver and supports data-bg + data-src/-srcset', () => {
+    expect(LAZYLOAD_JS).toContain('IntersectionObserver');
+    expect(LAZYLOAD_JS).toContain('data-bg');
+    expect(LAZYLOAD_JS).toContain('data-src');
+    expect(LAZYLOAD_JS).toContain('data-srcset');
+  });
+
+  it('sets the background via inline style with the url backslash/quote-escaped (no CSS breakout)', () => {
+    expect(LAZYLOAD_JS).toContain("replace(/\\\\/g,'%5C')"); // backslash → %5C (defense-in-depth)
+    expect(LAZYLOAD_JS).toContain("replace(/\"/g,'%22')"); // quote → %22
+    expect(LAZYLOAD_JS).toContain('style.backgroundImage');
+    expect(LAZYLOAD_JS).not.toContain('innerHTML');
+  });
+
+  it("guards against a double class-transition (the settled flag)", () => {
+    expect(LAZYLOAD_JS).toContain('if(settled)return;settled=true');
+  });
+
+  it('unobserves after the first reveal (load once)', () => {
+    expect(LAZYLOAD_JS).toContain('io.unobserve(entry.target)');
+  });
+
+  it('cannot break out of a <script> block', () => {
+    expect(LAZYLOAD_JS.toLowerCase()).not.toContain('</script');
+  });
+});
+
+describe('lazyload detection', () => {
+  it('detects data-bg and the lazyload class', () => {
+    expect(usesLazyload('<div data-bg="/x.jpg"></div>')).toBe(true);
+    expect(usesLazyload('<img class="lazyload" data-src="/x.jpg">')).toBe(true);
+    expect(usesLazyload('<div class="card">plain</div>')).toBe(false);
+    expect(usesLazyload(undefined)).toBe(false);
+    expect(usesLazyload(null)).toBe(false);
+  });
+
+  it('detects the marker in a block tree string prop (raw Html embed)', () => {
+    const tree: PageNode = {
+      id: 'r',
+      type: 'Section',
+      children: [{ id: 'e', type: 'Html', props: { html: '<div data-bg="/hero.jpg"></div>' } }],
+    };
+    expect(treeUsesLazyload(tree)).toBe(true);
+  });
+
+  it('ignores trees without the marker', () => {
+    const plain: PageNode = { id: 'r', type: 'Section', props: { count: 3 }, children: [{ id: 'h', type: 'Heading', props: { text: 'Hi' } }] };
+    expect(treeUsesLazyload(plain)).toBe(false);
+  });
+});

@@ -77,10 +77,10 @@ export const EXAMPLE_WEBSITE = {
     </a>
   </div>
   <div class="navbar-center hidden lg:flex">
-    <ul class="menu menu-horizontal gap-1 px-1 font-medium">{{#each nav.header}}<li><a href="{{url path}}">{{label}}</a></li>{{/each}}</ul>
+    <ul class="menu menu-horizontal gap-1 px-1 font-medium">{{#each nav.header}}{{#if children}}<li><details><summary>{{label}}</summary><ul class="z-30 rounded-box bg-base-100 p-2 shadow-lg">{{#each children}}<li><a href="{{url path}}">{{label}}</a></li>{{/each}}</ul></details></li>{{else}}<li><a href="{{url path}}">{{label}}</a></li>{{/if}}{{/each}}</ul>
   </div>
   <div class="navbar-end gap-2">
-    <a class="btn btn-primary btn-sm gap-1.5 shadow-lg shadow-primary/20" href="/contact">Start a project ${icon('arrow-right', 'h-4 w-4')}</a>
+    <a class="btn btn-primary btn-sm gap-1.5 shadow-lg shadow-primary/20 waves-effect waves-light" href="/contact">Start a project ${icon('arrow-right', 'h-4 w-4')}</a>
   </div>
 </div>`,
   footer: `<footer class="bg-neutral text-neutral-content">
@@ -257,13 +257,14 @@ export const EXAMPLE_PAGES: Page[] = [
       <h1 class="mt-6 text-5xl font-extrabold leading-[1.05] tracking-tight sm:text-6xl">{{edit "hero_title" "Websites that win you more business."}}</h1>
       <p class="mt-6 max-w-md text-lg text-white/80">{{edit "hero_sub" "We design and build fast, beautiful sites for ambitious brands — strategy, design, and engineering under one roof."}}</p>
       <div class="mt-8 flex flex-wrap gap-3">
-        <a class="btn btn-lg gap-2 border-0 bg-white text-primary shadow-xl hover:bg-white/90" href="/contact">{{edit "hero_cta" "Start a project"}} ${icon('arrow-right', 'h-5 w-5')}</a>
-        <a class="btn btn-lg btn-ghost gap-2 border-white/40 text-white hover:bg-white/10" href="/work">See our work ${icon('arrow-up-right', 'h-5 w-5')}</a>
+        <a class="btn btn-lg gap-2 border-0 bg-white text-primary shadow-xl hover:bg-white/90 waves-effect" href="/contact">{{edit "hero_cta" "Start a project"}} ${icon('arrow-right', 'h-5 w-5')}</a>
+        <a class="btn btn-lg btn-ghost gap-2 border-white/40 text-white hover:bg-white/10 waves-effect waves-light" href="/work">See our work ${icon('arrow-up-right', 'h-5 w-5')}</a>
       </div>
     </div>
     <div class="nw-float hidden lg:block">
       <div class="overflow-hidden rounded-3xl border border-white/20 shadow-2xl nw-zoom">
-        <img src="https://picsum.photos/seed/nw-hero/900/700" alt="A recent Northwind website" class="h-full w-full object-cover" loading="eager" />
+        <!-- Lazy-loaded (vanilla-lazyload vocabulary): the runtime swaps data-src → src on scroll-in, with a blur-up fade. -->
+        <img class="lazyload h-full w-full object-cover" data-src="https://picsum.photos/seed/nw-hero/900/700" alt="A recent Northwind website" />
       </div>
     </div>
   </div>

@@ -18,7 +18,6 @@ beforeEach(() => {
   listSubmissions.mockReset();
   deleteSubmission.mockReset();
   deleteSubmission.mockResolvedValue(undefined);
-  vi.stubGlobal('confirm', () => true);
 });
 
 describe('SubmissionsInbox', () => {
@@ -36,12 +35,13 @@ describe('SubmissionsInbox', () => {
     expect(screen.getByText('message')).toBeInTheDocument(); // the dt label
   });
 
-  it('deletes a submission and reloads', async () => {
+  it('deletes a submission after confirming, then reloads', async () => {
     listSubmissions
       .mockResolvedValueOnce({ items: [{ id: 's1', formId: 'contact', fields: { email: 'a@x.co' }, createdAt: '2026-05-31T00:00:00.000Z' }], total: 1 })
       .mockResolvedValueOnce({ items: [], total: 0 });
     render(<SubmissionsInbox project={project} />);
     fireEvent.click(await screen.findByLabelText('Delete submission s1'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
     await waitFor(() => expect(deleteSubmission).toHaveBeenCalledWith('s1'));
     expect(await screen.findByText('No submissions yet.')).toBeInTheDocument();
   });

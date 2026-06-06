@@ -17,6 +17,7 @@ import {
   type CorporateIdentity,
   type Entry,
   type FileAsset,
+  type MediaFolderRecord,
   type Form,
   type FormPublic,
   type ImageAsset,
@@ -24,14 +25,40 @@ import {
   type Snippet,
   type Page,
   type PageTranslation,
+  type Template,
 } from '@sitewright/schema';
-import { renderDocument, usedComponentTypes, componentAssets } from '@sitewright/blocks';
+import {
+  renderDocument,
+  usedComponentTypes,
+  componentAssets,
+  usesAnimations,
+  treeUsesAnimations,
+  ANIMATION_CSS,
+  ANIMATION_JS,
+  usesLazyload,
+  treeUsesLazyload,
+  LAZYLOAD_CSS,
+  LAZYLOAD_JS,
+  usesRipple,
+  treeUsesRipple,
+  RIPPLE_CSS,
+  RIPPLE_JS,
+} from '@sitewright/blocks';
 import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
 import { optimizeImage } from '@sitewright/image-pipeline';
-import { buildNav, collectClassNames, extractClassNames, publishedPages, type ProjectBundle } from '@sitewright/core';
+import {
+  buildNav,
+  collectClassNames,
+  extractClassNames,
+  isGlobalTemplate,
+  publishedPages,
+  resolveTemplateSource,
+  type ProjectBundle,
+} from '@sitewright/core';
 import type { Database } from '../db/client.js';
 import { MediaStorage } from '../media/storage.js';
 import { MediaValidationError } from '../media/errors.js';
+import { ancestorPaths, isUnderFolder, reparentPath, validateFolderMove } from '../media/folders.js';
 import { PublishError } from '../publish/build.js';
 import { fetchJsonData, JsonDataError } from '../publish/json-data.js';
 import { InProcessBuildRunner, type BuildRunner } from '../publish/runner.js';
@@ -153,7 +180,7 @@ function parseKind(kind: string): ContentKind {
 // dedicated endpoints — the generic content routes must not read OR write them
 // (a generic read of `deploy_target` would otherwise leak the encrypted secret;
 // a write could forge a media `url` or an attacker-chosen secret blob).
-const DEDICATED_KINDS: ReadonlySet<ContentKind> = new Set(['media', 'deploy_target', 'project_smtp']);
+const DEDICATED_KINDS: ReadonlySet<ContentKind> = new Set(['media', 'mediafolder', 'deploy_target', 'project_smtp']);
 function parseGenericKind(kind: string): ContentKind {
   const parsed = parseKind(kind);
   if (DEDICATED_KINDS.has(parsed)) {
@@ -220,12 +247,34 @@ async function styledSourceDocument(
   const slotHtml = [shell.topNav, shell.mobileNav, shell.sidebarLeft, shell.sidebarRight, shell.footer, shell.bottom]
     .filter(Boolean)
     .join(' ');
-  const classNames = extractClassNames(`${body} ${slotHtml}`);
-  const inlineStyles =
-    classNames.length > 0
+  const scanHtml = `${body} ${slotHtml}`;
+  const classNames = extractClassNames(scanHtml);
+  // Platform-runtime markers in the rendered body/slots → inline the first-party
+  // runtime(s) so they work live in the sandboxed preview (its CSP allows scripts).
+  // The runtime CSS goes BEFORE the utility sheet, so Tailwind wins at equal specificity.
+  const animated = usesAnimations(scanHtml);
+  const lazy = usesLazyload(scanHtml);
+  const waves = usesRipple(scanHtml);
+  const inlineStyles = [
+    ...(animated ? [ANIMATION_CSS] : []),
+    ...(lazy ? [LAZYLOAD_CSS] : []),
+    ...(waves ? [RIPPLE_CSS] : []),
+    ...(classNames.length > 0
       ? [await compileUtilityCss([classNames.join(' ')], brandToTailwindTheme(brand))]
-      : undefined;
-  return renderDocument(page, { brand, bodyHtml: body, inlineStyles, ...shell });
+      : []),
+  ];
+  const inlineScripts = [
+    ...(animated ? [ANIMATION_JS] : []),
+    ...(lazy ? [LAZYLOAD_JS] : []),
+    ...(waves ? [RIPPLE_JS] : []),
+  ];
+  return renderDocument(page, {
+    brand,
+    bodyHtml: body,
+    inlineStyles: inlineStyles.length > 0 ? inlineStyles : undefined,
+    inlineScripts: inlineScripts.length > 0 ? inlineScripts : undefined,
+    ...shell,
+  });
 }
 
 const InviteBody = z.object({
@@ -896,6 +945,28 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // Atomic: the project + the creator's owner membership are written together (never an
     // ownerless, unreachable project).
     const project = await projects.create(body, userId);
+    const ownerCtx = { userId, projectId: project.id, role: 'owner' as const };
+    // Seed a Corporate Identity with a sensible DEFAULT BRAND COLOR (blue), so DaisyUI
+    // components are themed out of the box and the preview looks intentional immediately.
+    await contentRepo.put(ownerCtx, 'settings', 'settings', {
+      identity: { name: body.name, colors: { primary: '#2563eb' } },
+      settings: { defaultLocale: 'en', locales: ['en'] },
+    });
+    // Every project starts with a HOME page (path '/', header nav), so the pages list,
+    // auto-nav, and the first publish work out of the box. Same scaffold idea as the
+    // editor's "Add page" starter: a brand binding + one client-editable region.
+    await contentRepo.put(ownerCtx, 'page', 'home', {
+      id: 'home',
+      path: '/',
+      title: 'Home',
+      root: { id: 'root', type: 'Section', children: [] },
+      source:
+        '<main class="mx-auto max-w-3xl px-6 py-16">\n' +
+        '  <h1 class="text-4xl font-bold tracking-tight">{{ company.name }}</h1>\n' +
+        '  <p class="mt-4 text-lg opacity-70">{{edit "tagline" "Welcome — edit this tagline."}}</p>\n' +
+        '</main>\n',
+      nav: { slots: ['header'], order: 0 },
+    });
     return reply.code(201).send({ project });
   });
 
@@ -1082,11 +1153,27 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         byDataset.set(entry.dataset, [...(byDataset.get(entry.dataset) ?? []), entry]);
       }
 
-      // A code-first (`source`) page previews through the isolated worker — with the page's
-      // client-edited region content — then through the shared styled-document shell. This is
-      // the member-accessible preview the client content editor uses (render-template is
-      // owner-only), so the same token/sandbox flow as block pages applies below.
-      if (page.source) {
+      // A code-first (`source` or template-referencing) page previews through the isolated
+      // worker — with the page's client-edited region content — then through the shared
+      // styled-document shell. This is the member-accessible preview the client content
+      // editor uses (render-template is owner-only), so the same token/sandbox flow as
+      // block pages applies below.
+      if (page.source || page.template) {
+        // A template reference resolves to the TEMPLATE's source (built-in global or
+        // project entity); the page contributes only its {{edit}} content. Resolved
+        // BEFORE the pool guard — an unknown reference is a client error (400)
+        // regardless of whether rendering infrastructure is up.
+        let pageSource = page.source ?? '';
+        if (page.template) {
+          const projectTemplates = isGlobalTemplate(page.template)
+            ? []
+            : ((await contentRepo.list(ctx, 'template')) as Template[]);
+          try {
+            pageSource = resolveTemplateSource(page.template, new Map(projectTemplates.map((t) => [t.id, t])));
+          } catch {
+            return reply.code(400).send({ error: `unknown template "${page.template}"` });
+          }
+        }
         if (!renderPool) return reply.code(503).send({ error: 'rendering is not available' });
         const partials = Object.fromEntries(
           ((await contentRepo.list(ctx, 'snippet')) as Snippet[]).map((s) => [s.name, s.source]),
@@ -1099,7 +1186,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           return reply.code(413).send({ error: 'project data is too large to render' });
         }
         try {
-          const rendered = await renderPool.render(page.source, {
+          const rendered = await renderPool.render(pageSource, {
             company: brand as unknown as Record<string, unknown>,
             website: { siteUrl: website?.siteUrl },
             page: { title: page.title, path: page.path },
@@ -1193,11 +1280,20 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // (WYSIWYG). Gather component CSS/JS + utility CSS only when used.
       const classNames = collectClassNames(page.root);
       const { css: componentCss, js: componentJs } = componentAssets(usedComponentTypes(page.root));
+      // Platform-runtime markers (`data-aos` / `data-bg` / `waves-effect` in a raw Html
+      // block) → inline the first-party runtime(s) so they work live in the sandboxed
+      // preview, like publish.
+      const animated = treeUsesAnimations(page.root);
+      const lazy = treeUsesLazyload(page.root);
+      const waves = treeUsesRipple(page.root);
       const inlineStyles: string[] = [];
-      // Component CSS first, then Tailwind utilities last (so utilities win at
-      // equal specificity) — mirrors the publish order (inline component CSS,
-      // then the linked utility sheet).
+      // Component CSS first (then the runtime CSS), then Tailwind utilities last
+      // (so utilities win at equal specificity) — mirrors the publish order
+      // (inline component CSS, then the linked utility sheet).
       if (componentCss) inlineStyles.push(componentCss);
+      if (animated) inlineStyles.push(ANIMATION_CSS);
+      if (lazy) inlineStyles.push(LAZYLOAD_CSS);
+      if (waves) inlineStyles.push(RIPPLE_CSS);
       if (classNames.length > 0) {
         inlineStyles.push(await compileUtilityCss([classNames.join(' ')], brandToTailwindTheme(brand)));
       }
@@ -1215,7 +1311,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         ...(previewHcaptchaSiteKey ? { hcaptchaSiteKey: previewHcaptchaSiteKey } : {}),
         mediaUrl: (asset, file) => `/media/${project.id}/${asset.id}/${file}`,
         inlineStyles: inlineStyles.length > 0 ? inlineStyles : undefined,
-        inlineScripts: componentJs ? [componentJs] : undefined,
+        inlineScripts: ((): string[] | undefined => {
+          const js = [
+            ...(componentJs ? [componentJs] : []),
+            ...(animated ? [ANIMATION_JS] : []),
+            ...(lazy ? [LAZYLOAD_JS] : []),
+            ...(waves ? [RIPPLE_JS] : []),
+          ];
+          return js.length > 0 ? js : undefined;
+        })(),
       });
       // Store the rendered doc behind an opaque token; the editor loads it via the
       // GET route below (which serves it under a sandbox CSP). `html` is still
@@ -1470,6 +1574,172 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         return reply.code(204).send();
       },
     );
+
+    // --- folder + asset OPERATIONS (rename/move/copy/delete) ---------------------
+    // Folders are persisted as `mediafolder` records so an EMPTY folder survives a reload;
+    // non-root operations cascade to both the folder records and the assets filed under them.
+
+    /** Persists `path` and every missing ancestor as a folder record (idempotent, deduped by path). */
+    const ensureFolderRecords = async (ctx: ProjectContext, path: string): Promise<void> => {
+      const existing = new Set(((await contentRepo.list(ctx, 'mediafolder')) as MediaFolderRecord[]).map((f) => f.path));
+      for (const p of [...ancestorPaths(path), path]) {
+        if (!existing.has(p)) {
+          const id = randomUUID();
+          await contentRepo.put(ctx, 'mediafolder', id, { id, path: p });
+          existing.add(p);
+        }
+      }
+    };
+
+    /** Duplicates an asset (new id + copied binaries + rewritten url), optionally into another folder. */
+    const duplicateAsset = async (
+      ctx: ProjectContext,
+      projectId: string,
+      asset: MediaAsset,
+      folder: string,
+    ): Promise<MediaAsset> => {
+      const newId = randomUUID();
+      await storage.copyAsset(projectId, asset.id, newId);
+      const url =
+        asset.kind === 'image'
+          ? `/media/${projectId}/${newId}/${asset.fallback}`
+          : `/media/${projectId}/${newId}/file/${asset.storedName}`;
+      const copy = { ...asset, id: newId, folder, url } as MediaAsset;
+      return (await contentRepo.put(ctx, 'media', newId, copy)) as MediaAsset;
+    };
+
+    const FolderPathBody = z.object({ path: MediaFolderSchema.refine((v) => v !== '', 'path is required') });
+    const FolderMoveBody = z.object({
+      from: MediaFolderSchema,
+      to: MediaFolderSchema,
+    });
+
+    // List the persisted folder records (the editor unions these with asset-derived folders).
+    app.get<{ Params: { projectId: string } }>('/projects/:projectId/media/folders', async (req, reply) => {
+      const { ctx } = await resolveProject(req, 'content:read');
+      return reply.send({ items: await contentRepo.list(ctx, 'mediafolder') });
+    });
+
+    // Create an (empty) folder + any missing ancestors.
+    app.post<{ Params: { projectId: string } }>('/projects/:projectId/media/folders', { config: rl(60) }, async (req, reply) => {
+      const { ctx } = await resolveProject(req, 'content:write');
+      if (!WRITE_ROLES.has(ctx.role)) return reply.code(403).send({ error: 'insufficient role for this operation' });
+      const body = FolderPathBody.safeParse(req.body);
+      if (!body.success) return reply.code(400).send({ error: 'invalid folder path' });
+      await ensureFolderRecords(ctx, body.data.path);
+      return reply.code(201).send({ ok: true });
+    });
+
+    // Rename OR move a folder: re-root the folder subtree AND every asset filed under it.
+    app.post<{ Params: { projectId: string } }>('/projects/:projectId/media/folders/rename', { config: rl(60) }, async (req, reply) => {
+      const { ctx } = await resolveProject(req, 'content:write');
+      if (!WRITE_ROLES.has(ctx.role)) return reply.code(403).send({ error: 'insufficient role for this operation' });
+      const body = FolderMoveBody.safeParse(req.body);
+      if (!body.success) return reply.code(400).send({ error: 'invalid folder path' });
+      const { from, to } = body.data;
+      const err = validateFolderMove(from, to);
+      if (err) return reply.code(400).send({ error: err });
+      const folders = (await contentRepo.list(ctx, 'mediafolder')) as MediaFolderRecord[];
+      // Refuse to merge into an existing folder — it would create a duplicate `to` record
+      // (the `from` record reparents to `to`, joining the one already there).
+      if (folders.some((f) => f.path === to)) {
+        return reply.code(409).send({ error: 'a folder with that name already exists' });
+      }
+      // Ensure the new parent chain exists (NOT `to` itself — the `from` record becomes it,
+      // so pre-creating `to` would leave a duplicate).
+      for (const ancestor of ancestorPaths(to)) await ensureFolderRecords(ctx, ancestor);
+      // Re-root the matching folder records (path + descendants).
+      for (const f of folders) {
+        if (isUnderFolder(f.path, from)) {
+          await contentRepo.put(ctx, 'mediafolder', f.id, { id: f.id, path: reparentPath(f.path, from, to) });
+        }
+      }
+      // Re-file every asset under `from`.
+      const assets = (await contentRepo.list(ctx, 'media')) as MediaAsset[];
+      for (const a of assets) {
+        if (isUnderFolder(a.folder, from)) {
+          await contentRepo.put(ctx, 'media', a.id, { ...a, folder: reparentPath(a.folder, from, to) });
+        }
+      }
+      return reply.send({ ok: true });
+    });
+
+    // Copy a folder subtree (records + duplicated assets) to a new path.
+    app.post<{ Params: { projectId: string } }>('/projects/:projectId/media/folders/copy', { config: rl(30) }, async (req, reply) => {
+      const { ctx, project } = await resolveProject(req, 'content:write');
+      if (!WRITE_ROLES.has(ctx.role)) return reply.code(403).send({ error: 'insufficient role for this operation' });
+      const body = FolderMoveBody.safeParse(req.body);
+      if (!body.success) return reply.code(400).send({ error: 'invalid folder path' });
+      const { from, to } = body.data;
+      const err = validateFolderMove(from, to);
+      if (err) return reply.code(400).send({ error: err });
+      const folders = (await contentRepo.list(ctx, 'mediafolder')) as MediaFolderRecord[];
+      await ensureFolderRecords(ctx, to);
+      for (const f of folders) {
+        if (isUnderFolder(f.path, from)) await ensureFolderRecords(ctx, reparentPath(f.path, from, to));
+      }
+      const assets = (await contentRepo.list(ctx, 'media')) as MediaAsset[];
+      for (const a of assets) {
+        if (isUnderFolder(a.folder, from)) await duplicateAsset(ctx, project.id, a, reparentPath(a.folder, from, to));
+      }
+      return reply.send({ ok: true });
+    });
+
+    // Delete a folder RECURSIVELY: every folder record + asset (and its binaries) under it.
+    app.delete<{ Params: { projectId: string } }>('/projects/:projectId/media/folders', { config: rl(60) }, async (req, reply) => {
+      const { ctx, project } = await resolveProject(req, 'content:write');
+      if (!WRITE_ROLES.has(ctx.role)) return reply.code(403).send({ error: 'insufficient role for this operation' });
+      const body = FolderPathBody.safeParse(req.body);
+      if (!body.success) return reply.code(400).send({ error: 'invalid folder path' });
+      const folder = body.data.path;
+      const assets = (await contentRepo.list(ctx, 'media')) as MediaAsset[];
+      for (const a of assets) {
+        if (isUnderFolder(a.folder, folder)) {
+          await contentRepo.remove(ctx, 'media', a.id);
+          try {
+            await storage.remove(project.id, a.id);
+          } catch (e) {
+            app.log.error({ err: e }, 'media binary removal failed during folder delete');
+          }
+        }
+      }
+      const folders = (await contentRepo.list(ctx, 'mediafolder')) as MediaFolderRecord[];
+      for (const f of folders) {
+        if (isUnderFolder(f.path, folder)) await contentRepo.remove(ctx, 'mediafolder', f.id);
+      }
+      return reply.code(204).send();
+    });
+
+    // Move and/or rename a single asset: `folder` re-files it, `filename` changes its display name.
+    const PatchAssetBody = z.object({
+      folder: MediaFolderSchema.optional(),
+      filename: z.string().min(1).max(255).optional(),
+    });
+    app.patch<{ Params: { projectId: string; id: string } }>('/projects/:projectId/media/:id', { config: rl(60) }, async (req, reply) => {
+      const { ctx } = await resolveProject(req, 'content:write');
+      if (!WRITE_ROLES.has(ctx.role)) return reply.code(403).send({ error: 'insufficient role for this operation' });
+      const body = PatchAssetBody.safeParse(req.body);
+      if (!body.success) return reply.code(400).send({ error: 'invalid update' });
+      const asset = (await contentRepo.get(ctx, 'media', req.params.id)) as MediaAsset;
+      const next = {
+        ...asset,
+        ...(body.data.folder !== undefined ? { folder: body.data.folder } : {}),
+        ...(body.data.filename !== undefined ? { filename: body.data.filename } : {}),
+      };
+      return reply.send({ item: await contentRepo.put(ctx, 'media', asset.id, next) });
+    });
+
+    // Duplicate a single asset (optionally into another folder).
+    const CopyAssetBody = z.object({ folder: MediaFolderSchema.optional() });
+    app.post<{ Params: { projectId: string; id: string } }>('/projects/:projectId/media/:id/copy', { config: rl(30) }, async (req, reply) => {
+      const { ctx, project } = await resolveProject(req, 'content:write');
+      if (!WRITE_ROLES.has(ctx.role)) return reply.code(403).send({ error: 'insufficient role for this operation' });
+      const body = CopyAssetBody.safeParse(req.body ?? {});
+      if (!body.success) return reply.code(400).send({ error: 'invalid folder' });
+      const asset = (await contentRepo.get(ctx, 'media', req.params.id)) as MediaAsset;
+      const copy = await duplicateAsset(ctx, project.id, asset, body.data.folder ?? asset.folder);
+      return reply.code(201).send({ item: copy });
+    });
 
     // Public serving of optimized IMAGE binaries (published sites are public). The storage layer
     // validates every segment and confines the path to the asset directory, so traversal is

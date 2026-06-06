@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, type ApiKeyCapability, type ApiKeyView, type Project, type ProjectRole } from '../api';
 import { glassCard, glassPanel, glassInput, fieldLabel, primaryButton, dangerButton } from '../theme';
+import { useDialogs } from './ui/Dialogs';
 
 const ALL_CAPABILITIES: ApiKeyCapability[] = ['content:read', 'content:write', 'publish', 'deploy'];
 
@@ -14,6 +15,7 @@ interface ApiKeysManagerProps {
  * once on creation; thereafter only its prefix is visible.
  */
 export function ApiKeysManager({ project }: ApiKeysManagerProps) {
+  const { confirm, dialog } = useDialogs();
   const [keys, setKeys] = useState<ApiKeyView[]>([]);
   const [name, setName] = useState('');
   const [role, setRole] = useState<ProjectRole>('owner');
@@ -60,7 +62,14 @@ export function ApiKeysManager({ project }: ApiKeysManagerProps) {
   }
 
   async function revoke(id: string) {
-    if (!window.confirm('Revoke this API key? Any client using it will stop working immediately.')) return;
+    if (
+      !(await confirm({
+        title: 'Revoke API key',
+        message: 'Revoke this API key? Any client using it will stop working immediately.',
+        confirmLabel: 'Revoke',
+      }))
+    )
+      return;
     try {
       await api.deleteApiKey(project.id, id);
       await load();
@@ -71,6 +80,7 @@ export function ApiKeysManager({ project }: ApiKeysManagerProps) {
 
   return (
     <div className="flex flex-col gap-6">
+      {dialog}
       {issued && (
         <div className="rounded-2xl border border-amber-300/70 bg-amber-50/80 p-4 shadow-lg shadow-amber-500/10 backdrop-blur-xl">
           <div className="flex items-start justify-between gap-2">

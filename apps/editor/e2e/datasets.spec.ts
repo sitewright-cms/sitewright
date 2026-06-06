@@ -11,10 +11,10 @@ test('define a dataset, its schema, and add an entry', async ({ page }) => {
   await page.getByLabel('Email').fill(`data-${stamp}@e2e.test`);
   await page.getByLabel('Password').fill('pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();
+  await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Data Site');
   await page.getByLabel('Project slug').fill(`data-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
-  await page.getByRole('button', { name: /Data Site/ }).click();
 
   // Data tab: create a "Posts" dataset with a "title" field.
   await page.getByRole('tab', { name: 'Data' }).click();

@@ -90,4 +90,18 @@ describe('Modal', () => {
     fireEvent.keyDown(document, { key: 's', metaKey: true });
     expect(onSave).not.toHaveBeenCalled();
   });
+
+  it('saveDisabled disables the Save button AND suppresses ⌘S (still eating the browser dialog)', () => {
+    const onSave = vi.fn();
+    render(
+      <Modal title="X" onClose={() => {}} onSave={onSave} saveDisabled>
+        <p>hi</p>
+      </Modal>,
+    );
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+    const event = fireEvent.keyDown(document, { key: 's', ctrlKey: true });
+    expect(onSave).not.toHaveBeenCalled();
+    // preventDefault still fired — the browser's own "save page" dialog must never appear.
+    expect(event).toBe(false); // fireEvent returns false when defaultPrevented
+  });
 });

@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join, resolve, sep } from 'node:path';
 
 // Id segments are generated/validated identifiers; servable files are produced by
@@ -120,6 +120,18 @@ export class MediaStorage {
   /** Deletes an asset's entire directory (idempotent). */
   async remove(projectId: string, assetId: string): Promise<void> {
     await rm(this.assetDir(projectId, assetId), { recursive: true, force: true });
+  }
+
+  /**
+   * Copies an asset's entire directory to a NEW asset id (same project) — the binaries
+   * of a duplicated asset. Both ids are charset-validated by `assetDir`; the variant
+   * file names within are unchanged (an image's `url`/`variants` stay valid because they
+   * carry no asset id — the serve route keys off the path's id segment).
+   */
+  async copyAsset(projectId: string, fromAssetId: string, toAssetId: string): Promise<void> {
+    const from = this.assetDir(projectId, fromAssetId);
+    const to = this.assetDir(projectId, toAssetId);
+    await cp(from, to, { recursive: true });
   }
 
   /** Deletes a project's entire media directory (idempotent). Used on project delete. */

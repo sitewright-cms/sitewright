@@ -16,6 +16,7 @@ type TextResult = { content: Array<{ type: string; text: string }>; isError?: bo
 suite('@sitewright/mcp bridge — end to end', () => {
   let token = '';
   let projectId = '';
+  let slug = '';
 
   beforeAll(async () => {
     const url = BASE_URL!;
@@ -26,10 +27,11 @@ suite('@sitewright/mcp bridge — end to end', () => {
       body: JSON.stringify({ email: `mcp-${stamp}@e2e.test`, password: 'pw-secret-1', orgName: `MCP ${stamp}` }),
     });
     const cookie = (reg.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
+    slug = `mcp-${stamp}`;
     const proj = await fetch(`${url}/projects`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie },
-      body: JSON.stringify({ name: 'MCP Site', slug: `mcp-${stamp}` }),
+      body: JSON.stringify({ name: 'MCP Site', slug }),
     });
     projectId = ((await proj.json()) as { project: { id: string } }).project.id;
     const keyRes = await fetch(`${url}/projects/${projectId}/api-keys`, {
@@ -37,7 +39,9 @@ suite('@sitewright/mcp bridge — end to end', () => {
       headers: { 'content-type': 'application/json', cookie },
       body: JSON.stringify({
         name: 'mcp-e2e',
-        role: 'admin',
+        // Flat tenancy: project keys are 'owner' | 'member' (the pre-org-removal
+        // 'admin' role no longer exists and is rejected at the boundary).
+        role: 'owner',
         capabilities: ['content:read', 'content:write', 'publish'],
         expiresInDays: 1,
       }),
@@ -107,8 +111,8 @@ suite('@sitewright/mcp bridge — end to end', () => {
       '<div class="hero min-h-[50vh] bg-base-200">',
       '  <div class="hero-content text-center">',
       '    <div class="max-w-xl">',
-      '      <h1 class="text-4xl font-bold">{{edit "headline" "Reliable plumbing in Windhoek"}}</h1>',
-      '      <p class="py-4 text-base-content/70">{{edit "sub" "24/7 emergency plumbing, leak repairs, and installations."}}</p>',
+      '      <h1 class="text-4xl font-bold" data-aos="fade-up">{{edit "headline" "Reliable plumbing in Windhoek"}}</h1>',
+      '      <p class="py-4 text-base-content/70" data-aos="fade-up" data-aos-delay="150">{{edit "sub" "24/7 emergency plumbing, leak repairs, and installations."}}</p>',
       '      <a class="btn btn-primary" href="/contact">{{edit "cta" "Book a plumber"}}</a>',
       '    </div>',
       '  </div>',
@@ -127,14 +131,22 @@ suite('@sitewright/mcp bridge — end to end', () => {
     expect(pub.isError).toBeFalsy();
 
     // 5. The LIVE static site is the brand-themed DaisyUI page the agent built.
-    const liveHtml = await (await fetch(`${BASE_URL}/sites/${projectId}/`)).text();
+    // (Published sites are served by project SLUG, not id.)
+    const liveHtml = await (await fetch(`${BASE_URL}/sites/${slug}/`)).text();
     expect(liveHtml).toContain('Windhoek Plumbing Co'); // {{ company.name }}
     expect(liveHtml).toContain('Reliable plumbing in Windhoek'); // {{edit}} default
     expect(liveHtml).toContain('class="btn btn-primary"'); // DaisyUI component in the output
-    const liveCss = await (await fetch(`${BASE_URL}/sites/${projectId}/styles.css`)).text();
+    const liveCss = await (await fetch(`${BASE_URL}/sites/${slug}/styles.css`)).text();
     expect(liveCss).toMatch(/\.btn/); // DaisyUI compiled into the shared sheet
     expect(liveCss).toContain('#0a6cba'); // brand color present…
     expect(liveCss).not.toContain('oklch(45% 0.24 277.023)'); // …and DaisyUI's default primary is gone (robust to color serialization)
+
+    // 6. The agent's data-aos attributes (per the server INSTRUCTIONS) shipped the
+    // first-party scroll-reveal runtime with the live site — no library, no setup.
+    expect(liveHtml).toContain('data-aos="fade-up"');
+    expect(liveHtml).toContain('<script defer src="animations.js"></script>');
+    const liveAnim = await (await fetch(`${BASE_URL}/sites/${slug}/animations.js`)).text();
+    expect(liveAnim).toContain('IntersectionObserver');
 
     await mcp.close();
   });

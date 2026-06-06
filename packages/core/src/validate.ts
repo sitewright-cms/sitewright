@@ -9,6 +9,7 @@ import type {
   Template,
 } from '@sitewright/schema';
 import { findDuplicateIds, walk } from './tree.js';
+import { GLOBAL_TEMPLATES, isGlobalTemplate } from './templates.js';
 
 /** A complete project: the manifest plus all of its content entities. */
 export interface ProjectBundle {
@@ -113,7 +114,14 @@ export function validateProject(bundle: ProjectBundle): ValidationIssue[] {
   }
 
   for (const page of bundle.pages) {
-    if (page.template !== undefined && !templateIds.has(page.template)) {
+    // Global (`global:<key>`) references resolve against the built-in list; project
+    // references against the bundle's template entities.
+    if (
+      page.template !== undefined &&
+      (isGlobalTemplate(page.template)
+        ? !GLOBAL_TEMPLATES.some((t) => t.id === page.template)
+        : !templateIds.has(page.template))
+    ) {
       issues.push({
         code: 'unknown_template',
         message: `page "${page.id}" references unknown template "${page.template}"`,
@@ -162,10 +170,8 @@ export function validateProject(bundle: ProjectBundle): ValidationIssue[] {
   for (const partial of bundle.partials) {
     checkTree(partial.root, `partials/${partial.id}`, `partial "${partial.id}"`);
   }
-
-  for (const template of bundle.templates ?? []) {
-    checkTree(template.root, `templates/${template.id}`, `template "${template.id}"`);
-  }
+  // Templates are code-first (Handlebars source, no block tree) — their source is
+  // validated by renderTemplate at render time, like page sources.
 
   return issues;
 }

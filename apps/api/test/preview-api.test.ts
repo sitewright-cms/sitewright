@@ -335,6 +335,37 @@ describe('preview API — code-first source page', () => {
     expect(html).toMatch(/\.navbar/); // the slot's DaisyUI classes compiled into the inlined sheet
   });
 
+  it('inlines the scroll-reveal runtime when the source uses data-aos (and omits it otherwise)', async () => {
+    const { t, projectId } = await setup('anim@acme.test', poolApp);
+    const animated = await poolApp.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/preview`,
+      cookies: { sw_session: t },
+      payload: {
+        id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' },
+        source: '<main><h1 data-aos="fade-up">Reveal</h1></main>',
+      },
+    });
+    expect(animated.statusCode).toBe(200);
+    const html = (animated.json() as { html: string }).html;
+    // Self-contained sandboxed preview: animation CSS + runtime are INLINED, so
+    // the reveal actually plays inside the iframe (its CSP allows scripts).
+    expect(html).toContain('[data-aos].aos-init');
+    expect(html).toContain('IntersectionObserver');
+    expect(html).not.toContain('src="animations.js"');
+
+    const plain = await poolApp.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/preview`,
+      cookies: { sw_session: t },
+      payload: {
+        id: 'home', path: '/', title: 'Home', root: { id: 'r', type: 'Section' },
+        source: '<main><h1>Static</h1></main>',
+      },
+    });
+    expect((plain.json() as { html: string }).html).not.toContain('aos-init');
+  });
+
   it('skips a broken/unsafe slot in preview without failing the page (publish still hard-validates)', async () => {
     const { t, projectId } = await setup('broken@acme.test', poolApp);
     const base = `/projects/${projectId}`;

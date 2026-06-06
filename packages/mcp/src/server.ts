@@ -36,10 +36,41 @@ In \`source\`:
   DaisyUI's CSS-only patterns (<details>, the popover attribute, checkbox). Put URLs in
   href/src as literal paths or via the {{url …}} helper.
 
+ANIMATIONS (scroll-reveal): use the standard AOS attributes directly on elements —
+data-aos="fade-up" plus optional data-aos-delay="200" / data-aos-duration="600" (ms, max 5000),
+data-aos-once="false" to replay on every re-entry, data-aos-easing="ease-out"
+(linear|ease|ease-in|ease-out|ease-in-out). Effects: fade, fade-up/-down/-left/-right,
+zoom-in, zoom-out, slide-up/-down/-left/-right, flip-up/-down/-left/-right. The platform
+detects data-aos and ships its own tiny runtime automatically — do NOT add the aos
+package, CDN links, or any script (they'd be rejected anyway). Content stays visible
+without JS and motion respects prefers-reduced-motion. Stagger lists by increasing
+data-aos-delay per item (e.g. 0/100/200).
+
+LAZY-LOAD images: native loading="lazy" works on a plain <img>. For BACKGROUND images use
+data-bg="<url>" on any element (it becomes the background on scroll-in, with a blur-up fade);
+for an opt-in <img> swap use class="lazyload" with data-src / data-srcset. The platform ships
+its own tiny runtime when it sees data-bg / lazyload — never add a lazy-load library.
+
+RIPPLE (Material "waves") click effect: add class="waves-effect" to a button/link, plus
+"waves-light" for a white ripple on dark/colored buttons (e.g. class="btn btn-primary
+waves-effect waves-light"). The platform ships its own ripple runtime when it sees
+waves-effect — never add Waves.js. Respects prefers-reduced-motion.
+
+ICONS: inline a built-in Lucide icon with {{icon "name" "h-5 w-5"}} (the 2nd arg is the CSS
+class). Names include: menu, x, search, chevron-down/-up/-left/-right, arrow-right/-left/-up-right,
+check, mail, phone, map-pin, external-link, calendar, clock, star. Unknown names render nothing.
+
 SET THE BRAND with put_content("settings","settings",{ identity:{ name, colors:{ primary:"#…" } },
 settings:{ defaultLocale:"en", locales:["en"] } }).
-PAGE SETTINGS live on the page: title, path, status ("draft"|"published"), nav
-{ slots:["header"|"footer"|"mobile"], order, title }.
+PAGE SETTINGS live on the page: title, path, status ("draft"|"published"),
+seo { description, ogImage }, parent (a parent page's id — makes this a sub-page), nav
+{ slots:["header"|"footer"|"mobile"], order, title, dropdown }. With dropdown:true the
+page's CHILD pages (parent = its id) nest under its nav item — a nav slot template renders
+them via {{#if children}}…{{#each children}} (DaisyUI <details> submenu; children need no
+own nav slots). Every new project already has a "home" page at path "/".
+TEMPLATES: set page.template to "global:landing", "global:text", or a project template id
+(kind "template": { id, name, source }) — the page then renders the TEMPLATE's source and
+contributes ONLY its {{edit}} \`content\`; leave page.source unset.
 IMAGES: search_stock_images then import_stock_image (self-hosted + attributed); reference the
 returned media url in \`source\`.
 

@@ -185,6 +185,34 @@ describe('createSitewrightMcpServer — agent guidance', () => {
     expect(instructions).not.toMatch(/block tree/i);
     await mcp.close();
   });
+
+  it('instructions teach scroll-reveal animations via the standard data-aos vocabulary', async () => {
+    const mcp = await connect(fakeClient(), writeScope);
+    const instructions = mcp.getInstructions() ?? '';
+    expect(instructions).toContain('data-aos="fade-up"');
+    expect(instructions).toContain('data-aos-delay');
+    expect(instructions).toContain('data-aos-once');
+    // The platform ships its own runtime — agents must NOT add the library themselves.
+    expect(instructions).toMatch(/do NOT add the aos\s+package/i);
+    expect(instructions).toContain('prefers-reduced-motion');
+    await mcp.close();
+  });
+
+  it('instructions teach the lazyload, ripple, and icon vocabularies', async () => {
+    const mcp = await connect(fakeClient(), writeScope);
+    const instructions = mcp.getInstructions() ?? '';
+    // Lazy-load (vanilla-lazyload vocabulary).
+    expect(instructions).toMatch(/data-bg/);
+    expect(instructions).toMatch(/class="lazyload"|lazyload/);
+    expect(instructions).toMatch(/never add a lazy-load library/i);
+    // Ripple (Waves vocabulary).
+    expect(instructions).toContain('waves-effect');
+    expect(instructions).toContain('waves-light');
+    expect(instructions).toMatch(/never add Waves\.js/i);
+    // Icons.
+    expect(instructions).toContain('{{icon "name"');
+    await mcp.close();
+  });
 });
 
 describe('createSitewrightMcpServer — every tool forwards to the client', () => {

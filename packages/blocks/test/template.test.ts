@@ -121,6 +121,18 @@ describe('renderTemplate — curated helpers (extensibility)', () => {
     expect(renderTemplate('{{truncate page.t 5}}', { page: { t: 'abcdefgh' } })).toBe('abcd…');
     expect(renderTemplate('{{truncate page.t 5}}', { page: { t: 'abc' } })).toBe('abc');
   });
+
+  it('{{icon}} inlines a built-in SVG (trusted body, escaped class), empty for unknown', () => {
+    const out = renderTemplate('{{icon "arrow-right" "h-5 w-5"}}', ctx);
+    expect(out).toContain('<svg class="h-5 w-5"');
+    expect(out).toContain('stroke="currentColor"');
+    expect(out).toContain('aria-hidden="true"');
+    expect(out).toContain('<path d="M5 12h14"'); // arrow-right body, emitted raw (SafeString)
+    // Unknown icon → nothing (never reflects the name).
+    expect(renderTemplate('[{{icon "does-not-exist"}}]', ctx)).toBe('[]');
+    // The class is attribute-escaped (no breakout possible).
+    expect(renderTemplate('{{icon "check" "a\\"onerror=x"}}', ctx)).not.toContain('"onerror=x');
+  });
 });
 
 describe('renderTemplate — security', () => {

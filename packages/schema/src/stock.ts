@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MediaFolderSchema } from './media.js';
 
 // Stock-image search/import domain types. Provider API keys live in instance
 // settings (see instance-settings.ts `stock`); these are the request/result shapes
@@ -35,10 +36,12 @@ export interface StockProvidersStatus {
   providers: Array<{ name: StockProviderName; available: boolean; requiresKey: boolean }>;
 }
 
-/** The import request body: pick a provider result by id, optional alt text. */
+/** The import request body: pick a provider result by id, optional alt text + target folder. */
 export const StockImportSchema = z.object({
   provider: StockProviderNameSchema,
   id: z.string().min(1).max(256),
   alt: z.string().max(500).optional(),
+  /** Virtual folder to import into ('' = root). */
+  folder: MediaFolderSchema.optional(),
 });
 export type StockImport = z.infer<typeof StockImportSchema>;

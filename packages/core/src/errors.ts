@@ -19,5 +19,5 @@ export class TreeOperationError extends SitewrightError {}
 /** Thrown when a partial reference is missing or forms a cycle. */
 export class PartialResolutionError extends SitewrightError {}
 
-/** Thrown when a page's template is missing or lacks exactly one Outlet. */
+/** Thrown when a `Page.template` reference resolves to no known project or global template. */
 export class TemplateResolutionError extends SitewrightError {}

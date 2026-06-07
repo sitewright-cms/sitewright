@@ -47,17 +47,20 @@ const DEFAULT_SIZE: Record<SidePanelSide, string> = {
   bottom: 'h-[60vh]',
 };
 
-// Panel rest position, per edge. `top-16` clears the sticky header; bottom panels are centered
-// horizontally (a static -translate-x-1/2) with side gutters so the edge tabs stay clear. The panel
-// FADES in place (opacity+visibility) rather than sliding: it stays anchored at the edge, so the
-// moment it opens it is already under the cursor — a slide would briefly leave the edge uncovered,
-// the cursor would fall through the (pointer-events-none) tab to the page, and the panel would
-// immediately collapse on the resulting mouseleave.
-const PANEL_POS: Record<SidePanelSide, string> = {
-  left: 'left-0 top-16 bottom-0 h-auto border-r',
-  right: 'right-0 top-16 bottom-0 h-auto border-l',
-  bottom: 'bottom-0 left-1/2 -translate-x-1/2 w-[min(72rem,92vw)] rounded-t-2xl border-x border-t',
-};
+// Panel rest position. `top-16` clears the sticky header. The panel must ANCHOR UNDER ITS TAB so the
+// moment it opens it already covers the cursor sitting on the tab; the panel also FADES in place
+// (opacity+visibility) rather than sliding. Both rules exist for the same reason: if the panel is
+// offset from its tab (centered) or slides away from it, the cursor falls through the
+// (pointer-events-none) tab to the page, fires mouseleave, and the panel flickers open/closed. So a
+// bottom panel is anchored bottom-LEFT/RIGHT under its tab (per `align`), never centered.
+function panelPos(side: SidePanelSide, align: SidePanelAlign): string {
+  if (side === 'left') return 'left-0 top-16 bottom-0 h-auto border-r';
+  if (side === 'right') return 'right-0 top-16 bottom-0 h-auto border-l';
+  const w = 'w-[min(42rem,48vw)]';
+  if (align === 'start') return `bottom-0 left-0 ${w} rounded-tr-2xl border-r border-t`;
+  if (align === 'end') return `bottom-0 right-0 ${w} rounded-tl-2xl border-l border-t`;
+  return 'bottom-0 left-1/2 -translate-x-1/2 w-[min(72rem,92vw)] rounded-t-2xl border-x border-t';
+}
 
 // Collapsed-tab anchoring. left/right tabs are vertically centred (or start/end); bottom tabs are
 // horizontally placed so three can share the bottom edge (start | center | end).
@@ -90,6 +93,9 @@ export function SidePanel({ side, label, icon, size, align = 'center', openSigna
   const [open, setOpen] = useState(false);
   const regionId = useId();
   const panelSize = size ?? DEFAULT_SIZE[side];
+  // A bottom panel is flush to its corner (so it covers its tab — see panelPos), which puts its
+  // near-edge content under the centered Library/Assets EDGE tabs. Inset that side so they don't clip.
+  const edgeInset = side === 'bottom' ? (align === 'start' ? 'pl-10' : align === 'end' ? 'pr-10' : '') : '';
 
   // Number of child dialogs currently holding the panel open (see SidePanelHold). A ref mirrors it
   // so the hover/blur handlers read the latest value without being re-created.
@@ -168,11 +174,11 @@ export function SidePanel({ side, label, icon, size, align = 'center', openSigna
         role="region"
         aria-label={label}
         aria-hidden={!open}
-        className={`fixed z-[60] flex flex-col overflow-hidden border-white/60 bg-white/90 shadow-2xl backdrop-blur-xl transition-opacity duration-200 ease-out ${PANEL_POS[side]} ${panelSize} ${
+        className={`fixed z-[60] flex flex-col overflow-hidden border-white/60 bg-white/90 shadow-2xl backdrop-blur-xl transition-opacity duration-200 ease-out ${panelPos(side, align)} ${panelSize} ${
           open ? 'visible opacity-100' : 'invisible opacity-0 pointer-events-none'
         }`}
       >
-        <header className="flex items-center gap-2 border-b border-slate-200/70 px-4 py-2.5">
+        <header className={`flex items-center gap-2 border-b border-slate-200/70 px-4 py-2.5 ${edgeInset}`}>
           <span className="flex-1 text-xs font-bold uppercase tracking-widest text-blue-700">{label}</span>
           <button
             type="button"
@@ -184,7 +190,7 @@ export function SidePanel({ side, label, icon, size, align = 'center', openSigna
             ✕
           </button>
         </header>
-        <div className="min-h-0 flex-1 overflow-auto">
+        <div className={`min-h-0 flex-1 overflow-auto ${edgeInset}`}>
           <InSidePanel.Provider value={true}>
             <SidePanelHold.Provider value={holdApi}>{children}</SidePanelHold.Provider>
           </InSidePanel.Provider>

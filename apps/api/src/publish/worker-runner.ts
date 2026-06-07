@@ -117,17 +117,16 @@ export class WorkerBuildRunner implements BuildRunner {
       }
       out.push({ asset, files: Object.fromEntries(entries) });
     }
-    // Inline self-hosted font woff2 (base64) so the worker bundles them too.
+    // Inline each self-hosted font's files (base64) so the worker bundles them too.
     const fontsOut: Array<{ font: SelfHostedFont; files: Record<string, string> }> = [];
     for (const font of job.fonts ?? []) {
       const entries = new Map<string, string>();
-      for (const weight of font.weights) {
+      for (const { file } of font.files) {
         if (!job.readFont) break;
-        const name = `${weight}.woff2`;
         try {
-          entries.set(name, (await job.readFont(font.id, name)).toString('base64'));
+          entries.set(file, (await job.readFont(font.id, file)).toString('base64'));
         } catch {
-          // A missing cached weight is tolerable (that @font-face weight just won't bundle).
+          // A missing file is tolerable (that @font-face face just won't bundle).
         }
       }
       fontsOut.push({ font, files: Object.fromEntries(entries) });

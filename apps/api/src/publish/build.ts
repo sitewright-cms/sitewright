@@ -174,7 +174,7 @@ async function copyMedia(
 /** The published sub-directory holding self-hosted webfonts (under {@link ASSET_DIR}). */
 const FONT_DIR = '_fonts';
 
-/** Copies each self-hosted font's woff2 weights into `<base>/_assets/_fonts/<fontId>/<weight>.woff2`. */
+/** Copies each self-hosted font's stored files into `<base>/_assets/_fonts/<fontId>/<file>`. */
 async function copyFonts(
   base: string,
   fonts: readonly SelfHostedFont[],
@@ -182,13 +182,12 @@ async function copyFonts(
 ): Promise<void> {
   for (const font of fonts) {
     const dir = join(base, ASSET_DIR, FONT_DIR, font.id);
-    // font.id is FontId-validated; the file name below is `<weight>.woff2` (numeric).
+    // font.id is FontId-validated; each file name is `<weight>[-italic].<ext>` (schema-validated).
     /* v8 ignore next -- defensive: validated id can't escape */
     if (!resolve(dir).startsWith(base + sep)) continue;
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to base/_assets/_fonts
     await mkdir(dir, { recursive: true });
-    for (const weight of font.weights) {
-      const file = `${weight}.woff2`;
+    for (const { file } of font.files) {
       const target = resolve(dir, file);
       /* v8 ignore next -- defensive */
       if (!target.startsWith(resolve(dir) + sep)) continue;
@@ -197,7 +196,7 @@ async function copyFonts(
         // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to base/_assets/_fonts/<id>
         await writeFile(target, data);
       } catch (err) {
-        // A missing cached weight is tolerable (the @font-face just won't load that weight);
+        // A missing file is tolerable (the @font-face just won't load that face);
         // any other I/O error must fail the build.
         if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
       }

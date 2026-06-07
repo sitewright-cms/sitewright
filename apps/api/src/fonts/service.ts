@@ -119,7 +119,13 @@ export async function selectGoogleFont(store: FontStore, family: string, weights
   if (stored.length === 0) throw new FontFetchError('no font files could be downloaded');
   // Validate the record at download time rather than `as`-casting the catalog-derived values — a
   // catalog that ever emits an out-of-enum fallback fails HERE (clearly) instead of on a later PUT.
-  const parsed = SelfHostedFontSchema.safeParse({ id, family: meta.family, fallback: meta.fallback, weights: stored });
+  const parsed = SelfHostedFontSchema.safeParse({
+    id,
+    family: meta.family,
+    fallback: meta.fallback,
+    source: 'google',
+    files: stored.map((w) => ({ weight: w, style: 'normal', format: 'woff2', file: `${w}.woff2` })),
+  });
   if (!parsed.success) throw new FontFetchError('downloaded font failed validation');
   return parsed.data;
 }

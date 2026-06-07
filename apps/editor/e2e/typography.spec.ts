@@ -101,3 +101,82 @@ test('google fonts: pick a heading webfont, self-host on select, publish loads i
   expect(woff2.status()).toBe(200);
   expect(woff2.headers()['content-type']).toBe('font/woff2');
 });
+
+// A minimal sfnt/TrueType header (magic 0x00010000) — enough to pass the server's magic-byte check.
+const TTF_BYTES = Buffer.concat([Buffer.from([0x00, 0x01, 0x00, 0x00]), Buffer.alloc(64)]);
+
+// Custom named slot → a `font-<name>` utility + `--sw-font-<name>` var on the published page.
+test('custom named font slot: add "boombox", persist, and publish emits its --sw-font-boombox var', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: /Register/ }).click();
+  await page.getByLabel('Email').fill(`named-${stamp}@e2e.test`);
+  await page.getByLabel('Password').fill('pw-secret-1');
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await page.getByRole('button', { name: 'New project' }).click();
+  await page.getByLabel('Project name').fill('Named Site');
+  await page.getByLabel('Project slug').fill(`named-${stamp}`);
+  await page.getByRole('button', { name: 'Create project' }).click();
+
+  await page.getByRole('tab', { name: 'Corporate Identity' }).click();
+  await page.getByRole('button', { name: '+ Add custom font' }).click();
+  await page.getByLabel('Custom font name').fill('boombox');
+  await page.getByLabel('boombox font weight').selectOption('700');
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.getByText('✓ Saved')).toBeVisible();
+
+  // Reload → the named slot persisted.
+  await page.reload();
+  await page.getByRole('button', { name: /Named Site/ }).click();
+  await page.getByRole('tab', { name: 'Corporate Identity' }).click();
+  await expect(page.getByLabel('Custom font name')).toHaveValue('boombox');
+
+  // Publish → the page exposes the --sw-font-boombox var (+ weight) for the font-boombox utility.
+  await page.getByRole('button', { name: 'Publish' }).click();
+  await page.getByRole('button', { name: 'Publish actions' }).click();
+  const href = await page.getByRole('menuitem', { name: 'View published site' }).getAttribute('href');
+  const origin = new URL(page.url()).origin;
+  const html = await (await page.request.get(`${origin}${href!.replace(/\/$/, '')}/`)).text();
+  expect(html).toMatch(/--sw-font-boombox:[^;]+;--sw-font-boombox-weight:700;/);
+});
+
+// Local font upload: a .ttf is self-hosted PROJECT-scoped and the published page loads it locally.
+test('local font upload: upload a .ttf for the body, self-host on save, publish loads it locally', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: /Register/ }).click();
+  await page.getByLabel('Email').fill(`upload-${stamp}@e2e.test`);
+  await page.getByLabel('Password').fill('pw-secret-1');
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await page.getByRole('button', { name: 'New project' }).click();
+  await page.getByLabel('Project name').fill('Upload Site');
+  await page.getByLabel('Project slug').fill(`upload-${stamp}`);
+  await page.getByRole('button', { name: 'Create project' }).click();
+
+  await page.getByRole('tab', { name: 'Corporate Identity' }).click();
+  // Open the body slot's uploader, fill the form, attach a ttf, upload.
+  await page.getByRole('button', { name: 'Upload a font for the body font' }).click();
+  await page.getByLabel('Font file').setInputFiles({ name: 'uploadtest.ttf', mimeType: 'font/ttf', buffer: TTF_BYTES });
+  await page.getByLabel('Family name').fill('Uploadtest');
+  await page.getByRole('button', { name: 'Upload + use' }).click();
+
+  // On success the body slot becomes a local slot (select value '__local__').
+  await expect(page.getByLabel('Body font family')).toHaveValue('__local__', { timeout: 20000 });
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.getByText('✓ Saved')).toBeVisible();
+
+  // Publish → the page self-hosts the ttf (LOCAL path + format("truetype")), zero Google references.
+  await page.getByRole('button', { name: 'Publish' }).click();
+  await page.getByRole('button', { name: 'Publish actions' }).click();
+  const href = await page.getByRole('menuitem', { name: 'View published site' }).getAttribute('href');
+  const origin = new URL(page.url()).origin;
+  const base = `${origin}${href!.replace(/\/$/, '')}`;
+  const html = await (await page.request.get(`${base}/`)).text();
+  expect(html).toMatch(/--sw-font-body:"Uploadtest"/);
+  expect(html).toMatch(/src:url\(_assets\/_fonts\/up-[0-9a-f]+\/400\.ttf\) format\("truetype"\)/);
+  expect(html).not.toMatch(/fonts\.(googleapis|gstatic)\.com/);
+
+  // The bundled ttf is served from the published artifact with the right type.
+  const m = html.match(/_assets\/_fonts\/(up-[0-9a-f]+)\/400\.ttf/);
+  const ttf = await page.request.get(`${base}/_assets/_fonts/${m![1]}/400.ttf`);
+  expect(ttf.status()).toBe(200);
+  expect(ttf.headers()['content-type']).toBe('font/ttf');
+});

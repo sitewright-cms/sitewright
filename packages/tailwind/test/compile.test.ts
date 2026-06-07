@@ -32,6 +32,25 @@ describe('compileUtilityCss', () => {
     expect(css).toContain('Inter'); // font-display
   });
 
+  it('emits font-heading / font-body / font-<name> utilities resolving to the --sw-font-* vars', async () => {
+    const brand = {
+      colors: {},
+      typography: { named: { boombox: { source: 'local', family: 'Boombox', weight: 800, fontId: 'up-x' } } },
+    } as unknown as Brand;
+    const css = await compileUtilityCss(
+      ['<h1 class="font-heading">t</h1><p class="font-body">b</p><span class="font-boombox">x</span>'],
+      brandToTailwindTheme(brand),
+      { minify: true },
+    );
+    // The built-in slot utilities + the custom named slot utility all generate, each pointing at its
+    // --sw-font-* var (defined at runtime by typographyCss) via Tailwind's --font-<name> theme token.
+    expect(css).toContain('var(--sw-font-heading)');
+    expect(css).toContain('var(--sw-font-body)');
+    expect(css).toContain('var(--sw-font-boombox)');
+    expect(css).toMatch(/\.font-heading\{/);
+    expect(css).toMatch(/\.font-boombox\{/);
+  });
+
   it('minifies when asked (smaller output, collapsed declarations)', async () => {
     const html = '<div class="flex p-4 m-2 rounded-lg">x</div>';
     const raw = await compileUtilityCss([html], {}, { minify: false });

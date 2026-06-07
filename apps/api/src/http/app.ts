@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { join } from 'node:path';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import cookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
@@ -402,6 +403,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const contentRepo = new ContentRepository(db, events);
   const mediaStorage = opts.mediaRoot ? new MediaStorage(opts.mediaRoot) : undefined;
   const fontStore = opts.fontRoot ? new FontStore(opts.fontRoot) : undefined;
+  // Project-scoped store for uploaded (licensed) fonts — isolated per tenant under the font root.
+  // `_projects` can't collide with a google fontId (which is a family slug, never `_projects`).
+  const projectFontStore = opts.fontRoot
+    ? (projectId: string) => new FontStore(join(opts.fontRoot as string, '_projects', projectId))
+    : undefined;
   const publishStore = opts.publishRoot ? new PublishStore(opts.publishRoot) : undefined;
   // Short-lived store of rendered preview docs, so they can be served (via a token
   // URL) under a `Content-Security-Policy: sandbox` for true WYSIWYG interactivity.
@@ -1355,10 +1361,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         formEndpoint: (formId) => `/f/${project.id}/${formId}`,
         ...(previewHcaptchaSiteKey ? { hcaptchaSiteKey: previewHcaptchaSiteKey } : {}),
         mediaUrl: (asset, file) => `/media/${project.id}/${asset.id}/${file}`,
-        // Self-hosted fonts: the preview loads them from the instance cache (never Google). Only
-        // wire the resolver when the /fonts route exists (fontStore configured) — otherwise the
+        // Self-hosted fonts: the preview loads them locally (never Google) via the project-scoped
+        // serve route, which resolves BOTH uploaded (project store) + google (instance cache) fonts.
+        // Only wire the resolver when the /fonts route exists (fontStore configured) — otherwise the
         // @font-face urls would 404; mirrors the publish guard (no fontStore → no fonts emitted).
-        ...(fontStore ? { fontUrl: (fontId: string, file: string) => `/fonts/${fontId}/${file}` } : {}),
+        ...(fontStore ? { fontUrl: (fontId: string, file: string) => `/projects/${project.id}/fonts/${fontId}/${file}` } : {}),
         inlineStyles: inlineStyles.length > 0 ? inlineStyles : undefined,
         inlineScripts: ((): string[] | undefined => {
           const js = [
@@ -1921,7 +1928,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
               ? (assetId, file) => mediaStorage.readStored(project.id, assetId, file)
               : undefined,
             ...(fonts.length ? { fonts } : {}),
-            readFont: fontStore ? (fontId, file) => fontStore.read(fontId, file) : undefined,
+            // Source-aware read: uploaded fonts come from the PROJECT store, google fonts from the
+            // instance cache — so copyFonts bundles each from the right place into _assets/_fonts.
+            readFont:
+              fontStore && projectFontStore
+                ? (fontId, file) =>
+                    (fonts.find((f) => f.id === fontId)?.source === 'local' ? projectFontStore(project.id) : fontStore).read(
+                      fontId,
+                      file,
+                    )
+                : undefined,
           });
           // Just published → nothing newer than this release, so the site is not dirty.
           return reply.send({ release, url: `/sites/${project.slug}/`, dirty: false });
@@ -2082,11 +2098,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // Google Fonts self-hosting (download → instance cache → serve locally). Public woff2 serving
   // + the per-project select endpoint; the published site bundles its used fonts, so neither the
   // preview nor a published page ever loads from Google.
-  if (fontStore) {
+  if (fontStore && projectFontStore) {
     registerFontRoutes(app, {
       resolveProject,
       isWriter: (ctx) => WRITE_ROLES.has(ctx.role),
       fontStore,
+      projectFontStore,
       rl,
     });
   }

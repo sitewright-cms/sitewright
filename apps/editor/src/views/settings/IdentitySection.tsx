@@ -4,6 +4,7 @@ import { Field, GlassCard, SubLabel, TextArea } from './ui';
 import { TokenEditor } from './TokenEditor';
 import { StringListEditor } from './StringListEditor';
 import { FontSlotEditor } from './FontSlotEditor';
+import { CustomFontSlots } from './CustomFontSlots';
 
 /**
  * Corporate Identity: the unified company + brand record. Grouped into frosted
@@ -45,17 +46,20 @@ export function IdentitySection({ form, patch, projectId }: { form: SettingsForm
         />
       </GlassCard>
 
-      <GlassCard title="Typography" icon="◐">
+      <GlassCard title="Typography" icon="◐" wide>
         <p className="mb-3 text-xs text-slate-500">
           The heading and body fonts applied across every page — in the editor preview and the
-          published site.
+          published site. Use them anywhere with the <code className="rounded bg-slate-100 px-1 py-0.5">font-heading</code>{' '}
+          and <code className="rounded bg-slate-100 px-1 py-0.5">font-body</code> classes. Fonts can be a system family,
+          a Google webfont, or your own uploaded file — all self-hosted (never loaded from a CDN on your site).
         </p>
-        <div className="flex flex-col gap-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           <FontSlotEditor
             label="Heading font"
             slot={form.heading}
             onChange={(heading) => patch({ heading })}
             projectId={projectId}
+            fonts={form.selfHostedFonts}
             onAddFont={addFont}
           />
           <FontSlotEditor
@@ -63,9 +67,21 @@ export function IdentitySection({ form, patch, projectId }: { form: SettingsForm
             slot={form.body}
             onChange={(body) => patch({ body })}
             projectId={projectId}
+            fonts={form.selfHostedFonts}
             onAddFont={addFont}
           />
         </div>
+        <SubLabel>Custom fonts</SubLabel>
+        <p className="mb-2 text-xs text-slate-500">
+          Add extra named fonts you can apply per element with a <code className="rounded bg-slate-100 px-1 py-0.5">font-&lt;name&gt;</code> class.
+        </p>
+        <CustomFontSlots
+          slots={form.named}
+          onChange={(named) => patch({ named })}
+          projectId={projectId}
+          fonts={form.selfHostedFonts}
+          onAddFont={addFont}
+        />
       </GlassCard>
 
       <GlassCard title="Logos & images" icon="▣">

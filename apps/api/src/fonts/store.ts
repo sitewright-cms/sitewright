@@ -1,14 +1,15 @@
 import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve, sep } from 'node:path';
 
-// Instance-level cache of self-hosted Google Fonts. Layout: `<root>/<fontId>/<weight>.woff2`,
-// shared across projects (a family is downloaded once). Both segments are charset-validated and
-// the resolved path is confined to the cache root, so traversal is impossible.
+// On-disk store of self-hosted fonts. Layout: `<root>/<fontId>/<weight>[-italic].<ext>`. Used both
+// for the INSTANCE Google cache (root = FONT_ROOT, shared across projects so a family downloads once)
+// and for PROJECT-scoped uploaded fonts (root = FONT_ROOT/_projects/<projectId>). Both path segments
+// are charset-validated and the resolved path is confined to the root, so traversal is impossible.
 
 /** A path-safe font id (schema FontId / family slug). Exported so routes validate at their boundary. */
 export const FONT_ID = /^[A-Za-z0-9_-]+$/;
-/** A cache file name: `<weight>.woff2`, weight 100–900. Exported so routes share one definition. */
-export const WOFF2_FILE = /^[1-9]00\.woff2$/;
+/** A font file name: `<weight>[-italic].<ext>` (woff2/woff/ttf/otf). Exported so routes share it. */
+export const FONT_FILE = /^[1-9]00(-italic)?\.(woff2|woff|ttf|otf)$/;
 
 export class FontStore {
   constructor(private readonly root: string) {}
@@ -20,14 +21,14 @@ export class FontStore {
 
   /** Absolute, confined path for a font file (or throws on an invalid/escaping segment). */
   private filePath(fontId: string, file: string): string {
-    if (!WOFF2_FILE.test(file)) throw new Error('invalid font file');
+    if (!FONT_FILE.test(file)) throw new Error('invalid font file');
     const dir = resolve(this.dir(fontId));
     const full = resolve(dir, file);
     if (!full.startsWith(dir + sep)) throw new Error('font path escapes its directory');
     return full;
   }
 
-  /** Whether a weight is already cached (so we never re-download). */
+  /** Whether a file is already stored (so a google weight never re-downloads). */
   async has(fontId: string, file: string): Promise<boolean> {
     try {
       await access(this.filePath(fontId, file));
@@ -45,7 +46,7 @@ export class FontStore {
     await writeFile(target, data);
   }
 
-  /** Reads a cached woff2, or throws (ENOENT) if absent. */
+  /** Reads a stored font file, or throws (ENOENT) if absent. */
   async read(fontId: string, file: string): Promise<Buffer> {
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- validated + confined above
     return readFile(this.filePath(fontId, file));

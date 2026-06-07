@@ -272,6 +272,25 @@ export const api = {
   selectFont: (projectId: string, family: string, weights: number[]) =>
     request<{ font: SelfHostedFont }>('POST', `/projects/${projectId}/fonts/select`, { family, weights }),
 
+  // --- Local (uploaded) fonts: validate + self-host a font file, get its bundleable record ---
+  uploadFont: async (
+    projectId: string,
+    file: File,
+    meta: { family: string; weight: number; style: 'normal' | 'italic'; fallback: string },
+  ): Promise<{ font: SelfHostedFont }> => {
+    const form = new FormData();
+    form.append('file', file);
+    // Metadata rides as query params (the multipart config admits no extra fields).
+    const qs = new URLSearchParams({ family: meta.family, weight: String(meta.weight), style: meta.style, fallback: meta.fallback });
+    const res = await fetch(`${BASE}/projects/${projectId}/fonts/upload?${qs.toString()}`, {
+      method: 'POST',
+      credentials: 'include',
+      body: form, // the browser sets multipart/form-data with the boundary
+    });
+    if (!res.ok) throw await errorFromResponse(res);
+    return (await res.json()) as { font: SelfHostedFont };
+  },
+
   // --- page translations (per-locale content overrides) ---
   listTranslations: (projectId: string) =>
     request<{ items: PageTranslation[] }>('GET', `/projects/${projectId}/content/translation`),

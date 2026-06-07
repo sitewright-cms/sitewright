@@ -13,6 +13,7 @@ import { UpdateBanner } from './views/UpdateBanner';
 import { parseLiveTarget } from './lib/live-target';
 import { SkeletonList } from './views/ui/Skeleton';
 import { installRipple } from './lib/ripple';
+import { ghostButton } from './theme';
 
 /**
  * Routes to the standalone pop-out live preview when the URL carries `?live=…`;
@@ -143,7 +144,14 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
       {/* Right: assets + publish (owners) + admin + sign out. */}
       <nav className="ml-auto flex items-center gap-4">
         {inProject && !isClient && (
-          <button className="text-sm text-slate-500 hover:text-slate-900" onClick={() => setAssetsOpen(true)}>
+          <button
+            className={ghostButton}
+            title="Files & media — images, fonts, documents"
+            onClick={() => setAssetsOpen(true)}
+          >
+            <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+            </svg>
             Assets
           </button>
         )}

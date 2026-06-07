@@ -85,7 +85,7 @@ export interface FileBrowserProps {
 /**
  * The reusable file/folder browser over the project media library: breadcrumb navigation, list/grid
  * views, upload, new-folder, rename/copy/delete (files + folders) and drag-to-move. Shared by the
- * FileManager drawer (mode='manage') and the FilePicker modal (mode='pick', filtered by `accept`).
+ * Assets side panel (mode='manage') and the FilePicker modal (mode='pick', filtered by `accept`).
  */
 export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro }: FileBrowserProps) {
   const pick = mode === 'pick';

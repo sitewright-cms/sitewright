@@ -12,7 +12,10 @@ vi.mock('../src/views/Project', () => ({
   MANAGE_TABS: ['pages', 'forms'] as const,
   TAB_LABELS: { pages: 'Pages', forms: 'Forms' },
 }));
-vi.mock('../src/views/files/FileManager', () => ({ FileManager: () => <div>FILE MANAGER</div> }));
+vi.mock('../src/views/files/AssetsPanel', () => ({
+  AssetsPanel: ({ openSignal }: { openSignal: number }) => <div>ASSETS PANEL sig={openSignal}</div>,
+}));
+vi.mock('../src/views/library/LibraryPanel', () => ({ LibraryPanel: () => <div>LIBRARY PANEL</div> }));
 vi.mock('../src/views/PublishBar', () => ({ PublishBar: () => <div>PUBLISH</div> }));
 vi.mock('../src/views/InstanceSettings', () => ({ InstanceSettings: () => <div /> }));
 vi.mock('../src/views/UpdateBanner', () => ({ UpdateBanner: () => <div /> }));
@@ -53,9 +56,26 @@ describe('App shell', () => {
     // Switching a tab updates the project view.
     fireEvent.click(screen.getByRole('tab', { name: 'Forms' }));
     expect(await screen.findByText(/PROJECT Acme tab=forms/)).toBeInTheDocument();
-    // Assets is now a drawer launcher button (not a tab) — clicking it opens the file manager.
+    // Owners get the always-present Library + Assets side panels; the header "Assets" button
+    // force-opens the Assets panel by bumping its openSignal.
+    expect(screen.getByText('LIBRARY PANEL')).toBeInTheDocument();
+    expect(screen.getByText(/ASSETS PANEL sig=0/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Assets' }));
-    expect(await screen.findByText('FILE MANAGER')).toBeInTheDocument();
+    expect(await screen.findByText(/ASSETS PANEL sig=1/)).toBeInTheDocument();
+  });
+
+  it('a client (member) project gets no side panels and no tablist', async () => {
+    me.mockResolvedValue({
+      userId: 'u',
+      isInstanceAdmin: false,
+      projects: [{ id: 'pm', name: 'Client Co', slug: 'client-co', role: 'member' }],
+    });
+    render(<App />);
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: /Client Co/ }));
+    await screen.findByText(/PROJECT Client Co/);
+    expect(screen.queryByText('LIBRARY PANEL')).toBeNull();
+    expect(screen.queryByText(/ASSETS PANEL/)).toBeNull();
+    expect(screen.queryByRole('tab', { name: 'Pages' })).toBeNull();
   });
 
   it('the header project name re-opens the selector', async () => {

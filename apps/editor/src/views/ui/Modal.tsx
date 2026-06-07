@@ -1,7 +1,8 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useContext, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { FOCUSABLE, OVERLAY_STACK } from './overlay';
+import { InSidePanel, SidePanelHold } from './SidePanel';
 
 const IS_MAC = typeof navigator !== 'undefined' && /Mac|iP(hone|ad|od)/.test(navigator.platform || navigator.userAgent);
 
@@ -27,9 +28,10 @@ const SIZES = {
   md: 'max-w-lg',
   lg: 'max-w-2xl',
   xl: 'max-w-4xl',
-  full: 'max-w-6xl h-[90vh]',
-  /** Near-fullscreen workbench (the page editor): full width, fixed 90vh. */
-  screen: 'max-w-none h-[90vh]',
+  full: 'max-w-5xl h-[82vh]',
+  /** Near-fullscreen workbench (the page editor): wide, fixed 82vh — still inside the gutters so the
+   *  side-panel edge tabs stay reachable. */
+  screen: 'max-w-none h-[82vh]',
 } as const;
 
 // Modals share the OVERLAY_STACK (see ./overlay) with Drawers so Escape/⌘S act on the TOP
@@ -108,6 +110,16 @@ export function Modal({ title, onClose, onSave, saving = false, saveDisabled = f
   saveDisabledRef.current = saveDisabled;
   // Identity token on the modal stack (see OVERLAY_STACK above).
   const stackId = useRef<object>({});
+  // A modal opened from WITHIN a side panel must sit above the panel layer (z-60/61); a normal
+  // modal sits below the panel tabs so they stay visible over it.
+  const elevated = useContext(InSidePanel);
+  // While this (panel-owned) modal lives, pin the panel open so it can't collapse behind us.
+  const panelHold = useContext(SidePanelHold);
+  useEffect(() => {
+    if (!elevated || !panelHold) return;
+    panelHold.hold();
+    return () => panelHold.release();
+  }, [elevated, panelHold]);
 
   // Mount-only: register on the modal stack (top = shortcut owner).
   useEffect(() => {
@@ -176,7 +188,9 @@ export function Modal({ title, onClose, onSave, saving = false, saveDisabled = f
     <AnimatePresence onExitComplete={() => onCloseRef.current()}>
       {visible && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          // Gutters (px/pb) keep the panel clear of the screen edges so the side-panel tabs peek
+          // out around it; `z` puts panel-owned dialogs above the panels, normal modals below them.
+          className={`fixed inset-0 flex items-center justify-center px-14 pb-16 pt-6 ${elevated ? 'z-[70]' : 'z-50'}`}
           role="presentation"
           onMouseDown={(e) => {
             // Backdrop click (not a click inside the panel) requests a close; the parent's
@@ -204,7 +218,7 @@ export function Modal({ title, onClose, onSave, saving = false, saveDisabled = f
             animate={{ opacity: 1, y: 0 }}
             exit={reduce ? { opacity: 0 } : { opacity: 0, y: 24 }}
             transition={{ duration: 0.22, ease: 'easeOut' }}
-            className={`relative flex w-full ${SIZES[size]} max-h-[90vh] flex-col overflow-hidden rounded-2xl border border-white/60 bg-white/95 shadow-2xl outline-none backdrop-blur-xl`}
+            className={`relative flex w-full ${SIZES[size]} max-h-[82vh] flex-col overflow-hidden rounded-2xl border border-white/60 bg-white/95 shadow-2xl outline-none backdrop-blur-xl`}
           >
             <header className="flex items-center gap-3 border-b border-slate-200/70 px-5 py-3">
               <h2 id={titleId} className="flex-1 truncate text-sm font-semibold text-slate-800">{title}</h2>

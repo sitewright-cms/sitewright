@@ -43,13 +43,16 @@ test('library panel: open, search, and copy an example; lazyload + ripple publis
   expect(body).toContain('<script defer src="../lazyload.js"></script>');
   expect(body).toContain('<script defer src="../ripple.js"></script>');
 
-  // The Library is a LEFT hover-drawer; hovering the rail expands it to reveal the section
-  // buttons (the width transition settles before the click). Each section title opens a
-  // searchable gallery modal. A small helper keeps the rail stable between modals.
-  const aside = page.getByRole('complementary', { name: 'Library' });
+  // The Library is a LEFT hover side-panel; hovering its edge tab expands the fixed-size panel to
+  // reveal the section buttons. Each section title opens a searchable gallery modal (which pins the
+  // panel open for its lifetime). The helper only re-hovers the tab when the panel has collapsed.
+  const library = page.locator('[role="region"][aria-label="Library"]');
   const openSection = async (name: RegExp) => {
-    await aside.hover();
-    await page.getByRole('button', { name }).click();
+    if ((await library.getAttribute('aria-hidden')) === 'true') {
+      await page.getByRole('button', { name: 'Open Library' }).hover();
+      await expect(library).toHaveAttribute('aria-hidden', 'false');
+    }
+    await library.getByRole('button', { name }).click();
   };
 
   await openSection(/Ripple effect/);

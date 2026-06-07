@@ -1,0 +1,17 @@
+/* Sitewright brand tokens — the product's own identity (distinct from per-project brand tokens).
+   Import where the editor chrome / marketing surfaces need the brand palette and type. */
+:root {
+  /* Core palette */
+  --sw-brand-ink:          #0F172A; /* wordmark, the square, body text on light  */
+  --sw-brand-indigo:       #4F2DD8; /* primary — matches the editor accent         */
+  --sw-brand-indigo-light: #6D5BF5; /* hover / on-dark primary                      */
+  --sw-brand-teal:         #14B8A6; /* accent                                       */
+  --sw-brand-teal-light:   #2DD4BF; /* on-dark accent                               */
+  --sw-brand-paper:        #F7F7FB; /* light background                             */
+  --sw-brand-white:        #FFFFFF;
+
+  /* Typography — both fonts are open-source and self-hostable (no CDN at runtime). */
+  --sw-font-display: 'Space Grotesk', system-ui, sans-serif; /* wordmark + headings */
+  --sw-font-ui:      'Inter', system-ui, sans-serif;          /* UI + body          */
+  --sw-wordmark-tracking: -0.02em;
+}

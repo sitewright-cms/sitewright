@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sitewright — Finalists: weights &amp; colorways</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{--ink:#0F172A;--paper:#F7F7FB;--line:#E6E6EF}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1100px;margin:0 auto;padding:44px 28px 120px}
+  .kicker{font-family:'Space Grotesk',system-ui;font-weight:700;font-size:13px;letter-spacing:.18em;text-transform:uppercase;color:#64748b;margin:0 0 6px}
+  h1{font-family:'Space Grotesk',system-ui;font-weight:700;font-size:30px;letter-spacing:-.01em;margin:0 0 8px}
+  p.note{color:#475569;max-width:70ch;line-height:1.6;margin:0 0 6px}
+  .mark{border-top:1px solid var(--line);margin-top:46px;padding-top:8px}
+  h2{font-family:'Space Grotesk',system-ui;font-weight:700;font-size:18px;margin:18px 0 2px}
+  h2 .n{color:#94a3b8;font-weight:600;margin-left:8px;font-size:13px}
+  .sub{font-family:'Space Grotesk',system-ui;font-weight:700;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#94a3b8;margin:22px 0 10px}
+  .rowflex{display:flex;flex-wrap:wrap;gap:12px}
+  .cell{display:flex;flex-direction:column;align-items:center;gap:7px}
+  .tile{border-radius:14px;display:grid;place-items:center;background:#fff;border:1px solid var(--line)}
+  .tile.dark{background:var(--ink);border-color:#1e293b}
+  .cap{font-size:10.5px;color:#64748b;text-align:center;line-height:1.3;max-width:96px}
+  .cap b{color:#0F172A;font-weight:600}
+  .rec{color:#14B8A6;font-weight:700}
+  .swrow .tile{width:84px;height:84px}
+  .colorgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:12px}
+  .colorgrid .tile{width:100%;height:88px}
+  .proofbar{display:flex;align-items:center;gap:14px;margin-top:14px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 16px}
+  .proofbar .lbl{font-size:11px;color:#94a3b8}
+  .wm{font-family:'Space Grotesk',system-ui;font-weight:700;font-size:26px;letter-spacing:-.02em}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="kicker">Sitewright · finalists</div>
+  <h1>Wright’s Square · Crop-Mark Frame · Bracket Blocks</h1>
+  <p class="note">Your three favourites, refined. Each gets a <strong>line-weight</strong> row (thinner strokes for the square &amp; brackets as you asked — ✓ marks my suggested weight) and a <strong>12-way colorway</strong> grid, drawn at that suggested weight. A dark-background trio and a 16&nbsp;px favicon proof follow each. Font locked: Space Grotesk.</p>
+  <div id="app"></div>
+</div>
+
+<script>
+const INK='#0F172A';
+// mark templates: (C=line/primary, A1=accent 1, A2=accent 2, sw=stroke width)
+const MARKS = {
+  square:(C,A1,A2,sw)=>`<path d="M30 18 V72 H78" stroke="${C}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round"/><rect x="40" y="52" width="26" height="14" rx="3" fill="${A2}"/><rect x="40" y="35" width="26" height="14" rx="3" fill="${A1}"/>`,
+  crop:(C,A1,A2,sw)=>`<path d="M28 42 V32 a3 3 0 0 1 3-3 H43" stroke="${C}" stroke-width="${sw}" stroke-linecap="round"/><path d="M53 29 H64 a3 3 0 0 1 3 3 V42" stroke="${C}" stroke-width="${sw}" stroke-linecap="round"/><path d="M28 54 V64 a3 3 0 0 0 3 3 H43" stroke="${C}" stroke-width="${sw}" stroke-linecap="round"/><path d="M53 67 H64 a3 3 0 0 0 3-3 V54" stroke="${C}" stroke-width="${sw}" stroke-linecap="round"/><circle cx="48" cy="48" r="9" fill="${A1}"/>`,
+  bracket:(C,A1,A2,sw)=>`<path d="M42 28 H30 V68 H42" stroke="${C}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round"/><path d="M54 28 H66 V68 H54" stroke="${C}" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round"/><rect x="42" y="40" width="12" height="9" rx="2" fill="${A1}"/><rect x="42" y="51" width="12" height="7" rx="2" fill="${A2}"/>`
+};
+function svg(size, inner){return `<svg width="${size}" height="${size}" viewBox="0 0 96 96" fill="none">${inner}</svg>`;}
+
+// 12 colorways: [name, C, A1, A2]
+const COLORS = [
+  ['Ink · Indigo · Teal', INK, '#4F2DD8', '#14B8A6'],
+  ['Indigo · Teal',       '#4F2DD8', '#14B8A6', '#6D5BF5'],
+  ['Mono indigo',         '#4F2DD8', '#6D5BF5', '#4F2DD8'],
+  ['Ink · Teal',          INK, '#14B8A6', '#2DD4BF'],
+  ['Ink · Indigo',        INK, '#4F2DD8', '#6D5BF5'],
+  ['Indigo · Amber',      '#4F2DD8', '#F59E0B', '#6D5BF5'],
+  ['Ink · Fuchsia',       INK, '#D946EF', '#6D5BF5'],
+  ['Slate · Cyan',        '#334155', '#06B6D4', '#0EA5E9'],
+  ['Ink · Emerald',       INK, '#10B981', '#34D399'],
+  ['Ink · Coral',         INK, '#FB7185', '#F43F5E'],
+  ['Teal-led · Ink',      '#0D9488', INK, '#14B8A6'],
+  ['Mono ink',            INK, '#0F172A', '#334155'],
+];
+// dark-bg trio: [name, C, A1, A2]
+const DARK = [
+  ['White · teal',  '#FFFFFF', '#2DD4BF', '#A99BFF'],
+  ['Indigo · teal', '#A99BFF', '#2DD4BF', '#6D5BF5'],
+  ['White · amber', '#FFFFFF', '#FBBF24', '#A99BFF'],
+];
+
+const SPECS = [
+  {key:'square', title:"Wright’s Square", n:'#1',
+   weights:[[12,'12 · original'],[9,'9'],[7,'7 · thin'],[5,'5 · hairline']], rec:7, recIdx:2},
+  {key:'crop', title:'Crop-Mark Frame', n:'#10',
+   weights:[[7,'7 · original'],[6,'6'],[5,'5 · thin'],[4,'4 · hairline']], rec:5, recIdx:2},
+  {key:'bracket', title:'Bracket Blocks', n:'#15',
+   weights:[[9,'9 · original'],[7,'7'],[6,'6 · thin'],[4.5,'4.5 · hairline']], rec:6, recIdx:2},
+];
+
+const app = document.getElementById('app');
+for (const s of SPECS){
+  const fn = MARKS[s.key];
+  let html = `<div class="mark"><h2>${s.title}<span class="n">${s.n}</span></h2>`;
+
+  // weight row (primary colorway: Ink/Indigo/Teal)
+  html += `<div class="sub">Line weight — thinner strokes</div><div class="rowflex swrow">`;
+  s.weights.forEach((w,i)=>{
+    const recd = i===s.recIdx;
+    html += `<div class="cell"><div class="tile">${svg(64, fn(INK,'#4F2DD8','#14B8A6',w[0]))}</div><div class="cap${recd?' rec':''}">${recd?'✓ ':''}${w[1]}</div></div>`;
+  });
+  html += `</div>`;
+
+  // colorways grid (at recommended weight)
+  html += `<div class="sub">12 colorways — at ${s.rec}px stroke</div><div class="colorgrid">`;
+  COLORS.forEach(c=>{
+    html += `<div class="cell"><div class="tile">${svg(60, fn(c[1],c[2],c[3],s.rec))}</div><div class="cap"><b>${c[0]}</b></div></div>`;
+  });
+  html += `</div>`;
+
+  // dark trio
+  html += `<div class="sub">On dark</div><div class="rowflex">`;
+  DARK.forEach(c=>{
+    html += `<div class="cell"><div class="tile dark" style="width:84px;height:84px">${svg(64, fn(c[1],c[2],c[3],s.rec))}</div><div class="cap"><b>${c[0]}</b></div></div>`;
+  });
+  html += `</div>`;
+
+  // favicon proof + wordmark lockup at recommended weight, primary color
+  html += `<div class="proofbar"><span class="lbl">favicon</span>`;
+  [16,20,32].forEach(px=> html += svg(px, fn(INK,'#4F2DD8','#14B8A6',s.rec+1)) );
+  html += `<span style="width:14px"></span><span class="lbl">lockup</span>${svg(30, fn(INK,'#4F2DD8','#14B8A6',s.rec))}<span class="wm">Sitewright</span></div>`;
+
+  html += `</div>`;
+  app.insertAdjacentHTML('beforeend', html);
+}
+</script>
+</body>
+</html>

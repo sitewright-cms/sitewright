@@ -31,7 +31,7 @@ vi.mock('../src/api', () => ({
   },
 }));
 
-import { MediaManager } from '../src/views/MediaManager';
+import { FileBrowser } from '../src/views/files/FileBrowser';
 
 const project = { id: 'p', name: 'Acme', slug: 'acme', role: 'owner' as const };
 
@@ -75,9 +75,9 @@ beforeEach(() => {
   deleteMedia.mockResolvedValue(undefined);
 });
 
-describe('MediaManager (Assets)', () => {
+describe('FileBrowser (Assets)', () => {
   it('defaults to LIST view and shows assets + folders (incl. a persisted empty folder)', async () => {
-    render(<MediaManager project={project} />);
+    render(<FileBrowser project={project} mode="manage" />);
     expect(screen.getByLabelText('Upload files')).toHaveAttribute('multiple');
     // List view is the default → a table with a Size column.
     expect(await screen.findByRole('columnheader', { name: 'Size' })).toBeInTheDocument();
@@ -94,7 +94,7 @@ describe('MediaManager (Assets)', () => {
   });
 
   it('navigates into a folder and back via the breadcrumb', async () => {
-    render(<MediaManager project={project} />);
+    render(<FileBrowser project={project} mode="manage" />);
     fireEvent.click(await screen.findByRole('button', { name: 'Docs' }));
     expect(await screen.findByRole('button', { name: 'q4.pdf' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'brochure.pdf' })).toBeNull();
@@ -103,7 +103,7 @@ describe('MediaManager (Assets)', () => {
   });
 
   it('persists a new folder via the API (not just local state)', async () => {
-    render(<MediaManager project={project} />);
+    render(<FileBrowser project={project} mode="manage" />);
     await screen.findByRole('button', { name: 'hero.png' });
     fireEvent.change(screen.getByLabelText('New folder name'), { target: { value: 'Brand' } });
     fireEvent.click(screen.getByRole('button', { name: '+ Folder' }));
@@ -111,7 +111,7 @@ describe('MediaManager (Assets)', () => {
   });
 
   it('renames a file through the prompt dialog → patchMedia', async () => {
-    render(<MediaManager project={project} />);
+    render(<FileBrowser project={project} mode="manage" />);
     fireEvent.click(await screen.findByRole('button', { name: 'Rename brochure.pdf' }));
     // The prompt dialog appears, pre-filled; change + save.
     const field = await screen.findByLabelText('Display name');
@@ -121,13 +121,13 @@ describe('MediaManager (Assets)', () => {
   });
 
   it('copies a file → copyMedia into the current folder', async () => {
-    render(<MediaManager project={project} />);
+    render(<FileBrowser project={project} mode="manage" />);
     fireEvent.click(await screen.findByRole('button', { name: 'Copy brochure.pdf' }));
     await waitFor(() => expect(copyMedia).toHaveBeenCalledWith('p', 'file1', ''));
   });
 
   it('deletes a file only after the confirm dialog', async () => {
-    render(<MediaManager project={project} />);
+    render(<FileBrowser project={project} mode="manage" />);
     fireEvent.click(await screen.findByRole('button', { name: 'Delete brochure.pdf' }));
     expect(deleteMedia).not.toHaveBeenCalled(); // not until confirmed
     fireEvent.click(await screen.findByRole('button', { name: 'Delete' }));
@@ -135,7 +135,7 @@ describe('MediaManager (Assets)', () => {
   });
 
   it('deletes a folder recursively, warning how many items are inside', async () => {
-    render(<MediaManager project={project} />);
+    render(<FileBrowser project={project} mode="manage" />);
     fireEvent.click(await screen.findByRole('button', { name: 'Delete Docs' }));
     // The confirm dialog states the cascade (1 file under Docs).
     expect(await screen.findByText(/permanently deletes 1 file/)).toBeInTheDocument();
@@ -144,14 +144,14 @@ describe('MediaManager (Assets)', () => {
   });
 
   it('opens an image in an IN-APP preview modal (not a new tab)', async () => {
-    render(<MediaManager project={project} />);
+    render(<FileBrowser project={project} mode="manage" />);
     fireEvent.click(await screen.findByRole('button', { name: 'hero.png' }));
     const dialog = await screen.findByRole('dialog', { name: 'hero.png' });
     expect(within(dialog).getByRole('img')).toHaveAttribute('src', '/media/p/img1/hero-100.jpg');
   });
 
   it('opens the stock-image search in a modal scoped to the current folder', async () => {
-    render(<MediaManager project={project} />);
+    render(<FileBrowser project={project} mode="manage" />);
     fireEvent.click(await screen.findByRole('button', { name: 'Search stock images' }));
     expect(await screen.findByRole('dialog', { name: /Search stock images/ })).toBeInTheDocument();
     await waitFor(() => expect(stockProviders).toHaveBeenCalled());

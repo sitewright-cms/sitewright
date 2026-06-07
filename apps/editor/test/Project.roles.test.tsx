@@ -22,7 +22,6 @@ vi.mock('../src/views/CodePageEditor', () => ({
   CodePageEditor: ({ initialMode }: { initialMode?: string }) => <div>PAGE EDITOR mode={initialMode}</div>,
 }));
 vi.mock('../src/views/DatasetManager', () => ({ DatasetManager: () => <div>DATASETS</div> }));
-vi.mock('../src/views/MediaManager', () => ({ MediaManager: () => <div>ASSETS</div> }));
 vi.mock('../src/views/ApiKeysManager', () => ({ ApiKeysManager: () => <div /> }));
 vi.mock('../src/views/FormsManager', () => ({ FormsManager: () => <div /> }));
 vi.mock('../src/views/SubmissionsInbox', () => ({ SubmissionsInbox: () => <div /> }));
@@ -56,9 +55,8 @@ describe('ProjectView role gating (tab is supplied by the App header)', () => {
   });
 
   it('owner on another tab renders that section (no page form)', async () => {
-    render(<ProjectView project={ownerProject} tab="media" />);
-    await waitFor(() => expect(listPages).toHaveBeenCalled());
-    expect(screen.getByText('ASSETS')).toBeInTheDocument();
+    render(<ProjectView project={ownerProject} tab="data" />);
+    expect(await screen.findByText('DATASETS')).toBeInTheDocument();
     expect(screen.queryByLabelText('Page path')).toBeNull();
   });
 

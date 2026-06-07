@@ -20,7 +20,7 @@ test('assets: image preview modal, rename, copy, delete via modal dialogs', asyn
   await page.getByLabel('Project slug').fill(`assetops-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
 
-  await page.getByRole('tab', { name: 'Assets' }).click();
+  await page.getByRole('button', { name: 'Assets' }).click();
   await page.getByLabel('Upload files').setInputFiles({ name: 'logo.png', mimeType: 'image/png', buffer: PNG_1X1 });
   await expect(page.getByRole('button', { name: 'logo.png', exact: true })).toBeVisible();
 

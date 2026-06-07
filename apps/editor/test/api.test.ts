@@ -64,6 +64,30 @@ describe('api client', () => {
     expect(fetchMock.mock.calls[0]![0]).toBe('/projects/proj1/content/page');
   });
 
+  it('snippet + template wrappers hit the generic content routes (list/put/delete)', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { items: [] }));
+    await api.listSnippets('p1');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p1/content/snippet');
+
+    fetchMock.mockResolvedValue(jsonResponse(200, { item: { id: 'hero', name: 'hero', source: 'x' } }));
+    await api.putSnippet('p1', { id: 'hero', name: 'hero', source: 'x' });
+    const [putUrl, putInit] = fetchMock.mock.calls[1]!;
+    expect(putUrl).toBe('/projects/p1/content/snippet/hero');
+    expect(putInit.method).toBe('PUT');
+    expect(JSON.parse(putInit.body as string)).toEqual({ id: 'hero', name: 'hero', source: 'x' });
+
+    fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
+    await api.deleteSnippet('p1', 'hero');
+    const [delUrl, delInit] = fetchMock.mock.calls[2]!;
+    expect(delUrl).toBe('/projects/p1/content/snippet/hero');
+    expect(delInit.method).toBe('DELETE');
+
+    await api.deleteTemplate('p1', 'base');
+    const [tplUrl, tplInit] = fetchMock.mock.calls[3]!;
+    expect(tplUrl).toBe('/projects/p1/content/template/base');
+    expect(tplInit.method).toBe('DELETE');
+  });
+
   it('builds the stock search URL with an encoded query + page', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { provider: 'openverse', page: 2, results: [] }));
     await api.searchStock('p', 'openverse', 'cats & dogs', 2);

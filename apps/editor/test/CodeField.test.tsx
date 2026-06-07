@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 // Swap CodeMirror for a plain textarea so the edit→save flow runs in jsdom; the real editor
 // is covered by the Playwright browser E2E.
@@ -26,7 +26,7 @@ describe('CodeField', () => {
     expect(screen.queryByText(/a\s+b\s+c/)).toBeNull();
   });
 
-  it('opens the editor modal on Edit, then saves the edited value and closes', () => {
+  it('opens the editor modal on Edit, then saves the edited value and closes', async () => {
     const onChange = vi.fn();
     render(<CodeField label="topNav" title="topNav partial" value="<nav/>" onChange={onChange} />);
 
@@ -42,8 +42,8 @@ describe('CodeField', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
     expect(onChange).toHaveBeenCalledWith('<nav>new</nav>');
-    // Modal closes after save.
-    expect(screen.queryByRole('dialog')).toBeNull();
+    // Modal closes once the (now async-aware) save resolves — a microtask later.
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 
   it('renders the hint inside the editor modal', () => {

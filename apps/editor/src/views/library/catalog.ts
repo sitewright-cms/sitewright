@@ -13,7 +13,7 @@ const ANIMATION_EFFECTS: readonly string[] = [
 // The icon set is large + self-contained, so it lives in `catalog-icons.ts` and is
 // LAZY-loaded (dynamic import) the first time the Icons modal opens.
 
-export type LibraryCategory = 'icons' | 'brand' | 'aos' | 'lazyload' | 'ripple' | 'daisyui';
+export type LibraryCategory = 'icons' | 'brand' | 'fonts' | 'aos' | 'lazyload' | 'ripple' | 'daisyui';
 
 export interface LibraryItem {
   /** Stable id (category-scoped). */
@@ -179,6 +179,7 @@ const DAISYUI_ITEMS: LibraryItem[] = [
 export const LIBRARY_SECTIONS: LibrarySection[] = [
   { category: 'icons', label: 'Icons', blurb: 'The full Lucide icon set. Insert with {{icon "name"}} — searchable by name + keyword.', items: [], lazy: 'icons' },
   { category: 'brand', label: 'Brand icons', blurb: 'Brand / social logos. Insert with {{icon "brand:slug"}}.', items: [], lazy: 'brand' },
+  { category: 'fonts', label: 'Google Fonts', blurb: 'Browse + preview Google Fonts. Pick per-slot fonts in Settings → Typography (self-hosted on select).', items: [] },
   { category: 'aos', label: 'AOS (scroll reveal)', blurb: 'Animate elements as they scroll into view via data-aos.', items: AOS_ITEMS },
   { category: 'lazyload', label: 'Lazy-load', blurb: 'Defer offscreen images with data-bg / lazyload.', items: LAZYLOAD_ITEMS },
   { category: 'ripple', label: 'Ripple effect', blurb: 'Material “waves” click ripple via waves-effect.', items: RIPPLE_ITEMS },

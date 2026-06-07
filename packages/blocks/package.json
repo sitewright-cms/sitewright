@@ -10,6 +10,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./google-fonts-catalog": {
+      "types": "./dist/google-fonts-catalog.d.ts",
+      "import": "./dist/google-fonts-catalog.js"
     }
   },
   "files": [
@@ -23,7 +27,8 @@
     "gen:brand-icons": "node scripts/gen-brand-icons.mjs",
     "gen:brand-icons:check": "node scripts/gen-brand-icons.mjs && git diff --exit-code src/brand-icons.ts",
     "gen:lucide-icons": "node scripts/gen-lucide-icons.mjs",
-    "gen:lucide-icons:check": "node scripts/gen-lucide-icons.mjs && git diff --exit-code src/icons.ts"
+    "gen:lucide-icons:check": "node scripts/gen-lucide-icons.mjs && git diff --exit-code src/icons.ts",
+    "gen:google-fonts": "node scripts/gen-google-fonts.mjs"
   },
   "dependencies": {
     "@sitewright/core": "workspace:*",

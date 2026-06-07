@@ -1,4 +1,5 @@
 import type { Patch, SettingsForm } from './model';
+import type { SelfHostedFont } from '../../api';
 import { Field, GlassCard, SubLabel, TextArea } from './ui';
 import { TokenEditor } from './TokenEditor';
 import { StringListEditor } from './StringListEditor';
@@ -8,7 +9,10 @@ import { FontSlotEditor } from './FontSlotEditor';
  * Corporate Identity: the unified company + brand record. Grouped into frosted
  * cards — Identity basics, Brand tokens, Logos & images, Contact & location, Social.
  */
-export function IdentitySection({ form, patch }: { form: SettingsForm; patch: Patch }) {
+export function IdentitySection({ form, patch, projectId }: { form: SettingsForm; patch: Patch; projectId: string }) {
+  // Register a downloaded self-hosted font on the form (dedup by id).
+  const addFont = (font: SelfHostedFont) =>
+    patch({ selfHostedFonts: [...form.selfHostedFonts.filter((f) => f.id !== font.id), font] });
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       <GlassCard title="Identity" icon="◆">
@@ -47,8 +51,20 @@ export function IdentitySection({ form, patch }: { form: SettingsForm; patch: Pa
           published site.
         </p>
         <div className="flex flex-col gap-3">
-          <FontSlotEditor label="Heading font" slot={form.heading} onChange={(heading) => patch({ heading })} />
-          <FontSlotEditor label="Body font" slot={form.body} onChange={(body) => patch({ body })} />
+          <FontSlotEditor
+            label="Heading font"
+            slot={form.heading}
+            onChange={(heading) => patch({ heading })}
+            projectId={projectId}
+            onAddFont={addFont}
+          />
+          <FontSlotEditor
+            label="Body font"
+            slot={form.body}
+            onChange={(body) => patch({ body })}
+            projectId={projectId}
+            onAddFont={addFont}
+          />
         </div>
       </GlassCard>
 

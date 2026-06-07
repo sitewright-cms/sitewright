@@ -41,4 +41,47 @@ describe('typographyCss', () => {
     expect(css).not.toContain('bogus');
     expect(css).toMatch(/--sw-font-body:[^;]*sans-serif/);
   });
+
+  it('emits @font-face (LOCAL urls) per weight for a self-hosted google slot', () => {
+    const css = typographyCss(
+      {
+        fontFamilies: {},
+        heading: { source: 'google', family: 'Playfair Display', weight: 700, fontId: 'playfair-display' },
+        body: { source: 'system', family: 'sans-serif', weight: 400 },
+        fonts: [{ id: 'playfair-display', family: 'Playfair Display', fallback: 'serif', weights: [400, 700] }],
+      },
+      { fontUrl: (id, file) => `/fonts/${id}/${file}` },
+    );
+    // one @font-face per bundled weight, pointing at the LOCAL url (never Google)
+    expect(css).toContain('@font-face{font-family:"Playfair Display";font-style:normal;font-weight:400;font-display:swap;src:url(/fonts/playfair-display/400.woff2) format("woff2")}');
+    expect(css).toContain('font-weight:700;font-display:swap;src:url(/fonts/playfair-display/700.woff2)');
+    expect(css).not.toContain('fonts.googleapis.com');
+    expect(css).not.toContain('fonts.gstatic.com');
+    // the stack uses the bundled font's family + its category fallback
+    expect(css).toContain('--sw-font-heading:"Playfair Display", serif');
+  });
+
+  it('emits NO @font-face when no fontUrl resolver is given (google family degrades to a generic)', () => {
+    const css = typographyCss({
+      fontFamilies: {},
+      heading: { source: 'google', family: 'Playfair Display', weight: 700, fontId: 'playfair-display' },
+      fonts: [{ id: 'playfair-display', family: 'Playfair Display', fallback: 'serif', weights: [700] }],
+    });
+    expect(css).not.toContain('@font-face');
+    expect(css).toContain('--sw-font-heading:"Playfair Display", serif');
+  });
+
+  it('emits a single @font-face block when heading + body reference the SAME self-hosted font', () => {
+    const css = typographyCss(
+      {
+        fontFamilies: {},
+        heading: { source: 'google', family: 'Inter', weight: 700, fontId: 'inter' },
+        body: { source: 'google', family: 'Inter', weight: 400, fontId: 'inter' },
+        fonts: [{ id: 'inter', family: 'Inter', fallback: 'sans-serif', weights: [400, 700] }],
+      },
+      { fontUrl: (id, file) => `/fonts/${id}/${file}` },
+    );
+    // de-duplicated: the font's two weights appear once each, not twice.
+    expect(css.match(/@font-face/g)).toHaveLength(2);
+  });
 });

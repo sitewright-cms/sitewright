@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { CorporateIdentitySchema } from '../src/corporate-identity.js';
+import { CorporateIdentitySchema, FontSlotSchema, SelfHostedFontSchema } from '../src/corporate-identity.js';
 import { legacyToIdentity, mergeLegacyIdentity } from '../src/migrate-identity.js';
 import { BrandSchema } from '../src/brand.js';
 import { CompanySchema } from '../src/company.js';
@@ -134,5 +134,41 @@ describe('mergeLegacyIdentity — read-boundary normalizer', () => {
   it('leaves a record with neither identity nor brand untouched (defensive)', () => {
     const neither = { settings: { locales: ['en'] } };
     expect(mergeLegacyIdentity(neither)).toBe(neither);
+  });
+});
+
+describe('FontSlotSchema', () => {
+  it('defaults source to system and accepts a numeric CSS weight', () => {
+    const slot = FontSlotSchema.parse({ family: 'serif', weight: 700 });
+    expect(slot).toEqual({ source: 'system', family: 'serif', weight: 700 });
+  });
+
+  it('accepts a google slot (with fontId) and a family name containing an apostrophe', () => {
+    const slot = FontSlotSchema.parse({ source: 'google', family: "It's Display", weight: 400, fontId: 'it-s-display' });
+    expect(slot.fontId).toBe('it-s-display');
+  });
+
+  it('rejects an off-scale weight and a family that could break out of CSS', () => {
+    expect(() => FontSlotSchema.parse({ family: 'serif', weight: 450 })).toThrow();
+    expect(() => FontSlotSchema.parse({ family: 'serif"}', weight: 400 })).toThrow();
+  });
+});
+
+describe('SelfHostedFontSchema', () => {
+  it('accepts a valid self-hosted font record', () => {
+    const font = SelfHostedFontSchema.parse({ id: 'playfair-display', family: 'Playfair Display', fallback: 'serif', weights: [400, 700] });
+    expect(font.weights).toEqual([400, 700]);
+  });
+
+  it('rejects a fallback outside the generic enum', () => {
+    expect(() => SelfHostedFontSchema.parse({ id: 'x', family: 'X', fallback: 'fantasy', weights: [400] })).toThrow();
+  });
+
+  it('rejects duplicate weights', () => {
+    expect(() => SelfHostedFontSchema.parse({ id: 'x', family: 'X', fallback: 'serif', weights: [700, 700] })).toThrow(/unique/);
+  });
+
+  it('rejects a path-unsafe id', () => {
+    expect(() => SelfHostedFontSchema.parse({ id: '../etc', family: 'X', fallback: 'serif', weights: [400] })).toThrow();
   });
 });

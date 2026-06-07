@@ -29,6 +29,8 @@ const PUBLISHED_IMAGE_TYPES = new Map<string, string>([
   ['.jpeg', 'image/jpeg'],
   ['.png', 'image/png'],
   ['.gif', 'image/gif'],
+  // woff2 is a binary font (not script/HTML) — safe to serve inline so bundled @font-face loads.
+  ['.woff2', 'font/woff2'],
 ]);
 
 /** A bundled binary asset to serve: its bytes, content type, and whether it's download-only. */

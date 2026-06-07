@@ -14,6 +14,7 @@ import type {
   PageTranslation,
   Pattern,
   ProjectSettings,
+  SelfHostedFont,
   SmtpInput,
   SmtpPublic,
   StockProviderName,
@@ -26,6 +27,7 @@ import type {
 export type {
   CorporateIdentity,
   DeployTargetView,
+  SelfHostedFont,
   Form,
   FormModes,
   FormSubmission,
@@ -265,6 +267,10 @@ export const api = {
       `/projects/${projectId}/content/settings/settings`,
       bundle,
     ),
+
+  // --- Google Fonts self-hosting: download a family's weights + get its bundleable record ---
+  selectFont: (projectId: string, family: string, weights: number[]) =>
+    request<{ font: SelfHostedFont }>('POST', `/projects/${projectId}/fonts/select`, { family, weights }),
 
   // --- page translations (per-locale content overrides) ---
   listTranslations: (projectId: string) =>

@@ -1,7 +1,7 @@
 import { spawn as nodeSpawn, type ChildProcess, type SpawnOptions } from 'node:child_process';
 import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, resolve, sep } from 'node:path';
-import type { MediaAsset } from '@sitewright/schema';
+import type { MediaAsset, SelfHostedFont } from '@sitewright/schema';
 import type { BuildRunner, BuildJob } from './runner.js';
 import { PublishError, type ReleaseManifest } from './build.js';
 import type { WorkerJob, WorkerResult } from './build-worker.js';
@@ -117,7 +117,29 @@ export class WorkerBuildRunner implements BuildRunner {
       }
       out.push({ asset, files: Object.fromEntries(entries) });
     }
-    return { bundle: job.bundle, publishedAt: job.publishedAt, media: out, jsonData: job.jsonData, snippets: job.snippets };
+    // Inline self-hosted font woff2 (base64) so the worker bundles them too.
+    const fontsOut: Array<{ font: SelfHostedFont; files: Record<string, string> }> = [];
+    for (const font of job.fonts ?? []) {
+      const entries = new Map<string, string>();
+      for (const weight of font.weights) {
+        if (!job.readFont) break;
+        const name = `${weight}.woff2`;
+        try {
+          entries.set(name, (await job.readFont(font.id, name)).toString('base64'));
+        } catch {
+          // A missing cached weight is tolerable (that @font-face weight just won't bundle).
+        }
+      }
+      fontsOut.push({ font, files: Object.fromEntries(entries) });
+    }
+    return {
+      bundle: job.bundle,
+      publishedAt: job.publishedAt,
+      media: out,
+      ...(fontsOut.length ? { fonts: fontsOut } : {}),
+      jsonData: job.jsonData,
+      snippets: job.snippets,
+    };
   }
 
   private spawnWorker(args: string[], stdin: string): Promise<string> {

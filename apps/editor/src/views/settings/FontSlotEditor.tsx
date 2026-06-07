@@ -1,5 +1,8 @@
+import { useEffect, useState } from 'react';
 import type { FontSlotForm } from './model';
-import { fieldLabel, glassInput } from '../../theme';
+import type { SelfHostedFont } from '../../api';
+import { fieldLabel, glassInput, ghostButton } from '../../theme';
+import { GoogleFontsPicker } from './GoogleFontsPicker';
 
 /** Generic system families a slot can pick (no fetching needed; previews via the CSS generic). */
 const SYSTEM_FAMILIES: Array<{ value: string; label: string }> = [
@@ -31,11 +34,28 @@ export function FontSlotEditor({
   label,
   slot,
   onChange,
+  projectId,
+  onAddFont,
 }: {
   label: string;
   slot: FontSlotForm;
   onChange: (slot: FontSlotForm) => void;
+  /** Project id for the Google-Fonts download endpoint. */
+  projectId: string;
+  /** Registers a downloaded self-hosted font on the form (added to `typography.fonts`). */
+  onAddFont: (font: SelfHostedFont) => void;
 }) {
+  const [picking, setPicking] = useState(false);
+
+  // A selected google font is self-hosted at /fonts/<id>/<weight>.woff2 (same-origin in the
+  // editor) — inject its @font-face so the card preview below renders in the actual font.
+  useEffect(() => {
+    if (slot.source !== 'google' || !slot.fontId) return;
+    const style = document.createElement('style');
+    style.textContent = `@font-face{font-family:"${slot.family}";font-weight:${slot.weight};font-display:swap;src:url(/fonts/${slot.fontId}/${slot.weight}.woff2) format("woff2")}`;
+    document.head.appendChild(style);
+    return () => style.remove();
+  }, [slot.source, slot.fontId, slot.family, slot.weight]);
   // For a google slot the family is the chosen webfont name; for system it's a generic keyword.
   // Either previews correctly via the CSS `font-family` (the generic keyword or the loaded font).
   const previewFamily = slot.source === 'google' ? `'${slot.family}', sans-serif` : slot.family;
@@ -90,13 +110,34 @@ export function FontSlotEditor({
           </select>
         </label>
       </div>
-      <p
-        className="mt-2 truncate text-lg text-slate-700"
-        style={{ fontFamily: previewFamily, fontWeight: slot.weight }}
-        aria-hidden
-      >
-        The quick brown fox jumps
-      </p>
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <p
+          className="min-w-0 flex-1 truncate text-lg text-slate-700"
+          style={{ fontFamily: previewFamily, fontWeight: slot.weight }}
+          aria-hidden
+        >
+          The quick brown fox jumps
+        </p>
+        <button
+          type="button"
+          aria-label={`Browse Google Fonts for the ${label.toLowerCase()}`}
+          className={`${ghostButton} shrink-0 whitespace-nowrap px-2.5 py-1 text-xs`}
+          onClick={() => setPicking(true)}
+        >
+          Browse Google Fonts
+        </button>
+      </div>
+      {picking && (
+        <GoogleFontsPicker
+          projectId={projectId}
+          slotLabel={label.toLowerCase()}
+          onClose={() => setPicking(false)}
+          onSelected={(font, weight) => {
+            onAddFont(font);
+            onChange({ source: 'google', family: font.family, weight, fontId: font.id });
+          }}
+        />
+      )}
     </div>
   );
 }

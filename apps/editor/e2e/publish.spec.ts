@@ -14,12 +14,13 @@ test('build a code page, publish the project, and view the live site', async ({ 
   await page.getByLabel('Project slug').fill(`live-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
 
-  // Edit the auto-created HOME page (the empty-slug root). Replace the scaffold with
-  // identifiable text (plain text sidesteps CodeMirror bracket auto-close) and save.
+  // Edit the auto-created HOME page (the empty-slug root). Use a body {{edit}} region (insertText
+  // sidesteps CodeMirror bracket auto-close) so we can also assert preview-only inline-edit markers
+  // NEVER ship to a published page.
   await page.getByRole('button', { name: /^Home/ }).click();
   await page.locator('.cm-content').click();
   await page.keyboard.press('ControlOrMeta+a');
-  await page.keyboard.type('We Are Live');
+  await page.keyboard.insertText('<h1>{{edit "headline" "We Are Live"}}</h1>');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('Saved')).toBeVisible();
   await page.getByRole('button', { name: 'Close', exact: true }).click();
@@ -61,5 +62,7 @@ test('build a code page, publish the project, and view the live site', async ({ 
   const live = await page.context().newPage();
   await live.goto(`${baseURL}${href}`);
   await expect(live.locator('body')).toContainText('We Are Live');
+  // The preview-only inline-edit marker MUST NOT reach published HTML.
+  expect(await live.content()).not.toContain('data-sw-edit');
   await live.close();
 });

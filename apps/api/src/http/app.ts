@@ -36,6 +36,7 @@ import { detectFontFormat, MAX_FONT_BYTES } from '../fonts/upload.js';
 import { createFontAsset as storeFontAsset, mergeFontFaces } from '../fonts/asset.js';
 import {
   renderDocument,
+  editsAreBodyOnly,
   usedComponentTypes,
   componentAssets,
   usesAnimations,
@@ -1263,6 +1264,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             data: localeData,
             partials,
             content: page.content,
+            // PREVIEW-only inline-edit markers — gated so an {{edit}} in an attribute (where a
+            // <span> would break out) is never marked. Never set on the publish path (build.ts).
+            markEdits: editsAreBodyOnly(pageSource),
           });
           // Slots render through the SAME isolated worker; a broken slot is skipped here
           // (publish still hard-validates it) so it can never break the page preview. No

@@ -8,9 +8,9 @@ const PNG_1X1 = Buffer.from(
   'base64',
 );
 
-// The media library (upload + optimize). Code-first pages reference media by its `/media/…`
-// URL in the template source; the optimized <picture> export is covered by the API
-// publish-build tests.
+// The media library (upload + optimize), now reached through the Assets DRAWER (the old Assets tab
+// was retired). Code-first pages reference media by its `/media/…` URL in the template source; the
+// optimized <picture> export is covered by the API publish-build tests.
 test('upload an image into the media library and see the optimized thumbnail', async ({ page }) => {
   await page.goto('/');
 
@@ -23,18 +23,20 @@ test('upload an image into the media library and see the optimized thumbnail', a
   await page.getByLabel('Project slug').fill(`media-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
 
-  // Assets tab: upload an image; the optimized thumbnail appears once processing finishes.
-  await page.getByRole('tab', { name: 'Assets' }).click();
-  await page.getByLabel('Upload files').setInputFiles({
+  // Assets drawer: upload an image; the optimized thumbnail/row appears once processing finishes.
+  await page.getByRole('button', { name: 'Assets' }).click();
+  const drawer = page.getByRole('dialog', { name: 'Assets' });
+  await drawer.getByLabel('Upload files').setInputFiles({
     name: 'hero.png',
     mimeType: 'image/png',
     buffer: PNG_1X1,
   });
-  await expect(page.getByRole('button', { name: 'Delete hero.png' })).toBeVisible();
+  await expect(drawer.getByRole('button', { name: 'Delete hero.png' })).toBeVisible();
 });
 
 // Any-file-type upload: a non-image is stored as a downloadable file asset (filename + size +
-// download link), and a virtual folder groups it. Exercises the Assets overhaul end-to-end.
+// download link), and a virtual folder groups it. Exercises the Assets overhaul end-to-end through
+// the drawer (folder rows, the /file/ attachment link, and folder persistence across a reload).
 test('upload a non-image file into a folder and see it listed with a download link', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: /Register/ }).click();
@@ -46,36 +48,37 @@ test('upload a non-image file into a folder and see it listed with a download li
   await page.getByLabel('Project slug').fill(`assets-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
 
-  await page.getByRole('tab', { name: 'Assets' }).click();
+  await page.getByRole('button', { name: 'Assets' }).click();
+  const drawer = page.getByRole('dialog', { name: 'Assets' });
 
   // Create a PERSISTED folder (it shows immediately and survives reload), then enter it.
-  await page.getByLabel('New folder name').fill('Docs');
-  await page.getByRole('button', { name: '+ Folder' }).click();
+  await drawer.getByLabel('New folder name').fill('Docs');
+  await drawer.getByRole('button', { name: '+ Folder' }).click();
   // The folder row's open button (exact 'Docs' — distinct from its Rename/Copy/Delete actions).
-  await expect(page.getByRole('button', { name: 'Docs', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Docs', exact: true }).click();
+  await expect(drawer.getByRole('button', { name: 'Docs', exact: true })).toBeVisible();
+  await drawer.getByRole('button', { name: 'Docs', exact: true }).click();
 
   // Upload a PDF into the open folder.
-  await page.getByLabel('Upload files').setInputFiles({
+  await drawer.getByLabel('Upload files').setInputFiles({
     name: 'report.pdf',
     mimeType: 'application/pdf',
     buffer: Buffer.from('%PDF-1.4 hello'),
   });
 
   // The file row shows; its Download action links through the attachment-only /file/ handler.
-  await expect(page.getByRole('button', { name: 'report.pdf', exact: true })).toBeVisible();
-  const link = page.getByRole('link', { name: 'Download report.pdf' });
+  await expect(drawer.getByRole('button', { name: 'report.pdf', exact: true })).toBeVisible();
+  const link = drawer.getByRole('link', { name: 'Download report.pdf' });
   await expect(link).toHaveAttribute('href', /\/media\/[\w-]+\/[\w-]+\/file\/report\.pdf$/);
 
-  // Back at root (breadcrumb), the folder is shown and the file is not.
-  await page.getByRole('button', { name: 'Assets', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Docs', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'report.pdf', exact: true })).toHaveCount(0);
+  // Back at root (the breadcrumb 'Assets' crumb), the folder is shown and the file is not.
+  await drawer.getByRole('button', { name: 'Assets', exact: true }).click();
+  await expect(drawer.getByRole('button', { name: 'Docs', exact: true })).toBeVisible();
+  await expect(drawer.getByRole('button', { name: 'report.pdf', exact: true })).toHaveCount(0);
 
-  // The folder persists across a reload (the original bug it fixes). On reload the
-  // project selector auto-opens — reopen the project, then check the folder is still there.
+  // The folder persists across a reload (the original bug it fixes). On reload the project selector
+  // auto-opens — reopen the project, reopen the Assets drawer, and the folder is still there.
   await page.reload();
   await page.getByRole('dialog', { name: 'Your projects' }).getByRole('button', { name: /Assets Site/ }).click();
-  await page.getByRole('tab', { name: 'Assets' }).click();
-  await expect(page.getByRole('button', { name: 'Docs', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Assets' }).click();
+  await expect(page.getByRole('dialog', { name: 'Assets' }).getByRole('button', { name: 'Docs', exact: true })).toBeVisible();
 });

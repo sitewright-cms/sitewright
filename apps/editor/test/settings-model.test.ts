@@ -57,7 +57,7 @@ describe('settings model', () => {
     expect(back.website).toBeUndefined(); // no website fields → section omitted
   });
 
-  it('preserves unsurfaced fields (spacing/radii/scale/logoLight/logoDark) set via CLI/MCP', () => {
+  it('preserves unsurfaced tokens (spacing/radii/scale) and round-trips the surfaced logo fields', () => {
     const withExtra: SettingsBundle = {
       identity: {
         name: 'X',
@@ -76,6 +76,7 @@ describe('settings model', () => {
     // Default heading/body slots are NOT persisted (the renderer applies them) — typography stays
     // as it was.
     expect(back.identity.typography).toEqual({ fontFamilies: { body: 'Inter' }, scale: { base: '16px' } });
+    // logoLight/logoDark are now editable form fields → they survive a full toForm→toBundle round-trip.
     expect(back.identity.logoLight).toBe('/light.svg');
     expect(back.identity.logoDark).toBe('/dark.svg');
   });

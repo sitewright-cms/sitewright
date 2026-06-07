@@ -2,10 +2,13 @@ import { useState, type FormEvent } from 'react';
 import type { Dataset, Entry, Field } from '@sitewright/schema';
 import { coerceFieldValue, readValue } from '../../lib/entry-form';
 import { glassCard, glassInput, primaryButton, ghostButton } from '../../theme';
+import { AssetField } from '../files/AssetField';
+import { ACCEPT } from '../files/FileBrowser';
 
 interface EntryEditorProps {
   dataset: Dataset;
   entry: Entry;
+  projectId: string;
   onSave: (entry: Entry) => Promise<void> | void;
   onCancel: () => void;
 }
@@ -13,10 +16,12 @@ interface EntryEditorProps {
 function FieldInput({
   field,
   value,
+  projectId,
   onRaw,
 }: {
   field: Field;
   value: unknown;
+  projectId: string;
   onRaw: (raw: unknown) => void;
 }) {
   const common = { id: `entry-${field.name}`, 'aria-label': field.name };
@@ -69,15 +74,29 @@ function FieldInput({
           onChange={(e) => onRaw(e.target.value)}
         />
       );
+    case 'image':
+      // Browse the project's image library (or paste/import a URL); reuses the same picker as the
+      // identity logo/OG fields. The parent renders the visible `<label htmlFor>`, so hide the built-in one.
+      return (
+        <AssetField
+          label={field.name}
+          inputId={common.id}
+          hideLabel
+          value={typeof value === 'string' ? value : ''}
+          onChange={onRaw}
+          projectId={projectId}
+          accept={ACCEPT.image}
+          placeholder="/photo.jpg"
+        />
+      );
     default:
-      // text, image, reference, select — a plain text input (pickers come later).
+      // text, reference, select — a plain text input (pickers come later).
       return (
         <input
           {...common}
           type="text"
           className={glassInput}
           value={typeof value === 'string' ? value : ''}
-          placeholder={field.type === 'image' ? '/photo.jpg' : undefined}
           onChange={(e) => onRaw(e.target.value)}
         />
       );
@@ -85,7 +104,7 @@ function FieldInput({
 }
 
 /** Field-typed form for editing a single dataset entry. */
-export function EntryEditor({ dataset, entry, onSave, onCancel }: EntryEditorProps) {
+export function EntryEditor({ dataset, entry, projectId, onSave, onCancel }: EntryEditorProps) {
   const [values, setValues] = useState<Record<string, unknown>>(entry.values);
   const [status, setStatus] = useState<'draft' | 'published'>(entry.status);
   const [saving, setSaving] = useState(false);
@@ -134,7 +153,7 @@ export function EntryEditor({ dataset, entry, onSave, onCancel }: EntryEditorPro
             <span className="ml-1 text-slate-300">({field.type})</span>
             {field.required && <span className="ml-1 text-red-400">*</span>}
           </label>
-          <FieldInput field={field} value={readValue(values, field.name)} onRaw={(raw) => setField(field, raw)} />
+          <FieldInput field={field} value={readValue(values, field.name)} projectId={projectId} onRaw={(raw) => setField(field, raw)} />
         </div>
       ))}
 

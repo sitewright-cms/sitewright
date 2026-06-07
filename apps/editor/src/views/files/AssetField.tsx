@@ -21,6 +21,8 @@ export function AssetField({
   projectId,
   accept = ACCEPT.image,
   placeholder,
+  hideLabel = false,
+  inputId,
 }: {
   label: string;
   value: string;
@@ -28,17 +30,25 @@ export function AssetField({
   projectId: string;
   accept?: AcceptFilter;
   placeholder?: string;
+  /** Suppress the built-in label (when a parent already renders one, e.g. the dataset entry form). */
+  hideLabel?: boolean;
+  /** Optional id for the input, so an external `<label htmlFor>` can target it. */
+  inputId?: string;
 }) {
   const [picking, setPicking] = useState(false);
   return (
     <div className="block">
-      <span className={fieldLabel}>{label}</span>
+      {!hideLabel && <span className={fieldLabel}>{label}</span>}
       <div className="flex items-center gap-2">
         {value && looksLikeImage(value) && (
           <img src={value} alt="" className="h-9 w-9 shrink-0 rounded border border-slate-200 object-cover" />
         )}
         <input
-          aria-label={label}
+          id={inputId}
+          // When a parent targets this input with `<label htmlFor={inputId}>`, that IS the accessible
+          // name — a duplicate aria-label would override it. Otherwise (the standalone span-labelled
+          // case) the input needs its own aria-label.
+          aria-label={inputId ? undefined : label}
           className={glassInput}
           value={value}
           placeholder={placeholder}

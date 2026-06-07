@@ -55,6 +55,8 @@ export interface SettingsForm {
   businessType: string;
   // identity — assets
   logo: string;
+  logoLight: string;
+  logoDark: string;
   favicon: string;
   icon: string;
   image: string;
@@ -143,6 +145,8 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
     description: id.description ?? '',
     businessType: id.businessType ?? '',
     logo: id.logo ?? '',
+    logoLight: id.logoLight ?? '',
+    logoDark: id.logoDark ?? '',
     favicon: id.favicon ?? '',
     icon: id.icon ?? '',
     image: id.image ?? '',
@@ -184,9 +188,9 @@ const put = <T extends object, K extends string, V>(obj: T, key: K, value: V | u
 
 /**
  * Assemble a settings bundle from the form, omitting empty optionals. `base` is the
- * originally-loaded bundle: fields the form does NOT surface (logoLight/logoDark,
- * spacing, radii, typography.scale — e.g. set via the CLI/MCP) are carried through
- * so a GUI save never silently drops them.
+ * originally-loaded bundle: fields the form does NOT surface (spacing, radii,
+ * typography.scale — e.g. set via the CLI/MCP) are carried through so a GUI save
+ * never silently drops them.
  */
 export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBundle {
   const baseId = base?.identity;
@@ -197,6 +201,8 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
   identity = put(identity, 'description', trimmed(form.description));
   identity = put(identity, 'businessType', trimmed(form.businessType));
   identity = put(identity, 'logo', trimmed(form.logo));
+  identity = put(identity, 'logoLight', trimmed(form.logoLight));
+  identity = put(identity, 'logoDark', trimmed(form.logoDark));
   identity = put(identity, 'favicon', trimmed(form.favicon));
   identity = put(identity, 'icon', trimmed(form.icon));
   identity = put(identity, 'image', trimmed(form.image));
@@ -245,9 +251,7 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
       ...(hasNamed ? { named } : {}),
     });
   }
-  // Carry through token/asset fields the form doesn't expose.
-  identity = put(identity, 'logoLight', baseId?.logoLight);
-  identity = put(identity, 'logoDark', baseId?.logoDark);
+  // Carry through token fields the form doesn't expose.
   identity = put(identity, 'spacing', baseId?.spacing);
   identity = put(identity, 'radii', baseId?.radii);
 

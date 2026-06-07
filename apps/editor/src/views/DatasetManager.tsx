@@ -349,6 +349,7 @@ export function DatasetManager({ project }: { project: Project }) {
                 <EntryEditor
                   dataset={selected}
                   entry={editingEntry}
+                  projectId={project.id}
                   onSave={saveEntry}
                   onCancel={() => setEditingEntry(null)}
                 />

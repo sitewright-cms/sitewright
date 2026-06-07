@@ -1,6 +1,7 @@
 <div align="center">
 
-# Sitewright
+<img src="./brand/assets/logo-lockup-light.png#gh-light-mode-only" alt="Sitewright" height="60" />
+<img src="./brand/assets/logo-lockup-dark.png#gh-dark-mode-only" alt="Sitewright" height="60" />
 
 **Open-source website development platform for web-development agencies.**
 

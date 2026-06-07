@@ -18,6 +18,8 @@
     "@codemirror/language": "^6.12.3",
     "@codemirror/state": "^6.5.2",
     "@codemirror/view": "^6.36.2",
+    "@fontsource-variable/space-grotesk": "^5.2.10",
+    "@fontsource/inter": "^5.2.8",
     "@lezer/highlight": "^1.2.3",
     "@sitewright/blocks": "workspace:*",
     "@sitewright/core": "workspace:*",

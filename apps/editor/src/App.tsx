@@ -110,8 +110,18 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
   const header = (
     <header className="sticky top-0 z-20 flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-white/40 bg-white/60 px-6 py-3 shadow-sm backdrop-blur-xl">
       {/* Left: brand + (when in a project) the project name, which opens the selector. */}
-      <button className="font-bold tracking-tight text-slate-900" onClick={() => setSelectorOpen(true)}>
-        Sitewright
+      <button
+        className="flex items-center gap-2 text-slate-900"
+        onClick={() => setSelectorOpen(true)}
+        aria-label="Sitewright — switch project"
+      >
+        {/* The Wright's Square: square is currentColor (ink); blocks are teal + indigo. */}
+        <svg width="22" height="22" viewBox="0 0 96 96" fill="none" aria-hidden="true">
+          <path d="M30 18 V72 H78" stroke="currentColor" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" />
+          <rect x="40" y="52" width="26" height="14" rx="3" fill="#14B8A6" />
+          <rect x="40" y="35" width="26" height="14" rx="3" fill="#4F2DD8" />
+        </svg>
+        <span className="font-display text-lg font-bold tracking-tight">Sitewright</span>
       </button>
       {inProject && (
         <button

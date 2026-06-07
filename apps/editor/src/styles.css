@@ -1,5 +1,13 @@
 @import 'tailwindcss';
 
+/* Sitewright product brand type (self-hosted via @fontsource, imported in main.tsx):
+   Inter is the UI/body default (`font-sans`); Space Grotesk drives the wordmark and
+   display headings via the `font-display` utility. */
+@theme {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-display: 'Space Grotesk Variable', 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+}
+
 /* DaisyUI components for the Library previews ONLY. `themes: false` emits the component
    classes but NO root theme, so the editor's own chrome is untouched (it uses no bare
    DaisyUI tokens); the theme variables below are scoped to `.sw-preview`, so only rendered

@@ -80,6 +80,16 @@ describe('api client', () => {
     expect(JSON.parse(init.body)).toEqual({ provider: 'openverse', id: 'ov1', alt: 'a cat' });
   });
 
+  it('importMediaUrl POSTs the url + folder and returns the new asset', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(201, { item: { id: 'm1', kind: 'image' } }));
+    const res = await api.importMediaUrl('p', 'https://cdn.test/a.png', 'Logos');
+    expect(res.item.id).toBe('m1');
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/projects/p/media/import-url');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body)).toEqual({ url: 'https://cdn.test/a.png', folder: 'Logos' });
+  });
+
   it('selectFont POSTs the family + weights and returns the record', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { font: { id: 'inter', source: 'google' } }));
     const res = await api.selectFont('p', 'Inter', [400, 700]);

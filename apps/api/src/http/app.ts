@@ -8,6 +8,7 @@ import rateLimit from '@fastify/rate-limit';
 import { z } from 'zod';
 import {
   MediaFolderSchema,
+  targetsPrivateHost,
   ImageAssetSchema,
   FileAssetSchema,
   PageSchema,
@@ -140,6 +141,7 @@ const rl = (max: number) => ({ rateLimit: { max, timeWindow: RL_WINDOW } });
 const IMPORT_BODY_LIMIT = 4 * 1024 * 1024; // 4 MiB for a full project import
 const PREVIEW_BODY_LIMIT = 2 * 1024 * 1024; // 2 MiB for a single draft page
 const MAX_UPLOAD_BYTES = 15 * 1024 * 1024; // 15 MiB per uploaded image
+const IMPORT_TIMEOUT_MS = 10_000; // import-url: cap the whole download (headers + body)
 // In the flat tenancy model every project member (owner OR member) may write — the safe
 // "content-only" surface is a UI default, not a hard gate (see PR1 security note). Bearer keys
 // are additionally constrained by capabilities in resolveProject.
@@ -1596,6 +1598,65 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         }
       },
     );
+
+    // Import a remote URL INTO the library (download + self-host), so a field that pasted a URL can
+    // keep the published export self-contained. SSRF-guarded like the stock downloader: https-only,
+    // private-host rejection, no redirects (a 3xx to a private host can't bypass the check), size cap
+    // + timeout. Images are optimized (createMediaAsset); anything else is stored as-is; SVG rejected.
+    const ImportUrlBody = z.object({ url: z.string().url().max(2048), folder: MediaFolderSchema.optional() });
+    app.post<{ Params: { projectId: string } }>('/projects/:projectId/media/import-url', { config: rl(20) }, async (req, reply) => {
+      const { ctx, project } = await resolveProject(req, 'content:write');
+      if (!WRITE_ROLES.has(ctx.role)) return reply.code(403).send({ error: 'insufficient role for this operation' });
+      const parsed = ImportUrlBody.safeParse(req.body);
+      if (!parsed.success) return reply.code(400).send({ error: 'invalid request' });
+      const { url } = parsed.data;
+      const folder = parsed.data.folder ?? '';
+      if (!/^https:\/\//i.test(url) || targetsPrivateHost(url)) {
+        return reply.code(400).send({ error: 'only public https URLs can be imported' });
+      }
+
+      // The abort timer stays armed across the BODY read too (a server that trickles the body must not
+      // hold a worker open) — clearTimeout is in the OUTER finally, mirroring the stock downloader.
+      let buffer: Buffer;
+      let contentType: string;
+      let oversize = false;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), IMPORT_TIMEOUT_MS);
+      try {
+        const res = await fetch(url, { signal: controller.signal, redirect: 'error' });
+        if (!res.ok) return reply.code(400).send({ error: `download failed (${res.status})` });
+        if (Number(res.headers.get('content-length') ?? '0') > MAX_UPLOAD_BYTES) {
+          return reply.code(413).send({ error: 'file exceeds size limit' });
+        }
+        contentType = (res.headers.get('content-type') ?? '').split(';')[0]?.trim().toLowerCase() || 'application/octet-stream';
+        buffer = Buffer.from(await res.arrayBuffer());
+        oversize = buffer.length > MAX_UPLOAD_BYTES;
+      } catch {
+        return reply.code(400).send({ error: 'could not fetch the URL' });
+      } finally {
+        clearTimeout(timer);
+      }
+      if (oversize) return reply.code(413).send({ error: 'file exceeds size limit' });
+
+      if (contentType === 'image/svg+xml' || contentType === 'image/svg') return reply.code(400).send({ error: 'SVG is not accepted' });
+      // A malformed %-sequence the URL parser accepts but decodeURIComponent rejects → a safe default.
+      let filename: string;
+      try {
+        filename = decodeURIComponent(new URL(url).pathname.split('/').pop() || 'download') || 'download';
+      } catch {
+        filename = 'download';
+      }
+      try {
+        const saved = contentType.startsWith('image/')
+          ? await createMediaAsset(ctx, project.id, buffer, { filename, mimetype: contentType, folder })
+          : await createFileAsset(ctx, project.id, buffer, { filename, mimetype: contentType, folder });
+        return reply.code(201).send({ item: saved });
+      } catch (err) {
+        if (err instanceof MediaValidationError) return reply.code(400).send({ error: err.message });
+        if (err instanceof z.ZodError) return reply.code(400).send({ error: 'invalid import' });
+        throw err;
+      }
+    });
 
     // Stock-image search + import (Openverse/Unsplash/Pexels). Imports land as normal
     // media assets (downloaded + optimized + self-hosted) so the export stays portable.

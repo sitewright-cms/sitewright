@@ -86,7 +86,7 @@ describe('PageSettingsModal parent selector — home is the tree root', () => {
   it('offers no "None" choice for a non-home page and defaults + submits Home', () => {
     const onSubmit = vi.fn();
     render(
-      <PageSettingsModal page={other} initial={pageSettingsFromPage(other)} pages={[home, other]} templates={[]} onClose={() => {}} onSubmit={onSubmit} />,
+      <PageSettingsModal page={other} projectId="p" initial={pageSettingsFromPage(other)} pages={[home, other]} templates={[]} onClose={() => {}} onSubmit={onSubmit} />,
     );
     const select = screen.getByLabelText('Parent page') as HTMLSelectElement;
     expect(select.disabled).toBe(false);
@@ -99,7 +99,7 @@ describe('PageSettingsModal parent selector — home is the tree root', () => {
   it('keeps the home page itself parentless (selector disabled)', () => {
     const onSubmit = vi.fn();
     render(
-      <PageSettingsModal page={home} initial={pageSettingsFromPage(home)} pages={[home, other]} templates={[]} onClose={() => {}} onSubmit={onSubmit} />,
+      <PageSettingsModal page={home} projectId="p" initial={pageSettingsFromPage(home)} pages={[home, other]} templates={[]} onClose={() => {}} onSubmit={onSubmit} />,
     );
     expect((screen.getByLabelText('Parent page') as HTMLSelectElement).disabled).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));

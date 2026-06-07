@@ -669,6 +669,7 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
       {settingsFor && (
         <PageSettingsModal
           page={settingsFor}
+          projectId={project.id}
           initial={pageSettingsFromPage(settingsFor)}
           pages={pages}
           templates={templates}

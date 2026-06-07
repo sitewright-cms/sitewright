@@ -346,6 +346,9 @@ export const api = {
     if (!res.ok) throw await errorFromResponse(res);
     return (await res.json()) as { item: MediaAsset };
   },
+  /** Download a remote URL into the library (self-host) — returns the new asset. */
+  importMediaUrl: (projectId: string, url: string, folder = '') =>
+    request<{ item: MediaAsset }>('POST', `/projects/${projectId}/media/import-url`, { url, folder }),
   deleteMedia: (projectId: string, id: string) =>
     request<void>('DELETE', `/projects/${projectId}/media/${id}`),
   /** Move (`folder`) and/or rename (`filename`) a single asset. */

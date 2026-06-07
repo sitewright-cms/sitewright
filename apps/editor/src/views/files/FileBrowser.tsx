@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type ReactNode } from 'react';
 import type { MediaAsset, MediaFolderRecord } from '@sitewright/schema';
-import { api, type Project } from '../../api';
+import { api } from '../../api';
 import { StockPicker } from '../media/StockPicker';
 import { FileTypeIcon, FolderIcon } from '../media/file-icons';
 import { Modal } from '../ui/Modal';
@@ -66,7 +66,7 @@ const ACT = 'inline-flex cursor-pointer items-center justify-center rounded-lg p
 const ACT_DANGER = `${ACT} hover:bg-rose-50 hover:text-rose-600`;
 
 export interface FileBrowserProps {
-  project: Project;
+  projectId: string;
   /** 'manage' = full CRUD browser (the file manager); 'pick' = choose a file for a field. */
   mode?: 'manage' | 'pick';
   /** In pick mode, only assets passing this filter are shown + selectable (folders always show). */
@@ -82,7 +82,7 @@ export interface FileBrowserProps {
  * views, upload, new-folder, rename/copy/delete (files + folders) and drag-to-move. Shared by the
  * FileManager drawer (mode='manage') and the FilePicker modal (mode='pick', filtered by `accept`).
  */
-export function FileBrowser({ project, mode = 'manage', accept, onPick, intro }: FileBrowserProps) {
+export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro }: FileBrowserProps) {
   const pick = mode === 'pick';
   const { confirm, prompt, dialog } = useDialogs();
   const [assets, setAssets] = useState<MediaAsset[]>([]);
@@ -102,7 +102,7 @@ export function FileBrowser({ project, mode = 'manage', accept, onPick, intro }:
 
   async function load(isActive: () => boolean = () => true) {
     try {
-      const [a, f] = await Promise.all([api.listMedia(project.id), api.listMediaFolders(project.id)]);
+      const [a, f] = await Promise.all([api.listMedia(projectId), api.listMediaFolders(projectId)]);
       if (!isActive()) return;
       setAssets(a.items);
       setFolderRecords(f.items);
@@ -117,7 +117,7 @@ export function FileBrowser({ project, mode = 'manage', accept, onPick, intro }:
     return () => {
       active = false;
     };
-  }, [project.id]);
+  }, [projectId]);
 
   // Assets in the current folder (pick mode shows only `accept`-matching files); subfolders = union
   // of asset-derived + persisted records.
@@ -153,7 +153,7 @@ export function FileBrowser({ project, mode = 'manage', accept, onPick, intro }:
     setUploading(true);
     setError(null);
     try {
-      for (const file of Array.from(files)) await api.uploadMedia(project.id, file, target);
+      for (const file of Array.from(files)) await api.uploadMedia(projectId, file, target);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'upload failed');
@@ -172,7 +172,7 @@ export function FileBrowser({ project, mode = 'manage', accept, onPick, intro }:
     if (!name) return;
     setError(null);
     try {
-      await api.createMediaFolder(project.id, pathOf(name));
+      await api.createMediaFolder(projectId, pathOf(name));
       setNewFolder('');
       await load();
     } catch (err) {
@@ -184,10 +184,10 @@ export function FileBrowser({ project, mode = 'manage', accept, onPick, intro }:
     if (!next) return;
     const name = cleanSegment(next);
     if (!name || name === seg) return;
-    await run(() => api.renameMediaFolder(project.id, pathOf(seg), folder === '' ? name : `${folder}/${name}`));
+    await run(() => api.renameMediaFolder(projectId, pathOf(seg), folder === '' ? name : `${folder}/${name}`));
   }
   async function copyFolder(seg: string) {
-    await run(() => api.copyMediaFolder(project.id, pathOf(seg), pathOf(`${seg} copy`)));
+    await run(() => api.copyMediaFolder(projectId, pathOf(seg), pathOf(`${seg} copy`)));
   }
   async function deleteFolder(seg: string) {
     const path = pathOf(seg);
@@ -204,21 +204,21 @@ export function FileBrowser({ project, mode = 'manage', accept, onPick, intro }:
       confirmLabel: 'Delete all',
     });
     if (!ok) return;
-    await run(() => api.deleteMediaFolder(project.id, path));
+    await run(() => api.deleteMediaFolder(projectId, path));
   }
 
   // ---- asset ops -----------------------------------------------------------
   async function renameAsset(m: MediaAsset) {
     const next = await prompt({ title: 'Rename file', label: 'Display name', initial: m.filename });
     if (!next || next === m.filename) return;
-    await run(() => api.patchMedia(project.id, m.id, { filename: next }));
+    await run(() => api.patchMedia(projectId, m.id, { filename: next }));
   }
   async function copyAsset(m: MediaAsset) {
-    await run(() => api.copyMedia(project.id, m.id, folder));
+    await run(() => api.copyMedia(projectId, m.id, folder));
   }
   async function deleteAsset(m: MediaAsset) {
     if (!(await confirm({ title: 'Delete file', message: `Delete “${m.filename}”? This cannot be undone.`, confirmLabel: 'Delete' }))) return;
-    await run(() => api.deleteMedia(project.id, m.id));
+    await run(() => api.deleteMedia(projectId, m.id));
   }
 
   /** Runs an op then reloads, surfacing any error inline. */
@@ -240,12 +240,12 @@ export function FileBrowser({ project, mode = 'manage', accept, onPick, intro }:
     if (!item) return;
     if (item.type === 'asset') {
       if (item.from === target) return;
-      await run(() => api.patchMedia(project.id, item.id, { folder: target }));
+      await run(() => api.patchMedia(projectId, item.id, { folder: target }));
     } else {
       const last = item.path.split('/').pop()!;
       const to = target === '' ? last : `${target}/${last}`;
       if (to === item.path) return;
-      await run(() => api.renameMediaFolder(project.id, item.path, to));
+      await run(() => api.renameMediaFolder(projectId, item.path, to));
     }
   }
   /** Drop onto a target folder: desktop files upload there; an internal drag moves there. */
@@ -506,7 +506,7 @@ export function FileBrowser({ project, mode = 'manage', accept, onPick, intro }:
       {stockOpen && (
         <Modal title={`Search stock images${folder ? ` → ${folder}` : ''}`} size="xl" onClose={() => setStockOpen(false)}>
           <div className="p-4">
-            <StockPicker projectId={project.id} folder={folder} onImported={() => load()} bare />
+            <StockPicker projectId={projectId} folder={folder} onImported={() => load()} bare />
           </div>
         </Modal>
       )}

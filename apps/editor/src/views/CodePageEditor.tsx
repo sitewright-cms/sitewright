@@ -434,6 +434,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
       {settingsOpen && (
         <PageSettingsModal
           page={page}
+          projectId={project.id}
           initial={settings}
           pages={pages}
           templates={templates}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type RefObject } from 'react';
 
 interface PreviewPaneProps {
   /** URL of the sandboxed preview document (served under `CSP: sandbox`). */
@@ -8,6 +8,9 @@ interface PreviewPaneProps {
   /** Accessible name for the preview iframe — distinguishes contexts (e.g. "Preview" for the
    *  source editor vs "Live preview" for the client/live panes). Defaults to "Live preview". */
   title?: string;
+  /** Exposes the iframe element so the parent can reach `contentWindow` (the editor↔preview
+   *  postMessage bridge: validate `event.source`, post scrollTo/setMode). */
+  iframeRef?: RefObject<HTMLIFrameElement>;
 }
 
 /**
@@ -22,7 +25,7 @@ interface PreviewPaneProps {
  * cannot reach the editor's `window`, cookies, or session. `sandbox="allow-scripts"`
  * on the iframe is belt-and-suspenders; `allow-same-origin` must NEVER be added.
  */
-export function PreviewPane({ src, loading, error, title = 'Live preview' }: PreviewPaneProps) {
+export function PreviewPane({ src, loading, error, title = 'Live preview', iframeRef }: PreviewPaneProps) {
   // The iframe paints blank-white while it fetches/renders its document. Cover it with an
   // animated skeleton until its FIRST real load completes (`about:blank` doesn't count), so
   // the pane never flashes empty. Subsequent reloads keep the last frame + the "updating…"
@@ -40,6 +43,7 @@ export function PreviewPane({ src, loading, error, title = 'Live preview' }: Pre
         </div>
       )}
       <iframe
+        ref={iframeRef}
         title={title}
         aria-label={title}
         sandbox="allow-scripts"

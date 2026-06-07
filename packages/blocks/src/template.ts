@@ -16,7 +16,7 @@
 // worker that runs this — see apps/api/src/render. This module is pure + synchronous.
 import Handlebars from 'handlebars';
 import { safeUrl } from './url.js';
-import { escapeAttr } from './escape.js';
+import { escapeAttr, escapeHtml } from './escape.js';
 import { iconBody } from './icons.js';
 
 /** Thrown for an unsafe interpolation context, a Handlebars compile error, or a render error. */
@@ -44,6 +44,82 @@ export interface TemplateContext {
    * at render (it is client-authored).
    */
   content?: Record<string, string>;
+  /**
+   * PREVIEW-ONLY: when true, the `{{edit}}` helper wraps its (escaped) output in a
+   * `<span data-sw-edit="key">` marker so the editor can make it click-to-edit in the live preview.
+   * NEVER set on the publish path — markers must not reach published HTML. Gate it with
+   * {@link editsAreBodyOnly} so a `{{edit}}` in an attribute (where a span would break out) is never
+   * marked.
+   */
+  markEdits?: boolean;
+}
+
+/**
+ * PREVIEW gate for inline-edit markers: true iff EVERY `{{edit …}}` occurrence sits in element-body
+ * text (not an attribute value, `<script>`/`<style>`, or comment). A `<span>` marker is safe only in
+ * body context — in an attribute it would break out — so the preview renders with `markEdits` only
+ * when this holds. Conservative: any structural ambiguity (`{{{`, malformed) returns false. Tracks
+ * just `mode` + the open attribute quote (so a `>` inside a quoted value doesn't end the tag early).
+ */
+export function editsAreBodyOnly(source: string): boolean {
+  type Mode = 'body' | 'comment' | 'rawtext' | 'tag';
+  let mode: Mode = 'body';
+  let rawCloser = '';
+  let quote: '"' | "'" | '' = '';
+  let i = 0;
+  while (i < source.length) {
+    if (source.startsWith('{{{', i)) return false; // raw output (validate rejects anyway) → no markers
+    if (source.startsWith('{{', i)) {
+      const close = source.indexOf('}}', i + 2);
+      if (close === -1) return false; // malformed
+      const inner = source.slice(i + 2, close).trim();
+      if (/^edit(\s|$)/.test(inner) && mode !== 'body') return false; // {{edit}} outside body text
+      i = close + 2;
+      continue;
+    }
+    // eslint-disable-next-line security/detect-object-injection -- i is a bounded scan index
+    const ch = source[i] as string;
+    if (mode === 'comment') {
+      if (ch === '>' && source.startsWith('-->', i - 2)) mode = 'body';
+    } else if (mode === 'rawtext') {
+      // Consume the whole closing tag (enter 'tag' mode past `</style`/`</script`) rather than
+      // jumping straight to body — so a malformed `</style{{edit}}>` keeps the {{edit}} non-body.
+      // Clear rawCloser (we've left the raw element) so the closing tag's `>` returns to body.
+      if (ch === '<' && source.slice(i, i + rawCloser.length).toLowerCase() === rawCloser) {
+        i += rawCloser.length;
+        mode = 'tag';
+        quote = '';
+        rawCloser = '';
+        continue;
+      }
+    } else if (mode === 'body') {
+      if (source.startsWith('<!--', i)) {
+        mode = 'comment';
+        i += 4;
+        continue;
+      }
+      if (ch === '<') {
+        const m = /^<\/?([a-zA-Z][a-zA-Z0-9-]*)/.exec(source.slice(i));
+        if (m) {
+          const name = (m[1] as string).toLowerCase();
+          const isClose = source[i + 1] === '/';
+          mode = 'tag';
+          quote = '';
+          rawCloser = !isClose && (name === 'style' || name === 'script') ? `</${name}` : '';
+          i += m[0].length;
+          continue;
+        }
+      }
+    } else if (quote) {
+      if (ch === quote) quote = ''; // closing the attribute value
+    } else if (ch === '"' || ch === "'") {
+      quote = ch; // opening an attribute value
+    } else if (ch === '>') {
+      mode = rawCloser ? 'rawtext' : 'body';
+    }
+    i += 1;
+  }
+  return true;
 }
 
 const URL_ATTRS = new Set(['href', 'src', 'action', 'formaction', 'poster', 'cite', 'background', 'xlink:href']);
@@ -242,18 +318,26 @@ function createInstance(): typeof Handlebars {
     return s.length > n ? `${s.slice(0, Math.max(0, n - 1))}…` : s;
   });
   // {{edit "key" "default"}} → a client-editable region. Returns the override `content[key]`
-  // when set, else the literal default. The return is a plain string, so Handlebars
-  // HTML-escapes it (double-stache) — the override is client-authored and must never inject
-  // markup. Own-property lookup only (no prototype access). Use in BODY/text context; in an
-  // attribute the save-time validator rejects a bare `{{ }}`, so this can't break out.
+  // when set, else the literal default. The value is ALWAYS HTML-escaped — it is client-authored
+  // and must never inject markup. Own-property lookup only (no prototype access). Use in BODY/text
+  // context; in an attribute the save-time validator rejects a bare `{{ }}`, so this can't break out.
+  //
+  // PREVIEW only (`root.markEdits`, gated by editsAreBodyOnly so it's body-context): wrap the escaped
+  // value in a `<span data-sw-edit="key">` marker so the editor can make it click-to-edit in the
+  // live preview. Returned as a SafeString (the span is trusted markup); the VALUE inside is still
+  // escapeHtml'd, and the key (template-author-controlled) is escapeAttr'd.
   hb.registerHelper('edit', function editHelper(this: unknown, ...args: unknown[]) {
     const options = args[args.length - 1] as Handlebars.HelperOptions | undefined;
     const key = typeof args[0] === 'string' ? args[0] : '';
     const def = args.length > 2 && typeof args[1] === 'string' ? args[1] : '';
-    const root = (options?.data?.root ?? {}) as { content?: Record<string, unknown> };
+    const root = (options?.data?.root ?? {}) as { content?: Record<string, unknown>; markEdits?: boolean };
     const content = root.content && typeof root.content === 'object' ? root.content : {};
     const override = Object.prototype.hasOwnProperty.call(content, key) ? content[key] : undefined;
-    return typeof override === 'string' ? override : def;
+    const value = typeof override === 'string' ? override : def;
+    if (root.markEdits) {
+      return new Handlebars.SafeString(`<span data-sw-edit="${escapeAttr(key)}">${escapeHtml(value)}</span>`);
+    }
+    return value; // plain string → Handlebars HTML-escapes it (double-stache)
   });
   return hb;
 }
@@ -304,7 +388,7 @@ export function renderTemplate(source: string, ctx: TemplateContext = {}, opts: 
   // cannot smuggle a <script>/handler/unsafe-context past the main-template check.
   if (ctx.partials) for (const partialSource of Object.values(ctx.partials)) validateTemplate(partialSource);
   const template = compileCached(source);
-  const data = { company: ctx.company, website: ctx.website, page: ctx.page, data: ctx.data, content: ctx.content, nav: ctx.nav };
+  const data = { company: ctx.company, website: ctx.website, page: ctx.page, data: ctx.data, content: ctx.content, nav: ctx.nav, markEdits: ctx.markEdits };
   let html: string;
   try {
     html = template(data, {

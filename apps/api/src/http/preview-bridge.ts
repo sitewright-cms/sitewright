@@ -35,11 +35,47 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       post({ type: 'scroll', y: window.scrollY || window.pageYOffset || 0 });
     });
   }, { passive: true });
-  // Inbound (editor → preview): validated; extensible (PR2 adds setMode).
+  // --- Inline content editing (content mode): make [data-sw-edit] regions click-to-edit. ---
+  var editing = false, styled = false;
+  function ensureStyle() {
+    if (styled) return; styled = true;
+    var s = document.createElement('style');
+    s.textContent =
+      '[data-sw-edit]{outline:1px dashed transparent;outline-offset:2px;border-radius:2px;transition:outline-color .12s,background-color .12s}' +
+      '[data-sw-edit].sw-edit-on{cursor:text}' +
+      '[data-sw-edit].sw-edit-on:hover{outline-color:#6366f1;background:rgba(99,102,241,.07)}' +
+      '[data-sw-edit].sw-edit-on:hover::after{content:"\\270e";margin-left:.35em;font-size:.8em;opacity:.55}' +
+      '[data-sw-edit].sw-edit-on:focus{outline:2px solid #6366f1;background:rgba(99,102,241,.10)}';
+    (document.head || document.documentElement).appendChild(s);
+  }
+  function onInput(e) {
+    var el = e.currentTarget;
+    post({ type: 'edit', key: el.getAttribute('data-sw-edit'), value: el.textContent || '' });
+  }
+  function setEditing(on) {
+    if (on === editing) return;
+    editing = on;
+    if (on) ensureStyle();
+    var els = document.querySelectorAll('[data-sw-edit]');
+    for (var j = 0; j < els.length; j++) {
+      var el = els[j];
+      if (on) {
+        el.setAttribute('contenteditable', 'plaintext-only');
+        el.classList.add('sw-edit-on');
+        el.addEventListener('input', onInput);
+      } else {
+        el.removeAttribute('contenteditable');
+        el.classList.remove('sw-edit-on');
+        el.removeEventListener('input', onInput);
+      }
+    }
+  }
+  // Inbound (editor → preview): validated.
   window.addEventListener('message', function (e) {
     var d = e.data;
     if (!d || d.source !== PARENT) return;
     if (d.type === 'scrollTo' && typeof d.y === 'number') { try { window.scrollTo(0, d.y); } catch (err) {} }
+    else if (d.type === 'setMode') setEditing(d.mode === 'content');
   });
   restore();
   window.addEventListener('load', restore); // re-apply once images/fonts settle the layout height

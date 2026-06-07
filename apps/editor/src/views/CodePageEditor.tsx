@@ -31,6 +31,9 @@ interface CodePageEditorProps {
 
 const PREVIEW_DEBOUNCE_MS = 800;
 
+/** Prototype-pollution-significant keys — never accepted as a region key from the preview frame. */
+const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
 /** Device-rail glyphs (lucide-style outlines, matching the platform icon vocabulary). */
 const DEVICE_ICONS: Record<PreviewDeviceKey, ReactNode> = {
   desktop: (
@@ -152,17 +155,44 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   // The preview's last-reported scroll position — restored on the next reload via a `#sw-y=` hash so
   // a debounced re-render (or a reload after an edit) doesn't jump the preview back to the top.
   const scrollYRef = useRef(0);
+  // When a change originates from INLINE-editing the preview, holds the stateKey it produces so the
+  // debounced reload skips it (the iframe DOM already shows it — a reload would kill the edit).
+  const inlineKeyRef = useRef<string | null>(null);
+  // Live mirrors so the mount-scoped message listener computes the post-edit stateKey from fresh state.
+  const sourceRef = useRef(source);
+  sourceRef.current = source;
+  const contentRef = useRef(content);
+  contentRef.current = content;
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  const modeRef = useRef(mode);
+  modeRef.current = mode;
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
       // Only trust messages from OUR preview frame, tagged by the bridge (opaque cross-origin doc).
       if (e.source !== iframeRef.current?.contentWindow) return;
-      const d = e.data as { source?: string; type?: string; y?: number } | null;
+      const d = e.data as { source?: string; type?: string; y?: number; key?: string; value?: string } | null;
       if (!d || d.source !== 'sitewright-preview') return;
-      if (d.type === 'scroll' && typeof d.y === 'number') scrollYRef.current = d.y;
+      if (d.type === 'scroll' && typeof d.y === 'number') {
+        scrollYRef.current = d.y;
+      } else if (d.type === 'edit' && typeof d.key === 'string' && typeof d.value === 'string' && !DANGEROUS_KEYS.has(d.key)) {
+        // Inline preview edit → update the matching region (two-way with its side field), and record
+        // the resulting stateKey so the debounced reload skips it (keeps the same key order as stateKey).
+        const nextContent = { ...contentRef.current, [d.key]: d.value };
+        inlineKeyRef.current = JSON.stringify({ source: sourceRef.current, content: nextContent, settings: settingsRef.current });
+        setContent(nextContent);
+      } else if (d.type === 'ready') {
+        // A freshly-(re)loaded preview → (re)apply the current edit mode so its regions stay editable.
+        iframeRef.current?.contentWindow?.postMessage({ source: 'sitewright-editor', type: 'setMode', mode: modeRef.current }, '*');
+      }
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
   }, []);
+  // Push edit-mode toggles to the live preview without a reload.
+  useEffect(() => {
+    iframeRef.current?.contentWindow?.postMessage({ source: 'sitewright-editor', type: 'setMode', mode }, '*');
+  }, [mode]);
 
   // Project templates load once per open (small list; powers selector + lock + fork).
   useEffect(() => {
@@ -208,6 +238,10 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   // slots, website head/CSS, template resolution, and in-progress {{edit}} content
   // all render, WYSIWYG with publish.
   useEffect(() => {
+    // The inline-edit suppression token is valid ONLY while we're still on that exact edited state.
+    // The instant the state diverges, drop it — so it can never wrongly suppress a LATER reload whose
+    // stateKey happens to equal it again (e.g. a side-field edit-then-revert).
+    if (stateKey !== inlineKeyRef.current) inlineKeyRef.current = null;
     // An empty page (no own code, no template) needs no round-trip.
     if (source.trim() === '' && !settings.template) {
       setPreviewSrc('');
@@ -217,6 +251,13 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
     }
     let cancelled = false;
     const handle = setTimeout(() => {
+      // Skip the reload when THIS exact state came from inline-editing the preview — the iframe DOM
+      // already shows it, so a reload would only kill the live contenteditable mid-edit.
+      if (stateKey === inlineKeyRef.current) {
+        inlineKeyRef.current = null;
+        setPreviewLoading(false);
+        return;
+      }
       // Set loading INSIDE the timeout (not synchronously) so it tracks the actual
       // in-flight request and is reset by the cleanup below.
       setPreviewLoading(true);

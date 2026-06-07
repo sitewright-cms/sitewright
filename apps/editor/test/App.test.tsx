@@ -16,6 +16,10 @@ vi.mock('../src/views/files/AssetsPanel', () => ({
   AssetsPanel: ({ openSignal }: { openSignal: number }) => <div>ASSETS PANEL sig={openSignal}</div>,
 }));
 vi.mock('../src/views/library/LibraryPanel', () => ({ LibraryPanel: () => <div>LIBRARY PANEL</div> }));
+vi.mock('../src/views/code/CodeRailPanels', () => ({
+  SnippetsPanel: () => <div>SNIPPETS PANEL</div>,
+  TemplatesPanel: () => <div>TEMPLATES PANEL</div>,
+}));
 vi.mock('../src/views/PublishBar', () => ({ PublishBar: () => <div>PUBLISH</div> }));
 vi.mock('../src/views/InstanceSettings', () => ({ InstanceSettings: () => <div /> }));
 vi.mock('../src/views/UpdateBanner', () => ({ UpdateBanner: () => <div /> }));
@@ -59,6 +63,8 @@ describe('App shell', () => {
     // Owners get the always-present Library + Assets side panels; the header "Assets" button
     // force-opens the Assets panel by bumping its openSignal.
     expect(screen.getByText('LIBRARY PANEL')).toBeInTheDocument();
+    expect(screen.getByText('SNIPPETS PANEL')).toBeInTheDocument();
+    expect(screen.getByText('TEMPLATES PANEL')).toBeInTheDocument();
     expect(screen.getByText(/ASSETS PANEL sig=0/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Assets' }));
     expect(await screen.findByText(/ASSETS PANEL sig=1/)).toBeInTheDocument();
@@ -75,6 +81,7 @@ describe('App shell', () => {
     await screen.findByText(/PROJECT Client Co/);
     expect(screen.queryByText('LIBRARY PANEL')).toBeNull();
     expect(screen.queryByText(/ASSETS PANEL/)).toBeNull();
+    expect(screen.queryByText('SNIPPETS PANEL')).toBeNull();
     expect(screen.queryByRole('tab', { name: 'Pages' })).toBeNull();
   });
 

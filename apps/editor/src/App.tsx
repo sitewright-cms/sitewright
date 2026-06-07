@@ -4,6 +4,7 @@ import { Login } from './views/Login';
 import { ProjectView, MANAGE_TABS, TAB_LABELS, type Tab } from './views/Project';
 import { AssetsPanel } from './views/files/AssetsPanel';
 import { LibraryPanel } from './views/library/LibraryPanel';
+import { SnippetsPanel, TemplatesPanel } from './views/code/CodeRailPanels';
 import { PublishBar } from './views/PublishBar';
 import { ProjectSelectorModal } from './views/ProjectSelectorModal';
 import { NewProjectModal } from './views/NewProjectModal';
@@ -223,12 +224,15 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
           }}
         />
       )}
-      {/* Always-present edge side-panels (owners): Library (left) + Assets (right). They render above
-          modals so their tabs stay reachable; the header "Assets" button force-opens Assets. */}
+      {/* Always-present edge side-panels (owners): Library (left), Assets (right), and the bottom
+          code rails (Snippets, Templates). They render above modals so their tabs stay reachable;
+          the header "Assets" button force-opens Assets. */}
       {inProject && !isClient && (
         <>
           <LibraryPanel />
           <AssetsPanel key={inProject.id} projectId={inProject.id} openSignal={assetsSignal} />
+          <SnippetsPanel key={`sn-${inProject.id}`} projectId={inProject.id} />
+          <TemplatesPanel key={`tp-${inProject.id}`} projectId={inProject.id} />
         </>
       )}
     </div>

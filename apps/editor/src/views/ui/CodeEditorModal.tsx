@@ -6,8 +6,9 @@ interface CodeEditorModalProps {
   title: string;
   /** Initial source. */
   value: string;
-  /** Persist the edited source (the modal closes after). */
-  onSave: (value: string) => void;
+  /** Persist the edited source. The modal closes once this resolves; if it REJECTS the modal stays
+   *  open (so a failed save doesn't discard the in-progress edit). Sync handlers always close. */
+  onSave: (value: string) => void | Promise<void>;
   onClose: () => void;
   /** Optional one-line hint shown above the editor (e.g. available bindings). */
   hint?: string;
@@ -18,7 +19,7 @@ interface CodeEditorModalProps {
 /**
  * A large, full-height code editor in the global Modal — the platform's single surface for editing
  * any HTML/Handlebars source (partials, raw slots, …). The editor is the black/single-accent
- * CodeMirror; Save (header ✓ or ⌘S) commits the draft and closes.
+ * CodeMirror; Save (header ✓ or ⌘S) commits the draft and closes (staying open if the save rejects).
  */
 export function CodeEditorModal({ title, value, onSave, onClose, hint, language = 'html' }: CodeEditorModalProps) {
   // `value` seeds the draft when the modal opens; external changes while it is mounted are
@@ -30,8 +31,15 @@ export function CodeEditorModal({ title, value, onSave, onClose, hint, language 
       size="full"
       onClose={onClose}
       onSave={() => {
-        onSave(draft);
-        onClose();
+        // Close only once the save resolves; a rejected save keeps the editor open with the draft.
+        void (async () => {
+          try {
+            await onSave(draft);
+            onClose();
+          } catch {
+            /* stay open — the caller surfaces the error and the draft is preserved */
+          }
+        })();
       }}
       saveLabel="Save changes"
     >

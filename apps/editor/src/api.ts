@@ -16,6 +16,7 @@ import type {
   ProjectSettings,
   SmtpInput,
   SmtpPublic,
+  Snippet,
   StockProviderName,
   StockProvidersStatus,
   StockSearchResult,
@@ -35,6 +36,7 @@ export type {
   ProjectSettings,
   SmtpInput,
   SmtpPublic,
+  Snippet,
   StockProviderName,
   StockProvidersStatus,
   StockSearchResult,
@@ -248,6 +250,16 @@ export const api = {
     request<{ item: Template }>('GET', `/projects/${projectId}/content/template/${encodeURIComponent(id)}`),
   putTemplate: (projectId: string, template: Template) =>
     request<{ item: Template }>('PUT', `/projects/${projectId}/content/template/${encodeURIComponent(template.id)}`, template),
+  deleteTemplate: (projectId: string, id: string) =>
+    request<void>('DELETE', `/projects/${projectId}/content/template/${encodeURIComponent(id)}`),
+
+  // --- snippets (code-first reusable Handlebars partials, included via {{> name}}) ---
+  listSnippets: (projectId: string) =>
+    request<{ items: Snippet[] }>('GET', `/projects/${projectId}/content/snippet`),
+  putSnippet: (projectId: string, snippet: Snippet) =>
+    request<{ item: Snippet }>('PUT', `/projects/${projectId}/content/snippet/${encodeURIComponent(snippet.id)}`, snippet),
+  deleteSnippet: (projectId: string, id: string) =>
+    request<void>('DELETE', `/projects/${projectId}/content/snippet/${encodeURIComponent(id)}`),
 
   // --- patterns (reusable, fork-on-insert block subtrees) ---
   listPatterns: (projectId: string) =>

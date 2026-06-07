@@ -1,9 +1,8 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { FOCUSABLE, OVERLAY_STACK } from './overlay';
 
-/** Tab-cycle selector for the focus trap. */
-const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 const IS_MAC = typeof navigator !== 'undefined' && /Mac|iP(hone|ad|od)/.test(navigator.platform || navigator.userAgent);
 
 /** Close (×) glyph from the platform icon vocabulary. */
@@ -33,10 +32,8 @@ const SIZES = {
   screen: 'max-w-none h-[90vh]',
 } as const;
 
-// Open-modal stack (top = last). Modals MAY stack (e.g. page settings over the page
-// editor): later portals render above earlier ones in DOM order, and the global
-// shortcuts (Escape / ⌘S) act on the TOP modal only, so Esc unwinds one at a time.
-const MODAL_STACK: object[] = [];
+// Modals share the OVERLAY_STACK (see ./overlay) with Drawers so Escape/⌘S act on the TOP
+// overlay only — Esc unwinds one at a time (e.g. a dialog over a drawer over the page editor).
 
 interface ModalProps {
   title: string;
@@ -109,16 +106,16 @@ export function Modal({ title, onClose, onSave, saving = false, saveDisabled = f
   onSaveRef.current = onSave;
   const saveDisabledRef = useRef(saveDisabled);
   saveDisabledRef.current = saveDisabled;
-  // Identity token on the modal stack (see MODAL_STACK above).
+  // Identity token on the modal stack (see OVERLAY_STACK above).
   const stackId = useRef<object>({});
 
   // Mount-only: register on the modal stack (top = shortcut owner).
   useEffect(() => {
     const id = stackId.current;
-    MODAL_STACK.push(id);
+    OVERLAY_STACK.push(id);
     return () => {
-      const at = MODAL_STACK.indexOf(id);
-      if (at !== -1) MODAL_STACK.splice(at, 1);
+      const at = OVERLAY_STACK.indexOf(id);
+      if (at !== -1) OVERLAY_STACK.splice(at, 1);
     };
   }, []);
 
@@ -157,7 +154,7 @@ export function Modal({ title, onClose, onSave, saving = false, saveDisabled = f
   // Only the TOP modal on the stack reacts, so stacked modals unwind one Esc at a time.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (MODAL_STACK[MODAL_STACK.length - 1] !== stackId.current) return;
+      if (OVERLAY_STACK[OVERLAY_STACK.length - 1] !== stackId.current) return;
       if (e.key === 'Escape') {
         e.stopPropagation();
         void requestCloseRef.current();

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api, type Project } from './api';
 import { Login } from './views/Login';
 import { ProjectView, MANAGE_TABS, TAB_LABELS, type Tab } from './views/Project';
+import { FileManager } from './views/files/FileManager';
 import { PublishBar } from './views/PublishBar';
 import { ProjectSelectorModal } from './views/ProjectSelectorModal';
 import { NewProjectModal } from './views/NewProjectModal';
@@ -41,6 +42,8 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
   // The project picker is shown automatically on first load and reachable from the header.
   const [selectorOpen, setSelectorOpen] = useState(false);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
+  // The Assets file-manager drawer (replaces the old Assets tab).
+  const [assetsOpen, setAssetsOpen] = useState(false);
 
   async function refresh(): Promise<Project[]> {
     try {
@@ -137,8 +140,13 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
         </div>
       )}
 
-      {/* Right: publish (owners) + admin + sign out. */}
+      {/* Right: assets + publish (owners) + admin + sign out. */}
       <nav className="ml-auto flex items-center gap-4">
+        {inProject && !isClient && (
+          <button className="text-sm text-slate-500 hover:text-slate-900" onClick={() => setAssetsOpen(true)}>
+            Assets
+          </button>
+        )}
         {inProject && !isClient && <PublishBar project={inProject} />}
         {isInstanceAdmin && stage.name !== 'admin' && (
           <button className="text-sm text-slate-500 hover:text-slate-900" onClick={() => setStage({ name: 'admin' })}>
@@ -205,6 +213,7 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
           }}
         />
       )}
+      {assetsOpen && inProject && <FileManager key={inProject.id} project={inProject} onClose={() => setAssetsOpen(false)} />}
     </div>
   );
 }

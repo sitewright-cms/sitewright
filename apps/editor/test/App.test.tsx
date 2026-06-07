@@ -9,9 +9,10 @@ vi.mock('../src/api', () => ({
 // Heavy children stubbed — App is the unit under test (shell + selector + header).
 vi.mock('../src/views/Project', () => ({
   ProjectView: ({ project, tab }: { project: Project; tab: string }) => <div>PROJECT {project.name} tab={tab}</div>,
-  MANAGE_TABS: ['pages', 'media'] as const,
-  TAB_LABELS: { pages: 'Pages', media: 'Assets' },
+  MANAGE_TABS: ['pages', 'forms'] as const,
+  TAB_LABELS: { pages: 'Pages', forms: 'Forms' },
 }));
+vi.mock('../src/views/files/FileManager', () => ({ FileManager: () => <div>FILE MANAGER</div> }));
 vi.mock('../src/views/PublishBar', () => ({ PublishBar: () => <div>PUBLISH</div> }));
 vi.mock('../src/views/InstanceSettings', () => ({ InstanceSettings: () => <div /> }));
 vi.mock('../src/views/UpdateBanner', () => ({ UpdateBanner: () => <div /> }));
@@ -49,10 +50,12 @@ describe('App shell', () => {
     expect(await screen.findByText(/PROJECT Acme/)).toBeInTheDocument();
     // The tablist lives in the header bar now.
     expect(screen.getByRole('tab', { name: 'Pages' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Assets' })).toBeInTheDocument();
     // Switching a tab updates the project view.
-    fireEvent.click(screen.getByRole('tab', { name: 'Assets' }));
-    expect(await screen.findByText(/PROJECT Acme tab=media/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab', { name: 'Forms' }));
+    expect(await screen.findByText(/PROJECT Acme tab=forms/)).toBeInTheDocument();
+    // Assets is now a drawer launcher button (not a tab) — clicking it opens the file manager.
+    fireEvent.click(screen.getByRole('button', { name: 'Assets' }));
+    expect(await screen.findByText('FILE MANAGER')).toBeInTheDocument();
   });
 
   it('the header project name re-opens the selector', async () => {

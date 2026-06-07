@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type ReactNode } from 'react';
 import type { MediaAsset, MediaFolderRecord } from '@sitewright/schema';
-import { api, type Project } from '../api';
-import { StockPicker } from './media/StockPicker';
-import { FileTypeIcon, FolderIcon } from './media/file-icons';
-import { Modal } from './ui/Modal';
-import { useDialogs } from './ui/Dialogs';
-import { SkeletonImage } from './ui/Skeleton';
-import { glassCard, glassPanel, ghostButton } from '../theme';
+import { api, type Project } from '../../api';
+import { StockPicker } from '../media/StockPicker';
+import { FileTypeIcon, FolderIcon } from '../media/file-icons';
+import { Modal } from '../ui/Modal';
+import { useDialogs } from '../ui/Dialogs';
+import { SkeletonImage } from '../ui/Skeleton';
+import { glassCard, glassPanel, ghostButton } from '../../theme';
 
 /** Human-readable byte size (1 KB = 1024 B). */
 function formatBytes(bytes: number): string {
@@ -35,6 +35,13 @@ function cleanSegment(name: string): string {
   return name.trim().replace(/[^A-Za-z0-9 _-]+/g, '').trim();
 }
 
+/** A type filter for PICK mode: returns true for assets a field accepts. */
+export type AcceptFilter = (asset: MediaAsset) => boolean;
+/** Common accept filters (extended in PR2/PR3). */
+export const ACCEPT = {
+  image: (a: MediaAsset) => a.kind === 'image',
+};
+
 // What's being dragged WITHIN the app (move). Held in a ref because dataTransfer can't be
 // read during dragover, and the desktop-file case is detected via dataTransfer.files.
 type DragItem = { type: 'asset'; id: string; from: string } | { type: 'folder'; path: string };
@@ -58,7 +65,25 @@ const TRASH_ICON = icon(<path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6
 const ACT = 'inline-flex cursor-pointer items-center justify-center rounded-lg p-1.5 text-slate-400 transition hover:bg-white hover:text-slate-900';
 const ACT_DANGER = `${ACT} hover:bg-rose-50 hover:text-rose-600`;
 
-export function MediaManager({ project }: { project: Project }) {
+export interface FileBrowserProps {
+  project: Project;
+  /** 'manage' = full CRUD browser (the file manager); 'pick' = choose a file for a field. */
+  mode?: 'manage' | 'pick';
+  /** In pick mode, only assets passing this filter are shown + selectable (folders always show). */
+  accept?: AcceptFilter;
+  /** In pick mode, called when the user chooses a file. */
+  onPick?: (asset: MediaAsset) => void;
+  /** A short instruction shown above the browser (pick mode). */
+  intro?: ReactNode;
+}
+
+/**
+ * The reusable file/folder browser over the project media library: breadcrumb navigation, list/grid
+ * views, upload, new-folder, rename/copy/delete (files + folders) and drag-to-move. Shared by the
+ * FileManager drawer (mode='manage') and the FilePicker modal (mode='pick', filtered by `accept`).
+ */
+export function FileBrowser({ project, mode = 'manage', accept, onPick, intro }: FileBrowserProps) {
+  const pick = mode === 'pick';
   const { confirm, prompt, dialog } = useDialogs();
   const [assets, setAssets] = useState<MediaAsset[]>([]);
   const [folderRecords, setFolderRecords] = useState<MediaFolderRecord[]>([]);
@@ -66,12 +91,14 @@ export function MediaManager({ project }: { project: Project }) {
   const [uploading, setUploading] = useState(false);
   const [stockOpen, setStockOpen] = useState(false);
   const [folder, setFolder] = useState('');
-  const [view, setView] = useState<'list' | 'grid'>('list'); // list is the default
+  const [view, setView] = useState<'list' | 'grid'>(pick ? 'grid' : 'list');
   const [newFolder, setNewFolder] = useState('');
   const [preview, setPreview] = useState<MediaAsset | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null); // path being hovered (highlight)
   const fileInput = useRef<HTMLInputElement>(null);
   const dragItem = useRef<DragItem | null>(null);
+  // Unique per instance — a FilePicker can render a second FileBrowser over the manager drawer.
+  const uploadId = useId();
 
   async function load(isActive: () => boolean = () => true) {
     try {
@@ -92,8 +119,12 @@ export function MediaManager({ project }: { project: Project }) {
     };
   }, [project.id]);
 
-  // Assets in the current folder; subfolders = union of asset-derived + persisted records.
-  const here = useMemo(() => assets.filter((a) => a.folder === folder), [assets, folder]);
+  // Assets in the current folder (pick mode shows only `accept`-matching files); subfolders = union
+  // of asset-derived + persisted records.
+  const here = useMemo(() => {
+    const inFolder = assets.filter((a) => a.folder === folder);
+    return pick && accept ? inFolder.filter(accept) : inFolder;
+  }, [assets, folder, pick, accept]);
   const subfolders = useMemo(() => {
     const segs = new Set<string>();
     for (const a of assets) {
@@ -109,6 +140,13 @@ export function MediaManager({ project }: { project: Project }) {
 
   const crumbs = folder === '' ? [] : folder.split('/');
   const pathOf = (seg: string) => (folder === '' ? seg : `${folder}/${seg}`);
+
+  /** Click a file: in pick mode select it; otherwise preview an image / open a file. */
+  function activate(m: MediaAsset) {
+    if (pick) return onPick?.(m);
+    if (m.kind === 'image') setPreview(m);
+    else window.open(m.url, '_blank', 'noopener,noreferrer');
+  }
 
   // ---- uploads -------------------------------------------------------------
   async function uploadFiles(files: FileList | File[], target = folder) {
@@ -223,6 +261,8 @@ export function MediaManager({ project }: { project: Project }) {
     setDropTarget(target);
   };
 
+  const emptyMsg = pick ? 'No files here.' : 'This folder is empty. Drop files here to upload.';
+
   return (
     <div
       // The whole pane is a drop zone for the CURRENT folder (upload here / move here).
@@ -233,14 +273,15 @@ export function MediaManager({ project }: { project: Project }) {
       onDrop={(e) => onDropInto(folder, e)}
     >
       {dialog}
+      {intro && <p className="mb-3 text-sm text-slate-500">{intro}</p>}
 
       {/* Upload + stock toolbar */}
       <div className={`mb-4 flex flex-wrap items-center justify-between gap-3 ${glassCard} p-4 ${dropTarget === folder ? 'ring-2 ring-indigo-400' : ''}`}>
         <div className="flex flex-col gap-1">
-          <label htmlFor="asset-upload" className="text-xs font-semibold text-slate-700">
+          <label htmlFor={uploadId} className="text-xs font-semibold text-slate-700">
             Upload files {dropTarget === folder ? '— drop to upload here' : '(or drag & drop)'}
           </label>
-          <input id="asset-upload" ref={fileInput} aria-label="Upload files" type="file" multiple disabled={uploading} onChange={onUpload} className="text-sm" />
+          <input id={uploadId} ref={fileInput} aria-label="Upload files" type="file" multiple disabled={uploading} onChange={onUpload} className="text-sm" />
           <p className="text-[11px] text-slate-400">
             Any file type. Images become AVIF/WebP; other files are stored as downloads.
             {folder && <> Filing into <strong>{folder}</strong>.</>}
@@ -269,7 +310,7 @@ export function MediaManager({ project }: { project: Project }) {
           {crumbs.map((seg, i) => {
             const crumbPath = crumbs.slice(0, i + 1).join('/');
             return (
-              <span key={i} className="flex items-center gap-1">
+              <span key={crumbPath} className="flex items-center gap-1">
                 <span className="text-slate-300">/</span>
                 <button
                   type="button"
@@ -327,8 +368,8 @@ export function MediaManager({ project }: { project: Project }) {
             {subfolders.map((seg) => (
               <tr
                 key={`d:${seg}`}
-                draggable
-                onDragStart={() => (dragItem.current = { type: 'folder', path: pathOf(seg) })}
+                draggable={!pick}
+                onDragStart={pick ? undefined : () => (dragItem.current = { type: 'folder', path: pathOf(seg) })}
                 onDragEnd={() => (dragItem.current = null)}
                 onDragOver={allowDrop(pathOf(seg))}
                 onDrop={(e) => onDropInto(pathOf(seg), e)}
@@ -342,26 +383,28 @@ export function MediaManager({ project }: { project: Project }) {
                 <td className="py-1.5 text-slate-400">folder</td>
                 <td className="py-1.5 text-right text-slate-400">—</td>
                 <td className="py-1.5">
-                  <div className="flex justify-end gap-0.5">
-                    <button aria-label={`Rename ${seg}`} title="Rename" className={ACT} onClick={() => void renameFolder(seg)}>{RENAME_ICON}</button>
-                    <button aria-label={`Copy ${seg}`} title="Copy" className={ACT} onClick={() => void copyFolder(seg)}>{COPY_ICON}</button>
-                    <button aria-label={`Delete ${seg}`} title="Delete" className={ACT_DANGER} onClick={() => void deleteFolder(seg)}>{TRASH_ICON}</button>
-                  </div>
+                  {!pick && (
+                    <div className="flex justify-end gap-0.5">
+                      <button aria-label={`Rename ${seg}`} title="Rename" className={ACT} onClick={() => void renameFolder(seg)}>{RENAME_ICON}</button>
+                      <button aria-label={`Copy ${seg}`} title="Copy" className={ACT} onClick={() => void copyFolder(seg)}>{COPY_ICON}</button>
+                      <button aria-label={`Delete ${seg}`} title="Delete" className={ACT_DANGER} onClick={() => void deleteFolder(seg)}>{TRASH_ICON}</button>
+                    </div>
+                  )}
                 </td>
               </tr>
             ))}
             {here.map((m) => (
               <tr
                 key={m.id}
-                draggable
-                onDragStart={() => (dragItem.current = { type: 'asset', id: m.id, from: m.folder })}
+                draggable={!pick}
+                onDragStart={pick ? undefined : () => (dragItem.current = { type: 'asset', id: m.id, from: m.folder })}
                 onDragEnd={() => (dragItem.current = null)}
                 className="border-t border-white/40"
               >
                 <td className="py-1.5">
                   <button
                     type="button"
-                    onClick={() => (m.kind === 'image' ? setPreview(m) : window.open(m.url, '_blank', 'noopener,noreferrer'))}
+                    onClick={() => activate(m)}
                     className="flex items-center gap-2 text-left text-slate-700 hover:text-indigo-600"
                     title={m.filename}
                   >
@@ -377,17 +420,23 @@ export function MediaManager({ project }: { project: Project }) {
                 <td className="py-1.5 text-right text-slate-500">{formatBytes(m.bytes)}</td>
                 <td className="py-1.5">
                   <div className="flex justify-end gap-0.5">
-                    <a aria-label={`Download ${m.filename}`} title="Download" className={ACT} href={m.url} target="_blank" rel="noreferrer">{DOWNLOAD_ICON}</a>
-                    <button aria-label={`Rename ${m.filename}`} title="Rename" className={ACT} onClick={() => void renameAsset(m)}>{RENAME_ICON}</button>
-                    <button aria-label={`Copy ${m.filename}`} title="Copy" className={ACT} onClick={() => void copyAsset(m)}>{COPY_ICON}</button>
-                    <button aria-label={`Delete ${m.filename}`} title="Delete" className={ACT_DANGER} onClick={() => void deleteAsset(m)}>{TRASH_ICON}</button>
+                    {pick ? (
+                      <button aria-label={`Use ${m.filename}`} title="Use this file" className={ACT} onClick={() => onPick?.(m)}>{DOWNLOAD_ICON}</button>
+                    ) : (
+                      <>
+                        <a aria-label={`Download ${m.filename}`} title="Download" className={ACT} href={m.url} target="_blank" rel="noreferrer">{DOWNLOAD_ICON}</a>
+                        <button aria-label={`Rename ${m.filename}`} title="Rename" className={ACT} onClick={() => void renameAsset(m)}>{RENAME_ICON}</button>
+                        <button aria-label={`Copy ${m.filename}`} title="Copy" className={ACT} onClick={() => void copyAsset(m)}>{COPY_ICON}</button>
+                        <button aria-label={`Delete ${m.filename}`} title="Delete" className={ACT_DANGER} onClick={() => void deleteAsset(m)}>{TRASH_ICON}</button>
+                      </>
+                    )}
                   </div>
                 </td>
               </tr>
             ))}
             {subfolders.length === 0 && here.length === 0 && (
               <tr>
-                <td colSpan={4} className="py-3 text-sm text-slate-400">This folder is empty. Drop files here to upload.</td>
+                <td colSpan={4} className="py-3 text-sm text-slate-400">{emptyMsg}</td>
               </tr>
             )}
           </tbody>
@@ -397,8 +446,8 @@ export function MediaManager({ project }: { project: Project }) {
           {subfolders.map((seg) => (
             <div
               key={`d:${seg}`}
-              draggable
-              onDragStart={() => (dragItem.current = { type: 'folder', path: pathOf(seg) })}
+              draggable={!pick}
+              onDragStart={pick ? undefined : () => (dragItem.current = { type: 'folder', path: pathOf(seg) })}
                 onDragEnd={() => (dragItem.current = null)}
               onDragOver={allowDrop(pathOf(seg))}
               onDrop={(e) => onDropInto(pathOf(seg), e)}
@@ -408,21 +457,23 @@ export function MediaManager({ project }: { project: Project }) {
                 <FolderIcon className="h-8 w-8" />
                 <span className="truncate text-[11px] text-slate-600" title={seg}>{seg}</span>
               </button>
-              <div className="absolute right-1 top-1 hidden gap-0.5 rounded-lg bg-white/90 p-0.5 shadow group-hover:flex">
-                <button aria-label={`Rename ${seg}`} title="Rename" className={ACT} onClick={() => void renameFolder(seg)}>{RENAME_ICON}</button>
-                <button aria-label={`Delete ${seg}`} title="Delete" className={ACT_DANGER} onClick={() => void deleteFolder(seg)}>{TRASH_ICON}</button>
-              </div>
+              {!pick && (
+                <div className="absolute right-1 top-1 hidden gap-0.5 rounded-lg bg-white/90 p-0.5 shadow group-hover:flex">
+                  <button aria-label={`Rename ${seg}`} title="Rename" className={ACT} onClick={() => void renameFolder(seg)}>{RENAME_ICON}</button>
+                  <button aria-label={`Delete ${seg}`} title="Delete" className={ACT_DANGER} onClick={() => void deleteFolder(seg)}>{TRASH_ICON}</button>
+                </div>
+              )}
             </div>
           ))}
           {here.map((m) => (
             <figure
               key={m.id}
-              draggable
-              onDragStart={() => (dragItem.current = { type: 'asset', id: m.id, from: m.folder })}
+              draggable={!pick}
+              onDragStart={pick ? undefined : () => (dragItem.current = { type: 'asset', id: m.id, from: m.folder })}
                 onDragEnd={() => (dragItem.current = null)}
               className={`group relative ${glassCard} flex flex-col p-2`}
             >
-              <button type="button" onClick={() => (m.kind === 'image' ? setPreview(m) : window.open(m.url, '_blank', 'noopener,noreferrer'))} className="block">
+              <button type="button" onClick={() => activate(m)} className="block">
                 {m.kind === 'image' ? (
                   <SkeletonImage src={m.url} alt={m.alt ?? m.filename} className="h-24 w-full rounded" />
                 ) : (
@@ -435,14 +486,20 @@ export function MediaManager({ project }: { project: Project }) {
               <div className="flex items-center justify-between">
                 <span className="text-[10px] text-slate-400">{formatBytes(m.bytes)}</span>
                 <div className="hidden gap-0.5 group-hover:flex">
-                  <button aria-label={`Rename ${m.filename}`} title="Rename" className={ACT} onClick={() => void renameAsset(m)}>{RENAME_ICON}</button>
-                  <button aria-label={`Copy ${m.filename}`} title="Copy" className={ACT} onClick={() => void copyAsset(m)}>{COPY_ICON}</button>
-                  <button aria-label={`Delete ${m.filename}`} title="Delete" className={ACT_DANGER} onClick={() => void deleteAsset(m)}>{TRASH_ICON}</button>
+                  {pick ? (
+                    <button aria-label={`Use ${m.filename}`} title="Use this file" className={ACT} onClick={() => onPick?.(m)}>{DOWNLOAD_ICON}</button>
+                  ) : (
+                    <>
+                      <button aria-label={`Rename ${m.filename}`} title="Rename" className={ACT} onClick={() => void renameAsset(m)}>{RENAME_ICON}</button>
+                      <button aria-label={`Copy ${m.filename}`} title="Copy" className={ACT} onClick={() => void copyAsset(m)}>{COPY_ICON}</button>
+                      <button aria-label={`Delete ${m.filename}`} title="Delete" className={ACT_DANGER} onClick={() => void deleteAsset(m)}>{TRASH_ICON}</button>
+                    </>
+                  )}
                 </div>
               </div>
             </figure>
           ))}
-          {subfolders.length === 0 && here.length === 0 && <p className="text-sm text-slate-400">This folder is empty. Drop files here to upload.</p>}
+          {subfolders.length === 0 && here.length === 0 && <p className="text-sm text-slate-400">{emptyMsg}</p>}
         </div>
       )}
 

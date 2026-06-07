@@ -7,7 +7,6 @@ import { PageSettingsModal, applyPageSettings, pageSettingsFromPage, type PageSe
 import { useDialogs } from './ui/Dialogs';
 import { LibraryPanel } from './library/LibraryPanel';
 import { DatasetManager } from './DatasetManager';
-import { MediaManager } from './MediaManager';
 import { FormsManager } from './FormsManager';
 import { SettingsView } from './settings/SettingsView';
 import { AdminView } from './AdminView';
@@ -27,7 +26,6 @@ export const MANAGE_TABS = [
   'corporate-identity',
   'website-settings',
   'pages',
-  'media',
   'forms',
   'data',
   'admin',
@@ -37,7 +35,6 @@ export const TAB_LABELS: Record<Tab, string> = {
   'corporate-identity': 'Corporate Identity',
   'website-settings': 'Website Settings',
   pages: 'Pages',
-  media: 'Assets',
   forms: 'Forms',
   data: 'Data',
   admin: 'Admin',
@@ -460,9 +457,6 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
         />
       ) : tab === 'data' ? (
         <DatasetManager project={project} />
-      ) : tab === 'media' ? (
-        // key resets folder/view state when switching projects (like the sibling managers).
-        <MediaManager key={project.id} project={project} />
       ) : tab === 'forms' ? (
         // Submissions are folded in per-form (each row's "Show submissions").
         <FormsManager key={project.id} project={project} />

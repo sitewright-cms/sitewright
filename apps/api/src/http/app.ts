@@ -33,7 +33,7 @@ import {
 } from '@sitewright/schema';
 import { downloadGoogleFont, FontFetchError } from '../fonts/service.js';
 import { detectFontFormat, MAX_FONT_BYTES } from '../fonts/upload.js';
-import { createFontAsset as storeFontAsset } from '../fonts/asset.js';
+import { createFontAsset as storeFontAsset, mergeFontFaces } from '../fonts/asset.js';
 import {
   renderDocument,
   usedComponentTypes,
@@ -2222,14 +2222,34 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const parsed = SelectFontBody.safeParse(req.body);
       if (!parsed.success) return reply.code(400).send({ error: 'invalid request' });
       try {
-        const dl = await downloadGoogleFont(parsed.data.family, parsed.data.weights);
-        const item = await storeFontAsset(contentRepo, mediaStorage, ctx, project.id, {
-          family: dl.family,
-          fallback: dl.fallback,
-          source: 'google',
-          folder: parsed.data.folder ?? '',
-          faces: dl.faces.map((f) => ({ weight: f.weight, style: f.style, format: f.format, bytes: f.bytes })),
-        });
+        // Re-selecting a family already in the library merges the new weights into that asset (one
+        // library entry per family) rather than creating a duplicate. Only the MISSING weights are
+        // downloaded; if every requested weight is already self-hosted, Google is never contacted.
+        const fonts = ((await contentRepo.list(ctx, 'media')) as MediaAsset[]).filter(
+          (m): m is Extract<MediaAsset, { kind: 'font' }> => m.kind === 'font',
+        );
+        const family = parsed.data.family;
+        const existing = fonts.find((f) => f.source === 'google' && f.family.toLowerCase() === family.toLowerCase());
+        // A Google select only ever yields NORMAL-style faces (DownloadedFont), so a google-source
+        // asset holds only normal faces and a missing weight is identified by weight alone — filter to
+        // normal faces explicitly to stay aligned with mergeFontFaces' weight×style dedup.
+        const have = new Set(existing?.files.filter((f) => f.style === 'normal').map((f) => f.weight) ?? []);
+        const need = parsed.data.weights.filter((w) => !have.has(w));
+        if (existing && need.length === 0) return reply.send({ item: existing });
+
+        const dl = await downloadGoogleFont(family, need);
+        const faces = dl.faces.map((f) => ({ weight: f.weight, style: f.style, format: f.format, bytes: f.bytes }));
+        const item = existing
+          ? // Merge into the existing family asset, keeping its stored family/fallback (identical to the
+            // freshly-downloaded dl.* for the same catalog family, so there's nothing to clobber).
+            await mergeFontFaces(contentRepo, mediaStorage, ctx, project.id, existing, faces)
+          : await storeFontAsset(contentRepo, mediaStorage, ctx, project.id, {
+              family: dl.family,
+              fallback: dl.fallback,
+              source: 'google',
+              folder: parsed.data.folder ?? '',
+              faces,
+            });
         return reply.send({ item });
       } catch (err) {
         if (err instanceof FontFetchError) return reply.code(400).send({ error: err.message });

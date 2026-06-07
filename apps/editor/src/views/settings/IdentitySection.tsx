@@ -104,6 +104,8 @@ export function IdentitySection({ form, patch, projectId }: { form: SettingsForm
         <div className="grid grid-cols-2 gap-3">
           <AssetField label="Logo" value={form.logo} onChange={(v) => patch({ logo: v })} projectId={projectId} placeholder="/logo.svg" />
           <AssetField label="Favicon" value={form.favicon} onChange={(v) => patch({ favicon: v })} projectId={projectId} placeholder="/favicon.ico" />
+          <AssetField label="Logo (light bg)" value={form.logoLight} onChange={(v) => patch({ logoLight: v })} projectId={projectId} placeholder="/logo-light.svg" />
+          <AssetField label="Logo (dark bg)" value={form.logoDark} onChange={(v) => patch({ logoDark: v })} projectId={projectId} placeholder="/logo-dark.svg" />
           <AssetField label="Icon (favicon source)" value={form.icon} onChange={(v) => patch({ icon: v })} projectId={projectId} placeholder="/icon.png" />
           <AssetField label="Share image (OG)" value={form.image} onChange={(v) => patch({ image: v })} projectId={projectId} placeholder="/og.png" />
         </div>

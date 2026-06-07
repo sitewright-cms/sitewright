@@ -122,6 +122,11 @@ export class MediaStorage {
     await rm(this.assetDir(projectId, assetId), { recursive: true, force: true });
   }
 
+  /** Deletes a SINGLE stored file within an asset's directory (idempotent; path-confined). */
+  async removeFile(projectId: string, assetId: string, file: string): Promise<void> {
+    await rm(this.resolveStoredPath(projectId, assetId, file), { force: true });
+  }
+
   /**
    * Copies an asset's entire directory to a NEW asset id (same project) — the binaries
    * of a duplicated asset. Both ids are charset-validated by `assetDir`; the variant

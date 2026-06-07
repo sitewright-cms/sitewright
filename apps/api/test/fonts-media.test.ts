@@ -92,6 +92,38 @@ describe('fonts as media assets', () => {
     expect(serve.rawPayload.toString()).toBe('INTER400');
   });
 
+  it('POST /fonts/select re-selecting a family merges the new weights into the same asset (no duplicate)', async () => {
+    // css2 mock: emit one @font-face per weight in the request's `:wght@` list, so the second
+    // (missing-weight-only) download returns just the 700 face.
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('css2')) {
+        const weights = (url.match(/wght@([\d;]+)/)?.[1] ?? '400').split(';');
+        const css = weights
+          .map((w) => `@font-face{font-family:'Inter';font-weight:${w};src:url(https://fonts.gstatic.com/s/inter/${w}.woff2) format('woff2');}`)
+          .join('\n');
+        return new Response(css, { headers: { 'content-type': 'text/css' } });
+      }
+      return new Response(Buffer.from('FONT'), { headers: { 'content-type': 'font/woff2' } });
+    }));
+    const { t, projectId } = await setup();
+    const sel = (weights: number[]) =>
+      app.inject({ method: 'POST', url: `/projects/${projectId}/fonts/select`, cookies: { sw_session: t }, payload: { family: 'Inter', weights } });
+    const fontCount = async () =>
+      ((await app.inject({ method: 'GET', url: `/projects/${projectId}/media`, cookies: { sw_session: t } })).json().items as Array<{ kind: string }>).filter((x) => x.kind === 'font').length;
+
+    const first = (await sel([400])).json().item as { id: string; files: Array<{ weight: number }> };
+    const second = (await sel([400, 700])).json().item as { id: string; files: Array<{ weight: number }> };
+    // Same library asset, now carrying BOTH weights — and still exactly one font in the library.
+    expect(second.id).toBe(first.id);
+    expect(second.files.map((f) => f.weight).sort()).toEqual([400, 700]);
+    expect(await fontCount()).toBe(1);
+    // Re-selecting an already-present weight is a no-op reuse (no extra Google contact, no new file).
+    const third = (await sel([400])).json().item as { id: string; files: unknown[] };
+    expect(third.id).toBe(first.id);
+    expect(third.files).toHaveLength(2);
+    expect(await fontCount()).toBe(1);
+  });
+
   it('POST /fonts/select is 400 for an unknown family, 403 for a non-writer (cross-tenant)', async () => {
     const { projectId } = await setup('owner-a@e2e.test', 'site-a');
     const a = await app.inject({ method: 'POST', url: `/projects/${projectId}/fonts/select`, payload: { family: 'Inter', weights: [400] } });

@@ -30,3 +30,44 @@ test('define a dataset, its schema, and add an entry', async ({ page }) => {
   await page.getByRole('button', { name: 'Save entry' }).click();
   await expect(page.getByRole('button', { name: 'Hello World' })).toBeVisible();
 });
+
+// An `image`-type entry field renders the reusable AssetField/FilePicker (not a bare text input),
+// so editors browse the library or paste/import a URL — same control as the identity logo fields.
+test('dataset image field uses the file picker (browse a URL into an entry)', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: /Register/ }).click();
+  await page.getByLabel('Email').fill(`dataimg-${stamp}@e2e.test`);
+  await page.getByLabel('Password').fill('pw-secret-1');
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await page.getByRole('button', { name: 'New project' }).click();
+  await page.getByLabel('Project name').fill('Gallery Site');
+  await page.getByLabel('Project slug').fill(`dataimg-${stamp}`);
+  await page.getByRole('button', { name: 'Create project' }).click();
+
+  // A "Gallery" dataset with a text "title" + an "image"-type "photo" field.
+  await page.getByRole('tab', { name: 'Data' }).click();
+  await page.getByLabel('Dataset name').fill('Gallery');
+  await page.getByRole('button', { name: 'Create dataset' }).click();
+  await page.getByLabel('New field name').fill('title');
+  await page.getByRole('button', { name: 'Add field' }).click();
+  await page.getByLabel('New field name').fill('photo');
+  await page.getByLabel('New field type').selectOption('image');
+  await page.getByRole('button', { name: 'Add field' }).click();
+  await page.getByRole('button', { name: 'Save schema' }).click();
+
+  // New entry: the photo field is an AssetField (Browse button); the text field is not.
+  await page.getByRole('button', { name: 'New entry' }).click();
+  await expect(page.getByRole('button', { name: 'Browse for photo' })).toBeVisible();
+  await page.getByLabel('title', { exact: true }).fill('Sunset');
+
+  // Open the picker from the image field → URL tab → use a remote URL as-is.
+  await page.getByRole('button', { name: 'Browse for photo' }).click();
+  const picker = page.getByRole('dialog', { name: 'Choose photo' });
+  await picker.getByRole('button', { name: 'URL', exact: true }).click();
+  await picker.getByLabel('URL').fill('https://cdn.example.com/remote-photo.jpg');
+  await picker.getByRole('button', { name: 'Use URL as-is' }).click();
+  await expect(page.locator('#entry-photo')).toHaveValue('https://cdn.example.com/remote-photo.jpg');
+
+  await page.getByRole('button', { name: 'Save entry' }).click();
+  await expect(page.getByRole('button', { name: 'Sunset' })).toBeVisible();
+});

@@ -55,3 +55,45 @@ export async function createFontAsset(
     throw err;
   }
 }
+
+/**
+ * Merges additional faces into an EXISTING font asset (used when re-selecting the same Google family
+ * with extra weights, so the library keeps one entry per family instead of a duplicate per pick).
+ * Faces whose weight×style is already present are skipped (the stored file wins); only genuinely new
+ * faces are written + appended. Returns the asset unchanged when there is nothing to add.
+ */
+export async function mergeFontFaces(
+  contentRepo: ContentRepository,
+  storage: MediaStorage,
+  ctx: ProjectContext,
+  projectId: string,
+  existing: FontAsset,
+  faces: CreateFontAssetInput['faces'],
+): Promise<FontAsset> {
+  const have = new Set(existing.files.map((f) => `${f.weight}-${f.style}`));
+  const added: Array<{ weight: number; style: 'normal' | 'italic'; format: FontFormat; file: string }> = [];
+  let addedBytes = 0;
+  try {
+    for (const f of faces) {
+      const key = `${f.weight}-${f.style}`;
+      if (have.has(key)) continue;
+      const file = `${f.weight}${f.style === 'italic' ? '-italic' : ''}.${FONT_EXT[f.format]}`;
+      await storage.storeFile(projectId, existing.id, file, f.bytes);
+      added.push({ weight: f.weight, style: f.style, format: f.format, file });
+      have.add(key);
+      addedBytes += f.bytes.length;
+    }
+  } catch (err) {
+    // Roll back faces written before the failure (symmetry with createFontAsset, which drops the whole
+    // new asset dir — here we remove only the NEW files, never the existing ones).
+    await Promise.all(added.map((a) => storage.removeFile(projectId, existing.id, a.file).catch(() => undefined)));
+    throw err;
+  }
+  if (added.length === 0) return existing;
+  const asset = FontAssetSchema.parse({
+    ...existing,
+    bytes: existing.bytes + addedBytes,
+    files: [...existing.files, ...added],
+  });
+  return (await contentRepo.put(ctx, 'media', existing.id, asset)) as FontAsset;
+}

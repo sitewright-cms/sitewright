@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal } from '../ui/Modal';
 import { ghostButton, glassPanel } from '../../theme';
 import { LIBRARY_SECTIONS, type LibraryCategory, type LibraryItem, type LibrarySection } from './catalog';
+import { GoogleFontGallery } from '../settings/GoogleFontGallery';
 
 /** Copy-to-clipboard with a transient "copied" flag keyed by an id (timer cleared on unmount). */
 function useCopy(): [string | null, (text: string, id: string) => void] {
@@ -89,8 +90,34 @@ export function LibraryPanel() {
         )}
       </aside>
 
-      {section && <SectionModal section={section} onClose={() => setOpenCategory(null)} />}
+      {section?.category === 'fonts' ? (
+        <FontsLibraryModal onClose={() => setOpenCategory(null)} />
+      ) : (
+        section && <SectionModal section={section} onClose={() => setOpenCategory(null)} />
+      )}
     </>
+  );
+}
+
+/** The Library's Google-Fonts browser: search + preview; clicking copies the family name. */
+function FontsLibraryModal({ onClose }: { onClose: () => void }) {
+  const [copiedId, copy] = useCopy();
+  return (
+    <Modal title="Google Fonts" size="full" onClose={onClose}>
+      <GoogleFontGallery
+        intro="Browse + preview the full Google Fonts catalog. To USE a font, pick it per slot in Settings → Typography (it's downloaded + self-hosted then). Click a family here to copy its name."
+        renderAction={(font) => (
+          <button
+            type="button"
+            onClick={() => copy(font.family, font.family)}
+            className="waves-effect rounded-md border border-slate-200 bg-white px-2 py-0.5 text-xs text-slate-600 transition hover:border-indigo-300 hover:text-indigo-700"
+            title={`Copy "${font.family}"`}
+          >
+            {copiedId === font.family ? 'Copied!' : 'Copy name'}
+          </button>
+        )}
+      />
+    </Modal>
   );
 }
 

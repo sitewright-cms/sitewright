@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ProjectBundle } from '@sitewright/core';
-import type { MediaAsset } from '@sitewright/schema';
+import type { MediaAsset, SelfHostedFont } from '@sitewright/schema';
 import { buildSite, PublishError, type ReleaseManifest } from './build.js';
 import { collectSiteFiles } from './adapters.js';
 
@@ -15,6 +15,8 @@ export interface WorkerJob {
   publishedAt: string;
   /** Media metadata, each with its files (fallback + variants) inlined as base64. */
   media: ReadonlyArray<{ asset: MediaAsset; files: Record<string, string> }>;
+  /** Self-hosted fonts, each with its woff2 weight files inlined as base64. */
+  fonts?: ReadonlyArray<{ font: SelfHostedFont; files: Record<string, string> }>;
   /** Publish-time JSON snapshot (`website.jsonDataUrl`), fetched in the main process. */
   jsonData?: unknown;
   /** Reusable Handlebars partials (name → source) a source page can `{{> compose}}`. */
@@ -43,15 +45,23 @@ export async function runWorker(job: WorkerJob): Promise<WorkerResult> {
   try {
     const media = job.media.map((m) => m.asset);
     const filesByAsset = new Map(job.media.map((m) => [m.asset.id, m.files]));
+    const fonts = (job.fonts ?? []).map((f) => f.font);
+    const filesByFont = new Map((job.fonts ?? []).map((f) => [f.font.id, f.files]));
     const manifest = await buildSite({
       outDir: out,
       bundle: job.bundle,
       publishedAt: job.publishedAt,
       media,
+      fonts,
       jsonData: job.jsonData,
       snippets: job.snippets,
       readMedia: async (assetId, file) => {
         const b64 = readBase64(filesByAsset.get(assetId) ?? {}, file);
+        if (b64 === undefined) throw Object.assign(new Error('missing'), { code: 'ENOENT' });
+        return Buffer.from(b64, 'base64');
+      },
+      readFont: async (fontId, file) => {
+        const b64 = readBase64(filesByFont.get(fontId) ?? {}, file);
         if (b64 === undefined) throw Object.assign(new Error('missing'), { code: 'ENOENT' });
         return Buffer.from(b64, 'base64');
       },

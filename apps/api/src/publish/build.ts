@@ -44,7 +44,7 @@ import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
 import { companyToOrganization } from './company-seo.js';
 import { renderSitemap, renderRobots, renderHtaccess, renderNetlifyRedirects, siteUrlFor, siteBase } from './seo.js';
 import { renderContactPhp, hasContactPhpForm } from './contact-php.js';
-import { toPublicForm, type FormPublic, type MediaAsset } from '@sitewright/schema';
+import { toPublicForm, type FormPublic, type MediaAsset, type SelfHostedFont } from '@sitewright/schema';
 
 /** The compiled utility stylesheet, written at the site root and linked per page. */
 const UTILITY_STYLESHEET = 'styles.css';
@@ -100,6 +100,10 @@ export interface BuildSiteOptions {
   media?: readonly MediaAsset[];
   /** Reads a media binary (assetId, file) — used to copy assets into the artifact. */
   readMedia?: (assetId: string, file: string) => Promise<Buffer>;
+  /** Self-hosted fonts the project bundles (from `typography.fonts`) — copied into `_assets/_fonts`. */
+  fonts?: readonly SelfHostedFont[];
+  /** Reads a self-hosted font's woff2 (fontId, file) — used to copy fonts into the artifact. */
+  readFont?: (fontId: string, file: string) => Promise<Buffer>;
   /** Max total HTML/CSS bytes written before aborting (default 100 MiB). */
   maxOutputBytes?: number;
   /**
@@ -161,6 +165,40 @@ async function copyMedia(
       } catch (err) {
         // A missing variant is tolerable; any other I/O error (disk full,
         // permissions) must fail the build so a partial artifact isn't swapped in.
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+      }
+    }
+  }
+}
+
+/** The published sub-directory holding self-hosted webfonts (under {@link ASSET_DIR}). */
+const FONT_DIR = '_fonts';
+
+/** Copies each self-hosted font's woff2 weights into `<base>/_assets/_fonts/<fontId>/<weight>.woff2`. */
+async function copyFonts(
+  base: string,
+  fonts: readonly SelfHostedFont[],
+  readFont: (fontId: string, file: string) => Promise<Buffer>,
+): Promise<void> {
+  for (const font of fonts) {
+    const dir = join(base, ASSET_DIR, FONT_DIR, font.id);
+    // font.id is FontId-validated; the file name below is `<weight>.woff2` (numeric).
+    /* v8 ignore next -- defensive: validated id can't escape */
+    if (!resolve(dir).startsWith(base + sep)) continue;
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to base/_assets/_fonts
+    await mkdir(dir, { recursive: true });
+    for (const weight of font.weights) {
+      const file = `${weight}.woff2`;
+      const target = resolve(dir, file);
+      /* v8 ignore next -- defensive */
+      if (!target.startsWith(resolve(dir) + sep)) continue;
+      try {
+        const data = await readFont(font.id, file);
+        // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to base/_assets/_fonts/<id>
+        await writeFile(target, data);
+      } catch (err) {
+        // A missing cached weight is tolerable (the @font-face just won't load that weight);
+        // any other I/O error must fail the build.
         if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
       }
     }
@@ -331,6 +369,11 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     if (media.length > 0 && opts.readMedia) {
       await copyMedia(tmp, media, opts.readMedia);
     }
+    // Bundle self-hosted fonts so the export carries its own woff2 (never loads from Google).
+    const fonts = opts.fonts ?? [];
+    if (fonts.length > 0 && opts.readFont) {
+      await copyFonts(tmp, fonts, opts.readFont);
+    }
 
     // Render a project-wide skeleton slot (topNav/mobileNav/sidebarLeft/sidebarRight/footer/bottom)
     // for a page, validated; an unsafe or
@@ -476,6 +519,8 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           formEndpoint,
           hcaptchaSiteKey: opts.hcaptchaSiteKey,
           mediaUrl: (asset, file) => `${siteRoot}${ASSET_DIR}/${asset.id}/${file}`,
+          // Self-hosted fonts: page-relative bundled path so the export is portable + Google-free.
+          fontUrl: (fontId, file) => `${siteRoot}${ASSET_DIR}/${FONT_DIR}/${fontId}/${file}`,
           seo: {
             // `||` not `??`: an empty SEO title must fall back to the page title.
             title: page.seo?.title || page.title,

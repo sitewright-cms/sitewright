@@ -18,6 +18,7 @@ const port = Number(process.env.PORT ?? 2002);
 const cookieSecret = process.env.COOKIE_SECRET;
 const isProduction = process.env.NODE_ENV === 'production';
 const mediaRoot = resolve(process.env.MEDIA_ROOT ?? './data/media');
+const fontRoot = resolve(process.env.FONT_ROOT ?? './data/fonts');
 const publishRoot = resolve(process.env.PUBLISH_ROOT ?? './data/sites');
 
 // A signing secret is mandatory in production; refuse to start without one.
@@ -141,6 +142,8 @@ await runMigrations(db);
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- trusted startup env path
 await mkdir(mediaRoot, { recursive: true });
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- trusted startup env path
+await mkdir(fontRoot, { recursive: true });
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- trusted startup env path
 await mkdir(publishRoot, { recursive: true });
 
 const app = await createApp({
@@ -150,6 +153,7 @@ const app = await createApp({
   // HTTP DinD preview works. Set COOKIE_SECURE=true when served behind TLS.
   secureCookies: process.env.COOKIE_SECURE === 'true',
   mediaRoot,
+  fontRoot,
   publishRoot,
   trustProxy,
   encryptionKey,
@@ -197,6 +201,8 @@ try {
     adminPassword: process.env.SW_ADMIN_PASSWORD,
     // Generate the demo's local imagery into the same media root the app serves from.
     mediaRoot,
+    // Self-host the demo's Google heading font into the same font cache the app serves from.
+    fontRoot,
     // Bootstrap notices are operational diagnostics. Emit on stderr so log pipelines
     // treat them as diagnostics (not indexed app output).
     log: (m) => process.stderr.write(`${m}\n`),

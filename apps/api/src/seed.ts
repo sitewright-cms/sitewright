@@ -5,7 +5,10 @@ import { ProjectRepository } from './repo/projects.js';
 import { ContentRepository } from './repo/content.js';
 import { ProjectEventBus } from './events/bus.js';
 import { MediaStorage } from './media/storage.js';
+import { FontStore } from './fonts/store.js';
+import { selectGoogleFont } from './fonts/service.js';
 import { seedExampleAssets } from './seed-assets.js';
+import type { CorporateIdentity } from '@sitewright/schema';
 import {
   EXAMPLE_IDENTITY,
   EXAMPLE_WEBSITE,
@@ -35,6 +38,9 @@ export interface SeedOptions {
    *  into the project's media library; absent (e.g. in unit tests) → the demo seeds without
    *  images (its image refs resolve to empty, never a remote host). */
   mediaRoot?: string;
+  /** Font cache root (FONT_ROOT). When set, the demo self-hosts a Google heading font to showcase
+   *  typography; best-effort (a fetch failure just leaves the default serif heading). */
+  fontRoot?: string;
   /** Sink for the one-time bootstrap notices (defaults to stdout via the caller). */
   log?: (message: string) => void;
 }
@@ -49,7 +55,7 @@ export interface SeedOptions {
  * Idempotent by design: it returns immediately once ANY user exists, so re-deploys never
  * re-seed and a demo project the admin deleted stays deleted.
  */
-export async function seedInstance({ db, adminEmail, adminPassword, mediaRoot, log = () => {} }: SeedOptions): Promise<void> {
+export async function seedInstance({ db, adminEmail, adminPassword, mediaRoot, fontRoot, log = () => {} }: SeedOptions): Promise<void> {
   const existing = await db.select({ id: users.id }).from(users).limit(1);
   if (existing.length > 0) return; // already bootstrapped — never re-seed
 
@@ -97,8 +103,29 @@ export async function seedInstance({ db, adminEmail, adminPassword, mediaRoot, l
   const entries = exampleEntries(assets);
   const pages = examplePages(assets);
 
+  // Showcase the typography feature: self-host a Google heading font (Playfair Display) so the demo
+  // ships with a real webfont, not just a system stack. BEST-EFFORT (same rationale as the imagery
+  // above): a fetch failure / no FONT_ROOT just leaves the schema-default serif heading. The body
+  // keeps the default sans-serif/400.
+  let typography: CorporateIdentity['typography'] | undefined;
+  if (fontRoot) {
+    try {
+      const font = await selectGoogleFont(new FontStore(fontRoot), 'Playfair Display', [700]);
+      typography = {
+        fontFamilies: {},
+        fonts: [font],
+        heading: { source: 'google', family: font.family, weight: 700, fontId: font.id },
+      };
+    } catch (err) {
+      log(
+        `[sitewright/seed] WARNING: demo Google-font download failed (${err instanceof Error ? err.message : String(err)}); ` +
+          `seeding the Example Project with the default serif heading.`,
+      );
+    }
+  }
+
   await contentRepo.put(ctx, 'settings', 'settings', {
-    identity: EXAMPLE_IDENTITY,
+    identity: typography ? { ...EXAMPLE_IDENTITY, typography } : EXAMPLE_IDENTITY,
     website: EXAMPLE_WEBSITE,
     // Bilingual demo (English default + German): the showcase includes `/de` locale-variant
     // pages linked by `translationGroup`, a `services-de` dataset, and a language switcher.

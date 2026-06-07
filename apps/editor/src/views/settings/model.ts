@@ -1,4 +1,4 @@
-import type { CorporateIdentity, SettingsBundle, WebsiteSettings } from '../../api';
+import type { CorporateIdentity, SelfHostedFont, SettingsBundle, WebsiteSettings } from '../../api';
 
 /** Updater passed to the section components. */
 export type Patch = (p: Partial<SettingsForm>) => void;
@@ -65,9 +65,10 @@ export interface SettingsForm {
   // identity — brand tokens
   colors: KeyedPair[];
   fonts: KeyedPair[];
-  // identity — typography slots (heading + body font + weight)
+  // identity — typography slots (heading + body font + weight) + self-hosted google fonts
   heading: FontSlotForm;
   body: FontSlotForm;
+  selfHostedFonts: SelfHostedFont[];
   // website
   siteUrl: string;
   jsonDataUrl: string;
@@ -152,6 +153,7 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
     fonts: recordToPairs(id.typography?.fontFamilies),
     heading: { ...DEFAULT_HEADING, ...id.typography?.heading },
     body: { ...DEFAULT_BODY, ...id.typography?.body },
+    selfHostedFonts: id.typography?.fonts ?? [],
     siteUrl: w?.siteUrl ?? '',
     jsonDataUrl: w?.jsonDataUrl ?? '',
     criticalCss: w?.criticalCss ?? '',
@@ -215,12 +217,18 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
   const scale = baseId?.typography?.scale;
   const heading = slotEqual(form.heading, DEFAULT_HEADING) ? undefined : cleanSlot(form.heading);
   const body = slotEqual(form.body, DEFAULT_BODY) ? undefined : cleanSlot(form.body);
-  if (Object.keys(fonts).length || scale || heading || body) {
+  // Keep only self-hosted fonts a slot actually references (drop orphans from earlier picks).
+  const referenced = new Set(
+    [form.heading, form.body].filter((s) => s.source === 'google' && s.fontId).map((s) => s.fontId),
+  );
+  const selfHostedFonts = form.selfHostedFonts.filter((f) => referenced.has(f.id));
+  if (Object.keys(fonts).length || scale || heading || body || selfHostedFonts.length) {
     identity = put(identity, 'typography', {
       fontFamilies: fonts,
       ...(scale ? { scale } : {}),
       ...(heading ? { heading } : {}),
       ...(body ? { body } : {}),
+      ...(selfHostedFonts.length ? { fonts: selfHostedFonts } : {}),
     });
   }
   // Carry through token/asset fields the form doesn't expose.

@@ -77,6 +77,8 @@ import { registerDeployTargetRoutes } from './deploy-targets.js';
 import { registerFormRoutes } from './form-routes.js';
 import { registerProjectSmtpRoutes } from './project-smtp-routes.js';
 import { registerStockRoutes, type StockServiceLike } from './stock-routes.js';
+import { registerFontRoutes } from './font-routes.js';
+import { FontStore } from '../fonts/store.js';
 import { StockService } from '../stock/service.js';
 import { defaultStockProviders } from '../stock/providers.js';
 import { SubmissionRepository } from '../repo/submissions.js';
@@ -328,6 +330,8 @@ export interface AppOptions {
   editorDist?: string;
   /** Absolute path to the media storage root; enables media upload/serve when set. */
   mediaRoot?: string;
+  /** Absolute path to the self-hosted-font cache root; enables Google Fonts when set. */
+  fontRoot?: string;
   /** Absolute path to the published-sites root; enables publish/serve when set. */
   publishRoot?: string;
   /**
@@ -397,6 +401,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const events = new ProjectEventBus();
   const contentRepo = new ContentRepository(db, events);
   const mediaStorage = opts.mediaRoot ? new MediaStorage(opts.mediaRoot) : undefined;
+  const fontStore = opts.fontRoot ? new FontStore(opts.fontRoot) : undefined;
   const publishStore = opts.publishRoot ? new PublishStore(opts.publishRoot) : undefined;
   // Short-lived store of rendered preview docs, so they can be served (via a token
   // URL) under a `Content-Security-Policy: sandbox` for true WYSIWYG interactivity.
@@ -1350,6 +1355,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         formEndpoint: (formId) => `/f/${project.id}/${formId}`,
         ...(previewHcaptchaSiteKey ? { hcaptchaSiteKey: previewHcaptchaSiteKey } : {}),
         mediaUrl: (asset, file) => `/media/${project.id}/${asset.id}/${file}`,
+        // Self-hosted fonts: the preview loads them from the instance cache (never Google). Only
+        // wire the resolver when the /fonts route exists (fontStore configured) — otherwise the
+        // @font-face urls would 404; mirrors the publish guard (no fontStore → no fonts emitted).
+        ...(fontStore ? { fontUrl: (fontId: string, file: string) => `/fonts/${fontId}/${file}` } : {}),
         inlineStyles: inlineStyles.length > 0 ? inlineStyles : undefined,
         inlineScripts: ((): string[] | undefined => {
           const js = [
@@ -1873,6 +1882,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             forms,
           };
           const media = mediaStorage ? ((await contentRepo.list(ctx, 'media')) as MediaAsset[]) : [];
+          // Self-hosted fonts the project bundles (from its typography slots) — copied into the
+          // artifact so the export carries its own woff2 and never references Google.
+          const fonts = fontStore ? (bundle.project.identity.typography?.fonts ?? []) : [];
           // Instance hCaptcha site key (public) — baked into forms that require it.
           const hcaptchaSiteKey = (await instanceSettingsRepo.getStored()).hcaptcha?.siteKey;
           // Publish-time JSON snapshot: fetch + parse `website.jsonDataUrl` in THIS (networked) process
@@ -1908,6 +1920,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             readMedia: mediaStorage
               ? (assetId, file) => mediaStorage.readStored(project.id, assetId, file)
               : undefined,
+            ...(fonts.length ? { fonts } : {}),
+            readFont: fontStore ? (fontId, file) => fontStore.read(fontId, file) : undefined,
           });
           // Just published → nothing newer than this release, so the site is not dirty.
           return reply.send({ release, url: `/sites/${project.slug}/`, dirty: false });
@@ -2065,6 +2079,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
   // Web forms: the public submission endpoint (/f/:projectId/:formId) + the
   // authenticated submissions inbox. Always registered (no secret/key dependency).
+  // Google Fonts self-hosting (download → instance cache → serve locally). Public woff2 serving
+  // + the per-project select endpoint; the published site bundles its used fonts, so neither the
+  // preview nor a published page ever loads from Google.
+  if (fontStore) {
+    registerFontRoutes(app, {
+      resolveProject,
+      isWriter: (ctx) => WRITE_ROLES.has(ctx.role),
+      fontStore,
+      rl,
+    });
+  }
+
   registerFormRoutes(app, {
     db,
     submissions: submissionsRepo,
@@ -2185,13 +2211,33 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // Single-container mode: serve the editor SPA at `/`, with a fallback to
   // index.html for non-API GET routes (client-side navigation / refresh).
   if (opts.editorDist) {
+    // CSP for the editor SPA document ONLY (not published /sites pages, which keep the strict
+    // default + never reference Google): the Google-Fonts picker BROWSES by loading webfonts from
+    // Google in the admin's browser (selected fonts are then self-hosted), so allow the Google
+    // style + font hosts here. `setHeaders` overriding the response CSP makes the onSend default-
+    // CSP hook skip it (it only sets the default when no CSP is present).
+    const editorCsp =
+      "default-src 'self'; script-src 'self'; img-src 'self' data: https:; " +
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; " +
+      "object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
     // `dotfiles: 'deny'` makes the posture explicit (don't rely on @fastify/send's 'ignore'
     // default): a dotfile under editorDist (e.g. a stray .env) is never served.
-    await app.register(fastifyStatic, { root: opts.editorDist, prefix: '/', wildcard: false, dotfiles: 'deny' });
+    await app.register(fastifyStatic, {
+      root: opts.editorDist,
+      prefix: '/',
+      wildcard: false,
+      dotfiles: 'deny',
+      setHeaders: (res, path) => {
+        if (path.endsWith('index.html')) {
+          res.setHeader('content-security-policy', editorCsp);
+          res.setHeader('x-frame-options', 'DENY');
+        }
+      },
+    });
     // Rate-limit the catch-all so unknown-path probing/enumeration is throttled too.
     app.setNotFoundHandler({ preHandler: app.rateLimit() }, (req, reply) => {
       if (req.method === 'GET' && !isApiPath(req.url)) {
-        return reply.sendFile('index.html');
+        return reply.header('content-security-policy', editorCsp).header('x-frame-options', 'DENY').sendFile('index.html');
       }
       return reply.code(404).send({ error: 'not found' });
     });

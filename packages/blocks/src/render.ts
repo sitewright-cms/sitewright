@@ -34,6 +34,12 @@ export interface RenderContext {
    */
   mediaUrl?: (asset: MediaAsset, file: string) => string;
   /**
+   * Resolves a self-hosted font file's URL for `@font-face` — preview (`/fonts/<id>/<file>`)
+   * vs publish (`<root>_assets/_fonts/<id>/<file>`), so the published artifact is self-contained
+   * and never loads from Google.
+   */
+  fontUrl?: (fontId: string, file: string) => string;
+  /**
    * Relative path from the current page to the site root (`''` home, `'../'` one
    * level deep, …). Internal root-relative links and asset paths are rebased onto
    * this so the exported site is portable. See `relativeRoot` in @sitewright/core.
@@ -672,8 +678,9 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     // Heading/body fonts LAST so they win over Tailwind preflight's element resets (utility
     // classes still override per-element). Applies in code-first + block-tree, preview + publish.
     // No `</style` neutralization needed (unlike inlineStyles): the output is built only from
-    // hardcoded stacks + schema-validated weights + a regex-checked (no `<`) family name.
-    `<style>${typographyCss(brand?.typography)}</style>\n` +
+    // hardcoded stacks + schema-validated weights + a regex-checked (no `<`) family name + the
+    // app-controlled fontUrl (no `<`). @font-face urls point at LOCAL self-hosted woff2.
+    `<style>${typographyCss(brand?.typography, { fontUrl: ctx.fontUrl })}</style>\n` +
     `</head>\n` +
     // Skeleton slot order: TOP_NAV, MOBILE_NAV, [body], SIDEBAR_L, SIDEBAR_R, FOOTER, BOTTOM,
     // then SCRIPTS (the raw `website.scripts` slot — 3rd-party widgets), before the platform's

@@ -575,6 +575,52 @@ describe('buildSite', () => {
     await expect(readFile(join(outDir, 'media', 'a3', 'a3-10.jpg'), 'utf8')).rejects.toBeTruthy();
   });
 
+  it('bundles self-hosted fonts into _assets/_fonts and references them with LOCAL urls (never Google)', async () => {
+    const reads: string[] = [];
+    await buildSite({
+      publishedAt: '2026-05-30T00:00:00.000Z',
+      outDir,
+      // 400 has no cached file (readFont throws ENOENT) → tolerated; 700 is bundled.
+      fonts: [{ id: 'playfair-display', family: 'Playfair Display', fallback: 'serif', weights: [400, 700] }],
+      readFont: async (fontId, file) => {
+        reads.push(`${fontId}/${file}`);
+        if (file === '700.woff2') return Buffer.from('WOFF2-700');
+        const err = new Error('missing') as NodeJS.ErrnoException;
+        err.code = 'ENOENT';
+        throw err;
+      },
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: {
+            name: 'Acme', colors: { primary: '#0a7' },
+            typography: {
+              fontFamilies: {},
+              heading: { source: 'google', family: 'Playfair Display', weight: 700, fontId: 'playfair-display' },
+              body: { source: 'system', family: 'sans-serif', weight: 400 },
+              fonts: [{ id: 'playfair-display', family: 'Playfair Display', fallback: 'serif', weights: [400, 700] }],
+            },
+          },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+        },
+        pages: [{ id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section', children: [{ id: 'h', type: 'Heading', props: { text: 'Hi', level: 1 } }] } }],
+      }),
+    });
+
+    // The cached weight's woff2 is copied into the portable _assets/_fonts tree.
+    expect((await readFile(join(outDir, '_assets', '_fonts', 'playfair-display', '700.woff2'))).toString()).toBe('WOFF2-700');
+    // The missing weight (ENOENT) was attempted but tolerated — no file, no thrown build error.
+    expect(reads).toContain('playfair-display/400.woff2');
+    await expect(readFile(join(outDir, '_assets', '_fonts', 'playfair-display', '400.woff2'))).rejects.toBeTruthy();
+
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    // The inline @font-face points at the LOCAL bundled path, page-relative — never Google.
+    expect(home).toContain('@font-face');
+    expect(home).toContain('_assets/_fonts/playfair-display/700.woff2');
+    expect(home).not.toContain('fonts.googleapis.com');
+    expect(home).not.toContain('fonts.gstatic.com');
+  });
+
   it('rebuilds cleanly, removing files from a previous build', async () => {
     const opts = {
       publishedAt: '2026-05-29T00:00:00.000Z',

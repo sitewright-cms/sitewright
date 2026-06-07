@@ -29,6 +29,39 @@ const GeoSchema = z.object({ latitude: z.string().max(40), longitude: z.string()
 /** Font weights the slot selector offers (100–900, the CSS numeric scale). */
 export const FONT_WEIGHTS = [100, 200, 300, 400, 500, 600, 700, 800, 900] as const;
 
+/** One of the numeric CSS weights (100–900). */
+export const FontWeightSchema = z
+  .number()
+  .int()
+  .refine((w): w is (typeof FONT_WEIGHTS)[number] => (FONT_WEIGHTS as readonly number[]).includes(w), 'invalid font weight');
+
+/** A path-safe id (font record id / on-disk dir / cache key). */
+const FontIdSchema = z.string().min(1).max(128).regex(/^[A-Za-z0-9_-]+$/);
+
+/** A single family name/keyword (NOT a full CSS stack) — constrained so it can't break out of CSS. */
+const FontFamilyNameSchema = z
+  .string()
+  .min(1)
+  .max(100)
+  .regex(/^[A-Za-z0-9][A-Za-z0-9 '-]*$/, 'invalid font family name');
+
+/**
+ * A self-hosted webfont the project bundles: the Google family, a generic CSS `fallback`, and the
+ * `weights` whose woff2 files are stored (in the instance font cache, and copied into the published
+ * artifact). The typography slots reference one of these by `id`.
+ */
+export const SelfHostedFontSchema = z.object({
+  id: FontIdSchema,
+  family: FontFamilyNameSchema,
+  fallback: z.enum(['serif', 'sans-serif', 'monospace', 'cursive']),
+  weights: z
+    .array(FontWeightSchema)
+    .min(1)
+    .max(FONT_WEIGHTS.length)
+    .refine((ws) => new Set(ws).size === ws.length, 'weights must be unique'),
+});
+export type SelfHostedFont = z.infer<typeof SelfHostedFontSchema>;
+
 /**
  * A typography slot (heading or body). `source` distinguishes a generic SYSTEM family
  * (`serif`/`sans-serif`/`monospace`, mapped to a curated stack at render time) from a
@@ -38,17 +71,10 @@ export const FONT_WEIGHTS = [100, 200, 300, 400, 500, 600, 700, 800, 900] as con
  */
 export const FontSlotSchema = z.object({
   source: z.enum(['system', 'google']).default('system'),
-  family: z
-    .string()
-    .min(1)
-    .max(100)
-    .regex(/^[A-Za-z0-9][A-Za-z0-9 '-]*$/, 'invalid font family name'),
-  weight: z
-    .number()
-    .int()
-    .refine((w): w is (typeof FONT_WEIGHTS)[number] => (FONT_WEIGHTS as readonly number[]).includes(w), 'invalid font weight'),
-  /** For `source: 'google'`: the self-hosted font record id (PR2). */
-  fontId: z.string().max(128).regex(/^[A-Za-z0-9_-]+$/).optional(),
+  family: FontFamilyNameSchema,
+  weight: FontWeightSchema,
+  /** For `source: 'google'`: the self-hosted font record id (references `typography.fonts[].id`). */
+  fontId: FontIdSchema.optional(),
 });
 export type FontSlot = z.infer<typeof FontSlotSchema>;
 
@@ -104,6 +130,8 @@ export const CorporateIdentitySchema = z.object({
       heading: FontSlotSchema.optional(),
       /** Body-font slot (defaults to a sans-serif at weight 400 when absent). */
       body: FontSlotSchema.optional(),
+      /** Self-hosted Google webfonts this project bundles (referenced by the slots' `fontId`). */
+      fonts: z.array(SelfHostedFontSchema).max(8).optional(),
     })
     .optional(),
   spacing: safeRecord(TokenValueSchema, KeyNameSchema).optional(),

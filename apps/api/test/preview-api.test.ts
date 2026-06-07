@@ -294,8 +294,10 @@ describe('preview API — code-first source page', () => {
     expect(res.statusCode).toBe(200);
     const body = res.json() as { html: string; token: string };
     expect(body.html.startsWith('<!doctype html>')).toBe(true);
-    // The {{edit}} override replaced the template default; the block tree was not rendered.
-    expect(body.html).toContain('<main class="grid"><h1>Edited headline</h1></main>');
+    // The {{edit}} override replaced the template default; the block tree was not rendered. The
+    // PREVIEW wraps the (body-context) edit region in a `data-sw-edit` marker for inline editing
+    // (preview-only — publish renders it as plain text; see publish.spec.ts).
+    expect(body.html).toContain('<main class="grid"><h1><span data-sw-edit="headline">Edited headline</span></h1></main>');
     expect(body.html).not.toContain('Default headline');
     expect(body.html).not.toContain('<section data-sw-block="Section"'); // the block tree was not rendered
     // The source's literal Tailwind class compiled + inlined.

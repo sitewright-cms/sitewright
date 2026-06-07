@@ -3,6 +3,7 @@ import {
   AssetRefSchema,
   CssColorSchema,
   CssStringSchema,
+  IdSchema,
   KeyNameSchema,
   TokenValueSchema,
   safeRecord,
@@ -35,11 +36,8 @@ export const FontWeightSchema = z
   .int()
   .refine((w): w is (typeof FONT_WEIGHTS)[number] => (FONT_WEIGHTS as readonly number[]).includes(w), 'invalid font weight');
 
-/** A path-safe id (font record id / on-disk dir / cache key). */
-const FontIdSchema = z.string().min(1).max(128).regex(/^[A-Za-z0-9_-]+$/);
-
 /** A single family name/keyword (NOT a full CSS stack) — constrained so it can't break out of CSS. */
-const FontFamilyNameSchema = z
+export const FontFamilyNameSchema = z
   .string()
   .min(1)
   .max(100)
@@ -48,11 +46,13 @@ const FontFamilyNameSchema = z
 /** Web-font container formats a self-hosted font file may use. */
 export const FONT_FORMATS = ['woff2', 'woff', 'ttf', 'otf'] as const;
 export const FontFormatSchema = z.enum(FONT_FORMATS);
-const FONT_FALLBACKS = ['serif', 'sans-serif', 'monospace', 'cursive'] as const;
-const FONT_SOURCES = ['google', 'local'] as const;
+/** The generic CSS fallback a font asset degrades to before it loads. */
+export const FontFallbackSchema = z.enum(['serif', 'sans-serif', 'monospace', 'cursive']);
+/** Where a self-hosted font came from. */
+export const FontSourceSchema = z.enum(['google', 'local']);
 
 /** A self-hosted font file name (and URL segment): `<weight>[-italic].<ext>` — path-safe + format-true. */
-const FontFileNameSchema = z
+export const FontFileNameSchema = z
   .string()
   .regex(/^[1-9]00(-italic)?\.(woff2|woff|ttf|otf)$/, 'invalid font file name');
 
@@ -66,64 +66,34 @@ export const FontFileSchema = z.object({
 export type FontFile = z.infer<typeof FontFileSchema>;
 
 /**
- * A self-hosted webfont the project bundles: the family, a generic CSS `fallback`, its `source`
- * (`google` = downloaded into the instance cache; `local` = uploaded into the project's font store),
- * and the `files` (one per weight×style) stored on disk + copied into the published artifact. The
- * typography slots reference one of these by `id`.
+ * A typography slot (heading, body, or a custom named slot). `source` is either a generic SYSTEM
+ * family (`serif`/`sans-serif`/`monospace`, mapped to a curated stack) or `asset` — a self-hosted
+ * font in the media library (kind `font`), referenced by `assetId`. `family` is a single family
+ * name/keyword (constrained so it can't break out of CSS); `weight` is a numeric CSS weight.
  *
- * Back-compat: the #123 shape carried google fonts as `weights: number[]` (all woff2). When present
- * (and `files` absent) it's normalized to `files` so older stored records keep parsing.
+ * Back-compat: pre-unification slots used `source: 'google'|'local'` + a `fontId` into the old
+ * `typography.fonts[]` (now removed). Those degrade to a SYSTEM slot keeping the family name (so the
+ * text still renders in a sensible fallback) until the user re-picks the font from the library.
  */
-export const SelfHostedFontSchema = z
+export const FontSlotSchema = z
   .object({
-    id: FontIdSchema,
+    source: z.enum(['system', 'google', 'local', 'asset']).default('system'),
     family: FontFamilyNameSchema,
-    fallback: z.enum(FONT_FALLBACKS),
-    source: z.enum(FONT_SOURCES).optional(),
-    weights: z.array(FontWeightSchema).min(1).max(FONT_WEIGHTS.length).optional(),
-    files: z.array(FontFileSchema).min(1).max(18).optional(),
+    weight: FontWeightSchema,
+    /** For `source: 'asset'`: the font media asset id (references a `kind:'font'` library asset). */
+    assetId: IdSchema.optional(),
+    /** Legacy (pre-unification) reference — ignored; the slot degrades to a system family. */
+    fontId: z.string().optional(),
   })
-  .transform((f) => ({
-    id: f.id,
-    family: f.family,
-    fallback: f.fallback,
-    source: f.source ?? 'google',
-    files:
-      f.files ??
-      (f.weights ?? []).map((w) => ({ weight: w, style: 'normal' as const, format: 'woff2' as const, file: `${w}.woff2` })),
-  }))
-  .pipe(
-    z.object({
-      id: FontIdSchema,
-      family: FontFamilyNameSchema,
-      fallback: z.enum(FONT_FALLBACKS),
-      source: z.enum(FONT_SOURCES),
-      files: z
-        .array(FontFileSchema)
-        .min(1)
-        .max(18)
-        .refine(
-          (fs) => new Set(fs.map((x) => `${x.weight}-${x.style}-${x.format}`)).size === fs.length,
-          'duplicate font file',
-        ),
-    }),
-  );
-export type SelfHostedFont = z.infer<typeof SelfHostedFontSchema>;
-
-/**
- * A typography slot (heading or body). `source` distinguishes a generic SYSTEM family
- * (`serif`/`sans-serif`/`monospace`, mapped to a curated stack at render time) from a
- * self-hosted `google` webfont (which carries a `fontId` referencing the bundled woff2).
- * `family` is a single family name/keyword (NOT a full CSS stack), constrained so it can
- * never break out of a CSS declaration. `weight` is one of the numeric CSS weights.
- */
-export const FontSlotSchema = z.object({
-  source: z.enum(['system', 'google', 'local']).default('system'),
-  family: FontFamilyNameSchema,
-  weight: FontWeightSchema,
-  /** For `source: 'google' | 'local'`: the self-hosted font record id (references `typography.fonts[].id`). */
-  fontId: FontIdSchema.optional(),
-});
+  .transform((s) => {
+    const isAsset = s.source === 'asset' && !!s.assetId;
+    return {
+      source: isAsset ? ('asset' as const) : ('system' as const),
+      family: s.family,
+      weight: s.weight,
+      ...(isAsset ? { assetId: s.assetId } : {}),
+    };
+  });
 export type FontSlot = z.infer<typeof FontSlotSchema>;
 
 /**
@@ -197,8 +167,8 @@ export const CorporateIdentitySchema = z.object({
       named: safeRecord(FontSlotSchema, NamedFontSlotKeySchema)
         .refine((obj) => Object.keys(obj).every((k) => !RESERVED_FONT_SLOT_NAMES.has(k)), 'reserved font slot name')
         .optional(),
-      /** Self-hosted webfonts this project bundles — Google + locally-uploaded (referenced by `fontId`). */
-      fonts: z.array(SelfHostedFontSchema).max(16).optional(),
+      // (Self-hosted fonts now live in the media library as `kind:'font'` assets, referenced by a
+      //  slot's `assetId`; the legacy `fonts` array is dropped on parse — old slots degrade to system.)
     })
     .optional(),
   spacing: safeRecord(TokenValueSchema, KeyNameSchema).optional(),

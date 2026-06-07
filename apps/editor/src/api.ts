@@ -14,7 +14,6 @@ import type {
   PageTranslation,
   Pattern,
   ProjectSettings,
-  SelfHostedFont,
   SmtpInput,
   SmtpPublic,
   StockProviderName,
@@ -27,7 +26,7 @@ import type {
 export type {
   CorporateIdentity,
   DeployTargetView,
-  SelfHostedFont,
+  MediaAsset,
   Form,
   FormModes,
   FormSubmission,
@@ -268,27 +267,28 @@ export const api = {
       bundle,
     ),
 
-  // --- Google Fonts self-hosting: download a family's weights + get its bundleable record ---
-  selectFont: (projectId: string, family: string, weights: number[]) =>
-    request<{ font: SelfHostedFont }>('POST', `/projects/${projectId}/fonts/select`, { family, weights }),
+  // --- Google fonts: download a family's weights → self-host as a kind:'font' library asset ---
+  selectFont: (projectId: string, family: string, weights: number[], folder = '') =>
+    request<{ item: MediaAsset }>('POST', `/projects/${projectId}/fonts/select`, { family, weights, folder }),
 
-  // --- Local (uploaded) fonts: validate + self-host a font file, get its bundleable record ---
+  // --- Local font upload: a font file (magic-byte validated) → a kind:'font' library asset ---
   uploadFont: async (
     projectId: string,
     file: File,
-    meta: { family: string; weight: number; style: 'normal' | 'italic'; fallback: string },
-  ): Promise<{ font: SelfHostedFont }> => {
+    meta: { family: string; weight: number; style: 'normal' | 'italic'; fallback: string; folder?: string },
+  ): Promise<{ item: MediaAsset }> => {
     const form = new FormData();
     form.append('file', file);
-    // Metadata rides as query params (the multipart config admits no extra fields).
+    // Font metadata + folder ride as query params (the multipart config admits no extra fields).
     const qs = new URLSearchParams({ family: meta.family, weight: String(meta.weight), style: meta.style, fallback: meta.fallback });
-    const res = await fetch(`${BASE}/projects/${projectId}/fonts/upload?${qs.toString()}`, {
+    if (meta.folder) qs.set('folder', meta.folder);
+    const res = await fetch(`${BASE}/projects/${projectId}/media?${qs.toString()}`, {
       method: 'POST',
       credentials: 'include',
       body: form, // the browser sets multipart/form-data with the boundary
     });
     if (!res.ok) throw await errorFromResponse(res);
-    return (await res.json()) as { font: SelfHostedFont };
+    return (await res.json()) as { item: MediaAsset };
   },
 
   // --- page translations (per-locale content overrides) ---
@@ -331,8 +331,8 @@ export const api = {
     request<void>('DELETE', `/projects/${projectId}/content/entry/${id}`),
 
   // --- media ---
-  listMedia: (projectId: string) =>
-    request<{ items: MediaAsset[] }>('GET', `/projects/${projectId}/media`),
+  listMedia: (projectId: string, kind?: 'image' | 'file' | 'font') =>
+    request<{ items: MediaAsset[] }>('GET', `/projects/${projectId}/media${kind ? `?kind=${kind}` : ''}`),
   uploadMedia: async (projectId: string, file: File, folder = ''): Promise<{ item: MediaAsset }> => {
     const form = new FormData();
     form.append('file', file);

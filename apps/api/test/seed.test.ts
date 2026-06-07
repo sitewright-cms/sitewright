@@ -4,7 +4,9 @@ import { createApp } from '../src/http/app.js';
 import { seedInstance, DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASSWORD } from '../src/seed.js';
 import { users, projects } from '../src/db/schema.js';
 
-describe('seedInstance — first-boot bootstrap', () => {
+// Each test registers the admin via argon2 (CPU-heavy); under the full suite + coverage that can
+// exceed the 5s default, so give these a generous ceiling (they're not slow on their own).
+describe('seedInstance — first-boot bootstrap', { timeout: 30_000 }, () => {
   it('seeds the admin + Example Project, is idempotent, and the admin can log in', async () => {
     const db = await makeTestDb();
     await seedInstance({ db, adminEmail: 'admin@sitewright.example', adminPassword: 'pw-secret-1' });

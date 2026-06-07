@@ -1,6 +1,6 @@
 import type { NamedSlotForm } from './model';
 import { newNamedSlot } from './model';
-import type { SelfHostedFont } from '../../api';
+import type { MediaAsset } from '../../api';
 import { FontSlotEditor } from './FontSlotEditor';
 import { ghostButton } from '../../theme';
 
@@ -25,8 +25,8 @@ export function CustomFontSlots({
   slots: NamedSlotForm[];
   onChange: (slots: NamedSlotForm[]) => void;
   projectId: string;
-  fonts: SelfHostedFont[];
-  onAddFont: (font: SelfHostedFont) => void;
+  fonts: MediaAsset[];
+  onAddFont: (font: MediaAsset) => void;
 }) {
   const update = (id: string, patch: Partial<NamedSlotForm>) =>
     onChange(slots.map((s) => (s.id === id ? { ...s, ...patch } : s)));

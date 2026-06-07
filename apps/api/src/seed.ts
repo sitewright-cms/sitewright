@@ -5,8 +5,8 @@ import { ProjectRepository } from './repo/projects.js';
 import { ContentRepository } from './repo/content.js';
 import { ProjectEventBus } from './events/bus.js';
 import { MediaStorage } from './media/storage.js';
-import { FontStore } from './fonts/store.js';
-import { selectGoogleFont } from './fonts/service.js';
+import { downloadGoogleFont } from './fonts/service.js';
+import { createFontAsset } from './fonts/asset.js';
 import { seedExampleAssets } from './seed-assets.js';
 import type { CorporateIdentity } from '@sitewright/schema';
 import {
@@ -34,13 +34,10 @@ export interface SeedOptions {
   adminEmail: string;
   /** SW_ADMIN_PASSWORD; absent, empty, or whitespace-only → the FIXED default `123456` (warned about). */
   adminPassword?: string;
-  /** Media storage root (MEDIA_ROOT). When set, the demo's LOCAL images are generated + filed
-   *  into the project's media library; absent (e.g. in unit tests) → the demo seeds without
-   *  images (its image refs resolve to empty, never a remote host). */
+  /** Media storage root (MEDIA_ROOT). When set, the demo's LOCAL images + its showcase Google
+   *  heading font are filed into the project's media library; absent (e.g. in unit tests) → the demo
+   *  seeds without images/fonts (its refs resolve to empty/system, never a remote host). */
   mediaRoot?: string;
-  /** Font cache root (FONT_ROOT). When set, the demo self-hosts a Google heading font to showcase
-   *  typography; best-effort (a fetch failure just leaves the default serif heading). */
-  fontRoot?: string;
   /** Sink for the one-time bootstrap notices (defaults to stdout via the caller). */
   log?: (message: string) => void;
 }
@@ -55,7 +52,7 @@ export interface SeedOptions {
  * Idempotent by design: it returns immediately once ANY user exists, so re-deploys never
  * re-seed and a demo project the admin deleted stays deleted.
  */
-export async function seedInstance({ db, adminEmail, adminPassword, mediaRoot, fontRoot, log = () => {} }: SeedOptions): Promise<void> {
+export async function seedInstance({ db, adminEmail, adminPassword, mediaRoot, log = () => {} }: SeedOptions): Promise<void> {
   const existing = await db.select({ id: users.id }).from(users).limit(1);
   if (existing.length > 0) return; // already bootstrapped — never re-seed
 
@@ -103,18 +100,24 @@ export async function seedInstance({ db, adminEmail, adminPassword, mediaRoot, f
   const entries = exampleEntries(assets);
   const pages = examplePages(assets);
 
-  // Showcase the typography feature: self-host a Google heading font (Playfair Display) so the demo
-  // ships with a real webfont, not just a system stack. BEST-EFFORT (same rationale as the imagery
-  // above): a fetch failure / no FONT_ROOT just leaves the schema-default serif heading. The body
-  // keeps the default sans-serif/400.
+  // Showcase typography: self-host a Google heading font (Playfair Display) as a `kind:'font'`
+  // library asset so the demo ships with a real webfont (visible + manageable in Assets), not just a
+  // system stack. BEST-EFFORT (same rationale as the imagery): a fetch failure / no MEDIA_ROOT just
+  // leaves the schema-default serif heading. The body keeps the default sans-serif/400.
   let typography: CorporateIdentity['typography'] | undefined;
-  if (fontRoot) {
+  if (mediaRoot) {
     try {
-      const font = await selectGoogleFont(new FontStore(fontRoot), 'Playfair Display', [700]);
+      const dl = await downloadGoogleFont('Playfair Display', [700]);
+      const asset = await createFontAsset(contentRepo, new MediaStorage(mediaRoot), ctx, project.id, {
+        family: dl.family,
+        fallback: dl.fallback,
+        source: 'google',
+        folder: 'Brand',
+        faces: dl.faces.map((f) => ({ weight: f.weight, style: f.style, format: f.format, bytes: f.bytes })),
+      });
       typography = {
         fontFamilies: {},
-        fonts: [font],
-        heading: { source: 'google', family: font.family, weight: 700, fontId: font.id },
+        heading: { source: 'asset', family: asset.family, weight: 700, assetId: asset.id },
       };
     } catch (err) {
       log(

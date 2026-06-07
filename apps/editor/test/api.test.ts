@@ -90,23 +90,23 @@ describe('api client', () => {
     expect(JSON.parse(init.body)).toEqual({ url: 'https://cdn.test/a.png', folder: 'Logos' });
   });
 
-  it('selectFont POSTs the family + weights and returns the record', async () => {
-    fetchMock.mockResolvedValue(jsonResponse(200, { font: { id: 'inter', source: 'google' } }));
+  it('selectFont POSTs the family + weights → a kind:font library asset', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { item: { id: 'inter', kind: 'font' } }));
     const res = await api.selectFont('p', 'Inter', [400, 700]);
-    expect(res.font.id).toBe('inter');
+    expect(res.item.id).toBe('inter');
     const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toBe('/projects/p/fonts/select');
     expect(init.method).toBe('POST');
-    expect(JSON.parse(init.body)).toEqual({ family: 'Inter', weights: [400, 700] });
+    expect(JSON.parse(init.body)).toEqual({ family: 'Inter', weights: [400, 700], folder: '' });
   });
 
-  it('uploadFont POSTs a multipart file with metadata as query params', async () => {
-    fetchMock.mockResolvedValue(jsonResponse(200, { font: { id: 'up-1', source: 'local' } }));
+  it('uploadFont POSTs a multipart file to /media with font metadata as query params', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { item: { id: 'up-1', kind: 'font' } }));
     const file = new File([new Uint8Array([0x77, 0x4f, 0x46, 0x32])], 'boombox.woff2', { type: 'font/woff2' });
     const res = await api.uploadFont('p', file, { family: 'Boombox', weight: 700, style: 'italic', fallback: 'serif' });
-    expect(res.font.id).toBe('up-1');
+    expect(res.item.id).toBe('up-1');
     const [url, init] = fetchMock.mock.calls[0]!;
-    expect(url).toBe('/projects/p/fonts/upload?family=Boombox&weight=700&style=italic&fallback=serif');
+    expect(url).toBe('/projects/p/media?family=Boombox&weight=700&style=italic&fallback=serif');
     expect(init.method).toBe('POST');
     expect(init.body).toBeInstanceOf(FormData);
     expect((init.body as FormData).get('file')).toBeInstanceOf(File);

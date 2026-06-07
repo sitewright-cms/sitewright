@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import { join } from 'node:path';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import cookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
@@ -11,6 +10,9 @@ import {
   targetsPrivateHost,
   ImageAssetSchema,
   FileAssetSchema,
+  FontWeightSchema,
+  FontFamilyNameSchema,
+  FONT_WEIGHTS,
   PageSchema,
   PageNodeSchema,
   InstanceSettingsInputSchema,
@@ -29,6 +31,9 @@ import {
   type PageTranslation,
   type Template,
 } from '@sitewright/schema';
+import { downloadGoogleFont, FontFetchError } from '../fonts/service.js';
+import { detectFontFormat, MAX_FONT_BYTES } from '../fonts/upload.js';
+import { createFontAsset as storeFontAsset } from '../fonts/asset.js';
 import {
   renderDocument,
   usedComponentTypes,
@@ -79,8 +84,6 @@ import { registerDeployTargetRoutes } from './deploy-targets.js';
 import { registerFormRoutes } from './form-routes.js';
 import { registerProjectSmtpRoutes } from './project-smtp-routes.js';
 import { registerStockRoutes, type StockServiceLike } from './stock-routes.js';
-import { registerFontRoutes } from './font-routes.js';
-import { FontStore } from '../fonts/store.js';
 import { StockService } from '../stock/service.js';
 import { defaultStockProviders } from '../stock/providers.js';
 import { SubmissionRepository } from '../repo/submissions.js';
@@ -142,6 +145,18 @@ const IMPORT_BODY_LIMIT = 4 * 1024 * 1024; // 4 MiB for a full project import
 const PREVIEW_BODY_LIMIT = 2 * 1024 * 1024; // 2 MiB for a single draft page
 const MAX_UPLOAD_BYTES = 15 * 1024 * 1024; // 15 MiB per uploaded image
 const IMPORT_TIMEOUT_MS = 10_000; // import-url: cap the whole download (headers + body)
+
+/** Font metadata accompanying an upload (query params) — sensible defaults for a generic drop. */
+const FontUploadMeta = z.object({
+  family: FontFamilyNameSchema, // CSS-safe at the boundary (matches the schema's downstream check)
+  weight: z.coerce
+    .number()
+    .int()
+    .refine((w) => (FONT_WEIGHTS as readonly number[]).includes(w), 'invalid weight')
+    .default(400),
+  style: z.enum(['normal', 'italic']).default('normal'),
+  fallback: z.enum(['serif', 'sans-serif', 'monospace', 'cursive']).default('sans-serif'),
+});
 // In the flat tenancy model every project member (owner OR member) may write — the safe
 // "content-only" surface is a UI default, not a hard gate (see PR1 security note). Bearer keys
 // are additionally constrained by capabilities in resolveProject.
@@ -152,6 +167,15 @@ const MEDIA_CONTENT_TYPES = new Map<string, string>([
   ['avif', 'image/avif'],
   ['webp', 'image/webp'],
   ['jpg', 'image/jpeg'],
+]);
+
+/** A `kind:'font'` asset's stored face file (`<weight>[-italic].<ext>`) — served INLINE as font/*. */
+const FONT_FACE_FILE = /^[1-9]00(-italic)?\.(woff2|woff|ttf|otf)$/;
+const FONT_CONTENT_TYPES = new Map<string, string>([
+  ['woff2', 'font/woff2'],
+  ['woff', 'font/woff'],
+  ['ttf', 'font/ttf'],
+  ['otf', 'font/otf'],
 ]);
 
 // Bound concurrent image optimization — each run spawns several sharp encoders,
@@ -331,10 +355,8 @@ export interface AppOptions {
   renderPool?: RenderPool;
   /** Absolute path to the built editor SPA to serve at `/` (single-container mode). */
   editorDist?: string;
-  /** Absolute path to the media storage root; enables media upload/serve when set. */
+  /** Absolute path to the media storage root; enables media upload/serve (incl. fonts) when set. */
   mediaRoot?: string;
-  /** Absolute path to the self-hosted-font cache root; enables Google Fonts when set. */
-  fontRoot?: string;
   /** Absolute path to the published-sites root; enables publish/serve when set. */
   publishRoot?: string;
   /**
@@ -404,12 +426,6 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const events = new ProjectEventBus();
   const contentRepo = new ContentRepository(db, events);
   const mediaStorage = opts.mediaRoot ? new MediaStorage(opts.mediaRoot) : undefined;
-  const fontStore = opts.fontRoot ? new FontStore(opts.fontRoot) : undefined;
-  // Project-scoped store for uploaded (licensed) fonts — isolated per tenant under the font root.
-  // `_projects` can't collide with a google fontId (which is a family slug, never `_projects`).
-  const projectFontStore = opts.fontRoot
-    ? (projectId: string) => new FontStore(join(opts.fontRoot as string, '_projects', projectId))
-    : undefined;
   const publishStore = opts.publishRoot ? new PublishStore(opts.publishRoot) : undefined;
   // Short-lived store of rendered preview docs, so they can be served (via a token
   // URL) under a `Content-Security-Policy: sandbox` for true WYSIWYG interactivity.
@@ -1362,12 +1378,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         forms: previewForms,
         formEndpoint: (formId) => `/f/${project.id}/${formId}`,
         ...(previewHcaptchaSiteKey ? { hcaptchaSiteKey: previewHcaptchaSiteKey } : {}),
+        // Images AND self-hosted fonts (kind:'font' assets in `media`) resolve through one URL —
+        // their `@font-face` loads from the media route (never a font CDN).
         mediaUrl: (asset, file) => `/media/${project.id}/${asset.id}/${file}`,
-        // Self-hosted fonts: the preview loads them locally (never Google) via the project-scoped
-        // serve route, which resolves BOTH uploaded (project store) + google (instance cache) fonts.
-        // Only wire the resolver when the /fonts route exists (fontStore configured) — otherwise the
-        // @font-face urls would 404; mirrors the publish guard (no fontStore → no fonts emitted).
-        ...(fontStore ? { fontUrl: (fontId: string, file: string) => `/projects/${project.id}/fonts/${fontId}/${file}` } : {}),
         inlineStyles: inlineStyles.length > 0 ? inlineStyles : undefined,
         inlineScripts: ((): string[] | undefined => {
           const js = [
@@ -1542,9 +1555,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       }
     }
 
+    // Store a self-hosted FONT family (kind 'font') — used by the local upload + Google select routes.
+    const createFontAsset = (ctx: ProjectContext, projectId: string, input: Parameters<typeof storeFontAsset>[4]) =>
+      storeFontAsset(contentRepo, storage, ctx, projectId, input);
+
     // Upload ANY file: images are optimized (AVIF/WebP/LQIP); everything else is stored as-is
     // (download-only). The optional `?folder=` query files the asset under a virtual folder.
-    app.post<{ Params: { projectId: string }; Querystring: { folder?: string } }>(
+    app.post<{ Params: { projectId: string }; Querystring: { folder?: string; family?: string; weight?: string; style?: string; fallback?: string } }>(
       '/projects/:projectId/media',
       { config: rl(30) },
       async (req, reply) => {
@@ -1584,6 +1601,32 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             return reply.code(201).send({ item: saved });
           } catch (err) {
             if (err instanceof MediaValidationError) return reply.code(400).send({ error: err.message });
+            throw err;
+          }
+        }
+        // A real font (by magic bytes) → a `kind:'font'` asset. The font picker sends family/weight/
+        // style/fallback as query params; a generic drop falls back to sensible, editable defaults.
+        const format = detectFontFormat(buffer);
+        if (format) {
+          if (buffer.length > MAX_FONT_BYTES) return reply.code(413).send({ error: 'file exceeds size limit' });
+          const fontMeta = FontUploadMeta.safeParse({
+            family: req.query.family ?? meta.filename.replace(/\.[^.]+$/, ''),
+            weight: req.query.weight,
+            style: req.query.style,
+            fallback: req.query.fallback,
+          });
+          if (!fontMeta.success) return reply.code(400).send({ error: 'invalid font metadata' });
+          try {
+            const saved = await createFontAsset(ctx, project.id, {
+              family: fontMeta.data.family,
+              fallback: fontMeta.data.fallback,
+              source: 'local',
+              folder,
+              faces: [{ weight: fontMeta.data.weight, style: fontMeta.data.style, format, bytes: buffer }],
+            });
+            return reply.code(201).send({ item: saved });
+          } catch (err) {
+            if (err instanceof z.ZodError) return reply.code(400).send({ error: 'invalid font' });
             throw err;
           }
         }
@@ -1668,11 +1711,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       rl,
     });
 
-    app.get<{ Params: { projectId: string } }>(
+    app.get<{ Params: { projectId: string }; Querystring: { kind?: string } }>(
       '/projects/:projectId/media',
       async (req, reply) => {
         const { ctx } = await resolveProject(req, 'content:read');
-        return reply.send({ items: await contentRepo.list(ctx, 'media') });
+        const items = (await contentRepo.list(ctx, 'media')) as MediaAsset[];
+        // Optional `?kind=image|file|font` filter (e.g. the font picker only needs fonts).
+        const kind = req.query.kind;
+        return reply.send({ items: kind ? items.filter((a) => a.kind === kind) : items });
       },
     );
 
@@ -1720,7 +1766,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const url =
         asset.kind === 'image'
           ? `/media/${projectId}/${newId}/${asset.fallback}`
-          : `/media/${projectId}/${newId}/file/${asset.storedName}`;
+          : asset.kind === 'font'
+            ? `/media/${projectId}/${newId}/${asset.files[0]!.file}`
+            : `/media/${projectId}/${newId}/file/${asset.storedName}`;
       const copy = { ...asset, id: newId, folder, url } as MediaAsset;
       return (await contentRepo.put(ctx, 'media', newId, copy)) as MediaAsset;
     };
@@ -1866,13 +1914,30 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       '/media/:projectId/:assetId/:file',
       async (req, reply) => {
         const { projectId, assetId, file } = req.params;
+        const ext = file.split('.').pop() ?? '';
+        // A `kind:'font'` face is served INLINE (font/* + nosniff + CORS) so a sandboxed (opaque-
+        // origin) preview iframe can load it via `@font-face`; fonts are public, immutable binaries.
+        if (FONT_FACE_FILE.test(file)) {
+          let bytes: Buffer;
+          try {
+            bytes = await storage.readStored(projectId, assetId, file);
+          } catch {
+            return reply.code(404).send({ error: 'not found' });
+          }
+          return reply
+            .header('cache-control', 'public, max-age=31536000, immutable')
+            .header('x-content-type-options', 'nosniff')
+            .header('access-control-allow-origin', '*')
+            .header('cross-origin-resource-policy', 'cross-origin')
+            .type(FONT_CONTENT_TYPES.get(ext) ?? 'font/woff2')
+            .send(bytes);
+        }
         let bytes: Buffer;
         try {
           bytes = await storage.read(projectId, assetId, file);
         } catch {
           return reply.code(404).send({ error: 'not found' });
         }
-        const ext = file.split('.').pop() ?? '';
         const type = MEDIA_CONTENT_TYPES.get(ext) ?? 'application/octet-stream';
         return reply
           .header('cache-control', 'public, max-age=31536000, immutable')
@@ -1949,10 +2014,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             translations,
             forms,
           };
+          // `media` includes `kind:'font'` assets — copyMedia bundles their faces, so a published
+          // page self-hosts its fonts (zero font-CDN references) via the normal media path.
           const media = mediaStorage ? ((await contentRepo.list(ctx, 'media')) as MediaAsset[]) : [];
-          // Self-hosted fonts the project bundles (from its typography slots) — copied into the
-          // artifact so the export carries its own woff2 and never references Google.
-          const fonts = fontStore ? (bundle.project.identity.typography?.fonts ?? []) : [];
           // Instance hCaptcha site key (public) — baked into forms that require it.
           const hcaptchaSiteKey = (await instanceSettingsRepo.getStored()).hcaptcha?.siteKey;
           // Publish-time JSON snapshot: fetch + parse `website.jsonDataUrl` in THIS (networked) process
@@ -1983,22 +2047,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             ...(hcaptchaSiteKey ? { hcaptchaSiteKey } : {}),
             ...(jsonData !== undefined ? { jsonData } : {}),
             ...(Object.keys(snippets).length ? { snippets } : {}),
-            // readStored accepts both image variant names AND raw file names (superset),
-            // so file-kind assets are copied into the published artifact too.
+            // readStored accepts image variant names, raw file names, AND font face names (superset),
+            // so image/file/font assets are all copied into the published artifact.
             readMedia: mediaStorage
               ? (assetId, file) => mediaStorage.readStored(project.id, assetId, file)
               : undefined,
-            ...(fonts.length ? { fonts } : {}),
-            // Source-aware read: uploaded fonts come from the PROJECT store, google fonts from the
-            // instance cache — so copyFonts bundles each from the right place into _assets/_fonts.
-            readFont:
-              fontStore && projectFontStore
-                ? (fontId, file) =>
-                    (fonts.find((f) => f.id === fontId)?.source === 'local' ? projectFontStore(project.id) : fontStore).read(
-                      fontId,
-                      file,
-                    )
-                : undefined,
           });
           // Just published → nothing newer than this release, so the site is not dirty.
           return reply.send({ release, url: `/sites/${project.slug}/`, dirty: false });
@@ -2154,21 +2207,39 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     });
   }
 
-  // Web forms: the public submission endpoint (/f/:projectId/:formId) + the
-  // authenticated submissions inbox. Always registered (no secret/key dependency).
-  // Google Fonts self-hosting (download → instance cache → serve locally). Public woff2 serving
-  // + the per-project select endpoint; the published site bundles its used fonts, so neither the
-  // preview nor a published page ever loads from Google.
-  if (fontStore && projectFontStore) {
-    registerFontRoutes(app, {
-      resolveProject,
-      isWriter: (ctx) => WRITE_ROLES.has(ctx.role),
-      fontStore,
-      projectFontStore,
-      rl,
+  // Google Fonts: download a family's weights server-side (the only Google contact) and self-host
+  // them as a `kind:'font'` library asset; the editor adds a slot referencing it. The published
+  // site then bundles the font like any media, so neither preview nor a published page loads Google.
+  if (mediaStorage) {
+    const SelectFontBody = z.object({
+      family: FontFamilyNameSchema,
+      weights: z.array(FontWeightSchema).min(1).max(FONT_WEIGHTS.length),
+      folder: MediaFolderSchema.optional(),
+    });
+    app.post<{ Params: { projectId: string } }>('/projects/:projectId/fonts/select', { config: rl(20) }, async (req, reply) => {
+      const { ctx, project } = await resolveProject(req, 'content:write');
+      if (!WRITE_ROLES.has(ctx.role)) return reply.code(403).send({ error: 'insufficient role for this operation' });
+      const parsed = SelectFontBody.safeParse(req.body);
+      if (!parsed.success) return reply.code(400).send({ error: 'invalid request' });
+      try {
+        const dl = await downloadGoogleFont(parsed.data.family, parsed.data.weights);
+        const item = await storeFontAsset(contentRepo, mediaStorage, ctx, project.id, {
+          family: dl.family,
+          fallback: dl.fallback,
+          source: 'google',
+          folder: parsed.data.folder ?? '',
+          faces: dl.faces.map((f) => ({ weight: f.weight, style: f.style, format: f.format, bytes: f.bytes })),
+        });
+        return reply.send({ item });
+      } catch (err) {
+        if (err instanceof FontFetchError) return reply.code(400).send({ error: err.message });
+        throw err;
+      }
     });
   }
 
+  // Web forms: the public submission endpoint (/f/:projectId/:formId) + the
+  // authenticated submissions inbox. Always registered (no secret/key dependency).
   registerFormRoutes(app, {
     db,
     submissions: submissionsRepo,

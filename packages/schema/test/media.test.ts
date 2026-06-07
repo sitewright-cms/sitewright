@@ -1,5 +1,17 @@
 import { describe, it, expect } from 'vitest';
-import { MediaAssetSchema, ImageAssetSchema, FileAssetSchema } from '../src/media.js';
+import { MediaAssetSchema, ImageAssetSchema, FileAssetSchema, FontAssetSchema } from '../src/media.js';
+
+const fontBase = {
+  kind: 'font' as const,
+  id: 'fa1b2c3d',
+  filename: 'Playfair Display',
+  bytes: 23000,
+  family: 'Playfair Display',
+  fallback: 'serif' as const,
+  source: 'google' as const,
+  files: [{ weight: 400 as const, format: 'woff2' as const, file: '400.woff2' }, { weight: 700 as const, format: 'woff2' as const, file: '700.woff2' }],
+  url: '/media/proj1/fa1b2c3d/400.woff2',
+};
 
 const imageBase = {
   kind: 'image' as const,
@@ -56,6 +68,22 @@ describe('MediaAssetSchema (image | file discriminated union)', () => {
   it('rejects a stored file name with path separators', () => {
     expect(() => FileAssetSchema.parse({ ...fileBase, storedName: 'a/b.pdf' })).toThrow();
     expect(() => FileAssetSchema.parse({ ...fileBase, storedName: '../b.pdf' })).toThrow();
+  });
+
+  it('parses a font asset (family + files) in the union', () => {
+    const a = MediaAssetSchema.parse({ ...fontBase, folder: 'Brand' });
+    expect(a.kind).toBe('font');
+    if (a.kind === 'font') {
+      expect(a.family).toBe('Playfair Display');
+      expect(a.files).toHaveLength(2);
+      expect(a.files[0]).toEqual({ weight: 400, style: 'normal', format: 'woff2', file: '400.woff2' });
+    }
+  });
+
+  it('rejects a font url that is not a self-hosted face path, and a non-font fallback', () => {
+    expect(() => FontAssetSchema.parse({ ...fontBase, url: '/media/proj1/fa1b2c3d/file/x.pdf' })).toThrow();
+    expect(() => FontAssetSchema.parse({ ...fontBase, fallback: 'fantasy' })).toThrow();
+    expect(() => FontAssetSchema.parse({ ...fontBase, files: [] })).toThrow();
   });
 
   it('rejects an unknown kind', () => {

@@ -1,11 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { FontSlotForm } from './model';
-import type { SelfHostedFont } from '../../api';
+import type { MediaAsset } from '../../api';
 import { fieldLabel, glassInput, ghostButton } from '../../theme';
-import { GoogleFontsPicker } from './GoogleFontsPicker';
-import { LocalFontUploader } from './LocalFontUploader';
+import { FontPicker } from './FontPicker';
 
-/** Generic system families a slot can pick (no fetching needed; previews via the CSS generic). */
+/** Generic system families a slot can pick (no asset needed; previews via the CSS generic). */
 const SYSTEM_FAMILIES: Array<{ value: string; label: string }> = [
   { value: 'sans-serif', label: 'Sans-serif' },
   { value: 'serif', label: 'Serif' },
@@ -25,14 +24,12 @@ const WEIGHTS: Array<{ value: number; label: string }> = [
 ];
 
 const selectClass = `${glassInput} cursor-pointer`;
-/** `@font-face` `format()` hint per stored container — mirrors the renderer (typography-css). */
 const FORMAT_HINT: Record<string, string> = { woff2: 'woff2', woff: 'woff', ttf: 'truetype', otf: 'opentype' };
 
 /**
  * Editor for one typography slot (heading, body, or a custom named slot): a family picker + weight
- * selector with a live sample. The family can be a system generic, a Google webfont (Browse), or a
- * locally-uploaded font (Upload) — the latter two are self-hosted (`source: 'google' | 'local'` + a
- * `fontId`), and the sample renders in the actual face via an injected `@font-face`.
+ * selector with a live sample. The family is either a system generic or a self-hosted font from the
+ * library (`source: 'asset'` + an `assetId`) chosen via {@link FontPicker} (Library / Google / Upload).
  */
 export function FontSlotEditor({
   label,
@@ -45,46 +42,47 @@ export function FontSlotEditor({
   label: string;
   slot: FontSlotForm;
   onChange: (slot: FontSlotForm) => void;
-  /** Project id for the Google download / local upload endpoints + the preview font URL. */
+  /** Project id for the font picker. */
   projectId: string;
-  /** The project's self-hosted font records (used to render the slot's @font-face preview). */
-  fonts: SelfHostedFont[];
-  /** Registers a downloaded/uploaded self-hosted font on the form (added to `typography.fonts`). */
-  onAddFont: (font: SelfHostedFont) => void;
+  /** The project's `kind:'font'` library assets (used to render the slot's @font-face preview). */
+  fonts: MediaAsset[];
+  /** Registers a newly added/downloaded/uploaded font asset (so the preview can resolve it). */
+  onAddFont: (asset: MediaAsset) => void;
 }) {
   const [picking, setPicking] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  // Memoize so the @font-face effect below depends on a STABLE reference (a bare `fonts.find` returns
+  // a new object every render → the effect would re-inject the <style> on every keystroke).
+  const asset = useMemo(
+    () => (slot.source === 'asset' && slot.assetId ? fonts.find((f) => f.id === slot.assetId) : undefined),
+    [slot.source, slot.assetId, fonts],
+  );
 
-  // A self-hosted slot (google/local) renders the sample in its real face — inject the record's
-  // @font-face(s), served project-scoped (the preview route resolves both local + google fonts).
+  // An asset slot renders the sample in its real face — inject the asset's @font-face(s) from the
+  // media URL (which the preview route serves inline + the published export self-hosts).
   useEffect(() => {
-    if ((slot.source !== 'google' && slot.source !== 'local') || !slot.fontId) return;
-    const font = fonts.find((f) => f.id === slot.fontId);
-    if (!font) return;
-    const css = font.files
+    if (!asset || asset.kind !== 'font') return;
+    const css = asset.files
       .map(
         (f) =>
-          `@font-face{font-family:"${font.family}";font-style:${f.style};font-weight:${f.weight};font-display:swap;` +
-          `src:url(/projects/${projectId}/fonts/${font.id}/${f.file}) format("${FORMAT_HINT[f.format] ?? 'woff2'}")}`,
+          `@font-face{font-family:"${asset.family}";font-style:${f.style};font-weight:${f.weight};font-display:swap;` +
+          `src:url(/media/${projectId}/${asset.id}/${f.file}) format("${FORMAT_HINT[f.format] ?? 'woff2'}")}`,
       )
       .join('');
     const style = document.createElement('style');
     style.textContent = css;
     document.head.appendChild(style);
     return () => style.remove();
-  }, [slot.source, slot.fontId, fonts, projectId]);
+  }, [asset, projectId]);
 
-  const isSelfHosted = slot.source === 'google' || slot.source === 'local';
-  // For a self-hosted slot the family is the chosen webfont name; for system it's a generic keyword.
-  const previewFamily = isSelfHosted ? `'${slot.family}', sans-serif` : slot.family;
-  const sourceTag = slot.source === 'google' ? 'Google' : slot.source === 'local' ? 'Upload' : '';
+  const isAsset = slot.source === 'asset';
+  const previewFamily = isAsset ? `'${slot.family}', sans-serif` : slot.family;
   return (
     <div className="rounded-xl border border-white/60 bg-white/50 p-3">
       <div className="mb-2 flex items-baseline justify-between">
         <span className={fieldLabel} style={{ margin: 0 }}>{label}</span>
-        {isSelfHosted && (
+        {isAsset && (
           <span className="rounded-full bg-indigo-100/80 px-2 py-0.5 text-[10px] font-semibold uppercase text-indigo-700">
-            {slot.family} · {sourceTag}
+            {slot.family}
           </span>
         )}
       </div>
@@ -94,12 +92,10 @@ export function FontSlotEditor({
           <select
             aria-label={`${label} family`}
             className={selectClass}
-            value={slot.source === 'system' ? slot.family : slot.source === 'google' ? '__google__' : '__local__'}
+            value={isAsset ? '__asset__' : slot.family}
             onChange={(e) => {
-              // Switching to a system family resets the slot to system (drops any self-hosted fontId).
-              if (e.target.value !== '__google__' && e.target.value !== '__local__') {
-                onChange({ source: 'system', family: e.target.value, weight: slot.weight });
-              }
+              // Switching to a system family resets the slot to system (drops any asset reference).
+              if (e.target.value !== '__asset__') onChange({ source: 'system', family: e.target.value, weight: slot.weight });
             }}
           >
             {SYSTEM_FAMILIES.map((f) => (
@@ -108,11 +104,10 @@ export function FontSlotEditor({
               </option>
             ))}
             {/* A custom system family set via CLI/MCP (e.g. `cursive`) stays selectable. */}
-            {slot.source === 'system' && !SYSTEM_FAMILIES.some((f) => f.value === slot.family) && (
+            {!isAsset && !SYSTEM_FAMILIES.some((f) => f.value === slot.family) && (
               <option value={slot.family}>{slot.family} (custom)</option>
             )}
-            {slot.source === 'google' && <option value="__google__">{slot.family} (Google)</option>}
-            {slot.source === 'local' && <option value="__local__">{slot.family} (Upload)</option>}
+            {isAsset && <option value="__asset__">{slot.family} (library)</option>}
           </select>
         </label>
         <label className="block">
@@ -138,44 +133,25 @@ export function FontSlotEditor({
       >
         The quick brown fox jumps
       </p>
-      <div className="mt-2 flex flex-wrap gap-2">
+      <div className="mt-2">
         <button
           type="button"
-          aria-label={`Browse Google Fonts for the ${label.toLowerCase()}`}
+          aria-label={`Choose a font for the ${label.toLowerCase()}`}
           className={`${ghostButton} whitespace-nowrap px-2.5 py-1 text-xs`}
           onClick={() => setPicking(true)}
         >
-          Browse Google Fonts
-        </button>
-        <button
-          type="button"
-          aria-label={`Upload a font for the ${label.toLowerCase()}`}
-          className={`${ghostButton} whitespace-nowrap px-2.5 py-1 text-xs`}
-          onClick={() => setUploading(true)}
-        >
-          Upload font
+          Choose font…
         </button>
       </div>
       {picking && (
-        <GoogleFontsPicker
-          projectId={projectId}
-          slotLabel={label.toLowerCase()}
-          onClose={() => setPicking(false)}
-          onSelected={(font, weight) => {
-            onAddFont(font);
-            onChange({ source: 'google', family: font.family, weight, fontId: font.id });
-          }}
-        />
-      )}
-      {uploading && (
-        <LocalFontUploader
+        <FontPicker
           projectId={projectId}
           slotLabel={label.toLowerCase()}
           defaultWeight={slot.weight}
-          onClose={() => setUploading(false)}
-          onSelected={(font, weight) => {
-            onAddFont(font);
-            onChange({ source: 'local', family: font.family, weight, fontId: font.id });
+          onClose={() => setPicking(false)}
+          onPick={(picked, weight) => {
+            onAddFont(picked);
+            onChange({ source: 'asset', family: picked.kind === 'font' ? picked.family : slot.family, weight, assetId: picked.id });
           }}
         />
       )}

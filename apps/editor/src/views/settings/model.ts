@@ -1,4 +1,4 @@
-import type { CorporateIdentity, SelfHostedFont, SettingsBundle, WebsiteSettings } from '../../api';
+import type { CorporateIdentity, SettingsBundle, WebsiteSettings } from '../../api';
 
 /** Updater passed to the section components. */
 export type Patch = (p: Partial<SettingsForm>) => void;
@@ -23,10 +23,11 @@ export interface KeyedRedirect {
 
 /** A typography slot (heading/body/custom) as edited in the form — mirrors schema `FontSlot`. */
 export interface FontSlotForm {
-  source: 'system' | 'google' | 'local';
+  source: 'system' | 'asset';
   family: string;
   weight: number;
-  fontId?: string;
+  /** For `source: 'asset'`: the `kind:'font'` media asset id. */
+  assetId?: string;
 }
 /** A custom named slot row → a `font-<name>` utility. `name` is a CSS-ident slug. */
 export interface NamedSlotForm {
@@ -75,7 +76,6 @@ export interface SettingsForm {
   heading: FontSlotForm;
   body: FontSlotForm;
   named: NamedSlotForm[];
-  selfHostedFonts: SelfHostedFont[];
   // website
   siteUrl: string;
   jsonDataUrl: string;
@@ -115,12 +115,12 @@ const pairsToRecord = (pairs: KeyedPair[]): Record<string, string> => {
   return out;
 };
 
-/** Normalizes a font slot for persistence — non-empty family, `fontId` only for self-hosted slots. */
+/** Normalizes a font slot for persistence — non-empty family, `assetId` only for `asset` slots. */
 const cleanSlot = (s: FontSlotForm): FontSlotForm => ({
   source: s.source,
   family: s.family.trim() || 'sans-serif',
   weight: s.weight,
-  ...((s.source === 'google' || s.source === 'local') && s.fontId ? { fontId: s.fontId } : {}),
+  ...(s.source === 'asset' && s.assetId ? { assetId: s.assetId } : {}),
 });
 
 /**
@@ -129,7 +129,7 @@ const cleanSlot = (s: FontSlotForm): FontSlotForm => ({
  * fontId-less default constant. Always call as `slotEqual(form.slot, DEFAULT_x)`.
  */
 const slotEqual = (a: FontSlotForm, b: FontSlotForm): boolean =>
-  a.source === b.source && a.family.trim() === b.family && a.weight === b.weight && !a.fontId;
+  a.source === b.source && a.family.trim() === b.family && a.weight === b.weight && !a.assetId;
 
 /** Hydrate the editable form from a settings bundle (empties for absent optionals). */
 export function toForm(bundle: SettingsBundle): SettingsForm {
@@ -161,7 +161,6 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
     heading: { ...DEFAULT_HEADING, ...id.typography?.heading },
     body: { ...DEFAULT_BODY, ...id.typography?.body },
     named: Object.entries(id.typography?.named ?? {}).map(([name, slot]) => ({ id: rowId(), name, slot: { ...slot } })),
-    selfHostedFonts: id.typography?.fonts ?? [],
     siteUrl: w?.siteUrl ?? '',
     jsonDataUrl: w?.jsonDataUrl ?? '',
     criticalCss: w?.criticalCss ?? '',
@@ -234,22 +233,16 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
     // eslint-disable-next-line security/detect-object-injection -- k is a user slot name, guarded above, written to a fresh local object only
     named[k] = cleanSlot(slot);
   }
-  // Keep only self-hosted fonts SOME slot (built-in or named) actually references (drop orphans).
-  const referenced = new Set(
-    [form.heading, form.body, ...form.named.map((n) => n.slot)]
-      .filter((s) => (s.source === 'google' || s.source === 'local') && s.fontId)
-      .map((s) => s.fontId),
-  );
-  const selfHostedFonts = form.selfHostedFonts.filter((f) => referenced.has(f.id));
   const hasNamed = Object.keys(named).length > 0;
-  if (Object.keys(fonts).length || scale || heading || body || hasNamed || selfHostedFonts.length) {
+  // Self-hosted fonts are media assets now (referenced by a slot's `assetId`) — nothing to persist
+  // here; an `asset` slot whose font was deleted from the library degrades to the family name.
+  if (Object.keys(fonts).length || scale || heading || body || hasNamed) {
     identity = put(identity, 'typography', {
       fontFamilies: fonts,
       ...(scale ? { scale } : {}),
       ...(heading ? { heading } : {}),
       ...(body ? { body } : {}),
       ...(hasNamed ? { named } : {}),
-      ...(selfHostedFonts.length ? { fonts: selfHostedFonts } : {}),
     });
   }
   // Carry through token/asset fields the form doesn't expose.

@@ -575,20 +575,28 @@ describe('buildSite', () => {
     await expect(readFile(join(outDir, 'media', 'a3', 'a3-10.jpg'), 'utf8')).rejects.toBeTruthy();
   });
 
-  it('bundles google + LOCAL self-hosted fonts into _assets/_fonts with the right format() (never Google)', async () => {
+  it('bundles a kind:font asset via copyMedia + emits @font-face at the media path (never Google)', async () => {
+    // A self-hosted font is just a media asset (kind 'font'); a typography slot references it by id.
+    const fontAsset = {
+      kind: 'font' as const,
+      id: 'fa-boombox',
+      filename: 'Boombox',
+      folder: 'Brand',
+      bytes: 6,
+      family: 'Boombox',
+      fallback: 'sans-serif' as const,
+      source: 'local' as const,
+      files: [{ weight: 400 as const, style: 'normal' as const, format: 'ttf' as const, file: '400.ttf' }],
+      url: '/media/p/fa-boombox/400.ttf',
+    };
     const reads: string[] = [];
     await buildSite({
       publishedAt: '2026-05-30T00:00:00.000Z',
       outDir,
-      // playfair 400 has no cached file (readFont ENOENT) → tolerated; playfair 700 + the local ttf bundle.
-      fonts: [
-        { id: 'playfair-display', family: 'Playfair Display', fallback: 'serif', source: 'google', files: [{ weight: 400, style: 'normal', format: 'woff2', file: '400.woff2' }, { weight: 700, style: 'normal', format: 'woff2', file: '700.woff2' }] },
-        { id: 'up-ab12cd34', family: 'Boombox', fallback: 'sans-serif', source: 'local', files: [{ weight: 400, style: 'normal', format: 'ttf', file: '400.ttf' }] },
-      ],
-      readFont: async (fontId, file) => {
-        reads.push(`${fontId}/${file}`);
-        if (fontId === 'playfair-display' && file === '700.woff2') return Buffer.from('WOFF2-700');
-        if (fontId === 'up-ab12cd34' && file === '400.ttf') return Buffer.from('TTF-400');
+      media: [fontAsset],
+      readMedia: async (assetId, file) => {
+        reads.push(`${assetId}/${file}`);
+        if (assetId === 'fa-boombox' && file === '400.ttf') return Buffer.from('TTFBYT');
         const err = new Error('missing') as NodeJS.ErrnoException;
         err.code = 'ENOENT';
         throw err;
@@ -600,12 +608,7 @@ describe('buildSite', () => {
             name: 'Acme', colors: { primary: '#0a7' },
             typography: {
               fontFamilies: {},
-              heading: { source: 'google', family: 'Playfair Display', weight: 700, fontId: 'playfair-display' },
-              body: { source: 'local', family: 'Boombox', weight: 400, fontId: 'up-ab12cd34' },
-              fonts: [
-                { id: 'playfair-display', family: 'Playfair Display', fallback: 'serif', source: 'google', files: [{ weight: 400, style: 'normal', format: 'woff2', file: '400.woff2' }, { weight: 700, style: 'normal', format: 'woff2', file: '700.woff2' }] },
-                { id: 'up-ab12cd34', family: 'Boombox', fallback: 'sans-serif', source: 'local', files: [{ weight: 400, style: 'normal', format: 'ttf', file: '400.ttf' }] },
-              ],
+              heading: { source: 'asset', family: 'Boombox', weight: 400, assetId: 'fa-boombox' },
             },
           },
           settings: { defaultLocale: 'en', locales: ['en'] },
@@ -614,19 +617,15 @@ describe('buildSite', () => {
       }),
     });
 
-    // Both fonts' files copied into the portable _assets/_fonts tree.
-    expect((await readFile(join(outDir, '_assets', '_fonts', 'playfair-display', '700.woff2'))).toString()).toBe('WOFF2-700');
-    expect((await readFile(join(outDir, '_assets', '_fonts', 'up-ab12cd34', '400.ttf'))).toString()).toBe('TTF-400');
-    // The missing google weight (ENOENT) was attempted but tolerated — no file, no thrown build error.
-    expect(reads).toContain('playfair-display/400.woff2');
-    await expect(readFile(join(outDir, '_assets', '_fonts', 'playfair-display', '400.woff2'))).rejects.toBeTruthy();
+    // The font's face is bundled flat under _assets/<assetId>/ (like an image), via copyMedia.
+    expect(reads).toContain('fa-boombox/400.ttf');
+    expect((await readFile(join(outDir, '_assets', 'fa-boombox', '400.ttf'))).toString()).toBe('TTFBYT');
 
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
-    // The inline @font-face points at the LOCAL bundled paths, page-relative — never Google — and the
-    // local ttf uses format("truetype").
+    // The inline @font-face points at the bundled media path, page-relative — never Google — ttf format.
     expect(home).toContain('@font-face');
-    expect(home).toContain('src:url(_assets/_fonts/playfair-display/700.woff2) format("woff2")');
-    expect(home).toContain('src:url(_assets/_fonts/up-ab12cd34/400.ttf) format("truetype")');
+    expect(home).toContain('src:url(_assets/fa-boombox/400.ttf) format("truetype")');
+    expect(home).toContain('--sw-font-heading:"Boombox", sans-serif');
     expect(home).not.toMatch(/fonts\.(googleapis|gstatic)\.com/);
   });
 

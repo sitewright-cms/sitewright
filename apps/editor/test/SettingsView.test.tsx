@@ -18,6 +18,8 @@ vi.mock('../src/api', () => ({
   api: {
     getSettings: (p: string) => getSettings(p),
     putSettings: (p: string, b: SettingsBundle) => putSettings(p, b),
+    // IdentitySection loads the project's font library assets on mount.
+    listMedia: () => Promise.resolve({ items: [] }),
   },
 }));
 

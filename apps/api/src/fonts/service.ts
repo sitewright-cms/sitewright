@@ -1,6 +1,12 @@
-import { googleFont, isGoogleFamily, familySlug } from '@sitewright/blocks/google-fonts-catalog';
-import { targetsPrivateHost, SelfHostedFontSchema, type SelfHostedFont } from '@sitewright/schema';
-import type { FontStore } from './store.js';
+import { googleFont, isGoogleFamily } from '@sitewright/blocks/google-fonts-catalog';
+import { targetsPrivateHost, FontFallbackSchema } from '@sitewright/schema';
+
+/** A downloaded Google webfont: the family + generic fallback + one woff2 face per weight. */
+export interface DownloadedFont {
+  family: string;
+  fallback: 'serif' | 'sans-serif' | 'monospace' | 'cursive';
+  faces: Array<{ weight: number; style: 'normal'; format: 'woff2'; bytes: Buffer }>;
+}
 
 // Self-hosting fetch for Google Fonts. The browser NEVER loads from Google on a preview/published
 // page — only this server-side path contacts Google, ONCE per family, to download the woff2 into
@@ -89,43 +95,30 @@ function css2Url(family: string, weights: number[]): string {
 }
 
 /**
- * Downloads + self-hosts the latin woff2 for a Google family's requested weights into the instance
- * cache, and returns the project-referencable {@link SelfHostedFont} record. The family MUST be in
- * the bundled catalog (a positive allowlist); weights are intersected with what the family offers.
+ * Downloads the latin woff2 for a Google family's requested weights and returns the bytes (the
+ * caller self-hosts them as a `kind:'font'` media asset). The family MUST be in the bundled catalog
+ * (a positive allowlist); weights are intersected with what the family offers.
  */
-export async function selectGoogleFont(store: FontStore, family: string, weights: readonly number[]): Promise<SelfHostedFont> {
+export async function downloadGoogleFont(family: string, weights: readonly number[]): Promise<DownloadedFont> {
   if (!isGoogleFamily(family)) throw new FontFetchError('unknown font family');
   const meta = googleFont(family)!;
   const wanted = [...new Set(weights)].filter((w) => meta.weights.includes(w)).sort((a, b) => a - b);
   if (wanted.length === 0) throw new FontFetchError('no available weights requested');
 
-  const id = familySlug(family);
   const { buffer: cssBuf } = await fetchGuarded(css2Url(meta.family, wanted), CSS_HOST, 'text/css,*/*', MAX_CSS_BYTES);
-  const faces = parseFaces(cssBuf.toString('utf8'));
+  const parsedFaces = parseFaces(cssBuf.toString('utf8'));
 
-  const stored: number[] = [];
+  const faces: DownloadedFont['faces'] = [];
   for (const w of wanted) {
-    if (await store.has(id, `${w}.woff2`)) {
-      stored.push(w);
-      continue;
-    }
     // Prefer the `latin` subset; fall back to the first face offered for the weight.
-    const face = faces.find((f) => f.weight === w && f.subset === 'latin') ?? faces.find((f) => f.weight === w);
+    const face = parsedFaces.find((f) => f.weight === w && f.subset === 'latin') ?? parsedFaces.find((f) => f.weight === w);
     if (!face) continue;
     const { buffer } = await fetchGuarded(face.url, FONT_HOST, 'font/woff2,*/*', MAX_WOFF2_BYTES);
-    await store.write(id, `${w}.woff2`, buffer);
-    stored.push(w);
+    faces.push({ weight: w, style: 'normal', format: 'woff2', bytes: buffer });
   }
-  if (stored.length === 0) throw new FontFetchError('no font files could be downloaded');
-  // Validate the record at download time rather than `as`-casting the catalog-derived values — a
-  // catalog that ever emits an out-of-enum fallback fails HERE (clearly) instead of on a later PUT.
-  const parsed = SelfHostedFontSchema.safeParse({
-    id,
-    family: meta.family,
-    fallback: meta.fallback,
-    source: 'google',
-    files: stored.map((w) => ({ weight: w, style: 'normal', format: 'woff2', file: `${w}.woff2` })),
-  });
-  if (!parsed.success) throw new FontFetchError('downloaded font failed validation');
-  return parsed.data;
+  if (faces.length === 0) throw new FontFetchError('no font files could be downloaded');
+  // Validate the catalog-derived fallback at the source (clear error here, not deep in createFontAsset).
+  const fallback = FontFallbackSchema.safeParse(meta.fallback);
+  if (!fallback.success) throw new FontFetchError('unsupported font fallback');
+  return { family: meta.family, fallback: fallback.data, faces };
 }

@@ -107,29 +107,20 @@ describe('settings model', () => {
     expect(back.identity.typography?.body).toBeUndefined(); // body still default → not written
   });
 
-  it('round-trips custom named slots and keeps a local font referenced by one', () => {
+  it('round-trips custom named slots — an asset slot keeps its assetId', () => {
     const f = toForm(empty());
-    f.selfHostedFonts = [{ id: 'up-1', family: 'Boombox', fallback: 'sans-serif', source: 'local', files: [{ weight: 800, style: 'normal', format: 'ttf', file: '800.ttf' }] }];
     f.named = [
-      { id: 'r1', name: 'boombox', slot: { source: 'local', family: 'Boombox', weight: 800, fontId: 'up-1' } },
+      { id: 'r1', name: 'boombox', slot: { source: 'asset', family: 'Boombox', weight: 800, assetId: 'fa-1' } },
       { id: 'r2', name: '', slot: { source: 'system', family: 'serif', weight: 400 } }, // empty name → dropped
     ];
     const typ = toBundle(f).identity.typography!;
-    expect(typ.named).toEqual({ boombox: { source: 'local', family: 'Boombox', weight: 800, fontId: 'up-1' } });
-    // The local font is referenced by the named slot, so it's kept (not pruned as an orphan).
-    expect(typ.fonts).toHaveLength(1);
-    expect(typ.fonts?.[0]?.id).toBe('up-1');
+    expect(typ.named).toEqual({ boombox: { source: 'asset', family: 'Boombox', weight: 800, assetId: 'fa-1' } });
 
-    // toForm restores the named slots from the record.
+    // toForm restores the named slots (incl. the asset reference) from the record.
     const reloaded = toForm({ identity: { name: 'X', colors: {}, typography: typ }, settings: { defaultLocale: 'en', locales: ['en'] } });
-    expect(reloaded.named.map((n) => ({ name: n.name, family: n.slot.family }))).toEqual([{ name: 'boombox', family: 'Boombox' }]);
-  });
-
-  it('prunes a self-hosted font no slot references (orphan from an abandoned pick)', () => {
-    const f = toForm(empty());
-    f.selfHostedFonts = [{ id: 'up-orphan', family: 'Ghost', fallback: 'serif', source: 'local', files: [{ weight: 400, style: 'normal', format: 'woff2', file: '400.woff2' }] }];
-    // No slot points at it → dropped, and with nothing else set, typography stays undefined.
-    expect(toBundle(f).identity.typography).toBeUndefined();
+    expect(reloaded.named.map((n) => ({ name: n.name, family: n.slot.family, assetId: n.slot.assetId }))).toEqual([
+      { name: 'boombox', family: 'Boombox', assetId: 'fa-1' },
+    ]);
   });
 
   it('only emits geo when both latitude and longitude are present', () => {

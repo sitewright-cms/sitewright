@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { CorporateIdentitySchema, FontSlotSchema, SelfHostedFontSchema } from '../src/corporate-identity.js';
+import { CorporateIdentitySchema, FontSlotSchema } from '../src/corporate-identity.js';
 import { legacyToIdentity, mergeLegacyIdentity } from '../src/migrate-identity.js';
 import { BrandSchema } from '../src/brand.js';
 import { CompanySchema } from '../src/company.js';
@@ -143,72 +143,23 @@ describe('FontSlotSchema', () => {
     expect(slot).toEqual({ source: 'system', family: 'serif', weight: 700 });
   });
 
-  it('accepts a google slot (with fontId) and a family name containing an apostrophe', () => {
-    const slot = FontSlotSchema.parse({ source: 'google', family: "It's Display", weight: 400, fontId: 'it-s-display' });
-    expect(slot.fontId).toBe('it-s-display');
+  it('accepts an asset slot (font in the library) with its assetId', () => {
+    const slot = FontSlotSchema.parse({ source: 'asset', family: "It's Display", weight: 400, assetId: 'asset-123' });
+    expect(slot).toEqual({ source: 'asset', family: "It's Display", weight: 400, assetId: 'asset-123' });
+  });
+
+  it('degrades a legacy google/local slot (or an asset slot missing its id) to a system family', () => {
+    expect(FontSlotSchema.parse({ source: 'google', family: 'Playfair Display', weight: 700, fontId: 'playfair-display' }))
+      .toEqual({ source: 'system', family: 'Playfair Display', weight: 700 });
+    expect(FontSlotSchema.parse({ source: 'local', family: 'Boombox', weight: 400 }))
+      .toEqual({ source: 'system', family: 'Boombox', weight: 400 });
+    expect(FontSlotSchema.parse({ source: 'asset', family: 'X', weight: 400 }))
+      .toEqual({ source: 'system', family: 'X', weight: 400 });
   });
 
   it('rejects an off-scale weight and a family that could break out of CSS', () => {
     expect(() => FontSlotSchema.parse({ family: 'serif', weight: 450 })).toThrow();
     expect(() => FontSlotSchema.parse({ family: 'serif"}', weight: 400 })).toThrow();
-  });
-});
-
-describe('SelfHostedFontSchema', () => {
-  it('normalizes the legacy `weights` shape (#123) into google `files`', () => {
-    const font = SelfHostedFontSchema.parse({ id: 'playfair-display', family: 'Playfair Display', fallback: 'serif', weights: [400, 700] });
-    expect(font.source).toBe('google');
-    expect(font.files).toEqual([
-      { weight: 400, style: 'normal', format: 'woff2', file: '400.woff2' },
-      { weight: 700, style: 'normal', format: 'woff2', file: '700.woff2' },
-    ]);
-  });
-
-  it('prefers `files` over a stale legacy `weights` when both are present', () => {
-    const font = SelfHostedFontSchema.parse({
-      id: 'x', family: 'X', fallback: 'serif', source: 'google',
-      files: [{ weight: 700, format: 'woff2', file: '700.woff2' }],
-      weights: [400],
-    });
-    expect(font.files).toEqual([{ weight: 700, style: 'normal', format: 'woff2', file: '700.woff2' }]);
-  });
-
-  it('accepts a local font with multi-format files', () => {
-    const font = SelfHostedFontSchema.parse({
-      id: 'up-ab12cd34',
-      family: 'Boombox',
-      fallback: 'sans-serif',
-      source: 'local',
-      files: [
-        { weight: 400, format: 'ttf', file: '400.ttf' },
-        { weight: 700, style: 'italic', format: 'woff', file: '700-italic.woff' },
-      ],
-    });
-    expect(font.source).toBe('local');
-    expect(font.files[0]).toEqual({ weight: 400, style: 'normal', format: 'ttf', file: '400.ttf' });
-  });
-
-  it('rejects a fallback outside the generic enum', () => {
-    expect(() => SelfHostedFontSchema.parse({ id: 'x', family: 'X', fallback: 'fantasy', weights: [400] })).toThrow();
-  });
-
-  it('rejects a file name that disagrees with its format / is path-unsafe', () => {
-    expect(() => SelfHostedFontSchema.parse({ id: 'x', family: 'X', fallback: 'serif', source: 'local', files: [{ weight: 400, format: 'ttf', file: '../evil.ttf' }] })).toThrow();
-    expect(() => SelfHostedFontSchema.parse({ id: 'x', family: 'X', fallback: 'serif', source: 'local', files: [{ weight: 400, format: 'ttf', file: '400.exe' }] })).toThrow();
-  });
-
-  it('rejects duplicate faces (same weight+style+format)', () => {
-    expect(() =>
-      SelfHostedFontSchema.parse({ id: 'x', family: 'X', fallback: 'serif', source: 'local', files: [{ weight: 700, format: 'woff2', file: '700.woff2' }, { weight: 700, format: 'woff2', file: '700.woff2' }] }),
-    ).toThrow(/duplicate/);
-  });
-
-  it('rejects a font with no files', () => {
-    expect(() => SelfHostedFontSchema.parse({ id: 'x', family: 'X', fallback: 'serif', source: 'local', files: [] })).toThrow();
-  });
-
-  it('rejects a path-unsafe id', () => {
-    expect(() => SelfHostedFontSchema.parse({ id: '../etc', family: 'X', fallback: 'serif', weights: [400] })).toThrow();
   });
 });
 

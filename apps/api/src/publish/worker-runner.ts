@@ -1,7 +1,7 @@
 import { spawn as nodeSpawn, type ChildProcess, type SpawnOptions } from 'node:child_process';
 import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, resolve, sep } from 'node:path';
-import type { MediaAsset, SelfHostedFont } from '@sitewright/schema';
+import type { MediaAsset } from '@sitewright/schema';
 import type { BuildRunner, BuildJob } from './runner.js';
 import { PublishError, type ReleaseManifest } from './build.js';
 import type { WorkerJob, WorkerResult } from './build-worker.js';
@@ -105,8 +105,13 @@ export class WorkerBuildRunner implements BuildRunner {
     const out: Array<{ asset: MediaAsset; files: Record<string, string> }> = [];
     for (const asset of media) {
       const entries = new Map<string, string>();
+      // Every kind's stored files: image variants+fallback, a font's faces, or a raw file's blob.
       const names =
-        asset.kind === 'image' ? [asset.fallback, ...asset.variants.map((v) => v.path)] : [asset.storedName];
+        asset.kind === 'image'
+          ? [asset.fallback, ...asset.variants.map((v) => v.path)]
+          : asset.kind === 'font'
+            ? asset.files.map((f) => f.file)
+            : [asset.storedName];
       for (const name of names) {
         if (!job.readMedia) break;
         try {
@@ -117,25 +122,10 @@ export class WorkerBuildRunner implements BuildRunner {
       }
       out.push({ asset, files: Object.fromEntries(entries) });
     }
-    // Inline each self-hosted font's files (base64) so the worker bundles them too.
-    const fontsOut: Array<{ font: SelfHostedFont; files: Record<string, string> }> = [];
-    for (const font of job.fonts ?? []) {
-      const entries = new Map<string, string>();
-      for (const { file } of font.files) {
-        if (!job.readFont) break;
-        try {
-          entries.set(file, (await job.readFont(font.id, file)).toString('base64'));
-        } catch {
-          // A missing file is tolerable (that @font-face face just won't bundle).
-        }
-      }
-      fontsOut.push({ font, files: Object.fromEntries(entries) });
-    }
     return {
       bundle: job.bundle,
       publishedAt: job.publishedAt,
       media: out,
-      ...(fontsOut.length ? { fonts: fontsOut } : {}),
       jsonData: job.jsonData,
       snippets: job.snippets,
     };

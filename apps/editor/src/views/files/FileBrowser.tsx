@@ -37,10 +37,15 @@ function cleanSegment(name: string): string {
 
 /** A type filter for PICK mode: returns true for assets a field accepts. */
 export type AcceptFilter = (asset: MediaAsset) => boolean;
-/** Common accept filters (extended in PR2/PR3). */
+/** Common accept filters per field kind. */
 export const ACCEPT = {
   image: (a: MediaAsset) => a.kind === 'image',
+  font: (a: MediaAsset) => a.kind === 'font',
 };
+
+/** A short type label per asset kind (the list view's Type column). */
+const typeLabel = (m: MediaAsset): string =>
+  m.kind === 'image' ? m.format : m.kind === 'font' ? `font · ${m.files.length}` : m.contentType;
 
 // What's being dragged WITHIN the app (move). Held in a ref because dataTransfer can't be
 // read during dragover, and the desktop-file case is detected via dataTransfer.files.
@@ -416,7 +421,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
                     <span className="truncate">{m.filename}</span>
                   </button>
                 </td>
-                <td className="py-1.5 text-slate-400">{m.kind === 'image' ? m.format : m.contentType}</td>
+                <td className="py-1.5 text-slate-400">{typeLabel(m)}</td>
                 <td className="py-1.5 text-right text-slate-500">{formatBytes(m.bytes)}</td>
                 <td className="py-1.5">
                   <div className="flex justify-end gap-0.5">

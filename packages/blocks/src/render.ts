@@ -15,7 +15,7 @@ import { brandIcon } from './brand-icons.js';
 import { metaTags, schemaOrgJsonLd, type SeoMeta, type SchemaOrgInfo } from './head.js';
 import { brandToCss } from './brand-css.js';
 import { previewStyles } from './preview-css.js';
-import { typographyCss } from './typography-css.js';
+import { typographyCss, type FontAsset } from './typography-css.js';
 
 /** Context threaded through the tree while rendering. */
 export interface RenderContext {
@@ -33,12 +33,6 @@ export interface RenderContext {
    * so the exported artifact is self-contained and portable.
    */
   mediaUrl?: (asset: MediaAsset, file: string) => string;
-  /**
-   * Resolves a self-hosted font file's URL for `@font-face` — preview (`/fonts/<id>/<file>`)
-   * vs publish (`<root>_assets/_fonts/<id>/<file>`), so the published artifact is self-contained
-   * and never loads from Google.
-   */
-  fontUrl?: (fontId: string, file: string) => string;
   /**
    * Relative path from the current page to the site root (`''` home, `'../'` one
    * level deep, …). Internal root-relative links and asset paths are rebased onto
@@ -653,6 +647,15 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
   } = opts;
   const body = bodyHtml ?? renderPage(page, ctx);
   const css = `${previewStyles()}\n${brandToCss(brand)}`;
+  // Self-hosted fonts ride in `ctx.media` as `kind:'font'` assets; their `@font-face` urls reuse the
+  // media URL resolver (which the publish HTML-rewrite rebases to `_assets/<id>/<file>`).
+  const fontAssets = (ctx.media ?? []).filter((m): m is FontAsset => m.kind === 'font');
+  const fontUrl = ctx.mediaUrl
+    ? (assetId: string, file: string) => {
+        const a = fontAssets.find((f) => f.id === assetId);
+        return a ? ctx.mediaUrl!(a, file) : '';
+      }
+    : undefined;
   // `||` not `??`: an empty-string SEO title must fall back to the page title.
   const title = seo?.title || page.title;
   const meta = metaTags({ ...seo, title });
@@ -680,7 +683,7 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     // No `</style` neutralization needed (unlike inlineStyles): the output is built only from
     // hardcoded stacks + schema-validated weights + a regex-checked (no `<`) family name + the
     // app-controlled fontUrl (no `<`). @font-face urls point at LOCAL self-hosted woff2.
-    `<style>${typographyCss(brand?.typography, { fontUrl: ctx.fontUrl })}</style>\n` +
+    `<style>${typographyCss(brand?.typography, fontAssets, { fontUrl })}</style>\n` +
     `</head>\n` +
     // Skeleton slot order: TOP_NAV, MOBILE_NAV, [body], SIDEBAR_L, SIDEBAR_R, FOOTER, BOTTOM,
     // then SCRIPTS (the raw `website.scripts` slot — 3rd-party widgets), before the platform's

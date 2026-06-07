@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { IdSchema } from './primitives.js';
+import { FontFileSchema, FontFamilyNameSchema, FontFallbackSchema, FontSourceSchema } from './corporate-identity.js';
 
 // Optimized image variant file names (`<name>-<width>.<fmt>`) are pipeline-generated, never
 // user-controlled, so this constrains them to a safe charset for path + URL segments.
@@ -105,8 +106,34 @@ export const FileAssetSchema = z.object({
 });
 export type FileAsset = z.infer<typeof FileAssetSchema>;
 
-/** Any uploaded asset — an optimized image or a raw file — discriminated by `kind`. */
-export const MediaAssetSchema = z.discriminatedUnion('kind', [ImageAssetSchema, FileAssetSchema]);
+/**
+ * A self-hosted **font** family (kind `font`): the family name, a generic CSS `fallback`, its
+ * `source` (downloaded Google family or a local upload), and the stored `files` (one per weight×
+ * style). Served INLINE (`font/*` + nosniff + CORS) so `@font-face` can load it; bundled like any
+ * media into `_assets/<id>/<file>`. Typography slots reference a font asset by `id` + a weight.
+ */
+export const FontAssetSchema = z.object({
+  kind: z.literal('font'),
+  ...baseShape,
+  family: FontFamilyNameSchema,
+  fallback: FontFallbackSchema,
+  source: FontSourceSchema,
+  files: z
+    .array(FontFileSchema)
+    .min(1)
+    .max(18)
+    .refine((fs) => new Set(fs.map((x) => `${x.weight}-${x.style}-${x.format}`)).size === fs.length, 'duplicate font file'),
+  /** Root-relative URL of a representative file (the manager's download link). */
+  url: z
+    .string()
+    .min(1)
+    .max(2048)
+    .regex(/^\/media\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\/[1-9]00(-italic)?\.(woff2|woff|ttf|otf)$/),
+});
+export type FontAsset = z.infer<typeof FontAssetSchema>;
+
+/** Any uploaded asset — an optimized image, a raw file, or a self-hosted font — discriminated by `kind`. */
+export const MediaAssetSchema = z.discriminatedUnion('kind', [ImageAssetSchema, FileAssetSchema, FontAssetSchema]);
 export type MediaAsset = z.infer<typeof MediaAssetSchema>;
 
 /**

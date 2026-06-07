@@ -1,5 +1,6 @@
+import { useEffect, useState } from 'react';
 import type { Patch, SettingsForm } from './model';
-import type { SelfHostedFont } from '../../api';
+import { api, type MediaAsset } from '../../api';
 import { Field, GlassCard, SubLabel, TextArea } from './ui';
 import { TokenEditor } from './TokenEditor';
 import { StringListEditor } from './StringListEditor';
@@ -12,9 +13,22 @@ import { AssetField } from '../files/AssetField';
  * cards — Identity basics, Brand tokens, Logos & images, Contact & location, Social.
  */
 export function IdentitySection({ form, patch, projectId }: { form: SettingsForm; patch: Patch; projectId: string }) {
-  // Register a downloaded self-hosted font on the form (dedup by id).
-  const addFont = (font: SelfHostedFont) =>
-    patch({ selfHostedFonts: [...form.selfHostedFonts.filter((f) => f.id !== font.id), font] });
+  // The project's font library assets (kind 'font') — resolve the slots' @font-face previews + the
+  // family names. Loaded once; a newly added/uploaded font is merged in via `addFont`.
+  const [fontAssets, setFontAssets] = useState<MediaAsset[]>([]);
+  const [fontsError, setFontsError] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    setFontsError(false);
+    void api
+      .listMedia(projectId, 'font')
+      .then((r) => alive && setFontAssets(r.items.filter((a) => a.kind === 'font')))
+      .catch(() => alive && setFontsError(true));
+    return () => {
+      alive = false;
+    };
+  }, [projectId]);
+  const addFont = (font: MediaAsset) => setFontAssets((prev) => [...prev.filter((f) => f.id !== font.id), font]);
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       <GlassCard title="Identity" icon="◆">
@@ -54,13 +68,14 @@ export function IdentitySection({ form, patch, projectId }: { form: SettingsForm
           and <code className="rounded bg-slate-100 px-1 py-0.5">font-body</code> classes. Fonts can be a system family,
           a Google webfont, or your own uploaded file — all self-hosted (never loaded from a CDN on your site).
         </p>
+        {fontsError && <p className="mb-2 text-xs text-rose-500">Couldn’t load your font library. Saved slots still work; try reloading.</p>}
         <div className="grid gap-3 sm:grid-cols-2">
           <FontSlotEditor
             label="Heading font"
             slot={form.heading}
             onChange={(heading) => patch({ heading })}
             projectId={projectId}
-            fonts={form.selfHostedFonts}
+            fonts={fontAssets}
             onAddFont={addFont}
           />
           <FontSlotEditor
@@ -68,7 +83,7 @@ export function IdentitySection({ form, patch, projectId }: { form: SettingsForm
             slot={form.body}
             onChange={(body) => patch({ body })}
             projectId={projectId}
-            fonts={form.selfHostedFonts}
+            fonts={fontAssets}
             onAddFont={addFont}
           />
         </div>
@@ -80,7 +95,7 @@ export function IdentitySection({ form, patch, projectId }: { form: SettingsForm
           slots={form.named}
           onChange={(named) => patch({ named })}
           projectId={projectId}
-          fonts={form.selfHostedFonts}
+          fonts={fontAssets}
           onAddFont={addFont}
         />
       </GlassCard>

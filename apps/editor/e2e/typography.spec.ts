@@ -64,27 +64,28 @@ test('google fonts: pick a heading webfont, self-host on select, publish loads i
 
   await page.getByRole('tab', { name: 'Corporate Identity' }).click();
 
-  // Open the heading slot's Google-Fonts picker, search the bundled catalog, pick weight 700.
-  await page.getByRole('button', { name: 'Browse Google Fonts for the heading font' }).click();
-  await page.getByLabel('Search Google Fonts').fill('Playfair Display');
-  // The weight buttons are titled `Use <family> <weight>`; "Use Playfair Display 700" is unambiguous
-  // (not a substring of the "… SC 700" variant). Selecting it downloads + self-hosts server-side.
-  await page.getByTitle('Use Playfair Display 700').first().click();
+  // Open the heading slot's font picker → Google tab → search → pick weight 700 (downloads + self-hosts
+  // it as a kind:font library asset).
+  await page.getByRole('button', { name: 'Choose a font for the heading font' }).click();
+  const picker = page.getByRole('dialog', { name: 'Choose a heading font' });
+  await picker.getByRole('button', { name: 'Google', exact: true }).click();
+  await picker.getByLabel('Search Google Fonts').fill('Playfair Display');
+  await picker.getByTitle('Use Playfair Display 700').first().click();
 
-  // On select the modal closes and the heading slot becomes a google slot (select value '__google__').
-  await expect(page.getByLabel('Heading font family')).toHaveValue('__google__', { timeout: 30000 });
+  // On select the slot becomes an `asset` slot (select value '__asset__') referencing the new font.
+  await expect(page.getByLabel('Heading font family')).toHaveValue('__asset__', { timeout: 30000 });
   await expect(page.getByLabel('Heading font family')).toContainText('Playfair Display');
 
   await page.getByRole('button', { name: 'Save changes' }).click();
   await expect(page.getByText('✓ Saved')).toBeVisible();
 
-  // Reload → the google slot persisted.
+  // Reload → the asset slot persisted.
   await page.reload();
   await page.getByRole('button', { name: /Font Site/ }).click();
   await page.getByRole('tab', { name: 'Corporate Identity' }).click();
-  await expect(page.getByLabel('Heading font family')).toHaveValue('__google__');
+  await expect(page.getByLabel('Heading font family')).toHaveValue('__asset__');
 
-  // Publish → the page self-hosts the woff2 (LOCAL path) and carries ZERO Google references.
+  // Publish → the page self-hosts the woff2 (bundled _assets path) and carries ZERO Google references.
   await page.getByRole('button', { name: 'Publish' }).click();
   await page.getByRole('button', { name: 'Publish actions' }).click();
   const href = await page.getByRole('menuitem', { name: 'View published site' }).getAttribute('href');
@@ -93,11 +94,13 @@ test('google fonts: pick a heading webfont, self-host on select, publish loads i
   const html = await (await page.request.get(`${base}/`)).text();
   expect(html).toContain('@font-face');
   expect(html).toMatch(/--sw-font-heading:"Playfair Display"/);
-  expect(html).toMatch(/src:url\(_assets\/_fonts\/[a-z0-9-]+\/700\.woff2\)/);
+  const m = html.match(/_assets\/([a-f0-9-]+)\/700\.woff2/);
+  expect(m).toBeTruthy();
+  expect(html).toMatch(/src:url\(_assets\/[a-f0-9-]+\/700\.woff2\) format\("woff2"\)/);
   expect(html).not.toMatch(/fonts\.(googleapis|gstatic)\.com/);
 
   // And the bundled woff2 is actually served from the published artifact.
-  const woff2 = await page.request.get(`${base}/_assets/_fonts/playfair-display/700.woff2`);
+  const woff2 = await page.request.get(`${base}/_assets/${m![1]}/700.woff2`);
   expect(woff2.status()).toBe(200);
   expect(woff2.headers()['content-type']).toBe('font/woff2');
 });
@@ -152,18 +155,20 @@ test('local font upload: upload a .ttf for the body, self-host on save, publish 
   await page.getByRole('button', { name: 'Create project' }).click();
 
   await page.getByRole('tab', { name: 'Corporate Identity' }).click();
-  // Open the body slot's uploader, fill the form, attach a ttf, upload.
-  await page.getByRole('button', { name: 'Upload a font for the body font' }).click();
-  await page.getByLabel('Font file').setInputFiles({ name: 'uploadtest.ttf', mimeType: 'font/ttf', buffer: TTF_BYTES });
-  await page.getByLabel('Family name').fill('Uploadtest');
-  await page.getByRole('button', { name: 'Upload + use' }).click();
+  // Open the body slot's font picker → Upload tab → attach a ttf + name it → upload.
+  await page.getByRole('button', { name: 'Choose a font for the body font' }).click();
+  const picker = page.getByRole('dialog', { name: 'Choose a body font' });
+  await picker.getByRole('button', { name: 'Upload', exact: true }).click();
+  await picker.getByLabel('Font file').setInputFiles({ name: 'uploadtest.ttf', mimeType: 'font/ttf', buffer: TTF_BYTES });
+  await picker.getByLabel('Family name').fill('Uploadtest');
+  await picker.getByRole('button', { name: 'Upload + use' }).click();
 
-  // On success the body slot becomes a local slot (select value '__local__').
-  await expect(page.getByLabel('Body font family')).toHaveValue('__local__', { timeout: 20000 });
+  // On success the body slot becomes an `asset` slot referencing the uploaded font.
+  await expect(page.getByLabel('Body font family')).toHaveValue('__asset__', { timeout: 20000 });
   await page.getByRole('button', { name: 'Save changes' }).click();
   await expect(page.getByText('✓ Saved')).toBeVisible();
 
-  // Publish → the page self-hosts the ttf (LOCAL path + format("truetype")), zero Google references.
+  // Publish → the page self-hosts the ttf (bundled _assets path + format("truetype")), zero Google refs.
   await page.getByRole('button', { name: 'Publish' }).click();
   await page.getByRole('button', { name: 'Publish actions' }).click();
   const href = await page.getByRole('menuitem', { name: 'View published site' }).getAttribute('href');
@@ -171,12 +176,13 @@ test('local font upload: upload a .ttf for the body, self-host on save, publish 
   const base = `${origin}${href!.replace(/\/$/, '')}`;
   const html = await (await page.request.get(`${base}/`)).text();
   expect(html).toMatch(/--sw-font-body:"Uploadtest"/);
-  expect(html).toMatch(/src:url\(_assets\/_fonts\/up-[0-9a-f]+\/400\.ttf\) format\("truetype"\)/);
+  const m = html.match(/_assets\/([a-f0-9-]+)\/400\.ttf/);
+  expect(m).toBeTruthy();
+  expect(html).toMatch(/src:url\(_assets\/[a-f0-9-]+\/400\.ttf\) format\("truetype"\)/);
   expect(html).not.toMatch(/fonts\.(googleapis|gstatic)\.com/);
 
   // The bundled ttf is served from the published artifact with the right type.
-  const m = html.match(/_assets\/_fonts\/(up-[0-9a-f]+)\/400\.ttf/);
-  const ttf = await page.request.get(`${base}/_assets/_fonts/${m![1]}/400.ttf`);
+  const ttf = await page.request.get(`${base}/_assets/${m![1]}/400.ttf`);
   expect(ttf.status()).toBe(200);
   expect(ttf.headers()['content-type']).toBe('font/ttf');
 });

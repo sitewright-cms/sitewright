@@ -15,7 +15,7 @@ export interface WorkerJob {
   publishedAt: string;
   /** Media metadata, each with its files (fallback + variants) inlined as base64. */
   media: ReadonlyArray<{ asset: MediaAsset; files: Record<string, string> }>;
-  /** Self-hosted fonts, each with its woff2 weight files inlined as base64. */
+  /** Self-hosted fonts, each with its stored files (by file name) inlined as base64. */
   fonts?: ReadonlyArray<{ font: SelfHostedFont; files: Record<string, string> }>;
   /** Publish-time JSON snapshot (`website.jsonDataUrl`), fetched in the main process. */
   jsonData?: unknown;

@@ -10,6 +10,15 @@ import type { BrandTokens } from '@sitewright/schema';
 type Typography = NonNullable<BrandTokens['typography']>;
 type FontSlot = NonNullable<Typography['heading']>;
 type SelfHostedFont = NonNullable<Typography['fonts']>[number];
+type FontFile = SelfHostedFont['files'][number];
+
+/** CSS `@font-face` `format()` hint per stored container format. */
+const FORMAT_HINT: Record<FontFile['format'], string> = {
+  woff2: 'woff2',
+  woff: 'woff',
+  ttf: 'truetype',
+  otf: 'opentype',
+};
 
 /** Curated stacks for the generic SYSTEM families a slot can pick. */
 const SYSTEM_STACKS: Record<string, string> = {
@@ -36,9 +45,9 @@ export interface TypographyCssOptions {
   fontUrl?: (fontId: string, file: string) => string;
 }
 
-/** The CSS `font-family` STACK for a slot (system keyword → curated stack; google → quoted family). */
+/** The CSS `font-family` STACK for a slot (system keyword → curated stack; self-hosted → quoted family). */
 function familyStack(slot: FontSlot, font: SelfHostedFont | undefined): string {
-  if (slot.source === 'google') {
+  if (slot.source === 'google' || slot.source === 'local') {
     // DOUBLE-quote: `"` can't pass the family regex, so no escaping needed and an apostrophe in the
     // name (e.g. "It's Display") stays valid (single-quoting wouldn't). Prefer the bundled font's
     // family + category fallback; degrade to the raw slot family if the record is missing.
@@ -49,38 +58,45 @@ function familyStack(slot: FontSlot, font: SelfHostedFont | undefined): string {
 }
 
 /**
- * Compiles the project's heading/body typography into a CSS string applied to `body` + `h1`–`h6`,
- * plus `@font-face` rules (LOCAL urls) for any self-hosted google slot. Falls back to the platform
- * defaults (serif/700, sans-serif/400) so EVERY project gets a consistent baseline.
+ * Compiles the project's typography into a CSS string applied to `body` + `h1`–`h6` (the built-in
+ * heading/body slots), plus `--sw-font-<name>` vars for each CUSTOM named slot (opt-in via the
+ * `font-<name>` utility — not auto-applied), plus `@font-face` rules (LOCAL urls only) for every
+ * self-hosted font (google + uploaded) any slot references. Falls back to the platform defaults
+ * (serif/700 heading, sans-serif/400 body) so EVERY project gets a consistent baseline.
  */
 export function typographyCss(typography: Typography | undefined, opts: TypographyCssOptions = {}): string {
   const heading = typography?.heading ?? DEFAULT_HEADING;
   const body = typography?.body ?? DEFAULT_BODY;
+  const named = typography?.named ?? {};
   const fontsById = new Map((typography?.fonts ?? []).map((f) => [f.id, f] as const));
+  const slotFont = (slot: FontSlot): SelfHostedFont | undefined => (slot.fontId ? fontsById.get(slot.fontId) : undefined);
 
-  // @font-face per weight for each DISTINCT self-hosted font a slot references — local urls only.
+  // @font-face per stored FILE for each DISTINCT self-hosted font referenced by ANY slot (heading,
+  // body, or a custom named slot) — local urls only, the right format() per container.
   const faces: string[] = [];
   const emitted = new Set<string>();
-  for (const slot of [heading, body]) {
-    if (slot.source !== 'google' || !slot.fontId || emitted.has(slot.fontId) || !opts.fontUrl) continue;
+  for (const slot of [heading, body, ...Object.values(named)]) {
+    if ((slot.source !== 'google' && slot.source !== 'local') || !slot.fontId || emitted.has(slot.fontId) || !opts.fontUrl) continue;
     const font = fontsById.get(slot.fontId);
     if (!font) continue;
     emitted.add(slot.fontId);
-    for (const w of font.weights) {
+    for (const f of font.files) {
       faces.push(
-        `@font-face{font-family:"${font.family}";font-style:normal;font-weight:${w};font-display:swap;` +
-          `src:url(${opts.fontUrl(font.id, `${w}.woff2`)}) format("woff2")}`,
+        `@font-face{font-family:"${font.family}";font-style:${f.style};font-weight:${f.weight};font-display:swap;` +
+          `src:url(${opts.fontUrl(font.id, f.file)}) format("${FORMAT_HINT[f.format]}")}`,
       );
     }
   }
 
-  const headingFont = heading.fontId ? fontsById.get(heading.fontId) : undefined;
-  const bodyFont = body.fontId ? fontsById.get(body.fontId) : undefined;
   return [
     faces.join(''),
     ':root{',
-    `--sw-font-heading:${familyStack(heading, headingFont)};--sw-font-heading-weight:${heading.weight};`,
-    `--sw-font-body:${familyStack(body, bodyFont)};--sw-font-body-weight:${body.weight};`,
+    `--sw-font-heading:${familyStack(heading, slotFont(heading))};--sw-font-heading-weight:${heading.weight};`,
+    `--sw-font-body:${familyStack(body, slotFont(body))};--sw-font-body-weight:${body.weight};`,
+    // Custom named slots → `--sw-font-<name>` (+ weight), consumed by the `font-<name>` Tailwind utility.
+    ...Object.entries(named).map(
+      ([name, slot]) => `--sw-font-${name}:${familyStack(slot, slotFont(slot))};--sw-font-${name}-weight:${slot.weight};`,
+    ),
     '}',
     'body{font-family:var(--sw-font-body);font-weight:var(--sw-font-body-weight)}',
     'h1,h2,h3,h4,h5,h6{font-family:var(--sw-font-heading);font-weight:var(--sw-font-heading-weight)}',

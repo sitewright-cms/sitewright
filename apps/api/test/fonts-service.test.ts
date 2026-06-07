@@ -53,7 +53,13 @@ describe('selectGoogleFont', () => {
 
     const font = await selectGoogleFont(store, 'Playfair Display', [700]);
 
-    expect(font).toEqual({ id: 'playfair-display', family: 'Playfair Display', fallback: 'serif', weights: [700] });
+    expect(font).toEqual({
+      id: 'playfair-display',
+      family: 'Playfair Display',
+      fallback: 'serif',
+      source: 'google',
+      files: [{ weight: 700, style: 'normal', format: 'woff2', file: '700.woff2' }],
+    });
     expect(await store.has('playfair-display', '700.woff2')).toBe(true);
     // css2 url is the keyless endpoint, '+'-encoded family, joined weights.
     expect(calls[0]).toBe('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&display=swap');
@@ -72,7 +78,7 @@ describe('selectGoogleFont', () => {
       return url.includes('css2') ? new Response(multi, { headers: { 'content-type': 'text/css' } }) : woff2Response();
     }));
     const font = await selectGoogleFont(store, 'Playfair Display', [700]);
-    expect(font.weights).toEqual([700]);
+    expect(font.files.map((f) => f.weight)).toEqual([700]);
     expect(calls).toContain('https://fonts.gstatic.com/s/pd/latin-700.woff2');
     expect(calls).not.toContain('https://fonts.gstatic.com/s/pd/cyr-700.woff2');
   });
@@ -86,7 +92,7 @@ describe('selectGoogleFont', () => {
       return url.includes('css2') ? new Response(cyrOnly, { headers: { 'content-type': 'text/css' } }) : woff2Response();
     }));
     const font = await selectGoogleFont(store, 'Playfair Display', [700]);
-    expect(font.weights).toEqual([700]);
+    expect(font.files.map((f) => f.weight)).toEqual([700]);
     expect(calls).toContain('https://fonts.gstatic.com/s/pd/cyr-700.woff2');
   });
 
@@ -96,7 +102,7 @@ describe('selectGoogleFont', () => {
     ));
     // 123 is not a Playfair weight → dropped; only 700 is fetched + returned.
     const font = await selectGoogleFont(store, 'Playfair Display', [700, 123]);
-    expect(font.weights).toEqual([700]);
+    expect(font.files.map((f) => f.weight)).toEqual([700]);
   });
 
   it('does NOT re-download a weight already cached (only the css is fetched)', async () => {
@@ -105,7 +111,7 @@ describe('selectGoogleFont', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const font = await selectGoogleFont(store, 'Playfair Display', [700]);
-    expect(font.weights).toEqual([700]);
+    expect(font.files.map((f) => f.weight)).toEqual([700]);
     expect(fetchMock).toHaveBeenCalledTimes(1); // css only — no gstatic woff2 fetch
     expect((await store.read('playfair-display', '700.woff2')).toString()).toBe('cached');
   });
@@ -140,7 +146,7 @@ describe('selectGoogleFont', () => {
         : new Response(Buffer.from('WOFF2')), // no headers at all
     ));
     const font = await selectGoogleFont(store, 'Playfair Display', [700]);
-    expect(font.weights).toEqual([700]);
+    expect(font.files.map((f) => f.weight)).toEqual([700]);
   });
 
   it('throws when the css yields no usable gstatic faces', async () => {

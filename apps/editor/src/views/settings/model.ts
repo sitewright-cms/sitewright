@@ -21,12 +21,18 @@ export interface KeyedRedirect {
   status: number;
 }
 
-/** A typography slot (heading/body) as edited in the form — mirrors schema `FontSlot`. */
+/** A typography slot (heading/body/custom) as edited in the form — mirrors schema `FontSlot`. */
 export interface FontSlotForm {
-  source: 'system' | 'google';
+  source: 'system' | 'google' | 'local';
   family: string;
   weight: number;
   fontId?: string;
+}
+/** A custom named slot row → a `font-<name>` utility. `name` is a CSS-ident slug. */
+export interface NamedSlotForm {
+  id: string;
+  name: string;
+  slot: FontSlotForm;
 }
 /** Platform defaults applied when a project has no typography configured yet. */
 export const DEFAULT_HEADING: FontSlotForm = { source: 'system', family: 'serif', weight: 700 };
@@ -65,9 +71,10 @@ export interface SettingsForm {
   // identity — brand tokens
   colors: KeyedPair[];
   fonts: KeyedPair[];
-  // identity — typography slots (heading + body font + weight) + self-hosted google fonts
+  // identity — typography slots (heading + body font + weight), custom named slots, + self-hosted fonts
   heading: FontSlotForm;
   body: FontSlotForm;
+  named: NamedSlotForm[];
   selfHostedFonts: SelfHostedFont[];
   // website
   siteUrl: string;
@@ -108,12 +115,12 @@ const pairsToRecord = (pairs: KeyedPair[]): Record<string, string> => {
   return out;
 };
 
-/** Normalizes a font slot for persistence — non-empty family, `fontId` only for google slots. */
+/** Normalizes a font slot for persistence — non-empty family, `fontId` only for self-hosted slots. */
 const cleanSlot = (s: FontSlotForm): FontSlotForm => ({
   source: s.source,
   family: s.family.trim() || 'sans-serif',
   weight: s.weight,
-  ...(s.source === 'google' && s.fontId ? { fontId: s.fontId } : {}),
+  ...((s.source === 'google' || s.source === 'local') && s.fontId ? { fontId: s.fontId } : {}),
 });
 
 /**
@@ -153,6 +160,7 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
     fonts: recordToPairs(id.typography?.fontFamilies),
     heading: { ...DEFAULT_HEADING, ...id.typography?.heading },
     body: { ...DEFAULT_BODY, ...id.typography?.body },
+    named: Object.entries(id.typography?.named ?? {}).map(([name, slot]) => ({ id: rowId(), name, slot: { ...slot } })),
     selfHostedFonts: id.typography?.fonts ?? [],
     siteUrl: w?.siteUrl ?? '',
     jsonDataUrl: w?.jsonDataUrl ?? '',
@@ -210,24 +218,37 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
   const social = form.social.map((s) => s.value.trim()).filter(Boolean);
   if (social.length) identity = put(identity, 'social', social);
 
-  // typography: surfaced fontFamilies + preserved scale + heading/body slots. Only NON-default
-  // slots are written (the renderer applies the serif/700 + sans/400 defaults when absent), so a
-  // project that never touched fonts stays minimal.
+  // typography: surfaced fontFamilies + preserved scale + heading/body slots + custom named slots.
+  // Only NON-default heading/body are written (the renderer applies the serif/700 + sans/400 defaults
+  // when absent), so a project that never touched fonts stays minimal.
   const fonts = pairsToRecord(form.fonts);
   const scale = baseId?.typography?.scale;
   const heading = slotEqual(form.heading, DEFAULT_HEADING) ? undefined : cleanSlot(form.heading);
   const body = slotEqual(form.body, DEFAULT_BODY) ? undefined : cleanSlot(form.body);
-  // Keep only self-hosted fonts a slot actually references (drop orphans from earlier picks).
+  // Custom named slots → a `{ <slug>: FontSlot }` record (drop empty/dangerous names).
+  const named: Record<string, FontSlotForm> = {};
+  for (const { name, slot } of form.named) {
+    // Strip a transient trailing hyphen left from typing (the schema rejects it) → a clean CSS ident.
+    const k = name.trim().replace(/-+$/, '');
+    if (!k || DANGEROUS_KEYS.has(k)) continue;
+    // eslint-disable-next-line security/detect-object-injection -- k is a user slot name, guarded above, written to a fresh local object only
+    named[k] = cleanSlot(slot);
+  }
+  // Keep only self-hosted fonts SOME slot (built-in or named) actually references (drop orphans).
   const referenced = new Set(
-    [form.heading, form.body].filter((s) => s.source === 'google' && s.fontId).map((s) => s.fontId),
+    [form.heading, form.body, ...form.named.map((n) => n.slot)]
+      .filter((s) => (s.source === 'google' || s.source === 'local') && s.fontId)
+      .map((s) => s.fontId),
   );
   const selfHostedFonts = form.selfHostedFonts.filter((f) => referenced.has(f.id));
-  if (Object.keys(fonts).length || scale || heading || body || selfHostedFonts.length) {
+  const hasNamed = Object.keys(named).length > 0;
+  if (Object.keys(fonts).length || scale || heading || body || hasNamed || selfHostedFonts.length) {
     identity = put(identity, 'typography', {
       fontFamilies: fonts,
       ...(scale ? { scale } : {}),
       ...(heading ? { heading } : {}),
       ...(body ? { body } : {}),
+      ...(hasNamed ? { named } : {}),
       ...(selfHostedFonts.length ? { fonts: selfHostedFonts } : {}),
     });
   }
@@ -267,6 +288,9 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
   };
   return website ? { ...bundle, website } : bundle;
 }
+
+/** A fresh custom named-slot row (defaults to a system serif). */
+export const newNamedSlot = (): NamedSlotForm => ({ id: rowId(), name: '', slot: { source: 'system', family: 'serif', weight: 400 } });
 
 /** A fresh keyed row for the list editors. */
 export const newPair = (): KeyedPair => ({ id: rowId(), key: '', value: '' });

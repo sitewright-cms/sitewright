@@ -155,20 +155,76 @@ describe('FontSlotSchema', () => {
 });
 
 describe('SelfHostedFontSchema', () => {
-  it('accepts a valid self-hosted font record', () => {
+  it('normalizes the legacy `weights` shape (#123) into google `files`', () => {
     const font = SelfHostedFontSchema.parse({ id: 'playfair-display', family: 'Playfair Display', fallback: 'serif', weights: [400, 700] });
-    expect(font.weights).toEqual([400, 700]);
+    expect(font.source).toBe('google');
+    expect(font.files).toEqual([
+      { weight: 400, style: 'normal', format: 'woff2', file: '400.woff2' },
+      { weight: 700, style: 'normal', format: 'woff2', file: '700.woff2' },
+    ]);
+  });
+
+  it('prefers `files` over a stale legacy `weights` when both are present', () => {
+    const font = SelfHostedFontSchema.parse({
+      id: 'x', family: 'X', fallback: 'serif', source: 'google',
+      files: [{ weight: 700, format: 'woff2', file: '700.woff2' }],
+      weights: [400],
+    });
+    expect(font.files).toEqual([{ weight: 700, style: 'normal', format: 'woff2', file: '700.woff2' }]);
+  });
+
+  it('accepts a local font with multi-format files', () => {
+    const font = SelfHostedFontSchema.parse({
+      id: 'up-ab12cd34',
+      family: 'Boombox',
+      fallback: 'sans-serif',
+      source: 'local',
+      files: [
+        { weight: 400, format: 'ttf', file: '400.ttf' },
+        { weight: 700, style: 'italic', format: 'woff', file: '700-italic.woff' },
+      ],
+    });
+    expect(font.source).toBe('local');
+    expect(font.files[0]).toEqual({ weight: 400, style: 'normal', format: 'ttf', file: '400.ttf' });
   });
 
   it('rejects a fallback outside the generic enum', () => {
     expect(() => SelfHostedFontSchema.parse({ id: 'x', family: 'X', fallback: 'fantasy', weights: [400] })).toThrow();
   });
 
-  it('rejects duplicate weights', () => {
-    expect(() => SelfHostedFontSchema.parse({ id: 'x', family: 'X', fallback: 'serif', weights: [700, 700] })).toThrow(/unique/);
+  it('rejects a file name that disagrees with its format / is path-unsafe', () => {
+    expect(() => SelfHostedFontSchema.parse({ id: 'x', family: 'X', fallback: 'serif', source: 'local', files: [{ weight: 400, format: 'ttf', file: '../evil.ttf' }] })).toThrow();
+    expect(() => SelfHostedFontSchema.parse({ id: 'x', family: 'X', fallback: 'serif', source: 'local', files: [{ weight: 400, format: 'ttf', file: '400.exe' }] })).toThrow();
+  });
+
+  it('rejects duplicate faces (same weight+style+format)', () => {
+    expect(() =>
+      SelfHostedFontSchema.parse({ id: 'x', family: 'X', fallback: 'serif', source: 'local', files: [{ weight: 700, format: 'woff2', file: '700.woff2' }, { weight: 700, format: 'woff2', file: '700.woff2' }] }),
+    ).toThrow(/duplicate/);
+  });
+
+  it('rejects a font with no files', () => {
+    expect(() => SelfHostedFontSchema.parse({ id: 'x', family: 'X', fallback: 'serif', source: 'local', files: [] })).toThrow();
   });
 
   it('rejects a path-unsafe id', () => {
     expect(() => SelfHostedFontSchema.parse({ id: '../etc', family: 'X', fallback: 'serif', weights: [400] })).toThrow();
+  });
+});
+
+describe('typography.named (custom font slots)', () => {
+  it('accepts custom named slots and rejects reserved/invalid names', () => {
+    const id = CorporateIdentitySchema.parse({
+      name: 'Acme',
+      typography: { named: { boombox: { source: 'system', family: 'serif', weight: 700 } } },
+    });
+    expect((id.typography as { named: Record<string, unknown> }).named.boombox).toMatchObject({ family: 'serif' });
+    // reserved name (would shadow a built-in/Tailwind utility)
+    expect(() => CorporateIdentitySchema.parse({ name: 'A', typography: { named: { heading: { family: 'serif', weight: 400 } } } })).toThrow();
+    // invalid slug (uppercase / leading digit / trailing hyphen)
+    expect(() => CorporateIdentitySchema.parse({ name: 'A', typography: { named: { Boombox: { family: 'serif', weight: 400 } } } })).toThrow();
+    expect(() => CorporateIdentitySchema.parse({ name: 'A', typography: { named: { 'boom-': { family: 'serif', weight: 400 } } } })).toThrow();
+    // prototype-pollution key
+    expect(() => CorporateIdentitySchema.parse({ name: 'A', typography: { named: { __proto__: { family: 'serif', weight: 400 } } } })).toThrow();
   });
 });

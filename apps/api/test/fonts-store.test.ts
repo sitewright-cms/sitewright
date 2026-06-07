@@ -37,8 +37,15 @@ describe('FontStore', () => {
     await expect(store.has('bad id', '400.woff2')).resolves.toBe(false); // has() swallows the throw → false
   });
 
-  it('rejects a non-woff2 / traversal file name', async () => {
-    await expect(store.write('inter', '400.ttf', Buffer.from('x'))).rejects.toThrow(/invalid font file/);
+  it('accepts the supported font formats (woff2/woff/ttf/otf, optional -italic)', async () => {
+    for (const file of ['400.woff2', '700.woff', '500-italic.ttf', '900.otf']) {
+      await store.write('boombox', file, Buffer.from('x'));
+      expect(await store.has('boombox', file)).toBe(true);
+    }
+  });
+
+  it('rejects an unsupported extension / traversal / bad weight file name', async () => {
+    await expect(store.write('inter', '400.exe', Buffer.from('x'))).rejects.toThrow(/invalid font file/);
     await expect(store.write('inter', '../400.woff2', Buffer.from('x'))).rejects.toThrow(/invalid font file/);
     await expect(store.write('inter', '050.woff2', Buffer.from('x'))).rejects.toThrow(/invalid font file/); // weight must be 100–900
   });

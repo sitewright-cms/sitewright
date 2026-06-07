@@ -45,21 +45,69 @@ const FontFamilyNameSchema = z
   .max(100)
   .regex(/^[A-Za-z0-9][A-Za-z0-9 '-]*$/, 'invalid font family name');
 
-/**
- * A self-hosted webfont the project bundles: the Google family, a generic CSS `fallback`, and the
- * `weights` whose woff2 files are stored (in the instance font cache, and copied into the published
- * artifact). The typography slots reference one of these by `id`.
- */
-export const SelfHostedFontSchema = z.object({
-  id: FontIdSchema,
-  family: FontFamilyNameSchema,
-  fallback: z.enum(['serif', 'sans-serif', 'monospace', 'cursive']),
-  weights: z
-    .array(FontWeightSchema)
-    .min(1)
-    .max(FONT_WEIGHTS.length)
-    .refine((ws) => new Set(ws).size === ws.length, 'weights must be unique'),
+/** Web-font container formats a self-hosted font file may use. */
+export const FONT_FORMATS = ['woff2', 'woff', 'ttf', 'otf'] as const;
+export const FontFormatSchema = z.enum(FONT_FORMATS);
+const FONT_FALLBACKS = ['serif', 'sans-serif', 'monospace', 'cursive'] as const;
+const FONT_SOURCES = ['google', 'local'] as const;
+
+/** A self-hosted font file name (and URL segment): `<weight>[-italic].<ext>` — path-safe + format-true. */
+const FontFileNameSchema = z
+  .string()
+  .regex(/^[1-9]00(-italic)?\.(woff2|woff|ttf|otf)$/, 'invalid font file name');
+
+/** One stored face of a self-hosted font (a weight×style at a given format/file). */
+export const FontFileSchema = z.object({
+  weight: FontWeightSchema,
+  style: z.enum(['normal', 'italic']).default('normal'),
+  format: FontFormatSchema,
+  file: FontFileNameSchema,
 });
+export type FontFile = z.infer<typeof FontFileSchema>;
+
+/**
+ * A self-hosted webfont the project bundles: the family, a generic CSS `fallback`, its `source`
+ * (`google` = downloaded into the instance cache; `local` = uploaded into the project's font store),
+ * and the `files` (one per weight×style) stored on disk + copied into the published artifact. The
+ * typography slots reference one of these by `id`.
+ *
+ * Back-compat: the #123 shape carried google fonts as `weights: number[]` (all woff2). When present
+ * (and `files` absent) it's normalized to `files` so older stored records keep parsing.
+ */
+export const SelfHostedFontSchema = z
+  .object({
+    id: FontIdSchema,
+    family: FontFamilyNameSchema,
+    fallback: z.enum(FONT_FALLBACKS),
+    source: z.enum(FONT_SOURCES).optional(),
+    weights: z.array(FontWeightSchema).min(1).max(FONT_WEIGHTS.length).optional(),
+    files: z.array(FontFileSchema).min(1).max(18).optional(),
+  })
+  .transform((f) => ({
+    id: f.id,
+    family: f.family,
+    fallback: f.fallback,
+    source: f.source ?? 'google',
+    files:
+      f.files ??
+      (f.weights ?? []).map((w) => ({ weight: w, style: 'normal' as const, format: 'woff2' as const, file: `${w}.woff2` })),
+  }))
+  .pipe(
+    z.object({
+      id: FontIdSchema,
+      family: FontFamilyNameSchema,
+      fallback: z.enum(FONT_FALLBACKS),
+      source: z.enum(FONT_SOURCES),
+      files: z
+        .array(FontFileSchema)
+        .min(1)
+        .max(18)
+        .refine(
+          (fs) => new Set(fs.map((x) => `${x.weight}-${x.style}-${x.format}`)).size === fs.length,
+          'duplicate font file',
+        ),
+    }),
+  );
 export type SelfHostedFont = z.infer<typeof SelfHostedFontSchema>;
 
 /**
@@ -70,13 +118,28 @@ export type SelfHostedFont = z.infer<typeof SelfHostedFontSchema>;
  * never break out of a CSS declaration. `weight` is one of the numeric CSS weights.
  */
 export const FontSlotSchema = z.object({
-  source: z.enum(['system', 'google']).default('system'),
+  source: z.enum(['system', 'google', 'local']).default('system'),
   family: FontFamilyNameSchema,
   weight: FontWeightSchema,
-  /** For `source: 'google'`: the self-hosted font record id (references `typography.fonts[].id`). */
+  /** For `source: 'google' | 'local'`: the self-hosted font record id (references `typography.fonts[].id`). */
   fontId: FontIdSchema.optional(),
 });
 export type FontSlot = z.infer<typeof FontSlotSchema>;
+
+/**
+ * A custom typography slot name → a `font-<name>` Tailwind utility + `--sw-font-<name>` var. The
+ * name is a CSS-ident slug; reserved names (the built-in slots + Tailwind's default font keys) are
+ * rejected so a custom slot can never shadow `font-heading`/`font-body`/`font-sans`/etc.
+ */
+const RESERVED_FONT_SLOT_NAMES = new Set(['heading', 'body', 'sans', 'serif', 'mono']);
+const NamedFontSlotKeySchema = z
+  .string()
+  .min(1)
+  .max(32)
+  // A CSS-ident slug: starts with a letter, hyphen-separated alphanumerics, no leading/trailing hyphen.
+  // Linear (each `-[a-z0-9]+` group requires a leading `-`, so no overlap with the prefix) on a ≤32-char input.
+  // eslint-disable-next-line security/detect-unsafe-regex -- provably linear; bounded input
+  .regex(/^[a-z][a-z0-9]*(-[a-z0-9]+)*$/, 'invalid font slot name');
 
 /**
  * A project's **Corporate Identity** — the single cohesive record that merges
@@ -130,8 +193,12 @@ export const CorporateIdentitySchema = z.object({
       heading: FontSlotSchema.optional(),
       /** Body-font slot (defaults to a sans-serif at weight 400 when absent). */
       body: FontSlotSchema.optional(),
-      /** Self-hosted Google webfonts this project bundles (referenced by the slots' `fontId`). */
-      fonts: z.array(SelfHostedFontSchema).max(8).optional(),
+      /** Custom named slots → `font-<name>` utilities (+ `--sw-font-<name>` vars); opt-in, not auto-applied. */
+      named: safeRecord(FontSlotSchema, NamedFontSlotKeySchema)
+        .refine((obj) => Object.keys(obj).every((k) => !RESERVED_FONT_SLOT_NAMES.has(k)), 'reserved font slot name')
+        .optional(),
+      /** Self-hosted webfonts this project bundles — Google + locally-uploaded (referenced by `fontId`). */
+      fonts: z.array(SelfHostedFontSchema).max(16).optional(),
     })
     .optional(),
   spacing: safeRecord(TokenValueSchema, KeyNameSchema).optional(),

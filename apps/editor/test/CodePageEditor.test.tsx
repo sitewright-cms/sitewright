@@ -139,7 +139,7 @@ describe('CodePageEditor', () => {
     render(<CodePageEditor project={project} page={subject} pages={[page, about, subject]} onClose={() => {}} />);
     fireEvent.click(screen.getByRole('button', { name: 'Page settings' }));
     fireEvent.change(screen.getByLabelText('Meta description'), { target: { value: 'Crisp summary.' } });
-    fireEvent.change(screen.getByLabelText('OG image URL'), { target: { value: 'https://x.test/og.png' } });
+    fireEvent.change(screen.getByLabelText('Image (Open Graph)'), { target: { value: 'https://x.test/og.png' } });
     fireEvent.change(screen.getByLabelText('Parent page'), { target: { value: 'about' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));

@@ -174,6 +174,8 @@ export function targetsPrivateHost(url: string): boolean {
     host.startsWith('fc') || // IPv6 ULA fc00::/7
     host.startsWith('fd') ||
     host.startsWith('fe80:') || // IPv6 link-local
+    host.startsWith('2002:') || // 6to4 (embeds an IPv4 in bits 17–48 → can reach a private v4)
+    host.startsWith('64:ff9b:') || // RFC 6146 NAT64 well-known prefix (embeds an IPv4)
     host.endsWith('.internal') ||
     host.endsWith('.local') ||
     isPrivateIPv4(host)

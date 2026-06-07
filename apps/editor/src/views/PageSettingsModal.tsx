@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { GLOBAL_TEMPLATES, pagePath, pagesById } from '@sitewright/core';
 import { NAV_SLOTS, type NavSlot, type Page, type Template } from '@sitewright/schema';
 import { Modal } from './ui/Modal';
+import { AssetField } from './files/AssetField';
 import { glassInput } from '../theme';
 
 /** The editable page-settings fields, flattened for form state. */
@@ -94,6 +95,8 @@ function selfAndDescendants(pageId: string, pages: readonly Page[]): Set<string>
 interface PageSettingsModalProps {
   /** The page being configured (identity + home detection). */
   page: Page;
+  /** Owning project — for the OG-image file picker. */
+  projectId: string;
   initial: PageSettingsValues;
   /** All project pages — feeds the parent selector. */
   pages: readonly Page[];
@@ -113,7 +116,7 @@ interface PageSettingsModalProps {
  * title, path, status, meta description, OG image, parent page, show-children-
  * in-dropdown, template reference, and nav placement.
  */
-export function PageSettingsModal({ page, initial, pages, templates, locales = [], saving = false, onClose, onSubmit }: PageSettingsModalProps) {
+export function PageSettingsModal({ page, projectId, initial, pages, templates, locales = [], saving = false, onClose, onSubmit }: PageSettingsModalProps) {
   const [v, setV] = useState<PageSettingsValues>(initial);
   const patch = (next: Partial<PageSettingsValues>) => setV((prev) => ({ ...prev, ...next }));
   const isHome = page.path === '';
@@ -190,16 +193,13 @@ export function PageSettingsModal({ page, initial, pages, templates, locales = [
           />
         </label>
 
-        <label className="flex flex-col text-xs font-semibold text-slate-700">
-          Image (Open Graph)
-          <input
-            aria-label="OG image URL"
-            className={`mt-1.5 font-normal ${glassInput}`}
-            placeholder="https://… or /media/… (used in link previews)"
-            value={v.seoOgImage}
-            onChange={(e) => patch({ seoOgImage: e.target.value })}
-          />
-        </label>
+        <AssetField
+          label="Image (Open Graph)"
+          value={v.seoOgImage}
+          onChange={(val) => patch({ seoOgImage: val })}
+          projectId={projectId}
+          placeholder="https://… or /media/… (used in link previews)"
+        />
 
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="flex flex-col text-xs font-semibold text-slate-700">

@@ -213,7 +213,7 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
           }}
         />
       )}
-      {assetsOpen && inProject && <FileManager key={inProject.id} project={inProject} onClose={() => setAssetsOpen(false)} />}
+      {assetsOpen && inProject && <FileManager key={inProject.id} projectId={inProject.id} onClose={() => setAssetsOpen(false)} />}
     </div>
   );
 }

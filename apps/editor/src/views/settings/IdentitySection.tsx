@@ -5,6 +5,7 @@ import { TokenEditor } from './TokenEditor';
 import { StringListEditor } from './StringListEditor';
 import { FontSlotEditor } from './FontSlotEditor';
 import { CustomFontSlots } from './CustomFontSlots';
+import { AssetField } from '../files/AssetField';
 
 /**
  * Corporate Identity: the unified company + brand record. Grouped into frosted
@@ -86,10 +87,10 @@ export function IdentitySection({ form, patch, projectId }: { form: SettingsForm
 
       <GlassCard title="Logos & images" icon="▣">
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Logo" value={form.logo} onChange={(v) => patch({ logo: v })} placeholder="/logo.svg" />
-          <Field label="Favicon" value={form.favicon} onChange={(v) => patch({ favicon: v })} placeholder="/favicon.ico" />
-          <Field label="Icon (favicon source)" value={form.icon} onChange={(v) => patch({ icon: v })} placeholder="/icon.png" />
-          <Field label="Share image (OG)" value={form.image} onChange={(v) => patch({ image: v })} placeholder="/og.png" />
+          <AssetField label="Logo" value={form.logo} onChange={(v) => patch({ logo: v })} projectId={projectId} placeholder="/logo.svg" />
+          <AssetField label="Favicon" value={form.favicon} onChange={(v) => patch({ favicon: v })} projectId={projectId} placeholder="/favicon.ico" />
+          <AssetField label="Icon (favicon source)" value={form.icon} onChange={(v) => patch({ icon: v })} projectId={projectId} placeholder="/icon.png" />
+          <AssetField label="Share image (OG)" value={form.image} onChange={(v) => patch({ image: v })} projectId={projectId} placeholder="/og.png" />
         </div>
       </GlassCard>
 

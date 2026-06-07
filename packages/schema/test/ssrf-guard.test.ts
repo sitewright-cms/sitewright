@@ -62,6 +62,16 @@ describe('targetsPrivateHost', () => {
     }
   });
 
+  it('blocks 6to4 + NAT64 IPv6 that embed an IPv4 (could reach a private v4 on a routed host)', () => {
+    for (const u of [
+      'https://[2002:7f00:1::]/x', // 6to4 wrapping 127.0.0.1
+      'https://[2002:a9fe:a9fe::]/x', // 6to4 wrapping 169.254.169.254 (cloud metadata)
+      'https://[64:ff9b::7f00:1]/x', // NAT64 wrapping 127.0.0.1
+    ]) {
+      expect(targetsPrivateHost(u), u).toBe(true);
+    }
+  });
+
   it('treats an unparseable URL as private (fail closed)', () => {
     expect(targetsPrivateHost('not a url')).toBe(true);
     expect(targetsPrivateHost('')).toBe(true);

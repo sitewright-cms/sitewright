@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { api, type Project } from './api';
 import { Login } from './views/Login';
 import { ProjectView, MANAGE_TABS, TAB_LABELS, type Tab } from './views/Project';
-import { FileManager } from './views/files/FileManager';
+import { AssetsPanel } from './views/files/AssetsPanel';
+import { LibraryPanel } from './views/library/LibraryPanel';
 import { PublishBar } from './views/PublishBar';
 import { ProjectSelectorModal } from './views/ProjectSelectorModal';
 import { NewProjectModal } from './views/NewProjectModal';
@@ -43,8 +44,9 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
   // The project picker is shown automatically on first load and reachable from the header.
   const [selectorOpen, setSelectorOpen] = useState(false);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
-  // The Assets file-manager drawer (replaces the old Assets tab).
-  const [assetsOpen, setAssetsOpen] = useState(false);
+  // Bumped to force the Assets side-panel open from the header button (the panel otherwise
+  // opens on hover of its edge tab).
+  const [assetsSignal, setAssetsSignal] = useState(0);
 
   async function refresh(): Promise<Project[]> {
     try {
@@ -147,7 +149,7 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
           <button
             className={ghostButton}
             title="Files & media — images, fonts, documents"
-            onClick={() => setAssetsOpen(true)}
+            onClick={() => setAssetsSignal((s) => s + 1)}
           >
             <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
@@ -221,7 +223,14 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
           }}
         />
       )}
-      {assetsOpen && inProject && <FileManager key={inProject.id} projectId={inProject.id} onClose={() => setAssetsOpen(false)} />}
+      {/* Always-present edge side-panels (owners): Library (left) + Assets (right). They render above
+          modals so their tabs stay reachable; the header "Assets" button force-opens Assets. */}
+      {inProject && !isClient && (
+        <>
+          <LibraryPanel />
+          <AssetsPanel key={inProject.id} projectId={inProject.id} openSignal={assetsSignal} />
+        </>
+      )}
     </div>
   );
 }

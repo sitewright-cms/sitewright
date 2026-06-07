@@ -1,8 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal } from '../ui/Modal';
+import { SidePanel } from '../ui/SidePanel';
 import { ghostButton, glassPanel } from '../../theme';
 import { LIBRARY_SECTIONS, type LibraryCategory, type LibraryItem, type LibrarySection } from './catalog';
 import { GoogleFontGallery } from '../settings/GoogleFontGallery';
+
+/** Library glyph (stacked books) for the side-panel tab. */
+function LibraryIcon() {
+  return (
+    <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+    </svg>
+  );
+}
 
 /** Copy-to-clipboard with a transient "copied" flag keyed by an id (timer cleared on unmount). */
 function useCopy(): [string | null, (text: string, id: string) => void] {
@@ -31,71 +42,36 @@ function previewHtml(example: string): string {
 }
 
 /**
- * The project-level Library reference: a LEFT-edge drawer that expands on hover (a thin
- * rail otherwise). Each section title is a button that opens a searchable gallery modal —
- * Icons (lazy-loaded, the whole pack), AOS, Lazy-load, Ripple, and DaisyUI components
- * (each with a live preview). Read-only; it never mutates the project.
+ * The project-level Library reference: a LEFT-edge {@link SidePanel} that expands on hover. Each
+ * section title is a button that opens a searchable gallery modal — Icons (lazy-loaded, the whole
+ * pack), AOS, Lazy-load, Ripple, and DaisyUI components (each with a live preview). Read-only; it
+ * never mutates the project. The gallery modals render inside the panel, so they elevate above it.
  */
 export function LibraryPanel() {
-  const [expanded, setExpanded] = useState(false);
   const [openCategory, setOpenCategory] = useState<LibraryCategory | null>(null);
   const section = openCategory ? (LIBRARY_SECTIONS.find((s) => s.category === openCategory) ?? null) : null;
 
   return (
-    <>
-      <aside
-        aria-label="Library"
-        onMouseEnter={() => setExpanded(true)}
-        onMouseLeave={() => setExpanded(false)}
-        // Keyboard/touch parity with hover: expand when focus enters, collapse when it
-        // leaves the rail entirely (so the section buttons are reachable by Tab).
-        onFocus={() => setExpanded(true)}
-        onBlur={(e) => {
-          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setExpanded(false);
-        }}
-        className={`fixed left-0 top-16 bottom-0 z-30 flex flex-col border-r border-white/60 bg-white/85 shadow-2xl backdrop-blur-xl transition-[width] duration-200 ${
-          expanded ? 'w-64' : 'w-11'
-        }`}
-      >
-        {/* Always-present focusable toggle — the keyboard/touch entry point. Focusing it
-            (Tab) expands the rail; the section buttons below then become tabbable. */}
-        <button
-          type="button"
-          aria-expanded={expanded}
-          aria-label="Open library"
-          // Open-only (idempotent with hover/focus); the rail collapses on mouseleave/blur.
-          // A toggle here would fight the mouseenter that necessarily precedes a click.
-          onClick={() => setExpanded(true)}
-          className="flex items-center justify-center px-1 py-3 text-xs font-bold uppercase tracking-widest text-slate-500 transition hover:text-slate-800"
-        >
-          {expanded ? (
-            <span className="w-full px-2 text-left">Library</span>
-          ) : (
-            <span className="rotate-180 [writing-mode:vertical-rl]">Library</span>
-          )}
-        </button>
-        {expanded && (
-          <nav className="flex flex-col gap-1.5 overflow-auto p-3 pt-1">
-            {LIBRARY_SECTIONS.map((s) => (
-              <button
-                key={s.category}
-                onClick={() => setOpenCategory(s.category)}
-                className={`waves-effect ${glassPanel} rounded-xl px-3 py-2.5 text-left transition hover:bg-white`}
-              >
-                <span className="block text-sm font-semibold text-slate-700">{s.label}</span>
-                <span className="mt-0.5 block text-[11px] leading-snug text-slate-400">{s.blurb}</span>
-              </button>
-            ))}
-          </nav>
-        )}
-      </aside>
+    <SidePanel side="left" label="Library" icon={<LibraryIcon />}>
+      <nav className="flex flex-col gap-1.5 p-3">
+        {LIBRARY_SECTIONS.map((s) => (
+          <button
+            key={s.category}
+            onClick={() => setOpenCategory(s.category)}
+            className={`waves-effect ${glassPanel} rounded-xl px-3 py-2.5 text-left transition hover:bg-white`}
+          >
+            <span className="block text-sm font-semibold text-slate-700">{s.label}</span>
+            <span className="mt-0.5 block text-[11px] leading-snug text-slate-400">{s.blurb}</span>
+          </button>
+        ))}
+      </nav>
 
       {section?.category === 'fonts' ? (
         <FontsLibraryModal onClose={() => setOpenCategory(null)} />
       ) : (
         section && <SectionModal section={section} onClose={() => setOpenCategory(null)} />
       )}
-    </>
+    </SidePanel>
   );
 }
 

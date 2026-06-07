@@ -5,7 +5,6 @@ import { api, previewDocUrl, type Project } from '../api';
 import { CodePageEditor } from './CodePageEditor';
 import { PageSettingsModal, applyPageSettings, pageSettingsFromPage, type PageSettingsValues } from './PageSettingsModal';
 import { useDialogs } from './ui/Dialogs';
-import { LibraryPanel } from './library/LibraryPanel';
 import { DatasetManager } from './DatasetManager';
 import { FormsManager } from './FormsManager';
 import { SettingsView } from './settings/SettingsView';
@@ -680,9 +679,6 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
         />
       )}
     </main>
-    {/* The permanent project-level Library reference (owners/staff only — clients edit
-        content, not code). A fixed right-edge drawer, unaffected by the page list inert. */}
-    {!isClient && <LibraryPanel />}
     </>
   );
 }

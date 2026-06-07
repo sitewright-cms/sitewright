@@ -60,21 +60,14 @@ describe('ProjectView role gating (tab is supplied by the App header)', () => {
     expect(screen.queryByLabelText('Page path')).toBeNull();
   });
 
-  it('a member sees the restricted surface: no add-page form, no Library, just their pages', async () => {
+  it('a member sees the restricted surface: no add-page form, just their pages', async () => {
     render(<ProjectView project={memberProject} tab="pages" />);
     await waitFor(() => expect(listPages).toHaveBeenCalled());
     expect(screen.queryByLabelText('Page path')).toBeNull();
-    // The code Library is an owner/staff aid — clients edit content, not code.
-    expect(screen.queryByLabelText('Library')).toBeNull();
     expect(screen.getByRole('button', { name: /Home/ })).toBeInTheDocument();
   });
-
-  it('an owner gets the Library rail', async () => {
-    render(<ProjectView project={ownerProject} tab="pages" />);
-    await waitFor(() => expect(listPages).toHaveBeenCalled());
-    // The left hover-drawer (collapsed rail) carries aria-label "Library".
-    expect(screen.getByLabelText('Library')).toBeInTheDocument();
-  });
+  // The Library + Assets side panels are now App-level (gated on the project role there); see
+  // App.test.tsx for their owner-only presence. ProjectView no longer renders them.
 
   it('opens an owner on a page in SOURCE mode (the staff default)', async () => {
     render(<ProjectView project={ownerProject} tab="pages" />);

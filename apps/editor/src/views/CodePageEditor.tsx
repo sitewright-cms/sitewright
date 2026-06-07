@@ -29,7 +29,7 @@ interface CodePageEditorProps {
   initialMode?: EditMode;
 }
 
-const PREVIEW_DEBOUNCE_MS = 500;
+const PREVIEW_DEBOUNCE_MS = 800;
 
 /** Device-rail glyphs (lucide-style outlines, matching the platform icon vocabulary). */
 const DEVICE_ICONS: Record<PreviewDeviceKey, ReactNode> = {
@@ -147,6 +147,23 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
     };
   }, []);
 
+  // The preview iframe (the editor↔preview postMessage bridge addresses its contentWindow).
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  // The preview's last-reported scroll position — restored on the next reload via a `#sw-y=` hash so
+  // a debounced re-render (or a reload after an edit) doesn't jump the preview back to the top.
+  const scrollYRef = useRef(0);
+  useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      // Only trust messages from OUR preview frame, tagged by the bridge (opaque cross-origin doc).
+      if (e.source !== iframeRef.current?.contentWindow) return;
+      const d = e.data as { source?: string; type?: string; y?: number } | null;
+      if (!d || d.source !== 'sitewright-preview') return;
+      if (d.type === 'scroll' && typeof d.y === 'number') scrollYRef.current = d.y;
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, []);
+
   // Project templates load once per open (small list; powers selector + lock + fork).
   useEffect(() => {
     void api
@@ -208,8 +225,12 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
         .then(({ token }) => {
           if (cancelled) return;
           // The endpoint always returns a token; the `|| ''` guards an API regression
-          // (PreviewPane then loads about:blank). Load the doc under its own sandbox CSP.
-          setPreviewSrc(token ? previewDocUrl(project.id, token) : '');
+          // (PreviewPane then loads about:blank). Load the doc under its own sandbox CSP, carrying
+          // the last scroll position in a `#sw-y=` fragment (fragments aren't sent to the server)
+          // so the freshly-loaded doc's bridge restores it instead of jumping to the top.
+          setPreviewSrc(
+            token ? previewDocUrl(project.id, token) + (scrollYRef.current ? `#sw-y=${scrollYRef.current}` : '') : '',
+          );
           setPreviewError(null);
           setPreviewLoading(false);
         })
@@ -404,7 +425,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
             floating on the right edge (contentbase-style). */}
         <div className="relative min-h-0 flex-1">
           <DevicePreview width={PREVIEW_DEVICES.find((d) => d.key === device)!.width}>
-            <PreviewPane src={previewSrc} loading={previewLoading} error={previewError} title="Preview" />
+            <PreviewPane src={previewSrc} loading={previewLoading} error={previewError} title="Preview" iframeRef={iframeRef} />
           </DevicePreview>
           <div
             role="group"

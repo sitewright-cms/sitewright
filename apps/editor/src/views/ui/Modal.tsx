@@ -29,9 +29,9 @@ const SIZES = {
   lg: 'max-w-2xl',
   xl: 'max-w-4xl',
   full: 'max-w-5xl h-[82vh]',
-  /** Near-fullscreen workbench (the page editor): wide, fixed 82vh — still inside the gutters so the
-   *  side-panel edge tabs stay reachable. */
-  screen: 'max-w-none h-[82vh]',
+  /** Near-fullscreen workbench (the page editor): wide + tall (90vh) for maximum editing room. The
+   *  bottom side-panel rails are nudged up (z above the modal) so they stay visible over it. */
+  screen: 'max-w-none h-[90vh]',
 } as const;
 
 // Modals share the OVERLAY_STACK (see ./overlay) with Drawers so Escape/⌘S act on the TOP
@@ -190,7 +190,7 @@ export function Modal({ title, onClose, onSave, saving = false, saveDisabled = f
         <div
           // Gutters (px/pb) keep the panel clear of the screen edges so the side-panel tabs peek
           // out around it; `z` puts panel-owned dialogs above the panels, normal modals below them.
-          className={`fixed inset-0 flex items-center justify-center px-14 pb-16 pt-6 ${elevated ? 'z-[70]' : 'z-50'}`}
+          className={`fixed inset-0 flex items-center justify-center px-14 pb-12 pt-4 ${elevated ? 'z-[70]' : 'z-50'}`}
           role="presentation"
           onMouseDown={(e) => {
             // Backdrop click (not a click inside the panel) requests a close; the parent's
@@ -218,7 +218,7 @@ export function Modal({ title, onClose, onSave, saving = false, saveDisabled = f
             animate={{ opacity: 1, y: 0 }}
             exit={reduce ? { opacity: 0 } : { opacity: 0, y: 24 }}
             transition={{ duration: 0.22, ease: 'easeOut' }}
-            className={`relative flex w-full ${SIZES[size]} max-h-[82vh] flex-col overflow-hidden rounded-2xl border border-white/60 bg-white/95 shadow-2xl outline-none backdrop-blur-xl`}
+            className={`relative flex w-full ${SIZES[size]} ${size === 'screen' ? 'max-h-[calc(100vh-4rem)]' : 'max-h-[82vh]'} flex-col overflow-hidden rounded-2xl border border-white/60 bg-white/95 shadow-2xl outline-none backdrop-blur-xl`}
           >
             <header className="flex items-center gap-3 border-b border-slate-200/70 px-5 py-3">
               <h2 id={titleId} className="flex-1 truncate text-sm font-semibold text-slate-800">{title}</h2>

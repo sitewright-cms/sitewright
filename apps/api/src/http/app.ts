@@ -78,6 +78,7 @@ import { InProcessBuildRunner, type BuildRunner } from '../publish/runner.js';
 import { AiProviderError, type AiProvider } from '../ai/provider.js';
 import { PublishStore } from '../publish/store.js';
 import { PreviewStore } from './preview-store.js';
+import { PREVIEW_BRIDGE_JS } from './preview-bridge.js';
 import { archiveSite, deploySite, DeployConfigSchema } from '../publish/adapters.js';
 import { isNewer } from '../version/checker.js';
 import { registerDeployTargetRoutes } from './deploy-targets.js';
@@ -304,6 +305,9 @@ async function styledSourceDocument(
     ...(animated ? [ANIMATION_JS] : []),
     ...(lazy ? [LAZYLOAD_JS] : []),
     ...(waves ? [RIPPLE_JS] : []),
+    // The editor↔preview bridge (scroll preserve/restore + inline-edit). Preview-only — this shell
+    // is never the publish path (build.ts calls renderDocument directly), so it can't leak.
+    PREVIEW_BRIDGE_JS,
   ];
   return renderDocument(page, {
     brand,
@@ -1382,15 +1386,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // their `@font-face` loads from the media route (never a font CDN).
         mediaUrl: (asset, file) => `/media/${project.id}/${asset.id}/${file}`,
         inlineStyles: inlineStyles.length > 0 ? inlineStyles : undefined,
-        inlineScripts: ((): string[] | undefined => {
-          const js = [
-            ...(componentJs ? [componentJs] : []),
-            ...(animated ? [ANIMATION_JS] : []),
-            ...(lazy ? [LAZYLOAD_JS] : []),
-            ...(waves ? [RIPPLE_JS] : []),
-          ];
-          return js.length > 0 ? js : undefined;
-        })(),
+        inlineScripts: [
+          ...(componentJs ? [componentJs] : []),
+          ...(animated ? [ANIMATION_JS] : []),
+          ...(lazy ? [LAZYLOAD_JS] : []),
+          ...(waves ? [RIPPLE_JS] : []),
+          // Editor↔preview bridge (scroll preserve/restore). Preview-only path.
+          PREVIEW_BRIDGE_JS,
+        ],
       });
       // Store the rendered doc behind an opaque token; the editor loads it via the
       // GET route below (which serves it under a sandbox CSP). `html` is still

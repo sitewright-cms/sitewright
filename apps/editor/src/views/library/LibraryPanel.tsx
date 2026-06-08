@@ -5,6 +5,7 @@ import { useToast } from '../ui/Toast';
 import { useCopy } from '../ui/useCopy';
 import { ghostButton, glassPanel } from '../../theme';
 import { LIBRARY_SECTIONS, type LibraryCategory, type LibraryItem, type LibrarySection } from './catalog';
+import { ReferenceModal } from './ReferenceModal';
 import { GoogleFontGallery } from '../settings/GoogleFontGallery';
 
 /** Library glyph (stacked books) for the side-panel tab. */
@@ -34,11 +35,23 @@ function previewHtml(example: string): string {
  */
 export function LibraryPanel() {
   const [openCategory, setOpenCategory] = useState<LibraryCategory | null>(null);
+  const [refOpen, setRefOpen] = useState(false);
   const section = openCategory ? (LIBRARY_SECTIONS.find((s) => s.category === openCategory) ?? null) : null;
 
   return (
     <SidePanel side="left" label="Library" icon={<LibraryIcon />}>
       <nav className="flex flex-col gap-1.5 p-3">
+        {/* The template/directive reference — the author's guide to the code-first surface. */}
+        <button
+          onClick={() => setRefOpen(true)}
+          className="waves-effect rounded-xl border border-indigo-200/70 bg-gradient-to-br from-indigo-50 to-sky-50 px-3 py-2.5 text-left transition hover:from-indigo-100 hover:to-sky-100"
+        >
+          <span className="block text-sm font-semibold text-indigo-800">Template reference</span>
+          <span className="mt-0.5 block text-[11px] leading-snug text-indigo-500/80">
+            Handlebars helpers, data-sw-* directives, bindings & loop variables.
+          </span>
+        </button>
+
         {LIBRARY_SECTIONS.map((s) => (
           <button
             key={s.category}
@@ -51,6 +64,7 @@ export function LibraryPanel() {
         ))}
       </nav>
 
+      {refOpen && <ReferenceModal onClose={() => setRefOpen(false)} />}
       {section?.category === 'fonts' ? (
         <FontsLibraryModal onClose={() => setOpenCategory(null)} />
       ) : (

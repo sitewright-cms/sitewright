@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { IdSchema } from './primitives.js';
+import { JsonStoreSchema } from './json-store.js';
 
 /**
  * A reference to a page template: either a PROJECT template entity (plain id)
@@ -27,5 +28,12 @@ export const TemplateSchema = z.object({
   name: z.string().min(1).max(200),
   /** Handlebars source (HTML + Tailwind + {{edit}} regions) the page renders. */
   source: z.string().max(256 * 1024),
+  /**
+   * Declared default `page.data` for pages using this template: the attributes (with sensible
+   * defaults) a `data-sw-*="data.<key>"` template reads. When the template is enabled on a page the
+   * editor copies these into the page's `page.data` (fill-missing, non-destructive), and forking the
+   * template carries them along with the source. Bounded + prototype-safe ({@link JsonStoreSchema}).
+   */
+  data: JsonStoreSchema.optional(),
 });
 export type Template = z.infer<typeof TemplateSchema>;

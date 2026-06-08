@@ -33,8 +33,26 @@ describe('resolveTemplateSource (code-first templates)', () => {
     for (const template of GLOBAL_TEMPLATES) {
       expect(template.id.startsWith(GLOBAL_TEMPLATE_PREFIX)).toBe(true);
       expect(template.name.length).toBeGreaterThan(0);
-      expect(template.source).toContain('{{edit '); // a referencing page can edit its content
+      // Content-editable via {{edit}} regions OR data-sw-* leaf directives (the blog templates).
+      expect(/\{\{edit |data-sw-/.test(template.source)).toBe(true);
       expect(template.source).not.toContain('<script'); // same no-JS rule as page sources
     }
+  });
+
+  it('ships the content-only blog templates with declared default page.data', () => {
+    const article = GLOBAL_TEMPLATES.find((t) => t.id === 'global:blog-article');
+    const overview = GLOBAL_TEMPLATES.find((t) => t.id === 'global:blog-overview');
+    expect(article).toBeDefined();
+    expect(overview).toBeDefined();
+    // The article binds its fields to page.data via data-sw-*; its defaults declare those keys.
+    expect(article!.source).toContain('data-sw-text="data.article_title"');
+    expect(article!.source).toContain('data-sw-html="data.article_body"');
+    expect(Object.keys(article!.data as object)).toEqual(
+      expect.arrayContaining(['article_title', 'article_excerpt', 'article_image', 'article_body']),
+    );
+    // The overview lists child pages and reads each child's flattened fields + data.
+    expect(overview!.source).toContain('{{#each page.children}}');
+    expect(overview!.source).toContain('href="{{url path}}"');
+    expect(overview!.source).toContain('{{data.article_excerpt}}');
   });
 });

@@ -115,6 +115,11 @@ function assertTreeSafe(kind: ContentKind, raw: unknown): void {
  * Returns a copy of a page with every client-authored `richContent` value run through the rich-HTML
  * allowlist. The keys are already `KeyNameSchema`-validated (no prototype keys); values are bounded
  * by the schema. Never mutates the input.
+ *
+ * NOTE: `page.data` is intentionally NOT sanitized here — it is generic JSON and which string leaves
+ * are HTML (bound to a `data-sw-html` directive) isn't known at the entity boundary. A `data.<key>`
+ * HTML leaf is sanitized at RENDER (the html sink always runs `sanitizeRichHtml`); see the @security
+ * note on `Page.data`. The JsonStoreSchema still bounds it + rejects prototype keys on write.
  */
 function sanitizePageRichContent(page: Page): Page {
   if (!page.richContent) return page;

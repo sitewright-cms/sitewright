@@ -364,7 +364,7 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
       <a class="inline-flex items-center gap-1.5 font-medium text-primary nw-underline" href="/work">View all projects ${icon('arrow-right', 'h-4 w-4')}</a>
     </div>
     <div class="nw-stagger mt-12 grid gap-6 md:grid-cols-3">
-      {{#each data.projects}}
+      {{#eachEntry data.projects}}
       <a class="card nw-card overflow-hidden border border-base-200 bg-base-100 shadow-sm hover:shadow-xl nw-zoom" href="/work">
         <figure class="aspect-[4/3] overflow-hidden"><img src="{{url values.image}}" alt="{{values.title}}" class="h-full w-full object-cover" loading="lazy" /></figure>
         <div class="card-body">
@@ -373,7 +373,7 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
           <p class="text-sm text-base-content/60">{{values.summary}}</p>
         </div>
       </a>
-      {{/each}}
+      {{/eachEntry}}
     </div>
   </div>
 </section>
@@ -381,7 +381,7 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
 <section class="mx-auto max-w-6xl px-6 py-20">
   <h2 class="text-center text-3xl font-bold tracking-tight sm:text-4xl">{{edit "tst_title" "Loved by the brands we build for"}}</h2>
   <div class="nw-stagger mt-12 grid gap-6 lg:grid-cols-3">
-    {{#each data.testimonials}}
+    {{#eachEntry data.testimonials}}
     <figure class="card nw-card border border-base-200 bg-base-100 p-2 shadow-sm">
       <div class="card-body">
         <div class="flex gap-0.5 text-accent">${STARS}</div>
@@ -389,7 +389,7 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
         <figcaption class="mt-4 text-sm"><span class="font-semibold">{{values.author}}</span><span class="text-base-content/50"> — {{values.role}}</span></figcaption>
       </div>
     </figure>
-    {{/each}}
+    {{/eachEntry}}
   </div>
 </section>
 
@@ -419,7 +419,7 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
 </section>
 <section class="mx-auto max-w-6xl px-6 pb-24">
   <div class="nw-stagger grid gap-8 md:grid-cols-2">
-    {{#each data.projects}}
+    {{#eachEntry data.projects}}
     <a class="card nw-card overflow-hidden border border-base-200 bg-base-100 shadow-sm hover:shadow-2xl nw-zoom" href="/contact">
       <figure class="aspect-[16/10] overflow-hidden"><img src="{{url values.image}}" alt="{{values.title}}" class="h-full w-full object-cover" loading="lazy" /></figure>
       <div class="card-body">
@@ -429,7 +429,7 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
         <p class="mt-1 text-base-content/70">{{values.summary}}</p>
       </div>
     </a>
-    {{/each}}
+    {{/eachEntry}}
   </div>
 </section>`,
   },
@@ -455,14 +455,14 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
 </section>
 <section class="mx-auto max-w-6xl px-6 pb-12">
   <div class="nw-stagger grid gap-px overflow-hidden rounded-3xl border border-base-200 bg-base-200 sm:grid-cols-2">
-    {{#each data.services}}
+    {{#eachEntry data.services}}
     <div class="bg-base-100 p-8 transition hover:bg-base-200/40">
       <div class="text-3xl">{{values.icon}}</div>
       <h2 class="mt-3 text-xl font-bold">{{values.title}}</h2>
       <p class="mt-2 text-base-content/70">{{values.summary}}</p>
       <p class="mt-4 text-sm font-semibold text-primary">{{values.price}}</p>
     </div>
-    {{/each}}
+    {{/eachEntry}}
   </div>
 </section>
 <section class="mx-auto max-w-5xl px-6 py-20">
@@ -554,14 +554,14 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
 <section class="mx-auto max-w-6xl px-6 py-20">
   <h2 class="text-3xl font-bold tracking-tight">{{edit "team_title" "The people you’ll work with"}}</h2>
   <div class="nw-stagger mt-10 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
-    {{#each data.team}}
+    {{#eachEntry data.team}}
     <div class="text-center">
       <div class="mx-auto aspect-square w-36 overflow-hidden rounded-full border-4 border-base-100 shadow-lg nw-zoom"><img src="{{url values.photo}}" alt="{{values.name}}" class="h-full w-full object-cover" loading="lazy" /></div>
       <h3 class="mt-4 font-bold">{{values.name}}</h3>
       <p class="text-sm text-primary">{{values.role}}</p>
       <p class="mt-1 text-sm text-base-content/50">{{values.bio}}</p>
     </div>
-    {{/each}}
+    {{/eachEntry}}
   </div>
 </section>`,
   },
@@ -710,14 +710,14 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
 </section>
 <section class="mx-auto max-w-6xl px-6 pb-12">
   <div class="nw-stagger grid gap-px overflow-hidden rounded-3xl border border-base-200 bg-base-200 sm:grid-cols-2">
-    {{#each data.services}}
+    {{#eachEntry data.services}}
     <div class="bg-base-100 p-8 transition hover:bg-base-200/40">
       <div class="text-3xl">{{values.icon}}</div>
       <h2 class="mt-3 text-xl font-bold">{{values.title}}</h2>
       <p class="mt-2 text-base-content/70">{{values.summary}}</p>
       <p class="mt-4 text-sm font-semibold text-primary">{{values.price}}</p>
     </div>
-    {{/each}}
+    {{/eachEntry}}
   </div>
 </section>
 <section class="mx-auto max-w-5xl px-6 py-20">

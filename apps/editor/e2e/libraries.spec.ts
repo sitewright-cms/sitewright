@@ -18,6 +18,7 @@ test('library panel: open, search, and copy an example; lazyload + ripple publis
   // Author a page that uses BOTH a data-bg lazyload background and a waves-effect CTA,
   // then publish and assert both runtimes shipped. (Done first, with the Library rail
   // collapsed, so it can't overlay the add-page form.)
+  await page.getByRole('button', { name: 'New page' }).click();
   await page.getByLabel('Page path').fill('launch');
   await page.getByLabel('Page title').fill('Launch');
   await page.getByRole('button', { name: 'Add page' }).click();

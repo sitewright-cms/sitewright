@@ -61,6 +61,16 @@ const DEVICE_ICONS: Record<PreviewDeviceKey, ReactNode> = {
   ),
 };
 
+/** Settings gear — matches the pages-list row glyph; opens the stacked Page settings modal. */
+function SettingsIcon() {
+  return (
+    <svg aria-hidden viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 1v3m0 16v3M4.2 4.2l2.1 2.1m11.4 11.4 2.1 2.1M1 12h3m16 0h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1" />
+    </svg>
+  );
+}
+
 /**
  * THE page editor, contentbase-style: a near-fullscreen modal (90vh, blurred
  * backdrop over the page list) with TWO ROWS — an authoring strip on top,
@@ -307,7 +317,32 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
     return confirm({ title: 'Discard changes', message: 'Discard unsaved changes?', confirmLabel: 'Discard' });
   }
 
-  const headerExtra = (
+  // Source⇄content, IN PLACE: both drafts live in this component, so switching is lossless —
+  // no unmount, no discard, no confirm needed. Pinned to the header's LEFT edge.
+  const editModeSwitch = (
+    <div
+      role="group"
+      aria-label="Edit mode"
+      className="flex items-center rounded-xl border border-white/60 bg-white/50 p-0.5 text-xs font-medium shadow-sm backdrop-blur-xl"
+    >
+      {(['source', 'content'] as const).map((m) => (
+        <button
+          key={m}
+          type="button"
+          aria-pressed={mode === m}
+          onClick={() => setMode(m)}
+          className={`rounded-lg px-2.5 py-1 capitalize transition ${
+            mode === m ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          {m}
+        </button>
+      ))}
+    </div>
+  );
+
+  // Centered between the switch and the right-side actions: the page path + status badges.
+  const titleExtra = (
     <>
       <span className="hidden truncate text-xs text-slate-400 sm:inline">{settings.path}</span>
       {settings.status === 'draft' && (
@@ -318,40 +353,26 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
           template
         </span>
       )}
-      {/* Source⇄content, IN PLACE: both drafts live in this component, so switching is
-          lossless — no unmount, no discard, no confirm needed. */}
-      <div
-        role="group"
-        aria-label="Edit mode"
-        className="flex items-center rounded-xl border border-white/60 bg-white/50 p-0.5 text-xs font-medium shadow-sm backdrop-blur-xl"
-      >
-        {(['source', 'content'] as const).map((m) => (
-          <button
-            key={m}
-            aria-pressed={mode === m}
-            onClick={() => setMode(m)}
-            className={`rounded-lg px-2.5 py-1 capitalize transition ${
-              mode === m ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            {m}
-          </button>
-        ))}
-      </div>
-      {mode === 'source' && (
-        <>
-          <button
-            aria-label="Page settings"
-            aria-expanded={settingsOpen}
-            className="rounded-xl border border-white/60 bg-white/40 px-2 py-1 text-sm text-slate-600 transition hover:bg-white/70"
-            onClick={() => setSettingsOpen(true)}
-          >
-            Page settings
-          </button>
-        </>
-      )}
+    </>
+  );
+
+  // Right side, just before Save/Close: the save status + the Page-settings gear (source mode only).
+  const headerExtra = (
+    <>
       {saved && !dirty && <span className="text-xs text-emerald-600">Saved</span>}
       {saveError && <span className="text-xs text-red-600">{saveError}</span>}
+      {mode === 'source' && (
+        <button
+          type="button"
+          aria-label="Page settings"
+          title="Page settings"
+          aria-expanded={settingsOpen}
+          className="inline-flex cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-white p-2 text-slate-500 transition hover:border-slate-300 hover:text-slate-900"
+          onClick={() => setSettingsOpen(true)}
+        >
+          <SettingsIcon />
+        </button>
+      )}
     </>
   );
 
@@ -364,6 +385,9 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
       onSave={() => void save()}
       saving={saving}
       saveDisabled={!dirty}
+      headerLeft={editModeSwitch}
+      centerTitle
+      titleExtra={titleExtra}
       headerExtra={headerExtra}
     >
       <div className="flex h-full flex-col gap-2 bg-slate-100/50 p-2">

@@ -17,6 +17,7 @@ test('code-first authoring: CodeMirror editor, live styled preview, save + persi
   await page.getByRole('button', { name: 'Create project' }).click();
 
   // Create a fresh CODE page (the project already has an auto-created home), then open it.
+  await page.getByRole('button', { name: 'New page' }).click();
   await page.getByLabel('Page path').fill('about');
   await page.getByLabel('Page title').fill('About');
   await page.getByRole('button', { name: 'Add page' }).click();
@@ -56,6 +57,7 @@ test('Shift+Tab auto-indents the selection to its syntactic depth (not a plain d
   await page.getByLabel('Project slug').fill(`indent-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
 
+  await page.getByRole('button', { name: 'New page' }).click();
   await page.getByLabel('Page path').fill('reindent');
   await page.getByLabel('Page title').fill('Reindent');
   await page.getByRole('button', { name: 'Add page' }).click();

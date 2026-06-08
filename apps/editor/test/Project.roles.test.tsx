@@ -46,10 +46,11 @@ beforeEach(() => {
 });
 
 describe('ProjectView role gating (tab is supplied by the App header)', () => {
-  it('owner on the Pages tab sees the add-page form + the page list', async () => {
+  it('owner on the Pages tab sees the add-page button + the page list', async () => {
     render(<ProjectView project={ownerProject} tab="pages" />);
     await waitFor(() => expect(listPages).toHaveBeenCalled());
-    expect(screen.getByLabelText('Page path')).toBeInTheDocument();
+    // The add-page form now lives in a modal opened from this button.
+    expect(screen.getByRole('button', { name: '+ New page' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Home /' })).toBeInTheDocument();
   });
 
@@ -73,8 +74,8 @@ describe('ProjectView role gating (tab is supplied by the App header)', () => {
     await waitFor(() => expect(listPages).toHaveBeenCalled());
     fireEvent.click(screen.getByRole('button', { name: 'Home /' }));
     expect(screen.getByText('PAGE EDITOR mode=source')).toBeInTheDocument();
-    // The list stays mounted behind the modal.
-    expect(screen.getByLabelText('Page path')).toBeInTheDocument();
+    // The list (and its add-page button) stays mounted behind the modal.
+    expect(screen.getByRole('button', { name: '+ New page' })).toBeInTheDocument();
   });
 
   it('opens a member on a page in CONTENT mode (the client default)', async () => {
@@ -87,6 +88,7 @@ describe('ProjectView role gating (tab is supplied by the App header)', () => {
   it('"Add page" creates a code-first page carrying a Handlebars source', async () => {
     render(<ProjectView project={ownerProject} tab="pages" />);
     await waitFor(() => expect(listPages).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: '+ New page' }));
     fireEvent.change(screen.getByLabelText('Page path'), { target: { value: 'landing' } });
     fireEvent.change(screen.getByLabelText('Page title'), { target: { value: 'Landing' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add page' }));
@@ -102,14 +104,17 @@ describe('ProjectView role gating (tab is supplied by the App header)', () => {
     render(<ProjectView project={ownerProject} tab="pages" />);
     await waitFor(() => expect(listPages).toHaveBeenCalled());
     // A leading slash / spaces are slugified away…
+    fireEvent.click(screen.getByRole('button', { name: '+ New page' }));
     fireEvent.change(screen.getByLabelText('Page path'), { target: { value: '/Web Design' } });
     fireEvent.change(screen.getByLabelText('Page title'), { target: { value: 'WD' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add page' }));
     await waitFor(() => expect(putPage).toHaveBeenCalledTimes(1));
     expect((putPage.mock.calls[0]![1] as Page).path).toBe('web-design');
 
-    // …and "home" (the root's id) is rejected rather than overwriting the home page.
+    // …and "home" (the root's id) is rejected rather than overwriting the home page. (A successful
+    // add closes the modal, so re-open it for the next attempt.)
     putPage.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: '+ New page' }));
     fireEvent.change(screen.getByLabelText('Page path'), { target: { value: 'home' } });
     fireEvent.change(screen.getByLabelText('Page title'), { target: { value: 'Home 2' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add page' }));

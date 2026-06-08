@@ -18,6 +18,7 @@ test('code page settings: stacked modal sets draft + nav, persisted across reope
   await page.getByRole('button', { name: 'Create project' }).click();
 
   // Create a code page and open it.
+  await page.getByRole('button', { name: 'New page' }).click();
   await page.getByLabel('Page path').fill('about');
   await page.getByLabel('Page title').fill('About');
   await page.getByRole('button', { name: 'Add page' }).click();

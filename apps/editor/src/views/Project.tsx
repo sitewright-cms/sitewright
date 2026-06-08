@@ -1,10 +1,11 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import type { Page, Template } from '@sitewright/schema';
 import { pagePath, pagesById } from '@sitewright/core';
 import { api, previewDocUrl, type Project } from '../api';
 import { CodePageEditor } from './CodePageEditor';
 import { PageSettingsModal, applyPageSettings, pageSettingsFromPage, type PageSettingsValues } from './PageSettingsModal';
 import { useDialogs } from './ui/Dialogs';
+import { Modal } from './ui/Modal';
 import { FormsManager } from './FormsManager';
 import { SettingsView } from './settings/SettingsView';
 import { AdminView } from './AdminView';
@@ -126,6 +127,11 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
   const [editing, setEditing] = useState<Page | null>(null);
   const [slug, setSlug] = useState('');
   const [title, setTitle] = useState('');
+  // The "Add page" form lives in its own modal, opened from a button atop the list.
+  const [addOpen, setAddOpen] = useState(false);
+  // Add-page errors are scoped to the modal so they never bleed onto the list (and list-op
+  // errors never show inside the add form). `error` covers list ops (reorder/delete/copy/…).
+  const [addError, setAddError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Settings opened FROM THE LIST (persist-on-save); the editor stacks its own instance.
   const [settingsFor, setSettingsFor] = useState<Page | null>(null);
@@ -215,7 +221,7 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
 
   async function create(e: FormEvent) {
     e.preventDefault();
-    setError(null);
+    setAddError(null);
     // The form takes a SLUG (one segment, no slashes) — the full URL is computed from the
     // parent. Slugify the input: lowercase, spaces/slashes/invalid → hyphens, trimmed.
     const seg = slug
@@ -224,13 +230,13 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '');
     if (!seg) {
-      setError('Enter a page slug (e.g. "about").');
+      setAddError('Enter a page slug (e.g. "about").');
       return;
     }
     // The id derives from the slug; refuse to clobber an existing page (notably the
     // reserved "home" root, whose id is "home").
     if (pages.some((p) => p.id === seg)) {
-      setError(seg === 'home' ? '"home" is reserved for the site root — pick another slug.' : `A page "${seg}" already exists.`);
+      setAddError(seg === 'home' ? '"home" is reserved for the site root — pick another slug.' : `A page "${seg}" already exists.`);
       return;
     }
     const page: Page = {
@@ -249,9 +255,10 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
       await api.putPage(project.id, page);
       setSlug('');
       setTitle('');
+      setAddOpen(false);
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'failed to create page');
+      setAddError(err instanceof Error ? err.message : 'failed to create page');
     }
   }
 
@@ -459,22 +466,32 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
         <AdminView key={project.id} project={project} />
       ) : (
         <>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-slate-500">Pages</h2>
+            <button
+              type="button"
+              className={primaryButton}
+              onClick={() => {
+                setAddError(null);
+                setAddOpen(true);
+              }}
+            >
+              + New page
+            </button>
+          </div>
           <ul className="mb-8 flex flex-col gap-2">
             {orderedPages.map(({ page: p, depth }) => {
               const isHome = p.path === '';
               // Indent sub-pages per the page tree — a left margin shrinks the card so nested
               // rows sit inside their parent (capped so deep trees stay readable).
               const indent = depth > 0 ? { marginLeft: `${Math.min(depth, 6) * 1.5}rem` } : undefined;
-              // The animated gap the list opens (at the row's own indent) where a dragged page
-              // would land — the "make space" drop indicator.
-              const gap = (side: 'before' | 'after') =>
-                drop && drop.id === p.id && drop.pos === side ? (
-                  <li aria-hidden style={indent} className="h-12 rounded-xl border-2 border-dashed border-indigo-400 bg-indigo-50/60 transition" />
-                ) : null;
+              // Where a dragged page would land — a thin line drawn in the row's OWN gutter (not a
+              // layout-shifting gap), so the geometry under the pointer never changes mid-drag (the
+              // gap approach re-triggered dragover and flickered).
+              const dropping = drop && drop.id === p.id;
               return (
-                <Fragment key={p.id}>
-                  {gap('before')}
                   <li
+                    key={p.id}
                     style={indent}
                     // Only non-Home pages reorder (Home is pinned first). The whole row is the
                     // drag source; the grip is the visible affordance + keyboard entry point.
@@ -509,8 +526,16 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
                       setDragId(null);
                       setDrop(null);
                     }}
-                    className={`flex items-center gap-1 ${glassCard} px-3 py-2 transition hover:bg-white/80 ${dragId === p.id ? 'opacity-40' : ''}`}
+                    className={`relative flex items-center gap-1 ${glassCard} px-3 py-2 transition hover:bg-white/80 ${dragId === p.id ? 'opacity-40' : ''}`}
                   >
+                  {dropping && (
+                    <span
+                      aria-hidden
+                      className={`pointer-events-none absolute inset-x-2 z-10 h-0.5 rounded-full bg-indigo-500 ${
+                        drop.pos === 'before' ? '-top-1' : '-bottom-1'
+                      }`}
+                    />
+                  )}
                   {!isHome && (
                     <button
                       type="button"
@@ -602,8 +627,6 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
                     )}
                   </div>
                   </li>
-                  {gap('after')}
-                </Fragment>
               );
             })}
             {pages.length === 0 && <li className="text-sm text-slate-400">No pages yet.</li>}
@@ -613,34 +636,53 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
             {reorderMsg}
           </div>
 
-          <form onSubmit={create} className={`flex flex-wrap items-end gap-2 ${glassCard} p-4`}>
-            <div className="flex flex-col">
-              <label className={fieldLabel}>Page slug</label>
-              <input
-                aria-label="Page path"
-                className={glassInput}
-                value={slug}
-                onChange={(e) => setSlug(e.target.value)}
-                placeholder="about"
-                title="One slug segment (no slashes) — it nests under Home; the URL is built from the page tree."
-                required
-              />
-            </div>
-            <div className="flex flex-col">
-              <label className={fieldLabel}>Title</label>
-              <input
-                aria-label="Page title"
-                className={glassInput}
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                required
-              />
-            </div>
-            <button type="submit" className={primaryButton}>
-              Add page
-            </button>
-          </form>
+          {/* List-level errors (reorder/delete) — the add-page error lives inside its own modal. */}
           {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+          {addOpen && (
+            <Modal
+              title="Add page"
+              size="md"
+              onClose={() => {
+                // A fresh form each open: drop any abandoned slug/title + error on close.
+                setAddOpen(false);
+                setSlug('');
+                setTitle('');
+                setAddError(null);
+              }}
+            >
+              <form onSubmit={create} className="flex flex-col gap-4 p-5">
+                <div className="flex flex-col">
+                  <label className={fieldLabel}>Page slug</label>
+                  <input
+                    aria-label="Page path"
+                    className={glassInput}
+                    value={slug}
+                    onChange={(e) => setSlug(e.target.value)}
+                    placeholder="about"
+                    title="One slug segment (no slashes) — it nests under Home; the URL is built from the page tree."
+                    autoFocus
+                    required
+                  />
+                </div>
+                <div className="flex flex-col">
+                  <label className={fieldLabel}>Title</label>
+                  <input
+                    aria-label="Page title"
+                    className={glassInput}
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    required
+                  />
+                </div>
+                {addError && <p className="text-sm text-red-600">{addError}</p>}
+                <div className="flex justify-end">
+                  <button type="submit" className={primaryButton}>
+                    Add page
+                  </button>
+                </div>
+              </form>
+            </Modal>
+          )}
         </>
       )}
       {/* The page editor: a near-fullscreen modal portalled over this list (blurred

@@ -24,7 +24,7 @@ test('page editor modal: collapsed code strip, device simulation, Ctrl+S, Esc-wi
   // Target it by its title (the page name) so the stacked discard dialog stays distinct.
   const dialog = page.getByRole('dialog', { name: 'Home' });
   await expect(dialog).toBeVisible();
-  await expect(page.getByLabel('Page path')).toBeAttached(); // the list is still behind
+  await expect(page.locator('button:has-text("New page")')).toBeAttached(); // the list is still behind (inert)
 
   // The code strip opens COLLAPSED and expands on hover (contentbase behavior).
   // Park the pointer on neutral ground first: the modal renders UNDER the cursor
@@ -61,7 +61,7 @@ test('page editor modal: collapsed code strip, device simulation, Ctrl+S, Esc-wi
   // Esc on a CLEAN editor → straight back to the page list (no confirm).
   await page.keyboard.press('Escape');
   await expect(dialog).not.toBeVisible();
-  await expect(page.getByLabel('Page path')).toBeVisible();
+  await expect(page.getByRole('button', { name: '+ New page' })).toBeVisible();
 
   // Reopen, make it dirty, Esc → the stacked discard DIALOG appears; Cancel keeps editing.
   await page.getByRole('button', { name: /^Home/ }).click();

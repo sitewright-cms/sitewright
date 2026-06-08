@@ -63,6 +63,22 @@ describe('resolveDirectives — data-sw-html', () => {
   });
 });
 
+describe('resolveDirectives — data-sw-href', () => {
+  it('sets the anchor href from content, scheme-sanitized', () => {
+    const html = '<a data-sw-href="cta" href="/old">Go</a>';
+    expect(resolveDirectives(html, { content: { cta: 'https://x.test' }, preview: true })).toBe(
+      '<a data-sw-href="cta" href="https://x.test">Go</a>',
+    );
+    expect(resolveDirectives(html, { content: { cta: 'javascript:alert(1)' }, preview: true })).toContain('href="#"');
+  });
+
+  it('keeps the authored href when unset; strips the marker on publish', () => {
+    const html = '<a data-sw-href="cta" href="/old">Go</a>';
+    expect(resolveDirectives(html, { preview: true })).toBe('<a data-sw-href="cta" href="/old">Go</a>');
+    expect(resolveDirectives(html, { content: { cta: '/new' } })).toBe('<a href="/new">Go</a>');
+  });
+});
+
 describe('renderTemplate — directive integration', () => {
   it('resolves data-sw-html in preview (marker kept) and publish (stripped)', () => {
     const source = '<section data-sw-html="intro"><p>fallback</p></section>';

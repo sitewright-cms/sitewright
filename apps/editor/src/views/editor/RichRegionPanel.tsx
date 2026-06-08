@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { sanitizeRichHtml } from '@sitewright/blocks';
 import { Modal } from '../ui/Modal';
 import { ghostButton, glassInput } from '../../theme';
 
@@ -44,7 +45,9 @@ export function RichRegionPanel({ regionKey, value, onChange, onClose }: RichReg
   valueRef.current = value;
 
   useEffect(() => {
-    if (!sourceView && editorRef.current) editorRef.current.innerHTML = valueRef.current;
+    // Sanitize before seeding innerHTML — the value may be raw HTML typed in the source view (or
+    // pasted from the preview), and this is the editor origin. Same allowlist as save/render.
+    if (!sourceView && editorRef.current) editorRef.current.innerHTML = sanitizeRichHtml(valueRef.current);
   }, [sourceView]);
 
   const emit = (): void => {

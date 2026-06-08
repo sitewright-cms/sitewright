@@ -33,7 +33,7 @@ const DANGEROUS_ID = new Set(['__proto__', 'constructor', 'prototype']);
  * PERFORMANCE: built ONLY for the datasets a source actually addresses by key (scanned from the
  * template). A source that only loops pays nothing; a keyed source duplicates just the referenced
  * dataset(s) in the render payload — which stays bounded by the route's payload guard. The `data`
- * arrays it reads are the SAME locale-resolved entries `{{#each}}`/`{{#eachEntry}}` see, so keyed and
+ * arrays it reads are the SAME locale-resolved entries `{{#each}}` sees, so keyed and
  * looped access are consistent (incl. draft visibility).
  */
 export function keyedDatasets(source: string, data: Record<string, readonly Entry[]>): Record<string, Record<string, unknown>> {

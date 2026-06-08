@@ -7,7 +7,7 @@
 //   1. `validateTemplate`: a best-effort HTML-context scanner (ported from the earlier
 //      no-eval engine) that REJECTS interpolation in the un-escapable contexts (unquoted
 //      attribute, `<script>`/`<style>`, event-handler/`style` attribute, HTML comment),
-//      bans `{{{ raw }}}`, and requires the `{{url …}}` helper inside URL attributes.
+//      bans `{{{ raw }}}`, and requires the `{{sw-url …}}` helper inside URL attributes.
 //   2. strict runtime config: prototype access OFF (where Handlebars' RCE CVEs lived),
 //      only our curated helpers, partials passed per-render (no global cross-tenant state).
 //   3. a bounded compiled-template cache (so repeat renders skip the `new Function` step).
@@ -58,9 +58,9 @@ export interface TemplateContext {
    */
   preview?: boolean;
   /**
-   * PREVIEW-ONLY: when true, the `{{#eachEntry}}` block helper wraps each iteration in a
+   * PREVIEW-ONLY: when true, the dataset-aware `{{#each}}` helper wraps each entry iteration in a
    * `<div data-sw-entry data-sw-dataset>` so the editor can open that entry's editor on click. Never
-   * set on publish — the helper is a transparent passthrough (byte-identical to `{{#each}}`) otherwise.
+   * set on publish — the loop is then byte-identical to a plain `{{#each}}` (no wrapper).
    */
   markEntries?: boolean;
 }
@@ -75,7 +75,7 @@ const COMPILE_CACHE_LIMIT = 200;
  * Best-effort HTML-context check over a template's literal text (treating `{{ … }}` as
  * holes). Throws {@link TemplateError} if an OUTPUT mustache sits in a context a single
  * HTML-escaper cannot make safe, if `{{{ raw }}}` is used, or if a URL attribute uses a
- * bare interpolation instead of the `{{url …}}` helper.
+ * bare interpolation instead of the `{{sw-url …}}` helper.
  */
 export function validateTemplate(source: string): void {
   type Mode = 'body' | 'comment' | 'rawtext' | 'tag';
@@ -92,7 +92,7 @@ export function validateTemplate(source: string): void {
   function reject(reason: string): never {
     throw new TemplateError(
       `unsafe template: ${reason}. Bind values only in element text or QUOTED attributes; ` +
-        'use the {{url …}} helper for href/src; no <script>, inline on* handlers, {{{ raw }}}, ' +
+        'use the {{sw-url …}} helper for href/src; no <script>, inline on* handlers, {{{ raw }}}, ' +
         'or interpolation in an unquoted attribute, style/<style>, or an HTML comment.',
     );
   }
@@ -110,10 +110,10 @@ export function validateTemplate(source: string): void {
       if (quote === '') reject('an interpolation in an unquoted attribute value');
       if (attrName.startsWith('on') || attrName === 'style') reject(`an interpolation in the "${attrName}" attribute`);
       if (URL_ATTRS.has(attrName)) {
-        const isUrlHelper = /^url(\s|$)/.test(inner);
+        const isUrlHelper = /^sw-url(\s|$)/.test(inner);
         if (valuePrefix === '') {
-          // The interpolation is the whole value → it must be sanitized by {{url …}}.
-          if (!isUrlHelper) reject(`a bare value in the URL attribute "${attrName}" (use {{url …}})`);
+          // The interpolation is the whole value → it must be sanitized by {{sw-url …}}.
+          if (!isUrlHelper) reject(`a bare value in the URL attribute "${attrName}" (use {{sw-url …}})`);
         } else if (!/^(#|\/(?!\/)|https?:\/\/)/i.test(valuePrefix)) {
           // A literal prefix only fixes the scheme when it starts with /, #, or http(s)://.
           // `j{{x}}` (→ javascript:) and `//{{x}}` (protocol-relative) are rejected here.
@@ -231,22 +231,25 @@ function createInstance(): typeof Handlebars {
   const hb = Handlebars.create();
   // Drop the built-in {{log}} helper — it writes to stdout (an info-disclosure path for
   // bound values). The remaining built-ins (if/unless/each/with/lookup) are pure logic.
+  // Our content helpers are ALL `sw-`-prefixed so they never shadow a dataset FIELD of the
+  // same bare name (a field `url`/`date`/`icon` is read plainly as {{url}}/{{date}}/{{icon}}).
   hb.unregisterHelper('log');
-  // {{url page.link}} → scheme-sanitized URL (blocks javascript:/data:/protocol-relative).
-  hb.registerHelper('url', (value: unknown) => safeUrl(typeof value === 'string' ? value : ''));
-  // {{date page.publishedAt}} → UTC YYYY-MM-DD; {{date x "iso"}} → full ISO; "" if unparseable.
-  hb.registerHelper('date', (value: unknown, format?: unknown) => {
+  // {{sw-url page.link}} → scheme-sanitized URL (blocks javascript:/data:/protocol-relative).
+  hb.registerHelper('sw-url', (value: unknown) => safeUrl(typeof value === 'string' ? value : ''));
+  // {{sw-date page.publishedAt}} → UTC YYYY-MM-DD; {{sw-date x "iso"}} → full ISO; "" if unparseable.
+  hb.registerHelper('sw-date', (value: unknown, format?: unknown) => {
     const d = value instanceof Date ? value : new Date(typeof value === 'string' || typeof value === 'number' ? value : NaN);
     if (Number.isNaN(d.getTime())) return '';
     if (format === 'iso') return d.toISOString();
     return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
   });
-  // {{icon "arrow-right" "h-5 w-5"}} → inline a built-in Lucide icon as an <svg>. The
+  // {{sw-icon "arrow-right" "h-5 w-5"}} → inline a built-in Lucide icon as an <svg>. The
   // body comes ONLY from the trusted `iconBody` map (unknown name → empty, NEVER user
   // input), and the optional class string is attribute-escaped — so this emits a
   // SafeString (raw SVG) without ever reflecting tenant markup. Author-supplied DATA is
-  // just the icon NAME (a map key) + a class list. Use in element context.
-  hb.registerHelper('icon', (name: unknown, cls?: unknown) => {
+  // just the icon NAME (a map key) + a class list. Use in element context. A field literally
+  // named `icon` (e.g. a card's emoji) is read plainly as `{{icon}}`, never shadowed by this.
+  hb.registerHelper('sw-icon', (name: unknown, cls?: unknown) => {
     const body = typeof name === 'string' ? iconBody(name) : undefined;
     if (body === undefined) return new Handlebars.SafeString('');
     const klass = typeof cls === 'string' ? cls : 'h-5 w-5';
@@ -255,42 +258,73 @@ function createInstance(): typeof Handlebars {
       `stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
     return new Handlebars.SafeString(svg);
   });
-  // {{truncate text 80}} → clip to N chars with an ellipsis.
-  hb.registerHelper('truncate', (value: unknown, max: unknown) => {
+  // {{sw-truncate text 80}} → clip to N chars with an ellipsis.
+  hb.registerHelper('sw-truncate', (value: unknown, max: unknown) => {
     const s = typeof value === 'string' ? value : '';
     const n = typeof max === 'number' && Number.isFinite(max) ? max : 100;
     return s.length > n ? `${s.slice(0, Math.max(0, n - 1))}…` : s;
   });
   // ({{edit}} is RETIRED — editable text is now the `data-sw-text="key"` directive, bound to page.data.)
-  // {{#eachEntry data.x}}…{{/eachEntry}} — like {{#each}} over a dataset, but in PREVIEW
-  // (root.markEntries) each iteration's body is wrapped in a <div data-sw-entry data-sw-dataset> so
-  // the editor can open that entry's editor on click. OUTSIDE preview it is a transparent passthrough
-  // (no wrapper) — byte-identical to {{#each}} — so publish is unaffected. {{else}} handles an empty
-  // list; @index/@first/@last work as in {{#each}}.
-  hb.registerHelper('eachEntry', function eachEntry(this: unknown, ...args: unknown[]) {
+  //
+  // {{#each data.x}}…{{/each}} — the ONE loop helper, dataset-aware. When the iterated value is an
+  // array of DATASET ENTRIES, each iteration's context is the entry's FIELDS (`entry.values`) — so a
+  // template reads `{{title}}`, not `{{values.title}}` — and the entry envelope is exposed on the
+  // data frame as `@entry` (id/dataset/status). In PREVIEW (`root.markEntries`) each row is wrapped
+  // in `<div data-sw-entry data-sw-dataset>` so the editor can open THAT entry's editor on click;
+  // OUTSIDE preview there is NO wrapper, so publish output is byte-identical to a plain loop. ANY
+  // non-entry value (objects, nav menus, plain arrays) falls through to Handlebars' stock `#each`
+  // unchanged — `{{else}}`, `@index/@first/@last/@key`, block params, and `../` all keep working.
+  const builtinEach = hb.helpers.each as Handlebars.HelperDelegate;
+  hb.registerHelper('each', function each(this: unknown, ...args: unknown[]) {
     const options = args[args.length - 1] as Handlebars.HelperOptions;
-    const list = Array.isArray(args[0]) ? (args[0] as Array<Record<string, unknown>>) : [];
-    if (list.length === 0) return typeof options.inverse === 'function' ? options.inverse(this) : '';
-    const root = (options.data?.root ?? {}) as { markEntries?: boolean };
-    let out = '';
-    for (let i = 0; i < list.length; i += 1) {
-      // eslint-disable-next-line security/detect-object-injection -- i is a bounded loop index
-      const item = list[i] as { id?: unknown; dataset?: unknown };
-      const frame = Handlebars.createFrame(options.data ?? {});
-      frame.index = i;
-      frame.key = i;
-      frame.first = i === 0;
-      frame.last = i === list.length - 1;
-      const body = options.fn(item, { data: frame });
-      if (root.markEntries && typeof item.id === 'string' && typeof item.dataset === 'string') {
-        out += `<div data-sw-entry="${escapeAttr(item.id)}" data-sw-dataset="${escapeAttr(item.dataset)}">${body}</div>`;
-      } else {
-        out += body;
+    const context = args[0];
+    // ALL-OR-NOTHING: only an array whose EVERY element is an entry takes the dataset path. A mixed or
+    // malformed array (or empty — which routes to the built-in {{else}}) falls through to stock #each.
+    if (Array.isArray(context) && context.length > 0 && context.every(isEntry)) {
+      const root = (options.data?.root ?? {}) as { markEntries?: boolean };
+      let out = '';
+      for (let i = 0; i < context.length; i += 1) {
+        // eslint-disable-next-line security/detect-object-injection -- i is a bounded loop index
+        const entry = context[i] as EntryLike;
+        const frame = Handlebars.createFrame(options.data ?? {});
+        frame.index = i;
+        frame.key = i;
+        frame.first = i === 0;
+        frame.last = i === context.length - 1;
+        // The envelope metadata lives on @entry — NEVER merged into the field namespace, so a field
+        // named `id`/`dataset`/`status` can't be shadowed by it.
+        frame.entry = { id: entry.id, dataset: entry.dataset, status: entry.status };
+        const body = options.fn(entry.values, { data: frame, blockParams: [entry.values, i] });
+        out += root.markEntries
+          ? `<div data-sw-entry="${escapeAttr(entry.id)}" data-sw-dataset="${escapeAttr(entry.dataset)}">${body}</div>`
+          : body;
       }
+      return new Handlebars.SafeString(out);
     }
-    return new Handlebars.SafeString(out);
+    // Not a dataset → the stock #each (handles objects, iterables, empty {{else}}, @key, etc.).
+    return (builtinEach as (...a: unknown[]) => unknown).apply(this, args);
   });
   return hb;
+}
+
+/** The minimal shape of a dataset entry the loop helper recognises (mirrors @sitewright/schema's Entry). */
+interface EntryLike {
+  id: string;
+  dataset: string;
+  status?: unknown;
+  values: Record<string, unknown>;
+}
+
+/**
+ * Is `v` a dataset entry? An entry is the envelope `{ id, dataset, values, … }` bound to
+ * `data.<dataset>`. We detect it structurally (string `id` + string `dataset` + object `values`) so
+ * the unified `{{#each}}` can flatten entry fields + emit click-to-edit markers, while plain arrays
+ * (nav menus, page.children, translations) fall through to the built-in loop untouched.
+ */
+function isEntry(v: unknown): v is EntryLike {
+  if (typeof v !== 'object' || v === null) return false;
+  const o = v as Record<string, unknown>;
+  return typeof o.id === 'string' && typeof o.dataset === 'string' && typeof o.values === 'object' && o.values !== null;
 }
 
 const HB = createInstance();
@@ -307,7 +341,7 @@ function compileCached(source: string): Handlebars.TemplateDelegate {
   let compiled: Handlebars.TemplateDelegate;
   try {
     // `strict: false` → a missing path renders empty (not a throw). Helpers available are
-    // the pure built-in logic helpers + our curated url/date/truncate (log removed);
+    // the pure built-in logic helpers + our curated sw-url/sw-date/sw-icon/sw-truncate (log removed);
     // tenants cannot register their own (no compile/runtime registration is exposed).
     compiled = HB.compile(source, { strict: false, noEscape: false });
   } catch (err) {

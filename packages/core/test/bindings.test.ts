@@ -27,7 +27,7 @@ describe('keyedDatasets', () => {
   });
 
   it('returns {} when the source never uses item.', () => {
-    expect(keyedDatasets('{{#each data.services}}{{values.title}}{{/each}}', data)).toEqual({});
+    expect(keyedDatasets('{{#each data.services}}{{title}}{{/each}}', data)).toEqual({});
   });
 
   it('skips an unknown or prototype-named dataset slug', () => {

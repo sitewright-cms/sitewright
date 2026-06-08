@@ -139,7 +139,7 @@ describe('website settings → publish', () => {
     await proj.putContent('page', 'a3', { id: 'a3', path: 'third', parent: 'home', title: 'DraftArticle', status: 'draft', order: 3, root: node });
     expect((await proj.putContent('page', 'home', {
       id: 'home', path: '', title: 'Home', root: node,
-      source: '<main>{{#each page.children}}<a href="{{url path}}"><h3>{{title}}</h3><p>{{description}}</p><span>{{data.tag}}</span></a>{{/each}}</main>',
+      source: '<main>{{#each page.children}}<a href="{{sw-url path}}"><h3>{{title}}</h3><p>{{description}}</p><span>{{data.tag}}</span></a>{{/each}}</main>',
     })).statusCode).toBe(200);
     const html = await publishAndFetchHome();
     expect(html).toContain('<h3>First</h3>');
@@ -147,7 +147,7 @@ describe('website settings → publish', () => {
     expect(html).toContain('<p>One</p>'); // flattened seo.description
     expect(html).toContain('<span>x</span>'); // the child's page.data, read in the loop
     expect(html.indexOf('First')).toBeLessThan(html.indexOf('Second')); // ordered by `order`
-    expect(html).toContain('<a href="first">'); // {{url path}} → portable relative link to the child page
+    expect(html).toContain('<a href="first">'); // {{sw-url path}} → portable relative link to the child page
     expect(html).not.toContain('DraftArticle'); // the draft child is excluded from publish
   });
 

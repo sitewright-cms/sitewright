@@ -76,7 +76,7 @@ const INTERNAL_LINK_ATTR = /\b(href|src)=(["'])(\/(?!\/)[^"']*)\2/gi;
  * (`http(s)://`), protocol-relative (`//`), fragment (`#`), and already-relative links are
  * untouched; traversing links (`/a/../b`) collapse to `#` (via {@link resolveInternalUrl}).
  *
- * Applied as a publish post-process so it catches links from code-first `{{url …}}`
+ * Applied as a publish post-process so it catches links from code-first `{{sw-url …}}`
  * helpers AND literal `href="/…"` in source/skeleton slots (block-tree props are already
  * rebased at render time, and are relative here, so they don't match).
  *

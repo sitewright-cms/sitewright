@@ -59,8 +59,8 @@ describe('lazyload + ripple runtimes → publish', () => {
     expect(js.body).toContain("createElement('span')");
   });
 
-  it('renders {{icon}} as an inline SVG in the published page', async () => {
-    const html = await publishWith('<p>Next {{icon "arrow-right" "h-4 w-4"}}</p>');
+  it('renders {{sw-icon}} as an inline SVG in the published page', async () => {
+    const html = await publishWith('<p>Next {{sw-icon "arrow-right" "h-4 w-4"}}</p>');
     expect(html).toContain('<svg class="h-4 w-4"');
     expect(html).toContain('<path d="M5 12h14"'); // arrow-right body, raw
   });

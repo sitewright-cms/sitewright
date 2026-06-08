@@ -210,7 +210,7 @@ describe('createSitewrightMcpServer — agent guidance', () => {
     expect(instructions).toContain('waves-light');
     expect(instructions).toMatch(/never add Waves\.js/i);
     // Icons.
-    expect(instructions).toContain('{{icon "name"');
+    expect(instructions).toContain('{{sw-icon "name"');
     await mcp.close();
   });
 });

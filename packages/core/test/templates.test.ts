@@ -52,7 +52,7 @@ describe('resolveTemplateSource (code-first templates)', () => {
     );
     // The overview lists child pages and reads each child's flattened fields + data.
     expect(overview!.source).toContain('{{#each page.children}}');
-    expect(overview!.source).toContain('href="{{url path}}"');
+    expect(overview!.source).toContain('href="{{sw-url path}}"');
     expect(overview!.source).toContain('{{data.article_excerpt}}');
   });
 });

@@ -6,7 +6,7 @@
  * the same `name` overrides the global.
  *
  * Every source is CSP/validator-safe by construction (no `<script>`, `on*` handlers, `{{{raw}}}`,
- * only literal/`{{url}}` URLs) and uses platform conventions: DaisyUI component classes (brand-themed
+ * only literal/`{{sw-url}}` URLs) and uses platform conventions: DaisyUI component classes (brand-themed
  * via `--color-primary`…), `{{ company.* }}` bindings, and `<span data-sw-text="key">default</span>` regions a
  * client may later edit. The editor's `global-snippets.test.ts` runs each through `validateTemplate`,
  * so an unsafe edit here fails the build, not publish. Sitewright's own compositions (no third-party

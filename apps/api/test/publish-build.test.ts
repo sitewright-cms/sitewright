@@ -163,7 +163,7 @@ describe('buildSite', () => {
           website: {
             topNav:
               '<nav class="navbar bg-base-100"><a class="btn btn-ghost" href="/">{{ company.name }}</a>' +
-              '<ul class="menu menu-horizontal">{{#each nav.header}}<li><a href="{{url path}}">{{label}}</a></li>{{/each}}</ul></nav>',
+              '<ul class="menu menu-horizontal">{{#each nav.header}}<li><a href="{{sw-url path}}">{{label}}</a></li>{{/each}}</ul></nav>',
             footer: '<footer class="footer">© {{ company.name }}</footer>',
           },
         },
@@ -389,7 +389,7 @@ describe('buildSite', () => {
           formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
           identity: { name: 'Acme', colors: {} },
           settings: { defaultLocale: 'en', locales: ['en', 'de'] },
-          website: { topNav: '<nav>{{#each nav.header}}<a href="{{url path}}">{{label}}</a>{{/each}}</nav>' },
+          website: { topNav: '<nav>{{#each nav.header}}<a href="{{sw-url path}}">{{label}}</a>{{/each}}</nav>' },
         },
         pages: [
           { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<main>h</main>', nav: { slots: ['header'], order: 1 }, translationGroup: 'home' },
@@ -436,7 +436,7 @@ describe('buildSite', () => {
           project: {
             formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
             identity: { name: 'Acme', colors: {} }, settings: { defaultLocale: 'en', locales: ['en'] },
-            website: { topNav: '<nav>{{#each nav.header}}<a href="{{url path}}">{{label}}</a>{{/each}}</nav><script>x()</script>' },
+            website: { topNav: '<nav>{{#each nav.header}}<a href="{{sw-url path}}">{{label}}</a>{{/each}}</nav><script>x()</script>' },
           },
           pages: [{ id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<main>x</main>' }],
         }),

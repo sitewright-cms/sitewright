@@ -189,7 +189,7 @@ function SectionModal({ section, onClose }: { section: LibrarySection; onClose: 
   );
 }
 
-/** A dense, searchable grid of icons; clicking one copies its `{{icon …}}` snippet. */
+/** A dense, searchable grid of icons; clicking one copies its `{{sw-icon …}}` snippet. */
 function IconGrid({ items }: { items: LibraryItem[] }) {
   const toast = useToast();
   const [copiedId, copy] = useCopy(() => toast.show('Copied to clipboard'));
@@ -201,7 +201,7 @@ function IconGrid({ items }: { items: LibraryItem[] }) {
           title={`${it.name} — click to copy ${it.example}`}
           aria-label={`Copy ${it.name} icon snippet`}
           onClick={() => copy(it.example, it.id)}
-          className="flex flex-col items-center gap-1 rounded-xl border border-slate-200/70 bg-white/60 p-2.5 text-slate-600 transition hover:border-indigo-300 hover:bg-white hover:text-slate-900"
+          className="waves-effect flex flex-col items-center gap-1 rounded-xl border border-slate-200/70 bg-white/60 p-2.5 text-slate-600 transition hover:border-indigo-300 hover:bg-white hover:text-slate-900"
         >
           {it.svg && <span aria-hidden className="h-6 w-6" dangerouslySetInnerHTML={{ __html: it.svg }} />}
           <span className="w-full truncate text-center text-[10px] text-slate-400">

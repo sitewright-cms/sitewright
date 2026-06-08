@@ -396,7 +396,7 @@ describe('preview API — code-first source page', () => {
       cookies: { sw_session: t },
       payload: {
         id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
-        source: '<main>{{#each page.children}}<a href="{{url path}}"><h3>{{title}}</h3><p>{{description}}</p><span>{{data.tag}}</span></a>{{/each}}</main>',
+        source: '<main>{{#each page.children}}<a href="{{sw-url path}}"><h3>{{title}}</h3><p>{{description}}</p><span>{{data.tag}}</span></a>{{/each}}</main>',
       },
     });
     expect(res.statusCode).toBe(200);
@@ -417,8 +417,8 @@ describe('preview API — code-first source page', () => {
       // The shared nav lists nav.header labels; expose the locale + switcher too.
       website: {
         topNav:
-          '<nav class="navbar"><ul>{{#each nav.header}}<li><a href="{{url path}}">{{label}}</a></li>{{/each}}</ul>' +
-          '<span class="loc">{{page.locale}}</span>{{#each page.translations}}<a class="sw" href="{{url path}}">{{locale}}</a>{{/each}}</nav>',
+          '<nav class="navbar"><ul>{{#each nav.header}}<li><a href="{{sw-url path}}">{{label}}</a></li>{{/each}}</ul>' +
+          '<span class="loc">{{page.locale}}</span>{{#each page.translations}}<a class="sw" href="{{sw-url path}}">{{locale}}</a>{{/each}}</nav>',
       },
       settings: { defaultLocale: 'en', locales: ['en', 'de'] },
     });

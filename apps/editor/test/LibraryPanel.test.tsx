@@ -69,7 +69,7 @@ describe('LibraryPanel', () => {
       { timeout: 15000 },
     );
     fireEvent.click(iconBtn);
-    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('{{icon "arrow-right" "h-5 w-5"}}');
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('{{sw-icon "arrow-right" "h-5 w-5"}}');
 
     // Search by Lucide keyword tags too — "photo" finds "image".
     fireEvent.change(within(dialog).getByLabelText('Search Icons'), { target: { value: 'photo' } });
@@ -86,6 +86,6 @@ describe('LibraryPanel', () => {
     // first to trigger the (slow-under-CI) `import('./catalog-icons')`.
     const gh = await within(dialog).findByRole('button', { name: 'Copy GitHub icon snippet' }, { timeout: 15000 });
     fireEvent.click(gh);
-    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('{{icon "brand:github" "h-6 w-6"}}');
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('{{sw-icon "brand:github" "h-6 w-6"}}');
   }, 20000);
 });

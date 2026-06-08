@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 const stamp = Date.now();
 
-// A page that renders a dataset via {{#eachEntry}} marks each row in the preview; clicking a row
+// A page that renders a dataset via {{#each}} marks each row in the preview; clicking a row
 // (content mode) opens that entry's editor, and saving refreshes the preview.
 test('click a rendered dataset row in the preview → edit its entry → preview updates', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
@@ -28,12 +28,12 @@ test('click a rendered dataset row in the preview → edit its entry → preview
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Hello' })).toBeVisible();
 
-  // Close the Data rail and open the Home page editor; render the dataset with {{#eachEntry}}.
+  // Close the Data rail and open the Home page editor; render the dataset with {{#each}} (fields flattened).
   await page.mouse.move(640, 400);
   await page.getByRole('button', { name: /^Home/ }).click();
   await page.locator('.cm-content').click();
   await page.keyboard.press('ControlOrMeta+a');
-  await page.keyboard.insertText('<ul>{{#eachEntry data.posts}}<li class="post">{{values.title}}</li>{{/eachEntry}}</ul>');
+  await page.keyboard.insertText('<ul>{{#each data.posts}}<li class="post">{{title}}</li>{{/each}}</ul>');
 
   const preview = page.frameLocator('iframe[title="Preview"]');
   const row = preview.locator('[data-sw-entry]');

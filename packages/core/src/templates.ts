@@ -22,7 +22,7 @@ export const GLOBAL_TEMPLATES: readonly Template[] = [
     <div class="max-w-xl">
       <h1 class="text-5xl font-bold" data-aos="fade-up" data-sw-text="headline">A clear, bold promise</h1>
       <p class="py-6 text-base-content/70" data-aos="fade-up" data-aos-delay="150" data-sw-text="subline">One supporting sentence that earns the click.</p>
-      <a class="btn btn-primary" href="{{url "/contact"}}" data-sw-text="cta">Get in touch</a>
+      <a class="btn btn-primary" href="{{sw-url "/contact"}}" data-sw-text="cta">Get in touch</a>
     </div>
   </div>
 </div>
@@ -70,8 +70,8 @@ export const GLOBAL_TEMPLATES: readonly Template[] = [
   <p class="mb-10 text-base-content/60" data-sw-text="data.intro">News, guides, and updates.</p>
   <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
     {{#each page.children}}
-    <a class="card bg-base-100 shadow-sm transition hover:shadow-md" href="{{url path}}">
-      {{#if data.article_image}}<figure><img src="{{url data.article_image}}" alt="{{title}}" class="aspect-video w-full object-cover"></figure>{{/if}}
+    <a class="card bg-base-100 shadow-sm transition hover:shadow-md" href="{{sw-url path}}">
+      {{#if data.article_image}}<figure><img src="{{sw-url data.article_image}}" alt="{{title}}" class="aspect-video w-full object-cover"></figure>{{/if}}
       <div class="card-body">
         <h2 class="card-title">{{title}}</h2>
         <p class="text-sm text-base-content/60">{{data.article_excerpt}}</p>

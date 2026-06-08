@@ -435,8 +435,8 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
             : undefined;
         // `data.<name>` resolves to this page's locale variant (`<name>-<locale>`) when
         // present, else the base dataset (auto locale-suffix). Translation links for a
-        // language switcher (`{{#each page.translations}}<a href="{{url path}}">`) use the
-        // ROOT-RELATIVE page path — same as nav — so the `{{url}}` helper (which only
+        // language switcher (`{{#each page.translations}}<a href="{{sw-url path}}">`) use the
+        // ROOT-RELATIVE page path — same as nav — so the `{{sw-url}}` helper (which only
         // accepts `/…`/`http(s)`/`#`) emits a real link rather than its `#` fallback.
         const localeData = resolveLocaleDatasets(datasets, page.locale);
         const pageTranslations = group.map((m) => ({ locale: m.locale, path: m.path, title: m.title }));
@@ -574,7 +574,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         const mediaRebased = html.split(mediaPrefix).join(`${siteRoot}${ASSET_DIR}/`);
         // Rebase the remaining internal `/…` links onto this page's depth so the artifact is
         // portable (works at a domain root, in a sub-folder, and at the `/sites/<slug>/`
-        // preview) — covers code-first `{{url}}` + literal `href="/…"`; block-tree links are
+        // preview) — covers code-first `{{sw-url}}` + literal `href="/…"`; block-tree links are
         // already relative from render time.
         const portableHtml = relativizeInternalLinks(mediaRebased, siteRoot);
         // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to tmp (checked above)

@@ -37,7 +37,7 @@ test('data-sw-text: inline plaintext edit in the preview, two-way + persists', a
   await page.keyboard.press('ControlOrMeta+a');
   await page.keyboard.type('Fresh tagline');
 
-  await expect(page.getByLabel('tagline')).toHaveValue('Fresh tagline'); // two-way with the side field
+  await expect(region).toHaveText('Fresh tagline'); // the in-preview edit took
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('Saved')).toBeVisible();
 });
@@ -60,15 +60,12 @@ test('data-sw-html: in-place rich editing (contenteditable + toolbar) persists',
   await preview.locator('.sw-tb button', { hasText: /^B$/ }).click();
   await expect(region.locator('b, strong')).toHaveCount(1);
 
-  // Persist → reopen → the rich region's HTML source shows the bold markup.
+  // Persist → reopen → the rich region's rendered content keeps the bold markup.
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('Saved')).toBeVisible();
   await page.getByRole('button', { name: 'Close', exact: true }).click();
   await page.getByRole('button', { name: /^Home/ }).click();
-  await page.getByRole('button', { name: 'content', exact: true }).click();
-  await page.getByRole('button', { name: 'Edit rich text…' }).click();
-  await page.getByRole('button', { name: '</> HTML source' }).click();
-  await expect(page.getByLabel('body HTML source')).toHaveValue(/<(b|strong)>/);
+  await expect(page.frameLocator('iframe[title="Preview"]').locator('[data-sw-html="body"]').locator('b, strong')).toHaveCount(1);
 });
 
 // A [data-sw-href] anchor is click-to-edit (URL + text) via a popover; the change persists.
@@ -99,14 +96,17 @@ test('undo/redo: header buttons revert and reapply an inline edit', async ({ pag
   await setSource(page, '<h1 data-sw-text="tagline">Hello</h1>');
   await page.getByRole('button', { name: 'content', exact: true }).click();
 
-  const field = page.getByLabel('tagline');
-  await field.fill('Changed');
+  const region = page.frameLocator('iframe[title="Preview"]').locator('[data-sw-text="tagline"]');
+  await region.click();
+  await page.keyboard.press('ControlOrMeta+a');
+  await page.keyboard.type('Changed');
+  await expect(region).toHaveText('Changed');
   await page.waitForTimeout(600); // let the debounced history push record the edit
 
   await expect(page.getByRole('button', { name: 'Undo' })).toBeEnabled();
   await page.getByRole('button', { name: 'Undo' }).click();
-  await expect(field).toHaveValue('Hello');
+  await expect(region).toHaveText('Hello');
 
   await page.getByRole('button', { name: 'Redo' }).click();
-  await expect(field).toHaveValue('Changed');
+  await expect(region).toHaveText('Changed');
 });

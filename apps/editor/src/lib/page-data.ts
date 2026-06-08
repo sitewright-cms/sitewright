@@ -124,3 +124,13 @@ export function isEmptyPageData(v: JsonValue): boolean {
   if (typeof v === 'object') return Object.keys(v).length === 0;
   return false;
 }
+
+/**
+ * The page.data value to PERSIST: a non-empty root OBJECT, else `undefined`. page.data is an
+ * object-only store ({@link JsonObjectStoreSchema}); an empty object or a stray non-object root
+ * (array/scalar/null) is omitted rather than sent to the server (which would reject it). Use this
+ * on the save/preview boundary instead of casting a `JsonValue` to `Record`.
+ */
+export function pageDataObject(v: JsonValue): Record<string, JsonValue> | undefined {
+  return isPlainObject(v) && Object.keys(v).length > 0 ? v : undefined;
+}

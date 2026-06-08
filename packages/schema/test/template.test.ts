@@ -32,6 +32,9 @@ describe('TemplateSchema (code-first: Handlebars source, no block tree)', () => 
     expect(TemplateSchema.parse({ id: 'b', name: 'B', source: '<p>x</p>' }).data).toBeUndefined();
     // Prototype-pollution key rejected (own __proto__ via JSON.parse).
     expect(() => TemplateSchema.parse({ id: 'b', name: 'B', source: '<p>x</p>', data: JSON.parse('{"__proto__":{"x":1}}') })).toThrow();
+    // The root must be an OBJECT — an array or bare scalar is rejected.
+    expect(() => TemplateSchema.parse({ id: 'b', name: 'B', source: '<p>x</p>', data: ['a', 'b'] })).toThrow();
+    expect(() => TemplateSchema.parse({ id: 'b', name: 'B', source: '<p>x</p>', data: 'nope' })).toThrow();
   });
 });
 

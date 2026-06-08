@@ -58,6 +58,12 @@ describe('PageSchema', () => {
     // Prototype-pollution key (own __proto__ via JSON.parse) is rejected.
     const polluted = JSON.parse('{"__proto__":{"x":1}}');
     expect(() => PageSchema.parse({ id: 'p', path: 'p', title: 'P', root: { id: 'r', type: 'Section' }, data: polluted })).toThrow();
+    // The root must be an OBJECT — an array or bare scalar is rejected (arrays are fine as nested values).
+    const base = { id: 'p', path: 'p', title: 'P', root: { id: 'r', type: 'Section' } };
+    expect(() => PageSchema.parse({ ...base, data: ['a', 'b'] })).toThrow();
+    expect(() => PageSchema.parse({ ...base, data: 'just a string' })).toThrow();
+    expect(() => PageSchema.parse({ ...base, data: 42 })).toThrow();
+    expect(() => PageSchema.parse({ ...base, data: null })).toThrow();
   });
 
   it('parses a collection page (leaf slug is the [param] segment)', () => {

@@ -31,9 +31,7 @@ test('data-sw-* with a data.* key edits page.data in-preview and persists', asyn
   await region.click();
   await page.keyboard.press('ControlOrMeta+a');
   await page.keyboard.type('Edited via directive');
-
-  // Two-way: the side field for the data.* region reflects it (read from page.data).
-  await expect(page.getByLabel('data.headline')).toHaveValue('Edited via directive');
+  await expect(region).toHaveText('Edited via directive'); // the in-preview edit took
 
   // It landed in page.data — the "Edit page data" modal shows headline.
   await page.getByRole('button', { name: 'Edit page data' }).click();

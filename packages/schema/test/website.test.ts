@@ -84,9 +84,10 @@ describe('WebsiteSettingsSchema', () => {
       expect(WebsiteSettingsSchema.parse({ data }).data).toEqual(data);
     });
 
-    it('accepts an array, a bare scalar, and is optional', () => {
-      expect(WebsiteSettingsSchema.parse({ data: [1, 'two', false] }).data).toEqual([1, 'two', false]);
-      expect(WebsiteSettingsSchema.parse({ data: 'just a string' }).data).toBe('just a string');
+    it('requires a root OBJECT — rejects an array or bare scalar; is optional', () => {
+      expect(() => WebsiteSettingsSchema.parse({ data: [1, 'two', false] })).toThrow();
+      expect(() => WebsiteSettingsSchema.parse({ data: 'just a string' })).toThrow();
+      expect(WebsiteSettingsSchema.parse({ data: { nested: ['ok', 1] } }).data).toEqual({ nested: ['ok', 1] }); // arrays fine as VALUES
       expect(WebsiteSettingsSchema.parse({}).data).toBeUndefined();
     });
 

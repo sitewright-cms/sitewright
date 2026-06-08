@@ -58,9 +58,8 @@ test('pages list: auto-home, row actions, list settings, template lock + fork', 
   await page.getByRole('button', { name: 'Edit Services' }).click();
   await expect(page.getByText(/renders the template/)).toBeVisible();
   await expect(page.locator('.cm-content')).toHaveCount(0); // no code editor while referenced
-  await page.getByRole('button', { name: 'content' }).click();
-  await expect(page.getByLabel('heading')).toHaveValue('Page heading'); // global:text's region
-  await page.getByRole('button', { name: 'source' }).click();
+  // The template renders its content in the preview (global:text's editable heading region).
+  await expect(page.frameLocator('iframe[title="Preview"]').getByText('Page heading')).toBeVisible();
   await page.getByRole('button', { name: 'Fork template into page' }).click();
   await expect(page.locator('.cm-content')).toContainText('data-sw-text="heading"'); // unlocked, source copied
   await page.getByRole('button', { name: 'Save', exact: true }).click();

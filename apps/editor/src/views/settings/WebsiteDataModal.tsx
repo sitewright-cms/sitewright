@@ -47,6 +47,11 @@ function firstBadKey(root: JsonValue): string | null {
   return null;
 }
 
+// The store is a root OBJECT (website.data/page.data are key→value maps). A non-object value (legacy
+// or hand-edited) coerces to {} so the tree editor always shows the object surface.
+const isObjectRoot = (v: JsonValue): v is Record<string, JsonValue> =>
+  v !== null && typeof v === 'object' && !Array.isArray(v);
+
 const selectCls = 'rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600';
 const miniBtn = 'rounded-md border border-slate-200 bg-white px-1.5 text-slate-400 hover:border-rose-300 hover:text-rose-600';
 
@@ -180,7 +185,7 @@ export function WebsiteDataModal({
   /** The binding namespace shown in the hint, e.g. "website.data" or "page.data". */
   namespace?: string;
 }) {
-  const [draft, setDraft] = useState<JsonValue>(value);
+  const [draft, setDraft] = useState<JsonValue>(isObjectRoot(value) ? value : {});
   const [sourceView, setSourceView] = useState(false);
   const [sourceText, setSourceText] = useState('');
   const [sourceError, setSourceError] = useState<string | null>(null);
@@ -194,19 +199,23 @@ export function WebsiteDataModal({
   // reserved/over-long keys the server rejects, so the author sees the reason here, not a generic
   // save error after the round-trip.
   const parseSource = (): { ok: true; value: JsonValue } | { ok: false } => {
-    let value: JsonValue;
+    let parsed: JsonValue;
     try {
-      value = JSON.parse(sourceText) as JsonValue;
+      parsed = JSON.parse(sourceText) as JsonValue;
     } catch (e) {
       setSourceError(`Invalid JSON: ${e instanceof Error ? e.message : 'parse error'}`);
       return { ok: false };
     }
-    const bad = firstBadKey(value);
+    if (!isObjectRoot(parsed)) {
+      setSourceError('Must be a JSON object — { "key": "value", … }.');
+      return { ok: false };
+    }
+    const bad = firstBadKey(parsed);
     if (bad) {
       setSourceError(`Not allowed: ${bad}.`);
       return { ok: false };
     }
-    return { ok: true, value };
+    return { ok: true, value: parsed };
   };
   const applySource = () => {
     const r = parseSource();
@@ -258,7 +267,8 @@ export function WebsiteDataModal({
             {sourceError && <p className="text-sm text-rose-500">{sourceError}</p>}
           </>
         ) : (
-          <ValueEditor value={draft} onChange={setDraft} />
+          // Root is always an OBJECT (no type selector here) — only its keys' values are typed.
+          <ObjectEditor obj={isObjectRoot(draft) ? draft : {}} onChange={setDraft} />
         )}
       </div>
     </Modal>

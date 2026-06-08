@@ -63,6 +63,7 @@ import {
   publishedPages,
   resolveTemplateSource,
   resolveLocaleDatasets,
+  compareEntryOrder,
   translationsOf,
   localeOf,
   pagesInLocale,
@@ -1199,6 +1200,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       for (const entry of entries) {
         byDataset.set(entry.dataset, [...(byDataset.get(entry.dataset) ?? []), entry]);
       }
+      // Honor the drag-reorder `order` so the preview's {{#each}} + bindings match the editor + publish.
+      for (const list of byDataset.values()) list.sort(compareEntryOrder);
 
       // A code-first (`source` or template-referencing) page previews through the isolated
       // worker — with the page's client-edited region content — then through the shared
@@ -2497,6 +2500,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       for (const entry of (await contentRepo.list(ctx, 'entry')) as Entry[]) {
         byDataset.set(entry.dataset, [...(byDataset.get(entry.dataset) ?? []), entry]);
       }
+      for (const list of byDataset.values()) list.sort(compareEntryOrder);
       const data = Object.fromEntries(byDataset);
       // Reusable Handlebars partials the template can {{> name}} (validated at render): built-in
       // globals + the project's own (project wins on a name collision).

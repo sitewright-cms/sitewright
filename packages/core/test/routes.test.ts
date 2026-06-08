@@ -103,6 +103,15 @@ describe('datasetEntries', () => {
     expect(grouped.posts).toHaveLength(2);
     expect(grouped.authors).toHaveLength(1);
   });
+
+  it('sorts each group by the entry `order` (absent last, id tie-break)', () => {
+    const entries: Entry[] = [
+      { id: 'z', dataset: 'posts', status: 'published', values: {} }, // no order → last
+      { id: 'b', dataset: 'posts', status: 'published', values: {}, order: 1 },
+      { id: 'a', dataset: 'posts', status: 'published', values: {}, order: 0 },
+    ];
+    expect(datasetEntries(bundle({ entries })).posts!.map((e) => e.id)).toEqual(['a', 'b', 'z']);
+  });
 });
 
 describe('resolvedPages / allRoutes', () => {

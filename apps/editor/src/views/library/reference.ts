@@ -281,9 +281,24 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         id: 'n-website',
         syntax: 'website.*',
         name: 'website',
-        keywords: 'site url',
-        description: 'Site-level settings: website.siteUrl (the public site URL).',
+        keywords: 'site url json data',
+        description:
+          'Site-level settings (Settings → Website): website.siteUrl (the public site URL), website.json_data (a JSON file fetched from a URL at publish), and website.data (an object you edit right here — see its own entry below).',
         example: '{{website.siteUrl}}',
+      },
+      {
+        id: 'n-website-data',
+        syntax: 'website.data.<key>',
+        name: 'website.data',
+        keywords: 'site data json object store once-off global settings cascaded tree',
+        description:
+          'A free-form JSON object you build in Settings → Website → “Edit data” (a graphical tree, with a raw-JSON source toggle). Use it for once-off, page-independent content — hero copy, feature flags, lists — addressable by key with no dataset or loop. Nest objects freely; arrays loop with {{#each}}. Lives in both the preview and the published site.',
+        example:
+          '{{! Read a nested value by its key path: }}\n' +
+          '<h1>{{website.data.hero.headline}}</h1>\n' +
+          '<p>{{website.data.hero.subline}}</p>\n\n' +
+          '{{! Loop an array stored under website.data: }}\n' +
+          '<ul>{{#each website.data.highlights}}<li>{{this}}</li>{{/each}}</ul>',
       },
       {
         id: 'n-page',
@@ -309,8 +324,13 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         name: 'item',
         keywords: 'dataset entry key lookup direct addressable map by id',
         description:
-          'Direct keyed access to a single entry’s fields — no loop. The <key> is the entry’s id (set it to a clean slug like web_development when you create the entry; the Data panel shows each entry’s key). Built only for datasets a page actually addresses this way.',
-        example: '<h2>{{item.services.web_development.title}}</h2>\n<p>{{item.services.web_development.price}}</p>',
+          'Direct keyed access to a single entry’s fields — no loop, no filter. The <key> is the entry’s id (set it to a clean key like web_development when you create the entry; the Data panel shows each entry’s key). Built only for the datasets a page actually addresses this way.',
+        example:
+          '{{! Pick ONE entry directly — no loop: }}\n' +
+          '<h2>{{item.services.web_development.title}}</h2>\n' +
+          '<p class="price">{{item.services.web_development.price}}</p>\n\n' +
+          '{{! …vs. looping the whole dataset: }}\n' +
+          '{{#eachEntry data.services}}<li>{{values.title}}</li>{{/eachEntry}}',
       },
       {
         id: 'n-nav',

@@ -93,6 +93,48 @@ test('edit a website partial in the code-editor modal, save, and persist across 
   await expect(reopened.locator('.cm-content')).toContainText(marker);
 });
 
+// website.data is an editable JSON object managed via a graphical tree editor with a raw-JSON
+// source toggle (the "Edit data" button in Website Settings). Verifies the source-view round-trips
+// through Apply → modal Save → settings Save → reload.
+test('edit website.data via the JSON source view, save, and persist across reload', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: /Register/ }).click();
+  await page.getByLabel('Email').fill(`wdata-${stamp}@e2e.test`);
+  await page.getByLabel('Password').fill('pw-secret-1');
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await page.getByRole('button', { name: 'New project' }).click();
+  await page.getByLabel('Project name').fill('Data Site');
+  await page.getByLabel('Project slug').fill(`data-${stamp}`);
+  await page.getByRole('button', { name: 'Create project' }).click();
+
+  await page.getByRole('tab', { name: 'Website Settings' }).click();
+
+  // Open the Site data modal and enter an object via the raw JSON source view.
+  await page.getByRole('button', { name: 'Edit data' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Site data' });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: /JSON source/ }).click();
+  await dialog.getByLabel('JSON source').fill('{"hero":{"headline":"Built here"},"highlights":["fast","safe"]}');
+  await dialog.getByRole('button', { name: 'Apply JSON' }).click(); // → back to the tree (parsed OK)
+  await dialog.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByText('2 keys')).toBeVisible(); // summary reflects the saved object
+
+  // Persist the settings bundle.
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.getByText('✓ Saved')).toBeVisible();
+
+  // Reload → reopen → the data round-tripped (verify via the source view).
+  await page.reload();
+  await page.getByRole('button', { name: /Data Site/ }).click();
+  await page.getByRole('tab', { name: 'Website Settings' }).click();
+  await page.getByRole('button', { name: 'Edit data' }).click();
+  const reopened = page.getByRole('dialog', { name: 'Site data' });
+  await reopened.getByRole('button', { name: /JSON source/ }).click();
+  await expect(reopened.getByLabel('JSON source')).toHaveValue(/Built here/);
+  await expect(reopened.getByLabel('JSON source')).toHaveValue(/highlights/);
+});
+
 // The Business type (schema.org @type) is picked from a searchable modal — a known list plus
 // Default / Disabled. Verifies the pick round-trips through save + reload.
 test('Corporate Identity: pick a schema.org business type via the modal, save, and persist', async ({ page }) => {

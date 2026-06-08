@@ -337,6 +337,34 @@ describe('preview API — code-first source page', () => {
     expect(html).toMatch(/\.navbar/); // the slot's DaisyUI classes compiled into the inlined sheet
   });
 
+  it('exposes the editable website.data object to a source-page preview ({{website.data.*}} + {{#each}})', async () => {
+    const { t, projectId } = await setup('wdata@acme.test', poolApp);
+    const base = `/projects/${projectId}`;
+    await poolApp.inject({
+      method: 'PUT',
+      url: `${base}/content/settings/settings`,
+      cookies: { sw_session: t },
+      payload: {
+        identity: { name: 'Acme', colors: { primary: '#0a7' } },
+        website: { data: { hero: { headline: 'Built here' }, highlights: ['fast', 'safe'] } },
+        settings: {},
+      },
+    });
+    const res = await poolApp.inject({
+      method: 'POST',
+      url: `${base}/preview`,
+      cookies: { sw_session: t },
+      payload: {
+        id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
+        source: '<main><h1>{{website.data.hero.headline}}</h1><ul>{{#each website.data.highlights}}<li>{{this}}</li>{{/each}}</ul></main>',
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const html = (res.json() as { html: string }).html;
+    expect(html).toContain('<h1>Built here</h1>'); // keyed lookup resolved (escaped, in preview)
+    expect(html).toContain('<li>fast</li><li>safe</li>'); // {{#each}} over a website.data array
+  });
+
   it('builds the preview nav per-locale — only the previewed page language (WYSIWYG with publish)', async () => {
     const { t, projectId } = await setup('i18n@acme.test', poolApp);
     const base = `/projects/${projectId}`;

@@ -1270,7 +1270,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           };
           const rendered = await renderPool.render(pageSource, {
             company: brand as unknown as Record<string, unknown>,
-            website: { siteUrl: website?.siteUrl },
+            website: { siteUrl: website?.siteUrl, data: website?.data },
             page: previewPage,
             data: localeData,
             item,
@@ -1294,7 +1294,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // `{{> snippet}}` is intentionally unavailable in a slot (no WYSIWYG drift).
           const slotCtx = {
             company: brand as unknown as Record<string, unknown>,
-            website: { siteUrl: website?.siteUrl },
+            website: { siteUrl: website?.siteUrl, data: website?.data },
             page: previewPage,
             data: localeData,
             nav: slotNav as unknown as Record<string, unknown>,
@@ -1394,7 +1394,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // `website` is projected to only its public fields (not the raw head/footer/CSS blobs).
         vars: {
           company: brand,
-          website: { siteUrl: website?.siteUrl },
+          website: { siteUrl: website?.siteUrl, data: website?.data },
           page: { title: page.title, path: pagePath(page, previewById), locale: previewLocale, translations: translationsOf(savedPages, page, defaultLocale) },
         },
         // Bindings resolve to the page's locale dataset variant (`<name>-<locale>`), like publish.
@@ -2501,7 +2501,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const settings = (await contentRepo.get(ctx, 'settings', SETTINGS_ENTITY_ID)) as Settings;
         company = settings.identity as unknown as Record<string, unknown>;
         brand = settings.identity;
-        website = settings.website ? { siteUrl: settings.website.siteUrl } : undefined;
+        website = settings.website ? { siteUrl: settings.website.siteUrl, data: settings.website.data } : undefined;
       } catch (err) {
         if (!(err instanceof NotFoundError)) throw err;
       }

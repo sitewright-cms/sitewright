@@ -25,6 +25,7 @@ const full: SettingsBundle = {
   website: {
     siteUrl: 'https://acme.com',
     jsonDataUrl: 'https://api.acme.com/data.json',
+    data: { hero: { headline: 'Hi' }, tags: ['a', 'b'] },
     criticalCss: '.hero{}',
     head: '<meta>',
     scripts: '<script></script>',
@@ -130,6 +131,21 @@ describe('settings model', () => {
     expect(toBundle(form).identity.geo).toBeUndefined();
     form.longitude = '-118.2';
     expect(toBundle(form).identity.geo).toEqual({ latitude: '34.0', longitude: '-118.2' });
+  });
+
+  it('round-trips website.data and omits it when empty', () => {
+    const form = toForm(empty());
+    expect(form.data).toEqual({}); // default: an empty object, so the section stays omitted
+    expect(toBundle(form).website).toBeUndefined();
+
+    form.data = { hero: { headline: 'Hi' }, tags: ['a', 'b'] };
+    expect(toBundle(form).website).toEqual({ data: { hero: { headline: 'Hi' }, tags: ['a', 'b'] } });
+
+    // An empty object or array is treated as "no data" and dropped from the payload.
+    form.data = {};
+    expect(toBundle(form).website).toBeUndefined();
+    form.data = [];
+    expect(toBundle(form).website).toBeUndefined();
   });
 
   it('includes the website section when only redirects are set', () => {

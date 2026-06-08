@@ -67,6 +67,12 @@ export interface TemplateContext {
    * suppress directive markers.
    */
   preview?: boolean;
+  /**
+   * PREVIEW-ONLY: when true, the `{{#eachEntry}}` block helper wraps each iteration in a
+   * `<div data-sw-entry data-sw-dataset>` so the editor can open that entry's editor on click. Never
+   * set on publish — the helper is a transparent passthrough (byte-identical to `{{#each}}`) otherwise.
+   */
+  markEntries?: boolean;
 }
 
 /**
@@ -354,6 +360,34 @@ function createInstance(): typeof Handlebars {
     }
     return value; // plain string → Handlebars HTML-escapes it (double-stache)
   });
+  // {{#eachEntry data.x}}…{{/eachEntry}} — like {{#each}} over a dataset, but in PREVIEW
+  // (root.markEntries) each iteration's body is wrapped in a <div data-sw-entry data-sw-dataset> so
+  // the editor can open that entry's editor on click. OUTSIDE preview it is a transparent passthrough
+  // (no wrapper) — byte-identical to {{#each}} — so publish is unaffected. {{else}} handles an empty
+  // list; @index/@first/@last work as in {{#each}}.
+  hb.registerHelper('eachEntry', function eachEntry(this: unknown, ...args: unknown[]) {
+    const options = args[args.length - 1] as Handlebars.HelperOptions;
+    const list = Array.isArray(args[0]) ? (args[0] as Array<Record<string, unknown>>) : [];
+    if (list.length === 0) return typeof options.inverse === 'function' ? options.inverse(this) : '';
+    const root = (options.data?.root ?? {}) as { markEntries?: boolean };
+    let out = '';
+    for (let i = 0; i < list.length; i += 1) {
+      // eslint-disable-next-line security/detect-object-injection -- i is a bounded loop index
+      const item = list[i] as { id?: unknown; dataset?: unknown };
+      const frame = Handlebars.createFrame(options.data ?? {});
+      frame.index = i;
+      frame.key = i;
+      frame.first = i === 0;
+      frame.last = i === list.length - 1;
+      const body = options.fn(item, { data: frame });
+      if (root.markEntries && typeof item.id === 'string' && typeof item.dataset === 'string') {
+        out += `<div data-sw-entry="${escapeAttr(item.id)}" data-sw-dataset="${escapeAttr(item.dataset)}">${body}</div>`;
+      } else {
+        out += body;
+      }
+    }
+    return new Handlebars.SafeString(out);
+  });
   return hb;
 }
 
@@ -403,7 +437,7 @@ export function renderTemplate(source: string, ctx: TemplateContext = {}, opts: 
   // cannot smuggle a <script>/handler/unsafe-context past the main-template check.
   if (ctx.partials) for (const partialSource of Object.values(ctx.partials)) validateTemplate(partialSource);
   const template = compileCached(source);
-  const data = { company: ctx.company, website: ctx.website, page: ctx.page, data: ctx.data, content: ctx.content, nav: ctx.nav, markEdits: ctx.markEdits };
+  const data = { company: ctx.company, website: ctx.website, page: ctx.page, data: ctx.data, content: ctx.content, nav: ctx.nav, markEdits: ctx.markEdits, markEntries: ctx.markEntries };
   let html: string;
   try {
     html = template(data, {

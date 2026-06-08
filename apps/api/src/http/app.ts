@@ -1278,6 +1278,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             // PREVIEW-only: keep the data-sw-* leaf-directive markers so the editor bridge can make
             // them click-to-edit. Decoupled from markEdits (publish strips them in resolveDirectives).
             preview: true,
+            // PREVIEW-only: {{#eachEntry}} wraps each dataset row in a data-sw-entry marker so a click
+            // opens that entry's editor. Always body-safe (wraps the loop body) → no gate needed.
+            markEntries: true,
           });
           // Slots render through the SAME isolated worker; a broken slot is skipped here
           // (publish still hard-validates it) so it can never break the page preview. No
@@ -1392,6 +1395,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // Bindings resolve to the page's locale dataset variant (`<name>-<locale>`), like publish.
         datasets: resolveLocaleDatasets(Object.fromEntries(byDataset), page.locale),
         includeDrafts: true,
+        markEntries: true, // PREVIEW-only entry markers (block-tree list bindings)
         media,
         nav,
         forms: previewForms,

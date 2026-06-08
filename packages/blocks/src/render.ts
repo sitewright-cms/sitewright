@@ -25,6 +25,9 @@ export interface RenderContext {
   entry?: Entry;
   /** Include `draft` entries (preview), otherwise only `published` (parity with publish). */
   includeDrafts?: boolean;
+  /** PREVIEW-ONLY: wrap each bound list entry in a `<div data-sw-entry data-sw-dataset>` marker so
+   *  the editor can open that entry on click. Never set on publish (no markers in the artifact). */
+  markEntries?: boolean;
   /** Project media (matched by `asset.url`) — enables optimized `<picture>` for Image blocks. */
   media?: readonly MediaAsset[];
   /**
@@ -186,9 +189,12 @@ function renderChildren(node: PageNode, ctx: RenderContext, selfEntry: Entry | u
       includeDrafts: ctx.includeDrafts,
     });
     return bound
-      .map((boundEntry) =>
-        children.map((child) => renderNode(child, { ...ctx, entry: boundEntry })).join(''),
-      )
+      .map((boundEntry) => {
+        const inner = children.map((child) => renderNode(child, { ...ctx, entry: boundEntry })).join('');
+        return ctx.markEntries
+          ? `<div data-sw-entry="${escapeAttr(boundEntry.id)}" data-sw-dataset="${escapeAttr(boundEntry.dataset)}">${inner}</div>`
+          : inner;
+      })
       .join('');
   }
   return children.map((child) => renderNode(child, { ...ctx, entry: selfEntry })).join('');

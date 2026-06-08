@@ -344,7 +344,7 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
     <p class="mt-3 text-base-content/60">{{edit "svc_sub" "Strategy, design, and engineering — no hand-offs, no agencies-of-agencies."}}</p>
   </div>
   <div class="nw-stagger mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-    {{#each data.services}}
+    {{#eachEntry data.services}}
     <div class="card nw-card border border-base-200 bg-base-100 shadow-sm hover:shadow-xl">
       <div class="card-body">
         <div class="text-3xl">{{values.icon}}</div>
@@ -353,7 +353,7 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
         <p class="mt-2 text-sm font-semibold text-primary">{{values.price}}</p>
       </div>
     </div>
-    {{/each}}
+    {{/eachEntry}}
   </div>
 </section>
 
@@ -668,7 +668,7 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
     <p class="mt-3 text-base-content/60">{{edit "svc_sub" "Strategie, Design und Entwicklung — keine Übergaben, keine Agentur-Ketten."}}</p>
   </div>
   <div class="nw-stagger mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-    {{#each data.services}}
+    {{#eachEntry data.services}}
     <div class="card nw-card border border-base-200 bg-base-100 shadow-sm hover:shadow-xl">
       <div class="card-body">
         <div class="text-3xl">{{values.icon}}</div>
@@ -677,7 +677,7 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
         <p class="mt-2 text-sm font-semibold text-primary">{{values.price}}</p>
       </div>
     </div>
-    {{/each}}
+    {{/eachEntry}}
   </div>
 </section>
 

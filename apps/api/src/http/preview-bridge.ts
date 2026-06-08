@@ -14,6 +14,7 @@
  *                     { source:'sitewright-preview', type:'rich-edit', key, html }       (data-sw-html)
  *                     { source:'sitewright-preview', type:'link-edit', hrefKey, href, textKey, text } (data-sw-href)
  *                     { source:'sitewright-preview', type:'pick-image', key, kind:'image'|'bg' }   (data-sw-src/bg)
+ *                     { source:'sitewright-preview', type:'open-entry', dataset, id }              (data-sw-entry)
  *   editor → preview: { source:'sitewright-editor', type:'scrollTo', y }
  *                     { source:'sitewright-editor', type:'setMode', mode }
  *
@@ -58,6 +59,8 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       '[data-sw-href].sw-link-on:hover{outline:2px solid #6366f1;background:rgba(99,102,241,.10)}' +
       '[data-sw-src].sw-img-on,[data-sw-bg].sw-img-on{cursor:pointer;outline-color:#6366f1}' +
       '[data-sw-src].sw-img-on:hover,[data-sw-bg].sw-img-on:hover{outline:2px solid #6366f1;box-shadow:inset 0 0 0 9999px rgba(99,102,241,.12)}' +
+      '[data-sw-entry].sw-entry-on{cursor:pointer;outline:1px dashed transparent;outline-offset:3px;border-radius:3px;transition:outline-color .12s}' +
+      '[data-sw-entry].sw-entry-on:hover{outline-color:#14b8a6}' +
       '.sw-tb{position:fixed;z-index:2147483646;display:none;gap:2px;padding:3px;border-radius:8px;background:#0f172a;box-shadow:0 6px 20px rgba(0,0,0,.35);font:600 12px system-ui,sans-serif}' +
       '.sw-tb button{all:unset;color:#e2e8f0;cursor:pointer;padding:3px 7px;border-radius:5px;min-width:18px;text-align:center}' +
       '.sw-tb button:hover{background:#334155;color:#fff}' +
@@ -198,6 +201,17 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     post({ type: 'pick-image', key: el.getAttribute('data-sw-src') || el.getAttribute('data-sw-bg') || '', kind: el.hasAttribute('data-sw-src') ? 'image' : 'bg' });
   }
 
+  // --- Dataset rows ([data-sw-entry]): click opens that entry's editor (unless the click is on an
+  //     editable leaf, which wins). data-sw-href/src/bg already stopPropagation in their handlers. ---
+  function onEntryClick(e) {
+    if (!editing) return;
+    if (closestAttr(e.target, 'data-sw-edit') || closestAttr(e.target, 'data-sw-text') || closestAttr(e.target, 'data-sw-html')) return;
+    var el = closestAttr(e.target, 'data-sw-entry');
+    if (!el) return;
+    e.preventDefault();
+    post({ type: 'open-entry', dataset: el.getAttribute('data-sw-dataset') || '', id: el.getAttribute('data-sw-entry') || '' });
+  }
+
   function eachEl(sel, fn) { var els = document.querySelectorAll(sel); for (var j = 0; j < els.length; j++) fn(els[j]); }
   function setEditing(on) {
     if (on === editing) return;
@@ -225,8 +239,20 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       if (on) { el.classList.add('sw-img-on'); el.addEventListener('click', onImgClick); }
       else { el.classList.remove('sw-img-on'); el.removeEventListener('click', onImgClick); }
     });
-    if (on) document.addEventListener('selectionchange', onSelChange);
-    else { document.removeEventListener('selectionchange', onSelChange); hideToolbar(); closePop(); }
+    // Dataset rows — a hover affordance; the click is handled by one delegated document listener.
+    eachEl('[data-sw-entry]', function (el) {
+      if (on) el.classList.add('sw-entry-on');
+      else el.classList.remove('sw-entry-on');
+    });
+    if (on) {
+      document.addEventListener('selectionchange', onSelChange);
+      document.addEventListener('click', onEntryClick);
+    } else {
+      document.removeEventListener('selectionchange', onSelChange);
+      document.removeEventListener('click', onEntryClick);
+      hideToolbar();
+      closePop();
+    }
   }
 
   // Inbound (editor → preview): validated.

@@ -25,9 +25,32 @@ export interface CodeRecordManagerProps {
   hint?: string;
   /** Help text under the toolbar (naming rules). */
   nameHint?: string;
+  /** Built-in, read-only starters shown above the project records — each copyable as `{{> name}}` or
+   *  its raw source. */
+  globals?: readonly { name: string; label: string; source: string }[];
 }
 
 const byName = (a: CodeRecord, b: CodeRecord) => a.name.localeCompare(b.name);
+
+/** Copy-to-clipboard with a transient "copied" flag keyed by an id (timer cleared on unmount). */
+function useCopy(): [string | null, (text: string, id: string) => void] {
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  const copy = useCallback((text: string, id: string) => {
+    void navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        setCopiedId(id);
+        // Cancel any in-flight reset so a rapid second copy (e.g. across the two buttons on one
+        // row) doesn't orphan the previous timer.
+        if (timer.current) clearTimeout(timer.current);
+        timer.current = setTimeout(() => setCopiedId((c) => (c === id ? null : c)), 1400);
+      })
+      .catch(() => setCopiedId(null));
+  }, []);
+  return [copiedId, copy];
+}
 
 /**
  * A small CRUD manager for "named Handlebars source" records (snippets, templates). Lists the
@@ -35,7 +58,8 @@ const byName = (a: CodeRecord, b: CodeRecord) => a.name.localeCompare(b.name);
  * record's source in the shared {@link CodeEditorModal}, and deletes with a confirm. Storage-agnostic
  * via the injected `load`/`save`/`remove` adapters, so one component powers every code rail.
  */
-export function CodeRecordManager({ projectId, noun, load, save, remove, makeId, hint, nameHint }: CodeRecordManagerProps) {
+export function CodeRecordManager({ projectId, noun, load, save, remove, makeId, hint, nameHint, globals }: CodeRecordManagerProps) {
+  const [copiedId, copy] = useCopy();
   const [records, setRecords] = useState<CodeRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -103,6 +127,37 @@ export function CodeRecordManager({ projectId, noun, load, save, remove, makeId,
 
   return (
     <div className="p-3">
+      {globals && globals.length > 0 && (
+        <div className="mb-3">
+          <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Starters (built-in · copyable)</p>
+          <ul className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {globals.map((g) => (
+              <li key={g.name} className={`${glassPanel} flex items-center gap-1.5 rounded-xl px-3 py-2`}>
+                <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700" title={`${g.label} — {{> ${g.name}}}`}>
+                  {g.label}
+                </span>
+                <button
+                  className={`${ghostButton} px-2 py-1 font-mono text-[11px]`}
+                  aria-label={`Copy {{> ${g.name}}}`}
+                  title={`Copy {{> ${g.name}}}`}
+                  onClick={() => copy(`{{> ${g.name}}}`, `inc-${g.name}`)}
+                >
+                  {copiedId === `inc-${g.name}` ? '✓' : '{{>}}'}
+                </button>
+                <button
+                  className={`${ghostButton} px-2 py-1 text-[11px]`}
+                  aria-label={`Copy ${g.label} source`}
+                  title="Copy source"
+                  onClick={() => copy(g.source, `src-${g.name}`)}
+                >
+                  {copiedId === `src-${g.name}` ? '✓' : 'Source'}
+                </button>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Your {noun}s</p>
+        </div>
+      )}
       <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1">
         <button className={`${primaryButton} px-3 py-1.5 text-xs`} onClick={() => void create()}>
           + New {noun}

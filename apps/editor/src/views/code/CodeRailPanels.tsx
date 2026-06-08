@@ -1,3 +1,4 @@
+import { GLOBAL_SNIPPETS } from '@sitewright/core';
 import { SidePanel } from '../ui/SidePanel';
 import { CodeRecordManager, type CodeRecord, type MakeId } from './CodeRecordManager';
 import { api } from '../../api';
@@ -67,6 +68,7 @@ export function SnippetsPanel({ projectId }: { projectId: string }) {
         save={snippets.save}
         remove={snippets.remove}
         makeId={snippetId}
+        globals={GLOBAL_SNIPPETS}
         nameHint="referenced as {{> name}}"
         hint="A reusable Handlebars partial (HTML + Tailwind + {{ }}). Include it in a page or template with {{> name}}."
       />

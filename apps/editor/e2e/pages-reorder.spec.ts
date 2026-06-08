@@ -25,12 +25,12 @@ async function setup(page: Page, suffix: string) {
     await page.getByLabel('Page title').fill(title);
     await page.getByRole('button', { name: 'Add page' }).click();
     // Wait for the new row's title to land before adding the next page.
-    await expect(page.locator('ul li span.truncate.font-medium', { hasText: title })).toBeVisible();
+    await expect(page.locator('main ul li span.truncate.font-medium', { hasText: title })).toBeVisible();
   }
 }
 
 /** The page titles in list (DOM) order — the title span is uniquely `.truncate.font-medium`. */
-const titles = (page: Page) => page.locator('ul li span.truncate.font-medium').allInnerTexts();
+const titles = (page: Page) => page.locator('main ul li span.truncate.font-medium').allInnerTexts();
 
 /** A full reload drops to the project selector (project isn't in the URL) — re-open it. */
 async function reloadIntoProject(page: Page) {

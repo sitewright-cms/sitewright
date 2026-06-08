@@ -176,6 +176,26 @@ describe('buildSite', () => {
     expect(sheet).toMatch(/\.alert/);
   });
 
+  it('ships classes only for snippets the site actually composes (an un-included one adds no weight)', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      // Two snippets are AVAILABLE (as the built-in globals always are), but the page includes only one.
+      snippets: {
+        used: '<span class="flex">{{ company.name }}</span>',
+        unused: '<span class="grid">never composed</span>',
+      },
+      bundle: bundle({
+        pages: [
+          { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<main>{{> used}}</main>' },
+        ],
+      }),
+    });
+    const sheet = await readFile(join(outDir, 'styles.css'), 'utf8');
+    expect(sheet).toContain('display:flex'); // the composed snippet's utility ships
+    expect(sheet).not.toContain('display:grid'); // the un-composed snippet's utility does NOT
+  });
+
   it('fails the publish when a referenced snippet is undefined', async () => {
     await expect(
       buildSite({

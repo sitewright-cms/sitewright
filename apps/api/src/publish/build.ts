@@ -57,6 +57,33 @@ const LAZYLOAD_SCRIPT = 'lazyload.js';
 /** The ripple (waves-effect) runtime, written at the site root and linked per page. */
 const RIPPLE_SCRIPT = 'ripple.js';
 
+/** A static `{{> name}}` / `{{#> name}}` partial include (snippet names are identifier-safe). */
+const PARTIAL_REF = /\{\{~?\s*#?>\s*([a-zA-Z][a-zA-Z0-9_-]*)/g;
+
+/**
+ * The subset of `snippets` actually reachable from the published surfaces — every `{{> name}}`
+ * a page/template/slot source includes, expanded transitively (a snippet may compose another).
+ * Only these contribute to the shared utility sheet / runtime markers, so a defined-but-unused
+ * snippet (notably a built-in global the site never composes) adds no weight to the output.
+ */
+function referencedSnippets(rootSources: readonly (string | undefined)[], snippets: Record<string, string>): Record<string, string> {
+  const used = new Set<string>();
+  const queue: string[] = [];
+  const scan = (src: string | null | undefined): void => {
+    if (!src) return;
+    for (const m of src.matchAll(PARTIAL_REF)) {
+      const name = m[1]!;
+      if (name in snippets && !used.has(name)) {
+        used.add(name);
+        queue.push(name); // a referenced snippet may itself compose others
+      }
+    }
+  };
+  for (const s of rootSources) scan(s);
+  while (queue.length) scan(snippets[queue.shift()!]);
+  return Object.fromEntries(Object.entries(snippets).filter(([n]) => used.has(n)));
+}
+
 /** A client-correctable publish failure (bad route graph) → maps to HTTP 409. */
 export class PublishError extends Error {}
 
@@ -275,10 +302,10 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     };
     // Code-first source-pages (and the templates they reference) contribute their
     // literal Tailwind classes to the shared sheet.
-    const sourceClassNames = routes.flatMap((r) => {
-      const src = effectiveSource(r.page);
-      return src ? extractClassNames(src) : [];
-    });
+    const effectiveSources = routes
+      .map((r) => effectiveSource(r.page))
+      .filter((s): s is string => Boolean(s));
+    const sourceClassNames = effectiveSources.flatMap((s) => extractClassNames(s));
     // Project-wide skeleton slots feed the shared sheet too.
     const slotSources = [
       website?.topNav,
@@ -289,8 +316,12 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       website?.bottom,
     ].filter((s): s is string => Boolean(s));
     const slotClassNames = slotSources.flatMap((s) => extractClassNames(s));
+    // Only the snippets a page/template/slot actually composes (transitively) contribute — an
+    // un-composed snippet (including a built-in global) ships nothing, so a utility-free site
+    // stays utility-free.
+    const usedSnippets = referencedSnippets([...effectiveSources, ...slotSources], opts.snippets ?? {});
     // {{> snippet}} partials a source page composes contribute their classes too.
-    const snippetClassNames = Object.values(opts.snippets ?? {}).flatMap((s) => extractClassNames(s));
+    const snippetClassNames = Object.values(usedSnippets).flatMap((s) => extractClassNames(s));
     const classNames = [
       ...scanRoots.flatMap(collectClassNames),
       ...sourceClassNames,
@@ -315,7 +346,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       scanRoots.some(treeFn) ||
       routes.some((r) => strFn(effectiveSource(r.page))) ||
       slotSources.some(strFn) ||
-      Object.values(opts.snippets ?? {}).some(strFn);
+      Object.values(usedSnippets).some(strFn);
     const usesAnims = usesMarker(treeUsesAnimations, usesAnimations);
     const usesLazy = usesMarker(treeUsesLazyload, usesLazyload);
     const usesWaves = usesMarker(treeUsesRipple, usesRipple);

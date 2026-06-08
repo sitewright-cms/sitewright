@@ -97,19 +97,6 @@ describe('CodePageEditor', () => {
     expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
   });
 
-  it('appends a DaisyUI starter pattern to existing source, and resets the picker', () => {
-    render(<CodePageEditor project={project} page={page} onClose={() => {}} />);
-    const editor = screen.getByLabelText('Template source') as HTMLTextAreaElement;
-    const picker = screen.getByLabelText('Insert pattern') as HTMLSelectElement;
-    fireEvent.change(editor, { target: { value: '<header>existing</header>' } });
-    fireEvent.change(picker, { target: { value: 'hero' } });
-    // The existing content is preserved and the Hero pattern (a DaisyUI hero) is appended.
-    expect(editor.value).toContain('<header>existing</header>');
-    expect(editor.value).toContain('class="hero');
-    expect(editor.value).toContain('{{edit "hero_title"');
-    // The select returns to its placeholder so the same pattern can be inserted again.
-    expect(picker.value).toBe('');
-  });
 
   it('edits page settings in the STACKED modal (status + nav + dropdown) and persists on save', async () => {
     render(<CodePageEditor project={project} page={page} onClose={() => {}} />);
@@ -177,15 +164,6 @@ describe('CodePageEditor', () => {
     fireEvent.change(screen.getByLabelText('heading'), { target: { value: 'Imprint' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     expect(putPage).toHaveBeenCalledWith('p', expect.objectContaining({ content: { heading: 'Imprint' }, template: 'global:text' }));
-  });
-
-  it('inserts a pattern as the whole source when the editor is empty', () => {
-    const blank: Page = { ...page, source: '   ' };
-    render(<CodePageEditor project={project} page={blank} onClose={() => {}} />);
-    const editor = screen.getByLabelText('Template source') as HTMLTextAreaElement;
-    fireEvent.change(screen.getByLabelText('Insert pattern'), { target: { value: 'navbar' } });
-    // No leading whitespace/blank lines from the previously-empty source.
-    expect(editor.value.startsWith('<div class="navbar')).toBe(true);
   });
 
   it('opens with the authoring strip COLLAPSED; hover and focus expand it, leaving collapses it', () => {

@@ -66,21 +66,21 @@ test('project selector: search, create, auto-open, and switch', async ({ page })
   await page.getByLabel('Project slug').fill(`alpha-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
   // Auto-opens the new project (its name shows in the header).
-  await expect(page.getByRole('button', { name: 'Switch project' })).toContainText('Alpha Site');
+  await expect(page.getByRole('button', { name: 'Switch project', exact: true })).toContainText('Alpha Site');
 
   // Make a second project, then switch between them via the header.
-  await page.getByRole('button', { name: 'Switch project' }).click();
+  await page.getByRole('button', { name: 'Switch project', exact: true }).click();
   await page.getByRole('dialog', { name: 'Your projects' }).getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Beta Site');
   await page.getByLabel('Project slug').fill(`beta-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
-  await expect(page.getByRole('button', { name: 'Switch project' })).toContainText('Beta Site');
+  await expect(page.getByRole('button', { name: 'Switch project', exact: true })).toContainText('Beta Site');
 
   // Switch back to Alpha; the search filters the list.
-  await page.getByRole('button', { name: 'Switch project' }).click();
+  await page.getByRole('button', { name: 'Switch project', exact: true }).click();
   const sel2 = page.getByRole('dialog', { name: 'Your projects' });
   await sel2.getByLabel('Search projects').fill('alpha');
   await expect(sel2.getByRole('button', { name: /Beta Site/ })).toHaveCount(0);
   await sel2.getByRole('button', { name: /Alpha Site/ }).click();
-  await expect(page.getByRole('button', { name: 'Switch project' })).toContainText('Alpha Site');
+  await expect(page.getByRole('button', { name: 'Switch project', exact: true })).toContainText('Alpha Site');
 });

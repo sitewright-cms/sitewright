@@ -59,7 +59,7 @@ const templates = {
  */
 export function SnippetsPanel({ projectId }: { projectId: string }) {
   return (
-    <SidePanel side="bottom" align="start" label="Snippets" icon={<CodeIcon />}>
+    <SidePanel side="bottom" align="center" label="Snippets" icon={<CodeIcon />}>
       <CodeRecordManager
         projectId={projectId}
         noun="snippet"

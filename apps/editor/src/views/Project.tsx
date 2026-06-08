@@ -5,7 +5,6 @@ import { api, previewDocUrl, type Project } from '../api';
 import { CodePageEditor } from './CodePageEditor';
 import { PageSettingsModal, applyPageSettings, pageSettingsFromPage, type PageSettingsValues } from './PageSettingsModal';
 import { useDialogs } from './ui/Dialogs';
-import { DatasetManager } from './DatasetManager';
 import { FormsManager } from './FormsManager';
 import { SettingsView } from './settings/SettingsView';
 import { AdminView } from './AdminView';
@@ -26,7 +25,6 @@ export const MANAGE_TABS = [
   'website-settings',
   'pages',
   'forms',
-  'data',
   'admin',
 ] as const;
 export type Tab = (typeof MANAGE_TABS)[number];
@@ -35,7 +33,6 @@ export const TAB_LABELS: Record<Tab, string> = {
   'website-settings': 'Website Settings',
   pages: 'Pages',
   forms: 'Forms',
-  data: 'Data',
   admin: 'Admin',
 };
 
@@ -454,8 +451,6 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
           project={project}
           section={tab === 'corporate-identity' ? 'identity' : 'website'}
         />
-      ) : tab === 'data' ? (
-        <DatasetManager project={project} />
       ) : tab === 'forms' ? (
         // Submissions are folded in per-form (each row's "Show submissions").
         <FormsManager key={project.id} project={project} />

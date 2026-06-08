@@ -1,27 +1,30 @@
 /**
- * Built-in code-first starter patterns: original DaisyUI + Tailwind section snippets a
- * developer inserts into a page's Handlebars `source` as a starting point — the code-first
- * analogue of the block-tree STARTER_PATTERNS.
+ * Built-in GLOBAL snippets — platform-shipped starter sections every project can compose with
+ * `{{> name}}` (the code-first analogue of the block-tree STARTER_PATTERNS). They surface read-only +
+ * copyable in the editor's Snippets rail (above the project's own editable snippets) and are merged
+ * into the render's partials so `{{> name}}` resolves in preview AND publish. A project snippet of
+ * the same `name` overrides the global.
  *
- * Every pattern is CSP/validator-safe by construction (no `<script>`, no `on*` handlers, no
- * `{{{raw}}}`, only literal/`{{url}}` URLs) and uses the platform conventions: DaisyUI
- * component classes (brand-themed via `--color-primary`…), `{{ company.* }}` bindings, and
- * `{{edit "key" "default"}}` for the regions a client may later edit. `code-patterns.test.ts`
- * runs each through `validateTemplate`, so an unsafe edit here fails the build, not publish.
- *
- * These are Sitewright's own compositions (no third-party markup), so there is no licensing
- * constraint. (HyperUI adoption for a richer partial library is deferred — see the roadmap.)
+ * Every source is CSP/validator-safe by construction (no `<script>`, `on*` handlers, `{{{raw}}}`,
+ * only literal/`{{url}}` URLs) and uses platform conventions: DaisyUI component classes (brand-themed
+ * via `--color-primary`…), `{{ company.* }}` bindings, and `{{edit "key" "default"}}` regions a
+ * client may later edit. The editor's `global-snippets.test.ts` runs each through `validateTemplate`,
+ * so an unsafe edit here fails the build, not publish. Sitewright's own compositions (no third-party
+ * markup → no licensing constraint).
  */
-export interface CodePattern {
-  id: string;
+export interface GlobalSnippet {
+  /** The `{{> name}}` partial name — a valid Handlebars identifier (also the override key). */
   name: string;
+  /** Human label shown in the Snippets rail. */
+  label: string;
+  /** Handlebars + DaisyUI/Tailwind source. */
   source: string;
 }
 
-export const CODE_PATTERNS: readonly CodePattern[] = [
+export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
   {
-    id: 'navbar',
-    name: 'Navbar',
+    name: 'navbar',
+    label: 'Navbar',
     source: `<div class="navbar bg-base-100 shadow-sm">
   <div class="flex-1">
     <a class="btn btn-ghost text-xl" href="/">{{ company.name }}</a>
@@ -36,8 +39,8 @@ export const CODE_PATTERNS: readonly CodePattern[] = [
 </div>`,
   },
   {
-    id: 'hero',
-    name: 'Hero',
+    name: 'hero',
+    label: 'Hero',
     source: `<div class="hero min-h-[60vh] bg-base-200">
   <div class="hero-content text-center">
     <div class="max-w-2xl">
@@ -49,8 +52,8 @@ export const CODE_PATTERNS: readonly CodePattern[] = [
 </div>`,
   },
   {
-    id: 'features',
-    name: 'Feature grid',
+    name: 'features',
+    label: 'Feature grid',
     source: `<section class="bg-base-100 px-6 py-20">
   <div class="mx-auto max-w-5xl text-center">
     <h2 class="text-3xl font-bold">{{edit "features_title" "Everything you need"}}</h2>
@@ -78,8 +81,8 @@ export const CODE_PATTERNS: readonly CodePattern[] = [
 </section>`,
   },
   {
-    id: 'cta',
-    name: 'Call to action',
+    name: 'cta',
+    label: 'Call to action',
     source: `<section class="bg-primary px-6 py-20 text-center text-primary-content">
   <div class="mx-auto max-w-2xl">
     <h2 class="text-3xl font-bold">{{edit "cta_title" "Ready to get started?"}}</h2>
@@ -89,8 +92,8 @@ export const CODE_PATTERNS: readonly CodePattern[] = [
 </section>`,
   },
   {
-    id: 'pricing',
-    name: 'Pricing card',
+    name: 'pricing',
+    label: 'Pricing card',
     source: `<section class="bg-base-100 px-6 py-20">
   <div class="mx-auto max-w-md text-center">
     <h2 class="text-3xl font-bold">{{edit "pricing_title" "Simple pricing"}}</h2>
@@ -109,8 +112,8 @@ export const CODE_PATTERNS: readonly CodePattern[] = [
 </section>`,
   },
   {
-    id: 'footer',
-    name: 'Footer',
+    name: 'footer',
+    label: 'Footer',
     source: `<footer class="footer footer-center bg-base-200 p-10 text-base-content/70">
   <aside>
     <p class="font-semibold text-base-content">{{ company.name }}</p>
@@ -124,3 +127,11 @@ export const CODE_PATTERNS: readonly CodePattern[] = [
 </footer>`,
   },
 ];
+
+/**
+ * `name → source` for merging GLOBAL_SNIPPETS into a render's partials map. Spread it FIRST so a
+ * project snippet of the same name overrides the global: `{ ...GLOBAL_SNIPPET_PARTIALS, ...project }`.
+ */
+export const GLOBAL_SNIPPET_PARTIALS: Readonly<Record<string, string>> = Object.fromEntries(
+  GLOBAL_SNIPPETS.map((s) => [s.name, s.source]),
+);

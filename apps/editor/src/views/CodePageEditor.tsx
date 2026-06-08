@@ -3,7 +3,6 @@ import type { Page, Template } from '@sitewright/schema';
 import { extractEditRegions, GLOBAL_TEMPLATES, isGlobalTemplate } from '@sitewright/core';
 import { api, previewDocUrl, type Project } from '../api';
 import { CodeEditor } from '../lib/code-editor';
-import { CODE_PATTERNS } from '../lib/code-patterns';
 import { PreviewPane } from './editor/PreviewPane';
 import { DevicePreview, PREVIEW_DEVICES, type PreviewDeviceKey } from './editor/DevicePreview';
 import { Modal } from './ui/Modal';
@@ -107,7 +106,6 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
-  const [patternKey, setPatternKey] = useState(''); // controlled value of the "Insert pattern" select
   // Responsive simulation — large desktop (fluid, the modal's full width) is the default.
   const [device, setDevice] = useState<PreviewDeviceKey>('desktop');
   // The authoring strip opens COLLAPSED; it expands while hovered OR focused (so typing
@@ -211,14 +209,6 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   useEffect(() => {
     setSaved(false);
   }, [stateKey]);
-
-  /** Append a built-in DaisyUI starter pattern to the template (a page is built top-to-bottom). */
-  function insertPattern(id: string) {
-    const pattern = CODE_PATTERNS.find((p) => p.id === id);
-    if (!pattern) return;
-    // Functional update → always appends to the latest committed source, never a stale closure.
-    setSource((prev) => (prev.trim() ? `${prev.trimEnd()}\n${pattern.source}\n` : `${pattern.source}\n`));
-  }
 
   /** Copies the referenced template's source INTO the page and drops the reference. */
   function forkTemplate() {
@@ -358,26 +348,6 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
           >
             Page settings
           </button>
-          {!settings.template && (
-            <select
-              aria-label="Insert pattern"
-              className={`${glassInput} w-auto`}
-              value={patternKey}
-              onChange={(e) => {
-                insertPattern(e.target.value);
-                setPatternKey(''); // reset to the placeholder via state (not DOM mutation)
-              }}
-            >
-              <option value="" disabled>
-                Insert pattern…
-              </option>
-              {CODE_PATTERNS.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          )}
         </>
       )}
       {saved && !dirty && <span className="text-xs text-emerald-600">Saved</span>}

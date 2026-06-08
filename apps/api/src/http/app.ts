@@ -58,6 +58,7 @@ import {
   buildNav,
   collectClassNames,
   extractClassNames,
+  GLOBAL_SNIPPET_PARTIALS,
   isGlobalTemplate,
   publishedPages,
   resolveTemplateSource,
@@ -1221,9 +1222,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           }
         }
         if (!renderPool) return reply.code(503).send({ error: 'rendering is not available' });
-        const partials = Object.fromEntries(
-          ((await contentRepo.list(ctx, 'snippet')) as Snippet[]).map((s) => [s.name, s.source]),
-        );
+        // Built-in global snippets + the project's own (project wins on a name collision). The
+        // preview's CSS is extracted from the RENDERED output, so unused globals add no weight here.
+        const partials = {
+          ...GLOBAL_SNIPPET_PARTIALS,
+          ...Object.fromEntries(((await contentRepo.list(ctx, 'snippet')) as Snippet[]).map((s) => [s.name, s.source])),
+        };
         const sourceData = Object.fromEntries(byDataset);
         // Bound the IPC payload serialized in THIS (parent) process — a large dataset/partial
         // set must not spike the API's heap (only the worker carries a memory ceiling). Mirrors
@@ -2040,10 +2044,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
                 .send({ error: err instanceof JsonDataError ? err.message : 'JSON data fetch failed' });
             }
           }
-          // Reusable Handlebars partials a source page can {{> compose}} (same as the editor preview).
-          const snippets = Object.fromEntries(
-            ((await contentRepo.list(ctx, 'snippet')) as Snippet[]).map((s) => [s.name, s.source]),
-          );
+          // Reusable Handlebars partials a source page can {{> compose}} (same as the editor preview):
+          // built-in globals + the project's own (project wins on a name collision).
+          const snippets = {
+            ...GLOBAL_SNIPPET_PARTIALS,
+            ...Object.fromEntries(((await contentRepo.list(ctx, 'snippet')) as Snippet[]).map((s) => [s.name, s.source])),
+          };
           const release = await buildRunner.run({
             outDir: store.dirFor(project.slug),
             bundle,
@@ -2486,10 +2492,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         byDataset.set(entry.dataset, [...(byDataset.get(entry.dataset) ?? []), entry]);
       }
       const data = Object.fromEntries(byDataset);
-      // Reusable Handlebars partials the template can {{> name}} (validated at render).
-      const partials = Object.fromEntries(
-        ((await contentRepo.list(ctx, 'snippet')) as Snippet[]).map((s) => [s.name, s.source]),
-      );
+      // Reusable Handlebars partials the template can {{> name}} (validated at render): built-in
+      // globals + the project's own (project wins on a name collision).
+      const partials = {
+        ...GLOBAL_SNIPPET_PARTIALS,
+        ...Object.fromEntries(((await contentRepo.list(ctx, 'snippet')) as Snippet[]).map((s) => [s.name, s.source])),
+      };
       // Bound the IPC payload serialized in THIS (parent) process — a large dataset must
       // not spike the API's heap (only the worker carries a --max-old-space ceiling).
       if (JSON.stringify(data).length + JSON.stringify(partials).length > 4 * 1024 * 1024) {

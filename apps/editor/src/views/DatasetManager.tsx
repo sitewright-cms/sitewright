@@ -41,6 +41,7 @@ export function DatasetManager({ project }: { project: Project }) {
   const [newFieldName, setNewFieldName] = useState('');
   const [newFieldType, setNewFieldType] = useState<FieldType>('text');
   const [editingEntry, setEditingEntry] = useState<Entry | null>(null);
+  const [newEntry, setNewEntry] = useState(false); // the open entry editor is for a brand-new entry (key settable)
   const [dragId, setDragId] = useState<string | null>(null);
   const [drop, setDrop] = useState<{ id: string; pos: 'before' | 'after' } | null>(null);
   const lastSyncedSel = useRef<string | null>(null);
@@ -340,14 +341,15 @@ export function DatasetManager({ project }: { project: Project }) {
                 <h3 className="text-sm font-semibold text-slate-700">Entries</h3>
                 <button
                   type="button"
-                  onClick={() =>
+                  onClick={() => {
+                    setNewEntry(true);
                     setEditingEntry({
                       id: newEntryId(selected.slug),
                       dataset: selected.slug,
                       status: 'draft',
                       values: defaultEntryValues(selected),
-                    })
-                  }
+                    });
+                  }}
                   className={ghostButton}
                 >
                   New entry
@@ -393,7 +395,13 @@ export function DatasetManager({ project }: { project: Project }) {
                       />
                     )}
                     <span aria-hidden className="shrink-0 cursor-grab text-slate-300 active:cursor-grabbing">⠿</span>
-                    <button className="text-left hover:underline" onClick={() => setEditingEntry(e)}>
+                    <button
+                      className="text-left hover:underline"
+                      onClick={() => {
+                        setNewEntry(false);
+                        setEditingEntry(e);
+                      }}
+                    >
                       {entryLabel(selected, e)}
                     </button>
                     <span
@@ -433,6 +441,8 @@ export function DatasetManager({ project }: { project: Project }) {
                   dataset={selected}
                   entry={editingEntry}
                   projectId={project.id}
+                  keyEditable={newEntry}
+                  existingIds={new Set(datasetEntries.map((e) => e.id))}
                   onSaved={() => {
                     void load();
                     setEditingEntry(null);

@@ -105,6 +105,25 @@ describe('buildSite', () => {
     expect(home).not.toContain('fallback');
   });
 
+  it('publishes {{item.<dataset>.<key>}} — direct keyed entry access (no loop)', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        datasets: [{ id: 'posts', name: 'Posts', slug: 'posts', fields: [{ name: 'title', type: 'text', required: false, localized: false }] }],
+        entries: [{ id: 'hello', dataset: 'posts', status: 'published', values: { title: 'Hi there' } }],
+        pages: [
+          {
+            id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
+            source: '<main><h1>{{item.posts.hello.title}}</h1></main>',
+          },
+        ],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).toContain('<h1>Hi there</h1>');
+  });
+
   it('compiles brand-themed DaisyUI components into the shared sheet for a source page', async () => {
     await buildSite({
       publishedAt: '2026-05-29T00:00:00.000Z',

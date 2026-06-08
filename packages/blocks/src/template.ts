@@ -35,6 +35,12 @@ export interface TemplateContext {
   page?: Record<string, unknown>;
   /** Named values/collections, addressable as `{{ data.* }}` / `{{#each data.* }}`. */
   data?: Record<string, unknown>;
+  /**
+   * Directly-addressable dataset entries by key: `{{ item.<dataset>.<entryId>.<field> }}` — the
+   * keyed twin of the `data.<dataset>` array, for lookups without a loop. Built per-render (and only
+   * for the datasets a source references) by `keyedDatasets` in @sitewright/core.
+   */
+  item?: Record<string, Record<string, unknown>>;
   /** Named partials, included via `{{> name}}`; passed per-render (no global state). */
   partials?: Record<string, string>;
   /** Auto-built navigation menus per slot — `{{#each nav.header}}…{{/each}}` (the skeleton slots + page source). */
@@ -437,7 +443,7 @@ export function renderTemplate(source: string, ctx: TemplateContext = {}, opts: 
   // cannot smuggle a <script>/handler/unsafe-context past the main-template check.
   if (ctx.partials) for (const partialSource of Object.values(ctx.partials)) validateTemplate(partialSource);
   const template = compileCached(source);
-  const data = { company: ctx.company, website: ctx.website, page: ctx.page, data: ctx.data, content: ctx.content, nav: ctx.nav, markEdits: ctx.markEdits, markEntries: ctx.markEntries };
+  const data = { company: ctx.company, website: ctx.website, page: ctx.page, data: ctx.data, item: ctx.item, content: ctx.content, nav: ctx.nav, markEdits: ctx.markEdits, markEntries: ctx.markEntries };
   let html: string;
   try {
     html = template(data, {

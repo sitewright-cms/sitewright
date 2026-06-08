@@ -342,7 +342,7 @@ export const api = {
   getEntry: (projectId: string, id: string) =>
     request<{ item: Entry }>('GET', `/projects/${projectId}/content/entry/${encodeURIComponent(id)}`),
   putEntry: (projectId: string, entry: Entry) =>
-    request<{ item: Entry }>('PUT', `/projects/${projectId}/content/entry/${entry.id}`, entry),
+    request<{ item: Entry }>('PUT', `/projects/${projectId}/content/entry/${encodeURIComponent(entry.id)}`, entry),
   deleteEntry: (projectId: string, id: string) =>
     request<void>('DELETE', `/projects/${projectId}/content/entry/${id}`),
 

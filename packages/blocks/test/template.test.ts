@@ -86,6 +86,17 @@ describe('{{#eachEntry}} — dataset rows with preview markers', () => {
   });
 });
 
+describe('{{item.<dataset>.<key>}} — direct keyed access', () => {
+  const item = { services: { web: { title: 'Web Dev', price: 'from $10k' } } };
+  it('resolves a keyed entry field without a loop', () => {
+    expect(renderTemplate('<h1>{{item.services.web.title}}</h1>', { item })).toBe('<h1>Web Dev</h1>');
+    expect(renderTemplate('<p>{{item.services.web.price}}</p>', { item })).toBe('<p>from $10k</p>');
+  });
+  it('renders empty for an unknown key (no error)', () => {
+    expect(renderTemplate('[{{item.services.nope.title}}]', { item })).toBe('[]');
+  });
+});
+
 describe('editsAreBodyOnly — inline-edit marker gate', () => {
   it('is true when every {{edit}} sits in element-body text', () => {
     expect(editsAreBodyOnly('<h1>{{edit "t"}}</h1><p>{{edit "b" "x"}}</p>')).toBe(true);

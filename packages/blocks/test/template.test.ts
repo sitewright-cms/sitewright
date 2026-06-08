@@ -22,14 +22,14 @@ describe('{{edit}} — client-editable bound content', () => {
   });
 
   it('renders the content override when present, falling back per-key', () => {
-    const c: TemplateContext = { ...ctx, content: { headline: 'Hello there' } };
+    const c: TemplateContext = { ...ctx, page: { ...ctx.page, data: { headline: 'Hello there' } } };
     expect(renderTemplate('<h1>{{edit "headline" "Welcome"}}</h1><p>{{edit "sub" "Default sub"}}</p>', c)).toBe(
       '<h1>Hello there</h1><p>Default sub</p>',
     );
   });
 
   it('HTML-escapes the (client-authored) override — no markup injection', () => {
-    const c: TemplateContext = { ...ctx, content: { x: '<script>alert(1)</script>' } };
+    const c: TemplateContext = { ...ctx, page: { ...ctx.page, data: { x: '<script>alert(1)</script>' } } };
     expect(renderTemplate('<div>{{edit "x" "d"}}</div>', c)).toBe(
       '<div>&lt;script&gt;alert(1)&lt;/script&gt;</div>',
     );
@@ -55,7 +55,7 @@ describe('{{edit}} preview markers (markEdits)', () => {
   });
 
   it('keeps the (client-authored) value HTML-escaped inside the marker — no XSS', () => {
-    const c: TemplateContext = { ...ctx, markEdits: true, content: { x: '<img src=x onerror=alert(1)>' } };
+    const c: TemplateContext = { ...ctx, markEdits: true, page: { ...ctx.page, data: { x: '<img src=x onerror=alert(1)>' } } };
     expect(renderTemplate('<div>{{edit "x" "d"}}</div>', c)).toBe(
       '<div><span data-sw-edit="x">&lt;img src=x onerror=alert(1)&gt;</span></div>',
     );

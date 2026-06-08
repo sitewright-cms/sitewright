@@ -19,7 +19,7 @@ export type NavSlot = (typeof NAV_SLOTS)[number];
  * in which case `collection` must be set — and a `collection` requires the `[param]`. Both
  * directions are enforced.
  */
-export const PageSchema = z
+const PageObject = z
   .object({
     id: IdSchema,
     path: PageSlugSchema,
@@ -35,7 +35,7 @@ export const PageSchema = z
     /**
      * Code-first template reference: when set, this page renders the TEMPLATE's
      * Handlebars source (a project `template` entity, or a built-in `global:<key>`),
-     * contributing only its own {{edit}} `content` + settings. The page editor
+     * contributing only its own editable `page.data` overrides + settings. The page editor
      * locks the code surface for such pages (fork the template to customize).
      */
     template: TemplateRefSchema.optional(),
@@ -54,7 +54,7 @@ export const PageSchema = z
     order: z.number().int().min(0).max(100_000).optional(),
     /**
      * The page's language. Absent → the project's default locale. A LOCALE VARIANT
-     * of a page is itself a Page with its own `path`/`title`/`seo`/`content`; it
+     * of a page is itself a Page with its own `path`/`title`/`seo`/`data`; it
      * usually shares structure by referencing the same `template` (template-reuse),
      * or forks its own `source` for a per-locale layout variation. See
      * docs/i18n-content-model.md.
@@ -92,18 +92,6 @@ export const PageSchema = z
      * worker. The `root` stays for back-compat; `source` wins when present.
      */
     source: z.string().max(256 * 1024).optional(),
-    /**
-     * Client-editable bound content for a code-first (`source`) page: region key →
-     * text. A developer marks editable regions in the template with the `{{edit "key"
-     * "default"}}` helper; the value here OVERRIDES that default (HTML-escaped at render).
-     * This is the ONLY field a client/member may change on a source page — the template
-     * itself stays immutable to them (the re-targeted `data-sw-edit` client model). Bounded
-     * to keep a member edit from bloating the page.
-     */
-    content: z
-      .record(z.string().max(200), z.string().max(20_000))
-      .refine((obj) => Object.keys(obj).length <= 500, 'too many content regions')
-      .optional(),
     /**
      * Client-editable RICH (sanitized-HTML) bound content for a code-first page: region key →
      * sanitized HTML. A developer marks a rich region with the `data-sw-html="key"` directive; the
@@ -158,4 +146,33 @@ export const PageSchema = z
     }
   });
 
+const CONTENT_RESERVED_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+/**
+ * Migrate the RETIRED `content` map (the legacy `{{edit}}`/`data-sw-text="key"` flat-text store) into
+ * `page.data`: each `content[key]` becomes a top-level `data[key]` (an existing `data` value wins on a
+ * collision; prototype-pollution keys are dropped), then `content` is removed. Idempotent — runs on every
+ * page parse, so stored pages migrate on the next read/write. Mirrors `migrateRetiredWebsiteFields`.
+ * Non-object input or a page with no `content` passes straight through.
+ */
+export function migrateContentIntoData(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const v = value as Record<string, unknown>;
+  const content = v.content;
+  if (!content || typeof content !== 'object' || Array.isArray(content)) return value; // nothing to migrate
+  const existing = v.data && typeof v.data === 'object' && !Array.isArray(v.data) ? (v.data as Record<string, unknown>) : {};
+  const data: Record<string, unknown> = { ...existing };
+  for (const [k, val] of Object.entries(content)) {
+    // page.data wins a collision; skip the empty key (no directive can read it) and never let a content
+    // key define a prototype-pollution property.
+    if (k === '' || CONTENT_RESERVED_KEYS.has(k) || Object.prototype.hasOwnProperty.call(data, k)) continue;
+    // eslint-disable-next-line security/detect-object-injection -- own key from Object.entries + RESERVED-guarded
+    data[k] = val;
+  }
+  const out: Record<string, unknown> = { ...v, data };
+  delete out.content;
+  return out;
+}
+
+export const PageSchema = z.preprocess(migrateContentIntoData, PageObject);
 export type Page = z.infer<typeof PageSchema>;

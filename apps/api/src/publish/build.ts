@@ -477,7 +477,6 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
             // static HTML; richContent is re-sanitized at render (the save path is authoritative).
             bodyHtml = renderTemplate(pageSource, {
               ...renderCtx,
-              content: page.content,
               richContent: page.richContent,
               item: keyedDatasets(pageSource, localeData),
               partials: opts.snippets,

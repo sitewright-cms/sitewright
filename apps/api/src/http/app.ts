@@ -14,6 +14,7 @@ import {
   FontFamilyNameSchema,
   FONT_WEIGHTS,
   PageSchema,
+  migrateContentIntoData,
   PageNodeSchema,
   InstanceSettingsInputSchema,
   assertWithinTreeDepth,
@@ -1252,7 +1253,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // `page.translations` power a language switcher. `json_data` is NOT fetched in
           // preview (no network per keystroke) — `{{ website.json_data }}` renders empty
           // until publish.
-          const savedPages = publishedPages((await contentRepo.list(ctx, 'page')) as Page[]);
+          const savedPages = publishedPages((await contentRepo.list(ctx, 'page')).map(migrateContentIntoData) as Page[]);
           const previewLocale = localeOf(page, defaultLocale);
           const navPages = pagesInLocale(savedPages, previewLocale, defaultLocale);
           const slotNav = {
@@ -1287,9 +1288,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             data: localeData,
             item,
             partials,
-            content: page.content,
             richContent: page.richContent,
-            // PREVIEW-only inline-edit markers — gated so an {{edit}} in an attribute (where a
+            // PREVIEW-only inline-edit markers — gated so a legacy {{edit}} in an attribute (where a
             // <span> would break out) is never marked. Never set on the publish path (build.ts).
             markEdits: editsAreBodyOnly(pageSource),
             // PREVIEW-only: keep the data-sw-* leaf-directive markers so the editor bridge can make
@@ -1361,7 +1361,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // (WYSIWYG parity with publish; an unsaved new page isn't in its own nav yet).
       // Drafts are excluded from nav here too, matching the published output; the menu
       // lists only the previewed page's own language (per-locale nav, like publish).
-      const savedPages = publishedPages((await contentRepo.list(ctx, 'page')) as Page[]);
+      const savedPages = publishedPages((await contentRepo.list(ctx, 'page')).map(migrateContentIntoData) as Page[]);
       const previewLocale = localeOf(page, defaultLocale);
       const navPages = pagesInLocale(savedPages, previewLocale, defaultLocale);
       const nav = {
@@ -2487,7 +2487,6 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // Resolve the template source + page context: a stored source-page (by id) or ad-hoc.
       let templateSource: string;
       let pageCtx: Record<string, unknown> = body.page ?? { title: project.name, path: '/' };
-      let pageContent: Record<string, string> | undefined;
       let pageRichContent: Record<string, string> | undefined;
       if (body.pageId !== undefined) {
         // Re-parse the stored page (not a bare cast) so a dirty/legacy DB row can't reach
@@ -2497,9 +2496,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         templateSource = page.source;
         // `{{ page.path }}` is the full route computed from the parent chain (not the bare slug).
         const allForPath = pagesById((await contentRepo.list(ctx, 'page')) as Page[]);
-        pageCtx = { title: page.title, path: pagePath(page, allForPath) };
-        // Render the stored page WITH its client-edited region content (WYSIWYG parity).
-        pageContent = page.content;
+        // page.data carries the page's editable text/url overrides (data-sw-* + legacy {{edit}}).
+        pageCtx = { title: page.title, path: pagePath(page, allForPath), data: page.data };
         pageRichContent = page.richContent;
       } else {
         templateSource = body.template as string; // refine guarantees one of template/pageId
@@ -2547,7 +2545,6 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           data,
           item,
           partials,
-          content: pageContent,
           richContent: pageRichContent,
         });
         if (!body.document) return reply.send({ html: rendered });

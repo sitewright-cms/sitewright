@@ -17,12 +17,12 @@ import { EntryEditorLoader } from './datasets/EntryEditorLoader';
 import { WebsiteDataModal } from './settings/WebsiteDataModal';
 import {
   DANGEROUS_KEYS,
-  dataLeafGet,
-  dataLeafSet,
   dataPathOf,
   isEmptyPageData,
   isSafeKey,
   mergeDefaults,
+  pageDataGet,
+  pageDataSet,
 } from '../lib/page-data';
 import { glassInput, glassPanel, primaryButton } from '../theme';
 
@@ -50,9 +50,8 @@ interface CodePageEditorProps {
 
 const PREVIEW_DEBOUNCE_MS = 800;
 
-/** Prototype-pollution-significant keys — never accepted as a region key from the preview frame. */
 // The page.data routing/merge helpers (data.<path> keys, immutable leaf get/set, template-default
-// merge, proto-guards) live in ../lib/page-data so they can be unit-tested directly.
+// merge, proto-guards) + DANGEROUS_KEYS live in ../lib/page-data so they can be unit-tested directly.
 
 /** Device-rail glyphs (lucide-style outlines, matching the platform icon vocabulary). */
 const DEVICE_ICONS: Record<PreviewDeviceKey, ReactNode> = {
@@ -122,12 +121,11 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   const { confirm, dialog } = useDialogs();
   const [mode, setMode] = useState<EditMode>(initialMode);
   const [source, setSource] = useState(page.source ?? '');
-  // The client-editable region values ({{edit "key"}} / data-sw-text overrides) — content mode's draft.
-  const [content, setContent] = useState<Record<string, string>>({ ...(page.content ?? {}) });
-  // Rich (sanitized-HTML) region values (data-sw-html overrides) — content mode's rich draft.
+  // Rich (sanitized-HTML) region values (data-sw-html bare-key overrides) — content mode's rich draft.
   const [richContent, setRichContent] = useState<Record<string, string>>({ ...(page.richContent ?? {}) });
-  // Per-page custom data → {{ page.data.* }} (and each child's `data` in an overview's {{#each page.children}}).
-  // Edited via the "Edit page data" tree/JSON modal (and, in a later PR, in-preview data-sw-*="data.*" leaves).
+  // Per-page data → all editable text/url leaves (data-sw-text/href/src/bg + the legacy {{edit}} alias)
+  // live here as page.data, plus {{ page.data.* }} structured data. Edited in-preview (the directives)
+  // and via the "Edit page data" tree/JSON modal.
   const [pageData, setPageData] = useState<JsonValue>(page.data ?? {});
   const [pageDataOpen, setPageDataOpen] = useState(false);
   // The rich region currently open in the side editor (its key), or null when none is open.
@@ -174,11 +172,11 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   // whereas `stateKey`/`inlineToken`/the undo Snapshot all track the RAW `pageData` — they only need
   // to agree with EACH OTHER for dirty/suppress/undo to work, which they do.
   const draft: Page = useMemo(
-    () => ({ ...applyPageSettings(page, settings), source, content, richContent, data: isEmptyPageData(pageData) ? undefined : pageData }),
-    [page, settings, source, content, richContent, pageData],
+    () => ({ ...applyPageSettings(page, settings), source, richContent, data: isEmptyPageData(pageData) ? undefined : pageData }),
+    [page, settings, source, richContent, pageData],
   );
   // One key over every editable field (BOTH modes + settings) → dirty + post-save snapshot.
-  const stateKey = JSON.stringify({ source, content, richContent, settings, data: pageData });
+  const stateKey = JSON.stringify({ source, richContent, settings, data: pageData });
   const [savedKey, setSavedKey] = useState(stateKey);
   const dirty = stateKey !== savedKey;
 
@@ -210,8 +208,6 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   // Live mirrors so the mount-scoped message listener computes the post-edit stateKey from fresh state.
   const sourceRef = useRef(source);
   sourceRef.current = source;
-  const contentRef = useRef(content);
-  contentRef.current = content;
   const richContentRef = useRef(richContent);
   richContentRef.current = richContent;
   const settingsRef = useRef(settings);
@@ -222,10 +218,9 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   modeRef.current = mode;
   // The stateKey a given inline (preview-originated) edit will produce — stored in inlineKeyRef so
   // the debounced reload can skip it. MUST mirror `stateKey`'s field set + order exactly.
-  function inlineToken(next: { content?: Record<string, string>; richContent?: Record<string, string>; data?: JsonValue }): string {
+  function inlineToken(next: { richContent?: Record<string, string>; data?: JsonValue }): string {
     return JSON.stringify({
       source: sourceRef.current,
-      content: next.content ?? contentRef.current,
       richContent: next.richContent ?? richContentRef.current,
       settings: settingsRef.current,
       data: next.data ?? pageDataRef.current,
@@ -254,25 +249,18 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
       if (d.type === 'scroll' && typeof d.y === 'number') {
         scrollYRef.current = d.y;
       } else if (d.type === 'edit' && typeof d.key === 'string' && typeof d.value === 'string' && isSafeKey(d.key)) {
-        // Inline plain-text edit → update the region (two-way with its side field); the iframe DOM
-        // already shows it, so suppress the debounced reload (it would kill the live contenteditable).
-        const dp = dataPathOf(d.key);
-        if (dp !== null) {
-          const nextData = dataLeafSet(pageDataRef.current, dp, d.value);
-          inlineKeyRef.current = inlineToken({ data: nextData });
-          setPageData(nextData);
-        } else {
-          const nextContent = { ...contentRef.current, [d.key]: d.value };
-          inlineKeyRef.current = inlineToken({ content: nextContent });
-          setContent(nextContent);
-        }
+        // Inline plain-text edit → write the page.data leaf (bare key → top-level prop; data.<path> →
+        // nested). Two-way with its side field; the iframe DOM already shows it, so suppress the reload.
+        const nextData = pageDataSet(pageDataRef.current, d.key, d.value);
+        inlineKeyRef.current = inlineToken({ data: nextData });
+        setPageData(nextData);
       } else if (d.type === 'rich-edit' && typeof d.key === 'string' && typeof d.html === 'string' && isSafeKey(d.key)) {
         // Inline RICH edit. Store the iframe HTML as-is — every SAME-ORIGIN sink sanitizes it
         // (RichRegionPanel on display; the server on save AND on each /preview render), so the raw
         // draft value is never executed. Suppress the reload (the rich contenteditable already shows it).
-        const dp = dataPathOf(d.key);
-        if (dp !== null) {
-          const nextData = dataLeafSet(pageDataRef.current, dp, d.html);
+        // A `data.<path>` rich leaf → page.data; a bare key → the richContent store.
+        if (dataPathOf(d.key) !== null) {
+          const nextData = pageDataSet(pageDataRef.current, d.key, d.html);
           inlineKeyRef.current = inlineToken({ data: nextData });
           setPageData(nextData);
         } else {
@@ -281,20 +269,17 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
           setRichContent(nextRich);
         }
       } else if (d.type === 'link-edit' && typeof d.hrefKey === 'string' && d.hrefKey !== '' && typeof d.href === 'string' && isSafeKey(d.hrefKey)) {
-        // Inline link edit (URL + optional text). The popover did NOT change the iframe DOM, so we do
-        // NOT suppress — the debounced reload re-renders the anchor. Scheme-sanitize the URL here too
-        // (the render also safeUrl's it) so the stored value stays canonical-clean. Each key routes to
-        // page.data (data.<path>) or the content map independently — the functional updaters are
-        // load-bearing when BOTH keys hit page.data: React chains them so both writes land atomically.
+        // Inline link edit (URL + optional text) → page.data leaves. The popover did NOT change the
+        // iframe DOM, so we do NOT suppress — the debounced reload re-renders the anchor. Scheme-sanitize
+        // the URL here too (the render also safeUrl's it). The functional updaters chain so both writes
+        // land atomically.
         const safeHref = safeUrl(d.href, '');
-        const hp = dataPathOf(d.hrefKey);
-        if (hp !== null) setPageData((prev) => dataLeafSet(prev, hp, safeHref));
-        else { const hk = d.hrefKey; setContent((prev) => ({ ...prev, [hk]: safeHref })); }
+        const hk = d.hrefKey;
+        setPageData((prev) => pageDataSet(prev, hk, safeHref));
         if (typeof d.textKey === 'string' && d.textKey !== '' && typeof d.text === 'string' && isSafeKey(d.textKey)) {
-          const tp = dataPathOf(d.textKey);
+          const tk = d.textKey;
           const txt = d.text;
-          if (tp !== null) setPageData((prev) => dataLeafSet(prev, tp, txt));
-          else { const tk = d.textKey; setContent((prev) => ({ ...prev, [tk]: txt })); }
+          setPageData((prev) => pageDataSet(prev, tk, txt));
         }
       } else if (d.type === 'pick-image' && typeof d.key === 'string' && d.key !== '' && isSafeKey(d.key)) {
         // Clicked an editable image/background in the preview → open the file picker for that region.
@@ -323,12 +308,12 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
     iframeRef.current?.contentWindow?.postMessage({ source: 'sitewright-editor', type: 'setMode', mode }, '*');
   }, [mode]);
 
-  // --- Undo/redo for INLINE edits (content + richContent: plain text, rich, image, link). Source is
+  // --- Undo/redo for INLINE edits (page.data + richContent: plain text, rich, image, link). Source is
   //     owned by CodeMirror's own history; settings by the settings modal. A history of snapshots; a
   //     debounced push coalesces typing, a fresh edit truncates the redo tail. ---
-  type Snapshot = { content: Record<string, string>; richContent: Record<string, string>; data: JsonValue };
+  type Snapshot = { richContent: Record<string, string>; data: JsonValue };
   const MAX_HISTORY = 100; // bound the per-session memory of a long editing run
-  const historyRef = useRef<Snapshot[]>([{ content: { ...(page.content ?? {}) }, richContent: { ...(page.richContent ?? {}) }, data: page.data ?? {} }]);
+  const historyRef = useRef<Snapshot[]>([{ richContent: { ...(page.richContent ?? {}) }, data: page.data ?? {} }]);
   const histIdxRef = useRef(0);
   // Set true around an undo/redo restore so the resulting setState(s) — batched into one render —
   // don't get recorded back as a new history entry. Cleared on the single effect run that follows.
@@ -344,7 +329,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
       historyRef.current = historyRef.current.slice(0, histIdxRef.current + 1);
       bumpHist();
     }
-    const snap: Snapshot = { content: { ...content }, richContent: { ...richContent }, data: pageData };
+    const snap: Snapshot = { richContent: { ...richContent }, data: pageData };
     const t = setTimeout(() => {
       const cur = historyRef.current[histIdxRef.current];
       if (cur && JSON.stringify(cur) === JSON.stringify(snap)) return; // no real change to record
@@ -355,12 +340,11 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
       bumpHist();
     }, 400);
     return () => clearTimeout(t);
-  }, [content, richContent, pageData]);
+  }, [richContent, pageData]);
   const canUndo = histIdxRef.current > 0;
   const canRedo = histIdxRef.current < historyRef.current.length - 1;
   function applySnapshot(s: Snapshot) {
     applyingHistory.current = true;
-    setContent({ ...s.content });
     setRichContent({ ...s.richContent });
     setPageData(s.data);
     bumpHist();
@@ -431,33 +415,25 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
     setSettings(values);
   }
 
-  // Region accessors route `data.<path>` keys to page.data (read + immutable nested set); every other
-  // key stays in the content/richContent maps.
+  // Text/url region accessors read+write page.data (a bare key → top-level prop; `data.<path>` →
+  // nested). Rich regions stay in the richContent map.
   function regionValue(key: string, def: string): string {
-    const p = dataPathOf(key);
-    if (p !== null) return dataLeafGet(pageData, p) ?? def;
-    return Object.prototype.hasOwnProperty.call(content, key) ? content[key]! : def;
+    return pageDataGet(pageData, key) ?? def;
   }
   function changeRegion(key: string, value: string) {
-    const p = dataPathOf(key);
-    if (p !== null) {
-      setPageData((prev) => dataLeafSet(prev, p, value));
-      return;
-    }
-    setContent((prev) => ({ ...prev, [key]: value }));
+    setPageData((prev) => pageDataSet(prev, key, value));
   }
   function richValue(key: string, def: string): string {
     const p = dataPathOf(key);
-    if (p !== null) return dataLeafGet(pageData, p) ?? def;
+    if (p !== null) return pageDataGet(pageData, key) ?? def;
     return Object.prototype.hasOwnProperty.call(richContent, key) ? richContent[key]! : def;
   }
   function changeRichRegion(key: string, html: string) {
-    const p = dataPathOf(key);
-    if (p !== null) {
-      setPageData((prev) => dataLeafSet(prev, p, html));
+    if (dataPathOf(key) !== null) {
+      setPageData((prev) => pageDataSet(prev, key, html)); // a data.<path> rich leaf → page.data
       return;
     }
-    setRichContent((prev) => ({ ...prev, [key]: html }));
+    setRichContent((prev) => ({ ...prev, [key]: html })); // a bare key → the richContent store
   }
 
   // Debounced full-parity preview: POST the whole draft to `/preview` — skeleton

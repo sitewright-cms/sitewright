@@ -1,4 +1,5 @@
 import { useState, type RefObject } from 'react';
+import { PreviewSkeleton } from './PreviewSkeleton';
 
 interface PreviewPaneProps {
   /** URL of the sandboxed preview document (served under `CSP: sandbox`). */
@@ -55,7 +56,7 @@ export function PreviewPane({ src, loading, error, title = 'Live preview', ifram
       />
       {showSkeleton && (
         <div role="status" className="absolute inset-1">
-          <div aria-hidden className="skeleton h-full w-full rounded-xl" />
+          <PreviewSkeleton />
           <span className="sr-only">Loading preview…</span>
         </div>
       )}

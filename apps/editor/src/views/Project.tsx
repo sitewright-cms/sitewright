@@ -6,6 +6,7 @@ import { CodePageEditor } from './CodePageEditor';
 import { PageSettingsModal, applyPageSettings, pageSettingsFromPage, type PageSettingsValues } from './PageSettingsModal';
 import { useDialogs } from './ui/Dialogs';
 import { Modal } from './ui/Modal';
+import { Tooltip } from './ui/Tooltip';
 import { FormsManager } from './FormsManager';
 import { SettingsView } from './settings/SettingsView';
 import { AdminView } from './AdminView';
@@ -540,10 +541,10 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
                     />
                   )}
                   {!isHome && (
+                    <Tooltip tip="Drag to reorder — or focus and use ↑/↓" side="right">
                     <button
                       type="button"
                       aria-label={`Reorder ${p.title}`}
-                      title="Drag to reorder — or focus and use ↑/↓"
                       className="waves-effect inline-flex shrink-0 cursor-grab items-center justify-center rounded-lg p-1.5 text-slate-300 transition group-hover:[&:not(:hover)]:text-white/80 hover:bg-white hover:text-slate-600 active:cursor-grabbing"
                       onKeyDown={(e) => {
                         if (e.key === 'ArrowUp') {
@@ -557,6 +558,7 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
                     >
                       {GRIP_ICON}
                     </button>
+                    </Tooltip>
                   )}
                   <button
                     className="waves-effect flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-lg px-1 py-1 text-left"
@@ -580,53 +582,56 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
                     )}
                   </button>
                   <div className="flex shrink-0 items-center gap-0.5">
-                    <button aria-label={`Preview ${p.title}`} title="Preview in a new tab" className={ROW_ACTION} onClick={() => void previewInTab(p)}>
-                      {PREVIEW_ICON}
-                    </button>
-                    <button aria-label={`Edit ${p.title}`} title="Open page editor" className={ROW_ACTION} onClick={() => setEditing(p)}>
-                      {EDIT_ICON}
-                    </button>
-                    <button aria-label={`Settings for ${p.title}`} title="Edit page settings" className={ROW_ACTION} onClick={() => void openSettings(p)}>
-                      {GEAR_ICON}
-                    </button>
+                    <Tooltip tip="Preview in a new tab" side="top">
+                      <button aria-label={`Preview ${p.title}`} className={ROW_ACTION} onClick={() => void previewInTab(p)}>
+                        {PREVIEW_ICON}
+                      </button>
+                    </Tooltip>
+                    <Tooltip tip="Open page editor" side="top">
+                      <button aria-label={`Edit ${p.title}`} className={ROW_ACTION} onClick={() => setEditing(p)}>
+                        {EDIT_ICON}
+                      </button>
+                    </Tooltip>
+                    <Tooltip tip="Edit page settings" side="top">
+                      <button aria-label={`Settings for ${p.title}`} className={ROW_ACTION} onClick={() => void openSettings(p)}>
+                        {GEAR_ICON}
+                      </button>
+                    </Tooltip>
                     {/* i18n actions — only for default-locale pages in a multilingual project
                         that are STILL MISSING at least one language variant. "Add translation"
                         fans out the missing locales; once all exist (or on a variant page), the
                         action disappears (you manage translations from the primary). */}
                     {multilingual && !p.locale && missingLocalesFor(p).length > 0 && (
-                      <button
-                        aria-label={`Add translations for ${p.title}`}
-                        title="Create the missing language variants"
-                        className={ROW_ACTION}
-                        onClick={() => void addTranslations(p)}
-                      >
-                        {GLOBE_ICON}
-                      </button>
+                      <Tooltip tip="Create the missing language variants" side="top">
+                        <button aria-label={`Add translations for ${p.title}`} className={ROW_ACTION} onClick={() => void addTranslations(p)}>
+                          {GLOBE_ICON}
+                        </button>
+                      </Tooltip>
                     )}
                     {/* "Save as template" — promote a page's own code into a reusable
                         template shared by its locale siblings. Hidden once templated. */}
                     {p.source && !p.template && (
-                      <button
-                        aria-label={`Save ${p.title} as template`}
-                        title="Promote this page's code to a reusable template"
-                        className={ROW_ACTION}
-                        onClick={() => void saveAsTemplate(p)}
-                      >
-                        {TEMPLATE_ICON}
-                      </button>
+                      <Tooltip tip="Promote this page's code to a reusable template" side="top">
+                        <button aria-label={`Save ${p.title} as template`} className={ROW_ACTION} onClick={() => void saveAsTemplate(p)}>
+                          {TEMPLATE_ICON}
+                        </button>
+                      </Tooltip>
                     )}
-                    <button aria-label={`Copy ${p.title}`} title="Copy page" className={ROW_ACTION} onClick={() => void copyPage(p)}>
-                      {COPY_ICON}
-                    </button>
-                    {!isHome && (
-                      <button
-                        aria-label={`Delete ${p.title}`}
-                        title="Delete page"
-                        className={`${ROW_ACTION} hover:bg-rose-50 hover:text-rose-600`}
-                        onClick={() => void removePage(p)}
-                      >
-                        {TRASH_ICON}
+                    <Tooltip tip="Copy page" side="top">
+                      <button aria-label={`Copy ${p.title}`} className={ROW_ACTION} onClick={() => void copyPage(p)}>
+                        {COPY_ICON}
                       </button>
+                    </Tooltip>
+                    {!isHome && (
+                      <Tooltip tip="Delete page" side="top">
+                        <button
+                          aria-label={`Delete ${p.title}`}
+                          className={`${ROW_ACTION} hover:bg-rose-50 hover:text-rose-600`}
+                          onClick={() => void removePage(p)}
+                        >
+                          {TRASH_ICON}
+                        </button>
+                      </Tooltip>
                     )}
                   </div>
                   </li>

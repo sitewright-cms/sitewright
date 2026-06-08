@@ -49,7 +49,13 @@ interface ModalProps {
   saveLabel?: string;
   size?: keyof typeof SIZES;
   children: ReactNode;
-  /** Optional left-aligned extra header content (e.g. a hint, a path, a toggle). */
+  /** Optional content pinned to the START of the header, BEFORE the title (e.g. a mode toggle). */
+  headerLeft?: ReactNode;
+  /** Optional inline content shown right after the title text (e.g. a path / status badges). */
+  titleExtra?: ReactNode;
+  /** Center the title block in the space between `headerLeft` and the right-side actions. */
+  centerTitle?: boolean;
+  /** Optional extra header content shown just BEFORE the Save/Close actions (right side). */
   headerExtra?: ReactNode;
   /**
    * Guard consulted on EVERY close request (×, Escape, backdrop) before the modal animates
@@ -67,7 +73,7 @@ interface ModalProps {
  * when `dirty`); focus moves into the panel on open. It fades+rises in on open and fades+drops out
  * on close (reduced-motion → a plain fade). Sized via `size` ('md'|'lg'|'xl'|'full').
  */
-export function Modal({ title, onClose, onSave, saving = false, saveDisabled = false, saveLabel = 'Save', size = 'lg', children, headerExtra, onBeforeClose }: ModalProps) {
+export function Modal({ title, onClose, onSave, saving = false, saveDisabled = false, saveLabel = 'Save', size = 'lg', children, headerLeft, titleExtra, centerTitle = false, headerExtra, onBeforeClose }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const reduce = useReducedMotion();
@@ -221,7 +227,11 @@ export function Modal({ title, onClose, onSave, saving = false, saveDisabled = f
             className={`relative flex w-full ${SIZES[size]} ${size === 'screen' ? 'max-h-[calc(100vh-4rem)]' : 'max-h-[82vh]'} flex-col overflow-hidden rounded-2xl border border-white/60 bg-white/95 shadow-2xl outline-none backdrop-blur-xl`}
           >
             <header className="flex items-center gap-3 border-b border-slate-200/70 px-5 py-3">
-              <h2 id={titleId} className="flex-1 truncate text-sm font-semibold text-slate-800">{title}</h2>
+              {headerLeft}
+              <div className={`flex min-w-0 flex-1 items-center gap-2 ${centerTitle ? 'justify-center' : ''}`}>
+                <h2 id={titleId} className="truncate text-sm font-semibold text-slate-800">{title}</h2>
+                {titleExtra}
+              </div>
               {headerExtra}
               {onSave && (
                 <button

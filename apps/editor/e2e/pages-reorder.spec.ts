@@ -21,6 +21,7 @@ async function setup(page: Page, suffix: string) {
     ['about', 'About'],
     ['contact', 'Contact'],
   ]) {
+    await page.getByRole('button', { name: 'New page' }).click();
     await page.getByLabel('Page path').fill(slug);
     await page.getByLabel('Page title').fill(title);
     await page.getByRole('button', { name: 'Add page' }).click();

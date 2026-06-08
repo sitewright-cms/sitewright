@@ -37,6 +37,7 @@ test('modal: a backdrop click is vetoed while dirty (asks to discard); × closes
   await register(page, 'modal');
 
   // Create + open a code page.
+  await page.getByRole('button', { name: 'New page' }).click();
   await page.getByLabel('Page path').fill('about');
   await page.getByLabel('Page title').fill('About');
   await page.getByRole('button', { name: 'Add page' }).click();

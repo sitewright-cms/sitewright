@@ -24,6 +24,7 @@ test('pages list: auto-home, row actions, list settings, template lock + fork', 
   await expect(page.getByRole('button', { name: 'Copy Home' })).toBeVisible();
 
   // Create a sub-page by PATH.
+  await page.getByRole('button', { name: 'New page' }).click();
   await page.getByLabel('Page path').fill('services');
   await page.getByLabel('Page title').fill('Services');
   await page.getByRole('button', { name: 'Add page' }).click();

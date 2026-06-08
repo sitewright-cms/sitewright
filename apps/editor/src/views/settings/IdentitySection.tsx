@@ -1,12 +1,22 @@
 import { useEffect, useState } from 'react';
 import type { Patch, SettingsForm } from './model';
 import { api, type MediaAsset } from '../../api';
-import { Field, GlassCard, SubLabel, TextArea } from './ui';
+import { Field, FieldButton, GlassCard, SubLabel, TextArea } from './ui';
 import { TokenEditor } from './TokenEditor';
 import { StringListEditor } from './StringListEditor';
 import { FontSlotEditor } from './FontSlotEditor';
 import { CustomFontSlots } from './CustomFontSlots';
+import { BusinessTypeModal, BUSINESS_TYPE_DISABLED } from './BusinessTypeModal';
+import { SCHEMA_ORG_TYPES } from './schema-org-types';
 import { AssetField } from '../files/AssetField';
+
+/** The human label for the current businessType: '' → default, 'disabled' → off, else its known
+ *  label (or the raw custom @type). */
+function businessTypeLabel(value: string): string {
+  if (value === '') return 'Default (Organization)';
+  if (value === BUSINESS_TYPE_DISABLED) return 'Disabled — no structured data';
+  return SCHEMA_ORG_TYPES.find((t) => t.type === value)?.label ?? value;
+}
 
 /**
  * Corporate Identity: the unified company + brand record. Grouped into frosted
@@ -29,8 +39,12 @@ export function IdentitySection({ form, patch, projectId }: { form: SettingsForm
     };
   }, [projectId]);
   const addFont = (font: MediaAsset) => setFontAssets((prev) => [...prev.filter((f) => f.id !== font.id), font]);
+  // The schema.org @type is picked from a searchable modal (a known list + Default/Disabled).
+  const [businessTypeOpen, setBusinessTypeOpen] = useState(false);
   return (
-    <div className="grid gap-4 sm:grid-cols-2">
+    // Single column: every section is full container width; a section may still use 2 columns
+    // INTERNALLY (e.g. the address grid below).
+    <div className="flex flex-col gap-4">
       <GlassCard title="Identity" icon="◆">
         <div className="flex flex-col gap-3">
           <Field label="Display name" value={form.name} onChange={(v) => patch({ name: v })} placeholder="Acme" required />
@@ -40,11 +54,10 @@ export function IdentitySection({ form, patch, projectId }: { form: SettingsForm
           </div>
           <Field label="Slogan" value={form.slogan} onChange={(v) => patch({ slogan: v })} placeholder="We build the future" />
           <TextArea label="Description" value={form.description} onChange={(v) => patch({ description: v })} rows={3} />
-          <Field
-            label="Business type (schema.org @type; “disabled” hides JSON-LD)"
-            value={form.businessType}
-            onChange={(v) => patch({ businessType: v })}
-            placeholder="Organization"
+          <FieldButton
+            label="Business type (schema.org @type)"
+            value={businessTypeLabel(form.businessType)}
+            onClick={() => setBusinessTypeOpen(true)}
           />
         </div>
       </GlassCard>
@@ -61,7 +74,7 @@ export function IdentitySection({ form, patch, projectId }: { form: SettingsForm
         />
       </GlassCard>
 
-      <GlassCard title="Typography" icon="◐" wide>
+      <GlassCard title="Typography" icon="◐">
         <p className="mb-3 text-xs text-slate-500">
           The heading and body fonts applied across every page — in the editor preview and the
           published site. Use them anywhere with the <code className="rounded bg-slate-100 px-1 py-0.5">font-heading</code>{' '}
@@ -131,7 +144,7 @@ export function IdentitySection({ form, patch, projectId }: { form: SettingsForm
         </div>
       </GlassCard>
 
-      <GlassCard title="Social profiles" icon="🜨" wide>
+      <GlassCard title="Social profiles" icon="🜨">
         <p className="mb-2 text-xs text-slate-500">Absolute https URLs — emitted as schema.org <code>sameAs</code>.</p>
         <StringListEditor
           items={form.social}
@@ -141,6 +154,14 @@ export function IdentitySection({ form, patch, projectId }: { form: SettingsForm
           addLabel="+ Add profile"
         />
       </GlassCard>
+
+      {businessTypeOpen && (
+        <BusinessTypeModal
+          value={form.businessType}
+          onSelect={(businessType) => patch({ businessType })}
+          onClose={() => setBusinessTypeOpen(false)}
+        />
+      )}
     </div>
   );
 }

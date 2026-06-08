@@ -160,11 +160,26 @@ function ArrayEditor({ arr, onChange }: { arr: JsonValue[]; onChange: (v: JsonVa
 }
 
 /**
- * The editable `website.data` JSON store: a graphical tree editor (add/rename keys, nest objects/
- * arrays, pick a type + value per node) with a raw-JSON SOURCE toggle for power edits. Edits a draft;
- * the parent persists it on Save (server re-validates against the bounded, prototype-safe schema).
+ * An editable JSON store editor: a graphical tree editor (add/rename keys, nest objects/arrays, pick
+ * a type + value per node) with a raw-JSON SOURCE toggle for power edits. Edits a draft; the parent
+ * persists it on Save (server re-validates against the bounded, prototype-safe schema). Reused for
+ * `website.data` (default copy) and `page.data` (via `title`/`namespace`).
  */
-export function WebsiteDataModal({ value, onSave, onClose }: { value: JsonValue; onSave: (v: JsonValue) => void; onClose: () => void }) {
+export function WebsiteDataModal({
+  value,
+  onSave,
+  onClose,
+  title = 'Site data',
+  namespace = 'website.data',
+}: {
+  value: JsonValue;
+  onSave: (v: JsonValue) => void;
+  onClose: () => void;
+  /** Modal title (also its accessible dialog name). Default "Site data". */
+  title?: string;
+  /** The binding namespace shown in the hint, e.g. "website.data" or "page.data". */
+  namespace?: string;
+}) {
   const [draft, setDraft] = useState<JsonValue>(value);
   const [sourceView, setSourceView] = useState(false);
   const [sourceText, setSourceText] = useState('');
@@ -214,7 +229,7 @@ export function WebsiteDataModal({ value, onSave, onClose }: { value: JsonValue;
 
   return (
     <Modal
-      title="Site data"
+      title={title}
       size="xl"
       onClose={onClose}
       onSave={save}
@@ -228,8 +243,8 @@ export function WebsiteDataModal({ value, onSave, onClose }: { value: JsonValue;
     >
       <div className="flex flex-col gap-3 p-5">
         <p className="text-xs text-slate-400">
-          A free-form object available in templates as <code>{`{{website.data.<key>}}`}</code> and{' '}
-          <code>{`{{#each website.data.<array>}}`}</code> — in the preview and the published site.
+          A free-form object available in templates as <code>{`{{${namespace}.<key>}}`}</code> and{' '}
+          <code>{`{{#each ${namespace}.<array>}}`}</code> — in the preview and the published site.
         </p>
         {sourceView ? (
           <>

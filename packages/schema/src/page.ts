@@ -4,6 +4,7 @@ import { SeoSchema } from './seo.js';
 import { TemplateRefSchema } from './template.js';
 import { LocaleSchema } from './project.js';
 import { IdSchema, KeyNameSchema, PageSlugSchema, SlugSchema } from './primitives.js';
+import { JsonStoreSchema } from './json-store.js';
 
 const COLLECTION_PARAM = /\[[A-Za-z0-9_]+\]/;
 
@@ -116,6 +117,14 @@ export const PageSchema = z
       .record(KeyNameSchema, z.string().max(64_000))
       .refine((obj) => Object.keys(obj).length <= 500, 'too many rich regions')
       .optional(),
+    /**
+     * Per-page custom data: an editable, free-form JSON object exposed in templates as
+     * `{{ page.data.* }}` / `{{#each page.data.x}}` — the per-page counterpart of `website.data`
+     * (e.g. a blog article page holds `{ article_title, article_image, … }` here). Edited via the
+     * graphical "Edit page data" tree/JSON editor. Bounded + prototype-safe (the shared
+     * {@link JsonStoreSchema}), available in both preview and publish.
+     */
+    data: JsonStoreSchema.optional(),
     /** Present when this page is generated once per dataset entry. */
     collection: z
       .object({

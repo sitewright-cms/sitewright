@@ -9,6 +9,7 @@ export * from './dataset.js';
 export * from './deploy-target.js';
 export * from './form.js';
 export * from './instance-settings.js';
+export * from './json-store.js';
 export * from './media.js';
 export * from './page.js';
 export * from './partial.js';

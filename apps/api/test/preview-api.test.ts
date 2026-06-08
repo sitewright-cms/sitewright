@@ -365,6 +365,24 @@ describe('preview API — code-first source page', () => {
     expect(html).toContain('<li>fast</li><li>safe</li>'); // {{#each}} over a website.data array
   });
 
+  it('exposes the previewed page’s own page.data to its source ({{page.data.*}} + {{#each}})', async () => {
+    const { t, projectId } = await setup('pdata@acme.test', poolApp);
+    const res = await poolApp.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/preview`,
+      cookies: { sw_session: t },
+      payload: {
+        id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
+        data: { hero: { headline: 'On this page' }, tags: ['x', 'y'] },
+        source: '<main><h1>{{page.data.hero.headline}}</h1><ul>{{#each page.data.tags}}<li>{{this}}</li>{{/each}}</ul></main>',
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const html = (res.json() as { html: string }).html;
+    expect(html).toContain('<h1>On this page</h1>'); // keyed lookup from the page's own data
+    expect(html).toContain('<li>x</li><li>y</li>'); // {{#each}} over a page.data array
+  });
+
   it('builds the preview nav per-locale — only the previewed page language (WYSIWYG with publish)', async () => {
     const { t, projectId } = await setup('i18n@acme.test', poolApp);
     const base = `/projects/${projectId}`;

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { JsonStoreSchema } from './json-store.js';
 
 // Bounded to limit build-output amplification (these fields are injected into
 // every page of a publish, up to MAX_BUNDLE.pages). CSS is smaller than the
@@ -10,56 +11,10 @@ const HTML_MAX = 20_000;
 // tree editor), exposed in templates as {{ website.data.* }} and {{#each website.data.x}}. It is the
 // LOCAL counterpart to `jsonDataUrl`/`json_data` (which is fetched from a URL at publish) and is
 // available in BOTH preview and publish. Values are output-escaped like any binding; the namespace
-// is bounded + prototype-safe.
-export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
-const WEBSITE_DATA_MAX_DEPTH = 12;
-const WEBSITE_DATA_MAX_NODES = 5000;
-const WEBSITE_DATA_MAX_STRING = 20_000;
-const WEBSITE_DATA_RESERVED_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
-
-/**
- * ITERATIVE (stack-safe) validation of an editable JSON value: only JSON types, bounded depth/node-
- * count/string-length, and safe object keys (no prototype-pollution keys). Avoids Zod's recursive
- * parse so a deeply-nested adversarial blob can't overflow the stack on the settings write path.
- */
-function isJsonValue(root: unknown): boolean {
-  const stack: Array<{ v: unknown; d: number }> = [{ v: root, d: 0 }];
-  let nodes = 0;
-  while (stack.length > 0) {
-    const { v, d } = stack.pop()!;
-    if (d > WEBSITE_DATA_MAX_DEPTH) return false;
-    if ((nodes += 1) > WEBSITE_DATA_MAX_NODES) return false;
-    if (v === null) continue;
-    const t = typeof v;
-    if (t === 'string') {
-      if ((v as string).length > WEBSITE_DATA_MAX_STRING) return false;
-      continue;
-    }
-    if (t === 'number') {
-      if (!Number.isFinite(v)) return false;
-      continue;
-    }
-    if (t === 'boolean') continue;
-    if (Array.isArray(v)) {
-      for (const item of v) stack.push({ v: item, d: d + 1 });
-      continue;
-    }
-    if (t === 'object') {
-      for (const [key, val] of Object.entries(v as object)) {
-        if (WEBSITE_DATA_RESERVED_KEYS.has(key) || key.length === 0 || key.length > 200) return false;
-        stack.push({ v: val, d: d + 1 });
-      }
-      continue;
-    }
-    return false; // function / symbol / bigint / undefined
-  }
-  return true;
-}
-
-/** The `website.data` editable JSON store (see {@link isJsonValue} for the bounds). */
-export const WebsiteDataSchema = z.custom<JsonValue>(isJsonValue, {
-  message: 'website.data must be JSON (objects/arrays/strings/numbers/booleans/null), bounded in depth/size, with safe keys',
-});
+// is bounded + prototype-safe. The validator + bounds are shared with page.data/template.data — see
+// `json-store.ts`.
+/** The `website.data` editable JSON store (the shared bounded, prototype-safe {@link JsonStoreSchema}). */
+export const WebsiteDataSchema = JsonStoreSchema;
 
 /**
  * Project-wide website settings — the `website.*` namespace (contentBase's

@@ -304,10 +304,22 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         id: 'n-page',
         syntax: 'page.*',
         name: 'page',
-        keywords: 'title path locale translations route',
+        keywords: 'title path locale translations route data',
         description:
-          'The current page: page.title, page.path (the full computed route), page.locale, page.translations (locale alternates — each has .path, .locale).',
+          'The current page: page.title, page.path (the full computed route), page.locale, page.translations (locale alternates — each has .path, .locale), and page.data (this page’s custom object — see its own entry).',
         example: '<title>{{page.title}}</title>',
+      },
+      {
+        id: 'n-page-data',
+        syntax: 'page.data.<key>',
+        name: 'page.data',
+        keywords: 'page custom data per-page object json article fields blog',
+        description:
+          'A free-form JSON object stored ON this page (Page editor → “Edit page data”, a tree + JSON editor) and exposed as {{page.data.<key>}} / {{#each page.data.<array>}} — the per-page counterpart of website.data (e.g. a blog article page holds { article_title, article_image, … } here). In preview + publish.',
+        example:
+          '<h1>{{page.data.article_title}}</h1>\n' +
+          '<img src="{{url page.data.article_image}}">\n' +
+          '<div>{{page.data.article_body}}</div>',
       },
       {
         id: 'n-data',

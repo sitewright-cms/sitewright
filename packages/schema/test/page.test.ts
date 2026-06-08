@@ -31,6 +31,16 @@ describe('PageSchema', () => {
     expect(() => PageSchema.parse({ id: 'p', path: 'p', title: 'P', status: 'archived', root: { id: 'r', type: 'Section' } })).toThrow();
   });
 
+  it('accepts an optional bounded, prototype-safe page.data object', () => {
+    const data = { article_title: 'Hello', tags: ['a', 'b'], meta: { featured: true } };
+    expect(PageSchema.parse({ id: 'p', path: 'p', title: 'P', root: { id: 'r', type: 'Section' }, data }).data).toEqual(data);
+    // Optional — absent stays undefined.
+    expect(PageSchema.parse({ id: 'p', path: 'p', title: 'P', root: { id: 'r', type: 'Section' } }).data).toBeUndefined();
+    // Prototype-pollution key (own __proto__ via JSON.parse) is rejected.
+    const polluted = JSON.parse('{"__proto__":{"x":1}}');
+    expect(() => PageSchema.parse({ id: 'p', path: 'p', title: 'P', root: { id: 'r', type: 'Section' }, data: polluted })).toThrow();
+  });
+
   it('parses a collection page (leaf slug is the [param] segment)', () => {
     const page = PageSchema.parse({
       id: 'product',

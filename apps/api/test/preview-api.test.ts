@@ -383,6 +383,31 @@ describe('preview API — code-first source page', () => {
     expect(html).toContain('<li>x</li><li>y</li>'); // {{#each}} over a page.data array
   });
 
+  it('exposes page.children (the saved child pages) to a source-page preview', async () => {
+    const { t, projectId } = await setup('pchild@acme.test', poolApp);
+    const base = `/projects/${projectId}`;
+    const put = (key: string, payload: Record<string, unknown>) =>
+      poolApp.inject({ method: 'PUT', url: `${base}/content/page/${key}`, cookies: { sw_session: t }, payload });
+    await put('home', { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' } });
+    await put('a2', { id: 'a2', path: 'second', parent: 'home', title: 'Second', order: 2, seo: { description: 'Two' }, data: { tag: 'y' }, root: { id: 'r', type: 'Section' } });
+    await put('a1', { id: 'a1', path: 'first', parent: 'home', title: 'First', order: 1, seo: { description: 'One' }, data: { tag: 'x' }, root: { id: 'r', type: 'Section' } });
+    const res = await poolApp.inject({
+      method: 'POST',
+      url: `${base}/preview`,
+      cookies: { sw_session: t },
+      payload: {
+        id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
+        source: '<main>{{#each page.children}}<a href="{{url path}}"><h3>{{title}}</h3><p>{{description}}</p><span>{{data.tag}}</span></a>{{/each}}</main>',
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const html = (res.json() as { html: string }).html;
+    expect(html).toContain('<h3>First</h3>'); // child title
+    expect(html).toContain('<p>One</p>'); // flattened seo.description
+    expect(html).toContain('<span>x</span>'); // the child's own page.data, read inside the loop
+    expect(html.indexOf('<h3>First</h3>')).toBeLessThan(html.indexOf('<h3>Second</h3>')); // ordered by order
+  });
+
   it('builds the preview nav per-locale — only the previewed page language (WYSIWYG with publish)', async () => {
     const { t, projectId } = await setup('i18n@acme.test', poolApp);
     const base = `/projects/${projectId}`;

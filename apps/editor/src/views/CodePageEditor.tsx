@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
 import type { JsonValue, Page, Template } from '@sitewright/schema';
 import { extractRegions, GLOBAL_TEMPLATES, isGlobalTemplate } from '@sitewright/core';
 import { safeUrl } from '@sitewright/blocks/url';
@@ -11,24 +11,18 @@ import { Tooltip } from './ui/Tooltip';
 import { PageSettingsModal, applyPageSettings, pageSettingsFromPage, type PageSettingsValues } from './PageSettingsModal';
 import { useDialogs } from './ui/Dialogs';
 import { FilePicker } from './files/FilePicker';
-import { AssetField } from './files/AssetField';
 import { ACCEPT } from './files/FileBrowser';
 import { EntryEditorLoader } from './datasets/EntryEditorLoader';
 import { WebsiteDataModal } from './settings/WebsiteDataModal';
 import {
   DANGEROUS_KEYS,
   dataPathOf,
-  isEmptyPageData,
   isSafeKey,
   mergeDefaults,
-  pageDataGet,
+  pageDataObject,
   pageDataSet,
 } from '../lib/page-data';
-import { glassInput, glassPanel, primaryButton } from '../theme';
-
-// Lazy: the rich editor pulls in the HTML sanitizer (sanitize-html) — kept out of the main bundle,
-// loaded only when a rich region is opened.
-const RichRegionPanel = lazy(() => import('./editor/RichRegionPanel').then((m) => ({ default: m.RichRegionPanel })));
+import { primaryButton } from '../theme';
 
 export type EditMode = 'source' | 'content';
 
@@ -128,8 +122,6 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   // and via the "Edit page data" tree/JSON modal.
   const [pageData, setPageData] = useState<JsonValue>(page.data ?? {});
   const [pageDataOpen, setPageDataOpen] = useState(false);
-  // The rich region currently open in the side editor (its key), or null when none is open.
-  const [richOpen, setRichOpen] = useState<string | null>(null);
   // The content key whose image is being replaced via the file picker (data-sw-src/bg click), or null.
   const [pickerKey, setPickerKey] = useState<string | null>(null);
   // The dataset entry being edited from a preview click (data-sw-entry), or null.
@@ -172,7 +164,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   // whereas `stateKey`/`inlineToken`/the undo Snapshot all track the RAW `pageData` — they only need
   // to agree with EACH OTHER for dirty/suppress/undo to work, which they do.
   const draft: Page = useMemo(
-    () => ({ ...applyPageSettings(page, settings), source, richContent, data: isEmptyPageData(pageData) ? undefined : pageData }),
+    () => ({ ...applyPageSettings(page, settings), source, richContent, data: pageDataObject(pageData) }),
     [page, settings, source, richContent, pageData],
   );
   // One key over every editable field (BOTH modes + settings) → dirty + post-save snapshot.
@@ -250,7 +242,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
         scrollYRef.current = d.y;
       } else if (d.type === 'edit' && typeof d.key === 'string' && typeof d.value === 'string' && isSafeKey(d.key)) {
         // Inline plain-text edit → write the page.data leaf (bare key → top-level prop; data.<path> →
-        // nested). Two-way with its side field; the iframe DOM already shows it, so suppress the reload.
+        // nested). The iframe DOM already shows it, so suppress the reload.
         const nextData = pageDataSet(pageDataRef.current, d.key, d.value);
         inlineKeyRef.current = inlineToken({ data: nextData });
         setPageData(nextData);
@@ -415,25 +407,10 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
     setSettings(values);
   }
 
-  // Text/url region accessors read+write page.data (a bare key → top-level prop; `data.<path>` →
-  // nested). Rich regions stay in the richContent map.
-  function regionValue(key: string, def: string): string {
-    return pageDataGet(pageData, key) ?? def;
-  }
+  // Writes a text/url region (the in-preview file picker uses this for images) into page.data —
+  // a bare key → top-level prop; a `data.<path>` key → nested.
   function changeRegion(key: string, value: string) {
     setPageData((prev) => pageDataSet(prev, key, value));
-  }
-  function richValue(key: string, def: string): string {
-    const p = dataPathOf(key);
-    if (p !== null) return pageDataGet(pageData, key) ?? def;
-    return Object.prototype.hasOwnProperty.call(richContent, key) ? richContent[key]! : def;
-  }
-  function changeRichRegion(key: string, html: string) {
-    if (dataPathOf(key) !== null) {
-      setPageData((prev) => pageDataSet(prev, key, html)); // a data.<path> rich leaf → page.data
-      return;
-    }
-    setRichContent((prev) => ({ ...prev, [key]: html })); // a bare key → the richContent store
   }
 
   // Debounced full-parity preview: POST the whole draft to `/preview` — skeleton
@@ -633,10 +610,10 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
       <div className="flex h-full flex-col gap-2 bg-slate-100/50 p-2">
         {/* Row 1 — the authoring strip: collapsed on open (a contentbase-style peek),
             expanding while hovered or focused. The strip's CONTENT flips with the mode:
-            the CodeMirror source editor (or the template LOCK panel), or the {{edit}}
-            region fields. */}
+            the CodeMirror source editor (or the template LOCK panel), or the in-preview
+            editing hint. */}
         <section
-          aria-label={mode === 'source' ? 'Template source editor' : 'Editable content regions'}
+          aria-label={mode === 'source' ? 'Template source editor' : 'In-preview editing hint'}
           data-expanded={stripExpanded}
           className={`shrink-0 overflow-hidden rounded-2xl border border-white/50 shadow-xl shadow-slate-900/10 transition-[height] duration-300 ease-out ${
             mode === 'source' && !settings.template ? 'bg-[#0a0a0f]' : 'bg-white/70 backdrop-blur-xl'
@@ -670,72 +647,24 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
               <CodeEditor value={source} onChange={setSource} ariaLabel="Template source" />
             )
           ) : (
-            <div className="flex h-full flex-col gap-3 overflow-auto p-3">
+            // Content mode: edit IN THE PREVIEW (click a highlighted element) or open "Edit page data"
+            // for the structured store. No per-region side fields — the preview + JSON editor are the
+            // two editing paths.
+            <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
               {regions.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-slate-300/80 bg-white/40 p-6 text-center text-sm text-slate-500">
-                  This page has no editable regions yet. Mark editable text with{' '}
-                  <code>{'data-sw-text="…"'}</code>, rich text with{' '}
-                  <code>{'data-sw-html="…"'}</code>, link URLs with <code>{'data-sw-href="…"'}</code>, and images with{' '}
-                  <code>{'data-sw-src="…"'}</code> / <code>{'data-sw-bg="…"'}</code> in the source.
-                </div>
+                <p className="max-w-md text-sm text-slate-500">
+                  This page has no editable regions yet. In the source, mark editable text with{' '}
+                  <code>{'data-sw-text="key"'}</code>, rich text with <code>{'data-sw-html'}</code>, links with{' '}
+                  <code>{'data-sw-href'}</code>, and images with <code>{'data-sw-src'}</code> / <code>{'data-sw-bg'}</code>.
+                </p>
               ) : (
-                regions.map((region) =>
-                  region.kind === 'rich' ? (
-                    <div key={region.key} className={`block shrink-0 p-3 ${glassPanel}`}>
-                      <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">
-                        {region.key}
-                      </span>
-                      <button type="button" onClick={() => setRichOpen(region.key)} className={`w-full ${primaryButton}`}>
-                        Edit rich text…
-                      </button>
-                    </div>
-                  ) : region.kind === 'image' || region.kind === 'bg' ? (
-                    <div key={region.key} className={`block shrink-0 p-3 ${glassPanel}`}>
-                      <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">
-                        {region.key}{' '}
-                        <span className="font-normal lowercase tracking-normal text-slate-300">
-                          {region.kind === 'bg' ? 'background image' : 'image'}
-                        </span>
-                      </span>
-                      <AssetField
-                        label={region.key}
-                        hideLabel
-                        value={regionValue(region.key, region.default)}
-                        onChange={(url) => changeRegion(region.key, url)}
-                        projectId={project.id}
-                        accept={ACCEPT.image}
-                        placeholder="/media/…"
-                      />
-                    </div>
-                  ) : region.kind === 'link' ? (
-                    <label key={region.key} className={`block shrink-0 p-3 ${glassPanel}`}>
-                      <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">
-                        {region.key} <span className="font-normal lowercase tracking-normal text-slate-300">link URL</span>
-                      </span>
-                      <input
-                        type="url"
-                        aria-label={region.key}
-                        className={glassInput}
-                        placeholder="https://… or /path"
-                        value={regionValue(region.key, region.default)}
-                        onChange={(e) => changeRegion(region.key, e.target.value)}
-                      />
-                    </label>
-                  ) : (
-                    <label key={region.key} className={`block shrink-0 p-3 ${glassPanel}`}>
-                      <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">
-                        {region.key}
-                      </span>
-                      <textarea
-                        aria-label={region.key}
-                        className={`resize-y ${glassInput}`}
-                        rows={2}
-                        value={regionValue(region.key, region.default)}
-                        onChange={(e) => changeRegion(region.key, e.target.value)}
-                      />
-                    </label>
-                  ),
-                )
+                <>
+                  <p className="text-sm font-medium text-slate-700">Click any highlighted element in the preview to edit it.</p>
+                  <p className="max-w-md text-xs text-slate-400">
+                    Text edits in place, rich text gets a formatting toolbar, images open the file picker. For the
+                    structured store, use <strong>Edit page data</strong> (top right).
+                  </p>
+                </>
               )}
             </div>
           )}
@@ -770,18 +699,6 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
           </div>
         </div>
       </div>
-
-      {/* The rich-text side editor STACKS above this modal; it edits the shared draft live. */}
-      {richOpen && (
-        <Suspense fallback={null}>
-          <RichRegionPanel
-            regionKey={richOpen}
-            value={richValue(richOpen, regions.find((r) => r.key === richOpen)?.default ?? '')}
-            onChange={(html) => changeRichRegion(richOpen, html)}
-            onClose={() => setRichOpen(null)}
-          />
-        </Suspense>
-      )}
 
       {/* Image/background replacement: clicking a data-sw-src/bg region in the preview opens this. */}
       {pickerKey && (

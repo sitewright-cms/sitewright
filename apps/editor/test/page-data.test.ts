@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dataPathOf, isSafeKey, dataLeafGet, dataLeafSet, mergeDefaults, isEmptyPageData } from '../src/lib/page-data';
+import { dataPathOf, isSafeKey, dataLeafGet, dataLeafSet, mergeDefaults, isEmptyPageData, pageDataObject } from '../src/lib/page-data';
 
 describe('dataPathOf / isSafeKey', () => {
   it('extracts the page.data path from a data.* key, else null', () => {
@@ -98,5 +98,20 @@ describe('isEmptyPageData', () => {
     expect(isEmptyPageData({ a: '1' })).toBe(false);
     expect(isEmptyPageData('x')).toBe(false);
     expect(isEmptyPageData(0)).toBe(false);
+  });
+});
+
+describe('pageDataObject (persist coercion — object-only store)', () => {
+  it('returns a non-empty plain object as-is', () => {
+    const obj = { a: '1', nested: { b: 2 } };
+    expect(pageDataObject(obj)).toBe(obj);
+  });
+  it('omits an empty object, and any non-object root (array/scalar/null)', () => {
+    expect(pageDataObject({})).toBeUndefined();
+    expect(pageDataObject(null)).toBeUndefined();
+    expect(pageDataObject(['a', 'b'])).toBeUndefined(); // arrays are valid as NESTED values, never as the root
+    expect(pageDataObject('x')).toBeUndefined();
+    expect(pageDataObject(0)).toBeUndefined();
+    expect(pageDataObject(false)).toBeUndefined();
   });
 });

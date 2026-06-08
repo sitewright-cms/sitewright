@@ -45,9 +45,7 @@ test('content mode: inline-edit a preview region (two-way, no reload, persists)'
   await page.keyboard.press('ControlOrMeta+a');
   await page.keyboard.type('Brand new tagline');
 
-  // Two-way: the side region field reflects the inline edit.
-  await expect(page.getByLabel('tagline')).toHaveValue('Brand new tagline');
-  await expect(region).toHaveText('Brand new tagline');
+  await expect(region).toHaveText('Brand new tagline'); // the in-preview edit took
 
   // No full reload happened (the suppression held): the doc tag survives past the debounce window.
   await page.waitForTimeout(1100);
@@ -59,6 +57,5 @@ test('content mode: inline-edit a preview region (two-way, no reload, persists)'
   await expect(page.getByText('Saved')).toBeVisible();
   await page.getByRole('button', { name: 'Close', exact: true }).click();
   await page.getByRole('button', { name: /^Home/ }).click();
-  await page.getByRole('button', { name: 'content', exact: true }).click();
-  await expect(page.getByLabel('tagline')).toHaveValue('Brand new tagline');
+  await expect(page.frameLocator('iframe[title="Preview"]').locator('[data-sw-text="tagline"]')).toHaveText('Brand new tagline');
 });

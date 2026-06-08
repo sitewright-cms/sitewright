@@ -156,15 +156,6 @@ describe('CodePageEditor', () => {
     expect(saved.source).toContain('data-sw-text="heading"');
   });
 
-  it('content mode of a template page edits the TEMPLATE source regions', () => {
-    const templated: Page = { ...page, source: undefined, template: 'global:text' };
-    render(<CodePageEditor project={project} page={templated} onClose={() => {}} initialMode="content" />);
-    // Regions come from the referenced global template.
-    expect(screen.getByLabelText('heading')).toHaveValue('Page heading');
-    fireEvent.change(screen.getByLabelText('heading'), { target: { value: 'Imprint' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    expect(putPage).toHaveBeenCalledWith('p', expect.objectContaining({ data: { heading: 'Imprint' }, template: 'global:text' }));
-  });
 
   it('opens with the authoring strip COLLAPSED; hover and focus expand it, leaving collapses it', () => {
     render(<CodePageEditor project={project} page={page} onClose={() => {}} />);
@@ -261,55 +252,31 @@ describe('CodePageEditor', () => {
 });
 
 describe('CodePageEditor — content mode (in-modal)', () => {
-  it('opens directly in content mode (the client default) showing only the data-sw-* regions', () => {
+  // Content mode = edit in the live preview (a real browser; covered by the e2e specs) + the "Edit
+  // page data" JSON editor. There are no per-region SIDE FIELDS, so these jsdom tests cover the chrome.
+  it('opens directly in content mode (the client default): the in-preview hint, code tools hidden', () => {
     render(<CodePageEditor project={project} page={editablePage} onClose={() => {}} initialMode="content" />);
-    // The region field is surfaced with its default…
-    expect(screen.getByLabelText('tagline')).toHaveValue('Edit this tagline');
+    // The in-preview editing hint is shown (not per-region side fields)…
+    expect(screen.getByText(/Click any highlighted element in the preview/)).toBeInTheDocument();
     // …the raw template is NOT presented, and the code-authoring tools are hidden.
     expect(screen.queryByLabelText('Template source')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Page settings' })).toBeNull();
     expect(screen.queryByLabelText('Insert pattern')).toBeNull();
   });
 
-  it('persists edited region content on save (alongside the untouched template)', async () => {
-    render(<CodePageEditor project={project} page={editablePage} onClose={() => {}} initialMode="content" />);
-    fireEvent.change(screen.getByLabelText('tagline'), { target: { value: 'A client-written tagline' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(putPage).toHaveBeenCalledTimes(1));
-    const saved = putPage.mock.calls[0]![1] as Page;
-    expect(saved.data).toEqual({ tagline: 'A client-written tagline' }); // editable text now lives in page.data
-    expect(saved.source).toBe(editablePage.source); // the template stays untouched
-  });
-
-  it('switches modes LOSSLESSLY — drafts in both modes survive the toggle', () => {
+  it('switches modes LOSSLESSLY — the source draft survives the content⇄source toggle', () => {
     render(<CodePageEditor project={project} page={editablePage} onClose={() => {}} />);
-    // Source mode: edit the template, ADDING a new region.
     fireEvent.change(screen.getByLabelText('Template source'), {
       target: { value: '<p data-sw-text="headline">Big news</p>' },
     });
-    // → content: the freshly-typed region is there (regions derive from the DRAFT source).
-    fireEvent.click(screen.getByRole('button', { name: 'content' }));
-    const field = screen.getByLabelText('headline');
-    expect(field).toHaveValue('Big news');
-    fireEvent.change(field, { target: { value: 'Bigger news' } });
-    // → back to source: the template draft survived…
-    fireEvent.click(screen.getByRole('button', { name: 'source' }));
+    fireEvent.click(screen.getByRole('button', { name: 'content' })); // → content: the in-preview hint
+    expect(screen.getByText(/Click any highlighted element in the preview/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'source' })); // → back to source: the draft survived
     expect(screen.getByLabelText('Template source')).toHaveValue('<p data-sw-text="headline">Big news</p>');
-    // …and back to content: the region draft survived too. No confirm dialog anywhere.
-    fireEvent.click(screen.getByRole('button', { name: 'content' }));
-    expect(screen.getByLabelText('headline')).toHaveValue('Bigger news');
   });
 
   it('shows the empty-state hint when the source marks no editable regions', () => {
     render(<CodePageEditor project={project} page={page} onClose={() => {}} initialMode="content" />);
     expect(screen.getByText(/no editable regions yet/)).toBeInTheDocument();
-  });
-
-  it('previews the draft content through the same full-parity pipeline', async () => {
-    render(<CodePageEditor project={project} page={editablePage} onClose={() => {}} initialMode="content" />);
-    fireEvent.change(screen.getByLabelText('tagline'), { target: { value: 'Live-typed' } });
-    await waitFor(() =>
-      expect(preview).toHaveBeenCalledWith('p', expect.objectContaining({ data: { tagline: 'Live-typed' } })),
-    );
   });
 });

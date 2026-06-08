@@ -4,7 +4,7 @@ import { SeoSchema } from './seo.js';
 import { TemplateRefSchema } from './template.js';
 import { LocaleSchema } from './project.js';
 import { IdSchema, KeyNameSchema, PageSlugSchema, SlugSchema } from './primitives.js';
-import { JsonStoreSchema } from './json-store.js';
+import { JsonObjectStoreSchema } from './json-store.js';
 
 const COLLECTION_PARAM = /\[[A-Za-z0-9_]+\]/;
 
@@ -110,7 +110,7 @@ const PageObject = z
      * `{{ page.data.* }}` / `{{#each page.data.x}}` — the per-page counterpart of `website.data`
      * (e.g. a blog article page holds `{ article_title, article_image, … }` here). Edited via the
      * graphical "Edit page data" tree/JSON editor and the in-preview `data-sw-*="data.<key>"` leaf
-     * directives. Bounded + prototype-safe (the shared {@link JsonStoreSchema}), available in both
+     * directives. A root OBJECT, bounded + prototype-safe ({@link JsonObjectStoreSchema}), available in both
      * preview and publish.
      *
      * @security values are stored RAW (no HTML sanitization at rest — unlike `richContent`, which is
@@ -119,7 +119,7 @@ const PageObject = z
      * always runs `sanitizeRichHtml`); every other sink escapes (text) or `safeUrl`s (src/href/bg).
      * So a value is never emitted to HTML unsanitized — the render sink is the boundary.
      */
-    data: JsonStoreSchema.optional(),
+    data: JsonObjectStoreSchema.optional(),
     /** Present when this page is generated once per dataset entry. */
     collection: z
       .object({

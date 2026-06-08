@@ -62,14 +62,3 @@ test('data-sw-bg: replace a background image via the preview → file picker (UR
 
   await expect(band).toHaveAttribute('style', /background-image:url\(.*band\.jpg/);
 });
-
-// The side panel exposes image regions as an AssetField (edit without clicking the preview).
-test('data-sw-src: side-panel AssetField sets the image URL', async ({ page }) => {
-  await setup(page, 'imgside');
-  await setSource(page, '<img data-sw-src="hero" src="/old.jpg" width="120" height="80">');
-
-  const preview = page.frameLocator('iframe[title="Preview"]');
-  await page.getByRole('button', { name: 'content', exact: true }).click();
-  await page.getByRole('textbox', { name: 'hero', exact: true }).fill('/media/seed/side.jpg');
-  await expect(preview.locator('[data-sw-src="hero"]')).toHaveAttribute('src', '/media/seed/side.jpg');
-});

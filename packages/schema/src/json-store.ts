@@ -58,3 +58,10 @@ export function isJsonValue(root: unknown): boolean {
 export const JsonStoreSchema = z.custom<JsonValue>(isJsonValue, {
   message: 'must be JSON (objects/arrays/strings/numbers/booleans/null), bounded in depth/size, with safe keys',
 });
+
+/** A plain JSON OBJECT at the root — `website.data`/`page.data`/`template.data` are key→value stores. */
+export type JsonObject = { [key: string]: JsonValue };
+export const JsonObjectStoreSchema = z.custom<JsonObject>(
+  (v) => v !== null && typeof v === 'object' && !Array.isArray(v) && isJsonValue(v),
+  { message: 'must be a JSON object (key → value), bounded in depth/size, with safe keys' },
+);

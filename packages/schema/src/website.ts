@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { JsonStoreSchema } from './json-store.js';
+import { JsonObjectStoreSchema } from './json-store.js';
 
 // Bounded to limit build-output amplification (these fields are injected into
 // every page of a publish, up to MAX_BUNDLE.pages). CSS is smaller than the
@@ -13,8 +13,8 @@ const HTML_MAX = 20_000;
 // available in BOTH preview and publish. Values are output-escaped like any binding; the namespace
 // is bounded + prototype-safe. The validator + bounds are shared with page.data/template.data — see
 // `json-store.ts`.
-/** The `website.data` editable JSON store (the shared bounded, prototype-safe {@link JsonStoreSchema}). */
-export const WebsiteDataSchema = JsonStoreSchema;
+/** The `website.data` editable JSON store — a root OBJECT (the shared bounded, prototype-safe store). */
+export const WebsiteDataSchema = JsonObjectStoreSchema;
 
 /**
  * Project-wide website settings — the `website.*` namespace (contentBase's

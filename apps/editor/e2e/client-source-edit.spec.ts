@@ -47,20 +47,21 @@ test('client edits a code page’s bound region (content), template stays immuta
   await expect(page.getByRole('dialog')).toBeVisible();
   await expect(page.getByRole('button', { name: 'content' })).toHaveAttribute('aria-pressed', 'true');
 
-  // The editable region (the scaffold's `tagline`) is surfaced with its default; the raw
-  // template source is NOT presented as editable.
-  const region = page.getByLabel('tagline');
-  await expect(region).toHaveValue('Welcome — edit this tagline.'); // the auto-home's data-sw-text default
-  await region.fill('A client-written tagline');
-
-  // The sandboxed live preview reflects the edit.
+  // The editable region (the scaffold's `tagline`) is edited IN THE PREVIEW (the raw template source
+  // is NOT presented as editable to the client).
   const preview = page.frameLocator('iframe[title="Preview"]');
-  await expect(preview.getByText('A client-written tagline')).toBeVisible();
+  const region = preview.locator('[data-sw-text="tagline"]');
+  await expect(region).toHaveText('Welcome — edit this tagline.'); // the auto-home's data-sw-text default
+  await expect(region).toHaveAttribute('contenteditable', /.+/); // content mode (client default) made it editable
+  await region.click();
+  await page.keyboard.press('ControlOrMeta+a');
+  await page.keyboard.type('A client-written tagline');
+  await expect(region).toHaveText('A client-written tagline');
 
   // Save keeps the modal open (the loop continues); close, reopen → the edit persisted.
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByText('Saved')).toBeVisible();
   await page.getByRole('button', { name: 'Close' }).click();
   await page.getByRole('button', { name: /^Home/ }).click();
-  await expect(page.getByLabel('tagline')).toHaveValue('A client-written tagline');
+  await expect(page.frameLocator('iframe[title="Preview"]').locator('[data-sw-text="tagline"]')).toHaveText('A client-written tagline');
 });

@@ -52,8 +52,8 @@ describe('WebsiteDataModal — graphical tree editor', () => {
 
   it('changes a value type and resets to that type’s default', () => {
     const { onSave } = setup({ n: 'text' });
-    // [0] = root object select, [1] = the child value's type select.
-    const typeSelect = screen.getAllByLabelText('Value type')[1]!;
+    // The root is a fixed OBJECT (no type select); the only "Value type" select is the child value's.
+    const typeSelect = screen.getByLabelText('Value type');
     fireEvent.change(typeSelect, { target: { value: 'number' } });
     save();
     expect(onSave).toHaveBeenCalledWith({ n: 0 });

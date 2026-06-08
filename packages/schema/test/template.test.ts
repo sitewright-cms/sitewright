@@ -25,6 +25,14 @@ describe('TemplateSchema (code-first: Handlebars source, no block tree)', () => 
       TemplateSchema.parse({ id: 'x', name: 'N', source: 'a'.repeat(256 * 1024 + 1) }),
     ).toThrow();
   });
+
+  it('accepts an optional bounded, prototype-safe declared default data object', () => {
+    const t = { id: 'b', name: 'Blog', source: '<h1 data-sw-text="data.title">x</h1>', data: { title: 'Hi', tags: ['a'] } };
+    expect(TemplateSchema.parse(t)).toEqual(t);
+    expect(TemplateSchema.parse({ id: 'b', name: 'B', source: '<p>x</p>' }).data).toBeUndefined();
+    // Prototype-pollution key rejected (own __proto__ via JSON.parse).
+    expect(() => TemplateSchema.parse({ id: 'b', name: 'B', source: '<p>x</p>', data: JSON.parse('{"__proto__":{"x":1}}') })).toThrow();
+  });
 });
 
 describe('TemplateRefSchema', () => {

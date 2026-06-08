@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { GLOBAL_TEMPLATES } from '@sitewright/core';
 import { resolveDirectives } from '../src/directives.js';
 import { renderTemplate } from '../src/template.js';
 
@@ -205,5 +206,28 @@ describe('resolveDirectives — data.<path> keys bind to page.data', () => {
     const page = { data: { headline: 'Live' } };
     expect(renderTemplate('<h1 data-sw-text="data.headline">d</h1>', { page, preview: true })).toContain('data-sw-text="data.headline">Live<');
     expect(renderTemplate('<h1 data-sw-text="data.headline">d</h1>', { page })).toBe('<h1>Live</h1>');
+  });
+});
+
+describe('global blog templates (content-only) render via validateTemplate', () => {
+  const article = GLOBAL_TEMPLATES.find((t) => t.id === 'global:blog-article')!;
+  const overview = GLOBAL_TEMPLATES.find((t) => t.id === 'global:blog-overview')!;
+
+  it('blog-article renders its declared page.data through the data-sw-* leaves (no validate throw)', () => {
+    const page = { data: article.data };
+    const out = renderTemplate(article.source, { page, preview: true });
+    expect(out).toContain('Your article title'); // data.article_title via data-sw-text
+    expect(() => renderTemplate(article.source, { page })).not.toThrow(); // publish path validates + renders
+  });
+
+  it('blog-overview lists children, reading each child’s page.data (image + excerpt)', () => {
+    const page = {
+      data: overview.data,
+      children: [{ title: 'First', path: '/blog/first', data: { article_image: '/i.jpg', article_excerpt: 'Excerpt one' } }],
+    };
+    const out = renderTemplate(overview.source, { page });
+    expect(out).toContain('href="/blog/first"'); // {{url path}}
+    expect(out).toContain('src="/i.jpg"'); // child's data.article_image
+    expect(out).toContain('Excerpt one'); // child's data.article_excerpt
   });
 });

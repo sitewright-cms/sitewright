@@ -15,15 +15,16 @@ import { AssetField } from './files/AssetField';
 import { ACCEPT } from './files/FileBrowser';
 import { EntryEditorLoader } from './datasets/EntryEditorLoader';
 import { WebsiteDataModal } from './settings/WebsiteDataModal';
+import {
+  DANGEROUS_KEYS,
+  dataLeafGet,
+  dataLeafSet,
+  dataPathOf,
+  isEmptyPageData,
+  isSafeKey,
+  mergeDefaults,
+} from '../lib/page-data';
 import { glassInput, glassPanel, primaryButton } from '../theme';
-
-/** An empty page.data (absent/null or an empty object/array) — omitted from the saved/previewed page. */
-function isEmptyPageData(v: JsonValue): boolean {
-  if (v == null) return true;
-  if (Array.isArray(v)) return v.length === 0;
-  if (typeof v === 'object') return Object.keys(v).length === 0;
-  return false;
-}
 
 // Lazy: the rich editor pulls in the HTML sanitizer (sanitize-html) — kept out of the main bundle,
 // loaded only when a rich region is opened.
@@ -50,59 +51,8 @@ interface CodePageEditorProps {
 const PREVIEW_DEBOUNCE_MS = 800;
 
 /** Prototype-pollution-significant keys — never accepted as a region key from the preview frame. */
-const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
-
-// A directive key prefixed `data.` binds to this page's `page.data` at that dotted path (read + edit)
-// instead of the content/richContent maps — mirrors the resolver in @sitewright/blocks/directives.
-const DATA_KEY_PREFIX = 'data.';
-/** The page.data path a directive key targets (`data.a.b` → `a.b`), or null for a content/rich key. */
-function dataPathOf(key: string): string | null {
-  return key.startsWith(DATA_KEY_PREFIX) ? key.slice(DATA_KEY_PREFIX.length) : null;
-}
-/**
- * A region key from the (untrusted) preview frame is safe to accept: not a bare prototype-pollution
- * key, and — for a `data.<path>` key — no reserved/empty path segment. Self-sufficient at the message
- * boundary (dataLeafSet also guards per segment; the server re-validates page.data on save).
- */
-function isSafeKey(key: string): boolean {
-  if (DANGEROUS_KEYS.has(key)) return false;
-  const p = dataPathOf(key);
-  if (p === null) return true;
-  return p.split('.').every((s) => s !== '' && !DANGEROUS_KEYS.has(s));
-}
-/** Reads the STRING leaf at a dotted page.data path (own-property per segment), else undefined. */
-function dataLeafGet(data: JsonValue, path: string): string | undefined {
-  let cur: JsonValue = data;
-  for (const seg of path.split('.')) {
-    if (seg === '' || DANGEROUS_KEYS.has(seg) || cur === null || typeof cur !== 'object' || Array.isArray(cur) || !Object.prototype.hasOwnProperty.call(cur, seg)) return undefined;
-    // eslint-disable-next-line security/detect-object-injection -- own-property + DANGEROUS_KEYS guarded above
-    cur = (cur as Record<string, JsonValue>)[seg]!;
-  }
-  return typeof cur === 'string' ? cur : undefined;
-}
-/**
- * Immutably sets the STRING leaf at a dotted page.data path, creating intermediate plain objects.
- * Prototype-safe: a no-op if any segment is empty or a prototype-pollution key (the server also
- * re-validates page.data on save).
- */
-function dataLeafSet(data: JsonValue, path: string, value: string): JsonValue {
-  const segs = path.split('.');
-  if (segs.some((s) => s === '' || DANGEROUS_KEYS.has(s))) return data;
-  const asObj = (v: JsonValue | undefined): Record<string, JsonValue> =>
-    v != null && typeof v === 'object' && !Array.isArray(v) ? { ...(v as Record<string, JsonValue>) } : {};
-  const root = asObj(data);
-  let cur = root;
-  /* eslint-disable security/detect-object-injection -- segments guarded against DANGEROUS_KEYS/'' above */
-  for (let i = 0; i < segs.length - 1; i++) {
-    const seg = segs[i]!;
-    const next = asObj(cur[seg]);
-    cur[seg] = next;
-    cur = next;
-  }
-  cur[segs[segs.length - 1]!] = value;
-  /* eslint-enable security/detect-object-injection */
-  return root;
-}
+// The page.data routing/merge helpers (data.<path> keys, immutable leaf get/set, template-default
+// merge, proto-guards) live in ../lib/page-data so they can be unit-tested directly.
 
 /** Device-rail glyphs (lucide-style outlines, matching the platform icon vocabulary). */
 const DEVICE_ICONS: Record<PreviewDeviceKey, ReactNode> = {
@@ -460,11 +410,25 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
     setSaved(false);
   }, [stateKey]);
 
-  /** Copies the referenced template's source INTO the page and drops the reference. */
+  /** Copies the referenced template's source AND its declared default data INTO the page, then drops
+   *  the reference — so the page can customize both the code and its page.data per-page. */
   function forkTemplate() {
     if (!activeTemplate) return;
     setSource(activeTemplate.source);
+    if (activeTemplate.data !== undefined) setPageData((prev) => mergeDefaults(prev, activeTemplate.data as JsonValue));
     setSettings((prev) => ({ ...prev, template: '' }));
+  }
+
+  /** Applies the settings modal's result; when a template is newly ENABLED, seed page.data with its
+   *  declared defaults (fill-missing — never clobber the author's existing values). */
+  function applySettings(values: PageSettingsValues) {
+    if (values.template && values.template !== settings.template) {
+      const tpl = isGlobalTemplate(values.template)
+        ? GLOBAL_TEMPLATES.find((t) => t.id === values.template)
+        : templates.find((t) => t.id === values.template);
+      if (tpl?.data !== undefined) setPageData((prev) => mergeDefaults(prev, tpl.data as JsonValue));
+    }
+    setSettings(values);
   }
 
   // Region accessors route `data.<path>` keys to page.data (read + immutable nested set); every other
@@ -884,7 +848,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
           locales={locales}
           onClose={() => setSettingsOpen(false)}
           onSubmit={(values) => {
-            setSettings(values);
+            applySettings(values);
             setSettingsOpen(false);
           }}
         />

@@ -92,3 +92,35 @@ test('edit a website partial in the code-editor modal, save, and persist across 
   const reopened = page.getByRole('dialog', { name: 'topNav partial' });
   await expect(reopened.locator('.cm-content')).toContainText(marker);
 });
+
+// The Business type (schema.org @type) is picked from a searchable modal — a known list plus
+// Default / Disabled. Verifies the pick round-trips through save + reload.
+test('Corporate Identity: pick a schema.org business type via the modal, save, and persist', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: /Register/ }).click();
+  await page.getByLabel('Email').fill(`btype-${stamp}@e2e.test`);
+  await page.getByLabel('Password').fill('pw-secret-1');
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await page.getByRole('button', { name: 'New project' }).click();
+  await page.getByLabel('Project name').fill('Biz Site');
+  await page.getByLabel('Project slug').fill(`biz-${stamp}`);
+  await page.getByRole('button', { name: 'Create project' }).click();
+  await page.getByRole('tab', { name: 'Corporate Identity' }).click();
+
+  const btn = page.getByRole('button', { name: 'Business type (schema.org @type)' });
+  await expect(btn).toContainText('Default'); // unset → Default (Organization)
+  await btn.click();
+  const modal = page.getByRole('dialog', { name: 'Business type' });
+  await modal.getByLabel('Search business types').fill('restaurant');
+  await modal.getByRole('button', { name: 'Restaurant Restaurant' }).click();
+  await expect(modal).toBeHidden(); // selecting closes the modal
+  await expect(btn).toContainText('Restaurant');
+
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.getByText('✓ Saved')).toBeVisible();
+
+  await page.reload();
+  await page.getByRole('button', { name: /Biz Site/ }).click();
+  await page.getByRole('tab', { name: 'Corporate Identity' }).click();
+  await expect(page.getByRole('button', { name: 'Business type (schema.org @type)' })).toContainText('Restaurant');
+});

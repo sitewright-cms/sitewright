@@ -36,7 +36,7 @@ const page: Page = {
 // A page whose source marks a client-editable region — content mode's subject.
 const editablePage: Page = {
   ...page,
-  source: '<h1>{{ company.name }}</h1><p>{{edit "tagline" "Edit this tagline"}}</p>',
+  source: '<h1>{{ company.name }}</h1><p data-sw-text="tagline">Edit this tagline</p>',
 };
 
 beforeEach(() => {
@@ -148,12 +148,12 @@ describe('CodePageEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Fork template into page' }));
     // Forked: the template's source is now the PAGE's own code, reference dropped.
     const editor = screen.getByLabelText('Template source') as HTMLTextAreaElement;
-    expect(editor.value).toContain('{{edit "heading"'); // global:text's source
+    expect(editor.value).toContain('data-sw-text="heading"'); // global:text's source
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(putPage).toHaveBeenCalledTimes(1));
     const saved = putPage.mock.calls[0]![1] as Page;
     expect(saved.template).toBeUndefined();
-    expect(saved.source).toContain('{{edit "heading"');
+    expect(saved.source).toContain('data-sw-text="heading"');
   });
 
   it('content mode of a template page edits the TEMPLATE source regions', () => {
@@ -261,7 +261,7 @@ describe('CodePageEditor', () => {
 });
 
 describe('CodePageEditor — content mode (in-modal)', () => {
-  it('opens directly in content mode (the client default) showing only the {{edit}} regions', () => {
+  it('opens directly in content mode (the client default) showing only the data-sw-* regions', () => {
     render(<CodePageEditor project={project} page={editablePage} onClose={() => {}} initialMode="content" />);
     // The region field is surfaced with its default…
     expect(screen.getByLabelText('tagline')).toHaveValue('Edit this tagline');
@@ -285,7 +285,7 @@ describe('CodePageEditor — content mode (in-modal)', () => {
     render(<CodePageEditor project={project} page={editablePage} onClose={() => {}} />);
     // Source mode: edit the template, ADDING a new region.
     fireEvent.change(screen.getByLabelText('Template source'), {
-      target: { value: '<p>{{edit "headline" "Big news"}}</p>' },
+      target: { value: '<p data-sw-text="headline">Big news</p>' },
     });
     // → content: the freshly-typed region is there (regions derive from the DRAFT source).
     fireEvent.click(screen.getByRole('button', { name: 'content' }));
@@ -294,7 +294,7 @@ describe('CodePageEditor — content mode (in-modal)', () => {
     fireEvent.change(field, { target: { value: 'Bigger news' } });
     // → back to source: the template draft survived…
     fireEvent.click(screen.getByRole('button', { name: 'source' }));
-    expect(screen.getByLabelText('Template source')).toHaveValue('<p>{{edit "headline" "Big news"}}</p>');
+    expect(screen.getByLabelText('Template source')).toHaveValue('<p data-sw-text="headline">Big news</p>');
     // …and back to content: the region draft survived too. No confirm dialog anywhere.
     fireEvent.click(screen.getByRole('button', { name: 'content' }));
     expect(screen.getByLabelText('headline')).toHaveValue('Bigger news');

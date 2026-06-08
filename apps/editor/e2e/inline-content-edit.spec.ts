@@ -22,14 +22,14 @@ async function setSource(page: import('@playwright/test').Page, src: string) {
   await page.keyboard.insertText(src);
 }
 
-// A body-context {{edit}} region is click-to-edit IN the preview (content mode): two-way with the
+// A data-sw-text region is click-to-edit IN the preview (content mode): two-way with the
 // side field, no full reload (the live edit survives), and it persists on save.
 test('content mode: inline-edit a preview region (two-way, no reload, persists)', async ({ page }) => {
   await setup(page, 'inline');
-  await setSource(page, '<h1>{{edit "tagline" "Hello"}}</h1>');
+  await setSource(page, '<h1 data-sw-text="tagline">Hello</h1>');
 
   const preview = page.frameLocator('iframe[title="Preview"]');
-  const region = preview.locator('[data-sw-edit="tagline"]');
+  const region = preview.locator('[data-sw-text="tagline"]');
   await expect(region).toHaveText('Hello'); // the preview marks the region
 
   // Switch to content mode → the bridge makes the region editable.
@@ -61,21 +61,4 @@ test('content mode: inline-edit a preview region (two-way, no reload, persists)'
   await page.getByRole('button', { name: /^Home/ }).click();
   await page.getByRole('button', { name: 'content', exact: true }).click();
   await expect(page.getByLabel('tagline')).toHaveValue('Brand new tagline');
-});
-
-// An {{edit}} in an ATTRIBUTE must NOT be marked (a span would break out) — but the side field still
-// edits it. (Negative case for the body-only guard.)
-test('an {{edit}} in an attribute is not inline-marked, but the side field still edits it', async ({ page }) => {
-  await setup(page, 'attr');
-  await setSource(page, '<a href="/" title="{{edit "lbl" "Home"}}">Link</a>');
-
-  const preview = page.frameLocator('iframe[title="Preview"]');
-  await expect(preview.locator('a')).toHaveText('Link');
-  // No marker span emitted for this page (editsAreBodyOnly === false).
-  await expect(preview.locator('[data-sw-edit]')).toHaveCount(0);
-
-  // The side field still edits the attribute region; the preview reflects it on reload.
-  await page.getByRole('button', { name: 'content', exact: true }).click();
-  await page.getByLabel('lbl').fill('Start');
-  await expect(preview.locator('a')).toHaveAttribute('title', 'Start');
 });

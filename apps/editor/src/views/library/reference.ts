@@ -119,19 +119,6 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         description: 'Built-in: reads a property of an object by a (possibly dynamic) key.',
         example: '{{lookup company.colors "primary"}}',
       },
-      {
-        id: 'h-edit',
-        syntax: '{{edit "key" ["default"]}}',
-        name: 'edit',
-        keywords: 'editable content region client text',
-        description:
-          'A client-editable PLAIN-TEXT region: shows the default until a client overrides it; always HTML-escaped. Prefer the data-sw-text directive on a real element (same effect, click-to-edit in place).',
-        args: [
-          { name: 'key', desc: 'A unique region id (stored in page content).' },
-          { name: 'default', desc: 'Optional fallback text shown until edited.' },
-        ],
-        example: '<h1>{{edit "headline" "Welcome"}}</h1>',
-      },
     ],
   },
   {
@@ -217,7 +204,7 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         syntax: 'data-sw-text="key"',
         name: 'data-sw-text',
         keywords: 'editable plain text inline directive',
-        description: 'Makes the element’s text editable in place (plain text, HTML-escaped).',
+        description: 'Makes the element’s text editable in place (plain text, HTML-escaped). The override is stored as page.data.<key> (a `data.<path>` key targets a nested page.data path).',
         example: '<h1 data-sw-text="headline">Welcome</h1>',
       },
       {

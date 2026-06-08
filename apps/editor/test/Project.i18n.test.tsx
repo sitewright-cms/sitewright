@@ -32,7 +32,7 @@ import { ProjectView } from '../src/views/Project';
 const project = { id: 'p', name: 'Acme', slug: 'acme', role: 'owner' as const };
 
 const root = { id: 'r', type: 'Section' as const };
-const home: Page = { id: 'home', path: '', title: 'Home', root, source: '<h1>{{edit "h" "Hi"}}</h1>' };
+const home: Page = { id: 'home', path: '', title: 'Home', root, source: '<h1 data-sw-text="h">Hi</h1>' };
 const about: Page = { id: 'about', path: 'about', parent: 'home', title: 'About', root, source: '<h1>About</h1>' };
 
 beforeEach(() => {

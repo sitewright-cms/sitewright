@@ -28,9 +28,9 @@ describe('GLOBAL_SNIPPETS (built-in starter snippets)', () => {
 
   it('exposes client-editable regions and/or brand bindings', () => {
     for (const s of GLOBAL_SNIPPETS) {
-      const hasEdit = /\{\{edit\s+"/.test(s.source);
+      const hasEditable = /data-sw-/.test(s.source); // editable leaves (the retired {{edit}} is gone)
       const hasBinding = /\{\{\s*company\./.test(s.source);
-      expect(hasEdit || hasBinding, `snippet "${s.name}" should bind content`).toBe(true);
+      expect(hasEditable || hasBinding, `snippet "${s.name}" should bind content`).toBe(true);
     }
   });
 });

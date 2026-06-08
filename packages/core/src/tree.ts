@@ -67,43 +67,14 @@ export function collectClassNames(root: PageNode): string[] {
   return classNames;
 }
 
-/** A client-editable region declared in a code-first template via `{{edit "key" "default"}}`. */
-export interface EditRegion {
-  key: string;
-  /** The developer's default text, shown until a client overrides it (via `page.content`). */
-  default: string;
-}
-
-// Matches `{{edit "key" "default"}}` with double- OR single-quoted args (Handlebars accepts
-// both), default optional. Key: group 1|2. Default: group 3|4.
-const EDIT_REGION_RE =
-  /\{\{\s*edit\s+(?:"([^"]*)"|'([^']*)')(?:\s+(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'))?\s*\}\}/g;
-
-/**
- * The client-editable regions declared in a code-first template source — one entry per
- * distinct `{{edit "key" "default"}}` (first occurrence wins; a repeated key is the same
- * region). Lets the client editor build a content form from the marked regions WITHOUT
- * exposing the template structure as something the client may change. Both quote styles are
- * recognized. Note: only the page's OWN source is scanned — `{{edit}}` inside an included
- * `{{> partial}}` renders correctly but is not (yet) surfaced as a client field.
- */
-export function extractEditRegions(source: string): EditRegion[] {
-  const out: EditRegion[] = [];
-  const seen = new Set<string>();
-  for (const m of source.matchAll(EDIT_REGION_RE)) {
-    const key = m[1] ?? m[2] ?? '';
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    out.push({ key, default: (m[3] ?? m[4] ?? '').replace(/\\(['"])/g, '$1') });
-  }
-  return out;
-}
-
 /** The kind of editable region, which drives the editor widget + the binding's render sink. */
 export type RegionKind = 'text' | 'rich' | 'link' | 'image' | 'bg';
 
-/** A client-editable region: a legacy `{{edit}}` helper OR a `data-sw-*` leaf directive. */
-export interface EditableRegion extends EditRegion {
+/** A client-editable region declared by a `data-sw-*` leaf directive. */
+export interface EditableRegion {
+  key: string;
+  /** The authored default content/inner text, shown until a client overrides it (in `page.data`). */
+  default: string;
   kind: RegionKind;
 }
 
@@ -121,12 +92,12 @@ const SRC_DIRECTIVE_RE = /\bdata-sw-src\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
 const BG_DIRECTIVE_RE = /\bdata-sw-bg\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
 
 /**
- * All client-editable regions declared in a code-first source — legacy `{{edit "key" "default"}}`
- * helpers AND `data-sw-text`/`data-sw-html` leaf directives — deduped by key (first occurrence
- * wins), each tagged with its {@link RegionKind} so the editor can pick the right widget and seed
- * its default. Only the page's OWN source is scanned (regions inside an included `{{> partial}}`
- * render but aren't surfaced as fields). Editable singletons should live OUTSIDE loops — a directive
- * key repeated by `{{#each}}` collapses to one field.
+ * All client-editable regions declared in a code-first source — the `data-sw-text`/`data-sw-html`/
+ * `data-sw-href`/`data-sw-src`/`data-sw-bg` leaf directives — deduped by key (first occurrence wins),
+ * each tagged with its {@link RegionKind} so the editor can pick the right widget and seed its default.
+ * Only the page's OWN source is scanned (regions inside an included `{{> partial}}` render but aren't
+ * surfaced as fields). Editable singletons should live OUTSIDE loops — a directive key repeated by
+ * `{{#each}}` collapses to one field.
  */
 export function extractRegions(source: string): EditableRegion[] {
   const out: EditableRegion[] = [];
@@ -136,7 +107,6 @@ export function extractRegions(source: string): EditableRegion[] {
     seen.add(key);
     out.push({ key, default: def, kind });
   };
-  for (const m of source.matchAll(EDIT_REGION_RE)) add(m[1] ?? m[2] ?? '', (m[3] ?? m[4] ?? '').replace(/\\(['"])/g, '$1'), 'text');
   for (const m of source.matchAll(ELEMENT_DIRECTIVE_RE)) {
     const kind: RegionKind = m[2] === 'html' ? 'rich' : 'text';
     add(m[3] ?? m[4] ?? '', (m[5] ?? '').trim(), kind);

@@ -20,24 +20,24 @@ export const GLOBAL_TEMPLATES: readonly Template[] = [
     source: `<div class="hero min-h-[60vh] bg-base-200">
   <div class="hero-content text-center">
     <div class="max-w-xl">
-      <h1 class="text-5xl font-bold" data-aos="fade-up">{{edit "headline" "A clear, bold promise"}}</h1>
-      <p class="py-6 text-base-content/70" data-aos="fade-up" data-aos-delay="150">{{edit "subline" "One supporting sentence that earns the click."}}</p>
-      <a class="btn btn-primary" href="{{url "/contact"}}">{{edit "cta" "Get in touch"}}</a>
+      <h1 class="text-5xl font-bold" data-aos="fade-up" data-sw-text="headline">A clear, bold promise</h1>
+      <p class="py-6 text-base-content/70" data-aos="fade-up" data-aos-delay="150" data-sw-text="subline">One supporting sentence that earns the click.</p>
+      <a class="btn btn-primary" href="{{url "/contact"}}" data-sw-text="cta">Get in touch</a>
     </div>
   </div>
 </div>
 <section class="mx-auto grid max-w-5xl gap-6 px-6 py-16 md:grid-cols-3">
-  <div class="card bg-base-100 shadow-sm" data-aos="fade-up"><div class="card-body"><h2 class="card-title">{{edit "f1_title" "First benefit"}}</h2><p>{{edit "f1_text" "Why it matters to the visitor."}}</p></div></div>
-  <div class="card bg-base-100 shadow-sm" data-aos="fade-up" data-aos-delay="100"><div class="card-body"><h2 class="card-title">{{edit "f2_title" "Second benefit"}}</h2><p>{{edit "f2_text" "Why it matters to the visitor."}}</p></div></div>
-  <div class="card bg-base-100 shadow-sm" data-aos="fade-up" data-aos-delay="200"><div class="card-body"><h2 class="card-title">{{edit "f3_title" "Third benefit"}}</h2><p>{{edit "f3_text" "Why it matters to the visitor."}}</p></div></div>
+  <div class="card bg-base-100 shadow-sm" data-aos="fade-up"><div class="card-body"><h2 class="card-title" data-sw-text="f1_title">First benefit</h2><p data-sw-text="f1_text">Why it matters to the visitor.</p></div></div>
+  <div class="card bg-base-100 shadow-sm" data-aos="fade-up" data-aos-delay="100"><div class="card-body"><h2 class="card-title" data-sw-text="f2_title">Second benefit</h2><p data-sw-text="f2_text">Why it matters to the visitor.</p></div></div>
+  <div class="card bg-base-100 shadow-sm" data-aos="fade-up" data-aos-delay="200"><div class="card-body"><h2 class="card-title" data-sw-text="f3_title">Third benefit</h2><p data-sw-text="f3_text">Why it matters to the visitor.</p></div></div>
 </section>`,
   },
   {
     id: 'global:text',
     name: 'Text page (global)',
     source: `<article class="prose mx-auto max-w-3xl px-6 py-16">
-  <h1>{{edit "heading" "Page heading"}}</h1>
-  <p>{{edit "body" "Write the page text here. This simple template suits legal pages, about pages, and announcements."}}</p>
+  <h1 data-sw-text="heading">Page heading</h1>
+  <p data-sw-text="body">Write the page text here. This simple template suits legal pages, about pages, and announcements.</p>
 </article>`,
   },
   {

@@ -188,5 +188,8 @@ export function resolveDirectives(html: string, ctx: DirectiveContext): string {
     }
     /* eslint-enable security/detect-object-injection */
   }
-  return render(doc);
+  // `encodeEntities: 'utf8'` escapes only the markup-significant chars (&,<,>, attr quotes) and keeps
+  // non-ASCII literal — so a re-serialized data-sw-* element matches the rest of the page (e.g. German
+  // "Geschäft" stays literal, not "Gesch&#xe4;ft").
+  return render(doc, { encodeEntities: 'utf8' });
 }

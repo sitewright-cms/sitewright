@@ -9,12 +9,12 @@ import {
 } from '../src/index.js';
 
 const projectTemplates = new Map<string, Template>([
-  ['legal', { id: 'legal', name: 'Legal', source: '<article>{{edit "body" "…"}}</article>' }],
+  ['legal', { id: 'legal', name: 'Legal', source: '<article data-sw-text="body">…</article>' }],
 ]);
 
 describe('resolveTemplateSource (code-first templates)', () => {
   it('resolves a project template to its Handlebars source', () => {
-    expect(resolveTemplateSource('legal', projectTemplates)).toContain('{{edit "body"');
+    expect(resolveTemplateSource('legal', projectTemplates)).toContain('data-sw-text="body"');
   });
 
   it('resolves built-in global templates by prefix', () => {
@@ -33,8 +33,8 @@ describe('resolveTemplateSource (code-first templates)', () => {
     for (const template of GLOBAL_TEMPLATES) {
       expect(template.id.startsWith(GLOBAL_TEMPLATE_PREFIX)).toBe(true);
       expect(template.name.length).toBeGreaterThan(0);
-      // Content-editable via {{edit}} regions OR data-sw-* leaf directives (the blog templates).
-      expect(/\{\{edit |data-sw-/.test(template.source)).toBe(true);
+      expect(template.source).toContain('data-sw-'); // content-editable via data-sw-* leaf directives
+      expect(template.source).not.toContain('{{edit'); // the legacy {{edit}} helper is retired
       expect(template.source).not.toContain('<script'); // same no-JS rule as page sources
     }
   });

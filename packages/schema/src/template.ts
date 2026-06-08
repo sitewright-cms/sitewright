@@ -16,9 +16,9 @@ export const TemplateRefSchema = z
 /**
  * A reusable CODE-FIRST page template: a page that references one (via
  * `Page.template`) renders the TEMPLATE's Handlebars `source` — the page
- * contributes only its `{{edit}}` region content (and settings/SEO). The
- * editor can "fork" a template into a page (copy the source, drop the
- * reference) to customize it.
+ * contributes only its editable `data-sw-*` region values (page.data) + settings/SEO.
+ * The editor can "fork" a template into a page (copy the source + declared `data`,
+ * drop the reference) to customize it.
  *
  * The legacy block-tree template model (an `Outlet` wrap around `root`) is
  * RETIRED — templates are Handlebars sources, like pages.
@@ -26,7 +26,7 @@ export const TemplateRefSchema = z
 export const TemplateSchema = z.object({
   id: IdSchema,
   name: z.string().min(1).max(200),
-  /** Handlebars source (HTML + Tailwind + {{edit}} regions) the page renders. */
+  /** Handlebars source (HTML + Tailwind + data-sw-* editable regions) the page renders. */
   source: z.string().max(256 * 1024),
   /**
    * Declared default `page.data` for pages using this template: the attributes (with sensible

@@ -39,13 +39,12 @@ export const TAB_LABELS: Record<Tab, string> = {
 };
 
 // A new code page opens with a small, valid Handlebars + Tailwind scaffold so the live
-// preview is immediately meaningful: it demonstrates the {{ company.* }} bindings AND an
-// {{edit "key" "default"}} region — the marker that makes a piece of text client-editable
-// (the re-targeted client model), so a freshly created page already has something a client
-// can edit without the developer wiring anything up.
+// preview is immediately meaningful: it demonstrates the {{ company.* }} bindings AND a `data-sw-text`
+// editable region — the marker that makes a piece of text client-editable (bound to page.data), so a
+// freshly created page already has something a client can edit without the developer wiring anything up.
 const CODE_PAGE_STARTER = `<main class="mx-auto max-w-3xl px-6 py-16">
   <h1 class="text-4xl font-bold tracking-tight text-slate-900">{{ company.name }}</h1>
-  <p class="mt-4 text-lg text-slate-600">{{edit "tagline" "Edit this tagline"}}</p>
+  <p class="mt-4 text-lg text-slate-600" data-sw-text="tagline">Edit this tagline</p>
 </main>
 `;
 

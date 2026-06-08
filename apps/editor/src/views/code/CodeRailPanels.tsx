@@ -86,7 +86,7 @@ export function TemplatesPanel({ projectId }: { projectId: string }) {
         save={templates.save}
         remove={templates.remove}
         makeId={templateId}
-        hint="A page layout. A page that sets this template renders its source and contributes only its {{edit}} regions."
+        hint="A page layout. A page that sets this template renders its source and contributes only its editable data-sw-* regions (stored in page.data)."
       />
     </SidePanel>
   );

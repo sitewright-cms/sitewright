@@ -329,6 +329,8 @@ export const api = {
   // --- datasets ---
   listDatasets: (projectId: string) =>
     request<{ items: Dataset[] }>('GET', `/projects/${projectId}/content/dataset`),
+  getDataset: (projectId: string, id: string) =>
+    request<{ item: Dataset }>('GET', `/projects/${projectId}/content/dataset/${encodeURIComponent(id)}`),
   putDataset: (projectId: string, dataset: Dataset) =>
     request<{ item: Dataset }>('PUT', `/projects/${projectId}/content/dataset/${dataset.id}`, dataset),
   deleteDataset: (projectId: string, id: string) =>
@@ -337,6 +339,8 @@ export const api = {
   // --- entries ---
   listEntries: (projectId: string) =>
     request<{ items: Entry[] }>('GET', `/projects/${projectId}/content/entry`),
+  getEntry: (projectId: string, id: string) =>
+    request<{ item: Entry }>('GET', `/projects/${projectId}/content/entry/${encodeURIComponent(id)}`),
   putEntry: (projectId: string, entry: Entry) =>
     request<{ item: Entry }>('PUT', `/projects/${projectId}/content/entry/${entry.id}`, entry),
   deleteEntry: (projectId: string, id: string) =>

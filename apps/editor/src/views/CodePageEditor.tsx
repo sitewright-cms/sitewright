@@ -13,6 +13,7 @@ import { useDialogs } from './ui/Dialogs';
 import { FilePicker } from './files/FilePicker';
 import { AssetField } from './files/AssetField';
 import { ACCEPT } from './files/FileBrowser';
+import { EntryEditorLoader } from './datasets/EntryEditorLoader';
 import { glassInput, glassPanel, primaryButton } from '../theme';
 
 // Lazy: the rich editor pulls in the HTML sanitizer (sanitize-html) — kept out of the main bundle,
@@ -118,6 +119,11 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   const [richOpen, setRichOpen] = useState<string | null>(null);
   // The content key whose image is being replaced via the file picker (data-sw-src/bg click), or null.
   const [pickerKey, setPickerKey] = useState<string | null>(null);
+  // The dataset entry being edited from a preview click (data-sw-entry), or null.
+  const [openEntry, setOpenEntry] = useState<{ dataset: string; id: string } | null>(null);
+  // Bumped to force a preview reload after a dataset entry is saved (the preview renders from saved
+  // entries server-side, so the draft is unchanged — only a re-POST picks up the new values).
+  const [previewNonce, setPreviewNonce] = useState(0);
   // ALL page settings (title/path/status/nav/parent/template/seo) — edited via the
   // stacked PageSettingsModal, applied to this draft, persisted on Save.
   const [settings, setSettings] = useState<PageSettingsValues>(() => pageSettingsFromPage(page));
@@ -218,6 +224,8 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
         textKey?: string;
         text?: string;
         kind?: 'image' | 'bg'; // pick-image: the click origin; both currently use the image picker
+        dataset?: string;
+        id?: string;
       } | null;
       if (!d || d.source !== 'sitewright-preview') return;
       if (d.type === 'scroll' && typeof d.y === 'number') {
@@ -247,6 +255,17 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
       } else if (d.type === 'pick-image' && typeof d.key === 'string' && d.key !== '' && !DANGEROUS_KEYS.has(d.key)) {
         // Clicked an editable image/background in the preview → open the file picker for that region.
         setPickerKey(d.key);
+      } else if (
+        d.type === 'open-entry' &&
+        typeof d.dataset === 'string' &&
+        d.dataset !== '' &&
+        typeof d.id === 'string' &&
+        d.id !== '' &&
+        !DANGEROUS_KEYS.has(d.dataset) &&
+        !DANGEROUS_KEYS.has(d.id)
+      ) {
+        // Clicked a rendered dataset row in the preview → open that entry's editor.
+        setOpenEntry({ dataset: d.dataset, id: d.id });
       } else if (d.type === 'ready') {
         // A freshly-(re)loaded preview → (re)apply the current edit mode so its regions stay editable.
         iframeRef.current?.contentWindow?.postMessage({ source: 'sitewright-editor', type: 'setMode', mode: modeRef.current }, '*');
@@ -420,8 +439,9 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
       // .then/.catch will early-return without touching state.
       setPreviewLoading(false);
     };
-    // stateKey covers source/content/settings — everything `draft` renders from.
-  }, [stateKey, project.id]);
+    // stateKey covers source/content/settings — everything `draft` renders from; previewNonce forces
+    // a re-POST after a dataset entry save (entries are fetched server-side, so the draft is unchanged).
+  }, [stateKey, project.id, previewNonce]);
 
   /** Saves WITHOUT closing — the authoring loop continues (header ✓ and ⌘/Ctrl+S). */
   async function save() {
@@ -710,6 +730,21 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
             setPickerKey(null);
           }}
           onClose={() => setPickerKey(null)}
+        />
+      )}
+
+      {/* Clicking a rendered dataset row opens its entry editor (stacked); saving refreshes the preview. */}
+      {openEntry && (
+        <EntryEditorLoader
+          projectId={project.id}
+          dataset={openEntry.dataset}
+          id={openEntry.id}
+          onSaved={() => {
+            inlineKeyRef.current = null;
+            setPreviewNonce((n) => n + 1);
+            setOpenEntry(null);
+          }}
+          onClose={() => setOpenEntry(null)}
         />
       )}
 

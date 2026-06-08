@@ -62,6 +62,30 @@ describe('{{edit}} preview markers (markEdits)', () => {
   });
 });
 
+describe('{{#eachEntry}} — dataset rows with preview markers', () => {
+  const items = [
+    { id: 'e1', dataset: 'posts', values: { t: 'A' } },
+    { id: 'e2', dataset: 'posts', values: { t: 'B' } },
+  ];
+  const src = '<ul>{{#eachEntry data.posts}}<li>{{this.values.t}}</li>{{else}}<li>none</li>{{/eachEntry}}</ul>';
+
+  it('wraps each row in a data-sw-entry marker ONLY when markEntries is set', () => {
+    expect(renderTemplate(src, { data: { posts: items }, markEntries: true })).toBe(
+      '<ul><div data-sw-entry="e1" data-sw-dataset="posts"><li>A</li></div><div data-sw-entry="e2" data-sw-dataset="posts"><li>B</li></div></ul>',
+    );
+  });
+
+  it('is a transparent passthrough (byte-identical to {{#each}}) without markEntries', () => {
+    const eachSrc = '<ul>{{#each data.posts}}<li>{{this.values.t}}</li>{{else}}<li>none</li>{{/each}}</ul>';
+    expect(renderTemplate(src, { data: { posts: items } })).toBe(renderTemplate(eachSrc, { data: { posts: items } }));
+    expect(renderTemplate(src, { data: { posts: items } })).toBe('<ul><li>A</li><li>B</li></ul>');
+  });
+
+  it('renders the {{else}} inverse for an empty list', () => {
+    expect(renderTemplate(src, { data: { posts: [] }, markEntries: true })).toBe('<ul><li>none</li></ul>');
+  });
+});
+
 describe('editsAreBodyOnly — inline-edit marker gate', () => {
   it('is true when every {{edit}} sits in element-body text', () => {
     expect(editsAreBodyOnly('<h1>{{edit "t"}}</h1><p>{{edit "b" "x"}}</p>')).toBe(true);

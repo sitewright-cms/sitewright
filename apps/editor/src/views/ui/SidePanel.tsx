@@ -34,6 +34,8 @@ interface SidePanelProps {
    * reflows on open/close.
    */
   size?: string;
+  /** For a BOTTOM panel: an explicit width class (default `w-[min(42rem,48vw)]` start/end). */
+  width?: string;
   /** Tab position along the edge (default `center`). */
   align?: SidePanelAlign;
   /** Increment from a parent to force the panel open (e.g. a top-nav button). */
@@ -47,19 +49,19 @@ const DEFAULT_SIZE: Record<SidePanelSide, string> = {
   bottom: 'h-[60vh]',
 };
 
-// Panel rest position. `top-16` clears the sticky header. The panel must ANCHOR UNDER ITS TAB so the
-// moment it opens it already covers the cursor sitting on the tab; the panel also FADES in place
-// (opacity+visibility) rather than sliding. Both rules exist for the same reason: if the panel is
-// offset from its tab (centered) or slides away from it, the cursor falls through the
-// (pointer-events-none) tab to the page, fires mouseleave, and the panel flickers open/closed. So a
-// bottom panel is anchored bottom-LEFT/RIGHT under its tab (per `align`), never centered.
-function panelPos(side: SidePanelSide, align: SidePanelAlign): string {
-  if (side === 'left') return 'left-0 top-16 bottom-0 h-auto border-r';
-  if (side === 'right') return 'right-0 top-16 bottom-0 h-auto border-l';
-  const w = 'w-[min(42rem,48vw)]';
+// Panel rest position. Left/right span the FULL screen height (top-0, over the header). The panel
+// must ANCHOR UNDER ITS TAB so the moment it opens it already covers the cursor sitting on the tab;
+// the panel also FADES in place (opacity+visibility) rather than sliding. Both rules exist for the
+// same reason: if the panel is offset from its tab (centered) or slides away from it, the cursor
+// falls through the (pointer-events-none) tab to the page, fires mouseleave, and the panel flickers
+// open/closed. So a bottom panel is anchored bottom-LEFT/RIGHT under its tab (per `align`).
+function panelPos(side: SidePanelSide, align: SidePanelAlign, width?: string): string {
+  if (side === 'left') return 'left-0 top-0 bottom-0 h-auto border-r';
+  if (side === 'right') return 'right-0 top-0 bottom-0 h-auto border-l';
+  const w = width ?? 'w-[min(42rem,48vw)]';
   if (align === 'start') return `bottom-0 left-0 ${w} rounded-tr-2xl border-r border-t`;
   if (align === 'end') return `bottom-0 right-0 ${w} rounded-tl-2xl border-l border-t`;
-  return 'bottom-0 left-1/2 -translate-x-1/2 w-[min(72rem,92vw)] rounded-t-2xl border-x border-t';
+  return `bottom-0 left-1/2 -translate-x-1/2 ${width ?? 'w-[min(72rem,92vw)]'} rounded-t-2xl border-x border-t`;
 }
 
 // Collapsed-tab anchoring. left/right tabs are vertically centred (or start/end); bottom tabs are
@@ -90,7 +92,7 @@ const TAB_RADIUS: Record<SidePanelSide, string> = {
  * thing sits ABOVE modals (so the tabs are always reachable), and exposes {@link InSidePanel} to its
  * children so their own dialogs elevate above it.
  */
-export function SidePanel({ side, label, icon, size, align = 'center', openSignal, children }: SidePanelProps) {
+export function SidePanel({ side, label, icon, size, width, align = 'center', openSignal, children }: SidePanelProps) {
   const [open, setOpen] = useState(false);
   const regionId = useId();
   const panelSize = size ?? DEFAULT_SIZE[side];
@@ -138,11 +140,11 @@ export function SidePanel({ side, label, icon, size, align = 'center', openSigna
           descendant of this hover group, so if it captured the pointer the group would never see a
           mouseleave (the full-screen scrim is always "under" the cursor) and the panel could never
           close on hover-out — and it must not block clicks on the page behind it either. */}
-      {open && <div aria-hidden className="pointer-events-none fixed inset-0 z-[55] bg-slate-900/15 backdrop-blur-[2px]" />}
+      {open && <div aria-hidden className="pointer-events-none fixed inset-0 z-[60] bg-slate-900/20 backdrop-blur-[2px]" />}
 
-      {/* The collapsed TAB — always visible (even over a modal: z above the panel layer), but it
-          fades out while ITS OWN panel is open so it never overlaps the panel content (the panel
-          header carries the close affordance, and the other panels' tabs stay visible). */}
+      {/* The collapsed TAB (z-55) — reachable over a base modal (z-50), but BELOW the scrim (z-60)
+          and panel (z-61) so an EXPANDED panel and its dim overlay cover the OTHER panels' tabs. It
+          also fades out while its own panel is open (the panel header carries the close affordance). */}
       <button
         type="button"
         aria-expanded={open}
@@ -152,7 +154,7 @@ export function SidePanel({ side, label, icon, size, align = 'center', openSigna
         // While open the tab is invisible (the panel's own × closes it), so drop it from the tab
         // order too — a focusable-but-invisible control would break keyboard focus order.
         tabIndex={open ? -1 : undefined}
-        className={`fixed z-[61] flex items-center justify-center gap-1.5 bg-blue-600 font-bold uppercase tracking-wide text-white shadow-lg transition hover:bg-blue-500 ${TAB_RADIUS[side]} ${tabPosition(side, align)} ${
+        className={`fixed z-[55] flex items-center justify-center gap-1.5 bg-gradient-to-br from-indigo-600 to-sky-500 font-bold uppercase tracking-wide text-white shadow-lg shadow-indigo-600/30 transition hover:shadow-indigo-600/40 ${TAB_RADIUS[side]} ${tabPosition(side, align)} ${
           side === 'bottom' ? 'px-4 py-2 text-sm' : 'px-2 py-4 text-sm'
         } ${open ? 'pointer-events-none opacity-0' : 'opacity-100'}`}
       >
@@ -175,12 +177,12 @@ export function SidePanel({ side, label, icon, size, align = 'center', openSigna
         role="region"
         aria-label={label}
         aria-hidden={!open}
-        className={`fixed z-[60] flex flex-col overflow-hidden border-white/60 bg-white/90 shadow-2xl backdrop-blur-xl transition-opacity duration-200 ease-out ${panelPos(side, align)} ${panelSize} ${
+        className={`fixed z-[61] flex flex-col overflow-hidden border-white/60 bg-white/90 shadow-2xl backdrop-blur-xl transition-opacity duration-200 ease-out ${panelPos(side, align, width)} ${panelSize} ${
           open ? 'visible opacity-100' : 'invisible opacity-0 pointer-events-none'
         }`}
       >
         <header className={`flex items-center gap-2 border-b border-slate-200/70 px-4 py-2.5 ${edgeInset}`}>
-          <span className="flex-1 text-xs font-bold uppercase tracking-widest text-blue-700">{label}</span>
+          <span className="flex-1 text-xs font-bold uppercase tracking-widest text-indigo-700">{label}</span>
           <button
             type="button"
             aria-label={`Close ${label}`}

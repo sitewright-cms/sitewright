@@ -16,8 +16,9 @@ test('define a dataset, its schema, and add an entry', async ({ page }) => {
   await page.getByLabel('Project slug').fill(`data-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
 
-  // Data tab: create a "Posts" dataset with a "title" field.
-  await page.getByRole('tab', { name: 'Data' }).click();
+  // Data rail (bottom-left panel): create a "Posts" dataset with a "title" field.
+  await page.getByRole('button', { name: 'Open Data' }).hover();
+  await expect(page.getByLabel('Dataset name')).toBeVisible();
   await page.getByLabel('Dataset name').fill('Posts');
   await page.getByRole('button', { name: 'Create dataset' }).click();
   await page.getByLabel('New field name').fill('title');
@@ -44,8 +45,9 @@ test('dataset image field uses the file picker (browse a URL into an entry)', as
   await page.getByLabel('Project slug').fill(`dataimg-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
 
-  // A "Gallery" dataset with a text "title" + an "image"-type "photo" field.
-  await page.getByRole('tab', { name: 'Data' }).click();
+  // Open the Data rail. A "Gallery" dataset with a text "title" + an "image"-type "photo" field.
+  await page.getByRole('button', { name: 'Open Data' }).hover();
+  await expect(page.getByLabel('Dataset name')).toBeVisible();
   await page.getByLabel('Dataset name').fill('Gallery');
   await page.getByRole('button', { name: 'Create dataset' }).click();
   await page.getByLabel('New field name').fill('title');

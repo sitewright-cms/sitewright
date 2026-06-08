@@ -1268,9 +1268,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             data: localeData,
             partials,
             content: page.content,
+            richContent: page.richContent,
             // PREVIEW-only inline-edit markers — gated so an {{edit}} in an attribute (where a
             // <span> would break out) is never marked. Never set on the publish path (build.ts).
             markEdits: editsAreBodyOnly(pageSource),
+            // PREVIEW-only: keep the data-sw-* leaf-directive markers so the editor bridge can make
+            // them click-to-edit. Decoupled from markEdits (publish strips them in resolveDirectives).
+            preview: true,
           });
           // Slots render through the SAME isolated worker; a broken slot is skipped here
           // (publish still hard-validates it) so it can never break the page preview. No
@@ -2460,6 +2464,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       let templateSource: string;
       let pageCtx: Record<string, unknown> = body.page ?? { title: project.name, path: '/' };
       let pageContent: Record<string, string> | undefined;
+      let pageRichContent: Record<string, string> | undefined;
       if (body.pageId !== undefined) {
         // Re-parse the stored page (not a bare cast) so a dirty/legacy DB row can't reach
         // the render path unvalidated; NotFound → 404.
@@ -2471,6 +2476,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         pageCtx = { title: page.title, path: pagePath(page, allForPath) };
         // Render the stored page WITH its client-edited region content (WYSIWYG parity).
         pageContent = page.content;
+        pageRichContent = page.richContent;
       } else {
         templateSource = body.template as string; // refine guarantees one of template/pageId
       }
@@ -2512,6 +2518,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           data,
           partials,
           content: pageContent,
+          richContent: pageRichContent,
         });
         if (!body.document) return reply.send({ html: rendered });
         // Styled-document preview: wrap the rendered body in the publish doc shell + inline

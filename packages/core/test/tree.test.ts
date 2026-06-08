@@ -6,6 +6,7 @@ import {
   collectClassNames,
   extractClassNames,
   extractEditRegions,
+  extractRegions,
   collectIds,
   findDuplicateIds,
   reIdTree,
@@ -132,6 +133,36 @@ describe('extractEditRegions (code-first client-editable regions)', () => {
 
   it('returns nothing for a template with no edit regions', () => {
     expect(extractEditRegions('<h1>{{ company.name }}</h1>')).toEqual([]);
+  });
+});
+
+describe('extractRegions (legacy {{edit}} + data-sw-* leaf directives)', () => {
+  it('lists {{edit}}, data-sw-text and data-sw-html regions with kinds', () => {
+    const src =
+      `<h1>{{edit "headline" "Welcome"}}</h1>` +
+      `<p data-sw-text="tagline">A snappy tagline</p>` +
+      `<section data-sw-html="intro"><p>Default intro</p></section>`;
+    expect(extractRegions(src)).toEqual([
+      { key: 'headline', default: 'Welcome', kind: 'text' },
+      { key: 'tagline', default: 'A snappy tagline', kind: 'text' },
+      { key: 'intro', default: '<p>Default intro</p>', kind: 'rich' },
+    ]);
+  });
+
+  it('captures a data-sw-text default even when the attribute is not first', () => {
+    expect(extractRegions('<h2 class="x" id="y" data-sw-text="t">Hello</h2>')).toEqual([
+      { key: 't', default: 'Hello', kind: 'text' },
+    ]);
+  });
+
+  it('recognizes single-quoted directive values and dedupes by key (first wins)', () => {
+    expect(extractRegions(`<p data-sw-text='a'>One</p><span data-sw-text="a">Two</span>`)).toEqual([
+      { key: 'a', default: 'One', kind: 'text' },
+    ]);
+  });
+
+  it('returns nothing when there are no regions', () => {
+    expect(extractRegions('<div class="x"><img src="/a.jpg"></div>')).toEqual([]);
   });
 });
 

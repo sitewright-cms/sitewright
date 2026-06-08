@@ -83,6 +83,28 @@ describe('buildSite', () => {
     expect(await readFile(join(outDir, 'styles.css'), 'utf8')).toContain('display:grid');
   });
 
+  it('publishes a data-sw-html rich region: override applied, sanitized, markers stripped', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        pages: [
+          {
+            id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
+            source: '<main><section data-sw-html="intro"><p>fallback</p></section></main>',
+            richContent: { intro: '<p>Hello <strong>there</strong></p><script>alert(1)</script>' },
+          },
+        ],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    // The override replaced the default, the script was stripped at render, and the marker is gone.
+    expect(home).toContain('<section><p>Hello <strong>there</strong></p></section>');
+    expect(home).not.toContain('data-sw-html');
+    expect(home).not.toContain('<script>alert(1)');
+    expect(home).not.toContain('fallback');
+  });
+
   it('compiles brand-themed DaisyUI components into the shared sheet for a source page', async () => {
     await buildSite({
       publishedAt: '2026-05-29T00:00:00.000Z',

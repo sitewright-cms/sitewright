@@ -3,6 +3,8 @@ export * from './lazyload.js';
 export * from './ripple.js';
 export * from './escape.js';
 export * from './url.js';
+export * from './sanitize-rich.js';
+export * from './directives.js';
 export * from './head.js';
 export * from './icons.js';
 export * from './brand-icons.js';

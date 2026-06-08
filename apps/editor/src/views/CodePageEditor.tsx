@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Page, Template } from '@sitewright/schema';
-import { extractEditRegions, GLOBAL_TEMPLATES, isGlobalTemplate } from '@sitewright/core';
+import { extractRegions, GLOBAL_TEMPLATES, isGlobalTemplate } from '@sitewright/core';
 import { api, previewDocUrl, type Project } from '../api';
 import { CodeEditor } from '../lib/code-editor';
 import { PreviewPane } from './editor/PreviewPane';
+import { RichRegionPanel } from './editor/RichRegionPanel';
 import { DevicePreview, PREVIEW_DEVICES, type PreviewDeviceKey } from './editor/DevicePreview';
 import { Modal } from './ui/Modal';
 import { Tooltip } from './ui/Tooltip';
@@ -102,8 +103,12 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   const { confirm, dialog } = useDialogs();
   const [mode, setMode] = useState<EditMode>(initialMode);
   const [source, setSource] = useState(page.source ?? '');
-  // The client-editable region values ({{edit "key"}} overrides) — content mode's draft.
+  // The client-editable region values ({{edit "key"}} / data-sw-text overrides) — content mode's draft.
   const [content, setContent] = useState<Record<string, string>>({ ...(page.content ?? {}) });
+  // Rich (sanitized-HTML) region values (data-sw-html overrides) — content mode's rich draft.
+  const [richContent, setRichContent] = useState<Record<string, string>>({ ...(page.richContent ?? {}) });
+  // The rich region currently open in the side editor (its key), or null when none is open.
+  const [richOpen, setRichOpen] = useState<string | null>(null);
   // ALL page settings (title/path/status/nav/parent/template/seo) — edited via the
   // stacked PageSettingsModal, applied to this draft, persisted on Save.
   const [settings, setSettings] = useState<PageSettingsValues>(() => pageSettingsFromPage(page));
@@ -134,18 +139,18 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
 
   // The draft page exactly as Save would persist it (and as the preview renders it).
   const draft: Page = useMemo(
-    () => ({ ...applyPageSettings(page, settings), source, content }),
-    [page, settings, source, content],
+    () => ({ ...applyPageSettings(page, settings), source, content, richContent }),
+    [page, settings, source, content, richContent],
   );
   // One key over every editable field (BOTH modes + settings) → dirty + post-save snapshot.
-  const stateKey = JSON.stringify({ source, content, settings });
+  const stateKey = JSON.stringify({ source, content, richContent, settings });
   const [savedKey, setSavedKey] = useState(stateKey);
   const dirty = stateKey !== savedKey;
 
   // The editable regions come from the EFFECTIVE source: the referenced template's
   // (when set) else the page's own draft — so content mode always reflects reality.
   const regions = useMemo(
-    () => extractEditRegions(settings.template ? (activeTemplate?.source ?? '') : source),
+    () => extractRegions(settings.template ? (activeTemplate?.source ?? '') : source),
     [settings.template, activeTemplate, source],
   );
 
@@ -172,6 +177,8 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   sourceRef.current = source;
   const contentRef = useRef(content);
   contentRef.current = content;
+  const richContentRef = useRef(richContent);
+  richContentRef.current = richContent;
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
   const modeRef = useRef(mode);
@@ -188,7 +195,12 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
         // Inline preview edit → update the matching region (two-way with its side field), and record
         // the resulting stateKey so the debounced reload skips it (keeps the same key order as stateKey).
         const nextContent = { ...contentRef.current, [d.key]: d.value };
-        inlineKeyRef.current = JSON.stringify({ source: sourceRef.current, content: nextContent, settings: settingsRef.current });
+        inlineKeyRef.current = JSON.stringify({
+          source: sourceRef.current,
+          content: nextContent,
+          richContent: richContentRef.current,
+          settings: settingsRef.current,
+        });
         setContent(nextContent);
       } else if (d.type === 'ready') {
         // A freshly-(re)loaded preview → (re)apply the current edit mode so its regions stay editable.
@@ -233,6 +245,12 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   }
   function changeRegion(key: string, value: string) {
     setContent((prev) => ({ ...prev, [key]: value }));
+  }
+  function richValue(key: string, def: string): string {
+    return Object.prototype.hasOwnProperty.call(richContent, key) ? richContent[key]! : def;
+  }
+  function changeRichRegion(key: string, html: string) {
+    setRichContent((prev) => ({ ...prev, [key]: html }));
   }
 
   // Debounced full-parity preview: POST the whole draft to `/preview` — skeleton
@@ -435,24 +453,36 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
             <div className="flex h-full flex-col gap-3 overflow-auto p-3">
               {regions.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-slate-300/80 bg-white/40 p-6 text-center text-sm text-slate-500">
-                  This page has no editable regions yet. Mark the text to expose with{' '}
-                  <code>{'{{edit "…"}}'}</code> in the source.
+                  This page has no editable regions yet. Mark editable text with{' '}
+                  <code>{'data-sw-text="…"'}</code> (or <code>{'{{edit "…"}}'}</code>) and rich text with{' '}
+                  <code>{'data-sw-html="…"'}</code> in the source.
                 </div>
               ) : (
-                regions.map((region) => (
-                  <label key={region.key} className={`block shrink-0 p-3 ${glassPanel}`}>
-                    <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">
-                      {region.key}
-                    </span>
-                    <textarea
-                      aria-label={region.key}
-                      className={`resize-y ${glassInput}`}
-                      rows={2}
-                      value={regionValue(region.key, region.default)}
-                      onChange={(e) => changeRegion(region.key, e.target.value)}
-                    />
-                  </label>
-                ))
+                regions.map((region) =>
+                  region.kind === 'rich' ? (
+                    <div key={region.key} className={`block shrink-0 p-3 ${glassPanel}`}>
+                      <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        {region.key}
+                      </span>
+                      <button type="button" onClick={() => setRichOpen(region.key)} className={`w-full ${primaryButton}`}>
+                        Edit rich text…
+                      </button>
+                    </div>
+                  ) : (
+                    <label key={region.key} className={`block shrink-0 p-3 ${glassPanel}`}>
+                      <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        {region.key}
+                      </span>
+                      <textarea
+                        aria-label={region.key}
+                        className={`resize-y ${glassInput}`}
+                        rows={2}
+                        value={regionValue(region.key, region.default)}
+                        onChange={(e) => changeRegion(region.key, e.target.value)}
+                      />
+                    </label>
+                  ),
+                )
               )}
             </div>
           )}
@@ -487,6 +517,16 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
           </div>
         </div>
       </div>
+
+      {/* The rich-text side editor STACKS above this modal; it edits the shared draft live. */}
+      {richOpen && (
+        <RichRegionPanel
+          regionKey={richOpen}
+          value={richValue(richOpen, regions.find((r) => r.key === richOpen)?.default ?? '')}
+          onChange={(html) => changeRichRegion(richOpen, html)}
+          onClose={() => setRichOpen(null)}
+        />
+      )}
 
       {/* Page settings STACK above this modal; applying updates the DRAFT (one Save persists all). */}
       {settingsOpen && (

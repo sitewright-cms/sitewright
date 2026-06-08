@@ -121,8 +121,15 @@ export const PageSchema = z
      * Per-page custom data: an editable, free-form JSON object exposed in templates as
      * `{{ page.data.* }}` / `{{#each page.data.x}}` — the per-page counterpart of `website.data`
      * (e.g. a blog article page holds `{ article_title, article_image, … }` here). Edited via the
-     * graphical "Edit page data" tree/JSON editor. Bounded + prototype-safe (the shared
-     * {@link JsonStoreSchema}), available in both preview and publish.
+     * graphical "Edit page data" tree/JSON editor and the in-preview `data-sw-*="data.<key>"` leaf
+     * directives. Bounded + prototype-safe (the shared {@link JsonStoreSchema}), available in both
+     * preview and publish.
+     *
+     * @security values are stored RAW (no HTML sanitization at rest — unlike `richContent`, which is
+     * a dedicated HTML store; `page.data` is generic JSON and which leaves are HTML isn't known here).
+     * A `data.<key>` leaf bound to a `data-sw-html` directive is sanitized at RENDER (the html sink
+     * always runs `sanitizeRichHtml`); every other sink escapes (text) or `safeUrl`s (src/href/bg).
+     * So a value is never emitted to HTML unsanitized — the render sink is the boundary.
      */
     data: JsonStoreSchema.optional(),
     /** Present when this page is generated once per dataset entry. */

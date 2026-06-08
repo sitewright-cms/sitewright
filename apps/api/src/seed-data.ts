@@ -731,5 +731,81 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
   <div class="mt-12"><a class="btn btn-primary btn-lg" href="/contact">{{edit "srv_cta" "Projekt starten"}}</a></div>
 </section>`,
   },
+
+  // ---------------------------------------------------------------- BLOG (content-only templates)
+  // A page-tree blog: the overview uses global:blog-overview ({{#each page.children}}), each article
+  // uses global:blog-article (every field a data-sw-*="data.*" in-preview-editable leaf). No code —
+  // the content lives entirely in each page's `data` (page.data), seeded from the template defaults.
+  {
+    id: 'blog',
+    path: 'blog',
+    title: 'Blog',
+    root: placeholderRoot,
+    parent: 'home',
+    nav: { title: 'Blog', slots: ['header'], order: 5 },
+    template: 'global:blog-overview',
+    seo: { description: 'Notes on web design, performance, and building sites that earn their keep.' },
+    data: { heading: 'From the studio', intro: 'Notes on web design, performance, and building sites that earn their keep.' },
+  },
+  {
+    id: 'blog-static-speed',
+    path: 'why-static-sites-win',
+    title: 'Why static sites win on speed',
+    root: placeholderRoot,
+    parent: 'blog',
+    template: 'global:blog-article',
+    order: 1,
+    seo: { description: 'A static-first build keeps your site fast, cheap to host, and effortless to maintain.' },
+    data: {
+      article_kicker: 'Performance',
+      article_title: 'Why static sites win on speed',
+      article_excerpt: 'A static-first build keeps your site fast, cheap to host, and effortless to maintain.',
+      article_image: assets['proj-harbor'] ?? '',
+      article_body:
+        '<p>Every millisecond of load time costs you visitors. A pre-rendered, static site ships plain HTML, CSS, and a sliver of JS — there is no server to wait on, so the page paints almost instantly.</p>' +
+        '<h2>Fewer moving parts</h2>' +
+        '<p>No database, no runtime, no patching. The whole site is a folder of files any host can serve from a CDN edge near your visitor.</p>' +
+        '<ul><li>Top Core Web Vitals out of the box</li><li>Cheap, simple hosting</li><li>A smaller attack surface</li></ul>',
+    },
+  },
+  {
+    id: 'blog-design-systems',
+    path: 'design-systems-that-scale',
+    title: 'Design systems that scale',
+    root: placeholderRoot,
+    parent: 'blog',
+    template: 'global:blog-article',
+    order: 2,
+    seo: { description: 'Tokens and reusable components keep a growing site consistent — and fast to build.' },
+    data: {
+      article_kicker: 'Design',
+      article_title: 'Design systems that scale',
+      article_excerpt: 'Tokens and reusable components keep a growing site consistent — and fast to build.',
+      article_image: assets['proj-vela'] ?? '',
+      article_body:
+        '<p>A design system is the shared vocabulary between design and code: colour tokens, type scales, spacing, and a library of components everyone reaches for.</p>' +
+        '<p>The payoff compounds. Once the building blocks exist, new pages are assembled in hours, and a brand tweak ripples everywhere from a single change.</p>',
+    },
+  },
+  {
+    id: 'blog-seo-foundations',
+    path: 'seo-foundations',
+    title: 'SEO foundations, from day one',
+    root: placeholderRoot,
+    parent: 'blog',
+    template: 'global:blog-article',
+    order: 3,
+    seo: { description: 'Clean markup, structured data, and fast pages are the SEO basics that actually move rankings.' },
+    data: {
+      article_kicker: 'SEO',
+      article_title: 'SEO foundations, from day one',
+      article_excerpt: 'Clean markup, structured data, and fast pages are the basics that actually move rankings.',
+      article_image: assets['proj-lumen'] ?? '',
+      article_body:
+        '<p>SEO is not a bolt-on. The fast, accessible, semantically-marked-up site you launch is the one search engines reward.</p>' +
+        '<h2>Get the basics right</h2>' +
+        '<ul><li>Descriptive titles and meta descriptions</li><li>A clean, crawlable URL structure</li><li>Structured data and an accurate sitemap</li></ul>',
+    },
+  },
   ];
 }

@@ -75,6 +75,22 @@ describe('seeded demo — German multilingual showcase publishes correctly', () 
     expect(en.body).not.toContain('Webdesign'); // not the German variant
   });
 
+  it('publishes the content-only blog: the overview lists its articles, each article renders its page.data', async () => {
+    // The overview page (global:blog-overview) lists its article children via {{#each page.children}}.
+    const overview = await client.get(`/sites/${slug}/blog/index.html`);
+    expect(overview.statusCode).toBe(200);
+    expect(overview.body).toContain('Why static sites win on speed'); // a child page title
+    expect(overview.body).toContain('Design systems that scale');
+    expect(overview.body).toContain('why-static-sites-win'); // {{url path}} link to the child route
+    expect(overview.body).not.toContain('data-sw-text'); // directive markers stripped on publish
+    // An article page (global:blog-article) renders its page.data via data-sw-*="data.*" leaves.
+    const article = await client.get(`/sites/${slug}/blog/why-static-sites-win/index.html`);
+    expect(article.statusCode).toBe(200);
+    expect(article.body).toContain('Why static sites win on speed'); // data.article_title (escaped text)
+    expect(article.body).toContain('Every millisecond of load time'); // data.article_body (sanitized html)
+    expect(article.body).not.toContain('data-sw-html'); // markers stripped on publish
+  });
+
   it('renders the German home at /de with lang=de and the localized service data', async () => {
     const de = await client.get(`/sites/${slug}/de/index.html`);
     expect(de.statusCode).toBe(200);

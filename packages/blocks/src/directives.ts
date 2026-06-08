@@ -5,17 +5,17 @@
 // renderTemplate, in the isolated worker), parses the rendered body fragment, and binds
 // each directive to its element with a single, context-correct SINK rule:
 //
-//   data-sw-text="key"  → element textContent          (from content[key];     serializer escapes)
+//   data-sw-text="key"  → element textContent          (from page.data[key]; serializer escapes)
 //   data-sw-html="key"  → element innerHTML             (from richContent[key]; sanitizeRichHtml)
-//   data-sw-href="key"  → anchor href                   (from content[key];     safeUrl)
-//   data-sw-src="key"   → <img> src                     (from content[key];     safeUrl)
-//   data-sw-bg="key"    → inline background-image style (from content[key];     safeUrl + cssUrlEscape)
+//   data-sw-href="key"  → anchor href                   (from page.data[key]; safeUrl)
+//   data-sw-src="key"   → <img> src                     (from page.data[key]; safeUrl)
+//   data-sw-bg="key"    → inline background-image style (from page.data[key]; safeUrl + cssUrlEscape)
 //
-// KEY CONVENTION: a key prefixed `data.` (e.g. `data.article_title`) binds the leaf to the page's own
-// `page.data` object at that dotted path (own-property per segment) instead of content/richContent —
-// so a content-only template (e.g. global:blog-article) can render AND in-preview-edit a structured
-// page-data field. The path resolves to a STRING leaf (non-string / missing → keep the authored
-// default).
+// STORE: text/url directives (text/href/src/bg) read `page.data` — a BARE key (`data-sw-text="hero_h1"`)
+// is a top-level page.data property; a `data.<path>` key (`data.article_title`) is a nested page.data
+// path. `data-sw-html` reads `richContent` for a bare key (the dedicated, at-rest-sanitized rich store)
+// or `page.data` for a `data.<path>` key. The value resolves to a STRING leaf (non-string / missing →
+// keep the authored default). There is no separate `content` store — it folded into page.data.
 //
 // For the URL directives, an EMPTY stored value means "no override → keep the authored default"
 // (you revert by clearing the field); only a non-empty, scheme-safe value replaces the default.
@@ -47,11 +47,12 @@ const DIRECTIVE_ATTRS = [TEXT_ATTR, HTML_ATTR, HREF_ATTR, SRC_ATTR, BG_ATTR] as 
 const DATA_PREFIX = 'data.';
 
 export interface DirectiveContext {
-  /** Plain-text region overrides (the `page.content` map), keyed by directive key. */
-  content?: Record<string, string>;
-  /** Rich (sanitized-HTML) region overrides (the `page.richContent` map). */
+  /** Rich (sanitized-HTML) region overrides (the `page.richContent` map) — the bare-key `data-sw-html` store. */
   richContent?: Record<string, string>;
-  /** The page's own `page.data` object — the source for `data.<path>`-keyed directives. */
+  /**
+   * The page's own `page.data` object. The store for text/url directives: a BARE key (`data-sw-text="k"`)
+   * is a top-level `page.data` property; a `data.<path>` key is a nested page.data path.
+   */
   data?: Record<string, unknown>;
   /**
    * PREVIEW render: keep the `data-sw-*` marker attributes so the editor can make them
@@ -81,12 +82,22 @@ function dataLeaf(data: Record<string, unknown> | undefined, path: string): stri
   return typeof cur === 'string' ? cur : undefined;
 }
 
+/** A top-level STRING property of `page.data` (own-property, proto-guarded) — the bare-key text/url store. */
+function flatData(data: Record<string, unknown> | undefined, key: string): string | undefined {
+  if (!data || key === '' || DANGEROUS_KEYS.has(key) || !Object.prototype.hasOwnProperty.call(data, key)) return undefined;
+  // eslint-disable-next-line security/detect-object-injection -- own-property + DANGEROUS_KEYS guarded above
+  const v = data[key];
+  return typeof v === 'string' ? v : undefined;
+}
+
 /**
- * The override string for a directive `key`: a `data.<path>` key reads `page.data` at that path;
- * any other key reads `fallback` (content or richContent). Undefined → no override (keep the default).
+ * The override string for a directive `key`. A `data.<path>` key reads `page.data` at that nested path.
+ * A BARE key reads `richFallback` when given (the `data-sw-html` → `richContent` case) else a FLAT
+ * `page.data` property (text/url). Undefined → no override (keep the authored default).
  */
-function resolveOverride(ctx: DirectiveContext, key: string, fallback: Record<string, string> | undefined): string | undefined {
-  return key.startsWith(DATA_PREFIX) ? dataLeaf(ctx.data, key.slice(DATA_PREFIX.length)) : lookup(fallback, key);
+function resolveOverride(ctx: DirectiveContext, key: string, richFallback?: Record<string, string>): string | undefined {
+  if (key.startsWith(DATA_PREFIX)) return dataLeaf(ctx.data, key.slice(DATA_PREFIX.length));
+  return richFallback ? lookup(richFallback, key) : flatData(ctx.data, key);
 }
 
 /** Replaces an element's children with a single (serializer-escaped) text node. */
@@ -131,7 +142,7 @@ export function resolveDirectives(html: string, ctx: DirectiveContext): string {
     /* eslint-disable security/detect-object-injection -- constant attribute names */
     const textKey = el.attribs[TEXT_ATTR];
     if (typeof textKey === 'string') {
-      const value = resolveOverride(ctx, textKey, ctx.content);
+      const value = resolveOverride(ctx, textKey);
       if (value !== undefined) setText(el, value);
     }
     const htmlKey = el.attribs[HTML_ATTR];
@@ -142,14 +153,14 @@ export function resolveDirectives(html: string, ctx: DirectiveContext): string {
     const hrefKey = el.attribs[HREF_ATTR];
     if (typeof hrefKey === 'string') {
       // Editable link URL: a non-empty override → href (scheme-sanitized); empty → keep the default.
-      const value = resolveOverride(ctx, hrefKey, ctx.content);
+      const value = resolveOverride(ctx, hrefKey);
       if (value !== undefined && value !== '') el.attribs.href = safeUrl(value, '#');
     }
     const srcKey = el.attribs[SRC_ATTR];
     if (typeof srcKey === 'string') {
       // Editable image: a non-empty override → <img src> (scheme-sanitized); empty → keep the
       // authored default (so clearing reverts, rather than producing a broken src="").
-      const value = resolveOverride(ctx, srcKey, ctx.content);
+      const value = resolveOverride(ctx, srcKey);
       if (value !== undefined && value !== '') el.attribs.src = safeUrl(value, '');
     }
     const bgKey = el.attribs[BG_ATTR];
@@ -159,7 +170,7 @@ export function resolveDirectives(html: string, ctx: DirectiveContext): string {
       // it), so there is no string-interpolation-into-style surface and no validateTemplate exception.
       // Empty → keep the authored default. (Publish rebases `/media/…` bg URLs via build.ts's
       // _assets step; a non-/media root-relative bg URL is not rebased — known sub-path-export gap.)
-      const value = resolveOverride(ctx, bgKey, ctx.content);
+      const value = resolveOverride(ctx, bgKey);
       if (value !== undefined && value !== '') {
         const css = cssUrlEscape(safeUrl(value, ''));
         if (css) {

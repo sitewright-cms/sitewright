@@ -58,7 +58,7 @@ describe('CodePageEditor', () => {
       // slots + website head + content (parity with the published document).
       expect(preview).toHaveBeenCalledWith(
         'p',
-        expect.objectContaining({ id: 'home', source: '<h1>{{ company.name }}</h1>', title: 'Home', content: {} }),
+        expect.objectContaining({ id: 'home', source: '<h1>{{ company.name }}</h1>', title: 'Home' }),
       ),
     );
     const iframe = screen.getByTitle('Preview') as HTMLIFrameElement;
@@ -163,7 +163,7 @@ describe('CodePageEditor', () => {
     expect(screen.getByLabelText('heading')).toHaveValue('Page heading');
     fireEvent.change(screen.getByLabelText('heading'), { target: { value: 'Imprint' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    expect(putPage).toHaveBeenCalledWith('p', expect.objectContaining({ content: { heading: 'Imprint' }, template: 'global:text' }));
+    expect(putPage).toHaveBeenCalledWith('p', expect.objectContaining({ data: { heading: 'Imprint' }, template: 'global:text' }));
   });
 
   it('opens with the authoring strip COLLAPSED; hover and focus expand it, leaving collapses it', () => {
@@ -277,7 +277,7 @@ describe('CodePageEditor — content mode (in-modal)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(putPage).toHaveBeenCalledTimes(1));
     const saved = putPage.mock.calls[0]![1] as Page;
-    expect(saved.content).toEqual({ tagline: 'A client-written tagline' });
+    expect(saved.data).toEqual({ tagline: 'A client-written tagline' }); // editable text now lives in page.data
     expect(saved.source).toBe(editablePage.source); // the template stays untouched
   });
 
@@ -309,7 +309,7 @@ describe('CodePageEditor — content mode (in-modal)', () => {
     render(<CodePageEditor project={project} page={editablePage} onClose={() => {}} initialMode="content" />);
     fireEvent.change(screen.getByLabelText('tagline'), { target: { value: 'Live-typed' } });
     await waitFor(() =>
-      expect(preview).toHaveBeenCalledWith('p', expect.objectContaining({ content: { tagline: 'Live-typed' } })),
+      expect(preview).toHaveBeenCalledWith('p', expect.objectContaining({ data: { tagline: 'Live-typed' } })),
     );
   });
 });

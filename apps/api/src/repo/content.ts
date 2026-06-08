@@ -13,6 +13,7 @@ import {
   MediaAssetSchema,
   MediaFolderRecordSchema,
   PageSchema,
+  migrateContentIntoData,
   PartialSchema,
   SnippetSchema,
   PatternSchema,
@@ -257,7 +258,10 @@ export class ContentRepository {
         website: settings?.website,
         settings: settings?.settings ?? { defaultLocale: 'en', locales: ['en'] },
       },
-      pages: (await this.list(ctx, 'page')) as Page[],
+      // Fold any legacy `content` map into `page.data` (list() returns raw rows — the schema
+      // preprocess only fires on parse) so a page never re-saved since the retirement still publishes
+      // its overrides. Idempotent + lenient (no full re-validation).
+      pages: (await this.list(ctx, 'page')).map(migrateContentIntoData) as Page[],
       partials: (await this.list(ctx, 'partial')) as SitewrightPartial[],
       templates: (await this.list(ctx, 'template')) as Template[],
       datasets: (await this.list(ctx, 'dataset')) as Dataset[],

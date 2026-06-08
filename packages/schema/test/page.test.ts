@@ -31,6 +31,25 @@ describe('PageSchema', () => {
     expect(() => PageSchema.parse({ id: 'p', path: 'p', title: 'P', status: 'archived', root: { id: 'r', type: 'Section' } })).toThrow();
   });
 
+  it('migrates the RETIRED content map into page.data (folded, content dropped)', () => {
+    const node = { id: 'r', type: 'Section' };
+    const a = PageSchema.parse({ id: 'p', path: 'p', title: 'P', root: node, content: { hero_h1: 'Hi', tagline: 'T' } });
+    expect(a.data).toEqual({ hero_h1: 'Hi', tagline: 'T' });
+    expect('content' in a).toBe(false);
+    // page.data wins a collision with content.
+    const b = PageSchema.parse({ id: 'p', path: 'p', title: 'P', root: node, content: { k: 'fromContent' }, data: { k: 'fromData' } });
+    expect(b.data).toEqual({ k: 'fromData' });
+    // a prototype-pollution content key is dropped (not migrated, no pollution).
+    const c = PageSchema.parse({ id: 'p', path: 'p', title: 'P', root: node, content: JSON.parse('{"__proto__":"x","ok":"1"}') });
+    expect(c.data).toEqual({ ok: '1' });
+    expect(({} as Record<string, unknown>).x).toBeUndefined();
+    // no content → data untouched.
+    expect(PageSchema.parse({ id: 'p', path: 'p', title: 'P', root: node }).data).toBeUndefined();
+    // an empty-string content key is dropped (no directive can read it).
+    const e = PageSchema.parse({ id: 'p', path: 'p', title: 'P', root: node, content: { '': 'x', ok: 'y' } });
+    expect(e.data).toEqual({ ok: 'y' });
+  });
+
   it('accepts an optional bounded, prototype-safe page.data object', () => {
     const data = { article_title: 'Hello', tags: ['a', 'b'], meta: { featured: true } };
     expect(PageSchema.parse({ id: 'p', path: 'p', title: 'P', root: { id: 'r', type: 'Section' }, data }).data).toEqual(data);

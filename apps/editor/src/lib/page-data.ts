@@ -64,6 +64,38 @@ export function dataLeafSet(data: JsonValue, path: string, value: string): JsonV
   return root;
 }
 
+/** A top-level STRING property of page.data (own-property, proto-guarded) — the bare-key store. */
+export function flatGet(data: JsonValue, key: string): string | undefined {
+  if (key === '' || DANGEROUS_KEYS.has(key) || !isPlainObject(data) || !Object.prototype.hasOwnProperty.call(data, key)) return undefined;
+  // eslint-disable-next-line security/detect-object-injection -- own-property + DANGEROUS_KEYS guarded above
+  const v = data[key];
+  return typeof v === 'string' ? v : undefined;
+}
+
+/** Immutably sets a top-level string property on page.data (proto-guarded; no-op on a reserved key). */
+export function flatSet(data: JsonValue, key: string, value: string): JsonValue {
+  if (key === '' || DANGEROUS_KEYS.has(key)) return data;
+  const base: Record<string, JsonValue> = isPlainObject(data) ? { ...data } : {};
+  // eslint-disable-next-line security/detect-object-injection -- DANGEROUS_KEYS guarded above
+  base[key] = value;
+  return base;
+}
+
+/**
+ * Read a region value from page.data by directive key: a bare key (`hero_h1`) is a top-level property;
+ * a `data.<path>` key is a nested path. Mirrors the render-side resolver in @sitewright/blocks.
+ */
+export function pageDataGet(data: JsonValue, key: string): string | undefined {
+  const p = dataPathOf(key);
+  return p !== null ? dataLeafGet(data, p) : flatGet(data, key);
+}
+
+/** Immutably write a region value into page.data by directive key (bare → flat, `data.<path>` → nested). */
+export function pageDataSet(data: JsonValue, key: string, value: string): JsonValue {
+  const p = dataPathOf(key);
+  return p !== null ? dataLeafSet(data, p, value) : flatSet(data, key, value);
+}
+
 /**
  * Fill-missing deep merge of a template's declared default `page.data` into the page's current data:
  * adds keys the page doesn't have (recursing into nested objects), never clobbering an existing value.

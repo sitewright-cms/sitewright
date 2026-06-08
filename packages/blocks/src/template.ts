@@ -46,12 +46,6 @@ export interface TemplateContext {
   /** Auto-built navigation menus per slot — `{{#each nav.header}}…{{/each}}` (the skeleton slots + page source). */
   nav?: Record<string, unknown>;
   /**
-   * Client-editable region overrides for `{{edit "key" "default"}}`: key → text (matches the
-   * `page.content` schema). A set key replaces that region's default; the value is HTML-escaped
-   * at render (it is client-authored).
-   */
-  content?: Record<string, string>;
-  /**
    * PREVIEW-ONLY: when true, the `{{edit}}` helper wraps its (escaped) output in a
    * `<span data-sw-edit="key">` marker so the editor can make it click-to-edit in the live preview.
    * NEVER set on the publish path — markers must not reach published HTML. Gate it with
@@ -344,7 +338,7 @@ function createInstance(): typeof Handlebars {
     const n = typeof max === 'number' && Number.isFinite(max) ? max : 100;
     return s.length > n ? `${s.slice(0, Math.max(0, n - 1))}…` : s;
   });
-  // {{edit "key" "default"}} → a client-editable region. Returns the override `content[key]`
+  // {{edit "key" "default"}} → a DEPRECATED client-editable region (retired for data-sw-text). Returns the override `page.data[key]`
   // when set, else the literal default. The value is ALWAYS HTML-escaped — it is client-authored
   // and must never inject markup. Own-property lookup only (no prototype access). Use in BODY/text
   // context; in an attribute the save-time validator rejects a bare `{{ }}`, so this can't break out.
@@ -357,9 +351,12 @@ function createInstance(): typeof Handlebars {
     const options = args[args.length - 1] as Handlebars.HelperOptions | undefined;
     const key = typeof args[0] === 'string' ? args[0] : '';
     const def = args.length > 2 && typeof args[1] === 'string' ? args[1] : '';
-    const root = (options?.data?.root ?? {}) as { content?: Record<string, unknown>; markEdits?: boolean };
-    const content = root.content && typeof root.content === 'object' ? root.content : {};
-    const override = Object.prototype.hasOwnProperty.call(content, key) ? content[key] : undefined;
+    // DEPRECATED alias: the override now lives in `page.data[key]` (the legacy `content` store folded
+    // into page.data). `{{edit}}` is retired in favor of `data-sw-text="key"`; this keeps existing
+    // templates rendering from the migrated store until they are converted.
+    const root = (options?.data?.root ?? {}) as { page?: { data?: Record<string, unknown> }; markEdits?: boolean };
+    const data = root.page?.data && typeof root.page.data === 'object' ? root.page.data : {};
+    const override = Object.prototype.hasOwnProperty.call(data, key) ? data[key] : undefined;
     const value = typeof override === 'string' ? override : def;
     if (root.markEdits) {
       return new Handlebars.SafeString(`<span data-sw-edit="${escapeAttr(key)}">${escapeHtml(value)}</span>`);
@@ -443,7 +440,7 @@ export function renderTemplate(source: string, ctx: TemplateContext = {}, opts: 
   // cannot smuggle a <script>/handler/unsafe-context past the main-template check.
   if (ctx.partials) for (const partialSource of Object.values(ctx.partials)) validateTemplate(partialSource);
   const template = compileCached(source);
-  const data = { company: ctx.company, website: ctx.website, page: ctx.page, data: ctx.data, item: ctx.item, content: ctx.content, nav: ctx.nav, markEdits: ctx.markEdits, markEntries: ctx.markEntries };
+  const data = { company: ctx.company, website: ctx.website, page: ctx.page, data: ctx.data, item: ctx.item, nav: ctx.nav, markEdits: ctx.markEdits, markEntries: ctx.markEntries };
   let html: string;
   try {
     html = template(data, {
@@ -464,9 +461,8 @@ export function renderTemplate(source: string, ctx: TemplateContext = {}, opts: 
   // PRs) — keeps the marker attributes in preview, strips them on publish. No-op when the
   // rendered fragment contains no directive, so non-editable pages stay byte-identical.
   html = resolveDirectives(html, {
-    content: ctx.content,
     richContent: ctx.richContent,
-    // `data.<path>`-keyed directives bind to this page's own page.data (read + in-preview-edit).
+    // text/url directives read page.data (bare key → top-level prop; `data.<path>` → nested).
     data: ctx.page?.data as Record<string, unknown> | undefined,
     preview: ctx.preview,
   });

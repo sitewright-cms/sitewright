@@ -11,7 +11,7 @@ describe('resolveDirectives — data-sw-text', () => {
 
   it('binds content to textContent, escaping any markup in the value', () => {
     const html = '<h1 data-sw-text="t">Welcome</h1>';
-    const out = resolveDirectives(html, { content: { t: '<b>x</b> & <script>y' }, preview: true });
+    const out = resolveDirectives(html, { data: { t: '<b>x</b> & <script>y' }, preview: true });
     expect(out).toContain('data-sw-text="t"');
     expect(out).not.toContain('<b>');
     expect(out).not.toContain('<script>');
@@ -27,15 +27,20 @@ describe('resolveDirectives — data-sw-text', () => {
 
   it('keeps the marker in preview, strips it on publish', () => {
     const html = '<h1 data-sw-text="t">Welcome</h1>';
-    expect(resolveDirectives(html, { content: { t: 'Hi' }, preview: true })).toBe('<h1 data-sw-text="t">Hi</h1>');
-    expect(resolveDirectives(html, { content: { t: 'Hi' } })).toBe('<h1>Hi</h1>');
+    expect(resolveDirectives(html, { data: { t: 'Hi' }, preview: true })).toBe('<h1 data-sw-text="t">Hi</h1>');
+    expect(resolveDirectives(html, { data: { t: 'Hi' } })).toBe('<h1>Hi</h1>');
   });
 
   it('ignores prototype-pollution keys', () => {
     const html = '<h1 data-sw-text="__proto__">Default</h1>';
-    const out = resolveDirectives(html, { content: { __proto__: 'evil' } as Record<string, string>, preview: true });
+    const out = resolveDirectives(html, { data: { __proto__: 'evil' } as Record<string, string>, preview: true });
     expect(out).toContain('Default');
     expect(out).not.toContain('evil');
+  });
+
+  it('keeps the authored default when a bare key holds a non-string page.data value', () => {
+    const out = resolveDirectives('<h1 data-sw-text="n">Def</h1>', { data: { n: 42 } as unknown as Record<string, string>, preview: true });
+    expect(out).toContain('>Def<'); // a number leaf is not a text override
   });
 });
 
@@ -67,26 +72,26 @@ describe('resolveDirectives — data-sw-html', () => {
 describe('resolveDirectives — data-sw-href', () => {
   it('sets the anchor href from content, scheme-sanitized', () => {
     const html = '<a data-sw-href="cta" href="/old">Go</a>';
-    expect(resolveDirectives(html, { content: { cta: 'https://x.test' }, preview: true })).toBe(
+    expect(resolveDirectives(html, { data: { cta: 'https://x.test' }, preview: true })).toBe(
       '<a data-sw-href="cta" href="https://x.test">Go</a>',
     );
-    expect(resolveDirectives(html, { content: { cta: 'javascript:alert(1)' }, preview: true })).toContain('href="#"');
+    expect(resolveDirectives(html, { data: { cta: 'javascript:alert(1)' }, preview: true })).toContain('href="#"');
   });
 
   it('keeps the authored href when unset; strips the marker on publish', () => {
     const html = '<a data-sw-href="cta" href="/old">Go</a>';
     expect(resolveDirectives(html, { preview: true })).toBe('<a data-sw-href="cta" href="/old">Go</a>');
-    expect(resolveDirectives(html, { content: { cta: '/new' } })).toBe('<a href="/new">Go</a>');
+    expect(resolveDirectives(html, { data: { cta: '/new' } })).toBe('<a href="/new">Go</a>');
   });
 });
 
 describe('resolveDirectives — data-sw-src / data-sw-bg (images)', () => {
   it('replaces an img src from content, scheme-sanitized; publish strips the marker', () => {
     const html = '<img data-sw-src="hero" src="/old.jpg" alt="">';
-    const preview = resolveDirectives(html, { content: { hero: '/media/p/a/new.jpg' }, preview: true });
+    const preview = resolveDirectives(html, { data: { hero: '/media/p/a/new.jpg' }, preview: true });
     expect(preview).toContain('data-sw-src="hero"');
     expect(preview).toContain('src="/media/p/a/new.jpg"');
-    const published = resolveDirectives(html, { content: { hero: 'javascript:alert(1)' } });
+    const published = resolveDirectives(html, { data: { hero: 'javascript:alert(1)' } });
     expect(published).not.toContain('data-sw-src');
     expect(published).not.toContain('javascript'); // neutralized to an empty src
   });
@@ -95,7 +100,7 @@ describe('resolveDirectives — data-sw-src / data-sw-bg (images)', () => {
     // (the serializer renders the url() delimiter quotes as &apos; in the style attribute — the
     //  browser decodes them, so the assertions avoid the quote char.)
     const out = resolveDirectives('<section data-sw-bg="bg" style="padding:2rem">x</section>', {
-      content: { bg: '/media/p/a/x.jpg' },
+      data: { bg: '/media/p/a/x.jpg' },
       preview: true,
     });
     expect(out).toContain('background-image:url(');
@@ -104,12 +109,12 @@ describe('resolveDirectives — data-sw-src / data-sw-bg (images)', () => {
     expect(out).toContain('data-sw-bg="bg"');
 
     const evil = resolveDirectives('<section data-sw-bg="bg">x</section>', {
-      content: { bg: "/x');background:red" },
+      data: { bg: "/x');background:red" },
       preview: true,
     });
     expect(evil).not.toContain('background-image'); // url with ' and ( ) refused
 
-    const published = resolveDirectives('<section data-sw-bg="bg">x</section>', { content: { bg: '/media/a.jpg' } });
+    const published = resolveDirectives('<section data-sw-bg="bg">x</section>', { data: { bg: '/media/a.jpg' } });
     expect(published).toContain('background-image:url(');
     expect(published).toContain('/media/a.jpg');
     expect(published).not.toContain('data-sw-bg');
@@ -118,14 +123,14 @@ describe('resolveDirectives — data-sw-src / data-sw-bg (images)', () => {
 
 describe('resolveDirectives — empty URL override reverts to the authored default', () => {
   it('keeps the default src/href/bg when the stored value is empty (clear = revert)', () => {
-    expect(resolveDirectives('<img data-sw-src="hero" src="/default.jpg">', { content: { hero: '' }, preview: true })).toContain(
+    expect(resolveDirectives('<img data-sw-src="hero" src="/default.jpg">', { data: { hero: '' }, preview: true })).toContain(
       'src="/default.jpg"',
     );
-    expect(resolveDirectives('<a data-sw-href="c" href="/keep">x</a>', { content: { c: '' }, preview: true })).toContain(
+    expect(resolveDirectives('<a data-sw-href="c" href="/keep">x</a>', { data: { c: '' }, preview: true })).toContain(
       'href="/keep"',
     );
     const bg = resolveDirectives('<section data-sw-bg="b" style="background-image:url(/d.jpg)">x</section>', {
-      content: { b: '' },
+      data: { b: '' },
       preview: true,
     });
     expect(bg).toContain('/d.jpg'); // the authored default background is preserved, not cleared
@@ -149,8 +154,8 @@ describe('renderTemplate — directive integration', () => {
     const source =
       '<h1 data-sw-text="title">Title</h1><ul>{{#each data.items}}<li>{{this.name}}</li>{{/each}}</ul>';
     const out = renderTemplate(source, {
-      content: { title: 'Our work' },
-      data: { items: [{ name: 'A' }, { name: 'B' }] },
+      page: { data: { title: 'Our work' } }, // the directive's bare key reads page.data
+      data: { items: [{ name: 'A' }, { name: 'B' }] }, // the dataset context for {{#each data.items}}
       preview: true,
     });
     expect(out).toContain('<h1 data-sw-text="title">Our work</h1>');

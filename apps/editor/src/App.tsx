@@ -14,6 +14,7 @@ import { InstanceSettings } from './views/InstanceSettings';
 import { LivePreview } from './views/LivePreview';
 import { UpdateBanner } from './views/UpdateBanner';
 import { BrandMark } from './views/ui/BrandMark';
+import { Tooltip } from './views/ui/Tooltip';
 import { parseLiveTarget } from './lib/live-target';
 import { SkeletonList } from './views/ui/Skeleton';
 import { installRipple } from './lib/ripple';
@@ -157,16 +158,14 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
       {/* Right: assets + publish (owners) + admin + sign out. */}
       <nav className="ml-auto flex items-center gap-4">
         {inProject && !isClient && (
-          <button
-            className={ghostButton}
-            title="Files & media — images, fonts, documents"
-            onClick={() => setAssetsSignal((s) => s + 1)}
-          >
-            <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-            </svg>
-            Assets
-          </button>
+          <Tooltip tip="Files & media — images, fonts, documents" side="bottom">
+            <button className={ghostButton} onClick={() => setAssetsSignal((s) => s + 1)}>
+              <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+              </svg>
+              Assets
+            </button>
+          </Tooltip>
         )}
         {inProject && !isClient && <PublishBar project={inProject} />}
         {isInstanceAdmin && stage.name !== 'admin' && (

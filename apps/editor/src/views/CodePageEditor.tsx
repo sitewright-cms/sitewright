@@ -6,6 +6,7 @@ import { CodeEditor } from '../lib/code-editor';
 import { PreviewPane } from './editor/PreviewPane';
 import { DevicePreview, PREVIEW_DEVICES, type PreviewDeviceKey } from './editor/DevicePreview';
 import { Modal } from './ui/Modal';
+import { Tooltip } from './ui/Tooltip';
 import { PageSettingsModal, applyPageSettings, pageSettingsFromPage, type PageSettingsValues } from './PageSettingsModal';
 import { useDialogs } from './ui/Dialogs';
 import { glassInput, glassPanel, primaryButton } from '../theme';
@@ -362,16 +363,17 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
       {saved && !dirty && <span className="text-xs text-emerald-600">Saved</span>}
       {saveError && <span className="text-xs text-red-600">{saveError}</span>}
       {mode === 'source' && (
-        <button
-          type="button"
-          aria-label="Page settings"
-          title="Page settings"
-          aria-expanded={settingsOpen}
-          className="inline-flex cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-white p-2 text-slate-500 transition hover:border-slate-300 hover:text-slate-900"
-          onClick={() => setSettingsOpen(true)}
-        >
-          <SettingsIcon />
-        </button>
+        <Tooltip tip="Page settings" side="bottom">
+          <button
+            type="button"
+            aria-label="Page settings"
+            aria-expanded={settingsOpen}
+            className="inline-flex cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-white p-2 text-slate-500 transition hover:border-slate-300 hover:text-slate-900"
+            onClick={() => setSettingsOpen(true)}
+          >
+            <SettingsIcon />
+          </button>
+        </Tooltip>
       )}
     </>
   );
@@ -468,19 +470,19 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
             className="absolute right-3 top-3 z-10 flex flex-col gap-1 rounded-xl border border-white/60 bg-white/80 p-1 shadow-lg backdrop-blur-xl"
           >
             {PREVIEW_DEVICES.map((d) => (
-              <button
-                key={d.key}
-                type="button"
-                aria-label={`Preview: ${d.label}`}
-                aria-pressed={device === d.key}
-                title={d.width === null ? `${d.label} (full width)` : `${d.label} (${d.width}px)`}
-                onClick={() => setDevice(d.key)}
-                className={`inline-flex cursor-pointer items-center justify-center rounded-lg p-1.5 transition ${
-                  device === d.key ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:bg-white hover:text-slate-900'
-                }`}
-              >
-                {DEVICE_ICONS[d.key]}
-              </button>
+              <Tooltip key={d.key} tip={d.width === null ? `${d.label} (full width)` : `${d.label} (${d.width}px)`} side="left">
+                <button
+                  type="button"
+                  aria-label={`Preview: ${d.label}`}
+                  aria-pressed={device === d.key}
+                  onClick={() => setDevice(d.key)}
+                  className={`inline-flex cursor-pointer items-center justify-center rounded-lg p-1.5 transition ${
+                    device === d.key ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:bg-white hover:text-slate-900'
+                  }`}
+                >
+                  {DEVICE_ICONS[d.key]}
+                </button>
+              </Tooltip>
             ))}
           </div>
         </div>

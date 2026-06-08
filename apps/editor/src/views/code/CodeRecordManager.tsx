@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CodeEditorModal } from '../ui/CodeEditorModal';
 import { useDialogs } from '../ui/Dialogs';
+import { useToast } from '../ui/Toast';
+import { useCopy } from '../ui/useCopy';
 import { primaryButton, ghostButton, glassPanel } from '../../theme';
 
 /** The shared shape of a name + Handlebars source record (snippet, template). */
@@ -32,26 +34,6 @@ export interface CodeRecordManagerProps {
 
 const byName = (a: CodeRecord, b: CodeRecord) => a.name.localeCompare(b.name);
 
-/** Copy-to-clipboard with a transient "copied" flag keyed by an id (timer cleared on unmount). */
-function useCopy(): [string | null, (text: string, id: string) => void] {
-  const [copiedId, setCopiedId] = useState<string | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
-  const copy = useCallback((text: string, id: string) => {
-    void navigator.clipboard
-      .writeText(text)
-      .then(() => {
-        setCopiedId(id);
-        // Cancel any in-flight reset so a rapid second copy (e.g. across the two buttons on one
-        // row) doesn't orphan the previous timer.
-        if (timer.current) clearTimeout(timer.current);
-        timer.current = setTimeout(() => setCopiedId((c) => (c === id ? null : c)), 1400);
-      })
-      .catch(() => setCopiedId(null));
-  }, []);
-  return [copiedId, copy];
-}
-
 /**
  * A small CRUD manager for "named Handlebars source" records (snippets, templates). Lists the
  * records, creates one (name → generated id → empty source → straight into the editor), edits a
@@ -59,7 +41,8 @@ function useCopy(): [string | null, (text: string, id: string) => void] {
  * via the injected `load`/`save`/`remove` adapters, so one component powers every code rail.
  */
 export function CodeRecordManager({ projectId, noun, load, save, remove, makeId, hint, nameHint, globals }: CodeRecordManagerProps) {
-  const [copiedId, copy] = useCopy();
+  const toast = useToast();
+  const [copiedId, copy] = useCopy(() => toast.show('Copied to clipboard'));
   const [records, setRecords] = useState<CodeRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

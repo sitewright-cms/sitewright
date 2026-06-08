@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { FOCUSABLE, OVERLAY_STACK } from './overlay';
 import { InSidePanel, SidePanelHold } from './SidePanel';
+import { Tooltip } from './Tooltip';
 
 const IS_MAC = typeof navigator !== 'undefined' && /Mac|iP(hone|ad|od)/.test(navigator.platform || navigator.userAgent);
 
@@ -234,26 +235,28 @@ export function Modal({ title, onClose, onSave, saving = false, saveDisabled = f
               </div>
               {headerExtra}
               {onSave && (
+                <Tooltip tip={`${saveLabel} (${IS_MAC ? '⌘' : 'Ctrl+'}S)`} side="bottom">
+                  <button
+                    type="button"
+                    aria-label={saveLabel}
+                    disabled={saving || saveDisabled}
+                    onClick={onSave}
+                    className="waves-effect waves-light inline-flex cursor-pointer items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-sky-500 p-2 text-white shadow-lg shadow-indigo-600/30 transition hover:shadow-indigo-600/40 disabled:opacity-60"
+                  >
+                    <SaveIcon />
+                  </button>
+                </Tooltip>
+              )}
+              <Tooltip tip="Close (Esc)" side="bottom">
                 <button
                   type="button"
-                  aria-label={saveLabel}
-                  title={`${saveLabel} (${IS_MAC ? '⌘' : 'Ctrl+'}S)`}
-                  disabled={saving || saveDisabled}
-                  onClick={onSave}
-                  className="waves-effect waves-light inline-flex cursor-pointer items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-sky-500 p-2 text-white shadow-lg shadow-indigo-600/30 transition hover:shadow-indigo-600/40 disabled:opacity-60"
+                  aria-label="Close"
+                  onClick={() => void requestClose()}
+                  className="waves-effect inline-flex cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-white p-2 text-slate-500 transition hover:border-slate-300 hover:text-slate-900"
                 >
-                  <SaveIcon />
+                  <CloseIcon />
                 </button>
-              )}
-              <button
-                type="button"
-                aria-label="Close"
-                title="Close (Esc)"
-                onClick={() => void requestClose()}
-                className="waves-effect inline-flex cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-white p-2 text-slate-500 transition hover:border-slate-300 hover:text-slate-900"
-              >
-                <CloseIcon />
-              </button>
+              </Tooltip>
             </header>
             <div className="min-h-0 flex-1 overflow-auto">{children}</div>
           </motion.div>

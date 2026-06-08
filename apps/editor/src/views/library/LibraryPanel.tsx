@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Modal } from '../ui/Modal';
 import { SidePanel } from '../ui/SidePanel';
+import { useToast } from '../ui/Toast';
+import { useCopy } from '../ui/useCopy';
 import { ghostButton, glassPanel } from '../../theme';
 import { LIBRARY_SECTIONS, type LibraryCategory, type LibraryItem, type LibrarySection } from './catalog';
 import { GoogleFontGallery } from '../settings/GoogleFontGallery';
@@ -13,23 +15,6 @@ function LibraryIcon() {
       <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
     </svg>
   );
-}
-
-/** Copy-to-clipboard with a transient "copied" flag keyed by an id (timer cleared on unmount). */
-function useCopy(): [string | null, (text: string, id: string) => void] {
-  const [copiedId, setCopiedId] = useState<string | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
-  const copy = (text: string, id: string) => {
-    void navigator.clipboard
-      .writeText(text)
-      .then(() => {
-        setCopiedId(id);
-        timer.current = setTimeout(() => setCopiedId((c) => (c === id ? null : c)), 1400);
-      })
-      .catch(() => setCopiedId(null));
-  };
-  return [copiedId, copy];
 }
 
 /**
@@ -77,7 +62,8 @@ export function LibraryPanel() {
 
 /** The Library's Google-Fonts browser: search + preview; clicking copies the family name. */
 function FontsLibraryModal({ onClose }: { onClose: () => void }) {
-  const [copiedId, copy] = useCopy();
+  const toast = useToast();
+  const [copiedId, copy] = useCopy(() => toast.show('Copied to clipboard'));
   return (
     <Modal title="Google Fonts" size="full" onClose={onClose}>
       <GoogleFontGallery
@@ -191,7 +177,8 @@ function SectionModal({ section, onClose }: { section: LibrarySection; onClose: 
 
 /** A dense, searchable grid of icons; clicking one copies its `{{icon …}}` snippet. */
 function IconGrid({ items }: { items: LibraryItem[] }) {
-  const [copiedId, copy] = useCopy();
+  const toast = useToast();
+  const [copiedId, copy] = useCopy(() => toast.show('Copied to clipboard'));
   return (
     <div className="grid grid-cols-[repeat(auto-fill,minmax(5rem,1fr))] gap-2">
       {items.map((it) => (
@@ -214,7 +201,8 @@ function IconGrid({ items }: { items: LibraryItem[] }) {
 
 /** A list of component/snippet cards: name, description, optional live preview, code + copy. */
 function ItemList({ items, preview }: { items: LibraryItem[]; preview: boolean }) {
-  const [copiedId, copy] = useCopy();
+  const toast = useToast();
+  const [copiedId, copy] = useCopy(() => toast.show('Copied to clipboard'));
   return (
     <ul className="flex flex-col gap-4">
       {items.map((it) => (

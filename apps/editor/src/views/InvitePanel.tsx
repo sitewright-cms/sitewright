@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import type { Invite } from '../api';
+import { useToast } from './ui/Toast';
 import { glassCard, glassPanel, glassInput, fieldLabel, primaryButton, dangerButton } from '../theme';
 
 interface InvitePanelProps {
@@ -25,6 +26,7 @@ export function InvitePanel({ kind, invites, onInvite, onRevoke, onChanged }: In
   const [error, setError] = useState<string | null>(null);
   const [link, setLink] = useState<{ email: string; url: string } | null>(null);
   const [copied, setCopied] = useState(false);
+  const toast = useToast();
 
   async function invite(e: FormEvent) {
     e.preventDefault();
@@ -47,6 +49,7 @@ export function InvitePanel({ kind, invites, onInvite, onRevoke, onChanged }: In
     try {
       await navigator.clipboard.writeText(url);
       setCopied(true);
+      toast.show('Invite link copied');
     } catch {
       // Clipboard may be unavailable (e.g. non-secure context) — the link is still shown to copy manually.
     }

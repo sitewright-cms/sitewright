@@ -24,12 +24,12 @@ Three requirements drove the decision:
 Adopt a **document-level, template-reuse** model (the "contentBase way"):
 
 - **A locale variant of a page is itself a Page.** It has its own path, title, SEO, and
-  `{{edit}}` content. Variants of the same primary page are tied together by a
+  `data-sw-text` content (stored in its own `page.data`). Variants of the same primary page are tied together by a
   **translation group**. This makes requirement #3 fall out for free (each locale is a real
   Page, so it already carries its own settings) and lets publish treat every page uniformly.
 - **Structure is shared via project templates (template-reuse).** The primary page is saved
   as a **project template**; each locale variant *references* that template and supplies only
-  its translated `{{edit}}` content + settings. Change the layout once → every locale follows.
+  its translated `page.data` content + settings. Change the layout once → every locale follows.
   This answers requirement #1: you translate the marked strings, not the structure.
 - **Per-locale layout variation when needed.** A variant that needs a different layout is
   **forked** off the template — it gets its own `source` and is edited independently (the
@@ -51,7 +51,7 @@ Field-level (one entry, `localized` fields hold per-locale maps; one page, local
 `content`) avoids object proliferation and keeps shared facts from drifting. We rejected it as
 the *primary* model because the document-level model:
 
-- reuses primitives that already exist (templates, fork, `{{edit}}` content, the page-settings
+- reuses primitives that already exist (templates, fork, `data-sw-text`/`page.data` content, the page-settings
   template selector, the publish pipeline) — fast to ship;
 - is far more intuitive for authors **and** AI agents ("the German page is a page");
 - supports **per-locale layout variation** natively (a forked variant), which field-level can't.
@@ -124,8 +124,8 @@ no-op/forward-compat hint or remove): a locale's dataset is `"<slug>-<locale>"`.
     later **Promote to template** to share it.
   - **Fork for this locale** — a template-referencing variant that needs a different layout
     forks to its own `source` (existing "fork template into page").
-- The page editor's content mode already edits `{{edit}}` regions — for a locale variant it
-  edits that variant's per-locale strings, unchanged.
+- The page editor's content mode already edits `data-sw-text` regions in-preview — for a locale variant it
+  edits that variant's per-locale strings (its own page.data), unchanged.
 
 ## MCP / seed
 
@@ -153,7 +153,7 @@ no-op/forward-compat hint or remove): a locale's dataset is `"<slug>-<locale>"`.
 ## Consequences
 
 - **+** Per-locale settings & layout variation are free; publish gets simpler; intuitive for
-  humans and agents; reuses templates/fork/`{{edit}}`/bindings.
+  humans and agents; reuses templates/fork/`data-sw-text`/bindings.
 - **−** More page + dataset objects; a dataset's field schema is duplicated per locale
   (mitigated by "duplicate for locale"); the old `PageTranslation` kind is removed (it has no
   UI today, so no user-facing migration — drop it, leave a no-op reader for old rows).

@@ -24,7 +24,7 @@ const STARS = Array.from({ length: 5 }, () => icon('star', 'h-4 w-4 fill-current
  * site that exercises the whole platform: a themed Corporate Identity, the shared skeleton
  * (sticky navbar + rich footer with the auto-menu), CSS-driven motion, four CMS datasets
  * (services / work / team / testimonials) bound into code-first DaisyUI pages, client-editable
- * `{{edit}}` regions, real imagery, and a working contact form. It is deliberately polished so an
+ * `data-sw-text` regions (→ page.data), real imagery, and a working contact form. It is deliberately polished so an
  * operator immediately sees what a finished Sitewright site looks like — then deletes it.
  *
  * Constraints honored so it renders identically in the in-container `/sites/<slug>/` preview AND

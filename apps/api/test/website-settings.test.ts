@@ -96,6 +96,23 @@ describe('website settings → publish', () => {
     expect('customHead' in w).toBe(false);
   });
 
+  it('exposes the editable website.data object to the published site ({{website.data.*}} + {{#each}})', async () => {
+    const proj = client.project(projectId);
+    expect((await proj.putContent('settings', 'settings', {
+      brand: { name: 'ClassCar', colors: { primary: '#e11' } },
+      website: { data: { hero: { headline: 'Published copy' }, tags: ['a', 'b'] } },
+      settings: { defaultLocale: 'en', locales: ['en'] },
+    })).statusCode).toBe(200);
+    expect((await proj.putContent('page', 'home', {
+      id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
+      source: '<main><h1>{{website.data.hero.headline}}</h1><ul>{{#each website.data.tags}}<li>{{this}}</li>{{/each}}</ul></main>',
+    })).statusCode).toBe(200);
+    const html = await publishAndFetchHome();
+    expect(html).toContain('<h1>Published copy</h1>'); // keyed lookup
+    expect(html).toContain('<li>a</li><li>b</li>'); // {{#each}} over a website.data array
+    expect(html).toContain('<body><main><h1>Published copy</h1>'); // plain interpolation, no preview wrapper
+  });
+
   it('omits the optional website injections when not configured', async () => {
     await putSettings(undefined);
     const html = await publishAndFetchHome();

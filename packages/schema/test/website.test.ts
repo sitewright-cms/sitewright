@@ -73,4 +73,58 @@ describe('WebsiteSettingsSchema', () => {
     // head/scripts are raw HTML by design — a </style>-like string is fine there.
     expect(WebsiteSettingsSchema.parse({ head: '</style>' }).head).toBe('</style>');
   });
+
+  describe('website.data (editable JSON store)', () => {
+    it('accepts a nested object/array/scalar tree', () => {
+      const data = {
+        hero: { headline: 'Hello', subline: 'World', published: true, rank: 3, note: null },
+        highlights: ['fast', 'safe', 'simple'],
+        nested: { a: { b: { c: [1, 2, { d: 'deep' }] } } },
+      };
+      expect(WebsiteSettingsSchema.parse({ data }).data).toEqual(data);
+    });
+
+    it('accepts an array, a bare scalar, and is optional', () => {
+      expect(WebsiteSettingsSchema.parse({ data: [1, 'two', false] }).data).toEqual([1, 'two', false]);
+      expect(WebsiteSettingsSchema.parse({ data: 'just a string' }).data).toBe('just a string');
+      expect(WebsiteSettingsSchema.parse({}).data).toBeUndefined();
+    });
+
+    it('rejects prototype-pollution keys at any depth', () => {
+      // The realistic path is the JSON-source view: JSON.parse creates an OWN "__proto__" data
+      // property (a literal { __proto__: … } would set the prototype instead, which Object.entries
+      // can't see). Validation must reject the own key.
+      const polluted = JSON.parse('{"__proto__":{"polluted":true}}');
+      expect(() => WebsiteSettingsSchema.parse({ data: polluted })).toThrow();
+      expect(() => WebsiteSettingsSchema.parse({ data: JSON.parse('{"a":{"__proto__":1}}') })).toThrow();
+      expect(() => WebsiteSettingsSchema.parse({ data: { ok: { constructor: 1 } } })).toThrow();
+      expect(() => WebsiteSettingsSchema.parse({ data: { nested: { prototype: {} } } })).toThrow();
+    });
+
+    it('rejects non-JSON values (undefined, functions, NaN/Infinity)', () => {
+      expect(() => WebsiteSettingsSchema.parse({ data: { fn: () => 1 } })).toThrow();
+      expect(() => WebsiteSettingsSchema.parse({ data: { x: NaN } })).toThrow();
+      expect(() => WebsiteSettingsSchema.parse({ data: { x: Infinity } })).toThrow();
+      expect(WebsiteSettingsSchema.parse({ data: undefined }).data).toBeUndefined();
+    });
+
+    it('accepts a tree at the maximum allowed depth', () => {
+      // Depth 0..12 (13 levels) is the bound; build exactly 12 nested objects + a leaf.
+      let deep: unknown = 'leaf';
+      for (let i = 0; i < 12; i++) deep = { next: deep };
+      expect(() => WebsiteSettingsSchema.parse({ data: deep })).not.toThrow();
+    });
+
+    it('rejects an over-deep tree without overflowing the validator stack', () => {
+      // Build a 60-deep nest (over the depth bound) — iterative validation must reject, not crash.
+      let deep: unknown = 'leaf';
+      for (let i = 0; i < 60; i++) deep = { next: deep };
+      expect(() => WebsiteSettingsSchema.parse({ data: deep })).toThrow();
+    });
+
+    it('rejects an over-long string value and over-long keys', () => {
+      expect(() => WebsiteSettingsSchema.parse({ data: { big: 'a'.repeat(20_001) } })).toThrow();
+      expect(() => WebsiteSettingsSchema.parse({ data: { ['k'.repeat(201)]: 1 } })).toThrow();
+    });
+  });
 });

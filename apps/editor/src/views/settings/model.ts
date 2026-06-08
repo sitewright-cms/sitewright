@@ -1,4 +1,5 @@
 import type { CorporateIdentity, SettingsBundle, WebsiteSettings } from '../../api';
+import type { JsonValue } from '@sitewright/schema';
 
 /** Updater passed to the section components. */
 export type Patch = (p: Partial<SettingsForm>) => void;
@@ -81,6 +82,8 @@ export interface SettingsForm {
   // website
   siteUrl: string;
   jsonDataUrl: string;
+  /** Editable JSON object → {{ website.data.* }}. */
+  data: JsonValue;
   criticalCss: string;
   head: string;
   scripts: string;
@@ -167,6 +170,7 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
     named: Object.entries(id.typography?.named ?? {}).map(([name, slot]) => ({ id: rowId(), name, slot: { ...slot } })),
     siteUrl: w?.siteUrl ?? '',
     jsonDataUrl: w?.jsonDataUrl ?? '',
+    data: (w?.data as JsonValue | undefined) ?? {},
     criticalCss: w?.criticalCss ?? '',
     head: w?.head ?? '',
     scripts: w?.scripts ?? '',
@@ -263,6 +267,7 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
   const w = stripEmpty({
     siteUrl: trimmed(form.siteUrl),
     jsonDataUrl: trimmed(form.jsonDataUrl),
+    data: isEmptyData(form.data) ? undefined : form.data,
     criticalCss: trimmed(form.criticalCss),
     head: trimmed(form.head),
     scripts: trimmed(form.scripts),
@@ -293,6 +298,14 @@ export const newNamedSlot = (): NamedSlotForm => ({ id: rowId(), name: '', slot:
 export const newPair = (): KeyedPair => ({ id: rowId(), key: '', value: '' });
 export const newStr = (): KeyedStr => ({ id: rowId(), value: '' });
 export const newRedirect = (): KeyedRedirect => ({ id: rowId(), from: '', to: '', status: 301 });
+
+/** An "empty" website.data (absent/null, or an empty object/array) → omitted from the saved payload. */
+function isEmptyData(v: JsonValue): boolean {
+  if (v == null) return true; // a null root is meaningless to address — treat as empty
+  if (Array.isArray(v)) return v.length === 0;
+  if (typeof v === 'object') return Object.keys(v).length === 0;
+  return false; // a bare string/number/boolean is a real value
+}
 
 /** Returns the object only if at least one value is defined, else undefined. */
 function stripEmpty<T extends Record<string, unknown>>(obj: T): T | undefined {

@@ -449,7 +449,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // `json_data` is the publish-time snapshot of `website.jsonDataUrl` (full object — a
           // code-first page/slot can `{{#each website.json_data.items}}`). siteUrl is the only
           // OTHER website field exposed; the raw head/criticalCss/scripts blobs are never surfaced.
-          website: { siteUrl: website?.siteUrl, json_data: opts.jsonData },
+          website: { siteUrl: website?.siteUrl, json_data: opts.jsonData, data: website?.data },
           page: { title: page.title, path: pageFullPath, locale: pageLocale, translations: pageTranslations },
           data: localeData as Record<string, unknown>,
           nav: navForPage as unknown as Record<string, unknown>,
@@ -511,7 +511,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // {{ company.* }}/{{ website.* }}/{{ page.* }} substitution in text props.
           // `website` is projected to only its public fields — never the raw
           // head/footer/CSS blobs, which aren't meant to be surfaced via a variable.
-          vars: { company: identity, website: { siteUrl: website?.siteUrl, json_data: opts.jsonData }, page: { title: page.title, path: pageFullPath, locale: pageLocale, translations: pageTranslations } },
+          vars: { company: identity, website: { siteUrl: website?.siteUrl, json_data: opts.jsonData, data: website?.data }, page: { title: page.title, path: pageFullPath, locale: pageLocale, translations: pageTranslations } },
           datasets: localeData,
           entry: route.entry,
           includeDrafts: false,

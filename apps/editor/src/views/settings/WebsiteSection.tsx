@@ -1,15 +1,31 @@
+import { useState } from 'react';
+import type { JsonValue } from '@sitewright/schema';
 import type { Patch, SettingsForm } from './model';
 import { Field, GlassCard } from './ui';
 import { CodeField } from '../ui/CodeField';
 import { RedirectsEditor } from './RedirectsEditor';
 import { StringListEditor } from './StringListEditor';
+import { WebsiteDataModal } from './WebsiteDataModal';
+import { ghostButton } from '../../theme';
 
 /** Shared bindings hint for the validated skeleton-slot editors. */
 const SLOT_HINT =
-  'HTML + Tailwind/DaisyUI (no JS). Bindings: {{ company.* }}, {{#each nav.header}}…{{/each}}, {{ website.json_data.* }}.';
+  'HTML + Tailwind/DaisyUI (no JS). Bindings: {{ company.* }}, {{#each nav.header}}…{{/each}}, {{ website.json_data.* }}, {{ website.data.* }}.';
+
+/** A one-line summary of the current `website.data` value for the "Edit data" row. */
+function dataSummary(v: JsonValue): string {
+  if (v == null) return 'empty';
+  if (Array.isArray(v)) return v.length ? `${v.length} item${v.length === 1 ? '' : 's'}` : 'empty';
+  if (typeof v === 'object') {
+    const n = Object.keys(v).length;
+    return n ? `${n} key${n === 1 ? '' : 's'}` : 'empty';
+  }
+  return 'a value';
+}
 
 /** Website settings: production URL, injected CSS/HTML, redirects, and localization. */
 export function WebsiteSection({ form, patch }: { form: SettingsForm; patch: Patch }) {
+  const [dataOpen, setDataOpen] = useState(false);
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       <GlassCard title="Site" icon="🌐" wide>
@@ -29,7 +45,26 @@ export function WebsiteSection({ form, patch }: { form: SettingsForm; patch: Pat
             placeholder="https://api.example.com/data.json"
           />
         </div>
+        <div className="mt-3">
+          <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-400">
+            Site data → {'{{ website.data }}'} (edited here, in preview + publish)
+          </label>
+          <div className="flex items-center gap-3">
+            <button type="button" onClick={() => setDataOpen(true)} className={ghostButton}>
+              Edit data
+            </button>
+            <span className="text-xs text-slate-400">{dataSummary(form.data)}</span>
+          </div>
+        </div>
       </GlassCard>
+
+      {dataOpen && (
+        <WebsiteDataModal
+          value={form.data}
+          onSave={(data) => patch({ data })}
+          onClose={() => setDataOpen(false)}
+        />
+      )}
 
       <GlassCard title="Critical CSS" icon="◐" wide>
         <CodeField
@@ -68,7 +103,8 @@ export function WebsiteSection({ form, patch }: { form: SettingsForm; patch: Pat
         </h3>
         <p className="mt-1 text-xs text-slate-500">
           Validated (no JS): HTML + Tailwind/DaisyUI + <code>{'{{ company.* }}'}</code>,{' '}
-          <code>{'{{#each nav.header}}'}</code>, <code>{'{{ website.json_data.* }}'}</code>.
+          <code>{'{{#each nav.header}}'}</code>, <code>{'{{ website.json_data.* }}'}</code>,{' '}
+          <code>{'{{ website.data.* }}'}</code>.
         </p>
       </div>
 

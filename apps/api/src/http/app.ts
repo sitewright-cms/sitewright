@@ -64,6 +64,7 @@ import {
   resolveTemplateSource,
   resolveLocaleDatasets,
   compareEntryOrder,
+  keyedDatasets,
   translationsOf,
   localeOf,
   pagesInLocale,
@@ -1232,10 +1233,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           ...Object.fromEntries(((await contentRepo.list(ctx, 'snippet')) as Snippet[]).map((s) => [s.name, s.source])),
         };
         const sourceData = Object.fromEntries(byDataset);
-        // Bound the IPC payload serialized in THIS (parent) process — a large dataset/partial
-        // set must not spike the API's heap (only the worker carries a memory ceiling). Mirrors
-        // the owner render-template guard.
-        if (JSON.stringify(sourceData).length + JSON.stringify(partials).length > 4 * 1024 * 1024) {
+        const localeData = resolveLocaleDatasets(sourceData, page.locale);
+        // Keyed entry access ({{item.<dataset>.<id>.<field>}}) — built only for datasets this source
+        // addresses by key, so a looping-only page pays nothing.
+        const item = keyedDatasets(pageSource, localeData);
+        // Bound the IPC payload serialized in THIS (parent) process — a large dataset/partial set
+        // (incl. the keyed `item` map) must not spike the API's heap (only the worker carries a
+        // memory ceiling). Mirrors the owner render-template guard.
+        if (JSON.stringify(localeData).length + JSON.stringify(item).length + JSON.stringify(partials).length > 4 * 1024 * 1024) {
           return reply.code(413).send({ error: 'project data is too large to render' });
         }
         try {
@@ -1253,7 +1258,6 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             footer: buildNav(navPages, 'footer'),
             mobile: buildNav(navPages, 'mobile'),
           };
-          const localeData = resolveLocaleDatasets(sourceData, page.locale);
           // The page's FULL route is computed from the parent chain; include the (possibly
           // unsaved/edited) previewed page in the index so its own slug/parent apply.
           const previewById = pagesById(savedPages);
@@ -1269,6 +1273,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             website: { siteUrl: website?.siteUrl },
             page: previewPage,
             data: localeData,
+            item,
             partials,
             content: page.content,
             richContent: page.richContent,
@@ -2512,9 +2517,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         ...GLOBAL_SNIPPET_PARTIALS,
         ...Object.fromEntries(((await contentRepo.list(ctx, 'snippet')) as Snippet[]).map((s) => [s.name, s.source])),
       };
+      // Keyed entry access for this template (only the datasets it addresses by key). NOTE: this
+      // owner render-template tool feeds `data` un-locale-resolved (pre-existing), so `item` here
+      // keys the DEFAULT-locale entries — the member /preview + publish paths locale-resolve both.
+      const item = keyedDatasets(templateSource, data as Record<string, readonly Entry[]>);
       // Bound the IPC payload serialized in THIS (parent) process — a large dataset must
       // not spike the API's heap (only the worker carries a --max-old-space ceiling).
-      if (JSON.stringify(data).length + JSON.stringify(partials).length > 4 * 1024 * 1024) {
+      if (JSON.stringify(data).length + JSON.stringify(item).length + JSON.stringify(partials).length > 4 * 1024 * 1024) {
         return reply.code(413).send({ error: 'project data is too large to render' });
       }
 
@@ -2524,6 +2533,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           website,
           page: pageCtx,
           data,
+          item,
           partials,
           content: pageContent,
           richContent: pageRichContent,

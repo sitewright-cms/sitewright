@@ -298,9 +298,19 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         id: 'n-data',
         syntax: 'data.<dataset>',
         name: 'data',
-        keywords: 'dataset entries collection rows',
-        description: 'A dataset’s entries (manage rows in the Data panel). Loop with {{#eachEntry}} and read fields via values.<field>.',
+        keywords: 'dataset entries collection rows loop',
+        description:
+          'A dataset’s entries as an ordered ARRAY (manage rows in the Data panel). Loop with {{#eachEntry}} and read fields via values.<field>. For a direct lookup by key, use item.<dataset> instead.',
         example: '{{#eachEntry data.team}}<li>{{values.name}}</li>{{/eachEntry}}',
+      },
+      {
+        id: 'n-item',
+        syntax: 'item.<dataset>.<key>.<field>',
+        name: 'item',
+        keywords: 'dataset entry key lookup direct addressable map by id',
+        description:
+          'Direct keyed access to a single entry’s fields — no loop. The <key> is the entry’s id (set it to a clean slug like web_development when you create the entry; the Data panel shows each entry’s key). Built only for datasets a page actually addresses this way.',
+        example: '<h2>{{item.services.web_development.title}}</h2>\n<p>{{item.services.web_development.price}}</p>',
       },
       {
         id: 'n-nav',

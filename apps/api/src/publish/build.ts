@@ -5,6 +5,7 @@ import {
   buildNav,
   collectClassNames,
   datasetEntries,
+  keyedDatasets,
   extractClassNames,
   publishedPages,
   relativeRoot,
@@ -463,7 +464,13 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
             // project snippets the page can {{> compose}} (validated by renderTemplate, like preview).
             // No `preview` flag → resolveDirectives STRIPS every data-sw-* marker, leaving clean
             // static HTML; richContent is re-sanitized at render (the save path is authoritative).
-            bodyHtml = renderTemplate(pageSource, { ...renderCtx, content: page.content, richContent: page.richContent, partials: opts.snippets });
+            bodyHtml = renderTemplate(pageSource, {
+              ...renderCtx,
+              content: page.content,
+              richContent: page.richContent,
+              item: keyedDatasets(pageSource, localeData),
+              partials: opts.snippets,
+            });
           } catch (err) {
             throw new PublishError(
               err instanceof TemplateError

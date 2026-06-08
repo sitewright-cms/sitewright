@@ -13,6 +13,7 @@ import { AcceptInvite } from './views/AcceptInvite';
 import { InstanceSettings } from './views/InstanceSettings';
 import { LivePreview } from './views/LivePreview';
 import { UpdateBanner } from './views/UpdateBanner';
+import { BrandMark } from './views/ui/BrandMark';
 import { parseLiveTarget } from './lib/live-target';
 import { SkeletonList } from './views/ui/Skeleton';
 import { installRipple } from './lib/ripple';
@@ -109,20 +110,18 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
   const isClient = inProject?.role === 'member';
 
   const header = (
-    <header className="sticky top-0 z-20 flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-white/40 bg-white/60 px-6 py-3 shadow-sm backdrop-blur-xl">
-      {/* Left: brand + (when in a project) the project name, which opens the selector. */}
+    <header className="sticky top-0 z-20 border-b border-white/40 bg-white/60 px-6 py-3 shadow-sm backdrop-blur-xl">
+      {/* Inner row aligned to the SAME max-width column the tab CONTENT below uses, so the
+          tablist (and brand/nav) line up with the content rather than the full viewport. */}
+      <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-x-4 gap-y-2">
+      {/* Left: the brand mark (the wordmark now lives in the project selector) — opens the selector. */}
       <button
-        className="flex items-center gap-2 text-slate-900"
+        className="flex items-center text-slate-900 transition hover:text-indigo-700"
         onClick={() => setSelectorOpen(true)}
         aria-label="Sitewright — switch project"
+        title="Switch project"
       >
-        {/* The Wright's Square: square is currentColor (ink); blocks are teal + indigo. */}
-        <svg width="22" height="22" viewBox="0 0 96 96" fill="none" aria-hidden="true">
-          <path d="M30 18 V72 H78" stroke="currentColor" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" />
-          <rect x="40" y="52" width="26" height="14" rx="3" fill="#14B8A6" />
-          <rect x="40" y="35" width="26" height="14" rx="3" fill="#4F2DD8" />
-        </svg>
-        <span className="font-display text-lg font-bold tracking-tight">Sitewright</span>
+        <BrandMark />
       </button>
       {inProject && (
         <button
@@ -190,6 +189,7 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
           Sign out
         </button>
       </nav>
+      </div>
     </header>
   );
 

@@ -32,3 +32,13 @@ export const dangerButton =
 /** Gradient pill used for section icons / accents. */
 export const accentChip =
   'inline-flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-sky-400 text-white shadow-md shadow-indigo-500/30';
+
+/** The ACTIVE/selected surface: the primary indigo→sky gradient with white text. Replaces an
+ *  outline ring as the "this one is current" marker (e.g. the project selector's open project). */
+export const gradientSurface =
+  'bg-gradient-to-br from-indigo-600 to-sky-500 text-white shadow-md shadow-indigo-600/30';
+
+/** Hover form of {@link gradientSurface}: a row/item that lifts to the gradient (white text) on
+ *  hover. Put `group` on the element so child text can adopt `group-hover:text-white`. */
+export const gradientHover =
+  'hover:bg-gradient-to-br hover:from-indigo-600 hover:to-sky-500 hover:text-white hover:shadow-md hover:shadow-indigo-600/30';

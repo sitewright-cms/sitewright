@@ -5,9 +5,14 @@
 // renderTemplate, in the isolated worker), parses the rendered body fragment, and binds
 // each directive to its element with a single, context-correct SINK rule:
 //
-//   data-sw-text="key"  → element textContent     (from content[key];      serializer escapes)
-//   data-sw-html="key"  → element innerHTML        (from richContent[key];  sanitizeRichHtml)
-//   (data-sw-src/bg/href are added by later PRs — image/bg replacement + link editing)
+//   data-sw-text="key"  → element textContent          (from content[key];     serializer escapes)
+//   data-sw-html="key"  → element innerHTML             (from richContent[key]; sanitizeRichHtml)
+//   data-sw-href="key"  → anchor href                   (from content[key];     safeUrl)
+//   data-sw-src="key"   → <img> src                     (from content[key];     safeUrl)
+//   data-sw-bg="key"    → inline background-image style (from content[key];     safeUrl + cssUrlEscape)
+//
+// For the URL directives, an EMPTY stored value means "no override → keep the authored default"
+// (you revert by clearing the field); only a non-empty, scheme-safe value replaces the default.
 //
 // Because we mutate PARSED DOM nodes (not interpolate into a string), there is no marker
 // injection and no string-context escaping question — `data-sw-text` can't inject markup
@@ -19,7 +24,7 @@ import { Text, type Element } from 'domhandler';
 import { findAll } from 'domutils';
 import render from 'dom-serializer';
 import { sanitizeRichHtml } from './sanitize-rich.js';
-import { safeUrl } from './url.js';
+import { safeUrl, cssUrlEscape } from './url.js';
 
 /** Region keys that must never index a content map (prototype-pollution guard). */
 const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
@@ -27,8 +32,10 @@ const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 const TEXT_ATTR = 'data-sw-text';
 const HTML_ATTR = 'data-sw-html';
 const HREF_ATTR = 'data-sw-href';
-/** Every directive attribute this pass recognizes (extended by a later PR: src/bg). */
-const DIRECTIVE_ATTRS = [TEXT_ATTR, HTML_ATTR, HREF_ATTR] as const;
+const SRC_ATTR = 'data-sw-src';
+const BG_ATTR = 'data-sw-bg';
+/** Every directive attribute this pass recognizes. */
+const DIRECTIVE_ATTRS = [TEXT_ATTR, HTML_ATTR, HREF_ATTR, SRC_ATTR, BG_ATTR] as const;
 
 export interface DirectiveContext {
   /** Plain-text region overrides (the `page.content` map), keyed by directive key. */
@@ -101,9 +108,33 @@ export function resolveDirectives(html: string, ctx: DirectiveContext): string {
     }
     const hrefKey = el.attribs[HREF_ATTR];
     if (typeof hrefKey === 'string') {
-      // Editable link URL: override (or the authored default) → href, always scheme-sanitized.
+      // Editable link URL: a non-empty override → href (scheme-sanitized); empty → keep the default.
       const value = lookup(ctx.content, hrefKey);
-      if (value !== undefined) el.attribs.href = safeUrl(value, '#');
+      if (value !== undefined && value !== '') el.attribs.href = safeUrl(value, '#');
+    }
+    const srcKey = el.attribs[SRC_ATTR];
+    if (typeof srcKey === 'string') {
+      // Editable image: a non-empty override → <img src> (scheme-sanitized); empty → keep the
+      // authored default (so clearing reverts, rather than producing a broken src="").
+      const value = lookup(ctx.content, srcKey);
+      if (value !== undefined && value !== '') el.attribs.src = safeUrl(value, '');
+    }
+    const bgKey = el.attribs[BG_ATTR];
+    if (typeof bgKey === 'string') {
+      // Editable background image: a non-empty override → an inline `background-image:url('…')`,
+      // scheme- AND CSS-url()-sanitized. We mutate the parsed style attribute (the serializer escapes
+      // it), so there is no string-interpolation-into-style surface and no validateTemplate exception.
+      // Empty → keep the authored default. (Publish rebases `/media/…` bg URLs via build.ts's
+      // _assets step; a non-/media root-relative bg URL is not rebased — known sub-path-export gap.)
+      const value = lookup(ctx.content, bgKey);
+      if (value !== undefined && value !== '') {
+        const css = cssUrlEscape(safeUrl(value, ''));
+        if (css) {
+          const existing = (el.attribs.style ?? '').replace(/background-image\s*:[^;]*;?/gi, '').trim();
+          const prefix = existing ? existing.replace(/;?$/, '; ') : '';
+          el.attribs.style = `${prefix}background-image:url('${css}')`;
+        }
+      }
     }
     // Preview keeps the markers for the bridge; publish strips them for a clean artifact.
     if (!ctx.preview) {

@@ -79,6 +79,58 @@ describe('resolveDirectives — data-sw-href', () => {
   });
 });
 
+describe('resolveDirectives — data-sw-src / data-sw-bg (images)', () => {
+  it('replaces an img src from content, scheme-sanitized; publish strips the marker', () => {
+    const html = '<img data-sw-src="hero" src="/old.jpg" alt="">';
+    const preview = resolveDirectives(html, { content: { hero: '/media/p/a/new.jpg' }, preview: true });
+    expect(preview).toContain('data-sw-src="hero"');
+    expect(preview).toContain('src="/media/p/a/new.jpg"');
+    const published = resolveDirectives(html, { content: { hero: 'javascript:alert(1)' } });
+    expect(published).not.toContain('data-sw-src');
+    expect(published).not.toContain('javascript'); // neutralized to an empty src
+  });
+
+  it('sets a CSS-guarded background-image, merging existing style; refuses a breakout URL', () => {
+    // (the serializer renders the url() delimiter quotes as &apos; in the style attribute — the
+    //  browser decodes them, so the assertions avoid the quote char.)
+    const out = resolveDirectives('<section data-sw-bg="bg" style="padding:2rem">x</section>', {
+      content: { bg: '/media/p/a/x.jpg' },
+      preview: true,
+    });
+    expect(out).toContain('background-image:url(');
+    expect(out).toContain('/media/p/a/x.jpg');
+    expect(out).toContain('padding:2rem');
+    expect(out).toContain('data-sw-bg="bg"');
+
+    const evil = resolveDirectives('<section data-sw-bg="bg">x</section>', {
+      content: { bg: "/x');background:red" },
+      preview: true,
+    });
+    expect(evil).not.toContain('background-image'); // url with ' and ( ) refused
+
+    const published = resolveDirectives('<section data-sw-bg="bg">x</section>', { content: { bg: '/media/a.jpg' } });
+    expect(published).toContain('background-image:url(');
+    expect(published).toContain('/media/a.jpg');
+    expect(published).not.toContain('data-sw-bg');
+  });
+});
+
+describe('resolveDirectives — empty URL override reverts to the authored default', () => {
+  it('keeps the default src/href/bg when the stored value is empty (clear = revert)', () => {
+    expect(resolveDirectives('<img data-sw-src="hero" src="/default.jpg">', { content: { hero: '' }, preview: true })).toContain(
+      'src="/default.jpg"',
+    );
+    expect(resolveDirectives('<a data-sw-href="c" href="/keep">x</a>', { content: { c: '' }, preview: true })).toContain(
+      'href="/keep"',
+    );
+    const bg = resolveDirectives('<section data-sw-bg="b" style="background-image:url(/d.jpg)">x</section>', {
+      content: { b: '' },
+      preview: true,
+    });
+    expect(bg).toContain('/d.jpg'); // the authored default background is preserved, not cleared
+  });
+});
+
 describe('renderTemplate — directive integration', () => {
   it('resolves data-sw-html in preview (marker kept) and publish (stripped)', () => {
     const source = '<section data-sw-html="intro"><p>fallback</p></section>';

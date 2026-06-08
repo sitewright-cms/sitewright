@@ -10,6 +10,9 @@ import { Modal } from './ui/Modal';
 import { Tooltip } from './ui/Tooltip';
 import { PageSettingsModal, applyPageSettings, pageSettingsFromPage, type PageSettingsValues } from './PageSettingsModal';
 import { useDialogs } from './ui/Dialogs';
+import { FilePicker } from './files/FilePicker';
+import { AssetField } from './files/AssetField';
+import { ACCEPT } from './files/FileBrowser';
 import { glassInput, glassPanel, primaryButton } from '../theme';
 
 // Lazy: the rich editor pulls in the HTML sanitizer (sanitize-html) — kept out of the main bundle,
@@ -113,6 +116,8 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   const [richContent, setRichContent] = useState<Record<string, string>>({ ...(page.richContent ?? {}) });
   // The rich region currently open in the side editor (its key), or null when none is open.
   const [richOpen, setRichOpen] = useState<string | null>(null);
+  // The content key whose image is being replaced via the file picker (data-sw-src/bg click), or null.
+  const [pickerKey, setPickerKey] = useState<string | null>(null);
   // ALL page settings (title/path/status/nav/parent/template/seo) — edited via the
   // stacked PageSettingsModal, applied to this draft, persisted on Save.
   const [settings, setSettings] = useState<PageSettingsValues>(() => pageSettingsFromPage(page));
@@ -212,6 +217,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
         href?: string;
         textKey?: string;
         text?: string;
+        kind?: 'image' | 'bg'; // pick-image: the click origin; both currently use the image picker
       } | null;
       if (!d || d.source !== 'sitewright-preview') return;
       if (d.type === 'scroll' && typeof d.y === 'number') {
@@ -238,6 +244,9 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
           nextContent[d.textKey] = d.text;
         }
         setContent(nextContent);
+      } else if (d.type === 'pick-image' && typeof d.key === 'string' && d.key !== '' && !DANGEROUS_KEYS.has(d.key)) {
+        // Clicked an editable image/background in the preview → open the file picker for that region.
+        setPickerKey(d.key);
       } else if (d.type === 'ready') {
         // A freshly-(re)loaded preview → (re)apply the current edit mode so its regions stay editable.
         iframeRef.current?.contentWindow?.postMessage({ source: 'sitewright-editor', type: 'setMode', mode: modeRef.current }, '*');
@@ -581,7 +590,8 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
                 <div className="rounded-2xl border border-dashed border-slate-300/80 bg-white/40 p-6 text-center text-sm text-slate-500">
                   This page has no editable regions yet. Mark editable text with{' '}
                   <code>{'data-sw-text="…"'}</code> (or <code>{'{{edit "…"}}'}</code>), rich text with{' '}
-                  <code>{'data-sw-html="…"'}</code>, and link URLs with <code>{'data-sw-href="…"'}</code> in the source.
+                  <code>{'data-sw-html="…"'}</code>, link URLs with <code>{'data-sw-href="…"'}</code>, and images with{' '}
+                  <code>{'data-sw-src="…"'}</code> / <code>{'data-sw-bg="…"'}</code> in the source.
                 </div>
               ) : (
                 regions.map((region) =>
@@ -593,6 +603,24 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
                       <button type="button" onClick={() => setRichOpen(region.key)} className={`w-full ${primaryButton}`}>
                         Edit rich text…
                       </button>
+                    </div>
+                  ) : region.kind === 'image' || region.kind === 'bg' ? (
+                    <div key={region.key} className={`block shrink-0 p-3 ${glassPanel}`}>
+                      <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        {region.key}{' '}
+                        <span className="font-normal lowercase tracking-normal text-slate-300">
+                          {region.kind === 'bg' ? 'background image' : 'image'}
+                        </span>
+                      </span>
+                      <AssetField
+                        label={region.key}
+                        hideLabel
+                        value={regionValue(region.key, region.default)}
+                        onChange={(url) => changeRegion(region.key, url)}
+                        projectId={project.id}
+                        accept={ACCEPT.image}
+                        placeholder="/media/…"
+                      />
                     </div>
                   ) : region.kind === 'link' ? (
                     <label key={region.key} className={`block shrink-0 p-3 ${glassPanel}`}>
@@ -668,6 +696,21 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
             onClose={() => setRichOpen(null)}
           />
         </Suspense>
+      )}
+
+      {/* Image/background replacement: clicking a data-sw-src/bg region in the preview opens this. */}
+      {pickerKey && (
+        <FilePicker
+          projectId={project.id}
+          accept={ACCEPT.image}
+          title="Replace image"
+          onPick={(url) => {
+            // Scheme-sanitize at store time too (the render also safeUrl's) — canonical-clean content.
+            changeRegion(pickerKey, safeUrl(url, ''));
+            setPickerKey(null);
+          }}
+          onClose={() => setPickerKey(null)}
+        />
       )}
 
       {/* Page settings STACK above this modal; applying updates the DRAFT (one Save persists all). */}

@@ -1,5 +1,18 @@
 import { describe, it, expect } from 'vitest';
-import { resolveInternalUrl, relativizeInternalLinks } from '../src/url.js';
+import { resolveInternalUrl, relativizeInternalLinks, cssUrlEscape } from '../src/url.js';
+
+describe('cssUrlEscape', () => {
+  it('passes a clean media/https URL', () => {
+    expect(cssUrlEscape('/media/p/a/x.jpg')).toBe('/media/p/a/x.jpg');
+    expect(cssUrlEscape('https://cdn.test/x.png')).toBe('https://cdn.test/x.png');
+  });
+  it("refuses anything that could break out of url('…')", () => {
+    expect(cssUrlEscape("/x');background:red//")).toBe('');
+    expect(cssUrlEscape('/a b.jpg')).toBe(''); // whitespace
+    expect(cssUrlEscape('/a"b.jpg')).toBe('');
+    expect(cssUrlEscape('')).toBe('');
+  });
+});
 
 describe('resolveInternalUrl', () => {
   it('rewrites root-relative internal links to be page-relative', () => {

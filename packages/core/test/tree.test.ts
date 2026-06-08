@@ -165,6 +165,13 @@ describe('extractRegions (legacy {{edit}} + data-sw-* leaf directives)', () => {
     expect(extractRegions('<a data-sw-href="cta" href="/x">Go</a>')).toEqual([{ key: 'cta', default: '', kind: 'link' }]);
   });
 
+  it('recognizes data-sw-src (image) and data-sw-bg (background) regions', () => {
+    expect(extractRegions('<img data-sw-src="hero"><section data-sw-bg="band"></section>')).toEqual([
+      { key: 'hero', default: '', kind: 'image' },
+      { key: 'band', default: '', kind: 'bg' },
+    ]);
+  });
+
   it('returns nothing when there are no regions', () => {
     expect(extractRegions('<div class="x"><img src="/a.jpg"></div>')).toEqual([]);
   });

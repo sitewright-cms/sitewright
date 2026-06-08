@@ -17,6 +17,22 @@ export function safeUrl(value: string, fallback = '#'): string {
   return SAFE_URL.test(trimmed) ? trimmed : fallback;
 }
 
+// Characters that could break out of a CSS `url('…')` context (the quotes/parens themselves, a
+// backslash escape, whitespace that ends the token, or a control/null byte the CSS/URL parser may
+// rewrite). A clean http(s)/root-relative URL contains none of them once it's passed {@link safeUrl}.
+// eslint-disable-next-line no-control-regex -- intentionally rejecting control/null bytes in URLs
+const CSS_URL_UNSAFE = /['"()\\\s\x00-\x1f]/;
+
+/**
+ * Guards an (already {@link safeUrl}-checked) URL for interpolation inside a CSS `url('…')` value —
+ * e.g. `background-image:url('<here>')`. Returns the URL unchanged when it's safe to embed, or `''`
+ * if it contains any character that could escape the quotes/parens (refuse rather than risk a
+ * breakout — a legitimate media/`https` URL never needs them unencoded).
+ */
+export function cssUrlEscape(url: string): string {
+  return url === '' || CSS_URL_UNSAFE.test(url) ? '' : url;
+}
+
 /**
  * Rewrites an author-supplied href for portable output. Internal, root-relative
  * links (`/about`, `/`) are rebased onto `root` — the relative path from the

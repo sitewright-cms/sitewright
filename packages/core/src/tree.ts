@@ -100,7 +100,7 @@ export function extractEditRegions(source: string): EditRegion[] {
 }
 
 /** The kind of editable region, which drives the editor widget + the binding's render sink. */
-export type RegionKind = 'text' | 'rich' | 'link';
+export type RegionKind = 'text' | 'rich' | 'link' | 'image' | 'bg';
 
 /** A client-editable region: a legacy `{{edit}}` helper OR a `data-sw-*` leaf directive. */
 export interface EditableRegion extends EditRegion {
@@ -114,8 +114,11 @@ export interface EditableRegion extends EditRegion {
 // truncate the captured default (the render is still correct; only the editor's seed is affected).
 const ELEMENT_DIRECTIVE_RE =
   /<([a-zA-Z][\w-]*)\b[^>]*?\bdata-sw-(text|html)\s*=\s*(?:"([^"]*)"|'([^']*)')[^>]*>([\s\S]*?)<\/\1>/g;
-// A link-URL directive — key only (the editable value is the href, surfaced as a URL field/popover).
+// URL-valued directives — key only (the editable value is a URL: a link href, an image src, or a
+// background-image). Captured per attribute so the side panel can offer the right widget.
 const HREF_DIRECTIVE_RE = /\bdata-sw-href\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+const SRC_DIRECTIVE_RE = /\bdata-sw-src\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+const BG_DIRECTIVE_RE = /\bdata-sw-bg\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
 
 /**
  * All client-editable regions declared in a code-first source — legacy `{{edit "key" "default"}}`
@@ -139,6 +142,8 @@ export function extractRegions(source: string): EditableRegion[] {
     add(m[3] ?? m[4] ?? '', (m[5] ?? '').trim(), kind);
   }
   for (const m of source.matchAll(HREF_DIRECTIVE_RE)) add(m[1] ?? m[2] ?? '', '', 'link');
+  for (const m of source.matchAll(SRC_DIRECTIVE_RE)) add(m[1] ?? m[2] ?? '', '', 'image');
+  for (const m of source.matchAll(BG_DIRECTIVE_RE)) add(m[1] ?? m[2] ?? '', '', 'bg');
   return out;
 }
 

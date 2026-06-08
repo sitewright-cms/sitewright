@@ -452,7 +452,7 @@ describe('buildSite', () => {
         pages: [
           {
             id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
-            source: '<main><h1>{{edit "headline" "Default headline"}}</h1></main>',
+            source: '<main><h1 data-sw-text="headline">Default headline</h1></main>',
             data: { headline: 'Client wrote this' }, // the override now lives in page.data ({{edit}} reads it)
           },
         ],

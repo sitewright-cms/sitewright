@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { renderTemplate, validateTemplate, editsAreBodyOnly, TemplateError, type TemplateContext } from '../src/template.js';
+import { renderTemplate, validateTemplate, TemplateError, type TemplateContext } from '../src/template.js';
 
 const ctx: TemplateContext = {
   company: { name: 'Acme & Co', address: { city: 'Berlin' } },
@@ -15,52 +15,6 @@ const ctx: TemplateContext = {
     empty: [],
   },
 };
-
-describe('{{edit}} — client-editable bound content', () => {
-  it('renders the default when no override is set for the key', () => {
-    expect(renderTemplate('<h1>{{edit "headline" "Welcome"}}</h1>', ctx)).toBe('<h1>Welcome</h1>');
-  });
-
-  it('renders the content override when present, falling back per-key', () => {
-    const c: TemplateContext = { ...ctx, page: { ...ctx.page, data: { headline: 'Hello there' } } };
-    expect(renderTemplate('<h1>{{edit "headline" "Welcome"}}</h1><p>{{edit "sub" "Default sub"}}</p>', c)).toBe(
-      '<h1>Hello there</h1><p>Default sub</p>',
-    );
-  });
-
-  it('HTML-escapes the (client-authored) override — no markup injection', () => {
-    const c: TemplateContext = { ...ctx, page: { ...ctx.page, data: { x: '<script>alert(1)</script>' } } };
-    expect(renderTemplate('<div>{{edit "x" "d"}}</div>', c)).toBe(
-      '<div>&lt;script&gt;alert(1)&lt;/script&gt;</div>',
-    );
-  });
-
-  it('treats an empty default + missing override as empty, and ignores a non-own key', () => {
-    expect(renderTemplate('<p>{{edit "missing"}}</p>', ctx)).toBe('<p></p>');
-    // A key that only exists on Object.prototype must not leak (no proto access).
-    expect(renderTemplate('<p>{{edit "toString" "fallback"}}</p>', ctx)).toBe('<p>fallback</p>');
-  });
-
-  it('passes the save-time validator in body context', () => {
-    expect(() => validateTemplate('<h1>{{edit "k" "Some default text"}}</h1>')).not.toThrow();
-  });
-});
-
-describe('{{edit}} preview markers (markEdits)', () => {
-  it('wraps each region in a data-sw-edit span ONLY when markEdits is set', () => {
-    expect(renderTemplate('<h1>{{edit "title" "Welcome"}}</h1>', ctx)).toBe('<h1>Welcome</h1>'); // off → plain
-    expect(renderTemplate('<h1>{{edit "title" "Welcome"}}</h1>', { ...ctx, markEdits: true })).toBe(
-      '<h1><span data-sw-edit="title">Welcome</span></h1>',
-    );
-  });
-
-  it('keeps the (client-authored) value HTML-escaped inside the marker — no XSS', () => {
-    const c: TemplateContext = { ...ctx, markEdits: true, page: { ...ctx.page, data: { x: '<img src=x onerror=alert(1)>' } } };
-    expect(renderTemplate('<div>{{edit "x" "d"}}</div>', c)).toBe(
-      '<div><span data-sw-edit="x">&lt;img src=x onerror=alert(1)&gt;</span></div>',
-    );
-  });
-});
 
 describe('{{#eachEntry}} — dataset rows with preview markers', () => {
   const items = [
@@ -94,32 +48,6 @@ describe('{{item.<dataset>.<key>}} — direct keyed access', () => {
   });
   it('renders empty for an unknown key (no error)', () => {
     expect(renderTemplate('[{{item.services.nope.title}}]', { item })).toBe('[]');
-  });
-});
-
-describe('editsAreBodyOnly — inline-edit marker gate', () => {
-  it('is true when every {{edit}} sits in element-body text', () => {
-    expect(editsAreBodyOnly('<h1>{{edit "t"}}</h1><p>{{edit "b" "x"}}</p>')).toBe(true);
-    expect(editsAreBodyOnly('plain {{edit "t"}} text')).toBe(true);
-    expect(editsAreBodyOnly('<div title="ok">{{edit "t"}}</div>')).toBe(true); // edit is in body; the attr is literal
-  });
-
-  it('is false when an {{edit}} sits in an attribute / style / comment (a span would break out)', () => {
-    expect(editsAreBodyOnly('<a title="{{edit "t"}}">x</a>')).toBe(false);
-    expect(editsAreBodyOnly('<img alt="{{edit "a"}}">')).toBe(false);
-    expect(editsAreBodyOnly('<style>.x::before{content:"{{edit "c"}}"}</style>')).toBe(false);
-    expect(editsAreBodyOnly('<!-- {{edit "c"}} -->')).toBe(false);
-    // A `>` INSIDE a quoted attribute value must not prematurely end the tag.
-    expect(editsAreBodyOnly('<a title="a > b {{edit "t"}}">x</a>')).toBe(false);
-  });
-
-  it('is false for raw output or malformed source (conservative — no markers)', () => {
-    expect(editsAreBodyOnly('{{{ raw }}}')).toBe(false);
-    expect(editsAreBodyOnly('<h1>{{edit "t"')).toBe(false);
-    // A malformed style closer (`</style` without `>`) must not be treated as leaving the block.
-    expect(editsAreBodyOnly('<style>.x{}</style{{edit "y"}}></style>')).toBe(false);
-    // A proper close ends the rawtext block — a following body {{edit}} is then editable.
-    expect(editsAreBodyOnly('<style>.x{}</style><p>{{edit "y"}}</p>')).toBe(true);
   });
 });
 

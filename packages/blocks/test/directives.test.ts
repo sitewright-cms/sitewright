@@ -97,8 +97,8 @@ describe('resolveDirectives — data-sw-src / data-sw-bg (images)', () => {
   });
 
   it('sets a CSS-guarded background-image, merging existing style; refuses a breakout URL', () => {
-    // (the serializer renders the url() delimiter quotes as &apos; in the style attribute — the
-    //  browser decodes them, so the assertions avoid the quote char.)
+    // (the url() delimiter single-quotes appear LITERALLY in the double-quoted style attribute —
+    //  escapeAttribute only escapes " and &, not ' — so the assertions avoid the quote char.)
     const out = resolveDirectives('<section data-sw-bg="bg" style="padding:2rem">x</section>', {
       data: { bg: '/media/p/a/x.jpg' },
       preview: true,

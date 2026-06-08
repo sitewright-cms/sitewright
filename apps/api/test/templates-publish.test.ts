@@ -58,7 +58,7 @@ describe('templates → publish (code-first sources)', () => {
       id: 'promo',
       name: 'Promo layout',
       source:
-        '<section class="hero"><h1>{{edit "headline" "Default headline"}}</h1>' +
+        '<section class="hero"><h1 data-sw-text="headline">Default headline</h1>' +
         '<p>Brand: {{ company.name }}</p></section>',
     };
     expect((await proj.putContent('template', 'promo', template)).statusCode).toBe(200);
@@ -95,7 +95,7 @@ describe('templates → publish (code-first sources)', () => {
     const template = {
       id: 'animated',
       name: 'Animated',
-      source: '<div class="badge" data-aos="fade-up">{{edit "text" "Hi"}}</div>',
+      source: '<div class="badge" data-aos="fade-up" data-sw-text="text">Hi</div>',
     };
     expect((await proj.putContent('template', 'animated', template)).statusCode).toBe(200);
     expect((await proj.putContent('page', 'tpl-page', templatePage('animated'))).statusCode).toBe(200);
@@ -120,7 +120,7 @@ describe('templates → publish (code-first sources)', () => {
     const template = {
       id: 'promo',
       name: 'Promo layout',
-      source: '<h1>{{edit "headline" "Default headline"}}</h1>',
+      source: '<h1 data-sw-text="headline">Default headline</h1>',
     };
     expect((await proj.putContent('template', 'promo', template)).statusCode).toBe(200);
     // NOTE: preview needs the render pool — the harness configures one (source pages preview).
@@ -146,7 +146,7 @@ describe('templates → publish (code-first sources)', () => {
 
   it('round-trips source templates through import → export', async () => {
     const proj = client.project(projectId);
-    const template = { id: 'promo', name: 'Promo', source: '<p>{{edit "x" "y"}}</p>' };
+    const template = { id: 'promo', name: 'Promo', source: '<p data-sw-text="x">y</p>' };
     expect((await proj.putContent('template', 'promo', template)).statusCode).toBe(200);
     const exported = (await client.get(`${proj.base}/export`)).json() as { templates: unknown[] };
     expect(exported.templates).toEqual([template]);

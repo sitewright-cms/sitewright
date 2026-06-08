@@ -5,7 +5,6 @@ import {
   TreeOperationError,
   collectClassNames,
   extractClassNames,
-  extractEditRegions,
   extractRegions,
   collectIds,
   findDuplicateIds,
@@ -112,34 +111,10 @@ describe('walk / find / ancestors / ids', () => {
   });
 });
 
-describe('extractEditRegions (code-first client-editable regions)', () => {
-  it('lists each distinct {{edit}} region with its default, first occurrence winning', () => {
-    const src = `<h1>{{edit "headline" "Welcome"}}</h1><p>{{edit "sub" "A subtitle"}}</p><footer>{{edit "headline" "ignored dup"}}</footer>`;
-    expect(extractEditRegions(src)).toEqual([
-      { key: 'headline', default: 'Welcome' },
-      { key: 'sub', default: 'A subtitle' },
-    ]);
-  });
-
-  it('handles a default-less region and an escaped quote in the default', () => {
-    expect(extractEditRegions('{{edit "bare"}}')).toEqual([{ key: 'bare', default: '' }]);
-    expect(extractEditRegions('{{edit "q" "say \\"hi\\""}}')).toEqual([{ key: 'q', default: 'say "hi"' }]);
-  });
-
-  it('recognizes single-quoted args too (Handlebars accepts both quote styles)', () => {
-    expect(extractEditRegions("{{edit 'headline' 'Hello'}}")).toEqual([{ key: 'headline', default: 'Hello' }]);
-    expect(extractEditRegions("<p>{{edit 'cta'}}</p>")).toEqual([{ key: 'cta', default: '' }]);
-  });
-
-  it('returns nothing for a template with no edit regions', () => {
-    expect(extractEditRegions('<h1>{{ company.name }}</h1>')).toEqual([]);
-  });
-});
-
-describe('extractRegions (legacy {{edit}} + data-sw-* leaf directives)', () => {
-  it('lists {{edit}}, data-sw-text and data-sw-html regions with kinds', () => {
+describe('extractRegions (data-sw-* leaf directives)', () => {
+  it('lists data-sw-text and data-sw-html regions with kinds', () => {
     const src =
-      `<h1>{{edit "headline" "Welcome"}}</h1>` +
+      `<h1 data-sw-text="headline">Welcome</h1>` +
       `<p data-sw-text="tagline">A snappy tagline</p>` +
       `<section data-sw-html="intro"><p>Default intro</p></section>`;
     expect(extractRegions(src)).toEqual([

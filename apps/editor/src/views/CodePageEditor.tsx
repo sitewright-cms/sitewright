@@ -674,7 +674,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
               {regions.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-slate-300/80 bg-white/40 p-6 text-center text-sm text-slate-500">
                   This page has no editable regions yet. Mark editable text with{' '}
-                  <code>{'data-sw-text="…"'}</code> (or <code>{'{{edit "…"}}'}</code>), rich text with{' '}
+                  <code>{'data-sw-text="…"'}</code>, rich text with{' '}
                   <code>{'data-sw-html="…"'}</code>, link URLs with <code>{'data-sw-href="…"'}</code>, and images with{' '}
                   <code>{'data-sw-src="…"'}</code> / <code>{'data-sw-bg="…"'}</code> in the source.
                 </div>

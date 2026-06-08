@@ -31,7 +31,9 @@ In \`source\`:
 - Bind data: {{ company.* }} exposes the Corporate Identity you set (e.g. {{ company.name }}
   and any contact/address fields on \`identity\`); {{ page.title }}; {{ website.siteUrl }}; and
   {{#each data.<dataset>}}…{{/each}} for collections.
-- Mark text a CLIENT may later edit with {{edit "key" "Default text"}}.
+- Mark text a CLIENT may later edit by adding data-sw-text="key" to a real element, e.g.
+  <h1 data-sw-text="headline">Default text</h1> (rich text: data-sw-html; image: data-sw-src;
+  link: data-sw-href; background: data-sw-bg). The override is stored on the page as page.data.<key>.
 - NO JavaScript: no <script>, no on* handlers, no {{{triple-stache}}}. For interactivity use
   DaisyUI's CSS-only patterns (<details>, the popover attribute, checkbox). Put URLs in
   href/src as literal paths or via the {{url …}} helper.
@@ -79,7 +81,7 @@ via {{#if children}}…{{#each children}} (DaisyUI <details> submenu; children n
 nav slots). Every new project already has the empty-slug "home" page.
 TEMPLATES: set page.template to "global:landing", "global:text", or a project template id
 (kind "template": { id, name, source }) — the page then renders the TEMPLATE's source and
-contributes ONLY its {{edit}} \`content\`; leave page.source unset.
+contributes ONLY its editable \`data\` (page.data) overrides; leave page.source unset.
 
 MULTILINGUAL (document-level i18n): each language variant is ITS OWN page, not a field
 overlay. First declare the languages in settings: settings:{ defaultLocale:"en",
@@ -93,7 +95,7 @@ locales:["en","de"] }. Then for a translated page create a sibling page that:
   locale's other pages under it ({ path:"about", parent:"<locale>-home-id" } → /<locale>/about).
   Each locale's nav lists only its own pages.
 SHARE STRUCTURE by giving the variants the SAME \`template\` (or copy the \`source\`); each
-supplies only its own translated {{edit}} text and \`title\`/\`seo\`. For a one-off layout
+supplies only its own translated \`data\` (data-sw-text values) and \`title\`/\`seo\`. For a one-off layout
 difference, just give that variant its own \`source\`.
 LOCALIZED DATA: duplicate a dataset per locale as "<name>-<locale>" (lowercased), e.g.
 "services" + "services-de". A page with locale "de" auto-resolves {{#each data.services}}

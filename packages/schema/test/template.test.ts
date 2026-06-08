@@ -6,7 +6,7 @@ describe('TemplateSchema (code-first: Handlebars source, no block tree)', () => 
     const t = {
       id: 'blog',
       name: 'Blog Layout',
-      source: '<article class="prose">{{edit "body" "Write here"}}</article>',
+      source: '<article class="prose" data-sw-text="body">Write here</article>',
     };
     expect(TemplateSchema.parse(t)).toEqual(t);
   });

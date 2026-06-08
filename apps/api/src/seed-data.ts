@@ -106,7 +106,7 @@ export const EXAMPLE_WEBSITE = {
     </nav>
     <div>
       <h6 class="footer-title opacity-100">Newsletter</h6>
-      <p class="mt-3 text-sm text-neutral-content/70">{{edit "footer_news" "Occasional notes on web craft. No spam."}}</p>
+      <p class="mt-3 text-sm text-neutral-content/70" data-sw-text="footer_news">Occasional notes on web craft. No spam.</p>
       <a class="btn btn-outline btn-sm mt-4 border-neutral-content/30 text-neutral-content hover:border-primary hover:bg-primary hover:text-primary-content" href="/contact">Get in touch</a>
     </div>
   </div>
@@ -294,11 +294,11 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
     source: `<section class="nw-aurora text-white">
   <div class="mx-auto grid max-w-6xl items-center gap-10 px-6 py-24 lg:grid-cols-2 lg:py-32">
     <div class="nw-rise">
-      <span class="badge badge-lg border-white/30 bg-white/10 text-white">{{edit "hero_eyebrow" "Boutique web studio · San Francisco"}}</span>
-      <h1 class="mt-6 text-5xl font-extrabold leading-[1.05] tracking-tight sm:text-6xl">{{edit "hero_title" "Websites that win you more business."}}</h1>
-      <p class="mt-6 max-w-md text-lg text-white/80">{{edit "hero_sub" "We design and build fast, beautiful sites for ambitious brands — strategy, design, and engineering under one roof."}}</p>
+      <span class="badge badge-lg border-white/30 bg-white/10 text-white" data-sw-text="hero_eyebrow">Boutique web studio · San Francisco</span>
+      <h1 class="mt-6 text-5xl font-extrabold leading-[1.05] tracking-tight sm:text-6xl" data-sw-text="hero_title">Websites that win you more business.</h1>
+      <p class="mt-6 max-w-md text-lg text-white/80" data-sw-text="hero_sub">We design and build fast, beautiful sites for ambitious brands — strategy, design, and engineering under one roof.</p>
       <div class="mt-8 flex flex-wrap gap-3">
-        <a class="btn btn-lg gap-2 border-0 bg-white text-primary shadow-xl hover:bg-white/90 waves-effect" href="/contact">{{edit "hero_cta" "Start a project"}} ${icon('arrow-right', 'h-5 w-5')}</a>
+        <a class="btn btn-lg gap-2 border-0 bg-white text-primary shadow-xl hover:bg-white/90 waves-effect" href="/contact"><span data-sw-text="hero_cta">Start a project</span> ${icon('arrow-right', 'h-5 w-5')}</a>
         <a class="btn btn-lg btn-ghost gap-2 border-white/40 text-white hover:bg-white/10 waves-effect waves-light" href="/work">See our work ${icon('arrow-up-right', 'h-5 w-5')}</a>
       </div>
     </div>
@@ -313,35 +313,35 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
 
 <section class="border-y border-base-200 bg-base-100">
   <dl class="nw-stagger mx-auto grid max-w-5xl grid-cols-2 gap-6 px-6 py-12 text-center md:grid-cols-4">
-    <div><dt class="text-4xl font-extrabold text-primary">{{edit "stat1_n" "120+"}}</dt><dd class="mt-1 text-sm text-base-content/60">{{edit "stat1_l" "Sites shipped"}}</dd></div>
-    <div><dt class="text-4xl font-extrabold text-primary">{{edit "stat2_n" "9"}}</dt><dd class="mt-1 text-sm text-base-content/60">{{edit "stat2_l" "Years in business"}}</dd></div>
-    <div><dt class="text-4xl font-extrabold text-primary">{{edit "stat3_n" "100"}}</dt><dd class="mt-1 text-sm text-base-content/60">{{edit "stat3_l" "Avg. Lighthouse score"}}</dd></div>
-    <div><dt class="text-4xl font-extrabold text-primary">{{edit "stat4_n" "38%"}}</dt><dd class="mt-1 text-sm text-base-content/60">{{edit "stat4_l" "Avg. lift in enquiries"}}</dd></div>
+    <div><dt class="text-4xl font-extrabold text-primary" data-sw-text="stat1_n">120+</dt><dd class="mt-1 text-sm text-base-content/60" data-sw-text="stat1_l">Sites shipped</dd></div>
+    <div><dt class="text-4xl font-extrabold text-primary" data-sw-text="stat2_n">9</dt><dd class="mt-1 text-sm text-base-content/60" data-sw-text="stat2_l">Years in business</dd></div>
+    <div><dt class="text-4xl font-extrabold text-primary" data-sw-text="stat3_n">100</dt><dd class="mt-1 text-sm text-base-content/60" data-sw-text="stat3_l">Avg. Lighthouse score</dd></div>
+    <div><dt class="text-4xl font-extrabold text-primary" data-sw-text="stat4_n">38%</dt><dd class="mt-1 text-sm text-base-content/60" data-sw-text="stat4_l">Avg. lift in enquiries</dd></div>
   </dl>
 </section>
 
 <section class="mx-auto max-w-6xl px-6 pt-20">
   <div class="grid gap-10 lg:grid-cols-2 lg:items-center">
     <div>
-      <span class="text-sm font-semibold uppercase tracking-wide text-primary">{{edit "why_eyebrow" "Why Northwind"}}</span>
-      <h2 class="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">{{edit "why_title" "Senior people, no hand-offs, no surprises"}}</h2>
-      <p class="mt-4 text-base-content/60">{{edit "why_sub" "You work directly with the designers and engineers building your site — start to finish."}}</p>
+      <span class="text-sm font-semibold uppercase tracking-wide text-primary" data-sw-text="why_eyebrow">Why Northwind</span>
+      <h2 class="mt-3 text-3xl font-bold tracking-tight sm:text-4xl" data-sw-text="why_title">Senior people, no hand-offs, no surprises</h2>
+      <p class="mt-4 text-base-content/60" data-sw-text="why_sub">You work directly with the designers and engineers building your site — start to finish.</p>
     </div>
     <ul class="nw-stagger grid gap-3 sm:grid-cols-2">
-      <li class="flex items-start gap-3"><span class="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">${icon('check', 'h-4 w-4')}</span><span class="text-base-content/80">{{edit "why1" "Fixed scope & timeline"}}</span></li>
-      <li class="flex items-start gap-3"><span class="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">${icon('check', 'h-4 w-4')}</span><span class="text-base-content/80">{{edit "why2" "Perfect Lighthouse scores"}}</span></li>
-      <li class="flex items-start gap-3"><span class="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">${icon('check', 'h-4 w-4')}</span><span class="text-base-content/80">{{edit "why3" "You can edit the content yourself"}}</span></li>
-      <li class="flex items-start gap-3"><span class="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">${icon('check', 'h-4 w-4')}</span><span class="text-base-content/80">{{edit "why4" "Accessible & SEO-ready"}}</span></li>
-      <li class="flex items-start gap-3"><span class="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">${icon('check', 'h-4 w-4')}</span><span class="text-base-content/80">{{edit "why5" "Hosting-friendly static export"}}</span></li>
-      <li class="flex items-start gap-3"><span class="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">${icon('check', 'h-4 w-4')}</span><span class="text-base-content/80">{{edit "why6" "Ongoing care plans"}}</span></li>
+      <li class="flex items-start gap-3"><span class="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">${icon('check', 'h-4 w-4')}</span><span class="text-base-content/80" data-sw-text="why1">Fixed scope &amp; timeline</span></li>
+      <li class="flex items-start gap-3"><span class="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">${icon('check', 'h-4 w-4')}</span><span class="text-base-content/80" data-sw-text="why2">Perfect Lighthouse scores</span></li>
+      <li class="flex items-start gap-3"><span class="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">${icon('check', 'h-4 w-4')}</span><span class="text-base-content/80" data-sw-text="why3">You can edit the content yourself</span></li>
+      <li class="flex items-start gap-3"><span class="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">${icon('check', 'h-4 w-4')}</span><span class="text-base-content/80" data-sw-text="why4">Accessible &amp; SEO-ready</span></li>
+      <li class="flex items-start gap-3"><span class="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">${icon('check', 'h-4 w-4')}</span><span class="text-base-content/80" data-sw-text="why5">Hosting-friendly static export</span></li>
+      <li class="flex items-start gap-3"><span class="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">${icon('check', 'h-4 w-4')}</span><span class="text-base-content/80" data-sw-text="why6">Ongoing care plans</span></li>
     </ul>
   </div>
 </section>
 
 <section class="mx-auto max-w-6xl px-6 py-20">
   <div class="max-w-2xl">
-    <h2 class="text-3xl font-bold tracking-tight sm:text-4xl">{{edit "svc_title" "Everything you need under one roof"}}</h2>
-    <p class="mt-3 text-base-content/60">{{edit "svc_sub" "Strategy, design, and engineering — no hand-offs, no agencies-of-agencies."}}</p>
+    <h2 class="text-3xl font-bold tracking-tight sm:text-4xl" data-sw-text="svc_title">Everything you need under one roof</h2>
+    <p class="mt-3 text-base-content/60" data-sw-text="svc_sub">Strategy, design, and engineering — no hand-offs, no agencies-of-agencies.</p>
   </div>
   <div class="nw-stagger mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
     {{#eachEntry data.services}}
@@ -360,7 +360,7 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
 <section class="bg-base-200">
   <div class="mx-auto max-w-6xl px-6 py-20">
     <div class="flex flex-wrap items-end justify-between gap-4">
-      <h2 class="text-3xl font-bold tracking-tight sm:text-4xl">{{edit "work_title" "Selected work"}}</h2>
+      <h2 class="text-3xl font-bold tracking-tight sm:text-4xl" data-sw-text="work_title">Selected work</h2>
       <a class="inline-flex items-center gap-1.5 font-medium text-primary nw-underline" href="/work">View all projects ${icon('arrow-right', 'h-4 w-4')}</a>
     </div>
     <div class="nw-stagger mt-12 grid gap-6 md:grid-cols-3">
@@ -379,7 +379,7 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
 </section>
 
 <section class="mx-auto max-w-6xl px-6 py-20">
-  <h2 class="text-center text-3xl font-bold tracking-tight sm:text-4xl">{{edit "tst_title" "Loved by the brands we build for"}}</h2>
+  <h2 class="text-center text-3xl font-bold tracking-tight sm:text-4xl" data-sw-text="tst_title">Loved by the brands we build for</h2>
   <div class="nw-stagger mt-12 grid gap-6 lg:grid-cols-3">
     {{#eachEntry data.testimonials}}
     <figure class="card nw-card border border-base-200 bg-base-100 p-2 shadow-sm">
@@ -395,9 +395,9 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
 
 <section class="bg-neutral text-neutral-content">
   <div class="mx-auto flex max-w-4xl flex-col items-center gap-6 px-6 py-20 text-center">
-    <h2 class="text-3xl font-bold tracking-tight sm:text-4xl">{{edit "cta_title" "Have a project in mind?"}}</h2>
-    <p class="max-w-xl text-neutral-content/70">{{edit "cta_sub" "Tell us where you want to be in twelve months. We’ll show you how the right website gets you there."}}</p>
-    <a class="btn btn-primary btn-lg gap-2 shadow-xl shadow-primary/30" href="/contact">${icon('calendar', 'h-5 w-5')} {{edit "cta_btn" "Book an intro call"}}</a>
+    <h2 class="text-3xl font-bold tracking-tight sm:text-4xl" data-sw-text="cta_title">Have a project in mind?</h2>
+    <p class="max-w-xl text-neutral-content/70" data-sw-text="cta_sub">Tell us where you want to be in twelve months. We’ll show you how the right website gets you there.</p>
+    <a class="btn btn-primary btn-lg gap-2 shadow-xl shadow-primary/30" href="/contact">${icon('calendar', 'h-5 w-5')} <span data-sw-text="cta_btn">Book an intro call</span></a>
   </div>
 </section>`,
   },
@@ -412,9 +412,9 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
     nav: { title: 'Work', slots: ['header'], order: 2 },
     source: `<section class="mx-auto max-w-6xl px-6 pt-20 pb-6">
   <div class="nw-rise max-w-2xl">
-    <span class="text-sm font-semibold uppercase tracking-wide text-primary">{{edit "work_eyebrow" "Portfolio"}}</span>
-    <h1 class="mt-3 text-4xl font-extrabold tracking-tight sm:text-5xl">{{edit "work_h1" "Work we’re proud of"}}</h1>
-    <p class="mt-4 text-lg text-base-content/60">{{edit "work_intro" "A selection of recent sites across retail, health, finance, and the arts — each one hand-built and fast."}}</p>
+    <span class="text-sm font-semibold uppercase tracking-wide text-primary" data-sw-text="work_eyebrow">Portfolio</span>
+    <h1 class="mt-3 text-4xl font-extrabold tracking-tight sm:text-5xl" data-sw-text="work_h1">Work we’re proud of</h1>
+    <p class="mt-4 text-lg text-base-content/60" data-sw-text="work_intro">A selection of recent sites across retail, health, finance, and the arts — each one hand-built and fast.</p>
   </div>
 </section>
 <section class="mx-auto max-w-6xl px-6 pb-24">
@@ -448,9 +448,9 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
     translationGroup: 'services',
     source: `<section class="mx-auto max-w-6xl px-6 pt-20 pb-8">
   <div class="nw-rise max-w-2xl">
-    <span class="text-sm font-semibold uppercase tracking-wide text-primary">{{edit "srv_eyebrow" "What we do"}}</span>
-    <h1 class="mt-3 text-4xl font-extrabold tracking-tight sm:text-5xl">{{edit "srv_h1" "Services built to grow your business"}}</h1>
-    <p class="mt-4 text-lg text-base-content/60">{{edit "srv_intro" "Engage us end-to-end or for a single phase. Either way you work directly with the people doing the work."}}</p>
+    <span class="text-sm font-semibold uppercase tracking-wide text-primary" data-sw-text="srv_eyebrow">What we do</span>
+    <h1 class="mt-3 text-4xl font-extrabold tracking-tight sm:text-5xl" data-sw-text="srv_h1">Services built to grow your business</h1>
+    <p class="mt-4 text-lg text-base-content/60" data-sw-text="srv_intro">Engage us end-to-end or for a single phase. Either way you work directly with the people doing the work.</p>
   </div>
 </section>
 <section class="mx-auto max-w-6xl px-6 pb-12">
@@ -466,14 +466,14 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
   </div>
 </section>
 <section class="mx-auto max-w-5xl px-6 py-20">
-  <h2 class="text-3xl font-bold tracking-tight">{{edit "proc_title" "A simple, proven process"}}</h2>
+  <h2 class="text-3xl font-bold tracking-tight" data-sw-text="proc_title">A simple, proven process</h2>
   <ol class="nw-stagger mt-10 grid gap-6 md:grid-cols-4">
-    <li class="rounded-2xl border border-base-200 bg-base-100 p-6"><div class="text-sm font-bold text-primary">01</div><h3 class="mt-1 font-semibold">{{edit "p1_t" "Discover"}}</h3><p class="mt-1 text-sm text-base-content/60">{{edit "p1_b" "Goals, audience, and the metrics that matter."}}</p></li>
-    <li class="rounded-2xl border border-base-200 bg-base-100 p-6"><div class="text-sm font-bold text-primary">02</div><h3 class="mt-1 font-semibold">{{edit "p2_t" "Design"}}</h3><p class="mt-1 text-sm text-base-content/60">{{edit "p2_b" "Interfaces and a brand system, reviewed together."}}</p></li>
-    <li class="rounded-2xl border border-base-200 bg-base-100 p-6"><div class="text-sm font-bold text-primary">03</div><h3 class="mt-1 font-semibold">{{edit "p3_t" "Build"}}</h3><p class="mt-1 text-sm text-base-content/60">{{edit "p3_b" "Fast, accessible, content-managed, SEO-ready."}}</p></li>
-    <li class="rounded-2xl border border-base-200 bg-base-100 p-6"><div class="text-sm font-bold text-primary">04</div><h3 class="mt-1 font-semibold">{{edit "p4_t" "Launch & care"}}</h3><p class="mt-1 text-sm text-base-content/60">{{edit "p4_b" "We ship, measure, and keep improving."}}</p></li>
+    <li class="rounded-2xl border border-base-200 bg-base-100 p-6"><div class="text-sm font-bold text-primary">01</div><h3 class="mt-1 font-semibold" data-sw-text="p1_t">Discover</h3><p class="mt-1 text-sm text-base-content/60" data-sw-text="p1_b">Goals, audience, and the metrics that matter.</p></li>
+    <li class="rounded-2xl border border-base-200 bg-base-100 p-6"><div class="text-sm font-bold text-primary">02</div><h3 class="mt-1 font-semibold" data-sw-text="p2_t">Design</h3><p class="mt-1 text-sm text-base-content/60" data-sw-text="p2_b">Interfaces and a brand system, reviewed together.</p></li>
+    <li class="rounded-2xl border border-base-200 bg-base-100 p-6"><div class="text-sm font-bold text-primary">03</div><h3 class="mt-1 font-semibold" data-sw-text="p3_t">Build</h3><p class="mt-1 text-sm text-base-content/60" data-sw-text="p3_b">Fast, accessible, content-managed, SEO-ready.</p></li>
+    <li class="rounded-2xl border border-base-200 bg-base-100 p-6"><div class="text-sm font-bold text-primary">04</div><h3 class="mt-1 font-semibold" data-sw-text="p4_t">Launch &amp; care</h3><p class="mt-1 text-sm text-base-content/60" data-sw-text="p4_b">We ship, measure, and keep improving.</p></li>
   </ol>
-  <div class="mt-12"><a class="btn btn-primary btn-lg" href="/contact">{{edit "srv_cta" "Start a project"}}</a></div>
+  <div class="mt-12"><a class="btn btn-primary btn-lg" href="/contact" data-sw-text="srv_cta">Start a project</a></div>
 </section>`,
   },
 
@@ -490,15 +490,15 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
     // and is indented under it in the editor's pages list. No own nav slot needed.
     parent: 'services',
     source: `<section class="mx-auto max-w-4xl px-6 py-20">
-  <a class="inline-flex items-center gap-1.5 text-sm font-medium text-primary nw-underline" href="/services">${icon('arrow-left', 'h-4 w-4')} {{edit "back" "All services"}}</a>
-  <span class="mt-6 block text-sm font-semibold uppercase tracking-wide text-primary">{{edit "wd_eyebrow" "Service"}}</span>
-  <h1 class="mt-2 text-4xl font-extrabold tracking-tight sm:text-5xl">{{edit "wd_h1" "Web Design"}}</h1>
-  <p class="mt-4 text-lg text-base-content/60">{{edit "wd_intro" "Distinctive, on-brand interfaces designed pixel-perfect for every screen — from first wireframe to a polished, accessible UI."}}</p>
+  <a class="inline-flex items-center gap-1.5 text-sm font-medium text-primary nw-underline" href="/services">${icon('arrow-left', 'h-4 w-4')} <span data-sw-text="back">All services</span></a>
+  <span class="mt-6 block text-sm font-semibold uppercase tracking-wide text-primary" data-sw-text="wd_eyebrow">Service</span>
+  <h1 class="mt-2 text-4xl font-extrabold tracking-tight sm:text-5xl" data-sw-text="wd_h1">Web Design</h1>
+  <p class="mt-4 text-lg text-base-content/60" data-sw-text="wd_intro">Distinctive, on-brand interfaces designed pixel-perfect for every screen — from first wireframe to a polished, accessible UI.</p>
   <div class="nw-stagger mt-10 grid gap-4 sm:grid-cols-2">
-    <div class="rounded-2xl border border-base-200 bg-base-100 p-6"><h3 class="font-semibold">{{edit "wd_1t" "Design systems"}}</h3><p class="mt-1 text-sm text-base-content/60">{{edit "wd_1b" "Reusable components and tokens that scale with your brand."}}</p></div>
-    <div class="rounded-2xl border border-base-200 bg-base-100 p-6"><h3 class="font-semibold">{{edit "wd_2t" "Responsive by default"}}</h3><p class="mt-1 text-sm text-base-content/60">{{edit "wd_2b" "Every layout is crafted for mobile, tablet, and desktop."}}</p></div>
+    <div class="rounded-2xl border border-base-200 bg-base-100 p-6"><h3 class="font-semibold" data-sw-text="wd_1t">Design systems</h3><p class="mt-1 text-sm text-base-content/60" data-sw-text="wd_1b">Reusable components and tokens that scale with your brand.</p></div>
+    <div class="rounded-2xl border border-base-200 bg-base-100 p-6"><h3 class="font-semibold" data-sw-text="wd_2t">Responsive by default</h3><p class="mt-1 text-sm text-base-content/60" data-sw-text="wd_2b">Every layout is crafted for mobile, tablet, and desktop.</p></div>
   </div>
-  <div class="mt-10"><a class="btn btn-primary btn-lg" href="/contact">{{edit "wd_cta" "Start a project"}}</a></div>
+  <div class="mt-10"><a class="btn btn-primary btn-lg" href="/contact" data-sw-text="wd_cta">Start a project</a></div>
 </section>`,
   },
   {
@@ -508,15 +508,15 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
     root: placeholderRoot,
     parent: 'services',
     source: `<section class="mx-auto max-w-4xl px-6 py-20">
-  <a class="inline-flex items-center gap-1.5 text-sm font-medium text-primary nw-underline" href="/services">${icon('arrow-left', 'h-4 w-4')} {{edit "back" "All services"}}</a>
-  <span class="mt-6 block text-sm font-semibold uppercase tracking-wide text-primary">{{edit "seo_eyebrow" "Service"}}</span>
-  <h1 class="mt-2 text-4xl font-extrabold tracking-tight sm:text-5xl">{{edit "seo_h1" "SEO & Performance"}}</h1>
-  <p class="mt-4 text-lg text-base-content/60">{{edit "seo_intro" "Technical SEO, Core Web Vitals, and analytics wired in from day one — so the fast, beautiful site you launch is the one Google rewards."}}</p>
+  <a class="inline-flex items-center gap-1.5 text-sm font-medium text-primary nw-underline" href="/services">${icon('arrow-left', 'h-4 w-4')} <span data-sw-text="back">All services</span></a>
+  <span class="mt-6 block text-sm font-semibold uppercase tracking-wide text-primary" data-sw-text="seo_eyebrow">Service</span>
+  <h1 class="mt-2 text-4xl font-extrabold tracking-tight sm:text-5xl" data-sw-text="seo_h1">SEO &amp; Performance</h1>
+  <p class="mt-4 text-lg text-base-content/60" data-sw-text="seo_intro">Technical SEO, Core Web Vitals, and analytics wired in from day one — so the fast, beautiful site you launch is the one Google rewards.</p>
   <div class="nw-stagger mt-10 grid gap-4 sm:grid-cols-2">
-    <div class="rounded-2xl border border-base-200 bg-base-100 p-6"><h3 class="font-semibold">{{edit "seo_1t" "Core Web Vitals"}}</h3><p class="mt-1 text-sm text-base-content/60">{{edit "seo_1b" "We tune LCP, CLS, and INP until the scores are green."}}</p></div>
-    <div class="rounded-2xl border border-base-200 bg-base-100 p-6"><h3 class="font-semibold">{{edit "seo_2t" "Technical SEO"}}</h3><p class="mt-1 text-sm text-base-content/60">{{edit "seo_2b" "Structured data, sitemaps, and clean, crawlable markup."}}</p></div>
+    <div class="rounded-2xl border border-base-200 bg-base-100 p-6"><h3 class="font-semibold" data-sw-text="seo_1t">Core Web Vitals</h3><p class="mt-1 text-sm text-base-content/60" data-sw-text="seo_1b">We tune LCP, CLS, and INP until the scores are green.</p></div>
+    <div class="rounded-2xl border border-base-200 bg-base-100 p-6"><h3 class="font-semibold" data-sw-text="seo_2t">Technical SEO</h3><p class="mt-1 text-sm text-base-content/60" data-sw-text="seo_2b">Structured data, sitemaps, and clean, crawlable markup.</p></div>
   </div>
-  <div class="mt-10"><a class="btn btn-primary btn-lg" href="/contact">{{edit "seo_cta" "Start a project"}}</a></div>
+  <div class="mt-10"><a class="btn btn-primary btn-lg" href="/contact" data-sw-text="seo_cta">Start a project</a></div>
 </section>`,
   },
 
@@ -530,10 +530,10 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
     nav: { slots: ['header'], order: 4 },
     source: `<section class="mx-auto grid max-w-6xl items-center gap-12 px-6 py-20 lg:grid-cols-2">
   <div class="nw-rise">
-    <span class="text-sm font-semibold uppercase tracking-wide text-primary">{{edit "ab_eyebrow" "About us"}}</span>
-    <h1 class="mt-3 text-4xl font-extrabold tracking-tight sm:text-5xl">{{edit "ab_h1" "A small, senior team — by design"}}</h1>
-    <p class="mt-5 text-lg text-base-content/70">{{edit "ab_p1" "Northwind is a boutique studio of designers and engineers who’d rather do a few projects brilliantly than many adequately. No juniors learning on your dime, no layers of account managers — just the people doing the work."}}</p>
-    <p class="mt-4 text-base-content/70">{{edit "ab_p2" "We believe a great website is the hardest-working member of your team: fast, clear, and quietly persuasive. That belief shapes every decision we make."}}</p>
+    <span class="text-sm font-semibold uppercase tracking-wide text-primary" data-sw-text="ab_eyebrow">About us</span>
+    <h1 class="mt-3 text-4xl font-extrabold tracking-tight sm:text-5xl" data-sw-text="ab_h1">A small, senior team — by design</h1>
+    <p class="mt-5 text-lg text-base-content/70" data-sw-text="ab_p1">Northwind is a boutique studio of designers and engineers who’d rather do a few projects brilliantly than many adequately. No juniors learning on your dime, no layers of account managers — just the people doing the work.</p>
+    <p class="mt-4 text-base-content/70" data-sw-text="ab_p2">We believe a great website is the hardest-working member of your team: fast, clear, and quietly persuasive. That belief shapes every decision we make.</p>
   </div>
   <div class="nw-zoom overflow-hidden rounded-3xl border border-base-200 shadow-xl">
     <img src="${assets.studio}" alt="The Northwind studio" class="h-full w-full object-cover" loading="lazy" />
@@ -542,17 +542,17 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
 
 <section class="bg-base-200">
   <div class="mx-auto max-w-6xl px-6 py-20">
-    <h2 class="text-3xl font-bold tracking-tight">{{edit "val_title" "What we value"}}</h2>
+    <h2 class="text-3xl font-bold tracking-tight" data-sw-text="val_title">What we value</h2>
     <div class="nw-stagger mt-10 grid gap-6 md:grid-cols-3">
-      <div class="rounded-2xl bg-base-100 p-7 shadow-sm"><span class="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">${icon('star', 'h-5 w-5')}</span><h3 class="mt-4 text-lg font-bold">{{edit "v1_t" "Craft over churn"}}</h3><p class="mt-2 text-base-content/60">{{edit "v1_b" "We sweat the details most teams skip — because details are what people feel."}}</p></div>
-      <div class="rounded-2xl bg-base-100 p-7 shadow-sm"><span class="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">${icon('arrow-up-right', 'h-5 w-5')}</span><h3 class="mt-4 text-lg font-bold">{{edit "v2_t" "Speed is a feature"}}</h3><p class="mt-2 text-base-content/60">{{edit "v2_b" "Every site we ship is static, optimized, and built to load instantly."}}</p></div>
-      <div class="rounded-2xl bg-base-100 p-7 shadow-sm"><span class="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">${icon('check', 'h-5 w-5')}</span><h3 class="mt-4 text-lg font-bold">{{edit "v3_t" "Plain dealing"}}</h3><p class="mt-2 text-base-content/60">{{edit "v3_b" "Fixed scopes, clear timelines, and honest advice — even when it costs us the upsell."}}</p></div>
+      <div class="rounded-2xl bg-base-100 p-7 shadow-sm"><span class="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">${icon('star', 'h-5 w-5')}</span><h3 class="mt-4 text-lg font-bold" data-sw-text="v1_t">Craft over churn</h3><p class="mt-2 text-base-content/60" data-sw-text="v1_b">We sweat the details most teams skip — because details are what people feel.</p></div>
+      <div class="rounded-2xl bg-base-100 p-7 shadow-sm"><span class="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">${icon('arrow-up-right', 'h-5 w-5')}</span><h3 class="mt-4 text-lg font-bold" data-sw-text="v2_t">Speed is a feature</h3><p class="mt-2 text-base-content/60" data-sw-text="v2_b">Every site we ship is static, optimized, and built to load instantly.</p></div>
+      <div class="rounded-2xl bg-base-100 p-7 shadow-sm"><span class="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">${icon('check', 'h-5 w-5')}</span><h3 class="mt-4 text-lg font-bold" data-sw-text="v3_t">Plain dealing</h3><p class="mt-2 text-base-content/60" data-sw-text="v3_b">Fixed scopes, clear timelines, and honest advice — even when it costs us the upsell.</p></div>
     </div>
   </div>
 </section>
 
 <section class="mx-auto max-w-6xl px-6 py-20">
-  <h2 class="text-3xl font-bold tracking-tight">{{edit "team_title" "The people you’ll work with"}}</h2>
+  <h2 class="text-3xl font-bold tracking-tight" data-sw-text="team_title">The people you’ll work with</h2>
   <div class="nw-stagger mt-10 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
     {{#eachEntry data.team}}
     <div class="text-center">
@@ -637,11 +637,11 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
     source: `<section class="nw-aurora text-white">
   <div class="mx-auto grid max-w-6xl items-center gap-10 px-6 py-24 lg:grid-cols-2 lg:py-32">
     <div class="nw-rise">
-      <span class="badge badge-lg border-white/30 bg-white/10 text-white">{{edit "hero_eyebrow" "Boutique-Webstudio · San Francisco"}}</span>
-      <h1 class="mt-6 text-5xl font-extrabold leading-[1.05] tracking-tight sm:text-6xl">{{edit "hero_title" "Websites, die Ihnen mehr Geschäft bringen."}}</h1>
-      <p class="mt-6 max-w-md text-lg text-white/80">{{edit "hero_sub" "Wir gestalten und bauen schnelle, schöne Websites für ambitionierte Marken — Strategie, Design und Entwicklung aus einer Hand."}}</p>
+      <span class="badge badge-lg border-white/30 bg-white/10 text-white" data-sw-text="hero_eyebrow">Boutique-Webstudio · San Francisco</span>
+      <h1 class="mt-6 text-5xl font-extrabold leading-[1.05] tracking-tight sm:text-6xl" data-sw-text="hero_title">Websites, die Ihnen mehr Geschäft bringen.</h1>
+      <p class="mt-6 max-w-md text-lg text-white/80" data-sw-text="hero_sub">Wir gestalten und bauen schnelle, schöne Websites für ambitionierte Marken — Strategie, Design und Entwicklung aus einer Hand.</p>
       <div class="mt-8 flex flex-wrap gap-3">
-        <a class="btn btn-lg gap-2 border-0 bg-white text-primary shadow-xl hover:bg-white/90 waves-effect" href="/contact">{{edit "hero_cta" "Projekt starten"}} ${icon('arrow-right', 'h-5 w-5')}</a>
+        <a class="btn btn-lg gap-2 border-0 bg-white text-primary shadow-xl hover:bg-white/90 waves-effect" href="/contact"><span data-sw-text="hero_cta">Projekt starten</span> ${icon('arrow-right', 'h-5 w-5')}</a>
         <a class="btn btn-lg btn-ghost gap-2 border-white/40 text-white hover:bg-white/10 waves-effect waves-light" href="/work">Arbeiten ansehen ${icon('arrow-up-right', 'h-5 w-5')}</a>
       </div>
     </div>
@@ -655,17 +655,17 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
 
 <section class="border-y border-base-200 bg-base-100">
   <dl class="nw-stagger mx-auto grid max-w-5xl grid-cols-2 gap-6 px-6 py-12 text-center md:grid-cols-4">
-    <div><dt class="text-4xl font-extrabold text-primary">{{edit "stat1_n" "120+"}}</dt><dd class="mt-1 text-sm text-base-content/60">{{edit "stat1_l" "Websites ausgeliefert"}}</dd></div>
-    <div><dt class="text-4xl font-extrabold text-primary">{{edit "stat2_n" "9"}}</dt><dd class="mt-1 text-sm text-base-content/60">{{edit "stat2_l" "Jahre am Markt"}}</dd></div>
-    <div><dt class="text-4xl font-extrabold text-primary">{{edit "stat3_n" "100"}}</dt><dd class="mt-1 text-sm text-base-content/60">{{edit "stat3_l" "Ø Lighthouse-Score"}}</dd></div>
-    <div><dt class="text-4xl font-extrabold text-primary">{{edit "stat4_n" "38%"}}</dt><dd class="mt-1 text-sm text-base-content/60">{{edit "stat4_l" "Ø mehr Anfragen"}}</dd></div>
+    <div><dt class="text-4xl font-extrabold text-primary" data-sw-text="stat1_n">120+</dt><dd class="mt-1 text-sm text-base-content/60" data-sw-text="stat1_l">Websites ausgeliefert</dd></div>
+    <div><dt class="text-4xl font-extrabold text-primary" data-sw-text="stat2_n">9</dt><dd class="mt-1 text-sm text-base-content/60" data-sw-text="stat2_l">Jahre am Markt</dd></div>
+    <div><dt class="text-4xl font-extrabold text-primary" data-sw-text="stat3_n">100</dt><dd class="mt-1 text-sm text-base-content/60" data-sw-text="stat3_l">Ø Lighthouse-Score</dd></div>
+    <div><dt class="text-4xl font-extrabold text-primary" data-sw-text="stat4_n">38%</dt><dd class="mt-1 text-sm text-base-content/60" data-sw-text="stat4_l">Ø mehr Anfragen</dd></div>
   </dl>
 </section>
 
 <section class="mx-auto max-w-6xl px-6 py-20">
   <div class="max-w-2xl">
-    <h2 class="text-3xl font-bold tracking-tight sm:text-4xl">{{edit "svc_title" "Alles aus einer Hand"}}</h2>
-    <p class="mt-3 text-base-content/60">{{edit "svc_sub" "Strategie, Design und Entwicklung — keine Übergaben, keine Agentur-Ketten."}}</p>
+    <h2 class="text-3xl font-bold tracking-tight sm:text-4xl" data-sw-text="svc_title">Alles aus einer Hand</h2>
+    <p class="mt-3 text-base-content/60" data-sw-text="svc_sub">Strategie, Design und Entwicklung — keine Übergaben, keine Agentur-Ketten.</p>
   </div>
   <div class="nw-stagger mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
     {{#eachEntry data.services}}
@@ -683,9 +683,9 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
 
 <section class="bg-neutral text-neutral-content">
   <div class="mx-auto flex max-w-4xl flex-col items-center gap-6 px-6 py-20 text-center">
-    <h2 class="text-3xl font-bold tracking-tight sm:text-4xl">{{edit "cta_title" "Sie haben ein Projekt im Kopf?"}}</h2>
-    <p class="max-w-xl text-neutral-content/70">{{edit "cta_sub" "Sagen Sie uns, wo Sie in zwölf Monaten stehen wollen — wir zeigen Ihnen, wie die richtige Website Sie dorthin bringt."}}</p>
-    <a class="btn btn-primary btn-lg gap-2 shadow-xl shadow-primary/30" href="/contact">${icon('calendar', 'h-5 w-5')} {{edit "cta_btn" "Kennenlern-Termin buchen"}}</a>
+    <h2 class="text-3xl font-bold tracking-tight sm:text-4xl" data-sw-text="cta_title">Sie haben ein Projekt im Kopf?</h2>
+    <p class="max-w-xl text-neutral-content/70" data-sw-text="cta_sub">Sagen Sie uns, wo Sie in zwölf Monaten stehen wollen — wir zeigen Ihnen, wie die richtige Website Sie dorthin bringt.</p>
+    <a class="btn btn-primary btn-lg gap-2 shadow-xl shadow-primary/30" href="/contact">${icon('calendar', 'h-5 w-5')} <span data-sw-text="cta_btn">Kennenlern-Termin buchen</span></a>
   </div>
 </section>`,
   },
@@ -703,9 +703,9 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
     nav: { title: 'Leistungen', slots: ['header'], order: 2 },
     source: `<section class="mx-auto max-w-6xl px-6 pt-20 pb-8">
   <div class="nw-rise max-w-2xl">
-    <span class="text-sm font-semibold uppercase tracking-wide text-primary">{{edit "srv_eyebrow" "Was wir tun"}}</span>
-    <h1 class="mt-3 text-4xl font-extrabold tracking-tight sm:text-5xl">{{edit "srv_h1" "Leistungen, die Ihr Geschäft wachsen lassen"}}</h1>
-    <p class="mt-4 text-lg text-base-content/60">{{edit "srv_intro" "Buchen Sie uns durchgängig oder für eine einzelne Phase. So oder so arbeiten Sie direkt mit den Menschen, die die Arbeit machen."}}</p>
+    <span class="text-sm font-semibold uppercase tracking-wide text-primary" data-sw-text="srv_eyebrow">Was wir tun</span>
+    <h1 class="mt-3 text-4xl font-extrabold tracking-tight sm:text-5xl" data-sw-text="srv_h1">Leistungen, die Ihr Geschäft wachsen lassen</h1>
+    <p class="mt-4 text-lg text-base-content/60" data-sw-text="srv_intro">Buchen Sie uns durchgängig oder für eine einzelne Phase. So oder so arbeiten Sie direkt mit den Menschen, die die Arbeit machen.</p>
   </div>
 </section>
 <section class="mx-auto max-w-6xl px-6 pb-12">
@@ -721,14 +721,14 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
   </div>
 </section>
 <section class="mx-auto max-w-5xl px-6 py-20">
-  <h2 class="text-3xl font-bold tracking-tight">{{edit "proc_title" "Ein einfacher, bewährter Ablauf"}}</h2>
+  <h2 class="text-3xl font-bold tracking-tight" data-sw-text="proc_title">Ein einfacher, bewährter Ablauf</h2>
   <ol class="nw-stagger mt-10 grid gap-6 md:grid-cols-4">
-    <li class="rounded-2xl border border-base-200 bg-base-100 p-6"><div class="text-sm font-bold text-primary">01</div><h3 class="mt-1 font-semibold">{{edit "p1_t" "Entdecken"}}</h3><p class="mt-1 text-sm text-base-content/60">{{edit "p1_b" "Ziele, Zielgruppe und die Kennzahlen, die zählen."}}</p></li>
-    <li class="rounded-2xl border border-base-200 bg-base-100 p-6"><div class="text-sm font-bold text-primary">02</div><h3 class="mt-1 font-semibold">{{edit "p2_t" "Gestalten"}}</h3><p class="mt-1 text-sm text-base-content/60">{{edit "p2_b" "Oberflächen und ein Markensystem, gemeinsam abgestimmt."}}</p></li>
-    <li class="rounded-2xl border border-base-200 bg-base-100 p-6"><div class="text-sm font-bold text-primary">03</div><h3 class="mt-1 font-semibold">{{edit "p3_t" "Bauen"}}</h3><p class="mt-1 text-sm text-base-content/60">{{edit "p3_b" "Schnell, barrierearm, pflegbar, SEO-bereit."}}</p></li>
-    <li class="rounded-2xl border border-base-200 bg-base-100 p-6"><div class="text-sm font-bold text-primary">04</div><h3 class="mt-1 font-semibold">{{edit "p4_t" "Launch & Pflege"}}</h3><p class="mt-1 text-sm text-base-content/60">{{edit "p4_b" "Wir veröffentlichen, messen und verbessern weiter."}}</p></li>
+    <li class="rounded-2xl border border-base-200 bg-base-100 p-6"><div class="text-sm font-bold text-primary">01</div><h3 class="mt-1 font-semibold" data-sw-text="p1_t">Entdecken</h3><p class="mt-1 text-sm text-base-content/60" data-sw-text="p1_b">Ziele, Zielgruppe und die Kennzahlen, die zählen.</p></li>
+    <li class="rounded-2xl border border-base-200 bg-base-100 p-6"><div class="text-sm font-bold text-primary">02</div><h3 class="mt-1 font-semibold" data-sw-text="p2_t">Gestalten</h3><p class="mt-1 text-sm text-base-content/60" data-sw-text="p2_b">Oberflächen und ein Markensystem, gemeinsam abgestimmt.</p></li>
+    <li class="rounded-2xl border border-base-200 bg-base-100 p-6"><div class="text-sm font-bold text-primary">03</div><h3 class="mt-1 font-semibold" data-sw-text="p3_t">Bauen</h3><p class="mt-1 text-sm text-base-content/60" data-sw-text="p3_b">Schnell, barrierearm, pflegbar, SEO-bereit.</p></li>
+    <li class="rounded-2xl border border-base-200 bg-base-100 p-6"><div class="text-sm font-bold text-primary">04</div><h3 class="mt-1 font-semibold" data-sw-text="p4_t">Launch &amp; Pflege</h3><p class="mt-1 text-sm text-base-content/60" data-sw-text="p4_b">Wir veröffentlichen, messen und verbessern weiter.</p></li>
   </ol>
-  <div class="mt-12"><a class="btn btn-primary btn-lg" href="/contact">{{edit "srv_cta" "Projekt starten"}}</a></div>
+  <div class="mt-12"><a class="btn btn-primary btn-lg" href="/contact" data-sw-text="srv_cta">Projekt starten</a></div>
 </section>`,
   },
 

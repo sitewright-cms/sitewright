@@ -173,12 +173,12 @@ describe('createSitewrightMcpServer — tool wiring', () => {
 });
 
 describe('createSitewrightMcpServer — agent guidance', () => {
-  it('instructions teach the code-first model (page.source + DaisyUI + {{edit}}), not the retired block tree', async () => {
+  it('instructions teach the code-first model (page.source + DaisyUI + data-sw-text), not the retired block tree', async () => {
     const mcp = await connect(fakeClient(), writeScope);
     const instructions = mcp.getInstructions() ?? '';
     expect(instructions).toMatch(/\bsource\b/);
     expect(instructions).toContain('DaisyUI');
-    expect(instructions).toContain('{{edit');
+    expect(instructions).toContain('data-sw-text');
     expect(instructions).toMatch(/\{\{\s*company\.name/);
     expect(instructions).toMatch(/no\b[^.]*(JavaScript|script)/i);
     // The retired model must not be advertised.

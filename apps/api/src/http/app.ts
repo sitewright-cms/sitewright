@@ -37,7 +37,6 @@ import { detectFontFormat, MAX_FONT_BYTES } from '../fonts/upload.js';
 import { createFontAsset as storeFontAsset, mergeFontFaces } from '../fonts/asset.js';
 import {
   renderDocument,
-  editsAreBodyOnly,
   usedComponentTypes,
   componentAssets,
   usesAnimations,
@@ -1011,7 +1010,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       source:
         '<main class="mx-auto max-w-3xl px-6 py-16">\n' +
         '  <h1 class="text-4xl font-bold tracking-tight">{{ company.name }}</h1>\n' +
-        '  <p class="mt-4 text-lg opacity-70">{{edit "tagline" "Welcome — edit this tagline."}}</p>\n' +
+        '  <p class="mt-4 text-lg opacity-70" data-sw-text="tagline">Welcome — edit this tagline.</p>\n' +
         '</main>\n',
       nav: { slots: ['header'], order: 0 },
     });
@@ -1289,11 +1288,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             item,
             partials,
             richContent: page.richContent,
-            // PREVIEW-only inline-edit markers — gated so a legacy {{edit}} in an attribute (where a
-            // <span> would break out) is never marked. Never set on the publish path (build.ts).
-            markEdits: editsAreBodyOnly(pageSource),
             // PREVIEW-only: keep the data-sw-* leaf-directive markers so the editor bridge can make
-            // them click-to-edit. Decoupled from markEdits (publish strips them in resolveDirectives).
+            // them click-to-edit. The publish path strips them in resolveDirectives.
             preview: true,
             // PREVIEW-only: {{#eachEntry}} wraps each dataset row in a data-sw-entry marker so a click
             // opens that entry's editor. Always body-safe (wraps the loop body) → no gate needed.
@@ -2496,7 +2492,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         templateSource = page.source;
         // `{{ page.path }}` is the full route computed from the parent chain (not the bare slug).
         const allForPath = pagesById((await contentRepo.list(ctx, 'page')) as Page[]);
-        // page.data carries the page's editable text/url overrides (data-sw-* + legacy {{edit}}).
+        // page.data carries the page's editable text/url overrides (the data-sw-* directives).
         pageCtx = { title: page.title, path: pagePath(page, allForPath), data: page.data };
         pageRichContent = page.richContent;
       } else {

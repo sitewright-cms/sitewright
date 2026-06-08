@@ -18,7 +18,7 @@
  *   editor → preview: { source:'sitewright-editor', type:'scrollTo', y }
  *                     { source:'sitewright-editor', type:'setMode', mode }
  *
- * Editing surfaces (content mode): [data-sw-edit]/[data-sw-text] → plaintext contenteditable;
+ * Editing surfaces (content mode): [data-sw-text] → plaintext contenteditable;
  * [data-sw-html] → rich contenteditable with a floating formatting toolbar; [data-sw-href] anchor →
  * a URL(+text) popover; [data-sw-src]/[data-sw-bg] → click to replace via the editor's file picker.
  * The parent re-sanitizes rich/link payloads + URLs (the iframe is untrusted).
@@ -50,10 +50,10 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     if (styled) return; styled = true;
     var s = document.createElement('style');
     s.textContent =
-      '[data-sw-edit],[data-sw-text],[data-sw-html]{outline:1px dashed transparent;outline-offset:2px;border-radius:2px;transition:outline-color .12s,background-color .12s}' +
+      '[data-sw-text],[data-sw-html]{outline:1px dashed transparent;outline-offset:2px;border-radius:2px;transition:outline-color .12s,background-color .12s}' +
       '.sw-edit-on{cursor:text}' +
       '.sw-edit-on:hover{outline-color:#6366f1;background:rgba(99,102,241,.07)}' +
-      '[data-sw-edit].sw-edit-on:hover::after,[data-sw-text].sw-edit-on:hover::after{content:"\\270e";margin-left:.35em;font-size:.8em;opacity:.55}' +
+      '[data-sw-text].sw-edit-on:hover::after{content:"\\270e";margin-left:.35em;font-size:.8em;opacity:.55}' +
       '.sw-edit-on:focus{outline:2px solid #6366f1;background:rgba(99,102,241,.10)}' +
       '[data-sw-href].sw-link-on{cursor:pointer;outline-color:#6366f1}' +
       '[data-sw-href].sw-link-on:hover{outline:2px solid #6366f1;background:rgba(99,102,241,.10)}' +
@@ -82,8 +82,8 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     return null;
   }
 
-  // --- Plain text ([data-sw-edit] / [data-sw-text], excluding link anchors) ---
-  function plainKey(el) { return el.getAttribute('data-sw-edit') || el.getAttribute('data-sw-text') || ''; }
+  // --- Plain text ([data-sw-text], excluding link anchors) ---
+  function plainKey(el) { return el.getAttribute('data-sw-text') || ''; }
   function onPlainInput(e) { var el = e.currentTarget; post({ type: 'edit', key: plainKey(el), value: el.textContent || '' }); }
 
   // --- Rich ([data-sw-html]) + floating toolbar ---
@@ -205,7 +205,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
   //     editable leaf, which wins). data-sw-href/src/bg already stopPropagation in their handlers. ---
   function onEntryClick(e) {
     if (!editing) return;
-    if (closestAttr(e.target, 'data-sw-edit') || closestAttr(e.target, 'data-sw-text') || closestAttr(e.target, 'data-sw-html')) return;
+    if (closestAttr(e.target, 'data-sw-text') || closestAttr(e.target, 'data-sw-html')) return;
     var el = closestAttr(e.target, 'data-sw-entry');
     if (!el) return;
     e.preventDefault();
@@ -218,7 +218,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     editing = on;
     if (on) ensureStyle();
     // Plain text — skip anchors that are link-editable (their text rides in the popover).
-    eachEl('[data-sw-edit],[data-sw-text]', function (el) {
+    eachEl('[data-sw-text]', function (el) {
       if (el.hasAttribute('data-sw-href')) return;
       if (on) { el.setAttribute('contenteditable', 'plaintext-only'); el.classList.add('sw-edit-on'); el.addEventListener('input', onPlainInput); }
       else { el.removeAttribute('contenteditable'); el.classList.remove('sw-edit-on'); el.removeEventListener('input', onPlainInput); }

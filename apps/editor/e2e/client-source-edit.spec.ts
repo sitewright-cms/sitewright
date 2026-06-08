@@ -4,12 +4,12 @@ const stamp = Date.now();
 const ownerEmail = `owner-cs-${stamp}@e2e.test`;
 const clientEmail = `client-cs-${stamp}@e2e.test`;
 
-// T4: a client edits the BOUND CONTENT of a code-first page (the {{edit "…"}} regions) while
+// T4: a client edits the BOUND CONTENT of a code-first page (the data-sw-text regions) while
 // the template stays immutable to them. The owner creates a code page (its scaffold already
 // has an editable region), invites a client, and the client edits that region's text.
 
 test('client edits a code page’s bound region (content), template stays immutable', async ({ page }) => {
-  // --- Owner: register, make a CODE page (the scaffold carries an {{edit}} region) ---
+  // --- Owner: register, make a CODE page (the scaffold carries a data-sw-text region) ---
   await page.goto('/');
   await page.getByRole('button', { name: /Register/ }).click();
   await page.getByLabel('Email').fill(ownerEmail);
@@ -19,7 +19,7 @@ test('client edits a code page’s bound region (content), template stays immuta
   await page.getByLabel('Project name').fill('Code Site');
   await page.getByLabel('Project slug').fill(`cs-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
-  // The auto-created HOME page (empty-slug root) already carries an {{edit}} region the
+  // The auto-created HOME page (empty-slug root) already carries a data-sw-text region the
   // client will edit later — no need to add one.
 
   // --- Owner: invite a client, capture the invite link ---
@@ -50,7 +50,7 @@ test('client edits a code page’s bound region (content), template stays immuta
   // The editable region (the scaffold's `tagline`) is surfaced with its default; the raw
   // template source is NOT presented as editable.
   const region = page.getByLabel('tagline');
-  await expect(region).toHaveValue('Welcome — edit this tagline.'); // the auto-home's {{edit}} default
+  await expect(region).toHaveValue('Welcome — edit this tagline.'); // the auto-home's data-sw-text default
   await region.fill('A client-written tagline');
 
   // The sandboxed live preview reflects the edit.

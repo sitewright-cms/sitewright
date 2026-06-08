@@ -287,17 +287,16 @@ describe('preview API — code-first source page', () => {
       cookies: { sw_session: t },
       payload: {
         id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
-        source: '<main class="grid"><h1>{{edit "headline" "Default headline"}}</h1></main>',
+        source: '<main class="grid"><h1 data-sw-text="headline">Default headline</h1></main>',
         content: { headline: 'Edited headline' },
       },
     });
     expect(res.statusCode).toBe(200);
     const body = res.json() as { html: string; token: string };
     expect(body.html.startsWith('<!doctype html>')).toBe(true);
-    // The {{edit}} override replaced the template default; the block tree was not rendered. The
-    // PREVIEW wraps the (body-context) edit region in a `data-sw-edit` marker for inline editing
-    // (preview-only — publish renders it as plain text; see publish.spec.ts).
-    expect(body.html).toContain('<main class="grid"><h1><span data-sw-edit="headline">Edited headline</span></h1></main>');
+    // The page.data override replaced the authored default; the block tree was not rendered. PREVIEW
+    // keeps the data-sw-text marker on the element for inline editing (stripped on publish).
+    expect(body.html).toContain('<main class="grid"><h1 data-sw-text="headline">Edited headline</h1></main>');
     expect(body.html).not.toContain('Default headline');
     expect(body.html).not.toContain('<section data-sw-block="Section"'); // the block tree was not rendered
     // The source's literal Tailwind class compiled + inlined.

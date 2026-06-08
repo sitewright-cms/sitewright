@@ -16,7 +16,7 @@
 // worker that runs this — see apps/api/src/render. This module is pure + synchronous.
 import Handlebars from 'handlebars';
 import { safeUrl } from './url.js';
-import { escapeAttr, escapeHtml } from './escape.js';
+import { escapeAttr } from './escape.js';
 import { iconBody } from './icons.js';
 import { resolveDirectives } from './directives.js';
 
@@ -46,14 +46,6 @@ export interface TemplateContext {
   /** Auto-built navigation menus per slot — `{{#each nav.header}}…{{/each}}` (the skeleton slots + page source). */
   nav?: Record<string, unknown>;
   /**
-   * PREVIEW-ONLY: when true, the `{{edit}}` helper wraps its (escaped) output in a
-   * `<span data-sw-edit="key">` marker so the editor can make it click-to-edit in the live preview.
-   * NEVER set on the publish path — markers must not reach published HTML. Gate it with
-   * {@link editsAreBodyOnly} so a `{{edit}}` in an attribute (where a span would break out) is never
-   * marked.
-   */
-  markEdits?: boolean;
-  /**
    * Client-editable RICH (sanitized-HTML) region overrides for the `data-sw-html` directive: key →
    * sanitized HTML (matches the `page.richContent` schema). Resolved by {@link resolveDirectives}
    * after Handlebars; the value is re-sanitized at render (defensive) and set as the element's
@@ -62,9 +54,7 @@ export interface TemplateContext {
   richContent?: Record<string, string>;
   /**
    * PREVIEW render flag for the `data-sw-*` directive pass: keep the marker attributes so the editor
-   * bridge can make leaves click-to-edit. Absent on PUBLISH (markers are stripped). Distinct from
-   * {@link markEdits} (the legacy `{{edit}}`-span gate) so an attribute-context `{{edit}}` can never
-   * suppress directive markers.
+   * bridge can make leaves click-to-edit. Absent on PUBLISH (markers are stripped).
    */
   preview?: boolean;
   /**
@@ -75,73 +65,6 @@ export interface TemplateContext {
   markEntries?: boolean;
 }
 
-/**
- * PREVIEW gate for inline-edit markers: true iff EVERY `{{edit …}}` occurrence sits in element-body
- * text (not an attribute value, `<script>`/`<style>`, or comment). A `<span>` marker is safe only in
- * body context — in an attribute it would break out — so the preview renders with `markEdits` only
- * when this holds. Conservative: any structural ambiguity (`{{{`, malformed) returns false. Tracks
- * just `mode` + the open attribute quote (so a `>` inside a quoted value doesn't end the tag early).
- */
-export function editsAreBodyOnly(source: string): boolean {
-  type Mode = 'body' | 'comment' | 'rawtext' | 'tag';
-  let mode: Mode = 'body';
-  let rawCloser = '';
-  let quote: '"' | "'" | '' = '';
-  let i = 0;
-  while (i < source.length) {
-    if (source.startsWith('{{{', i)) return false; // raw output (validate rejects anyway) → no markers
-    if (source.startsWith('{{', i)) {
-      const close = source.indexOf('}}', i + 2);
-      if (close === -1) return false; // malformed
-      const inner = source.slice(i + 2, close).trim();
-      if (/^edit(\s|$)/.test(inner) && mode !== 'body') return false; // {{edit}} outside body text
-      i = close + 2;
-      continue;
-    }
-    // eslint-disable-next-line security/detect-object-injection -- i is a bounded scan index
-    const ch = source[i] as string;
-    if (mode === 'comment') {
-      if (ch === '>' && source.startsWith('-->', i - 2)) mode = 'body';
-    } else if (mode === 'rawtext') {
-      // Consume the whole closing tag (enter 'tag' mode past `</style`/`</script`) rather than
-      // jumping straight to body — so a malformed `</style{{edit}}>` keeps the {{edit}} non-body.
-      // Clear rawCloser (we've left the raw element) so the closing tag's `>` returns to body.
-      if (ch === '<' && source.slice(i, i + rawCloser.length).toLowerCase() === rawCloser) {
-        i += rawCloser.length;
-        mode = 'tag';
-        quote = '';
-        rawCloser = '';
-        continue;
-      }
-    } else if (mode === 'body') {
-      if (source.startsWith('<!--', i)) {
-        mode = 'comment';
-        i += 4;
-        continue;
-      }
-      if (ch === '<') {
-        const m = /^<\/?([a-zA-Z][a-zA-Z0-9-]*)/.exec(source.slice(i));
-        if (m) {
-          const name = (m[1] as string).toLowerCase();
-          const isClose = source[i + 1] === '/';
-          mode = 'tag';
-          quote = '';
-          rawCloser = !isClose && (name === 'style' || name === 'script') ? `</${name}` : '';
-          i += m[0].length;
-          continue;
-        }
-      }
-    } else if (quote) {
-      if (ch === quote) quote = ''; // closing the attribute value
-    } else if (ch === '"' || ch === "'") {
-      quote = ch; // opening an attribute value
-    } else if (ch === '>') {
-      mode = rawCloser ? 'rawtext' : 'body';
-    }
-    i += 1;
-  }
-  return true;
-}
 
 const URL_ATTRS = new Set(['href', 'src', 'action', 'formaction', 'poster', 'cite', 'background', 'xlink:href']);
 /** Max distinct compiled templates kept in memory (LRU-ish; bounds the worker's heap). */
@@ -338,31 +261,7 @@ function createInstance(): typeof Handlebars {
     const n = typeof max === 'number' && Number.isFinite(max) ? max : 100;
     return s.length > n ? `${s.slice(0, Math.max(0, n - 1))}…` : s;
   });
-  // {{edit "key" "default"}} → a DEPRECATED client-editable region (retired for data-sw-text). Returns the override `page.data[key]`
-  // when set, else the literal default. The value is ALWAYS HTML-escaped — it is client-authored
-  // and must never inject markup. Own-property lookup only (no prototype access). Use in BODY/text
-  // context; in an attribute the save-time validator rejects a bare `{{ }}`, so this can't break out.
-  //
-  // PREVIEW only (`root.markEdits`, gated by editsAreBodyOnly so it's body-context): wrap the escaped
-  // value in a `<span data-sw-edit="key">` marker so the editor can make it click-to-edit in the
-  // live preview. Returned as a SafeString (the span is trusted markup); the VALUE inside is still
-  // escapeHtml'd, and the key (template-author-controlled) is escapeAttr'd.
-  hb.registerHelper('edit', function editHelper(this: unknown, ...args: unknown[]) {
-    const options = args[args.length - 1] as Handlebars.HelperOptions | undefined;
-    const key = typeof args[0] === 'string' ? args[0] : '';
-    const def = args.length > 2 && typeof args[1] === 'string' ? args[1] : '';
-    // DEPRECATED alias: the override now lives in `page.data[key]` (the legacy `content` store folded
-    // into page.data). `{{edit}}` is retired in favor of `data-sw-text="key"`; this keeps existing
-    // templates rendering from the migrated store until they are converted.
-    const root = (options?.data?.root ?? {}) as { page?: { data?: Record<string, unknown> }; markEdits?: boolean };
-    const data = root.page?.data && typeof root.page.data === 'object' ? root.page.data : {};
-    const override = Object.prototype.hasOwnProperty.call(data, key) ? data[key] : undefined;
-    const value = typeof override === 'string' ? override : def;
-    if (root.markEdits) {
-      return new Handlebars.SafeString(`<span data-sw-edit="${escapeAttr(key)}">${escapeHtml(value)}</span>`);
-    }
-    return value; // plain string → Handlebars HTML-escapes it (double-stache)
-  });
+  // ({{edit}} is RETIRED — editable text is now the `data-sw-text="key"` directive, bound to page.data.)
   // {{#eachEntry data.x}}…{{/eachEntry}} — like {{#each}} over a dataset, but in PREVIEW
   // (root.markEntries) each iteration's body is wrapped in a <div data-sw-entry data-sw-dataset> so
   // the editor can open that entry's editor on click. OUTSIDE preview it is a transparent passthrough
@@ -440,7 +339,7 @@ export function renderTemplate(source: string, ctx: TemplateContext = {}, opts: 
   // cannot smuggle a <script>/handler/unsafe-context past the main-template check.
   if (ctx.partials) for (const partialSource of Object.values(ctx.partials)) validateTemplate(partialSource);
   const template = compileCached(source);
-  const data = { company: ctx.company, website: ctx.website, page: ctx.page, data: ctx.data, item: ctx.item, nav: ctx.nav, markEdits: ctx.markEdits, markEntries: ctx.markEntries };
+  const data = { company: ctx.company, website: ctx.website, page: ctx.page, data: ctx.data, item: ctx.item, nav: ctx.nav, markEntries: ctx.markEntries };
   let html: string;
   try {
     html = template(data, {

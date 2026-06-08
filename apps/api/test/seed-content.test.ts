@@ -43,12 +43,12 @@ describe('seed demo content', () => {
     }
   });
 
-  it('every dataset the pages bind via {{#each(Entry) data.<slug>}} has seeded entries', () => {
+  it('every dataset the pages bind via {{#each data.<slug>}} has seeded entries', () => {
     const entriesByDataset = new Set(EXAMPLE_ENTRIES.map((e) => e.dataset));
     const datasetSlugs = new Set(EXAMPLE_DATASETS.map((d) => d.slug));
     const sources = EXAMPLE_PAGES.map((p) => p.source ?? '').join('\n');
-    // The demo uses {{#eachEntry}} (click-to-edit rows); also accept the plain {{#each}} form.
-    const bound = [...sources.matchAll(/\{\{#each(?:Entry)?\s+data\.([a-z0-9_-]+)\s*\}\}/g)].map((m) => m[1]);
+    // Datasets are bound via the unified {{#each data.<slug>}} (click-to-edit rows in the editor).
+    const bound = [...sources.matchAll(/\{\{#each\s+data\.([a-z0-9_-]+)\s*\}\}/g)].map((m) => m[1]);
     expect(bound.length).toBeGreaterThan(0); // the demo actually exercises datasets
     for (const slug of bound) {
       expect(datasetSlugs.has(slug!), `dataset "${slug}" is defined`).toBe(true);

@@ -107,7 +107,7 @@ describe('multilingual publish (locale variants are pages)', () => {
     await proj.putContent('entry', 'svc-de', { id: 'svc-de', dataset: 'services-de', status: 'published', values: { name: 'Webdesign' } });
 
     // The SAME source on both locale variants — auto-suffix picks the right dataset.
-    const listSource = '<ul>{{#each data.services}}<li>{{ this.values.name }}</li>{{/each}}</ul>';
+    const listSource = '<ul>{{#each data.services}}<li>{{ name }}</li>{{/each}}</ul>';
     await proj.putContent('page', 'home', { id: 'home', path: '', title: 'Home', root, translationGroup: 'home', source: listSource });
     await proj.putContent('page', 'home-de', { id: 'home-de', path: 'de', parent: 'home', title: 'Start', locale: 'de', translationGroup: 'home', root, source: listSource });
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
@@ -124,7 +124,7 @@ describe('multilingual publish (locale variants are pages)', () => {
       identity: { name: 'Acme', colors: { primary: '#0a7' } },
       settings: { defaultLocale: 'en', locales: ['en', 'de'] },
     });
-    const switcher = '<p>{{ page.locale }}</p><nav>{{#each page.translations}}<a href="{{url path}}">{{ locale }}</a>{{/each}}</nav>';
+    const switcher = '<p>{{ page.locale }}</p><nav>{{#each page.translations}}<a href="{{sw-url path}}">{{ locale }}</a>{{/each}}</nav>';
     await proj.putContent('page', 'home', { id: 'home', path: '', title: 'Home', root, translationGroup: 'home', source: switcher });
     await proj.putContent('page', 'home-de', { id: 'home-de', path: 'de', parent: 'home', title: 'Start', locale: 'de', translationGroup: 'home', root, source: switcher });
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);

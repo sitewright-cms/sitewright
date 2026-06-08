@@ -33,7 +33,7 @@ const STARS = Array.from({ length: 5 }, () => icon('star', 'h-4 w-4 fill-current
  *     (generated + filed into folders by seed-assets.ts) referenced via `/media/...` URLs that
  *     publish rewrites to `_assets/...` — no remote image hosts.
  *   - Page bodies pass the no-JS template validator (values only in text / quoted attrs; the
- *     `{{url …}}` helper for interpolated src/href).
+ *     `{{sw-url …}}` helper for interpolated src/href).
  */
 
 // ---------------------------------------------------------------- corporate identity
@@ -79,10 +79,10 @@ export const EXAMPLE_WEBSITE = {
     </a>
   </div>
   <div class="navbar-center hidden lg:flex">
-    <ul class="menu menu-horizontal gap-1 px-1 font-medium">{{#each nav.header}}{{#if children}}<li><details><summary>{{label}}</summary><ul class="z-30 rounded-box bg-base-100 p-2 shadow-lg">{{#each children}}<li><a href="{{url path}}">{{label}}</a></li>{{/each}}</ul></details></li>{{else}}<li><a href="{{url path}}">{{label}}</a></li>{{/if}}{{/each}}</ul>
+    <ul class="menu menu-horizontal gap-1 px-1 font-medium">{{#each nav.header}}{{#if children}}<li><details><summary>{{label}}</summary><ul class="z-30 rounded-box bg-base-100 p-2 shadow-lg">{{#each children}}<li><a href="{{sw-url path}}">{{label}}</a></li>{{/each}}</ul></details></li>{{else}}<li><a href="{{sw-url path}}">{{label}}</a></li>{{/if}}{{/each}}</ul>
   </div>
   <div class="navbar-end gap-2">
-    {{#if page.translations}}<div class="hidden items-center gap-0.5 rounded-lg border border-base-200 p-0.5 sm:flex" aria-label="Language">{{#each page.translations}}<a class="btn btn-ghost btn-xs px-2 font-semibold uppercase" href="{{url path}}" hreflang="{{locale}}">{{locale}}</a>{{/each}}</div>{{/if}}
+    {{#if page.translations}}<div class="hidden items-center gap-0.5 rounded-lg border border-base-200 p-0.5 sm:flex" aria-label="Language">{{#each page.translations}}<a class="btn btn-ghost btn-xs px-2 font-semibold uppercase" href="{{sw-url path}}" hreflang="{{locale}}">{{locale}}</a>{{/each}}</div>{{/if}}
     <a class="btn btn-primary btn-sm gap-1.5 shadow-lg shadow-primary/20 waves-effect waves-light" href="/contact">Start a project ${icon('arrow-right', 'h-4 w-4')}</a>
   </div>
 </div>`,
@@ -94,7 +94,7 @@ export const EXAMPLE_WEBSITE = {
     </div>
     <nav>
       <h6 class="footer-title opacity-100">Studio</h6>
-      <ul class="mt-3 space-y-2 text-sm text-neutral-content/70">{{#each nav.header}}<li><a class="hover:text-neutral-content" href="{{url path}}">{{label}}</a></li>{{/each}}</ul>
+      <ul class="mt-3 space-y-2 text-sm text-neutral-content/70">{{#each nav.header}}<li><a class="hover:text-neutral-content" href="{{sw-url path}}">{{label}}</a></li>{{/each}}</ul>
     </nav>
     <nav>
       <h6 class="footer-title opacity-100">Contact</h6>
@@ -344,16 +344,16 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
     <p class="mt-3 text-base-content/60" data-sw-text="svc_sub">Strategy, design, and engineering — no hand-offs, no agencies-of-agencies.</p>
   </div>
   <div class="nw-stagger mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-    {{#eachEntry data.services}}
+    {{#each data.services}}
     <div class="card nw-card border border-base-200 bg-base-100 shadow-sm hover:shadow-xl">
       <div class="card-body">
-        <div class="text-3xl">{{values.icon}}</div>
-        <h3 class="card-title mt-2">{{values.title}}</h3>
-        <p class="text-base-content/70">{{values.summary}}</p>
-        <p class="mt-2 text-sm font-semibold text-primary">{{values.price}}</p>
+        <div class="text-3xl">{{icon}}</div>
+        <h3 class="card-title mt-2">{{title}}</h3>
+        <p class="text-base-content/70">{{summary}}</p>
+        <p class="mt-2 text-sm font-semibold text-primary">{{price}}</p>
       </div>
     </div>
-    {{/eachEntry}}
+    {{/each}}
   </div>
 </section>
 
@@ -364,16 +364,16 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
       <a class="inline-flex items-center gap-1.5 font-medium text-primary nw-underline" href="/work">View all projects ${icon('arrow-right', 'h-4 w-4')}</a>
     </div>
     <div class="nw-stagger mt-12 grid gap-6 md:grid-cols-3">
-      {{#eachEntry data.projects}}
+      {{#each data.projects}}
       <a class="card nw-card overflow-hidden border border-base-200 bg-base-100 shadow-sm hover:shadow-xl nw-zoom" href="/work">
-        <figure class="aspect-[4/3] overflow-hidden"><img src="{{url values.image}}" alt="{{values.title}}" class="h-full w-full object-cover" loading="lazy" /></figure>
+        <figure class="aspect-[4/3] overflow-hidden"><img src="{{sw-url image}}" alt="{{title}}" class="h-full w-full object-cover" loading="lazy" /></figure>
         <div class="card-body">
-          <span class="text-xs font-semibold uppercase tracking-wide text-primary">{{values.category}}</span>
-          <h3 class="card-title">{{values.title}}</h3>
-          <p class="text-sm text-base-content/60">{{values.summary}}</p>
+          <span class="text-xs font-semibold uppercase tracking-wide text-primary">{{category}}</span>
+          <h3 class="card-title">{{title}}</h3>
+          <p class="text-sm text-base-content/60">{{summary}}</p>
         </div>
       </a>
-      {{/eachEntry}}
+      {{/each}}
     </div>
   </div>
 </section>
@@ -381,15 +381,15 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
 <section class="mx-auto max-w-6xl px-6 py-20">
   <h2 class="text-center text-3xl font-bold tracking-tight sm:text-4xl" data-sw-text="tst_title">Loved by the brands we build for</h2>
   <div class="nw-stagger mt-12 grid gap-6 lg:grid-cols-3">
-    {{#eachEntry data.testimonials}}
+    {{#each data.testimonials}}
     <figure class="card nw-card border border-base-200 bg-base-100 p-2 shadow-sm">
       <div class="card-body">
         <div class="flex gap-0.5 text-accent">${STARS}</div>
-        <blockquote class="mt-2 text-base-content/80">{{values.quote}}</blockquote>
-        <figcaption class="mt-4 text-sm"><span class="font-semibold">{{values.author}}</span><span class="text-base-content/50"> — {{values.role}}</span></figcaption>
+        <blockquote class="mt-2 text-base-content/80">{{quote}}</blockquote>
+        <figcaption class="mt-4 text-sm"><span class="font-semibold">{{author}}</span><span class="text-base-content/50"> — {{role}}</span></figcaption>
       </div>
     </figure>
-    {{/eachEntry}}
+    {{/each}}
   </div>
 </section>
 
@@ -419,17 +419,17 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
 </section>
 <section class="mx-auto max-w-6xl px-6 pb-24">
   <div class="nw-stagger grid gap-8 md:grid-cols-2">
-    {{#eachEntry data.projects}}
+    {{#each data.projects}}
     <a class="card nw-card overflow-hidden border border-base-200 bg-base-100 shadow-sm hover:shadow-2xl nw-zoom" href="/contact">
-      <figure class="aspect-[16/10] overflow-hidden"><img src="{{url values.image}}" alt="{{values.title}}" class="h-full w-full object-cover" loading="lazy" /></figure>
+      <figure class="aspect-[16/10] overflow-hidden"><img src="{{sw-url image}}" alt="{{title}}" class="h-full w-full object-cover" loading="lazy" /></figure>
       <div class="card-body">
-        <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-primary"><span>{{values.category}}</span><span class="text-base-content/30">·</span><span class="text-base-content/40">{{values.year}}</span></div>
-        <h2 class="card-title text-2xl">{{values.title}}</h2>
-        <p class="text-sm text-base-content/40">{{values.client}}</p>
-        <p class="mt-1 text-base-content/70">{{values.summary}}</p>
+        <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-primary"><span>{{category}}</span><span class="text-base-content/30">·</span><span class="text-base-content/40">{{year}}</span></div>
+        <h2 class="card-title text-2xl">{{title}}</h2>
+        <p class="text-sm text-base-content/40">{{client}}</p>
+        <p class="mt-1 text-base-content/70">{{summary}}</p>
       </div>
     </a>
-    {{/eachEntry}}
+    {{/each}}
   </div>
 </section>`,
   },
@@ -455,14 +455,14 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
 </section>
 <section class="mx-auto max-w-6xl px-6 pb-12">
   <div class="nw-stagger grid gap-px overflow-hidden rounded-3xl border border-base-200 bg-base-200 sm:grid-cols-2">
-    {{#eachEntry data.services}}
+    {{#each data.services}}
     <div class="bg-base-100 p-8 transition hover:bg-base-200/40">
-      <div class="text-3xl">{{values.icon}}</div>
-      <h2 class="mt-3 text-xl font-bold">{{values.title}}</h2>
-      <p class="mt-2 text-base-content/70">{{values.summary}}</p>
-      <p class="mt-4 text-sm font-semibold text-primary">{{values.price}}</p>
+      <div class="text-3xl">{{icon}}</div>
+      <h2 class="mt-3 text-xl font-bold">{{title}}</h2>
+      <p class="mt-2 text-base-content/70">{{summary}}</p>
+      <p class="mt-4 text-sm font-semibold text-primary">{{price}}</p>
     </div>
-    {{/eachEntry}}
+    {{/each}}
   </div>
 </section>
 <section class="mx-auto max-w-5xl px-6 py-20">
@@ -554,14 +554,14 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
 <section class="mx-auto max-w-6xl px-6 py-20">
   <h2 class="text-3xl font-bold tracking-tight" data-sw-text="team_title">The people you’ll work with</h2>
   <div class="nw-stagger mt-10 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
-    {{#eachEntry data.team}}
+    {{#each data.team}}
     <div class="text-center">
-      <div class="mx-auto aspect-square w-36 overflow-hidden rounded-full border-4 border-base-100 shadow-lg nw-zoom"><img src="{{url values.photo}}" alt="{{values.name}}" class="h-full w-full object-cover" loading="lazy" /></div>
-      <h3 class="mt-4 font-bold">{{values.name}}</h3>
-      <p class="text-sm text-primary">{{values.role}}</p>
-      <p class="mt-1 text-sm text-base-content/50">{{values.bio}}</p>
+      <div class="mx-auto aspect-square w-36 overflow-hidden rounded-full border-4 border-base-100 shadow-lg nw-zoom"><img src="{{sw-url photo}}" alt="{{name}}" class="h-full w-full object-cover" loading="lazy" /></div>
+      <h3 class="mt-4 font-bold">{{name}}</h3>
+      <p class="text-sm text-primary">{{role}}</p>
+      <p class="mt-1 text-sm text-base-content/50">{{bio}}</p>
     </div>
-    {{/eachEntry}}
+    {{/each}}
   </div>
 </section>`,
   },
@@ -668,16 +668,16 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
     <p class="mt-3 text-base-content/60" data-sw-text="svc_sub">Strategie, Design und Entwicklung — keine Übergaben, keine Agentur-Ketten.</p>
   </div>
   <div class="nw-stagger mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-    {{#eachEntry data.services}}
+    {{#each data.services}}
     <div class="card nw-card border border-base-200 bg-base-100 shadow-sm hover:shadow-xl">
       <div class="card-body">
-        <div class="text-3xl">{{values.icon}}</div>
-        <h3 class="card-title mt-2">{{values.title}}</h3>
-        <p class="text-base-content/70">{{values.summary}}</p>
-        <p class="mt-2 text-sm font-semibold text-primary">{{values.price}}</p>
+        <div class="text-3xl">{{icon}}</div>
+        <h3 class="card-title mt-2">{{title}}</h3>
+        <p class="text-base-content/70">{{summary}}</p>
+        <p class="mt-2 text-sm font-semibold text-primary">{{price}}</p>
       </div>
     </div>
-    {{/eachEntry}}
+    {{/each}}
   </div>
 </section>
 
@@ -710,14 +710,14 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
 </section>
 <section class="mx-auto max-w-6xl px-6 pb-12">
   <div class="nw-stagger grid gap-px overflow-hidden rounded-3xl border border-base-200 bg-base-200 sm:grid-cols-2">
-    {{#eachEntry data.services}}
+    {{#each data.services}}
     <div class="bg-base-100 p-8 transition hover:bg-base-200/40">
-      <div class="text-3xl">{{values.icon}}</div>
-      <h2 class="mt-3 text-xl font-bold">{{values.title}}</h2>
-      <p class="mt-2 text-base-content/70">{{values.summary}}</p>
-      <p class="mt-4 text-sm font-semibold text-primary">{{values.price}}</p>
+      <div class="text-3xl">{{icon}}</div>
+      <h2 class="mt-3 text-xl font-bold">{{title}}</h2>
+      <p class="mt-2 text-base-content/70">{{summary}}</p>
+      <p class="mt-4 text-sm font-semibold text-primary">{{price}}</p>
     </div>
-    {{/eachEntry}}
+    {{/each}}
   </div>
 </section>
 <section class="mx-auto max-w-5xl px-6 py-20">

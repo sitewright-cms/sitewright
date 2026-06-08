@@ -67,49 +67,50 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
     entries: [
       {
         id: 'h-url',
-        syntax: '{{url value}}',
-        name: 'url',
-        keywords: 'link href src safe sanitize',
+        syntax: '{{sw-url value}}',
+        name: 'sw-url',
+        keywords: 'link href src safe sanitize url',
         description:
-          'Scheme-sanitizes a URL for an href/src (blocks javascript:/data:/protocol-relative). Always use it for href/src. (Internal root-relative links are additionally rebased to a portable path by the publish pipeline.)',
+          'Scheme-sanitizes a URL for an href/src (blocks javascript:/data:/protocol-relative). Always use it for href/src. (Internal root-relative links are additionally rebased to a portable path by the publish pipeline.) The sw- prefix keeps it clear of dataset fields named "url".',
         args: [{ name: 'value', desc: 'A URL or root-relative path.' }],
-        example: '<a href="{{url \'/about\'}}">About</a>\n<img src="{{url values.image}}" alt="">',
+        example: '<a href="{{sw-url \'/about\'}}">About</a>\n<img src="{{sw-url image}}" alt="">',
       },
       {
         id: 'h-date',
-        syntax: '{{date value [format]}}',
-        name: 'date',
-        keywords: 'time format iso',
+        syntax: '{{sw-date value [format]}}',
+        name: 'sw-date',
+        keywords: 'time format iso date',
         description: 'Formats a date as UTC YYYY-MM-DD, or the full ISO string with "iso". Empty for an unparseable value.',
         args: [
           { name: 'value', desc: 'A date string, number, or Date.' },
           { name: 'format', desc: 'Optional — "iso" for the full ISO timestamp.' },
         ],
-        example: '{{date values.published}}\n{{date values.published "iso"}}',
+        example: '{{sw-date published}}\n{{sw-date published "iso"}}',
       },
       {
         id: 'h-icon',
-        syntax: '{{icon "name" ["classes"]}}',
-        name: 'icon',
-        keywords: 'svg lucide glyph',
-        description: 'Inlines a built-in Lucide icon as an SVG. Browse names in the Library → Icons gallery.',
+        syntax: '{{sw-icon "name" ["classes"]}}',
+        name: 'sw-icon',
+        keywords: 'svg lucide glyph icon',
+        description:
+          'Inlines a built-in Lucide icon as an SVG. Browse names in the Library → Icons gallery (click an icon to copy its snippet). The sw- prefix keeps it out of the dataset FIELD namespace, so a field named "icon" is read plainly as {{icon}}.',
         args: [
-          { name: 'name', desc: 'The icon name (e.g. "arrow-right").' },
+          { name: 'name', desc: 'The icon name (e.g. "arrow-right"), or "brand:slug" for a brand logo.' },
           { name: 'classes', desc: 'Optional Tailwind classes (default "h-5 w-5").' },
         ],
-        example: '{{icon "arrow-right" "h-4 w-4"}}',
+        example: '{{sw-icon "arrow-right" "h-4 w-4"}}',
       },
       {
         id: 'h-truncate',
-        syntax: '{{truncate text N}}',
-        name: 'truncate',
-        keywords: 'clip ellipsis shorten',
+        syntax: '{{sw-truncate text N}}',
+        name: 'sw-truncate',
+        keywords: 'clip ellipsis shorten truncate',
         description: 'Clips text to at most N characters, adding an ellipsis when clipped.',
         args: [
           { name: 'text', desc: 'The string to clip.' },
           { name: 'N', desc: 'Maximum length (default 100).' },
         ],
-        example: '<p>{{truncate values.summary 80}}</p>',
+        example: '<p>{{sw-truncate summary 80}}</p>',
       },
       {
         id: 'h-lookup',
@@ -128,21 +129,18 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
     entries: [
       {
         id: 'b-each',
-        syntax: '{{#each items}} … {{/each}}',
+        syntax: '{{#each items}} … {{else}} … {{/each}}',
         name: 'each',
-        keywords: 'loop iterate list array for',
-        description: 'Loops a list (or object). Inside the block: this, @index, @key, @first, @last.',
-        example: '<ul>{{#each nav.header}}<li><a href="{{url path}}">{{label}}</a></li>{{/each}}</ul>',
-      },
-      {
-        id: 'b-eachentry',
-        syntax: '{{#eachEntry data.set}} … {{else}} … {{/eachEntry}}',
-        name: 'eachEntry',
-        keywords: 'dataset loop entries rows click edit',
+        keywords: 'loop iterate list array for dataset entries rows click edit',
         description:
-          'Loops a DATASET like {{#each}}, but in the editor each rendered row is click-to-edit — clicking it opens that entry’s editor. Use this (not {{#each}}) for dataset lists. {{else}} renders for an empty set.',
-        args: [{ name: 'data.set', desc: 'A dataset binding (manage rows in the Data panel).' }],
-        example: '{{#eachEntry data.services}}\n  <div class="card">\n    <h3>{{values.title}}</h3>\n    <p>{{values.summary}}</p>\n  </div>\n{{else}}\n  <p>No services yet.</p>\n{{/eachEntry}}',
+          'The one loop helper. Over a plain list or object, the item is this and you get @index, @key, @first, @last; {{else}} renders for an empty list. Over a DATASET (data.<set>) it is dataset-aware: each iteration’s context is the entry’s FIELDS — read {{title}} directly (no values. prefix) — the entry envelope is on @entry (@entry.id, @entry.dataset), and in the editor each rendered row is click-to-edit (clicking opens that entry’s editor). No separate helper — just loop the dataset.',
+        args: [{ name: 'items', desc: 'A list/object, a dataset (data.<set>), nav.<slot>, page.children, or a website.data/page.data array.' }],
+        example:
+          '{{! A dataset — fields are read directly, rows are click-to-edit: }}\n' +
+          '{{#each data.services}}\n  <div class="card">\n    <h3>{{title}}</h3>\n    <p>{{summary}}</p>\n  </div>\n{{else}}\n  <p>No services yet.</p>\n{{/each}}\n\n' +
+          '{{! A plain list — the item is this: }}\n' +
+          '<ul>{{#each nav.header}}<li><a href="{{sw-url path}}">{{label}}</a></li>{{/each}}</ul>',
+        note: 'All content helpers are prefixed (sw-url, sw-date, sw-icon, sw-truncate), so entry fields never collide with them — read them plainly. ({{this.field}} forces a data lookup if you ever need it.)',
       },
       {
         id: 'b-if',
@@ -158,7 +156,7 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         name: 'unless',
         keywords: 'conditional inverse not',
         description: 'Renders the block when cond is FALSY (the inverse of {{#if}}).',
-        example: '{{#unless values.soldOut}}<button class="btn">Buy</button>{{/unless}}',
+        example: '{{#unless soldOut}}<button class="btn">Buy</button>{{/unless}}',
       },
       {
         id: 'b-with',
@@ -246,7 +244,7 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         name: 'data-sw-entry',
         keywords: 'dataset row click open entry automatic',
         description:
-          'Added AUTOMATICALLY by {{#eachEntry}} around each row — clicking a row in the preview opens that entry’s editor. You don’t write it by hand.',
+          'Added AUTOMATICALLY by the dataset {{#each}} around each row — clicking a row in the preview opens that entry’s editor. You don’t write it by hand.',
       },
     ],
   },
@@ -262,7 +260,7 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         keywords: 'identity brand organization',
         description:
           'Corporate identity (Settings → Corporate Identity): company.name, .legalName, .shortName, .slogan, .description, .email, .telephone; images .logo / .logoLight / .logoDark / .icon / .favicon / .image; .colors.<token>; address (.street, .locality, .region, .country, .postalCode). company.social is an ARRAY (loop it with {{#each}}).',
-        example: '<a href="mailto:{{company.email}}">{{company.email}}</a>\n{{#each company.social}}<a href="{{url this}}">{{this}}</a>{{/each}}',
+        example: '<a href="mailto:{{company.email}}">{{company.email}}</a>\n{{#each company.social}}<a href="{{sw-url this}}">{{this}}</a>{{/each}}',
       },
       {
         id: 'n-website',
@@ -305,7 +303,7 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
           'A free-form JSON object stored ON this page (Page editor → “Edit page data”, a tree + JSON editor) and exposed as {{page.data.<key>}} / {{#each page.data.<array>}} — the per-page counterpart of website.data (e.g. a blog article page holds { article_title, article_image, … } here). In preview + publish.',
         example:
           '<h1>{{page.data.article_title}}</h1>\n' +
-          '<img src="{{url page.data.article_image}}">\n' +
+          '<img src="{{sw-url page.data.article_image}}">\n' +
           '<div>{{page.data.article_body}}</div>',
       },
       {
@@ -314,11 +312,11 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         name: 'page.children',
         keywords: 'child pages subpages blog overview index grid list parent tree',
         description:
-          'This page’s direct CHILD pages (those nested under it in the pages tree), as an ARRAY — for a blog overview that lists its article pages. Each child is flattened: .title, .path (its full route — use {{url path}}), .slug, .description (its SEO description), .image (its SEO OG image), .seoTitle, .noindex, .navTitle, .status, .locale, .order, and .data (the child’s own page.data object). Same-locale children only, ordered like the pages list, capped at 500. Children are real sub-pages (set a page’s Parent in its settings) — distinct from dataset collection pages.',
+          'This page’s direct CHILD pages (those nested under it in the pages tree), as an ARRAY — for a blog overview that lists its article pages. Each child is flattened: .title, .path (its full route — use {{sw-url path}}), .slug, .description (its SEO description), .image (its SEO OG image), .seoTitle, .noindex, .navTitle, .status, .locale, .order, and .data (the child’s own page.data object). Same-locale children only, ordered like the pages list, capped at 500. Children are real sub-pages (set a page’s Parent in its settings) — distinct from dataset collection pages.',
         example:
           '{{#each page.children}}\n' +
-          '  <a class="card" href="{{url path}}">\n' +
-          '    <img src="{{url image}}" alt="{{title}}">\n' +
+          '  <a class="card" href="{{sw-url path}}">\n' +
+          '    <img src="{{sw-url image}}" alt="{{title}}">\n' +
           '    <h3>{{title}}</h3>\n' +
           '    <p>{{description}}</p>\n' +
           '    <small>{{data.article_date}}</small>\n' +
@@ -331,8 +329,8 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         name: 'data',
         keywords: 'dataset entries collection rows loop',
         description:
-          'A dataset’s entries as an ordered ARRAY (manage rows in the Data panel). Loop with {{#eachEntry}} and read fields via values.<field>. For a direct lookup by key, use item.<dataset> instead.',
-        example: '{{#eachEntry data.team}}<li>{{values.name}}</li>{{/eachEntry}}',
+          'A dataset’s entries as an ordered ARRAY (manage rows in the Data panel). Loop with {{#each}} — each row’s fields are read directly ({{name}}), and rows are click-to-edit in the editor. For a direct lookup by key, use item.<dataset> instead.',
+        example: '{{#each data.team}}<li>{{name}}</li>{{/each}}',
       },
       {
         id: 'n-item',
@@ -346,7 +344,7 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
           '<h2>{{item.services.web_development.title}}</h2>\n' +
           '<p class="price">{{item.services.web_development.price}}</p>\n\n' +
           '{{! …vs. looping the whole dataset: }}\n' +
-          '{{#eachEntry data.services}}<li>{{values.title}}</li>{{/eachEntry}}',
+          '{{#each data.services}}<li>{{title}}</li>{{/each}}',
       },
       {
         id: 'n-nav',
@@ -355,7 +353,7 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         keywords: 'menu navigation header footer mobile',
         description:
           'Auto-built menus from the page tree: nav.header, nav.footer, nav.mobile. Each item has .label, .path, and .children (sub-pages, for dropdowns).',
-        example: '{{#each nav.header}}<a href="{{url path}}">{{label}}</a>{{/each}}',
+        example: '{{#each nav.header}}<a href="{{sw-url path}}">{{label}}</a>{{/each}}',
       },
     ],
   },
@@ -366,12 +364,12 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
     entries: [
       {
         id: 'v-this',
-        syntax: 'this   ·   values.<field>',
-        name: 'this / values',
-        keywords: 'current item entry fields loop',
+        syntax: 'this   ·   @entry.id   ·   @entry.dataset',
+        name: 'this / @entry',
+        keywords: 'current item entry fields loop dataset envelope',
         description:
-          'Inside {{#each}}/{{#eachEntry}}, this is the current item; an entry’s fields are read as values.<field> (e.g. {{values.title}}).',
-        example: '{{#eachEntry data.posts}}<h3>{{values.title}}</h3>{{/eachEntry}}',
+          'Inside {{#each}}, this is the current item. Over a DATASET the context IS the entry’s fields, so read them directly ({{title}}, not {{values.title}}); the entry’s envelope is on @entry (@entry.id, @entry.dataset, @entry.status).',
+        example: '{{#each data.posts}}<h3>{{title}}</h3><small>{{@entry.id}}</small>{{/each}}',
       },
       {
         id: 'v-index',
@@ -387,7 +385,7 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         name: '@first / @last',
         keywords: 'boundary loop edge boolean',
         description: 'Booleans — true on the first / last iteration of a loop.',
-        example: '{{#eachEntry data.steps}}{{#unless @first}}<hr>{{/unless}}{{values.label}}{{/eachEntry}}',
+        example: '{{#each data.steps}}{{#unless @first}}<hr>{{/unless}}{{label}}{{/each}}',
       },
       {
         id: 'v-nav',

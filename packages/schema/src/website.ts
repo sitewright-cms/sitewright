@@ -46,9 +46,9 @@ const WebsiteSettingsObject = z.object({
    * positions, so a multi-page site shares one header/footer authored once. They run through
    * the SAME no-JS template validator as a page `source` (HTML + Tailwind + DaisyUI) and get
    * the page render context PLUS `nav` — the auto-menu built from each page's nav settings:
-   *   {{#each nav.header}}<a href="{{url path}}">{{label}}</a>{{/each}}
+   *   {{#each nav.header}}<a href="{{sw-url path}}">{{label}}</a>{{/each}}
    * Body source order: `topNav`, `mobileNav`, [page body], `sidebarLeft`, `sidebarRight`,
-   * `footer`, `bottom`. Nav links use root-absolute paths (`{{url path}}`); on a multilingual
+   * `footer`, `bottom`. Nav links use root-absolute paths (`{{sw-url path}}`); on a multilingual
    * site they are auto-prefixed with the current locale at publish.
    *
    * - `topNav` / `mobileNav` — main + mobile navigation, top of `<body>`.

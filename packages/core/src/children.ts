@@ -6,7 +6,7 @@ import { localeOf } from './i18n.js';
 /**
  * One child page, FLATTENED for template use — `{{#each page.children}}…{{/each}}`. The fields are a
  * projection of the child Page's record (its DB shape flattened): `seo.description → description`,
- * `seo.ogImage → image`, etc. `path` is the child's FULL computed route (use it in `href="{{url path}}"`).
+ * `seo.ogImage → image`, etc. `path` is the child's FULL computed route (use it in `href="{{sw-url path}}"`).
  * `data` is the child's own `page.data` object, so an overview reads `{{#each page.children}}{{data.x}}`.
  */
 export interface PageChild {
@@ -14,11 +14,11 @@ export interface PageChild {
   title: string;
   /** The child's own slug SEGMENT (its `path` field), e.g. `my-article`. */
   slug: string;
-  /** The full root-relative route (computed from the parent chain) — wrap in `{{url path}}` for a link. */
+  /** The full root-relative route (computed from the parent chain) — wrap in `{{sw-url path}}` for a link. */
   path: string;
   /** SEO description (`seo.description`), flattened. */
   description: string;
-  /** Open Graph image (`seo.ogImage`), flattened — wrap in `{{url image}}` for a portable src. */
+  /** Open Graph image (`seo.ogImage`), flattened — wrap in `{{sw-url image}}` for a portable src. */
   image: string;
   /** SEO title (`seo.title`), flattened. */
   seoTitle: string;

@@ -25,10 +25,10 @@ test('library: template reference — open, search, filter by group', async ({ p
   const ref = page.getByRole('dialog', { name: 'Template reference' });
   await expect(ref).toBeVisible();
 
-  // Search finds the {{#eachEntry}} helper.
+  // Search finds the dataset-aware {{#each}} loop (eachEntry was merged into it).
   const search = ref.getByLabel('Search the template reference');
-  await search.fill('eachEntry');
-  await expect(ref.getByText(/eachEntry data\.set/)).toBeVisible();
+  await search.fill('dataset');
+  await expect(ref.getByText(/#each items/)).toBeVisible(); // the unified loop helper's syntax
   await expect(ref.getByRole('button', { name: 'Copy' }).first()).toBeVisible();
 
   // Filter to the directives group → the data-sw-html directive is documented.

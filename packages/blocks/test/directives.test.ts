@@ -231,7 +231,7 @@ describe('global blog templates (content-only) render via validateTemplate', () 
       children: [{ title: 'First', path: '/blog/first', data: { article_image: '/i.jpg', article_excerpt: 'Excerpt one' } }],
     };
     const out = renderTemplate(overview.source, { page });
-    expect(out).toContain('href="/blog/first"'); // {{url path}}
+    expect(out).toContain('href="/blog/first"'); // {{sw-url path}}
     expect(out).toContain('src="/i.jpg"'); // child's data.article_image
     expect(out).toContain('Excerpt one'); // child's data.article_excerpt
   });

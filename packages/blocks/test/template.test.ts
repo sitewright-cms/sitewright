@@ -16,12 +16,20 @@ const ctx: TemplateContext = {
   },
 };
 
-describe('{{#eachEntry}} — dataset rows with preview markers', () => {
+describe('dataset-aware {{#each}} — flattened fields + preview markers', () => {
   const items = [
     { id: 'e1', dataset: 'posts', values: { t: 'A' } },
     { id: 'e2', dataset: 'posts', values: { t: 'B' } },
   ];
-  const src = '<ul>{{#eachEntry data.posts}}<li>{{this.values.t}}</li>{{else}}<li>none</li>{{/eachEntry}}</ul>';
+  // Over a DATASET the iteration context IS entry.values, so fields are read directly ({{t}}, not {{values.t}}).
+  const src = '<ul>{{#each data.posts}}<li>{{t}}</li>{{else}}<li>none</li>{{/each}}</ul>';
+
+  it('flattens entry fields and exposes the envelope on @entry', () => {
+    const out = renderTemplate('{{#each data.posts}}{{t}}:{{@entry.id}}:{{@entry.dataset}}{{#if @first}}*{{/if}};{{/each}}', {
+      data: { posts: items },
+    });
+    expect(out).toBe('A:e1:posts*;B:e2:posts;');
+  });
 
   it('wraps each row in a data-sw-entry marker ONLY when markEntries is set', () => {
     expect(renderTemplate(src, { data: { posts: items }, markEntries: true })).toBe(
@@ -29,14 +37,33 @@ describe('{{#eachEntry}} — dataset rows with preview markers', () => {
     );
   });
 
-  it('is a transparent passthrough (byte-identical to {{#each}}) without markEntries', () => {
-    const eachSrc = '<ul>{{#each data.posts}}<li>{{this.values.t}}</li>{{else}}<li>none</li>{{/each}}</ul>';
-    expect(renderTemplate(src, { data: { posts: items } })).toBe(renderTemplate(eachSrc, { data: { posts: items } }));
+  it('emits NO wrapper without markEntries — publish is byte-identical to a plain loop', () => {
     expect(renderTemplate(src, { data: { posts: items } })).toBe('<ul><li>A</li><li>B</li></ul>');
   });
 
   it('renders the {{else}} inverse for an empty list', () => {
     expect(renderTemplate(src, { data: { posts: [] }, markEntries: true })).toBe('<ul><li>none</li></ul>');
+  });
+
+  it('a non-entry array (no id/dataset) falls through to the built-in #each (no flatten, no marker)', () => {
+    const out = renderTemplate('{{#each nav.header}}<a href="{{sw-url this.href}}">{{this.label}}</a>{{/each}}', {
+      nav: { header: [{ label: 'Home', href: '/' }] },
+      markEntries: true,
+    });
+    expect(out).toBe('<a href="/">Home</a>');
+  });
+
+  it('supports block params ({{#each data.posts as |post idx|}}) over flattened entry fields', () => {
+    const out = renderTemplate('{{#each data.posts as |post idx|}}{{idx}}:{{post.t}};{{/each}}', { data: { posts: items } });
+    expect(out).toBe('0:A;1:B;');
+  });
+
+  it('preserves ../ parent access from inside a dataset loop', () => {
+    const out = renderTemplate('{{#each data.posts}}{{t}}@{{../page.title}};{{/each}}', {
+      data: { posts: items },
+      page: { title: 'Home' },
+    });
+    expect(out).toBe('A@Home;B@Home;');
   });
 });
 
@@ -107,36 +134,36 @@ describe('renderTemplate — Handlebars features', () => {
 });
 
 describe('renderTemplate — curated helpers (extensibility)', () => {
-  it('{{date}} formats a date (default + iso)', () => {
-    expect(renderTemplate('{{date page.published}}', ctx)).toBe('2026-06-01');
-    expect(renderTemplate('{{date page.published "iso"}}', ctx)).toBe('2026-06-01T12:00:00.000Z');
-    expect(renderTemplate('{{date page.nope}}', ctx)).toBe('');
+  it('{{sw-date}} formats a date (default + iso)', () => {
+    expect(renderTemplate('{{sw-date page.published}}', ctx)).toBe('2026-06-01');
+    expect(renderTemplate('{{sw-date page.published "iso"}}', ctx)).toBe('2026-06-01T12:00:00.000Z');
+    expect(renderTemplate('{{sw-date page.nope}}', ctx)).toBe('');
   });
 
-  it('{{url}} sanitizes the scheme', () => {
-    expect(renderTemplate('<a href="{{url page.link}}">x</a>', { page: { link: 'javascript:alert(1)' } })).toBe(
+  it('{{sw-url}} sanitizes the scheme', () => {
+    expect(renderTemplate('<a href="{{sw-url page.link}}">x</a>', { page: { link: 'javascript:alert(1)' } })).toBe(
       '<a href="#">x</a>',
     );
-    expect(renderTemplate('<a href="{{url page.link}}">x</a>', { page: { link: 'https://ok.test/a' } })).toBe(
+    expect(renderTemplate('<a href="{{sw-url page.link}}">x</a>', { page: { link: 'https://ok.test/a' } })).toBe(
       '<a href="https://ok.test/a">x</a>',
     );
   });
 
-  it('{{truncate}} clips long text', () => {
-    expect(renderTemplate('{{truncate page.t 5}}', { page: { t: 'abcdefgh' } })).toBe('abcd…');
-    expect(renderTemplate('{{truncate page.t 5}}', { page: { t: 'abc' } })).toBe('abc');
+  it('{{sw-truncate}} clips long text', () => {
+    expect(renderTemplate('{{sw-truncate page.t 5}}', { page: { t: 'abcdefgh' } })).toBe('abcd…');
+    expect(renderTemplate('{{sw-truncate page.t 5}}', { page: { t: 'abc' } })).toBe('abc');
   });
 
-  it('{{icon}} inlines a built-in SVG (trusted body, escaped class), empty for unknown', () => {
-    const out = renderTemplate('{{icon "arrow-right" "h-5 w-5"}}', ctx);
+  it('{{sw-icon}} inlines a built-in SVG (trusted body, escaped class), empty for unknown', () => {
+    const out = renderTemplate('{{sw-icon "arrow-right" "h-5 w-5"}}', ctx);
     expect(out).toContain('<svg class="h-5 w-5"');
     expect(out).toContain('stroke="currentColor"');
     expect(out).toContain('aria-hidden="true"');
     expect(out).toContain('<path d="M5 12h14"'); // arrow-right body, emitted raw (SafeString)
     // Unknown icon → nothing (never reflects the name).
-    expect(renderTemplate('[{{icon "does-not-exist"}}]', ctx)).toBe('[]');
+    expect(renderTemplate('[{{sw-icon "does-not-exist"}}]', ctx)).toBe('[]');
     // The class is attribute-escaped (no breakout possible).
-    expect(renderTemplate('{{icon "check" "a\\"onerror=x"}}', ctx)).not.toContain('"onerror=x');
+    expect(renderTemplate('{{sw-icon "check" "a\\"onerror=x"}}', ctx)).not.toContain('"onerror=x');
   });
 });
 
@@ -180,9 +207,9 @@ describe('validateTemplate — context-aware rejection (Handlebars is not contex
     rejects('<!-- {{ page.title }} -->');
   });
 
-  it('requires {{url …}} (not a bare value) inside URL attributes', () => {
+  it('requires {{sw-url …}} (not a bare value) inside URL attributes', () => {
     rejects('<a href="{{ page.link }}">x</a>');
-    allows('<a href="{{url page.link}}">x</a>');
+    allows('<a href="{{sw-url page.link}}">x</a>');
     allows('<a href="/p/{{ page.slug }}">x</a>'); // literal prefix fixes the scheme → allowed
   });
 
@@ -219,11 +246,11 @@ describe('validateTemplate — no tenant JS + URL scheme (security-review fixes)
     rejects('<img src="data:{{ data.b64 }}">'); // data: scheme
   });
 
-  it('still allows safe URL prefixes and the {{url}} helper', () => {
+  it('still allows safe URL prefixes and the {{sw-url}} helper', () => {
     allows('<a href="/p/{{ page.slug }}">x</a>');
     allows('<a href="https://x.test/{{ page.slug }}">x</a>');
     allows('<a href="#{{ page.frag }}">x</a>');
-    allows('<a href="{{url page.link}}">x</a>');
+    allows('<a href="{{sw-url page.link}}">x</a>');
   });
 
   it('neuters the {{log}} helper (no stdout disclosure)', () => {

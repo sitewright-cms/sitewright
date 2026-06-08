@@ -177,8 +177,8 @@ const DAISYUI_ITEMS: LibraryItem[] = [
 ];
 
 export const LIBRARY_SECTIONS: LibrarySection[] = [
-  { category: 'icons', label: 'Icons', blurb: 'The full Lucide icon set. Insert with {{icon "name"}} — searchable by name + keyword.', items: [], lazy: 'icons' },
-  { category: 'brand', label: 'Brand icons', blurb: 'Brand / social logos. Insert with {{icon "brand:slug"}}.', items: [], lazy: 'brand' },
+  { category: 'icons', label: 'Icons', blurb: 'The full Lucide icon set. Insert with {{sw-icon "name"}} — searchable by name + keyword.', items: [], lazy: 'icons' },
+  { category: 'brand', label: 'Brand icons', blurb: 'Brand / social logos. Insert with {{sw-icon "brand:slug"}}.', items: [], lazy: 'brand' },
   { category: 'fonts', label: 'Google Fonts', blurb: 'Browse + preview Google Fonts. Pick per-slot fonts in Settings → Typography (self-hosted on select).', items: [] },
   { category: 'aos', label: 'AOS (scroll reveal)', blurb: 'Animate elements as they scroll into view via data-aos.', items: AOS_ITEMS },
   { category: 'lazyload', label: 'Lazy-load', blurb: 'Defer offscreen images with data-bg / lazyload.', items: LAZYLOAD_ITEMS },

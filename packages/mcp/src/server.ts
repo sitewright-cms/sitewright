@@ -30,13 +30,15 @@ In \`source\`:
   automatically — name the brand's main color \`primary\`.
 - Bind data: {{ company.* }} exposes the Corporate Identity you set (e.g. {{ company.name }}
   and any contact/address fields on \`identity\`); {{ page.title }}; {{ website.siteUrl }}; and
-  {{#each data.<dataset>}}…{{/each}} for collections.
+  {{#each data.<dataset>}}…{{/each}} for collections. Inside the loop an entry's fields are read
+  DIRECTLY by name — {{title}}, {{price}} (no \`values.\` prefix) — and each row is click-to-edit
+  in the editor. The entry's id/dataset are on {{@entry.id}} / {{@entry.dataset}}.
 - Mark text a CLIENT may later edit by adding data-sw-text="key" to a real element, e.g.
   <h1 data-sw-text="headline">Default text</h1> (rich text: data-sw-html; image: data-sw-src;
   link: data-sw-href; background: data-sw-bg). The override is stored on the page as page.data.<key>.
 - NO JavaScript: no <script>, no on* handlers, no {{{triple-stache}}}. For interactivity use
   DaisyUI's CSS-only patterns (<details>, the popover attribute, checkbox). Put URLs in
-  href/src as literal paths or via the {{url …}} helper.
+  href/src as literal paths or via the {{sw-url …}} helper.
 
 ANIMATIONS (scroll-reveal): use the standard AOS attributes directly on elements —
 data-aos="fade-up" plus optional data-aos-delay="200" / data-aos-duration="600" (ms, max 5000),
@@ -58,11 +60,11 @@ RIPPLE (Material "waves") click effect: add class="waves-effect" to a button/lin
 waves-effect waves-light"). The platform ships its own ripple runtime when it sees
 waves-effect — never add Waves.js. Respects prefers-reduced-motion.
 
-ICONS: inline an icon with {{icon "name" "h-5 w-5"}} (the 2nd arg is the CSS class). "name"
+ICONS: inline an icon with {{sw-icon "name" "h-5 w-5"}} (the 2nd arg is the CSS class). "name"
 is ANY Lucide icon name (the full ~1865-icon set, kebab-case — e.g. menu, x, search,
 arrow-right, chevron-down, mail, phone, map-pin, calendar, star, home, user, heart,
 shopping-cart, rocket, sparkles). Brand/social logos use the "brand:" prefix —
-{{icon "brand:github"}}, brand:x, brand:youtube, brand:instagram, brand:facebook,
+{{sw-icon "brand:github"}}, brand:x, brand:youtube, brand:instagram, brand:facebook,
 brand:whatsapp, brand:tiktok, etc. Unknown names render nothing.
 
 SET THE BRAND with put_content("settings","settings",{ identity:{ name, colors:{ primary:"#…" } },

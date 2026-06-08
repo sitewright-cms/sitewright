@@ -81,7 +81,7 @@ describe('seeded demo — German multilingual showcase publishes correctly', () 
     expect(overview.statusCode).toBe(200);
     expect(overview.body).toContain('Why static sites win on speed'); // a child page title
     expect(overview.body).toContain('Design systems that scale');
-    expect(overview.body).toContain('why-static-sites-win'); // {{url path}} link to the child route
+    expect(overview.body).toContain('why-static-sites-win'); // {{sw-url path}} link to the child route
     expect(overview.body).not.toContain('data-sw-text'); // directive markers stripped on publish
     // An article page (global:blog-article) renders its page.data via data-sw-*="data.*" leaves.
     const article = await client.get(`/sites/${slug}/blog/why-static-sites-win/index.html`);

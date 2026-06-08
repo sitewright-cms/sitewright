@@ -1291,8 +1291,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             // PREVIEW-only: keep the data-sw-* leaf-directive markers so the editor bridge can make
             // them click-to-edit. The publish path strips them in resolveDirectives.
             preview: true,
-            // PREVIEW-only: {{#eachEntry}} wraps each dataset row in a data-sw-entry marker so a click
-            // opens that entry's editor. Always body-safe (wraps the loop body) → no gate needed.
+            // PREVIEW-only: the dataset-aware {{#each}} wraps each entry row in a data-sw-entry marker
+            // so a click opens that entry's editor. Always body-safe (wraps the loop body) → no gate needed.
             markEntries: true,
           });
           // Slots render through the SAME isolated worker; a broken slot is skipped here

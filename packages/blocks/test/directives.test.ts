@@ -156,3 +156,54 @@ describe('renderTemplate — directive integration', () => {
     expect(out).toContain('<li>A</li><li>B</li>');
   });
 });
+
+describe('resolveDirectives — data.<path> keys bind to page.data', () => {
+  const data = {
+    article_title: 'Hello <b>World</b>',
+    article_body: '<p>Body</p><script>bad()</script>',
+    article_image: '/a.jpg',
+    nested: { deep: 'X' },
+  };
+
+  it('reads a STRING leaf for text (escaped), html (sanitized), and src', () => {
+    const out = resolveDirectives(
+      '<h1 data-sw-text="data.article_title">d</h1><div data-sw-html="data.article_body">d</div><img data-sw-src="data.article_image">',
+      { data, preview: true },
+    );
+    expect(out).toContain('Hello &lt;b&gt;World&lt;/b&gt;'); // text escaped, no markup injected
+    expect(out).toContain('<p>Body</p>'); // rich sanitized
+    expect(out).not.toContain('<script>'); // script stripped
+    expect(out).toContain('src="/a.jpg"');
+  });
+
+  it('resolves a deep dotted path', () => {
+    expect(resolveDirectives('<span data-sw-text="data.nested.deep">d</span>', { data, preview: true })).toContain('>X<');
+  });
+
+  it('keeps the authored default for a missing path or a non-string leaf', () => {
+    expect(resolveDirectives('<h1 data-sw-text="data.nope">Def</h1>', { data, preview: true })).toContain('>Def<');
+    // `nested` is an object, not a string → no override
+    expect(resolveDirectives('<h1 data-sw-text="data.nested">Def</h1>', { data, preview: true })).toContain('>Def<');
+  });
+
+  it('refuses a prototype-pollution segment (keeps the default)', () => {
+    expect(resolveDirectives('<h1 data-sw-text="data.__proto__">Def</h1>', { data, preview: true })).toContain('>Def<');
+    expect(resolveDirectives('<h1 data-sw-text="data.a.constructor">Def</h1>', { data, preview: true })).toContain('>Def<');
+  });
+
+  it('does not traverse array-index segments (symmetric with the editor)', () => {
+    const d = { items: ['first', 'second'] };
+    expect(resolveDirectives('<h1 data-sw-text="data.items.0">Def</h1>', { data: d, preview: true })).toContain('>Def<');
+  });
+
+  it('strips the markers on publish (no preview flag)', () => {
+    const out = resolveDirectives('<h1 data-sw-text="data.article_title">d</h1>', { data });
+    expect(out).toBe('<h1>Hello &lt;b&gt;World&lt;/b&gt;</h1>');
+  });
+
+  it('resolves through renderTemplate via page.data (preview + publish)', () => {
+    const page = { data: { headline: 'Live' } };
+    expect(renderTemplate('<h1 data-sw-text="data.headline">d</h1>', { page, preview: true })).toContain('data-sw-text="data.headline">Live<');
+    expect(renderTemplate('<h1 data-sw-text="data.headline">d</h1>', { page })).toBe('<h1>Live</h1>');
+  });
+});

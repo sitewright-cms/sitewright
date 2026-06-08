@@ -52,6 +52,58 @@ const PREVIEW_DEBOUNCE_MS = 800;
 /** Prototype-pollution-significant keys — never accepted as a region key from the preview frame. */
 const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
+// A directive key prefixed `data.` binds to this page's `page.data` at that dotted path (read + edit)
+// instead of the content/richContent maps — mirrors the resolver in @sitewright/blocks/directives.
+const DATA_KEY_PREFIX = 'data.';
+/** The page.data path a directive key targets (`data.a.b` → `a.b`), or null for a content/rich key. */
+function dataPathOf(key: string): string | null {
+  return key.startsWith(DATA_KEY_PREFIX) ? key.slice(DATA_KEY_PREFIX.length) : null;
+}
+/**
+ * A region key from the (untrusted) preview frame is safe to accept: not a bare prototype-pollution
+ * key, and — for a `data.<path>` key — no reserved/empty path segment. Self-sufficient at the message
+ * boundary (dataLeafSet also guards per segment; the server re-validates page.data on save).
+ */
+function isSafeKey(key: string): boolean {
+  if (DANGEROUS_KEYS.has(key)) return false;
+  const p = dataPathOf(key);
+  if (p === null) return true;
+  return p.split('.').every((s) => s !== '' && !DANGEROUS_KEYS.has(s));
+}
+/** Reads the STRING leaf at a dotted page.data path (own-property per segment), else undefined. */
+function dataLeafGet(data: JsonValue, path: string): string | undefined {
+  let cur: JsonValue = data;
+  for (const seg of path.split('.')) {
+    if (seg === '' || DANGEROUS_KEYS.has(seg) || cur === null || typeof cur !== 'object' || Array.isArray(cur) || !Object.prototype.hasOwnProperty.call(cur, seg)) return undefined;
+    // eslint-disable-next-line security/detect-object-injection -- own-property + DANGEROUS_KEYS guarded above
+    cur = (cur as Record<string, JsonValue>)[seg]!;
+  }
+  return typeof cur === 'string' ? cur : undefined;
+}
+/**
+ * Immutably sets the STRING leaf at a dotted page.data path, creating intermediate plain objects.
+ * Prototype-safe: a no-op if any segment is empty or a prototype-pollution key (the server also
+ * re-validates page.data on save).
+ */
+function dataLeafSet(data: JsonValue, path: string, value: string): JsonValue {
+  const segs = path.split('.');
+  if (segs.some((s) => s === '' || DANGEROUS_KEYS.has(s))) return data;
+  const asObj = (v: JsonValue | undefined): Record<string, JsonValue> =>
+    v != null && typeof v === 'object' && !Array.isArray(v) ? { ...(v as Record<string, JsonValue>) } : {};
+  const root = asObj(data);
+  let cur = root;
+  /* eslint-disable security/detect-object-injection -- segments guarded against DANGEROUS_KEYS/'' above */
+  for (let i = 0; i < segs.length - 1; i++) {
+    const seg = segs[i]!;
+    const next = asObj(cur[seg]);
+    cur[seg] = next;
+    cur = next;
+  }
+  cur[segs[segs.length - 1]!] = value;
+  /* eslint-enable security/detect-object-injection */
+  return root;
+}
+
 /** Device-rail glyphs (lucide-style outlines, matching the platform icon vocabulary). */
 const DEVICE_ICONS: Record<PreviewDeviceKey, ReactNode> = {
   desktop: (
@@ -220,13 +272,13 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   modeRef.current = mode;
   // The stateKey a given inline (preview-originated) edit will produce — stored in inlineKeyRef so
   // the debounced reload can skip it. MUST mirror `stateKey`'s field set + order exactly.
-  function inlineToken(next: { content?: Record<string, string>; richContent?: Record<string, string> }): string {
+  function inlineToken(next: { content?: Record<string, string>; richContent?: Record<string, string>; data?: JsonValue }): string {
     return JSON.stringify({
       source: sourceRef.current,
       content: next.content ?? contentRef.current,
       richContent: next.richContent ?? richContentRef.current,
       settings: settingsRef.current,
-      data: pageDataRef.current,
+      data: next.data ?? pageDataRef.current,
     });
   }
   useEffect(() => {
@@ -251,29 +303,50 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
       if (!d || d.source !== 'sitewright-preview') return;
       if (d.type === 'scroll' && typeof d.y === 'number') {
         scrollYRef.current = d.y;
-      } else if (d.type === 'edit' && typeof d.key === 'string' && typeof d.value === 'string' && !DANGEROUS_KEYS.has(d.key)) {
+      } else if (d.type === 'edit' && typeof d.key === 'string' && typeof d.value === 'string' && isSafeKey(d.key)) {
         // Inline plain-text edit → update the region (two-way with its side field); the iframe DOM
         // already shows it, so suppress the debounced reload (it would kill the live contenteditable).
-        const nextContent = { ...contentRef.current, [d.key]: d.value };
-        inlineKeyRef.current = inlineToken({ content: nextContent });
-        setContent(nextContent);
-      } else if (d.type === 'rich-edit' && typeof d.key === 'string' && typeof d.html === 'string' && !DANGEROUS_KEYS.has(d.key)) {
+        const dp = dataPathOf(d.key);
+        if (dp !== null) {
+          const nextData = dataLeafSet(pageDataRef.current, dp, d.value);
+          inlineKeyRef.current = inlineToken({ data: nextData });
+          setPageData(nextData);
+        } else {
+          const nextContent = { ...contentRef.current, [d.key]: d.value };
+          inlineKeyRef.current = inlineToken({ content: nextContent });
+          setContent(nextContent);
+        }
+      } else if (d.type === 'rich-edit' && typeof d.key === 'string' && typeof d.html === 'string' && isSafeKey(d.key)) {
         // Inline RICH edit. Store the iframe HTML as-is — every SAME-ORIGIN sink sanitizes it
         // (RichRegionPanel on display; the server on save AND on each /preview render), so the raw
         // draft value is never executed. Suppress the reload (the rich contenteditable already shows it).
-        const nextRich = { ...richContentRef.current, [d.key]: d.html };
-        inlineKeyRef.current = inlineToken({ richContent: nextRich });
-        setRichContent(nextRich);
-      } else if (d.type === 'link-edit' && typeof d.hrefKey === 'string' && d.hrefKey !== '' && typeof d.href === 'string' && !DANGEROUS_KEYS.has(d.hrefKey)) {
+        const dp = dataPathOf(d.key);
+        if (dp !== null) {
+          const nextData = dataLeafSet(pageDataRef.current, dp, d.html);
+          inlineKeyRef.current = inlineToken({ data: nextData });
+          setPageData(nextData);
+        } else {
+          const nextRich = { ...richContentRef.current, [d.key]: d.html };
+          inlineKeyRef.current = inlineToken({ richContent: nextRich });
+          setRichContent(nextRich);
+        }
+      } else if (d.type === 'link-edit' && typeof d.hrefKey === 'string' && d.hrefKey !== '' && typeof d.href === 'string' && isSafeKey(d.hrefKey)) {
         // Inline link edit (URL + optional text). The popover did NOT change the iframe DOM, so we do
         // NOT suppress — the debounced reload re-renders the anchor. Scheme-sanitize the URL here too
-        // (the render also safeUrl's it) so the stored content value stays canonical-clean.
-        const nextContent = { ...contentRef.current, [d.hrefKey]: safeUrl(d.href, '') };
-        if (typeof d.textKey === 'string' && d.textKey !== '' && typeof d.text === 'string' && !DANGEROUS_KEYS.has(d.textKey)) {
-          nextContent[d.textKey] = d.text;
+        // (the render also safeUrl's it) so the stored value stays canonical-clean. Each key routes to
+        // page.data (data.<path>) or the content map independently — the functional updaters are
+        // load-bearing when BOTH keys hit page.data: React chains them so both writes land atomically.
+        const safeHref = safeUrl(d.href, '');
+        const hp = dataPathOf(d.hrefKey);
+        if (hp !== null) setPageData((prev) => dataLeafSet(prev, hp, safeHref));
+        else { const hk = d.hrefKey; setContent((prev) => ({ ...prev, [hk]: safeHref })); }
+        if (typeof d.textKey === 'string' && d.textKey !== '' && typeof d.text === 'string' && isSafeKey(d.textKey)) {
+          const tp = dataPathOf(d.textKey);
+          const txt = d.text;
+          if (tp !== null) setPageData((prev) => dataLeafSet(prev, tp, txt));
+          else { const tk = d.textKey; setContent((prev) => ({ ...prev, [tk]: txt })); }
         }
-        setContent(nextContent);
-      } else if (d.type === 'pick-image' && typeof d.key === 'string' && d.key !== '' && !DANGEROUS_KEYS.has(d.key)) {
+      } else if (d.type === 'pick-image' && typeof d.key === 'string' && d.key !== '' && isSafeKey(d.key)) {
         // Clicked an editable image/background in the preview → open the file picker for that region.
         setPickerKey(d.key);
       } else if (
@@ -394,16 +467,32 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
     setSettings((prev) => ({ ...prev, template: '' }));
   }
 
+  // Region accessors route `data.<path>` keys to page.data (read + immutable nested set); every other
+  // key stays in the content/richContent maps.
   function regionValue(key: string, def: string): string {
+    const p = dataPathOf(key);
+    if (p !== null) return dataLeafGet(pageData, p) ?? def;
     return Object.prototype.hasOwnProperty.call(content, key) ? content[key]! : def;
   }
   function changeRegion(key: string, value: string) {
+    const p = dataPathOf(key);
+    if (p !== null) {
+      setPageData((prev) => dataLeafSet(prev, p, value));
+      return;
+    }
     setContent((prev) => ({ ...prev, [key]: value }));
   }
   function richValue(key: string, def: string): string {
+    const p = dataPathOf(key);
+    if (p !== null) return dataLeafGet(pageData, p) ?? def;
     return Object.prototype.hasOwnProperty.call(richContent, key) ? richContent[key]! : def;
   }
   function changeRichRegion(key: string, html: string) {
+    const p = dataPathOf(key);
+    if (p !== null) {
+      setPageData((prev) => dataLeafSet(prev, p, html));
+      return;
+    }
     setRichContent((prev) => ({ ...prev, [key]: html }));
   }
 

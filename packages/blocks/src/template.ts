@@ -463,7 +463,13 @@ export function renderTemplate(source: string, ctx: TemplateContext = {}, opts: 
   // Resolve the data-sw-* editable-leaf directives (text/rich bindings; image/bg/link in later
   // PRs) — keeps the marker attributes in preview, strips them on publish. No-op when the
   // rendered fragment contains no directive, so non-editable pages stay byte-identical.
-  html = resolveDirectives(html, { content: ctx.content, richContent: ctx.richContent, preview: ctx.preview });
+  html = resolveDirectives(html, {
+    content: ctx.content,
+    richContent: ctx.richContent,
+    // `data.<path>`-keyed directives bind to this page's own page.data (read + in-preview-edit).
+    data: ctx.page?.data as Record<string, unknown> | undefined,
+    preview: ctx.preview,
+  });
   const max = opts.maxOutput ?? DEFAULT_MAX_OUTPUT;
   if (html.length > max) throw new TemplateError('template output exceeded the size limit');
   return html;

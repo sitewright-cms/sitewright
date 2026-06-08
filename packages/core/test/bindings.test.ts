@@ -1,6 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import type { Binding, Entry } from '@sitewright/schema';
-import { resolveBinding } from '../src/index.js';
+import { resolveBinding, compareEntryOrder } from '../src/index.js';
+
+describe('compareEntryOrder', () => {
+  it('sorts by order ascending, absent last, with an id tie-break', () => {
+    const mk = (id: string, order?: number): Entry => ({ id, dataset: 'd', status: 'published', values: {}, ...(order !== undefined ? { order } : {}) });
+    const sorted = [mk('b', 2), mk('a', 1), mk('z'), mk('y'), mk('c', 1)].slice().sort(compareEntryOrder).map((e) => e.id);
+    expect(sorted).toEqual(['a', 'c', 'b', 'y', 'z']);
+  });
+});
 
 const entries: Entry[] = [
   { id: 'e1', dataset: 'products', status: 'published', values: { name: 'B', price: 20, featured: true } },

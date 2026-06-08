@@ -4,6 +4,7 @@
 // app). No filesystem or framework dependencies.
 import type { Entry, Page, SitewrightPartial } from '@sitewright/schema';
 import { resolvePartials } from './partials.js';
+import { compareEntryOrder } from './bindings.js';
 import type { ProjectBundle } from './validate.js';
 
 export interface ResolvedPage {
@@ -52,6 +53,8 @@ export function datasetEntries(bundle: ProjectBundle): Record<string, Entry[]> {
   for (const entry of bundle.entries) {
     map.set(entry.dataset, [...(map.get(entry.dataset) ?? []), entry]);
   }
+  // Apply the canonical drag-reorder `order` so published `{{#each}}` + block bindings match the editor.
+  for (const list of map.values()) list.sort(compareEntryOrder);
   return Object.fromEntries(map);
 }
 

@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { Dataset, Entry, Field, FieldType } from '@sitewright/schema';
+import { compareEntryOrder } from '@sitewright/core';
 import { api, type Project } from '../api';
 import { defaultEntryValues, entryLabel, identifierize, slugify } from '../lib/entry-form';
-import { EntryEditor } from './datasets/EntryEditor';
+import { EntryEditorModal } from './datasets/EntryEditorModal';
+import { Tooltip } from './ui/Tooltip';
 import { glassCard, glassPanel, glassInput, fieldLabel, primaryButton, ghostButton, dangerButton } from '../theme';
 
 const FIELD_TYPES: ReadonlyArray<FieldType> = [
@@ -39,7 +41,10 @@ export function DatasetManager({ project }: { project: Project }) {
   const [newFieldName, setNewFieldName] = useState('');
   const [newFieldType, setNewFieldType] = useState<FieldType>('text');
   const [editingEntry, setEditingEntry] = useState<Entry | null>(null);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [drop, setDrop] = useState<{ id: string; pos: 'before' | 'after' } | null>(null);
   const lastSyncedSel = useRef<string | null>(null);
+  const reordering = useRef(false);
 
   const selected = datasets.find((d) => d.id === selId) ?? null;
 
@@ -132,14 +137,43 @@ export function DatasetManager({ project }: { project: Project }) {
     }
   }
 
-  async function saveEntry(entry: Entry) {
+  async function duplicateEntry(src: Entry) {
+    if (!selected) return;
+    setError(null);
+    // A working copy: a fresh id, reset to draft (publishing a duplicate should be deliberate), and
+    // appended (order cleared → sorts last until reordered). Own-enumerable value copy.
+    const copy: Entry = { ...src, id: newEntryId(selected.slug), status: 'draft', order: undefined, values: { ...src.values } };
     try {
-      await api.putEntry(project.id, entry);
+      await api.putEntry(project.id, copy);
       await load();
-      setEditingEntry(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'failed to save entry');
-      throw err; // re-throw so EntryEditor surfaces it inline too
+      setError(err instanceof Error ? err.message : 'failed to duplicate entry');
+    }
+  }
+
+  // Drag-reorder within the selected dataset: move `sourceId` before/after `targetId`, then persist a
+  // dense `order` (0,1,2,…) for every entry whose position changed.
+  async function persistEntryReorder(sourceId: string, targetId: string, pos: 'before' | 'after') {
+    if (!selected || sourceId === targetId || reordering.current) return; // ignore a drag while one is in flight
+    const list = entries.filter((e) => e.dataset === selected.slug).slice().sort(compareEntryOrder);
+    const from = list.findIndex((e) => e.id === sourceId);
+    if (from === -1) return;
+    const [moved] = list.splice(from, 1);
+    const target = list.findIndex((e) => e.id === targetId);
+    if (target === -1) return;
+    list.splice(target + (pos === 'after' ? 1 : 0), 0, moved!);
+    reordering.current = true;
+    setError(null);
+    try {
+      // Only PUT the entries whose order actually changed. (Dense reindex like the pages list; a
+      // single bulk-reorder endpoint is a future optimization if datasets ever grow past ~60 entries,
+      // where this many writes would meet the content-write rate limit.)
+      await Promise.all(list.flatMap((e, i) => (e.order === i ? [] : [api.putEntry(project.id, { ...e, order: i })])));
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'failed to reorder entries');
+    } finally {
+      reordering.current = false;
     }
   }
 
@@ -153,7 +187,7 @@ export function DatasetManager({ project }: { project: Project }) {
   }
 
   const datasetEntries = selected
-    ? entries.filter((e) => e.dataset === selected.slug)
+    ? entries.filter((e) => e.dataset === selected.slug).slice().sort(compareEntryOrder)
     : [];
 
   return (
@@ -322,7 +356,43 @@ export function DatasetManager({ project }: { project: Project }) {
 
               <ul className="mb-3 flex flex-col gap-1">
                 {datasetEntries.map((e) => (
-                  <li key={e.id} className={`flex items-center gap-2 ${glassPanel} px-3 py-2 text-sm`}>
+                  <li
+                    key={e.id}
+                    draggable
+                    onDragStart={(ev) => {
+                      setDragId(e.id);
+                      ev.dataTransfer.effectAllowed = 'move';
+                      ev.dataTransfer.setData('text/plain', e.id);
+                    }}
+                    onDragOver={(ev) => {
+                      if (!dragId || dragId === e.id) return;
+                      ev.preventDefault();
+                      const r = ev.currentTarget.getBoundingClientRect();
+                      const pos = ev.clientY < r.top + r.height / 2 ? 'before' : 'after';
+                      setDrop((d) => (d && d.id === e.id && d.pos === pos ? d : { id: e.id, pos }));
+                    }}
+                    onDragLeave={(ev) => {
+                      if (!ev.currentTarget.contains(ev.relatedTarget as Node | null)) setDrop((d) => (d?.id === e.id ? null : d));
+                    }}
+                    onDrop={(ev) => {
+                      ev.preventDefault();
+                      if (dragId && drop) void persistEntryReorder(dragId, drop.id, drop.pos);
+                      setDragId(null);
+                      setDrop(null);
+                    }}
+                    onDragEnd={() => {
+                      setDragId(null);
+                      setDrop(null);
+                    }}
+                    className={`relative flex items-center gap-2 ${glassPanel} px-3 py-2 text-sm ${dragId === e.id ? 'opacity-40' : ''}`}
+                  >
+                    {drop?.id === e.id && (
+                      <span
+                        aria-hidden
+                        className={`pointer-events-none absolute inset-x-2 z-10 h-0.5 rounded-full bg-indigo-500 ${drop.pos === 'before' ? '-top-1' : '-bottom-1'}`}
+                      />
+                    )}
+                    <span aria-hidden className="shrink-0 cursor-grab text-slate-300 active:cursor-grabbing">⠿</span>
                     <button className="text-left hover:underline" onClick={() => setEditingEntry(e)}>
                       {entryLabel(selected, e)}
                     </button>
@@ -333,25 +403,41 @@ export function DatasetManager({ project }: { project: Project }) {
                     >
                       {e.status}
                     </span>
-                    <button
-                      aria-label={`Delete entry ${e.id}`}
-                      className={`${dangerButton} ml-auto px-2 py-0.5 text-xs`}
-                      onClick={() => removeEntry(e.id)}
-                    >
-                      ✕
-                    </button>
+                    <div className="ml-auto flex items-center gap-1">
+                      <Tooltip tip="Duplicate" side="top">
+                        <button
+                          type="button"
+                          aria-label={`Duplicate entry ${e.id}`}
+                          className={`${ghostButton} px-2 py-0.5 text-xs`}
+                          onClick={() => duplicateEntry(e)}
+                        >
+                          ⧉
+                        </button>
+                      </Tooltip>
+                      <button
+                        type="button"
+                        aria-label={`Delete entry ${e.id}`}
+                        className={`${dangerButton} px-2 py-0.5 text-xs`}
+                        onClick={() => removeEntry(e.id)}
+                      >
+                        ✕
+                      </button>
+                    </div>
                   </li>
                 ))}
                 {datasetEntries.length === 0 && <li className="text-sm text-slate-400">No entries yet.</li>}
               </ul>
 
               {editingEntry && (
-                <EntryEditor
+                <EntryEditorModal
                   dataset={selected}
                   entry={editingEntry}
                   projectId={project.id}
-                  onSave={saveEntry}
-                  onCancel={() => setEditingEntry(null)}
+                  onSaved={() => {
+                    void load();
+                    setEditingEntry(null);
+                  }}
+                  onClose={() => setEditingEntry(null)}
                 />
               )}
             </div>

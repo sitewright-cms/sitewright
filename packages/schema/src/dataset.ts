@@ -41,6 +41,12 @@ export const EntrySchema = z.object({
   dataset: SlugSchema,
   locale: z.string().max(35).optional(),
   status: z.enum(['draft', 'published']).default('draft'),
+  /**
+   * Sort order within the dataset (ascending; ties broken by id). Set by drag-reordering the
+   * entries list. Absent → sorts AFTER ordered entries (treated as +Infinity), so legacy entries
+   * keep a deterministic id order until first reordered. Mirrors `page.order`.
+   */
+  order: z.number().int().min(0).max(100_000).optional(),
   values: safeRecord(z.unknown()).default({}),
 });
 export type Entry = z.infer<typeof EntrySchema>;

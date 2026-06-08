@@ -6,6 +6,19 @@ export interface ResolveBindingOptions {
 }
 
 /**
+ * Orders entries by their `order` field (ascending; an absent `order` sorts last, as `+Infinity`),
+ * with a stable `id` tie-break. The canonical entry order set by drag-reordering — applied where
+ * entries are grouped into the render pool, so both Handlebars `{{#each}}` and block bindings reflect
+ * it (an explicit `binding.query.sort` still overrides it in {@link resolveBinding}).
+ */
+export function compareEntryOrder(a: Entry, b: Entry): number {
+  const ao = a.order ?? Number.POSITIVE_INFINITY;
+  const bo = b.order ?? Number.POSITIVE_INFINITY;
+  if (ao !== bo) return ao - bo;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
+/**
  * Resolves a binding against a pool of dataset entries, returning the entries to
  * render. Bindings are resolved at **build time**.
  *

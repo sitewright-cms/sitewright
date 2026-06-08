@@ -28,6 +28,21 @@ describe('seed demo content', () => {
     expect(() => validateTemplate(EXAMPLE_WEBSITE.footer)).not.toThrow();
   });
 
+  it('seeds a content-only blog: an overview page + article children using the global blog templates', () => {
+    const overview = EXAMPLE_PAGES.find((p) => p.id === 'blog');
+    expect(overview).toMatchObject({ path: 'blog', parent: 'home', template: 'global:blog-overview' });
+    const articles = EXAMPLE_PAGES.filter((p) => p.parent === 'blog');
+    expect(articles.length).toBeGreaterThanOrEqual(3);
+    for (const a of articles) {
+      expect(a.template).toBe('global:blog-article');
+      // Each article's content lives in page.data (read by the template's data-sw-*="data.*" leaves).
+      const data = a.data as Record<string, unknown>;
+      expect(typeof data.article_title).toBe('string');
+      expect(typeof data.article_body).toBe('string');
+      expect(typeof data.article_excerpt).toBe('string');
+    }
+  });
+
   it('every dataset the pages bind via {{#each(Entry) data.<slug>}} has seeded entries', () => {
     const entriesByDataset = new Set(EXAMPLE_ENTRIES.map((e) => e.dataset));
     const datasetSlugs = new Set(EXAMPLE_DATASETS.map((d) => d.slug));

@@ -161,6 +161,10 @@ describe('extractRegions (legacy {{edit}} + data-sw-* leaf directives)', () => {
     ]);
   });
 
+  it('recognizes a data-sw-href link region', () => {
+    expect(extractRegions('<a data-sw-href="cta" href="/x">Go</a>')).toEqual([{ key: 'cta', default: '', kind: 'link' }]);
+  });
+
   it('returns nothing when there are no regions', () => {
     expect(extractRegions('<div class="x"><img src="/a.jpg"></div>')).toEqual([]);
   });

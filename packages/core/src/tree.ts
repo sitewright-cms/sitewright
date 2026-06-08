@@ -100,7 +100,7 @@ export function extractEditRegions(source: string): EditRegion[] {
 }
 
 /** The kind of editable region, which drives the editor widget + the binding's render sink. */
-export type RegionKind = 'text' | 'rich';
+export type RegionKind = 'text' | 'rich' | 'link';
 
 /** A client-editable region: a legacy `{{edit}}` helper OR a `data-sw-*` leaf directive. */
 export interface EditableRegion extends EditRegion {
@@ -114,6 +114,8 @@ export interface EditableRegion extends EditRegion {
 // truncate the captured default (the render is still correct; only the editor's seed is affected).
 const ELEMENT_DIRECTIVE_RE =
   /<([a-zA-Z][\w-]*)\b[^>]*?\bdata-sw-(text|html)\s*=\s*(?:"([^"]*)"|'([^']*)')[^>]*>([\s\S]*?)<\/\1>/g;
+// A link-URL directive — key only (the editable value is the href, surfaced as a URL field/popover).
+const HREF_DIRECTIVE_RE = /\bdata-sw-href\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
 
 /**
  * All client-editable regions declared in a code-first source — legacy `{{edit "key" "default"}}`
@@ -136,6 +138,7 @@ export function extractRegions(source: string): EditableRegion[] {
     const kind: RegionKind = m[2] === 'html' ? 'rich' : 'text';
     add(m[3] ?? m[4] ?? '', (m[5] ?? '').trim(), kind);
   }
+  for (const m of source.matchAll(HREF_DIRECTIVE_RE)) add(m[1] ?? m[2] ?? '', '', 'link');
   return out;
 }
 

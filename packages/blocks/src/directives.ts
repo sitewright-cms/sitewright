@@ -19,14 +19,16 @@ import { Text, type Element } from 'domhandler';
 import { findAll } from 'domutils';
 import render from 'dom-serializer';
 import { sanitizeRichHtml } from './sanitize-rich.js';
+import { safeUrl } from './url.js';
 
 /** Region keys that must never index a content map (prototype-pollution guard). */
 const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
 const TEXT_ATTR = 'data-sw-text';
 const HTML_ATTR = 'data-sw-html';
-/** Every directive attribute this pass recognizes (extended by later PRs: src/bg/href). */
-const DIRECTIVE_ATTRS = [TEXT_ATTR, HTML_ATTR] as const;
+const HREF_ATTR = 'data-sw-href';
+/** Every directive attribute this pass recognizes (extended by a later PR: src/bg). */
+const DIRECTIVE_ATTRS = [TEXT_ATTR, HTML_ATTR, HREF_ATTR] as const;
 
 export interface DirectiveContext {
   /** Plain-text region overrides (the `page.content` map), keyed by directive key. */
@@ -96,6 +98,12 @@ export function resolveDirectives(html: string, ctx: DirectiveContext): string {
     if (typeof htmlKey === 'string') {
       const value = lookup(ctx.richContent, htmlKey);
       if (value !== undefined) setHtml(el, sanitizeRichHtml(value));
+    }
+    const hrefKey = el.attribs[HREF_ATTR];
+    if (typeof hrefKey === 'string') {
+      // Editable link URL: override (or the authored default) → href, always scheme-sanitized.
+      const value = lookup(ctx.content, hrefKey);
+      if (value !== undefined) el.attribs.href = safeUrl(value, '#');
     }
     // Preview keeps the markers for the bridge; publish strips them for a clean artifact.
     if (!ctx.preview) {

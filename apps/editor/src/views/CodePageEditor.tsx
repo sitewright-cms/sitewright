@@ -1,16 +1,20 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
 import type { Page, Template } from '@sitewright/schema';
 import { extractRegions, GLOBAL_TEMPLATES, isGlobalTemplate } from '@sitewright/core';
+import { safeUrl } from '@sitewright/blocks/url';
 import { api, previewDocUrl, type Project } from '../api';
 import { CodeEditor } from '../lib/code-editor';
 import { PreviewPane } from './editor/PreviewPane';
-import { RichRegionPanel } from './editor/RichRegionPanel';
 import { DevicePreview, PREVIEW_DEVICES, type PreviewDeviceKey } from './editor/DevicePreview';
 import { Modal } from './ui/Modal';
 import { Tooltip } from './ui/Tooltip';
 import { PageSettingsModal, applyPageSettings, pageSettingsFromPage, type PageSettingsValues } from './PageSettingsModal';
 import { useDialogs } from './ui/Dialogs';
 import { glassInput, glassPanel, primaryButton } from '../theme';
+
+// Lazy: the rich editor pulls in the HTML sanitizer (sanitize-html) — kept out of the main bundle,
+// loaded only when a rich region is opened.
+const RichRegionPanel = lazy(() => import('./editor/RichRegionPanel').then((m) => ({ default: m.RichRegionPanel })));
 
 export type EditMode = 'source' | 'content';
 
@@ -183,24 +187,56 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   settingsRef.current = settings;
   const modeRef = useRef(mode);
   modeRef.current = mode;
+  // The stateKey a given inline (preview-originated) edit will produce — stored in inlineKeyRef so
+  // the debounced reload can skip it. MUST mirror `stateKey`'s field set + order exactly.
+  function inlineToken(next: { content?: Record<string, string>; richContent?: Record<string, string> }): string {
+    return JSON.stringify({
+      source: sourceRef.current,
+      content: next.content ?? contentRef.current,
+      richContent: next.richContent ?? richContentRef.current,
+      settings: settingsRef.current,
+    });
+  }
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
       // Only trust messages from OUR preview frame, tagged by the bridge (opaque cross-origin doc).
       if (e.source !== iframeRef.current?.contentWindow) return;
-      const d = e.data as { source?: string; type?: string; y?: number; key?: string; value?: string } | null;
+      const d = e.data as {
+        source?: string;
+        type?: string;
+        y?: number;
+        key?: string;
+        value?: string;
+        html?: string;
+        hrefKey?: string;
+        href?: string;
+        textKey?: string;
+        text?: string;
+      } | null;
       if (!d || d.source !== 'sitewright-preview') return;
       if (d.type === 'scroll' && typeof d.y === 'number') {
         scrollYRef.current = d.y;
       } else if (d.type === 'edit' && typeof d.key === 'string' && typeof d.value === 'string' && !DANGEROUS_KEYS.has(d.key)) {
-        // Inline preview edit → update the matching region (two-way with its side field), and record
-        // the resulting stateKey so the debounced reload skips it (keeps the same key order as stateKey).
+        // Inline plain-text edit → update the region (two-way with its side field); the iframe DOM
+        // already shows it, so suppress the debounced reload (it would kill the live contenteditable).
         const nextContent = { ...contentRef.current, [d.key]: d.value };
-        inlineKeyRef.current = JSON.stringify({
-          source: sourceRef.current,
-          content: nextContent,
-          richContent: richContentRef.current,
-          settings: settingsRef.current,
-        });
+        inlineKeyRef.current = inlineToken({ content: nextContent });
+        setContent(nextContent);
+      } else if (d.type === 'rich-edit' && typeof d.key === 'string' && typeof d.html === 'string' && !DANGEROUS_KEYS.has(d.key)) {
+        // Inline RICH edit. Store the iframe HTML as-is — every SAME-ORIGIN sink sanitizes it
+        // (RichRegionPanel on display; the server on save AND on each /preview render), so the raw
+        // draft value is never executed. Suppress the reload (the rich contenteditable already shows it).
+        const nextRich = { ...richContentRef.current, [d.key]: d.html };
+        inlineKeyRef.current = inlineToken({ richContent: nextRich });
+        setRichContent(nextRich);
+      } else if (d.type === 'link-edit' && typeof d.hrefKey === 'string' && d.hrefKey !== '' && typeof d.href === 'string' && !DANGEROUS_KEYS.has(d.hrefKey)) {
+        // Inline link edit (URL + optional text). The popover did NOT change the iframe DOM, so we do
+        // NOT suppress — the debounced reload re-renders the anchor. Scheme-sanitize the URL here too
+        // (the render also safeUrl's it) so the stored content value stays canonical-clean.
+        const nextContent = { ...contentRef.current, [d.hrefKey]: safeUrl(d.href, '') };
+        if (typeof d.textKey === 'string' && d.textKey !== '' && typeof d.text === 'string' && !DANGEROUS_KEYS.has(d.textKey)) {
+          nextContent[d.textKey] = d.text;
+        }
         setContent(nextContent);
       } else if (d.type === 'ready') {
         // A freshly-(re)loaded preview → (re)apply the current edit mode so its regions stay editable.
@@ -214,6 +250,74 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   useEffect(() => {
     iframeRef.current?.contentWindow?.postMessage({ source: 'sitewright-editor', type: 'setMode', mode }, '*');
   }, [mode]);
+
+  // --- Undo/redo for INLINE edits (content + richContent: plain text, rich, image, link). Source is
+  //     owned by CodeMirror's own history; settings by the settings modal. A history of snapshots; a
+  //     debounced push coalesces typing, a fresh edit truncates the redo tail. ---
+  type Snapshot = { content: Record<string, string>; richContent: Record<string, string> };
+  const MAX_HISTORY = 100; // bound the per-session memory of a long editing run
+  const historyRef = useRef<Snapshot[]>([{ content: { ...(page.content ?? {}) }, richContent: { ...(page.richContent ?? {}) } }]);
+  const histIdxRef = useRef(0);
+  // Set true around an undo/redo restore so the resulting setState(s) — batched into one render —
+  // don't get recorded back as a new history entry. Cleared on the single effect run that follows.
+  const applyingHistory = useRef(false);
+  const [, bumpHist] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => {
+    if (applyingHistory.current) {
+      applyingHistory.current = false;
+      return;
+    }
+    // Leading edge: a fresh edit immediately invalidates any redo tail.
+    if (histIdxRef.current < historyRef.current.length - 1) {
+      historyRef.current = historyRef.current.slice(0, histIdxRef.current + 1);
+      bumpHist();
+    }
+    const snap: Snapshot = { content: { ...content }, richContent: { ...richContent } };
+    const t = setTimeout(() => {
+      const cur = historyRef.current[histIdxRef.current];
+      if (cur && JSON.stringify(cur) === JSON.stringify(snap)) return; // no real change to record
+      // Append, then cap from the front (keeping the index pinned to the newest entry).
+      const next = [...historyRef.current.slice(0, histIdxRef.current + 1), snap].slice(-MAX_HISTORY);
+      historyRef.current = next;
+      histIdxRef.current = next.length - 1;
+      bumpHist();
+    }, 400);
+    return () => clearTimeout(t);
+  }, [content, richContent]);
+  const canUndo = histIdxRef.current > 0;
+  const canRedo = histIdxRef.current < historyRef.current.length - 1;
+  function applySnapshot(s: Snapshot) {
+    applyingHistory.current = true;
+    setContent({ ...s.content });
+    setRichContent({ ...s.richContent });
+    bumpHist();
+  }
+  function undo() {
+    if (histIdxRef.current > 0) {
+      histIdxRef.current -= 1;
+      applySnapshot(historyRef.current[histIdxRef.current]!);
+    }
+  }
+  function redo() {
+    if (histIdxRef.current < historyRef.current.length - 1) {
+      histIdxRef.current += 1;
+      applySnapshot(historyRef.current[histIdxRef.current]!);
+    }
+  }
+  // ⌘/Ctrl+Z (⇧ for redo) — but never while a text field, contenteditable, or CodeMirror is focused
+  // (they own their native undo). Only the editor "chrome" (preview/side buttons) routes here.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'z') return;
+      const ae = document.activeElement as HTMLElement | null;
+      if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable || ae.closest('.cm-editor'))) return;
+      e.preventDefault();
+      if (e.shiftKey) redo();
+      else undo();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   // Project templates load once per open (small list; powers selector + lock + fork).
   useEffect(() => {
@@ -376,10 +480,32 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   );
 
   // Right side, just before Save/Close: the save status + the Page-settings gear (source mode only).
+  const undoBtnClass =
+    'inline-flex cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-white p-2 text-slate-500 transition hover:border-slate-300 hover:text-slate-900 disabled:cursor-default disabled:opacity-40';
   const headerExtra = (
     <>
       {saved && !dirty && <span className="text-xs text-emerald-600">Saved</span>}
       {saveError && <span className="text-xs text-red-600">{saveError}</span>}
+      {mode === 'content' && (
+        <>
+          <Tooltip tip="Undo (⌘Z)" side="bottom">
+            <button type="button" aria-label="Undo" disabled={!canUndo} onClick={undo} className={undoBtnClass}>
+              <svg aria-hidden viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 14 4 9l5-5" />
+                <path d="M4 9h11a5 5 0 0 1 0 10h-1" />
+              </svg>
+            </button>
+          </Tooltip>
+          <Tooltip tip="Redo (⌘⇧Z)" side="bottom">
+            <button type="button" aria-label="Redo" disabled={!canRedo} onClick={redo} className={undoBtnClass}>
+              <svg aria-hidden viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="m15 14 5-5-5-5" />
+                <path d="M20 9H9a5 5 0 0 0 0 10h1" />
+              </svg>
+            </button>
+          </Tooltip>
+        </>
+      )}
       {mode === 'source' && (
         <Tooltip tip="Page settings" side="bottom">
           <button
@@ -454,8 +580,8 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
               {regions.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-slate-300/80 bg-white/40 p-6 text-center text-sm text-slate-500">
                   This page has no editable regions yet. Mark editable text with{' '}
-                  <code>{'data-sw-text="…"'}</code> (or <code>{'{{edit "…"}}'}</code>) and rich text with{' '}
-                  <code>{'data-sw-html="…"'}</code> in the source.
+                  <code>{'data-sw-text="…"'}</code> (or <code>{'{{edit "…"}}'}</code>), rich text with{' '}
+                  <code>{'data-sw-html="…"'}</code>, and link URLs with <code>{'data-sw-href="…"'}</code> in the source.
                 </div>
               ) : (
                 regions.map((region) =>
@@ -468,6 +594,20 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
                         Edit rich text…
                       </button>
                     </div>
+                  ) : region.kind === 'link' ? (
+                    <label key={region.key} className={`block shrink-0 p-3 ${glassPanel}`}>
+                      <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        {region.key} <span className="font-normal lowercase tracking-normal text-slate-300">link URL</span>
+                      </span>
+                      <input
+                        type="url"
+                        aria-label={region.key}
+                        className={glassInput}
+                        placeholder="https://… or /path"
+                        value={regionValue(region.key, region.default)}
+                        onChange={(e) => changeRegion(region.key, e.target.value)}
+                      />
+                    </label>
                   ) : (
                     <label key={region.key} className={`block shrink-0 p-3 ${glassPanel}`}>
                       <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-400">
@@ -520,12 +660,14 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
 
       {/* The rich-text side editor STACKS above this modal; it edits the shared draft live. */}
       {richOpen && (
-        <RichRegionPanel
-          regionKey={richOpen}
-          value={richValue(richOpen, regions.find((r) => r.key === richOpen)?.default ?? '')}
-          onChange={(html) => changeRichRegion(richOpen, html)}
-          onClose={() => setRichOpen(null)}
-        />
+        <Suspense fallback={null}>
+          <RichRegionPanel
+            regionKey={richOpen}
+            value={richValue(richOpen, regions.find((r) => r.key === richOpen)?.default ?? '')}
+            onChange={(html) => changeRichRegion(richOpen, html)}
+            onClose={() => setRichOpen(null)}
+          />
+        </Suspense>
       )}
 
       {/* Page settings STACK above this modal; applying updates the DRAFT (one Save persists all). */}

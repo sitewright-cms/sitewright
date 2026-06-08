@@ -113,6 +113,22 @@ describe('website settings → publish', () => {
     expect(html).toContain('<body><main><h1>Published copy</h1>'); // plain interpolation, no preview wrapper
   });
 
+  it('exposes a page’s own page.data to the published page ({{page.data.*}} + {{#each}})', async () => {
+    const proj = client.project(projectId);
+    expect((await proj.putContent('settings', 'settings', {
+      brand: { name: 'ClassCar', colors: { primary: '#e11' } },
+      settings: { defaultLocale: 'en', locales: ['en'] },
+    })).statusCode).toBe(200);
+    expect((await proj.putContent('page', 'home', {
+      id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
+      data: { hero: { headline: 'Page-local copy' }, tags: ['a', 'b'] },
+      source: '<main><h1>{{page.data.hero.headline}}</h1><ul>{{#each page.data.tags}}<li>{{this}}</li>{{/each}}</ul></main>',
+    })).statusCode).toBe(200);
+    const html = await publishAndFetchHome();
+    expect(html).toContain('<h1>Page-local copy</h1>');
+    expect(html).toContain('<li>a</li><li>b</li>');
+  });
+
   it('omits the optional website injections when not configured', async () => {
     await putSettings(undefined);
     const html = await publishAndFetchHome();

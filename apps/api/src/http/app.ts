@@ -1267,6 +1267,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             path: pagePath(page, previewById),
             locale: previewLocale,
             translations: translationsOf(savedPages, page, defaultLocale),
+            data: page.data,
           };
           const rendered = await renderPool.render(pageSource, {
             company: brand as unknown as Record<string, unknown>,
@@ -1395,7 +1396,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         vars: {
           company: brand,
           website: { siteUrl: website?.siteUrl, data: website?.data },
-          page: { title: page.title, path: pagePath(page, previewById), locale: previewLocale, translations: translationsOf(savedPages, page, defaultLocale) },
+          page: { title: page.title, path: pagePath(page, previewById), locale: previewLocale, translations: translationsOf(savedPages, page, defaultLocale), data: page.data },
         },
         // Bindings resolve to the page's locale dataset variant (`<name>-<locale>`), like publish.
         datasets: resolveLocaleDatasets(Object.fromEntries(byDataset), page.locale),

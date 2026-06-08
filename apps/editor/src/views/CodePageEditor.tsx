@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
-import type { Page, Template } from '@sitewright/schema';
+import type { JsonValue, Page, Template } from '@sitewright/schema';
 import { extractRegions, GLOBAL_TEMPLATES, isGlobalTemplate } from '@sitewright/core';
 import { safeUrl } from '@sitewright/blocks/url';
 import { api, previewDocUrl, type Project } from '../api';
@@ -14,7 +14,16 @@ import { FilePicker } from './files/FilePicker';
 import { AssetField } from './files/AssetField';
 import { ACCEPT } from './files/FileBrowser';
 import { EntryEditorLoader } from './datasets/EntryEditorLoader';
+import { WebsiteDataModal } from './settings/WebsiteDataModal';
 import { glassInput, glassPanel, primaryButton } from '../theme';
+
+/** An empty page.data (absent/null or an empty object/array) — omitted from the saved/previewed page. */
+function isEmptyPageData(v: JsonValue): boolean {
+  if (v == null) return true;
+  if (Array.isArray(v)) return v.length === 0;
+  if (typeof v === 'object') return Object.keys(v).length === 0;
+  return false;
+}
 
 // Lazy: the rich editor pulls in the HTML sanitizer (sanitize-html) — kept out of the main bundle,
 // loaded only when a rich region is opened.
@@ -115,6 +124,10 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   const [content, setContent] = useState<Record<string, string>>({ ...(page.content ?? {}) });
   // Rich (sanitized-HTML) region values (data-sw-html overrides) — content mode's rich draft.
   const [richContent, setRichContent] = useState<Record<string, string>>({ ...(page.richContent ?? {}) });
+  // Per-page custom data → {{ page.data.* }} (and each child's `data` in an overview's {{#each page.children}}).
+  // Edited via the "Edit page data" tree/JSON modal (and, in a later PR, in-preview data-sw-*="data.*" leaves).
+  const [pageData, setPageData] = useState<JsonValue>(page.data ?? {});
+  const [pageDataOpen, setPageDataOpen] = useState(false);
   // The rich region currently open in the side editor (its key), or null when none is open.
   const [richOpen, setRichOpen] = useState<string | null>(null);
   // The content key whose image is being replaced via the file picker (data-sw-src/bg click), or null.
@@ -152,13 +165,18 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
       : templates.find((t) => t.id === settings.template)
     : undefined;
 
-  // The draft page exactly as Save would persist it (and as the preview renders it).
+  // The draft page exactly as Save would persist it (and as the preview renders it). An empty
+  // page.data ({}/[]/null) is dropped so a never-touched page stays minimal — `data: undefined` is
+  // omitted on PUT (an empty root carries no addressable value; same rule as website.data). NOTE:
+  // `draft.data` is the empty-OMITTED value (sent to the server, never read back into `pageData`),
+  // whereas `stateKey`/`inlineToken`/the undo Snapshot all track the RAW `pageData` — they only need
+  // to agree with EACH OTHER for dirty/suppress/undo to work, which they do.
   const draft: Page = useMemo(
-    () => ({ ...applyPageSettings(page, settings), source, content, richContent }),
-    [page, settings, source, content, richContent],
+    () => ({ ...applyPageSettings(page, settings), source, content, richContent, data: isEmptyPageData(pageData) ? undefined : pageData }),
+    [page, settings, source, content, richContent, pageData],
   );
   // One key over every editable field (BOTH modes + settings) → dirty + post-save snapshot.
-  const stateKey = JSON.stringify({ source, content, richContent, settings });
+  const stateKey = JSON.stringify({ source, content, richContent, settings, data: pageData });
   const [savedKey, setSavedKey] = useState(stateKey);
   const dirty = stateKey !== savedKey;
 
@@ -196,6 +214,8 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   richContentRef.current = richContent;
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
+  const pageDataRef = useRef(pageData);
+  pageDataRef.current = pageData;
   const modeRef = useRef(mode);
   modeRef.current = mode;
   // The stateKey a given inline (preview-originated) edit will produce — stored in inlineKeyRef so
@@ -206,6 +226,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
       content: next.content ?? contentRef.current,
       richContent: next.richContent ?? richContentRef.current,
       settings: settingsRef.current,
+      data: pageDataRef.current,
     });
   }
   useEffect(() => {
@@ -282,9 +303,9 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   // --- Undo/redo for INLINE edits (content + richContent: plain text, rich, image, link). Source is
   //     owned by CodeMirror's own history; settings by the settings modal. A history of snapshots; a
   //     debounced push coalesces typing, a fresh edit truncates the redo tail. ---
-  type Snapshot = { content: Record<string, string>; richContent: Record<string, string> };
+  type Snapshot = { content: Record<string, string>; richContent: Record<string, string>; data: JsonValue };
   const MAX_HISTORY = 100; // bound the per-session memory of a long editing run
-  const historyRef = useRef<Snapshot[]>([{ content: { ...(page.content ?? {}) }, richContent: { ...(page.richContent ?? {}) } }]);
+  const historyRef = useRef<Snapshot[]>([{ content: { ...(page.content ?? {}) }, richContent: { ...(page.richContent ?? {}) }, data: page.data ?? {} }]);
   const histIdxRef = useRef(0);
   // Set true around an undo/redo restore so the resulting setState(s) — batched into one render —
   // don't get recorded back as a new history entry. Cleared on the single effect run that follows.
@@ -300,7 +321,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
       historyRef.current = historyRef.current.slice(0, histIdxRef.current + 1);
       bumpHist();
     }
-    const snap: Snapshot = { content: { ...content }, richContent: { ...richContent } };
+    const snap: Snapshot = { content: { ...content }, richContent: { ...richContent }, data: pageData };
     const t = setTimeout(() => {
       const cur = historyRef.current[histIdxRef.current];
       if (cur && JSON.stringify(cur) === JSON.stringify(snap)) return; // no real change to record
@@ -311,13 +332,14 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
       bumpHist();
     }, 400);
     return () => clearTimeout(t);
-  }, [content, richContent]);
+  }, [content, richContent, pageData]);
   const canUndo = histIdxRef.current > 0;
   const canRedo = histIdxRef.current < historyRef.current.length - 1;
   function applySnapshot(s: Snapshot) {
     applyingHistory.current = true;
     setContent({ ...s.content });
     setRichContent({ ...s.richContent });
+    setPageData(s.data);
     bumpHist();
   }
   function undo() {
@@ -535,6 +557,20 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
           </Tooltip>
         </>
       )}
+      <Tooltip tip="Edit page data" side="bottom">
+        <button
+          type="button"
+          aria-label="Edit page data"
+          aria-expanded={pageDataOpen}
+          className="inline-flex cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-white p-2 text-slate-500 transition hover:border-slate-300 hover:text-slate-900"
+          onClick={() => setPageDataOpen(true)}
+        >
+          <svg aria-hidden viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5a2 2 0 0 0 2 2h1" />
+            <path d="M16 3h1a2 2 0 0 1 2 2v5a2 2 0 0 0 2 2 2 2 0 0 0-2 2v5a2 2 0 0 1-2 2h-1" />
+          </svg>
+        </button>
+      </Tooltip>
       {mode === 'source' && (
         <Tooltip tip="Page settings" side="bottom">
           <button
@@ -762,6 +798,16 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
             setSettings(values);
             setSettingsOpen(false);
           }}
+        />
+      )}
+      {/* Per-page custom data → {{ page.data.* }}, edited in the reused tree/JSON store editor. */}
+      {pageDataOpen && (
+        <WebsiteDataModal
+          title="Page data"
+          namespace="page.data"
+          value={pageData}
+          onSave={setPageData}
+          onClose={() => setPageDataOpen(false)}
         />
       )}
       {dialog}

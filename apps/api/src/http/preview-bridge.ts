@@ -13,12 +13,14 @@
  *                     { source:'sitewright-preview', type:'edit', key, value }          (plain text)
  *                     { source:'sitewright-preview', type:'rich-edit', key, html }       (data-sw-html)
  *                     { source:'sitewright-preview', type:'link-edit', hrefKey, href, textKey, text } (data-sw-href)
+ *                     { source:'sitewright-preview', type:'pick-image', key, kind:'image'|'bg' }   (data-sw-src/bg)
  *   editor → preview: { source:'sitewright-editor', type:'scrollTo', y }
  *                     { source:'sitewright-editor', type:'setMode', mode }
  *
  * Editing surfaces (content mode): [data-sw-edit]/[data-sw-text] → plaintext contenteditable;
  * [data-sw-html] → rich contenteditable with a floating formatting toolbar; [data-sw-href] anchor →
- * a URL(+text) popover. The parent re-sanitizes rich/link payloads (the iframe is untrusted).
+ * a URL(+text) popover; [data-sw-src]/[data-sw-bg] → click to replace via the editor's file picker.
+ * The parent re-sanitizes rich/link payloads + URLs (the iframe is untrusted).
  *
  * Scroll RESTORE across a full reload is done via the `#sw-y=<n>` hash the editor appends to each
  * new preview URL (read synchronously here), not an inbound message — a brand-new document's
@@ -54,6 +56,8 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       '.sw-edit-on:focus{outline:2px solid #6366f1;background:rgba(99,102,241,.10)}' +
       '[data-sw-href].sw-link-on{cursor:pointer;outline-color:#6366f1}' +
       '[data-sw-href].sw-link-on:hover{outline:2px solid #6366f1;background:rgba(99,102,241,.10)}' +
+      '[data-sw-src].sw-img-on,[data-sw-bg].sw-img-on{cursor:pointer;outline-color:#6366f1}' +
+      '[data-sw-src].sw-img-on:hover,[data-sw-bg].sw-img-on:hover{outline:2px solid #6366f1;box-shadow:inset 0 0 0 9999px rgba(99,102,241,.12)}' +
       '.sw-tb{position:fixed;z-index:2147483646;display:none;gap:2px;padding:3px;border-radius:8px;background:#0f172a;box-shadow:0 6px 20px rgba(0,0,0,.35);font:600 12px system-ui,sans-serif}' +
       '.sw-tb button{all:unset;color:#e2e8f0;cursor:pointer;padding:3px 7px;border-radius:5px;min-width:18px;text-align:center}' +
       '.sw-tb button:hover{background:#334155;color:#fff}' +
@@ -187,6 +191,13 @@ export const PREVIEW_BRIDGE_JS = `(function () {
   function closePop() { if (pop) pop.style.display = 'none'; popAnchor = null; document.removeEventListener('mousedown', onDocDown, true); }
   function onLinkClick(e) { e.preventDefault(); e.stopPropagation(); openPop(e.currentTarget); }
 
+  // --- Image / background replacement ([data-sw-src] / [data-sw-bg]) → ask the editor to pick. ---
+  function onImgClick(e) {
+    e.preventDefault(); e.stopPropagation();
+    var el = e.currentTarget;
+    post({ type: 'pick-image', key: el.getAttribute('data-sw-src') || el.getAttribute('data-sw-bg') || '', kind: el.hasAttribute('data-sw-src') ? 'image' : 'bg' });
+  }
+
   function eachEl(sel, fn) { var els = document.querySelectorAll(sel); for (var j = 0; j < els.length; j++) fn(els[j]); }
   function setEditing(on) {
     if (on === editing) return;
@@ -208,6 +219,11 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       if (el.hasAttribute('data-sw-html')) return;
       if (on) { el.classList.add('sw-link-on'); el.addEventListener('click', onLinkClick); }
       else { el.classList.remove('sw-link-on'); el.removeEventListener('click', onLinkClick); }
+    });
+    // Images + backgrounds — click to replace via the editor's file picker.
+    eachEl('[data-sw-src],[data-sw-bg]', function (el) {
+      if (on) { el.classList.add('sw-img-on'); el.addEventListener('click', onImgClick); }
+      else { el.classList.remove('sw-img-on'); el.removeEventListener('click', onImgClick); }
     });
     if (on) document.addEventListener('selectionchange', onSelChange);
     else { document.removeEventListener('selectionchange', onSelChange); hideToolbar(); closePop(); }

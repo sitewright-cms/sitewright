@@ -9,7 +9,7 @@ import { Modal } from './ui/Modal';
 import { FormsManager } from './FormsManager';
 import { SettingsView } from './settings/SettingsView';
 import { AdminView } from './AdminView';
-import { glassCard, glassInput, fieldLabel, primaryButton } from '../theme';
+import { glassCard, glassInput, fieldLabel, primaryButton, gradientHover } from '../theme';
 import { orderPagesByTree, canReorder, reorderWithinParent, orderedSiblings } from './pages-order';
 
 interface ProjectViewProps {
@@ -116,8 +116,11 @@ const TEMPLATE_ICON = rowIcon(
   </>,
 );
 
+// On row hover the icons tint white for contrast on the gradient — but ONLY while the icon itself
+// isn't hovered (`[&:not(:hover)]`), so a direct hover's white-chip (`hover:bg-white text-slate-900`)
+// always wins regardless of Tailwind's variant ordering.
 const ROW_ACTION =
-  'waves-effect inline-flex cursor-pointer items-center justify-center rounded-lg p-1.5 text-slate-400 transition hover:bg-white hover:text-slate-900';
+  'waves-effect inline-flex cursor-pointer items-center justify-center rounded-lg p-1.5 text-slate-400 transition group-hover:[&:not(:hover)]:text-white/90 hover:bg-white hover:text-slate-900';
 
 export function ProjectView({ project, tab }: ProjectViewProps) {
   const { confirm, dialog } = useDialogs();
@@ -526,7 +529,7 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
                       setDragId(null);
                       setDrop(null);
                     }}
-                    className={`relative flex items-center gap-1 ${glassCard} px-3 py-2 transition hover:bg-white/80 ${dragId === p.id ? 'opacity-40' : ''}`}
+                    className={`group relative flex items-center gap-1 ${glassCard} px-3 py-2 transition ${gradientHover} ${dragId === p.id ? 'opacity-40' : ''}`}
                   >
                   {dropping && (
                     <span
@@ -541,7 +544,7 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
                       type="button"
                       aria-label={`Reorder ${p.title}`}
                       title="Drag to reorder — or focus and use ↑/↓"
-                      className="waves-effect inline-flex shrink-0 cursor-grab items-center justify-center rounded-lg p-1.5 text-slate-300 transition hover:bg-white hover:text-slate-600 active:cursor-grabbing"
+                      className="waves-effect inline-flex shrink-0 cursor-grab items-center justify-center rounded-lg p-1.5 text-slate-300 transition group-hover:[&:not(:hover)]:text-white/80 hover:bg-white hover:text-slate-600 active:cursor-grabbing"
                       onKeyDown={(e) => {
                         if (e.key === 'ArrowUp') {
                           e.preventDefault();
@@ -559,19 +562,19 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
                     className="waves-effect flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-lg px-1 py-1 text-left"
                     onClick={() => setEditing(p)}
                   >
-                    <span aria-hidden className={isHome ? 'text-indigo-500' : 'text-slate-400'} title={isHome ? 'Home page' : 'Page'}>
+                    <span aria-hidden className={`${isHome ? 'text-indigo-500' : 'text-slate-400'} group-hover:text-white`} title={isHome ? 'Home page' : 'Page'}>
                       {isHome ? HOME_ICON : PAGE_ICON}
                     </span>
                     <span className="truncate font-medium">{p.title}</span>
-                    <span className="truncate text-sm text-slate-400">{fullPath(p)}</span>
+                    <span className="truncate text-sm text-slate-400 group-hover:text-white/90">{fullPath(p)}</span>
                     {p.status === 'draft' && (
-                      <span className="rounded-full bg-slate-200/80 px-2 py-0.5 text-[11px] font-medium text-slate-600">draft</span>
+                      <span className="rounded-full bg-slate-200/80 px-2 py-0.5 text-[11px] font-medium text-slate-600 group-hover:bg-white/25 group-hover:text-white">draft</span>
                     )}
                     {p.template && (
-                      <span className="rounded-full bg-indigo-100/80 px-2 py-0.5 text-[11px] font-medium text-indigo-700">template</span>
+                      <span className="rounded-full bg-indigo-100/80 px-2 py-0.5 text-[11px] font-medium text-indigo-700 group-hover:bg-white/25 group-hover:text-white">template</span>
                     )}
                     {multilingual && p.locale && (
-                      <span className="rounded-full bg-emerald-100/80 px-2 py-0.5 text-[11px] font-semibold uppercase text-emerald-700">
+                      <span className="rounded-full bg-emerald-100/80 px-2 py-0.5 text-[11px] font-semibold uppercase text-emerald-700 group-hover:bg-white/25 group-hover:text-white">
                         {p.locale}
                       </span>
                     )}

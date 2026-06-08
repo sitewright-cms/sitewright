@@ -35,7 +35,7 @@ test('snippets rail: create, edit source, persist across reload, delete', async 
 
   // Persists across a reload (loaded from the server), and the source round-trips.
   await page.reload();
-  await page.getByRole('dialog', { name: 'Your projects' }).getByRole('button', { name: /Rail Site/ }).click();
+  await page.getByRole('dialog', { name: 'SiteWright' }).getByRole('button', { name: /Rail Site/ }).click();
   await page.getByRole('button', { name: 'Open Snippets' }).hover();
   const panel2 = page.locator('[role="region"][aria-label="Snippets"]');
   await expect(panel2.getByText('hero', { exact: true })).toBeVisible();

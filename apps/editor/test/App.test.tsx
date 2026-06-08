@@ -41,7 +41,7 @@ beforeEach(() => {
 describe('App shell', () => {
   it('shows the project selector automatically on first load, searchable', async () => {
     render(<App />);
-    const dialog = await screen.findByRole('dialog', { name: 'Your projects' });
+    const dialog = await screen.findByRole('dialog', { name: 'SiteWright' });
     expect(within(dialog).getByRole('button', { name: /Acme/ })).toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: /Globex/ })).toBeInTheDocument();
     // Search filters the list.
@@ -52,7 +52,7 @@ describe('App shell', () => {
 
   it('opens a project from the selector → header shows its name + tablist', async () => {
     render(<App />);
-    const dialog = await screen.findByRole('dialog', { name: 'Your projects' });
+    const dialog = await screen.findByRole('dialog', { name: 'SiteWright' });
     fireEvent.click(within(dialog).getByRole('button', { name: /Acme/ }));
     expect(await screen.findByText(/PROJECT Acme/)).toBeInTheDocument();
     // The tablist lives in the header bar now.
@@ -91,12 +91,12 @@ describe('App shell', () => {
     await screen.findByText(/PROJECT Acme/);
     expect(screen.queryByRole('dialog')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Switch project' }));
-    expect(await screen.findByRole('dialog', { name: 'Your projects' })).toBeInTheDocument();
+    expect(await screen.findByRole('dialog', { name: 'SiteWright' })).toBeInTheDocument();
   });
 
   it('New project → modal → create → auto-opens the new project', async () => {
     render(<App />);
-    const selector = await screen.findByRole('dialog', { name: 'Your projects' });
+    const selector = await screen.findByRole('dialog', { name: 'SiteWright' });
     fireEvent.click(within(selector).getByRole('button', { name: 'New project' }));
     const modal = await screen.findByRole('dialog', { name: 'New project' });
     fireEvent.change(within(modal).getByLabelText('Project name'), { target: { value: 'New Co' } });

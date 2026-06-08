@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import type { Project } from '../api';
 import { Modal } from './ui/Modal';
-import { glassCard, glassInput, primaryButton } from '../theme';
+import { BrandMark } from './ui/BrandMark';
+import { glassCard, glassInput, primaryButton, gradientSurface, gradientHover } from '../theme';
 
 interface ProjectSelectorModalProps {
   projects: Project[];
@@ -28,9 +29,10 @@ export function ProjectSelectorModal({ projects, currentId, onClose, onOpen, onN
 
   return (
     <Modal
-      title="Your projects"
+      title="SiteWright"
       size="md"
       onClose={onClose}
+      headerLeft={<BrandMark className="h-6 w-6 text-slate-900" />}
       headerExtra={
         <button type="button" className={`${primaryButton} px-3 py-1.5 text-xs`} onClick={onNew}>
           New project
@@ -50,11 +52,26 @@ export function ProjectSelectorModal({ projects, currentId, onClose, onOpen, onN
           {filtered.map((p) => (
             <li key={p.id}>
               <button
-                className={`w-full ${glassCard} px-4 py-3 text-left transition hover:bg-white/80 ${p.id === currentId ? 'ring-2 ring-indigo-400' : ''}`}
+                className={`group w-full rounded-2xl px-4 py-3 text-left transition ${
+                  p.id === currentId ? gradientSurface : `${glassCard} ${gradientHover}`
+                }`}
                 onClick={() => onOpen(p)}
               >
-                <span className="font-medium">{p.name}</span> <span className="text-sm text-slate-400">/{p.slug}</span>
-                {p.role === 'member' && <span className="ml-2 rounded-full bg-indigo-100/80 px-2 py-0.5 text-[11px] font-medium text-indigo-700">client</span>}
+                <span className="font-medium">{p.name}</span>{' '}
+                <span className={`text-sm ${p.id === currentId ? 'text-white/80' : 'text-slate-400 group-hover:text-white/80'}`}>
+                  /{p.slug}
+                </span>
+                {p.role === 'member' && (
+                  <span
+                    className={`ml-2 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                      p.id === currentId
+                        ? 'bg-white/20 text-white'
+                        : 'bg-indigo-100/80 text-indigo-700 group-hover:bg-white/20 group-hover:text-white'
+                    }`}
+                  >
+                    client
+                  </span>
+                )}
               </button>
             </li>
           ))}

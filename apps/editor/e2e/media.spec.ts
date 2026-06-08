@@ -78,7 +78,7 @@ test('upload a non-image file into a folder and see it listed with a download li
   // The folder persists across a reload (the original bug it fixes). On reload the project selector
   // auto-opens — reopen the project, reopen the Assets panel, and the folder is still there.
   await page.reload();
-  await page.getByRole('dialog', { name: 'Your projects' }).getByRole('button', { name: /Assets Site/ }).click();
+  await page.getByRole('dialog', { name: 'SiteWright' }).getByRole('button', { name: /Assets Site/ }).click();
   await page.getByRole('button', { name: 'Assets', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Assets' }).getByRole('button', { name: 'Docs', exact: true })).toBeVisible();
 });

@@ -103,6 +103,19 @@ export const PageSchema = z
       .record(z.string().max(200), z.string().max(20_000))
       .refine((obj) => Object.keys(obj).length <= 500, 'too many content regions')
       .optional(),
+    /**
+     * Client-editable RICH (sanitized-HTML) bound content for a code-first page: region key →
+     * sanitized HTML. A developer marks a rich region with the `data-sw-html="key"` directive; the
+     * value here OVERRIDES the element's authored default and is set as its innerHTML. Values are
+     * sanitized to an allowlist server-side on save AND defensively at render — the same
+     * client-write property as `content` (a member may set these keys but nothing else). Keyed by
+     * {@link KeyNameSchema} (refuses `__proto__`/`constructor`/`prototype`); larger per-value cap
+     * than `content` for HTML markup overhead, still bounded.
+     */
+    richContent: z
+      .record(KeyNameSchema, z.string().max(64_000))
+      .refine((obj) => Object.keys(obj).length <= 500, 'too many rich regions')
+      .optional(),
     /** Present when this page is generated once per dataset entry. */
     collection: z
       .object({

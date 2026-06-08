@@ -18,6 +18,7 @@ import Handlebars from 'handlebars';
 import { safeUrl } from './url.js';
 import { escapeAttr, escapeHtml } from './escape.js';
 import { iconBody } from './icons.js';
+import { resolveDirectives } from './directives.js';
 
 /** Thrown for an unsafe interpolation context, a Handlebars compile error, or a render error. */
 export class TemplateError extends Error {
@@ -52,6 +53,20 @@ export interface TemplateContext {
    * marked.
    */
   markEdits?: boolean;
+  /**
+   * Client-editable RICH (sanitized-HTML) region overrides for the `data-sw-html` directive: key →
+   * sanitized HTML (matches the `page.richContent` schema). Resolved by {@link resolveDirectives}
+   * after Handlebars; the value is re-sanitized at render (defensive) and set as the element's
+   * innerHTML.
+   */
+  richContent?: Record<string, string>;
+  /**
+   * PREVIEW render flag for the `data-sw-*` directive pass: keep the marker attributes so the editor
+   * bridge can make leaves click-to-edit. Absent on PUBLISH (markers are stripped). Distinct from
+   * {@link markEdits} (the legacy `{{edit}}`-span gate) so an attribute-context `{{edit}}` can never
+   * suppress directive markers.
+   */
+  preview?: boolean;
 }
 
 /**
@@ -405,6 +420,10 @@ export function renderTemplate(source: string, ctx: TemplateContext = {}, opts: 
     }
     throw new TemplateError(err instanceof Error ? `render error: ${err.message}` : 'render error');
   }
+  // Resolve the data-sw-* editable-leaf directives (text/rich bindings; image/bg/link in later
+  // PRs) — keeps the marker attributes in preview, strips them on publish. No-op when the
+  // rendered fragment contains no directive, so non-editable pages stay byte-identical.
+  html = resolveDirectives(html, { content: ctx.content, richContent: ctx.richContent, preview: ctx.preview });
   const max = opts.maxOutput ?? DEFAULT_MAX_OUTPUT;
   if (html.length > max) throw new TemplateError('template output exceeded the size limit');
   return html;

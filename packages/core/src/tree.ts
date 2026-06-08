@@ -99,6 +99,46 @@ export function extractEditRegions(source: string): EditRegion[] {
   return out;
 }
 
+/** The kind of editable region, which drives the editor widget + the binding's render sink. */
+export type RegionKind = 'text' | 'rich';
+
+/** A client-editable region: a legacy `{{edit}}` helper OR a `data-sw-*` leaf directive. */
+export interface EditableRegion extends EditRegion {
+  kind: RegionKind;
+}
+
+// A `data-sw-text`/`data-sw-html` leaf directive WITH its authored default inner content:
+// `<tag … data-sw-(text|html)="key" …>DEFAULT</tag>`. Group 1: tag (back-referenced to find the
+// close); 2: kind; 3|4: key; 5: inner default. Best-effort — `[^>]` stops at the first `>` so an
+// attribute value containing `>` (rare) just yields no match, and nested SAME-tag content may
+// truncate the captured default (the render is still correct; only the editor's seed is affected).
+const ELEMENT_DIRECTIVE_RE =
+  /<([a-zA-Z][\w-]*)\b[^>]*?\bdata-sw-(text|html)\s*=\s*(?:"([^"]*)"|'([^']*)')[^>]*>([\s\S]*?)<\/\1>/g;
+
+/**
+ * All client-editable regions declared in a code-first source — legacy `{{edit "key" "default"}}`
+ * helpers AND `data-sw-text`/`data-sw-html` leaf directives — deduped by key (first occurrence
+ * wins), each tagged with its {@link RegionKind} so the editor can pick the right widget and seed
+ * its default. Only the page's OWN source is scanned (regions inside an included `{{> partial}}`
+ * render but aren't surfaced as fields). Editable singletons should live OUTSIDE loops — a directive
+ * key repeated by `{{#each}}` collapses to one field.
+ */
+export function extractRegions(source: string): EditableRegion[] {
+  const out: EditableRegion[] = [];
+  const seen = new Set<string>();
+  const add = (key: string, def: string, kind: RegionKind): void => {
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    out.push({ key, default: def, kind });
+  };
+  for (const m of source.matchAll(EDIT_REGION_RE)) add(m[1] ?? m[2] ?? '', (m[3] ?? m[4] ?? '').replace(/\\(['"])/g, '$1'), 'text');
+  for (const m of source.matchAll(ELEMENT_DIRECTIVE_RE)) {
+    const kind: RegionKind = m[2] === 'html' ? 'rich' : 'text';
+    add(m[3] ?? m[4] ?? '', (m[5] ?? '').trim(), kind);
+  }
+  return out;
+}
+
 /** Upper bound on distinct class tokens extracted from one HTML/source string. */
 export const MAX_EXTRACTED_CLASS_TOKENS = 2048;
 

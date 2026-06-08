@@ -40,6 +40,20 @@ describe('ContentRepository', () => {
     await expect(content.put(pctxA, 'page', 'home', { id: 'home', title: 'X' })).rejects.toThrow();
   });
 
+  it('sanitizes a page’s richContent on write (the authoritative allowlist pass)', async () => {
+    const dirty = {
+      ...page,
+      richContent: { intro: '<p>ok</p><script>alert(1)</script><img src=x onerror=alert(2)>' },
+    };
+    const stored = (await content.put(pctxA, 'page', 'home', dirty)) as { richContent?: Record<string, string> };
+    expect(stored.richContent?.intro).toContain('<p>ok</p>');
+    expect(stored.richContent?.intro).not.toContain('<script');
+    expect(stored.richContent?.intro).not.toContain('onerror');
+    // Persisted sanitized — a later read returns the clean value, not the raw input.
+    const got = (await content.get(pctxA, 'page', 'home')) as { richContent?: Record<string, string> };
+    expect(got.richContent?.intro).not.toContain('<script');
+  });
+
   it('rejects an id that does not match the path', async () => {
     await expect(content.put(pctxA, 'page', 'other', page)).rejects.toThrow(ConflictError);
   });

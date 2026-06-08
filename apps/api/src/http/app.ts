@@ -70,6 +70,8 @@ import {
   pagesInLocale,
   pagePath,
   pagesById,
+  childrenOf,
+  referencesChildren,
   type ProjectBundle,
 } from '@sitewright/core';
 import type { Database } from '../db/client.js';
@@ -1262,12 +1264,21 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // unsaved/edited) previewed page in the index so its own slug/parent apply.
           const previewById = pagesById(savedPages);
           previewById.set(page.id, page);
+          // This page's child pages, flattened — built only when the source loops them. From
+          // `savedPages` (already published-only → drafts excluded, mirroring publish/nav for WYSIWYG
+          // parity); childrenOf filters parent + locale and caps the count. Each child carries its own
+          // `data`, so bound the serialized array against the same IPC ceiling as the data above.
+          const previewChildren = referencesChildren(pageSource) ? childrenOf(savedPages, page, defaultLocale) : [];
+          if (JSON.stringify(previewChildren).length > 4 * 1024 * 1024) {
+            return reply.code(413).send({ error: 'project data is too large to render' });
+          }
           const previewPage = {
             title: page.title,
             path: pagePath(page, previewById),
             locale: previewLocale,
             translations: translationsOf(savedPages, page, defaultLocale),
             data: page.data,
+            children: previewChildren,
           };
           const rendered = await renderPool.render(pageSource, {
             company: brand as unknown as Record<string, unknown>,

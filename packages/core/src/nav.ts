@@ -14,9 +14,10 @@ export interface NavItem {
 /**
  * Sibling order then title — explicit 'en' locale for deterministic ordering across
  * environments. Prefers the page-tree `order` (set by drag-reordering the pages list) so the
- * menu follows the list, falling back to the legacy `nav.order` when it is absent.
+ * menu follows the list, falling back to the legacy `nav.order` when it is absent. Shared with
+ * `childrenOf` so `{{#each page.children}}` and the auto-nav order siblings identically.
  */
-function byNavOrder(a: Page, b: Page): number {
+export function byNavOrder(a: Page, b: Page): number {
   const av = a.order ?? a.nav?.order ?? 0;
   const bv = b.order ?? b.nav?.order ?? 0;
   return av - bv || a.title.localeCompare(b.title, 'en');

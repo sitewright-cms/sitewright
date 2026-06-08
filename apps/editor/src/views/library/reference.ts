@@ -304,9 +304,9 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         id: 'n-page',
         syntax: 'page.*',
         name: 'page',
-        keywords: 'title path locale translations route data',
+        keywords: 'title path locale translations route data children',
         description:
-          'The current page: page.title, page.path (the full computed route), page.locale, page.translations (locale alternates — each has .path, .locale), and page.data (this page’s custom object — see its own entry).',
+          'The current page: page.title, page.path (the full computed route), page.locale, page.translations (locale alternates — each has .path, .locale), page.data (this page’s custom object), and page.children (its child pages) — see their own entries.',
         example: '<title>{{page.title}}</title>',
       },
       {
@@ -320,6 +320,23 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
           '<h1>{{page.data.article_title}}</h1>\n' +
           '<img src="{{url page.data.article_image}}">\n' +
           '<div>{{page.data.article_body}}</div>',
+      },
+      {
+        id: 'n-page-children',
+        syntax: 'page.children',
+        name: 'page.children',
+        keywords: 'child pages subpages blog overview index grid list parent tree',
+        description:
+          'This page’s direct CHILD pages (those nested under it in the pages tree), as an ARRAY — for a blog overview that lists its article pages. Each child is flattened: .title, .path (its full route — use {{url path}}), .slug, .description (its SEO description), .image (its SEO OG image), .seoTitle, .noindex, .navTitle, .status, .locale, .order, and .data (the child’s own page.data object). Same-locale children only, ordered like the pages list, capped at 500. Children are real sub-pages (set a page’s Parent in its settings) — distinct from dataset collection pages.',
+        example:
+          '{{#each page.children}}\n' +
+          '  <a class="card" href="{{url path}}">\n' +
+          '    <img src="{{url image}}" alt="{{title}}">\n' +
+          '    <h3>{{title}}</h3>\n' +
+          '    <p>{{description}}</p>\n' +
+          '    <small>{{data.article_date}}</small>\n' +
+          '  </a>\n' +
+          '{{/each}}',
       },
       {
         id: 'n-data',

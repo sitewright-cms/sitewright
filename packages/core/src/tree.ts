@@ -147,6 +147,17 @@ export function extractRegions(source: string): EditableRegion[] {
   return out;
 }
 
+// `page.children` not preceded by an identifier/`.`/`-` (so `my-page.children` / `xpage.children`
+// don't match) — the cheap gate that keeps the (potentially large, child-`data`-carrying) children
+// array off the render-worker JSON-IPC channel unless the source actually references it. Mirrors
+// `ITEM_REF_RE` in bindings.ts.
+const CHILDREN_REF_RE = /(?<![\w.-])page\.children/;
+
+/** Whether a template source references `page.children` — build the children array only when it does. */
+export function referencesChildren(source: string): boolean {
+  return CHILDREN_REF_RE.test(source);
+}
+
 /** Upper bound on distinct class tokens extracted from one HTML/source string. */
 export const MAX_EXTRACTED_CLASS_TOKENS = 2048;
 

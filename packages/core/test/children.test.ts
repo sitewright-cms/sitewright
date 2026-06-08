@@ -1,0 +1,78 @@
+import { describe, it, expect } from 'vitest';
+import type { Page } from '@sitewright/schema';
+import { childrenOf, referencesChildren, MAX_PAGE_CHILDREN } from '../src/index.js';
+
+const page = (over: Partial<Page>): Page =>
+  ({ id: 'p', path: '', title: 'T', root: { id: 'r', type: 'Section' }, ...over }) as Page;
+
+describe('childrenOf', () => {
+  const pages = [
+    page({ id: 'blog', path: 'blog', title: 'Blog' }),
+    page({
+      id: 'a2', path: 'second', parent: 'blog', order: 2, title: 'Second',
+      seo: { description: 'Two', ogImage: '/two.jpg', title: 'Second SEO' }, data: { article_title: 'Two!' },
+    }),
+    page({
+      id: 'a1', path: 'first', parent: 'blog', order: 1, title: 'First', status: 'draft',
+      seo: { description: 'One', ogImage: '/one.jpg' }, nav: { title: 'First (nav)', slots: ['header'] }, data: { article_title: 'One!' },
+    }),
+    page({ id: 'elsewhere', path: 'x', parent: 'home', title: 'Elsewhere' }),
+    page({ id: 'product', path: '[slug]', parent: 'blog', title: 'Product', collection: { dataset: 'products', param: 'slug' } }),
+  ];
+
+  it('returns the direct children, flattened and ordered by order then title', () => {
+    const kids = childrenOf(pages, pages[0]!, 'en');
+    expect(kids.map((k) => k.slug)).toEqual(['first', 'second']); // order 1, 2 — not the collection page
+    expect(kids[0]).toMatchObject({
+      id: 'a1', title: 'First', slug: 'first', path: '/blog/first',
+      description: 'One', image: '/one.jpg', seoTitle: '', navTitle: 'First (nav)',
+      status: 'draft', order: 1, data: { article_title: 'One!' },
+    });
+    expect(kids[1]).toMatchObject({ slug: 'second', path: '/blog/second', description: 'Two', image: '/two.jpg', seoTitle: 'Second SEO', status: 'published' });
+  });
+
+  it('excludes collection pages and pages parented elsewhere', () => {
+    const kids = childrenOf(pages, pages[0]!, 'en');
+    expect(kids.find((k) => k.id === 'product')).toBeUndefined(); // [param] collection page
+    expect(kids.find((k) => k.id === 'elsewhere')).toBeUndefined(); // parent !== blog
+  });
+
+  it('defaults missing fields (no seo/data/nav/status) sanely', () => {
+    const ps = [page({ id: 'parent', path: 'p', title: 'Parent' }), page({ id: 'c', path: 'c', parent: 'parent', title: 'Child' })];
+    expect(childrenOf(ps, ps[0]!, 'en')[0]).toMatchObject({
+      description: '', image: '', seoTitle: '', noindex: false, navTitle: 'Child', status: 'published', order: 0, data: {},
+    });
+  });
+
+  it(`caps the result at MAX_PAGE_CHILDREN (${MAX_PAGE_CHILDREN}), keeping the lowest-ordered`, () => {
+    const parent = page({ id: 'p', path: 'p', title: 'P' });
+    const kids = Array.from({ length: MAX_PAGE_CHILDREN + 100 }, (_, i) =>
+      page({ id: `c${i}`, path: `c${i}`, parent: 'p', order: i, title: `C${i}` }),
+    );
+    const out = childrenOf([parent, ...kids], parent, 'en');
+    expect(out).toHaveLength(MAX_PAGE_CHILDREN);
+    expect(out[0]!.id).toBe('c0'); // lowest order kept
+    expect(out.at(-1)!.id).toBe(`c${MAX_PAGE_CHILDREN - 1}`);
+  });
+
+  it('lists only same-locale children (an overview lists its own language)', () => {
+    const ps = [
+      page({ id: 'blog', path: 'blog', title: 'Blog' }),
+      page({ id: 'en1', path: 'en1', parent: 'blog', title: 'EN' }),
+      page({ id: 'de1', path: 'de1', parent: 'blog', title: 'DE', locale: 'de' }),
+    ];
+    expect(childrenOf(ps, ps[0]!, 'en').map((k) => k.id)).toEqual(['en1']); // default-locale parent → en child only
+    const deBlog = page({ id: 'blog', path: 'blog', title: 'Blog', locale: 'de' });
+    expect(childrenOf([deBlog, ps[1]!, ps[2]!], deBlog, 'en').map((k) => k.id)).toEqual(['de1']);
+  });
+});
+
+describe('referencesChildren', () => {
+  it('matches a page.children reference but not look-alikes', () => {
+    expect(referencesChildren('{{#each page.children}}x{{/each}}')).toBe(true);
+    expect(referencesChildren('{{ page.children.length }}')).toBe(true);
+    expect(referencesChildren('no children here')).toBe(false);
+    expect(referencesChildren('nav-page.children')).toBe(false); // preceded by an identifier/-
+    expect(referencesChildren('mypage.children')).toBe(false);
+  });
+});

@@ -4,6 +4,7 @@ export * from './partials.js';
 export * from './templates.js';
 export * from './global-snippets.js';
 export * from './nav.js';
+export * from './children.js';
 export * from './bindings.js';
 export * from './i18n.js';
 export * from './validate.js';

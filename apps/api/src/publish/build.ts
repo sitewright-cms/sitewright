@@ -16,6 +16,8 @@ import {
   pagesInLocale,
   pagePath,
   pagesById,
+  childrenOf,
+  referencesChildren,
   type ProjectBundle,
 } from '@sitewright/core';
 import type { Page, Template } from '@sitewright/schema';
@@ -444,20 +446,29 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         // Code-first page: render the Handlebars `source` to a body, then wrap it in the
         // SAME document shell (head/SEO/CSS/nav). Validated by renderTemplate; a bad
         // source fails the publish with a clear, page-scoped error.
+        // The page's own source, or its referenced template's (the page then contributes only its
+        // {{edit}} content). Resolved before renderCtx so `page.children` is built referenced-only.
+        const pageSource = effectiveSource(page);
         const renderCtx = {
           company: identity as unknown as Record<string, unknown>,
           // `json_data` is the publish-time snapshot of `website.jsonDataUrl` (full object — a
           // code-first page/slot can `{{#each website.json_data.items}}`). siteUrl is the only
           // OTHER website field exposed; the raw head/criticalCss/scripts blobs are never surfaced.
           website: { siteUrl: website?.siteUrl, json_data: opts.jsonData, data: website?.data },
-          page: { title: page.title, path: pageFullPath, locale: pageLocale, translations: pageTranslations, data: page.data },
+          // `page.children` — this page's child pages, flattened — built only when the source loops
+          // them (keeps each child's `data` off the render unless used). Published subset → no drafts.
+          page: {
+            title: page.title,
+            path: pageFullPath,
+            locale: pageLocale,
+            translations: pageTranslations,
+            data: page.data,
+            children: pageSource && referencesChildren(pageSource) ? childrenOf(pubBundle.pages, page, defaultLocale) : [],
+          },
           data: localeData as Record<string, unknown>,
           nav: navForPage as unknown as Record<string, unknown>,
         };
         let bodyHtml: string | undefined;
-        // The page's own source, or its referenced template's (the page then contributes
-        // only its {{edit}} content) — resolved once per route above for the asset scans.
-        const pageSource = effectiveSource(page);
         if (pageSource) {
           try {
             // Client-edited region overrides ({{edit "key"}}) baked into the static output, plus the

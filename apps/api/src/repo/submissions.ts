@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { newId } from '../id.js';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { FormSubmissionSchema, type FormSubmission } from '@sitewright/schema';
 // (FormSubmissionSchema is also used to validate rows on read — see toSubmission.)
@@ -23,7 +23,7 @@ export class SubmissionRepository {
 
   /** Records a submission. `fields` must already be sanitized to a flat text map. */
   async create(projectId: string, formId: string, fields: Record<string, string>): Promise<FormSubmission> {
-    const id = randomUUID();
+    const id = newId();
     const now = new Date();
     const submission = FormSubmissionSchema.parse({
       id,

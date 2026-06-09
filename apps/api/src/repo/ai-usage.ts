@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { newId } from '../id.js';
 import { and, eq, gte, sql } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
 import { aiUsage } from '../db/schema.js';
@@ -16,7 +16,7 @@ export class AiUsageRepository {
     usage: AiUsage,
   ): Promise<void> {
     await this.db.insert(aiUsage).values({
-      id: randomUUID(),
+      id: newId(),
       userId,
       projectId,
       model,

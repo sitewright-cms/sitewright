@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { newId } from '../id.js';
 import { and, eq } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
 import { projectMembers, projects, users, type PlatformRole, type ProjectRole } from '../db/schema.js';
@@ -44,7 +44,7 @@ export async function registerAccount(
   const existing = await db.select().from(users).where(eq(users.email, normalizedEmail));
   if (existing.length > 0) throw new ConflictError('email already registered');
   const now = new Date();
-  const userId = randomUUID();
+  const userId = newId();
   const passwordHash = await hashPassword(password);
   try {
     await db
@@ -219,7 +219,7 @@ export async function addProjectMember(
     return;
   }
   await db.insert(projectMembers).values({
-    id: randomUUID(),
+    id: newId(),
     userId,
     projectId,
     role,

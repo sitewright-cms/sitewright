@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { newId } from '../id.js';
 import { and, desc, eq, notInArray } from 'drizzle-orm';
 import { z } from 'zod';
 import {
@@ -393,7 +393,7 @@ export class ContentRepository {
         .where(and(eq(content.id, existing.id), eq(content.projectId, ctx.projectId)));
     } else {
       await exec.insert(content).values({
-        id: randomUUID(),
+        id: newId(),
         projectId: ctx.projectId,
         kind,
         entityId,

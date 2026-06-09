@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { newId } from '../id.js';
 import { and, eq, gt, isNull } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
 import { invites, projectMembers, projects, users, type PlatformRole, type ProjectRole } from '../db/schema.js';
@@ -75,7 +75,7 @@ export async function createInvite(
   const { token, tokenHash } = generateInviteToken();
   const now = new Date();
   const row = {
-    id: randomUUID(),
+    id: newId(),
     projectId: params.projectId ?? null,
     email,
     role: params.role,
@@ -214,7 +214,7 @@ export async function acceptInvite(
         .where(and(eq(projectMembers.userId, userId), eq(projectMembers.projectId, invite.projectId)));
       if (existing.length === 0) {
         await tx.insert(projectMembers).values({
-          id: randomUUID(),
+          id: newId(),
           userId,
           projectId: invite.projectId,
           role: invite.role as ProjectRole,

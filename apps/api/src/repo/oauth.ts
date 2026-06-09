@@ -1,4 +1,5 @@
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
+import { newId } from '../id.js';
 import { and, eq, isNull, lt } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
 import {
@@ -329,7 +330,7 @@ export class OAuthRepository {
     const scope = clampScope(grant.scope);
     const access = generateApiToken();
     await exec.insert(apiKeys).values({
-      id: randomUUID(),
+      id: newId(),
       projectId: grant.projectId,
       name: `oauth:${grant.clientId}`,
       role: grant.role,

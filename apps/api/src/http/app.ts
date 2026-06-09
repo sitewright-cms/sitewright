@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { newId } from '../id.js';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import cookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
@@ -1818,7 +1819,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const existing = new Set(((await contentRepo.list(ctx, 'mediafolder')) as MediaFolderRecord[]).map((f) => f.path));
       for (const p of [...ancestorPaths(path), path]) {
         if (!existing.has(p)) {
-          const id = randomUUID();
+          const id = newId();
           await contentRepo.put(ctx, 'mediafolder', id, { id, path: p });
           existing.add(p);
         }
@@ -1832,16 +1833,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       asset: MediaAsset,
       folder: string,
     ): Promise<MediaAsset> => {
-      const newId = randomUUID();
-      await storage.copyAsset(projectSlug, asset.id, newId);
+      // A new asset id keeps FULL UUID entropy — it is public (in the `/media/<slug>/<assetId>/` URL),
+      // so it must stay unguessable (unlike the short internal `newId()` used for record PKs).
+      const newAssetId = randomUUID();
+      await storage.copyAsset(projectSlug, asset.id, newAssetId);
       const url =
         asset.kind === 'image'
-          ? `/media/${projectSlug}/${newId}/${asset.fallback}`
+          ? `/media/${projectSlug}/${newAssetId}/${asset.fallback}`
           : asset.kind === 'font'
-            ? `/media/${projectSlug}/${newId}/${asset.files[0]!.file}`
-            : `/media/${projectSlug}/${newId}/file/${asset.storedName}`;
-      const copy = { ...asset, id: newId, folder, url } as MediaAsset;
-      return (await contentRepo.put(ctx, 'media', newId, copy)) as MediaAsset;
+            ? `/media/${projectSlug}/${newAssetId}/${asset.files[0]!.file}`
+            : `/media/${projectSlug}/${newAssetId}/file/${asset.storedName}`;
+      const copy = { ...asset, id: newAssetId, folder, url } as MediaAsset;
+      return (await contentRepo.put(ctx, 'media', newAssetId, copy)) as MediaAsset;
     };
 
     const FolderPathBody = z.object({ path: MediaFolderSchema.refine((v) => v !== '', 'path is required') });

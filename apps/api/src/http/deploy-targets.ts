@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { newId } from '../id.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { DeployTargetSchema, type DeployTarget } from '@sitewright/schema';
@@ -57,7 +57,7 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
       if (!isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
       const body = CreateDeployTargetBody.parse(req.body);
       assertDeployHostAllowed(body.host);
-      const id = randomUUID();
+      const id = newId();
       const target = DeployTargetSchema.parse({
         id,
         name: body.name,

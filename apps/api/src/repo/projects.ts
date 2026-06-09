@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { newId } from '../id.js';
 import { eq } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
 import {
@@ -47,7 +47,7 @@ export class ProjectRepository {
       throw new ConflictError('a project with this slug already exists');
     }
     const project: Project = {
-      id: randomUUID(),
+      id: newId(),
       name: input.name,
       slug: input.slug,
       createdAt: new Date(),
@@ -59,7 +59,7 @@ export class ProjectRepository {
     await this.db.transaction(async (tx) => {
       await tx.insert(projects).values(project);
       await tx.insert(projectMembers).values({
-        id: randomUUID(),
+        id: newId(),
         userId: ownerUserId,
         projectId: project.id,
         role: 'owner',

@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { newId } from '../id.js';
 import { and, eq, isNull } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
 import {
@@ -96,7 +96,7 @@ export class ApiKeyRepository {
     if (ttl > MAX_API_KEY_TTL_MS) throw new ForbiddenError('expiry exceeds the maximum key lifetime');
 
     const { token, tokenHash, tokenPrefix } = generateApiToken();
-    const id = randomUUID();
+    const id = newId();
     // De-duplicate + freeze the capability list (stable order, no surprises).
     const capabilities = API_KEY_CAPABILITIES.filter((c) => input.capabilities.includes(c));
     const row: typeof apiKeys.$inferInsert = {

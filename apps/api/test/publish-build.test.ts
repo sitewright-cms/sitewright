@@ -115,7 +115,7 @@ describe('buildSite', () => {
           {
             id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
             source: '<main><section data-sw-html="intro"><p>fallback</p></section></main>',
-            richContent: { intro: '<p>Hello <strong>there</strong></p><script>alert(1)</script>' },
+            data: { intro: '<p>Hello <strong>there</strong></p><script>alert(1)</script>' },
           },
         ],
       }),

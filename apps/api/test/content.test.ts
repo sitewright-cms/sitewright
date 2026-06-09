@@ -40,18 +40,21 @@ describe('ContentRepository', () => {
     await expect(content.put(pctxA, 'page', 'home', { id: 'home', title: 'X' })).rejects.toThrow();
   });
 
-  it('sanitizes a page’s richContent on write (the authoritative allowlist pass)', async () => {
-    const dirty = {
+  it('folds a legacy page.richContent into the single page.data store on write (no at-rest HTML pass)', async () => {
+    const legacy = {
       ...page,
-      richContent: { intro: '<p>ok</p><script>alert(1)</script><img src=x onerror=alert(2)>' },
+      richContent: { intro: '<p>ok</p><script>alert(1)</script>' },
     };
-    const stored = (await content.put(pctxA, 'page', 'home', dirty)) as { richContent?: Record<string, string> };
-    expect(stored.richContent?.intro).toContain('<p>ok</p>');
-    expect(stored.richContent?.intro).not.toContain('<script');
-    expect(stored.richContent?.intro).not.toContain('onerror');
-    // Persisted sanitized — a later read returns the clean value, not the raw input.
-    const got = (await content.get(pctxA, 'page', 'home')) as { richContent?: Record<string, string> };
-    expect(got.richContent?.intro).not.toContain('<script');
+    const stored = (await content.put(pctxA, 'page', 'home', legacy)) as { richContent?: unknown; data?: Record<string, string> };
+    // The retired richContent store is migrated away; the value now lives on page.data.
+    expect(stored.richContent).toBeUndefined();
+    expect(stored.data?.intro).toBeDefined();
+    // page.data is stored RAW (sanitization is now at RENDER, via the html sink — see publish-build
+    // + directives tests). So the script is still present at rest; it is stripped only when emitted.
+    expect(stored.data?.intro).toContain('<script>');
+    const got = (await content.get(pctxA, 'page', 'home')) as { richContent?: unknown; data?: Record<string, string> };
+    expect(got.richContent).toBeUndefined();
+    expect(got.data?.intro).toContain('<p>ok</p>');
   });
 
   it('rejects an id that does not match the path', async () => {

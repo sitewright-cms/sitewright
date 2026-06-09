@@ -50,7 +50,9 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     if (styled) return; styled = true;
     var s = document.createElement('style');
     s.textContent =
-      '[data-sw-text],[data-sw-html]{outline:1px dashed transparent;outline-offset:2px;border-radius:2px;transition:outline-color .12s,background-color .12s}' +
+      // Resting affordance for EVERY editable leaf — incl. href/src/bg, which set only outline-COLOR
+      // in their on-state rules below and so need this base outline-style/width to actually render.
+      '[data-sw-text],[data-sw-html],[data-sw-href],[data-sw-src],[data-sw-bg]{outline:1px dashed transparent;outline-offset:2px;border-radius:2px;transition:outline-color .12s,background-color .12s}' +
       '.sw-edit-on{cursor:text}' +
       '.sw-edit-on:hover{outline-color:#6366f1;background:rgba(99,102,241,.07)}' +
       '[data-sw-text].sw-edit-on:hover::after{content:"\\270e";margin-left:.35em;font-size:.8em;opacity:.55}' +

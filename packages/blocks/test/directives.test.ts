@@ -45,17 +45,24 @@ describe('resolveDirectives — data-sw-text', () => {
 });
 
 describe('resolveDirectives — data-sw-html', () => {
-  it('sets innerHTML from sanitized rich content', () => {
+  it('sets innerHTML from sanitized rich content in page.data (bare key)', () => {
     const html = '<div data-sw-html="body"><p>fallback</p></div>';
-    const out = resolveDirectives(html, { richContent: { body: '<p>new <strong>copy</strong></p>' }, preview: true });
+    const out = resolveDirectives(html, { data: { body: '<p>new <strong>copy</strong></p>' }, preview: true });
     expect(out).toContain('<p>new <strong>copy</strong></p>');
+    expect(out).not.toContain('fallback');
+  });
+
+  it('reads a nested data.<path> rich leaf too', () => {
+    const html = '<div data-sw-html="data.article.body"><p>fallback</p></div>';
+    const out = resolveDirectives(html, { data: { article: { body: '<p>nested</p>' } }, preview: true });
+    expect(out).toContain('<p>nested</p>');
     expect(out).not.toContain('fallback');
   });
 
   it('sanitizes the value (a script/onerror cannot survive)', () => {
     const html = '<div data-sw-html="body">x</div>';
     const out = resolveDirectives(html, {
-      richContent: { body: '<p>ok</p><script>alert(1)</script><img src=x onerror=alert(2)>' },
+      data: { body: '<p>ok</p><script>alert(1)</script><img src=x onerror=alert(2)>' },
       preview: true,
     });
     expect(out).toContain('<p>ok</p>');
@@ -65,7 +72,7 @@ describe('resolveDirectives — data-sw-html', () => {
 
   it('strips the marker on publish', () => {
     const html = '<div data-sw-html="body"><p>d</p></div>';
-    expect(resolveDirectives(html, { richContent: { body: '<p>v</p>' } })).toBe('<div><p>v</p></div>');
+    expect(resolveDirectives(html, { data: { body: '<p>v</p>' } })).toBe('<div><p>v</p></div>');
   });
 });
 
@@ -140,12 +147,12 @@ describe('resolveDirectives — empty URL override reverts to the authored defau
 describe('renderTemplate — directive integration', () => {
   it('resolves data-sw-html in preview (marker kept) and publish (stripped)', () => {
     const source = '<section data-sw-html="intro"><p>fallback</p></section>';
-    const richContent = { intro: '<p>Hello <em>world</em></p>' };
-    const preview = renderTemplate(source, { richContent, preview: true });
+    const page = { data: { intro: '<p>Hello <em>world</em></p>' } };
+    const preview = renderTemplate(source, { page, preview: true });
     expect(preview).toContain('data-sw-html="intro"');
     expect(preview).toContain('<p>Hello <em>world</em></p>');
 
-    const published = renderTemplate(source, { richContent });
+    const published = renderTemplate(source, { page });
     expect(published).not.toContain('data-sw-html');
     expect(published).toContain('<p>Hello <em>world</em></p>');
   });

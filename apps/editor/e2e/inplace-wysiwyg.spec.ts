@@ -90,6 +90,24 @@ test('data-sw-href: edit a link URL + text via the popover, persists', async ({ 
   await expect(page.getByText('Saved')).toBeVisible();
 });
 
+// The resting edit overlay (dashed outline) must render for a data-sw-href anchor in content mode.
+// Regression guard: the bridge's base outline rule previously omitted [data-sw-href], so a link with
+// NO data-sw-text (which wouldn't match the [data-sw-text] base rule) showed no editable affordance.
+test('data-sw-href: shows the in-preview edit overlay (resting outline) in content mode', async ({ page }) => {
+  await setup(page, 'swhref-overlay');
+  await setSource(page, '<a data-sw-href="cta" href="/old">Visit</a>');
+
+  const preview = page.frameLocator('iframe[title="Preview"]');
+  const link = preview.locator('[data-sw-href="cta"]');
+  await expect(link).toBeVisible();
+
+  await page.getByRole('button', { name: 'content', exact: true }).click();
+  await expect(link).toHaveClass(/sw-link-on/); // bridge marked it editable
+  // The base rule now supplies an outline-style, so the on-state outline-color actually renders.
+  const outlineStyle = await link.evaluate((el) => getComputedStyle(el).outlineStyle);
+  expect(outlineStyle).not.toBe('none');
+});
+
 // Undo/redo (header buttons) revert + reapply inline content edits.
 test('undo/redo: header buttons revert and reapply an inline edit', async ({ page }) => {
   await setup(page, 'undo');

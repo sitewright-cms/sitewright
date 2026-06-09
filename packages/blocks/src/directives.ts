@@ -6,16 +6,17 @@
 // each directive to its element with a single, context-correct SINK rule:
 //
 //   data-sw-text="key"  → element textContent          (from page.data[key]; serializer escapes)
-//   data-sw-html="key"  → element innerHTML             (from richContent[key]; sanitizeRichHtml)
+//   data-sw-html="key"  → element innerHTML             (from page.data[key]; sanitizeRichHtml)
 //   data-sw-href="key"  → anchor href                   (from page.data[key]; safeUrl)
 //   data-sw-src="key"   → <img> src                     (from page.data[key]; safeUrl)
 //   data-sw-bg="key"    → inline background-image style (from page.data[key]; safeUrl + cssUrlEscape)
 //
-// STORE: text/url directives (text/href/src/bg) read `page.data` — a BARE key (`data-sw-text="hero_h1"`)
-// is a top-level page.data property; a `data.<path>` key (`data.article_title`) is a nested page.data
-// path. `data-sw-html` reads `richContent` for a bare key (the dedicated, at-rest-sanitized rich store)
-// or `page.data` for a `data.<path>` key. The value resolves to a STRING leaf (non-string / missing →
-// keep the authored default). There is no separate `content` store — it folded into page.data.
+// STORE: a SINGLE store — every directive reads `page.data`. A BARE key (`data-sw-text="hero_h1"`,
+// `data-sw-html="bio"`) is a top-level page.data property; a `data.<path>` key (`data.article_title`)
+// is a nested page.data path. The value resolves to a STRING leaf (non-string / missing → keep the
+// authored default). The retired `content`/`richContent` stores folded into page.data; `data-sw-html`
+// is the one HTML sink and is always sanitized at render (`sanitizeRichHtml`), so storing raw HTML in
+// generic page.data is safe — nothing is emitted to HTML unsanitized.
 //
 // For the URL directives, an EMPTY stored value means "no override → keep the authored default"
 // (you revert by clearing the field); only a non-empty, scheme-safe value replaces the default.
@@ -47,11 +48,10 @@ const DIRECTIVE_ATTRS = [TEXT_ATTR, HTML_ATTR, HREF_ATTR, SRC_ATTR, BG_ATTR] as 
 const DATA_PREFIX = 'data.';
 
 export interface DirectiveContext {
-  /** Rich (sanitized-HTML) region overrides (the `page.richContent` map) — the bare-key `data-sw-html` store. */
-  richContent?: Record<string, string>;
   /**
-   * The page's own `page.data` object. The store for text/url directives: a BARE key (`data-sw-text="k"`)
-   * is a top-level `page.data` property; a `data.<path>` key is a nested page.data path.
+   * The page's own `page.data` object — the SINGLE store for every directive (text/html/href/src/bg):
+   * a BARE key (`data-sw-text="k"`, `data-sw-html="bio"`) is a top-level `page.data` property; a
+   * `data.<path>` key is a nested page.data path.
    */
   data?: Record<string, unknown>;
   /**
@@ -59,13 +59,6 @@ export interface DirectiveContext {
    * click-to-edit. Absent/false (PUBLISH) → strip every directive attribute from the output.
    */
   preview?: boolean;
-}
-
-/** Own-property lookup that refuses the prototype-pollution keys. */
-function lookup(map: Record<string, string> | undefined, key: string): string | undefined {
-  if (!map || key === '' || DANGEROUS_KEYS.has(key)) return undefined;
-  // eslint-disable-next-line security/detect-object-injection -- own-property + DANGEROUS_KEYS guarded above
-  return Object.prototype.hasOwnProperty.call(map, key) ? map[key] : undefined;
 }
 
 /** Walks `page.data` to the STRING leaf at a dotted path (own-property per segment, proto-guarded). */
@@ -91,13 +84,13 @@ function flatData(data: Record<string, unknown> | undefined, key: string): strin
 }
 
 /**
- * The override string for a directive `key`. A `data.<path>` key reads `page.data` at that nested path.
- * A BARE key reads `richFallback` when given (the `data-sw-html` → `richContent` case) else a FLAT
- * `page.data` property (text/url). Undefined → no override (keep the authored default).
+ * The override string for a directive `key`, read from the single `page.data` store. A `data.<path>`
+ * key reads `page.data` at that nested path; a BARE key reads a FLAT top-level `page.data` property.
+ * Undefined → no override (keep the authored default).
  */
-function resolveOverride(ctx: DirectiveContext, key: string, richFallback?: Record<string, string>): string | undefined {
+function resolveOverride(ctx: DirectiveContext, key: string): string | undefined {
   if (key.startsWith(DATA_PREFIX)) return dataLeaf(ctx.data, key.slice(DATA_PREFIX.length));
-  return richFallback ? lookup(richFallback, key) : flatData(ctx.data, key);
+  return flatData(ctx.data, key);
 }
 
 /** Replaces an element's children with a single (serializer-escaped) text node. */
@@ -147,7 +140,7 @@ export function resolveDirectives(html: string, ctx: DirectiveContext): string {
     }
     const htmlKey = el.attribs[HTML_ATTR];
     if (typeof htmlKey === 'string') {
-      const value = resolveOverride(ctx, htmlKey, ctx.richContent);
+      const value = resolveOverride(ctx, htmlKey);
       if (value !== undefined) setHtml(el, sanitizeRichHtml(value));
     }
     const hrefKey = el.attribs[HREF_ATTR];

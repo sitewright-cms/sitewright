@@ -124,7 +124,7 @@ describe('WebsiteSettingsSchema', () => {
     });
 
     it('rejects an over-long string value and over-long keys', () => {
-      expect(() => WebsiteSettingsSchema.parse({ data: { big: 'a'.repeat(20_001) } })).toThrow();
+      expect(() => WebsiteSettingsSchema.parse({ data: { big: 'a'.repeat(64_001) } })).toThrow();
       expect(() => WebsiteSettingsSchema.parse({ data: { ['k'.repeat(201)]: 1 } })).toThrow();
     });
   });

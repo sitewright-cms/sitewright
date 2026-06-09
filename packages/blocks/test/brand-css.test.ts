@@ -8,10 +8,10 @@ function brand(overrides: Partial<Brand> = {}): Brand {
 
 describe('brandToCss', () => {
   it('emits color custom properties under :root', () => {
-    const css = brandToCss(brand({ colors: { primary: '#0a7', ink: '#111' } }));
+    const css = brandToCss(brand({ colors: { primary: '#0a7', 'base-content': '#111' } }));
     expect(css).toContain(':root {');
     expect(css).toContain('--sw-color-primary: #0a7;');
-    expect(css).toContain('--sw-color-ink: #111;');
+    expect(css).toContain('--sw-color-base-content: #111;');
   });
 
   it('emits font, spacing and radius tokens', () => {

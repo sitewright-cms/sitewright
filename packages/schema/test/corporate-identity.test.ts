@@ -1,15 +1,38 @@
 import { describe, it, expect } from 'vitest';
-import { CorporateIdentitySchema, FontSlotSchema } from '../src/corporate-identity.js';
+import { CorporateIdentitySchema, DEFAULT_BRAND_COLORS, MANDATORY_COLOR_TOKENS, FontSlotSchema } from '../src/corporate-identity.js';
 import { legacyToIdentity, mergeLegacyIdentity } from '../src/migrate-identity.js';
 import { BrandSchema } from '../src/brand.js';
 import { CompanySchema } from '../src/company.js';
 
 describe('CorporateIdentitySchema', () => {
-  it('requires a name and defaults colors to {}', () => {
+  it('requires a name and fills the mandatory color tokens by default', () => {
     expect(() => CorporateIdentitySchema.parse({})).toThrow();
     const id = CorporateIdentitySchema.parse({ name: 'Acme' });
     expect(id.name).toBe('Acme');
-    expect(id.colors).toEqual({});
+    // A project with no colors still gets all six mandatory tokens, at their defaults.
+    expect(id.colors).toEqual(DEFAULT_BRAND_COLORS);
+    for (const token of MANDATORY_COLOR_TOKENS) expect(id.colors[token]).toBeDefined();
+  });
+
+  it('fills MISSING mandatory tokens but never overrides ones the project set; keeps custom colors', () => {
+    const id = CorporateIdentitySchema.parse({
+      name: 'Acme',
+      colors: { primary: '#0a7', 'brand-teal': '#0d9488' },
+    });
+    expect(id.colors.primary).toBe('#0a7'); // author value wins over the default
+    expect(id.colors['base-100']).toBe(DEFAULT_BRAND_COLORS['base-100']); // missing → default
+    expect(id.colors.neutral).toBe(DEFAULT_BRAND_COLORS.neutral);
+    expect(id.colors['brand-teal']).toBe('#0d9488'); // custom color passes through
+  });
+
+  it('accepts hyphenated DaisyUI/Tailwind color keys (base-100, base-content, primary-content)', () => {
+    const id = CorporateIdentitySchema.parse({
+      name: 'Acme',
+      colors: { 'base-100': '#0b0b0f', 'base-content': '#f5f5f5', 'primary-content': '#ffffff' },
+    });
+    expect(id.colors['base-100']).toBe('#0b0b0f');
+    expect(id.colors['base-content']).toBe('#f5f5f5');
+    expect(id.colors['primary-content']).toBe('#ffffff');
   });
 
   it('accepts a full identity and rejects non-https social URLs', () => {
@@ -62,7 +85,8 @@ describe('legacyToIdentity — exhaustive field map (no silent drops)', () => {
   const id = legacyToIdentity(LEGACY_BRAND, LEGACY_COMPANY);
 
   it('maps every brand token field', () => {
-    expect(id.colors).toEqual(LEGACY_BRAND.colors);
+    // The identity transform fills the mandatory tokens; the legacy brand's colors win where set.
+    expect(id.colors).toEqual({ ...DEFAULT_BRAND_COLORS, ...LEGACY_BRAND.colors });
     expect(id.typography).toEqual(LEGACY_BRAND.typography);
     expect(id.spacing).toEqual(LEGACY_BRAND.spacing);
     expect(id.radii).toEqual(LEGACY_BRAND.radii);
@@ -108,7 +132,7 @@ describe('legacyToIdentity — exhaustive field map (no silent drops)', () => {
     const id2 = legacyToIdentity(LEGACY_BRAND);
     expect(id2.name).toBe('Acme Brand');
     expect(id2.legalName).toBeUndefined();
-    expect(id2.colors).toEqual(LEGACY_BRAND.colors);
+    expect(id2.colors).toEqual({ ...DEFAULT_BRAND_COLORS, ...LEGACY_BRAND.colors });
   });
 
   it('preserves the businessType="disabled" schema.org-suppression sentinel', () => {

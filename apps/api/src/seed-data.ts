@@ -59,13 +59,15 @@ export const EXAMPLE_IDENTITY = {
     'https://www.linkedin.com/company/northwindstudio',
     'https://dribbble.com/northwindstudio',
   ],
-  // Brand palette → DaisyUI theme tokens (the -content foregrounds are auto-derived for contrast).
-  // Only single-word keys are valid; the neutral/base surfaces use DaisyUI's light-theme defaults.
+  // The six mandatory brand tokens → DaisyUI/Tailwind theme colors (the -content foregrounds are
+  // auto-derived for contrast). `base-100`/`base-content` are the page Background/Text colors.
   colors: {
     primary: '#4f46e5',
     secondary: '#0ea5e9',
     accent: '#f59e0b',
     neutral: '#171627',
+    'base-100': '#ffffff',
+    'base-content': '#1a1a23',
   },
 } as const;
 

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { ProjectSchema, PROJECT_FORMAT_VERSION } from '../src/project.js';
+import { DEFAULT_BRAND_COLORS } from '../src/corporate-identity.js';
 
 const base = {
   formatVersion: PROJECT_FORMAT_VERSION,
@@ -14,7 +15,7 @@ describe('ProjectSchema', () => {
     const p = ProjectSchema.parse(base);
     expect(p.settings.defaultLocale).toBe('en');
     expect(p.settings.locales).toEqual(['en']);
-    expect(p.identity.colors).toEqual({});
+    expect(p.identity.colors).toEqual(DEFAULT_BRAND_COLORS);
   });
 
   it('preserves explicit settings', () => {

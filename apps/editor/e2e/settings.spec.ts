@@ -22,10 +22,13 @@ test('edit Corporate Identity + Website settings, save, and persist across reloa
 
   await page.getByLabel('Display name').fill('Acme');
   await page.getByLabel('Legal name').fill('Acme Corporation');
-  // Add a brand color token.
+  // Edit a mandatory brand color (Primary) + add a custom color. The six mandatory tokens are
+  // fixed, labeled rows; custom colors use the "+ Add color" editor.
+  await page.getByLabel('Primary Color').fill('#0ea5e9');
+  await page.getByLabel('Background Color').fill('#fafafa');
   await page.getByRole('button', { name: '+ Add color' }).click();
-  await page.getByLabel('primary 1', { exact: true }).fill('primary');
-  await page.getByLabel('#0ea5e9 1', { exact: true }).fill('#0ea5e9');
+  await page.getByLabel('brand-teal 1', { exact: true }).fill('brand-teal');
+  await page.getByLabel('#0d9488 1', { exact: true }).fill('#0d9488');
 
   await page.getByRole('button', { name: 'Save changes' }).click();
   await expect(page.getByText('✓ Saved')).toBeVisible();
@@ -42,8 +45,10 @@ test('edit Corporate Identity + Website settings, save, and persist across reloa
   await page.getByRole('button', { name: /Acme Site/ }).click();
   await page.getByRole('tab', { name: 'Corporate Identity' }).click();
   await expect(page.getByLabel('Legal name')).toHaveValue('Acme Corporation');
-  await expect(page.getByLabel('primary 1', { exact: true })).toHaveValue('primary');
-  await expect(page.getByLabel('#0ea5e9 1', { exact: true })).toHaveValue('#0ea5e9');
+  await expect(page.getByLabel('Primary Color')).toHaveValue('#0ea5e9');
+  await expect(page.getByLabel('Background Color')).toHaveValue('#fafafa');
+  await expect(page.getByLabel('brand-teal 1', { exact: true })).toHaveValue('brand-teal');
+  await expect(page.getByLabel('#0d9488 1', { exact: true })).toHaveValue('#0d9488');
   await page.getByRole('tab', { name: 'Website Settings' }).click();
   await expect(page.getByLabel(/Production URL/)).toHaveValue('https://acme.example');
 });

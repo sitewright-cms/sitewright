@@ -3,7 +3,7 @@ import type { BrandTokens } from '@sitewright/schema';
 import { brandToCss } from '../src/lib/brand-css.js';
 
 const brand: BrandTokens = {
-  colors: { primary: '#0ea5e9', ink: '#0f172a' },
+  colors: { primary: '#0ea5e9', 'base-content': '#0f172a' },
   typography: { fontFamilies: { body: 'Inter, sans-serif' } },
   radii: { card: '0.75rem' },
 };
@@ -13,7 +13,7 @@ describe('brandToCss', () => {
     const css = brandToCss(brand);
     expect(css).toMatch(/^:root \{/);
     expect(css).toContain('--sw-color-primary: #0ea5e9;');
-    expect(css).toContain('--sw-color-ink: #0f172a;');
+    expect(css).toContain('--sw-color-base-content: #0f172a;');
     expect(css).toContain('--sw-font-body: Inter, sans-serif;');
     expect(css).toContain('--sw-radius-card: 0.75rem;');
   });

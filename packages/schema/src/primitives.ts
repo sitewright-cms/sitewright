@@ -45,6 +45,21 @@ export const KeyNameSchema = z
   .max(MAX_IDENTIFIER_LENGTH)
   .regex(/^[A-Za-z_][A-Za-z0-9_]*$/, 'must be a valid identifier');
 
+/**
+ * Color-token key. Like {@link KeyNameSchema} but also permits internal hyphens, so the
+ * DaisyUI/Tailwind semantic names (`base-100`, `base-content`, `primary-content`) are valid
+ * keys. Deliberately the SAME alphabet as the tailwind compiler's `SAFE_TOKEN` regex, so any
+ * schema-valid color key is also a valid `--color-<key>` theme var / utility (never silently
+ * dropped downstream). Must start with a letter; no leading/trailing hyphen.
+ */
+export const ColorTokenKeySchema = z
+  .string()
+  .min(1)
+  .max(40)
+  // Linear: a leading letter, then `_`/alnum runs each introduced by an optional single `-`
+  // (the separator makes the groups non-overlapping); length-capped above (not ReDoS).
+  .regex(/^[A-Za-z][A-Za-z0-9_]*(?:-[A-Za-z0-9_]+)*$/, 'must be a CSS-ident color token name'); // eslint-disable-line security/detect-unsafe-regex
+
 /** Root-relative URL route with optional `[param]` segments. Rejects `//host`, `javascript:`, absolute URLs. */
 export const RoutePathSchema = z
   .string()

@@ -34,13 +34,15 @@ describe('daisyThemeVars', () => {
     expect(DAISY_THEME_DEFAULTS['--radius-field']).toBe('0.25rem');
   });
 
-  it('overrides primary/secondary/accent from the brand + computes a readable -content (WCAG)', () => {
-    const vars = daisyThemeVars({ colors: { primary: '#111827', secondary: '#fde047', accent: '#166534' } });
+  it('overrides primary/secondary/accent/neutral from the brand + computes a readable -content (WCAG)', () => {
+    const vars = daisyThemeVars({ colors: { primary: '#111827', secondary: '#fde047', accent: '#166534', neutral: '#f8fafc' } });
     expect(vars['--color-primary']).toBe('#111827');
     expect(vars['--color-primary-content']).toBe('#ffffff'); // dark bg → white text
     expect(vars['--color-secondary']).toBe('#fde047');
     expect(vars['--color-secondary-content']).toBe('#1f2937'); // light bg → dark text
     expect(vars['--color-accent-content']).toBe('#ffffff'); // dark green → white text
+    expect(vars['--color-neutral']).toBe('#f8fafc');
+    expect(vars['--color-neutral-content']).toBe('#1f2937'); // light neutral → dark text
   });
 
   it('expands 3-digit hex when computing contrast', () => {

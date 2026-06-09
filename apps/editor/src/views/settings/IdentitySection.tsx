@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Patch, SettingsForm } from './model';
 import { api, type MediaAsset } from '../../api';
 import { Field, FieldButton, GlassCard, SubLabel, TextArea } from './ui';
-import { TokenEditor } from './TokenEditor';
+import { BrandColorsEditor } from './BrandColorsEditor';
 import { StringListEditor } from './StringListEditor';
 import { FontSlotEditor } from './FontSlotEditor';
 import { CustomFontSlots } from './CustomFontSlots';
@@ -63,15 +63,12 @@ export function IdentitySection({ form, patch, projectId }: { form: SettingsForm
       </GlassCard>
 
       <GlassCard title="Brand colors" icon="✦">
-        <SubLabel>Colors</SubLabel>
-        <TokenEditor
-          rows={form.colors}
-          onChange={(colors) => patch({ colors })}
-          keyPlaceholder="primary"
-          valuePlaceholder="#0ea5e9"
-          swatch
-          addLabel="+ Add color"
-        />
+        <p className="mb-3 text-xs text-slate-500">
+          The six core colors below always exist and can’t be removed — they theme every page (and any
+          DaisyUI components) automatically. Use them as <code className="rounded bg-slate-100 px-1 py-0.5">bg-primary</code>,{' '}
+          <code className="rounded bg-slate-100 px-1 py-0.5">text-base-content</code>, etc.
+        </p>
+        <BrandColorsEditor rows={form.colors} onChange={(colors) => patch({ colors })} />
       </GlassCard>
 
       <GlassCard title="Typography" icon="◐">

@@ -26,8 +26,14 @@ root ({"id":"root","type":"Section"}) and put the real design in \`source\`.
 
 In \`source\`:
 - Use DaisyUI components for UI (btn / btn-primary, card, navbar, hero, badge, footer,
-  menu, alert…) plus Tailwind utilities for layout. Components are brand-themed
-  automatically — name the brand's main color \`primary\`.
+  menu, alert…) plus Tailwind utilities for layout. DaisyUI is OPTIONAL — plain Tailwind works too.
+- COLORS: six brand tokens always exist as theme colors — \`primary\`, \`secondary\`, \`accent\`,
+  \`neutral\`, \`base-100\` (page background), \`base-content\` (body text). Use them as ordinary
+  utilities (\`bg-primary\`, \`text-base-content\`, \`border-neutral\`); if you use DaisyUI, its
+  components (\`btn-primary\`, \`bg-base-100\`, \`alert-…\`) read the SAME tokens and are themed
+  automatically. For text on a colored surface use the auto-derived \`*-content\`
+  (\`bg-primary text-primary-content\`). Prefer these tokens over hardcoded hex; stock Tailwind
+  palette (\`bg-slate-900\`) is fine for non-brand neutrals.
 - Bind data: {{ company.* }} exposes the Corporate Identity you set (e.g. {{ company.name }}
   and any contact/address fields on \`identity\`); {{ page.title }}, {{ page.path }} (full route),
   {{ page.slug }} (own segment); {{ parentPage.path }} / {{ parentPage.data.<key> }} for the page's

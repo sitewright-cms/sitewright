@@ -50,6 +50,31 @@ describe('PageSchema', () => {
     expect(e.data).toEqual({ ok: 'y' });
   });
 
+  it('migrates the RETIRED richContent map into page.data too (single store)', () => {
+    const node = { id: 'r', type: 'Section' };
+    // bare-key rich HTML folds into a top-level page.data string; richContent is dropped.
+    const a = PageSchema.parse({ id: 'p', path: 'p', title: 'P', root: node, richContent: { intro: '<p>Hi</p>' } });
+    expect(a.data).toEqual({ intro: '<p>Hi</p>' });
+    expect('richContent' in a).toBe(false);
+    // page.data wins a collision with richContent; prototype-pollution + empty keys are dropped.
+    const b = PageSchema.parse({
+      id: 'p', path: 'p', title: 'P', root: node,
+      richContent: JSON.parse('{"__proto__":"x","":"y","intro":"<p>fromRich</p>","keep":"<b>k</b>"}'),
+      data: { intro: '<p>fromData</p>' },
+    });
+    expect(b.data).toEqual({ intro: '<p>fromData</p>', keep: '<b>k</b>' });
+    expect(({} as Record<string, unknown>).x).toBeUndefined();
+    // content + richContent both fold into the same page.data.
+    const c = PageSchema.parse({ id: 'p', path: 'p', title: 'P', root: node, content: { a: '1' }, richContent: { b: '<i>2</i>' } });
+    expect(c.data).toEqual({ a: '1', b: '<i>2</i>' });
+    expect('content' in c).toBe(false);
+    expect('richContent' in c).toBe(false);
+    // Deterministic precedence when BOTH legacy stores hold the same key: `content` migrates first,
+    // so it wins over `richContent` (pathological — the two stores never shared a key in practice).
+    const d = PageSchema.parse({ id: 'p', path: 'p', title: 'P', root: node, content: { x: 'plain' }, richContent: { x: '<p>rich</p>' } });
+    expect(d.data).toEqual({ x: 'plain' });
+  });
+
   it('accepts an optional bounded, prototype-safe page.data object', () => {
     const data = { article_title: 'Hello', tags: ['a', 'b'], meta: { featured: true } };
     expect(PageSchema.parse({ id: 'p', path: 'p', title: 'P', root: { id: 'r', type: 'Section' }, data }).data).toEqual(data);

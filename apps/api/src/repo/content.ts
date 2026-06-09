@@ -13,7 +13,7 @@ import {
   MediaAssetSchema,
   MediaFolderRecordSchema,
   PageSchema,
-  migrateContentIntoData,
+  migratePageStores,
   PartialSchema,
   SnippetSchema,
   PatternSchema,
@@ -32,7 +32,6 @@ import {
   type Template,
 } from '@sitewright/schema';
 import { validateProject, type ProjectBundle } from '@sitewright/core';
-import { sanitizeRichHtml } from '@sitewright/blocks';
 import type { Database } from '../db/client.js';
 import { content, type ContentKind } from '../db/schema.js';
 import { ConflictError, ForbiddenError, NotFoundError, type ProjectContext } from './context.js';
@@ -110,29 +109,6 @@ function assertTreeSafe(kind: ContentKind, raw: unknown): void {
   ) {
     assertWithinTreeDepth((raw as { root?: unknown })?.root);
   }
-}
-
-/**
- * Returns a copy of a page with every client-authored `richContent` value run through the rich-HTML
- * allowlist. The keys are already `KeyNameSchema`-validated (no prototype keys); values are bounded
- * by the schema. Never mutates the input.
- *
- * NOTE: `page.data` is intentionally NOT sanitized here — it is generic JSON and which string leaves
- * are HTML (bound to a `data-sw-html` directive) isn't known at the entity boundary. A `data.<key>`
- * HTML leaf is sanitized at RENDER (the html sink always runs `sanitizeRichHtml`); see the @security
- * note on `Page.data`. The JsonStoreSchema still bounds it + rejects prototype keys on write.
- */
-function sanitizePageRichContent(page: Page): Page {
-  if (!page.richContent) return page;
-  const richContent: Record<string, string> = {};
-  for (const [key, value] of Object.entries(page.richContent)) {
-    // Defense-in-depth: drop prototype-significant keys (they'd be silently lost anyway and the
-    // render-time `lookup` refuses them) so the stored map only ever holds real region keys.
-    if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
-    // eslint-disable-next-line security/detect-object-injection -- key is a real region name (guarded above + KeyNameSchema)
-    richContent[key] = sanitizeRichHtml(value);
-  }
-  return { ...page, richContent };
 }
 
 /** Minimal project identity needed to assemble an export bundle. */
@@ -223,14 +199,13 @@ export class ContentRepository {
   async put(ctx: ProjectContext, kind: ContentKind, entityId: string, raw: unknown): Promise<unknown> {
     assertTreeSafe(kind, raw);
     const parsed = schemaFor(kind).parse(raw);
-    // Authoritative sanitization of client-authored RICH regions: a page's data-sw-html values are
-    // emitted unescaped at render, so they are run through the allowlist on save (the render pass
-    // re-sanitizes defensively). The stored value is canonical-clean.
-    const data = kind === 'page' ? sanitizePageRichContent(parsed as Page) : parsed;
-    const key = this.entityKey(kind, entityId, data);
-    await this.writeRow(this.db, ctx, kind, key, data);
+    // Rich (data-sw-html) content now lives in the single page.data store and is sanitized at RENDER
+    // (the html sink always runs sanitizeRichHtml). page.data is generic JSON whose HTML leaves aren't
+    // known at this boundary, so there is no at-rest HTML pass here — the render sink is authoritative.
+    const key = this.entityKey(kind, entityId, parsed);
+    await this.writeRow(this.db, ctx, kind, key, parsed);
     this.events?.emit(ctx.projectId, { kind, entityId: key, op: 'put' });
-    return data;
+    return parsed;
   }
 
   async remove(ctx: ProjectContext, kind: ContentKind, entityId: string): Promise<void> {
@@ -261,7 +236,7 @@ export class ContentRepository {
       // Fold any legacy `content` map into `page.data` (list() returns raw rows — the schema
       // preprocess only fires on parse) so a page never re-saved since the retirement still publishes
       // its overrides. Idempotent + lenient (no full re-validation).
-      pages: (await this.list(ctx, 'page')).map(migrateContentIntoData) as Page[],
+      pages: (await this.list(ctx, 'page')).map(migratePageStores) as Page[],
       partials: (await this.list(ctx, 'partial')) as SitewrightPartial[],
       templates: (await this.list(ctx, 'template')) as Template[],
       datasets: (await this.list(ctx, 'dataset')) as Dataset[],
@@ -340,9 +315,10 @@ export class ContentRepository {
         imported += 1;
       }
       for (const page of input.pages) {
-        // Sanitize rich regions on import too (the `put` path does the same) so an imported bundle
-        // can never seed unsanitized HTML into the store.
-        await this.writeRow(exec, ctx, 'page', page.id, sanitizePageRichContent(page));
+        // Rich (data-sw-html) content lives in page.data (the single store) and is sanitized at RENDER
+        // by the html sink; an imported page.data HTML leaf is therefore never emitted unsanitized. The
+        // bundle schema already migrated any legacy richContent into page.data + bounded/proto-checked it.
+        await this.writeRow(exec, ctx, 'page', page.id, page);
         imported += 1;
       }
       for (const partial of input.partials) {

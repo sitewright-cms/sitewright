@@ -52,13 +52,6 @@ export interface TemplateContext {
   /** Auto-built navigation menus per slot — `{{#each nav.header}}…{{/each}}` (the skeleton slots + page source). */
   nav?: Record<string, unknown>;
   /**
-   * Client-editable RICH (sanitized-HTML) region overrides for the `data-sw-html` directive: key →
-   * sanitized HTML (matches the `page.richContent` schema). Resolved by {@link resolveDirectives}
-   * after Handlebars; the value is re-sanitized at render (defensive) and set as the element's
-   * innerHTML.
-   */
-  richContent?: Record<string, string>;
-  /**
    * PREVIEW render flag for the `data-sw-*` directive pass: keep the marker attributes so the editor
    * bridge can make leaves click-to-edit. Absent on PUBLISH (markers are stripped).
    */
@@ -400,8 +393,7 @@ export function renderTemplate(source: string, ctx: TemplateContext = {}, opts: 
   // PRs) — keeps the marker attributes in preview, strips them on publish. No-op when the
   // rendered fragment contains no directive, so non-editable pages stay byte-identical.
   html = resolveDirectives(html, {
-    richContent: ctx.richContent,
-    // text/url directives read page.data (bare key → top-level prop; `data.<path>` → nested).
+    // Single store: every directive reads page.data (bare key → top-level prop; `data.<path>` → nested).
     data: ctx.page?.data as Record<string, unknown> | undefined,
     preview: ctx.preview,
   });

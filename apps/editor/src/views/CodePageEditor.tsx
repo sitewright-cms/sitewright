@@ -16,7 +16,6 @@ import { EntryEditorLoader } from './datasets/EntryEditorLoader';
 import { WebsiteDataModal } from './settings/WebsiteDataModal';
 import {
   DANGEROUS_KEYS,
-  dataPathOf,
   isSafeKey,
   mergeDefaults,
   pageDataObject,
@@ -115,11 +114,9 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   const { confirm, dialog } = useDialogs();
   const [mode, setMode] = useState<EditMode>(initialMode);
   const [source, setSource] = useState(page.source ?? '');
-  // Rich (sanitized-HTML) region values (data-sw-html bare-key overrides) — content mode's rich draft.
-  const [richContent, setRichContent] = useState<Record<string, string>>({ ...(page.richContent ?? {}) });
-  // Per-page data → all editable text/url leaves (data-sw-text/href/src/bg + the legacy {{edit}} alias)
-  // live here as page.data, plus {{ page.data.* }} structured data. Edited in-preview (the directives)
-  // and via the "Edit page data" tree/JSON modal.
+  // Per-page data → the SINGLE editable store: ALL data-sw-* leaves (text/html/href/src/bg) live here
+  // as page.data, plus {{ page.data.* }} structured data. Edited in-preview (the directives) and via
+  // the "Edit page data" tree/JSON modal.
   const [pageData, setPageData] = useState<JsonValue>(page.data ?? {});
   const [pageDataOpen, setPageDataOpen] = useState(false);
   // The content key whose image is being replaced via the file picker (data-sw-src/bg click), or null.
@@ -164,11 +161,11 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   // whereas `stateKey`/`inlineToken`/the undo Snapshot all track the RAW `pageData` — they only need
   // to agree with EACH OTHER for dirty/suppress/undo to work, which they do.
   const draft: Page = useMemo(
-    () => ({ ...applyPageSettings(page, settings), source, richContent, data: pageDataObject(pageData) }),
-    [page, settings, source, richContent, pageData],
+    () => ({ ...applyPageSettings(page, settings), source, data: pageDataObject(pageData) }),
+    [page, settings, source, pageData],
   );
   // One key over every editable field (BOTH modes + settings) → dirty + post-save snapshot.
-  const stateKey = JSON.stringify({ source, richContent, settings, data: pageData });
+  const stateKey = JSON.stringify({ source, settings, data: pageData });
   const [savedKey, setSavedKey] = useState(stateKey);
   const dirty = stateKey !== savedKey;
 
@@ -200,8 +197,6 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   // Live mirrors so the mount-scoped message listener computes the post-edit stateKey from fresh state.
   const sourceRef = useRef(source);
   sourceRef.current = source;
-  const richContentRef = useRef(richContent);
-  richContentRef.current = richContent;
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
   const pageDataRef = useRef(pageData);
@@ -210,10 +205,9 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   modeRef.current = mode;
   // The stateKey a given inline (preview-originated) edit will produce — stored in inlineKeyRef so
   // the debounced reload can skip it. MUST mirror `stateKey`'s field set + order exactly.
-  function inlineToken(next: { richContent?: Record<string, string>; data?: JsonValue }): string {
+  function inlineToken(next: { data?: JsonValue }): string {
     return JSON.stringify({
       source: sourceRef.current,
-      richContent: next.richContent ?? richContentRef.current,
       settings: settingsRef.current,
       data: next.data ?? pageDataRef.current,
     });
@@ -247,19 +241,13 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
         inlineKeyRef.current = inlineToken({ data: nextData });
         setPageData(nextData);
       } else if (d.type === 'rich-edit' && typeof d.key === 'string' && typeof d.html === 'string' && isSafeKey(d.key)) {
-        // Inline RICH edit. Store the iframe HTML as-is — every SAME-ORIGIN sink sanitizes it
-        // (RichRegionPanel on display; the server on save AND on each /preview render), so the raw
+        // Inline RICH edit → write the page.data leaf (bare key → top-level prop; data.<path> → nested),
+        // the SAME single store as every other directive. The raw iframe HTML is stored as-is; it is
+        // sanitized at RENDER (the html sink runs sanitizeRichHtml on each /preview + publish), so the
         // draft value is never executed. Suppress the reload (the rich contenteditable already shows it).
-        // A `data.<path>` rich leaf → page.data; a bare key → the richContent store.
-        if (dataPathOf(d.key) !== null) {
-          const nextData = pageDataSet(pageDataRef.current, d.key, d.html);
-          inlineKeyRef.current = inlineToken({ data: nextData });
-          setPageData(nextData);
-        } else {
-          const nextRich = { ...richContentRef.current, [d.key]: d.html };
-          inlineKeyRef.current = inlineToken({ richContent: nextRich });
-          setRichContent(nextRich);
-        }
+        const nextData = pageDataSet(pageDataRef.current, d.key, d.html);
+        inlineKeyRef.current = inlineToken({ data: nextData });
+        setPageData(nextData);
       } else if (d.type === 'link-edit' && typeof d.hrefKey === 'string' && d.hrefKey !== '' && typeof d.href === 'string' && isSafeKey(d.hrefKey)) {
         // Inline link edit (URL + optional text) → page.data leaves. The popover did NOT change the
         // iframe DOM, so we do NOT suppress — the debounced reload re-renders the anchor. Scheme-sanitize
@@ -300,12 +288,12 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
     iframeRef.current?.contentWindow?.postMessage({ source: 'sitewright-editor', type: 'setMode', mode }, '*');
   }, [mode]);
 
-  // --- Undo/redo for INLINE edits (page.data + richContent: plain text, rich, image, link). Source is
-  //     owned by CodeMirror's own history; settings by the settings modal. A history of snapshots; a
-  //     debounced push coalesces typing, a fresh edit truncates the redo tail. ---
-  type Snapshot = { richContent: Record<string, string>; data: JsonValue };
+  // --- Undo/redo for INLINE edits (page.data: plain text, rich, image, link). Source is owned by
+  //     CodeMirror's own history; settings by the settings modal. A history of snapshots; a debounced
+  //     push coalesces typing, a fresh edit truncates the redo tail. ---
+  type Snapshot = { data: JsonValue };
   const MAX_HISTORY = 100; // bound the per-session memory of a long editing run
-  const historyRef = useRef<Snapshot[]>([{ richContent: { ...(page.richContent ?? {}) }, data: page.data ?? {} }]);
+  const historyRef = useRef<Snapshot[]>([{ data: page.data ?? {} }]);
   const histIdxRef = useRef(0);
   // Set true around an undo/redo restore so the resulting setState(s) — batched into one render —
   // don't get recorded back as a new history entry. Cleared on the single effect run that follows.
@@ -321,7 +309,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
       historyRef.current = historyRef.current.slice(0, histIdxRef.current + 1);
       bumpHist();
     }
-    const snap: Snapshot = { richContent: { ...richContent }, data: pageData };
+    const snap: Snapshot = { data: pageData };
     const t = setTimeout(() => {
       const cur = historyRef.current[histIdxRef.current];
       if (cur && JSON.stringify(cur) === JSON.stringify(snap)) return; // no real change to record
@@ -332,12 +320,11 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
       bumpHist();
     }, 400);
     return () => clearTimeout(t);
-  }, [richContent, pageData]);
+  }, [pageData]);
   const canUndo = histIdxRef.current > 0;
   const canRedo = histIdxRef.current < historyRef.current.length - 1;
   function applySnapshot(s: Snapshot) {
     applyingHistory.current = true;
-    setRichContent({ ...s.richContent });
     setPageData(s.data);
     bumpHist();
   }

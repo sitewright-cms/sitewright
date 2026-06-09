@@ -482,11 +482,10 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           try {
             // Client-edited region overrides (page.data via data-sw-*) baked into the static output, plus
             // the project snippets the page can {{> compose}} (validated by renderTemplate, like preview).
-            // No `preview` flag → resolveDirectives STRIPS every data-sw-* marker, leaving clean
-            // static HTML; richContent is re-sanitized at render (the save path is authoritative).
+            // No `preview` flag → resolveDirectives STRIPS every data-sw-* marker, leaving clean static
+            // HTML; the html sink sanitizes rich values at render (page.data is the single store).
             bodyHtml = renderTemplate(pageSource, {
               ...renderCtx,
-              richContent: page.richContent,
               item: keyedDatasets(pageSource, localeData),
               partials: opts.snippets,
             });

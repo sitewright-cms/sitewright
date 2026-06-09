@@ -93,31 +93,23 @@ const PageObject = z
      */
     source: z.string().max(256 * 1024).optional(),
     /**
-     * Client-editable RICH (sanitized-HTML) bound content for a code-first page: region key →
-     * sanitized HTML. A developer marks a rich region with the `data-sw-html="key"` directive; the
-     * value here OVERRIDES the element's authored default and is set as its innerHTML. Values are
-     * sanitized to an allowlist server-side on save AND defensively at render — the same
-     * client-write property as `content` (a member may set these keys but nothing else). Keyed by
-     * {@link KeyNameSchema} (refuses `__proto__`/`constructor`/`prototype`); larger per-value cap
-     * than `content` for HTML markup overhead, still bounded.
-     */
-    richContent: z
-      .record(KeyNameSchema, z.string().max(64_000))
-      .refine((obj) => Object.keys(obj).length <= 500, 'too many rich regions')
-      .optional(),
-    /**
-     * Per-page custom data: an editable, free-form JSON object exposed in templates as
-     * `{{ page.data.* }}` / `{{#each page.data.x}}` — the per-page counterpart of `website.data`
-     * (e.g. a blog article page holds `{ article_title, article_image, … }` here). Edited via the
-     * graphical "Edit page data" tree/JSON editor and the in-preview `data-sw-*="data.<key>"` leaf
-     * directives. A root OBJECT, bounded + prototype-safe ({@link JsonObjectStoreSchema}), available in both
-     * preview and publish.
+     * Per-page custom data: the SINGLE editable store for a code-first page — every `data-sw-*`
+     * directive override lands here, plus free-form structured data exposed in templates as
+     * `{{ page.data.* }}` / `{{#each page.data.x}}` (the per-page counterpart of `website.data`,
+     * e.g. a blog article page holds `{ article_title, article_body, article_image, … }`).
      *
-     * @security values are stored RAW (no HTML sanitization at rest — unlike `richContent`, which is
-     * a dedicated HTML store; `page.data` is generic JSON and which leaves are HTML isn't known here).
-     * A `data.<key>` leaf bound to a `data-sw-html` directive is sanitized at RENDER (the html sink
-     * always runs `sanitizeRichHtml`); every other sink escapes (text) or `safeUrl`s (src/href/bg).
-     * So a value is never emitted to HTML unsanitized — the render sink is the boundary.
+     * A directive's bare key is a TOP-LEVEL property (`data-sw-text="headline"` → `data.headline`);
+     * a `data.<path>` key is a nested path. Rich HTML (`data-sw-html`) stores here too — there is no
+     * longer a separate `richContent` store. Edited via the graphical "Edit page data" tree/JSON
+     * editor and the in-preview `data-sw-*` leaf directives. A root OBJECT, bounded + prototype-safe
+     * ({@link JsonObjectStoreSchema}), available in both preview and publish.
+     *
+     * @security values are stored RAW (no HTML sanitization at rest): `page.data` is generic JSON
+     * and which string leaves are HTML (bound to a `data-sw-html` directive) isn't known at the
+     * entity boundary. The safety boundary is at RENDER — the html sink ALWAYS runs
+     * `sanitizeRichHtml` before setting innerHTML; every other sink escapes (text) or `safeUrl`s
+     * (src/href/bg); `{{{triple-stache}}}` is rejected by `validateTemplate`. So a `page.data` value
+     * is never emitted to HTML unsanitized.
      */
     data: JsonObjectStoreSchema.optional(),
     /** Present when this page is generated once per dataset entry. */
@@ -174,5 +166,40 @@ export function migrateContentIntoData(value: unknown): unknown {
   return out;
 }
 
-export const PageSchema = z.preprocess(migrateContentIntoData, PageObject);
+/**
+ * Migrate the RETIRED `richContent` map (the bare-key `data-sw-html` rich-HTML store) into `page.data`:
+ * each `richContent[key]` becomes a top-level `data[key]` string, then `richContent` is removed. Now
+ * there is a SINGLE store — bare-key `data-sw-html` reads `page.data` like the other directives, and
+ * the value is sanitized at RENDER (the html sink). `page.data` wins a collision; empty/prototype keys
+ * are dropped. Idempotent; runs on every page parse so stored pages migrate on the next read/write.
+ * (We can't sanitize here — the schema package must not depend on the renderer — but the render html
+ * sink always sanitizes, so a migrated value is never emitted unsanitized.)
+ */
+export function migrateRichContentIntoData(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const v = value as Record<string, unknown>;
+  const rich = v.richContent;
+  if (!rich || typeof rich !== 'object' || Array.isArray(rich)) return value; // nothing to migrate
+  const existing = v.data && typeof v.data === 'object' && !Array.isArray(v.data) ? (v.data as Record<string, unknown>) : {};
+  const data: Record<string, unknown> = { ...existing };
+  for (const [k, val] of Object.entries(rich)) {
+    if (k === '' || CONTENT_RESERVED_KEYS.has(k) || Object.prototype.hasOwnProperty.call(data, k)) continue;
+    // eslint-disable-next-line security/detect-object-injection -- own key from Object.entries + RESERVED-guarded
+    data[k] = val;
+  }
+  const out: Record<string, unknown> = { ...v, data };
+  delete out.richContent;
+  return out;
+}
+
+/**
+ * Apply every retired-store migration to a raw page value (legacy `content` + `richContent` → `data`).
+ * The single entry point used by both `PageSchema` (on parse) AND the raw `list()` read paths (preview
+ * + publish + export), which read rows without parsing and so must migrate explicitly. Idempotent.
+ */
+export function migratePageStores(value: unknown): unknown {
+  return migrateRichContentIntoData(migrateContentIntoData(value));
+}
+
+export const PageSchema = z.preprocess(migratePageStores, PageObject);
 export type Page = z.infer<typeof PageSchema>;

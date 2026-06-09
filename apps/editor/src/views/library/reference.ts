@@ -211,7 +211,7 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         name: 'data-sw-html',
         keywords: 'editable rich text wysiwyg html directive',
         description:
-          'Makes the element a RICH-text region: a floating toolbar in the preview + a side WYSIWYG/HTML-source editor. The value is sanitized to a safe allowlist.',
+          'Makes the element a RICH-text region: a floating toolbar in the preview + a side WYSIWYG/HTML-source editor. The override is stored as page.data.<key> (a `data.<path>` key targets a nested path) and sanitized to a safe allowlist at render.',
         example: '<div data-sw-html="intro"><p>Default intro…</p></div>',
       },
       {

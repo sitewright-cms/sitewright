@@ -53,6 +53,6 @@ export function companyToOrganization(
   if (identity.email) org.email = identity.email;
   if (identity.address) org.address = identity.address;
   if (identity.geo) org.geo = identity.geo;
-  if (identity.social && identity.social.length > 0) org.sameAs = identity.social;
+  if (identity.social && identity.social.length > 0) org.sameAs = identity.social.map((s) => s.link);
   return org;
 }

@@ -20,7 +20,10 @@ In \`source\`:
   (\`bg-primary text-primary-content\`). Prefer these tokens over hardcoded hex; stock Tailwind
   palette (\`bg-slate-900\`) is fine for non-brand neutrals.
 - Bind data: {{ company.* }} exposes the Corporate Identity you set (e.g. {{ company.name }}
-  and any contact/address fields on \`identity\`); {{ page.title }}, {{ page.path }} (full route),
+  and any contact/address fields on \`identity\`). {{ company.mapUrl }} is a Google Maps embed URL
+  for an <iframe src>. {{#each company.social}} yields { link, name, icon } per profile — render a
+  social bar with {{#each company.social}}<a href="{{sw-url link}}">{{sw-icon icon}} {{name}}</a>{{/each}}.
+  Page bindings: {{ page.title }}, {{ page.path }} (full route),
   {{ page.slug }} (own segment); {{ parentPage.path }} / {{ parentPage.data.<key> }} for the page's
   parent (absent at the tree root); {{ website.siteUrl }}; and {{#each data.<dataset>}}…{{/each}}
   for collections. Inside the loop an entry's fields are read

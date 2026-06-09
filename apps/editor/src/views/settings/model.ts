@@ -18,6 +18,13 @@ export interface KeyedStr {
   id: string;
   value: string;
 }
+/** A social profile row: link + display name + icon (Lucide name or `brand:<slug>`). */
+export interface KeyedSocial {
+  id: string;
+  link: string;
+  name: string;
+  icon: string;
+}
 export interface KeyedRedirect {
   id: string;
   from: string;
@@ -74,7 +81,8 @@ export interface SettingsForm {
   postalCode: string;
   latitude: string;
   longitude: string;
-  social: KeyedStr[];
+  mapUrl: string;
+  social: KeyedSocial[];
   // identity — brand tokens
   colors: KeyedPair[];
   fonts: KeyedPair[];
@@ -182,7 +190,8 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
     postalCode: id.address?.postalCode ?? '',
     latitude: id.geo?.latitude ?? '',
     longitude: id.geo?.longitude ?? '',
-    social: strsToKeyed(id.social),
+    mapUrl: id.mapUrl ?? '',
+    social: (id.social ?? []).map((s) => ({ id: rowId(), link: s.link, name: s.name ?? '', icon: s.icon ?? '' })),
     colors: colorsToPairs(id.colors),
     fonts: recordToPairs(id.typography?.fontFamilies),
     heading: { ...DEFAULT_HEADING, ...id.typography?.heading },
@@ -244,7 +253,15 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
   if (form.latitude.trim() && form.longitude.trim()) {
     identity = put(identity, 'geo', { latitude: form.latitude.trim(), longitude: form.longitude.trim() });
   }
-  const social = form.social.map((s) => s.value.trim()).filter(Boolean);
+  identity = put(identity, 'mapUrl', trimmed(form.mapUrl));
+  // Social: keep the author's order; drop rows with no link; omit empty name/icon.
+  const social = form.social
+    .filter((s) => s.link.trim())
+    .map((s) => ({
+      link: s.link.trim(),
+      ...(s.name.trim() ? { name: s.name.trim() } : {}),
+      ...(s.icon.trim() ? { icon: s.icon.trim() } : {}),
+    }));
   if (social.length) identity = put(identity, 'social', social);
 
   // typography: surfaced fontFamilies + preserved scale + heading/body slots + custom named slots.
@@ -317,6 +334,7 @@ export const newNamedSlot = (): NamedSlotForm => ({ id: rowId(), name: '', slot:
 /** A fresh keyed row for the list editors. */
 export const newPair = (): KeyedPair => ({ id: rowId(), key: '', value: '' });
 export const newStr = (): KeyedStr => ({ id: rowId(), value: '' });
+export const newSocial = (): KeyedSocial => ({ id: rowId(), link: '', name: '', icon: '' });
 export const newRedirect = (): KeyedRedirect => ({ id: rowId(), from: '', to: '', status: 301 });
 
 /** Returns the object only if at least one value is defined, else undefined. */

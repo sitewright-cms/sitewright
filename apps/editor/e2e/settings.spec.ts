@@ -29,6 +29,13 @@ test('edit Corporate Identity + Website settings, save, and persist across reloa
   await page.getByRole('button', { name: '+ Add color' }).click();
   await page.getByLabel('brand-teal 1', { exact: true }).fill('brand-teal');
   await page.getByLabel('#0d9488 1', { exact: true }).fill('#0d9488');
+  // Map embed URL (Contact & location).
+  await page.getByLabel('Map embed URL').fill('https://www.google.com/maps/embed?pb=demo');
+  // Social profile: entering the URL auto-fills the name + icon from the host.
+  await page.getByRole('button', { name: '+ Add profile' }).click();
+  await page.getByLabel('Social URL 1', { exact: true }).fill('https://wa.me/15551234');
+  await expect(page.getByLabel('Social name 1', { exact: true })).toHaveValue('WhatsApp');
+  await expect(page.getByLabel('Social icon 1', { exact: true })).toHaveValue('brand:whatsapp');
 
   await page.getByRole('button', { name: 'Save changes' }).click();
   await expect(page.getByText('✓ Saved')).toBeVisible();
@@ -49,6 +56,10 @@ test('edit Corporate Identity + Website settings, save, and persist across reloa
   await expect(page.getByLabel('Background Color')).toHaveValue('#fafafa');
   await expect(page.getByLabel('brand-teal 1', { exact: true })).toHaveValue('brand-teal');
   await expect(page.getByLabel('#0d9488 1', { exact: true })).toHaveValue('#0d9488');
+  await expect(page.getByLabel('Map embed URL')).toHaveValue('https://www.google.com/maps/embed?pb=demo');
+  await expect(page.getByLabel('Social URL 1', { exact: true })).toHaveValue('https://wa.me/15551234');
+  await expect(page.getByLabel('Social name 1', { exact: true })).toHaveValue('WhatsApp');
+  await expect(page.getByLabel('Social icon 1', { exact: true })).toHaveValue('brand:whatsapp');
   await page.getByRole('tab', { name: 'Website Settings' }).click();
   await expect(page.getByLabel(/Production URL/)).toHaveValue('https://acme.example');
 });

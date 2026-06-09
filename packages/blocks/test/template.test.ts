@@ -184,6 +184,16 @@ describe('renderTemplate — curated helpers (extensibility)', () => {
     // The class is attribute-escaped (no breakout possible).
     expect(renderTemplate('{{sw-icon "check" "a\\"onerror=x"}}', ctx)).not.toContain('"onerror=x');
   });
+
+  it('{{sw-icon}} renders a brand: logo as a filled path (themeable), empty for an unknown brand', () => {
+    const out = renderTemplate('{{sw-icon "brand:whatsapp" "h-4 w-4"}}', ctx);
+    expect(out).toContain('<svg class="h-4 w-4"');
+    expect(out).toContain('fill="currentColor"'); // brand logos fill (theme via text color), not stroke
+    expect(out).toContain('<path d="'); // the brand path, emitted raw (SafeString)
+    expect(out).not.toContain('stroke="currentColor"');
+    // Unknown brand slug → nothing.
+    expect(renderTemplate('[{{sw-icon "brand:nope"}}]', ctx)).toBe('[]');
+  });
 });
 
 describe('renderTemplate — security', () => {

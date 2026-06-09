@@ -91,14 +91,14 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         id: 'h-icon',
         syntax: '{{sw-icon "name" ["classes"]}}',
         name: 'sw-icon',
-        keywords: 'svg lucide glyph icon',
+        keywords: 'svg lucide glyph icon brand logo social whatsapp github',
         description:
-          'Inlines a built-in Lucide icon as an SVG. Browse names in the Library → Icons gallery (click an icon to copy its snippet). The sw- prefix keeps it out of the dataset FIELD namespace, so a field named "icon" is read plainly as {{icon}}.',
+          'Inlines a built-in icon as an SVG. A BARE name is a Lucide line glyph — browse names in the Library → Icons gallery (click one to copy its snippet). A "brand:slug" name is a filled brand/social logo (e.g. "brand:whatsapp", "brand:github", "brand:x") that themes to the current text color. The two are distinct: "whatsapp" alone is NOT the logo — you need the "brand:" prefix. Social profiles store the full name for you, so {{sw-icon icon}} over company.social just works. The sw- prefix keeps it out of the dataset FIELD namespace, so a field named "icon" is read plainly as {{icon}}.',
         args: [
-          { name: 'name', desc: 'The icon name (e.g. "arrow-right"), or "brand:slug" for a brand logo.' },
+          { name: 'name', desc: 'A Lucide name (e.g. "arrow-right"), or "brand:slug" for a brand logo (e.g. "brand:x").' },
           { name: 'classes', desc: 'Optional Tailwind classes (default "h-5 w-5").' },
         ],
-        example: '{{sw-icon "arrow-right" "h-4 w-4"}}',
+        example: '{{sw-icon "arrow-right" "h-4 w-4"}}\n{{sw-icon "brand:whatsapp"}}\n{{#each company.social}}{{sw-icon icon}}{{/each}}',
       },
       {
         id: 'h-truncate',
@@ -259,8 +259,8 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         name: 'company',
         keywords: 'identity brand organization',
         description:
-          'Corporate identity (Settings → Corporate Identity): company.name, .legalName, .shortName, .slogan, .description, .email, .telephone; images .logo / .logoLight / .logoDark / .icon / .favicon / .image; .colors.<token>; address (.street, .locality, .region, .country, .postalCode). company.social is an ARRAY (loop it with {{#each}}).',
-        example: '<a href="mailto:{{company.email}}">{{company.email}}</a>\n{{#each company.social}}<a href="{{sw-url this}}">{{this}}</a>{{/each}}',
+          'Corporate identity (Settings → Corporate Identity): company.name, .legalName, .shortName, .slogan, .description, .email, .telephone, .mapUrl (Google Maps embed → iframe src); images .logo / .logoLight / .logoDark / .icon / .favicon / .image; .colors.<token>; address (.street, .locality, .region, .country, .postalCode). company.social is an ARRAY of { link, name, icon } — loop it with {{#each}}.',
+        example: '<a href="mailto:{{company.email}}">{{company.email}}</a>\n{{#each company.social}}<a href="{{sw-url link}}" aria-label="{{name}}">{{sw-icon icon "h-5 w-5"}}</a>{{/each}}',
       },
       {
         id: 'n-website',

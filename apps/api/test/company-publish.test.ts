@@ -111,7 +111,7 @@ describe('company → schema.org + favicon on publish', () => {
       favicon: '/fav.ico', // brand.logo.favicon
       logoLight: '/light.svg', // brand.logo.light
       colors: { primary: '#e11' }, // brand tokens
-      social: ['https://x.com/cc'],
+      social: [{ link: 'https://x.com/cc', name: 'X', icon: 'brand:x' }], // string[] migrated to objects
     });
   });
 
@@ -140,7 +140,11 @@ describe('company → schema.org + favicon on publish', () => {
     expect(imp.statusCode).toBe(200);
     const exp = await proj.exportBundle();
     expect(exp.statusCode).toBe(200);
-    expect((exp.json() as { project: { identity: unknown } }).project.identity).toMatchObject(company);
+    expect((exp.json() as { project: { identity: unknown } }).project.identity).toMatchObject({
+      legalName: 'Imported Co',
+      businessType: 'LocalBusiness',
+      social: [{ link: 'https://x.io/co', name: 'X', icon: 'globe' }], // string[] migrated (x.io is an unknown host)
+    });
   });
 
   it('substitutes {{ company.* }} / {{ website.* }} / {{ page.* }} variables in published text', async () => {

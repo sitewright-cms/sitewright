@@ -3,7 +3,7 @@ import type { Patch, SettingsForm } from './model';
 import { api, type MediaAsset } from '../../api';
 import { Field, FieldButton, GlassCard, SubLabel, TextArea } from './ui';
 import { BrandColorsEditor } from './BrandColorsEditor';
-import { StringListEditor } from './StringListEditor';
+import { SocialProfilesEditor } from './SocialProfilesEditor';
 import { FontSlotEditor } from './FontSlotEditor';
 import { CustomFontSlots } from './CustomFontSlots';
 import { BusinessTypeModal, BUSINESS_TYPE_DISABLED } from './BusinessTypeModal';
@@ -139,17 +139,28 @@ export function IdentitySection({ form, patch, projectId }: { form: SettingsForm
           <Field label="Latitude" value={form.latitude} onChange={(v) => patch({ latitude: v })} placeholder="34.05" />
           <Field label="Longitude" value={form.longitude} onChange={(v) => patch({ longitude: v })} placeholder="-118.24" />
         </div>
+        <SubLabel>Map</SubLabel>
+        <Field
+          label="Map embed URL"
+          value={form.mapUrl}
+          onChange={(v) => patch({ mapUrl: v })}
+          placeholder="https://www.google.com/maps/embed?pb=…"
+        />
+        <p className="mt-1 text-xs text-slate-500">
+          The Google Maps “Embed a map” URL — available in templates as{' '}
+          <code className="rounded bg-slate-100 px-1 py-0.5">{'{{ company.mapUrl }}'}</code> for an{' '}
+          <code className="rounded bg-slate-100 px-1 py-0.5">&lt;iframe src&gt;</code> (e.g. a footer map).
+        </p>
       </GlassCard>
 
       <GlassCard title="Social profiles" icon="🜨">
-        <p className="mb-2 text-xs text-slate-500">Absolute https URLs — emitted as schema.org <code>sameAs</code>.</p>
-        <StringListEditor
-          items={form.social}
-          onChange={(social) => patch({ social })}
-          placeholder="https://x.com/acme"
-          ariaLabel="Social URL"
-          addLabel="+ Add profile"
-        />
+        <p className="mb-2 text-xs text-slate-500">
+          Drag to reorder. Entering a URL auto-fills the name + icon (e.g. a WhatsApp link → “WhatsApp”);
+          both are editable. Use them in templates with{' '}
+          <code className="rounded bg-slate-100 px-1 py-0.5">{'{{#each company.social}}…{{sw-icon icon}} {{name}}…{{/each}}'}</code>.
+          The links are also emitted as schema.org <code>sameAs</code>.
+        </p>
+        <SocialProfilesEditor rows={form.social} onChange={(social) => patch({ social })} />
       </GlassCard>
 
       {businessTypeOpen && (

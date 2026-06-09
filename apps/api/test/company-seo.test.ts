@@ -28,7 +28,7 @@ describe('companyToOrganization', () => {
         logo: 'https://x.io/logo.png',
         address: { locality: 'Windhoek', region: 'Khomas', country: 'NA' },
         geo: { latitude: '-22.5', longitude: '17.0' },
-        social: ['https://facebook.com/acme'],
+        social: [{ link: 'https://facebook.com/acme', name: 'Facebook', icon: 'brand:facebook' }],
       },
       'Project',
     );

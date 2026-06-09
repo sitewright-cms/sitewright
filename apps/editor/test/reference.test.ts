@@ -32,4 +32,12 @@ describe('REFERENCE_GROUPS', () => {
     const eachEntry = all.find((e) => e.id === 'b-each');
     expect(eachEntry?.description.toLowerCase()).toContain('click-to-edit');
   });
+
+  it('documents that sw-icon needs the "brand:" prefix for brand/social logos', () => {
+    const icon = REFERENCE_GROUPS.flatMap((g) => g.entries).find((e) => e.id === 'h-icon');
+    expect(icon).toBeDefined();
+    // The description must teach the prefix (bare name = Lucide, brand:slug = logo).
+    expect(icon?.description).toContain('brand:');
+    expect(icon?.example).toContain('brand:');
+  });
 });

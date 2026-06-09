@@ -91,14 +91,14 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         id: 'h-icon',
         syntax: '{{sw-icon "name" ["classes"]}}',
         name: 'sw-icon',
-        keywords: 'svg lucide glyph icon',
+        keywords: 'svg lucide glyph icon brand logo social whatsapp github',
         description:
-          'Inlines a built-in Lucide icon as an SVG. Browse names in the Library → Icons gallery (click an icon to copy its snippet). The sw- prefix keeps it out of the dataset FIELD namespace, so a field named "icon" is read plainly as {{icon}}.',
+          'Inlines a built-in icon as an SVG. A BARE name is a Lucide line glyph — browse names in the Library → Icons gallery (click one to copy its snippet). A "brand:slug" name is a filled brand/social logo (e.g. "brand:whatsapp", "brand:github", "brand:x") that themes to the current text color. The two are distinct: "whatsapp" alone is NOT the logo — you need the "brand:" prefix. Social profiles store the full name for you, so {{sw-icon icon}} over company.social just works. The sw- prefix keeps it out of the dataset FIELD namespace, so a field named "icon" is read plainly as {{icon}}.',
         args: [
-          { name: 'name', desc: 'The icon name (e.g. "arrow-right"), or "brand:slug" for a brand logo.' },
+          { name: 'name', desc: 'A Lucide name (e.g. "arrow-right"), or "brand:slug" for a brand logo (e.g. "brand:x").' },
           { name: 'classes', desc: 'Optional Tailwind classes (default "h-5 w-5").' },
         ],
-        example: '{{sw-icon "arrow-right" "h-4 w-4"}}',
+        example: '{{sw-icon "arrow-right" "h-4 w-4"}}\n{{sw-icon "brand:whatsapp"}}\n{{#each company.social}}{{sw-icon icon}}{{/each}}',
       },
       {
         id: 'h-truncate',

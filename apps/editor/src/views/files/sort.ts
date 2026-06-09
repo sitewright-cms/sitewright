@@ -50,11 +50,19 @@ export function sortAssets(assets: readonly MediaAsset[], { key, dir }: SortStat
   });
 }
 
-/** Sorts folder entries: by total size for the `size` column, else by name (name + type columns). */
+/** The folder's own name = the last segment of its `seg` (which is the full path in global search). */
+const folderName = (e: FolderEntry): string => e.seg.split('/').pop() ?? e.seg;
+
+/**
+ * Sorts folder entries: by total size for the `size` column, else by the folder's own NAME (the last
+ * path segment, so a deep "Alpha" sorts as "Alpha" not by its full path). A no-op vs `seg` in normal
+ * mode, where `seg` is already a bare segment.
+ */
 export function sortFolders(folders: readonly FolderEntry[], { key, dir }: SortState): FolderEntry[] {
   const m = flip(dir);
   return [...folders].sort((a, b) => {
-    const primary = key === 'size' ? a.bytes - b.bytes : a.seg.localeCompare(b.seg);
-    return primary !== 0 ? m * primary : a.seg.localeCompare(b.seg);
+    const byName = folderName(a).localeCompare(folderName(b));
+    const primary = key === 'size' ? a.bytes - b.bytes : byName;
+    return primary !== 0 ? m * primary : byName;
   });
 }

@@ -137,17 +137,35 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
   const crumbs = folder === '' ? [] : folder.split('/');
   const pathOf = (seg: string) => (folder === '' ? seg : `${folder}/${seg}`);
 
-  // Assets in the current folder (pick mode shows only `accept`-matching files), name-filtered by the
-  // search box, then ordered by the active column.
+  // A non-empty search is GLOBAL — results span every folder in the project, not just the current one.
+  const searching = query.trim() !== '';
+
+  // Files shown: when searching, every `accept`-matching asset across the project whose name matches;
+  // otherwise the current folder's. Ordered by the active column.
   const here = useMemo(() => {
-    let inFolder = assets.filter((a) => a.folder === folder);
-    if (pick && accept) inFolder = inFolder.filter(accept);
-    if (query.trim()) inFolder = inFolder.filter((a) => matchesName(query, a.filename));
-    return sortAssets(inFolder, sort);
+    let pool = searching ? assets : assets.filter((a) => a.folder === folder);
+    if (pick && accept) pool = pool.filter(accept);
+    if (searching) pool = pool.filter((a) => matchesName(query, a.filename));
+    return sortAssets(pool, sort);
   }, [assets, folder, pick, accept, query, sort]);
-  // Subfolders = union of asset-derived + persisted records, each with its recursive total size,
-  // name-filtered, then ordered. Folders are rendered BEFORE files regardless of the sort.
+
+  // Folders shown: when searching, EVERY folder in the project (records + asset folders + their
+  // ancestors) whose own name matches — its `seg` is the FULL path so the result shows where it lives
+  // and a click navigates straight there. Otherwise the current folder's direct children. Each entry
+  // carries its recursive total size; folders are always rendered BEFORE files.
   const subfolders = useMemo<FolderEntry[]>(() => {
+    if (searching) {
+      const paths = new Set<string>();
+      for (const f of folderRecords) paths.add(f.path);
+      for (const a of assets) {
+        const parts = a.folder ? a.folder.split('/') : [];
+        for (let i = 1; i <= parts.length; i += 1) paths.add(parts.slice(0, i).join('/'));
+      }
+      const entries = [...paths]
+        .filter((p) => p !== '' && matchesName(query, p.split('/').pop() ?? p))
+        .map<FolderEntry>((path) => ({ seg: path, path, bytes: folderBytes(assets, path) }));
+      return sortFolders(entries, sort);
+    }
     const segs = new Set<string>();
     for (const a of assets) {
       const seg = childSegment(a.folder, folder);
@@ -157,11 +175,10 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
       const seg = childSegment(f.path, folder);
       if (seg) segs.add(seg);
     }
-    let entries: FolderEntry[] = [...segs].map((seg) => {
+    const entries: FolderEntry[] = [...segs].map((seg) => {
       const path = folder === '' ? seg : `${folder}/${seg}`;
       return { seg, path, bytes: folderBytes(assets, path) };
     });
-    if (query.trim()) entries = entries.filter((e) => matchesName(query, e.seg));
     return sortFolders(entries, sort);
   }, [assets, folderRecords, folder, query, sort]);
 
@@ -170,6 +187,11 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
     setFolder(path);
     setQuery('');
   };
+
+  // Action aria-labels append the location while searching, so two same-named files surfaced from
+  // different folders by a global search don't read identically to a screen reader.
+  const actLabel = (verb: string, m: MediaAsset) =>
+    searching ? `${verb} ${m.filename} in ${m.folder || 'Assets'}` : `${verb} ${m.filename}`;
 
   /** Click a column header: set the sort key, or flip direction when it's already active. */
   const toggleSort = (key: SortKey) =>
@@ -279,7 +301,9 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
     await run(() => api.patchMedia(projectId, m.id, { filename: next }));
   }
   async function copyAsset(m: MediaAsset) {
-    await run(() => api.copyMedia(projectId, m.id, folder));
+    // Duplicate next to the source (its own folder), not the current browse folder — identical in
+    // normal mode (m.folder === folder), but correct for a global-search result from another folder.
+    await run(() => api.copyMedia(projectId, m.id, m.folder));
   }
   async function deleteAsset(m: MediaAsset) {
     if (!(await confirm({ title: 'Delete file', message: `Delete “${m.filename}”? This cannot be undone.`, confirmLabel: 'Delete' }))) return;
@@ -400,7 +424,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
             aria-label="Search assets by name"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search files & folders"
+            placeholder="Search all folders"
             className="w-44 rounded-lg border border-white/60 bg-white/60 px-2.5 py-1.5 text-sm"
           />
           {!pick && (
@@ -424,6 +448,17 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
           </div>
         </div>
       </div>
+
+      {searching && (
+        <p className="mb-2 flex items-center gap-2 text-xs text-slate-500">
+          <span>
+            Searching <strong>all folders</strong> for “{query.trim()}”.
+          </span>
+          <button type="button" onClick={() => setQuery('')} className="rounded px-1.5 py-0.5 text-indigo-600 hover:bg-white/60">
+            Clear
+          </button>
+        </p>
+      )}
 
       {view === 'list' ? (
         <table className="w-full text-left text-sm">
@@ -466,7 +501,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
                 <td className="py-2 text-slate-400">folder</td>
                 <td className="py-2 text-right text-slate-500">{formatBytes(bytes)}</td>
                 <td className="py-2">
-                  {!pick && (
+                  {!pick && !searching && (
                     <div className="flex justify-end gap-0.5">
                       <button aria-label={`Rename ${seg}`} title="Rename" className={ACT} onClick={() => void renameFolder(seg)}>{RENAME_ICON}</button>
                       <button aria-label={`Copy ${seg}`} title="Copy" className={ACT} onClick={() => void copyFolder(seg)}>{COPY_ICON}</button>
@@ -496,7 +531,10 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
                     ) : (
                       <FileTypeIcon filename={m.filename} className="h-6 w-6 shrink-0" />
                     )}
-                    <span className="truncate">{m.filename}</span>
+                    <span className="flex min-w-0 flex-col">
+                      <span className="truncate">{m.filename}</span>
+                      {searching && <span className="truncate text-xs text-slate-400">in {m.folder || 'Assets'}</span>}
+                    </span>
                   </button>
                 </td>
                 <td className="py-2 text-slate-400">{typeLabel(m)}</td>
@@ -504,13 +542,13 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
                 <td className="py-2">
                   <div className="flex justify-end gap-0.5">
                     {pick ? (
-                      <button aria-label={`Use ${m.filename}`} title="Use this file" className={ACT} onClick={() => onPick?.(m)}>{DOWNLOAD_ICON}</button>
+                      <button aria-label={actLabel('Use', m)} title="Use this file" className={ACT} onClick={() => onPick?.(m)}>{DOWNLOAD_ICON}</button>
                     ) : (
                       <>
-                        <button aria-label={`Download ${m.filename}`} title="Download" className={ACT} onClick={() => void downloadAsset(m)}>{DOWNLOAD_ICON}</button>
-                        <button aria-label={`Rename ${m.filename}`} title="Rename" className={ACT} onClick={() => void renameAsset(m)}>{RENAME_ICON}</button>
-                        <button aria-label={`Copy ${m.filename}`} title="Copy" className={ACT} onClick={() => void copyAsset(m)}>{COPY_ICON}</button>
-                        <button aria-label={`Delete ${m.filename}`} title="Delete" className={ACT_DANGER} onClick={() => void deleteAsset(m)}>{TRASH_ICON}</button>
+                        <button aria-label={actLabel('Download', m)} title="Download" className={ACT} onClick={() => void downloadAsset(m)}>{DOWNLOAD_ICON}</button>
+                        <button aria-label={actLabel('Rename', m)} title="Rename" className={ACT} onClick={() => void renameAsset(m)}>{RENAME_ICON}</button>
+                        <button aria-label={actLabel('Copy', m)} title="Copy" className={ACT} onClick={() => void copyAsset(m)}>{COPY_ICON}</button>
+                        <button aria-label={actLabel('Delete', m)} title="Delete" className={ACT_DANGER} onClick={() => void deleteAsset(m)}>{TRASH_ICON}</button>
                       </>
                     )}
                   </div>
@@ -541,7 +579,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
                 <span className="truncate text-sm text-slate-700" title={seg}>{seg}</span>
                 <span className="text-[10px] text-slate-400">{formatBytes(bytes)}</span>
               </button>
-              {!pick && (
+              {!pick && !searching && (
                 <div className="absolute right-1 top-1 hidden gap-0.5 rounded-lg bg-white/90 p-0.5 shadow group-hover:flex">
                   <button aria-label={`Rename ${seg}`} title="Rename" className={ACT} onClick={() => void renameFolder(seg)}>{RENAME_ICON}</button>
                   <button aria-label={`Delete ${seg}`} title="Delete" className={ACT_DANGER} onClick={() => void deleteFolder(seg)}>{TRASH_ICON}</button>
@@ -566,18 +604,19 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
                   </div>
                 )}
                 <figcaption className="mt-1 truncate text-sm text-slate-700" title={m.filename}>{m.filename}</figcaption>
+                {searching && <span className="block truncate text-[10px] text-slate-400">in {m.folder || 'Assets'}</span>}
               </button>
               <div className="flex items-center justify-between">
                 <span className="text-[10px] text-slate-400">{formatBytes(m.bytes)}</span>
                 <div className="hidden gap-0.5 group-hover:flex">
                   {pick ? (
-                    <button aria-label={`Use ${m.filename}`} title="Use this file" className={ACT} onClick={() => onPick?.(m)}>{DOWNLOAD_ICON}</button>
+                    <button aria-label={actLabel('Use', m)} title="Use this file" className={ACT} onClick={() => onPick?.(m)}>{DOWNLOAD_ICON}</button>
                   ) : (
                     <>
-                      <button aria-label={`Download ${m.filename}`} title="Download" className={ACT} onClick={() => void downloadAsset(m)}>{DOWNLOAD_ICON}</button>
-                      <button aria-label={`Rename ${m.filename}`} title="Rename" className={ACT} onClick={() => void renameAsset(m)}>{RENAME_ICON}</button>
-                      <button aria-label={`Copy ${m.filename}`} title="Copy" className={ACT} onClick={() => void copyAsset(m)}>{COPY_ICON}</button>
-                      <button aria-label={`Delete ${m.filename}`} title="Delete" className={ACT_DANGER} onClick={() => void deleteAsset(m)}>{TRASH_ICON}</button>
+                      <button aria-label={actLabel('Download', m)} title="Download" className={ACT} onClick={() => void downloadAsset(m)}>{DOWNLOAD_ICON}</button>
+                      <button aria-label={actLabel('Rename', m)} title="Rename" className={ACT} onClick={() => void renameAsset(m)}>{RENAME_ICON}</button>
+                      <button aria-label={actLabel('Copy', m)} title="Copy" className={ACT} onClick={() => void copyAsset(m)}>{COPY_ICON}</button>
+                      <button aria-label={actLabel('Delete', m)} title="Delete" className={ACT_DANGER} onClick={() => void deleteAsset(m)}>{TRASH_ICON}</button>
                     </>
                   )}
                 </div>

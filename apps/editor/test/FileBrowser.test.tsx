@@ -133,13 +133,24 @@ describe('FileBrowser (Assets)', () => {
     expect(before(screen.getByRole('button', { name: 'hero.png' }), screen.getByRole('button', { name: 'brochure.pdf' }))).toBe(true);
   });
 
-  it('searches files and folders by name', async () => {
+  it('searches files and folders by name (a result carries its folder location)', async () => {
     render(<FileBrowser projectId={project.id} mode="manage" />);
     await screen.findByRole('button', { name: 'hero.png' });
     fireEvent.change(screen.getByLabelText('Search assets by name'), { target: { value: 'hero' } });
-    expect(screen.getByRole('button', { name: 'hero.png' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'brochure.pdf' })).toBeNull();
+    // The name-cell button now reads "<filename> in <folder>" (the location subtitle).
+    expect(screen.getByRole('button', { name: 'hero.png in Assets' })).toBeInTheDocument();
+    expect(screen.queryByText('brochure.pdf')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Docs' })).toBeNull(); // folders are filtered too
+  });
+
+  it('search is GLOBAL: surfaces a file from another folder at the root, showing where it lives', async () => {
+    render(<FileBrowser projectId={project.id} mode="manage" />);
+    await screen.findByRole('button', { name: 'hero.png' });
+    // q4.pdf lives in Docs; at the root it is NOT listed until a global search surfaces it.
+    expect(screen.queryByText('q4.pdf')).toBeNull();
+    fireEvent.change(screen.getByLabelText('Search assets by name'), { target: { value: 'q4' } });
+    expect(await screen.findByRole('button', { name: 'q4.pdf in Docs' })).toBeInTheDocument();
+    expect(screen.getByText('in Docs')).toBeInTheDocument(); // the result shows its folder location
   });
 
   it('clears the search when navigating into a folder (no silent stale filter)', async () => {

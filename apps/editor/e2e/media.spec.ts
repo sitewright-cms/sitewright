@@ -78,6 +78,13 @@ test('upload a non-image file into a folder and see it listed with a download li
   await expect(panel.getByRole('button', { name: 'Docs', exact: true })).toBeVisible();
   await expect(panel.getByRole('button', { name: 'report.pdf', exact: true })).toHaveCount(0);
 
+  // GLOBAL search: from the root, searching surfaces report.pdf (which lives in Docs), with its location.
+  await panel.getByLabel('Search assets by name').fill('report');
+  await expect(panel.getByRole('button', { name: 'report.pdf in Docs', exact: true })).toBeVisible();
+  // Clicking the result's folder would navigate; here just clear and confirm we're back at the root view.
+  await panel.getByRole('button', { name: 'Clear' }).click();
+  await expect(panel.getByRole('button', { name: 'report.pdf in Docs', exact: true })).toHaveCount(0);
+
   // The folder persists across a reload (the original bug it fixes). On reload the project selector
   // auto-opens — reopen the project, reopen the Assets panel, and the folder is still there.
   await page.reload();

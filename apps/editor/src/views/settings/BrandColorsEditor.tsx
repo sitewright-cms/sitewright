@@ -2,11 +2,9 @@ import { COLOR_TOKEN_LABELS, MANDATORY_COLOR_TOKENS } from '@sitewright/schema';
 import { glassInput } from '../../theme';
 import { SubLabel } from './ui';
 import { TokenEditor } from './TokenEditor';
+import { ColorField } from './ColorPicker';
 import { newPair, type KeyedPair } from './model';
 
-// Mirrors the server's CssColorSchema for the swatch preview only (React sets it as an inert DOM
-// style property regardless) — server-invalid values just show a transparent swatch.
-const SAFE_COLOR = /^#[0-9a-fA-F]{3,8}$|^(?:rgb|hsl)a?\([0-9\s%,./-]+\)$|^[a-zA-Z]+$/;
 const MANDATORY = new Set<string>(MANDATORY_COLOR_TOKENS);
 const labelFor = (key: string): string => Object.entries(COLOR_TOKEN_LABELS).find(([k]) => k === key)?.[1] ?? key;
 
@@ -36,16 +34,13 @@ export function BrandColorsEditor({ rows, onChange }: { rows: KeyedPair[]; onCha
           const value = valueOf(key);
           return (
             <div key={key} className="flex items-center gap-2">
-              <span
-                aria-hidden
-                className="h-7 w-7 shrink-0 rounded-md border border-white/70 shadow-inner"
-                style={{ background: SAFE_COLOR.test(value) ? value : 'transparent' }}
-              />
+              <ColorField value={value} onChange={(v) => setMandatory(key, v)} label={labelFor(key)} />
               <span className="w-36 shrink-0 text-sm text-slate-600">{labelFor(key)}</span>
               <input
                 aria-label={labelFor(key)}
                 className={glassInput}
                 value={value}
+                maxLength={64}
                 placeholder="#0ea5e9"
                 onChange={(e) => setMandatory(key, e.target.value)}
               />
@@ -59,7 +54,7 @@ export function BrandColorsEditor({ rows, onChange }: { rows: KeyedPair[]; onCha
           Extra named colors, usable as <code className="rounded bg-slate-100 px-1 py-0.5">bg-&lt;name&gt;</code> /{' '}
           <code className="rounded bg-slate-100 px-1 py-0.5">text-&lt;name&gt;</code> utilities.
         </p>
-        <TokenEditor rows={custom} onChange={setCustom} keyPlaceholder="brand-teal" valuePlaceholder="#0d9488" swatch addLabel="+ Add color" />
+        <TokenEditor rows={custom} onChange={setCustom} keyPlaceholder="brand-teal" valuePlaceholder="#0d9488" swatch picker addLabel="+ Add color" />
       </div>
     </div>
   );

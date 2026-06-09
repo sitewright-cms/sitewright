@@ -1,16 +1,13 @@
 import { AnimatePresence, motion } from 'motion/react';
 import { glassInput, ghostButton } from '../../theme';
+import { ColorField } from './ColorPicker';
+import { SAFE_COLOR } from './color';
 import { newPair, type KeyedPair } from './model';
-
-// A valid CSS color for the swatch preview (hex / rgb(a) / hsl(a) / keyword) — mirrors
-// the server's CssColorSchema so server-valid colors (incl. rgb()/hsl()) render, while
-// injection/function notation falls back to transparent. (React sets this as a DOM
-// style property, so it is inert regardless — this is purely about showing the right color.)
-const SAFE_COLOR = /^#[0-9a-fA-F]{3,8}$|^(?:rgb|hsl)a?\([0-9\s%,./-]+\)$|^[a-zA-Z]+$/;
 
 /**
  * A controlled key→value token editor (brand colors, font families). Keyed on a
  * stable row id so removing a middle row animates + re-renders the correct row.
+ * With `picker`, the swatch becomes a full color-picker trigger (implies `swatch`).
  */
 export function TokenEditor({
   rows,
@@ -18,6 +15,7 @@ export function TokenEditor({
   keyPlaceholder = 'name',
   valuePlaceholder = 'value',
   swatch = false,
+  picker = false,
   addLabel = '+ Add token',
 }: {
   rows: KeyedPair[];
@@ -25,6 +23,7 @@ export function TokenEditor({
   keyPlaceholder?: string;
   valuePlaceholder?: string;
   swatch?: boolean;
+  picker?: boolean;
   addLabel?: string;
 }) {
   const setCell = (id: string, patch: Partial<KeyedPair>) => onChange(rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
@@ -42,12 +41,16 @@ export function TokenEditor({
             transition={{ type: 'spring', stiffness: 380, damping: 32 }}
             className="flex items-center gap-2"
           >
-            {swatch && (
-              <span
-                aria-hidden
-                className="h-7 w-7 shrink-0 rounded-md border border-white/70 shadow-inner"
-                style={{ background: SAFE_COLOR.test(r.value) ? r.value : 'transparent' }}
-              />
+            {picker ? (
+              <ColorField value={r.value} onChange={(v) => setCell(r.id, { value: v })} label={`${r.key || keyPlaceholder} ${i + 1}`} />
+            ) : (
+              swatch && (
+                <span
+                  aria-hidden
+                  className="h-7 w-7 shrink-0 rounded-md border border-white/70 shadow-inner"
+                  style={{ background: SAFE_COLOR.test(r.value) ? r.value : 'transparent' }}
+                />
+              )
             )}
             <input
               aria-label={`${keyPlaceholder} ${i + 1}`}

@@ -18,8 +18,8 @@ function FilesIcon() {
  */
 export function AssetsPanel({ projectId, openSignal }: { projectId: string; openSignal?: number }) {
   return (
-    <SidePanel side="right" label="Assets" icon={<FilesIcon />} size="w-[30rem]" openSignal={openSignal}>
-      <div className="p-3">
+    <SidePanel side="right" label="Assets" icon={<FilesIcon />} size="w-[min(44rem,92vw)]" openSignal={openSignal}>
+      <div className="p-4">
         <FileBrowser projectId={projectId} mode="manage" />
       </div>
     </SidePanel>

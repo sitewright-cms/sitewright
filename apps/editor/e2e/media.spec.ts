@@ -51,9 +51,10 @@ test('upload a non-image file into a folder and see it listed with a download li
   await page.getByRole('button', { name: 'Assets', exact: true }).click();
   const panel = page.getByRole('region', { name: 'Assets' });
 
-  // Create a PERSISTED folder (it shows immediately and survives reload), then enter it.
-  await panel.getByLabel('New folder name').fill('Docs');
-  await panel.getByRole('button', { name: '+ Folder' }).click();
+  // Create a PERSISTED folder via the New-folder modal (it shows immediately and survives reload).
+  await panel.getByRole('button', { name: '+ New folder' }).click();
+  await page.getByLabel('Folder name').fill('Docs');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
   // The folder row's open button (exact 'Docs' — distinct from its Rename/Copy/Delete actions).
   await expect(panel.getByRole('button', { name: 'Docs', exact: true })).toBeVisible();
   await panel.getByRole('button', { name: 'Docs', exact: true }).click();
@@ -65,10 +66,12 @@ test('upload a non-image file into a folder and see it listed with a download li
     buffer: Buffer.from('%PDF-1.4 hello'),
   });
 
-  // The file row shows; its Download action links through the attachment-only /file/ handler.
+  // The file row shows; its Download action triggers a REAL download (blob) using the file's own
+  // name — not a new-tab link. Verify the download event fires with the right suggested filename.
   await expect(panel.getByRole('button', { name: 'report.pdf', exact: true })).toBeVisible();
-  const link = panel.getByRole('link', { name: 'Download report.pdf' });
-  await expect(link).toHaveAttribute('href', /\/media\/[\w-]+\/[\w-]+\/file\/report\.pdf$/);
+  const downloadPromise = page.waitForEvent('download');
+  await panel.getByRole('button', { name: 'Download report.pdf' }).click();
+  expect((await downloadPromise).suggestedFilename()).toBe('report.pdf');
 
   // Back at root (the breadcrumb 'Assets' crumb), the folder is shown and the file is not.
   await panel.getByRole('button', { name: 'Assets', exact: true }).click();

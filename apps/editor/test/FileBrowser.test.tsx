@@ -85,7 +85,8 @@ describe('FileBrowser (Assets)', () => {
     // the async asset load resolves, so don't assume the rows are present yet.
     expect(await screen.findByRole('button', { name: 'hero.png' })).toBeInTheDocument();
     expect(within(screen.getByRole('table')).getByText('application/pdf')).toBeInTheDocument();
-    expect(screen.getByText('1.0 MB')).toBeInTheDocument();
+    // brochure.pdf (1 MB) AND the Docs folder (its 1 MB q4.pdf) both show a size now.
+    expect(screen.getAllByText('1.0 MB')).toHaveLength(2);
     // The empty folder record persists into the list (the bug fix).
     expect(screen.getByRole('button', { name: 'Empty' })).toBeInTheDocument();
     // The nested asset is filed away under Docs (a folder), not shown at root.
@@ -102,12 +103,65 @@ describe('FileBrowser (Assets)', () => {
     expect(await screen.findByRole('button', { name: 'brochure.pdf' })).toBeInTheDocument();
   });
 
-  it('persists a new folder via the API (not just local state)', async () => {
+  it('creates a new folder through the modal → createMediaFolder', async () => {
     render(<FileBrowser projectId={project.id} mode="manage" />);
     await screen.findByRole('button', { name: 'hero.png' });
-    fireEvent.change(screen.getByLabelText('New folder name'), { target: { value: 'Brand' } });
-    fireEvent.click(screen.getByRole('button', { name: '+ Folder' }));
+    fireEvent.click(screen.getByRole('button', { name: '+ New folder' }));
+    const field = await screen.findByLabelText('Folder name'); // the modal prompt
+    fireEvent.change(field, { target: { value: 'Brand' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(createMediaFolder).toHaveBeenCalledWith('p', 'Brand'));
+  });
+
+  it('indicates folder sizes (the recursive total of the assets inside)', async () => {
+    render(<FileBrowser projectId={project.id} mode="manage" />);
+    const docsRow = (await screen.findByRole('button', { name: 'Docs' })).closest('tr')!;
+    expect(within(docsRow).getByText('1.0 MB')).toBeInTheDocument(); // q4.pdf lives under Docs
+    const emptyRow = screen.getByRole('button', { name: 'Empty' }).closest('tr')!;
+    expect(within(emptyRow).getByText('0 B')).toBeInTheDocument();
+  });
+
+  it('sorts by Size when its column header is clicked (default is name-ascending)', async () => {
+    render(<FileBrowser projectId={project.id} mode="manage" />);
+    const before = (a: HTMLElement, b: HTMLElement) =>
+      Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    // Default name-ascending: brochure.pdf precedes hero.png.
+    const hero = await screen.findByRole('button', { name: 'hero.png' });
+    expect(before(screen.getByRole('button', { name: 'brochure.pdf' }), hero)).toBe(true);
+    // Sort by size ascending: the 2 KB image now precedes the 1 MB pdf.
+    fireEvent.click(screen.getByRole('button', { name: 'Size' }));
+    expect(before(screen.getByRole('button', { name: 'hero.png' }), screen.getByRole('button', { name: 'brochure.pdf' }))).toBe(true);
+  });
+
+  it('searches files and folders by name', async () => {
+    render(<FileBrowser projectId={project.id} mode="manage" />);
+    await screen.findByRole('button', { name: 'hero.png' });
+    fireEvent.change(screen.getByLabelText('Search assets by name'), { target: { value: 'hero' } });
+    expect(screen.getByRole('button', { name: 'hero.png' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'brochure.pdf' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Docs' })).toBeNull(); // folders are filtered too
+  });
+
+  it('clears the search when navigating into a folder (no silent stale filter)', async () => {
+    render(<FileBrowser projectId={project.id} mode="manage" />);
+    await screen.findByRole('button', { name: 'hero.png' });
+    // Search for something that only matches a folder, then open it.
+    fireEvent.change(screen.getByLabelText('Search assets by name'), { target: { value: 'Docs' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Docs' }));
+    // Inside Docs: q4.pdf (which would NOT match the old "Docs" query) is visible → search was reset.
+    expect(await screen.findByRole('button', { name: 'q4.pdf' })).toBeInTheDocument();
+    expect((screen.getByLabelText('Search assets by name') as HTMLInputElement).value).toBe('');
+  });
+
+  it('downloads an asset via a blob fetch (forces the download dialog, never a new tab)', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, blob: async () => new Blob(['x']) });
+    vi.stubGlobal('fetch', fetchMock);
+    (URL as unknown as { createObjectURL: () => string }).createObjectURL = () => 'blob:x';
+    (URL as unknown as { revokeObjectURL: () => void }).revokeObjectURL = () => {};
+    render(<FileBrowser projectId={project.id} mode="manage" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Download brochure.pdf' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/media/p/file1/file/brochure.pdf'));
+    vi.unstubAllGlobals();
   });
 
   it('renames a file through the prompt dialog → patchMedia', async () => {

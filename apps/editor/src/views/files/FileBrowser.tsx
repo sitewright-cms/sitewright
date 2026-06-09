@@ -7,6 +7,15 @@ import { Modal } from '../ui/Modal';
 import { useDialogs } from '../ui/Dialogs';
 import { SkeletonImage } from '../ui/Skeleton';
 import { glassCard, glassPanel, ghostButton } from '../../theme';
+import {
+  sortAssets,
+  sortFolders,
+  folderBytes,
+  matchesName,
+  type SortKey,
+  type SortState,
+  type FolderEntry,
+} from './sort';
 
 /** Human-readable byte size (1 KB = 1024 B). */
 function formatBytes(bytes: number): string {
@@ -97,7 +106,8 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
   const [stockOpen, setStockOpen] = useState(false);
   const [folder, setFolder] = useState('');
   const [view, setView] = useState<'list' | 'grid'>(pick ? 'grid' : 'list');
-  const [newFolder, setNewFolder] = useState('');
+  const [sort, setSort] = useState<SortState>({ key: 'name', dir: 'asc' });
+  const [query, setQuery] = useState('');
   const [preview, setPreview] = useState<MediaAsset | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null); // path being hovered (highlight)
   const fileInput = useRef<HTMLInputElement>(null);
@@ -124,13 +134,20 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
     };
   }, [projectId]);
 
-  // Assets in the current folder (pick mode shows only `accept`-matching files); subfolders = union
-  // of asset-derived + persisted records.
+  const crumbs = folder === '' ? [] : folder.split('/');
+  const pathOf = (seg: string) => (folder === '' ? seg : `${folder}/${seg}`);
+
+  // Assets in the current folder (pick mode shows only `accept`-matching files), name-filtered by the
+  // search box, then ordered by the active column.
   const here = useMemo(() => {
-    const inFolder = assets.filter((a) => a.folder === folder);
-    return pick && accept ? inFolder.filter(accept) : inFolder;
-  }, [assets, folder, pick, accept]);
-  const subfolders = useMemo(() => {
+    let inFolder = assets.filter((a) => a.folder === folder);
+    if (pick && accept) inFolder = inFolder.filter(accept);
+    if (query.trim()) inFolder = inFolder.filter((a) => matchesName(query, a.filename));
+    return sortAssets(inFolder, sort);
+  }, [assets, folder, pick, accept, query, sort]);
+  // Subfolders = union of asset-derived + persisted records, each with its recursive total size,
+  // name-filtered, then ordered. Folders are rendered BEFORE files regardless of the sort.
+  const subfolders = useMemo<FolderEntry[]>(() => {
     const segs = new Set<string>();
     for (const a of assets) {
       const seg = childSegment(a.folder, folder);
@@ -140,11 +157,27 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
       const seg = childSegment(f.path, folder);
       if (seg) segs.add(seg);
     }
-    return [...segs].sort((a, b) => a.localeCompare(b));
-  }, [assets, folderRecords, folder]);
+    let entries: FolderEntry[] = [...segs].map((seg) => {
+      const path = folder === '' ? seg : `${folder}/${seg}`;
+      return { seg, path, bytes: folderBytes(assets, path) };
+    });
+    if (query.trim()) entries = entries.filter((e) => matchesName(query, e.seg));
+    return sortFolders(entries, sort);
+  }, [assets, folderRecords, folder, query, sort]);
 
-  const crumbs = folder === '' ? [] : folder.split('/');
-  const pathOf = (seg: string) => (folder === '' ? seg : `${folder}/${seg}`);
+  /** Navigate into a folder, clearing any active search so the new folder isn't silently filtered. */
+  const goTo = (path: string) => {
+    setFolder(path);
+    setQuery('');
+  };
+
+  /** Click a column header: set the sort key, or flip direction when it's already active. */
+  const toggleSort = (key: SortKey) =>
+    setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }));
+  const sortArrow = (key: SortKey) =>
+    sort.key === key ? <span aria-hidden>{sort.dir === 'asc' ? '▲' : '▼'}</span> : null;
+  const ariaSort = (key: SortKey): 'ascending' | 'descending' | 'none' =>
+    sort.key === key ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none';
 
   /** Click a file: in pick mode select it; otherwise preview an image / open a file. */
   function activate(m: MediaAsset) {
@@ -172,16 +205,43 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
   }
 
   // ---- folder ops ----------------------------------------------------------
-  async function createFolder() {
-    const name = cleanSegment(newFolder);
+  async function createFolder(raw: string) {
+    const name = cleanSegment(raw);
     if (!name) return;
     setError(null);
     try {
       await api.createMediaFolder(projectId, pathOf(name));
-      setNewFolder('');
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed to create folder');
+    }
+  }
+  /** Opens the New-folder modal (a labelled prompt), then creates it in the current folder. */
+  async function promptNewFolder() {
+    const name = await prompt({ title: 'New folder', label: 'Folder name' });
+    if (name) await createFolder(name);
+  }
+  /**
+   * Downloads an asset via a blob so it ALWAYS triggers the browser's download dialog (an image would
+   * otherwise open inline in a tab) and uses the asset's own `filename` as the suggested name (the raw
+   * name never reaches an HTTP header — the download attribute is browser-sanitized). The blob buffers
+   * the whole file in memory — fine for the library's images/PDFs/fonts; revisit if huge video lands.
+   */
+  async function downloadAsset(m: MediaAsset) {
+    setError(null);
+    try {
+      const res = await fetch(m.url);
+      if (!res.ok) throw new Error(`download failed (${res.status})`);
+      const href = URL.createObjectURL(await res.blob());
+      const a = document.createElement('a');
+      a.href = href;
+      a.download = m.filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(href);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'download failed');
     }
   }
   async function renameFolder(seg: string) {
@@ -266,7 +326,11 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
     setDropTarget(target);
   };
 
-  const emptyMsg = pick ? 'No files here.' : 'This folder is empty. Drop files here to upload.';
+  const emptyMsg = query.trim()
+    ? 'No files or folders match your search.'
+    : pick
+      ? 'No files here.'
+      : 'This folder is empty. Drop files here to upload.';
 
   return (
     <div
@@ -305,7 +369,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
         <nav aria-label="Folder path" className="flex items-center gap-1 text-sm text-slate-600">
           <button
             type="button"
-            onClick={() => setFolder('')}
+            onClick={() => goTo('')}
             onDragOver={allowDrop('')}
             onDrop={(e) => onDropInto('', e)}
             className={`rounded px-1.5 py-0.5 hover:bg-white/60 ${dropTarget === '' ? 'bg-indigo-100' : ''}`}
@@ -319,7 +383,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
                 <span className="text-slate-300">/</span>
                 <button
                   type="button"
-                  onClick={() => setFolder(crumbPath)}
+                  onClick={() => goTo(crumbPath)}
                   onDragOver={allowDrop(crumbPath)}
                   onDrop={(e) => onDropInto(crumbPath, e)}
                   className={`rounded px-1.5 py-0.5 hover:bg-white/60 ${dropTarget === crumbPath ? 'bg-indigo-100' : ''}`}
@@ -332,16 +396,18 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
         </nav>
         <div className="flex items-center gap-2">
           <input
-            aria-label="New folder name"
-            value={newFolder}
-            onChange={(e) => setNewFolder(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && void createFolder()}
-            placeholder="New folder"
-            className="w-32 rounded-lg border border-white/60 bg-white/60 px-2 py-1 text-xs"
+            type="search"
+            aria-label="Search assets by name"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search files & folders"
+            className="w-44 rounded-lg border border-white/60 bg-white/60 px-2.5 py-1.5 text-sm"
           />
-          <button type="button" onClick={() => void createFolder()} className={`${ghostButton} px-2 py-1 text-xs`}>
-            + Folder
-          </button>
+          {!pick && (
+            <button type="button" onClick={() => void promptNewFolder()} className={`${ghostButton} px-3 py-1.5 text-sm`}>
+              + New folder
+            </button>
+          )}
           <div className="flex overflow-hidden rounded-lg border border-white/60">
             {(['list', 'grid'] as const).map((v) => (
               <button
@@ -350,7 +416,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
                 aria-label={`${v} view`}
                 aria-pressed={view === v}
                 onClick={() => setView(v)}
-                className={`px-2 py-1 text-xs capitalize ${view === v ? 'bg-white text-slate-900' : 'bg-white/40 text-slate-500'}`}
+                className={`px-2.5 py-1.5 text-sm capitalize ${view === v ? 'bg-white text-slate-900' : 'bg-white/40 text-slate-500'}`}
               >
                 {v}
               </button>
@@ -363,31 +429,43 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
         <table className="w-full text-left text-sm">
           <thead className="text-[11px] uppercase tracking-wide text-slate-400">
             <tr>
-              <th className="py-1 font-medium">Name</th>
-              <th className="py-1 font-medium">Type</th>
-              <th className="py-1 text-right font-medium">Size</th>
+              <th className="py-1 font-medium" aria-sort={ariaSort('name')}>
+                <button type="button" onClick={() => toggleSort('name')} className="inline-flex items-center gap-1 uppercase tracking-wide hover:text-slate-600">
+                  Name {sortArrow('name')}
+                </button>
+              </th>
+              <th className="py-1 font-medium" aria-sort={ariaSort('type')}>
+                <button type="button" onClick={() => toggleSort('type')} className="inline-flex items-center gap-1 uppercase tracking-wide hover:text-slate-600">
+                  Type {sortArrow('type')}
+                </button>
+              </th>
+              <th className="py-1 text-right font-medium" aria-sort={ariaSort('size')}>
+                <button type="button" onClick={() => toggleSort('size')} className="inline-flex items-center gap-1 uppercase tracking-wide hover:text-slate-600">
+                  Size {sortArrow('size')}
+                </button>
+              </th>
               <th className="py-1 text-right font-medium">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {subfolders.map((seg) => (
+            {subfolders.map(({ seg, path, bytes }) => (
               <tr
                 key={`d:${seg}`}
                 draggable={!pick}
-                onDragStart={pick ? undefined : () => (dragItem.current = { type: 'folder', path: pathOf(seg) })}
+                onDragStart={pick ? undefined : () => (dragItem.current = { type: 'folder', path })}
                 onDragEnd={() => (dragItem.current = null)}
-                onDragOver={allowDrop(pathOf(seg))}
-                onDrop={(e) => onDropInto(pathOf(seg), e)}
-                className={`border-t border-white/40 ${dropTarget === pathOf(seg) ? 'bg-indigo-50' : ''}`}
+                onDragOver={allowDrop(path)}
+                onDrop={(e) => onDropInto(path, e)}
+                className={`border-t border-white/40 ${dropTarget === path ? 'bg-indigo-50' : ''}`}
               >
-                <td className="py-1.5">
-                  <button type="button" onClick={() => setFolder(pathOf(seg))} className="flex items-center gap-2 text-slate-700 hover:text-indigo-600">
-                    <FolderIcon className="h-5 w-5" /> {seg}
+                <td className="py-2">
+                  <button type="button" onClick={() => goTo(path)} className="flex items-center gap-2.5 text-base text-slate-700 hover:text-indigo-600">
+                    <FolderIcon className="h-6 w-6 shrink-0 text-indigo-400" /> {seg}
                   </button>
                 </td>
-                <td className="py-1.5 text-slate-400">folder</td>
-                <td className="py-1.5 text-right text-slate-400">—</td>
-                <td className="py-1.5">
+                <td className="py-2 text-slate-400">folder</td>
+                <td className="py-2 text-right text-slate-500">{formatBytes(bytes)}</td>
+                <td className="py-2">
                   {!pick && (
                     <div className="flex justify-end gap-0.5">
                       <button aria-label={`Rename ${seg}`} title="Rename" className={ACT} onClick={() => void renameFolder(seg)}>{RENAME_ICON}</button>
@@ -406,30 +484,30 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
                 onDragEnd={() => (dragItem.current = null)}
                 className="border-t border-white/40"
               >
-                <td className="py-1.5">
+                <td className="py-2">
                   <button
                     type="button"
                     onClick={() => activate(m)}
-                    className="flex items-center gap-2 text-left text-slate-700 hover:text-indigo-600"
+                    className="flex items-center gap-2.5 text-left text-base text-slate-700 hover:text-indigo-600"
                     title={m.filename}
                   >
                     {m.kind === 'image' ? (
-                      <SkeletonImage src={m.url} alt="" className="h-6 w-6 shrink-0 rounded" />
+                      <SkeletonImage src={m.url} alt="" className="h-8 w-8 shrink-0 rounded" />
                     ) : (
-                      <FileTypeIcon filename={m.filename} className="h-5 w-5 shrink-0" />
+                      <FileTypeIcon filename={m.filename} className="h-6 w-6 shrink-0" />
                     )}
                     <span className="truncate">{m.filename}</span>
                   </button>
                 </td>
-                <td className="py-1.5 text-slate-400">{typeLabel(m)}</td>
-                <td className="py-1.5 text-right text-slate-500">{formatBytes(m.bytes)}</td>
-                <td className="py-1.5">
+                <td className="py-2 text-slate-400">{typeLabel(m)}</td>
+                <td className="py-2 text-right text-slate-500">{formatBytes(m.bytes)}</td>
+                <td className="py-2">
                   <div className="flex justify-end gap-0.5">
                     {pick ? (
                       <button aria-label={`Use ${m.filename}`} title="Use this file" className={ACT} onClick={() => onPick?.(m)}>{DOWNLOAD_ICON}</button>
                     ) : (
                       <>
-                        <a aria-label={`Download ${m.filename}`} title="Download" className={ACT} href={m.url} target="_blank" rel="noreferrer">{DOWNLOAD_ICON}</a>
+                        <button aria-label={`Download ${m.filename}`} title="Download" className={ACT} onClick={() => void downloadAsset(m)}>{DOWNLOAD_ICON}</button>
                         <button aria-label={`Rename ${m.filename}`} title="Rename" className={ACT} onClick={() => void renameAsset(m)}>{RENAME_ICON}</button>
                         <button aria-label={`Copy ${m.filename}`} title="Copy" className={ACT} onClick={() => void copyAsset(m)}>{COPY_ICON}</button>
                         <button aria-label={`Delete ${m.filename}`} title="Delete" className={ACT_DANGER} onClick={() => void deleteAsset(m)}>{TRASH_ICON}</button>
@@ -448,19 +526,20 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
         </table>
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-6">
-          {subfolders.map((seg) => (
+          {subfolders.map(({ seg, path, bytes }) => (
             <div
               key={`d:${seg}`}
               draggable={!pick}
-              onDragStart={pick ? undefined : () => (dragItem.current = { type: 'folder', path: pathOf(seg) })}
+              onDragStart={pick ? undefined : () => (dragItem.current = { type: 'folder', path })}
                 onDragEnd={() => (dragItem.current = null)}
-              onDragOver={allowDrop(pathOf(seg))}
-              onDrop={(e) => onDropInto(pathOf(seg), e)}
-              className={`group relative flex flex-col items-center gap-1 ${glassCard} p-3 text-center ${dropTarget === pathOf(seg) ? 'ring-2 ring-indigo-400' : ''}`}
+              onDragOver={allowDrop(path)}
+              onDrop={(e) => onDropInto(path, e)}
+              className={`group relative flex flex-col items-center gap-1 ${glassCard} p-3 text-center ${dropTarget === path ? 'ring-2 ring-indigo-400' : ''}`}
             >
-              <button type="button" onClick={() => setFolder(pathOf(seg))} className="flex flex-col items-center gap-1">
-                <FolderIcon className="h-8 w-8" />
-                <span className="truncate text-[11px] text-slate-600" title={seg}>{seg}</span>
+              <button type="button" onClick={() => goTo(path)} className="flex flex-col items-center gap-1">
+                <FolderIcon className="h-10 w-10 text-indigo-400" />
+                <span className="truncate text-sm text-slate-700" title={seg}>{seg}</span>
+                <span className="text-[10px] text-slate-400">{formatBytes(bytes)}</span>
               </button>
               {!pick && (
                 <div className="absolute right-1 top-1 hidden gap-0.5 rounded-lg bg-white/90 p-0.5 shadow group-hover:flex">
@@ -486,7 +565,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
                     <FileTypeIcon filename={m.filename} className="h-10 w-10" />
                   </div>
                 )}
-                <figcaption className="mt-1 truncate text-[11px] text-slate-600" title={m.filename}>{m.filename}</figcaption>
+                <figcaption className="mt-1 truncate text-sm text-slate-700" title={m.filename}>{m.filename}</figcaption>
               </button>
               <div className="flex items-center justify-between">
                 <span className="text-[10px] text-slate-400">{formatBytes(m.bytes)}</span>
@@ -495,6 +574,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
                     <button aria-label={`Use ${m.filename}`} title="Use this file" className={ACT} onClick={() => onPick?.(m)}>{DOWNLOAD_ICON}</button>
                   ) : (
                     <>
+                      <button aria-label={`Download ${m.filename}`} title="Download" className={ACT} onClick={() => void downloadAsset(m)}>{DOWNLOAD_ICON}</button>
                       <button aria-label={`Rename ${m.filename}`} title="Rename" className={ACT} onClick={() => void renameAsset(m)}>{RENAME_ICON}</button>
                       <button aria-label={`Copy ${m.filename}`} title="Copy" className={ACT} onClick={() => void copyAsset(m)}>{COPY_ICON}</button>
                       <button aria-label={`Delete ${m.filename}`} title="Delete" className={ACT_DANGER} onClick={() => void deleteAsset(m)}>{TRASH_ICON}</button>

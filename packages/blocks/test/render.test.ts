@@ -749,8 +749,9 @@ describe('renderPage / renderDocument', () => {
   });
 
   it('uses bodyHtml (a code-first source render) INSTEAD of the block tree, keeping the head shell', () => {
-    const doc = renderDocument(page, { brand, bodyHtml: '<main><h1>From source</h1></main>' });
-    expect(doc).toContain('<body><main><h1>From source</h1></main>');
+    // Page source is neutral HTML; the platform wraps it in <main id="page-content">.
+    const doc = renderDocument(page, { brand, bodyHtml: '<section><h1>From source</h1></section>' });
+    expect(doc).toContain('<body><main id="page-content"><section><h1>From source</h1></section></main>');
     expect(doc).not.toContain('Hello'); // the block tree's Heading was NOT rendered
     expect(doc).toContain('<title>Home</title>'); // head/SEO shell still applied
     expect(doc).toContain('--sw-color-primary: #0a7;');
@@ -794,36 +795,49 @@ describe('renderPage / renderDocument', () => {
     expect(doc.indexOf('id="slot-bottom"')).toBeLessThan(doc.indexOf('id="raw-scripts"'));
   });
 
-  it('injects the validated skeleton slots in source order around the page body', () => {
+  it('wraps each slot + the page body in its platform-owned semantic landmark, in source order', () => {
+    // Slot content is neutral (no <nav>/<main>/<footer>/<aside> — the validator forbids those);
+    // the PLATFORM supplies the landmark element + unique id around each slot and the page body.
     const doc = renderDocument(page, {
       brand,
-      topNav: '<nav id="slot-top"></nav>',
-      mobileNav: '<nav id="slot-mob"></nav>',
-      sidebarLeft: '<aside id="slot-sl"></aside>',
-      sidebarRight: '<aside id="slot-sr"></aside>',
-      footer: '<footer id="slot-foot"></footer>',
+      topNav: '<div id="slot-top"></div>',
+      mobileNav: '<div id="slot-mob"></div>',
+      sidebarLeft: '<div id="slot-sl"></div>',
+      sidebarRight: '<div id="slot-sr"></div>',
+      footer: '<div id="slot-foot"></div>',
       bottom: '<div id="slot-bottom"></div>',
     });
-    // TOP_NAV, MOBILE_NAV, [body], SIDEBAR_L, SIDEBAR_R, FOOTER, BOTTOM
+    // The platform landmarks wrap their slot content.
+    expect(doc).toContain('<nav id="top-nav"><div id="slot-top"></div></nav>');
+    expect(doc).toContain('<nav id="mobile-nav"><div id="slot-mob"></div></nav>');
+    expect(doc).toContain('<aside id="sidebar-left"><div id="slot-sl"></div></aside>');
+    expect(doc).toContain('<aside id="sidebar-right"><div id="slot-sr"></div></aside>');
+    expect(doc).toContain('<footer id="footer"><div id="slot-foot"></div></footer>');
+    expect(doc).toContain('<div id="bottom"><div id="slot-bottom"></div></div>');
+    expect(doc).toMatch(/<main id="page-content">.*Hello.*<\/main>/s); // body wrapped in <main>
+    // Document order: TOP_NAV, MOBILE_NAV, [<main> body], SIDEBAR_L, SIDEBAR_R, FOOTER, BOTTOM.
     const positions = [
-      'id="slot-top"',
-      'id="slot-mob"',
-      'Hello', // the page body (block tree Heading)
-      'id="slot-sl"',
-      'id="slot-sr"',
-      'id="slot-foot"',
-      'id="slot-bottom"',
+      'id="top-nav"',
+      'id="mobile-nav"',
+      'id="page-content"',
+      'id="sidebar-left"',
+      'id="sidebar-right"',
+      'id="footer"',
+      'id="bottom"',
     ].map((needle) => doc.indexOf(needle));
     positions.forEach((p) => expect(p).toBeGreaterThanOrEqual(0));
     expect(positions).toEqual([...positions].sort((a, b) => a - b)); // strictly increasing
   });
 
-  it('omits the skeleton slots when not provided', () => {
+  it('omits empty slot landmarks but ALWAYS wraps the page body in <main id="page-content">', () => {
     const doc = renderDocument(page, { brand });
     expect(doc).not.toContain('<aside'); // no sidebars
-    // Nothing is injected before the body: <body> is immediately followed by the page render
-    // (no empty topNav/mobileNav fragments leak in).
-    expect(doc).toContain('<body><section');
+    expect(doc).not.toContain('id="top-nav"'); // no empty nav/footer landmarks leak in
+    expect(doc).not.toContain('id="mobile-nav"');
+    expect(doc).not.toContain('id="footer"');
+    expect(doc).not.toContain('id="bottom"');
+    // The page body is always wrapped: <body> is immediately followed by <main id="page-content">.
+    expect(doc).toContain('<body><main id="page-content"><section');
   });
 
   it('falls back to the page title and omits optional head bits by default', () => {

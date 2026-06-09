@@ -40,14 +40,14 @@ describe('scroll-reveal animations → publish + preview', () => {
       path: '',
       title: 'Home',
       root: { id: 'r', type: 'Section' },
-      source: '<main><h1 data-aos="fade-up">Hi</h1><p data-aos="fade-up" data-aos-delay="200">There</p></main>',
+      source: '<section><h1 data-aos="fade-up">Hi</h1><p data-aos="fade-up" data-aos-delay="200">There</p></section>',
     };
     const about = {
       id: 'about',
       path: 'about',
       title: 'About',
       root: { id: 'r2', type: 'Section' },
-      source: '<main><h2>Plain page on the same site</h2></main>',
+      source: '<section><h2>Plain page on the same site</h2></section>',
     };
     expect((await proj.putContent('page', 'home', home)).statusCode).toBe(200);
     expect((await proj.putContent('page', 'about', about)).statusCode).toBe(200);
@@ -100,7 +100,7 @@ describe('scroll-reveal animations → publish + preview', () => {
       (
         await proj.putContent('settings', 'settings', {
           identity: { name: 'Acme', colors: { primary: '#0a7' } },
-          website: { footer: '<footer data-aos="fade">© {{ company.name }}</footer>' },
+          website: { footer: '<div data-aos="fade">© {{ company.name }}</div>' },
           settings: {},
         })
       ).statusCode,
@@ -110,13 +110,14 @@ describe('scroll-reveal animations → publish + preview', () => {
       path: '',
       title: 'Home',
       root: { id: 'r', type: 'Section' },
-      source: '<main><h1>No animation in the page itself</h1></main>',
+      source: '<section><h1>No animation in the page itself</h1></section>',
     };
     expect((await proj.putContent('page', 'home', page)).statusCode).toBe(200);
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
 
     const index = await client.get(`/sites/${slug}/index.html`);
-    expect(index.body).toContain('<footer data-aos="fade">© Acme</footer>');
+    // The footer slot's neutral <div> is wrapped by the skeleton's own <footer id="footer"> landmark.
+    expect(index.body).toContain('<footer id="footer"><div data-aos="fade">© Acme</div></footer>');
     expect(index.body).toContain('<script defer src="animations.js"></script>');
   });
 
@@ -127,7 +128,7 @@ describe('scroll-reveal animations → publish + preview', () => {
       path: '',
       title: 'Home',
       root: { id: 'r', type: 'Section' },
-      source: '<main><h1>Plain</h1></main>',
+      source: '<section><h1>Plain</h1></section>',
     };
     expect((await proj.putContent('page', 'home', page)).statusCode).toBe(200);
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);

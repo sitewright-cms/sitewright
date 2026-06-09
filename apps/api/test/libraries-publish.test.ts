@@ -71,18 +71,18 @@ describe('lazyload + ripple runtimes → publish', () => {
       (
         await proj.putContent('settings', 'settings', {
           identity: { name: 'Acme', colors: { primary: '#0a7' } },
-          website: { footer: '<footer><a class="btn waves-effect" href="/x">Footer CTA</a></footer>' },
+          website: { footer: '<div><a class="btn waves-effect" href="/x">Footer CTA</a></div>' },
           settings: {},
         })
       ).statusCode,
     ).toBe(200);
-    const html = await publishWith('<main><h1>No ripple in the page body</h1></main>');
+    const html = await publishWith('<section><h1>No ripple in the page body</h1></section>');
     expect(html).toContain('waves-effect'); // the slot
     expect(html).toContain('<script defer src="ripple.js"></script>');
   });
 
   it('a plain site ships NONE of the library runtimes', async () => {
-    const html = await publishWith('<main><h1>Plain</h1></main>');
+    const html = await publishWith('<section><h1>Plain</h1></section>');
     expect(html).not.toContain('lazyload.js');
     expect(html).not.toContain('ripple.js');
     expect(html).not.toContain('waves-rippling');

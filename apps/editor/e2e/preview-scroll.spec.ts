@@ -21,7 +21,7 @@ test('preview keeps scroll across a reload; bottom rails stay visible over the t
   await page.getByRole('button', { name: /^Home/ }).click();
   await page.locator('.cm-content').click();
   await page.keyboard.press('ControlOrMeta+a');
-  const tall = `<main class="p-8"><h1 id="top">Top</h1>${'<p class="my-10">paragraph</p>'.repeat(30)}<h2 id="bottom">Bottom</h2></main>`;
+  const tall = `<div class="p-8"><h1 id="top">Top</h1>${'<p class="my-10">paragraph</p>'.repeat(30)}<h2 id="bottom">Bottom</h2></div>`;
   await page.keyboard.insertText(tall);
 
   const iframe = page.locator('iframe[title="Preview"]');

@@ -277,3 +277,39 @@ describe('validateTemplate — no tenant JS + URL scheme (security-review fixes)
     expect(() => renderTemplate('{{log company.name}}', { company: { name: 'Acme' } })).toThrow(TemplateError);
   });
 });
+
+describe('validateTemplate — skeleton-owned semantic landmarks are reserved', () => {
+  const rejects = (tpl: string) => expect(() => validateTemplate(tpl)).toThrow(TemplateError);
+  const allows = (tpl: string) => expect(() => validateTemplate(tpl)).not.toThrow();
+
+  it('rejects each landmark element the skeleton declares (<nav>/<main>/<footer>/<aside>)', () => {
+    rejects('<nav class="navbar">x</nav>');
+    rejects('<main class="p-4">x</main>');
+    rejects('<footer>x</footer>');
+    rejects('<aside>x</aside>');
+  });
+
+  it('rejects a landmark hidden inside an {{#*inline}} partial body too', () => {
+    rejects('{{#*inline "f"}}<footer>x</footer>{{/inline}}{{> f}}');
+  });
+
+  it('the error names the element and points at the reserved id + a fix', () => {
+    expect(() => validateTemplate('<nav>x</nav>')).toThrow(/<nav> element is not allowed.*top-nav.*<div>/s);
+    expect(() => validateTemplate('<main>x</main>')).toThrow(/<main>.*page-content/s);
+    expect(() => validateTemplate('<footer>x</footer>')).toThrow(/<footer>.*id="footer".*<div>/s);
+    expect(() => validateTemplate('<aside>x</aside>')).toThrow(/<aside>.*sidebar-left/s);
+  });
+
+  it('allows neutral wrappers and non-reserved semantic elements (<section>/<article>/<header>/<ul>)', () => {
+    allows('<div class="footer">x</div>');
+    allows('<section><h1>{{ page.title }}</h1></section>');
+    allows('<article class="prose">x</article>');
+    allows('<header class="hero">x</header>'); // <header> is NOT a skeleton landmark
+    allows('<ul class="menu"><li><a href="/">Home</a></li></ul>');
+  });
+
+  it('does not false-match a tag whose name merely starts with a landmark (<navbar>/<mainframe>)', () => {
+    allows('<navbar>x</navbar>');
+    allows('<mainframe>x</mainframe>');
+  });
+});

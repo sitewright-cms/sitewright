@@ -55,7 +55,7 @@ describe('global snippet/template library', () => {
     const memberT = await register('author@e2e.test');
     const projectId = await project(memberT, 'site');
     // A page that composes the GLOBAL `navbar` snippet.
-    const page = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<main>{{> navbar}}</main>' };
+    const page = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<section>{{> navbar}}</section>' };
     expect((await app.inject({ method: 'PUT', url: `/projects/${projectId}/content/page/home`, cookies: { sw_session: memberT }, payload: page })).statusCode).toBe(200);
 
     const previewHtml = async () =>
@@ -70,7 +70,7 @@ describe('global snippet/template library', () => {
       method: 'PUT',
       url: '/admin/global/snippet/navbar',
       cookies: { sw_session: admin },
-      payload: { id: 'navbar', name: 'navbar', source: '<nav id="edited-global-nav">EDITED</nav>' },
+      payload: { id: 'navbar', name: 'navbar', source: '<div id="edited-global-nav">EDITED</div>' },
     });
     expect(edit.statusCode).toBe(200);
 

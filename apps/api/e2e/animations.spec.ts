@@ -27,11 +27,11 @@ test('publish ships the data-aos runtime for an animated code-first site', async
     title: 'Home',
     root: { id: 'r', type: 'Section' },
     source:
-      '<main class="p-8">' +
+      '<div class="p-8">' +
       '<h1 data-aos="fade-up">Welcome</h1>' +
       '<p data-aos="fade-up" data-aos-delay="200">Revealed on scroll</p>' +
       '<div data-aos="zoom-in" data-aos-duration="800" data-aos-once="false">Replays</div>' +
-      '</main>',
+      '</div>',
   };
   expect((await ctx.put(`${base}/content/page/home`, { data: page })).status()).toBe(200);
 
@@ -83,7 +83,7 @@ test('a site without data-aos ships no animation assets', async ({ playwright, b
     path: '',
     title: 'Home',
     root: { id: 'r', type: 'Section' },
-    source: '<main><h1>Static content</h1></main>',
+    source: '<div><h1>Static content</h1></div>',
   };
   expect((await ctx.put(`${base}/content/page/home`, { data: page })).status()).toBe(200);
   expect((await ctx.post(`${base}/publish`)).status()).toBe(200);

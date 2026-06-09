@@ -51,13 +51,24 @@ const WebsiteSettingsObject = z.object({
    * `footer`, `bottom`. Nav links use root-absolute paths (`{{sw-url path}}`); on a multilingual
    * site they are auto-prefixed with the current locale at publish.
    *
-   * - `topNav` / `mobileNav` — main + mobile navigation, top of `<body>`.
+   * SEMANTIC LANDMARKS ARE PLATFORM-OWNED. The skeleton wraps each slot (and the page body) in a
+   * semantic element with a fixed unique id — `<nav id="top-nav">`, `<nav id="mobile-nav">`,
+   * `<main id="page-content">`, `<aside id="sidebar-left">`, `<aside id="sidebar-right">`,
+   * `<footer id="footer">`, `<div id="bottom">`. So slot content (and page `source`) must NOT
+   * itself use `<nav>`, `<main>`, `<footer>`, or `<aside>` — the validator rejects them to keep
+   * each landmark unique. Use neutral `<div>`/`<section>`/`<ul>` (DaisyUI's `.footer`/`.navbar`
+   * classes style any element).
+   *
+   * - `topNav` / `mobileNav` — main + mobile navigation, top of `<body>` (→ `<nav id="top-nav">` /
+   *   `<nav id="mobile-nav">`).
    * - `sidebarLeft` / `sidebarRight` — rendered AFTER the page body (position via the slot's own
-   *   Tailwind classes, e.g. fixed/absolute) so they don't disturb body flow.
-   * - `footer` — below the page body and sidebars.
+   *   Tailwind classes, e.g. fixed/absolute) so they don't disturb body flow (→ `<aside id="sidebar-left">` /
+   *   `<aside id="sidebar-right">`).
+   * - `footer` — below the page body and sidebars (→ `<footer id="footer">`).
    * - `bottom` — after the footer (global modals, schema.org *microdata* markup, etc.); usually a
-   *   no-show. (A `<script type="application/ld+json">` block is NOT allowed here — the no-JS slot
-   *   validator rejects all `<script>`; the platform emits JSON-LD in `<head>` from company data.)
+   *   no-show (→ `<div id="bottom">`). (A `<script type="application/ld+json">` block is NOT allowed
+   *   here — the no-JS slot validator rejects all `<script>`; the platform emits JSON-LD in `<head>`
+   *   from company data.)
    */
   topNav: z.string().max(HTML_MAX).optional(),
   mobileNav: z.string().max(HTML_MAX).optional(),

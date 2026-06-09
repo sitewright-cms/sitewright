@@ -88,24 +88,24 @@ export const EXAMPLE_WEBSITE = {
     <a class="btn btn-primary btn-sm gap-1.5 shadow-lg shadow-primary/20 waves-effect waves-light" href="/contact">Start a project ${icon('arrow-right', 'h-4 w-4')}</a>
   </div>
 </div>`,
-  footer: `<footer class="bg-neutral text-neutral-content">
+  footer: `<div class="bg-neutral text-neutral-content">
   <div class="mx-auto grid max-w-6xl gap-10 px-6 py-16 sm:grid-cols-2 lg:grid-cols-4">
     <div class="sm:col-span-2 lg:col-span-1">
       <p class="flex items-center gap-2 text-lg font-extrabold"><span class="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-primary-content">N</span>{{ company.name }}</p>
       <p class="mt-4 max-w-xs text-sm text-neutral-content/70">{{ company.slogan }}</p>
     </div>
-    <nav>
+    <div>
       <h6 class="footer-title opacity-100">Studio</h6>
       <ul class="mt-3 space-y-2 text-sm text-neutral-content/70">{{#each nav.header}}<li><a class="hover:text-neutral-content" href="{{sw-url path}}">{{label}}</a></li>{{/each}}</ul>
-    </nav>
-    <nav>
+    </div>
+    <div>
       <h6 class="footer-title opacity-100">Contact</h6>
       <ul class="mt-3 space-y-2 text-sm text-neutral-content/70">
         <li class="flex items-center gap-2">${icon('mail', 'h-4 w-4 shrink-0 opacity-60')}{{ company.email }}</li>
         <li class="flex items-center gap-2">${icon('phone', 'h-4 w-4 shrink-0 opacity-60')}{{ company.telephone }}</li>
         <li class="flex items-center gap-2">${icon('map-pin', 'h-4 w-4 shrink-0 opacity-60')}{{ company.address.locality }}, {{ company.address.region }}</li>
       </ul>
-    </nav>
+    </div>
     <div>
       <h6 class="footer-title opacity-100">Newsletter</h6>
       <p class="mt-3 text-sm text-neutral-content/70" data-sw-text="footer_news">Occasional notes on web craft. No spam.</p>
@@ -115,7 +115,7 @@ export const EXAMPLE_WEBSITE = {
   <div class="border-t border-neutral-content/10">
     <p class="mx-auto max-w-6xl px-6 py-5 text-center text-xs text-neutral-content/50">© {{ company.legalName }} · Built with Sitewright — code-first, instantly fast.</p>
   </div>
-</footer>`,
+</div>`,
   // RAW slot (not validated, not escaped): CSS-only motion + a few polish touches so the demo
   // looks alive in the JS-blocked preview AND on export.
   criticalCss: `:root{scroll-behavior:smooth}

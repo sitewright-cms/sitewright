@@ -28,7 +28,7 @@ test('page.children: a parent page lists its child pages in the preview', async 
   await page.getByRole('button', { name: /^Home/ }).click();
   await page.locator('.cm-content').click();
   await page.keyboard.press('ControlOrMeta+a');
-  await page.keyboard.insertText('<main>{{#each page.children}}<a class="card" href="{{sw-url path}}"><h3>{{title}}</h3></a>{{/each}}</main>');
+  await page.keyboard.insertText('<div>{{#each page.children}}<a class="card" href="{{sw-url path}}"><h3>{{title}}</h3></a>{{/each}}</div>');
 
   const preview = page.frameLocator('iframe[title="Preview"]');
   await expect(preview.getByRole('heading', { name: 'First Article' })).toBeVisible();

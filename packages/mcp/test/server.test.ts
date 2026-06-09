@@ -215,6 +215,15 @@ describe('createSitewrightMcpServer — agent guidance', () => {
     await mcp.close();
   });
 
+  it('instructions teach that the skeleton owns the semantic landmarks (no <nav>/<main>/<footer>/<aside> in content)', async () => {
+    const mcp = await connect(fakeClient(), writeScope);
+    const instructions = mcp.getInstructions() ?? '';
+    expect(instructions).toContain('page-content'); // <main id="page-content">
+    expect(instructions).toContain('top-nav'); // <nav id="top-nav">
+    expect(instructions).toMatch(/must NOT use <nav>, <main>, <footer>, or\s+<aside>/i);
+    await mcp.close();
+  });
+
   it('instructions teach the lazyload, ripple, and icon vocabularies', async () => {
     const mcp = await connect(fakeClient(), writeScope);
     const instructions = mcp.getInstructions() ?? '';

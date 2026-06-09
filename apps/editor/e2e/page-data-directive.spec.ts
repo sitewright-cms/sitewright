@@ -19,7 +19,7 @@ test('data-sw-* with a data.* key edits page.data in-preview and persists', asyn
 
   await page.locator('.cm-content').click();
   await page.keyboard.press('ControlOrMeta+a');
-  await page.keyboard.insertText('<main><h1 data-sw-text="data.headline">Default headline</h1></main>');
+  await page.keyboard.insertText('<div><h1 data-sw-text="data.headline">Default headline</h1></div>');
 
   const preview = page.frameLocator('iframe[title="Preview"]');
   const region = preview.locator('[data-sw-text="data.headline"]');

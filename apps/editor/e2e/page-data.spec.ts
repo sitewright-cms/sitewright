@@ -21,7 +21,7 @@ test('page.data: edit via the JSON modal, preview reflects it, persists across r
   // Author a source that reads page.data, then fill page.data via the modal's JSON source view.
   await page.locator('.cm-content').click();
   await page.keyboard.press('ControlOrMeta+a');
-  await page.keyboard.insertText('<main><h1>{{page.data.headline}}</h1></main>');
+  await page.keyboard.insertText('<div><h1>{{page.data.headline}}</h1></div>');
 
   await page.getByRole('button', { name: 'Edit page data' }).click();
   const dialog = page.getByRole('dialog', { name: 'Page data' });

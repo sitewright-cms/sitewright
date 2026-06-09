@@ -89,7 +89,7 @@ describe('render-template API (isolated worker)', () => {
     expect(body.token).toMatch(/^[0-9a-f-]{36}$/);
     const served = await app.inject({
       method: 'GET',
-      url: `/projects/${projectId}/preview/${body.token}`,
+      url: `/preview/site/${body.token}`, // preview docs are addressed by the project slug ('site')
       cookies: { sw_session: t },
     });
     expect(served.statusCode).toBe(200);

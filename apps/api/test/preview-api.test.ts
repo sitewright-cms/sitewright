@@ -34,7 +34,7 @@ async function setup(email: string, instance: FastifyInstance = app, slug = 'sit
     payload: { name: 'Site', slug },
   });
   const projectId = (proj.json() as { project: { id: string } }).project.id;
-  return { t, projectId };
+  return { t, projectId, slug };
 }
 
 const page = {
@@ -66,7 +66,7 @@ describe('preview API', () => {
   });
 
   it('serves the preview document for a token under a sandbox CSP (isolated, framable)', async () => {
-    const { t, projectId } = await setup('a@acme.test');
+    const { t, projectId, slug } = await setup('a@acme.test');
     const token = (
       await app.inject({
         method: 'POST',
@@ -78,7 +78,7 @@ describe('preview API', () => {
 
     const doc = await app.inject({
       method: 'GET',
-      url: `/projects/${projectId}/preview/${token}`,
+      url: `/preview/${slug}/${token}`,
       cookies: { sw_session: t },
     });
     expect(doc.statusCode).toBe(200);
@@ -102,19 +102,21 @@ describe('preview API', () => {
       })
     ).json().token as string;
 
-    // B cannot even reach A's project (not a member) → 403, before any token lookup.
+    // B cannot reach A's preview (not a member). The route returns a UNIFORM opaque 404 for every
+    // miss (no membership, unknown slug, bad/expired token) so it never leaks whether a project or
+    // preview exists.
     const intoA = await app.inject({
       method: 'GET',
-      url: `/projects/${a.projectId}/preview/${token}`,
+      url: `/preview/${a.slug}/${token}`,
       cookies: { sw_session: b.t },
     });
-    expect(intoA.statusCode).toBe(403);
+    expect(intoA.statusCode).toBe(404);
 
     // And A's token presented under B's own (authorized) scope fails the token's
-    // org/project/user binding → 404 (the store rejects it).
+    // project/user binding → 404 (the store rejects it).
     const cross = await app.inject({
       method: 'GET',
-      url: `/projects/${b.projectId}/preview/${token}`,
+      url: `/preview/${b.slug}/${token}`,
       cookies: { sw_session: b.t },
     });
     expect(cross.statusCode).toBe(404);
@@ -122,7 +124,7 @@ describe('preview API', () => {
     // An unknown token under A's own scope is a 404.
     const unknown = await app.inject({
       method: 'GET',
-      url: `/projects/${a.projectId}/preview/does-not-exist`,
+      url: `/preview/${a.slug}/does-not-exist`,
       cookies: { sw_session: a.t },
     });
     expect(unknown.statusCode).toBe(404);

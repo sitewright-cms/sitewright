@@ -57,9 +57,10 @@ const BASE = import.meta.env.VITE_API_BASE ?? '';
  * Absolute URL of the sandboxed preview document for a token — loaded via the
  * preview iframe's `src` (not `srcDoc`), so the document is served under its own
  * `Content-Security-Policy: sandbox` rather than inheriting the editor's CSP.
+ * Addressed by the project's (immutable) slug, matching the media + published-site URLs.
  */
-export function previewDocUrl(projectId: string, token: string): string {
-  return `${BASE}/projects/${projectId}/preview/${encodeURIComponent(token)}`;
+export function previewDocUrl(slug: string, token: string): string {
+  return `${BASE}/preview/${encodeURIComponent(slug)}/${encodeURIComponent(token)}`;
 }
 
 /** URL of the project's Server-Sent-Events change stream (for `EventSource`). */
@@ -241,7 +242,7 @@ export const api = {
   // page's {{edit}} content — the same document publish produces. `token` loads the doc
   // via an iframe `src` (opaque-origin sandbox CSP), never `srcDoc`.
   preview: (projectId: string, page: Page) =>
-    request<{ html: string; token: string }>('POST', `/projects/${projectId}/preview`, page),
+    request<{ html: string; token: string; slug: string }>('POST', `/projects/${projectId}/preview`, page),
 
   // --- templates (reusable code-first page layouts; globals ship in @sitewright/core) ---
   listTemplates: (projectId: string) =>

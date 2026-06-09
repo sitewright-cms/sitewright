@@ -32,7 +32,7 @@ export function LivePreview({ target }: LivePreviewProps) {
     try {
       const { item } = await api.getPage(projectId, pageId);
       const res = await api.preview(projectId, item);
-      setPreview({ src: previewDocUrl(projectId, res.token), loading: false, error: null });
+      setPreview({ src: previewDocUrl(res.slug, res.token), loading: false, error: null });
     } catch (err) {
       setPreview((prev) => ({
         ...prev,

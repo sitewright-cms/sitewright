@@ -274,7 +274,7 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
     const win = window.open('', '_blank');
     try {
       const { token } = await api.preview(project.id, p);
-      if (win) win.location = previewDocUrl(project.id, token);
+      if (win) win.location = previewDocUrl(project.slug, token);
     } catch (err) {
       win?.close();
       setError(err instanceof Error ? err.message : 'preview failed');

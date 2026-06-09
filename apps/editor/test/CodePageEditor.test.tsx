@@ -13,7 +13,7 @@ vi.mock('../src/api', () => ({
     putPage: (...args: unknown[]) => putPage(...args),
     listTemplates: (...args: unknown[]) => listTemplates(...args),
   },
-  previewDocUrl: (projectId: string, token: string) => `/projects/${projectId}/preview/${token}`,
+  previewDocUrl: (slug: string, token: string) => `/preview/${slug}/${token}`,
 }));
 // Swap the CodeMirror widget for a plain textarea so the authoring flow is exercisable in
 // jsdom; the real CodeMirror editor is covered by the Playwright browser E2E.
@@ -65,7 +65,7 @@ describe('CodePageEditor', () => {
     // Loaded by URL (token endpoint) under the iframe's own sandbox CSP — NEVER inlined as srcDoc.
     expect(iframe.getAttribute('sandbox')).toBe('allow-scripts');
     expect(iframe.hasAttribute('srcdoc')).toBe(false);
-    await waitFor(() => expect(iframe.getAttribute('src')).toBe('/projects/p/preview/tok-123'));
+    await waitFor(() => expect(iframe.getAttribute('src')).toBe('/preview/acme/tok-123'));
   });
 
   it('saves edited source via putPage, preserving page identity, and shows a saved state', async () => {

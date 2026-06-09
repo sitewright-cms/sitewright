@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
@@ -45,7 +46,7 @@ async function setup(email: string, slug = 'site') {
     payload: { name: 'Site', slug },
   });
   const projectId = (proj.json() as { project: { id: string } }).project.id;
-  return { t, projectId };
+  return { t, projectId, slug };
 }
 
 function multipart(filename: string, mime: string, content: Buffer) {
@@ -63,7 +64,7 @@ function multipart(filename: string, mime: string, content: Buffer) {
 
 describe('media API', () => {
   it('uploads → optimizes → lists → serves → deletes an image', async () => {
-    const { t, projectId } = await setup('a@acme.test');
+    const { t, projectId, slug } = await setup('a@acme.test');
     const base = `/projects/${projectId}`;
     const cookies = { sw_session: t };
 
@@ -76,7 +77,12 @@ describe('media API', () => {
     expect(up.statusCode).toBe(201);
     const asset = (up.json() as { item: { id: string; url: string; variants: unknown[] } }).item;
     expect(asset.variants.length).toBeGreaterThan(0);
-    expect(asset.url).toMatch(/^\/media\/[\w-]+\/[\w-]+\/[\w-]+\.jpg$/);
+    // The public URL is keyed by the project's SLUG (not its UUID) + the asset id.
+    expect(asset.url).toMatch(/^\/media\/site\/[\w-]+\/[\w-]+\.jpg$/);
+    expect(asset.url.startsWith(`/media/${slug}/${asset.id}/`)).toBe(true);
+    // …and the on-disk mount mirrors that URL exactly: `<mediaRoot>/<slug>/<assetId>/` (NOT the UUID).
+    expect(existsSync(join(mediaRoot, slug, asset.id))).toBe(true);
+    expect(existsSync(join(mediaRoot, projectId))).toBe(false);
 
     const list = await app.inject({ method: 'GET', url: `${base}/media`, cookies });
     expect((list.json() as { items: unknown[] }).items).toHaveLength(1);

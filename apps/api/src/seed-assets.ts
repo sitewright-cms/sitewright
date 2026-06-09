@@ -205,6 +205,7 @@ function specs(): AssetSpec[] {
  */
 export async function seedExampleAssets(
   ctx: ProjectContext,
+  projectSlug: string,
   contentRepo: ContentRepository,
   storage: MediaStorage,
 ): Promise<Record<string, string>> {
@@ -217,7 +218,7 @@ export async function seedExampleAssets(
     // directory is orphaned and the asset id stays re-seedable.
     try {
       const png = await renderTrustedSvgToPng(spec.svg, spec.w, spec.h);
-      const { assetDir, inputPath } = await storage.stageUpload(ctx.projectId, spec.id, png);
+      const { assetDir, inputPath } = await storage.stageUpload(projectSlug, spec.id, png);
       try {
         const optimized = await optimizeImage(inputPath, assetDir);
         const asset: ImageAsset = {
@@ -233,7 +234,7 @@ export async function seedExampleAssets(
           placeholder: optimized.placeholder,
           variants: optimized.variants.map((v) => ({ format: v.format, width: v.width, height: v.height, path: v.path })),
           fallback: optimized.fallback,
-          url: `/media/${ctx.projectId}/${spec.id}/${optimized.fallback}`,
+          url: `/media/${projectSlug}/${spec.id}/${optimized.fallback}`,
         };
         await contentRepo.put(ctx, 'media', spec.id, asset);
         urls[spec.key] = asset.url;
@@ -242,7 +243,7 @@ export async function seedExampleAssets(
         await storage.clearUpload(inputPath);
       }
     } catch {
-      await storage.remove(ctx.projectId, spec.id).catch(() => {});
+      await storage.remove(projectSlug, spec.id).catch(() => {});
     }
   }
   // Persist the virtual folder records so the editor's media library shows them as folders.

@@ -29,7 +29,7 @@ async function setup(email = 'fonts@e2e.test', slug = 'site') {
   const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email, password: 'pw-secret-1' } });
   const t = token(reg);
   const proj = await app.inject({ method: 'POST', url: '/projects', cookies: { sw_session: t }, payload: { name: 'Site', slug } });
-  return { t, projectId: (proj.json() as { project: { id: string } }).project.id };
+  return { t, projectId: (proj.json() as { project: { id: string } }).project.id, slug };
 }
 /** A single-file multipart body. */
 function multipart(bytes: Buffer, filename = 'font.woff2', contentType = 'font/woff2') {
@@ -41,7 +41,7 @@ const woff2Bytes = (s = 'x') => Buffer.concat([Buffer.from('wOF2'), Buffer.from(
 
 describe('fonts as media assets', () => {
   it('POST /media with a font (magic bytes) creates a kind:font asset', async () => {
-    const { t, projectId } = await setup();
+    const { t, projectId, slug } = await setup();
     const { payload, headers } = multipart(woff2Bytes(), 'Boombox.woff2');
     const res = await app.inject({
       method: 'POST',
@@ -54,12 +54,12 @@ describe('fonts as media assets', () => {
     const item = res.json().item;
     expect(item).toMatchObject({ kind: 'font', family: 'Boombox', fallback: 'serif', source: 'local', folder: 'Brand' });
     expect(item.files).toEqual([{ weight: 700, style: 'italic', format: 'woff2', file: '700-italic.woff2' }]);
-    expect(item.url).toBe(`/media/${projectId}/${item.id}/700-italic.woff2`);
+    expect(item.url).toBe(`/media/${slug}/${item.id}/700-italic.woff2`);
 
     // It appears in the media library (filterable to fonts) + serves INLINE with CORS.
     const list = await app.inject({ method: 'GET', url: `/projects/${projectId}/media`, cookies: { sw_session: t } });
     expect((list.json().items as Array<{ kind: string }>).some((a) => a.kind === 'font')).toBe(true);
-    const serve = await app.inject({ method: 'GET', url: `/media/${projectId}/${item.id}/700-italic.woff2` });
+    const serve = await app.inject({ method: 'GET', url: `/media/${slug}/${item.id}/700-italic.woff2` });
     expect(serve.statusCode).toBe(200);
     expect(serve.headers['content-type']).toBe('font/woff2');
     expect(serve.headers['x-content-type-options']).toBe('nosniff');
@@ -81,13 +81,13 @@ describe('fonts as media assets', () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) =>
       url.includes('css2') ? new Response(css, { headers: { 'content-type': 'text/css' } }) : new Response(Buffer.from('INTER400'), { headers: { 'content-type': 'font/woff2' } }),
     ));
-    const { t, projectId } = await setup();
+    const { t, projectId, slug } = await setup();
     const res = await app.inject({ method: 'POST', url: `/projects/${projectId}/fonts/select`, cookies: { sw_session: t }, payload: { family: 'Inter', weights: [400] } });
     expect(res.statusCode).toBe(200);
     const item = res.json().item;
     expect(item).toMatchObject({ kind: 'font', family: 'Inter', source: 'google', files: [{ weight: 400, format: 'woff2', file: '400.woff2' }] });
     // The downloaded woff2 is self-hosted: serve it from the media route.
-    const serve = await app.inject({ method: 'GET', url: `/media/${projectId}/${item.id}/400.woff2` });
+    const serve = await app.inject({ method: 'GET', url: `/media/${slug}/${item.id}/400.woff2` });
     expect(serve.statusCode).toBe(200);
     expect(serve.rawPayload.toString()).toBe('INTER400');
   });

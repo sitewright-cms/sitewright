@@ -89,7 +89,7 @@ export async function seedInstance({ db, adminEmail, adminPassword, mediaRoot, l
   let assets: Record<string, string> = {};
   if (mediaRoot) {
     try {
-      assets = await seedExampleAssets(ctx, contentRepo, new MediaStorage(mediaRoot));
+      assets = await seedExampleAssets(ctx, project.slug, contentRepo, new MediaStorage(mediaRoot));
     } catch (err) {
       log(
         `[sitewright/seed] WARNING: demo image generation failed (${err instanceof Error ? err.message : String(err)}); ` +
@@ -108,7 +108,7 @@ export async function seedInstance({ db, adminEmail, adminPassword, mediaRoot, l
   if (mediaRoot) {
     try {
       const dl = await downloadGoogleFont('Playfair Display', [700]);
-      const asset = await createFontAsset(contentRepo, new MediaStorage(mediaRoot), ctx, project.id, {
+      const asset = await createFontAsset(contentRepo, new MediaStorage(mediaRoot), ctx, project.slug, {
         family: dl.family,
         fallback: dl.fallback,
         source: 'google',

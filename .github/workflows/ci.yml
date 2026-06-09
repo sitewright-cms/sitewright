@@ -8,14 +8,31 @@ on:
 # Deny-all at the workflow level; grant the minimum per job.
 permissions: {}
 
+# Deterministic, network-light runs: no telemetry calls or update nags that can
+# add latency/flake when many runs execute in parallel.
+env:
+  TURBO_TELEMETRY_DISABLED: '1'
+  DO_NOT_TRACK: '1'
+
 concurrency:
+  # One in-flight run per PR / branch. PRs key on refs/pull/<n>/merge and pushes on
+  # refs/heads/<branch>, so concurrent PRs NEVER cancel each other — only a newer
+  # push to the SAME ref supersedes an older, still-running one. This isolates the
+  # parallel work of multiple agents/branches.
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  # Unit + integration on a hermetic, ephemeral runner (its own FS/ports/containers),
+  # so parallel runs cannot collide. E2E is intentionally NOT run here: the Playwright
+  # suites are serial and target the SHARED DinD host, so running them in this pipeline
+  # would race across concurrent PRs. E2E runs locally on an isolated per-agent slot —
+  # see scripts/e2e-deploy.sh and CONTRIBUTING.md.
   verify:
     name: Verify · lint · typecheck · test · build
     runs-on: ubuntu-latest
+    # Cap a hung run so it can't hold a shared runner slot away from parallel work.
+    timeout-minutes: 30
     permissions:
       contents: read
     steps:

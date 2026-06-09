@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { EncryptedSecretSchema } from './deploy-target.js';
+import { AgentInstructionsSchema } from './agent.js';
 
 /** True if `value` contains an ASCII control character (mirrors DeployTargetSchema). */
 function hasControlChars(value: string): boolean {
@@ -88,6 +89,8 @@ export const InstanceSettingsStoredSchema = z.object({
   hcaptcha: HcaptchaStoredSchema.optional(),
   stock: StockKeysStoredSchema.optional(),
   formModes: FormModesSchema.default(DEFAULT_FORM_MODES),
+  /** Admin override for the agent (MCP) system instructions; unset → the built-in default is served. */
+  agentInstructions: AgentInstructionsSchema.optional(),
 });
 export type InstanceSettingsStored = z.infer<typeof InstanceSettingsStoredSchema>;
 
@@ -125,6 +128,9 @@ export const InstanceSettingsInputSchema = z.object({
   // partial one merges. To disable every mode, send all four explicitly false —
   // there is no "clear the whole section" semantic for formModes.
   formModes: FormModesSchema.partial().optional(),
+  // Agent instructions override: a string sets it, `null` clears it (revert to the built-in
+  // default), and an absent (undefined) value leaves the stored override unchanged.
+  agentInstructions: AgentInstructionsSchema.nullable().optional(),
 });
 export type InstanceSettingsInput = z.infer<typeof InstanceSettingsInputSchema>;
 
@@ -158,6 +164,8 @@ export interface InstanceSettingsPublic {
   hcaptcha?: HcaptchaPublic;
   stock?: StockKeysPublic;
   formModes: FormModes;
+  /** The admin override for agent instructions (NOT a secret), or absent when using the default. */
+  agentInstructions?: string;
 }
 
 /** Masks a stored SMTP config to its public view (password → hasPassword flag). */
@@ -179,5 +187,6 @@ export function maskInstanceSettings(stored: InstanceSettingsStored): InstanceSe
       hasPexels: stored.stock.pexels !== undefined,
     };
   }
+  if (stored.agentInstructions !== undefined) result.agentInstructions = stored.agentInstructions;
   return result;
 }

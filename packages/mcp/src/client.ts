@@ -11,6 +11,8 @@ export interface Scope {
   projectId: string;
   role: 'owner' | 'admin' | 'member';
   capabilities: Capability[];
+  /** Effective agent (MCP) instructions — the admin override or the built-in default; resolved by the API. */
+  agentInstructions?: string;
 }
 
 /** A non-2xx API response, carrying the status so tools can map it to MCP errors. */

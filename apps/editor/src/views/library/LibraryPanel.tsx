@@ -39,7 +39,7 @@ export function LibraryPanel() {
   const section = openCategory ? (LIBRARY_SECTIONS.find((s) => s.category === openCategory) ?? null) : null;
 
   return (
-    <SidePanel side="left" label="Library" icon={<LibraryIcon />}>
+    <SidePanel side="left" label="System Library" icon={<LibraryIcon />}>
       <nav className="flex flex-col gap-1.5 p-3">
         {/* The template/directive reference — the author's guide to the code-first surface. */}
         <button

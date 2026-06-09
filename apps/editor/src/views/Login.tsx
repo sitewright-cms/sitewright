@@ -30,7 +30,8 @@ export function Login({ onAuthed }: LoginProps) {
   }
 
   return (
-    <div className={`mx-auto mt-24 max-w-sm ${glassCard} p-8`}>
+    <div className="flex min-h-screen items-center justify-center p-4">
+      <div className={`w-full max-w-sm ${glassCard} p-8`}>
       <h1 className="mb-1 flex items-center gap-2.5 text-2xl font-bold tracking-tight">
         <BrandMark className="h-7 w-7" />
         <span className="font-display">Sitewright</span>
@@ -75,6 +76,7 @@ export function Login({ onAuthed }: LoginProps) {
       >
         {mode === 'login' ? 'Need an account? Register' : 'Have an account? Sign in'}
       </button>
+      </div>
     </div>
   );
 }

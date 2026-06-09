@@ -17,14 +17,14 @@ test('side panels: Library + Assets tabs open on hover and close on mouse-out', 
   await page.getByRole('button', { name: 'Create project' }).click();
 
   // Both collapsed edge tabs are present.
-  const libTab = page.getByRole('button', { name: 'Open Library' });
-  const assetsTab = page.getByRole('button', { name: 'Open Assets' });
+  const libTab = page.getByRole('button', { name: 'Open System Library' });
+  const assetsTab = page.getByRole('button', { name: 'Open File Manager' });
   await expect(libTab).toBeVisible();
   await expect(assetsTab).toBeVisible();
 
   // The Library panel is collapsed (aria-hidden) until hovered. (Query by attribute — a hidden
   // region is excluded from the accessibility tree, so getByRole wouldn't see it.)
-  const library = page.locator('[role="region"][aria-label="Library"]');
+  const library = page.locator('[role="region"][aria-label="System Library"]');
   await expect(library).toHaveAttribute('aria-hidden', 'true');
 
   // Hover the tab → the panel opens and its sections show.
@@ -38,7 +38,7 @@ test('side panels: Library + Assets tabs open on hover and close on mouse-out', 
 
   // The Assets tab (right edge) shares the same component and opens its file browser on hover.
   await assetsTab.hover();
-  const assets = page.locator('[role="region"][aria-label="Assets"]');
+  const assets = page.locator('[role="region"][aria-label="File Manager"]');
   await expect(assets).toHaveAttribute('aria-hidden', 'false');
   await expect(assets.getByLabel('Upload files')).toBeVisible();
 });

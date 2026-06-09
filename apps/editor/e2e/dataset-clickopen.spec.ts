@@ -17,7 +17,7 @@ test('click a rendered dataset row in the preview → edit its entry → preview
   await page.getByRole('button', { name: 'Create project' }).click();
 
   // Data rail: a "Posts" dataset with a "title" field + one entry "Hello".
-  await page.getByRole('button', { name: 'Open Data' }).hover();
+  await page.getByRole('button', { name: 'Open Datasets' }).hover();
   await page.getByLabel('Dataset name').fill('Posts');
   await page.getByRole('button', { name: 'Create dataset' }).click();
   await page.getByLabel('New field name').fill('title');

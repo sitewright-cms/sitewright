@@ -13,7 +13,7 @@ vi.mock('../src/views/Project', () => ({
   TAB_LABELS: { pages: 'Pages', forms: 'Forms' },
 }));
 vi.mock('../src/views/files/AssetsPanel', () => ({
-  AssetsPanel: ({ openSignal }: { openSignal: number }) => <div>ASSETS PANEL sig={openSignal}</div>,
+  AssetsPanel: () => <div>ASSETS PANEL</div>,
 }));
 vi.mock('../src/views/library/LibraryPanel', () => ({ LibraryPanel: () => <div>LIBRARY PANEL</div> }));
 vi.mock('../src/views/code/CodeRailPanels', () => ({
@@ -60,14 +60,11 @@ describe('App shell', () => {
     // Switching a tab updates the project view.
     fireEvent.click(screen.getByRole('tab', { name: 'Forms' }));
     expect(await screen.findByText(/PROJECT Acme tab=forms/)).toBeInTheDocument();
-    // Owners get the always-present Library + Assets side panels; the header "Assets" button
-    // force-opens the Assets panel by bumping its openSignal.
+    // Owners get the always-present side panels (File Manager / Library / code rails).
     expect(screen.getByText('LIBRARY PANEL')).toBeInTheDocument();
     expect(screen.getByText('SNIPPETS PANEL')).toBeInTheDocument();
     expect(screen.getByText('TEMPLATES PANEL')).toBeInTheDocument();
-    expect(screen.getByText(/ASSETS PANEL sig=0/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Assets' }));
-    expect(await screen.findByText(/ASSETS PANEL sig=1/)).toBeInTheDocument();
+    expect(screen.getByText('ASSETS PANEL')).toBeInTheDocument();
   });
 
   it('a client (member) project gets no side panels and no tablist', async () => {

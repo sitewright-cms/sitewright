@@ -16,9 +16,9 @@ test('library: template reference — open, search, filter by group', async ({ p
   await page.getByRole('button', { name: 'Create project' }).click();
 
   // Open the Library rail and the Template reference modal.
-  const library = page.locator('[role="region"][aria-label="Library"]');
+  const library = page.locator('[role="region"][aria-label="System Library"]');
   if ((await library.getAttribute('aria-hidden')) === 'true') {
-    await page.getByRole('button', { name: 'Open Library' }).hover();
+    await page.getByRole('button', { name: 'Open System Library' }).hover();
     await expect(library).toHaveAttribute('aria-hidden', 'false');
   }
   await library.getByRole('button', { name: 'Template reference' }).click();

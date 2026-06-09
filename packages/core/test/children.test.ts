@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { Page } from '@sitewright/schema';
-import { childrenOf, referencesChildren, MAX_PAGE_CHILDREN } from '../src/index.js';
+import { childrenOf, parentPageView, referencesChildren, referencesParentPage, MAX_PAGE_CHILDREN } from '../src/index.js';
 
 const page = (over: Partial<Page>): Page =>
   ({ id: 'p', path: '', title: 'T', root: { id: 'r', type: 'Section' }, ...over }) as Page;
@@ -67,6 +67,38 @@ describe('childrenOf', () => {
   });
 });
 
+describe('parentPageView', () => {
+  const pages = [
+    page({ id: 'home', path: '', title: 'Home', data: { brand: 'Acme' } }),
+    page({ id: 'services', path: 'services', parent: 'home', title: 'Services', data: { eyebrow: 'What we do' } }),
+    page({ id: 'web', path: 'web', parent: 'services', title: 'Web', locale: 'de' }),
+  ];
+
+  it('flattens the parent: own slug, FULL computed path, locale, and its page.data', () => {
+    // services' parent is home (empty slug → path "/", its own data).
+    expect(parentPageView(pages, pages[1]!, 'en')).toEqual({
+      title: 'Home', slug: '', path: '/', locale: 'en', data: { brand: 'Acme' },
+    });
+    // web's parent is services — `path` is the FULL route (not the bare segment), `data` is the parent's own.
+    expect(parentPageView(pages, pages[2]!, 'en')).toMatchObject({ slug: 'services', path: '/services', data: { eyebrow: 'What we do' } });
+  });
+
+  it('reports the PARENT’s own locale, not the child’s (no same-locale filter, unlike childrenOf)', () => {
+    // `web` is `de`, its parent `services` has no locale → defaults to `en`. parentPage crosses locales.
+    expect(parentPageView(pages, pages[2]!, 'en')?.locale).toBe('en');
+  });
+
+  it('is undefined at the tree root / home (no parent) and for an unresolved parent id', () => {
+    expect(parentPageView(pages, pages[0]!, 'en')).toBeUndefined(); // home: no parent
+    expect(parentPageView(pages, page({ id: 'orphan', path: 'x', parent: 'gone', title: 'O' }), 'en')).toBeUndefined();
+  });
+
+  it('defaults the parent data to {} when unset', () => {
+    const ps = [page({ id: 'p', path: 'p', title: 'P' }), page({ id: 'c', path: 'c', parent: 'p', title: 'C' })];
+    expect(parentPageView(ps, ps[1]!, 'en')?.data).toEqual({});
+  });
+});
+
 describe('referencesChildren', () => {
   it('matches a page.children reference but not look-alikes', () => {
     expect(referencesChildren('{{#each page.children}}x{{/each}}')).toBe(true);
@@ -74,5 +106,17 @@ describe('referencesChildren', () => {
     expect(referencesChildren('no children here')).toBe(false);
     expect(referencesChildren('nav-page.children')).toBe(false); // preceded by an identifier/-
     expect(referencesChildren('mypage.children')).toBe(false);
+  });
+});
+
+describe('referencesParentPage', () => {
+  it('matches a parentPage reference but not look-alikes', () => {
+    expect(referencesParentPage('<a href="{{sw-url parentPage.path}}">up</a>')).toBe(true);
+    expect(referencesParentPage('{{ parentPage.title }}')).toBe(true);
+    expect(referencesParentPage('{{parentPage.data.section_color}}')).toBe(true);
+    expect(referencesParentPage('no parent here')).toBe(false);
+    expect(referencesParentPage('{{ parentPageView }}')).toBe(false); // longer word
+    expect(referencesParentPage('nav-parentPage')).toBe(false); // preceded by an identifier/-
+    expect(referencesParentPage('myparentPage.path')).toBe(false);
   });
 });

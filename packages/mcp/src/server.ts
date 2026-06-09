@@ -29,8 +29,10 @@ In \`source\`:
   menu, alert…) plus Tailwind utilities for layout. Components are brand-themed
   automatically — name the brand's main color \`primary\`.
 - Bind data: {{ company.* }} exposes the Corporate Identity you set (e.g. {{ company.name }}
-  and any contact/address fields on \`identity\`); {{ page.title }}; {{ website.siteUrl }}; and
-  {{#each data.<dataset>}}…{{/each}} for collections. Inside the loop an entry's fields are read
+  and any contact/address fields on \`identity\`); {{ page.title }}, {{ page.path }} (full route),
+  {{ page.slug }} (own segment); {{ parentPage.path }} / {{ parentPage.data.<key> }} for the page's
+  parent (absent at the tree root); {{ website.siteUrl }}; and {{#each data.<dataset>}}…{{/each}}
+  for collections. Inside the loop an entry's fields are read
   DIRECTLY by name — {{title}}, {{price}} (no \`values.\` prefix) — and each row is click-to-edit
   in the editor. The entry's id/dataset are on {{@entry.id}} / {{@entry.dataset}}.
 - Mark text a CLIENT may later edit by adding data-sw-text="key" to a real element, e.g.

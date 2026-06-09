@@ -71,7 +71,9 @@ import {
   pagePath,
   pagesById,
   childrenOf,
+  parentPageView,
   referencesChildren,
+  referencesParentPage,
   type ProjectBundle,
 } from '@sitewright/core';
 import type { Database } from '../db/client.js';
@@ -1274,16 +1276,32 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           }
           const previewPage = {
             title: page.title,
+            // `page.slug` is the page's OWN segment — the Page record's `path` field (e.g. "services");
+            // the binding's `page.path` below is the FULL computed route. (Mirrors page.children[*].slug.)
+            slug: page.path,
             path: pagePath(page, previewById),
             locale: previewLocale,
             translations: translationsOf(savedPages, page, defaultLocale),
             data: page.data,
             children: previewChildren,
           };
+          // The page's PARENT as a lean view (`{{parentPage.path}}`, `{{parentPage.data.x}}`) — absent
+          // at the tree root. Built only when the source references it (the parent carries its own
+          // `data`, so the gate keeps it off the IPC otherwise) and from the SAVED pages for the
+          // parent (not the unsaved preview overlay).
+          const previewParent = referencesParentPage(pageSource)
+            ? (parentPageView(savedPages, page, defaultLocale) as unknown as Record<string, unknown> | undefined)
+            : undefined;
+          // Bound the parent view against the same IPC ceiling as the data/children above — its `data`
+          // is a different page's object, not covered by the dataset guard.
+          if (previewParent && JSON.stringify(previewParent).length > 4 * 1024 * 1024) {
+            return reply.code(413).send({ error: 'project data is too large to render' });
+          }
           const rendered = await renderPool.render(pageSource, {
             company: brand as unknown as Record<string, unknown>,
             website: { siteUrl: website?.siteUrl, data: website?.data },
             page: previewPage,
+            parentPage: previewParent,
             data: localeData,
             item,
             partials,
@@ -1304,6 +1322,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             company: brand as unknown as Record<string, unknown>,
             website: { siteUrl: website?.siteUrl, data: website?.data },
             page: previewPage,
+            parentPage: previewParent,
             data: localeData,
             nav: slotNav as unknown as Record<string, unknown>,
           };
@@ -2490,10 +2509,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const page = PageSchema.parse(await contentRepo.get(ctx, 'page', body.pageId));
         if (!page.source) return reply.code(400).send({ error: 'this page has no template source' });
         templateSource = page.source;
-        // `{{ page.path }}` is the full route computed from the parent chain (not the bare slug).
+        // `{{ page.path }}` is the full route computed from the parent chain; `page.slug` is the
+        // page's OWN segment (its `path` field) — mirrors the member-preview/publish page context.
         const allForPath = pagesById((await contentRepo.list(ctx, 'page')) as Page[]);
         // page.data carries the page's editable text/url overrides (the data-sw-* directives).
-        pageCtx = { title: page.title, path: pagePath(page, allForPath), data: page.data };
+        pageCtx = { title: page.title, slug: page.path, path: pagePath(page, allForPath), data: page.data };
         pageRichContent = page.richContent;
       } else {
         templateSource = body.template as string; // refine guarantees one of template/pageId

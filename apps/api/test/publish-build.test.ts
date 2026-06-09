@@ -83,6 +83,29 @@ describe('buildSite', () => {
     expect(await readFile(join(outDir, 'styles.css'), 'utf8')).toContain('display:grid');
   });
 
+  it('exposes page.slug + the parentPage view (title/data) to a child page', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        pages: [
+          {
+            id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
+            source: '<main>{{ company.name }}</main>', data: { section_color: 'tomato' },
+          },
+          {
+            id: 'services', path: 'services', parent: 'home', title: 'Services', root: { id: 'r', type: 'Section' },
+            source: '<main><b>{{page.slug}}</b> up:{{parentPage.title}} c:{{parentPage.data.section_color}}</main>',
+          },
+        ],
+      }),
+    });
+    const svc = await readFile(join(outDir, 'services', 'index.html'), 'utf8');
+    expect(svc).toContain('<b>services</b>'); // page.slug = the page's OWN segment (not the full /services route)
+    expect(svc).toContain('up:Home'); // parentPage.title — the parent (home)
+    expect(svc).toContain('c:tomato'); // parentPage.data.section_color — inherited from the parent's page.data
+  });
+
   it('publishes a data-sw-html rich region: override applied, sanitized, markers stripped', async () => {
     await buildSite({
       publishedAt: '2026-05-29T00:00:00.000Z',

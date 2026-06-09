@@ -67,6 +67,25 @@ describe('dataset-aware {{#each}} — flattened fields + preview markers', () =>
   });
 });
 
+describe('page.slug + parentPage bindings', () => {
+  it('renders page.slug and the parentPage view (path + data) through the context whitelist', () => {
+    const ctx = {
+      page: { title: 'Web', slug: 'web', path: '/services/web' },
+      parentPage: { title: 'Services', slug: 'services', path: '/services', data: { eyebrow: 'What we do' } },
+    };
+    const out = renderTemplate(
+      '<a href="{{sw-url parentPage.path}}">{{parentPage.title}}</a>/<b>{{page.slug}}</b> — {{parentPage.data.eyebrow}}',
+      ctx,
+    );
+    expect(out).toBe('<a href="/services">Services</a>/<b>web</b> — What we do');
+  });
+
+  it('renders empty for parentPage.* when there is no parent (binding absent)', () => {
+    const out = renderTemplate('[{{parentPage.path}}][{{parentPage.data.x}}]', { page: { slug: '', path: '/' } });
+    expect(out).toBe('[][]');
+  });
+});
+
 describe('{{item.<dataset>.<key>}} — direct keyed access', () => {
   const item = { services: { web: { title: 'Web Dev', price: 'from $10k' } } };
   it('resolves a keyed entry field without a loop', () => {

@@ -24,8 +24,8 @@ test('edit Corporate Identity + Website settings, save, and persist across reloa
   await page.getByLabel('Legal name').fill('Acme Corporation');
   // Edit a mandatory brand color (Primary) + add a custom color. The six mandatory tokens are
   // fixed, labeled rows; custom colors use the "+ Add color" editor.
-  await page.getByLabel('Primary Color').fill('#0ea5e9');
-  await page.getByLabel('Background Color').fill('#fafafa');
+  await page.getByLabel('Primary Color', { exact: true }).fill('#0ea5e9');
+  await page.getByLabel('Background Color', { exact: true }).fill('#fafafa');
   await page.getByRole('button', { name: '+ Add color' }).click();
   await page.getByLabel('brand-teal 1', { exact: true }).fill('brand-teal');
   await page.getByLabel('#0d9488 1', { exact: true }).fill('#0d9488');
@@ -52,8 +52,8 @@ test('edit Corporate Identity + Website settings, save, and persist across reloa
   await page.getByRole('button', { name: /Acme Site/ }).click();
   await page.getByRole('tab', { name: 'Corporate Identity' }).click();
   await expect(page.getByLabel('Legal name')).toHaveValue('Acme Corporation');
-  await expect(page.getByLabel('Primary Color')).toHaveValue('#0ea5e9');
-  await expect(page.getByLabel('Background Color')).toHaveValue('#fafafa');
+  await expect(page.getByLabel('Primary Color', { exact: true })).toHaveValue('#0ea5e9');
+  await expect(page.getByLabel('Background Color', { exact: true })).toHaveValue('#fafafa');
   await expect(page.getByLabel('brand-teal 1', { exact: true })).toHaveValue('brand-teal');
   await expect(page.getByLabel('#0d9488 1', { exact: true })).toHaveValue('#0d9488');
   await expect(page.getByLabel('Map embed URL')).toHaveValue('https://www.google.com/maps/embed?pb=demo');
@@ -62,6 +62,46 @@ test('edit Corporate Identity + Website settings, save, and persist across reloa
   await expect(page.getByLabel('Social icon 1', { exact: true })).toHaveValue('brand:whatsapp');
   await page.getByRole('tab', { name: 'Website Settings' }).click();
   await expect(page.getByLabel(/Production URL/)).toHaveValue('https://acme.example');
+});
+
+// The brand color rows have a swatch BUTTON that opens a powerful picker: edit in any of
+// HEX/RGB/HSL/OKLCH (live cross-space conversion) with an alpha channel. The picker stores
+// sRGB hex — 8-digit #rrggbbaa when alpha < 1. Verifies an alpha edit converts live across
+// the lenses and round-trips through the bound input, save, and reload.
+test('Corporate Identity: edit a brand color via the multi-space picker (alpha → 8-digit hex)', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: /Register/ }).click();
+  await page.getByLabel('Email').fill(`color-${stamp}@e2e.test`);
+  await page.getByLabel('Password').fill('pw-secret-1');
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await page.getByRole('button', { name: 'New project' }).click();
+  await page.getByLabel('Project name').fill('Color Site');
+  await page.getByLabel('Project slug').fill(`color-${stamp}`);
+  await page.getByRole('button', { name: 'Create project' }).click();
+  await page.getByRole('tab', { name: 'Corporate Identity' }).click();
+
+  // Open the Primary color picker from its swatch button.
+  await page.getByRole('button', { name: 'Edit Primary Color' }).click();
+  const picker = page.getByRole('dialog', { name: 'Primary Color picker' });
+  await expect(picker).toBeVisible();
+
+  // Type a translucent color into the HEX lens; the OTHER lenses convert live…
+  await picker.getByLabel('HEX').fill('#ff000080');
+  await expect(picker.getByLabel('RGB')).toHaveValue('rgb(255 0 0 / 0.502)');
+  await expect(picker.getByLabel('HSL')).toHaveValue('hsl(0 100% 50% / 0.502)');
+  // …and the bound row input adopts the canonical 8-digit hex.
+  await expect(page.getByLabel('Primary Color', { exact: true })).toHaveValue('#ff000080');
+
+  // Click away to close the popover, then persist.
+  await page.getByRole('tab', { name: 'Corporate Identity' }).click();
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.getByText('✓ Saved')).toBeVisible();
+
+  // Reload → reopen → the alpha hex persisted via the API.
+  await page.reload();
+  await page.getByRole('button', { name: /Color Site/ }).click();
+  await page.getByRole('tab', { name: 'Corporate Identity' }).click();
+  await expect(page.getByLabel('Primary Color', { exact: true })).toHaveValue('#ff000080');
 });
 
 // The website partials are edited via an EDIT button that opens the large black CodeMirror

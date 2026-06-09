@@ -53,6 +53,11 @@ describe('CorporateIdentitySchema', () => {
     expect(detectSocial('https://github.com/acme')).toEqual({ name: 'GitHub', icon: 'brand:github' });
     // LinkedIn has no brand: logo (simple-icons dropped it) → a Lucide glyph instead.
     expect(detectSocial('https://linkedin.com/company/acme')).toEqual({ name: 'LinkedIn', icon: 'linkedin' });
+    // Newly-mapped providers (their brand logos are now in the set).
+    expect(detectSocial('https://bsky.app/profile/acme')).toEqual({ name: 'Bluesky', icon: 'brand:bluesky' });
+    expect(detectSocial('https://www.twitch.tv/acme')).toEqual({ name: 'Twitch', icon: 'brand:twitch' });
+    expect(detectSocial('https://acme.substack.com')).toEqual({ name: 'Substack', icon: 'brand:substack' });
+    expect(detectSocial('https://ko-fi.com/acme')).toEqual({ name: 'Ko-fi', icon: 'brand:kofi' });
     expect(detectSocial('https://acme.example/profile')).toEqual({ name: 'Acme', icon: 'globe' });
     expect(detectSocial('not a url')).toEqual({});
   });
@@ -66,6 +71,13 @@ describe('CorporateIdentitySchema', () => {
     // Already-object social passes through unchanged (idempotent); custom name/icon kept.
     const objects = [{ link: 'https://x.com/a', name: 'My X', icon: 'brand:x' }];
     expect(CorporateIdentitySchema.parse({ name: 'Acme', social: objects }).social).toEqual(objects);
+  });
+
+  it('accepts a social icon slug that starts with a digit (e.g. brand:500px) and rejects junk', () => {
+    const ok = [{ link: 'https://500px.com/p/acme', name: '500px', icon: 'brand:500px' }];
+    expect(CorporateIdentitySchema.parse({ name: 'Acme', social: ok }).social).toEqual(ok);
+    // A space (or other non-slug char) is still rejected.
+    expect(() => CorporateIdentitySchema.parse({ name: 'Acme', social: [{ link: 'https://x.com/a', icon: 'brand:bad slug' }] })).toThrow();
   });
 
   it('accepts a mapUrl (https) and rejects a non-http(s) one', () => {

@@ -1,6 +1,8 @@
 import type { CorporateIdentity, SettingsBundle, WebsiteSettings } from '../../api';
-import type { JsonValue } from '@sitewright/schema';
+import { DEFAULT_BRAND_COLORS, MANDATORY_COLOR_TOKENS, type JsonValue } from '@sitewright/schema';
 import { pageDataObject } from '../../lib/page-data';
+
+const MANDATORY_COLOR_SET = new Set<string>(MANDATORY_COLOR_TOKENS);
 
 /** Updater passed to the section components. */
 export type Patch = (p: Partial<SettingsForm>) => void;
@@ -104,6 +106,21 @@ export interface SettingsForm {
 const recordToPairs = (r: Record<string, string> | undefined): KeyedPair[] =>
   Object.entries(r ?? {}).map(([k, v]) => ({ id: rowId(), key: k, value: String(v) }));
 
+/**
+ * Brand colors → editable rows with the MANDATORY tokens ALWAYS present and FIRST (filled from
+ * {@link DEFAULT_BRAND_COLORS} when a project hasn't set one yet), followed by any custom colors.
+ * Keeps the settings page's fixed color rows populated regardless of the stored value.
+ */
+const colorsToPairs = (r: Record<string, string> | undefined): KeyedPair[] => {
+  const rec = r ?? {};
+  const valueOf = (k: string): string | undefined => Object.entries(rec).find(([rk]) => rk === k)?.[1];
+  const mandatory = Object.entries(DEFAULT_BRAND_COLORS).map(([key, def]) => ({ id: rowId(), key, value: valueOf(key) ?? def }));
+  const custom = Object.entries(rec)
+    .filter(([k]) => !MANDATORY_COLOR_SET.has(k))
+    .map(([k, v]) => ({ id: rowId(), key: k, value: String(v) }));
+  return [...mandatory, ...custom];
+};
+
 const strsToKeyed = (items: string[] | undefined): KeyedStr[] => (items ?? []).map((value) => ({ id: rowId(), value }));
 
 // Prototype-pollution keys are rejected server-side (safeRecord); mirror the guard
@@ -114,7 +131,9 @@ const pairsToRecord = (pairs: KeyedPair[]): Record<string, string> => {
   const out: Record<string, string> = {};
   for (const { key, value } of pairs) {
     const k = key.trim();
-    if (!k || DANGEROUS_KEYS.has(k)) continue;
+    // Skip blank values: an emptied token is "unset", not a (schema-invalid) empty color/font.
+    // For a cleared MANDATORY color this means the server's fill-missing restores its default.
+    if (!k || DANGEROUS_KEYS.has(k) || !value.trim()) continue;
     // eslint-disable-next-line security/detect-object-injection -- k is a user token name, guarded above, written to a fresh local object only
     out[k] = value;
   }
@@ -164,7 +183,7 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
     latitude: id.geo?.latitude ?? '',
     longitude: id.geo?.longitude ?? '',
     social: strsToKeyed(id.social),
-    colors: recordToPairs(id.colors),
+    colors: colorsToPairs(id.colors),
     fonts: recordToPairs(id.typography?.fontFamilies),
     heading: { ...DEFAULT_HEADING, ...id.typography?.heading },
     body: { ...DEFAULT_BODY, ...id.typography?.body },

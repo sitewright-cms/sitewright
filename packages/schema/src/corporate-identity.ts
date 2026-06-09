@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import {
   AssetRefSchema,
+  ColorTokenKeySchema,
   CssColorSchema,
   CssStringSchema,
   IdSchema,
@@ -8,6 +9,37 @@ import {
   TokenValueSchema,
   safeRecord,
 } from './primitives.js';
+
+/**
+ * The brand colors every project ALWAYS has — they are non-deletable in the editor and
+ * re-materialize on parse (see `colors` below), so templates/components can rely on them
+ * unconditionally. Names are the canonical DaisyUI/Tailwind semantic roles, so they double
+ * as `bg-<token>` utilities AND theme the DaisyUI component palette (`btn-primary`, …) with
+ * zero translation. `*-content` foregrounds are NOT mandatory fields — they are derived for
+ * contrast at compile time (see @sitewright/tailwind).
+ */
+export const MANDATORY_COLOR_TOKENS = ['primary', 'secondary', 'accent', 'neutral', 'base-100', 'base-content'] as const;
+export type MandatoryColorToken = (typeof MANDATORY_COLOR_TOKENS)[number];
+
+/** Reasonable, accessible defaults for the mandatory tokens (a deleted/absent one snaps back to these). */
+export const DEFAULT_BRAND_COLORS: Readonly<Record<MandatoryColorToken, string>> = {
+  primary: '#4f46e5',
+  secondary: '#0ea5e9',
+  accent: '#f59e0b',
+  neutral: '#171627',
+  'base-100': '#ffffff',
+  'base-content': '#1a1a23',
+};
+
+/** Human labels for the mandatory tokens — the settings page renders these as fixed, non-deletable rows. */
+export const COLOR_TOKEN_LABELS: Readonly<Record<MandatoryColorToken, string>> = {
+  primary: 'Primary Color',
+  secondary: 'Secondary Color',
+  accent: 'Accent Color',
+  neutral: 'Neutral Color',
+  'base-100': 'Background Color',
+  'base-content': 'Text Color',
+};
 
 // Social / external profile URLs → schema.org `sameAs`; `.url()` alone accepts
 // `javascript:`/`data:`, so require the http(s) scheme explicitly.
@@ -153,8 +185,18 @@ export const CorporateIdentitySchema = z.object({
   social: z.array(AbsoluteUrlSchema).max(50).optional(),
 
   // --- Design tokens (compiled to CSS custom properties + Tailwind theme) ---
-  /** Token name → CSS color value (e.g. `primary` → `#0a7`). */
-  colors: safeRecord(CssColorSchema, KeyNameSchema).default({}),
+  /**
+   * Token name → CSS color value (e.g. `primary` → `#0a7`). Keys may use the DaisyUI/Tailwind
+   * semantic names incl. hyphens (`base-100`, `base-content`). The {@link MANDATORY_COLOR_TOKENS}
+   * are ALWAYS present: the transform fills any that are missing with {@link DEFAULT_BRAND_COLORS},
+   * so a project (or a `colors:{}`) can never end up without them — author values win, a removed
+   * one snaps back to its default. Extra (custom) colors pass through untouched.
+   */
+  colors: safeRecord(CssColorSchema, ColorTokenKeySchema)
+    .default({})
+    // Annotate the output as a plain string map: the mandatory keys are guaranteed at RUNTIME, but
+    // typing them as required statically would force every `colors` literal to spell out all six.
+    .transform((c): Record<string, string> => ({ ...DEFAULT_BRAND_COLORS, ...c })),
   typography: z
     .object({
       fontFamilies: safeRecord(CssStringSchema, KeyNameSchema).default({}),

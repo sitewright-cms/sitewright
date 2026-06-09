@@ -14,4 +14,4 @@ const Tag = `h${level}` as 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6';
 const sizeClass = level <= 2 ? 'text-3xl' : level === 3 ? 'text-xl' : 'text-lg';
 ---
 
-<Tag class={`font-heading font-bold tracking-tight text-ink ${sizeClass}`}>{text}</Tag>
+<Tag class={`font-heading font-bold tracking-tight text-base-content ${sizeClass}`}>{text}</Tag>

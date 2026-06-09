@@ -28,7 +28,7 @@ const pageTitle = seo?.title ?? `${title} · ${project.name}`;
     {/* Per-project brand tokens -> CSS custom properties (single source of truth). */}
     <style set:html={brandCss}></style>
   </head>
-  <body class="min-h-screen bg-surface text-ink">
+  <body class="min-h-screen bg-base-100 text-base-content">
     <slot />
   </body>
 </html>

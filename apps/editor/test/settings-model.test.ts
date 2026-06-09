@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { DEFAULT_BRAND_COLORS, MANDATORY_COLOR_TOKENS } from '@sitewright/schema';
 import { toForm, toBundle } from '../src/views/settings/model';
 import type { SettingsBundle } from '../src/api';
 
@@ -19,7 +20,9 @@ const full: SettingsBundle = {
     address: { street: '1 Main', locality: 'Town', region: 'CA', country: 'US', postalCode: '90001' },
     geo: { latitude: '34.0', longitude: '-118.2' },
     social: ['https://x.com/acme'],
-    colors: { primary: '#0a7', accent: '#f50' },
+    // All six mandatory tokens set to non-default values, so the round-trip proves explicit
+    // values survive (and aren't clobbered by the fill-missing defaults).
+    colors: { primary: '#0a7', secondary: '#0bd', accent: '#f50', neutral: '#123', 'base-100': '#fefefe', 'base-content': '#111' },
     typography: { fontFamilies: { body: 'Inter' } },
   },
   website: {
@@ -53,9 +56,33 @@ describe('settings model', () => {
   it('strips empty optionals so a minimal identity stays minimal', () => {
     const minimal: SettingsBundle = { identity: { name: 'Bare', colors: {} }, settings: { defaultLocale: 'en', locales: ['en'] } };
     const back = toBundle(toForm(minimal), minimal);
-    expect(back.identity).toEqual({ name: 'Bare', colors: {} });
+    // "Minimal" no longer means zero colors: the six mandatory tokens are always present (at their
+    // defaults). Everything else optional is still stripped.
+    expect(back.identity).toEqual({ name: 'Bare', colors: { ...DEFAULT_BRAND_COLORS } });
     expect('legalName' in back.identity).toBe(false);
     expect(back.website).toBeUndefined(); // no website fields → section omitted
+  });
+
+  it('hydrates the six mandatory color rows (first, in order) and keeps custom colors after them', () => {
+    const form = toForm({
+      identity: { name: 'X', colors: { primary: '#0a7', 'brand-teal': '#0d9488' } },
+      settings: { defaultLocale: 'en', locales: ['en'] },
+    });
+    const keys = form.colors.map((r) => r.key);
+    expect(keys.slice(0, MANDATORY_COLOR_TOKENS.length)).toEqual([...MANDATORY_COLOR_TOKENS]);
+    expect(keys).toContain('brand-teal');
+    // The set value is preserved; a missing mandatory token shows its default.
+    expect(form.colors.find((r) => r.key === 'primary')?.value).toBe('#0a7');
+    expect(form.colors.find((r) => r.key === 'base-100')?.value).toBe(DEFAULT_BRAND_COLORS['base-100']);
+  });
+
+  it('clearing a mandatory color drops it on save (so the server fill-missing restores its default)', () => {
+    const form = toForm({ identity: { name: 'X', colors: {} }, settings: { defaultLocale: 'en', locales: ['en'] } });
+    // Emulate the editor clearing the Background Color field.
+    form.colors = form.colors.map((r) => (r.key === 'base-100' ? { ...r, value: '  ' } : r));
+    const colors = toBundle(form).identity.colors;
+    expect('base-100' in colors).toBe(false); // blank → omitted (not persisted as an invalid empty color)
+    expect(colors.primary).toBe(DEFAULT_BRAND_COLORS.primary); // untouched mandatory still sent
   });
 
   it('preserves unsurfaced tokens (spacing/radii/scale) and round-trips the surfaced logo fields', () => {
@@ -82,14 +109,18 @@ describe('settings model', () => {
     expect(back.identity.logoDark).toBe('/dark.svg');
   });
 
-  it('converts color/font token rows to records, dropping blank + dangerous keys', () => {
+  it('converts color/font token rows to records, dropping blank keys, blank values, and dangerous keys', () => {
     const form = toForm(empty());
     form.colors = [
       { id: '1', key: 'primary', value: '#000' },
       { id: '2', key: '', value: '#fff' }, // blank key → dropped
       { id: '3', key: '__proto__', value: 'x' }, // dangerous key → dropped
+      { id: '4', key: 'brand-teal', value: '   ' }, // blank value → dropped
     ];
-    form.fonts = [{ id: '4', key: 'body', value: 'Inter' }];
+    form.fonts = [
+      { id: '5', key: 'body', value: 'Inter' },
+      { id: '6', key: 'heading', value: '' }, // blank font value → dropped (renderer uses its default)
+    ];
     const back = toBundle(form);
     expect(back.identity.colors).toEqual({ primary: '#000' });
     expect(back.identity.typography).toEqual({ fontFamilies: { body: 'Inter' } });

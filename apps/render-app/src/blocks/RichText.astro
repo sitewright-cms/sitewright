@@ -10,7 +10,7 @@ const { node, entry } = Astro.props;
 const text = textProp(node.props ?? {}, entry, 'text');
 ---
 
-<div class="text-base leading-relaxed text-ink">
+<div class="text-base leading-relaxed text-base-content">
   {text && <p>{text}</p>}
   <slot />
 </div>

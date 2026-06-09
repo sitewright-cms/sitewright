@@ -105,13 +105,15 @@ function contentColorFor(bg: string): string | undefined {
 
 /**
  * The DaisyUI theme var map: DaisyUI's light defaults overlaid with the brand's color/font
- * tokens (so `primary`/`secondary`/`accent` re-theme the components) plus a computed readable
- * `-content` for each overridden hex role. Emitted into the `@theme {}` block — DaisyUI runs
- * with `themes:false`, so these vars are authoritative.
+ * tokens (so `primary`/`secondary`/`accent`/`neutral` re-theme the components) plus a computed
+ * readable `-content` for each overridden hex role. Emitted into the `@theme {}` block — DaisyUI
+ * runs with `themes:false`, so these vars are authoritative.
  */
 export function daisyThemeVars(theme: TailwindTheme): Record<string, string> {
   const vars: Record<string, string> = { ...DAISY_THEME_DEFAULTS, ...brandVars(theme) };
-  for (const role of ['primary', 'secondary', 'accent'] as const) {
+  // Each mandatory colored surface gets an auto-derived readable foreground so an overridden
+  // brand color never yields unreadable component text. `base-content` is itself a foreground.
+  for (const role of ['primary', 'secondary', 'accent', 'neutral'] as const) {
     const value = theme.colors?.[role];
     const content = value ? contentColorFor(value) : undefined;
     if (content) vars[`--color-${role}-content`] = content;

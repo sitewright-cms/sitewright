@@ -1,9 +1,10 @@
 import type { TailwindTheme } from './theme.js';
 
 // A theme variable NAME must be a safe CSS identifier — defense-in-depth so a brand key cannot
-// smuggle characters into the generated `@theme { … }` block. Accepts the same `-`/`_` alphabet
-// as the schema's KeyNameSchema (both are valid CSS ident chars), so a valid brand key is never
-// silently dropped here.
+// smuggle characters into the generated `@theme { … }` block. The authoritative constraint is the
+// schema's ColorTokenKeySchema, which is STRICTER (rejects a trailing hyphen, caps length); this
+// is a looser superset over the same `-`/`_` alphabet, so any schema-valid color key passes here
+// and is never silently dropped.
 // Caveat: Tailwind treats `_` as a space inside class candidates, so an underscore key (e.g.
 // `nav_bg`) emits the `--color-nav_bg` var but is not reachable as a bare `bg-nav_bg` utility —
 // use it via `bg-[var(--color-nav_bg)]`, or prefer single-word / camelCase brand token names.

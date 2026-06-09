@@ -62,6 +62,8 @@ describe('TeamManager', () => {
     expect(await screen.findByText('new@acme.test')).toBeInTheDocument();
     expect(screen.queryByText('client@x.co')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Revoke invite for new@acme.test' }));
+    // Revoking is now guarded by a confirm dialog — confirm it.
+    fireEvent.click(await screen.findByRole('button', { name: 'Revoke' }));
     await waitFor(() => expect(revokeInvite).toHaveBeenCalledWith('i-1'));
   });
 });

@@ -87,8 +87,11 @@ to a page's id (defaulting to "home") — its route is /<…parent slugs>/<slug>
 home is { path:"de", parent:"home" } (→ /de) and a sub-page under it is
 { path:"leistungen", parent:"home-de" } (→ /de/leistungen). With dropdown:true a page's
 CHILD pages (parent = its id) nest under its nav item — a nav slot template renders them
-via {{#if children}}…{{#each children}} (DaisyUI <details> submenu; children need no own
-nav slots). Every new project already has the empty-slug "home" page.
+via {{#if children}}…{{#each children}}. Prefer a CSS-only hover dropdown whose PARENT stays a
+real link: <li class="dropdown dropdown-hover"><a href="{{sw-url path}}">{{label}}</a><ul
+class="dropdown-content menu …">{{#each children}}…{{/each}}</ul></li> (avoid <details>/<summary>,
+which makes the parent a toggle, not navigable). Children need no own nav slots. Every new
+project already has the empty-slug "home" page.
 TEMPLATES: set page.template to "global:landing", "global:text", or a project template id
 (kind "template": { id, name, source }) — the page then renders the TEMPLATE's source and
 contributes ONLY its editable \`data\` (page.data) overrides; leave page.source unset.

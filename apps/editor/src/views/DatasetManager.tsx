@@ -4,6 +4,7 @@ import { compareEntryOrder } from '@sitewright/core';
 import { api, type Project } from '../api';
 import { defaultEntryValues, entryLabel, identifierize, slugify } from '../lib/entry-form';
 import { EntryEditorModal } from './datasets/EntryEditorModal';
+import { useDialogs } from './ui/Dialogs';
 import { Tooltip } from './ui/Tooltip';
 import { glassCard, glassPanel, glassInput, fieldLabel, primaryButton, ghostButton, dangerButton } from '../theme';
 
@@ -47,6 +48,7 @@ export function DatasetManager({ project }: { project: Project }) {
   const lastSyncedSel = useRef<string | null>(null);
   const reordering = useRef(false);
 
+  const { confirm, dialog } = useDialogs();
   const selected = datasets.find((d) => d.id === selId) ?? null;
 
   async function load(isActive: () => boolean = () => true) {
@@ -128,6 +130,15 @@ export function DatasetManager({ project }: { project: Project }) {
   }
 
   async function removeDataset(id: string) {
+    const ds = datasets.find((d) => d.id === id);
+    const name = ds?.name ?? id;
+    const count = entries.filter((e) => e.dataset === (ds?.slug ?? '')).length;
+    const ok = await confirm({
+      title: 'Delete dataset',
+      message: `Delete the "${name}" dataset and all ${count} of its ${count === 1 ? 'entry' : 'entries'}? This cannot be undone.`,
+      confirmLabel: 'Delete dataset',
+    });
+    if (!ok) return;
     setError(null);
     try {
       await api.deleteDataset(project.id, id);
@@ -179,6 +190,13 @@ export function DatasetManager({ project }: { project: Project }) {
   }
 
   async function removeEntry(id: string) {
+    const label = selected ? entryLabel(selected, entries.find((e) => e.id === id) ?? ({ id } as Entry)) : id;
+    const ok = await confirm({
+      title: 'Delete entry',
+      message: `Delete the entry "${label}"? This cannot be undone.`,
+      confirmLabel: 'Delete entry',
+    });
+    if (!ok) return;
     try {
       await api.deleteEntry(project.id, id);
       await load();
@@ -454,6 +472,7 @@ export function DatasetManager({ project }: { project: Project }) {
           </div>
         )}
       </section>
+      {dialog}
     </div>
   );
 }

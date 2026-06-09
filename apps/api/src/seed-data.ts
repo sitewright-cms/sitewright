@@ -81,7 +81,7 @@ export const EXAMPLE_WEBSITE = {
     </a>
   </div>
   <div class="navbar-center hidden lg:flex">
-    <ul class="menu menu-horizontal gap-1 px-1 font-medium">{{#each nav.header}}{{#if children}}<li><details><summary>{{label}}</summary><ul class="z-30 rounded-box bg-base-100 p-2 shadow-lg">{{#each children}}<li><a href="{{sw-url path}}">{{label}}</a></li>{{/each}}</ul></details></li>{{else}}<li><a href="{{sw-url path}}">{{label}}</a></li>{{/if}}{{/each}}</ul>
+    <ul class="menu menu-horizontal gap-1 px-1 font-medium">{{#each nav.header}}{{#if children}}<li class="dropdown dropdown-hover"><a href="{{sw-url path}}">{{label}} ${icon('chevron-down', 'h-4 w-4 opacity-60')}</a><ul class="dropdown-content menu z-30 mt-1 w-52 rounded-box bg-base-100 p-2 shadow-lg">{{#each children}}<li><a href="{{sw-url path}}">{{label}}</a></li>{{/each}}</ul></li>{{else}}<li><a href="{{sw-url path}}">{{label}}</a></li>{{/if}}{{/each}}</ul>
   </div>
   <div class="navbar-end gap-2">
     {{#if page.translations}}<div class="hidden items-center gap-0.5 rounded-lg border border-base-200 p-0.5 sm:flex" aria-label="Language">{{#each page.translations}}<a class="btn btn-ghost btn-xs px-2 font-semibold uppercase" href="{{sw-url path}}" hreflang="{{locale}}">{{locale}}</a>{{/each}}</div>{{/if}}

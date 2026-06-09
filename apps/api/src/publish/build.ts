@@ -17,7 +17,9 @@ import {
   pagePath,
   pagesById,
   childrenOf,
+  parentPageView,
   referencesChildren,
+  referencesParentPage,
   type ProjectBundle,
 } from '@sitewright/core';
 import type { Page, Template } from '@sitewright/schema';
@@ -447,7 +449,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         // SAME document shell (head/SEO/CSS/nav). Validated by renderTemplate; a bad
         // source fails the publish with a clear, page-scoped error.
         // The page's own source, or its referenced template's (the page then contributes only its
-        // {{edit}} content). Resolved before renderCtx so `page.children` is built referenced-only.
+        // data-sw-text / page.data content). Resolved before renderCtx so `page.children` is built referenced-only.
         const pageSource = effectiveSource(page);
         const renderCtx = {
           company: identity as unknown as Record<string, unknown>,
@@ -459,12 +461,19 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // them (keeps each child's `data` off the render unless used). Published subset → no drafts.
           page: {
             title: page.title,
+            // Own segment (authored `path` field); `path` above is the full computed route.
+            slug: page.path,
             path: pageFullPath,
             locale: pageLocale,
             translations: pageTranslations,
             data: page.data,
             children: pageSource && referencesChildren(pageSource) ? childrenOf(pubBundle.pages, page, defaultLocale) : [],
           },
+          // The page's PARENT as a lean view (`{{parentPage.path}}`, `{{parentPage.data.x}}`); absent at the
+          // tree root. Built only when the source references it (gates the parent's own `data` like children).
+          parentPage: pageSource && referencesParentPage(pageSource)
+            ? (parentPageView(pubBundle.pages, page, defaultLocale) as unknown as Record<string, unknown> | undefined)
+            : undefined,
           data: localeData as Record<string, unknown>,
           nav: navForPage as unknown as Record<string, unknown>,
         };

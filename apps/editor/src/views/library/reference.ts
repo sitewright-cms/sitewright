@@ -289,10 +289,10 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         id: 'n-page',
         syntax: 'page.*',
         name: 'page',
-        keywords: 'title path locale translations route data children',
+        keywords: 'title path slug locale translations route data children',
         description:
-          'The current page: page.title, page.path (the full computed route), page.locale, page.translations (locale alternates — each has .path, .locale), page.data (this page’s custom object), and page.children (its child pages) — see their own entries.',
-        example: '<title>{{page.title}}</title>',
+          'The current page: page.title, page.path (the FULL computed route, e.g. /de/services), page.slug (the page’s OWN segment, e.g. services), page.locale, page.translations (locale alternates — each has .path, .locale), page.data (this page’s custom object), and page.children (its child pages) — see their own entries.',
+        example: '<title>{{page.title}}</title>\n<body id="{{page.slug}}">',
       },
       {
         id: 'n-page-data',
@@ -322,6 +322,18 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
           '    <small>{{data.article_date}}</small>\n' +
           '  </a>\n' +
           '{{/each}}',
+      },
+      {
+        id: 'n-parent-page',
+        syntax: 'parentPage.*',
+        name: 'parentPage',
+        keywords: 'parent page up breadcrumb ancestor inherit section data path slug',
+        description:
+          'The current page’s direct PARENT (the page above it in the pages tree), as a lean read-only view: parentPage.title, parentPage.slug, parentPage.path (its full route — use {{sw-url parentPage.path}}), parentPage.locale, and parentPage.data (the parent’s own page.data — e.g. read a section’s shared settings). Absent at the tree root / home, so {{parentPage.*}} renders empty there. One level only — there is no parentPage.parentPage.',
+        example:
+          '{{! "up" link + inherit a value from the parent’s page.data }}\n' +
+          '<a href="{{sw-url parentPage.path}}">↑ {{parentPage.title}}</a>\n' +
+          '<span class="accent" style="color:{{parentPage.data.section_color}}">{{page.title}}</span>',
       },
       {
         id: 'n-data',

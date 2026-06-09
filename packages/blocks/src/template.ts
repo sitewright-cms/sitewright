@@ -33,6 +33,12 @@ export interface TemplateContext {
   company?: Record<string, unknown>;
   website?: Record<string, unknown>;
   page?: Record<string, unknown>;
+  /**
+   * The current page's direct PARENT as a lean read-only view (`{{ parentPage.path }}`,
+   * `{{ parentPage.data.* }}`) — absent for a tree root / home or an orphan. Built by `parentPageView`
+   * in @sitewright/core; one level only (no nested `parentPage.parentPage`).
+   */
+  parentPage?: Record<string, unknown>;
   /** Named values/collections, addressable as `{{ data.* }}` / `{{#each data.* }}`. */
   data?: Record<string, unknown>;
   /**
@@ -373,7 +379,7 @@ export function renderTemplate(source: string, ctx: TemplateContext = {}, opts: 
   // cannot smuggle a <script>/handler/unsafe-context past the main-template check.
   if (ctx.partials) for (const partialSource of Object.values(ctx.partials)) validateTemplate(partialSource);
   const template = compileCached(source);
-  const data = { company: ctx.company, website: ctx.website, page: ctx.page, data: ctx.data, item: ctx.item, nav: ctx.nav, markEntries: ctx.markEntries };
+  const data = { company: ctx.company, website: ctx.website, page: ctx.page, parentPage: ctx.parentPage, data: ctx.data, item: ctx.item, nav: ctx.nav, markEntries: ctx.markEntries };
   let html: string;
   try {
     html = template(data, {

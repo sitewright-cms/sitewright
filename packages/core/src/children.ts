@@ -45,6 +45,42 @@ export interface PageChild {
 export const MAX_PAGE_CHILDREN = 500;
 
 /**
+ * A lean read-only view of a page's PARENT, for the top-level `parentPage` binding —
+ * `{{parentPage.path}}`, `{{parentPage.data.x}}`. `undefined` when the page is a tree root / home or
+ * its `parent` id doesn't resolve (so `{{parentPage.*}}` renders empty). Mirrors the child projection
+ * in {@link childrenOf}: `slug` is the parent's own segment, `path` its full computed route.
+ */
+export interface ParentPageView {
+  title: string;
+  /** The parent's own slug SEGMENT (its `path` field). */
+  slug: string;
+  /** The parent's FULL computed route (use in `href="{{sw-url parentPage.path}}"`). */
+  path: string;
+  locale: string;
+  /** The parent's own `page.data` object (empty object when unset). */
+  data: JsonValue;
+}
+
+/**
+ * Flattens `page`'s direct PARENT to a {@link ParentPageView}, or `undefined` when there is none. ONE
+ * level only — the parent's own parent is NOT nested (no `parentPage.parentPage`), which bounds the
+ * render payload and keeps the binding simple. Same projection rules as {@link childrenOf}.
+ */
+export function parentPageView(pages: readonly Page[], page: Page, defaultLocale: string): ParentPageView | undefined {
+  if (!page.parent) return undefined;
+  const byId = pagesById(pages);
+  const parent = byId.get(page.parent);
+  if (!parent) return undefined;
+  return {
+    title: parent.title,
+    slug: parent.path,
+    path: pagePath(parent, byId),
+    locale: localeOf(parent, defaultLocale),
+    data: (parent.data as JsonValue | undefined) ?? {},
+  };
+}
+
+/**
  * The direct child pages of `page` (those whose `parent` is its id), FLATTENED to {@link PageChild}
  * for `{{#each page.children}}`. Same-locale only (an overview lists articles in its own language),
  * non-collection (collection `[param]` pages aren't real tree children), ordered by the shared

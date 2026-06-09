@@ -568,18 +568,18 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
             pageInlineStyles.length > 0 ? pageInlineStyles : undefined,
           scripts: pageScripts.length > 0 ? pageScripts : undefined,
         });
-        // Rewrite editor media URLs (`/media/<projectId>/<assetId>/…`) to the page-relative
+        // Rewrite editor media URLs (`/media/<projectSlug>/<assetId>/…`) to the page-relative
         // bundled path (`<siteRoot>_assets/<assetId>/…`) — across ANY attribute (src, data-src,
         // srcset, href, meta), so raw `<img>`/dataset-driven images resolve in both the
-        // `/sites/<slug>/` preview and a deployed copy. The project-id segment is dropped
+        // `/sites/<slug>/` preview and a deployed copy. The project-slug segment is dropped
         // because the bundle namespaces by asset id only. Done BEFORE relativize so the result
         // is already relative (and not re-touched).
         //
         // Deliberately a flat string replace (not attribute-anchored) so it also catches
         // `data-bg`/`data-src`/`srcset` that `relativizeInternalLinks` misses. The prefix is a
-        // UUID-scoped literal, so a stray match in body text/an operator `<script>` string would
+        // slug-scoped literal, so a stray match in body text/an operator `<script>` string would
         // only be a reference to THIS project's own media — i.e. one we want rebased anyway.
-        const mediaPrefix = `/media/${bundle.project.id}/`;
+        const mediaPrefix = `/media/${bundle.project.slug}/`;
         const mediaRebased = html.split(mediaPrefix).join(`${siteRoot}${ASSET_DIR}/`);
         // Rebase the remaining internal `/…` links onto this page's depth so the artifact is
         // portable (works at a domain root, in a sub-folder, and at the `/sites/<slug>/`

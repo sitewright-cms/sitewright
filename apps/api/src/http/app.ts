@@ -1050,9 +1050,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           { what, errCode: (err as NodeJS.ErrnoException).code, errMsg: err instanceof Error ? err.message : String(err) },
           'project asset cleanup failed on delete',
         );
-      // Published site is keyed by slug; media storage stays keyed by project id.
+      // Both the published site and media storage are keyed by the project's (immutable) slug.
       await publishStore?.removeProject(project.slug).catch(onCleanupError('publish'));
-      await mediaStorage?.removeProject(req.params.id).catch(onCleanupError('media'));
+      await mediaStorage?.removeProject(project.slug).catch(onCleanupError('media'));
       return reply.code(204).send();
     },
   );
@@ -1363,7 +1363,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             lang: previewLocale, // `<html lang>` follows the previewed page's locale (publish parity)
           });
           const sourceToken = previewStore.put(sourceHtml, { projectId: project.id, userId: ctx.userId });
-          return reply.send({ html: sourceHtml, token: sourceToken });
+          // `slug` so the editor builds the `/preview/<slug>/<token>` doc URL (same as the block branch below).
+          return reply.send({ html: sourceHtml, token: sourceToken, slug: project.slug });
         } catch (err) {
           if (err instanceof RenderUnavailableError) return reply.code(503).send({ error: err.message });
           return reply.code(400).send({ error: err instanceof Error ? err.message : 'render failed' });
@@ -1435,7 +1436,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         ...(previewHcaptchaSiteKey ? { hcaptchaSiteKey: previewHcaptchaSiteKey } : {}),
         // Images AND self-hosted fonts (kind:'font' assets in `media`) resolve through one URL —
         // their `@font-face` loads from the media route (never a font CDN).
-        mediaUrl: (asset, file) => `/media/${project.id}/${asset.id}/${file}`,
+        mediaUrl: (asset, file) => `/media/${project.slug}/${asset.id}/${file}`,
         inlineStyles: inlineStyles.length > 0 ? inlineStyles : undefined,
         inlineScripts: [
           ...(componentJs ? [componentJs] : []),
@@ -1450,37 +1451,53 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // GET route below (which serves it under a sandbox CSP). `html` is still
       // returned for API consumers/tests that want it directly.
       const token = previewStore.put(html, { projectId: project.id, userId: ctx.userId });
-      return reply.send({ html, token });
+      // `slug` lets the editor build the doc URL (`/preview/<slug>/<token>`) without a separate
+      // project lookup — the pop-out live preview only carries the project id.
+      return reply.send({ html, token, slug: project.slug });
     },
   );
 
-  // Serves a previously-rendered preview document for an opaque token. Returned as
-  // `text/html` under `Content-Security-Policy: sandbox allow-scripts` — which
-  // forces an OPAQUE, isolated origin even on direct navigation, so its scripts
-  // (the inlined component behavior) run but cannot read the editor's cookies/
-  // session or make credentialed API calls. The editor loads this via the iframe
-  // `src` (NOT `srcDoc`), so the document uses THIS CSP rather than inheriting the
-  // editor page's stricter one. The token is unguessable, short-lived, and bound
-  // to (org, project, user) — so only the member who GENERATED it can fetch it.
-  app.get<{ Params: { projectId: string; token: string } }>(
-    '/projects/:projectId/preview/:token',
+  // Serves a previously-rendered preview document for an opaque token, addressed by the project's
+  // (public, immutable) SLUG — `/preview/<slug>/<token>` — to match the media + published-site URL
+  // scheme. Returned as `text/html` under `Content-Security-Policy: sandbox allow-scripts`, which
+  // forces an OPAQUE, isolated origin even on direct navigation, so its scripts (the inlined
+  // component behavior) run but cannot read the editor's cookies/session or make credentialed API
+  // calls. The editor loads this via the iframe `src` (NOT `srcDoc`), so the document uses THIS CSP
+  // rather than inheriting the editor page's stricter one. The token is unguessable, short-lived,
+  // and bound to (project, user) — so only the member who GENERATED it can fetch it, and the route
+  // is session-authenticated (the editor iframe carries the cookie; previews are not API-key fetched).
+  app.get<{ Params: { slug: string; token: string } }>(
+    '/preview/:slug/:token',
     { config: rl(120) },
     async (req, reply) => {
-      const { ctx, project } = await resolveProject(req, 'content:read');
-      // Tokens are randomUUID (36 chars); bound the param before the store lookup (defense-in-depth,
-      // consistent with the other token params). A malformed token just misses → 404 below.
-      if (req.params.token.length > 64) {
-        return reply.code(404).type('text/html').send('<!doctype html><title>Preview expired</title>');
+      // Every miss (unknown slug, no session, no membership, bad/expired token) returns the SAME
+      // opaque 404 — it never leaks whether a given project or preview exists.
+      const expired = () =>
+        reply.code(404).type('text/html').send('<!doctype html><title>Preview expired</title>');
+      // Bound both params before any DB work (defense-in-depth): tokens are randomUUID (36 chars)
+      // and a slug is ≤64 chars, so anything longer is a guaranteed miss.
+      if (req.params.token.length > 64 || req.params.slug.length > 64) return expired();
+      let project: Awaited<ReturnType<ProjectRepository['getBySlug']>>;
+      try {
+        project = await projects.getBySlug(req.params.slug);
+      } catch {
+        return expired();
       }
-      const html = previewStore.get(req.params.token, {
-        projectId: project.id,
-        userId: ctx.userId,
-      });
-      if (html === null) {
-        return reply.code(404).type('text/html').send('<!doctype html><title>Preview expired</title>');
+      // Session-only auth, mirroring resolveProject's session branch: a platform admin resolves to
+      // owner, everyone else needs a membership on THIS project. requireUserId throws without a
+      // session → treated as a miss.
+      let userId: string;
+      try {
+        userId = await requireUserId(req);
+      } catch {
+        return expired();
       }
-      // `sandbox allow-scripts` (no `allow-same-origin`) → opaque origin: scripts
-      // run, isolated. SAMEORIGIN framing lets the editor embed it; no third party.
+      const role = await resolveProjectRole(db, userId, project.id);
+      if (!role) return expired();
+      const html = previewStore.get(req.params.token, { projectId: project.id, userId });
+      if (html === null) return expired();
+      // `sandbox allow-scripts` (no `allow-same-origin`) → opaque origin: scripts run, isolated.
+      // SAMEORIGIN framing lets the editor embed it; no third party.
       reply.header('content-security-policy', 'sandbox allow-scripts');
       reply.header('x-frame-options', 'SAMEORIGIN');
       return reply.type('text/html').send(html);
@@ -1544,12 +1561,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // the tenant-scoped metadata. Shared by the upload route AND the stock import.
     async function createMediaAsset(
       ctx: ProjectContext,
-      projectId: string,
+      projectSlug: string,
       buffer: Buffer,
       meta: { filename: string; mimetype: string; folder?: string; alt?: string; attribution?: MediaAsset['attribution'] },
     ): Promise<ImageAsset> {
       const assetId = randomUUID();
-      const { assetDir, inputPath } = await storage.stageUpload(projectId, assetId, buffer);
+      const { assetDir, inputPath } = await storage.stageUpload(projectSlug, assetId, buffer);
       try {
         const optimized = await withOptimizeSlot(() => optimizeImage(inputPath, assetDir));
         await storage.clearUpload(inputPath);
@@ -1565,14 +1582,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           placeholder: optimized.placeholder,
           variants: optimized.variants.map((v) => ({ format: v.format, width: v.width, height: v.height, path: v.path })),
           fallback: optimized.fallback,
-          url: `/media/${projectId}/${assetId}/${optimized.fallback}`,
+          url: `/media/${projectSlug}/${assetId}/${optimized.fallback}`,
           ...(meta.alt ? { alt: meta.alt } : {}),
           ...(meta.attribution ? { attribution: meta.attribution } : {}),
         });
         return (await contentRepo.put(ctx, 'media', assetId, asset)) as ImageAsset;
       } catch (err) {
         // Any failure (bad image, validation, DB) → remove the whole asset dir.
-        await storage.remove(projectId, assetId);
+        await storage.remove(projectSlug, assetId);
         if (err instanceof Error && /format|pixel|dimension|size limit/i.test(err.message)) {
           throw new MediaValidationError('unsupported or invalid image');
         }
@@ -1584,14 +1601,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // so an uploaded HTML/SVG can never execute on the API/site origin.
     async function createFileAsset(
       ctx: ProjectContext,
-      projectId: string,
+      projectSlug: string,
       buffer: Buffer,
       meta: { filename: string; mimetype: string; folder?: string },
     ): Promise<FileAsset> {
       const assetId = randomUUID();
       const storedName = MediaStorage.safeStoredName(meta.filename || 'file');
       try {
-        await storage.storeFile(projectId, assetId, storedName, buffer);
+        await storage.storeFile(projectSlug, assetId, storedName, buffer);
         const asset = FileAssetSchema.parse({
           kind: 'file',
           id: assetId,
@@ -1600,18 +1617,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           bytes: buffer.length,
           contentType: meta.mimetype || 'application/octet-stream',
           storedName,
-          url: `/media/${projectId}/${assetId}/file/${storedName}`,
+          url: `/media/${projectSlug}/${assetId}/file/${storedName}`,
         });
         return (await contentRepo.put(ctx, 'media', assetId, asset)) as FileAsset;
       } catch (err) {
-        await storage.remove(projectId, assetId);
+        await storage.remove(projectSlug, assetId);
         throw err;
       }
     }
 
     // Store a self-hosted FONT family (kind 'font') — used by the local upload + Google select routes.
-    const createFontAsset = (ctx: ProjectContext, projectId: string, input: Parameters<typeof storeFontAsset>[4]) =>
-      storeFontAsset(contentRepo, storage, ctx, projectId, input);
+    const createFontAsset = (ctx: ProjectContext, projectSlug: string, input: Parameters<typeof storeFontAsset>[4]) =>
+      storeFontAsset(contentRepo, storage, ctx, projectSlug, input);
 
     // Upload ANY file: images are optimized (AVIF/WebP/LQIP); everything else is stored as-is
     // (download-only). The optional `?folder=` query files the asset under a virtual folder.
@@ -1651,7 +1668,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         if (isSvg) return reply.code(400).send({ error: 'SVG is not accepted' });
         if (meta.mimetype.startsWith('image/')) {
           try {
-            const saved = await createMediaAsset(ctx, project.id, buffer, meta);
+            const saved = await createMediaAsset(ctx, project.slug, buffer, meta);
             return reply.code(201).send({ item: saved });
           } catch (err) {
             if (err instanceof MediaValidationError) return reply.code(400).send({ error: err.message });
@@ -1671,7 +1688,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           });
           if (!fontMeta.success) return reply.code(400).send({ error: 'invalid font metadata' });
           try {
-            const saved = await createFontAsset(ctx, project.id, {
+            const saved = await createFontAsset(ctx, project.slug, {
               family: fontMeta.data.family,
               fallback: fontMeta.data.fallback,
               source: 'local',
@@ -1685,7 +1702,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           }
         }
         try {
-          const saved = await createFileAsset(ctx, project.id, buffer, meta);
+          const saved = await createFileAsset(ctx, project.slug, buffer, meta);
           return reply.code(201).send({ item: saved });
         } catch (err) {
           // A bad client-supplied contentType (the only externally-shaped field) → clean 400,
@@ -1745,8 +1762,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       }
       try {
         const saved = contentType.startsWith('image/')
-          ? await createMediaAsset(ctx, project.id, buffer, { filename, mimetype: contentType, folder })
-          : await createFileAsset(ctx, project.id, buffer, { filename, mimetype: contentType, folder });
+          ? await createMediaAsset(ctx, project.slug, buffer, { filename, mimetype: contentType, folder })
+          : await createFileAsset(ctx, project.slug, buffer, { filename, mimetype: contentType, folder });
         return reply.code(201).send({ item: saved });
       } catch (err) {
         if (err instanceof MediaValidationError) return reply.code(400).send({ error: err.message });
@@ -1784,7 +1801,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // whereas a leaked DB row would block re-creating the same asset id.
         await contentRepo.remove(ctx, 'media', req.params.id);
         try {
-          await storage.remove(project.id, req.params.id);
+          await storage.remove(project.slug, req.params.id);
         } catch (err) {
           app.log.error({ err }, 'media binary removal failed after DB delete');
         }
@@ -1811,18 +1828,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     /** Duplicates an asset (new id + copied binaries + rewritten url), optionally into another folder. */
     const duplicateAsset = async (
       ctx: ProjectContext,
-      projectId: string,
+      projectSlug: string,
       asset: MediaAsset,
       folder: string,
     ): Promise<MediaAsset> => {
       const newId = randomUUID();
-      await storage.copyAsset(projectId, asset.id, newId);
+      await storage.copyAsset(projectSlug, asset.id, newId);
       const url =
         asset.kind === 'image'
-          ? `/media/${projectId}/${newId}/${asset.fallback}`
+          ? `/media/${projectSlug}/${newId}/${asset.fallback}`
           : asset.kind === 'font'
-            ? `/media/${projectId}/${newId}/${asset.files[0]!.file}`
-            : `/media/${projectId}/${newId}/file/${asset.storedName}`;
+            ? `/media/${projectSlug}/${newId}/${asset.files[0]!.file}`
+            : `/media/${projectSlug}/${newId}/file/${asset.storedName}`;
       const copy = { ...asset, id: newId, folder, url } as MediaAsset;
       return (await contentRepo.put(ctx, 'media', newId, copy)) as MediaAsset;
     };
@@ -1899,7 +1916,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       }
       const assets = (await contentRepo.list(ctx, 'media')) as MediaAsset[];
       for (const a of assets) {
-        if (isUnderFolder(a.folder, from)) await duplicateAsset(ctx, project.id, a, reparentPath(a.folder, from, to));
+        if (isUnderFolder(a.folder, from)) await duplicateAsset(ctx, project.slug, a, reparentPath(a.folder, from, to));
       }
       return reply.send({ ok: true });
     });
@@ -1916,7 +1933,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         if (isUnderFolder(a.folder, folder)) {
           await contentRepo.remove(ctx, 'media', a.id);
           try {
-            await storage.remove(project.id, a.id);
+            await storage.remove(project.slug, a.id);
           } catch (e) {
             app.log.error({ err: e }, 'media binary removal failed during folder delete');
           }
@@ -1956,7 +1973,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const body = CopyAssetBody.safeParse(req.body ?? {});
       if (!body.success) return reply.code(400).send({ error: 'invalid folder' });
       const asset = (await contentRepo.get(ctx, 'media', req.params.id)) as MediaAsset;
-      const copy = await duplicateAsset(ctx, project.id, asset, body.data.folder ?? asset.folder);
+      const copy = await duplicateAsset(ctx, project.slug, asset, body.data.folder ?? asset.folder);
       return reply.code(201).send({ item: copy });
     });
 
@@ -1964,17 +1981,17 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // validates every segment and confines the path to the asset directory, so traversal is
     // impossible; `read` only accepts the image-servable charset (avif/webp/jpg). `nosniff` keeps
     // the browser from re-interpreting the bytes as anything other than the declared image type.
-    app.get<{ Params: { projectId: string; assetId: string; file: string } }>(
-      '/media/:projectId/:assetId/:file',
+    app.get<{ Params: { projectSlug: string; assetId: string; file: string } }>(
+      '/media/:projectSlug/:assetId/:file',
       async (req, reply) => {
-        const { projectId, assetId, file } = req.params;
+        const { projectSlug, assetId, file } = req.params;
         const ext = file.split('.').pop() ?? '';
         // A `kind:'font'` face is served INLINE (font/* + nosniff + CORS) so a sandboxed (opaque-
         // origin) preview iframe can load it via `@font-face`; fonts are public, immutable binaries.
         if (FONT_FACE_FILE.test(file)) {
           let bytes: Buffer;
           try {
-            bytes = await storage.readStored(projectId, assetId, file);
+            bytes = await storage.readStored(projectSlug, assetId, file);
           } catch {
             return reply.code(404).send({ error: 'not found' });
           }
@@ -1988,7 +2005,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         }
         let bytes: Buffer;
         try {
-          bytes = await storage.read(projectId, assetId, file);
+          bytes = await storage.read(projectSlug, assetId, file);
         } catch {
           return reply.code(404).send({ error: 'not found' });
         }
@@ -2004,13 +2021,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // Public serving of RAW (non-image) file assets. ALWAYS download-only: octet-stream +
     // `Content-Disposition: attachment` + `nosniff`, so an uploaded HTML/SVG/script can never
     // render or execute on this (cookie-bearing) origin. Distinct `/file/` path segment.
-    app.get<{ Params: { projectId: string; assetId: string; file: string } }>(
-      '/media/:projectId/:assetId/file/:file',
+    app.get<{ Params: { projectSlug: string; assetId: string; file: string } }>(
+      '/media/:projectSlug/:assetId/file/:file',
       async (req, reply) => {
-        const { projectId, assetId, file } = req.params;
+        const { projectSlug, assetId, file } = req.params;
         let bytes: Buffer;
         try {
-          bytes = await storage.readStored(projectId, assetId, file);
+          bytes = await storage.readStored(projectSlug, assetId, file);
         } catch {
           return reply.code(404).send({ error: 'not found' });
         }
@@ -2106,7 +2123,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             // readStored accepts image variant names, raw file names, AND font face names (superset),
             // so image/file/font assets are all copied into the published artifact.
             readMedia: mediaStorage
-              ? (assetId, file) => mediaStorage.readStored(project.id, assetId, file)
+              ? (assetId, file) => mediaStorage.readStored(project.slug, assetId, file)
               : undefined,
           });
           // Just published → nothing newer than this release, so the site is not dirty.
@@ -2298,8 +2315,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const item = existing
           ? // Merge into the existing family asset, keeping its stored family/fallback (identical to the
             // freshly-downloaded dl.* for the same catalog family, so there's nothing to clobber).
-            await mergeFontFaces(contentRepo, mediaStorage, ctx, project.id, existing, faces)
-          : await storeFontAsset(contentRepo, mediaStorage, ctx, project.id, {
+            await mergeFontFaces(contentRepo, mediaStorage, ctx, project.slug, existing, faces)
+          : await storeFontAsset(contentRepo, mediaStorage, ctx, project.slug, {
               family: dl.family,
               fallback: dl.fallback,
               source: 'google',

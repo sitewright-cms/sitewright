@@ -72,16 +72,16 @@ describe('project delete — on-disk cleanup', () => {
     expect((await client.get(asset.url)).statusCode).toBe(200);
 
     // Positive proof: both directories exist on disk before delete (published
-    // site keyed by slug; media keyed by project id).
+    // site AND media are both keyed by the project's slug).
     expect(existsSync(join(publishRoot, slug))).toBe(true);
-    expect(existsSync(join(mediaRoot, projectId))).toBe(true);
+    expect(existsSync(join(mediaRoot, slug))).toBe(true);
 
     // Delete the project.
     expect((await client.del(`/projects/${projectId}`)).statusCode).toBe(204);
 
     // The on-disk directories are gone (not merely 404 at the HTTP layer)...
     expect(existsSync(join(publishRoot, slug))).toBe(false);
-    expect(existsSync(join(mediaRoot, projectId))).toBe(false);
+    expect(existsSync(join(mediaRoot, slug))).toBe(false);
     // ... and the served URLs 404.
     expect((await client.get(`/sites/${slug}/index.html`)).statusCode).toBe(404);
     expect((await client.get(asset.url)).statusCode).toBe(404);

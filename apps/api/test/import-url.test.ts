@@ -58,7 +58,7 @@ describe('POST /projects/:projectId/media/import-url', () => {
     const item = res.json().item;
     expect(item.kind).toBe('image');
     expect(item.filename).toBe('photo.png');
-    expect(item.url.startsWith(`/media/${projectId}/`)).toBe(true);
+    expect(item.url.startsWith('/media/site/')).toBe(true); // media keyed by slug ('site'), not project id
   });
 
   it('stores a non-image download as a file asset', async () => {

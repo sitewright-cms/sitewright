@@ -32,12 +32,12 @@ export interface StockRoutesDeps {
   resolveProject: (
     req: ProjectReq,
     access: ApiKeyCapability | 'session-only',
-  ) => Promise<{ ctx: ProjectContext; project: { id: string } }>;
+  ) => Promise<{ ctx: ProjectContext; project: { id: string; slug: string } }>;
   isWriter: (ctx: ProjectContext) => boolean;
   stockService: StockServiceLike;
   createMediaAsset: (
     ctx: ProjectContext,
-    projectId: string,
+    projectSlug: string,
     buffer: Buffer,
     meta: { filename: string; mimetype: string; folder?: string; alt?: string; attribution?: MediaAsset['attribution'] },
   ) => Promise<MediaAsset>;
@@ -91,7 +91,7 @@ export function registerStockRoutes(app: FastifyInstance, deps: StockRoutesDeps)
       try {
         const fetched = await stockService.fetchForImport(body.provider, body.id);
         if (!fetched) return reply.code(404).send({ error: 'stock image not found' });
-        const asset = await createMediaAsset(ctx, project.id, fetched.buffer, {
+        const asset = await createMediaAsset(ctx, project.slug, fetched.buffer, {
           // id is display-only here (the on-disk path uses a UUID), but strip path-ish
           // characters so the stored filename stays clean.
           filename: `${body.provider}-${body.id.replace(/[^a-zA-Z0-9._-]/g, '_')}`,

@@ -16,7 +16,7 @@ export interface CreateFontAssetInput {
 
 /**
  * Stores a self-hosted font family as a `kind:'font'` media asset: each face under
- * `<projectId>/<assetId>/<weight>[-italic].<ext>`, plus the asset record. Shared by the upload +
+ * `<projectSlug>/<assetId>/<weight>[-italic].<ext>`, plus the asset record. Shared by the upload +
  * Google-select routes and the demo seed. Served INLINE so `@font-face` can load it; bundled into
  * the published artifact like any media (zero font-CDN references).
  */
@@ -24,7 +24,7 @@ export async function createFontAsset(
   contentRepo: ContentRepository,
   storage: MediaStorage,
   ctx: ProjectContext,
-  projectId: string,
+  projectSlug: string,
   input: CreateFontAssetInput,
 ): Promise<FontAsset> {
   const assetId = randomUUID();
@@ -33,7 +33,7 @@ export async function createFontAsset(
     let bytes = 0;
     for (const f of input.faces) {
       const file = `${f.weight}${f.style === 'italic' ? '-italic' : ''}.${FONT_EXT[f.format]}`;
-      await storage.storeFile(projectId, assetId, file, f.bytes);
+      await storage.storeFile(projectSlug, assetId, file, f.bytes);
       files.push({ weight: f.weight, style: f.style, format: f.format, file });
       bytes += f.bytes.length;
     }
@@ -47,11 +47,11 @@ export async function createFontAsset(
       fallback: input.fallback,
       source: input.source,
       files,
-      url: `/media/${projectId}/${assetId}/${files[0]!.file}`,
+      url: `/media/${projectSlug}/${assetId}/${files[0]!.file}`,
     });
     return (await contentRepo.put(ctx, 'media', assetId, asset)) as FontAsset;
   } catch (err) {
-    await storage.remove(projectId, assetId);
+    await storage.remove(projectSlug, assetId);
     throw err;
   }
 }
@@ -66,7 +66,7 @@ export async function mergeFontFaces(
   contentRepo: ContentRepository,
   storage: MediaStorage,
   ctx: ProjectContext,
-  projectId: string,
+  projectSlug: string,
   existing: FontAsset,
   faces: CreateFontAssetInput['faces'],
 ): Promise<FontAsset> {
@@ -78,7 +78,7 @@ export async function mergeFontFaces(
       const key = `${f.weight}-${f.style}`;
       if (have.has(key)) continue;
       const file = `${f.weight}${f.style === 'italic' ? '-italic' : ''}.${FONT_EXT[f.format]}`;
-      await storage.storeFile(projectId, existing.id, file, f.bytes);
+      await storage.storeFile(projectSlug, existing.id, file, f.bytes);
       added.push({ weight: f.weight, style: f.style, format: f.format, file });
       have.add(key);
       addedBytes += f.bytes.length;
@@ -86,7 +86,7 @@ export async function mergeFontFaces(
   } catch (err) {
     // Roll back faces written before the failure (symmetry with createFontAsset, which drops the whole
     // new asset dir — here we remove only the NEW files, never the existing ones).
-    await Promise.all(added.map((a) => storage.removeFile(projectId, existing.id, a.file).catch(() => undefined)));
+    await Promise.all(added.map((a) => storage.removeFile(projectSlug, existing.id, a.file).catch(() => undefined)));
     throw err;
   }
   if (added.length === 0) return existing;

@@ -25,6 +25,7 @@ import { MediaStorage } from '../src/media/storage.js';
 import { seedExampleAssets } from '../src/seed-assets.js';
 
 const ctx = { userId: 'u1', projectId: 'p1', role: 'owner' as const };
+const slug = 'example'; // media is keyed by the project's (immutable) slug, not its id
 
 describe('seedExampleAssets', () => {
   let root: string;
@@ -47,10 +48,10 @@ describe('seedExampleAssets', () => {
       },
     } as never;
 
-    const urls = await seedExampleAssets(ctx, repo, new MediaStorage(root));
+    const urls = await seedExampleAssets(ctx, slug, repo, new MediaStorage(root));
 
     expect(Object.keys(urls)).toHaveLength(12);
-    expect(urls['proj-harbor']).toMatch(/^\/media\/p1\/ex-proj-harbor\/[\w-]+\.jpg$/);
+    expect(urls['proj-harbor']).toMatch(/^\/media\/example\/ex-proj-harbor\/[\w-]+\.jpg$/);
     expect(urls['team-devon']).toBeDefined();
     expect(urls['hero']).toBeDefined();
     expect(urls['studio']).toBeDefined();
@@ -85,7 +86,7 @@ describe('seedExampleAssets', () => {
       return realRemove(...a);
     }) as typeof storage.remove;
 
-    const urls = await seedExampleAssets(ctx, repo, storage);
+    const urls = await seedExampleAssets(ctx, slug, repo, storage);
     expect(Object.keys(urls)).toHaveLength(11); // the failed one is absent
     expect(removed).toBeGreaterThanOrEqual(1); // its half-written dir was removed
   });

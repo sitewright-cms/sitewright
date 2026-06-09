@@ -449,7 +449,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
           // the last scroll position in a `#sw-y=` fragment (fragments aren't sent to the server)
           // so the freshly-loaded doc's bridge restores it instead of jumping to the top.
           setPreviewSrc(
-            token ? previewDocUrl(project.id, token) + (scrollYRef.current ? `#sw-y=${scrollYRef.current}` : '') : '',
+            token ? previewDocUrl(project.slug, token) + (scrollYRef.current ? `#sw-y=${scrollYRef.current}` : '') : '',
           );
           setPreviewError(null);
           setPreviewLoading(false);

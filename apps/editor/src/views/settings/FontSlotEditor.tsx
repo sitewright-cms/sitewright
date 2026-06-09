@@ -61,18 +61,21 @@ export function FontSlotEditor({
   // media URL (which the preview route serves inline + the published export self-hosts).
   useEffect(() => {
     if (!asset || asset.kind !== 'font') return;
+    // Derive the `/media/<slug>/<assetId>/` base from the asset's own (slug-based) url so we never
+    // reconstruct the project segment here; each face just appends its own file name.
+    const base = asset.url.slice(0, asset.url.lastIndexOf('/'));
     const css = asset.files
       .map(
         (f) =>
           `@font-face{font-family:"${asset.family}";font-style:${f.style};font-weight:${f.weight};font-display:swap;` +
-          `src:url(/media/${projectId}/${asset.id}/${f.file}) format("${FORMAT_HINT[f.format] ?? 'woff2'}")}`,
+          `src:url(${base}/${f.file}) format("${FORMAT_HINT[f.format] ?? 'woff2'}")}`,
       )
       .join('');
     const style = document.createElement('style');
     style.textContent = css;
     document.head.appendChild(style);
     return () => style.remove();
-  }, [asset, projectId]);
+  }, [asset]);
 
   const isAsset = slot.source === 'asset';
   const previewFamily = isAsset ? `'${slot.family}', sans-serif` : slot.family;

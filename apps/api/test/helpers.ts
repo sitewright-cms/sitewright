@@ -40,7 +40,7 @@ process.once('exit', cleanupCreatedDbs);
  */
 export async function makeTestDb(): Promise<Database> {
   const file = join(tmpdir(), `sw-api-test-${randomUUID()}.db`);
-  const { db, client } = createDb(`file:${file}`);
+  const { db, client } = await createDb(`file:${file}`);
   createdDbs.push({ file, client });
   await runMigrations(db);
   return db;

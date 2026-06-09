@@ -1,16 +1,21 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 
-const { publishStatus, publish, archiveUrl } = vi.hoisted(() => ({
+const { publishStatus, publish, archiveUrl, getSettings } = vi.hoisted(() => ({
   publishStatus: vi.fn(),
   publish: vi.fn(),
   archiveUrl: vi.fn<(id: string) => string>(() => '/projects/p/publish/archive'),
+  // No preview token by default → the View/Preview link is the bare /sites/<slug>/ URL.
+  getSettings: vi.fn<(id: string) => Promise<{ item: { website?: { previewToken?: string } } }>>(() =>
+    Promise.resolve({ item: {} }),
+  ),
 }));
 vi.mock('../src/api', () => ({
   api: {
     publishStatus: (id: string) => publishStatus(id),
     publish: (id: string) => publish(id),
     archiveUrl: (id: string) => archiveUrl(id),
+    getSettings: (id: string) => getSettings(id),
   },
   eventsUrl: (id: string) => `/projects/${id}/events`,
 }));
@@ -42,6 +47,14 @@ describe('PublishBar', () => {
     expect(preview).toHaveAttribute('href', '/sites/acme/');
     expect(screen.getByText(/Published · 3 pages/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Publish' })).toBeNull();
+  });
+
+  it('appends the preview token to the View/Preview link when the site is token-gated', async () => {
+    publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false });
+    getSettings.mockResolvedValueOnce({ item: { website: { previewToken: 'tok_abcdefgh12345678' } } });
+    render(<PublishBar project={project} />);
+    const preview = await screen.findByRole('link', { name: /Preview/ });
+    await waitFor(() => expect(preview).toHaveAttribute('href', '/sites/acme/?token=tok_abcdefgh12345678'));
   });
 
   it('switches Publish → Preview after a successful publish', async () => {

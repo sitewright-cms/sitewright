@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, eventsUrl, type Project, type Release } from '../api';
-import { DeployForm } from './publish/DeployForm';
 
 /** Cloud-upload glyph for the publish action. */
 function PublishIcon() {
@@ -27,14 +26,24 @@ function PreviewIcon() {
  * unpublished changes (`dirty`), neutral otherwise — with the secondary actions (view, download,
  * deploy) tucked behind a "…" menu so the header stays focused on the one primary action.
  */
-export function PublishBar({ project }: { project: Project }) {
+export function PublishBar({
+  project,
+  onOpenDeploy,
+  refreshSignal = 0,
+}: {
+  project: Project;
+  /** Open the Publish & Deploy modal on its Deploy tab (the header overflow owns the modal). */
+  onOpenDeploy?: () => void;
+  /** Bumped by the parent when publish settings change, so the preview-token URL stays current. */
+  refreshSignal?: number;
+}) {
   const [release, setRelease] = useState<Release | null>(null);
   const [url, setUrl] = useState('');
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [showDeploy, setShowDeploy] = useState(false);
+  const [previewToken, setPreviewToken] = useState<string | undefined>(undefined);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -50,10 +59,17 @@ export function PublishBar({ project }: { project: Project }) {
       .catch(() => {
         /* no published site yet, or transient — Publish still works */
       });
+    // The preview-token gate (if any) must be reflected in the View/Preview link.
+    api
+      .getSettings(project.id)
+      .then((res) => active && setPreviewToken(res.item.website?.previewToken))
+      .catch(() => {
+        /* settings unreadable → no token gate to honor */
+      });
     return () => {
       active = false;
     };
-  }, [project.id]);
+  }, [project.id, refreshSignal]);
 
   // Any content change (this user, or another channel via the SSE bus) means there are now
   // unpublished changes — flip back to the green Publish button (out of the "Preview" state).
@@ -92,13 +108,15 @@ export function PublishBar({ project }: { project: Project }) {
   // After a clean publish the primary action becomes "Preview" (open the live site); it reverts to
   // the green "Publish" the moment there are unpublished changes (dirty) or nothing is published yet.
   const showPreview = published && !dirty;
+  // When a preview token gates the site, the View/Preview link must carry it.
+  const viewUrl = url && previewToken ? `${url}${url.includes('?') ? '&' : '?'}token=${encodeURIComponent(previewToken)}` : url;
 
   return (
     <div className="flex flex-col items-end gap-1">
       <div className="flex items-center gap-2">
         {showPreview && url ? (
           <a
-            href={url}
+            href={viewUrl}
             target="_blank"
             rel="noreferrer"
             title="View your published site"
@@ -144,7 +162,7 @@ export function PublishBar({ project }: { project: Project }) {
                 {url && (
                   <a
                     role="menuitem"
-                    href={url}
+                    href={viewUrl}
                     target="_blank"
                     rel="noreferrer"
                     aria-label="View published site"
@@ -164,7 +182,7 @@ export function PublishBar({ project }: { project: Project }) {
                 <button
                   role="menuitem"
                   onClick={() => {
-                    setShowDeploy((s) => !s);
+                    onOpenDeploy?.();
                     setMenuOpen(false);
                   }}
                   className="block w-full cursor-pointer px-3 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-50"
@@ -182,11 +200,6 @@ export function PublishBar({ project }: { project: Project }) {
         </span>
       )}
       {error && <span className="text-xs text-red-600">{error}</span>}
-      {published && showDeploy && (
-        <div className="mt-2 w-full max-w-md">
-          <DeployForm project={project} />
-        </div>
-      )}
     </div>
   );
 }

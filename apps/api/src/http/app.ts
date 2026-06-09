@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { newId } from '../id.js';
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import cookie from '@fastify/cookie';
@@ -2186,6 +2186,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             // The runtime GLOBAL template library so the worker resolves `global:<id>` refs to the
             // admin-edited source (the built-in constants are only the boot seed). Always seeded.
             globalTemplates: await listGlobalTemplates(contentRepo),
+            // The `website.minifyHtml` publish option — minify each page's HTML in the worker.
+            ...(bundle.project.website?.minifyHtml ? { minifyHtml: true } : {}),
             // readStored accepts image variant names, raw file names, AND font face names (superset),
             // so image/file/font assets are all copied into the published artifact.
             readMedia: mediaStorage
@@ -2303,6 +2305,34 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         if (asset !== null) return reply.type(asset.contentType).send(asset.body);
         const html = await store.readHtml(slug, path);
         if (html === null) return reply.code(404).type('text/html').send('<h1>404 — not published</h1>');
+        // Publish-option gates apply to PAGE (HTML) responses only — the static assets above and the
+        // 404 above are ungated, so the per-request settings read happens ONLY for a real page (never
+        // for assets or unknown paths). The protected resource is the page; a sub-resource URL is
+        // useless without it.
+        const gateProject = await projects.getBySlug(slug).catch(() => null);
+        if (gateProject) {
+          // `get` throws NotFoundError when a project has no settings entity → no gate (serve normally).
+          const gateSettings = (await contentRepo
+            .get({ userId: 'system', projectId: gateProject.id, role: 'owner' as const }, 'settings', SETTINGS_ENTITY_ID)
+            .catch(() => null)) as Settings | null;
+          const web = gateSettings?.website;
+          // Local hosting disabled → behave as if nothing is published here.
+          if (web?.localPublish === false) return reply.code(404).type('text/html').send('<h1>404 — not published</h1>');
+          // Preview token set → require a matching `?token=` (constant-time compare; lengths are
+          // equal-or-reject so timingSafeEqual never throws).
+          if (web?.previewToken) {
+            const raw = (req.query as { token?: string | string[] } | undefined)?.token;
+            const token = typeof raw === 'string' ? raw : '';
+            const a = Buffer.from(token);
+            const b = Buffer.from(web.previewToken);
+            if (!(a.length === b.length && timingSafeEqual(a, b))) {
+              return reply
+                .code(403)
+                .type('text/html')
+                .send('<h1>403 — a preview token is required to view this site</h1>');
+            }
+          }
+        }
         // Redirect an EXTENSIONLESS page request that lacks its trailing slash to the canonical
         // directory URL, so the page's RELATIVE asset/link paths (`../styles.css`, `_assets/…`)
         // resolve against the right base instead of one level too high. Explicit file URLs

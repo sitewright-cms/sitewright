@@ -129,6 +129,7 @@ export class WorkerBuildRunner implements BuildRunner {
       jsonData: job.jsonData,
       snippets: job.snippets,
       globalTemplates: job.globalTemplates,
+      minifyHtml: job.minifyHtml,
     };
   }
 

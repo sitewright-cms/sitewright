@@ -21,6 +21,8 @@ export interface WorkerJob {
   snippets?: Record<string, string>;
   /** The runtime GLOBAL template library (admin-edited `global:<id>` templates, bare ids). */
   globalTemplates?: Template[];
+  /** Minify each rendered page's HTML before writing (the `website.minifyHtml` publish option). */
+  minifyHtml?: boolean;
 }
 
 /** The worker's result: the release manifest + every built file as base64. */
@@ -53,6 +55,7 @@ export async function runWorker(job: WorkerJob): Promise<WorkerResult> {
       jsonData: job.jsonData,
       snippets: job.snippets,
       globalTemplates: job.globalTemplates,
+      minifyHtml: job.minifyHtml,
       readMedia: async (assetId, file) => {
         const b64 = readBase64(filesByAsset.get(assetId) ?? {}, file);
         if (b64 === undefined) throw Object.assign(new Error('missing'), { code: 'ENOENT' });

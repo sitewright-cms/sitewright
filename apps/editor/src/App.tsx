@@ -7,6 +7,7 @@ import { LibraryPanel } from './views/library/LibraryPanel';
 import { SnippetsPanel, TemplatesPanel } from './views/code/CodeRailPanels';
 import { DataPanel } from './views/datasets/DataPanel';
 import { PublishBar } from './views/PublishBar';
+import { PublishDeployModal } from './views/publish/PublishDeployModal';
 import { ProjectSelectorModal } from './views/ProjectSelectorModal';
 import { NewProjectModal } from './views/NewProjectModal';
 import { AcceptInvite } from './views/AcceptInvite';
@@ -46,6 +47,10 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
   // The project picker is shown automatically on first load and reachable from the header.
   const [selectorOpen, setSelectorOpen] = useState(false);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
+  // The Publish & Deploy Options modal (header overflow); `publishRefresh` bumps PublishBar so its
+  // preview-token link stays current after the options are saved.
+  const [publishModalTab, setPublishModalTab] = useState<'publish' | 'deploy' | null>(null);
+  const [publishRefresh, setPublishRefresh] = useState(0);
 
   async function refresh(): Promise<Project[]> {
     try {
@@ -157,7 +162,25 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
 
       {/* Right: publish (owners) + admin + sign out, grouped at the far right. */}
       <nav className="flex items-center justify-end gap-4">
-        {inProject && !isClient && <PublishBar project={inProject} />}
+        {inProject && !isClient && (
+          <PublishBar
+            project={inProject}
+            onOpenDeploy={() => setPublishModalTab('deploy')}
+            refreshSignal={publishRefresh}
+          />
+        )}
+        {inProject && !isClient && (
+          <button
+            // Accessible name avoids the substring "Publish" so it doesn't collide with the green
+            // Publish button in role/name queries; the tooltip carries the full label.
+            className="rounded-md px-1.5 text-lg leading-none text-slate-500 transition hover:text-slate-900"
+            aria-label="Site options"
+            title="Publish & deploy options"
+            onClick={() => setPublishModalTab('publish')}
+          >
+            ⋮
+          </button>
+        )}
         {isInstanceAdmin && stage.name !== 'admin' && (
           <button className="text-sm text-slate-500 hover:text-slate-900" onClick={() => setStage({ name: 'admin' })}>
             Admin
@@ -222,6 +245,14 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
             setProjects((prev) => (prev.some((p) => p.id === project.id) ? prev : [...prev, project]));
             openProject(project);
           }}
+        />
+      )}
+      {inProject && !isClient && publishModalTab && (
+        <PublishDeployModal
+          project={inProject}
+          initialTab={publishModalTab}
+          onClose={() => setPublishModalTab(null)}
+          onSaved={() => setPublishRefresh((n) => n + 1)}
         />
       )}
       {/* Always-present edge side-panels (owners): System Library (left), File Manager (right), and

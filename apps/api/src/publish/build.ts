@@ -1,5 +1,6 @@
 import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
+import { minify as minifyHtmlDocument } from 'html-minifier-terser';
 import {
   allRoutes,
   buildNav,
@@ -160,10 +161,34 @@ export interface BuildSiteOptions {
    * Omitted → `resolveTemplateSource` uses the built-in constants. Threaded to the isolated worker.
    */
   globalTemplates?: Template[];
+  /** Minify each rendered page's HTML before writing (the `website.minifyHtml` publish option). */
+  minifyHtml?: boolean;
 }
 
 /** The published directory that holds each project's bundled asset binaries. */
 export const ASSET_DIR = '_assets';
+
+/**
+ * Conservatively minify a rendered page (the `website.minifyHtml` option). `conservativeCollapse`
+ * collapses whitespace runs to a single space (never to zero) so inline-element spacing is preserved;
+ * inline CSS/JS are left untouched (already compiled/minified upstream). Falls back to the original
+ * HTML if the minifier throws on some edge case — minification is cosmetic and must never fail a publish.
+ */
+async function minifyPageHtml(html: string): Promise<string> {
+  try {
+    return await minifyHtmlDocument(html, {
+      collapseWhitespace: true,
+      conservativeCollapse: true,
+      removeComments: true,
+      keepClosingSlash: true,
+      caseSensitive: true,
+      minifyCSS: false,
+      minifyJS: false,
+    });
+  } catch {
+    return html;
+  }
+}
 
 /**
  * Copies every media asset's files into `<base>/_assets/<assetId>/` (path-safe). Image
@@ -596,9 +621,10 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         // preview) — covers code-first `{{sw-url}}` + literal `href="/…"`; block-tree links are
         // already relative from render time.
         const portableHtml = relativizeInternalLinks(mediaRebased, siteRoot);
+        const finalHtml = opts.minifyHtml ? await minifyPageHtml(portableHtml) : portableHtml;
         // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to tmp (checked above)
-        await writeFile(full, portableHtml, 'utf8');
-        bytes += Buffer.byteLength(portableHtml);
+        await writeFile(full, finalHtml, 'utf8');
+        bytes += Buffer.byteLength(finalHtml);
         if (bytes > maxOutputBytes) {
           throw new PublishError('published site exceeds the maximum output size');
         }

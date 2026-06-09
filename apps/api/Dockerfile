@@ -20,6 +20,10 @@ WORKDIR /app
 COPY . .
 
 ENV NODE_ENV=production
+# The DB runs in WAL mode, so /data also holds `sitewright.db-wal` (+ `-shm`). BACKUP NOTE: a bare
+# `cp sitewright.db` (or a snapshot that misses the -wal) can be CORRUPT — back up with
+# `sqlite3 sitewright.db ".backup out.db"` or run `PRAGMA wal_checkpoint(TRUNCATE)` first. (-shm is
+# always rebuilt on open and need not be copied.)
 ENV DATABASE_URL=file:/data/sitewright.db
 ENV PORT=80
 # The editor SPA is copied into the deploy context as ./editor (see deploy step).

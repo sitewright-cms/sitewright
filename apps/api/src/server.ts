@@ -136,7 +136,7 @@ const renderPool = new RenderPool({
   maxRendersPerWorker: renderEnvInt(process.env.SW_RENDER_MAX_RENDERS, 500),
 });
 
-const { db } = createDb(url);
+const { db } = await createDb(url);
 await runMigrations(db);
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- trusted startup env path
 await mkdir(mediaRoot, { recursive: true });

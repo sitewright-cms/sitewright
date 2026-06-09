@@ -262,6 +262,16 @@ export const api = {
   deleteSnippet: (projectId: string, id: string) =>
     request<void>('DELETE', `/projects/${projectId}/content/snippet/${encodeURIComponent(id)}`),
 
+  // --- GLOBAL library (instance-wide; read by everyone, written only by an instance admin) ---
+  listGlobalSnippets: () => request<{ items: Snippet[] }>('GET', '/global/snippet'),
+  putGlobalSnippet: (snippet: Snippet) =>
+    request<{ item: Snippet }>('PUT', `/admin/global/snippet/${encodeURIComponent(snippet.id)}`, snippet),
+  deleteGlobalSnippet: (id: string) => request<void>('DELETE', `/admin/global/snippet/${encodeURIComponent(id)}`),
+  listGlobalTemplates: () => request<{ items: Template[] }>('GET', '/global/template'),
+  putGlobalTemplate: (template: Template) =>
+    request<{ item: Template }>('PUT', `/admin/global/template/${encodeURIComponent(template.id)}`, template),
+  deleteGlobalTemplate: (id: string) => request<void>('DELETE', `/admin/global/template/${encodeURIComponent(id)}`),
+
   // --- patterns (reusable, fork-on-insert block subtrees) ---
   listPatterns: (projectId: string) =>
     request<{ items: Pattern[] }>('GET', `/projects/${projectId}/content/pattern`),

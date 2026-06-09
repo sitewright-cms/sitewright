@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ProjectBundle } from '@sitewright/core';
-import type { MediaAsset } from '@sitewright/schema';
+import type { MediaAsset, Template } from '@sitewright/schema';
 import { buildSite, PublishError, type ReleaseManifest } from './build.js';
 import { collectSiteFiles } from './adapters.js';
 
@@ -19,6 +19,8 @@ export interface WorkerJob {
   jsonData?: unknown;
   /** Reusable Handlebars partials (name → source) a source page can `{{> compose}}`. */
   snippets?: Record<string, string>;
+  /** The runtime GLOBAL template library (admin-edited `global:<id>` templates, bare ids). */
+  globalTemplates?: Template[];
 }
 
 /** The worker's result: the release manifest + every built file as base64. */
@@ -50,6 +52,7 @@ export async function runWorker(job: WorkerJob): Promise<WorkerResult> {
       media, // includes `kind:'font'` assets — copyMedia bundles their faces
       jsonData: job.jsonData,
       snippets: job.snippets,
+      globalTemplates: job.globalTemplates,
       readMedia: async (assetId, file) => {
         const b64 = readBase64(filesByAsset.get(assetId) ?? {}, file);
         if (b64 === undefined) throw Object.assign(new Error('missing'), { code: 'ENOENT' });

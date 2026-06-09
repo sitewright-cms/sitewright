@@ -92,19 +92,23 @@ export function isGlobalTemplate(ref: string): boolean {
   return ref.startsWith(GLOBAL_TEMPLATE_PREFIX);
 }
 
+/** The built-in globals as a resolver map (keyed by the full `global:<id>` reference). */
+const BUILTIN_GLOBAL_TEMPLATE_MAP: ReadonlyMap<string, Template> = new Map(GLOBAL_TEMPLATES.map((t) => [t.id, t]));
+
 /**
- * Resolves a `Page.template` reference to its Handlebars source: built-in
- * globals by prefix, otherwise the project's template entities. Throws
- * {@link TemplateResolutionError} for an unknown reference (an author-correctable
- * publish error — never silently render a blank page).
+ * Resolves a `Page.template` reference to its Handlebars source: global templates by prefix
+ * (from `globalTemplates`, keyed by the full `global:<id>` ref — defaults to the built-in constants
+ * so existing callers/tests are unchanged; the API/publish path passes the runtime, admin-edited
+ * global library), otherwise the project's own template entities. Throws
+ * {@link TemplateResolutionError} for an unknown reference (an author-correctable publish error —
+ * never silently render a blank page).
  */
 export function resolveTemplateSource(
   ref: string,
   projectTemplates: ReadonlyMap<string, Template>,
+  globalTemplates: ReadonlyMap<string, Template> = BUILTIN_GLOBAL_TEMPLATE_MAP,
 ): string {
-  const template = isGlobalTemplate(ref)
-    ? GLOBAL_TEMPLATES.find((t) => t.id === ref)
-    : projectTemplates.get(ref);
+  const template = isGlobalTemplate(ref) ? globalTemplates.get(ref) : projectTemplates.get(ref);
   if (template === undefined) {
     throw new TemplateResolutionError(`unknown template: ${ref}`);
   }

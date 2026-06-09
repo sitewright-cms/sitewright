@@ -10,6 +10,7 @@ import {
   publishedPages,
   relativeRoot,
   resolveTemplateSource,
+  GLOBAL_TEMPLATE_PREFIX,
   resolveLocaleDatasets,
   translationsOf,
   localeOf as localeOfPage,
@@ -154,6 +155,11 @@ export interface BuildSiteOptions {
    * which already loads these — this closes the publish-side gap.
    */
   snippets?: Record<string, string>;
+  /**
+   * The runtime GLOBAL template library (admin-edited `global:<id>` templates), stored with bare ids.
+   * Omitted → `resolveTemplateSource` uses the built-in constants. Threaded to the isolated worker.
+   */
+  globalTemplates?: Template[];
 }
 
 /** The published directory that holds each project's bundled asset binaries. */
@@ -297,10 +303,15 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // global) when set, else its own. An unknown reference is an author-correctable
     // publish failure — never a silently blank page.
     const templateMap = new Map<string, Template>((bundle.templates ?? []).map((t) => [t.id, t]));
+    // The runtime global-template library (admin-edited), keyed by the full `global:<id>` ref.
+    // `undefined` when not supplied so `resolveTemplateSource` falls back to the built-in constants.
+    const globalTemplateMap = opts.globalTemplates
+      ? new Map<string, Template>(opts.globalTemplates.map((t) => [GLOBAL_TEMPLATE_PREFIX + t.id, t]))
+      : undefined;
     const effectiveSource = (page: Page): string | undefined => {
       if (!page.template) return page.source;
       try {
-        return resolveTemplateSource(page.template, templateMap);
+        return resolveTemplateSource(page.template, templateMap, globalTemplateMap);
       } catch (err) {
         throw new PublishError(err instanceof Error ? err.message : `unknown template: ${page.template}`);
       }

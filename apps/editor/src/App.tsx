@@ -232,8 +232,8 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
           <LibraryPanel />
           <AssetsPanel key={inProject.id} projectId={inProject.id} />
           <DataPanel key={`dt-${inProject.id}`} project={inProject} />
-          <SnippetsPanel key={`sn-${inProject.id}`} projectId={inProject.id} />
-          <TemplatesPanel key={`tp-${inProject.id}`} projectId={inProject.id} />
+          <SnippetsPanel key={`sn-${inProject.id}`} projectId={inProject.id} isAdmin={isInstanceAdmin} />
+          <TemplatesPanel key={`tp-${inProject.id}`} projectId={inProject.id} isAdmin={isInstanceAdmin} />
         </>
       )}
     </div>

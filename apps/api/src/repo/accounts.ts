@@ -1,7 +1,8 @@
 import { newId } from '../id.js';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, ne } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
 import { projectMembers, projects, users, type PlatformRole, type ProjectRole } from '../db/schema.js';
+import { GLOBAL_SCOPE_ID } from './global-library.js';
 import { hashPassword, verifyPassword } from '../auth/password.js';
 import {
   ConflictError,
@@ -129,7 +130,8 @@ export async function listProjectAccessForUser(db: Database, userId: string): Pr
   if ((await getPlatformRole(db, userId)) === 'admin') {
     const all = await db
       .select({ projectId: projects.id, projectName: projects.name, projectSlug: projects.slug })
-      .from(projects);
+      .from(projects)
+      .where(ne(projects.id, GLOBAL_SCOPE_ID)); // hide the reserved global-library scope
     return all.map((p) => ({ ...p, role: 'owner' as ProjectRole }));
   }
   return db

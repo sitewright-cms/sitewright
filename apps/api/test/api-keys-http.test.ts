@@ -169,6 +169,9 @@ describe('project API keys — bearer auth + capabilities', () => {
     expect(res.json()).toEqual({ projectId,
       role: 'owner',
       capabilities: ['content:read', 'publish'],
+      // The effective agent instructions (default here — no admin override) ride along so the bridge
+      // can set them without an extra round-trip.
+      agentInstructions: expect.any(String),
     });
     // Unauthenticated / unknown token → 401.
     expect((await app.inject({ method: 'GET', url: '/api-key/self' })).statusCode).toBe(401);

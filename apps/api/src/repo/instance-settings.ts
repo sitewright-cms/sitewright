@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import {
   InstanceSettingsStoredSchema,
   maskInstanceSettings,
+  DEFAULT_AGENT_INSTRUCTIONS,
   DEFAULT_FORM_MODES,
   type InstanceSettingsInput,
   type InstanceSettingsStored,
@@ -53,6 +54,11 @@ export class InstanceSettingsRepository {
   /** The enabled web-form mail modes (non-secret; for the project form-mode selector). */
   async getFormModes(): Promise<InstanceSettingsStored['formModes']> {
     return (await this.getStored()).formModes;
+  }
+
+  /** The agent (MCP) instructions actually served to bridges — the admin override or the default. */
+  async getEffectiveAgentInstructions(): Promise<string> {
+    return (await this.getStored()).agentInstructions ?? DEFAULT_AGENT_INSTRUCTIONS;
   }
 
   /**
@@ -118,6 +124,16 @@ export class InstanceSettingsRepository {
         ...(pexels !== undefined ? { pexels } : {}),
       };
       next.stock = stock;
+    }
+
+    // Agent instructions: a string sets the override, `null` clears it (revert to default),
+    // and undefined keeps whatever was stored.
+    if (input.agentInstructions === null) {
+      // cleared — leave next.agentInstructions undefined
+    } else if (input.agentInstructions === undefined) {
+      if (current.agentInstructions !== undefined) next.agentInstructions = current.agentInstructions;
+    } else {
+      next.agentInstructions = input.agentInstructions;
     }
 
     // Validate the merged document before persisting (defense in depth).

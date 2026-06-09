@@ -1,4 +1,5 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { DEFAULT_AGENT_INSTRUCTIONS, MCP_TOOL_CATALOG } from '@sitewright/schema';
 import { api, type InstanceSettingsInput, type InstanceSettingsPublic } from '../api';
 import { glassCard, glassInput, primaryButton } from '../theme';
 import { SkeletonList } from './ui/Skeleton';
@@ -23,6 +24,11 @@ export function InstanceSettings() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  // The agent (MCP) instructions textarea — pre-filled with the override or the built-in default.
+  const [agentInstructions, setAgentInstructions] = useState(DEFAULT_AGENT_INSTRUCTIONS);
+  // The hydrated value, so save only sends agentInstructions when the admin actually edited it
+  // (an unrelated save must never touch the stored override).
+  const initialInstructionsRef = useRef(DEFAULT_AGENT_INSTRUCTIONS);
 
   const [modes, setModes] = useState<InstanceSettingsPublic['formModes']>(EMPTY_MODES);
 
@@ -67,6 +73,9 @@ export function InstanceSettings() {
     setHasPexels(s.stock?.hasPexels ?? false);
     setUnsplashKey('');
     setPexelsKey('');
+    const instr = s.agentInstructions ?? DEFAULT_AGENT_INSTRUCTIONS;
+    setAgentInstructions(instr);
+    initialInstructionsRef.current = instr;
   }
 
   useEffect(() => {
@@ -110,6 +119,14 @@ export function InstanceSettings() {
     input.stock = stockEnabled
       ? { ...(unsplashKey ? { unsplash: unsplashKey } : {}), ...(pexelsKey ? { pexels: pexelsKey } : {}) }
       : null; // disabling clears both keys
+    // Only touch agentInstructions when the admin actually edited the textarea — an unrelated save
+    // must leave the stored override alone. When edited: store an override unless it's empty or equals
+    // the default (then send null → revert), so we never persist the whole default as an override.
+    if (agentInstructions !== initialInstructionsRef.current) {
+      const trimmedInstructions = agentInstructions.trim();
+      input.agentInstructions =
+        trimmedInstructions === '' || trimmedInstructions === DEFAULT_AGENT_INSTRUCTIONS.trim() ? null : agentInstructions;
+    }
     try {
       const res = await api.putInstanceSettings(input);
       hydrate(res.settings);
@@ -124,7 +141,10 @@ export function InstanceSettings() {
 
   const field = glassInput;
 
+  const origin = window.location.origin;
+
   return (
+    <>
     <form onSubmit={save} className="mx-auto flex max-w-2xl flex-col gap-6 p-6">
       <h1 className="text-lg font-semibold">Instance settings</h1>
 
@@ -300,6 +320,28 @@ export function InstanceSettings() {
         )}
       </fieldset>
 
+      <fieldset className={`${glassCard} p-4`}>
+        <legend className="px-1 text-sm font-semibold">Agent (MCP) instructions</legend>
+        <p className="mb-3 text-xs text-slate-500">
+          The system instructions served to AI agents that connect over MCP. Edit to customize how agents
+          build sites on this instance; <strong>Reset to default</strong> (or clear) reverts to the built-in
+          instructions.
+        </p>
+        <textarea
+          aria-label="Agent instructions"
+          className={`${glassInput} h-64 w-full font-mono text-xs`}
+          value={agentInstructions}
+          onChange={(e) => setAgentInstructions(e.target.value)}
+        />
+        <button
+          type="button"
+          className="mt-2 text-xs text-slate-500 underline hover:text-slate-700"
+          onClick={() => setAgentInstructions(DEFAULT_AGENT_INSTRUCTIONS)}
+        >
+          Reset to default
+        </button>
+      </fieldset>
+
       <div className="flex items-center gap-3">
         <button type="submit" className={primaryButton}>
           Save settings
@@ -308,5 +350,52 @@ export function InstanceSettings() {
         {error && <span className="text-sm text-red-600">{error}</span>}
       </div>
     </form>
+
+    <div className="mx-auto flex max-w-2xl flex-col gap-6 px-6 pb-10">
+      <section className={`${glassCard} p-4`}>
+        <h2 className="text-sm font-semibold">MCP endpoints</h2>
+        <p className="mb-3 text-xs text-slate-500">
+          Tools the MCP bridge exposes to a connected agent. Each is gated by the token’s capabilities — a
+          read-only token never sees the write/publish tools.
+        </p>
+        <ul className="flex flex-col gap-1.5 text-sm">
+          {MCP_TOOL_CATALOG.map((t) => (
+            <li key={t.name} className="flex flex-wrap items-baseline gap-2">
+              <code className="rounded bg-slate-100 px-1.5 py-0.5 text-[12px] font-semibold">{t.name}</code>
+              <span className="text-xs text-slate-500">{t.description}</span>
+              <span className="ml-auto rounded-full border border-white/60 bg-white/60 px-2 py-0.5 text-[10px] font-medium text-slate-500">
+                {t.capability ?? 'always'}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section className={`${glassCard} p-4`}>
+        <h2 className="text-sm font-semibold">Connect an agent</h2>
+        <p className="mb-3 text-xs text-slate-500">
+          Point any MCP-capable agent at this instance over the local stdio bridge:
+        </p>
+        <ol className="flex list-decimal flex-col gap-2 pl-5 text-sm text-slate-600">
+          <li>
+            Install the CLI: <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">npm i -g @sitewright/cli</code>
+          </li>
+          <li>
+            Authenticate (opens a browser; OAuth 2.1 + PKCE):{' '}
+            <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">sitewright login --url {origin}</code>
+          </li>
+          <li>
+            Run the bridge for a project:{' '}
+            <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">sitewright mcp --url {origin}</code>{' '}
+            — register that command as a stdio MCP server in your agent.
+          </li>
+          <li>
+            Headless/SSH? add <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">--device</code> to{' '}
+            <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">login</code> for the device-code flow.
+          </li>
+        </ol>
+      </section>
+    </div>
+    </>
   );
 }

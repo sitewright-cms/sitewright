@@ -843,6 +843,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       projectId: key.projectId,
       role: key.role,
       capabilities: key.capabilities,
+      // The agent's system instructions (admin override or built-in default) — the MCP bridge
+      // sets these as the server's `instructions`. Not secret; readable by any valid token.
+      agentInstructions: await instanceSettingsRepo.getEffectiveAgentInstructions(),
     });
   });
 

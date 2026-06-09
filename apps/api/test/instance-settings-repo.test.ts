@@ -30,6 +30,31 @@ describe('InstanceSettingsRepository', () => {
     expect(pub.hcaptcha).toEqual({ siteKey: 'site-1', hasSecret: false });
   });
 
+  it('round-trips the agent-instructions override (set → keep → clear → effective)', async () => {
+    const repo = new InstanceSettingsRepository(db, KEY);
+    const builtinDefault = await repo.getEffectiveAgentInstructions(); // no override yet → the default
+    expect(builtinDefault.length).toBeGreaterThan(100);
+    expect((await repo.getPublic()).agentInstructions).toBeUndefined();
+
+    // Set an override.
+    await repo.put({ agentInstructions: 'Be terse. Use the brand voice.' });
+    expect((await repo.getPublic()).agentInstructions).toBe('Be terse. Use the brand voice.');
+    expect(await repo.getEffectiveAgentInstructions()).toBe('Be terse. Use the brand voice.');
+
+    // An unrelated update (undefined) keeps the override.
+    await repo.put({ formModes: { userSmtp: true } });
+    expect((await repo.getPublic()).agentInstructions).toBe('Be terse. Use the brand voice.');
+
+    // null clears it → revert to the built-in default.
+    await repo.put({ agentInstructions: null });
+    expect((await repo.getPublic()).agentInstructions).toBeUndefined();
+    expect(await repo.getEffectiveAgentInstructions()).toBe(builtinDefault);
+
+    // An empty-string override is rejected (min length 1) — clearing is done with null, not '' —
+    // so an agent can never be served a blank system prompt.
+    await expect(repo.put({ agentInstructions: '' })).rejects.toThrow();
+  });
+
   it('encrypts the SMTP password at rest and never exposes it via the public view', async () => {
     const repo = new InstanceSettingsRepository(db, KEY);
     await repo.put({

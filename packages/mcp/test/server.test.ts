@@ -3,6 +3,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createSitewrightMcpServer } from '../src/server.js';
 import { SitewrightApiError, type Scope, type SitewrightClient } from '../src/client.js';
+import { MCP_TOOL_CATALOG, DEFAULT_AGENT_INSTRUCTIONS } from '@sitewright/schema';
 
 const page = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' } };
 
@@ -72,6 +73,22 @@ describe('createSitewrightMcpServer — capability gating', () => {
 
     const writer = await toolNames(await connect(fakeClient(), writeScope));
     expect(writer).toContain('import_stock_image');
+  });
+});
+
+describe('createSitewrightMcpServer — catalog + instructions', () => {
+  it('an all-capability token exposes EXACTLY the MCP_TOOL_CATALOG tools (no drift)', async () => {
+    const names = await toolNames(await connect(fakeClient(), writeScope));
+    expect(names).toEqual([...MCP_TOOL_CATALOG].map((t) => t.name).sort());
+  });
+
+  it('serves the admin agent-instructions override when present, else the built-in default', async () => {
+    const custom = await connect(fakeClient(), { ...writeScope, agentInstructions: 'CUSTOM AGENT RULES' });
+    expect(custom.getInstructions()).toBe('CUSTOM AGENT RULES');
+    await custom.close();
+    const dflt = await connect(fakeClient(), writeScope);
+    expect(dflt.getInstructions()).toBe(DEFAULT_AGENT_INSTRUCTIONS);
+    await dflt.close();
   });
 });
 

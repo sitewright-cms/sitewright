@@ -18,6 +18,7 @@ import Handlebars from 'handlebars';
 import { safeUrl } from './url.js';
 import { escapeAttr } from './escape.js';
 import { iconBody } from './icons.js';
+import { brandIcon } from './brand-icons.js';
 import { resolveDirectives } from './directives.js';
 
 /** Thrown for an unsafe interpolation context, a Handlebars compile error, or a render error. */
@@ -242,18 +243,27 @@ function createInstance(): typeof Handlebars {
     if (format === 'iso') return d.toISOString();
     return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
   });
-  // {{sw-icon "arrow-right" "h-5 w-5"}} → inline a built-in Lucide icon as an <svg>. The
-  // body comes ONLY from the trusted `iconBody` map (unknown name → empty, NEVER user
-  // input), and the optional class string is attribute-escaped — so this emits a
-  // SafeString (raw SVG) without ever reflecting tenant markup. Author-supplied DATA is
-  // just the icon NAME (a map key) + a class list. Use in element context. A field literally
-  // named `icon` (e.g. a card's emoji) is read plainly as `{{icon}}`, never shadowed by this.
+  // {{sw-icon "arrow-right" "h-5 w-5"}} → inline a built-in icon as an <svg>. A bare name is a
+  // Lucide (stroke) glyph; a `brand:<slug>` name is a brand/social logo (a single FILL path,
+  // currentColor so it themes with text color). The markup comes ONLY from the trusted icon maps
+  // (unknown name → empty, NEVER user input) and the class string is attribute-escaped — so this
+  // emits a SafeString (raw SVG) without ever reflecting tenant markup. Author-supplied DATA is just
+  // the icon NAME (a map key) + a class list. Use in element context. A field literally named `icon`
+  // (e.g. a card's emoji) is read plainly as `{{icon}}`, never shadowed by this.
   hb.registerHelper('sw-icon', (name: unknown, cls?: unknown) => {
-    const body = typeof name === 'string' ? iconBody(name) : undefined;
+    if (typeof name !== 'string') return new Handlebars.SafeString('');
+    const klass = escapeAttr(typeof cls === 'string' ? cls : 'h-5 w-5');
+    if (name.startsWith('brand:')) {
+      const brand = brandIcon(name.slice('brand:'.length));
+      if (!brand) return new Handlebars.SafeString('');
+      return new Handlebars.SafeString(
+        `<svg class="${klass}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="${escapeAttr(brand.path)}"/></svg>`,
+      );
+    }
+    const body = iconBody(name);
     if (body === undefined) return new Handlebars.SafeString('');
-    const klass = typeof cls === 'string' ? cls : 'h-5 w-5';
     const svg =
-      `<svg class="${escapeAttr(klass)}" viewBox="0 0 24 24" fill="none" stroke="currentColor" ` +
+      `<svg class="${klass}" viewBox="0 0 24 24" fill="none" stroke="currentColor" ` +
       `stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
     return new Handlebars.SafeString(svg);
   });

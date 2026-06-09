@@ -19,7 +19,8 @@ const full: SettingsBundle = {
     telephone: '+1 555',
     address: { street: '1 Main', locality: 'Town', region: 'CA', country: 'US', postalCode: '90001' },
     geo: { latitude: '34.0', longitude: '-118.2' },
-    social: ['https://x.com/acme'],
+    mapUrl: 'https://www.google.com/maps/embed?pb=test',
+    social: [{ link: 'https://x.com/acme', name: 'X', icon: 'brand:x' }],
     // All six mandatory tokens set to non-default values, so the round-trip proves explicit
     // values survive (and aren't clobbered by the fill-missing defaults).
     colors: { primary: '#0a7', secondary: '#0bd', accent: '#f50', neutral: '#123', 'base-100': '#fefefe', 'base-content': '#111' },

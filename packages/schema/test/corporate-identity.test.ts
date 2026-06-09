@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { CorporateIdentitySchema, DEFAULT_BRAND_COLORS, MANDATORY_COLOR_TOKENS, FontSlotSchema } from '../src/corporate-identity.js';
+import { CorporateIdentitySchema, DEFAULT_BRAND_COLORS, MANDATORY_COLOR_TOKENS, FontSlotSchema, detectSocial } from '../src/corporate-identity.js';
 import { legacyToIdentity, mergeLegacyIdentity } from '../src/migrate-identity.js';
 import { BrandSchema } from '../src/brand.js';
 import { CompanySchema } from '../src/company.js';
@@ -44,6 +44,34 @@ describe('CorporateIdentitySchema', () => {
     });
     expect(id.legalName).toBe('Acme Inc.');
     expect(() => CorporateIdentitySchema.parse({ name: 'Acme', social: ['javascript:alert(1)'] })).toThrow();
+  });
+
+  it('detectSocial: maps known hosts to name + icon, unknown → hostname + globe, bad URL → {}', () => {
+    expect(detectSocial('https://wa.me/15551234')).toEqual({ name: 'WhatsApp', icon: 'brand:whatsapp' });
+    expect(detectSocial('https://www.whatsapp.com/x')).toEqual({ name: 'WhatsApp', icon: 'brand:whatsapp' });
+    expect(detectSocial('https://twitter.com/acme')).toEqual({ name: 'X', icon: 'brand:x' });
+    expect(detectSocial('https://github.com/acme')).toEqual({ name: 'GitHub', icon: 'brand:github' });
+    // LinkedIn has no brand: logo (simple-icons dropped it) → a Lucide glyph instead.
+    expect(detectSocial('https://linkedin.com/company/acme')).toEqual({ name: 'LinkedIn', icon: 'linkedin' });
+    expect(detectSocial('https://acme.example/profile')).toEqual({ name: 'Acme', icon: 'globe' });
+    expect(detectSocial('not a url')).toEqual({});
+  });
+
+  it('migrates a legacy social string[] into {link,name,icon} objects (auto-detected), idempotently', () => {
+    const migrated = CorporateIdentitySchema.parse({ name: 'Acme', social: ['https://wa.me/1', 'https://acme.io'] });
+    expect(migrated.social).toEqual([
+      { link: 'https://wa.me/1', name: 'WhatsApp', icon: 'brand:whatsapp' },
+      { link: 'https://acme.io', name: 'Acme', icon: 'globe' },
+    ]);
+    // Already-object social passes through unchanged (idempotent); custom name/icon kept.
+    const objects = [{ link: 'https://x.com/a', name: 'My X', icon: 'brand:x' }];
+    expect(CorporateIdentitySchema.parse({ name: 'Acme', social: objects }).social).toEqual(objects);
+  });
+
+  it('accepts a mapUrl (https) and rejects a non-http(s) one', () => {
+    expect(CorporateIdentitySchema.parse({ name: 'Acme', mapUrl: 'https://www.google.com/maps/embed?pb=x' }).mapUrl)
+      .toBe('https://www.google.com/maps/embed?pb=x');
+    expect(() => CorporateIdentitySchema.parse({ name: 'Acme', mapUrl: 'javascript:alert(1)' })).toThrow();
   });
 
   it('rejects a backslash CSS hex-escape in a token value (injection defense)', () => {
@@ -112,7 +140,11 @@ describe('legacyToIdentity — exhaustive field map (no silent drops)', () => {
     expect(id.telephone).toBe('+1-555-0100');
     expect(id.address).toEqual(LEGACY_COMPANY.address);
     expect(id.geo).toEqual(LEGACY_COMPANY.geo);
-    expect(id.social).toEqual(LEGACY_COMPANY.social);
+    // Legacy string[] social is migrated into {link,name,icon} objects (name/icon auto-detected).
+    expect(id.social).toEqual([
+      { link: 'https://x.com/acme', name: 'X', icon: 'brand:x' },
+      { link: 'https://github.com/acme', name: 'GitHub', icon: 'brand:github' },
+    ]);
   });
 
   it('covers every source key — guards against a future field being forgotten', () => {

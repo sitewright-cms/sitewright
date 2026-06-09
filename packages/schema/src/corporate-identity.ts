@@ -59,6 +59,90 @@ const AddressSchema = z.object({
 
 const GeoSchema = z.object({ latitude: z.string().max(40), longitude: z.string().max(40) });
 
+// --- Social profiles (link + display name + icon) ---
+
+/** Icon for a social link: a Lucide glyph name or a `brand:<slug>` social logo. */
+const SocialIconSchema = z
+  .string()
+  .min(1)
+  .max(40)
+  .regex(/^(?:brand:)?[a-z][a-z0-9-]*$/, 'invalid icon name');
+
+/** Display name for a social link (rendered — escaped — in templates; length-bounded). */
+const SocialNameSchema = z.string().max(60);
+
+/** One social/external profile: an absolute http(s) URL plus an optional display name + icon. */
+export const SocialLinkSchema = z.object({
+  link: AbsoluteUrlSchema,
+  name: SocialNameSchema.optional(),
+  icon: SocialIconSchema.optional(),
+});
+export type SocialLink = z.infer<typeof SocialLinkSchema>;
+
+/**
+ * Known social providers → display name + icon, matched by host. Icons are `brand:<slug>` where a
+ * brand logo exists, else a Lucide glyph (LinkedIn has no brand: logo — simple-icons dropped it).
+ * Entry shape: [host suffixes, name, icon].
+ */
+const SOCIAL_PROVIDERS: ReadonlyArray<readonly [readonly string[], string, string]> = [
+  [['wa.me', 'whatsapp.com'], 'WhatsApp', 'brand:whatsapp'],
+  [['x.com', 'twitter.com'], 'X', 'brand:x'],
+  [['github.com'], 'GitHub', 'brand:github'],
+  [['youtube.com', 'youtu.be'], 'YouTube', 'brand:youtube'],
+  [['instagram.com'], 'Instagram', 'brand:instagram'],
+  [['facebook.com', 'fb.com', 'fb.me'], 'Facebook', 'brand:facebook'],
+  [['tiktok.com'], 'TikTok', 'brand:tiktok'],
+  [['discord.com', 'discord.gg'], 'Discord', 'brand:discord'],
+  [['t.me', 'telegram.org'], 'Telegram', 'brand:telegram'],
+  [['pinterest.com'], 'Pinterest', 'brand:pinterest'],
+  [['reddit.com'], 'Reddit', 'brand:reddit'],
+  [['mastodon.social'], 'Mastodon', 'brand:mastodon'],
+  [['medium.com'], 'Medium', 'brand:medium'],
+  [['vimeo.com'], 'Vimeo', 'brand:vimeo'],
+  [['spotify.com'], 'Spotify', 'brand:spotify'],
+  [['snapchat.com'], 'Snapchat', 'brand:snapchat'],
+  [['behance.net'], 'Behance', 'brand:behance'],
+  [['dribbble.com'], 'Dribbble', 'brand:dribbble'],
+  [['linkedin.com'], 'LinkedIn', 'linkedin'],
+];
+
+/** Capitalize a host's first label (`acme.com` → `Acme`) — a fallback name for an unknown provider. */
+function hostLabelName(host: string): string {
+  const label = host.split('.')[0] ?? host;
+  return label ? label.charAt(0).toUpperCase() + label.slice(1) : host;
+}
+
+/**
+ * Best-effort `{ name, icon }` for a social URL, by host; `{}` for an unparseable URL. Used to
+ * AUTO-FILL a social link's name + icon (in the editor + the legacy-array migration) — always
+ * overridable by the author. Unknown hosts get a capitalized hostname + a generic `globe` icon.
+ */
+export function detectSocial(url: string): { name?: string; icon?: string } {
+  let host: string;
+  try {
+    host = new URL(url).hostname.toLowerCase().replace(/^www\./, '');
+  } catch {
+    return {};
+  }
+  for (const [suffixes, name, icon] of SOCIAL_PROVIDERS) {
+    if (suffixes.some((s) => host === s || host.endsWith(`.${s}`))) return { name, icon };
+  }
+  return { name: hostLabelName(host), icon: 'globe' };
+}
+
+/**
+ * Migrate the legacy `social: string[]` (bare URLs) into `social: SocialLink[]` with an auto-detected
+ * name + icon per URL. Idempotent — an already-object array passes straight through. Runs on every
+ * identity parse (z.preprocess), so stored projects migrate on the next read/write.
+ */
+export function migrateSocialLinks(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const v = value as Record<string, unknown>;
+  if (!Array.isArray(v.social) || !v.social.some((s) => typeof s === 'string')) return value;
+  const social = v.social.map((s) => (typeof s === 'string' ? { link: s, ...detectSocial(s) } : s));
+  return { ...v, social };
+}
+
 /** Font weights the slot selector offers (100–900, the CSS numeric scale). */
 export const FONT_WEIGHTS = [100, 200, 300, 400, 500, 600, 700, 800, 900] as const;
 
@@ -154,7 +238,7 @@ const NamedFontSlotKeySchema = z
  * Token values are constrained (see primitives) so they can't break out of a CSS
  * declaration.
  */
-export const CorporateIdentitySchema = z.object({
+const CorporateIdentityObject = z.object({
   // --- Identity / naming ---
   /** Display name (always present). schema.org falls back to this when legalName/shortName are unset. */
   name: z.string().min(1).max(200),
@@ -181,8 +265,10 @@ export const CorporateIdentitySchema = z.object({
   telephone: z.string().max(60).optional(),
   address: AddressSchema.optional(),
   geo: GeoSchema.optional(),
-  /** Social / external profile URLs → schema.org `sameAs`. */
-  social: z.array(AbsoluteUrlSchema).max(50).optional(),
+  /** Google Maps EMBED URL — used as an <iframe> src in templates (e.g. the footer map). */
+  mapUrl: AbsoluteUrlSchema.optional(),
+  /** Social / external profiles (link + display name + icon) → schema.org `sameAs` (the links). */
+  social: z.array(SocialLinkSchema).max(50).optional(),
 
   // --- Design tokens (compiled to CSS custom properties + Tailwind theme) ---
   /**
@@ -216,6 +302,9 @@ export const CorporateIdentitySchema = z.object({
   spacing: safeRecord(TokenValueSchema, KeyNameSchema).optional(),
   radii: safeRecord(TokenValueSchema, KeyNameSchema).optional(),
 });
+
+/** Migrates a legacy `social: string[]` into SocialLink objects, then validates the identity object. */
+export const CorporateIdentitySchema = z.preprocess(migrateSocialLinks, CorporateIdentityObject);
 export type CorporateIdentity = z.infer<typeof CorporateIdentitySchema>;
 
 /**

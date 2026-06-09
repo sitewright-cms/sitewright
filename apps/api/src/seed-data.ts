@@ -55,9 +55,9 @@ export const EXAMPLE_IDENTITY = {
     postalCode: '94104',
   },
   social: [
-    'https://twitter.com/northwindstudio',
-    'https://www.linkedin.com/company/northwindstudio',
-    'https://dribbble.com/northwindstudio',
+    { link: 'https://twitter.com/northwindstudio', name: 'X', icon: 'brand:x' },
+    { link: 'https://www.linkedin.com/company/northwindstudio', name: 'LinkedIn', icon: 'linkedin' },
+    { link: 'https://dribbble.com/northwindstudio', name: 'Dribbble', icon: 'brand:dribbble' },
   ],
   // The six mandatory brand tokens → DaisyUI/Tailwind theme colors (the -content foregrounds are
   // auto-derived for contrast). `base-100`/`base-content` are the page Background/Text colors.
@@ -93,6 +93,7 @@ export const EXAMPLE_WEBSITE = {
     <div class="sm:col-span-2 lg:col-span-1">
       <p class="flex items-center gap-2 text-lg font-extrabold"><span class="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-primary text-primary-content">N</span>{{ company.name }}</p>
       <p class="mt-4 max-w-xs text-sm text-neutral-content/70">{{ company.slogan }}</p>
+      <ul class="mt-5 flex flex-wrap gap-3">{{#each company.social}}<li><a class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-neutral-content/20 text-neutral-content/70 transition hover:border-primary hover:bg-primary hover:text-primary-content" href="{{sw-url link}}" aria-label="{{name}}" target="_blank" rel="noopener">{{sw-icon icon "h-4 w-4"}}</a></li>{{/each}}</ul>
     </div>
     <nav>
       <h6 class="footer-title opacity-100">Studio</h6>

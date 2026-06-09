@@ -42,7 +42,7 @@ async function exportBundle() {
       id: string;
       name: string;
       slug: string;
-      identity: { name: string; colors: Record<string, string>; legalName?: string; email?: string; social?: string[] };
+      identity: { name: string; colors: Record<string, string>; legalName?: string; email?: string; social?: Array<{ link: string; name?: string; icon?: string }> };
       settings: { defaultLocale: string; locales: string[] };
     };
     pages: Array<{ id: string; path: string; title: string; root: unknown; collection?: unknown }>;
@@ -68,7 +68,7 @@ function richBundle() {
         typography: { fontFamilies: { body: 'Inter, sans-serif' } },
         legalName: 'Acme Incorporated',
         email: 'hello@acme.test',
-        social: ['https://example.com/acme'],
+        social: [{ link: 'https://example.com/acme', name: 'Example', icon: 'globe' }],
       },
       settings: { defaultLocale: 'en', locales: ['en', 'de'] },
     },
@@ -126,7 +126,7 @@ describe('bundle export/import fidelity (HTTP)', () => {
 
     // ---- Project manifest: identity, settings ----
     expect(out.project.identity).toMatchObject(bundle.project.identity);
-    expect(out.project.identity.social).toEqual(['https://example.com/acme']);
+    expect(out.project.identity.social).toEqual([{ link: 'https://example.com/acme', name: 'Example', icon: 'globe' }]);
     expect(out.project.settings).toEqual(bundle.project.settings);
     // Identity is the project's own (from the URL/record), not anything in the bundle.
     expect(out.project.id).toBe(projectId);

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, type Project, type OrgMember, type Invite } from '../api';
 import { InvitePanel } from './InvitePanel';
+import { useDialogs } from './ui/Dialogs';
 import { glassPanel, dangerButton } from '../theme';
 
 interface ClientsManagerProps {
@@ -15,6 +16,7 @@ export function ClientsManager({ project }: ClientsManagerProps) {
   const [members, setMembers] = useState<OrgMember[]>([]);
   const [invites, setInvites] = useState<Invite[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const { confirm, dialog } = useDialogs();
 
   async function load() {
     try {
@@ -34,6 +36,13 @@ export function ClientsManager({ project }: ClientsManagerProps) {
   }, [project.id]);
 
   async function remove(userId: string) {
+    const email = members.find((m) => m.userId === userId)?.email ?? 'this client';
+    const ok = await confirm({
+      title: 'Remove client',
+      message: `Remove ${email} from ${project.name}? They lose access to edit this project.`,
+      confirmLabel: 'Remove',
+    });
+    if (!ok) return;
     setError(null);
     try {
       await api.removeProjectMember(project.id, userId);
@@ -78,6 +87,7 @@ export function ClientsManager({ project }: ClientsManagerProps) {
         onChanged={load}
       />
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      {dialog}
     </div>
   );
 }

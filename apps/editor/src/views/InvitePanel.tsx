@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import type { Invite } from '../api';
 import { useToast } from './ui/Toast';
+import { useDialogs } from './ui/Dialogs';
 import { glassCard, glassPanel, glassInput, fieldLabel, primaryButton, dangerButton } from '../theme';
 
 interface InvitePanelProps {
@@ -27,6 +28,7 @@ export function InvitePanel({ kind, invites, onInvite, onRevoke, onChanged }: In
   const [link, setLink] = useState<{ email: string; url: string } | null>(null);
   const [copied, setCopied] = useState(false);
   const toast = useToast();
+  const { confirm, dialog } = useDialogs();
 
   async function invite(e: FormEvent) {
     e.preventDefault();
@@ -56,6 +58,13 @@ export function InvitePanel({ kind, invites, onInvite, onRevoke, onChanged }: In
   }
 
   async function revoke(id: string) {
+    const email = invites.find((i) => i.id === id)?.email ?? 'this invite';
+    const ok = await confirm({
+      title: 'Revoke invite',
+      message: `Revoke the pending invite for ${email}? The link stops working immediately.`,
+      confirmLabel: 'Revoke',
+    });
+    if (!ok) return;
     setError(null);
     try {
       await onRevoke(id);
@@ -140,6 +149,7 @@ export function InvitePanel({ kind, invites, onInvite, onRevoke, onChanged }: In
         </button>
       </form>
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      {dialog}
     </div>
   );
 }

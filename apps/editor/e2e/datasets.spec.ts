@@ -32,6 +32,36 @@ test('define a dataset, its schema, and add an entry', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Hello World' })).toBeVisible();
 });
 
+// Deleting a dataset is guarded by a confirmation dialog: cancelling keeps it, confirming removes it.
+test('deleting a dataset requires confirmation (cancel keeps it, confirm removes it)', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: /Register/ }).click();
+  await page.getByLabel('Email').fill(`datadel-${stamp}@e2e.test`);
+  await page.getByLabel('Password').fill('pw-secret-1');
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await page.getByRole('button', { name: 'New project' }).click();
+  await page.getByLabel('Project name').fill('Del Site');
+  await page.getByLabel('Project slug').fill(`datadel-${stamp}`);
+  await page.getByRole('button', { name: 'Create project' }).click();
+
+  await page.getByRole('button', { name: 'Open Datasets' }).hover();
+  await page.getByLabel('Dataset name').fill('Temp');
+  await page.getByRole('button', { name: 'Create dataset' }).click();
+  await expect(page.getByRole('button', { name: 'Delete dataset' })).toBeVisible();
+
+  // Cancel → the dataset survives.
+  await page.getByRole('button', { name: 'Delete dataset' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Delete dataset' });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.getByRole('button', { name: 'Delete dataset' })).toBeVisible();
+
+  // Confirm → the dataset is removed (no selection → no Delete button).
+  await page.getByRole('button', { name: 'Delete dataset' }).click();
+  await page.getByRole('dialog', { name: 'Delete dataset' }).getByRole('button', { name: 'Delete dataset' }).click();
+  await expect(page.getByRole('button', { name: 'Delete dataset' })).toHaveCount(0);
+});
+
 // An `image`-type entry field renders the reusable AssetField/FilePicker (not a bare text input),
 // so editors browse the library or paste/import a URL — same control as the identity logo fields.
 test('dataset image field uses the file picker (browse a URL into an entry)', async ({ page }) => {

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, type OrgMember, type Invite } from '../api';
 import { InvitePanel } from './InvitePanel';
+import { useDialogs } from './ui/Dialogs';
 import { glassPanel, dangerButton } from '../theme';
 
 /**
@@ -11,6 +12,7 @@ export function TeamManager() {
   const [members, setMembers] = useState<OrgMember[]>([]);
   const [invites, setInvites] = useState<Invite[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const { confirm, dialog } = useDialogs();
 
   async function load() {
     try {
@@ -28,6 +30,13 @@ export function TeamManager() {
   }, []);
 
   async function remove(userId: string) {
+    const email = members.find((m) => m.userId === userId)?.email ?? 'this member';
+    const ok = await confirm({
+      title: 'Remove team member',
+      message: `Remove ${email} from this instance? They lose access to every project.`,
+      confirmLabel: 'Remove',
+    });
+    if (!ok) return;
     setError(null);
     try {
       await api.removeMember(userId);
@@ -79,6 +88,7 @@ export function TeamManager() {
         onChanged={load}
       />
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      {dialog}
     </div>
   );
 }

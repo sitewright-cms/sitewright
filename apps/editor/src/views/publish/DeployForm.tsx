@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, type DeployConfig, type DeployTargetView, type Project } from '../../api';
+import { useDialogs } from '../ui/Dialogs';
 import { glassInput, primaryButton, ghostButton, dangerButton } from '../../theme';
 
 const PROTOCOLS: ReadonlyArray<{ value: DeployConfig['protocol']; label: string }> = [
@@ -22,6 +23,7 @@ export function DeployForm({ project }: { project: Project }) {
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [targets, setTargets] = useState<DeployTargetView[] | null>(null); // null = feature unavailable
+  const { confirm, dialog } = useDialogs();
 
   async function loadTargets() {
     try {
@@ -136,12 +138,18 @@ export function DeployForm({ project }: { project: Project }) {
                 <button
                   className={`${dangerButton} px-1.5 py-0.5 text-xs`}
                   aria-label={`Delete target ${t.name}`}
-                  onClick={() =>
-                    run(
+                  onClick={async () => {
+                    const ok = await confirm({
+                      title: 'Delete deploy target',
+                      message: `Delete the saved deploy target "${t.name}" (${t.protocol.toUpperCase()}@${t.host})? This cannot be undone.`,
+                      confirmLabel: 'Delete',
+                    });
+                    if (!ok) return;
+                    void run(
                       () => api.deleteDeployTarget(project.id, t.id),
                       () => void loadTargets(),
-                    )
-                  }
+                    );
+                  }}
                 >
                   ✕
                 </button>
@@ -212,6 +220,7 @@ export function DeployForm({ project }: { project: Project }) {
       </p>
       {result && <p className="text-sm text-emerald-700">{result}</p>}
       {error && <p className="text-sm text-red-600">{error}</p>}
+      {dialog}
     </div>
   );
 }

@@ -24,8 +24,8 @@ test('upload an image into the media library and see the optimized thumbnail', a
   await page.getByRole('button', { name: 'Create project' }).click();
 
   // Assets panel: upload an image; the optimized thumbnail/row appears once processing finishes.
-  await page.getByRole('button', { name: 'Assets', exact: true }).click();
-  const panel = page.getByRole('region', { name: 'Assets' });
+  await page.getByRole('button', { name: 'Open File Manager' }).click();
+  const panel = page.getByRole('region', { name: 'File Manager' });
   await panel.getByLabel('Upload files').setInputFiles({
     name: 'hero.png',
     mimeType: 'image/png',
@@ -48,8 +48,8 @@ test('upload a non-image file into a folder and see it listed with a download li
   await page.getByLabel('Project slug').fill(`assets-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
 
-  await page.getByRole('button', { name: 'Assets', exact: true }).click();
-  const panel = page.getByRole('region', { name: 'Assets' });
+  await page.getByRole('button', { name: 'Open File Manager' }).click();
+  const panel = page.getByRole('region', { name: 'File Manager' });
 
   // Create a PERSISTED folder via the New-folder modal (it shows immediately and survives reload).
   await panel.getByRole('button', { name: '+ New folder' }).click();
@@ -89,6 +89,6 @@ test('upload a non-image file into a folder and see it listed with a download li
   // auto-opens — reopen the project, reopen the Assets panel, and the folder is still there.
   await page.reload();
   await page.getByRole('dialog', { name: 'SiteWright' }).getByRole('button', { name: /Assets Site/ }).click();
-  await page.getByRole('button', { name: 'Assets', exact: true }).click();
-  await expect(page.getByRole('region', { name: 'Assets' }).getByRole('button', { name: 'Docs', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Open File Manager' }).click();
+  await expect(page.getByRole('region', { name: 'File Manager' }).getByRole('button', { name: 'Docs', exact: true })).toBeVisible();
 });

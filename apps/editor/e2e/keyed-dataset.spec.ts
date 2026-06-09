@@ -16,7 +16,7 @@ test('keyed dataset access: set an entry key, then read it directly with {{item.
   await page.getByRole('button', { name: 'Create project' }).click();
 
   // Data rail: a "Services" dataset (slug "services") with a "title" field.
-  await page.getByRole('button', { name: 'Open Data' }).hover();
+  await page.getByRole('button', { name: 'Open Datasets' }).hover();
   await page.getByLabel('Dataset name').fill('Services');
   await page.getByRole('button', { name: 'Create dataset' }).click();
   await page.getByLabel('New field name').fill('title');

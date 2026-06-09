@@ -14,11 +14,9 @@ import { InstanceSettings } from './views/InstanceSettings';
 import { LivePreview } from './views/LivePreview';
 import { UpdateBanner } from './views/UpdateBanner';
 import { BrandMark } from './views/ui/BrandMark';
-import { Tooltip } from './views/ui/Tooltip';
 import { parseLiveTarget } from './lib/live-target';
 import { SkeletonList } from './views/ui/Skeleton';
 import { installRipple } from './lib/ripple';
-import { ghostButton } from './theme';
 
 /**
  * Routes to the standalone pop-out live preview when the URL carries `?live=…`;
@@ -48,9 +46,6 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
   // The project picker is shown automatically on first load and reachable from the header.
   const [selectorOpen, setSelectorOpen] = useState(false);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
-  // Bumped to force the Assets side-panel open from the header button (the panel otherwise
-  // opens on hover of its edge tab).
-  const [assetsSignal, setAssetsSignal] = useState(0);
 
   async function refresh(): Promise<Project[]> {
     try {
@@ -114,59 +109,54 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
     <header className="sticky top-0 z-20 border-b border-white/40 bg-white/60 px-6 py-3 shadow-sm backdrop-blur-xl">
       {/* Inner row aligned to the SAME max-width column the tab CONTENT below uses, so the
           tablist (and brand/nav) line up with the content rather than the full viewport. */}
-      <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-x-4 gap-y-2">
-      {/* Left: the brand mark (the wordmark now lives in the project selector) — opens the selector. */}
-      <button
-        className="flex items-center text-slate-900 transition hover:text-indigo-700"
-        onClick={() => setSelectorOpen(true)}
-        aria-label="Sitewright — switch project"
-        title="Switch project"
-      >
-        <BrandMark />
-      </button>
-      {inProject && (
+      <div className="mx-auto grid w-full max-w-5xl grid-cols-[1fr_auto_1fr] items-center gap-x-4">
+      {/* Left: the brand mark (opens the selector) + the project selector. */}
+      <div className="flex min-w-0 items-center gap-3">
         <button
-          aria-label="Switch project"
-          className="flex items-center gap-1 rounded-xl border border-white/60 bg-white/50 px-2.5 py-1 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-white"
+          className="flex shrink-0 items-center text-slate-900 transition hover:text-indigo-700"
           onClick={() => setSelectorOpen(true)}
+          aria-label="Sitewright — switch project"
+          title="Switch project"
         >
-          {inProject.name} <span className="text-slate-400">/{inProject.slug}</span>
-          <svg aria-hidden viewBox="0 0 24 24" className="h-3.5 w-3.5 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m6 9 6 6 6-6" /></svg>
+          <BrandMark />
         </button>
-      )}
-
-      {/* Center: the project tablist (owners only), in the header bar. */}
-      {inProject && !isClient && (
-        <div role="tablist" aria-label="Project sections" className="flex flex-wrap gap-1 rounded-2xl border border-white/50 bg-white/50 p-1 shadow-sm">
-          {MANAGE_TABS.map((t) => (
-            <button
-              key={t}
-              role="tab"
-              aria-selected={tab === t}
-              onClick={() => setTab(t)}
-              className={`waves-effect rounded-xl px-3 py-1.5 text-sm transition ${
-                tab === t ? 'bg-white font-semibold text-slate-900 shadow-md shadow-slate-900/5' : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              {/* eslint-disable-next-line security/detect-object-injection -- t is a typed Tab literal */}
-              {TAB_LABELS[t]}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Right: assets + publish (owners) + admin + sign out. */}
-      <nav className="ml-auto flex items-center gap-4">
-        {inProject && !isClient && (
-          <Tooltip tip="Files & media — images, fonts, documents" side="bottom">
-            <button className={ghostButton} onClick={() => setAssetsSignal((s) => s + 1)}>
-              <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-              </svg>
-              Assets
-            </button>
-          </Tooltip>
+        {inProject && (
+          <button
+            aria-label="Switch project"
+            className="flex min-w-0 items-center gap-1 rounded-xl border border-white/60 bg-white/50 px-2.5 py-1 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-white"
+            onClick={() => setSelectorOpen(true)}
+          >
+            <span className="truncate">{inProject.name}</span>
+            <span className="shrink-0 text-slate-400">/{inProject.slug}</span>
+            <svg aria-hidden viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m6 9 6 6 6-6" /></svg>
+          </button>
         )}
+      </div>
+
+      {/* Center: the project tablist (owners only), horizontally centered in the header. */}
+      <div className="flex justify-center">
+        {inProject && !isClient && (
+          <div role="tablist" aria-label="Project sections" className="flex flex-wrap justify-center gap-1 rounded-2xl border border-white/50 bg-white/50 p-1 shadow-sm">
+            {MANAGE_TABS.map((t) => (
+              <button
+                key={t}
+                role="tab"
+                aria-selected={tab === t}
+                onClick={() => setTab(t)}
+                className={`waves-effect rounded-xl px-3 py-1.5 text-sm transition ${
+                  tab === t ? 'bg-white font-semibold text-slate-900 shadow-md shadow-slate-900/5' : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                {/* eslint-disable-next-line security/detect-object-injection -- t is a typed Tab literal */}
+                {TAB_LABELS[t]}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Right: publish (owners) + admin + sign out, grouped at the far right. */}
+      <nav className="flex items-center justify-end gap-4">
         {inProject && !isClient && <PublishBar project={inProject} />}
         {isInstanceAdmin && stage.name !== 'admin' && (
           <button className="text-sm text-slate-500 hover:text-slate-900" onClick={() => setStage({ name: 'admin' })}>
@@ -234,13 +224,13 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
           }}
         />
       )}
-      {/* Always-present edge side-panels (owners): Library (left), Assets (right), and the bottom
-          rails — Data (left), Snippets (center), Templates (right). They render above modals so their
-          tabs stay reachable; the header "Assets" button force-opens Assets. */}
+      {/* Always-present edge side-panels (owners): System Library (left), File Manager (right), and
+          the bottom rails — Datasets (left), Snippets (center), Templates (right). They render above
+          modals so their tabs stay reachable; each opens on hover/click of its own edge tab. */}
       {inProject && !isClient && (
         <>
           <LibraryPanel />
-          <AssetsPanel key={inProject.id} projectId={inProject.id} openSignal={assetsSignal} />
+          <AssetsPanel key={inProject.id} projectId={inProject.id} />
           <DataPanel key={`dt-${inProject.id}`} project={inProject} />
           <SnippetsPanel key={`sn-${inProject.id}`} projectId={inProject.id} />
           <TemplatesPanel key={`tp-${inProject.id}`} projectId={inProject.id} />

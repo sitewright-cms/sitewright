@@ -20,8 +20,8 @@ test('assets: image preview modal, rename, copy, delete via modal dialogs', asyn
   await page.getByLabel('Project slug').fill(`assetops-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
 
-  // Open the Assets side panel from the header button (exact — the edge tab is "Open Assets").
-  await page.getByRole('button', { name: 'Assets', exact: true }).click();
+  // Open the File Manager side panel from its edge tab.
+  await page.getByRole('button', { name: 'Open File Manager' }).click();
   await page.getByLabel('Upload files').setInputFiles({ name: 'logo.png', mimeType: 'image/png', buffer: PNG_1X1 });
   await expect(page.getByRole('button', { name: 'logo.png', exact: true })).toBeVisible();
 

@@ -47,10 +47,10 @@ test('library panel: open, search, and copy an example; lazyload + ripple publis
   // The Library is a LEFT hover side-panel; hovering its edge tab expands the fixed-size panel to
   // reveal the section buttons. Each section title opens a searchable gallery modal (which pins the
   // panel open for its lifetime). The helper only re-hovers the tab when the panel has collapsed.
-  const library = page.locator('[role="region"][aria-label="Library"]');
+  const library = page.locator('[role="region"][aria-label="System Library"]');
   const openSection = async (name: RegExp) => {
     if ((await library.getAttribute('aria-hidden')) === 'true') {
-      await page.getByRole('button', { name: 'Open Library' }).hover();
+      await page.getByRole('button', { name: 'Open System Library' }).hover();
       await expect(library).toHaveAttribute('aria-hidden', 'false');
     }
     await library.getByRole('button', { name }).click();

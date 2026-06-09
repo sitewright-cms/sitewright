@@ -69,8 +69,8 @@ function panelPos(side: SidePanelSide, align: SidePanelAlign, width?: string): s
 function tabPosition(side: SidePanelSide, align: SidePanelAlign): string {
   if (side === 'bottom') {
     const x = align === 'start' ? 'left-8' : align === 'end' ? 'right-8' : 'left-1/2 -translate-x-1/2';
-    // `bottom-2` (not flush) so the rails clear the taller (90vh) page-editor modal's bottom edge.
-    return `bottom-2 ${x}`;
+    // Flush to the viewport bottom (no gap), per the docked-rails design.
+    return `bottom-0 ${x}`;
   }
   const edge = side === 'left' ? 'left-0' : 'right-0';
   const y = align === 'start' ? 'top-24' : align === 'end' ? 'bottom-16' : 'top-1/2 -translate-y-1/2';

@@ -105,12 +105,13 @@ describe('website settings → publish', () => {
     })).statusCode).toBe(200);
     expect((await proj.putContent('page', 'home', {
       id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
-      source: '<main><h1>{{website.data.hero.headline}}</h1><ul>{{#each website.data.tags}}<li>{{this}}</li>{{/each}}</ul></main>',
+      source: '<div><h1>{{website.data.hero.headline}}</h1><ul>{{#each website.data.tags}}<li>{{this}}</li>{{/each}}</ul></div>',
     })).statusCode).toBe(200);
     const html = await publishAndFetchHome();
     expect(html).toContain('<h1>Published copy</h1>'); // keyed lookup
     expect(html).toContain('<li>a</li><li>b</li>'); // {{#each}} over a website.data array
-    expect(html).toContain('<body><main><h1>Published copy</h1>'); // plain interpolation, no preview wrapper
+    // The page body is wrapped in the skeleton's <main id="page-content"> landmark; no preview wrapper.
+    expect(html).toContain('<body><main id="page-content"><div><h1>Published copy</h1>');
   });
 
   it('exposes a page’s own page.data to the published page ({{page.data.*}} + {{#each}})', async () => {
@@ -122,7 +123,7 @@ describe('website settings → publish', () => {
     expect((await proj.putContent('page', 'home', {
       id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
       data: { hero: { headline: 'Page-local copy' }, tags: ['a', 'b'] },
-      source: '<main><h1>{{page.data.hero.headline}}</h1><ul>{{#each page.data.tags}}<li>{{this}}</li>{{/each}}</ul></main>',
+      source: '<div><h1>{{page.data.hero.headline}}</h1><ul>{{#each page.data.tags}}<li>{{this}}</li>{{/each}}</ul></div>',
     })).statusCode).toBe(200);
     const html = await publishAndFetchHome();
     expect(html).toContain('<h1>Page-local copy</h1>');
@@ -139,7 +140,7 @@ describe('website settings → publish', () => {
     await proj.putContent('page', 'a3', { id: 'a3', path: 'third', parent: 'home', title: 'DraftArticle', status: 'draft', order: 3, root: node });
     expect((await proj.putContent('page', 'home', {
       id: 'home', path: '', title: 'Home', root: node,
-      source: '<main>{{#each page.children}}<a href="{{sw-url path}}"><h3>{{title}}</h3><p>{{description}}</p><span>{{data.tag}}</span></a>{{/each}}</main>',
+      source: '<div>{{#each page.children}}<a href="{{sw-url path}}"><h3>{{title}}</h3><p>{{description}}</p><span>{{data.tag}}</span></a>{{/each}}</div>',
     })).statusCode).toBe(200);
     const html = await publishAndFetchHome();
     expect(html).toContain('<h3>First</h3>');

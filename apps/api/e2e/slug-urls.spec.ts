@@ -32,7 +32,7 @@ test('media + preview URLs are slug-based end to end', async ({ playwright, base
   expect(served.headers()['content-type']).toContain('image');
 
   // Preview: POST mints the token + returns the slug; the doc serves at /preview/<slug>/<token>.
-  const home = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<main><h1>{{company.name}}</h1></main>' };
+  const home = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<div><h1>{{company.name}}</h1></div>' };
   const prev = await ctx.post(`${base}/preview`, { data: home });
   expect(prev.status()).toBe(200);
   const { token, slug: respSlug } = (await prev.json()) as { token: string; slug: string };
@@ -44,11 +44,14 @@ test('media + preview URLs are slug-based end to end', async ({ playwright, base
   expect((await ctx.get(`/preview/no-such-project-${stamp}/${token}`)).status()).toBe(404);
 
   // Publish: the slug-based media URL is rebased to the bundled `_assets/` (no slug/UUID in the export).
-  const page = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: `<main><img src="${asset.url}"></main>` };
+  const page = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: `<div><img src="${asset.url}"></div>` };
   expect((await ctx.put(`${base}/content/page/home`, { data: page })).status()).toBe(200);
   expect((await ctx.post(`${base}/publish`)).status()).toBe(200);
   const html = await (await ctx.get(`/sites/${slug}/index.html`)).text();
   expect(html).toContain('_assets/'); // media rebased into the portable artifact
+  // The published doc carries the platform semantic skeleton: the page body is wrapped in the
+  // <main id="page-content"> landmark (the author wrote a neutral <div>).
+  expect(html).toContain('<main id="page-content"><div><img src="_assets/');
   expect(html).not.toContain(`/media/${slug}/`); // the editor media URL is gone from the export
 
   await ctx.dispose();

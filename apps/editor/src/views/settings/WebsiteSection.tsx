@@ -10,7 +10,7 @@ import { ghostButton } from '../../theme';
 
 /** Shared bindings hint for the validated skeleton-slot editors. */
 const SLOT_HINT =
-  'HTML + Tailwind/DaisyUI (no JS). Bindings: {{ company.* }}, {{#each nav.header}}…{{/each}}, {{ website.json_data.* }}, {{ website.data.* }}.';
+  'HTML + Tailwind/DaisyUI (no JS). The skeleton wraps this slot in its own landmark (top-nav/footer/…), so do NOT use <nav>/<main>/<footer>/<aside> here — use <div>. Bindings: {{ company.* }}, {{#each nav.header}}…{{/each}}, {{ website.json_data.* }}, {{ website.data.* }}.';
 
 /** A one-line summary of the current `website.data` value for the "Edit data" row. */
 function dataSummary(v: JsonValue): string {
@@ -115,7 +115,7 @@ export function WebsiteSection({ form, patch }: { form: SettingsForm; patch: Pat
           hint={SLOT_HINT}
           value={form.topNav}
           onChange={(v) => patch({ topNav: v })}
-          placeholder={'<nav class="navbar">{{ company.name }}</nav>'}
+          placeholder={'<div class="navbar">{{ company.name }}</div>'}
         />
       </GlassCard>
 
@@ -126,7 +126,7 @@ export function WebsiteSection({ form, patch }: { form: SettingsForm; patch: Pat
           hint={SLOT_HINT}
           value={form.mobileNav}
           onChange={(v) => patch({ mobileNav: v })}
-          placeholder={'<nav class="drawer">…</nav>'}
+          placeholder={'<div class="drawer">…</div>'}
         />
       </GlassCard>
 
@@ -137,7 +137,7 @@ export function WebsiteSection({ form, patch }: { form: SettingsForm; patch: Pat
           hint={SLOT_HINT}
           value={form.sidebarLeft}
           onChange={(v) => patch({ sidebarLeft: v })}
-          placeholder={'<aside class="menu">…</aside>'}
+          placeholder={'<div class="menu">…</div>'}
         />
       </GlassCard>
 
@@ -148,7 +148,7 @@ export function WebsiteSection({ form, patch }: { form: SettingsForm; patch: Pat
           hint={SLOT_HINT}
           value={form.sidebarRight}
           onChange={(v) => patch({ sidebarRight: v })}
-          placeholder={'<aside class="menu">…</aside>'}
+          placeholder={'<div class="menu">…</div>'}
         />
       </GlassCard>
 
@@ -159,7 +159,7 @@ export function WebsiteSection({ form, patch }: { form: SettingsForm; patch: Pat
           hint={SLOT_HINT}
           value={form.footer}
           onChange={(v) => patch({ footer: v })}
-          placeholder={'<footer class="footer">© {{ company.name }}</footer>'}
+          placeholder={'<div class="footer">© {{ company.name }}</div>'}
         />
       </GlassCard>
 

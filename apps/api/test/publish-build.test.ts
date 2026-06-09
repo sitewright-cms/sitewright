@@ -68,7 +68,7 @@ describe('buildSite', () => {
           {
             id: 'home', path: '', title: 'Home',
             root: { id: 'r', type: 'Section' }, // placeholder block tree, ignored when source is set
-            source: '<main class="grid"><h1>{{ company.name }}</h1></main>',
+            source: '<div class="grid"><h1>{{ company.name }}</h1></div>',
           },
         ],
       }),
@@ -76,7 +76,8 @@ describe('buildSite', () => {
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
     expect(home.startsWith('<!doctype html>')).toBe(true);
     // Rendered from the Handlebars source ({{ company.name }} → Acme); block tree NOT rendered.
-    expect(home).toContain('<body><main class="grid"><h1>Acme</h1></main>');
+    // The skeleton wraps the page body in <main id="page-content"> (the author wrote a neutral <div>).
+    expect(home).toContain('<body><main id="page-content"><div class="grid"><h1>Acme</h1></div></main>');
     expect(home).not.toContain('<section data-sw-block="Section"');
     // The source's literal Tailwind class is compiled into the shared, root-linked sheet.
     expect(home).toContain('<link rel="stylesheet" href="styles.css" />');
@@ -91,11 +92,11 @@ describe('buildSite', () => {
         pages: [
           {
             id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
-            source: '<main>{{ company.name }}</main>', data: { section_color: 'tomato' },
+            source: '<div>{{ company.name }}</div>', data: { section_color: 'tomato' },
           },
           {
             id: 'services', path: 'services', parent: 'home', title: 'Services', root: { id: 'r', type: 'Section' },
-            source: '<main><b>{{page.slug}}</b> up:{{parentPage.title}} c:{{parentPage.data.section_color}}</main>',
+            source: '<div><b>{{page.slug}}</b> up:{{parentPage.title}} c:{{parentPage.data.section_color}}</div>',
           },
         ],
       }),
@@ -114,7 +115,7 @@ describe('buildSite', () => {
         pages: [
           {
             id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
-            source: '<main><section data-sw-html="intro"><p>fallback</p></section></main>',
+            source: '<div><section data-sw-html="intro"><p>fallback</p></section></div>',
             data: { intro: '<p>Hello <strong>there</strong></p><script>alert(1)</script>' },
           },
         ],
@@ -138,7 +139,7 @@ describe('buildSite', () => {
         pages: [
           {
             id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
-            source: '<main><h1>{{item.posts.hello.title}}</h1></main>',
+            source: '<div><h1>{{item.posts.hello.title}}</h1></div>',
           },
         ],
       }),
@@ -160,7 +161,7 @@ describe('buildSite', () => {
         pages: [
           {
             id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
-            source: '<main><button class="btn btn-primary">Sign up</button></main>',
+            source: '<div><button class="btn btn-primary">Sign up</button></div>',
           },
         ],
       }),
@@ -184,26 +185,30 @@ describe('buildSite', () => {
           identity: { name: 'Acme', colors: { primary: '#0a7' } },
           settings: { defaultLocale: 'en', locales: ['en'] },
           website: {
+            // Slot content uses NEUTRAL elements (a <div> with the DaisyUI .navbar / .footer
+            // classes) — the skeleton owns the <nav id="top-nav"> / <footer id="footer"> landmarks.
             topNav:
-              '<nav class="navbar bg-base-100"><a class="btn btn-ghost" href="/">{{ company.name }}</a>' +
-              '<ul class="menu menu-horizontal">{{#each nav.header}}<li><a href="{{sw-url path}}">{{label}}</a></li>{{/each}}</ul></nav>',
-            footer: '<footer class="footer">© {{ company.name }}</footer>',
+              '<div class="navbar bg-base-100"><a class="btn btn-ghost" href="/">{{ company.name }}</a>' +
+              '<ul class="menu menu-horizontal">{{#each nav.header}}<li><a href="{{sw-url path}}">{{label}}</a></li>{{/each}}</ul></div>',
+            footer: '<div class="footer">© {{ company.name }}</div>',
           },
         },
         pages: [
-          { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<main>Home body</main>', nav: { slots: ['header'], order: 1 } },
-          { id: 'about', path: 'about', parent: 'home', title: 'About', root: { id: 'r2', type: 'Section' }, source: '<main>About body</main>', nav: { slots: ['header'], order: 2 } },
+          { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<div>Home body</div>', nav: { slots: ['header'], order: 1 } },
+          { id: 'about', path: 'about', parent: 'home', title: 'About', root: { id: 'r2', type: 'Section' }, source: '<div>About body</div>', nav: { slots: ['header'], order: 2 } },
         ],
       }),
     });
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
     expect(home).toContain('Home body'); // the page's own source
-    expect(home).toContain('<nav class="navbar bg-base-100">'); // the shared topNav slot
+    // The shared topNav slot is wrapped in the platform's <nav id="top-nav"> landmark.
+    expect(home).toContain('<nav id="top-nav"><div class="navbar bg-base-100">');
     // The auto-nav lists BOTH pages (built from each page's nav settings); internal links
     // are rebased page-relative (portable): from the home page, "/" → "./", "/about" → "about".
     expect(home).toContain('<a href="./">Home</a>');
     expect(home).toContain('<a href="about">About</a>');
-    expect(home).toContain('<footer class="footer">© Acme</footer>'); // shared footer + brand
+    // The shared footer slot is wrapped in the platform's <footer id="footer"> landmark.
+    expect(home).toContain('<footer id="footer"><div class="footer">© Acme</div></footer>'); // shared footer + brand
     expect(home).toContain('<link rel="stylesheet" href="styles.css" />');
     // The slot's DaisyUI/Tailwind classes are compiled into the shared sheet.
     const sheet = await readFile(join(outDir, 'styles.css'), 'utf8');
@@ -214,14 +219,14 @@ describe('buildSite', () => {
     const about = await readFile(join(outDir, 'about', 'index.html'), 'utf8');
     expect(about).toContain('About body');
     expect(about).toContain('<a href="../about">About</a>');
-    expect(about).toContain('<footer class="footer">© Acme</footer>');
+    expect(about).toContain('<footer id="footer"><div class="footer">© Acme</div></footer>');
   });
 
   it('composes {{> snippet}} Handlebars partials into a published source page', async () => {
     await buildSite({
       publishedAt: '2026-05-29T00:00:00.000Z',
       outDir,
-      snippets: { promo: '<aside class="alert">{{ company.name }} promo</aside>' },
+      snippets: { promo: '<div class="alert">{{ company.name }} promo</div>' },
       bundle: bundle({
         project: {
           formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
@@ -229,12 +234,12 @@ describe('buildSite', () => {
           settings: { defaultLocale: 'en', locales: ['en'] },
         },
         pages: [
-          { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<main><h1>Home</h1>{{> promo}}</main>' },
+          { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<div><h1>Home</h1>{{> promo}}</div>' },
         ],
       }),
     });
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
-    expect(home).toContain('<aside class="alert">Acme promo</aside>'); // the snippet expanded + bound
+    expect(home).toContain('<div class="alert">Acme promo</div>'); // the snippet expanded + bound
     // The snippet's classes feed the shared utility sheet (compiled output lives in styles.css).
     const sheet = await readFile(join(outDir, 'styles.css'), 'utf8');
     expect(sheet).toMatch(/\.alert/);
@@ -251,7 +256,7 @@ describe('buildSite', () => {
       },
       bundle: bundle({
         pages: [
-          { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<main>{{> used}}</main>' },
+          { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<div>{{> used}}</div>' },
         ],
       }),
     });
@@ -266,7 +271,7 @@ describe('buildSite', () => {
         publishedAt: '2026-05-29T00:00:00.000Z',
         outDir,
         bundle: bundle({
-          pages: [{ id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<main>{{> missing}}</main>' }],
+          pages: [{ id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<div>{{> missing}}</div>' }],
         }),
       }),
     ).rejects.toThrow(/page "home" template error.*missing/); // pins the cause: the named partial
@@ -281,7 +286,7 @@ describe('buildSite', () => {
         outDir,
         snippets: { a: '<div>{{> b}}</div>', b: '<div>{{> a}}</div>' },
         bundle: bundle({
-          pages: [{ id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<main>{{> a}}</main>' }],
+          pages: [{ id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<div>{{> a}}</div>' }],
         }),
       }),
     ).rejects.toThrow(/page "home" template error/);
@@ -294,7 +299,7 @@ describe('buildSite', () => {
         outDir,
         snippets: { evil: '<div>{{x}}</div><script>steal()</script>' },
         bundle: bundle({
-          pages: [{ id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<main>{{> evil}}</main>' }],
+          pages: [{ id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<div>{{> evil}}</div>' }],
         }),
       }),
     ).rejects.toThrow(/page "home" template error.*script/i); // pins the cause: the validator rejects <script>
@@ -313,18 +318,19 @@ describe('buildSite', () => {
           settings: { defaultLocale: 'en', locales: ['en'] },
           website: {
             jsonDataUrl: 'https://en.wikipedia.org/api/rest_v1/page/summary/Berlin',
-            footer: '<footer>{{ website.json_data.title }} tags: {{#each website.json_data.tags}}{{this}}{{/each}}</footer>',
+            footer: '<div>{{ website.json_data.title }} tags: {{#each website.json_data.tags}}{{this}}{{/each}}</div>',
           },
         },
         pages: [
-          { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<main><h1>{{ website.json_data.title }}</h1><p>{{ website.json_data.extract }}</p></main>', nav: { slots: ['header'], order: 1 } },
+          { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<div><h1>{{ website.json_data.title }}</h1><p>{{ website.json_data.extract }}</p></div>', nav: { slots: ['header'], order: 1 } },
         ],
       }),
     });
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
     expect(home).toContain('<h1>Berlin</h1>'); // source page reads the snapshot
     expect(home).toContain('<p>Capital of Germany</p>');
-    expect(home).toContain('<footer>Berlin tags: ab</footer>'); // a slot can {{#each}} the array
+    // The footer slot ({{#each}} over the array) wrapped in the platform's <footer id="footer">.
+    expect(home).toContain('<footer id="footer"><div>Berlin tags: ab</div></footer>'); // a slot can {{#each}} the array
   });
 
   it('HTML-escapes json_data string values (the snapshot is untrusted external input)', async () => {
@@ -339,7 +345,7 @@ describe('buildSite', () => {
           settings: { defaultLocale: 'en', locales: ['en'] },
         },
         pages: [
-          { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<main><h1>{{ website.json_data.title }}</h1><p>{{ website.json_data.note }}</p></main>' },
+          { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<div><h1>{{ website.json_data.title }}</h1><p>{{ website.json_data.note }}</p></div>' },
         ],
       }),
     });
@@ -359,16 +365,18 @@ describe('buildSite', () => {
           identity: { name: 'Acme', colors: { primary: '#0a7' } },
           settings: { defaultLocale: 'en', locales: ['en'] },
           website: {
-            topNav: '<nav id="slot-top" class="navbar">top</nav>',
-            mobileNav: '<nav id="slot-mob" class="drawer">mobile</nav>',
-            sidebarLeft: '<aside id="slot-sl" class="menu">left</aside>',
-            sidebarRight: '<aside id="slot-sr" class="menu">right</aside>',
-            footer: '<footer id="slot-foot" class="footer">foot</footer>',
+            // Slot content uses NEUTRAL elements (a <div> keeps the author's id + DaisyUI classes);
+            // the skeleton wraps each non-empty slot in its own landmark (<nav id="top-nav"> etc.).
+            topNav: '<div id="slot-top" class="navbar">top</div>',
+            mobileNav: '<div id="slot-mob" class="drawer">mobile</div>',
+            sidebarLeft: '<div id="slot-sl" class="menu">left</div>',
+            sidebarRight: '<div id="slot-sr" class="menu">right</div>',
+            footer: '<div id="slot-foot" class="footer">foot</div>',
             bottom: '<div id="slot-bottom" class="modal">{{ company.name }}</div>',
           },
         },
         pages: [
-          { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<main id="page-body">Home body</main>', nav: { slots: ['header'], order: 1 } },
+          { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<div id="page-body">Home body</div>', nav: { slots: ['header'], order: 1 } },
         ],
       }),
     });
@@ -395,7 +403,7 @@ describe('buildSite', () => {
             settings: { defaultLocale: 'en', locales: ['en'] },
             website: { bottom: '<div>{{website.json}}</div><script>x()</script>' },
           },
-          pages: [{ id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<main>h</main>' }],
+          pages: [{ id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<div>h</div>' }],
         }),
       }),
     ).rejects.toThrow(/website bottom/);
@@ -412,13 +420,13 @@ describe('buildSite', () => {
           formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
           identity: { name: 'Acme', colors: {} },
           settings: { defaultLocale: 'en', locales: ['en', 'de'] },
-          website: { topNav: '<nav>{{#each nav.header}}<a href="{{sw-url path}}">{{label}}</a>{{/each}}</nav>' },
+          website: { topNav: '<div>{{#each nav.header}}<a href="{{sw-url path}}">{{label}}</a>{{/each}}</div>' },
         },
         pages: [
-          { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<main>h</main>', nav: { slots: ['header'], order: 1 }, translationGroup: 'home' },
-          { id: 'about', path: 'about', parent: 'home', title: 'About', root: { id: 'r2', type: 'Section' }, source: '<main>a</main>', nav: { slots: ['header'], order: 2 } },
-          { id: 'home-de', path: 'de', parent: 'home', title: 'Start', locale: 'de', translationGroup: 'home', root: { id: 'r3', type: 'Section' }, source: '<main>hd</main>', nav: { slots: ['header'], order: 1 } },
-          { id: 'about-de', path: 'about', parent: 'home-de', title: 'Über', locale: 'de', root: { id: 'r4', type: 'Section' }, source: '<main>ad</main>', nav: { slots: ['header'], order: 2 } },
+          { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<div>h</div>', nav: { slots: ['header'], order: 1 }, translationGroup: 'home' },
+          { id: 'about', path: 'about', parent: 'home', title: 'About', root: { id: 'r2', type: 'Section' }, source: '<div>a</div>', nav: { slots: ['header'], order: 2 } },
+          { id: 'home-de', path: 'de', parent: 'home', title: 'Start', locale: 'de', translationGroup: 'home', root: { id: 'r3', type: 'Section' }, source: '<div>hd</div>', nav: { slots: ['header'], order: 1 } },
+          { id: 'about-de', path: 'about', parent: 'home-de', title: 'Über', locale: 'de', root: { id: 'r4', type: 'Section' }, source: '<div>ad</div>', nav: { slots: ['header'], order: 2 } },
         ],
       }),
     });
@@ -442,9 +450,9 @@ describe('buildSite', () => {
           project: {
             formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
             identity: { name: 'Acme', colors: {} }, settings: { defaultLocale: 'en', locales: ['en'] },
-            website: { topNav: '<nav>{{#each nav.header}}<a>{{label}}</a></nav>' }, // unclosed {{#each}}
+            website: { topNav: '<div>{{#each nav.header}}<a>{{label}}</a></div>' }, // unclosed {{#each}}
           },
-          pages: [{ id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<main>x</main>' }],
+          pages: [{ id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<div>x</div>' }],
         }),
       }),
     ).rejects.toThrow(/website topNav template error/);
@@ -459,9 +467,9 @@ describe('buildSite', () => {
           project: {
             formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
             identity: { name: 'Acme', colors: {} }, settings: { defaultLocale: 'en', locales: ['en'] },
-            website: { topNav: '<nav>{{#each nav.header}}<a href="{{sw-url path}}">{{label}}</a>{{/each}}</nav><script>x()</script>' },
+            website: { topNav: '<div>{{#each nav.header}}<a href="{{sw-url path}}">{{label}}</a>{{/each}}</div><script>x()</script>' },
           },
-          pages: [{ id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<main>x</main>' }],
+          pages: [{ id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<div>x</div>' }],
         }),
       }),
     ).rejects.toThrow(/website topNav/);
@@ -475,7 +483,7 @@ describe('buildSite', () => {
         pages: [
           {
             id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
-            source: '<main><h1 data-sw-text="headline">Default headline</h1></main>',
+            source: '<div><h1 data-sw-text="headline">Default headline</h1></div>',
             data: { headline: 'Client wrote this' }, // the override now lives in page.data ({{edit}} reads it)
           },
         ],

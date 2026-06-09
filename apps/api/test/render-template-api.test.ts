@@ -73,14 +73,15 @@ describe('render-template API (isolated worker)', () => {
       method: 'POST',
       url: `/projects/${projectId}/render-template`,
       cookies: { sw_session: t },
-      payload: { template: '<main class="grid"><h1>{{ company.name }}</h1></main>', document: true },
+      payload: { template: '<div class="grid"><h1>{{ company.name }}</h1></div>', document: true },
     });
     expect(res.statusCode).toBe(200);
     const body = res.json() as { html: string; token: string };
     const html = body.html;
     // A complete document shell wrapping the rendered source body…
     expect(html.startsWith('<!doctype html>')).toBe(true);
-    expect(html).toContain('<main class="grid"><h1>Site</h1></main>');
+    // …the source body sits inside the skeleton's <main id="page-content"> landmark.
+    expect(html).toContain('<main id="page-content"><div class="grid"><h1>Site</h1></div></main>');
     // …with the source's literal Tailwind class compiled + inlined so the preview is STYLED.
     expect(html).toContain('display:grid');
 

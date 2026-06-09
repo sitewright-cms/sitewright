@@ -114,17 +114,19 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
   {
     name: 'footer',
     label: 'Footer',
-    source: `<footer class="footer footer-center bg-base-200 p-10 text-base-content/70">
-  <aside>
+    // Goes in the Footer slot, which the skeleton wraps in <footer id="footer"> — so this content
+    // uses neutral <div>s (DaisyUI's `.footer` class still drives the layout on any element).
+    source: `<div class="footer footer-center bg-base-200 p-10 text-base-content/70">
+  <div>
     <p class="font-semibold text-base-content">{{ company.name }}</p>
     <p data-sw-text="footer_tagline">Building better software since day one.</p>
-  </aside>
-  <nav class="grid grid-flow-col gap-4">
+  </div>
+  <div class="grid grid-flow-col gap-4">
     <a class="link link-hover" href="/about">About</a>
     <a class="link link-hover" href="/contact">Contact</a>
     <a class="link link-hover" href="/privacy">Privacy</a>
-  </nav>
-</footer>`,
+  </div>
+</div>`,
   },
 ];
 

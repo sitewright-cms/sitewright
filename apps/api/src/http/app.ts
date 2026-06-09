@@ -1036,11 +1036,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       path: '',
       title: 'Home',
       root: { id: 'root', type: 'Section', children: [] },
+      // Page content goes inside the skeleton's <main id="page-content"> wrapper, so the source
+      // itself uses a neutral <section> (the validator rejects a nested <main>).
       source:
-        '<main class="mx-auto max-w-3xl px-6 py-16">\n' +
+        '<section class="mx-auto max-w-3xl px-6 py-16">\n' +
         '  <h1 class="text-4xl font-bold tracking-tight">{{ company.name }}</h1>\n' +
         '  <p class="mt-4 text-lg opacity-70" data-sw-text="tagline">Welcome — edit this tagline.</p>\n' +
-        '</main>\n',
+        '</section>\n',
       nav: { slots: ['header'], order: 0 },
     });
     return reply.code(201).send({ project });

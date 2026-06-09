@@ -71,7 +71,7 @@ test('an instance admin can create + delete a global snippet from the Snippets r
   const editor = page.getByRole('dialog', { name: `${name} — global snippet` });
   await expect(editor).toBeVisible();
   await editor.locator('.cm-content').click();
-  await page.keyboard.type('<aside id="global-admin-made">{{company.name}}</aside>');
+  await page.keyboard.type('<div id="global-admin-made">{{company.name}}</div>');
   await editor.getByRole('button', { name: 'Save changes' }).click();
 
   // It lands in the GLOBAL section as an EDITABLE chip (Edit/Delete, not the read-only copy buttons).

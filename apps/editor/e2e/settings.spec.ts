@@ -78,7 +78,7 @@ test('edit a website partial in the code-editor modal, save, and persist across 
   // Type into the black CodeMirror editor, then Save (the modal's ✓ button).
   await dialog.locator('.cm-content').click();
   await page.keyboard.press('ControlOrMeta+a');
-  await page.keyboard.type(`<nav>${marker}</nav>`);
+  await page.keyboard.type(`<div>${marker}</div>`);
   await dialog.getByRole('button', { name: 'Save changes' }).click();
   await expect(dialog).toBeHidden();
 

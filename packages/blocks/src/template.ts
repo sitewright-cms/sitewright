@@ -76,6 +76,20 @@ const COMPILE_CACHE_LIMIT = 200;
  * HTML-escaper cannot make safe, if `{{{ raw }}}` is used, or if a URL attribute uses a
  * bare interpolation instead of the `{{sw-url …}}` helper.
  */
+/**
+ * The HTML5 landmark elements the page SKELETON owns — it emits each one once, with a fixed unique
+ * id, around the matching slot or the page body (see `slotLandmark` / `<main id="page-content">` in
+ * render.ts). Author content (page sources, skeleton slots, snippets, templates) must NOT use these
+ * elements, or the document would carry duplicate landmarks. Each entry's message names the element,
+ * says why it's reserved, and suggests the neutral replacement.
+ */
+const SKELETON_LANDMARKS = new Map<string, string>([
+  ['nav', 'the skeleton owns the navigation landmarks <nav id="top-nav"> and <nav id="mobile-nav"> (authored via the Top nav / Mobile nav slots) — use a <div> or <ul> for nav groups inside your content'],
+  ['main', 'the skeleton already wraps every page body in <main id="page-content"> — use a <div> or <section> for your content'],
+  ['footer', 'the skeleton owns the footer landmark <footer id="footer"> (authored via the Footer slot) — use a <div> for footer-style content'],
+  ['aside', 'the skeleton owns the sidebar landmarks <aside id="sidebar-left"> / <aside id="sidebar-right"> (authored via the Sidebar slots) — use a <div> for an aside inside your content'],
+]);
+
 export function validateTemplate(source: string): void {
   type Mode = 'body' | 'comment' | 'rawtext' | 'tag';
   let mode: Mode = 'body';
@@ -161,6 +175,13 @@ export function validateTemplate(source: string): void {
           // No tenant JS: a <script> element is rejected wherever it appears (including
           // inside an {{#*inline}} partial body, which the scanner walks as literal text).
           if (!isClose && name === 'script') reject('a <script> element');
+          // Skeleton-owned landmark elements (<nav>/<main>/<footer>/<aside>) are declared once by
+          // the platform with a unique id around each slot/the page body — author content must not
+          // repeat them. The message names the element + the reserved id(s) and suggests the fix.
+          const landmarkHint = isClose ? undefined : SKELETON_LANDMARKS.get(name);
+          if (landmarkHint !== undefined) {
+            throw new TemplateError(`unsafe template: a <${name}> element is not allowed — ${landmarkHint}.`);
+          }
           mode = 'tag';
           sub = 'preAttr';
           attrName = '';

@@ -289,7 +289,7 @@ describe('preview API — code-first source page', () => {
       cookies: { sw_session: t },
       payload: {
         id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
-        source: '<main class="grid"><h1 data-sw-text="headline">Default headline</h1></main>',
+        source: '<div class="grid"><h1 data-sw-text="headline">Default headline</h1></div>',
         content: { headline: 'Edited headline' },
       },
     });
@@ -298,7 +298,8 @@ describe('preview API — code-first source page', () => {
     expect(body.html.startsWith('<!doctype html>')).toBe(true);
     // The page.data override replaced the authored default; the block tree was not rendered. PREVIEW
     // keeps the data-sw-text marker on the element for inline editing (stripped on publish).
-    expect(body.html).toContain('<main class="grid"><h1 data-sw-text="headline">Edited headline</h1></main>');
+    // The platform wraps the source body in <main id="page-content">.
+    expect(body.html).toContain('<main id="page-content"><div class="grid"><h1 data-sw-text="headline">Edited headline</h1></div></main>');
     expect(body.html).not.toContain('Default headline');
     expect(body.html).not.toContain('<section data-sw-block="Section"'); // the block tree was not rendered
     // The source's literal Tailwind class compiled + inlined.
@@ -316,8 +317,10 @@ describe('preview API — code-first source page', () => {
       payload: {
         identity: { name: 'Acme', colors: { primary: '#0a7' } },
         website: {
-          topNav: '<nav class="navbar">{{ company.name }}</nav>',
-          footer: '<footer class="footer">© {{ company.name }}</footer>',
+          // Slot content is neutral (no landmark tags — the validator forbids those); the platform
+          // wraps topNav in <nav id="top-nav"> and footer in <footer id="footer">.
+          topNav: '<div class="navbar">{{ company.name }}</div>',
+          footer: '<div class="footer">© {{ company.name }}</div>',
         },
         settings: {},
       },
@@ -326,12 +329,12 @@ describe('preview API — code-first source page', () => {
       method: 'POST',
       url: `${base}/preview`,
       cookies: { sw_session: t },
-      payload: { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<main><h1>Body</h1></main>' },
+      payload: { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<section><h1>Body</h1></section>' },
     });
     expect(res.statusCode).toBe(200);
     const html = (res.json() as { html: string }).html;
-    expect(html).toContain('<nav class="navbar">Acme</nav>'); // shared topNav, {{ company.name }} bound
-    expect(html).toContain('<footer class="footer">© Acme</footer>'); // shared footer
+    expect(html).toContain('<nav id="top-nav"><div class="navbar">Acme</div></nav>'); // shared topNav, {{ company.name }} bound, wrapped in the platform landmark
+    expect(html).toContain('<footer id="footer"><div class="footer">© Acme</div></footer>'); // shared footer, wrapped in the platform landmark
     // Source order: topNav before the page body, footer after it.
     expect(html.indexOf('class="navbar"')).toBeLessThan(html.indexOf('<h1>Body</h1>'));
     expect(html.indexOf('<h1>Body</h1>')).toBeLessThan(html.indexOf('class="footer"'));
@@ -357,7 +360,7 @@ describe('preview API — code-first source page', () => {
       cookies: { sw_session: t },
       payload: {
         id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
-        source: '<main><h1>{{website.data.hero.headline}}</h1><ul>{{#each website.data.highlights}}<li>{{this}}</li>{{/each}}</ul></main>',
+        source: '<div><h1>{{website.data.hero.headline}}</h1><ul>{{#each website.data.highlights}}<li>{{this}}</li>{{/each}}</ul></div>',
       },
     });
     expect(res.statusCode).toBe(200);
@@ -375,7 +378,7 @@ describe('preview API — code-first source page', () => {
       payload: {
         id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
         data: { hero: { headline: 'On this page' }, tags: ['x', 'y'] },
-        source: '<main><h1>{{page.data.hero.headline}}</h1><ul>{{#each page.data.tags}}<li>{{this}}</li>{{/each}}</ul></main>',
+        source: '<div><h1>{{page.data.hero.headline}}</h1><ul>{{#each page.data.tags}}<li>{{this}}</li>{{/each}}</ul></div>',
       },
     });
     expect(res.statusCode).toBe(200);
@@ -398,7 +401,7 @@ describe('preview API — code-first source page', () => {
       cookies: { sw_session: t },
       payload: {
         id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
-        source: '<main>{{#each page.children}}<a href="{{sw-url path}}"><h3>{{title}}</h3><p>{{description}}</p><span>{{data.tag}}</span></a>{{/each}}</main>',
+        source: '<div>{{#each page.children}}<a href="{{sw-url path}}"><h3>{{title}}</h3><p>{{description}}</p><span>{{data.tag}}</span></a>{{/each}}</div>',
       },
     });
     expect(res.statusCode).toBe(200);
@@ -418,16 +421,18 @@ describe('preview API — code-first source page', () => {
       identity: { name: 'Acme', colors: { primary: '#0a7' } },
       // The shared nav lists nav.header labels; expose the locale + switcher too.
       website: {
+        // Neutral slot content (no <nav> — that's the skeleton's landmark); the platform wraps it
+        // in <nav id="top-nav">.
         topNav:
-          '<nav class="navbar"><ul>{{#each nav.header}}<li><a href="{{sw-url path}}">{{label}}</a></li>{{/each}}</ul>' +
-          '<span class="loc">{{page.locale}}</span>{{#each page.translations}}<a class="sw" href="{{sw-url path}}">{{locale}}</a>{{/each}}</nav>',
+          '<div class="navbar"><ul>{{#each nav.header}}<li><a href="{{sw-url path}}">{{label}}</a></li>{{/each}}</ul>' +
+          '<span class="loc">{{page.locale}}</span>{{#each page.translations}}<a class="sw" href="{{sw-url path}}">{{locale}}</a>{{/each}}</div>',
       },
       settings: { defaultLocale: 'en', locales: ['en', 'de'] },
     });
     const root = { id: 'r', type: 'Section' };
     // English (default) + German variant, linked by group; each carries a header nav item.
-    await put('page', 'home', { id: 'home', path: '', title: 'Home', root, translationGroup: 'home', nav: { title: 'Home', slots: ['header'], order: 1 }, source: '<main><h1>EN</h1></main>' });
-    const gde = { id: 'home-de', path: 'de', title: 'Start', locale: 'de', translationGroup: 'home', root, nav: { title: 'Start', slots: ['header'], order: 1 }, source: '<main><h1>DE</h1></main>' };
+    await put('page', 'home', { id: 'home', path: '', title: 'Home', root, translationGroup: 'home', nav: { title: 'Home', slots: ['header'], order: 1 }, source: '<section><h1>EN</h1></section>' });
+    const gde = { id: 'home-de', path: 'de', title: 'Start', locale: 'de', translationGroup: 'home', root, nav: { title: 'Start', slots: ['header'], order: 1 }, source: '<section><h1>DE</h1></section>' };
     await put('page', 'home-de', gde);
 
     // Preview the GERMAN page → its nav must list only German pages.
@@ -449,7 +454,7 @@ describe('preview API — code-first source page', () => {
       cookies: { sw_session: t },
       payload: {
         id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
-        source: '<main><h1 data-aos="fade-up">Reveal</h1></main>',
+        source: '<section><h1 data-aos="fade-up">Reveal</h1></section>',
       },
     });
     expect(animated.statusCode).toBe(200);
@@ -466,7 +471,7 @@ describe('preview API — code-first source page', () => {
       cookies: { sw_session: t },
       payload: {
         id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
-        source: '<main><h1>Static</h1></main>',
+        source: '<section><h1>Static</h1></section>',
       },
     });
     expect((plain.json() as { html: string }).html).not.toContain('aos-init');
@@ -481,8 +486,9 @@ describe('preview API — code-first source page', () => {
       cookies: { sw_session: t },
       payload: {
         identity: { name: 'Acme', colors: {} },
-        // topNav is unsafe (a <script> — rejected by the no-JS validator); footer is fine.
-        website: { topNav: '<nav><script>x()</script></nav>', footer: '<footer class="footer">ok</footer>' },
+        // topNav is unsafe (a <script> — rejected by the no-JS validator); footer is fine (neutral
+        // content; the platform wraps it in <footer id="footer">).
+        website: { topNav: '<div><script>x()</script></div>', footer: '<div class="footer">ok</div>' },
         settings: {},
       },
     });
@@ -490,13 +496,13 @@ describe('preview API — code-first source page', () => {
       method: 'POST',
       url: `${base}/preview`,
       cookies: { sw_session: t },
-      payload: { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<main><h1>Body</h1></main>' },
+      payload: { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<section><h1>Body</h1></section>' },
     });
     expect(res.statusCode).toBe(200); // the page preview still renders
     const html = (res.json() as { html: string }).html;
     expect(html).toContain('<h1>Body</h1>'); // body intact
     expect(html).not.toContain('<script>x()'); // the broken slot was skipped, not injected
-    expect(html).toContain('<footer class="footer">ok</footer>'); // the good slot still renders
+    expect(html).toContain('<footer id="footer"><div class="footer">ok</div></footer>'); // the good slot still renders, wrapped in the platform landmark
   });
 
   it('returns 503 for a source-page preview when no render pool is configured', async () => {

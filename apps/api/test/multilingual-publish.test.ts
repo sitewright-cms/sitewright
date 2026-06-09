@@ -43,11 +43,11 @@ describe('multilingual publish (locale variants are pages)', () => {
     // The English (default) home and its German variant — separate pages, linked by group.
     await proj.putContent('page', 'home', {
       id: 'home', path: '', title: 'Home', root, translationGroup: 'home',
-      source: '<main><h1>Welcome</h1></main>',
+      source: '<section><h1>Welcome</h1></section>',
     });
     await proj.putContent('page', 'home-de', {
       id: 'home-de', path: 'de', parent: 'home', title: 'Startseite', locale: 'de', translationGroup: 'home', root,
-      source: '<main><h1>Willkommen</h1></main>',
+      source: '<section><h1>Willkommen</h1></section>',
     });
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
 
@@ -124,7 +124,7 @@ describe('multilingual publish (locale variants are pages)', () => {
       identity: { name: 'Acme', colors: { primary: '#0a7' } },
       settings: { defaultLocale: 'en', locales: ['en', 'de'] },
     });
-    const switcher = '<p>{{ page.locale }}</p><nav>{{#each page.translations}}<a href="{{sw-url path}}">{{ locale }}</a>{{/each}}</nav>';
+    const switcher = '<p>{{ page.locale }}</p><ul>{{#each page.translations}}<a href="{{sw-url path}}">{{ locale }}</a>{{/each}}</ul>';
     await proj.putContent('page', 'home', { id: 'home', path: '', title: 'Home', root, translationGroup: 'home', source: switcher });
     await proj.putContent('page', 'home-de', { id: 'home-de', path: 'de', parent: 'home', title: 'Start', locale: 'de', translationGroup: 'home', root, source: switcher });
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);

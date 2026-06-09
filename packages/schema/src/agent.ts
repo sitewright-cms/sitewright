@@ -32,6 +32,12 @@ In \`source\`:
 - NO JavaScript: no <script>, no on* handlers, no {{{triple-stache}}}. For interactivity use
   DaisyUI's CSS-only patterns (<details>, the popover attribute, checkbox). Put URLs in
   href/src as literal paths or via the {{sw-url …}} helper.
+- NO SEMANTIC LANDMARK ELEMENTS: the page SKELETON already wraps every page body in
+  <main id="page-content"> and each skeleton slot in its own landmark — <nav id="top-nav">,
+  <nav id="mobile-nav">, <footer id="footer">, <aside id="sidebar-left">/<aside id="sidebar-right">.
+  So a page \`source\` (and any snippet/template/slot HTML) must NOT use <nav>, <main>, <footer>, or
+  <aside> — the validator rejects them to keep each landmark unique. Use neutral <div>/<section>/<ul>
+  (DaisyUI's .navbar/.footer/.menu classes style any element).
 
 ANIMATIONS (scroll-reveal): use the standard AOS attributes directly on elements —
 data-aos="fade-up" plus optional data-aos-delay="200" / data-aos-duration="600" (ms, max 5000),

@@ -629,6 +629,16 @@ export interface RenderDocumentOptions extends RenderContext {
  * JSON-LD) is data-driven; page content is escaped; the only raw HTML is the
  * tenant's own custom head/footer. Safe to drop into a sandboxed preview iframe.
  */
+/**
+ * Wrap a skeleton slot's pre-rendered HTML in its platform-owned semantic landmark + unique id —
+ * or emit nothing when the slot is empty (no hollow `<nav></nav>` on every page). The `id` is a
+ * fixed constant, never author input, so it needs no escaping. Slot CONTENT is validated to NOT
+ * itself contain `<nav>/<main>/<footer>/<aside>`, so these landmarks stay unique per document.
+ */
+function slotLandmark(tag: 'nav' | 'aside' | 'footer' | 'div', id: string, html: string | undefined): string {
+  return html ? `<${tag} id="${id}">${html}</${tag}>` : '';
+}
+
 export function renderDocument(page: Page, opts: RenderDocumentOptions): string {
   const {
     brand,
@@ -691,11 +701,22 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     // app-controlled fontUrl (no `<`). @font-face urls point at LOCAL self-hosted woff2.
     `<style>${typographyCss(brand?.typography, fontAssets, { fontUrl })}</style>\n` +
     `</head>\n` +
-    // Skeleton slot order: TOP_NAV, MOBILE_NAV, [body], SIDEBAR_L, SIDEBAR_R, FOOTER, BOTTOM,
-    // then SCRIPTS (the raw `website.scripts` slot — 3rd-party widgets), before the platform's
-    // own component <script> tags.
-    `<body>${topNav ?? ''}${mobileNav ?? ''}${body}${sidebarLeft ?? ''}${sidebarRight ?? ''}` +
-    `${footer ?? ''}${bottom ?? ''}${customScripts ?? ''}` +
+    // Skeleton landmarks: the platform OWNS the semantic element + unique id for each slot and the
+    // page body, so a slot/page author writes neutral HTML (the validator rejects <nav>/<main>/
+    // <footer>/<aside> in their content — those landmarks are declared HERE, once). Order:
+    // TOP_NAV, MOBILE_NAV, [<main> page body], SIDEBAR_L, SIDEBAR_R, FOOTER, BOTTOM, then the raw
+    // `website.scripts` slot (3rd-party widgets) before the platform's own component <script> tags.
+    // A slot wrapper is emitted only when that slot has content; <main id="page-content"> is ALWAYS
+    // present (every page has a body).
+    `<body>` +
+    slotLandmark('nav', 'top-nav', topNav) +
+    slotLandmark('nav', 'mobile-nav', mobileNav) +
+    `<main id="page-content">${body}</main>` +
+    slotLandmark('aside', 'sidebar-left', sidebarLeft) +
+    slotLandmark('aside', 'sidebar-right', sidebarRight) +
+    slotLandmark('footer', 'footer', footer) +
+    slotLandmark('div', 'bottom', bottom) +
+    `${customScripts ?? ''}` +
     (scripts ?? [])
       .map((src) => `<script defer src="${escapeAttr(src)}"></script>`)
       .join('') +

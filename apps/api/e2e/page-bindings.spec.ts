@@ -24,7 +24,7 @@ test('page.slug + parentPage bindings render in preview and the published export
   const home = {
     id: 'home', path: '', title: 'Home',
     root: { id: 'r', type: 'Section' },
-    source: '<main>{{ company.name }}</main>',
+    source: '<div>{{ company.name }}</div>',
     data: { section_color: 'tomato' },
   };
   expect((await ctx.put(`${base}/content/page/home`, { data: home })).status()).toBe(200);
@@ -34,12 +34,12 @@ test('page.slug + parentPage bindings render in preview and the published export
     id: 'services', path: 'services', parent: 'home', title: 'Services',
     root: { id: 'r', type: 'Section' },
     source:
-      '<main>' +
+      '<div>' +
       '<b id="{{page.slug}}">slug:{{page.slug}}</b> ' +
       'route:{{page.path}} ' +
       'up:<a href="{{sw-url parentPage.path}}">{{parentPage.title}}</a> ' +
       'color:{{parentPage.data.section_color}}' +
-      '</main>',
+      '</div>',
   };
   expect((await ctx.put(`${base}/content/page/services`, { data: child })).status()).toBe(200);
 

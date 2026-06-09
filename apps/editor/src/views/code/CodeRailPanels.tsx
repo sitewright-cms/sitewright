@@ -1,6 +1,5 @@
-import { GLOBAL_SNIPPETS } from '@sitewright/core';
 import { SidePanel } from '../ui/SidePanel';
-import { CodeRecordManager, type CodeRecord, type MakeId } from './CodeRecordManager';
+import { CodeRecordManager, type CodeRecord, type MakeId, type RecordAdapters } from './CodeRecordManager';
 import { api } from '../../api';
 
 /** Code glyph (`</>`) for the bottom rail tabs. */
@@ -39,26 +38,36 @@ const templateId: MakeId = (name, existing) => {
 };
 
 // Module-level (stable-identity) storage adapters — passing inline arrows would give the manager's
-// load effect a new `load` every parent render and re-fetch on every render.
-const snippets = {
-  load: (p: string) => api.listSnippets(p).then((r) => r.items.map(toRecord)),
-  save: (p: string, rec: CodeRecord) => api.putSnippet(p, rec),
-  remove: (p: string, id: string) => api.deleteSnippet(p, id),
+// load effect a new `load` every parent render and re-fetch on every render. The global adapters
+// ignore the projectId (the library is instance-wide).
+const snippets: RecordAdapters = {
+  load: (p) => api.listSnippets(p).then((r) => r.items.map(toRecord)),
+  save: (p, rec) => api.putSnippet(p, rec),
+  remove: (p, id) => api.deleteSnippet(p, id),
 };
-const templates = {
-  load: (p: string) => api.listTemplates(p).then((r) => r.items.map(toRecord)),
-  save: (p: string, rec: CodeRecord) => api.putTemplate(p, rec),
-  remove: (p: string, id: string) => api.deleteTemplate(p, id),
+const globalSnippets: RecordAdapters = {
+  load: () => api.listGlobalSnippets().then((r) => r.items.map(toRecord)),
+  save: (_p, rec) => api.putGlobalSnippet(rec),
+  remove: (_p, id) => api.deleteGlobalSnippet(id),
+};
+const templates: RecordAdapters = {
+  load: (p) => api.listTemplates(p).then((r) => r.items.map(toRecord)),
+  save: (p, rec) => api.putTemplate(p, rec),
+  remove: (p, id) => api.deleteTemplate(p, id),
+};
+const globalTemplates: RecordAdapters = {
+  load: () => api.listGlobalTemplates().then((r) => r.items.map(toRecord)),
+  save: (_p, rec) => api.putGlobalTemplate(rec),
+  remove: (_p, id) => api.deleteGlobalTemplate(id),
 };
 
 /**
  * The bottom CODE RAILS — reusable Handlebars source records, each in its own {@link SidePanel}:
  *   - Snippets  → `{{> name}}` partials a page/template can include.
  *   - Templates → page layouts a page renders via its `template` reference.
- * (sitewright's only two source-bearing reusable record types; block-tree partials/patterns are a
- * separate, legacy model with no source editor.)
+ * Each lists the shared GLOBAL library (read-only, or editable when `isAdmin`) above the project's own.
  */
-export function SnippetsPanel({ projectId }: { projectId: string }) {
+export function SnippetsPanel({ projectId, isAdmin }: { projectId: string; isAdmin?: boolean }) {
   return (
     <SidePanel side="bottom" align="center" label="Snippets" icon={<CodeIcon />}>
       <CodeRecordManager
@@ -68,7 +77,9 @@ export function SnippetsPanel({ projectId }: { projectId: string }) {
         save={snippets.save}
         remove={snippets.remove}
         makeId={snippetId}
-        globals={GLOBAL_SNIPPETS}
+        globalAdapters={globalSnippets}
+        isAdmin={isAdmin}
+        includeRef={(r) => `{{> ${r.name}}}`}
         nameHint="referenced as {{> name}}"
         hint="A reusable Handlebars partial (HTML + Tailwind + {{ }}). Include it in a page or template with {{> name}}."
       />
@@ -76,7 +87,7 @@ export function SnippetsPanel({ projectId }: { projectId: string }) {
   );
 }
 
-export function TemplatesPanel({ projectId }: { projectId: string }) {
+export function TemplatesPanel({ projectId, isAdmin }: { projectId: string; isAdmin?: boolean }) {
   return (
     <SidePanel side="bottom" align="end" label="Templates" icon={<CodeIcon />}>
       <CodeRecordManager
@@ -86,6 +97,8 @@ export function TemplatesPanel({ projectId }: { projectId: string }) {
         save={templates.save}
         remove={templates.remove}
         makeId={templateId}
+        globalAdapters={globalTemplates}
+        isAdmin={isAdmin}
         hint="A page layout. A page that sets this template renders its source and contributes only its editable data-sw-* regions (stored in page.data)."
       />
     </SidePanel>

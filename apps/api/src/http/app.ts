@@ -59,7 +59,6 @@ import {
   buildNav,
   collectClassNames,
   extractClassNames,
-  GLOBAL_SNIPPET_PARTIALS,
   isGlobalTemplate,
   publishedPages,
   resolveTemplateSource,
@@ -78,6 +77,14 @@ import {
   type ProjectBundle,
 } from '@sitewright/core';
 import type { Database } from '../db/client.js';
+import {
+  seedGlobalLibrary,
+  globalSnippetPartials,
+  listGlobalTemplates,
+  globalTemplateMap,
+  globalCtx,
+  GLOBAL_SCOPE_ID,
+} from '../repo/global-library.js';
 import { MediaStorage } from '../media/storage.js';
 import { MediaValidationError } from '../media/errors.js';
 import { ancestorPaths, isUnderFolder, reparentPath, validateFolderMove } from '../media/folders.js';
@@ -232,6 +239,14 @@ function parseGenericKind(kind: string): ContentKind {
     throw new ForbiddenError(`${parsed} must be accessed via its dedicated endpoints`);
   }
   return parsed;
+}
+
+/** The two content kinds that have a GLOBAL (instance-wide, admin-managed) variant. */
+function parseLibraryKind(kind: string): 'snippet' | 'template' {
+  if (kind !== 'snippet' && kind !== 'template') {
+    throw new ForbiddenError('only snippet and template have a global library');
+  }
+  return kind;
 }
 
 const RegisterBody = z.object({
@@ -438,6 +453,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // SSE endpoint below relays them to live-preview clients.
   const events = new ProjectEventBus();
   const contentRepo = new ContentRepository(db, events);
+  // Populate the editable global snippet/template library from the built-in constants on first boot
+  // (idempotent — only fills an empty kind, so an admin's deletions aren't resurrected).
+  await seedGlobalLibrary(db, contentRepo);
   const mediaStorage = opts.mediaRoot ? new MediaStorage(opts.mediaRoot) : undefined;
   const publishStore = opts.publishRoot ? new PublishStore(opts.publishRoot) : undefined;
   // Short-lived store of rendered preview docs, so they can be served (via a token
@@ -653,6 +671,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     project: Awaited<ReturnType<ProjectRepository['get']>>;
     apiKey: ResolvedApiKey | null;
   }> {
+    // The reserved global-library scope is NOT a real, member-accessible project — it is reachable
+    // only via the dedicated `/global` + admin-gated `/admin/global` routes. Reject it here so a
+    // platform admin (who resolves to `owner` on every project) can't write the library through the
+    // per-project content routes, bypassing the `requireInstanceAdmin` (session-only) gate.
+    if (req.params.projectId === GLOBAL_SCOPE_ID) throw new NotFoundError('project not found');
     const bearer = bearerToken(req);
     // Reject ambiguous dual-credential requests rather than silently letting one
     // win — so an injected Authorization header can never override a session (or
@@ -1034,6 +1057,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     '/projects/:id',
     { config: rl(20) },
     async (req, reply) => {
+      // The reserved global-library scope is not a real, deletable project.
+      if (req.params.id === GLOBAL_SCOPE_ID) throw new NotFoundError('project not found');
       // A project may be deleted by its owner or a platform admin (both resolve to owner).
       const userId = await requireUserId(req);
       const role = await resolveProjectRole(db, userId, req.params.id);
@@ -1106,6 +1131,36 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'content:write');
       await contentRepo.remove(ctx, parseGenericKind(req.params.kind), req.params.entityId);
+      return reply.code(204).send();
+    },
+  );
+
+  // ---- Global snippet/template library (instance-wide; admin-managed, readable by everyone) ----
+  // Stored as content under the reserved GLOBAL_SCOPE_ID and merged BELOW each project's own
+  // snippets/templates at render. READS are open to any authenticated session (the editor lists +
+  // uses them); WRITES/DELETES require an instance admin. Project users manage only their OWN
+  // snippets/templates via the per-project content routes above.
+  app.get<{ Params: { kind: string } }>('/global/:kind', { config: rl(120) }, async (req, reply) => {
+    await requireUserId(req);
+    return reply.send({ items: await contentRepo.list(globalCtx(), parseLibraryKind(req.params.kind)) });
+  });
+
+  app.put<{ Params: { kind: string; entityId: string } }>(
+    '/admin/global/:kind/:entityId',
+    { config: rl(60) },
+    async (req, reply) => {
+      const userId = await requireInstanceAdmin(req);
+      const item = await contentRepo.put(globalCtx(userId), parseLibraryKind(req.params.kind), req.params.entityId, req.body);
+      return reply.send({ item });
+    },
+  );
+
+  app.delete<{ Params: { kind: string; entityId: string } }>(
+    '/admin/global/:kind/:entityId',
+    { config: rl(60) },
+    async (req, reply) => {
+      const userId = await requireInstanceAdmin(req);
+      await contentRepo.remove(globalCtx(userId), parseLibraryKind(req.params.kind), req.params.entityId);
       return reply.code(204).send();
     },
   );
@@ -1224,8 +1279,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           const projectTemplates = isGlobalTemplate(page.template)
             ? []
             : ((await contentRepo.list(ctx, 'template')) as Template[]);
+          const globals = isGlobalTemplate(page.template) ? globalTemplateMap(await listGlobalTemplates(contentRepo)) : undefined;
           try {
-            pageSource = resolveTemplateSource(page.template, new Map(projectTemplates.map((t) => [t.id, t])));
+            pageSource = resolveTemplateSource(page.template, new Map(projectTemplates.map((t) => [t.id, t])), globals);
           } catch {
             return reply.code(400).send({ error: `unknown template "${page.template}"` });
           }
@@ -1234,7 +1290,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // Built-in global snippets + the project's own (project wins on a name collision). The
         // preview's CSS is extracted from the RENDERED output, so unused globals add no weight here.
         const partials = {
-          ...GLOBAL_SNIPPET_PARTIALS,
+          ...(await globalSnippetPartials(contentRepo)),
           ...Object.fromEntries(((await contentRepo.list(ctx, 'snippet')) as Snippet[]).map((s) => [s.name, s.source])),
         };
         const sourceData = Object.fromEntries(byDataset);
@@ -2109,7 +2165,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // Reusable Handlebars partials a source page can {{> compose}} (same as the editor preview):
           // built-in globals + the project's own (project wins on a name collision).
           const snippets = {
-            ...GLOBAL_SNIPPET_PARTIALS,
+            ...(await globalSnippetPartials(contentRepo)),
             ...Object.fromEntries(((await contentRepo.list(ctx, 'snippet')) as Snippet[]).map((s) => [s.name, s.source])),
           };
           const release = await buildRunner.run({
@@ -2122,6 +2178,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             ...(hcaptchaSiteKey ? { hcaptchaSiteKey } : {}),
             ...(jsonData !== undefined ? { jsonData } : {}),
             ...(Object.keys(snippets).length ? { snippets } : {}),
+            // The runtime GLOBAL template library so the worker resolves `global:<id>` refs to the
+            // admin-edited source (the built-in constants are only the boot seed). Always seeded.
+            globalTemplates: await listGlobalTemplates(contentRepo),
             // readStored accepts image variant names, raw file names, AND font face names (superset),
             // so image/file/font assets are all copied into the published artifact.
             readMedia: mediaStorage
@@ -2557,7 +2616,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // Reusable Handlebars partials the template can {{> name}} (validated at render): built-in
       // globals + the project's own (project wins on a name collision).
       const partials = {
-        ...GLOBAL_SNIPPET_PARTIALS,
+        ...(await globalSnippetPartials(contentRepo)),
         ...Object.fromEntries(((await contentRepo.list(ctx, 'snippet')) as Snippet[]).map((s) => [s.name, s.source])),
       };
       // Keyed entry access for this template (only the datasets it addresses by key). NOTE: this

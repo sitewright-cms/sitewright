@@ -88,6 +88,35 @@ describe('api client', () => {
     expect(tplInit.method).toBe('DELETE');
   });
 
+  it('global library wrappers hit /global/:kind (read) and /admin/global/:kind/:id (admin write)', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { items: [] }));
+    await api.listGlobalSnippets();
+    expect(fetchMock.mock.calls[0]![0]).toBe('/global/snippet');
+    await api.listGlobalTemplates();
+    expect(fetchMock.mock.calls[1]![0]).toBe('/global/template');
+
+    fetchMock.mockResolvedValue(jsonResponse(200, { item: { id: 'navbar', name: 'navbar', source: '<nav/>' } }));
+    await api.putGlobalSnippet({ id: 'navbar', name: 'navbar', source: '<nav/>' });
+    const [snipUrl, snipInit] = fetchMock.mock.calls[2]!;
+    expect(snipUrl).toBe('/admin/global/snippet/navbar');
+    expect(snipInit.method).toBe('PUT');
+    expect(JSON.parse(snipInit.body as string)).toEqual({ id: 'navbar', name: 'navbar', source: '<nav/>' });
+
+    fetchMock.mockResolvedValue(jsonResponse(200, { item: { id: 'landing', name: 'Landing', source: '<main/>' } }));
+    await api.putGlobalTemplate({ id: 'landing', name: 'Landing', source: '<main/>' });
+    const [tplUrl, tplInit] = fetchMock.mock.calls[3]!;
+    expect(tplUrl).toBe('/admin/global/template/landing');
+    expect(tplInit.method).toBe('PUT');
+
+    fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
+    await api.deleteGlobalSnippet('navbar');
+    expect(fetchMock.mock.calls[4]![0]).toBe('/admin/global/snippet/navbar');
+    expect(fetchMock.mock.calls[4]![1].method).toBe('DELETE');
+    await api.deleteGlobalTemplate('landing');
+    expect(fetchMock.mock.calls[5]![0]).toBe('/admin/global/template/landing');
+    expect(fetchMock.mock.calls[5]![1].method).toBe('DELETE');
+  });
+
   it('builds the stock search URL with an encoded query + page', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { provider: 'openverse', page: 2, results: [] }));
     await api.searchStock('p', 'openverse', 'cats & dogs', 2);

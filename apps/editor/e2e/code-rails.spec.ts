@@ -4,6 +4,8 @@ const stamp = Date.now();
 
 // The bottom CODE RAILS: the Snippets panel manages reusable {{> name}} Handlebars partials —
 // create (name → editor), edit source, persist, delete. (Templates share the same component.)
+// The project snippet uses a name that does NOT collide with a built-in global (which now also
+// renders as a named chip in this same rail) so the row selectors stay unambiguous.
 test('snippets rail: create, edit source, persist across reload, delete', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto('/');
@@ -22,29 +24,29 @@ test('snippets rail: create, edit source, persist across reload, delete', async 
   await expect(panel).toHaveAttribute('aria-hidden', 'false');
   await panel.getByRole('button', { name: '+ New snippet' }).click();
   const namePrompt = page.getByRole('dialog', { name: 'New snippet' });
-  await namePrompt.getByLabel('Name', { exact: true }).fill('hero');
+  await namePrompt.getByLabel('Name', { exact: true }).fill('mycard');
   await namePrompt.getByRole('button', { name: 'Save' }).click();
 
   // The source editor opens on the new snippet; type Handlebars + save.
-  const editor = page.getByRole('dialog', { name: 'hero — snippet' });
+  const editor = page.getByRole('dialog', { name: 'mycard — snippet' });
   await expect(editor).toBeVisible();
   await editor.locator('.cm-content').click();
   await page.keyboard.type('<h1>{{company.name}}</h1>');
   await editor.getByRole('button', { name: 'Save changes' }).click();
-  await expect(panel.getByText('hero', { exact: true })).toBeVisible();
+  await expect(panel.getByText('mycard', { exact: true })).toBeVisible();
 
   // Persists across a reload (loaded from the server), and the source round-trips.
   await page.reload();
   await page.getByRole('dialog', { name: 'SiteWright' }).getByRole('button', { name: /Rail Site/ }).click();
   await page.getByRole('button', { name: 'Open Snippets' }).hover();
   const panel2 = page.locator('[role="region"][aria-label="Snippets"]');
-  await expect(panel2.getByText('hero', { exact: true })).toBeVisible();
-  await panel2.getByRole('button', { name: 'Edit hero' }).click();
-  await expect(page.getByRole('dialog', { name: 'hero — snippet' }).locator('.cm-content')).toContainText('company.name');
+  await expect(panel2.getByText('mycard', { exact: true })).toBeVisible();
+  await panel2.getByRole('button', { name: 'Edit mycard' }).click();
+  await expect(page.getByRole('dialog', { name: 'mycard — snippet' }).locator('.cm-content')).toContainText('company.name');
   await page.keyboard.press('Escape');
 
   // Delete via the confirm dialog → the row is gone.
-  await panel2.getByRole('button', { name: 'Delete hero' }).click();
+  await panel2.getByRole('button', { name: 'Delete mycard' }).click();
   await page.getByRole('dialog', { name: 'Delete snippet' }).getByRole('button', { name: 'Delete' }).click();
-  await expect(panel2.getByText('hero', { exact: true })).toHaveCount(0);
+  await expect(panel2.getByText('mycard', { exact: true })).toHaveCount(0);
 });

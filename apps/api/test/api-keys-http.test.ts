@@ -6,14 +6,18 @@ import { randomBytes } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
+import { addProjectMember } from '../src/repo/accounts.js';
+import type { Database } from '../src/db/client.js';
 
 let app: FastifyInstance;
+let db: Database;
 let publishRoot: string;
 const encryptionKey = randomBytes(32);
 
 beforeEach(async () => {
   publishRoot = await mkdtemp(join(tmpdir(), 'sw-keys-'));
-  app = await createApp({ db: await makeTestDb(), publishRoot, encryptionKey });
+  db = await makeTestDb();
+  app = await createApp({ db, publishRoot, encryptionKey });
   await app.ready();
 });
 afterEach(async () => {
@@ -209,5 +213,85 @@ describe('project API keys — bearer auth + capabilities', () => {
     await app.inject({ method: 'DELETE', url: `${base}/api-keys/${keyId}`, cookies: { sw_session: t } });
     const res = await app.inject({ method: 'GET', url: `${base}/content/page`, headers: bearer(token) });
     expect(res.statusCode).toBe(401);
+  });
+});
+
+describe('agent connections — list + disconnect', () => {
+  it('lists an active PAT as a connection (kind=pat, no secrets) and is session-gated', async () => {
+    const { t, projectId } = await setup('a@acme.test');
+    const base = `/projects/${projectId}`;
+    const created = await createKey(base, t, { capabilities: ['content:read', 'content:write'] });
+    const token = (created.json() as { token: string }).token;
+
+    const res = await app.inject({ method: 'GET', url: `${base}/agent-connections`, cookies: { sw_session: t } });
+    expect(res.statusCode).toBe(200);
+    const items = (res.json() as { items: Array<Record<string, unknown>> }).items;
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ kind: 'pat', name: 'k', role: 'owner' });
+    expect(items[0]).not.toHaveProperty('tokenHash');
+    expect(JSON.stringify(items)).not.toContain(token);
+
+    // No session → 401; a bearer token (even all-caps) → 403 (session-only management surface).
+    expect((await app.inject({ method: 'GET', url: `${base}/agent-connections` })).statusCode).toBe(401);
+    expect(
+      (await app.inject({ method: 'GET', url: `${base}/agent-connections`, headers: bearer(token) })).statusCode,
+    ).toBe(403);
+  });
+
+  it('disconnects a PAT connection (it drops off the list and the token stops working)', async () => {
+    const { t, projectId } = await setup('a@acme.test');
+    const base = `/projects/${projectId}`;
+    const token = (
+      (await createKey(base, t, { capabilities: ['content:read'] })).json() as { token: string }
+    ).token;
+    const id = (
+      (await app.inject({ method: 'GET', url: `${base}/agent-connections`, cookies: { sw_session: t } })).json() as {
+        items: Array<{ id: string }>;
+      }
+    ).items[0]!.id;
+
+    const del = await app.inject({ method: 'DELETE', url: `${base}/agent-connections/${id}`, cookies: { sw_session: t } });
+    expect(del.statusCode).toBe(204);
+    const after = await app.inject({ method: 'GET', url: `${base}/agent-connections`, cookies: { sw_session: t } });
+    expect((after.json() as { items: unknown[] }).items).toHaveLength(0);
+    expect((await app.inject({ method: 'GET', url: `${base}/content/page`, headers: bearer(token) })).statusCode).toBe(401);
+  });
+
+  it('treats an oauth:<userId> disconnect as a project-scoped no-op when there is no such session', async () => {
+    const { t, projectId } = await setup('a@acme.test');
+    const base = `/projects/${projectId}`;
+    // Well-formed handle, no matching session → 204 (idempotent), confined to this project.
+    const del = await app.inject({
+      method: 'DELETE',
+      url: `${base}/agent-connections/${encodeURIComponent('oauth:nobody')}`,
+      cookies: { sw_session: t },
+    });
+    expect(del.statusCode).toBe(204);
+    // And it's session-gated like the rest of the management surface.
+    expect(
+      (await app.inject({ method: 'DELETE', url: `${base}/agent-connections/${encodeURIComponent('oauth:nobody')}` }))
+        .statusCode,
+    ).toBe(401);
+  });
+
+  it('forbids a project MEMBER (non-owner) from listing or disconnecting — including the oauth: path', async () => {
+    const { projectId } = await setup('owner@acme.test');
+    const base = `/projects/${projectId}`;
+    // A second user, added as a plain member of the same project.
+    const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'member@acme.test', password: 'pw-secret-1' } });
+    const memberCookie = sessionCookie(reg);
+    const memberId = (reg.json() as { userId: string }).userId;
+    await addProjectMember(db, memberId, projectId, 'member');
+
+    // List → 403 (the route's own owner gate, not just the inner repo throw).
+    expect((await app.inject({ method: 'GET', url: `${base}/agent-connections`, cookies: { sw_session: memberCookie } })).statusCode).toBe(403);
+    // Disconnect via the oauth: path → 403 (this path bypasses apiKeysRepo.revoke's role check).
+    expect(
+      (await app.inject({
+        method: 'DELETE',
+        url: `${base}/agent-connections/${encodeURIComponent(`oauth:${memberId}`)}`,
+        cookies: { sw_session: memberCookie },
+      })).statusCode,
+    ).toBe(403);
   });
 });

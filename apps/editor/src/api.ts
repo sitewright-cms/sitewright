@@ -228,6 +228,21 @@ export interface CreateApiKeyBody {
   capabilities: ApiKeyCapability[];
   expiresInDays: number;
 }
+/**
+ * A live agent connection (the "AI agent details" modal + header indicator): a personal token
+ * (`pat`) or an OAuth/MCP agent session (`oauth`, shown for its whole session window). `id` is an
+ * opaque disconnect handle (an `oauth:<userId>` form for sessions). No secrets are ever included.
+ */
+export interface AgentConnection {
+  id: string;
+  kind: 'pat' | 'oauth';
+  name: string;
+  role: ProjectRole;
+  capabilities: ApiKeyCapability[];
+  connectedAt: string;
+  expiresAt: string | null;
+  lastUsedAt: string | null;
+}
 export interface Release {
   publishedAt: string;
   routes: number;
@@ -411,9 +426,12 @@ export const api = {
   // --- project API keys (bearer tokens for the CLI / MCP bridge) ---
   listApiKeys: (projectId: string) =>
     request<{ items: ApiKeyView[] }>('GET', `/projects/${projectId}/api-keys`),
-  /** Active agent connections (PATs + OAuth/MCP sessions) — for the AI agent details modal. */
+  /** Active agent connections (PATs + live OAuth/MCP sessions) — the AI agent details modal + indicator. */
   listAgentConnections: (projectId: string) =>
-    request<{ items: ApiKeyView[] }>('GET', `/projects/${projectId}/agent-connections`),
+    request<{ items: AgentConnection[] }>('GET', `/projects/${projectId}/agent-connections`),
+  /** Disconnect one connection (revokes a PAT, or fully severs an OAuth session for the project). */
+  disconnectAgent: (projectId: string, id: string) =>
+    request<void>('DELETE', `/projects/${projectId}/agent-connections/${encodeURIComponent(id)}`),
   createApiKey: (projectId: string, body: CreateApiKeyBody) =>
     request<{ token: string; key: ApiKeyView }>('POST', `/projects/${projectId}/api-keys`, body),
   deleteApiKey: (projectId: string, id: string) =>

@@ -1,40 +1,38 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 
-const { listAgentConnections, deleteApiKey } = vi.hoisted(() => ({
+const { listAgentConnections, disconnectAgent } = vi.hoisted(() => ({
   listAgentConnections: vi.fn<(id: string) => Promise<{ items: unknown[] }>>(),
-  deleteApiKey: vi.fn<(pid: string, id: string) => Promise<void>>(),
+  disconnectAgent: vi.fn<(pid: string, id: string) => Promise<void>>(),
 }));
 vi.mock('../src/api', () => ({
   api: {
     listAgentConnections: (id: string) => listAgentConnections(id),
-    deleteApiKey: (pid: string, id: string) => deleteApiKey(pid, id),
+    disconnectAgent: (pid: string, id: string) => disconnectAgent(pid, id),
   },
 }));
 
 import { AgentDetailsModal } from '../src/views/AgentDetailsModal';
 
 const conn = (over: Record<string, unknown> = {}) => ({
-  id: 'k1',
+  id: 'oauth:u1',
+  kind: 'oauth',
   name: 'ChatGPT',
   role: 'owner',
   capabilities: ['content:read', 'content:write'],
-  tokenPrefix: 'sw_abcd',
+  connectedAt: '2026-06-09T00:00:00.000Z',
   expiresAt: '2030-01-01T00:00:00.000Z',
-  revokedAt: null,
   lastUsedAt: '2026-06-10T00:00:00.000Z',
-  createdAt: '2026-06-09T00:00:00.000Z',
-  source: 'oauth',
   ...over,
 });
 
 beforeEach(() => {
   listAgentConnections.mockReset();
-  deleteApiKey.mockReset();
+  disconnectAgent.mockReset();
 });
 
 describe('AgentDetailsModal', () => {
-  it('lists an active connection with its source badge and capabilities', async () => {
+  it('lists a live OAuth/MCP session with its badge and capabilities', async () => {
     listAgentConnections.mockResolvedValue({ items: [conn()] });
     render(<AgentDetailsModal projectId="p" onClose={() => {}} />);
     expect(await screen.findByText('ChatGPT')).toBeInTheDocument();
@@ -43,30 +41,34 @@ describe('AgentDetailsModal', () => {
   });
 
   it('distinguishes a personal token from an OAuth session', async () => {
-    listAgentConnections.mockResolvedValue({ items: [conn({ id: 'k2', name: 'CI bot', source: 'pat' })] });
+    listAgentConnections.mockResolvedValue({ items: [conn({ id: 'k2', name: 'CI bot', kind: 'pat' })] });
     render(<AgentDetailsModal projectId="p" onClose={() => {}} />);
     expect(await screen.findByText('Personal token')).toBeInTheDocument();
   });
 
-  it('shows an empty state when there are no active connections', async () => {
+  it('leads with the connect guide when there are no connections', async () => {
     listAgentConnections.mockResolvedValue({ items: [] });
     render(<AgentDetailsModal projectId="p" onClose={() => {}} />);
-    expect(await screen.findByText('No active agent connections.')).toBeInTheDocument();
+    expect(await screen.findByText('Connect an agent')).toBeInTheDocument();
+    // The CLI register command is shown so an owner can wire up an agent without leaving the editor.
+    expect(screen.getByText(/sitewright mcp --url/)).toBeInTheDocument();
   });
 
-  it('disconnects only after a two-step confirm, then reloads the list', async () => {
+  it('disconnects only after a two-step confirm, reloads, and notifies onChanged', async () => {
     listAgentConnections.mockResolvedValueOnce({ items: [conn()] }).mockResolvedValueOnce({ items: [] });
-    deleteApiKey.mockResolvedValue(undefined);
-    render(<AgentDetailsModal projectId="p" onClose={() => {}} />);
+    disconnectAgent.mockResolvedValue(undefined);
+    const onChanged = vi.fn();
+    render(<AgentDetailsModal projectId="p" onClose={() => {}} onChanged={onChanged} />);
 
     // First click arms the confirm; nothing is revoked yet.
     (await screen.findByRole('button', { name: 'Disconnect' })).click();
-    expect(deleteApiKey).not.toHaveBeenCalled();
+    expect(disconnectAgent).not.toHaveBeenCalled();
 
-    // The confirm click actually revokes the token, then the list reloads to empty.
+    // The confirm click severs the session (by its opaque oauth:<user> id), then the list reloads.
     (await screen.findByRole('button', { name: 'Confirm' })).click();
-    await waitFor(() => expect(deleteApiKey).toHaveBeenCalledWith('p', 'k1'));
-    expect(await screen.findByText('No active agent connections.')).toBeInTheDocument();
+    await waitFor(() => expect(disconnectAgent).toHaveBeenCalledWith('p', 'oauth:u1'));
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    expect(await screen.findByText('Connect an agent')).toBeInTheDocument(); // now empty → guide leads
   });
 
   it('surfaces a load error', async () => {

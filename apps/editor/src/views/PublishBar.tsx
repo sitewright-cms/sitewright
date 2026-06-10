@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, eventsUrl, type Project, type Release } from '../api';
 import { AgentDetailsModal } from './AgentDetailsModal';
+import { AgentIndicator } from './AgentIndicator';
 
 /** Cloud-upload glyph for the publish action. */
 function PublishIcon() {
@@ -57,10 +58,32 @@ export function PublishBar({
   const [menuOpen, setMenuOpen] = useState(false);
   const [previewToken, setPreviewToken] = useState<string | undefined>(undefined);
   const [hasTarget, setHasTarget] = useState(false); // a saved deploy target exists → show a Deploy button
-  const [agentActive, setAgentActive] = useState(false); // a connected MCP agent is making changes
+  const [agentActive, setAgentActive] = useState(false); // an agent edited within the lull window (working)
+  const [connectionCount, setConnectionCount] = useState(0); // live agent connections (sessions + PATs)
   const [agentModalOpen, setAgentModalOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const agentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const agentActiveRef = useRef(false); // mirrors agentActive for rising-edge detection in the SSE closure
+
+  // The header indicator reflects active connections; poll lightly so a freshly-authorized or expired
+  // session reconciles without a reload (owner-gated endpoint — PublishBar only renders for owners).
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+  const loadConnections = useCallback(() => {
+    api
+      .listAgentConnections(project.id)
+      .then((r) => mountedRef.current && setConnectionCount(r.items.length))
+      .catch(() => {
+        /* transient / not yet permitted — keep the last known count */
+      });
+  }, [project.id]);
+  const loadConnectionsRef = useRef(loadConnections);
+  loadConnectionsRef.current = loadConnections;
 
   useEffect(() => {
     let active = true;
@@ -92,6 +115,13 @@ export function PublishBar({
     };
   }, [project.id, refreshSignal]);
 
+  // Agent connections: load on mount and reconcile every 30s (covers a connect/expiry with no edit event).
+  useEffect(() => {
+    loadConnections();
+    const t = setInterval(loadConnections, 30_000);
+    return () => clearInterval(t);
+  }, [loadConnections]);
+
   // Any content change (this user, or another channel via the SSE bus) means there are now
   // unpublished changes — flip back to the green Publish button (out of the "Preview" state).
   useEffect(() => {
@@ -106,11 +136,17 @@ export function PublishBar({
         /* non-JSON payload — ignore */
       }
       if (actor === 'agent') {
+        // Rising edge (idle/none → working): a (possibly new) agent just acted — reconcile the count.
+        if (!agentActiveRef.current) loadConnectionsRef.current();
+        agentActiveRef.current = true;
         setAgentActive(true);
         if (agentTimer.current) clearTimeout(agentTimer.current);
         agentTimer.current = setTimeout(() => {
+          agentActiveRef.current = false;
           setAgentActive(false);
           agentTimer.current = null;
+          // Working → idle: re-check whether the connection is still live (e.g. revoked elsewhere).
+          loadConnectionsRef.current();
         }, 12_000);
       }
     });
@@ -249,18 +285,21 @@ export function PublishBar({
           </div>
         )}
       </div>
-      {agentActive && (
-        <button
-          type="button"
-          onClick={() => setAgentModalOpen(true)}
-          className="inline-flex cursor-pointer items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700 transition hover:bg-indigo-100"
-          title="An agent connected over MCP is making changes — click for details / to disconnect."
-        >
-          <span aria-hidden className="h-1.5 w-1.5 animate-pulse rounded-full bg-indigo-500" />
-          Agent editing…
-        </button>
+      <AgentIndicator
+        state={agentActive ? 'working' : connectionCount > 0 ? 'idle' : 'none'}
+        count={connectionCount}
+        onClick={() => setAgentModalOpen(true)}
+      />
+      {agentModalOpen && (
+        <AgentDetailsModal
+          projectId={project.id}
+          onChanged={loadConnections}
+          onClose={() => {
+            setAgentModalOpen(false);
+            loadConnections();
+          }}
+        />
       )}
-      {agentModalOpen && <AgentDetailsModal projectId={project.id} onClose={() => setAgentModalOpen(false)} />}
       {release && (
         <span className="text-[11px] text-slate-400">
           {dirty ? 'Unpublished changes' : `Published · ${release.routes} pages`}

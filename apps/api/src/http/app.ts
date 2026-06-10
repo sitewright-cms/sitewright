@@ -1219,13 +1219,72 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     },
   );
 
-  // Active agent connections (PAT + OAuth/MCP sessions) for the editor's "AI agent details" modal.
+  // Active agent connections for the editor's "AI agent details" modal + header indicator: active
+  // PATs PLUS live OAuth/MCP sessions (one row per connected user, shown for the whole session
+  // window — not just while a 1h access token is valid). The OAuth connection id is the opaque
+  // `oauth:<userId>` handle used by the disconnect route below.
   app.get<{ Params: { projectId: string } }>(
     '/projects/:projectId/agent-connections',
     { config: rl(60) },
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'session-only');
-      return reply.send({ items: await apiKeysRepo.listAgentConnections(ctx) });
+      // Owner-only — gate at the route so it doesn't rely on listAgentConnections throwing first.
+      if (ctx.role !== 'owner') throw new ForbiddenError('only the project owner can view agent connections');
+      const [pats, sessions] = await Promise.all([
+        apiKeysRepo.listAgentConnections(ctx),
+        oauthRepo.listActiveSessions(ctx.projectId),
+      ]);
+      const items = [
+        ...sessions.map((s) => ({
+          id: `oauth:${s.userId}`,
+          kind: 'oauth' as const,
+          name: s.clientId,
+          role: s.role,
+          capabilities: s.capabilities,
+          connectedAt: s.connectedAt,
+          expiresAt: s.expiresAt,
+          lastUsedAt: s.lastUsedAt,
+        })),
+        ...pats.map((k) => ({
+          id: k.id,
+          kind: 'pat' as const,
+          name: k.name,
+          role: k.role,
+          capabilities: k.capabilities,
+          connectedAt: k.createdAt,
+          expiresAt: k.expiresAt,
+          lastUsedAt: k.lastUsedAt,
+        })),
+      ].sort(
+        (a, b) =>
+          (b.lastUsedAt?.getTime() ?? 0) - (a.lastUsedAt?.getTime() ?? 0) ||
+          b.connectedAt.getTime() - a.connectedAt.getTime(),
+      );
+      return reply.send({ items });
+    },
+  );
+
+  // Disconnect one agent connection. An `oauth:<userId>` id fully severs that user's OAuth sessions
+  // for THIS project (refresh chain + in-flight access tokens); any other id is a PAT key revoke
+  // (still severs the chain if it happens to be an OAuth access key). Project-scoped + owner-gated
+  // via resolveProject: the userId is confined to ctx.projectId, so it can't reach another project.
+  app.delete<{ Params: { projectId: string; id: string } }>(
+    '/projects/:projectId/agent-connections/:id',
+    { config: rl(20) },
+    async (req, reply) => {
+      const { ctx } = await resolveProject(req, 'session-only');
+      // Owner-only. The PAT path enforces this inside apiKeysRepo.revoke, but the oauth: path calls
+      // revokeAllForUserProject directly (no role guard), so gate both here.
+      if (ctx.role !== 'owner') throw new ForbiddenError('only the project owner can disconnect agents');
+      const id = req.params.id;
+      if (id.startsWith('oauth:')) {
+        // An OAuth/MCP session: sever the whole chain + in-flight access tokens for that user+project.
+        await oauthRepo.revokeAllForUserProject(id.slice('oauth:'.length), ctx.projectId);
+      } else {
+        // Otherwise a personal token (the only other connection kind this list emits).
+        await apiKeysRepo.revoke(ctx, id);
+      }
+      return reply.code(204).send();
     },
   );
 

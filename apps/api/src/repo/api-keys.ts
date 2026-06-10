@@ -157,10 +157,10 @@ export class ApiKeyRepository {
   }
 
   /**
-   * Active agent connections for a project — BOTH user-minted PATs and OAuth/MCP sessions, not
-   * revoked and not expired, newest-active first. Drives the editor's "AI agent details" modal (the
-   * management {@link list} deliberately hides OAuth sessions; this surfaces them so they can be seen
-   * and disconnected).
+   * Active personal-access-token (PAT) connections for a project — not revoked, not expired,
+   * newest-active first. One half of the editor's "AI agent details" modal; OAuth/MCP agents are
+   * surfaced separately as live SESSIONS (see OAuthRepository.listActiveSessions) so a connected-but-
+   * idle agent stays visible for its whole session, not just while a 1h access token is valid.
    */
   async listAgentConnections(ctx: ProjectContext, now: Date = new Date()): Promise<ApiKeyView[]> {
     if (!WRITE_ROLES.has(ctx.role)) {
@@ -169,7 +169,14 @@ export class ApiKeyRepository {
     const rows = await this.db
       .select()
       .from(apiKeys)
-      .where(and(eq(apiKeys.projectId, ctx.projectId), isNull(apiKeys.revokedAt), gt(apiKeys.expiresAt, now)));
+      .where(
+        and(
+          eq(apiKeys.projectId, ctx.projectId),
+          eq(apiKeys.source, 'pat'),
+          isNull(apiKeys.revokedAt),
+          gt(apiKeys.expiresAt, now),
+        ),
+      );
     return rows
       .map(toView)
       // Most-recently-active first; never-used (and same-instant) ties fall back to newest-created

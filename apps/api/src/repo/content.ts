@@ -204,7 +204,7 @@ export class ContentRepository {
     // known at this boundary, so there is no at-rest HTML pass here — the render sink is authoritative.
     const key = this.entityKey(kind, entityId, parsed);
     await this.writeRow(this.db, ctx, kind, key, parsed);
-    this.events?.emit(ctx.projectId, { kind, entityId: key, op: 'put' });
+    this.events?.emit(ctx.projectId, { kind, entityId: key, op: 'put', actor: ctx.actor });
     return parsed;
   }
 
@@ -217,7 +217,7 @@ export class ContentRepository {
     await this.db
       .delete(content)
       .where(and(eq(content.id, row.id), eq(content.projectId, ctx.projectId)));
-    this.events?.emit(ctx.projectId, { kind, entityId, op: 'delete' });
+    this.events?.emit(ctx.projectId, { kind, entityId, op: 'delete', actor: ctx.actor });
   }
 
   /** Assembles the full project as an on-disk-format bundle (the export side of D11). */

@@ -10,6 +10,12 @@ export interface ProjectContext {
   userId: string;
   projectId: string;
   role: ProjectRole;
+  /**
+   * Who is acting: `agent` for a bearer-token (API key / MCP bridge) request, `user` for an
+   * interactive session. Used only to tag the live content-change event so the editor can show an
+   * "an agent is editing" indicator — never a trust/authorization decision. Absent → treated as `user`.
+   */
+  actor?: 'agent' | 'user';
 }
 
 export class NotFoundError extends Error {

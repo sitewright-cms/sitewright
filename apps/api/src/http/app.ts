@@ -704,6 +704,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         userId: key.createdBy,
         role: key.role,
         projectId: key.projectId,
+        actor: 'agent', // bearer token = an API key / MCP agent (drives the editor's "agent editing" indicator)
       };
       // Re-load the project so a stale key whose project was deleted resolves to a clean 404.
       const project = await projects.get(req.params.projectId);
@@ -716,7 +717,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     const role = await resolveProjectRole(db, userId, req.params.projectId);
     if (!role) throw new ForbiddenError('you do not have access to this project');
     const project = await projects.get(req.params.projectId);
-    return { ctx: { userId, role, projectId: project.id }, project, apiKey: null };
+    return { ctx: { userId, role, projectId: project.id, actor: 'user' }, project, apiKey: null };
   }
 
   // Optional SSRF guard for deploy targets (multi-tenant SaaS): when an allow-list
@@ -867,7 +868,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     const role = await resolveProjectRole(db, userId, projectId);
     if (!role) throw new ForbiddenError('you do not have access to this project');
     if (ownerOnly && role !== 'owner') throw new ForbiddenError('insufficient role for this operation');
-    return { userId, role, projectId };
+    return { userId, role, projectId, actor: 'user' }; // session-only path (bearer rejected above)
   }
 
   app.get('/projects', { config: rl(60) }, async (req, reply) => {
@@ -1024,7 +1025,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // Atomic: the project + the creator's owner membership are written together (never an
     // ownerless, unreachable project).
     const project = await projects.create(body, userId);
-    const ownerCtx = { userId, projectId: project.id, role: 'owner' as const };
+    const ownerCtx = { userId, projectId: project.id, role: 'owner' as const, actor: 'user' as const };
     // Seed a Corporate Identity with a sensible DEFAULT BRAND COLOR (blue), so DaisyUI
     // components are themed out of the box and the preview looks intentional immediately.
     await contentRepo.put(ownerCtx, 'settings', 'settings', {

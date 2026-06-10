@@ -13,6 +13,15 @@ function bridgeArgs(url: string): string[] {
   return ['mcp', '--url', url];
 }
 
+/**
+ * POSIX single-quote a value for the one client (Claude Code) whose config is a SHELL COMMAND the
+ * user pastes. JSON clients are safe via JSON.stringify; the shell one-liner is not — an instance
+ * URL with shell metacharacters (`$(…)`, backticks, `;`) would otherwise execute on paste.
+ */
+function shellQuote(s: string): string {
+  return `'${s.replace(/'/g, `'\\''`)}'`;
+}
+
 /** The block Cursor / Cline / Windsurf / Gemini CLI accept verbatim under `mcpServers`. */
 function mcpServersBlock(url: string): string {
   return JSON.stringify({ mcpServers: { sitewright: { command: 'sitewright', args: bridgeArgs(url) } } }, null, 2);
@@ -37,7 +46,7 @@ const CLIENTS: readonly McpClient[] = [
     id: 'claude',
     label: 'Claude Code',
     location: () => 'Run in your project (add --scope user to enable it everywhere):',
-    body: (url) => `  claude mcp add sitewright -- sitewright mcp --url ${url}`,
+    body: (url) => `  claude mcp add sitewright -- sitewright mcp --url ${shellQuote(url)}`,
   },
   {
     id: 'cursor',
@@ -96,6 +105,11 @@ export function clientIds(): string[] {
   return CLIENTS.map((c) => c.id);
 }
 
+/** Whether an id (canonical or alias) names a known client — lets the caller validate before requiring a URL. */
+export function hasClient(id: string): boolean {
+  return find(id) !== undefined;
+}
+
 /**
  * The printable config for one client, or null if the id is unknown. The body is the exact
  * snippet/command to paste; the header names the client and where it goes.
@@ -106,8 +120,17 @@ export function renderClientConfig(clientId: string, url: string): string | null
   return `Sitewright MCP — ${client.label}\n${client.location(url)}\n\n${client.body(url)}\n`;
 }
 
-/** A one-screen listing of supported clients for `sitewright config` (no client given). */
+/** A one-screen listing of supported clients (and their aliases) for `sitewright config` with no client. */
 export function listClients(): string {
-  const rows = CLIENTS.map((c) => `  ${c.id.padEnd(10)} ${c.label}`).join('\n');
+  const aliasesFor = new Map<string, string[]>();
+  for (const [alias, canonical] of ALIASES) {
+    const list = aliasesFor.get(canonical) ?? [];
+    list.push(alias);
+    aliasesFor.set(canonical, list);
+  }
+  const rows = CLIENTS.map((c) => {
+    const also = aliasesFor.get(c.id);
+    return `  ${c.id.padEnd(10)} ${c.label}${also ? `  (also: ${also.join(', ')})` : ''}`;
+  }).join('\n');
   return `Print a ready-to-paste MCP config for your agent:\n\n  sitewright config <client> --url <instance>\n\nClients:\n${rows}\n`;
 }

@@ -6,7 +6,7 @@ import { runDeviceLogin } from './device.js';
 import { clearCredentials } from './credentials.js';
 import { ensureAccessToken } from './session.js';
 import { createBridgeAuth } from './bridge-auth.js';
-import { renderClientConfig, listClients, clientIds } from './connect.js';
+import { renderClientConfig, listClients, clientIds, hasClient } from './connect.js';
 
 /** Scopes requested by the CLI login (the consent screen lets the user pick the project). */
 const DEFAULT_SCOPE = 'content:read content:write publish';
@@ -45,6 +45,13 @@ function openBrowser(url: string): void {
 function requireUrl(): string {
   const url = flag('url') ?? process.env.SITEWRIGHT_URL;
   if (!url) die('this command requires --url <instance> (or SITEWRIGHT_URL)');
+  let protocol: string;
+  try {
+    protocol = new URL(url).protocol;
+  } catch {
+    die(`--url is not a valid URL: ${url}`);
+  }
+  if (protocol !== 'http:' && protocol !== 'https:') die('--url must be an http(s) URL');
   return url;
 }
 
@@ -114,10 +121,9 @@ async function main(): Promise<void> {
         process.stdout.write(listClients());
         return;
       }
-      const url = requireUrl();
-      const out = renderClientConfig(client, url);
-      if (out == null) die(`unknown client '${client}' — try one of: ${clientIds().join(', ')} (or 'list').`);
-      process.stdout.write(out);
+      // Validate the client BEFORE requiring --url so an unknown name gives an actionable error.
+      if (!hasClient(client)) die(`unknown client '${client}' — try one of: ${clientIds().join(', ')} (or 'list').`);
+      process.stdout.write(renderClientConfig(client, requireUrl())!);
       return;
     }
     default:

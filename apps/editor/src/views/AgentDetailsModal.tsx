@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Modal } from './ui/Modal';
 import { api, type AgentConnection } from '../api';
 import { glassPanel, dangerButton } from '../theme';
@@ -14,6 +14,7 @@ function when(iso: string | null): string {
 }
 
 type ConnectTab = 'chatgpt' | 'claude' | 'lechat' | 'cli';
+const TAB_ORDER: ConnectTab[] = ['chatgpt', 'claude', 'lechat', 'cli'];
 const CODE = 'rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-mono text-slate-700';
 const PRE = 'mt-1.5 overflow-x-auto rounded-lg bg-slate-900 px-3 py-2 text-[11px] leading-relaxed text-slate-100';
 
@@ -47,18 +48,32 @@ function ConnectGuide({ emphasized }: { emphasized: boolean }) {
   const origin = typeof window !== 'undefined' ? window.location.origin : 'https://your-instance';
   const mcpUrl = `${origin}/mcp`;
   // The block Cursor / Cline / Windsurf / Gemini CLI accept verbatim (mirrors `sitewright config`).
-  const cliConfig = JSON.stringify(
-    { mcpServers: { sitewright: { command: 'sitewright', args: ['mcp', '--url', origin] } } },
-    null,
-    2,
+  const cliConfig = useMemo(
+    () => JSON.stringify({ mcpServers: { sitewright: { command: 'sitewright', args: ['mcp', '--url', origin] } } }, null, 2),
+    [origin],
   );
   const [tab, setTab] = useState<ConnectTab>('chatgpt');
+  const tabRefs = useRef(new Map<ConnectTab, HTMLButtonElement | null>());
+
+  // Arrow-key roving between tabs (WAI-ARIA tablist pattern): move selection AND focus.
+  const onTabKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+    if (!step) return;
+    e.preventDefault();
+    const i = TAB_ORDER.indexOf(tab);
+    const next = TAB_ORDER[(i + step + TAB_ORDER.length) % TAB_ORDER.length]!;
+    setTab(next);
+    tabRefs.current.get(next)?.focus();
+  };
 
   const tabBtn = (key: ConnectTab, label: string) => (
     <button
       type="button"
       role="tab"
       id={`agent-tab-${key}`}
+      ref={(el) => {
+        tabRefs.current.set(key, el);
+      }}
       aria-selected={tab === key}
       aria-controls="agent-connect-panel"
       tabIndex={tab === key ? 0 : -1}
@@ -77,7 +92,12 @@ function ConnectGuide({ emphasized }: { emphasized: boolean }) {
       <p className="mt-1 text-sm text-slate-600">
         Let an AI agent build this site over MCP — hosted in ChatGPT, Claude.ai or Le Chat, or via a local CLI agent:
       </p>
-      <div role="tablist" aria-label="Connect an agent" className="mt-3 flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1">
+      <div
+        role="tablist"
+        aria-label="Connect an agent"
+        onKeyDown={onTabKey}
+        className="mt-3 flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1"
+      >
         {tabBtn('chatgpt', 'ChatGPT.com')}
         {tabBtn('claude', 'Claude.ai')}
         {tabBtn('lechat', 'Le Chat')}
@@ -122,7 +142,7 @@ function ConnectGuide({ emphasized }: { emphasized: boolean }) {
                 <code className={CODE}>sitewright config &lt;agent&gt; --url {origin}</code> — e.g.{' '}
                 <code className={CODE}>cursor</code>, <code className={CODE}>windsurf</code>,{' '}
                 <code className={CODE}>gemini</code>, <code className={CODE}>vscode</code>. Claude Code one-liner:{' '}
-                <code className={CODE}>claude mcp add sitewright -- sitewright mcp --url {origin}</code>.
+                <code className={CODE}>claude mcp add sitewright -- sitewright mcp --url '{origin}'</code>.
               </li>
               <li>
                 On first run the agent’s <code className={CODE}>login</code> tool shows a link + code (device flow) — open

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, eventsUrl, type Project, type Release } from '../api';
 import { AgentDetailsModal } from './AgentDetailsModal';
 import { AgentIndicator } from './AgentIndicator';
+import { useToast } from './ui/Toast';
 
 /** Cloud-upload glyph for the publish action. */
 function PublishIcon() {
@@ -54,8 +55,8 @@ export function PublishBar({
   const [url, setUrl] = useState('');
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const toast = useToast();
   const [previewToken, setPreviewToken] = useState<string | undefined>(undefined);
   const [hasTarget, setHasTarget] = useState(false); // a saved deploy target exists → show a Deploy button
   const [agentActive, setAgentActive] = useState(false); // an agent edited within the lull window (working)
@@ -168,14 +169,15 @@ export function PublishBar({
 
   async function publish() {
     setBusy(true);
-    setError(null);
     try {
       const res = await api.publish(project.id);
       setRelease(res.release);
       setUrl(res.url);
       setDirty(res.dirty); // false right after a successful publish
+      // The publish RESULT surfaces as a transient toast (the persistent status line was removed).
+      toast.show(`Published · ${res.release.routes} page${res.release.routes === 1 ? '' : 's'}`, 'success');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'publish failed');
+      toast.show(err instanceof Error ? err.message : 'publish failed', 'error');
     } finally {
       setBusy(false);
     }
@@ -189,9 +191,14 @@ export function PublishBar({
   const viewUrl = url && previewToken ? `${url}${url.includes('?') ? '&' : '?'}token=${encodeURIComponent(previewToken)}` : url;
 
   return (
-    <div className="flex flex-col items-end gap-1">
-      <div className="flex items-center gap-2">
-        {showPreview && url ? (
+    <div className="flex items-center gap-2">
+      {/* The AI-agent presence indicator sits INLINE, before the Publish button. */}
+      <AgentIndicator
+        state={agentActive ? 'working' : connectionCount > 0 ? 'idle' : 'none'}
+        count={connectionCount}
+        onClick={() => setAgentModalOpen(true)}
+      />
+      {showPreview && url ? (
           <a
             href={viewUrl}
             target="_blank"
@@ -284,12 +291,6 @@ export function PublishBar({
             )}
           </div>
         )}
-      </div>
-      <AgentIndicator
-        state={agentActive ? 'working' : connectionCount > 0 ? 'idle' : 'none'}
-        count={connectionCount}
-        onClick={() => setAgentModalOpen(true)}
-      />
       {agentModalOpen && (
         <AgentDetailsModal
           projectId={project.id}
@@ -300,12 +301,6 @@ export function PublishBar({
           }}
         />
       )}
-      {release && (
-        <span className="text-[11px] text-slate-400">
-          {dirty ? 'Unpublished changes' : `Published · ${release.routes} pages`}
-        </span>
-      )}
-      {error && <span className="text-xs text-red-600">{error}</span>}
     </div>
   );
 }

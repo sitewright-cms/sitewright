@@ -24,7 +24,6 @@ vi.mock('../src/views/CodePageEditor', () => ({
 vi.mock('../src/views/ApiKeysManager', () => ({ ApiKeysManager: () => <div /> }));
 vi.mock('../src/views/FormsManager', () => ({ FormsManager: () => <div>FORMS</div> }));
 vi.mock('../src/views/SubmissionsInbox', () => ({ SubmissionsInbox: () => <div /> }));
-vi.mock('../src/views/AdminView', () => ({ AdminView: () => <div /> }));
 vi.mock('../src/views/settings/SettingsView', () => ({ SettingsView: () => <div /> }));
 
 import { ProjectView } from '../src/views/Project';

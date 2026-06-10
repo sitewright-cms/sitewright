@@ -175,7 +175,6 @@ export function InstanceSettings() {
   return (
     <>
     <form onSubmit={save} className="mx-auto flex max-w-2xl flex-col gap-6 p-6">
-      <h1 className="text-lg font-semibold">Instance settings</h1>
 
       <fieldset className={`${glassCard} p-4`}>
         <legend className="px-1 text-sm font-semibold">Web-form mail modes</legend>

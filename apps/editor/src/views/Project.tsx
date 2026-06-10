@@ -9,7 +9,6 @@ import { Modal } from './ui/Modal';
 import { Tooltip } from './ui/Tooltip';
 import { FormsManager } from './FormsManager';
 import { SettingsView } from './settings/SettingsView';
-import { AdminView } from './AdminView';
 import { glassCard, glassInput, fieldLabel, primaryButton, gradientHover, gradientSurface } from '../theme';
 import { orderPagesByTree, canReorder, reorderWithinParent, orderedSiblings } from './pages-order';
 import { LocalePickerModal } from './i18n/LocalePickerModal';
@@ -22,14 +21,14 @@ interface ProjectViewProps {
 }
 
 // The owner's top-level tabs. Settings is lifted into the two leading tabs (Corporate Identity /
-// Website Settings); Clients/Team/Access are grouped under Admin; the submissions Inbox is folded
-// into Forms. The constrained client role sees none of these — just the pages list + restricted editor.
+// Website Settings); the submissions Inbox is folded into Forms. Administration (Clients / Team /
+// Access / System Settings) now lives in the header gear menu (opened as modals), not a tab. The
+// constrained client role sees none of these — just the pages list + restricted editor.
 export const MANAGE_TABS = [
   'corporate-identity',
   'website-settings',
   'pages',
   'forms',
-  'admin',
 ] as const;
 export type Tab = (typeof MANAGE_TABS)[number];
 export const TAB_LABELS: Record<Tab, string> = {
@@ -37,7 +36,6 @@ export const TAB_LABELS: Record<Tab, string> = {
   'website-settings': 'Website Settings',
   pages: 'Pages',
   forms: 'Forms',
-  admin: 'Admin',
 };
 
 // A new code page opens with a small, valid Handlebars + Tailwind scaffold so the live
@@ -539,9 +537,6 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
       ) : tab === 'forms' ? (
         // Submissions are folded in per-form (each row's "Show submissions").
         <FormsManager key={project.id} project={project} />
-      ) : tab === 'admin' ? (
-        // Clients · Team · Access, grouped under sub-tabs.
-        <AdminView key={project.id} project={project} />
       ) : (
         <>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">

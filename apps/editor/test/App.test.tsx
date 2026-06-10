@@ -103,4 +103,37 @@ describe('App shell', () => {
     await waitFor(() => expect(createProject).toHaveBeenCalledWith('New Co', 'new-co'));
     expect(await screen.findByText(/PROJECT New Co/)).toBeInTheDocument();
   });
+
+  it('the header gear menu unifies the settings surfaces + Sign out (no legacy Admin/⋮)', async () => {
+    render(<App />);
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: /Acme/ }));
+    await screen.findByText(/PROJECT Acme/);
+    // The retired surfaces are gone from the header.
+    expect(screen.queryByRole('button', { name: 'Admin' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Site options' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Sign out' })).toBeNull(); // moved into the menu
+
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    const menu = await screen.findByRole('menu', { name: 'Settings' });
+    for (const label of ['Publish & Deploy Options', 'Clients', 'Team', 'Access']) {
+      expect(within(menu).getByRole('menuitem', { name: label })).toBeInTheDocument();
+    }
+    // System Settings is admin-only — hidden for this non-admin owner.
+    expect(within(menu).queryByRole('menuitem', { name: 'System Settings' })).toBeNull();
+
+    // Sign out lives in the menu and returns to the login screen.
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Sign out' }));
+    await waitFor(() => expect(logout).toHaveBeenCalled());
+    expect(await screen.findByText('LOGIN')).toBeInTheDocument();
+  });
+
+  it('shows System Settings in the gear menu for an instance admin', async () => {
+    me.mockResolvedValue({ userId: 'u', isInstanceAdmin: true, projects });
+    render(<App />);
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: /Acme/ }));
+    await screen.findByText(/PROJECT Acme/);
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    const menu = await screen.findByRole('menu', { name: 'Settings' });
+    expect(within(menu).getByRole('menuitem', { name: 'System Settings' })).toBeInTheDocument();
+  });
 });

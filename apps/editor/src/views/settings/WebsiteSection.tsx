@@ -24,7 +24,18 @@ function dataSummary(v: JsonValue): string {
 }
 
 /** Website settings: production URL, injected CSS/HTML, redirects, and localization. */
-export function WebsiteSection({ form, patch, projectId }: { form: SettingsForm; patch: Patch; projectId: string }) {
+export function WebsiteSection({
+  form,
+  patch,
+  projectId,
+  onLocalesChanged,
+}: {
+  form: SettingsForm;
+  patch: Patch;
+  projectId: string;
+  /** Bubbles a language add/remove up so the pages list refreshes. */
+  onLocalesChanged?: () => void;
+}) {
   const [dataOpen, setDataOpen] = useState(false);
   // The configured locales, default first (deduped) — for the locale manager.
   const localeCodes = Array.from(
@@ -189,6 +200,7 @@ export function WebsiteSection({ form, patch, projectId }: { form: SettingsForm;
           locales={localeCodes}
           defaultLocale={form.defaultLocale}
           onChange={(next) => patch({ locales: next.map((value) => ({ ...newStr(), value })) })}
+          onLocalesChanged={onLocalesChanged}
         />
       </GlassCard>
     </div>

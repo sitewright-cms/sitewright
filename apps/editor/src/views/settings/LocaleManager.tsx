@@ -12,6 +12,8 @@ interface LocaleManagerProps {
   defaultLocale: string;
   /** Called with the new ordered locale list so the parent form stays in sync (no full reload). */
   onChange: (locales: string[]) => void;
+  /** Fired after a language is actually added/removed server-side, so the pages list can refresh. */
+  onLocalesChanged?: () => void;
 }
 
 /**
@@ -20,7 +22,7 @@ interface LocaleManagerProps {
  * default/main language owns each page's layout and cannot be removed here. Locale add/remove
  * goes through dedicated endpoints; the parent's form locale list is patched locally.
  */
-export function LocaleManager({ projectId, locales, defaultLocale, onChange }: LocaleManagerProps) {
+export function LocaleManager({ projectId, locales, defaultLocale, onChange, onLocalesChanged }: LocaleManagerProps) {
   const { confirm, dialog } = useDialogs();
   const [addOpen, setAddOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -33,6 +35,7 @@ export function LocaleManager({ projectId, locales, defaultLocale, onChange }: L
       await api.addLocale(projectId, locale);
       setAddOpen(false);
       onChange([...locales, locale]);
+      onLocalesChanged?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed to add language');
     } finally {
@@ -62,6 +65,7 @@ export function LocaleManager({ projectId, locales, defaultLocale, onChange }: L
     try {
       await api.removeLocale(projectId, locale);
       onChange(locales.filter((l) => l !== locale));
+      onLocalesChanged?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed to remove language');
     }

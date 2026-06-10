@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Modal } from '../ui/Modal';
-import { glassInput, primaryButton } from '../../theme';
+import { glassInput, primaryButton, gradientHover } from '../../theme';
 import { LOCALE_CATALOG, localeFlag, validateLocale } from './locale-catalog';
 
 interface LocalePickerModalProps {
@@ -83,12 +83,12 @@ export function LocalePickerModal({
               <button
                 type="button"
                 disabled={busy}
-                className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition hover:bg-indigo-50 disabled:opacity-50"
+                className={`group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition disabled:opacity-50 ${gradientHover}`}
                 onClick={() => onPick(l.code)}
               >
                 <span aria-hidden className="text-lg">{l.flag}</span>
-                <span className="font-medium text-slate-800">{l.name}</span>
-                <span className="ml-auto font-mono text-xs uppercase text-slate-400">{l.code}</span>
+                <span className="font-medium text-slate-800 group-hover:text-white">{l.name}</span>
+                <span className="ml-auto font-mono text-xs uppercase text-slate-400 group-hover:text-white/80">{l.code}</span>
               </button>
             </li>
           ))}

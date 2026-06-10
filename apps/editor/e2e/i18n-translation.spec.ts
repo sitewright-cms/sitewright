@@ -77,3 +77,29 @@ test('Website Settings: removing a language warns about page deletion and cascad
   // The German row is gone (its pages were cascade-deleted server-side).
   await expect(page.getByRole('button', { name: 'Remove German' })).toBeHidden();
 });
+
+test('the pages list reflects a language added or removed in Website Settings — no reload', async ({ page }) => {
+  await newProject(page, 'i18nsync');
+
+  // Add German from Website Settings.
+  await page.getByRole('tab', { name: 'Website Settings' }).click();
+  await page.getByRole('button', { name: '+ Add language' }).click();
+  await page.getByRole('dialog', { name: 'Add a language' }).getByRole('button', { name: /German/ }).click();
+  await expect(page.getByRole('button', { name: 'Remove German' })).toBeVisible();
+
+  // Switch to Pages → the language switcher already shows DE (no page reload needed).
+  await page.getByRole('tab', { name: 'Pages' }).click();
+  const langTablist = page.getByRole('tablist', { name: 'Language' });
+  await expect(langTablist).toBeVisible();
+  await expect(langTablist.getByRole('tab', { name: 'de', exact: true })).toBeVisible();
+
+  // Remove German back in Website Settings.
+  await page.getByRole('tab', { name: 'Website Settings' }).click();
+  await page.getByRole('button', { name: 'Remove German' }).click();
+  await page.getByRole('dialog', { name: /Remove German/ }).getByRole('button', { name: 'Remove language' }).click();
+  await expect(page.getByRole('button', { name: 'Remove German' })).toBeHidden();
+
+  // Switch to Pages → the switcher is gone again (single language), still no reload.
+  await page.getByRole('tab', { name: 'Pages' }).click();
+  await expect(page.getByRole('tablist', { name: 'Language' })).toBeHidden();
+});

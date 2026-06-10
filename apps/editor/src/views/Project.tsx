@@ -10,7 +10,7 @@ import { Tooltip } from './ui/Tooltip';
 import { FormsManager } from './FormsManager';
 import { SettingsView } from './settings/SettingsView';
 import { AdminView } from './AdminView';
-import { glassCard, glassInput, fieldLabel, primaryButton, gradientHover } from '../theme';
+import { glassCard, glassInput, fieldLabel, primaryButton, gradientHover, gradientSurface } from '../theme';
 import { orderPagesByTree, canReorder, reorderWithinParent, orderedSiblings } from './pages-order';
 import { LocalePickerModal } from './i18n/LocalePickerModal';
 import { localeFlag, localeLabel } from './i18n/locale-catalog';
@@ -186,6 +186,13 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
     const group = pages.find((p) => p.id === homeId)?.translationGroup ?? homeId;
     return pages.find((p) => (p.translationGroup ?? p.id) === group && localeOf(p, defaultLocale) === locale)?.id ?? homeId;
   }
+  // A LOCALE HOME — the root of a language's subtree (a variant of the root home). Treated like
+  // the home page in the list: home icon, not draggable, not deletable (remove the whole language
+  // in Website Settings instead), and its parent (the root home) is fixed.
+  const homeGroup = pages.find((p) => p.id === homeId)?.translationGroup ?? homeId;
+  const isLocaleHome = (p: Page): boolean =>
+    p.path !== '' && localeOf(p, defaultLocale) !== defaultLocale && (p.translationGroup ?? p.id) === homeGroup;
+  const isHomeLike = (p: Page): boolean => p.path === '' || isLocaleHome(p);
   // Index for computing each page's full route ({root}/{parent slugs}/{slug}) for display.
   const pageById = useMemo(() => pagesById(pages), [pages]);
   const fullPath = (p: Page): string => pagePath(p, pageById);
@@ -199,21 +206,31 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
     }
   }
 
+  /** Re-read the project's configured locales from settings (default first). */
+  async function refreshLocales() {
+    try {
+      const res = await api.getSettings(project.id);
+      const s = res.item?.settings;
+      if (!s?.locales?.length) return;
+      // Keep the project's default locale first → `locales[0]` is the default everywhere
+      // (Project actions + PageSettingsModal's "Default (…)" label).
+      setLocales([s.defaultLocale, ...s.locales.filter((l) => l !== s.defaultLocale)]);
+    } catch {
+      /* settings may not exist yet → single default locale */
+    }
+  }
+
+  // When a language is added/removed in Website Settings (a sibling tab of THIS view), the pages
+  // list must refresh its locale set + pages — otherwise a removed language lingers until a full
+  // reload. Threaded into SettingsView → WebsiteSection → LocaleManager.
+  async function onLocalesChangedInSettings() {
+    await refreshLocales();
+    await load();
+  }
+
   useEffect(() => {
     void load();
-    void api
-      .getSettings(project.id)
-      .then((res) => {
-        const s = res.item?.settings;
-        if (!s?.locales?.length) return;
-        // Keep the project's default locale first → `locales[0]` is the default
-        // everywhere (Project actions + PageSettingsModal's "Default (…)" label).
-        const ordered = [s.defaultLocale, ...s.locales.filter((l) => l !== s.defaultLocale)];
-        setLocales(ordered);
-      })
-      .catch(() => {
-        /* settings may not exist yet → single default locale */
-      });
+    void refreshLocales();
   }, [project.id]);
 
   // Keep the selected language valid: when the configured locales load/change (or one is
@@ -517,6 +534,7 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
           key={project.id}
           project={project}
           section={tab === 'corporate-identity' ? 'identity' : 'website'}
+          onLocalesChanged={() => void onLocalesChangedInSettings()}
         />
       ) : tab === 'forms' ? (
         // Submissions are folded in per-form (each row's "Show submissions").
@@ -528,7 +546,6 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
         <>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <h2 className="text-sm font-semibold text-slate-500">Pages</h2>
               {/* Language switcher — the list shows one language at a time. Hidden until a
                   second language exists (a single-language project needs no switcher). */}
               {multilingual && (
@@ -541,7 +558,7 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
                       aria-selected={loc === currentLocale}
                       title={`${localeLabel(loc)}${loc === defaultLocale ? ' (main language)' : ''}`}
                       className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-sm font-medium transition ${
-                        loc === currentLocale ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                        loc === currentLocale ? gradientSurface : `text-slate-500 ${gradientHover}`
                       }`}
                       onClick={() => setCurrentLocale(loc)}
                     >
@@ -578,7 +595,9 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
           </div>
           <ul className="mb-8 flex flex-col gap-2">
             {orderedPages.map(({ page: p, depth }) => {
-              const isHome = p.path === '';
+              // A locale home (the root of a language's subtree) is treated like the root home:
+              // home icon, not draggable, not deletable (remove the language in Website Settings).
+              const isHome = isHomeLike(p);
               // Indent sub-pages per the page tree — a left margin shrinks the card so nested
               // rows sit inside their parent (capped so deep trees stay readable).
               const indent = depth > 0 ? { marginLeft: `${Math.min(depth, 6) * 1.5}rem` } : undefined;

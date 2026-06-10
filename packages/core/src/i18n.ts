@@ -316,10 +316,14 @@ export function scaffoldLocale(pages: readonly Page[], locale: string, defaultLo
 }
 
 /**
- * Inherit-mode variants of a single default-locale `owner` for the target `locales` it
- * does not yet exist in — the "make this new page available in all languages" propagation.
- * Skips the default locale and any locale already present in the group. Also returns the
- * owner update when it lacked a `translationGroup`.
+ * Inherit-mode variants of a single default-locale `owner` for the target `locales` it does
+ * not yet exist in — the "make this new page available in all languages" propagation. Ensures
+ * the owner's whole ANCESTOR chain exists in each target locale FIRST (so a page never nests
+ * under a missing parent): it walks `owner` up to the root home, then creates a variant for
+ * every ancestor — excluding the root home, whose variant is the locale home — and finally the
+ * owner, top-down so each child's parent variant already exists. Skips the default locale and
+ * any (ancestor or owner) already present in its group. Also links owners that lacked a
+ * `translationGroup`.
  */
 export function propagatePageToLocales(
   owner: Page,
@@ -327,22 +331,45 @@ export function propagatePageToLocales(
   locales: readonly string[],
   defaultLocale: string,
 ): LocaleScaffold {
-  const group = owner.translationGroup ?? owner.id;
-  const updated: Page[] = owner.translationGroup ? [] : [{ ...owner, translationGroup: group }];
-  const workingOwner = owner.translationGroup ? owner : updated[0]!;
-  let working: Page[] = updated.length
-    ? pages.map((p) => (p.id === workingOwner.id ? workingOwner : p))
-    : [...pages];
+  const byId = pagesById(pages);
+  // The owner's ancestor chain (default-locale pages), root-most → owner, EXCLUDING the root
+  // home (path ''). Every entry must exist in a target locale before the owner can nest.
+  const chain: Page[] = [];
+  const seen = new Set<string>();
+  let cur: Page | undefined = owner;
+  while (cur && !seen.has(cur.id)) {
+    seen.add(cur.id);
+    if (cur.path !== '') chain.unshift(cur);
+    cur = cur.parent ? byId.get(cur.parent) : undefined;
+  }
+
   const created: Page[] = [];
+  const updated: Page[] = [];
+  let working: Page[] = [...pages];
+  // Returns the working copy of `node`, linking it into its own group if it had none.
+  const linkGroup = (node: Page): Page => {
+    if (node.translationGroup) return node;
+    const existing = updated.find((u) => u.id === node.id);
+    if (existing) return existing;
+    const linked = { ...node, translationGroup: node.id };
+    updated.push(linked);
+    working = working.map((p) => (p.id === linked.id ? linked : p));
+    return linked;
+  };
+
   for (const locale of locales) {
     if (locale === defaultLocale) continue;
-    const present = working.some(
-      (p) => (p.translationGroup ?? p.id) === group && localeOf(p, defaultLocale) === locale,
-    );
-    if (present) continue;
-    const variant = buildLocaleVariant(workingOwner, locale, working, defaultLocale);
-    created.push(variant);
-    working = [...working, variant];
+    for (const node of chain) {
+      const linked = linkGroup(node);
+      const groupId = linked.translationGroup ?? linked.id;
+      const present = working.some(
+        (p) => (p.translationGroup ?? p.id) === groupId && localeOf(p, defaultLocale) === locale,
+      );
+      if (present) continue;
+      const variant = buildLocaleVariant(linked, locale, working, defaultLocale);
+      created.push(variant);
+      working = [...working, variant];
+    }
   }
   return { created, updated };
 }

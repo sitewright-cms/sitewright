@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { DEFAULT_AGENT_INSTRUCTIONS, DEFAULT_AGENT_SESSION_HOURS, MCP_TOOL_CATALOG } from '@sitewright/schema';
+import { DEFAULT_AGENT_INSTRUCTIONS, DEFAULT_AGENT_SESSION_HOURS, DEFAULT_NEW_PROJECT_LOCALE, MCP_TOOL_CATALOG } from '@sitewright/schema';
 import { api, type InstanceSettingsInput, type InstanceSettingsPublic } from '../api';
 import { glassCard, glassInput, primaryButton } from '../theme';
 import { SkeletonList } from './ui/Skeleton';
+import { LocalePickerModal } from './i18n/LocalePickerModal';
+import { localeFlag, localeLabel } from './i18n/locale-catalog';
 
 const FORM_MODE_LABELS: Array<{ key: keyof InstanceSettingsPublic['formModes']; label: string; hint: string }> = [
   { key: 'globalSmtp', label: 'Global SMTP', hint: 'Platform sends form mail via the SMTP configured below.' },
@@ -35,6 +37,10 @@ export function InstanceSettings() {
   // The agent session cap (hours) — how long an MCP/OAuth connection lasts before re-consent.
   const [agentSessionHours, setAgentSessionHours] = useState(DEFAULT_AGENT_SESSION_HOURS);
   const initialSessionHoursRef = useRef(DEFAULT_AGENT_SESSION_HOURS);
+  // The default locale new projects start in (their defaultLocale + sole initial locale).
+  const [newProjectLocale, setNewProjectLocale] = useState(DEFAULT_NEW_PROJECT_LOCALE);
+  const initialLocaleRef = useRef(DEFAULT_NEW_PROJECT_LOCALE);
+  const [localePickerOpen, setLocalePickerOpen] = useState(false);
 
   const [modes, setModes] = useState<InstanceSettingsPublic['formModes']>(EMPTY_MODES);
 
@@ -85,6 +91,9 @@ export function InstanceSettings() {
     const hours = s.agentSessionHours ?? DEFAULT_AGENT_SESSION_HOURS;
     setAgentSessionHours(hours);
     initialSessionHoursRef.current = hours;
+    const locale = s.defaultLocale ?? DEFAULT_NEW_PROJECT_LOCALE;
+    setNewProjectLocale(locale);
+    initialLocaleRef.current = locale;
   }
 
   useEffect(() => {
@@ -142,6 +151,11 @@ export function InstanceSettings() {
     if (clampedHours !== initialSessionHoursRef.current) {
       input.agentSessionHours = clampedHours === DEFAULT_AGENT_SESSION_HOURS ? null : clampedHours;
     }
+    // Default locale for new projects: only touch it when changed; the built-in default sends
+    // null (revert), any other tag sends the value.
+    if (newProjectLocale !== initialLocaleRef.current) {
+      input.defaultLocale = newProjectLocale === DEFAULT_NEW_PROJECT_LOCALE ? null : newProjectLocale;
+    }
     try {
       const res = await api.putInstanceSettings(input);
       hydrate(res.settings);
@@ -187,6 +201,25 @@ export function InstanceSettings() {
             );
           })}
         </div>
+      </fieldset>
+
+      <fieldset className={`${glassCard} p-4`}>
+        <legend className="px-1 text-sm font-semibold">New projects</legend>
+        <p className="mb-3 text-xs text-slate-500">The language a newly created project starts in. Existing projects are unaffected.</p>
+        <label className="flex flex-col text-xs text-slate-500">
+          Default locale for new projects
+          <button
+            type="button"
+            aria-label="Default locale for new projects"
+            className={`mt-1 flex items-center gap-2 text-left ${glassInput}`}
+            onClick={() => setLocalePickerOpen(true)}
+          >
+            <span aria-hidden className="text-lg">{localeFlag(newProjectLocale)}</span>
+            <span className="font-medium text-slate-800">{localeLabel(newProjectLocale)}</span>
+            <span className="font-mono text-xs uppercase text-slate-400">{newProjectLocale}</span>
+            <span className="ml-auto text-xs text-indigo-600">Change</span>
+          </button>
+        </label>
       </fieldset>
 
       <fieldset className={`${glassCard} p-4`}>
@@ -442,6 +475,19 @@ export function InstanceSettings() {
         </ol>
       </section>
     </div>
+    {localePickerOpen && (
+      <LocalePickerModal
+        title="Default locale for new projects"
+        description="Pick the language new projects start in. This sets a new project's default locale and its first language."
+        actionLabel="Use this locale"
+        busy={false}
+        onPick={(locale) => {
+          setNewProjectLocale(locale);
+          setLocalePickerOpen(false);
+        }}
+        onClose={() => setLocalePickerOpen(false)}
+      />
+    )}
     </>
   );
 }

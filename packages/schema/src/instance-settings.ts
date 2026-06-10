@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { EncryptedSecretSchema } from './deploy-target.js';
 import { AgentInstructionsSchema } from './agent.js';
+import { LocaleSchema } from './project.js';
 
 /** True if `value` contains an ASCII control character (mirrors DeployTargetSchema). */
 function hasControlChars(value: string): boolean {
@@ -98,11 +99,19 @@ export const InstanceSettingsStoredSchema = z.object({
    * theft-detected regardless.
    */
   agentSessionHours: z.number().int().min(1).max(720).optional(),
+  /**
+   * The locale a NEW project starts in (its `defaultLocale` + sole initial `locales` entry).
+   * Unset → English (`en`). Changing it does not touch existing projects.
+   */
+  defaultLocale: LocaleSchema.optional(),
 });
 export type InstanceSettingsStored = z.infer<typeof InstanceSettingsStoredSchema>;
 
 /** Built-in default agent session cap when the admin hasn't set one. */
 export const DEFAULT_AGENT_SESSION_HOURS = 8;
+
+/** Built-in default locale for new projects when the admin hasn't set one. */
+export const DEFAULT_NEW_PROJECT_LOCALE = 'en';
 
 // ---- Input (the admin PUT body) ----
 // Secrets are plaintext and OPTIONAL: omit the password/secret to keep the one
@@ -144,6 +153,8 @@ export const InstanceSettingsInputSchema = z.object({
   // Agent session cap (hours): a number sets it, `null` clears it (revert to the 8h default),
   // and an absent value leaves the stored one unchanged.
   agentSessionHours: z.number().int().min(1).max(720).nullable().optional(),
+  // Default locale for new projects: a tag sets it, `null` reverts to `en`, undefined leaves it.
+  defaultLocale: LocaleSchema.nullable().optional(),
 });
 export type InstanceSettingsInput = z.infer<typeof InstanceSettingsInputSchema>;
 
@@ -181,6 +192,8 @@ export interface InstanceSettingsPublic {
   agentInstructions?: string;
   /** The agent session cap in hours, or absent when using the 8h default. */
   agentSessionHours?: number;
+  /** The default locale for new projects, or absent when using `en`. */
+  defaultLocale?: string;
 }
 
 /** Masks a stored SMTP config to its public view (password → hasPassword flag). */
@@ -204,5 +217,6 @@ export function maskInstanceSettings(stored: InstanceSettingsStored): InstanceSe
   }
   if (stored.agentInstructions !== undefined) result.agentInstructions = stored.agentInstructions;
   if (stored.agentSessionHours !== undefined) result.agentSessionHours = stored.agentSessionHours;
+  if (stored.defaultLocale !== undefined) result.defaultLocale = stored.defaultLocale;
   return result;
 }

@@ -18,6 +18,7 @@ import {
   migratePageStores,
   PageNodeSchema,
   InstanceSettingsInputSchema,
+  DEFAULT_NEW_PROJECT_LOCALE,
   assertWithinTreeDepth,
   toPublicForm,
   type CorporateIdentity,
@@ -62,6 +63,7 @@ import {
   isGlobalTemplate,
   publishedPages,
   resolveTemplateSource,
+  resolveCodeRef,
   resolveLocaleDatasets,
   compareEntryOrder,
   keyedDatasets,
@@ -98,6 +100,7 @@ import { PREVIEW_BRIDGE_JS } from './preview-bridge.js';
 import { archiveSite, deploySite, DeployConfigSchema } from '../publish/adapters.js';
 import { isNewer } from '../version/checker.js';
 import { registerDeployTargetRoutes } from './deploy-targets.js';
+import { registerLocaleRoutes } from './locales.js';
 import { registerFormRoutes } from './form-routes.js';
 import { registerProjectSmtpRoutes } from './project-smtp-routes.js';
 import { registerStockRoutes, type StockServiceLike } from './stock-routes.js';
@@ -1027,11 +1030,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // ownerless, unreachable project).
     const project = await projects.create(body, userId);
     const ownerCtx = { userId, projectId: project.id, role: 'owner' as const, actor: 'user' as const };
+    // The instance-admin's "default locale for new projects" (unset → English) seeds this
+    // project's defaultLocale + sole initial locale. See docs/i18n-content-model.md.
+    const newProjectLocale = (await instanceSettingsRepo.getStored()).defaultLocale ?? DEFAULT_NEW_PROJECT_LOCALE;
     // Seed a Corporate Identity with a sensible DEFAULT BRAND COLOR (blue), so DaisyUI
     // components are themed out of the box and the preview looks intentional immediately.
     await contentRepo.put(ownerCtx, 'settings', 'settings', {
       identity: { name: body.name, colors: { primary: '#2563eb' } },
-      settings: { defaultLocale: 'en', locales: ['en'] },
+      settings: { defaultLocale: newProjectLocale, locales: [newProjectLocale] },
     });
     // Every project starts with a HOME page (the tree root: empty slug → "/", header nav),
     // so the pages list, auto-nav, and the first publish work out of the box. Same scaffold
@@ -1295,21 +1301,29 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // styled-document shell. This is the member-accessible preview the client content
       // editor uses (render-template is owner-only), so the same token/sandbox flow as
       // block pages applies below.
-      if (page.source || page.template) {
+      // Saved pages (incl. drafts) — used both to resolve INHERITED code (a locale variant
+      // with no own source/template follows its translation-group owner's) and, below, for
+      // the per-locale nav / translations / parent views.
+      const allSavedPages = (await contentRepo.list(ctx, 'page')).map(migratePageStores) as Page[];
+      // A code-first page (own `source`/`template`) OR an inherit-mode locale variant that
+      // resolves its owner's code previews through the worker; the variant supplies only its
+      // own page.data, so it shows the main language's layout with its translated content.
+      const codeRef = resolveCodeRef(page, allSavedPages, defaultLocale);
+      if (codeRef.source !== undefined || codeRef.template !== undefined) {
         // A template reference resolves to the TEMPLATE's source (built-in global or
-        // project entity); the page contributes only its {{edit}} content. Resolved
+        // project entity); the page contributes only its page.data content. Resolved
         // BEFORE the pool guard — an unknown reference is a client error (400)
         // regardless of whether rendering infrastructure is up.
-        let pageSource = page.source ?? '';
-        if (page.template) {
-          const projectTemplates = isGlobalTemplate(page.template)
+        let pageSource = codeRef.source ?? '';
+        if (codeRef.template) {
+          const projectTemplates = isGlobalTemplate(codeRef.template)
             ? []
             : ((await contentRepo.list(ctx, 'template')) as Template[]);
-          const globals = isGlobalTemplate(page.template) ? globalTemplateMap(await listGlobalTemplates(contentRepo)) : undefined;
+          const globals = isGlobalTemplate(codeRef.template) ? globalTemplateMap(await listGlobalTemplates(contentRepo)) : undefined;
           try {
-            pageSource = resolveTemplateSource(page.template, new Map(projectTemplates.map((t) => [t.id, t])), globals);
+            pageSource = resolveTemplateSource(codeRef.template, new Map(projectTemplates.map((t) => [t.id, t])), globals);
           } catch {
-            return reply.code(400).send({ error: `unknown template "${page.template}"` });
+            return reply.code(400).send({ error: `unknown template "${codeRef.template}"` });
           }
         }
         if (!renderPool) return reply.code(503).send({ error: 'rendering is not available' });
@@ -1337,7 +1351,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // `page.translations` power a language switcher. `json_data` is NOT fetched in
           // preview (no network per keystroke) — `{{ website.json_data }}` renders empty
           // until publish.
-          const savedPages = publishedPages((await contentRepo.list(ctx, 'page')).map(migratePageStores) as Page[]);
+          const savedPages = publishedPages(allSavedPages);
           const previewLocale = localeOf(page, defaultLocale);
           const navPages = pagesInLocale(savedPages, previewLocale, defaultLocale);
           const slotNav = {
@@ -1459,7 +1473,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // (WYSIWYG parity with publish; an unsaved new page isn't in its own nav yet).
       // Drafts are excluded from nav here too, matching the published output; the menu
       // lists only the previewed page's own language (per-locale nav, like publish).
-      const savedPages = publishedPages((await contentRepo.list(ctx, 'page')).map(migratePageStores) as Page[]);
+      const savedPages = publishedPages(allSavedPages);
       const previewLocale = localeOf(page, defaultLocale);
       const navPages = pagesInLocale(savedPages, previewLocale, defaultLocale);
       const nav = {
@@ -2373,6 +2387,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       },
     );
   }
+
+  // Multilingual locale management (add/remove a translation target, propagate a page,
+  // cascade-delete across languages) — pure content ops, so registered unconditionally
+  // (no encryption key needed). See docs/i18n-content-model.md.
+  registerLocaleRoutes(app, { resolveProject, contentRepo, rl });
 
   // Saved deploy targets (encrypted credentials) — independent of publish serving.
   if (opts.encryptionKey) {

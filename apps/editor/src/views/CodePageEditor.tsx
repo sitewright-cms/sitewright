@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
 import type { JsonValue, Page, Template } from '@sitewright/schema';
-import { extractRegions, GLOBAL_TEMPLATES, isGlobalTemplate } from '@sitewright/core';
+import {
+  extractRegions,
+  GLOBAL_TEMPLATES,
+  GLOBAL_TEMPLATE_PREFIX,
+  isGlobalTemplate,
+  codeOwnerOf,
+  resolveCodeRef,
+  resolveTemplateSource,
+} from '@sitewright/core';
 import { safeUrl } from '@sitewright/blocks/url';
 import { api, previewDocUrl, type Project } from '../api';
 import { CodeEditor } from '../lib/code-editor';
@@ -154,6 +162,29 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
       : templates.find((t) => t.id === settings.template)
     : undefined;
 
+  // INHERIT mode: a translated page (non-default locale) with no own source and no template
+  // follows its main-language owner's code. Its preview + content regions come from the
+  // owner's resolved source (the server inherits it too); fork or assign a template (Page
+  // settings → Code source) to give this language its own code.
+  const defaultLocale = locales[0] ?? 'en';
+  const codeOwner = codeOwnerOf(page, pages, defaultLocale);
+  const inheritsCode = !source.trim() && !settings.template && !!codeOwner && codeOwner.id !== page.id;
+  const inheritedSource = useMemo(() => {
+    if (!inheritsCode || !codeOwner) return '';
+    const ref = resolveCodeRef(codeOwner, pages, defaultLocale);
+    if (ref.source) return ref.source;
+    if (ref.template) {
+      const projMap = new Map(templates.map((t) => [t.id, t]));
+      const globalMap = new Map(GLOBAL_TEMPLATES.map((t) => [GLOBAL_TEMPLATE_PREFIX + t.id, t]));
+      try {
+        return resolveTemplateSource(ref.template, projMap, globalMap);
+      } catch {
+        return '';
+      }
+    }
+    return '';
+  }, [inheritsCode, codeOwner, pages, defaultLocale, templates]);
+
   // The draft page exactly as Save would persist it (and as the preview renders it). An empty
   // page.data ({}/[]/null) is dropped so a never-touched page stays minimal — `data: undefined` is
   // omitted on PUT (an empty root carries no addressable value; same rule as website.data). NOTE:
@@ -172,8 +203,11 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   // The editable regions come from the EFFECTIVE source: the referenced template's
   // (when set) else the page's own draft — so content mode always reflects reality.
   const regions = useMemo(
-    () => extractRegions(settings.template ? (activeTemplate?.source ?? '') : source),
-    [settings.template, activeTemplate, source],
+    () =>
+      extractRegions(
+        settings.template ? (activeTemplate?.source ?? '') : inheritsCode ? inheritedSource : source,
+      ),
+    [settings.template, activeTemplate, inheritsCode, inheritedSource, source],
   );
 
   // Guards async setState after the editor is closed (the modal unmounts when another page
@@ -382,6 +416,12 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
     setSettings((prev) => ({ ...prev, template: '' }));
   }
 
+  /** Fork an INHERIT-mode translation: copy the main language's resolved layout into this page so
+   *  this language gets its own editable code (the page stops following the owner). */
+  function forkInherited() {
+    if (inheritedSource) setSource(inheritedSource);
+  }
+
   /** Applies the settings modal's result; when a template is newly ENABLED, seed page.data with its
    *  declared defaults (fill-missing — never clobber the author's existing values). */
   function applySettings(values: PageSettingsValues) {
@@ -408,8 +448,9 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
     // The instant the state diverges, drop it — so it can never wrongly suppress a LATER reload whose
     // stateKey happens to equal it again (e.g. a side-field edit-then-revert).
     if (stateKey !== inlineKeyRef.current) inlineKeyRef.current = null;
-    // An empty page (no own code, no template) needs no round-trip.
-    if (source.trim() === '' && !settings.template) {
+    // An empty page (no own code, no template) needs no round-trip — UNLESS it inherits its
+    // code from the main language, in which case the server resolves the owner's layout.
+    if (source.trim() === '' && !settings.template && !inheritsCode) {
       setPreviewSrc('');
       setPreviewError(null);
       setPreviewLoading(false);
@@ -628,6 +669,22 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
                 <p className="text-[11px] text-slate-400">
                   Forking copies the template’s code into this page and removes the reference, so you
                   can customize it freely.
+                </p>
+              </div>
+            ) : inheritsCode ? (
+              <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
+                <p className="text-sm text-slate-600">
+                  This page inherits its layout from the main language
+                  {codeOwner ? <> (<strong>{codeOwner.title}</strong>)</> : null}. Change the structure
+                  for every language by editing the main page — here you translate the text (see the{' '}
+                  <em>content</em> mode).
+                </p>
+                <button className={primaryButton} onClick={forkInherited} disabled={!inheritedSource}>
+                  Fork the code for this language
+                </button>
+                <p className="text-[11px] text-slate-400">
+                  Forking copies the current layout into this language so you can customize it
+                  independently of the others.
                 </p>
               </div>
             ) : (

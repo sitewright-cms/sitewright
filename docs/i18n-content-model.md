@@ -1,7 +1,39 @@
 # Multilingual content model (ADR + implementation plan)
 
-**Status:** Proposed — agreed direction, not yet built.
+**Status:** Implemented — the **code-inheritance** model (below) shipped. The original draft chose
+template-reuse; the shipped model makes a translated variant *inherit* the main language's code by
+default instead (no per-page template needed), with fork/template available per variant.
 **Supersedes:** the tree-based `PageTranslation` + per-locale publish loop in `apps/api/src/publish/build.ts` (functionally dead for code-first pages — it overrides a page's block-tree `root`, but pages render from `source`).
+
+## Shipped model — code inheritance (supersedes the template-reuse design below)
+
+A locale variant of a page is its own `Page`, linked to its siblings by `translationGroup`, and gets
+its **code** in one of three modes:
+
+- **inherit (default):** the variant carries **no `source` and no `template`** → at render it resolves
+  the code of its translation group's DEFAULT-LOCALE page (the "code owner") via `resolveCodeRef`
+  (`packages/core/src/i18n.ts`). Editing the main page's layout updates every inheriting language with
+  zero sync. Only `page.data` (+ `title`/`seo`/`path`/`nav`) differs per locale.
+- **fork:** the variant carries its own `source` (per-locale layout, edited freely).
+- **template:** the variant references a project/global `template`.
+
+Operations are atomic + server-side (`apps/api/src/http/locales.ts`, `ContentRepository.applyLocaleChange`):
+- `POST /projects/:id/locales {locale}` — add a translation target + scaffold an inherit variant of every
+  default-language page (`scaffoldLocale`), mirroring the tree under `/<locale>/…`.
+- `DELETE /projects/:id/locales/:locale` — remove a target + cascade-delete its pages (never the default).
+- `POST /projects/:id/pages/:id/translate` — make a default-language page available in all languages
+  (`propagatePageToLocales`).
+- `POST /projects/:id/pages/:id/delete-group` — delete a page across the languages that INHERIT its code;
+  forked/template variants are kept (detached).
+
+Editor: the pages list is locale-first (a language switcher filters to one language; "Add translation"
+adds a target via a searchable locale picker). Page settings expose the inherit/fork/template choice for a
+translated page; the code editor shows the inherited layout (read-only) with a "fork for this language"
+action. An instance-admin setting (`InstanceSettings.defaultLocale`) seeds the default locale of new
+projects.
+
+The template-reuse design below is kept for historical context; "share via the same template" is now just
+one of the three modes, not the default.
 
 ---
 

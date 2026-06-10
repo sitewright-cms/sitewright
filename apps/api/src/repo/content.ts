@@ -89,6 +89,9 @@ const SCHEMAS = new Map<ContentKind, z.ZodTypeAny>([
 export const CONTENT_KINDS = [...SCHEMAS.keys()];
 
 const SETTINGS_ENTITY_ID = 'settings';
+
+/** Upper bound on pages touched by one {@link ContentRepository.applyLocaleChange} (DoS guard). */
+const MAX_LOCALE_BATCH = 5000;
 // Per-bundle caps (defense-in-depth alongside the route body limit).
 const MAX_BUNDLE = { pages: 2000, partials: 500, templates: 500, datasets: 500, entries: 50_000 } as const;
 
@@ -339,6 +342,59 @@ export class ContentRepository {
       }
     });
     return { imported };
+  }
+
+  /**
+   * Apply a set of page upserts/removals plus an optional settings update in ONE
+   * transaction — the multilingual locale operations (scaffold a translation target,
+   * cascade-delete one, propagate a page into all languages) which must not leave a
+   * half-built locale subtree behind. Validates every entity up front (so a bad payload
+   * fails before any write); change events fire only AFTER the commit succeeds, so
+   * live-preview clients reload against committed state.
+   */
+  async applyLocaleChange(
+    ctx: ProjectContext,
+    change: { putPages?: unknown[]; removePageIds?: string[]; settings?: unknown },
+  ): Promise<{ pages: Page[] }> {
+    const putPages = (change.putPages ?? []).map((raw) => {
+      assertTreeSafe('page', raw);
+      return PageSchema.parse(raw) as Page;
+    });
+    const settings =
+      change.settings !== undefined ? schemaFor('settings').parse(change.settings) : undefined;
+    const removeIds = change.removePageIds ?? [];
+    // Bound the batch so a single locale op can't monopolise the write connection (a scaffold
+    // is one variant per default page; the bundle ceiling is the natural upper bound).
+    if (putPages.length + removeIds.length > MAX_LOCALE_BATCH) {
+      throw new ConflictError(`locale change is too large (max ${MAX_LOCALE_BATCH} pages)`);
+    }
+
+    // Only pages that actually existed are deleted — so we emit delete events only for those
+    // (an id that wasn't present must not produce a spurious delete to live-preview clients).
+    const deleted: string[] = [];
+    await this.db.transaction(async (tx) => {
+      const exec = tx as unknown as Executor;
+      if (settings !== undefined) await this.writeRow(exec, ctx, 'settings', SETTINGS_ENTITY_ID, settings);
+      for (const page of putPages) await this.writeRow(exec, ctx, 'page', page.id, page);
+      for (const id of removeIds) {
+        const row = await this.row(exec, ctx, 'page', id);
+        if (row) {
+          await exec.delete(content).where(and(eq(content.id, row.id), eq(content.projectId, ctx.projectId)));
+          deleted.push(id);
+        }
+      }
+    });
+
+    if (settings !== undefined) {
+      this.events?.emit(ctx.projectId, { kind: 'settings', entityId: SETTINGS_ENTITY_ID, op: 'put', actor: ctx.actor });
+    }
+    for (const page of putPages) {
+      this.events?.emit(ctx.projectId, { kind: 'page', entityId: page.id, op: 'put', actor: ctx.actor });
+    }
+    for (const id of deleted) {
+      this.events?.emit(ctx.projectId, { kind: 'page', entityId: id, op: 'delete', actor: ctx.actor });
+    }
+    return { pages: putPages };
   }
 
   /** The storage key for an entity: a singleton's fixed id, or the entity's own id (which must match the path). */

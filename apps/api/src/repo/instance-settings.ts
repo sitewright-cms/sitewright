@@ -151,6 +151,15 @@ export class InstanceSettingsRepository {
       next.agentSessionHours = input.agentSessionHours;
     }
 
+    // Default locale for new projects: a tag sets it, `null` reverts to `en`, undefined keeps.
+    if (input.defaultLocale === null) {
+      // cleared — leave next.defaultLocale undefined (→ `en` at project creation)
+    } else if (input.defaultLocale === undefined) {
+      if (current.defaultLocale !== undefined) next.defaultLocale = current.defaultLocale;
+    } else {
+      next.defaultLocale = input.defaultLocale;
+    }
+
     // Validate the merged document before persisting (defense in depth).
     const validated = InstanceSettingsStoredSchema.parse(next);
     const now = new Date();

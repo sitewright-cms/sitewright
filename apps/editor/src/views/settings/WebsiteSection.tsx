@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import type { JsonValue } from '@sitewright/schema';
-import type { Patch, SettingsForm } from './model';
+import { newStr, type Patch, type SettingsForm } from './model';
 import { Field, GlassCard } from './ui';
 import { CodeField } from '../ui/CodeField';
 import { RedirectsEditor } from './RedirectsEditor';
-import { StringListEditor } from './StringListEditor';
+import { LocaleManager } from './LocaleManager';
 import { WebsiteDataModal } from './WebsiteDataModal';
 import { ghostButton } from '../../theme';
 
@@ -24,8 +24,12 @@ function dataSummary(v: JsonValue): string {
 }
 
 /** Website settings: production URL, injected CSS/HTML, redirects, and localization. */
-export function WebsiteSection({ form, patch }: { form: SettingsForm; patch: Patch }) {
+export function WebsiteSection({ form, patch, projectId }: { form: SettingsForm; patch: Patch; projectId: string }) {
   const [dataOpen, setDataOpen] = useState(false);
+  // The configured locales, default first (deduped) — for the locale manager.
+  const localeCodes = Array.from(
+    new Set([form.defaultLocale, ...form.locales.map((l) => l.value).filter(Boolean)]),
+  );
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       <GlassCard title="Site" icon="🌐" wide>
@@ -180,14 +184,11 @@ export function WebsiteSection({ form, patch }: { form: SettingsForm; patch: Pat
       </GlassCard>
 
       <GlassCard title="Localization" icon="🗺" wide>
-        <Field label="Default locale" value={form.defaultLocale} onChange={(v) => patch({ defaultLocale: v })} placeholder="en" />
-        <p className="mb-2 mt-3 text-xs font-medium uppercase tracking-wide text-slate-400">Locales</p>
-        <StringListEditor
-          items={form.locales}
-          onChange={(locales) => patch({ locales })}
-          placeholder="en"
-          ariaLabel="Locale"
-          addLabel="+ Add locale"
+        <LocaleManager
+          projectId={projectId}
+          locales={localeCodes}
+          defaultLocale={form.defaultLocale}
+          onChange={(next) => patch({ locales: next.map((value) => ({ ...newStr(), value })) })}
         />
       </GlassCard>
     </div>

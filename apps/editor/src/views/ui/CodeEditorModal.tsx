@@ -6,21 +6,27 @@ interface CodeEditorModalProps {
   title: string;
   /** Initial source. */
   value: string;
-  /** Persist the edited source. The modal closes once this resolves; if it REJECTS the modal stays
-   *  open (so a failed save doesn't discard the in-progress edit). Sync handlers always close. */
-  onSave: (value: string) => void | Promise<void>;
+  /** Persist the edited source (and, when {@link nameEdit} is set, the edited name). The modal
+   *  closes once this resolves; if it REJECTS the modal stays open (so a failed save doesn't discard
+   *  the in-progress edit). Sync handlers always close. */
+  onSave: (value: string, name?: string) => void | Promise<void>;
   onClose: () => void;
   /** Optional one-line hint shown above the editor (e.g. available bindings). */
   hint?: string;
   /** Syntax mode — `html` (HTML + Handlebars, default) or `css` (e.g. Critical CSS). */
   language?: CodeLanguage;
   /**
-   * Optional editable display name. When `onNameChange` is provided a "Name" input is shown above the
-   * editor; the PARENT owns the value and persists it on save (used by templates, whose `name` is
-   * free-text and decoupled from the stable `id`). Snippets omit it — their id IS their name.
+   * When set, a NAME field is shown above the editor (the modal owns the draft) and its value is
+   * passed to onSave. `validate` returns an error string to block saving (or null when acceptable);
+   * `onChange` fires as the name is edited so the parent can reflect it live (e.g. the dialog title).
+   * Used by templates (free-text name, id kept) and snippets (validated rename).
    */
-  name?: string;
-  onNameChange?: (name: string) => void;
+  nameEdit?: {
+    value: string;
+    label?: string;
+    validate?: (name: string) => string | null;
+    onChange?: (name: string) => void;
+  };
 }
 
 /**
@@ -28,20 +34,25 @@ interface CodeEditorModalProps {
  * any HTML/Handlebars source (partials, raw slots, …). The editor is the black/single-accent
  * CodeMirror; Save (header ✓ or ⌘S) commits the draft and closes (staying open if the save rejects).
  */
-export function CodeEditorModal({ title, value, onSave, onClose, hint, language = 'html', name, onNameChange }: CodeEditorModalProps) {
+export function CodeEditorModal({ title, value, onSave, onClose, hint, language = 'html', nameEdit }: CodeEditorModalProps) {
   // `value` seeds the draft when the modal opens; external changes while it is mounted are
   // intentionally ignored — the user's live edits take precedence until they Save or close.
   const [draft, setDraft] = useState(value);
+  const [draftName, setDraftName] = useState(nameEdit?.value ?? '');
+  const nameError = nameEdit?.validate ? nameEdit.validate(draftName) : null;
   return (
     <Modal
       title={title}
       size="full"
       onClose={onClose}
+      saveDisabled={!!nameError}
       onSave={() => {
         // Close only once the save resolves; a rejected save keeps the editor open with the draft.
         void (async () => {
           try {
-            await onSave(draft);
+            // Only pass the name when name-editing is active, so callers that wired `onSave` as a
+            // plain `(value) => …` (e.g. CodeField) keep their single-argument contract.
+            await (nameEdit ? onSave(draft, draftName) : onSave(draft));
             onClose();
           } catch {
             /* stay open — the caller surfaces the error and the draft is preserved */
@@ -51,16 +62,24 @@ export function CodeEditorModal({ title, value, onSave, onClose, hint, language 
       saveLabel="Save changes"
     >
       <div className="flex h-full flex-col bg-[#0a0a0f]">
-        {onNameChange && (
-          <label className="flex shrink-0 items-center gap-2 border-b border-white/10 px-4 py-2 text-xs text-slate-400">
-            Name
-            <input
-              aria-label="Name"
-              className="flex-1 rounded-md border border-white/15 bg-white/5 px-2 py-1 text-sm text-slate-100 outline-none transition focus:border-indigo-400"
-              value={name ?? ''}
-              onChange={(e) => onNameChange(e.target.value)}
-            />
-          </label>
+        {nameEdit && (
+          <div className="shrink-0 border-b border-white/10 px-4 py-2">
+            <label className="flex items-center gap-2 text-xs text-slate-400">
+              <span className="shrink-0">{nameEdit.label ?? 'Name'}</span>
+              <input
+                value={draftName}
+                onChange={(e) => {
+                  setDraftName(e.target.value);
+                  nameEdit.onChange?.(e.target.value);
+                }}
+                aria-label={nameEdit.label ?? 'Name'}
+                spellCheck={false}
+                autoComplete="off"
+                className="min-w-0 flex-1 rounded-md border border-white/15 bg-white/5 px-2 py-1 font-mono text-sm text-slate-100 outline-none transition focus:border-indigo-400"
+              />
+            </label>
+            {nameError && <p className="mt-1 text-[11px] text-rose-400">{nameError}</p>}
+          </div>
         )}
         {hint && (
           <p className="shrink-0 border-b border-white/10 px-4 py-2 text-xs text-slate-400">{hint}</p>

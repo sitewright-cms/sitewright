@@ -1,6 +1,6 @@
 import { SidePanel } from '../ui/SidePanel';
 import { CodeRecordManager, type CodeRecord, type MakeId, type RecordAdapters } from './CodeRecordManager';
-import { api } from '../../api';
+import { api, snippetPreviewUrl } from '../../api';
 
 /** Code glyph (`</>`) for the bottom rail tabs. */
 function CodeIcon() {
@@ -80,6 +80,8 @@ export function SnippetsPanel({ projectId, isAdmin }: { projectId: string; isAdm
         globalAdapters={globalSnippets}
         isAdmin={isAdmin}
         includeRef={(r) => `{{> ${r.name}}}`}
+        previewUrl={(r, scope) => snippetPreviewUrl(projectId, r.id, scope)}
+        renamable
         nameHint="referenced as {{> name}}"
         hint="A reusable Handlebars partial (HTML + Tailwind + {{ }}). Include it in a page or template with {{> name}}."
       />

@@ -68,6 +68,15 @@ export function eventsUrl(projectId: string): string {
   return `${BASE}/projects/${projectId}/events`;
 }
 
+/**
+ * URL of a single snippet's server-rendered preview document — the snippet rendered with the
+ * project's brand styling + resolvable partials, served under an opaque `sandbox` CSP. Loaded via
+ * the hover-preview iframe's `src` (so it gets its own CSP, like {@link previewDocUrl}).
+ */
+export function snippetPreviewUrl(projectId: string, id: string, scope: 'project' | 'global'): string {
+  return `${BASE}/projects/${projectId}/snippets/${encodeURIComponent(id)}/preview?scope=${scope}`;
+}
+
 export class ApiError extends Error {
   constructor(
     public readonly status: number,

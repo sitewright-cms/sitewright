@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 
-const { publishStatus, publish, archiveUrl, getSettings } = vi.hoisted(() => ({
+const { publishStatus, publish, archiveUrl, getSettings, listDeployTargets } = vi.hoisted(() => ({
   publishStatus: vi.fn(),
   publish: vi.fn(),
   archiveUrl: vi.fn<(id: string) => string>(() => '/projects/p/publish/archive'),
@@ -9,6 +9,8 @@ const { publishStatus, publish, archiveUrl, getSettings } = vi.hoisted(() => ({
   getSettings: vi.fn<(id: string) => Promise<{ item: { website?: { previewToken?: string } } }>>(() =>
     Promise.resolve({ item: {} }),
   ),
+  // No saved deploy targets by default → no header Deploy button.
+  listDeployTargets: vi.fn<(id: string) => Promise<{ items: unknown[] }>>(() => Promise.resolve({ items: [] })),
 }));
 vi.mock('../src/api', () => ({
   api: {
@@ -16,6 +18,7 @@ vi.mock('../src/api', () => ({
     publish: (id: string) => publish(id),
     archiveUrl: (id: string) => archiveUrl(id),
     getSettings: (id: string) => getSettings(id),
+    listDeployTargets: (id: string) => listDeployTargets(id),
   },
   eventsUrl: (id: string) => `/projects/${id}/events`,
 }));
@@ -82,5 +85,15 @@ describe('PublishBar', () => {
     act(() => listeners.forEach((cb) => cb())); // an edit lands on the change stream
     expect(await screen.findByRole('button', { name: 'Publish' })).toBeInTheDocument();
     vi.unstubAllGlobals();
+  });
+
+  it('shows a Deploy button (→ onOpenDeploy) when a saved target exists and the site is published', async () => {
+    publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false });
+    listDeployTargets.mockResolvedValueOnce({ items: [{ id: 't1' }] });
+    const onOpenDeploy = vi.fn();
+    render(<PublishBar project={project} onOpenDeploy={onOpenDeploy} />);
+    const deploy = await screen.findByRole('button', { name: 'Deploy the published site' });
+    deploy.click();
+    expect(onOpenDeploy).toHaveBeenCalled();
   });
 });

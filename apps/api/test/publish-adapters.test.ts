@@ -10,6 +10,7 @@ import {
   defaultTransport,
   deploySite,
   type DeployTransport,
+  type DeployProgress,
 } from '../src/publish/adapters.js';
 
 let siteDir: string;
@@ -54,6 +55,26 @@ describe('DeployConfigSchema', () => {
       DeployConfigSchema.parse({ protocol: 'ftp', host: 'h', user: 'u', password: 'p', remoteDir: '/x\n/y' }),
     ).toThrow();
   });
+
+  it('accepts SFTP key auth (private key + optional passphrase, password optional)', () => {
+    const cfg = DeployConfigSchema.parse({
+      protocol: 'sftp',
+      host: 'h',
+      user: 'u',
+      privateKey: '-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----',
+      passphrase: 'pp',
+    });
+    expect(cfg.privateKey).toContain('BEGIN');
+    expect(cfg.password).toBeUndefined();
+  });
+  it('rejects a private key on a non-SFTP protocol', () => {
+    expect(() =>
+      DeployConfigSchema.parse({ protocol: 'ftp', host: 'h', user: 'u', password: 'p', privateKey: 'k' }),
+    ).toThrow(/private key requires.*SFTP/i);
+  });
+  it('requires at least a password or a private key', () => {
+    expect(() => DeployConfigSchema.parse({ protocol: 'sftp', host: 'h', user: 'u' })).toThrow(/password or a private key/i);
+  });
 });
 
 describe('defaultTransport', () => {
@@ -80,6 +101,32 @@ describe('deploySite (orchestration via fake transport)', () => {
     );
     expect(calls).toEqual(['connect', 'upload:/var/www', 'close']);
     expect(result).toEqual({ protocol: 'sftp', files: 2 });
+  });
+
+  it('streams connecting → per-file uploading → done progress', async () => {
+    const events: DeployProgress[] = [];
+    const fake: DeployTransport = {
+      connect: async () => {},
+      uploadDir: async (_local, _remote, onFile) => {
+        onFile?.('index.html');
+        onFile?.('about/index.html');
+      },
+      close: async () => {},
+    };
+    await deploySite(
+      siteDir,
+      { protocol: 'sftp', host: 'h', user: 'u', password: 'p', remoteDir: '/' },
+      () => fake,
+      (e) => events.push(e),
+    );
+    expect(events.map((e) => `${e.phase}:${e.index}/${e.total}`)).toEqual([
+      'connecting:0/2',
+      'uploading:0/2',
+      'uploading:1/2',
+      'uploading:2/2',
+      'done:2/2',
+    ]);
+    expect(events.find((e) => e.index === 1)?.file).toBe('index.html');
   });
 
   it('still closes the transport when the upload fails', async () => {

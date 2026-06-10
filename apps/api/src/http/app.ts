@@ -490,6 +490,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             // Covers the auth login/register password AND the project-SMTP PUT
             // (SmtpInput.password is top-level) AND deploy-target create.
             'req.body.password',
+            // Deploy-target SFTP key auth: never log the private key or its passphrase.
+            'req.body.privateKey',
+            'req.body.passphrase',
             'req.body.hostFingerprint',
             // Instance-settings PUT carries plaintext secrets in nested fields.
             'req.body.smtp.password',

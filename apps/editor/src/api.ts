@@ -101,6 +101,71 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return (await res.json()) as T;
 }
 
+/**
+ * POSTs to an SSE endpoint and dispatches its `event:`/`data:` frames to the handlers. A non-2xx
+ * response (a preflight JSON error like 409/403/503) is surfaced via `onError`. Resolves when the
+ * stream ends.
+ */
+async function streamSse(
+  url: string,
+  handlers: {
+    onProgress?: (e: DeployProgressEvent) => void;
+    onDone?: (deployed: { protocol: string; files: number }) => void;
+    onError?: (message: string) => void;
+  },
+  signal?: AbortSignal,
+): Promise<void> {
+  const res = await fetch(url, { method: 'POST', credentials: 'include', signal });
+  if (!res.ok || !res.body) {
+    let message = res.statusText || 'request failed';
+    try {
+      const j = (await res.json()) as { error?: unknown };
+      if (typeof j.error === 'string') message = j.error;
+    } catch {
+      /* non-JSON error body */
+    }
+    handlers.onError?.(message);
+    return;
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  for (;;) {
+    let chunk: ReadableStreamReadResult<Uint8Array>;
+    try {
+      chunk = await reader.read();
+    } catch (err) {
+      // An AbortController abort (modal closed mid-stream) rejects read() — end quietly.
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      throw err;
+    }
+    if (chunk.done) break;
+    buf += decoder.decode(chunk.value, { stream: true });
+    let nl: number;
+    while ((nl = buf.indexOf('\n\n')) !== -1) {
+      const frame = buf.slice(0, nl);
+      buf = buf.slice(nl + 2);
+      let event = 'message';
+      let data = '';
+      for (const line of frame.split('\n')) {
+        // SSE: strip one optional leading space after the colon; join multi-line data with \n.
+        if (line.startsWith('event:')) event = line.slice(6).trim();
+        else if (line.startsWith('data:')) data += (data ? '\n' : '') + line.slice(5).replace(/^ /, '');
+      }
+      if (!data) continue;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(data);
+      } catch {
+        continue;
+      }
+      if (event === 'progress') handlers.onProgress?.(parsed as DeployProgressEvent);
+      else if (event === 'done') handlers.onDone?.((parsed as { deployed: { protocol: string; files: number } }).deployed);
+      else if (event === 'error') handlers.onError?.((parsed as { message: string }).message);
+    }
+  }
+}
+
 /** A project the user can reach, with their role in it (the flat surface). */
 export interface Project {
   id: string;
@@ -171,10 +236,22 @@ export interface DeployConfig {
   host: string;
   port?: number;
   user: string;
-  password: string;
+  /** Password auth (required for FTP/FTPS; optional for SFTP when a private key is given). */
+  password?: string;
+  /** SFTP key auth: the PRIVATE KEY CONTENTS (PEM/OpenSSH) + an optional passphrase. */
+  privateKey?: string;
+  passphrase?: string;
   remoteDir?: string;
   /** Optional SFTP host-key fingerprint (SHA-256) to pin the server. */
   hostFingerprint?: string;
+}
+
+/** A streamed deploy progress event (mirrors the API's `DeployProgress`). */
+export interface DeployProgressEvent {
+  phase: 'connecting' | 'uploading' | 'done';
+  total: number;
+  index: number;
+  file?: string;
 }
 
 export const api = {
@@ -442,6 +519,21 @@ export const api = {
       'POST',
       `/projects/${projectId}/deploy-targets/${id}/deploy`,
     ),
+  /**
+   * Deploy a saved target while STREAMING live progress. POSTs to the SSE endpoint and parses the
+   * `event:`/`data:` frames, invoking the handlers. Resolves when the stream ends. `signal` can abort.
+   */
+  deployTargetStream: (
+    projectId: string,
+    id: string,
+    handlers: {
+      onProgress?: (e: DeployProgressEvent) => void;
+      onDone?: (deployed: { protocol: string; files: number }) => void;
+      onError?: (message: string) => void;
+    },
+    signal?: AbortSignal,
+  ): Promise<void> =>
+    streamSse(`${BASE}/projects/${projectId}/deploy-targets/${id}/deploy/stream`, handlers, signal),
 
   // --- instance admin settings (global mail / hCaptcha / enabled form modes) ---
   getInstanceSettings: () =>

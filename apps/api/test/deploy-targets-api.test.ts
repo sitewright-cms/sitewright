@@ -120,4 +120,62 @@ describe('saved deploy targets', () => {
     const bReads = await app.inject({ method: 'GET', url: `/projects/${a.projectId}/deploy-targets`, cookies: { sw_session: b.t } });
     expect(bReads.statusCode).toBe(403);
   });
+
+  // ── SFTP key-file auth ────────────────────────────────────────────────────────────────────────
+  const keyTarget = {
+    name: 'Key webspace',
+    protocol: 'sftp',
+    host: 'allowed.example.com',
+    user: 'deployer',
+    privateKey: '-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXkt\n-----END OPENSSH PRIVATE KEY-----',
+    passphrase: 'unlock-me',
+    remoteDir: '/var/www',
+  };
+
+  it('creates an SFTP target authenticated by a private key (no password) and never leaks the key', async () => {
+    const { t, projectId } = await setup('a@acme.test');
+    const cookies = { sw_session: t };
+    const create = await app.inject({ method: 'POST', url: `/projects/${projectId}/deploy-targets`, cookies, payload: keyTarget });
+    expect(create.statusCode).toBe(201);
+    expect(create.body).not.toContain('OPENSSH PRIVATE KEY'); // the key never appears in the response
+    expect(create.body).not.toContain('unlock-me');
+    const created = create.json() as { target: Record<string, unknown> };
+    expect(created.target).not.toHaveProperty('secret');
+    expect(created.target).not.toHaveProperty('privateKey');
+    // It is listed without exposing any credential material.
+    const list = await app.inject({ method: 'GET', url: `/projects/${projectId}/deploy-targets`, cookies });
+    expect(list.body).not.toContain('OPENSSH PRIVATE KEY');
+  });
+
+  it('rejects a private key on a non-SFTP protocol, and a target with neither password nor key', async () => {
+    const { t, projectId } = await setup('a@acme.test');
+    const cookies = { sw_session: t };
+    const ftpKey = await app.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/deploy-targets`,
+      cookies,
+      payload: { ...keyTarget, protocol: 'ftp' },
+    });
+    expect(ftpKey.statusCode).toBe(400);
+    const neither = await app.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/deploy-targets`,
+      cookies,
+      payload: { name: 'x', protocol: 'sftp', host: 'allowed.example.com', user: 'u' },
+    });
+    expect(neither.statusCode).toBe(400);
+  });
+
+  it('the streaming deploy endpoint enforces the publish-required preflight (409) before hijacking', async () => {
+    const { t, projectId } = await setup('a@acme.test');
+    const cookies = { sw_session: t };
+    const id = (
+      (await app.inject({ method: 'POST', url: `/projects/${projectId}/deploy-targets`, cookies, payload: keyTarget })).json() as {
+        target: { id: string };
+      }
+    ).target.id;
+    const res = await app.inject({ method: 'POST', url: `/projects/${projectId}/deploy-targets/${id}/deploy/stream`, cookies });
+    expect(res.statusCode).toBe(409); // a normal JSON error (not a hijacked SSE stream) since no site is published
+    expect(res.json()).toMatchObject({ error: expect.stringMatching(/publish the site/i) });
+  });
 });

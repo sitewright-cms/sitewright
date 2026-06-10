@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { api, type DeployConfig, type DeployTargetView, type Project } from '../../api';
 import { useDialogs } from '../ui/Dialogs';
 import { glassInput, primaryButton, ghostButton, dangerButton } from '../../theme';
+import { DeployModal } from './DeployModal';
 
 const PROTOCOLS: ReadonlyArray<{ value: DeployConfig['protocol']; label: string }> = [
   { value: 'ftp', label: 'FTP' },
@@ -16,6 +17,9 @@ export function DeployForm({ project }: { project: Project }) {
   const [port, setPort] = useState('');
   const [user, setUser] = useState('');
   const [password, setPassword] = useState('');
+  const [authMethod, setAuthMethod] = useState<'password' | 'key'>('password');
+  const [privateKey, setPrivateKey] = useState('');
+  const [passphrase, setPassphrase] = useState('');
   const [remoteDir, setRemoteDir] = useState('/');
   const [fingerprint, setFingerprint] = useState('');
   const [name, setName] = useState('');
@@ -23,7 +27,10 @@ export function DeployForm({ project }: { project: Project }) {
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [targets, setTargets] = useState<DeployTargetView[] | null>(null); // null = feature unavailable
+  const [deploying, setDeploying] = useState<DeployTargetView | null>(null); // → the streaming DeployModal
   const { confirm, dialog } = useDialogs();
+  // SFTP key auth is only offered for SFTP; FTP/FTPS are password-only.
+  const useKey = protocol === 'sftp' && authMethod === 'key';
 
   async function loadTargets() {
     try {
@@ -57,11 +64,17 @@ export function DeployForm({ project }: { project: Project }) {
         return null;
       }
     }
+    if (useKey && !privateKey.trim()) {
+      setError('Paste your SSH private key, or switch to password auth');
+      return null;
+    }
     return {
       protocol,
       host,
       user,
-      password,
+      // Either password auth, or SFTP private-key auth (key contents + optional passphrase).
+      ...(useKey ? { privateKey: privateKey.trim() } : { password }),
+      ...(useKey && passphrase ? { passphrase } : {}),
       remoteDir: remoteDir || '/',
       ...(portNum !== undefined ? { port: portNum } : {}),
       ...(protocol === 'sftp' && fingerprint.trim() ? { hostFingerprint: fingerprint.trim() } : {}),
@@ -126,12 +139,7 @@ export function DeployForm({ project }: { project: Project }) {
                   className={`ml-auto ${ghostButton} px-2 py-0.5 text-xs`}
                   disabled={busy}
                   aria-label={`Deploy to ${t.name}`}
-                  onClick={() =>
-                    run(
-                      () => api.deployToTarget(project.id, t.id),
-                      (r) => setResult(`Deployed ${r.deployed.files} files to ${t.name}.`),
-                    )
-                  }
+                  onClick={() => setDeploying(t)}
                 >
                   Deploy
                 </button>
@@ -183,10 +191,12 @@ export function DeployForm({ project }: { project: Project }) {
             User
             <input aria-label="Deploy user" className={field} value={user} onChange={(e) => setUser(e.target.value)} required />
           </label>
-          <label className="flex flex-col text-xs text-slate-500">
-            Password
-            <input aria-label="Deploy password" type="password" className={field} value={password} onChange={(e) => setPassword(e.target.value)} required />
-          </label>
+          {!useKey && (
+            <label className="flex flex-col text-xs text-slate-500">
+              Password
+              <input aria-label="Deploy password" type="password" className={field} value={password} onChange={(e) => setPassword(e.target.value)} required={!useKey} />
+            </label>
+          )}
           <label className="flex flex-col text-xs text-slate-500">
             Remote dir
             <input aria-label="Deploy remote directory" className={field} value={remoteDir} onChange={(e) => setRemoteDir(e.target.value)} />
@@ -196,10 +206,37 @@ export function DeployForm({ project }: { project: Project }) {
           </button>
         </div>
         {protocol === 'sftp' && (
-          <label className="flex flex-col text-xs text-slate-500">
-            Host fingerprint (SHA-256, optional — pins the server to prevent MITM)
-            <input aria-label="Deploy host fingerprint" className={field} value={fingerprint} onChange={(e) => setFingerprint(e.target.value)} placeholder="leave blank to trust on first use" />
-          </label>
+          <>
+            <label className="flex flex-col text-xs text-slate-500">
+              Authentication
+              <select aria-label="Deploy auth method" className={field} value={authMethod} onChange={(e) => setAuthMethod(e.target.value as 'password' | 'key')}>
+                <option value="password">Password</option>
+                <option value="key">Private key</option>
+              </select>
+            </label>
+            {useKey && (
+              <>
+                <label className="flex flex-col text-xs text-slate-500">
+                  Private key (PEM / OpenSSH contents)
+                  <textarea
+                    aria-label="Deploy private key"
+                    className={`${field} h-24 font-mono text-[11px]`}
+                    value={privateKey}
+                    onChange={(e) => setPrivateKey(e.target.value)}
+                    placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;…&#10;-----END OPENSSH PRIVATE KEY-----"
+                  />
+                </label>
+                <label className="flex flex-col text-xs text-slate-500">
+                  Key passphrase (optional)
+                  <input aria-label="Deploy key passphrase" type="password" className={field} value={passphrase} onChange={(e) => setPassphrase(e.target.value)} placeholder="leave blank if the key is unencrypted" />
+                </label>
+              </>
+            )}
+            <label className="flex flex-col text-xs text-slate-500">
+              Host fingerprint (SHA-256, optional — pins the server to prevent MITM)
+              <input aria-label="Deploy host fingerprint" className={field} value={fingerprint} onChange={(e) => setFingerprint(e.target.value)} placeholder="leave blank to trust on first use" />
+            </label>
+          </>
         )}
         {targets !== null && (
           <div className="flex items-end gap-2">
@@ -216,11 +253,12 @@ export function DeployForm({ project }: { project: Project }) {
 
       <p className="mt-2 text-[11px] text-slate-400">
         Credentials for an ad-hoc deploy are used once and never stored. Saved targets keep the
-        password encrypted at rest.
+        password / private key encrypted at rest. Deploying a saved target shows live progress.
       </p>
       {result && <p className="text-sm text-emerald-700">{result}</p>}
       {error && <p className="text-sm text-red-600">{error}</p>}
       {dialog}
+      {deploying && <DeployModal project={project} target={deploying} onClose={() => setDeploying(null)} />}
     </div>
   );
 }

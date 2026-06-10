@@ -113,9 +113,10 @@ export const BLOCK_DESCRIPTORS: ReadonlyArray<BlockDescriptor> = [
     category: 'content',
     container: false,
     fields: [
-      // UI glyph (Lucide) by bare name, or a brand/social logo as `brand:<slug>`
-      // (e.g. `brand:github`). See ICON_NAMES / BRAND_ICON_NAMES for the picker.
-      { key: 'name', label: 'Icon name', input: 'text', placeholder: 'menu or brand:github', default: 'star' },
+      // UI glyph (Lucide) by bare name, a brand/social logo as `brand:<slug>`
+      // (e.g. `brand:github`), or a country flag as `flag:<code>` / `flag:<code>-circle`
+      // (e.g. `flag:de`). See ICON_NAMES / BRAND_ICON_NAMES / FLAG_CODES for the pickers.
+      { key: 'name', label: 'Icon name', input: 'text', placeholder: 'menu, brand:github, or flag:de', default: 'star' },
       { key: 'size', label: 'Size (px)', input: 'number', default: 24 },
       { key: 'label', label: 'Accessible label', input: 'text' },
       // Brand icons only: render in the brand's official color (else currentColor).

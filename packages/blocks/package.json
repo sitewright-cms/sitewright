@@ -32,7 +32,9 @@
     "gen:brand-icons:check": "node scripts/gen-brand-icons.mjs && git diff --exit-code src/brand-icons.ts",
     "gen:lucide-icons": "node scripts/gen-lucide-icons.mjs",
     "gen:lucide-icons:check": "node scripts/gen-lucide-icons.mjs && git diff --exit-code src/icons.ts",
-    "gen:google-fonts": "node scripts/gen-google-fonts.mjs"
+    "gen:google-fonts": "node scripts/gen-google-fonts.mjs",
+    "gen:flag-icons": "node scripts/gen-flag-icons.mjs",
+    "gen:flag-icons:check": "node scripts/gen-flag-icons.mjs && git diff --exit-code src/flag-icons.ts"
   },
   "dependencies": {
     "@sitewright/core": "workspace:*",
@@ -47,6 +49,8 @@
   "devDependencies": {
     "@types/node": "^22.10.2",
     "@types/sanitize-html": "^2.13.0",
+    "circle-flags": "^2.8.3",
+    "flag-icons": "^7.5.0",
     "@vitest/coverage-v8": "^4.1.8",
     "simple-icons": "^16.21.0",
     "typescript": "^5.7.2",

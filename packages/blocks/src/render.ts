@@ -12,6 +12,7 @@ import { substituteVars, type VarContext } from './vars.js';
 import { resolveInternalUrl } from './url.js';
 import { iconBody } from './icons.js';
 import { brandIcon } from './brand-icons.js';
+import { flagIcon } from './flag-icons.js';
 import { metaTags, schemaOrgJsonLd, type SeoMeta, type SchemaOrgInfo } from './head.js';
 import { brandToCss } from './brand-css.js';
 import { previewStyles } from './preview-css.js';
@@ -467,6 +468,23 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
           // `path` is a trusted build-time constant (no `"` in SVG path data), but
           // escape it anyway so the attribute-escaping policy is uniform.
           `aria-label="${escapeAttr(label || brand.title)}"><path d="${escapeAttr(brand.path)}"/></svg>`
+        );
+      }
+      // Country flags (flag-icons 4:3 + circle-flags): `flag:<code>` rectangular,
+      // `flag:<code>-circle` circular. FULL-COLOR (their own fills), so no fill/stroke on
+      // the <svg>; width follows the flag's aspect ratio while `size` sets the height.
+      if (name.startsWith('flag:')) {
+        const key = name.slice('flag:'.length);
+        const isCircle = key.endsWith('-circle');
+        const flag = flagIcon(isCircle ? key.slice(0, -'-circle'.length) : key);
+        const shape = flag && (isCircle ? flag.circle : flag.rect);
+        if (!flag || !shape) return `<span data-sw-block="Icon"${cls} data-sw-empty="1"></span>`;
+        const dims = shape.viewBox.split(' ').map(Number);
+        const w = Math.round(size * ((dims[2] || 1) / (dims[3] || 1)));
+        return (
+          `<svg data-sw-block="Icon"${cls} xmlns="http://www.w3.org/2000/svg" width="${w}" height="${size}" ` +
+          `viewBox="${escapeAttr(shape.viewBox)}" role="img" aria-label="${escapeAttr(label || flag.name)}">` +
+          `<title>${escapeHtml(flag.name)}</title>${shape.body}</svg>`
         );
       }
       // Lucide (stroke-based) UI glyphs.

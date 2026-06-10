@@ -194,6 +194,27 @@ describe('renderTemplate — curated helpers (extensibility)', () => {
     // Unknown brand slug → nothing.
     expect(renderTemplate('[{{sw-icon "brand:nope"}}]', ctx)).toBe('[]');
   });
+
+  it('{{sw-flag}} inlines a full-color country flag (rect + circle), labeled, empty for unknown', () => {
+    const rect = renderTemplate('{{sw-flag "de" "h-4 rounded-sm"}}', ctx);
+    expect(rect).toContain('<svg class="h-4 rounded-sm" viewBox="0 0 640 480"');
+    expect(rect).toContain('role="img" aria-label="Germany"');
+    expect(rect).toContain('<title>Germany</title>');
+    expect(rect).toContain('fill='); // keeps its own colors — NOT currentColor
+    expect(rect).not.toContain('currentColor');
+
+    const circle = renderTemplate('{{sw-flag "de-circle"}}', ctx);
+    expect(circle).toContain('viewBox="0 0 512 512"');
+    expect(circle).toContain('mask id="cde-a"'); // namespaced per country+shape
+
+    // Two flags on one page keep distinct ids (no clip/mask collision).
+    const two = renderTemplate('{{sw-flag "de-circle"}}{{sw-flag "fr-circle"}}', ctx);
+    expect([...two.matchAll(/mask id="(c..-a)"/g)].map((m) => m[1])).toEqual(['cde-a', 'cfr-a']);
+
+    // Unknown code → nothing; a class with a quote can't break out (escaped).
+    expect(renderTemplate('[{{sw-flag "zz"}}]', ctx)).toBe('[]');
+    expect(renderTemplate('{{sw-flag "de" "a\\"onerror=x"}}', ctx)).not.toContain('"onerror=x');
+  });
 });
 
 describe('renderTemplate — security', () => {

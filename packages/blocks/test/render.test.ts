@@ -372,6 +372,27 @@ describe('renderNode — brand/social icons (simple-icons)', () => {
     expect(html).toContain('fill="none"');
   });
 
+  it('renders a country flag via flag:<code> (full color, aspect-sized, labelled)', () => {
+    const rect = renderNode(node({ type: 'Icon', props: { name: 'flag:de', size: 30 } }));
+    expect(rect).toContain('<svg data-sw-block="Icon"');
+    expect(rect).toContain('viewBox="0 0 640 480"');
+    expect(rect).toContain('height="30"');
+    expect(rect).toContain('width="40"'); // 30 × 640/480 (4:3)
+    expect(rect).not.toContain('currentColor'); // keeps its own fills
+    expect(rect).toContain('aria-label="Germany"');
+    expect(rect).toContain('<title>Germany</title>');
+
+    const circle = renderNode(node({ type: 'Icon', props: { name: 'flag:de-circle', size: 24 } }));
+    expect(circle).toContain('viewBox="0 0 512 512"');
+    expect(circle).toMatch(/width="24" height="24"/); // square
+    expect(circle).toContain('mask id="cde-a"');
+
+    expect(renderNode(node({ type: 'Icon', props: { name: 'flag:zz' } }))).toContain('data-sw-empty="1"');
+    // An org flag has no circular variant → flag:asean-circle is an empty placeholder, not a broken svg.
+    expect(renderNode(node({ type: 'Icon', props: { name: 'flag:asean' } }))).toContain('viewBox=');
+    expect(renderNode(node({ type: 'Icon', props: { name: 'flag:asean-circle' } }))).toContain('data-sw-empty="1"');
+  });
+
   it('routes the bare name "x" to the Lucide close icon, not brand:x', () => {
     // `x` exists in BOTH sets; only the `brand:` prefix selects the brand logo.
     const html = renderNode(node({ type: 'Icon', props: { name: 'x' } }));

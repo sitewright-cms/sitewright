@@ -101,6 +101,20 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         example: '{{sw-icon "arrow-right" "h-4 w-4"}}\n{{sw-icon "brand:whatsapp"}}\n{{#each company.social}}{{sw-icon icon}}{{/each}}',
       },
       {
+        id: 'h-flag',
+        syntax: '{{sw-flag "code" ["classes"]}}',
+        name: 'sw-flag',
+        keywords: 'flag country nation language locale region svg de us gb circle',
+        description:
+          'Inlines a FULL-COLOR country flag as an SVG (its own colors — unlike sw-icon it is NOT themeable, which is why it is a separate helper). The argument is an ISO 3166-1 alpha-2 country code: a bare code is the rectangular 4:3 flag; a "code-circle" suffix is the round variant (e.g. "de-circle"). Browse them in the Library → Country flags gallery. The country name becomes the accessible label. Tip: flags are a poor proxy for LANGUAGES (Spanish ≠ Spain) — prefer them for country/region selectors, and pass an explicit country code per locale in a language switcher.',
+        args: [
+          { name: 'code', desc: 'An ISO alpha-2 country code ("de", "us", "gb"), or "code-circle" for the round flag.' },
+          { name: 'classes', desc: 'Optional Tailwind classes (default "h-4"; circular default "h-5 w-5").' },
+        ],
+        example: '{{sw-flag "de" "h-4 rounded-sm"}}\n{{sw-flag "jp-circle"}}\n{{#each page.translations}}<a href="{{sw-url path}}">{{sw-flag locale}}</a>{{/each}}',
+        note: 'The last example assumes your locale codes happen to be country codes; otherwise map locale→country yourself.',
+      },
+      {
         id: 'h-truncate',
         syntax: '{{sw-truncate text N}}',
         name: 'sw-truncate',
@@ -140,7 +154,7 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
           '{{#each data.services}}\n  <div class="card">\n    <h3>{{title}}</h3>\n    <p>{{summary}}</p>\n  </div>\n{{else}}\n  <p>No services yet.</p>\n{{/each}}\n\n' +
           '{{! A plain list — the item is this: }}\n' +
           '<ul>{{#each nav.header}}<li><a href="{{sw-url path}}">{{label}}</a></li>{{/each}}</ul>',
-        note: 'All content helpers are prefixed (sw-url, sw-date, sw-icon, sw-truncate), so entry fields never collide with them — read them plainly. ({{this.field}} forces a data lookup if you ever need it.)',
+        note: 'All content helpers are prefixed (sw-url, sw-date, sw-icon, sw-flag, sw-truncate), so entry fields never collide with them — read them plainly. ({{this.field}} forces a data lookup if you ever need it.)',
       },
       {
         id: 'b-if',

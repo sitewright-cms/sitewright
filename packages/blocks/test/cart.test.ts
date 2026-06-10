@@ -12,6 +12,13 @@ describe('cart stylesheet', () => {
     expect(CART_CSS).toContain('var(--sw-color-primary,#0a7a5a)');
   });
 
+  it('keeps the toggle fixed + badge-visible under .waves-effect, and lays the drawer out as a flex column with a bottom-pinned footer', () => {
+    expect(CART_CSS).toContain('position:fixed !important'); // .waves-effect must not unpin the floating toggle
+    expect(CART_CSS).toContain('overflow:visible !important'); // …nor clip its count badge
+    expect(CART_CSS).toContain('display:flex;flex-direction:column'); // drawer is a vertical flex container
+    expect(CART_CSS).toContain('[data-sw-part="foot"]{margin-top:auto'); // footer pinned to the bottom
+  });
+
   it('cannot break out of a <style> block', () => {
     expect(CART_CSS.toLowerCase()).not.toContain('</style');
   });

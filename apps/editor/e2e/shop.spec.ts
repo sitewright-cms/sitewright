@@ -212,6 +212,12 @@ test('published cart: editable note + backdrop/Esc/close-only dismissal + ripple
   await expect(cart.locator('[data-sw-part="note"]')).toHaveText('We confirm every order by hand.');
   await expect(cart.getByRole('button', { name: 'Order on WhatsApp' })).toHaveClass(/waves-effect/);
 
+  // Layout: the .waves-effect ripple class must NOT unpin the floating toggle (position:fixed) or clip
+  // its badge (overflow:visible); the drawer is a vertical flex column (so the footer can pin to the bottom).
+  expect(await toggle.evaluate((el) => getComputedStyle(el).position)).toBe('fixed');
+  expect(await toggle.evaluate((el) => getComputedStyle(el).overflow)).toBe('visible');
+  expect(await dialog.evaluate((el) => getComputedStyle(el).flexDirection)).toBe('column');
+
   // A click INSIDE the drawer body (its header title) must NOT close it.
   await cart.locator('[data-sw-part="head"] h2').click();
   await expect(dialog).toBeVisible();

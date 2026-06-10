@@ -182,10 +182,17 @@ export const FontFallbackSchema = z.enum(['serif', 'sans-serif', 'monospace', 'c
 /** Where a self-hosted font came from. */
 export const FontSourceSchema = z.enum(['google', 'local']);
 
-/** A self-hosted font file name (and URL segment): `<weight>[-italic].<ext>` — path-safe + format-true. */
+/**
+ * A self-hosted font file name (and URL segment): `<family-slug>-<weight>[-italic].<ext>` — e.g.
+ * `playfair-display-700.woff2` (the older `<weight>[-italic].<ext>` scheme like `400.woff2` also
+ * matches). The regex guards what MATTERS for safety — path-safety (lowercase alnum + `-` only, no
+ * `/`/`.`/traversal, leading alnum) and a real font extension; the weight/style are validated
+ * separately by their own fields. Deliberately FLAT (no nested/overlapping quantifiers) so it can't
+ * ReDoS — see the per-segment note in media.ts.
+ */
 export const FontFileNameSchema = z
   .string()
-  .regex(/^[1-9]00(-italic)?\.(woff2|woff|ttf|otf)$/, 'invalid font file name');
+  .regex(/^[a-z0-9][a-z0-9-]{0,150}\.(woff2|woff|ttf|otf)$/, 'invalid font file name');
 
 /** One stored face of a self-hosted font (a weight×style at a given format/file). */
 export const FontFileSchema = z.object({

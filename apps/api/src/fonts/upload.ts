@@ -8,7 +8,7 @@ export type FontFormat = 'woff2' | 'woff' | 'ttf' | 'otf';
 /** A latin woff2 is ~20–80 KiB; ttf/otf can be larger. 5 MiB covers a heavy face with room to spare. */
 export const MAX_FONT_BYTES = 5 * 1024 * 1024;
 
-/** Container extension per detected format (the stored file is `<weight>[-italic].<ext>`). */
+/** Container extension per detected format (the stored file is `<family-slug>-<weight>[-italic].<ext>`). */
 export const FONT_EXT: Record<FontFormat, string> = { woff2: 'woff2', woff: 'woff', ttf: 'ttf', otf: 'otf' };
 
 /**

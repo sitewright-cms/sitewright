@@ -128,7 +128,7 @@ export const FontAssetSchema = z.object({
     .string()
     .min(1)
     .max(2048)
-    .regex(/^\/media\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\/[1-9]00(-italic)?\.(woff2|woff|ttf|otf)$/),
+    .regex(/^\/media\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\/[a-z0-9][a-z0-9-]{0,150}\.(woff2|woff|ttf|otf)$/),
 });
 export type FontAsset = z.infer<typeof FontAssetSchema>;
 

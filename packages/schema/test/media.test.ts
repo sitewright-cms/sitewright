@@ -86,6 +86,23 @@ describe('MediaAssetSchema (image | file discriminated union)', () => {
     expect(() => FontAssetSchema.parse({ ...fontBase, files: [] })).toThrow();
   });
 
+  it('accepts the slugged font file scheme `<family-slug>-<weight>[-italic].<ext>` (legacy un-slugged still valid)', () => {
+    const slugged = {
+      ...fontBase,
+      files: [
+        { weight: 400 as const, format: 'woff2' as const, file: 'playfair-display-400.woff2' },
+        { weight: 700 as const, style: 'italic' as const, format: 'woff2' as const, file: 'playfair-display-700-italic.woff2' },
+      ],
+      url: '/media/proj1/fa1b2c3d/playfair-display-400.woff2',
+    };
+    const a = FontAssetSchema.parse(slugged);
+    expect(a.files[1]!.file).toBe('playfair-display-700-italic.woff2');
+    // The pre-change `<weight>.<ext>` scheme still validates (back-compat for already-stored fonts).
+    expect(() => FontAssetSchema.parse(fontBase)).not.toThrow();
+    // A path-unsafe filename is still rejected.
+    expect(() => FontAssetSchema.parse({ ...slugged, files: [{ weight: 400 as const, format: 'woff2' as const, file: '../evil.woff2' }] })).toThrow();
+  });
+
   it('rejects an unknown kind', () => {
     expect(() => MediaAssetSchema.parse({ ...imageBase, kind: 'video' })).toThrow();
   });

@@ -49,13 +49,23 @@ export const CART_CSS = [
   '[data-sw-cart]{display:none}',
   '[data-sw-cart][data-sw-enhanced="true"]{display:block}',
   // Floating toggle button (bottom-right) with an item-count badge.
-  '[data-sw-cart] [data-sw-part="toggle"]{position:fixed;right:1rem;bottom:1rem;z-index:9997;display:flex;align-items:center;justify-content:center;width:3.25rem;height:3.25rem;border:0;border-radius:9999px;background:var(--sw-color-primary,#0a7a5a);color:#fff;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.25)}',
+  '[data-sw-cart] [data-sw-part="toggle"]{position:fixed;right:1rem;bottom:1rem;z-index:9997;display:flex;align-items:center;justify-content:center;width:3.25rem;height:3.25rem;border:0;border-radius:9999px;background:var(--sw-color-primary,#0a7a5a);color:#fff;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.25);transition:transform .15s ease,box-shadow .15s ease}',
   '[data-sw-cart] [data-sw-part="toggle"] svg{width:1.5rem;height:1.5rem}',
   '[data-sw-cart] [data-sw-part="count"]{position:absolute;top:-.25rem;right:-.25rem;min-width:1.25rem;height:1.25rem;padding:0 .25rem;border-radius:9999px;background:#b00020;color:#fff;font-size:.75rem;line-height:1.25rem;text-align:center}',
   '[data-sw-cart] [data-sw-part="count"][hidden]{display:none}',
-  // Drawer (native <dialog> → focus trap + Esc + ::backdrop for free).
-  '[data-sw-cart] dialog{position:fixed;top:0;right:0;margin:0;height:100%;max-height:100%;width:min(92vw,24rem);border:0;padding:0;background:#fff;box-shadow:-8px 0 32px rgba(0,0,0,.2)}',
-  '[data-sw-cart] dialog::backdrop{background:rgba(0,0,0,.5)}',
+  // Right-side drawer (native <dialog> → focus trap + Esc + ::backdrop). It SLIDES in/out (transform)
+  // and the backdrop FADES + BLURS, on both open and close — @starting-style + transition-behavior:
+  // allow-discrete keep the <dialog> animating across its display toggle. Older engines fall back to an
+  // instant open/close (progressive enhancement). Reduced motion → instant.
+  // `inset:0 0 0 auto` (top/right/bottom:0, left:auto) overrides the <dialog> UA `inset:0` so it pins to
+  // the RIGHT edge, full height (not centered/left). max-width keeps it a panel.
+  '[data-sw-cart] dialog{position:fixed;inset:0 0 0 auto;margin:0;width:min(92vw,24rem);max-width:100vw;border:0;padding:0;background:#fff;box-shadow:-8px 0 32px rgba(0,0,0,.25);transform:translateX(100%);transition:transform .3s cubic-bezier(.4,0,.2,1),overlay .3s allow-discrete,display .3s allow-discrete}',
+  '[data-sw-cart] dialog[open]{transform:translateX(0)}',
+  '@starting-style{[data-sw-cart] dialog[open]{transform:translateX(100%)}}',
+  '[data-sw-cart] dialog::backdrop{background:rgba(0,0,0,.35);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);opacity:0;transition:opacity .3s ease,overlay .3s allow-discrete,display .3s allow-discrete}',
+  '[data-sw-cart] dialog[open]::backdrop{opacity:1}',
+  '@starting-style{[data-sw-cart] dialog[open]::backdrop{opacity:0}}',
+  '@media (prefers-reduced-motion:reduce){[data-sw-cart] dialog,[data-sw-cart] dialog::backdrop{transition:none}}',
   '[data-sw-cart] [data-sw-part="head"]{display:flex;align-items:center;justify-content:space-between;padding:1rem 1.25rem;border-bottom:1px solid rgba(0,0,0,.12)}',
   '[data-sw-cart] [data-sw-part="head"] h2{margin:0;font-size:1.125rem}',
   '[data-sw-cart] [data-sw-part="close"]{border:0;background:none;font-size:1.5rem;line-height:1;cursor:pointer}',
@@ -70,14 +80,14 @@ export const CART_CSS = [
   '[data-sw-cart] [data-sw-part="foot"]{padding:1rem 1.25rem;border-top:1px solid rgba(0,0,0,.12)}',
   '[data-sw-cart] [data-sw-part="subtotal"]{display:flex;justify-content:space-between;font-weight:700;margin-bottom:.25rem}',
   '[data-sw-cart] [data-sw-part="note"]{font-size:.75rem;color:rgba(0,0,0,.55);margin:.25rem 0 .75rem}',
-  '[data-sw-cart] [data-sw-part="channel"]{display:block;width:100%;border:0;border-radius:.375rem;padding:.625rem 1rem;margin-top:.5rem;background:var(--sw-color-primary,#0a7a5a);color:#fff;cursor:pointer;text-align:center;font:inherit}',
+  '[data-sw-cart] [data-sw-part="channel"]{display:block;width:100%;border:0;border-radius:.375rem;padding:.625rem 1rem;margin-top:.5rem;background:var(--sw-color-primary,#0a7a5a);color:#fff;cursor:pointer;text-align:center;font:inherit;transition:filter .15s ease}',
   '[data-sw-cart] [data-sw-part="clear"]{display:block;width:100%;border:0;background:none;color:rgba(0,0,0,.55);cursor:pointer;margin-top:.5rem;font-size:.875rem}',
   // Inline order form (the `form` channel).
   '[data-sw-cart] [data-sw-part="order"]{margin-top:.75rem}',
   '[data-sw-cart] [data-sw-part="order-field"]{display:block;margin-bottom:.5rem;font-size:.8125rem}',
   '[data-sw-cart] [data-sw-part="order-field"]>span{display:block;margin-bottom:.15rem}',
   '[data-sw-cart] [data-sw-part="order-field"] input,[data-sw-cart] [data-sw-part="order-field"] textarea{width:100%;padding:.4rem .5rem;border:1px solid rgba(0,0,0,.2);border-radius:.375rem;font:inherit}',
-  '[data-sw-cart] [data-sw-part="order-submit"]{display:block;width:100%;border:0;border-radius:.375rem;padding:.5rem 1rem;margin-top:.25rem;background:var(--sw-color-primary,#0a7a5a);color:#fff;cursor:pointer;font:inherit}',
+  '[data-sw-cart] [data-sw-part="order-submit"]{display:block;width:100%;border:0;border-radius:.375rem;padding:.5rem 1rem;margin-top:.25rem;background:var(--sw-color-primary,#0a7a5a);color:#fff;cursor:pointer;font:inherit;transition:filter .15s ease}',
   '[data-sw-cart] [data-sw-part="order-submit"][disabled]{opacity:.6;cursor:progress}',
   '[data-sw-cart] [data-sw-part="order-status"]{margin:.5rem 0 0;font-size:.8125rem}',
   '[data-sw-cart] [data-sw-part="sent-msg"]{padding:1.5rem 1.25rem;text-align:center;color:var(--sw-color-primary,#0a7a5a);font-weight:600}',
@@ -86,6 +96,22 @@ export const CART_CSS = [
   // A brief "bump" on the floating cart when an item is added — the non-interrupting add feedback.
   '@keyframes sw-cart-bump{0%,100%{transform:none}30%{transform:scale(1.15)}}',
   '[data-sw-cart] [data-sw-part="toggle"][data-sw-bump]{animation:sw-cart-bump .4s ease}',
+  // Hover affordances on the interactive controls.
+  '[data-sw-cart] [data-sw-part="toggle"]:hover{transform:translateY(-2px) scale(1.04);box-shadow:0 12px 30px rgba(0,0,0,.32)}',
+  '[data-sw-cart] [data-sw-part="channel"]:hover,[data-sw-cart] [data-sw-part="order-submit"]:hover{filter:brightness(.92)}',
+  '[data-sw-cart] [data-sw-part="close"]{transition:color .15s ease,transform .15s ease}',
+  '[data-sw-cart] [data-sw-part="close"]:hover{color:#b00020;transform:rotate(90deg)}',
+  '[data-sw-cart] [data-sw-part="qty"] button{transition:background .15s ease,border-color .15s ease}',
+  '[data-sw-cart] [data-sw-part="qty"] button:hover{background:rgba(0,0,0,.06);border-color:rgba(0,0,0,.35)}',
+  '[data-sw-cart] [data-sw-part="clear"]:hover{color:rgba(0,0,0,.8);text-decoration:underline}',
+  '[data-sw-cart] [data-sw-part="remove"]:hover{text-decoration:underline}',
+  // Self-contained "waves" ripple (the platform ripple runtime only enhances elements present at load,
+  // so the runtime-built cart wires its own — scoped to the cart so it never double-binds page buttons).
+  '[data-sw-cart] .waves-effect{position:relative;overflow:hidden;-webkit-tap-highlight-color:transparent}',
+  '[data-sw-cart] .waves-ripple{position:absolute;border-radius:50%;pointer-events:none;background:rgba(0,0,0,.18);transform:scale(0);opacity:.5;will-change:transform,opacity}',
+  '[data-sw-cart] .waves-light .waves-ripple{background:rgba(255,255,255,.5)}',
+  '@media (prefers-reduced-motion:no-preference){[data-sw-cart] .waves-rippling{animation:sw-cart-waves .6s ease-out forwards}}',
+  '@keyframes sw-cart-waves{to{transform:scale(1);opacity:0}}',
 ].join('');
 
 // The runtime. ES5-style (var / function) — served raw, never transpiled, like the other
@@ -96,6 +122,23 @@ export const CART_JS = `(function(){
   function q(sel,root){return Array.prototype.slice.call((root||document).querySelectorAll(sel));}
   function mk(tag,cls,txt){var n=document.createElement(tag);if(cls){n.className=cls;}if(txt!=null){n.textContent=txt;}return n;}
   function part(tag,name,txt){var n=mk(tag,null,txt);n.setAttribute('data-sw-part',name);return n;}
+  // A self-contained "waves" ripple on a control (pointerdown → an expanding circle from the click
+  // point). The cart wires this itself because the platform ripple runtime only binds elements present
+  // at load. A "light" ripple tints it white for dark/colored buttons. Reduced motion → no ripple.
+  function ripple(el,light){
+    el.classList.add('waves-effect');if(light){el.classList.add('waves-light');}
+    el.addEventListener('pointerdown',function(e){
+      if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches){return;}
+      var r=el.getBoundingClientRect();var size=Math.max(r.width,r.height)*2;
+      var s=document.createElement('span');s.className='waves-ripple waves-rippling';
+      s.style.width=s.style.height=size+'px';
+      s.style.left=((e.clientX!=null?e.clientX:r.left+r.width/2)-r.left-size/2)+'px';
+      s.style.top=((e.clientY!=null?e.clientY:r.top+r.height/2)-r.top-size/2)+'px';
+      el.appendChild(s);
+      var rm=function(){if(s.parentNode){s.parentNode.removeChild(s);}};
+      s.addEventListener('animationend',rm,{once:true});setTimeout(rm,800);
+    });
+  }
   // ---- per-site storage key: this script's own directory (unique per /sites/<slug>/, stable across
   // a site's pages). Falls back to the page directory only if the script element can't be located. ----
   function siteKey(mount){
@@ -117,6 +160,7 @@ export const CART_JS = `(function(){
       decimals:d,
       title:mount.getAttribute('data-cart-title')||'Your cart',
       addedLabel:mount.getAttribute('data-added-label')||'Added',
+      note:mount.getAttribute('data-note')||'Prices are indicative. This sends an order request \\u2014 the seller confirms availability and final price.',
       channels:channels
     };
   }
@@ -204,18 +248,18 @@ export const CART_JS = `(function(){
     var started=Date.now(); // for the /f time-trap (_elapsed must be >= the server minimum)
     var sent=false; // true after a successful form-channel submit → show the "order sent" panel
 
-    var toggle=part('button','toggle');toggle.type='button';toggle.setAttribute('aria-label','Open cart');
+    var toggle=part('button','toggle');toggle.type='button';toggle.setAttribute('aria-label','Open cart');ripple(toggle,true);
     toggle.appendChild(cartIcon());
     var count=part('span','count');toggle.appendChild(count);
 
     var dialog=document.createElement('dialog');
-    var head=part('div','head');var h=mk('h2',null,cfg.title);var close=part('button','close','\\u00d7');close.type='button';close.setAttribute('aria-label','Close cart');
+    var head=part('div','head');var h=mk('h2',null,cfg.title);var close=part('button','close','\\u00d7');close.type='button';close.setAttribute('aria-label','Close cart');ripple(close);
     head.appendChild(h);head.appendChild(close);
     var list=part('ul','items');
     var empty=part('p','empty','Your cart is empty.');
     var foot=part('div','foot');
     var subtotal=part('div','subtotal');var stLabel=mk('span',null,'Subtotal');var stVal=mk('span',null,'');subtotal.appendChild(stLabel);subtotal.appendChild(stVal);
-    var note=part('p','note','Prices are indicative. This sends an order request \\u2014 the seller confirms availability and final price.');
+    var note=part('p','note',cfg.note);
     foot.appendChild(subtotal);foot.appendChild(note);
     // Channels: deep-link kinds (whatsapp/mailto/payment) render as a button; a "form" kind renders an
     // inline order form that POSTs to the resolved /f endpoint (the first form channel wins).
@@ -224,13 +268,13 @@ export const CART_JS = `(function(){
       var chx=cfg.channels[ci];
       if(chx.kind==='form'){if(!formCh){formCh=chx;}continue;}
       (function(ch){
-        var b=part('button','channel',channelLabel(ch));b.type='button';
+        var b=part('button','channel',channelLabel(ch));b.type='button';ripple(b,true);
         b.addEventListener('click',function(){runChannel(ch,items,cfg);});
         foot.appendChild(b);
       })(chx);
     }
     if(formCh&&formCh.endpoint){foot.appendChild(buildOrderForm(formCh));}
-    var clear=part('button','clear','Clear cart');clear.type='button';
+    var clear=part('button','clear','Clear cart');clear.type='button';ripple(clear);
     clear.addEventListener('click',function(){items.length=0;persist();});
     foot.appendChild(clear);
     // The post-order confirmation panel (form channel). Kept OUT of the foot (which hides when the cart
@@ -254,7 +298,7 @@ export const CART_JS = `(function(){
       var emailI=field('email','Email','email',true);
       var phoneI=field('phone','Phone (optional)','tel',false);
       var noteI=field('note','Note (optional)','textarea',false);
-      var submit=part('button','order-submit',channelLabel(ch));submit.type='submit';
+      var submit=part('button','order-submit',channelLabel(ch));submit.type='submit';ripple(submit,true);
       var status=part('p','order-status');
       form.appendChild(submit);form.appendChild(status);
       form.addEventListener('submit',function(e){
@@ -289,13 +333,13 @@ export const CART_JS = `(function(){
           var info=mk('div');var nm=part('div','line-name',it.name);var pr=part('div','line-price',money(it.price,cfg)+' each');
           info.appendChild(nm);info.appendChild(pr);
           var ctrl=part('div','qty');
-          var minus=mk('button',null,'\\u2212');minus.type='button';minus.setAttribute('aria-label','Decrease quantity');
+          var minus=mk('button',null,'\\u2212');minus.type='button';minus.setAttribute('aria-label','Decrease quantity');ripple(minus);
           var qv=mk('span',null,String(it.qty));
-          var plus=mk('button',null,'+');plus.type='button';plus.setAttribute('aria-label','Increase quantity');
+          var plus=mk('button',null,'+');plus.type='button';plus.setAttribute('aria-label','Increase quantity');ripple(plus);
           minus.addEventListener('click',function(){it.qty-=1;if(it.qty<1){removeSku(it.sku);}persist();});
           plus.addEventListener('click',function(){if(it.qty<MAX_QTY){it.qty+=1;}persist();});
           ctrl.appendChild(minus);ctrl.appendChild(qv);ctrl.appendChild(plus);
-          var rm=part('button','remove','Remove');rm.type='button';
+          var rm=part('button','remove','Remove');rm.type='button';ripple(rm);
           rm.addEventListener('click',function(){removeSku(it.sku);persist();});
           li.appendChild(info);li.appendChild(ctrl);li.appendChild(rm);
           list.appendChild(li);
@@ -320,9 +364,17 @@ export const CART_JS = `(function(){
       toggle.setAttribute('data-sw-bump','1');setTimeout(function(){toggle.removeAttribute('data-sw-bump');},400);
     }
 
+    function closeDrawer(){if(dialog.close){dialog.close();}else{dialog.removeAttribute('open');}}
     toggle.addEventListener('click',function(){if(typeof dialog.showModal==='function'){dialog.showModal();}else{dialog.setAttribute('open','');}});
-    close.addEventListener('click',function(){dialog.close&&dialog.close();dialog.removeAttribute('open');});
-    dialog.addEventListener('click',function(e){if(e.target===dialog){dialog.close&&dialog.close();}});
+    close.addEventListener('click',closeDrawer);
+    // Only the BACKDROP closes on a click — a click on the drawer's own empty space must NOT. A native
+    // <dialog> reports e.target===dialog for both, so distinguish by the point being outside the panel
+    // rect. (Esc still closes natively; both paths trigger the slide-out via the CSS transition.)
+    dialog.addEventListener('click',function(e){
+      if(e.target!==dialog){return;}
+      var r=dialog.getBoundingClientRect();
+      if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom){closeDrawer();}
+    });
     q('[data-sw-cart-add]').forEach(function(btn){btn.addEventListener('click',function(e){e.preventDefault();add(btn);});});
 
     mount.setAttribute('data-sw-enhanced','true');

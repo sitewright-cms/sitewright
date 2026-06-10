@@ -205,5 +205,19 @@ describe('WebsiteSettingsSchema', () => {
       expect(() => WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'form' }] } })).toThrow();
       expect(() => WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'form', formId: 'Bad Id!' }] } })).toThrow();
     });
+
+    it('accepts an editable cart note (bounded)', () => {
+      expect(WebsiteSettingsSchema.parse({ shop: { note: 'Order request only.' } }).shop?.note).toBe('Order request only.');
+      expect(() => WebsiteSettingsSchema.parse({ shop: { note: 'a'.repeat(301) } })).toThrow();
+    });
+
+    it('payment provider is paypal/custom only — stripe is rejected (Payment Links are fixed-amount)', () => {
+      expect(
+        WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'payment', urlTemplate: 'https://buy.stripe.com/fixed', provider: 'custom' }] } }).shop?.channels,
+      ).toHaveLength(1);
+      expect(() =>
+        WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'payment', urlTemplate: 'https://buy.stripe.com/fixed', provider: 'stripe' }] } }),
+      ).toThrow();
+    });
   });
 });

@@ -131,6 +131,7 @@ export interface SettingsForm {
   shopCurrencyDecimals: string;
   shopAddToCartLabel: string;
   shopTitle: string;
+  shopNote: string;
   shopChannels: KeyedShopChannel[];
   // localization
   defaultLocale: string;
@@ -242,6 +243,7 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
     shopCurrencyDecimals: w?.shop?.currency?.decimals != null ? String(w.shop.currency.decimals) : '2',
     shopAddToCartLabel: w?.shop?.addToCartLabel ?? '',
     shopTitle: w?.shop?.title ?? '',
+    shopNote: w?.shop?.note ?? '',
     shopChannels: (w?.shop?.channels ?? []).map((c) => ({
       id: rowId(),
       kind: c.kind,
@@ -409,12 +411,13 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
     .map(formChannelToShop)
     .filter((c): c is ShopChannel => c !== null);
   const shop =
-    shopCurrency || shopChannels.length || form.shopAddToCartLabel.trim() || form.shopTitle.trim()
+    shopCurrency || shopChannels.length || form.shopAddToCartLabel.trim() || form.shopTitle.trim() || form.shopNote.trim()
       ? {
           ...(shopCurrency ? { currency: shopCurrency } : {}),
           ...(shopChannels.length ? { channels: shopChannels } : {}),
           ...(trimmed(form.shopAddToCartLabel) ? { addToCartLabel: form.shopAddToCartLabel.trim() } : {}),
           ...(trimmed(form.shopTitle) ? { title: form.shopTitle.trim() } : {}),
+          ...(trimmed(form.shopNote) ? { note: form.shopNote.trim() } : {}),
         }
       : undefined;
   if (w || redirects.length || shop) {

@@ -230,7 +230,7 @@ export function Modal({ title, onClose, onSave, saving = false, saveDisabled = f
             <header className="flex items-center gap-3 border-b border-slate-200/70 px-5 py-3">
               {headerLeft}
               <div className={`flex min-w-0 flex-1 items-center gap-2 ${centerTitle ? 'justify-center' : ''}`}>
-                <h2 id={titleId} className="truncate text-sm font-semibold text-slate-800">{title}</h2>
+                <h2 id={titleId} className="truncate text-sm font-bold text-slate-800">{title}</h2>
                 {titleExtra}
               </div>
               {headerExtra}

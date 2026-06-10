@@ -84,7 +84,7 @@ export function ApiKeysManager({ project }: ApiKeysManagerProps) {
       {issued && (
         <div className="rounded-2xl border border-amber-300/70 bg-amber-50/80 p-4 shadow-lg shadow-amber-500/10 backdrop-blur-xl">
           <div className="flex items-start justify-between gap-2">
-            <p className="text-sm font-semibold text-amber-900">Copy your new token now — it won’t be shown again.</p>
+            <p className="text-sm font-bold text-amber-900">Copy your new token now — it won’t be shown again.</p>
             <button
               aria-label="Dismiss token"
               className="text-amber-700 hover:text-amber-900"

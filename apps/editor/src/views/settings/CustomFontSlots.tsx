@@ -38,7 +38,7 @@ export function CustomFontSlots({
         return (
           <div key={row.id} className="rounded-xl border border-white/60 bg-white/40 p-3">
             <div className="mb-2 flex items-center gap-2">
-              <span className="text-xs font-semibold text-slate-500">font-</span>
+              <span className="text-xs font-bold text-slate-500">font-</span>
               <input
                 aria-label="Custom font name"
                 className="w-40 rounded-lg border border-white/60 bg-white/70 px-2 py-1 text-sm outline-none focus:border-indigo-400"

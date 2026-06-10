@@ -205,7 +205,7 @@ export function PublishBar({
             rel="noreferrer"
             title="View your published site"
             aria-label="Preview the published site"
-            className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-indigo-400 hover:text-indigo-700"
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-bold text-slate-700 transition hover:border-indigo-400 hover:text-indigo-700"
           >
             <PreviewIcon />
             Preview
@@ -215,7 +215,7 @@ export function PublishBar({
             onClick={publish}
             disabled={busy}
             title={dirty ? 'You have unpublished changes' : 'Publish your site'}
-            className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-semibold transition disabled:opacity-50 ${
+            className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-bold transition disabled:opacity-50 ${
               dirty
                 ? 'bg-emerald-600 text-white shadow-sm hover:bg-emerald-700'
                 : 'border border-slate-300 bg-white text-slate-700 hover:border-slate-400'
@@ -234,7 +234,7 @@ export function PublishBar({
             onClick={onOpenDeploy}
             title="Deploy the published site to your server"
             aria-label="Deploy the published site"
-            className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-indigo-400 hover:text-indigo-700"
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-bold text-slate-700 transition hover:border-indigo-400 hover:text-indigo-700"
           >
             <DeployIcon />
             Deploy

@@ -115,11 +115,12 @@ describe('App shell', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     const menu = await screen.findByRole('menu', { name: 'Settings' });
-    for (const label of ['Publish & Deploy Options', 'Clients', 'Team', 'Access']) {
+    for (const label of ['Publish & Deploy Options', 'Clients', 'Access']) {
       expect(within(menu).getByRole('menuitem', { name: label })).toBeInTheDocument();
     }
-    // System Settings is admin-only — hidden for this non-admin owner.
+    // System Settings + Team are admin-only — hidden for this non-admin owner.
     expect(within(menu).queryByRole('menuitem', { name: 'System Settings' })).toBeNull();
+    expect(within(menu).queryByRole('menuitem', { name: 'Team' })).toBeNull();
 
     // Sign out lives in the menu and returns to the login screen.
     fireEvent.click(within(menu).getByRole('menuitem', { name: 'Sign out' }));
@@ -134,6 +135,8 @@ describe('App shell', () => {
     await screen.findByText(/PROJECT Acme/);
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     const menu = await screen.findByRole('menu', { name: 'Settings' });
+    // An admin gets the admin-only items (System Settings + Team).
     expect(within(menu).getByRole('menuitem', { name: 'System Settings' })).toBeInTheDocument();
+    expect(within(menu).getByRole('menuitem', { name: 'Team' })).toBeInTheDocument();
   });
 });

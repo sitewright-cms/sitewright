@@ -98,7 +98,7 @@ export function BusinessTypeModal({ value, onSelect, onClose }: BusinessTypeModa
 
           {groups.map(([group, items]) => (
             <div key={group}>
-              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">{group}</p>
+              <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-400">{group}</p>
               <ul className="grid gap-1.5 sm:grid-cols-2">
                 {items.map((t) => {
                   const selected = value === t.type;

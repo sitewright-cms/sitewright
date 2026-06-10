@@ -233,7 +233,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
     >
       <div className="flex flex-col gap-4 p-5">
         <div className="grid gap-4 sm:grid-cols-2">
-          <label className="flex flex-col text-xs font-semibold text-slate-700">
+          <label className="flex flex-col text-xs font-bold text-slate-700">
             Title
             <input
               aria-label="Page title"
@@ -242,7 +242,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
               onChange={(e) => patch({ title: e.target.value })}
             />
           </label>
-          <label className="flex flex-col text-xs font-semibold text-slate-700">
+          <label className="flex flex-col text-xs font-bold text-slate-700">
             Page Slug
             <input
               aria-label="Page path"
@@ -272,7 +272,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
           </label>
         </div>
 
-        <label className="flex flex-col text-xs font-semibold text-slate-700">
+        <label className="flex flex-col text-xs font-bold text-slate-700">
           Meta Description
           <textarea
             aria-label="Meta description"
@@ -294,7 +294,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
         />
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <label className="flex flex-col text-xs font-semibold text-slate-700">
+          <label className="flex flex-col text-xs font-bold text-slate-700">
             Parent Page
             <select
               aria-label="Parent page"
@@ -330,7 +330,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
           {isTranslated ? (
             // A translated page: choose how it gets its CODE — inherit the main language's
             // layout, fork its own, or use a template. (The text is always translated via page.data.)
-            <fieldset className="flex flex-col text-xs font-semibold text-slate-700">
+            <fieldset className="flex flex-col text-xs font-bold text-slate-700">
               Code source
               <div className="mt-1.5 flex flex-col gap-1.5 rounded-xl border border-slate-200 bg-white/40 p-2.5 font-normal">
                 <label className="flex items-start gap-2 text-sm">
@@ -393,7 +393,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
               </div>
             </fieldset>
           ) : (
-            <label className="flex flex-col text-xs font-semibold text-slate-700">
+            <label className="flex flex-col text-xs font-bold text-slate-700">
               Template
               <select
                 aria-label="Page template"
@@ -421,7 +421,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
         </div>
 
         {locales.length > 1 && (
-          <label className="flex flex-col text-xs font-semibold text-slate-700">
+          <label className="flex flex-col text-xs font-bold text-slate-700">
             Language
             <select
               aria-label="Page language"
@@ -446,7 +446,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
         )}
 
         <div className="rounded-2xl border border-white/60 bg-white/40 p-3">
-          <p className="mb-2 text-xs font-semibold text-slate-700">Navigation</p>
+          <p className="mb-2 text-xs font-bold text-slate-700">Navigation</p>
           <div className="flex flex-wrap items-center gap-4">
             {NAV_SLOTS.map((slot) => (
               <label key={slot} className="flex items-center gap-1.5 text-sm capitalize">
@@ -510,7 +510,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
         </div>
 
         <div>
-          <p className="mb-1.5 text-xs font-semibold text-slate-700">Status</p>
+          <p className="mb-1.5 text-xs font-bold text-slate-700">Status</p>
           <div className="inline-flex rounded-xl border border-white/60 bg-white/40 p-0.5">
             {(['published', 'draft'] as const).map((s) => (
               <button

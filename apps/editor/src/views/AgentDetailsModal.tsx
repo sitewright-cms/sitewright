@@ -13,30 +13,102 @@ function when(iso: string | null): string {
   return new Date(iso).toLocaleDateString();
 }
 
-/** Step-by-step "how to connect an agent" — the same MCP setup the admin guide describes, inline so
- * a project owner can wire up an agent without leaving the editor. `origin` is this instance's URL. */
-function ConnectGuide({ emphasized }: { emphasized: boolean }) {
-  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://your-instance';
-  const code = 'rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-mono text-slate-700';
+type ConnectTab = 'chatgpt' | 'claude' | 'cli';
+const CODE = 'rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-mono text-slate-700';
+
+/** A hosted MCP client (ChatGPT / Claude.ai) connects to the remote MCP server over OAuth. */
+function RemoteSteps({ mcpUrl, settingsPath, planNote }: { mcpUrl: string; settingsPath: string; planNote: string }) {
   return (
-    <section className={`rounded-lg border p-4 ${emphasized ? 'border-indigo-200 bg-indigo-50/50' : 'border-slate-200 bg-slate-50/60'}`}>
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Connect an agent</h3>
-      <p className="mt-1 text-sm text-slate-600">
-        Let an AI agent build this site over MCP. No login step first — the agent triggers it on demand.
-      </p>
-      <ol className="mt-2 list-decimal space-y-1.5 pl-5 text-sm text-slate-600 marker:text-slate-400">
+    <>
+      <ol className="list-decimal space-y-1.5 pl-5 text-sm text-slate-600 marker:text-slate-400">
+        <li>{settingsPath}</li>
         <li>
-          Register the MCP server in your agent: <code className={code}>sitewright mcp --url {origin}</code>
+          Paste this remote MCP server URL and name it “Sitewright”: <code className={CODE}>{mcpUrl}</code>
         </li>
         <li>
-          When the agent calls its <code className={code}>login</code> tool it shows a link + code (device flow). Open it,
-          pick this project, approve — and keep the editor open to watch its changes appear live.
+          Connect — you’re sent here to sign in and pick <strong>this</strong> project, then approve. (One project per
+          connection; add another connector for another project.)
         </li>
         <li>
-          Prefer to sign in ahead of time? <code className={code}>sitewright login --url {origin}</code> (add{' '}
-          <code className={code}>--device</code> for headless/SSH).
+          In a chat, enable the Sitewright tools and ask it to build or edit the site — keep this editor open to watch
+          the changes appear live.
         </li>
       </ol>
+      <p className="mt-2 text-[11px] text-slate-400">{planNote}</p>
+    </>
+  );
+}
+
+/** Step-by-step "how to connect an agent" — three ways: hosted ChatGPT / Claude.ai over the remote MCP
+ * endpoint, or a local CLI agent over the device-flow bridge. Inline so an owner can wire up an agent
+ * without leaving the editor. `origin` is this instance's URL; `origin/mcp` is the remote MCP endpoint. */
+function ConnectGuide({ emphasized }: { emphasized: boolean }) {
+  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://your-instance';
+  const mcpUrl = `${origin}/mcp`;
+  const [tab, setTab] = useState<ConnectTab>('chatgpt');
+
+  const tabBtn = (key: ConnectTab, label: string) => (
+    <button
+      type="button"
+      role="tab"
+      id={`agent-tab-${key}`}
+      aria-selected={tab === key}
+      aria-controls="agent-connect-panel"
+      tabIndex={tab === key ? 0 : -1}
+      onClick={() => setTab(key)}
+      className={`waves-effect rounded-lg px-2.5 py-1 text-xs font-medium transition ${
+        tab === key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+      }`}
+    >
+      {label}
+    </button>
+  );
+
+  return (
+    <section className={`rounded-lg border p-4 ${emphasized ? 'border-indigo-200 bg-indigo-50/50' : 'border-slate-200 bg-slate-50/60'}`}>
+      <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">Connect an agent</h3>
+      <p className="mt-1 text-sm text-slate-600">Let an AI agent build this site over MCP — connect it one of three ways:</p>
+      <div role="tablist" aria-label="Connect an agent" className="mt-3 flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1">
+        {tabBtn('chatgpt', 'ChatGPT.com')}
+        {tabBtn('claude', 'Claude.ai')}
+        {tabBtn('cli', 'Local CLI Agents')}
+      </div>
+      <div role="tabpanel" id="agent-connect-panel" aria-labelledby={`agent-tab-${tab}`} className="mt-3">
+        {tab === 'chatgpt' && (
+          <RemoteSteps
+            mcpUrl={mcpUrl}
+            settingsPath="In ChatGPT, open Settings → Connectors → “Add custom connector”."
+            planNote="Custom MCP connectors require a ChatGPT plan that supports them (Plus / Pro / Team / Enterprise)."
+          />
+        )}
+        {tab === 'claude' && (
+          <RemoteSteps
+            mcpUrl={mcpUrl}
+            settingsPath="In Claude.ai, open Settings → Connectors → “Add custom connector”."
+            planNote="Custom connectors require a paid Claude plan (Pro / Max / Team / Enterprise)."
+          />
+        )}
+        {tab === 'cli' && (
+          <ol className="list-decimal space-y-1.5 pl-5 text-sm text-slate-600 marker:text-slate-400">
+            <li>
+              Install the CLI: <code className={CODE}>npm install -g @sitewright/cli</code> (or run it with{' '}
+              <code className={CODE}>npx @sitewright/cli</code>).
+            </li>
+            <li>
+              Register the MCP server in your agent (Claude Code, Cursor, Cline, …):{' '}
+              <code className={CODE}>sitewright mcp --url {origin}</code>
+            </li>
+            <li>
+              When the agent calls its <code className={CODE}>login</code> tool it shows a link + code (device flow). Open
+              it, pick this project, approve — and keep the editor open to watch its changes appear live.
+            </li>
+            <li>
+              Prefer to sign in ahead of time? <code className={CODE}>sitewright login --url {origin}</code> (add{' '}
+              <code className={CODE}>--device</code> for headless/SSH).
+            </li>
+          </ol>
+        )}
+      </div>
     </section>
   );
 }
@@ -110,7 +182,7 @@ export function AgentDetailsModal({
               <div className="flex items-center gap-2">
                 <span className="truncate text-sm font-medium text-slate-800">{c.name}</span>
                 <span
-                  className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                  className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
                     c.kind === 'oauth' ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-600'
                   }`}
                 >
@@ -135,7 +207,7 @@ export function AgentDetailsModal({
                   type="button"
                   disabled={busyId === c.id}
                   onClick={() => void disconnect(c.id)}
-                  className="rounded-md bg-rose-600 px-2.5 py-1 text-xs font-semibold text-white transition hover:bg-rose-700 disabled:opacity-60"
+                  className="rounded-md bg-rose-600 px-2.5 py-1 text-xs font-bold text-white transition hover:bg-rose-700 disabled:opacity-60"
                 >
                   {busyId === c.id ? 'Disconnecting…' : 'Confirm'}
                 </button>

@@ -177,7 +177,7 @@ export function InstanceSettings() {
     <form onSubmit={save} className="mx-auto flex max-w-2xl flex-col gap-6 p-6">
 
       <fieldset className={`${glassCard} p-4`}>
-        <legend className="px-1 text-sm font-semibold">Web-form mail modes</legend>
+        <legend className="px-1 text-sm font-bold">Web-form mail modes</legend>
         <p className="mb-3 text-xs text-slate-500">Choose which delivery modes projects may use for their forms.</p>
         <div className="flex flex-col gap-2">
           {FORM_MODE_LABELS.map(({ key, label, hint }) => {
@@ -203,7 +203,7 @@ export function InstanceSettings() {
       </fieldset>
 
       <fieldset className={`${glassCard} p-4`}>
-        <legend className="px-1 text-sm font-semibold">New projects</legend>
+        <legend className="px-1 text-sm font-bold">New projects</legend>
         <p className="mb-3 text-xs text-slate-500">The language a newly created project starts in. Existing projects are unaffected.</p>
         <label className="flex flex-col text-xs text-slate-500">
           Default locale for new projects
@@ -222,7 +222,7 @@ export function InstanceSettings() {
       </fieldset>
 
       <fieldset className={`${glassCard} p-4`}>
-        <legend className="px-1 text-sm font-semibold">Global SMTP</legend>
+        <legend className="px-1 text-sm font-bold">Global SMTP</legend>
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
@@ -293,7 +293,7 @@ export function InstanceSettings() {
       </fieldset>
 
       <fieldset className={`${glassCard} p-4`}>
-        <legend className="px-1 text-sm font-semibold">hCaptcha</legend>
+        <legend className="px-1 text-sm font-bold">hCaptcha</legend>
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
@@ -325,7 +325,7 @@ export function InstanceSettings() {
       </fieldset>
 
       <fieldset className={`${glassCard} p-4`}>
-        <legend className="px-1 text-sm font-semibold">Stock image providers</legend>
+        <legend className="px-1 text-sm font-bold">Stock image providers</legend>
         <p className="mb-2 text-xs text-slate-500">
           Openverse needs no key. Add an Unsplash and/or Pexels API key to enable those providers in the media
           stock picker. Keys are encrypted at rest and never leave the server.
@@ -368,7 +368,7 @@ export function InstanceSettings() {
       </fieldset>
 
       <fieldset className={`${glassCard} p-4`}>
-        <legend className="px-1 text-sm font-semibold">Agent (MCP) instructions</legend>
+        <legend className="px-1 text-sm font-bold">Agent (MCP) instructions</legend>
         <p className="mb-3 text-xs text-slate-500">
           The system instructions served to AI agents that connect over MCP. Edit to customize how agents
           build sites on this instance; <strong>Reset to default</strong> (or clear) reverts to the built-in
@@ -390,7 +390,7 @@ export function InstanceSettings() {
       </fieldset>
 
       <fieldset className={`${glassCard} p-4`}>
-        <legend className="px-1 text-sm font-semibold">Agent session length</legend>
+        <legend className="px-1 text-sm font-bold">Agent session length</legend>
         <p className="mb-3 text-xs text-slate-500">
           How long an agent connection (MCP / OAuth) stays valid before the user must re-approve — the absolute
           refresh-token cap. Default {DEFAULT_AGENT_SESSION_HOURS}h. Raise it for agents that work across days;
@@ -427,7 +427,7 @@ export function InstanceSettings() {
 
     <div className="mx-auto flex max-w-2xl flex-col gap-6 px-6 pb-10">
       <section className={`${glassCard} p-4`}>
-        <h2 className="text-sm font-semibold">MCP endpoints</h2>
+        <h2 className="text-sm font-bold">MCP endpoints</h2>
         <p className="mb-3 text-xs text-slate-500">
           Tools the MCP bridge exposes to a connected agent. Each is gated by the connection’s capabilities — a
           read-only connection can list a write tool but calling it returns a clear “needs content:write” error
@@ -436,7 +436,7 @@ export function InstanceSettings() {
         <ul className="flex flex-col gap-1.5 text-sm">
           {MCP_TOOL_CATALOG.map((t) => (
             <li key={t.name} className="flex flex-wrap items-baseline gap-2">
-              <code className="rounded bg-slate-100 px-1.5 py-0.5 text-[12px] font-semibold">{t.name}</code>
+              <code className="rounded bg-slate-100 px-1.5 py-0.5 text-[12px] font-bold">{t.name}</code>
               <span className="text-xs text-slate-500">{t.description}</span>
               <span className="ml-auto rounded-full border border-white/60 bg-white/60 px-2 py-0.5 text-[10px] font-medium text-slate-500">
                 {t.capability ?? 'always'}
@@ -447,7 +447,7 @@ export function InstanceSettings() {
       </section>
 
       <section className={`${glassCard} p-4`}>
-        <h2 className="text-sm font-semibold">Connect an agent</h2>
+        <h2 className="text-sm font-bold">Connect an agent</h2>
         <p className="mb-3 text-xs text-slate-500">
           Point any MCP-capable agent at this instance over the local stdio bridge. No up-front login —
           the agent connects on demand and shows you a link to approve:

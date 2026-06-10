@@ -162,7 +162,7 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
                 aria-selected={tab === t}
                 onClick={() => setTab(t)}
                 className={`waves-effect rounded-xl px-3 py-1.5 text-sm transition ${
-                  tab === t ? 'bg-white font-semibold text-slate-900 shadow-md shadow-slate-900/5' : 'text-slate-600 hover:text-slate-900'
+                  tab === t ? 'bg-white font-bold text-slate-900 shadow-md shadow-slate-900/5' : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
                 {/* eslint-disable-next-line security/detect-object-injection -- t is a typed Tab literal */}

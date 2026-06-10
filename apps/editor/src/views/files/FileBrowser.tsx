@@ -371,7 +371,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
       {/* Upload + stock toolbar */}
       <div className={`mb-4 flex flex-wrap items-center justify-between gap-3 ${glassCard} p-4 ${dropTarget === folder ? 'ring-2 ring-indigo-400' : ''}`}>
         <div className="flex flex-col gap-1">
-          <label htmlFor={uploadId} className="text-xs font-semibold text-slate-700">
+          <label htmlFor={uploadId} className="text-xs font-bold text-slate-700">
             Upload files {dropTarget === folder ? '— drop to upload here' : '(or drag & drop)'}
           </label>
           <input id={uploadId} ref={fileInput} aria-label="Upload files" type="file" multiple disabled={uploading} onChange={onUpload} className="text-sm" />

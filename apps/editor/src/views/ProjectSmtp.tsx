@@ -81,7 +81,7 @@ export function ProjectSmtp({ project }: { project: Project }) {
       open={open}
       onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}
     >
-      <summary className="cursor-pointer text-sm font-semibold text-slate-700">
+      <summary className="cursor-pointer text-sm font-bold text-slate-700">
         Project SMTP <span className="font-normal text-slate-400">— for “Project SMTP” forms</span>
       </summary>
       <form onSubmit={save} className="mt-3 flex flex-col gap-3">

@@ -22,7 +22,7 @@ export interface PromptOptions {
 }
 
 const dangerButtonSolid =
-  'inline-flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-br from-rose-600 to-red-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-rose-600/30 transition hover:shadow-rose-600/40 disabled:opacity-60';
+  'inline-flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-br from-rose-600 to-red-500 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-rose-600/30 transition hover:shadow-rose-600/40 disabled:opacity-60';
 
 interface ConfirmState extends ConfirmOptions {
   kind: 'confirm';
@@ -100,7 +100,7 @@ function PromptBody({ state, onClose }: { state: PromptState; onClose: () => voi
           if (value.trim() !== '') submit();
         }}
       >
-        <label className="flex flex-col text-xs font-semibold text-slate-700">
+        <label className="flex flex-col text-xs font-bold text-slate-700">
           {state.label}
           <input
             aria-label={state.label}

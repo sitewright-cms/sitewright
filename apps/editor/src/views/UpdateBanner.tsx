@@ -33,7 +33,7 @@ export function UpdateBanner() {
       <span>
         A new Sitewright release ({info.latest}) is available.{' '}
         {info.url && (
-          <a href={info.url} target="_blank" rel="noreferrer" className="font-semibold underline">
+          <a href={info.url} target="_blank" rel="noreferrer" className="font-bold underline">
             View release
           </a>
         )}

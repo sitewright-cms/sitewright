@@ -282,6 +282,14 @@ describe('renderTemplate — MINI SHOP helpers', () => {
   it('{{sw-cart}} still emits a bare mount when no shop config is set', () => {
     expect(renderTemplate('{{sw-cart}}', {})).toBe('<div data-sw-cart></div>');
   });
+
+  it('{{sw-cart}} unicode-escapes < > & in the channels JSON (survives the directive round-trip)', () => {
+    const ctxShop = { website: { shop: { channels: [{ kind: 'mailto', email: 'a@b.test', label: 'B&H <Photo>' }] } } };
+    const out = renderTemplate('{{sw-cart}}', ctxShop);
+    // markup-significant chars in the label are \u-escaped inside the JSON, never raw < > &
+    expect(out).toContain('B\\u0026H \\u003cPhoto\\u003e');
+    expect(out).not.toContain('B&H <Photo>');
+  });
 });
 
 describe('renderTemplate — security', () => {

@@ -376,7 +376,13 @@ function createInstance(): typeof Handlebars {
         return null;
       })
       .filter((c): c is Record<string, unknown> => c !== null);
-    if (clean.length) attrs += ` data-channels="${escapeAttr(JSON.stringify(clean))}"`;
+    if (clean.length) {
+      // Unicode-escape the markup-significant chars dom-serializer leaves RAW in an attribute value
+      // (`<`/`>`/`&`), so the channels JSON survives the resolveDirectives parse→serialize round-trip
+      // (which runs on any page containing data-sw-) intact, valid, and byte-stable.
+      const channelsJson = JSON.stringify(clean).replace(/[<>&]/g, (c) => `\\u00${c.charCodeAt(0).toString(16)}`);
+      attrs += ` data-channels="${escapeAttr(channelsJson)}"`;
+    }
     return new Handlebars.SafeString(`<div ${attrs}></div>`);
   });
   // ({{edit}} is RETIRED — editable text is now the `data-sw-text="key"` directive, bound to page.data.)

@@ -84,7 +84,8 @@ export const CART_JS = `(function(){
   function q(sel,root){return Array.prototype.slice.call((root||document).querySelectorAll(sel));}
   function mk(tag,cls,txt){var n=document.createElement(tag);if(cls){n.className=cls;}if(txt!=null){n.textContent=txt;}return n;}
   function part(tag,name,txt){var n=mk(tag,null,txt);n.setAttribute('data-sw-part',name);return n;}
-  // ---- per-site storage key: this script's own directory (stable site-wide, unique per site) ----
+  // ---- per-site storage key: this script's own directory (unique per /sites/<slug>/, stable across
+  // a site's pages). Falls back to the page directory only if the script element can't be located. ----
   function siteKey(mount){
     var s=document.currentScript;
     if(!s){var all=q('script[src]');for(var i=0;i<all.length;i++){if(/\\/cart\\.js(\\?|$)/.test(all[i].getAttribute('src')||'')){s=all[i];break;}}}
@@ -128,11 +129,12 @@ export const CART_JS = `(function(){
   }
   function save(key,items){try{localStorage.setItem(key,JSON.stringify(items));}catch(e){}}
   function totalOf(items,cfg){var f=Math.pow(10,cfg.decimals),c=0;for(var i=0;i<items.length;i++){c+=Math.round(items[i].price*f)*items[i].qty;}return c/f;}
+  function lineTotal(it,cfg){var f=Math.pow(10,cfg.decimals);return Math.round(it.price*f)*it.qty/f;}
   function countOf(items){var n=0;for(var i=0;i<items.length;i++){n+=items[i].qty;}return n;}
   // ---- order summary (plain text, used by the deep-link channels) ----
   function orderText(items,cfg){
     var lines=[];
-    for(var i=0;i<items.length;i++){var it=items[i];lines.push(it.qty+' x '+it.name+' ('+money(it.price,cfg)+') = '+money(it.price*it.qty,cfg));}
+    for(var i=0;i<items.length;i++){var it=items[i];lines.push(it.qty+' x '+it.name+' ('+money(it.price,cfg)+') = '+money(lineTotal(it,cfg),cfg));}
     lines.push('Total: '+money(totalOf(items,cfg),cfg));
     return lines.join('\\n');
   }
@@ -246,8 +248,9 @@ export const CART_JS = `(function(){
       if(existing){if(existing.qty<MAX_QTY){existing.qty+=1;}}
       else{if(items.length>=MAX_LINES){return;}items.push({sku:String(sku).slice(0,200),name:(btn.getAttribute('data-name')||sku).slice(0,300),price:price,image:(btn.getAttribute('data-image')||'').slice(0,2048),qty:1});}
       persist();
-      // brief visual ack + open the drawer
+      // brief visual ack on the button, then open the drawer so the customer sees what they added.
       btn.setAttribute('data-sw-added','true');setTimeout(function(){btn.removeAttribute('data-sw-added');},800);
+      if(typeof dialog.showModal==='function'){dialog.showModal();}else{dialog.setAttribute('open','');}
     }
 
     toggle.addEventListener('click',function(){if(typeof dialog.showModal==='function'){dialog.showModal();}else{dialog.setAttribute('open','');}});

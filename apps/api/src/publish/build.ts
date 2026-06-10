@@ -584,7 +584,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // {{ company.* }}/{{ website.* }}/{{ page.* }} substitution in text props.
           // `website` is projected to only its public fields — never the raw
           // head/footer/CSS blobs, which aren't meant to be surfaced via a variable.
-          vars: { company: identity, website: { siteUrl: website?.siteUrl, json_data: opts.jsonData, data: website?.data }, page: { title: page.title, path: pageFullPath, locale: pageLocale, translations: pageTranslations, data: page.data } },
+          vars: { company: identity, website: { siteUrl: website?.siteUrl, json_data: opts.jsonData, data: website?.data, shop: website?.shop }, page: { title: page.title, path: pageFullPath, locale: pageLocale, translations: pageTranslations, data: page.data } },
           datasets: localeData,
           entry: route.entry,
           includeDrafts: false,

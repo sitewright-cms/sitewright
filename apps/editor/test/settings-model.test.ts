@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { DEFAULT_BRAND_COLORS, MANDATORY_COLOR_TOKENS } from '@sitewright/schema';
-import { toForm, toBundle } from '../src/views/settings/model';
+import { toForm, toBundle, newShopChannel } from '../src/views/settings/model';
 import type { SettingsBundle } from '../src/api';
 
 const full: SettingsBundle = {
@@ -52,6 +52,56 @@ describe('settings model', () => {
     expect(back.identity).toEqual(full.identity);
     expect(back.website).toEqual(full.website);
     expect(back.settings).toEqual(full.settings);
+  });
+
+  it('round-trips the mini-shop currency + all four channel kinds', () => {
+    const withShop: SettingsBundle = {
+      identity: { name: 'Acme', colors: {} },
+      website: {
+        shop: {
+          currency: { code: 'EUR', symbol: '€', position: 'after', decimals: 2 },
+          addToCartLabel: 'Add to basket',
+          title: 'Your basket',
+          channels: [
+            { kind: 'whatsapp', label: 'WhatsApp', number: '+14155550123', intro: 'Hi' },
+            { kind: 'mailto', email: 'orders@acme.test', subject: 'Order' },
+            { kind: 'payment', urlTemplate: 'https://paypal.me/acme/{total}', provider: 'paypal' },
+            { kind: 'form', formId: 'order' },
+          ],
+        },
+      },
+      settings: { defaultLocale: 'en', locales: ['en'] },
+    };
+    const back = toBundle(toForm(withShop), withShop);
+    expect(back.website?.shop).toEqual(withShop.website!.shop);
+  });
+
+  it('drops incomplete shop channels (every kind) and an empty currency', () => {
+    const form = toForm(empty());
+    form.shopChannels = [
+      { ...newShopChannel(), kind: 'whatsapp', number: '' }, // no number → dropped
+      { ...newShopChannel(), kind: 'payment', urlTemplate: '' }, // no urlTemplate → dropped
+      { ...newShopChannel(), kind: 'form', formId: '' }, // no formId → dropped
+      { ...newShopChannel(), kind: 'mailto', email: 'a@b.test' }, // kept
+    ];
+    const back = toBundle(form, empty());
+    expect(back.website?.shop?.channels).toEqual([{ kind: 'mailto', email: 'a@b.test' }]);
+    expect(back.website?.shop?.currency).toBeUndefined();
+  });
+
+  it('currency decimals: a cleared field falls back to 2 (not 0) and non-integers are truncated + clamped', () => {
+    const mk = (decimals: string) => {
+      const form = toForm(empty());
+      form.shopCurrencyCode = 'USD';
+      form.shopCurrencySymbol = '$';
+      form.shopCurrencyDecimals = decimals;
+      return toBundle(form, empty()).website?.shop?.currency?.decimals;
+    };
+    expect(mk('')).toBe(2); // cleared → schema default, NOT 0
+    expect(mk('0')).toBe(0); // an explicit 0 (e.g. JPY) is honored
+    expect(mk('1.5')).toBe(1); // truncated to a valid int (the schema is .int())
+    expect(mk('9')).toBe(4); // clamped to the schema max
+    expect(mk('abc')).toBe(2); // non-numeric → default
   });
 
   it('strips empty optionals so a minimal identity stays minimal', () => {

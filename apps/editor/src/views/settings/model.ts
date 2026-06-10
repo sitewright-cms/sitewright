@@ -1,5 +1,5 @@
 import type { CorporateIdentity, SettingsBundle, WebsiteSettings } from '../../api';
-import { DEFAULT_BRAND_COLORS, MANDATORY_COLOR_TOKENS, type JsonValue } from '@sitewright/schema';
+import { DEFAULT_BRAND_COLORS, MANDATORY_COLOR_TOKENS, type JsonValue, type ShopChannel, type ShopCurrency } from '@sitewright/schema';
 import { pageDataObject } from '../../lib/page-data';
 
 const MANDATORY_COLOR_SET = new Set<string>(MANDATORY_COLOR_TOKENS);
@@ -30,6 +30,24 @@ export interface KeyedRedirect {
   from: string;
   to: string;
   status: number;
+}
+
+/**
+ * A MINI SHOP submission channel as edited in the form — a FLAT row holding every kind's fields; only
+ * the ones relevant to `kind` are surfaced + persisted (the rest stay blank). Mirrors the schema's
+ * `ShopChannel` discriminated union (whatsapp/mailto/payment/form).
+ */
+export interface KeyedShopChannel {
+  id: string;
+  kind: ShopChannel['kind'];
+  label: string;
+  number: string; // whatsapp
+  intro: string; // whatsapp
+  email: string; // mailto
+  subject: string; // mailto
+  urlTemplate: string; // payment
+  provider: string; // payment ('' | paypal | stripe | custom)
+  formId: string; // form
 }
 
 /** A typography slot (heading/body/custom) as edited in the form — mirrors schema `FontSlot`. */
@@ -106,6 +124,14 @@ export interface SettingsForm {
   footer: string;
   bottom: string;
   redirects: KeyedRedirect[];
+  // mini shop (website.shop): currency + submission channels (front-end cart)
+  shopCurrencyCode: string;
+  shopCurrencySymbol: string;
+  shopCurrencyPosition: 'before' | 'after';
+  shopCurrencyDecimals: string;
+  shopAddToCartLabel: string;
+  shopTitle: string;
+  shopChannels: KeyedShopChannel[];
   // localization
   defaultLocale: string;
   locales: KeyedStr[];
@@ -210,9 +236,60 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
     footer: w?.footer ?? '',
     bottom: w?.bottom ?? '',
     redirects: (w?.redirects ?? []).map((r) => ({ id: rowId(), from: r.from, to: r.to, status: r.status })),
+    shopCurrencyCode: w?.shop?.currency?.code ?? '',
+    shopCurrencySymbol: w?.shop?.currency?.symbol ?? '',
+    shopCurrencyPosition: w?.shop?.currency?.position ?? 'before',
+    shopCurrencyDecimals: w?.shop?.currency?.decimals != null ? String(w.shop.currency.decimals) : '2',
+    shopAddToCartLabel: w?.shop?.addToCartLabel ?? '',
+    shopTitle: w?.shop?.title ?? '',
+    shopChannels: (w?.shop?.channels ?? []).map((c) => ({
+      id: rowId(),
+      kind: c.kind,
+      label: c.label ?? '',
+      number: c.kind === 'whatsapp' ? c.number : '',
+      intro: c.kind === 'whatsapp' ? c.intro ?? '' : '',
+      email: c.kind === 'mailto' ? c.email : '',
+      subject: c.kind === 'mailto' ? c.subject ?? '' : '',
+      urlTemplate: c.kind === 'payment' ? c.urlTemplate : '',
+      provider: c.kind === 'payment' ? c.provider ?? '' : '',
+      formId: c.kind === 'form' ? c.formId : '',
+    })),
     defaultLocale: bundle.settings.defaultLocale ?? 'en',
     locales: strsToKeyed(bundle.settings.locales ?? ['en']),
   };
+}
+
+/** Currency decimals: empty/non-numeric → 2 (schema default); else a truncated, [0,4]-clamped integer. */
+function decimalsOf(raw: string): number {
+  const n = Number(raw.trim());
+  return raw.trim() && Number.isFinite(n) ? Math.max(0, Math.min(4, Math.trunc(n))) : 2;
+}
+
+/** Build a `ShopChannel` from a form row, dropping the row when its required field is blank. */
+function formChannelToShop(c: KeyedShopChannel): ShopChannel | null {
+  const label = c.label.trim() ? { label: c.label.trim() } : {};
+  if (c.kind === 'whatsapp') {
+    return c.number.trim()
+      ? { kind: 'whatsapp', ...label, number: c.number.trim(), ...(c.intro.trim() ? { intro: c.intro.trim() } : {}) }
+      : null;
+  }
+  if (c.kind === 'mailto') {
+    return c.email.trim()
+      ? { kind: 'mailto', ...label, email: c.email.trim(), ...(c.subject.trim() ? { subject: c.subject.trim() } : {}) }
+      : null;
+  }
+  if (c.kind === 'payment') {
+    const provider = c.provider.trim();
+    return c.urlTemplate.trim()
+      ? {
+          kind: 'payment',
+          ...label,
+          urlTemplate: c.urlTemplate.trim(),
+          ...(provider === 'paypal' || provider === 'stripe' || provider === 'custom' ? { provider } : {}),
+        }
+      : null;
+  }
+  return c.formId.trim() ? { kind: 'form', ...label, formId: c.formId.trim() } : null;
 }
 
 const trimmed = (s: string): string | undefined => (s.trim() ? s.trim() : undefined);
@@ -315,7 +392,34 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
     footer: trimmed(form.footer),
     bottom: trimmed(form.bottom),
   });
-  if (w || redirects.length) website = { ...(w ?? {}), ...(redirects.length ? { redirects } : {}) };
+  // mini shop: currency (only when code + symbol are both set) + the configured channels.
+  const shopCurrency: ShopCurrency | undefined =
+    form.shopCurrencyCode.trim() && form.shopCurrencySymbol.trim()
+      ? {
+          code: form.shopCurrencyCode.trim(),
+          symbol: form.shopCurrencySymbol.trim(),
+          position: form.shopCurrencyPosition,
+          // Empty or non-numeric → the schema default (2); otherwise truncate to an integer and clamp
+          // to the schema range [0,4] (a cleared field must NOT silently become 0, and "1.5" must not
+          // be sent — the schema is .int().min(0).max(4)).
+          decimals: decimalsOf(form.shopCurrencyDecimals),
+        }
+      : undefined;
+  const shopChannels = form.shopChannels
+    .map(formChannelToShop)
+    .filter((c): c is ShopChannel => c !== null);
+  const shop =
+    shopCurrency || shopChannels.length || form.shopAddToCartLabel.trim() || form.shopTitle.trim()
+      ? {
+          ...(shopCurrency ? { currency: shopCurrency } : {}),
+          ...(shopChannels.length ? { channels: shopChannels } : {}),
+          ...(trimmed(form.shopAddToCartLabel) ? { addToCartLabel: form.shopAddToCartLabel.trim() } : {}),
+          ...(trimmed(form.shopTitle) ? { title: form.shopTitle.trim() } : {}),
+        }
+      : undefined;
+  if (w || redirects.length || shop) {
+    website = { ...(w ?? {}), ...(redirects.length ? { redirects } : {}), ...(shop ? { shop } : {}) };
+  }
 
   const locales = form.locales.map((l) => l.value.trim()).filter(Boolean);
   const bundle: SettingsBundle = {
@@ -336,6 +440,19 @@ export const newPair = (): KeyedPair => ({ id: rowId(), key: '', value: '' });
 export const newStr = (): KeyedStr => ({ id: rowId(), value: '' });
 export const newSocial = (): KeyedSocial => ({ id: rowId(), link: '', name: '', icon: '' });
 export const newRedirect = (): KeyedRedirect => ({ id: rowId(), from: '', to: '', status: 301 });
+/** A fresh shop-channel row (defaults to WhatsApp). */
+export const newShopChannel = (): KeyedShopChannel => ({
+  id: rowId(),
+  kind: 'whatsapp',
+  label: '',
+  number: '',
+  intro: '',
+  email: '',
+  subject: '',
+  urlTemplate: '',
+  provider: '',
+  formId: '',
+});
 
 /** Returns the object only if at least one value is defined, else undefined. */
 function stripEmpty<T extends Record<string, unknown>>(obj: T): T | undefined {

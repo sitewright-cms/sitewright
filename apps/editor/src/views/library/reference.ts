@@ -135,6 +135,39 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         example: '<p>{{sw-truncate summary 80}}</p>',
       },
       {
+        id: 'h-add-to-cart',
+        syntax: '{{sw-add-to-cart sku= name= price= [image=] [label=] [class=]}}',
+        name: 'sw-add-to-cart',
+        keywords: 'shop cart ecommerce buy product add basket order',
+        description:
+          'MINI SHOP: an “add to cart” button for a product. The browser cart (see {{sw-cart}}) tracks it and hands the order to a channel configured in Settings → Website → Shop. Prices are non-authoritative — it sends an order inquiry. Use it inside a products loop, e.g. {{#each data.products}}.',
+        args: [
+          { name: 'sku', desc: 'Stable product key (falls back to name); dedupes in the cart.' },
+          { name: 'name', desc: 'Product name shown in the cart + order.' },
+          { name: 'price', desc: 'A number; the cart formats it with the configured currency.' },
+          { name: 'image', desc: 'Optional product image URL.' },
+          { name: 'label', desc: 'Optional per-button text. Falls back to the site-wide Shop settings label, then to “Add to cart”.' },
+          { name: 'class', desc: 'Optional CSS classes for the button.' },
+        ],
+        example:
+          '{{#each data.products}}\n' +
+          '  <div class="card">{{name}}\n' +
+          '    {{sw-add-to-cart sku=sku name=name price=price image=image class="btn btn-primary btn-sm"}}\n' +
+          '  </div>\n' +
+          '{{/each}}',
+        note: 'Configure the currency + checkout channels (WhatsApp / email / payment link / order form) in Settings → Website → Shop, or use the global:shop page template.',
+      },
+      {
+        id: 'h-cart',
+        syntax: '{{sw-cart}}',
+        name: 'sw-cart',
+        keywords: 'shop cart drawer checkout basket ecommerce order',
+        description:
+          'MINI SHOP: the cart mount — a floating cart button + a drawer (line items, subtotal, the checkout channel buttons). Drop it ONCE per site (e.g. in the footer slot) so it shows on every page; it reads the currency + channels from Settings → Website → Shop.',
+        example: '{{sw-cart}}',
+        note: 'The cart is FRONT-END only (localStorage) — it sends an order inquiry, not a charge. The runtime ships only on pages that use the shop.',
+      },
+      {
         id: 'h-lookup',
         syntax: '{{lookup obj key}}',
         name: 'lookup',

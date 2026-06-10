@@ -56,7 +56,9 @@ export function PublishBar({
   const [menuOpen, setMenuOpen] = useState(false);
   const [previewToken, setPreviewToken] = useState<string | undefined>(undefined);
   const [hasTarget, setHasTarget] = useState(false); // a saved deploy target exists → show a Deploy button
+  const [agentActive, setAgentActive] = useState(false); // a connected MCP agent is making changes
   const menuRef = useRef<HTMLDivElement>(null);
+  const agentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -92,8 +94,28 @@ export function PublishBar({
   // unpublished changes — flip back to the green Publish button (out of the "Preview" state).
   useEffect(() => {
     const source = new EventSource(eventsUrl(project.id), { withCredentials: true });
-    source.addEventListener('content', () => setDirty(true));
-    return () => source.close();
+    source.addEventListener('content', (e) => {
+      setDirty(true);
+      // Flag "an agent is editing" when the change came from a bearer/MCP write; clear after a lull.
+      let actor: string | undefined;
+      try {
+        actor = (JSON.parse((e as MessageEvent).data) as { actor?: string }).actor;
+      } catch {
+        /* non-JSON payload — ignore */
+      }
+      if (actor === 'agent') {
+        setAgentActive(true);
+        if (agentTimer.current) clearTimeout(agentTimer.current);
+        agentTimer.current = setTimeout(() => {
+          setAgentActive(false);
+          agentTimer.current = null;
+        }, 12_000);
+      }
+    });
+    return () => {
+      source.close();
+      if (agentTimer.current) clearTimeout(agentTimer.current);
+    };
   }, [project.id]);
 
   // Close the actions menu on an outside click.
@@ -225,6 +247,15 @@ export function PublishBar({
           </div>
         )}
       </div>
+      {agentActive && (
+        <span
+          className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700"
+          title="An agent connected over MCP is making changes — they appear live in the preview."
+        >
+          <span aria-hidden className="h-1.5 w-1.5 animate-pulse rounded-full bg-indigo-500" />
+          Agent editing…
+        </span>
+      )}
       {release && (
         <span className="text-[11px] text-slate-400">
           {dirty ? 'Unpublished changes' : `Published · ${release.routes} pages`}

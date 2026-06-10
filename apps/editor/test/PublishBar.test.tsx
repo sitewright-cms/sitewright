@@ -71,9 +71,9 @@ describe('PublishBar', () => {
   });
 
   it('reverts Preview → Publish when a content change arrives on the SSE stream', async () => {
-    const listeners: Array<() => void> = [];
+    const listeners: Array<(e: { data: string }) => void> = [];
     class CtrlEventSource {
-      addEventListener(_type: string, cb: () => void) {
+      addEventListener(_type: string, cb: (e: { data: string }) => void) {
         listeners.push(cb);
       }
       close() {}
@@ -82,8 +82,52 @@ describe('PublishBar', () => {
     publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false });
     render(<PublishBar project={project} />);
     await screen.findByRole('link', { name: /Preview/ }); // published + clean → Preview
-    act(() => listeners.forEach((cb) => cb())); // an edit lands on the change stream
+    act(() => listeners.forEach((cb) => cb({ data: JSON.stringify({ kind: 'page', entityId: 'home', op: 'put', actor: 'user' }) }))); // an edit lands
     expect(await screen.findByRole('button', { name: 'Publish' })).toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
+
+  it('shows an "Agent editing" pill when an agent-sourced change arrives, but not for a user change', async () => {
+    const listeners: Array<(e: { data: string }) => void> = [];
+    class CtrlEventSource {
+      addEventListener(_type: string, cb: (e: { data: string }) => void) {
+        listeners.push(cb);
+      }
+      close() {}
+    }
+    vi.stubGlobal('EventSource', CtrlEventSource);
+    publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false });
+    render(<PublishBar project={project} />);
+    await screen.findByRole('link', { name: /Preview/ });
+    const fire = (actor: string) =>
+      act(() => listeners.forEach((cb) => cb({ data: JSON.stringify({ kind: 'page', entityId: 'home', op: 'put', actor }) })));
+
+    fire('user'); // a human edit → no agent pill
+    expect(screen.queryByText('Agent editing…')).toBeNull();
+
+    fire('agent'); // a bearer/MCP edit → the pill appears
+    expect(await screen.findByText('Agent editing…')).toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
+
+  it('clears the "Agent editing" pill after a ~12s lull', async () => {
+    const listeners: Array<(e: { data: string }) => void> = [];
+    class CtrlEventSource {
+      addEventListener(_type: string, cb: (e: { data: string }) => void) {
+        listeners.push(cb);
+      }
+      close() {}
+    }
+    vi.stubGlobal('EventSource', CtrlEventSource);
+    publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false });
+    render(<PublishBar project={project} />);
+    await screen.findByRole('link', { name: /Preview/ }); // real timers for the async publish-status fetch
+    vi.useFakeTimers(); // enable BEFORE firing so the 12s setTimeout is fake…
+    act(() => listeners.forEach((cb) => cb({ data: JSON.stringify({ kind: 'page', entityId: 'home', op: 'put', actor: 'agent' }) })));
+    expect(screen.getByText('Agent editing…')).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(12_001)); // …so advancing fires it
+    expect(screen.queryByText('Agent editing…')).toBeNull();
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 

@@ -46,4 +46,13 @@ describe('ContentRepository change events', () => {
     await expect(content.put(ctx, 'page', 'home', { id: 'home' })).rejects.toThrow();
     expect(events).toHaveLength(0);
   });
+
+  it('tags each change with the actor (agent for a bearer/MCP write, user for a session)', async () => {
+    const events: ContentChange[] = [];
+    bus.subscribe(ctx.projectId, (e) => events.push(e));
+    await content.put({ ...ctx, actor: 'agent' }, 'page', 'home', page);
+    await content.put({ ...ctx, actor: 'user' }, 'page', 'home', page);
+    await content.remove({ ...ctx, actor: 'agent' }, 'page', 'home');
+    expect(events.map((e) => e.actor)).toEqual(['agent', 'user', 'agent']);
+  });
 });

@@ -3,6 +3,9 @@ export interface ContentChange {
   kind: string;
   entityId: string;
   op: 'put' | 'delete';
+  /** Who made the change: `agent` (a bearer/MCP write) or `user` (an interactive session). Lets the
+   *  editor flag "an agent is editing"; absent → treated as `user`. */
+  actor?: 'agent' | 'user';
 }
 
 type Listener = (change: ContentChange) => void;

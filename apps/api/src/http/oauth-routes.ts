@@ -388,10 +388,11 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
       }
       const projectId = b.project ?? '';
       if (!projectId) return result('Invalid request', 'No project was selected.');
+      let approvedName = '';
       try {
         const role = await resolveProjectRole(db, userId, projectId);
         if (!role) return result('Not allowed', 'You do not have access to that project.');
-        await projects.get(projectId);
+        approvedName = (await projects.get(projectId)).name;
         await oauth.approveDevice({ userCode, userId, projectId, role });
       } catch (err) {
         if (err instanceof ForbiddenError || err instanceof NotFoundError) {
@@ -400,7 +401,17 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
         if (err instanceof OAuthError) return result('Could not authorize', err.message);
         throw err;
       }
-      return result('Device authorized', 'Return to your terminal — the CLI will continue automatically.');
+      // Success: the CLI continues on its own. Hand the user back to the editor for THIS project so
+      // they can keep that tab open and watch the agent's changes land live in the preview.
+      return reply.code(200).type('text/html').send(
+        htmlPage(
+          'Device authorized',
+          `<h1>Device authorized</h1>
+           <p>An agent can now edit <strong>${escapeHtml(approvedName)}</strong>. Return to your terminal — the CLI will continue automatically.</p>
+           <p style="margin-top:1rem">Want to watch it work? Open the editor and keep the tab open — the agent’s changes appear live in the preview.</p>
+           <p><a href="/" style="display:inline-block;background:#0f172a;color:#fff;padding:.5rem 1rem;border-radius:.5rem;text-decoration:none;font-weight:600">Open the editor</a></p>`,
+        ),
+      );
     },
   );
 

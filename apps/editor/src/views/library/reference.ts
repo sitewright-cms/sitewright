@@ -453,7 +453,7 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
   {
     id: 'variables',
     title: 'System variables',
-    blurb: 'Available inside specific blocks.',
+    blurb: 'Loop counters + context navigation — mostly inside {{#each}} / {{#with}} (and @root from anywhere).',
     entries: [
       {
         id: 'v-this',
@@ -503,6 +503,35 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
           '  {{#if children}}\n' +
           '    <details><summary>{{label}}</summary>…</details>\n' +
           '  {{/if}}\n' +
+          '{{/each}}',
+      },
+      {
+        id: 'v-root',
+        syntax: '@root.<path>',
+        name: '@root',
+        keywords: 'root context outer global each with scope website page company reach top',
+        description:
+          'The OUTERMOST render context (company, website, page, data, nav, …), reachable from ANYWHERE — including deep inside a {{#each}}/{{#with}} where the current context is a loop item, not the page. Use it to read a global while iterating: inside {{#each page.translations}} a bare website.* would resolve against the translation item, so reach it with @root (e.g. a per-locale flag map in a language switcher).',
+        example:
+          '{{#each page.translations}}\n' +
+          '  {{! `locale` is the loop item; @root reaches website.data: }}\n' +
+          '  {{sw-flag (lookup @root.website.data.locale_flags locale)}}\n' +
+          '{{/each}}',
+      },
+      {
+        id: 'v-parent-ctx',
+        syntax: '../value   (../../ …)',
+        name: '../ (parent context)',
+        keywords: 'parent context outer scope each with up one level nested loop dotdot',
+        description:
+          'Steps OUT one context level: inside {{#each}}/{{#with}}, ../x reads x from the ENCLOSING scope (stack ../../ to go up two). Use it to reach an outer-loop value from a nested loop. For the very top, @root is usually clearer than counting ../ levels.',
+        example:
+          '{{#each data.categories}}\n' +
+          '  <h2>{{name}}</h2>\n' +
+          '  {{#each products}}\n' +
+          '    {{! ../name = the category from the OUTER loop: }}\n' +
+          '    <li>{{name}} — in {{../name}}</li>\n' +
+          '  {{/each}}\n' +
           '{{/each}}',
       },
     ],

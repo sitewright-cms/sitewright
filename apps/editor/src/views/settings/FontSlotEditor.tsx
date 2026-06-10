@@ -84,7 +84,7 @@ export function FontSlotEditor({
       <div className="mb-2 flex items-baseline justify-between">
         <span className={fieldLabel} style={{ margin: 0 }}>{label}</span>
         {isAsset && (
-          <span className="rounded-full bg-indigo-100/80 px-2 py-0.5 text-[10px] font-semibold uppercase text-indigo-700">
+          <span className="rounded-full bg-indigo-100/80 px-2 py-0.5 text-[10px] font-bold uppercase text-indigo-700">
             {slot.family}
           </span>
         )}

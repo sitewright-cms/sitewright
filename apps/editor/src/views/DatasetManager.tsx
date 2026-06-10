@@ -255,7 +255,7 @@ export function DatasetManager({ project }: { project: Project }) {
             {/* Schema editor */}
             <div className={`${glassCard} p-4`}>
               <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-slate-700">
+                <h3 className="text-sm font-bold text-slate-700">
                   {selected.name} <span className="text-xs text-slate-400">schema</span>
                 </h3>
                 <button
@@ -356,7 +356,7 @@ export function DatasetManager({ project }: { project: Project }) {
             {/* Entries */}
             <div className={`${glassCard} p-4`}>
               <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-slate-700">Entries</h3>
+                <h3 className="text-sm font-bold text-slate-700">Entries</h3>
                 <button
                   type="button"
                   onClick={() => {

@@ -151,7 +151,7 @@ function FormatField({ fmt, rgba, onParsed }: { fmt: ColorFormat; rgba: Rgba; on
   const invalid = draft !== null && parseColor(draft) === null;
   return (
     <label className="flex flex-col gap-0.5">
-      <span className="px-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">{fmt}</span>
+      <span className="px-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">{fmt}</span>
       <input
         aria-label={fmt.toUpperCase()}
         spellCheck={false}
@@ -241,7 +241,7 @@ export function ColorCard({ title, value, onChange }: { title: string; value: st
 
   return (
     <div ref={wrapRef} className="relative flex flex-col items-center gap-1.5 rounded-xl border border-white/60 bg-white/40 p-2.5 text-center">
-      <span className="text-xs font-semibold text-slate-600">{title}</span>
+      <span className="text-xs font-bold text-slate-600">{title}</span>
       <button
         type="button"
         aria-label={`Edit ${title}`}

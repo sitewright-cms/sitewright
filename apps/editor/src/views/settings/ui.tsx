@@ -11,7 +11,7 @@ export function GlassCard({ title, icon, children, wide = false }: { title: stri
         <span className={accentChip} aria-hidden>
           {icon}
         </span>
-        <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
+        <h3 className="text-sm font-bold text-slate-800">{title}</h3>
       </header>
       {children}
     </motion.section>

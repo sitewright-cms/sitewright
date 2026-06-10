@@ -134,11 +134,13 @@ export function PublishDeployModal({
       onClose={onClose}
       headerExtra={
         <div role="tablist" aria-label="Publish & deploy sections" className="flex items-center gap-1 rounded-xl bg-slate-100 p-1">
-          {tabBtn('publish', 'Publish')}
+          {tabBtn('publish', 'Local Publish')}
           {tabBtn('deploy', 'Deploy settings')}
         </div>
       }
     >
+      {/* Padded body so neither tab (the Local Publish toggles, the Deploy settings form) sits flush. */}
+      <div className="p-5">
       {error && <p className="mb-3 text-sm text-rose-600">{error}</p>}
 
       {tab === 'publish' ? (
@@ -147,7 +149,7 @@ export function PublishDeployModal({
         ) : (
           <div className="space-y-4">
             <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500">
-              <strong className="font-semibold text-slate-700">Publish</strong> hosts your site locally on this server at{' '}
+              <strong className="font-bold text-slate-700">Publish</strong> hosts your site locally on this server at{' '}
               <code className="rounded bg-white px-1">/sites/{project.slug}/</code> — the “Preview / View site” link. Use the{' '}
               <strong>Deploy settings</strong> tab to also upload the built site to your own external server.
             </p>
@@ -207,6 +209,7 @@ export function PublishDeployModal({
       ) : (
         <DeployForm project={project} />
       )}
+      </div>
     </Modal>
   );
 }

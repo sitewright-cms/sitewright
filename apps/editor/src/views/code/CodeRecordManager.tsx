@@ -196,7 +196,7 @@ export function CodeRecordManager({ projectId, noun, load, save, remove, makeId,
       {globalAdapters && (
         <div className="mb-3">
           <div className="mb-1.5 flex items-center gap-2">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
               Global {noun}s {isAdmin ? '· editable' : '· built-in, read-only'}
             </p>
             {isAdmin && (
@@ -210,7 +210,7 @@ export function CodeRecordManager({ projectId, noun, load, save, remove, makeId,
           ) : (
             <ul className={grid}>{globals.map((g) => chip(g, 'global', !!isAdmin))}</ul>
           )}
-          <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Your {noun}s</p>
+          <p className="mt-2 text-[11px] font-bold uppercase tracking-wide text-slate-400">Your {noun}s</p>
         </div>
       )}
       <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1">

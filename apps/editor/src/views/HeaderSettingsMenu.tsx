@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { gradientHover } from '../theme';
 
 /** Gear glyph for the header settings menu. */
 function GearIcon() {
@@ -76,7 +77,8 @@ export function HeaderSettingsMenu({
         { label: 'Publish & Deploy Options', onClick: onPublishDeploy, show: owner },
         { label: 'System Settings', onClick: onSystemSettings, show: isInstanceAdmin },
         { label: 'Clients', onClick: onClients, show: owner },
-        { label: 'Team', onClick: onTeam, show: owner },
+        // Team manages the instance-wide platform team via admin-only APIs (/admin/users) — admins only.
+        { label: 'Team', onClick: onTeam, show: isInstanceAdmin },
         { label: 'Access', onClick: onAccess, show: owner },
       ] as { label: string; onClick: () => void; show: boolean }[]
     )
@@ -143,7 +145,9 @@ export function HeaderSettingsMenu({
                   itemRefs.current[i] = el;
                 }}
                 onClick={pick(it.onClick)}
-                className="block w-full cursor-pointer px-3.5 py-2 text-left text-sm text-slate-700 transition hover:bg-slate-50 focus:bg-slate-100 focus:outline-none"
+                // Usual hover (gradient) + ripple on click. focus-VISIBLE (keyboard only) so the
+                // first item isn't highlighted when the menu is opened by mouse (programmatic focus).
+                className={`waves-effect block w-full cursor-pointer px-3.5 py-2 text-left text-sm text-slate-700 transition ${gradientHover} focus-visible:bg-slate-100 focus-visible:text-slate-900 focus-visible:outline-none`}
               >
                 {it.label}
               </button>

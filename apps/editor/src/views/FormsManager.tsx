@@ -164,7 +164,7 @@ export function FormsManager({ project }: { project: Project }) {
     return (
       <div className={`flex flex-col gap-5 ${glassCard} p-5`}>
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-slate-700">
+          <h3 className="text-sm font-bold text-slate-700">
             Edit form <code className="text-xs text-slate-400">{draft.id}</code>
           </h3>
           <button className={ghostButton} onClick={() => setDraft(null)}>
@@ -196,7 +196,7 @@ export function FormsManager({ project }: { project: Project }) {
         </label>
 
         <fieldset className={`${glassPanel} p-3`}>
-          <legend className="px-1 text-xs font-semibold text-slate-500">Fields</legend>
+          <legend className="px-1 text-xs font-bold text-slate-500">Fields</legend>
           <ul className="flex flex-col gap-2">
             {draft.fields.map((field, i) => (
               <li key={i} className="flex flex-col gap-1 border-b border-slate-100 pb-2 text-sm last:border-0">

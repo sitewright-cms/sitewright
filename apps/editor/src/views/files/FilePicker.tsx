@@ -53,7 +53,7 @@ export function FilePicker({
   };
 
   const tabBtn = (id: 'library' | 'url') =>
-    `rounded-lg px-3 py-1 text-xs ${tab === id ? 'bg-white font-semibold text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`;
+    `rounded-lg px-3 py-1 text-xs ${tab === id ? 'bg-white font-bold text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`;
 
   return (
     <Modal
@@ -108,7 +108,7 @@ export function FilePicker({
               type="button"
               disabled={!url.trim() || busy}
               onClick={() => void importUrl()}
-              className="waves-effect rounded-lg bg-indigo-600 px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-indigo-500 disabled:opacity-50"
+              className="waves-effect rounded-lg bg-indigo-600 px-4 py-1.5 text-sm font-bold text-white transition hover:bg-indigo-500 disabled:opacity-50"
             >
               {busy ? 'Importing…' : 'Import to library'}
             </button>

@@ -55,11 +55,11 @@ export function NewProjectModal({ onClose, onCreated }: NewProjectModalProps) {
           void create();
         }}
       >
-        <label className="flex flex-col text-xs font-semibold text-slate-700">
+        <label className="flex flex-col text-xs font-bold text-slate-700">
           Project name
           <input aria-label="Project name" className={`mt-1.5 font-normal ${glassInput}`} value={name} onChange={(e) => setName(e.target.value)} autoFocus required />
         </label>
-        <label className="flex flex-col text-xs font-semibold text-slate-700">
+        <label className="flex flex-col text-xs font-bold text-slate-700">
           Slug
           <input
             aria-label="Project slug"

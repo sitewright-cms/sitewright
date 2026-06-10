@@ -46,7 +46,7 @@ export function LibraryPanel() {
           onClick={() => setRefOpen(true)}
           className="waves-effect rounded-xl border border-indigo-200/70 bg-gradient-to-br from-indigo-50 to-sky-50 px-3 py-2.5 text-left transition hover:from-indigo-100 hover:to-sky-100"
         >
-          <span className="block text-sm font-semibold text-indigo-800">Template reference</span>
+          <span className="block text-sm font-bold text-indigo-800">Template reference</span>
           <span className="mt-0.5 block text-[11px] leading-snug text-indigo-500/80">
             Handlebars helpers, data-sw-* directives, bindings & loop variables.
           </span>
@@ -58,7 +58,7 @@ export function LibraryPanel() {
             onClick={() => setOpenCategory(s.category)}
             className={`waves-effect ${glassPanel} rounded-xl px-3 py-2.5 text-left transition hover:bg-white`}
           >
-            <span className="block text-sm font-semibold text-slate-700">{s.label}</span>
+            <span className="block text-sm font-bold text-slate-700">{s.label}</span>
             <span className="mt-0.5 block text-[11px] leading-snug text-slate-400">{s.blurb}</span>
           </button>
         ))}
@@ -223,7 +223,7 @@ function ItemList({ items, preview }: { items: LibraryItem[]; preview: boolean }
         <li key={it.id} className={`${glassPanel} rounded-xl p-4`}>
           <div className="mb-2 flex items-start justify-between gap-3">
             <div>
-              <h4 className="text-sm font-semibold text-slate-700">{it.name}</h4>
+              <h4 className="text-sm font-bold text-slate-700">{it.name}</h4>
               <p className="mt-0.5 text-xs text-slate-500">{it.description}</p>
             </div>
             <button onClick={() => copy(it.example, it.id)} className={`${ghostButton} shrink-0 px-2.5 py-1 text-xs`}>

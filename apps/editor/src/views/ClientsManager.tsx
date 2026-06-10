@@ -54,7 +54,7 @@ export function ClientsManager({ project }: ClientsManagerProps) {
 
   return (
     <div className="max-w-2xl">
-      <h3 className="mb-1 text-lg font-semibold">Clients</h3>
+      <h3 className="mb-1 text-lg font-bold">Clients</h3>
       <p className="mb-4 text-sm text-slate-500">
         People who can edit <strong>{project.name}</strong>’s content — only the blocks you mark
         “Editable by client”, and only this project.

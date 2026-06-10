@@ -127,7 +127,7 @@ export function DeployForm({ project }: { project: Project }) {
     <div className="mt-3 border-t border-white/40 pt-3">
       {targets && targets.length > 0 && (
         <div className="mb-3">
-          <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">Saved targets</h4>
+          <h4 className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-400">Saved targets</h4>
           <ul className="flex flex-col gap-1">
             {targets.map((t) => (
               <li key={t.id} className="flex items-center gap-2 text-sm">

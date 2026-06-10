@@ -46,11 +46,19 @@ describe('AgentDetailsModal', () => {
     expect(await screen.findByText('Personal token')).toBeInTheDocument();
   });
 
-  it('leads with the connect guide when there are no connections', async () => {
+  it('leads with the connect guide (3 tabs) when there are no connections', async () => {
     listAgentConnections.mockResolvedValue({ items: [] });
     render(<AgentDetailsModal projectId="p" onClose={() => {}} />);
     expect(await screen.findByText('Connect an agent')).toBeInTheDocument();
-    // The CLI register command is shown so an owner can wire up an agent without leaving the editor.
+    // Three connect options, as tabs.
+    expect(screen.getByRole('tab', { name: 'ChatGPT.com' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Claude.ai' })).toBeInTheDocument();
+    const cliTab = screen.getByRole('tab', { name: 'Local CLI Agents' });
+    // The default (ChatGPT) tab shows the remote MCP server URL (origin/mcp).
+    expect(screen.getByText(/\/mcp$/)).toBeInTheDocument();
+    // The CLI tab carries the install step + the register command.
+    cliTab.click();
+    expect(await screen.findByText(/npm install -g @sitewright\/cli/)).toBeInTheDocument();
     expect(screen.getByText(/sitewright mcp --url/)).toBeInTheDocument();
   });
 

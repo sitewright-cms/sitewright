@@ -16,7 +16,7 @@ function EntryCard({ entry, copied, onCopy }: { entry: ReferenceEntry; copied: b
   return (
     <li className={`${glassPanel} rounded-xl p-4`}>
       <div className="mb-1.5 flex items-start justify-between gap-3">
-        <code className="font-mono text-[13px] font-semibold text-indigo-700">{entry.syntax}</code>
+        <code className="font-mono text-[13px] font-bold text-indigo-700">{entry.syntax}</code>
         {!entry.noCopy && (
           <button onClick={onCopy} className={`${ghostButton} shrink-0 px-2.5 py-1 text-xs`}>
             {copied ? 'Copied!' : 'Copy'}
@@ -28,7 +28,7 @@ function EntryCard({ entry, copied, onCopy }: { entry: ReferenceEntry; copied: b
         <dl className="mt-2 flex flex-col gap-0.5">
           {entry.args.map((a) => (
             <div key={a.name} className="flex gap-2 text-[11px]">
-              <dt className="shrink-0 font-mono font-semibold text-slate-500">{a.name}</dt>
+              <dt className="shrink-0 font-mono font-bold text-slate-500">{a.name}</dt>
               <dd className="text-slate-400">{a.desc}</dd>
             </div>
           ))}
@@ -109,7 +109,7 @@ export function ReferenceModal({ onClose }: { onClose: () => void }) {
             ) : (
               groups.map((g) => (
                 <section key={g.id} className="mb-6">
-                  <h3 className="text-sm font-semibold text-slate-700">{g.title}</h3>
+                  <h3 className="text-sm font-bold text-slate-700">{g.title}</h3>
                   <p className="mb-2 text-xs text-slate-400">{g.blurb}</p>
                   <ul className="flex flex-col gap-3">
                     {g.entries.map((e) => (

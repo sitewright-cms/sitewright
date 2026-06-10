@@ -48,7 +48,7 @@ export function TeamManager() {
 
   return (
     <div className="max-w-2xl">
-      <h3 className="mb-1 text-lg font-semibold">Team</h3>
+      <h3 className="mb-1 text-lg font-bold">Team</h3>
       <p className="mb-4 text-sm text-slate-500">
         Your platform staff. Invite a <strong>developer</strong> to give them full access to every
         project on this instance.

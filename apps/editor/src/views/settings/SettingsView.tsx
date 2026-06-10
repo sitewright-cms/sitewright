@@ -181,7 +181,7 @@ export function SettingsView({
                 whileTap={{ scale: 0.96 }}
                 onClick={() => void save()}
                 disabled={saving}
-                className="waves-effect waves-light rounded-xl bg-gradient-to-br from-indigo-600 to-sky-500 px-5 py-2 text-sm font-semibold text-white shadow-lg shadow-indigo-600/30 transition disabled:opacity-60"
+                className="waves-effect waves-light rounded-xl bg-gradient-to-br from-indigo-600 to-sky-500 px-5 py-2 text-sm font-bold text-white shadow-lg shadow-indigo-600/30 transition disabled:opacity-60"
               >
                 {saving ? 'Saving…' : 'Save changes'}
               </motion.button>

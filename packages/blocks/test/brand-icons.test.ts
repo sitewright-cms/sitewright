@@ -2,9 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { brandIcon, BRAND_ICON_NAMES } from '../src/brand-icons.js';
 
 describe('brand-icons (simple-icons, CC0)', () => {
-  it('exposes a curated set of brand slugs', () => {
-    expect(BRAND_ICON_NAMES.length).toBeGreaterThanOrEqual(15);
-    for (const slug of ['facebook', 'instagram', 'x', 'github', 'youtube', 'whatsapp']) {
+  it('exposes the expanded curated set of brand slugs', () => {
+    // ~270 popular brands (social, dev, design, payments, …); was 20.
+    expect(BRAND_ICON_NAMES.length).toBeGreaterThanOrEqual(200);
+    for (const slug of ['facebook', 'instagram', 'x', 'github', 'youtube', 'whatsapp', 'signal', 'figma', 'stripe', '500px']) {
       expect(BRAND_ICON_NAMES).toContain(slug);
     }
   });
@@ -24,7 +25,9 @@ describe('brand-icons (simple-icons, CC0)', () => {
     for (const slug of BRAND_ICON_NAMES) {
       const icon = brandIcon(slug);
       expect(icon, slug).toBeDefined();
-      expect(icon?.path.length, slug).toBeGreaterThan(20);
+      // Minimal geometric logos (e.g. Kotlin's "M24 24H0V0h24L12 12Z") are ~20 chars; the
+      // bound just guards against an empty/garbage path, not a real short mark.
+      expect(icon?.path.length, slug).toBeGreaterThan(10);
       expect(icon?.hex, slug).toMatch(/^#[0-9a-f]{6}$/);
     }
   });

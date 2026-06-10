@@ -8,13 +8,53 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import * as simpleIcons from 'simple-icons';
 
-// Popular brands for corporate-site social links / footers. Keep alphabetical.
-// NOTE: LinkedIn is intentionally absent — it was removed from simple-icons at
-// the brand's request, so it has no CC0 path to inline.
+// Popular brands for corporate-site social links, footers, and tech-stack badges,
+// inlined from simple-icons (CC0). Keep alphabetical; re-run the generator after
+// editing. NOTE: some big brands (LinkedIn, Adobe, Microsoft, Amazon, Slack,
+// Salesforce, Skype, Java, C#…) are intentionally absent — they were removed from
+// simple-icons at the brands' request, so they have no CC0 path to inline; the
+// editor falls back to a Lucide line icon (e.g. `linkedin`) where one exists.
 const SLUGS = [
-  'apple', 'behance', 'discord', 'dribbble', 'facebook', 'github', 'google',
-  'instagram', 'mastodon', 'medium', 'pinterest', 'reddit', 'snapchat',
-  'spotify', 'telegram', 'tiktok', 'vimeo', 'whatsapp', 'x', 'youtube',
+  '500px', 'afterpay', 'airbnb', 'airtable', 'aliexpress', 'americanexpress', 'android',
+  'angular', 'apple', 'applemusic', 'applepay', 'applepodcasts', 'appstore', 'asana',
+  'astro', 'audible', 'audiomack', 'autocad', 'autodesk', 'baidu', 'bandcamp',
+  'basecamp', 'behance', 'bigcommerce', 'bilibili', 'binance', 'bitbucket', 'bitcoin',
+  'blender', 'bluesky', 'bootstrap', 'box', 'brave', 'bun', 'buymeacoffee',
+  'c', 'calendly', 'cashapp', 'clickup', 'cloudflare', 'codecademy', 'codesandbox',
+  'codewars', 'coinbase', 'confluence', 'contentful', 'coursera', 'cplusplus', 'crunchbase',
+  'crunchyroll', 'css', 'dailymotion', 'dart', 'deezer', 'deliveroo', 'deno',
+  'devdotto', 'deviantart', 'digitalocean', 'discord', 'discover', 'django', 'docker',
+  'doordash', 'dotnet', 'dribbble', 'dropbox', 'duckduckgo', 'duolingo', 'ebay',
+  'edx', 'element', 'ethereum', 'etsy', 'evernote', 'expedia', 'facebook',
+  'figma', 'firebase', 'firefoxbrowser', 'fiverr', 'flask', 'flickr', 'flutter',
+  'foursquare', 'framer', 'freelancer', 'gatsby', 'ghost', 'gitea', 'github',
+  'gitlab', 'glassdoor', 'gmail', 'go', 'godotengine', 'gofundme', 'goodreads',
+  'google', 'googleads', 'googleanalytics', 'googlecalendar', 'googlechat', 'googlechrome', 'googlecloud',
+  'googledrive', 'googlekeep', 'googlemaps', 'googlemeet', 'googlepay', 'googleplay', 'googlescholar',
+  'googletranslate', 'graphql', 'gumroad', 'hackerrank', 'hashnode', 'html5', 'hubspot',
+  'hugo', 'icloud', 'iheartradio', 'imdb', 'indeed', 'instacart', 'instagram',
+  'intercom', 'javascript', 'jekyll', 'jira', 'jsfiddle', 'justeat', 'kaggle',
+  'khanacademy', 'kick', 'kickstarter', 'klarna', 'kofi', 'kotlin', 'laravel',
+  'lastdotfm', 'leetcode', 'letterboxd', 'liberapay', 'line', 'linktree', 'loom',
+  'lyft', 'mailchimp', 'mastercard', 'mastodon', 'matrix', 'medium', 'meetup',
+  'mega', 'messenger', 'miro', 'mixcloud', 'mongodb', 'myspace', 'mysql',
+  'netflix', 'netlify', 'nextcloud', 'nextdoor', 'nextdotjs', 'nodedotjs', 'notion',
+  'npm', 'nuxt', 'obsidian', 'odnoklassniki', 'onlyfans', 'opencollective', 'opensea',
+  'opera', 'orcid', 'overcast', 'pandora', 'patreon', 'payoneer', 'paypal',
+  'php', 'pinterest', 'pluralsight', 'pocketcasts', 'postgresql', 'prestashop', 'producthunt',
+  'protondrive', 'protonmail', 'python', 'quizlet', 'quora', 'react', 'redbubble',
+  'reddit', 'redis', 'replit', 'researchgate', 'revolut', 'ruby', 'rumble',
+  'rust', 'safari', 'sanity', 'sass', 'shazam', 'shopify', 'signal',
+  'sketch', 'skillshare', 'snapchat', 'soundcloud', 'sourceforge', 'spotify', 'spring',
+  'squarespace', 'stackoverflow', 'storyblok', 'strapi', 'stripe', 'substack', 'supabase',
+  'svelte', 'swift', 'swiggy', 'tailwindcss', 'target', 'ted', 'telegram',
+  'threads', 'threema', 'tidal', 'tiktok', 'todoist', 'trello', 'tripadvisor',
+  'tumblr', 'twitch', 'typescript', 'uber', 'ubereats', 'udemy', 'unity',
+  'unrealengine', 'upwork', 'venmo', 'vercel', 'viber', 'vimeo', 'visa',
+  'vk', 'vuedotjs', 'waze', 'webflow', 'wechat', 'whatsapp', 'wikimediacommons',
+  'wikipedia', 'wise', 'wix', 'woocommerce', 'wordpress', 'x', 'xing',
+  'ycombinator', 'yelp', 'youtube', 'youtubemusic', 'zapier', 'zendesk', 'zomato',
+  'zoom',
 ];
 
 const bySlug = new Map();

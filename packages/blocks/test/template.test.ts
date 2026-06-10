@@ -338,6 +338,27 @@ describe('validateTemplate — context-aware rejection (Handlebars is not contex
     allows('<a href="/p/{{ page.slug }}">x</a>'); // literal prefix fixes the scheme → allowed
   });
 
+  it('gates the lazy-load data-src / data-bg URL attributes like src / background', () => {
+    // The runtime swaps these into src / background-image, so an interpolated value (often
+    // lower-trust data) must be scheme-fixed — same rule as src.
+    rejects('<img data-src="{{ page.img }}" alt="x">');
+    allows('<img data-src="{{sw-url page.img}}" alt="x">');
+    allows('<img data-src="/media/x.jpg" alt="x">'); // literal safe prefix
+    rejects('<div data-bg="{{ page.img }}"></div>');
+    allows('<div data-bg="{{sw-url page.img}}"></div>');
+    allows('<div data-bg="/media/x.jpg"></div>'); // literal safe prefix for data-bg too
+    allows('<iframe data-src="{{sw-url page.embed}}" title="m"></iframe>'); // iframes too
+    // An unsafe literal prefix can't smuggle a scheme past the interpolation (same as href).
+    rejects('<img data-src="j{{ page.rest }}" alt="x">'); // → javascript:
+    rejects('<div data-bg="//{{ page.host }}"></div>'); // protocol-relative
+  });
+
+  it('does NOT gate data-srcset or other data-* (only data-src/data-bg join the URL set)', () => {
+    allows('<img data-srcset="{{ page.srcset }}" alt="x">'); // mirrors plain srcset — image-fetch only
+    allows('<div data-sw-text="{{ data.v }}"></div>'); // editor directive attr — unaffected
+    allows('<div data-aos="{{ data.fx }}"></div>'); // animation attr — unaffected
+  });
+
   it('allows interpolation in element text and quoted non-URL attributes', () => {
     allows('<p data-x="{{ data.v }}">{{ data.v }}</p>');
     allows('{{#each data.products}}<span>{{name}}</span>{{/each}}'); // block tags are not output mustaches

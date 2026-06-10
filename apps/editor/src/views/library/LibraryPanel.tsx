@@ -213,46 +213,110 @@ function IconGrid({ items }: { items: LibraryItem[] }) {
   );
 }
 
-/** A list of component/snippet cards: name, description, optional live preview, code + copy. */
-function ItemList({ items, preview }: { items: LibraryItem[]; preview: boolean }) {
+/**
+ * A live, INTERACTIVE preview of STATIC in-repo catalog markup (Handlebars neutralized), themed via
+ * `.sw-preview` (whose `contain` keeps fixed-position components inside the card). The guards stop a
+ * preview link/form from navigating the editor (click + middle-click + submit).
+ */
+function Preview({ html }: { html: string }) {
+  return (
+    <div
+      className="sw-preview mb-2 overflow-hidden rounded-lg border border-slate-200 p-4"
+      onClick={(e) => {
+        if ((e.target as HTMLElement).closest('a')) e.preventDefault();
+      }}
+      onAuxClick={(e) => {
+        if ((e.target as HTMLElement).closest('a')) e.preventDefault();
+      }}
+      onSubmit={(e) => e.preventDefault()}
+      dangerouslySetInnerHTML={{ __html: previewHtml(html) }}
+    />
+  );
+}
+
+/** Dark code block for a copy-paste snippet. */
+function CodeBlock({ code }: { code: string }) {
+  return (
+    <pre className="overflow-auto rounded-lg border border-slate-200 bg-slate-900 p-3 text-[12px] leading-relaxed text-slate-100">
+      <code>{code}</code>
+    </pre>
+  );
+}
+
+/** One component card: name, description, live preview, code + copy, and a collapsed list of the
+ *  component's documented variants behind a "Show all variants" toggle. */
+function ItemCard({ item, preview }: { item: LibraryItem; preview: boolean }) {
   const toast = useToast();
   const [copiedId, copy] = useCopy(() => toast.show('Copied to clipboard'));
+  const [expanded, setExpanded] = useState(false);
+  const variants = item.variants ?? [];
+  return (
+    <li className={`${glassPanel} rounded-xl p-4`}>
+      <div className="mb-2 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h4 className="text-sm font-bold text-slate-700">{item.name}</h4>
+          <p className="mt-0.5 text-xs text-slate-500">{item.description}</p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {variants.length > 0 && (
+            <button
+              onClick={() => setExpanded((v) => !v)}
+              aria-expanded={expanded}
+              className={`${ghostButton} px-2.5 py-1 text-xs`}
+            >
+              {expanded ? 'Hide variants' : `Show all variants (${variants.length})`}
+            </button>
+          )}
+          <button onClick={() => copy(item.example, item.id)} className={`${ghostButton} px-2.5 py-1 text-xs`}>
+            {copiedId === item.id ? 'Copied!' : 'Copy'}
+          </button>
+        </div>
+      </div>
+      {preview && <Preview html={item.example} />}
+      <CodeBlock code={item.example} />
+      {expanded && variants.length > 0 && (
+        <ul className="mt-3 flex flex-col gap-3 border-t border-slate-200/70 pt-3">
+          {variants.map((v, i) => (
+            <li key={v.name}>
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{v.name}</span>
+                <button
+                  onClick={() => copy(v.example, `${item.id}:${i}`)}
+                  className={`${ghostButton} shrink-0 px-2 py-0.5 text-[11px]`}
+                >
+                  {copiedId === `${item.id}:${i}` ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+              {preview && <Preview html={v.example} />}
+              <CodeBlock code={v.example} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </li>
+  );
+}
+
+/** A list of component/snippet cards. For the DaisyUI section it LAZY-loads each component's
+ *  documented variants (a large set) and attaches them to the items. */
+function ItemList({ items, preview }: { items: LibraryItem[]; preview: boolean }) {
+  const [variantsById, setVariantsById] = useState<Record<string, LibraryItem['variants']>>({});
+  useEffect(() => {
+    if (!preview) return; // only the DaisyUI (preview) section ships variants
+    let alive = true;
+    void import('./catalog-daisy-variants')
+      .then((m) => alive && setVariantsById(m.DAISY_VARIANTS))
+      .catch(() => {
+        /* variants are an enhancement; the cards still work without them */
+      });
+    return () => {
+      alive = false;
+    };
+  }, [preview]);
   return (
     <ul className="flex flex-col gap-4">
       {items.map((it) => (
-        <li key={it.id} className={`${glassPanel} rounded-xl p-4`}>
-          <div className="mb-2 flex items-start justify-between gap-3">
-            <div>
-              <h4 className="text-sm font-bold text-slate-700">{it.name}</h4>
-              <p className="mt-0.5 text-xs text-slate-500">{it.description}</p>
-            </div>
-            <button onClick={() => copy(it.example, it.id)} className={`${ghostButton} shrink-0 px-2.5 py-1 text-xs`}>
-              {copiedId === it.id ? 'Copied!' : 'Copy'}
-            </button>
-          </div>
-          {preview && (
-            // STATIC catalog markup (our own content), Handlebars neutralized, themed via
-            // `.sw-preview`. The preview is INTERACTIVE (CSS-only components — dropdowns, accordions,
-            // tabs, toggles — work here); `.sw-preview`'s `contain` keeps fixed-position components
-            // inside the card, and these guards stop a preview link/form from navigating the editor.
-            <div
-              className="sw-preview mb-2 overflow-hidden rounded-lg border border-slate-200 p-4"
-              onClick={(e) => {
-                if ((e.target as HTMLElement).closest('a')) e.preventDefault();
-              }}
-              // Middle-click fires auxclick (not click) — guard it too so a preview link can't open
-              // a new editor tab.
-              onAuxClick={(e) => {
-                if ((e.target as HTMLElement).closest('a')) e.preventDefault();
-              }}
-              onSubmit={(e) => e.preventDefault()}
-              dangerouslySetInnerHTML={{ __html: previewHtml(it.example) }}
-            />
-          )}
-          <pre className="overflow-auto rounded-lg border border-slate-200 bg-slate-900 p-3 text-[12px] leading-relaxed text-slate-100">
-            <code>{it.example}</code>
-          </pre>
-        </li>
+        <ItemCard key={it.id} item={variantsById[it.id] ? { ...it, variants: variantsById[it.id] } : it} preview={preview} />
       ))}
     </ul>
   );

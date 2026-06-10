@@ -47,6 +47,21 @@ describe('LibraryPanel', () => {
     expect(preview.innerHTML).not.toContain('{{');
   });
 
+  it('lazy-loads documented variants and toggles them with "Show all variants"', async () => {
+    render(<LibraryPanel />);
+    fireEvent.mouseEnter(screen.getByLabelText('System Library'));
+    fireEvent.click(screen.getByRole('button', { name: /DaisyUI components/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'DaisyUI components' });
+    fireEvent.change(within(dialog).getByLabelText('Search DaisyUI components'), { target: { value: 'breadcrumbs' } });
+    // Variants are code-split (dynamic import) → the toggle appears once they load.
+    const toggle = await within(dialog).findByRole('button', { name: /Show all variants \(\d+\)/ });
+    fireEvent.click(toggle);
+    expect(within(dialog).getByRole('button', { name: 'Hide variants' })).toBeInTheDocument();
+    // A documented variant label is now revealed, each with its own Copy button.
+    expect(within(dialog).getByText('Max-width scroll')).toBeInTheDocument();
+    expect(within(dialog).getAllByRole('button', { name: 'Copy' }).length).toBeGreaterThan(1); // per-variant copies
+  });
+
   it('makes previews INTERACTIVE (no pointer-events-none) but blocks preview-link navigation', async () => {
     render(<LibraryPanel />);
     fireEvent.mouseEnter(screen.getByLabelText('System Library'));

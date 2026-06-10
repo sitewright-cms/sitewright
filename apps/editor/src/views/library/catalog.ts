@@ -15,6 +15,17 @@ const ANIMATION_EFFECTS: readonly string[] = [
 
 export type LibraryCategory = 'icons' | 'brand' | 'flags' | 'fonts' | 'aos' | 'lazyload' | 'ripple' | 'daisyui';
 
+/**
+ * One documented VARIANT of a component (e.g. "Primary", "Outline", "Large") — a labeled,
+ * copy-paste example. Same STATIC/trusted/no-JS rules as {@link LibraryItem.example}.
+ */
+export interface Variant {
+  /** Short label from the DaisyUI docs (the modifier/state being shown). */
+  name: string;
+  /** The copy-paste + preview markup for this variant. */
+  example: string;
+}
+
 export interface LibraryItem {
   /** Stable id (category-scoped). */
   id: string;
@@ -30,6 +41,12 @@ export interface LibraryItem {
    * put `<script>`, event handlers, or user-supplied data here (would need DOMPurify first).
    */
   example: string;
+  /**
+   * The component's documented variants (DaisyUI), shown under "Show all variants". Attached at
+   * runtime from the LAZY-loaded {@link './catalog-daisy-variants'} map (keyed by this `id`) so the
+   * large set stays out of the eager bundle.
+   */
+  variants?: Variant[];
   /** Optional inline SVG preview (icons only). */
   svg?: string;
   /** Optional external docs link. */

@@ -383,6 +383,9 @@ function createInstance(): typeof Handlebars {
         if (c.kind === 'whatsapp') return { kind: 'whatsapp', label: c.label, number: c.number, intro: c.intro };
         if (c.kind === 'mailto') return { kind: 'mailto', label: c.label, email: c.email, subject: c.subject };
         if (c.kind === 'payment') return { kind: 'payment', label: c.label, urlTemplate: c.urlTemplate };
+        // `endpoint` is filled by resolveShopChannels in the render projection (the cart can't build
+        // /f/<projectId>/<formId> client-side); a form channel with no resolved endpoint is dropped.
+        if (c.kind === 'form') return typeof c.endpoint === 'string' ? { kind: 'form', label: c.label, endpoint: c.endpoint } : null;
         return null;
       })
       .filter((c): c is Record<string, unknown> => c !== null);

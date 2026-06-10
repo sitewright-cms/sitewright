@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { JsonObjectStoreSchema } from './json-store.js';
-import { targetsPrivateHost } from './primitives.js';
+import { targetsPrivateHost, IdSchema } from './primitives.js';
 
 // Bounded to limit build-output amplification (these fields are injected into
 // every page of a publish, up to MAX_BUNDLE.pages). CSS is smaller than the
@@ -106,11 +106,25 @@ const PaymentChannelSchema = z.object({
     .refine((u) => !targetsPrivateHost(u.replace(/\{[^}]*\}/g, '0')), 'urlTemplate must be a public host'),
 });
 
-/** A submission channel the cart hands its contents to. PR-2 adds a `form` kind. */
+/**
+ * Submit the order through a project Form. The cart drawer collects contact fields + the order, then
+ * POSTs to the existing `/f/:projectId/:formId` pipeline (stored + emailed, honeypot/time-trap/rate-limit
+ * guarded) — so the order lands in the merchant's inbox with the recipient configured on that Form.
+ * `formId` must reference a real Form (the endpoint 404s otherwise). Unlike the deep-link channels this
+ * one captures the buyer's contact details; it does NOT make the cart authoritative (still an inquiry).
+ */
+const FormChannelSchema = z.object({
+  kind: z.literal('form'),
+  label: shopChannelLabel,
+  formId: IdSchema,
+});
+
+/** A submission channel the cart hands its contents to. */
 export const ShopChannelSchema = z.discriminatedUnion('kind', [
   WhatsappChannelSchema,
   MailtoChannelSchema,
   PaymentChannelSchema,
+  FormChannelSchema,
 ]);
 export type ShopChannel = z.infer<typeof ShopChannelSchema>;
 

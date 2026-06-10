@@ -55,6 +55,7 @@ import {
   RIPPLE_JS,
   usesCart,
   CART_CSS,
+  resolveShopChannels,
 } from '@sitewright/blocks';
 import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
 import { optimizeImage } from '@sitewright/image-pipeline';
@@ -1467,7 +1468,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           }
           const rendered = await renderPool.render(pageSource, {
             company: brand as unknown as Record<string, unknown>,
-            website: { siteUrl: website?.siteUrl, data: website?.data, shop: website?.shop },
+            website: { siteUrl: website?.siteUrl, data: website?.data, shop: resolveShopChannels(website?.shop, (fid) => `/f/${project.id}/${fid}`) },
             page: previewPage,
             parentPage: previewParent,
             data: localeData,
@@ -1487,7 +1488,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // `{{> snippet}}` is intentionally unavailable in a slot (no WYSIWYG drift).
           const slotCtx = {
             company: brand as unknown as Record<string, unknown>,
-            website: { siteUrl: website?.siteUrl, data: website?.data, shop: website?.shop },
+            website: { siteUrl: website?.siteUrl, data: website?.data, shop: resolveShopChannels(website?.shop, (fid) => `/f/${project.id}/${fid}`) },
             page: previewPage,
             parentPage: previewParent,
             data: localeData,

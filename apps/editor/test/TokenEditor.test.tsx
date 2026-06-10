@@ -44,4 +44,20 @@ describe('TokenEditor (stable-id rows)', () => {
     fireEvent.change(screen.getByLabelText('val 1'), { target: { value: '#f50' } });
     expect(screen.getByTestId('out')).toHaveTextContent('accent=#f50');
   });
+
+  it('makes the value field read-only in picker mode — color is set only via the picker', () => {
+    render(
+      <TokenEditor
+        rows={[{ id: 'a', key: 'brand', value: '#0ea5e9' }]}
+        onChange={() => {}}
+        keyPlaceholder="name"
+        valuePlaceholder="val"
+        picker
+      />,
+    );
+    expect((screen.getByLabelText('val 1') as HTMLInputElement).readOnly).toBe(true);
+    // The key stays editable; the color-picker swatch trigger is present as the way to set the value.
+    expect((screen.getByLabelText('name 1') as HTMLInputElement).readOnly).toBe(false);
+    expect(screen.getByRole('button', { name: /^Edit/ })).toBeInTheDocument();
+  });
 });

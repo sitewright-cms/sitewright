@@ -1,8 +1,7 @@
 import { COLOR_TOKEN_LABELS, MANDATORY_COLOR_TOKENS } from '@sitewright/schema';
-import { glassInput } from '../../theme';
 import { SubLabel } from './ui';
 import { TokenEditor } from './TokenEditor';
-import { ColorField } from './ColorPicker';
+import { ColorCard } from './ColorPicker';
 import { newPair, type KeyedPair } from './model';
 
 const MANDATORY = new Set<string>(MANDATORY_COLOR_TOKENS);
@@ -29,24 +28,13 @@ export function BrandColorsEditor({ rows, onChange }: { rows: KeyedPair[]; onCha
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-2">
-        {MANDATORY_COLOR_TOKENS.map((key) => {
-          const value = valueOf(key);
-          return (
-            <div key={key} className="flex items-center gap-2">
-              <ColorField value={value} onChange={(v) => setMandatory(key, v)} label={labelFor(key)} />
-              <span className="w-36 shrink-0 text-sm text-slate-600">{labelFor(key)}</span>
-              <input
-                aria-label={labelFor(key)}
-                className={glassInput}
-                value={value}
-                maxLength={64}
-                placeholder="#0ea5e9"
-                onChange={(e) => setMandatory(key, e.target.value)}
-              />
-            </div>
-          );
-        })}
+      {/* The mandatory tokens render as a row of centered cards: title, a full-width clickable
+          preview that opens the color picker, and the current value. The picker is the ONLY way to
+          set a color — there is no typed input. */}
+      <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
+        {MANDATORY_COLOR_TOKENS.map((key) => (
+          <ColorCard key={key} title={labelFor(key)} value={valueOf(key)} onChange={(v) => setMandatory(key, v)} />
+        ))}
       </div>
       <div>
         <SubLabel>Custom colors</SubLabel>

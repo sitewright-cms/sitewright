@@ -171,13 +171,11 @@ function FormatField({ fmt, rgba, onParsed }: { fmt: ColorFormat; rgba: Rgba; on
 }
 
 /**
- * A color swatch BUTTON that opens the {@link ColorPicker} in a popover. The swatch shows the
- * current color (over a checkerboard so alpha reads); clicking toggles the picker. Closes on an
- * outside click or Escape. The bound text input lives beside it in the row — this is the visual
- * companion, so direct typing still works.
+ * Shared popover dismissal for the swatch + card triggers: closes on an outside pointerdown or
+ * Escape while open. Returns the wrapper ref to put on the popover's root (the "inside" boundary).
+ * `setOpen` from `useState` is stable, so the listeners re-bind only when `open` flips.
  */
-export function ColorField({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) {
-  const [open, setOpen] = useState(false);
+function useColorPopoverDismiss(open: boolean, setOpen: (v: boolean) => void) {
   const wrapRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
@@ -193,7 +191,19 @@ export function ColorField({ value, onChange, label }: { value: string; onChange
       document.removeEventListener('pointerdown', onDown);
       document.removeEventListener('keydown', onKey);
     };
-  }, [open]);
+  }, [open, setOpen]);
+  return wrapRef;
+}
+
+/**
+ * A color swatch BUTTON that opens the {@link ColorPicker} in a popover. The swatch shows the
+ * current color (over a checkerboard so alpha reads); clicking toggles the picker. Closes on an
+ * outside click or Escape. The bound text input lives beside it in the row — this is the visual
+ * companion, so direct typing still works.
+ */
+export function ColorField({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useColorPopoverDismiss(open, setOpen);
 
   return (
     <div ref={wrapRef} className="relative shrink-0">
@@ -201,7 +211,7 @@ export function ColorField({ value, onChange, label }: { value: string; onChange
         type="button"
         aria-label={`Edit ${label}`}
         aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => setOpen(!open)}
         className="block h-7 w-7 rounded-md border border-white/70 shadow-inner outline-none transition hover:ring-2 hover:ring-indigo-300/50 focus-visible:ring-2 focus-visible:ring-indigo-400/70"
         style={SAFE_COLOR.test(value) ? { ...CHECKER } : { background: 'transparent' }}
       >
@@ -209,6 +219,41 @@ export function ColorField({ value, onChange, label }: { value: string; onChange
       </button>
       {open && (
         <div role="dialog" aria-modal="true" aria-label={`${label} picker`} className="absolute left-0 top-9 z-50 rounded-xl border border-white/60 bg-white/95 p-3 shadow-2xl backdrop-blur-xl">
+          <ColorPicker value={value} onChange={onChange} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * A brand-color CARD: the color's title on top, a full-width clickable preview that opens the
+ * {@link ColorPicker} popover, and the current value below — all centered. The picker is the ONLY
+ * way to set the color (there is no editable text field), so the stored value is always picker-
+ * produced. An empty value reads as "Default" (a cleared mandatory token resets to the platform
+ * default on save).
+ */
+export function ColorCard({ title, value, onChange }: { title: string; value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useColorPopoverDismiss(open, setOpen);
+  const valid = SAFE_COLOR.test(value);
+
+  return (
+    <div ref={wrapRef} className="relative flex flex-col items-center gap-1.5 rounded-xl border border-white/60 bg-white/40 p-2.5 text-center">
+      <span className="text-xs font-semibold text-slate-600">{title}</span>
+      <button
+        type="button"
+        aria-label={`Edit ${title}`}
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+        className="block h-12 w-full rounded-lg border border-white/70 shadow-inner outline-none transition hover:ring-2 hover:ring-indigo-300/50 focus-visible:ring-2 focus-visible:ring-indigo-400/70"
+        style={valid ? { ...CHECKER } : { background: 'transparent' }}
+      >
+        <span aria-hidden className="block h-full w-full rounded-lg" style={{ background: valid ? value : 'transparent' }} />
+      </button>
+      <span className="font-mono text-[11px] text-slate-500">{value || 'Default'}</span>
+      {open && (
+        <div role="dialog" aria-modal="true" aria-label={`${title} picker`} className="absolute left-1/2 top-full z-50 mt-1 -translate-x-1/2 rounded-xl border border-white/60 bg-white/95 p-3 shadow-2xl backdrop-blur-xl">
           <ColorPicker value={value} onChange={onChange} />
         </div>
       )}

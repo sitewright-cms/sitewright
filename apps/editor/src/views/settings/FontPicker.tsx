@@ -3,7 +3,7 @@ import { Modal } from '../ui/Modal';
 import { FileBrowser, ACCEPT } from '../files/FileBrowser';
 import { GoogleFontGallery, type GoogleFontMeta } from './GoogleFontGallery';
 import { api, type MediaAsset } from '../../api';
-import { glassInput } from '../../theme';
+import { glassInput, gradientSurface } from '../../theme';
 
 const WEIGHTS = [100, 200, 300, 400, 500, 600, 700, 800, 900];
 const FALLBACKS = ['sans-serif', 'serif', 'monospace', 'cursive'];
@@ -28,7 +28,8 @@ export function FontPicker({
   onPick: (asset: MediaAsset, weight: number) => void;
   onClose: () => void;
 }) {
-  const [tab, setTab] = useState<'library' | 'google' | 'upload'>('library');
+  // Google Fonts is the default source — most slots are filled from Google's catalogue.
+  const [tab, setTab] = useState<'library' | 'google' | 'upload'>('google');
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -53,7 +54,7 @@ export function FontPicker({
   }
 
   const tabBtn = (id: typeof tab) =>
-    `rounded-lg px-3 py-1 text-xs ${tab === id ? 'bg-white font-semibold text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`;
+    `rounded-lg px-3.5 py-1.5 text-sm transition ${tab === id ? `${gradientSurface} font-semibold` : 'font-medium text-slate-500 hover:text-slate-800'}`;
 
   return (
     <Modal
@@ -62,8 +63,8 @@ export function FontPicker({
       onClose={onClose}
       headerExtra={
         <div className="flex overflow-hidden rounded-xl border border-white/60 bg-white/40 p-0.5">
+          <button type="button" className={tabBtn('google')} onClick={() => { setTab('google'); setError(null); setBusy(null); }}>Google Fonts</button>
           <button type="button" className={tabBtn('library')} onClick={() => { setTab('library'); setError(null); setBusy(null); }}>Library</button>
-          <button type="button" className={tabBtn('google')} onClick={() => { setTab('google'); setError(null); setBusy(null); }}>Google</button>
           <button type="button" className={tabBtn('upload')} onClick={() => { setTab('upload'); setError(null); setBusy(null); }}>Upload</button>
         </div>
       }

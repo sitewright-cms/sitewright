@@ -74,6 +74,9 @@ export const CART_CSS = [
   '[data-sw-cart] [data-sw-part="clear"]{display:block;width:100%;border:0;background:none;color:rgba(0,0,0,.55);cursor:pointer;margin-top:.5rem;font-size:.875rem}',
   // The "added" pulse on an add-to-cart button (runtime toggles data-sw-added briefly).
   '[data-sw-cart-add][data-sw-added="true"]{opacity:.7}',
+  // A brief "bump" on the floating cart when an item is added — the non-interrupting add feedback.
+  '@keyframes sw-cart-bump{0%,100%{transform:none}30%{transform:scale(1.15)}}',
+  '[data-sw-cart] [data-sw-part="toggle"][data-sw-bump]{animation:sw-cart-bump .4s ease}',
 ].join('');
 
 // The runtime. ES5-style (var / function) — served raw, never transpiled, like the other
@@ -248,9 +251,11 @@ export const CART_JS = `(function(){
       if(existing){if(existing.qty<MAX_QTY){existing.qty+=1;}}
       else{if(items.length>=MAX_LINES){return;}items.push({sku:String(sku).slice(0,200),name:(btn.getAttribute('data-name')||sku).slice(0,300),price:price,image:(btn.getAttribute('data-image')||'').slice(0,2048),qty:1});}
       persist();
-      // brief visual ack on the button, then open the drawer so the customer sees what they added.
+      // Feedback WITHOUT interrupting browsing (so multiple items can be added in a row): pulse the
+      // button, bump the floating cart, and update its count badge (in render()). The cart toggle is
+      // the affordance to open the drawer + check out — we don't pop a modal on every add.
       btn.setAttribute('data-sw-added','true');setTimeout(function(){btn.removeAttribute('data-sw-added');},800);
-      if(typeof dialog.showModal==='function'){dialog.showModal();}else{dialog.setAttribute('open','');}
+      toggle.setAttribute('data-sw-bump','1');setTimeout(function(){toggle.removeAttribute('data-sw-bump');},400);
     }
 
     toggle.addEventListener('click',function(){if(typeof dialog.showModal==='function'){dialog.showModal();}else{dialog.setAttribute('open','');}});

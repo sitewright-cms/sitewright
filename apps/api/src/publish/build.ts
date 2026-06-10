@@ -47,6 +47,10 @@ import {
   treeUsesRipple,
   RIPPLE_CSS,
   RIPPLE_JS,
+  usesCart,
+  treeUsesCart,
+  CART_CSS,
+  CART_JS,
 } from '@sitewright/blocks';
 import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
 import { companyToOrganization } from './company-seo.js';
@@ -64,6 +68,8 @@ const ANIMATION_SCRIPT = 'animations.js';
 const LAZYLOAD_SCRIPT = 'lazyload.js';
 /** The ripple (waves-effect) runtime, written at the site root and linked per page. */
 const RIPPLE_SCRIPT = 'ripple.js';
+/** The MINI SHOP cart runtime, written at the site root and linked per page. */
+const CART_SCRIPT = 'cart.js';
 
 /** A static `{{> name}}` / `{{#> name}}` partial include (snippet names are identifier-safe). */
 const PARTIAL_REF = /\{\{~?\s*#?>\s*([a-zA-Z][a-zA-Z0-9_-]*)/g;
@@ -399,6 +405,9 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     const usesAnims = usesMarker(treeUsesAnimations, usesAnimations);
     const usesLazy = usesMarker(treeUsesLazyload, usesLazyload);
     const usesWaves = usesMarker(treeUsesRipple, usesRipple);
+    // MINI SHOP cart runtime — ships only when a page/slot uses the {{sw-cart}}/{{sw-add-to-cart}}
+    // helpers (or the rendered data-sw-cart marker in a raw Html embed). Same only-used-ships discipline.
+    const usesCartRuntime = usesMarker(treeUsesCart, usesCart);
     // Public form definitions (recipient stripped) + the absolute submission
     // endpoint for exported `Form` blocks. Built once (same for every page).
     const forms: Record<string, FormPublic> = Object.fromEntries(
@@ -500,7 +509,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // `json_data` is the publish-time snapshot of `website.jsonDataUrl` (full object — a
           // code-first page/slot can `{{#each website.json_data.items}}`). siteUrl is the only
           // OTHER website field exposed; the raw head/criticalCss/scripts blobs are never surfaced.
-          website: { siteUrl: website?.siteUrl, json_data: opts.jsonData, data: website?.data },
+          website: { siteUrl: website?.siteUrl, json_data: opts.jsonData, data: website?.data, shop: website?.shop },
           // `page.children` — this page's child pages, flattened — built only when the source loops
           // them (keeps each child's `data` off the render unless used). Published subset → no drafts.
           page: {
@@ -554,12 +563,14 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           ...(usesAnims ? [ANIMATION_CSS] : []),
           ...(usesLazy ? [LAZYLOAD_CSS] : []),
           ...(usesWaves ? [RIPPLE_CSS] : []),
+          ...(usesCartRuntime ? [CART_CSS] : []),
         ];
         const pageScripts = [
           ...(usesComponents && components.js ? [`${siteRoot}${COMPONENT_SCRIPT}`] : []),
           ...(usesAnims ? [`${siteRoot}${ANIMATION_SCRIPT}`] : []),
           ...(usesLazy ? [`${siteRoot}${LAZYLOAD_SCRIPT}`] : []),
           ...(usesWaves ? [`${siteRoot}${RIPPLE_SCRIPT}`] : []),
+          ...(usesCartRuntime ? [`${siteRoot}${CART_SCRIPT}`] : []),
         ];
         const html = renderDocument(page, {
           brand,
@@ -672,6 +683,12 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
       await writeFile(join(tmp, RIPPLE_SCRIPT), RIPPLE_JS, 'utf8');
       bytes += Buffer.byteLength(RIPPLE_JS);
+    }
+    // The MINI SHOP cart runtime (first-party behavior; only-used-ships).
+    if (usesCartRuntime) {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
+      await writeFile(join(tmp, CART_SCRIPT), CART_JS, 'utf8');
+      bytes += Buffer.byteLength(CART_JS);
     }
 
     // robots.txt (always) + sitemap.xml (only when a production site URL is set).

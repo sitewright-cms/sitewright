@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { JsonObjectStoreSchema } from './json-store.js';
+import { targetsPrivateHost } from './primitives.js';
 
 // Bounded to limit build-output amplification (these fields are injected into
 // every page of a publish, up to MAX_BUNDLE.pages). CSS is smaller than the
@@ -15,6 +16,114 @@ const HTML_MAX = 20_000;
 // `json-store.ts`.
 /** The `website.data` editable JSON store — a root OBJECT (the shared bounded, prototype-safe store). */
 export const WebsiteDataSchema = JsonObjectStoreSchema;
+
+// --- shop (MINI SHOP): front-end-driven cart configuration ---------------------------------------
+// A "mini shop" is FRONT-END only: the browser builds a cart in localStorage and hands its contents
+// to a submission CHANNEL (a WhatsApp / mailto deep link, or a payment link). There is NO server-side
+// cart and NO payment capture — the submitted cart is an order INQUIRY and the prices are
+// NON-AUTHORITATIVE (client-tamperable). The merchant confirms price + availability and collects
+// payment out-of-band. Every field here is PUBLIC by nature (it is how a customer reaches the
+// merchant) and is emitted into the published HTML on the cart mount for the first-party `cart.js`
+// runtime to read — see packages/blocks/src/cart.ts and the `{{sw-cart}}` helper. PR-2 adds a `form`
+// channel (cart → an order Form). A `Shop` block + a settings UI arrive in PR-3.
+const SHOP_LABEL_MAX = 60;
+const KNOWN_PAYMENT_PLACEHOLDERS = new Set(['{total}', '{currency}', '{items}']);
+
+/** True if `value` contains an ASCII control char (CR/LF must not reach a mail Subject header). */
+function shopHasControlChars(value: string): boolean {
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i);
+    if (code <= 0x1f || code === 0x7f) return true;
+  }
+  return false;
+}
+
+/** Display currency for the cart subtotal. Formatting is client-side + display-only (non-authoritative). */
+export const ShopCurrencySchema = z.object({
+  /** ISO 4217 alphabetic code, e.g. `USD`, `EUR`, `JPY`. */
+  code: z.string().regex(/^[A-Z]{3}$/, 'currency code must be a 3-letter ISO 4217 code (e.g. USD, EUR)'),
+  /** Display symbol, e.g. `$`, `€`, `CHF`. */
+  symbol: z.string().min(1).max(8),
+  /** Symbol placement around the amount. */
+  position: z.enum(['before', 'after']).default('before'),
+  /** Fraction digits shown (0 for JPY, 2 for most). */
+  decimals: z.number().int().min(0).max(4).default(2),
+});
+export type ShopCurrency = z.infer<typeof ShopCurrencySchema>;
+
+const shopChannelLabel = z.string().min(1).max(SHOP_LABEL_MAX).optional();
+
+/** Order via a WhatsApp deep link (`wa.me/<number>?text=<order>`) — zero backend. */
+const WhatsappChannelSchema = z.object({
+  kind: z.literal('whatsapp'),
+  label: shopChannelLabel,
+  /** Recipient in E.164 (`+` then 7–15 digits, no leading 0); cart.js strips the `+` for wa.me. */
+  number: z.string().regex(/^\+[1-9]\d{6,14}$/, 'number must be E.164, e.g. +14155550123'),
+  /** Optional intro line prepended to the auto-built order text (URL-encoded by cart.js). */
+  intro: z.string().max(280).optional(),
+});
+
+/** Order via a `mailto:` deep link — zero backend. */
+const MailtoChannelSchema = z.object({
+  kind: z.literal('mailto'),
+  label: shopChannelLabel,
+  email: z.string().email().max(320),
+  /** Optional subject; lands in a mail Subject header → reject control chars. */
+  subject: z
+    .string()
+    .max(200)
+    .refine((v) => !shopHasControlChars(v), 'subject must not contain control characters')
+    .optional(),
+});
+
+/**
+ * "Pay now" via a payment-provider deep link. `urlTemplate` may contain the placeholders `{total}`
+ * / `{currency}` / `{items}`, substituted client-side before `window.open`. Works cleanly for
+ * amount-bearing links (PayPal.me `…/{total}`); fixed-amount links (Stripe Payment Links) are also
+ * valid (no placeholder). The opened amount is CLIENT-CONTROLLED and therefore non-authoritative —
+ * the merchant must reconcile the paid amount against the order.
+ */
+const PaymentChannelSchema = z.object({
+  kind: z.literal('payment'),
+  label: shopChannelLabel,
+  /** Informational provider tag (does not change behavior). */
+  provider: z.enum(['paypal', 'stripe', 'custom']).optional(),
+  urlTemplate: z
+    .string()
+    .max(2048)
+    .url()
+    .refine((u) => /^https:\/\//i.test(u), 'urlTemplate must be an https URL')
+    // `.url()` trims leading/trailing C0/space before validating, so guard the raw value too.
+    .refine((u) => !/\s/.test(u), 'urlTemplate must not contain whitespace')
+    // Only the documented placeholders are allowed — an unknown `{…}` token (e.g. `{amount}`) is a
+    // likely typo that would publish as a literal, so reject it loudly.
+    .refine(
+      (u) => (u.match(/\{[^}]*\}/g) ?? []).every((p) => KNOWN_PAYMENT_PLACEHOLDERS.has(p)),
+      'urlTemplate placeholders must be {total}, {currency}, or {items}',
+    )
+    // A public host only (placeholders neutralized first so the URL parses). Defence-in-depth: the
+    // link is opened client-side, not fetched server-side, but a private/loopback target is never valid.
+    .refine((u) => !targetsPrivateHost(u.replace(/\{[^}]*\}/g, '0')), 'urlTemplate must be a public host'),
+});
+
+/** A submission channel the cart hands its contents to. PR-2 adds a `form` kind. */
+export const ShopChannelSchema = z.discriminatedUnion('kind', [
+  WhatsappChannelSchema,
+  MailtoChannelSchema,
+  PaymentChannelSchema,
+]);
+export type ShopChannel = z.infer<typeof ShopChannelSchema>;
+
+/** Per-project MINI SHOP configuration (front-end cart). Every field is optional. */
+export const ShopSchema = z.object({
+  currency: ShopCurrencySchema.optional(),
+  channels: z.array(ShopChannelSchema).max(8).optional(),
+  /** Override the default "Add to cart" button label (the {{sw-add-to-cart}} default). */
+  addToCartLabel: z.string().min(1).max(SHOP_LABEL_MAX).optional(),
+  /** Cart drawer heading (cart.js default: "Your cart"). */
+  title: z.string().min(1).max(120).optional(),
+});
+export type Shop = z.infer<typeof ShopSchema>;
 
 /**
  * Project-wide website settings — the `website.*` namespace (contentBase's
@@ -160,6 +269,12 @@ const WebsiteSettingsObject = z.object({
     .optional(),
   /** Minify each page's HTML at publish (collapse whitespace, drop comments). Off by default. */
   minifyHtml: z.boolean().optional(),
+  /**
+   * MINI SHOP — front-end-driven cart configuration (currency + submission channels). Exposed to
+   * templates as `{{ website.shop }}` and emitted onto the cart mount by the `{{sw-cart}}` helper for
+   * the first-party cart.js runtime. Front-end only: prices are NON-AUTHORITATIVE (see {@link ShopSchema}).
+   */
+  shop: ShopSchema.optional(),
 });
 
 /**

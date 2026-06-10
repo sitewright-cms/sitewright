@@ -217,6 +217,73 @@ describe('renderTemplate — curated helpers (extensibility)', () => {
   });
 });
 
+describe('renderTemplate — MINI SHOP helpers', () => {
+  it('{{sw-add-to-cart}} emits an escaped add-to-cart button with a canonical numeric price', () => {
+    const out = renderTemplate('{{sw-add-to-cart sku="w1" name="Widget" price="19.90"}}', {});
+    expect(out).toBe('<button type="button" data-sw-cart-add data-sku="w1" data-name="Widget" data-price="19.9">Add to cart</button>');
+  });
+
+  it('{{sw-add-to-cart}} coerces a bad/negative price to 0 and falls back sku→name', () => {
+    expect(renderTemplate('{{sw-add-to-cart name="Free thing" price="nope"}}', {})).toContain('data-price="0"');
+    expect(renderTemplate('{{sw-add-to-cart name="X" price="-5"}}', {})).toContain('data-price="0"');
+    // No sku → the name becomes the sku key.
+    expect(renderTemplate('{{sw-add-to-cart name="X" price="1"}}', {})).toContain('data-sku="X"');
+    // Neither sku nor name → nothing emitted.
+    expect(renderTemplate('[{{sw-add-to-cart price="1"}}]', {})).toBe('[]');
+  });
+
+  it('{{sw-add-to-cart}} keeps a quote/ampersand name from breaking out of the attribute', () => {
+    // Hostile value via context (a Handlebars string literal can't itself contain a `"`). A double-quote
+    // must stay escaped after the resolveDirectives parse→serialize round-trip → no attribute breakout.
+    const out = renderTemplate('{{sw-add-to-cart sku="x" name=data.evil}}', {
+      data: { evil: 'A&B" onerror=alert(1) z="' },
+    });
+    expect(out).not.toContain('" onerror='); // the quote stays &quot; → cannot break out
+    expect(out).toContain('&quot;');
+    expect(out).toContain('A&amp;B');
+  });
+
+  it('{{sw-add-to-cart}} drops an unsafe image url, keeps a safe one', () => {
+    expect(renderTemplate('{{sw-add-to-cart sku="x" name="A" image="javascript:alert(1)"}}', {})).not.toContain('data-image');
+    expect(renderTemplate('{{sw-add-to-cart sku="x" name="A" image="/img/a.png"}}', {})).toContain('data-image="/img/a.png"');
+  });
+
+  it('{{sw-add-to-cart}} uses website.shop.addToCartLabel as the default, label= overrides', () => {
+    const ctxShop = { website: { shop: { addToCartLabel: 'Add to basket' } } };
+    expect(renderTemplate('{{sw-add-to-cart sku="x" name="A" price="1"}}', ctxShop)).toContain('>Add to basket</button>');
+    expect(renderTemplate('{{sw-add-to-cart sku="x" name="A" price="1" label="Buy"}}', ctxShop)).toContain('>Buy</button>');
+  });
+
+  it('{{sw-cart}} emits the mount with currency + channels JSON from website.shop', () => {
+    const ctxShop = {
+      website: {
+        shop: {
+          currency: { code: 'EUR', symbol: '€', position: 'after', decimals: 2 },
+          title: 'Your basket',
+          channels: [
+            { kind: 'whatsapp', number: '+14155550123', label: 'WhatsApp' },
+            { kind: 'payment', urlTemplate: 'https://paypal.me/acme/{total}' },
+          ],
+        },
+      },
+    };
+    const out = renderTemplate('{{sw-cart}}', ctxShop);
+    expect(out.startsWith('<div data-sw-cart')).toBe(true);
+    expect(out).toContain('data-currency-symbol="€"');
+    expect(out).toContain('data-currency-code="EUR"');
+    expect(out).toContain('data-currency-pos="after"');
+    expect(out).toContain('data-cart-title="Your basket"');
+    // channels are JSON, attribute-escaped (the JSON quotes become &quot;)
+    expect(out).toContain('data-channels="');
+    expect(out).toContain('&quot;kind&quot;:&quot;whatsapp&quot;');
+    expect(out).toContain('&quot;urlTemplate&quot;:&quot;https://paypal.me/acme/{total}&quot;');
+  });
+
+  it('{{sw-cart}} still emits a bare mount when no shop config is set', () => {
+    expect(renderTemplate('{{sw-cart}}', {})).toBe('<div data-sw-cart></div>');
+  });
+});
+
 describe('renderTemplate — security', () => {
   it('disables prototype access', () => {
     expect(renderTemplate('[{{ company.constructor }}]', ctx)).toBe('[]');

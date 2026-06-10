@@ -55,4 +55,16 @@ describe('resolveTemplateSource (code-first templates)', () => {
     expect(overview!.source).toContain('href="{{sw-url path}}"');
     expect(overview!.source).toContain('{{data.article_excerpt}}');
   });
+
+  it('ships the MINI SHOP storefront template (product grid + add-to-cart + cart mount)', () => {
+    const shop = GLOBAL_TEMPLATES.find((t) => t.id === 'global:shop');
+    expect(shop).toBeDefined();
+    // Loops the products dataset and emits a first-party add-to-cart button + the cart mount.
+    expect(shop!.source).toContain('{{#each data.products}}');
+    expect(shop!.source).toContain('{{sw-add-to-cart');
+    expect(shop!.source).toContain('{{sw-cart}}');
+    // The editable headings are page.data leaves with declared defaults.
+    expect(shop!.source).toContain('data-sw-text="data.heading"');
+    expect(Object.keys(shop!.data as object)).toEqual(expect.arrayContaining(['heading', 'intro']));
+  });
 });

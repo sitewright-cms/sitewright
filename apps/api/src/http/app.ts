@@ -53,6 +53,8 @@ import {
   treeUsesRipple,
   RIPPLE_CSS,
   RIPPLE_JS,
+  usesCart,
+  CART_CSS,
 } from '@sitewright/blocks';
 import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
 import { optimizeImage } from '@sitewright/image-pipeline';
@@ -321,10 +323,15 @@ async function styledSourceDocument(
   const animated = usesAnimations(scanHtml);
   const lazy = usesLazyload(scanHtml);
   const waves = usesRipple(scanHtml);
+  // MINI SHOP: style the add-to-cart buttons in the preview, but do NOT ship the cart runtime here —
+  // cart.js is deliberately INERT in the editor preview so its click handlers + floating drawer never
+  // fight the click-to-edit bridge. The live cart runs on the published /sites/<slug>/ site.
+  const cart = usesCart(scanHtml);
   const inlineStyles = [
     ...(animated ? [ANIMATION_CSS] : []),
     ...(lazy ? [LAZYLOAD_CSS] : []),
     ...(waves ? [RIPPLE_CSS] : []),
+    ...(cart ? [CART_CSS] : []),
     ...(classNames.length > 0
       ? [await compileUtilityCss([classNames.join(' ')], brandToTailwindTheme(brand))]
       : []),
@@ -1455,7 +1462,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           }
           const rendered = await renderPool.render(pageSource, {
             company: brand as unknown as Record<string, unknown>,
-            website: { siteUrl: website?.siteUrl, data: website?.data },
+            website: { siteUrl: website?.siteUrl, data: website?.data, shop: website?.shop },
             page: previewPage,
             parentPage: previewParent,
             data: localeData,
@@ -1475,7 +1482,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // `{{> snippet}}` is intentionally unavailable in a slot (no WYSIWYG drift).
           const slotCtx = {
             company: brand as unknown as Record<string, unknown>,
-            website: { siteUrl: website?.siteUrl, data: website?.data },
+            website: { siteUrl: website?.siteUrl, data: website?.data, shop: website?.shop },
             page: previewPage,
             parentPage: previewParent,
             data: localeData,

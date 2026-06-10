@@ -16,7 +16,18 @@ describe('cart stylesheet', () => {
     expect(CART_CSS).toContain('position:fixed !important'); // .waves-effect must not unpin the floating toggle
     expect(CART_CSS).toContain('overflow:visible !important'); // …nor clip its count badge
     expect(CART_CSS).toContain('display:flex;flex-direction:column'); // drawer is a vertical flex container
-    expect(CART_CSS).toContain('[data-sw-part="foot"]{margin-top:auto'); // footer pinned to the bottom
+    // The list flexes to fill (no magic-number max-height) so the foot pins to the bottom via the layout,
+    // not a margin hack; head + foot are fixed-size (flex:none).
+    expect(CART_CSS).toContain('[data-sw-part="items"]{list-style:none;margin:0;padding:.5rem 1.25rem;flex:1 1 auto;min-height:0;overflow-y:auto}');
+    expect(CART_CSS).toContain('[data-sw-part="foot"]{flex:none');
+    expect(CART_CSS).not.toContain('max-height:calc(100% - 16rem)'); // the fragile magic constant is gone
+  });
+
+  it('overrides the <dialog> UA max-height so the drawer fills the full viewport height (not ~38px short)', () => {
+    // Chromium's UA sheet clamps a <dialog> to max-height:calc(100% - 6px - 2em); without our override the
+    // drawer renders ~38px shorter than the viewport despite height:100vh. dvh tracks the visible viewport.
+    expect(CART_CSS).toContain('max-height:100vh;max-height:100dvh');
+    expect(CART_CSS).toContain('height:100vh;height:100dvh'); // [open] full height, dvh-aware
   });
 
   it('cannot break out of a <style> block', () => {

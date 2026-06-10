@@ -130,6 +130,7 @@ export class OAuthRepository {
   async redeemAuthCode(
     input: { code: string; clientId: string; redirectUri: string; codeVerifier: string },
     now: Date = new Date(),
+    refreshExpiresAt?: Date,
   ): Promise<IssuedTokens> {
     const id = hashApiToken(input.code);
     const [row] = await this.db.select().from(oauthAuthCodes).where(eq(oauthAuthCodes.id, id));
@@ -157,7 +158,7 @@ export class OAuthRepository {
         .where(and(eq(oauthAuthCodes.id, id), isNull(oauthAuthCodes.consumedAt)))
         .returning({ id: oauthAuthCodes.id });
       if (consumed.length === 0) throw new OAuthError('invalid_grant', 'authorization code already used');
-      return this.issueTokens(exec, grant, now);
+      return this.issueTokens(exec, grant, now, refreshExpiresAt ? { refreshExpiresAt } : undefined);
     });
   }
 
@@ -166,11 +167,14 @@ export class OAuthRepository {
    * already rotated (reuse) is theft: the whole chain AND the user's in-flight
    * OAuth access tokens for the project are revoked. The new refresh inherits the
    * original absolute expiry, so activity renews access but can't extend the
-   * session past its cap.
+   * session past its cap. `maxRefreshExpiresAt` (the CURRENT instance cap) clamps it
+   * further so that an admin lowering the session length tightens existing sessions
+   * on their next refresh — the rotated token never outlives the smaller of the two.
    */
   async refresh(
     input: { refreshToken: string; clientId: string },
     now: Date = new Date(),
+    maxRefreshExpiresAt?: Date,
   ): Promise<IssuedTokens> {
     const id = hashApiToken(input.refreshToken);
     const [row] = await this.db.select().from(oauthRefreshTokens).where(eq(oauthRefreshTokens.id, id));
@@ -202,7 +206,13 @@ export class OAuthRepository {
         .where(and(eq(oauthRefreshTokens.id, id), isNull(oauthRefreshTokens.rotatedTo), isNull(oauthRefreshTokens.revokedAt)))
         .returning({ id: oauthRefreshTokens.id });
       if (claimed.length === 0) throw new OAuthError('invalid_grant', 'refresh token reuse detected');
-      return this.issueTokens(exec, grant, now, { refreshExpiresAt: row.expiresAt, refresh: nextRefresh });
+      // Clamp to the SMALLER of the original cap and the current instance cap — only ever
+      // shortens the window (a tightened cap takes effect now; a raised one never extends past
+      // what was originally issued).
+      const refreshExpiresAt = maxRefreshExpiresAt
+        ? new Date(Math.min(row.expiresAt.getTime(), maxRefreshExpiresAt.getTime()))
+        : row.expiresAt;
+      return this.issueTokens(exec, grant, now, { refreshExpiresAt, refresh: nextRefresh });
     });
   }
 
@@ -284,6 +294,7 @@ export class OAuthRepository {
   async redeemDeviceCode(
     input: { deviceCode: string; clientId: string },
     now: Date = new Date(),
+    refreshExpiresAt?: Date,
   ): Promise<IssuedTokens> {
     const id = hashApiToken(input.deviceCode);
     const [row] = await this.db.select().from(oauthDeviceCodes).where(eq(oauthDeviceCodes.id, id));
@@ -317,7 +328,7 @@ export class OAuthRepository {
         .where(and(eq(oauthDeviceCodes.id, id), isNull(oauthDeviceCodes.consumedAt)))
         .returning({ id: oauthDeviceCodes.id });
       if (consumed.length === 0) throw new OAuthError('invalid_grant', 'device code already redeemed');
-      return this.issueTokens(exec, grant, now);
+      return this.issueTokens(exec, grant, now, refreshExpiresAt ? { refreshExpiresAt } : undefined);
     });
   }
 
@@ -395,6 +406,29 @@ export class OAuthRepository {
           isNull(apiKeys.revokedAt),
         ),
       );
+  }
+
+  /**
+   * Fully disconnect a user's OAuth agent sessions for a project: revoke every non-revoked refresh
+   * token (so it can't refresh back in) AND every in-flight OAuth access token. Used by the editor's
+   * "disconnect agent" action — the per-key access-token revoke alone wouldn't stop a refresh.
+   */
+  async revokeAllForUserProject(userId: string, projectId: string, now: Date = new Date()): Promise<void> {
+    // Both revokes in one transaction so a concurrent refresh can't slip a freshly-rotated
+    // token + access key in between them: SQLite serializes writers, so the rotation either
+    // commits first (and we then catch its new rows) or after (where its isNull(revokedAt)
+    // rotation claim fails) — disconnect is therefore complete with no surviving access token.
+    await this.db.transaction(async (tx) => {
+      const exec = tx as unknown as Executor;
+      await exec
+        .update(oauthRefreshTokens)
+        .set({ revokedAt: now })
+        .where(and(eq(oauthRefreshTokens.userId, userId), eq(oauthRefreshTokens.projectId, projectId), isNull(oauthRefreshTokens.revokedAt)));
+      await exec
+        .update(apiKeys)
+        .set({ revokedAt: now })
+        .where(and(eq(apiKeys.source, 'oauth'), eq(apiKeys.createdBy, userId), eq(apiKeys.projectId, projectId), isNull(apiKeys.revokedAt)));
+    });
   }
 }
 

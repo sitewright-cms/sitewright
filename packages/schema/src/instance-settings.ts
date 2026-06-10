@@ -91,8 +91,18 @@ export const InstanceSettingsStoredSchema = z.object({
   formModes: FormModesSchema.default(DEFAULT_FORM_MODES),
   /** Admin override for the agent (MCP) system instructions; unset → the built-in default is served. */
   agentInstructions: AgentInstructionsSchema.optional(),
+  /**
+   * How long an agent (MCP/OAuth) connection stays valid before re-consent is required — the absolute
+   * refresh-token / session cap, in HOURS. Unset → the built-in default (8h). Raise it for connected
+   * agents that work across days; lower it to tighten the window. Refresh tokens still rotate + are
+   * theft-detected regardless.
+   */
+  agentSessionHours: z.number().int().min(1).max(720).optional(),
 });
 export type InstanceSettingsStored = z.infer<typeof InstanceSettingsStoredSchema>;
+
+/** Built-in default agent session cap when the admin hasn't set one. */
+export const DEFAULT_AGENT_SESSION_HOURS = 8;
 
 // ---- Input (the admin PUT body) ----
 // Secrets are plaintext and OPTIONAL: omit the password/secret to keep the one
@@ -131,6 +141,9 @@ export const InstanceSettingsInputSchema = z.object({
   // Agent instructions override: a string sets it, `null` clears it (revert to the built-in
   // default), and an absent (undefined) value leaves the stored override unchanged.
   agentInstructions: AgentInstructionsSchema.nullable().optional(),
+  // Agent session cap (hours): a number sets it, `null` clears it (revert to the 8h default),
+  // and an absent value leaves the stored one unchanged.
+  agentSessionHours: z.number().int().min(1).max(720).nullable().optional(),
 });
 export type InstanceSettingsInput = z.infer<typeof InstanceSettingsInputSchema>;
 
@@ -166,6 +179,8 @@ export interface InstanceSettingsPublic {
   formModes: FormModes;
   /** The admin override for agent instructions (NOT a secret), or absent when using the default. */
   agentInstructions?: string;
+  /** The agent session cap in hours, or absent when using the 8h default. */
+  agentSessionHours?: number;
 }
 
 /** Masks a stored SMTP config to its public view (password → hasPassword flag). */
@@ -188,5 +203,6 @@ export function maskInstanceSettings(stored: InstanceSettingsStored): InstanceSe
     };
   }
   if (stored.agentInstructions !== undefined) result.agentInstructions = stored.agentInstructions;
+  if (stored.agentSessionHours !== undefined) result.agentSessionHours = stored.agentSessionHours;
   return result;
 }

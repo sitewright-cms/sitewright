@@ -18,6 +18,8 @@ export interface OAuthDeps {
   projects: ProjectRepository;
   /** Resolves the session user id, or null when unauthenticated. */
   currentUserId: (req: FastifyRequest) => Promise<string | null>;
+  /** Supplies the admin-configurable agent-session (refresh) cap applied to newly-issued tokens. */
+  instanceSettings: { getAgentSessionMs(): Promise<number> };
   rl: (max: number) => { rateLimit: { max: number; timeWindow: string } };
 }
 
@@ -91,7 +93,9 @@ function redirectWith(redirectUri: string, params: Record<string, string>): stri
  * rest of the API validates.
  */
 export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void {
-  const { oauth, clients, db, projects, currentUserId, rl } = deps;
+  const { oauth, clients, db, projects, currentUserId, instanceSettings, rl } = deps;
+  /** Absolute refresh-token expiry for a NEWLY-issued grant = now + the admin's agent-session cap. */
+  const sessionExpiry = async (): Promise<Date> => new Date(Date.now() + (await instanceSettings.getAgentSessionMs()));
 
   // Resolves a client_id to its display name + redirect validator: the built-in
   // CLI client (loopback redirects), or a dynamically-registered client
@@ -428,12 +432,11 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
           if (!b.code || !b.client_id || !b.redirect_uri || !b.code_verifier) {
             return fail(400, 'invalid_request', 'missing required parameter');
           }
-          const tokens = await oauth.redeemAuthCode({
-            code: b.code,
-            clientId: b.client_id,
-            redirectUri: b.redirect_uri,
-            codeVerifier: b.code_verifier,
-          });
+          const tokens = await oauth.redeemAuthCode(
+            { code: b.code, clientId: b.client_id, redirectUri: b.redirect_uri, codeVerifier: b.code_verifier },
+            new Date(),
+            await sessionExpiry(),
+          );
           return reply.send({
             access_token: tokens.accessToken,
             token_type: 'Bearer',
@@ -444,7 +447,8 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
         }
         if (b.grant_type === 'refresh_token') {
           if (!b.refresh_token || !b.client_id) return fail(400, 'invalid_request', 'missing required parameter');
-          const tokens = await oauth.refresh({ refreshToken: b.refresh_token, clientId: b.client_id });
+          // Pass the CURRENT instance cap so a lowered session length tightens this rotation.
+          const tokens = await oauth.refresh({ refreshToken: b.refresh_token, clientId: b.client_id }, new Date(), await sessionExpiry());
           return reply.send({
             access_token: tokens.accessToken,
             token_type: 'Bearer',
@@ -455,7 +459,7 @@ export function registerOAuthRoutes(app: FastifyInstance, deps: OAuthDeps): void
         }
         if (b.grant_type === 'urn:ietf:params:oauth:grant-type:device_code') {
           if (!b.device_code || !b.client_id) return fail(400, 'invalid_request', 'missing required parameter');
-          const tokens = await oauth.redeemDeviceCode({ deviceCode: b.device_code, clientId: b.client_id });
+          const tokens = await oauth.redeemDeviceCode({ deviceCode: b.device_code, clientId: b.client_id }, new Date(), await sessionExpiry());
           return reply.send({
             access_token: tokens.accessToken,
             token_type: 'Bearer',

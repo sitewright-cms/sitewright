@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 
-const { publishStatus, publish, archiveUrl, getSettings, listDeployTargets } = vi.hoisted(() => ({
+const { publishStatus, publish, archiveUrl, getSettings, listDeployTargets, listAgentConnections } = vi.hoisted(() => ({
   publishStatus: vi.fn(),
   publish: vi.fn(),
   archiveUrl: vi.fn<(id: string) => string>(() => '/projects/p/publish/archive'),
@@ -11,6 +11,8 @@ const { publishStatus, publish, archiveUrl, getSettings, listDeployTargets } = v
   ),
   // No saved deploy targets by default → no header Deploy button.
   listDeployTargets: vi.fn<(id: string) => Promise<{ items: unknown[] }>>(() => Promise.resolve({ items: [] })),
+  // The AgentDetailsModal (opened from the pill) loads connections on mount.
+  listAgentConnections: vi.fn<(id: string) => Promise<{ items: unknown[] }>>(() => Promise.resolve({ items: [] })),
 }));
 vi.mock('../src/api', () => ({
   api: {
@@ -19,6 +21,7 @@ vi.mock('../src/api', () => ({
     archiveUrl: (id: string) => archiveUrl(id),
     getSettings: (id: string) => getSettings(id),
     listDeployTargets: (id: string) => listDeployTargets(id),
+    listAgentConnections: (id: string) => listAgentConnections(id),
   },
   eventsUrl: (id: string) => `/projects/${id}/events`,
 }));
@@ -128,6 +131,24 @@ describe('PublishBar', () => {
     act(() => vi.advanceTimersByTime(12_001)); // …so advancing fires it
     expect(screen.queryByText('Agent editing…')).toBeNull();
     vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('opens the AI agent details modal when the "Agent editing" pill is clicked', async () => {
+    const listeners: Array<(e: { data: string }) => void> = [];
+    class CtrlEventSource {
+      addEventListener(_type: string, cb: (e: { data: string }) => void) {
+        listeners.push(cb);
+      }
+      close() {}
+    }
+    vi.stubGlobal('EventSource', CtrlEventSource);
+    publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false });
+    render(<PublishBar project={project} />);
+    await screen.findByRole('link', { name: /Preview/ });
+    act(() => listeners.forEach((cb) => cb({ data: JSON.stringify({ kind: 'page', entityId: 'home', op: 'put', actor: 'agent' }) })));
+    (await screen.findByText('Agent editing…')).click();
+    expect(await screen.findByRole('heading', { name: 'AI agent details' })).toBeInTheDocument();
     vi.unstubAllGlobals();
   });
 

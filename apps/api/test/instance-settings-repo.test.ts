@@ -123,3 +123,16 @@ describe('InstanceSettingsRepository', () => {
     ).rejects.toBeInstanceOf(EncryptionUnavailableError);
   });
 });
+
+describe('agent session cap', () => {
+  it('defaults to 8h and is admin-configurable (null reverts to the default)', async () => {
+    const repo = new InstanceSettingsRepository(db, KEY);
+    expect(await repo.getAgentSessionMs()).toBe(8 * 60 * 60 * 1000);
+    const pub = await repo.put({ agentSessionHours: 24 });
+    expect(pub.agentSessionHours).toBe(24);
+    expect(await repo.getAgentSessionMs()).toBe(24 * 60 * 60 * 1000);
+    await repo.put({ agentSessionHours: null }); // clear → back to default
+    expect(await repo.getAgentSessionMs()).toBe(8 * 60 * 60 * 1000);
+    expect((await repo.getPublic()).agentSessionHours).toBeUndefined();
+  });
+});

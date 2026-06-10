@@ -219,6 +219,8 @@ export interface ApiKeyView {
   revokedAt: string | null;
   lastUsedAt: string | null;
   createdAt: string;
+  /** `pat` = a user-minted token; `oauth` = an MCP/agent OAuth session. */
+  source: 'pat' | 'oauth';
 }
 export interface CreateApiKeyBody {
   name: string;
@@ -409,6 +411,9 @@ export const api = {
   // --- project API keys (bearer tokens for the CLI / MCP bridge) ---
   listApiKeys: (projectId: string) =>
     request<{ items: ApiKeyView[] }>('GET', `/projects/${projectId}/api-keys`),
+  /** Active agent connections (PATs + OAuth/MCP sessions) — for the AI agent details modal. */
+  listAgentConnections: (projectId: string) =>
+    request<{ items: ApiKeyView[] }>('GET', `/projects/${projectId}/agent-connections`),
   createApiKey: (projectId: string, body: CreateApiKeyBody) =>
     request<{ token: string; key: ApiKeyView }>('POST', `/projects/${projectId}/api-keys`, body),
   deleteApiKey: (projectId: string, id: string) =>

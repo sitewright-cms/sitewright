@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { DEFAULT_AGENT_INSTRUCTIONS, MCP_TOOL_CATALOG } from '@sitewright/schema';
+import { DEFAULT_AGENT_INSTRUCTIONS, DEFAULT_AGENT_SESSION_HOURS, MCP_TOOL_CATALOG } from '@sitewright/schema';
 import { api, type InstanceSettingsInput, type InstanceSettingsPublic } from '../api';
 import { glassCard, glassInput, primaryButton } from '../theme';
 import { SkeletonList } from './ui/Skeleton';
@@ -12,6 +12,9 @@ const FORM_MODE_LABELS: Array<{ key: keyof InstanceSettingsPublic['formModes']; 
 ];
 
 const EMPTY_MODES = { globalSmtp: false, userSmtp: false, contactPhp: false, thirdParty: false };
+
+/** Coerce the agent-session field to the server-accepted integer range [1, 720] (hours). */
+const clampSessionHours = (n: number): number => Math.max(1, Math.min(720, Math.round(n)));
 
 /**
  * Instance admin → settings: the global mail transport, hCaptcha keys, and which
@@ -29,6 +32,9 @@ export function InstanceSettings() {
   // The hydrated value, so save only sends agentInstructions when the admin actually edited it
   // (an unrelated save must never touch the stored override).
   const initialInstructionsRef = useRef(DEFAULT_AGENT_INSTRUCTIONS);
+  // The agent session cap (hours) — how long an MCP/OAuth connection lasts before re-consent.
+  const [agentSessionHours, setAgentSessionHours] = useState(DEFAULT_AGENT_SESSION_HOURS);
+  const initialSessionHoursRef = useRef(DEFAULT_AGENT_SESSION_HOURS);
 
   const [modes, setModes] = useState<InstanceSettingsPublic['formModes']>(EMPTY_MODES);
 
@@ -76,6 +82,9 @@ export function InstanceSettings() {
     const instr = s.agentInstructions ?? DEFAULT_AGENT_INSTRUCTIONS;
     setAgentInstructions(instr);
     initialInstructionsRef.current = instr;
+    const hours = s.agentSessionHours ?? DEFAULT_AGENT_SESSION_HOURS;
+    setAgentSessionHours(hours);
+    initialSessionHoursRef.current = hours;
   }
 
   useEffect(() => {
@@ -126,6 +135,12 @@ export function InstanceSettings() {
       const trimmedInstructions = agentInstructions.trim();
       input.agentInstructions =
         trimmedInstructions === '' || trimmedInstructions === DEFAULT_AGENT_INSTRUCTIONS.trim() ? null : agentInstructions;
+    }
+    // Only touch the session cap when changed: clamp to the valid range, then the default value
+    // sends null (revert) and any other value sends the number.
+    const clampedHours = clampSessionHours(agentSessionHours);
+    if (clampedHours !== initialSessionHoursRef.current) {
+      input.agentSessionHours = clampedHours === DEFAULT_AGENT_SESSION_HOURS ? null : clampedHours;
     }
     try {
       const res = await api.putInstanceSettings(input);
@@ -340,6 +355,33 @@ export function InstanceSettings() {
         >
           Reset to default
         </button>
+      </fieldset>
+
+      <fieldset className={`${glassCard} p-4`}>
+        <legend className="px-1 text-sm font-semibold">Agent session length</legend>
+        <p className="mb-3 text-xs text-slate-500">
+          How long an agent connection (MCP / OAuth) stays valid before the user must re-approve — the absolute
+          refresh-token cap. Default {DEFAULT_AGENT_SESSION_HOURS}h. Raise it for agents that work across days;
+          lower it to tighten the window. Refresh tokens still rotate and are theft-detected regardless.
+        </p>
+        <label className="flex items-center gap-2 text-sm text-slate-600">
+          Session length (hours)
+          <input
+            type="number"
+            min={1}
+            max={720}
+            aria-label="Agent session hours"
+            className={`${glassInput} w-28`}
+            value={agentSessionHours}
+            // Accept what's typed (including transient values mid-edit); save() clamps to [1, 720].
+            // An empty/non-numeric field keeps the current value rather than snapping to the default.
+            onChange={(e) => {
+              const n = e.target.valueAsNumber;
+              if (!Number.isNaN(n)) setAgentSessionHours(n);
+            }}
+            onBlur={() => setAgentSessionHours((h) => clampSessionHours(h))}
+          />
+        </label>
       </fieldset>
 
       <div className="flex items-center gap-3">

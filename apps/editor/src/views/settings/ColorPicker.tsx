@@ -173,7 +173,8 @@ function FormatField({ fmt, rgba, onParsed }: { fmt: ColorFormat; rgba: Rgba; on
 /**
  * Shared popover dismissal for the swatch + card triggers: closes on an outside pointerdown or
  * Escape while open. Returns the wrapper ref to put on the popover's root (the "inside" boundary).
- * `setOpen` from `useState` is stable, so the listeners re-bind only when `open` flips.
+ * `setOpen` (a stable useState setter) is intentionally omitted from the deps, so the listeners
+ * bind/unbind only as `open` flips.
  */
 function useColorPopoverDismiss(open: boolean, setOpen: (v: boolean) => void) {
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -191,7 +192,7 @@ function useColorPopoverDismiss(open: boolean, setOpen: (v: boolean) => void) {
       document.removeEventListener('pointerdown', onDown);
       document.removeEventListener('keydown', onKey);
     };
-  }, [open, setOpen]);
+  }, [open]);
   return wrapRef;
 }
 
@@ -211,7 +212,7 @@ export function ColorField({ value, onChange, label }: { value: string; onChange
         type="button"
         aria-label={`Edit ${label}`}
         aria-expanded={open}
-        onClick={() => setOpen(!open)}
+        onClick={() => setOpen((o) => !o)}
         className="block h-7 w-7 rounded-md border border-white/70 shadow-inner outline-none transition hover:ring-2 hover:ring-indigo-300/50 focus-visible:ring-2 focus-visible:ring-indigo-400/70"
         style={SAFE_COLOR.test(value) ? { ...CHECKER } : { background: 'transparent' }}
       >
@@ -245,7 +246,7 @@ export function ColorCard({ title, value, onChange }: { title: string; value: st
         type="button"
         aria-label={`Edit ${title}`}
         aria-expanded={open}
-        onClick={() => setOpen(!open)}
+        onClick={() => setOpen((o) => !o)}
         className="block h-12 w-full rounded-lg border border-white/70 shadow-inner outline-none transition hover:ring-2 hover:ring-indigo-300/50 focus-visible:ring-2 focus-visible:ring-indigo-400/70"
         style={valid ? { ...CHECKER } : { background: 'transparent' }}
       >
@@ -253,7 +254,7 @@ export function ColorCard({ title, value, onChange }: { title: string; value: st
       </button>
       <span className="font-mono text-[11px] text-slate-500">{value || 'Default'}</span>
       {open && (
-        <div role="dialog" aria-modal="true" aria-label={`${title} picker`} className="absolute left-1/2 top-full z-50 mt-1 -translate-x-1/2 rounded-xl border border-white/60 bg-white/95 p-3 shadow-2xl backdrop-blur-xl">
+        <div role="dialog" aria-modal="true" aria-label={`${title} picker`} className="absolute left-0 top-full z-50 mt-1 rounded-xl border border-white/60 bg-white/95 p-3 shadow-2xl backdrop-blur-xl">
           <ColorPicker value={value} onChange={onChange} />
         </div>
       )}

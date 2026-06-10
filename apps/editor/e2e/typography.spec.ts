@@ -68,7 +68,9 @@ test('google fonts: pick a heading webfont, self-host on select, publish loads i
   // it as a kind:font library asset).
   await page.getByRole('button', { name: 'Choose a font for the heading font' }).click();
   const picker = page.getByRole('dialog', { name: 'Choose a heading font' });
-  await picker.getByRole('button', { name: 'Google', exact: true }).click();
+  // Google Fonts is the default tab — its search field shows immediately, no tab switch needed.
+  await expect(picker.getByLabel('Search Google Fonts')).toBeVisible();
+  await picker.getByRole('button', { name: 'Google Fonts', exact: true }).click();
   await picker.getByLabel('Search Google Fonts').fill('Playfair Display');
   await picker.getByTitle('Use Playfair Display 700').first().click();
 
@@ -94,13 +96,14 @@ test('google fonts: pick a heading webfont, self-host on select, publish loads i
   const html = await (await page.request.get(`${base}/`)).text();
   expect(html).toContain('@font-face');
   expect(html).toMatch(/--sw-font-heading:"Playfair Display"/);
-  const m = html.match(/_assets\/([a-f0-9-]+)\/700\.woff2/);
+  // Self-hosted faces are stored as <family-slug>-<weight>.<ext> — e.g. playfair-display-700.woff2.
+  const m = html.match(/_assets\/([a-f0-9-]+)\/playfair-display-700\.woff2/);
   expect(m).toBeTruthy();
-  expect(html).toMatch(/src:url\(_assets\/[a-f0-9-]+\/700\.woff2\) format\("woff2"\)/);
+  expect(html).toMatch(/src:url\(_assets\/[a-f0-9-]+\/playfair-display-700\.woff2\) format\("woff2"\)/);
   expect(html).not.toMatch(/fonts\.(googleapis|gstatic)\.com/);
 
   // And the bundled woff2 is actually served from the published artifact.
-  const woff2 = await page.request.get(`${base}/_assets/${m![1]}/700.woff2`);
+  const woff2 = await page.request.get(`${base}/_assets/${m![1]}/playfair-display-700.woff2`);
   expect(woff2.status()).toBe(200);
   expect(woff2.headers()['content-type']).toBe('font/woff2');
 });
@@ -176,13 +179,14 @@ test('local font upload: upload a .ttf for the body, self-host on save, publish 
   const base = `${origin}${href!.replace(/\/$/, '')}`;
   const html = await (await page.request.get(`${base}/`)).text();
   expect(html).toMatch(/--sw-font-body:"Uploadtest"/);
-  const m = html.match(/_assets\/([a-f0-9-]+)\/400\.ttf/);
+  // The uploaded family "Uploadtest" self-hosts as uploadtest-400.ttf (<family-slug>-<weight>.<ext>).
+  const m = html.match(/_assets\/([a-f0-9-]+)\/uploadtest-400\.ttf/);
   expect(m).toBeTruthy();
-  expect(html).toMatch(/src:url\(_assets\/[a-f0-9-]+\/400\.ttf\) format\("truetype"\)/);
+  expect(html).toMatch(/src:url\(_assets\/[a-f0-9-]+\/uploadtest-400\.ttf\) format\("truetype"\)/);
   expect(html).not.toMatch(/fonts\.(googleapis|gstatic)\.com/);
 
   // The bundled ttf is served from the published artifact with the right type.
-  const ttf = await page.request.get(`${base}/_assets/${m![1]}/400.ttf`);
+  const ttf = await page.request.get(`${base}/_assets/${m![1]}/uploadtest-400.ttf`);
   expect(ttf.status()).toBe(200);
   expect(ttf.headers()['content-type']).toBe('font/ttf');
 });

@@ -137,7 +137,7 @@ export function StockPicker({
 
       {loaded && !selectedAvailable && (
         <p className="mt-2 text-xs text-amber-600">
-          This provider needs an API key. Configure it under Instance settings → Stock image providers.
+          This provider needs an API key. Configure it under System settings → Stock image providers.
         </p>
       )}
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}

@@ -16,8 +16,8 @@ test('create, view, and revoke a project API key from the editor', async ({ page
   await page.getByLabel('Project name').fill('Keyed Site');
   await page.getByLabel('Project slug').fill(`keyed-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
-  await page.getByRole('tab', { name: 'Admin' }).click();
-  await page.getByRole('tab', { name: 'Access' }).click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Access' }).click();
 
   // Create a key.
   await page.getByLabel('API key name').fill('CI deploy');

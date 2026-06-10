@@ -25,41 +25,46 @@ test('admin: edit agent (MCP) instructions, see the endpoint list + connect guid
   }
 
   // A no-projects account auto-opens (and re-opens) the project selector, whose backdrop intercepts
-  // the top-nav Admin button. Create a project to land in a stable, modal-free state (same flow the
-  // other specs use), then open the instance-admin panel.
+  // the header gear. Create a project to land in a stable, modal-free state (same flow the other
+  // specs use), then open the instance-admin panel from the gear menu.
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Admin Co');
   await page.getByLabel('Project slug').fill(`admin-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
-  // Land in the project view (modal-free) before using the top nav — its Pages heading confirms the
-  // selector backdrop is gone so it can't intercept the Admin button.
-  await expect(page.getByRole('heading', { name: 'Pages', level: 2 })).toBeVisible();
+  // The header gear being clickable confirms the selector backdrop is gone.
+  const gear = page.getByRole('button', { name: 'Settings', exact: true });
+  await expect(gear).toBeVisible();
+  await gear.click();
+  await page.getByRole('menuitem', { name: 'System Settings' }).click();
 
-  await page.getByRole('button', { name: 'Admin', exact: true }).click();
+  // System Settings opens AS A MODAL over the project view — scope assertions to it (the header's
+  // own "Connect an agent" agent indicator is also on the page behind the modal).
+  const modal = page.getByRole('dialog', { name: 'System settings' });
+  await expect(modal).toBeVisible();
 
   // Agent-instructions textarea is pre-filled with the built-in default.
-  const instr = page.getByLabel('Agent instructions');
+  const instr = modal.getByLabel('Agent instructions');
   await expect(instr).toBeVisible();
   await expect(instr).toHaveValue(/CODE-FIRST/);
 
   // The endpoint list shows registered MCP tools; the connect guide shows the CLI bridge command.
-  await expect(page.getByText('MCP endpoints')).toBeVisible();
-  await expect(page.getByText('put_page', { exact: true })).toBeVisible();
-  await expect(page.getByText('Connect an agent')).toBeVisible();
-  await expect(page.getByText(/sitewright mcp --url/)).toBeVisible();
+  await expect(modal.getByText('MCP endpoints')).toBeVisible();
+  await expect(modal.getByText('put_page', { exact: true })).toBeVisible();
+  await expect(modal.getByText('Connect an agent')).toBeVisible();
+  await expect(modal.getByText(/sitewright mcp --url/)).toBeVisible();
 
   // Edit + save an override. The save response re-hydrates the textarea from the STORED value, so a
   // value that survives the round-trip proves it persisted. (Cross-reload persistence + the override
   // → default clear are also covered deterministically by the instance-settings repo unit test.)
   await instr.fill('House style: terse, on-brand, accessible.');
-  await page.getByRole('button', { name: 'Save settings' }).click();
-  await expect(page.getByText('Saved.')).toBeVisible();
+  await modal.getByRole('button', { name: 'Save settings' }).click();
+  await expect(modal.getByText('Saved.')).toBeVisible();
   await expect(instr).toHaveValue('House style: terse, on-brand, accessible.');
 
   // Reset to default → save → the round-trip reverts to the built-in default (override cleared).
-  await page.getByRole('button', { name: 'Reset to default' }).click();
+  await modal.getByRole('button', { name: 'Reset to default' }).click();
   await expect(instr).toHaveValue(/CODE-FIRST/);
-  await page.getByRole('button', { name: 'Save settings' }).click();
-  await expect(page.getByText('Saved.')).toBeVisible();
+  await modal.getByRole('button', { name: 'Save settings' }).click();
+  await expect(modal.getByText('Saved.')).toBeVisible();
   await expect(instr).toHaveValue(/CODE-FIRST/);
 });

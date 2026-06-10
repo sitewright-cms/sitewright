@@ -22,16 +22,21 @@ test('client edits a code page’s bound region (content), template stays immuta
   // The auto-created HOME page (empty-slug root) already carries a data-sw-text region the
   // client will edit later — no need to add one.
 
-  // --- Owner: invite a client, capture the invite link ---
-  await page.getByRole('tab', { name: 'Admin' }).click();
-  await page.getByRole('tab', { name: 'Clients' }).click();
-  await page.getByLabel('Client email').fill(clientEmail);
-  await page.getByRole('button', { name: 'Invite client' }).click();
-  const link = (await page.locator('code').first().textContent())?.trim();
+  // --- Owner: invite a client (Settings → Clients modal), capture the invite link ---
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Clients' }).click();
+  const clientsModal = page.getByRole('dialog', { name: 'Clients' });
+  await clientsModal.getByLabel('Client email').fill(clientEmail);
+  await clientsModal.getByRole('button', { name: 'Invite client' }).click();
+  const link = (await clientsModal.locator('code').first().textContent())?.trim();
   expect(link).toContain('/?invite=');
+  // Close the modal before reaching the header gear (the modal backdrop overlays the header).
+  await page.keyboard.press('Escape');
+  await expect(clientsModal).toBeHidden();
 
-  // --- Owner signs out; the client opens the link and registers ---
-  await page.getByRole('button', { name: 'Sign out' }).click();
+  // --- Owner signs out (Settings → Sign out); the client opens the link and registers ---
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Sign out' }).click();
   await expect(page.getByText('Sign in to your account')).toBeVisible();
   await page.goto(link!);
   await expect(page.getByText(/invited/)).toBeVisible();

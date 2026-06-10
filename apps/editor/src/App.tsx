@@ -8,10 +8,11 @@ import { SnippetsPanel, TemplatesPanel } from './views/code/CodeRailPanels';
 import { DataPanel } from './views/datasets/DataPanel';
 import { PublishBar } from './views/PublishBar';
 import { PublishDeployModal } from './views/publish/PublishDeployModal';
+import { HeaderSettingsMenu } from './views/HeaderSettingsMenu';
+import { SettingsModalHost, type SettingsView } from './views/SettingsModalHost';
 import { ProjectSelectorModal } from './views/ProjectSelectorModal';
 import { NewProjectModal } from './views/NewProjectModal';
 import { AcceptInvite } from './views/AcceptInvite';
-import { InstanceSettings } from './views/InstanceSettings';
 import { LivePreview } from './views/LivePreview';
 import { UpdateBanner } from './views/UpdateBanner';
 import { BrandMark } from './views/ui/BrandMark';
@@ -35,7 +36,6 @@ type Stage =
   | { name: 'loading' }
   | { name: 'auth' }
   | { name: 'home' } // no project open — the selector is shown over a quiet backdrop
-  | { name: 'admin' }
   | { name: 'project'; project: Project };
 
 function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | null }) {
@@ -51,6 +51,18 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
   // preview-token link stays current after the options are saved.
   const [publishModalTab, setPublishModalTab] = useState<'publish' | 'deploy' | null>(null);
   const [publishRefresh, setPublishRefresh] = useState(0);
+  // The header gear menu's settings surfaces (System Settings / Clients / Team / Access), each a modal.
+  const [settingsView, setSettingsView] = useState<SettingsView | null>(null);
+
+  async function signOut() {
+    try {
+      await api.logout();
+    } catch {
+      // best-effort; always return to the auth screen
+    }
+    setIsInstanceAdmin(false);
+    setStage({ name: 'auth' });
+  }
 
   async function refresh(): Promise<Project[]> {
     try {
@@ -81,6 +93,7 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
     setTab('pages');
     setStage({ name: 'project', project });
     setSelectorOpen(false);
+    setSettingsView(null); // close any open settings modal so it can't outlive its project
   }
 
   if (stage.name === 'loading') {
@@ -160,8 +173,8 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
         )}
       </div>
 
-      {/* Right: publish (owners) + admin + sign out, grouped at the far right. */}
-      <nav className="flex items-center justify-end gap-4">
+      {/* Right: the publish control (owners) + the unified settings gear menu, far right. */}
+      <nav className="flex items-center justify-end gap-3">
         {inProject && !isClient && (
           <PublishBar
             project={inProject}
@@ -169,37 +182,20 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
             refreshSignal={publishRefresh}
           />
         )}
-        {inProject && !isClient && (
-          <button
-            // Accessible name avoids the substring "Publish" so it doesn't collide with the green
-            // Publish button in role/name queries; the tooltip carries the full label.
-            className="rounded-md px-1.5 text-lg leading-none text-slate-500 transition hover:text-slate-900"
-            aria-label="Site options"
-            title="Publish & deploy options"
-            onClick={() => setPublishModalTab('publish')}
-          >
-            ⋮
-          </button>
-        )}
-        {isInstanceAdmin && stage.name !== 'admin' && (
-          <button className="text-sm text-slate-500 hover:text-slate-900" onClick={() => setStage({ name: 'admin' })}>
-            Admin
-          </button>
-        )}
-        <button
-          className="text-sm text-slate-500 hover:text-slate-900"
-          onClick={async () => {
-            try {
-              await api.logout();
-            } catch {
-              // best-effort; always return to the auth screen
-            }
-            setIsInstanceAdmin(false);
-            setStage({ name: 'auth' });
-          }}
-        >
-          Sign out
-        </button>
+        {/* The gear menu unifies Publish & Deploy Options, System Settings, Clients/Team/Access,
+            and Sign out. Always present when signed in (so Sign out + System Settings never vanish
+            with no project open); each item is gated to its valid context inside the menu. */}
+        <HeaderSettingsMenu
+          inProject={!!inProject}
+          isClient={isClient}
+          isInstanceAdmin={isInstanceAdmin}
+          onPublishDeploy={() => setPublishModalTab('publish')}
+          onSystemSettings={() => setSettingsView('system')}
+          onClients={() => setSettingsView('clients')}
+          onTeam={() => setSettingsView('team')}
+          onAccess={() => setSettingsView('access')}
+          onSignOut={() => void signOut()}
+        />
       </nav>
       </div>
     </header>
@@ -220,7 +216,6 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
           </button>
         </main>
       )}
-      {stage.name === 'admin' && <InstanceSettings />}
       {stage.name === 'project' && <ProjectView key={stage.project.id} project={stage.project} tab={tab} />}
 
       {selectorOpen && (
@@ -254,6 +249,10 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
           onClose={() => setPublishModalTab(null)}
           onSaved={() => setPublishRefresh((n) => n + 1)}
         />
+      )}
+      {/* System Settings / Clients / Team / Access — opened (as modals) from the header gear menu. */}
+      {settingsView && (
+        <SettingsModalHost view={settingsView} project={inProject} onClose={() => setSettingsView(null)} />
       )}
       {/* Always-present edge side-panels (owners): System Library (left), File Manager (right), and
           the bottom rails — Datasets (left), Snippets (center), Templates (right). They render above

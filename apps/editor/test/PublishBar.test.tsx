@@ -30,6 +30,7 @@ vi.mock('../src/views/publish/DeployForm', () => ({ DeployForm: () => <div>DEPLO
 
 import { afterEach } from 'vitest';
 import { PublishBar } from '../src/views/PublishBar';
+import { ToastProvider } from '../src/views/ui/Toast';
 
 const project = { id: 'p', name: 'Acme', slug: 'acme', role: 'owner' as const };
 const release = { publishedAt: '2026-01-01T00:00:00.000Z', routes: 3, bytes: 100 };
@@ -49,12 +50,13 @@ afterEach(() => {
 });
 
 describe('PublishBar', () => {
-  it('is a GREEN Publish button with an "Unpublished changes" hint when dirty', async () => {
+  it('is a GREEN Publish button (with the unpublished-changes title) when dirty', async () => {
     publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: true });
     render(<PublishBar project={project} />);
     const btn = await screen.findByRole('button', { name: 'Publish' });
+    // The dirty state is conveyed by the green button + its title (the persistent status line moved to a toast).
     await waitFor(() => expect(btn.className).toContain('bg-emerald-600'));
-    expect(screen.getByText('Unpublished changes')).toBeInTheDocument();
+    expect(btn).toHaveAttribute('title', 'You have unpublished changes');
   });
 
   it('becomes a PREVIEW link to the published site when everything is published', async () => {
@@ -62,7 +64,6 @@ describe('PublishBar', () => {
     render(<PublishBar project={project} />);
     const preview = await screen.findByRole('link', { name: /Preview/ });
     expect(preview).toHaveAttribute('href', '/sites/acme/');
-    expect(screen.getByText(/Published · 3 pages/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Publish' })).toBeNull();
   });
 
@@ -82,6 +83,18 @@ describe('PublishBar', () => {
     btn.click();
     await waitFor(() => expect(publish).toHaveBeenCalledWith('p'));
     expect(await screen.findByRole('link', { name: /Preview/ })).toHaveAttribute('href', '/sites/acme/');
+  });
+
+  it('surfaces a publish failure as an error toast', async () => {
+    publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: true });
+    publish.mockRejectedValue(new Error('disk full'));
+    render(
+      <ToastProvider>
+        <PublishBar project={project} />
+      </ToastProvider>,
+    );
+    (await screen.findByRole('button', { name: 'Publish' })).click();
+    expect(await screen.findByText('disk full')).toBeInTheDocument();
   });
 
   it('reverts Preview → Publish when a content change arrives on the SSE stream', async () => {

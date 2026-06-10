@@ -85,8 +85,8 @@ describe('StockPicker', () => {
     renderPicker();
     const select = await screen.findByLabelText('Stock provider');
     fireEvent.change(select, { target: { value: 'unsplash' } });
-    // The warning paragraph (distinct from the option label) points to instance settings.
-    expect(screen.getByText(/Configure it under Instance settings/i)).toBeInTheDocument();
+    // The warning paragraph (distinct from the option label) points to System settings.
+    expect(screen.getByText(/Configure it under System settings/i)).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Stock search query'), { target: { value: 'cats' } });
     expect(screen.getByRole('button', { name: 'Search' })).toBeDisabled();
   });

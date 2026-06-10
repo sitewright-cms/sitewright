@@ -30,8 +30,9 @@ test('publish options: enabling a preview token gates the live site behind ?toke
   // Before the token: the live site is openly reachable.
   expect((await page.request.get(`${baseURL}/sites/${slug}/`)).status()).toBe(200);
 
-  // Open the header overflow (⋮ "Site options") → Publish & deploy options modal → require a token + save.
-  await page.getByRole('button', { name: 'Site options' }).click();
+  // Open the header gear → "Publish & Deploy Options" → require a token + save.
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Publish & Deploy Options' }).click();
   const modal = page.getByRole('dialog', { name: 'Publish & deploy options' });
   await expect(modal).toBeVisible();
   await modal.getByRole('switch', { name: 'Require a preview token' }).click();

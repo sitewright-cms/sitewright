@@ -94,17 +94,19 @@ export const GLOBAL_TEMPLATES: readonly Template[] = [
     id: 'global:shop',
     name: 'Shop (global)',
     source: `<section class="mx-auto max-w-6xl px-6 py-16">
-  <h1 class="mb-2 text-4xl font-bold" data-sw-text="data.heading">Shop</h1>
-  <p class="mb-10 text-base-content/60" data-sw-text="data.intro">Browse our products and build your order.</p>
+  <header class="mb-12 text-center">
+    <h1 class="text-4xl font-bold sm:text-5xl" data-sw-text="data.heading">Shop</h1>
+    <p class="mx-auto mt-3 max-w-xl text-base-content/60" data-sw-text="data.intro">Browse our products and build your order.</p>
+  </header>
   <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
     {{#each data.products}}
-    <div class="card bg-base-100 shadow-sm">
-      {{#if image}}<figure><img src="{{sw-url image}}" alt="{{name}}" class="aspect-video w-full object-cover"></figure>{{/if}}
-      <div class="card-body">
-        <h2 class="card-title">{{name}}</h2>
+    <div class="card overflow-hidden bg-base-100 shadow-sm transition hover:shadow-md">
+      {{#if image}}<figure class="aspect-square overflow-hidden bg-base-200"><img src="{{sw-url image}}" alt="{{name}}" class="h-full w-full object-cover transition duration-500 hover:scale-105"></figure>{{/if}}
+      <div class="card-body gap-2">
+        <h2 class="card-title text-base">{{name}}</h2>
         <p class="text-sm text-base-content/60">{{description}}</p>
-        <div class="card-actions mt-2 items-center justify-between">
-          <span class="text-lg font-semibold">{{@root.website.shop.currency.symbol}}{{price}}</span>
+        <div class="mt-1 flex items-center justify-between gap-3">
+          <span class="text-xl font-bold">{{@root.website.shop.currency.symbol}}{{price}}</span>
           {{sw-add-to-cart sku=sku name=name price=price image=image class="btn btn-primary btn-sm"}}
         </div>
       </div>

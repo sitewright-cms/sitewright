@@ -99,6 +99,8 @@ export function TemplatesPanel({ projectId, isAdmin }: { projectId: string; isAd
         makeId={templateId}
         globalAdapters={globalTemplates}
         isAdmin={isAdmin}
+        gridClassName="grid gap-1.5 sm:grid-cols-2"
+        editableName
         hint="A page layout. A page that sets this template renders its source and contributes only its editable data-sw-* regions (stored in page.data)."
       />
     </SidePanel>

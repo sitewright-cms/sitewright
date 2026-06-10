@@ -50,3 +50,52 @@ test('snippets rail: create, edit source, persist across reload, delete', async 
   await page.getByRole('dialog', { name: 'Delete snippet' }).getByRole('button', { name: 'Delete' }).click();
   await expect(panel2.getByText('mycard', { exact: true })).toHaveCount(0);
 });
+
+// The Templates rail renders in a 2-column grid and lets you RENAME a template in the editor (its
+// free-text name is decoupled from the stable id, so a rename keeps page references intact).
+test('templates rail: 2-column grid + rename a template in the editor, persist across reload', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/');
+  await page.getByRole('button', { name: /Register/ }).click();
+  await page.getByLabel('Email').fill(`tplrename-${stamp}@e2e.test`);
+  await page.getByLabel('Password').fill('pw-secret-1');
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await page.getByRole('button', { name: 'New project' }).click();
+  await page.getByLabel('Project name').fill('Tpl Site');
+  await page.getByLabel('Project slug').fill(`tpl-${stamp}`);
+  await page.getByRole('button', { name: 'Create project' }).click();
+
+  // Open the Templates rail (bottom-right tab) → create a template via the name prompt.
+  await page.getByRole('button', { name: 'Open Templates' }).hover();
+  const panel = page.locator('[role="region"][aria-label="Templates"]');
+  await expect(panel).toHaveAttribute('aria-hidden', 'false');
+
+  // The records render in a 2-column grid (not the default 4-column).
+  await expect(panel.locator('ul.grid').first()).toHaveClass(/sm:grid-cols-2/);
+  await expect(panel.locator('ul.grid').first()).not.toHaveClass(/grid-cols-4/);
+
+  await panel.getByRole('button', { name: '+ New template' }).click();
+  const namePrompt = page.getByRole('dialog', { name: 'New template' });
+  await namePrompt.getByLabel('Name', { exact: true }).fill('Promo');
+  await namePrompt.getByRole('button', { name: 'Save' }).click();
+
+  // The editor opens with a Name field. Use a title regex so the locator survives the rename (the
+  // dialog's accessible name updates live from "Promo — template" to "Promo Page — template").
+  const editor = page.getByRole('dialog', { name: /— template$/ });
+  await expect(editor).toBeVisible();
+  await editor.getByLabel('Name', { exact: true }).fill('Promo Page');
+  await editor.locator('.cm-content').click();
+  await page.keyboard.type('<section data-sw-text="data.heading">Promo</section>');
+  await editor.getByRole('button', { name: 'Save changes' }).click();
+
+  // The chip shows the NEW name; the old name is gone.
+  await expect(panel.getByText('Promo Page', { exact: true })).toBeVisible();
+  await expect(panel.getByText('Promo', { exact: true })).toHaveCount(0);
+
+  // Persists across reload (the rename round-trips via the API; the stable id is unchanged).
+  await page.reload();
+  await page.getByRole('dialog', { name: 'SiteWright' }).getByRole('button', { name: /Tpl Site/ }).click();
+  await page.getByRole('button', { name: 'Open Templates' }).hover();
+  const panel2 = page.locator('[role="region"][aria-label="Templates"]');
+  await expect(panel2.getByText('Promo Page', { exact: true })).toBeVisible();
+});

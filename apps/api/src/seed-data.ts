@@ -283,6 +283,8 @@ export function exampleEntries(assetMap: Record<string, string>): Entry[] {
   pub('products', 'prod-mug', { sku: 'MUG-01', name: 'Ceramic Mug', price: 14, image: assets['proj-flint'], description: 'A 12oz mug for late-night deploys.' }),
   pub('products', 'prod-notebook', { sku: 'NB-01', name: 'Dot-grid Notebook', price: 18, image: assets['proj-terra'], description: 'Lay-flat A5 notebook for sketching layouts.' }),
   pub('products', 'prod-poster', { sku: 'POS-01', name: 'Type Poster', price: 35, image: assets['proj-vela'], description: 'Risograph type-specimen print, A2.' }),
+  pub('products', 'prod-stickers', { sku: 'STK-01', name: 'Sticker Pack', price: 8, image: assets['proj-harbor'], description: 'Six die-cut vinyl stickers for your laptop.' }),
+  pub('products', 'prod-cap', { sku: 'CAP-01', name: 'Dad Cap', price: 24, image: assets['proj-lumen'], description: 'Low-profile six-panel cap with an embroidered mark.' }),
   ];
 }
 

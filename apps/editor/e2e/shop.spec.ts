@@ -97,3 +97,68 @@ test('published cart: add-to-cart opens the drawer and builds the WhatsApp order
 
   await ctx.dispose();
 });
+
+// The `form` channel: the cart drawer renders an inline order form that POSTs the order + contact
+// details to the resolved /f endpoint (the existing spam-guarded submission pipeline). The order then
+// lands in the merchant's submissions inbox.
+test('published cart: the form channel submits the order to the /f submissions inbox', async ({ page, playwright, baseURL }) => {
+  const ctx = await playwright.request.newContext({ baseURL });
+  expect((await ctx.post('/auth/register', { data: { email: `shopform-${stamp}@e2e.test`, password: 'pw-secret-1' } })).status()).toBe(201);
+  const slug = `shopform-${stamp}`;
+  const proj = await ctx.post('/projects', { data: { name: 'Shop Form Site', slug } });
+  expect(proj.status()).toBe(201);
+  const projectId = (await proj.json()).project.id as string;
+  const base = `/projects/${projectId}`;
+
+  // A real Form (recipient) so /f resolves (it 404s on an unknown form).
+  expect(
+    (
+      await ctx.put(`${base}/content/form/order`, {
+        data: { id: 'order', name: 'Order form', fields: [{ name: 'name', label: 'Name', type: 'text', required: true }], recipient: 'orders@acme.test' },
+      })
+    ).status(),
+  ).toBe(200);
+  const settings = {
+    identity: { name: 'Acme', colors: { primary: '#0a7a5a' } },
+    website: { shop: { currency: { code: 'USD', symbol: '$' }, channels: [{ kind: 'form', formId: 'order', label: 'Place order' }] } },
+    settings: {},
+  };
+  expect((await ctx.put(`${base}/content/settings/settings`, { data: settings })).status()).toBe(200);
+  const home = {
+    id: 'home',
+    path: '',
+    title: 'Shop',
+    root: { id: 'r', type: 'Section' },
+    source: '<section class="p-8">{{sw-add-to-cart sku="w1" name="Widget" price="12.50"}}{{sw-cart}}</section>',
+  };
+  expect((await ctx.put(`${base}/content/page/home`, { data: home })).status()).toBe(200);
+  expect((await ctx.post(`${base}/publish`)).status()).toBe(200);
+
+  await page.goto(`/sites/${slug}/`);
+  const cart = page.locator('[data-sw-cart]');
+  await page.locator('[data-sw-cart-add][data-sku="w1"]').click();
+  await expect(cart.locator('[data-sw-part="count"]')).toHaveText('1');
+  // Let the time-trap window pass (the /f endpoint silently drops submissions faster than its minimum).
+  await page.waitForTimeout(1400);
+  await cart.locator('[data-sw-part="toggle"]').click();
+
+  const form = cart.locator('form[data-sw-part="order"]');
+  await expect(form).toBeVisible();
+  await form.locator('input[name="name"]').fill('Ada Lovelace');
+  await form.locator('input[name="email"]').fill('ada@example.com');
+  await cart.locator('[data-sw-part="order-submit"]').click();
+
+  // Success UI: the order is sent and the cart clears.
+  await expect(cart.locator('[data-sw-part="order-status"]')).toContainText(/sent/i);
+  await expect(cart.locator('[data-sw-part="count"]')).toBeHidden();
+
+  // The order landed in the submissions inbox with the cart contents + the buyer's email.
+  const inbox = await (await ctx.get(`${base}/submissions`)).json();
+  expect(inbox.total).toBe(1);
+  const fields = inbox.items[0].fields as Record<string, string>;
+  expect(fields.email).toBe('ada@example.com');
+  expect(fields.cart_text).toContain('Widget');
+  expect(fields.cart_json).toContain('"sku":"w1"');
+
+  await ctx.dispose();
+});

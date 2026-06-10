@@ -72,6 +72,14 @@ export const CART_CSS = [
   '[data-sw-cart] [data-sw-part="note"]{font-size:.75rem;color:rgba(0,0,0,.55);margin:.25rem 0 .75rem}',
   '[data-sw-cart] [data-sw-part="channel"]{display:block;width:100%;border:0;border-radius:.375rem;padding:.625rem 1rem;margin-top:.5rem;background:var(--sw-color-primary,#0a7a5a);color:#fff;cursor:pointer;text-align:center;font:inherit}',
   '[data-sw-cart] [data-sw-part="clear"]{display:block;width:100%;border:0;background:none;color:rgba(0,0,0,.55);cursor:pointer;margin-top:.5rem;font-size:.875rem}',
+  // Inline order form (the `form` channel).
+  '[data-sw-cart] [data-sw-part="order"]{margin-top:.75rem}',
+  '[data-sw-cart] [data-sw-part="order-field"]{display:block;margin-bottom:.5rem;font-size:.8125rem}',
+  '[data-sw-cart] [data-sw-part="order-field"]>span{display:block;margin-bottom:.15rem}',
+  '[data-sw-cart] [data-sw-part="order-field"] input,[data-sw-cart] [data-sw-part="order-field"] textarea{width:100%;padding:.4rem .5rem;border:1px solid rgba(0,0,0,.2);border-radius:.375rem;font:inherit}',
+  '[data-sw-cart] [data-sw-part="order-submit"]{display:block;width:100%;border:0;border-radius:.375rem;padding:.5rem 1rem;margin-top:.25rem;background:var(--sw-color-primary,#0a7a5a);color:#fff;cursor:pointer;font:inherit}',
+  '[data-sw-cart] [data-sw-part="order-submit"][disabled]{opacity:.6;cursor:progress}',
+  '[data-sw-cart] [data-sw-part="order-status"]{margin:.5rem 0 0;font-size:.8125rem}',
   // The "added" pulse on an add-to-cart button (runtime toggles data-sw-added briefly).
   '[data-sw-cart-add][data-sw-added="true"]{opacity:.7}',
   // A brief "bump" on the floating cart when an item is added — the non-interrupting add feedback.
@@ -168,8 +176,10 @@ export const CART_JS = `(function(){
     if(ch.kind==='whatsapp'){return 'Order via WhatsApp';}
     if(ch.kind==='mailto'){return 'Email your order';}
     if(ch.kind==='payment'){return 'Pay now';}
+    if(ch.kind==='form'){return 'Place order';}
     return 'Send order';
   }
+  function cartJson(items){var out=[];for(var i=0;i<items.length;i++){var it=items[i];out.push({sku:it.sku,name:it.name,price:it.price,qty:it.qty});}return JSON.stringify(out);}
   // ---- cart icon (inline SVG; no external asset) ----
   function cartIcon(){
     var ns='http://www.w3.org/2000/svg';
@@ -186,6 +196,7 @@ export const CART_JS = `(function(){
     var cfg=readConfig(mount);
     var key='sw-cart:'+siteKey(mount);
     var items=load(key);
+    var started=Date.now(); // for the /f time-trap (_elapsed must be >= the server minimum)
 
     var toggle=part('button','toggle');toggle.type='button';toggle.setAttribute('aria-label','Open cart');
     toggle.appendChild(cartIcon());
@@ -200,19 +211,56 @@ export const CART_JS = `(function(){
     var subtotal=part('div','subtotal');var stLabel=mk('span',null,'Subtotal');var stVal=mk('span',null,'');subtotal.appendChild(stLabel);subtotal.appendChild(stVal);
     var note=part('p','note','Prices are indicative. This sends an order request \\u2014 the seller confirms availability and final price.');
     foot.appendChild(subtotal);foot.appendChild(note);
-    // channel buttons
+    // Channels: deep-link kinds (whatsapp/mailto/payment) render as a button; a "form" kind renders an
+    // inline order form that POSTs to the resolved /f endpoint (the first form channel wins).
+    var formCh=null;
     for(var ci=0;ci<cfg.channels.length;ci++){
+      var chx=cfg.channels[ci];
+      if(chx.kind==='form'){if(!formCh){formCh=chx;}continue;}
       (function(ch){
         var b=part('button','channel',channelLabel(ch));b.type='button';
         b.addEventListener('click',function(){runChannel(ch,items,cfg);});
         foot.appendChild(b);
-      })(cfg.channels[ci]);
+      })(chx);
     }
+    if(formCh&&formCh.endpoint){foot.appendChild(buildOrderForm(formCh));}
     var clear=part('button','clear','Clear cart');clear.type='button';
     clear.addEventListener('click',function(){items.length=0;persist();});
     foot.appendChild(clear);
     dialog.appendChild(head);dialog.appendChild(empty);dialog.appendChild(list);dialog.appendChild(foot);
     mount.appendChild(toggle);mount.appendChild(dialog);
+
+    // The "form" channel: an inline order form (contact fields) that POSTs name/email/phone/note +
+    // cart_text + cart_json to the resolved /f endpoint — reusing the spam-guarded submission pipeline
+    // (honeypot _hpt empty, _elapsed time-trap). No new sink: values go through value/JSON, never HTML.
+    function buildOrderForm(ch){
+      var form=part('form','order');form.setAttribute('novalidate','');
+      function field(name,label,type,required){
+        var wrap=part('label','order-field');wrap.appendChild(mk('span',null,label));
+        var inp=type==='textarea'?document.createElement('textarea'):document.createElement('input');
+        if(type!=='textarea'){inp.type=type;}inp.name=name;if(required){inp.required=true;}
+        wrap.appendChild(inp);form.appendChild(wrap);return inp;
+      }
+      var nameI=field('name','Your name','text',true);
+      var emailI=field('email','Email','email',true);
+      var phoneI=field('phone','Phone (optional)','tel',false);
+      var noteI=field('note','Note (optional)','textarea',false);
+      var submit=part('button','order-submit',channelLabel(ch));submit.type='submit';
+      var status=part('p','order-status');
+      form.appendChild(submit);form.appendChild(status);
+      form.addEventListener('submit',function(e){
+        e.preventDefault();
+        if(!items.length){return;}
+        if(!nameI.value||!emailI.value){status.textContent='Please enter your name and email.';return;}
+        var payload={_hpt:'',_elapsed:String(Date.now()-started),name:nameI.value,email:emailI.value,phone:phoneI.value,note:noteI.value,cart_text:orderText(items,cfg),cart_json:cartJson(items)};
+        submit.disabled=true;status.textContent='Sending\\u2026';
+        fetch(ch.endpoint,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)}).then(function(res){
+          if(!res.ok){throw new Error('bad status');}
+          items.length=0;persist();form.reset();status.textContent='Order sent \\u2014 we will be in touch.';form.setAttribute('data-sw-sent','true');
+        }).catch(function(){status.textContent='Sorry, something went wrong. Please try again.';}).then(function(){submit.disabled=false;});
+      });
+      return form;
+    }
 
     function render(){
       var n=countOf(items);
@@ -294,4 +342,26 @@ export function treeUsesCart(root: PageNode): boolean {
     }
   });
   return found;
+}
+
+/**
+ * Resolve the submission endpoint for every `form` shop channel — the cart cannot build
+ * `/f/<projectId>/<formId>` client-side, so the publish/preview render projection fills `endpoint` here
+ * from `formEndpoint(formId)`. Returns a shallow copy; non-form channels and an absent/channel-less shop
+ * pass through unchanged. Pure — no side effects. Call when projecting `website.shop` into a render ctx.
+ */
+export function resolveShopChannels(
+  shop: unknown,
+  formEndpoint: (formId: string) => string,
+): unknown {
+  if (!shop || typeof shop !== 'object' || Array.isArray(shop)) return shop;
+  const s = shop as Record<string, unknown>;
+  if (!Array.isArray(s.channels)) return shop;
+  const channels = (s.channels as Array<Record<string, unknown>>).map((c) => {
+    if (c && typeof c === 'object' && c.kind === 'form' && typeof c.formId === 'string') {
+      return { ...c, endpoint: formEndpoint(c.formId) };
+    }
+    return c;
+  });
+  return { ...s, channels };
 }

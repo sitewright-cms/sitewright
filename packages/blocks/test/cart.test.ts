@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { PageNode } from '@sitewright/schema';
-import { CART_CSS, CART_JS, usesCart, treeUsesCart } from '../src/cart.js';
+import { CART_CSS, CART_JS, usesCart, treeUsesCart, resolveShopChannels } from '../src/cart.js';
 
 describe('cart stylesheet', () => {
   it('hides the cart until the runtime marks it enhanced (PE: no inert UI pre-JS)', () => {
@@ -105,5 +105,33 @@ describe('cart detection', () => {
   it('ignores trees without the marker', () => {
     const plain: PageNode = { id: 'r', type: 'Section', children: [{ id: 'h', type: 'Heading', props: { text: 'Hi' } }] };
     expect(treeUsesCart(plain)).toBe(false);
+  });
+});
+
+describe('cart form channel', () => {
+  it('CART_JS submits the order form to the endpoint with cart + spam-guard fields', () => {
+    expect(CART_JS).toContain("'order-submit'");
+    expect(CART_JS).toContain('cart_json');
+    expect(CART_JS).toContain('cart_text');
+    expect(CART_JS).toContain('_elapsed'); // time-trap
+    expect(CART_JS).toContain('_hpt'); // honeypot (sent empty)
+    expect(CART_JS).toContain("method:'POST'");
+    expect(CART_JS).toContain('ch.endpoint');
+    // contact values flow through input .value (and JSON) — never innerHTML.
+    expect(CART_JS).not.toContain('innerHTML');
+  });
+});
+
+describe('resolveShopChannels', () => {
+  const ep = (id: string): string => `/f/p1/${id}`;
+  it('fills the endpoint for a form channel and leaves others untouched', () => {
+    const shop = { currency: { code: 'USD' }, channels: [{ kind: 'form', formId: 'order' }, { kind: 'mailto', email: 'a@b.test' }] };
+    const out = resolveShopChannels(shop, ep) as { channels: Array<Record<string, unknown>> };
+    expect(out.channels[0]).toMatchObject({ kind: 'form', formId: 'order', endpoint: '/f/p1/order' });
+    expect(out.channels[1]).toEqual({ kind: 'mailto', email: 'a@b.test' });
+  });
+  it('is a no-op for an absent shop or one without channels', () => {
+    expect(resolveShopChannels(undefined, ep)).toBeUndefined();
+    expect(resolveShopChannels({ currency: { code: 'USD' } }, ep)).toEqual({ currency: { code: 'USD' } });
   });
 });

@@ -193,5 +193,17 @@ describe('WebsiteSettingsSchema', () => {
     it('shop is optional', () => {
       expect(WebsiteSettingsSchema.parse({}).shop).toBeUndefined();
     });
+
+    it('accepts a form channel referencing a Form id', () => {
+      const parsed = WebsiteSettingsSchema.parse({
+        shop: { channels: [{ kind: 'form', formId: 'order-form', label: 'Place order' }] },
+      });
+      expect(parsed.shop?.channels?.[0]).toMatchObject({ kind: 'form', formId: 'order-form' });
+    });
+
+    it('rejects a form channel without a valid formId', () => {
+      expect(() => WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'form' }] } })).toThrow();
+      expect(() => WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'form', formId: 'Bad Id!' }] } })).toThrow();
+    });
   });
 });

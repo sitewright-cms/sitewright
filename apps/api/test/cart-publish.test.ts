@@ -115,4 +115,32 @@ describe('mini shop cart → publish', () => {
     expect(index.body).not.toContain('data-sw-cart');
     expect((await client.get(`/sites/${slug}/cart.js`)).statusCode).toBe(404);
   });
+
+  it('resolves the /f endpoint for a form channel in the published cart mount', async () => {
+    const proj = client.project(projectId);
+    expect(
+      (
+        await proj.putContent('settings', 'settings', {
+          identity: { name: 'Acme', colors: { primary: '#0a7' } },
+          website: { footer: '{{sw-cart}}', shop: { channels: [{ kind: 'form', formId: 'order', label: 'Place order' }] } },
+          settings: {},
+        })
+      ).statusCode,
+    ).toBe(200);
+    const home = {
+      id: 'home',
+      path: '',
+      title: 'Shop',
+      root: { id: 'r', type: 'Section' },
+      source: '<section>{{sw-add-to-cart sku="w1" name="Widget" price="9.99"}}</section>',
+    };
+    expect((await proj.putContent('page', 'home', home)).statusCode).toBe(200);
+    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
+
+    const index = await client.get(`/sites/${slug}/index.html`);
+    expect(index.statusCode).toBe(200);
+    // The form channel's submission endpoint is resolved server-side (the cart can't build it).
+    expect(index.body).toContain(`/f/${projectId}/order`);
+    expect(index.body).toContain('cart.js');
+  });
 });

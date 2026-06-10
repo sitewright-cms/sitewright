@@ -283,6 +283,16 @@ describe('renderTemplate — MINI SHOP helpers', () => {
     expect(renderTemplate('{{sw-cart}}', {})).toBe('<div data-sw-cart></div>');
   });
 
+  it('{{sw-cart}} projects a form channel only when its endpoint is resolved', () => {
+    const withEp = { website: { shop: { channels: [{ kind: 'form', formId: 'order', endpoint: '/f/p1/order', label: 'Place order' }] } } };
+    const out = renderTemplate('{{sw-cart}}', withEp);
+    expect(out).toContain('data-channels=');
+    expect(out).toContain('/f/p1/order');
+    expect(out).toContain('&quot;kind&quot;:&quot;form&quot;');
+    // a form channel WITHOUT a resolved endpoint is dropped (here it's the only one → bare mount)
+    expect(renderTemplate('{{sw-cart}}', { website: { shop: { channels: [{ kind: 'form', formId: 'order' }] } } })).toBe('<div data-sw-cart></div>');
+  });
+
   it('{{sw-cart}} unicode-escapes < > & in the channels JSON (survives the directive round-trip)', () => {
     const ctxShop = { website: { shop: { channels: [{ kind: 'mailto', email: 'a@b.test', label: 'B&H <Photo>' }] } } };
     const out = renderTemplate('{{sw-cart}}', ctxShop);

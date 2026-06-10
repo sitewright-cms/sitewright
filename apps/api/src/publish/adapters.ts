@@ -18,34 +18,57 @@ function hasControlChars(value: string): boolean {
 }
 
 /** Deploy-target configuration. Credentials are used transiently and never persisted. */
-export const DeployConfigSchema = z.object({
-  protocol: z.enum(['ftp', 'ftps', 'sftp']),
-  host: z.string().min(1).max(255),
-  port: z.number().int().min(1).max(65535).optional(),
-  user: z.string().min(1).max(255),
-  password: z.string().min(1).max(1024),
-  // Remote target directory: bounded length, no control characters, no traversal.
-  remoteDir: z
-    .string()
-    .min(1)
-    .max(1024)
-    .refine((dir) => !hasControlChars(dir), 'remoteDir contains control characters')
-    .refine((dir) => !dir.split('/').some((seg) => seg === '..'), 'remoteDir must not contain ".." segments')
-    .default('/'),
-  /**
-   * Optional SFTP host-key fingerprint (SHA-256 hex, colons optional). When set,
-   * the server's host key is verified against it (MITM protection). When omitted,
-   * the host key is trusted on first use — set this to pin a known server.
-   */
-  hostFingerprint: z.string().min(1).max(256).optional(),
-});
+export const DeployConfigSchema = z
+  .object({
+    protocol: z.enum(['ftp', 'ftps', 'sftp']),
+    host: z.string().min(1).max(255),
+    port: z.number().int().min(1).max(65535).optional(),
+    user: z.string().min(1).max(255),
+    // Password auth (required for FTP/FTPS; optional for SFTP when a key is supplied).
+    password: z.string().min(1).max(1024).optional(),
+    // SFTP key auth: the PRIVATE KEY CONTENTS (PEM/OpenSSH) + an optional passphrase.
+    privateKey: z.string().min(1).max(16384).optional(),
+    passphrase: z.string().min(1).max(1024).optional(),
+    // Remote target directory: bounded length, no control characters, no traversal.
+    remoteDir: z
+      .string()
+      .min(1)
+      .max(1024)
+      .refine((dir) => !hasControlChars(dir), 'remoteDir contains control characters')
+      .refine((dir) => !dir.split('/').some((seg) => seg === '..'), 'remoteDir must not contain ".." segments')
+      .default('/'),
+    /**
+     * Optional SFTP host-key fingerprint (SHA-256 hex, colons optional). When set,
+     * the server's host key is verified against it (MITM protection). When omitted,
+     * the host key is trusted on first use — set this to pin a known server.
+     */
+    hostFingerprint: z.string().min(1).max(256).optional(),
+  })
+  .refine((c) => c.password !== undefined || c.privateKey !== undefined, {
+    message: 'a password or a private key is required',
+    path: ['password'],
+  })
+  // A private key is an SSH concept — FTP/FTPS have no key auth.
+  .refine((c) => c.privateKey === undefined || c.protocol === 'sftp', {
+    message: 'a private key requires the SFTP protocol',
+    path: ['privateKey'],
+  });
 export type DeployConfig = z.infer<typeof DeployConfigSchema>;
 
-/** A pluggable upload transport (FTP/FTPS/SFTP), injectable for testing. */
+/** A pluggable upload transport (FTP/FTPS/SFTP), injectable for testing. `onFile` (when supported by
+ *  the transport) is invoked once per uploaded file (its path) so a deploy can report live progress. */
 export interface DeployTransport {
   connect(): Promise<void>;
-  uploadDir(localDir: string, remoteDir: string): Promise<void>;
+  uploadDir(localDir: string, remoteDir: string, onFile?: (path: string) => void): Promise<void>;
   close(): Promise<void>;
+}
+
+/** A deploy progress event streamed to the UI. `index`/`total` drive a determinate bar. */
+export interface DeployProgress {
+  phase: 'connecting' | 'uploading' | 'done';
+  total: number;
+  index: number;
+  file?: string;
 }
 
 /** Recursively lists the files of a built site, relative to its root (sorted, confined). */
@@ -102,12 +125,26 @@ class FtpTransport implements DeployTransport {
       host: this.cfg.host,
       port: this.cfg.port ?? 21,
       user: this.cfg.user,
-      password: this.cfg.password,
+      password: this.cfg.password ?? '', // FTP/FTPS always carry a password (schema-enforced)
       secure: this.cfg.protocol === 'ftps', // explicit FTPS
     });
   }
-  async uploadDir(localDir: string, remoteDir: string): Promise<void> {
-    await this.client.uploadFromDir(localDir, remoteDir);
+  async uploadDir(localDir: string, remoteDir: string, onFile?: (path: string) => void): Promise<void> {
+    // basic-ftp reports the in-flight transfer; emit a per-file tick the first time each name appears.
+    const seen = new Set<string>();
+    if (onFile) {
+      this.client.trackProgress((info) => {
+        if (info.type === 'upload' && info.name && !seen.has(info.name)) {
+          seen.add(info.name);
+          onFile(info.name);
+        }
+      });
+    }
+    try {
+      await this.client.uploadFromDir(localDir, remoteDir);
+    } finally {
+      if (onFile) this.client.trackProgress(); // stop tracking
+    }
   }
   async close(): Promise<void> {
     this.client.close();
@@ -122,14 +159,32 @@ class SftpTransport implements DeployTransport {
       host: this.cfg.host,
       port: this.cfg.port ?? 22,
       username: this.cfg.user,
-      password: this.cfg.password,
+      // Password and/or private-key auth — ssh2 tries whichever is provided.
+      ...(this.cfg.password ? { password: this.cfg.password } : {}),
+      ...(this.cfg.privateKey
+        ? { privateKey: this.cfg.privateKey, ...(this.cfg.passphrase ? { passphrase: this.cfg.passphrase } : {}) }
+        : {}),
       readyTimeout: CONNECT_TIMEOUT_MS,
       hostHash: 'sha256',
       hostVerifier: makeHostVerifier(this.cfg.hostFingerprint),
     });
   }
-  async uploadDir(localDir: string, remoteDir: string): Promise<void> {
-    await this.client.uploadDir(localDir, remoteDir);
+  async uploadDir(localDir: string, remoteDir: string, onFile?: (path: string) => void): Promise<void> {
+    // ssh2-sftp-client emits an 'upload' event per file copied by uploadDir; dedupe by path so the
+    // progress index can never exceed the file total (defensive, mirrors the FTP transport).
+    const seen = new Set<string>();
+    const listener = (info: { source: string }): void => {
+      if (!seen.has(info.source)) {
+        seen.add(info.source);
+        onFile?.(info.source);
+      }
+    };
+    if (onFile) this.client.on('upload', listener);
+    try {
+      await this.client.uploadDir(localDir, remoteDir);
+    } finally {
+      if (onFile) this.client.removeListener('upload', listener);
+    }
   }
   async close(): Promise<void> {
     await this.client.end();
@@ -150,16 +205,25 @@ export async function deploySite(
   siteDir: string,
   config: DeployConfig,
   makeTransport: (cfg: DeployConfig) => DeployTransport = defaultTransport,
+  onProgress?: (e: DeployProgress) => void,
 ): Promise<{ protocol: DeployConfig['protocol']; files: number }> {
   const files = await collectSiteFiles(siteDir);
+  const total = files.length;
   const transport = makeTransport(config);
+  let index = 0;
   try {
+    onProgress?.({ phase: 'connecting', total, index });
     await transport.connect();
-    await transport.uploadDir(siteDir, config.remoteDir);
+    onProgress?.({ phase: 'uploading', total, index });
+    await transport.uploadDir(siteDir, config.remoteDir, (file) => {
+      index += 1;
+      onProgress?.({ phase: 'uploading', total, index, file });
+    });
   } finally {
     await transport.close().catch(() => {
       /* best-effort close */
     });
   }
-  return { protocol: config.protocol, files: files.length };
+  onProgress?.({ phase: 'done', total, index: total });
+  return { protocol: config.protocol, files: total };
 }

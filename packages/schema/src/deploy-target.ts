@@ -10,10 +10,12 @@ function hasControlChars(value: string): boolean {
   return false;
 }
 
-/** Encrypted-at-rest secret envelope (AES-256-GCM, base64 fields). */
+/** Encrypted-at-rest secret envelope (AES-256-GCM, base64 fields). The ciphertext now holds a JSON
+ *  blob `{password?, privateKey?, passphrase?}`, so `ct` is sized to fit a PEM private key (a few KB
+ *  of plaintext → a ~16KB base64 ceiling). */
 export const EncryptedSecretSchema = z.object({
   iv: z.string().min(1).max(64),
-  ct: z.string().min(1).max(4096),
+  ct: z.string().min(1).max(16384),
   tag: z.string().min(1).max(64),
 });
 export type EncryptedSecret = z.infer<typeof EncryptedSecretSchema>;

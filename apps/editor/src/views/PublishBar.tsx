@@ -21,6 +21,17 @@ function PreviewIcon() {
   );
 }
 
+/** Server/upload glyph for the Deploy action. */
+function DeployIcon() {
+  return (
+    <svg aria-hidden viewBox="0 0 24 24" fill="none" className="h-4 w-4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="4" width="18" height="6" rx="1.5" />
+      <rect x="3" y="14" width="18" height="6" rx="1.5" />
+      <path d="M7 7h.01M7 17h.01" />
+    </svg>
+  );
+}
+
 /**
  * Compact publish control (top-right): a single Publish button — GREEN only when there are
  * unpublished changes (`dirty`), neutral otherwise — with the secondary actions (view, download,
@@ -44,6 +55,7 @@ export function PublishBar({
   const [error, setError] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [previewToken, setPreviewToken] = useState<string | undefined>(undefined);
+  const [hasTarget, setHasTarget] = useState(false); // a saved deploy target exists → show a Deploy button
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -66,6 +78,11 @@ export function PublishBar({
       .catch(() => {
         /* settings unreadable → no token gate to honor */
       });
+    // A configured deploy target surfaces a prominent Deploy button next to Preview.
+    api
+      .listDeployTargets(project.id)
+      .then((res) => active && setHasTarget(res.items.length > 0))
+      .catch(() => active && setHasTarget(false));
     return () => {
       active = false;
     };
@@ -140,6 +157,20 @@ export function PublishBar({
             <PublishIcon />
             {busy ? 'Publishing…' : 'Publish'}
             {dirty && <span aria-hidden className="ml-0.5 h-1.5 w-1.5 rounded-full bg-white/90" />}
+          </button>
+        )}
+
+        {/* A configured deploy target gets a prominent Deploy button (opens the Deploy settings tab,
+            where the streaming deploy modal is launched). */}
+        {published && hasTarget && onOpenDeploy && (
+          <button
+            onClick={onOpenDeploy}
+            title="Deploy the published site to your server"
+            aria-label="Deploy the published site"
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:border-indigo-400 hover:text-indigo-700"
+          >
+            <DeployIcon />
+            Deploy
           </button>
         )}
 

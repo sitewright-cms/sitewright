@@ -440,6 +440,55 @@ describe('api client', () => {
     expect(fetchMock.mock.calls[3]![1].method).toBe('DELETE');
   });
 
+  it('deployTargetStream POSTs to the SSE endpoint and dispatches progress + done frames', async () => {
+    const enc = new TextEncoder();
+    const frames = [
+      'event: progress\ndata: {"phase":"connecting","index":0,"total":2}\n\n',
+      'event: progress\ndata: {"phase":"uploading","index":1,"total":2,"file":"index.html"}\n\n',
+      'event: done\ndata: {"deployed":{"protocol":"sftp","files":2}}\n\n',
+    ];
+    let i = 0;
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: { getReader: () => ({ read: async () => (i < frames.length ? { done: false, value: enc.encode(frames[i++]) } : { done: true }) }) },
+    } as unknown as Response);
+
+    const progress: unknown[] = [];
+    let done: unknown;
+    await api.deployTargetStream('p', 't1', { onProgress: (e) => progress.push(e), onDone: (d) => (done = d) });
+
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/projects/p/deploy-targets/t1/deploy/stream');
+    expect(init.method).toBe('POST');
+    expect(progress).toEqual([
+      { phase: 'connecting', index: 0, total: 2 },
+      { phase: 'uploading', index: 1, total: 2, file: 'index.html' },
+    ]);
+    expect(done).toEqual({ protocol: 'sftp', files: 2 });
+  });
+
+  it('deployTargetStream surfaces a preflight JSON error (e.g. 409) via onError', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 409, statusText: 'Conflict', json: async () => ({ error: 'publish the site before deploying' }) } as Response);
+    let err: string | undefined;
+    await api.deployTargetStream('p', 't1', { onError: (m) => (err = m) });
+    expect(err).toMatch(/publish the site/);
+  });
+
+  it('deployTargetStream emits an error frame as onError', async () => {
+    const enc = new TextEncoder();
+    const frames = ['event: error\ndata: {"message":"deploy failed: could not connect or transfer to the target"}\n\n'];
+    let i = 0;
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: { getReader: () => ({ read: async () => (i < frames.length ? { done: false, value: enc.encode(frames[i++]) } : { done: true }) }) },
+    } as unknown as Response);
+    let err: string | undefined;
+    await api.deployTargetStream('p', 't1', { onError: (m) => (err = m) });
+    expect(err).toMatch(/deploy failed/);
+  });
+
   it('publishes and reads publish status', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { release: { routes: 2 }, url: '/sites/p/' }));
     const res = await api.publish('p');

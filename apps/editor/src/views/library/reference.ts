@@ -98,7 +98,13 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
           { name: 'name', desc: 'A Lucide name (e.g. "arrow-right"), or "brand:slug" for a brand logo (e.g. "brand:x").' },
           { name: 'classes', desc: 'Optional Tailwind classes (default "h-5 w-5").' },
         ],
-        example: '{{sw-icon "arrow-right" "h-4 w-4"}}\n{{sw-icon "brand:whatsapp"}}\n{{#each company.social}}{{sw-icon icon}}{{/each}}',
+        example:
+          '{{sw-icon "arrow-right" "h-4 w-4"}}\n' +
+          '{{sw-icon "brand:whatsapp"}}\n' +
+          '\n' +
+          '{{#each company.social}}\n' +
+          '  {{sw-icon icon}}\n' +
+          '{{/each}}',
       },
       {
         id: 'h-flag',
@@ -111,8 +117,10 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
           { name: 'code', desc: 'An ISO alpha-2 country code ("de", "us", "gb"), or "code-circle" for the round flag.' },
           { name: 'classes', desc: 'Optional Tailwind classes (default "h-4"; circular default "h-5 w-5").' },
         ],
-        example: '{{sw-flag "de" "h-4 rounded-sm"}}\n{{sw-flag "jp-circle"}}\n{{#each page.translations}}<a href="{{sw-url path}}">{{sw-flag locale}}</a>{{/each}}',
-        note: 'The last example assumes your locale codes happen to be country codes; otherwise map locale→country yourself.',
+        example:
+          '{{sw-flag "de" "h-4 rounded-sm"}}\n' +
+          '{{sw-flag "jp-circle"}}',
+        note: 'Building a language switcher? See the “multilingual (i18n)” entry — map each locale to a COUNTRY code first ({{sw-flag}} wants a country, so en→gb, pt-BR→br, uk→ua), don’t pass the locale straight in.',
       },
       {
         id: 'h-truncate',
@@ -151,9 +159,21 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         args: [{ name: 'items', desc: 'A list/object, a dataset (data.<set>), nav.<slot>, page.children, or a website.data/page.data array.' }],
         example:
           '{{! A dataset — fields are read directly, rows are click-to-edit: }}\n' +
-          '{{#each data.services}}\n  <div class="card">\n    <h3>{{title}}</h3>\n    <p>{{summary}}</p>\n  </div>\n{{else}}\n  <p>No services yet.</p>\n{{/each}}\n\n' +
+          '{{#each data.services}}\n' +
+          '  <div class="card">\n' +
+          '    <h3>{{title}}</h3>\n' +
+          '    <p>{{summary}}</p>\n' +
+          '  </div>\n' +
+          '{{else}}\n' +
+          '  <p>No services yet.</p>\n' +
+          '{{/each}}\n' +
+          '\n' +
           '{{! A plain list — the item is this: }}\n' +
-          '<ul>{{#each nav.header}}<li><a href="{{sw-url path}}">{{label}}</a></li>{{/each}}</ul>',
+          '<ul>\n' +
+          '  {{#each nav.header}}\n' +
+          '    <li><a href="{{sw-url path}}">{{label}}</a></li>\n' +
+          '  {{/each}}\n' +
+          '</ul>',
         note: 'All content helpers are prefixed (sw-url, sw-date, sw-icon, sw-flag, sw-truncate), so entry fields never collide with them — read them plainly. ({{this.field}} forces a data lookup if you ever need it.)',
       },
       {
@@ -162,7 +182,10 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         name: 'if',
         keywords: 'conditional branch when',
         description: 'Renders the block when cond is truthy; the optional {{else}} renders otherwise.',
-        example: '{{#if page.translations}}…language switcher…{{/if}}',
+        example:
+          '{{#if page.translations}}\n' +
+          '  <nav aria-label="Language">…</nav>\n' +
+          '{{/if}}',
       },
       {
         id: 'b-unless',
@@ -170,7 +193,10 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         name: 'unless',
         keywords: 'conditional inverse not',
         description: 'Renders the block when cond is FALSY (the inverse of {{#if}}).',
-        example: '{{#unless soldOut}}<button class="btn">Buy</button>{{/unless}}',
+        example:
+          '{{#unless soldOut}}\n' +
+          '  <button class="btn">Buy</button>\n' +
+          '{{/unless}}',
       },
       {
         id: 'b-with',
@@ -178,7 +204,10 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         name: 'with',
         keywords: 'scope context this',
         description: 'Scopes the block to obj, so its members can be read directly (as this).',
-        example: '{{#with company}}<p>{{name}} — {{email}}</p>{{/with}}',
+        example:
+          '{{#with company}}\n' +
+          '  <p>{{name}} — {{email}}</p>\n' +
+          '{{/with}}',
       },
     ],
   },
@@ -274,7 +303,12 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         keywords: 'identity brand organization',
         description:
           'Corporate identity (Settings → Corporate Identity): company.name, .legalName, .shortName, .slogan, .description, .email, .telephone, .mapUrl (Google Maps embed → iframe src); images .logo / .logoLight / .logoDark / .icon / .favicon / .image; .colors.<token>; address (.street, .locality, .region, .country, .postalCode). company.social is an ARRAY of { link, name, icon } — loop it with {{#each}}.',
-        example: '<a href="mailto:{{company.email}}">{{company.email}}</a>\n{{#each company.social}}<a href="{{sw-url link}}" aria-label="{{name}}">{{sw-icon icon "h-5 w-5"}}</a>{{/each}}',
+        example:
+          '<a href="mailto:{{company.email}}">{{company.email}}</a>\n' +
+          '\n' +
+          '{{#each company.social}}\n' +
+          '  <a href="{{sw-url link}}" aria-label="{{name}}">{{sw-icon icon "h-5 w-5"}}</a>\n' +
+          '{{/each}}',
       },
       {
         id: 'n-website',
@@ -295,9 +329,14 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         example:
           '{{! Read a nested value by its key path: }}\n' +
           '<h1>{{website.data.hero.headline}}</h1>\n' +
-          '<p>{{website.data.hero.subline}}</p>\n\n' +
+          '<p>{{website.data.hero.subline}}</p>\n' +
+          '\n' +
           '{{! Loop an array stored under website.data: }}\n' +
-          '<ul>{{#each website.data.highlights}}<li>{{this}}</li>{{/each}}</ul>',
+          '<ul>\n' +
+          '  {{#each website.data.highlights}}\n' +
+          '    <li>{{this}}</li>\n' +
+          '  {{/each}}\n' +
+          '</ul>',
       },
       {
         id: 'n-page',
@@ -345,14 +384,17 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         description:
           'page.locale is the current page’s language; page.translations is its locale ALTERNATES (the translation group) as an ARRAY — each with .locale, .path (full route) and .title — for a LANGUAGE SWITCHER and hreflang links. Country flags are a poor proxy for languages ({{sw-flag}} takes a COUNTRY code, not a language code), so map locale→country in website.data and look it up — INSIDE {{#each page.translations}} reach the root with @root: website.data.locale_flags = { en: "gb", de: "de" } then {{sw-flag (lookup @root.website.data.locale_flags locale)}}. DATASETS localize by a "<slug>-<locale>" suffix that auto-resolves on a page in that locale ({{#each data.services}} on a "de" page reads "services-de" when it exists, else "services") — see the {{#each}} helper.',
         example:
+          '<html lang="{{page.locale}}">\n' +
+          '\n' +
           '{{#if page.translations}}\n' +
-          '<nav aria-label="Language">{{#each page.translations}}\n' +
-          '  <a href="{{sw-url path}}" hreflang="{{locale}}">\n' +
-          '    {{sw-flag (lookup @root.website.data.locale_flags locale) "h-4 rounded-sm"}} {{locale}}\n' +
-          '  </a>\n' +
-          '{{/each}}</nav>\n' +
-          '{{/if}}\n' +
-          '<html lang="{{page.locale}}">',
+          '  <nav aria-label="Language">\n' +
+          '    {{#each page.translations}}\n' +
+          '      <a href="{{sw-url path}}" hreflang="{{locale}}">\n' +
+          '        {{sw-flag (lookup @root.website.data.locale_flags locale) "h-4 rounded-sm"}} {{locale}}\n' +
+          '      </a>\n' +
+          '    {{/each}}\n' +
+          '  </nav>\n' +
+          '{{/if}}',
       },
       {
         id: 'n-parent-page',
@@ -373,7 +415,10 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         keywords: 'dataset entries collection rows loop',
         description:
           'A dataset’s entries as an ordered ARRAY (manage rows in the Data panel). Loop with {{#each}} — each row’s fields are read directly ({{name}}), and rows are click-to-edit in the editor. For a direct lookup by key, use item.<dataset> instead.',
-        example: '{{#each data.team}}<li>{{name}}</li>{{/each}}',
+        example:
+          '{{#each data.team}}\n' +
+          '  <li>{{name}}</li>\n' +
+          '{{/each}}',
       },
       {
         id: 'n-item',
@@ -387,7 +432,9 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
           '<h2>{{item.services.web_development.title}}</h2>\n' +
           '<p class="price">{{item.services.web_development.price}}</p>\n\n' +
           '{{! …vs. looping the whole dataset: }}\n' +
-          '{{#each data.services}}<li>{{title}}</li>{{/each}}',
+          '{{#each data.services}}\n' +
+          '  <li>{{title}}</li>\n' +
+          '{{/each}}',
       },
       {
         id: 'n-nav',
@@ -396,7 +443,10 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         keywords: 'menu navigation header footer mobile',
         description:
           'Auto-built menus from the page tree: nav.header, nav.footer, nav.mobile. Each item has .label, .path, and .children (sub-pages, for dropdowns).',
-        example: '{{#each nav.header}}<a href="{{sw-url path}}">{{label}}</a>{{/each}}',
+        example:
+          '{{#each nav.header}}\n' +
+          '  <a href="{{sw-url path}}">{{label}}</a>\n' +
+          '{{/each}}',
       },
     ],
   },
@@ -412,7 +462,11 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         keywords: 'current item entry fields loop dataset envelope',
         description:
           'Inside {{#each}}, this is the current item. Over a DATASET the context IS the entry’s fields, so read them directly ({{title}}, not {{values.title}}); the entry’s envelope is on @entry (@entry.id, @entry.dataset, @entry.status).',
-        example: '{{#each data.posts}}<h3>{{title}}</h3><small>{{@entry.id}}</small>{{/each}}',
+        example:
+          '{{#each data.posts}}\n' +
+          '  <h3>{{title}}</h3>\n' +
+          '  <small>{{@entry.id}}</small>\n' +
+          '{{/each}}',
       },
       {
         id: 'v-index',
@@ -420,7 +474,10 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         name: '@index / @key',
         keywords: 'position counter loop index',
         description: '@index is the zero-based position in a loop; @key is the current item’s key/index.',
-        example: '{{#each nav.header}}<li data-i="{{@index}}">{{label}}</li>{{/each}}',
+        example:
+          '{{#each nav.header}}\n' +
+          '  <li data-i="{{@index}}">{{label}}</li>\n' +
+          '{{/each}}',
       },
       {
         id: 'v-firstlast',
@@ -428,7 +485,11 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         name: '@first / @last',
         keywords: 'boundary loop edge boolean',
         description: 'Booleans — true on the first / last iteration of a loop.',
-        example: '{{#each data.steps}}{{#unless @first}}<hr>{{/unless}}{{label}}{{/each}}',
+        example:
+          '{{#each data.steps}}\n' +
+          '  {{#unless @first}}<hr>{{/unless}}\n' +
+          '  {{label}}\n' +
+          '{{/each}}',
       },
       {
         id: 'v-nav',
@@ -437,7 +498,12 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         keywords: 'menu item label path children locale',
         description:
           'Inside {{#each nav.x}}: label, path, children (sub-items). Inside {{#each page.translations}}: path, locale.',
-        example: '{{#each nav.header}}{{#if children}}<details><summary>{{label}}</summary>…{{/if}}{{/each}}',
+        example:
+          '{{#each nav.header}}\n' +
+          '  {{#if children}}\n' +
+          '    <details><summary>{{label}}</summary>…</details>\n' +
+          '  {{/if}}\n' +
+          '{{/each}}',
       },
     ],
   },

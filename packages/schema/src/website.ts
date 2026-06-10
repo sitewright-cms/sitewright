@@ -87,9 +87,10 @@ const MailtoChannelSchema = z.object({
 const PaymentChannelSchema = z.object({
   kind: z.literal('payment'),
   label: shopChannelLabel,
-  /** Informational provider tag (does not change behavior). `stripe` is intentionally absent — Stripe
-   *  Payment Links are fixed-amount, so they can't carry the cart total; model them as `custom`. */
-  provider: z.enum(['paypal', 'custom']).optional(),
+  /** Informational provider tag (does not change behavior). `stripe` is folded into `custom` — Stripe
+   *  Payment Links are fixed-amount, so they can't carry the cart total. A legacy stored `stripe` is
+   *  COERCED to `custom` (back-compat: re-saving/importing an older config never errors). */
+  provider: z.preprocess((v) => (v === 'stripe' ? 'custom' : v), z.enum(['paypal', 'custom'])).optional(),
   urlTemplate: z
     .string()
     .max(2048)

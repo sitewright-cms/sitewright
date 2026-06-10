@@ -281,13 +281,14 @@ function formChannelToShop(c: KeyedShopChannel): ShopChannel | null {
       : null;
   }
   if (c.kind === 'payment') {
-    const provider = c.provider.trim();
+    // A legacy `stripe` (offered by an earlier UI) folds to `custom` — Stripe Payment Links are fixed-amount.
+    const provider = c.provider.trim() === 'stripe' ? 'custom' : c.provider.trim();
     return c.urlTemplate.trim()
       ? {
           kind: 'payment',
           ...label,
           urlTemplate: c.urlTemplate.trim(),
-          ...(provider === 'paypal' || provider === 'stripe' || provider === 'custom' ? { provider } : {}),
+          ...(provider === 'paypal' || provider === 'custom' ? { provider } : {}),
         }
       : null;
   }

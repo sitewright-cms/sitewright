@@ -18,4 +18,14 @@ describe('Library catalog', () => {
     expect(brand.lazy).toBe('brand');
     expect(daisy.items.length).toBeGreaterThanOrEqual(45); // ~full DaisyUI library
   });
+
+  it('covers the main DaisyUI components across every group (incl. the CSS-only Filter)', () => {
+    const names = LIBRARY_SECTIONS.find((s) => s.category === 'daisyui')!.items.map((i) => i.name);
+    // One representative per DaisyUI group — actions, data-display, navigation, feedback, data-input
+    // (incl. Filter, the previously-missing CSS-only one), layout, mockup.
+    for (const n of ['Button', 'Dropdown', 'Modal', 'Card', 'Table', 'Tabs', 'Navbar', 'Alert', 'Toast',
+      'Input', 'Select', 'Filter', 'Validator', 'Drawer', 'Hero', 'Footer', 'Stack', 'Mockup window']) {
+      expect(names).toContain(n);
+    }
+  });
 });

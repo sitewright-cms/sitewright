@@ -232,9 +232,20 @@ function ItemList({ items, preview }: { items: LibraryItem[]; preview: boolean }
           </div>
           {preview && (
             // STATIC catalog markup (our own content), Handlebars neutralized, themed via
-            // `.sw-preview`; pointer-events off so preview links/buttons can't navigate.
+            // `.sw-preview`. The preview is INTERACTIVE (CSS-only components — dropdowns, accordions,
+            // tabs, toggles — work here); `.sw-preview`'s `contain` keeps fixed-position components
+            // inside the card, and these guards stop a preview link/form from navigating the editor.
             <div
-              className="sw-preview pointer-events-none mb-2 overflow-hidden rounded-lg border border-slate-200 p-4"
+              className="sw-preview mb-2 overflow-hidden rounded-lg border border-slate-200 p-4"
+              onClick={(e) => {
+                if ((e.target as HTMLElement).closest('a')) e.preventDefault();
+              }}
+              // Middle-click fires auxclick (not click) — guard it too so a preview link can't open
+              // a new editor tab.
+              onAuxClick={(e) => {
+                if ((e.target as HTMLElement).closest('a')) e.preventDefault();
+              }}
+              onSubmit={(e) => e.preventDefault()}
               dangerouslySetInnerHTML={{ __html: previewHtml(it.example) }}
             />
           )}

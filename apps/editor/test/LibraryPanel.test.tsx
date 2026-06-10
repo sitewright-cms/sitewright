@@ -47,6 +47,20 @@ describe('LibraryPanel', () => {
     expect(preview.innerHTML).not.toContain('{{');
   });
 
+  it('makes previews INTERACTIVE (no pointer-events-none) but blocks preview-link navigation', async () => {
+    render(<LibraryPanel />);
+    fireEvent.mouseEnter(screen.getByLabelText('System Library'));
+    fireEvent.click(screen.getByRole('button', { name: /DaisyUI components/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'DaisyUI components' });
+    fireEvent.change(within(dialog).getByLabelText('Search DaisyUI components'), { target: { value: 'navbar' } });
+    const preview = dialog.querySelector('.sw-preview') as HTMLElement;
+    expect(preview.className).not.toContain('pointer-events-none'); // interactive now
+    // A link inside the preview must NOT navigate the editor — the guard preventDefaults it.
+    // fireEvent.click returns false when the default action was prevented.
+    const link = preview.querySelector('a') as HTMLAnchorElement;
+    expect(fireEvent.click(link)).toBe(false);
+  });
+
   it('lazy-loads the whole icon pack and copies an icon snippet on click', async () => {
     render(<LibraryPanel />);
     fireEvent.mouseEnter(screen.getByLabelText('System Library'));

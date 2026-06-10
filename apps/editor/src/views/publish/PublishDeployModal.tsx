@@ -141,74 +141,74 @@ export function PublishDeployModal({
     >
       {/* Padded body so neither tab (the Local Publish toggles, the Deploy settings form) sits flush. */}
       <div className="p-5">
-      {error && <p className="mb-3 text-sm text-rose-600">{error}</p>}
+        {error && <p className="mb-3 text-sm text-rose-600">{error}</p>}
 
-      {tab === 'publish' ? (
-        loading ? (
-          <p className="text-sm text-slate-400">Loading…</p>
-        ) : (
-          <div className="space-y-4">
-            <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500">
-              <strong className="font-bold text-slate-700">Publish</strong> hosts your site locally on this server at{' '}
-              <code className="rounded bg-white px-1">/sites/{project.slug}/</code> — the “Preview / View site” link. Use the{' '}
-              <strong>Deploy settings</strong> tab to also upload the built site to your own external server.
-            </p>
+        {tab === 'publish' ? (
+          loading ? (
+            <p className="text-sm text-slate-400">Loading…</p>
+          ) : (
+            <div className="space-y-4">
+              <p className="rounded-lg bg-slate-50 p-3 text-xs text-slate-500">
+                <strong className="font-bold text-slate-700">Publish</strong> hosts your site locally on this server at{' '}
+                <code className="rounded bg-white px-1">/sites/{project.slug}/</code> — the “Preview / View site” link. Use the{' '}
+                <strong>Deploy settings</strong> tab to also upload the built site to your own external server.
+              </p>
 
-            <div className="divide-y divide-slate-100">
-              <Toggle
-                label="Enable local publish"
-                hint={`Serve the published site at /sites/${project.slug}/. When off, publishing still builds the site (for deploy) but it isn’t hosted here.`}
-                checked={localPublish}
-                onChange={setLocalPublish}
-              />
+              <div className="divide-y divide-slate-100">
+                <Toggle
+                  label="Enable local publish"
+                  hint={`Serve the published site at /sites/${project.slug}/. When off, publishing still builds the site (for deploy) but it isn’t hosted here.`}
+                  checked={localPublish}
+                  onChange={setLocalPublish}
+                />
 
-              <Toggle
-                label="Require a preview token"
-                hint="Locally published pages require a secret ?token= in the URL — useful for sharing an unlisted preview before launch."
-                checked={!!previewToken}
-                onChange={(on) => setPreviewToken(on ? previewToken ?? generateToken() : undefined)}
-              />
-              {previewToken && (
-                <div className="space-y-2 py-3">
-                  <p className="text-xs text-slate-500">Share this tokenized URL — the Preview button uses it too:</p>
-                  <div className="flex items-center gap-2">
-                    <input
-                      readOnly
-                      value={tokenUrl}
-                      onFocus={(e) => e.currentTarget.select()}
-                      className="min-w-0 flex-1 truncate rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 font-mono text-xs text-slate-700"
-                    />
-                    <button className={`${ghostButton} px-2 py-1.5 text-xs`} onClick={() => copy(tokenUrl, 'url')}>
-                      Copy
-                    </button>
-                    <a className={`${ghostButton} px-2 py-1.5 text-xs`} href={tokenUrl} target="_blank" rel="noreferrer">
-                      Open ↗
-                    </a>
-                    <button className={`${ghostButton} px-2 py-1.5 text-xs`} onClick={() => setPreviewToken(generateToken())}>
-                      Regenerate
-                    </button>
+                <Toggle
+                  label="Require a preview token"
+                  hint="Locally published pages require a secret ?token= in the URL — useful for sharing an unlisted preview before launch."
+                  checked={!!previewToken}
+                  onChange={(on) => setPreviewToken(on ? previewToken ?? generateToken() : undefined)}
+                />
+                {previewToken && (
+                  <div className="space-y-2 py-3">
+                    <p className="text-xs text-slate-500">Share this tokenized URL — the Preview button uses it too:</p>
+                    <div className="flex items-center gap-2">
+                      <input
+                        readOnly
+                        value={tokenUrl}
+                        onFocus={(e) => e.currentTarget.select()}
+                        className="min-w-0 flex-1 truncate rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 font-mono text-xs text-slate-700"
+                      />
+                      <button className={`${ghostButton} px-2 py-1.5 text-xs`} onClick={() => copy(tokenUrl, 'url')}>
+                        Copy
+                      </button>
+                      <a className={`${ghostButton} px-2 py-1.5 text-xs`} href={tokenUrl} target="_blank" rel="noreferrer">
+                        Open ↗
+                      </a>
+                      <button className={`${ghostButton} px-2 py-1.5 text-xs`} onClick={() => setPreviewToken(generateToken())}>
+                        Regenerate
+                      </button>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              <Toggle
-                label="Enable HTML minification"
-                hint="Collapse whitespace and drop comments from each published page. Smaller files; the source stays readable in the editor."
-                checked={minifyHtml}
-                onChange={setMinifyHtml}
-              />
-            </div>
+                <Toggle
+                  label="Enable HTML minification"
+                  hint="Collapse whitespace and drop comments from each published page. Smaller files; the source stays readable in the editor."
+                  checked={minifyHtml}
+                  onChange={setMinifyHtml}
+                />
+              </div>
 
-            <div className="flex justify-end pt-1">
-              <button className={`${primaryButton} px-4 py-2 text-sm`} onClick={() => void save()} disabled={saving}>
-                {saving ? 'Saving…' : 'Save publish options'}
-              </button>
+              <div className="flex justify-end pt-1">
+                <button className={`${primaryButton} px-4 py-2 text-sm`} onClick={() => void save()} disabled={saving}>
+                  {saving ? 'Saving…' : 'Save publish options'}
+                </button>
+              </div>
             </div>
-          </div>
-        )
-      ) : (
-        <DeployForm project={project} />
-      )}
+          )
+        ) : (
+          <DeployForm project={project} />
+        )}
       </div>
     </Modal>
   );

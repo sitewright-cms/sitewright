@@ -51,7 +51,10 @@ function ConnectGuide({ emphasized }: { emphasized: boolean }) {
     <button
       type="button"
       role="tab"
+      id={`agent-tab-${key}`}
       aria-selected={tab === key}
+      aria-controls="agent-connect-panel"
+      tabIndex={tab === key ? 0 : -1}
       onClick={() => setTab(key)}
       className={`waves-effect rounded-lg px-2.5 py-1 text-xs font-medium transition ${
         tab === key ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'
@@ -70,7 +73,7 @@ function ConnectGuide({ emphasized }: { emphasized: boolean }) {
         {tabBtn('claude', 'Claude.ai')}
         {tabBtn('cli', 'Local CLI Agents')}
       </div>
-      <div role="tabpanel" className="mt-3">
+      <div role="tabpanel" id="agent-connect-panel" aria-labelledby={`agent-tab-${tab}`} className="mt-3">
         {tab === 'chatgpt' && (
           <RemoteSteps
             mcpUrl={mcpUrl}

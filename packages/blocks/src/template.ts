@@ -19,6 +19,7 @@ import { safeUrl } from './url.js';
 import { escapeAttr } from './escape.js';
 import { iconBody } from './icons.js';
 import { brandIcon } from './brand-icons.js';
+import { flagIcon } from './flag-icons.js';
 import { resolveDirectives } from './directives.js';
 
 /** Thrown for an unsafe interpolation context, a Handlebars compile error, or a render error. */
@@ -288,6 +289,24 @@ function createInstance(): typeof Handlebars {
       `stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
     return new Handlebars.SafeString(svg);
   });
+  // {{sw-flag "de" "h-4"}} → inline a FULL-COLOR country flag as an <svg>. A bare alpha-2 code is the
+  // rectangular 4:3 flag; a `<code>-circle` name is the circular variant (e.g. {{sw-flag "de-circle"}}).
+  // Unlike sw-icon these keep their own fills (a flag in currentColor would be a blob), so it is a
+  // SEPARATE helper. The markup is ONLY from the trusted, build-time flag set (per-country namespaced
+  // ids so flags never collide on a page); an unknown code → empty. The country name is the accessible
+  // label + <title>. Use in element context.
+  hb.registerHelper('sw-flag', (name: unknown, cls?: unknown) => {
+    if (typeof name !== 'string') return new Handlebars.SafeString('');
+    const isCircle = name.endsWith('-circle');
+    const flag = flagIcon(isCircle ? name.slice(0, -'-circle'.length) : name);
+    const shape = flag && (isCircle ? flag.circle : flag.rect);
+    if (!flag || !shape) return new Handlebars.SafeString('');
+    const klass = escapeAttr(typeof cls === 'string' ? cls : isCircle ? 'h-5 w-5' : 'h-4');
+    return new Handlebars.SafeString(
+      `<svg class="${klass}" viewBox="${escapeAttr(shape.viewBox)}" role="img" aria-label="${escapeAttr(flag.name)}">` +
+        `<title>${Handlebars.escapeExpression(flag.name)}</title>${shape.body}</svg>`,
+    );
+  });
   // {{sw-truncate text 80}} → clip to N chars with an ellipsis.
   hb.registerHelper('sw-truncate', (value: unknown, max: unknown) => {
     const s = typeof value === 'string' ? value : '';
@@ -371,7 +390,7 @@ function compileCached(source: string): Handlebars.TemplateDelegate {
   let compiled: Handlebars.TemplateDelegate;
   try {
     // `strict: false` → a missing path renders empty (not a throw). Helpers available are
-    // the pure built-in logic helpers + our curated sw-url/sw-date/sw-icon/sw-truncate (log removed);
+    // the pure built-in logic helpers + our curated sw-url/sw-date/sw-icon/sw-flag/sw-truncate (log removed);
     // tenants cannot register their own (no compile/runtime registration is exposed).
     compiled = HB.compile(source, { strict: false, noEscape: false });
   } catch (err) {

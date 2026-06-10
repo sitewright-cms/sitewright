@@ -62,6 +62,10 @@ jobs:
       - name: Check generated brand icons are up to date
         run: pnpm --filter @sitewright/blocks gen:brand-icons:check
 
+      # Same guard for the generated country-flag set (flag-icons + circle-flags).
+      - name: Check generated flag icons are up to date
+        run: pnpm --filter @sitewright/blocks gen:flag-icons:check
+
       - name: Typecheck
         run: pnpm typecheck
 

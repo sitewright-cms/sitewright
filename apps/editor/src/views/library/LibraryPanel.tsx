@@ -115,7 +115,7 @@ function SectionModal({ section, onClose }: { section: LibrarySection; onClose: 
     void import('./catalog-icons')
       .then((m) => {
         if (alive) {
-          setItems(lazy === 'brand' ? m.BRAND_ITEMS : m.ICON_ITEMS);
+          setItems(lazy === 'brand' ? m.BRAND_ITEMS : lazy === 'flags' ? m.FLAG_ITEMS : m.ICON_ITEMS);
           setLoading(false);
         }
       })
@@ -144,9 +144,9 @@ function SectionModal({ section, onClose }: { section: LibrarySection; onClose: 
     [items, q],
   );
 
-  // A grid section (icons or brand logos) — capped so the 1865-icon set stays responsive;
+  // A grid section (icons, brand logos, or flags) — capped so the large sets stay responsive;
   // searching narrows it. Other sections show everything.
-  const isGrid = section.category === 'icons' || section.category === 'brand';
+  const isGrid = section.category === 'icons' || section.category === 'brand' || section.category === 'flags';
   const shown = isGrid ? filtered.slice(0, GRID_CAP) : filtered;
   const overflow = filtered.length - shown.length;
 

@@ -24,7 +24,7 @@ describe('REFERENCE_GROUPS', () => {
       expect(all.some((e) => e.syntax.includes(directive)), directive).toBe(true);
     }
     // The content helpers are sw-prefixed (kept clear of the dataset field namespace).
-    for (const helper of ['sw-url', 'sw-date', 'sw-icon', 'sw-truncate']) {
+    for (const helper of ['sw-url', 'sw-date', 'sw-icon', 'sw-flag', 'sw-truncate']) {
       expect(all.some((e) => e.syntax.includes(helper)), helper).toBe(true);
     }
     // eachEntry was merged into #each — the loop entry documents dataset click-to-edit.

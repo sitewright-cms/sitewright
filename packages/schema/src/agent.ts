@@ -65,9 +65,17 @@ waves-effect — never add Waves.js. Respects prefers-reduced-motion.
 ICONS: inline an icon with {{sw-icon "name" "h-5 w-5"}} (the 2nd arg is the CSS class). "name"
 is ANY Lucide icon name (the full ~1865-icon set, kebab-case — e.g. menu, x, search,
 arrow-right, chevron-down, mail, phone, map-pin, calendar, star, home, user, heart,
-shopping-cart, rocket, sparkles). Brand/social logos use the "brand:" prefix —
-{{sw-icon "brand:github"}}, brand:x, brand:youtube, brand:instagram, brand:facebook,
-brand:whatsapp, brand:tiktok, etc. Unknown names render nothing.
+shopping-cart, rocket, sparkles). Brand/social logos use the "brand:" prefix — there are ~270
+of them (simple-icons): {{sw-icon "brand:github"}}, brand:x, brand:youtube, brand:instagram,
+brand:facebook, brand:whatsapp, brand:tiktok, brand:linkedin (falls back to a line glyph),
+brand:figma, brand:spotify, brand:discord, brand:telegram, brand:bluesky, etc. Unknown names
+render nothing. (Note: bare "x" is the ✕ close glyph; "brand:x" is the X/Twitter logo.)
+
+FLAGS: country flags are FULL-COLOR, so they use a SEPARATE helper — {{sw-flag "de" "h-4"}}.
+The code is ISO 3166-1 alpha-2 (de, us, gb, fr, jp, br…); add "-circle" for the round variant
+({{sw-flag "de-circle"}}). All ~250 countries are built in. Flags are a poor proxy for
+LANGUAGES (Spanish ≠ Spain) — use them for country/region selectors; for a language switcher
+prefer text language names, or pass an explicit country code per locale.
 
 SET THE BRAND with put_content("settings","settings",{ identity:{ name, colors:{ primary:"#…" } },
 settings:{ defaultLocale:"en", locales:["en"] } }).

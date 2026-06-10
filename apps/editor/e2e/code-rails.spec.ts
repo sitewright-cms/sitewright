@@ -79,8 +79,9 @@ test('templates rail: 2-column grid + rename a template in the editor, persist a
   await namePrompt.getByLabel('Name', { exact: true }).fill('Promo');
   await namePrompt.getByRole('button', { name: 'Save' }).click();
 
-  // The editor opens with a Name field — RENAME it + add source, then save.
-  const editor = page.getByRole('dialog', { name: 'Promo — template' });
+  // The editor opens with a Name field. Use a title regex so the locator survives the rename (the
+  // dialog's accessible name updates live from "Promo — template" to "Promo Page — template").
+  const editor = page.getByRole('dialog', { name: /— template$/ });
   await expect(editor).toBeVisible();
   await editor.getByLabel('Name', { exact: true }).fill('Promo Page');
   await editor.locator('.cm-content').click();

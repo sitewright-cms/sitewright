@@ -130,7 +130,9 @@ export function CodeRecordManager({ projectId, noun, load, save, remove, makeId,
     [prompt, noun, nameHint, makeId, adaptersFor, projectId],
   );
 
-  // Rejects on failure so the editor stays open (it only closes on a resolved save).
+  // Rejects on failure so the editor stays open (it only closes on a resolved save). NOTE: assumes the
+  // editor CLOSES on a resolved save (CodeEditorModal's contract) — so `editing` is never re-saved with
+  // a stale `rec` after a rename. If a "save without closing" path is ever added, re-seed editing.rec.
   const persist = async ({ rec, scope }: { rec: CodeRecord; scope: Scope }, source: string) => {
     // Keep the stable id; apply the edited name (templates) — an empty name falls back to the old one.
     const name = editableName ? editName.trim() || rec.name : rec.name;
@@ -227,7 +229,8 @@ export function CodeRecordManager({ projectId, noun, load, save, remove, makeId,
       )}
       {editing && (
         <CodeEditorModal
-          title={`${editing.rec.name} — ${editing.scope === 'global' ? 'global ' : ''}${noun}`}
+          // Reflect the edited name live (templates) so the dialog heading/label don't go stale on rename.
+          title={`${editableName && editName.trim() ? editName.trim() : editing.rec.name} — ${editing.scope === 'global' ? 'global ' : ''}${noun}`}
           value={editing.rec.source}
           hint={hint}
           {...(editableName ? { name: editName, onNameChange: setEditName } : {})}

@@ -195,7 +195,7 @@ export function SettingsView({ project, section: fixedSection }: { project: Proj
               {section === 'identity' ? (
                 <IdentitySection form={form} patch={patch} projectId={project.id} />
               ) : (
-                <WebsiteSection form={form} patch={patch} />
+                <WebsiteSection form={form} patch={patch} projectId={project.id} />
               )}
             </motion.div>
           </AnimatePresence>

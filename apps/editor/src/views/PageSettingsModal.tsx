@@ -1,5 +1,15 @@
 import { useState } from 'react';
-import { GLOBAL_TEMPLATES, pagePath, pagesById } from '@sitewright/core';
+import {
+  GLOBAL_TEMPLATES,
+  GLOBAL_TEMPLATE_PREFIX,
+  pagePath,
+  pagesById,
+  codeOwnerOf,
+  pageCodeMode,
+  resolveCodeRef,
+  resolveTemplateSource,
+  type PageCodeMode,
+} from '@sitewright/core';
 import { NAV_SLOTS, type NavSlot, type Page, type Template } from '@sitewright/schema';
 import { Modal } from './ui/Modal';
 import { AssetField } from './files/AssetField';
@@ -23,6 +33,14 @@ export interface PageSettingsValues {
   locale: string;
   seoDescription: string;
   seoOgImage: string;
+  /**
+   * For a TRANSLATED page only: how it gets its code — `inherit` (follows the main
+   * language, no own code), `fork` (its own editable source), or `template`. Undefined on a
+   * main-language/standalone page (its code is managed in the editor as before).
+   */
+  codeMode?: PageCodeMode;
+  /** The source copied into the page when switching to `fork` (the resolved owner code). */
+  forkSource?: string;
 }
 
 /** Extracts the settings form values from a page. */
@@ -63,6 +81,23 @@ export function applyPageSettings(page: Page, v: PageSettingsValues): Page {
     ...(v.seoDescription ? { description: v.seoDescription } : {}),
     ...(v.seoOgImage ? { ogImage: v.seoOgImage } : {}),
   };
+  // Code source: for a translated page the `codeMode` control decides whether it inherits the
+  // main language's code (no own source/template), forks its own source, or uses a template.
+  // For a main-language/standalone page `codeMode` is undefined → keep its source, apply the
+  // template select (the prior behavior).
+  let source = page.source;
+  let template: string | undefined = v.template || undefined;
+  if (v.codeMode === 'inherit') {
+    source = undefined;
+    template = undefined;
+  } else if (v.codeMode === 'fork') {
+    // Forking copies the resolved layout in; if there's nothing to copy (owner has no resolvable
+    // code), stay in inherit mode rather than persisting an empty `source` that silently no-ops.
+    source = v.forkSource || page.source || undefined;
+    template = undefined;
+  } else if (v.codeMode === 'template') {
+    source = undefined;
+  }
   return {
     ...page, // preserves translationGroup (set by "Add translation", not edited here)
     title: v.title,
@@ -70,7 +105,8 @@ export function applyPageSettings(page: Page, v: PageSettingsValues): Page {
     status: v.status,
     nav,
     parent: v.parent || undefined,
-    template: v.template || undefined,
+    source,
+    template,
     locale: v.locale || undefined,
     seo: Object.keys(seo).length > 0 ? seo : undefined,
   };
@@ -117,9 +153,34 @@ interface PageSettingsModalProps {
  * in-dropdown, template reference, and nav placement.
  */
 export function PageSettingsModal({ page, projectId, initial, pages, templates, locales = [], saving = false, onClose, onSubmit }: PageSettingsModalProps) {
-  const [v, setV] = useState<PageSettingsValues>(initial);
+  const defaultLocale = locales[0] ?? 'en';
+  // A TRANSLATED page is a non-default-locale page whose translation group has a main-language
+  // owner — it can inherit that owner's code. The code-source control is shown only for these.
+  const owner = codeOwnerOf(page, pages, defaultLocale);
+  const isTranslated = !!owner && owner.id !== page.id;
+  // Seed the code mode from the page's current state so the radio reflects reality and an
+  // untouched save preserves it.
+  const [v, setV] = useState<PageSettingsValues>(() =>
+    isTranslated ? { ...initial, codeMode: pageCodeMode(page) } : initial,
+  );
   const patch = (next: Partial<PageSettingsValues>) => setV((prev) => ({ ...prev, ...next }));
   const isHome = page.path === '';
+  /** The main language's effective source (resolved through its template if any) — copied in on fork. */
+  const ownerSource = (): string => {
+    if (!owner) return page.source ?? '';
+    const ref = resolveCodeRef(owner, pages, defaultLocale);
+    if (ref.source !== undefined) return ref.source;
+    if (ref.template) {
+      const projMap = new Map(templates.map((t) => [t.id, t]));
+      const globalMap = new Map(GLOBAL_TEMPLATES.map((t) => [GLOBAL_TEMPLATE_PREFIX + t.id, t]));
+      try {
+        return resolveTemplateSource(ref.template, projMap, globalMap);
+      } catch {
+        return '';
+      }
+    }
+    return '';
+  };
   // HOME (the empty-slug root) is the tree root: every other page must have a parent,
   // defaulting to home — so non-home pages are never offered a "None (top-level)" choice.
   // The literal fallback matches the create/copy defaults so the select always has a value.
@@ -231,30 +292,97 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
               <span className="mt-1 font-normal text-[11px] text-slate-400">Sub-pages nest under their parent; defaults to Home.</span>
             )}
           </label>
-          <label className="flex flex-col text-xs font-semibold text-slate-700">
-            Template
-            <select
-              aria-label="Page template"
-              className={`mt-1.5 font-normal ${glassInput}`}
-              value={v.template}
-              onChange={(e) => patch({ template: e.target.value })}
-            >
-              <option value="">None (own code)</option>
-              {GLOBAL_TEMPLATES.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-              {templates.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
-            <span className="mt-1 font-normal text-[11px] text-slate-400">
-              A templated page renders the template’s code — its editor is locked (fork to customize).
-            </span>
-          </label>
+          {isTranslated ? (
+            // A translated page: choose how it gets its CODE — inherit the main language's
+            // layout, fork its own, or use a template. (The text is always translated via page.data.)
+            <fieldset className="flex flex-col text-xs font-semibold text-slate-700">
+              Code source
+              <div className="mt-1.5 flex flex-col gap-1.5 rounded-xl border border-slate-200 bg-white/40 p-2.5 font-normal">
+                <label className="flex items-start gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="code-mode"
+                    aria-label="Inherit code from the main language"
+                    className="mt-0.5"
+                    checked={v.codeMode === 'inherit'}
+                    onChange={() => patch({ codeMode: 'inherit' })}
+                  />
+                  <span>
+                    Inherit from {owner ? `“${owner.title}”` : 'the main language'}
+                    <span className="block text-[11px] text-slate-400">Follows the main language’s layout — edit there to change every language.</span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="code-mode"
+                    aria-label="Fork the code for this language"
+                    className="mt-0.5"
+                    checked={v.codeMode === 'fork'}
+                    onChange={() => patch({ codeMode: 'fork', forkSource: page.source ?? ownerSource() })}
+                  />
+                  <span>
+                    Fork — this language gets its own code
+                    <span className="block text-[11px] text-slate-400">Copies the current layout in; edit it freely in the page editor.</span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="code-mode"
+                    aria-label="Use a template"
+                    className="mt-0.5"
+                    checked={v.codeMode === 'template'}
+                    onChange={() => patch({ codeMode: 'template' })}
+                  />
+                  <span className="w-full">
+                    Use a template
+                    {v.codeMode === 'template' && (
+                      <select
+                        aria-label="Page template"
+                        className={`mt-1.5 font-normal ${glassInput}`}
+                        value={v.template}
+                        onChange={(e) => patch({ template: e.target.value })}
+                      >
+                        <option value="">Select a template…</option>
+                        {GLOBAL_TEMPLATES.map((t) => (
+                          <option key={t.id} value={t.id}>{t.name}</option>
+                        ))}
+                        {templates.map((t) => (
+                          <option key={t.id} value={t.id}>{t.name}</option>
+                        ))}
+                      </select>
+                    )}
+                  </span>
+                </label>
+              </div>
+            </fieldset>
+          ) : (
+            <label className="flex flex-col text-xs font-semibold text-slate-700">
+              Template
+              <select
+                aria-label="Page template"
+                className={`mt-1.5 font-normal ${glassInput}`}
+                value={v.template}
+                onChange={(e) => patch({ template: e.target.value })}
+              >
+                <option value="">None (own code)</option>
+                {GLOBAL_TEMPLATES.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+                {templates.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+              <span className="mt-1 font-normal text-[11px] text-slate-400">
+                A templated page renders the template’s code — its editor is locked (fork to customize).
+              </span>
+            </label>
+          )}
         </div>
 
         {locales.length > 1 && (

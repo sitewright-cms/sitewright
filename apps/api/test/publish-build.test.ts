@@ -441,6 +441,66 @@ describe('buildSite', () => {
     expect(de).not.toContain('href="/de/about"'); // not absolute
   });
 
+  it('an inherit-mode locale variant renders the OWNER code with its OWN data', async () => {
+    // The de variant carries NO source/template → it follows the en owner's code
+    // (`resolveCodeRef`), rendering the main language's layout with the variant's data.
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: {} },
+          settings: { defaultLocale: 'en', locales: ['en', 'de'] },
+        },
+        pages: [
+          {
+            id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
+            source: '<h1 data-sw-text="headline" class="text-2xl">EN</h1>', data: { headline: 'Welcome' },
+            translationGroup: 'home',
+          },
+          // Inherit-mode: no source, no template — code follows the owner; own data only.
+          {
+            id: 'home-de', path: 'de', parent: 'home', title: 'Start', locale: 'de',
+            translationGroup: 'home', root: { id: 'r2', type: 'Section' }, data: { headline: 'Willkommen' },
+          },
+        ],
+      }),
+    });
+    const en = await readFile(join(outDir, 'index.html'), 'utf8');
+    const de = await readFile(join(outDir, 'de', 'index.html'), 'utf8');
+    // Both render the SAME owner layout (the <h1>), but each shows its own data value.
+    expect(en).toContain('>Welcome</h1>');
+    expect(de).toContain('>Willkommen</h1>');
+    expect(de).toContain('<html lang="de">'); // the variant's locale drives <html lang>
+    // The owner's Tailwind class reaches the shared sheet, so the inheriting variant is styled.
+    expect(de).toContain('text-2xl');
+  });
+
+  it('a locale-only page (no owner) renders from its OWN code', async () => {
+    // A page that exists only in `de` with no en counterpart carries its own source.
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: {} },
+          settings: { defaultLocale: 'en', locales: ['en', 'de'] },
+        },
+        pages: [
+          { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<div>home</div>' },
+          { id: 'home-de', path: 'de', parent: 'home', title: 'Start', locale: 'de', root: { id: 'r2', type: 'Section' }, source: '<div>start</div>' },
+          // Locale-only: only exists in de, own code, no translationGroup.
+          { id: 'kontakt-de', path: 'kontakt', parent: 'home-de', title: 'Kontakt', locale: 'de', root: { id: 'r3', type: 'Section' }, source: '<h1>Kontakt DE</h1>' },
+        ],
+      }),
+    });
+    const page = await readFile(join(outDir, 'de', 'kontakt', 'index.html'), 'utf8');
+    expect(page).toContain('<h1>Kontakt DE</h1>');
+    expect(page).toContain('<html lang="de">');
+  });
+
   it('fails the publish with a template-error message when a skeleton slot is malformed', async () => {
     await expect(
       buildSite({

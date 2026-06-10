@@ -331,6 +331,28 @@ export const api = {
     request<{ item: Page }>('PUT', `/projects/${projectId}/content/page/${page.id}`, page),
   deletePage: (projectId: string, id: string) =>
     request<void>('DELETE', `/projects/${projectId}/content/page/${id}`),
+
+  // --- multilingual locale management (see docs/i18n-content-model.md) ---
+  // Add a translation target: scaffolds an inherit-mode variant of every default-language page.
+  addLocale: (projectId: string, locale: string) =>
+    request<{ locale: string; created: number; pages: Page[] }>('POST', `/projects/${projectId}/locales`, { locale }),
+  // Remove a translation target: cascade-deletes every page in that language.
+  removeLocale: (projectId: string, locale: string) =>
+    request<{ locale: string; removed: number }>('DELETE', `/projects/${projectId}/locales/${encodeURIComponent(locale)}`),
+  // Make an existing default-language page available in all (or the given) languages.
+  translatePage: (projectId: string, pageId: string, locales?: string[]) =>
+    request<{ created: number; pages: Page[] }>(
+      'POST',
+      `/projects/${projectId}/pages/${encodeURIComponent(pageId)}/translate`,
+      locales ? { locales } : {},
+    ),
+  // Delete a page across the languages that INHERIT its code (forked/template variants are kept).
+  deletePageGroup: (projectId: string, pageId: string) =>
+    request<{ removed: string[]; kept: string[] }>(
+      'POST',
+      `/projects/${projectId}/pages/${encodeURIComponent(pageId)}/delete-group`,
+    ),
+
   // Full-parity live preview: POST the (draft) page; the server renders it through the
   // isolated worker WITH the project skeleton slots, website head/critical CSS, and the
   // page's {{edit}} content — the same document publish produces. `token` loads the doc

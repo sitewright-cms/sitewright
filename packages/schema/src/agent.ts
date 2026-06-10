@@ -112,9 +112,12 @@ locales:["en","de"] }. Then for a translated page create a sibling page that:
   first ({ path:"<locale>", parent:"home" } → /<locale>, the localized home), then parent the
   locale's other pages under it ({ path:"about", parent:"<locale>-home-id" } → /<locale>/about).
   Each locale's nav lists only its own pages.
-SHARE STRUCTURE by giving the variants the SAME \`template\` (or copy the \`source\`); each
-supplies only its own translated \`data\` (data-sw-text values) and \`title\`/\`seo\`. For a one-off layout
-difference, just give that variant its own \`source\`.
+SHARE STRUCTURE by INHERITANCE: leave a translated variant's \`source\` AND \`template\` UNSET —
+it then automatically follows the DEFAULT-LOCALE page's code (edit that one page's layout and
+every language updates, no copying). Each variant supplies only its own translated \`data\`
+(data-sw-text values) and \`title\`/\`seo\`. For a one-off layout difference, give that variant its
+own \`source\` (fork) or set its \`template\`; a variant that carries its own code stops following
+the main page.
 LOCALIZED DATA: duplicate a dataset per locale as "<name>-<locale>" (lowercased), e.g.
 "services" + "services-de". A page with locale "de" auto-resolves {{#each data.services}}
 to "services-de" when it exists (else it falls back to "services"); address a specific

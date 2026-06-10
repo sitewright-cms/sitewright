@@ -64,6 +64,35 @@ describe('api client', () => {
     expect(fetchMock.mock.calls[0]![0]).toBe('/projects/proj1/content/page');
   });
 
+  it('locale management wrappers hit the dedicated endpoints', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { locale: 'de', created: 1, removed: 0, pages: [], kept: [] }));
+
+    await api.addLocale('p1', 'de');
+    let [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/projects/p1/locales');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body)).toEqual({ locale: 'de' });
+
+    await api.removeLocale('p1', 'pt-BR');
+    [url, init] = fetchMock.mock.calls[1]!;
+    expect(url).toBe('/projects/p1/locales/pt-BR');
+    expect(init.method).toBe('DELETE');
+
+    await api.translatePage('p1', 'about');
+    [url, init] = fetchMock.mock.calls[2]!;
+    expect(url).toBe('/projects/p1/pages/about/translate');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body)).toEqual({});
+
+    await api.translatePage('p1', 'about', ['de', 'fr']);
+    expect(JSON.parse(fetchMock.mock.calls[3]![1].body)).toEqual({ locales: ['de', 'fr'] });
+
+    await api.deletePageGroup('p1', 'about');
+    [url, init] = fetchMock.mock.calls[4]!;
+    expect(url).toBe('/projects/p1/pages/about/delete-group');
+    expect(init.method).toBe('POST');
+  });
+
   it('snippet + template wrappers hit the generic content routes (list/put/delete)', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { items: [] }));
     await api.listSnippets('p1');

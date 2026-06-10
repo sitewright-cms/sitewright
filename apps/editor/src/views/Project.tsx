@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import type { Page, Template } from '@sitewright/schema';
-import { pagePath, pagesById } from '@sitewright/core';
+import { pagePath, pagesById, pagesInLocale, localeOf } from '@sitewright/core';
 import { api, previewDocUrl, type Project } from '../api';
 import { CodePageEditor } from './CodePageEditor';
 import { PageSettingsModal, applyPageSettings, pageSettingsFromPage, type PageSettingsValues } from './PageSettingsModal';
@@ -12,6 +12,8 @@ import { SettingsView } from './settings/SettingsView';
 import { AdminView } from './AdminView';
 import { glassCard, glassInput, fieldLabel, primaryButton, gradientHover } from '../theme';
 import { orderPagesByTree, canReorder, reorderWithinParent, orderedSiblings } from './pages-order';
+import { LocalePickerModal } from './i18n/LocalePickerModal';
+import { localeFlag, localeLabel } from './i18n/locale-catalog';
 
 interface ProjectViewProps {
   project: Project;
@@ -146,6 +148,16 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
   const [locales, setLocales] = useState<string[]>(['en']);
   const defaultLocale = locales[0] ?? 'en';
   const multilingual = locales.length > 1;
+  // The language the pages list is showing; the switcher changes it and the list filters
+  // to that locale's pages. Kept in sync with the configured locales below.
+  const [currentLocale, setCurrentLocale] = useState(defaultLocale);
+  // "Add translation" (a new locale target) modal + its async state.
+  const [addLocaleOpen, setAddLocaleOpen] = useState(false);
+  const [addLocaleBusy, setAddLocaleBusy] = useState(false);
+  const [addLocaleError, setAddLocaleError] = useState<string | null>(null);
+  // When multilingual, a new page is either created in ALL languages (default) or only the
+  // currently-selected one (a locale-only page).
+  const [newPageScope, setNewPageScope] = useState<'all' | 'current'>('all');
   // Drag&drop reordering of sibling pages (same parent + locale). `dragId` is the page being
   // dragged; `drop` marks where it will land (a row + which side) so the list opens a gap there.
   const [dragId, setDragId] = useState<string | null>(null);
@@ -156,12 +168,24 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
   // committed list, never a stale render closure (rapid keyboard moves / in-flight saves).
   const pagesRef = useRef<Page[]>(pages);
   pagesRef.current = pages;
-  // Pages in page-tree order (parents followed by their children) with a depth for
-  // indenting sub-pages in the list.
-  const orderedPages = useMemo(() => orderPagesByTree(pages, defaultLocale), [pages, defaultLocale]);
+  // Pages of the CURRENTLY-SELECTED language, in page-tree order (parents followed by their
+  // children) with a depth for indenting sub-pages. The list shows one language at a time;
+  // the switcher changes which. (Filtering before ordering makes a locale's home the subtree
+  // root — its parent, the root home, is outside the filtered set.)
+  const orderedPages = useMemo(
+    () => orderPagesByTree(pagesInLocale(pages, currentLocale, defaultLocale), defaultLocale),
+    [pages, currentLocale, defaultLocale],
+  );
   // The HOME page (empty slug = the tree root) is the default parent for every other
   // page; "no parent" isn't offered for non-home pages.
   const homeId = pages.find((p) => p.path === '')?.id ?? 'home';
+  // The home page of a given locale (root of its subtree) — the parent for a new locale-only
+  // page, falling back to the root home when that locale has no home yet.
+  function localeHomeId(locale: string): string {
+    if (locale === defaultLocale) return homeId;
+    const group = pages.find((p) => p.id === homeId)?.translationGroup ?? homeId;
+    return pages.find((p) => (p.translationGroup ?? p.id) === group && localeOf(p, defaultLocale) === locale)?.id ?? homeId;
+  }
   // Index for computing each page's full route ({root}/{parent slugs}/{slug}) for display.
   const pageById = useMemo(() => pagesById(pages), [pages]);
   const fullPath = (p: Page): string => pagePath(p, pageById);
@@ -191,6 +215,14 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
         /* settings may not exist yet → single default locale */
       });
   }, [project.id]);
+
+  // Keep the selected language valid: when the configured locales load/change (or one is
+  // removed), snap back to the default if the current selection is no longer available.
+  useEffect(() => {
+    // Snap the selected language back to the default whenever it is no longer configured
+    // (initial load, or a locale was removed). Terminates: resetting to a valid default no-ops.
+    if (!locales.includes(currentLocale)) setCurrentLocale(defaultLocale);
+  }, [locales, currentLocale, defaultLocale]);
 
   /** Commits a drag: reorder the sibling group, apply optimistically, persist moved pages. */
   async function persistReorder(sourceId: string, targetId: string, pos: 'before' | 'after') {
@@ -238,33 +270,53 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
       setAddError('Enter a page slug (e.g. "about").');
       return;
     }
-    // The id derives from the slug; refuse to clobber an existing page (notably the
-    // reserved "home" root, whose id is "home").
-    if (pages.some((p) => p.id === seg)) {
-      setAddError(seg === 'home' ? '"home" is reserved for the site root — pick another slug.' : `A page "${seg}" already exists.`);
+    // A locale-only page (created while viewing a non-default language, "only this language")
+    // gets a locale-suffixed id so it never collides with a future default page of the same
+    // slug; otherwise the id is the slug, with the code authored in the default language.
+    const localeOnly = multilingual && currentLocale !== defaultLocale && newPageScope === 'current';
+    const id = localeOnly ? `${seg}-${currentLocale.toLowerCase()}` : seg;
+    if (pages.some((p) => p.id === id)) {
+      setAddError(id === 'home' ? '"home" is reserved for the site root — pick another slug.' : `A page "${id}" already exists.`);
       return;
     }
-    const page: Page = {
-      id: seg,
+    const starter: Page = {
+      id,
       path: seg,
       title,
-      // A new page defaults to HOME as its parent (home is the tree root); its full route is
-      // computed as `/<…parents>/<slug>`.
-      parent: homeId,
-      // Every page is code-first: it carries a Handlebars `source` (the block tree is retired).
-      // `root` stays a valid placeholder so the unified page model is satisfied.
+      // `root` stays a valid placeholder so the unified page model is satisfied; the page is
+      // code-first via `source`.
       root: { id: 'root', type: 'Section', children: [] },
       source: CODE_PAGE_STARTER,
+      ...(localeOnly
+        ? { parent: localeHomeId(currentLocale), locale: currentLocale } // standalone, lives only in this language
+        : { parent: homeId }), // the default-language owner (the code source of truth)
     };
     try {
-      await api.putPage(project.id, page);
-      setSlug('');
-      setTitle('');
-      setAddOpen(false);
-      await load();
+      await api.putPage(project.id, starter);
     } catch (err) {
       setAddError(err instanceof Error ? err.message : 'failed to create page');
+      return;
     }
+    // The page exists now — close the form regardless of what the propagation step does.
+    setSlug('');
+    setTitle('');
+    setAddOpen(false);
+    // "All languages": the owner was authored in the default language; fan it out into every
+    // other configured locale as inherit-mode variants (they follow this page's code). A failure
+    // here leaves a valid (un-propagated) page — say so precisely instead of "failed to create".
+    if (multilingual && !localeOnly && newPageScope === 'all') {
+      try {
+        await api.translatePage(project.id, id);
+      } catch (err) {
+        await load();
+        setError(
+          `“${title}” was created but could not be added to every language ` +
+            `(${err instanceof Error ? err.message : 'error'}). Use the translate action on it to retry.`,
+        );
+        return;
+      }
+    }
+    await load();
   }
 
   /** Renders the SAVED page via /preview and opens the sandboxed document in a new tab. */
@@ -332,7 +384,7 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
     }
   }
 
-  /** The non-default locales a page is still missing a translation for (drives the action + its gating). */
+  /** The non-default locales a default-language page is still missing a variant for (gates the action). */
   function missingLocalesFor(primary: Page): string[] {
     const group = primary.translationGroup ?? primary.id;
     const inGroup = pages.filter((p) => p.translationGroup === group || p.id === primary.id);
@@ -340,87 +392,91 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
     return locales.filter((l) => l !== defaultLocale && !present.has(l));
   }
 
-  /**
-   * Creates the missing locale variants of a page (copy-as-translation): each variant is a
-   * Page sharing the translation group + the SAME slug, parented under that LOCALE'S HOME
-   * (the translated root home) when it exists — so its computed route is `/<locale>/…`. If
-   * the locale home doesn't exist yet, the variant lands under the root home and we warn to
-   * translate the home first. Translating the home page itself CREATES the locale home
-   * (slug = the locale code, parent = the root home).
-   */
-  async function addTranslations(primary: Page) {
-    setError(null);
-    const group = primary.translationGroup ?? primary.id;
-    const missing = missingLocalesFor(primary);
-    if (missing.length === 0) return;
-    const rootHome = pages.find((p) => p.id === homeId);
-    const isRootHome = primary.path === '' || primary.id === homeId;
-    const noLocaleHome: string[] = [];
+  /** Add a translation target: the server appends the locale + scaffolds a variant of every
+   *  default-language page into it (inherit-mode). Jumps the list to the new language after. */
+  async function addLocale(locale: string) {
+    setAddLocaleError(null);
+    setAddLocaleBusy(true);
     try {
-      const ops: Promise<unknown>[] = [];
-      // Tie the primary into the group (its locale stays the default).
-      if (!primary.translationGroup) ops.push(api.putPage(project.id, { ...primary, translationGroup: group }));
-      for (const loc of missing) {
-        // The home's variant IS the locale home → its slug is the locale code, parented to
-        // the root home. Other pages keep their slug and nest under the locale home.
-        let parent = homeId;
-        if (!isRootHome) {
-          const localeHome = pages.find(
-            (p) => p.locale === loc && !!rootHome?.translationGroup && p.translationGroup === rootHome.translationGroup,
-          );
-          if (localeHome) parent = localeHome.id;
-          else noLocaleHome.push(loc);
-        }
-        ops.push(
-          api.putPage(project.id, {
-            ...primary, // inherits template/source + {{edit}} content as the translation start point
-            id: `${primary.id}-${loc}`,
-            locale: loc,
-            translationGroup: group,
-            // The locale home's slug is the locale code, lowercased to satisfy the slug schema
-            // (locales may be mixed-case like `pt-BR`); other variants keep the primary's slug.
-            path: isRootHome ? loc.toLowerCase() : primary.path,
-            parent,
-          }),
-        );
-      }
-      await Promise.all(ops);
+      await api.addLocale(project.id, locale);
+      setLocales((prev) => (prev.includes(locale) ? prev : [...prev, locale]));
+      setAddLocaleOpen(false);
+      setCurrentLocale(locale);
       await load();
-      if (noLocaleHome.length > 0) {
-        setError(
-          `No home page yet for ${noLocaleHome.join(', ')} — these translations were placed under the site root. ` +
-            `Use "Add translation" on the Home page first so they nest under /<locale>.`,
-        );
-      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'failed to add translation');
+      setAddLocaleError(err instanceof Error ? err.message : 'failed to add translation');
+    } finally {
+      setAddLocaleBusy(false);
+    }
+  }
+
+  /** Make a default-language page available in every language it's still missing (inherit variants). */
+  async function translatePage(p: Page) {
+    setError(null);
+    try {
+      await api.translatePage(project.id, p.id);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'failed to translate page');
     }
   }
 
   /**
-   * Promotes a page's source into a reusable project TEMPLATE and converts the page
-   * (and its locale siblings) to reference it — so all locales share one structure
-   * and supply only their own {{edit}} content. No-op for a page that already
-   * references a template.
+   * Promotes a page's source into a reusable project TEMPLATE and converts the page to
+   * reference it. Its inherit-mode locale variants follow automatically (they resolve the
+   * owner's template), so only the page itself is converted. No-op once templated.
    */
   async function saveAsTemplate(p: Page) {
     if (!p.source || p.template) return;
     setError(null);
     const tplId = `${p.id}-template`;
-    const group = p.translationGroup;
-    const targets = group ? pages.filter((pg) => pg.translationGroup === group) : [p];
     try {
       await api.putTemplate(project.id, { id: tplId, name: `${p.title} layout`, source: p.source });
-      await Promise.all(targets.map((pg) => api.putPage(project.id, { ...pg, template: tplId, source: undefined })));
+      await api.putPage(project.id, { ...p, template: tplId, source: undefined });
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed to save as template');
     }
   }
 
-  /** Deletes a page — every page EXCEPT home (the empty-slug root), which is permanent. */
+  /**
+   * Deletes a page. The root home is permanent; a locale home is removed by removing its
+   * whole language (Website Settings). Deleting a MAIN-language page that has translations
+   * cascades the variants that FOLLOW its code (forked/template variants are kept) — a clear
+   * warning lists them; deleting any other page removes just that one.
+   */
   async function removePage(p: Page) {
-    if (p.path === '') return;
+    if (p.path === '') return; // the root home is permanent
+    const homeGroup = pages.find((x) => x.id === homeId)?.translationGroup ?? homeId;
+    const isLocaleHome = localeOf(p, defaultLocale) !== defaultLocale && (p.translationGroup ?? p.id) === homeGroup;
+    if (isLocaleHome) {
+      setError('To remove a language, use Website Settings → Localization.');
+      return;
+    }
+    setError(null);
+    const group = p.translationGroup;
+    const inGroup = group ? pages.filter((x) => x.translationGroup === group) : [];
+    const isOwner = localeOf(p, defaultLocale) === defaultLocale && inGroup.length > 1;
+    if (isOwner) {
+      const followers = inGroup.filter((x) => x.id !== p.id && !x.source && !x.template);
+      const kept = inGroup.filter((x) => x.id !== p.id && (x.source || x.template));
+      const labels = (xs: Page[]) => xs.map((x) => localeLabel(x.locale ?? defaultLocale)).join(', ');
+      const parts = [`"${p.title}" is the main-language page.`];
+      parts.push(
+        followers.length
+          ? `Deleting it also removes the ${followers.length} translation${followers.length > 1 ? 's' : ''} that follow its layout (${labels(followers)}).`
+          : 'It has no translations that follow its layout.',
+      );
+      if (kept.length) parts.push(`Translations with their own code are kept (${labels(kept)}).`);
+      if (!(await confirm({ title: 'Delete across languages', message: parts.join(' '), confirmLabel: 'Delete' }))) return;
+      try {
+        await api.deletePageGroup(project.id, p.id);
+        await load();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'failed to delete page');
+      }
+      return;
+    }
     if (
       !(await confirm({
         title: 'Delete page',
@@ -429,7 +485,6 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
       }))
     )
       return;
-    setError(null);
     try {
       await api.deletePage(project.id, p.id);
       await load();
@@ -471,18 +526,55 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
         <AdminView key={project.id} project={project} />
       ) : (
         <>
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-slate-500">Pages</h2>
-            <button
-              type="button"
-              className={primaryButton}
-              onClick={() => {
-                setAddError(null);
-                setAddOpen(true);
-              }}
-            >
-              + New page
-            </button>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-semibold text-slate-500">Pages</h2>
+              {/* Language switcher — the list shows one language at a time. Hidden until a
+                  second language exists (a single-language project needs no switcher). */}
+              {multilingual && (
+                <div role="tablist" aria-label="Language" className="flex items-center gap-1 rounded-xl bg-slate-100 p-1">
+                  {locales.map((loc) => (
+                    <button
+                      key={loc}
+                      type="button"
+                      role="tab"
+                      aria-selected={loc === currentLocale}
+                      title={`${localeLabel(loc)}${loc === defaultLocale ? ' (main language)' : ''}`}
+                      className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-sm font-medium transition ${
+                        loc === currentLocale ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                      onClick={() => setCurrentLocale(loc)}
+                    >
+                      <span aria-hidden>{localeFlag(loc)}</span>
+                      <span className="uppercase">{loc}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="rounded-xl border border-slate-200 bg-white/70 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-white"
+                onClick={() => {
+                  setAddLocaleError(null);
+                  setAddLocaleOpen(true);
+                }}
+              >
+                + Add translation
+              </button>
+              <button
+                type="button"
+                className={primaryButton}
+                onClick={() => {
+                  setAddError(null);
+                  setNewPageScope('all');
+                  setAddOpen(true);
+                }}
+              >
+                + New page
+              </button>
+            </div>
           </div>
           <ul className="mb-8 flex flex-col gap-2">
             {orderedPages.map(({ page: p, depth }) => {
@@ -576,9 +668,17 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
                     {p.template && (
                       <span className="rounded-full bg-indigo-100/80 px-2 py-0.5 text-[11px] font-medium text-indigo-700 group-hover:bg-white/25 group-hover:text-white">template</span>
                     )}
-                    {multilingual && p.locale && (
-                      <span className="rounded-full bg-emerald-100/80 px-2 py-0.5 text-[11px] font-semibold uppercase text-emerald-700 group-hover:bg-white/25 group-hover:text-white">
-                        {p.locale}
+                    {/* Code-mode badge for a translated page: it follows the main language's
+                        layout ("inherited") or carries its own forked code ("custom code"); a
+                        template page already shows the "template" chip above. */}
+                    {multilingual && p.locale && !p.source && !p.template && (
+                      <span title="Layout inherited from the main language" className="rounded-full bg-emerald-100/80 px-2 py-0.5 text-[11px] font-medium text-emerald-700 group-hover:bg-white/25 group-hover:text-white">
+                        inherited
+                      </span>
+                    )}
+                    {multilingual && p.locale && p.source && (
+                      <span title="This language has its own forked code" className="rounded-full bg-amber-100/80 px-2 py-0.5 text-[11px] font-medium text-amber-700 group-hover:bg-white/25 group-hover:text-white">
+                        custom code
                       </span>
                     )}
                   </button>
@@ -598,13 +698,13 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
                         {GEAR_ICON}
                       </button>
                     </Tooltip>
-                    {/* i18n actions — only for default-locale pages in a multilingual project
-                        that are STILL MISSING at least one language variant. "Add translation"
-                        fans out the missing locales; once all exist (or on a variant page), the
-                        action disappears (you manage translations from the primary). */}
-                    {multilingual && !p.locale && missingLocalesFor(p).length > 0 && (
-                      <Tooltip tip="Create the missing language variants" side="top">
-                        <button aria-label={`Add translations for ${p.title}`} className={ROW_ACTION} onClick={() => void addTranslations(p)}>
+                    {/* "Make available in all languages" — only on a MAIN-language page (default
+                        locale view) that's still missing at least one configured language. It fans
+                        the page out as inherit-mode variants; once present in every language the
+                        action disappears. (Adding a whole new language is the top "Add translation".) */}
+                    {currentLocale === defaultLocale && !p.locale && missingLocalesFor(p).length > 0 && (
+                      <Tooltip tip="Make this page available in all languages" side="top">
+                        <button aria-label={`Translate ${p.title} into all languages`} className={ROW_ACTION} onClick={() => void translatePage(p)}>
                           {GLOBE_ICON}
                         </button>
                       </Tooltip>
@@ -683,6 +783,28 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
                     required
                   />
                 </div>
+                {/* When the site is multilingual, a new page is either available in EVERY
+                    language (one main-language owner + inherit variants) or ONLY the language
+                    you're viewing (a standalone locale-only page). */}
+                {multilingual && (
+                  <fieldset className="flex flex-col gap-2 rounded-xl border border-slate-200 p-3">
+                    <legend className="px-1 text-xs font-medium uppercase tracking-wide text-slate-400">Available in</legend>
+                    <label className="flex items-start gap-2 text-sm">
+                      <input type="radio" name="page-scope" className="mt-0.5" checked={newPageScope === 'all'} onChange={() => setNewPageScope('all')} />
+                      <span>
+                        <span className="font-medium">All languages</span>
+                        <span className="block text-xs text-slate-500">One main-language page; every other language follows its layout.</span>
+                      </span>
+                    </label>
+                    <label className="flex items-start gap-2 text-sm">
+                      <input type="radio" name="page-scope" className="mt-0.5" checked={newPageScope === 'current'} onChange={() => setNewPageScope('current')} />
+                      <span>
+                        <span className="font-medium">Only {localeFlag(currentLocale)} {localeLabel(currentLocale)}</span>
+                        <span className="block text-xs text-slate-500">A page that exists only in this language.</span>
+                      </span>
+                    </label>
+                  </fieldset>
+                )}
                 {addError && <p className="text-sm text-red-600">{addError}</p>}
                 <div className="flex justify-end">
                   <button type="submit" className={primaryButton}>
@@ -691,6 +813,22 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
                 </div>
               </form>
             </Modal>
+          )}
+          {addLocaleOpen && (
+            <LocalePickerModal
+              title="Add a translation target"
+              description="Pick a language to translate the site into. Every existing page is duplicated into it, following the main language's layout — you then translate the text."
+              actionLabel="Add language"
+              exclude={locales}
+              busy={addLocaleBusy}
+              error={addLocaleError}
+              onPick={(locale) => void addLocale(locale)}
+              onClose={() => {
+                if (addLocaleBusy) return;
+                setAddLocaleOpen(false);
+                setAddLocaleError(null);
+              }}
+            />
           )}
         </>
       )}

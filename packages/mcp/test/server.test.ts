@@ -299,6 +299,17 @@ describe('createSitewrightMcpServer — agent guidance', () => {
     await mcp.close();
   });
 
+  it('instructions teach the multilingual INHERITANCE model (variants leave source/template unset)', async () => {
+    const mcp = await connect(fakeClient(), writeScope);
+    const instructions = mcp.getInstructions() ?? '';
+    expect(instructions).toMatch(/INHERITANCE/);
+    expect(instructions).toMatch(/translationGroup/);
+    // The variant follows the default-locale page's code; it does NOT copy the source.
+    expect(instructions).toMatch(/follows the DEFAULT-LOCALE page/i);
+    expect(instructions).not.toMatch(/copy the `?source`?\)/i);
+    await mcp.close();
+  });
+
   it('instructions teach scroll-reveal animations via the standard data-aos vocabulary', async () => {
     const mcp = await connect(fakeClient(), writeScope);
     const instructions = mcp.getInstructions() ?? '';

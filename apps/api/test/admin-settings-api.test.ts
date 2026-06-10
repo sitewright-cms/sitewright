@@ -114,6 +114,32 @@ describe('admin settings API', () => {
       expect(put.statusCode).toBe(400);
     });
 
+    it('applies the admin "default locale for new projects" to a newly created project', async () => {
+      const admin = await register(app, 'admin@acme.test');
+      const cookies = { sw_session: admin.t };
+      const put = await app.inject({ method: 'PUT', url: '/admin/settings', cookies, payload: { defaultLocale: 'de' } });
+      expect(put.statusCode).toBe(200);
+      expect((put.json() as { settings: { defaultLocale?: string } }).settings.defaultLocale).toBe('de');
+
+      const proj = await app.inject({ method: 'POST', url: '/projects', cookies, payload: { name: 'Neu', slug: 'neu' } });
+      const projectId = (proj.json() as { project: { id: string } }).project.id;
+      const settings = await app.inject({
+        method: 'GET',
+        url: `/projects/${projectId}/content/settings/settings`,
+        cookies,
+      });
+      const bundle = settings.json() as { item: { settings: { defaultLocale: string; locales: string[] } } };
+      expect(bundle.item.settings.defaultLocale).toBe('de');
+      expect(bundle.item.settings.locales).toEqual(['de']);
+
+      // Clearing it (null) reverts new projects to English.
+      await app.inject({ method: 'PUT', url: '/admin/settings', cookies, payload: { defaultLocale: null } });
+      const proj2 = await app.inject({ method: 'POST', url: '/projects', cookies, payload: { name: 'Two', slug: 'two' } });
+      const id2 = (proj2.json() as { project: { id: string } }).project.id;
+      const s2 = await app.inject({ method: 'GET', url: `/projects/${id2}/content/settings/settings`, cookies });
+      expect((s2.json() as { item: { settings: { defaultLocale: string } } }).item.settings.defaultLocale).toBe('en');
+    });
+
     it('forbids the bearer (API-key) path entirely on admin routes', async () => {
       // A made-up bearer must be rejected as session-only (403), not 401: the route
       // refuses the bearer path before any key lookup, so no admin account is needed.

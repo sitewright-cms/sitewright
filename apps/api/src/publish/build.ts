@@ -13,6 +13,7 @@ import {
   resolveTemplateSource,
   GLOBAL_TEMPLATE_PREFIX,
   resolveLocaleDatasets,
+  resolveCodeRef,
   translationsOf,
   localeOf as localeOfPage,
   pagesInLocale,
@@ -334,12 +335,19 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       ? new Map<string, Template>(opts.globalTemplates.map((t) => [GLOBAL_TEMPLATE_PREFIX + t.id, t]))
       : undefined;
     const effectiveSource = (page: Page): string | undefined => {
-      if (!page.template) return page.source;
-      try {
-        return resolveTemplateSource(page.template, templateMap, globalTemplateMap);
-      } catch (err) {
-        throw new PublishError(err instanceof Error ? err.message : `unknown template: ${page.template}`);
+      // A locale variant in INHERIT mode (no own source/template) follows its
+      // translation-group owner's code; `resolveCodeRef` returns the owner's source or
+      // template ref. Resolve against the FULL page set so a published variant still
+      // finds a (rare) draft owner's code. See docs/i18n-content-model.md.
+      const ref = resolveCodeRef(page, bundle.pages, defaultLocale);
+      if (ref.template) {
+        try {
+          return resolveTemplateSource(ref.template, templateMap, globalTemplateMap);
+        } catch (err) {
+          throw new PublishError(err instanceof Error ? err.message : `unknown template: ${ref.template}`);
+        }
       }
+      return ref.source;
     };
     // Code-first source-pages (and the templates they reference) contribute their
     // literal Tailwind classes to the shared sheet.

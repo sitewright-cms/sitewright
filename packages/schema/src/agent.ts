@@ -55,10 +55,21 @@ package, CDN links, or any script (they'd be rejected anyway). Content stays vis
 without JS and motion respects prefers-reduced-motion. Stagger lists by increasing
 data-aos-delay per item (e.g. 0/100/200).
 
-LAZY-LOAD images: native loading="lazy" works on a plain <img>. For BACKGROUND images use
-data-bg="<url>" on any element (it becomes the background on scroll-in, with a blur-up fade);
-for an opt-in <img> swap use class="lazyload" with data-src / data-srcset. The platform ships
-its own tiny runtime when it sees data-bg / lazyload — never add a lazy-load library.
+LAZY-LOAD (images, backgrounds, iframes): the platform ships its own tiny runtime when it sees
+data-src / data-srcset / data-bg (the legacy class="lazyload" still works but is no longer needed)
+— never add a lazy-load library. Put the URL in data-* via {{sw-url …}} or as a literal path.
+- Plain image — simplest, works without JS: <img src="…" loading="lazy" alt="…" width="…" height="…">
+  (the image pipeline adds a blur-up LQIP placeholder).
+- Deferred swap with a blur-up fade — put the URL in data-src (+ data-srcset for responsive) INSTEAD
+  of src; no class needed. Works on the elements that take a src — <img data-src="…" alt="…" width
+  height> and <iframe data-src="…" title="…" width height> both get their real src on scroll-in.
+- BACKGROUND image: data-bg="<url>" on any element → set as the background-image on scroll-in.
+- IFRAME, no-JS-safe alternative: native <iframe src="…" loading="lazy" title="…" width height>.
+- SKELETON while loading (whenever the media has a fixed HEIGHT): wrap it in a DaisyUI .skeleton box
+  so an animated shimmer shows until it loads, then the media fades in over it —
+  <div class="skeleton h-64 w-full overflow-hidden rounded-box"><img data-src="…" alt="…" width="800"
+  height="450" class="h-full w-full object-cover"></div>. (A native loading="lazy" iframe can carry
+  class="skeleton" directly, since the runtime doesn't fade it.)
 
 RIPPLE (Material "waves") click effect: add class="waves-effect" to a button/link, plus
 "waves-light" for a white ripple on dark/colored buttons (e.g. class="btn btn-primary

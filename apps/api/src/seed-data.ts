@@ -307,8 +307,8 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
     </div>
     <div class="nw-float hidden lg:block">
       <div class="overflow-hidden rounded-3xl border border-white/20 shadow-2xl nw-zoom">
-        <!-- Lazy-loaded (vanilla-lazyload vocabulary): the runtime swaps data-src → src on scroll-in, with a blur-up fade. -->
-        <img class="lazyload h-full w-full object-cover" data-src="${assets.hero}" alt="A recent Northwind website" />
+        <!-- Lazy-loaded: the URL lives in data-src (no class needed) → the runtime swaps it to src on scroll-in, with a blur-up fade. -->
+        <img class="h-full w-full object-cover" data-src="${assets.hero}" alt="A recent Northwind website" />
       </div>
     </div>
   </div>

@@ -66,17 +66,40 @@ const LAZYLOAD_ITEMS: LibraryItem[] = [
   },
   {
     id: 'lazy-img',
-    name: 'Image swap (lazyload)',
+    name: 'Image swap (data-src)',
     keywords: 'lazyload lazy image data-src data-srcset',
-    description: 'Opt-in lazy <img>: the runtime copies data-src/data-srcset → src/srcset when it scrolls in.',
-    example: '<img class="lazyload" data-src="/media/<id>/<file>" alt="…" />',
+    description: 'Lazy <img>: put the URL in data-src (no class needed) and the runtime swaps it to src on scroll-in, with a blur-up fade.',
+    example: '<img data-src="/media/<id>/<file>" alt="…" width="800" height="450" />',
+  },
+  {
+    id: 'lazy-img-skeleton',
+    name: 'Lazy image + skeleton',
+    keywords: 'lazyload lazy image skeleton placeholder shimmer height data-src',
+    description: 'Fixed-height lazy image with a DaisyUI skeleton shimmer until it loads, then the image fades in over it.',
+    example:
+      '<div class="skeleton h-64 w-full overflow-hidden rounded-box">\n  <img data-src="/media/<id>/<file>" alt="…" width="800" height="450" class="h-full w-full object-cover" />\n</div>',
+  },
+  {
+    id: 'lazy-iframe',
+    name: 'Lazy iframe (native)',
+    keywords: 'lazyload lazy iframe embed map video skeleton loading',
+    description: 'Native loading="lazy" defers the embed and works without JS; the skeleton shimmers behind it until it paints.',
+    example: '<iframe src="…" loading="lazy" class="skeleton" width="560" height="315" title="…"></iframe>',
+  },
+  {
+    id: 'lazy-iframe-defer',
+    name: 'Lazy iframe (data-src)',
+    keywords: 'lazyload lazy iframe embed data-src defer skeleton',
+    description: 'Defer the embed until near the viewport — the runtime swaps data-src → src on scroll-in. Needs JS; wrap in a skeleton for the loading state.',
+    example:
+      '<div class="skeleton w-full overflow-hidden rounded-box" style="aspect-ratio:16/9">\n  <iframe data-src="…" class="h-full w-full" title="…"></iframe>\n</div>',
   },
   {
     id: 'lazy-native',
     name: 'Native lazy <img>',
     keywords: 'lazy loading native img',
-    description: 'For a plain image, native loading="lazy" is the best default — no runtime needed.',
-    example: '<img src="/media/<id>/<file>" alt="…" loading="lazy" />',
+    description: 'For a plain image, native loading="lazy" is the best default — no runtime needed (the image pipeline adds a blur-up placeholder).',
+    example: '<img src="/media/<id>/<file>" alt="…" width="800" height="450" loading="lazy" />',
   },
 ];
 

@@ -14,6 +14,13 @@ interface CodeEditorModalProps {
   hint?: string;
   /** Syntax mode — `html` (HTML + Handlebars, default) or `css` (e.g. Critical CSS). */
   language?: CodeLanguage;
+  /**
+   * Optional editable display name. When `onNameChange` is provided a "Name" input is shown above the
+   * editor; the PARENT owns the value and persists it on save (used by templates, whose `name` is
+   * free-text and decoupled from the stable `id`). Snippets omit it — their id IS their name.
+   */
+  name?: string;
+  onNameChange?: (name: string) => void;
 }
 
 /**
@@ -21,7 +28,7 @@ interface CodeEditorModalProps {
  * any HTML/Handlebars source (partials, raw slots, …). The editor is the black/single-accent
  * CodeMirror; Save (header ✓ or ⌘S) commits the draft and closes (staying open if the save rejects).
  */
-export function CodeEditorModal({ title, value, onSave, onClose, hint, language = 'html' }: CodeEditorModalProps) {
+export function CodeEditorModal({ title, value, onSave, onClose, hint, language = 'html', name, onNameChange }: CodeEditorModalProps) {
   // `value` seeds the draft when the modal opens; external changes while it is mounted are
   // intentionally ignored — the user's live edits take precedence until they Save or close.
   const [draft, setDraft] = useState(value);
@@ -44,6 +51,17 @@ export function CodeEditorModal({ title, value, onSave, onClose, hint, language 
       saveLabel="Save changes"
     >
       <div className="flex h-full flex-col bg-[#0a0a0f]">
+        {onNameChange && (
+          <label className="flex shrink-0 items-center gap-2 border-b border-white/10 px-4 py-2 text-xs text-slate-400">
+            Name
+            <input
+              aria-label="Name"
+              className="flex-1 rounded-md border border-white/15 bg-white/5 px-2 py-1 text-sm text-slate-100 outline-none transition focus:border-indigo-400"
+              value={name ?? ''}
+              onChange={(e) => onNameChange(e.target.value)}
+            />
+          </label>
+        )}
         {hint && (
           <p className="shrink-0 border-b border-white/10 px-4 py-2 text-xs text-slate-400">{hint}</p>
         )}

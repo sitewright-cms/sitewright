@@ -42,6 +42,14 @@ export interface CodeRecordManagerProps {
   isAdmin?: boolean;
   /** How to reference a record for the copy button (snippets → `{{> name}}`); omit for templates. */
   includeRef?: (rec: CodeRecord) => string;
+  /** Tailwind classes for the record-chip grid. Defaults to a responsive up-to-4-column grid. */
+  gridClassName?: string;
+  /**
+   * Allow editing a record's display NAME (not just its source) in the editor — for records whose
+   * `name` is decoupled from the stable `id` (templates). The id is kept, so page references survive.
+   * Snippets leave this off (their id IS the name; renaming would break `{{> name}}` includes).
+   */
+  editableName?: boolean;
 }
 
 const byName = (a: CodeRecord, b: CodeRecord) => a.name.localeCompare(b.name);
@@ -53,7 +61,7 @@ const byName = (a: CodeRecord, b: CodeRecord) => a.name.localeCompare(b.name);
  * with a confirm. Storage-agnostic via injected adapters. Project users manage only their own records;
  * an instance admin can additionally edit/delete globals and create at the global scope.
  */
-export function CodeRecordManager({ projectId, noun, load, save, remove, makeId, hint, nameHint, globalAdapters, isAdmin, includeRef }: CodeRecordManagerProps) {
+export function CodeRecordManager({ projectId, noun, load, save, remove, makeId, hint, nameHint, globalAdapters, isAdmin, includeRef, gridClassName, editableName }: CodeRecordManagerProps) {
   const toast = useToast();
   const [copiedId, copy] = useCopy(() => toast.show('Copied to clipboard'));
   const [records, setRecords] = useState<CodeRecord[]>([]);
@@ -61,12 +69,20 @@ export function CodeRecordManager({ projectId, noun, load, save, remove, makeId,
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ rec: CodeRecord; scope: Scope } | null>(null);
+  // The in-progress display name while the editor is open (only used when `editableName`). Seeded
+  // from the record on open; the stable `id` is never touched, so page references survive a rename.
+  const [editName, setEditName] = useState('');
   const { confirm, prompt, dialog } = useDialogs();
   // Uniqueness is checked against the LATEST lists at submit time (the name dialog is async).
   const recordsRef = useRef(records);
   recordsRef.current = records;
   const globalsRef = useRef(globals);
   globalsRef.current = globals;
+
+  // Seed the editable name whenever the editor opens on a record (no-op visually unless `editableName`).
+  useEffect(() => {
+    if (editing) setEditName(editing.rec.name);
+  }, [editing]);
 
   const adaptersFor = useCallback(
     (scope: Scope): RecordAdapters => (scope === 'global' && globalAdapters ? globalAdapters : { load, save, remove }),
@@ -116,11 +132,13 @@ export function CodeRecordManager({ projectId, noun, load, save, remove, makeId,
 
   // Rejects on failure so the editor stays open (it only closes on a resolved save).
   const persist = async ({ rec, scope }: { rec: CodeRecord; scope: Scope }, source: string) => {
-    const next = { ...rec, source };
+    // Keep the stable id; apply the edited name (templates) — an empty name falls back to the old one.
+    const name = editableName ? editName.trim() || rec.name : rec.name;
+    const next = { ...rec, name, source };
     try {
       await adaptersFor(scope).save(projectId, next);
       const setList = scope === 'global' ? setGlobals : setRecords;
-      setList((rs) => rs.map((r) => (r.id === rec.id ? next : r)));
+      setList((rs) => rs.map((r) => (r.id === rec.id ? next : r)).sort(byName));
       setError(null);
     } catch {
       setError(`Couldn’t save the ${noun} — your changes are still in the editor; try again.`);
@@ -169,7 +187,7 @@ export function CodeRecordManager({ projectId, noun, load, save, remove, makeId,
     </li>
   );
 
-  const grid = 'grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4';
+  const grid = gridClassName ?? 'grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4';
 
   return (
     <div className="p-3">
@@ -212,6 +230,7 @@ export function CodeRecordManager({ projectId, noun, load, save, remove, makeId,
           title={`${editing.rec.name} — ${editing.scope === 'global' ? 'global ' : ''}${noun}`}
           value={editing.rec.source}
           hint={hint}
+          {...(editableName ? { name: editName, onNameChange: setEditName } : {})}
           onSave={(src) => persist(editing, src)}
           onClose={() => setEditing(null)}
         />

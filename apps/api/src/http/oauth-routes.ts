@@ -50,7 +50,7 @@ function escapeHtml(value: string): string {
 // Self-hosted single-origin: derive the issuer from the request. Behind a reverse
 // proxy, enable trustProxy + a fixed Host so this isn't attacker-controllable; the
 // actual security boundary is the loopback redirect allowlist, not the issuer URL.
-function issuerOf(req: FastifyRequest): string {
+export function issuerOf(req: FastifyRequest): string {
   const host = req.headers.host ?? 'localhost';
   return `${req.protocol}://${host}`;
 }

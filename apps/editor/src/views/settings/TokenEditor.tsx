@@ -59,12 +59,16 @@ export function TokenEditor({
               placeholder={keyPlaceholder}
               onChange={(e) => setCell(r.id, { key: e.target.value })}
             />
+            {/* With `picker`, the value is set ONLY through the color picker (the swatch above) —
+                the field is read-only so a color can't be typed in, just shown. */}
             <input
               aria-label={`${valuePlaceholder} ${i + 1}`}
-              className={glassInput}
+              className={`${glassInput}${picker ? ' cursor-default text-slate-500' : ''}`}
               value={r.value}
               placeholder={valuePlaceholder}
-              onChange={(e) => setCell(r.id, { value: e.target.value })}
+              readOnly={picker}
+              title={picker ? 'Use the color picker to set this color' : undefined}
+              onChange={picker ? undefined : (e) => setCell(r.id, { value: e.target.value })}
             />
             <button
               type="button"

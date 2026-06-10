@@ -192,8 +192,13 @@ const MEDIA_CONTENT_TYPES = new Map<string, string>([
   ['jpg', 'image/jpeg'],
 ]);
 
-/** A `kind:'font'` asset's stored face file (`<weight>[-italic].<ext>`) — served INLINE as font/*. */
-const FONT_FACE_FILE = /^[1-9]00(-italic)?\.(woff2|woff|ttf|otf)$/;
+/**
+ * A `kind:'font'` asset's stored face file (`<family-slug>-<weight>[-italic].<ext>`, e.g.
+ * `playfair-display-700.woff2`; the older `<weight>[-italic].<ext>` form also matches) — served
+ * INLINE as font/*. Path-safe + font-extension only, FLAT (no nested quantifiers → no ReDoS).
+ * Mirrors FontFileNameSchema.
+ */
+const FONT_FACE_FILE = /^[a-z0-9][a-z0-9-]{0,150}\.(woff2|woff|ttf|otf)$/;
 const FONT_CONTENT_TYPES = new Map<string, string>([
   ['woff2', 'font/woff2'],
   ['woff', 'font/woff'],

@@ -5,6 +5,20 @@ import type { ContentRepository } from '../repo/content.js';
 import type { MediaStorage } from '../media/storage.js';
 import { FONT_EXT, type FontFormat } from './upload.js';
 
+/** Slugify a font family for the stored filename: `Playfair Display` → `playfair-display`. */
+function familySlug(family: string): string {
+  return family
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+/** Stored face filename: `<family-slug>-<weight>[-italic].<ext>` (slug omitted if it'd be empty). */
+function faceFileName(slug: string, f: { weight: number; style: 'normal' | 'italic'; format: FontFormat }): string {
+  const prefix = slug ? `${slug}-` : '';
+  return `${prefix}${f.weight}${f.style === 'italic' ? '-italic' : ''}.${FONT_EXT[f.format]}`;
+}
+
 export interface CreateFontAssetInput {
   family: string;
   fallback: FontAsset['fallback'];
@@ -16,9 +30,9 @@ export interface CreateFontAssetInput {
 
 /**
  * Stores a self-hosted font family as a `kind:'font'` media asset: each face under
- * `<projectSlug>/<assetId>/<weight>[-italic].<ext>`, plus the asset record. Shared by the upload +
- * Google-select routes and the demo seed. Served INLINE so `@font-face` can load it; bundled into
- * the published artifact like any media (zero font-CDN references).
+ * `<projectSlug>/<assetId>/<family-slug>-<weight>[-italic].<ext>`, plus the asset record. Shared by
+ * the upload + Google-select routes and the demo seed. Served INLINE so `@font-face` can load it;
+ * bundled into the published artifact like any media (zero font-CDN references).
  */
 export async function createFontAsset(
   contentRepo: ContentRepository,
@@ -28,11 +42,12 @@ export async function createFontAsset(
   input: CreateFontAssetInput,
 ): Promise<FontAsset> {
   const assetId = randomUUID();
+  const slug = familySlug(input.family);
   try {
     const files: Array<{ weight: number; style: 'normal' | 'italic'; format: FontFormat; file: string }> = [];
     let bytes = 0;
     for (const f of input.faces) {
-      const file = `${f.weight}${f.style === 'italic' ? '-italic' : ''}.${FONT_EXT[f.format]}`;
+      const file = faceFileName(slug, f);
       await storage.storeFile(projectSlug, assetId, file, f.bytes);
       files.push({ weight: f.weight, style: f.style, format: f.format, file });
       bytes += f.bytes.length;
@@ -71,13 +86,14 @@ export async function mergeFontFaces(
   faces: CreateFontAssetInput['faces'],
 ): Promise<FontAsset> {
   const have = new Set(existing.files.map((f) => `${f.weight}-${f.style}`));
+  const slug = familySlug(existing.family);
   const added: Array<{ weight: number; style: 'normal' | 'italic'; format: FontFormat; file: string }> = [];
   let addedBytes = 0;
   try {
     for (const f of faces) {
       const key = `${f.weight}-${f.style}`;
       if (have.has(key)) continue;
-      const file = `${f.weight}${f.style === 'italic' ? '-italic' : ''}.${FONT_EXT[f.format]}`;
+      const file = faceFileName(slug, f);
       await storage.storeFile(projectSlug, existing.id, file, f.bytes);
       added.push({ weight: f.weight, style: f.style, format: f.format, file });
       have.add(key);

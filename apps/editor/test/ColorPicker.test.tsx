@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { useState } from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { ColorPicker, ColorField } from '../src/views/settings/ColorPicker';
+import { ColorPicker, ColorField, ColorCard } from '../src/views/settings/ColorPicker';
 
 // A stateful host: onChange feeds `value` back in, mirroring how the settings form drives the
 // picker — so the live cross-space conversion is exercised end to end.
@@ -89,6 +89,26 @@ describe('ColorField (swatch + popover)', () => {
     const spy = vi.fn();
     render(<ColorField value="#0ea5e9" onChange={spy} label="Accent Color" />);
     fireEvent.click(screen.getByRole('button', { name: 'Edit Accent Color' }));
+    fireEvent.change(screen.getByLabelText('HEX'), { target: { value: '#abcdef' } });
+    expect(spy).toHaveBeenLastCalledWith('#abcdef');
+  });
+});
+
+describe('ColorCard (brand-color card)', () => {
+  it('shows the title + current value and opens the picker from the preview', () => {
+    render(<ColorCard title="Primary" value="#0ea5e9" onChange={() => {}} />);
+    expect(screen.getByText('Primary')).toBeInTheDocument();
+    expect(screen.getByText('#0ea5e9')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Primary' }));
+    expect(screen.getByRole('dialog', { name: 'Primary picker' })).toBeInTheDocument();
+  });
+
+  it('reads an empty value as "Default" and emits picker edits (the only way to set the color)', () => {
+    const spy = vi.fn();
+    render(<ColorCard title="Accent" value="" onChange={spy} />);
+    expect(screen.getByText('Default')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Accent' }));
     fireEvent.change(screen.getByLabelText('HEX'), { target: { value: '#abcdef' } });
     expect(spy).toHaveBeenLastCalledWith('#abcdef');
   });

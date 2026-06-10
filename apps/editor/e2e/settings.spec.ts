@@ -22,13 +22,20 @@ test('edit Corporate Identity + Website settings, save, and persist across reloa
 
   await page.getByLabel('Display name').fill('Acme');
   await page.getByLabel('Legal name').fill('Acme Corporation');
-  // Edit a mandatory brand color (Primary) + add a custom color. The six mandatory tokens are
-  // fixed, labeled rows; custom colors use the "+ Add color" editor.
-  await page.getByLabel('Primary Color', { exact: true }).fill('#0ea5e9');
-  await page.getByLabel('Background Color', { exact: true }).fill('#fafafa');
+  // Edit two mandatory brand colors via their CARD pickers (the six mandatory tokens render as
+  // cards with no typed input â€” the color picker is the only way to set them), then add a custom
+  // color whose value is likewise set via its swatch picker.
+  await page.getByRole('button', { name: 'Edit Primary Color' }).click();
+  await page.getByRole('dialog', { name: 'Primary Color picker' }).getByLabel('HEX').fill('#abcdef');
+  await page.getByRole('tab', { name: 'Corporate Identity' }).click(); // click away â†’ close popover
+  await page.getByRole('button', { name: 'Edit Background Color' }).click();
+  await page.getByRole('dialog', { name: 'Background Color picker' }).getByLabel('HEX').fill('#fedcba');
+  await page.getByRole('tab', { name: 'Corporate Identity' }).click();
   await page.getByRole('button', { name: '+ Add color' }).click();
   await page.getByLabel('brand-teal 1', { exact: true }).fill('brand-teal');
-  await page.getByLabel('#0d9488 1', { exact: true }).fill('#0d9488');
+  await page.getByRole('button', { name: 'Edit brand-teal 1' }).click();
+  await page.getByRole('dialog', { name: 'brand-teal 1 picker' }).getByLabel('HEX').fill('#0d9488');
+  await page.getByRole('tab', { name: 'Corporate Identity' }).click();
   // Map embed URL (Contact & location).
   await page.getByLabel('Map embed URL').fill('https://www.google.com/maps/embed?pb=demo');
   // Social profile: entering the URL auto-fills the name + icon from the host.
@@ -52,8 +59,10 @@ test('edit Corporate Identity + Website settings, save, and persist across reloa
   await page.getByRole('button', { name: /Acme Site/ }).click();
   await page.getByRole('tab', { name: 'Corporate Identity' }).click();
   await expect(page.getByLabel('Legal name')).toHaveValue('Acme Corporation');
-  await expect(page.getByLabel('Primary Color', { exact: true })).toHaveValue('#0ea5e9');
-  await expect(page.getByLabel('Background Color', { exact: true })).toHaveValue('#fafafa');
+  // The mandatory color cards show their value as text (no input). Non-default values so the
+  // match is unambiguous (a default token can share a common hex like #0ea5e9).
+  await expect(page.getByText('#abcdef')).toBeVisible();
+  await expect(page.getByText('#fedcba')).toBeVisible();
   await expect(page.getByLabel('brand-teal 1', { exact: true })).toHaveValue('brand-teal');
   await expect(page.getByLabel('#0d9488 1', { exact: true })).toHaveValue('#0d9488');
   await expect(page.getByLabel('Map embed URL')).toHaveValue('https://www.google.com/maps/embed?pb=demo');
@@ -90,7 +99,7 @@ test('Corporate Identity: edit a brand color via the multi-space picker (alpha â
   await expect(picker.getByLabel('RGB')).toHaveValue('rgb(255 0 0 / 0.502)');
   await expect(picker.getByLabel('HSL')).toHaveValue('hsl(0 100% 50% / 0.502)');
   // â€¦and the bound row input adopts the canonical 8-digit hex.
-  await expect(page.getByLabel('Primary Color', { exact: true })).toHaveValue('#ff000080');
+  await expect(page.getByText('#ff000080')).toBeVisible(); // the Primary card value updates live
 
   // Click away to close the popover, then persist.
   await page.getByRole('tab', { name: 'Corporate Identity' }).click();
@@ -101,7 +110,7 @@ test('Corporate Identity: edit a brand color via the multi-space picker (alpha â
   await page.reload();
   await page.getByRole('button', { name: /Color Site/ }).click();
   await page.getByRole('tab', { name: 'Corporate Identity' }).click();
-  await expect(page.getByLabel('Primary Color', { exact: true })).toHaveValue('#ff000080');
+  await expect(page.getByText('#ff000080')).toBeVisible(); // the Primary card value updates live
 });
 
 // The website partials are edited via an EDIT button that opens the large black CodeMirror

@@ -12,6 +12,7 @@ import {
 import { safeUrl } from '@sitewright/blocks/url';
 import { api, previewDocUrl, type Project } from '../api';
 import { CodeEditor } from '../lib/code-editor';
+import { parseTemplateErrorPosition } from '../lib/template-error';
 import { PreviewPane } from './editor/PreviewPane';
 import { DevicePreview, PREVIEW_DEVICES, type PreviewDeviceKey } from './editor/DevicePreview';
 import { Modal } from './ui/Modal';
@@ -199,6 +200,15 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   const stateKey = JSON.stringify({ source, settings, data: pageData });
   const [savedKey, setSavedKey] = useState(stateKey);
   const dirty = stateKey !== savedKey;
+
+  // A rejected SAVE (validate-on-save) carries the offending line/column in its message — surface it
+  // as a gutter marker in the source editor. We use the SAVE error (not the live preview error):
+  // validate-on-save checks THIS page's own source, so the position is always in the editor's text,
+  // whereas a preview error can originate in an included snippet/template.
+  const editorError = useMemo(() => {
+    const pos = parseTemplateErrorPosition(saveError);
+    return pos && saveError ? { ...pos, message: saveError } : null;
+  }, [saveError]);
 
   // The editable regions come from the EFFECTIVE source: the referenced template's
   // (when set) else the page's own draft — so content mode always reflects reality.
@@ -403,8 +413,12 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
 
   // Any change to ANY field clears a prior "Saved" flag uniformly — including an undo
   // back to the saved value. A save leaves `stateKey` unchanged (only `savedKey` advances).
+  // Also drop a stale save error (and its source gutter marker): once the author edits, the
+  // old line/column no longer points at anything meaningful — the live preview re-surfaces a
+  // still-present error.
   useEffect(() => {
     setSaved(false);
+    setSaveError(null);
   }, [stateKey]);
 
   /** Copies the referenced template's source AND its declared default data INTO the page, then drops
@@ -688,7 +702,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
                 </p>
               </div>
             ) : (
-              <CodeEditor value={source} onChange={setSource} ariaLabel="Template source" />
+              <CodeEditor value={source} onChange={setSource} ariaLabel="Template source" error={editorError} />
             )
           ) : (
             // Content mode: edit IN THE PREVIEW (click a highlighted element) or open "Edit page data"

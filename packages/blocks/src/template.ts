@@ -24,10 +24,35 @@ import { resolveDirectives } from './directives.js';
 
 /** Thrown for an unsafe interpolation context, a Handlebars compile error, or a render error. */
 export class TemplateError extends Error {
-  constructor(message: string) {
-    super(message);
+  /** 1-based source position of the offending construct, when the safety scanner knows it. */
+  readonly line?: number;
+  readonly column?: number;
+  constructor(message: string, position?: { line: number; column: number }) {
+    // Surface the position IN the message too (it rides through every wrapper — preview, publish,
+    // the agent — and the editor parses it for a gutter marker); the structured fields stay for
+    // any consumer that wants them without re-parsing.
+    super(position ? `${message} (line ${position.line}, column ${position.column})` : message);
     this.name = 'TemplateError';
+    this.line = position?.line;
+    this.column = position?.column;
   }
+}
+
+/** 1-based line/column OF the character at `index` within `source` — locates a validation failure
+ * for the author (column is 1 + the count of non-newline chars on its line before `index`). */
+function lineCol(source: string, index: number): { line: number; column: number } {
+  let line = 1;
+  let column = 1;
+  const end = Math.min(index, source.length);
+  for (let k = 0; k < end; k += 1) {
+    if (source.charCodeAt(k) === 10 /* \n */) {
+      line += 1;
+      column = 1;
+    } else {
+      column += 1;
+    }
+  }
+  return { line, column };
 }
 
 /** The whitelisted binding namespaces a template may read. */
@@ -108,23 +133,26 @@ export function validateTemplate(source: string): void {
   let rawCloser = '';
   let sub: 'name' | 'preAttr' | 'attrName' | 'afterName' | 'preValue' | 'value' = 'name';
   let attrName = '';
+  let attrNameStart = 0; // source index of the current attribute name's first char (for precise reporting)
   let quote: '"' | "'" | '' = '';
   // The literal value content before the current point (capped) — used to decide whether
   // a URL attribute's scheme is already fixed by a safe prefix.
   let valuePrefix = '';
   let pendingRaw = '';
 
-  function reject(reason: string): never {
+  function reject(reason: string, atIndex: number = i): never {
     throw new TemplateError(
       `unsafe template: ${reason}. Bind values only in element text or QUOTED attributes; ` +
         'use the {{sw-url …}} helper for href/src; no <script>, inline on* handlers, {{{ raw }}}, ' +
         'or interpolation in an unquoted attribute, style/<style>, or an HTML comment.',
+      lineCol(source, atIndex),
     );
   }
 
-  // Reject an inline event-handler attribute (no tenant JS) once its name is complete.
+  // Reject an inline event-handler attribute (no tenant JS) once its name is complete — pointing at
+  // the attribute name itself (not the `=`/`>` that closed it).
   function finishAttrName(): void {
-    if (attrName.startsWith('on')) reject(`an inline "${attrName}" event-handler attribute`);
+    if (attrName.startsWith('on')) reject(`an inline "${attrName}" event-handler attribute`, attrNameStart);
   }
 
   // Classify the current context for an output mustache, throwing if it is unsafe.
@@ -160,7 +188,7 @@ export function validateTemplate(source: string): void {
     if (source.startsWith('{{{', i)) reject('raw output {{{ }}} is not allowed');
     if (source.startsWith('{{', i)) {
       const close = source.indexOf('}}', i + 2);
-      if (close === -1) throw new TemplateError('unclosed "{{" tag');
+      if (close === -1) throw new TemplateError('unclosed "{{" tag', lineCol(source, i));
       const inner = source.slice(i + 2, close).trim();
       // Structural/comment/partial/inverse mustaches do not directly emit an escaped value.
       if (!/^[#/!>^]|^else\b/.test(inner)) checkOutput(inner);
@@ -192,7 +220,7 @@ export function validateTemplate(source: string): void {
           // repeat them. The message names the element + the reserved id(s) and suggests the fix.
           const landmarkHint = isClose ? undefined : SKELETON_LANDMARKS.get(name);
           if (landmarkHint !== undefined) {
-            throw new TemplateError(`unsafe template: a <${name}> element is not allowed — ${landmarkHint}.`);
+            throw new TemplateError(`unsafe template: a <${name}> element is not allowed — ${landmarkHint}.`, lineCol(source, i));
           }
           mode = 'tag';
           sub = 'preAttr';
@@ -240,6 +268,7 @@ export function validateTemplate(source: string): void {
       } else if (sub === 'preAttr' || sub === 'afterName') {
         sub = 'attrName';
         attrName = ch.toLowerCase();
+        attrNameStart = i; // first char of this attribute name
       } else if (sub === 'attrName') {
         attrName += ch.toLowerCase();
       }

@@ -56,6 +56,8 @@ import {
   usesCart,
   CART_CSS,
   resolveShopChannels,
+  validateTemplate,
+  TemplateError,
 } from '@sitewright/blocks';
 import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
 import { optimizeImage } from '@sitewright/image-pipeline';
@@ -259,6 +261,21 @@ function parseLibraryKind(kind: string): 'snippet' | 'template' {
     throw new ForbiddenError('only snippet and template have a global library');
   }
   return kind;
+}
+
+/** Kinds whose Handlebars `source` is checked at SAVE time, not just at render. */
+const SOURCE_KINDS = new Set(['page', 'template', 'snippet']);
+/**
+ * Validate-on-save: reject an unsafe template `source` when it's written, so a broken page/template/
+ * snippet fails fast with a precise, located message (TemplateError → 400) instead of being stored
+ * and only caught at publish (409) — and so an MCP agent's put_page surfaces the error immediately.
+ * Skipped when there's no own source (a template-based page) or the body is malformed (the kind's
+ * Zod schema in contentRepo.put rejects that).
+ */
+function validateSourceOnSave(kind: string, body: unknown): void {
+  if (!SOURCE_KINDS.has(kind)) return;
+  const source = (body as { source?: unknown } | null | undefined)?.source;
+  if (typeof source === 'string' && source.trim() !== '') validateTemplate(source);
 }
 
 const RegisterBody = z.object({
@@ -578,6 +595,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     if (err instanceof ForbiddenError) return reply.code(403).send({ error: err.message });
     if (err instanceof NotFoundError) return reply.code(404).send({ error: err.message });
     if (err instanceof ConflictError) return reply.code(409).send({ error: err.message });
+    // Unsafe template source caught at SAVE time (validate-on-save) → 400 with the position.
+    if (err instanceof TemplateError) {
+      return reply.code(400).send({ error: err.message, line: err.line, column: err.column });
+    }
     if (err instanceof z.ZodError) {
       return reply.code(400).send({ error: 'invalid request', details: err.flatten() });
     }
@@ -1144,6 +1165,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     { config: rl(60) },
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'content:write');
+      validateSourceOnSave(req.params.kind, req.body); // fail fast on unsafe Handlebars source
       const item = await contentRepo.put(
         ctx,
         parseGenericKind(req.params.kind),
@@ -1179,6 +1201,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     { config: rl(60) },
     async (req, reply) => {
       const userId = await requireInstanceAdmin(req);
+      validateSourceOnSave(req.params.kind, req.body); // global snippets/templates: same save-time gate
       const item = await contentRepo.put(globalCtx(userId), parseLibraryKind(req.params.kind), req.params.entityId, req.body);
       return reply.send({ item });
     },

@@ -218,6 +218,23 @@ test('published cart: editable note + backdrop/Esc/close-only dismissal + ripple
   expect(await toggle.evaluate((el) => getComputedStyle(el).overflow)).toBe('visible');
   expect(await dialog.evaluate((el) => getComputedStyle(el).flexDirection)).toBe('column');
 
+  // Full display height: the drawer must fill the viewport top-to-bottom (the UA <dialog> max-height
+  // clamp used to leave it ~38px short), and the footer (checkout area) must sit flush at the bottom.
+  const layout = await dialog.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const foot = el.querySelector('[data-sw-part="foot"]') as HTMLElement | null;
+    return {
+      vh: window.innerHeight,
+      top: Math.round(r.top),
+      bottom: Math.round(r.bottom),
+      footBottom: foot ? Math.round(foot.getBoundingClientRect().bottom) : null,
+    };
+  });
+  // ±1px tolerance for sub-pixel rounding under a non-1 device-pixel-ratio (current matrix is DPR 1).
+  expect(layout.top).toBeLessThanOrEqual(1);
+  expect(layout.bottom).toBeGreaterThanOrEqual(layout.vh - 1); // full height — no UA max-height gap at the bottom
+  expect(layout.footBottom ?? 0).toBeGreaterThanOrEqual(layout.vh - 1); // checkout footer flush with viewport bottom
+
   // A click INSIDE the drawer body (its header title) must NOT close it.
   await cart.locator('[data-sw-part="head"] h2').click();
   await expect(dialog).toBeVisible();

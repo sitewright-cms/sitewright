@@ -60,20 +60,27 @@ export const CART_CSS = [
   // allow-discrete keep the <dialog> animating across its display toggle. Older engines fall back to an
   // instant open/close (progressive enhancement). Reduced motion → instant.
   // `inset:0 0 0 auto` (top/right/bottom:0, left:auto) overrides the <dialog> UA `inset:0` so it pins to
-  // the RIGHT edge, full height (not centered/left). max-width keeps it a panel.
-  '[data-sw-cart] dialog{position:fixed;inset:0 0 0 auto;margin:0;width:min(92vw,24rem);max-width:100vw;border:0;padding:0;background:#fff;box-shadow:-8px 0 32px rgba(0,0,0,.25);transform:translateX(100%);transition:transform .3s cubic-bezier(.4,0,.2,1),overlay .3s allow-discrete,display .3s allow-discrete}',
+  // the RIGHT edge, full height (not centered/left). We MUST override BOTH UA size clamps: the UA sheet
+  // sets `max-width:calc(100% - 6px - 2em)` AND `max-height:calc(100% - 6px - 2em)` (~38px at a 16px font),
+  // so without `max-height` the drawer renders ~38px short of the viewport bottom despite `height:100vh`.
+  // dvh (with a vh fallback) makes "full height" track the *visible* viewport on mobile browser chrome.
+  '[data-sw-cart] dialog{position:fixed;inset:0 0 0 auto;margin:0;width:min(92vw,24rem);max-width:100vw;max-height:100vh;max-height:100dvh;border:0;padding:0;background:#fff;box-shadow:-8px 0 32px rgba(0,0,0,.25);transform:translateX(100%);transition:transform .3s cubic-bezier(.4,0,.2,1),overlay .3s allow-discrete,display .3s allow-discrete}',
   // flex/height live on [open] ONLY — a closed <dialog> must keep its UA display:none (else it renders
   // off-screen but counts as visible). When open it is a full-height vertical flex column.
-  '[data-sw-cart] dialog[open]{transform:translateX(0);height:100vh;display:flex;flex-direction:column}',
+  '[data-sw-cart] dialog[open]{transform:translateX(0);height:100vh;height:100dvh;display:flex;flex-direction:column}',
   '@starting-style{[data-sw-cart] dialog[open]{transform:translateX(100%)}}',
   '[data-sw-cart] dialog::backdrop{background:rgba(0,0,0,.35);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);opacity:0;transition:opacity .3s ease,overlay .3s allow-discrete,display .3s allow-discrete}',
   '[data-sw-cart] dialog[open]::backdrop{opacity:1}',
   '@starting-style{[data-sw-cart] dialog[open]::backdrop{opacity:0}}',
   '@media (prefers-reduced-motion:reduce){[data-sw-cart] dialog,[data-sw-cart] dialog::backdrop{transition:none}}',
-  '[data-sw-cart] [data-sw-part="head"]{display:flex;align-items:center;justify-content:space-between;padding:1rem 1.25rem;border-bottom:1px solid rgba(0,0,0,.12)}',
+  '[data-sw-cart] [data-sw-part="head"]{flex:none;display:flex;align-items:center;justify-content:space-between;padding:1rem 1.25rem;border-bottom:1px solid rgba(0,0,0,.12)}',
   '[data-sw-cart] [data-sw-part="head"] h2{margin:0;font-size:1.125rem}',
   '[data-sw-cart] [data-sw-part="close"]{border:0;background:none;font-size:1.5rem;line-height:1;cursor:pointer}',
-  '[data-sw-cart] [data-sw-part="items"]{list-style:none;margin:0;padding:.5rem 1.25rem;overflow-y:auto;max-height:calc(100% - 16rem)}',
+  // The items list FILLS the space between the fixed head and foot (flex:1) and scrolls when it overflows.
+  // min-height:0 lets a flex item shrink below its content height so overflow-y actually scrolls (the
+  // default min-height:auto would otherwise blow the drawer past 100vh on a long cart). This replaces a
+  // fragile `max-height:calc(100% - 16rem)` magic constant that left a dead gap on a short cart.
+  '[data-sw-cart] [data-sw-part="items"]{list-style:none;margin:0;padding:.5rem 1.25rem;flex:1 1 auto;min-height:0;overflow-y:auto}',
   '[data-sw-cart] [data-sw-part="line"]{display:grid;grid-template-columns:1fr auto;gap:.25rem .75rem;align-items:center;padding:.75rem 0;border-bottom:1px solid rgba(0,0,0,.08)}',
   '[data-sw-cart] [data-sw-part="line-name"]{font-weight:600}',
   '[data-sw-cart] [data-sw-part="line-price"]{color:rgba(0,0,0,.6);font-size:.875rem}',
@@ -81,7 +88,9 @@ export const CART_CSS = [
   '[data-sw-cart] [data-sw-part="qty"] button{width:1.75rem;height:1.75rem;border:1px solid rgba(0,0,0,.2);border-radius:.375rem;background:#fff;cursor:pointer;font-size:1rem;line-height:1}',
   '[data-sw-cart] [data-sw-part="remove"]{border:0;background:none;color:#b00020;cursor:pointer;font-size:.875rem}',
   '[data-sw-cart] [data-sw-part="empty"]{padding:2rem 1.25rem;color:rgba(0,0,0,.6);text-align:center}',
-  '[data-sw-cart] [data-sw-part="foot"]{margin-top:auto;padding:1rem 1.25rem;border-top:1px solid rgba(0,0,0,.12)}',
+  // The foot is a fixed-size flex item; the list (flex:1) above it consumes the free space, so the foot
+  // pins to the bottom without needing `margin-top:auto`. flex:none → it never shrinks the checkout area.
+  '[data-sw-cart] [data-sw-part="foot"]{flex:none;padding:1rem 1.25rem;border-top:1px solid rgba(0,0,0,.12)}',
   '[data-sw-cart] [data-sw-part="subtotal"]{display:flex;justify-content:space-between;font-weight:700;margin-bottom:.25rem}',
   '[data-sw-cart] [data-sw-part="note"]{font-size:.75rem;color:rgba(0,0,0,.55);margin:.25rem 0 .75rem}',
   '[data-sw-cart] [data-sw-part="channel"]{display:block;width:100%;border:0;border-radius:.375rem;padding:.625rem 1rem;margin-top:.5rem;background:var(--sw-color-primary,#0a7a5a);color:#fff;cursor:pointer;text-align:center;font:inherit;transition:filter .15s ease}',

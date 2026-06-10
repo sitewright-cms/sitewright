@@ -139,6 +139,25 @@ languages as locale-variant pages instead.
 IMAGES: search_stock_images then import_stock_image (self-hosted + attributed); reference the
 returned media url in \`source\`.
 
+SHOP (a FRONT-END cart for the static site): the catalogue is a dataset (e.g. "products" with
+fields name/price/image/description/sku). In a page \`source\` loop it and emit an add-to-cart
+button per product, plus ONE cart mount (drop {{sw-cart}} once — e.g. in the footer slot — so it
+is site-wide):
+  {{#each data.products}}<div class="card">…{{sw-add-to-cart sku=sku name=name price=price image=image}}</div>{{/each}}
+  {{sw-cart}}
+Or set page.template to "global:shop" (a ready-made storefront over the "products" dataset).
+{{sw-add-to-cart}} takes sku/name/price (a number)/image/label/class; {{sw-cart}} renders the
+floating cart + drawer. Configure the shop in settings under website.shop:
+  shop: { currency:{ code:"USD", symbol:"$", position:"before"|"after", decimals:2 },
+          channels:[ {kind:"whatsapp", number:"+14155550123"},
+                     {kind:"mailto", email:"orders@acme.com"},
+                     {kind:"payment", urlTemplate:"https://paypal.me/acme/{total}"},
+                     {kind:"form", formId:"<an existing Form id>"} ] }
+The cart builds the order in the browser (localStorage) and hands it to a channel: a WhatsApp/
+mailto/payment deep link, or a "form" channel that POSTs the order to that Form's inbox. Prices
+are NON-AUTHORITATIVE — it sends an order INQUIRY; the seller confirms availability + price and
+collects payment. (The cart runtime ships only on pages that use it.)
+
 Typical flow: get_scope → set the Corporate Identity → put_page(s) with \`source\` →
 preview_page (returns { html, … } — read \`html\` to check the render) → publish_project. All writes are validated
 server-side (schema + no-JS template safety); you cannot exceed the token's role/capabilities.`;

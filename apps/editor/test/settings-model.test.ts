@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { DEFAULT_BRAND_COLORS, MANDATORY_COLOR_TOKENS } from '@sitewright/schema';
-import { toForm, toBundle } from '../src/views/settings/model';
+import { toForm, toBundle, newShopChannel } from '../src/views/settings/model';
 import type { SettingsBundle } from '../src/api';
 
 const full: SettingsBundle = {
@@ -52,6 +52,39 @@ describe('settings model', () => {
     expect(back.identity).toEqual(full.identity);
     expect(back.website).toEqual(full.website);
     expect(back.settings).toEqual(full.settings);
+  });
+
+  it('round-trips the mini-shop currency + all four channel kinds', () => {
+    const withShop: SettingsBundle = {
+      identity: { name: 'Acme', colors: {} },
+      website: {
+        shop: {
+          currency: { code: 'EUR', symbol: '€', position: 'after', decimals: 2 },
+          addToCartLabel: 'Add to basket',
+          title: 'Your basket',
+          channels: [
+            { kind: 'whatsapp', label: 'WhatsApp', number: '+14155550123', intro: 'Hi' },
+            { kind: 'mailto', email: 'orders@acme.test', subject: 'Order' },
+            { kind: 'payment', urlTemplate: 'https://paypal.me/acme/{total}', provider: 'paypal' },
+            { kind: 'form', formId: 'order' },
+          ],
+        },
+      },
+      settings: { defaultLocale: 'en', locales: ['en'] },
+    };
+    const back = toBundle(toForm(withShop), withShop);
+    expect(back.website?.shop).toEqual(withShop.website!.shop);
+  });
+
+  it('drops incomplete shop channels and an empty currency', () => {
+    const form = toForm(empty());
+    form.shopChannels = [
+      { ...newShopChannel(), kind: 'whatsapp', number: '' }, // missing the required number → dropped
+      { ...newShopChannel(), kind: 'mailto', email: 'a@b.test' }, // kept
+    ];
+    const back = toBundle(form, empty());
+    expect(back.website?.shop?.channels).toEqual([{ kind: 'mailto', email: 'a@b.test' }]);
+    expect(back.website?.shop?.currency).toBeUndefined();
   });
 
   it('strips empty optionals so a minimal identity stays minimal', () => {

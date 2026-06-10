@@ -231,3 +231,36 @@ test('Corporate Identity: pick a schema.org business type via the modal, save, a
   await page.getByRole('tab', { name: 'Corporate Identity' }).click();
   await expect(page.getByRole('button', { name: 'Business type (schema.org @type)' })).toContainText('Restaurant');
 });
+
+// The MINI SHOP config (website.shop) is edited in the Website Settings → Shop card: a currency plus
+// an add/remove list of checkout channels (a discriminated kind selector with per-kind fields).
+// Verifies the currency + a WhatsApp channel round-trip through save + reload.
+test('Website Settings: configure the mini-shop currency + a WhatsApp channel, save, and persist', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: /Register/ }).click();
+  await page.getByLabel('Email').fill(`shopui-${stamp}@e2e.test`);
+  await page.getByLabel('Password').fill('pw-secret-1');
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await page.getByRole('button', { name: 'New project' }).click();
+  await page.getByLabel('Project name').fill('Shop UI Site');
+  await page.getByLabel('Project slug').fill(`shopui-${stamp}`);
+  await page.getByRole('button', { name: 'Create project' }).click();
+
+  await page.getByRole('tab', { name: 'Website Settings' }).click();
+
+  // Shop card: set a currency and add a WhatsApp checkout channel.
+  await page.getByLabel('Currency code').fill('EUR');
+  await page.getByLabel('Currency symbol').fill('€');
+  await page.getByRole('button', { name: '+ Add channel' }).click();
+  await page.getByLabel('Channel 1 WhatsApp number').fill('+14155550123');
+
+  await page.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.getByText('✓ Saved')).toBeVisible();
+
+  // Reload → reopen → the shop config persisted via the API (proves toBundle wrote website.shop).
+  await page.reload();
+  await page.getByRole('button', { name: /Shop UI Site/ }).click();
+  await page.getByRole('tab', { name: 'Website Settings' }).click();
+  await expect(page.getByLabel('Currency code')).toHaveValue('EUR');
+  await expect(page.getByLabel('Channel 1 WhatsApp number')).toHaveValue('+14155550123');
+});

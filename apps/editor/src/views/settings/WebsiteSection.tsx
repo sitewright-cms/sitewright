@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import type { JsonValue } from '@sitewright/schema';
 import { newStr, type Patch, type SettingsForm } from './model';
-import { Field, GlassCard } from './ui';
+import { Field, GlassCard, SubLabel } from './ui';
 import { CodeField } from '../ui/CodeField';
 import { RedirectsEditor } from './RedirectsEditor';
+import { ShopChannelsEditor } from './ShopChannelsEditor';
 import { LocaleManager } from './LocaleManager';
 import { WebsiteDataModal } from './WebsiteDataModal';
-import { ghostButton } from '../../theme';
+import { ghostButton, glassInput, fieldLabel } from '../../theme';
 
 /** Shared bindings hint for the validated skeleton-slot editors. */
 const SLOT_HINT =
@@ -192,6 +193,40 @@ export function WebsiteSection({
       <GlassCard title="Redirects" icon="↪" wide>
         <p className="mb-2 text-xs text-slate-500">Emitted to <code>.htaccess</code> + <code>_redirects</code> on publish.</p>
         <RedirectsEditor rows={form.redirects} onChange={(redirects) => patch({ redirects })} />
+      </GlassCard>
+
+      <GlassCard title="Shop" icon="🛒" wide>
+        <p className="mb-3 text-xs text-slate-500">
+          A front-end cart for static sites: drop <code>{'{{sw-cart}}'}</code> + <code>{'{{sw-add-to-cart …}}'}</code> in a page (or use the{' '}
+          <code>global:shop</code> template), and the cart submits an order through the channels below. Prices are{' '}
+          <strong>non-authoritative</strong> — the cart sends an order inquiry; you confirm availability and collect payment.
+        </p>
+        <SubLabel>Currency</SubLabel>
+        <div className="grid gap-3 sm:grid-cols-4">
+          <Field label="Currency code" value={form.shopCurrencyCode} onChange={(v) => patch({ shopCurrencyCode: v })} placeholder="USD" />
+          <Field label="Currency symbol" value={form.shopCurrencySymbol} onChange={(v) => patch({ shopCurrencySymbol: v })} placeholder="$" />
+          <label className="block">
+            <span className={fieldLabel}>Position</span>
+            <select
+              className={glassInput}
+              aria-label="Symbol position"
+              value={form.shopCurrencyPosition}
+              onChange={(e) => patch({ shopCurrencyPosition: e.target.value as 'before' | 'after' })}
+            >
+              <option value="before">Before ($9.99)</option>
+              <option value="after">After (9.99 €)</option>
+            </select>
+          </label>
+          <Field label="Decimals" value={form.shopCurrencyDecimals} onChange={(v) => patch({ shopCurrencyDecimals: v })} type="number" placeholder="2" />
+        </div>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <Field label="Add-to-cart button label" value={form.shopAddToCartLabel} onChange={(v) => patch({ shopAddToCartLabel: v })} placeholder="Add to cart" />
+          <Field label="Cart drawer title" value={form.shopTitle} onChange={(v) => patch({ shopTitle: v })} placeholder="Your cart" />
+        </div>
+        <div className="mt-4">
+          <SubLabel>Checkout channels</SubLabel>
+          <ShopChannelsEditor rows={form.shopChannels} onChange={(shopChannels) => patch({ shopChannels })} />
+        </div>
       </GlassCard>
 
       <GlassCard title="Localization" icon="🗺" wide>

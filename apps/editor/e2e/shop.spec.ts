@@ -148,8 +148,9 @@ test('published cart: the form channel submits the order to the /f submissions i
   await form.locator('input[name="email"]').fill('ada@example.com');
   await cart.locator('[data-sw-part="order-submit"]').click();
 
-  // Success UI: the order is sent and the cart clears.
-  await expect(cart.locator('[data-sw-part="order-status"]')).toContainText(/sent/i);
+  // Success UI: a VISIBLE confirmation panel (it must survive the empty-cart render) and the cart clears.
+  await expect(cart.locator('[data-sw-part="sent-msg"]')).toBeVisible();
+  await expect(cart.locator('[data-sw-part="sent-msg"]')).toContainText(/sent/i);
   await expect(cart.locator('[data-sw-part="count"]')).toBeHidden();
 
   // The order landed in the submissions inbox with the cart contents + the buyer's email.

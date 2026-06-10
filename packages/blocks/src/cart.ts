@@ -80,6 +80,7 @@ export const CART_CSS = [
   '[data-sw-cart] [data-sw-part="order-submit"]{display:block;width:100%;border:0;border-radius:.375rem;padding:.5rem 1rem;margin-top:.25rem;background:var(--sw-color-primary,#0a7a5a);color:#fff;cursor:pointer;font:inherit}',
   '[data-sw-cart] [data-sw-part="order-submit"][disabled]{opacity:.6;cursor:progress}',
   '[data-sw-cart] [data-sw-part="order-status"]{margin:.5rem 0 0;font-size:.8125rem}',
+  '[data-sw-cart] [data-sw-part="sent-msg"]{padding:1.5rem 1.25rem;text-align:center;color:var(--sw-color-primary,#0a7a5a);font-weight:600}',
   // The "added" pulse on an add-to-cart button (runtime toggles data-sw-added briefly).
   '[data-sw-cart-add][data-sw-added="true"]{opacity:.7}',
   // A brief "bump" on the floating cart when an item is added — the non-interrupting add feedback.
@@ -145,7 +146,7 @@ export const CART_JS = `(function(){
   // ---- order summary (plain text, used by the deep-link channels) ----
   function orderText(items,cfg){
     var lines=[];
-    for(var i=0;i<items.length;i++){var it=items[i];lines.push(it.qty+' x '+it.name+' ('+money(it.price,cfg)+') = '+money(lineTotal(it,cfg),cfg));}
+    for(var i=0;i<items.length;i++){var it=items[i];lines.push(it.qty+' x '+clip(it.name,80)+' ('+money(it.price,cfg)+') = '+money(lineTotal(it,cfg),cfg));}
     lines.push('Total: '+money(totalOf(items,cfg),cfg));
     return lines.join('\\n');
   }
@@ -179,7 +180,11 @@ export const CART_JS = `(function(){
     if(ch.kind==='form'){return 'Place order';}
     return 'Send order';
   }
-  function cartJson(items){var out=[];for(var i=0;i<items.length;i++){var it=items[i];out.push({sku:it.sku,name:it.name,price:it.price,qty:it.qty});}return JSON.stringify(out);}
+  // Clip a name for the order SUMMARY (text + json) so the cart_text/cart_json form fields stay well
+  // under the server's per-field cap even for a full cart of long-named products (the canonical item
+  // name in localStorage is the un-clipped one).
+  function clip(s,n){s=String(s==null?'':s);return s.length>n?s.slice(0,n):s;}
+  function cartJson(items){var out=[];for(var i=0;i<items.length;i++){var it=items[i];out.push({sku:clip(it.sku,80),name:clip(it.name,80),price:it.price,qty:it.qty});}return JSON.stringify(out);}
   // ---- cart icon (inline SVG; no external asset) ----
   function cartIcon(){
     var ns='http://www.w3.org/2000/svg';
@@ -197,6 +202,7 @@ export const CART_JS = `(function(){
     var key='sw-cart:'+siteKey(mount);
     var items=load(key);
     var started=Date.now(); // for the /f time-trap (_elapsed must be >= the server minimum)
+    var sent=false; // true after a successful form-channel submit → show the "order sent" panel
 
     var toggle=part('button','toggle');toggle.type='button';toggle.setAttribute('aria-label','Open cart');
     toggle.appendChild(cartIcon());
@@ -227,7 +233,10 @@ export const CART_JS = `(function(){
     var clear=part('button','clear','Clear cart');clear.type='button';
     clear.addEventListener('click',function(){items.length=0;persist();});
     foot.appendChild(clear);
-    dialog.appendChild(head);dialog.appendChild(empty);dialog.appendChild(list);dialog.appendChild(foot);
+    // The post-order confirmation panel (form channel). Kept OUT of the foot (which hides when the cart
+    // empties) so the success message stays visible after a submit clears the cart. Toggled in render().
+    var sentMsg=part('p','sent-msg','Order sent \\u2014 we will be in touch.');
+    dialog.appendChild(head);dialog.appendChild(empty);dialog.appendChild(list);dialog.appendChild(foot);dialog.appendChild(sentMsg);
     mount.appendChild(toggle);mount.appendChild(dialog);
 
     // The "form" channel: an inline order form (contact fields) that POSTs name/email/phone/note +
@@ -256,8 +265,10 @@ export const CART_JS = `(function(){
         submit.disabled=true;status.textContent='Sending\\u2026';
         fetch(ch.endpoint,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)}).then(function(res){
           if(!res.ok){throw new Error('bad status');}
-          items.length=0;persist();form.reset();status.textContent='Order sent \\u2014 we will be in touch.';form.setAttribute('data-sw-sent','true');
-        }).catch(function(){status.textContent='Sorry, something went wrong. Please try again.';}).then(function(){submit.disabled=false;});
+          // Flip to the sent state BEFORE render() so the confirmation panel (not the now-empty cart)
+          // is what shows; submit stays disabled (the form is hidden until a new item is added).
+          sent=true;items.length=0;form.reset();status.textContent='';persist();
+        }).catch(function(){status.textContent='Sorry, something went wrong. Please try again.';submit.disabled=false;});
       });
       return form;
     }
@@ -265,9 +276,11 @@ export const CART_JS = `(function(){
     function render(){
       var n=countOf(items);
       count.textContent=String(n);if(n>0){count.removeAttribute('hidden');}else{count.setAttribute('hidden','');}
-      empty.style.display=items.length?'none':'block';
-      list.style.display=items.length?'block':'none';
-      foot.style.display=items.length?'block':'none';
+      // Three drawer states: the order-sent confirmation (sent), the cart (items), or the empty notice.
+      sentMsg.style.display=sent?'block':'none';
+      empty.style.display=(!items.length&&!sent)?'block':'none';
+      list.style.display=(items.length&&!sent)?'block':'none';
+      foot.style.display=(items.length&&!sent)?'block':'none';
       // rebuild the list (textContent only)
       while(list.firstChild){list.removeChild(list.firstChild);}
       for(var i=0;i<items.length;i++){
@@ -293,6 +306,7 @@ export const CART_JS = `(function(){
     function persist(){save(key,items);render();}
     function removeSku(sku){for(var i=0;i<items.length;i++){if(items[i].sku===sku){items.splice(i,1);return;}}}
     function add(btn){
+      sent=false; // a new item returns the drawer from the sent-confirmation back to the cart
       var sku=btn.getAttribute('data-sku')||btn.getAttribute('data-name');if(!sku){return;}
       var price=Number(btn.getAttribute('data-price'));if(!isFinite(price)||price<0){price=0;}
       var existing=null;for(var i=0;i<items.length;i++){if(items[i].sku===sku){existing=items[i];break;}}

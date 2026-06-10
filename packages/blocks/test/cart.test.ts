@@ -120,6 +120,12 @@ describe('cart form channel', () => {
     // contact values flow through input .value (and JSON) — never innerHTML.
     expect(CART_JS).not.toContain('innerHTML');
   });
+
+  it('CART_JS shows a confirmation panel on success (kept out of the foot so it survives the empty render)', () => {
+    expect(CART_JS).toContain("'sent-msg'");
+    expect(CART_JS).toContain('sent=true');
+    expect(CART_CSS).toContain('[data-sw-part="sent-msg"]');
+  });
 });
 
 describe('resolveShopChannels', () => {

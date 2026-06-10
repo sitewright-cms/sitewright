@@ -40,11 +40,15 @@ test('header gear menu unifies settings + inline agent indicator + publish toast
   await page.getByRole('button', { name: 'Publish' }).click();
   await expect(page.getByText(/Published · \d+ page/)).toBeVisible();
 
-  // The agent indicator opens AI agent details, whose Connect-an-agent guide has 3 tabs.
+  // The agent indicator opens AI agent details, whose Connect-an-agent guide has 4 tabs
+  // (ChatGPT / Claude.ai / Le Chat hosted + local CLI).
   await page.getByRole('button', { name: 'Connect an agent' }).click();
   const agent = page.getByRole('dialog', { name: 'AI agent details' });
   await expect(agent.getByRole('tab', { name: 'ChatGPT.com' })).toBeVisible();
   await expect(agent.getByRole('tab', { name: 'Claude.ai' })).toBeVisible();
+  await agent.getByRole('tab', { name: 'Le Chat' }).click();
+  await expect(agent.getByText(/Free plan/)).toBeVisible();
   await agent.getByRole('tab', { name: 'Local CLI Agents' }).click();
   await expect(agent.getByText(/npm install -g @sitewright\/cli/)).toBeVisible();
+  await expect(agent.getByText('"mcpServers"')).toBeVisible();
 });

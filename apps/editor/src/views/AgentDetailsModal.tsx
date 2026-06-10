@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Modal } from './ui/Modal';
 import { api, type AgentConnection } from '../api';
 import { glassPanel, dangerButton } from '../theme';
@@ -13,8 +13,10 @@ function when(iso: string | null): string {
   return new Date(iso).toLocaleDateString();
 }
 
-type ConnectTab = 'chatgpt' | 'claude' | 'cli';
+type ConnectTab = 'chatgpt' | 'claude' | 'lechat' | 'cli';
+const TAB_ORDER: ConnectTab[] = ['chatgpt', 'claude', 'lechat', 'cli'];
 const CODE = 'rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-mono text-slate-700';
+const PRE = 'mt-1.5 overflow-x-auto rounded-lg bg-slate-900 px-3 py-2 text-[11px] leading-relaxed text-slate-100';
 
 /** A hosted MCP client (ChatGPT / Claude.ai) connects to the remote MCP server over OAuth. */
 function RemoteSteps({ mcpUrl, settingsPath, planNote }: { mcpUrl: string; settingsPath: string; planNote: string }) {
@@ -45,13 +47,33 @@ function RemoteSteps({ mcpUrl, settingsPath, planNote }: { mcpUrl: string; setti
 function ConnectGuide({ emphasized }: { emphasized: boolean }) {
   const origin = typeof window !== 'undefined' ? window.location.origin : 'https://your-instance';
   const mcpUrl = `${origin}/mcp`;
+  // The block Cursor / Cline / Windsurf / Gemini CLI accept verbatim (mirrors `sitewright config`).
+  const cliConfig = useMemo(
+    () => JSON.stringify({ mcpServers: { sitewright: { command: 'sitewright', args: ['mcp', '--url', origin] } } }, null, 2),
+    [origin],
+  );
   const [tab, setTab] = useState<ConnectTab>('chatgpt');
+  const tabRefs = useRef(new Map<ConnectTab, HTMLButtonElement | null>());
+
+  // Arrow-key roving between tabs (WAI-ARIA tablist pattern): move selection AND focus.
+  const onTabKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+    if (!step) return;
+    e.preventDefault();
+    const i = TAB_ORDER.indexOf(tab);
+    const next = TAB_ORDER[(i + step + TAB_ORDER.length) % TAB_ORDER.length]!;
+    setTab(next);
+    tabRefs.current.get(next)?.focus();
+  };
 
   const tabBtn = (key: ConnectTab, label: string) => (
     <button
       type="button"
       role="tab"
       id={`agent-tab-${key}`}
+      ref={(el) => {
+        tabRefs.current.set(key, el);
+      }}
       aria-selected={tab === key}
       aria-controls="agent-connect-panel"
       tabIndex={tab === key ? 0 : -1}
@@ -67,10 +89,18 @@ function ConnectGuide({ emphasized }: { emphasized: boolean }) {
   return (
     <section className={`rounded-lg border p-4 ${emphasized ? 'border-indigo-200 bg-indigo-50/50' : 'border-slate-200 bg-slate-50/60'}`}>
       <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">Connect an agent</h3>
-      <p className="mt-1 text-sm text-slate-600">Let an AI agent build this site over MCP — connect it one of three ways:</p>
-      <div role="tablist" aria-label="Connect an agent" className="mt-3 flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1">
+      <p className="mt-1 text-sm text-slate-600">
+        Let an AI agent build this site over MCP — hosted in ChatGPT, Claude.ai or Le Chat, or via a local CLI agent:
+      </p>
+      <div
+        role="tablist"
+        aria-label="Connect an agent"
+        onKeyDown={onTabKey}
+        className="mt-3 flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1"
+      >
         {tabBtn('chatgpt', 'ChatGPT.com')}
         {tabBtn('claude', 'Claude.ai')}
+        {tabBtn('lechat', 'Le Chat')}
         {tabBtn('cli', 'Local CLI Agents')}
       </div>
       <div role="tabpanel" id="agent-connect-panel" aria-labelledby={`agent-tab-${tab}`} className="mt-3">
@@ -88,25 +118,45 @@ function ConnectGuide({ emphasized }: { emphasized: boolean }) {
             planNote="Custom connectors require a paid Claude plan (Pro / Max / Team / Enterprise)."
           />
         )}
+        {tab === 'lechat' && (
+          <RemoteSteps
+            mcpUrl={mcpUrl}
+            settingsPath="In Mistral Le Chat, open Connectors → “+ Add Connector” → the “Custom MCP Connector” tab."
+            planNote="Le Chat supports custom MCP connectors on its Free plan (it’s an admin-only feature; on Free you’re the admin by default). Its OAuth 2.1 flow matches Sitewright’s — the only major hosted chat with a free path."
+          />
+        )}
         {tab === 'cli' && (
-          <ol className="list-decimal space-y-1.5 pl-5 text-sm text-slate-600 marker:text-slate-400">
-            <li>
-              Install the CLI: <code className={CODE}>npm install -g @sitewright/cli</code> (or run it with{' '}
-              <code className={CODE}>npx @sitewright/cli</code>).
-            </li>
-            <li>
-              Register the MCP server in your agent (Claude Code, Cursor, Cline, …):{' '}
-              <code className={CODE}>sitewright mcp --url {origin}</code>
-            </li>
-            <li>
-              When the agent calls its <code className={CODE}>login</code> tool it shows a link + code (device flow). Open
-              it, pick this project, approve — and keep the editor open to watch its changes appear live.
-            </li>
-            <li>
-              Prefer to sign in ahead of time? <code className={CODE}>sitewright login --url {origin}</code> (add{' '}
-              <code className={CODE}>--device</code> for headless/SSH).
-            </li>
-          </ol>
+          <div className="space-y-2.5 text-sm text-slate-600">
+            <ol className="list-decimal space-y-1.5 pl-5 marker:text-slate-400">
+              <li>
+                Install the CLI: <code className={CODE}>npm install -g @sitewright/cli</code> (or run it with{' '}
+                <code className={CODE}>npx @sitewright/cli</code>).
+              </li>
+              <li>
+                Add this MCP server to your agent — the same block works for Cursor, Cline, Windsurf, Gemini CLI and most
+                MCP-aware tools:
+                <pre className={PRE}>{cliConfig}</pre>
+              </li>
+              <li>
+                Or let the CLI print the exact snippet (and file path) for your agent:{' '}
+                <code className={CODE}>sitewright config &lt;agent&gt; --url {origin}</code> — e.g.{' '}
+                <code className={CODE}>cursor</code>, <code className={CODE}>windsurf</code>,{' '}
+                <code className={CODE}>gemini</code>, <code className={CODE}>vscode</code>. Claude Code one-liner:{' '}
+                <code className={CODE}>claude mcp add sitewright -- sitewright mcp --url '{origin}'</code>.
+              </li>
+              <li>
+                On first run the agent’s <code className={CODE}>login</code> tool shows a link + code (device flow) — open
+                it, pick this project, approve, and keep the editor open to watch changes appear live. Prefer to sign in
+                ahead? <code className={CODE}>sitewright login --url {origin}</code> (add <code className={CODE}>--device</code>{' '}
+                for headless/SSH).
+              </li>
+            </ol>
+            <p className="text-[11px] text-slate-400">
+              Where the block goes: Cursor <code className={CODE}>~/.cursor/mcp.json</code> · Windsurf{' '}
+              <code className={CODE}>~/.codeium/windsurf/mcp_config.json</code> · Gemini CLI{' '}
+              <code className={CODE}>~/.gemini/settings.json</code> · VS Code <code className={CODE}>.vscode/mcp.json</code>.
+            </p>
+          </div>
         )}
       </div>
     </section>

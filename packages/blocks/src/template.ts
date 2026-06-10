@@ -16,7 +16,7 @@
 // worker that runs this — see apps/api/src/render. This module is pure + synchronous.
 import Handlebars from 'handlebars';
 import { safeUrl } from './url.js';
-import { escapeAttr } from './escape.js';
+import { escapeAttr, escapeHtml } from './escape.js';
 import { iconBody } from './icons.js';
 import { brandIcon } from './brand-icons.js';
 import { flagIcon } from './flag-icons.js';
@@ -313,6 +313,78 @@ function createInstance(): typeof Handlebars {
     const n = typeof max === 'number' && Number.isFinite(max) ? max : 100;
     return s.length > n ? `${s.slice(0, Math.max(0, n - 1))}…` : s;
   });
+  // ── MINI SHOP helpers (front-end cart). Both emit a SafeString carrying ESCAPED `data-sw-cart-*`
+  // markers the first-party cart.js runtime reads — markers can't come from author HTML (the sanitizer
+  // strips custom data-* there). The product DATA is escaped; the elements carry no behavior (cart.js
+  // wires clicks). Prices are NON-AUTHORITATIVE (a front-end inquiry, not a charge). See blocks/cart.ts.
+  //
+  // {{sw-add-to-cart sku=id name=title price=price image=img label="Add" class="btn btn-primary"}} →
+  // an "add to cart" <button>. `price` is coerced to a finite, non-negative number (canonical numeric
+  // string; unknown/negative → 0). A bare key (sku, else name) is required or nothing is emitted. With
+  // no `class=`, cart.js's first-party default button style applies (`[data-sw-cart-add]:not([class])`).
+  hb.registerHelper('sw-add-to-cart', function swAddToCart(this: unknown, ...args: unknown[]) {
+    const options = args[args.length - 1] as Handlebars.HelperOptions;
+    const h = (options?.hash ?? {}) as Record<string, unknown>;
+    const str = (v: unknown): string => (typeof v === 'string' ? v : typeof v === 'number' ? String(v) : '');
+    const sku = str(h.sku);
+    const name = str(h.name);
+    const key = sku || name;
+    if (!key) return new Handlebars.SafeString('');
+    const priceNum = Number(h.price);
+    const price = Number.isFinite(priceNum) && priceNum >= 0 ? String(priceNum) : '0';
+    const root = (options.data?.root ?? {}) as { website?: { shop?: { addToCartLabel?: unknown } } };
+    const shopLabel = root.website?.shop?.addToCartLabel;
+    const label = str(h.label) || (typeof shopLabel === 'string' ? shopLabel : '') || 'Add to cart';
+    let attrs = `data-sw-cart-add data-sku="${escapeAttr(key)}" data-name="${escapeAttr(name || key)}" data-price="${escapeAttr(price)}"`;
+    const img = str(h.image);
+    if (img) {
+      const safe = safeUrl(img); // blocks javascript:/data:/protocol-relative → '#'
+      if (safe && safe !== '#') attrs += ` data-image="${escapeAttr(safe)}"`;
+    }
+    const cls = str(h.class);
+    if (cls) attrs += ` class="${escapeAttr(cls)}"`;
+    return new Handlebars.SafeString(`<button type="button" ${attrs}>${escapeHtml(label)}</button>`);
+  });
+  // {{sw-cart}} → the cart MOUNT: a single <div data-sw-cart> carrying the currency + submission
+  // channels (read from `website.shop`) as escaped data-* attributes. cart.js (shipped only when this
+  // marker is present) builds the floating button + drawer from it. Drop it ONCE per site (e.g. the
+  // footer slot) so it is on every page.
+  hb.registerHelper('sw-cart', function swCart(this: unknown, ...args: unknown[]) {
+    const options = args[args.length - 1] as Handlebars.HelperOptions;
+    const root = (options.data?.root ?? {}) as { website?: { shop?: Record<string, unknown> } };
+    const shop = (root.website?.shop ?? {}) as Record<string, unknown>;
+    const currency = (shop.currency ?? {}) as Record<string, unknown>;
+    const str = (v: unknown): string => (typeof v === 'string' ? v : typeof v === 'number' ? String(v) : '');
+    let attrs = 'data-sw-cart';
+    const sym = str(currency.symbol);
+    if (sym) attrs += ` data-currency-symbol="${escapeAttr(sym)}"`;
+    const code = str(currency.code);
+    if (code) attrs += ` data-currency-code="${escapeAttr(code)}"`;
+    if (currency.position === 'after') attrs += ` data-currency-pos="after"`;
+    if (typeof currency.decimals === 'number') attrs += ` data-currency-decimals="${escapeAttr(String(currency.decimals))}"`;
+    const title = str(shop.title);
+    if (title) attrs += ` data-cart-title="${escapeAttr(title)}"`;
+    // Project channels to ONLY the fields the runtime needs (defence-in-depth over the schema), then
+    // JSON-encode into an escaped attribute (cart.js JSON.parses it; undefined props are dropped).
+    const channels = Array.isArray(shop.channels) ? (shop.channels as Array<Record<string, unknown>>) : [];
+    const clean = channels
+      .map((c): Record<string, unknown> | null => {
+        if (!c || typeof c !== 'object') return null;
+        if (c.kind === 'whatsapp') return { kind: 'whatsapp', label: c.label, number: c.number, intro: c.intro };
+        if (c.kind === 'mailto') return { kind: 'mailto', label: c.label, email: c.email, subject: c.subject };
+        if (c.kind === 'payment') return { kind: 'payment', label: c.label, urlTemplate: c.urlTemplate };
+        return null;
+      })
+      .filter((c): c is Record<string, unknown> => c !== null);
+    if (clean.length) {
+      // Unicode-escape the markup-significant chars dom-serializer leaves RAW in an attribute value
+      // (`<`/`>`/`&`), so the channels JSON survives the resolveDirectives parse→serialize round-trip
+      // (which runs on any page containing data-sw-) intact, valid, and byte-stable.
+      const channelsJson = JSON.stringify(clean).replace(/[<>&]/g, (c) => `\\u00${c.charCodeAt(0).toString(16)}`);
+      attrs += ` data-channels="${escapeAttr(channelsJson)}"`;
+    }
+    return new Handlebars.SafeString(`<div ${attrs}></div>`);
+  });
   // ({{edit}} is RETIRED — editable text is now the `data-sw-text="key"` directive, bound to page.data.)
   //
   // {{#each data.x}}…{{/each}} — the ONE loop helper, dataset-aware. When the iterated value is an
@@ -390,7 +462,7 @@ function compileCached(source: string): Handlebars.TemplateDelegate {
   let compiled: Handlebars.TemplateDelegate;
   try {
     // `strict: false` → a missing path renders empty (not a throw). Helpers available are
-    // the pure built-in logic helpers + our curated sw-url/sw-date/sw-icon/sw-flag/sw-truncate (log removed);
+    // the pure built-in logic helpers + our curated sw-url/sw-date/sw-icon/sw-flag/sw-truncate/sw-add-to-cart/sw-cart (log removed);
     // tenants cannot register their own (no compile/runtime registration is exposed).
     compiled = HB.compile(source, { strict: false, noEscape: false });
   } catch (err) {

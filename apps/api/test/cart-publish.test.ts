@@ -1,0 +1,118 @@
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { makeHarness, type Harness, type TestClient } from './harness.js';
+
+// Integration: the MINI SHOP front-end cart. When a page/source/slot uses the {{sw-add-to-cart}} /
+// {{sw-cart}} helpers, the publisher ships ONE first-party `cart.js` at the site root (linked per
+// page at the right relative depth) plus the inline cart stylesheet — the only-used-ships discipline
+// of components.js/animations.js. The cart mount carries the currency + submission channels (from
+// website.shop) as escaped data-* attributes. A site that uses no cart gets byte-identical output.
+
+describe('mini shop cart → publish', () => {
+  let harness: Harness;
+  let client: TestClient;
+  let projectId: string;
+  const slug = 'shop';
+  let publishRoot: string;
+  let mediaRoot: string;
+
+  const shop = {
+    currency: { code: 'EUR', symbol: '€', position: 'after', decimals: 2 },
+    channels: [
+      { kind: 'whatsapp', number: '+14155550123', label: 'Order on WhatsApp' },
+      { kind: 'payment', urlTemplate: 'https://paypal.me/acme/{total}', provider: 'paypal' },
+    ],
+  };
+
+  beforeEach(async () => {
+    publishRoot = await mkdtemp(join(tmpdir(), 'sw-cart-sites-'));
+    mediaRoot = await mkdtemp(join(tmpdir(), 'sw-cart-media-'));
+    harness = await makeHarness({ publishRoot, mediaRoot });
+    client = await harness.signup();
+    projectId = await client.createProject('Shop', slug);
+  });
+
+  afterEach(async () => {
+    await harness.close();
+    await rm(publishRoot, { recursive: true, force: true });
+    await rm(mediaRoot, { recursive: true, force: true });
+  });
+
+  it('ships cart.js + the mount with currency/channels for a shop page, site-wide via the footer slot', async () => {
+    const proj = client.project(projectId);
+    expect(
+      (
+        await proj.putContent('settings', 'settings', {
+          identity: { name: 'Acme', colors: { primary: '#0a7' } },
+          // The cart mount lives in the footer slot → present on EVERY page.
+          website: { footer: '{{sw-cart}}', shop },
+          settings: {},
+        })
+      ).statusCode,
+    ).toBe(200);
+    const home = {
+      id: 'home',
+      path: '',
+      title: 'Shop',
+      root: { id: 'r', type: 'Section' },
+      source: '<section>{{sw-add-to-cart sku="w1" name="Widget" price="19.90"}}</section>',
+    };
+    const about = {
+      id: 'about',
+      path: 'about',
+      title: 'About',
+      root: { id: 'r2', type: 'Section' },
+      source: '<section><h1>Plain page on the same site</h1></section>',
+    };
+    expect((await proj.putContent('page', 'home', home)).statusCode).toBe(200);
+    expect((await proj.putContent('page', 'about', about)).statusCode).toBe(200);
+    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
+
+    const index = await client.get(`/sites/${slug}/index.html`);
+    expect(index.statusCode).toBe(200);
+    // The add-to-cart button rendered with the canonical numeric price.
+    expect(index.body).toContain('data-sw-cart-add');
+    expect(index.body).toContain('data-sku="w1"');
+    expect(index.body).toContain('data-price="19.9"');
+    // The mount carries the currency + the channels JSON (attribute-escaped; the JSON quotes → &quot;).
+    expect(index.body).toContain('data-sw-cart');
+    expect(index.body).toContain('data-currency-symbol="€"');
+    expect(index.body).toContain('data-currency-pos="after"');
+    expect(index.body).toContain('data-channels=');
+    expect(index.body).toContain('paypal.me/acme/{total}'); // payment urlTemplate survives verbatim
+    expect(index.body).toContain('14155550123'); // whatsapp number
+    // The runtime is linked at the site root.
+    expect(index.body).toContain('<script defer src="cart.js"></script>');
+
+    // Site-wide asset: the nested page links it rebased to its depth (footer mount → every page).
+    const aboutPage = await client.get(`/sites/${slug}/about/index.html`);
+    expect(aboutPage.statusCode).toBe(200);
+    expect(aboutPage.body).toContain('<script defer src="../cart.js"></script>');
+
+    // The runtime itself is served from the site root.
+    const js = await client.get(`/sites/${slug}/cart.js`);
+    expect(js.statusCode).toBe(200);
+    expect(js.body).toContain('https://wa.me/');
+    expect(js.body).toContain('localStorage');
+  });
+
+  it('ships NOTHING extra for a site that uses no cart', async () => {
+    const proj = client.project(projectId);
+    const page = {
+      id: 'home',
+      path: '',
+      title: 'Home',
+      root: { id: 'r', type: 'Section' },
+      source: '<section><h1>Plain</h1></section>',
+    };
+    expect((await proj.putContent('page', 'home', page)).statusCode).toBe(200);
+    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
+
+    const index = await client.get(`/sites/${slug}/index.html`);
+    expect(index.body).not.toContain('cart.js');
+    expect(index.body).not.toContain('data-sw-cart');
+    expect((await client.get(`/sites/${slug}/cart.js`)).statusCode).toBe(404);
+  });
+});

@@ -128,4 +128,70 @@ describe('WebsiteSettingsSchema', () => {
       expect(() => WebsiteSettingsSchema.parse({ data: { ['k'.repeat(201)]: 1 } })).toThrow();
     });
   });
+
+  describe('shop config (MINI SHOP)', () => {
+    it('accepts a currency + the three deep-link channels', () => {
+      const shop = {
+        currency: { code: 'EUR', symbol: '€', position: 'after' as const, decimals: 2 },
+        channels: [
+          { kind: 'whatsapp' as const, number: '+14155550123', label: 'Order on WhatsApp' },
+          { kind: 'mailto' as const, email: 'sales@acme.test', subject: 'New order' },
+          { kind: 'payment' as const, urlTemplate: 'https://paypal.me/acme/{total}', provider: 'paypal' as const },
+        ],
+      };
+      const parsed = WebsiteSettingsSchema.parse({ shop });
+      expect(parsed.shop?.currency?.code).toBe('EUR');
+      expect(parsed.shop?.channels).toHaveLength(3);
+    });
+
+    it('defaults currency position (before) and decimals (2)', () => {
+      const parsed = WebsiteSettingsSchema.parse({ shop: { currency: { code: 'USD', symbol: '$' } } });
+      expect(parsed.shop?.currency).toMatchObject({ position: 'before', decimals: 2 });
+    });
+
+    it('rejects a non-ISO-4217 currency code', () => {
+      expect(() => WebsiteSettingsSchema.parse({ shop: { currency: { code: 'Euro', symbol: '€' } } })).toThrow();
+      expect(() => WebsiteSettingsSchema.parse({ shop: { currency: { code: 'us', symbol: '$' } } })).toThrow();
+      expect(() => WebsiteSettingsSchema.parse({ shop: { currency: { code: 'USD', symbol: '$', decimals: 9 } } })).toThrow();
+    });
+
+    it('rejects a non-E.164 whatsapp number, accepts a valid one', () => {
+      expect(() => WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'whatsapp', number: '0155 1234' }] } })).toThrow();
+      expect(() => WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'whatsapp', number: '+0155123' }] } })).toThrow();
+      expect(
+        WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'whatsapp', number: '+14155550123' }] } }).shop?.channels,
+      ).toHaveLength(1);
+    });
+
+    it('payment urlTemplate: https-only, known placeholders only, fixed link allowed', () => {
+      expect(() =>
+        WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'payment', urlTemplate: 'http://paypal.me/acme/{total}' }] } }),
+      ).toThrow();
+      // an unknown placeholder is a likely typo → rejected
+      expect(() =>
+        WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'payment', urlTemplate: 'https://paypal.me/acme/{amount}' }] } }),
+      ).toThrow();
+      // a Stripe-style fixed link (no placeholder) is valid
+      expect(
+        WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'payment', urlTemplate: 'https://buy.stripe.com/test_fixed' }] } }).shop
+          ?.channels,
+      ).toHaveLength(1);
+    });
+
+    it('rejects control chars in a mailto subject (header-injection hygiene)', () => {
+      expect(() =>
+        WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'mailto', email: 'a@b.test', subject: 'x\r\nBcc: e@v.test' }] } }),
+      ).toThrow();
+    });
+
+    it('rejects an unknown channel kind and caps the channel count', () => {
+      expect(() => WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'sms', number: '+14155550123' }] } })).toThrow();
+      const many = Array.from({ length: 9 }, () => ({ kind: 'mailto' as const, email: 'a@b.test' }));
+      expect(() => WebsiteSettingsSchema.parse({ shop: { channels: many } })).toThrow();
+    });
+
+    it('shop is optional', () => {
+      expect(WebsiteSettingsSchema.parse({}).shop).toBeUndefined();
+    });
+  });
 });

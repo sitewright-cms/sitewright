@@ -85,6 +85,39 @@ export const GLOBAL_TEMPLATES: readonly Template[] = [
       intro: 'News, guides, and updates.',
     },
   },
+  {
+    // A MINI SHOP storefront: a product grid from the `products` dataset, each card with a first-party
+    // {{sw-add-to-cart}} button, plus the {{sw-cart}} mount (the floating cart + drawer). The cart is
+    // FRONT-END only — it builds an order in localStorage and hands it to a submission channel
+    // (WhatsApp / mailto / payment link) configured in Website settings (website.shop). Prices are
+    // NON-AUTHORITATIVE (a front-end inquiry). The two headings are editable page.data leaves.
+    id: 'global:shop',
+    name: 'Shop (global)',
+    source: `<section class="mx-auto max-w-6xl px-6 py-16">
+  <h1 class="mb-2 text-4xl font-bold" data-sw-text="data.heading">Shop</h1>
+  <p class="mb-10 text-base-content/60" data-sw-text="data.intro">Browse our products and build your order.</p>
+  <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+    {{#each data.products}}
+    <div class="card bg-base-100 shadow-sm">
+      {{#if image}}<figure><img src="{{sw-url image}}" alt="{{name}}" class="aspect-video w-full object-cover"></figure>{{/if}}
+      <div class="card-body">
+        <h2 class="card-title">{{name}}</h2>
+        <p class="text-sm text-base-content/60">{{description}}</p>
+        <div class="card-actions mt-2 items-center justify-between">
+          <span class="text-lg font-semibold">{{@root.website.shop.currency.symbol}}{{price}}</span>
+          {{sw-add-to-cart sku=sku name=name price=price image=image class="btn btn-primary btn-sm"}}
+        </div>
+      </div>
+    </div>
+    {{/each}}
+  </div>
+  {{sw-cart}}
+</section>`,
+    data: {
+      heading: 'Shop',
+      intro: 'Browse our products and build your order.',
+    },
+  },
 ];
 
 /** Whether a `Page.template` reference points at a built-in global template. */

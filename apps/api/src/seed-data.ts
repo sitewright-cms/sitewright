@@ -140,6 +140,17 @@ export const EXAMPLE_WEBSITE = {
 .nw-zoom:hover img{transform:scale(1.06)}
 .nw-underline{background-image:linear-gradient(currentColor,currentColor);background-size:0% 2px;background-position:0 100%;background-repeat:no-repeat;transition:background-size .3s}
 .nw-underline:hover{background-size:100% 2px}`,
+  // MINI SHOP — front-end cart config for the demo Shop page. Currency + the three deep-link channels
+  // (WhatsApp, email, PayPal.me payment link). The cart is front-end only and prices are
+  // NON-AUTHORITATIVE — the cart submits an order inquiry; Northwind confirms + collects payment.
+  shop: {
+    currency: { code: 'USD', symbol: '$', position: 'before', decimals: 2 },
+    channels: [
+      { kind: 'whatsapp', number: '+14155550123', label: 'Order on WhatsApp', intro: 'Hi Northwind — I’d like to order:' },
+      { kind: 'mailto', email: 'hello@northwindstudio.com', subject: 'Northwind merch order' },
+      { kind: 'payment', provider: 'paypal', urlTemplate: 'https://paypal.me/northwind/{total}', label: 'Pay with PayPal' },
+    ],
+  },
   // A language→country map for the nav switcher's flags (sw-flag takes a COUNTRY code, not a
   // language — so en→gb). Looked up per locale: {{sw-flag (lookup website.data.locale_flags locale)}}.
   data: { locale_flags: { en: 'gb', de: 'de' } },
@@ -205,6 +216,20 @@ export const EXAMPLE_DATASETS: Dataset[] = [
       { name: 'role', type: 'text', required: false, localized: false },
     ],
   },
+  {
+    // MINI SHOP catalogue — products the front-end cart adds by `sku`. `price` is a number; the
+    // cart formats it with the currency in website.shop (display-only, non-authoritative).
+    id: 'products',
+    name: 'Products',
+    slug: 'products',
+    fields: [
+      { name: 'sku', type: 'text', required: false, localized: false },
+      { name: 'name', type: 'text', required: true, localized: false },
+      { name: 'price', type: 'number', required: false, localized: false },
+      { name: 'image', type: 'image', required: false, localized: false },
+      { name: 'description', type: 'text', required: false, localized: false },
+    ],
+  },
 ];
 
 const pub = (dataset: string, id: string, values: Record<string, unknown>): Entry => ({
@@ -253,6 +278,11 @@ export function exampleEntries(assetMap: Record<string, string>): Entry[] {
   pub('testimonials', 'tst-1', { quote: 'Northwind rebuilt our site in six weeks and our enquiries doubled. They are the rare studio that gets both design and engineering right.', author: 'Priya Anand', role: 'CEO, Harbor Coffee' }),
   pub('testimonials', 'tst-2', { quote: 'The fastest, most thoughtful team we have worked with. Our Lighthouse scores went from the 40s to a perfect 100.', author: 'Marcus Lee', role: 'CMO, Lumen Capital' }),
   pub('testimonials', 'tst-3', { quote: 'They treated our brand like their own. The new site finally looks like the company we are becoming.', author: 'Elena Fischer', role: 'Founder, Terra Architects' }),
+  // --- products (MINI SHOP demo: studio merch; `price` is a number, the cart formats it) ---
+  pub('products', 'prod-tee', { sku: 'TEE-01', name: 'Studio Tee', price: 29, image: assets['proj-aria'], description: 'Soft heavyweight cotton tee with a subtle Northwind mark.' }),
+  pub('products', 'prod-mug', { sku: 'MUG-01', name: 'Ceramic Mug', price: 14, image: assets['proj-flint'], description: 'A 12oz mug for late-night deploys.' }),
+  pub('products', 'prod-notebook', { sku: 'NB-01', name: 'Dot-grid Notebook', price: 18, image: assets['proj-terra'], description: 'Lay-flat A5 notebook for sketching layouts.' }),
+  pub('products', 'prod-poster', { sku: 'POS-01', name: 'Type Poster', price: 35, image: assets['proj-vela'], description: 'Risograph type-specimen print, A2.' }),
   ];
 }
 
@@ -811,6 +841,23 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
         '<p>SEO is not a bolt-on. The fast, accessible, semantically-marked-up site you launch is the one search engines reward.</p>' +
         '<h2>Get the basics right</h2>' +
         '<ul><li>Descriptive titles and meta descriptions</li><li>A clean, crawlable URL structure</li><li>Structured data and an accurate sitemap</li></ul>',
+    },
+  },
+  // MINI SHOP demo: a content-free storefront. global:shop loops the `products` dataset, each card
+  // with a {{sw-add-to-cart}} button + the {{sw-cart}} mount. The cart builds an order in the browser
+  // and submits it via WhatsApp / email / PayPal (configured in EXAMPLE_WEBSITE.shop). Front-end only.
+  {
+    id: 'shop',
+    path: 'shop',
+    title: 'Studio merch — Northwind shop',
+    root: placeholderRoot,
+    parent: 'home',
+    nav: { title: 'Shop', slots: ['header'], order: 6 },
+    template: 'global:shop',
+    seo: { description: 'Studio merch for fellow web nerds — add to cart and order via WhatsApp, email, or a payment link.' },
+    data: {
+      heading: 'Studio merch',
+      intro: 'A little something for fellow web nerds. Add to cart and check out via WhatsApp, email, or a payment link.',
     },
   },
   ];

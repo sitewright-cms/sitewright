@@ -41,4 +41,23 @@ test('side panels: Library + Assets tabs open on hover and close on mouse-out', 
   const assets = page.locator('[role="region"][aria-label="File Manager"]');
   await expect(assets).toHaveAttribute('aria-hidden', 'false');
   await expect(assets.getByLabel('Upload files')).toBeVisible();
+
+  // Collapse it again so the next assertion starts from the closed state. Move well clear of the
+  // right edge — the File Manager panel is ~44rem wide, so x=640 would still be over it.
+  await page.mouse.move(200, 200);
+  await expect(assets).toHaveAttribute('aria-hidden', 'true');
+
+  // Dragging OS files onto the COLLAPSED File Manager tab opens the panel, so drag-and-drop upload
+  // works without first hovering it open (the file browser's drop zone is unreachable while
+  // collapsed). A DataTransfer holding a File reports `types` containing 'Files' — exactly what the
+  // tab's drag handler keys on. (Opening relabels the tab to "Close …", so dispatch on the handle
+  // captured while collapsed.)
+  const fileDrag = await page.evaluateHandle(() => {
+    const dt = new DataTransfer();
+    dt.items.add(new File(['x'], 'photo.png', { type: 'image/png' }));
+    return dt;
+  });
+  await assetsTab.dispatchEvent('dragenter', { dataTransfer: fileDrag });
+  await expect(assets).toHaveAttribute('aria-hidden', 'false');
+  await expect(assets.getByLabel('Upload files')).toBeVisible();
 });

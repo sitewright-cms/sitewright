@@ -8,6 +8,7 @@ import {
   pageCodeMode,
   resolveCodeRef,
   resolveTemplateSource,
+  localeOf,
   type PageCodeMode,
 } from '@sitewright/core';
 import { NAV_SLOTS, type NavSlot, type Page, type Template } from '@sitewright/schema';
@@ -164,7 +165,16 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
     isTranslated ? { ...initial, codeMode: pageCodeMode(page) } : initial,
   );
   const patch = (next: Partial<PageSettingsValues>) => setV((prev) => ({ ...prev, ...next }));
-  const isHome = page.path === '';
+  const isRootHome = page.path === '';
+  const pageLocale = localeOf(page, defaultLocale);
+  // A LOCALE HOME is the root of a non-default language's subtree (a variant of the root home):
+  // its parent (the site root) and slug (the language code) are fixed — not re-assignable.
+  const rootHome = pages.find((p) => p.path === '');
+  const homeGroup = rootHome?.translationGroup ?? rootHome?.id;
+  const isLocaleHome =
+    !isRootHome && pageLocale !== defaultLocale && (page.translationGroup ?? page.id) === homeGroup;
+  // "Home-like": the root home OR a locale home — slug + parent are fixed.
+  const isHomeLike = isRootHome || isLocaleHome;
   /** The main language's effective source (resolved through its template if any) — copied in on fork. */
   const ownerSource = (): string => {
     if (!owner) return page.source ?? '';
@@ -184,11 +194,26 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
   // HOME (the empty-slug root) is the tree root: every other page must have a parent,
   // defaulting to home — so non-home pages are never offered a "None (top-level)" choice.
   // The literal fallback matches the create/copy defaults so the select always has a value.
-  const homeId = pages.find((p) => p.path === '')?.id ?? 'home';
+  const homeId = rootHome?.id ?? 'home';
+  // The home of the page's OWN language (root of its subtree) — the default parent for a page
+  // in that language; for the default locale this is the root home.
+  const localeHomeId =
+    pages.find((p) => (p.translationGroup ?? p.id) === homeGroup && localeOf(p, defaultLocale) === pageLocale)?.id ?? homeId;
   const invalidParents = selfAndDescendants(page.id, pages);
-  const parentChoices = pages.filter((p) => !invalidParents.has(p.id) && !p.collection);
-  // The effective parent the form will submit for a non-home page (defaults to home).
-  const effectiveParent = isHome ? '' : v.parent || homeId || '';
+  // A page nests only within its OWN language's subtree — offer only same-locale pages as parents.
+  const parentChoices = pages.filter(
+    (p) => !invalidParents.has(p.id) && !p.collection && localeOf(p, defaultLocale) === pageLocale,
+  );
+  // The parent the form submits: the root home has none; a locale home keeps its fixed parent
+  // (the site root); every other page submits its chosen parent (defaulting to its language home).
+  // Only trust `v.parent` when it's actually an offered (same-locale, non-cyclic) choice, so a
+  // stale/cross-locale id can't leave the select blank and then re-save the wrong parent.
+  const chosenParent = parentChoices.some((p) => p.id === v.parent) ? v.parent : '';
+  const effectiveParent = isRootHome
+    ? ''
+    : isLocaleHome
+      ? page.parent ?? homeId
+      : chosenParent || localeHomeId || '';
   // Index for the live "full URL" preview as the slug/parent are edited.
   const previewById = pagesById(pages);
   const childCount = pages.filter((p) => p.parent === page.id).length;
@@ -223,14 +248,20 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
               aria-label="Page path"
               className={`mt-1.5 font-mono font-normal ${glassInput}`}
               value={v.path}
-              disabled={isHome}
+              disabled={isHomeLike}
               placeholder="about"
-              title={isHome ? 'The home page is the site root' : 'One segment, no slashes — the URL is built from the parent chain'}
+              title={
+                isRootHome
+                  ? 'The home page is the site root'
+                  : isLocaleHome
+                    ? 'The language home — its slug is the language code'
+                    : 'One segment, no slashes — the URL is built from the parent chain'
+              }
               // No slashes: lowercase + slugify as you type. Nesting comes from the parent.
               onChange={(e) => patch({ path: e.target.value.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+/, '') })}
             />
             <span className="mt-1 font-normal text-[11px] text-slate-400">
-              {isHome ? (
+              {isRootHome ? (
                 'The home page is the site root (/).'
               ) : (
                 <>
@@ -269,15 +300,17 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
               aria-label="Parent page"
               className={`mt-1.5 font-normal ${glassInput}`}
               value={effectiveParent}
-              // The HOME page is always the root — it can never be nested under another page.
-              disabled={isHome}
-              title={isHome ? 'The home page is the tree root' : undefined}
+              // The root home and each LOCALE home are fixed roots — their parent can't be reassigned.
+              disabled={isHomeLike}
+              title={isHomeLike ? 'A home page is the root of its language and cannot be re-parented' : undefined}
               onChange={(e) => patch({ parent: e.target.value })}
             >
-              {/* Home is the root (parentless, disabled). Every other page must have a
-                  parent — no "None" option — defaulting to Home. */}
-              {isHome ? (
+              {/* Root home → None; a locale home → fixed under the site root; every other page
+                  picks a parent IN ITS OWN LANGUAGE (defaults to that language's home). */}
+              {isRootHome ? (
                 <option value="">None (home is the root)</option>
+              ) : isLocaleHome ? (
+                <option value={effectiveParent}>{rootHome?.title ?? 'Home'} (site root)</option>
               ) : (
                 parentChoices.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -286,10 +319,12 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
                 ))
               )}
             </select>
-            {isHome ? (
+            {isRootHome ? (
               <span className="mt-1 font-normal text-[11px] text-slate-400">The home page is the tree root.</span>
+            ) : isLocaleHome ? (
+              <span className="mt-1 font-normal text-[11px] text-slate-400">The language home nests under the site root (fixed).</span>
             ) : (
-              <span className="mt-1 font-normal text-[11px] text-slate-400">Sub-pages nest under their parent; defaults to Home.</span>
+              <span className="mt-1 font-normal text-[11px] text-slate-400">Sub-pages nest under a parent in the same language.</span>
             )}
           </label>
           {isTranslated ? (

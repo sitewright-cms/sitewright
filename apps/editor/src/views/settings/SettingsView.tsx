@@ -28,7 +28,16 @@ function emptyBundle(project: Project): SettingsBundle {
  *   segmented switcher — the project's top-level tabs (Corporate Identity / Website Settings)
  *   own the switching. Omitted, the legacy self-switching surface is shown.
  */
-export function SettingsView({ project, section: fixedSection }: { project: Project; section?: Section }) {
+export function SettingsView({
+  project,
+  section: fixedSection,
+  onLocalesChanged,
+}: {
+  project: Project;
+  section?: Section;
+  /** Notifies the parent (the pages list) when a language is added/removed here, so it can refresh. */
+  onLocalesChanged?: () => void;
+}) {
   const [form, setForm] = useState<SettingsForm | null>(null);
   // The last-loaded bundle — the baseline for fields the form doesn't surface
   // (logoLight/logoDark, spacing, radii, typography.scale) so a save never drops them.
@@ -195,7 +204,7 @@ export function SettingsView({ project, section: fixedSection }: { project: Proj
               {section === 'identity' ? (
                 <IdentitySection form={form} patch={patch} projectId={project.id} />
               ) : (
-                <WebsiteSection form={form} patch={patch} projectId={project.id} />
+                <WebsiteSection form={form} patch={patch} projectId={project.id} onLocalesChanged={onLocalesChanged} />
               )}
             </motion.div>
           </AnimatePresence>

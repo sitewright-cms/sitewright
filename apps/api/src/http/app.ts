@@ -2831,6 +2831,86 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     },
   );
 
+  // Renders ONE stored snippet (project or `?scope=global`) to a styled, self-contained HTML
+  // document for the editor's hover preview. Unlike render-template (owner-only, ad-hoc source),
+  // this renders a STORED snippet BY ID, so it's safe at `content:read` — the same gate as the
+  // member `/preview`. Served DIRECTLY (no token) as `text/html` under the opaque `sandbox
+  // allow-scripts` CSP, loaded via an iframe `src`; errors render as a small HTML notice so the
+  // iframe never shows a raw JSON error.
+  app.get<{ Params: { projectId: string; id: string }; Querystring: { scope?: string } }>(
+    '/projects/:projectId/snippets/:id/preview',
+    // 30/min — this hits the SAME small render-worker pool as render-template, so it shares that
+    // route's throughput-aligned cap (the client's hover debounce keeps real usage well under it).
+    { config: rl(30) },
+    async (req, reply) => {
+      const { ctx, project } = await resolveProject(req, 'content:read');
+      // `msg` is a fixed set of static in-code strings (never user input) — typed as a union so a
+      // future caller can't interpolate dynamic content into the served (sandboxed) document.
+      const notice = (
+        msg:
+          | 'Preview is unavailable.'
+          | 'This snippet no longer exists.'
+          | 'The snippet library is too large to preview.'
+          | 'This snippet has an error and can’t be previewed.',
+        code = 200,
+      ) =>
+        reply
+          .code(code)
+          .header('content-security-policy', 'sandbox')
+          .header('x-frame-options', 'SAMEORIGIN')
+          .type('text/html')
+          .send(
+            `<!doctype html><meta charset="utf-8"><body style="margin:0;font:13px/1.5 system-ui,sans-serif;color:#64748b;display:grid;place-items:center;height:100vh;padding:1rem;text-align:center">${msg}</body>`,
+          );
+      if (!renderPool) return notice('Preview is unavailable.', 503);
+
+      // Built-in + admin globals and the project's own snippets — both the resolvable partial set a
+      // snippet may `{{> include}}` AND the source to preview. A Map keyed by own entries makes the
+      // by-id lookup prototype-safe (snippet names can't be `__proto__` — SnippetSchema requires a
+      // leading letter — but a Map is robust regardless).
+      const globalPartials = await globalSnippetPartials(contentRepo);
+      const projectMap = Object.fromEntries(((await contentRepo.list(ctx, 'snippet')) as Snippet[]).map((s) => [s.name, s.source]));
+      const partials = { ...globalPartials, ...projectMap };
+      const scope = req.query.scope === 'global' ? 'global' : 'project';
+      const source = new Map(Object.entries(scope === 'global' ? globalPartials : projectMap)).get(req.params.id);
+      if (typeof source !== 'string') return notice('This snippet no longer exists.', 404);
+      // Bound the IPC payload to the worker (source + the partial set; data/item are empty here).
+      if (source.length + JSON.stringify(partials).length > 4 * 1024 * 1024) return notice('The snippet library is too large to preview.', 413);
+
+      let brand: CorporateIdentity = { name: project.name, colors: {} };
+      let website: Record<string, unknown> | undefined;
+      try {
+        const settings = (await contentRepo.get(ctx, 'settings', SETTINGS_ENTITY_ID)) as Settings;
+        brand = settings.identity;
+        website = settings.website ? { siteUrl: settings.website.siteUrl, data: settings.website.data } : undefined;
+      } catch (err) {
+        if (!(err instanceof NotFoundError)) throw err;
+      }
+
+      try {
+        // No datasets/entries: a hover preview shows the snippet's STRUCTURE with brand styling +
+        // resolved {{> partials}}; dataset loops / page.data bindings render empty (kept lean — no
+        // per-hover entry load). Partials let a snippet that composes others preview correctly.
+        const rendered = await renderPool.render(source, {
+          company: brand as unknown as Record<string, unknown>,
+          website,
+          page: { title: project.name, path: '/' },
+          data: {},
+          item: {},
+          partials,
+        });
+        const previewPage: Page = { id: 'snippet-preview', path: '/', title: project.name, root: { id: 'snippet-preview-root', type: 'Section' } };
+        const html = await styledSourceDocument(previewPage, brand, rendered);
+        reply.header('content-security-policy', 'sandbox allow-scripts');
+        reply.header('x-frame-options', 'SAMEORIGIN');
+        return reply.type('text/html').send(html);
+      } catch (err) {
+        if (err instanceof RenderUnavailableError) return notice('Preview is unavailable.', 503);
+        return notice('This snippet has an error and can’t be previewed.', 200);
+      }
+    },
+  );
+
   // Graceful shutdown for k8s: drain + terminate render workers when Fastify closes.
   if (renderPool) {
     app.addHook('onClose', async () => {

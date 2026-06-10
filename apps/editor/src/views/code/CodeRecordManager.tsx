@@ -4,6 +4,7 @@ import { useDialogs } from '../ui/Dialogs';
 import { useToast } from '../ui/Toast';
 import { useCopy } from '../ui/useCopy';
 import { primaryButton, ghostButton, glassPanel } from '../../theme';
+import { SnippetPreviewButton } from './SnippetPreviewButton';
 
 /** The shared shape of a name + Handlebars source record (snippet, template). */
 export interface CodeRecord {
@@ -44,12 +45,16 @@ export interface CodeRecordManagerProps {
   includeRef?: (rec: CodeRecord) => string;
   /** Tailwind classes for the record-chip grid. Defaults to a responsive up-to-4-column grid. */
   gridClassName?: string;
+  /** When set, each chip gets an eye button that previews the rendered record on hover. Returns the
+   *  sandboxed preview iframe URL for a record at a scope. */
+  previewUrl?: (rec: CodeRecord, scope: Scope) => string;
   /**
-   * Allow editing a record's display NAME (not just its source) in the editor — for records whose
-   * `name` is decoupled from the stable `id` (templates). The id is kept, so page references survive.
-   * Snippets leave this off (their id IS the name; renaming would break `{{> name}}` includes).
+   * Edit a record's display NAME in the editor. `editableName` keeps the stable id (templates — page
+   * references survive). `renamable` RE-KEYS (snippets — the id IS the `{{> name}}` include, so a
+   * rename can't auto-update existing references; the user is warned). Use one or the other.
    */
   editableName?: boolean;
+  renamable?: boolean;
 }
 
 const byName = (a: CodeRecord, b: CodeRecord) => a.name.localeCompare(b.name);
@@ -61,7 +66,7 @@ const byName = (a: CodeRecord, b: CodeRecord) => a.name.localeCompare(b.name);
  * with a confirm. Storage-agnostic via injected adapters. Project users manage only their own records;
  * an instance admin can additionally edit/delete globals and create at the global scope.
  */
-export function CodeRecordManager({ projectId, noun, load, save, remove, makeId, hint, nameHint, globalAdapters, isAdmin, includeRef, gridClassName, editableName }: CodeRecordManagerProps) {
+export function CodeRecordManager({ projectId, noun, load, save, remove, makeId, hint, nameHint, globalAdapters, isAdmin, includeRef, gridClassName, previewUrl, editableName, renamable }: CodeRecordManagerProps) {
   const toast = useToast();
   const [copiedId, copy] = useCopy(() => toast.show('Copied to clipboard'));
   const [records, setRecords] = useState<CodeRecord[]>([]);
@@ -130,21 +135,58 @@ export function CodeRecordManager({ projectId, noun, load, save, remove, makeId,
     [prompt, noun, nameHint, makeId, adaptersFor, projectId],
   );
 
-  // Rejects on failure so the editor stays open (it only closes on a resolved save). NOTE: assumes the
-  // editor CLOSES on a resolved save (CodeEditorModal's contract) — so `editing` is never re-saved with
-  // a stale `rec` after a rename. If a "save without closing" path is ever added, re-seed editing.rec.
-  const persist = async ({ rec, scope }: { rec: CodeRecord; scope: Scope }, source: string) => {
-    // Keep the stable id; apply the edited name (templates) — an empty name falls back to the old one.
-    const name = editableName ? editName.trim() || rec.name : rec.name;
-    const next = { ...rec, name, source };
+  /** Validate a proposed new name for an existing record: unchanged is always OK; otherwise it must
+   *  pass `makeId` (format + uniqueness) against the OTHER records in the same scope. */
+  const validateRename = (name: string, { rec, scope }: { rec: CodeRecord; scope: Scope }): string | null => {
+    const n = name.trim();
+    if (n === rec.name) return null;
+    const others = (scope === 'global' ? globalsRef.current : recordsRef.current).filter((r) => r.id !== rec.id);
+    const res = makeId(n, others);
+    return 'error' in res ? res.error : null;
+  };
+
+  // Rejects on failure so the editor stays open (it only closes on a resolved save). Two name modes:
+  // `editableName` (templates) edits the display NAME but KEEPS the stable id, so page references
+  // survive. `renamable` (snippets) RE-KEYS — a snippet's id IS its name (the `{{> id}}` partial) — so
+  // a rename writes a new record + removes the old, and existing references won't auto-update.
+  const persist = async ({ rec, scope }: { rec: CodeRecord; scope: Scope }, source: string, newName?: string) => {
+    const adapters = adaptersFor(scope);
+    const setList = scope === 'global' ? setGlobals : setRecords;
+    const trimmed = newName?.trim();
+    const renamed = renamable && trimmed !== undefined && trimmed !== '' && trimmed !== rec.name;
     try {
-      await adaptersFor(scope).save(projectId, next);
-      const setList = scope === 'global' ? setGlobals : setRecords;
+      if (renamed) {
+        const others = (scope === 'global' ? globalsRef.current : recordsRef.current).filter((r) => r.id !== rec.id);
+        const res = makeId(trimmed, others);
+        if ('error' in res) {
+          setError(res.error);
+          throw new Error('invalid name');
+        }
+        const next: CodeRecord = { id: res.id, name: trimmed, source };
+        // Save the new record FIRST (so a failure can't lose the snippet), then drop the old key.
+        await adapters.save(projectId, next);
+        try {
+          await adapters.remove(projectId, rec.id);
+        } catch {
+          // The rename succeeded; only the old copy lingers (the user can delete it).
+        }
+        setList((rs) => [...rs.filter((r) => r.id !== rec.id && r.id !== next.id), next].sort(byName));
+        setError(null);
+        const ref = includeRef ? includeRef(rec) : `“${rec.name}”`;
+        toast.show(`Renamed to “${next.name}”. Existing ${ref} references won’t update automatically.`);
+        return;
+      }
+      // editableName (templates): keep the stable id, apply the edited display name (empty → old name).
+      const name = editableName ? trimmed || rec.name : rec.name;
+      const next = { ...rec, name, source };
+      await adapters.save(projectId, next);
       setList((rs) => rs.map((r) => (r.id === rec.id ? next : r)).sort(byName));
       setError(null);
-    } catch {
-      setError(`Couldn’t save the ${noun} — your changes are still in the editor; try again.`);
-      throw new Error('save failed');
+    } catch (err) {
+      if (!(err instanceof Error && err.message === 'invalid name')) {
+        setError(`Couldn’t save the ${noun} — your changes are still in the editor; try again.`);
+      }
+      throw err instanceof Error ? err : new Error('save failed');
     }
   };
 
@@ -165,6 +207,7 @@ export function CodeRecordManager({ projectId, noun, load, save, remove, makeId,
       <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700" title={r.name}>
         {r.name}
       </span>
+      {previewUrl && <SnippetPreviewButton url={previewUrl(r, scope)} label={r.name} />}
       {editable ? (
         <>
           <button className={`${ghostButton} px-2 py-1 text-xs`} aria-label={`Edit ${r.name}`} onClick={() => setEditing({ rec: r, scope })}>
@@ -229,12 +272,18 @@ export function CodeRecordManager({ projectId, noun, load, save, remove, makeId,
       )}
       {editing && (
         <CodeEditorModal
-          // Reflect the edited name live (templates) so the dialog heading/label don't go stale on rename.
-          title={`${editableName && editName.trim() ? editName.trim() : editing.rec.name} — ${editing.scope === 'global' ? 'global ' : ''}${noun}`}
+          // Reflect the edited name live (via nameEdit.onChange → editName) so the heading doesn't go stale.
+          title={`${(editableName || renamable) && editName.trim() ? editName.trim() : editing.rec.name} — ${editing.scope === 'global' ? 'global ' : ''}${noun}`}
           value={editing.rec.source}
           hint={hint}
-          {...(editableName ? { name: editName, onNameChange: setEditName } : {})}
-          onSave={(src) => persist(editing, src)}
+          // Templates edit the display name (id kept). Snippets RENAME (re-key) — PROJECT scope only,
+          // since a global snippet's `{{> id}}` is referenced across every project. Rename is validated.
+          nameEdit={
+            editableName || (renamable && editing.scope !== 'global')
+              ? { value: editing.rec.name, label: `${noun} name`, onChange: setEditName, validate: renamable ? (name) => validateRename(name, editing) : undefined }
+              : undefined
+          }
+          onSave={(src, name) => persist(editing, src, name)}
           onClose={() => setEditing(null)}
         />
       )}

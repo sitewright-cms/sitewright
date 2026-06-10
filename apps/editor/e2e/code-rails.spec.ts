@@ -83,7 +83,7 @@ test('templates rail: 2-column grid + rename a template in the editor, persist a
   // dialog's accessible name updates live from "Promo — template" to "Promo Page — template").
   const editor = page.getByRole('dialog', { name: /— template$/ });
   await expect(editor).toBeVisible();
-  await editor.getByLabel('Name', { exact: true }).fill('Promo Page');
+  await editor.getByLabel('template name', { exact: true }).fill('Promo Page');
   await editor.locator('.cm-content').click();
   await page.keyboard.type('<section data-sw-text="data.heading">Promo</section>');
   await editor.getByRole('button', { name: 'Save changes' }).click();
@@ -98,4 +98,56 @@ test('templates rail: 2-column grid + rename a template in the editor, persist a
   await page.getByRole('button', { name: 'Open Templates' }).hover();
   const panel2 = page.locator('[role="region"][aria-label="Templates"]');
   await expect(panel2.getByText('Promo Page', { exact: true })).toBeVisible();
+});
+
+// The eye button server-renders the snippet into a sandboxed preview iframe (brand-styled), and the
+// edit modal lets the snippet be RENAMED (re-keying its {{> id}}), which round-trips through the API.
+test('snippets rail: eye preview renders the snippet, and a snippet can be renamed', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/');
+  await page.getByRole('button', { name: /Register/ }).click();
+  await page.getByLabel('Email').fill(`snip2-${stamp}@e2e.test`);
+  await page.getByLabel('Password').fill('pw-secret-1');
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await page.getByRole('button', { name: 'New project' }).click();
+  await page.getByLabel('Project name').fill('Snip Site');
+  await page.getByLabel('Project slug').fill(`snip2-${stamp}`);
+  await page.getByRole('button', { name: 'Create project' }).click();
+
+  await page.getByRole('button', { name: 'Open Snippets' }).hover();
+  const panel = page.locator('[role="region"][aria-label="Snippets"]');
+  await expect(panel).toHaveAttribute('aria-hidden', 'false');
+  await panel.getByRole('button', { name: '+ New snippet' }).click();
+  await page.getByRole('dialog', { name: 'New snippet' }).getByLabel('Name', { exact: true }).fill('previewcard');
+  await page.getByRole('dialog', { name: 'New snippet' }).getByRole('button', { name: 'Save' }).click();
+  const editor = page.getByRole('dialog', { name: 'previewcard — snippet' });
+  await editor.locator('.cm-content').click();
+  await page.keyboard.type('<h1 class="font-bold">{{company.name}}</h1>');
+  await editor.getByRole('button', { name: 'Save changes' }).click();
+  await expect(panel.getByText('previewcard', { exact: true })).toBeVisible();
+
+  // Hover the eye → the sandboxed preview iframe server-renders the snippet ({{company.name}} → the
+  // project name). frameLocator reaches into the (opaque-origin) iframe's rendered document.
+  await panel.getByRole('button', { name: 'Preview previewcard' }).hover();
+  await expect(page.getByRole('dialog', { name: 'previewcard preview' })).toBeVisible();
+  await expect(page.frameLocator('iframe[title="previewcard preview"]').locator('h1')).toHaveText('Snip Site', { timeout: 15000 });
+
+  // Move away to dismiss the preview, then RENAME via the edit modal's name field.
+  await page.mouse.move(640, 700);
+  await panel.getByRole('button', { name: 'Edit previewcard' }).click();
+  // The dialog's accessible name updates live as the name field is edited ("previewcard — snippet"
+  // → "renamedcard — snippet"), so locate it by the stable suffix.
+  const editor2 = page.getByRole('dialog', { name: /— snippet$/ });
+  await editor2.getByLabel('snippet name').fill('renamedcard');
+  await editor2.getByRole('button', { name: 'Save changes' }).click();
+
+  // The rail now shows the new name and not the old; the rename round-trips through the API.
+  await expect(panel.getByText('renamedcard', { exact: true })).toBeVisible();
+  await expect(panel.getByText('previewcard', { exact: true })).toHaveCount(0);
+  await page.reload();
+  await page.getByRole('dialog', { name: 'SiteWright' }).getByRole('button', { name: /Snip Site/ }).click();
+  await page.getByRole('button', { name: 'Open Snippets' }).hover();
+  const panelR = page.locator('[role="region"][aria-label="Snippets"]');
+  await expect(panelR.getByText('renamedcard', { exact: true })).toBeVisible();
+  await expect(panelR.getByText('previewcard', { exact: true })).toHaveCount(0);
 });

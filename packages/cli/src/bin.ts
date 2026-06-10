@@ -4,7 +4,8 @@ import { runStdioBridge } from '@sitewright/mcp';
 import { runLogin } from './login.js';
 import { runDeviceLogin } from './device.js';
 import { clearCredentials } from './credentials.js';
-import { ensureAccessToken, forceRefreshAccessToken } from './session.js';
+import { ensureAccessToken } from './session.js';
+import { createBridgeAuth } from './bridge-auth.js';
 
 /** Scopes requested by the CLI login (the consent screen lets the user pick the project). */
 const DEFAULT_SCOPE = 'content:read content:write publish';
@@ -89,15 +90,19 @@ async function main(): Promise<void> {
     }
     case 'mcp': {
       const url = requireUrl();
-      const token = await ensureAccessToken(url);
-      let scope;
+      // Lazy auth: the bridge boots on the URL alone — it does NOT require a prior `login`. If there
+      // are no (valid) credentials yet, it starts unauthenticated and the agent triggers a device-flow
+      // login on demand via the `login` tool. Tokens refresh in-session as the bridge runs.
       try {
-        // Refresh the OAuth token in-session if it expires while the bridge runs.
-        scope = await runStdioBridge({ url, token, onUnauthorized: () => forceRefreshAccessToken(url) });
+        const scope = await runStdioBridge({ url, auth: createBridgeAuth(url) });
+        process.stderr.write(
+          scope
+            ? `sitewright mcp: connected to project ${scope.projectId}\n`
+            : `sitewright mcp: ready (not yet signed in — the agent can connect with the login tool)\n`,
+        );
       } catch (err) {
-        die(`could not connect to ${url}: ${err instanceof Error ? err.message : 'unknown error'}`);
+        die(`could not start the bridge for ${url}: ${err instanceof Error ? err.message : 'unknown error'}`);
       }
-      process.stderr.write(`sitewright mcp: connected to project ${scope.projectId}\n`);
       return;
     }
     default:

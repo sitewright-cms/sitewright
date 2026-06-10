@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { runDeviceLogin } from '../src/device.js';
+import { runDeviceLogin, beginDeviceLogin } from '../src/device.js';
 import { loadCredentials } from '../src/credentials.js';
 import type { FetchLike, DeviceAuthorization } from '../src/oauth.js';
 
@@ -78,5 +78,32 @@ describe('runDeviceLogin', () => {
     await expect(
       runDeviceLogin({ issuer: 'https://cms.test', scope: 'content:read', prompt: () => {}, fetchImpl, sleep: async () => {} }),
     ).rejects.toMatchObject({ code: 'access_denied' });
+  });
+});
+
+describe('beginDeviceLogin (bridge entry)', () => {
+  it('returns the verification URL + code immediately; persists tokens only once approval completes', async () => {
+    let tokenCalls = 0;
+    const fetchImpl: FetchLike = async (input) => {
+      if (input.endsWith('/oauth/device_authorization')) return ok(DEVICE_AUTH);
+      tokenCalls += 1;
+      if (tokenCalls === 1) return bad(400, { error: 'authorization_pending' });
+      return ok({ access_token: 'swk_a', refresh_token: 'swr_b', expires_in: 3600, scope: 'content:read' });
+    };
+    const pending = await beginDeviceLogin({ issuer: 'https://cms.test', scope: 'content:read', fetchImpl, sleep: async () => {} });
+    expect(pending.verificationUrl).toBe('https://cms.test/oauth/device');
+    expect(pending.userCode).toBe('WDJB-MJHT');
+    expect(pending.expiresIn).toBe(600);
+    expect(loadCredentials('https://cms.test')).toBeNull(); // deferred — not approved yet
+    await pending.completion;
+    expect(loadCredentials('https://cms.test')?.refreshToken).toBe('swr_b');
+  });
+
+  it('completion rejects (and persists nothing) when the user denies', async () => {
+    const fetchImpl: FetchLike = async (input) =>
+      input.endsWith('/oauth/device_authorization') ? ok(DEVICE_AUTH) : bad(400, { error: 'access_denied' });
+    const pending = await beginDeviceLogin({ issuer: 'https://cms.test', scope: 'content:read', fetchImpl, sleep: async () => {} });
+    await expect(pending.completion).rejects.toMatchObject({ code: 'access_denied' });
+    expect(loadCredentials('https://cms.test')).toBeNull();
   });
 });

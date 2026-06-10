@@ -355,8 +355,9 @@ export function InstanceSettings() {
       <section className={`${glassCard} p-4`}>
         <h2 className="text-sm font-semibold">MCP endpoints</h2>
         <p className="mb-3 text-xs text-slate-500">
-          Tools the MCP bridge exposes to a connected agent. Each is gated by the token’s capabilities — a
-          read-only token never sees the write/publish tools.
+          Tools the MCP bridge exposes to a connected agent. Each is gated by the connection’s capabilities — a
+          read-only connection can list a write tool but calling it returns a clear “needs content:write” error
+          (the API enforces it server-side).
         </p>
         <ul className="flex flex-col gap-1.5 text-sm">
           {MCP_TOOL_CATALOG.map((t) => (
@@ -374,24 +375,27 @@ export function InstanceSettings() {
       <section className={`${glassCard} p-4`}>
         <h2 className="text-sm font-semibold">Connect an agent</h2>
         <p className="mb-3 text-xs text-slate-500">
-          Point any MCP-capable agent at this instance over the local stdio bridge:
+          Point any MCP-capable agent at this instance over the local stdio bridge. No up-front login —
+          the agent connects on demand and shows you a link to approve:
         </p>
         <ol className="flex list-decimal flex-col gap-2 pl-5 text-sm text-slate-600">
           <li>
             Install the CLI: <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">npm i -g @sitewright/cli</code>
           </li>
           <li>
-            Authenticate (opens a browser; OAuth 2.1 + PKCE):{' '}
-            <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">sitewright login --url {origin}</code>
+            Register this as a stdio MCP server in your agent — no login step needed first:{' '}
+            <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">sitewright mcp --url {origin}</code>
           </li>
           <li>
-            Run the bridge for a project:{' '}
-            <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">sitewright mcp --url {origin}</code>{' '}
-            — register that command as a stdio MCP server in your agent.
+            When the agent calls its <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">login</code> tool it gets a
+            link + code (device flow, OAuth 2.1 + PKCE). Open it, pick the project, approve — and keep that tab open to
+            watch the agent’s changes live. Use <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">switch_project</code> to
+            move it to another project.
           </li>
           <li>
-            Headless/SSH? add <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">--device</code> to{' '}
-            <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">login</code> for the device-code flow.
+            Prefer to sign in ahead of time? Run{' '}
+            <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">sitewright login --url {origin}</code> (add{' '}
+            <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">--device</code> for headless/SSH).
           </li>
         </ol>
       </section>

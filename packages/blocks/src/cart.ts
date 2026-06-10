@@ -48,8 +48,10 @@ function hasCartMarker(s: string): boolean {
 export const CART_CSS = [
   '[data-sw-cart]{display:none}',
   '[data-sw-cart][data-sw-enhanced="true"]{display:block}',
-  // Floating toggle button (bottom-right) with an item-count badge.
-  '[data-sw-cart] [data-sw-part="toggle"]{position:fixed;right:1rem;bottom:1rem;z-index:9997;display:flex;align-items:center;justify-content:center;width:3.25rem;height:3.25rem;border:0;border-radius:9999px;background:var(--sw-color-primary,#0a7a5a);color:#fff;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.25);transition:transform .15s ease,box-shadow .15s ease}',
+  // Floating toggle button (bottom-right) with an item-count badge. position/overflow are !important so
+  // the generic `.waves-effect` rule below (position:relative; overflow:hidden) can't unpin the floating
+  // toggle or clip its count badge.
+  '[data-sw-cart] [data-sw-part="toggle"]{position:fixed !important;overflow:visible !important;right:1rem;bottom:1rem;z-index:9997;display:flex;align-items:center;justify-content:center;width:3.25rem;height:3.25rem;border:0;border-radius:9999px;background:var(--sw-color-primary,#0a7a5a);color:#fff;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.25);transition:transform .15s ease,box-shadow .15s ease}',
   '[data-sw-cart] [data-sw-part="toggle"] svg{width:1.5rem;height:1.5rem}',
   '[data-sw-cart] [data-sw-part="count"]{position:absolute;top:-.25rem;right:-.25rem;min-width:1.25rem;height:1.25rem;padding:0 .25rem;border-radius:9999px;background:#b00020;color:#fff;font-size:.75rem;line-height:1.25rem;text-align:center}',
   '[data-sw-cart] [data-sw-part="count"][hidden]{display:none}',
@@ -60,7 +62,9 @@ export const CART_CSS = [
   // `inset:0 0 0 auto` (top/right/bottom:0, left:auto) overrides the <dialog> UA `inset:0` so it pins to
   // the RIGHT edge, full height (not centered/left). max-width keeps it a panel.
   '[data-sw-cart] dialog{position:fixed;inset:0 0 0 auto;margin:0;width:min(92vw,24rem);max-width:100vw;border:0;padding:0;background:#fff;box-shadow:-8px 0 32px rgba(0,0,0,.25);transform:translateX(100%);transition:transform .3s cubic-bezier(.4,0,.2,1),overlay .3s allow-discrete,display .3s allow-discrete}',
-  '[data-sw-cart] dialog[open]{transform:translateX(0)}',
+  // flex/height live on [open] ONLY — a closed <dialog> must keep its UA display:none (else it renders
+  // off-screen but counts as visible). When open it is a full-height vertical flex column.
+  '[data-sw-cart] dialog[open]{transform:translateX(0);height:100vh;display:flex;flex-direction:column}',
   '@starting-style{[data-sw-cart] dialog[open]{transform:translateX(100%)}}',
   '[data-sw-cart] dialog::backdrop{background:rgba(0,0,0,.35);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);opacity:0;transition:opacity .3s ease,overlay .3s allow-discrete,display .3s allow-discrete}',
   '[data-sw-cart] dialog[open]::backdrop{opacity:1}',
@@ -77,7 +81,7 @@ export const CART_CSS = [
   '[data-sw-cart] [data-sw-part="qty"] button{width:1.75rem;height:1.75rem;border:1px solid rgba(0,0,0,.2);border-radius:.375rem;background:#fff;cursor:pointer;font-size:1rem;line-height:1}',
   '[data-sw-cart] [data-sw-part="remove"]{border:0;background:none;color:#b00020;cursor:pointer;font-size:.875rem}',
   '[data-sw-cart] [data-sw-part="empty"]{padding:2rem 1.25rem;color:rgba(0,0,0,.6);text-align:center}',
-  '[data-sw-cart] [data-sw-part="foot"]{padding:1rem 1.25rem;border-top:1px solid rgba(0,0,0,.12)}',
+  '[data-sw-cart] [data-sw-part="foot"]{margin-top:auto;padding:1rem 1.25rem;border-top:1px solid rgba(0,0,0,.12)}',
   '[data-sw-cart] [data-sw-part="subtotal"]{display:flex;justify-content:space-between;font-weight:700;margin-bottom:.25rem}',
   '[data-sw-cart] [data-sw-part="note"]{font-size:.75rem;color:rgba(0,0,0,.55);margin:.25rem 0 .75rem}',
   '[data-sw-cart] [data-sw-part="channel"]{display:block;width:100%;border:0;border-radius:.375rem;padding:.625rem 1rem;margin-top:.5rem;background:var(--sw-color-primary,#0a7a5a);color:#fff;cursor:pointer;text-align:center;font:inherit;transition:filter .15s ease}',

@@ -14,6 +14,7 @@ export default defineConfig({
         'src/login.ts',
         'src/session.ts',
         'src/device.ts',
+        'src/connect.ts',
       ],
       reporter: ['text', 'lcov'],
       // `branches` is 75, not 80: vitest 4's AST-aware v8 coverage counts conditionals

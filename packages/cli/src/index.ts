@@ -21,3 +21,4 @@ export {
   type DeviceAuthorization,
 } from './oauth.js';
 export { generateVerifier, challengeFor, generateState } from './pkce.js';
+export { renderClientConfig, listClients, clientIds } from './connect.js';

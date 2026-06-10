@@ -6,6 +6,7 @@ import { runDeviceLogin } from './device.js';
 import { clearCredentials } from './credentials.js';
 import { ensureAccessToken } from './session.js';
 import { createBridgeAuth } from './bridge-auth.js';
+import { renderClientConfig, listClients, clientIds } from './connect.js';
 
 /** Scopes requested by the CLI login (the consent screen lets the user pick the project). */
 const DEFAULT_SCOPE = 'content:read content:write publish';
@@ -105,8 +106,22 @@ async function main(): Promise<void> {
       }
       return;
     }
+    case 'config': {
+      // `sitewright config [client]` prints a ready-to-paste MCP config. No client (or `list`) →
+      // the catalogue, which needs no instance, so don't require --url for it.
+      const client = process.argv[3];
+      if (!client || client.startsWith('--') || client === 'list') {
+        process.stdout.write(listClients());
+        return;
+      }
+      const url = requireUrl();
+      const out = renderClientConfig(client, url);
+      if (out == null) die(`unknown client '${client}' — try one of: ${clientIds().join(', ')} (or 'list').`);
+      process.stdout.write(out);
+      return;
+    }
     default:
-      process.stderr.write('Usage: sitewright <login|logout|whoami|mcp> --url <instance>\n');
+      process.stderr.write('Usage: sitewright <login|logout|whoami|mcp|config> --url <instance>\n');
       process.exit(command ? 1 : 0);
   }
 }

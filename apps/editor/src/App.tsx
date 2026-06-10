@@ -112,9 +112,9 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
 
   const header = (
     <header className="sticky top-0 z-20 border-b border-white/40 bg-white/60 px-6 py-3 shadow-sm backdrop-blur-xl">
-      {/* Inner row aligned to the SAME max-width column the tab CONTENT below uses, so the
-          tablist (and brand/nav) line up with the content rather than the full viewport. */}
-      <div className="mx-auto grid w-full max-w-5xl grid-cols-[1fr_auto_1fr] items-center gap-x-4">
+      {/* Full-width flex row: project selector at the far left, the tablist centered via its own
+          mx-auto, and the publish/admin nav at the far right. */}
+      <div className="flex w-full items-center gap-x-4">
       {/* Left: the brand mark (opens the selector) + the project selector. */}
       <div className="flex min-w-0 items-center gap-3">
         <button
@@ -138,8 +138,8 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
         )}
       </div>
 
-      {/* Center: the project tablist (owners only), horizontally centered in the header. */}
-      <div className="flex justify-center">
+      {/* Center: the project tablist (owners only) — mx-auto centers it between the left/right groups. */}
+      <div className="mx-auto flex justify-center">
         {inProject && !isClient && (
           <div role="tablist" aria-label="Project sections" className="flex flex-wrap justify-center gap-1 rounded-2xl border border-white/50 bg-white/50 p-1 shadow-sm">
             {MANAGE_TABS.map((t) => (

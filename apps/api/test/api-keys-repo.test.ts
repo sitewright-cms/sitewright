@@ -167,3 +167,38 @@ describe('ApiKeyRepository.resolve', () => {
     expect(after.find((k) => k.id === key.id)?.lastUsedAt).not.toBeNull();
   });
 });
+
+describe('ApiKeyRepository.listAgentConnections + revoke', () => {
+  it('lists active connections and revoke returns the key source + owner', async () => {
+    const { key: k1 } = await keys.create(pctxA, { name: 'a1', role: 'owner', capabilities: ['content:read'], expiresAt: future() });
+    const { key: k2 } = await keys.create(pctxA, { name: 'a2', role: 'owner', capabilities: ['content:read'], expiresAt: future() });
+    expect((await keys.listAgentConnections(pctxA)).map((c) => c.id).sort()).toEqual([k1.id, k2.id].sort());
+    // revoke returns the source + creator (so the route can sever an OAuth refresh chain).
+    expect(await keys.revoke(pctxA, k1.id)).toEqual({ source: 'pat', createdBy: pctxA.userId });
+    // A revoked key drops out of the active connections list.
+    expect((await keys.listAgentConnections(pctxA)).map((c) => c.id)).toEqual([k2.id]);
+  });
+
+  it('scopes agent connections to the project', async () => {
+    await keys.create(pctxA, { name: 'a', role: 'owner', capabilities: ['content:read'], expiresAt: future() });
+    expect(await keys.listAgentConnections(pctxB)).toHaveLength(0);
+  });
+
+  it('excludes expired connections (short-lived OAuth access tokens drop off once expired)', async () => {
+    await keys.create(pctxA, { name: 'soon', role: 'owner', capabilities: ['content:read'], expiresAt: new Date(Date.now() + 1000) });
+    await keys.create(pctxA, { name: 'live', role: 'owner', capabilities: ['content:read'], expiresAt: future() });
+    // At a `now` past the short key's expiry, only the still-valid one is listed.
+    const listed = await keys.listAgentConnections(pctxA, new Date(Date.now() + 5000));
+    expect(listed.map((c) => c.name)).toEqual(['live']);
+  });
+
+  it('revoking an already-revoked key throws NotFound (no second OAuth chain-revoke on a double Disconnect)', async () => {
+    const { key } = await keys.create(pctxA, { name: 'a', role: 'owner', capabilities: ['content:read'], expiresAt: future() });
+    await keys.revoke(pctxA, key.id);
+    await expect(keys.revoke(pctxA, key.id)).rejects.toThrow(NotFoundError);
+  });
+
+  it('requires a write role to list agent connections', async () => {
+    await expect(keys.listAgentConnections(memberCtxA)).rejects.toThrow(ForbiddenError);
+  });
+});

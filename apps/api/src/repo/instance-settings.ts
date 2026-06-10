@@ -3,6 +3,7 @@ import {
   InstanceSettingsStoredSchema,
   maskInstanceSettings,
   DEFAULT_AGENT_INSTRUCTIONS,
+  DEFAULT_AGENT_SESSION_HOURS,
   DEFAULT_FORM_MODES,
   type InstanceSettingsInput,
   type InstanceSettingsStored,
@@ -59,6 +60,11 @@ export class InstanceSettingsRepository {
   /** The agent (MCP) instructions actually served to bridges — the admin override or the default. */
   async getEffectiveAgentInstructions(): Promise<string> {
     return (await this.getStored()).agentInstructions ?? DEFAULT_AGENT_INSTRUCTIONS;
+  }
+
+  /** The absolute agent-session (OAuth refresh) cap in ms — the admin setting or the 8h default. */
+  async getAgentSessionMs(): Promise<number> {
+    return ((await this.getStored()).agentSessionHours ?? DEFAULT_AGENT_SESSION_HOURS) * 60 * 60 * 1000;
   }
 
   /**
@@ -134,6 +140,15 @@ export class InstanceSettingsRepository {
       if (current.agentInstructions !== undefined) next.agentInstructions = current.agentInstructions;
     } else {
       next.agentInstructions = input.agentInstructions;
+    }
+
+    // Agent session cap (hours): a number sets it, `null` reverts to the 8h default, undefined keeps.
+    if (input.agentSessionHours === null) {
+      // cleared — leave next.agentSessionHours undefined (→ default at read time)
+    } else if (input.agentSessionHours === undefined) {
+      if (current.agentSessionHours !== undefined) next.agentSessionHours = current.agentSessionHours;
+    } else {
+      next.agentSessionHours = input.agentSessionHours;
     }
 
     // Validate the merged document before persisting (defense in depth).

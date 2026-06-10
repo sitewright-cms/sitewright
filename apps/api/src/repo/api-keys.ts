@@ -1,5 +1,5 @@
 import { newId } from '../id.js';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, gt, isNull } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
 import {
   apiKeys,
@@ -39,6 +39,8 @@ export interface ApiKeyView {
   revokedAt: Date | null;
   lastUsedAt: Date | null;
   createdAt: Date;
+  /** `pat` = a user-minted personal token; `oauth` = an MCP/agent OAuth session. */
+  source: 'pat' | 'oauth';
 }
 
 /** What a successfully-resolved bearer token grants. */
@@ -61,6 +63,7 @@ function toView(row: typeof apiKeys.$inferSelect): ApiKeyView {
     revokedAt: row.revokedAt,
     lastUsedAt: row.lastUsedAt,
     createdAt: row.createdAt,
+    source: row.source,
   };
 }
 
@@ -126,6 +129,7 @@ export class ApiKeyRepository {
         revokedAt: null,
         lastUsedAt: null,
         createdAt: now,
+        source: 'pat',
       },
     };
   }
@@ -152,8 +156,36 @@ export class ApiKeyRepository {
     return rows.map(toView);
   }
 
-  /** Revokes a key in the caller's project. Throws NotFound if it isn't theirs. */
-  async revoke(ctx: ProjectContext, keyId: string, now: Date = new Date()): Promise<void> {
+  /**
+   * Active agent connections for a project — BOTH user-minted PATs and OAuth/MCP sessions, not
+   * revoked and not expired, newest-active first. Drives the editor's "AI agent details" modal (the
+   * management {@link list} deliberately hides OAuth sessions; this surfaces them so they can be seen
+   * and disconnected).
+   */
+  async listAgentConnections(ctx: ProjectContext, now: Date = new Date()): Promise<ApiKeyView[]> {
+    if (!WRITE_ROLES.has(ctx.role)) {
+      throw new ForbiddenError('insufficient role to view agent connections');
+    }
+    const rows = await this.db
+      .select()
+      .from(apiKeys)
+      .where(and(eq(apiKeys.projectId, ctx.projectId), isNull(apiKeys.revokedAt), gt(apiKeys.expiresAt, now)));
+    return rows
+      .map(toView)
+      // Most-recently-active first; never-used (and same-instant) ties fall back to newest-created
+      // so the order is deterministic rather than dependent on row arrival.
+      .sort(
+        (a, b) =>
+          (b.lastUsedAt?.getTime() ?? 0) - (a.lastUsedAt?.getTime() ?? 0) ||
+          b.createdAt.getTime() - a.createdAt.getTime(),
+      );
+  }
+
+  /**
+   * Revokes a key in the caller's project. Throws NotFound if it isn't theirs. Returns the revoked
+   * key's source + owner so the caller can additionally sever an OAuth refresh chain (a "disconnect").
+   */
+  async revoke(ctx: ProjectContext, keyId: string, now: Date = new Date()): Promise<{ source: 'pat' | 'oauth'; createdBy: string }> {
     if (!WRITE_ROLES.has(ctx.role)) {
       throw new ForbiddenError('insufficient role to revoke API keys');
     }
@@ -161,10 +193,13 @@ export class ApiKeyRepository {
       .select()
       .from(apiKeys)
       .where(
-        and(eq(apiKeys.id, keyId), eq(apiKeys.projectId, ctx.projectId)),
+        // Require still-active: an already-revoked key returns NotFound rather than re-running
+        // the OAuth chain-revoke a second time (e.g. a double-click on Disconnect).
+        and(eq(apiKeys.id, keyId), eq(apiKeys.projectId, ctx.projectId), isNull(apiKeys.revokedAt)),
       );
     if (!row) throw new NotFoundError('api key not found');
     await this.db.update(apiKeys).set({ revokedAt: now }).where(eq(apiKeys.id, keyId));
+    return { source: row.source, createdBy: row.createdBy };
   }
 
   /**

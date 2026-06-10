@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, eventsUrl, type Project, type Release } from '../api';
+import { AgentDetailsModal } from './AgentDetailsModal';
 
 /** Cloud-upload glyph for the publish action. */
 function PublishIcon() {
@@ -57,6 +58,7 @@ export function PublishBar({
   const [previewToken, setPreviewToken] = useState<string | undefined>(undefined);
   const [hasTarget, setHasTarget] = useState(false); // a saved deploy target exists → show a Deploy button
   const [agentActive, setAgentActive] = useState(false); // a connected MCP agent is making changes
+  const [agentModalOpen, setAgentModalOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const agentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -248,14 +250,17 @@ export function PublishBar({
         )}
       </div>
       {agentActive && (
-        <span
-          className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700"
-          title="An agent connected over MCP is making changes — they appear live in the preview."
+        <button
+          type="button"
+          onClick={() => setAgentModalOpen(true)}
+          className="inline-flex cursor-pointer items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700 transition hover:bg-indigo-100"
+          title="An agent connected over MCP is making changes — click for details / to disconnect."
         >
           <span aria-hidden className="h-1.5 w-1.5 animate-pulse rounded-full bg-indigo-500" />
           Agent editing…
-        </span>
+        </button>
       )}
+      {agentModalOpen && <AgentDetailsModal projectId={project.id} onClose={() => setAgentModalOpen(false)} />}
       {release && (
         <span className="text-[11px] text-slate-400">
           {dirty ? 'Unpublished changes' : `Published · ${release.routes} pages`}

@@ -110,6 +110,37 @@ describe('InstanceSettings', () => {
     expect(body.stock).toEqual({}); // no keys provided → merge keeps stored ones
   });
 
+  it('hydrates the agent session length, sends the changed number, and reverts to default as null', async () => {
+    getInstanceSettings.mockResolvedValue({ settings: { ...DEFAULTS, agentSessionHours: 24 } });
+    // Each save re-hydrates from the response; echo 48 so the second edit (→ 8) is a real change.
+    putInstanceSettings.mockResolvedValue({ settings: { ...DEFAULTS, agentSessionHours: 48 } });
+    render(<InstanceSettings />);
+    const input = await screen.findByLabelText('Agent session hours');
+    expect(input).toHaveValue(24);
+
+    // Change it → the new number is sent.
+    fireEvent.change(input, { target: { value: '48' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(putInstanceSettings).toHaveBeenCalledTimes(1));
+    expect((putInstanceSettings.mock.calls[0]![0] as InstanceSettingsInput).agentSessionHours).toBe(48);
+
+    // Back to the built-in default (8h) → sent as null so the stored override is cleared.
+    fireEvent.change(input, { target: { value: '8' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(putInstanceSettings).toHaveBeenCalledTimes(2));
+    expect((putInstanceSettings.mock.calls[1]![0] as InstanceSettingsInput).agentSessionHours).toBeNull();
+  });
+
+  it('does not touch agentSessionHours when the admin never edits it', async () => {
+    getInstanceSettings.mockResolvedValue({ settings: { ...DEFAULTS, agentSessionHours: 24 } });
+    render(<InstanceSettings />);
+    await screen.findByLabelText('Agent session hours');
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(putInstanceSettings).toHaveBeenCalledTimes(1));
+    const body = putInstanceSettings.mock.calls[0]![0] as InstanceSettingsInput;
+    expect('agentSessionHours' in body).toBe(false);
+  });
+
   it('surfaces a save error (e.g. 503 when no encryption key)', async () => {
     getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
     putInstanceSettings.mockRejectedValue(new Error('secret storage is not configured (set SW_ENCRYPTION_KEY)'));

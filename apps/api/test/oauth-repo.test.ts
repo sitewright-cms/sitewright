@@ -178,3 +178,62 @@ describe('OAuthRepository — refresh rotation', () => {
     ).rejects.toMatchObject({ code: 'invalid_grant' });
   });
 });
+
+describe('OAuthRepository — session cap + disconnect (PR-4)', () => {
+  it('redeemAuthCode honors a custom refresh expiry (the configurable session cap)', async () => {
+    // Issue with an ALREADY-PAST refresh expiry → the refresh token is dead on arrival.
+    const tokens = await oauth.redeemAuthCode(
+      { code: await authCode(), clientId: CLIENT, redirectUri: REDIRECT, codeVerifier: VERIFIER },
+      new Date(),
+      new Date(Date.now() - 1000),
+    );
+    await expect(oauth.refresh({ refreshToken: tokens.refreshToken, clientId: CLIENT })).rejects.toMatchObject({ code: 'invalid_grant' });
+  });
+
+  it('refresh clamps the rotated token down to a LOWERED instance cap (tightening takes effect now)', async () => {
+    const t0 = new Date();
+    const code = await oauth.createAuthCode(grant, REDIRECT, CHALLENGE, t0);
+    // Original grant issued under a generous 720h cap.
+    const first = await oauth.redeemAuthCode(
+      { code, clientId: CLIENT, redirectUri: REDIRECT, codeVerifier: VERIFIER },
+      t0,
+      new Date(t0.getTime() + 720 * 60 * 60 * 1000),
+    );
+    // Admin lowers the cap to 1h; the rotation passes the new (smaller) cap.
+    const lowered = new Date(t0.getTime() + 60 * 60 * 1000);
+    const second = await oauth.refresh({ refreshToken: first.refreshToken, clientId: CLIENT }, t0, lowered);
+    // The rotated token now dies at the lowered cap — not the original 720h.
+    await expect(
+      oauth.refresh({ refreshToken: second.refreshToken, clientId: CLIENT }, new Date(lowered.getTime() + 1000)),
+    ).rejects.toMatchObject({ code: 'invalid_grant' });
+  });
+
+  it('refresh never EXTENDS past the original cap even if the instance cap is raised', async () => {
+    const t0 = new Date();
+    const code = await oauth.createAuthCode(grant, REDIRECT, CHALLENGE, t0);
+    // Original grant issued under a small 1h cap.
+    const first = await oauth.redeemAuthCode(
+      { code, clientId: CLIENT, redirectUri: REDIRECT, codeVerifier: VERIFIER },
+      t0,
+      new Date(t0.getTime() + 60 * 60 * 1000),
+    );
+    // A raised 720h cap must not lengthen the rotated token past the original 1h.
+    const raised = new Date(t0.getTime() + 720 * 60 * 60 * 1000);
+    const second = await oauth.refresh({ refreshToken: first.refreshToken, clientId: CLIENT }, t0, raised);
+    await expect(
+      oauth.refresh({ refreshToken: second.refreshToken, clientId: CLIENT }, new Date(t0.getTime() + 60 * 60 * 1000 + 1000)),
+    ).rejects.toMatchObject({ code: 'invalid_grant' });
+  });
+
+  it('revokeAllForUserProject severs the refresh chain AND in-flight access tokens (disconnect)', async () => {
+    const tokens = await oauth.redeemAuthCode({ code: await authCode(), clientId: CLIENT, redirectUri: REDIRECT, codeVerifier: VERIFIER });
+    const rotated = await oauth.refresh({ refreshToken: tokens.refreshToken, clientId: CLIENT }); // works before disconnect
+    expect(await keys.resolve(rotated.accessToken)).not.toBeNull();
+
+    await oauth.revokeAllForUserProject(grant.userId, grant.projectId);
+
+    // The current refresh token can no longer mint tokens, and the in-flight access token is dead.
+    await expect(oauth.refresh({ refreshToken: rotated.refreshToken, clientId: CLIENT })).rejects.toMatchObject({ code: 'invalid_grant' });
+    expect(await keys.resolve(rotated.accessToken)).toBeNull();
+  });
+});

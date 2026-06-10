@@ -1211,13 +1211,26 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     { config: rl(20) },
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'session-only');
-      await apiKeysRepo.revoke(ctx, req.params.id);
+      const { source, createdBy } = await apiKeysRepo.revoke(ctx, req.params.id);
+      // Disconnecting an OAuth/MCP agent: revoking the access token alone leaves its refresh token
+      // able to mint a new one — also sever the whole refresh chain for that user+project.
+      if (source === 'oauth') await oauthRepo.revokeAllForUserProject(createdBy, ctx.projectId);
       return reply.code(204).send();
     },
   );
 
+  // Active agent connections (PAT + OAuth/MCP sessions) for the editor's "AI agent details" modal.
+  app.get<{ Params: { projectId: string } }>(
+    '/projects/:projectId/agent-connections',
+    { config: rl(60) },
+    async (req, reply) => {
+      const { ctx } = await resolveProject(req, 'session-only');
+      return reply.send({ items: await apiKeysRepo.listAgentConnections(ctx) });
+    },
+  );
+
   // ---- OAuth 2.1 (issues the same scoped tokens; for the CLI / hosted MCP clients) ----
-  registerOAuthRoutes(app, { db, oauth: oauthRepo, clients: oauthClients, projects, currentUserId, rl });
+  registerOAuthRoutes(app, { db, oauth: oauthRepo, clients: oauthClients, projects, currentUserId, instanceSettings: instanceSettingsRepo, rl });
   // Remote MCP transport (Streamable HTTP) for hosted clients (ChatGPT/claude.ai), authenticated by
   // the same OAuth bearer tokens; reuses the REST routes in-process. See mcp-routes.ts.
   registerMcpRoutes(app, { rl });

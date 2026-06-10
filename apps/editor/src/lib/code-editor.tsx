@@ -7,8 +7,16 @@ import { tags as t } from '@lezer/highlight';
 import { basicSetup } from 'codemirror';
 import { html } from '@codemirror/lang-html';
 import { css } from '@codemirror/lang-css';
+import { lintGutter, setDiagnostics, type Diagnostic } from '@codemirror/lint';
 
 export type CodeLanguage = 'html' | 'css';
+
+/** A validation failure to mark in the gutter, at a 1-based line/column. */
+export interface CodeEditorError {
+  line: number;
+  column: number;
+  message: string;
+}
 
 interface CodeEditorProps {
   value: string;
@@ -16,6 +24,8 @@ interface CodeEditorProps {
   ariaLabel?: string;
   /** Syntax mode — `html` (HTML + Handlebars, the default) or `css` (e.g. critical CSS). */
   language?: CodeLanguage;
+  /** When set, draw a red gutter marker (message on hover) at this position; null clears it. */
+  error?: CodeEditorError | null;
 }
 
 /** The editor accent — gutter border, cursor, selection, active-line gutter. */
@@ -116,7 +126,7 @@ function languageExtensions(language: CodeLanguage): Extension[] {
  * Tab indents the selection (`indentWithTab`); Shift-Tab auto-indents it (`indentSelection`,
  * syntax-aware re-flow). The indent unit is two spaces.
  */
-export function CodeEditor({ value, onChange, ariaLabel, language = 'html' }: CodeEditorProps) {
+export function CodeEditor({ value, onChange, ariaLabel, language = 'html', error = null }: CodeEditorProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   // The last document we emitted upward — used to distinguish our own echo from a genuine
@@ -144,6 +154,7 @@ export function CodeEditor({ value, onChange, ariaLabel, language = 'html' }: Co
           // not a plain dedent. The explicit binding precedes `indentWithTab` so it wins
           // over that keymap's Shift-Tab=dedent; Tab still falls through to `indentWithTab`.
           keymap.of([{ key: 'Shift-Tab', run: indentSelection }, indentWithTab]),
+          lintGutter(),
           EditorView.lineWrapping,
           EditorView.updateListener.of((u) => {
             if (!u.docChanged) return;
@@ -176,6 +187,22 @@ export function CodeEditor({ value, onChange, ariaLabel, language = 'html' }: Co
     lastEmitted.current = value;
     view.dispatch({ changes: { from: 0, to: current.length, insert: value } });
   }, [value]);
+
+  // Mirror the validation error into a CodeMirror lint diagnostic → a red gutter marker at the
+  // offending line/column (its message shows on hover). Clears when `error` is null.
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    const diagnostics: Diagnostic[] = [];
+    if (error && error.line >= 1 && error.line <= view.state.doc.lines) {
+      const ln = view.state.doc.line(error.line);
+      // Clamp to at most the line's last char so the marker is a non-empty 1-char range (a
+      // zero-width range can render no gutter dot); an empty line marks the (empty) line itself.
+      const from = Math.min(ln.from + Math.max(0, error.column - 1), Math.max(ln.from, ln.to - 1));
+      diagnostics.push({ from, to: Math.min(ln.to, from + 1), severity: 'error', message: error.message });
+    }
+    view.dispatch(setDiagnostics(view.state, diagnostics));
+  }, [error?.line, error?.column, error?.message]);
 
   return <div ref={hostRef} className="h-full overflow-hidden" data-testid="code-editor" />;
 }

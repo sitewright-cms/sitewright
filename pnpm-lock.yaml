@@ -135,6 +135,9 @@ importers:
       '@codemirror/language':
         specifier: ^6.12.3
         version: 6.12.3
+      '@codemirror/lint':
+        specifier: ^6.8.5
+        version: 6.9.6
       '@codemirror/state':
         specifier: ^6.5.2
         version: 6.6.0

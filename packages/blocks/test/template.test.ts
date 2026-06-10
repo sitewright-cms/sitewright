@@ -332,6 +332,46 @@ describe('validateTemplate — context-aware rejection (Handlebars is not contex
     rejects('<p>{{{ page.html }}}</p>');
   });
 
+  it('reports the 1-based line/column of the offending construct (message + fields)', () => {
+    // The bad <nav> is on line 3, indented by 2 spaces (column 3).
+    const src = '<div>\n  <p>ok</p>\n  <nav>bad</nav>\n</div>';
+    try {
+      validateTemplate(src);
+      throw new Error('expected validateTemplate to throw');
+    } catch (err) {
+      expect(err).toBeInstanceOf(TemplateError);
+      const e = err as TemplateError;
+      expect(e.line).toBe(3);
+      expect(e.column).toBe(3);
+      expect(e.message).toContain('(line 3, column 3)');
+    }
+  });
+
+  it('points at the EVENT-HANDLER attribute name itself (not the = / > that closed it)', () => {
+    let e: TemplateError | null = null;
+    try {
+      validateTemplate('<section>\n  <div onclick="x">y</div>\n</section>');
+    } catch (err) {
+      e = err as TemplateError;
+    }
+    expect(e?.line).toBe(2);
+    expect(e?.column).toBe(8); // the 'o' of onclick
+    expect(e?.message).toMatch(/event-handler/);
+  });
+
+  it('points at the bad interpolation’s position (not the start of the file)', () => {
+    const e = (() => {
+      try {
+        validateTemplate('<a\n  href="{{ page.link }}">x</a>');
+        return null;
+      } catch (err) {
+        return err as TemplateError;
+      }
+    })();
+    expect(e?.line).toBe(2); // the href interpolation is on line 2
+    expect(e?.message).toMatch(/\(line 2, column \d+\)/);
+  });
+
   it('rejects interpolation in an unquoted attribute', () => {
     rejects('<div class={{ data.cls }}>x</div>');
   });

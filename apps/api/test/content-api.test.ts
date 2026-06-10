@@ -193,3 +193,38 @@ describe('content API', () => {
     expect(bReadsA.statusCode).toBe(403);
   });
 });
+
+describe('content API — validate-on-save (unsafe Handlebars source rejected at write)', () => {
+  const put = (t: string, projectId: string, kind: string, id: string, payload: object) =>
+    app.inject({ method: 'PUT', url: `/projects/${projectId}/content/${kind}/${id}`, cookies: { sw_session: t }, payload });
+
+  it('rejects an unsafe page source at SAVE with a LOCATED 400 (not only at publish)', async () => {
+    const { t, projectId } = await setup('owner@acme.test');
+    const res = await put(t, projectId, 'page', 'home', {
+      ...page,
+      source: '<section>\n  <a href="{{ page.link }}">x</a>\n</section>', // bad href on line 2
+    });
+    expect(res.statusCode).toBe(400);
+    const body = res.json() as { error: string; line?: number; column?: number };
+    expect(body.error).toMatch(/sw-url/);
+    expect(body.line).toBe(2);
+    expect(body.column).toBeGreaterThan(0);
+    expect(body.error).toContain('(line 2, column'); // position rides in the message too
+  });
+
+  it('accepts a safe page source and a template-based page (no own source to validate)', async () => {
+    const { t, projectId } = await setup('owner@acme.test');
+    expect(
+      (await put(t, projectId, 'page', 'home', { ...page, source: '<section><a href="{{sw-url page.link}}">x</a></section>' })).statusCode,
+    ).toBe(200);
+    expect(
+      (await put(t, projectId, 'page', 'p2', { id: 'p2', path: 'p2', title: 'P2', root: { id: 'r', type: 'Section' }, template: 'global:landing' })).statusCode,
+    ).toBe(200);
+  });
+
+  it('rejects unsafe template and snippet source too (same save-time gate)', async () => {
+    const { t, projectId } = await setup('owner@acme.test');
+    expect((await put(t, projectId, 'template', 'land', { id: 'land', name: 'Landing', source: '<nav>x</nav>' })).statusCode).toBe(400);
+    expect((await put(t, projectId, 'snippet', 'card', { id: 'card', name: 'card', source: '<div onclick="{{x}}">x</div>' })).statusCode).toBe(400);
+  });
+});

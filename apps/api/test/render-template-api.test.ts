@@ -5,7 +5,7 @@ import type { FastifyInstance } from 'fastify';
 import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
 import { RenderPool } from '../src/render/render-pool.js';
-import { projectMembers } from '../src/db/schema.js';
+import { content, projectMembers } from '../src/db/schema.js';
 
 const workerPath = fileURLToPath(new URL('./fixtures/blocks-render-worker.mjs', import.meta.url));
 
@@ -113,11 +113,17 @@ describe('render-template API (isolated worker)', () => {
 
   it('rejects rendering when a SAVED snippet is unsafe (partials are validated too)', async () => {
     const { t, projectId } = await setup();
-    await app.inject({
-      method: 'PUT',
-      url: `/projects/${projectId}/content/snippet/evil`,
-      cookies: { sw_session: t },
-      payload: { id: 'evil', name: 'evil', source: '<script>steal()</script>' },
+    // Seed the unsafe snippet DIRECTLY (bypassing the route's validate-on-save, which would now
+    // reject it) — simulating a snippet that reached storage via a non-validated path (seed/import/
+    // legacy). Rendering must STILL reject it: render-time partial validation is the backstop.
+    await db.insert(content).values({
+      id: randomUUID(),
+      projectId,
+      kind: 'snippet',
+      entityId: 'evil',
+      data: { id: 'evil', name: 'evil', source: '<script>steal()</script>' },
+      createdAt: new Date(),
+      updatedAt: new Date(),
     });
     const res = await app.inject({
       method: 'POST',

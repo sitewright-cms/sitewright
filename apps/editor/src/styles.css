@@ -54,10 +54,14 @@
   --noise: 0;
 }
 
-/* DaisyUI component previews render on a page-like surface (themed via the :root vars). */
+/* DaisyUI component previews render on a page-like surface (themed via the :root vars).
+   `contain: layout paint` makes the card a containing block for position:fixed descendants
+   (so an interactive modal/drawer/toast preview stays INSIDE its card instead of covering the
+   editor) and clips overflow to the box — letting the preview be interactive safely. */
 .sw-preview {
   background-color: var(--color-base-100);
   color: var(--color-base-content);
+  contain: layout paint;
 }
 body {
   margin: 0;

@@ -338,6 +338,23 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
           '{{/each}}',
       },
       {
+        id: 'n-translations',
+        syntax: 'page.locale · page.translations',
+        name: 'multilingual (i18n)',
+        keywords: 'language switcher locale translation multilingual flag hreflang i18n alternates',
+        description:
+          'page.locale is the current page’s language; page.translations is its locale ALTERNATES (the translation group) as an ARRAY — each with .locale, .path (full route) and .title — for a LANGUAGE SWITCHER and hreflang links. Country flags are a poor proxy for languages ({{sw-flag}} takes a COUNTRY code, not a language code), so map locale→country in website.data and look it up — INSIDE {{#each page.translations}} reach the root with @root: website.data.locale_flags = { en: "gb", de: "de" } then {{sw-flag (lookup @root.website.data.locale_flags locale)}}. DATASETS localize by a "<slug>-<locale>" suffix that auto-resolves on a page in that locale ({{#each data.services}} on a "de" page reads "services-de" when it exists, else "services") — see the {{#each}} helper.',
+        example:
+          '{{#if page.translations}}\n' +
+          '<nav aria-label="Language">{{#each page.translations}}\n' +
+          '  <a href="{{sw-url path}}" hreflang="{{locale}}">\n' +
+          '    {{sw-flag (lookup @root.website.data.locale_flags locale) "h-4 rounded-sm"}} {{locale}}\n' +
+          '  </a>\n' +
+          '{{/each}}</nav>\n' +
+          '{{/if}}\n' +
+          '<html lang="{{page.locale}}">',
+      },
+      {
         id: 'n-parent-page',
         syntax: 'parentPage.*',
         name: 'parentPage',

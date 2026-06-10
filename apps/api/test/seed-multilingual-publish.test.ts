@@ -139,7 +139,11 @@ describe('seeded demo — German multilingual showcase publishes correctly', () 
     expect(en).toContain('aria-label="Language"');
     // The switcher link is a REAL link, rebased page-relative (from the root: "/de" → "de").
     expect(en).toContain('href="de"'); // points at the German home, portably
-    expect(en).toMatch(/hreflang="de"[^>]*>de</); // switcher link to the German variant
+    expect(en).toMatch(/hreflang="de"[^>]*>.*>de</); // switcher link (flag svg precedes the "de" label)
+    // The switcher shows COUNTRY FLAGS via the website.data.locale_flags map (en→gb, de→de),
+    // looked up per locale with @root inside {{#each}} — proving the flag-switcher showcase renders.
+    expect(en).toMatch(/<svg[^>]*aria-label="Germany"/); // de → 🇩🇪
+    expect(en).toMatch(/<svg[^>]*aria-label="United Kingdom"/); // en → gb flag
     // The About page is English-only (ungrouped) → no switcher.
     const about = (await client.get(`/sites/${slug}/about/index.html`)).body;
     expect(about).not.toContain('aria-label="Language"');

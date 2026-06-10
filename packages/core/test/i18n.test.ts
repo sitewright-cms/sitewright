@@ -258,4 +258,24 @@ describe('propagatePageToLocales (new page → all languages)', () => {
     const { created } = propagatePageToLocales({ ...owner, translationGroup: 'pricing' }, pages, ['en', 'de', 'fr'], 'en');
     expect(created.map((p) => p.id)).toEqual(['pricing-fr']); // de already present
   });
+
+  it('creates the MISSING localized ancestors first, then the page (no missing parents)', () => {
+    // `about` exists only in the default locale; translating its child `team` into de must
+    // create `about-de` first so `team-de` can nest correctly under /de/about/team.
+    const pages: Page[] = [
+      ...base,
+      page({ id: 'about', path: 'about', parent: 'home', title: 'About', source: '<h1>A</h1>' }),
+      page({ id: 'team', path: 'team', parent: 'about', title: 'Team', source: '<h1>T</h1>' }),
+    ];
+    const team = pages.find((p) => p.id === 'team')!;
+    const { created, updated } = propagatePageToLocales(team, pages, ['en', 'de'], 'en');
+    // The ancestor (about) is created BEFORE the page (team), in order.
+    expect(created.map((p) => p.id)).toEqual(['about-de', 'team-de']);
+    expect(updated.map((p) => p.id).sort()).toEqual(['about', 'team']); // both ancestors linked
+
+    const byId = pagesById([...pages.map((p) => updated.find((u) => u.id === p.id) ?? p), ...created]);
+    expect(pagePath(byId.get('about-de')!, byId)).toBe('/de/about');
+    expect(pagePath(byId.get('team-de')!, byId)).toBe('/de/about/team'); // nested, not orphaned
+    expect(created.find((p) => p.id === 'team-de')!.parent).toBe('about-de');
+  });
 });

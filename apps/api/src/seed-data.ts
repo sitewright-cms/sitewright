@@ -84,7 +84,7 @@ export const EXAMPLE_WEBSITE = {
     <ul class="menu menu-horizontal gap-1 px-1 font-medium">{{#each nav.header}}{{#if children}}<li class="dropdown dropdown-hover"><a href="{{sw-url path}}">{{label}} ${icon('chevron-down', 'h-4 w-4 opacity-60')}</a><ul class="dropdown-content menu z-30 mt-1 w-52 rounded-box bg-base-100 p-2 shadow-lg">{{#each children}}<li><a href="{{sw-url path}}">{{label}}</a></li>{{/each}}</ul></li>{{else}}<li><a href="{{sw-url path}}">{{label}}</a></li>{{/if}}{{/each}}</ul>
   </div>
   <div class="navbar-end gap-2">
-    {{#if page.translations}}<div class="hidden items-center gap-0.5 rounded-lg border border-base-200 p-0.5 sm:flex" aria-label="Language">{{#each page.translations}}<a class="btn btn-ghost btn-xs px-2 font-semibold uppercase" href="{{sw-url path}}" hreflang="{{locale}}">{{locale}}</a>{{/each}}</div>{{/if}}
+    {{#if page.translations}}<div class="hidden items-center gap-0.5 rounded-lg border border-base-200 p-0.5 sm:flex" aria-label="Language">{{#each page.translations}}<a class="btn btn-ghost btn-xs gap-1.5 px-2 font-semibold uppercase" href="{{sw-url path}}" hreflang="{{locale}}">{{sw-flag (lookup @root.website.data.locale_flags locale) "h-3.5 w-5 rounded-sm"}}{{locale}}</a>{{/each}}</div>{{/if}}
     <a class="btn btn-primary btn-sm gap-1.5 shadow-lg shadow-primary/20 waves-effect waves-light" href="/contact">Start a project ${icon('arrow-right', 'h-4 w-4')}</a>
   </div>
 </div>`,
@@ -140,6 +140,9 @@ export const EXAMPLE_WEBSITE = {
 .nw-zoom:hover img{transform:scale(1.06)}
 .nw-underline{background-image:linear-gradient(currentColor,currentColor);background-size:0% 2px;background-position:0 100%;background-repeat:no-repeat;transition:background-size .3s}
 .nw-underline:hover{background-size:100% 2px}`,
+  // A language→country map for the nav switcher's flags (sw-flag takes a COUNTRY code, not a
+  // language — so en→gb). Looked up per locale: {{sw-flag (lookup website.data.locale_flags locale)}}.
+  data: { locale_flags: { en: 'gb', de: 'de' } },
 };
 
 // ---------------------------------------------------------------- datasets (the CMS)

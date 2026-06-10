@@ -149,6 +149,7 @@ Or set page.template to "global:shop" (a ready-made storefront over the "product
 {{sw-add-to-cart}} takes sku/name/price (a number)/image/label/class; {{sw-cart}} renders the
 floating cart + drawer. Configure the shop in settings under website.shop:
   shop: { currency:{ code:"USD", symbol:"$", position:"before"|"after", decimals:2 },
+          addToCartLabel:"Add to cart", title:"Your cart",
           channels:[ {kind:"whatsapp", number:"+14155550123"},
                      {kind:"mailto", email:"orders@acme.com"},
                      {kind:"payment", urlTemplate:"https://paypal.me/acme/{total}"},

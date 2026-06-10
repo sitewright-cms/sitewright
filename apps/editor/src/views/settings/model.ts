@@ -245,7 +245,7 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
     shopChannels: (w?.shop?.channels ?? []).map((c) => ({
       id: rowId(),
       kind: c.kind,
-      label: 'label' in c && c.label ? c.label : '',
+      label: c.label ?? '',
       number: c.kind === 'whatsapp' ? c.number : '',
       intro: c.kind === 'whatsapp' ? c.intro ?? '' : '',
       email: c.kind === 'mailto' ? c.email : '',
@@ -257,6 +257,12 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
     defaultLocale: bundle.settings.defaultLocale ?? 'en',
     locales: strsToKeyed(bundle.settings.locales ?? ['en']),
   };
+}
+
+/** Currency decimals: empty/non-numeric → 2 (schema default); else a truncated, [0,4]-clamped integer. */
+function decimalsOf(raw: string): number {
+  const n = Number(raw.trim());
+  return raw.trim() && Number.isFinite(n) ? Math.max(0, Math.min(4, Math.trunc(n))) : 2;
 }
 
 /** Build a `ShopChannel` from a form row, dropping the row when its required field is blank. */
@@ -393,7 +399,10 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
           code: form.shopCurrencyCode.trim(),
           symbol: form.shopCurrencySymbol.trim(),
           position: form.shopCurrencyPosition,
-          decimals: Number.isFinite(Number(form.shopCurrencyDecimals)) ? Number(form.shopCurrencyDecimals) : 2,
+          // Empty or non-numeric → the schema default (2); otherwise truncate to an integer and clamp
+          // to the schema range [0,4] (a cleared field must NOT silently become 0, and "1.5" must not
+          // be sent — the schema is .int().min(0).max(4)).
+          decimals: decimalsOf(form.shopCurrencyDecimals),
         }
       : undefined;
   const shopChannels = form.shopChannels

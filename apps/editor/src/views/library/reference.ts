@@ -146,7 +146,7 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
           { name: 'name', desc: 'Product name shown in the cart + order.' },
           { name: 'price', desc: 'A number; the cart formats it with the configured currency.' },
           { name: 'image', desc: 'Optional product image URL.' },
-          { name: 'label', desc: 'Optional button text (default from Shop settings, else “Add to cart”).' },
+          { name: 'label', desc: 'Optional per-button text. Falls back to the site-wide Shop settings label, then to “Add to cart”.' },
           { name: 'class', desc: 'Optional CSS classes for the button.' },
         ],
         example:

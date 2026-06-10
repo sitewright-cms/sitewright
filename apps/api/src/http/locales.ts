@@ -149,8 +149,9 @@ export function registerLocaleRoutes(app: FastifyInstance, deps: LocaleDeps): vo
       // Forked/template variants survive — but DETACH them from the now-deleted owner's group so a
       // future locale op doesn't resolve a dangling owner (they become standalone pages).
       const detached = independentVariants(owner, pages).map((p) => {
-        const { translationGroup: _drop, ...rest } = p;
-        return rest as Page;
+        const copy: Page = { ...p }; // fresh copy — deleting from it does not mutate the input
+        delete copy.translationGroup;
+        return copy;
       });
       const removePageIds = [owner.id, ...cascaded.map((p) => p.id)];
       await contentRepo.applyLocaleChange(ctx, { removePageIds, putPages: detached });

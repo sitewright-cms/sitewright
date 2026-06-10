@@ -39,6 +39,77 @@ describe('SidePanel', () => {
     expect(region).toHaveAttribute('aria-hidden', 'false');
   });
 
+  it('opens when OS files are dragged over the collapsed tab (openOnFileDrag)', () => {
+    const { container } = render(
+      <SidePanel side="right" label="File Manager" openOnFileDrag>
+        <p>files</p>
+      </SidePanel>,
+    );
+    const region = container.querySelector('[role="region"]')!;
+    const tab = screen.getByRole('button', { name: 'Open File Manager' });
+    expect(region).toHaveAttribute('aria-hidden', 'true');
+
+    fireEvent.dragEnter(tab, { dataTransfer: { types: ['Files'] } });
+    expect(region).toHaveAttribute('aria-hidden', 'false');
+  });
+
+  it('ignores internal element drags over the tab (no Files in the payload)', () => {
+    const { container } = render(
+      <SidePanel side="right" label="File Manager" openOnFileDrag>
+        <p>files</p>
+      </SidePanel>,
+    );
+    const region = container.querySelector('[role="region"]')!;
+    const tab = screen.getByRole('button', { name: 'Open File Manager' });
+
+    fireEvent.dragEnter(tab, { dataTransfer: { types: ['text/plain'] } });
+    expect(region).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  it('does not open on file drag unless openOnFileDrag is set', () => {
+    const { container } = render(
+      <SidePanel side="left" label="Library">
+        <p>panel body</p>
+      </SidePanel>,
+    );
+    const region = container.querySelector('[role="region"]')!;
+    const tab = screen.getByRole('button', { name: 'Open Library' });
+
+    fireEvent.dragEnter(tab, { dataTransfer: { types: ['Files'] } });
+    expect(region).toHaveAttribute('aria-hidden', 'true');
+  });
+
+  // fireEvent returns false when the handler called preventDefault — i.e. the browser's default
+  // "open the dropped file" navigation is suppressed (there is no global drop guard in the editor).
+  it('swallows file drops on the tab and the open panel so the browser cannot navigate away', () => {
+    const { container } = render(
+      <SidePanel side="right" label="File Manager" openOnFileDrag>
+        <p>files</p>
+      </SidePanel>,
+    );
+    const region = container.querySelector('[role="region"]')!;
+    const tab = screen.getByRole('button', { name: 'Open File Manager' });
+
+    // A stray drop on the tab is prevented (and is a safe no-op).
+    expect(fireEvent.drop(tab, { dataTransfer: { types: ['Files'] } })).toBe(false);
+    // Open the panel (as the drag would), then a drop that misses the inner browser and lands on
+    // the panel chrome is prevented too.
+    fireEvent.dragEnter(tab, { dataTransfer: { types: ['Files'] } });
+    expect(region).toHaveAttribute('aria-hidden', 'false');
+    expect(fireEvent.drop(region, { dataTransfer: { types: ['Files'] } })).toBe(false);
+  });
+
+  it('does not intercept drops when openOnFileDrag is unset (no upload target)', () => {
+    const { container } = render(
+      <SidePanel side="left" label="Library">
+        <p>panel body</p>
+      </SidePanel>,
+    );
+    const region = container.querySelector('[role="region"]')!;
+    // No openOnFileDrag ⇒ no drop handler ⇒ default not prevented (fireEvent returns true).
+    expect(fireEvent.drop(region, { dataTransfer: { types: ['Files'] } })).toBe(true);
+  });
+
   it('elevates a Modal rendered inside it above the panel layer (z-[70]); a standalone modal stays z-50', () => {
     render(
       <SidePanel side="left" label="Lib">

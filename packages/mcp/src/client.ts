@@ -39,50 +39,59 @@ export type FetchLike = (
 export class SitewrightClient {
   private scope: Scope | undefined;
   private readonly baseUrl: string;
-  private token: string;
+  private readonly tokenProvider: () => Promise<string | null>;
   private readonly fetchImpl: FetchLike;
   private readonly onUnauthorized?: () => Promise<string | null>;
   /** In-flight refresh, so concurrent 401s share ONE refresh (no double rotation). */
   private refreshPromise: Promise<string | null> | null = null;
 
   /**
-   * @param onUnauthorized optional hook called once on a 401 to obtain a fresh
-   *   access token (e.g. the CLI refreshing an expired OAuth token mid-session);
-   *   returning null gives up and surfaces the 401.
+   * @param tokenProvider returns the current access token, or null when the bridge is not yet
+   *   authenticated (a lazy CLI login hasn't happened). A null token surfaces a clear 401-style
+   *   error rather than sending `Bearer null`.
+   * @param onUnauthorized optional hook called once on a 401 to obtain a fresh access token
+   *   (e.g. the CLI refreshing an expired OAuth token mid-session); null gives up and surfaces
+   *   the 401.
    */
   constructor(
     baseUrl: string,
-    token: string,
+    tokenProvider: () => Promise<string | null>,
     fetchImpl: FetchLike = globalThis.fetch as unknown as FetchLike,
     onUnauthorized?: () => Promise<string | null>,
   ) {
     // Trim a trailing slash so `${baseUrl}${path}` never double-slashes.
     this.baseUrl = baseUrl.replace(/\/+$/, '');
-    this.token = token;
+    this.tokenProvider = tokenProvider;
     this.fetchImpl = fetchImpl;
     this.onUnauthorized = onUnauthorized;
   }
 
-  private async request<T>(method: string, path: string, body?: unknown, retried = false): Promise<T> {
-    const headers: Record<string, string> = { authorization: `Bearer ${this.token}` };
+  private async request<T>(method: string, path: string, body?: unknown, freshToken?: string): Promise<T> {
+    // On the post-401 retry we use the refreshed token directly (freshToken); otherwise ask the
+    // provider for the current one.
+    const token = freshToken ?? (await this.tokenProvider());
+    if (!token) {
+      throw new SitewrightApiError(401, 'not authenticated — use the login tool to connect this agent to a project');
+    }
+    const headers: Record<string, string> = { authorization: `Bearer ${token}` };
     if (body !== undefined) headers['content-type'] = 'application/json';
     const res = await this.fetchImpl(`${this.baseUrl}${path}`, {
       method,
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
-    // A short-lived OAuth token may expire mid-session: refresh once and retry.
-    // Concurrent 401s coalesce into a single refresh so the rotating refresh token
-    // isn't consumed twice (which the server would treat as theft).
-    if (res.status === 401 && this.onUnauthorized && !retried) {
+    // A short-lived OAuth token may expire mid-session: refresh once and retry. Concurrent 401s
+    // coalesce into a single refresh so the rotating refresh token isn't consumed twice (which the
+    // server would treat as theft). The refreshed token is passed DIRECTLY into the retry (as
+    // freshToken) — not re-read from the provider — so there's no write/read race on the store.
+    if (res.status === 401 && this.onUnauthorized && freshToken === undefined) {
       const refresh = this.onUnauthorized;
       this.refreshPromise ??= refresh().finally(() => {
         this.refreshPromise = null;
       });
       const fresh = await this.refreshPromise;
       if (fresh) {
-        this.token = fresh;
-        return this.request<T>(method, path, body, true);
+        return this.request<T>(method, path, body, fresh);
       }
     }
     if (res.status === 204) return undefined as T;

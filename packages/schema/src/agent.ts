@@ -3,7 +3,10 @@ import { z } from 'zod';
 // effective-instructions resolution, and the admin panel's editor + endpoint list all read from here.
 export const DEFAULT_AGENT_INSTRUCTIONS = `This server exposes ONE Sitewright project over MCP for building a
 CODE-FIRST static website. You'll work with these content kinds (kind, id): settings, page,
-dataset, entry, form. Call get_scope first to see what this token may do.
+dataset, entry, form. Call get_scope first. If it returns authenticated:false, call the \`login\`
+tool and relay its URL + code to the user to approve in their browser (ask them to keep that tab
+open to watch your changes live), then call get_scope again to confirm before continuing. Use
+\`switch_project\` to connect to a different project.
 
 AUTHOR PAGES IN CODE. A page renders from its Handlebars \`source\` (HTML + Tailwind CSS +
 DaisyUI v5 component classes). The \`root\` field is a legacy placeholder — set a minimal
@@ -152,7 +155,9 @@ export interface McpToolMeta {
  * in that package, so the list can't drift from what the server actually exposes).
  */
 export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
-  { name: 'get_scope', description: "Show which project this token addresses, its role, and its capabilities." },
+  { name: 'get_scope', description: "Show whether the agent is connected and, if so, the project, role, and capabilities." },
+  { name: 'login', description: "Connect the agent to a project — returns a URL + code for the user to approve in their browser." },
+  { name: 'switch_project', description: "Re-authenticate to connect to a DIFFERENT project (scope is fixed per connection)." },
   { name: 'list_pages', description: "List the project's pages." },
   { name: 'get_page', description: "Get one page by id (code-first design is in the `source` field)." },
   { name: 'list_content', description: "List all entities of a content kind." },

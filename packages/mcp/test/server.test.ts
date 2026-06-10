@@ -3,12 +3,16 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createSitewrightMcpServer } from '../src/server.js';
 import { SitewrightApiError, type Scope, type SitewrightClient } from '../src/client.js';
+import type { BridgeAuth } from '../src/auth.js';
 import { MCP_TOOL_CATALOG, DEFAULT_AGENT_INSTRUCTIONS } from '@sitewright/schema';
 
 const page = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' } };
 
+const ALL_CAPS: Scope = { projectId: 'p', role: 'admin', capabilities: ['content:read', 'content:write', 'publish'] };
+
 function fakeClient(overrides: Partial<Record<keyof SitewrightClient, unknown>> = {}) {
   return {
+    introspect: vi.fn(async () => ALL_CAPS),
     listContent: vi.fn(async () => [page]),
     getContent: vi.fn(async () => page),
     putContent: vi.fn(async (_k: string, _id: string, data: unknown) => data),
@@ -24,8 +28,24 @@ function fakeClient(overrides: Partial<Record<keyof SitewrightClient, unknown>> 
   } as unknown as SitewrightClient & Record<string, ReturnType<typeof vi.fn>>;
 }
 
-async function connect(client: SitewrightClient, scope: Scope) {
-  const server = createSitewrightMcpServer(client, scope);
+function fakeAuth(overrides: Partial<BridgeAuth> = {}): BridgeAuth {
+  return {
+    interactive: true,
+    token: async () => 'swk_x',
+    forceRefresh: async () => null,
+    beginLogin: async () => ({
+      verificationUrl: 'https://cms.test/oauth/device',
+      userCode: 'WXYZ-1234',
+      expiresIn: 600,
+      completion: Promise.resolve(),
+    }),
+    ...overrides,
+  };
+}
+
+// scope may be null (the bridge boots unauthenticated until the agent runs `login`).
+async function connect(client: SitewrightClient, scope: Scope | null, auth: BridgeAuth = fakeAuth()) {
+  const server = createSitewrightMcpServer(client, { scope }, auth);
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
   const mcp = new Client({ name: 'test', version: '0' });
@@ -40,44 +60,120 @@ async function toolNames(mcp: Client): Promise<string[]> {
   return (await mcp.listTools()).tools.map((t) => t.name).sort();
 }
 
-describe('createSitewrightMcpServer — capability gating', () => {
-  it('exposes only read tools for a content:read token', async () => {
-    const mcp = await connect(fakeClient(), readScope);
-    const names = await toolNames(mcp);
-    expect(names).toContain('get_page');
-    expect(names).toContain('preview_page');
-    expect(names).not.toContain('put_page');
-    expect(names).not.toContain('delete_content');
-    expect(names).not.toContain('publish_project');
-  });
+const text = (res: Awaited<ReturnType<Client['callTool']>>) => (res.content as Array<{ text: string }>)[0]!.text;
+const callsOf = (c: SitewrightClient) => c as unknown as Record<string, ReturnType<typeof vi.fn>>;
 
-  it('adds write + publish tools when the token carries those capabilities', async () => {
-    const mcp = await connect(fakeClient(), writeScope);
-    const names = await toolNames(mcp);
-    expect(names).toContain('put_page');
-    expect(names).toContain('delete_page');
-    expect(names).toContain('put_content');
-    expect(names).toContain('publish_project');
-  });
-
-  it('exposes list_submissions to a read-only token', async () => {
-    const mcp = await connect(fakeClient(), readScope);
-    expect(await toolNames(mcp)).toContain('list_submissions');
-  });
-
-  it('exposes stock search/providers to a read token but import only to a write token', async () => {
+describe('createSitewrightMcpServer — capability gating (call-time, not tool-hiding)', () => {
+  it('advertises the FULL toolset regardless of capability — the API + the per-call gate enforce', async () => {
     const reader = await toolNames(await connect(fakeClient(), readScope));
-    expect(reader).toContain('list_stock_providers');
-    expect(reader).toContain('search_stock_images');
-    expect(reader).not.toContain('import_stock_image');
+    expect(reader).toContain('get_page');
+    expect(reader).toContain('put_page'); // listed even for a read token…
+    expect(reader).toContain('publish_project');
+    expect(reader).toContain('login');
+  });
 
-    const writer = await toolNames(await connect(fakeClient(), writeScope));
-    expect(writer).toContain('import_stock_image');
+  it('a read-only token gets a clear capability error when calling a write tool — and no client call', async () => {
+    const client = fakeClient();
+    const res = await (await connect(client, readScope)).callTool({ name: 'put_page', arguments: { page } });
+    expect(res.isError).toBe(true);
+    expect(text(res)).toMatch(/content:write/);
+    expect(callsOf(client).putContent).not.toHaveBeenCalled();
+  });
+
+  it('a write+publish token can call write + publish tools', async () => {
+    const client = fakeClient();
+    const mcp = await connect(client, writeScope);
+    expect((await mcp.callTool({ name: 'put_page', arguments: { page } })).isError).toBeFalsy();
+    expect((await mcp.callTool({ name: 'publish_project', arguments: {} })).isError).toBeFalsy();
+  });
+
+  it('import_stock_image is gated on content:write; list/search stay read-capable', async () => {
+    const reader = fakeClient();
+    const r = await connect(reader, readScope);
+    expect((await r.callTool({ name: 'list_stock_providers', arguments: {} })).isError).toBeFalsy();
+    const imp = await r.callTool({ name: 'import_stock_image', arguments: { provider: 'openverse', id: 'ov1' } });
+    expect(imp.isError).toBe(true);
+    expect(text(imp)).toMatch(/content:write/);
+    expect(callsOf(reader).importStock).not.toHaveBeenCalled();
+  });
+});
+
+describe('createSitewrightMcpServer — lazy auth', () => {
+  it('boots unauthenticated: get_scope reports authenticated:false + a login hint', async () => {
+    const res = await (await connect(fakeClient(), null)).callTool({ name: 'get_scope', arguments: {} });
+    expect(text(res)).toContain('"authenticated": false');
+    expect(text(res)).toMatch(/login/);
+  });
+
+  it('a content tool while unauthenticated returns "Not connected" without calling the client', async () => {
+    const client = fakeClient();
+    const res = await (await connect(client, null)).callTool({ name: 'list_pages', arguments: {} });
+    expect(res.isError).toBe(true);
+    expect(text(res)).toMatch(/not connected/i);
+    expect(callsOf(client).listContent).not.toHaveBeenCalled();
+  });
+
+  it('login returns the verification URL + code and a keep-the-tab-open message', async () => {
+    const begin = vi.fn(async () => ({ verificationUrl: 'https://cms.test/device', userCode: 'ABCD-1234', expiresIn: 600, completion: Promise.resolve() }));
+    const res = await (await connect(fakeClient(), null, fakeAuth({ beginLogin: begin }))).callTool({ name: 'login', arguments: {} });
+    expect(res.isError).toBeFalsy();
+    expect(text(res)).toContain('https://cms.test/device');
+    expect(text(res)).toContain('ABCD-1234');
+    expect(text(res)).toMatch(/keep that tab open/i);
+    expect(begin).toHaveBeenCalledTimes(1);
+  });
+
+  it('a second login while one is pending returns the SAME code (no duplicate grant)', async () => {
+    let resolve: () => void = () => {};
+    const begin = vi.fn(async () => ({ verificationUrl: 'u', userCode: 'AAAA-1111', expiresIn: 600, completion: new Promise<void>((r) => { resolve = r; }) }));
+    const mcp = await connect(fakeClient(), null, fakeAuth({ beginLogin: begin }));
+    const first = text(await mcp.callTool({ name: 'login', arguments: {} }));
+    const second = text(await mcp.callTool({ name: 'login', arguments: {} }));
+    expect(begin).toHaveBeenCalledTimes(1); // de-duplicated — only one device grant
+    expect(first).toContain('AAAA-1111');
+    expect(second).toContain('AAAA-1111');
+    resolve(); // let the pending login settle so it doesn't leak
+  });
+
+  it('get_scope reports login_status: failed + last_error after a denied login', async () => {
+    const begin = vi.fn(async () => ({ verificationUrl: 'u', userCode: 'c', expiresIn: 600, completion: Promise.reject(new Error('access_denied')) }));
+    const mcp = await connect(fakeClient(), null, fakeAuth({ beginLogin: begin }));
+    await mcp.callTool({ name: 'login', arguments: {} });
+    await new Promise((r) => setTimeout(r, 0)); // let the rejection settle
+    const scope = text(await mcp.callTool({ name: 'get_scope', arguments: {} }));
+    expect(scope).toContain('"login_status": "failed"');
+    expect(scope).toContain('access_denied');
+  });
+
+  it('after approval, login re-introspects so the agent becomes connected', async () => {
+    const client = fakeClient({ introspect: vi.fn(async () => writeScope) });
+    const mcp = await connect(client, null, fakeAuth({ beginLogin: async () => ({ verificationUrl: 'u', userCode: 'c', expiresIn: 600, completion: Promise.resolve() }) }));
+    expect(text(await mcp.callTool({ name: 'get_scope', arguments: {} }))).toContain('"authenticated": false');
+    await mcp.callTool({ name: 'login', arguments: {} });
+    await new Promise((r) => setTimeout(r, 0)); // let the background introspect microtask run
+    const after = text(await mcp.callTool({ name: 'get_scope', arguments: {} }));
+    expect(after).toContain('"authenticated": true');
+    expect(callsOf(client).introspect).toHaveBeenCalled();
+  });
+
+  it('switch_project starts a grant and returns a verification URL + a "pick a different project" message', async () => {
+    const begin = vi.fn(async () => ({ verificationUrl: 'https://cms.test/dev2', userCode: 'SWCH-0001', expiresIn: 600, completion: Promise.resolve() }));
+    const res = await (await connect(fakeClient(), writeScope, fakeAuth({ beginLogin: begin }))).callTool({ name: 'switch_project', arguments: {} });
+    expect(begin).toHaveBeenCalledTimes(1);
+    expect(text(res)).toContain('"status": "awaiting_approval"');
+    expect(text(res)).toContain('https://cms.test/dev2');
+    expect(text(res)).toMatch(/pick the project to switch to/i);
+  });
+
+  it('login on a non-interactive (static-token) bridge reports that re-auth is unavailable', async () => {
+    const res = await (await connect(fakeClient(), writeScope, fakeAuth({ interactive: false }))).callTool({ name: 'login', arguments: {} });
+    expect(res.isError).toBe(true);
+    expect(text(res)).toMatch(/fixed token/i);
   });
 });
 
 describe('createSitewrightMcpServer — catalog + instructions', () => {
-  it('an all-capability token exposes EXACTLY the MCP_TOOL_CATALOG tools (no drift)', async () => {
+  it('a connected token exposes EXACTLY the MCP_TOOL_CATALOG tools (no drift)', async () => {
     const names = await toolNames(await connect(fakeClient(), writeScope));
     expect(names).toEqual([...MCP_TOOL_CATALOG].map((t) => t.name).sort());
   });
@@ -243,8 +339,6 @@ describe('createSitewrightMcpServer — agent guidance', () => {
 
 describe('createSitewrightMcpServer — every tool forwards to the client', () => {
   const calls = (c: SitewrightClient) => c as unknown as Record<string, ReturnType<typeof vi.fn>>;
-  const text = (res: Awaited<ReturnType<Client['callTool']>>) =>
-    (res.content as Array<{ text: string }>)[0]!.text;
 
   it('get_scope returns the caller’s scope', async () => {
     const mcp = await connect(fakeClient(), readScope);

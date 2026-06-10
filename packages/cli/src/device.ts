@@ -7,6 +7,7 @@ import {
   type TokenSet,
 } from './oauth.js';
 import { saveCredentials } from './credentials.js';
+import type { PendingLogin } from '@sitewright/mcp';
 
 export interface DeviceLoginOptions {
   issuer: string;
@@ -25,24 +26,22 @@ export interface DeviceLoginOptions {
 const defaultSleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * Device authorization grant (RFC 8628) for headless/SSH logins: requests a
- * device + user code, shows the verification URL, then polls the token endpoint —
- * honoring `authorization_pending` / `slow_down` — until approval, denial, or
- * expiry. Persists the tokens on success.
+ * Polls the token endpoint for an approved device grant — honoring `authorization_pending` /
+ * `slow_down` (RFC 8628) — until approval, denial, or expiry. Persists the tokens on success.
  */
-export async function runDeviceLogin(opts: DeviceLoginOptions): Promise<TokenSet> {
-  const sleep = opts.sleep ?? defaultSleep;
-  const auth = await startDeviceAuthorization({ issuer: opts.issuer, scope: opts.scope }, opts.fetchImpl);
-  opts.prompt(auth);
-
+async function pollDeviceToken(
+  ctx: { issuer: string; fetchImpl?: FetchLike },
+  auth: DeviceAuthorization,
+  sleep: (ms: number) => Promise<void>,
+): Promise<TokenSet> {
   let interval = auth.interval;
   const deadline = Date.now() + auth.expiresIn * 1000;
   for (;;) {
     await sleep(interval * 1000);
     if (Date.now() > deadline) throw new Error('device login timed out — please run login again');
     try {
-      const tokens = await requestDeviceToken({ issuer: opts.issuer, deviceCode: auth.deviceCode }, opts.fetchImpl);
-      saveCredentials(opts.issuer, tokens);
+      const tokens = await requestDeviceToken({ issuer: ctx.issuer, deviceCode: auth.deviceCode }, ctx.fetchImpl);
+      saveCredentials(ctx.issuer, tokens);
       return tokens;
     } catch (err) {
       if (err instanceof OAuthTokenError) {
@@ -55,4 +54,38 @@ export async function runDeviceLogin(opts: DeviceLoginOptions): Promise<TokenSet
       throw err; // access_denied / expired_token / anything else is terminal
     }
   }
+}
+
+/**
+ * Device authorization grant (RFC 8628) for headless/SSH logins: requests a device + user code,
+ * shows the verification URL, then polls until approval. Persists the tokens on success. Used by the
+ * `sitewright login --device` CLI command (synchronous: prints, then waits).
+ */
+export async function runDeviceLogin(opts: DeviceLoginOptions): Promise<TokenSet> {
+  const sleep = opts.sleep ?? defaultSleep;
+  const auth = await startDeviceAuthorization({ issuer: opts.issuer, scope: opts.scope }, opts.fetchImpl);
+  opts.prompt(auth);
+  return pollDeviceToken({ issuer: opts.issuer, fetchImpl: opts.fetchImpl }, auth, sleep);
+}
+
+/**
+ * Starts a device-flow login for the MCP bridge: returns the verification URL + code to show the
+ * user NOW, plus a `completion` promise that resolves once they approve (tokens persisted) — so the
+ * `login` MCP tool can hand the agent the code immediately and finish in the background.
+ */
+export async function beginDeviceLogin(opts: {
+  issuer: string;
+  scope: string;
+  fetchImpl?: FetchLike;
+  sleep?: (ms: number) => Promise<void>;
+}): Promise<PendingLogin> {
+  const sleep = opts.sleep ?? defaultSleep;
+  const auth = await startDeviceAuthorization({ issuer: opts.issuer, scope: opts.scope }, opts.fetchImpl);
+  const completion = pollDeviceToken({ issuer: opts.issuer, fetchImpl: opts.fetchImpl }, auth, sleep).then(() => {});
+  return {
+    verificationUrl: auth.verificationUriComplete ?? auth.verificationUri,
+    userCode: auth.userCode,
+    expiresIn: auth.expiresIn,
+    completion,
+  };
 }

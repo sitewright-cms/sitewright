@@ -26,7 +26,7 @@ const scope: Scope = { projectId: 'p1', role: 'admin', capabilities: ['content:r
 
 async function introspected(handler: Parameters<typeof fakeFetch>[0]) {
   const fake = fakeFetch(handler);
-  const client = new SitewrightClient('https://cms.test/', 'swk_tok', fake.impl);
+  const client = new SitewrightClient('https://cms.test/', async () => 'swk_tok', fake.impl);
   await client.introspect();
   return { client, calls: fake.calls };
 }
@@ -95,7 +95,7 @@ describe('SitewrightClient', () => {
       return { ok: true, status: 200, statusText: 'x', text: async () => '{"items":[]}' };
     };
     const onUnauthorized = vi.fn(async () => 'swk_fresh');
-    const client = new SitewrightClient('https://cms.test', 'swk_old', impl, onUnauthorized);
+    const client = new SitewrightClient('https://cms.test', async () => 'swk_old', impl, onUnauthorized);
     await client.introspect();
     await client.listContent('page');
     expect(onUnauthorized).toHaveBeenCalledTimes(1);
@@ -109,19 +109,27 @@ describe('SitewrightClient', () => {
         ? { ok: true, status: 200, statusText: 'x', text: async () => JSON.stringify(scope) }
         : { ok: false, status: 401, statusText: 'x', text: async () => '{"error":"expired"}' };
     // No hook → 401 propagates.
-    const noHook = new SitewrightClient('https://cms.test', 'swk_old', impl);
+    const noHook = new SitewrightClient('https://cms.test', async () => 'swk_old', impl);
     await noHook.introspect();
     await expect(noHook.listContent('page')).rejects.toMatchObject({ status: 401 });
     // Hook returns null (refresh failed) → 401 still propagates (no infinite retry).
-    const giveUp = new SitewrightClient('https://cms.test', 'swk_old', impl, async () => null);
+    const giveUp = new SitewrightClient('https://cms.test', async () => 'swk_old', impl, async () => null);
     await giveUp.introspect();
     await expect(giveUp.listContent('page')).rejects.toMatchObject({ status: 401 });
   });
 
   it('refuses scoped calls before introspection', async () => {
     const fake = fakeFetch(() => ({ status: 200, body: '{}' }));
-    const client = new SitewrightClient('https://cms.test', 'swk_tok', fake.impl);
+    const client = new SitewrightClient('https://cms.test', async () => 'swk_tok', fake.impl);
     await expect(client.listContent('page')).rejects.toThrow(/introspect/);
+  });
+
+  it('throws a clear 401 (no network call) when the token provider yields null', async () => {
+    // Lazy-auth: the bridge boots before login → the provider returns null until the user connects.
+    const fake = fakeFetch(() => ({ status: 200, body: JSON.stringify(scope) }));
+    const client = new SitewrightClient('https://cms.test', async () => null, fake.impl);
+    await expect(client.introspect()).rejects.toMatchObject({ status: 401, message: /not authenticated/ });
+    expect(fake.calls.length).toBe(0);
   });
 
   it('reads, previews, publishes and reads publish status on scoped paths', async () => {

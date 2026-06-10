@@ -30,6 +30,7 @@ async function main(): Promise<void> {
   }
 
   // Fail fast (out of band of the MCP protocol) on a bad token; introspect + connect.
+  // Static-token mode resolves the scope up-front (or throws), so `scope` is non-null here.
   let scope;
   try {
     scope = await runStdioBridge({ url, token });
@@ -38,9 +39,11 @@ async function main(): Promise<void> {
     process.stderr.write(`sitewright-mcp: could not authenticate to ${url}: ${message}\n`);
     process.exit(1);
   }
-  process.stderr.write(
-    `sitewright-mcp: connected to project ${scope.projectId} (role ${scope.role}, caps ${scope.capabilities.join(',')})\n`,
-  );
+  if (scope) {
+    process.stderr.write(
+      `sitewright-mcp: connected to project ${scope.projectId} (role ${scope.role}, caps ${scope.capabilities.join(',')})\n`,
+    );
+  }
 }
 
 main().catch((err) => {

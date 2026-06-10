@@ -157,4 +157,59 @@ suite('sitewright login — end to end', () => {
       rmSync(subConfig, { recursive: true, force: true });
     }
   }, 30_000);
+
+  // The headline PR-1 behavior end-to-end: `sitewright mcp` boots with NO credentials, speaks MCP
+  // over stdio, reports unauthenticated, and the `login` tool starts a REAL device grant on the
+  // deployed instance (returning a live verification URL + user code).
+  it('`sitewright mcp` boots without credentials; login starts a real device grant', async () => {
+    const url = BASE_URL!;
+    const bin = fileURLToPath(new URL('../dist/bin.js', import.meta.url));
+    const subConfig = mkdtempSync(join(tmpdir(), 'sw-mcp-lazy-'));
+    const child = spawn('node', [bin, 'mcp', '--url', url], {
+      env: { ...process.env, SITEWRIGHT_CONFIG_DIR: subConfig },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    const pending = new Map<number, (m: { result: { content: Array<{ text: string }>; serverInfo?: { name: string } } }) => void>();
+    let buf = '';
+    child.stdout.on('data', (d: Buffer) => {
+      buf += d.toString();
+      for (let nl = buf.indexOf('\n'); nl >= 0; nl = buf.indexOf('\n')) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line) continue;
+        try {
+          const m = JSON.parse(line) as { id?: number; result?: unknown };
+          if (typeof m.id === 'number' && pending.has(m.id)) {
+            pending.get(m.id)!(m as never);
+            pending.delete(m.id);
+          }
+        } catch {
+          /* non-JSON stdout line — ignore */
+        }
+      }
+    });
+    const rpc = (id: number, method: string, params: unknown): Promise<{ result: { content: Array<{ text: string }>; serverInfo?: { name: string } } }> =>
+      new Promise((resolve, reject) => {
+        pending.set(id, resolve);
+        child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id, method, params })}\n`);
+        setTimeout(() => reject(new Error(`rpc ${method} timed out`)), 10_000);
+      });
+    try {
+      const init = await rpc(1, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'e2e', version: '0' } });
+      expect(init.result.serverInfo?.name).toBe('sitewright');
+      child.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' })}\n`);
+
+      const scope = await rpc(2, 'tools/call', { name: 'get_scope', arguments: {} });
+      expect(scope.result.content[0]!.text).toContain('"authenticated": false');
+
+      const login = await rpc(3, 'tools/call', { name: 'login', arguments: {} });
+      const loginText = login.result.content[0]!.text;
+      expect(loginText).toContain('"status": "awaiting_approval"');
+      expect(loginText).toContain('/oauth/device'); // a real verification URL from the deployed API
+      expect(loginText).toMatch(/[A-Z0-9]{4}-[A-Z0-9]{4}/); // a live device user code
+    } finally {
+      child.kill();
+      rmSync(subConfig, { recursive: true, force: true });
+    }
+  }, 30_000);
 });

@@ -12,12 +12,14 @@ function FilesIcon() {
 
 /**
  * The project's File Manager as a RIGHT-edge {@link SidePanel} (replaces the old slide-in drawer):
- * full file/folder CRUD via the shared {@link FileBrowser}. Reachable from its edge tab. The
- * browser's own dialogs (preview, rename, delete) render inside the panel, so they elevate above it.
+ * full file/folder CRUD via the shared {@link FileBrowser}. Reachable from its edge tab — or by
+ * dragging OS files onto that tab (`openOnFileDrag`), which opens the panel so the drop lands on the
+ * browser's drop zone (unreachable while collapsed). The browser's own dialogs (preview, rename,
+ * delete) render inside the panel, so they elevate above it.
  */
 export function AssetsPanel({ projectId, openSignal }: { projectId: string; openSignal?: number }) {
   return (
-    <SidePanel side="right" label="File Manager" icon={<FilesIcon />} size="w-[min(44rem,92vw)]" openSignal={openSignal}>
+    <SidePanel side="right" label="File Manager" icon={<FilesIcon />} size="w-[min(44rem,92vw)]" openSignal={openSignal} openOnFileDrag>
       <div className="p-4">
         <FileBrowser projectId={projectId} mode="manage" />
       </div>

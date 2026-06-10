@@ -1,6 +1,6 @@
 /* eslint-disable security/detect-object-injection -- every dynamic index in this file keys a local
    const lookup table by a typed `SidePanelSide`/`SidePanelAlign` literal; never user-controlled. */
-import { createContext, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, useEffect, useId, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type ReactNode } from 'react';
 
 /**
  * True for any subtree rendered inside a {@link SidePanel}'s content. {@link Modal} reads it to
@@ -40,6 +40,12 @@ interface SidePanelProps {
   align?: SidePanelAlign;
   /** Increment from a parent to force the panel open (e.g. a top-nav button). */
   openSignal?: number;
+  /**
+   * When set, dragging OS files over the collapsed tab opens the panel, so the drop can land on
+   * the content inside it — the panel's own drop zone is `pointer-events-none` while collapsed,
+   * which otherwise blocks drag-and-drop upload entirely. Used by the File Manager.
+   */
+  openOnFileDrag?: boolean;
   children: ReactNode;
 }
 
@@ -92,7 +98,7 @@ const TAB_RADIUS: Record<SidePanelSide, string> = {
  * thing sits ABOVE modals (so the tabs are always reachable), and exposes {@link InSidePanel} to its
  * children so their own dialogs elevate above it.
  */
-export function SidePanel({ side, label, icon, size, width, align = 'center', openSignal, children }: SidePanelProps) {
+export function SidePanel({ side, label, icon, size, width, align = 'center', openSignal, openOnFileDrag, children }: SidePanelProps) {
   const [open, setOpen] = useState(false);
   const regionId = useId();
   const panelSize = size ?? DEFAULT_SIZE[side];
@@ -124,6 +130,29 @@ export function SidePanel({ side, label, icon, size, width, align = 'center', op
     }
   }, [openSignal]);
 
+  // With `openOnFileDrag`, dragging OS files over the collapsed tab opens the panel so the drop can
+  // reach the content inside (the open panel anchors under its tab, immediately covering the cursor
+  // — see panelPos). Only OS file drags carry a 'Files' type; internal element drags (row reordering
+  // etc.) are ignored. We `preventDefault` + mark the drag a copy so (a) the cursor reads as a valid
+  // drop and (b) a file dropped ON THE TAB during the brief open transition is swallowed rather than
+  // opened by the browser (which would navigate away from the editor — there is no global drop
+  // guard). Reused for the tab's drop too: a stray tab-drop is a safe no-op, real uploads land on the
+  // file browser inside the open panel.
+  const onTabFileDrag = (e: ReactDragEvent) => {
+    if (!openOnFileDrag || !e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    setOpen(true);
+  };
+  // Same browser-navigation guard for the OPEN panel: a file dropped on the panel chrome (header,
+  // padding) that misses the inner drop zone would otherwise navigate the browser to the file. The
+  // file browser handles real uploads and stops propagation, so this only catches the misses.
+  const onPanelFileDrag = (e: ReactDragEvent) => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  };
+
   return (
     // Hover/focus on EITHER the tab or the panel keeps it open; both are descendants of this
     // wrapper, so React's enter/leave fire only when the pointer crosses the whole group's boundary.
@@ -151,6 +180,9 @@ export function SidePanel({ side, label, icon, size, width, align = 'center', op
         aria-controls={regionId}
         aria-label={open ? `Close ${label}` : `Open ${label}`}
         onClick={() => setOpen((v) => !v)}
+        onDragEnter={onTabFileDrag}
+        onDragOver={onTabFileDrag}
+        onDrop={onTabFileDrag}
         // While open the tab is invisible (the panel's own × closes it), so drop it from the tab
         // order too — a focusable-but-invisible control would break keyboard focus order.
         tabIndex={open ? -1 : undefined}
@@ -177,6 +209,8 @@ export function SidePanel({ side, label, icon, size, width, align = 'center', op
         role="region"
         aria-label={label}
         aria-hidden={!open}
+        onDragOver={openOnFileDrag ? onPanelFileDrag : undefined}
+        onDrop={openOnFileDrag ? onPanelFileDrag : undefined}
         className={`fixed z-[61] flex flex-col overflow-hidden border-white/60 bg-white/90 shadow-2xl backdrop-blur-xl transition-opacity duration-200 ease-out ${panelPos(side, align, width)} ${panelSize} ${
           open ? 'visible opacity-100' : 'invisible opacity-0 pointer-events-none'
         }`}

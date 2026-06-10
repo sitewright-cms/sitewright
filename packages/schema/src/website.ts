@@ -79,15 +79,18 @@ const MailtoChannelSchema = z.object({
 /**
  * "Pay now" via a payment-provider deep link. `urlTemplate` may contain the placeholders `{total}`
  * / `{currency}` / `{items}`, substituted client-side before `window.open`. Works cleanly for
- * amount-bearing links (PayPal.me `…/{total}`); fixed-amount links (Stripe Payment Links) are also
- * valid (no placeholder). The opened amount is CLIENT-CONTROLLED and therefore non-authoritative —
- * the merchant must reconcile the paid amount against the order.
+ * amount-bearing links (PayPal.me `…/{total}`); a FIXED-amount link (e.g. a Stripe Payment Link, which
+ * can't take an arbitrary total in its URL) is also valid — use `provider: 'custom'` with no
+ * placeholder. The opened amount is CLIENT-CONTROLLED and therefore non-authoritative — the merchant
+ * must reconcile the paid amount against the order.
  */
 const PaymentChannelSchema = z.object({
   kind: z.literal('payment'),
   label: shopChannelLabel,
-  /** Informational provider tag (does not change behavior). */
-  provider: z.enum(['paypal', 'stripe', 'custom']).optional(),
+  /** Informational provider tag (does not change behavior). `stripe` is folded into `custom` — Stripe
+   *  Payment Links are fixed-amount, so they can't carry the cart total. A legacy stored `stripe` is
+   *  COERCED to `custom` (back-compat: re-saving/importing an older config never errors). */
+  provider: z.preprocess((v) => (v === 'stripe' ? 'custom' : v), z.enum(['paypal', 'custom'])).optional(),
   urlTemplate: z
     .string()
     .max(2048)
@@ -136,6 +139,13 @@ export const ShopSchema = z.object({
   addToCartLabel: z.string().min(1).max(SHOP_LABEL_MAX).optional(),
   /** Cart drawer heading (cart.js default: "Your cart"). */
   title: z.string().min(1).max(120).optional(),
+  /**
+   * The small disclaimer shown in the cart drawer above the checkout buttons. Defaults (in cart.js) to
+   * "Prices are indicative. This sends an order request — the seller confirms availability and final
+   * price." Reinforces the non-authoritative-pricing model; editable so a merchant can word it for
+   * their jurisdiction/policy.
+   */
+  note: z.string().min(1).max(300).optional(),
 });
 export type Shop = z.infer<typeof ShopSchema>;
 

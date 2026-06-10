@@ -126,6 +126,25 @@ describe('cart form channel', () => {
     expect(CART_JS).toContain('sent=true');
     expect(CART_CSS).toContain('[data-sw-part="sent-msg"]');
   });
+
+  it('CART_CSS slides the right-side drawer in/out and blurs + fades the backdrop', () => {
+    expect(CART_CSS).toContain('inset:0 0 0 auto'); // pinned to the RIGHT edge (overrides the dialog UA inset:0)
+    expect(CART_CSS).toContain('translateX(100%)'); // off-screen start → slides in
+    expect(CART_CSS).toContain('allow-discrete'); // animate across the <dialog> display toggle (close too)
+    expect(CART_CSS).toContain('@starting-style');
+    expect(CART_CSS).toContain('backdrop-filter:blur'); // blurred backdrop
+    expect(CART_CSS).toContain('dialog[open]::backdrop{opacity:1}'); // backdrop fades in
+  });
+
+  it('CART_JS closes only on the backdrop (rect check) — not on the drawer body — reads an editable note, and ripples its controls', () => {
+    expect(CART_JS).toContain('getBoundingClientRect'); // distinguishes backdrop from in-panel empty space
+    expect(CART_JS).toContain('if(e.target!==dialog){return;}'); // child clicks never close
+    expect(CART_JS).toContain("getAttribute('data-note')"); // the editable cart note
+    expect(CART_JS).toContain('waves-effect'); // self-contained ripple ("waves-effect")
+    expect(CART_JS).toContain('waves-rippling');
+    expect(CART_JS).toContain("addEventListener('pointerdown'");
+    expect(CART_JS).not.toContain('innerHTML');
+  });
 });
 
 describe('resolveShopChannels', () => {

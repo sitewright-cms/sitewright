@@ -77,8 +77,7 @@ export function ShopChannelsEditor({ rows, onChange }: { rows: KeyedShopChannel[
                   <select aria-label={`Channel ${i + 1} provider`} className={glassInput} value={r.provider} onChange={(e) => set(r.id, { provider: e.target.value })}>
                     <option value="">Provider (optional)</option>
                     <option value="paypal">PayPal</option>
-                    <option value="stripe">Stripe</option>
-                    <option value="custom">Custom</option>
+                    <option value="custom">Custom (incl. fixed Stripe links)</option>
                   </select>
                 </>
               )}

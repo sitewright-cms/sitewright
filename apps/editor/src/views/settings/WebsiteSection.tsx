@@ -223,6 +223,14 @@ export function WebsiteSection({
           <Field label="Add-to-cart button label" value={form.shopAddToCartLabel} onChange={(v) => patch({ shopAddToCartLabel: v })} placeholder="Add to cart" />
           <Field label="Cart drawer title" value={form.shopTitle} onChange={(v) => patch({ shopTitle: v })} placeholder="Your cart" />
         </div>
+        <div className="mt-3">
+          <Field
+            label="Cart note (shown above checkout)"
+            value={form.shopNote}
+            onChange={(v) => patch({ shopNote: v })}
+            placeholder="Prices are indicative. This sends an order request — the seller confirms availability and final price."
+          />
+        </div>
         <div className="mt-4">
           <SubLabel>Checkout channels</SubLabel>
           <ShopChannelsEditor rows={form.shopChannels} onChange={(shopChannels) => patch({ shopChannels })} />

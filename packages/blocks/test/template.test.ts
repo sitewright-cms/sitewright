@@ -283,6 +283,11 @@ describe('renderTemplate — MINI SHOP helpers', () => {
     expect(renderTemplate('{{sw-cart}}', {})).toBe('<div data-sw-cart></div>');
   });
 
+  it('{{sw-cart}} emits the editable cart note (data-note)', () => {
+    const out = renderTemplate('{{sw-cart}}', { website: { shop: { note: 'Order request only.' } } });
+    expect(out).toContain('data-note="Order request only."');
+  });
+
   it('{{sw-cart}} projects a form channel only when its endpoint is resolved', () => {
     const withEp = { website: { shop: { channels: [{ kind: 'form', formId: 'order', endpoint: '/f/p1/order', label: 'Place order' }] } } };
     const out = renderTemplate('{{sw-cart}}', withEp);

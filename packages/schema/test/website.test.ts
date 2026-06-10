@@ -205,5 +205,25 @@ describe('WebsiteSettingsSchema', () => {
       expect(() => WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'form' }] } })).toThrow();
       expect(() => WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'form', formId: 'Bad Id!' }] } })).toThrow();
     });
+
+    it('accepts an editable cart note (bounded)', () => {
+      expect(WebsiteSettingsSchema.parse({ shop: { note: 'Order request only.' } }).shop?.note).toBe('Order request only.');
+      expect(() => WebsiteSettingsSchema.parse({ shop: { note: 'a'.repeat(301) } })).toThrow();
+    });
+
+    it('payment provider is paypal/custom — a legacy stripe value is coerced to custom (back-compat)', () => {
+      expect(
+        WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'payment', urlTemplate: 'https://buy.stripe.com/fixed', provider: 'custom' }] } }).shop?.channels,
+      ).toHaveLength(1);
+      // a stored `stripe` from before the enum narrowed is folded into `custom`, not rejected
+      const coerced = WebsiteSettingsSchema.parse({
+        shop: { channels: [{ kind: 'payment', urlTemplate: 'https://buy.stripe.com/fixed', provider: 'stripe' }] },
+      });
+      expect(coerced.shop?.channels?.[0]).toMatchObject({ kind: 'payment', provider: 'custom' });
+      // an unknown provider is still rejected
+      expect(() =>
+        WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'payment', urlTemplate: 'https://x.test/p', provider: 'venmo' }] } }),
+      ).toThrow();
+    });
   });
 });

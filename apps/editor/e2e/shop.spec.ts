@@ -163,3 +163,73 @@ test('published cart: the form channel submits the order to the /f submissions i
 
   await ctx.dispose();
 });
+
+// Cart drawer UX: a right-side drawer that opens on the toggle, shows the EDITABLE note, and closes
+// ONLY via the backdrop / Esc / close icon — never on a click in the drawer's own body. Buttons carry
+// the self-contained "waves-effect" ripple class.
+test('published cart: editable note + backdrop/Esc/close-only dismissal + ripple class', async ({ page, playwright, baseURL }) => {
+  const ctx = await playwright.request.newContext({ baseURL });
+  expect((await ctx.post('/auth/register', { data: { email: `shopdrawer-${stamp}@e2e.test`, password: 'pw-secret-1' } })).status()).toBe(201);
+  const slug = `shopdrawer-${stamp}`;
+  const proj = await ctx.post('/projects', { data: { name: 'Drawer Site', slug } });
+  const projectId = (await proj.json()).project.id as string;
+  const base = `/projects/${projectId}`;
+  const settings = {
+    identity: { name: 'Acme', colors: { primary: '#0a7a5a' } },
+    website: {
+      shop: {
+        currency: { code: 'USD', symbol: '$' },
+        note: 'We confirm every order by hand.',
+        channels: [{ kind: 'whatsapp', number: '+14155550123', label: 'Order on WhatsApp' }],
+      },
+    },
+    settings: {},
+  };
+  expect((await ctx.put(`${base}/content/settings/settings`, { data: settings })).status()).toBe(200);
+  const home = {
+    id: 'home',
+    path: '',
+    title: 'Shop',
+    root: { id: 'r', type: 'Section' },
+    source: '<section class="p-8">{{sw-add-to-cart sku="w1" name="Widget" price="9.00"}}{{sw-cart}}</section>',
+  };
+  expect((await ctx.put(`${base}/content/page/home`, { data: home })).status()).toBe(200);
+  expect((await ctx.post(`${base}/publish`)).status()).toBe(200);
+
+  await page.goto(`/sites/${slug}/`);
+  const cart = page.locator('[data-sw-cart]');
+  const dialog = cart.locator('dialog');
+  const toggle = cart.locator('[data-sw-part="toggle"]');
+
+  // The floating toggle carries the ripple class.
+  await expect(toggle).toHaveClass(/waves-effect/);
+
+  await page.locator('[data-sw-cart-add][data-sku="w1"]').click();
+  await toggle.click();
+  await expect(dialog).toBeVisible();
+
+  // The editable note is shown; a channel button also carries the ripple class.
+  await expect(cart.locator('[data-sw-part="note"]')).toHaveText('We confirm every order by hand.');
+  await expect(cart.getByRole('button', { name: 'Order on WhatsApp' })).toHaveClass(/waves-effect/);
+
+  // A click INSIDE the drawer body (its header title) must NOT close it.
+  await cart.locator('[data-sw-part="head"] h2').click();
+  await expect(dialog).toBeVisible();
+
+  // A click on the BACKDROP (far left, outside the right-side panel) closes it.
+  await page.mouse.click(40, 300);
+  await expect(dialog).toBeHidden();
+
+  // Esc closes a reopened drawer.
+  await toggle.click();
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+
+  // The close icon closes it.
+  await toggle.click();
+  await cart.locator('[data-sw-part="close"]').click();
+  await expect(dialog).toBeHidden();
+
+  await ctx.dispose();
+});

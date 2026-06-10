@@ -374,6 +374,8 @@ function createInstance(): typeof Handlebars {
     if (typeof currency.decimals === 'number') attrs += ` data-currency-decimals="${escapeAttr(String(currency.decimals))}"`;
     const title = str(shop.title);
     if (title) attrs += ` data-cart-title="${escapeAttr(title)}"`;
+    const note = str(shop.note);
+    if (note) attrs += ` data-note="${escapeAttr(note)}"`;
     // Project channels to ONLY the fields the runtime needs (defence-in-depth over the schema), then
     // JSON-encode into an escaped attribute (cart.js JSON.parses it; undefined props are dropped).
     const channels = Array.isArray(shop.channels) ? (shop.channels as Array<Record<string, unknown>>) : [];

@@ -62,6 +62,7 @@ describe('settings model', () => {
           currency: { code: 'EUR', symbol: '€', position: 'after', decimals: 2 },
           addToCartLabel: 'Add to basket',
           title: 'Your basket',
+          note: 'Order request only — we confirm price.',
           channels: [
             { kind: 'whatsapp', label: 'WhatsApp', number: '+14155550123', intro: 'Hi' },
             { kind: 'mailto', email: 'orders@acme.test', subject: 'Order' },

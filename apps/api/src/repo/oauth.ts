@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { newId } from '../id.js';
-import { and, eq, isNull, lt } from 'drizzle-orm';
+import { and, eq, gt, isNull, lt } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
 import {
   apiKeys,
@@ -430,6 +430,89 @@ export class OAuthRepository {
         .where(and(eq(apiKeys.source, 'oauth'), eq(apiKeys.createdBy, userId), eq(apiKeys.projectId, projectId), isNull(apiKeys.revokedAt)));
     });
   }
+
+  /**
+   * Live OAuth/MCP agent sessions for a project — one entry per user that still holds a usable
+   * session, i.e. a refresh-token chain whose tip is non-rotated, non-revoked and unexpired. This
+   * represents a connection for the WHOLE session window (up to the absolute cap), NOT just while a
+   * 1h access token happens to be valid — so a connected-but-idle agent stays visible. Grouped by
+   * user because that's the disconnect granularity ({@link revokeAllForUserProject}).
+   */
+  async listActiveSessions(projectId: string, now: Date = new Date()): Promise<ActiveOAuthSession[]> {
+    // One read transaction so the three queries see a consistent snapshot — a concurrent revoke
+    // can't leave a tip present here but absent from the connectedAt set.
+    return this.db.transaction(async (tx) => {
+      const exec = tx as unknown as Executor;
+      // Live tips: a non-rotated, non-revoked, unexpired refresh token = an agent that can still act.
+      const tips = await exec
+        .select()
+        .from(oauthRefreshTokens)
+        .where(
+          and(
+            eq(oauthRefreshTokens.projectId, projectId),
+            isNull(oauthRefreshTokens.rotatedTo),
+            isNull(oauthRefreshTokens.revokedAt),
+            gt(oauthRefreshTokens.expiresAt, now),
+          ),
+        );
+      if (tips.length === 0) return [];
+      // Session start = earliest createdAt among the user's non-revoked refresh tokens (the chain root;
+      // predecessors keep revokedAt=null for reuse-detection, so MIN spans the whole chain).
+      const chainRows = await exec
+        .select({ userId: oauthRefreshTokens.userId, createdAt: oauthRefreshTokens.createdAt })
+        .from(oauthRefreshTokens)
+        .where(and(eq(oauthRefreshTokens.projectId, projectId), isNull(oauthRefreshTokens.revokedAt)));
+      const connectedAtByUser = new Map<string, number>();
+      for (const r of chainRows) {
+        const prev = connectedAtByUser.get(r.userId);
+        if (prev === undefined || r.createdAt.getTime() < prev) connectedAtByUser.set(r.userId, r.createdAt.getTime());
+      }
+      // Last activity = the user's most recent still-valid (non-revoked) OAuth access-token use; a
+      // disconnected session's old tokens must not back-date a freshly-reconnected one.
+      const accessRows = await exec
+        .select({ createdBy: apiKeys.createdBy, lastUsedAt: apiKeys.lastUsedAt })
+        .from(apiKeys)
+        .where(and(eq(apiKeys.projectId, projectId), eq(apiKeys.source, 'oauth'), isNull(apiKeys.revokedAt)));
+      const lastUsedByUser = new Map<string, number>();
+      for (const a of accessRows) {
+        if (!a.lastUsedAt) continue;
+        const prev = lastUsedByUser.get(a.createdBy) ?? 0;
+        if (a.lastUsedAt.getTime() > prev) lastUsedByUser.set(a.createdBy, a.lastUsedAt.getTime());
+      }
+      // One row per user; if a user has multiple live tips keep the longest-lived (latest cap).
+      const byUser = new Map<string, (typeof tips)[number]>();
+      for (const t of tips) {
+        const cur = byUser.get(t.userId);
+        if (!cur || t.expiresAt.getTime() > cur.expiresAt.getTime()) byUser.set(t.userId, t);
+      }
+      return [...byUser.values()]
+        .map((t) => ({
+          userId: t.userId,
+          clientId: t.clientId,
+          role: t.role,
+          capabilities: clampScope(t.scope),
+          // The tip is non-revoked, so its user is always present in connectedAtByUser (same snapshot).
+          connectedAt: new Date(connectedAtByUser.get(t.userId)!),
+          expiresAt: t.expiresAt,
+          lastUsedAt: lastUsedByUser.has(t.userId) ? new Date(lastUsedByUser.get(t.userId)!) : null,
+        }))
+        .sort((a, b) => (b.lastUsedAt?.getTime() ?? 0) - (a.lastUsedAt?.getTime() ?? 0) || b.connectedAt.getTime() - a.connectedAt.getTime());
+    });
+  }
+}
+
+/** A live OAuth/MCP agent session for a project (one per connected user). */
+export interface ActiveOAuthSession {
+  userId: string;
+  clientId: string;
+  role: ProjectRole;
+  capabilities: ApiKeyCapability[];
+  /** When the session was first established (chain root). */
+  connectedAt: Date;
+  /** Absolute session cap — re-auth required past this. */
+  expiresAt: Date;
+  /** Most recent agent activity, or null if it has connected but not yet acted. */
+  lastUsedAt: Date | null;
 }
 
 /** Keep only known capabilities, in canonical order (defends against tampered/stale rows). */

@@ -22,11 +22,13 @@ vi.mock('../src/api', () => ({
     getSettings: (id: string) => getSettings(id),
     listDeployTargets: (id: string) => listDeployTargets(id),
     listAgentConnections: (id: string) => listAgentConnections(id),
+    disconnectAgent: vi.fn(() => Promise.resolve()),
   },
   eventsUrl: (id: string) => `/projects/${id}/events`,
 }));
 vi.mock('../src/views/publish/DeployForm', () => ({ DeployForm: () => <div>DEPLOY FORM</div> }));
 
+import { afterEach } from 'vitest';
 import { PublishBar } from '../src/views/PublishBar';
 
 const project = { id: 'p', name: 'Acme', slug: 'acme', role: 'owner' as const };
@@ -35,6 +37,15 @@ const release = { publishedAt: '2026-01-01T00:00:00.000Z', routes: 3, bytes: 100
 beforeEach(() => {
   publishStatus.mockReset();
   publish.mockReset();
+  // Reset + restore the default (no connections) so an idle-state test can't leak into the next.
+  listAgentConnections.mockReset();
+  listAgentConnections.mockResolvedValue({ items: [] });
+});
+// Robust cleanup: a test that fails mid-way (before its own teardown) must not leave fake timers or
+// a stubbed EventSource on — that would cascade as timeouts into later tests.
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 describe('PublishBar', () => {
@@ -90,7 +101,7 @@ describe('PublishBar', () => {
     vi.unstubAllGlobals();
   });
 
-  it('shows an "Agent editing" pill when an agent-sourced change arrives, but not for a user change', async () => {
+  it('shows the WORKING indicator when an agent-sourced change arrives, but not for a user change', async () => {
     const listeners: Array<(e: { data: string }) => void> = [];
     class CtrlEventSource {
       addEventListener(_type: string, cb: (e: { data: string }) => void) {
@@ -102,18 +113,29 @@ describe('PublishBar', () => {
     publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false });
     render(<PublishBar project={project} />);
     await screen.findByRole('link', { name: /Preview/ });
+    // No agents → the indicator nudges that one can be connected.
+    expect(await screen.findByText('Connect an agent')).toBeInTheDocument();
     const fire = (actor: string) =>
       act(() => listeners.forEach((cb) => cb({ data: JSON.stringify({ kind: 'page', entityId: 'home', op: 'put', actor }) })));
 
-    fire('user'); // a human edit → no agent pill
-    expect(screen.queryByText('Agent editing…')).toBeNull();
+    fire('user'); // a human edit → not "working"
+    expect(screen.queryByText('Agent working…')).toBeNull();
 
-    fire('agent'); // a bearer/MCP edit → the pill appears
-    expect(await screen.findByText('Agent editing…')).toBeInTheDocument();
+    fire('agent'); // a bearer/MCP edit → the working indicator appears
+    expect(await screen.findByText('Agent working…')).toBeInTheDocument();
     vi.unstubAllGlobals();
   });
 
-  it('clears the "Agent editing" pill after a ~12s lull', async () => {
+  it('shows the IDLE indicator when a connection exists but no agent is editing', async () => {
+    listAgentConnections.mockResolvedValue({
+      items: [{ id: 'oauth:u1', kind: 'oauth', name: 'ChatGPT', role: 'owner', capabilities: ['content:read'], connectedAt: '2026-06-09T00:00:00.000Z', expiresAt: null, lastUsedAt: null }],
+    });
+    publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false });
+    render(<PublishBar project={project} />);
+    expect(await screen.findByText('Agent connected')).toBeInTheDocument();
+  });
+
+  it('transitions WORKING → idle/none after a ~12s lull (no longer vanishes)', async () => {
     const listeners: Array<(e: { data: string }) => void> = [];
     class CtrlEventSource {
       addEventListener(_type: string, cb: (e: { data: string }) => void) {
@@ -124,32 +146,23 @@ describe('PublishBar', () => {
     vi.stubGlobal('EventSource', CtrlEventSource);
     publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false });
     render(<PublishBar project={project} />);
-    await screen.findByRole('link', { name: /Preview/ }); // real timers for the async publish-status fetch
-    vi.useFakeTimers(); // enable BEFORE firing so the 12s setTimeout is fake…
+    await screen.findByRole('link', { name: /Preview/ });
+    vi.useFakeTimers();
     act(() => listeners.forEach((cb) => cb({ data: JSON.stringify({ kind: 'page', entityId: 'home', op: 'put', actor: 'agent' }) })));
-    expect(screen.getByText('Agent editing…')).toBeInTheDocument();
-    act(() => vi.advanceTimersByTime(12_001)); // …so advancing fires it
-    expect(screen.queryByText('Agent editing…')).toBeNull();
+    expect(screen.getByText('Agent working…')).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(12_001));
+    // The indicator persists (now "Connect an agent", since the mock reports no live connection).
+    expect(screen.queryByText('Agent working…')).toBeNull();
+    expect(screen.getByText('Connect an agent')).toBeInTheDocument();
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
-  it('opens the AI agent details modal when the "Agent editing" pill is clicked', async () => {
-    const listeners: Array<(e: { data: string }) => void> = [];
-    class CtrlEventSource {
-      addEventListener(_type: string, cb: (e: { data: string }) => void) {
-        listeners.push(cb);
-      }
-      close() {}
-    }
-    vi.stubGlobal('EventSource', CtrlEventSource);
+  it('opens the AI agent details modal when the indicator is clicked', async () => {
     publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false });
     render(<PublishBar project={project} />);
-    await screen.findByRole('link', { name: /Preview/ });
-    act(() => listeners.forEach((cb) => cb({ data: JSON.stringify({ kind: 'page', entityId: 'home', op: 'put', actor: 'agent' }) })));
-    (await screen.findByText('Agent editing…')).click();
+    (await screen.findByText('Connect an agent')).click();
     expect(await screen.findByRole('heading', { name: 'AI agent details' })).toBeInTheDocument();
-    vi.unstubAllGlobals();
   });
 
   it('shows a Deploy button (→ onOpenDeploy) when a saved target exists and the site is published', async () => {

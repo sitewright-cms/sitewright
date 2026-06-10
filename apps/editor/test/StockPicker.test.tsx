@@ -51,6 +51,9 @@ describe('StockPicker', () => {
   it('loads providers, annotates keyed providers that need a key, and defaults to the first available', async () => {
     renderPicker();
     const select = (await screen.findByLabelText('Stock provider')) as HTMLSelectElement;
+    // The <select> mounts before its options are populated from the async providers fetch — wait for
+    // them so this isn't racy (the option can be absent for a tick under load).
+    await waitFor(() => expect(Array.from(select.options).some((o) => o.value === 'unsplash')).toBe(true));
     const unsplash = Array.from(select.options).find((o) => o.value === 'unsplash');
     expect(unsplash?.textContent).toMatch(/needs an API key/i);
     expect(select.value).toBe('openverse'); // defaulted to first available

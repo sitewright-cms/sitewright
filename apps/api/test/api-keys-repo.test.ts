@@ -5,6 +5,8 @@ import { ProjectRepository } from '../src/repo/projects.js';
 import { ApiKeyRepository, MAX_API_KEY_TTL_MS } from '../src/repo/api-keys.js';
 import { ForbiddenError, NotFoundError, type ProjectContext } from '../src/repo/context.js';
 import { hashApiToken } from '../src/auth/api-keys.js';
+import { apiKeys } from '../src/db/schema.js';
+import { newId } from '../src/id.js';
 import type { Database } from '../src/db/client.js';
 
 let db: Database;
@@ -184,12 +186,34 @@ describe('ApiKeyRepository.listAgentConnections + revoke', () => {
     expect(await keys.listAgentConnections(pctxB)).toHaveLength(0);
   });
 
-  it('excludes expired connections (short-lived OAuth access tokens drop off once expired)', async () => {
+  it('excludes expired PAT connections', async () => {
     await keys.create(pctxA, { name: 'soon', role: 'owner', capabilities: ['content:read'], expiresAt: new Date(Date.now() + 1000) });
     await keys.create(pctxA, { name: 'live', role: 'owner', capabilities: ['content:read'], expiresAt: future() });
     // At a `now` past the short key's expiry, only the still-valid one is listed.
     const listed = await keys.listAgentConnections(pctxA, new Date(Date.now() + 5000));
     expect(listed.map((c) => c.name)).toEqual(['live']);
+  });
+
+  it('returns PATs only — OAuth access-token rows are surfaced separately as sessions, not here', async () => {
+    await keys.create(pctxA, { name: 'a-pat', role: 'owner', capabilities: ['content:read'], expiresAt: future() });
+    // An OAuth access-token row (source='oauth') exists but must NOT appear in this PAT-only list.
+    await db.insert(apiKeys).values({
+      id: newId(),
+      projectId: pctxA.projectId,
+      name: 'oauth:sitewright-cli',
+      role: 'owner',
+      capabilities: ['content:read'],
+      tokenHash: hashApiToken('swk_oauth_access'),
+      tokenPrefix: 'swk_oaut',
+      expiresAt: future(),
+      revokedAt: null,
+      lastUsedAt: null,
+      createdBy: pctxA.userId,
+      source: 'oauth',
+      createdAt: new Date(),
+    });
+    const listed = await keys.listAgentConnections(pctxA);
+    expect(listed.map((c) => c.name)).toEqual(['a-pat']);
   });
 
   it('revoking an already-revoked key throws NotFound (no second OAuth chain-revoke on a double Disconnect)', async () => {

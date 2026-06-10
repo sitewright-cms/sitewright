@@ -237,3 +237,98 @@ describe('OAuthRepository — session cap + disconnect (PR-4)', () => {
     expect(await keys.resolve(rotated.accessToken)).toBeNull();
   });
 });
+
+describe('OAuthRepository.listActiveSessions (agent presence)', () => {
+  it('lists a fresh grant as one live session for the connected user', async () => {
+    await oauth.redeemAuthCode({ code: await authCode(), clientId: CLIENT, redirectUri: REDIRECT, codeVerifier: VERIFIER });
+    const sessions = await oauth.listActiveSessions(grant.projectId);
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]).toMatchObject({ userId: grant.userId, clientId: CLIENT, role: 'owner' });
+    expect(sessions[0]!.capabilities).toEqual(['content:read', 'content:write']);
+  });
+
+  it('stays a SINGLE session across refresh rotation, preserving the connect time', async () => {
+    const t0 = new Date('2030-01-01T00:00:00.000Z');
+    const code = await oauth.createAuthCode(grant, REDIRECT, CHALLENGE, t0);
+    const first = await oauth.redeemAuthCode({ code, clientId: CLIENT, redirectUri: REDIRECT, codeVerifier: VERIFIER }, t0);
+    const t1 = new Date(t0.getTime() + 10 * 60 * 1000);
+    await oauth.refresh({ refreshToken: first.refreshToken, clientId: CLIENT }, t1);
+    const sessions = await oauth.listActiveSessions(grant.projectId, t1);
+    expect(sessions).toHaveLength(1); // not two — rotation is the same session
+    expect(sessions[0]!.connectedAt.getTime()).toBe(t0.getTime()); // chain root, not the last refresh
+  });
+
+  it('stays visible after the 1h access token would have expired, while the refresh session is alive', async () => {
+    const t0 = new Date('2030-02-01T00:00:00.000Z');
+    const code = await oauth.createAuthCode(grant, REDIRECT, CHALLENGE, t0);
+    const tokens = await oauth.redeemAuthCode({ code, clientId: CLIENT, redirectUri: REDIRECT, codeVerifier: VERIFIER }, t0);
+    // 2h later: the access token (1h TTL) is dead, but the 8h refresh session is still live.
+    const t2h = new Date(t0.getTime() + 2 * 60 * 60 * 1000);
+    expect(await keys.resolve(tokens.accessToken, t2h)).toBeNull(); // access token expired
+    expect(await oauth.listActiveSessions(grant.projectId, t2h)).toHaveLength(1); // session persists
+  });
+
+  it('drops the session once past the absolute cap', async () => {
+    const t0 = new Date('2030-03-01T00:00:00.000Z');
+    const code = await oauth.createAuthCode(grant, REDIRECT, CHALLENGE, t0);
+    await oauth.redeemAuthCode({ code, clientId: CLIENT, redirectUri: REDIRECT, codeVerifier: VERIFIER }, t0);
+    const pastCap = new Date(t0.getTime() + REFRESH_TTL_MS + 1000);
+    expect(await oauth.listActiveSessions(grant.projectId, pastCap)).toHaveLength(0);
+  });
+
+  it('drops the session after a disconnect (revokeAllForUserProject)', async () => {
+    await oauth.redeemAuthCode({ code: await authCode(), clientId: CLIENT, redirectUri: REDIRECT, codeVerifier: VERIFIER });
+    expect(await oauth.listActiveSessions(grant.projectId)).toHaveLength(1);
+    await oauth.revokeAllForUserProject(grant.userId, grant.projectId);
+    expect(await oauth.listActiveSessions(grant.projectId)).toHaveLength(0);
+  });
+
+  it('reports last activity from the most recent OAuth access-token use', async () => {
+    const tokens = await oauth.redeemAuthCode({ code: await authCode(), clientId: CLIENT, redirectUri: REDIRECT, codeVerifier: VERIFIER });
+    expect((await oauth.listActiveSessions(grant.projectId))[0]!.lastUsedAt).toBeNull(); // not used yet
+    await keys.resolve(tokens.accessToken); // an agent call stamps lastUsedAt
+    expect((await oauth.listActiveSessions(grant.projectId))[0]!.lastUsedAt).not.toBeNull();
+  });
+
+  it('scopes sessions to the project', async () => {
+    await oauth.redeemAuthCode({ code: await authCode(), clientId: CLIENT, redirectUri: REDIRECT, codeVerifier: VERIFIER });
+    expect(await oauth.listActiveSessions('another-project')).toHaveLength(0);
+  });
+
+  it('collapses a user’s multiple live chains into one row, keeping the longest-lived cap', async () => {
+    const t0 = new Date('2030-04-01T00:00:00.000Z');
+    // Two separate grants (chains) for the same user, with different caps.
+    await oauth.redeemAuthCode(
+      { code: await oauth.createAuthCode(grant, REDIRECT, CHALLENGE, t0), clientId: CLIENT, redirectUri: REDIRECT, codeVerifier: VERIFIER },
+      t0,
+      new Date(t0.getTime() + 2 * 60 * 60 * 1000),
+    );
+    await oauth.redeemAuthCode(
+      { code: await oauth.createAuthCode(grant, REDIRECT, CHALLENGE, t0), clientId: CLIENT, redirectUri: REDIRECT, codeVerifier: VERIFIER },
+      t0,
+      new Date(t0.getTime() + 6 * 60 * 60 * 1000),
+    );
+    const sessions = await oauth.listActiveSessions(grant.projectId, t0);
+    expect(sessions).toHaveLength(1); // one row per user
+    expect(sessions[0]!.expiresAt.getTime()).toBe(t0.getTime() + 6 * 60 * 60 * 1000); // the longer cap
+  });
+
+  it('orders unused sessions deterministically (newest connect first)', async () => {
+    // Two users, neither has acted yet (lastUsedAt null) → the connectedAt tiebreak decides order.
+    const b = await registerAccount(db, 'b@beta.test', 'pw-secret-2');
+    await addProjectMember(db, b.userId, grant.projectId, 'owner');
+    const grantB: Grant = { ...grant, userId: b.userId };
+    const tEarly = new Date('2030-05-01T00:00:00.000Z');
+    const tLate = new Date('2030-05-01T01:00:00.000Z');
+    await oauth.redeemAuthCode(
+      { code: await oauth.createAuthCode(grant, REDIRECT, CHALLENGE, tEarly), clientId: CLIENT, redirectUri: REDIRECT, codeVerifier: VERIFIER },
+      tEarly,
+    );
+    await oauth.redeemAuthCode(
+      { code: await oauth.createAuthCode(grantB, REDIRECT, CHALLENGE, tLate), clientId: CLIENT, redirectUri: REDIRECT, codeVerifier: VERIFIER },
+      tLate,
+    );
+    const sessions = await oauth.listActiveSessions(grant.projectId, new Date('2030-05-01T02:00:00.000Z'));
+    expect(sessions.map((s) => s.userId)).toEqual([grantB.userId, grant.userId]); // newest connect first
+  });
+});

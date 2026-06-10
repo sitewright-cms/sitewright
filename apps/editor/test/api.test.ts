@@ -545,6 +545,19 @@ describe('api client', () => {
     expect(delInit.method).toBe('DELETE');
   });
 
+  it('lists agent connections and disconnects one (URL-encoding the opaque oauth id)', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { items: [{ id: 'oauth:u1', kind: 'oauth' }] }));
+    const list = await api.listAgentConnections('p');
+    expect(list.items[0]!.kind).toBe('oauth');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p/agent-connections');
+
+    fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
+    await api.disconnectAgent('p', 'oauth:u1');
+    const [discUrl, discInit] = fetchMock.mock.calls[1]!;
+    expect(discUrl).toBe('/projects/p/agent-connections/oauth%3Au1'); // colon encoded
+    expect(discInit.method).toBe('DELETE');
+  });
+
   it('reads project settings (locales) from the settings singleton', async () => {
     fetchMock.mockResolvedValue(
       jsonResponse(200, { item: { settings: { defaultLocale: 'en', locales: ['en', 'de'] } } }),

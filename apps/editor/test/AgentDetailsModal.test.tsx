@@ -56,9 +56,9 @@ describe('AgentDetailsModal', () => {
     const leChatTab = screen.getByRole('tab', { name: 'Le Chat' });
     const cliTab = screen.getByRole('tab', { name: 'Local CLI Agents' });
     // The default (ChatGPT) tab shows the remote MCP server URL (origin/mcp) and the accurate
-    // plan note — ChatGPT's Developer mode is NOT on the free plan.
+    // plan note — Developer mode is a staged beta that's been reachable on free accounts too.
     expect(screen.getByText(/\/mcp$/)).toBeInTheDocument();
-    expect(screen.getByText(/not the free plan/)).toBeInTheDocument();
+    expect(screen.getByText(/reachable on free accounts/)).toBeInTheDocument();
     // Claude.ai custom connectors DO work on Free (one connector).
     screen.getByRole('tab', { name: 'Claude.ai' }).click();
     expect(await screen.findByText(/including Free/)).toBeInTheDocument();

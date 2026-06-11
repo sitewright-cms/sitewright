@@ -139,6 +139,12 @@ export async function getUserEmail(db: Database, userId: string): Promise<string
   return user?.email ?? null;
 }
 
+/** Whether the user has a password set (false for an OIDC-provisioned account that never set one). */
+export async function userHasPassword(db: Database, userId: string): Promise<boolean> {
+  const [user] = await db.select({ passwordHash: users.passwordHash }).from(users).where(eq(users.id, userId));
+  return user?.passwordHash != null;
+}
+
 /**
  * Re-authenticates the signed-in user by password (for security-weakening actions like disabling MFA
  * or rotating recovery codes). Derives a hash even when the user is missing, to keep timing uniform.
@@ -192,24 +198,28 @@ export async function changeEmail(
 }
 
 /**
- * Changes the signed-in user's password after re-authenticating with the current one. Returns
- * nothing; the caller is responsible for revoking the user's OTHER sessions (a stolen session
- * shouldn't survive a password change). A wrong current password is a {@link ForbiddenError} (403),
- * for the same no-logout reason as {@link changeEmail}.
+ * Sets the signed-in user's password. When the account ALREADY has a password, the current one must
+ * be supplied + verified (a wrong/absent one is a {@link ForbiddenError} 403, for the no-logout reason
+ * in {@link changeEmail}). When the account has NO password (an OIDC-provisioned user setting one for
+ * the first time), the session alone authorizes it — there is nothing to confirm. The caller revokes
+ * the user's OTHER sessions afterward.
  */
 export async function changePassword(
   db: Database,
   userId: string,
-  currentPassword: string,
+  currentPassword: string | undefined,
   newPassword: string,
 ): Promise<void> {
   const [user] = await db.select().from(users).where(eq(users.id, userId));
   if (!user) {
-    await hashPassword(currentPassword); // timing parity with the wrong-password path (see changeEmail)
+    if (currentPassword !== undefined) await hashPassword(currentPassword); // timing parity
     throw new UnauthorizedError('authentication required');
   }
-  if (!(await verifyPassword(currentPassword, user.passwordHash))) {
-    throw new ForbiddenError('current password is incorrect');
+  // An existing password must be confirmed; a null password (OIDC-only) is being set for the first time.
+  if (user.passwordHash !== null) {
+    if (currentPassword === undefined || !(await verifyPassword(currentPassword, user.passwordHash))) {
+      throw new ForbiddenError('current password is incorrect');
+    }
   }
   const passwordHash = await hashPassword(newPassword);
   await db.update(users).set({ passwordHash }).where(eq(users.id, userId));

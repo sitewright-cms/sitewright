@@ -1,12 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
-const { login, register, loginTotp, passkeyLoginOptions, passkeyLoginVerify } = vi.hoisted(() => ({
+const { login, register, loginTotp, passkeyLoginOptions, passkeyLoginVerify, loginConfig } = vi.hoisted(() => ({
   login: vi.fn(),
   register: vi.fn(),
   loginTotp: vi.fn(),
   passkeyLoginOptions: vi.fn(),
   passkeyLoginVerify: vi.fn(),
+  loginConfig: vi.fn(),
 }));
 const { startAuthentication, browserSupportsWebAuthn } = vi.hoisted(() => ({ startAuthentication: vi.fn(), browserSupportsWebAuthn: vi.fn(() => true) }));
 vi.mock('../src/api', async () => {
@@ -19,6 +20,8 @@ vi.mock('../src/api', async () => {
       loginTotp: (t: string, c: string) => loginTotp(t, c),
       passkeyLoginOptions: () => passkeyLoginOptions(),
       passkeyLoginVerify: (h: string, r: unknown) => passkeyLoginVerify(h, r),
+      loginConfig: () => loginConfig(),
+      oidcStartUrl: (id: string) => `/auth/oidc/${id}/start`,
     },
   };
 });
@@ -30,8 +33,9 @@ vi.mock('@simplewebauthn/browser', () => ({
 import { Login } from '../src/views/Login';
 
 beforeEach(() => {
-  for (const m of [login, register, loginTotp, passkeyLoginOptions, passkeyLoginVerify, startAuthentication]) m.mockReset();
+  for (const m of [login, register, loginTotp, passkeyLoginOptions, passkeyLoginVerify, startAuthentication, loginConfig]) m.mockReset();
   browserSupportsWebAuthn.mockReturnValue(true);
+  loginConfig.mockResolvedValue({ oidcProviders: [] });
 });
 
 async function fillCredsAndSubmit() {
@@ -121,5 +125,28 @@ describe('Login', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Verify' }));
     await waitFor(() => expect(loginTotp).toHaveBeenCalledWith('tkt-pk', '123456'));
     expect(onAuthed).toHaveBeenCalled();
+  });
+
+  it('renders a "Sign in with …" link per enabled OIDC provider, pointing at /start', async () => {
+    loginConfig.mockResolvedValue({ oidcProviders: [{ id: 'acme', label: 'Acme SSO' }] });
+    render(<Login onAuthed={vi.fn()} />);
+    const link = await screen.findByRole('link', { name: 'Sign in with Acme SSO' });
+    expect(link).toHaveAttribute('href', '/auth/oidc/acme/start');
+  });
+
+  it('starts on the TOTP code step when handed an OIDC mfa ticket, then completes', async () => {
+    loginTotp.mockResolvedValue({ userId: 'u' });
+    const onAuthed = vi.fn();
+    render(<Login onAuthed={onAuthed} initialMfaTicket="tkt-oidc" />);
+    const codeField = await screen.findByLabelText('Authentication code');
+    fireEvent.change(codeField, { target: { value: '654321' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Verify' }));
+    await waitFor(() => expect(loginTotp).toHaveBeenCalledWith('tkt-oidc', '654321'));
+    expect(onAuthed).toHaveBeenCalled();
+  });
+
+  it('shows an OIDC callback notice on the sign-in screen', async () => {
+    render(<Login onAuthed={vi.fn()} initialNotice="Your account isn’t set up yet." />);
+    expect(await screen.findByText('Your account isn’t set up yet.')).toBeInTheDocument();
   });
 });

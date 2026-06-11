@@ -248,6 +248,22 @@ describe('api client', () => {
     expect(fetchMock.mock.calls[0]![0]).toBe('/me');
   });
 
+  it('reads the unauth login config and builds the OIDC start URL', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { oidcProviders: [{ id: 'google', label: 'Google' }] }));
+    expect((await api.loginConfig()).oidcProviders).toEqual([{ id: 'google', label: 'Google' }]);
+    expect(fetchMock.mock.calls[0]![0]).toBe('/auth/config');
+    // The start URL is a navigable path (encoded id).
+    expect(api.oidcStartUrl('acme sso')).toBe('/auth/oidc/acme%20sso/start');
+  });
+
+  it('sets an initial password (no current) for an OIDC-only account', async () => {
+    fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
+    await api.changePassword(undefined, 'brand-new-pw-1');
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/account/password');
+    expect(JSON.parse(init.body)).toEqual({ newPassword: 'brand-new-pw-1' }); // currentPassword omitted
+  });
+
   it('changes account email + password via the session-only /account routes', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { email: 'new@acme.test' }));
     const res = await api.updateEmail('new@acme.test', 'pw-secret-1');

@@ -241,3 +241,48 @@ test('rename a dataset slug migrates its entries; bindings use the new slug', as
   await expect(preview.locator('.a')).toHaveText('Hello');
   await expect(preview.locator('.p')).toHaveCount(0);
 });
+
+// Schema fields can be drag-reordered; the FIRST text field is the entry title in lists, so moving a
+// different text field to the front re-titles existing entries (after Save schema).
+test('drag-reorder schema fields to change which field is the entry title', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/');
+  await page.getByRole('button', { name: /Register/ }).click();
+  await page.getByLabel('Email').fill(`fieldorder-${stamp}@e2e.test`);
+  await page.getByLabel('Password').fill('pw-secret-1');
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await page.getByRole('button', { name: 'New project' }).click();
+  await page.getByLabel('Project name').fill('Field Order');
+  await page.getByLabel('Project slug').fill(`fieldorder-${stamp}`);
+  await page.getByRole('button', { name: 'Create project' }).click();
+
+  // Two text fields, added in the order [blurb, heading] → blurb is the first text field (the title).
+  await page.getByRole('button', { name: 'Open Datasets' }).hover();
+  await page.getByLabel('Dataset name').fill('Posts');
+  await page.getByRole('button', { name: 'Create dataset' }).click();
+  await page.getByRole('button', { name: /schema/ }).click();
+  await page.getByLabel('New field name').fill('blurb');
+  await page.getByRole('button', { name: 'Add field' }).click();
+  await page.getByLabel('New field name').fill('heading');
+  await page.getByRole('button', { name: 'Add field' }).click();
+  await page.getByRole('button', { name: 'Save schema' }).click();
+
+  // An entry: its list label uses the first text field (blurb).
+  await page.getByRole('button', { name: 'New entry' }).click();
+  await page.getByLabel('blurb', { exact: true }).fill('Blurb text');
+  await page.getByLabel('heading', { exact: true }).fill('Heading text');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Blurb text' })).toBeVisible();
+
+  // Drag `heading` above `blurb` so heading becomes the first text field, then save.
+  const headingHandle = page
+    .locator('li', { has: page.getByText('heading', { exact: true }) })
+    .locator('[title="Drag to reorder"]');
+  const blurbRow = page.locator('li', { has: page.getByText('blurb', { exact: true }) });
+  await headingHandle.dragTo(blurbRow, { targetPosition: { x: 20, y: 1 } });
+  await page.getByRole('button', { name: 'Save schema' }).click();
+
+  // The entry is now titled by `heading`.
+  await expect(page.getByRole('button', { name: 'Heading text' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Blurb text' })).toHaveCount(0);
+});

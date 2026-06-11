@@ -6,6 +6,7 @@ import {
   entryLabel,
   identifierize,
   readValue,
+  reorderByKey,
   reorderWithInsert,
   slugify,
   uniqueSlug,
@@ -137,5 +138,29 @@ describe('uniqueSlug', () => {
   it('appends the first free numeric suffix when taken', () => {
     expect(uniqueSlug('posts-copy', new Set(['posts-copy']))).toBe('posts-copy-2');
     expect(uniqueSlug('posts-copy', new Set(['posts-copy', 'posts-copy-2']))).toBe('posts-copy-3');
+  });
+});
+
+describe('reorderByKey', () => {
+  const k = (s: string) => s;
+
+  it('moves an item BEFORE the target', () => {
+    expect(reorderByKey(['a', 'b', 'c'], k, 'c', 'a', 'before')).toEqual(['c', 'a', 'b']);
+  });
+
+  it('moves an item AFTER the target', () => {
+    expect(reorderByKey(['a', 'b', 'c'], k, 'a', 'b', 'after')).toEqual(['b', 'a', 'c']);
+  });
+
+  it('does not mutate the source array', () => {
+    const src = ['a', 'b', 'c'];
+    reorderByKey(src, k, 'a', 'c', 'after');
+    expect(src).toEqual(['a', 'b', 'c']);
+  });
+
+  it('is a no-op shallow copy when source === target or a key is missing', () => {
+    expect(reorderByKey(['a', 'b'], k, 'a', 'a', 'before')).toEqual(['a', 'b']);
+    expect(reorderByKey(['a', 'b'], k, 'x', 'a', 'before')).toEqual(['a', 'b']);
+    expect(reorderByKey(['a', 'b'], k, 'a', 'x', 'before')).toEqual(['a', 'b']);
   });
 });

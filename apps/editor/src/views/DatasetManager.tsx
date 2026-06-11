@@ -2,7 +2,7 @@ import { useContext, useEffect, useMemo, useRef, useState, type FormEvent } from
 import type { Dataset, Entry, Field, FieldType } from '@sitewright/schema';
 import { compareEntryOrder } from '@sitewright/core';
 import { api, type Project } from '../api';
-import { defaultEntryValues, entryLabel, identifierize, reorderWithInsert, slugify, uniqueSlug } from '../lib/entry-form';
+import { defaultEntryValues, entryLabel, identifierize, reorderByKey, reorderWithInsert, slugify, uniqueSlug } from '../lib/entry-form';
 import { EntryEditorModal } from './datasets/EntryEditorModal';
 import { RenameDatasetModal } from './datasets/RenameDatasetModal';
 import { SidePanelHold } from './ui/SidePanel';
@@ -49,6 +49,9 @@ export function DatasetManager({ project }: { project: Project }) {
   const [renaming, setRenaming] = useState(false); // the rename-dataset modal is open
   const [dragId, setDragId] = useState<string | null>(null);
   const [drop, setDrop] = useState<{ id: string; pos: 'before' | 'after' } | null>(null);
+  // Separate drag state for the schema-fields list (it shares the panel with the entries list).
+  const [fieldDrag, setFieldDrag] = useState<string | null>(null);
+  const [fieldDrop, setFieldDrop] = useState<{ name: string; pos: 'before' | 'after' } | null>(null);
   const lastSyncedSel = useRef<string | null>(null);
   const reordering = useRef(false);
   const duplicatingDataset = useRef(false); // guards against a double-click cloning entries twice
@@ -272,6 +275,9 @@ export function DatasetManager({ project }: { project: Project }) {
   const datasetEntries = selected
     ? entries.filter((e) => e.dataset === selected.slug).slice().sort(compareEntryOrder)
     : [];
+  // The field that serves as the entry title in lists: the FIRST text field (see entryLabel). Drag
+  // to reorder so a different field becomes the title.
+  const titleFieldName = draftFields.find((f) => f.type === 'text')?.name;
 
   return (
     <div className="flex gap-6">
@@ -355,17 +361,72 @@ export function DatasetManager({ project }: { project: Project }) {
                 <div className="mt-3">
               <ul className="mb-3 flex flex-col gap-1.5">
                 {draftFields.map((field) => (
-                  <li key={field.name} className="flex items-center gap-2 text-sm">
-                    <span className="w-40 font-mono text-xs">{field.name}</span>
+                  <li
+                    key={field.name}
+                    onDragOver={(ev) => {
+                      if (!fieldDrag || fieldDrag === field.name) return;
+                      ev.preventDefault();
+                      const r = ev.currentTarget.getBoundingClientRect();
+                      const pos = ev.clientY < r.top + r.height / 2 ? 'before' : 'after';
+                      setFieldDrop((d) => (d && d.name === field.name && d.pos === pos ? d : { name: field.name, pos }));
+                    }}
+                    onDragLeave={(ev) => {
+                      if (!ev.currentTarget.contains(ev.relatedTarget as Node | null)) setFieldDrop((d) => (d?.name === field.name ? null : d));
+                    }}
+                    onDrop={(ev) => {
+                      ev.preventDefault();
+                      // Source name from the drag payload (set in onDragStart) so we don't depend on
+                      // the rendered-closure `fieldDrag`; functional updater keeps draftFields current.
+                      const src = ev.dataTransfer.getData('text/plain') || fieldDrag;
+                      if (src && fieldDrop) {
+                        setDraftFields((fs) => reorderByKey(fs, (f) => f.name, src, fieldDrop.name, fieldDrop.pos));
+                      }
+                      setFieldDrag(null);
+                      setFieldDrop(null);
+                    }}
+                    className={`relative flex items-center gap-2 text-sm transition ${fieldDrag === field.name ? 'opacity-40' : ''}`}
+                  >
+                    {fieldDrop?.name === field.name && (
+                      <span
+                        aria-hidden
+                        className={`pointer-events-none absolute inset-x-0 z-10 h-0.5 rounded-full bg-indigo-500 ${fieldDrop.pos === 'before' ? '-top-1' : '-bottom-1'}`}
+                      />
+                    )}
+                    {/* Only the handle is draggable, so the type <select> stays freely operable. */}
+                    <span
+                      aria-hidden
+                      draggable
+                      onDragStart={(ev) => {
+                        setFieldDrag(field.name);
+                        holdPanel(); // keep the Data panel open for the whole drag
+                        ev.dataTransfer.effectAllowed = 'move';
+                        ev.dataTransfer.setData('text/plain', field.name);
+                      }}
+                      onDragEnd={() => {
+                        setFieldDrag(null);
+                        setFieldDrop(null);
+                        releasePanel();
+                      }}
+                      title="Drag to reorder"
+                      className="shrink-0 cursor-grab text-slate-300 transition hover:text-slate-500 active:cursor-grabbing"
+                    >
+                      ⠿
+                    </span>
+                    <span className="w-40 truncate font-mono text-xs">{field.name}</span>
+                    {field.name === titleFieldName && (
+                      <Tooltip tip="Used as the entry title in lists" side="top">
+                        <span className="shrink-0 rounded bg-indigo-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-indigo-600">
+                          title
+                        </span>
+                      </Tooltip>
+                    )}
                     <select
                       aria-label={`Type of ${field.name}`}
                       className={`${glassInput} w-auto px-2 py-1 text-xs`}
                       value={field.type}
                       onChange={(e) =>
-                        setDraftFields(
-                          draftFields.map((f) =>
-                            f.name === field.name ? { ...f, type: e.target.value as FieldType } : f,
-                          ),
+                        setDraftFields((fs) =>
+                          fs.map((f) => (f.name === field.name ? { ...f, type: e.target.value as FieldType } : f)),
                         )
                       }
                     >
@@ -381,10 +442,8 @@ export function DatasetManager({ project }: { project: Project }) {
                         aria-label={`${field.name} required`}
                         checked={field.required}
                         onChange={(e) =>
-                          setDraftFields(
-                            draftFields.map((f) =>
-                              f.name === field.name ? { ...f, required: e.target.checked } : f,
-                            ),
+                          setDraftFields((fs) =>
+                            fs.map((f) => (f.name === field.name ? { ...f, required: e.target.checked } : f)),
                           )
                         }
                       />
@@ -393,7 +452,7 @@ export function DatasetManager({ project }: { project: Project }) {
                     <button
                       aria-label={`Remove field ${field.name}`}
                       className={`${dangerButton} ml-auto px-2 py-0.5 text-xs`}
-                      onClick={() => setDraftFields(draftFields.filter((f) => f.name !== field.name))}
+                      onClick={() => setDraftFields((fs) => fs.filter((f) => f.name !== field.name))}
                     >
                       ✕
                     </button>

@@ -157,6 +157,36 @@ export type Shop = z.infer<typeof ShopSchema>;
  * fields (canonical url, container width, partial-slot assignments) arrive with
  * Phase 3 (partials).
  */
+/**
+ * Curated NAV-LINK effect schemes — CSS `.sw-nav-<name>` utilities (see @sitewright/tailwind's
+ * effect layer). Source-of-truth for the enum below, the editor picker, and a coverage test.
+ */
+export const NAV_EFFECTS = ['pill', 'underline', 'soft', 'bar', 'ghost'] as const;
+export type NavEffect = (typeof NAV_EFFECTS)[number];
+
+/** Curated BUTTON effect schemes — CSS `.sw-btn-<name>` utilities (layer on any daisyUI `.btn`). */
+export const BUTTON_EFFECTS = ['lift', 'glow', 'sheen', 'press', 'pulse', 'ring'] as const;
+export type ButtonEffect = (typeof BUTTON_EFFECTS)[number];
+
+/**
+ * Site-wide nav/button appearance (the no-code "effects" picker). 'none' (or absent) = no effect —
+ * the author keeps full freedom to apply a scheme class per element, or write a custom scheme via
+ * `criticalCss`. The chosen schemes become `<body>` classes at render (see {@link websiteThemeClasses}).
+ */
+export const WebsiteThemeSchema = z.object({
+  navEffect: z.enum(['none', 'pill', 'underline', 'soft', 'bar', 'ghost']).optional(),
+  buttonEffect: z.enum(['none', 'lift', 'glow', 'sheen', 'press', 'pulse', 'ring']).optional(),
+});
+export type WebsiteTheme = z.infer<typeof WebsiteThemeSchema>;
+
+/** The space-joined `<body>` effect classes for a website theme ('' when no effects are chosen). */
+export function websiteThemeClasses(theme: WebsiteTheme | undefined): string {
+  if (!theme) return '';
+  const nav = theme.navEffect && theme.navEffect !== 'none' ? `sw-nav-${theme.navEffect}` : '';
+  const btn = theme.buttonEffect && theme.buttonEffect !== 'none' ? `sw-btn-${theme.buttonEffect}` : '';
+  return [nav, btn].filter(Boolean).join(' ');
+}
+
 const WebsiteSettingsObject = z.object({
   // --- RAW owner-only slots: injected UNESCAPED, NOT run through the no-JS template validator.
   // They hold the tenant's own trusted head/CSS/script content for their own exported site — same
@@ -299,6 +329,12 @@ const WebsiteSettingsObject = z.object({
    * the first-party cart.js runtime. Front-end only: prices are NON-AUTHORITATIVE (see {@link ShopSchema}).
    */
   shop: ShopSchema.optional(),
+  /**
+   * Nav/button EFFECT schemes applied site-wide (the no-code picker). Rendered as `<body>` classes;
+   * the CSS tree-shakes per scheme. Authors keep full freedom (per-element scheme classes + custom
+   * CSS via `criticalCss`). See {@link WebsiteThemeSchema}.
+   */
+  theme: WebsiteThemeSchema.optional(),
 });
 
 /**

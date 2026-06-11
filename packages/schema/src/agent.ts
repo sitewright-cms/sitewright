@@ -122,9 +122,14 @@ project already has the empty-slug "home" page.
 ACTIVE NAV ITEM: mark the current page in a menu with the {{sw-active <route>}} helper (a boolean,
 no JS; route must be root-relative). By default it matches the active TRAIL (a parent route stays
 active on its child pages); pass exact=true for the current page only. Inside {{#each nav.header}}
-the item route is \`path\`: <a href="{{sw-url path}}" class="{{#if (sw-active path)}}menu-active{{/if}}"
-{{#if (sw-active path exact=true)}}aria-current="page"{{/if}}>{{label}}</a> (omit aria-current off the
-current page).
+the item route is \`path\`: <a href="{{sw-url path}}" class="{{#if (sw-active path)}}active{{/if}}"
+{{#if (sw-active path exact=true)}}aria-current="page"{{/if}}>{{label}}</a> (the .active class is what
+the nav EFFECT styles; omit aria-current off the current page).
+NAV/BUTTON EFFECTS: curated CI-themed, contrast-safe schemes — add a class for nav active/hover
+(\`sw-nav-pill\`|\`-underline\`|\`-soft\`|\`-bar\`|\`-ghost\`, on the nav <ul> or set site-wide in
+website.theme.navEffect) and button hover/press (\`sw-btn-lift\`|\`-glow\`|\`-sheen\`|\`-press\`|\`-pulse\`|
+\`-ring\` on any .btn, or website.theme.buttonEffect). Colors auto-derive from the brand; only sw-nav-pill
+fills a surface (uses the WCAG-derived foreground). Prefer these over hand-rolled active/hover CSS.
 TEMPLATES: set page.template to "global:landing", "global:text", or a project template id
 (kind "template": { id, name, source }) — the page then renders the TEMPLATE's source and
 contributes ONLY its editable \`data\` (page.data) overrides; leave page.source unset.

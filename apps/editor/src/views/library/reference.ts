@@ -148,10 +148,10 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         example:
           '{{#each nav.header}}\n' +
           '  <li><a href="{{sw-url path}}"\n' +
-          '         class="{{#if (sw-active path)}}menu-active{{/if}}"\n' +
+          '         class="{{#if (sw-active path)}}active{{/if}}"\n' +
           '         {{#if (sw-active path exact=true)}}aria-current="page"{{/if}}>{{label}}</a></li>\n' +
           '{{/each}}',
-        note: 'The route must be root-relative (start with "/"). The trail default lights a dropdown parent while you are on a child; pass exact=true (unquoted, not "true") for a leaf-only highlight — and use it for aria-current="page", omitting the attribute on non-current items.',
+        note: 'The route must be root-relative (start with "/"). The .active class is what a nav EFFECT (sw-nav-*) styles — see “Nav & button effects”. The trail default lights a dropdown parent while you are on a child; pass exact=true (unquoted, not "true") for a leaf-only highlight — and use it for aria-current="page", omitting the attribute on non-current items.',
       },
       {
         id: 'h-add-to-cart',
@@ -626,6 +626,42 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
           '    <li>{{name}} — in {{../name}}</li>\n' +
           '  {{/each}}\n' +
           '{{/each}}',
+      },
+    ],
+  },
+  {
+    id: 'effects',
+    title: 'Nav & button effects',
+    blurb:
+      'CI-themed, contrast-safe hover/active schemes. Pick them in Website settings (no code, site-wide) or add a sw-nav-* / sw-btn-* class per element. The CSS tree-shakes per scheme.',
+    entries: [
+      {
+        id: 'fx-nav',
+        syntax: 'sw-nav-pill | -underline | -soft | -bar | -ghost',
+        name: 'Nav effects (sw-nav-*)',
+        keywords: 'nav navbar menu active current effect scheme hover underline pill bar ghost highlight appearance',
+        description:
+          'Active + hover styling for the MAIN nav links (the #top-nav / #mobile-nav landmarks). Mark the current item with the .active class — e.g. {{#if (sw-active path)}}active{{/if}} — and/or aria-current="page". Colors come from the brand: only `pill` fills a surface (with the WCAG-derived primary foreground); underline/soft/bar keep the readable nav text and add a brand accent; ghost colors the active text in the brand primary. Set the scheme in Website settings (applies everywhere), or add the class to a single <ul> for a one-off.',
+        example:
+          '{{! Website settings → Nav effect, OR per-nav: }}\n' +
+          '<ul class="menu menu-horizontal sw-nav-pill">{{#each nav.header}}\n' +
+          '  <li><a href="{{sw-url path}}"\n' +
+          '         class="{{#if (sw-active path)}}active{{/if}}"\n' +
+          '         {{#if (sw-active path exact=true)}}aria-current="page"{{/if}}>{{label}}</a></li>\n' +
+          '{{/each}}</ul>',
+        note: 'pill / soft / underline / bar keep WCAG contrast for ANY brand color (the text stays the derived/base foreground). Want your own scheme? Pick "Custom" in Website settings and write it in Custom CSS.',
+      },
+      {
+        id: 'fx-btn',
+        syntax: 'sw-btn-lift | -glow | -sheen | -press | -pulse | -ring',
+        name: 'Button effects (sw-btn-*)',
+        keywords: 'button btn effect hover press lift glow sheen pulse ring motion animation appearance state',
+        description:
+          'Hover/press motion + glow layered on any daisyUI .btn — the button keeps its own colors, so contrast is never affected. Brand-aware glows read the button variant color (--btn-color). All motion respects prefers-reduced-motion. Set one site-wide in Website settings, or add a class to a single button.',
+        example:
+          '<button class="btn btn-primary sw-btn-lift">Get started</button>\n' +
+          '<a class="btn btn-outline sw-btn-glow" href="/contact">Contact</a>',
+        note: 'Pick ONE motion effect per button (each manages its own transition, so stacking two can cancel a transition). The click ripple is separate and composes on top — add waves-effect (plus waves-light on dark/colored buttons).',
       },
     ],
   },

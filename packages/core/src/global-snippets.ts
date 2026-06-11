@@ -30,9 +30,9 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
     <a class="btn btn-ghost text-xl" href="/">{{ company.name }}</a>
   </div>
   <div class="flex-none">
-    <ul class="menu menu-horizontal px-1">
-      <li><a href="/features" class="{{#if (sw-active '/features')}}menu-active{{/if}}"{{#if (sw-active '/features' exact=true)}} aria-current="page"{{/if}}>Features</a></li>
-      <li><a href="/pricing" class="{{#if (sw-active '/pricing')}}menu-active{{/if}}"{{#if (sw-active '/pricing' exact=true)}} aria-current="page"{{/if}}>Pricing</a></li>
+    <ul class="menu menu-horizontal px-1 sw-nav-soft">
+      <li><a href="/features" class="{{#if (sw-active '/features')}}active{{/if}}"{{#if (sw-active '/features' exact=true)}} aria-current="page"{{/if}}>Features</a></li>
+      <li><a href="/pricing" class="{{#if (sw-active '/pricing')}}active{{/if}}"{{#if (sw-active '/pricing' exact=true)}} aria-current="page"{{/if}}>Pricing</a></li>
       <li><a class="btn btn-primary btn-sm" href="/contact" data-sw-text="nav_cta">Contact</a></li>
     </ul>
   </div>

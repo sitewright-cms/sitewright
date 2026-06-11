@@ -16,7 +16,6 @@ import {
   migratePageStores,
   PartialSchema,
   SnippetSchema,
-  PatternSchema,
   PageTranslationSchema,
   TemplateSchema,
   ProjectSettingsSchema,
@@ -61,8 +60,6 @@ const SCHEMAS = new Map<ContentKind, z.ZodTypeAny>([
   // Code-first reusable Handlebars fragment (the templating pivot's partial), included
   // via {{> name}}; source validated at render time.
   ['snippet', SnippetSchema],
-  // A reusable pre-composed block subtree (fork-on-insert library); tree-bearing.
-  ['pattern', PatternSchema],
   // A per-locale override of a page's content (multilingual); tree-bearing.
   ['translation', PageTranslationSchema],
   ['dataset', DatasetSchema],
@@ -107,7 +104,6 @@ function assertTreeSafe(kind: ContentKind, raw: unknown): void {
     kind === 'page' ||
     kind === 'partial' ||
     kind === 'template' ||
-    kind === 'pattern' ||
     kind === 'translation'
   ) {
     assertWithinTreeDepth((raw as { root?: unknown })?.root);
@@ -244,8 +240,6 @@ export class ContentRepository {
       templates: (await this.list(ctx, 'template')) as Template[],
       datasets: (await this.list(ctx, 'dataset')) as Dataset[],
       entries: (await this.list(ctx, 'entry')) as Entry[],
-      // `pattern` is intentionally NOT bundled — it's a project-scoped editor aid
-      // (fork-on-insert library), not part of the publishable/portable artifact.
     };
   }
 

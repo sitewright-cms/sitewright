@@ -19,12 +19,11 @@ export default tseslint.config(
   // as runtime-bearing packages (api, renderer, cli) come online.
   security.configs.recommended,
   {
-    // @sitewright/core and the render-app's build-time code perform legitimate
-    // dynamic property access (tree walks, dataset field lookups) where this rule
-    // has a very high false-positive rate. Prototype-pollution is mitigated
-    // structurally at the schema boundary (see @sitewright/schema `safeRecord`).
-    // Future runtime packages (api, cli) keep the rule enabled.
-    files: ['packages/core/**/*.ts', 'apps/render-app/src/**/*.ts'],
+    // @sitewright/core performs legitimate dynamic property access (tree walks,
+    // dataset field lookups) where this rule has a very high false-positive rate.
+    // Prototype-pollution is mitigated structurally at the schema boundary (see
+    // @sitewright/schema `safeRecord`). Runtime packages (api, cli) keep it enabled.
+    files: ['packages/core/**/*.ts'],
     rules: {
       'security/detect-object-injection': 'off',
     },
@@ -33,8 +32,6 @@ export default tseslint.config(
     // Trusted build-time file I/O: the project-format loader, the media loader,
     // and the image pipeline read/write files at known, operator-controlled paths.
     files: [
-      'apps/render-app/src/lib/project.ts',
-      'apps/render-app/src/lib/media.ts',
       'packages/image-pipeline/src/optimize.ts',
     ],
     rules: {

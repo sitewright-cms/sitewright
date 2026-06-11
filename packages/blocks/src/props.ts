@@ -1,6 +1,5 @@
-// Mirrors apps/render-app/src/blocks/props.ts (text/field resolution). Kept here
-// so the shared renderer is self-contained; Phase F converges the Astro renderer
-// onto this package and removes the duplicate.
+// Text/field prop resolution for the renderer (the single source of truth now that
+// the legacy Astro renderer is gone).
 import type { Entry } from '@sitewright/schema';
 import { safeUrl } from './url.js';
 

@@ -1,9 +1,0 @@
-{
-  "id": "site-footer",
-  "name": "Site Footer",
-  "root": {
-    "id": "ftr",
-    "type": "Footer",
-    "props": { "text": "© 2026 Northwind Studio — built with Sitewright." }
-  }
-}

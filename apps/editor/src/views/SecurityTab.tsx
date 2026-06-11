@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import QRCode from 'qrcode';
 import { api } from '../api';
+import { PasskeysSection } from './PasskeysSection';
 import { useToast } from './ui/Toast';
 import { fieldLabel, ghostButton, glassCard, glassInput, primaryButton } from '../theme';
 
@@ -213,30 +214,33 @@ export function SecurityTab({ totpEnabled, onChanged }: SecurityTabProps) {
     );
   }
 
-  // Resting state: enrol CTA, or the enabled controls.
+  // Resting state: the TOTP card (enrol CTA or enabled controls) + the passkeys section.
   return (
-    <div className={`flex flex-col gap-4 ${glassCard} p-5`}>
-      <div>
-        <h3 className="text-sm font-bold text-slate-800">Two-factor authentication</h3>
-        <p className="mt-0.5 text-sm text-slate-500">
-          {totpEnabled
-            ? 'Your account is protected by an authenticator app. You’ll enter a code when you sign in.'
-            : 'Add a second step at sign-in with an authenticator app (TOTP) like 1Password, Authy, or Google Authenticator.'}
-        </p>
-      </div>
-      {error && <p className="text-sm text-rose-600">{error}</p>}
-      {totpEnabled ? (
-        <div className="flex flex-wrap gap-2">
-          <button type="button" className={ghostButton} onClick={() => { setPwAction('regenerate'); setError(null); }}>Regenerate recovery codes</button>
-          <button type="button" className={ghostButton} onClick={() => { setPwAction('disable'); setError(null); }}>Disable two-factor</button>
-        </div>
-      ) : (
+    <div className="flex flex-col gap-4">
+      <div className={`flex flex-col gap-4 ${glassCard} p-5`}>
         <div>
-          <button type="button" className={primaryButton} onClick={startSetup} disabled={busy}>
-            {busy ? 'Starting…' : 'Set up two-factor'}
-          </button>
+          <h3 className="text-sm font-bold text-slate-800">Two-factor authentication</h3>
+          <p className="mt-0.5 text-sm text-slate-500">
+            {totpEnabled
+              ? 'Your account is protected by an authenticator app. You’ll enter a code when you sign in.'
+              : 'Add a second step at sign-in with an authenticator app (TOTP) like 1Password, Authy, or Google Authenticator.'}
+          </p>
         </div>
-      )}
+        {error && <p className="text-sm text-rose-600">{error}</p>}
+        {totpEnabled ? (
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className={ghostButton} onClick={() => { setPwAction('regenerate'); setError(null); }}>Regenerate recovery codes</button>
+            <button type="button" className={ghostButton} onClick={() => { setPwAction('disable'); setError(null); }}>Disable two-factor</button>
+          </div>
+        ) : (
+          <div>
+            <button type="button" className={primaryButton} onClick={startSetup} disabled={busy}>
+              {busy ? 'Starting…' : 'Set up two-factor'}
+            </button>
+          </div>
+        )}
+      </div>
+      <PasskeysSection />
     </div>
   );
 }

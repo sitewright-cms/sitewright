@@ -153,6 +153,9 @@ const app = await createApp({
   publishRoot,
   trustProxy,
   encryptionKey,
+  // WebAuthn RP overrides for deployments behind a proxy (default: derived from the request host).
+  webauthnRpId: process.env.SW_WEBAUTHN_RP_ID,
+  webauthnOrigin: process.env.SW_WEBAUTHN_ORIGIN,
   deployAllowedHosts,
   smtpAllowedHosts,
   adminEmails,

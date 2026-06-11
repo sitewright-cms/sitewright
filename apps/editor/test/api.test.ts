@@ -301,6 +301,44 @@ describe('api client', () => {
     expect(fetchMock.mock.calls.at(-1)![0]).toBe('/account/mfa/recovery-codes');
   });
 
+  it('drives the passkey (WebAuthn) endpoints', async () => {
+    // Register options + verify.
+    fetchMock.mockResolvedValue(jsonResponse(200, { options: { challenge: 'c' }, handle: 'h1' }));
+    expect((await api.passkeyRegisterOptions()).handle).toBe('h1');
+    expect(fetchMock.mock.calls.at(-1)![0]).toBe('/account/passkeys/register/options');
+
+    fetchMock.mockResolvedValue(jsonResponse(201, { id: 'cred-1', name: 'Laptop' }));
+    await api.passkeyRegisterVerify('h1', { id: 'cred-1' } as never, 'Laptop');
+    let [url, init] = fetchMock.mock.calls.at(-1)!;
+    expect(url).toBe('/account/passkeys/register/verify');
+    expect(JSON.parse(init.body)).toEqual({ handle: 'h1', response: { id: 'cred-1' }, name: 'Laptop' });
+
+    // List / rename / delete.
+    fetchMock.mockResolvedValue(jsonResponse(200, { items: [] }));
+    await api.listPasskeys();
+    expect(fetchMock.mock.calls.at(-1)![0]).toBe('/account/passkeys');
+
+    fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
+    await api.renamePasskey('cred 1', 'New');
+    [url, init] = fetchMock.mock.calls.at(-1)!;
+    expect(url).toBe('/account/passkeys/cred%201'); // id URL-encoded
+    expect(init.method).toBe('PATCH');
+
+    fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
+    await api.deletePasskey('cred-1');
+    expect(fetchMock.mock.calls.at(-1)![1].method).toBe('DELETE');
+
+    // Passwordless login options + verify.
+    fetchMock.mockResolvedValue(jsonResponse(200, { options: { challenge: 'c' }, handle: 'h2' }));
+    expect((await api.passkeyLoginOptions()).handle).toBe('h2');
+    expect(fetchMock.mock.calls.at(-1)![0]).toBe('/auth/passkey/options');
+
+    fetchMock.mockResolvedValue(jsonResponse(200, { userId: 'u' }));
+    const res = await api.passkeyLoginVerify('h2', { id: 'cred-1' } as never);
+    expect(res).toEqual({ userId: 'u' });
+    expect(fetchMock.mock.calls.at(-1)![0]).toBe('/auth/passkey/verify');
+  });
+
   it('lists and removes platform-staff via the admin routes', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { members: [] }));
     await api.listMembers();

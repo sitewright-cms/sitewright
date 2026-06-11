@@ -20,6 +20,7 @@
     "@fastify/static": "^9",
     "@libsql/client": "^0.14",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@simplewebauthn/server": "^13.3.1",
     "@sitewright/blocks": "workspace:*",
     "@sitewright/core": "workspace:*",
     "@sitewright/image-pipeline": "workspace:*",

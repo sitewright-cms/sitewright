@@ -23,6 +23,20 @@ import type {
   Template,
   WebsiteSettings,
 } from '@sitewright/schema';
+import type {
+  AuthenticationResponseJSON,
+  PublicKeyCredentialCreationOptionsJSON,
+  PublicKeyCredentialRequestOptionsJSON,
+  RegistrationResponseJSON,
+} from '@simplewebauthn/browser';
+
+/** A registered passkey as shown in the Security tab. */
+export interface PasskeyView {
+  id: string;
+  name: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
 
 export type {
   CorporateIdentity,
@@ -316,6 +330,20 @@ export const api = {
     request<void>('DELETE', '/account/mfa/totp', { currentPassword }),
   mfaRegenerateRecoveryCodes: (currentPassword: string) =>
     request<{ recoveryCodes: string[] }>('POST', '/account/mfa/recovery-codes', { currentPassword }),
+  // Passkeys (WebAuthn). The `options`/`response` are the structured WebAuthn JSON; `handle` is the
+  // opaque challenge token threaded from options → verify.
+  passkeyRegisterOptions: () =>
+    request<{ options: PublicKeyCredentialCreationOptionsJSON; handle: string }>('POST', '/account/passkeys/register/options'),
+  passkeyRegisterVerify: (handle: string, response: RegistrationResponseJSON, name: string) =>
+    request<{ id: string; name: string }>('POST', '/account/passkeys/register/verify', { handle, response, name }),
+  listPasskeys: () => request<{ items: PasskeyView[] }>('GET', '/account/passkeys'),
+  renamePasskey: (id: string, name: string) =>
+    request<void>('PATCH', `/account/passkeys/${encodeURIComponent(id)}`, { name }),
+  deletePasskey: (id: string) => request<void>('DELETE', `/account/passkeys/${encodeURIComponent(id)}`),
+  passkeyLoginOptions: () =>
+    request<{ options: PublicKeyCredentialRequestOptionsJSON; handle: string }>('POST', '/auth/passkey/options'),
+  passkeyLoginVerify: (handle: string, response: AuthenticationResponseJSON) =>
+    request<{ userId: string } | { mfaRequired: true; ticket: string }>('POST', '/auth/passkey/verify', { handle, response }),
   version: () =>
     request<{ current: string; latest: string | null; updateAvailable: boolean; releaseUrl: string | null }>(
       'GET',

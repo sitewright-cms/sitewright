@@ -1,4 +1,4 @@
-import { and, eq, isNull, lt, or } from 'drizzle-orm';
+import { and, count, eq, isNull, lt, or } from 'drizzle-orm';
 import { newId } from '../id.js';
 import type { Database } from '../db/client.js';
 import { mfaLoginTickets, userMfaRecoveryCodes, userMfaTotp } from '../db/schema.js';
@@ -152,6 +152,15 @@ export class MfaRepository {
       await tx.insert(userMfaRecoveryCodes).values(rows);
     });
     return codes;
+  }
+
+  /** How many recovery codes are still unused (0 if TOTP isn't enabled) — surfaced in the Security tab. */
+  async remainingRecoveryCodes(userId: string): Promise<number> {
+    const [row] = await this.db
+      .select({ value: count() })
+      .from(userMfaRecoveryCodes)
+      .where(and(eq(userMfaRecoveryCodes.userId, userId), isNull(userMfaRecoveryCodes.usedAt)));
+    return row?.value ?? 0;
   }
 
   /** Disables TOTP entirely: wipes the secret and all recovery codes atomically (no lockout risk). */

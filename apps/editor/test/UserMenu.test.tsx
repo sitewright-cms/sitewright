@@ -34,6 +34,7 @@ function renderMenu(project: Project | null = null, totpEnabled = false) {
       email="me@acme.test"
       project={project}
       totpEnabled={totpEnabled}
+      recoveryCodesRemaining={0}
       onClose={onClose}
       onEmailChanged={onEmailChanged}
       onMfaChanged={onMfaChanged}

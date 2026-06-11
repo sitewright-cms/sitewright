@@ -8,6 +8,8 @@ import { fieldLabel, ghostButton, glassCard, glassInput, primaryButton } from '.
 interface SecurityTabProps {
   /** Whether the signed-in user currently has a confirmed TOTP factor (from /me). */
   totpEnabled: boolean;
+  /** Unused recovery codes remaining (from /me) — shown alongside the enabled state. */
+  recoveryCodesRemaining: number;
   /** Called after enabling/disabling TOTP so the app can refresh its cached `totpEnabled`. */
   onChanged: () => void;
 }
@@ -54,7 +56,7 @@ function RecoveryCodes({ codes, onDone }: { codes: string[]; onDone: () => void 
  * enabled, regenerate recovery codes or disable it (both password-confirmed). The TOTP secret never
  * touches the client beyond the one-time enrolment QR/string.
  */
-export function SecurityTab({ totpEnabled, onChanged }: SecurityTabProps) {
+export function SecurityTab({ totpEnabled, recoveryCodesRemaining, onChanged }: SecurityTabProps) {
   const toast = useToast();
   const [enrol, setEnrol] = useState<{ secret: string; otpauthUri: string } | null>(null);
   const [qr, setQr] = useState('');
@@ -228,10 +230,17 @@ export function SecurityTab({ totpEnabled, onChanged }: SecurityTabProps) {
         </div>
         {error && <p className="text-sm text-rose-600">{error}</p>}
         {totpEnabled ? (
-          <div className="flex flex-wrap gap-2">
-            <button type="button" className={ghostButton} onClick={() => { setPwAction('regenerate'); setError(null); }}>Regenerate recovery codes</button>
-            <button type="button" className={ghostButton} onClick={() => { setPwAction('disable'); setError(null); }}>Disable two-factor</button>
-          </div>
+          <>
+            <p className={`text-xs ${recoveryCodesRemaining <= 3 ? 'text-amber-600' : 'text-slate-500'}`}>
+              {recoveryCodesRemaining === 0
+                ? 'No recovery codes left — regenerate a set so you can still get in if you lose your authenticator.'
+                : `${recoveryCodesRemaining} recovery ${recoveryCodesRemaining === 1 ? 'code' : 'codes'} remaining${recoveryCodesRemaining <= 3 ? ' — consider regenerating.' : '.'}`}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className={ghostButton} onClick={() => { setPwAction('regenerate'); setError(null); }}>Regenerate recovery codes</button>
+              <button type="button" className={ghostButton} onClick={() => { setPwAction('disable'); setError(null); }}>Disable two-factor</button>
+            </div>
+          </>
         ) : (
           <div>
             <button type="button" className={primaryButton} onClick={startSetup} disabled={busy}>

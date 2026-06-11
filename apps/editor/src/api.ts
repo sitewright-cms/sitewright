@@ -312,6 +312,7 @@ export const api = {
       platformRole: PlatformRole;
       isInstanceAdmin: boolean;
       totpEnabled: boolean;
+      recoveryCodesRemaining: number;
       projects: Project[];
     }>('GET', '/me'),
   // Self-service account management (the header user menu). Both re-authenticate with the

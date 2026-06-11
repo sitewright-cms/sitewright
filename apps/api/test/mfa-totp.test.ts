@@ -38,9 +38,11 @@ describe('TOTP two-factor (enrol, login gate, recovery codes)', () => {
     return { client, secret, recoveryCodes };
   }
 
-  it('enrols TOTP and reports it in /me', async () => {
+  it('enrols TOTP and reports it (with a full recovery-code count) in /me', async () => {
     const { client } = await enrol(`enrol-${Date.now()}@test.local`);
-    expect((await client.get('/me')).json().totpEnabled).toBe(true);
+    const me = (await client.get('/me')).json();
+    expect(me.totpEnabled).toBe(true);
+    expect(me.recoveryCodesRemaining).toBe(10);
   });
 
   it('an unconfirmed setup does NOT gate login (no lockout from an abandoned enrolment)', async () => {
@@ -98,12 +100,14 @@ describe('TOTP two-factor (enrol, login gate, recovery codes)', () => {
 
   it('a recovery code logs you in once, then is dead', async () => {
     const email = `rec-${Date.now()}@test.local`;
-    const { recoveryCodes } = await enrol(email);
+    const { client, recoveryCodes } = await enrol(email);
     const code = recoveryCodes[0]!;
 
     const t1 = (await harness.app.inject({ method: 'POST', url: '/auth/login', payload: { email, password: PASSWORD } })).json() as { ticket: string };
     const ok = await harness.app.inject({ method: 'POST', url: '/auth/login/totp', payload: { ticket: t1.ticket, code } });
     expect(ok.statusCode).toBe(200);
+    // One code consumed → /me now reports 9 remaining.
+    expect((await client.get('/me')).json().recoveryCodesRemaining).toBe(9);
 
     // A fresh ticket, the same recovery code — now rejected (single-use).
     const t2 = (await harness.app.inject({ method: 'POST', url: '/auth/login', payload: { email, password: PASSWORD } })).json() as { ticket: string };

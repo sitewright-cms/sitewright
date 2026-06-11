@@ -57,7 +57,9 @@ export interface Harness {
  */
 export async function makeHarness(options?: Partial<AppOptions>): Promise<Harness> {
   const db = await makeTestDb();
-  const app = await createApp({ db, ...options } as AppOptions);
+  // Disable the background maintenance timer by default (tests don't want a live interval); a test
+  // can still override via options. The sweep function is unit-tested directly.
+  const app = await createApp({ db, maintenanceSweepMs: 0, ...options } as AppOptions);
   await app.ready();
 
   async function signup(

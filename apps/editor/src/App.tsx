@@ -49,6 +49,7 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
   // toggled by the person icon next to the settings gear.
   const [email, setEmail] = useState('');
   const [totpEnabled, setTotpEnabled] = useState(false);
+  const [recoveryCodesRemaining, setRecoveryCodesRemaining] = useState(0);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [tab, setTab] = useState<Tab>('pages');
   // The project picker is shown automatically on first load and reachable from the header.
@@ -70,6 +71,7 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
     setIsInstanceAdmin(false);
     setEmail('');
     setTotpEnabled(false);
+    setRecoveryCodesRemaining(0);
     setStage({ name: 'auth' });
   }
 
@@ -80,6 +82,7 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
       setIsInstanceAdmin(me.isInstanceAdmin);
       setEmail(me.email);
       setTotpEnabled(me.totpEnabled);
+      setRecoveryCodesRemaining(me.recoveryCodesRemaining);
       // First successful load with no project open → show the selector automatically.
       setStage((s) => (s.name === 'project' ? s : { name: 'home' }));
       return me.projects;
@@ -284,6 +287,7 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
           email={email}
           project={inProject}
           totpEnabled={totpEnabled}
+          recoveryCodesRemaining={recoveryCodesRemaining}
           onClose={() => setUserMenuOpen(false)}
           onEmailChanged={setEmail}
           onMfaChanged={() => void refresh()}

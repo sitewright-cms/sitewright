@@ -31,6 +31,10 @@ test('library: template reference — open, search, filter by group', async ({ p
   await expect(ref.getByText(/#each items/)).toBeVisible(); // the unified loop helper's syntax
   await expect(ref.getByRole('button', { name: 'Copy' }).first()).toBeVisible();
 
+  // The nav-active helper is documented + searchable (e.g. "navbar" / "active").
+  await search.fill('navbar');
+  await expect(ref.getByText(/sw-active path/).first()).toBeVisible();
+
   // Filter to the directives group → the data-sw-html directive is documented.
   await search.fill('');
   await ref.getByRole('button', { name: 'Editable directives (data-sw-*)' }).click();

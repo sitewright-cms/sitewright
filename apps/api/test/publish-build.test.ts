@@ -222,6 +222,41 @@ describe('buildSite', () => {
     expect(about).toContain('<footer id="footer"><div class="footer">© Acme</div></footer>');
   });
 
+  it('marks the current nav item active via {{sw-active}} — class + aria-current swap per page', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: { primary: '#0a7' } },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+          website: {
+            topNav:
+              '<div class="navbar"><ul class="menu">{{#each nav.header}}' +
+              '<li><a class="{{#if (sw-active path)}}active{{/if}}" href="{{sw-url path}}"' +
+              '{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{label}}</a></li>' +
+              '{{/each}}</ul></div>',
+          },
+        },
+        pages: [
+          { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<div>Home body</div>', nav: { slots: ['header'], order: 1 } },
+          { id: 'about', path: 'about', parent: 'home', title: 'About', root: { id: 'r2', type: 'Section' }, source: '<div>About body</div>', nav: { slots: ['header'], order: 2 } },
+        ],
+      }),
+    });
+    // On HOME, the Home item is active (exact ⇒ aria-current="page"); About is inactive. Hrefs are
+    // rebased page-relative ('/' → './', '/about' → 'about') — sw-active compares the ROOT-relative
+    // route, so the highlight is unaffected by the rebasing.
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).toContain('<a class="active" href="./" aria-current="page">Home</a>');
+    expect(home).toContain('<a class="" href="about">About</a>'); // not current → aria-current omitted
+    // On ABOUT, the roles swap.
+    const about = await readFile(join(outDir, 'about', 'index.html'), 'utf8');
+    expect(about).toContain('<a class="active" href="../about" aria-current="page">About</a>');
+    expect(about).toContain('<a class="" href="../">Home</a>');
+  });
+
   it('composes {{> snippet}} Handlebars partials into a published source page', async () => {
     await buildSite({
       publishedAt: '2026-05-29T00:00:00.000Z',

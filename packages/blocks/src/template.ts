@@ -356,6 +356,25 @@ function createInstance(): typeof Handlebars {
     const n = typeof max === 'number' && Number.isFinite(max) ? max : 100;
     return s.length > n ? `${s.slice(0, Math.max(0, n - 1))}…` : s;
   });
+  // {{#if (sw-active path)}}active{{/if}} → is `path` the page being rendered, OR an ancestor of it?
+  // Returns a BOOLEAN (use in #if), comparing the given route to the current page's full route
+  // (`@root.page.path`). Default = the ACTIVE TRAIL: a parent/dropdown route lights up while you are
+  // on one of its children (so `/services` is active on `/services/web-design`). Pass `exact=true`
+  // for the current page ONLY. Both routes are root-relative (e.g. "/about"); trailing slashes are
+  // ignored and the root "/" only ever matches itself (never every page). No JS — resolved at build.
+  hb.registerHelper('sw-active', function swActive(this: unknown, target: unknown, options: Handlebars.HelperOptions) {
+    if (typeof target !== 'string' || target === '') return false;
+    const root = options?.data?.root as { page?: { path?: unknown } } | undefined;
+    const current = typeof root?.page?.path === 'string' ? root.page.path : '';
+    const norm = (p: string) => (p.length > 1 && p.endsWith('/') ? p.slice(0, -1) : p);
+    const t = norm(target);
+    const c = norm(current);
+    if (t === c) return true;
+    // Accept both the boolean `exact=true` and the quoted-string `exact="true"` forms.
+    if (options?.hash?.exact === true || options?.hash?.exact === 'true') return false;
+    // Active trail: the current page is a descendant of `target`. The "/" root matches only itself.
+    return t !== '/' && c.startsWith(`${t}/`);
+  });
   // ── MINI SHOP helpers (front-end cart). Both emit a SafeString carrying ESCAPED `data-sw-cart-*`
   // markers the first-party cart.js runtime reads — markers can't come from author HTML (the sanitizer
   // strips custom data-* there). The product DATA is escaped; the elements carry no behavior (cart.js

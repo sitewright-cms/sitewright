@@ -81,7 +81,7 @@ export const EXAMPLE_WEBSITE = {
     </a>
   </div>
   <div class="navbar-center hidden lg:flex">
-    <ul class="menu menu-horizontal gap-1 px-1 font-medium">{{#each nav.header}}{{#if children}}<li class="dropdown dropdown-hover"><a href="{{sw-url path}}">{{label}} ${icon('chevron-down', 'h-4 w-4 opacity-60')}</a><ul class="dropdown-content menu z-30 mt-1 w-52 rounded-box bg-base-100 p-2 shadow-lg">{{#each children}}<li><a href="{{sw-url path}}">{{label}}</a></li>{{/each}}</ul></li>{{else}}<li><a href="{{sw-url path}}">{{label}}</a></li>{{/if}}{{/each}}</ul>
+    <ul class="menu menu-horizontal gap-1 px-1 font-medium">{{#each nav.header}}{{#if children}}<li class="dropdown dropdown-hover"><a href="{{sw-url path}}" class="{{#if (sw-active path)}}menu-active{{/if}}"{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{label}} ${icon('chevron-down', 'h-4 w-4 opacity-60')}</a><ul class="dropdown-content menu z-30 mt-1 w-52 rounded-box bg-base-100 p-2 shadow-lg">{{#each children}}<li><a href="{{sw-url path}}" class="{{#if (sw-active path)}}menu-active{{/if}}"{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{label}}</a></li>{{/each}}</ul></li>{{else}}<li><a href="{{sw-url path}}" class="{{#if (sw-active path)}}menu-active{{/if}}"{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{label}}</a></li>{{/if}}{{/each}}</ul>
   </div>
   <div class="navbar-end gap-2">
     {{#if page.translations}}<div class="hidden items-center gap-0.5 rounded-lg border border-base-200 p-0.5 sm:flex" aria-label="Language">{{#each page.translations}}<a class="btn btn-ghost btn-xs gap-1.5 px-2 font-semibold uppercase" href="{{sw-url path}}" hreflang="{{locale}}">{{sw-flag (lookup @root.website.data.locale_flags locale) "h-3.5 w-5 rounded-sm"}}{{locale}}</a>{{/each}}</div>{{/if}}
@@ -97,7 +97,7 @@ export const EXAMPLE_WEBSITE = {
     </div>
     <div>
       <h6 class="footer-title opacity-100">Studio</h6>
-      <ul class="mt-3 space-y-2 text-sm text-neutral-content/70">{{#each nav.header}}<li><a class="hover:text-neutral-content" href="{{sw-url path}}">{{label}}</a></li>{{/each}}</ul>
+      <ul class="mt-3 space-y-2 text-sm text-neutral-content/70">{{#each nav.header}}<li><a class="transition hover:text-neutral-content {{#if (sw-active path)}}font-semibold text-neutral-content{{/if}}" href="{{sw-url path}}"{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{label}}</a></li>{{/each}}</ul>
     </div>
     <div>
       <h6 class="footer-title opacity-100">Contact</h6>

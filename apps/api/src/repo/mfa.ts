@@ -65,8 +65,9 @@ export class MfaRepository {
    * Begins (or restarts) TOTP enrolment: a fresh secret is generated and STAGED in `pendingSecret`,
    * leaving any live confirmed secret untouched (so re-enrolling never momentarily disables the
    * factor). Returns the secret + otpauth URI for the QR; nothing is enabled until /confirm.
+   * `issuer` is the platform name shown in the authenticator app (defaults to the built-in name).
    */
-  async beginTotpSetup(userId: string, accountEmail: string): Promise<{ secret: string; otpauthUri: string }> {
+  async beginTotpSetup(userId: string, accountEmail: string, issuer?: string): Promise<{ secret: string; otpauthUri: string }> {
     const key = this.requireKey();
     const secret = generateTotpSecret();
     const enc = encryptSecret(secret, key);
@@ -76,7 +77,7 @@ export class MfaRepository {
     } else {
       await this.db.insert(userMfaTotp).values({ userId, secret: null, pendingSecret: enc, lastUsedStep: null, confirmedAt: null, createdAt: new Date() });
     }
-    return { secret, otpauthUri: totpKeyuri(accountEmail, secret) };
+    return { secret, otpauthUri: totpKeyuri(accountEmail, secret, issuer) };
   }
 
   /**

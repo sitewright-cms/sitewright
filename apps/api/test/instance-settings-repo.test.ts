@@ -154,3 +154,43 @@ describe('agent session cap', () => {
     expect((await repo.getPublic()).agentSessionHours).toBeUndefined();
   });
 });
+
+describe('branding', () => {
+  const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+  it('defaults the name and reports no logo before anything is set', async () => {
+    const repo = new InstanceSettingsRepository(db, KEY);
+    expect(await repo.getPlatformName()).toBe('SiteWright');
+    expect(await repo.getLogo()).toBeNull();
+    const { stored, updatedAtMs } = await repo.getStoredWithUpdatedAt();
+    expect(stored.platformName).toBeUndefined();
+    expect(updatedAtMs).toBe(0); // never written
+  });
+
+  it('round-trips name + colors + logo; the public view masks the bytes to hasLogo', async () => {
+    const repo = new InstanceSettingsRepository(db, KEY);
+    await repo.put({ platformName: 'Acme CMS', brandPrimary: '#ff0066', brandSecondary: '#00ddaa', platformLogo: { mime: 'image/png', data: PNG } });
+
+    expect(await repo.getPlatformName()).toBe('Acme CMS');
+    expect(await repo.getLogo()).toEqual({ mime: 'image/png', data: PNG });
+    const { stored, updatedAtMs } = await repo.getStoredWithUpdatedAt();
+    expect(stored.brandPrimary).toBe('#ff0066');
+    expect(updatedAtMs).toBeGreaterThan(0); // mtime advances on write (drives the logo cache-buster)
+
+    const pub = await repo.getPublic();
+    expect(pub).toMatchObject({ platformName: 'Acme CMS', brandPrimary: '#ff0066', hasLogo: true });
+    expect(JSON.stringify(pub)).not.toContain(PNG); // bytes never in the masked view
+  });
+
+  it('clears each branding field on null (revert to default) and keeps it on an unrelated update', async () => {
+    const repo = new InstanceSettingsRepository(db, KEY);
+    await repo.put({ platformName: 'Acme', platformLogo: { mime: 'image/png', data: PNG } });
+    await repo.put({ formModes: { globalSmtp: true } }); // unrelated → branding preserved
+    expect(await repo.getPlatformName()).toBe('Acme');
+    expect(await repo.getLogo()).not.toBeNull();
+
+    await repo.put({ platformName: null, platformLogo: null });
+    expect(await repo.getPlatformName()).toBe('SiteWright');
+    expect(await repo.getLogo()).toBeNull();
+  });
+});

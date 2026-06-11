@@ -1,7 +1,7 @@
 import { z } from 'zod';
 // Agent (MCP) defaults shared across packages: the bridge's fallback instructions, the API's
 // effective-instructions resolution, and the admin panel's editor + endpoint list all read from here.
-export const DEFAULT_AGENT_INSTRUCTIONS = `This server exposes ONE Sitewright project over MCP for building a
+export const DEFAULT_AGENT_INSTRUCTIONS = `This server exposes ONE project over MCP for building a
 CODE-FIRST static website. You'll work with these content kinds (kind, id): settings, page,
 dataset, entry, form. Call get_scope first. If it returns authenticated:false, call the \`login\`
 tool and relay its URL + code to the user to approve in their browser (ask them to keep that tab

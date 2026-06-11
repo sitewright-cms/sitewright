@@ -5,6 +5,7 @@ import {
   DEFAULT_AGENT_INSTRUCTIONS,
   DEFAULT_AGENT_SESSION_HOURS,
   DEFAULT_FORM_MODES,
+  DEFAULT_PLATFORM_NAME,
   type InstanceSettingsInput,
   type InstanceSettingsStored,
   type InstanceSettingsPublic,
@@ -12,6 +13,7 @@ import {
   type HcaptchaStored,
   type StockKeysStored,
   type OidcProviderStored,
+  type PlatformLogo,
 } from '@sitewright/schema';
 import type { Database } from '../db/client.js';
 import { instanceSettings, INSTANCE_SETTINGS_ID } from '../db/schema.js';
@@ -22,6 +24,16 @@ export class EncryptionUnavailableError extends Error {
   constructor(message = 'secret storage is not configured (set SW_ENCRYPTION_KEY)') {
     super(message);
     this.name = 'EncryptionUnavailableError';
+  }
+}
+
+/** Apply the merge semantics for a NON-secret optional field: `null` clears, `undefined` keeps, value sets. */
+function mergeNullable<T>(input: T | null | undefined, current: T | undefined, set: (v: T) => void): void {
+  if (input === null) return; // cleared → leave unset (read falls back to the default)
+  if (input === undefined) {
+    if (current !== undefined) set(current);
+  } else {
+    set(input);
   }
 }
 
@@ -66,6 +78,30 @@ export class InstanceSettingsRepository {
   /** The absolute agent-session (OAuth refresh) cap in ms — the admin setting or the 8h default. */
   async getAgentSessionMs(): Promise<number> {
     return ((await this.getStored()).agentSessionHours ?? DEFAULT_AGENT_SESSION_HOURS) * 60 * 60 * 1000;
+  }
+
+  /** The configured platform name, or the built-in default — for TOTP/passkey prompts + the chrome. */
+  async getPlatformName(): Promise<string> {
+    return (await this.getStored()).platformName ?? DEFAULT_PLATFORM_NAME;
+  }
+
+  /** The uploaded logo (mime + base64), or null — for the `GET /branding/logo` serving route. */
+  async getLogo(): Promise<PlatformLogo | null> {
+    return (await this.getStored()).platformLogo ?? null;
+  }
+
+  /**
+   * The stored document AND the row's last-modified time (ms) from a SINGLE read — so a caller that
+   * needs both (e.g. `/auth/config`, which derives the cache-busted logo URL) sees one consistent
+   * snapshot. `updatedAtMs` is 0 when the row has never been written.
+   */
+  async getStoredWithUpdatedAt(): Promise<{ stored: InstanceSettingsStored; updatedAtMs: number }> {
+    const [row] = await this.db
+      .select()
+      .from(instanceSettings)
+      .where(eq(instanceSettings.id, INSTANCE_SETTINGS_ID));
+    if (!row) return { stored: { formModes: { ...DEFAULT_FORM_MODES } }, updatedAtMs: 0 };
+    return { stored: InstanceSettingsStoredSchema.parse(row.data), updatedAtMs: row.updatedAt.getTime() };
   }
 
   /**
@@ -187,6 +223,13 @@ export class InstanceSettingsRepository {
     // undefined → the route falls back to the deploy-time factory default).
     const allowSelfRegistration = input.allowSelfRegistration ?? current.allowSelfRegistration;
     if (allowSelfRegistration !== undefined) next.allowSelfRegistration = allowSelfRegistration;
+
+    // Branding (non-secret): a value sets it, `null` clears it (revert to default), undefined keeps.
+    // Same null/undefined/value pattern as agentInstructions; nothing here is encrypted.
+    mergeNullable(input.platformName, current.platformName, (v) => { next.platformName = v; });
+    mergeNullable(input.brandPrimary, current.brandPrimary, (v) => { next.brandPrimary = v; });
+    mergeNullable(input.brandSecondary, current.brandSecondary, (v) => { next.brandSecondary = v; });
+    mergeNullable(input.platformLogo, current.platformLogo, (v) => { next.platformLogo = v; });
 
     // Validate the merged document before persisting (defense in depth).
     const validated = InstanceSettingsStoredSchema.parse(next);

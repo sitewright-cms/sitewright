@@ -27,9 +27,6 @@
 //   cart, while every page of one site does.
 // - PE note: the cart needs JS to function (a static order form has no client state), so
 //   with no JS there is simply no cart UI — by design, like the Form block's JS-only submit.
-import { walk } from '@sitewright/core';
-import type { PageNode } from '@sitewright/schema';
-
 // Only-used-ships detection. The rendered marker is `data-sw-cart` / `data-sw-cart-add`, but a
 // code-first SOURCE (or a skeleton slot) contains the HELPER call `{{sw-cart}}` / `{{sw-add-to-cart}}`
 // — the attribute only appears AFTER Handlebars runs (cf. animations.ts: a marker written via a helper
@@ -406,21 +403,6 @@ export const CART_JS = `(function(){
 /** Whether an authored HTML/template string uses the mini-shop cart (the {{sw-cart}}/{{sw-add-to-cart}} helpers or the rendered markers). */
 export function usesCart(html: string | null | undefined): boolean {
   return typeof html === 'string' && hasCartMarker(html);
-}
-
-/** Whether a block tree uses the cart — any node with a string prop carrying the marker (raw Html embed). */
-export function treeUsesCart(root: PageNode): boolean {
-  let found = false;
-  walk(root, (node) => {
-    if (found || !node.props) return;
-    for (const value of Object.values(node.props)) {
-      if (typeof value === 'string' && hasCartMarker(value)) {
-        found = true;
-        return;
-      }
-    }
-  });
-  return found;
 }
 
 /**

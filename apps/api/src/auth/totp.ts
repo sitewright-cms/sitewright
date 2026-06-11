@@ -7,17 +7,18 @@ import { createHash, randomBytes, randomInt } from 'node:crypto';
 // authenticator instance is configured once at module load — it is the app's only TOTP consumer.
 authenticator.options = { window: 1 };
 
-/** The issuer label shown in authenticator apps (the `Sitewright:` prefix on the account). */
-const ISSUER = 'Sitewright';
+/** Fallback issuer label (the `<issuer>:` prefix on the account) when no platform name is configured. */
+const DEFAULT_ISSUER = 'SiteWright';
 
 /** A fresh base32 TOTP secret — the value the authenticator app stores. */
 export function generateTotpSecret(): string {
   return authenticator.generateSecret();
 }
 
-/** The `otpauth://` URI an authenticator app imports (rendered as a QR + shown as text in the editor). */
-export function totpKeyuri(accountName: string, secret: string): string {
-  return authenticator.keyuri(accountName, ISSUER, secret);
+/** The `otpauth://` URI an authenticator app imports (rendered as a QR + shown as text in the editor).
+ *  `issuer` is the platform name shown in the app; existing enrolments keep whatever they imported. */
+export function totpKeyuri(accountName: string, secret: string, issuer: string = DEFAULT_ISSUER): string {
+  return authenticator.keyuri(accountName, issuer, secret);
 }
 
 /** The current TOTP step (floor(epoch / 30s)) — the counter codes are derived from. */

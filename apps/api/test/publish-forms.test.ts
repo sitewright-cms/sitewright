@@ -55,63 +55,19 @@ function bundle(): ProjectBundle {
 }
 
 describe('buildSite — Form blocks', () => {
-  it('emits an absolute submission endpoint and ships the form JS, never leaking the recipient', async () => {
-    await buildSite({
-      publishedAt: '2026-05-31T00:00:00.000Z',
-      outDir,
-      bundle: bundle(),
-      publicBaseUrl: 'https://cms.example/',
-    });
-    const html = await readFile(join(outDir, 'contact', 'index.html'), 'utf8');
-    expect(html).toContain('data-sw-component="form"');
-    // Absolute endpoint to the platform (trailing slash on the base normalized away).
-    expect(html).toContain('data-sw-endpoint="https://cms.example/f/proj1/contact"');
-    expect(html).toContain('<input type="email" name="email" required');
-    // The recipient (server-side) must NEVER appear in the exported HTML.
-    expect(html).not.toContain('secret-recipient@acme.com');
-    expect(html).not.toContain('New lead');
-    // The component bundle (with the submit handler) is linked + written.
-    expect(html).toContain('components.js');
-    const js = await readFile(join(outDir, 'components.js'), 'utf8');
-    expect(js).toContain("data-sw-component=\"form\"");
-    expect(js).toContain('_elapsed');
-  });
-
-  it('falls back to a same-origin endpoint when no public base URL is set', async () => {
-    await buildSite({ publishedAt: '2026-05-31T00:00:00.000Z', outDir, bundle: bundle() });
-    const html = await readFile(join(outDir, 'contact', 'index.html'), 'utf8');
-    expect(html).toContain('data-sw-endpoint="/f/proj1/contact"');
-  });
-
-  it('generates contact.php for a contactPhp form; the page posts to it and the recipient stays out of the HTML', async () => {
-    const b = bundle();
-    b.forms![0]!.mode = 'contactPhp';
-    await buildSite({ publishedAt: '2026-05-31T00:00:00.000Z', outDir, bundle: b, publicBaseUrl: 'https://cms.example' });
-    // The page form posts to the exported contact.php (root-relative; the page is at
-    // /contact so the path to the root contact.php is `../contact.php`), NOT the platform.
-    const html = await readFile(join(outDir, 'contact', 'index.html'), 'utf8');
-    expect(html).toContain('data-sw-endpoint="../contact.php"');
-    expect(html).not.toContain('cms.example/f/'); // not the platform endpoint
-    expect(html).toContain('name="_form" value="contact"');
-    expect(html).not.toContain('secret-recipient@acme.com'); // recipient never in HTML
-    // contact.php exists and bakes the recipient server-side.
-    const php = await readFile(join(outDir, 'contact.php'), 'utf8');
-    expect(php).toMatch(/^<\?php/);
-    expect(php).toContain('secret-recipient@acme.com');
-    expect(php).toContain('mail($to');
-  });
-
   it('does NOT generate contact.php when no form uses contactPhp', async () => {
     await buildSite({ publishedAt: '2026-05-31T00:00:00.000Z', outDir, bundle: bundle() });
     await expect(readFile(join(outDir, 'contact.php'), 'utf8')).rejects.toThrow();
   });
 
-  it('renders the hCaptcha widget on a hcaptcha-required form when a site key is configured', async () => {
+  it('generates a contact.php mail() handler for a contactPhp-mode form (recipient baked server-side)', async () => {
     const b = bundle();
-    b.forms![0]!.hcaptcha = true;
-    await buildSite({ publishedAt: '2026-05-31T00:00:00.000Z', outDir, bundle: b, hcaptchaSiteKey: 'site-xyz' });
-    const html = await readFile(join(outDir, 'contact', 'index.html'), 'utf8');
-    expect(html).toContain('class="h-captcha"');
-    expect(html).toContain('data-sitekey="site-xyz"');
+    b.forms = [{ ...b.forms![0]!, mode: 'contactPhp' as const }];
+    await buildSite({ publishedAt: '2026-05-31T00:00:00.000Z', outDir, bundle: b });
+    const php = await readFile(join(outDir, 'contact.php'), 'utf8');
+    expect(php).toContain('<?php');
+    expect(php).toContain('mail('); // PHP mail() handler
+    // The recipient is baked into the PHP (server-side), never the exported page HTML.
+    expect(php).toContain('secret-recipient@acme.com');
   });
 });

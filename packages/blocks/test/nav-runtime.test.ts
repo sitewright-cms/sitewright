@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { PageNode } from '@sitewright/schema';
-import { decorateNav, NAV_LINK_JS, usesDialog, treeUsesDialog } from '../src/nav-runtime.js';
+import { decorateNav, NAV_LINK_JS, usesDialog } from '../src/nav-runtime.js';
 import { renderTemplate } from '../src/template.js';
 
 // A structural nav item (mirrors core's NavItem) — decorateNav writes labelHtml in place.
@@ -72,14 +71,4 @@ describe('usesDialog (ship the dialog runtime for code-first <dialog> markup)', 
     expect(usesDialog(null)).toBe(false);
   });
 
-  it('finds a <dialog> embedded in a raw-Html block tree node', () => {
-    const tree: PageNode = {
-      id: 'root',
-      type: 'Section',
-      children: [{ id: 'h', type: 'Html', props: { html: '<dialog id="m"><p>hi</p></dialog>' }, children: [] }],
-    } as unknown as PageNode;
-    expect(treeUsesDialog(tree)).toBe(true);
-    const plain: PageNode = { id: 'root', type: 'Section', children: [] } as unknown as PageNode;
-    expect(treeUsesDialog(plain)).toBe(false);
-  });
 });

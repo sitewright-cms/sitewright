@@ -134,3 +134,56 @@ describe('maskInstanceSettings', () => {
     expect(maskInstanceSettings({ formModes: DEFAULT_FORM_MODES, allowSelfRegistration: false }).allowSelfRegistration).toBe(false);
   });
 });
+
+describe('branding (platform name / colors / logo)', () => {
+  const PNG_1PX = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+  it('accepts a valid name, colors, and logo on input', () => {
+    const parsed = InstanceSettingsInputSchema.parse({
+      platformName: 'Acme CMS',
+      brandPrimary: '#ff0066',
+      brandSecondary: 'rgb(10, 20, 30)',
+      platformLogo: { mime: 'image/png', data: PNG_1PX },
+    });
+    expect(parsed.platformName).toBe('Acme CMS');
+    expect(parsed.brandPrimary).toBe('#ff0066');
+    expect(parsed.platformLogo).toEqual({ mime: 'image/png', data: PNG_1PX });
+  });
+
+  it('rejects a control-char name, an over-long name, and a CSS-injection color', () => {
+    expect(() => InstanceSettingsInputSchema.parse({ platformName: 'badname' })).toThrow();
+    expect(() => InstanceSettingsInputSchema.parse({ platformName: 'x'.repeat(61) })).toThrow();
+    // CssColorSchema rejects declaration break-out characters.
+    expect(() => InstanceSettingsInputSchema.parse({ brandPrimary: 'red;}body{display:none' })).toThrow();
+    expect(() => InstanceSettingsInputSchema.parse({ brandSecondary: '#zzzzzz' })).toThrow();
+  });
+
+  it('rejects a non-raster (svg/gif) logo mime and an over-cap payload', () => {
+    expect(() => InstanceSettingsInputSchema.parse({ platformLogo: { mime: 'image/svg+xml', data: PNG_1PX } })).toThrow();
+    expect(() => InstanceSettingsInputSchema.parse({ platformLogo: { mime: 'image/gif', data: PNG_1PX } })).toThrow();
+    expect(() => InstanceSettingsInputSchema.parse({ platformLogo: { mime: 'image/png', data: 'A'.repeat(700_001) } })).toThrow();
+  });
+
+  it('allows null to clear each branding field and undefined to keep it', () => {
+    const cleared = InstanceSettingsInputSchema.parse({ platformName: null, brandPrimary: null, brandSecondary: null, platformLogo: null });
+    expect(cleared.platformName).toBeNull();
+    expect(cleared.platformLogo).toBeNull();
+    const untouched = InstanceSettingsInputSchema.parse({});
+    expect(untouched.platformName).toBeUndefined();
+  });
+
+  it('masks the logo to a presence flag (hasLogo) and never returns the bytes', () => {
+    const masked = maskInstanceSettings({
+      formModes: DEFAULT_FORM_MODES,
+      platformName: 'Acme',
+      brandPrimary: '#123456',
+      platformLogo: { mime: 'image/png', data: PNG_1PX },
+    });
+    expect(masked.platformName).toBe('Acme');
+    expect(masked.brandPrimary).toBe('#123456');
+    expect(masked.hasLogo).toBe(true);
+    expect(JSON.stringify(masked)).not.toContain(PNG_1PX);
+    // Absent logo → hasLogo omitted (falsy).
+    expect(maskInstanceSettings({ formModes: DEFAULT_FORM_MODES }).hasLogo).toBeUndefined();
+  });
+});

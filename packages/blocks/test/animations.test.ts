@@ -1,11 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import type { PageNode } from '@sitewright/schema';
 import {
   ANIMATION_CSS,
   ANIMATION_JS,
   ANIMATION_EFFECTS,
   usesAnimations,
-  treeUsesAnimations,
 } from '../src/animations.js';
 
 describe('animation stylesheet', () => {
@@ -88,29 +86,4 @@ describe('animation detection', () => {
     expect(usesAnimations(null)).toBe(false);
   });
 
-  it('detects data-aos in a string prop anywhere in a block tree (the raw Html embed)', () => {
-    const animated: PageNode = {
-      id: 'r',
-      type: 'Section',
-      children: [
-        { id: 'h', type: 'Heading', props: { text: 'Hi' } },
-        {
-          id: 'wrap',
-          type: 'Section',
-          children: [{ id: 'e', type: 'Html', props: { html: '<div data-aos="zoom-in">Z</div>' } }],
-        },
-      ],
-    };
-    expect(treeUsesAnimations(animated)).toBe(true);
-  });
-
-  it('ignores trees without data-aos and non-string props', () => {
-    const plain: PageNode = {
-      id: 'r',
-      type: 'Section',
-      props: { count: 3, enabled: true },
-      children: [{ id: 'h', type: 'Heading', props: { text: 'Hello' } }],
-    };
-    expect(treeUsesAnimations(plain)).toBe(false);
-  });
 });

@@ -10,9 +10,6 @@
 // and runs on the published/exported site. The editor's sandboxed live-preview
 // shows the progressive-enhancement fallback (no script) — components degrade to
 // usable semantic HTML (a scroll-snap carousel still swipes/scrolls) without JS.
-import { walk } from '@sitewright/core';
-import type { PageNode } from '@sitewright/schema';
-
 /** A component's static styling + behavior (either may be empty). */
 export interface ComponentAsset {
   css: string;
@@ -329,15 +326,6 @@ const COMPONENTS = new Map<string, ComponentAsset>([
 /** Block types that are interactive components (have bundled CSS/JS). */
 export const COMPONENT_TYPES: ReadonlySet<string> = new Set(COMPONENTS.keys());
 
-/** The distinct component block types used anywhere in a (resolved) tree. */
-export function usedComponentTypes(root: PageNode): string[] {
-  const seen = new Set<string>();
-  walk(root, (node) => {
-    if (COMPONENTS.has(node.type)) seen.add(node.type);
-  });
-  return [...seen];
-}
-
 /**
  * `data-sw-component` attribute NAME → component block `type`. MUST stay in sync with the names
  * `render.ts` emits (`data-sw-component="modal"` etc.). (`Accordion` is native `<details>`-only — no
@@ -356,9 +344,9 @@ const COMPONENT_MARKER_RE = /data-sw-component="([a-z-]+)"/g;
 
 /**
  * The distinct component block types referenced by `data-sw-component="…"` markers in a rendered /
- * CODE-FIRST Handlebars source string. Code-first pages render from `source` (their block tree is an
- * empty stub), so {@link usedComponentTypes} can't see them — this string scan ships the component's
- * CSS/JS the same way animations/lazyload/ripple are detected. Empty for component-free source.
+ * CODE-FIRST Handlebars source string. Pages render from `source`, so this string scan ships the
+ * component's CSS/JS the same way animations/lazyload/ripple are detected (a literal-marker scan over
+ * page sources, skeleton slots, and snippets). Empty for component-free source.
  */
 export function componentTypesInSource(html: string | null | undefined): string[] {
   if (typeof html !== 'string' || html.length === 0) return [];

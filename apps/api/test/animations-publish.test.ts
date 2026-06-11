@@ -73,27 +73,6 @@ describe('scroll-reveal animations → publish + preview', () => {
     expect(js.body).toContain('aos-animate');
   });
 
-  it('ships the runtime when only a raw Html embed in a block tree uses data-aos', async () => {
-    const proj = client.project(projectId);
-    const page = {
-      id: 'home',
-      path: '',
-      title: 'Home',
-      root: {
-        id: 'r',
-        type: 'Section',
-        children: [{ id: 'e', type: 'Html', props: { html: '<div data-aos="zoom-in">Zoom</div>' } }],
-      },
-    };
-    expect((await proj.putContent('page', 'home', page)).statusCode).toBe(200);
-    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
-
-    const index = await client.get(`/sites/${slug}/index.html`);
-    expect(index.body).toContain('data-aos="zoom-in"');
-    expect(index.body).toContain('<script defer src="animations.js"></script>');
-    expect((await client.get(`/sites/${slug}/animations.js`)).statusCode).toBe(200);
-  });
-
   it('ships the runtime when only a skeleton slot uses data-aos', async () => {
     const proj = client.project(projectId);
     expect(
@@ -139,32 +118,4 @@ describe('scroll-reveal animations → publish + preview', () => {
     expect((await client.get(`/sites/${slug}/animations.js`)).statusCode).toBe(404);
   });
 
-  it('inlines the runtime into the sandboxed block-tree preview (WYSIWYG parity)', async () => {
-    const page = {
-      id: 'home',
-      path: '',
-      title: 'Home',
-      root: {
-        id: 'r',
-        type: 'Section',
-        children: [{ id: 'e', type: 'Html', props: { html: '<div data-aos="fade-up">Reveal</div>' } }],
-      },
-    };
-    const res = await client.post(`/projects/${projectId}/preview`, page);
-    expect(res.statusCode).toBe(200);
-    const html = (res.json() as { html: string }).html;
-    // Self-contained preview: stylesheet + runtime are INLINED (no external link).
-    expect(html).toContain('[data-aos].aos-init');
-    expect(html).toContain('IntersectionObserver');
-    expect(html).not.toContain('src="animations.js"');
-  });
-
-  it('keeps the preview clean for a page without animations', async () => {
-    const page = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' } };
-    const res = await client.post(`/projects/${projectId}/preview`, page);
-    expect(res.statusCode).toBe(200);
-    const html = (res.json() as { html: string }).html;
-    expect(html).not.toContain('aos-init');
-    expect(html).not.toContain('IntersectionObserver');
-  });
 });

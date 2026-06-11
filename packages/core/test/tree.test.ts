@@ -3,7 +3,6 @@ import type { PageNode } from '@sitewright/schema';
 import {
   NodeNotFoundError,
   TreeOperationError,
-  collectClassNames,
   extractClassNames,
   extractRegions,
   collectIds,
@@ -96,19 +95,6 @@ describe('walk / find / ancestors / ids', () => {
     expect(pattern.children?.[0]?.id).toBe('h');
   });
 
-  it('collects className lists in document order, skipping nodes without one', () => {
-    const tree: PageNode = {
-      id: 'root',
-      type: 'Section',
-      className: 'flex gap-4',
-      children: [
-        { id: 'a', type: 'Hero' }, // no className
-        { id: 'b', type: 'Card', className: 'rounded-lg' },
-      ],
-    };
-    expect(collectClassNames(tree)).toEqual(['flex gap-4', 'rounded-lg']);
-    expect(collectClassNames(sample())).toEqual([]); // none set
-  });
 });
 
 describe('extractRegions (data-sw-* leaf directives)', () => {

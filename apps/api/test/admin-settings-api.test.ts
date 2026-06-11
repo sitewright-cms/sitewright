@@ -179,6 +179,55 @@ describe('admin settings API', () => {
     });
   });
 
+  describe('branding (/auth/config + /branding/logo)', () => {
+    const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+    let app: FastifyInstance;
+    beforeEach(async () => {
+      app = await createApp({
+        db: await makeTestDb(),
+        adminEmails: ['admin@acme.test'],
+        encryptionKey: Buffer.from(ENC_KEY, 'base64'),
+      });
+      await app.ready();
+    });
+
+    it('serves default branding (and no logo) from the unauthenticated /auth/config before anything is set', async () => {
+      const res = await app.inject({ method: 'GET', url: '/auth/config' }); // no session cookie
+      expect(res.statusCode).toBe(200);
+      const cfg = res.json() as { branding: { name: string; primary: string; secondary: string; logoUrl: string | null } };
+      expect(cfg.branding).toEqual({ name: 'SiteWright', primary: '#4f46e5', secondary: '#0ea5e9', logoUrl: null });
+      // No logo yet → 404 (also unauthenticated).
+      expect((await app.inject({ method: 'GET', url: '/branding/logo' })).statusCode).toBe(404);
+    });
+
+    it('reflects an admin branding update in /auth/config and serves the logo bytes', async () => {
+      const admin = await register(app, 'admin@acme.test');
+      const put = await app.inject({
+        method: 'PUT',
+        url: '/admin/settings',
+        cookies: { sw_session: admin.t },
+        payload: { platformName: 'Acme CMS', brandPrimary: '#ff0066', brandSecondary: '#00ddaa', platformLogo: { mime: 'image/png', data: PNG } },
+      });
+      expect(put.statusCode).toBe(200);
+      expect((put.json() as { settings: { hasLogo: boolean } }).settings.hasLogo).toBe(true);
+      expect(put.body).not.toContain(PNG); // bytes never in the masked admin response
+
+      const cfg = (await app.inject({ method: 'GET', url: '/auth/config' })).json() as {
+        branding: { name: string; primary: string; secondary: string; logoUrl: string | null };
+      };
+      expect(cfg.branding.name).toBe('Acme CMS');
+      expect(cfg.branding.primary).toBe('#ff0066');
+      expect(cfg.branding.logoUrl).toMatch(/^\/branding\/logo\?v=\d+$/);
+
+      const logo = await app.inject({ method: 'GET', url: '/branding/logo' }); // unauthenticated
+      expect(logo.statusCode).toBe(200);
+      expect(logo.headers['content-type']).toContain('image/png');
+      expect(logo.headers['cache-control']).toContain('no-store');
+      expect(logo.headers['x-content-type-options']).toBe('nosniff'); // global onSend hook
+      expect(logo.rawPayload.equals(Buffer.from(PNG, 'base64'))).toBe(true);
+    });
+  });
+
   describe('with no admin allowlist configured', () => {
     let app: FastifyInstance;
     beforeEach(async () => {

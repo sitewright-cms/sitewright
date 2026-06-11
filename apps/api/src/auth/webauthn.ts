@@ -13,8 +13,8 @@ import {
 } from '@simplewebauthn/server';
 import { isoBase64URL, isoUint8Array } from '@simplewebauthn/server/helpers';
 
-/** The Relying Party name shown in the authenticator/OS passkey UI. */
-const RP_NAME = 'Sitewright';
+/** Fallback Relying Party display name (authenticator/OS passkey UI) when no platform name is set. */
+const DEFAULT_RP_NAME = 'SiteWright';
 
 /** A resolved Relying Party: the id (a registrable domain) a passkey binds to, and the exact origin. */
 export interface RpConfig {
@@ -70,9 +70,11 @@ export function registrationOptions(params: {
   userId: string;
   userName: string;
   existing: { id: string; transports?: string[] }[];
+  /** The platform name shown in the OS/authenticator passkey prompt (defaults to the built-in name). */
+  rpName?: string;
 }): Promise<PublicKeyCredentialCreationOptionsJSON> {
   return generateRegistrationOptions({
-    rpName: RP_NAME,
+    rpName: params.rpName ?? DEFAULT_RP_NAME,
     rpID: params.rp.rpID,
     userName: params.userName,
     userID: userHandle(params.userId),

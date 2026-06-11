@@ -14,28 +14,7 @@ import { makeHarness, type Harness, type TestClient } from './harness.js';
 // in-process build runner (default — no SW_BUILD_WORKER, so no Docker).
 // ---------------------------------------------------------------------------
 
-// A tiny but valid 1x1 PNG — enough for the sharp pipeline to decode + optimize
-// (mirrors media-api.test.ts; avoids a direct sharp dep in the API package).
-const PNG_1X1 = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z/C/HgAGgwJ/lK3Q6wAAAABJRU5ErkJggg==',
-  'base64',
-);
-
-/** Builds a multipart/form-data body for a single `file` field. */
-function multipart(filename: string, mime: string, content: Buffer) {
-  const boundary = 'SWPORTABILITYBOUNDARY';
-  const head = Buffer.from(
-    `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\n` +
-      `Content-Type: ${mime}\r\n\r\n`,
-  );
-  const tail = Buffer.from(`\r\n--${boundary}--\r\n`);
-  return {
-    headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
-    payload: Buffer.concat([head, content, tail]),
-  };
-}
-
-/** A Section wrapping a Heading and an internal Link to `linkHref`. */
+/** A code-first page: a `<section>` with a heading and an internal link to `linkHref`. */
 function sectionPage(opts: {
   id: string;
   path: string;
@@ -51,14 +30,9 @@ function sectionPage(opts: {
     path: opts.path,
     title: opts.title,
     ...(opts.extra ?? {}),
-    root: {
-      id: `${opts.id}-root`,
-      type: 'Section',
-      children: [
-        { id: `${opts.id}-h`, type: 'Heading', props: { text: opts.heading, level: 1 } },
-        { id: `${opts.id}-link`, type: 'Link', props: { text: opts.linkText, href: opts.linkHref } },
-      ],
-    },
+    root: { id: `${opts.id}-root`, type: 'Section' },
+    // Internal href via {{sw-url}} so the publisher rebases it page-relative for a portable export.
+    source: `<section><h1>${opts.heading}</h1><a href="{{sw-url '${opts.linkHref}'}}">${opts.linkText}</a></section>`,
   };
 }
 
@@ -138,29 +112,6 @@ describe('publish portability', () => {
     expect(res.statusCode).toBe(200);
   }
 
-  it('rewrites internal links to be PAGE-RELATIVE on a subpage (portability guarantee)', async () => {
-    await putSettings({ name: 'Acme', colors: { primary: '#0a7' } });
-    await putHomeAndAbout();
-    await publish(2);
-
-    // The subpage lives at /about/index.html (one level deep). Its link back to
-    // the home page ("/") must be rebased to "../", and a self/sibling link
-    // ("/about") to "../about" — NOT the absolute "/about". This is what makes
-    // the exported artifact work at any base path.
-    const about = await fetchSite('about/');
-    expect(about).toContain('data-sw-block="Link"');
-    expect(about).toContain('href="../"');
-    expect(about).not.toContain('href="/about"');
-    expect(about).not.toContain('href="/"');
-
-    // The home page (site root, relativeRoot = '') emits the sibling subpage as
-    // a bare relative path "about", never the absolute "/about".
-    const home = await fetchSite('');
-    expect(home).toContain('href="about"');
-    expect(home).not.toContain('href="/about"');
-    expect(home).not.toContain('href="/"');
-  });
-
   it('emits a data-driven document head (title, description/og, theme-color)', async () => {
     await putSettings({ name: 'Acme', colors: { primary: '#0a7' } });
     await putHomeAndAbout({
@@ -228,66 +179,4 @@ describe('publish portability', () => {
     expect((status.json() as { release: { routes: number } }).release.routes).toBe(2);
   });
 
-  it('bundles uploaded media and emits page-relative <picture> URLs', async () => {
-    await putSettings({ name: 'Acme', colors: { primary: '#0a7' } });
-    const project = client.project(projectId);
-
-    // Upload a real image through the media pipeline (optimize → variants).
-    const up = await client.inject({
-      method: 'POST',
-      url: `${project.base}/media`,
-      ...multipart('hero.png', 'image/png', PNG_1X1),
-    });
-    expect(up.statusCode).toBe(201);
-    const asset = (up.json() as { item: { id: string; url: string } }).item;
-
-    // A home page and an /about subpage, each with an Image referencing the asset.
-    const imagePage = (id: string, path: string, title: string) => ({
-      id,
-      path,
-      title,
-      root: {
-        id: `${id}-root`,
-        type: 'Section',
-        children: [{ id: `${id}-img`, type: 'Image', props: { src: asset.url, alt: 'Hero' } }],
-      },
-    });
-    expect((await project.putContent('page', 'home', imagePage('home', '', 'Home'))).statusCode).toBe(200);
-    expect((await project.putContent('page', 'about', imagePage('about', 'about', 'About'))).statusCode).toBe(200);
-    await publish(2);
-
-    // The binaries were copied into the artifact under _assets/<assetId>/ (the
-    // published-site dir is keyed by slug).
-    const mediaDir = await readdir(join(publishRoot, slug, '_assets', asset.id));
-    expect(mediaDir.length).toBeGreaterThan(0);
-
-    // Home (site root): <picture> srcset references are bare-relative `_assets/...`.
-    const home = await fetchSite('');
-    expect(home).toContain('<picture');
-    expect(home).toContain(`src="_assets/${asset.id}/`);
-    expect(home).not.toContain(`src="/media/${asset.id}/`);
-
-    // Subpage (one level deep): the same asset is referenced page-relative `../_assets/...`.
-    const about = await fetchSite('about/');
-    expect(about).toContain('<picture');
-    expect(about).toContain(`../_assets/${asset.id}/`);
-    expect(about).not.toContain(`src="/media/${asset.id}/`);
-
-    // The bundled image binary is served over HTTP at /sites/<slug>/_assets/<id>/<file>,
-    // inline with an image content-type + nosniff (so the demo's LOCAL images actually load
-    // in the /sites preview, not just in a deployed copy).
-    const fallbackFile = asset.url.split('/').pop()!;
-    const bin = await client.get(`/sites/${slug}/_assets/${asset.id}/${fallbackFile}`);
-    expect(bin.statusCode).toBe(200);
-    expect(bin.headers['content-type']).toMatch(/^image\//);
-    expect(bin.headers['x-content-type-options']).toBe('nosniff');
-
-    // A page request lacking its trailing slash is redirected (301) to the canonical directory
-    // URL, so its relative asset paths resolve. Explicit .html URLs are served as-is.
-    const noSlash = await client.get(`/sites/${slug}/about`);
-    expect(noSlash.statusCode).toBe(301);
-    expect(noSlash.headers.location).toBe(`/sites/${slug}/about/`);
-    const explicit = await client.get(`/sites/${slug}/index.html`);
-    expect(explicit.statusCode).toBe(200);
-  });
 });

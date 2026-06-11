@@ -216,7 +216,7 @@ export interface InvitePeek {
   expired: boolean;
   accepted: boolean;
 }
-export type ApiKeyCapability = 'content:read' | 'content:write' | 'publish' | 'deploy';
+export type ApiKeyCapability = 'content:read' | 'content:write' | 'content:delete' | 'publish' | 'deploy';
 /** Redacted view of a project API key (the management list never returns the token). */
 export interface ApiKeyView {
   id: string;

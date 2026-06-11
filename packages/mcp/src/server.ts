@@ -252,6 +252,8 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
   );
 
   // ---------------------------------------------------------------- writes (content:write)
+  // Deletes are gated on `content:delete`, NOT `content:write` — an agent can be allowed to
+  // create/update without the irreversible power to remove pages or content.
   server.registerTool(
     'put_page',
     { description: 'Create or replace a page. The page id is taken from page.id.', inputSchema: { page: PageSchema } },
@@ -260,8 +262,8 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
 
   server.registerTool(
     'delete_page',
-    { description: 'Delete a page by id.', inputSchema: { id: z.string() } },
-    gate('content:write', ({ id }) => client.deleteContent('page', id).then(() => ({ deleted: id }))),
+    { description: 'Delete a page by id. Needs the content:delete capability.', inputSchema: { id: z.string() } },
+    gate('content:delete', ({ id }) => client.deleteContent('page', id).then(() => ({ deleted: id }))),
   );
 
   server.registerTool(
@@ -275,8 +277,11 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
 
   server.registerTool(
     'delete_content',
-    { description: 'Delete a content entity by kind + id.', inputSchema: { kind: GENERIC_KIND, id: z.string() } },
-    gate('content:write', ({ kind, id }) => client.deleteContent(kind, id).then(() => ({ deleted: `${kind}/${id}` }))),
+    {
+      description: 'Delete a content entity by kind + id. Needs the content:delete capability.',
+      inputSchema: { kind: GENERIC_KIND, id: z.string() },
+    },
+    gate('content:delete', ({ kind, id }) => client.deleteContent(kind, id).then(() => ({ deleted: `${kind}/${id}` }))),
   );
 
   server.registerTool(

@@ -92,9 +92,14 @@ export const sessions = sqliteTable('sessions', {
 /**
  * Capabilities a project API key may carry. They NARROW access below the key's
  * role — a key's effective permission is `role ∩ capabilities`, never more than
- * its role. `deploy` (external egress) is never granted by default.
+ * its role. `content:delete` gates DESTRUCTIVE removes (pages, content entities,
+ * media + media folders, form submissions, locales, SMTP config) and is NOT
+ * implied by `content:write` — an agent can be allowed to create/update without
+ * the irreversible power to delete.
+ * `deploy` (external egress) is never granted by default. Order is canonical
+ * (it drives the OAuth granted-scope order in oauth-routes).
  */
-export const API_KEY_CAPABILITIES = ['content:read', 'content:write', 'publish', 'deploy'] as const;
+export const API_KEY_CAPABILITIES = ['content:read', 'content:write', 'content:delete', 'publish', 'deploy'] as const;
 export type ApiKeyCapability = (typeof API_KEY_CAPABILITIES)[number];
 
 /**

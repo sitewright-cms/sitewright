@@ -174,7 +174,7 @@ export const AGENT_INSTRUCTIONS_MAX = 32_000;
 export const AgentInstructionsSchema = z.string().min(1).max(AGENT_INSTRUCTIONS_MAX);
 
 /** Capability a tool requires (absent = always available, even for a read-only token). */
-export type McpToolCapability = 'content:read' | 'content:write' | 'publish';
+export type McpToolCapability = 'content:read' | 'content:write' | 'content:delete' | 'publish';
 
 /** Display metadata for one MCP tool the bridge exposes. */
 export interface McpToolMeta {
@@ -202,9 +202,9 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'list_stock_providers', description: "List configured stock-image providers and whether each is available.", capability: 'content:read' },
   { name: 'search_stock_images', description: "Search a stock-image provider for photos.", capability: 'content:read' },
   { name: 'put_page', description: "Create or replace a page (id taken from page.id).", capability: 'content:write' },
-  { name: 'delete_page', description: "Delete a page by id.", capability: 'content:write' },
+  { name: 'delete_page', description: "Delete a page by id.", capability: 'content:delete' },
   { name: 'put_content', description: "Create or replace a content entity of the given kind.", capability: 'content:write' },
-  { name: 'delete_content', description: "Delete a content entity by kind + id.", capability: 'content:write' },
+  { name: 'delete_content', description: "Delete a content entity by kind + id.", capability: 'content:delete' },
   { name: 'import_stock_image', description: "Import a stock photo into the project (downloaded, optimized, self-hosted with attribution).", capability: 'content:write' },
   { name: 'publish_project', description: "Build the project's static site from current saved content.", capability: 'publish' },
 ];

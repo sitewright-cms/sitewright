@@ -430,8 +430,9 @@ export function InstanceSettings() {
         <h2 className="text-sm font-bold">MCP endpoints</h2>
         <p className="mb-3 text-xs text-slate-500">
           Tools the MCP bridge exposes to a connected agent. Each is gated by the connection’s capabilities — a
-          read-only connection can list a write tool but calling it returns a clear “needs content:write” error
-          (the API enforces it server-side).
+          connection that lacks a tool’s capability can still see it listed, but calling it returns a clear
+          “needs <code>{'<capability>'}</code>” error (the API enforces it server-side). Deletes require the
+          separate <code>content:delete</code> capability, so an agent can create and edit without the power to remove.
         </p>
         <ul className="flex flex-col gap-1.5 text-sm">
           {MCP_TOOL_CATALOG.map((t) => (

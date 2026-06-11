@@ -1180,7 +1180,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     '/projects/:projectId/content/:kind/:entityId',
     { config: rl(60) },
     async (req, reply) => {
-      const { ctx } = await resolveProject(req, 'content:write');
+      const { ctx } = await resolveProject(req, 'content:delete');
       await contentRepo.remove(ctx, parseGenericKind(req.params.kind), req.params.entityId);
       return reply.code(204).send();
     },
@@ -1987,7 +1987,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     app.delete<{ Params: { projectId: string; id: string } }>(
       '/projects/:projectId/media/:id',
       async (req, reply) => {
-        const { ctx, project } = await resolveProject(req, 'content:write');
+        const { ctx, project } = await resolveProject(req, 'content:delete');
         // DB first: a leaked binary (if fs removal fails) is harmless and GC-able,
         // whereas a leaked DB row would block re-creating the same asset id.
         await contentRepo.remove(ctx, 'media', req.params.id);
@@ -2116,7 +2116,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
     // Delete a folder RECURSIVELY: every folder record + asset (and its binaries) under it.
     app.delete<{ Params: { projectId: string } }>('/projects/:projectId/media/folders', { config: rl(60) }, async (req, reply) => {
-      const { ctx, project } = await resolveProject(req, 'content:write');
+      const { ctx, project } = await resolveProject(req, 'content:delete');
       if (!WRITE_ROLES.has(ctx.role)) return reply.code(403).send({ error: 'insufficient role for this operation' });
       const body = FolderPathBody.safeParse(req.body);
       if (!body.success) return reply.code(400).send({ error: 'invalid folder path' });

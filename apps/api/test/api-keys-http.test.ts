@@ -12,16 +12,21 @@ import type { Database } from '../src/db/client.js';
 let app: FastifyInstance;
 let db: Database;
 let publishRoot: string;
+let mediaRoot: string;
 const encryptionKey = randomBytes(32);
 
 beforeEach(async () => {
   publishRoot = await mkdtemp(join(tmpdir(), 'sw-keys-'));
+  // mediaRoot is what registers the media routes — needed so the capability-gating
+  // test below can exercise the media DELETE endpoints.
+  mediaRoot = await mkdtemp(join(tmpdir(), 'sw-keys-media-'));
   db = await makeTestDb();
-  app = await createApp({ db, publishRoot, encryptionKey });
+  app = await createApp({ db, publishRoot, mediaRoot, encryptionKey });
   await app.ready();
 });
 afterEach(async () => {
   await rm(publishRoot, { recursive: true, force: true });
+  await rm(mediaRoot, { recursive: true, force: true });
 });
 
 function sessionCookie(res: { cookies: Array<{ name: string; value: string }> }): string {
@@ -125,6 +130,55 @@ describe('project API keys — bearer auth + capabilities', () => {
       payload: page,
     });
     expect(ok.statusCode).toBe(200);
+  });
+
+  it('gates deletes behind content:delete — content:write alone cannot remove', async () => {
+    const page = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' } };
+    // One project, two keys in it (a delete attempt must hit the SAME project the page lives in).
+    const { t, projectId } = await setup('del@acme.test', 'del-site');
+    const base = `/projects/${projectId}`;
+    const mint = async (caps: string[]) =>
+      ((await createKey(base, t, { capabilities: caps, role: 'owner' })).json() as { token: string }).token;
+    const writeTok = await mint(['content:read', 'content:write']);
+    const deleteTok = await mint(['content:read', 'content:write', 'content:delete']);
+
+    // Seed a page with the write token.
+    const seed = await app.inject({ method: 'PUT', url: `${base}/content/page/home`, headers: bearer(writeTok), payload: page });
+    expect(seed.statusCode).toBe(200);
+
+    // content:write alone is refused the delete (403) and the row survives.
+    const denied = await app.inject({ method: 'DELETE', url: `${base}/content/page/home`, headers: bearer(writeTok) });
+    expect(denied.statusCode).toBe(403);
+    const still = await app.inject({ method: 'GET', url: `${base}/content/page/home`, headers: bearer(writeTok) });
+    expect(still.statusCode).toBe(200);
+
+    // content:delete succeeds (204).
+    const ok = await app.inject({ method: 'DELETE', url: `${base}/content/page/home`, headers: bearer(deleteTok) });
+    expect(ok.statusCode).toBe(204);
+  });
+
+  it('refuses EVERY destructive DELETE route to a content:write-only token (403 before any lookup)', async () => {
+    const { t, projectId } = await setup('caps@acme.test', 'caps-site');
+    const base = `/projects/${projectId}`;
+    const writeTok = (
+      (await createKey(base, t, { capabilities: ['content:read', 'content:write'], role: 'owner' })).json() as { token: string }
+    ).token;
+
+    // resolveProject(req, 'content:delete') is the FIRST line of each handler, so the
+    // capability 403 fires regardless of whether the target entity exists — this covers
+    // all routes migrated to content:delete without having to seed each entity type.
+    const routes = [
+      `${base}/content/page/whatever`,
+      `${base}/media/whatever`,
+      `${base}/media/folders`,
+      `${base}/submissions/whatever`,
+      `${base}/locales/fr`,
+      `${base}/smtp`,
+    ];
+    for (const url of routes) {
+      const res = await app.inject({ method: 'DELETE', url, headers: bearer(writeTok) });
+      expect(res.statusCode, `${url} should be 403 for a content:write-only token`).toBe(403);
+    }
   });
 
   it('confines a token to its own project (cross-project → 404)', async () => {

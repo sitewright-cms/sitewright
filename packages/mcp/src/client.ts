@@ -5,7 +5,7 @@
  * tree-safety) is enforced server-side; this layer only forwards.
  */
 
-export type Capability = 'content:read' | 'content:write' | 'publish' | 'deploy';
+export type Capability = 'content:read' | 'content:write' | 'content:delete' | 'publish' | 'deploy';
 
 export interface Scope {
   projectId: string;

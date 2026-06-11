@@ -28,6 +28,8 @@ export class OidcRepository {
    * expired rows.
    */
   async createLoginState(
+    // `pkceVerifier` is the empty string when the provider has PKCE disabled (usePkce:false) — a
+    // sentinel meaning "no verifier"; the callback (completeOidcAuth) sends a verifier only when non-empty.
     input: { state: string; providerId: string; nonce: string; pkceVerifier: string },
     now: Date = new Date(),
   ): Promise<void> {

@@ -129,6 +129,19 @@ export const OidcProviderStoredSchema = z.object({
   clientSecret: EncryptedSecretSchema.optional(),
   scopes: OidcScopesSchema.default([...DEFAULT_OIDC_SCOPES]),
   enabled: z.boolean().default(true),
+  /**
+   * Auto-provision a NEW passwordless account when a verified email from this provider matches no
+   * existing account and no pending invite (otherwise such a login is denied). Per-provider trust,
+   * independent of the instance `allowSelfRegistration` toggle. Off by default. Defaulted (not optional)
+   * so existing stored providers read back as `false`.
+   */
+  autoRegister: z.boolean().default(false),
+  /**
+   * Use PKCE (S256) in the authorization-code flow. On by default (the secure norm). Turn off only for
+   * an IdP that rejects the `code_challenge` parameter — off relies on state + nonce and is intended for
+   * confidential clients (with a client secret). Defaulted so existing stored providers read back `true`.
+   */
+  usePkce: z.boolean().default(true),
 });
 export type OidcProviderStored = z.infer<typeof OidcProviderStoredSchema>;
 
@@ -214,6 +227,9 @@ export const OidcProviderInputSchema = z.object({
   clientSecret: z.string().min(1).max(1024).optional(),
   scopes: OidcScopesSchema.optional(),
   enabled: z.boolean().default(true),
+  // Defaulted so older clients that omit them get the safe values (auto-register off, PKCE on).
+  autoRegister: z.boolean().default(false),
+  usePkce: z.boolean().default(true),
 });
 export type OidcProviderInput = z.infer<typeof OidcProviderInputSchema>;
 
@@ -278,7 +294,11 @@ export interface StockKeysPublic {
   hasPexels: boolean;
 }
 
-/** A configured OIDC provider, masked: the client secret collapses to a presence flag. */
+/**
+ * A configured OIDC provider, masked: the client secret collapses to a presence flag. Returned only
+ * from the admin-gated `GET /admin/settings` (not the unauthenticated `/auth/config`, which exposes
+ * just id + label) — `autoRegister`/`usePkce` are admin-config flags, never surfaced to the login screen.
+ */
 export interface OidcProviderPublic {
   id: string;
   label: string;
@@ -287,6 +307,8 @@ export interface OidcProviderPublic {
   scopes: string[];
   enabled: boolean;
   hasClientSecret: boolean;
+  autoRegister: boolean;
+  usePkce: boolean;
 }
 
 export interface InstanceSettingsPublic {

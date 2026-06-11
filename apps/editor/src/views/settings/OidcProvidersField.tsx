@@ -13,6 +13,10 @@ export interface OidcProviderDraft {
   enabled: boolean;
   hasClientSecret: boolean;
   secret: string;
+  /** Auto-provision a new account for a verified email this provider returns that matches no user/invite. */
+  autoRegister: boolean;
+  /** Use PKCE (S256). Default on; turn off only for an IdP that rejects the code_challenge param. */
+  usePkce: boolean;
 }
 
 // A monotonic counter for React keys (unique-per-session). NOT crypto.randomUUID: that is only
@@ -26,7 +30,7 @@ export function nextOidcProviderKey(): string {
 
 /** A blank provider row (the "Add" target), with a fresh stable key. */
 export function blankOidcProvider(): OidcProviderDraft {
-  return { _key: nextOidcProviderKey(), id: '', label: '', issuer: '', clientId: '', scopes: 'openid profile email', enabled: true, hasClientSecret: false, secret: '' };
+  return { _key: nextOidcProviderKey(), id: '', label: '', issuer: '', clientId: '', scopes: 'openid profile email', enabled: true, hasClientSecret: false, secret: '', autoRegister: false, usePkce: true };
 }
 
 interface OidcProvidersFieldProps {
@@ -91,6 +95,20 @@ export function OidcProvidersField({ providers, onChange }: OidcProvidersFieldPr
             <label className="text-xs text-slate-500 sm:col-span-2">
               <span className={fieldLabel}>Scopes</span>
               <input className={glassInput} aria-label={`Provider ${i + 1} scopes`} value={p.scopes} placeholder="openid profile email" onChange={(e) => update(i, { scopes: e.target.value })} />
+            </label>
+            <label className="flex items-start gap-2 text-xs text-slate-600 sm:col-span-2">
+              <input type="checkbox" className="mt-0.5" checked={p.autoRegister} onChange={(e) => update(i, { autoRegister: e.target.checked })} aria-label={`Provider ${i + 1} auto-register`} />
+              <span>
+                <span className="font-medium">Auto-register new users</span>
+                <span className="block text-slate-500">Create an account for any verified email from this provider that isn’t already a user or invited. New users get no project access until they create a project or an admin grants one.</span>
+              </span>
+            </label>
+            <label className="flex items-start gap-2 text-xs text-slate-600 sm:col-span-2">
+              <input type="checkbox" className="mt-0.5" checked={p.usePkce} onChange={(e) => update(i, { usePkce: e.target.checked })} aria-label={`Provider ${i + 1} use PKCE`} />
+              <span>
+                <span className="font-medium">Use PKCE (S256)</span>
+                <span className="block text-slate-500">On by default. Turn off only if the provider rejects PKCE — disabling it needs a client secret (a public client without PKCE is insecure).</span>
+              </span>
             </label>
           </div>
         </div>

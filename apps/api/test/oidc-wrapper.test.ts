@@ -74,7 +74,7 @@ describe('OIDC wrapper (real openid-client against a mock IdP)', () => {
   let provider: OidcProviderRuntime;
   beforeEach(async () => {
     idp = await startMockIdp();
-    provider = { id: `mock-${idp.issuer.slice(-5)}`, issuer: idp.issuer, clientId: 'client-1', clientSecret: 'secret', scopes: ['openid', 'email'] };
+    provider = { id: `mock-${idp.issuer.slice(-5)}`, issuer: idp.issuer, clientId: 'client-1', clientSecret: 'secret', scopes: ['openid', 'email'], usePkce: true };
   });
   afterEach(async () => {
     await idp.close();
@@ -100,6 +100,26 @@ describe('OIDC wrapper (real openid-client against a mock IdP)', () => {
       { state: start.state, nonce: start.nonce, codeVerifier: start.codeVerifier },
     );
     expect(claims).toEqual({ iss: idp.issuer, sub: 'user-1', email: 'a@b.co', emailVerified: true });
+  });
+
+  it('with PKCE disabled: omits code_challenge but still completes via state + nonce', async () => {
+    const noPkce: OidcProviderRuntime = { ...provider, usePkce: false };
+    const start = await startOidcAuth(noPkce, 'http://localhost/cb');
+    const url = new URL(start.url);
+    // No PKCE params on the authorize URL, and no verifier to persist.
+    expect(url.searchParams.get('code_challenge')).toBeNull();
+    expect(url.searchParams.get('code_challenge_method')).toBeNull();
+    expect(start.codeVerifier).toBe('');
+    expect(url.searchParams.get('state')).toBe(start.state);
+
+    // The full code→token round-trip still succeeds (state + nonce enforce the binding).
+    idp.setNextIdToken({ sub: 'user-2', email: 'c@d.co', email_verified: true, nonce: start.nonce, aud: 'client-1' });
+    const claims = await completeOidcAuth(
+      noPkce,
+      new URL(`http://localhost/cb?code=abc&state=${start.state}`),
+      { state: start.state, nonce: start.nonce, codeVerifier: start.codeVerifier },
+    );
+    expect(claims).toEqual({ iss: idp.issuer, sub: 'user-2', email: 'c@d.co', emailVerified: true });
   });
 
   it('rejects an ID token whose nonce does not match the request (replay/CSRF defense)', async () => {

@@ -188,8 +188,32 @@ describe('InstanceSettings', () => {
     await waitFor(() => expect(putInstanceSettings).toHaveBeenCalledTimes(1));
     const body = putInstanceSettings.mock.calls[0]![0] as InstanceSettingsInput;
     expect(body.oidcProviders).toEqual([
-      { id: 'google', label: 'Google', issuer: 'https://accounts.google.com', clientId: 'cid', scopes: ['openid', 'profile', 'email'], enabled: true, clientSecret: 'csecret' },
+      { id: 'google', label: 'Google', issuer: 'https://accounts.google.com', clientId: 'cid', scopes: ['openid', 'profile', 'email'], enabled: true, autoRegister: false, usePkce: true, clientSecret: 'csecret' },
     ]);
+  });
+
+  it('hydrates and saves the per-provider auto-register + PKCE toggles', async () => {
+    const withProvider: InstanceSettingsPublic = {
+      formModes: DEFAULTS.formModes,
+      oidcProviders: [
+        { id: 'acme', label: 'Acme', issuer: 'https://idp.example.com', clientId: 'cid', scopes: ['openid', 'email'], enabled: true, hasClientSecret: true, autoRegister: false, usePkce: true },
+      ],
+    };
+    getInstanceSettings.mockResolvedValue({ settings: withProvider });
+    putInstanceSettings.mockResolvedValue({ settings: withProvider });
+    render(<InstanceSettings />);
+    // Hydrated state: auto-register off, PKCE on.
+    const autoReg = await screen.findByLabelText('Provider 1 auto-register');
+    const pkce = screen.getByLabelText('Provider 1 use PKCE');
+    expect(autoReg).not.toBeChecked();
+    expect(pkce).toBeChecked();
+    // Flip both, then save → the new values are sent.
+    fireEvent.click(autoReg);
+    fireEvent.click(pkce);
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(putInstanceSettings).toHaveBeenCalledTimes(1));
+    const body = putInstanceSettings.mock.calls[0]![0] as InstanceSettingsInput;
+    expect(body.oidcProviders?.[0]).toMatchObject({ id: 'acme', autoRegister: true, usePkce: false });
   });
 
   it('"Add provider" works in an insecure context where crypto.randomUUID is unavailable', async () => {

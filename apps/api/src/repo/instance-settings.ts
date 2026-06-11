@@ -37,6 +37,14 @@ function mergeNullable<T>(input: T | null | undefined, current: T | undefined, s
   }
 }
 
+/** Raised when an OIDC provider config is internally inconsistent (e.g. PKCE off on a public client). */
+export class InvalidOidcConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvalidOidcConfigError';
+  }
+}
+
 /**
  * Reads and writes the instance-settings singleton. Secrets (SMTP password,
  * hCaptcha secret) are encrypted at rest with the operator's SW_ENCRYPTION_KEY;
@@ -207,6 +215,12 @@ export class InstanceSettingsRepository {
       const byId = new Map((current.oidcProviders ?? []).map((p) => [p.id, p]));
       next.oidcProviders = input.oidcProviders.map((p): OidcProviderStored => {
         const clientSecret = p.clientSecret !== undefined ? this.encrypt(p.clientSecret) : byId.get(p.id)?.clientSecret;
+        // PKCE is the ONLY code-theft protection for a public client (no secret). Refuse to disable it
+        // unless the client is confidential — checked here, where the effective (possibly preserved) secret
+        // is known, rather than in the schema (which can't see an already-stored secret).
+        if (!p.usePkce && clientSecret === undefined) {
+          throw new InvalidOidcConfigError(`OIDC provider "${p.id}": PKCE can only be disabled for a confidential client (a client secret is required).`);
+        }
         return {
           id: p.id,
           label: p.label,
@@ -214,6 +228,8 @@ export class InstanceSettingsRepository {
           clientId: p.clientId,
           scopes: p.scopes && p.scopes.length > 0 ? p.scopes : ['openid', 'profile', 'email'],
           enabled: p.enabled,
+          autoRegister: p.autoRegister,
+          usePkce: p.usePkce,
           ...(clientSecret !== undefined ? { clientSecret } : {}),
         };
       });
@@ -275,7 +291,16 @@ export class InstanceSettingsRepository {
    */
   async getEnabledOidcProvider(
     id: string,
-  ): Promise<{ id: string; label: string; issuer: string; clientId: string; clientSecret?: string; scopes: string[] } | null> {
+  ): Promise<{
+    id: string;
+    label: string;
+    issuer: string;
+    clientId: string;
+    clientSecret?: string;
+    scopes: string[];
+    autoRegister: boolean;
+    usePkce: boolean;
+  } | null> {
     const stored = await this.getStored();
     const p = stored.oidcProviders?.find((x) => x.id === id && x.enabled);
     if (!p) return null;
@@ -285,6 +310,8 @@ export class InstanceSettingsRepository {
       issuer: p.issuer,
       clientId: p.clientId,
       scopes: p.scopes,
+      autoRegister: p.autoRegister,
+      usePkce: p.usePkce,
       ...(p.clientSecret ? { clientSecret: this.decrypt(p.clientSecret) } : {}),
     };
   }

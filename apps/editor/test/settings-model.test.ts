@@ -20,6 +20,7 @@ const full: SettingsBundle = {
     address: { street: '1 Main', locality: 'Town', region: 'CA', country: 'US', postalCode: '90001' },
     geo: { latitude: '34.0', longitude: '-118.2' },
     mapUrl: 'https://www.google.com/maps/embed?pb=test',
+    bookingUrl: 'https://calendly.com/acme/intro',
     social: [{ link: 'https://x.com/acme', name: 'X', icon: 'brand:x' }],
     // All six mandatory tokens set to non-default values, so the round-trip proves explicit
     // values survive (and aren't clobbered by the fill-missing defaults).

@@ -376,7 +376,7 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         name: 'company',
         keywords: 'identity brand organization',
         description:
-          'Corporate identity (Settings → Corporate Identity): company.name, .legalName, .shortName, .slogan, .description, .email, .telephone, .mapUrl (Google Maps embed → iframe src); images .logo / .logoLight / .logoDark / .icon / .favicon / .image; .colors.<token>; address (.street, .locality, .region, .country, .postalCode). company.social is an ARRAY of { link, name, icon } — loop it with {{#each}}.',
+          'Corporate identity (Settings → Corporate Identity): company.name, .legalName, .shortName, .slogan, .description, .email, .telephone, .mapUrl (Google Maps embed → iframe src), .bookingUrl (external booking/reservation/appointment link); images .logo / .logoLight / .logoDark / .icon / .favicon / .image; .colors.<token>; address (.street, .locality, .region, .country, .postalCode). company.social is an ARRAY of { link, name, icon } — loop it with {{#each}}.',
         example:
           '<a href="mailto:{{company.email}}">{{company.email}}</a>\n' +
           '\n' +

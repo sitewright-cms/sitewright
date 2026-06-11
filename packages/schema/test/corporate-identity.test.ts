@@ -40,10 +40,15 @@ describe('CorporateIdentitySchema', () => {
       name: 'Acme',
       legalName: 'Acme Inc.',
       colors: { primary: '#0a7' },
+      bookingUrl: 'https://calendly.com/acme/intro',
       social: ['https://x.com/acme'],
     });
     expect(id.legalName).toBe('Acme Inc.');
+    expect(id.bookingUrl).toBe('https://calendly.com/acme/intro');
     expect(() => CorporateIdentitySchema.parse({ name: 'Acme', social: ['javascript:alert(1)'] })).toThrow();
+    // bookingUrl must be an absolute http(s) URL (no javascript:/data:).
+    expect(() => CorporateIdentitySchema.parse({ name: 'Acme', bookingUrl: 'javascript:alert(1)' })).toThrow();
+    expect(() => CorporateIdentitySchema.parse({ name: 'Acme', bookingUrl: 'data:text/html,<script>alert(1)</script>' })).toThrow();
   });
 
   it('detectSocial: maps known hosts to name + icon, unknown → hostname + globe, bad URL → {}', () => {

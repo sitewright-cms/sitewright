@@ -100,6 +100,7 @@ export interface SettingsForm {
   latitude: string;
   longitude: string;
   mapUrl: string;
+  bookingUrl: string;
   social: KeyedSocial[];
   // identity — brand tokens
   colors: KeyedPair[];
@@ -218,6 +219,7 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
     latitude: id.geo?.latitude ?? '',
     longitude: id.geo?.longitude ?? '',
     mapUrl: id.mapUrl ?? '',
+    bookingUrl: id.bookingUrl ?? '',
     social: (id.social ?? []).map((s) => ({ id: rowId(), link: s.link, name: s.name ?? '', icon: s.icon ?? '' })),
     colors: colorsToPairs(id.colors),
     fonts: recordToPairs(id.typography?.fontFamilies),
@@ -334,6 +336,7 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
     identity = put(identity, 'geo', { latitude: form.latitude.trim(), longitude: form.longitude.trim() });
   }
   identity = put(identity, 'mapUrl', trimmed(form.mapUrl));
+  identity = put(identity, 'bookingUrl', trimmed(form.bookingUrl));
   // Social: keep the author's order; drop rows with no link; omit empty name/icon.
   const social = form.social
     .filter((s) => s.link.trim())

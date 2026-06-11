@@ -289,6 +289,9 @@ const CorporateIdentityObject = z.object({
   geo: GeoSchema.optional(),
   /** Google Maps EMBED URL — used as an <iframe> src in templates (e.g. the footer map). */
   mapUrl: AbsoluteUrlSchema.optional(),
+  /** External booking / reservation / appointment URL (a scheduling service, e.g. a "Book now"
+   *  link). Available in templates as `{{ company.bookingUrl }}`. */
+  bookingUrl: AbsoluteUrlSchema.optional(),
   /** Social / external profiles (link + display name + icon) → schema.org `sameAs` (the links). */
   social: z.array(SocialLinkSchema).max(50).optional(),
 

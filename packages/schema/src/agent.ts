@@ -24,7 +24,8 @@ In \`source\`:
   palette (\`bg-slate-900\`) is fine for non-brand neutrals.
 - Bind data: {{ company.* }} exposes the Corporate Identity you set (e.g. {{ company.name }}
   and any contact/address fields on \`identity\`). {{ company.mapUrl }} is a Google Maps embed URL
-  for an <iframe src>. {{#each company.social}} yields { link, name, icon } per profile — render a
+  for an <iframe src>; {{ company.bookingUrl }} is an external booking/reservation/appointment link
+  (e.g. a "Book now" button). {{#each company.social}} yields { link, name, icon } per profile — render a
   social bar with {{#each company.social}}<a href="{{sw-url link}}">{{sw-icon icon}} {{name}}</a>{{/each}}.
   Page bindings: {{ page.title }}, {{ page.path }} (full route),
   {{ page.slug }} (own segment); {{ parentPage.path }} / {{ parentPage.data.<key> }} for the page's

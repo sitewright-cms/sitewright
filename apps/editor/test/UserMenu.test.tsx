@@ -66,11 +66,11 @@ describe('UserMenu', () => {
     updateEmail.mockResolvedValue({ email: 'new@acme.test' });
     const { onEmailChanged } = renderMenu();
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'new@acme.test' } });
-    fireEvent.change(screen.getByLabelText('Current password'), { target: { value: 'pw-secret-1' } });
+    fireEvent.change(screen.getByLabelText('Current password'), { target: { value: 'Pw-secret-1' } });
     const btn = screen.getByRole('button', { name: 'Update email' });
     expect(btn).toBeEnabled();
     fireEvent.click(btn);
-    await waitFor(() => expect(updateEmail).toHaveBeenCalledWith('new@acme.test', 'pw-secret-1'));
+    await waitFor(() => expect(updateEmail).toHaveBeenCalledWith('new@acme.test', 'Pw-secret-1'));
     expect(onEmailChanged).toHaveBeenCalledWith('new@acme.test');
   });
 
@@ -88,16 +88,16 @@ describe('UserMenu', () => {
     renderMenu();
     fireEvent.click(screen.getByRole('button', { name: 'Password' }));
     fireEvent.change(screen.getByLabelText('Current password'), { target: { value: 'old-pw-1234' } });
-    fireEvent.change(screen.getByLabelText('New password'), { target: { value: 'new-pw-9876' } });
+    fireEvent.change(screen.getByLabelText('New password'), { target: { value: 'New-pw-9876' } });
     // Mismatched confirmation keeps the button disabled.
     fireEvent.change(screen.getByLabelText('Confirm new password'), { target: { value: 'different' } });
     expect(screen.getByRole('button', { name: 'Change password' })).toBeDisabled();
-    // Matching confirmation enables it.
-    fireEvent.change(screen.getByLabelText('Confirm new password'), { target: { value: 'new-pw-9876' } });
+    // Matching confirmation (and a policy-compliant new password) enables it.
+    fireEvent.change(screen.getByLabelText('Confirm new password'), { target: { value: 'New-pw-9876' } });
     const btn = screen.getByRole('button', { name: 'Change password' });
     expect(btn).toBeEnabled();
     fireEvent.click(btn);
-    await waitFor(() => expect(changePassword).toHaveBeenCalledWith('old-pw-1234', 'new-pw-9876'));
+    await waitFor(() => expect(changePassword).toHaveBeenCalledWith('old-pw-1234', 'New-pw-9876'));
   });
 
   it('offers "Set a password" (no current password) for an account that has none (OIDC)', async () => {
@@ -106,11 +106,11 @@ describe('UserMenu', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Password' }));
     // No current-password field is shown.
     expect(screen.queryByLabelText('Current password')).toBeNull();
-    fireEvent.change(screen.getByLabelText('New password'), { target: { value: 'brand-new-pw-1' } });
-    fireEvent.change(screen.getByLabelText('Confirm new password'), { target: { value: 'brand-new-pw-1' } });
+    fireEvent.change(screen.getByLabelText('New password'), { target: { value: 'Brand-new-pw-1' } });
+    fireEvent.change(screen.getByLabelText('Confirm new password'), { target: { value: 'Brand-new-pw-1' } });
     fireEvent.click(screen.getByRole('button', { name: 'Set password' }));
     // currentPassword is sent as undefined → the server sets the initial password.
-    await waitFor(() => expect(changePassword).toHaveBeenCalledWith(undefined, 'brand-new-pw-1'));
+    await waitFor(() => expect(changePassword).toHaveBeenCalledWith(undefined, 'Brand-new-pw-1'));
     expect(onPasswordChanged).toHaveBeenCalled();
   });
 

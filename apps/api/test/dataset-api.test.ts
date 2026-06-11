@@ -20,7 +20,7 @@ async function setup(email: string, slug = 'site') {
   const reg = await app.inject({
     method: 'POST',
     url: '/auth/register',
-    payload: { email, password: 'pw-secret-1' },
+    payload: { email, password: 'Pw-secret-1' },
   });
   const t = token(reg);
   const proj = await app.inject({

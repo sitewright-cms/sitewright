@@ -107,7 +107,7 @@ describe('per-route rate limiting', () => {
       url: '/auth/register',
       payload: {
         email: `indep-${randomUUID()}@test.local`,
-        password: 'pw-secret-1',
+        password: 'Pw-secret-1',
       },
     });
     expect(reg.statusCode).not.toBe(429);
@@ -121,7 +121,7 @@ describe('per-route rate limiting', () => {
       '/auth/register',
       // Reuse a colliding payload: pre-cap these return 409 (conflict) or 201;
       // the only assertion that matters is the cap boundary below.
-      { email: `dup-${randomUUID()}@test.local`, password: 'pw-secret-1'},
+      { email: `dup-${randomUUID()}@test.local`, password: 'Pw-secret-1'},
       REGISTER_CAP, // 1 already consumed + this many => crosses the cap on the last
     );
     // We've now issued 1 + REGISTER_CAP = cap+1 register requests total. The

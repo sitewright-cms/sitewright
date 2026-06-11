@@ -35,12 +35,12 @@ import { Login } from '../src/views/Login';
 beforeEach(() => {
   for (const m of [login, register, loginTotp, passkeyLoginOptions, passkeyLoginVerify, startAuthentication, loginConfig]) m.mockReset();
   browserSupportsWebAuthn.mockReturnValue(true);
-  loginConfig.mockResolvedValue({ oidcProviders: [] });
+  loginConfig.mockResolvedValue({ oidcProviders: [], allowSelfRegistration: false });
 });
 
 async function fillCredsAndSubmit() {
   fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'me@acme.test' } });
-  fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'pw-secret-1' } });
+  fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'Pw-secret-1' } });
   fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
 }
 
@@ -148,5 +148,43 @@ describe('Login', () => {
   it('shows an OIDC callback notice on the sign-in screen', async () => {
     render(<Login onAuthed={vi.fn()} initialNotice="Your account isn’t set up yet." />);
     expect(await screen.findByText('Your account isn’t set up yet.')).toBeInTheDocument();
+  });
+
+  it('hides the "Register" option when self-registration is closed', async () => {
+    loginConfig.mockResolvedValue({ oidcProviders: [], allowSelfRegistration: false });
+    render(<Login onAuthed={vi.fn()} />);
+    // Wait for the config to load (the OIDC link area would render here if any).
+    await waitFor(() => expect(loginConfig).toHaveBeenCalled());
+    expect(screen.queryByRole('button', { name: 'Need an account? Register' })).not.toBeInTheDocument();
+  });
+
+  it('shows the "Register" option when self-registration is open, and gates submit on the password policy', async () => {
+    loginConfig.mockResolvedValue({ oidcProviders: [], allowSelfRegistration: true });
+    register.mockResolvedValue({ userId: 'u' });
+    const onAuthed = vi.fn();
+    render(<Login onAuthed={onAuthed} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Need an account? Register' }));
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'new@acme.test' } });
+
+    // A weak password fails the policy → the checklist shows unmet rules and submit stays disabled.
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'weak' } });
+    expect(screen.getByTestId('pw-rule-uppercase')).toHaveAttribute('data-met', 'false');
+    expect(screen.getByRole('button', { name: 'Create account' })).toBeDisabled();
+
+    // A compliant password satisfies every rule → submit enabled → register is called.
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'Str0ng-Pw!' } });
+    expect(screen.getByTestId('pw-rule-uppercase')).toHaveAttribute('data-met', 'true');
+    const submit = screen.getByRole('button', { name: 'Create account' });
+    expect(submit).not.toBeDisabled();
+    fireEvent.click(submit);
+    await waitFor(() => expect(register).toHaveBeenCalledWith('new@acme.test', 'Str0ng-Pw!'));
+    await waitFor(() => expect(onAuthed).toHaveBeenCalled());
+  });
+
+  it('allowRegister forces the Register option even when the instance flag is closed (invite flow)', async () => {
+    loginConfig.mockResolvedValue({ oidcProviders: [], allowSelfRegistration: false });
+    render(<Login onAuthed={vi.fn()} allowRegister />);
+    expect(await screen.findByRole('button', { name: 'Need an account? Register' })).toBeInTheDocument();
   });
 });

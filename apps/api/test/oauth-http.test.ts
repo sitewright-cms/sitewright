@@ -35,7 +35,7 @@ async function setup() {
   const reg = await app.inject({
     method: 'POST',
     url: '/auth/register',
-    payload: { email: `a-${uid}@e2e.test`, password: 'pw-secret-1' },
+    payload: { email: `a-${uid}@e2e.test`, password: 'Pw-secret-1' },
   });
   const session = cookie(reg);
   const proj = await app.inject({

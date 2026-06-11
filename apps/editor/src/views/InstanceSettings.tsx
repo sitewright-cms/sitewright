@@ -68,8 +68,13 @@ export function InstanceSettings() {
 
   const [oidcProviders, setOidcProviders] = useState<OidcProviderDraft[]>([]);
 
+  // Whether anyone may create an account from the login screen (invited users always can). The GET
+  // resolves this to its effective value, so the toggle reflects reality even before it's been saved.
+  const [allowSelfRegistration, setAllowSelfRegistration] = useState(false);
+
   function hydrate(s: InstanceSettingsPublic) {
     setModes(s.formModes);
+    setAllowSelfRegistration(s.allowSelfRegistration ?? false);
     setSmtpEnabled(Boolean(s.smtp));
     setHost(s.smtp?.host ?? '');
     setPort(s.smtp?.port ?? 587);
@@ -136,6 +141,7 @@ export function InstanceSettings() {
     setError(null);
     setSaved(false);
     const input: InstanceSettingsInput = { formModes: modes };
+    input.allowSelfRegistration = allowSelfRegistration;
     input.smtp = smtpEnabled
       ? {
           host,
@@ -442,6 +448,27 @@ export function InstanceSettings() {
             }}
             onBlur={() => setAgentSessionHours((h) => clampSessionHours(h))}
           />
+        </label>
+      </fieldset>
+
+      <fieldset className={`${glassCard} p-4`}>
+        <legend className="px-1 text-sm font-bold">Accounts</legend>
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            aria-label="Allow user self-registration"
+            checked={allowSelfRegistration}
+            onChange={(e) => setAllowSelfRegistration(e.target.checked)}
+          />
+          <span>
+            <span className="font-medium">Allow user self-registration</span>
+            <span className="block text-xs text-slate-500">
+              When on, anyone can create an account from the login screen. When off, only invited users can
+              register. Self-registered users start with no project access until they create a project or an
+              admin grants access.
+            </span>
+          </span>
         </label>
       </fieldset>
 

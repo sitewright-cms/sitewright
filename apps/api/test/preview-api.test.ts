@@ -24,7 +24,7 @@ async function setup(email: string, instance: FastifyInstance = app, slug = 'sit
   const reg = await instance.inject({
     method: 'POST',
     url: '/auth/register',
-    payload: { email, password: 'pw-secret-1' },
+    payload: { email, password: 'Pw-secret-1' },
   });
   const t = token(reg);
   const proj = await instance.inject({

@@ -9,7 +9,7 @@ import { users, projects } from '../src/db/schema.js';
 describe('seedInstance — first-boot bootstrap', { timeout: 30_000 }, () => {
   it('seeds the admin + Example Project, is idempotent, and the admin can log in', async () => {
     const db = await makeTestDb();
-    await seedInstance({ db, adminEmail: 'admin@sitewright.example', adminPassword: 'pw-secret-1' });
+    await seedInstance({ db, adminEmail: 'admin@sitewright.example', adminPassword: 'Pw-secret-1' });
 
     // The super-admin and the showcase project exist.
     expect((await db.select().from(users)).map((u) => u.email)).toEqual(['admin@sitewright.example']);
@@ -26,7 +26,7 @@ describe('seedInstance — first-boot bootstrap', { timeout: 30_000 }, () => {
     const login = await app.inject({
       method: 'POST',
       url: '/auth/login',
-      payload: { email: 'admin@sitewright.example', password: 'pw-secret-1' },
+      payload: { email: 'admin@sitewright.example', password: 'Pw-secret-1' },
     });
     expect(login.statusCode).toBe(200);
     await app.close();
@@ -35,14 +35,14 @@ describe('seedInstance — first-boot bootstrap', { timeout: 30_000 }, () => {
   it('the seeded admin is an instance admin when its email is in the allowlist', async () => {
     // Mirrors server.ts, which adds SW_ADMIN_EMAIL to the instance-admin allowlist.
     const db = await makeTestDb();
-    await seedInstance({ db, adminEmail: 'admin@sitewright.example', adminPassword: 'pw-secret-1' });
+    await seedInstance({ db, adminEmail: 'admin@sitewright.example', adminPassword: 'Pw-secret-1' });
 
     const app = await createApp({ db, adminEmails: ['admin@sitewright.example'] });
     await app.ready();
     const login = await app.inject({
       method: 'POST',
       url: '/auth/login',
-      payload: { email: 'admin@sitewright.example', password: 'pw-secret-1' },
+      payload: { email: 'admin@sitewright.example', password: 'Pw-secret-1' },
     });
     const cookie = login.cookies.find((c) => c.name === 'sw_session')?.value;
     expect(cookie).toBeTruthy();
@@ -73,7 +73,7 @@ describe('seedInstance — first-boot bootstrap', { timeout: 30_000 }, () => {
     // An explicit SW_ADMIN_PASSWORD still wins over the default (no warning)…
     const db2 = await makeTestDb();
     const log2: string[] = [];
-    await seedInstance({ db: db2, adminEmail: DEFAULT_ADMIN_EMAIL, adminPassword: 'pw-secret-1', log: (m) => log2.push(m) });
+    await seedInstance({ db: db2, adminEmail: DEFAULT_ADMIN_EMAIL, adminPassword: 'Pw-secret-1', log: (m) => log2.push(m) });
     expect(log2.join('\n')).not.toMatch(/DEFAULT password/);
     // …but a whitespace-only value means "use the default" (warned), never a
     // whitespace password that locks everyone out.

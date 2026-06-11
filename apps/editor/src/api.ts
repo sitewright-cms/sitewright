@@ -91,14 +91,31 @@ export function snippetPreviewUrl(projectId: string, id: string, scope: 'project
   return `${BASE}/projects/${projectId}/snippets/${encodeURIComponent(id)}/preview?scope=${scope}`;
 }
 
+/** The field/form messages a Zod validation failure carries (matches `ZodError.flatten()`). */
+export interface ApiErrorDetails {
+  fieldErrors?: Record<string, string[]>;
+  formErrors?: string[];
+}
+
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
     message: string,
+    /** Present for 400 validation failures — the per-field messages the server returned. */
+    public readonly details?: ApiErrorDetails,
   ) {
     super(message);
     this.name = 'ApiError';
   }
+}
+
+/** Joins a validation body's field + form messages into one readable sentence (de-duped). */
+function validationMessage(details: ApiErrorDetails): string | undefined {
+  const fieldMsgs = details.fieldErrors ? Object.values(details.fieldErrors).flat() : [];
+  const all = [...fieldMsgs, ...(details.formErrors ?? [])].filter(
+    (m): m is string => typeof m === 'string' && m.length > 0,
+  );
+  return all.length > 0 ? Array.from(new Set(all)).join(', ') : undefined;
 }
 
 // A 401 from ANY API call means the session / login token is no longer valid (expired or revoked).
@@ -119,14 +136,22 @@ function notifyIfUnauthorized(status: number): void {
 
 async function errorFromResponse(res: Response): Promise<ApiError> {
   let message = res.statusText;
+  let details: ApiErrorDetails | undefined;
   try {
-    const json = (await res.json()) as { error?: string };
+    const json = (await res.json()) as { error?: string; details?: ApiErrorDetails };
     if (json.error) message = json.error;
+    if (json.details) {
+      details = json.details;
+      // The server's generic "invalid request" (a Zod failure) is opaque on its own — surface the
+      // specific field messages instead (e.g. the failing password rules on signup / change-password).
+      const specific = validationMessage(json.details);
+      if (specific && message === 'invalid request') message = specific;
+    }
   } catch {
     // non-JSON error body — keep statusText
   }
   notifyIfUnauthorized(res.status);
-  return new ApiError(res.status, message);
+  return new ApiError(res.status, message, details);
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -323,8 +348,10 @@ export const api = {
   loginTotp: (ticket: string, code: string) =>
     request<{ userId: string }>('POST', '/auth/login/totp', { ticket, code }),
   logout: () => request<void>('POST', '/auth/logout'),
-  // The enabled OIDC providers for the login screen — unauthenticated, no secrets.
-  loginConfig: () => request<{ oidcProviders: { id: string; label: string }[] }>('GET', '/auth/config'),
+  // Public login-screen config — unauthenticated, no secrets: the enabled OIDC providers and whether
+  // self-registration is open (so the screen knows whether to offer a "create account" option).
+  loginConfig: () =>
+    request<{ oidcProviders: { id: string; label: string }[]; allowSelfRegistration: boolean }>('GET', '/auth/config'),
   // The (full) URL to begin an OIDC login — the browser navigates here (a redirect to the IdP).
   oidcStartUrl: (id: string) => `${BASE}/auth/oidc/${encodeURIComponent(id)}/start`,
   me: () =>

@@ -27,7 +27,7 @@ function token(res: { cookies: Array<{ name: string; value: string }> }): string
   return t;
 }
 async function setup() {
-  const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'owner@acme.test', password: 'pw-secret-1' } });
+  const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'owner@acme.test', password: 'Pw-secret-1' } });
   const t = token(reg);
   const proj = await app.inject({ method: 'POST', url: '/projects', cookies: { sw_session: t }, payload: { name: 'Site', slug: 'site' } });
   return { t, projectId: (proj.json() as { project: { id: string } }).project.id };
@@ -84,7 +84,7 @@ describe('snippet preview API (server-rendered, sandboxed)', () => {
   it('lets a project MEMBER preview (content:read gate, not owner-only like render-template)', async () => {
     const { t, projectId } = await setup();
     await putSnippet(t, projectId, 'm', '<p>{{ company.name }}</p>');
-    const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'member@acme.test', password: 'pw-secret-1' } });
+    const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'member@acme.test', password: 'Pw-secret-1' } });
     const memberT = token(reg);
     const memberId = (reg.json() as { userId: string }).userId;
     await db.insert(projectMembers).values({ id: randomUUID(), userId: memberId, projectId, role: 'member', createdAt: new Date() });
@@ -98,7 +98,7 @@ describe('snippet preview API (server-rendered, sandboxed)', () => {
     await putSnippet(t, projectId, 'x', '<p>x</p>');
     const anon = await app.inject({ method: 'GET', url: `/projects/${projectId}/snippets/x/preview` });
     expect(anon.statusCode).toBe(401);
-    const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'outsider@acme.test', password: 'pw-secret-1' } });
+    const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'outsider@acme.test', password: 'Pw-secret-1' } });
     const cross = await preview(token(reg), projectId, 'x');
     expect(cross.statusCode).toBe(403);
   });
@@ -106,7 +106,7 @@ describe('snippet preview API (server-rendered, sandboxed)', () => {
   it('returns a 503 notice when no render pool is configured', async () => {
     const noPool = await createApp({ db: await makeTestDb() });
     await noPool.ready();
-    const reg = await noPool.inject({ method: 'POST', url: '/auth/register', payload: { email: 'o@a.test', password: 'pw-secret-1' } });
+    const reg = await noPool.inject({ method: 'POST', url: '/auth/register', payload: { email: 'o@a.test', password: 'Pw-secret-1' } });
     const t = token(reg);
     const proj = await noPool.inject({ method: 'POST', url: '/projects', cookies: { sw_session: t }, payload: { name: 'S', slug: 's' } });
     const projectId = (proj.json() as { project: { id: string } }).project.id;

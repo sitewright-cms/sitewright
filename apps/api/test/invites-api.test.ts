@@ -22,7 +22,7 @@ function token(res: { cookies: Array<{ name: string; value: string }> }): string
 }
 
 async function registerOwner(email: string) {
-  const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email, password: 'pw-secret-1' } });
+  const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email, password: 'Pw-secret-1' } });
   return { t: token(reg) };
 }
 
@@ -50,7 +50,7 @@ describe('invites API', () => {
     expect((peek.json() as { invite: { email: string } }).invite.email).not.toBe('client@acme.test');
 
     // The client registers and accepts.
-    const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'client@acme.test', password: 'pw-secret-1' } });
+    const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'client@acme.test', password: 'Pw-secret-1' } });
     const clientT = token(reg);
     const accept = await app.inject({ method: 'POST', url: '/invites/accept', cookies: { sw_session: clientT }, payload: { token: inviteToken } });
     expect(accept.statusCode).toBe(200);
@@ -81,7 +81,7 @@ describe('invites API', () => {
     expect(inv.statusCode).toBe(201);
     const inviteToken = (inv.json() as { token: string }).token;
 
-    const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'dev@acme.test', password: 'pw-secret-1' } });
+    const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'dev@acme.test', password: 'Pw-secret-1' } });
     const devT = token(reg);
     await app.inject({ method: 'POST', url: '/invites/accept', cookies: { sw_session: devT }, payload: { token: inviteToken } });
 
@@ -99,7 +99,7 @@ describe('invites API', () => {
     expect(inv.statusCode).toBe(201);
     const inviteToken = (inv.json() as { token: string }).token;
 
-    const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'dev@acme.test', password: 'pw-secret-1' } });
+    const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'dev@acme.test', password: 'Pw-secret-1' } });
     const devT = token(reg);
     await app.inject({ method: 'POST', url: '/invites/accept', cookies: { sw_session: devT }, payload: { token: inviteToken } });
 
@@ -115,7 +115,7 @@ describe('invites API', () => {
     const inviteToken = (inv.json() as { token: string }).token;
 
     // A different person cannot accept the client invite.
-    const intruder = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'intruder@evil.test', password: 'pw-secret-1' } });
+    const intruder = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'intruder@evil.test', password: 'Pw-secret-1' } });
     expect((await app.inject({ method: 'POST', url: '/invites/accept', cookies: { sw_session: token(intruder) }, payload: { token: inviteToken } })).statusCode).toBe(403);
 
     // The intruder (a non-member) cannot create invites for this project.

@@ -123,6 +123,13 @@ export const InstanceSettingsStoredSchema = z.object({
   defaultLocale: LocaleSchema.optional(),
   /** Configured OIDC single-sign-on providers (the client secret of each is encrypted at rest). */
   oidcProviders: z.array(OidcProviderStoredSchema).max(10).optional(),
+  /**
+   * Whether anyone may create an account from the login screen. Left OPTIONAL on purpose: `undefined`
+   * means "the admin has never set this", which the API distinguishes from an explicit `false` so it
+   * can fall back to the deploy-time factory default (`openRegistration` / `SW_OPEN_REGISTRATION`).
+   * Once set, the stored value wins. Invited users can always register regardless of this flag.
+   */
+  allowSelfRegistration: z.boolean().optional(),
 });
 export type InstanceSettingsStored = z.infer<typeof InstanceSettingsStoredSchema>;
 
@@ -198,6 +205,9 @@ export const InstanceSettingsInputSchema = z.object({
     .refine((arr) => new Set(arr.map((p) => p.id)).size === arr.length, 'provider ids must be unique')
     .nullable()
     .optional(),
+  // Self-registration toggle: a boolean sets it; an absent value leaves the stored one unchanged.
+  // (No `null` semantic — `false` already expresses "closed".)
+  allowSelfRegistration: z.boolean().optional(),
 });
 export type InstanceSettingsInput = z.infer<typeof InstanceSettingsInputSchema>;
 
@@ -250,6 +260,8 @@ export interface InstanceSettingsPublic {
   defaultLocale?: string;
   /** Configured OIDC providers (client secrets masked to `hasClientSecret`). */
   oidcProviders?: OidcProviderPublic[];
+  /** Whether self-registration is open. Absent when the admin has never set it (factory default applies). */
+  allowSelfRegistration?: boolean;
 }
 
 /** Masks a stored SMTP config to its public view (password → hasPassword flag). */
@@ -281,5 +293,6 @@ export function maskInstanceSettings(stored: InstanceSettingsStored): InstanceSe
   if (stored.agentSessionHours !== undefined) result.agentSessionHours = stored.agentSessionHours;
   if (stored.defaultLocale !== undefined) result.defaultLocale = stored.defaultLocale;
   if (stored.oidcProviders) result.oidcProviders = stored.oidcProviders.map(maskOidcProvider);
+  if (stored.allowSelfRegistration !== undefined) result.allowSelfRegistration = stored.allowSelfRegistration;
   return result;
 }

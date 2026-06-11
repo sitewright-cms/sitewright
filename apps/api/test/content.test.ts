@@ -19,8 +19,8 @@ beforeEach(async () => {
   content = new ContentRepository(db);
   const projects = new ProjectRepository(db);
 
-  const a = await registerAccount(db, 'a@acme.test', 'pw-secret-1');
-  const b = await registerAccount(db, 'b@globex.test', 'pw-secret-1');
+  const a = await registerAccount(db, 'a@acme.test', 'Pw-secret-1');
+  const b = await registerAccount(db, 'b@globex.test', 'Pw-secret-1');
   projA = await projects.create({ name: 'Site A', slug: 'site-a' });
   const projB = await projects.create({ name: 'Site B', slug: 'site-b' });
   await addProjectMember(db, a.userId, projA.id, 'owner');

@@ -29,7 +29,7 @@ function sessionCookie(res: { cookies: Array<{ name: string; value: string }> })
 
 /** Register a user, create a project, and mint an owner bearer token for it. */
 async function setup(): Promise<{ projectId: string; token: string }> {
-  const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: `mcp-${Date.now()}@e2e.test`, password: 'pw-secret-1' } });
+  const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: `mcp-${Date.now()}@e2e.test`, password: 'Pw-secret-1' } });
   const cookie = sessionCookie(reg);
   const proj = await app.inject({ method: 'POST', url: '/projects', cookies: { sw_session: cookie }, payload: { name: 'Site', slug: `mcp-${Date.now()}` } });
   const projectId = (proj.json() as { project: { id: string } }).project.id;

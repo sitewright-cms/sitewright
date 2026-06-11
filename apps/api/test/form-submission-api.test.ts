@@ -59,7 +59,7 @@ beforeEach(async () => {
   const reg = await app.inject({
     method: 'POST',
     url: '/auth/register',
-    payload: { email: 'owner@acme.test', password: 'pw-secret-1'},
+    payload: { email: 'owner@acme.test', password: 'Pw-secret-1'},
   });
   t = token(reg);
   const proj = await app.inject({
@@ -232,7 +232,7 @@ describe('submissions inbox (authenticated)', () => {
     const memberReg = await app.inject({
       method: 'POST',
       url: '/auth/register',
-      payload: { email: 'member@x.test', password: 'pw-secret-1'},
+      payload: { email: 'member@x.test', password: 'Pw-secret-1'},
     });
     const memberT = token(memberReg);
     const memberUserId = (memberReg.json() as { userId: string }).userId;
@@ -249,7 +249,7 @@ describe('submissions inbox (authenticated)', () => {
     const other = await app.inject({
       method: 'POST',
       url: '/auth/register',
-      payload: { email: 'other@x.test', password: 'pw-secret-1'},
+      payload: { email: 'other@x.test', password: 'Pw-secret-1'},
     });
     const ot = token(other);
     // A user who holds no membership on this project cannot reach it over a session (403).

@@ -20,7 +20,7 @@ function token(res: { cookies: Array<{ name: string; value: string }> }): string
 
 /** Register a user + create a project (seeds settings + a home page). */
 async function setup(email = 'owner@i18n.test', slug = 'site') {
-  const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email, password: 'pw-secret-1' } });
+  const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email, password: 'Pw-secret-1' } });
   const t = token(reg);
   const proj = await app.inject({
     method: 'POST',

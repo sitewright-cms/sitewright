@@ -53,9 +53,11 @@ test('edit Corporate Identity + Website settings, save, and persist across reloa
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('Settings saved')).toBeVisible();
 
-  // Website Settings top tab: set the production URL.
+  // Website Settings top tab: set the production URL + the no-code nav/button effects.
   await page.getByRole('tab', { name: 'Website Settings' }).click();
   await page.getByLabel(/Production URL/).fill('https://acme.example');
+  await page.getByLabel('Nav effect').selectOption('pill');
+  await page.getByLabel('Button effect').selectOption('lift');
 
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('Settings saved')).toBeVisible();
@@ -78,6 +80,19 @@ test('edit Corporate Identity + Website settings, save, and persist across reloa
   await expect(page.getByLabel('Social icon 1', { exact: true })).toHaveValue('brand:whatsapp');
   await page.getByRole('tab', { name: 'Website Settings' }).click();
   await expect(page.getByLabel(/Production URL/)).toHaveValue('https://acme.example');
+  // The no-code effect picks persisted (website.theme).
+  await expect(page.getByLabel('Nav effect')).toHaveValue('pill');
+  await expect(page.getByLabel('Button effect')).toHaveValue('lift');
+
+  // Changing ONLY a nav effect must dirty the Website section's Save (it's a Website field) — then
+  // persist on its own.
+  await page.getByLabel('Nav effect').selectOption('underline');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Settings saved')).toBeVisible();
+  await page.reload();
+  await page.getByRole('button', { name: /Acme Site/ }).click();
+  await page.getByRole('tab', { name: 'Website Settings' }).click();
+  await expect(page.getByLabel('Nav effect')).toHaveValue('underline');
 });
 
 // The brand color rows have a swatch BUTTON that opens a powerful picker: edit in any of

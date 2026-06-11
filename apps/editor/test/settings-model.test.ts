@@ -78,6 +78,28 @@ describe('settings model', () => {
     expect(back.website?.shop).toEqual(withShop.website!.shop);
   });
 
+  it('round-trips website.theme (nav/button effects) and omits "None"', () => {
+    const withTheme: SettingsBundle = {
+      identity: { name: 'Acme', colors: {} },
+      website: { theme: { navEffect: 'pill', buttonEffect: 'lift' } },
+      settings: { defaultLocale: 'en', locales: ['en'] },
+    };
+    expect(toBundle(toForm(withTheme), withTheme).website?.theme).toEqual({ navEffect: 'pill', buttonEffect: 'lift' });
+
+    // 'none' (and an unset effect) drop out — only the chosen one is serialized.
+    const f = toForm(empty());
+    f.navEffect = 'underline';
+    f.buttonEffect = 'none';
+    expect(toBundle(f, empty()).website?.theme).toEqual({ navEffect: 'underline' });
+
+    // both off → no theme block at all.
+    expect(toBundle(toForm(empty()), empty()).website?.theme).toBeUndefined();
+
+    // A project with no theme loads as "none" (not ''), so it never falsely shows as unsaved.
+    expect(toForm(empty()).navEffect).toBe('none');
+    expect(toForm(empty()).buttonEffect).toBe('none');
+  });
+
   it('drops incomplete shop channels (every kind) and an empty currency', () => {
     const form = toForm(empty());
     form.shopChannels = [

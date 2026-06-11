@@ -18,6 +18,7 @@ import { LivePreview } from './views/LivePreview';
 import { UpdateBanner } from './views/UpdateBanner';
 import { BrandMark } from './views/ui/BrandMark';
 import { parseLiveTarget } from './lib/live-target';
+import { gradientSurface, gradientHover } from './theme';
 import { SkeletonList } from './views/ui/Skeleton';
 import { installRipple } from './lib/ripple';
 
@@ -171,8 +172,8 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
                 role="tab"
                 aria-selected={tab === t}
                 onClick={() => setTab(t)}
-                className={`waves-effect rounded-xl px-3 py-1.5 text-sm transition ${
-                  tab === t ? 'bg-white font-bold text-slate-900 shadow-md shadow-slate-900/5' : 'text-slate-600 hover:text-slate-900'
+                className={`waves-effect rounded-xl px-3 py-1.5 text-sm font-medium transition ${
+                  tab === t ? gradientSurface : `text-slate-500 ${gradientHover}`
                 }`}
               >
                 {/* eslint-disable-next-line security/detect-object-injection -- t is a typed Tab literal */}

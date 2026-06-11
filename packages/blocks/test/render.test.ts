@@ -755,7 +755,7 @@ describe('renderPage / renderDocument', () => {
     const head = doc.slice(0, doc.indexOf('</head>'));
     // base layer is present...
     expect(head).toContain('@layer sw-normalize {');
-    expect(head).toContain(':is(nav, [role="navigation"]) a, .btn { text-decoration: inherit; }');
+    expect(head).toContain(':is(nav, [role="navigation"]) a, .menu a, .btn { text-decoration: inherit; }');
     expect(head).toContain('*::-webkit-scrollbar-button { width: 0; height: 0; display: none; }');
     // ...and comes BEFORE the brand vars + skeleton body rule (so they override it).
     expect(head.indexOf('@layer sw-normalize')).toBeLessThan(head.indexOf('--sw-color-primary'));

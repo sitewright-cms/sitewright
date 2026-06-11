@@ -32,9 +32,10 @@ describe('baseStyles — platform base stylesheet', () => {
       expect(platform).toMatch(/\*,\s*\*::before,\s*\*::after\s*{\s*box-sizing: border-box;/);
     });
 
-    it('links inherit text colour; nav + button links drop the underline contextually', () => {
-      expect(css).toContain('a { color: inherit; }');
-      expect(css).toContain(':is(nav, [role="navigation"]) a, .btn { text-decoration: inherit; }');
+    it('drops the underline on nav / menu / button links only (no global a{color})', () => {
+      expect(css).toContain(':is(nav, [role="navigation"]) a, .menu a, .btn { text-decoration: inherit; }');
+      // no global `a { color: inherit }` — links use the theme/UA colour
+      expect(css).not.toMatch(/(^|\s)a\s*{[^}]*color:\s*inherit/);
     });
 
     it('leaves body-copy links alone (no global text-decoration:none)', () => {
@@ -49,9 +50,30 @@ describe('baseStyles — platform base stylesheet', () => {
   });
 
   describe('custom scrollbars', () => {
-    it('is thin, brand-coloured and arrow-less (Firefox + WebKit)', () => {
-      expect(css).toContain('scrollbar-width: thin;');
-      expect(css).toContain('scrollbar-color: color-mix(in srgb, var(--sw-color-primary, #4f46e5) 55%, transparent) transparent;');
+    it('gates webkit pseudos vs the standard props by browser (they are mutually exclusive)', () => {
+      // WebKit/Blink path uses the pseudos; Firefox path uses the standard props.
+      expect(css).toContain('@supports selector(::-webkit-scrollbar) {');
+      expect(css).toContain('@supports not selector(::-webkit-scrollbar) {');
+      // the standard scrollbar-* props MUST be confined to the Firefox branch, else
+      // they disable the ::-webkit pseudos in Chrome 121+ (the original bug)
+      const webkitBranch = css.slice(
+        css.indexOf('@supports selector(::-webkit-scrollbar)'),
+        css.indexOf('@supports not selector(::-webkit-scrollbar)'),
+      );
+      const fxBranch = css.slice(css.indexOf('@supports not selector(::-webkit-scrollbar)'));
+      expect(fxBranch).toContain('scrollbar-width: thin;');
+      expect(fxBranch).toContain('scrollbar-color: color-mix(in srgb, var(--sw-color-primary, #4f46e5) 55%, transparent) transparent;');
+      // regression guard: the thin/coloured STANDARD props must NOT be in the webkit
+      // branch (only the `auto` reset is) — else they re-disable the pseudos in Chrome.
+      expect(webkitBranch).not.toContain('scrollbar-width: thin');
+      expect(webkitBranch).not.toContain('scrollbar-color: color-mix');
+    });
+
+    it('resets the root back to auto in WebKit so daisyUI’s :root{scrollbar-color} cannot keep the page bar grey', () => {
+      expect(css).toContain('html:root { scrollbar-color: auto; scrollbar-width: auto; }');
+    });
+
+    it('is thin, brand-coloured and arrow-less', () => {
       expect(css).toContain('*::-webkit-scrollbar { width: 11px; height: 11px; }');
       expect(css).toContain('*::-webkit-scrollbar-track { background: transparent; }');
       // no stepper arrows

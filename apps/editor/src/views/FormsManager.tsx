@@ -393,12 +393,13 @@ export function FormsManager({ project }: { project: Project }) {
       {error && <p className="text-sm text-red-600">{error}</p>}
       {saved && <p className="text-sm text-green-600">Saved.</p>}
       <ul className="flex flex-col gap-2">
-        {forms.map((f) => {
+        {forms.map((f, i) => {
           const showing = submissionsFor === f.id;
           return (
             <li
               key={f.id}
-              className={`flex flex-col gap-3 ${glassCard} px-4 py-3 text-sm`}
+              className={`sw-stack-in flex flex-col gap-3 ${glassCard} px-4 py-3 text-sm`}
+              style={{ animationDelay: `${Math.min(i, 24) * 35}ms` }}
             >
               <div className="flex items-center gap-3">
                 <button

@@ -118,6 +118,38 @@ describe('auto-nav → publish', () => {
     expect(draft.body).toBe('');
   });
 
+  it('publishes link placeholders into the nav (external new-tab + #modal), ships nav-link.js, emits no page for them', async () => {
+    const proj = client.project(projectId);
+    expect((await proj.putContent('page', 'home', navBlockPage('home', '', 'Home', { slots: ['header'], order: 0 }))).statusCode).toBe(200);
+    // A "global modal" placeholder (opens a #contact <dialog>) — kind:'link', no own route.
+    expect(
+      (await proj.putContent('page', 'nav-contact', {
+        id: 'nav-contact', path: '', title: 'Contact', kind: 'link',
+        link: { target: '#contact' }, nav: { slots: ['header'], order: 1 },
+        root: { id: 'ncr', type: 'Section', children: [] },
+      })).statusCode,
+    ).toBe(200);
+    // An external placeholder that opens in a new tab.
+    expect(
+      (await proj.putContent('page', 'nav-docs', {
+        id: 'nav-docs', path: '', title: 'Docs', kind: 'link',
+        link: { target: 'https://docs.example.com', newTab: true }, nav: { slots: ['header'], order: 2 },
+        root: { id: 'ndr', type: 'Section', children: [] },
+      })).statusCode,
+    ).toBe(200);
+    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
+
+    const home = await fetchSite('index.html');
+    expect(home).toContain('href="#contact"'); // fragment target passes through
+    expect(home).toContain('>Contact<');
+    expect(home).toContain('href="https://docs.example.com"'); // external target
+    expect(home).toContain('target="_blank"'); // newTab
+    expect(home).toContain('nav-link.js'); // runtime shipped (a placeholder targets a #fragment)
+    expect((await client.get(`/sites/${slug}/nav-link.js`)).statusCode).toBe(200);
+    // The slugless link placeholders produce NO HTML page of their own.
+    expect((await client.get(`/sites/${slug}/nav-contact/index.html`)).statusCode).toBe(404);
+  });
+
   it('omits pages without nav placement from the menu', async () => {
     const proj = client.project(projectId);
     expect((await proj.putContent('page', 'home', navBlockPage('home', '', 'Home', { slots: ['header'] }))).statusCode).toBe(200);

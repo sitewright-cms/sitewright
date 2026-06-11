@@ -32,6 +32,7 @@
     "html-minifier-terser": "^7",
     "jszip": "^3",
     "nodemailer": "^8.0.10",
+    "otplib": "^12.0.1",
     "ssh2-sftp-client": "^11",
     "zod": "^3.24.1"
   },

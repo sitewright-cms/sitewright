@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { api, type Project } from '../api';
 import { Modal } from './ui/Modal';
 import { ApiKeysManager } from './ApiKeysManager';
+import { SecurityTab } from './SecurityTab';
 import { useToast } from './ui/Toast';
 import { fieldLabel, glassCard, glassInput, gradientSurface, primaryButton } from '../theme';
 
@@ -12,18 +13,22 @@ interface UserMenuProps {
   email: string;
   /** The open project (null on the home screen) — scopes the Access keys tab. */
   project: Project | null;
+  /** Whether the user currently has TOTP enabled (from /me) — drives the Security tab. */
+  totpEnabled: boolean;
   onClose: () => void;
   /** Called after a successful email change so the app can refresh its cached identity. */
   onEmailChanged: (email: string) => void;
+  /** Called after enabling/disabling two-factor so the app can refresh `totpEnabled`. */
+  onMfaChanged: () => void;
 }
 
 /**
  * The header user menu: a tabbed modal for self-service account management. Account (change login
  * email) and Password are always available; Access keys relocates the project-scoped PAT manager
- * here (owner-only); Security hosts two-factor + passkeys (added in a later phase). Each tab is
- * self-contained — the modal supplies only the chrome (no global Save button).
+ * here (owner-only); Security hosts two-factor (TOTP). Each tab is self-contained — the modal
+ * supplies only the chrome (no global Save button).
  */
-export function UserMenu({ email, project, onClose, onEmailChanged }: UserMenuProps) {
+export function UserMenu({ email, project, totpEnabled, onClose, onEmailChanged, onMfaChanged }: UserMenuProps) {
   const [tab, setTab] = useState<Tab>('account');
 
   const tabBtn = (id: Tab) =>
@@ -47,7 +52,7 @@ export function UserMenu({ email, project, onClose, onEmailChanged }: UserMenuPr
         {tab === 'account' && <AccountTab email={email} onEmailChanged={onEmailChanged} />}
         {tab === 'password' && <PasswordTab />}
         {tab === 'access' && <AccessKeysTab project={project} />}
-        {tab === 'security' && <SecurityTab />}
+        {tab === 'security' && <SecurityTab totpEnabled={totpEnabled} onChanged={onMfaChanged} />}
       </div>
     </Modal>
   );
@@ -205,17 +210,6 @@ function AccessKeysTab({ project }: { project: Project | null }) {
       </p>
       {/* Keyed so the one-time-token banner + state reset if the open project changes. */}
       <ApiKeysManager key={project.id} project={project} />
-    </div>
-  );
-}
-
-function SecurityTab() {
-  return (
-    <div className={`${glassCard} p-5`}>
-      <h3 className="text-sm font-bold text-slate-800">Two-factor authentication &amp; passkeys</h3>
-      <p className="mt-1 text-sm text-slate-500">
-        Coming soon: protect your account with an authenticator app (TOTP) and sign in with a passkey.
-      </p>
     </div>
   );
 }

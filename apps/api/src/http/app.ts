@@ -1,6 +1,6 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { newId } from '../id.js';
-import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import cookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
 import multipart from '@fastify/multipart';
@@ -128,7 +128,9 @@ import {
   removeProjectMember,
   resolveProjectRole,
   setPlatformRole,
+  verifyUserPassword,
 } from '../repo/accounts.js';
+import { MfaError, MfaRepository } from '../repo/mfa.js';
 import {
   acceptInvite,
   createInvite,
@@ -300,6 +302,14 @@ const ChangePasswordBody = z.object({
   currentPassword: z.string().min(1).max(200),
   newPassword: z.string().min(8).max(200),
 });
+// MFA. `code` is a 6-digit TOTP OR a recovery code (XXXXX-XXXXX) at login step 2; just a TOTP at
+// enrolment-confirm. Kept loose (≤64) so the route logic — not zod — decides validity.
+const LoginTotpBody = z.object({
+  ticket: z.string().min(1).max(200),
+  code: z.string().min(1).max(64),
+});
+const MfaCodeBody = z.object({ code: z.string().min(1).max(64) });
+const MfaPasswordBody = z.object({ currentPassword: z.string().min(1).max(200) });
 const AiGenerateBody = z.object({
   instruction: z.string().min(1).max(4000),
   target: z.enum(['blocks', 'copy']).default('copy'),
@@ -514,6 +524,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const oauthRepo = new OAuthRepository(db);
   const oauthClients = new OAuthClientRepository(db);
   const instanceSettingsRepo = new InstanceSettingsRepository(db, opts.encryptionKey);
+  // TOTP second factor: the shared secret is encrypted at rest under the operator's key (same key as
+  // instance secrets) — so TOTP enrolment/verification is unavailable (503) when no key is configured.
+  const mfaRepo = new MfaRepository(db, opts.encryptionKey);
   const submissionsRepo = new SubmissionRepository(db);
   const mailer = opts.mailer ?? new GlobalSmtpMailer(instanceSettingsRepo);
   const projectMailer = opts.projectMailer ?? new ProjectSmtpMailer(db, instanceSettingsRepo, opts.encryptionKey);
@@ -539,6 +552,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             // Self-service account changes (PUT /account/email, /account/password).
             'req.body.currentPassword',
             'req.body.newPassword',
+            // MFA: the TOTP/recovery code and the single-use login ticket.
+            'req.body.code',
+            'req.body.ticket',
             // Deploy-target SFTP key auth: never log the private key or its passphrase.
             'req.body.privateKey',
             'req.body.passphrase',
@@ -610,6 +626,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     if (err instanceof ForbiddenError) return reply.code(403).send({ error: err.message });
     if (err instanceof NotFoundError) return reply.code(404).send({ error: err.message });
     if (err instanceof ConflictError) return reply.code(409).send({ error: err.message });
+    // Recoverable MFA-management errors (wrong enrolment code, no setup in progress) → 400.
+    if (err instanceof MfaError) return reply.code(400).send({ error: err.message });
+    // TOTP needs the at-rest encryption key (to store/read the secret); without it, unavailable.
+    if (err instanceof EncryptionUnavailableError) return reply.code(503).send({ error: err.message });
     // Unsafe template source caught at SAVE time (validate-on-save) → 400 with the position.
     if (err instanceof TemplateError) {
       return reply.code(400).send({ error: err.message, line: err.line, column: err.column });
@@ -825,9 +845,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     return reply.code(201).send({ userId });
   });
 
-  app.post('/auth/login', { config: authRl }, async (req, reply) => {
-    const body = LoginBody.parse(req.body);
-    const userId = await login(db, body.email, body.password);
+  // Creates a session for `userId` and writes the session cookie. Shared by the login paths so the
+  // cookie attributes stay identical everywhere a session is issued.
+  async function issueSessionCookie(reply: FastifyReply, userId: string): Promise<void> {
     const { token, expiresAt } = await createSession(db, userId);
     reply.setCookie(SESSION_COOKIE, token, {
       httpOnly: true,
@@ -837,6 +857,33 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       signed,
       expires: expiresAt,
     });
+  }
+
+  app.post('/auth/login', { config: authRl }, async (req, reply) => {
+    const body = LoginBody.parse(req.body);
+    const userId = await login(db, body.email, body.password);
+    // Password OK. If the user has a CONFIRMED TOTP factor, don't issue a session yet — hand back a
+    // single-use, short-lived ticket and require the code at /auth/login/totp (step 2). No cookie is
+    // set, so a stolen password alone never yields a session.
+    if (await mfaRepo.isTotpEnabled(userId)) {
+      const ticket = await mfaRepo.createLoginTicket(userId);
+      return reply.send({ mfaRequired: true, ticket });
+    }
+    await issueSessionCookie(reply, userId);
+    return reply.send({ userId });
+  });
+
+  // Login step 2: redeem the ticket from step 1 with a TOTP code OR a one-time recovery code. The
+  // ticket is consumed only on SUCCESS, so a mistyped code can be retried within the ticket TTL (the
+  // route's auth rate limit bounds brute force). Generic failures — never reveal which factor failed.
+  app.post('/auth/login/totp', { config: authRl }, async (req, reply) => {
+    const body = LoginTotpBody.parse(req.body);
+    const userId = await mfaRepo.resolveLoginTicket(body.ticket);
+    if (!userId) throw new UnauthorizedError('invalid or expired login request — please sign in again');
+    const ok = (await mfaRepo.verifyTotpCode(userId, body.code)) || (await mfaRepo.consumeRecoveryCode(userId, body.code));
+    if (!ok) throw new UnauthorizedError('invalid code');
+    await mfaRepo.consumeLoginTicket(body.ticket);
+    await issueSessionCookie(reply, userId);
     return reply.send({ userId });
   });
 
@@ -849,17 +896,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
   app.get('/me', { config: rl(60) }, async (req, reply) => {
     const userId = await requireUserId(req);
-    const [email, platformRole, access, instanceAdmin] = await Promise.all([
+    const [email, platformRole, access, instanceAdmin, totpEnabled] = await Promise.all([
       getUserEmail(db, userId),
       getPlatformRole(db, userId),
       // Projects the caller can reach: a platform admin → all; everyone else → their memberships.
       listProjectAccessForUser(db, userId),
       isInstanceAdmin(userId),
+      mfaRepo.isTotpEnabled(userId),
     ]);
     const projects = access.map((a) => ({ id: a.projectId, name: a.projectName, slug: a.projectSlug, role: a.role }));
     // email is non-null for a live session (the row exists); coerce the theoretical TOCTOU-deleted
     // case to '' so the response always matches the client's `email: string` contract.
-    return reply.send({ userId, email: email ?? '', platformRole, isInstanceAdmin: instanceAdmin, projects });
+    return reply.send({ userId, email: email ?? '', platformRole, isInstanceAdmin: instanceAdmin, totpEnabled, projects });
   });
 
   // ---- Self-service account management (the header "Account" / user menu) ----
@@ -890,6 +938,64 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     const current = sessionToken(req);
     if (current) await revokeOtherSessions(db, userId, current);
     return reply.code(204).send();
+  });
+
+  // ---- Two-factor (TOTP) management (the user menu → Security tab) ----
+  // All session-only. Enrolment (setup/confirm) only ADDS protection, so a session suffices; the
+  // security-weakening actions (disable, rotate recovery codes) re-authenticate with the password.
+  // Requires the instance encryption key (the TOTP secret is encrypted at rest) → 503 without it.
+  const requireAccountSession = async (req: FastifyRequest): Promise<string> => {
+    if (bearerToken(req) !== undefined) throw new ForbiddenError('this operation requires an interactive session');
+    return requireUserId(req);
+  };
+
+  // Begin enrolment: returns the secret + otpauth URI for the QR. Staged UNCONFIRMED until /confirm.
+  // Re-enrolling while TOTP is ALREADY active re-authenticates with the password — a stolen session
+  // alone must not be able to swap the second factor and rotate recovery codes. (The normal UI path
+  // disables first, which is itself password-gated, so it never hits this branch.)
+  app.post('/account/mfa/totp/setup', { config: authRl }, async (req, reply) => {
+    const userId = await requireAccountSession(req);
+    if (await mfaRepo.isTotpEnabled(userId)) {
+      const { currentPassword } = MfaPasswordBody.parse(req.body);
+      if (!(await verifyUserPassword(db, userId, currentPassword))) {
+        throw new ForbiddenError('current password is incorrect');
+      }
+    }
+    const email = await getUserEmail(db, userId);
+    if (!email) throw new UnauthorizedError('authentication required');
+    const { secret, otpauthUri } = await mfaRepo.beginTotpSetup(userId, email);
+    return reply.send({ secret, otpauthUri });
+  });
+
+  // Confirm enrolment with a code from the app → enables TOTP + returns recovery codes ONCE.
+  app.post('/account/mfa/totp/confirm', { config: authRl }, async (req, reply) => {
+    const userId = await requireAccountSession(req);
+    const body = MfaCodeBody.parse(req.body);
+    const recoveryCodes = await mfaRepo.confirmTotpSetup(userId, body.code);
+    return reply.send({ recoveryCodes });
+  });
+
+  // Disable TOTP entirely (wipes secret + recovery codes). Password-confirmed.
+  app.delete('/account/mfa/totp', { config: authRl }, async (req, reply) => {
+    const userId = await requireAccountSession(req);
+    const body = MfaPasswordBody.parse(req.body);
+    if (!(await verifyUserPassword(db, userId, body.currentPassword))) {
+      throw new ForbiddenError('current password is incorrect');
+    }
+    await mfaRepo.disableTotp(userId);
+    return reply.code(204).send();
+  });
+
+  // Regenerate recovery codes (invalidates the old set). Password-confirmed; returns the new set once.
+  app.post('/account/mfa/recovery-codes', { config: authRl }, async (req, reply) => {
+    const userId = await requireAccountSession(req);
+    const body = MfaPasswordBody.parse(req.body);
+    if (!(await verifyUserPassword(db, userId, body.currentPassword))) {
+      throw new ForbiddenError('current password is incorrect');
+    }
+    if (!(await mfaRepo.isTotpEnabled(userId))) throw new MfaError('two-factor authentication is not enabled');
+    const recoveryCodes = await mfaRepo.regenerateRecoveryCodes(userId);
+    return reply.send({ recoveryCodes });
   });
 
   // ---- Instance admin settings (global mail / hCaptcha / enabled form modes) ----

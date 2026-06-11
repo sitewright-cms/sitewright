@@ -283,8 +283,13 @@ export interface DeployProgressEvent {
 export const api = {
   register: (email: string, password: string) =>
     request<{ userId: string }>('POST', '/auth/register', { email, password }),
+  // Login returns the user when no second factor is set, OR a one-time `ticket` (no session yet) when
+  // the account has TOTP — the caller then redeems it via loginTotp() with the code.
   login: (email: string, password: string) =>
-    request<{ userId: string }>('POST', '/auth/login', { email, password }),
+    request<{ userId: string } | { mfaRequired: true; ticket: string }>('POST', '/auth/login', { email, password }),
+  // Login step 2: redeem the ticket with a 6-digit TOTP code OR a recovery code.
+  loginTotp: (ticket: string, code: string) =>
+    request<{ userId: string }>('POST', '/auth/login/totp', { ticket, code }),
   logout: () => request<void>('POST', '/auth/logout'),
   me: () =>
     request<{
@@ -292,6 +297,7 @@ export const api = {
       email: string;
       platformRole: PlatformRole;
       isInstanceAdmin: boolean;
+      totpEnabled: boolean;
       projects: Project[];
     }>('GET', '/me'),
   // Self-service account management (the header user menu). Both re-authenticate with the
@@ -300,6 +306,16 @@ export const api = {
     request<{ email: string }>('PUT', '/account/email', { email, currentPassword }),
   changePassword: (currentPassword: string, newPassword: string) =>
     request<void>('PUT', '/account/password', { currentPassword, newPassword }),
+  // Two-factor (TOTP). setup → begin enrolment (secret + otpauth URI for the QR); confirm → enable +
+  // get recovery codes once; disable / regenerate are password-confirmed.
+  mfaSetupTotp: () =>
+    request<{ secret: string; otpauthUri: string }>('POST', '/account/mfa/totp/setup'),
+  mfaConfirmTotp: (code: string) =>
+    request<{ recoveryCodes: string[] }>('POST', '/account/mfa/totp/confirm', { code }),
+  mfaDisableTotp: (currentPassword: string) =>
+    request<void>('DELETE', '/account/mfa/totp', { currentPassword }),
+  mfaRegenerateRecoveryCodes: (currentPassword: string) =>
+    request<{ recoveryCodes: string[] }>('POST', '/account/mfa/recovery-codes', { currentPassword }),
   version: () =>
     request<{ current: string; latest: string | null; updateAvailable: boolean; releaseUrl: string | null }>(
       'GET',

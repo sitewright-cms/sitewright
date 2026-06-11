@@ -71,6 +71,13 @@
       "when": 1780475590913,
       "tag": "0009_melted_roland_deschain",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1781175218843,
+      "tag": "0010_glossy_umar",
+      "breakpoints": true
     }
   ]
 }

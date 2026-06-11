@@ -12,9 +12,12 @@ vi.mock('../src/api', () => ({
     changePassword: (cur: string, next: string) => changePassword(cur, next),
   },
 }));
-// Isolate the user menu from the project-scoped key manager (its own tests cover it).
+// Isolate the user menu from the project-scoped key manager + the MFA tab (each has its own tests).
 vi.mock('../src/views/ApiKeysManager', () => ({
   ApiKeysManager: ({ project }: { project: Project }) => <div data-testid="api-keys">keys:{project.id}</div>,
+}));
+vi.mock('../src/views/SecurityTab', () => ({
+  SecurityTab: ({ totpEnabled }: { totpEnabled: boolean }) => <div data-testid="security">security:{String(totpEnabled)}</div>,
 }));
 
 import { UserMenu } from '../src/views/UserMenu';
@@ -22,11 +25,21 @@ import { UserMenu } from '../src/views/UserMenu';
 const ownerProject: Project = { id: 'p1', name: 'Acme', slug: 'acme', role: 'owner' };
 const memberProject: Project = { id: 'p2', name: 'Blog', slug: 'blog', role: 'member' };
 
-function renderMenu(project: Project | null = null) {
+function renderMenu(project: Project | null = null, totpEnabled = false) {
   const onClose = vi.fn();
   const onEmailChanged = vi.fn();
-  render(<UserMenu email="me@acme.test" project={project} onClose={onClose} onEmailChanged={onEmailChanged} />);
-  return { onClose, onEmailChanged };
+  const onMfaChanged = vi.fn();
+  render(
+    <UserMenu
+      email="me@acme.test"
+      project={project}
+      totpEnabled={totpEnabled}
+      onClose={onClose}
+      onEmailChanged={onEmailChanged}
+      onMfaChanged={onMfaChanged}
+    />,
+  );
+  return { onClose, onEmailChanged, onMfaChanged };
 }
 
 beforeEach(() => {
@@ -103,9 +116,9 @@ describe('UserMenu', () => {
     expect(screen.getByText(/Open a project you own/)).toBeInTheDocument();
   });
 
-  it('shows the Security placeholder (MFA arrives in a later phase)', () => {
-    renderMenu();
+  it('renders the Security (MFA) tab, passing through the enabled state', () => {
+    renderMenu(null, true);
     fireEvent.click(screen.getByRole('button', { name: 'Security' }));
-    expect(screen.getByText(/Two-factor authentication/)).toBeInTheDocument();
+    expect(screen.getByTestId('security')).toHaveTextContent('security:true');
   });
 });

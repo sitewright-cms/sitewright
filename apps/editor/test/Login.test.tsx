@@ -1,0 +1,88 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+
+const { login, register, loginTotp } = vi.hoisted(() => ({
+  login: vi.fn(),
+  register: vi.fn(),
+  loginTotp: vi.fn(),
+}));
+vi.mock('../src/api', async () => {
+  const actual = await vi.importActual<typeof import('../src/api')>('../src/api');
+  return {
+    ...actual,
+    api: {
+      login: (e: string, p: string) => login(e, p),
+      register: (e: string, p: string) => register(e, p),
+      loginTotp: (t: string, c: string) => loginTotp(t, c),
+    },
+  };
+});
+
+import { Login } from '../src/views/Login';
+
+beforeEach(() => {
+  login.mockReset();
+  register.mockReset();
+  loginTotp.mockReset();
+});
+
+async function fillCredsAndSubmit() {
+  fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'me@acme.test' } });
+  fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'pw-secret-1' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+}
+
+describe('Login', () => {
+  it('signs in directly when no second factor is required', async () => {
+    login.mockResolvedValue({ userId: 'u' });
+    const onAuthed = vi.fn();
+    render(<Login onAuthed={onAuthed} />);
+    await fillCredsAndSubmit();
+    await waitFor(() => expect(onAuthed).toHaveBeenCalled());
+    expect(loginTotp).not.toHaveBeenCalled();
+  });
+
+  it('prompts for a TOTP code when login returns mfaRequired, then completes via loginTotp', async () => {
+    login.mockResolvedValue({ mfaRequired: true, ticket: 'tkt-123' });
+    loginTotp.mockResolvedValue({ userId: 'u' });
+    const onAuthed = vi.fn();
+    render(<Login onAuthed={onAuthed} />);
+    await fillCredsAndSubmit();
+
+    // The code step appears (no session yet, onAuthed not called).
+    const codeField = await screen.findByLabelText('Authentication code');
+    expect(onAuthed).not.toHaveBeenCalled();
+
+    fireEvent.change(codeField, { target: { value: '123456' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Verify' }));
+    await waitFor(() => expect(loginTotp).toHaveBeenCalledWith('tkt-123', '123456'));
+    expect(onAuthed).toHaveBeenCalled();
+  });
+
+  it('can switch the code step to a recovery code and redeem it', async () => {
+    login.mockResolvedValue({ mfaRequired: true, ticket: 'tkt-9' });
+    loginTotp.mockResolvedValue({ userId: 'u' });
+    render(<Login onAuthed={vi.fn()} />);
+    await fillCredsAndSubmit();
+    await screen.findByLabelText('Authentication code');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Use a recovery code' }));
+    fireEvent.change(screen.getByLabelText('Authentication code'), { target: { value: 'AAAAA-BBBBB' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Verify' }));
+    await waitFor(() => expect(loginTotp).toHaveBeenCalledWith('tkt-9', 'AAAAA-BBBBB'));
+  });
+
+  it('shows the server error when a TOTP code is rejected (ticket survives for retry)', async () => {
+    login.mockResolvedValue({ mfaRequired: true, ticket: 'tkt-x' });
+    const { ApiError } = await vi.importActual<typeof import('../src/api')>('../src/api');
+    loginTotp.mockRejectedValue(new ApiError(401, 'invalid code'));
+    render(<Login onAuthed={vi.fn()} />);
+    await fillCredsAndSubmit();
+    await screen.findByLabelText('Authentication code');
+    fireEvent.change(screen.getByLabelText('Authentication code'), { target: { value: '000000' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Verify' }));
+    expect(await screen.findByText('invalid code')).toBeInTheDocument();
+    // Still on the code step.
+    expect(screen.getByLabelText('Authentication code')).toBeInTheDocument();
+  });
+});

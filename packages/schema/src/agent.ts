@@ -37,7 +37,7 @@ In \`source\`:
   (images by default). The folder may be a subfolder ("products/2024") or a variable. Each iteration
   binds {{url}} {{alt}} {{filename}} {{kind}} {{width}} {{height}} (+ {{@index}}/{{@first}}/{{@last}});
   bind the src with {{sw-url url}}. e.g. {{#sw-folder "gallery"}}<img src="{{sw-url url}}" alt="{{alt}}" loading="lazy">{{/sw-folder}}.
-- CONTENT-EDITOR-ONLY controls: {{sw-control target="…" as="text|textarea|url|image|folder|dataset" label="…"}}
+- CONTENT-EDITOR-ONLY controls: {{sw-control target="…" as="text|textarea|url|image|file|folder|dataset" label="…"}}
   drops a chip (visible only in the Content Editor, stripped on publish) letting a client set a whitelisted
   page value (target=page.title | seo.ogImage | seo.description) or a page.data key. Use it to expose the
   knobs OTHER helpers read — e.g. {{sw-control target="gallery_folder" as="folder"}} feeds

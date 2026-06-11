@@ -17,7 +17,7 @@
  *                     { source:'sitewright-preview', type:'open-entry', dataset, id }              (data-sw-entry)
  *                     { source:'sitewright-preview', type:'edit-html-source', key, html }          (data-sw-html → source modal)
  *                     { source:'sitewright-preview', type:'control-edit', target, as, value }       (sw-control set)
- *                     { source:'sitewright-preview', type:'control-pick-image', target }            (sw-control image)
+ *                     { source:'sitewright-preview', type:'control-pick-image', target, as }        (sw-control image/file)
  *   editor → preview: { source:'sitewright-editor', type:'scrollTo', y }
  *                     { source:'sitewright-editor', type:'setMode', mode }
  *
@@ -258,7 +258,9 @@ export const PREVIEW_BRIDGE_JS = `(function () {
   }
   function openControlPop(el) {
     var as = el.getAttribute('data-sw-control-as') || 'text';
-    if (as === 'image') { post({ type: 'control-pick-image', target: el.getAttribute('data-sw-control') }); return; }
+    // Image AND arbitrary-file controls hand off to the editor file picker (no in-page popover); the
+    // posted "as" selects the picker accept filter (image assets vs uploaded files).
+    if (as === 'image' || as === 'file') { post({ type: 'control-pick-image', target: el.getAttribute('data-sw-control'), as: as }); return; }
     cpopEl = el;
     var value = el.getAttribute('data-sw-control-value') || '';
     var p = ensureControlPop();

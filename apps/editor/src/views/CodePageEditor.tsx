@@ -9,7 +9,7 @@ import {
   resolveTemplateSource,
 } from '@sitewright/core';
 import { safeUrl } from '@sitewright/blocks/url';
-import { classifyControlTarget } from '@sitewright/blocks/control';
+import { classifyControlTarget, normalizeControlAs } from '@sitewright/blocks/control';
 import { api, previewDocUrl, type Project } from '../api';
 import { CodeEditor } from '../lib/code-editor';
 import { parseTemplateErrorPosition } from '../lib/template-error';
@@ -139,8 +139,8 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   const [pageDataOpen, setPageDataOpen] = useState(false);
   // The content key whose image is being replaced via the file picker (data-sw-src/bg click), or null.
   const [pickerKey, setPickerKey] = useState<string | null>(null);
-  // The {{sw-control}} target whose image is being picked (as="image"), or null.
-  const [controlPick, setControlPick] = useState<string | null>(null);
+  // The {{sw-control}} target whose asset is being picked (as="image" → images, as="file" → files), or null.
+  const [controlPick, setControlPick] = useState<{ target: string; as: 'image' | 'file' } | null>(null);
   // The dataset entry being edited from a preview click (data-sw-entry), or null.
   const [openEntry, setOpenEntry] = useState<{ dataset: string; id: string } | null>(null);
   // The data-sw-html region being edited in the source modal (toolbar </> button): its key + the HTML to
@@ -256,7 +256,9 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   function applyControlEdit(target: string, as: string | undefined, value: string): void {
     const t = classifyControlTarget(target);
     if (!t) return;
-    const v = as === 'image' || as === 'url' || (t.kind === 'seo' && t.field === 'ogImage') ? safeUrl(value, '') : value;
+    // Normalize `as` (it arrives raw from the iframe postMessage) so the URL-sanitize gate is symmetric.
+    const a = normalizeControlAs(as);
+    const v = a === 'image' || a === 'file' || a === 'url' || (t.kind === 'seo' && t.field === 'ogImage') ? safeUrl(value, '') : value;
     if (t.kind === 'title') setSettings((s) => ({ ...s, title: v }));
     else if (t.kind === 'seo') setSettings((s) => (t.field === 'ogImage' ? { ...s, seoOgImage: v } : { ...s, seoDescription: v }));
     else setPageData((prev) => pageDataSet(prev, t.key, v));
@@ -332,8 +334,8 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
         // {{sw-control}} set a value → write the target (page setting / page.data); the preview reloads.
         applyControlEditRef.current(d.target, d.as, d.value);
       } else if (d.type === 'control-pick-image' && typeof d.target === 'string' && classifyControlTarget(d.target)) {
-        // {{sw-control}} as="image" → open the file picker; the pick writes the target.
-        setControlPick(d.target);
+        // {{sw-control}} as="image"/"file" → open the file picker (filtered by `as`); the pick writes the target.
+        setControlPick({ target: d.target, as: d.as === 'file' ? 'file' : 'image' });
       } else if (d.type === 'pick-image' && typeof d.key === 'string' && d.key !== '' && isSafeKey(d.key)) {
         // Clicked an editable image/background in the preview → open the file picker for that region.
         setPickerKey(d.key);
@@ -795,14 +797,15 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
         />
       )}
 
-      {/* {{sw-control}} as="image" → pick an image for the control's target (e.g. the OG image). */}
+      {/* {{sw-control}} as="image"/"file" → pick an asset for the control's target (e.g. the OG image,
+          or a downloadable file); the picker is filtered to images or uploaded files accordingly. */}
       {controlPick !== null && (
         <FilePicker
           projectId={project.id}
-          accept={ACCEPT.image}
-          title="Choose image"
+          accept={controlPick.as === 'file' ? ACCEPT.file : ACCEPT.image}
+          title={controlPick.as === 'file' ? 'Choose file' : 'Choose image'}
           onPick={(url) => {
-            applyControlEdit(controlPick, 'image', url);
+            applyControlEdit(controlPick.target, controlPick.as, url);
             setControlPick(null);
           }}
           onClose={() => setControlPick(null)}

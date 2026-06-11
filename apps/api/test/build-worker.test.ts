@@ -27,14 +27,14 @@ describe('runWorker', () => {
       media: [],
       bundle: bundle({
         pages: [
-          { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section', children: [{ id: 'h', type: 'Heading', props: { text: 'Worker Built' } }] } },
+          { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<section><h1>Welcome</h1></section>' },
         ],
       }),
     };
     const result = await runWorker(job);
     expect(result.manifest.routes).toBe(1);
     const home = Buffer.from(result.files['index.html'] ?? '', 'base64').toString('utf8');
-    expect(home).toContain('Worker Built');
+    expect(home).toContain('Welcome');
     expect(home).toContain('--sw-color-primary: #0a7;');
   });
 
@@ -49,17 +49,19 @@ describe('runWorker', () => {
       publishedAt: '2026-05-30T00:00:00.000Z',
       media: [{ asset, files: { 'a1-40.jpg': Buffer.from('jpgbytes').toString('base64'), 'a1-40.webp': Buffer.from('webpbytes').toString('base64') } }],
       bundle: bundle({
-        pages: [{ id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Image', props: { src: '/media/p/a1/a1-40.jpg', alt: 'H' } } }],
+        // Code-first: the page references the media via a raw <img> editor URL
+        // (`/media/<projectSlug>/<assetId>/…`), which the publish-time media rewrite
+        // rebases to the bundled `_assets/<assetId>/…` path.
+        pages: [{ id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<section><img src="/media/acme/a1/a1-40.jpg" alt="H" /></section>' }],
       }),
     };
     const result = await runWorker(job);
     const home = Buffer.from(result.files['index.html'] ?? '', 'base64').toString('utf8');
-    expect(home).toContain('<picture');
     // The media binary made it into the artifact (under _assets/), decoded correctly.
     expect(Buffer.from(result.files['_assets/a1/a1-40.jpg'] ?? '', 'base64').toString('utf8')).toBe('jpgbytes');
     expect(result.files['_assets/a1/a1-40.webp']).toBeDefined();
-    // …and the rendered <picture> references the bundled path, not the editor /media URL.
+    // …and the rendered <img> references the bundled path, not the editor /media URL.
     expect(home).toContain('_assets/a1/');
-    expect(home).not.toContain('/media/p/');
+    expect(home).not.toContain('/media/acme/');
   });
 });

@@ -4,7 +4,6 @@ import { minify as minifyHtmlDocument } from 'html-minifier-terser';
 import {
   allRoutes,
   buildNav,
-  collectClassNames,
   datasetEntries,
   keyedDatasets,
   extractClassNames,
@@ -35,25 +34,19 @@ import {
   NAV_LINK_JS,
   resolveInternalUrl,
   relativizeInternalLinks,
-  usedComponentTypes,
   componentTypesInSource,
   componentAssets,
   usesDialog,
-  treeUsesDialog,
   usesAnimations,
-  treeUsesAnimations,
   ANIMATION_CSS,
   ANIMATION_JS,
   usesLazyload,
-  treeUsesLazyload,
   LAZYLOAD_CSS,
   LAZYLOAD_JS,
   usesRipple,
-  treeUsesRipple,
   RIPPLE_CSS,
   RIPPLE_JS,
   usesCart,
-  treeUsesCart,
   CART_CSS,
   CART_JS,
   resolveShopChannels,
@@ -341,7 +334,6 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
 
     // Compile a Tailwind utility sheet / ship component CSS+JS only when used.
     // Sites using none get the previous output (no extra file/request).
-    const scanRoots = routes.map((r) => r.root);
     // A page's EFFECTIVE source: its referenced template's (project entity or built-in
     // global) when set, else its own. An unknown reference is an author-correctable
     // publish failure — never a silently blank page.
@@ -392,7 +384,6 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // into the candidate set too — else their (tree-shaken) effect CSS wouldn't be compiled.
     const themeClassNames = websiteThemeClasses(website?.theme).split(' ').filter(Boolean);
     const classNames = [
-      ...scanRoots.flatMap(collectClassNames),
       ...sourceClassNames,
       ...slotClassNames,
       ...snippetClassNames,
@@ -400,13 +391,10 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     ];
     const usesUtilities = classNames.length > 0;
     // Interactive component JS/CSS (modal / tabs / carousel / lightbox / cookie-consent / form) ships
-    // when a block tree uses the component OR a CODE-FIRST surface renders its `data-sw-component="…"`
-    // marker — page sources, skeleton slots, snippets. Code-first pages have an empty stub block tree,
-    // so the tree scan alone would never ship their components (same source-aware discipline as the
-    // animation/lazyload/ripple runtimes below).
+    // when a CODE-FIRST surface renders its `data-sw-component="…"` marker — page sources, skeleton
+    // slots, snippets. Same only-used-ships discipline as the animation/lazyload/ripple runtimes below.
     const componentTypes = [
       ...new Set([
-        ...scanRoots.flatMap(usedComponentTypes),
         ...effectiveSources.flatMap(componentTypesInSource),
         ...slotSources.flatMap(componentTypesInSource),
         ...Object.values(usedSnippets).flatMap(componentTypesInSource),
@@ -414,34 +402,26 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     ];
     const usesComponents = componentTypes.length > 0;
     const components = componentAssets(componentTypes);
-    // Scroll-reveal animations (`data-aos`) ship the first-party runtime only when
-    // some authored surface uses the attribute — block trees (raw Html embeds),
-    // code-first page sources, skeleton slots, or snippets. Same only-used-ships
-    // discipline as components.js; unused sites get byte-identical output.
-    // Each platform runtime (animations / lazyload / ripple) ships only when some
-    // authored surface uses its marker — block trees (raw Html embeds), code-first
-    // page sources, skeleton slots, or snippets. Same only-used-ships discipline.
-    const usesMarker = (
-      treeFn: (r: Page['root']) => boolean,
-      strFn: (s: string | null | undefined) => boolean,
-    ): boolean =>
-      scanRoots.some(treeFn) ||
+    // Each platform runtime (animations / lazyload / ripple / cart / dialog) ships only when some
+    // authored CODE-FIRST surface uses its marker — page sources, skeleton slots, or snippets. Same
+    // only-used-ships discipline as components.js; unused sites get byte-identical output.
+    const usesMarker = (strFn: (s: string | null | undefined) => boolean): boolean =>
       routes.some((r) => strFn(effectiveSource(r.page))) ||
       slotSources.some(strFn) ||
       Object.values(usedSnippets).some(strFn);
-    const usesAnims = usesMarker(treeUsesAnimations, usesAnimations);
-    const usesLazy = usesMarker(treeUsesLazyload, usesLazyload);
-    const usesWaves = usesMarker(treeUsesRipple, usesRipple);
+    const usesAnims = usesMarker(usesAnimations);
+    const usesLazy = usesMarker(usesLazyload);
+    const usesWaves = usesMarker(usesRipple);
     // MINI SHOP cart runtime — ships only when a page/slot uses the {{sw-cart}}/{{sw-add-to-cart}}
-    // helpers (or the rendered data-sw-cart marker in a raw Html embed). Same only-used-ships discipline.
-    const usesCartRuntime = usesMarker(treeUsesCart, usesCart);
+    // helpers (their rendered `data-sw-cart` marker). Same only-used-ships discipline.
+    const usesCartRuntime = usesMarker(usesCart);
     // The nav-link runtime opens a <dialog> (global modal) and smooth-scrolls #section links. Ship it
     // when a nav placeholder targets a #fragment OR any authored surface embeds a <dialog> — so a modal
     // triggered from page CONTENT (a CTA, an in-content `<a href="#id">`), not only a nav placeholder,
     // actually opens. NAV_LINK_JS is a general document-wide a[href^="#"] handler, so this is enough.
     const usesNavLink =
       pubBundle.pages.some((p) => isLinkPage(p) && (p.link?.target ?? '').includes('#')) ||
-      usesMarker(treeUsesDialog, usesDialog);
+      usesMarker(usesDialog);
     // Public form definitions (recipient stripped) + the absolute submission
     // endpoint for exported `Form` blocks. Built once (same for every page).
     const forms: Record<string, FormPublic> = Object.fromEntries(
@@ -482,9 +462,8 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     const writtenPaths = new Set<string>();
     {
       for (const route of routes) {
-        // `route.root` is the page's block tree with partials expanded (used for
-        // block-tree pages; code-first pages render from `source` instead).
-        const page = { ...route.page, root: route.root };
+        // Code-first: the page renders from its Handlebars `source` (resolved below into `bodyHtml`).
+        const page = route.page;
         const pageLocale = localeOf(page);
         const navForPage = navByLocale.get(pageLocale) ?? nav;
         const outSlug = route.slug;

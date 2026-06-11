@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { PageNode } from '@sitewright/schema';
-import { CART_CSS, CART_JS, usesCart, treeUsesCart, resolveShopChannels } from '../src/cart.js';
+import { CART_CSS, CART_JS, usesCart, resolveShopChannels } from '../src/cart.js';
 
 describe('cart stylesheet', () => {
   it('hides the cart until the runtime marks it enhanced (PE: no inert UI pre-JS)', () => {
@@ -111,19 +110,6 @@ describe('cart detection', () => {
     expect(usesCart(null)).toBe(false);
   });
 
-  it('detects the marker in a block tree string prop (raw Html embed)', () => {
-    const tree: PageNode = {
-      id: 'r',
-      type: 'Section',
-      children: [{ id: 'e', type: 'Html', props: { html: '<div data-sw-cart></div>' } }],
-    };
-    expect(treeUsesCart(tree)).toBe(true);
-  });
-
-  it('ignores trees without the marker', () => {
-    const plain: PageNode = { id: 'r', type: 'Section', children: [{ id: 'h', type: 'Heading', props: { text: 'Hi' } }] };
-    expect(treeUsesCart(plain)).toBe(false);
-  });
 });
 
 describe('cart form channel', () => {

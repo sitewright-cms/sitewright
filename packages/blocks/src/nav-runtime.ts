@@ -8,8 +8,6 @@
 //
 // The runtime opens a `<dialog>` when an in-page `#id` link targets one (a "global modal" placeholder)
 // and smooth-scrolls to a `#section` otherwise — so anchors/modals work from a plain `<a href="#id">`.
-import { walk } from '@sitewright/core';
-import type { PageNode } from '@sitewright/schema';
 import { escapeHtml } from './escape.js';
 import { renderTemplate } from './template.js';
 
@@ -24,21 +22,6 @@ const DIALOG_RE = /<dialog[\s/>]/i;
  */
 export function usesDialog(html: string | null | undefined): boolean {
   return typeof html === 'string' && DIALOG_RE.test(html);
-}
-
-/** Whether a block tree embeds a `<dialog>` in any raw-Html node's props (legacy block-tree pages). */
-export function treeUsesDialog(root: PageNode): boolean {
-  let found = false;
-  walk(root, (node) => {
-    if (found || !node.props) return;
-    for (const value of Object.values(node.props)) {
-      if (typeof value === 'string' && DIALOG_RE.test(value)) {
-        found = true;
-        return;
-      }
-    }
-  });
-  return found;
 }
 
 /** The minimal label-bearing shape `decorateNav` reads/writes (a structural view of core's NavItem). */

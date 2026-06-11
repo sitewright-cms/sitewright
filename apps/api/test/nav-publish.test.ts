@@ -4,22 +4,28 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { makeHarness, type Harness, type TestClient } from './harness.js';
 
-// Integration: page-tree-driven auto-nav. Pages declare nav placement; a Nav
-// block renders the slot's menu (page-relative links) in the published site.
+// Integration: page-tree-driven auto-nav. Pages declare nav placement; a code-first
+// SKELETON SLOT renders the slot's menu (page-relative links) into the published site.
+// The platform wraps the topNav slot in <nav id="top-nav"> and the footer slot in
+// <footer id="footer">; the slot iterates `nav.header` / `nav.footer` (the page-tree-
+// derived menus). Internal links emitted via {{sw-url path}} are rebased page-relative.
 
-const navBlockPage = (id: string, path: string, title: string, nav?: unknown) => ({
+// A header skeleton slot: iterates the auto-nav header menu (built from each page's
+// nav settings). External placeholders open in a new tab; the rest are page links.
+const HEADER_SLOT =
+  '{{#each nav.header}}<a href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}}>{{sw-label}}</a>{{/each}}';
+const FOOTER_SLOT =
+  '<div data-slot="footer">{{#each nav.footer}}<a href="{{sw-url path}}">{{sw-label}}</a>{{/each}}</div>';
+
+// A code-first page: a neutral block-tree stub (no children) + a Handlebars source.
+// The page body renders from `source`; the nav comes from the project skeleton slot.
+const navPage = (id: string, path: string, title: string, nav?: unknown) => ({
   id,
   path,
   title,
   ...(nav ? { nav } : {}),
-  root: {
-    id: `${id}-r`,
-    type: 'Section',
-    children: [
-      { id: `${id}-nav`, type: 'Nav', props: { slot: 'header' } },
-      { id: `${id}-h`, type: 'Heading', props: { text: `${title} body`, level: 1 } },
-    ],
-  },
+  root: { id: `${id}-r`, type: 'Section' },
+  source: '<section><h1>{{page.title}}</h1></section>',
 });
 
 describe('auto-nav → publish', () => {
@@ -44,6 +50,16 @@ describe('auto-nav → publish', () => {
     await rm(mediaRoot, { recursive: true, force: true });
   });
 
+  /** PUT the project settings singleton with the given website skeleton slots. */
+  async function putSlots(website: Record<string, unknown>) {
+    const res = await client.project(projectId).putContent('settings', 'settings', {
+      identity: { name: 'Acme', colors: { primary: '#0a7' } },
+      website,
+      settings: { defaultLocale: 'en', locales: ['en'] },
+    });
+    expect(res.statusCode).toBe(200);
+  }
+
   async function fetchSite(path: string): Promise<string> {
     const res = await client.get(`/sites/${slug}/${path}`);
     expect(res.statusCode).toBe(200);
@@ -52,15 +68,17 @@ describe('auto-nav → publish', () => {
 
   it('renders the header menu from the page tree, with page-relative links', async () => {
     const proj = client.project(projectId);
-    expect((await proj.putContent('page', 'home', navBlockPage('home', '', 'Home', { slots: ['header'], order: 0 }))).statusCode).toBe(200);
+    await putSlots({ topNav: HEADER_SLOT });
+    expect((await proj.putContent('page', 'home', navPage('home', '', 'Home', { slots: ['header'], order: 0 }))).statusCode).toBe(200);
     expect(
-      (await proj.putContent('page', 'about', navBlockPage('about', 'about', 'About Page', { title: 'About', slots: ['header'], order: 1 }))).statusCode,
+      (await proj.putContent('page', 'about', navPage('about', 'about', 'About Page', { title: 'About', slots: ['header'], order: 1 }))).statusCode,
     ).toBe(200);
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
 
-    // Home page (site root): links are root-relative-from-home.
+    // Home page (site root): the nav lives in the platform's <nav id="top-nav"> landmark;
+    // links are root-relative-from-home.
     const home = await fetchSite('index.html');
-    expect(home).toContain('data-sw-block="Nav"');
+    expect(home).toContain('<nav id="top-nav">');
     expect(home).toContain('href="./"'); // Home link
     expect(home).toContain('href="about"'); // About link, label from nav.title
     expect(home).toContain('>About<');
@@ -73,25 +91,21 @@ describe('auto-nav → publish', () => {
 
   it('renders footer-slot menus and excludes collection pages', async () => {
     const proj = client.project(projectId);
-    // A page with a footer Nav block; two pages placed in the footer slot; a
-    // collection page also flagged for the footer (must NOT appear).
-    const footerHome = {
-      id: 'home',
-      path: '',
-      title: 'Home',
-      nav: { slots: ['footer'], order: 0 },
-      root: { id: 'hr', type: 'Section', children: [{ id: 'hn', type: 'Nav', props: { slot: 'footer' } }] },
-    };
-    expect((await proj.putContent('page', 'home', footerHome)).statusCode).toBe(200);
-    expect((await proj.putContent('page', 'terms', { id: 'terms', path: 'terms', title: 'Terms', nav: { slots: ['footer'], order: 1 }, root: { id: 'tr', type: 'Section' } })).statusCode).toBe(200);
+    // The footer skeleton slot iterates nav.footer; two pages are placed in the footer slot;
+    // a collection page also flagged for the footer (must NOT appear).
+    await putSlots({ footer: FOOTER_SLOT });
+    expect((await proj.putContent('page', 'home', navPage('home', '', 'Home', { slots: ['footer'], order: 0 }))).statusCode).toBe(200);
+    expect((await proj.putContent('page', 'terms', navPage('terms', 'terms', 'Terms', { slots: ['footer'], order: 1 }))).statusCode).toBe(200);
     // dataset + collection page flagged for the footer slot — excluded from nav.
     expect((await proj.putContent('dataset', 'posts', { id: 'posts', slug: 'posts', name: 'Posts', fields: [] })).statusCode).toBe(200);
     expect(
-      (await proj.putContent('page', 'post', { id: 'post', path: '[slug]', title: 'Post', collection: { dataset: 'posts', param: 'slug' }, nav: { slots: ['footer'] }, root: { id: 'pr', type: 'Section' } })).statusCode,
+      (await proj.putContent('page', 'post', { id: 'post', path: '[slug]', title: 'Post', collection: { dataset: 'posts', param: 'slug' }, nav: { slots: ['footer'] }, root: { id: 'pr', type: 'Section' }, source: '<section><h1>{{page.title}}</h1></section>' })).statusCode,
     ).toBe(200);
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
 
     const home = await fetchSite('index.html');
+    // The footer slot lives inside the platform's <footer id="footer"> landmark.
+    expect(home).toContain('<footer id="footer">');
     expect(home).toContain('data-slot="footer"');
     expect(home).toContain('href="./"'); // Home
     expect(home).toContain('href="terms"'); // Terms
@@ -101,10 +115,11 @@ describe('auto-nav → publish', () => {
 
   it('excludes draft pages from the published site, its routes, and the nav', async () => {
     const proj = client.project(projectId);
-    expect((await proj.putContent('page', 'home', navBlockPage('home', '', 'Home', { slots: ['header'], order: 0 }))).statusCode).toBe(200);
+    await putSlots({ topNav: HEADER_SLOT });
+    expect((await proj.putContent('page', 'home', navPage('home', '', 'Home', { slots: ['header'], order: 0 }))).statusCode).toBe(200);
     // A draft page placed in the header nav — must NOT publish, route, or appear in the menu.
     expect(
-      (await proj.putContent('page', 'secret', { ...navBlockPage('secret', 'secret', 'Secret', { slots: ['header'], order: 1 }), status: 'draft' })).statusCode,
+      (await proj.putContent('page', 'secret', { ...navPage('secret', 'secret', 'Secret', { slots: ['header'], order: 1 }), status: 'draft' })).statusCode,
     ).toBe(200);
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
 
@@ -120,13 +135,14 @@ describe('auto-nav → publish', () => {
 
   it('publishes link placeholders into the nav (external new-tab + #modal), ships nav-link.js, emits no page for them', async () => {
     const proj = client.project(projectId);
-    expect((await proj.putContent('page', 'home', navBlockPage('home', '', 'Home', { slots: ['header'], order: 0 }))).statusCode).toBe(200);
+    await putSlots({ topNav: HEADER_SLOT });
+    expect((await proj.putContent('page', 'home', navPage('home', '', 'Home', { slots: ['header'], order: 0 }))).statusCode).toBe(200);
     // A "global modal" placeholder (opens a #contact <dialog>) — kind:'link', no own route.
     expect(
       (await proj.putContent('page', 'nav-contact', {
         id: 'nav-contact', path: '', title: 'Contact', kind: 'link',
         link: { target: '#contact' }, nav: { slots: ['header'], order: 1 },
-        root: { id: 'ncr', type: 'Section', children: [] },
+        root: { id: 'ncr', type: 'Section' },
       })).statusCode,
     ).toBe(200);
     // An external placeholder that opens in a new tab.
@@ -134,7 +150,7 @@ describe('auto-nav → publish', () => {
       (await proj.putContent('page', 'nav-docs', {
         id: 'nav-docs', path: '', title: 'Docs', kind: 'link',
         link: { target: 'https://docs.example.com', newTab: true }, nav: { slots: ['header'], order: 2 },
-        root: { id: 'ndr', type: 'Section', children: [] },
+        root: { id: 'ndr', type: 'Section' },
       })).statusCode,
     ).toBe(200);
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
@@ -152,9 +168,10 @@ describe('auto-nav → publish', () => {
 
   it('omits pages without nav placement from the menu', async () => {
     const proj = client.project(projectId);
-    expect((await proj.putContent('page', 'home', navBlockPage('home', '', 'Home', { slots: ['header'] }))).statusCode).toBe(200);
+    await putSlots({ topNav: HEADER_SLOT });
+    expect((await proj.putContent('page', 'home', navPage('home', '', 'Home', { slots: ['header'] }))).statusCode).toBe(200);
     // 'secret' has no nav → not in the menu.
-    expect((await proj.putContent('page', 'secret', navBlockPage('secret', 'secret', 'Secret'))).statusCode).toBe(200);
+    expect((await proj.putContent('page', 'secret', navPage('secret', 'secret', 'Secret'))).statusCode).toBe(200);
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
 
     const home = await fetchSite('index.html');

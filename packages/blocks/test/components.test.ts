@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { PageNode } from '@sitewright/schema';
-import { COMPONENT_TYPES, usedComponentTypes, componentTypesInSource, componentAssets } from '../src/components.js';
+import { COMPONENT_TYPES, componentTypesInSource, componentAssets } from '../src/components.js';
 
 describe('componentTypesInSource (code-first detection)', () => {
   it('detects interactive components by their data-sw-component marker in rendered source', () => {
@@ -64,20 +63,6 @@ describe('component registry', () => {
   it('bundles only the JS of used components (Accordion alone → no JS)', () => {
     expect(componentAssets(['Accordion']).js).toBe('');
     expect(componentAssets(['Accordion', 'Lightbox']).js).toContain('lightbox');
-  });
-
-  it('collects distinct component types used in a tree (deduped, ignores non-components)', () => {
-    const tree: PageNode = {
-      id: 'r',
-      type: 'Section',
-      children: [
-        { id: 'c1', type: 'Carousel', children: [{ id: 's', type: 'Slide' }] },
-        { id: 'c2', type: 'Carousel' },
-        { id: 'h', type: 'Heading' },
-      ],
-    };
-    expect(usedComponentTypes(tree)).toEqual(['Carousel']); // deduped
-    expect(usedComponentTypes({ id: 'x', type: 'Section' })).toEqual([]);
   });
 
   it('bundles CSS + JS for used components, empty when none', () => {

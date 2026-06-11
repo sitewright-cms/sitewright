@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { PageNode } from '@sitewright/schema';
-import { LAZYLOAD_CSS, LAZYLOAD_JS, usesLazyload, treeUsesLazyload } from '../src/lazyload.js';
+import { LAZYLOAD_CSS, LAZYLOAD_JS, usesLazyload } from '../src/lazyload.js';
 
 describe('lazyload stylesheet', () => {
   it('gates the fade behind prefers-reduced-motion: no-preference', () => {
@@ -86,17 +85,4 @@ describe('lazyload detection', () => {
     expect(usesLazyload(null)).toBe(false);
   });
 
-  it('detects the marker in a block tree string prop (raw Html embed)', () => {
-    const tree: PageNode = {
-      id: 'r',
-      type: 'Section',
-      children: [{ id: 'e', type: 'Html', props: { html: '<div data-bg="/hero.jpg"></div>' } }],
-    };
-    expect(treeUsesLazyload(tree)).toBe(true);
-  });
-
-  it('ignores trees without the marker', () => {
-    const plain: PageNode = { id: 'r', type: 'Section', props: { count: 3 }, children: [{ id: 'h', type: 'Heading', props: { text: 'Hi' } }] };
-    expect(treeUsesLazyload(plain)).toBe(false);
-  });
 });

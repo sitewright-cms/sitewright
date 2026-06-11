@@ -12,9 +12,6 @@
 // - Motion sits behind `prefers-reduced-motion: no-preference`; reduced motion =
 //   no ripple. No-JS → a plain (still clickable) element.
 // - First-party, audited, static code only; tenants add only the marker classes.
-import { walk } from '@sitewright/core';
-import type { PageNode } from '@sitewright/schema';
-
 /**
  * The ripple stylesheet. `.waves-effect` clips its overflow so the expanding circle
  * stays inside; `.waves-ripple` is the injected span that scales + fades. `waves-light`
@@ -63,17 +60,3 @@ export function usesRipple(html: string | null | undefined): boolean {
   return typeof html === 'string' && html.includes(RIPPLE_MARKER);
 }
 
-/** Whether a block tree uses the ripple effect — any node with a string prop carrying the marker. */
-export function treeUsesRipple(root: PageNode): boolean {
-  let found = false;
-  walk(root, (node) => {
-    if (found || !node.props) return;
-    for (const value of Object.values(node.props)) {
-      if (typeof value === 'string' && value.includes(RIPPLE_MARKER)) {
-        found = true;
-        return;
-      }
-    }
-  });
-  return found;
-}

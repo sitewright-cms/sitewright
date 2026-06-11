@@ -19,9 +19,6 @@
 //   `src`/`srcset`/`background-image` — exactly what a literal `<img src>`/`<iframe src>`
 //   already does, so it grants no capability beyond authoring those tags directly (the bg
 //   value is additionally CSS-url()-escaped against a `url("…")` string breakout).
-import { walk } from '@sitewright/core';
-import type { PageNode } from '@sitewright/schema';
-
 /**
  * The lazy-load stylesheet. `.lazyloading` (runtime-added) fades a freshly-revealed
  * element in; `.lazyloaded` is the settled state. No-JS → neither class is added,
@@ -93,17 +90,3 @@ export function usesLazyload(html: string | null | undefined): boolean {
   return typeof html === 'string' && hasMarker(html);
 }
 
-/** Whether a block tree uses lazy-loading — any node with a string prop carrying the marker. */
-export function treeUsesLazyload(root: PageNode): boolean {
-  let found = false;
-  walk(root, (node) => {
-    if (found || !node.props) return;
-    for (const value of Object.values(node.props)) {
-      if (typeof value === 'string' && hasMarker(value)) {
-        found = true;
-        return;
-      }
-    }
-  });
-  return found;
-}

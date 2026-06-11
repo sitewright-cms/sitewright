@@ -36,7 +36,7 @@ function token(res: { cookies: Array<{ name: string; value: string }> }): string
 
 let slugCounter = 0;
 async function setup(email: string) {
-  const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email, password: 'pw-secret-1' } });
+  const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email, password: 'Pw-secret-1' } });
   const t = token(reg);
   const proj = await app.inject({ method: 'POST', url: '/projects', cookies: { sw_session: t }, payload: { name: 'Site', slug: `site-${slugCounter++}` } });
   return { t, projectId: (proj.json() as { project: { id: string } }).project.id };

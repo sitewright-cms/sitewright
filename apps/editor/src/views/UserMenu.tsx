@@ -1,8 +1,10 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { isPasswordValid, PASSWORD_MIN_LENGTH } from '@sitewright/schema';
 import { api, type Project } from '../api';
 import { Modal } from './ui/Modal';
 import { ApiKeysManager } from './ApiKeysManager';
 import { SecurityTab } from './SecurityTab';
+import { PasswordRequirements } from './ui/PasswordRequirements';
 import { useToast } from './ui/Toast';
 import { fieldLabel, glassCard, glassInput, gradientSurface, primaryButton } from '../theme';
 
@@ -150,9 +152,9 @@ function PasswordTab({ hasPassword, onPasswordChanged }: { hasPassword: boolean;
   const [saving, setSaving] = useState(false);
 
   const mismatch = confirm.length > 0 && newPassword !== confirm;
-  const tooShort = newPassword.length > 0 && newPassword.length < 8;
   // When the account has no password (OIDC-provisioned), this is "set a password" — no current one.
-  const canSubmit = (!hasPassword || currentPassword.length > 0) && newPassword.length >= 8 && newPassword === confirm && !saving;
+  const canSubmit =
+    (!hasPassword || currentPassword.length > 0) && isPasswordValid(newPassword) && newPassword === confirm && !saving;
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -190,8 +192,8 @@ function PasswordTab({ hasPassword, onPasswordChanged }: { hasPassword: boolean;
       )}
       <div>
         <label className={fieldLabel} htmlFor="pw-new">New password</label>
-        <input id="pw-new" type="password" autoComplete="new-password" className={glassInput} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required minLength={8} />
-        {tooShort && <p className="mt-1 text-xs text-amber-600">Use at least 8 characters.</p>}
+        <input id="pw-new" type="password" autoComplete="new-password" className={glassInput} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required minLength={PASSWORD_MIN_LENGTH} />
+        <PasswordRequirements value={newPassword} />
       </div>
       <div>
         <label className={fieldLabel} htmlFor="pw-confirm">Confirm new password</label>

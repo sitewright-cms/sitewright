@@ -18,7 +18,7 @@ vi.mock('@simplewebauthn/server', () => ({
 import { makeHarness, sessionToken, type Harness, type TestClient } from './harness.js';
 
 const SESSION_COOKIE = 'sw_session';
-const PASSWORD = 'pw-secret-1';
+const PASSWORD = 'Pw-secret-1';
 
 function hasSessionCookie(res: { cookies: { name: string }[] }): boolean {
   return res.cookies.some((c) => c.name === SESSION_COOKIE);

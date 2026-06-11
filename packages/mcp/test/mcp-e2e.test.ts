@@ -24,7 +24,7 @@ suite('@sitewright/mcp bridge — end to end', () => {
     const reg = await fetch(`${url}/auth/register`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ email: `mcp-${stamp}@e2e.test`, password: 'pw-secret-1', orgName: `MCP ${stamp}` }),
+      body: JSON.stringify({ email: `mcp-${stamp}@e2e.test`, password: 'Pw-secret-1', orgName: `MCP ${stamp}` }),
     });
     const cookie = (reg.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
     slug = `mcp-${stamp}`;
@@ -158,7 +158,7 @@ suite('@sitewright/mcp bridge — end to end', () => {
     const reg = await fetch(`${url}/auth/register`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ email: `mcpro-${stamp}@e2e.test`, password: 'pw-secret-1', orgName: `MCPRO ${stamp}` }),
+      body: JSON.stringify({ email: `mcpro-${stamp}@e2e.test`, password: 'Pw-secret-1', orgName: `MCPRO ${stamp}` }),
     });
     const cookie = (reg.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
     const proj = await fetch(`${url}/projects`, {

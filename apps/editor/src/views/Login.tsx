@@ -1,7 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { browserSupportsWebAuthn, startAuthentication } from '@simplewebauthn/browser';
+import { isPasswordValid } from '@sitewright/schema';
 import { api, ApiError } from '../api';
 import { BrandMark } from './ui/BrandMark';
+import { PasswordRequirements } from './ui/PasswordRequirements';
 import { ghostButton, glassCard, glassInput, primaryButton } from '../theme';
 
 interface LoginProps {
@@ -10,9 +12,16 @@ interface LoginProps {
   initialMfaTicket?: string | null;
   /** A notice (e.g. an OIDC callback error) to show on the sign-in screen. */
   initialNotice?: string | null;
+  /**
+   * Force-OPEN the "create account" option regardless of the instance's self-registration flag.
+   * Set by the invite-accept flow (an invited user must be able to register even when self-registration
+   * is closed). This can only force-enable — `undefined` defers to the public `allowSelfRegistration`
+   * config (the type is `true` so a caller can't accidentally force-CLOSE registration with `false`).
+   */
+  allowRegister?: true;
 }
 
-export function Login({ onAuthed, initialMfaTicket, initialNotice }: LoginProps) {
+export function Login({ onAuthed, initialMfaTicket, initialNotice, allowRegister }: LoginProps) {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -24,15 +33,37 @@ export function Login({ onAuthed, initialMfaTicket, initialNotice }: LoginProps)
   const [code, setCode] = useState('');
   const [useRecovery, setUseRecovery] = useState(false);
   const [providers, setProviders] = useState<{ id: string; label: string }[]>([]);
+  // Whether the instance has self-registration open (drives the "create account" option). Best-effort:
+  // defaults closed until the config loads, so the option never flashes on a registration-closed instance.
+  const [selfRegOpen, setSelfRegOpen] = useState(false);
 
-  // The enabled OIDC providers drive the "Sign in with …" buttons (best-effort; absent on failure).
+  // The public login config drives the OIDC "Sign in with …" buttons and the self-registration option
+  // (best-effort; both stay absent on failure).
   useEffect(() => {
     let active = true;
-    api.loginConfig().then((c) => active && setProviders(c.oidcProviders)).catch(() => {});
+    api
+      .loginConfig()
+      .then((c) => {
+        if (!active) return;
+        setProviders(c.oidcProviders);
+        setSelfRegOpen(c.allowSelfRegistration);
+      })
+      .catch(() => {});
     return () => {
       active = false;
     };
   }, []);
+
+  // Invited users (allowRegister) may always create an account; otherwise it follows the instance flag.
+  const canRegister = allowRegister ?? selfRegOpen;
+  // In register mode, gate submit on the shared password policy (the server enforces it regardless).
+  const registerBlocked = mode === 'register' && !isPasswordValid(password);
+
+  // If registration becomes disallowed while the form is in register mode (e.g. the config loads
+  // closed after a brief window), fall back to sign-in instead of leaving it stuck.
+  useEffect(() => {
+    if (mode === 'register' && !canRegister) setMode('login');
+  }, [mode, canRegister]);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -169,14 +200,16 @@ export function Login({ onAuthed, initialMfaTicket, initialNotice }: LoginProps)
               <input
                 aria-label="Password"
                 type="password"
+                autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
                 className={glassInput}
                 placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
               />
+              {mode === 'register' && <PasswordRequirements value={password} />}
               {error && <p className="text-sm text-red-600">{error}</p>}
-              <button type="submit" disabled={busy} className={`${primaryButton} w-full`}>
+              <button type="submit" disabled={busy || registerBlocked} className={`${primaryButton} w-full`}>
                 {mode === 'register' ? 'Create account' : 'Sign in'}
               </button>
             </form>
@@ -192,15 +225,17 @@ export function Login({ onAuthed, initialMfaTicket, initialNotice }: LoginProps)
                   Sign in with {p.label}
                 </a>
               ))}
-            <button
-              className="mt-4 text-sm text-slate-500 hover:text-slate-900"
-              onClick={() => {
-                setMode(mode === 'login' ? 'register' : 'login');
-                setError(null);
-              }}
-            >
-              {mode === 'login' ? 'Need an account? Register' : 'Have an account? Sign in'}
-            </button>
+            {canRegister && (
+              <button
+                className="mt-4 text-sm text-slate-500 hover:text-slate-900"
+                onClick={() => {
+                  setMode(mode === 'login' ? 'register' : 'login');
+                  setError(null);
+                }}
+              >
+                {mode === 'login' ? 'Need an account? Register' : 'Have an account? Sign in'}
+              </button>
+            )}
           </>
         )}
       </div>

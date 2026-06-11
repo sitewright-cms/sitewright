@@ -66,7 +66,7 @@ export async function makeHarness(options?: Partial<AppOptions>): Promise<Harnes
     opts: { email?: string; password?: string } = {},
   ): Promise<TestClient> {
     const email = opts.email ?? `u-${randomUUID()}@test.local`;
-    const password = opts.password ?? 'pw-secret-1';
+    const password = opts.password ?? 'Pw-secret-1';
     const res = await app.inject({
       method: 'POST',
       url: '/auth/register',

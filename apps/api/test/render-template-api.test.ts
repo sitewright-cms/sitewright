@@ -28,7 +28,7 @@ function token(res: { cookies: Array<{ name: string; value: string }> }): string
 }
 
 async function setup() {
-  const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'owner@acme.test', password: 'pw-secret-1'} });
+  const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'owner@acme.test', password: 'Pw-secret-1'} });
   const t = token(reg);
   const proj = await app.inject({ method: 'POST', url: `/projects`, cookies: { sw_session: t }, payload: { name: 'Site', slug: 'site' } });
   const projectId = (proj.json() as { project: { id: string } }).project.id;
@@ -189,7 +189,7 @@ describe('render-template API (isolated worker)', () => {
 
   it('lets a project member render a template (constrained client-write removed)', async () => {
     const { projectId } = await setup();
-    const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'client@acme.test', password: 'pw-secret-1'} });
+    const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'client@acme.test', password: 'Pw-secret-1'} });
     const memberT = token(reg);
     const memberId = (reg.json() as { userId: string }).userId;
     await db.insert(projectMembers).values({ id: randomUUID(), userId: memberId, projectId, role: 'member', createdAt: new Date() });
@@ -207,7 +207,7 @@ describe('render-template API (isolated worker)', () => {
   it('returns 503 when no render pool is configured', async () => {
     const noPool = await createApp({ db: await makeTestDb() });
     await noPool.ready();
-    const reg = await noPool.inject({ method: 'POST', url: '/auth/register', payload: { email: 'o@a.test', password: 'pw-secret-1'} });
+    const reg = await noPool.inject({ method: 'POST', url: '/auth/register', payload: { email: 'o@a.test', password: 'Pw-secret-1'} });
     const t = token(reg);
     const proj = await noPool.inject({ method: 'POST', url: `/projects`, cookies: { sw_session: t }, payload: { name: 'S', slug: 's' } });
     const projectId = (proj.json() as { project: { id: string } }).project.id;

@@ -31,7 +31,7 @@ async function setup(opts: { configureSecret: boolean }) {
   hcaptcha = new FakeHcaptcha();
   app = await createApp({ db: await makeTestDb(), hcaptcha, encryptionKey: ENC_KEY, adminEmails: ['admin@acme.test'] });
   await app.ready();
-  const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'admin@acme.test', password: 'pw-secret-1'} });
+  const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'admin@acme.test', password: 'Pw-secret-1'} });
   t = token(reg);
   const proj = await app.inject({ method: 'POST', url: `/projects`, cookies: { sw_session: t }, payload: { name: 'Site', slug: 'site' } });
   projectId = (proj.json() as { project: { id: string } }).project.id;
@@ -92,7 +92,7 @@ describe('form submission hCaptcha enforcement', () => {
     // First app (with key) to store a secret, then a second app (no key) to read it.
     const keyed = await createApp({ db, hcaptcha, encryptionKey: ENC_KEY, adminEmails: ['admin@acme.test'] });
     await keyed.ready();
-    const reg = await keyed.inject({ method: 'POST', url: '/auth/register', payload: { email: 'admin@acme.test', password: 'pw-secret-1'} });
+    const reg = await keyed.inject({ method: 'POST', url: '/auth/register', payload: { email: 'admin@acme.test', password: 'Pw-secret-1'} });
     const tok = token(reg);
     const proj = await keyed.inject({ method: 'POST', url: `/projects`, cookies: { sw_session: tok }, payload: { name: 'S', slug: 's' } });
     const pid = (proj.json() as { project: { id: string } }).project.id;

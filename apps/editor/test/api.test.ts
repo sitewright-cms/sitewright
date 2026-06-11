@@ -23,13 +23,13 @@ function jsonResponse(status: number, body: unknown) {
 describe('api client', () => {
   it('POSTs register with a JSON body and credentials (no org)', async () => {
     fetchMock.mockResolvedValue(jsonResponse(201, { userId: 'u' }));
-    const res = await api.register('a@b.co', 'pw-secret-1');
+    const res = await api.register('a@b.co', 'Pw-secret-1');
     expect(res).toEqual({ userId: 'u' });
     const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toBe('/auth/register');
     expect(init.method).toBe('POST');
     expect(init.credentials).toBe('include');
-    expect(JSON.parse(init.body)).toEqual({ email: 'a@b.co', password: 'pw-secret-1' });
+    expect(JSON.parse(init.body)).toEqual({ email: 'a@b.co', password: 'Pw-secret-1' });
   });
 
   it('throws ApiError with the server error message on failure', async () => {
@@ -251,12 +251,41 @@ describe('api client', () => {
     expect(fetchMock.mock.calls[0]![0]).toBe('/me');
   });
 
-  it('reads the unauth login config and builds the OIDC start URL', async () => {
-    fetchMock.mockResolvedValue(jsonResponse(200, { oidcProviders: [{ id: 'google', label: 'Google' }] }));
-    expect((await api.loginConfig()).oidcProviders).toEqual([{ id: 'google', label: 'Google' }]);
+  it('reads the unauth login config (providers + allowSelfRegistration) and builds the OIDC start URL', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { oidcProviders: [{ id: 'google', label: 'Google' }], allowSelfRegistration: true }));
+    const cfg = await api.loginConfig();
+    expect(cfg.oidcProviders).toEqual([{ id: 'google', label: 'Google' }]);
+    expect(cfg.allowSelfRegistration).toBe(true);
     expect(fetchMock.mock.calls[0]![0]).toBe('/auth/config');
     // The start URL is a navigable path (encoded id).
     expect(api.oidcStartUrl('acme sso')).toBe('/auth/oidc/acme%20sso/start');
+  });
+
+  it('surfaces a Zod validation body as a field-specific message and keeps the raw details', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(400, {
+        error: 'invalid request',
+        details: { formErrors: [], fieldErrors: { password: ['One uppercase letter', 'One number'] } },
+      }),
+    );
+    try {
+      await api.register('a@b.co', 'weak');
+      throw new Error('expected the register call to reject');
+    } catch (err) {
+      expect(err).toBeInstanceOf(ApiError);
+      const apiErr = err as ApiError;
+      // The generic "invalid request" is replaced by the joined, de-duped field messages.
+      expect(apiErr.message).toBe('One uppercase letter, One number');
+      expect(apiErr.details?.fieldErrors?.password).toEqual(['One uppercase letter', 'One number']);
+    }
+  });
+
+  it('keeps a specific server error message even when details are present', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(403, { error: 'registration is by invitation only' }));
+    await expect(api.register('a@b.co', 'Str0ng-Pw!')).rejects.toMatchObject({
+      status: 403,
+      message: 'registration is by invitation only',
+    });
   });
 
   it('sets an initial password (no current) for an OIDC-only account', async () => {
@@ -269,20 +298,20 @@ describe('api client', () => {
 
   it('changes account email + password via the session-only /account routes', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { email: 'new@acme.test' }));
-    const res = await api.updateEmail('new@acme.test', 'pw-secret-1');
+    const res = await api.updateEmail('new@acme.test', 'Pw-secret-1');
     expect(res).toEqual({ email: 'new@acme.test' });
     let [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toBe('/account/email');
     expect(init.method).toBe('PUT');
     expect(init.credentials).toBe('include');
-    expect(JSON.parse(init.body)).toEqual({ email: 'new@acme.test', currentPassword: 'pw-secret-1' });
+    expect(JSON.parse(init.body)).toEqual({ email: 'new@acme.test', currentPassword: 'Pw-secret-1' });
 
     fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
-    expect(await api.changePassword('pw-secret-1', 'new-pw-9876')).toBeUndefined();
+    expect(await api.changePassword('Pw-secret-1', 'new-pw-9876')).toBeUndefined();
     [url, init] = fetchMock.mock.calls[1]!;
     expect(url).toBe('/account/password');
     expect(init.method).toBe('PUT');
-    expect(JSON.parse(init.body)).toEqual({ currentPassword: 'pw-secret-1', newPassword: 'new-pw-9876' });
+    expect(JSON.parse(init.body)).toEqual({ currentPassword: 'Pw-secret-1', newPassword: 'new-pw-9876' });
   });
 
   it('drives the TOTP two-factor endpoints (login step 2 + setup/confirm/disable/regenerate)', async () => {
@@ -308,15 +337,15 @@ describe('api client', () => {
 
     // Disable (DELETE with a password body).
     fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
-    expect(await api.mfaDisableTotp('pw-secret-1')).toBeUndefined();
+    expect(await api.mfaDisableTotp('Pw-secret-1')).toBeUndefined();
     [url, init] = fetchMock.mock.calls.at(-1)!;
     expect(url).toBe('/account/mfa/totp');
     expect(init.method).toBe('DELETE');
-    expect(JSON.parse(init.body)).toEqual({ currentPassword: 'pw-secret-1' });
+    expect(JSON.parse(init.body)).toEqual({ currentPassword: 'Pw-secret-1' });
 
     // Regenerate recovery codes.
     fetchMock.mockResolvedValue(jsonResponse(200, { recoveryCodes: ['C-D'] }));
-    expect((await api.mfaRegenerateRecoveryCodes('pw-secret-1')).recoveryCodes).toEqual(['C-D']);
+    expect((await api.mfaRegenerateRecoveryCodes('Pw-secret-1')).recoveryCodes).toEqual(['C-D']);
     expect(fetchMock.mock.calls.at(-1)![0]).toBe('/account/mfa/recovery-codes');
   });
 

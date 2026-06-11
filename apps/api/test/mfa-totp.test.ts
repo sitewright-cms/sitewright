@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { makeHarness, sessionToken, type Harness, type TestClient } from './harness.js';
 
 const SESSION_COOKIE = 'sw_session';
-const PASSWORD = 'pw-secret-1';
+const PASSWORD = 'Pw-secret-1';
 
 /** A valid current code for a base32 secret (window ±1 on the server absorbs any step boundary). */
 const codeFor = (secret: string) => authenticator.generate(secret);

@@ -21,7 +21,7 @@ async function register(email: string) {
   const res = await app.inject({
     method: 'POST',
     url: '/auth/register',
-    payload: { email, password: 'pw-secret-1' },
+    payload: { email, password: 'Pw-secret-1' },
   });
   return { res, token: sessionToken(res), body: res.json() as { userId: string } };
 }
@@ -141,7 +141,7 @@ describe('signed sessions (cookieSecret configured)', () => {
     const reg = await signedApp.inject({
       method: 'POST',
       url: '/auth/register',
-      payload: { email: 's@x.test', password: 'pw-secret-1'},
+      payload: { email: 's@x.test', password: 'Pw-secret-1'},
     });
     expect(reg.statusCode).toBe(201);
     const token = sessionToken(reg);

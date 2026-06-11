@@ -30,7 +30,7 @@ suite('sitewright login — end to end', () => {
     const reg = await fetch(`${url}/auth/register`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ email: `cli-${stamp}@e2e.test`, password: 'pw-secret-1' }),
+      body: JSON.stringify({ email: `cli-${stamp}@e2e.test`, password: 'Pw-secret-1' }),
     });
     cookie = (reg.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
     const proj = await fetch(`${url}/projects`, {

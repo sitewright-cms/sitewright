@@ -30,6 +30,24 @@ describe('InstanceSettingsRepository', () => {
     expect(pub.hcaptcha).toEqual({ siteKey: 'site-1', hasSecret: false });
   });
 
+  it('round-trips the allowSelfRegistration toggle (unset → set → keep on unrelated update)', async () => {
+    const repo = new InstanceSettingsRepository(db, KEY);
+    // Unset by default — the route, not the repo, supplies the factory fallback.
+    expect((await repo.getStored()).allowSelfRegistration).toBeUndefined();
+    expect((await repo.getPublic()).allowSelfRegistration).toBeUndefined();
+
+    await repo.put({ allowSelfRegistration: true });
+    expect((await repo.getPublic()).allowSelfRegistration).toBe(true);
+
+    // An unrelated update (toggle absent) leaves it on.
+    await repo.put({ formModes: { userSmtp: true } });
+    expect((await repo.getPublic()).allowSelfRegistration).toBe(true);
+
+    // Explicit false persists (and is distinguishable from "unset").
+    await repo.put({ allowSelfRegistration: false });
+    expect((await repo.getStored()).allowSelfRegistration).toBe(false);
+  });
+
   it('round-trips the agent-instructions override (set → keep → clear → effective)', async () => {
     const repo = new InstanceSettingsRepository(db, KEY);
     const builtinDefault = await repo.getEffectiveAgentInstructions(); // no override yet → the default

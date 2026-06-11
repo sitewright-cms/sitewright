@@ -16,7 +16,7 @@ async function register(app: FastifyInstance, email: string) {
   const reg = await app.inject({
     method: 'POST',
     url: '/auth/register',
-    payload: { email, password: 'pw-secret-1'},
+    payload: { email, password: 'Pw-secret-1'},
   });
   return { t: token(reg) };
 }

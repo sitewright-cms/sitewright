@@ -21,7 +21,7 @@ function token(res: { cookies: Array<{ name: string; value: string }> }): string
   return t;
 }
 async function register(email: string): Promise<string> {
-  return token(await app.inject({ method: 'POST', url: '/auth/register', payload: { email, password: 'pw-secret-1' } }));
+  return token(await app.inject({ method: 'POST', url: '/auth/register', payload: { email, password: 'Pw-secret-1' } }));
 }
 async function project(t: string, slug: string): Promise<string> {
   const proj = await app.inject({ method: 'POST', url: '/projects', cookies: { sw_session: t }, payload: { name: 'Site', slug } });

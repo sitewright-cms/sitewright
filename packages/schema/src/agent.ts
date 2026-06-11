@@ -161,7 +161,12 @@ collects payment. (The cart runtime ships only on pages that use it.)
 
 Typical flow: get_scope → set the Corporate Identity → put_page(s) with \`source\` →
 preview_page (returns { html, … } — read \`html\` to check the render) → publish_project. All writes are validated
-server-side (schema + no-JS template safety); you cannot exceed the token's role/capabilities.`;
+server-side (schema + no-JS template safety); you cannot exceed the token's role/capabilities.
+DELETING is separate: delete_page / delete_content need the \`content:delete\` capability, which is
+often NOT granted (it is opt-in, not implied by \`content:write\`). Check get_scope first — if
+\`content:delete\` is absent, don't attempt removals: ask the user to delete the item in the editor,
+or to grant the agent \`content:delete\` (e.g. a new API key that includes it). Prefer editing or
+replacing over deleting when in doubt.`;
 
 /** Max length of an admin-overridden agent-instructions string. */
 export const AGENT_INSTRUCTIONS_MAX = 32_000;

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import type { SettingsBundle } from '../src/api';
+import { ToastProvider } from '../src/views/ui/Toast';
 
 const { getSettings, putSettings, FakeApiError } = vi.hoisted(() => {
   class FakeApiError extends Error {
@@ -32,6 +33,16 @@ const bundle: SettingsBundle = {
   settings: { defaultLocale: 'en', locales: ['en'] },
 };
 
+// Toasts are the save/discard confirmation channel, so every render goes through the provider
+// (without it `useToast()` is a no-op and no confirmation text would appear).
+function renderView() {
+  return render(
+    <ToastProvider>
+      <SettingsView project={project} />
+    </ToastProvider>,
+  );
+}
+
 beforeEach(() => {
   getSettings.mockReset();
   putSettings.mockReset();
@@ -41,7 +52,7 @@ beforeEach(() => {
 
 describe('SettingsView', () => {
   it('loads the identity and renders both section tabs', async () => {
-    render(<SettingsView project={project} />);
+    renderView();
     expect(await screen.findByLabelText('Display name')).toHaveValue('Acme');
     expect(screen.getByRole('tab', { name: 'Corporate Identity' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Website' })).toBeInTheDocument();
@@ -49,39 +60,66 @@ describe('SettingsView', () => {
 
   it('starts from defaults when no settings exist yet (404)', async () => {
     getSettings.mockRejectedValue(new FakeApiError(404, 'not found'));
-    render(<SettingsView project={project} />);
+    renderView();
     // Falls back to the project name as the identity display name.
     expect(await screen.findByLabelText('Display name')).toHaveValue('Acme');
   });
 
-  it('edits a field and saves the assembled bundle, then shows Saved', async () => {
-    render(<SettingsView project={project} />);
+  it('keeps Save + Discard disabled until there are unsaved changes', async () => {
+    renderView();
+    await screen.findByLabelText('Display name');
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Discard' })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Legal name'), { target: { value: 'Acme Corporation' } });
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Discard' })).toBeEnabled();
+  });
+
+  it('edits a field and saves the assembled bundle, then toasts success', async () => {
+    renderView();
     const legal = await screen.findByLabelText('Legal name');
     fireEvent.change(legal, { target: { value: 'Acme Corporation' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(putSettings).toHaveBeenCalledTimes(1));
     const sent = putSettings.mock.calls[0]![1] as SettingsBundle;
     expect(sent.identity.legalName).toBe('Acme Corporation');
     expect(sent.identity.name).toBe('Acme');
-    expect(await screen.findByText('✓ Saved')).toBeInTheDocument();
+    expect(await screen.findByText('Settings saved')).toBeInTheDocument();
+    // After a successful save the form matches the new baseline → buttons disable again.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled());
+  });
+
+  it('discards unsaved edits, reverting fields and re-disabling the buttons', async () => {
+    renderView();
+    const legal = await screen.findByLabelText('Legal name');
+    fireEvent.change(legal, { target: { value: 'Changed Inc.' } });
+    expect(legal).toHaveValue('Changed Inc.');
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(await screen.findByLabelText('Legal name')).toHaveValue('Acme Inc.');
+    expect(screen.getByRole('button', { name: 'Discard' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+    expect(await screen.findByText('Changes discarded')).toBeInTheDocument();
+    // Discarding must not hit the API.
+    expect(putSettings).not.toHaveBeenCalled();
   });
 
   it('switches to the Website section and edits siteUrl into the saved bundle', async () => {
-    render(<SettingsView project={project} />);
+    renderView();
     await screen.findByLabelText('Display name');
     fireEvent.click(screen.getByRole('tab', { name: 'Website' }));
     const siteUrl = await screen.findByLabelText(/Production URL/);
     fireEvent.change(siteUrl, { target: { value: 'https://acme.com' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(putSettings).toHaveBeenCalledTimes(1));
     expect((putSettings.mock.calls[0]![1] as SettingsBundle).website?.siteUrl).toBe('https://acme.com');
   });
 
-  it('surfaces a save error', async () => {
+  it('toasts a save error', async () => {
     putSettings.mockRejectedValue(new Error('input too large'));
-    render(<SettingsView project={project} />);
-    await screen.findByLabelText('Display name');
-    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    renderView();
+    const legal = await screen.findByLabelText('Legal name');
+    fireEvent.change(legal, { target: { value: 'Acme Corporation' } }); // dirty → Save enabled
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     expect(await screen.findByText('input too large')).toBeInTheDocument();
   });
 });

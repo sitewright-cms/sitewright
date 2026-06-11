@@ -2,6 +2,10 @@ import { test, expect } from '@playwright/test';
 
 const stamp = Date.now();
 
+// The Corporate Identity / Website Settings save control is a permanently-visible, sticky group of
+// two icon buttons — "Save" (primary) + "Discard" (revert) — both enabled ONLY while unsaved edits
+// exist; save/discard outcomes surface as toasts ("Settings saved" / "Changes discarded").
+
 // Drives the glassmorphic Settings editor against the live editor + the unified
 // Corporate Identity backend: edit identity + a brand color + website siteUrl,
 // save, then reload and confirm everything persisted (full round-trip).
@@ -44,15 +48,15 @@ test('edit Corporate Identity + Website settings, save, and persist across reloa
   await expect(page.getByLabel('Social name 1', { exact: true })).toHaveValue('WhatsApp');
   await expect(page.getByLabel('Social icon 1', { exact: true })).toHaveValue('brand:whatsapp');
 
-  await page.getByRole('button', { name: 'Save changes' }).click();
-  await expect(page.getByText('✓ Saved')).toBeVisible();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Settings saved')).toBeVisible();
 
   // Website Settings top tab: set the production URL.
   await page.getByRole('tab', { name: 'Website Settings' }).click();
   await page.getByLabel(/Production URL/).fill('https://acme.example');
 
-  await page.getByRole('button', { name: 'Save changes' }).click();
-  await expect(page.getByText('✓ Saved')).toBeVisible();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Settings saved')).toBeVisible();
 
   // Reload → re-open the project → values persisted via the API.
   await page.reload();
@@ -103,8 +107,8 @@ test('Corporate Identity: edit a brand color via the multi-space picker (alpha �
 
   // Click away to close the popover, then persist.
   await page.getByRole('tab', { name: 'Corporate Identity' }).click();
-  await page.getByRole('button', { name: 'Save changes' }).click();
-  await expect(page.getByText('✓ Saved')).toBeVisible();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Settings saved')).toBeVisible();
 
   // Reload → reopen → the alpha hex persisted via the API.
   await page.reload();
@@ -147,8 +151,8 @@ test('edit a website partial in the code-editor modal, save, and persist across 
   await expect(page.getByText('1 line', { exact: true })).toBeVisible();
 
   // Persist the settings bundle, then reload and confirm the partial round-tripped.
-  await page.getByRole('button', { name: 'Save changes' }).click();
-  await expect(page.getByText('✓ Saved')).toBeVisible();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Settings saved')).toBeVisible();
 
   await page.reload();
   await page.getByRole('button', { name: /Partials Site/ }).click();
@@ -186,8 +190,8 @@ test('edit website.data via the JSON source view, save, and persist across reloa
   await expect(page.getByText('2 keys')).toBeVisible(); // summary reflects the saved object
 
   // Persist the settings bundle.
-  await page.getByRole('button', { name: 'Save changes' }).click();
-  await expect(page.getByText('✓ Saved')).toBeVisible();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Settings saved')).toBeVisible();
 
   // Reload → reopen → the data round-tripped (verify via the source view).
   await page.reload();
@@ -223,8 +227,8 @@ test('Corporate Identity: pick a schema.org business type via the modal, save, a
   await expect(modal).toBeHidden(); // selecting closes the modal
   await expect(btn).toContainText('Restaurant');
 
-  await page.getByRole('button', { name: 'Save changes' }).click();
-  await expect(page.getByText('✓ Saved')).toBeVisible();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Settings saved')).toBeVisible();
 
   await page.reload();
   await page.getByRole('button', { name: /Biz Site/ }).click();
@@ -254,8 +258,8 @@ test('Website Settings: configure the mini-shop currency + a WhatsApp channel, s
   await page.getByRole('button', { name: '+ Add channel' }).click();
   await page.getByLabel('Channel 1 WhatsApp number').fill('+14155550123');
 
-  await page.getByRole('button', { name: 'Save changes' }).click();
-  await expect(page.getByText('✓ Saved')).toBeVisible();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Settings saved')).toBeVisible();
 
   // Reload → reopen → the shop config persisted via the API (proves toBundle wrote website.shop).
   await page.reload();
@@ -263,4 +267,38 @@ test('Website Settings: configure the mini-shop currency + a WhatsApp channel, s
   await page.getByRole('tab', { name: 'Website Settings' }).click();
   await expect(page.getByLabel('Currency code')).toHaveValue('EUR');
   await expect(page.getByLabel('Channel 1 WhatsApp number')).toHaveValue('+14155550123');
+});
+
+// The sticky Save/Discard group gates on unsaved changes: both start disabled, the first edit arms
+// them, and Discard reverts the edit (toasting "Changes discarded") and re-disables both — without
+// any Save round-trip.
+test('Corporate Identity: Save/Discard gate on unsaved changes and Discard reverts', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: /Register/ }).click();
+  await page.getByLabel('Email').fill(`discard-${stamp}@e2e.test`);
+  await page.getByLabel('Password').fill('pw-secret-1');
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await page.getByRole('button', { name: 'New project' }).click();
+  await page.getByLabel('Project name').fill('Discard Site');
+  await page.getByLabel('Project slug').fill(`discard-${stamp}`);
+  await page.getByRole('button', { name: 'Create project' }).click();
+  await page.getByRole('tab', { name: 'Corporate Identity' }).click();
+
+  const save = page.getByRole('button', { name: 'Save', exact: true });
+  const discard = page.getByRole('button', { name: 'Discard' });
+  // Freshly loaded → nothing to save.
+  await expect(save).toBeDisabled();
+  await expect(discard).toBeDisabled();
+
+  // The first edit arms both buttons.
+  await page.getByLabel('Legal name').fill('Temporary Inc.');
+  await expect(save).toBeEnabled();
+  await expect(discard).toBeEnabled();
+
+  // Discard reverts the edit + toasts + re-disables — and never calls the API.
+  await discard.click();
+  await expect(page.getByText('Changes discarded')).toBeVisible();
+  await expect(page.getByLabel('Legal name')).toHaveValue('');
+  await expect(save).toBeDisabled();
+  await expect(discard).toBeDisabled();
 });

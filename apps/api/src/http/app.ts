@@ -2853,10 +2853,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             const a = Buffer.from(token);
             const b = Buffer.from(web.previewToken);
             if (!(a.length === b.length && timingSafeEqual(a, b))) {
+              // charset=utf-8 so the message renders correctly (without it the browser assumes
+              // Latin-1 and a non-ASCII byte would show as mojibake); kept informative — a bare
+              // 403 would leave a visitor with no idea a preview token is needed.
               return reply
                 .code(403)
-                .type('text/html')
-                .send('<h1>403 — a preview token is required to view this site</h1>');
+                .type('text/html; charset=utf-8')
+                .send('<h1>403 - a preview token is required to view this site</h1>');
             }
           }
         }

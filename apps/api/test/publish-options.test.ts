@@ -57,7 +57,11 @@ describe('publish options (localPublish / previewToken / minifyHtml)', () => {
     await setWebsite({ previewToken: 'tok_abcdefgh12345678' });
     await publish();
 
-    expect((await client.get(`/sites/${slug}/index.html`)).statusCode).toBe(403); // no token
+    const noToken = await client.get(`/sites/${slug}/index.html`);
+    expect(noToken.statusCode).toBe(403); // no token
+    // The 403 explains itself, with an explicit utf-8 charset so the message renders correctly.
+    expect(noToken.headers['content-type']).toContain('charset=utf-8');
+    expect(noToken.body).toContain('a preview token is required');
     expect((await client.get(`/sites/${slug}/index.html?token=nope`)).statusCode).toBe(403); // wrong token
     const ok = await client.get(`/sites/${slug}/index.html?token=tok_abcdefgh12345678`);
     expect(ok.statusCode).toBe(200);

@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { api, type Project } from './api';
+import { useEffect, useRef, useState } from 'react';
+import { api, setUnauthorizedHandler, type Project } from './api';
 import { Login } from './views/Login';
 import { ProjectView, MANAGE_TABS, TAB_LABELS, type Tab } from './views/Project';
 import { AssetsPanel } from './views/files/AssetsPanel';
@@ -54,7 +54,9 @@ const OIDC_ERROR_MESSAGES = new Map<string, string>([
 
 type Stage =
   | { name: 'loading' }
-  | { name: 'auth' }
+  // `expired` is set when an authenticated session was force-ended by a 401 (vs. a normal sign-out),
+  // so the login screen can explain why the user is back here.
+  | { name: 'auth'; expired?: boolean }
   | { name: 'home' } // no project open — the selector is shown over a quiet backdrop
   | { name: 'project'; project: Project };
 
@@ -68,6 +70,10 @@ function MainApp({
   mfaTicket: string | null;
 }) {
   const [stage, setStage] = useState<Stage>({ name: 'loading' });
+  // Mirror of `stage` for the (effect-registered, render-stable) unauthorized handler to read the
+  // CURRENT stage without re-registering on every change.
+  const stageRef = useRef(stage);
+  stageRef.current = stage;
   const [inviteToken, setInviteToken] = useState<string | null>(initialInviteToken);
   // OIDC callback artifacts (captured once); the notice maps the error code to friendly copy.
   const oidcNotice = oidcError ? OIDC_ERROR_MESSAGES.get(oidcError) ?? 'Sign-in failed. Please try again.' : null;
@@ -122,6 +128,26 @@ function MainApp({
     }
   }
 
+  // Session expiry: any API 401 means the login token is no longer valid. Drop an AUTHENTICATED user
+  // back to the login screen (with a notice) and clear their identity. While on loading/auth we do
+  // nothing — the bootstrap `/me` 401 is handled by `refresh()`, and the login flow surfaces its own
+  // 401s (wrong password / MFA), so forcing a redirect there would wipe the user's in-progress entry.
+  // The handler reads the CURRENT stage via `stageRef`, so it stays correct without re-registration.
+  // MainApp is the app-lifetime root shell (App renders it once, never unmounts it), so we register
+  // the global handler for good rather than tearing it down on a transient StrictMode remount — a
+  // cleanup that nulled it would leave a window with no handler; re-registration just replaces it.
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      const current = stageRef.current.name;
+      if (current !== 'home' && current !== 'project') return;
+      setIsInstanceAdmin(false);
+      setEmail('');
+      setTotpEnabled(false);
+      setRecoveryCodesRemaining(0);
+      setStage({ name: 'auth', expired: true });
+    });
+  }, []);
+
   useEffect(() => {
     void refresh().then((ps) => {
       // Open the selector on first SPA load (unless an invite is mid-flow).
@@ -171,7 +197,9 @@ function MainApp({
   }
 
   if (stage.name === 'auth') {
-    return <Login onAuthed={() => void refresh().then(() => setSelectorOpen(true))} initialMfaTicket={mfaTicket} initialNotice={oidcNotice} />;
+    // A forced logout (expired session) explains itself; otherwise show any OIDC callback notice.
+    const notice = stage.expired ? 'Your session expired — please sign in again.' : oidcNotice;
+    return <Login onAuthed={() => void refresh().then(() => setSelectorOpen(true))} initialMfaTicket={mfaTicket} initialNotice={notice} />;
   }
 
   const inProject = stage.name === 'project' ? stage.project : null;

@@ -1,10 +1,16 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
 import type { Project } from '../src/api';
 
-const { me, createProject, logout } = vi.hoisted(() => ({ me: vi.fn(), createProject: vi.fn(), logout: vi.fn() }));
+const { me, createProject, logout, setUnauthorizedHandler } = vi.hoisted(() => ({
+  me: vi.fn(),
+  createProject: vi.fn(),
+  logout: vi.fn(),
+  setUnauthorizedHandler: vi.fn(),
+}));
 vi.mock('../src/api', () => ({
   api: { me: () => me(), createProject: (...a: unknown[]) => createProject(...a), logout: () => logout() },
+  setUnauthorizedHandler: (fn: (() => void) | undefined) => setUnauthorizedHandler(fn),
 }));
 // Heavy children stubbed — App is the unit under test (shell + selector + header).
 vi.mock('../src/views/Project', () => ({
@@ -142,5 +148,28 @@ describe('App shell', () => {
     // An admin gets the admin-only items (System Settings + Team).
     expect(within(menu).getByRole('menuitem', { name: 'System Settings' })).toBeInTheDocument();
     expect(within(menu).getByRole('menuitem', { name: 'Team' })).toBeInTheDocument();
+  });
+
+  it('returns an authenticated user to the login screen when a request reports a 401', async () => {
+    render(<App />);
+    // Sign in + open a project so we are in an AUTHENTICATED stage (not loading/auth).
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: /Acme/ }));
+    await screen.findByText(/PROJECT Acme/);
+    // App registered an on-401 handler; invoke the latest one to simulate a session-expiry 401.
+    const handler = setUnauthorizedHandler.mock.calls.at(-1)?.[0] as (() => void) | undefined;
+    expect(handler).toBeTypeOf('function');
+    act(() => handler!());
+    expect(await screen.findByText('LOGIN')).toBeInTheDocument();
+  });
+
+  it('ignores a 401 while not signed in (no spurious redirect / state churn on the auth screen)', async () => {
+    // The bootstrap /me rejects → the app sits on the auth screen.
+    me.mockRejectedValue(new Error('unauthenticated'));
+    render(<App />);
+    expect(await screen.findByText('LOGIN')).toBeInTheDocument();
+    // A 401 arriving here (e.g. a stray retry) must be a no-op — still the same login screen.
+    const handler = setUnauthorizedHandler.mock.calls.at(-1)?.[0] as (() => void) | undefined;
+    act(() => handler?.());
+    expect(screen.getByText('LOGIN')).toBeInTheDocument();
   });
 });

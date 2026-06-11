@@ -101,6 +101,22 @@ export class ApiError extends Error {
   }
 }
 
+// A 401 from ANY API call means the session / login token is no longer valid (expired or revoked).
+// The app registers a handler here so it can drop the user back to the login screen instead of
+// leaving them in a half-broken "logged in" UI whose every action fails. Module-level (no React
+// context) to match this app's plain state-machine shell — see App.tsx.
+let unauthorizedHandler: (() => void) | undefined;
+
+/** Register (or clear, with `undefined`) the on-401 handler invoked when a request is unauthenticated. */
+export function setUnauthorizedHandler(handler: (() => void) | undefined): void {
+  unauthorizedHandler = handler;
+}
+
+/** Notify the app of a 401; the handler itself decides whether a redirect is warranted. */
+function notifyIfUnauthorized(status: number): void {
+  if (status === 401) unauthorizedHandler?.();
+}
+
 async function errorFromResponse(res: Response): Promise<ApiError> {
   let message = res.statusText;
   try {
@@ -109,6 +125,7 @@ async function errorFromResponse(res: Response): Promise<ApiError> {
   } catch {
     // non-JSON error body — keep statusText
   }
+  notifyIfUnauthorized(res.status);
   return new ApiError(res.status, message);
 }
 
@@ -147,6 +164,7 @@ async function streamSse(
     } catch {
       /* non-JSON error body */
     }
+    notifyIfUnauthorized(res.status); // a 401 mid-stream (expired session) also returns to login
     handlers.onError?.(message);
     return;
   }

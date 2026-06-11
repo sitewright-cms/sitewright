@@ -2,6 +2,30 @@ import { z } from 'zod';
 import { EncryptedSecretSchema } from './deploy-target.js';
 import { AgentInstructionsSchema } from './agent.js';
 import { LocaleSchema } from './project.js';
+import { CssColorSchema } from './primitives.js';
+
+// ---- Admin-panel BRANDING (white-label) ----
+// Non-secret instance fields that re-skin the admin CHROME (not per-project/site brand): the platform
+// name, the primary/secondary gradient stops, and an uploaded logo. All optional → the built-in
+// defaults below apply when unset.
+
+/** Built-in platform name shown when the admin hasn't set one. */
+export const DEFAULT_PLATFORM_NAME = 'SiteWright';
+/** Default gradient stops (indigo-600 → sky-500) — match the historic hardcoded admin theme. */
+export const DEFAULT_BRAND_PRIMARY = '#4f46e5';
+export const DEFAULT_BRAND_SECONDARY = '#0ea5e9';
+
+/** Accepted raster logo formats (SVG is intentionally excluded — script-in-SVG risk). */
+export const LOGO_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp'] as const;
+/** Max base64 length for an uploaded logo (~512 KB raw) — generous for a 2× logo, trivial for the JSON row. */
+export const MAX_LOGO_BASE64_LEN = 700_000;
+
+/** An uploaded platform logo: a raster image, base64-encoded, stored in the settings row (not a secret). */
+export const PlatformLogoSchema = z.object({
+  mime: z.enum(LOGO_MIME_TYPES),
+  data: z.string().base64().max(MAX_LOGO_BASE64_LEN),
+});
+export type PlatformLogo = z.infer<typeof PlatformLogoSchema>;
 
 /** True if `value` contains an ASCII control character (mirrors DeployTargetSchema). */
 function hasControlChars(value: string): boolean {
@@ -11,6 +35,13 @@ function hasControlChars(value: string): boolean {
   }
   return false;
 }
+
+/** Platform name on input/stored: 1–60 chars, no control characters (mirrors other label fields). */
+const PlatformNameSchema = z
+  .string()
+  .min(1)
+  .max(60)
+  .refine((v) => !hasControlChars(v), 'name must not contain control characters');
 
 // Instance-wide settings, configured by an instance admin (NOT org/project-scoped).
 // Houses the global mail transport, the hCaptcha keys, and which web-form mail
@@ -130,6 +161,11 @@ export const InstanceSettingsStoredSchema = z.object({
    * Once set, the stored value wins. Invited users can always register regardless of this flag.
    */
   allowSelfRegistration: z.boolean().optional(),
+  /** Admin-panel branding (white-label the CHROME): name, gradient stops, logo. Unset → defaults. */
+  platformName: PlatformNameSchema.optional(),
+  brandPrimary: CssColorSchema.optional(),
+  brandSecondary: CssColorSchema.optional(),
+  platformLogo: PlatformLogoSchema.optional(),
 });
 export type InstanceSettingsStored = z.infer<typeof InstanceSettingsStoredSchema>;
 
@@ -208,6 +244,12 @@ export const InstanceSettingsInputSchema = z.object({
   // Self-registration toggle: a boolean sets it; an absent value leaves the stored one unchanged.
   // (No `null` semantic — `false` already expresses "closed".)
   allowSelfRegistration: z.boolean().optional(),
+  // Branding (white-label the admin chrome): a value sets it, `null` clears it (revert to the default
+  // name/color/logo), and an absent (undefined) value leaves the stored one unchanged.
+  platformName: PlatformNameSchema.nullable().optional(),
+  brandPrimary: CssColorSchema.nullable().optional(),
+  brandSecondary: CssColorSchema.nullable().optional(),
+  platformLogo: PlatformLogoSchema.nullable().optional(),
 });
 export type InstanceSettingsInput = z.infer<typeof InstanceSettingsInputSchema>;
 
@@ -262,6 +304,12 @@ export interface InstanceSettingsPublic {
   oidcProviders?: OidcProviderPublic[];
   /** Whether self-registration is open. Absent when the admin has never set it (factory default applies). */
   allowSelfRegistration?: boolean;
+  /** Admin-panel branding — name + gradient stops returned as-is; the logo collapses to a presence flag
+   *  (`hasLogo`). The bytes are NEVER returned here; they are served by `GET /branding/logo`. */
+  platformName?: string;
+  brandPrimary?: string;
+  brandSecondary?: string;
+  hasLogo?: boolean;
 }
 
 /** Masks a stored SMTP config to its public view (password → hasPassword flag). */
@@ -294,5 +342,9 @@ export function maskInstanceSettings(stored: InstanceSettingsStored): InstanceSe
   if (stored.defaultLocale !== undefined) result.defaultLocale = stored.defaultLocale;
   if (stored.oidcProviders) result.oidcProviders = stored.oidcProviders.map(maskOidcProvider);
   if (stored.allowSelfRegistration !== undefined) result.allowSelfRegistration = stored.allowSelfRegistration;
+  if (stored.platformName !== undefined) result.platformName = stored.platformName;
+  if (stored.brandPrimary !== undefined) result.brandPrimary = stored.brandPrimary;
+  if (stored.brandSecondary !== undefined) result.brandSecondary = stored.brandSecondary;
+  if (stored.platformLogo !== undefined) result.hasLogo = true;
   return result;
 }

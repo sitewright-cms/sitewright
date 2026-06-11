@@ -21,6 +21,9 @@ import {
   maskInstanceSettings,
   type InstanceSettingsStored,
   DEFAULT_NEW_PROJECT_LOCALE,
+  DEFAULT_PLATFORM_NAME,
+  DEFAULT_BRAND_PRIMARY,
+  DEFAULT_BRAND_SECONDARY,
   passwordSchema,
   assertWithinTreeDepth,
   websiteThemeClasses,
@@ -637,6 +640,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             'req.body.hcaptcha.secret',
             'req.body.stock.unsplash',
             'req.body.stock.pexels',
+            // Not a secret, but the base64 logo upload would otherwise bloat the log line.
+            'req.body.platformLogo.data',
           ],
         }
       : false,
@@ -1047,7 +1052,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     }
     const email = await getUserEmail(db, userId);
     if (!email) throw new UnauthorizedError('authentication required');
-    const { secret, otpauthUri } = await mfaRepo.beginTotpSetup(userId, email);
+    // The authenticator app shows the platform name as the issuer (the configured brand, or default).
+    const { secret, otpauthUri } = await mfaRepo.beginTotpSetup(userId, email, await instanceSettingsRepo.getPlatformName());
     return reply.send({ secret, otpauthUri });
   });
 
@@ -1093,7 +1099,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     const existing = await passkeyRepo.credentialsForUser(userId);
     // Cap per-user passkeys so a session can't accumulate them without bound.
     if (existing.length >= MAX_PASSKEYS_PER_USER) throw new ConflictError(`you can register at most ${MAX_PASSKEYS_PER_USER} passkeys`);
-    const options = await registrationOptions({ rp: rpFor(req), userId, userName: email, existing });
+    const options = await registrationOptions({ rp: rpFor(req), userId, userName: email, existing, rpName: await instanceSettingsRepo.getPlatformName() });
     const handle = await passkeyRepo.createChallenge('reg', options.challenge, userId);
     return reply.send({ options, handle });
   });
@@ -1192,13 +1198,30 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   };
 
   app.get('/auth/config', { config: rl(60) }, async (_req, reply) => {
-    // One read of the settings doc drives both the provider buttons and the self-registration flag.
-    const stored = await instanceSettingsRepo.getStored();
+    // ONE snapshot of the settings row drives the provider buttons, the self-registration flag, AND
+    // the admin-panel branding the (pre-auth) login screen needs to skin itself.
+    const { stored, updatedAtMs } = await instanceSettingsRepo.getStoredWithUpdatedAt();
+    // The logo is MUTABLE, so bust the cache with the row's mtime rather than relying on ETag infra.
+    const logoUrl = stored.platformLogo ? `/branding/logo?v=${updatedAtMs}` : null;
     return reply.send({
       oidcProviders: (stored.oidcProviders ?? []).filter((p) => p.enabled).map((p) => ({ id: p.id, label: p.label })),
       // Tells the login screen whether to offer a "create account" option (invited users always can).
       allowSelfRegistration: resolveSelfRegistration(stored),
+      branding: {
+        name: stored.platformName ?? DEFAULT_PLATFORM_NAME,
+        primary: stored.brandPrimary ?? DEFAULT_BRAND_PRIMARY,
+        secondary: stored.brandSecondary ?? DEFAULT_BRAND_SECONDARY,
+        logoUrl,
+      },
     });
+  });
+
+  // The uploaded admin-panel logo (unauthenticated — the login screen + favicon need it pre-auth).
+  // Mutable, so `no-store`; the URL is cache-busted with `?v=<mtime>`. nosniff is set globally.
+  app.get('/branding/logo', { config: rl(60) }, async (_req, reply) => {
+    const logo = await instanceSettingsRepo.getLogo();
+    if (!logo) return reply.code(404).send();
+    return reply.type(logo.mime).header('cache-control', 'no-store').send(Buffer.from(logo.data, 'base64'));
   });
 
   // Step 1: build the IdP authorization URL, persist the single-use state, and redirect there.

@@ -30,7 +30,8 @@ describe('TOTP two-factor (enrol, login gate, recovery codes)', () => {
     expect(setup.statusCode).toBe(200);
     const { secret, otpauthUri } = setup.json() as { secret: string; otpauthUri: string };
     expect(otpauthUri).toContain('otpauth://totp/');
-    expect(otpauthUri).toContain('Sitewright');
+    // The issuer is the platform name (default 'SiteWright'); a branded instance shows its own name.
+    expect(otpauthUri).toContain('issuer=SiteWright');
     const confirm = await client.post('/account/mfa/totp/confirm', { code: codeFor(secret) });
     expect(confirm.statusCode).toBe(200);
     const { recoveryCodes } = confirm.json() as { recoveryCodes: string[] };

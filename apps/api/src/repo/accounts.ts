@@ -101,20 +101,25 @@ export async function registerOidcUser(db: Database, email: string): Promise<str
 export type OidcResolution = { ok: true; userId: string } | { ok: false; reason: 'email_unverified' | 'not_provisioned' };
 
 /**
- * Maps verified OIDC claims to a local user under the EXISTING-OR-INVITED-ONLY policy:
+ * Maps verified OIDC claims to a local user:
  *  1. a prior `(issuer, subject)` identity → that user (the IdP email may have changed since);
  *  2. else — a verified email is REQUIRED — an existing account with that email → link it;
  *  3. else a pending invite for that email → provision a passwordless account + materialize the invite(s);
- *  4. else denied (no stranger is ever auto-created, regardless of open registration).
- * The identity link is recorded/refreshed on every success.
+ *  4. else, when the provider has `autoRegister` on → provision a passwordless account (no invite needed);
+ *  5. else denied (a stranger is auto-created ONLY when the provider opted into auto-register).
+ * Auto-register still requires a verified email (the step-2 gate) and is independent of the instance
+ * `allowSelfRegistration` toggle. The identity link is recorded/refreshed on every success.
  */
 export async function resolveOidcUser(
   db: Database,
   oidcRepo: OidcRepository,
   claims: { issuer: string; subject: string; email: string | null; emailVerified: boolean },
+  opts: { autoRegister?: boolean } = {},
 ): Promise<OidcResolution> {
   const linked = await oidcRepo.findUserByIdentity(claims.issuer, claims.subject);
   if (linked) {
+    // The durable (issuer, subject) link IS the identity here — `email_verified` is required only at
+    // FIRST federation (below); subsequent logins authenticate by the established link, not the email.
     await oidcRepo.linkIdentity({ userId: linked, issuer: claims.issuer, subject: claims.subject, email: claims.email });
     return { ok: true, userId: linked };
   }
@@ -126,9 +131,11 @@ export async function resolveOidcUser(
     await oidcRepo.linkIdentity({ userId: existing.id, issuer: claims.issuer, subject: claims.subject, email });
     return { ok: true, userId: existing.id };
   }
-  if (!(await hasPendingInvite(db, email))) return { ok: false, reason: 'not_provisioned' };
+  // No account yet: provision one only if an invite is pending OR the provider auto-registers.
+  const invited = await hasPendingInvite(db, email);
+  if (!invited && !opts.autoRegister) return { ok: false, reason: 'not_provisioned' };
   const userId = await registerOidcUser(db, email);
-  await acceptPendingInvitesForEmail(db, userId, email);
+  if (invited) await acceptPendingInvitesForEmail(db, userId, email);
   await oidcRepo.linkIdentity({ userId, issuer: claims.issuer, subject: claims.subject, email });
   return { ok: true, userId };
 }

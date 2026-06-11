@@ -161,7 +161,7 @@ import {
   peekInvite,
   revokeInvite,
 } from '../repo/invites.js';
-import { InstanceSettingsRepository, EncryptionUnavailableError } from '../repo/instance-settings.js';
+import { InstanceSettingsRepository, EncryptionUnavailableError, InvalidOidcConfigError } from '../repo/instance-settings.js';
 import { ProjectRepository } from '../repo/projects.js';
 import { AiUsageRepository } from '../repo/ai-usage.js';
 import { ApiKeyRepository, type ResolvedApiKey } from '../repo/api-keys.js';
@@ -1261,12 +1261,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         return oidcErrorRedirect(reply, 'verification_failed');
       }
 
-      const resolution = await resolveOidcUser(db, oidcRepo, {
-        issuer: claims.iss,
-        subject: claims.sub,
-        email: claims.email,
-        emailVerified: claims.emailVerified,
-      });
+      const resolution = await resolveOidcUser(
+        db,
+        oidcRepo,
+        { issuer: claims.iss, subject: claims.sub, email: claims.email, emailVerified: claims.emailVerified },
+        { autoRegister: provider.autoRegister },
+      );
       if (!resolution.ok) return oidcErrorRedirect(reply, resolution.reason);
 
       if (await mfaRepo.isTotpEnabled(resolution.userId)) {
@@ -1306,6 +1306,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     } catch (err) {
       if (err instanceof EncryptionUnavailableError) {
         return reply.code(503).send({ error: err.message });
+      }
+      if (err instanceof InvalidOidcConfigError) {
+        return reply.code(400).send({ error: err.message });
       }
       throw err;
     }

@@ -6,6 +6,9 @@ import {
   HcaptchaInputSchema,
   InstanceSettingsInputSchema,
   InstanceSettingsStoredSchema,
+  OidcProviderStoredSchema,
+  OidcProviderInputSchema,
+  maskOidcProvider,
   maskInstanceSettings,
   type InstanceSettingsStored,
 } from '../src/instance-settings.js';
@@ -81,6 +84,30 @@ describe('InstanceSettingsStoredSchema', () => {
   it('leaves allowSelfRegistration absent when unset (distinguishable from an explicit false)', () => {
     expect(InstanceSettingsStoredSchema.parse({}).allowSelfRegistration).toBeUndefined();
     expect(InstanceSettingsStoredSchema.parse({ allowSelfRegistration: false }).allowSelfRegistration).toBe(false);
+  });
+});
+
+describe('OIDC provider schema', () => {
+  const base = { id: 'acme', label: 'Acme', issuer: 'https://idp.example.com', clientId: 'c1' };
+
+  it('defaults autoRegister=false and usePkce=true (Stored + Input) when omitted', () => {
+    const stored = OidcProviderStoredSchema.parse(base);
+    expect(stored.autoRegister).toBe(false);
+    expect(stored.usePkce).toBe(true);
+    const input = OidcProviderInputSchema.parse(base);
+    expect(input.autoRegister).toBe(false);
+    expect(input.usePkce).toBe(true);
+  });
+
+  it('honors explicit autoRegister/usePkce values', () => {
+    const stored = OidcProviderStoredSchema.parse({ ...base, autoRegister: true, usePkce: false });
+    expect(stored).toMatchObject({ autoRegister: true, usePkce: false });
+  });
+
+  it('maskOidcProvider passes autoRegister/usePkce through and drops the secret', () => {
+    const masked = maskOidcProvider(OidcProviderStoredSchema.parse({ ...base, autoRegister: true, usePkce: false }));
+    expect(masked).toMatchObject({ id: 'acme', hasClientSecret: false, autoRegister: true, usePkce: false });
+    expect('clientSecret' in masked).toBe(false);
   });
 });
 

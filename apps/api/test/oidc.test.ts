@@ -55,6 +55,8 @@ describe('OIDC single sign-on', () => {
     expect(settings.oidcProviders).toHaveLength(1);
     expect(settings.oidcProviders[0]).toMatchObject({ id: 'acme', label: 'Acme SSO', issuer: ISSUER, clientId: 'client-1', enabled: true, hasClientSecret: true });
     expect(settings.oidcProviders[0].clientSecret).toBeUndefined(); // never echoed
+    // Defaults for the new per-provider options when not specified.
+    expect(settings.oidcProviders[0]).toMatchObject({ autoRegister: false, usePkce: true });
 
     // /auth/config is unauthenticated and exposes only id + label.
     const cfg = await harness.app.inject({ method: 'GET', url: '/auth/config' });
@@ -107,6 +109,77 @@ describe('OIDC single sign-on', () => {
     expect(res.statusCode).toBe(302);
     expect(res.headers.location).toBe('/?oidc_error=not_provisioned');
     expect(hasSessionCookie(res)).toBe(false);
+  });
+
+  describe('auto-register', () => {
+    /** Re-saves the provider with autoRegister on (the secret is preserved by id when omitted). */
+    async function enableAutoRegister() {
+      const res = await admin.put('/admin/settings', {
+        oidcProviders: [{ id: 'acme', label: 'Acme SSO', issuer: ISSUER, clientId: 'client-1', enabled: true, autoRegister: true }],
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().settings.oidcProviders[0].autoRegister).toBe(true);
+    }
+
+    it('auto-registers an unknown VERIFIED email into a bare passwordless account when the provider opts in', async () => {
+      await enableAutoRegister();
+      const res = await login({ sub: 'sub-auto', email: 'newcomer@test.local', emailVerified: true });
+      expect(res.statusCode).toBe(302);
+      expect(res.headers.location).toBe('/');
+      expect(hasSessionCookie(res)).toBe(true);
+      // The freshly provisioned account: no platform role, no password, no projects.
+      const me = (await harness.app.inject({ method: 'GET', url: '/me', cookies: { [SESSION_COOKIE]: sessionToken(res) } })).json();
+      expect(me.email).toBe('newcomer@test.local');
+      expect(me.platformRole).toBeNull();
+      expect(me.hasPassword).toBe(false);
+      expect(me.projects).toEqual([]);
+    });
+
+    it('still REJECTS an unverified email even with autoRegister on (verified email is required)', async () => {
+      await enableAutoRegister();
+      const res = await login({ sub: 'sub-auto-unv', email: 'unverified@test.local', emailVerified: false });
+      expect(res.headers.location).toBe('/?oidc_error=email_unverified');
+      expect(hasSessionCookie(res)).toBe(false);
+    });
+
+    it('a second auto-register login by the same identity reuses the account (no duplicate)', async () => {
+      await enableAutoRegister();
+      const first = await login({ sub: 'sub-dup', email: 'repeat@test.local', emailVerified: true });
+      const firstId = (await harness.app.inject({ method: 'GET', url: '/me', cookies: { [SESSION_COOKIE]: sessionToken(first) } })).json().userId;
+      const second = await login({ sub: 'sub-dup', email: 'repeat@test.local', emailVerified: true });
+      const secondId = (await harness.app.inject({ method: 'GET', url: '/me', cookies: { [SESSION_COOKIE]: sessionToken(second) } })).json().userId;
+      expect(secondId).toBe(firstId);
+    });
+
+    it('with autoRegister AND a pending invite, the invite is still materialized', async () => {
+      await enableAutoRegister();
+      await admin.post('/admin/invites', { email: 'both@test.local' }); // a platform (developer) invite
+      const res = await login({ sub: 'sub-both', email: 'both@test.local', emailVerified: true });
+      expect(res.statusCode).toBe(302);
+      const me = (await harness.app.inject({ method: 'GET', url: '/me', cookies: { [SESSION_COOKIE]: sessionToken(res) } })).json();
+      expect(me.platformRole).toBe('developer'); // the invite grant, not a bare auto-register account
+    });
+  });
+
+  describe('PKCE compatibility (usePkce)', () => {
+    it('threads usePkce through to the auth start (provider config → wrapper)', async () => {
+      // acme already has a stored secret → disabling PKCE is allowed; the secret is preserved by id.
+      const put = await admin.put('/admin/settings', {
+        oidcProviders: [{ id: 'acme', label: 'Acme SSO', issuer: ISSUER, clientId: 'client-1', enabled: true, usePkce: false }],
+      });
+      expect(put.statusCode).toBe(200);
+      expect(put.json().settings.oidcProviders[0].usePkce).toBe(false);
+      await harness.app.inject({ method: 'GET', url: '/auth/oidc/acme/start' });
+      expect(startOidcAuth.mock.calls.at(-1)?.[0]).toMatchObject({ usePkce: false });
+    });
+
+    it('REJECTS disabling PKCE on a public client (no client secret) with 400', async () => {
+      const res = await admin.put('/admin/settings', {
+        oidcProviders: [{ id: 'pub', label: 'Public IdP', issuer: ISSUER, clientId: 'client-pub', enabled: true, usePkce: false }],
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().error).toMatch(/confidential client/i);
+    });
   });
 
   it('rejects an unverified email (no linking/provisioning on email_verified=false)', async () => {

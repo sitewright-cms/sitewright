@@ -104,6 +104,8 @@ export function InstanceSettings() {
         enabled: p.enabled,
         hasClientSecret: p.hasClientSecret,
         secret: '',
+        autoRegister: p.autoRegister,
+        usePkce: p.usePkce,
       })),
     );
     const instr = s.agentInstructions ?? DEFAULT_AGENT_INSTRUCTIONS;
@@ -189,6 +191,8 @@ export function InstanceSettings() {
         clientId: p.clientId.trim(),
         ...(p.scopes.trim() ? { scopes: p.scopes.trim().split(/[\s,]+/).filter(Boolean) } : {}),
         enabled: p.enabled,
+        autoRegister: p.autoRegister,
+        usePkce: p.usePkce,
         ...(p.secret ? { clientSecret: p.secret } : {}),
       }));
     try {

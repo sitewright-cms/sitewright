@@ -33,6 +33,7 @@
     "html-minifier-terser": "^7",
     "jszip": "^3",
     "nodemailer": "^8.0.10",
+    "openid-client": "^6.8.4",
     "otplib": "^12.0.1",
     "ssh2-sftp-client": "^11",
     "zod": "^3.24.1"
@@ -45,6 +46,7 @@
     "@types/ssh2-sftp-client": "^9.0.6",
     "@vitest/coverage-v8": "^4.1.8",
     "drizzle-kit": "^0.31",
+    "jose": "^6.2.3",
     "typescript": "^5.7.2",
     "vitest": "^4.1.8"
   }

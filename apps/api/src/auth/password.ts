@@ -22,8 +22,16 @@ export async function hashPassword(password: string): Promise<string> {
   return `${salt.toString('hex')}:${derived.toString('hex')}`;
 }
 
-/** Verifies a password against a stored `"<saltHex>:<hashHex>"` using a constant-time compare. */
-export async function verifyPassword(password: string, stored: string): Promise<boolean> {
+/**
+ * Verifies a password against a stored `"<saltHex>:<hashHex>"` using a constant-time compare. A
+ * `null` stored hash (an account with no password — e.g. OIDC-provisioned) never verifies; a dummy
+ * derive still runs so the timing matches a real wrong-password check.
+ */
+export async function verifyPassword(password: string, stored: string | null): Promise<boolean> {
+  if (stored === null) {
+    await hashPassword(password); // timing parity — no password set can never match
+    return false;
+  }
   const [saltHex, hashHex] = stored.split(':');
   if (!saltHex || !hashHex) return false;
   const expected = Buffer.from(hashHex, 'hex');

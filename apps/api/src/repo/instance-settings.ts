@@ -11,6 +11,7 @@ import {
   type SmtpStored,
   type HcaptchaStored,
   type StockKeysStored,
+  type OidcProviderStored,
 } from '@sitewright/schema';
 import type { Database } from '../db/client.js';
 import { instanceSettings, INSTANCE_SETTINGS_ID } from '../db/schema.js';
@@ -160,6 +161,28 @@ export class InstanceSettingsRepository {
       next.defaultLocale = input.defaultLocale;
     }
 
+    // OIDC providers: an array REPLACES the whole set; a provider's omitted secret is preserved by
+    // matching id against the current set; `null` clears all; undefined leaves the set unchanged.
+    if (input.oidcProviders === null) {
+      // cleared
+    } else if (input.oidcProviders === undefined) {
+      if (current.oidcProviders) next.oidcProviders = current.oidcProviders;
+    } else {
+      const byId = new Map((current.oidcProviders ?? []).map((p) => [p.id, p]));
+      next.oidcProviders = input.oidcProviders.map((p): OidcProviderStored => {
+        const clientSecret = p.clientSecret !== undefined ? this.encrypt(p.clientSecret) : byId.get(p.id)?.clientSecret;
+        return {
+          id: p.id,
+          label: p.label,
+          issuer: p.issuer,
+          clientId: p.clientId,
+          scopes: p.scopes && p.scopes.length > 0 ? p.scopes : ['openid', 'profile', 'email'],
+          enabled: p.enabled,
+          ...(clientSecret !== undefined ? { clientSecret } : {}),
+        };
+      });
+    }
+
     // Validate the merged document before persisting (defense in depth).
     const validated = InstanceSettingsStoredSchema.parse(next);
     const now = new Date();
@@ -190,6 +213,32 @@ export class InstanceSettingsRepository {
     const stored = await this.getStored();
     const enc = provider === 'unsplash' ? stored.stock?.unsplash : stored.stock?.pexels;
     return enc ? this.decrypt(enc) : null;
+  }
+
+  /** Enabled OIDC providers for the unauthenticated login screen (id + label only, no secrets). */
+  async listEnabledOidcProviders(): Promise<{ id: string; label: string }[]> {
+    const stored = await this.getStored();
+    return (stored.oidcProviders ?? []).filter((p) => p.enabled).map((p) => ({ id: p.id, label: p.label }));
+  }
+
+  /**
+   * A decrypted, ENABLED OIDC provider by id for the login flow (clientSecret decrypted, or undefined
+   * for a public/PKCE-only client). Null if no such enabled provider.
+   */
+  async getEnabledOidcProvider(
+    id: string,
+  ): Promise<{ id: string; label: string; issuer: string; clientId: string; clientSecret?: string; scopes: string[] } | null> {
+    const stored = await this.getStored();
+    const p = stored.oidcProviders?.find((x) => x.id === id && x.enabled);
+    if (!p) return null;
+    return {
+      id: p.id,
+      label: p.label,
+      issuer: p.issuer,
+      clientId: p.clientId,
+      scopes: p.scopes,
+      ...(p.clientSecret ? { clientSecret: this.decrypt(p.clientSecret) } : {}),
+    };
   }
 
   private encrypt(plaintext: string): ReturnType<typeof encryptSecret> {

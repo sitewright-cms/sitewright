@@ -42,6 +42,7 @@ test('modal: a backdrop click is vetoed while dirty (asks to discard); × closes
   await page.getByLabel('Page title').fill('About');
   await page.getByRole('button', { name: 'Add page' }).click();
   await page.getByRole('button', { name: /^About/ }).click();
+  await page.getByRole('button', { name: 'Code Editor', exact: true }).click();
   await expect(page.locator('.cm-content')).toBeVisible();
 
   // Make the editor dirty.

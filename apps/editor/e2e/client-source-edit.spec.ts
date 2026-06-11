@@ -50,7 +50,7 @@ test('client edits a code page’s bound region (content), template stays immuta
   await page.getByRole('button', { name: /Code Site/ }).click();
   await page.getByRole('button', { name: /^Home/ }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'content' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: 'Content Editor' })).toHaveAttribute('aria-pressed', 'true');
 
   // The editable region (the scaffold's `tagline`) is edited IN THE PREVIEW (the raw template source
   // is NOT presented as editable to the client).

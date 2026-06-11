@@ -22,6 +22,7 @@ test('code-first authoring: CodeMirror editor, live styled preview, save + persi
   await page.getByLabel('Page title').fill('About');
   await page.getByRole('button', { name: 'Add page' }).click();
   await page.getByRole('button', { name: /^About/ }).click();
+  await page.getByRole('button', { name: 'Code Editor', exact: true }).click();
 
   // The CodeMirror editor shows the starter Handlebars source…
   await expect(page.locator('.cm-content')).toContainText('{{ company.name }}');
@@ -43,6 +44,7 @@ test('code-first authoring: CodeMirror editor, live styled preview, save + persi
   // Close the editor modal (clean — just saved), reopen → the edit persisted to page.source.
   await page.getByRole('button', { name: 'Close', exact: true }).click();
   await page.getByRole('button', { name: /^About/ }).click();
+  await page.getByRole('button', { name: 'Code Editor', exact: true }).click();
   await expect(page.locator('.cm-content')).toContainText('HELLOMARKER42');
 });
 
@@ -62,6 +64,7 @@ test('Shift+Tab auto-indents the selection to its syntactic depth (not a plain d
   await page.getByLabel('Page title').fill('Reindent');
   await page.getByRole('button', { name: 'Add page' }).click();
   await page.getByRole('button', { name: /^Reindent/ }).click();
+  await page.getByRole('button', { name: 'Code Editor', exact: true }).click();
 
   // `insertText` injects the document verbatim — no per-line electric indent — so the nested
   // markup lands FLUSH-LEFT, mis-indented on purpose.

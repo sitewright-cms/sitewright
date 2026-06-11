@@ -16,6 +16,7 @@ test('data-sw-* with a data.* key edits page.data in-preview and persists', asyn
   await page.getByLabel('Project slug').fill(`pdd-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
   await page.getByRole('button', { name: /^Home/ }).click();
+  await page.getByRole('button', { name: 'Code Editor', exact: true }).click();
 
   await page.locator('.cm-content').click();
   await page.keyboard.press('ControlOrMeta+a');
@@ -26,7 +27,7 @@ test('data-sw-* with a data.* key edits page.data in-preview and persists', asyn
   await expect(region).toHaveText('Default headline');
 
   // Content mode → inline-edit the leaf.
-  await page.getByRole('button', { name: 'content', exact: true }).click();
+  await page.getByRole('button', { name: 'Content Editor', exact: true }).click();
   await expect(region).toHaveAttribute('contenteditable', /.+/);
   await region.click();
   await page.keyboard.press('ControlOrMeta+a');

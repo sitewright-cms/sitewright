@@ -253,30 +253,26 @@ describe('CodePageEditor', () => {
 
 describe('CodePageEditor — content mode (in-modal)', () => {
   // Content mode = edit in the live preview (a real browser; covered by the e2e specs) + the "Edit
-  // page data" JSON editor. There are no per-region SIDE FIELDS, so these jsdom tests cover the chrome.
-  it('opens directly in content mode (the client default): the in-preview hint, code tools hidden', () => {
+  // page data" JSON editor. The authoring strip is hidden entirely, so these jsdom tests cover the chrome.
+  it('opens directly in content mode: the live preview fills the modal, code tools hidden', () => {
     render(<CodePageEditor project={project} page={editablePage} onClose={() => {}} initialMode="content" />);
-    // The in-preview editing hint is shown (not per-region side fields)…
-    expect(screen.getByText(/Click any highlighted element in the preview/)).toBeInTheDocument();
-    // …the raw template is NOT presented, and the code-authoring tools are hidden.
+    // The Content Editor tab is active…
+    expect(screen.getByRole('button', { name: 'Content Editor' })).toHaveAttribute('aria-pressed', 'true');
+    // …the live preview fills the modal (no authoring strip)…
+    expect(screen.getByTitle('Preview')).toBeInTheDocument();
+    // …and the raw template + code-authoring tools are hidden.
     expect(screen.queryByLabelText('Template source')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Page settings' })).toBeNull();
-    expect(screen.queryByLabelText('Insert pattern')).toBeNull();
   });
 
-  it('switches modes LOSSLESSLY — the source draft survives the content⇄source toggle', () => {
+  it('switches modes LOSSLESSLY — the source draft survives the Code⇄Content toggle', () => {
     render(<CodePageEditor project={project} page={editablePage} onClose={() => {}} />);
     fireEvent.change(screen.getByLabelText('Template source'), {
       target: { value: '<p data-sw-text="headline">Big news</p>' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'content' })); // → content: the in-preview hint
-    expect(screen.getByText(/Click any highlighted element in the preview/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'source' })); // → back to source: the draft survived
+    fireEvent.click(screen.getByRole('button', { name: 'Content Editor' })); // → content: the code strip is hidden
+    expect(screen.queryByLabelText('Template source')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Code Editor' })); // → back to source: the draft survived
     expect(screen.getByLabelText('Template source')).toHaveValue('<p data-sw-text="headline">Big news</p>');
-  });
-
-  it('shows the empty-state hint when the source marks no editable regions', () => {
-    render(<CodePageEditor project={project} page={page} onClose={() => {}} initialMode="content" />);
-    expect(screen.getByText(/no editable regions yet/)).toBeInTheDocument();
   });
 });

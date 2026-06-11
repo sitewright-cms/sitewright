@@ -56,6 +56,7 @@ test('pages list: auto-home, row actions, list settings, template lock + fork', 
   // The template LOCKS the page's code surface; content mode edits its regions;
   // forking copies the source into the page and unlocks the editor.
   await page.getByRole('button', { name: 'Edit Services' }).click();
+  await page.getByRole('button', { name: 'Code Editor', exact: true }).click();
   await expect(page.getByText(/renders the template/)).toBeVisible();
   await expect(page.locator('.cm-content')).toHaveCount(0); // no code editor while referenced
   // The template renders its content in the preview (global:text's editable heading region).

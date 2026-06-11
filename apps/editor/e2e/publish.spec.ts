@@ -18,6 +18,7 @@ test('build a code page, publish the project, and view the live site', async ({ 
   // sidesteps CodeMirror bracket auto-close) so we can also assert preview-only inline-edit markers
   // NEVER ship to a published page.
   await page.getByRole('button', { name: /^Home/ }).click();
+  await page.getByRole('button', { name: 'Code Editor', exact: true }).click();
   await page.locator('.cm-content').click();
   await page.keyboard.press('ControlOrMeta+a');
   await page.keyboard.insertText('<h1 data-sw-text="headline">We Are Live</h1>');

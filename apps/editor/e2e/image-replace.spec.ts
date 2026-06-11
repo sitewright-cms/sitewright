@@ -17,6 +17,7 @@ async function setup(page: import('@playwright/test').Page, slug: string) {
 }
 
 async function setSource(page: import('@playwright/test').Page, src: string) {
+  await page.getByRole('button', { name: 'Code Editor', exact: true }).click();
   await page.locator('.cm-content').click();
   await page.keyboard.press('ControlOrMeta+a');
   await page.keyboard.insertText(src);
@@ -30,7 +31,7 @@ test('data-sw-src: replace an image via the preview → file picker (URL), persi
 
   const preview = page.frameLocator('iframe[title="Preview"]');
   const img = preview.locator('[data-sw-src="hero"]');
-  await page.getByRole('button', { name: 'content', exact: true }).click();
+  await page.getByRole('button', { name: 'Content Editor', exact: true }).click();
   await img.click();
 
   // The "Replace image" picker opens (in the editor); use the URL tab.
@@ -52,7 +53,7 @@ test('data-sw-bg: replace a background image via the preview → file picker (UR
 
   const preview = page.frameLocator('iframe[title="Preview"]');
   const band = preview.locator('[data-sw-bg="band"]');
-  await page.getByRole('button', { name: 'content', exact: true }).click();
+  await page.getByRole('button', { name: 'Content Editor', exact: true }).click();
   await band.click();
 
   await expect(page.getByRole('dialog', { name: 'Replace image' })).toBeVisible();

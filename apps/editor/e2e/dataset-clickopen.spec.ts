@@ -31,6 +31,7 @@ test('click a rendered dataset row in the preview → edit its entry → preview
   // Close the Data rail and open the Home page editor; render the dataset with {{#each}} (fields flattened).
   await page.mouse.move(640, 400);
   await page.getByRole('button', { name: /^Home/ }).click();
+  await page.getByRole('button', { name: 'Code Editor', exact: true }).click();
   await page.locator('.cm-content').click();
   await page.keyboard.press('ControlOrMeta+a');
   await page.keyboard.insertText('<ul>{{#each data.posts}}<li class="post">{{title}}</li>{{/each}}</ul>');
@@ -40,7 +41,7 @@ test('click a rendered dataset row in the preview → edit its entry → preview
   await expect(row).toContainText('Hello');
 
   // Content mode → click the row → the entry editor opens for "Hello".
-  await page.getByRole('button', { name: 'content', exact: true }).click();
+  await page.getByRole('button', { name: 'Content Editor', exact: true }).click();
   await row.click();
   const entryDialog = page.getByRole('dialog', { name: /Edit/ });
   await expect(entryDialog).toBeVisible();

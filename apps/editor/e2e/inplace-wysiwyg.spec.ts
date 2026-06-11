@@ -17,6 +17,7 @@ async function setup(page: import('@playwright/test').Page, slug: string) {
 }
 
 async function setSource(page: import('@playwright/test').Page, src: string) {
+  await page.getByRole('button', { name: 'Code Editor', exact: true }).click();
   await page.locator('.cm-content').click();
   await page.keyboard.press('ControlOrMeta+a');
   await page.keyboard.insertText(src);
@@ -31,7 +32,7 @@ test('data-sw-text: inline plaintext edit in the preview, two-way + persists', a
   const region = preview.locator('[data-sw-text="tagline"]');
   await expect(region).toHaveText('Hello');
 
-  await page.getByRole('button', { name: 'content', exact: true }).click();
+  await page.getByRole('button', { name: 'Content Editor', exact: true }).click();
   await expect(region).toHaveAttribute('contenteditable', /.+/);
   await region.click();
   await page.keyboard.press('ControlOrMeta+a');
@@ -50,7 +51,7 @@ test('data-sw-html: in-place rich editing (contenteditable + toolbar) persists',
 
   const preview = page.frameLocator('iframe[title="Preview"]');
   const region = preview.locator('[data-sw-html="body"]');
-  await page.getByRole('button', { name: 'content', exact: true }).click();
+  await page.getByRole('button', { name: 'Content Editor', exact: true }).click();
   await expect(region).toHaveAttribute('contenteditable', 'true');
 
   // Select the region's text → the floating toolbar appears; Bold it.
@@ -75,7 +76,7 @@ test('data-sw-href: edit a link URL + text via the popover, persists', async ({ 
 
   const preview = page.frameLocator('iframe[title="Preview"]');
   const link = preview.locator('[data-sw-href="cta"]');
-  await page.getByRole('button', { name: 'content', exact: true }).click();
+  await page.getByRole('button', { name: 'Content Editor', exact: true }).click();
   await link.click(); // opens the URL+text popover (inside the iframe)
 
   await preview.locator('.sw-pop .sw-url').fill('https://example.test/new');
@@ -101,18 +102,19 @@ test('data-sw-href: shows the in-preview edit overlay (resting outline) in conte
   const link = preview.locator('[data-sw-href="cta"]');
   await expect(link).toBeVisible();
 
-  await page.getByRole('button', { name: 'content', exact: true }).click();
+  await page.getByRole('button', { name: 'Content Editor', exact: true }).click();
   await expect(link).toHaveClass(/sw-link-on/); // bridge marked it editable
-  // The base rule now supplies an outline-style, so the on-state outline-color actually renders.
+  // In content mode the always-on affordance is a DASHED outline at rest (the base rule's
+  // outline-style + the on-state's outline-color), going solid only on focus.
   const outlineStyle = await link.evaluate((el) => getComputedStyle(el).outlineStyle);
-  expect(outlineStyle).not.toBe('none');
+  expect(outlineStyle).toBe('dashed');
 });
 
 // Undo/redo (header buttons) revert + reapply inline content edits.
 test('undo/redo: header buttons revert and reapply an inline edit', async ({ page }) => {
   await setup(page, 'undo');
   await setSource(page, '<h1 data-sw-text="tagline">Hello</h1>');
-  await page.getByRole('button', { name: 'content', exact: true }).click();
+  await page.getByRole('button', { name: 'Content Editor', exact: true }).click();
 
   const region = page.frameLocator('iframe[title="Preview"]').locator('[data-sw-text="tagline"]');
   await region.click();

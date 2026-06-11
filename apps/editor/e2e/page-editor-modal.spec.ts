@@ -19,6 +19,7 @@ test('page editor modal: collapsed code strip, device simulation, Ctrl+S, Esc-wi
   await page.getByRole('button', { name: 'Create project' }).click();
 
   await page.getByRole('button', { name: /^Home/ }).click();
+  await page.getByRole('button', { name: 'Code Editor', exact: true }).click();
 
   // The editor is a MODAL over the page list (the list stays in the DOM behind it).
   // Target it by its title (the page name) so the stacked discard dialog stays distinct.
@@ -65,6 +66,7 @@ test('page editor modal: collapsed code strip, device simulation, Ctrl+S, Esc-wi
 
   // Reopen, make it dirty, Esc → the stacked discard DIALOG appears; Cancel keeps editing.
   await page.getByRole('button', { name: /^Home/ }).click();
+  await page.getByRole('button', { name: 'Code Editor', exact: true }).click();
   await page.locator('.cm-content').click();
   await page.keyboard.press('ControlOrMeta+a');
   await page.keyboard.type('DISCARDED-EDIT');
@@ -78,6 +80,8 @@ test('page editor modal: collapsed code strip, device simulation, Ctrl+S, Esc-wi
   await page.getByRole('dialog', { name: 'Discard changes' }).getByRole('button', { name: 'Discard' }).click();
   await expect(dialog).not.toBeVisible();
   await page.getByRole('button', { name: /^Home/ }).click();
+  await expect(dialog).toBeVisible(); // the discarded modal finished closing before we grab the new one's tab
+  await page.getByRole('button', { name: 'Code Editor', exact: true }).click();
   await expect(page.locator('.cm-content')).toContainText('CTRLS-MARKER'); // the saved version
   await expect(page.locator('.cm-content')).not.toContainText('DISCARDED-EDIT'); // discard really discarded
 });

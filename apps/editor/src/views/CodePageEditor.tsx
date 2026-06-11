@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
 import type { JsonValue, Page, Template } from '@sitewright/schema';
 import {
-  extractRegions,
   GLOBAL_TEMPLATES,
   GLOBAL_TEMPLATE_PREFIX,
   isGlobalTemplate,
@@ -30,9 +29,14 @@ import {
   pageDataObject,
   pageDataSet,
 } from '../lib/page-data';
-import { primaryButton } from '../theme';
+import { primaryButton, gradientSurface } from '../theme';
 
 export type EditMode = 'source' | 'content';
+
+/** Human label for a mode-switcher tab (the enum values stay `source`/`content`). */
+function editModeLabel(mode: EditMode): string {
+  return mode === 'content' ? 'Content Editor' : 'Code Editor';
+}
 
 interface CodePageEditorProps {
   project: Project;
@@ -43,9 +47,10 @@ interface CodePageEditorProps {
   locales?: readonly string[];
   onClose: () => void;
   /**
-   * The mode the modal OPENS in (owners default to `source`, clients to `content`).
-   * Source⇄content is a UI default, not a gate — the in-modal toggle switches
-   * LOSSLESSLY (both drafts live in this one component; nothing unmounts).
+   * The mode the modal OPENS in. The pages list opens this in `content` for everyone (the
+   * Content Editor — the live preview); `source` is the bare fallback. Source⇄content is a UI
+   * default, not a gate — the in-modal toggle switches LOSSLESSLY (both drafts live in this one
+   * component; nothing unmounts).
    */
   initialMode?: EditMode;
 }
@@ -95,17 +100,18 @@ function SettingsIcon() {
 
 /**
  * THE page editor, contentbase-style: a near-fullscreen modal (90vh, blurred
- * backdrop over the page list) with TWO ROWS — an authoring strip on top,
- * COLLAPSED until hovered/focused, and the live styled preview filling the rest,
- * with a device rail simulating the default Tailwind breakpoints.
+ * backdrop over the page list) with the live styled preview filling it, plus —
+ * in the Code Editor (source mode) ONLY — an authoring strip on top, COLLAPSED
+ * until hovered/focused. A device rail simulates the default Tailwind breakpoints.
  *
- * BOTH edit modes live here: `source` (the full Handlebars/CodeMirror editor)
- * and `content` (only the developer-marked `{{edit}}` regions — the safe client
- * surface). The toggle flips the strip in place; drafts survive the switch and
- * one Save persists source + settings + content together.
+ * BOTH edit modes live here: `source` (the full Handlebars/CodeMirror editor) and
+ * `content` (the live preview, where the developer-marked `data-sw-*` directives —
+ * data-sw-text/html/href/src/bg — are edited in place: the safe client surface).
+ * It opens in `content` by default; the toggle flips in place; drafts survive the
+ * switch and one Save persists source + settings + content together.
  *
  * TEMPLATE pages (page.template set): the code surface is LOCKED — the page
- * renders the referenced template's source and contributes only its {{edit}}
+ * renders the referenced template's source and contributes only its `data-sw-*`
  * content. "Fork template into page" copies the template source into the page
  * and drops the reference, re-enabling code mode.
  *
@@ -115,7 +121,7 @@ function SettingsIcon() {
  * (or the header ×) goes back to the page list, confirming first when dirty.
  *
  * The preview posts the FULL draft page to `/preview` — skeleton slots, website
- * head/critical CSS, template resolution, and draft {{edit}} content all render,
+ * head/critical CSS, template resolution, and draft `data-sw-*` content all render,
  * in a sandboxed iframe (`src` from the token endpoint under `CSP: sandbox`;
  * never srcDoc) that can't reach the editor's window/cookies/session.
  */
@@ -209,16 +215,6 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
     const pos = parseTemplateErrorPosition(saveError);
     return pos && saveError ? { ...pos, message: saveError } : null;
   }, [saveError]);
-
-  // The editable regions come from the EFFECTIVE source: the referenced template's
-  // (when set) else the page's own draft — so content mode always reflects reality.
-  const regions = useMemo(
-    () =>
-      extractRegions(
-        settings.template ? (activeTemplate?.source ?? '') : inheritsCode ? inheritedSource : source,
-      ),
-    [settings.template, activeTemplate, inheritsCode, inheritedSource, source],
-  );
 
   // Guards async setState after the editor is closed (the modal unmounts when another page
   // is opened) — the debounced preview, template fetch, and save can resolve post-unmount.
@@ -553,11 +549,11 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
           type="button"
           aria-pressed={mode === m}
           onClick={() => setMode(m)}
-          className={`rounded-lg px-2.5 py-1 capitalize transition ${
-            mode === m ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+          className={`waves-effect rounded-lg px-2.5 py-1 transition ${
+            mode === m ? `${gradientSurface} font-bold` : 'text-slate-500 hover:text-slate-800'
           }`}
         >
-          {m}
+          {editModeLabel(m)}
         </button>
       ))}
     </div>
@@ -650,32 +646,32 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
       headerExtra={headerExtra}
     >
       <div className="flex h-full flex-col gap-2 bg-slate-100/50 p-2">
-        {/* Row 1 — the authoring strip: collapsed on open (a contentbase-style peek),
-            expanding while hovered or focused. The strip's CONTENT flips with the mode:
-            the CodeMirror source editor (or the template LOCK panel), or the in-preview
-            editing hint. */}
-        <section
-          aria-label={mode === 'source' ? 'Template source editor' : 'In-preview editing hint'}
-          data-expanded={stripExpanded}
-          className={`shrink-0 overflow-hidden rounded-2xl border border-white/50 shadow-xl shadow-slate-900/10 transition-[height] duration-300 ease-out ${
-            mode === 'source' && !settings.template ? 'bg-[#0a0a0f]' : 'bg-white/70 backdrop-blur-xl'
-          } ${stripExpanded ? 'h-[45vh]' : 'h-36'}`}
-          onMouseEnter={() => setStripHover(true)}
-          onMouseLeave={() => setStripHover(false)}
-          onFocusCapture={() => setStripFocus(true)}
-          onBlurCapture={(e) => {
-            // Collapse only when focus truly leaves the strip (not editor-internal moves).
-            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setStripFocus(false);
-          }}
-        >
-          {mode === 'source' ? (
-            settings.template ? (
+        {/* Row 1 — the authoring strip (SOURCE MODE ONLY): the CodeMirror source editor, or the
+            template / inherited-code LOCK panel. Collapsed on open (a contentbase-style peek),
+            expanding while hovered or focused. CONTENT mode hides this strip entirely so the live
+            preview fills the modal — every editable element is marked in the preview itself. */}
+        {mode === 'source' && (
+          <section
+            aria-label="Template source editor"
+            data-expanded={stripExpanded}
+            className={`shrink-0 overflow-hidden rounded-2xl border border-white/50 shadow-xl shadow-slate-900/10 transition-[height] duration-300 ease-out ${
+              !settings.template ? 'bg-[#0a0a0f]' : 'bg-white/70 backdrop-blur-xl'
+            } ${stripExpanded ? 'h-[45vh]' : 'h-36'}`}
+            onMouseEnter={() => setStripHover(true)}
+            onMouseLeave={() => setStripHover(false)}
+            onFocusCapture={() => setStripFocus(true)}
+            onBlurCapture={(e) => {
+              // Collapse only when focus truly leaves the strip (not editor-internal moves).
+              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setStripFocus(false);
+            }}
+          >
+            {settings.template ? (
               <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
                 <p className="text-sm text-slate-600">
                   This page renders the template{' '}
                   <strong>{activeTemplate?.name ?? settings.template}</strong> — its code lives in the
                   template, and this page contributes only its editable content (see the{' '}
-                  <em>content</em> mode).
+                  <em>Content Editor</em>).
                 </p>
                 <button className={primaryButton} onClick={forkTemplate} disabled={!activeTemplate}>
                   Fork template into page
@@ -691,7 +687,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
                   This page inherits its layout from the main language
                   {codeOwner ? <> (<strong>{codeOwner.title}</strong>)</> : null}. Change the structure
                   for every language by editing the main page — here you translate the text (see the{' '}
-                  <em>content</em> mode).
+                  <em>Content Editor</em>).
                 </p>
                 <button className={primaryButton} onClick={forkInherited} disabled={!inheritedSource}>
                   Fork the code for this language
@@ -703,30 +699,9 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
               </div>
             ) : (
               <CodeEditor value={source} onChange={setSource} ariaLabel="Template source" error={editorError} />
-            )
-          ) : (
-            // Content mode: edit IN THE PREVIEW (click a highlighted element) or open "Edit page data"
-            // for the structured store. No per-region side fields — the preview + JSON editor are the
-            // two editing paths.
-            <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
-              {regions.length === 0 ? (
-                <p className="max-w-md text-sm text-slate-500">
-                  This page has no editable regions yet. In the source, mark editable text with{' '}
-                  <code>{'data-sw-text="key"'}</code>, rich text with <code>{'data-sw-html'}</code>, links with{' '}
-                  <code>{'data-sw-href'}</code>, and images with <code>{'data-sw-src'}</code> / <code>{'data-sw-bg'}</code>.
-                </p>
-              ) : (
-                <>
-                  <p className="text-sm font-medium text-slate-700">Click any highlighted element in the preview to edit it.</p>
-                  <p className="max-w-md text-xs text-slate-400">
-                    Text edits in place, rich text gets a formatting toolbar, images open the file picker. For the
-                    structured store, use <strong>Edit page data</strong> (top right).
-                  </p>
-                </>
-              )}
-            </div>
-          )}
-        </section>
+            )}
+          </section>
+        )}
 
         {/* Row 2 — the preview, at the simulated device width, with the device rail
             floating on the right edge (contentbase-style). */}

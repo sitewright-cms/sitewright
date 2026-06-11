@@ -22,6 +22,7 @@ test('add translation scaffolds a locale that inherits the main language layout,
 
   // Author the home page with a recognizable layout marker (the inherited structure).
   await page.getByRole('button', { name: /^Home/ }).click();
+  await page.getByRole('button', { name: 'Code Editor', exact: true }).click();
   await page.locator('.cm-content').click();
   await page.keyboard.press('ControlOrMeta+a');
   await page.keyboard.insertText('<section class="p-6"><h1 class="inherit-marker">Main layout</h1></section>');

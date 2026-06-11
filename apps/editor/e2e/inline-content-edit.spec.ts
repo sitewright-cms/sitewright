@@ -17,6 +17,7 @@ async function setup(page: import('@playwright/test').Page, slug: string) {
 }
 
 async function setSource(page: import('@playwright/test').Page, src: string) {
+  await page.getByRole('button', { name: 'Code Editor', exact: true }).click();
   await page.locator('.cm-content').click();
   await page.keyboard.press('ControlOrMeta+a');
   await page.keyboard.insertText(src);
@@ -33,7 +34,7 @@ test('content mode: inline-edit a preview region (two-way, no reload, persists)'
   await expect(region).toHaveText('Hello'); // the preview marks the region
 
   // Switch to content mode → the bridge makes the region editable.
-  await page.getByRole('button', { name: 'content', exact: true }).click();
+  await page.getByRole('button', { name: 'Content Editor', exact: true }).click();
   await expect(region).toHaveAttribute('contenteditable', /.+/);
 
   // Tag the current preview document so we can detect a reload later.

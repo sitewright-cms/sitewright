@@ -282,7 +282,7 @@ export function registerFormRoutes(app: FastifyInstance, deps: FormRoutesDeps): 
     '/projects/:projectId/submissions/:id',
     { config: rl(30) },
     async (req, reply) => {
-      const { ctx, project } = await resolveProject(req, 'content:write');
+      const { ctx, project } = await resolveProject(req, 'content:delete');
       if (!isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
       const removed = await submissions.remove(project.id, req.params.id);
       if (!removed) return reply.code(404).send({ error: 'submission not found' });

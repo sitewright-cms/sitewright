@@ -79,7 +79,7 @@ export function registerLocaleRoutes(app: FastifyInstance, deps: LocaleDeps): vo
     '/projects/:projectId/locales/:locale',
     { config: rl(20) },
     async (req, reply) => {
-      const { ctx } = await resolveProject(req, 'content:write');
+      const { ctx } = await resolveProject(req, 'content:delete');
       const locale = LocaleSchema.parse(req.params.locale);
       const { settings, pages } = await loadContext(contentRepo, ctx);
       const defaultLocale = settings.settings.defaultLocale;

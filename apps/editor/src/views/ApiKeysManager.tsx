@@ -3,7 +3,7 @@ import { api, type ApiKeyCapability, type ApiKeyView, type Project, type Project
 import { glassCard, glassPanel, glassInput, fieldLabel, primaryButton, dangerButton } from '../theme';
 import { useDialogs } from './ui/Dialogs';
 
-const ALL_CAPABILITIES: ApiKeyCapability[] = ['content:read', 'content:write', 'publish', 'deploy'];
+const ALL_CAPABILITIES: ApiKeyCapability[] = ['content:read', 'content:write', 'content:delete', 'publish', 'deploy'];
 
 interface ApiKeysManagerProps {
   project: Project;

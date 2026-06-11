@@ -55,6 +55,12 @@ async function connect(client: SitewrightClient, scope: Scope | null, auth: Brid
 
 const readScope: Scope = { projectId: 'p', role: 'member', capabilities: ['content:read'] };
 const writeScope: Scope = { projectId: 'p', role: 'admin', capabilities: ['content:read', 'content:write', 'publish'] };
+// Deletes need the separate content:delete capability — writeScope above deliberately omits it.
+const deleteScope: Scope = {
+  projectId: 'p',
+  role: 'admin',
+  capabilities: ['content:read', 'content:write', 'content:delete', 'publish'],
+};
 
 async function toolNames(mcp: Client): Promise<string[]> {
   return (await mcp.listTools()).tools.map((t) => t.name).sort();
@@ -398,16 +404,29 @@ describe('createSitewrightMcpServer — every tool forwards to the client', () =
 
   it('delete_page forwards to deleteContent(page, id) and reports the deletion', async () => {
     const client = fakeClient();
-    const res = await (await connect(client, writeScope)).callTool({ name: 'delete_page', arguments: { id: 'home' } });
+    const res = await (await connect(client, deleteScope)).callTool({ name: 'delete_page', arguments: { id: 'home' } });
     expect(calls(client).deleteContent).toHaveBeenCalledWith('page', 'home');
     expect(text(res)).toContain('home');
   });
 
   it('delete_content forwards kind + id and reports the deletion', async () => {
     const client = fakeClient();
-    const res = await (await connect(client, writeScope)).callTool({ name: 'delete_content', arguments: { kind: 'dataset', id: 'x' } });
+    const res = await (await connect(client, deleteScope)).callTool({ name: 'delete_content', arguments: { kind: 'dataset', id: 'x' } });
     expect(calls(client).deleteContent).toHaveBeenCalledWith('dataset', 'x');
     expect(text(res)).toContain('dataset/x');
+  });
+
+  it('a content:write token (no content:delete) is refused delete tools — and no client call', async () => {
+    for (const tool of [
+      { name: 'delete_page', arguments: { id: 'home' } },
+      { name: 'delete_content', arguments: { kind: 'dataset', id: 'x' } },
+    ]) {
+      const client = fakeClient();
+      const res = await (await connect(client, writeScope)).callTool(tool);
+      expect(res.isError).toBe(true);
+      expect(text(res)).toMatch(/content:delete/);
+      expect(calls(client).deleteContent).not.toHaveBeenCalled();
+    }
   });
 
   it('publish_project forwards to publish', async () => {

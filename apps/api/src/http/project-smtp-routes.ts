@@ -80,7 +80,7 @@ export function registerProjectSmtpRoutes(app: FastifyInstance, deps: ProjectSmt
     '/projects/:projectId/smtp',
     { config: rl(30) },
     async (req, reply) => {
-      const { ctx } = await resolveProject(req, 'content:write');
+      const { ctx } = await resolveProject(req, 'content:delete');
       try {
         await contentRepo.remove(ctx, 'project_smtp', PROJECT_SMTP_ENTITY_ID); // enforces write role
       } catch (err) {

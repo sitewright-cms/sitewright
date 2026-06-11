@@ -21,6 +21,7 @@ test('global:blog-article: enabling the template seeds page.data defaults and re
   await page.getByLabel('Page title').fill('Post');
   await page.getByRole('button', { name: 'Add page' }).click();
   await page.getByRole('button', { name: /^Post/ }).click();
+  await page.getByRole('button', { name: 'Code Editor', exact: true }).click(); // the Page-settings gear is source-mode-only
 
   // Page settings → enable the blog-article template (its declared defaults seed page.data).
   await page.getByRole('button', { name: 'Page settings' }).click();

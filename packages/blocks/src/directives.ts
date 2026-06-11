@@ -28,7 +28,7 @@
 // click-to-edit; on PUBLISH they are STRIPPED, leaving clean static HTML.
 import { parseDocument } from 'htmlparser2';
 import { Text, type Element } from 'domhandler';
-import { findAll } from 'domutils';
+import { findAll, removeElement } from 'domutils';
 import render from 'dom-serializer';
 import { sanitizeRichHtml } from './sanitize-rich.js';
 import { safeUrl, cssUrlEscape } from './url.js';
@@ -180,6 +180,13 @@ export function resolveDirectives(html: string, ctx: DirectiveContext): string {
       }
     }
     /* eslint-enable security/detect-object-injection */
+  }
+  // Editor-only CONTROL chips ({{sw-control}}): KEPT in preview (the bridge turns each into an inline
+  // editing widget), REMOVED entirely on publish so the marker + its placeholder never reach the output.
+  if (!ctx.preview) {
+    for (const el of findAll((e) => Object.prototype.hasOwnProperty.call(e.attribs, 'data-sw-control'), doc.children)) {
+      removeElement(el);
+    }
   }
   // `encodeEntities: 'utf8'` escapes only the markup-significant chars (&,<,>, attr quotes) and keeps
   // non-ASCII literal — so a re-serialized data-sw-* element matches the rest of the page (e.g. German

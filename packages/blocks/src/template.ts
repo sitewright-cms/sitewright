@@ -22,6 +22,7 @@ import { brandIcon } from './brand-icons.js';
 import { flagIcon } from './flag-icons.js';
 import { resolveDirectives } from './directives.js';
 import { selectFolderAssets, projectFolderItem, type FolderKind, type RenderMedia } from './folder.js';
+import { classifyControlTarget, controlCurrentValue, controlOptions, normalizeControlAs } from './control.js';
 
 /** Thrown for an unsafe interpolation context, a Handlebars compile error, or a render error. */
 export class TemplateError extends Error {
@@ -499,6 +500,29 @@ function createInstance(): typeof Handlebars {
       out += options.fn(item, { data: frame, blockParams: [item, i] });
     }
     return new Handlebars.SafeString(out);
+  });
+
+  // {{sw-control target="page.title|seo.ogImage|seo.description|<page.data key>" as="text|textarea|url|image|folder|dataset" label="…"}}
+  // A content-editor-ONLY control: renders an editable chip (shown only in content mode, wired by the
+  // preview bridge; STRIPPED on publish by resolveDirectives) that sets a whitelisted page attribute or
+  // a page.data value from inside the preview — e.g. the page title, the OG image, a gallery FOLDER name
+  // (for {{#sw-folder}}), or a DATASET name (for {{#each}}). Emits a marker the bridge upgrades.
+  hb.registerHelper('sw-control', function swControl(this: unknown, ...args: unknown[]) {
+    const options = args[args.length - 1] as Handlebars.HelperOptions;
+    const hash = (options.hash ?? {}) as Record<string, unknown>;
+    const rawTarget = typeof hash.target === 'string' ? hash.target : '';
+    const target = classifyControlTarget(rawTarget);
+    if (!target) return new Handlebars.SafeString(''); // invalid/disallowed target → render nothing
+    const root = (options.data?.root ?? {}) as Parameters<typeof controlCurrentValue>[1];
+    const as = normalizeControlAs(hash.as);
+    const label = typeof hash.label === 'string' && hash.label ? hash.label : rawTarget;
+    const current = controlCurrentValue(target, root);
+    const opts = controlOptions(as, root);
+    let attrs =
+      `data-sw-control="${escapeAttr(rawTarget)}" data-sw-control-as="${escapeAttr(as)}"` +
+      ` data-sw-control-label="${escapeAttr(label)}" data-sw-control-value="${escapeAttr(current)}"`;
+    if (opts.length) attrs += ` data-sw-control-options="${escapeAttr(JSON.stringify(opts))}"`;
+    return new Handlebars.SafeString(`<span ${attrs}>⚙ ${escapeHtml(label)}: ${escapeHtml(current || '—')}</span>`);
   });
 
   return hb;

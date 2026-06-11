@@ -23,6 +23,7 @@ test('code page settings: stacked modal sets draft + nav, persisted across reope
   await page.getByLabel('Page title').fill('About');
   await page.getByRole('button', { name: 'Add page' }).click();
   await page.getByRole('button', { name: /^About/ }).click();
+  await page.getByRole('button', { name: 'Code Editor', exact: true }).click(); // the Page-settings gear is source-mode-only
 
   // Page settings opens a SECOND dialog stacked above the editor.
   await page.getByRole('button', { name: 'Page settings' }).click();
@@ -43,6 +44,7 @@ test('code page settings: stacked modal sets draft + nav, persisted across reope
 
   // Reopen → the settings persisted (incl. the dropdown toggle).
   await page.getByRole('button', { name: /^About/ }).click();
+  await page.getByRole('button', { name: 'Code Editor', exact: true }).click(); // the Page-settings gear is source-mode-only
   await page.getByRole('button', { name: 'Page settings' }).click();
   await expect(page.getByRole('button', { name: 'draft', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByLabel('Nav: header')).toBeChecked();

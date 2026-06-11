@@ -516,6 +516,8 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // them (keeps each child's `data` off the render unless used). Published subset → no drafts.
           page: {
             title: page.title,
+            // SEO metadata ({{page.seo.description}} / {{page.seo.ogImage}}) + the {{sw-control}} current value.
+            seo: page.seo,
             // Own segment (authored `path` field); `path` above is the full computed route.
             slug: page.path,
             path: pageFullPath,

@@ -33,32 +33,6 @@ function bundle(over: Partial<ProjectBundle> = {}): ProjectBundle {
 }
 
 describe('buildSite', () => {
-  it('writes one index.html per static page plus a release manifest', async () => {
-    const manifest = await buildSite({
-      publishedAt: '2026-05-29T00:00:00.000Z',
-      outDir,
-      bundle: bundle({
-        pages: [
-          { id: 'home', path: '', title: 'Home', root: { id: 'r1', type: 'Section', children: [{ id: 'h', type: 'Heading', props: { text: 'Welcome' } }] } },
-          { id: 'about', path: 'about', parent: 'home', title: 'About', root: { id: 'r2', type: 'Section' } },
-        ],
-      }),
-    });
-    expect(manifest.routes).toBe(2);
-
-    const home = await readFile(join(outDir, 'index.html'), 'utf8');
-    expect(home.startsWith('<!doctype html>')).toBe(true);
-    expect(home).toContain('Welcome');
-    expect(home).toContain('--sw-color-primary: #0a7;');
-
-    const about = await readFile(join(outDir, 'about', 'index.html'), 'utf8');
-    expect(about).toContain('data-sw-block="Section"');
-
-    const release = JSON.parse(await readFile(join(outDir, 'release.json'), 'utf8'));
-    expect(release.routes).toBe(2);
-    expect(release.publishedAt).toBe('2026-05-29T00:00:00.000Z');
-  });
-
   it('renders a code-first source-page (Handlebars) to static HTML + feeds its classes to the shared sheet', async () => {
     await buildSite({
       publishedAt: '2026-05-29T00:00:00.000Z',
@@ -82,6 +56,21 @@ describe('buildSite', () => {
     // The source's literal Tailwind class is compiled into the shared, root-linked sheet.
     expect(home).toContain('<link rel="stylesheet" href="styles.css" />');
     expect(await readFile(join(outDir, 'styles.css'), 'utf8')).toContain('display:grid');
+  });
+
+  it('renders a source-less page as an empty body (no crash)', async () => {
+    // A page with neither `source` nor a referenced template (e.g. a brand-new page) publishes the
+    // skeleton with an empty <main> — the body is always the rendered source, never a block tree.
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        pages: [{ id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' } }],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home.startsWith('<!doctype html>')).toBe(true);
+    expect(home).toContain('<main id="page-content"></main>'); // empty body, no crash
   });
 
   it('exposes page.slug + the parentPage view (title/data) to a child page', async () => {
@@ -670,83 +659,6 @@ describe('buildSite', () => {
         }),
       }),
     ).rejects.toThrow(/maximum output size/);
-  });
-
-  it('expands a collection page per published entry and excludes drafts', async () => {
-    await buildSite({
-      publishedAt: '2026-05-29T00:00:00.000Z',
-      outDir,
-      bundle: bundle({
-        pages: [
-          // The collection page's leaf slug is `[slug]`, nested under a `blog` page →
-          // computed routes /blog/<entry>.
-          { id: 'blog', path: 'blog', title: 'Blog', root: { id: 'br', type: 'Section' } },
-          {
-            id: 'post',
-            path: '[slug]',
-            parent: 'blog',
-            title: 'Post',
-            collection: { dataset: 'posts', param: 'slug' },
-            root: { id: 'r', type: 'Section', children: [{ id: 'h', type: 'Heading', props: { textField: 'title' } }] },
-          },
-        ],
-        entries: [
-          { id: 'p1', dataset: 'posts', status: 'published', values: { slug: 'first', title: 'First Post' } },
-          { id: 'p2', dataset: 'posts', status: 'draft', values: { slug: 'second', title: 'Hidden' } },
-        ],
-      }),
-    });
-
-    const first = await readFile(join(outDir, 'blog', 'first', 'index.html'), 'utf8');
-    expect(first).toContain('First Post');
-    // The draft entry produced no route/file.
-    await expect(readFile(join(outDir, 'blog', 'second', 'index.html'), 'utf8')).rejects.toBeTruthy();
-  });
-
-  it('bundles media and renders an optimized, page-relative <picture>', async () => {
-    const asset = {
-      kind: 'image' as const,
-      folder: '',
-      id: 'a1',
-      filename: 'hero.png',
-      format: 'image/png',
-      bytes: 10,
-      width: 800,
-      height: 600,
-      variants: [
-        { format: 'avif' as const, width: 400, height: 300, path: 'a1-400.avif' },
-        { format: 'webp' as const, width: 400, height: 300, path: 'a1-400.webp' },
-      ],
-      fallback: 'a1-400.jpg',
-      url: '/media/p/a1/a1-400.jpg',
-    };
-    const reads: string[] = [];
-    await buildSite({
-      publishedAt: '2026-05-30T00:00:00.000Z',
-      outDir,
-      media: [asset],
-      readMedia: async (assetId, file) => {
-        reads.push(`${assetId}/${file}`);
-        return Buffer.from(`bytes:${file}`);
-      },
-      bundle: bundle({
-        pages: [
-          { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Image', props: { src: '/media/p/a1/a1-400.jpg', alt: 'Hero' } } },
-          { id: 'about', path: 'about', parent: 'home', title: 'About', root: { id: 'r2', type: 'Image', props: { src: '/media/p/a1/a1-400.jpg', alt: 'Hero' } } },
-        ],
-      }),
-    });
-
-    // Binaries copied into the artifact.
-    expect(reads.sort()).toEqual(['a1/a1-400.avif', 'a1/a1-400.jpg', 'a1/a1-400.webp']);
-    expect((await readFile(join(outDir, '_assets', 'a1', 'a1-400.jpg'), 'utf8'))).toContain('bytes:a1-400.jpg');
-
-    // Root page references _assets/… ; the /about page (one level deep) uses ../_assets/…
-    const home = await readFile(join(outDir, 'index.html'), 'utf8');
-    expect(home).toContain('<picture');
-    expect(home).toContain('srcset="_assets/a1/a1-400.avif 400w"');
-    const about = await readFile(join(outDir, 'about', 'index.html'), 'utf8');
-    expect(about).toContain('../_assets/a1/a1-400.avif 400w');
   });
 
   it('tolerates a missing media variant without failing the build', async () => {

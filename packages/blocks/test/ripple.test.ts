@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { PageNode } from '@sitewright/schema';
-import { RIPPLE_CSS, RIPPLE_JS, usesRipple, treeUsesRipple } from '../src/ripple.js';
+import { RIPPLE_CSS, RIPPLE_JS, usesRipple } from '../src/ripple.js';
 
 describe('ripple stylesheet', () => {
   it('gates all motion behind prefers-reduced-motion: no-preference', () => {
@@ -52,12 +51,4 @@ describe('ripple detection', () => {
     expect(usesRipple(undefined)).toBe(false);
   });
 
-  it('detects the marker in a block tree string prop', () => {
-    const tree: PageNode = {
-      id: 'r',
-      type: 'Section',
-      children: [{ id: 'e', type: 'Html', props: { html: '<button class="waves-effect">x</button>' } }],
-    };
-    expect(treeUsesRipple(tree)).toBe(true);
-  });
 });

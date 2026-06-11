@@ -40,31 +40,6 @@ const homePage = {
 };
 
 describe('publish API', () => {
-  it('publishes a project and serves the built site', async () => {
-    const { t, projectId, slug } = await setup('a@acme.test');
-    const base = `/projects/${projectId}`;
-    const cookies = { sw_session: t };
-
-    await app.inject({ method: 'PUT', url: `${base}/content/page/home`, cookies, payload: homePage });
-
-    const pub = await app.inject({ method: 'POST', url: `${base}/publish`, cookies });
-    expect(pub.statusCode).toBe(200);
-    const body = pub.json() as { release: { routes: number }; url: string };
-    expect(body.release.routes).toBe(1);
-    expect(body.url).toBe(`/sites/${slug}/`);
-
-    // The published home page is publicly servable and contains the rendered content.
-    const served = await app.inject({ method: 'GET', url: `/sites/${slug}/` });
-    expect(served.statusCode).toBe(200);
-    expect(served.headers['content-type']).toContain('text/html');
-    expect(served.body).toContain('Live Site');
-    expect(served.body.startsWith('<!doctype html>')).toBe(true);
-
-    // Status endpoint reports the release.
-    const status = await app.inject({ method: 'GET', url: `${base}/publish`, cookies });
-    expect((status.json() as { release: { routes: number } }).release.routes).toBe(1);
-  });
-
   it('reports the publish dirty signal (content changed since the last release)', async () => {
     const { t, projectId } = await setup('dirty@acme.test');
     const base = `/projects/${projectId}`;

@@ -19,9 +19,6 @@
 //   no-preference`, and the runtime also bails out under reduced motion.
 // - First-party, audited, static code only — tenants supply DATA (attribute
 //   values, parsed/clamped/allowlisted below); never JavaScript.
-import { walk } from '@sitewright/core';
-import type { PageNode } from '@sitewright/schema';
-
 /** The `data-aos` effects with a dedicated initial transform (plain `fade` is the base rule). */
 export const ANIMATION_EFFECTS: readonly string[] = [
   'fade',
@@ -130,22 +127,3 @@ export function usesAnimations(html: string | null | undefined): boolean {
   return typeof html === 'string' && html.includes(ANIMATION_MARKER);
 }
 
-/**
- * Whether a block tree uses scroll-reveal animations — i.e. any node carries a
- * string prop containing `data-aos` (in practice the raw `Html` block, whose
- * markup is emitted unescaped; escaped text props can't form a live attribute,
- * so a match there only over-ships the assets).
- */
-export function treeUsesAnimations(root: PageNode): boolean {
-  let found = false;
-  walk(root, (node) => {
-    if (found || !node.props) return;
-    for (const value of Object.values(node.props)) {
-      if (typeof value === 'string' && value.includes(ANIMATION_MARKER)) {
-        found = true;
-        return;
-      }
-    }
-  });
-  return found;
-}

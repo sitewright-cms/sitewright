@@ -23,15 +23,12 @@ import {
   DEFAULT_NEW_PROJECT_LOCALE,
   passwordSchema,
   assertWithinTreeDepth,
-  toPublicForm,
   websiteThemeClasses,
   type CorporateIdentity,
   type Entry,
   type FileAsset,
   type MediaFolderRecord,
   type Form,
-  isLinkPage,
-  type FormPublic,
   type ImageAsset,
   type MediaAsset,
   type Snippet,
@@ -44,21 +41,16 @@ import { detectFontFormat, MAX_FONT_BYTES } from '../fonts/upload.js';
 import { createFontAsset as storeFontAsset, mergeFontFaces } from '../fonts/asset.js';
 import {
   renderDocument,
-  usedComponentTypes,
   componentTypesInSource,
   componentAssets,
   usesDialog,
-  treeUsesDialog,
   usesAnimations,
-  treeUsesAnimations,
   ANIMATION_CSS,
   ANIMATION_JS,
   usesLazyload,
-  treeUsesLazyload,
   LAZYLOAD_CSS,
   LAZYLOAD_JS,
   usesRipple,
-  treeUsesRipple,
   RIPPLE_CSS,
   RIPPLE_JS,
   usesCart,
@@ -74,7 +66,6 @@ import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
 import { optimizeImage } from '@sitewright/image-pipeline';
 import {
   buildNav,
-  collectClassNames,
   extractClassNames,
   isGlobalTemplate,
   publishedPages,
@@ -1838,266 +1829,174 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       if (JSON.stringify(renderMedia).length > 4 * 1024 * 1024) {
         return reply.code(413).send({ error: 'project media is too large to render' });
       }
-      // A code-first page (own `source`/`template`) OR an inherit-mode locale variant that
-      // resolves its owner's code previews through the worker; the variant supplies only its
-      // own page.data, so it shows the main language's layout with its translated content.
+      // Every page previews through the worker from its Handlebars `source` (or its referenced
+      // template's). An inherit-mode locale variant resolves its translation-group owner's code and
+      // supplies only its own page.data (the main language's layout, its translated content); a
+      // source-less page renders an empty body in the same shell.
       const codeRef = resolveCodeRef(page, allSavedPages, defaultLocale);
-      if (codeRef.source !== undefined || codeRef.template !== undefined) {
-        // A template reference resolves to the TEMPLATE's source (built-in global or
-        // project entity); the page contributes only its page.data content. Resolved
-        // BEFORE the pool guard — an unknown reference is a client error (400)
-        // regardless of whether rendering infrastructure is up.
-        let pageSource = codeRef.source ?? '';
-        if (codeRef.template) {
-          const projectTemplates = isGlobalTemplate(codeRef.template)
-            ? []
-            : ((await contentRepo.list(ctx, 'template')) as Template[]);
-          const globals = isGlobalTemplate(codeRef.template) ? globalTemplateMap(await listGlobalTemplates(contentRepo)) : undefined;
-          try {
-            pageSource = resolveTemplateSource(codeRef.template, new Map(projectTemplates.map((t) => [t.id, t])), globals);
-          } catch {
-            return reply.code(400).send({ error: `unknown template "${codeRef.template}"` });
-          }
+      // A template reference resolves to the TEMPLATE's source (built-in global or
+      // project entity); the page contributes only its page.data content. Resolved
+      // BEFORE the pool guard — an unknown reference is a client error (400)
+      // regardless of whether rendering infrastructure is up.
+      let pageSource = codeRef.source ?? '';
+      if (codeRef.template) {
+        const projectTemplates = isGlobalTemplate(codeRef.template)
+          ? []
+          : ((await contentRepo.list(ctx, 'template')) as Template[]);
+        const globals = isGlobalTemplate(codeRef.template) ? globalTemplateMap(await listGlobalTemplates(contentRepo)) : undefined;
+        try {
+          pageSource = resolveTemplateSource(codeRef.template, new Map(projectTemplates.map((t) => [t.id, t])), globals);
+        } catch {
+          return reply.code(400).send({ error: `unknown template "${codeRef.template}"` });
         }
-        if (!renderPool) return reply.code(503).send({ error: 'rendering is not available' });
-        // Built-in global snippets + the project's own (project wins on a name collision). The
-        // preview's CSS is extracted from the RENDERED output, so unused globals add no weight here.
-        const partials = {
-          ...(await globalSnippetPartials(contentRepo)),
-          ...Object.fromEntries(((await contentRepo.list(ctx, 'snippet')) as Snippet[]).map((s) => [s.name, s.source])),
-        };
-        const sourceData = Object.fromEntries(byDataset);
-        const localeData = resolveLocaleDatasets(sourceData, page.locale);
-        // Keyed entry access ({{item.<dataset>.<id>.<field>}}) — built only for datasets this source
-        // addresses by key, so a looping-only page pays nothing.
-        const item = keyedDatasets(pageSource, localeData);
-        // Bound the IPC payload serialized in THIS (parent) process — a large dataset/partial set
-        // (incl. the keyed `item` map) must not spike the API's heap (only the worker carries a
-        // memory ceiling). Mirrors the owner render-template guard.
-        if (JSON.stringify(localeData).length + JSON.stringify(item).length + JSON.stringify(partials).length > 4 * 1024 * 1024) {
+      }
+      if (!renderPool) return reply.code(503).send({ error: 'rendering is not available' });
+      // Built-in global snippets + the project's own (project wins on a name collision). The
+      // preview's CSS is extracted from the RENDERED output, so unused globals add no weight here.
+      const partials = {
+        ...(await globalSnippetPartials(contentRepo)),
+        ...Object.fromEntries(((await contentRepo.list(ctx, 'snippet')) as Snippet[]).map((s) => [s.name, s.source])),
+      };
+      const sourceData = Object.fromEntries(byDataset);
+      const localeData = resolveLocaleDatasets(sourceData, page.locale);
+      // Keyed entry access ({{item.<dataset>.<id>.<field>}}) — built only for datasets this source
+      // addresses by key, so a looping-only page pays nothing.
+      const item = keyedDatasets(pageSource, localeData);
+      // Bound the IPC payload serialized in THIS (parent) process — a large dataset/partial set
+      // (incl. the keyed `item` map) must not spike the API's heap (only the worker carries a
+      // memory ceiling). Mirrors the owner render-template guard.
+      if (JSON.stringify(localeData).length + JSON.stringify(item).length + JSON.stringify(partials).length > 4 * 1024 * 1024) {
+        return reply.code(413).send({ error: 'project data is too large to render' });
+      }
+      try {
+        // WYSIWYG parity with publish (drafts excluded, like publish): the previewed
+        // page's auto-nav lists ONLY its own language's pages, its bindings resolve to
+        // the locale dataset variant (`<name>-<locale>`), and `page.locale` /
+        // `page.translations` power a language switcher. `json_data` is NOT fetched in
+        // preview (no network per keystroke) — `{{ website.json_data }}` renders empty
+        // until publish.
+        const savedPages = publishedPages(allSavedPages);
+        const previewLocale = localeOf(page, defaultLocale);
+        const navPages = pagesInLocale(savedPages, previewLocale, defaultLocale);
+        const slotNav = decorateNav({
+          header: buildNav(navPages, 'header'),
+          footer: buildNav(navPages, 'footer'),
+          mobile: buildNav(navPages, 'mobile'),
+        });
+        // The page's FULL route is computed from the parent chain; include the (possibly
+        // unsaved/edited) previewed page in the index so its own slug/parent apply.
+        const previewById = pagesById(savedPages);
+        previewById.set(page.id, page);
+        // This page's child pages, flattened — built only when the source loops them. From
+        // `savedPages` (already published-only → drafts excluded, mirroring publish/nav for WYSIWYG
+        // parity); childrenOf filters parent + locale and caps the count. Each child carries its own
+        // `data`, so bound the serialized array against the same IPC ceiling as the data above.
+        const previewChildren = referencesChildren(pageSource) ? childrenOf(savedPages, page, defaultLocale) : [];
+        if (JSON.stringify(previewChildren).length > 4 * 1024 * 1024) {
           return reply.code(413).send({ error: 'project data is too large to render' });
         }
-        try {
-          // WYSIWYG parity with publish (drafts excluded, like publish): the previewed
-          // page's auto-nav lists ONLY its own language's pages, its bindings resolve to
-          // the locale dataset variant (`<name>-<locale>`), and `page.locale` /
-          // `page.translations` power a language switcher. `json_data` is NOT fetched in
-          // preview (no network per keystroke) — `{{ website.json_data }}` renders empty
-          // until publish.
-          const savedPages = publishedPages(allSavedPages);
-          const previewLocale = localeOf(page, defaultLocale);
-          const navPages = pagesInLocale(savedPages, previewLocale, defaultLocale);
-          const slotNav = decorateNav({
-            header: buildNav(navPages, 'header'),
-            footer: buildNav(navPages, 'footer'),
-            mobile: buildNav(navPages, 'mobile'),
-          });
-          // The page's FULL route is computed from the parent chain; include the (possibly
-          // unsaved/edited) previewed page in the index so its own slug/parent apply.
-          const previewById = pagesById(savedPages);
-          previewById.set(page.id, page);
-          // This page's child pages, flattened — built only when the source loops them. From
-          // `savedPages` (already published-only → drafts excluded, mirroring publish/nav for WYSIWYG
-          // parity); childrenOf filters parent + locale and caps the count. Each child carries its own
-          // `data`, so bound the serialized array against the same IPC ceiling as the data above.
-          const previewChildren = referencesChildren(pageSource) ? childrenOf(savedPages, page, defaultLocale) : [];
-          if (JSON.stringify(previewChildren).length > 4 * 1024 * 1024) {
-            return reply.code(413).send({ error: 'project data is too large to render' });
-          }
-          const previewPage = {
-            title: page.title,
-            // Flattened SEO/meta fields ({{page.description}} / {{page.image}}) + the {{sw-control}} current value.
-            description: page.description,
-            image: page.image,
-            canonical: page.canonical,
-            noindex: page.noindex,
-            // `page.slug` is the page's OWN segment — the Page record's `path` field (e.g. "services");
-            // the binding's `page.path` below is the FULL computed route. (Mirrors page.children[*].slug.)
-            slug: page.path,
-            path: pagePath(page, previewById),
-            locale: previewLocale,
-            translations: translationsOf(savedPages, page, defaultLocale),
-            data: page.data,
-            children: previewChildren,
-          };
-          // The page's PARENT as a lean view (`{{parentPage.path}}`, `{{parentPage.data.x}}`) — absent
-          // at the tree root. Built only when the source references it (the parent carries its own
-          // `data`, so the gate keeps it off the IPC otherwise) and from the SAVED pages for the
-          // parent (not the unsaved preview overlay).
-          const previewParent = referencesParentPage(pageSource)
-            ? (parentPageView(savedPages, page, defaultLocale) as unknown as Record<string, unknown> | undefined)
-            : undefined;
-          // Bound the parent view against the same IPC ceiling as the data/children above — its `data`
-          // is a different page's object, not covered by the dataset guard.
-          if (previewParent && JSON.stringify(previewParent).length > 4 * 1024 * 1024) {
-            return reply.code(413).send({ error: 'project data is too large to render' });
-          }
-          const rendered = await renderPool.render(pageSource, {
-            company: brand as unknown as Record<string, unknown>,
-            website: { siteUrl: website?.siteUrl, data: website?.data, shop: resolveShopChannels(website?.shop, (fid) => `/f/${project.id}/${fid}`) },
-            page: previewPage,
-            parentPage: previewParent,
-            data: localeData,
-            item,
-            partials,
-            // PREVIEW-only: keep the data-sw-* leaf-directive markers so the editor bridge can make
-            // them click-to-edit. The publish path strips them in resolveDirectives.
-            preview: true,
-            // PREVIEW-only: the dataset-aware {{#each}} wraps each entry row in a data-sw-entry marker
-            // so a click opens that entry's editor. Always body-safe (wraps the loop body) → no gate needed.
-            markEntries: true,
-            media: renderMedia,
-          });
-          // Slots render through the SAME isolated worker; a broken slot is skipped here
-          // (publish still hard-validates it) so it can never break the page preview. No
-          // `partials`/`content`: slots are project-wide (not client-edited), and — matching
-          // the publish slot context in build.ts — they don't compose snippets, so
-          // `{{> snippet}}` is intentionally unavailable in a slot (no WYSIWYG drift).
-          const slotCtx = {
-            company: brand as unknown as Record<string, unknown>,
-            website: { siteUrl: website?.siteUrl, data: website?.data, shop: resolveShopChannels(website?.shop, (fid) => `/f/${project.id}/${fid}`) },
-            page: previewPage,
-            parentPage: previewParent,
-            data: localeData,
-            nav: slotNav as unknown as Record<string, unknown>,
-            media: renderMedia,
-          };
-          // Each slot reuses slotCtx (which carries `sourceData`) over IPC; that payload is already
-          // bounded by the page-render size guard above, and the pool (capped workers + queue depth)
-          // serializes the renders, so the six calls can't amplify into a parallel memory spike.
-          const renderSlot = async (name: string, src: string | undefined): Promise<string | undefined> => {
-            if (!src) return undefined;
-            try {
-              return await renderPool.render(src, slotCtx);
-            } catch (err) {
-              // Best-effort in preview — a broken slot is omitted (publish hard-validates it). Log at
-              // debug so it's visible to an operator rather than silently swallowed.
-              req.log?.debug({ slot: name, err: err instanceof Error ? err.message : String(err) }, 'preview slot skipped');
-              return undefined;
-            }
-          };
-          const [topNav, mobileNav, sidebarLeft, sidebarRight, footer, bottom] = await Promise.all([
-            renderSlot('topNav', website?.topNav),
-            renderSlot('mobileNav', website?.mobileNav),
-            renderSlot('sidebarLeft', website?.sidebarLeft),
-            renderSlot('sidebarRight', website?.sidebarRight),
-            renderSlot('footer', website?.footer),
-            renderSlot('bottom', website?.bottom),
-          ]);
-          // Wrap + inline Tailwind INSIDE the try so a compile failure returns the error
-          // envelope (not a raw 500), consistent with the rest of this handler.
-          const sourceHtml = await styledSourceDocument(page, brand, rendered, {
-            topNav,
-            mobileNav,
-            sidebarLeft,
-            sidebarRight,
-            footer,
-            bottom,
-            head: website?.head,
-            criticalCss: website?.criticalCss,
-            customScripts: website?.scripts,
-            bodyClass: websiteThemeClasses(website?.theme),
-            lang: previewLocale, // `<html lang>` follows the previewed page's locale (publish parity)
-          });
-          const sourceToken = previewStore.put(sourceHtml, { projectId: project.id, userId: ctx.userId });
-          // `slug` so the editor builds the `/preview/<slug>/<token>` doc URL (same as the block branch below).
-          return reply.send({ html: sourceHtml, token: sourceToken, slug: project.slug });
-        } catch (err) {
-          if (err instanceof RenderUnavailableError) return reply.code(503).send({ error: err.message });
-          return reply.code(400).send({ error: err instanceof Error ? err.message : 'render failed' });
+        const previewPage = {
+          title: page.title,
+          // Flattened SEO/meta fields ({{page.description}} / {{page.image}}) + the {{sw-control}} current value.
+          description: page.description,
+          image: page.image,
+          canonical: page.canonical,
+          noindex: page.noindex,
+          // `page.slug` is the page's OWN segment — the Page record's `path` field (e.g. "services");
+          // the binding's `page.path` below is the FULL computed route. (Mirrors page.children[*].slug.)
+          slug: page.path,
+          path: pagePath(page, previewById),
+          locale: previewLocale,
+          translations: translationsOf(savedPages, page, defaultLocale),
+          data: page.data,
+          children: previewChildren,
+        };
+        // The page's PARENT as a lean view (`{{parentPage.path}}`, `{{parentPage.data.x}}`) — absent
+        // at the tree root. Built only when the source references it (the parent carries its own
+        // `data`, so the gate keeps it off the IPC otherwise) and from the SAVED pages for the
+        // parent (not the unsaved preview overlay).
+        const previewParent = referencesParentPage(pageSource)
+          ? (parentPageView(savedPages, page, defaultLocale) as unknown as Record<string, unknown> | undefined)
+          : undefined;
+        // Bound the parent view against the same IPC ceiling as the data/children above — its `data`
+        // is a different page's object, not covered by the dataset guard.
+        if (previewParent && JSON.stringify(previewParent).length > 4 * 1024 * 1024) {
+          return reply.code(413).send({ error: 'project data is too large to render' });
         }
+        const rendered = await renderPool.render(pageSource, {
+          company: brand as unknown as Record<string, unknown>,
+          website: { siteUrl: website?.siteUrl, data: website?.data, shop: resolveShopChannels(website?.shop, (fid) => `/f/${project.id}/${fid}`) },
+          page: previewPage,
+          parentPage: previewParent,
+          data: localeData,
+          item,
+          partials,
+          // PREVIEW-only: keep the data-sw-* leaf-directive markers so the editor bridge can make
+          // them click-to-edit. The publish path strips them in resolveDirectives.
+          preview: true,
+          // PREVIEW-only: the dataset-aware {{#each}} wraps each entry row in a data-sw-entry marker
+          // so a click opens that entry's editor. Always body-safe (wraps the loop body) → no gate needed.
+          markEntries: true,
+          media: renderMedia,
+        });
+        // Slots render through the SAME isolated worker; a broken slot is skipped here
+        // (publish still hard-validates it) so it can never break the page preview. No
+        // `partials`/`content`: slots are project-wide (not client-edited), and — matching
+        // the publish slot context in build.ts — they don't compose snippets, so
+        // `{{> snippet}}` is intentionally unavailable in a slot (no WYSIWYG drift).
+        const slotCtx = {
+          company: brand as unknown as Record<string, unknown>,
+          website: { siteUrl: website?.siteUrl, data: website?.data, shop: resolveShopChannels(website?.shop, (fid) => `/f/${project.id}/${fid}`) },
+          page: previewPage,
+          parentPage: previewParent,
+          data: localeData,
+          nav: slotNav as unknown as Record<string, unknown>,
+          media: renderMedia,
+        };
+        // Each slot reuses slotCtx (which carries `sourceData`) over IPC; that payload is already
+        // bounded by the page-render size guard above, and the pool (capped workers + queue depth)
+        // serializes the renders, so the six calls can't amplify into a parallel memory spike.
+        const renderSlot = async (name: string, src: string | undefined): Promise<string | undefined> => {
+          if (!src) return undefined;
+          try {
+            return await renderPool.render(src, slotCtx);
+          } catch (err) {
+            // Best-effort in preview — a broken slot is omitted (publish hard-validates it). Log at
+            // debug so it's visible to an operator rather than silently swallowed.
+            req.log?.debug({ slot: name, err: err instanceof Error ? err.message : String(err) }, 'preview slot skipped');
+            return undefined;
+          }
+        };
+        const [topNav, mobileNav, sidebarLeft, sidebarRight, footer, bottom] = await Promise.all([
+          renderSlot('topNav', website?.topNav),
+          renderSlot('mobileNav', website?.mobileNav),
+          renderSlot('sidebarLeft', website?.sidebarLeft),
+          renderSlot('sidebarRight', website?.sidebarRight),
+          renderSlot('footer', website?.footer),
+          renderSlot('bottom', website?.bottom),
+        ]);
+        // Wrap + inline Tailwind INSIDE the try so a compile failure returns the error
+        // envelope (not a raw 500), consistent with the rest of this handler.
+        const sourceHtml = await styledSourceDocument(page, brand, rendered, {
+          topNav,
+          mobileNav,
+          sidebarLeft,
+          sidebarRight,
+          footer,
+          bottom,
+          head: website?.head,
+          criticalCss: website?.criticalCss,
+          customScripts: website?.scripts,
+          bodyClass: websiteThemeClasses(website?.theme),
+          lang: previewLocale, // `<html lang>` follows the previewed page's locale (publish parity)
+        });
+        const sourceToken = previewStore.put(sourceHtml, { projectId: project.id, userId: ctx.userId });
+        // `slug` so the editor builds the `/preview/<slug>/<token>` doc URL (same as the block branch below).
+        return reply.send({ html: sourceHtml, token: sourceToken, slug: project.slug });
+      } catch (err) {
+        if (err instanceof RenderUnavailableError) return reply.code(503).send({ error: err.message });
+        return reply.code(400).send({ error: err instanceof Error ? err.message : 'render failed' });
       }
-
-      // (`media` is listed once above — it powers optimized <picture> here AND {{#sw-folder}} in the render.)
-      // Auto-nav from the saved pages so Nav blocks render their menu in preview
-      // (WYSIWYG parity with publish; an unsaved new page isn't in its own nav yet).
-      // Drafts are excluded from nav here too, matching the published output; the menu
-      // lists only the previewed page's own language (per-locale nav, like publish).
-      const savedPages = publishedPages(allSavedPages);
-      const previewLocale = localeOf(page, defaultLocale);
-      const navPages = pagesInLocale(savedPages, previewLocale, defaultLocale);
-      const nav = decorateNav({
-        header: buildNav(navPages, 'header'),
-        footer: buildNav(navPages, 'footer'),
-        mobile: buildNav(navPages, 'mobile'),
-      });
-      // Public form definitions for any Form blocks; the preview posts same-origin.
-      const previewForms: Record<string, FormPublic> = Object.fromEntries(
-        ((await contentRepo.list(ctx, 'form')) as Form[]).map((f) => [f.id, toPublicForm(f)]),
-      );
-      const previewHcaptchaSiteKey = (await instanceSettingsRepo.getStored()).hcaptcha?.siteKey;
-      // The preview document is served (via a token URL) under `CSP: sandbox
-      // allow-scripts` — an opaque, isolated origin — so styles AND the platform
-      // component JS are INLINED to make it self-contained + truly interactive
-      // (WYSIWYG). Gather component CSS/JS + utility CSS only when used.
-      const themeBodyClass = websiteThemeClasses(website?.theme);
-      // Include the `<body>` effect classes in the scan so the preview sheet carries those schemes.
-      const classNames = [...collectClassNames(page.root), ...(themeBodyClass ? themeBodyClass.split(' ') : [])];
-      const { css: componentCss, js: componentJs } = componentAssets(usedComponentTypes(page.root));
-      // Platform-runtime markers (`data-aos` / `data-bg` / `waves-effect` in a raw Html
-      // block) → inline the first-party runtime(s) so they work live in the sandboxed
-      // preview, like publish.
-      const animated = treeUsesAnimations(page.root);
-      const lazy = treeUsesLazyload(page.root);
-      const waves = treeUsesRipple(page.root);
-      const inlineStyles: string[] = [];
-      // Component CSS first (then the runtime CSS), then Tailwind utilities last
-      // (so utilities win at equal specificity) — mirrors the publish order
-      // (inline component CSS, then the linked utility sheet).
-      if (componentCss) inlineStyles.push(componentCss);
-      if (animated) inlineStyles.push(ANIMATION_CSS);
-      if (lazy) inlineStyles.push(LAZYLOAD_CSS);
-      if (waves) inlineStyles.push(RIPPLE_CSS);
-      if (classNames.length > 0) {
-        inlineStyles.push(await compileUtilityCss([classNames.join(' ')], brandToTailwindTheme(brand)));
-      }
-      const previewById = pagesById(savedPages);
-      previewById.set(page.id, page);
-      const html = renderDocument(page, {
-        brand,
-        bodyClass: themeBodyClass,
-        lang: previewLocale, // `<html lang>` follows the previewed page's locale (publish parity)
-        // {{ company.* }}/{{ website.* }}/{{ page.* }} substitution (WYSIWYG parity with publish).
-        // `website` is projected to only its public fields (not the raw head/footer/CSS blobs).
-        vars: {
-          company: brand,
-          website: { siteUrl: website?.siteUrl, data: website?.data },
-          page: { title: page.title, path: pagePath(page, previewById), locale: previewLocale, translations: translationsOf(savedPages, page, defaultLocale), data: page.data },
-        },
-        // Bindings resolve to the page's locale dataset variant (`<name>-<locale>`), like publish.
-        datasets: resolveLocaleDatasets(Object.fromEntries(byDataset), page.locale),
-        includeDrafts: true,
-        markEntries: true, // PREVIEW-only entry markers (block-tree list bindings)
-        media,
-        nav,
-        forms: previewForms,
-        formEndpoint: (formId) => `/f/${project.id}/${formId}`,
-        ...(previewHcaptchaSiteKey ? { hcaptchaSiteKey: previewHcaptchaSiteKey } : {}),
-        // Images AND self-hosted fonts (kind:'font' assets in `media`) resolve through one URL —
-        // their `@font-face` loads from the media route (never a font CDN).
-        mediaUrl: (asset, file) => `/media/${project.slug}/${asset.id}/${file}`,
-        inlineStyles: inlineStyles.length > 0 ? inlineStyles : undefined,
-        inlineScripts: [
-          ...(componentJs ? [componentJs] : []),
-          ...(animated ? [ANIMATION_JS] : []),
-          ...(lazy ? [LAZYLOAD_JS] : []),
-          ...(waves ? [RIPPLE_JS] : []),
-          // Nav-link runtime (open a <dialog> / smooth-scroll) when a placeholder targets a #fragment
-          // OR a raw-Html block embeds a <dialog> the runtime can open from an in-content anchor.
-          ...(savedPages.some((p) => isLinkPage(p) && (p.link?.target ?? '').includes('#')) || treeUsesDialog(page.root)
-            ? [NAV_LINK_JS]
-            : []),
-          // Editor↔preview bridge (scroll preserve/restore). Preview-only path.
-          PREVIEW_BRIDGE_JS,
-        ],
-      });
-      // Store the rendered doc behind an opaque token; the editor loads it via the
-      // GET route below (which serves it under a sandbox CSP). `html` is still
-      // returned for API consumers/tests that want it directly.
-      const token = previewStore.put(html, { projectId: project.id, userId: ctx.userId });
-      // `slug` lets the editor build the doc URL (`/preview/<slug>/<token>`) without a separate
-      // project lookup — the pop-out live preview only carries the project id.
-      return reply.send({ html, token, slug: project.slug });
     },
   );
 

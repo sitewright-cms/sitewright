@@ -53,20 +53,6 @@ export function collectIds(root: PageNode): string[] {
   return ids;
 }
 
-/**
- * Every author utility-class list in the tree (one entry per node that sets
- * `className`), in document order. The Tailwind pipeline scans these to compile
- * a minimal stylesheet — collecting them from the tree (rather than the rendered
- * HTML) avoids false positives from skeleton CSS or raw custom head/footer.
- */
-export function collectClassNames(root: PageNode): string[] {
-  const classNames: string[] = [];
-  walk(root, (node) => {
-    if (node.className) classNames.push(node.className);
-  });
-  return classNames;
-}
-
 /** The kind of editable region, which drives the editor widget + the binding's render sink. */
 export type RegionKind = 'text' | 'rich' | 'link' | 'image' | 'bg';
 
@@ -144,8 +130,7 @@ export const MAX_EXTRACTED_CLASS_TOKENS = 2048;
 /**
  * Extract the literal CSS class tokens from `class="…"` / `class='…'` attributes in an HTML
  * string or a Handlebars template source — the Tailwind JIT compiler's candidate set for
- * code-first pages (the analogue of {@link collectClassNames} for raw markup rather than a
- * block tree). Used by both the publish build and the editor's live-preview endpoint, so the
+ * code-first pages. Used by both the publish build and the editor's live-preview endpoint, so the
  * extraction stays identical across the two paths.
  *
  * Handlebars `{{ … }}` expressions inside a class value are stripped first — a dynamic class

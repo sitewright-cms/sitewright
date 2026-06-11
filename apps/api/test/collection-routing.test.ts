@@ -131,33 +131,6 @@ describe('collection page routing through publish', () => {
     expect(gamma.statusCode).toBe(404);
   });
 
-  it('renders each entry’s bound data and keeps internal links page-relative', async () => {
-    await project.putContent('dataset', 'products', productsDataset);
-    const alpha = entry('p-alpha', 'alpha', 'Alpha Widget', 'published');
-    const beta = entry('p-beta', 'beta', 'Beta Widget', 'published');
-    await project.putContent('entry', alpha.id, alpha);
-    await project.putContent('entry', beta.id, beta);
-    await project.putContent('page', 'products', productsPage);
-    await project.putContent('page', collectionPage.id, collectionPage);
-    await publish();
-
-    const alphaHtml = (await served(slug, 'products/alpha/')).body;
-    const betaHtml = (await served(slug, 'products/beta/')).body;
-
-    // Each generated page renders ITS OWN entry's bound `title` field.
-    expect(alphaHtml).toContain('Alpha Widget');
-    expect(alphaHtml).not.toContain('Beta Widget');
-    expect(betaHtml).toContain('Beta Widget');
-    expect(betaHtml).not.toContain('Alpha Widget');
-
-    // Portability at collection depth: the root-relative "/" Link is rebased to a
-    // page-relative path. The slug is `products/alpha` (two segments), so the output
-    // file lives at `products/alpha/index.html` and relativeRoot returns "../../"
-    // (one `../` per slug segment). The artifact therefore works at any base path.
-    expect(alphaHtml).toContain('href="../../"');
-    expect(alphaHtml).not.toContain('href="/"');
-  });
-
   it('reflects static pages + expanded collection routes in the publish manifest', async () => {
     await project.putContent('dataset', 'products', productsDataset);
     const alpha = entry('p-alpha', 'alpha', 'Alpha Widget', 'published');
@@ -229,36 +202,6 @@ describe('collection page routing through publish', () => {
     // Only the static home page renders; the unknown-dataset collection expands to nothing.
     expect(release.routes).toBe(1);
     expect((await served(slug, '')).statusCode).toBe(200);
-  });
-
-  it('handles entries that would collide on slug deterministically (entrySlug falls back to entry id)', async () => {
-    await project.putContent('dataset', 'products', productsDataset);
-
-    // Both entries carry the SAME `slug` field value, but it is NOT a safe URL
-    // segment (it has spaces / uppercase). entrySlug rejects unsafe values and
-    // falls back to the entry id — which the schema constrains to be unique and
-    // safe — so the two routes get DISTINCT, deterministic slugs (the entry ids).
-    const a = entry('collide-a', 'Same Title', 'First', 'published');
-    const b = entry('collide-b', 'Same Title', 'Second', 'published');
-    expect(entrySlug(a, 'slug')).toBe('collide-a'); // unsafe value -> id fallback
-    expect(entrySlug(b, 'slug')).toBe('collide-b');
-    expect(entrySlug(a, 'slug')).not.toBe(entrySlug(b, 'slug')); // deterministic, distinct
-
-    await project.putContent('entry', a.id, a);
-    await project.putContent('entry', b.id, b);
-    await project.putContent('page', 'products', productsPage);
-    await project.putContent('page', collectionPage.id, collectionPage);
-
-    // No crash: both routes render at distinct, id-derived output paths (+ the auto-created home).
-    const { release } = await publish();
-    expect(release.routes).toBe(4);
-
-    const pageA = await served(slug, 'products/collide-a/');
-    const pageB = await served(slug, 'products/collide-b/');
-    expect(pageA.statusCode).toBe(200);
-    expect(pageB.statusCode).toBe(200);
-    expect(pageA.body).toContain('First');
-    expect(pageB.body).toContain('Second');
   });
 
   it('rejects (409) when two entries DO resolve to the same slug — allRoutes duplicate-route guard', async () => {

@@ -146,8 +146,8 @@ export function codeOwnerOf(
 /**
  * Resolve a page's effective code reference: its own `source`/`template` when set,
  * otherwise (inherit mode) the code of its translation-group owner. A page that
- * inherits but has no resolvable owner returns an empty ref — the caller falls back
- * to the legacy block tree (a blank body would be a silent failure otherwise).
+ * inherits but has no resolvable owner returns an empty ref — the caller renders an
+ * empty body (no source to render).
  */
 export function resolveCodeRef(page: Page, pages: readonly Page[], defaultLocale: string): CodeRef {
   // Precedence: a `template` ref WINS over `source` (matches `pageCodeMode` + the editor's

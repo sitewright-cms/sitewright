@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   COLOR_FORMATS,
   type ColorFormat,
@@ -170,21 +171,75 @@ function FormatField({ fmt, rgba, onParsed }: { fmt: ColorFormat; rgba: Rgba; on
   );
 }
 
+// The picker panel's footprint. POPOVER_W is also applied as the panel's actual width (below), so
+// the clamp math can't drift from the rendered size; POPOVER_H is a generous estimate used only to
+// decide the flip. GAP = trigger↔panel spacing; VIEWPORT_MARGIN = min gap from the viewport edge.
+const POPOVER_W = 288;
+const POPOVER_H = 340;
+const GAP = 6;
+const VIEWPORT_MARGIN = 8;
+
 /**
- * Shared popover dismissal for the swatch + card triggers: closes on an outside pointerdown or
- * Escape while open. Returns the wrapper ref to put on the popover's root (the "inside" boundary).
- * `setOpen` (a stable useState setter) is intentionally omitted from the deps, so the listeners
- * bind/unbind only as `open` flips.
+ * Positions the popover with `position: fixed`, anchored to the trigger's viewport rect. Prefers
+ * below the trigger; flips above when there isn't room and there's more space up top; clamps inside
+ * the viewport. Recomputes on scroll/resize so it tracks the anchor while the page moves.
+ * `useLayoutEffect` (not `useEffect`) places it before paint, avoiding a one-frame flash at (0,0) —
+ * safe here because the popover is portalled on mount and never server-rendered.
  */
-function useColorPopoverDismiss(open: boolean, setOpen: (v: boolean) => void) {
-  const wrapRef = useRef<HTMLDivElement>(null);
+function usePopoverPosition(anchor: HTMLElement): { top: number; left: number } {
+  const [pos, setPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+  useLayoutEffect(() => {
+    const place = () => {
+      const r = anchor.getBoundingClientRect();
+      const below = r.bottom + GAP;
+      const flip = below + POPOVER_H + VIEWPORT_MARGIN > window.innerHeight && r.top > POPOVER_H + GAP;
+      const top = flip ? Math.max(VIEWPORT_MARGIN, r.top - POPOVER_H - GAP) : below;
+      const left = Math.max(VIEWPORT_MARGIN, Math.min(r.left, window.innerWidth - POPOVER_W - VIEWPORT_MARGIN));
+      setPos({ top, left });
+    };
+    place();
+    window.addEventListener('scroll', place, true);
+    window.addEventListener('resize', place);
+    return () => {
+      window.removeEventListener('scroll', place, true);
+      window.removeEventListener('resize', place);
+    };
+  }, [anchor]);
+  return pos;
+}
+
+/**
+ * The {@link ColorPicker} floated in a popover, PORTALLED to `document.body`. The trigger sits inside
+ * frosted, transformed `motion.section` cards (each its own stacking context), so an in-flow
+ * `absolute`/`z-50` panel gets painted under the following section. Portalling + `position: fixed`
+ * escapes every ancestor stacking context. Dismisses on Escape or a pointerdown outside BOTH the
+ * anchor and the panel (the panel lives outside the anchor's subtree now, so it must be checked
+ * explicitly or interacting with the picker would close it).
+ */
+function PickerPopover({
+  anchor,
+  label,
+  value,
+  onChange,
+  onClose,
+}: {
+  anchor: HTMLElement;
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  onClose: () => void;
+}) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const pos = usePopoverPosition(anchor);
   useEffect(() => {
-    if (!open) return;
     const onDown = (e: PointerEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      // A pointerdown on the anchor is ignored here so its own onClick handles the toggle-to-close
+      // (pointerdown fires first); only a press truly outside both anchor and panel dismisses.
+      if (!anchor.contains(t) && !panelRef.current?.contains(t)) onClose();
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
+      if (e.key === 'Escape') onClose();
     };
     document.addEventListener('pointerdown', onDown);
     document.addEventListener('keydown', onKey);
@@ -192,8 +247,22 @@ function useColorPopoverDismiss(open: boolean, setOpen: (v: boolean) => void) {
       document.removeEventListener('pointerdown', onDown);
       document.removeEventListener('keydown', onKey);
     };
-  }, [open]);
-  return wrapRef;
+  }, [anchor, onClose]);
+
+  return createPortal(
+    // No `aria-modal` — there's no focus trap, so the rest of the form stays reachable (and shouldn't
+    // be announced as inert). Width is pinned to POPOVER_W so the clamp math matches the rendered box.
+    <div
+      ref={panelRef}
+      role="dialog"
+      aria-label={`${label} picker`}
+      style={{ position: 'fixed', top: pos.top, left: pos.left, width: POPOVER_W, zIndex: 80 }}
+      className="rounded-xl border border-white/60 bg-white/95 p-3 shadow-2xl backdrop-blur-xl"
+    >
+      <ColorPicker value={value} onChange={onChange} />
+    </div>,
+    document.body,
+  );
 }
 
 /**
@@ -204,11 +273,14 @@ function useColorPopoverDismiss(open: boolean, setOpen: (v: boolean) => void) {
  */
 export function ColorField({ value, onChange, label }: { value: string; onChange: (v: string) => void; label: string }) {
   const [open, setOpen] = useState(false);
-  const wrapRef = useColorPopoverDismiss(open, setOpen);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  // Stable so PickerPopover's listener effect doesn't re-bind on every emit-driven re-render.
+  const close = useCallback(() => setOpen(false), []);
 
   return (
-    <div ref={wrapRef} className="relative shrink-0">
+    <div className="shrink-0">
       <button
+        ref={btnRef}
         type="button"
         aria-label={`Edit ${label}`}
         aria-expanded={open}
@@ -218,10 +290,10 @@ export function ColorField({ value, onChange, label }: { value: string; onChange
       >
         <span aria-hidden className="block h-full w-full rounded-md" style={{ background: SAFE_COLOR.test(value) ? value : 'transparent' }} />
       </button>
-      {open && (
-        <div role="dialog" aria-modal="true" aria-label={`${label} picker`} className="absolute left-0 top-9 z-50 rounded-xl border border-white/60 bg-white/95 p-3 shadow-2xl backdrop-blur-xl">
-          <ColorPicker value={value} onChange={onChange} />
-        </div>
+      {/* btnRef is always set here: `open` only flips true via the button's own onClick, so the
+          button is already committed. The guard just satisfies the non-null anchor type. */}
+      {open && btnRef.current && (
+        <PickerPopover anchor={btnRef.current} label={label} value={value} onChange={onChange} onClose={close} />
       )}
     </div>
   );
@@ -236,13 +308,16 @@ export function ColorField({ value, onChange, label }: { value: string; onChange
  */
 export function ColorCard({ title, value, onChange }: { title: string; value: string; onChange: (v: string) => void }) {
   const [open, setOpen] = useState(false);
-  const wrapRef = useColorPopoverDismiss(open, setOpen);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  // Stable so PickerPopover's listener effect doesn't re-bind on every emit-driven re-render.
+  const close = useCallback(() => setOpen(false), []);
   const valid = SAFE_COLOR.test(value);
 
   return (
-    <div ref={wrapRef} className="relative flex flex-col items-center gap-1.5 rounded-xl border border-white/60 bg-white/40 p-2.5 text-center">
+    <div className="flex flex-col items-center gap-1.5 rounded-xl border border-white/60 bg-white/40 p-2.5 text-center">
       <span className="text-xs font-bold text-slate-600">{title}</span>
       <button
+        ref={btnRef}
         type="button"
         aria-label={`Edit ${title}`}
         aria-expanded={open}
@@ -253,10 +328,8 @@ export function ColorCard({ title, value, onChange }: { title: string; value: st
         <span aria-hidden className="block h-full w-full rounded-lg" style={{ background: valid ? value : 'transparent' }} />
       </button>
       <span className="font-mono text-[11px] text-slate-500">{value || 'Default'}</span>
-      {open && (
-        <div role="dialog" aria-modal="true" aria-label={`${title} picker`} className="absolute left-0 top-full z-50 mt-1 rounded-xl border border-white/60 bg-white/95 p-3 shadow-2xl backdrop-blur-xl">
-          <ColorPicker value={value} onChange={onChange} />
-        </div>
+      {open && btnRef.current && (
+        <PickerPopover anchor={btnRef.current} label={title} value={value} onChange={onChange} onClose={close} />
       )}
     </div>
   );

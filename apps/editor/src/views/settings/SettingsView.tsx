@@ -237,8 +237,8 @@ export function SettingsView({
               at full height underneath; only the buttons are interactive. It stays visible while
               scrolling. Both are enabled ONLY when the ACTIVE section has unsaved changes, and they
               act on that section alone. Outcomes are reported via toasts. */}
-          <div className="pointer-events-none sticky top-16 z-10 flex h-0 justify-end">
-            <div className="pointer-events-auto mt-4 flex items-center gap-2">
+          <div className="pointer-events-none sticky top-20 z-10 flex h-0 justify-end">
+            <div className="pointer-events-auto mt-9 flex items-center gap-2">
               <motion.button
                 type="button"
                 whileTap={{ scale: 0.96 }}

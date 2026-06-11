@@ -135,40 +135,48 @@ const PLATFORM_DEFAULTS = `
 /* Foundational box model (kept unlayered so it always wins). */
 *, *::before, *::after { box-sizing: border-box; }
 
-/* Links take the surrounding text colour (no UA blue). Body-copy links keep the
-   default underline, but links inside navigation landmarks and buttons follow
-   their context (no underline) — authors opt back in per element with an
-   \`underline\` utility. */
-a { color: inherit; }
-:is(nav, [role="navigation"]) a, .btn { text-decoration: inherit; }
+/* Links inside navigation landmarks, daisyUI menus and buttons follow their
+   context (no underline) — body-copy links keep the default underline; authors
+   opt back in per element with an \`underline\` utility. (No global \`a{color}\`
+   rule: links use the theme/UA colour unless a class sets one.) */
+:is(nav, [role="navigation"]) a, .menu a, .btn { text-decoration: inherit; }
 
 /* Responsive media (icons are <svg>, sized by classes — intentionally untouched). */
 img, video { max-width: 100%; height: auto; }
 
 /* Thin, overlay-style scrollbars: transparent track, brand-primary thumb, no
-   stepper arrows. The thumb thickens and solidifies on hover / focus / drag; the
-   track width is held constant so the thumb widens WITHOUT reflowing content.
-   Firefox gets the thin + brand-coloured treatment (it has no steppers and cannot
-   widen on hover). */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--sw-color-primary, #4f46e5) 55%, transparent) transparent;
+   stepper arrows; the thumb thickens on hover/focus/drag without reflowing content
+   (constant track width + transparent border + background-clip:padding-box).
+   WebKit/Blink (Chrome/Safari/Edge) use the ::-webkit-scrollbar pseudo-elements;
+   Firefox has no pseudos so it uses the standard scrollbar-* props (and cannot
+   widen on hover). The two are mutually exclusive — a non-auto standard
+   scrollbar-color/width DISABLES the pseudos in Chrome 121+ — so the standard
+   props are confined to browsers WITHOUT the pseudos, and the root is reset back
+   to \`auto\` where the pseudos exist (daisyUI sets scrollbar-color on :root, which
+   would otherwise keep the page bar in standard mode and tint it grey). */
+@supports selector(::-webkit-scrollbar) {
+  html:root { scrollbar-color: auto; scrollbar-width: auto; }
+  *::-webkit-scrollbar { width: 11px; height: 11px; }
+  *::-webkit-scrollbar-track { background: transparent; }
+  *::-webkit-scrollbar-button { width: 0; height: 0; display: none; }
+  *::-webkit-scrollbar-corner { background: transparent; }
+  *::-webkit-scrollbar-thumb {
+    background-color: color-mix(in srgb, var(--sw-color-primary, #4f46e5) 55%, transparent);
+    border: 3.5px solid transparent;
+    background-clip: padding-box;
+    border-radius: 9999px;
+  }
+  *:hover::-webkit-scrollbar-thumb,
+  *:focus::-webkit-scrollbar-thumb,
+  *::-webkit-scrollbar-thumb:active {
+    background-color: var(--sw-color-primary, #4f46e5);
+    border-width: 2px;
+  }
 }
-*::-webkit-scrollbar { width: 11px; height: 11px; }
-*::-webkit-scrollbar-track { background: transparent; }
-*::-webkit-scrollbar-button { width: 0; height: 0; display: none; }
-*::-webkit-scrollbar-corner { background: transparent; }
-*::-webkit-scrollbar-thumb {
-  background-color: color-mix(in srgb, var(--sw-color-primary, #4f46e5) 55%, transparent);
-  border: 3.5px solid transparent;
-  background-clip: padding-box;
-  border-radius: 9999px;
-}
-*:hover::-webkit-scrollbar-thumb,
-*:focus::-webkit-scrollbar-thumb,
-*::-webkit-scrollbar-thumb:active {
-  background-color: var(--sw-color-primary, #4f46e5);
-  border-width: 2px;
+@supports not selector(::-webkit-scrollbar) {
+  * { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--sw-color-primary, #4f46e5) 55%, transparent) transparent; }
+  /* beat daisyUI's :root{scrollbar-color} so the page bar is brand-coloured too */
+  html:root { scrollbar-color: color-mix(in srgb, var(--sw-color-primary, #4f46e5) 55%, transparent) transparent; }
 }
 `.trim();
 

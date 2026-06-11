@@ -119,6 +119,12 @@ real link: <li class="dropdown dropdown-hover"><a href="{{sw-url path}}">{{label
 class="dropdown-content menu …">{{#each children}}…{{/each}}</ul></li> (avoid <details>/<summary>,
 which makes the parent a toggle, not navigable). Children need no own nav slots. Every new
 project already has the empty-slug "home" page.
+ACTIVE NAV ITEM: mark the current page in a menu with the {{sw-active <route>}} helper (a boolean,
+no JS; route must be root-relative). By default it matches the active TRAIL (a parent route stays
+active on its child pages); pass exact=true for the current page only. Inside {{#each nav.header}}
+the item route is \`path\`: <a href="{{sw-url path}}" class="{{#if (sw-active path)}}menu-active{{/if}}"
+{{#if (sw-active path exact=true)}}aria-current="page"{{/if}}>{{label}}</a> (omit aria-current off the
+current page).
 TEMPLATES: set page.template to "global:landing", "global:text", or a project template id
 (kind "template": { id, name, source }) — the page then renders the TEMPLATE's source and
 contributes ONLY its editable \`data\` (page.data) overrides; leave page.source unset.

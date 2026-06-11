@@ -135,6 +135,25 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         example: '<p>{{sw-truncate summary 80}}</p>',
       },
       {
+        id: 'h-active',
+        syntax: '{{#if (sw-active path)}}…{{/if}}',
+        name: 'sw-active',
+        keywords: 'nav navbar active current page highlight menu aria-current trail',
+        description:
+          'Highlights the current page in a menu — returns a BOOLEAN for use in #if, comparing a route to the page being rendered (no JS; resolved at build, works in the live preview too). By DEFAULT it matches the ACTIVE TRAIL: a parent/dropdown route stays active while you are on one of its children (so "/services" is active on "/services/web-design"). Pass exact=true to match the current page ONLY — use that for aria-current="page". Both routes are root-relative; the root "/" only matches itself. Pair it with the auto-nav: inside {{#each nav.header}} the item route is `path`.',
+        args: [
+          { name: 'path', desc: 'A root-relative route, e.g. "/about" or the nav item\'s `path`.' },
+          { name: 'exact', desc: 'Optional hash — exact=true matches the current page only (no ancestor/trail).' },
+        ],
+        example:
+          '{{#each nav.header}}\n' +
+          '  <li><a href="{{sw-url path}}"\n' +
+          '         class="{{#if (sw-active path)}}menu-active{{/if}}"\n' +
+          '         {{#if (sw-active path exact=true)}}aria-current="page"{{/if}}>{{label}}</a></li>\n' +
+          '{{/each}}',
+        note: 'The route must be root-relative (start with "/"). The trail default lights a dropdown parent while you are on a child; pass exact=true (unquoted, not "true") for a leaf-only highlight — and use it for aria-current="page", omitting the attribute on non-current items.',
+      },
+      {
         id: 'h-add-to-cart',
         syntax: '{{sw-add-to-cart sku= name= price= [image=] [label=] [class=]}}',
         name: 'sw-add-to-cart',

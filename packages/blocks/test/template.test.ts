@@ -217,6 +217,67 @@ describe('renderTemplate — curated helpers (extensibility)', () => {
   });
 });
 
+describe('renderTemplate — {{sw-active}} nav active state', () => {
+  // Render `{{#if (<expr>)}}A{{/if}}` against a page at `current`.
+  const at = (current: string, expr: string) => renderTemplate(`{{#if (${expr})}}A{{/if}}`, { page: { path: current } });
+
+  it('is active on the exact current page', () => {
+    expect(at('/about', "sw-active '/about'")).toBe('A');
+  });
+
+  it('lights the active trail (an ancestor route) by default', () => {
+    expect(at('/services/web', "sw-active '/services'")).toBe('A');
+  });
+
+  it('exact=true matches the current page ONLY (no trail)', () => {
+    expect(at('/services/web', "sw-active '/services' exact=true")).toBe('');
+    expect(at('/services', "sw-active '/services' exact=true")).toBe('A');
+  });
+
+  it('does not match unrelated routes or partial segments', () => {
+    expect(at('/about', "sw-active '/services'")).toBe('');
+    expect(at('/services', "sw-active '/serv'")).toBe(''); // /serv is not an ancestor of /services
+  });
+
+  it('root "/" matches only itself, never every page', () => {
+    expect(at('/', "sw-active '/'")).toBe('A');
+    expect(at('/about', "sw-active '/'")).toBe('');
+  });
+
+  it('ignores trailing slashes', () => {
+    expect(at('/about/', "sw-active '/about'")).toBe('A');
+    expect(at('/about', "sw-active '/about/'")).toBe('A');
+  });
+
+  it('is false with no current page or a non-string/empty target', () => {
+    expect(renderTemplate("{{#if (sw-active '/x')}}A{{/if}}", {})).toBe('');
+    expect(renderTemplate('{{#if (sw-active page.nope)}}A{{/if}}', { page: { path: '/x' } })).toBe('');
+  });
+
+  it('drives class (trail) + aria-current="page" (exact, omitted elsewhere) inside {{#each nav.header}}', () => {
+    const tpl =
+      '{{#each nav.header}}<a class="{{#if (sw-active path)}}on{{/if}}"' +
+      '{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{label}}</a>{{/each}}';
+    const out = renderTemplate(tpl, {
+      page: { path: '/services/web' },
+      nav: {
+        header: [
+          { label: 'Home', path: '/' },
+          { label: 'Services', path: '/services' }, // trail-active (ancestor) → class, no aria
+          { label: 'Web', path: '/services/web' }, // the exact page → class + aria-current="page"
+          { label: 'About', path: '/about' },
+        ],
+      },
+    });
+    expect(out).toBe(
+      '<a class="">Home</a>' +
+        '<a class="on">Services</a>' +
+        '<a class="on" aria-current="page">Web</a>' +
+        '<a class="">About</a>',
+    );
+  });
+});
+
 describe('renderTemplate — MINI SHOP helpers', () => {
   it('{{sw-add-to-cart}} emits an escaped add-to-cart button with a canonical numeric price', () => {
     const out = renderTemplate('{{sw-add-to-cart sku="w1" name="Widget" price="19.90"}}', {});

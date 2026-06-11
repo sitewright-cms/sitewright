@@ -497,9 +497,9 @@ export const api = {
   getDataset: (projectId: string, id: string) =>
     request<{ item: Dataset }>('GET', `/projects/${projectId}/content/dataset/${encodeURIComponent(id)}`),
   putDataset: (projectId: string, dataset: Dataset) =>
-    request<{ item: Dataset }>('PUT', `/projects/${projectId}/content/dataset/${dataset.id}`, dataset),
+    request<{ item: Dataset }>('PUT', `/projects/${projectId}/content/dataset/${encodeURIComponent(dataset.id)}`, dataset),
   deleteDataset: (projectId: string, id: string) =>
-    request<void>('DELETE', `/projects/${projectId}/content/dataset/${id}`),
+    request<void>('DELETE', `/projects/${projectId}/content/dataset/${encodeURIComponent(id)}`),
 
   // --- entries ---
   listEntries: (projectId: string) =>
@@ -509,7 +509,7 @@ export const api = {
   putEntry: (projectId: string, entry: Entry) =>
     request<{ item: Entry }>('PUT', `/projects/${projectId}/content/entry/${encodeURIComponent(entry.id)}`, entry),
   deleteEntry: (projectId: string, id: string) =>
-    request<void>('DELETE', `/projects/${projectId}/content/entry/${id}`),
+    request<void>('DELETE', `/projects/${projectId}/content/entry/${encodeURIComponent(id)}`),
 
   // --- media ---
   listMedia: (projectId: string, kind?: 'image' | 'file' | 'font') =>

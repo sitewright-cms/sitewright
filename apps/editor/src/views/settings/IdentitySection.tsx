@@ -153,6 +153,19 @@ export function IdentitySection({ form, patch, projectId }: { form: SettingsForm
           <code className="rounded bg-slate-100 px-1 py-0.5">{'{{ company.mapUrl }}'}</code> for an{' '}
           <code className="rounded bg-slate-100 px-1 py-0.5">&lt;iframe src&gt;</code> (e.g. a footer map).
         </p>
+        <SubLabel>Booking</SubLabel>
+        <Field
+          label="Booking URL"
+          value={form.bookingUrl}
+          onChange={(v) => patch({ bookingUrl: v })}
+          type="url"
+          placeholder="https://calendly.com/acme/intro"
+        />
+        <p className="mt-1 text-xs text-slate-500">
+          An external booking / reservation / appointment link (a scheduling service) — available in
+          templates as{' '}
+          <code className="rounded bg-slate-100 px-1 py-0.5">{'{{ company.bookingUrl }}'}</code> for a “Book now” button.
+        </p>
       </GlassCard>
 
       <GlassCard title="Social profiles" icon="🜨">

@@ -42,6 +42,8 @@ test('edit Corporate Identity + Website settings, save, and persist across reloa
   await page.getByRole('tab', { name: 'Corporate Identity' }).click();
   // Map embed URL (Contact & location).
   await page.getByLabel('Map embed URL').fill('https://www.google.com/maps/embed?pb=demo');
+  // Booking URL (external reservation/appointment service) — sits right below the Map field.
+  await page.getByLabel('Booking URL').fill('https://calendly.com/acme/intro');
   // Social profile: entering the URL auto-fills the name + icon from the host.
   await page.getByRole('button', { name: '+ Add profile' }).click();
   await page.getByLabel('Social URL 1', { exact: true }).fill('https://wa.me/15551234');
@@ -70,6 +72,7 @@ test('edit Corporate Identity + Website settings, save, and persist across reloa
   await expect(page.getByLabel('brand-teal 1', { exact: true })).toHaveValue('brand-teal');
   await expect(page.getByLabel('#0d9488 1', { exact: true })).toHaveValue('#0d9488');
   await expect(page.getByLabel('Map embed URL')).toHaveValue('https://www.google.com/maps/embed?pb=demo');
+  await expect(page.getByLabel('Booking URL')).toHaveValue('https://calendly.com/acme/intro');
   await expect(page.getByLabel('Social URL 1', { exact: true })).toHaveValue('https://wa.me/15551234');
   await expect(page.getByLabel('Social name 1', { exact: true })).toHaveValue('WhatsApp');
   await expect(page.getByLabel('Social icon 1', { exact: true })).toHaveValue('brand:whatsapp');

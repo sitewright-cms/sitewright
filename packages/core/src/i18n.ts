@@ -1,6 +1,6 @@
 // Multilingual content model (document-level, code-inheritance) — see
 // docs/i18n-content-model.md. A locale variant of a page is itself a Page (own
-// path/title/seo/data) linked to its siblings by `translationGroup`. By default a
+// path/title/description/data) linked to its siblings by `translationGroup`. By default a
 // variant INHERITS the main language's page code (carries no `source`/`template`,
 // resolves the owner's via `resolveCodeRef`); it can instead FORK its own `source`
 // or reference a `template`. Datasets are duplicated per locale (`<slug>-<locale>`)
@@ -96,7 +96,7 @@ export function translationsOf(
 //                layout once → every inheriting locale follows, no sync).
 //   - fork     → carries its own `source` (per-locale layout, edited freely).
 //   - template → references a project/global `template`.
-// Only `data` (+ path/title/seo/nav) differs per locale in inherit mode.
+// Only `data` (+ path/title/description/image/nav) differs per locale in inherit mode.
 // See docs/i18n-content-model.md.
 // ---------------------------------------------------------------------------
 
@@ -190,7 +190,7 @@ export function independentVariants(owner: Page, pages: readonly Page[]): Page[]
 // Locale scaffolding (duplicate the default-locale pages into a new locale).
 // ---------------------------------------------------------------------------
 
-/** Deep-clone a JSON-safe sub-value (page.data/seo/nav/collection/root are all JSON). */
+/** Deep-clone a JSON-safe sub-value (page.data/nav/collection/root are all JSON). */
 function cloneJson<T>(value: T): T {
   return value === undefined ? value : (JSON.parse(JSON.stringify(value)) as T);
 }
@@ -208,7 +208,7 @@ function localeHomeFor(pages: readonly Page[], locale: string, defaultLocale: st
  * parent against `pages` (existing variants): the home's variant nests under the ROOT
  * home (route `/<locale>`); every other variant nests under its parent's variant in the
  * same locale (route `/<locale>/…`), falling back to the locale home. The variant copies
- * `data`/`seo`/`nav`/`order`/`collection`/`status`/`title` but OMITS `source`/`template`
+ * `data`/`description`/`image`/`canonical`/`noindex`/`nav`/`order`/`collection`/`status`/`title` but OMITS `source`/`template`
  * (so its code follows the owner). `id` follows the `<ownerId>-<locale>` convention,
  * uniquified against existing ids.
  */
@@ -253,7 +253,11 @@ export function buildLocaleVariant(
   };
   if (parent !== undefined) variant.parent = parent;
   if (owner.status !== undefined) variant.status = owner.status;
-  if (owner.seo !== undefined) variant.seo = cloneJson(owner.seo);
+  // SEO/meta fields (flattened onto the page) — inherited by the translation variant.
+  if (owner.description !== undefined) variant.description = owner.description;
+  if (owner.image !== undefined) variant.image = owner.image;
+  if (owner.canonical !== undefined) variant.canonical = owner.canonical;
+  if (owner.noindex !== undefined) variant.noindex = owner.noindex;
   if (owner.nav !== undefined) variant.nav = cloneJson(owner.nav);
   if (owner.order !== undefined) variant.order = owner.order;
   if (owner.data !== undefined) variant.data = cloneJson(owner.data);

@@ -1,9 +1,8 @@
 import { z } from 'zod';
 import { PageNodeSchema } from './block.js';
-import { SeoSchema } from './seo.js';
 import { TemplateRefSchema } from './template.js';
 import { LocaleSchema } from './project.js';
-import { IdSchema, KeyNameSchema, PageSlugSchema, SlugSchema } from './primitives.js';
+import { AssetRefSchema, IdSchema, KeyNameSchema, PageSlugSchema, SlugSchema } from './primitives.js';
 import { JsonObjectStoreSchema } from './json-store.js';
 
 const COLLECTION_PARAM = /\[[A-Za-z0-9_]+\]/;
@@ -31,7 +30,22 @@ const PageObject = z
      * API/MCP) keep working unchanged. `publishedPages` keys off `!== 'draft'`.
      */
     status: z.enum(['draft', 'published']).optional(),
-    seo: SeoSchema.optional(),
+    // SEO/meta fields, flattened onto the page (the retired `page.seo` object — see migrateSeoIntoPage).
+    // Rendered into the <head> (meta description, og:image, canonical, robots noindex) and bound in
+    // templates as {{ page.description }} / {{ page.image }}. There is no separate SEO title — the page
+    // title (above) IS the document/og title.
+    /** Meta description (also og:description). */
+    description: z.string().max(1000).optional(),
+    /** OG/share image — an http(s) URL or root-relative path (never a `javascript:`/`data:` URI). */
+    image: AssetRefSchema.optional(),
+    /** Canonical URL — an absolute http(s) URL. */
+    canonical: z
+      .string()
+      .url()
+      .refine((v) => /^https?:\/\//i.test(v), 'must be an absolute http(s) URL')
+      .optional(),
+    /** Exclude from search indexing + the sitemap (`<meta name="robots" content="noindex">`). */
+    noindex: z.boolean().optional(),
     /**
      * Code-first template reference: when set, this page renders the TEMPLATE's
      * Handlebars source (a project `template` entity, or a built-in `global:<key>`),
@@ -54,7 +68,7 @@ const PageObject = z
     order: z.number().int().min(0).max(100_000).optional(),
     /**
      * The page's language. Absent → the project's default locale. A LOCALE VARIANT
-     * of a page is itself a Page with its own `path`/`title`/`seo`/`data`; it
+     * of a page is itself a Page with its own `path`/`title`/`description`/`data`; it
      * usually shares structure by referencing the same `template` (template-reuse),
      * or forks its own `source` for a per-locale layout variation. See
      * docs/i18n-content-model.md.
@@ -193,12 +207,35 @@ export function migrateRichContentIntoData(value: unknown): unknown {
 }
 
 /**
- * Apply every retired-store migration to a raw page value (legacy `content` + `richContent` → `data`).
- * The single entry point used by both `PageSchema` (on parse) AND the raw `list()` read paths (preview
- * + publish + export), which read rows without parsing and so must migrate explicitly. Idempotent.
+ * Migrate the RETIRED `page.seo` object onto the page: `seo.description` → `description`,
+ * `seo.ogImage` → `image`, `seo.canonical` → `canonical`, `seo.noindex` → `noindex`; `seo.title` is
+ * DROPPED (the page title is the single document/og title). A top-level field already present wins on a
+ * collision. Then `seo` is removed. Idempotent; runs on every page parse so stored pages migrate on the
+ * next read/write. Non-object input or a page with no `seo` passes straight through.
+ */
+export function migrateSeoIntoPage(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const v = value as Record<string, unknown>;
+  const seo = v.seo;
+  if (!seo || typeof seo !== 'object' || Array.isArray(seo)) return value; // nothing to migrate
+  const s = seo as Record<string, unknown>;
+  const out: Record<string, unknown> = { ...v };
+  if (s.description !== undefined && out.description === undefined) out.description = s.description;
+  if (s.ogImage !== undefined && out.image === undefined) out.image = s.ogImage;
+  if (s.canonical !== undefined && out.canonical === undefined) out.canonical = s.canonical;
+  if (s.noindex !== undefined && out.noindex === undefined) out.noindex = s.noindex;
+  delete out.seo; // seo.title is intentionally not carried over
+  return out;
+}
+
+/**
+ * Apply every retired-store migration to a raw page value (legacy `content` + `richContent` → `data`,
+ * and the `seo` object → flat page fields). The single entry point used by both `PageSchema` (on parse)
+ * AND the raw `list()` read paths (preview + publish + export), which read rows without parsing and so
+ * must migrate explicitly. Idempotent.
  */
 export function migratePageStores(value: unknown): unknown {
-  return migrateRichContentIntoData(migrateContentIntoData(value));
+  return migrateSeoIntoPage(migrateRichContentIntoData(migrateContentIntoData(value)));
 }
 
 export const PageSchema = z.preprocess(migratePageStores, PageObject);

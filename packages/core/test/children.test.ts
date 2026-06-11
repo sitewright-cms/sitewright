@@ -10,11 +10,11 @@ describe('childrenOf', () => {
     page({ id: 'blog', path: 'blog', title: 'Blog' }),
     page({
       id: 'a2', path: 'second', parent: 'blog', order: 2, title: 'Second',
-      seo: { description: 'Two', ogImage: '/two.jpg', title: 'Second SEO' }, data: { article_title: 'Two!' },
+      description: 'Two', image: '/two.jpg', data: { article_title: 'Two!' },
     }),
     page({
       id: 'a1', path: 'first', parent: 'blog', order: 1, title: 'First', status: 'draft',
-      seo: { description: 'One', ogImage: '/one.jpg' }, nav: { title: 'First (nav)', slots: ['header'] }, data: { article_title: 'One!' },
+      description: 'One', image: '/one.jpg', nav: { title: 'First (nav)', slots: ['header'] }, data: { article_title: 'One!' },
     }),
     page({ id: 'elsewhere', path: 'x', parent: 'home', title: 'Elsewhere' }),
     page({ id: 'product', path: '[slug]', parent: 'blog', title: 'Product', collection: { dataset: 'products', param: 'slug' } }),
@@ -25,10 +25,10 @@ describe('childrenOf', () => {
     expect(kids.map((k) => k.slug)).toEqual(['first', 'second']); // order 1, 2 — not the collection page
     expect(kids[0]).toMatchObject({
       id: 'a1', title: 'First', slug: 'first', path: '/blog/first',
-      description: 'One', image: '/one.jpg', seoTitle: '', navTitle: 'First (nav)',
+      description: 'One', image: '/one.jpg', navTitle: 'First (nav)',
       status: 'draft', order: 1, data: { article_title: 'One!' },
     });
-    expect(kids[1]).toMatchObject({ slug: 'second', path: '/blog/second', description: 'Two', image: '/two.jpg', seoTitle: 'Second SEO', status: 'published' });
+    expect(kids[1]).toMatchObject({ slug: 'second', path: '/blog/second', description: 'Two', image: '/two.jpg', status: 'published' });
   });
 
   it('excludes collection pages and pages parented elsewhere', () => {
@@ -37,10 +37,10 @@ describe('childrenOf', () => {
     expect(kids.find((k) => k.id === 'elsewhere')).toBeUndefined(); // parent !== blog
   });
 
-  it('defaults missing fields (no seo/data/nav/status) sanely', () => {
+  it('defaults missing fields (no description/image/data/nav/status) sanely', () => {
     const ps = [page({ id: 'parent', path: 'p', title: 'Parent' }), page({ id: 'c', path: 'c', parent: 'parent', title: 'Child' })];
     expect(childrenOf(ps, ps[0]!, 'en')[0]).toMatchObject({
-      description: '', image: '', seoTitle: '', noindex: false, navTitle: 'Child', status: 'published', order: 0, data: {},
+      description: '', image: '', noindex: false, navTitle: 'Child', status: 'published', order: 0, data: {},
     });
   });
 

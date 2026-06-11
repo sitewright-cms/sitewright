@@ -303,7 +303,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       mobile: buildNav(pubBundle.pages, 'mobile'),
     };
     // Multilingual model (see docs/i18n-content-model.md): a locale VARIANT of a
-    // page is itself a Page (own path/title/seo/content), so each route renders
+    // page is itself a Page (own path/title/description/data), so each route renders
     // ONCE at its own path. The page's `locale` drives `<html lang>` + which
     // dataset variant (`<slug>_<locale>`) its bindings resolve to; `translationGroup`
     // drives the hreflang alternates. No per-locale loop / tree overrides.
@@ -466,7 +466,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         writtenPaths.add(full);
         // Sitemap: indexable pages only (skip noindex), absolute URLs. lastmod is a
         // W3C date (YYYY-MM-DD) — the subset crawlers reliably accept.
-        if (siteUrl && !page.seo?.noindex) {
+        if (siteUrl && !page.noindex) {
           sitemapUrls.push({ loc: siteUrlFor(siteUrl, outSlug), lastmod: publishedAt.slice(0, 10) });
         }
         // eslint-disable-next-line security/detect-non-literal-fs-filename -- confined to tmp (checked above)
@@ -484,7 +484,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         const group = translationsOf(pubBundle.pages, page, defaultLocale);
         const xDefault = group.find((m) => m.locale === defaultLocale);
         const alternates =
-          siteUrl && group.length > 1 && !page.seo?.noindex
+          siteUrl && group.length > 1 && !page.noindex
             ? [
                 ...group.map((m) => ({ hreflang: m.locale, href: siteUrlFor(siteUrl, slugForPath(m.path)) })),
                 ...(xDefault ? [{ hreflang: 'x-default', href: siteUrlFor(siteUrl, slugForPath(xDefault.path)) }] : []),
@@ -516,8 +516,12 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // them (keeps each child's `data` off the render unless used). Published subset → no drafts.
           page: {
             title: page.title,
-            // SEO metadata ({{page.seo.description}} / {{page.seo.ogImage}}) + the {{sw-control}} current value.
-            seo: page.seo,
+            // Flattened SEO/meta fields: bound as {{page.description}} / {{page.image}} and read by the
+            // {{sw-control}} current value (canonical/noindex exposed too, for completeness).
+            description: page.description,
+            image: page.image,
+            canonical: page.canonical,
+            noindex: page.noindex,
             // Own segment (authored `path` field); `path` above is the full computed route.
             slug: page.path,
             path: pageFullPath,
@@ -606,13 +610,12 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // this too) so the export is portable + self-hosted (never a font CDN).
           mediaUrl: (asset, file) => `${siteRoot}${ASSET_DIR}/${asset.id}/${file}`,
           seo: {
-            // `||` not `??`: an empty SEO title must fall back to the page title.
-            title: page.seo?.title || page.title,
-            description: page.seo?.description,
-            // og:image falls back to the identity image; favicon to icon then favicon.
-            ogImage: rel(page.seo?.ogImage ?? identity.image),
-            url: page.seo?.canonical,
-            noindex: page.seo?.noindex,
+            // The page title IS the document/og title (renderDocument resolves it from page.title).
+            description: page.description,
+            // og:image falls back to the company image; favicon to icon then favicon.
+            image: rel(page.image ?? identity.image),
+            url: page.canonical,
+            noindex: page.noindex,
             themeColor: identity.colors.primary,
             favicon: rel(identity.icon ?? identity.favicon),
             alternates,

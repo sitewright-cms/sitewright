@@ -211,13 +211,13 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
       },
       {
         id: 'h-control',
-        syntax: '{{sw-control target="page.title|seo.ogImage|seo.description|<page.data key>" as="text|textarea|url|image|file|folder|dataset" label="…"}}',
+        syntax: '{{sw-control target="page.title|page.image|page.description|<page.data key>" as="text|textarea|url|image|file|folder|dataset" label="…"}}',
         name: 'sw-control',
         keywords: 'control settings client editor title og image folder dataset content directive',
         description:
-          'A CONTENT-EDITOR-ONLY control: drops a chip (shown ONLY in the Content Editor, never on the published site) that lets a client set a whitelisted PAGE value — the page title, the SEO description, or the OG image — or a page.data value, from inside the live preview. Pair it with other helpers: set a FOLDER name (as="folder") an {{#sw-folder}} gallery reads, or a DATASET name (as="dataset") an {{#each}} loops.',
+          'A CONTENT-EDITOR-ONLY control: drops a chip (shown ONLY in the Content Editor, never on the published site) that lets a client set a whitelisted PAGE value — the page title, the meta description, or the OG/share image — or a page.data value, from inside the live preview. Pair it with other helpers: set a FOLDER name (as="folder") an {{#sw-folder}} gallery reads, or a DATASET name (as="dataset") an {{#each}} loops.',
         args: [
-          { name: 'target', desc: 'What to set: page.title, seo.ogImage, seo.description, or a page.data key/path (e.g. "gallery_folder" or "data.article.title").' },
+          { name: 'target', desc: 'What to set: page.title, page.image, page.description, or a page.data key/path (e.g. "gallery_folder" or "data.article.title").' },
           { name: 'as', desc: 'The input: text (default), textarea, url, image (file picker, images), file (file picker, any uploaded file), folder (a dropdown of media folders), or dataset (a dropdown of datasets).' },
           { name: 'label', desc: 'Optional chip label (defaults to the target).' },
         ],
@@ -458,7 +458,7 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         name: 'page.children',
         keywords: 'child pages subpages blog overview index grid list parent tree',
         description:
-          'This page’s direct CHILD pages (those nested under it in the pages tree), as an ARRAY — for a blog overview that lists its article pages. Each child is flattened: .title, .path (its full route — use {{sw-url path}}), .slug, .description (its SEO description), .image (its SEO OG image), .seoTitle, .noindex, .navTitle, .status, .locale, .order, and .data (the child’s own page.data object). Same-locale children only, ordered like the pages list, capped at 500. Children are real sub-pages (set a page’s Parent in its settings) — distinct from dataset collection pages.',
+          'This page’s direct CHILD pages (those nested under it in the pages tree), as an ARRAY — for a blog overview that lists its article pages. Each child is flattened: .title, .path (its full route — use {{sw-url path}}), .slug, .description (its meta description), .image (its OG/share image), .noindex, .navTitle, .status, .locale, .order, and .data (the child’s own page.data object). Same-locale children only, ordered like the pages list, capped at 500. Children are real sub-pages (set a page’s Parent in its settings) — distinct from dataset collection pages.',
         example:
           '{{#each page.children}}\n' +
           '  <a class="card" href="{{sw-url path}}">\n' +

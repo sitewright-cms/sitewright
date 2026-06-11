@@ -11,7 +11,6 @@ const EXPECTED_SCHEMAS = [
   'PageSchema',
   'PartialSchema',
   'ProjectSchema',
-  'SeoSchema',
   'FieldTypeSchema',
   'ProjectSettingsSchema',
 ] as const;

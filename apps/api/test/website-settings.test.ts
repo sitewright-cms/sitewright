@@ -134,8 +134,8 @@ describe('website settings → publish', () => {
     const proj = client.project(projectId);
     expect((await proj.putContent('settings', 'settings', { brand: { name: 'ClassCar', colors: { primary: '#e11' } }, settings: { defaultLocale: 'en', locales: ['en'] } })).statusCode).toBe(200);
     const node = { id: 'r', type: 'Section' };
-    await proj.putContent('page', 'a1', { id: 'a1', path: 'first', parent: 'home', title: 'First', order: 1, seo: { description: 'One' }, data: { tag: 'x' }, root: node });
-    await proj.putContent('page', 'a2', { id: 'a2', path: 'second', parent: 'home', title: 'Second', order: 2, seo: { description: 'Two' }, data: { tag: 'y' }, root: node });
+    await proj.putContent('page', 'a1', { id: 'a1', path: 'first', parent: 'home', title: 'First', order: 1, description: 'One', data: { tag: 'x' }, root: node });
+    await proj.putContent('page', 'a2', { id: 'a2', path: 'second', parent: 'home', title: 'Second', order: 2, description: 'Two', data: { tag: 'y' }, root: node });
     // A DRAFT child must NOT appear in the published overview (parity with nav/sitemap).
     await proj.putContent('page', 'a3', { id: 'a3', path: 'third', parent: 'home', title: 'DraftArticle', status: 'draft', order: 3, root: node });
     expect((await proj.putContent('page', 'home', {
@@ -145,7 +145,7 @@ describe('website settings → publish', () => {
     const html = await publishAndFetchHome();
     expect(html).toContain('<h3>First</h3>');
     expect(html).toContain('<h3>Second</h3>');
-    expect(html).toContain('<p>One</p>'); // flattened seo.description
+    expect(html).toContain('<p>One</p>'); // the child's page.description
     expect(html).toContain('<span>x</span>'); // the child's page.data, read in the loop
     expect(html.indexOf('First')).toBeLessThan(html.indexOf('Second')); // ordered by `order`
     expect(html).toContain('<a href="first">'); // {{sw-url path}} → portable relative link to the child page

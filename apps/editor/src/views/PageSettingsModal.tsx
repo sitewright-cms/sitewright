@@ -32,8 +32,10 @@ export interface PageSettingsValues {
   template: string;
   /** The page's language ('' = the project default locale). */
   locale: string;
-  seoDescription: string;
-  seoOgImage: string;
+  /** Meta description (`page.description`). */
+  description: string;
+  /** Open Graph / share image (`page.image`). */
+  image: string;
   /**
    * For a TRANSLATED page only: how it gets its code — `inherit` (follows the main
    * language, no own code), `fork` (its own editable source), or `template`. Undefined on a
@@ -57,8 +59,8 @@ export function pageSettingsFromPage(page: Page): PageSettingsValues {
     parent: page.parent ?? '',
     template: page.template ?? '',
     locale: page.locale ?? '',
-    seoDescription: page.seo?.description ?? '',
-    seoOgImage: page.seo?.ogImage ?? '',
+    description: page.description ?? '',
+    image: page.image ?? '',
   };
 }
 
@@ -72,16 +74,6 @@ export function applyPageSettings(page: Page, v: PageSettingsValues): Page {
         ...(v.navDropdown ? { dropdown: true } : {}),
       }
     : undefined;
-  // Pure construction (no delete-mutation): the fields this modal does NOT manage
-  // (title/canonical/noindex) pass through; the managed ones come only from the form.
-  const { description: droppedDescription, ogImage: droppedOgImage, ...seoRest } = page.seo ?? {};
-  void droppedDescription;
-  void droppedOgImage;
-  const seo = {
-    ...seoRest,
-    ...(v.seoDescription ? { description: v.seoDescription } : {}),
-    ...(v.seoOgImage ? { ogImage: v.seoOgImage } : {}),
-  };
   // Code source: for a translated page the `codeMode` control decides whether it inherits the
   // main language's code (no own source/template), forks its own source, or uses a template.
   // For a main-language/standalone page `codeMode` is undefined → keep its source, apply the
@@ -99,6 +91,8 @@ export function applyPageSettings(page: Page, v: PageSettingsValues): Page {
   } else if (v.codeMode === 'template') {
     source = undefined;
   }
+  // The flat SEO fields this modal manages: empty → dropped (undefined). The fields it does NOT
+  // manage (canonical/noindex) pass through untouched via the page spread.
   return {
     ...page, // preserves translationGroup (set by "Add translation", not edited here)
     title: v.title,
@@ -109,7 +103,8 @@ export function applyPageSettings(page: Page, v: PageSettingsValues): Page {
     source,
     template,
     locale: v.locale || undefined,
-    seo: Object.keys(seo).length > 0 ? seo : undefined,
+    description: v.description || undefined,
+    image: v.image || undefined,
   };
 }
 
@@ -280,15 +275,15 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
             rows={2}
             maxLength={1000}
             placeholder="Shown in search results — one or two crisp sentences."
-            value={v.seoDescription}
-            onChange={(e) => patch({ seoDescription: e.target.value })}
+            value={v.description}
+            onChange={(e) => patch({ description: e.target.value })}
           />
         </label>
 
         <AssetField
           label="Image (Open Graph)"
-          value={v.seoOgImage}
-          onChange={(val) => patch({ seoOgImage: val })}
+          value={v.image}
+          onChange={(val) => patch({ image: val })}
           projectId={projectId}
           placeholder="https://… or /media/… (used in link previews)"
         />

@@ -115,12 +115,12 @@ describe('company → schema.org + favicon on publish', () => {
     });
   });
 
-  it('falls back to company.image for og:image, and a page seo.ogImage overrides it', async () => {
+  it('falls back to company.image for og:image, and a page image overrides it', async () => {
     await putSettings({ legalName: 'ClassCar', image: '/brand/og.png' });
     expect(await publishAndFetchHome()).toContain('property="og:image" content="brand/og.png"');
 
-    // A page-level og image takes precedence over the company image.
-    const withPageOg = { ...home, seo: { ogImage: '/page/og.png' } };
+    // A page-level image takes precedence over the company image.
+    const withPageOg = { ...home, image: '/page/og.png' };
     expect((await client.project(projectId).putContent('page', 'home', withPageOg)).statusCode).toBe(200);
     const html = await publishAndFetchHome();
     expect(html).toContain('property="og:image" content="page/og.png"');

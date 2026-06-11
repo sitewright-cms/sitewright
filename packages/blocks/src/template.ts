@@ -521,7 +521,7 @@ function createInstance(): typeof Handlebars {
     return new Handlebars.SafeString(out);
   });
 
-  // {{sw-control target="page.title|seo.ogImage|seo.description|<page.data key>" as="text|textarea|url|image|folder|dataset" label="…"}}
+  // {{sw-control target="page.title|page.image|page.description|<page.data key>" as="text|textarea|url|image|folder|dataset" label="…"}}
   // A content-editor-ONLY control: renders an editable chip (shown only in content mode, wired by the
   // preview bridge; STRIPPED on publish by resolveDirectives) that sets a whitelisted page attribute or
   // a page.data value from inside the preview — e.g. the page title, the OG image, a gallery FOLDER name

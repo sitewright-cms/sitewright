@@ -30,7 +30,7 @@ test('publish emits sitemap.xml, robots.txt, and redirect rules', async ({ playw
     data: { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' } },
   });
   await api.put(`${base}/content/page/secret`, {
-    data: { id: 'secret', path: 'secret', title: 'Secret', seo: { noindex: true }, root: { id: 'r2', type: 'Section' } },
+    data: { id: 'secret', path: 'secret', title: 'Secret', noindex: true, root: { id: 'r2', type: 'Section' } },
   });
 
   expect((await api.post(`${base}/publish`)).status()).toBe(200);

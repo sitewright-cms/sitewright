@@ -5,12 +5,13 @@ import { escapeAttr } from './escape.js';
 
 /** Head metadata for a page (mapped from page SEO + company/website data). */
 export interface SeoMeta {
-  /** Document title (already resolved: page SEO title or page title). */
+  /** Document title (already resolved: the page title). */
   title: string;
   description?: string;
   /** Open Graph type (defaults to `website`). */
   ogType?: string;
-  ogImage?: string;
+  /** OG/share image (`page.image`, else the company image). */
+  image?: string;
   /** Canonical / og:url — should be an absolute URL when available. */
   url?: string;
   /** `theme-color` meta (company primary color). */
@@ -60,12 +61,12 @@ export function metaTags(seo: SeoMeta): string {
   meta('property', 'og:type', seo.ogType ?? 'website');
   meta('property', 'og:title', seo.title);
   if (seo.description) meta('property', 'og:description', seo.description);
-  if (seo.ogImage) meta('property', 'og:image', seo.ogImage);
+  if (seo.image) meta('property', 'og:image', seo.image);
   if (seo.url) {
     meta('property', 'og:url', seo.url);
     tags.push(`<link rel="canonical" href="${escapeAttr(seo.url)}" />`);
   }
-  meta('name', 'twitter:card', seo.ogImage ? 'summary_large_image' : 'summary');
+  meta('name', 'twitter:card', seo.image ? 'summary_large_image' : 'summary');
   if (seo.themeColor) meta('name', 'theme-color', seo.themeColor);
   if (seo.favicon) tags.push(`<link rel="icon" href="${escapeAttr(seo.favicon)}" />`);
   // hreflang alternates (attribute-escaped; href is an absolute URL built from the

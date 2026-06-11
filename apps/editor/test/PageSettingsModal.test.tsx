@@ -11,7 +11,9 @@ const base: Page = {
   // schema), so the round-trip normalizes to the explicit form.
   status: 'published',
   root: { id: 'r', type: 'Section' },
-  seo: { title: 'SEO title', noindex: true, description: 'old description' },
+  // Flat SEO fields: description/image are managed by the modal; noindex is NOT (it passes through).
+  noindex: true,
+  description: 'old description',
   nav: { slots: ['header'], order: 2, dropdown: true },
   parent: 'home',
   template: 'global:text',
@@ -22,32 +24,36 @@ describe('pageSettingsFromPage ⇄ applyPageSettings', () => {
     expect(applyPageSettings(base, pageSettingsFromPage(base))).toEqual(base);
   });
 
-  it('drops cleared fields and keeps unmanaged SEO fields intact', () => {
+  it('drops cleared SEO fields and leaves unmanaged page fields intact', () => {
     const values = {
       ...pageSettingsFromPage(base),
-      seoDescription: '', // cleared
-      seoOgImage: 'https://x.test/og.png', // set
+      description: '', // cleared
+      image: 'https://x.test/og.png', // set
       parent: '', // cleared
       template: '', // cleared
       navSlots: [], // cleared → whole nav object drops (incl. dropdown)
     };
     const next = applyPageSettings(base, values);
-    // Unmanaged SEO fields survive; the cleared description is GONE (not '').
-    expect(next.seo).toEqual({ title: 'SEO title', noindex: true, ogImage: 'https://x.test/og.png' });
+    // The cleared description is GONE (not ''); the set image persists.
+    expect(next.description).toBeUndefined();
+    expect(next.image).toBe('https://x.test/og.png');
+    // The unmanaged flat page field (noindex) passes through untouched.
+    expect(next.noindex).toBe(true);
     expect(next.parent).toBeUndefined();
     expect(next.template).toBeUndefined();
     expect(next.nav).toBeUndefined();
     // The input page was not mutated (immutability contract).
-    expect(base.seo?.description).toBe('old description');
+    expect(base.description).toBe('old description');
     expect(base.nav?.dropdown).toBe(true);
   });
 
-  it('emits dropdown only when true and an entirely-empty seo as undefined', () => {
+  it('emits dropdown only when true and drops empty SEO fields', () => {
     const plain: Page = { id: 'p', path: 'p', title: 'P', root: { id: 'r', type: 'Section' } };
     const values = { ...pageSettingsFromPage(plain), navSlots: ['header' as const], navDropdown: false };
     const next = applyPageSettings(plain, values);
     expect(next.nav).toEqual({ slots: ['header'], order: 0 }); // no `dropdown: false` noise
-    expect(next.seo).toBeUndefined(); // nothing set → no empty object persisted
+    expect(next.description).toBeUndefined(); // nothing set → no empty field persisted
+    expect(next.image).toBeUndefined();
   });
 
   it('round-trips locale and preserves the translation group it does not edit', () => {

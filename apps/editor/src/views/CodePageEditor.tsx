@@ -258,10 +258,19 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
     if (!t) return;
     // Normalize `as` (it arrives raw from the iframe postMessage) so the URL-sanitize gate is symmetric.
     const a = normalizeControlAs(as);
-    const v = a === 'image' || a === 'file' || a === 'url' || (t.kind === 'seo' && t.field === 'ogImage') ? safeUrl(value, '') : value;
-    if (t.kind === 'title') setSettings((s) => ({ ...s, title: v }));
-    else if (t.kind === 'seo') setSettings((s) => (t.field === 'ogImage' ? { ...s, seoOgImage: v } : { ...s, seoDescription: v }));
-    else setPageData((prev) => pageDataSet(prev, t.key, v));
+    // `page.image` is a URL field regardless of the `as` hint, so scheme-sanitize it too.
+    const v = a === 'image' || a === 'file' || a === 'url' || (t.kind === 'page' && t.field === 'image') ? safeUrl(value, '') : value;
+    // A page field maps 1:1 onto the flat settings form values (title / description / image).
+    if (t.kind === 'page') {
+      const field = t.field;
+      setSettings((s) =>
+        field === 'title'
+          ? { ...s, title: v }
+          : field === 'description'
+            ? { ...s, description: v }
+            : { ...s, image: v },
+      );
+    } else setPageData((prev) => pageDataSet(prev, t.key, v));
   }
   const applyControlEditRef = useRef(applyControlEdit);
   applyControlEditRef.current = applyControlEdit;

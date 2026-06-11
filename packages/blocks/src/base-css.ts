@@ -135,10 +135,14 @@ const PLATFORM_DEFAULTS = `
 /* Foundational box model (kept unlayered so it always wins). */
 *, *::before, *::after { box-sizing: border-box; }
 
-/* Links inside navigation landmarks, daisyUI menus and buttons follow their
-   context (no underline) — body-copy links keep the default underline; authors
-   opt back in per element with an \`underline\` utility. (No global \`a{color}\`
-   rule: links use the theme/UA colour unless a class sets one.) */
+/* Links inherit their surrounding text colour (never the unbranded UA blue) — a
+   universal default for a code-first/agent CMS: opt into a colour per element with
+   a utility class (\`text-primary\`, daisyUI \`.link-primary\`) or CSS. (Colour is not
+   a safe link affordance anyway — the underline is.) Separately, links inside
+   navigation landmarks, daisyUI menus and buttons drop the underline (their shape
+   already signals interactivity); body-copy links keep the default underline,
+   removable per element with a no-underline utility. */
+a { color: inherit; }
 :is(nav, [role="navigation"]) a, .menu a, .btn { text-decoration: inherit; }
 
 /* Responsive media (icons are <svg>, sized by classes — intentionally untouched). */

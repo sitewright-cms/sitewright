@@ -92,6 +92,17 @@ describe('ColorField (swatch + popover)', () => {
     fireEvent.change(screen.getByLabelText('HEX'), { target: { value: '#abcdef' } });
     expect(spy).toHaveBeenLastCalledWith('#abcdef');
   });
+
+  it('stays open while interacting inside the picker but closes on an outside pointerdown', () => {
+    // The panel is portalled out of the trigger's subtree, so dismissal must treat a pointerdown
+    // inside the panel as "inside" — otherwise picking a color would slam the popover shut.
+    render(<ColorField value="#0ea5e9" onChange={() => {}} label="Primary Color" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Primary Color' }));
+    fireEvent.pointerDown(screen.getByLabelText('HEX'));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
 });
 
 describe('ColorCard (brand-color card)', () => {
@@ -111,5 +122,16 @@ describe('ColorCard (brand-color card)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Edit Accent' }));
     fireEvent.change(screen.getByLabelText('HEX'), { target: { value: '#abcdef' } });
     expect(spy).toHaveBeenLastCalledWith('#abcdef');
+  });
+
+  it('portals the picker to document.body with fixed positioning (escapes the card stacking context)', () => {
+    // The fix: an in-flow z-50 panel was painted under the next frosted/transformed section. The
+    // panel must live on document.body — outside the card — and be fixed-positioned.
+    const { container } = render(<ColorCard title="Primary" value="#0ea5e9" onChange={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Primary' }));
+    const dialog = screen.getByRole('dialog', { name: 'Primary picker' });
+    expect(container.contains(dialog)).toBe(false);
+    expect(dialog.parentElement).toBe(document.body);
+    expect((dialog as HTMLElement).style.position).toBe('fixed');
   });
 });

@@ -50,6 +50,20 @@ describe('validateProject', () => {
     expect(validateProject(validBundle())).toEqual([]);
   });
 
+  it('does not flag duplicate_page_path for multiple slugless link placeholders (ids still checked)', () => {
+    const bundle = validBundle();
+    const stub: Page['root'] = { id: 'r', type: 'Section' };
+    bundle.pages = [
+      page('home', '', stub),
+      page('l1', '', stub, { kind: 'link', link: { target: 'https://a.test' }, nav: { slots: ['header'] } }),
+      page('l2', '', stub, { kind: 'link', link: { target: 'https://b.test' }, nav: { slots: ['header'] } }),
+    ];
+    expect(codes(bundle)).not.toContain('duplicate_page_path');
+    // Their ids are still uniqueness-checked (a second 'l1' link trips duplicate_page_id).
+    bundle.pages = [...bundle.pages, page('l1', '', stub, { kind: 'link', link: { target: '#x' }, nav: { slots: ['header'] } })];
+    expect(codes(bundle)).toContain('duplicate_page_id');
+  });
+
   it('flags an unknown partial reference', () => {
     const bundle = validBundle();
     bundle.pages = [page('home', '/', { id: 'r', type: 'Slot', partialRef: 'ghost' })];

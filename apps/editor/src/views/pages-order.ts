@@ -9,6 +9,9 @@ export interface TreeRow {
 /** Hard cap on tree recursion (mirrors the schema's page-tree depth bound). */
 const MAX_TREE_DEPTH = 100;
 
+/** Home is the slugless ROOT page — NOT a slugless link placeholder (which is reorderable). */
+const isHome = (p: Page): boolean => p.path === '' && p.kind !== 'link';
+
 /** Canonical sibling sort value: top-level `order`, falling back to legacy `nav.order`, else 0. */
 function orderValue(p: Page): number {
   return p.order ?? p.nav?.order ?? 0;
@@ -20,8 +23,8 @@ function orderValue(p: Page): number {
  * then title — matching the published nav order.
  */
 export function bySiblingOrder(a: Page, b: Page, defaultLocale: string): number {
-  const aHome = a.path === '';
-  const bHome = b.path === '';
+  const aHome = isHome(a);
+  const bHome = isHome(b);
   if (aHome !== bHome) return aHome ? -1 : 1;
   const la = a.locale ?? defaultLocale;
   const lb = b.locale ?? defaultLocale;
@@ -79,11 +82,11 @@ export function siblingKey(p: Page, present: Set<string>, defaultLocale: string)
 export function orderedSiblings(pages: readonly Page[], pageId: string, defaultLocale: string): Page[] {
   const byId = new Map(pages.map((p) => [p.id, p] as const));
   const page = byId.get(pageId);
-  if (!page || page.path === '') return [];
+  if (!page || isHome(page)) return [];
   const present = new Set(pages.map((p) => p.id));
   const key = siblingKey(page, present, defaultLocale);
   return pages
-    .filter((p) => p.path !== '' && siblingKey(p, present, defaultLocale) === key)
+    .filter((p) => !isHome(p) && siblingKey(p, present, defaultLocale) === key)
     .sort((a, b) => bySiblingOrder(a, b, defaultLocale));
 }
 
@@ -94,7 +97,7 @@ export function canReorder(pages: readonly Page[], dragId: string, targetId: str
   const drag = byId.get(dragId);
   const target = byId.get(targetId);
   if (!drag || !target) return false;
-  if (drag.path === '' || target.path === '') return false; // Home is pinned first
+  if (isHome(drag) || isHome(target)) return false; // Home is pinned first (a link placeholder is reorderable)
   const present = new Set(pages.map((p) => p.id));
   return siblingKey(drag, present, defaultLocale) === siblingKey(target, present, defaultLocale);
 }

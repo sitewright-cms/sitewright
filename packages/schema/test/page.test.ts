@@ -172,6 +172,42 @@ describe('PageSchema', () => {
   });
 });
 
+describe('PageSchema — link placeholders (kind:"link")', () => {
+  const STUB = { id: 'r', type: 'Section' as const, children: [] };
+  const link = (over: Record<string, unknown>) =>
+    PageSchema.parse({ id: 'nav-x', path: '', title: 'X', kind: 'link', root: STUB, ...over });
+
+  it('absent kind still parses as a normal page (back-compat)', () => {
+    expect(PageSchema.parse({ id: 'p', path: 'p', title: 'P', root: STUB }).kind).toBeUndefined();
+  });
+
+  it('parses each target shape (anchor / internal / internal#hash / http / mailto / tel)', () => {
+    for (const target of ['#sec', '/about', '/about#team', 'https://x.test', 'mailto:a@b.test', 'tel:+15551234']) {
+      expect(link({ link: { target }, nav: { slots: ['header'] } }).link?.target).toBe(target);
+    }
+    expect(link({ link: { target: 'https://x.test', newTab: true }, nav: { slots: ['header'] } }).link?.newTab).toBe(true);
+  });
+
+  it('accepts an empty target when it is a dropdown parent', () => {
+    expect(link({ link: { target: '' }, nav: { slots: ['header'], dropdown: true } }).nav?.dropdown).toBe(true);
+  });
+
+  it('rejects a link page with no link definition', () => {
+    expect(() => PageSchema.parse({ id: 'nav-x', path: '', title: 'X', kind: 'link', root: STUB, nav: { slots: ['header'] } })).toThrow();
+  });
+
+  it('rejects a link with neither a target nor dropdown (does nothing)', () => {
+    expect(() => link({ link: {}, nav: { slots: ['header'] } })).toThrow();
+    expect(() => link({ link: { target: '' }, nav: { slots: ['header'] } })).toThrow();
+  });
+
+  it('rejects unsafe target schemes (javascript:/data:) and protocol-relative', () => {
+    expect(() => link({ link: { target: 'javascript:alert(1)' }, nav: { slots: ['header'] } })).toThrow();
+    expect(() => link({ link: { target: 'data:text/html,<script>' }, nav: { slots: ['header'] } })).toThrow();
+    expect(() => link({ link: { target: '//evil.test' }, nav: { slots: ['header'] } })).toThrow();
+  });
+});
+
 describe('PartialSchema', () => {
   it('parses a partial', () => {
     const p = PartialSchema.parse({

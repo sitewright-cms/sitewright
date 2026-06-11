@@ -87,6 +87,29 @@ export const PageSlugSchema = z
   // Linear: alternation of anchored, non-overlapping single-segment forms; length-capped above.
   .regex(/^$|^[a-z0-9]+(?:-[a-z0-9]+)*$|^\[[A-Za-z0-9_]+\]$/, 'must be empty (home) or a single lowercase slug segment (no slashes)'); // eslint-disable-line security/detect-unsafe-regex
 
+/**
+ * A navigation link target for a placeholder (`kind:'link'` page). Allowed: the EMPTY string (a pure
+ * dropdown-parent label), a fragment (`#id` — a same-page anchor, or a `<dialog>` the runtime opens
+ * as a modal), a root-relative internal path (`/about`, `/about#team`; NOT protocol-relative `//`),
+ * an absolute http(s) URL, or a `mailto:`/`tel:`/`sms:` handler. Rejects `javascript:`/`data:`/
+ * `vbscript:` and other active/unknown schemes. The render-time `safeUrl`/`resolveInternalUrl`
+ * guard in @sitewright/blocks mirrors this allowlist.
+ */
+export const NavTargetSchema = z
+  .string()
+  .max(2048)
+  .refine(
+    (v) =>
+      v === '' ||
+      v.startsWith('#') ||
+      (v.startsWith('/') && !v.startsWith('//')) ||
+      /^https?:\/\//i.test(v) ||
+      /^(?:mailto|tel|sms):/i.test(v),
+    'must be empty, a #anchor, a root-relative /path, an http(s) URL, or a mailto:/tel:/sms: link',
+  )
+  // Reject embedded TAB/LF/CR: the URL parser strips these, so `/\tjavascript:…` could otherwise slip past.
+  .refine((v) => !/[\t\n\r]/.test(v), 'must not contain control whitespace');
+
 /** Asset reference: an absolute http(s) URL or a root-relative path. Rejects `javascript:`/`data:` URIs. */
 export const AssetRefSchema = z
   .string()

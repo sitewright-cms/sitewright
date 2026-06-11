@@ -1,5 +1,19 @@
 import { describe, it, expect } from 'vitest';
-import { resolveInternalUrl, relativizeInternalLinks, cssUrlEscape } from '../src/url.js';
+import { resolveInternalUrl, relativizeInternalLinks, cssUrlEscape, safeUrl } from '../src/url.js';
+
+describe('safeUrl', () => {
+  it('passes http(s), root-relative, fragment, and the mailto/tel/sms handlers', () => {
+    for (const ok of ['https://x.test', 'http://x.test', '/about', '#sec', 'mailto:a@b.test', 'tel:+1', 'sms:+1']) {
+      expect(safeUrl(ok)).toBe(ok);
+    }
+  });
+  it('falls back for active/unknown schemes and protocol-relative URLs', () => {
+    for (const bad of ['javascript:alert(1)', 'data:text/html,x', 'vbscript:x', '//evil.test']) {
+      expect(safeUrl(bad)).toBe('#');
+    }
+    expect(safeUrl('', 'FB')).toBe('FB');
+  });
+});
 
 describe('cssUrlEscape', () => {
   it('passes a clean media/https URL', () => {

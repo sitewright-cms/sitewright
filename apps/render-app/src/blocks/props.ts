@@ -37,8 +37,8 @@ export function textProp(
 // would become XSS or unwanted fetches when emitted into an href/src attribute.
 // The root-relative branch requires a single leading `/` NOT followed by another
 // `/`, so protocol-relative URLs (`//evil.com`, an off-site/open-redirect vector)
-// are rejected.
-const SAFE_URL = /^(?:https?:\/\/|\/(?!\/)|#)/i;
+// are rejected. Mirrors packages/blocks/src/url.ts (incl. mailto/tel/sms handlers).
+const SAFE_URL = /^(?:https?:\/\/|mailto:|tel:|sms:|\/(?!\/)|#)/i;
 
 /** Sanitizes a URL string for use in `href`/`src`; returns `fallback` if unsafe. */
 export function safeUrl(value: string, fallback = '#'): string {

@@ -141,3 +141,30 @@ describe('orderPagesByTree', () => {
     expect(rows.map((r) => `${r.page.id}@${r.depth}`)).toEqual(['home@0', 'a@1', 'a1@2', 'b@1', 'c@1']);
   });
 });
+
+describe('link placeholders in the tree', () => {
+  it('a slugless link placeholder is NOT treated as Home — it is a normal, reorderable node', () => {
+    const pages = [
+      page('home', { path: '', title: 'Home' }),
+      page('nav-x', { path: '', title: 'Menu', kind: 'link', parent: 'home', order: 0 }),
+      page('a', { parent: 'home', title: 'A', order: 1 }),
+    ];
+    expect(orderPagesByTree(pages, DL).find((r) => r.page.id === 'nav-x')!.depth).toBe(1);
+    // Reorderable among its siblings (the real Home stays pinned, the link does not).
+    expect(canReorder(pages, 'nav-x', 'a', DL)).toBe(true);
+    expect(canReorder(pages, 'a', 'nav-x', DL)).toBe(true);
+    expect(canReorder(pages, 'nav-x', 'home', DL)).toBe(false);
+    expect(orderedSiblings(pages, 'nav-x', DL).map((p) => p.id)).toEqual(['nav-x', 'a']);
+  });
+
+  it('child pages nest under a link-placeholder parent', () => {
+    const pages = [
+      page('home', { path: '', title: 'Home' }),
+      page('grp', { path: '', title: 'Group', kind: 'link', parent: 'home' }),
+      page('child', { path: 'child', title: 'Child', parent: 'grp' }),
+    ];
+    const rows = orderPagesByTree(pages, DL);
+    expect(rows.find((r) => r.page.id === 'grp')!.depth).toBe(1);
+    expect(rows.find((r) => r.page.id === 'child')!.depth).toBe(2);
+  });
+});

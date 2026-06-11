@@ -1,12 +1,13 @@
-import type {
-  Dataset,
-  Entry,
-  Form,
-  Page,
-  PageTranslation,
-  Project,
-  SitewrightPartial,
-  Template,
+import {
+  isLinkPage,
+  type Dataset,
+  type Entry,
+  type Form,
+  type Page,
+  type PageTranslation,
+  type Project,
+  type SitewrightPartial,
+  type Template,
 } from '@sitewright/schema';
 import { findDuplicateIds, walk } from './tree.js';
 import { GLOBAL_TEMPLATES, isGlobalTemplate } from './templates.js';
@@ -75,9 +76,11 @@ export function validateProject(bundle: ProjectBundle): ValidationIssue[] {
   );
   // Compare the COMPUTED full routes (not the bare slug): two pages may share a slug
   // under different parents, but their `{root}/{parents}/{slug}` routes must be unique.
+  // Link placeholders are routing-transparent (slugless, no emitted route) — excluded so
+  // multiple of them don't false-collide on `/` (their ids are still uniqueness-checked above).
   const byId = pagesById(bundle.pages);
   reportDuplicates(
-    bundle.pages.map((page) => pagePath(page, byId)),
+    bundle.pages.filter((page) => !isLinkPage(page)).map((page) => pagePath(page, byId)),
     'duplicate_page_path',
     'page path',
     issues,

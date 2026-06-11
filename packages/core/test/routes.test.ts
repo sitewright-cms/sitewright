@@ -125,6 +125,31 @@ describe('resolvedPages / allRoutes', () => {
     const b = bundle({ pages: [page({ id: 'a', path: 'dup' }), page({ id: 'b', path: 'dup' })] });
     expect(() => allRoutes(b)).toThrow(/Duplicate/);
   });
+
+  it('excludes link placeholders from rendered routes; a child of a link parent skips its empty segment', () => {
+    const b = bundle({
+      pages: [
+        page({ id: 'home', path: '' }),
+        page({ id: 'grp', path: '', kind: 'link', link: { target: '' }, nav: { slots: ['header'], dropdown: true } }),
+        page({ id: 'svc', path: 'services', parent: 'grp' }),
+      ],
+    });
+    // The link placeholder emits NO route; its child routes at /services (the link's '' segment is skipped).
+    expect(resolvedPages(b).map((r) => r.page.id)).toEqual(['home', 'svc']);
+    expect(allRoutes(b).map((r) => r.slug)).toEqual([undefined, 'services']);
+  });
+
+  it('does not throw on multiple slugless link placeholders (they emit no route)', () => {
+    const b = bundle({
+      pages: [
+        page({ id: 'home', path: '' }),
+        page({ id: 'l1', path: '', kind: 'link', link: { target: 'https://a.test' }, nav: { slots: ['header'] } }),
+        page({ id: 'l2', path: '', kind: 'link', link: { target: 'https://b.test' }, nav: { slots: ['header'] } }),
+      ],
+    });
+    expect(() => allRoutes(b)).not.toThrow();
+    expect(resolvedPages(b).map((r) => r.page.id)).toEqual(['home']);
+  });
 });
 
 describe('collectionRoutes', () => {

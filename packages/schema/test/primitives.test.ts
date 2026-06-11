@@ -4,6 +4,7 @@ import {
   CssColorSchema,
   IdSchema,
   MAX_PAGE_TREE_DEPTH,
+  NavTargetSchema,
   RoutePathSchema,
   SlugSchema,
   TokenValueSchema,
@@ -11,6 +12,19 @@ import {
   safeRecord,
 } from '../src/primitives.js';
 import { z } from 'zod';
+
+describe('NavTargetSchema', () => {
+  it('accepts empty, fragment, root-relative, http(s), and mailto/tel/sms', () => {
+    for (const ok of ['', '#sec', '/about', '/about#team', 'http://x.test', 'https://x.test/p?q=1', 'mailto:a@b.test', 'tel:+15551234', 'sms:+15551234']) {
+      expect(NavTargetSchema.parse(ok)).toBe(ok);
+    }
+  });
+  it('rejects active/unknown schemes, protocol-relative, and embedded control whitespace', () => {
+    for (const bad of ['javascript:alert(1)', 'JaVaScRiPt:alert(1)', 'data:text/html,x', 'vbscript:x', '//evil.test', ' javascript:x', '/a\tjavascript:x']) {
+      expect(() => NavTargetSchema.parse(bad)).toThrow();
+    }
+  });
+});
 
 describe('SlugSchema', () => {
   it('accepts a lowercase hyphenated slug', () => {

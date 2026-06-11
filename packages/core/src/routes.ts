@@ -2,7 +2,7 @@
 // collection) into the concrete set of routes to render. Used by both the Astro
 // renderer and the API's static-site publisher, so it lives in core (not in an
 // app). No filesystem or framework dependencies.
-import type { Entry, Page, SitewrightPartial } from '@sitewright/schema';
+import { isLinkPage, type Entry, type Page, type SitewrightPartial } from '@sitewright/schema';
 import { resolvePartials } from './partials.js';
 import { compareEntryOrder } from './bindings.js';
 import type { ProjectBundle } from './validate.js';
@@ -35,11 +35,11 @@ export function publishedPages(pages: readonly Page[]): Page[] {
   return pages.filter((page) => page.status !== 'draft');
 }
 
-/** Expands partials for every non-collection page. */
+/** Expands partials for every non-collection, non-link page (link placeholders emit no route/HTML). */
 export function resolvedPages(bundle: ProjectBundle): ResolvedPage[] {
   const partialMap = buildPartialMap(bundle);
   return bundle.pages
-    .filter((page) => !page.collection)
+    .filter((page) => !page.collection && !isLinkPage(page))
     .map((page) => ({ page, root: resolveRoot(page, partialMap) }));
 }
 

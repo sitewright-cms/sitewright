@@ -1,14 +1,34 @@
-import type { NavSlot, Page } from '@sitewright/schema';
+import { isLinkPage, type NavSlot, type Page } from '@sitewright/schema';
 import { pagePath, pagesById } from './routes.js';
 
 export type { NavSlot };
 
 export interface NavItem {
   label: string;
-  /** Target page route (root-relative, e.g. '/about'), computed from the page tree; rebased per page at render. */
+  /**
+   * The item's href. For a page: its root-relative route (`/about`), computed from the page tree and
+   * rebased per page at render. For a link placeholder: the raw `link.target` — an internal `/path`
+   * (rebased like a page route), a fragment `#id` (runtime opens a `<dialog>` or smooth-scrolls), or
+   * an external `http(s)`/`mailto:`/`tel:`/`sms:` URL (passed through). Empty target → `#`.
+   */
   path: string;
+  /** True when `path` is an external URL (http(s)/mailto/tel/sms) — a hint for templates (rel/badge). */
+  external?: boolean;
+  /** Open in a new tab (`target="_blank" rel="noopener"`) — set from a link placeholder's `link.newTab`. */
+  newTab?: boolean;
   /** Child-page items, present when the page's `nav.dropdown` is on (render as a dropdown). */
   children?: NavItem[];
+}
+
+/** Resolves a link placeholder's href + external/newTab hints from its `link.target`. */
+function linkHref(page: Page): Pick<NavItem, 'path' | 'external' | 'newTab'> {
+  const target = page.link?.target?.trim() ?? '';
+  const external = /^(?:https?|mailto|tel|sms):/i.test(target);
+  return {
+    path: target === '' ? '#' : target,
+    ...(external ? { external: true } : {}),
+    ...(page.link?.newTab ? { newTab: true } : {}),
+  };
 }
 
 /**
@@ -24,13 +44,18 @@ export function byNavOrder(a: Page, b: Page): number {
 }
 
 function toItem(page: Page, byId: ReadonlyMap<string, Page>): NavItem {
-  return { label: page.nav?.title || page.title, path: pagePath(page, byId) };
+  const label = page.nav?.title || page.title;
+  // A link placeholder resolves its href from `link.target`; a page from its tree route.
+  return isLinkPage(page) ? { label, ...linkHref(page) } : { label, path: pagePath(page, byId) };
 }
 
 /**
  * Builds the ordered navigation items for a slot from the page tree — concrete
  * (non-collection) pages whose `nav.slots` includes the slot, sorted by
  * `nav.order` then title. The label falls back from `nav.title` to the page title.
+ * Link placeholders (`kind:'link'`) are included like any nav-slotted entry — their
+ * href resolves from `link.target` ({@link linkHref}) instead of the page-tree route,
+ * and they can themselves be dropdown parents grouping child pages.
  *
  * Sub-pages: when a parent page's `nav.dropdown` is ON, its child pages (those
  * whose `parent` is the parent's id) NEST under the parent's item as `children`

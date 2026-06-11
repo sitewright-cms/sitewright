@@ -45,7 +45,10 @@ test('header gear menu unifies settings + inline agent indicator + publish toast
   await page.getByRole('button', { name: 'Connect an agent' }).click();
   const agent = page.getByRole('dialog', { name: 'AI agent details' });
   await expect(agent.getByRole('tab', { name: 'ChatGPT.com' })).toBeVisible();
-  await expect(agent.getByRole('tab', { name: 'Claude.ai' })).toBeVisible();
+  // ChatGPT's Developer mode is not on the free plan; Claude + Le Chat are.
+  await expect(agent.getByText(/not the free plan/)).toBeVisible();
+  await agent.getByRole('tab', { name: 'Claude.ai' }).click();
+  await expect(agent.getByText(/including Free/)).toBeVisible();
   await agent.getByRole('tab', { name: 'Le Chat' }).click();
   await expect(agent.getByText(/Free plan/)).toBeVisible();
   await agent.getByRole('tab', { name: 'Local CLI Agents' }).click();

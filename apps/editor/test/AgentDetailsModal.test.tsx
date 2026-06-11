@@ -55,9 +55,14 @@ describe('AgentDetailsModal', () => {
     expect(screen.getByRole('tab', { name: 'Claude.ai' })).toBeInTheDocument();
     const leChatTab = screen.getByRole('tab', { name: 'Le Chat' });
     const cliTab = screen.getByRole('tab', { name: 'Local CLI Agents' });
-    // The default (ChatGPT) tab shows the remote MCP server URL (origin/mcp).
+    // The default (ChatGPT) tab shows the remote MCP server URL (origin/mcp) and the accurate
+    // plan note — ChatGPT's Developer mode is NOT on the free plan.
     expect(screen.getByText(/\/mcp$/)).toBeInTheDocument();
-    // Le Chat advertises the free-tier path.
+    expect(screen.getByText(/not the free plan/)).toBeInTheDocument();
+    // Claude.ai custom connectors DO work on Free (one connector).
+    screen.getByRole('tab', { name: 'Claude.ai' }).click();
+    expect(await screen.findByText(/including Free/)).toBeInTheDocument();
+    // Le Chat is also free.
     leChatTab.click();
     expect(await screen.findByText(/Free plan/)).toBeInTheDocument();
     // The CLI tab carries the install step, the universal mcpServers block, and the config helper.

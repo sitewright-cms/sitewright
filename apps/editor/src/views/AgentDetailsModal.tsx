@@ -18,7 +18,7 @@ const TAB_ORDER: ConnectTab[] = ['chatgpt', 'claude', 'lechat', 'cli'];
 const CODE = 'rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-mono text-slate-700';
 const PRE = 'mt-1.5 overflow-x-auto rounded-lg bg-slate-900 px-3 py-2 text-[11px] leading-relaxed text-slate-100';
 
-/** A hosted MCP client (ChatGPT / Claude.ai) connects to the remote MCP server over OAuth. */
+/** A hosted MCP client (ChatGPT / Claude.ai / Le Chat) connects to the remote MCP server over OAuth. */
 function RemoteSteps({ mcpUrl, settingsPath, planNote }: { mcpUrl: string; settingsPath: string; planNote: string }) {
   return (
     <>
@@ -107,22 +107,22 @@ function ConnectGuide({ emphasized }: { emphasized: boolean }) {
         {tab === 'chatgpt' && (
           <RemoteSteps
             mcpUrl={mcpUrl}
-            settingsPath="In ChatGPT, open Settings → Connectors → “Add custom connector”."
-            planNote="Custom MCP connectors require a ChatGPT plan that supports them (Plus / Pro / Team / Enterprise)."
+            settingsPath="In ChatGPT: Settings → Apps & Connectors → Advanced settings → turn on Developer mode, then “Create” (set Authentication to OAuth)."
+            planNote="ChatGPT’s Developer mode (custom MCP connectors) is available to Plus, Pro, Business, Enterprise and Edu accounts on the web — not the free plan."
           />
         )}
         {tab === 'claude' && (
           <RemoteSteps
             mcpUrl={mcpUrl}
-            settingsPath="In Claude.ai, open Settings → Connectors → “Add custom connector”."
-            planNote="Custom connectors require a paid Claude plan (Pro / Max / Team / Enterprise)."
+            settingsPath="In Claude: Customize → Connectors → the “+” → “Add custom connector” (Advanced settings holds an optional OAuth client ID/secret)."
+            planNote="Custom connectors work on every Claude plan, including Free — the free plan allows one custom connector."
           />
         )}
         {tab === 'lechat' && (
           <RemoteSteps
             mcpUrl={mcpUrl}
             settingsPath="In Mistral Le Chat, open Connectors → “+ Add Connector” → the “Custom MCP Connector” tab."
-            planNote="Le Chat supports custom MCP connectors on its Free plan (it’s an admin-only feature; on Free you’re the admin by default). Its OAuth 2.1 flow matches Sitewright’s — the only major hosted chat with a free path."
+            planNote="Le Chat supports custom MCP connectors on its Free plan too (it’s an admin-only feature; on Free you’re the admin by default), over OAuth 2.1 like Sitewright."
           />
         )}
         {tab === 'cli' && (

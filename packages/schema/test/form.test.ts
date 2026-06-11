@@ -66,13 +66,23 @@ describe('FormSchema', () => {
     expect(tp('https://formspree.io/f/abc').thirdPartyUrl).toBe('https://formspree.io/f/abc');
   });
 
-  it('accepts a path or http(s) redirectUrl but rejects junk', () => {
+  it('accepts a root-relative path or http(s) redirectUrl but rejects junk', () => {
     expect(FormSchema.parse({ ...base, redirectUrl: '/thanks' }).redirectUrl).toBe('/thanks');
+    expect(FormSchema.parse({ ...base, redirectUrl: '/' }).redirectUrl).toBe('/'); // bare root
+    expect(FormSchema.parse({ ...base, redirectUrl: '/thanks?ref=1#top' }).redirectUrl).toBe('/thanks?ref=1#top');
     expect(FormSchema.parse({ ...base, redirectUrl: 'https://acme.com/thanks' }).redirectUrl).toBe(
       'https://acme.com/thanks',
     );
     expect(() => FormSchema.parse({ ...base, redirectUrl: 'javascript:alert(1)' })).toThrow();
     expect(() => FormSchema.parse({ ...base, redirectUrl: '/has space' })).toThrow();
+  });
+
+  it('rejects a protocol-relative redirectUrl that would navigate cross-origin (open-redirect guard)', () => {
+    // `//evil.com` and `/\evil.com` LOOK like local paths but browsers treat them as
+    // protocol-relative → cross-origin. An explicit http(s) scheme is the only off-site exit.
+    expect(() => FormSchema.parse({ ...base, redirectUrl: '//evil.com' })).toThrow();
+    expect(() => FormSchema.parse({ ...base, redirectUrl: '//evil.com/phish' })).toThrow();
+    expect(() => FormSchema.parse({ ...base, redirectUrl: '/\\evil.com' })).toThrow();
   });
 });
 

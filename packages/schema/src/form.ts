@@ -56,16 +56,21 @@ export const FormSchema = z.object({
   /** Inline error shown on failure. */
   errorMessage: z.string().min(1).max(2000).default('Sorry, something went wrong. Please try again.'),
   /**
-   * Optional custom thank-you redirect (path or http(s) URL); overrides the inline
-   * success message. Off-site (`https://…`) targets are allowed by design — a form
-   * author (owner/admin, content:write) may legitimately redirect to an external
-   * thank-you/checkout page. Authors are trusted; this is not an open redirect for
-   * arbitrary users. The value is JS-validated here and re-validated server-side.
+   * Optional custom thank-you redirect (a root-relative path or an explicit http(s)
+   * URL); overrides the inline success message. Off-site (`https://…`) targets are
+   * allowed by design — a form author (owner/admin, content:write) may legitimately
+   * redirect to an external thank-you/checkout page. The value is baked into the
+   * published form's `data-sw-redirect` and followed via `window.location.assign`.
+   *
+   * The path branch is `/` followed by a NON-slash/backslash char (or nothing), so a
+   * PROTOCOL-RELATIVE `//evil.com` (and the `/\evil.com` variant browsers also treat
+   * as protocol-relative) is rejected — those navigate cross-origin while looking
+   * like a local path. An explicit scheme is the only way to leave the site.
    */
   redirectUrl: z
     .string()
     .max(2048)
-    .regex(/^(\/[^\s]*|https?:\/\/[^\s]+)$/i, 'redirectUrl must be a path or http(s) URL')
+    .regex(/^(\/(?![/\\])[^\s]*|https?:\/\/[^\s]+)$/i, 'redirectUrl must be a root-relative path or http(s) URL')
     .optional(),
   /**
    * Where submissions are emailed. SERVER-SIDE ONLY — never rendered into the

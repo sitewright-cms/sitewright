@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { Dataset, Entry, Field } from '@sitewright/schema';
 import { coerceFieldValue, entryLabel, identifierize, readValue } from '../../lib/entry-form';
 import { api } from '../../api';
-import { glassInput } from '../../theme';
+import { glassInput, gradientSurface } from '../../theme';
 import { Modal } from '../ui/Modal';
 import { useDialogs } from '../ui/Dialogs';
 import { AssetField } from '../files/AssetField';
@@ -83,19 +83,26 @@ export function EntryEditorModal({ projectId, dataset, entry, keyEditable = fals
   const [values, setValues] = useState<Record<string, unknown>>(entry.values);
   const [status, setStatus] = useState<'draft' | 'published'>(entry.status);
   const [keyInput, setKeyInput] = useState('');
+  // For an EXISTING entry the key is read-only until the author opts in via "Edit key"; a NEW entry's
+  // key is always settable.
+  const [editKey, setEditKey] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // The entry's id (its key). For a new entry the author may set a clean slug; empty keeps the
-  // auto-generated id. The id is immutable once saved.
-  const customKey = keyEditable && keyInput.trim() !== '';
+  // The entry's id (its key). New entry → author may set a clean key (empty keeps the auto id).
+  // Existing entry → settable only after clicking "Edit key" (placeholder shows the current id).
+  const keyFieldOpen = keyEditable || editKey;
+  const typedKey = keyFieldOpen && keyInput.trim() !== '';
   // An IDENTIFIER (underscores, not hyphens) so the key works as a bare Handlebars path —
   // {{item.services.web_development.title}} — without needing [bracket] segment syntax.
-  const computedId = customKey ? identifierize(keyInput) : entry.id;
-  // existingIds holds only SAVED entries (never this new one's auto id), so a plain membership test.
-  const keyTaken = customKey && !!existingIds?.has(computedId);
-  const keyInvalid = customKey && computedId === ''; // typed only stripped chars → no usable key
-  const dirty = status !== entry.status || JSON.stringify(values) !== JSON.stringify(entry.values) || customKey;
+  const computedId = typedKey ? identifierize(keyInput) : entry.id;
+  const idChanged = computedId !== entry.id;
+  // existingIds includes an EXISTING entry's own id, so exclude self via idChanged.
+  const keyTaken = idChanged && !!existingIds?.has(computedId);
+  const keyInvalid = typedKey && computedId === ''; // typed only stripped chars → no usable key
+  // Changing an ALREADY-SAVED entry's key recreates it under the new id and deletes the old row.
+  const recreating = !keyEditable && idChanged;
+  const dirty = status !== entry.status || JSON.stringify(values) !== JSON.stringify(entry.values) || idChanged;
 
   function setField(field: Field, raw: unknown) {
     setValues((prev) => ({ ...prev, [field.name]: coerceFieldValue(field.type, raw) }));
@@ -114,6 +121,9 @@ export function EntryEditorModal({ projectId, dataset, entry, keyEditable = fals
     setError(null);
     try {
       await api.putEntry(projectId, { ...entry, id: computedId, status, values });
+      // Recreate: the new id is now saved, so drop the old row. (PUT-then-DELETE: a failure leaves
+      // the new copy rather than losing the entry.)
+      if (recreating) await api.deleteEntry(projectId, entry.id);
       onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed to save entry');
@@ -128,18 +138,27 @@ export function EntryEditorModal({ projectId, dataset, entry, keyEditable = fals
     return confirm({ title: 'Discard changes', message: 'Discard unsaved entry changes?', confirmLabel: 'Discard' });
   }
 
-  const statusToggle = (
-    <label className="flex items-center gap-2 text-xs font-medium text-slate-500">
-      <span className={status === 'draft' ? 'text-slate-700' : ''}>Draft</span>
-      <input
-        type="checkbox"
-        className="toggle toggle-success toggle-sm"
-        aria-label="Published"
-        checked={status === 'published'}
-        onChange={(e) => setStatus(e.target.checked ? 'published' : 'draft')}
-      />
-      <span className={status === 'published' ? 'text-emerald-600' : ''}>Published</span>
-    </label>
+  // A segmented Draft|Published switch — mirrors the page editor's Code/Content mode switch.
+  const statusSwitch = (
+    <div
+      role="group"
+      aria-label="Status"
+      className="flex items-center rounded-xl border border-white/60 bg-white/50 p-0.5 text-xs font-medium shadow-sm backdrop-blur-xl"
+    >
+      {(['draft', 'published'] as const).map((s) => (
+        <button
+          key={s}
+          type="button"
+          aria-pressed={status === s}
+          onClick={() => setStatus(s)}
+          className={`waves-effect rounded-lg px-2.5 py-1 capitalize transition ${
+            status === s ? `${gradientSurface} font-bold` : 'text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          {s}
+        </button>
+      ))}
+    </div>
   );
 
   return (
@@ -151,10 +170,10 @@ export function EntryEditorModal({ projectId, dataset, entry, keyEditable = fals
       onSave={() => void submit()}
       saving={saving}
       saveDisabled={keyTaken || keyInvalid}
-      headerExtra={statusToggle}
+      headerExtra={statusSwitch}
     >
       <div className="flex flex-col gap-3 p-5">
-        {keyEditable ? (
+        {keyFieldOpen ? (
           <label className="flex flex-col gap-1">
             <span className="text-xs font-medium text-slate-500">
               Key <span className="text-slate-300">— the id used in <code>{`{{item.${dataset.slug}.<key>}}`}</code> (letters, digits, _)</span>
@@ -162,19 +181,35 @@ export function EntryEditorModal({ projectId, dataset, entry, keyEditable = fals
             <input
               aria-label="Entry key"
               className={glassInput}
-              placeholder={`${entry.id} (auto)`}
+              placeholder={`${entry.id}${keyEditable ? ' (auto)' : ''}`}
               value={keyInput}
+              autoFocus={editKey}
               onChange={(e) => setKeyInput(e.target.value)}
             />
             <span className={`text-[11px] ${keyTaken || keyInvalid ? 'text-rose-500' : 'text-slate-400'}`}>
               {keyInvalid ? 'enter letters, digits, or underscores' : <>→ <code>{computedId}</code>{keyTaken ? ' · already used in this dataset' : ''}</>}
             </span>
+            {recreating && (
+              <span className="rounded-lg bg-amber-50 px-2 py-1 text-[11px] text-amber-700">
+                Renaming the key recreates this entry as <code>{computedId}</code> and deletes the old{' '}
+                <code>{entry.id}</code> — update any <code>{`{{item.${dataset.slug}.${entry.id}}}`}</code> references in your pages.
+              </span>
+            )}
           </label>
         ) : (
-          <p className="text-[11px] text-slate-400">
-            Key: <code className="rounded bg-slate-100 px-1 py-0.5">{entry.id}</code> — read it directly with{' '}
-            <code className="rounded bg-slate-100 px-1 py-0.5">{`{{item.${dataset.slug}.${entry.id}.…}}`}</code>
-          </p>
+          <div className="flex items-center gap-2">
+            <p className="flex-1 text-[11px] text-slate-400">
+              Key: <code className="rounded bg-slate-100 px-1 py-0.5">{entry.id}</code> — read it directly with{' '}
+              <code className="rounded bg-slate-100 px-1 py-0.5">{`{{item.${dataset.slug}.${entry.id}.…}}`}</code>
+            </p>
+            <button
+              type="button"
+              className="waves-effect shrink-0 rounded-lg border border-white/60 bg-white/50 px-2 py-1 text-[11px] font-medium text-slate-600 shadow-sm transition hover:bg-white"
+              onClick={() => setEditKey(true)}
+            >
+              Edit key
+            </button>
+          </div>
         )}
         {dataset.fields.length === 0 && <p className="text-xs text-slate-400">This dataset has no fields yet — add some first.</p>}
         {dataset.fields.map((field) => (

@@ -21,6 +21,8 @@ test('define a dataset, its schema, and add an entry', async ({ page }) => {
   await expect(page.getByLabel('Dataset name')).toBeVisible();
   await page.getByLabel('Dataset name').fill('Posts');
   await page.getByRole('button', { name: 'Create dataset' }).click();
+  // The schema editor is collapsed by default — expand it to add fields.
+  await page.getByRole('button', { name: /schema/ }).click();
   await page.getByLabel('New field name').fill('title');
   await page.getByRole('button', { name: 'Add field' }).click();
   await page.getByRole('button', { name: 'Save schema' }).click();
@@ -47,6 +49,8 @@ test('deleting a dataset requires confirmation (cancel keeps it, confirm removes
   await page.getByRole('button', { name: 'Open Datasets' }).hover();
   await page.getByLabel('Dataset name').fill('Temp');
   await page.getByRole('button', { name: 'Create dataset' }).click();
+  // Delete dataset now lives inside the schema editor, which is collapsed by default — expand it.
+  await page.getByRole('button', { name: /schema/ }).click();
   await expect(page.getByRole('button', { name: 'Delete dataset' })).toBeVisible();
 
   // Cancel → the dataset survives.
@@ -80,6 +84,8 @@ test('dataset image field uses the file picker (browse a URL into an entry)', as
   await expect(page.getByLabel('Dataset name')).toBeVisible();
   await page.getByLabel('Dataset name').fill('Gallery');
   await page.getByRole('button', { name: 'Create dataset' }).click();
+  // The schema editor is collapsed by default — expand it to add fields.
+  await page.getByRole('button', { name: /schema/ }).click();
   await page.getByLabel('New field name').fill('title');
   await page.getByRole('button', { name: 'Add field' }).click();
   await page.getByLabel('New field name').fill('photo');
@@ -104,7 +110,7 @@ test('dataset image field uses the file picker (browse a URL into an entry)', as
   await expect(page.getByRole('button', { name: 'Sunset' })).toBeVisible();
 });
 
-// The entry editor is a modal with a draft/published TOGGLE (top-right); entries can be duplicated.
+// The entry editor is a modal with a draft/published SWITCH (top-right); entries can be duplicated.
 test('entry editor modal: status toggle + duplicate', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: /Register/ }).click();
@@ -119,6 +125,8 @@ test('entry editor modal: status toggle + duplicate', async ({ page }) => {
   await page.getByRole('button', { name: 'Open Datasets' }).hover();
   await page.getByLabel('Dataset name').fill('Posts');
   await page.getByRole('button', { name: 'Create dataset' }).click();
+  // The schema editor is collapsed by default — expand it to add fields.
+  await page.getByRole('button', { name: /schema/ }).click();
   await page.getByLabel('New field name').fill('title');
   await page.getByRole('button', { name: 'Add field' }).click();
   await page.getByRole('button', { name: 'Save schema' }).click();
@@ -129,10 +137,11 @@ test('entry editor modal: status toggle + duplicate', async ({ page }) => {
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Alpha' })).toBeVisible();
 
-  // Open it → the modal has a Published toggle; flip it on, save, and the row badge updates.
-  await page.getByRole('button', { name: 'Alpha' }).click();
-  await expect(page.getByRole('dialog', { name: /Edit/ })).toBeVisible();
-  await page.getByLabel('Published').check();
+  // Open it → the modal has a Draft/Published switch; select Published, save, and the badge updates.
+  await page.getByRole('button', { name: 'Alpha', exact: true }).click();
+  const editDialog = page.getByRole('dialog', { name: /Edit/ });
+  await expect(editDialog).toBeVisible();
+  await editDialog.getByRole('button', { name: 'published' }).click();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   const alphaRow = page.locator('li', { has: page.getByRole('button', { name: 'Alpha', exact: true }) });
   await expect(alphaRow.getByText('published', { exact: true })).toBeVisible();
@@ -140,4 +149,44 @@ test('entry editor modal: status toggle + duplicate', async ({ page }) => {
   // Duplicate it → a second "Alpha" appears (reset to draft).
   await alphaRow.getByRole('button', { name: /Duplicate entry/ }).click();
   await expect(page.getByRole('button', { name: 'Alpha', exact: true })).toHaveCount(2);
+});
+
+// Duplicating a dataset clones its schema + entries under "<slug>-copy"; an existing entry's KEY can
+// be changed via the gated "Edit key" button (which recreates the entry, with a warning).
+test('duplicate a dataset, then edit an existing entry key', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: /Register/ }).click();
+  await page.getByLabel('Email').fill(`datadup-${stamp}@e2e.test`);
+  await page.getByLabel('Password').fill('pw-secret-1');
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await page.getByRole('button', { name: 'New project' }).click();
+  await page.getByLabel('Project name').fill('Dup Site');
+  await page.getByLabel('Project slug').fill(`datadup-${stamp}`);
+  await page.getByRole('button', { name: 'Create project' }).click();
+
+  await page.getByRole('button', { name: 'Open Datasets' }).hover();
+  await page.getByLabel('Dataset name').fill('Posts');
+  await page.getByRole('button', { name: 'Create dataset' }).click();
+  await page.getByRole('button', { name: /schema/ }).click();
+  await page.getByLabel('New field name').fill('title');
+  await page.getByRole('button', { name: 'Add field' }).click();
+  await page.getByRole('button', { name: 'Save schema' }).click();
+  await page.getByRole('button', { name: 'New entry' }).click();
+  await page.getByLabel('title', { exact: true }).fill('Hello');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Hello' })).toBeVisible();
+
+  // Duplicate the dataset → "posts-copy" appears and is auto-selected, with the entry cloned.
+  await page.getByRole('button', { name: 'Duplicate dataset Posts' }).click();
+  await expect(page.getByText('/posts-copy')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Hello' })).toBeVisible();
+
+  // Edit the cloned entry's key → the recreate warning shows; saving keeps the row (new id).
+  await page.getByRole('button', { name: 'Hello' }).click();
+  const dlg = page.getByRole('dialog', { name: /Edit/ });
+  await dlg.getByRole('button', { name: 'Edit key' }).click();
+  await dlg.getByLabel('Entry key').fill('greeting');
+  await expect(dlg.getByText(/Renaming the key recreates/)).toBeVisible();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Hello' })).toBeVisible();
 });

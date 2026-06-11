@@ -6,7 +6,9 @@ import {
   entryLabel,
   identifierize,
   readValue,
+  reorderWithInsert,
   slugify,
+  uniqueSlug,
 } from '../src/lib/entry-form';
 
 const dataset: Dataset = {
@@ -101,5 +103,39 @@ describe('entryLabel', () => {
   it('falls back to the entry id when no text value is set', () => {
     const entry: Entry = { id: 'e2', dataset: 'posts', status: 'draft', values: {} };
     expect(entryLabel(dataset, entry)).toBe('e2');
+  });
+});
+
+describe('reorderWithInsert', () => {
+  const mk = (id: string, order?: number): Entry => ({ id, dataset: 'posts', status: 'draft', order, values: {} });
+
+  it('inserts the copy directly after its source and densely re-indexes', () => {
+    const list = [mk('a', 0), mk('b', 1), mk('c', 2)];
+    const result = reorderWithInsert(list, 'b', mk('b-copy'));
+    expect(result.map((e) => e.id)).toEqual(['a', 'b', 'b-copy', 'c']);
+    expect(result.map((e) => e.order)).toEqual([0, 1, 2, 3]);
+  });
+
+  it('inserts after the first entry', () => {
+    const list = [mk('a', 0), mk('b', 1)];
+    expect(reorderWithInsert(list, 'a', mk('a-copy')).map((e) => e.id)).toEqual(['a', 'a-copy', 'b']);
+  });
+
+  it('appends the copy when the source id is not found', () => {
+    const list = [mk('a', 0), mk('b', 1)];
+    const result = reorderWithInsert(list, 'missing', mk('x'));
+    expect(result.map((e) => e.id)).toEqual(['a', 'b', 'x']);
+    expect(result.map((e) => e.order)).toEqual([0, 1, 2]);
+  });
+});
+
+describe('uniqueSlug', () => {
+  it('returns the desired slug when free', () => {
+    expect(uniqueSlug('posts-copy', new Set(['posts']))).toBe('posts-copy');
+  });
+
+  it('appends the first free numeric suffix when taken', () => {
+    expect(uniqueSlug('posts-copy', new Set(['posts-copy']))).toBe('posts-copy-2');
+    expect(uniqueSlug('posts-copy', new Set(['posts-copy', 'posts-copy-2']))).toBe('posts-copy-3');
   });
 });

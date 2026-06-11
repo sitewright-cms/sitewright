@@ -19,7 +19,14 @@ function DataIcon() {
  */
 export function DataPanel({ project }: { project: Project }) {
   return (
-    <SidePanel side="bottom" align="start" label="Datasets" icon={<DataIcon />} width="w-[min(56rem,66vw)]">
+    <SidePanel
+      side="bottom"
+      align="start"
+      label="Datasets"
+      icon={<DataIcon />}
+      width="w-[min(56rem,66vw)]"
+      size="h-[100dvh]"
+    >
       <div className="p-1">
         <DatasetManager project={project} />
       </div>

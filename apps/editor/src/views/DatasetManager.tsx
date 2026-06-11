@@ -1,12 +1,13 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useContext, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import type { Dataset, Entry, Field, FieldType } from '@sitewright/schema';
 import { compareEntryOrder } from '@sitewright/core';
 import { api, type Project } from '../api';
-import { defaultEntryValues, entryLabel, identifierize, slugify } from '../lib/entry-form';
+import { defaultEntryValues, entryLabel, identifierize, reorderWithInsert, slugify, uniqueSlug } from '../lib/entry-form';
 import { EntryEditorModal } from './datasets/EntryEditorModal';
+import { SidePanelHold } from './ui/SidePanel';
 import { useDialogs } from './ui/Dialogs';
 import { Tooltip } from './ui/Tooltip';
-import { glassCard, glassPanel, glassInput, fieldLabel, primaryButton, ghostButton, dangerButton } from '../theme';
+import { glassCard, glassPanel, glassInput, fieldLabel, primaryButton, ghostButton, dangerButton, gradientHover } from '../theme';
 
 const FIELD_TYPES: ReadonlyArray<FieldType> = [
   'text',
@@ -43,13 +44,39 @@ export function DatasetManager({ project }: { project: Project }) {
   const [newFieldType, setNewFieldType] = useState<FieldType>('text');
   const [editingEntry, setEditingEntry] = useState<Entry | null>(null);
   const [newEntry, setNewEntry] = useState(false); // the open entry editor is for a brand-new entry (key settable)
+  const [schemaOpen, setSchemaOpen] = useState(false); // the schema editor is collapsed by default
   const [dragId, setDragId] = useState<string | null>(null);
   const [drop, setDrop] = useState<{ id: string; pos: 'before' | 'after' } | null>(null);
   const lastSyncedSel = useRef<string | null>(null);
   const reordering = useRef(false);
+  const duplicatingDataset = useRef(false); // guards against a double-click cloning entries twice
 
   const { confirm, dialog } = useDialogs();
   const selected = datasets.find((d) => d.id === selId) ?? null;
+  // Datasets list, sorted alphabetically by name (stable, case-insensitive).
+  const sortedDatasets = useMemo(() => [...datasets].sort((a, b) => a.name.localeCompare(b.name)), [datasets]);
+
+  // A drag-reorder must keep the Data side-panel open: dragging a row otherwise fires the panel's
+  // hover-close (mouseleave) and it collapses mid-drag. Hold it open for the duration of the drag,
+  // exactly as a child Modal does (null outside any panel). Balanced hold/release; released on
+  // unmount too in case a drag is interrupted.
+  const panelHold = useContext(SidePanelHold);
+  const dragHeld = useRef(false);
+  function holdPanel() {
+    if (!dragHeld.current) {
+      dragHeld.current = true;
+      panelHold?.hold();
+    }
+  }
+  function releasePanel() {
+    if (dragHeld.current) {
+      dragHeld.current = false;
+      panelHold?.release();
+    }
+  }
+  useEffect(() => () => {
+    if (dragHeld.current) panelHold?.release();
+  }, [panelHold]);
 
   async function load(isActive: () => boolean = () => true) {
     try {
@@ -80,6 +107,7 @@ export function DatasetManager({ project }: { project: Project }) {
     lastSyncedSel.current = selId;
     setDraftFields(datasets.find((d) => d.id === selId)?.fields ?? []);
     setEditingEntry(null);
+    setSchemaOpen(false); // each dataset opens with its schema collapsed
   }, [selId, datasets]);
 
   async function createDataset(e: FormEvent) {
@@ -129,6 +157,30 @@ export function DatasetManager({ project }: { project: Project }) {
     }
   }
 
+  // Duplicate a dataset: copy its schema under a fresh `<slug>-copy` id, then clone every entry
+  // (new ids, preserved order) under the new slug. Selects the copy.
+  async function duplicateDataset(src: Dataset) {
+    if (duplicatingDataset.current) return; // ignore a double-click while a duplicate is in flight
+    duplicatingDataset.current = true;
+    setError(null);
+    const newSlug = uniqueSlug(`${src.slug}-copy`, new Set(datasets.map((d) => d.id)));
+    const srcEntries = entries.filter((e) => e.dataset === src.slug).slice().sort(compareEntryOrder);
+    try {
+      await api.putDataset(project.id, { id: newSlug, name: `${src.name} copy`, slug: newSlug, fields: src.fields.map((f) => ({ ...f })) });
+      await Promise.all(
+        srcEntries.map((e, i) =>
+          api.putEntry(project.id, { ...e, id: newEntryId(newSlug), dataset: newSlug, order: i, values: { ...e.values } }),
+        ),
+      );
+      await load();
+      setSelId(newSlug);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'failed to duplicate dataset');
+    } finally {
+      duplicatingDataset.current = false;
+    }
+  }
+
   async function removeDataset(id: string) {
     const ds = datasets.find((d) => d.id === id);
     const name = ds?.name ?? id;
@@ -152,11 +204,20 @@ export function DatasetManager({ project }: { project: Project }) {
   async function duplicateEntry(src: Entry) {
     if (!selected) return;
     setError(null);
-    // A working copy: a fresh id, reset to draft (publishing a duplicate should be deliberate), and
-    // appended (order cleared → sorts last until reordered). Own-enumerable value copy.
-    const copy: Entry = { ...src, id: newEntryId(selected.slug), status: 'draft', order: undefined, values: { ...src.values } };
+    // A working copy: a fresh id, reset to draft (publishing a duplicate should be deliberate).
+    const copy: Entry = { ...src, id: newEntryId(selected.slug), status: 'draft', values: { ...src.values } };
+    // Insert it DIRECTLY AFTER its source (not at the end): dense-reindex the list with the copy in
+    // place, then PUT the copy + only the entries whose order actually shifted.
+    const list = entries.filter((e) => e.dataset === selected.slug).slice().sort(compareEntryOrder);
+    const reordered = reorderWithInsert(list, src.id, copy);
     try {
-      await api.putEntry(project.id, copy);
+      await Promise.all(
+        reordered.flatMap((e) => {
+          if (e.id === copy.id) return [api.putEntry(project.id, e)];
+          const orig = list.find((o) => o.id === e.id);
+          return orig && orig.order === e.order ? [] : [api.putEntry(project.id, e)];
+        }),
+      );
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed to duplicate entry');
@@ -214,17 +275,35 @@ export function DatasetManager({ project }: { project: Project }) {
       {/* Dataset list + create */}
       <aside className="w-64 shrink-0">
         <ul className="mb-3 flex flex-col gap-1">
-          {datasets.map((d) => (
+          {sortedDatasets.map((d) => (
             <li key={d.id}>
-              <button
-                className={`w-full rounded-xl border px-3 py-2 text-left text-sm transition ${
+              {/* Real <button> for selection (keyboard-native) + a sibling duplicate button — no
+                  nested interactives. The wrapper carries the selected/hover styling. */}
+              <div
+                className={`group flex items-center gap-1 rounded-xl border transition ${
                   d.id === selId ? 'border-indigo-400/60 bg-white/80 shadow-sm backdrop-blur-xl' : 'border-white/50 bg-white/40 backdrop-blur-xl hover:bg-white/60'
                 }`}
-                onClick={() => setSelId(d.id)}
               >
-                <span className="font-medium">{d.name}</span>{' '}
-                <span className="text-xs text-slate-400">/{d.slug}</span>
-              </button>
+                <button
+                  type="button"
+                  aria-pressed={d.id === selId}
+                  onClick={() => setSelId(d.id)}
+                  className="min-w-0 flex-1 truncate px-3 py-2 text-left text-sm"
+                >
+                  <span className="font-medium">{d.name}</span>{' '}
+                  <span className="text-xs text-slate-400">/{d.slug}</span>
+                </button>
+                <Tooltip tip="Duplicate dataset" side="top">
+                  <button
+                    type="button"
+                    aria-label={`Duplicate dataset ${d.name}`}
+                    className="mr-1 shrink-0 rounded-md px-1.5 py-0.5 text-xs text-slate-400 opacity-0 transition hover:bg-white hover:text-slate-700 focus:opacity-100 group-hover:opacity-100"
+                    onClick={() => void duplicateDataset(d)}
+                  >
+                    ⧉
+                  </button>
+                </Tooltip>
+              </div>
             </li>
           ))}
           {datasets.length === 0 && <li className="text-sm text-slate-400">No datasets yet.</li>}
@@ -252,21 +331,25 @@ export function DatasetManager({ project }: { project: Project }) {
 
         {selected && (
           <div className="flex flex-col gap-6">
-            {/* Schema editor */}
+            {/* Schema editor — collapsed by default; the header toggles it. */}
             <div className={`${glassCard} p-4`}>
-              <div className="mb-3 flex items-center justify-between">
+              <button
+                type="button"
+                aria-expanded={schemaOpen}
+                onClick={() => setSchemaOpen((v) => !v)}
+                className="flex w-full items-center gap-2 text-left"
+              >
+                <span aria-hidden className={`text-slate-400 transition-transform ${schemaOpen ? 'rotate-90' : ''}`}>▸</span>
                 <h3 className="text-sm font-bold text-slate-700">
-                  {selected.name} <span className="text-xs text-slate-400">schema</span>
+                  {selected.name}{' '}
+                  <span className="text-xs font-medium text-slate-400">
+                    schema · {draftFields.length} {draftFields.length === 1 ? 'field' : 'fields'}
+                  </span>
                 </h3>
-                <button
-                  aria-label="Delete dataset"
-                  className={dangerButton}
-                  onClick={() => removeDataset(selected.id)}
-                >
-                  Delete dataset
-                </button>
-              </div>
+              </button>
 
+              {schemaOpen && (
+                <div className="mt-3">
               <ul className="mb-3 flex flex-col gap-1.5">
                 {draftFields.map((field) => (
                   <li key={field.name} className="flex items-center gap-2 text-sm">
@@ -351,6 +434,20 @@ export function DatasetManager({ project }: { project: Project }) {
                   Save schema
                 </button>
               </div>
+
+                  {/* Dataset-level destructive action, tucked inside the schema editor. */}
+                  <div className="mt-4 flex justify-end border-t border-slate-200/60 pt-3">
+                    <button
+                      type="button"
+                      aria-label="Delete dataset"
+                      className={dangerButton}
+                      onClick={() => removeDataset(selected.id)}
+                    >
+                      Delete dataset
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Entries */}
@@ -381,6 +478,7 @@ export function DatasetManager({ project }: { project: Project }) {
                     draggable
                     onDragStart={(ev) => {
                       setDragId(e.id);
+                      holdPanel(); // keep the Data panel open for the whole drag
                       ev.dataTransfer.effectAllowed = 'move';
                       ev.dataTransfer.setData('text/plain', e.id);
                     }}
@@ -403,8 +501,9 @@ export function DatasetManager({ project }: { project: Project }) {
                     onDragEnd={() => {
                       setDragId(null);
                       setDrop(null);
+                      releasePanel();
                     }}
-                    className={`relative flex items-center gap-2 ${glassPanel} px-3 py-2 text-sm ${dragId === e.id ? 'opacity-40' : ''}`}
+                    className="relative"
                   >
                     {drop?.id === e.id && (
                       <span
@@ -412,30 +511,36 @@ export function DatasetManager({ project }: { project: Project }) {
                         className={`pointer-events-none absolute inset-x-2 z-10 h-0.5 rounded-full bg-indigo-500 ${drop.pos === 'before' ? '-top-1' : '-bottom-1'}`}
                       />
                     )}
-                    <span aria-hidden className="shrink-0 cursor-grab text-slate-300 active:cursor-grabbing">⠿</span>
-                    <button
-                      className="text-left hover:underline"
-                      onClick={() => {
-                        setNewEntry(false);
-                        setEditingEntry(e);
-                      }}
+                    {/* The label is a real <button> (flex-1, fills the row) that opens the editor; the
+                        status badge + action buttons are siblings (no nested interactives). The wrapper
+                        carries the gradient-lift hover + ripple, so the whole row reacts. */}
+                    <div
+                      className={`group flex items-center gap-2 ${glassPanel} ${gradientHover} waves-effect pr-2 text-sm transition ${dragId === e.id ? 'opacity-40' : ''}`}
                     >
-                      {entryLabel(selected, e)}
-                    </button>
-                    <span
-                      className={`rounded px-1.5 py-0.5 text-[10px] uppercase ${
-                        e.status === 'published' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'
-                      }`}
-                    >
-                      {e.status}
-                    </span>
-                    <div className="ml-auto flex items-center gap-1">
+                      <span aria-hidden className="shrink-0 cursor-grab pl-3 text-slate-300 transition group-hover:text-white/70 active:cursor-grabbing">⠿</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNewEntry(false);
+                          setEditingEntry(e);
+                        }}
+                        className="min-w-0 flex-1 truncate py-2 text-left group-hover:text-white"
+                      >
+                        {entryLabel(selected, e)}
+                      </button>
+                      <span
+                        className={`rounded px-1.5 py-0.5 text-[10px] uppercase transition group-hover:bg-white/25 group-hover:text-white ${
+                          e.status === 'published' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'
+                        }`}
+                      >
+                        {e.status}
+                      </span>
                       <Tooltip tip="Duplicate" side="top">
                         <button
                           type="button"
                           aria-label={`Duplicate entry ${e.id}`}
                           className={`${ghostButton} px-2 py-0.5 text-xs`}
-                          onClick={() => duplicateEntry(e)}
+                          onClick={() => void duplicateEntry(e)}
                         >
                           ⧉
                         </button>
@@ -444,7 +549,7 @@ export function DatasetManager({ project }: { project: Project }) {
                         type="button"
                         aria-label={`Delete entry ${e.id}`}
                         className={`${dangerButton} px-2 py-0.5 text-xs`}
-                        onClick={() => removeEntry(e.id)}
+                        onClick={() => void removeEntry(e.id)}
                       >
                         ✕
                       </button>
@@ -456,6 +561,7 @@ export function DatasetManager({ project }: { project: Project }) {
 
               {editingEntry && (
                 <EntryEditorModal
+                  key={editingEntry.id}
                   dataset={selected}
                   entry={editingEntry}
                   projectId={project.id}

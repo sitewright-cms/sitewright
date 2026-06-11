@@ -71,3 +71,27 @@ export function entryLabel(dataset: Dataset, entry: Entry): string {
   }
   return entry.id;
 }
+
+/**
+ * Inserts `copy` directly AFTER the entry whose id is `srcId` in an already-sorted `list`, then
+ * returns the list with a dense `order` (0,1,2,…) assigned to every element — so a duplicated entry
+ * lands next to its source rather than at the end. If `srcId` isn't found, `copy` is appended.
+ */
+export function reorderWithInsert(list: readonly Entry[], srcId: string, copy: Entry): Entry[] {
+  const idx = list.findIndex((e) => e.id === srcId);
+  const next =
+    idx === -1 ? [...list, copy] : [...list.slice(0, idx + 1), copy, ...list.slice(idx + 1)];
+  return next.map((e, i) => ({ ...e, order: i }));
+}
+
+/**
+ * Returns `desired` if free, else the first `desired-2`, `desired-3`, … not in `taken`. Used to
+ * pick a collision-free slug/id when duplicating a dataset.
+ */
+export function uniqueSlug(desired: string, taken: ReadonlySet<string>): string {
+  if (!taken.has(desired)) return desired;
+  for (let n = 2; ; n += 1) {
+    const candidate = `${desired}-${n}`;
+    if (!taken.has(candidate)) return candidate;
+  }
+}

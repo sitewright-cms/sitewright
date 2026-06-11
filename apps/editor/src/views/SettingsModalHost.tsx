@@ -3,15 +3,15 @@ import { Modal } from './ui/Modal';
 import { InstanceSettings } from './InstanceSettings';
 import { ClientsManager } from './ClientsManager';
 import { TeamManager } from './TeamManager';
-import { ApiKeysManager } from './ApiKeysManager';
 
 /** The settings surfaces opened (as modals) from the header gear menu. */
-export type SettingsView = 'system' | 'clients' | 'team' | 'access';
+export type SettingsView = 'system' | 'clients' | 'team';
 
 /**
  * Renders the active header-settings surface AS A MODAL. System Settings is global (no project);
- * Clients / Team / Access are project-scoped. Each view carries its own actions/save — these modals
- * supply only the chrome (title + close). Publish & Deploy lives in its own PublishDeployModal.
+ * Clients / Team are project-scoped. Each view carries its own actions/save — these modals supply
+ * only the chrome (title + close). Publish & Deploy lives in its own PublishDeployModal; access keys
+ * moved to the user/account menu (UserMenu).
  */
 export function SettingsModalHost({
   view,
@@ -51,12 +51,8 @@ export function SettingsModalHost({
       </Modal>
     );
   }
-  return (
-    <Modal title="Access" size="lg" onClose={onClose}>
-      <div className="p-5">
-        {/* Keyed so the one-time-token banner + state reset if the project changes while open. */}
-        <ApiKeysManager key={project.id} project={project} />
-      </div>
-    </Modal>
-  );
+  // Exhaustiveness guard: adding a SettingsView variant without a branch becomes a compile error
+  // rather than silently rendering nothing.
+  const _exhaustive: never = view;
+  return _exhaustive;
 }

@@ -24,11 +24,13 @@ test('header gear menu unifies settings + inline agent indicator + publish toast
   // Settings, Team).
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   const menu = page.getByRole('menu', { name: 'Settings' });
-  for (const label of ['Publish & Deploy Options', 'Clients', 'Access', 'Sign out']) {
+  for (const label of ['Publish & Deploy Options', 'Clients', 'Sign out']) {
     await expect(menu.getByRole('menuitem', { name: label })).toBeVisible();
   }
   await expect(menu.getByRole('menuitem', { name: 'System Settings' })).toHaveCount(0);
   await expect(menu.getByRole('menuitem', { name: 'Team' })).toHaveCount(0);
+  // Access keys moved out of the gear menu into the user/account menu (person icon).
+  await expect(menu.getByRole('menuitem', { name: 'Access', exact: true })).toHaveCount(0);
 
   // A target (Clients) opens AS A MODAL.
   await menu.getByRole('menuitem', { name: 'Clients' }).click();

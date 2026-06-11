@@ -16,12 +16,14 @@ test('create, view, and revoke a project API key from the editor', async ({ page
   await page.getByLabel('Project name').fill('Keyed Site');
   await page.getByLabel('Project slug').fill(`keyed-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Access' }).click();
+  // Access keys now live in the user/account menu (person icon, right of the gear) → Access keys tab.
+  await page.getByRole('button', { name: 'Account' }).click();
+  const account = page.getByRole('dialog', { name: 'Account' });
+  await account.getByRole('button', { name: 'Access keys' }).click();
 
   // Create a key.
-  await page.getByLabel('API key name').fill('CI deploy');
-  await page.getByRole('button', { name: 'Create key' }).click();
+  await account.getByLabel('API key name').fill('CI deploy');
+  await account.getByRole('button', { name: 'Create key' }).click();
 
   // The raw token is shown exactly once.
   const tokenBox = page.getByLabel('New API token');

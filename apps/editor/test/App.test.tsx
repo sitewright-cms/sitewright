@@ -34,7 +34,7 @@ const projects: Project[] = [
 
 beforeEach(() => {
   vi.clearAllMocks();
-  me.mockResolvedValue({ userId: 'u', isInstanceAdmin: false, projects });
+  me.mockResolvedValue({ userId: 'u', email: 'u@acme.test', isInstanceAdmin: false, projects });
   createProject.mockResolvedValue({ project: { id: 'p3', name: 'New Co', slug: 'new-co', role: 'owner' } });
 });
 
@@ -115,12 +115,16 @@ describe('App shell', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     const menu = await screen.findByRole('menu', { name: 'Settings' });
-    for (const label of ['Publish & Deploy Options', 'Clients', 'Access']) {
+    for (const label of ['Publish & Deploy Options', 'Clients']) {
       expect(within(menu).getByRole('menuitem', { name: label })).toBeInTheDocument();
     }
     // System Settings + Team are admin-only — hidden for this non-admin owner.
     expect(within(menu).queryByRole('menuitem', { name: 'System Settings' })).toBeNull();
     expect(within(menu).queryByRole('menuitem', { name: 'Team' })).toBeNull();
+    // Access keys moved out of the gear menu into the user/account menu (person icon).
+    expect(within(menu).queryByRole('menuitem', { name: 'Access' })).toBeNull();
+    // The account menu lives next to the gear.
+    expect(screen.getByRole('button', { name: 'Account' })).toBeInTheDocument();
 
     // Sign out lives in the menu and returns to the login screen.
     fireEvent.click(within(menu).getByRole('menuitem', { name: 'Sign out' }));

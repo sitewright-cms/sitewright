@@ -10,6 +10,7 @@ import { PublishBar } from './views/PublishBar';
 import { PublishDeployModal } from './views/publish/PublishDeployModal';
 import { HeaderSettingsMenu } from './views/HeaderSettingsMenu';
 import { SettingsModalHost, type SettingsView } from './views/SettingsModalHost';
+import { UserMenu } from './views/UserMenu';
 import { ProjectSelectorModal } from './views/ProjectSelectorModal';
 import { NewProjectModal } from './views/NewProjectModal';
 import { AcceptInvite } from './views/AcceptInvite';
@@ -43,6 +44,10 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
   const [inviteToken, setInviteToken] = useState<string | null>(initialInviteToken);
   const [projects, setProjects] = useState<Project[]>([]);
   const [isInstanceAdmin, setIsInstanceAdmin] = useState(false);
+  // The signed-in user's email (from /me), surfaced in the header user menu. The user-menu modal is
+  // toggled by the person icon next to the settings gear.
+  const [email, setEmail] = useState('');
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [tab, setTab] = useState<Tab>('pages');
   // The project picker is shown automatically on first load and reachable from the header.
   const [selectorOpen, setSelectorOpen] = useState(false);
@@ -61,6 +66,7 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
       // best-effort; always return to the auth screen
     }
     setIsInstanceAdmin(false);
+    setEmail('');
     setStage({ name: 'auth' });
   }
 
@@ -69,6 +75,7 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
       const me = await api.me();
       setProjects(me.projects);
       setIsInstanceAdmin(me.isInstanceAdmin);
+      setEmail(me.email);
       // First successful load with no project open → show the selector automatically.
       setStage((s) => (s.name === 'project' ? s : { name: 'home' }));
       return me.projects;
@@ -193,9 +200,22 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
           onSystemSettings={() => setSettingsView('system')}
           onClients={() => setSettingsView('clients')}
           onTeam={() => setSettingsView('team')}
-          onAccess={() => setSettingsView('access')}
           onSignOut={() => void signOut()}
         />
+        {/* The user/account menu — account email, password, access keys, and security (MFA). Sits
+            immediately to the right of the settings gear. */}
+        <button
+          type="button"
+          aria-label="Account"
+          title="Account"
+          onClick={() => setUserMenuOpen(true)}
+          className="waves-effect rounded-md p-1.5 text-slate-500 transition hover:bg-white/70 hover:text-slate-900"
+        >
+          <svg aria-hidden viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="8" r="4" />
+            <path d="M4 21v-1a7 7 0 0 1 7-7h2a7 7 0 0 1 7 7v1" />
+          </svg>
+        </button>
       </nav>
       </div>
     </header>
@@ -250,9 +270,18 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
           onSaved={() => setPublishRefresh((n) => n + 1)}
         />
       )}
-      {/* System Settings / Clients / Team / Access — opened (as modals) from the header gear menu. */}
+      {/* System Settings / Clients / Team — opened (as modals) from the header gear menu. */}
       {settingsView && (
         <SettingsModalHost view={settingsView} project={inProject} onClose={() => setSettingsView(null)} />
+      )}
+      {/* The user/account menu (person icon) — account email, password, access keys, security. */}
+      {userMenuOpen && (
+        <UserMenu
+          email={email}
+          project={inProject}
+          onClose={() => setUserMenuOpen(false)}
+          onEmailChanged={setEmail}
+        />
       )}
       {/* Always-present edge side-panels (owners): System Library (left), File Manager (right), and
           the bottom rails — Datasets (left), Snippets (center), Templates (right). They render above

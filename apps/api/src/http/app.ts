@@ -114,8 +114,10 @@ import { defaultStockProviders } from '../stock/providers.js';
 import { SubmissionRepository } from '../repo/submissions.js';
 import { GlobalSmtpMailer, ProjectSmtpMailer, type SubmissionMailer, type ProjectMailer } from '../mail/mailer.js';
 import { HttpHcaptchaVerifier, type HcaptchaVerifier } from '../mail/hcaptcha.js';
-import { createSession, revokeSession, validateSession } from '../auth/sessions.js';
+import { createSession, revokeOtherSessions, revokeSession, validateSession } from '../auth/sessions.js';
 import {
+  changeEmail,
+  changePassword,
   getPlatformRole,
   getUserEmail,
   listPlatformUsers,
@@ -287,6 +289,16 @@ const RegisterBody = z.object({
 const LoginBody = z.object({
   email: z.string().email(),
   password: z.string().min(1).max(200),
+});
+// Self-service account changes. Both re-authenticate with the current password (a live session
+// alone must not suffice to change a credential). New-password strength mirrors RegisterBody.
+const ChangeEmailBody = z.object({
+  email: z.string().email(),
+  currentPassword: z.string().min(1).max(200),
+});
+const ChangePasswordBody = z.object({
+  currentPassword: z.string().min(1).max(200),
+  newPassword: z.string().min(8).max(200),
 });
 const AiGenerateBody = z.object({
   instruction: z.string().min(1).max(4000),
@@ -524,6 +536,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             // Covers the auth login/register password AND the project-SMTP PUT
             // (SmtpInput.password is top-level) AND deploy-target create.
             'req.body.password',
+            // Self-service account changes (PUT /account/email, /account/password).
+            'req.body.currentPassword',
+            'req.body.newPassword',
             // Deploy-target SFTP key auth: never log the private key or its passphrase.
             'req.body.privateKey',
             'req.body.passphrase',
@@ -834,14 +849,47 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
   app.get('/me', { config: rl(60) }, async (req, reply) => {
     const userId = await requireUserId(req);
-    const [platformRole, access, instanceAdmin] = await Promise.all([
+    const [email, platformRole, access, instanceAdmin] = await Promise.all([
+      getUserEmail(db, userId),
       getPlatformRole(db, userId),
       // Projects the caller can reach: a platform admin → all; everyone else → their memberships.
       listProjectAccessForUser(db, userId),
       isInstanceAdmin(userId),
     ]);
     const projects = access.map((a) => ({ id: a.projectId, name: a.projectName, slug: a.projectSlug, role: a.role }));
-    return reply.send({ userId, platformRole, isInstanceAdmin: instanceAdmin, projects });
+    // email is non-null for a live session (the row exists); coerce the theoretical TOCTOU-deleted
+    // case to '' so the response always matches the client's `email: string` contract.
+    return reply.send({ userId, email: email ?? '', platformRole, isInstanceAdmin: instanceAdmin, projects });
+  });
+
+  // ---- Self-service account management (the header "Account" / user menu) ----
+  // Interactive-session only: a Bearer (API-key) caller must never change a human's credentials.
+  // Each route re-authenticates with the current password before applying the change.
+  app.put('/account/email', { config: authRl }, async (req, reply) => {
+    if (bearerToken(req) !== undefined) {
+      throw new ForbiddenError('this operation requires an interactive session');
+    }
+    const userId = await requireUserId(req);
+    const body = ChangeEmailBody.parse(req.body);
+    const { email } = await changeEmail(db, userId, body.email, body.currentPassword);
+    // The login identity changed — treat it like a credential change: cut off any OTHER sessions
+    // (a stale/stolen token elsewhere) while keeping THIS browser signed in.
+    const current = sessionToken(req);
+    if (current) await revokeOtherSessions(db, userId, current);
+    return reply.send({ email });
+  });
+
+  app.put('/account/password', { config: authRl }, async (req, reply) => {
+    if (bearerToken(req) !== undefined) {
+      throw new ForbiddenError('this operation requires an interactive session');
+    }
+    const userId = await requireUserId(req);
+    const body = ChangePasswordBody.parse(req.body);
+    await changePassword(db, userId, body.currentPassword, body.newPassword);
+    // Cut off any other sessions (a leaked/stale token elsewhere) but keep THIS browser signed in.
+    const current = sessionToken(req);
+    if (current) await revokeOtherSessions(db, userId, current);
+    return reply.code(204).send();
   });
 
   // ---- Instance admin settings (global mail / hCaptcha / enabled form modes) ----

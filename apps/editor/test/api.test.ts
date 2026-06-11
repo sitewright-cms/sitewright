@@ -1,12 +1,15 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { api, ApiError, eventsUrl } from '../src/api';
+import { api, ApiError, eventsUrl, setUnauthorizedHandler } from '../src/api';
 
 const fetchMock = vi.fn();
 beforeEach(() => {
   vi.stubGlobal('fetch', fetchMock);
   fetchMock.mockReset();
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  setUnauthorizedHandler(undefined);
+});
 
 function jsonResponse(status: number, body: unknown) {
   return {
@@ -812,5 +815,33 @@ describe('api client', () => {
     const [delUrl, delInit] = fetchMock.mock.calls[2]!;
     expect(delUrl).toBe('/projects/p/content/translation/home__de');
     expect(delInit.method).toBe('DELETE');
+  });
+});
+
+describe('unauthorized (401) handling', () => {
+  it('invokes the registered handler on a 401 (expired/invalid session), still throwing the ApiError', async () => {
+    const onUnauthorized = vi.fn();
+    setUnauthorizedHandler(onUnauthorized);
+    fetchMock.mockResolvedValue(jsonResponse(401, { error: 'Not authenticated' }));
+    await expect(api.me()).rejects.toMatchObject({ status: 401, message: 'Not authenticated' });
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT invoke the handler on other failures or on success', async () => {
+    const onUnauthorized = vi.fn();
+    setUnauthorizedHandler(onUnauthorized);
+    fetchMock.mockResolvedValue(jsonResponse(403, { error: 'forbidden' }));
+    await expect(api.projects()).rejects.toMatchObject({ status: 403 });
+    fetchMock.mockResolvedValue(jsonResponse(500, { error: 'boom' }));
+    await expect(api.projects()).rejects.toMatchObject({ status: 500 });
+    fetchMock.mockResolvedValue(jsonResponse(200, { projects: [] }));
+    await api.projects();
+    expect(onUnauthorized).not.toHaveBeenCalled();
+  });
+
+  it('is a no-op when no handler is registered (401 still throws normally)', async () => {
+    setUnauthorizedHandler(undefined);
+    fetchMock.mockResolvedValue(jsonResponse(401, { error: 'Not authenticated' }));
+    await expect(api.me()).rejects.toBeInstanceOf(ApiError);
   });
 });

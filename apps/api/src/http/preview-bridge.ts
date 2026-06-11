@@ -16,6 +16,8 @@
  *                     { source:'sitewright-preview', type:'pick-image', key, kind:'image'|'bg' }   (data-sw-src/bg)
  *                     { source:'sitewright-preview', type:'open-entry', dataset, id }              (data-sw-entry)
  *                     { source:'sitewright-preview', type:'edit-html-source', key, html }          (data-sw-html → source modal)
+ *                     { source:'sitewright-preview', type:'control-edit', target, as, value }       (sw-control set)
+ *                     { source:'sitewright-preview', type:'control-pick-image', target }            (sw-control image)
  *   editor → preview: { source:'sitewright-editor', type:'scrollTo', y }
  *                     { source:'sitewright-editor', type:'setMode', mode }
  *
@@ -93,10 +95,15 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       '.sw-tb button:hover{background:#334155;color:#fff}' +
       '.sw-pop{position:fixed;z-index:2147483647;display:none;flex-direction:column;gap:6px;padding:8px;border-radius:10px;background:#fff;box-shadow:0 8px 24px rgba(0,0,0,.25);font:13px system-ui,sans-serif;min-width:240px}' +
       '.sw-pop label{display:flex;flex-direction:column;gap:2px;font-size:11px;color:#64748b}' +
-      '.sw-pop input{font:13px system-ui;padding:5px 7px;border:1px solid #cbd5e1;border-radius:6px}' +
+      '.sw-pop input,.sw-pop select,.sw-pop textarea{font:13px system-ui;padding:5px 7px;border:1px solid #cbd5e1;border-radius:6px}' +
       '.sw-pop .sw-pop-actions{display:flex;justify-content:flex-end;gap:6px;margin-top:2px}' +
       '.sw-pop button{font:600 12px system-ui;padding:4px 10px;border-radius:6px;border:0;cursor:pointer}' +
-      '.sw-pop .sw-ok{background:#4f46e5;color:#fff}.sw-pop .sw-cancel{background:#e2e8f0;color:#334155}';
+      '.sw-pop .sw-ok{background:#4f46e5;color:#fff}.sw-pop .sw-cancel{background:#e2e8f0;color:#334155}' +
+      // Editor-only CONTROL chips: hidden by default; shown as an inline pill ONLY in content mode (the
+      // bridge adds .sw-control-on). Publish strips the element entirely (directives.ts).
+      '[data-sw-control]{display:none}' +
+      '.sw-control-on{display:inline-flex;align-items:center;gap:.35em;cursor:pointer;max-width:22rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:2px 9px;border-radius:9999px;background:#eef2ff;border:1px dashed #6366f1;color:#4338ca;font:600 12px system-ui,sans-serif;line-height:1.5;vertical-align:middle}' +
+      '.sw-control-on:hover{background:#e0e7ff}';
     (document.head || document.documentElement).appendChild(s);
   }
 
@@ -235,6 +242,76 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     post({ type: 'pick-image', key: el.getAttribute('data-sw-src') || el.getAttribute('data-sw-bg') || '', kind: el.hasAttribute('data-sw-src') ? 'image' : 'bg' });
   }
 
+  // --- Editor-only CONTROL chips ([data-sw-control]) → a popover (text/textarea/select) or, for
+  //     as="image", the editor's file picker — to set the chip's target (page/page.data value). ---
+  var cpop = null, cpopEl = null;
+  function ensureControlPop() {
+    if (cpop) return cpop;
+    cpop = document.createElement('div');
+    cpop.className = 'sw-pop';
+    cpop.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && e.target && e.target.tagName !== 'TEXTAREA') { e.preventDefault(); applyControlPop(); }
+      else if (e.key === 'Escape') { e.preventDefault(); closeControlPop(); }
+    });
+    document.body.appendChild(cpop);
+    return cpop;
+  }
+  function openControlPop(el) {
+    var as = el.getAttribute('data-sw-control-as') || 'text';
+    if (as === 'image') { post({ type: 'control-pick-image', target: el.getAttribute('data-sw-control') }); return; }
+    cpopEl = el;
+    var value = el.getAttribute('data-sw-control-value') || '';
+    var p = ensureControlPop();
+    while (p.firstChild) p.removeChild(p.firstChild);
+    var lab = document.createElement('label');
+    lab.appendChild(document.createTextNode(el.getAttribute('data-sw-control-label') || 'Value'));
+    var field;
+    if (as === 'folder' || as === 'dataset') {
+      field = document.createElement('select');
+      var blank = document.createElement('option'); blank.value = ''; blank.textContent = '\\u2014 none \\u2014'; field.appendChild(blank);
+      var opts = [];
+      try { opts = JSON.parse(el.getAttribute('data-sw-control-options') || '[]'); } catch (err) {}
+      for (var i = 0; i < opts.length; i++) {
+        var o = document.createElement('option'); o.value = String(opts[i]); o.textContent = String(opts[i]);
+        if (o.value === value) o.selected = true; field.appendChild(o);
+      }
+    } else if (as === 'textarea') {
+      field = document.createElement('textarea'); field.rows = 3; field.maxLength = 8000; field.value = value;
+    } else {
+      field = document.createElement('input'); field.type = 'text'; field.maxLength = 2048; field.value = value;
+    }
+    field.className = 'sw-cval';
+    lab.appendChild(field);
+    var actions = document.createElement('div'); actions.className = 'sw-pop-actions';
+    var cancel = document.createElement('button'); cancel.type = 'button'; cancel.className = 'sw-cancel'; cancel.textContent = 'Cancel';
+    var ok = document.createElement('button'); ok.type = 'button'; ok.className = 'sw-ok'; ok.textContent = 'Apply';
+    cancel.addEventListener('click', closeControlPop);
+    ok.addEventListener('click', applyControlPop);
+    actions.appendChild(cancel); actions.appendChild(ok);
+    p.appendChild(lab); p.appendChild(actions);
+    p.style.display = 'flex';
+    var rect = el.getBoundingClientRect();
+    var top = rect.bottom + 6, left = rect.left;
+    var maxLeft = window.innerWidth - p.offsetWidth - 6; if (left > maxLeft) left = maxLeft > 6 ? maxLeft : 6; if (left < 6) left = 6;
+    if (top + p.offsetHeight > window.innerHeight - 6) top = rect.top - p.offsetHeight - 6;
+    p.style.top = top + 'px'; p.style.left = left + 'px';
+    field.focus();
+    document.addEventListener('mousedown', onControlDocDown, true);
+  }
+  function onControlDocDown(e) {
+    if (!cpop || cpop.style.display === 'none') return;
+    if (cpop.contains(e.target) || (cpopEl && cpopEl.contains(e.target))) return;
+    closeControlPop();
+  }
+  function applyControlPop() {
+    if (!cpopEl) return closeControlPop();
+    var field = cpop.querySelector('.sw-cval');
+    post({ type: 'control-edit', target: cpopEl.getAttribute('data-sw-control'), as: cpopEl.getAttribute('data-sw-control-as'), value: field ? field.value : '' });
+    closeControlPop();
+  }
+  function closeControlPop() { if (cpop) cpop.style.display = 'none'; cpopEl = null; document.removeEventListener('mousedown', onControlDocDown, true); }
+  function onControlClick(e) { if (!editing) return; e.preventDefault(); e.stopPropagation(); openControlPop(e.currentTarget); }
+
   // --- Dataset rows ([data-sw-entry]): click opens that entry's editor (unless the click is on an
   //     editable leaf, which wins). data-sw-href/src/bg already stopPropagation in their handlers. ---
   function onEntryClick(e) {
@@ -290,6 +367,11 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       else el.classList.remove('sw-entry-on');
       relPos(el, on);
     });
+    // Editor-only control chips — shown + clickable only in content mode.
+    eachEl('[data-sw-control]', function (el) {
+      if (on) { el.classList.add('sw-control-on'); el.addEventListener('click', onControlClick); }
+      else { el.classList.remove('sw-control-on'); el.removeEventListener('click', onControlClick); }
+    });
     if (on) {
       document.addEventListener('selectionchange', onSelChange);
       document.addEventListener('click', onEntryClick);
@@ -298,6 +380,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       document.removeEventListener('click', onEntryClick);
       hideToolbar();
       closePop();
+      closeControlPop();
     }
   }
 

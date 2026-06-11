@@ -1765,6 +1765,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           }
           const previewPage = {
             title: page.title,
+            // SEO metadata + the {{sw-control}} current value (the control chip only renders in preview).
+            seo: page.seo,
             // `page.slug` is the page's OWN segment — the Page record's `path` field (e.g. "services");
             // the binding's `page.path` below is the FULL computed route. (Mirrors page.children[*].slug.)
             slug: page.path,

@@ -18,6 +18,10 @@
     "./url": {
       "types": "./dist/url.d.ts",
       "import": "./dist/url.js"
+    },
+    "./control": {
+      "types": "./dist/control.d.ts",
+      "import": "./dist/control.js"
     }
   },
   "files": [

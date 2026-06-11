@@ -9,6 +9,7 @@ import {
   resolveTemplateSource,
 } from '@sitewright/core';
 import { safeUrl } from '@sitewright/blocks/url';
+import { classifyControlTarget } from '@sitewright/blocks/control';
 import { api, previewDocUrl, type Project } from '../api';
 import { CodeEditor } from '../lib/code-editor';
 import { parseTemplateErrorPosition } from '../lib/template-error';
@@ -138,6 +139,8 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   const [pageDataOpen, setPageDataOpen] = useState(false);
   // The content key whose image is being replaced via the file picker (data-sw-src/bg click), or null.
   const [pickerKey, setPickerKey] = useState<string | null>(null);
+  // The {{sw-control}} target whose image is being picked (as="image"), or null.
+  const [controlPick, setControlPick] = useState<string | null>(null);
   // The dataset entry being edited from a preview click (data-sw-entry), or null.
   const [openEntry, setOpenEntry] = useState<{ dataset: string; id: string } | null>(null);
   // The data-sw-html region being edited in the source modal (toolbar </> button): its key + the HTML to
@@ -248,6 +251,18 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   pageDataRef.current = pageData;
   const modeRef = useRef(mode);
   modeRef.current = mode;
+  // Apply a {{sw-control}} edit: route a whitelisted target to page settings (title / SEO) or page.data.
+  // Body is stale-safe (functional setState + pure helpers), so the message handler reaches it via a ref.
+  function applyControlEdit(target: string, as: string | undefined, value: string): void {
+    const t = classifyControlTarget(target);
+    if (!t) return;
+    const v = as === 'image' || as === 'url' || (t.kind === 'seo' && t.field === 'ogImage') ? safeUrl(value, '') : value;
+    if (t.kind === 'title') setSettings((s) => ({ ...s, title: v }));
+    else if (t.kind === 'seo') setSettings((s) => (t.field === 'ogImage' ? { ...s, seoOgImage: v } : { ...s, seoDescription: v }));
+    else setPageData((prev) => pageDataSet(prev, t.key, v));
+  }
+  const applyControlEditRef = useRef(applyControlEdit);
+  applyControlEditRef.current = applyControlEdit;
   // The stateKey a given inline (preview-originated) edit will produce — stored in inlineKeyRef so
   // the debounced reload can skip it. MUST mirror `stateKey`'s field set + order exactly.
   function inlineToken(next: { data?: JsonValue }): string {
@@ -272,6 +287,8 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
         href?: string;
         textKey?: string;
         text?: string;
+        target?: string;
+        as?: string;
         kind?: 'image' | 'bg'; // pick-image: the click origin; both currently use the image picker
         dataset?: string;
         id?: string;
@@ -311,6 +328,12 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
         // with the stored page.data override if present, else the live authored default (bridge innerHTML).
         const stored = pageDataGet(pageDataRef.current, d.key);
         setHtmlSource({ key: d.key, html: typeof stored === 'string' ? stored : typeof d.html === 'string' ? d.html : '' });
+      } else if (d.type === 'control-edit' && typeof d.target === 'string' && classifyControlTarget(d.target) && typeof d.value === 'string') {
+        // {{sw-control}} set a value → write the target (page setting / page.data); the preview reloads.
+        applyControlEditRef.current(d.target, d.as, d.value);
+      } else if (d.type === 'control-pick-image' && typeof d.target === 'string' && classifyControlTarget(d.target)) {
+        // {{sw-control}} as="image" → open the file picker; the pick writes the target.
+        setControlPick(d.target);
       } else if (d.type === 'pick-image' && typeof d.key === 'string' && d.key !== '' && isSafeKey(d.key)) {
         // Clicked an editable image/background in the preview → open the file picker for that region.
         setPickerKey(d.key);
@@ -769,6 +792,20 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
             setPickerKey(null);
           }}
           onClose={() => setPickerKey(null)}
+        />
+      )}
+
+      {/* {{sw-control}} as="image" → pick an image for the control's target (e.g. the OG image). */}
+      {controlPick !== null && (
+        <FilePicker
+          projectId={project.id}
+          accept={ACCEPT.image}
+          title="Choose image"
+          onPick={(url) => {
+            applyControlEdit(controlPick, 'image', url);
+            setControlPick(null);
+          }}
+          onClose={() => setControlPick(null)}
         />
       )}
 

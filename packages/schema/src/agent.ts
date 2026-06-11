@@ -37,6 +37,11 @@ In \`source\`:
   (images by default). The folder may be a subfolder ("products/2024") or a variable. Each iteration
   binds {{url}} {{alt}} {{filename}} {{kind}} {{width}} {{height}} (+ {{@index}}/{{@first}}/{{@last}});
   bind the src with {{sw-url url}}. e.g. {{#sw-folder "gallery"}}<img src="{{sw-url url}}" alt="{{alt}}" loading="lazy">{{/sw-folder}}.
+- CONTENT-EDITOR-ONLY controls: {{sw-control target="…" as="text|textarea|url|image|folder|dataset" label="…"}}
+  drops a chip (visible only in the Content Editor, stripped on publish) letting a client set a whitelisted
+  page value (target=page.title | seo.ogImage | seo.description) or a page.data key. Use it to expose the
+  knobs OTHER helpers read — e.g. {{sw-control target="gallery_folder" as="folder"}} feeds
+  {{#sw-folder page.data.gallery_folder}}, and {{sw-control target="list_dataset" as="dataset"}} feeds {{#each}}.
 - Mark text a CLIENT may later edit by adding data-sw-text="key" to a real element, e.g.
   <h1 data-sw-text="headline">Default text</h1> (rich text: data-sw-html; image: data-sw-src;
   link: data-sw-href; background: data-sw-bg). The override is stored on the page as page.data.<key>.

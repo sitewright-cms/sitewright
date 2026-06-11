@@ -56,6 +56,10 @@
      from instance settings by useBranding(); defaults match the historic indigo-600 → sky-500 theme. */
   --sw-brand-1: #4f46e5;
   --sw-brand-2: #0ea5e9;
+  /* The brand-tinted drop-shadow glow under those surfaces — derived from the primary stop so it
+     follows the brand. 30%/40% alpha reproduce the historic `shadow-indigo-600/30` and `/40` exactly. */
+  --sw-brand-shadow: color-mix(in srgb, var(--sw-brand-1) 30%, transparent);
+  --sw-brand-shadow-strong: color-mix(in srgb, var(--sw-brand-1) 40%, transparent);
 }
 
 /* The configurable brand gradient — referenced from theme.ts (primaryButton/gradientSurface/accentChip)
@@ -65,6 +69,25 @@
 }
 .sw-brand-gradient-hover:hover {
   background-image: linear-gradient(to bottom right, var(--sw-brand-1), var(--sw-brand-2));
+}
+
+/* The brand-tinted glow — replaces hardcoded `shadow-{lg,md} shadow-indigo-600/30`. The geometry
+   mirrors Tailwind's shadow-lg / shadow-md; only the colour follows the brand (via --sw-brand-shadow).
+   Each pairs a base class with a `-hover` class; both reproduce the old indigo behaviour exactly:
+     - lg (buttons): a permanent 30% glow that INTENSIFIES to 40% on hover (old shadow-indigo-600/30 → /40).
+     - md (active surfaces): a permanent 30% glow; the `-hover` form applies the same 30% glow on
+       hover-ONLY elements (the old `hover:shadow-md hover:shadow-indigo-600/30`, which had no base). */
+.sw-brand-shadow-lg {
+  box-shadow: 0 10px 15px -3px var(--sw-brand-shadow), 0 4px 6px -4px var(--sw-brand-shadow);
+}
+.sw-brand-shadow-lg-hover:hover {
+  box-shadow: 0 10px 15px -3px var(--sw-brand-shadow-strong), 0 4px 6px -4px var(--sw-brand-shadow-strong);
+}
+.sw-brand-shadow-md {
+  box-shadow: 0 4px 6px -1px var(--sw-brand-shadow), 0 2px 4px -2px var(--sw-brand-shadow);
+}
+.sw-brand-shadow-md-hover:hover {
+  box-shadow: 0 4px 6px -1px var(--sw-brand-shadow), 0 2px 4px -2px var(--sw-brand-shadow);
 }
 
 /* DaisyUI component previews render on a page-like surface (themed via the :root vars).

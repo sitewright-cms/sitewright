@@ -186,7 +186,7 @@ export function SidePanel({ side, label, icon, size, width, align = 'center', op
         // While open the tab is invisible (the panel's own × closes it), so drop it from the tab
         // order too — a focusable-but-invisible control would break keyboard focus order.
         tabIndex={open ? -1 : undefined}
-        className={`sw-brand-gradient fixed z-[55] flex items-center justify-center gap-1.5 font-bold uppercase tracking-wide text-white shadow-lg shadow-indigo-600/30 transition hover:shadow-indigo-600/40 ${TAB_RADIUS[side]} ${tabPosition(side, align)} ${
+        className={`sw-brand-gradient sw-brand-shadow-lg sw-brand-shadow-lg-hover fixed z-[55] flex items-center justify-center gap-1.5 font-bold uppercase tracking-wide text-white transition ${TAB_RADIUS[side]} ${tabPosition(side, align)} ${
           side === 'bottom' ? 'px-4 py-2 text-sm' : 'px-2 py-4 text-sm'
         } ${open ? 'pointer-events-none opacity-0' : 'opacity-100'}`}
       >

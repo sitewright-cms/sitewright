@@ -32,7 +32,7 @@ describe('SecurityTab (TOTP)', () => {
     mfaSetupTotp.mockResolvedValue({ secret: 'JBSWY3DPEHPK3PXP', otpauthUri: 'otpauth://totp/Sitewright:me?secret=JBSWY3DPEHPK3PXP' });
     mfaConfirmTotp.mockResolvedValue({ recoveryCodes: ['AAAAA-BBBBB', 'CCCCC-DDDDD'] });
     const onChanged = vi.fn();
-    render(<SecurityTab totpEnabled={false} onChanged={onChanged} />);
+    render(<SecurityTab totpEnabled={false} recoveryCodesRemaining={0} onChanged={onChanged} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Set up two-factor' }));
     await waitFor(() => expect(mfaSetupTotp).toHaveBeenCalled());
@@ -53,7 +53,7 @@ describe('SecurityTab (TOTP)', () => {
 
   it('surfaces a setup error (e.g. no encryption key → 503)', async () => {
     mfaSetupTotp.mockRejectedValue(new Error('encryption is not configured'));
-    render(<SecurityTab totpEnabled={false} onChanged={vi.fn()} />);
+    render(<SecurityTab totpEnabled={false} recoveryCodesRemaining={0} onChanged={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: 'Set up two-factor' }));
     expect(await screen.findByText('encryption is not configured')).toBeInTheDocument();
   });
@@ -61,7 +61,7 @@ describe('SecurityTab (TOTP)', () => {
   it('when enabled: disable is password-confirmed and notifies the app', async () => {
     mfaDisableTotp.mockResolvedValue(undefined);
     const onChanged = vi.fn();
-    render(<SecurityTab totpEnabled onChanged={onChanged} />);
+    render(<SecurityTab totpEnabled recoveryCodesRemaining={8} onChanged={onChanged} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Disable two-factor' }));
     fireEvent.change(screen.getByLabelText('Current password'), { target: { value: 'pw-secret-1' } });
@@ -72,12 +72,23 @@ describe('SecurityTab (TOTP)', () => {
 
   it('when enabled: regenerate recovery codes is password-confirmed and shows the new set', async () => {
     mfaRegenerateRecoveryCodes.mockResolvedValue({ recoveryCodes: ['ZZZZZ-YYYYY'] });
-    render(<SecurityTab totpEnabled onChanged={vi.fn()} />);
+    render(<SecurityTab totpEnabled recoveryCodesRemaining={8} onChanged={vi.fn()} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Regenerate recovery codes' }));
     fireEvent.change(screen.getByLabelText('Current password'), { target: { value: 'pw-secret-1' } });
     fireEvent.click(screen.getByRole('button', { name: 'Regenerate codes' }));
     await waitFor(() => expect(mfaRegenerateRecoveryCodes).toHaveBeenCalledWith('pw-secret-1'));
     expect(await screen.findByText('ZZZZZ-YYYYY')).toBeInTheDocument();
+  });
+
+  it('shows the remaining recovery-code count when enabled, and nudges when low', () => {
+    const { rerender } = render(<SecurityTab totpEnabled recoveryCodesRemaining={8} onChanged={vi.fn()} />);
+    expect(screen.getByText(/8 recovery codes remaining/)).toBeInTheDocument();
+
+    rerender(<SecurityTab totpEnabled recoveryCodesRemaining={2} onChanged={vi.fn()} />);
+    expect(screen.getByText(/2 recovery codes remaining — consider regenerating\./)).toBeInTheDocument();
+
+    rerender(<SecurityTab totpEnabled recoveryCodesRemaining={0} onChanged={vi.fn()} />);
+    expect(screen.getByText(/No recovery codes left/)).toBeInTheDocument();
   });
 });

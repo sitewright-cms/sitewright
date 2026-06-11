@@ -15,6 +15,8 @@ interface UserMenuProps {
   project: Project | null;
   /** Whether the user currently has TOTP enabled (from /me) — drives the Security tab. */
   totpEnabled: boolean;
+  /** Unused recovery codes remaining (from /me) — shown in the Security tab when TOTP is on. */
+  recoveryCodesRemaining: number;
   onClose: () => void;
   /** Called after a successful email change so the app can refresh its cached identity. */
   onEmailChanged: (email: string) => void;
@@ -28,7 +30,7 @@ interface UserMenuProps {
  * here (owner-only); Security hosts two-factor (TOTP). Each tab is self-contained — the modal
  * supplies only the chrome (no global Save button).
  */
-export function UserMenu({ email, project, totpEnabled, onClose, onEmailChanged, onMfaChanged }: UserMenuProps) {
+export function UserMenu({ email, project, totpEnabled, recoveryCodesRemaining, onClose, onEmailChanged, onMfaChanged }: UserMenuProps) {
   const [tab, setTab] = useState<Tab>('account');
 
   const tabBtn = (id: Tab) =>
@@ -52,7 +54,7 @@ export function UserMenu({ email, project, totpEnabled, onClose, onEmailChanged,
         {tab === 'account' && <AccountTab email={email} onEmailChanged={onEmailChanged} />}
         {tab === 'password' && <PasswordTab />}
         {tab === 'access' && <AccessKeysTab project={project} />}
-        {tab === 'security' && <SecurityTab totpEnabled={totpEnabled} onChanged={onMfaChanged} />}
+        {tab === 'security' && <SecurityTab totpEnabled={totpEnabled} recoveryCodesRemaining={recoveryCodesRemaining} onChanged={onMfaChanged} />}
       </div>
     </Modal>
   );

@@ -132,6 +132,7 @@ import {
   verifyUserPassword,
 } from '../repo/accounts.js';
 import { MfaError, MfaRepository } from '../repo/mfa.js';
+import { sweepExpiredAuthRows } from '../repo/maintenance.js';
 import { PasskeyRepository } from '../repo/passkeys.js';
 import {
   authenticationOptions,
@@ -493,6 +494,13 @@ export interface AppOptions {
    * many registrations from a single IP and would otherwise exhaust the shared bucket.
    */
   authRateMax?: number;
+  /**
+   * How often (ms) to sweep expired ephemeral auth rows (sessions, MFA tickets, WebAuthn
+   * challenges). Default 1h. Set to 0 to disable the timer (e.g. in tests that don't want a
+   * background timer); the sweep is also opportunistic at access time, so disabling only skips the
+   * periodic pass.
+   */
+  maintenanceSweepMs?: number;
   /**
    * Whether public `POST /auth/register` is open. Default `true` (the embeddable factory + the
    * test suite). The production entry point (`server.ts`) sets this from `SW_OPEN_REGISTRATION`
@@ -928,18 +936,19 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
   app.get('/me', { config: rl(60) }, async (req, reply) => {
     const userId = await requireUserId(req);
-    const [email, platformRole, access, instanceAdmin, totpEnabled] = await Promise.all([
+    const [email, platformRole, access, instanceAdmin, totpEnabled, recoveryCodesRemaining] = await Promise.all([
       getUserEmail(db, userId),
       getPlatformRole(db, userId),
       // Projects the caller can reach: a platform admin → all; everyone else → their memberships.
       listProjectAccessForUser(db, userId),
       isInstanceAdmin(userId),
       mfaRepo.isTotpEnabled(userId),
+      mfaRepo.remainingRecoveryCodes(userId),
     ]);
     const projects = access.map((a) => ({ id: a.projectId, name: a.projectName, slug: a.projectSlug, role: a.role }));
     // email is non-null for a live session (the row exists); coerce the theoretical TOCTOU-deleted
     // case to '' so the response always matches the client's `email: string` contract.
-    return reply.send({ userId, email: email ?? '', platformRole, isInstanceAdmin: instanceAdmin, totpEnabled, projects });
+    return reply.send({ userId, email: email ?? '', platformRole, isInstanceAdmin: instanceAdmin, totpEnabled, recoveryCodesRemaining, projects });
   });
 
   // ---- Self-service account management (the header "Account" / user menu) ----
@@ -3214,6 +3223,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     app.addHook('onClose', async () => {
       await renderPool.shutdown();
     });
+  }
+
+  // Periodic housekeeping: prune expired sessions / MFA tickets / WebAuthn challenges so abandoned
+  // flows don't accumulate. The timer is unref'd (never holds the process open) and cleared on close
+  // (so tests don't leak timers); the interval is long enough not to fire inside a test run.
+  const sweepMs = opts.maintenanceSweepMs ?? 60 * 60 * 1000;
+  if (sweepMs > 0) {
+    const sweepTimer = setInterval(() => {
+      void sweepExpiredAuthRows(db).catch((err) => app.log.warn(err, 'auth-row maintenance sweep failed'));
+    }, sweepMs);
+    sweepTimer.unref();
+    app.addHook('onClose', async () => clearInterval(sweepTimer));
   }
 
   return app;

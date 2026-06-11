@@ -110,6 +110,32 @@ test('data-sw-href: shows the in-preview edit overlay (resting outline) in conte
   expect(outlineStyle).toBe('dashed');
 });
 
+// A hover/focus label badge (CSS ::before) names the field a region binds to, anchored to the element
+// (its host is promoted to position:relative) with a high z-index so it is never covered.
+test('field-name badge: hovering an editable region reveals a ::before label naming its key', async ({ page }) => {
+  await setup(page, 'badge');
+  await setSource(page, '<h1 data-sw-text="tagline">Hello</h1>');
+  await page.getByRole('button', { name: 'Content Editor', exact: true }).click();
+
+  const region = page.frameLocator('iframe[title="Preview"]').locator('[data-sw-text="tagline"]');
+  await expect(region).toBeVisible();
+  // Hidden at rest (display:none — so it never interferes with clicks)…
+  expect(await region.evaluate((el) => getComputedStyle(el, '::before').display)).toBe('none');
+  // …revealed on hover, naming the field, with the host promoted so the absolute badge anchors here.
+  await region.hover();
+  await expect.poll(() => region.evaluate((el) => getComputedStyle(el, '::before').display)).not.toBe('none');
+  const badge = await region.evaluate((el) => ({
+    content: getComputedStyle(el, '::before').content,
+    position: getComputedStyle(el).position,
+  }));
+  expect(badge.content).toContain('tagline');
+  expect(badge.position).toBe('relative');
+
+  // …and hidden again once the cursor leaves (so it never lingers over content).
+  await page.mouse.move(0, 0);
+  await expect.poll(() => region.evaluate((el) => getComputedStyle(el, '::before').display)).toBe('none');
+});
+
 // Undo/redo (header buttons) revert + reapply inline content edits.
 test('undo/redo: header buttons revert and reapply an inline edit', async ({ page }) => {
   await setup(page, 'undo');

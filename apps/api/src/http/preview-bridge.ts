@@ -67,6 +67,26 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       // Dataset rows: same always-on marker, in teal to distinguish a structured entry from inline content.
       '[data-sw-entry].sw-entry-on{cursor:pointer;outline:2px dashed #14b8a6;outline-offset:-2px;border-radius:3px;transition:outline-color .12s,background-color .12s}' +
       '[data-sw-entry].sw-entry-on:hover{background:rgba(20,184,166,.08)}' +
+      // Field-name BADGES (hover/focus): a floating pill naming the bound key/dataset, anchored to the
+      // element (setEditing promotes a STATIC host to relative so the absolute ::before anchors here),
+      // with a near-max z-index so it is never covered. content:attr(...) shows the field name; the
+      // emoji type-glyphs are safe — this CSS only runs in the Chromium preview, never in published HTML.
+      // display:none at rest (NOT opacity:0): an opacity:0 pseudo stays in the hit-test tree and can
+      // block clicks on an element flush with the iframe top even with pointer-events:none; display:none
+      // removes it entirely and it still reveals cleanly on hover.
+      '[data-sw-text].sw-edit-on::before,[data-sw-html].sw-edit-on::before,[data-sw-href].sw-link-on::before,[data-sw-src].sw-img-on::before,[data-sw-bg].sw-img-on::before,[data-sw-entry].sw-entry-on::before{display:none;position:absolute;top:0;left:0;transform:translateY(-100%);z-index:2147483640;padding:1px 5px;border-radius:5px 5px 5px 0;font:600 10px/1.5 system-ui,sans-serif;color:#fff;background:#6366f1;white-space:nowrap;pointer-events:none}' +
+      // Glyphs use JS unicode escapes so the LITERAL char lands in the CSS string; a raw CSS hex
+      // escape would be eaten by the inner JS string octal-escape parsing when this script runs.
+      '[data-sw-text].sw-edit-on::before{content:"\\u270E " attr(data-sw-text)}' +
+      '[data-sw-html].sw-edit-on::before{content:"\\u00B6 " attr(data-sw-html)}' +
+      '[data-sw-href].sw-link-on::before{content:"\\u{1F517} " attr(data-sw-href)}' +
+      '[data-sw-src].sw-img-on::before{content:"\\u{1F5BC} " attr(data-sw-src)}' +
+      '[data-sw-bg].sw-img-on::before{content:"\\u{1F5BC} " attr(data-sw-bg)}' +
+      '[data-sw-entry].sw-entry-on::before{content:"\\u{1F5C2} " attr(data-sw-dataset);background:#14b8a6}' +
+      '[data-sw-text].sw-edit-on:hover::before,[data-sw-text].sw-edit-on:focus::before,[data-sw-html].sw-edit-on:hover::before,[data-sw-html].sw-edit-on:focus::before,[data-sw-href].sw-link-on:hover::before,[data-sw-href].sw-link-on:focus::before,[data-sw-src].sw-img-on:hover::before,[data-sw-bg].sw-img-on:hover::before,[data-sw-entry].sw-entry-on:hover::before{display:block}' +
+      // Positioning host for the absolute badge — applied as a CLASS (added only to elements computed
+      // static, so positioned elements are untouched) so it never mutates the inline style attribute.
+      '.sw-rel{position:relative}' +
       '.sw-tb{position:fixed;z-index:2147483646;display:none;gap:2px;padding:3px;border-radius:8px;background:#0f172a;box-shadow:0 6px 20px rgba(0,0,0,.35);font:600 12px system-ui,sans-serif}' +
       '.sw-tb button{all:unset;color:#e2e8f0;cursor:pointer;padding:3px 7px;border-radius:5px;min-width:18px;text-align:center}' +
       '.sw-tb button:hover{background:#334155;color:#fff}' +
@@ -219,6 +239,13 @@ export const PREVIEW_BRIDGE_JS = `(function () {
   }
 
   function eachEl(sel, fn) { var els = document.querySelectorAll(sel); for (var j = 0; j < els.length; j++) fn(els[j]); }
+  // The field-name badge ::before is position:absolute, so its host needs a positioned box. Promote a
+  // STATIC host with the .sw-rel class (NOT inline style — that would reserialize the element's style
+  // attribute, e.g. collapse a data-sw-bg background-image); an already-positioned element is untouched.
+  function relPos(el, on) {
+    if (on) { if (getComputedStyle(el).position === 'static') el.classList.add('sw-rel'); }
+    else el.classList.remove('sw-rel');
+  }
   function setEditing(on) {
     if (on === editing) return;
     editing = on;
@@ -228,27 +255,32 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       if (el.hasAttribute('data-sw-href')) return;
       if (on) { el.setAttribute('contenteditable', 'plaintext-only'); el.classList.add('sw-edit-on'); el.addEventListener('input', onPlainInput); }
       else { el.removeAttribute('contenteditable'); el.classList.remove('sw-edit-on'); el.removeEventListener('input', onPlainInput); }
+      relPos(el, on);
     });
     // Rich
     eachEl('[data-sw-html]', function (el) {
       if (on) { el.setAttribute('contenteditable', 'true'); el.classList.add('sw-edit-on'); el.addEventListener('input', onRichInput); }
       else { el.removeAttribute('contenteditable'); el.classList.remove('sw-edit-on'); el.removeEventListener('input', onRichInput); }
+      relPos(el, on);
     });
     // Links — skip an element that is ALSO a rich region (its click belongs to rich editing).
     eachEl('[data-sw-href]', function (el) {
       if (el.hasAttribute('data-sw-html')) return;
       if (on) { el.classList.add('sw-link-on'); el.addEventListener('click', onLinkClick); }
       else { el.classList.remove('sw-link-on'); el.removeEventListener('click', onLinkClick); }
+      relPos(el, on);
     });
     // Images + backgrounds — click to replace via the editor's file picker.
     eachEl('[data-sw-src],[data-sw-bg]', function (el) {
       if (on) { el.classList.add('sw-img-on'); el.addEventListener('click', onImgClick); }
       else { el.classList.remove('sw-img-on'); el.removeEventListener('click', onImgClick); }
+      relPos(el, on);
     });
     // Dataset rows — a hover affordance; the click is handled by one delegated document listener.
     eachEl('[data-sw-entry]', function (el) {
       if (on) el.classList.add('sw-entry-on');
       else el.classList.remove('sw-entry-on');
+      relPos(el, on);
     });
     if (on) {
       document.addEventListener('selectionchange', onSelChange);

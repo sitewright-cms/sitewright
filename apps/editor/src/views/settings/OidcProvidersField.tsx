@@ -15,9 +15,18 @@ export interface OidcProviderDraft {
   secret: string;
 }
 
+// A monotonic counter for React keys (unique-per-session). NOT crypto.randomUUID: that is only
+// defined in a secure context, so it is absent over the plain-HTTP preview/DinD host — calling it
+// there throws, which previously made "Add provider" silently do nothing.
+let keySeq = 0;
+export function nextOidcProviderKey(): string {
+  keySeq += 1;
+  return `oidc-${keySeq}`;
+}
+
 /** A blank provider row (the "Add" target), with a fresh stable key. */
 export function blankOidcProvider(): OidcProviderDraft {
-  return { _key: crypto.randomUUID(), id: '', label: '', issuer: '', clientId: '', scopes: 'openid profile email', enabled: true, hasClientSecret: false, secret: '' };
+  return { _key: nextOidcProviderKey(), id: '', label: '', issuer: '', clientId: '', scopes: 'openid profile email', enabled: true, hasClientSecret: false, secret: '' };
 }
 
 interface OidcProvidersFieldProps {

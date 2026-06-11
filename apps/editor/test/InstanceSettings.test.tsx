@@ -172,4 +172,21 @@ describe('InstanceSettings', () => {
       { id: 'google', label: 'Google', issuer: 'https://accounts.google.com', clientId: 'cid', scopes: ['openid', 'profile', 'email'], enabled: true, clientSecret: 'csecret' },
     ]);
   });
+
+  it('"Add provider" works in an insecure context where crypto.randomUUID is unavailable', async () => {
+    // The plain-HTTP DinD/preview host has no crypto.randomUUID; using it threw and made "Add" a
+    // no-op. Simulate that here so a regression (reusing crypto.randomUUID for the row key) fails.
+    const spy = vi.spyOn(globalThis.crypto, 'randomUUID').mockImplementation(() => {
+      throw new Error('randomUUID is not available in an insecure context');
+    });
+    try {
+      getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
+      render(<InstanceSettings />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Add provider' }));
+      // The new provider row renders (its id field appears) — proving Add didn't throw.
+      expect(await screen.findByLabelText('Provider 1 id')).toBeInTheDocument();
+    } finally {
+      spy.mockRestore();
+    }
+  });
 });

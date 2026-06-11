@@ -5,7 +5,7 @@ import { glassCard, glassInput, primaryButton } from '../theme';
 import { SkeletonList } from './ui/Skeleton';
 import { LocalePickerModal } from './i18n/LocalePickerModal';
 import { localeFlag, localeLabel } from './i18n/locale-catalog';
-import { OidcProvidersField, type OidcProviderDraft } from './settings/OidcProvidersField';
+import { OidcProvidersField, nextOidcProviderKey, type OidcProviderDraft } from './settings/OidcProvidersField';
 
 const FORM_MODE_LABELS: Array<{ key: keyof InstanceSettingsPublic['formModes']; label: string; hint: string }> = [
   { key: 'globalSmtp', label: 'Global SMTP', hint: 'Platform sends form mail via the SMTP configured below.' },
@@ -90,7 +90,7 @@ export function InstanceSettings() {
     setPexelsKey('');
     setOidcProviders(
       (s.oidcProviders ?? []).map((p) => ({
-        _key: crypto.randomUUID(),
+        _key: nextOidcProviderKey(),
         id: p.id,
         label: p.label,
         issuer: p.issuer,

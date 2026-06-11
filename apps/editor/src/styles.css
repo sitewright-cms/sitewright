@@ -73,6 +73,44 @@ body {
   min-height: 100vh;
 }
 
+/* Reserve the scrollbar gutter app-wide so content NEVER shifts when a scrollbar appears/disappears
+   — switching tabs (short vs tall pages), or a modal that locks `body { overflow: hidden }`. The
+   gutter blends into the shell (same fixed gradient on the root) and the bar itself is styled as a
+   thin, translucent overlay so the reserved space stays unobtrusive. */
+html {
+  scrollbar-gutter: stable;
+  background: linear-gradient(to bottom right, #e0e7ff 0%, #f0f9ff 45%, #fdf2ff 100%) fixed;
+}
+* {
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: rgba(99, 102, 241, 0.35) transparent;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: rgba(99, 102, 241, 0.3); /* indigo accent, translucent */
+  border: 2px solid transparent; /* padding-box border → a thin, floating thumb */
+  border-radius: 9999px;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(99, 102, 241, 0.55);
+  background-clip: padding-box;
+}
+/* The code editor is a dark surface — a translucent indigo thumb is nearly invisible there, so give
+   its scroller a lighter (slate) thumb that stays legible against black. */
+.cm-scroller {
+  scrollbar-color: rgba(148, 163, 184, 0.6) transparent;
+}
+.cm-scroller::-webkit-scrollbar-thumb {
+  background-color: rgba(148, 163, 184, 0.5);
+}
+
 /* The morph-glass restyle: every interactive element shows a pointer cursor. */
 button:not(:disabled),
 [role='button'],

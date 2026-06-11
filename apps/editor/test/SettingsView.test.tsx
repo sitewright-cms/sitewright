@@ -122,4 +122,42 @@ describe('SettingsView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     expect(await screen.findByText('input too large')).toBeInTheDocument();
   });
+
+  it('tracks dirty state independently per section', async () => {
+    renderView();
+    await screen.findByLabelText('Display name');
+    // Edit an IDENTITY field → CI is dirty.
+    fireEvent.change(screen.getByLabelText('Legal name'), { target: { value: 'Acme Corp' } });
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
+    // Switch to Website → its OWN (clean) state: the buttons are disabled there.
+    fireEvent.click(screen.getByRole('tab', { name: 'Website' }));
+    await screen.findByLabelText(/Production URL/);
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Discard' })).toBeDisabled();
+    // Back on CI → the identity edit is still pending (preserved across the switch).
+    fireEvent.click(screen.getByRole('tab', { name: 'Corporate Identity' }));
+    expect(await screen.findByLabelText('Legal name')).toHaveValue('Acme Corp');
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
+  });
+
+  it('saves only the active section, leaving the other section’s edits pending', async () => {
+    renderView();
+    await screen.findByLabelText('Display name');
+    // Make a pending WEBSITE edit first…
+    fireEvent.click(screen.getByRole('tab', { name: 'Website' }));
+    fireEvent.change(await screen.findByLabelText(/Production URL/), { target: { value: 'https://acme.com' } });
+    // …then go to CI, edit + Save.
+    fireEvent.click(screen.getByRole('tab', { name: 'Corporate Identity' }));
+    fireEvent.change(await screen.findByLabelText('Legal name'), { target: { value: 'Acme Corp' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(putSettings).toHaveBeenCalledTimes(1));
+    const sent = putSettings.mock.calls[0]![1] as SettingsBundle;
+    expect(sent.identity.legalName).toBe('Acme Corp');
+    // The CI save must NOT carry the pending website edit (base.website was undefined).
+    expect(sent.website?.siteUrl).toBeUndefined();
+    // Back on Website → the edit survives and is still pending.
+    fireEvent.click(screen.getByRole('tab', { name: 'Website' }));
+    expect(await screen.findByLabelText(/Production URL/)).toHaveValue('https://acme.com');
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
+  });
 });

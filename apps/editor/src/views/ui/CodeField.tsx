@@ -36,20 +36,24 @@ export function CodeField({ label, value, onChange, title, hint, placeholder, la
   const lineCount = trimmed === '' ? 0 : trimmed.split('\n').length;
 
   return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border border-white/60 bg-white/50 px-3 py-2.5 shadow-sm backdrop-blur-xl">
-      <div className="min-w-0">
-        <span className="block truncate text-xs font-medium text-slate-700">{label}</span>
-        <span className="text-[11px] text-slate-400">
-          {lineCount === 0 ? (placeholder ? `Empty · e.g. ${placeholder}` : 'Empty') : `${lineCount} line${lineCount === 1 ? '' : 's'}`}
-        </span>
-      </div>
+    <>
+      {/* The ENTIRE card opens the editor (not just an Edit button) — a bigger hit target, with the
+          editor's usual ripple + hover lift. The "Edit" pill is now a non-interactive affordance. */}
       <button
         type="button"
         aria-label={`Edit ${label}`}
         onClick={() => setOpen(true)}
-        className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 transition hover:border-indigo-400 hover:text-slate-900"
+        className="waves-effect group flex w-full items-center justify-between gap-3 rounded-xl border border-white/60 bg-white/50 px-3 py-2.5 text-left shadow-sm backdrop-blur-xl transition hover:border-indigo-400 hover:bg-white hover:shadow-md"
       >
-        <CodeIcon /> Edit
+        <span className="min-w-0">
+          <span className="block truncate text-xs font-medium text-slate-700">{label}</span>
+          <span className="block text-[11px] text-slate-400">
+            {lineCount === 0 ? (placeholder ? `Empty · e.g. ${placeholder}` : 'Empty') : `${lineCount} line${lineCount === 1 ? '' : 's'}`}
+          </span>
+        </span>
+        <span className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 transition group-hover:border-indigo-400 group-hover:text-indigo-600">
+          <CodeIcon /> Edit
+        </span>
       </button>
       {open && (
         <CodeEditorModal
@@ -61,6 +65,6 @@ export function CodeField({ label, value, onChange, title, hint, placeholder, la
           onClose={() => setOpen(false)}
         />
       )}
-    </div>
+    </>
   );
 }

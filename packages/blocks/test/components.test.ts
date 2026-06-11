@@ -1,6 +1,33 @@
 import { describe, it, expect } from 'vitest';
 import type { PageNode } from '@sitewright/schema';
-import { COMPONENT_TYPES, usedComponentTypes, componentAssets } from '../src/components.js';
+import { COMPONENT_TYPES, usedComponentTypes, componentTypesInSource, componentAssets } from '../src/components.js';
+
+describe('componentTypesInSource (code-first detection)', () => {
+  it('detects interactive components by their data-sw-component marker in rendered source', () => {
+    const html =
+      '<div data-sw-component="modal"><button data-sw-part="open">Open</button></div>' +
+      '<div data-sw-component="tabs"></div>' +
+      '<form data-sw-component="form"></form>';
+    expect(componentTypesInSource(html).sort()).toEqual(['Form', 'Modal', 'Tabs']);
+  });
+
+  it('maps every emitted component name to a registered type (so its JS/CSS actually bundles)', () => {
+    for (const name of ['carousel', 'lightbox', 'modal', 'cookie-consent', 'tabs', 'form']) {
+      const [type] = componentTypesInSource(`<div data-sw-component="${name}"></div>`);
+      expect(type, name).toBeDefined();
+      expect(COMPONENT_TYPES.has(type!), name).toBe(true);
+      expect(componentAssets([type!]).js.length + componentAssets([type!]).css.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('dedupes repeats and ignores unknown / empty markers', () => {
+    expect(componentTypesInSource('<a data-sw-component="modal"></a><b data-sw-component="modal"></b>')).toEqual(['Modal']);
+    expect(componentTypesInSource('<div data-sw-component="bogus"></div>')).toEqual([]);
+    expect(componentTypesInSource('')).toEqual([]);
+    expect(componentTypesInSource(undefined)).toEqual([]);
+    expect(componentTypesInSource(null)).toEqual([]);
+  });
+});
 
 describe('component registry', () => {
   it('registers interactive components (container types; child blocks are plain)', () => {

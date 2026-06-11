@@ -36,7 +36,10 @@ import {
   resolveInternalUrl,
   relativizeInternalLinks,
   usedComponentTypes,
+  componentTypesInSource,
   componentAssets,
+  usesDialog,
+  treeUsesDialog,
   usesAnimations,
   treeUsesAnimations,
   ANIMATION_CSS,
@@ -330,9 +333,8 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         mobile: buildNav(pagesIn, 'mobile'),
       }));
     }
-    // Ship the nav-link runtime (open a <dialog> / smooth-scroll a #section) only when a placeholder
-    // targets a fragment. Project-level (the nav is identical on every page), so it links on all pages.
-    const usesNavLink = pubBundle.pages.some((p) => isLinkPage(p) && (p.link?.target ?? '').includes('#'));
+    // `usesNavLink` (the <dialog>/smooth-scroll runtime) is computed below, once the source/slot/
+    // snippet surfaces it scans for an authored <dialog> are in scope (see `usesMarker`).
     // Index for computing each page's full route (`{root}/{parent slugs}/{slug}`) — a
     // page's `path` is only its own slug segment.
     const byId = pagesById(pubBundle.pages);
@@ -397,7 +399,19 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       ...themeClassNames,
     ];
     const usesUtilities = classNames.length > 0;
-    const componentTypes = [...new Set(scanRoots.flatMap(usedComponentTypes))];
+    // Interactive component JS/CSS (modal / tabs / carousel / lightbox / cookie-consent / form) ships
+    // when a block tree uses the component OR a CODE-FIRST surface renders its `data-sw-component="…"`
+    // marker — page sources, skeleton slots, snippets. Code-first pages have an empty stub block tree,
+    // so the tree scan alone would never ship their components (same source-aware discipline as the
+    // animation/lazyload/ripple runtimes below).
+    const componentTypes = [
+      ...new Set([
+        ...scanRoots.flatMap(usedComponentTypes),
+        ...effectiveSources.flatMap(componentTypesInSource),
+        ...slotSources.flatMap(componentTypesInSource),
+        ...Object.values(usedSnippets).flatMap(componentTypesInSource),
+      ]),
+    ];
     const usesComponents = componentTypes.length > 0;
     const components = componentAssets(componentTypes);
     // Scroll-reveal animations (`data-aos`) ship the first-party runtime only when
@@ -421,6 +435,13 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // MINI SHOP cart runtime — ships only when a page/slot uses the {{sw-cart}}/{{sw-add-to-cart}}
     // helpers (or the rendered data-sw-cart marker in a raw Html embed). Same only-used-ships discipline.
     const usesCartRuntime = usesMarker(treeUsesCart, usesCart);
+    // The nav-link runtime opens a <dialog> (global modal) and smooth-scrolls #section links. Ship it
+    // when a nav placeholder targets a #fragment OR any authored surface embeds a <dialog> — so a modal
+    // triggered from page CONTENT (a CTA, an in-content `<a href="#id">`), not only a nav placeholder,
+    // actually opens. NAV_LINK_JS is a general document-wide a[href^="#"] handler, so this is enough.
+    const usesNavLink =
+      pubBundle.pages.some((p) => isLinkPage(p) && (p.link?.target ?? '').includes('#')) ||
+      usesMarker(treeUsesDialog, usesDialog);
     // Public form definitions (recipient stripped) + the absolute submission
     // endpoint for exported `Form` blocks. Built once (same for every page).
     const forms: Record<string, FormPublic> = Object.fromEntries(

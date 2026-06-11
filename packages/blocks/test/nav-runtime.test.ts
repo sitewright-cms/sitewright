@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { decorateNav, NAV_LINK_JS } from '../src/nav-runtime.js';
+import type { PageNode } from '@sitewright/schema';
+import { decorateNav, NAV_LINK_JS, usesDialog, treeUsesDialog } from '../src/nav-runtime.js';
 import { renderTemplate } from '../src/template.js';
 
 // A structural nav item (mirrors core's NavItem) — decorateNav writes labelHtml in place.
@@ -53,5 +54,32 @@ describe('NAV_LINK_JS', () => {
     expect(NAV_LINK_JS).toContain('showModal');
     expect(NAV_LINK_JS).toContain('scrollIntoView');
     expect(NAV_LINK_JS.trim().startsWith('(function')).toBe(true);
+  });
+});
+
+describe('usesDialog (ship the dialog runtime for code-first <dialog> markup)', () => {
+  it('detects a native <dialog> opening tag (with or without attributes / self-close)', () => {
+    expect(usesDialog('<dialog id="x" class="modal"><p>hi</p></dialog>')).toBe(true);
+    expect(usesDialog('<DIALOG>')).toBe(true); // case-insensitive
+    expect(usesDialog('<dialog/>')).toBe(true);
+  });
+
+  it('does not match a closing tag, a lookalike word, or non-string input', () => {
+    expect(usesDialog('</dialog>')).toBe(false); // closing tag alone is not an authored modal
+    expect(usesDialog('<div class="dialogue">')).toBe(false);
+    expect(usesDialog('')).toBe(false);
+    expect(usesDialog(undefined)).toBe(false);
+    expect(usesDialog(null)).toBe(false);
+  });
+
+  it('finds a <dialog> embedded in a raw-Html block tree node', () => {
+    const tree: PageNode = {
+      id: 'root',
+      type: 'Section',
+      children: [{ id: 'h', type: 'Html', props: { html: '<dialog id="m"><p>hi</p></dialog>' }, children: [] }],
+    } as unknown as PageNode;
+    expect(treeUsesDialog(tree)).toBe(true);
+    const plain: PageNode = { id: 'root', type: 'Section', children: [] } as unknown as PageNode;
+    expect(treeUsesDialog(plain)).toBe(false);
   });
 });

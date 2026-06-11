@@ -42,7 +42,10 @@ import { createFontAsset as storeFontAsset, mergeFontFaces } from '../fonts/asse
 import {
   renderDocument,
   usedComponentTypes,
+  componentTypesInSource,
   componentAssets,
+  usesDialog,
+  treeUsesDialog,
   usesAnimations,
   treeUsesAnimations,
   ANIMATION_CSS,
@@ -406,7 +409,17 @@ async function styledSourceDocument(
   // cart.js is deliberately INERT in the editor preview so its click handlers + floating drawer never
   // fight the click-to-edit bridge. The live cart runs on the published /sites/<slug>/ site.
   const cart = usesCart(scanHtml);
+  // Interactive components (modal / tabs / carousel / lightbox / cookie-consent / form) authored in
+  // CODE-FIRST source carry their `data-sw-component="…"` marker into the rendered body/slots — scan
+  // for them here (the block tree is an empty stub for code-first), mirroring the publish path.
+  const componentTypes = componentTypesInSource(scanHtml);
+  const { css: componentCss, js: componentJs } = componentAssets(componentTypes);
+  // The nav-link runtime opens a <dialog> (global modal) / smooth-scrolls a #section. Ship it for the
+  // preview when the rendered body or slots embed a <dialog> — WYSIWYG parity, so an authored modal
+  // (incl. a global modal in the bottom slot) actually opens when its trigger is clicked.
+  const dialog = usesDialog(scanHtml);
   const inlineStyles = [
+    ...(componentCss ? [componentCss] : []),
     ...(animated ? [ANIMATION_CSS] : []),
     ...(lazy ? [LAZYLOAD_CSS] : []),
     ...(waves ? [RIPPLE_CSS] : []),
@@ -416,9 +429,11 @@ async function styledSourceDocument(
       : []),
   ];
   const inlineScripts = [
+    ...(componentJs ? [componentJs] : []),
     ...(animated ? [ANIMATION_JS] : []),
     ...(lazy ? [LAZYLOAD_JS] : []),
     ...(waves ? [RIPPLE_JS] : []),
+    ...(dialog ? [NAV_LINK_JS] : []),
     // The editor↔preview bridge (scroll preserve/restore + inline-edit). Preview-only — this shell
     // is never the publish path (build.ts calls renderDocument directly), so it can't leak.
     PREVIEW_BRIDGE_JS,
@@ -2041,8 +2056,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           ...(animated ? [ANIMATION_JS] : []),
           ...(lazy ? [LAZYLOAD_JS] : []),
           ...(waves ? [RIPPLE_JS] : []),
-          // Nav-placeholder runtime (open a <dialog> / smooth-scroll) when a placeholder targets a #fragment.
-          ...(savedPages.some((p) => isLinkPage(p) && (p.link?.target ?? '').includes('#')) ? [NAV_LINK_JS] : []),
+          // Nav-link runtime (open a <dialog> / smooth-scroll) when a placeholder targets a #fragment
+          // OR a raw-Html block embeds a <dialog> the runtime can open from an in-content anchor.
+          ...(savedPages.some((p) => isLinkPage(p) && (p.link?.target ?? '').includes('#')) || treeUsesDialog(page.root)
+            ? [NAV_LINK_JS]
+            : []),
           // Editor↔preview bridge (scroll preserve/restore). Preview-only path.
           PREVIEW_BRIDGE_JS,
         ],

@@ -30,6 +30,7 @@ describe('normalizeControlAs', () => {
   it('keeps known values, defaults the rest to text', () => {
     expect(normalizeControlAs('folder')).toBe('folder');
     expect(normalizeControlAs('image')).toBe('image');
+    expect(normalizeControlAs('file')).toBe('file');
     expect(normalizeControlAs('bogus')).toBe('text');
     expect(normalizeControlAs(undefined)).toBe('text');
   });

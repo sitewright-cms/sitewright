@@ -50,6 +50,7 @@ export type AcceptFilter = (asset: MediaAsset) => boolean;
 export const ACCEPT = {
   image: (a: MediaAsset) => a.kind === 'image',
   font: (a: MediaAsset) => a.kind === 'font',
+  file: (a: MediaAsset) => a.kind === 'file',
 };
 
 /** A short type label per asset kind (the list view's Type column). */

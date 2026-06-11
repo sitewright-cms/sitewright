@@ -6,9 +6,9 @@
 // same allow-list validation via the `@sitewright/blocks/control` subpath without pulling the renderer.
 import type { RenderMedia } from './folder.js';
 
-export type ControlAs = 'text' | 'textarea' | 'url' | 'image' | 'folder' | 'dataset';
+export type ControlAs = 'text' | 'textarea' | 'url' | 'image' | 'file' | 'folder' | 'dataset';
 
-const CONTROL_AS = new Set<ControlAs>(['text', 'textarea', 'url', 'image', 'folder', 'dataset']);
+const CONTROL_AS = new Set<ControlAs>(['text', 'textarea', 'url', 'image', 'file', 'folder', 'dataset']);
 export function normalizeControlAs(as: unknown): ControlAs {
   return typeof as === 'string' && CONTROL_AS.has(as as ControlAs) ? (as as ControlAs) : 'text';
 }

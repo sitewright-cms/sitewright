@@ -192,14 +192,14 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
       },
       {
         id: 'h-control',
-        syntax: '{{sw-control target="page.title|seo.ogImage|seo.description|<page.data key>" as="text|textarea|url|image|folder|dataset" label="…"}}',
+        syntax: '{{sw-control target="page.title|seo.ogImage|seo.description|<page.data key>" as="text|textarea|url|image|file|folder|dataset" label="…"}}',
         name: 'sw-control',
         keywords: 'control settings client editor title og image folder dataset content directive',
         description:
           'A CONTENT-EDITOR-ONLY control: drops a chip (shown ONLY in the Content Editor, never on the published site) that lets a client set a whitelisted PAGE value — the page title, the SEO description, or the OG image — or a page.data value, from inside the live preview. Pair it with other helpers: set a FOLDER name (as="folder") an {{#sw-folder}} gallery reads, or a DATASET name (as="dataset") an {{#each}} loops.',
         args: [
           { name: 'target', desc: 'What to set: page.title, seo.ogImage, seo.description, or a page.data key/path (e.g. "gallery_folder" or "data.article.title").' },
-          { name: 'as', desc: 'The input: text (default), textarea, url, image (opens the file picker), folder (a dropdown of media folders), or dataset (a dropdown of datasets).' },
+          { name: 'as', desc: 'The input: text (default), textarea, url, image (file picker, images), file (file picker, any uploaded file), folder (a dropdown of media folders), or dataset (a dropdown of datasets).' },
           { name: 'label', desc: 'Optional chip label (defaults to the target).' },
         ],
         example:

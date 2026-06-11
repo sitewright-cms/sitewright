@@ -371,7 +371,7 @@ export function FormsManager({ project }: { project: Project }) {
           <span className={draft.mode === 'contactPhp' || draft.mode === 'thirdParty' ? 'text-slate-400' : ''}>
             Require hCaptcha (uses the instance hCaptcha keys; configured by an admin)
             {(draft.mode === 'contactPhp' || draft.mode === 'thirdParty') &&
-              ' — not available for this mode (Sitewright can’t verify a remote endpoint)'}
+              ' — not available for this mode (the platform can’t verify a remote endpoint)'}
           </span>
         </label>
 

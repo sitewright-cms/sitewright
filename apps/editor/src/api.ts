@@ -38,6 +38,15 @@ export interface PasskeyView {
   lastUsedAt: string | null;
 }
 
+/** Admin-panel branding from the public `/auth/config` boot (defaults applied server-side). */
+export interface Branding {
+  name: string;
+  primary: string;
+  secondary: string;
+  /** A cache-busted URL to the uploaded logo, or null when none is set (use the default mark). */
+  logoUrl: string | null;
+}
+
 export type {
   CorporateIdentity,
   DeployTargetView,
@@ -348,10 +357,10 @@ export const api = {
   loginTotp: (ticket: string, code: string) =>
     request<{ userId: string }>('POST', '/auth/login/totp', { ticket, code }),
   logout: () => request<void>('POST', '/auth/logout'),
-  // Public login-screen config — unauthenticated, no secrets: the enabled OIDC providers and whether
-  // self-registration is open (so the screen knows whether to offer a "create account" option).
+  // Public login-screen config — unauthenticated, no secrets: the enabled OIDC providers, whether
+  // self-registration is open, and the admin-panel branding (so the pre-auth screen skins itself).
   loginConfig: () =>
-    request<{ oidcProviders: { id: string; label: string }[]; allowSelfRegistration: boolean }>('GET', '/auth/config'),
+    request<{ oidcProviders: { id: string; label: string }[]; allowSelfRegistration: boolean; branding: Branding }>('GET', '/auth/config'),
   // The (full) URL to begin an OIDC login — the browser navigates here (a redirect to the IdP).
   oidcStartUrl: (id: string) => `${BASE}/auth/oidc/${encodeURIComponent(id)}/start`,
   me: () =>

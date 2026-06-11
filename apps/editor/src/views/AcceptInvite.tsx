@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { api, ApiError, type InvitePeek } from '../api';
+import { api, ApiError, type InvitePeek, type Branding } from '../api';
 import { glassCard, primaryButton } from '../theme';
 import { Login } from './Login';
+import { DEFAULT_BRANDING } from '../lib/use-branding';
 import { SkeletonList } from './ui/Skeleton';
 
 interface AcceptInviteProps {
@@ -12,6 +13,8 @@ interface AcceptInviteProps {
   onAuthed: () => void;
   /** Called to leave the accept flow (clears the invite from the URL). */
   onDone: () => void;
+  /** The admin-panel branding (name for the copy, logo for the embedded sign-in); defaults to built-in. */
+  branding?: Branding;
 }
 
 /**
@@ -19,7 +22,7 @@ interface AcceptInviteProps {
  * sign in (or register) as the invited email, then accept — which materializes their
  * membership server-side. A leaked link is useless without that email's account.
  */
-export function AcceptInvite({ token, authed, onAuthed, onDone }: AcceptInviteProps) {
+export function AcceptInvite({ token, authed, onAuthed, onDone, branding = DEFAULT_BRANDING }: AcceptInviteProps) {
   const [peek, setPeek] = useState<InvitePeek | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [accepting, setAccepting] = useState(false);
@@ -65,7 +68,7 @@ export function AcceptInvite({ token, authed, onAuthed, onDone }: AcceptInvitePr
         <h1 className="mb-2 text-xl font-bold">Invitation</h1>
         <p className="text-sm text-red-600">This invite link is invalid or has expired.</p>
         <button className="mt-4 text-sm text-slate-500 hover:text-slate-900" onClick={onDone}>
-          ← Continue to Sitewright
+          ← Continue to {branding.name}
         </button>
       </>,
     );
@@ -84,7 +87,7 @@ export function AcceptInvite({ token, authed, onAuthed, onDone }: AcceptInvitePr
         <h1 className="mb-2 text-xl font-bold">Already accepted</h1>
         <p className="text-sm text-slate-600">This invitation has already been used.</p>
         <button className="mt-4 text-sm text-slate-500 hover:text-slate-900" onClick={onDone}>
-          ← Continue to Sitewright
+          ← Continue to {branding.name}
         </button>
       </>,
     );
@@ -95,7 +98,7 @@ export function AcceptInvite({ token, authed, onAuthed, onDone }: AcceptInvitePr
         <h1 className="mb-2 text-xl font-bold">Invitation expired</h1>
         <p className="text-sm text-slate-600">Ask the sender to send a new invite link.</p>
         <button className="mt-4 text-sm text-slate-500 hover:text-slate-900" onClick={onDone}>
-          ← Continue to Sitewright
+          ← Continue to {branding.name}
         </button>
       </>,
     );
@@ -110,7 +113,7 @@ export function AcceptInvite({ token, authed, onAuthed, onDone }: AcceptInvitePr
         </div>
         {/* allowRegister: an invited user must be able to create their account even when the instance
             has self-registration closed (the API permits registration for an email with a pending invite). */}
-        <Login onAuthed={onAuthed} allowRegister />
+        <Login onAuthed={onAuthed} allowRegister branding={branding} />
       </div>
     );
   }

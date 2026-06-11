@@ -1,13 +1,16 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { browserSupportsWebAuthn, startAuthentication } from '@simplewebauthn/browser';
 import { isPasswordValid } from '@sitewright/schema';
-import { api, ApiError } from '../api';
-import { BrandMark } from './ui/BrandMark';
+import { api, ApiError, type Branding } from '../api';
+import { BrandLogo } from './ui/BrandLogo';
+import { DEFAULT_BRANDING } from '../lib/use-branding';
 import { PasswordRequirements } from './ui/PasswordRequirements';
 import { ghostButton, glassCard, glassInput, primaryButton } from '../theme';
 
 interface LoginProps {
   onAuthed: () => void;
+  /** The admin-panel branding (name + logo) for the sign-in wordmark; defaults to the built-in brand. */
+  branding?: Branding;
   /** A TOTP ticket carried back from an OIDC callback — start straight on the code step. */
   initialMfaTicket?: string | null;
   /** A notice (e.g. an OIDC callback error) to show on the sign-in screen. */
@@ -21,7 +24,7 @@ interface LoginProps {
   allowRegister?: true;
 }
 
-export function Login({ onAuthed, initialMfaTicket, initialNotice, allowRegister }: LoginProps) {
+export function Login({ onAuthed, initialMfaTicket, initialNotice, allowRegister, branding = DEFAULT_BRANDING }: LoginProps) {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -139,8 +142,8 @@ export function Login({ onAuthed, initialMfaTicket, initialNotice, allowRegister
     <div className="flex min-h-screen items-center justify-center p-4">
       <div className={`w-full max-w-sm ${glassCard} p-8`}>
         <h1 className="mb-1 flex items-center gap-2.5 text-2xl font-bold tracking-tight">
-          <BrandMark className="h-7 w-7" />
-          <span className="font-display">Sitewright</span>
+          <BrandLogo logoUrl={branding.logoUrl} name={branding.name} className="h-7 w-7" />
+          <span className="font-display">{branding.name}</span>
         </h1>
 
         {ticket ? (

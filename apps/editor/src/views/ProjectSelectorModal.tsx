@@ -1,13 +1,16 @@
 import { useMemo, useState } from 'react';
-import type { Project } from '../api';
+import type { Project, Branding } from '../api';
 import { Modal } from './ui/Modal';
-import { BrandMark } from './ui/BrandMark';
+import { BrandLogo } from './ui/BrandLogo';
+import { DEFAULT_BRANDING } from '../lib/use-branding';
 import { glassCard, glassInput, primaryButton, gradientSurface, gradientHover } from '../theme';
 
 interface ProjectSelectorModalProps {
   projects: Project[];
   /** The currently-open project (highlighted), if any. */
   currentId?: string;
+  /** The admin-panel branding (name + logo) for the modal header; defaults to the built-in brand. */
+  branding?: Branding;
   onClose: () => void;
   onOpen: (project: Project) => void;
   /** Open the New Project modal (the selector closes first). */
@@ -19,7 +22,7 @@ interface ProjectSelectorModalProps {
  * NEW PROJECT button. Shown automatically on first load and reachable anytime by
  * clicking the project name in the header.
  */
-export function ProjectSelectorModal({ projects, currentId, onClose, onOpen, onNew }: ProjectSelectorModalProps) {
+export function ProjectSelectorModal({ projects, currentId, branding = DEFAULT_BRANDING, onClose, onOpen, onNew }: ProjectSelectorModalProps) {
   const [query, setQuery] = useState('');
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -29,10 +32,10 @@ export function ProjectSelectorModal({ projects, currentId, onClose, onOpen, onN
 
   return (
     <Modal
-      title="SiteWright"
+      title={branding.name}
       size="md"
       onClose={onClose}
-      headerLeft={<BrandMark className="h-6 w-6 text-slate-900" />}
+      headerLeft={<BrandLogo logoUrl={branding.logoUrl} name={branding.name} className="h-6 w-6 text-slate-900" />}
       headerExtra={
         <button type="button" className={`${primaryButton} px-3 py-1.5 text-xs`} onClick={onNew}>
           New project

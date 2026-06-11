@@ -1,7 +1,20 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { DEFAULT_AGENT_INSTRUCTIONS, DEFAULT_AGENT_SESSION_HOURS, DEFAULT_NEW_PROJECT_LOCALE, MCP_TOOL_CATALOG } from '@sitewright/schema';
+import {
+  DEFAULT_AGENT_INSTRUCTIONS,
+  DEFAULT_AGENT_SESSION_HOURS,
+  DEFAULT_NEW_PROJECT_LOCALE,
+  DEFAULT_PLATFORM_NAME,
+  DEFAULT_BRAND_PRIMARY,
+  DEFAULT_BRAND_SECONDARY,
+  LOGO_MIME_TYPES,
+  MAX_LOGO_BASE64_LEN,
+  MCP_TOOL_CATALOG,
+  type PlatformLogo,
+} from '@sitewright/schema';
 import { api, type InstanceSettingsInput, type InstanceSettingsPublic } from '../api';
 import { glassCard, glassInput, primaryButton } from '../theme';
+import { applyBranding } from '../lib/use-branding';
+import { ColorField } from './settings/ColorPicker';
 import { SkeletonList } from './ui/Skeleton';
 import { LocalePickerModal } from './i18n/LocalePickerModal';
 import { localeFlag, localeLabel } from './i18n/locale-catalog';
@@ -9,7 +22,7 @@ import { OidcProvidersField, nextOidcProviderKey, type OidcProviderDraft } from 
 
 const FORM_MODE_LABELS: Array<{ key: keyof InstanceSettingsPublic['formModes']; label: string; hint: string }> = [
   { key: 'globalSmtp', label: 'Global SMTP', hint: 'Platform sends form mail via the SMTP configured below.' },
-  { key: 'userSmtp', label: 'Project SMTP', hint: 'Each project supplies its own SMTP, sent by the Sitewright mailer.' },
+  { key: 'userSmtp', label: 'Project SMTP', hint: 'Each project supplies its own SMTP, sent by the platform mailer.' },
   { key: 'contactPhp', label: 'contact.php', hint: 'Export a PHP contact.php that uses the host’s mail() function.' },
   { key: 'thirdParty', label: 'Third-party', hint: 'Forms post directly to an external endpoint URL.' },
 ];
@@ -72,6 +85,20 @@ export function InstanceSettings() {
   // resolves this to its effective value, so the toggle reflects reality even before it's been saved.
   const [allowSelfRegistration, setAllowSelfRegistration] = useState(false);
 
+  // Admin-panel branding (white-label). Name/colors are sent only when changed (refs track the
+  // hydrated value); the logo is `undefined` = keep, `null` = remove, or a fresh `{mime,data}` upload.
+  const [platformName, setPlatformName] = useState(DEFAULT_PLATFORM_NAME);
+  const initialNameRef = useRef(DEFAULT_PLATFORM_NAME);
+  const [brandPrimary, setBrandPrimary] = useState(DEFAULT_BRAND_PRIMARY);
+  const initialPrimaryRef = useRef(DEFAULT_BRAND_PRIMARY);
+  const [brandSecondary, setBrandSecondary] = useState(DEFAULT_BRAND_SECONDARY);
+  const initialSecondaryRef = useRef(DEFAULT_BRAND_SECONDARY);
+  const [hasLogo, setHasLogo] = useState(false);
+  const [logoDraft, setLogoDraft] = useState<PlatformLogo | null | undefined>(undefined);
+  const [logoError, setLogoError] = useState<string | null>(null);
+  // Cache-buster for the current-logo <img> preview — bumped after a save so a replaced logo refreshes.
+  const [logoBust, setLogoBust] = useState(0);
+
   function hydrate(s: InstanceSettingsPublic) {
     setModes(s.formModes);
     setAllowSelfRegistration(s.allowSelfRegistration ?? false);
@@ -115,6 +142,20 @@ export function InstanceSettings() {
     const locale = s.defaultLocale ?? DEFAULT_NEW_PROJECT_LOCALE;
     setNewProjectLocale(locale);
     initialLocaleRef.current = locale;
+    // Trim on hydrate so the "changed?" guard compares like-for-like (the save sends the trimmed value);
+    // otherwise a stored name with stray whitespace would look dirty on an untouched save.
+    const name = (s.platformName ?? DEFAULT_PLATFORM_NAME).trim();
+    setPlatformName(name);
+    initialNameRef.current = name;
+    const primary = s.brandPrimary ?? DEFAULT_BRAND_PRIMARY;
+    setBrandPrimary(primary);
+    initialPrimaryRef.current = primary;
+    const secondary = s.brandSecondary ?? DEFAULT_BRAND_SECONDARY;
+    setBrandSecondary(secondary);
+    initialSecondaryRef.current = secondary;
+    setHasLogo(s.hasLogo ?? false);
+    setLogoDraft(undefined); // a fresh load discards any un-saved logo pick
+    setLogoError(null);
   }
 
   useEffect(() => {
@@ -191,13 +232,57 @@ export function InstanceSettings() {
         enabled: p.enabled,
         ...(p.secret ? { clientSecret: p.secret } : {}),
       }));
+    // Branding (white-label). Name/colors are sent only when changed: the built-in default sends null
+    // (revert), any other value sends it. The logo sends its draft (`{mime,data}` to set, `null` to
+    // remove, `undefined` to leave unchanged).
+    if (platformName.trim() !== initialNameRef.current) {
+      input.platformName = platformName.trim() === '' || platformName.trim() === DEFAULT_PLATFORM_NAME ? null : platformName.trim();
+    }
+    if (brandPrimary !== initialPrimaryRef.current) {
+      input.brandPrimary = brandPrimary === DEFAULT_BRAND_PRIMARY ? null : brandPrimary;
+    }
+    if (brandSecondary !== initialSecondaryRef.current) {
+      input.brandSecondary = brandSecondary === DEFAULT_BRAND_SECONDARY ? null : brandSecondary;
+    }
+    if (logoDraft !== undefined) input.platformLogo = logoDraft; // {mime,data} to set, null to remove
     try {
       const res = await api.putInstanceSettings(input);
       hydrate(res.settings);
+      // Re-skin the live chrome immediately so the admin sees the change without a reload.
+      const bust = logoBust + 1;
+      setLogoBust(bust);
+      applyBranding({
+        name: res.settings.platformName ?? DEFAULT_PLATFORM_NAME,
+        primary: res.settings.brandPrimary ?? DEFAULT_BRAND_PRIMARY,
+        secondary: res.settings.brandSecondary ?? DEFAULT_BRAND_SECONDARY,
+        logoUrl: res.settings.hasLogo ? `/branding/logo?v=${bust}` : null,
+      });
       setSaved(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'failed to save settings');
     }
+  }
+
+  // Read a selected logo file → validate type + size → stage it as a base64 `PlatformLogo` draft.
+  function onLogoFile(file: File | undefined): void {
+    setLogoError(null);
+    if (!file) return;
+    if (!(LOGO_MIME_TYPES as readonly string[]).includes(file.type)) {
+      setLogoError('Logo must be a PNG, JPEG, or WebP image.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : '';
+      const base64 = result.slice(result.indexOf(',') + 1); // strip the `data:<mime>;base64,` prefix
+      if (base64.length > MAX_LOGO_BASE64_LEN) {
+        setLogoError('Logo is too large (max ~512 KB).');
+        return;
+      }
+      setLogoDraft({ mime: file.type as PlatformLogo['mime'], data: base64 });
+    };
+    reader.onerror = () => setLogoError('Could not read the file.');
+    reader.readAsDataURL(file);
   }
 
   if (loading) return <SkeletonList rows={5} className="mx-auto max-w-2xl p-8" label="Loading settings…" />;
@@ -207,9 +292,70 @@ export function InstanceSettings() {
 
   const origin = window.location.origin;
 
+  // The logo preview: a freshly-picked upload, the stored logo (cache-busted), or none (removed/unset).
+  const logoPreview =
+    logoDraft ? `data:${logoDraft.mime};base64,${logoDraft.data}` : logoDraft === undefined && hasLogo ? `/branding/logo?v=${logoBust}` : null;
+
   return (
     <>
     <form onSubmit={save} className="mx-auto flex max-w-2xl flex-col gap-6 p-6">
+
+      <fieldset className={`${glassCard} p-4`}>
+        <legend className="px-1 text-sm font-bold">Branding</legend>
+        <p className="mb-3 text-xs text-slate-500">White-label the admin panel — the name, accent gradient, and logo shown across the editor and the sign-in screen.</p>
+        <label className="mb-3 block">
+          <span className="mb-1 block text-xs font-medium text-slate-600">Platform name</span>
+          <input
+            className={field}
+            aria-label="Platform name"
+            value={platformName}
+            maxLength={60}
+            placeholder={DEFAULT_PLATFORM_NAME}
+            onChange={(e) => setPlatformName(e.target.value)}
+          />
+        </label>
+        <div className="mb-3 flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <ColorField value={brandPrimary} onChange={setBrandPrimary} label="Primary color" />
+            <span className="text-xs text-slate-600">Primary</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <ColorField value={brandSecondary} onChange={setBrandSecondary} label="Secondary color" />
+            <span className="text-xs text-slate-600">Secondary</span>
+          </div>
+          {/* Live gradient preview (the same `.sw-brand-gradient` surface used across the chrome). */}
+          <span
+            aria-hidden
+            className="h-7 flex-1 rounded-lg shadow-inner"
+            style={{ backgroundImage: `linear-gradient(to bottom right, ${brandPrimary}, ${brandSecondary})` }}
+          />
+        </div>
+        <div className="flex items-center gap-3">
+          {logoPreview ? (
+            <img src={logoPreview} alt="Current logo" className="h-9 w-9 rounded-md object-contain ring-1 ring-slate-200" />
+          ) : (
+            <span className="flex h-9 w-9 items-center justify-center rounded-md text-[10px] text-slate-400 ring-1 ring-slate-200">none</span>
+          )}
+          <label className="cursor-pointer text-xs font-medium text-indigo-700 hover:underline">
+            {/* "Replace" only when a logo is actually present (a pending remove → logoDraft===null → "Upload"). */}
+            {logoDraft !== null && (hasLogo || logoDraft) ? 'Replace logo' : 'Upload logo'}
+            <input
+              type="file"
+              accept={LOGO_MIME_TYPES.join(',')}
+              aria-label="Upload logo"
+              className="sr-only"
+              onChange={(e) => onLogoFile(e.target.files?.[0])}
+            />
+          </label>
+          {(hasLogo || logoDraft) && (
+            <button type="button" className="text-xs font-medium text-rose-600 hover:underline" onClick={() => setLogoDraft(null)}>
+              Remove
+            </button>
+          )}
+          <span className="text-[11px] text-slate-400">PNG, JPEG, or WebP · ≤ ~512 KB</span>
+        </div>
+        {logoError && <p className="mt-2 text-xs text-rose-600">{logoError}</p>}
+      </fieldset>
 
       <fieldset className={`${glassCard} p-4`}>
         <legend className="px-1 text-sm font-bold">Web-form mail modes</legend>

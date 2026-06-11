@@ -241,7 +241,7 @@ export function Modal({ title, onClose, onSave, saving = false, saveDisabled = f
                     aria-label={saveLabel}
                     disabled={saving || saveDisabled}
                     onClick={onSave}
-                    className="waves-effect waves-light inline-flex cursor-pointer items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-sky-500 p-2 text-white shadow-lg shadow-indigo-600/30 transition hover:shadow-indigo-600/40 disabled:opacity-60"
+                    className="sw-brand-gradient waves-effect waves-light inline-flex cursor-pointer items-center justify-center rounded-xl p-2 text-white shadow-lg shadow-indigo-600/30 transition hover:shadow-indigo-600/40 disabled:opacity-60"
                   >
                     <SaveIcon />
                   </button>

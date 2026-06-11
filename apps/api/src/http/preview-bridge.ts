@@ -15,6 +15,7 @@
  *                     { source:'sitewright-preview', type:'link-edit', hrefKey, href, textKey, text } (data-sw-href)
  *                     { source:'sitewright-preview', type:'pick-image', key, kind:'image'|'bg' }   (data-sw-src/bg)
  *                     { source:'sitewright-preview', type:'open-entry', dataset, id }              (data-sw-entry)
+ *                     { source:'sitewright-preview', type:'edit-html-source', key, html }          (data-sw-html → source modal)
  *   editor → preview: { source:'sitewright-editor', type:'scrollTo', y }
  *                     { source:'sitewright-editor', type:'setMode', mode }
  *
@@ -116,8 +117,11 @@ export const PREVIEW_BRIDGE_JS = `(function () {
   var toolbar = null;
   var TB_CMDS = [
     ['B', 'bold'], ['I', 'italic'], ['U', 'underline'], ['S', 'strikeThrough'],
+    ['x\\u00b2', 'superscript'], ['x\\u2082', 'subscript'],
     ['H2', 'formatBlock:h2'], ['H3', 'formatBlock:h3'], ['\\u275d', 'formatBlock:blockquote'],
-    ['\\u2022', 'insertUnorderedList'], ['1.', 'insertOrderedList'], ['\\u00b6', 'formatBlock:p']
+    ['\\u2022', 'insertUnorderedList'], ['1.', 'insertOrderedList'], ['\\u00b6', 'formatBlock:p'],
+    ['\\u2500', 'insertHorizontalRule'], ['\\u2327', 'removeFormat'],
+    ['</>', 'html-source']
   ];
   function ensureToolbar() {
     if (toolbar) return toolbar;
@@ -143,6 +147,10 @@ export const PREVIEW_BRIDGE_JS = `(function () {
   function runCmd(cmd) {
     var rich = currentRich();
     if (!rich) return;
+    // The HTML-source button hands off to the editor (opens a CodeMirror modal) — not an execCommand.
+    // Include the region's live innerHTML so the editor can seed the modal with the CURRENT content
+    // (the authored default when page.data has no override yet).
+    if (cmd === 'html-source') { post({ type: 'edit-html-source', key: rich.getAttribute('data-sw-html'), html: rich.innerHTML }); hideToolbar(); return; }
     var parts = cmd.split(':');
     try { document.execCommand(parts[0], false, parts[1]); } catch (e) {}
     post({ type: 'rich-edit', key: rich.getAttribute('data-sw-html'), html: rich.innerHTML });

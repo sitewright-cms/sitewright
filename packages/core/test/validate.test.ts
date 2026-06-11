@@ -21,7 +21,6 @@ function validBundle(): ProjectBundle {
   return {
     project,
     datasets: [products],
-    partials: [{ id: 'header', name: 'Header', root: { id: 'h', type: 'Header' } }],
     entries: [{ id: 'e1', dataset: 'products', status: 'published', values: {} }],
     pages: [
       page('home', '/', {
@@ -64,12 +63,6 @@ describe('validateProject', () => {
     expect(codes(bundle)).toContain('duplicate_page_id');
   });
 
-  it('flags an unknown partial reference', () => {
-    const bundle = validBundle();
-    bundle.pages = [page('home', '/', { id: 'r', type: 'Slot', partialRef: 'ghost' })];
-    expect(codes(bundle)).toContain('unknown_partial');
-  });
-
   it('flags a binding to an unknown dataset', () => {
     const bundle = validBundle();
     bundle.pages = [
@@ -103,21 +96,16 @@ describe('validateProject', () => {
     expect(codes(bundle)).toContain('duplicate_entry_id');
   });
 
-  it('flags duplicate page ids, page paths, partial ids, and dataset slugs', () => {
+  it('flags duplicate page ids, page paths, and dataset slugs', () => {
     const bundle = validBundle();
     bundle.pages = [
       page('dup', '/same', { id: 'r1', type: 'Section' }),
       page('dup', '/same', { id: 'r2', type: 'Section' }),
     ];
-    bundle.partials = [
-      { id: 'pp', name: 'A', root: { id: 'a', type: 'X' } },
-      { id: 'pp', name: 'B', root: { id: 'b', type: 'Y' } },
-    ];
     bundle.datasets = [products, { ...products, id: 'd2' }];
     const result = codes(bundle);
     expect(result).toContain('duplicate_page_id');
     expect(result).toContain('duplicate_page_path');
-    expect(result).toContain('duplicate_partial_id');
     expect(result).toContain('duplicate_dataset_slug');
   });
 
@@ -134,13 +122,5 @@ describe('validateProject', () => {
       }),
     ];
     expect(codes(bundle)).toContain('duplicate_node_id');
-  });
-
-  it('flags an unknown partial referenced from within another partial', () => {
-    const bundle = validBundle();
-    bundle.partials = [
-      { id: 'header', name: 'Header', root: { id: 'h', type: 'Slot', partialRef: 'ghost' } },
-    ];
-    expect(codes(bundle)).toContain('unknown_partial');
   });
 });

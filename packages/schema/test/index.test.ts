@@ -9,7 +9,6 @@ const EXPECTED_SCHEMAS = [
   'EntrySchema',
   'FieldSchema',
   'PageSchema',
-  'PartialSchema',
   'ProjectSchema',
   'FieldTypeSchema',
   'ProjectSettingsSchema',

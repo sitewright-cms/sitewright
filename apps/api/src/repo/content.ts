@@ -14,7 +14,6 @@ import {
   MediaFolderRecordSchema,
   PageSchema,
   migratePageStores,
-  PartialSchema,
   SnippetSchema,
   PageTranslationSchema,
   TemplateSchema,
@@ -27,7 +26,6 @@ import {
   type Entry,
   type Page,
   type ProjectSettings,
-  type SitewrightPartial,
   type Template,
 } from '@sitewright/schema';
 import { validateProject, type ProjectBundle } from '@sitewright/core';
@@ -55,7 +53,6 @@ export type Settings = z.infer<typeof SettingsSchema>;
 const SCHEMAS = new Map<ContentKind, z.ZodTypeAny>([
   ['settings', SettingsSchema],
   ['page', PageSchema],
-  ['partial', PartialSchema],
   ['template', TemplateSchema],
   // Code-first reusable Handlebars fragment (the templating pivot's partial), included
   // via {{> name}}; source validated at render time.
@@ -90,7 +87,7 @@ const SETTINGS_ENTITY_ID = 'settings';
 /** Upper bound on pages touched by one {@link ContentRepository.applyLocaleChange} (DoS guard). */
 const MAX_LOCALE_BATCH = 5000;
 // Per-bundle caps (defense-in-depth alongside the route body limit).
-const MAX_BUNDLE = { pages: 2000, partials: 500, templates: 500, datasets: 500, entries: 50_000 } as const;
+const MAX_BUNDLE = { pages: 2000, templates: 500, datasets: 500, entries: 50_000 } as const;
 
 function schemaFor(kind: ContentKind): z.ZodTypeAny {
   const schema = SCHEMAS.get(kind);
@@ -98,11 +95,10 @@ function schemaFor(kind: ContentKind): z.ZodTypeAny {
   return schema;
 }
 
-/** Guards recursive (page/partial/template) trees before Zod's recursive parse, to prevent stack overflow. */
+/** Guards recursive (page/template/translation) trees before Zod's recursive parse, to prevent stack overflow. */
 function assertTreeSafe(kind: ContentKind, raw: unknown): void {
   if (
     kind === 'page' ||
-    kind === 'partial' ||
     kind === 'template' ||
     kind === 'translation'
   ) {
@@ -128,7 +124,6 @@ export interface ExportBundle {
     settings: ProjectSettings;
   };
   pages: Page[];
-  partials: SitewrightPartial[];
   templates: Template[];
   datasets: Dataset[];
   entries: Entry[];
@@ -236,7 +231,6 @@ export class ContentRepository {
       // preprocess only fires on parse) so a page never re-saved since the retirement still publishes
       // its overrides. Idempotent + lenient (no full re-validation).
       pages: (await this.list(ctx, 'page')).map(migratePageStores) as Page[],
-      partials: (await this.list(ctx, 'partial')) as SitewrightPartial[],
       templates: (await this.list(ctx, 'template')) as Template[],
       datasets: (await this.list(ctx, 'dataset')) as Dataset[],
       entries: (await this.list(ctx, 'entry')) as Entry[],
@@ -256,8 +250,6 @@ export class ContentRepository {
     // Guard recursive trees before the recursive Zod parse below.
     const envelope = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
     for (const item of toArray(envelope.pages)) assertWithinTreeDepth((item as { root?: unknown })?.root);
-    for (const item of toArray(envelope.partials))
-      assertWithinTreeDepth((item as { root?: unknown })?.root);
     for (const item of toArray(envelope.templates))
       assertWithinTreeDepth((item as { root?: unknown })?.root);
 
@@ -276,7 +268,6 @@ export class ContentRepository {
           )
           .optional(),
         pages: z.array(PageSchema).max(MAX_BUNDLE.pages).default([]),
-        partials: z.array(PartialSchema).max(MAX_BUNDLE.partials).default([]),
         templates: z.array(TemplateSchema).max(MAX_BUNDLE.templates).default([]),
         datasets: z.array(DatasetSchema).max(MAX_BUNDLE.datasets).default([]),
         entries: z.array(EntrySchema).max(MAX_BUNDLE.entries).default([]),
@@ -294,7 +285,6 @@ export class ContentRepository {
         settings: input.project?.settings ?? { defaultLocale: 'en', locales: ['en'] },
       },
       pages: input.pages,
-      partials: input.partials,
       templates: input.templates,
       datasets: input.datasets,
       entries: input.entries,
@@ -316,10 +306,6 @@ export class ContentRepository {
         // by the html sink; an imported page.data HTML leaf is therefore never emitted unsanitized. The
         // bundle schema already migrated any legacy richContent into page.data + bounded/proto-checked it.
         await this.writeRow(exec, ctx, 'page', page.id, page);
-        imported += 1;
-      }
-      for (const partial of input.partials) {
-        await this.writeRow(exec, ctx, 'partial', partial.id, partial);
         imported += 1;
       }
       for (const template of input.templates) {

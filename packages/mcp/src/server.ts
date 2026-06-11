@@ -8,7 +8,6 @@ import type { BridgeAuth, PendingLogin, ScopeHolder } from './auth.js';
 const GENERIC_KIND = z.enum([
   'settings',
   'page',
-  'partial',
   'template',
   'translation',
   'dataset',

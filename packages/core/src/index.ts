@@ -1,6 +1,5 @@
 export * from './errors.js';
 export * from './tree.js';
-export * from './partials.js';
 export * from './templates.js';
 export * from './global-snippets.js';
 export * from './nav.js';

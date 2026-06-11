@@ -2,29 +2,9 @@
 // collection) into the concrete set of routes to render. Used by both the Astro
 // renderer and the API's static-site publisher, so it lives in core (not in an
 // app). No filesystem or framework dependencies.
-import { isLinkPage, type Entry, type Page, type SitewrightPartial } from '@sitewright/schema';
-import { resolvePartials } from './partials.js';
+import { isLinkPage, type Entry, type Page } from '@sitewright/schema';
 import { compareEntryOrder } from './bindings.js';
 import type { ProjectBundle } from './validate.js';
-
-export interface ResolvedPage {
-  page: Page;
-  /** Block tree with partials expanded (bindings resolve at render). */
-  root: Page['root'];
-}
-
-function buildPartialMap(bundle: ProjectBundle): Map<string, SitewrightPartial> {
-  return new Map(bundle.partials.map((partial) => [partial.id, partial]));
-}
-
-/**
- * Expands partials in a page's block tree. (Code-first `Page.template` references
- * resolve to a Handlebars SOURCE at render — see templates.ts — never to a tree;
- * the legacy Outlet wrap is retired.)
- */
-function resolveRoot(page: Page, partialMap: ReadonlyMap<string, SitewrightPartial>): Page['root'] {
-  return resolvePartials(page.root, partialMap);
-}
 
 /**
  * The pages a published build should include: everything except `draft`s. Filter a
@@ -35,18 +15,15 @@ export function publishedPages(pages: readonly Page[]): Page[] {
   return pages.filter((page) => page.status !== 'draft');
 }
 
-/** Expands partials for every non-collection, non-link page (link placeholders emit no route/HTML). */
-export function resolvedPages(bundle: ProjectBundle): ResolvedPage[] {
-  const partialMap = buildPartialMap(bundle);
-  return bundle.pages
-    .filter((page) => !page.collection && !isLinkPage(page))
-    .map((page) => ({ page, root: resolveRoot(page, partialMap) }));
+/** The non-collection, non-link pages a build renders (link placeholders emit no route/HTML). */
+export function resolvedPages(bundle: ProjectBundle): Page[] {
+  return bundle.pages.filter((page) => !page.collection && !isLinkPage(page));
 }
 
 /**
  * Groups entries by dataset slug. NOTE: this is unfiltered (includes drafts);
- * callers must gate by status before display. `resolveBinding` does this by
- * default, which is why block bindings never surface draft content.
+ * callers must gate by status before display (the publish path filters to
+ * published entries before rendering `{{#each}}`).
  */
 export function datasetEntries(bundle: ProjectBundle): Record<string, Entry[]> {
   const map = new Map<string, Entry[]>();
@@ -101,11 +78,10 @@ export function relativeRoot(slug: string | undefined): string {
   return '../'.repeat(slug.split('/').length);
 }
 
-/** A concrete page to render: a route slug, the (partial-expanded) tree, and an optional bound entry. */
+/** A concrete page to render: a route slug, the page, and an optional bound entry. */
 export interface Route {
   slug: string | undefined;
   page: Page;
-  root: Page['root'];
   /** Present for collection-page routes: the dataset entry this page renders. */
   entry?: Entry;
 }
@@ -145,13 +121,11 @@ function fillPath(path: string, param: string, value: string): string {
  * route per published entry, with that entry placed in render context.
  */
 export function collectionRoutes(bundle: ProjectBundle): Route[] {
-  const partialMap = buildPartialMap(bundle);
   const byId = pagesById(bundle.pages);
   const routes: Route[] = [];
   for (const page of bundle.pages) {
     if (!page.collection) continue;
     const { dataset, param } = page.collection;
-    const root = resolveRoot(page, partialMap);
     // Locale-suffix resolution: a `de` collection variant expands over `<dataset>-de`
     // when those entries exist, else the base dataset (auto-suffix, like data bindings).
     const localized = page.locale ? `${dataset}-${page.locale.toLowerCase()}` : undefined;
@@ -165,7 +139,6 @@ export function collectionRoutes(bundle: ProjectBundle): Route[] {
         // The collection page's full route (from its parent chain) with `[param]` filled.
         slug: pathToSlug(fillPath(pagePath(page, byId), param, entrySlug(entry, param))),
         page,
-        root,
         entry,
       });
     }
@@ -181,10 +154,9 @@ export function collectionRoutes(bundle: ProjectBundle): Route[] {
  */
 export function allRoutes(bundle: ProjectBundle): Route[] {
   const byId = pagesById(bundle.pages);
-  const staticRoutes: Route[] = resolvedPages(bundle).map(({ page, root }) => ({
+  const staticRoutes: Route[] = resolvedPages(bundle).map((page) => ({
     slug: pathToSlug(pagePath(page, byId)),
     page,
-    root,
   }));
   const routes = [...staticRoutes, ...collectionRoutes(bundle)];
 

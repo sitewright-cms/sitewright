@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import { PageSchema } from '../src/page.js';
-import { PartialSchema } from '../src/partial.js';
 
 describe('PageSchema', () => {
   it('parses a page with a block tree (home = empty slug)', () => {
@@ -205,16 +204,5 @@ describe('PageSchema — link placeholders (kind:"link")', () => {
     expect(() => link({ link: { target: 'javascript:alert(1)' }, nav: { slots: ['header'] } })).toThrow();
     expect(() => link({ link: { target: 'data:text/html,<script>' }, nav: { slots: ['header'] } })).toThrow();
     expect(() => link({ link: { target: '//evil.test' }, nav: { slots: ['header'] } })).toThrow();
-  });
-});
-
-describe('PartialSchema', () => {
-  it('parses a partial', () => {
-    const p = PartialSchema.parse({
-      id: 'header',
-      name: 'Site Header',
-      root: { id: 'r', type: 'Header' },
-    });
-    expect(p.name).toBe('Site Header');
   });
 });

@@ -43,7 +43,6 @@ function bundle(over: Partial<ProjectBundle> = {}): ProjectBundle {
       settings: { defaultLocale: 'en', locales: ['en'] },
     },
     pages: [],
-    partials: [],
     datasets: [],
     entries: [],
     ...over,
@@ -135,7 +134,7 @@ describe('resolvedPages / allRoutes', () => {
       ],
     });
     // The link placeholder emits NO route; its child routes at /services (the link's '' segment is skipped).
-    expect(resolvedPages(b).map((r) => r.page.id)).toEqual(['home', 'svc']);
+    expect(resolvedPages(b).map((p) => p.id)).toEqual(['home', 'svc']);
     expect(allRoutes(b).map((r) => r.slug)).toEqual([undefined, 'services']);
   });
 
@@ -148,7 +147,7 @@ describe('resolvedPages / allRoutes', () => {
       ],
     });
     expect(() => allRoutes(b)).not.toThrow();
-    expect(resolvedPages(b).map((r) => r.page.id)).toEqual(['home']);
+    expect(resolvedPages(b).map((p) => p.id)).toEqual(['home']);
   });
 });
 

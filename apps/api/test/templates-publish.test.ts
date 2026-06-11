@@ -163,7 +163,6 @@ describe('templates → publish (code-first sources)', () => {
     const template = { id: 'dup', name: 'Dup', source: '<p>x</p>' };
     const res = await client.post(`${proj.base}/import`, {
       pages: [],
-      partials: [],
       templates: [template, template],
       datasets: [],
       entries: [],

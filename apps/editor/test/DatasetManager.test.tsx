@@ -146,4 +146,32 @@ describe('DatasetManager', () => {
     await waitFor(() => expect(dlg.getByText(/boom/)).toBeInTheDocument());
     expect(deleteDataset).not.toHaveBeenCalled();
   });
+
+  it('badges the FIRST text field as the entry title (reorder to change which one)', async () => {
+    listDatasets.mockResolvedValue({
+      items: [
+        {
+          id: 'art',
+          name: 'Art',
+          slug: 'art',
+          fields: [
+            { name: 'count', type: 'number', required: false, localized: false },
+            { name: 'headline', type: 'text', required: false, localized: false },
+            { name: 'subtitle', type: 'text', required: false, localized: false },
+          ],
+        },
+      ],
+    });
+    listEntries.mockResolvedValue({ items: [] });
+    render(<DatasetManager project={project} />);
+    fireEvent.click(await screen.findByText('Art'));
+    fireEvent.click(screen.getByRole('button', { name: /schema/ }));
+
+    // The "title" badge sits on `headline` (the first text field), not on `count` (number) or the
+    // second text field `subtitle`.
+    const headlineRow = screen.getByText('headline').closest('li')!;
+    expect(within(headlineRow).getByText('title')).toBeInTheDocument();
+    expect(within(screen.getByText('count').closest('li')!).queryByText('title')).toBeNull();
+    expect(within(screen.getByText('subtitle').closest('li')!).queryByText('title')).toBeNull();
+  });
 });

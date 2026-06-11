@@ -85,6 +85,29 @@ export function reorderWithInsert(list: readonly Entry[], srcId: string, copy: E
 }
 
 /**
+ * Moves the item keyed `sourceKey` to before/after the item keyed `targetKey`, returning a NEW
+ * array (the source is unchanged). Drag-reorder for a plain ordered list (e.g. dataset schema
+ * fields, ordered by array position). No-op (a shallow copy) if either key is missing or equal.
+ */
+export function reorderByKey<T>(
+  list: readonly T[],
+  keyOf: (item: T) => string,
+  sourceKey: string,
+  targetKey: string,
+  pos: 'before' | 'after',
+): T[] {
+  if (sourceKey === targetKey) return list.slice();
+  const from = list.findIndex((x) => keyOf(x) === sourceKey);
+  if (from === -1) return list.slice();
+  const next = list.slice();
+  const [moved] = next.splice(from, 1);
+  const target = next.findIndex((x) => keyOf(x) === targetKey);
+  if (target === -1) return list.slice();
+  next.splice(target + (pos === 'after' ? 1 : 0), 0, moved!);
+  return next;
+}
+
+/**
  * Returns `desired` if free, else the first `desired-2`, `desired-3`, … not in `taken`. Used to
  * pick a collision-free slug/id when duplicating a dataset.
  */

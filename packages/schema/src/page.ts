@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { PageNodeSchema } from './block.js';
 import { TemplateRefSchema } from './template.js';
 import { LocaleSchema } from './project.js';
-import { AssetRefSchema, IdSchema, KeyNameSchema, PageSlugSchema, SlugSchema } from './primitives.js';
+import { AssetRefSchema, IdSchema, KeyNameSchema, NavTargetSchema, PageSlugSchema, SlugSchema } from './primitives.js';
 import { JsonObjectStoreSchema } from './json-store.js';
 
 const COLLECTION_PARAM = /\[[A-Za-z0-9_]+\]/;
@@ -133,8 +133,50 @@ const PageObject = z
         param: KeyNameSchema,
       })
       .optional(),
+    /**
+     * Entry kind. Absent/`'page'` = a normal page (slug + a rendered route/HTML file). `'link'` = a
+     * NAVIGATION PLACEHOLDER: no own route/HTML — a pages-list entry that appears in the auto-nav (via
+     * `nav.slots`) and either groups its child pages in a dropdown (`nav.dropdown`) or links somewhere
+     * (`link.target`). A link page is routing-transparent: `path:''` (no slug segment, contributes
+     * nothing to child routes) with a stub `root`. Its `title` is the menu label (may contain inline
+     * HTML + `{{sw-icon}}`/`{{sw-flag}}` helpers, rendered + sanitized into the nav).
+     */
+    kind: z.enum(['page', 'link']).optional(),
+    /** For a `kind:'link'` placeholder: where the nav item points + whether it opens a new tab. */
+    link: z
+      .object({
+        /**
+         * The link target; behavior is inferred from its shape at render: `#id` → opens a matching
+         * `<dialog>` (global modal) else smooth-scrolls to that section; `/path`(`#id`) → internal,
+         * rebased per page/locale; `http(s)`/`mailto:`/`tel:`/`sms:` → external. Empty → a pure
+         * dropdown-parent label (pair with `nav.dropdown`).
+         */
+        target: NavTargetSchema.optional(),
+        /** Open the target in a new tab (`target="_blank" rel="noopener"`). */
+        newTab: z.boolean().optional(),
+      })
+      .optional(),
   })
   .superRefine((page, ctx) => {
+    if (page.kind === 'link') {
+      if (!page.link) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['link'], message: 'a link (placeholder) page requires a link definition' });
+      }
+      const hasTarget = !!page.link?.target && page.link.target.trim() !== '';
+      const isDropdownParent = page.nav?.dropdown === true;
+      // A link entry must DO something: point somewhere, or group children as a dropdown parent.
+      if (!hasTarget && !isDropdownParent) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['link', 'target'],
+          message: 'a link page needs a target, or must be a dropdown parent (set nav.dropdown)',
+        });
+      }
+      // A link placeholder renders no page → it can't be a collection (would expand to bogus `/` routes).
+      if (page.collection) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['collection'], message: 'a link (placeholder) page cannot be a collection' });
+      }
+    }
     const hasParam = COLLECTION_PARAM.test(page.path);
     if (page.collection && !hasParam) {
       ctx.addIssue({
@@ -240,3 +282,13 @@ export function migratePageStores(value: unknown): unknown {
 
 export const PageSchema = z.preprocess(migratePageStores, PageObject);
 export type Page = z.infer<typeof PageSchema>;
+
+/**
+ * True for a navigation-placeholder page (`kind:'link'`): no own route/HTML — a nav item that links
+ * somewhere or groups child pages in a dropdown. Routing-transparent (`path:''`). Use this guard
+ * wherever a slugless link page must NOT be mistaken for the home page, emitted as a route, or
+ * counted toward duplicate-path checks.
+ */
+export function isLinkPage(page: Pick<Page, 'kind'>): boolean {
+  return page.kind === 'link';
+}

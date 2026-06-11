@@ -6,8 +6,11 @@
 // or reference a `template`. Datasets are duplicated per locale (`<slug>-<locale>`)
 // and resolved here by an auto locale-suffix convention, with explicit
 // `<slug>-<locale>` addressing still available.
-import type { Page } from '@sitewright/schema';
+import { isLinkPage, type Page } from '@sitewright/schema';
 import { pagePath, pagesById } from './routes.js';
+
+/** The site/locale HOME is the slugless page in that locale — NEVER a slugless link placeholder. */
+const isHomePage = (p: Page): boolean => p.path === '' && !isLinkPage(p);
 
 /**
  * The dataset slug a base name resolves to in `locale` — a slug-valid hyphen suffix
@@ -197,7 +200,7 @@ function cloneJson<T>(value: T): T {
 
 /** The locale variant of the site's HOME page (the root of a locale's subtree), if it exists. */
 function localeHomeFor(pages: readonly Page[], locale: string, defaultLocale: string): Page | undefined {
-  const home = pages.find((p) => p.path === '' && localeOf(p, defaultLocale) === defaultLocale);
+  const home = pages.find((p) => isHomePage(p) && localeOf(p, defaultLocale) === defaultLocale);
   if (!home) return undefined;
   const group = home.translationGroup ?? home.id;
   return pages.find((p) => (p.translationGroup ?? p.id) === group && localeOf(p, defaultLocale) === locale);
@@ -208,7 +211,7 @@ function localeHomeFor(pages: readonly Page[], locale: string, defaultLocale: st
  * parent against `pages` (existing variants): the home's variant nests under the ROOT
  * home (route `/<locale>`); every other variant nests under its parent's variant in the
  * same locale (route `/<locale>/…`), falling back to the locale home. The variant copies
- * `data`/`description`/`image`/`canonical`/`noindex`/`nav`/`order`/`collection`/`status`/`title` but OMITS `source`/`template`
+ * `data`/`description`/`image`/`canonical`/`noindex`/`nav`/`order`/`collection`/`status`/`title`/`kind`/`link` but OMITS `source`/`template`
  * (so its code follows the owner). `id` follows the `<ownerId>-<locale>` convention,
  * uniquified against existing ids.
  */
@@ -220,7 +223,7 @@ export function buildLocaleVariant(
 ): Page {
   const byId = pagesById(pages);
   const group = owner.translationGroup ?? owner.id;
-  const isHome = owner.path === '';
+  const isHome = isHomePage(owner);
 
   const existing = new Set(pages.map((p) => p.id));
   let id = `${owner.id}-${locale}`;
@@ -228,7 +231,7 @@ export function buildLocaleVariant(
 
   let parent: string | undefined;
   if (isHome) {
-    parent = pages.find((p) => p.path === '' && localeOf(p, defaultLocale) === defaultLocale)?.id;
+    parent = pages.find((p) => isHomePage(p) && localeOf(p, defaultLocale) === defaultLocale)?.id;
   } else {
     const parentOwner = owner.parent ? byId.get(owner.parent) : undefined;
     if (parentOwner && parentOwner.path !== '') {
@@ -262,6 +265,10 @@ export function buildLocaleVariant(
   if (owner.order !== undefined) variant.order = owner.order;
   if (owner.data !== undefined) variant.data = cloneJson(owner.data);
   if (owner.collection !== undefined) variant.collection = cloneJson(owner.collection);
+  // Link placeholders carry their kind + target into each locale (path stays '' — the isHome guard
+  // above prevents a locale-code slug; an internal `/path` target rebases per locale at render).
+  if (owner.kind !== undefined) variant.kind = owner.kind;
+  if (owner.link !== undefined) variant.link = cloneJson(owner.link);
   return variant;
 }
 

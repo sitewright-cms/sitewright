@@ -11,7 +11,7 @@ import {
   localeOf,
   type PageCodeMode,
 } from '@sitewright/core';
-import { NAV_SLOTS, type NavSlot, type Page, type Template } from '@sitewright/schema';
+import { isLinkPage, NAV_SLOTS, type NavSlot, type Page, type Template } from '@sitewright/schema';
 import { Modal } from './ui/Modal';
 import { AssetField } from './files/AssetField';
 import { glassInput } from '../theme';
@@ -160,11 +160,11 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
     isTranslated ? { ...initial, codeMode: pageCodeMode(page) } : initial,
   );
   const patch = (next: Partial<PageSettingsValues>) => setV((prev) => ({ ...prev, ...next }));
-  const isRootHome = page.path === '';
+  const isRootHome = page.path === '' && !isLinkPage(page); // a slugless link placeholder is NOT the home
   const pageLocale = localeOf(page, defaultLocale);
   // A LOCALE HOME is the root of a non-default language's subtree (a variant of the root home):
   // its parent (the site root) and slug (the language code) are fixed — not re-assignable.
-  const rootHome = pages.find((p) => p.path === '');
+  const rootHome = pages.find((p) => p.path === '' && !isLinkPage(p));
   const homeGroup = rootHome?.translationGroup ?? rootHome?.id;
   const isLocaleHome =
     !isRootHome && pageLocale !== defaultLocale && (page.translationGroup ?? page.id) === homeGroup;

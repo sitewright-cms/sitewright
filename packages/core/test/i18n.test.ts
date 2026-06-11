@@ -279,3 +279,14 @@ describe('propagatePageToLocales (new page → all languages)', () => {
     expect(created.find((p) => p.id === 'team-de')!.parent).toBe('about-de');
   });
 });
+
+describe('buildLocaleVariant — link placeholders', () => {
+  it('copies kind + link and does NOT assign a locale-code slug (it is not the home)', () => {
+    const owner = page({ id: 'nav-docs', path: '', kind: 'link', link: { target: 'https://x.test', newTab: true }, nav: { slots: ['header'] } });
+    const variant = buildLocaleVariant(owner, 'de', [owner], 'en');
+    expect(variant.kind).toBe('link');
+    expect(variant.link).toEqual({ target: 'https://x.test', newTab: true });
+    expect(variant.path).toBe(''); // slugless — NOT 'de' (only a real home variant gets the locale-code slug)
+    expect(variant.locale).toBe('de');
+  });
+});

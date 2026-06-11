@@ -47,7 +47,7 @@ export interface RenderContext {
    * Page-tree-derived navigation items per slot (`buildNav` in @sitewright/core),
    * consumed by `Nav` blocks. Keyed by slot (`header`/`footer`/`mobile`).
    */
-  nav?: Record<string, ReadonlyArray<{ label: string; path: string }>>;
+  nav?: Record<string, ReadonlyArray<{ label: string; path: string; external?: boolean; newTab?: boolean }>>;
   /**
    * Locale URL prefix for the current locale (`''` for the default/single locale,
    * `'de/'` for a non-default locale). Internal PAGE links are kept inside this
@@ -440,10 +440,11 @@ export function renderNode(node: PageNode, ctx: RenderContext = {}): string {
       // Safe lookup (no dynamic object indexing), mirroring poolFor.
       const items = ctx.nav ? (Object.entries(ctx.nav).find(([k]) => k === slot)?.[1] ?? []) : [];
       const links = items
-        .map(
-          (item) =>
-            `<a data-sw-part="nav-link" href="${escapeAttr(resolveInternalUrl(item.path, root, lp))}">${escapeHtml(item.label)}</a>`,
-        )
+        .map((item) => {
+          // A link-placeholder may open in a new tab (rel guards the opener; noreferrer for privacy).
+          const tab = item.newTab ? ' target="_blank" rel="noopener noreferrer"' : '';
+          return `<a data-sw-part="nav-link" href="${escapeAttr(resolveInternalUrl(item.path, root, lp))}"${tab}>${escapeHtml(item.label)}</a>`;
+        })
         .join('');
       return `<nav data-sw-block="Nav"${cls} data-slot="${escapeAttr(slot)}">${links}${inner}</nav>`;
     }

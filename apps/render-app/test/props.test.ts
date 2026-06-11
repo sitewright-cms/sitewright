@@ -42,14 +42,14 @@ describe('textProp', () => {
 });
 
 describe('safeUrl', () => {
-  it.each(['https://example.com', 'http://x.io/a', '/about', '/', '#section'])(
+  it.each(['https://example.com', 'http://x.io/a', '/about', '/', '#section', 'mailto:a@b', 'tel:+15551234', 'sms:+1'])(
     'allows safe URL %s',
     (url) => {
       expect(safeUrl(url)).toBe(url);
     },
   );
 
-  it.each(['javascript:alert(1)', 'data:text/html,<script>', 'vbscript:x', 'ftp://x', 'mailto:a@b'])(
+  it.each(['javascript:alert(1)', 'data:text/html,<script>', 'vbscript:x', 'ftp://x', '//evil.test'])(
     'rejects unsafe URL %s -> fallback',
     (url) => {
       expect(safeUrl(url)).toBe('#');

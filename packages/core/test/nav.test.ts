@@ -76,4 +76,40 @@ describe('buildNav', () => {
     const pages = [page({ id: 'p1', path: 'p1', title: 'P1', nav: { slots: ['header'], dropdown: true } })];
     expect(buildNav(pages, 'header')).toEqual([{ label: 'P1', path: '/p1' }]);
   });
+
+  it('resolves a link placeholder href from link.target (external/mailto/anchor/internal)', () => {
+    const pages = [
+      page({ id: 'ext', kind: 'link', title: 'Docs', link: { target: 'https://x.test', newTab: true }, nav: { slots: ['header'], order: 1 } }),
+      page({ id: 'mail', kind: 'link', title: 'Mail', link: { target: 'mailto:a@b.test' }, nav: { slots: ['header'], order: 2 } }),
+      page({ id: 'anch', kind: 'link', title: 'Top', link: { target: '#top' }, nav: { slots: ['header'], order: 3 } }),
+      page({ id: 'int', kind: 'link', title: 'About', link: { target: '/about' }, nav: { slots: ['header'], order: 4 } }),
+    ];
+    expect(buildNav(pages, 'header')).toEqual([
+      { label: 'Docs', path: 'https://x.test', external: true, newTab: true },
+      { label: 'Mail', path: 'mailto:a@b.test', external: true },
+      { label: 'Top', path: '#top' }, // fragment: runtime opens a <dialog> or smooth-scrolls
+      { label: 'About', path: '/about' }, // internal path: rebased per page at render
+    ]);
+  });
+
+  it('an empty-target link is a pure dropdown-parent label ("#") that still nests children', () => {
+    const pages = [
+      page({ id: 'grp', kind: 'link', title: 'Group', link: { target: '' }, nav: { slots: ['header'], dropdown: true } }),
+      // Child route skips the routing-transparent link parent (its path is ''): /a, not /grp/a.
+      page({ id: 'a', path: 'a', title: 'A', parent: 'grp', nav: { slots: ['footer'] } }),
+    ];
+    expect(buildNav(pages, 'header')).toEqual([
+      { label: 'Group', path: '#', children: [{ label: 'A', path: '/a' }] },
+    ]);
+  });
+
+  it('a link placeholder can be BOTH a dropdown parent AND a link target', () => {
+    const pages = [
+      page({ id: 'p', kind: 'link', title: 'P', link: { target: 'https://x.test' }, nav: { slots: ['header'], dropdown: true } }),
+      page({ id: 'c', path: 'c', title: 'C', parent: 'p', nav: { slots: ['header'] } }),
+    ];
+    expect(buildNav(pages, 'header')).toEqual([
+      { label: 'P', path: 'https://x.test', external: true, children: [{ label: 'C', path: '/c' }] },
+    ]);
+  });
 });

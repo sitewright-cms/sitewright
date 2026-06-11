@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import type { Page, Template } from '@sitewright/schema';
+import { isLinkPage, type Page, type Template } from '@sitewright/schema';
 import { pagePath, pagesById, pagesInLocale, localeOf } from '@sitewright/core';
 import { api, previewDocUrl, type Project } from '../api';
 import { CodePageEditor } from './CodePageEditor';
@@ -176,7 +176,7 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
   );
   // The HOME page (empty slug = the tree root) is the default parent for every other
   // page; "no parent" isn't offered for non-home pages.
-  const homeId = pages.find((p) => p.path === '')?.id ?? 'home';
+  const homeId = pages.find((p) => p.path === '' && !isLinkPage(p))?.id ?? 'home';
   // The home page of a given locale (root of its subtree) — the parent for a new locale-only
   // page, falling back to the root home when that locale has no home yet.
   function localeHomeId(locale: string): string {
@@ -190,7 +190,8 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
   const homeGroup = pages.find((p) => p.id === homeId)?.translationGroup ?? homeId;
   const isLocaleHome = (p: Page): boolean =>
     p.path !== '' && localeOf(p, defaultLocale) !== defaultLocale && (p.translationGroup ?? p.id) === homeGroup;
-  const isHomeLike = (p: Page): boolean => p.path === '' || isLocaleHome(p);
+  // A slugless link placeholder is NOT home — it's a normal, reorderable + deletable nav entry.
+  const isHomeLike = (p: Page): boolean => (p.path === '' && !isLinkPage(p)) || isLocaleHome(p);
   // Index for computing each page's full route ({root}/{parent slugs}/{slug}) for display.
   const pageById = useMemo(() => pagesById(pages), [pages]);
   const fullPath = (p: Page): string => pagePath(p, pageById);
@@ -461,7 +462,7 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
    * warning lists them; deleting any other page removes just that one.
    */
   async function removePage(p: Page) {
-    if (p.path === '') return; // the root home is permanent
+    if (p.path === '' && !isLinkPage(p)) return; // the root home is permanent (a slugless link IS deletable)
     const homeGroup = pages.find((x) => x.id === homeId)?.translationGroup ?? homeId;
     const isLocaleHome = localeOf(p, defaultLocale) !== defaultLocale && (p.translationGroup ?? p.id) === homeGroup;
     if (isLocaleHome) {

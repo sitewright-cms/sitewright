@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, setUnauthorizedHandler, type Project } from './api';
 import { useSessionPoll } from './lib/use-session-poll';
+import { useBranding } from './lib/use-branding';
 import { Login } from './views/Login';
 import { ProjectView, MANAGE_TABS, TAB_LABELS, type Tab } from './views/Project';
 import { AssetsPanel } from './views/files/AssetsPanel';
@@ -17,7 +18,7 @@ import { NewProjectModal } from './views/NewProjectModal';
 import { AcceptInvite } from './views/AcceptInvite';
 import { LivePreview } from './views/LivePreview';
 import { UpdateBanner } from './views/UpdateBanner';
-import { BrandMark } from './views/ui/BrandMark';
+import { BrandLogo } from './views/ui/BrandLogo';
 import { parseLiveTarget } from './lib/live-target';
 import { gradientSurface, gradientHover } from './theme';
 import { SkeletonList } from './views/ui/Skeleton';
@@ -157,6 +158,10 @@ function MainApp({
     void api.me().catch(() => {});
   });
 
+  // Admin-panel branding (white-label): applies the brand gradient/title/favicon to the chrome and
+  // returns the name + logo for the wordmark/header/selector. Defaults render until /auth/config loads.
+  const branding = useBranding();
+
   useEffect(() => {
     void refresh().then((ps) => {
       // Open the selector on first SPA load (unless an invite is mid-flow).
@@ -195,6 +200,7 @@ function MainApp({
       <AcceptInvite
         token={inviteToken}
         authed={stage.name !== 'auth'}
+        branding={branding}
         onAuthed={() => void refresh()}
         onDone={() => {
           setInviteToken(null);
@@ -208,7 +214,7 @@ function MainApp({
   if (stage.name === 'auth') {
     // A forced logout (expired session) explains itself; otherwise show any OIDC callback notice.
     const notice = stage.expired ? 'Your session expired — please sign in again.' : oidcNotice;
-    return <Login onAuthed={() => void refresh().then(() => setSelectorOpen(true))} initialMfaTicket={mfaTicket} initialNotice={notice} />;
+    return <Login onAuthed={() => void refresh().then(() => setSelectorOpen(true))} initialMfaTicket={mfaTicket} initialNotice={notice} branding={branding} />;
   }
 
   const inProject = stage.name === 'project' ? stage.project : null;
@@ -224,10 +230,10 @@ function MainApp({
         <button
           className="flex shrink-0 items-center text-slate-900 transition hover:text-indigo-700"
           onClick={() => setSelectorOpen(true)}
-          aria-label="Sitewright — switch project"
+          aria-label={`${branding.name} — switch project`}
           title="Switch project"
         >
-          <BrandMark />
+          <BrandLogo logoUrl={branding.logoUrl} name={branding.name} />
         </button>
         {inProject && (
           <button
@@ -326,6 +332,7 @@ function MainApp({
         <ProjectSelectorModal
           projects={projects}
           currentId={inProject?.id}
+          branding={branding}
           onClose={() => setSelectorOpen(false)}
           onOpen={openProject}
           onNew={() => {

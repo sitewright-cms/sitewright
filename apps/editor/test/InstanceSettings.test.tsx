@@ -233,3 +233,51 @@ describe('InstanceSettings', () => {
     }
   });
 });
+
+describe('InstanceSettings — branding', () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const lastPayload = () => putInstanceSettings.mock.calls[0]![0] as any;
+
+  it('renders the Branding fieldset (name input + the two reused color pickers)', async () => {
+    getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
+    render(<InstanceSettings />);
+    expect(await screen.findByText('Branding')).toBeInTheDocument();
+    expect(screen.getByLabelText('Platform name')).toBeInTheDocument();
+    expect(screen.getByLabelText('Edit Primary color')).toBeInTheDocument(); // ColorField reuse
+    expect(screen.getByLabelText('Edit Secondary color')).toBeInTheDocument();
+  });
+
+  it('sends a changed platform name in the PUT payload', async () => {
+    getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
+    render(<InstanceSettings />);
+    await screen.findByText('Branding');
+    fireEvent.change(screen.getByLabelText('Platform name'), { target: { value: 'Acme CMS' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(putInstanceSettings).toHaveBeenCalledTimes(1));
+    expect(lastPayload().platformName).toBe('Acme CMS');
+  });
+
+  it('stages an uploaded PNG as a base64 {mime,data} logo in the payload', async () => {
+    getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
+    render(<InstanceSettings />);
+    await screen.findByText('Branding');
+    const file = new File([Uint8Array.from([1, 2, 3, 4])], 'logo.png', { type: 'image/png' });
+    fireEvent.change(screen.getByLabelText('Upload logo'), { target: { files: [file] } });
+    // FileReader is async — the staged draft surfaces a Remove button.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(putInstanceSettings).toHaveBeenCalledTimes(1));
+    expect(lastPayload().platformLogo).toMatchObject({ mime: 'image/png' });
+    expect(typeof lastPayload().platformLogo.data).toBe('string');
+  });
+
+  it('sends platformLogo: null when an existing logo is removed', async () => {
+    getInstanceSettings.mockResolvedValue({ settings: { ...DEFAULTS, hasLogo: true } });
+    render(<InstanceSettings />);
+    await screen.findByText('Branding');
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(putInstanceSettings).toHaveBeenCalledTimes(1));
+    expect(lastPayload().platformLogo).toBeNull();
+  });
+});

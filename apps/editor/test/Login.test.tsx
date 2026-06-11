@@ -187,4 +187,17 @@ describe('Login', () => {
     render(<Login onAuthed={vi.fn()} allowRegister />);
     expect(await screen.findByRole('button', { name: 'Need an account? Register' })).toBeInTheDocument();
   });
+
+  it('shows the default wordmark (name + BrandMark SVG) with no branding prop', () => {
+    const { container } = render(<Login onAuthed={vi.fn()} />);
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('SiteWright');
+    expect(container.querySelector('h1 svg')).not.toBeNull(); // the BrandMark fallback
+    expect(container.querySelector('h1 img')).toBeNull();
+  });
+
+  it('renders the configured platform name + uploaded logo when branding is supplied', () => {
+    render(<Login onAuthed={vi.fn()} branding={{ name: 'Acme CMS', primary: '#fff', secondary: '#000', logoUrl: '/branding/logo?v=2' }} />);
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Acme CMS');
+    expect(screen.getByRole('img', { name: 'Acme CMS' })).toHaveAttribute('src', '/branding/logo?v=2');
+  });
 });

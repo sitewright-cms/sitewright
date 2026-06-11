@@ -25,14 +25,14 @@ function RemoteSteps({ mcpUrl, settingsPath, planNote }: { mcpUrl: string; setti
       <ol className="list-decimal space-y-1.5 pl-5 text-sm text-slate-600 marker:text-slate-400">
         <li>{settingsPath}</li>
         <li>
-          Paste this remote MCP server URL and name it “Sitewright”: <code className={CODE}>{mcpUrl}</code>
+          Paste this remote MCP server URL and give the connector a name: <code className={CODE}>{mcpUrl}</code>
         </li>
         <li>
           Connect — you’re sent here to sign in and pick <strong>this</strong> project, then approve. (One project per
           connection; add another connector for another project.)
         </li>
         <li>
-          In a chat, enable the Sitewright tools and ask it to build or edit the site — keep this editor open to watch
+          In a chat, enable this server’s tools and ask it to build or edit the site — keep this editor open to watch
           the changes appear live.
         </li>
       </ol>
@@ -122,7 +122,7 @@ function ConnectGuide({ emphasized }: { emphasized: boolean }) {
           <RemoteSteps
             mcpUrl={mcpUrl}
             settingsPath="In Mistral Le Chat, open Connectors → “+ Add Connector” → the “Custom MCP Connector” tab."
-            planNote="Le Chat supports custom MCP connectors on its Free plan too (it’s an admin-only feature; on Free you’re the admin by default), over OAuth 2.1 like Sitewright."
+            planNote="Le Chat supports custom MCP connectors on its Free plan too (it’s an admin-only feature; on Free you’re the admin by default), over OAuth 2.1 like this server."
           />
         )}
         {tab === 'cli' && (

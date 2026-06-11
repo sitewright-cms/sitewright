@@ -2,15 +2,21 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
 import type { Project } from '../src/api';
 
-const { me, createProject, logout, setUnauthorizedHandler, useSessionPoll } = vi.hoisted(() => ({
+const { me, createProject, logout, loginConfig, setUnauthorizedHandler, useSessionPoll } = vi.hoisted(() => ({
   me: vi.fn(),
   createProject: vi.fn(),
   logout: vi.fn(),
+  loginConfig: vi.fn(),
   setUnauthorizedHandler: vi.fn(),
   useSessionPoll: vi.fn(),
 }));
 vi.mock('../src/api', () => ({
-  api: { me: () => me(), createProject: (...a: unknown[]) => createProject(...a), logout: () => logout() },
+  api: {
+    me: () => me(),
+    createProject: (...a: unknown[]) => createProject(...a),
+    logout: () => logout(),
+    loginConfig: () => loginConfig(),
+  },
   setUnauthorizedHandler: (fn: (() => void) | undefined) => setUnauthorizedHandler(fn),
 }));
 // The poll mechanics are unit-tested in use-session-poll.test.ts; here we only assert App enables it
@@ -48,6 +54,12 @@ beforeEach(() => {
   vi.clearAllMocks();
   me.mockResolvedValue({ userId: 'u', email: 'u@acme.test', isInstanceAdmin: false, projects });
   createProject.mockResolvedValue({ project: { id: 'p3', name: 'New Co', slug: 'new-co', role: 'owner' } });
+  // useBranding() runs at the App root — give it a default config so it resolves (DOM ops are inert in jsdom).
+  loginConfig.mockResolvedValue({
+    oidcProviders: [],
+    allowSelfRegistration: false,
+    branding: { name: 'SiteWright', primary: '#4f46e5', secondary: '#0ea5e9', logoUrl: null },
+  });
 });
 
 describe('App shell', () => {

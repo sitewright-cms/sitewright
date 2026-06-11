@@ -16,10 +16,10 @@ export const glassInput =
 
 export const fieldLabel = 'mb-1 block text-xs font-medium text-slate-600';
 
-/** The primary action: indigo→sky gradient, soft glow. Pairs with `cursor-pointer` (global).
- *  `waves-effect waves-light` adds the (white) ripple — see lib/ripple.ts. */
+/** The primary action: the brand gradient (configurable via `--sw-brand-1/2`), soft glow. Pairs with
+ *  `cursor-pointer` (global). `waves-effect waves-light` adds the (white) ripple — see lib/ripple.ts. */
 export const primaryButton =
-  'waves-effect waves-light inline-flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-br from-indigo-600 to-sky-500 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-indigo-600/30 transition hover:shadow-indigo-600/40 disabled:opacity-60';
+  'sw-brand-gradient waves-effect waves-light inline-flex items-center justify-center gap-1.5 rounded-xl px-4 py-2 text-sm font-bold text-white shadow-lg shadow-indigo-600/30 transition hover:shadow-indigo-600/40 disabled:opacity-60';
 
 /** A quiet secondary action: frosted, lifts to solid white on hover. */
 export const ghostButton =
@@ -29,16 +29,16 @@ export const ghostButton =
 export const dangerButton =
   'waves-effect inline-flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-rose-600 transition hover:bg-rose-50';
 
-/** Gradient pill used for section icons / accents. */
+/** Gradient pill used for section icons / accents (the configurable brand gradient). */
 export const accentChip =
-  'inline-flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-sky-400 text-white shadow-md shadow-indigo-500/30';
+  'sw-brand-gradient inline-flex h-8 w-8 items-center justify-center rounded-xl text-white shadow-md shadow-indigo-500/30';
 
-/** The ACTIVE/selected surface: the primary indigo→sky gradient with white text. Replaces an
- *  outline ring as the "this one is current" marker (e.g. the project selector's open project). */
+/** The ACTIVE/selected surface: the brand gradient with white text. Replaces an outline ring as the
+ *  "this one is current" marker (e.g. the project selector's open project). */
 export const gradientSurface =
-  'bg-gradient-to-br from-indigo-600 to-sky-500 text-white shadow-md shadow-indigo-600/30';
+  'sw-brand-gradient text-white shadow-md shadow-indigo-600/30';
 
-/** Hover form of {@link gradientSurface}: a row/item that lifts to the gradient (white text) on
+/** Hover form of {@link gradientSurface}: a row/item that lifts to the brand gradient (white text) on
  *  hover. Put `group` on the element so child text can adopt `group-hover:text-white`. */
 export const gradientHover =
-  'hover:bg-gradient-to-br hover:from-indigo-600 hover:to-sky-500 hover:text-white hover:shadow-md hover:shadow-indigo-600/30';
+  'sw-brand-gradient-hover hover:text-white hover:shadow-md hover:shadow-indigo-600/30';

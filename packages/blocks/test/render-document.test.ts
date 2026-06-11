@@ -33,13 +33,15 @@ describe('renderDocument — document shell', () => {
     // full-height flex column body + a growing main → footer pinned to the bottom
     expect(head).toContain('min-height:100dvh;display:flex;flex-direction:column');
     expect(head).toContain('#page-content{flex:1 0 auto}');
+    // footer landmark is a flex column so its content fills it (no gap strip below)
+    expect(head).toContain('#footer{display:flex;flex-direction:column}');
     expect(doc).toContain('<main id="page-content">');
   });
 
-  it('scrollbar thumb is the brand primary at 70% / 100% on grab, with no visible track', () => {
+  it('scrollbar is a solid primary thumb on a solid (page-bg) track — no transparency', () => {
     const doc = renderDocument(page, { brand });
     const head = doc.slice(0, doc.indexOf('</head>'));
-    expect(head).toContain('background-color: color-mix(in srgb, var(--sw-color-primary, #4f46e5) 70%, transparent);');
-    expect(head).toContain('*::-webkit-scrollbar { width: 10px; height: 10px; background: transparent; }');
+    expect(head).toContain('*::-webkit-scrollbar-thumb { background-color: var(--sw-color-primary, #4f46e5); border-radius: 9999px; }');
+    expect(head).toContain('*::-webkit-scrollbar { width: 12px; height: 12px; background: var(--sw-color-base-100, #ffffff); }');
   });
 });

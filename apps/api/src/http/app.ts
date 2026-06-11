@@ -27,6 +27,7 @@ import {
   type FileAsset,
   type MediaFolderRecord,
   type Form,
+  isLinkPage,
   type FormPublic,
   type ImageAsset,
   type MediaAsset,
@@ -60,6 +61,8 @@ import {
   validateTemplate,
   TemplateError,
   mediaForRender,
+  decorateNav,
+  NAV_LINK_JS,
 } from '@sitewright/blocks';
 import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
 import { optimizeImage } from '@sitewright/image-pipeline';
@@ -1843,11 +1846,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           const savedPages = publishedPages(allSavedPages);
           const previewLocale = localeOf(page, defaultLocale);
           const navPages = pagesInLocale(savedPages, previewLocale, defaultLocale);
-          const slotNav = {
+          const slotNav = decorateNav({
             header: buildNav(navPages, 'header'),
             footer: buildNav(navPages, 'footer'),
             mobile: buildNav(navPages, 'mobile'),
-          };
+          });
           // The page's FULL route is computed from the parent chain; include the (possibly
           // unsaved/edited) previewed page in the index so its own slug/parent apply.
           const previewById = pagesById(savedPages);
@@ -1972,11 +1975,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const savedPages = publishedPages(allSavedPages);
       const previewLocale = localeOf(page, defaultLocale);
       const navPages = pagesInLocale(savedPages, previewLocale, defaultLocale);
-      const nav = {
+      const nav = decorateNav({
         header: buildNav(navPages, 'header'),
         footer: buildNav(navPages, 'footer'),
         mobile: buildNav(navPages, 'mobile'),
-      };
+      });
       // Public form definitions for any Form blocks; the preview posts same-origin.
       const previewForms: Record<string, FormPublic> = Object.fromEntries(
         ((await contentRepo.list(ctx, 'form')) as Form[]).map((f) => [f.id, toPublicForm(f)]),
@@ -2038,6 +2041,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           ...(animated ? [ANIMATION_JS] : []),
           ...(lazy ? [LAZYLOAD_JS] : []),
           ...(waves ? [RIPPLE_JS] : []),
+          // Nav-placeholder runtime (open a <dialog> / smooth-scroll) when a placeholder targets a #fragment.
+          ...(savedPages.some((p) => isLinkPage(p) && (p.link?.target ?? '').includes('#')) ? [NAV_LINK_JS] : []),
           // Editor↔preview bridge (scroll preserve/restore). Preview-only path.
           PREVIEW_BRIDGE_JS,
         ],

@@ -25,12 +25,14 @@ import {
   referencesParentPage,
   type ProjectBundle,
 } from '@sitewright/core';
-import type { Page, Template } from '@sitewright/schema';
+import { isLinkPage, type Page, type Template } from '@sitewright/schema';
 import {
   renderDocument,
   renderTemplate,
   TemplateError,
   type TemplateContext,
+  decorateNav,
+  NAV_LINK_JS,
   resolveInternalUrl,
   relativizeInternalLinks,
   usedComponentTypes,
@@ -72,6 +74,8 @@ const LAZYLOAD_SCRIPT = 'lazyload.js';
 const RIPPLE_SCRIPT = 'ripple.js';
 /** The MINI SHOP cart runtime, written at the site root and linked per page. */
 const CART_SCRIPT = 'cart.js';
+/** The nav-placeholder runtime (open a <dialog>/smooth-scroll a #section), linked per page. */
+const NAV_LINK_SCRIPT = 'nav-link.js';
 
 /** A static `{{> name}}` / `{{#> name}}` partial include (snippet names are identifier-safe). */
 const PARTIAL_REF = /\{\{~?\s*#?>\s*([a-zA-Z][a-zA-Z0-9_-]*)/g;
@@ -297,11 +301,11 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     const website = bundle.project.website;
     // Auto-nav: page-tree-derived menus per slot (same for every page; consumed by Nav blocks
     // and code-first skeleton slots via `{{#each nav.header}}`).
-    const nav = {
+    const nav = decorateNav({
       header: buildNav(pubBundle.pages, 'header'),
       footer: buildNav(pubBundle.pages, 'footer'),
       mobile: buildNav(pubBundle.pages, 'mobile'),
-    };
+    });
     // Multilingual model (see docs/i18n-content-model.md): a locale VARIANT of a
     // page is itself a Page (own path/title/description/data), so each route renders
     // ONCE at its own path. The page's `locale` drives `<html lang>` + which
@@ -320,12 +324,15 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     const navByLocale = new Map<string, typeof nav>();
     for (const loc of new Set(pubBundle.pages.map(localeOf))) {
       const pagesIn = pagesInLocale(pubBundle.pages, loc, defaultLocale);
-      navByLocale.set(loc, {
+      navByLocale.set(loc, decorateNav({
         header: buildNav(pagesIn, 'header'),
         footer: buildNav(pagesIn, 'footer'),
         mobile: buildNav(pagesIn, 'mobile'),
-      });
+      }));
     }
+    // Ship the nav-link runtime (open a <dialog> / smooth-scroll a #section) only when a placeholder
+    // targets a fragment. Project-level (the nav is identical on every page), so it links on all pages.
+    const usesNavLink = pubBundle.pages.some((p) => isLinkPage(p) && (p.link?.target ?? '').includes('#'));
     // Index for computing each page's full route (`{root}/{parent slugs}/{slug}`) — a
     // page's `path` is only its own slug segment.
     const byId = pagesById(pubBundle.pages);
@@ -586,6 +593,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           ...(usesLazy ? [`${siteRoot}${LAZYLOAD_SCRIPT}`] : []),
           ...(usesWaves ? [`${siteRoot}${RIPPLE_SCRIPT}`] : []),
           ...(usesCartRuntime ? [`${siteRoot}${CART_SCRIPT}`] : []),
+          ...(usesNavLink ? [`${siteRoot}${NAV_LINK_SCRIPT}`] : []),
         ];
         const html = renderDocument(page, {
           brand,
@@ -705,6 +713,12 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
       await writeFile(join(tmp, CART_SCRIPT), CART_JS, 'utf8');
       bytes += Buffer.byteLength(CART_JS);
+    }
+    // The nav-placeholder runtime (open a <dialog> / smooth-scroll a #section; only-used-ships).
+    if (usesNavLink) {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
+      await writeFile(join(tmp, NAV_LINK_SCRIPT), NAV_LINK_JS, 'utf8');
+      bytes += Buffer.byteLength(NAV_LINK_JS);
     }
 
     // robots.txt (always) + sitemap.xml (only when a production site URL is set).

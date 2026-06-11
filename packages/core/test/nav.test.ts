@@ -85,10 +85,10 @@ describe('buildNav', () => {
       page({ id: 'int', kind: 'link', title: 'About', link: { target: '/about' }, nav: { slots: ['header'], order: 4 } }),
     ];
     expect(buildNav(pages, 'header')).toEqual([
-      { label: 'Docs', path: 'https://x.test', external: true, newTab: true },
-      { label: 'Mail', path: 'mailto:a@b.test', external: true },
-      { label: 'Top', path: '#top' }, // fragment: runtime opens a <dialog> or smooth-scrolls
-      { label: 'About', path: '/about' }, // internal path: rebased per page at render
+      { label: 'Docs', rich: true, path: 'https://x.test', external: true, newTab: true },
+      { label: 'Mail', rich: true, path: 'mailto:a@b.test', external: true },
+      { label: 'Top', rich: true, path: '#top' }, // fragment: runtime opens a <dialog> or smooth-scrolls
+      { label: 'About', rich: true, path: '/about' }, // internal path: rebased per page at render
     ]);
   });
 
@@ -99,7 +99,7 @@ describe('buildNav', () => {
       page({ id: 'a', path: 'a', title: 'A', parent: 'grp', nav: { slots: ['footer'] } }),
     ];
     expect(buildNav(pages, 'header')).toEqual([
-      { label: 'Group', path: '#', children: [{ label: 'A', path: '/a' }] },
+      { label: 'Group', rich: true, path: '#', children: [{ label: 'A', path: '/a' }] },
     ]);
   });
 
@@ -109,7 +109,7 @@ describe('buildNav', () => {
       page({ id: 'c', path: 'c', title: 'C', parent: 'p', nav: { slots: ['header'] } }),
     ];
     expect(buildNav(pages, 'header')).toEqual([
-      { label: 'P', path: 'https://x.test', external: true, children: [{ label: 'C', path: '/c' }] },
+      { label: 'P', rich: true, path: 'https://x.test', external: true, children: [{ label: 'C', path: '/c' }] },
     ]);
   });
 });

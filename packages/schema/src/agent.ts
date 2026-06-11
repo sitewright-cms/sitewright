@@ -115,16 +115,23 @@ home is { path:"de", parent:"home" } (→ /de) and a sub-page under it is
 { path:"leistungen", parent:"home-de" } (→ /de/leistungen). With dropdown:true a page's
 CHILD pages (parent = its id) nest under its nav item — a nav slot template renders them
 via {{#if children}}…{{#each children}}. Prefer a CSS-only hover dropdown whose PARENT stays a
-real link: <li class="dropdown dropdown-hover"><a href="{{sw-url path}}">{{label}}</a><ul
+real link: <li class="dropdown dropdown-hover"><a href="{{sw-url path}}">{{sw-label}}</a><ul
 class="dropdown-content menu …">{{#each children}}…{{/each}}</ul></li> (avoid <details>/<summary>,
 which makes the parent a toggle, not navigable). Children need no own nav slots. Every new
 project already has the empty-slug "home" page.
+NAV PLACEHOLDERS: a page with kind:"link" is a menu item with NO page of its own (no route/HTML) —
+set link.target ("/path", "https://…"/"mailto:"/"tel:", "#section", or "#dialog-id" to open a
+<dialog> placed in the website.bottom slot) + optional link.newTab, and nav.slots/nav.dropdown as
+usual; its title is the menu name (may include {{sw-icon}}/basic HTML). Output a nav label with
+{{sw-label}} (renders that rich name; a plain page title is escaped) and honor {{#if newTab}} +
+.external on each item.
 ACTIVE NAV ITEM: mark the current page in a menu with the {{sw-active <route>}} helper (a boolean,
 no JS; route must be root-relative). By default it matches the active TRAIL (a parent route stays
 active on its child pages); pass exact=true for the current page only. Inside {{#each nav.header}}
 the item route is \`path\`: <a href="{{sw-url path}}" class="{{#if (sw-active path)}}active{{/if}}"
-{{#if (sw-active path exact=true)}}aria-current="page"{{/if}}>{{label}}</a> (the .active class is what
-the nav EFFECT styles; omit aria-current off the current page).
+{{#if (sw-active path exact=true)}}aria-current="page"{{/if}}>{{sw-label}}</a> (the .active class is what
+the nav EFFECT styles; omit aria-current off the current page). Output the label with {{sw-label}}
+(renders a placeholder's rich name; a page title is escaped).
 NAV/BUTTON EFFECTS: curated CI-themed, contrast-safe schemes — add a class for nav active/hover
 (\`sw-nav-pill\`|\`-underline\`|\`-soft\`|\`-bar\`|\`-ghost\`, on the nav <ul> or set site-wide in
 website.theme.navEffect) and button hover/press (\`sw-btn-lift\`|\`-glow\`|\`-sheen\`|\`-press\`|\`-pulse\`|

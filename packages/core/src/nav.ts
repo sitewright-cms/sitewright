@@ -16,6 +16,18 @@ export interface NavItem {
   external?: boolean;
   /** Open in a new tab (`target="_blank" rel="noopener"`) — set from a link placeholder's `link.newTab`. */
   newTab?: boolean;
+  /**
+   * Whether the label may contain rich markup (a link placeholder's name supports basic HTML +
+   * `{{sw-icon}}`/`{{sw-flag}}`). Plain page titles are NOT rich (escaped). Consumed by
+   * `decorateNav` (blocks), which renders rich labels into {@link labelHtml}.
+   */
+  rich?: boolean;
+  /**
+   * Render-ready HTML for the label, populated by `decorateNav` (blocks): the escaped title for a
+   * page, or the rendered+validated rich markup for a placeholder. Emitted via the `{{sw-label}}`
+   * helper (a SafeString) — `{{label}}` stays the plain-text fallback for older templates.
+   */
+  labelHtml?: string;
   /** Child-page items, present when the page's `nav.dropdown` is on (render as a dropdown). */
   children?: NavItem[];
 }
@@ -45,8 +57,9 @@ export function byNavOrder(a: Page, b: Page): number {
 
 function toItem(page: Page, byId: ReadonlyMap<string, Page>): NavItem {
   const label = page.nav?.title || page.title;
-  // A link placeholder resolves its href from `link.target`; a page from its tree route.
-  return isLinkPage(page) ? { label, ...linkHref(page) } : { label, path: pagePath(page, byId) };
+  // A link placeholder resolves its href from `link.target` and its label is rich (HTML + icon
+  // helpers); a page from its tree route with a plain (escaped) label.
+  return isLinkPage(page) ? { label, rich: true, ...linkHref(page) } : { label, path: pagePath(page, byId) };
 }
 
 /**

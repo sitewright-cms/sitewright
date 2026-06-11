@@ -69,6 +69,79 @@ test('data-sw-html: in-place rich editing (contenteditable + toolbar) persists',
   await expect(page.frameLocator('iframe[title="Preview"]').locator('[data-sw-html="body"]').locator('b, strong')).toHaveCount(1);
 });
 
+// The expanded rich-text toolbar: superscript (one of the new commands) wraps the selection in <sup>.
+test('rich-text toolbar: superscript wraps the selection in <sup>', async ({ page }) => {
+  await setup(page, 'sup');
+  await setSource(page, '<section data-sw-html="body"><p>E=mc2</p></section>');
+  const preview = page.frameLocator('iframe[title="Preview"]');
+  const region = preview.locator('[data-sw-html="body"]');
+  await page.getByRole('button', { name: 'Content Editor', exact: true }).click();
+  await region.click();
+  await page.keyboard.press('ControlOrMeta+a');
+  await expect(preview.locator('.sw-tb')).toBeVisible();
+  await preview.locator('.sw-tb button', { hasText: 'x²' }).click(); // superscript
+  await expect(region.locator('sup')).toHaveCount(1);
+});
+
+// The toolbar's </> button opens the HTML SOURCE editor (a CodeMirror modal); edits round-trip and
+// are sanitized on render (a <script> in the source never reaches the rendered region).
+test('rich-text </>: HTML source editor round-trips and is sanitized on render', async ({ page }) => {
+  await setup(page, 'htmlsrc');
+  await setSource(page, '<section data-sw-html="body"><p>Original</p></section>');
+  const preview = page.frameLocator('iframe[title="Preview"]');
+  const region = preview.locator('[data-sw-html="body"]');
+  await page.getByRole('button', { name: 'Content Editor', exact: true }).click();
+  await region.click();
+  await page.keyboard.press('ControlOrMeta+a');
+  await expect(preview.locator('.sw-tb')).toBeVisible();
+
+  // Open the HTML source modal via the toolbar's </> button; it is seeded with the current HTML.
+  await preview.locator('.sw-tb button', { hasText: '</>' }).click();
+  const modal = page.getByRole('dialog', { name: /Edit HTML/ });
+  await expect(modal).toBeVisible();
+  await expect(modal.locator('.cm-content')).toContainText('Original');
+
+  // Replace the source with new HTML: a <b> (allowed) + a <script> (must be stripped on render).
+  await modal.locator('.cm-content').click();
+  await page.keyboard.press('ControlOrMeta+a');
+  await page.keyboard.insertText('<p>Edited <b>bold</b></p><script>alert(1)</script>');
+  await modal.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(modal).not.toBeVisible();
+
+  // The preview reloads with the edited content: the <b> survives, the <script> is gone.
+  await expect(region).toContainText('Edited');
+  await expect(region.locator('b')).toHaveCount(1);
+  await expect(region.locator('script')).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByText('Saved')).toBeVisible();
+});
+
+// Closing the HTML source modal with unsaved edits confirms first (no silent data loss).
+test('rich-text </>: discarding dirty HTML source confirms first', async ({ page }) => {
+  await setup(page, 'htmlsrc-discard');
+  await setSource(page, '<section data-sw-html="body"><p>Keep me</p></section>');
+  const preview = page.frameLocator('iframe[title="Preview"]');
+  const region = preview.locator('[data-sw-html="body"]');
+  await page.getByRole('button', { name: 'Content Editor', exact: true }).click();
+  await region.click();
+  await page.keyboard.press('ControlOrMeta+a');
+  await expect(preview.locator('.sw-tb')).toBeVisible();
+  await preview.locator('.sw-tb button', { hasText: '</>' }).click();
+  const modal = page.getByRole('dialog', { name: /Edit HTML/ });
+  await expect(modal).toBeVisible();
+
+  // Make it dirty, then Esc → the discard confirm appears; confirming closes the source modal.
+  await modal.locator('.cm-content').click();
+  await page.keyboard.type('ZZZ');
+  await page.keyboard.press('Escape');
+  const discard = page.getByRole('dialog', { name: 'Discard changes' });
+  await expect(discard).toBeVisible();
+  await discard.getByRole('button', { name: 'Discard' }).click();
+  await expect(modal).not.toBeVisible();
+  await expect(region).toContainText('Keep me'); // the edit was discarded
+});
+
 // A [data-sw-href] anchor is click-to-edit (URL + text) via a popover; the change persists.
 test('data-sw-href: edit a link URL + text via the popover, persists', async ({ page }) => {
   await setup(page, 'swhref');

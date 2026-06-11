@@ -14,6 +14,7 @@ import { CodeEditor } from '../lib/code-editor';
 import { parseTemplateErrorPosition } from '../lib/template-error';
 import { PreviewPane } from './editor/PreviewPane';
 import { DevicePreview, PREVIEW_DEVICES, type PreviewDeviceKey } from './editor/DevicePreview';
+import { HtmlSourceModal } from './editor/HtmlSourceModal';
 import { Modal } from './ui/Modal';
 import { Tooltip } from './ui/Tooltip';
 import { PageSettingsModal, applyPageSettings, pageSettingsFromPage, type PageSettingsValues } from './PageSettingsModal';
@@ -26,6 +27,7 @@ import {
   DANGEROUS_KEYS,
   isSafeKey,
   mergeDefaults,
+  pageDataGet,
   pageDataObject,
   pageDataSet,
 } from '../lib/page-data';
@@ -138,6 +140,9 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   const [pickerKey, setPickerKey] = useState<string | null>(null);
   // The dataset entry being edited from a preview click (data-sw-entry), or null.
   const [openEntry, setOpenEntry] = useState<{ dataset: string; id: string } | null>(null);
+  // The data-sw-html region being edited in the source modal (toolbar </> button): its key + the HTML to
+  // seed (the stored page.data override if any, else the live authored default), or null when closed.
+  const [htmlSource, setHtmlSource] = useState<{ key: string; html: string } | null>(null);
   // Bumped to force a preview reload after a dataset entry is saved (the preview renders from saved
   // entries server-side, so the draft is unchanged — only a re-POST picks up the new values).
   const [previewNonce, setPreviewNonce] = useState(0);
@@ -301,6 +306,11 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
           const txt = d.text;
           setPageData((prev) => pageDataSet(prev, tk, txt));
         }
+      } else if (d.type === 'edit-html-source' && typeof d.key === 'string' && d.key !== '' && isSafeKey(d.key)) {
+        // Clicked the rich-text toolbar's </> button → open the HTML source editor for that region. Seed
+        // with the stored page.data override if present, else the live authored default (bridge innerHTML).
+        const stored = pageDataGet(pageDataRef.current, d.key);
+        setHtmlSource({ key: d.key, html: typeof stored === 'string' ? stored : typeof d.html === 'string' ? d.html : '' });
       } else if (d.type === 'pick-image' && typeof d.key === 'string' && d.key !== '' && isSafeKey(d.key)) {
         // Clicked an editable image/background in the preview → open the file picker for that region.
         setPickerKey(d.key);
@@ -732,6 +742,20 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
           </div>
         </div>
       </div>
+
+      {/* Raw-HTML editor for a rich (data-sw-html) region: opened by the toolbar's </> button. Saving
+          writes the leaf into the draft; the preview then reloads to reflect it (no suppression). */}
+      {htmlSource && (
+        <HtmlSourceModal
+          swKey={htmlSource.key}
+          value={htmlSource.html}
+          onSave={(html) => {
+            setPageData((prev) => pageDataSet(prev, htmlSource.key, html));
+            setHtmlSource(null);
+          }}
+          onClose={() => setHtmlSource(null)}
+        />
+      )}
 
       {/* Image/background replacement: clicking a data-sw-src/bg region in the preview opens this. */}
       {pickerKey && (

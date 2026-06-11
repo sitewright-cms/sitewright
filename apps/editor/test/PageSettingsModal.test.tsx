@@ -85,6 +85,47 @@ describe('pageSettingsFromPage ⇄ applyPageSettings', () => {
   });
 });
 
+describe('PageSettingsModal — link placeholders (kind:"link")', () => {
+  const linkBase: Page = {
+    id: 'nav-services',
+    path: '',
+    title: 'Services',
+    status: 'published',
+    root: { id: 'r', type: 'Section', children: [] },
+    kind: 'link',
+    link: { target: 'https://x.test', newTab: true },
+    nav: { slots: ['header'], order: 0, dropdown: true },
+    parent: 'home',
+  };
+
+  it('round-trips a link placeholder (keeps kind/link/path; never gains code/SEO)', () => {
+    expect(applyPageSettings(linkBase, pageSettingsFromPage(linkBase))).toEqual(linkBase);
+  });
+
+  it('persists an edited target + drops it to a dropdown-only when cleared', () => {
+    const withTarget = applyPageSettings(linkBase, { ...pageSettingsFromPage(linkBase), linkTarget: '/about', linkNewTab: false });
+    expect(withTarget.link).toEqual({ target: '/about' }); // newTab false → omitted
+    expect(withTarget.path).toBe(''); // stays routing-transparent
+    expect(withTarget.source).toBeUndefined();
+    const cleared = applyPageSettings(linkBase, { ...pageSettingsFromPage(linkBase), linkTarget: '' });
+    expect(cleared.link).toEqual({ newTab: true }); // no target — a dropdown-only parent
+  });
+
+  it('renders the link target + new-tab controls and hides the slug/meta fields', () => {
+    const home: Page = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' } };
+    const onSubmit = vi.fn();
+    render(
+      <PageSettingsModal page={linkBase} projectId="p" initial={pageSettingsFromPage(linkBase)} pages={[home, linkBase]} templates={[]} onClose={() => {}} onSubmit={onSubmit} />,
+    );
+    expect((screen.getByLabelText('Link target') as HTMLInputElement).value).toBe('https://x.test');
+    expect((screen.getByLabelText('Open in new tab') as HTMLInputElement).checked).toBe(true);
+    expect(screen.queryByLabelText('Page path')).toBeNull(); // no slug for a placeholder
+    expect(screen.queryByLabelText('Meta description')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ linkTarget: 'https://x.test', linkNewTab: true }));
+  });
+});
+
 describe('PageSettingsModal parent selector — home is the tree root', () => {
   const home: Page = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' } };
   const other: Page = { id: 'about', path: 'about', title: 'About', root: { id: 'r', type: 'Section' } };

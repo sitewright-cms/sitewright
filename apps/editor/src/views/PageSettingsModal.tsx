@@ -44,6 +44,10 @@ export interface PageSettingsValues {
   codeMode?: PageCodeMode;
   /** The source copied into the page when switching to `fork` (the resolved owner code). */
   forkSource?: string;
+  /** Link-placeholder (`kind:'link'`) only: where the nav item points (a target string). */
+  linkTarget: string;
+  /** Link-placeholder only: open the target in a new tab. */
+  linkNewTab: boolean;
 }
 
 /** Extracts the settings form values from a page. */
@@ -61,6 +65,8 @@ export function pageSettingsFromPage(page: Page): PageSettingsValues {
     locale: page.locale ?? '',
     description: page.description ?? '',
     image: page.image ?? '',
+    linkTarget: page.link?.target ?? '',
+    linkNewTab: page.link?.newTab ?? false,
   };
 }
 
@@ -74,6 +80,25 @@ export function applyPageSettings(page: Page, v: PageSettingsValues): Page {
         ...(v.navDropdown ? { dropdown: true } : {}),
       }
     : undefined;
+  // A link placeholder: keep it routing-transparent (path:'', no code/SEO); persist only the
+  // name (title), the link target + new-tab, the parent, nav placement, locale, and status.
+  if (page.kind === 'link') {
+    const target = v.linkTarget.trim();
+    return {
+      ...page,
+      title: v.title,
+      path: '',
+      nav,
+      parent: v.parent || undefined,
+      locale: v.locale || undefined,
+      status: v.status,
+      link: { ...(target ? { target } : {}), ...(v.linkNewTab ? { newTab: true } : {}) },
+      source: undefined,
+      template: undefined,
+      description: undefined,
+      image: undefined,
+    };
+  }
   // Code source: for a translated page the `codeMode` control decides whether it inherits the
   // main language's code (no own source/template), forks its own source, or uses a template.
   // For a main-language/standalone page `codeMode` is undefined → keep its source, apply the
@@ -160,6 +185,9 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
     isTranslated ? { ...initial, codeMode: pageCodeMode(page) } : initial,
   );
   const patch = (next: Partial<PageSettingsValues>) => setV((prev) => ({ ...prev, ...next }));
+  // A navigation placeholder (kind:'link') has no page/code/route — the form drops slug, meta,
+  // image, and the code/template controls, and shows a single link Target + new-tab toggle instead.
+  const isLink = isLinkPage(page);
   const isRootHome = page.path === '' && !isLinkPage(page); // a slugless link placeholder is NOT the home
   const pageLocale = localeOf(page, defaultLocale);
   // A LOCALE HOME is the root of a non-default language's subtree (a variant of the root home):
@@ -217,7 +245,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
 
   return (
     <Modal
-      title={`Page settings — ${initial.title}`}
+      title={`${isLink ? 'Nav placeholder' : 'Page'} settings — ${initial.title}`}
       size="lg"
       onClose={onClose}
       // Coerce the parent: home stays parentless; a non-home page submits its chosen
@@ -229,14 +257,20 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
       <div className="flex flex-col gap-4 p-5">
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="flex flex-col text-xs font-bold text-slate-700">
-            Title
+            {isLink ? 'Name (menu label)' : 'Title'}
             <input
-              aria-label="Page title"
+              aria-label={isLink ? 'Placeholder name' : 'Page title'}
               className={`mt-1.5 font-normal ${glassInput}`}
               value={v.title}
               onChange={(e) => patch({ title: e.target.value })}
             />
+            {isLink && (
+              <span className="mt-1 font-normal text-[11px] text-slate-400">
+                Shown in the menu. Supports basic HTML + <code>{'{{sw-icon "name"}}'}</code> / <code>{'{{sw-flag "de"}}'}</code>.
+              </span>
+            )}
           </label>
+          {!isLink && (
           <label className="flex flex-col text-xs font-bold text-slate-700">
             Page Slug
             <input
@@ -265,8 +299,43 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
               )}
             </span>
           </label>
+          )}
+          {isLink && (
+            <div className="flex flex-col">
+              <label className="flex flex-col text-xs font-bold text-slate-700">
+                Link target
+                <input
+                  aria-label="Link target"
+                  list="sw-page-targets"
+                  className={`mt-1.5 font-mono font-normal ${glassInput}`}
+                  value={v.linkTarget}
+                  placeholder="/about, https://…, mailto:…, #section, #dialog-id"
+                  onChange={(e) => patch({ linkTarget: e.target.value })}
+                />
+                {/* Convenience: pick an existing page's route; the value is still a free string. */}
+                <datalist id="sw-page-targets">
+                  {pages
+                    .filter((p) => !isLinkPage(p) && !p.collection)
+                    .map((p) => {
+                      const route = pagePath(p, previewById);
+                      return <option key={p.id} value={route}>{p.title}</option>;
+                    })}
+                </datalist>
+                <span className="mt-1 font-normal text-[11px] text-slate-400">
+                  Internal <code>/path</code> (rebased), external <code>https://</code>/<code>mailto:</code>/<code>tel:</code>, a same-page <code>#section</code>, or a <code>#dialog-id</code> (opens that modal). Leave empty for a dropdown-only parent.
+                </span>
+              </label>
+              {/* A sibling of the label (NOT nested) so the checkbox click toggles the checkbox. */}
+              <label className="mt-2 flex items-center gap-2 text-sm font-normal text-slate-600">
+                <input type="checkbox" aria-label="Open in new tab" checked={v.linkNewTab} onChange={(e) => patch({ linkNewTab: e.target.checked })} />
+                Open in a new tab
+              </label>
+            </div>
+          )}
         </div>
 
+        {!isLink && (
+        <>
         <label className="flex flex-col text-xs font-bold text-slate-700">
           Meta Description
           <textarea
@@ -287,6 +356,8 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
           projectId={projectId}
           placeholder="https://… or /media/… (used in link previews)"
         />
+        </>
+        )}
 
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="flex flex-col text-xs font-bold text-slate-700">
@@ -322,7 +393,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
               <span className="mt-1 font-normal text-[11px] text-slate-400">Sub-pages nest under a parent in the same language.</span>
             )}
           </label>
-          {isTranslated ? (
+          {isLink ? null : isTranslated ? (
             // A translated page: choose how it gets its CODE — inherit the main language's
             // layout, fork its own, or use a template. (The text is always translated via page.data.)
             <fieldset className="flex flex-col text-xs font-bold text-slate-700">
@@ -459,6 +530,11 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
               </label>
             ))}
           </div>
+          {isLink && v.navSlots.length === 0 && (
+            <p className="mt-2 text-[11px] font-medium text-amber-600">
+              This placeholder isn’t in any menu — pick at least one above, or it won’t appear in the navigation.
+            </p>
+          )}
           {v.navSlots.length > 0 && (
             <div className="mt-3 grid gap-3 sm:grid-cols-3">
               <label className="flex flex-col text-[11px] text-slate-500">

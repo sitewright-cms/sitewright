@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { isLinkPage, type Page, type Template } from '@sitewright/schema';
+import { isLinkPage, NAV_SLOTS, type NavSlot, type Page, type Template } from '@sitewright/schema';
 import { pagePath, pagesById, pagesInLocale, localeOf } from '@sitewright/core';
 import { api, previewDocUrl, type Project } from '../api';
 import { CodePageEditor } from './CodePageEditor';
@@ -9,7 +9,7 @@ import { Modal } from './ui/Modal';
 import { Tooltip } from './ui/Tooltip';
 import { FormsManager } from './FormsManager';
 import { SettingsView } from './settings/SettingsView';
-import { glassCard, glassInput, fieldLabel, primaryButton, gradientHover, gradientSurface } from '../theme';
+import { glassCard, glassInput, fieldLabel, primaryButton, ghostButton, gradientHover, gradientSurface } from '../theme';
 import { orderPagesByTree, canReorder, reorderWithinParent, orderedSiblings } from './pages-order';
 import { LocalePickerModal } from './i18n/LocalePickerModal';
 import { localeFlag, localeLabel } from './i18n/locale-catalog';
@@ -117,6 +117,13 @@ const TEMPLATE_ICON = rowIcon(
     <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
   </>,
 );
+// A link/chain glyph — a navigation placeholder (kind:'link') has no page of its own.
+const LINK_ICON = rowIcon(
+  <>
+    <path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+    <path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+  </>,
+);
 
 // On row hover the icons tint white for contrast on the gradient — but ONLY while the icon itself
 // isn't hovered (`[&:not(:hover)]`), so a direct hover's white-chip (`hover:bg-white text-slate-900`)
@@ -156,6 +163,15 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
   // When multilingual, a new page is either created in ALL languages (default) or only the
   // currently-selected one (a locale-only page).
   const [newPageScope, setNewPageScope] = useState<'all' | 'current'>('all');
+  // "Add nav placeholder" modal — a kind:'link' entry (no page of its own): a menu item that
+  // links somewhere or groups child pages in a dropdown.
+  const [phOpen, setPhOpen] = useState(false);
+  const [phName, setPhName] = useState('');
+  const [phTarget, setPhTarget] = useState('');
+  const [phNewTab, setPhNewTab] = useState(false);
+  const [phSlots, setPhSlots] = useState<NavSlot[]>(['header']);
+  const [phDropdown, setPhDropdown] = useState(false);
+  const [phError, setPhError] = useState<string | null>(null);
   // Drag&drop reordering of sibling pages (same parent + locale). `dragId` is the page being
   // dragged; `drop` marks where it will land (a row + which side) so the list opens a gap there.
   const [dragId, setDragId] = useState<string | null>(null);
@@ -329,6 +345,67 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
           `“${title}” was created but could not be added to every language ` +
             `(${err instanceof Error ? err.message : 'error'}). Use the translate action on it to retry.`,
         );
+        return;
+      }
+    }
+    await load();
+  }
+
+  /** Create a kind:'link' navigation placeholder (no page/code/route). */
+  async function createPlaceholder(e: FormEvent) {
+    e.preventDefault();
+    setPhError(null);
+    const name = phName.trim();
+    if (!name) {
+      setPhError('Enter a name (shown in the menu).');
+      return;
+    }
+    const target = phTarget.trim();
+    if (!target && !phDropdown) {
+      setPhError('Enter a link target, or enable “Dropdown of child pages”.');
+      return;
+    }
+    if (phSlots.length === 0) {
+      setPhError('Pick at least one menu (header / footer / mobile).');
+      return;
+    }
+    // A stable, unique id derived from the name — never the reserved 'home'.
+    const base = `nav-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'item'}`;
+    let id = base;
+    for (let n = 2; pages.some((p) => p.id === id); n += 1) id = `${base}-${n}`;
+    // Created while viewing a non-default language → a locale-only placeholder; else the
+    // default-language owner that fans out to every locale below.
+    const localeOnly = multilingual && currentLocale !== defaultLocale;
+    const placeholder: Page = {
+      id,
+      path: '', // routing-transparent: no slug, no emitted route
+      title: name,
+      kind: 'link',
+      root: { id: 'root', type: 'Section', children: [] }, // stub — satisfies the unified page model
+      link: { ...(target ? { target } : {}), ...(phNewTab ? { newTab: true } : {}) },
+      nav: { slots: phSlots, ...(phDropdown ? { dropdown: true } : {}) },
+      parent: localeOnly ? localeHomeId(currentLocale) : homeId,
+      ...(localeOnly ? { locale: currentLocale } : {}),
+    };
+    try {
+      await api.putPage(project.id, placeholder);
+    } catch (err) {
+      setPhError(err instanceof Error ? err.message : 'failed to create placeholder');
+      return;
+    }
+    setPhName('');
+    setPhTarget('');
+    setPhNewTab(false);
+    setPhSlots(['header']);
+    setPhDropdown(false);
+    setPhOpen(false);
+    // Fan a default-language placeholder out to every other locale (so it shows in each language's nav).
+    if (multilingual && !localeOnly) {
+      try {
+        await api.translatePage(project.id, id);
+      } catch (err) {
+        await load();
+        setError(`“${name}” was created but could not be added to every language (${err instanceof Error ? err.message : 'error'}).`);
         return;
       }
     }
@@ -578,6 +655,22 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
               </button>
               <button
                 type="button"
+                className={ghostButton}
+                onClick={() => {
+                  setPhError(null);
+                  setPhName('');
+                  setPhTarget('');
+                  setPhNewTab(false);
+                  setPhSlots(['header']);
+                  setPhDropdown(false);
+                  setPhOpen(true);
+                }}
+                title="A menu item with no page of its own — links somewhere or groups child pages in a dropdown"
+              >
+                + Add nav placeholder
+              </button>
+              <button
+                type="button"
                 className={primaryButton}
                 onClick={() => {
                   setAddError(null);
@@ -594,6 +687,9 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
               // A locale home (the root of a language's subtree) is treated like the root home:
               // home icon, not draggable, not deletable (remove the language in Website Settings).
               const isHome = isHomeLike(p);
+              // A navigation placeholder (kind:'link'): no page/code/route — the row opens Settings
+              // (not the code editor), shows its link target, and hides the page-only actions.
+              const isLink = isLinkPage(p);
               // Indent sub-pages per the page tree — a left margin shrinks the card so nested
               // rows sit inside their parent (capped so deep trees stay readable).
               const indent = depth > 0 ? { marginLeft: `${Math.min(depth, 6) * 1.5}rem` } : undefined;
@@ -670,13 +766,22 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
                   )}
                   <button
                     className="waves-effect flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-lg px-1 py-1 text-left"
-                    onClick={() => setEditing(p)}
+                    onClick={() => (isLink ? void openSettings(p) : setEditing(p))}
                   >
-                    <span aria-hidden className={`${isHome ? 'text-indigo-500' : 'text-slate-400'} group-hover:text-white`} title={isHome ? 'Home page' : 'Page'}>
-                      {isHome ? HOME_ICON : PAGE_ICON}
+                    <span
+                      aria-hidden
+                      className={`${isLink ? 'text-violet-500' : isHome ? 'text-indigo-500' : 'text-slate-400'} group-hover:text-white`}
+                      title={isLink ? 'Navigation placeholder' : isHome ? 'Home page' : 'Page'}
+                    >
+                      {isLink ? LINK_ICON : isHome ? HOME_ICON : PAGE_ICON}
                     </span>
                     <span className="truncate font-medium">{p.title}</span>
-                    <span className="truncate text-sm text-slate-400 group-hover:text-white/90">{fullPath(p)}</span>
+                    <span className="truncate text-sm text-slate-400 group-hover:text-white/90">
+                      {isLink ? p.link?.target || '— (dropdown)' : fullPath(p)}
+                    </span>
+                    {isLink && (
+                      <span className="rounded-full bg-violet-100/80 px-2 py-0.5 text-[11px] font-medium text-violet-700 group-hover:bg-white/25 group-hover:text-white">placeholder</span>
+                    )}
                     {p.status === 'draft' && (
                       <span className="rounded-full bg-slate-200/80 px-2 py-0.5 text-[11px] font-medium text-slate-600 group-hover:bg-white/25 group-hover:text-white">draft</span>
                     )}
@@ -686,29 +791,34 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
                     {/* Code-mode badge for a translated page: it follows the main language's
                         layout ("inherited") or carries its own forked code ("custom code"); a
                         template page already shows the "template" chip above. */}
-                    {multilingual && p.locale && !p.source && !p.template && (
+                    {multilingual && p.locale && !isLink && !p.source && !p.template && (
                       <span title="Layout inherited from the main language" className="rounded-full bg-emerald-100/80 px-2 py-0.5 text-[11px] font-medium text-emerald-700 group-hover:bg-white/25 group-hover:text-white">
                         inherited
                       </span>
                     )}
-                    {multilingual && p.locale && p.source && (
+                    {multilingual && p.locale && !isLink && p.source && (
                       <span title="This language has its own forked code" className="rounded-full bg-amber-100/80 px-2 py-0.5 text-[11px] font-medium text-amber-700 group-hover:bg-white/25 group-hover:text-white">
                         custom code
                       </span>
                     )}
                   </button>
                   <div className="flex shrink-0 items-center gap-0.5">
-                    <Tooltip tip="Preview in a new tab" side="top">
-                      <button aria-label={`Preview ${p.title}`} className={ROW_ACTION} onClick={() => void previewInTab(p)}>
-                        {PREVIEW_ICON}
-                      </button>
-                    </Tooltip>
-                    <Tooltip tip="Open page editor" side="top">
-                      <button aria-label={`Edit ${p.title}`} className={ROW_ACTION} onClick={() => setEditing(p)}>
-                        {EDIT_ICON}
-                      </button>
-                    </Tooltip>
-                    <Tooltip tip="Edit page settings" side="top">
+                    {/* Preview + code editor are page-only — a link placeholder renders nothing. */}
+                    {!isLink && (
+                      <>
+                        <Tooltip tip="Preview in a new tab" side="top">
+                          <button aria-label={`Preview ${p.title}`} className={ROW_ACTION} onClick={() => void previewInTab(p)}>
+                            {PREVIEW_ICON}
+                          </button>
+                        </Tooltip>
+                        <Tooltip tip="Open page editor" side="top">
+                          <button aria-label={`Edit ${p.title}`} className={ROW_ACTION} onClick={() => setEditing(p)}>
+                            {EDIT_ICON}
+                          </button>
+                        </Tooltip>
+                      </>
+                    )}
+                    <Tooltip tip={isLink ? 'Edit placeholder settings' : 'Edit page settings'} side="top">
                       <button aria-label={`Settings for ${p.title}`} className={ROW_ACTION} onClick={() => void openSettings(p)}>
                         {GEAR_ICON}
                       </button>
@@ -717,7 +827,7 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
                         locale view) that's still missing at least one configured language. It fans
                         the page out as inherit-mode variants; once present in every language the
                         action disappears. (Adding a whole new language is the top "Add translation".) */}
-                    {currentLocale === defaultLocale && !p.locale && missingLocalesFor(p).length > 0 && (
+                    {currentLocale === defaultLocale && !p.locale && !isLink && missingLocalesFor(p).length > 0 && (
                       <Tooltip tip="Make this page available in all languages" side="top">
                         <button aria-label={`Translate ${p.title} into all languages`} className={ROW_ACTION} onClick={() => void translatePage(p)}>
                           {GLOBE_ICON}
@@ -733,11 +843,13 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
                         </button>
                       </Tooltip>
                     )}
-                    <Tooltip tip="Copy page" side="top">
-                      <button aria-label={`Copy ${p.title}`} className={ROW_ACTION} onClick={() => void copyPage(p)}>
-                        {COPY_ICON}
-                      </button>
-                    </Tooltip>
+                    {!isLink && (
+                      <Tooltip tip="Copy page" side="top">
+                        <button aria-label={`Copy ${p.title}`} className={ROW_ACTION} onClick={() => void copyPage(p)}>
+                          {COPY_ICON}
+                        </button>
+                      </Tooltip>
+                    )}
                     {!isHome && (
                       <Tooltip tip="Delete page" side="top">
                         <button
@@ -762,6 +874,74 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
 
           {/* List-level errors (reorder/delete) — the add-page error lives inside its own modal. */}
           {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+          {phOpen && (
+            <Modal title="Add nav placeholder" size="md" onClose={() => { setPhOpen(false); setPhError(null); }}>
+              <form onSubmit={createPlaceholder} className="flex flex-col gap-4 p-5">
+                <div className="flex flex-col">
+                  <label className={fieldLabel}>Name (menu label)</label>
+                  <input
+                    aria-label="Placeholder name"
+                    className={glassInput}
+                    value={phName}
+                    onChange={(e) => setPhName(e.target.value)}
+                    placeholder="Services"
+                    autoFocus
+                    required
+                  />
+                  <span className="mt-1 text-[11px] text-slate-400">
+                    Shown in the menu. Supports basic HTML + <code>{'{{sw-icon "name"}}'}</code> / <code>{'{{sw-flag "de"}}'}</code>.
+                  </span>
+                </div>
+                <div className="flex flex-col">
+                  <label className={fieldLabel}>Link target</label>
+                  <input
+                    aria-label="Link target"
+                    list="sw-ph-targets"
+                    className={`font-mono ${glassInput}`}
+                    value={phTarget}
+                    onChange={(e) => setPhTarget(e.target.value)}
+                    placeholder="/about, https://…, mailto:…, #section, #dialog-id"
+                  />
+                  <datalist id="sw-ph-targets">
+                    {pages.filter((p) => !isLinkPage(p) && !p.collection).map((p) => (
+                      <option key={p.id} value={fullPath(p)}>{p.title}</option>
+                    ))}
+                  </datalist>
+                  <span className="mt-1 text-[11px] text-slate-400">
+                    Internal <code>/path</code>, external <code>https://</code>/<code>mailto:</code>/<code>tel:</code>, a same-page <code>#section</code>, or a <code>#dialog-id</code> (opens that modal). Leave empty for a dropdown-only parent.
+                  </span>
+                  <label className="mt-2 flex items-center gap-2 text-sm text-slate-600">
+                    <input type="checkbox" aria-label="Open in new tab" checked={phNewTab} onChange={(e) => setPhNewTab(e.target.checked)} />
+                    Open in a new tab
+                  </label>
+                </div>
+                <fieldset className="flex flex-col gap-2 rounded-xl border border-slate-200 p-3">
+                  <legend className="px-1 text-xs font-medium uppercase tracking-wide text-slate-400">Show in</legend>
+                  <div className="flex flex-wrap gap-4">
+                    {NAV_SLOTS.map((slot) => (
+                      <label key={slot} className="flex items-center gap-1.5 text-sm capitalize">
+                        <input
+                          type="checkbox"
+                          aria-label={`Menu: ${slot}`}
+                          checked={phSlots.includes(slot)}
+                          onChange={(e) => setPhSlots((s) => (e.target.checked ? [...s, slot] : s.filter((x) => x !== slot)))}
+                        />
+                        {slot}
+                      </label>
+                    ))}
+                  </div>
+                  <label className="flex items-center gap-2 text-sm text-slate-600">
+                    <input type="checkbox" aria-label="Dropdown of child pages" checked={phDropdown} onChange={(e) => setPhDropdown(e.target.checked)} />
+                    Dropdown of child pages
+                  </label>
+                </fieldset>
+                {phError && <p className="text-sm text-red-600">{phError}</p>}
+                <div className="flex justify-end">
+                  <button type="submit" className={primaryButton}>Add placeholder</button>
+                </div>
+              </form>
+            </Modal>
+          )}
           {addOpen && (
             <Modal
               title="Add page"

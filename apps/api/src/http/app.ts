@@ -130,6 +130,7 @@ import {
   resolveProjectRole,
   setPlatformRole,
   verifyUserPassword,
+  userHasPassword,
   resolveOidcUser,
 } from '../repo/accounts.js';
 import { MfaError, MfaRepository } from '../repo/mfa.js';
@@ -315,7 +316,9 @@ const ChangeEmailBody = z.object({
   currentPassword: z.string().min(1).max(200),
 });
 const ChangePasswordBody = z.object({
-  currentPassword: z.string().min(1).max(200),
+  // Optional: required+verified when the account has a password; omitted to SET an initial password
+  // for an OIDC-provisioned account that has none (the server enforces which applies).
+  currentPassword: z.string().min(1).max(200).optional(),
   newPassword: z.string().min(8).max(200),
 });
 // MFA. `code` is a 6-digit TOTP OR a recovery code (XXXXX-XXXXX) at login step 2; just a TOTP at
@@ -948,7 +951,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
   app.get('/me', { config: rl(60) }, async (req, reply) => {
     const userId = await requireUserId(req);
-    const [email, platformRole, access, instanceAdmin, totpEnabled, recoveryCodesRemaining] = await Promise.all([
+    const [email, platformRole, access, instanceAdmin, totpEnabled, recoveryCodesRemaining, hasPassword] = await Promise.all([
       getUserEmail(db, userId),
       getPlatformRole(db, userId),
       // Projects the caller can reach: a platform admin → all; everyone else → their memberships.
@@ -956,11 +959,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       isInstanceAdmin(userId),
       mfaRepo.isTotpEnabled(userId),
       mfaRepo.remainingRecoveryCodes(userId),
+      userHasPassword(db, userId),
     ]);
     const projects = access.map((a) => ({ id: a.projectId, name: a.projectName, slug: a.projectSlug, role: a.role }));
     // email is non-null for a live session (the row exists); coerce the theoretical TOCTOU-deleted
     // case to '' so the response always matches the client's `email: string` contract.
-    return reply.send({ userId, email: email ?? '', platformRole, isInstanceAdmin: instanceAdmin, totpEnabled, recoveryCodesRemaining, projects });
+    return reply.send({ userId, email: email ?? '', platformRole, isInstanceAdmin: instanceAdmin, totpEnabled, recoveryCodesRemaining, hasPassword, projects });
   });
 
   // ---- Self-service account management (the header "Account" / user menu) ----

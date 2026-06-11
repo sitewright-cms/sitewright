@@ -17,11 +17,15 @@ interface UserMenuProps {
   totpEnabled: boolean;
   /** Unused recovery codes remaining (from /me) — shown in the Security tab when TOTP is on. */
   recoveryCodesRemaining: number;
+  /** Whether the account has a password (false for an OIDC-provisioned user) — drives the Password tab. */
+  hasPassword: boolean;
   onClose: () => void;
   /** Called after a successful email change so the app can refresh its cached identity. */
   onEmailChanged: (email: string) => void;
   /** Called after enabling/disabling two-factor so the app can refresh `totpEnabled`. */
   onMfaChanged: () => void;
+  /** Called after a password is set/changed so the app can refresh `hasPassword`. */
+  onPasswordChanged: () => void;
 }
 
 /**
@@ -30,7 +34,7 @@ interface UserMenuProps {
  * here (owner-only); Security hosts two-factor (TOTP). Each tab is self-contained — the modal
  * supplies only the chrome (no global Save button).
  */
-export function UserMenu({ email, project, totpEnabled, recoveryCodesRemaining, onClose, onEmailChanged, onMfaChanged }: UserMenuProps) {
+export function UserMenu({ email, project, totpEnabled, recoveryCodesRemaining, hasPassword, onClose, onEmailChanged, onMfaChanged, onPasswordChanged }: UserMenuProps) {
   const [tab, setTab] = useState<Tab>('account');
 
   const tabBtn = (id: Tab) =>
@@ -52,7 +56,7 @@ export function UserMenu({ email, project, totpEnabled, recoveryCodesRemaining, 
     >
       <div className="p-5">
         {tab === 'account' && <AccountTab email={email} onEmailChanged={onEmailChanged} />}
-        {tab === 'password' && <PasswordTab />}
+        {tab === 'password' && <PasswordTab hasPassword={hasPassword} onPasswordChanged={onPasswordChanged} />}
         {tab === 'access' && <AccessKeysTab project={project} />}
         {tab === 'security' && <SecurityTab totpEnabled={totpEnabled} recoveryCodesRemaining={recoveryCodesRemaining} onChanged={onMfaChanged} />}
       </div>
@@ -137,7 +141,7 @@ function AccountTab({ email, onEmailChanged }: { email: string; onEmailChanged: 
   );
 }
 
-function PasswordTab() {
+function PasswordTab({ hasPassword, onPasswordChanged }: { hasPassword: boolean; onPasswordChanged: () => void }) {
   const toast = useToast();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -147,20 +151,22 @@ function PasswordTab() {
 
   const mismatch = confirm.length > 0 && newPassword !== confirm;
   const tooShort = newPassword.length > 0 && newPassword.length < 8;
-  const canSubmit = currentPassword.length > 0 && newPassword.length >= 8 && newPassword === confirm && !saving;
+  // When the account has no password (OIDC-provisioned), this is "set a password" — no current one.
+  const canSubmit = (!hasPassword || currentPassword.length > 0) && newPassword.length >= 8 && newPassword === confirm && !saving;
 
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
     setSaving(true);
     try {
-      await api.changePassword(currentPassword, newPassword);
+      await api.changePassword(hasPassword ? currentPassword : undefined, newPassword);
       setCurrentPassword('');
       setNewPassword('');
       setConfirm('');
-      toast.show('Password changed — other sessions were signed out', 'success');
+      onPasswordChanged();
+      toast.show(hasPassword ? 'Password changed — other sessions were signed out' : 'Password set', 'success');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'failed to change password');
+      setError(err instanceof Error ? err.message : 'failed to save password');
     } finally {
       setSaving(false);
     }
@@ -169,13 +175,19 @@ function PasswordTab() {
   return (
     <form onSubmit={submit} className={`flex flex-col gap-4 ${glassCard} p-5`}>
       <div>
-        <h3 className="text-sm font-bold text-slate-800">Change password</h3>
-        <p className="mt-0.5 text-xs text-slate-500">Changing your password signs out every other session.</p>
+        <h3 className="text-sm font-bold text-slate-800">{hasPassword ? 'Change password' : 'Set a password'}</h3>
+        <p className="mt-0.5 text-xs text-slate-500">
+          {hasPassword
+            ? 'Changing your password signs out every other session.'
+            : 'Your account signs in via single sign-on. Set a password to also sign in with your email.'}
+        </p>
       </div>
-      <div>
-        <label className={fieldLabel} htmlFor="pw-current">Current password</label>
-        <input id="pw-current" type="password" autoComplete="current-password" className={glassInput} value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} required />
-      </div>
+      {hasPassword && (
+        <div>
+          <label className={fieldLabel} htmlFor="pw-current">Current password</label>
+          <input id="pw-current" type="password" autoComplete="current-password" className={glassInput} value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} required />
+        </div>
+      )}
       <div>
         <label className={fieldLabel} htmlFor="pw-new">New password</label>
         <input id="pw-new" type="password" autoComplete="new-password" className={glassInput} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required minLength={8} />
@@ -189,7 +201,7 @@ function PasswordTab() {
       {error && <FormError>{error}</FormError>}
       <div>
         <button type="submit" className={primaryButton} disabled={!canSubmit}>
-          {saving ? 'Changing…' : 'Change password'}
+          {saving ? 'Saving…' : hasPassword ? 'Change password' : 'Set password'}
         </button>
       </div>
     </form>

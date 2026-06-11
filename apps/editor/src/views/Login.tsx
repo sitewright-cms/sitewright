@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { browserSupportsWebAuthn, startAuthentication } from '@simplewebauthn/browser';
 import { api, ApiError } from '../api';
 import { BrandMark } from './ui/BrandMark';
@@ -6,18 +6,33 @@ import { ghostButton, glassCard, glassInput, primaryButton } from '../theme';
 
 interface LoginProps {
   onAuthed: () => void;
+  /** A TOTP ticket carried back from an OIDC callback — start straight on the code step. */
+  initialMfaTicket?: string | null;
+  /** A notice (e.g. an OIDC callback error) to show on the sign-in screen. */
+  initialNotice?: string | null;
 }
 
-export function Login({ onAuthed }: LoginProps) {
+export function Login({ onAuthed, initialMfaTicket, initialNotice }: LoginProps) {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(initialNotice ?? null);
   const [busy, setBusy] = useState(false);
   // Set when a password login needs a second factor — the credentials form yields to the code step.
-  const [ticket, setTicket] = useState<string | null>(null);
+  // Seeded from an OIDC callback that returned a TOTP ticket.
+  const [ticket, setTicket] = useState<string | null>(initialMfaTicket ?? null);
   const [code, setCode] = useState('');
   const [useRecovery, setUseRecovery] = useState(false);
+  const [providers, setProviders] = useState<{ id: string; label: string }[]>([]);
+
+  // The enabled OIDC providers drive the "Sign in with …" buttons (best-effort; absent on failure).
+  useEffect(() => {
+    let active = true;
+    api.loginConfig().then((c) => active && setProviders(c.oidcProviders)).catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -170,6 +185,13 @@ export function Login({ onAuthed }: LoginProps) {
                 Sign in with a passkey
               </button>
             )}
+            {mode === 'login' &&
+              providers.map((p) => (
+                // A real navigation (not fetch): the GET /start route 302s to the identity provider.
+                <a key={p.id} href={api.oidcStartUrl(p.id)} className={`${ghostButton} mt-3 w-full`}>
+                  Sign in with {p.label}
+                </a>
+              ))}
             <button
               className="mt-4 text-sm text-slate-500 hover:text-slate-900"
               onClick={() => {

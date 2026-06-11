@@ -155,4 +155,21 @@ describe('InstanceSettings', () => {
     expect(await screen.findByText('forbidden')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Save settings' })).not.toBeInTheDocument();
   });
+
+  it('adds an OIDC provider and saves it (with the typed secret) in oidcProviders', async () => {
+    getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
+    render(<InstanceSettings />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Add provider' }));
+    fireEvent.change(screen.getByLabelText('Provider 1 id'), { target: { value: 'google' } });
+    fireEvent.change(screen.getByLabelText('Provider 1 label'), { target: { value: 'Google' } });
+    fireEvent.change(screen.getByLabelText('Provider 1 issuer'), { target: { value: 'https://accounts.google.com' } });
+    fireEvent.change(screen.getByLabelText('Provider 1 client id'), { target: { value: 'cid' } });
+    fireEvent.change(screen.getByLabelText('Provider 1 client secret'), { target: { value: 'csecret' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(putInstanceSettings).toHaveBeenCalledTimes(1));
+    const body = putInstanceSettings.mock.calls[0]![0] as InstanceSettingsInput;
+    expect(body.oidcProviders).toEqual([
+      { id: 'google', label: 'Google', issuer: 'https://accounts.google.com', clientId: 'cid', scopes: ['openid', 'profile', 'email'], enabled: true, clientSecret: 'csecret' },
+    ]);
+  });
 });

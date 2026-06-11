@@ -82,6 +82,14 @@ describe('account management (/account/email, /account/password)', () => {
     expect(res.statusCode).toBe(403);
   });
 
+  it('rejects omitting the current password when the account already has one (no bypass)', async () => {
+    const client = await harness.signup({ password: PASSWORD });
+    const res = await client.put('/account/password', { newPassword: 'new-pw-9876' });
+    expect(res.statusCode).toBe(403);
+    // The original password still works.
+    expect((await client.get('/me')).statusCode).toBe(200);
+  });
+
   it('enforces new-password strength (min length)', async () => {
     const client = await harness.signup({ password: PASSWORD });
     const res = await client.put('/account/password', { currentPassword: PASSWORD, newPassword: 'short' });

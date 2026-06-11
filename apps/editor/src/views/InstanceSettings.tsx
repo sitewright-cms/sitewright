@@ -5,6 +5,7 @@ import { glassCard, glassInput, primaryButton } from '../theme';
 import { SkeletonList } from './ui/Skeleton';
 import { LocalePickerModal } from './i18n/LocalePickerModal';
 import { localeFlag, localeLabel } from './i18n/locale-catalog';
+import { OidcProvidersField, type OidcProviderDraft } from './settings/OidcProvidersField';
 
 const FORM_MODE_LABELS: Array<{ key: keyof InstanceSettingsPublic['formModes']; label: string; hint: string }> = [
   { key: 'globalSmtp', label: 'Global SMTP', hint: 'Platform sends form mail via the SMTP configured below.' },
@@ -65,6 +66,8 @@ export function InstanceSettings() {
   const [hasUnsplash, setHasUnsplash] = useState(false);
   const [hasPexels, setHasPexels] = useState(false);
 
+  const [oidcProviders, setOidcProviders] = useState<OidcProviderDraft[]>([]);
+
   function hydrate(s: InstanceSettingsPublic) {
     setModes(s.formModes);
     setSmtpEnabled(Boolean(s.smtp));
@@ -85,6 +88,19 @@ export function InstanceSettings() {
     setHasPexels(s.stock?.hasPexels ?? false);
     setUnsplashKey('');
     setPexelsKey('');
+    setOidcProviders(
+      (s.oidcProviders ?? []).map((p) => ({
+        _key: crypto.randomUUID(),
+        id: p.id,
+        label: p.label,
+        issuer: p.issuer,
+        clientId: p.clientId,
+        scopes: p.scopes.join(' '),
+        enabled: p.enabled,
+        hasClientSecret: p.hasClientSecret,
+        secret: '',
+      })),
+    );
     const instr = s.agentInstructions ?? DEFAULT_AGENT_INSTRUCTIONS;
     setAgentInstructions(instr);
     initialInstructionsRef.current = instr;
@@ -156,6 +172,19 @@ export function InstanceSettings() {
     if (newProjectLocale !== initialLocaleRef.current) {
       input.defaultLocale = newProjectLocale === DEFAULT_NEW_PROJECT_LOCALE ? null : newProjectLocale;
     }
+    // OIDC providers (replace-semantics; the server preserves each secret by id when omitted). Drop
+    // fully-blank "Add" rows; a secret is sent only when freshly typed.
+    input.oidcProviders = oidcProviders
+      .filter((p) => p.id.trim() || p.label.trim() || p.issuer.trim() || p.clientId.trim())
+      .map((p) => ({
+        id: p.id.trim(),
+        label: p.label.trim(),
+        issuer: p.issuer.trim(),
+        clientId: p.clientId.trim(),
+        ...(p.scopes.trim() ? { scopes: p.scopes.trim().split(/[\s,]+/).filter(Boolean) } : {}),
+        enabled: p.enabled,
+        ...(p.secret ? { clientSecret: p.secret } : {}),
+      }));
     try {
       const res = await api.putInstanceSettings(input);
       hydrate(res.settings);
@@ -414,6 +443,16 @@ export function InstanceSettings() {
             onBlur={() => setAgentSessionHours((h) => clampSessionHours(h))}
           />
         </label>
+      </fieldset>
+
+      <fieldset className={`${glassCard} p-4`}>
+        <legend className="px-1 text-sm font-bold">Single sign-on (OIDC)</legend>
+        <p className="mb-3 text-xs text-slate-500">
+          Let users sign in via an external identity provider. Register this app at each provider with the redirect
+          URL <code className="break-all">{origin}/auth/oidc/&lt;id&gt;/callback</code>. Only users who already exist
+          or hold a pending invite can sign in; the client secret is stored encrypted.
+        </p>
+        <OidcProvidersField providers={oidcProviders} onChange={setOidcProviders} />
       </fieldset>
 
       <div className="flex items-center gap-3">

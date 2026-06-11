@@ -30,9 +30,27 @@ import { installRipple } from './lib/ripple';
 export function App() {
   const liveTarget = parseLiveTarget(window.location.search);
   if (liveTarget) return <LivePreview target={liveTarget} />;
-  const inviteToken = new URLSearchParams(window.location.search).get('invite');
-  return <MainApp inviteToken={inviteToken} />;
+  const params = new URLSearchParams(window.location.search);
+  return (
+    <MainApp
+      inviteToken={params.get('invite')}
+      oidcError={params.get('oidc_error')}
+      mfaTicket={params.get('mfa_ticket')}
+    />
+  );
 }
+
+// OIDC callback error codes → user-facing copy. A Map (not an object index) so an attacker-supplied
+// URL code can't reach a prototype member; an unknown code falls through to the generic message.
+const OIDC_ERROR_MESSAGES = new Map<string, string>([
+  ['not_provisioned', 'Your account isn’t set up yet — ask an admin for an invite.'],
+  ['email_unverified', 'Your identity provider didn’t confirm a verified email address.'],
+  ['verification_failed', 'We couldn’t verify that sign-in. Please try again.'],
+  ['invalid_state', 'Your sign-in request expired. Please try again.'],
+  ['unknown_provider', 'That sign-in provider isn’t available.'],
+  ['provider_unavailable', 'That sign-in provider is temporarily unavailable.'],
+  ['sign_in_failed', 'Sign-in failed. Please try again.'],
+]);
 
 type Stage =
   | { name: 'loading' }
@@ -40,9 +58,19 @@ type Stage =
   | { name: 'home' } // no project open — the selector is shown over a quiet backdrop
   | { name: 'project'; project: Project };
 
-function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | null }) {
+function MainApp({
+  inviteToken: initialInviteToken,
+  oidcError,
+  mfaTicket,
+}: {
+  inviteToken: string | null;
+  oidcError: string | null;
+  mfaTicket: string | null;
+}) {
   const [stage, setStage] = useState<Stage>({ name: 'loading' });
   const [inviteToken, setInviteToken] = useState<string | null>(initialInviteToken);
+  // OIDC callback artifacts (captured once); the notice maps the error code to friendly copy.
+  const oidcNotice = oidcError ? OIDC_ERROR_MESSAGES.get(oidcError) ?? 'Sign-in failed. Please try again.' : null;
   const [projects, setProjects] = useState<Project[]>([]);
   const [isInstanceAdmin, setIsInstanceAdmin] = useState(false);
   // The signed-in user's email (from /me), surfaced in the header user menu. The user-menu modal is
@@ -50,6 +78,7 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
   const [email, setEmail] = useState('');
   const [totpEnabled, setTotpEnabled] = useState(false);
   const [recoveryCodesRemaining, setRecoveryCodesRemaining] = useState(0);
+  const [hasPassword, setHasPassword] = useState(true);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [tab, setTab] = useState<Tab>('pages');
   // The project picker is shown automatically on first load and reachable from the header.
@@ -83,6 +112,7 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
       setEmail(me.email);
       setTotpEnabled(me.totpEnabled);
       setRecoveryCodesRemaining(me.recoveryCodesRemaining);
+      setHasPassword(me.hasPassword);
       // First successful load with no project open → show the selector automatically.
       setStage((s) => (s.name === 'project' ? s : { name: 'home' }));
       return me.projects;
@@ -102,6 +132,16 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
 
   // Delegated ripple ("waves") feedback for every `.waves-effect` element across the admin UI.
   useEffect(() => installRipple(), []);
+
+  // Strip the OIDC callback artifacts from the URL once captured, so a refresh doesn't resubmit
+  // them and the ticket doesn't linger in history.
+  useEffect(() => {
+    if (!oidcError && !mfaTicket) return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete('oidc_error');
+    url.searchParams.delete('mfa_ticket');
+    window.history.replaceState({}, '', url.pathname + url.search + url.hash);
+  }, []);
 
   function openProject(project: Project) {
     setTab('pages');
@@ -131,7 +171,7 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
   }
 
   if (stage.name === 'auth') {
-    return <Login onAuthed={() => void refresh().then(() => setSelectorOpen(true))} />;
+    return <Login onAuthed={() => void refresh().then(() => setSelectorOpen(true))} initialMfaTicket={mfaTicket} initialNotice={oidcNotice} />;
   }
 
   const inProject = stage.name === 'project' ? stage.project : null;
@@ -288,9 +328,11 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
           project={inProject}
           totpEnabled={totpEnabled}
           recoveryCodesRemaining={recoveryCodesRemaining}
+          hasPassword={hasPassword}
           onClose={() => setUserMenuOpen(false)}
           onEmailChanged={setEmail}
           onMfaChanged={() => void refresh()}
+          onPasswordChanged={() => void refresh()}
         />
       )}
       {/* Always-present edge side-panels (owners): System Library (left), File Manager (right), and

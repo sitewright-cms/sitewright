@@ -305,6 +305,10 @@ export const api = {
   loginTotp: (ticket: string, code: string) =>
     request<{ userId: string }>('POST', '/auth/login/totp', { ticket, code }),
   logout: () => request<void>('POST', '/auth/logout'),
+  // The enabled OIDC providers for the login screen — unauthenticated, no secrets.
+  loginConfig: () => request<{ oidcProviders: { id: string; label: string }[] }>('GET', '/auth/config'),
+  // The (full) URL to begin an OIDC login — the browser navigates here (a redirect to the IdP).
+  oidcStartUrl: (id: string) => `${BASE}/auth/oidc/${encodeURIComponent(id)}/start`,
   me: () =>
     request<{
       userId: string;
@@ -313,13 +317,16 @@ export const api = {
       isInstanceAdmin: boolean;
       totpEnabled: boolean;
       recoveryCodesRemaining: number;
+      /** Whether the account has a password set (false for an OIDC-provisioned user who hasn't set one). */
+      hasPassword: boolean;
       projects: Project[];
     }>('GET', '/me'),
   // Self-service account management (the header user menu). Both re-authenticate with the
   // current password server-side; a wrong password surfaces as a 403 ApiError (not a logout).
   updateEmail: (email: string, currentPassword: string) =>
     request<{ email: string }>('PUT', '/account/email', { email, currentPassword }),
-  changePassword: (currentPassword: string, newPassword: string) =>
+  // `currentPassword` is omitted to SET an initial password for an account that has none (OIDC users).
+  changePassword: (currentPassword: string | undefined, newPassword: string) =>
     request<void>('PUT', '/account/password', { currentPassword, newPassword }),
   // Two-factor (TOTP). setup → begin enrolment (secret + otpauth URI for the QR); confirm → enable +
   // get recovery codes once; disable / regenerate are password-confirmed.

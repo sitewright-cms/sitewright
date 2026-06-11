@@ -1,0 +1,96 @@
+import { glassInput } from '../../theme';
+
+/** An editable OIDC provider row. `scopes` is a space/comma string for the textbox; `secret` is a
+ *  newly-typed plaintext client secret (write-only — blank keeps the stored one). `_key` is a stable
+ *  React key (the provider id can be blank/edited, so it can't be the key). */
+export interface OidcProviderDraft {
+  _key: string;
+  id: string;
+  label: string;
+  issuer: string;
+  clientId: string;
+  scopes: string;
+  enabled: boolean;
+  hasClientSecret: boolean;
+  secret: string;
+}
+
+/** A blank provider row (the "Add" target), with a fresh stable key. */
+export function blankOidcProvider(): OidcProviderDraft {
+  return { _key: crypto.randomUUID(), id: '', label: '', issuer: '', clientId: '', scopes: 'openid profile email', enabled: true, hasClientSecret: false, secret: '' };
+}
+
+interface OidcProvidersFieldProps {
+  providers: OidcProviderDraft[];
+  onChange: (next: OidcProviderDraft[]) => void;
+}
+
+const fieldLabel = 'mb-1 block text-xs font-medium text-slate-600';
+
+/**
+ * Admin editor for the configured OIDC single-sign-on providers (a controlled list). Each provider
+ * carries a slug id (used in `/auth/oidc/<id>/…`), a button label, the issuer URL, client id, scopes,
+ * an enabled toggle, and a write-only client secret (blank = keep the stored one).
+ */
+export function OidcProvidersField({ providers, onChange }: OidcProvidersFieldProps) {
+  const update = (i: number, patch: Partial<OidcProviderDraft>) => onChange(providers.map((p, j) => (j === i ? { ...p, ...patch } : p)));
+  const remove = (i: number) => onChange(providers.filter((_, j) => j !== i));
+  const add = () => onChange([...providers, blankOidcProvider()]);
+
+  return (
+    <div className="flex flex-col gap-3">
+      {providers.length === 0 && <p className="text-xs text-slate-400">No providers yet — add one to offer “Sign in with …”.</p>}
+      {providers.map((p, i) => (
+        <div key={p._key} className="rounded-xl border border-white/60 bg-white/40 p-3">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+              <input type="checkbox" checked={p.enabled} onChange={(e) => update(i, { enabled: e.target.checked })} aria-label={`Provider ${i + 1} enabled`} />
+              Enabled
+            </label>
+            <button type="button" className="text-sm font-medium text-rose-600 hover:text-rose-700" onClick={() => remove(i)} aria-label={`Remove provider ${i + 1}`}>
+              Remove
+            </button>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="text-xs text-slate-500">
+              <span className={fieldLabel}>Id (slug)</span>
+              <input className={glassInput} aria-label={`Provider ${i + 1} id`} value={p.id} placeholder="google" onChange={(e) => update(i, { id: e.target.value })} />
+            </label>
+            <label className="text-xs text-slate-500">
+              <span className={fieldLabel}>Button label</span>
+              <input className={glassInput} aria-label={`Provider ${i + 1} label`} value={p.label} placeholder="Google" onChange={(e) => update(i, { label: e.target.value })} />
+            </label>
+            <label className="text-xs text-slate-500 sm:col-span-2">
+              <span className={fieldLabel}>Issuer URL</span>
+              <input className={glassInput} aria-label={`Provider ${i + 1} issuer`} value={p.issuer} placeholder="https://accounts.google.com" onChange={(e) => update(i, { issuer: e.target.value })} />
+            </label>
+            <label className="text-xs text-slate-500">
+              <span className={fieldLabel}>Client ID</span>
+              <input className={glassInput} aria-label={`Provider ${i + 1} client id`} value={p.clientId} onChange={(e) => update(i, { clientId: e.target.value })} />
+            </label>
+            <label className="text-xs text-slate-500">
+              <span className={fieldLabel}>Client secret</span>
+              <input
+                className={glassInput}
+                aria-label={`Provider ${i + 1} client secret`}
+                type="password"
+                value={p.secret}
+                placeholder={p.hasClientSecret ? '•••••• (leave blank to keep)' : ''}
+                onChange={(e) => update(i, { secret: e.target.value })}
+              />
+            </label>
+            <label className="text-xs text-slate-500 sm:col-span-2">
+              <span className={fieldLabel}>Scopes</span>
+              <input className={glassInput} aria-label={`Provider ${i + 1} scopes`} value={p.scopes} placeholder="openid profile email" onChange={(e) => update(i, { scopes: e.target.value })} />
+            </label>
+          </div>
+        </div>
+      ))}
+      <div>
+        <button type="button" className="rounded-lg border border-white/60 bg-white/50 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-white" onClick={add}>
+          Add provider
+        </button>
+      </div>
+    </div>
+  );
+}

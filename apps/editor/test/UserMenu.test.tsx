@@ -25,22 +25,25 @@ import { UserMenu } from '../src/views/UserMenu';
 const ownerProject: Project = { id: 'p1', name: 'Acme', slug: 'acme', role: 'owner' };
 const memberProject: Project = { id: 'p2', name: 'Blog', slug: 'blog', role: 'member' };
 
-function renderMenu(project: Project | null = null, totpEnabled = false) {
+function renderMenu(project: Project | null = null, totpEnabled = false, hasPassword = true) {
   const onClose = vi.fn();
   const onEmailChanged = vi.fn();
   const onMfaChanged = vi.fn();
+  const onPasswordChanged = vi.fn();
   render(
     <UserMenu
       email="me@acme.test"
       project={project}
       totpEnabled={totpEnabled}
       recoveryCodesRemaining={0}
+      hasPassword={hasPassword}
       onClose={onClose}
       onEmailChanged={onEmailChanged}
       onMfaChanged={onMfaChanged}
+      onPasswordChanged={onPasswordChanged}
     />,
   );
-  return { onClose, onEmailChanged, onMfaChanged };
+  return { onClose, onEmailChanged, onMfaChanged, onPasswordChanged };
 }
 
 beforeEach(() => {
@@ -95,6 +98,20 @@ describe('UserMenu', () => {
     expect(btn).toBeEnabled();
     fireEvent.click(btn);
     await waitFor(() => expect(changePassword).toHaveBeenCalledWith('old-pw-1234', 'new-pw-9876'));
+  });
+
+  it('offers "Set a password" (no current password) for an account that has none (OIDC)', async () => {
+    changePassword.mockResolvedValue(undefined);
+    const { onPasswordChanged } = renderMenu(null, false, /* hasPassword */ false);
+    fireEvent.click(screen.getByRole('button', { name: 'Password' }));
+    // No current-password field is shown.
+    expect(screen.queryByLabelText('Current password')).toBeNull();
+    fireEvent.change(screen.getByLabelText('New password'), { target: { value: 'brand-new-pw-1' } });
+    fireEvent.change(screen.getByLabelText('Confirm new password'), { target: { value: 'brand-new-pw-1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Set password' }));
+    // currentPassword is sent as undefined → the server sets the initial password.
+    await waitFor(() => expect(changePassword).toHaveBeenCalledWith(undefined, 'brand-new-pw-1'));
+    expect(onPasswordChanged).toHaveBeenCalled();
   });
 
   it('renders the project key manager on the Access keys tab for an owned project', () => {

@@ -91,6 +91,17 @@ describe('OIDC single sign-on', () => {
     expect(me.platformRole).toBe('developer');
   });
 
+  it('lets an OIDC-provisioned (passwordless) user set a password, then log in with it', async () => {
+    await admin.post('/admin/invites', { email: 'newpw@test.local' });
+    const res = await login({ sub: 'sub-pw', email: 'newpw@test.local', emailVerified: true });
+    const token = sessionToken(res);
+    expect((await harness.app.inject({ method: 'GET', url: '/me', cookies: { [SESSION_COOKIE]: token } })).json().hasPassword).toBe(false);
+    const set = await harness.app.inject({ method: 'PUT', url: '/account/password', cookies: { [SESSION_COOKIE]: token }, payload: { newPassword: 'fresh-pw-1234' } });
+    expect(set.statusCode).toBe(204);
+    const pw = await harness.app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'newpw@test.local', password: 'fresh-pw-1234' } });
+    expect(pw.statusCode).toBe(200);
+  });
+
   it('denies an unknown email with no invite (existing-or-invited only)', async () => {
     const res = await login({ sub: 'sub-3', email: 'stranger@test.local', emailVerified: true });
     expect(res.statusCode).toBe(302);

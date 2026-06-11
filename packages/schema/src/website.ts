@@ -209,7 +209,7 @@ const WebsiteSettingsObject = z.object({
    * positions, so a multi-page site shares one header/footer authored once. They run through
    * the SAME no-JS template validator as a page `source` (HTML + Tailwind + DaisyUI) and get
    * the page render context PLUS `nav` — the auto-menu built from each page's nav settings:
-   *   {{#each nav.header}}<a href="{{sw-url path}}">{{label}}</a>{{/each}}
+   *   {{#each nav.header}}<a href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}}>{{sw-label}}</a>{{/each}}
    * Body source order: `topNav`, `mobileNav`, [page body], `sidebarLeft`, `sidebarRight`,
    * `footer`, `bottom`. Nav links use root-absolute paths (`{{sw-url path}}`); on a multilingual
    * site they are auto-prefixed with the current locale at publish.
@@ -229,9 +229,11 @@ const WebsiteSettingsObject = z.object({
    *   `<aside id="sidebar-right">`).
    * - `footer` — below the page body and sidebars (→ `<footer id="footer">`).
    * - `bottom` — after the footer (global modals, schema.org *microdata* markup, etc.); usually a
-   *   no-show (→ `<div id="bottom">`). (A `<script type="application/ld+json">` block is NOT allowed
-   *   here — the no-JS slot validator rejects all `<script>`; the platform emits JSON-LD in `<head>`
-   *   from company data.)
+   *   no-show (→ `<div id="bottom">`). A `<dialog id="x">` placed here is a GLOBAL MODAL: a nav
+   *   placeholder (a `kind:'link'` page) with `link.target` `#x` opens it from any menu (the
+   *   platform's nav-link runtime calls `showModal()` on the matching `<dialog>`). (A
+   *   `<script type="application/ld+json">` block is NOT allowed here — the no-JS slot validator
+   *   rejects all `<script>`; the platform emits JSON-LD in `<head>` from company data.)
    */
   topNav: z.string().max(HTML_MAX).optional(),
   mobileNav: z.string().max(HTML_MAX).optional(),

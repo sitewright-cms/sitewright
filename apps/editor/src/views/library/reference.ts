@@ -149,7 +149,7 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
           '{{#each nav.header}}\n' +
           '  <li><a href="{{sw-url path}}"\n' +
           '         class="{{#if (sw-active path)}}active{{/if}}"\n' +
-          '         {{#if (sw-active path exact=true)}}aria-current="page"{{/if}}>{{label}}</a></li>\n' +
+          '         {{#if (sw-active path exact=true)}}aria-current="page"{{/if}}>{{sw-label}}</a></li>\n' +
           '{{/each}}',
         note: 'The route must be root-relative (start with "/"). The .active class is what a nav EFFECT (sw-nav-*) styles — see “Nav & button effects”. The trail default lights a dropdown parent while you are on a child; pass exact=true (unquoted, not "true") for a leaf-only highlight — and use it for aria-current="page", omitting the attribute on non-current items.',
       },
@@ -264,7 +264,7 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
           '{{! A plain list — the item is this: }}\n' +
           '<ul>\n' +
           '  {{#each nav.header}}\n' +
-          '    <li><a href="{{sw-url path}}">{{label}}</a></li>\n' +
+          '    <li><a href="{{sw-url path}}">{{sw-label}}</a></li>\n' +
           '  {{/each}}\n' +
           '</ul>',
         note: 'All content helpers are prefixed (sw-url, sw-date, sw-icon, sw-flag, sw-truncate), so entry fields never collide with them — read them plainly. ({{this.field}} forces a data lookup if you ever need it.)',
@@ -535,10 +535,10 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         name: 'nav',
         keywords: 'menu navigation header footer mobile',
         description:
-          'Auto-built menus from the page tree: nav.header, nav.footer, nav.mobile. Each item has .label, .path, and .children (sub-pages, for dropdowns).',
+          'Auto-built menus from the page tree: nav.header, nav.footer, nav.mobile. Each item has .path, .children (sub-pages, for dropdowns), .newTab (open in a new tab), .external (an off-site/mailto/tel link), and the render-ready label — output it with {{sw-label}} (a placeholder’s name can include {{sw-icon}}/HTML; a page title is escaped). Items also include "nav placeholders" (pages-list entries with no page of their own) that link out or group children.',
         example:
           '{{#each nav.header}}\n' +
-          '  <a href="{{sw-url path}}">{{label}}</a>\n' +
+          '  <a href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}}>{{sw-label}}</a>\n' +
           '{{/each}}',
       },
     ],
@@ -569,7 +569,7 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         description: '@index is the zero-based position in a loop; @key is the current item’s key/index.',
         example:
           '{{#each nav.header}}\n' +
-          '  <li data-i="{{@index}}">{{label}}</li>\n' +
+          '  <li data-i="{{@index}}">{{sw-label}}</li>\n' +
           '{{/each}}',
       },
       {
@@ -581,7 +581,7 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         example:
           '{{#each data.steps}}\n' +
           '  {{#unless @first}}<hr>{{/unless}}\n' +
-          '  {{label}}\n' +
+          '  {{sw-label}}\n' +
           '{{/each}}',
       },
       {
@@ -594,7 +594,7 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         example:
           '{{#each nav.header}}\n' +
           '  {{#if children}}\n' +
-          '    <details><summary>{{label}}</summary>…</details>\n' +
+          '    <details><summary>{{sw-label}}</summary>…</details>\n' +
           '  {{/if}}\n' +
           '{{/each}}',
       },

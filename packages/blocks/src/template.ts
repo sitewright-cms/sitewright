@@ -350,6 +350,16 @@ function createInstance(): typeof Handlebars {
         `<title>${Handlebars.escapeExpression(flag.name)}</title>${shape.body}</svg>`,
     );
   });
+  // {{sw-label}} inside {{#each nav.*}} → the nav item's render-ready label. A link placeholder's
+  // rich name (HTML + icon helpers) and a page title are both pre-rendered into `labelHtml` by
+  // `decorateNav`; this emits it as a SafeString (the markup is already validated/escaped there), so
+  // templates avoid the forbidden `{{{`. Falls back to the escaped plain `label`. Use in element
+  // context, e.g. `<a ...>{{sw-label}}</a>`.
+  hb.registerHelper('sw-label', function swLabel(this: unknown) {
+    const item = (this ?? {}) as { labelHtml?: unknown; label?: unknown };
+    if (typeof item.labelHtml === 'string') return new Handlebars.SafeString(item.labelHtml);
+    return new Handlebars.SafeString(Handlebars.escapeExpression(typeof item.label === 'string' ? item.label : ''));
+  });
   // {{sw-truncate text 80}} → clip to N chars with an ellipsis.
   hb.registerHelper('sw-truncate', (value: unknown, max: unknown) => {
     const s = typeof value === 'string' ? value : '';
@@ -581,7 +591,7 @@ function compileCached(source: string): Handlebars.TemplateDelegate {
   let compiled: Handlebars.TemplateDelegate;
   try {
     // `strict: false` → a missing path renders empty (not a throw). Helpers available are
-    // the pure built-in logic helpers + our curated sw-url/sw-date/sw-icon/sw-flag/sw-truncate/sw-add-to-cart/sw-cart (log removed);
+    // the pure built-in logic helpers + our curated sw-url/sw-date/sw-icon/sw-flag/sw-label/sw-truncate/sw-add-to-cart/sw-cart (log removed);
     // tenants cannot register their own (no compile/runtime registration is exposed).
     compiled = HB.compile(source, { strict: false, noEscape: false });
   } catch (err) {

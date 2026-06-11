@@ -65,6 +65,26 @@ describe('preview API', () => {
     expect(body.token).toMatch(/^[0-9a-f-]{36}$/); // an opaque uuid token
   });
 
+  it('inlines the nav-link runtime in the preview when a saved link placeholder targets a #fragment', async () => {
+    const { t, projectId } = await setup('navrt@acme.test');
+    // Save a link placeholder that opens a #contact <dialog> (a "global modal").
+    const put = await app.inject({
+      method: 'PUT',
+      url: `/projects/${projectId}/content/page/nav-contact`,
+      cookies: { sw_session: t },
+      payload: {
+        id: 'nav-contact', path: '', title: 'Contact', kind: 'link',
+        link: { target: '#contact' }, nav: { slots: ['header'], order: 1 },
+        root: { id: 'ncr', type: 'Section', children: [] },
+      },
+    });
+    expect(put.statusCode).toBe(200);
+    // Preview any page → the runtime is inlined because a saved placeholder uses a #target.
+    const res = await app.inject({ method: 'POST', url: `/projects/${projectId}/preview`, cookies: { sw_session: t }, payload: page });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { html: string }).html).toContain('showModal'); // NAV_LINK_JS inlined
+  });
+
   it('serves the preview document for a token under a sandbox CSP (isolated, framable)', async () => {
     const { t, projectId, slug } = await setup('a@acme.test');
     const token = (

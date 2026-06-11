@@ -190,3 +190,54 @@ test('duplicate a dataset, then edit an existing entry key', async ({ page }) =>
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Hello' })).toBeVisible();
 });
+
+// Renaming a dataset's SLUG migrates all its entries to the new slug (ids preserved); page bindings
+// must be updated to the new slug by hand (the modal warns) — the old slug then renders nothing.
+test('rename a dataset slug migrates its entries; bindings use the new slug', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/');
+  await page.getByRole('button', { name: /Register/ }).click();
+  await page.getByLabel('Email').fill(`datarename-${stamp}@e2e.test`);
+  await page.getByLabel('Password').fill('pw-secret-1');
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await page.getByRole('button', { name: 'New project' }).click();
+  await page.getByLabel('Project name').fill('Rename Site');
+  await page.getByLabel('Project slug').fill(`datarename-${stamp}`);
+  await page.getByRole('button', { name: 'Create project' }).click();
+
+  await page.getByRole('button', { name: 'Open Datasets' }).hover();
+  await page.getByLabel('Dataset name').fill('Posts');
+  await page.getByRole('button', { name: 'Create dataset' }).click();
+  await page.getByRole('button', { name: /schema/ }).click();
+  await page.getByLabel('New field name').fill('title');
+  await page.getByRole('button', { name: 'Add field' }).click();
+  await page.getByRole('button', { name: 'Save schema' }).click();
+  await page.getByRole('button', { name: 'New entry' }).click();
+  await page.getByLabel('title', { exact: true }).fill('Hello');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Hello' })).toBeVisible();
+
+  // Rename the slug posts → articles (schema editor stays expanded after adding the field).
+  await page.getByRole('button', { name: 'Rename dataset' }).click();
+  const renameDlg = page.getByRole('dialog', { name: /Rename/ });
+  await renameDlg.getByLabel('Dataset slug').fill('articles');
+  await expect(renameDlg.getByText(/re-points all/)).toBeVisible();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+
+  // The dataset now carries the new slug and still holds its entry.
+  await expect(page.getByText('/articles')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Hello' })).toBeVisible();
+
+  // Bindings: the new slug renders the migrated entry; the old slug renders nothing.
+  await page.getByRole('region', { name: 'Datasets' }).getByRole('button', { name: 'Close Datasets' }).click();
+  await page.getByRole('button', { name: /^Home/ }).click();
+  await page.getByRole('button', { name: 'Code Editor', exact: true }).click();
+  await page.locator('.cm-content').click();
+  await page.keyboard.press('ControlOrMeta+a');
+  await page.keyboard.insertText(
+    '<ul>{{#each data.articles}}<li class="a">{{title}}</li>{{/each}}</ul><ul>{{#each data.posts}}<li class="p">{{title}}</li>{{/each}}</ul>',
+  );
+  const preview = page.frameLocator('iframe[title="Preview"]');
+  await expect(preview.locator('.a')).toHaveText('Hello');
+  await expect(preview.locator('.p')).toHaveCount(0);
+});

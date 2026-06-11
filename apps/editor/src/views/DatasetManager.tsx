@@ -4,6 +4,7 @@ import { compareEntryOrder } from '@sitewright/core';
 import { api, type Project } from '../api';
 import { defaultEntryValues, entryLabel, identifierize, reorderWithInsert, slugify, uniqueSlug } from '../lib/entry-form';
 import { EntryEditorModal } from './datasets/EntryEditorModal';
+import { RenameDatasetModal } from './datasets/RenameDatasetModal';
 import { SidePanelHold } from './ui/SidePanel';
 import { useDialogs } from './ui/Dialogs';
 import { Tooltip } from './ui/Tooltip';
@@ -45,6 +46,7 @@ export function DatasetManager({ project }: { project: Project }) {
   const [editingEntry, setEditingEntry] = useState<Entry | null>(null);
   const [newEntry, setNewEntry] = useState(false); // the open entry editor is for a brand-new entry (key settable)
   const [schemaOpen, setSchemaOpen] = useState(false); // the schema editor is collapsed by default
+  const [renaming, setRenaming] = useState(false); // the rename-dataset modal is open
   const [dragId, setDragId] = useState<string | null>(null);
   const [drop, setDrop] = useState<{ id: string; pos: 'before' | 'after' } | null>(null);
   const lastSyncedSel = useRef<string | null>(null);
@@ -108,6 +110,7 @@ export function DatasetManager({ project }: { project: Project }) {
     setDraftFields(datasets.find((d) => d.id === selId)?.fields ?? []);
     setEditingEntry(null);
     setSchemaOpen(false); // each dataset opens with its schema collapsed
+    setRenaming(false);
   }, [selId, datasets]);
 
   async function createDataset(e: FormEvent) {
@@ -435,8 +438,16 @@ export function DatasetManager({ project }: { project: Project }) {
                 </button>
               </div>
 
-                  {/* Dataset-level destructive action, tucked inside the schema editor. */}
-                  <div className="mt-4 flex justify-end border-t border-slate-200/60 pt-3">
+                  {/* Dataset-level actions, tucked inside the schema editor. */}
+                  <div className="mt-4 flex items-center justify-end gap-2 border-t border-slate-200/60 pt-3">
+                    <button
+                      type="button"
+                      aria-label="Rename dataset"
+                      className={ghostButton}
+                      onClick={() => setRenaming(true)}
+                    >
+                      Rename
+                    </button>
                     <button
                       type="button"
                       aria-label="Delete dataset"
@@ -572,6 +583,24 @@ export function DatasetManager({ project }: { project: Project }) {
                     setEditingEntry(null);
                   }}
                   onClose={() => setEditingEntry(null)}
+                />
+              )}
+
+              {renaming && (
+                <RenameDatasetModal
+                  key={selected.id}
+                  projectId={project.id}
+                  dataset={selected}
+                  entries={datasetEntries}
+                  existingSlugs={new Set(datasets.map((d) => d.id))}
+                  onRenamed={async (slug) => {
+                    // Await the reload BEFORE selecting, so the schema-draft effect resolves the
+                    // renamed dataset from fresh state (else draftFields would sync to []).
+                    setRenaming(false);
+                    await load();
+                    setSelId(slug);
+                  }}
+                  onClose={() => setRenaming(false)}
                 />
               )}
             </div>

@@ -15,6 +15,11 @@ body{margin:0;min-height:100vh;min-height:100dvh;display:flex;flex-direction:col
    leave the page background showing below the footer. (#page-content is the
    platform-owned <main>; the slot landmarks stack around it.) */
 #page-content{flex:1 0 auto}
+/* The body flex column can size the footer flex-item a few px taller than its
+   content (a flexbox min-content/strut quirk), which would otherwise show the page
+   background as a strip below the footer's content. Make the footer landmark a flex
+   column so its content fills the landmark exactly — no gap. */
+#footer{display:flex;flex-direction:column}
 [data-sw-block="Section"]{width:100%;padding:3rem 1.5rem}
 [data-sw-block="Section"][data-tone="surface"]{background:var(--sw-color-base-100,#ffffff);color:var(--sw-color-base-content,#0f172a)}
 [data-sw-block="Section"][data-tone="primary"]{background:var(--sw-color-primary,#0ea5e9);color:#ffffff}

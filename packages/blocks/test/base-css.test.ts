@@ -62,36 +62,37 @@ describe('baseStyles — platform base stylesheet', () => {
       );
       const fxBranch = css.slice(css.indexOf('@supports not selector(::-webkit-scrollbar)'));
       expect(fxBranch).toContain('scrollbar-width: thin;');
-      expect(fxBranch).toContain('scrollbar-color: color-mix(in srgb, var(--sw-color-primary, #4f46e5) 70%, transparent) transparent;');
+      expect(fxBranch).toContain('scrollbar-color: var(--sw-color-primary, #4f46e5) var(--sw-color-base-100, #ffffff);');
       // regression guard: the STANDARD props must NOT be in the webkit branch (only
       // the `auto` reset is) — else they re-disable the pseudos in Chrome.
       expect(webkitBranch).not.toContain('scrollbar-width: thin');
-      expect(webkitBranch).not.toContain('scrollbar-color: color-mix');
+      expect(webkitBranch).not.toMatch(/scrollbar-color: var\(--sw-color-primary/);
     });
 
     it('resets the root back to auto in WebKit so daisyUI’s :root{scrollbar-color} cannot keep the page bar grey', () => {
       expect(css).toContain('html:root { scrollbar-color: auto; scrollbar-width: auto; }');
     });
 
-    it('hides the track completely (scrollbar element + every track part transparent) and has no arrows', () => {
-      expect(css).toContain('*::-webkit-scrollbar { width: 10px; height: 10px; background: transparent; }');
-      expect(css).toContain('*::-webkit-scrollbar-track,\n  *::-webkit-scrollbar-track-piece,\n  *::-webkit-scrollbar-corner { background: transparent; }');
+    it('uses a SOLID track (page background, no transparency) and no arrows', () => {
+      expect(css).toContain('*::-webkit-scrollbar { width: 12px; height: 12px; background: var(--sw-color-base-100, #ffffff); }');
+      expect(css).toContain('*::-webkit-scrollbar-track,\n  *::-webkit-scrollbar-track-piece,\n  *::-webkit-scrollbar-corner { background: var(--sw-color-base-100, #ffffff); }');
       expect(css).toContain('*::-webkit-scrollbar-button { width: 0; height: 0; display: none; }');
+      // NO transparency anywhere in the scrollbar CSS
+      const sb = css.slice(css.indexOf('@supports selector(::-webkit-scrollbar)'));
+      expect(sb).not.toContain('transparent');
+      expect(sb).not.toMatch(/color-mix\([^)]*transparent/);
     });
 
-    it('thumb is the brand primary at 70% opacity, full primary while grabbed, full-width (no inset track)', () => {
-      // 70% at rest
-      expect(css).toContain('background-color: color-mix(in srgb, var(--sw-color-primary, #4f46e5) 70%, transparent);');
-      // 100% while grabbed
-      expect(css).toMatch(/::-webkit-scrollbar-thumb:active \{\s*background-color: var\(--sw-color-primary, #4f46e5\);/);
-      // full-width thumb — NO inset border / padding-box channel
+    it('thumb is a SOLID brand primary, darker while grabbed, full-width (no inset)', () => {
+      expect(css).toContain('*::-webkit-scrollbar-thumb { background-color: var(--sw-color-primary, #4f46e5); border-radius: 9999px; }');
+      // darker (solid, mixed with black — not an alpha) while grabbed, with a
+      // plain-primary fallback first for browsers without color-mix
+      expect(css).toContain('*::-webkit-scrollbar-thumb:active { background-color: var(--sw-color-primary, #4f46e5); background-color: color-mix(in srgb, var(--sw-color-primary, #4f46e5) 82%, #000); }');
       const webkitBranch = css.slice(
         css.indexOf('@supports selector(::-webkit-scrollbar)'),
         css.indexOf('@supports not selector(::-webkit-scrollbar)'),
       );
       expect(webkitBranch).not.toContain('background-clip: padding-box');
-      expect(webkitBranch).not.toMatch(/border: 3\.5px solid transparent/);
-      // no hover/focus widening states anymore (opacity-only, grab-driven)
       expect(webkitBranch).not.toMatch(/:hover::-webkit-scrollbar-thumb/);
     });
   });

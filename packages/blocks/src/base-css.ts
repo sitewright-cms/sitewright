@@ -144,37 +144,34 @@ const PLATFORM_DEFAULTS = `
 /* Responsive media (icons are <svg>, sized by classes — intentionally untouched). */
 img, video { max-width: 100%; height: auto; }
 
-/* Thin scrollbars where the THUMB IS THE BAR — no visible track (fully
-   transparent, incl. the scrollbar element's own background), no stepper arrows.
-   The thumb is always the brand primary: 70% opacity at rest, 100% while grabbed.
-   WebKit/Blink (Chrome/Safari/Edge) use the ::-webkit-scrollbar pseudo-elements;
-   Firefox has no pseudos so it uses the standard scrollbar-* props (no per-state
-   opacity there). The two are mutually exclusive — a non-auto standard
-   scrollbar-color/width DISABLES the pseudos in Chrome 121+ — so the standard
-   props are confined to browsers WITHOUT the pseudos, and the root is reset back
-   to \`auto\` where the pseudos exist (daisyUI sets scrollbar-color on :root, which
-   would otherwise keep the page bar in standard mode and tint it grey). */
+/* Solid scrollbars (NO transparency anywhere): a solid track in the page
+   background colour (so it blends with the page) and a solid brand-primary thumb
+   that darkens while grabbed; no stepper arrows. WebKit/Blink (Chrome/Safari/Edge)
+   use the ::-webkit-scrollbar pseudo-elements; Firefox has no pseudos so it uses
+   the standard scrollbar-* props (no per-state colour there). The two are mutually
+   exclusive — a non-auto standard scrollbar-color/width DISABLES the pseudos in
+   Chrome 121+ — so the standard props are confined to browsers WITHOUT the pseudos,
+   and the root is reset to \`auto\` where the pseudos exist (daisyUI sets
+   scrollbar-color on :root, which would otherwise keep the page bar in standard
+   mode and tint it grey). NOTE: a document scrollbar has ONE track colour, so over
+   a differently-coloured section the track keeps the page background colour — a
+   colour-fill (non-overlay) scrollbar cannot be per-section transparent. */
 @supports selector(::-webkit-scrollbar) {
   html:root { scrollbar-color: auto; scrollbar-width: auto; }
-  /* hide the track completely: the scrollbar element + every track part transparent */
-  *::-webkit-scrollbar { width: 10px; height: 10px; background: transparent; }
+  /* solid track = page background (blends in) */
+  *::-webkit-scrollbar { width: 12px; height: 12px; background: var(--sw-color-base-100, #ffffff); }
   *::-webkit-scrollbar-track,
   *::-webkit-scrollbar-track-piece,
-  *::-webkit-scrollbar-corner { background: transparent; }
+  *::-webkit-scrollbar-corner { background: var(--sw-color-base-100, #ffffff); }
   *::-webkit-scrollbar-button { width: 0; height: 0; display: none; }
-  /* full-width thumb (no inset border) so the bar isn't narrower than the track */
-  *::-webkit-scrollbar-thumb {
-    background-color: color-mix(in srgb, var(--sw-color-primary, #4f46e5) 70%, transparent);
-    border-radius: 9999px;
-  }
-  *::-webkit-scrollbar-thumb:active {
-    background-color: var(--sw-color-primary, #4f46e5);
-  }
+  /* solid full-width primary thumb */
+  *::-webkit-scrollbar-thumb { background-color: var(--sw-color-primary, #4f46e5); border-radius: 9999px; }
+  *::-webkit-scrollbar-thumb:active { background-color: var(--sw-color-primary, #4f46e5); background-color: color-mix(in srgb, var(--sw-color-primary, #4f46e5) 82%, #000); }
 }
 @supports not selector(::-webkit-scrollbar) {
-  * { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--sw-color-primary, #4f46e5) 70%, transparent) transparent; }
+  * { scrollbar-width: thin; scrollbar-color: var(--sw-color-primary, #4f46e5) var(--sw-color-base-100, #ffffff); }
   /* beat daisyUI's :root{scrollbar-color} so the page bar is brand-coloured too */
-  html:root { scrollbar-color: color-mix(in srgb, var(--sw-color-primary, #4f46e5) 70%, transparent) transparent; }
+  html:root { scrollbar-color: var(--sw-color-primary, #4f46e5) var(--sw-color-base-100, #ffffff); }
 }
 `.trim();
 

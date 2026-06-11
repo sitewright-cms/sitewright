@@ -177,6 +177,34 @@ export interface AcceptedInvite {
   role: InviteRole;
 }
 
+/** A Drizzle transaction handle (the argument the `db.transaction` callback receives). */
+type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
+
+/**
+ * Applies an already-claimed invite's grant within a transaction: a `project_members` upsert for a
+ * project invite, or the user's `platform_role` for a platform invite. Shared by token-accept and
+ * the OIDC email-accept paths so the materialization stays in one place.
+ */
+async function applyInviteGrant(tx: Tx, userId: string, invite: typeof invites.$inferSelect, now: Date): Promise<void> {
+  if (invite.projectId) {
+    const existing = await tx
+      .select({ id: projectMembers.id })
+      .from(projectMembers)
+      .where(and(eq(projectMembers.userId, userId), eq(projectMembers.projectId, invite.projectId)));
+    if (existing.length === 0) {
+      await tx.insert(projectMembers).values({ id: newId(), userId, projectId: invite.projectId, role: invite.role as ProjectRole, createdAt: now });
+    } else {
+      // Already a member — upsert the (possibly upgraded) role, consistent with addProjectMember.
+      await tx
+        .update(projectMembers)
+        .set({ role: invite.role as ProjectRole })
+        .where(and(eq(projectMembers.userId, userId), eq(projectMembers.projectId, invite.projectId)));
+    }
+  } else {
+    await tx.update(users).set({ platformRole: invite.role as PlatformRole }).where(eq(users.id, userId));
+  }
+}
+
 /**
  * Accepts an invite for the signed-in user (email must match the invited email — a leaked link is
  * useless to anyone else). Materializes the grant: a `project_members` row for a project invite, or
@@ -206,33 +234,34 @@ export async function acceptInvite(
       .where(and(eq(invites.id, invite.id), isNull(invites.acceptedAt)))
       .returning({ id: invites.id });
     if (claimed.length === 0) throw new ConflictError('this invite has already been used');
-
-    if (invite.projectId) {
-      const existing = await tx
-        .select({ id: projectMembers.id })
-        .from(projectMembers)
-        .where(and(eq(projectMembers.userId, userId), eq(projectMembers.projectId, invite.projectId)));
-      if (existing.length === 0) {
-        await tx.insert(projectMembers).values({
-          id: newId(),
-          userId,
-          projectId: invite.projectId,
-          role: invite.role as ProjectRole,
-          createdAt: now,
-        });
-      } else {
-        // Already a member — apply the (possibly upgraded) role so accepting a fresh invite is a
-        // true upsert, consistent with addProjectMember.
-        await tx
-          .update(projectMembers)
-          .set({ role: invite.role as ProjectRole })
-          .where(and(eq(projectMembers.userId, userId), eq(projectMembers.projectId, invite.projectId)));
-      }
-    } else {
-      // Platform invite → set the user's platform role (admin|developer).
-      await tx.update(users).set({ platformRole: invite.role as PlatformRole }).where(eq(users.id, userId));
-    }
+    await applyInviteGrant(tx, userId, invite, now);
   });
 
   return { projectId: invite.projectId ?? null, role: invite.role };
+}
+
+/**
+ * Materializes EVERY pending invite for `email` onto `userId` — the OIDC equivalent of accepting an
+ * invite link, where the IdP-verified email is the proof of ownership. Each grant is claimed (CAS)
+ * and applied atomically; already-accepted/raced invites are skipped. MUST only be called for an
+ * email the IdP reported as verified.
+ */
+export async function acceptPendingInvitesForEmail(db: Database, userId: string, email: string, now: Date = new Date()): Promise<void> {
+  const normalized = email.trim().toLowerCase();
+  const pending = await db
+    .select()
+    .from(invites)
+    .where(and(eq(invites.email, normalized), isNull(invites.acceptedAt), gt(invites.expiresAt, now)));
+  if (pending.length === 0) return;
+  await db.transaction(async (tx) => {
+    for (const invite of pending) {
+      const claimed = await tx
+        .update(invites)
+        .set({ acceptedAt: now, acceptedBy: userId })
+        .where(and(eq(invites.id, invite.id), isNull(invites.acceptedAt)))
+        .returning({ id: invites.id });
+      if (claimed.length === 0) continue; // raced — someone else accepted it
+      await applyInviteGrant(tx, userId, invite, now);
+    }
+  });
 }

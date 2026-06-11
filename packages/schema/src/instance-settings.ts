@@ -84,6 +84,23 @@ export const StockKeysStoredSchema = z.object({
 });
 export type StockKeysStored = z.infer<typeof StockKeysStoredSchema>;
 
+/** A short lowercase slug identifying an OIDC provider (used in `/auth/oidc/<id>/…` routes). */
+const OidcProviderIdSchema = z.string().regex(/^[a-z0-9][a-z0-9-]{0,30}$/, 'id must be a lowercase slug');
+const OidcScopesSchema = z.array(z.string().min(1).max(60)).max(20);
+const DEFAULT_OIDC_SCOPES = ['openid', 'profile', 'email'] as const;
+
+/** A configured OIDC provider as stored: the client secret is an encrypted envelope (or absent). */
+export const OidcProviderStoredSchema = z.object({
+  id: OidcProviderIdSchema,
+  label: z.string().min(1).max(60).refine((v) => !hasControlChars(v), 'label must not contain control characters'),
+  issuer: z.string().url().max(512),
+  clientId: z.string().min(1).max(512),
+  clientSecret: EncryptedSecretSchema.optional(),
+  scopes: OidcScopesSchema.default([...DEFAULT_OIDC_SCOPES]),
+  enabled: z.boolean().default(true),
+});
+export type OidcProviderStored = z.infer<typeof OidcProviderStoredSchema>;
+
 /** The persisted instance-settings document (secrets encrypted at rest). */
 export const InstanceSettingsStoredSchema = z.object({
   smtp: SmtpStoredSchema.optional(),
@@ -104,6 +121,8 @@ export const InstanceSettingsStoredSchema = z.object({
    * Unset → English (`en`). Changing it does not touch existing projects.
    */
   defaultLocale: LocaleSchema.optional(),
+  /** Configured OIDC single-sign-on providers (the client secret of each is encrypted at rest). */
+  oidcProviders: z.array(OidcProviderStoredSchema).max(10).optional(),
 });
 export type InstanceSettingsStored = z.infer<typeof InstanceSettingsStoredSchema>;
 
@@ -139,6 +158,22 @@ export const StockKeysInputSchema = z.object({
 });
 export type StockKeysInput = z.infer<typeof StockKeysInputSchema>;
 
+/**
+ * An OIDC provider on input (plaintext client secret, OPTIONAL — omit to keep the secret already
+ * stored for the same `id`). The provider list is replace-semantics (the array sent becomes the new
+ * set), but secrets are preserved per-id when omitted.
+ */
+export const OidcProviderInputSchema = z.object({
+  id: OidcProviderIdSchema,
+  label: z.string().min(1).max(60).refine((v) => !hasControlChars(v), 'label must not contain control characters'),
+  issuer: z.string().url().max(512),
+  clientId: z.string().min(1).max(512),
+  clientSecret: z.string().min(1).max(1024).optional(),
+  scopes: OidcScopesSchema.optional(),
+  enabled: z.boolean().default(true),
+});
+export type OidcProviderInput = z.infer<typeof OidcProviderInputSchema>;
+
 export const InstanceSettingsInputSchema = z.object({
   smtp: SmtpInputSchema.nullable().optional(),
   hcaptcha: HcaptchaInputSchema.nullable().optional(),
@@ -155,6 +190,14 @@ export const InstanceSettingsInputSchema = z.object({
   agentSessionHours: z.number().int().min(1).max(720).nullable().optional(),
   // Default locale for new projects: a tag sets it, `null` reverts to `en`, undefined leaves it.
   defaultLocale: LocaleSchema.nullable().optional(),
+  // OIDC providers: an array REPLACES the whole set (secrets preserved per-id when omitted), `null`
+  // clears all providers, and an absent value leaves them unchanged. Provider ids must be unique.
+  oidcProviders: z
+    .array(OidcProviderInputSchema)
+    .max(10)
+    .refine((arr) => new Set(arr.map((p) => p.id)).size === arr.length, 'provider ids must be unique')
+    .nullable()
+    .optional(),
 });
 export type InstanceSettingsInput = z.infer<typeof InstanceSettingsInputSchema>;
 
@@ -183,6 +226,17 @@ export interface StockKeysPublic {
   hasPexels: boolean;
 }
 
+/** A configured OIDC provider, masked: the client secret collapses to a presence flag. */
+export interface OidcProviderPublic {
+  id: string;
+  label: string;
+  issuer: string;
+  clientId: string;
+  scopes: string[];
+  enabled: boolean;
+  hasClientSecret: boolean;
+}
+
 export interface InstanceSettingsPublic {
   smtp?: SmtpPublic;
   hcaptcha?: HcaptchaPublic;
@@ -194,12 +248,20 @@ export interface InstanceSettingsPublic {
   agentSessionHours?: number;
   /** The default locale for new projects, or absent when using `en`. */
   defaultLocale?: string;
+  /** Configured OIDC providers (client secrets masked to `hasClientSecret`). */
+  oidcProviders?: OidcProviderPublic[];
 }
 
 /** Masks a stored SMTP config to its public view (password → hasPassword flag). */
 export function maskSmtp(smtp: SmtpStored): SmtpPublic {
   const { password, ...rest } = smtp;
   return { ...rest, hasPassword: password !== undefined };
+}
+
+/** Masks a stored OIDC provider to its public view (clientSecret → hasClientSecret flag). */
+export function maskOidcProvider(p: OidcProviderStored): OidcProviderPublic {
+  const { clientSecret, ...rest } = p;
+  return { ...rest, hasClientSecret: clientSecret !== undefined };
 }
 
 /** Projects the persisted document to its masked public view (no secrets). */
@@ -218,5 +280,6 @@ export function maskInstanceSettings(stored: InstanceSettingsStored): InstanceSe
   if (stored.agentInstructions !== undefined) result.agentInstructions = stored.agentInstructions;
   if (stored.agentSessionHours !== undefined) result.agentSessionHours = stored.agentSessionHours;
   if (stored.defaultLocale !== undefined) result.defaultLocale = stored.defaultLocale;
+  if (stored.oidcProviders) result.oidcProviders = stored.oidcProviders.map(maskOidcProvider);
   return result;
 }

@@ -4,6 +4,8 @@ import type { Database } from '../db/client.js';
 import { projectMembers, projects, users, type PlatformRole, type ProjectRole } from '../db/schema.js';
 import { GLOBAL_SCOPE_ID } from './global-library.js';
 import { hashPassword, verifyPassword } from '../auth/password.js';
+import { acceptPendingInvitesForEmail, hasPendingInvite } from './invites.js';
+import type { OidcRepository } from './oidc.js';
 import {
   ConflictError,
   ForbiddenError,
@@ -74,6 +76,61 @@ export async function login(db: Database, email: string, password: string): Prom
     throw new UnauthorizedError('invalid credentials');
   }
   return user.id;
+}
+
+/**
+ * Provisions a PASSWORDLESS account for OIDC single sign-on (the email must already be normalized +
+ * verified by the caller). Race-safe: a concurrent create that loses the UNIQUE(email) insert
+ * re-resolves to the winning row.
+ */
+export async function registerOidcUser(db: Database, email: string): Promise<string> {
+  const normalizedEmail = email.trim().toLowerCase();
+  const userId = newId();
+  try {
+    await db.insert(users).values({ id: userId, email: normalizedEmail, passwordHash: null, platformRole: null, createdAt: new Date() });
+    return userId;
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      const [u] = await db.select({ id: users.id }).from(users).where(eq(users.email, normalizedEmail));
+      if (u) return u.id;
+    }
+    throw err;
+  }
+}
+
+export type OidcResolution = { ok: true; userId: string } | { ok: false; reason: 'email_unverified' | 'not_provisioned' };
+
+/**
+ * Maps verified OIDC claims to a local user under the EXISTING-OR-INVITED-ONLY policy:
+ *  1. a prior `(issuer, subject)` identity → that user (the IdP email may have changed since);
+ *  2. else — a verified email is REQUIRED — an existing account with that email → link it;
+ *  3. else a pending invite for that email → provision a passwordless account + materialize the invite(s);
+ *  4. else denied (no stranger is ever auto-created, regardless of open registration).
+ * The identity link is recorded/refreshed on every success.
+ */
+export async function resolveOidcUser(
+  db: Database,
+  oidcRepo: OidcRepository,
+  claims: { issuer: string; subject: string; email: string | null; emailVerified: boolean },
+): Promise<OidcResolution> {
+  const linked = await oidcRepo.findUserByIdentity(claims.issuer, claims.subject);
+  if (linked) {
+    await oidcRepo.linkIdentity({ userId: linked, issuer: claims.issuer, subject: claims.subject, email: claims.email });
+    return { ok: true, userId: linked };
+  }
+  // First-time federation requires a verified email (prevents linking to an unowned address).
+  if (!claims.email || !claims.emailVerified) return { ok: false, reason: 'email_unverified' };
+  const email = claims.email.trim().toLowerCase();
+  const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, email));
+  if (existing) {
+    await oidcRepo.linkIdentity({ userId: existing.id, issuer: claims.issuer, subject: claims.subject, email });
+    return { ok: true, userId: existing.id };
+  }
+  if (!(await hasPendingInvite(db, email))) return { ok: false, reason: 'not_provisioned' };
+  const userId = await registerOidcUser(db, email);
+  await acceptPendingInvitesForEmail(db, userId, email);
+  await oidcRepo.linkIdentity({ userId, issuer: claims.issuer, subject: claims.subject, email });
+  return { ok: true, userId };
 }
 
 /** The user's normalized email, or null if the user no longer exists. */

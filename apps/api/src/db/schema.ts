@@ -3,7 +3,12 @@ import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqli
 export const users = sqliteTable('users', {
   id: text('id').primaryKey(),
   email: text('email').notNull().unique(),
-  passwordHash: text('password_hash').notNull(),
+  /**
+   * scrypt `<salt>:<hash>`, or NULL for an account with no password — e.g. one provisioned via OIDC
+   * single sign-on. A null-password user can't log in by password (nor use password-confirmed
+   * actions) until they set one; the password paths treat null as "no password set".
+   */
+  passwordHash: text('password_hash'),
   /**
    * Platform-staff role (the single agency). `admin` = full control of every project + instance
    * settings + user management (seeded from SW_ADMIN_EMAIL). `developer` = agency staff that reaches
@@ -203,6 +208,46 @@ export const webauthnChallenges = sqliteTable(
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
   },
   (t) => [index('webauthn_challenges_expires_idx').on(t.expiresAt)],
+);
+
+/**
+ * A durable link between a local user and an external OIDC identity. Matched on the stable
+ * `(issuer, subject)` pair (NOT email, which can change at the IdP) on every login after the first;
+ * the first login links by verified email. `email` is the last-seen address (informational).
+ */
+export const oidcIdentities = sqliteTable(
+  'oidc_identities',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id),
+    issuer: text('issuer').notNull(),
+    subject: text('subject').notNull(),
+    email: text('email'),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    lastLoginAt: integer('last_login_at', { mode: 'timestamp_ms' }),
+  },
+  (t) => [uniqueIndex('uniq_oidc_issuer_subject').on(t.issuer, t.subject), index('oidc_identities_user_idx').on(t.userId)],
+);
+
+/**
+ * Short-lived, single-use state for one OIDC login attempt, bridging the authorize redirect and the
+ * callback. The row id is the SHA-256 of the raw `state` (the raw value travels via the IdP and comes
+ * back in the callback). It carries the `nonce` and PKCE verifier (validated by openid-client) plus
+ * the provider id. Consumed (single-use) at the callback; ~10-min TTL; expired rows swept.
+ */
+export const oidcLoginStates = sqliteTable(
+  'oidc_login_states',
+  {
+    id: text('id').primaryKey(),
+    providerId: text('provider_id').notNull(),
+    nonce: text('nonce').notNull(),
+    pkceVerifier: text('pkce_verifier').notNull(),
+    expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [index('oidc_login_states_expires_idx').on(t.expiresAt)],
 );
 
 /**

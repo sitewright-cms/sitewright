@@ -130,10 +130,13 @@ import {
   resolveProjectRole,
   setPlatformRole,
   verifyUserPassword,
+  resolveOidcUser,
 } from '../repo/accounts.js';
 import { MfaError, MfaRepository } from '../repo/mfa.js';
 import { sweepExpiredAuthRows } from '../repo/maintenance.js';
 import { PasskeyRepository } from '../repo/passkeys.js';
+import { OidcRepository } from '../repo/oidc.js';
+import { completeOidcAuth, startOidcAuth, OidcError } from '../auth/oidc.js';
 import {
   authenticationOptions,
   encodePublicKey,
@@ -567,6 +570,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const passkeyRepo = new PasskeyRepository(db);
   const rpFor = (req: FastifyRequest): RpConfig =>
     resolveRp(req.headers.host, req.protocol, { rpID: opts.webauthnRpId, origin: opts.webauthnOrigin });
+  // OIDC single sign-on (the platform as a Relying Party). Provider config (incl. the encrypted
+  // client secret) lives in instance settings; this repo holds the single-use login state + identities.
+  const oidcRepo = new OidcRepository(db);
+  // The public base used for BOTH the redirect_uri and the callback-URL reconstruction, so they
+  // agree (openid-client matches the redirect_uri at token exchange). Prefer the configured public
+  // URL; fall back to the request origin.
+  const oidcPublicBase = (req: FastifyRequest): string => (opts.publicUrl ?? `${req.protocol}://${req.headers.host}`).replace(/\/$/, '');
+  const oidcRedirectUri = (req: FastifyRequest, providerId: string): string =>
+    `${oidcPublicBase(req)}/auth/oidc/${encodeURIComponent(providerId)}/callback`;
   const submissionsRepo = new SubmissionRepository(db);
   const mailer = opts.mailer ?? new GlobalSmtpMailer(instanceSettingsRepo);
   const projectMailer = opts.projectMailer ?? new ProjectSmtpMailer(db, instanceSettingsRepo, opts.encryptionKey);
@@ -1139,6 +1151,74 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     }
     await issueSessionCookie(reply, passkey.userId);
     return reply.send({ userId: passkey.userId });
+  });
+
+  // ---- OIDC single sign-on (the platform as an OIDC Relying Party) ----
+  // Redirect-based, so failures redirect back to the SPA with `?oidc_error=` rather than returning
+  // JSON. `/auth/config` is unauthenticated so the login screen knows which buttons to show.
+  const oidcErrorRedirect = (reply: FastifyReply, code: string): void => {
+    void reply.redirect(`/?oidc_error=${encodeURIComponent(code)}`);
+  };
+
+  app.get('/auth/config', { config: rl(60) }, async (_req, reply) => {
+    return reply.send({ oidcProviders: await instanceSettingsRepo.listEnabledOidcProviders() });
+  });
+
+  // Step 1: build the IdP authorization URL, persist the single-use state, and redirect there.
+  app.get('/auth/oidc/:id/start', { config: authRl }, async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
+    const providerId = req.params.id;
+    try {
+      const provider = await instanceSettingsRepo.getEnabledOidcProvider(providerId);
+      if (!provider) return oidcErrorRedirect(reply, 'unknown_provider');
+      const start = await startOidcAuth(provider, oidcRedirectUri(req, providerId));
+      await oidcRepo.createLoginState({ state: start.state, providerId, nonce: start.nonce, pkceVerifier: start.codeVerifier });
+      return reply.redirect(start.url);
+    } catch (err) {
+      req.log.warn({ err, providerId }, 'oidc start failed');
+      return oidcErrorRedirect(reply, 'provider_unavailable');
+    }
+  });
+
+  // Step 2: validate the callback, resolve/provision the user (existing-or-invited only), then issue
+  // a session — or an MFA ticket when the user has TOTP (TOTP gates on top of OIDC).
+  app.get('/auth/oidc/:id/callback', { config: authRl }, async (req: FastifyRequest<{ Params: { id: string }; Querystring: { state?: string } }>, reply) => {
+    const providerId = req.params.id;
+    try {
+      const provider = await instanceSettingsRepo.getEnabledOidcProvider(providerId);
+      if (!provider) return oidcErrorRedirect(reply, 'unknown_provider');
+      const state = req.query.state;
+      if (!state) return oidcErrorRedirect(reply, 'invalid_state');
+      const stored = await oidcRepo.consumeLoginState(state, providerId);
+      if (!stored) return oidcErrorRedirect(reply, 'invalid_state');
+
+      const currentUrl = new URL(req.url, oidcPublicBase(req));
+      let claims;
+      try {
+        claims = await completeOidcAuth(provider, currentUrl, { state, nonce: stored.nonce, codeVerifier: stored.pkceVerifier });
+      } catch (err) {
+        if (!(err instanceof OidcError)) throw err;
+        req.log.warn({ err, providerId }, 'oidc callback verification failed');
+        return oidcErrorRedirect(reply, 'verification_failed');
+      }
+
+      const resolution = await resolveOidcUser(db, oidcRepo, {
+        issuer: claims.iss,
+        subject: claims.sub,
+        email: claims.email,
+        emailVerified: claims.emailVerified,
+      });
+      if (!resolution.ok) return oidcErrorRedirect(reply, resolution.reason);
+
+      if (await mfaRepo.isTotpEnabled(resolution.userId)) {
+        const ticket = await mfaRepo.createLoginTicket(resolution.userId);
+        return reply.redirect(`/?mfa_ticket=${encodeURIComponent(ticket)}`);
+      }
+      await issueSessionCookie(reply, resolution.userId);
+      return reply.redirect('/');
+    } catch (err) {
+      req.log.error({ err, providerId }, 'oidc callback failed');
+      return oidcErrorRedirect(reply, 'sign_in_failed');
+    }
   });
 
   // ---- Instance admin settings (global mail / hCaptcha / enabled form modes) ----

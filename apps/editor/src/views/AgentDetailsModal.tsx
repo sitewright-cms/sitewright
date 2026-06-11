@@ -108,7 +108,7 @@ function ConnectGuide({ emphasized }: { emphasized: boolean }) {
           <RemoteSteps
             mcpUrl={mcpUrl}
             settingsPath="In ChatGPT: Settings → Apps & Connectors → Advanced settings → turn on Developer mode, then “Create” (set Authentication to OAuth)."
-            planNote="ChatGPT’s Developer mode (custom MCP connectors) is available to Plus, Pro, Business, Enterprise and Edu accounts on the web — not the free plan."
+            planNote="Custom MCP connectors live behind ChatGPT’s Developer mode (a staged beta). OpenAI lists it for Plus, Pro, Business, Enterprise and Edu, but the setup flow has been reachable on free accounts during the rollout — so it’s worth a try."
           />
         )}
         {tab === 'claude' && (

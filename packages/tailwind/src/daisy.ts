@@ -80,43 +80,13 @@ export function usesDaisyComponents(candidates: readonly string[]): boolean {
   return false;
 }
 
-const HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
-
-/** sRGB channel (0–1) → linear-light, for WCAG relative luminance. */
-function srgbToLinear(c: number): number {
-  return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-}
-
 /**
- * A readable foreground (near-black or white) for a hex background; undefined for non-hex.
- * Uses the WCAG relative-luminance formula (with sRGB gamma linearization) and the 0.179
- * crossover at which black and white text give equal contrast — so the higher-contrast text
- * is chosen even for mid-tone brand colors.
- */
-function contentColorFor(bg: string): string | undefined {
-  if (!HEX.test(bg)) return undefined;
-  const h = bg.length === 4 ? bg.slice(1).replace(/(.)/g, '$1$1') : bg.slice(1);
-  const r = srgbToLinear(parseInt(h.slice(0, 2), 16) / 255);
-  const g = srgbToLinear(parseInt(h.slice(2, 4), 16) / 255);
-  const b = srgbToLinear(parseInt(h.slice(4, 6), 16) / 255);
-  const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-  return luminance > 0.179 ? '#1f2937' : '#ffffff';
-}
-
-/**
- * The DaisyUI theme var map: DaisyUI's light defaults overlaid with the brand's color/font
- * tokens (so `primary`/`secondary`/`accent`/`neutral` re-theme the components) plus a computed
- * readable `-content` for each overridden hex role. Emitted into the `@theme {}` block — DaisyUI
- * runs with `themes:false`, so these vars are authoritative.
+ * The DaisyUI theme var map: DaisyUI's light defaults overlaid with the brand's color/font tokens
+ * (so `primary`/`secondary`/`accent`/`neutral` re-theme the components). `brandVars` already adds an
+ * auto-derived readable `-content` for each overridden role (see tokens.ts → contentColorFor), so an
+ * overridden brand color never yields unreadable component text. Emitted into the `@theme {}` block —
+ * DaisyUI runs with `themes:false`, so these vars are authoritative.
  */
 export function daisyThemeVars(theme: TailwindTheme): Record<string, string> {
-  const vars: Record<string, string> = { ...DAISY_THEME_DEFAULTS, ...brandVars(theme) };
-  // Each mandatory colored surface gets an auto-derived readable foreground so an overridden
-  // brand color never yields unreadable component text. `base-content` is itself a foreground.
-  for (const role of ['primary', 'secondary', 'accent', 'neutral'] as const) {
-    const value = theme.colors?.[role];
-    const content = value ? contentColorFor(value) : undefined;
-    if (content) vars[`--color-${role}-content`] = content;
-  }
-  return vars;
+  return { ...DAISY_THEME_DEFAULTS, ...brandVars(theme) };
 }

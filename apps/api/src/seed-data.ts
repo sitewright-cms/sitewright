@@ -81,7 +81,7 @@ export const EXAMPLE_WEBSITE = {
     </a>
   </div>
   <div class="navbar-center hidden lg:flex">
-    <ul class="menu menu-horizontal gap-1 px-1 font-medium">{{#each nav.header}}{{#if children}}<li class="dropdown dropdown-hover"><a href="{{sw-url path}}" class="{{#if (sw-active path)}}menu-active{{/if}}"{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{label}} ${icon('chevron-down', 'h-4 w-4 opacity-60')}</a><ul class="dropdown-content menu z-30 mt-1 w-52 rounded-box bg-base-100 p-2 shadow-lg">{{#each children}}<li><a href="{{sw-url path}}" class="{{#if (sw-active path)}}menu-active{{/if}}"{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{label}}</a></li>{{/each}}</ul></li>{{else}}<li><a href="{{sw-url path}}" class="{{#if (sw-active path)}}menu-active{{/if}}"{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{label}}</a></li>{{/if}}{{/each}}</ul>
+    <ul class="menu menu-horizontal gap-1 px-1 font-medium">{{#each nav.header}}{{#if children}}<li class="dropdown dropdown-hover"><a href="{{sw-url path}}" class="{{#if (sw-active path)}}active{{/if}}"{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{label}} ${icon('chevron-down', 'h-4 w-4 opacity-60')}</a><ul class="dropdown-content menu z-30 mt-1 w-52 rounded-box bg-base-100 p-2 shadow-lg">{{#each children}}<li><a href="{{sw-url path}}" class="{{#if (sw-active path)}}active{{/if}}"{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{label}}</a></li>{{/each}}</ul></li>{{else}}<li><a href="{{sw-url path}}" class="{{#if (sw-active path)}}active{{/if}}"{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{label}}</a></li>{{/if}}{{/each}}</ul>
   </div>
   <div class="navbar-end gap-2">
     {{#if page.translations}}<div class="hidden items-center gap-0.5 rounded-lg border border-base-200 p-0.5 sm:flex" aria-label="Language">{{#each page.translations}}<a class="btn btn-ghost btn-xs gap-1.5 px-2 font-semibold uppercase" href="{{sw-url path}}" hreflang="{{locale}}">{{sw-flag (lookup @root.website.data.locale_flags locale) "h-3.5 w-5 rounded-sm"}}{{locale}}</a>{{/each}}</div>{{/if}}
@@ -154,6 +154,9 @@ export const EXAMPLE_WEBSITE = {
   // A language→country map for the nav switcher's flags (sw-flag takes a COUNTRY code, not a
   // language — so en→gb). Looked up per locale: {{sw-flag (lookup website.data.locale_flags locale)}}.
   data: { locale_flags: { en: 'gb', de: 'de' } },
+  // Site-wide nav/button effect schemes (CI-themed, contrast-safe). The active nav item is marked
+  // `.active` (below); `sw-nav-pill` fills it with the brand primary + its WCAG-derived foreground.
+  theme: { navEffect: 'pill', buttonEffect: 'lift' },
 };
 
 // ---------------------------------------------------------------- datasets (the CMS)

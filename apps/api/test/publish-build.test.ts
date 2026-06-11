@@ -257,6 +257,38 @@ describe('buildSite', () => {
     expect(about).toContain('<a class="" href="../">Home</a>');
   });
 
+  it('applies website.theme nav/button effects as <body> classes + ships the (tree-shaken) effect CSS', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: { primary: '#4f46e5' } },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+          website: {
+            theme: { navEffect: 'pill', buttonEffect: 'lift' },
+            topNav:
+              '<div class="navbar"><ul class="menu">{{#each nav.header}}<li><a class="{{#if (sw-active path)}}active{{/if}}" href="{{sw-url path}}">{{label}}</a></li>{{/each}}</ul></div>',
+          },
+        },
+        pages: [
+          { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<a class="btn btn-primary" href="/x">Go</a>', nav: { slots: ['header'], order: 1 } },
+        ],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    // The chosen schemes become <body> classes (cascade to the nav landmarks + .btn).
+    expect(home).toContain('<body class="sw-nav-pill sw-btn-lift">');
+    const sheet = await readFile(join(outDir, 'styles.css'), 'utf8');
+    // Only the chosen schemes ship, scoped to the platform landmarks, themed by the brand.
+    expect(sheet).toContain('.sw-nav-pill');
+    expect(sheet).toMatch(/#top-nav/);
+    expect(sheet).toContain('.sw-btn-lift');
+    expect(sheet).not.toContain('sw-nav-underline'); // tree-shaken (not chosen)
+    expect(sheet).not.toContain('sw-btn-glow');
+  });
+
   it('composes {{> snippet}} Handlebars partials into a published source page', async () => {
     await buildSite({
       publishedAt: '2026-05-29T00:00:00.000Z',

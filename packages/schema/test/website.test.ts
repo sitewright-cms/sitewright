@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { WebsiteSettingsSchema } from '../src/website.js';
+import {
+  WebsiteSettingsSchema,
+  websiteThemeClasses,
+  NAV_EFFECTS,
+  BUTTON_EFFECTS,
+} from '../src/website.js';
 
 describe('WebsiteSettingsSchema', () => {
   it('accepts the raw owner-only fields (head / criticalCss / scripts)', () => {
@@ -224,6 +229,27 @@ describe('WebsiteSettingsSchema', () => {
       expect(() =>
         WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'payment', urlTemplate: 'https://x.test/p', provider: 'venmo' }] } }),
       ).toThrow();
+    });
+  });
+
+  describe('theme (nav/button effects)', () => {
+    it('accepts a valid theme and rejects an unknown effect', () => {
+      const w = { theme: { navEffect: 'pill', buttonEffect: 'lift' } };
+      expect(WebsiteSettingsSchema.parse(w)).toEqual(w);
+      expect(() => WebsiteSettingsSchema.parse({ theme: { navEffect: 'sparkle' } })).toThrow();
+    });
+
+    it('websiteThemeClasses maps effects → `<body>` classes ("none"/absent = "")', () => {
+      expect(websiteThemeClasses({ navEffect: 'pill', buttonEffect: 'lift' })).toBe('sw-nav-pill sw-btn-lift');
+      expect(websiteThemeClasses({ navEffect: 'underline' })).toBe('sw-nav-underline');
+      expect(websiteThemeClasses({ navEffect: 'none', buttonEffect: 'glow' })).toBe('sw-btn-glow');
+      expect(websiteThemeClasses({})).toBe('');
+      expect(websiteThemeClasses(undefined)).toBe('');
+    });
+
+    it('every effect name is accepted by the schema (enum ⊇ the name lists)', () => {
+      for (const navEffect of NAV_EFFECTS) expect(WebsiteSettingsSchema.parse({ theme: { navEffect } }).theme?.navEffect).toBe(navEffect);
+      for (const buttonEffect of BUTTON_EFFECTS) expect(WebsiteSettingsSchema.parse({ theme: { buttonEffect } }).theme?.buttonEffect).toBe(buttonEffect);
     });
   });
 });

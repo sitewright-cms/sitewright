@@ -58,7 +58,7 @@ import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
 import { companyToOrganization } from './company-seo.js';
 import { renderSitemap, renderRobots, renderHtaccess, renderNetlifyRedirects, siteUrlFor, siteBase } from './seo.js';
 import { renderContactPhp, hasContactPhpForm } from './contact-php.js';
-import { toPublicForm, type FormPublic, type MediaAsset } from '@sitewright/schema';
+import { toPublicForm, websiteThemeClasses, type FormPublic, type MediaAsset } from '@sitewright/schema';
 
 /** The compiled utility stylesheet, written at the site root and linked per page. */
 const UTILITY_STYLESHEET = 'styles.css';
@@ -379,11 +379,15 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     const usedSnippets = referencedSnippets([...effectiveSources, ...slotSources], opts.snippets ?? {});
     // {{> snippet}} partials a source page composes contribute their classes too.
     const snippetClassNames = Object.values(usedSnippets).flatMap((s) => extractClassNames(s));
+    // The site-wide nav/button effect scheme classes land on <body> (renderDocument), so feed them
+    // into the candidate set too — else their (tree-shaken) effect CSS wouldn't be compiled.
+    const themeClassNames = websiteThemeClasses(website?.theme).split(' ').filter(Boolean);
     const classNames = [
       ...scanRoots.flatMap(collectClassNames),
       ...sourceClassNames,
       ...slotClassNames,
       ...snippetClassNames,
+      ...themeClassNames,
     ];
     const usesUtilities = classNames.length > 0;
     const componentTypes = [...new Set(scanRoots.flatMap(usedComponentTypes))];
@@ -586,6 +590,8 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         const html = renderDocument(page, {
           brand,
           bodyHtml,
+          // Site-wide nav/button effect schemes → `<body>` classes (the effect CSS tree-shakes).
+          bodyClass: websiteThemeClasses(website?.theme),
           topNav: topNavHtml,
           mobileNav: mobileNavHtml,
           sidebarLeft: sidebarLeftHtml,

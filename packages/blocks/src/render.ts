@@ -570,6 +570,12 @@ export interface RenderDocumentOptions extends RenderContext {
    */
   bodyHtml?: string;
   /**
+   * Space-separated class(es) for the `<body>` element — the site-wide nav/button effect schemes
+   * (`sw-nav-*` / `sw-btn-*`) chosen in Website settings. Cascades to the nav landmarks + `.btn`s;
+   * the effect CSS tree-shakes per scheme. Caller-computed (see `websiteThemeClasses`); attribute-escaped.
+   */
+  bodyClass?: string;
+  /**
    * Pre-rendered project-wide skeleton SLOTS (already validated + Handlebars-rendered HTML),
    * injected around the page body in this source order:
    *   `topNav`, `mobileNav`, [body], `sidebarLeft`, `sidebarRight`, `footer`, `bottom`.
@@ -662,6 +668,7 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
   const {
     brand,
     bodyHtml,
+    bodyClass,
     topNav,
     mobileNav,
     sidebarLeft,
@@ -727,7 +734,7 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     // `website.scripts` slot (3rd-party widgets) before the platform's own component <script> tags.
     // A slot wrapper is emitted only when that slot has content; <main id="page-content"> is ALWAYS
     // present (every page has a body).
-    `<body>` +
+    `<body${bodyClass ? ` class="${escapeAttr(bodyClass)}"` : ''}>` +
     slotLandmark('nav', 'top-nav', topNav) +
     slotLandmark('nav', 'mobile-nav', mobileNav) +
     `<main id="page-content">${body}</main>` +

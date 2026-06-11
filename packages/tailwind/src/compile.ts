@@ -5,6 +5,7 @@ import { Scanner } from '@tailwindcss/oxide';
 import type { TailwindTheme } from './theme.js';
 import { brandVars, renderThemeBlock } from './tokens.js';
 import { DAISY_PLUGIN_PATH, daisyThemeVars, usesDaisyComponents } from './daisy.js';
+import { EFFECT_UTILITIES } from './effects.js';
 
 // Resolve Tailwind's own install directory so `@import "tailwindcss/*"` resolves
 // from there regardless of the process cwd — robust in the repo, under vitest,
@@ -53,9 +54,11 @@ export async function compileUtilityCss(
   // pure-Tailwind pages stay at their minimal size. DaisyUI runs with `themes:false` (no
   // theme block of its own) and we supply the full var set, brand colors overriding the
   // palette, so `btn-primary` etc. are brand-themed with no cascade fight.
+  // The nav/button EFFECT utilities are appended in both branches — they tree-shake per scheme
+  // (only schemes whose class appears in the HTML are emitted), so they cost nothing when unused.
   const input = usesDaisyComponents(candidates)
-    ? `${BASE_INPUT}\n@plugin "${DAISY_PLUGIN_PATH}" {\n  themes: false;\n}${renderThemeBlock(daisyThemeVars(theme))}`
-    : `${BASE_INPUT}${renderThemeBlock(brandVars(theme))}`;
+    ? `${BASE_INPUT}\n@plugin "${DAISY_PLUGIN_PATH}" {\n  themes: false;\n}${renderThemeBlock(daisyThemeVars(theme))}\n${EFFECT_UTILITIES}`
+    : `${BASE_INPUT}${renderThemeBlock(brandVars(theme))}\n${EFFECT_UTILITIES}`;
 
   // Build the compiler (auto-resolves `@import "tailwindcss/*"` from node_modules).
   const compiler = await compile(input, { base, onDependency: () => {} });

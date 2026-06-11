@@ -21,6 +21,7 @@ import {
   DEFAULT_NEW_PROJECT_LOCALE,
   assertWithinTreeDepth,
   toPublicForm,
+  websiteThemeClasses,
   type CorporateIdentity,
   type Entry,
   type FileAsset,
@@ -367,6 +368,8 @@ interface PreviewShell {
   customScripts?: string;
   /** `<html lang>` for the preview — the previewed page's locale (publish parity). */
   lang?: string;
+  /** Site-wide nav/button effect scheme classes for `<body>` (`sw-nav-*` / `sw-btn-*`). */
+  bodyClass?: string;
 }
 
 /**
@@ -387,7 +390,8 @@ async function styledSourceDocument(
   const slotHtml = [shell.topNav, shell.mobileNav, shell.sidebarLeft, shell.sidebarRight, shell.footer, shell.bottom]
     .filter(Boolean)
     .join(' ');
-  const scanHtml = `${body} ${slotHtml}`;
+  // Include the `<body>` effect classes in the scan so the preview sheet carries those schemes.
+  const scanHtml = `${body} ${slotHtml} ${shell.bodyClass ?? ''}`;
   const classNames = extractClassNames(scanHtml);
   // Platform-runtime markers in the rendered body/slots → inline the first-party
   // runtime(s) so they work live in the sandboxed preview (its CSP allows scripts).
@@ -1948,6 +1952,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             head: website?.head,
             criticalCss: website?.criticalCss,
             customScripts: website?.scripts,
+            bodyClass: websiteThemeClasses(website?.theme),
             lang: previewLocale, // `<html lang>` follows the previewed page's locale (publish parity)
           });
           const sourceToken = previewStore.put(sourceHtml, { projectId: project.id, userId: ctx.userId });
@@ -1981,7 +1986,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // allow-scripts` — an opaque, isolated origin — so styles AND the platform
       // component JS are INLINED to make it self-contained + truly interactive
       // (WYSIWYG). Gather component CSS/JS + utility CSS only when used.
-      const classNames = collectClassNames(page.root);
+      const themeBodyClass = websiteThemeClasses(website?.theme);
+      // Include the `<body>` effect classes in the scan so the preview sheet carries those schemes.
+      const classNames = [...collectClassNames(page.root), ...(themeBodyClass ? themeBodyClass.split(' ') : [])];
       const { css: componentCss, js: componentJs } = componentAssets(usedComponentTypes(page.root));
       // Platform-runtime markers (`data-aos` / `data-bg` / `waves-effect` in a raw Html
       // block) → inline the first-party runtime(s) so they work live in the sandboxed
@@ -2004,6 +2011,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       previewById.set(page.id, page);
       const html = renderDocument(page, {
         brand,
+        bodyClass: themeBodyClass,
         lang: previewLocale, // `<html lang>` follows the previewed page's locale (publish parity)
         // {{ company.* }}/{{ website.* }}/{{ page.* }} substitution (WYSIWYG parity with publish).
         // `website` is projected to only its public fields (not the raw head/footer/CSS blobs).
@@ -3168,12 +3176,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // Binding context: company (identity), website (public fields only), page, datasets→data.
       let company: Record<string, unknown> = { name: project.name };
       let website: Record<string, unknown> | undefined;
+      let themeBodyClass = '';
       let brand: CorporateIdentity = { name: project.name, colors: {} };
       try {
         const settings = (await contentRepo.get(ctx, 'settings', SETTINGS_ENTITY_ID)) as Settings;
         company = settings.identity as unknown as Record<string, unknown>;
         brand = settings.identity;
         website = settings.website ? { siteUrl: settings.website.siteUrl, data: settings.website.data } : undefined;
+        themeBodyClass = websiteThemeClasses(settings.website?.theme);
       } catch (err) {
         if (!(err instanceof NotFoundError)) throw err;
       }
@@ -3217,7 +3227,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           title: String(pageCtx.title ?? project.name),
           root: { id: 'preview-root', type: 'Section' },
         };
-        const html = await styledSourceDocument(previewPage, brand, rendered);
+        const html = await styledSourceDocument(previewPage, brand, rendered, { bodyClass: themeBodyClass });
         // Mint a previewStore token so the editor loads the doc via an iframe `src` (served under an
         // opaque-origin `sandbox` CSP) instead of `srcDoc` (which inherits the editor's own CSP).
         // `html` is still returned for API consumers/tests.
@@ -3279,10 +3289,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
       let brand: CorporateIdentity = { name: project.name, colors: {} };
       let website: Record<string, unknown> | undefined;
+      let themeBodyClass = '';
       try {
         const settings = (await contentRepo.get(ctx, 'settings', SETTINGS_ENTITY_ID)) as Settings;
         brand = settings.identity;
         website = settings.website ? { siteUrl: settings.website.siteUrl, data: settings.website.data } : undefined;
+        themeBodyClass = websiteThemeClasses(settings.website?.theme);
       } catch (err) {
         if (!(err instanceof NotFoundError)) throw err;
       }
@@ -3300,7 +3312,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           partials,
         });
         const previewPage: Page = { id: 'snippet-preview', path: '/', title: project.name, root: { id: 'snippet-preview-root', type: 'Section' } };
-        const html = await styledSourceDocument(previewPage, brand, rendered);
+        const html = await styledSourceDocument(previewPage, brand, rendered, { bodyClass: themeBodyClass });
         reply.header('content-security-policy', 'sandbox allow-scripts');
         reply.header('x-frame-options', 'SAMEORIGIN');
         return reply.type('text/html').send(html);

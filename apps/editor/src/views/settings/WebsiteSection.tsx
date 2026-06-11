@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'motion/react';
-import type { JsonValue } from '@sitewright/schema';
+import { NAV_EFFECTS, BUTTON_EFFECTS, type JsonValue, type NavEffect, type ButtonEffect } from '@sitewright/schema';
 import { newStr, type Patch, type SettingsForm } from './model';
 import { Field, GlassCard, SubLabel } from './ui';
 import { CodeField } from '../ui/CodeField';
@@ -83,6 +83,49 @@ export function WebsiteSection({
           onClose={() => setDataOpen(false)}
         />
       )}
+
+      <GlassCard title="Nav & button effects" icon="✨" wide>
+        <p className="mb-3 text-xs text-slate-400">
+          CI-themed, contrast-safe hover/active schemes, applied site-wide (no code). The current nav
+          item is highlighted where you mark it <code>.active</code>. Want your own? Leave these
+          “None” and write it in <strong>Critical CSS</strong> (target <code>.active</code> /{' '}
+          <code>.btn</code>).
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="flex flex-col">
+            <span className={fieldLabel}>Nav effect</span>
+            <select
+              aria-label="Nav effect"
+              className={glassInput}
+              value={form.navEffect || 'none'}
+              onChange={(e) => patch({ navEffect: e.target.value === 'none' ? 'none' : (e.target.value as NavEffect) })}
+            >
+              <option value="none">None</option>
+              {NAV_EFFECTS.map((n) => (
+                <option key={n} value={n}>
+                  {n[0]!.toUpperCase() + n.slice(1)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col">
+            <span className={fieldLabel}>Button effect</span>
+            <select
+              aria-label="Button effect"
+              className={glassInput}
+              value={form.buttonEffect || 'none'}
+              onChange={(e) => patch({ buttonEffect: e.target.value === 'none' ? 'none' : (e.target.value as ButtonEffect) })}
+            >
+              <option value="none">None</option>
+              {BUTTON_EFFECTS.map((b) => (
+                <option key={b} value={b}>
+                  {b[0]!.toUpperCase() + b.slice(1)}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </GlassCard>
 
       <GlassCard title="Critical CSS" icon="◐" wide>
         <CodeField

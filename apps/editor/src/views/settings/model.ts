@@ -1,5 +1,5 @@
 import type { CorporateIdentity, SettingsBundle, WebsiteSettings } from '../../api';
-import { DEFAULT_BRAND_COLORS, MANDATORY_COLOR_TOKENS, type JsonValue, type ShopChannel, type ShopCurrency } from '@sitewright/schema';
+import { DEFAULT_BRAND_COLORS, MANDATORY_COLOR_TOKENS, type JsonValue, type NavEffect, type ButtonEffect, type ShopChannel, type ShopCurrency } from '@sitewright/schema';
 import { pageDataObject } from '../../lib/page-data';
 
 const MANDATORY_COLOR_SET = new Set<string>(MANDATORY_COLOR_TOKENS);
@@ -124,6 +124,9 @@ export interface SettingsForm {
   sidebarRight: string;
   footer: string;
   bottom: string;
+  // nav/button effect schemes ('none' = off) → website.theme
+  navEffect: 'none' | NavEffect;
+  buttonEffect: 'none' | ButtonEffect;
   redirects: KeyedRedirect[];
   // mini shop (website.shop): currency + submission channels (front-end cart)
   shopCurrencyCode: string;
@@ -238,6 +241,8 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
     sidebarRight: w?.sidebarRight ?? '',
     footer: w?.footer ?? '',
     bottom: w?.bottom ?? '',
+    navEffect: w?.theme?.navEffect ?? 'none',
+    buttonEffect: w?.theme?.buttonEffect ?? 'none',
     redirects: (w?.redirects ?? []).map((r) => ({ id: rowId(), from: r.from, to: r.to, status: r.status })),
     shopCurrencyCode: w?.shop?.currency?.code ?? '',
     shopCurrencySymbol: w?.shop?.currency?.symbol ?? '',
@@ -424,8 +429,17 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
           ...(trimmed(form.shopNote) ? { note: form.shopNote.trim() } : {}),
         }
       : undefined;
-  if (w || redirects.length || shop) {
-    website = { ...(w ?? {}), ...(redirects.length ? { redirects } : {}), ...(shop ? { shop } : {}) };
+  // nav/button effect schemes ('none' = off, so omit them).
+  const nav = form.navEffect !== 'none' ? { navEffect: form.navEffect } : {};
+  const btn = form.buttonEffect !== 'none' ? { buttonEffect: form.buttonEffect } : {};
+  const theme = 'navEffect' in nav || 'buttonEffect' in btn ? { ...nav, ...btn } : undefined;
+  if (w || redirects.length || shop || theme) {
+    website = {
+      ...(w ?? {}),
+      ...(redirects.length ? { redirects } : {}),
+      ...(shop ? { shop } : {}),
+      ...(theme ? { theme } : {}),
+    };
   }
 
   const locales = form.locales.map((l) => l.value.trim()).filter(Boolean);

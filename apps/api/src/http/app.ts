@@ -2830,7 +2830,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const asset = await store.readAsset(slug, path);
         if (asset !== null) return reply.type(asset.contentType).send(asset.body);
         const html = await store.readHtml(slug, path);
-        if (html === null) return reply.code(404).type('text/html').send('<h1>404 — not published</h1>');
+        // Unknown / unpublished path → a bare HTTP 404 (empty body), not a styled error page.
+        if (html === null) return reply.code(404).send();
         // Publish-option gates apply to PAGE (HTML) responses only — the static assets above and the
         // 404 above are ungated, so the per-request settings read happens ONLY for a real page (never
         // for assets or unknown paths). The protected resource is the page; a sub-resource URL is
@@ -2842,8 +2843,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             .get({ userId: 'system', projectId: gateProject.id, role: 'owner' as const }, 'settings', SETTINGS_ENTITY_ID)
             .catch(() => null)) as Settings | null;
           const web = gateSettings?.website;
-          // Local hosting disabled → behave as if nothing is published here.
-          if (web?.localPublish === false) return reply.code(404).type('text/html').send('<h1>404 — not published</h1>');
+          // Local hosting disabled → behave as if nothing is published here (bare empty 404).
+          if (web?.localPublish === false) return reply.code(404).send();
           // Preview token set → require a matching `?token=` (constant-time compare; lengths are
           // equal-or-reject so timingSafeEqual never throws).
           if (web?.previewToken) {

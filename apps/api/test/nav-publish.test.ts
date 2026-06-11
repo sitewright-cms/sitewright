@@ -112,8 +112,10 @@ describe('auto-nav → publish', () => {
     expect(home).toContain('href="./"'); // Home is published
     expect(home).not.toContain('>Secret<'); // draft excluded from the menu
     expect(home).not.toContain('href="secret"');
-    // No route is generated for the draft page.
-    expect((await client.get(`/sites/${slug}/secret/index.html`)).statusCode).toBe(404);
+    // No route is generated for the draft page → a bare HTTP 404 with an empty body (no styled error page).
+    const draft = await client.get(`/sites/${slug}/secret/index.html`);
+    expect(draft.statusCode).toBe(404);
+    expect(draft.body).toBe('');
   });
 
   it('omits pages without nav placement from the menu', async () => {

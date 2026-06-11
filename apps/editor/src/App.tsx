@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api, setUnauthorizedHandler, type Project } from './api';
+import { useSessionPoll } from './lib/use-session-poll';
 import { Login } from './views/Login';
 import { ProjectView, MANAGE_TABS, TAB_LABELS, type Tab } from './views/Project';
 import { AssetsPanel } from './views/files/AssetsPanel';
@@ -147,6 +148,14 @@ function MainApp({
       setStage({ name: 'auth', expired: true });
     });
   }, []);
+
+  // Proactively detect an EXPIRED/revoked session for an idle user: while signed in, probe `/me` on
+  // an interval (pausing on a hidden tab, re-probing on refocus). A 401 from the probe trips the
+  // unauthorized handler above → login; success/other errors are ignored (it's a liveness check, not
+  // a data refresh). Without this, an idle user only finds out at their next action.
+  useSessionPoll(stage.name === 'home' || stage.name === 'project', () => {
+    void api.me().catch(() => {});
+  });
 
   useEffect(() => {
     void refresh().then((ps) => {

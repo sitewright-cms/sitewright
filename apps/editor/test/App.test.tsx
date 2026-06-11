@@ -2,15 +2,21 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
 import type { Project } from '../src/api';
 
-const { me, createProject, logout, setUnauthorizedHandler } = vi.hoisted(() => ({
+const { me, createProject, logout, setUnauthorizedHandler, useSessionPoll } = vi.hoisted(() => ({
   me: vi.fn(),
   createProject: vi.fn(),
   logout: vi.fn(),
   setUnauthorizedHandler: vi.fn(),
+  useSessionPoll: vi.fn(),
 }));
 vi.mock('../src/api', () => ({
   api: { me: () => me(), createProject: (...a: unknown[]) => createProject(...a), logout: () => logout() },
   setUnauthorizedHandler: (fn: (() => void) | undefined) => setUnauthorizedHandler(fn),
+}));
+// The poll mechanics are unit-tested in use-session-poll.test.ts; here we only assert App enables it
+// (active=true) when authenticated and disables it (false) on the login screen.
+vi.mock('../src/lib/use-session-poll', () => ({
+  useSessionPoll: (active: boolean, cb: () => void, ms?: number) => useSessionPoll(active, cb, ms),
 }));
 // Heavy children stubbed — App is the unit under test (shell + selector + header).
 vi.mock('../src/views/Project', () => ({
@@ -171,5 +177,21 @@ describe('App shell', () => {
     const handler = setUnauthorizedHandler.mock.calls.at(-1)?.[0] as (() => void) | undefined;
     act(() => handler?.());
     expect(screen.getByText('LOGIN')).toBeInTheDocument();
+  });
+
+  it('enables the session-expiry poll while authenticated', async () => {
+    render(<App />);
+    await screen.findByRole('dialog'); // signed in → selector (home)
+    expect(useSessionPoll.mock.calls.at(-1)?.[0]).toBe(true);
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /Acme/ }));
+    await screen.findByText(/PROJECT Acme/); // still authenticated (project)
+    expect(useSessionPoll.mock.calls.at(-1)?.[0]).toBe(true);
+  });
+
+  it('disables the session-expiry poll on the login screen', async () => {
+    me.mockRejectedValue(new Error('unauthenticated'));
+    render(<App />);
+    await screen.findByText('LOGIN');
+    expect(useSessionPoll.mock.calls.at(-1)?.[0]).toBe(false);
   });
 });

@@ -53,7 +53,6 @@ function bundle(over: Partial<ProjectBundle> = {}): ProjectBundle {
       settings: { defaultLocale: 'en', locales: ['en'] },
     },
     pages: [],
-    partials: [],
     datasets: [],
     entries: [],
     ...over,

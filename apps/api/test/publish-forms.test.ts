@@ -31,7 +31,6 @@ function bundle(): ProjectBundle {
         root: { id: 'r', type: 'Section', children: [{ id: 'f', type: 'Form', props: { formId: 'contact' } }] },
       },
     ],
-    partials: [],
     datasets: [],
     entries: [],
     forms: [

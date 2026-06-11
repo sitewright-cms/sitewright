@@ -109,10 +109,6 @@ describe('ContentRepository', () => {
     await content.put(member, 'page', 'home', restructured);
     const after = (await content.get(member, 'page', 'home')) as { root: { children: unknown[] } };
     expect(after.root.children).toHaveLength(1);
-
-    // ...write a non-page content kind → allowed.
-    await content.put(member, 'partial', 'p', { id: 'p', name: 'P', root: { id: 'pr', type: 'Section' } });
-    expect(await content.get(member, 'partial', 'p')).toMatchObject({ name: 'P' });
   });
 
   it('exports a bundle containing the project’s content', async () => {
@@ -168,18 +164,16 @@ describe('ContentRepository', () => {
         settings: { defaultLocale: 'en', locales: ['en'] },
       },
       pages: [page],
-      partials: [{ id: 'hdr', name: 'Header', root: { id: 'h', type: 'Header' } }],
       datasets: [
         { id: 'd1', name: 'Posts', slug: 'posts', fields: [{ name: 'title', type: 'text' }] },
       ],
       entries: [{ id: 'e1', dataset: 'posts', status: 'published', values: { title: 'Hi' } }],
     };
     const res = await content.importBundle(pctxA, projA, bundle);
-    expect(res.imported).toBe(5); // settings + page + partial + dataset + entry
+    expect(res.imported).toBe(4); // settings + page + dataset + entry
 
     const out = await content.exportBundle(pctxA, projA);
     expect(out.project.identity).toMatchObject({ name: 'Acme' });
-    expect(out.partials).toHaveLength(1);
     expect(out.datasets).toHaveLength(1);
     expect(out.entries).toHaveLength(1);
   });

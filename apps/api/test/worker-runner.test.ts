@@ -19,7 +19,6 @@ afterEach(async () => {
 const bundle = {
   project: { formatVersion: 2 as const, id: 'p', name: 'P', slug: 'p', identity: { name: 'P', colors: {} }, settings: { defaultLocale: 'en', locales: ['en'] } },
   pages: [],
-  partials: [],
   datasets: [],
   entries: [],
 } as unknown as ProjectBundle;

@@ -2649,7 +2649,6 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             // DB field); re-add it to satisfy the ProjectBundle.project (Project) type.
             project: { formatVersion: exp.formatVersion, ...exp.project },
             pages: exp.pages,
-            partials: exp.partials,
             templates: exp.templates,
             datasets: exp.datasets,
             entries: exp.entries,

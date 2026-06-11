@@ -7,8 +7,8 @@ import { makeHarness, type Harness, type TestClient } from './harness.js';
  * Extends (does not duplicate) the round-trip smoke coverage in
  * `content-api.test.ts` / `content.test.ts`: those assert a single page imports
  * and a small bundle re-exports. Here we assert that a *rich* bundle — brand,
- * company, settings, a collection page + its dataset, a page that references a
- * partial, and published + draft entries — round-trips field-for-field through
+ * company, settings, a collection page + its dataset, a block-tree page, and
+ * published + draft entries — round-trips field-for-field through
  * `POST /import` → `GET /export`, that cross-entity integrity violations are
  * rejected with the documented 409 `validateProject` codes, that array bounds
  * are enforced, that a failed import is atomic, and that RBAC/tenancy block
@@ -46,7 +46,6 @@ async function exportBundle() {
       settings: { defaultLocale: string; locales: string[] };
     };
     pages: Array<{ id: string; path: string; title: string; root: unknown; collection?: unknown }>;
-    partials: Array<{ id: string; name: string; root: unknown }>;
     datasets: Array<{ id: string; name: string; slug: string; fields: unknown[] }>;
     entries: Array<{ id: string; dataset: string; status: string; values: Record<string, unknown> }>;
   };
@@ -54,10 +53,9 @@ async function exportBundle() {
 
 // A rich, fully-valid bundle exercising every entity + cross-entity reference:
 //   - brand + company + non-default settings
-//   - a static home page that references the `hero` partial via partialRef
+//   - a static home page with a block tree
 //   - a collection page `/blog/[slug]` bound to the `posts` dataset (param match)
 //   - a list-binding block pulling from the `posts` dataset
-//   - a partial (referenced by the home page)
 //   - the `posts` dataset + a published and a draft entry
 function richBundle() {
   return {
@@ -95,9 +93,6 @@ function richBundle() {
         },
       },
     ],
-    partials: [
-      { id: 'hero', name: 'Hero', root: { id: 'h', type: 'Header' } },
-    ],
     datasets: [
       {
         id: 'd-posts',
@@ -119,8 +114,8 @@ describe('bundle export/import fidelity (HTTP)', () => {
 
     const imp = await importBundle(bundle);
     expect(imp.statusCode).toBe(200);
-    // settings + 2 pages + 1 partial + 1 dataset + 2 entries = 7 writes.
-    expect((imp.json() as { imported: number }).imported).toBe(7);
+    // settings + 2 pages + 1 dataset + 2 entries = 6 writes.
+    expect((imp.json() as { imported: number }).imported).toBe(6);
 
     const out = await exportBundle();
 
@@ -151,10 +146,6 @@ describe('bundle export/import fidelity (HTTP)', () => {
     };
     expect(blogRoot.children[0]?.binding).toMatchObject({ dataset: 'posts', mode: 'list' });
 
-    // ---- Partials ----
-    expect(out.partials).toHaveLength(1);
-    expect(out.partials[0]).toMatchObject({ id: 'hero', name: 'Hero' });
-
     // ---- Datasets ----
     expect(out.datasets).toHaveLength(1);
     expect(out.datasets[0]).toMatchObject({ id: 'd-posts', name: 'Posts', slug: 'posts' });
@@ -178,7 +169,6 @@ describe('bundle export/import fidelity (HTTP)', () => {
     const reimport = await importBundle({
       project: { identity: out.project.identity, settings: out.project.settings },
       pages: out.pages,
-      partials: out.partials,
       datasets: out.datasets,
       entries: out.entries,
     });
@@ -190,22 +180,6 @@ describe('bundle export/import fidelity (HTTP)', () => {
   });
 
   describe('referential-integrity rejection (409)', () => {
-    it('rejects a page that references a non-existent partial (unknown_partial)', async () => {
-      const res = await importBundle({
-        pages: [
-          {
-            id: 'home',
-            path: '',
-            title: 'Home',
-            root: { id: 'r', type: 'Box', children: [{ id: 'c', type: 'Box', partialRef: 'ghost' }] },
-          },
-        ],
-        // no partials → the `ghost` reference cannot resolve
-      });
-      expect(res.statusCode).toBe(409);
-      expect((res.json() as { error: string }).error).toContain('unknown_partial');
-    });
-
     it('rejects a collection page bound to a missing dataset (unknown_collection_dataset)', async () => {
       const res = await importBundle({
         pages: [
@@ -275,8 +249,8 @@ describe('bundle export/import fidelity (HTTP)', () => {
     expect(before.entries).toHaveLength(2);
 
     // 2) Attempt an invalid bundle that also tries to add a brand-new page and a
-    //    different brand. It fails integrity (unknown_partial), so NOTHING from it
-    //    must be written — and nothing prior must be removed.
+    //    different brand. It fails integrity (unknown_binding_dataset), so NOTHING
+    //    from it must be written — and nothing prior must be removed.
     const failing = await importBundle({
       project: { identity: { name: 'Hijacked', colors: {} }, settings: { defaultLocale: 'en', locales: ['en'] } },
       pages: [
@@ -285,7 +259,7 @@ describe('bundle export/import fidelity (HTTP)', () => {
           id: 'injected',
           path: 'injected',
           title: 'Injected',
-          root: { id: 'x', type: 'Box', partialRef: 'ghost' }, // unresolved → 409
+          root: { id: 'x', type: 'Grid', binding: { dataset: 'ghost', mode: 'list' } }, // unknown dataset → 409
         },
       ],
     });

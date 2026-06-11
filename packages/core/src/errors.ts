@@ -16,8 +16,5 @@ export class NodeNotFoundError extends SitewrightError {
 /** Thrown for invalid block-tree operations (e.g. removing the root, moving into self). */
 export class TreeOperationError extends SitewrightError {}
 
-/** Thrown when a partial reference is missing or forms a cycle. */
-export class PartialResolutionError extends SitewrightError {}
-
 /** Thrown when a `Page.template` reference resolves to no known project or global template. */
 export class TemplateResolutionError extends SitewrightError {}

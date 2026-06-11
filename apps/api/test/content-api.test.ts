@@ -77,9 +77,6 @@ describe('content API', () => {
     expect((await edit((p) => { p.root.children[0]!.props.text = 'Member edit'; })).statusCode).toBe(200);
     // Structural change → now allowed.
     expect((await edit((p) => { p.root.children.pop(); })).statusCode).toBe(200);
-    // A non-page kind → now allowed.
-    const partial = await app.inject({ method: 'PUT', url: `${base}/content/partial/x`, cookies: { sw_session: memberT }, payload: { id: 'x', name: 'X', root: { id: 'xr', type: 'Section' } } });
-    expect(partial.statusCode).toBe(200);
   });
 
   it('rate-limits the content routes tighter than the global cap (writes 60, reads 120)', async () => {

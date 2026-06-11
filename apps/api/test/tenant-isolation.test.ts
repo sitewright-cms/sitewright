@@ -11,7 +11,6 @@ afterEach(async () => {
 
 // ---- Valid per-kind payloads (mirroring the existing content/dataset suites) ----
 const page = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' } };
-const partial = { id: 'hero', name: 'Hero', root: { id: 'r', type: 'Section' } };
 const dataset = {
   id: 'posts',
   name: 'Posts',
@@ -39,7 +38,6 @@ const deployTarget = {
 async function seedAllKinds(a: TestClient, projectId: string): Promise<void> {
   const proj = a.project(projectId);
   expect((await proj.putContent('page', 'home', page)).statusCode).toBe(200);
-  expect((await proj.putContent('partial', 'hero', partial)).statusCode).toBe(200);
   expect((await proj.putContent('dataset', 'posts', dataset)).statusCode).toBe(200);
   expect((await proj.putContent('entry', 'post-1', entry)).statusCode).toBe(200);
   expect((await proj.putContent('settings', 'settings', settings)).statusCode).toBe(200);
@@ -65,7 +63,6 @@ describe('multi-tenant isolation + role enforcement (HTTP layer)', () => {
     // Each generic kind has a representative existing entityId; settings uses its singleton id.
     const probes: Array<{ kind: string; entityId: string; writeBody: unknown }> = [
       { kind: 'page', entityId: 'home', writeBody: page },
-      { kind: 'partial', entityId: 'hero', writeBody: partial },
       { kind: 'dataset', entityId: 'posts', writeBody: dataset },
       { kind: 'entry', entityId: 'post-1', writeBody: entry },
       { kind: 'settings', entityId: 'settings', writeBody: settings },

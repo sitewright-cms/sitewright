@@ -6,7 +6,6 @@ import {
   type Page,
   type PageTranslation,
   type Project,
-  type SitewrightPartial,
   type Template,
 } from '@sitewright/schema';
 import { findDuplicateIds, walk } from './tree.js';
@@ -17,7 +16,6 @@ import { pagePath, pagesById } from './routes.js';
 export interface ProjectBundle {
   project: Project;
   pages: readonly Page[];
-  partials: readonly SitewrightPartial[];
   /** Reusable page layouts (optional; older bundles omit it). */
   templates?: readonly Template[];
   datasets: readonly Dataset[];
@@ -59,13 +57,11 @@ function reportDuplicates(
  * ids/paths/slugs, partial references that resolve, bindings and collection
  * pages that point at real datasets, and entries that belong to real datasets.
  *
- * Returns a list of issues (empty when the project is valid). Reference cycles
- * are detected separately by `resolvePartials`.
+ * Returns a list of issues (empty when the project is valid).
  */
 export function validateProject(bundle: ProjectBundle): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const datasetSlugs = new Set(bundle.datasets.map((dataset) => dataset.slug));
-  const partialIds = new Set(bundle.partials.map((partial) => partial.id));
   const templateIds = new Set((bundle.templates ?? []).map((template) => template.id));
 
   reportDuplicates(
@@ -83,12 +79,6 @@ export function validateProject(bundle: ProjectBundle): ValidationIssue[] {
     bundle.pages.filter((page) => !isLinkPage(page)).map((page) => pagePath(page, byId)),
     'duplicate_page_path',
     'page path',
-    issues,
-  );
-  reportDuplicates(
-    bundle.partials.map((partial) => partial.id),
-    'duplicate_partial_id',
-    'partial id',
     issues,
   );
   reportDuplicates(
@@ -146,13 +136,6 @@ export function validateProject(bundle: ProjectBundle): ValidationIssue[] {
       });
     }
     walk(root, (node) => {
-      if (node.partialRef !== undefined && !partialIds.has(node.partialRef)) {
-        issues.push({
-          code: 'unknown_partial',
-          message: `${owner} references unknown partial "${node.partialRef}"`,
-          path: location,
-        });
-      }
       if (node.binding && !datasetSlugs.has(node.binding.dataset)) {
         issues.push({
           code: 'unknown_binding_dataset',
@@ -174,9 +157,6 @@ export function validateProject(bundle: ProjectBundle): ValidationIssue[] {
     }
   }
 
-  for (const partial of bundle.partials) {
-    checkTree(partial.root, `partials/${partial.id}`, `partial "${partial.id}"`);
-  }
   // Templates are code-first (Handlebars source, no block tree) — their source is
   // validated by renderTemplate at render time, like page sources.
 

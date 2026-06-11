@@ -32,10 +32,10 @@ describe('baseStyles — platform base stylesheet', () => {
       expect(platform).toMatch(/\*,\s*\*::before,\s*\*::after\s*{\s*box-sizing: border-box;/);
     });
 
-    it('drops the underline on nav / menu / button links only (no global a{color})', () => {
+    it('links inherit colour (never UA blue); nav / menu / button links also drop the underline', () => {
+      // global colour inherit — the universal default; utilities (text-*) still win
+      expect(css).toContain('a { color: inherit; }');
       expect(css).toContain(':is(nav, [role="navigation"]) a, .menu a, .btn { text-decoration: inherit; }');
-      // no global `a { color: inherit }` — links use the theme/UA colour
-      expect(css).not.toMatch(/(^|\s)a\s*{[^}]*color:\s*inherit/);
     });
 
     it('leaves body-copy links alone (no global text-decoration:none)', () => {

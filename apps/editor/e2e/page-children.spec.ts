@@ -26,6 +26,7 @@ test('page.children: a parent page lists its child pages in the preview', async 
 
   // Open Home and author an overview that loops its children.
   await page.getByRole('button', { name: /^Home/ }).click();
+  await page.getByRole('button', { name: 'Code Editor', exact: true }).click();
   await page.locator('.cm-content').click();
   await page.keyboard.press('ControlOrMeta+a');
   await page.keyboard.insertText('<div>{{#each page.children}}<a class="card" href="{{sw-url path}}"><h3>{{title}}</h3></a>{{/each}}</div>');

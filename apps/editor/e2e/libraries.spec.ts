@@ -23,6 +23,7 @@ test('library panel: open, search, and copy an example; lazyload + ripple publis
   await page.getByLabel('Page title').fill('Launch');
   await page.getByRole('button', { name: 'Add page' }).click();
   await page.getByRole('button', { name: /^Launch/ }).click();
+  await page.getByRole('button', { name: 'Code Editor', exact: true }).click();
   await page.locator('.cm-content').click();
   await page.keyboard.press('ControlOrMeta+a');
   await page.keyboard.type('<section data-bg="/media/x.jpg" class="h-64"><a class="btn btn-primary waves-effect waves-light" href="/">Go</a></section>');

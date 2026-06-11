@@ -33,6 +33,7 @@ test('keyed dataset access: set an entry key, then read it directly with {{item.
   // Open Home and address the entry directly by key — no loop.
   await page.mouse.move(640, 400);
   await page.getByRole('button', { name: /^Home/ }).click();
+  await page.getByRole('button', { name: 'Code Editor', exact: true }).click();
   await page.locator('.cm-content').click();
   await page.keyboard.press('ControlOrMeta+a');
   await page.keyboard.insertText('<h1 class="kw">{{item.services.web_development.title}}</h1>');

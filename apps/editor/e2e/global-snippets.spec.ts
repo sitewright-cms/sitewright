@@ -18,6 +18,7 @@ test('a global snippet renders via {{> name}} and is listed (copyable) in the Sn
 
   // Compose the built-in `hero` global into the home page via a partial include.
   await page.getByRole('button', { name: /^Home/ }).click();
+  await page.getByRole('button', { name: 'Code Editor', exact: true }).click();
   await page.locator('.cm-content').click();
   await page.keyboard.press('ControlOrMeta+a');
   await page.keyboard.insertText('{{> hero}}');

@@ -19,6 +19,7 @@ test('preview keeps scroll across a reload; bottom rails stay visible over the t
 
   // Open the Home page editor and give it tall content so the preview can scroll.
   await page.getByRole('button', { name: /^Home/ }).click();
+  await page.getByRole('button', { name: 'Code Editor', exact: true }).click();
   await page.locator('.cm-content').click();
   await page.keyboard.press('ControlOrMeta+a');
   const tall = `<div class="p-8"><h1 id="top">Top</h1>${'<p class="my-10">paragraph</p>'.repeat(30)}<h2 id="bottom">Bottom</h2></div>`;

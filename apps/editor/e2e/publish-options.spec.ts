@@ -18,6 +18,7 @@ test('publish options: enabling a preview token gates the live site behind ?toke
 
   // Author + publish the home page.
   await page.getByRole('button', { name: /^Home/ }).click();
+  await page.getByRole('button', { name: 'Code Editor', exact: true }).click();
   await page.locator('.cm-content').click();
   await page.keyboard.press('ControlOrMeta+a');
   await page.keyboard.insertText('<h1>Gated content</h1>');

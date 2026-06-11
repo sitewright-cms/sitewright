@@ -16,8 +16,8 @@ vi.mock('../src/api', () => ({
     listTemplates: (p: string) => listTemplates(p),
   },
 }));
-// The mock surfaces the role-driven `initialMode` so the default-mode contract is testable
-// (the source⇄content toggle itself now lives INSIDE the page editor modal).
+// The mock surfaces the `initialMode` the modal opens in so the default-mode contract is testable:
+// everyone now opens in `content` (the Code⇄Content toggle itself lives INSIDE the page editor modal).
 vi.mock('../src/views/CodePageEditor', () => ({
   CodePageEditor: ({ initialMode }: { initialMode?: string }) => <div>PAGE EDITOR mode={initialMode}</div>,
 }));
@@ -68,16 +68,16 @@ describe('ProjectView role gating (tab is supplied by the App header)', () => {
   // The Library + Assets side panels are now App-level (gated on the project role there); see
   // App.test.tsx for their owner-only presence. ProjectView no longer renders them.
 
-  it('opens an owner on a page in SOURCE mode (the staff default)', async () => {
+  it('opens an owner on a page in CONTENT mode (the default for everyone)', async () => {
     render(<ProjectView project={ownerProject} tab="pages" />);
     await waitFor(() => expect(listPages).toHaveBeenCalled());
     fireEvent.click(screen.getByRole('button', { name: 'Home /' }));
-    expect(screen.getByText('PAGE EDITOR mode=source')).toBeInTheDocument();
+    expect(screen.getByText('PAGE EDITOR mode=content')).toBeInTheDocument();
     // The list (and its add-page button) stays mounted behind the modal.
     expect(screen.getByRole('button', { name: '+ New page' })).toBeInTheDocument();
   });
 
-  it('opens a member on a page in CONTENT mode (the client default)', async () => {
+  it('opens a member on a page in CONTENT mode (the same default)', async () => {
     render(<ProjectView project={memberProject} tab="pages" />);
     await waitFor(() => expect(listPages).toHaveBeenCalled());
     fireEvent.click(screen.getByRole('button', { name: /Home/ }));

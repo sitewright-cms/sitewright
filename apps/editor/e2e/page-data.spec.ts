@@ -17,6 +17,7 @@ test('page.data: edit via the JSON modal, preview reflects it, persists across r
   await page.getByLabel('Project slug').fill(`pdata-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
   await page.getByRole('button', { name: /^Home/ }).click();
+  await page.getByRole('button', { name: 'Code Editor', exact: true }).click();
 
   // Author a source that reads page.data, then fill page.data via the modal's JSON source view.
   await page.locator('.cm-content').click();

@@ -50,19 +50,23 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     if (styled) return; styled = true;
     var s = document.createElement('style');
     s.textContent =
-      // Resting affordance for EVERY editable leaf — incl. href/src/bg, which set only outline-COLOR
-      // in their on-state rules below and so need this base outline-style/width to actually render.
-      '[data-sw-text],[data-sw-html],[data-sw-href],[data-sw-src],[data-sw-bg]{outline:1px dashed transparent;outline-offset:2px;border-radius:2px;transition:outline-color .12s,background-color .12s}' +
-      '.sw-edit-on{cursor:text}' +
-      '.sw-edit-on:hover{outline-color:#6366f1;background:rgba(99,102,241,.07)}' +
-      '[data-sw-text].sw-edit-on:hover::after{content:"\\270e";margin-left:.35em;font-size:.8em;opacity:.55}' +
-      '.sw-edit-on:focus{outline:2px solid #6366f1;background:rgba(99,102,241,.10)}' +
+      // Base affordance for EVERY editable leaf: a THICK, INSET, dashed outline (transparent here —
+      // each on-state rule below supplies only the outline-COLOR). In content mode the on-state
+      // classes light this up so every editable element is clearly marked AT REST, no hover needed.
+      '[data-sw-text],[data-sw-html],[data-sw-href],[data-sw-src],[data-sw-bg]{outline:2px dashed transparent;outline-offset:-2px;border-radius:2px;transition:outline-color .12s,background-color .12s}' +
+      // Text/rich: dashed indigo at rest; a faint bg tint on hover; the outline goes SOLID while editing (focus).
+      '.sw-edit-on{cursor:text;outline-color:#6366f1}' +
+      '.sw-edit-on:hover{background:rgba(99,102,241,.08)}' +
+      '.sw-edit-on:focus{outline-style:solid;background:rgba(99,102,241,.12)}' +
+      // Links: dashed indigo at rest; a bg tint on hover (a click opens the link editor).
       '[data-sw-href].sw-link-on{cursor:pointer;outline-color:#6366f1}' +
-      '[data-sw-href].sw-link-on:hover{outline:2px solid #6366f1;background:rgba(99,102,241,.10)}' +
+      '[data-sw-href].sw-link-on:hover{background:rgba(99,102,241,.10)}' +
+      // Images/bg: dashed indigo at rest; an inset tint overlay on hover (a click opens the picker).
       '[data-sw-src].sw-img-on,[data-sw-bg].sw-img-on{cursor:pointer;outline-color:#6366f1}' +
-      '[data-sw-src].sw-img-on:hover,[data-sw-bg].sw-img-on:hover{outline:2px solid #6366f1;box-shadow:inset 0 0 0 9999px rgba(99,102,241,.12)}' +
-      '[data-sw-entry].sw-entry-on{cursor:pointer;outline:1px dashed transparent;outline-offset:3px;border-radius:3px;transition:outline-color .12s}' +
-      '[data-sw-entry].sw-entry-on:hover{outline-color:#14b8a6}' +
+      '[data-sw-src].sw-img-on:hover,[data-sw-bg].sw-img-on:hover{box-shadow:inset 0 0 0 9999px rgba(99,102,241,.12)}' +
+      // Dataset rows: same always-on marker, in teal to distinguish a structured entry from inline content.
+      '[data-sw-entry].sw-entry-on{cursor:pointer;outline:2px dashed #14b8a6;outline-offset:-2px;border-radius:3px;transition:outline-color .12s,background-color .12s}' +
+      '[data-sw-entry].sw-entry-on:hover{background:rgba(20,184,166,.08)}' +
       '.sw-tb{position:fixed;z-index:2147483646;display:none;gap:2px;padding:3px;border-radius:8px;background:#0f172a;box-shadow:0 6px 20px rgba(0,0,0,.35);font:600 12px system-ui,sans-serif}' +
       '.sw-tb button{all:unset;color:#e2e8f0;cursor:pointer;padding:3px 7px;border-radius:5px;min-width:18px;text-align:center}' +
       '.sw-tb button:hover{background:#334155;color:#fff}' +

@@ -847,9 +847,9 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
         </>
       )}
       {/* The page editor: a near-fullscreen modal portalled over this list (blurred
-          backdrop) — Esc/× returns here. BOTH edit modes live inside it; the initial
-          mode is a role-based UI default (owners → source, clients → content), and
-          the in-modal toggle switches losslessly. */}
+          backdrop) — Esc/× returns here. BOTH edit modes live inside it; it opens in the
+          Content Editor (the live preview) for everyone, and the in-modal toggle switches
+          to the Code Editor losslessly. */}
       {editing && (
         <CodePageEditor
           key={editing.id} // React-enforced remount per page — drafts can never bleed across pages
@@ -858,7 +858,7 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
           pages={pages}
           locales={locales}
           onClose={() => void closeEditor()}
-          initialMode={isClient ? 'content' : 'source'}
+          initialMode="content"
         />
       )}
       {/* Page settings opened FROM THE LIST: persist-on-save (the editor's own settings

@@ -589,7 +589,7 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
             </div>
           </div>
           <ul className="mb-8 flex flex-col gap-2">
-            {orderedPages.map(({ page: p, depth }) => {
+            {orderedPages.map(({ page: p, depth }, i) => {
               // A locale home (the root of a language's subtree) is treated like the root home:
               // home icon, not draggable, not deletable (remove the language in Website Settings).
               const isHome = isHomeLike(p);
@@ -603,7 +603,7 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
               return (
                   <li
                     key={p.id}
-                    style={indent}
+                    style={{ ...indent, animationDelay: `${Math.min(i, 24) * 35}ms` }}
                     // Only non-Home pages reorder (Home is pinned first). The whole row is the
                     // drag source; the grip is the visible affordance + keyboard entry point.
                     draggable={!isHome}
@@ -637,7 +637,7 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
                       setDragId(null);
                       setDrop(null);
                     }}
-                    className={`group relative flex items-center gap-1 ${glassCard} px-3 py-2 transition ${gradientHover} ${dragId === p.id ? 'opacity-40' : ''}`}
+                    className={`sw-stack-in group relative flex items-center gap-1 ${glassCard} px-3 py-2 transition ${gradientHover} ${dragId === p.id ? 'opacity-40' : ''}`}
                   >
                   {dropping && (
                     <span
@@ -893,8 +893,8 @@ function ClientPagesList({ pages, onOpen }: ClientPagesListProps) {
     <>
       <p className="mb-3 text-sm text-slate-500">Choose a page to edit its content.</p>
       <ul className="flex flex-col gap-2">
-        {pages.map((p) => (
-          <li key={p.id}>
+        {pages.map((p, i) => (
+          <li key={p.id} className="sw-stack-in" style={{ animationDelay: `${Math.min(i, 24) * 35}ms` }}>
             <button
               className={`w-full ${glassCard} px-4 py-3 text-left transition hover:bg-white/80`}
               onClick={() => onOpen(p)}

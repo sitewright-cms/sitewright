@@ -162,4 +162,21 @@ button:disabled,
       opacity: 0;
     }
   }
+
+  /* Stacked list entrance: each row fades + lifts in, cascaded via a per-item inline
+     `animation-delay` (set where the list is rendered — pages, forms). Gated on no-preference, so
+     reduced-motion users simply see the rows immediately (no delayed/hidden state). */
+  .sw-stack-in {
+    animation: sw-stack-in 0.32s ease-out both;
+  }
+  @keyframes sw-stack-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
 }

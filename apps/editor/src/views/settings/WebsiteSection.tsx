@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { motion } from 'motion/react';
 import type { JsonValue } from '@sitewright/schema';
 import { newStr, type Patch, type SettingsForm } from './model';
 import { Field, GlassCard, SubLabel } from './ui';
@@ -8,6 +9,7 @@ import { ShopChannelsEditor } from './ShopChannelsEditor';
 import { LocaleManager } from './LocaleManager';
 import { WebsiteDataModal } from './WebsiteDataModal';
 import { ghostButton, glassInput, fieldLabel } from '../../theme';
+import { cardStagger, cardVariants } from './motion';
 
 /** Shared bindings hint for the validated skeleton-slot editors. */
 const SLOT_HINT =
@@ -43,7 +45,7 @@ export function WebsiteSection({
     new Set([form.defaultLocale, ...form.locales.map((l) => l.value).filter(Boolean)]),
   );
   return (
-    <div className="grid gap-4 sm:grid-cols-2">
+    <motion.div variants={cardStagger} className="grid gap-4 sm:grid-cols-2">
       <GlassCard title="Site" icon="🌐" wide>
         <Field
           label="Production URL (for sitemap.xml + robots.txt)"
@@ -113,7 +115,7 @@ export function WebsiteSection({
         />
       </GlassCard>
 
-      <div className="sm:col-span-2 mt-2">
+      <motion.div variants={cardVariants} className="sm:col-span-2 mt-2">
         <h3 className="text-xs font-medium uppercase tracking-wide text-slate-400">
           Skeleton slots — shared Handlebars partials rendered around every page
         </h3>
@@ -122,7 +124,7 @@ export function WebsiteSection({
           <code>{'{{#each nav.header}}'}</code>, <code>{'{{ website.json_data.* }}'}</code>,{' '}
           <code>{'{{ website.data.* }}'}</code>.
         </p>
-      </div>
+      </motion.div>
 
       <GlassCard title="Top navigation" icon="≡">
         <CodeField
@@ -246,6 +248,6 @@ export function WebsiteSection({
           onLocalesChanged={onLocalesChanged}
         />
       </GlassCard>
-    </div>
+    </motion.div>
   );
 }

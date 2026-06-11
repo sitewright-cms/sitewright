@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { motion } from 'motion/react';
 import type { Patch, SettingsForm } from './model';
 import { api, type MediaAsset } from '../../api';
 import { Field, FieldButton, GlassCard, SubLabel, TextArea } from './ui';
@@ -9,6 +10,7 @@ import { CustomFontSlots } from './CustomFontSlots';
 import { BusinessTypeModal, BUSINESS_TYPE_DISABLED } from './BusinessTypeModal';
 import { SCHEMA_ORG_TYPES } from './schema-org-types';
 import { AssetField } from '../files/AssetField';
+import { cardStagger } from './motion';
 
 /** The human label for the current businessType: '' → default, 'disabled' → off, else its known
  *  label (or the raw custom @type). */
@@ -43,8 +45,8 @@ export function IdentitySection({ form, patch, projectId }: { form: SettingsForm
   const [businessTypeOpen, setBusinessTypeOpen] = useState(false);
   return (
     // Single column: every section is full container width; a section may still use 2 columns
-    // INTERNALLY (e.g. the address grid below).
-    <div className="flex flex-col gap-4">
+    // INTERNALLY (e.g. the address grid below). A `cardStagger` container so the cards cascade in.
+    <motion.div variants={cardStagger} className="flex flex-col gap-4">
       <GlassCard title="Identity" icon="◆">
         <div className="flex flex-col gap-3">
           <Field label="Display name" value={form.name} onChange={(v) => patch({ name: v })} placeholder="Acme" required />
@@ -170,6 +172,6 @@ export function IdentitySection({ form, patch, projectId }: { form: SettingsForm
           onClose={() => setBusinessTypeOpen(false)}
         />
       )}
-    </div>
+    </motion.div>
   );
 }

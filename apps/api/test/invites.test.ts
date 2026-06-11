@@ -23,7 +23,7 @@ let db: Database;
 
 // A platform admin (the agency owner) who issues invites, plus one project to invite into.
 async function fixture() {
-  const admin = await registerAccount(db, 'owner@acme.test', 'pw-secret-1', { platformRole: 'admin' });
+  const admin = await registerAccount(db, 'owner@acme.test', 'Pw-secret-1', { platformRole: 'admin' });
   const project = await new ProjectRepository(db).create({ name: 'Acme Site', slug: 'acme-site' });
   const ownerCtx: ProjectContext = { userId: admin.userId, projectId: project.id, role: 'owner' };
   return { admin, project, ownerCtx };

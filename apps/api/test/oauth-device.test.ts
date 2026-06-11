@@ -18,7 +18,7 @@ beforeEach(async () => {
   db = await makeTestDb();
   oauth = new OAuthRepository(db);
   keys = new ApiKeyRepository(db);
-  const a = await registerAccount(db, 'a@acme.test', 'pw-secret-1');
+  const a = await registerAccount(db, 'a@acme.test', 'Pw-secret-1');
   const project = await new ProjectRepository(db).create({ name: 'A', slug: 'a' });
   await addProjectMember(db, a.userId, project.id, 'owner');
   pctx = { userId: a.userId, projectId: project.id, role: 'owner' };

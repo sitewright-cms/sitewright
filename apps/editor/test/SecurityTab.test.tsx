@@ -64,9 +64,9 @@ describe('SecurityTab (TOTP)', () => {
     render(<SecurityTab totpEnabled recoveryCodesRemaining={8} onChanged={onChanged} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Disable two-factor' }));
-    fireEvent.change(screen.getByLabelText('Current password'), { target: { value: 'pw-secret-1' } });
+    fireEvent.change(screen.getByLabelText('Current password'), { target: { value: 'Pw-secret-1' } });
     fireEvent.click(screen.getByRole('button', { name: 'Disable' }));
-    await waitFor(() => expect(mfaDisableTotp).toHaveBeenCalledWith('pw-secret-1'));
+    await waitFor(() => expect(mfaDisableTotp).toHaveBeenCalledWith('Pw-secret-1'));
     expect(onChanged).toHaveBeenCalled();
   });
 
@@ -75,9 +75,9 @@ describe('SecurityTab (TOTP)', () => {
     render(<SecurityTab totpEnabled recoveryCodesRemaining={8} onChanged={vi.fn()} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Regenerate recovery codes' }));
-    fireEvent.change(screen.getByLabelText('Current password'), { target: { value: 'pw-secret-1' } });
+    fireEvent.change(screen.getByLabelText('Current password'), { target: { value: 'Pw-secret-1' } });
     fireEvent.click(screen.getByRole('button', { name: 'Regenerate codes' }));
-    await waitFor(() => expect(mfaRegenerateRecoveryCodes).toHaveBeenCalledWith('pw-secret-1'));
+    await waitFor(() => expect(mfaRegenerateRecoveryCodes).toHaveBeenCalledWith('Pw-secret-1'));
     expect(await screen.findByText('ZZZZZ-YYYYY')).toBeInTheDocument();
   });
 

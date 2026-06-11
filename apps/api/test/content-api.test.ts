@@ -24,7 +24,7 @@ async function setup(email: string, slug = 'site') {
   const reg = await app.inject({
     method: 'POST',
     url: '/auth/register',
-    payload: { email, password: 'pw-secret-1' },
+    payload: { email, password: 'Pw-secret-1' },
   });
   const t = token(reg);
   const proj = await app.inject({
@@ -59,7 +59,7 @@ describe('content API', () => {
     expect((await app.inject({ method: 'PUT', url: `${base}/content/page/home`, cookies: { sw_session: t }, payload: editablePage })).statusCode).toBe(200);
 
     // A second user granted access to this project as a member.
-    const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'client@acme.test', password: 'pw-secret-1'} });
+    const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'client@acme.test', password: 'Pw-secret-1'} });
     const memberT = token(reg);
     const memberUserId = (reg.json() as { userId: string }).userId;
     await db.insert(projectMembers).values({ id: randomUUID(), userId: memberUserId, projectId, role: 'member', createdAt: new Date() });

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { makeHarness, sessionToken, type Harness } from './harness.js';
 
 const SESSION_COOKIE = 'sw_session';
-const PASSWORD = 'pw-secret-1';
+const PASSWORD = 'Pw-secret-1';
 
 describe('account management (/account/email, /account/password)', () => {
   let harness: Harness;
@@ -67,10 +67,10 @@ describe('account management (/account/email, /account/password)', () => {
     const email = `pw-${Date.now()}@test.local`;
     const client = await harness.signup({ email, password: PASSWORD });
 
-    const res = await client.put('/account/password', { currentPassword: PASSWORD, newPassword: 'new-pw-9876' });
+    const res = await client.put('/account/password', { currentPassword: PASSWORD, newPassword: 'New-pw-9876' });
     expect(res.statusCode).toBe(204);
 
-    const ok = await harness.app.inject({ method: 'POST', url: '/auth/login', payload: { email, password: 'new-pw-9876' } });
+    const ok = await harness.app.inject({ method: 'POST', url: '/auth/login', payload: { email, password: 'New-pw-9876' } });
     expect(ok.statusCode).toBe(200);
     const old = await harness.app.inject({ method: 'POST', url: '/auth/login', payload: { email, password: PASSWORD } });
     expect(old.statusCode).toBe(401);
@@ -78,13 +78,13 @@ describe('account management (/account/email, /account/password)', () => {
 
   it('rejects a password change with the wrong current password (403)', async () => {
     const client = await harness.signup({ password: PASSWORD });
-    const res = await client.put('/account/password', { currentPassword: 'nope', newPassword: 'new-pw-9876' });
+    const res = await client.put('/account/password', { currentPassword: 'nope', newPassword: 'New-pw-9876' });
     expect(res.statusCode).toBe(403);
   });
 
   it('rejects omitting the current password when the account already has one (no bypass)', async () => {
     const client = await harness.signup({ password: PASSWORD });
-    const res = await client.put('/account/password', { newPassword: 'new-pw-9876' });
+    const res = await client.put('/account/password', { newPassword: 'New-pw-9876' });
     expect(res.statusCode).toBe(403);
     // The original password still works.
     expect((await client.get('/me')).statusCode).toBe(200);
@@ -107,7 +107,7 @@ describe('account management (/account/email, /account/password)', () => {
     expect(me2Before.statusCode).toBe(200);
 
     // Change the password using the acting session.
-    const res = await acting.put('/account/password', { currentPassword: PASSWORD, newPassword: 'new-pw-9876' });
+    const res = await acting.put('/account/password', { currentPassword: PASSWORD, newPassword: 'New-pw-9876' });
     expect(res.statusCode).toBe(204);
 
     // The other session is gone; the acting one survives.
@@ -136,7 +136,7 @@ describe('account management (/account/email, /account/password)', () => {
     const auth = { authorization: 'Bearer swk_fake_token' };
     const e = await harness.app.inject({ method: 'PUT', url: '/account/email', headers: auth, payload: { email: 'x@test.local', currentPassword: PASSWORD } });
     expect(e.statusCode).toBe(403);
-    const p = await harness.app.inject({ method: 'PUT', url: '/account/password', headers: auth, payload: { currentPassword: PASSWORD, newPassword: 'new-pw-9876' } });
+    const p = await harness.app.inject({ method: 'PUT', url: '/account/password', headers: auth, payload: { currentPassword: PASSWORD, newPassword: 'New-pw-9876' } });
     expect(p.statusCode).toBe(403);
   });
 });

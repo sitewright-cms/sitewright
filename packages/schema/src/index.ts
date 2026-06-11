@@ -14,6 +14,7 @@ export * from './json-store.js';
 export * from './media.js';
 export * from './page.js';
 export * from './partial.js';
+export * from './password.js';
 export * from './pattern.js';
 export * from './project.js';
 export * from './snippet.js';

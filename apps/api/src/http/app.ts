@@ -18,7 +18,10 @@ import {
   migratePageStores,
   PageNodeSchema,
   InstanceSettingsInputSchema,
+  maskInstanceSettings,
+  type InstanceSettingsStored,
   DEFAULT_NEW_PROJECT_LOCALE,
+  passwordSchema,
   assertWithinTreeDepth,
   toPublicForm,
   websiteThemeClasses,
@@ -308,7 +311,8 @@ function validateSourceOnSave(kind: string, body: unknown): void {
 
 const RegisterBody = z.object({
   email: z.string().email(),
-  password: z.string().min(8).max(200),
+  // The shared account-password policy (length + character classes); see @sitewright/schema.
+  password: passwordSchema,
   // Accepted for backward compatibility with older clients but ignored — there is no org to name.
   orgName: z.string().min(1).max(120).optional(),
 });
@@ -326,7 +330,8 @@ const ChangePasswordBody = z.object({
   // Optional: required+verified when the account has a password; omitted to SET an initial password
   // for an OIDC-provisioned account that has none (the server enforces which applies).
   currentPassword: z.string().min(1).max(200).optional(),
-  newPassword: z.string().min(8).max(200),
+  // The new password must satisfy the shared account-password policy (same as registration).
+  newPassword: passwordSchema,
 });
 // MFA. `code` is a 6-digit TOTP OR a recovery code (XXXXX-XXXXX) at login step 2; just a TOTP at
 // enrolment-confirm. Kept loose (≤64) so the route logic — not zod — decides validity.
@@ -901,12 +906,21 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // Auth routes share a per-IP cap; defaults to 10/min (production), raisable for the E2E harness.
   const authRl = rl(opts.authRateMax ?? 10);
 
+  // Whether anyone may self-register, given a settings doc. The admin instance setting is authoritative
+  // once set; until then the deploy-time factory default (`opts.openRegistration` / SW_OPEN_REGISTRATION,
+  // else open) applies. Invited users register regardless of this (see the register route's invite fallback).
+  const resolveSelfRegistration = (stored: InstanceSettingsStored): boolean =>
+    stored.allowSelfRegistration ?? (opts.openRegistration ?? true);
+  async function selfRegistrationOpen(): Promise<boolean> {
+    return resolveSelfRegistration(await instanceSettingsRepo.getStored());
+  }
+
   app.post('/auth/register', { config: authRl }, async (req, reply) => {
     const body = RegisterBody.parse(req.body);
     // When registration is closed, it is invitation-only: only an email holding a pending invite
     // may register (then accept it). The instance admin is seeded out-of-band (seed.ts), never
     // registered, so closing this never locks the operator out.
-    if (!(opts.openRegistration ?? true) && !(await hasPendingInvite(db, body.email))) {
+    if (!(await selfRegistrationOpen()) && !(await hasPendingInvite(db, body.email))) {
       return reply.code(403).send({ error: 'registration is by invitation only' });
     }
     const { userId } = await registerAccount(db, body.email, body.password);
@@ -1187,7 +1201,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   };
 
   app.get('/auth/config', { config: rl(60) }, async (_req, reply) => {
-    return reply.send({ oidcProviders: await instanceSettingsRepo.listEnabledOidcProviders() });
+    // One read of the settings doc drives both the provider buttons and the self-registration flag.
+    const stored = await instanceSettingsRepo.getStored();
+    return reply.send({
+      oidcProviders: (stored.oidcProviders ?? []).filter((p) => p.enabled).map((p) => ({ id: p.id, label: p.label })),
+      // Tells the login screen whether to offer a "create account" option (invited users always can).
+      allowSelfRegistration: resolveSelfRegistration(stored),
+    });
   });
 
   // Step 1: build the IdP authorization URL, persist the single-use state, and redirect there.
@@ -1252,7 +1272,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // are encrypted at rest and never returned (the read view masks them).
   app.get('/admin/settings', { config: rl(30) }, async (req, reply) => {
     await requireInstanceAdmin(req);
-    return reply.send({ settings: await instanceSettingsRepo.getPublic() });
+    // Overlay the EFFECTIVE self-registration state so the admin toggle reflects reality even before
+    // it has been explicitly saved (it resolves the factory default when the setting is still unset).
+    // One read of the stored doc serves both the masked view and the resolved flag.
+    const stored = await instanceSettingsRepo.getStored();
+    return reply.send({
+      settings: { ...maskInstanceSettings(stored), allowSelfRegistration: resolveSelfRegistration(stored) },
+    });
   });
 
   app.put('/admin/settings', { config: rl(30) }, async (req, reply) => {

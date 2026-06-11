@@ -27,7 +27,7 @@ describe('OIDC single sign-on', () => {
 
   beforeEach(async () => {
     harness = await makeHarness({ encryptionKey: randomBytes(32), authRateMax: 500, adminEmails: ['admin@test.local'] });
-    admin = await harness.signup({ email: 'admin@test.local', password: 'pw-secret-1' });
+    admin = await harness.signup({ email: 'admin@test.local', password: 'Pw-secret-1' });
     // Configure one enabled provider (the secret is encrypted at rest).
     const res = await admin.put('/admin/settings', {
       oidcProviders: [{ id: 'acme', label: 'Acme SSO', issuer: ISSUER, clientId: 'client-1', clientSecret: 'shh', enabled: true }],
@@ -62,7 +62,7 @@ describe('OIDC single sign-on', () => {
   });
 
   it('signs in an EXISTING account by verified email and links the identity', async () => {
-    const user = await harness.signup({ email: 'member@test.local', password: 'pw-secret-1' });
+    const user = await harness.signup({ email: 'member@test.local', password: 'Pw-secret-1' });
     const res = await login({ sub: 'sub-1', email: 'member@test.local', emailVerified: true });
     expect(res.statusCode).toBe(302);
     expect(res.headers.location).toBe('/');
@@ -72,7 +72,7 @@ describe('OIDC single sign-on', () => {
   });
 
   it('re-logs in by the durable (issuer, subject) identity even if the IdP email changed', async () => {
-    await harness.signup({ email: 'member@test.local', password: 'pw-secret-1' });
+    await harness.signup({ email: 'member@test.local', password: 'Pw-secret-1' });
     await login({ sub: 'sub-1', email: 'member@test.local', emailVerified: true }); // first link
     // Second login: same sub, a DIFFERENT (unverified, unknown) email — still resolves via identity.
     const res = await login({ sub: 'sub-1', email: 'changed@elsewhere.test', emailVerified: false });
@@ -96,9 +96,9 @@ describe('OIDC single sign-on', () => {
     const res = await login({ sub: 'sub-pw', email: 'newpw@test.local', emailVerified: true });
     const token = sessionToken(res);
     expect((await harness.app.inject({ method: 'GET', url: '/me', cookies: { [SESSION_COOKIE]: token } })).json().hasPassword).toBe(false);
-    const set = await harness.app.inject({ method: 'PUT', url: '/account/password', cookies: { [SESSION_COOKIE]: token }, payload: { newPassword: 'fresh-pw-1234' } });
+    const set = await harness.app.inject({ method: 'PUT', url: '/account/password', cookies: { [SESSION_COOKIE]: token }, payload: { newPassword: 'Fresh-pw-1234' } });
     expect(set.statusCode).toBe(204);
-    const pw = await harness.app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'newpw@test.local', password: 'fresh-pw-1234' } });
+    const pw = await harness.app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'newpw@test.local', password: 'Fresh-pw-1234' } });
     expect(pw.statusCode).toBe(200);
   });
 
@@ -110,14 +110,14 @@ describe('OIDC single sign-on', () => {
   });
 
   it('rejects an unverified email (no linking/provisioning on email_verified=false)', async () => {
-    await harness.signup({ email: 'member@test.local', password: 'pw-secret-1' });
+    await harness.signup({ email: 'member@test.local', password: 'Pw-secret-1' });
     const res = await login({ sub: 'sub-4', email: 'member@test.local', emailVerified: false });
     expect(res.headers.location).toBe('/?oidc_error=email_unverified');
     expect(hasSessionCookie(res)).toBe(false);
   });
 
   it('gates TOTP on top: an OIDC sign-in for a TOTP-enabled user returns a ticket, not a session', async () => {
-    const user = await harness.signup({ email: 'mfa@test.local', password: 'pw-secret-1' });
+    const user = await harness.signup({ email: 'mfa@test.local', password: 'Pw-secret-1' });
     const { authenticator } = await import('otplib');
     const { secret } = (await user.post('/account/mfa/totp/setup')).json() as { secret: string };
     await user.post('/account/mfa/totp/confirm', { code: authenticator.generate(secret) });
@@ -137,7 +137,7 @@ describe('OIDC single sign-on', () => {
     expect(bad.headers.location).toBe('/?oidc_error=invalid_state');
 
     // Single-use: a valid state works once, then is rejected on replay.
-    await harness.signup({ email: 'member@test.local', password: 'pw-secret-1' });
+    await harness.signup({ email: 'member@test.local', password: 'Pw-secret-1' });
     const ok = await login({ sub: 'sub-6', email: 'member@test.local', emailVerified: true });
     expect(ok.statusCode).toBe(302);
     completeOidcAuth.mockResolvedValue({ iss: ISSUER, sub: 'sub-6', email: 'member@test.local', emailVerified: true });

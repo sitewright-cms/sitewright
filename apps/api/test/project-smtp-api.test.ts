@@ -24,7 +24,7 @@ beforeEach(async () => {
   db = await makeTestDb();
   app = await createApp({ db, encryptionKey: ENC_KEY });
   await app.ready();
-  const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'owner@acme.test', password: 'pw-secret-1'} });
+  const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'owner@acme.test', password: 'Pw-secret-1'} });
   t = token(reg);
   const proj = await app.inject({ method: 'POST', url: `/projects`, cookies: { sw_session: t }, payload: { name: 'Site', slug: 'site' } });
   projectId = (proj.json() as { project: { id: string } }).project.id;
@@ -70,7 +70,7 @@ describe('per-project SMTP API', () => {
   });
 
   it('lets a project member read and write SMTP (constrained client-write removed)', async () => {
-    const memberReg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'member@x.test', password: 'pw-secret-1'} });
+    const memberReg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'member@x.test', password: 'Pw-secret-1'} });
     const mt = token(memberReg);
     const mUser = (memberReg.json() as { userId: string }).userId;
     await db.insert(projectMembers).values({ id: randomUUID(), userId: mUser, projectId, role: 'member', createdAt: new Date() });
@@ -95,7 +95,7 @@ describe('per-project SMTP API with a host allowlist', () => {
     const adb = await makeTestDb();
     const app2 = await createApp({ db: adb, encryptionKey: ENC_KEY, smtpAllowedHosts: ['mail.allowed.com'] });
     await app2.ready();
-    const reg = await app2.inject({ method: 'POST', url: '/auth/register', payload: { email: 'o@a.test', password: 'pw-secret-1'} });
+    const reg = await app2.inject({ method: 'POST', url: '/auth/register', payload: { email: 'o@a.test', password: 'Pw-secret-1'} });
     const tok = token(reg);
     const proj = await app2.inject({ method: 'POST', url: `/projects`, cookies: { sw_session: tok }, payload: { name: 'S', slug: 's' } });
     const pid = (proj.json() as { project: { id: string } }).project.id;

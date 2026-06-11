@@ -108,7 +108,9 @@ export function AcceptInvite({ token, authed, onAuthed, onDone }: AcceptInvitePr
           You’ve been invited as <strong>{peek.email}</strong> {target}. Sign in or create an
           account with that email to accept.
         </div>
-        <Login onAuthed={onAuthed} />
+        {/* allowRegister: an invited user must be able to create their account even when the instance
+            has self-registration closed (the API permits registration for an email with a pending invite). */}
+        <Login onAuthed={onAuthed} allowRegister />
       </div>
     );
   }

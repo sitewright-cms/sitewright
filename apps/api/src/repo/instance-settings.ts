@@ -183,6 +183,11 @@ export class InstanceSettingsRepository {
       });
     }
 
+    // Self-registration: a boolean sets it; undefined keeps the stored value (which may itself be
+    // undefined → the route falls back to the deploy-time factory default).
+    const allowSelfRegistration = input.allowSelfRegistration ?? current.allowSelfRegistration;
+    if (allowSelfRegistration !== undefined) next.allowSelfRegistration = allowSelfRegistration;
+
     // Validate the merged document before persisting (defense in depth).
     const validated = InstanceSettingsStoredSchema.parse(next);
     const now = new Date();

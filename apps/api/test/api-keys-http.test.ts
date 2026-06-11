@@ -39,7 +39,7 @@ async function setup(email: string, slug = 'site') {
   const reg = await app.inject({
     method: 'POST',
     url: '/auth/register',
-    payload: { email, password: 'pw-secret-1' },
+    payload: { email, password: 'Pw-secret-1' },
   });
   const t = sessionCookie(reg);
   const proj = await app.inject({
@@ -332,7 +332,7 @@ describe('agent connections — list + disconnect', () => {
     const { projectId } = await setup('owner@acme.test');
     const base = `/projects/${projectId}`;
     // A second user, added as a plain member of the same project.
-    const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'member@acme.test', password: 'pw-secret-1' } });
+    const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'member@acme.test', password: 'Pw-secret-1' } });
     const memberCookie = sessionCookie(reg);
     const memberId = (reg.json() as { userId: string }).userId;
     await addProjectMember(db, memberId, projectId, 'member');

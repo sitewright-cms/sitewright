@@ -156,6 +156,25 @@ describe('InstanceSettings', () => {
     expect(screen.queryByRole('button', { name: 'Save settings' })).not.toBeInTheDocument();
   });
 
+  it('hydrates and saves the self-registration toggle', async () => {
+    getInstanceSettings.mockResolvedValue({ settings: { ...DEFAULTS, allowSelfRegistration: true } });
+    render(<InstanceSettings />);
+    const toggle = await screen.findByLabelText('Allow user self-registration');
+    expect(toggle).toBeChecked();
+    // Turn it off and save → the input carries the new boolean.
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(putInstanceSettings).toHaveBeenCalledTimes(1));
+    const body = putInstanceSettings.mock.calls[0]![0] as InstanceSettingsInput;
+    expect(body.allowSelfRegistration).toBe(false);
+  });
+
+  it('defaults the self-registration toggle to off when the flag is absent', async () => {
+    getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
+    render(<InstanceSettings />);
+    expect(await screen.findByLabelText('Allow user self-registration')).not.toBeChecked();
+  });
+
   it('adds an OIDC provider and saves it (with the typed secret) in oidcProviders', async () => {
     getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
     render(<InstanceSettings />);

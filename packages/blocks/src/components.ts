@@ -337,6 +337,40 @@ export function usedComponentTypes(root: PageNode): string[] {
 }
 
 /**
+ * `data-sw-component` attribute NAME → component block `type`. MUST stay in sync with the names
+ * `render.ts` emits (`data-sw-component="modal"` etc.). (`Accordion` is native `<details>`-only — no
+ * `data-sw-component` marker, no JS — so it is intentionally absent.)
+ */
+const COMPONENT_NAME_TO_TYPE: ReadonlyMap<string, string> = new Map([
+  ['carousel', 'Carousel'],
+  ['lightbox', 'Lightbox'],
+  ['modal', 'Modal'],
+  ['cookie-consent', 'CookieConsent'],
+  ['tabs', 'Tabs'],
+  ['form', 'Form'],
+]);
+
+const COMPONENT_MARKER_RE = /data-sw-component="([a-z-]+)"/g;
+
+/**
+ * The distinct component block types referenced by `data-sw-component="…"` markers in a rendered /
+ * CODE-FIRST Handlebars source string. Code-first pages render from `source` (their block tree is an
+ * empty stub), so {@link usedComponentTypes} can't see them — this string scan ships the component's
+ * CSS/JS the same way animations/lazyload/ripple are detected. Empty for component-free source.
+ */
+export function componentTypesInSource(html: string | null | undefined): string[] {
+  if (typeof html !== 'string' || html.length === 0) return [];
+  const seen = new Set<string>();
+  for (const match of html.matchAll(COMPONENT_MARKER_RE)) {
+    const name = match[1];
+    if (!name) continue;
+    const type = COMPONENT_NAME_TO_TYPE.get(name);
+    if (type) seen.add(type);
+  }
+  return [...seen];
+}
+
+/**
  * Bundles the CSS + JS for the given component types into single strings (deduped,
  * in stable registry order). Unknown types are ignored. Empty when none are used,
  * so callers ship nothing for sites that use no components.

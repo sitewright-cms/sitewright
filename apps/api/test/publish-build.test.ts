@@ -312,6 +312,29 @@ describe('buildSite', () => {
     expect(sheet).toMatch(/\.alert/);
   });
 
+  it('ships the component + dialog runtimes when a COMPOSED snippet authors a modal', async () => {
+    // The interactive component lives only in a {{> snippet}} partial — detection must scan the
+    // referenced-snippet surface (not just page sources), so its platform JS still ships.
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      snippets: {
+        promo:
+          '<div data-sw-component="modal"><button data-sw-part="open">Open</button>' +
+          '<dialog data-sw-part="dialog"><p>Hi</p></dialog></div>',
+      },
+      bundle: bundle({
+        pages: [{ id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<div>{{> promo}}</div>' }],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).toContain('data-sw-component="modal"'); // the snippet's component expanded into the page
+    expect(home).toContain('<script defer src="components.js"></script>');
+    expect(home).toContain('<script defer src="nav-link.js"></script>');
+    expect(await readFile(join(outDir, 'components.js'), 'utf8')).toContain('[data-sw-component="modal"]');
+    expect(await readFile(join(outDir, 'nav-link.js'), 'utf8')).toContain('scrollIntoView');
+  });
+
   it('ships classes only for snippets the site actually composes (an un-included one adds no weight)', async () => {
     await buildSite({
       publishedAt: '2026-05-29T00:00:00.000Z',

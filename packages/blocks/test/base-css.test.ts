@@ -62,9 +62,9 @@ describe('baseStyles — platform base stylesheet', () => {
       );
       const fxBranch = css.slice(css.indexOf('@supports not selector(::-webkit-scrollbar)'));
       expect(fxBranch).toContain('scrollbar-width: thin;');
-      expect(fxBranch).toContain('scrollbar-color: color-mix(in srgb, var(--sw-color-primary, #4f46e5) 55%, transparent) transparent;');
-      // regression guard: the thin/coloured STANDARD props must NOT be in the webkit
-      // branch (only the `auto` reset is) — else they re-disable the pseudos in Chrome.
+      expect(fxBranch).toContain('scrollbar-color: color-mix(in srgb, var(--sw-color-primary, #4f46e5) 70%, transparent) transparent;');
+      // regression guard: the STANDARD props must NOT be in the webkit branch (only
+      // the `auto` reset is) — else they re-disable the pseudos in Chrome.
       expect(webkitBranch).not.toContain('scrollbar-width: thin');
       expect(webkitBranch).not.toContain('scrollbar-color: color-mix');
     });
@@ -73,24 +73,26 @@ describe('baseStyles — platform base stylesheet', () => {
       expect(css).toContain('html:root { scrollbar-color: auto; scrollbar-width: auto; }');
     });
 
-    it('is thin, brand-coloured and arrow-less', () => {
-      expect(css).toContain('*::-webkit-scrollbar { width: 11px; height: 11px; }');
-      expect(css).toContain('*::-webkit-scrollbar-track { background: transparent; }');
-      // no stepper arrows
+    it('hides the track completely (scrollbar element + every track part transparent) and has no arrows', () => {
+      expect(css).toContain('*::-webkit-scrollbar { width: 10px; height: 10px; background: transparent; }');
+      expect(css).toContain('*::-webkit-scrollbar-track,\n  *::-webkit-scrollbar-track-piece,\n  *::-webkit-scrollbar-corner { background: transparent; }');
       expect(css).toContain('*::-webkit-scrollbar-button { width: 0; height: 0; display: none; }');
     });
 
-    it('thumb uses the brand primary and thickens on hover / focus / drag', () => {
-      expect(css).toContain('var(--sw-color-primary, #4f46e5)');
-      expect(css).toMatch(/scrollbar-thumb:active/);
-      expect(css).toMatch(/:hover::-webkit-scrollbar-thumb/);
-      // scoped to the focused scrollable element itself, NOT :focus-within (which
-      // would propagate to ancestors and widen the page scrollbar on any input focus)
-      expect(css).toMatch(/:focus::-webkit-scrollbar-thumb/);
-      expect(css).not.toMatch(/:focus-within::-webkit-scrollbar-thumb/);
-      // constant track width + transparent border = widens thumb without reflow
-      expect(css).toContain('border: 3.5px solid transparent;');
-      expect(css).toContain('background-clip: padding-box;');
+    it('thumb is the brand primary at 70% opacity, full primary while grabbed, full-width (no inset track)', () => {
+      // 70% at rest
+      expect(css).toContain('background-color: color-mix(in srgb, var(--sw-color-primary, #4f46e5) 70%, transparent);');
+      // 100% while grabbed
+      expect(css).toMatch(/::-webkit-scrollbar-thumb:active \{\s*background-color: var\(--sw-color-primary, #4f46e5\);/);
+      // full-width thumb — NO inset border / padding-box channel
+      const webkitBranch = css.slice(
+        css.indexOf('@supports selector(::-webkit-scrollbar)'),
+        css.indexOf('@supports not selector(::-webkit-scrollbar)'),
+      );
+      expect(webkitBranch).not.toContain('background-clip: padding-box');
+      expect(webkitBranch).not.toMatch(/border: 3\.5px solid transparent/);
+      // no hover/focus widening states anymore (opacity-only, grab-driven)
+      expect(webkitBranch).not.toMatch(/:hover::-webkit-scrollbar-thumb/);
     });
   });
 });

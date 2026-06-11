@@ -759,9 +759,19 @@ describe('renderPage / renderDocument', () => {
     expect(head).toContain('*::-webkit-scrollbar-button { width: 0; height: 0; display: none; }');
     // ...and comes BEFORE the brand vars + skeleton body rule (so they override it).
     expect(head.indexOf('@layer sw-normalize')).toBeLessThan(head.indexOf('--sw-color-primary'));
-    // Target the SKELETON body rule (preview-css emits `body{margin:0;font-family:…`),
+    // Target the SKELETON body rule (preview-css emits `body{margin:0;min-height:…`),
     // not the typography block's `body{font-family:…` that comes last.
-    expect(head.indexOf('@layer sw-normalize')).toBeLessThan(head.indexOf('body{margin:0;font-family:var(--sw-font-body'));
+    expect(head.indexOf('@layer sw-normalize')).toBeLessThan(head.indexOf('body{margin:0;min-height:100vh'));
+  });
+
+  it('lays the page out as a sticky-footer flex column (no page background under the footer)', () => {
+    const doc = renderDocument(page, { brand });
+    const head = doc.slice(0, doc.indexOf('</head>'));
+    // full-height flex column body + a growing main → footer pinned to the bottom
+    expect(head).toContain('min-height:100dvh;display:flex;flex-direction:column');
+    expect(head).toContain('#page-content{flex:1 0 auto}');
+    // and the element it targets is always emitted
+    expect(doc).toContain('<main id="page-content">');
   });
 
   it('injects the heading/body typography as the LAST head style (wins over preflight resets)', () => {

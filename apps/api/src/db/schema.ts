@@ -90,6 +90,73 @@ export const sessions = sqliteTable('sessions', {
 });
 
 /**
+ * A user's TOTP (authenticator-app) second factor — at most one row per user. The shared secret is
+ * stored ENCRYPTED at rest (AES-256-GCM envelope via crypto/secret.ts) because it must be recoverable
+ * to verify codes, so it cannot be hashed. `confirmedAt` is null between setup and the first valid
+ * code: an UNCONFIRMED secret never gates login, so a half-finished enrolment can never lock anyone
+ * out. Deleting the row disables TOTP.
+ */
+export const userMfaTotp = sqliteTable('user_mfa_totp', {
+  userId: text('user_id')
+    .primaryKey()
+    .references(() => users.id),
+  /** The CONFIRMED secret (EncryptedSecret JSON) — null until the first confirm / after disable. */
+  secret: text('secret', { mode: 'json' }).$type<{ iv: string; ct: string; tag: string }>(),
+  /**
+   * An in-progress enrolment secret, not yet confirmed (null when none pending). Kept SEPARATE from
+   * `secret` so re-enrolling never tears down the live factor — the new secret only replaces the old
+   * one atomically at confirm.
+   */
+  pendingSecret: text('pending_secret', { mode: 'json' }).$type<{ iv: string; ct: string; tag: string }>(),
+  /**
+   * The most recently accepted TOTP step (floor(epoch/30) ± window). A code at or below this step is
+   * rejected as a replay, so an intercepted code can't be reused inside its ±90s validity window
+   * (RFC 6238 §5.2).
+   */
+  lastUsedStep: integer('last_used_step'),
+  confirmedAt: integer('confirmed_at', { mode: 'timestamp_ms' }),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+});
+
+/**
+ * One-time recovery codes — the break-glass path when the authenticator app is lost. Only the
+ * SHA-256 of each code is stored (the plaintext set is shown once at generation). A code is
+ * single-use: `usedAt` is stamped on redemption and a used code never verifies again.
+ */
+export const userMfaRecoveryCodes = sqliteTable(
+  'user_mfa_recovery_codes',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id),
+    codeHash: text('code_hash').notNull(),
+    usedAt: integer('used_at', { mode: 'timestamp_ms' }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [index('user_mfa_recovery_user_idx').on(t.userId)],
+);
+
+/**
+ * Short-lived, single-use handle bridging login step 1 (password/passkey verified) and step 2 (TOTP
+ * code). The row id is the SHA-256 of the raw ticket — the raw value is returned to the client once
+ * and never stored. It carries NO session authority: only the right to attempt the second factor for
+ * `userId` until it expires (~5 min) or is consumed. Issued only AFTER the first factor passed.
+ */
+export const mfaLoginTickets = sqliteTable(
+  'mfa_login_tickets',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id),
+    expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [index('mfa_login_tickets_expires_idx').on(t.expiresAt)],
+);
+
+/**
  * Capabilities a project API key may carry. They NARROW access below the key's
  * role — a key's effective permission is `role ∩ capabilities`, never more than
  * its role. `content:delete` gates DESTRUCTIVE removes (pages, content entities,

@@ -266,6 +266,41 @@ describe('api client', () => {
     expect(JSON.parse(init.body)).toEqual({ currentPassword: 'pw-secret-1', newPassword: 'new-pw-9876' });
   });
 
+  it('drives the TOTP two-factor endpoints (login step 2 + setup/confirm/disable/regenerate)', async () => {
+    // Login step 2.
+    fetchMock.mockResolvedValue(jsonResponse(200, { userId: 'u' }));
+    await api.loginTotp('tkt-1', '123456');
+    let [url, init] = fetchMock.mock.calls.at(-1)!;
+    expect(url).toBe('/auth/login/totp');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body)).toEqual({ ticket: 'tkt-1', code: '123456' });
+
+    // Begin enrolment.
+    fetchMock.mockResolvedValue(jsonResponse(200, { secret: 'S', otpauthUri: 'otpauth://totp/x' }));
+    expect((await api.mfaSetupTotp()).secret).toBe('S');
+    expect(fetchMock.mock.calls.at(-1)![0]).toBe('/account/mfa/totp/setup');
+
+    // Confirm → recovery codes.
+    fetchMock.mockResolvedValue(jsonResponse(200, { recoveryCodes: ['A-B'] }));
+    expect((await api.mfaConfirmTotp('123456')).recoveryCodes).toEqual(['A-B']);
+    [url, init] = fetchMock.mock.calls.at(-1)!;
+    expect(url).toBe('/account/mfa/totp/confirm');
+    expect(JSON.parse(init.body)).toEqual({ code: '123456' });
+
+    // Disable (DELETE with a password body).
+    fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
+    expect(await api.mfaDisableTotp('pw-secret-1')).toBeUndefined();
+    [url, init] = fetchMock.mock.calls.at(-1)!;
+    expect(url).toBe('/account/mfa/totp');
+    expect(init.method).toBe('DELETE');
+    expect(JSON.parse(init.body)).toEqual({ currentPassword: 'pw-secret-1' });
+
+    // Regenerate recovery codes.
+    fetchMock.mockResolvedValue(jsonResponse(200, { recoveryCodes: ['C-D'] }));
+    expect((await api.mfaRegenerateRecoveryCodes('pw-secret-1')).recoveryCodes).toEqual(['C-D']);
+    expect(fetchMock.mock.calls.at(-1)![0]).toBe('/account/mfa/recovery-codes');
+  });
+
   it('lists and removes platform-staff via the admin routes', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { members: [] }));
     await api.listMembers();

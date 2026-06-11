@@ -47,6 +47,7 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
   // The signed-in user's email (from /me), surfaced in the header user menu. The user-menu modal is
   // toggled by the person icon next to the settings gear.
   const [email, setEmail] = useState('');
+  const [totpEnabled, setTotpEnabled] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [tab, setTab] = useState<Tab>('pages');
   // The project picker is shown automatically on first load and reachable from the header.
@@ -67,6 +68,7 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
     }
     setIsInstanceAdmin(false);
     setEmail('');
+    setTotpEnabled(false);
     setStage({ name: 'auth' });
   }
 
@@ -76,6 +78,7 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
       setProjects(me.projects);
       setIsInstanceAdmin(me.isInstanceAdmin);
       setEmail(me.email);
+      setTotpEnabled(me.totpEnabled);
       // First successful load with no project open → show the selector automatically.
       setStage((s) => (s.name === 'project' ? s : { name: 'home' }));
       return me.projects;
@@ -279,8 +282,10 @@ function MainApp({ inviteToken: initialInviteToken }: { inviteToken: string | nu
         <UserMenu
           email={email}
           project={inProject}
+          totpEnabled={totpEnabled}
           onClose={() => setUserMenuOpen(false)}
           onEmailChanged={setEmail}
+          onMfaChanged={() => void refresh()}
         />
       )}
       {/* Always-present edge side-panels (owners): System Library (left), File Manager (right), and

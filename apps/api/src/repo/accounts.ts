@@ -83,6 +83,19 @@ export async function getUserEmail(db: Database, userId: string): Promise<string
 }
 
 /**
+ * Re-authenticates the signed-in user by password (for security-weakening actions like disabling MFA
+ * or rotating recovery codes). Derives a hash even when the user is missing, to keep timing uniform.
+ */
+export async function verifyUserPassword(db: Database, userId: string, password: string): Promise<boolean> {
+  const [user] = await db.select({ passwordHash: users.passwordHash }).from(users).where(eq(users.id, userId));
+  if (!user) {
+    await hashPassword(password);
+    return false;
+  }
+  return verifyPassword(password, user.passwordHash);
+}
+
+/**
  * Changes the signed-in user's login email. Re-authenticates with the current password (a logged-in
  * session alone must not be enough to change the credential), normalizes + uniqueness-checks the new
  * email, and returns the stored (normalized) value. A wrong current password is a {@link

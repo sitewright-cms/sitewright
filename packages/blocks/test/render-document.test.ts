@@ -1,0 +1,45 @@
+import { describe, expect, it } from 'vitest';
+import type { Brand, Page } from '@sitewright/schema';
+import { renderDocument } from '../src/render.js';
+
+// Minimal code-first page (the block tree was retired in #250; `root` stays a
+// required stub on the Page type, `bodyHtml` carries the rendered body).
+const page = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' } } as Page;
+const brand = { name: 'Acme', colors: { primary: '#0a7' } } as Brand;
+
+describe('renderDocument — document shell', () => {
+  it('returns a full, brand-themed HTML document wrapping bodyHtml in <main>', () => {
+    const doc = renderDocument(page, { brand, bodyHtml: '<h1>Hi</h1>' });
+    expect(doc.startsWith('<!doctype html>')).toBe(true);
+    expect(doc).toContain('--sw-color-primary: #0a7;');
+    expect(doc).toContain('<main id="page-content"><h1>Hi</h1></main>');
+    expect(doc).toContain('</html>');
+  });
+
+  it('prepends the base layer (modern-normalize + platform defaults) ahead of the skeleton', () => {
+    const doc = renderDocument(page, { brand });
+    const head = doc.slice(0, doc.indexOf('</head>'));
+    expect(head).toContain('@layer sw-normalize {');
+    expect(head).toContain(':is(nav, [role="navigation"]) a, .menu a, .btn { text-decoration: inherit; }');
+    expect(head).toContain('*::-webkit-scrollbar-button { width: 0; height: 0; display: none; }');
+    // base layer comes BEFORE the brand vars + skeleton body rule (so they override it)
+    expect(head.indexOf('@layer sw-normalize')).toBeLessThan(head.indexOf('--sw-color-primary'));
+    expect(head.indexOf('@layer sw-normalize')).toBeLessThan(head.indexOf('body{margin:0;min-height:100vh'));
+  });
+
+  it('lays the page out as a sticky-footer flex column (no page background under the footer)', () => {
+    const doc = renderDocument(page, { brand });
+    const head = doc.slice(0, doc.indexOf('</head>'));
+    // full-height flex column body + a growing main → footer pinned to the bottom
+    expect(head).toContain('min-height:100dvh;display:flex;flex-direction:column');
+    expect(head).toContain('#page-content{flex:1 0 auto}');
+    expect(doc).toContain('<main id="page-content">');
+  });
+
+  it('scrollbar thumb is the brand primary at 70% / 100% on grab, with no visible track', () => {
+    const doc = renderDocument(page, { brand });
+    const head = doc.slice(0, doc.indexOf('</head>'));
+    expect(head).toContain('background-color: color-mix(in srgb, var(--sw-color-primary, #4f46e5) 70%, transparent);');
+    expect(head).toContain('*::-webkit-scrollbar { width: 10px; height: 10px; background: transparent; }');
+  });
+});

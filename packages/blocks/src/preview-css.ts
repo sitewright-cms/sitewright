@@ -9,7 +9,12 @@
 // duplicate/conflicting rules. The `body` font/colour/background remain skeleton
 // concerns (brand-themed) and stay.
 const PREVIEW_CSS = `
-body{margin:0;font-family:var(--sw-font-body,ui-sans-serif,system-ui,sans-serif);color:var(--sw-color-base-content,#0f172a);background:var(--sw-color-base-100,#ffffff);line-height:1.5}
+body{margin:0;min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;align-items:stretch;font-family:var(--sw-font-body,ui-sans-serif,system-ui,sans-serif);color:var(--sw-color-base-content,#0f172a);background:var(--sw-color-base-100,#ffffff);line-height:1.5}
+/* Sticky footer: the page body is a full-height flex column and the main content
+   region grows, so the footer always sits at the bottom — short pages no longer
+   leave the page background showing below the footer. (#page-content is the
+   platform-owned <main>; the slot landmarks stack around it.) */
+#page-content{flex:1 0 auto}
 [data-sw-block="Section"]{width:100%;padding:3rem 1.5rem}
 [data-sw-block="Section"][data-tone="surface"]{background:var(--sw-color-base-100,#ffffff);color:var(--sw-color-base-content,#0f172a)}
 [data-sw-block="Section"][data-tone="primary"]{background:var(--sw-color-primary,#0ea5e9);color:#ffffff}

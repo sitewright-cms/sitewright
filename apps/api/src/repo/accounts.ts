@@ -82,6 +82,69 @@ export async function getUserEmail(db: Database, userId: string): Promise<string
   return user?.email ?? null;
 }
 
+/**
+ * Changes the signed-in user's login email. Re-authenticates with the current password (a logged-in
+ * session alone must not be enough to change the credential), normalizes + uniqueness-checks the new
+ * email, and returns the stored (normalized) value. A wrong current password is a {@link
+ * ForbiddenError} (403) — NOT 401 — so the editor doesn't mistake it for an expired session and log
+ * the user out mid-edit. Changing to your own current email is a no-op success.
+ */
+export async function changeEmail(
+  db: Database,
+  userId: string,
+  newEmail: string,
+  currentPassword: string,
+): Promise<{ email: string }> {
+  const [user] = await db.select().from(users).where(eq(users.id, userId));
+  if (!user) {
+    // The userId comes from a validated session, so this only happens if the account was deleted
+    // mid-session — but derive a hash anyway to keep timing uniform with the wrong-password path
+    // (mirrors login()).
+    await hashPassword(currentPassword);
+    throw new UnauthorizedError('authentication required');
+  }
+  if (!(await verifyPassword(currentPassword, user.passwordHash))) {
+    throw new ForbiddenError('current password is incorrect');
+  }
+  const normalizedEmail = newEmail.trim().toLowerCase();
+  if (normalizedEmail === user.email) return { email: user.email };
+  const existing = await db.select({ id: users.id }).from(users).where(eq(users.email, normalizedEmail));
+  if (existing.length > 0) throw new ConflictError('email already registered');
+  try {
+    await db.update(users).set({ email: normalizedEmail }).where(eq(users.id, userId));
+  } catch (err) {
+    // The pre-check is racy (two concurrent changes to the same email); the UNIQUE(email) constraint
+    // is the real guard — map its violation to a clean 409 rather than a raw 500.
+    if (isUniqueViolation(err)) throw new ConflictError('email already registered');
+    throw err;
+  }
+  return { email: normalizedEmail };
+}
+
+/**
+ * Changes the signed-in user's password after re-authenticating with the current one. Returns
+ * nothing; the caller is responsible for revoking the user's OTHER sessions (a stolen session
+ * shouldn't survive a password change). A wrong current password is a {@link ForbiddenError} (403),
+ * for the same no-logout reason as {@link changeEmail}.
+ */
+export async function changePassword(
+  db: Database,
+  userId: string,
+  currentPassword: string,
+  newPassword: string,
+): Promise<void> {
+  const [user] = await db.select().from(users).where(eq(users.id, userId));
+  if (!user) {
+    await hashPassword(currentPassword); // timing parity with the wrong-password path (see changeEmail)
+    throw new UnauthorizedError('authentication required');
+  }
+  if (!(await verifyPassword(currentPassword, user.passwordHash))) {
+    throw new ForbiddenError('current password is incorrect');
+  }
+  const passwordHash = await hashPassword(newPassword);
+  await db.update(users).set({ passwordHash }).where(eq(users.id, userId));
+}
+
 /** The user's platform-staff role (`admin`/`developer`), or null for a client. */
 export async function getPlatformRole(db: Database, userId: string): Promise<PlatformRole | null> {
   const [u] = await db.select({ role: users.platformRole }).from(users).where(eq(users.id, userId));

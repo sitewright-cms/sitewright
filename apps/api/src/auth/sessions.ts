@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { and, eq, ne } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
 import { sessions } from '../db/schema.js';
 
@@ -46,4 +46,16 @@ export async function validateSession(
 /** Revokes a session (logout). No-op if the token is unknown. */
 export async function revokeSession(db: Database, token: string): Promise<void> {
   await db.delete(sessions).where(eq(sessions.id, tokenId(token)));
+}
+
+/**
+ * Revokes every OTHER session for a user, keeping only the one matching `keepToken`. Called after a
+ * password change so a stolen/leftover session elsewhere is cut off while the acting browser stays
+ * signed in. If `keepToken` is unknown (e.g. its row already expired), this simply revokes all of the
+ * user's sessions — fail safe.
+ */
+export async function revokeOtherSessions(db: Database, userId: string, keepToken: string): Promise<void> {
+  await db
+    .delete(sessions)
+    .where(and(eq(sessions.userId, userId), ne(sessions.id, tokenId(keepToken))));
 }

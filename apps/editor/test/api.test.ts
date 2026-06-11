@@ -240,12 +240,30 @@ describe('api client', () => {
     expect(fetchMock.mock.calls[0]![1].method).toBe('DELETE');
   });
 
-  it('GETs the current user (flat shape)', async () => {
+  it('GETs the current user (flat shape, incl. email)', async () => {
     fetchMock.mockResolvedValue(
-      jsonResponse(200, { userId: 'u', platformRole: null, isInstanceAdmin: false, projects: [] }),
+      jsonResponse(200, { userId: 'u', email: 'u@acme.test', platformRole: null, isInstanceAdmin: false, projects: [] }),
     );
-    expect(await api.me()).toEqual({ userId: 'u', platformRole: null, isInstanceAdmin: false, projects: [] });
+    expect(await api.me()).toEqual({ userId: 'u', email: 'u@acme.test', platformRole: null, isInstanceAdmin: false, projects: [] });
     expect(fetchMock.mock.calls[0]![0]).toBe('/me');
+  });
+
+  it('changes account email + password via the session-only /account routes', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { email: 'new@acme.test' }));
+    const res = await api.updateEmail('new@acme.test', 'pw-secret-1');
+    expect(res).toEqual({ email: 'new@acme.test' });
+    let [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe('/account/email');
+    expect(init.method).toBe('PUT');
+    expect(init.credentials).toBe('include');
+    expect(JSON.parse(init.body)).toEqual({ email: 'new@acme.test', currentPassword: 'pw-secret-1' });
+
+    fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
+    expect(await api.changePassword('pw-secret-1', 'new-pw-9876')).toBeUndefined();
+    [url, init] = fetchMock.mock.calls[1]!;
+    expect(url).toBe('/account/password');
+    expect(init.method).toBe('PUT');
+    expect(JSON.parse(init.body)).toEqual({ currentPassword: 'pw-secret-1', newPassword: 'new-pw-9876' });
   });
 
   it('lists and removes platform-staff via the admin routes', async () => {

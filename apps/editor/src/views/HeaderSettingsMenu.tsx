@@ -22,7 +22,6 @@ interface HeaderSettingsMenuProps {
   onSystemSettings: () => void;
   onClients: () => void;
   onTeam: () => void;
-  onAccess: () => void;
   onSignOut: () => void;
 }
 
@@ -40,7 +39,6 @@ export function HeaderSettingsMenu({
   onSystemSettings,
   onClients,
   onTeam,
-  onAccess,
   onSignOut,
 }: HeaderSettingsMenuProps) {
   const [open, setOpen] = useState(false);
@@ -69,8 +67,9 @@ export function HeaderSettingsMenu({
   }, [open]);
 
   const owner = inProject && !isClient;
-  // In project order: Publish & Deploy, System Settings, Clients, Team, Access — each gated — then
-  // a divider and the always-present Sign out (one flat list so arrow-key focus crosses the rule).
+  // In project order: Publish & Deploy, System Settings, Clients, Team — each gated — then a divider
+  // and the always-present Sign out (one flat list so arrow-key focus crosses the rule). Access keys
+  // moved to the user/account menu (the person icon next to this gear).
   const items: { label: string; onClick: () => void; dividerBefore?: boolean }[] = [
     ...(
       [
@@ -79,7 +78,6 @@ export function HeaderSettingsMenu({
         { label: 'Clients', onClick: onClients, show: owner },
         // Team manages the instance-wide platform team via admin-only APIs (/admin/users) — admins only.
         { label: 'Team', onClick: onTeam, show: isInstanceAdmin },
-        { label: 'Access', onClick: onAccess, show: owner },
       ] as { label: string; onClick: () => void; show: boolean }[]
     )
       .filter((i) => i.show)

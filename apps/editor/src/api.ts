@@ -289,10 +289,17 @@ export const api = {
   me: () =>
     request<{
       userId: string;
+      email: string;
       platformRole: PlatformRole;
       isInstanceAdmin: boolean;
       projects: Project[];
     }>('GET', '/me'),
+  // Self-service account management (the header user menu). Both re-authenticate with the
+  // current password server-side; a wrong password surfaces as a 403 ApiError (not a logout).
+  updateEmail: (email: string, currentPassword: string) =>
+    request<{ email: string }>('PUT', '/account/email', { email, currentPassword }),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    request<void>('PUT', '/account/password', { currentPassword, newPassword }),
   version: () =>
     request<{ current: string; latest: string | null; updateAvailable: boolean; releaseUrl: string | null }>(
       'GET',

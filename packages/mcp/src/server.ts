@@ -10,7 +10,6 @@ const GENERIC_KIND = z.enum([
   'page',
   'partial',
   'template',
-  'pattern',
   'translation',
   'dataset',
   'entry',

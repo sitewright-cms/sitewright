@@ -1,6 +1,5 @@
-// Mirrors apps/render-app/src/blocks/props.ts:safeUrl. Kept here so the shared
-// renderer is self-contained; Phase F converges the Astro renderer onto this
-// package and removes the duplicate.
+// URL allowlisting/rebasing for the renderer (the single source of truth now that
+// the legacy Astro renderer is gone).
 
 // Allow absolute http(s) URLs, the benign `mailto:`/`tel:`/`sms:` handlers (so nav
 // placeholders + author links can use them), root-relative paths, fragment links, and

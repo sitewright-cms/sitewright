@@ -1,6 +1,5 @@
-// Mirrors apps/render-app/src/lib/brand-css.ts. Kept here so the shared renderer
-// can produce a brand-themed preview document on its own; Phase F converges the
-// Astro renderer onto this package and removes the duplicate.
+// Brand tokens → CSS custom properties for the rendered document (the single source
+// of truth now that the legacy Astro renderer is gone).
 import type { BrandTokens } from '@sitewright/schema';
 
 // Defense-in-depth: brand token keys/values are already schema-validated, but we

@@ -12,7 +12,6 @@ import type {
   MediaFolderRecord,
   Page,
   PageTranslation,
-  Pattern,
   ProjectSettings,
   SmtpInput,
   SmtpPublic,
@@ -500,14 +499,6 @@ export const api = {
   putGlobalTemplate: (template: Template) =>
     request<{ item: Template }>('PUT', `/admin/global/template/${encodeURIComponent(template.id)}`, template),
   deleteGlobalTemplate: (id: string) => request<void>('DELETE', `/admin/global/template/${encodeURIComponent(id)}`),
-
-  // --- patterns (reusable, fork-on-insert block subtrees) ---
-  listPatterns: (projectId: string) =>
-    request<{ items: Pattern[] }>('GET', `/projects/${projectId}/content/pattern`),
-  putPattern: (projectId: string, pattern: Pattern) =>
-    request<{ item: Pattern }>('PUT', `/projects/${projectId}/content/pattern/${pattern.id}`, pattern),
-  deletePattern: (projectId: string, id: string) =>
-    request<void>('DELETE', `/projects/${projectId}/content/pattern/${id}`),
 
   // --- project settings singleton (Corporate Identity + website + locales) ---
   getSettings: (projectId: string) =>

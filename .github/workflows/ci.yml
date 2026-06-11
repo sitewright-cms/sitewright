@@ -72,7 +72,7 @@ jobs:
       - name: Lint
         run: pnpm lint
 
-      # Build before test: the render-app integration test asserts on built output.
+      # Build before test: some integration tests assert on built output.
       - name: Build
         run: pnpm build
 

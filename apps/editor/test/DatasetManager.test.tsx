@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import type { Dataset, Entry } from '@sitewright/schema';
 import type { Project } from '../src/api';
 
@@ -92,5 +92,58 @@ describe('DatasetManager', () => {
     await waitFor(() =>
       expect(putEntry.mock.calls.filter(([, e]) => e.dataset === 'alpha-copy')).toHaveLength(2),
     );
+  });
+
+  async function openRename() {
+    await renderAndSelectAlpha();
+    fireEvent.click(screen.getByRole('button', { name: /schema/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Rename dataset' }));
+    return within(screen.getByRole('dialog', { name: /Rename/ }));
+  }
+
+  it('renames a dataset NAME only — updates the row in place, no entry migration', async () => {
+    const dlg = await openRename();
+    fireEvent.change(dlg.getByLabelText('Dataset name'), { target: { value: 'Alpha Renamed' } });
+    fireEvent.click(dlg.getByRole('button', { name: /^Save$/ }));
+    await waitFor(() =>
+      expect(putDataset).toHaveBeenCalledWith(
+        'p',
+        expect.objectContaining({ id: 'alpha', slug: 'alpha', name: 'Alpha Renamed' }),
+      ),
+    );
+    expect(putEntry).not.toHaveBeenCalled();
+    expect(deleteDataset).not.toHaveBeenCalled();
+  });
+
+  it('migrates the SLUG: creates the new dataset, re-points entries (same ids), deletes the old', async () => {
+    const dlg = await openRename();
+    fireEvent.change(dlg.getByLabelText('Dataset slug'), { target: { value: 'articles' } });
+    // The migration warning appears once the slug changes.
+    expect(dlg.getByText(/re-points all/)).toBeInTheDocument();
+    fireEvent.click(dlg.getByRole('button', { name: /^Save$/ }));
+
+    await waitFor(() =>
+      expect(putDataset).toHaveBeenCalledWith(
+        'p',
+        expect.objectContaining({ id: 'articles', slug: 'articles', name: 'Alpha' }),
+      ),
+    );
+    await waitFor(() => {
+      const repointed = putEntry.mock.calls.filter(([, e]) => e.dataset === 'articles');
+      expect(repointed).toHaveLength(2);
+      // Entry ids are PRESERVED across the migration (only the dataset segment changes).
+      expect(repointed.map(([, e]) => e.id).sort()).toEqual(['e1', 'e2']);
+    });
+    await waitFor(() => expect(deleteDataset).toHaveBeenCalledWith('p', 'alpha'));
+  });
+
+  it('aborts the slug migration if an entry re-point fails — the old dataset is NOT deleted', async () => {
+    const dlg = await openRename();
+    putEntry.mockRejectedValueOnce(new Error('boom')); // one re-point fails
+    fireEvent.change(dlg.getByLabelText('Dataset slug'), { target: { value: 'articles' } });
+    fireEvent.click(dlg.getByRole('button', { name: /^Save$/ }));
+    // The error surfaces in the modal and the old dataset row survives (no data loss).
+    await waitFor(() => expect(dlg.getByText(/boom/)).toBeInTheDocument());
+    expect(deleteDataset).not.toHaveBeenCalled();
   });
 });

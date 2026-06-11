@@ -21,6 +21,7 @@ import { iconBody } from './icons.js';
 import { brandIcon } from './brand-icons.js';
 import { flagIcon } from './flag-icons.js';
 import { resolveDirectives } from './directives.js';
+import { selectFolderAssets, projectFolderItem, type FolderKind, type RenderMedia } from './folder.js';
 
 /** Thrown for an unsafe interpolation context, a Handlebars compile error, or a render error. */
 export class TemplateError extends Error {
@@ -78,6 +79,8 @@ export interface TemplateContext {
   partials?: Record<string, string>;
   /** Auto-built navigation menus per slot — `{{#each nav.header}}…{{/each}}` (the skeleton slots + page source). */
   nav?: Record<string, unknown>;
+  /** Project media (slim projection) for `{{#sw-folder "path"}}` — image galleries / file lists. */
+  media?: readonly RenderMedia[];
   /**
    * PREVIEW render flag for the `data-sw-*` directive pass: keep the marker attributes so the editor
    * bridge can make leaves click-to-edit. Absent on PUBLISH (markers are stripped).
@@ -469,6 +472,35 @@ function createInstance(): typeof Handlebars {
     // Not a dataset → the stock #each (handles objects, iterables, empty {{else}}, @key, etc.).
     return (builtinEach as (...a: unknown[]) => unknown).apply(this, args);
   });
+
+  // {{#sw-folder "path" kind="image|file|all" recursive=false sort="name|name-desc"}}…{{else}}…{{/sw-folder}}
+  // Iterates a project MEDIA FOLDER (images by default), filed under "path" — a subfolder path like
+  // "documents/projectA", or a variable (e.g. `{{#sw-folder page.data.gallery_folder}}`). Each iteration
+  // binds the asset as `this` (url/filename/kind/alt/width/height) plus @index/@first/@last; an empty
+  // folder routes to {{else}}. Server-render only (plain <img>/<a>); media comes from the render context.
+  hb.registerHelper('sw-folder', function swFolder(this: unknown, ...args: unknown[]) {
+    const options = args[args.length - 1] as Handlebars.HelperOptions;
+    const hash = (options.hash ?? {}) as Record<string, unknown>;
+    const root = (options.data?.root ?? {}) as { media?: readonly RenderMedia[] };
+    const assets = selectFolderAssets(Array.isArray(root.media) ? root.media : [], args[0], {
+      kind: hash.kind === 'file' || hash.kind === 'all' ? (hash.kind as FolderKind) : 'image',
+      recursive: hash.recursive === true,
+      sort: hash.sort === 'name-desc' ? 'name-desc' : 'name',
+    });
+    if (assets.length === 0) return typeof options.inverse === 'function' ? options.inverse(this) : '';
+    let out = '';
+    for (let i = 0; i < assets.length; i += 1) {
+      // eslint-disable-next-line security/detect-object-injection -- i is a bounded loop index
+      const item = projectFolderItem(assets[i]!);
+      const frame = Handlebars.createFrame(options.data ?? {});
+      frame.index = i;
+      frame.first = i === 0;
+      frame.last = i === assets.length - 1;
+      out += options.fn(item, { data: frame, blockParams: [item, i] });
+    }
+    return new Handlebars.SafeString(out);
+  });
+
   return hb;
 }
 
@@ -538,7 +570,7 @@ export function renderTemplate(source: string, ctx: TemplateContext = {}, opts: 
   // cannot smuggle a <script>/handler/unsafe-context past the main-template check.
   if (ctx.partials) for (const partialSource of Object.values(ctx.partials)) validateTemplate(partialSource);
   const template = compileCached(source);
-  const data = { company: ctx.company, website: ctx.website, page: ctx.page, parentPage: ctx.parentPage, data: ctx.data, item: ctx.item, nav: ctx.nav, markEntries: ctx.markEntries };
+  const data = { company: ctx.company, website: ctx.website, page: ctx.page, parentPage: ctx.parentPage, data: ctx.data, item: ctx.item, nav: ctx.nav, media: ctx.media, markEntries: ctx.markEntries };
   let html: string;
   try {
     html = template(data, {

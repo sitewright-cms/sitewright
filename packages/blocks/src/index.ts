@@ -14,6 +14,7 @@ export * from './components.js';
 export * from './props.js';
 export * from './vars.js';
 export * from './template.js';
+export * from './folder.js';
 export * from './brand-css.js';
 export * from './descriptors.js';
 export * from './preview-css.js';

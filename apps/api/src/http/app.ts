@@ -58,6 +58,7 @@ import {
   resolveShopChannels,
   validateTemplate,
   TemplateError,
+  mediaForRender,
 } from '@sitewright/blocks';
 import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
 import { optimizeImage } from '@sitewright/image-pipeline';
@@ -1554,6 +1555,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // with no own source/template follows its translation-group owner's) and, below, for
       // the per-locale nav / translations / parent views.
       const allSavedPages = (await contentRepo.list(ctx, 'page')).map(migratePageStores) as Page[];
+      // Project media, listed once per preview: the FULL list powers optimized <picture> below; the
+      // SLIM projection (renderMedia) feeds {{#sw-folder}} galleries in the page render + the slots.
+      const media = mediaStorage ? ((await contentRepo.list(ctx, 'media')) as MediaAsset[]) : [];
+      const renderMedia = mediaForRender(media);
+      // Bound the slim media against the same IPC ceiling as data/children/parent (it rides the same
+      // worker payload). Slim entries are tiny, so only a pathological asset count would trip this.
+      if (JSON.stringify(renderMedia).length > 4 * 1024 * 1024) {
+        return reply.code(413).send({ error: 'project media is too large to render' });
+      }
       // A code-first page (own `source`/`template`) OR an inherit-mode locale variant that
       // resolves its owner's code previews through the worker; the variant supplies only its
       // own page.data, so it shows the main language's layout with its translated content.
@@ -1657,6 +1667,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             // PREVIEW-only: the dataset-aware {{#each}} wraps each entry row in a data-sw-entry marker
             // so a click opens that entry's editor. Always body-safe (wraps the loop body) → no gate needed.
             markEntries: true,
+            media: renderMedia,
           });
           // Slots render through the SAME isolated worker; a broken slot is skipped here
           // (publish still hard-validates it) so it can never break the page preview. No
@@ -1670,6 +1681,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             parentPage: previewParent,
             data: localeData,
             nav: slotNav as unknown as Record<string, unknown>,
+            media: renderMedia,
           };
           // Each slot reuses slotCtx (which carries `sourceData`) over IPC; that payload is already
           // bounded by the page-render size guard above, and the pool (capped workers + queue depth)
@@ -1716,8 +1728,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         }
       }
 
-      // Media powers optimized <picture> in the preview too, via the API-served URLs.
-      const media = mediaStorage ? ((await contentRepo.list(ctx, 'media')) as MediaAsset[]) : [];
+      // (`media` is listed once above — it powers optimized <picture> here AND {{#sw-folder}} in the render.)
       // Auto-nav from the saved pages so Nav blocks render their menu in preview
       // (WYSIWYG parity with publish; an unsaved new page isn't in its own nav yet).
       // Drafts are excluded from nav here too, matching the published output; the menu

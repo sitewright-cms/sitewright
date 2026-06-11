@@ -32,6 +32,11 @@ In \`source\`:
   for collections. Inside the loop an entry's fields are read
   DIRECTLY by name — {{title}}, {{price}} (no \`values.\` prefix) — and each row is click-to-edit
   in the editor. The entry's id/dataset are on {{@entry.id}} / {{@entry.dataset}}.
+- IMAGE GALLERIES / file lists: loop a MEDIA FOLDER with
+  {{#sw-folder "folder" [kind="image|file|all"] [recursive=false] [sort="name|name-desc"]}}…{{else}}…{{/sw-folder}}
+  (images by default). The folder may be a subfolder ("products/2024") or a variable. Each iteration
+  binds {{url}} {{alt}} {{filename}} {{kind}} {{width}} {{height}} (+ {{@index}}/{{@first}}/{{@last}});
+  bind the src with {{sw-url url}}. e.g. {{#sw-folder "gallery"}}<img src="{{sw-url url}}" alt="{{alt}}" loading="lazy">{{/sw-folder}}.
 - Mark text a CLIENT may later edit by adding data-sw-text="key" to a real element, e.g.
   <h1 data-sw-text="headline">Default text</h1> (rich text: data-sw-html; image: data-sw-src;
   link: data-sw-href; background: data-sw-bg). The override is stored on the page as page.data.<key>.

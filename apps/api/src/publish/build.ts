@@ -52,6 +52,7 @@ import {
   CART_CSS,
   CART_JS,
   resolveShopChannels,
+  mediaForRender,
 } from '@sitewright/blocks';
 import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
 import { companyToOrganization } from './company-seo.js';
@@ -530,6 +531,9 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
             : undefined,
           data: localeData as Record<string, unknown>,
           nav: navForPage as unknown as Record<string, unknown>,
+          // Project media (slim) for {{#sw-folder}} galleries/file lists. Asset `url`s (`/media/<slug>/…`)
+          // are rebased to the bundled `_assets/…` by the media rewrite below — portable in the export.
+          media: mediaForRender(media),
         };
         let bodyHtml: string | undefined;
         if (pageSource) {

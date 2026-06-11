@@ -168,6 +168,29 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         note: 'The cart is FRONT-END only (localStorage) — it sends an order inquiry, not a charge. The runtime ships only on pages that use the shop.',
       },
       {
+        id: 'h-folder',
+        syntax: '{{#sw-folder "path" [kind="image|file|all"] [recursive=false] [sort="name|name-desc"]}}…{{else}}…{{/sw-folder}}',
+        name: 'sw-folder',
+        keywords: 'gallery images media folder files iterate loop assets photos',
+        description:
+          'Loops the media files in a FOLDER (images by default) — for galleries and file lists. The "path" is a folder from the Files manager (a subfolder like "products/2024" works), or a variable (e.g. a value a client set in page data). Each iteration binds the asset as the context: {{url}}, {{alt}}, {{filename}}, {{kind}}, {{width}}, {{height}}, plus {{@index}}/{{@first}}/{{@last}}. An empty folder renders the {{else}} block.',
+        args: [
+          { name: 'path', desc: 'The media folder to iterate (e.g. "gallery" or "docs/2024"). May be a variable like page.data.gallery_folder.' },
+          { name: 'kind', desc: 'Optional — "image" (default), "file" (non-image uploads), or "all".' },
+          { name: 'recursive', desc: 'Optional — true to include subfolders (default false).' },
+          { name: 'sort', desc: 'Optional — "name" (default, A→Z) or "name-desc".' },
+        ],
+        example:
+          '<div class="grid grid-cols-3 gap-3">\n' +
+          '  {{#sw-folder "gallery"}}\n' +
+          '    <img src="{{sw-url url}}" alt="{{alt}}" width="{{width}}" height="{{height}}" loading="lazy">\n' +
+          '  {{else}}\n' +
+          '    <p>No images yet.</p>\n' +
+          '  {{/sw-folder}}\n' +
+          '</div>',
+        note: 'Bind the image src with {{sw-url url}} (a raw {{url}} in src/href is rejected). Upload + organize files in the Files manager — the preview reflects the folder immediately, and publish bakes the images into the static output.',
+      },
+      {
         id: 'h-lookup',
         syntax: '{{lookup obj key}}',
         name: 'lookup',

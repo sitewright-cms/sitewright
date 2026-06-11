@@ -15,6 +15,7 @@ import { brandIcon } from './brand-icons.js';
 import { flagIcon } from './flag-icons.js';
 import { metaTags, schemaOrgJsonLd, type SeoMeta, type SchemaOrgInfo } from './head.js';
 import { brandToCss } from './brand-css.js';
+import { baseStyles } from './base-css.js';
 import { previewStyles } from './preview-css.js';
 import { typographyCss, type FontAsset } from './typography-css.js';
 
@@ -691,7 +692,9 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     ...ctx
   } = opts;
   const body = bodyHtml ?? renderPage(page, ctx);
-  const css = `${previewStyles()}\n${brandToCss(brand)}`;
+  // Base layer (modern-normalize + platform defaults) FIRST so the skeleton, brand
+  // vars, author criticalCss and the unlayered Tailwind utilities all override it.
+  const css = `${baseStyles()}\n${previewStyles()}\n${brandToCss(brand)}`;
   // Self-hosted fonts ride in `ctx.media` as `kind:'font'` assets; their `@font-face` urls reuse the
   // media URL resolver (which the publish HTML-rewrite rebases to `_assets/<id>/<file>`).
   const fontAssets = (ctx.media ?? []).filter((m): m is FontAsset => m.kind === 'font');

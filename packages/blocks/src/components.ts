@@ -25,7 +25,9 @@ export interface ComponentAsset {
 // fallback never shows inert controls. Respects prefers-reduced-motion.
 const CAROUSEL_CSS = [
   '[data-sw-block="Carousel"]{position:relative}',
-  '[data-sw-block="Carousel"] [data-sw-part="track"]{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scroll-behavior:smooth;-webkit-overflow-scrolling:touch}',
+  // `scrollbar-width:none` hides it in Firefox (the base layer otherwise gives every
+  // element `scrollbar-width:thin`); the ::-webkit rule hides it in Chrome/Safari.
+  '[data-sw-block="Carousel"] [data-sw-part="track"]{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scroll-behavior:smooth;-webkit-overflow-scrolling:touch;scrollbar-width:none}',
   '[data-sw-block="Carousel"] [data-sw-part="track"]::-webkit-scrollbar{display:none}',
   '[data-sw-block="Carousel"] [data-sw-part="slide"]{flex:0 0 100%;scroll-snap-align:start;min-width:0}',
   '[data-sw-block="Carousel"] [data-sw-part="slide"] img{display:block;width:100%;height:auto}',

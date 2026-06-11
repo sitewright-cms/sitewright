@@ -750,6 +750,20 @@ describe('renderPage / renderDocument', () => {
     expect(doc).toContain('</html>');
   });
 
+  it('prepends the base layer (modern-normalize + platform defaults) ahead of the skeleton', () => {
+    const doc = renderDocument(page, { brand });
+    const head = doc.slice(0, doc.indexOf('</head>'));
+    // base layer is present...
+    expect(head).toContain('@layer sw-normalize {');
+    expect(head).toContain(':is(nav, [role="navigation"]) a, .btn { text-decoration: inherit; }');
+    expect(head).toContain('*::-webkit-scrollbar-button { width: 0; height: 0; display: none; }');
+    // ...and comes BEFORE the brand vars + skeleton body rule (so they override it).
+    expect(head.indexOf('@layer sw-normalize')).toBeLessThan(head.indexOf('--sw-color-primary'));
+    // Target the SKELETON body rule (preview-css emits `body{margin:0;font-family:…`),
+    // not the typography block's `body{font-family:…` that comes last.
+    expect(head.indexOf('@layer sw-normalize')).toBeLessThan(head.indexOf('body{margin:0;font-family:var(--sw-font-body'));
+  });
+
   it('injects the heading/body typography as the LAST head style (wins over preflight resets)', () => {
     const doc = renderDocument(page, {
       brand: { ...brand, typography: { fontFamilies: {}, heading: { source: 'system', family: 'serif', weight: 700 } } },

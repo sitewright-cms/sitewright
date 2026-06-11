@@ -4,10 +4,12 @@
 // project's `--sw-*` brand variables, so the preview re-themes with the brand
 // and never needs Tailwind at runtime (CSP-friendly: pure inline CSS, no JS).
 
+// NOTE: the box-sizing reset and `a{color:inherit}` now live in the shared base
+// layer (base-css.ts, prepended ahead of this skeleton); kept out of here to avoid
+// duplicate/conflicting rules. The `body` font/colour/background remain skeleton
+// concerns (brand-themed) and stay.
 const PREVIEW_CSS = `
-*,*::before,*::after{box-sizing:border-box}
 body{margin:0;font-family:var(--sw-font-body,ui-sans-serif,system-ui,sans-serif);color:var(--sw-color-base-content,#0f172a);background:var(--sw-color-base-100,#ffffff);line-height:1.5}
-a{color:inherit}
 [data-sw-block="Section"]{width:100%;padding:3rem 1.5rem}
 [data-sw-block="Section"][data-tone="surface"]{background:var(--sw-color-base-100,#ffffff);color:var(--sw-color-base-content,#0f172a)}
 [data-sw-block="Section"][data-tone="primary"]{background:var(--sw-color-primary,#0ea5e9);color:#ffffff}

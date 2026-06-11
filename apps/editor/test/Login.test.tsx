@@ -1,11 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
-const { login, register, loginTotp } = vi.hoisted(() => ({
+const { login, register, loginTotp, passkeyLoginOptions, passkeyLoginVerify } = vi.hoisted(() => ({
   login: vi.fn(),
   register: vi.fn(),
   loginTotp: vi.fn(),
+  passkeyLoginOptions: vi.fn(),
+  passkeyLoginVerify: vi.fn(),
 }));
+const { startAuthentication, browserSupportsWebAuthn } = vi.hoisted(() => ({ startAuthentication: vi.fn(), browserSupportsWebAuthn: vi.fn(() => true) }));
 vi.mock('../src/api', async () => {
   const actual = await vi.importActual<typeof import('../src/api')>('../src/api');
   return {
@@ -14,16 +17,21 @@ vi.mock('../src/api', async () => {
       login: (e: string, p: string) => login(e, p),
       register: (e: string, p: string) => register(e, p),
       loginTotp: (t: string, c: string) => loginTotp(t, c),
+      passkeyLoginOptions: () => passkeyLoginOptions(),
+      passkeyLoginVerify: (h: string, r: unknown) => passkeyLoginVerify(h, r),
     },
   };
 });
+vi.mock('@simplewebauthn/browser', () => ({
+  startAuthentication: (o: unknown) => startAuthentication(o),
+  browserSupportsWebAuthn: () => browserSupportsWebAuthn(),
+}));
 
 import { Login } from '../src/views/Login';
 
 beforeEach(() => {
-  login.mockReset();
-  register.mockReset();
-  loginTotp.mockReset();
+  for (const m of [login, register, loginTotp, passkeyLoginOptions, passkeyLoginVerify, startAuthentication]) m.mockReset();
+  browserSupportsWebAuthn.mockReturnValue(true);
 });
 
 async function fillCredsAndSubmit() {
@@ -84,5 +92,34 @@ describe('Login', () => {
     expect(await screen.findByText('invalid code')).toBeInTheDocument();
     // Still on the code step.
     expect(screen.getByLabelText('Authentication code')).toBeInTheDocument();
+  });
+
+  it('signs in with a passkey (no TOTP) → onAuthed', async () => {
+    passkeyLoginOptions.mockResolvedValue({ options: { challenge: 'c' }, handle: 'pk-h' });
+    startAuthentication.mockResolvedValue({ id: 'cred-1' });
+    passkeyLoginVerify.mockResolvedValue({ userId: 'u' });
+    const onAuthed = vi.fn();
+    render(<Login onAuthed={onAuthed} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in with a passkey' }));
+    await waitFor(() => expect(startAuthentication).toHaveBeenCalledWith({ optionsJSON: { challenge: 'c' } }));
+    await waitFor(() => expect(passkeyLoginVerify).toHaveBeenCalledWith('pk-h', { id: 'cred-1' }));
+    await waitFor(() => expect(onAuthed).toHaveBeenCalled());
+  });
+
+  it('routes a TOTP-gated passkey login into the code step', async () => {
+    passkeyLoginOptions.mockResolvedValue({ options: { challenge: 'c' }, handle: 'pk-h' });
+    startAuthentication.mockResolvedValue({ id: 'cred-1' });
+    passkeyLoginVerify.mockResolvedValue({ mfaRequired: true, ticket: 'tkt-pk' });
+    loginTotp.mockResolvedValue({ userId: 'u' });
+    const onAuthed = vi.fn();
+    render(<Login onAuthed={onAuthed} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in with a passkey' }));
+
+    const codeField = await screen.findByLabelText('Authentication code');
+    expect(onAuthed).not.toHaveBeenCalled();
+    fireEvent.change(codeField, { target: { value: '123456' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Verify' }));
+    await waitFor(() => expect(loginTotp).toHaveBeenCalledWith('tkt-pk', '123456'));
+    expect(onAuthed).toHaveBeenCalled();
   });
 });

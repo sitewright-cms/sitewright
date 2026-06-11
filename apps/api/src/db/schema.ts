@@ -157,6 +157,55 @@ export const mfaLoginTickets = sqliteTable(
 );
 
 /**
+ * A registered passkey (WebAuthn credential) — an alternative first factor. One row per credential;
+ * a user may have several. The credential id and COSE public key are non-secret (base64url); the
+ * private key never leaves the authenticator. `counter` is the signature counter (clone-detection);
+ * `transports`/`deviceType`/`backedUp` are hints surfaced from registration.
+ */
+export const userPasskeys = sqliteTable(
+  'user_passkeys',
+  {
+    /** The WebAuthn credential id (base64url) — the credential's unique handle. */
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id),
+    /** COSE public key, base64url-encoded (non-secret). */
+    publicKey: text('public_key').notNull(),
+    /** Signature counter; only ever advances (a regression signals a cloned authenticator). */
+    counter: integer('counter').notNull(),
+    transports: text('transports', { mode: 'json' }).$type<string[]>(),
+    /** `singleDevice` | `multiDevice` (a synced/backed-up passkey) — a registration hint. */
+    deviceType: text('device_type'),
+    backedUp: integer('backed_up', { mode: 'boolean' }).notNull(),
+    /** User-facing label, e.g. "MacBook Touch ID". */
+    name: text('name').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    lastUsedAt: integer('last_used_at', { mode: 'timestamp_ms' }),
+  },
+  (t) => [index('user_passkeys_user_idx').on(t.userId)],
+);
+
+/**
+ * A short-lived WebAuthn challenge bridging an options request and its verify. The row id is an
+ * opaque handle returned to the client and presented back at verify. `userId` is null for
+ * usernameless authentication (the credential — and thus the user — is only known once the
+ * authenticator responds). Single-use: consumed at verify; expired rows are pruned (~5 min).
+ */
+export const webauthnChallenges = sqliteTable(
+  'webauthn_challenges',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id'),
+    challenge: text('challenge').notNull(),
+    type: text('type', { enum: ['reg', 'auth'] }).notNull(),
+    expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [index('webauthn_challenges_expires_idx').on(t.expiresAt)],
+);
+
+/**
  * Capabilities a project API key may carry. They NARROW access below the key's
  * role — a key's effective permission is `role ∩ capabilities`, never more than
  * its role. `content:delete` gates DESTRUCTIVE removes (pages, content entities,

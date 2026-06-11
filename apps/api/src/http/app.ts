@@ -131,6 +131,17 @@ import {
   verifyUserPassword,
 } from '../repo/accounts.js';
 import { MfaError, MfaRepository } from '../repo/mfa.js';
+import { PasskeyRepository } from '../repo/passkeys.js';
+import {
+  authenticationOptions,
+  encodePublicKey,
+  registrationOptions,
+  resolveRp,
+  verifyAuthentication,
+  verifyRegistration,
+  type RpConfig,
+} from '../auth/webauthn.js';
+import type { AuthenticationResponseJSON, RegistrationResponseJSON } from '@simplewebauthn/server';
 import {
   acceptInvite,
   createInvite,
@@ -310,6 +321,14 @@ const LoginTotpBody = z.object({
 });
 const MfaCodeBody = z.object({ code: z.string().min(1).max(64) });
 const MfaPasswordBody = z.object({ currentPassword: z.string().min(1).max(200) });
+// WebAuthn. The browser-produced credential response is a structured JSON object; the server-side
+// verify does the real cryptographic validation, so the body is accepted permissively and cast.
+const WebAuthnResponse = z.object({ id: z.string().min(1) }).passthrough();
+const PasskeyRegisterVerifyBody = z.object({ handle: z.string().min(1).max(200), response: WebAuthnResponse, name: z.string().trim().min(1).max(80) });
+const PasskeyRenameBody = z.object({ name: z.string().trim().min(1).max(80) });
+const PasskeyAuthVerifyBody = z.object({ handle: z.string().min(1).max(200), response: WebAuthnResponse });
+/** Upper bound on passkeys per user (prevents unbounded credential accumulation from one session). */
+const MAX_PASSKEYS_PER_USER = 20;
 const AiGenerateBody = z.object({
   instruction: z.string().min(1).max(4000),
   target: z.enum(['blocks', 'copy']).default('copy'),
@@ -451,6 +470,13 @@ export interface AppOptions {
   trustProxy?: boolean | string | string[];
   /** 32-byte key for encrypting stored secrets (saved deploy-target passwords). */
   encryptionKey?: Buffer;
+  /**
+   * WebAuthn Relying Party overrides. By default the rpID is the request host (without port) and the
+   * origin is scheme + host — correct for direct connections. Behind a proxy where the public host
+   * differs, set these explicitly (SW_WEBAUTHN_RP_ID / SW_WEBAUTHN_ORIGIN).
+   */
+  webauthnRpId?: string;
+  webauthnOrigin?: string;
   /** When set, deploy targets are restricted to these exact hostnames (SaaS SSRF guard). */
   deployAllowedHosts?: string[];
   /** When set, per-project SMTP hosts are restricted to these exact hostnames (SaaS SSRF guard). */
@@ -527,6 +553,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // TOTP second factor: the shared secret is encrypted at rest under the operator's key (same key as
   // instance secrets) — so TOTP enrolment/verification is unavailable (503) when no key is configured.
   const mfaRepo = new MfaRepository(db, opts.encryptionKey);
+  // Passkeys (WebAuthn). The Relying Party is resolved per-request from the host (overridable via
+  // opts) — passkeys bind to that rpID, so they don't transfer across deploy hosts.
+  const passkeyRepo = new PasskeyRepository(db);
+  const rpFor = (req: FastifyRequest): RpConfig =>
+    resolveRp(req.headers.host, req.protocol, { rpID: opts.webauthnRpId, origin: opts.webauthnOrigin });
   const submissionsRepo = new SubmissionRepository(db);
   const mailer = opts.mailer ?? new GlobalSmtpMailer(instanceSettingsRepo);
   const projectMailer = opts.projectMailer ?? new ProjectSmtpMailer(db, instanceSettingsRepo, opts.encryptionKey);
@@ -996,6 +1027,108 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     if (!(await mfaRepo.isTotpEnabled(userId))) throw new MfaError('two-factor authentication is not enabled');
     const recoveryCodes = await mfaRepo.regenerateRecoveryCodes(userId);
     return reply.send({ recoveryCodes });
+  });
+
+  // ---- Passkeys (WebAuthn) management (user menu → Security tab) — session-only ----
+
+  // Begin registering a new passkey: returns the creation options + an opaque challenge `handle` the
+  // client echoes back at verify. The challenge is bound to this user.
+  app.post('/account/passkeys/register/options', { config: authRl }, async (req, reply) => {
+    const userId = await requireAccountSession(req);
+    const email = await getUserEmail(db, userId);
+    if (!email) throw new UnauthorizedError('authentication required');
+    const existing = await passkeyRepo.credentialsForUser(userId);
+    // Cap per-user passkeys so a session can't accumulate them without bound.
+    if (existing.length >= MAX_PASSKEYS_PER_USER) throw new ConflictError(`you can register at most ${MAX_PASSKEYS_PER_USER} passkeys`);
+    const options = await registrationOptions({ rp: rpFor(req), userId, userName: email, existing });
+    const handle = await passkeyRepo.createChallenge('reg', options.challenge, userId);
+    return reply.send({ options, handle });
+  });
+
+  // Finish registration: verify the attestation against the stored challenge and persist the credential.
+  app.post('/account/passkeys/register/verify', { config: authRl }, async (req, reply) => {
+    const userId = await requireAccountSession(req);
+    const body = PasskeyRegisterVerifyBody.parse(req.body);
+    const ch = await passkeyRepo.consumeChallenge(body.handle, 'reg');
+    // The challenge must exist, be unexpired, and have been issued to THIS user.
+    if (!ch || ch.userId !== userId) throw new UnauthorizedError('passkey registration expired — please try again');
+    let verification;
+    try {
+      verification = await verifyRegistration({ rp: rpFor(req), response: body.response as unknown as RegistrationResponseJSON, expectedChallenge: ch.challenge });
+    } catch {
+      throw new ForbiddenError('could not verify this passkey');
+    }
+    if (!verification.verified || !verification.registrationInfo) throw new ForbiddenError('could not verify this passkey');
+    const { credential, credentialDeviceType, credentialBackedUp } = verification.registrationInfo;
+    await passkeyRepo.create({
+      id: credential.id,
+      userId,
+      publicKey: encodePublicKey(credential.publicKey),
+      counter: credential.counter,
+      transports: credential.transports,
+      deviceType: credentialDeviceType,
+      backedUp: credentialBackedUp,
+      name: body.name,
+    });
+    return reply.code(201).send({ id: credential.id, name: body.name });
+  });
+
+  app.get('/account/passkeys', { config: rl(30) }, async (req, reply) => {
+    const userId = await requireAccountSession(req);
+    return reply.send({ items: await passkeyRepo.listForUser(userId) });
+  });
+
+  app.patch('/account/passkeys/:id', { config: authRl }, async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
+    const userId = await requireAccountSession(req);
+    const { name } = PasskeyRenameBody.parse(req.body);
+    if (!(await passkeyRepo.rename(userId, req.params.id, name))) throw new NotFoundError('passkey not found');
+    return reply.code(204).send();
+  });
+
+  app.delete('/account/passkeys/:id', { config: authRl }, async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
+    const userId = await requireAccountSession(req);
+    if (!(await passkeyRepo.remove(userId, req.params.id))) throw new NotFoundError('passkey not found');
+    return reply.code(204).send();
+  });
+
+  // ---- Passwordless passkey login (no session) ----
+
+  // Usernameless: returns authentication options for a DISCOVERABLE credential + a challenge handle.
+  // No user is named, so there is no account-existence oracle.
+  app.post('/auth/passkey/options', { config: authRl }, async (req, reply) => {
+    const options = await authenticationOptions({ rp: rpFor(req), allow: [] });
+    const handle = await passkeyRepo.createChallenge('auth', options.challenge, null);
+    return reply.send({ options, handle });
+  });
+
+  // Verify the assertion. The credential identifies the user; on success we either issue a session or,
+  // if that user also has TOTP, hand back an MFA ticket — TOTP gates on TOP of a passkey (by design).
+  app.post('/auth/passkey/verify', { config: authRl }, async (req, reply) => {
+    const body = PasskeyAuthVerifyBody.parse(req.body);
+    const ch = await passkeyRepo.consumeChallenge(body.handle, 'auth');
+    if (!ch) throw new UnauthorizedError('passkey sign-in expired — please try again');
+    const credId = (body.response as { id: string }).id;
+    const passkey = await passkeyRepo.getById(credId);
+    if (!passkey) throw new UnauthorizedError('unrecognized passkey');
+    let verification;
+    try {
+      verification = await verifyAuthentication({
+        rp: rpFor(req),
+        response: body.response as unknown as AuthenticationResponseJSON,
+        expectedChallenge: ch.challenge,
+        credential: { id: credId, publicKey: passkey.publicKey, counter: passkey.counter, transports: passkey.transports },
+      });
+    } catch {
+      throw new UnauthorizedError('passkey verification failed');
+    }
+    if (!verification.verified) throw new UnauthorizedError('passkey verification failed');
+    await passkeyRepo.recordUse(credId, verification.authenticationInfo.newCounter);
+    if (await mfaRepo.isTotpEnabled(passkey.userId)) {
+      const ticket = await mfaRepo.createLoginTicket(passkey.userId);
+      return reply.send({ mfaRequired: true, ticket });
+    }
+    await issueSessionCookie(reply, passkey.userId);
+    return reply.send({ userId: passkey.userId });
   });
 
   // ---- Instance admin settings (global mail / hCaptcha / enabled form modes) ----

@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from 'react';
+import { browserSupportsWebAuthn, startAuthentication } from '@simplewebauthn/browser';
 import { api, ApiError } from '../api';
 import { BrandMark } from './ui/BrandMark';
-import { glassCard, glassInput, primaryButton } from '../theme';
+import { ghostButton, glassCard, glassInput, primaryButton } from '../theme';
 
 interface LoginProps {
   onAuthed: () => void;
@@ -54,6 +55,28 @@ export function Login({ onAuthed }: LoginProps) {
       onAuthed();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'something went wrong');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function signInWithPasskey() {
+    setError(null);
+    setBusy(true);
+    try {
+      const { options, handle } = await api.passkeyLoginOptions();
+      const response = await startAuthentication({ optionsJSON: options });
+      const res = await api.passkeyLoginVerify(handle, response);
+      if ('mfaRequired' in res) {
+        // A passkey is the first factor; this account also requires TOTP on top.
+        setTicket(res.ticket);
+        setCode('');
+        setUseRecovery(false);
+      } else {
+        onAuthed();
+      }
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Passkey sign-in was cancelled or didn’t complete.');
     } finally {
       setBusy(false);
     }
@@ -142,6 +165,11 @@ export function Login({ onAuthed }: LoginProps) {
                 {mode === 'register' ? 'Create account' : 'Sign in'}
               </button>
             </form>
+            {mode === 'login' && browserSupportsWebAuthn() && (
+              <button type="button" disabled={busy} onClick={() => void signInWithPasskey()} className={`${ghostButton} mt-3 w-full`}>
+                Sign in with a passkey
+              </button>
+            )}
             <button
               className="mt-4 text-sm text-slate-500 hover:text-slate-900"
               onClick={() => {

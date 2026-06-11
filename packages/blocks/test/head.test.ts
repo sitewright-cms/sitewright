@@ -12,7 +12,7 @@ describe('metaTags', () => {
   });
 
   it('uses summary_large_image when an og image is present', () => {
-    expect(metaTags({ title: 'T', ogImage: 'https://x.io/og.png' })).toContain(
+    expect(metaTags({ title: 'T', image: 'https://x.io/og.png' })).toContain(
       'name="twitter:card" content="summary_large_image"',
     );
   });
@@ -21,7 +21,7 @@ describe('metaTags', () => {
     const html = metaTags({
       title: 'T',
       description: 'A site',
-      ogImage: 'https://x.io/og.png',
+      image: 'https://x.io/og.png',
       url: 'https://x.io/',
     });
     expect(html).toContain('name="description" content="A site"');

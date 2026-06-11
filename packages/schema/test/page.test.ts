@@ -75,6 +75,42 @@ describe('PageSchema', () => {
     expect(d.data).toEqual({ x: 'plain' });
   });
 
+  it('migrates the RETIRED page.seo object onto flat page fields (ogImage→image, title dropped)', () => {
+    const node = { id: 'r', type: 'Section' };
+    // The whole seo object flattens: description/canonical/noindex keep their names, ogImage→image,
+    // and the retired seo.title is DROPPED (the page title is the only title now).
+    const a = PageSchema.parse({
+      id: 'p', path: 'p', title: 'P', root: node,
+      seo: { title: 'SEO title', description: 'Desc', ogImage: '/og.png', canonical: 'https://x.io/p', noindex: true },
+    });
+    expect(a.description).toBe('Desc');
+    expect(a.image).toBe('/og.png');
+    expect(a.canonical).toBe('https://x.io/p');
+    expect(a.noindex).toBe(true);
+    expect('seo' in a).toBe(false);
+    expect((a as Record<string, unknown>).title).toBe('P'); // page title untouched; seo.title gone
+    // A top-level field WINS a collision with the legacy seo object (forward-migrated data).
+    const b = PageSchema.parse({
+      id: 'p', path: 'p', title: 'P', root: node,
+      description: 'top', image: '/top.png', seo: { description: 'legacy', ogImage: '/legacy.png' },
+    });
+    expect(b.description).toBe('top');
+    expect(b.image).toBe('/top.png');
+    expect('seo' in b).toBe(false);
+    // No seo object → the flat fields stay absent (no empty object, no migration noise).
+    const c = PageSchema.parse({ id: 'p', path: 'p', title: 'P', root: node });
+    expect(c.description).toBeUndefined();
+    expect(c.image).toBeUndefined();
+    // A prototype-pollution key inside the legacy seo object can't pollute (only the 4 fixed
+    // field names are copied; the global prototype stays clean).
+    const d = PageSchema.parse({
+      id: 'p', path: 'p', title: 'P', root: node,
+      seo: JSON.parse('{"__proto__":{"polluted":"x"},"description":"d"}'),
+    });
+    expect(d.description).toBe('d');
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+  });
+
   it('accepts an optional bounded, prototype-safe page.data object', () => {
     const data = { article_title: 'Hello', tags: ['a', 'b'], meta: { featured: true } };
     expect(PageSchema.parse({ id: 'p', path: 'p', title: 'P', root: { id: 'r', type: 'Section' }, data }).data).toEqual(data);

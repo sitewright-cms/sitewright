@@ -584,7 +584,7 @@ export interface RenderDocumentOptions extends RenderContext {
   bottom?: string;
   /** Document language attribute (defaults to `en`). */
   lang?: string;
-  /** SEO/Open-Graph metadata; `title` falls back to the page title. */
+  /** SEO/Open-Graph metadata; `title` is always overridden by the page title (there is no separate SEO title). */
   seo?: Partial<SeoMeta>;
   /** Auto-generated schema.org Organization block (from company data). */
   organization?: SchemaOrgInfo;
@@ -690,8 +690,8 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
         return a ? ctx.mediaUrl!(a, file) : '';
       }
     : undefined;
-  // `||` not `??`: an empty-string SEO title must fall back to the page title.
-  const title = seo?.title || page.title;
+  // The page title IS the document/og title (there is no separate SEO title).
+  const title = page.title;
   const meta = metaTags({ ...seo, title });
   const jsonLd = schemaOrgJsonLd(organization);
   return (

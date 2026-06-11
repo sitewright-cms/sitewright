@@ -40,7 +40,7 @@ In \`source\`:
   bind the src with {{sw-url url}}. e.g. {{#sw-folder "gallery"}}<img src="{{sw-url url}}" alt="{{alt}}" loading="lazy">{{/sw-folder}}.
 - CONTENT-EDITOR-ONLY controls: {{sw-control target="…" as="text|textarea|url|image|file|folder|dataset" label="…"}}
   drops a chip (visible only in the Content Editor, stripped on publish) letting a client set a whitelisted
-  page value (target=page.title | seo.ogImage | seo.description) or a page.data key. Use it to expose the
+  page value (target=page.title | page.image | page.description) or a page.data key. Use it to expose the
   knobs OTHER helpers read — e.g. {{sw-control target="gallery_folder" as="folder"}} feeds
   {{#sw-folder page.data.gallery_folder}}, and {{sw-control target="list_dataset" as="dataset"}} feeds {{#each}}.
 - Mark text a CLIENT may later edit by adding data-sw-text="key" to a real element, e.g.
@@ -105,7 +105,7 @@ prefer text language names, or pass an explicit country code per locale.
 SET THE BRAND with put_content("settings","settings",{ identity:{ name, colors:{ primary:"#…" } },
 settings:{ defaultLocale:"en", locales:["en"] } }).
 PAGE SETTINGS live on the page: title, path, status ("draft"|"published"),
-seo { description, ogImage }, parent (a parent page's id — makes this a sub-page), nav
+description, image (the OG/share image), parent (a parent page's id — makes this a sub-page), nav
 { slots:["header"|"footer"|"mobile"], order, title, dropdown }. \`path\` is the page's OWN
 SLUG SEGMENT — one lowercase token, NO slashes (e.g. "about", "web-design"); the full URL
 is computed from the parent chain ({root}/{parent slugs}/{slug}). The HOME page is the
@@ -143,7 +143,7 @@ locales:["en","de"] }. Then for a translated page create a sibling page that:
 SHARE STRUCTURE by INHERITANCE: leave a translated variant's \`source\` AND \`template\` UNSET —
 it then automatically follows the DEFAULT-LOCALE page's code (edit that one page's layout and
 every language updates, no copying). Each variant supplies only its own translated \`data\`
-(data-sw-text values) and \`title\`/\`seo\`. For a one-off layout difference, give that variant its
+(data-sw-text values) and \`title\`/\`description\`/\`image\`. For a one-off layout difference, give that variant its
 own \`source\` (fork) or set its \`template\`; a variant that carries its own code stops following
 the main page.
 LOCALIZED DATA: duplicate a dataset per locale as "<name>-<locale>" (lowercased), e.g.

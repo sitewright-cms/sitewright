@@ -5,8 +5,8 @@ import { localeOf } from './i18n.js';
 
 /**
  * One child page, FLATTENED for template use — `{{#each page.children}}…{{/each}}`. The fields are a
- * projection of the child Page's record (its DB shape flattened): `seo.description → description`,
- * `seo.ogImage → image`, etc. `path` is the child's FULL computed route (use it in `href="{{sw-url path}}"`).
+ * projection of the child Page's record: `title`, `description`, `image` (its OG/share image), `noindex`,
+ * etc. `path` is the child's FULL computed route (use it in `href="{{sw-url path}}"`).
  * `data` is the child's own `page.data` object, so an overview reads `{{#each page.children}}{{data.x}}`.
  */
 export interface PageChild {
@@ -16,13 +16,11 @@ export interface PageChild {
   slug: string;
   /** The full root-relative route (computed from the parent chain) — wrap in `{{sw-url path}}` for a link. */
   path: string;
-  /** SEO description (`seo.description`), flattened. */
+  /** The child's meta description (`page.description`). */
   description: string;
-  /** Open Graph image (`seo.ogImage`), flattened — wrap in `{{sw-url image}}` for a portable src. */
+  /** The child's OG/share image (`page.image`) — wrap in `{{sw-url image}}` for a portable src. */
   image: string;
-  /** SEO title (`seo.title`), flattened. */
-  seoTitle: string;
-  /** Whether the child is `noindex` (`seo.noindex`). */
+  /** Whether the child is `noindex` (`page.noindex`). */
   noindex: boolean;
   /** The child's nav label (`nav.title`) when set, else its title. */
   navTitle: string;
@@ -100,10 +98,9 @@ export function childrenOf(pages: readonly Page[], page: Page, defaultLocale: st
       title: c.title,
       slug: c.path,
       path: pagePath(c, byId),
-      description: c.seo?.description ?? '',
-      image: c.seo?.ogImage ?? '',
-      seoTitle: c.seo?.title ?? '',
-      noindex: c.seo?.noindex ?? false,
+      description: c.description ?? '',
+      image: c.image ?? '',
+      noindex: c.noindex ?? false,
       navTitle: c.nav?.title || c.title,
       status: c.status ?? 'published',
       locale: localeOf(c, defaultLocale),

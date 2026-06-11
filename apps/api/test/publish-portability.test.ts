@@ -43,13 +43,14 @@ function sectionPage(opts: {
   heading: string;
   linkHref: string;
   linkText: string;
-  seo?: Record<string, unknown>;
+  /** Extra flat page fields (e.g. a `title` override or `description`/`image`) merged onto the page. */
+  extra?: Record<string, unknown>;
 }) {
   return {
     id: opts.id,
     path: opts.path,
     title: opts.title,
-    ...(opts.seo ? { seo: opts.seo } : {}),
+    ...(opts.extra ?? {}),
     root: {
       id: `${opts.id}-root`,
       type: 'Section',
@@ -103,7 +104,7 @@ describe('publish portability', () => {
   }
 
   /** PUT a home page + an /about subpage that link to each other via root-relative hrefs. */
-  async function putHomeAndAbout(seo?: { home?: Record<string, unknown>; about?: Record<string, unknown> }) {
+  async function putHomeAndAbout(extra?: { home?: Record<string, unknown>; about?: Record<string, unknown> }) {
     const project = client.project(projectId);
     const home = sectionPage({
       id: 'home',
@@ -112,7 +113,7 @@ describe('publish portability', () => {
       heading: 'Welcome Home',
       linkHref: '/about', // root-relative internal link
       linkText: 'About us',
-      seo: seo?.home,
+      extra: extra?.home,
     });
     const about = sectionPage({
       id: 'about',
@@ -121,7 +122,7 @@ describe('publish portability', () => {
       heading: 'About Page',
       linkHref: '/', // root-relative internal link back to home
       linkText: 'Back home',
-      seo: seo?.about,
+      extra: extra?.about,
     });
     expect((await project.putContent('page', 'home', home)).statusCode).toBe(200);
     expect((await project.putContent('page', 'about', about)).statusCode).toBe(200);
@@ -168,9 +169,9 @@ describe('publish portability', () => {
     await publish(2);
 
     const home = await fetchSite('');
-    // <title> resolves to the SEO title.
+    // <title> resolves to the page title.
     expect(home).toContain('<title>Home — Acme</title>');
-    // SEO description → <meta name="description"> and og:description.
+    // page.description → <meta name="description"> and og:description.
     expect(home).toContain('<meta name="description" content="The Acme home page" />');
     expect(home).toContain('<meta property="og:description" content="The Acme home page" />');
     // og:title and og:type are always present.

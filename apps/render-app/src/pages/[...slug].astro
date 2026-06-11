@@ -20,6 +20,13 @@ export function getStaticPaths() {
 const { page, root, datasets, brandCss, project, entry, media } = Astro.props;
 ---
 
-<Base seo={page.seo} title={page.title} brandCss={brandCss} project={project}>
+<Base
+  title={page.title}
+  description={page.description}
+  canonical={page.canonical}
+  noindex={page.noindex}
+  brandCss={brandCss}
+  project={project}
+>
   <BlockTree node={root} datasets={datasets} entry={entry} media={media} />
 </Base>

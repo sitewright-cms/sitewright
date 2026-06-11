@@ -789,12 +789,12 @@ describe('renderPage / renderDocument', () => {
   it('emits SEO meta, schema.org JSON-LD, and the raw head / scripts blobs', () => {
     const doc = renderDocument(page, {
       brand,
-      seo: { title: 'Custom Title', description: 'Desc', themeColor: '#0a7', favicon: '/i.png' },
+      seo: { description: 'Desc', themeColor: '#0a7', favicon: '/i.png' },
       organization: { name: 'Acme', url: 'https://acme.test/' },
       head: '<!-- analytics-head -->',
       customScripts: '<!-- analytics-foot -->',
     });
-    expect(doc).toContain('<title>Custom Title</title>'); // seo.title overrides page.title
+    expect(doc).toContain('<title>Home</title>'); // the document title is the page title
     expect(doc).toContain('name="description" content="Desc"');
     expect(doc).toContain('name="theme-color" content="#0a7"');
     expect(doc).toContain('rel="icon" href="/i.png"');
@@ -866,11 +866,6 @@ describe('renderPage / renderDocument', () => {
     expect(doc).toContain('<title>Home</title>');
     expect(doc).not.toContain('application/ld+json');
     expect(doc).not.toContain('rel="icon"');
-  });
-
-  it('falls back to the page title when the SEO title is an empty string', () => {
-    const doc = renderDocument(page, { brand, seo: { title: '' } });
-    expect(doc).toContain('<title>Home</title>');
   });
 
   it('inlines project-wide critical CSS in <head> after the brand styles', () => {

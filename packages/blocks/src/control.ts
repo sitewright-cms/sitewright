@@ -13,25 +13,27 @@ export function normalizeControlAs(as: unknown): ControlAs {
   return typeof as === 'string' && CONTROL_AS.has(as as ControlAs) ? (as as ControlAs) : 'text';
 }
 
-export type ControlTarget =
-  | { kind: 'title' }
-  | { kind: 'seo'; field: 'ogImage' | 'description' }
-  | { kind: 'data'; key: string };
+export type PageField = 'title' | 'description' | 'image';
+export type ControlTarget = { kind: 'page'; field: PageField } | { kind: 'data'; key: string };
 
 const DANGEROUS = new Set(['__proto__', 'constructor', 'prototype']);
 
 /**
  * Validate + classify a control target against the ALLOW-LIST. Returns null for anything a control may
- * not set. Settable: `page.title`, `seo.ogImage`, `seo.description`, or a `page.data` key/path (bare key
- * or `data.<path>`, proto-guarded). Other page fields (path/status/template/…) are intentionally not.
+ * not set. Settable: the page fields `page.title` / `page.description` / `page.image`, or a `page.data`
+ * key/path (bare key or `data.<path>`, proto-guarded). Other page fields (path/status/template/canonical/
+ * noindex/…) are intentionally NOT settable from a content control.
  */
 export function classifyControlTarget(target: unknown): ControlTarget | null {
   if (typeof target !== 'string' || target === '') return null;
-  if (target === 'page.title') return { kind: 'title' };
-  if (target === 'seo.ogImage') return { kind: 'seo', field: 'ogImage' };
-  if (target === 'seo.description') return { kind: 'seo', field: 'description' };
-  // Reserve the page./seo. namespaces for the explicit whitelist above — any OTHER page/SEO field is
-  // rejected (a non-settable field like page.path must not silently become an odd page.data leaf).
+  if (target === 'page.title') return { kind: 'page', field: 'title' };
+  if (target === 'page.description') return { kind: 'page', field: 'description' };
+  if (target === 'page.image') return { kind: 'page', field: 'image' };
+  // Reserve the page. namespace for the explicit whitelist above — any OTHER page field is rejected
+  // (a non-settable field like page.path/canonical/noindex must not silently become an odd page.data
+  // leaf). Also reject the RETIRED `seo.` namespace (its fields were flattened onto the page — use
+  // page.description / page.image) so a stale `target="seo.ogImage"` fails loudly instead of silently
+  // creating a junk `page.data.seo.*` leaf.
   if (target.startsWith('page.') || target.startsWith('seo.')) return null;
   const path = target.startsWith('data.') ? target.slice(5) : target;
   if (path === '' || path.split('.').some((s) => s === '' || DANGEROUS.has(s))) return null;
@@ -39,7 +41,7 @@ export function classifyControlTarget(target: unknown): ControlTarget | null {
 }
 
 interface ControlRoot {
-  page?: { title?: unknown; seo?: Record<string, unknown>; data?: unknown };
+  page?: { title?: unknown; description?: unknown; image?: unknown; data?: unknown };
   data?: unknown;
   media?: readonly RenderMedia[];
 }
@@ -65,9 +67,9 @@ function readDataLeaf(data: unknown, key: string): string {
 
 /** The control's CURRENT value — shown in the chip and used to seed its popover. */
 export function controlCurrentValue(t: ControlTarget, root: ControlRoot): string {
-  if (t.kind === 'title') return typeof root.page?.title === 'string' ? root.page.title : '';
-  if (t.kind === 'seo') {
-    const v = root.page?.seo?.[t.field];
+  if (t.kind === 'page') {
+    // `t.field` is a fixed union ('title'|'description'|'image'), not attacker-controlled.
+    const v = root.page?.[t.field];
     return typeof v === 'string' ? v : '';
   }
   return readDataLeaf(root.page?.data, t.key);

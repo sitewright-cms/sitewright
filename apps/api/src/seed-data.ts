@@ -782,7 +782,7 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
     parent: 'home',
     nav: { title: 'Blog', slots: ['header'], order: 5 },
     template: 'global:blog-overview',
-    seo: { description: 'Notes on web design, performance, and building sites that earn their keep.' },
+    description: 'Notes on web design, performance, and building sites that earn their keep.',
     data: { heading: 'From the studio', intro: 'Notes on web design, performance, and building sites that earn their keep.' },
   },
   {
@@ -793,7 +793,7 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
     parent: 'blog',
     template: 'global:blog-article',
     order: 1,
-    seo: { description: 'A static-first build keeps your site fast, cheap to host, and effortless to maintain.' },
+    description: 'A static-first build keeps your site fast, cheap to host, and effortless to maintain.',
     data: {
       article_kicker: 'Performance',
       article_title: 'Why static sites win on speed',
@@ -814,7 +814,7 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
     parent: 'blog',
     template: 'global:blog-article',
     order: 2,
-    seo: { description: 'Tokens and reusable components keep a growing site consistent — and fast to build.' },
+    description: 'Tokens and reusable components keep a growing site consistent — and fast to build.',
     data: {
       article_kicker: 'Design',
       article_title: 'Design systems that scale',
@@ -833,7 +833,7 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
     parent: 'blog',
     template: 'global:blog-article',
     order: 3,
-    seo: { description: 'Clean markup, structured data, and fast pages are the SEO basics that actually move rankings.' },
+    description: 'Clean markup, structured data, and fast pages are the SEO basics that actually move rankings.',
     data: {
       article_kicker: 'SEO',
       article_title: 'SEO foundations, from day one',
@@ -856,7 +856,7 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
     parent: 'home',
     nav: { title: 'Shop', slots: ['header'], order: 6 },
     template: 'global:shop',
-    seo: { description: 'Studio merch for fellow web nerds — add to cart and order via WhatsApp, email, or a payment link.' },
+    description: 'Studio merch for fellow web nerds — add to cart and order via WhatsApp, email, or a payment link.',
     data: {
       heading: 'Studio merch',
       intro: 'A little something for fellow web nerds. Add to cart and check out via WhatsApp, email, or a payment link.',

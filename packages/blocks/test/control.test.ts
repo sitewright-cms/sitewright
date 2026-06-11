@@ -3,10 +3,10 @@ import { classifyControlTarget, controlCurrentValue, controlOptions, normalizeCo
 import { renderTemplate } from '../src/template.js';
 
 describe('classifyControlTarget', () => {
-  it('accepts the whitelisted page / SEO targets', () => {
-    expect(classifyControlTarget('page.title')).toEqual({ kind: 'title' });
-    expect(classifyControlTarget('seo.ogImage')).toEqual({ kind: 'seo', field: 'ogImage' });
-    expect(classifyControlTarget('seo.description')).toEqual({ kind: 'seo', field: 'description' });
+  it('accepts the 3 whitelisted page targets', () => {
+    expect(classifyControlTarget('page.title')).toEqual({ kind: 'page', field: 'title' });
+    expect(classifyControlTarget('page.image')).toEqual({ kind: 'page', field: 'image' });
+    expect(classifyControlTarget('page.description')).toEqual({ kind: 'page', field: 'description' });
   });
   it('accepts page.data keys (bare + data.<path>)', () => {
     expect(classifyControlTarget('gallery_folder')).toEqual({ kind: 'data', key: 'gallery_folder' });
@@ -19,8 +19,13 @@ describe('classifyControlTarget', () => {
     expect(classifyControlTarget('')).toBeNull();
     expect(classifyControlTarget(undefined)).toBeNull();
   });
-  it('reserves the page./seo. namespaces — only the 3 whitelisted are settable', () => {
-    for (const t of ['page.path', 'page.status', 'page.template', 'page.parent', 'seo.canonical', 'seo.noindex', 'seo.title']) {
+  it('reserves the page. namespace — only the 3 whitelisted page fields are settable', () => {
+    for (const t of ['page.path', 'page.status', 'page.template', 'page.parent', 'page.canonical', 'page.noindex']) {
+      expect(classifyControlTarget(t)).toBeNull();
+    }
+  });
+  it('rejects the RETIRED seo. namespace (flattened onto the page)', () => {
+    for (const t of ['seo.ogImage', 'seo.description', 'seo.canonical', 'seo.noindex', 'seo.title']) {
       expect(classifyControlTarget(t)).toBeNull();
     }
   });
@@ -38,11 +43,12 @@ describe('normalizeControlAs', () => {
 
 describe('controlCurrentValue', () => {
   const root = {
-    page: { title: 'Home', seo: { ogImage: '/og.jpg', description: 'desc' }, data: { gallery_folder: 'photos', article: { title: 'A' } } },
+    page: { title: 'Home', image: '/og.jpg', description: 'desc', data: { gallery_folder: 'photos', article: { title: 'A' } } },
   };
-  it('reads title / seo / data leaves', () => {
-    expect(controlCurrentValue({ kind: 'title' }, root)).toBe('Home');
-    expect(controlCurrentValue({ kind: 'seo', field: 'ogImage' }, root)).toBe('/og.jpg');
+  it('reads page fields / data leaves', () => {
+    expect(controlCurrentValue({ kind: 'page', field: 'title' }, root)).toBe('Home');
+    expect(controlCurrentValue({ kind: 'page', field: 'image' }, root)).toBe('/og.jpg');
+    expect(controlCurrentValue({ kind: 'page', field: 'description' }, root)).toBe('desc');
     expect(controlCurrentValue({ kind: 'data', key: 'gallery_folder' }, root)).toBe('photos');
     expect(controlCurrentValue({ kind: 'data', key: 'data.article.title' }, root)).toBe('A');
     expect(controlCurrentValue({ kind: 'data', key: 'missing' }, root)).toBe('');

@@ -133,7 +133,8 @@ describe('CodePageEditor', () => {
 
     await waitFor(() => expect(putPage).toHaveBeenCalledTimes(1));
     const saved = putPage.mock.calls[0]![1] as Page;
-    expect(saved.seo).toEqual({ description: 'Crisp summary.', ogImage: 'https://x.test/og.png' });
+    expect(saved.description).toBe('Crisp summary.');
+    expect(saved.image).toBe('https://x.test/og.png');
     expect(saved.parent).toBe('about');
   });
 

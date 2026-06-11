@@ -107,7 +107,7 @@ translationGroup?: IdSchema              // shared id linking all locale variant
 
 - `template` (exists) → set on every variant for the shared-structure case; unset (and
   `source` set) for a forked layout-variation variant.
-- `path`, `title`, `seo.description`, `seo.ogImage` (all exist, per-page) → the per-locale
+- `path`, `title`, `description`, `image` (all exist, per-page) → the per-locale
   page settings, no new fields needed (requirement #3).
 
 ### Dataset (no schema change)

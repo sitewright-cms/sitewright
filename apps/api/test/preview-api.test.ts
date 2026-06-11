@@ -393,8 +393,8 @@ describe('preview API — code-first source page', () => {
     const put = (key: string, payload: Record<string, unknown>) =>
       poolApp.inject({ method: 'PUT', url: `${base}/content/page/${key}`, cookies: { sw_session: t }, payload });
     await put('home', { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' } });
-    await put('a2', { id: 'a2', path: 'second', parent: 'home', title: 'Second', order: 2, seo: { description: 'Two' }, data: { tag: 'y' }, root: { id: 'r', type: 'Section' } });
-    await put('a1', { id: 'a1', path: 'first', parent: 'home', title: 'First', order: 1, seo: { description: 'One' }, data: { tag: 'x' }, root: { id: 'r', type: 'Section' } });
+    await put('a2', { id: 'a2', path: 'second', parent: 'home', title: 'Second', order: 2, description: 'Two', data: { tag: 'y' }, root: { id: 'r', type: 'Section' } });
+    await put('a1', { id: 'a1', path: 'first', parent: 'home', title: 'First', order: 1, description: 'One', data: { tag: 'x' }, root: { id: 'r', type: 'Section' } });
     const res = await poolApp.inject({
       method: 'POST',
       url: `${base}/preview`,
@@ -407,7 +407,7 @@ describe('preview API — code-first source page', () => {
     expect(res.statusCode).toBe(200);
     const html = (res.json() as { html: string }).html;
     expect(html).toContain('<h3>First</h3>'); // child title
-    expect(html).toContain('<p>One</p>'); // flattened seo.description
+    expect(html).toContain('<p>One</p>'); // the child's page.description
     expect(html).toContain('<span>x</span>'); // the child's own page.data, read inside the loop
     expect(html.indexOf('<h3>First</h3>')).toBeLessThan(html.indexOf('<h3>Second</h3>')); // ordered by order
   });

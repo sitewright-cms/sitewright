@@ -118,6 +118,37 @@ describe('multilingual publish (locale variants are pages)', () => {
     expect(de).not.toContain('Web Design');
   });
 
+  it('resolves a {{sw-form}} embed to the <id>-<locale> form variant on an INHERIT-mode page (shared code, localized form)', async () => {
+    const proj = client.project(projectId);
+    await proj.putContent('settings', 'settings', {
+      identity: { name: 'Acme', colors: { primary: '#0a7' } },
+      settings: { defaultLocale: 'en', locales: ['en', 'de'] },
+    });
+    const form = {
+      fields: [{ name: 'email', label: 'Email', type: 'email', required: true }],
+      successMessage: 'Thanks!', errorMessage: 'Oops.', recipient: 'leads@acme.test', mode: 'globalSmtp', hcaptcha: false,
+    };
+    await proj.putContent('form', 'contact', { ...form, id: 'contact', name: 'Contact', submitLabel: 'Send' });
+    await proj.putContent('form', 'contact-de', { ...form, id: 'contact-de', name: 'Kontakt', submitLabel: 'Absenden' });
+    await proj.putContent('page', 'home', {
+      id: 'home', path: '', title: 'Contact us', root, translationGroup: 'home',
+      source: '<section>{{sw-form "contact"}}</section>',
+    });
+    // INHERIT mode: the German variant carries NO source/template — it renders the owner's code,
+    // and the embed pass localizes the form via page.locale (the dataset suffix convention).
+    await proj.putContent('page', 'home-de', {
+      id: 'home-de', path: 'de', parent: 'home', title: 'Kontakt', locale: 'de', translationGroup: 'home', root,
+    });
+    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
+
+    const en = (await client.get(`/sites/${slug}/index.html`)).body;
+    expect(en).toContain('data-sw-endpoint="/f/' + projectId + '/contact"');
+    expect(en).toContain('>Send</button>');
+    const de = (await client.get(`/sites/${slug}/de/index.html`)).body;
+    expect(de).toContain('data-sw-endpoint="/f/' + projectId + '/contact-de"');
+    expect(de).toContain('>Absenden</button>');
+  });
+
   it('exposes {{ page.locale }} and {{#each page.translations}} for a language switcher', async () => {
     const proj = client.project(projectId);
     await proj.putContent('settings', 'settings', {

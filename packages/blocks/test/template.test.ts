@@ -349,6 +349,27 @@ describe('renderTemplate — MINI SHOP helpers', () => {
     expect(out).toContain('data-note="Order request only."');
   });
 
+  it('{{sw-cart}} hash overrides win over website.shop and emit the per-string data-*-label attrs', () => {
+    const ctxShop = { website: { shop: { title: 'Your basket', note: 'Site-wide note.' } } };
+    const out = renderTemplate(
+      '{{sw-cart title="Warenkorb" note="Preise unverbindlich." added="Hinzugefügt" empty="Ihr Warenkorb ist leer." subtotal="Zwischensumme" clear="Leeren" sent="Bestellung gesendet."}}',
+      ctxShop,
+    );
+    expect(out).toContain('data-cart-title="Warenkorb"');
+    expect(out).toContain('data-note="Preise unverbindlich."');
+    expect(out).toContain('data-added-label="Hinzugefügt"');
+    expect(out).toContain('data-empty-label="Ihr Warenkorb ist leer."');
+    expect(out).toContain('data-subtotal-label="Zwischensumme"');
+    expect(out).toContain('data-clear-label="Leeren"');
+    expect(out).toContain('data-sent-label="Bestellung gesendet."');
+    expect(out).not.toContain('Your basket');
+    // a missing/undefined override (e.g. a lookup of an absent page.data key) falls back to shop
+    const fallback = renderTemplate('{{sw-cart title=(lookup page.data "cart_title")}}', { ...ctxShop, page: { data: {} } });
+    expect(fallback).toContain('data-cart-title="Your basket"');
+    // no-args output is byte-identical to before (hash-only strings emit nothing)
+    expect(renderTemplate('{{sw-cart}}', {})).toBe('<div data-sw-cart></div>');
+  });
+
   it('{{sw-cart}} projects a form channel only when its endpoint is resolved', () => {
     const withEp = { website: { shop: { channels: [{ kind: 'form', formId: 'order', endpoint: '/f/p1/order', label: 'Place order' }] } } };
     const out = renderTemplate('{{sw-cart}}', withEp);

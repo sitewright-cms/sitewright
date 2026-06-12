@@ -99,4 +99,33 @@ describe('code-first preview', () => {
     expect(res.statusCode).toBe(400);
     expect((res.json() as { error?: string }).error).toBeTruthy();
   });
+
+  it('renders a {{sw-form}} embed with the same-origin endpoint, keeps the marker, and inlines FORM_JS', async () => {
+    const proj = client.project(projectId);
+    expect((await proj.putContent('form', 'contact', {
+      id: 'contact', name: 'Contact',
+      fields: [{ name: 'email', label: 'Email', type: 'email', required: true }],
+      submitLabel: 'Send', successMessage: 'Thanks!', errorMessage: 'Oops.',
+      recipient: 'leads@site.test', mode: 'globalSmtp', hcaptcha: false,
+    })).statusCode).toBe(200);
+    const html = await previewHtml({
+      id: 'contact-page', path: 'contact', title: 'Contact', root: { id: 'r', type: 'Section' },
+      source: '<section>{{sw-form "contact"}}</section>',
+    });
+    expect(html).toContain(`data-sw-endpoint="/f/${projectId}/contact"`);
+    expect(html).toContain('data-sw-form="contact"'); // preview keeps the reference marker
+    expect(html).toContain('<span data-sw-part="label">Email</span>');
+    expect(html).toContain('name="_hpt"');
+    expect(html).not.toContain('leads@site.test'); // recipient never reaches the preview document
+    expect(html).toContain('_elapsed'); // FORM_JS inlined (component scan on the rendered output)
+  });
+
+  it('returns a 400 naming the unknown form id for a dangling reference', async () => {
+    const res = await client.post(`/projects/${projectId}/preview`, {
+      id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
+      source: '<form data-sw-form="missing"></form>',
+    });
+    expect(res.statusCode).toBe(400);
+    expect((res.json() as { error?: string }).error).toMatch(/unknown form "missing"/);
+  });
 });

@@ -21,6 +21,7 @@ import { iconBody } from './icons.js';
 import { brandIcon } from './brand-icons.js';
 import { flagIcon } from './flag-icons.js';
 import { resolveDirectives } from './directives.js';
+import { resolveFormEmbeds, resolveFormId, renderFormMarkup, unknownFormMessage, type RenderForm } from './form-embed.js';
 import { selectFolderAssets, projectFolderItem, type FolderKind, type RenderMedia } from './folder.js';
 import { classifyControlTarget, controlCurrentValue, controlOptions, normalizeControlAs } from './control.js';
 
@@ -93,6 +94,21 @@ export interface TemplateContext {
    * set on publish — the loop is then byte-identical to a plain `{{#each}}` (no wrapper).
    */
   markEntries?: boolean;
+  /**
+   * PUBLIC form definitions + precomputed submission endpoints, keyed by form id — consumed by the
+   * `{{sw-form}}` helper and the `data-sw-form` resolution pass (form-embed.ts). Everything here is
+   * render-safe by definition (`toPublicForm` strips recipient/subject) and template-readable via
+   * `{{forms.*}}`. Pure data — the context crosses the render-pool's JSON IPC. ABSENT → the surface
+   * doesn't support forms ({{sw-form}} renders '', the pass is a no-op).
+   */
+  forms?: Record<string, RenderForm>;
+  /** Instance hCaptcha site key (public) — rendered into platform-routed forms that opt in. */
+  hcaptchaSiteKey?: string;
+  /**
+   * Page-relative path to the site root (e.g. '' at the root, '../../' two levels deep; preview
+   * passes ''). Used by the form-embed pass for the page-relative `contact.php` endpoint.
+   */
+  siteRoot?: string;
 }
 
 
@@ -421,8 +437,17 @@ function createInstance(): typeof Handlebars {
   // channels (read from `website.shop`) as escaped data-* attributes. cart.js (shipped only when this
   // marker is present) builds the floating button + drawer from it. Drop it ONCE per site (e.g. the
   // footer slot) so it is on every page.
+  //
+  // i18n: the drawer STRINGS accept per-call hash overrides — title= note= added= empty= subtotal=
+  // clear= sent= — each winning over the `website.shop` value (title/note) or the cart.js default.
+  // Inherit-mode locale variants localize the cart WITHOUT forking the slot/page code:
+  //   {{sw-cart title=(lookup page.data "cart_title") note=(lookup page.data "cart_note")}}
+  // (a missing page.data key → undefined → the site-wide value/default applies). Channel labels and
+  // the order-form strings stay site-wide (`website.shop.channels[].label`) — a per-locale channel
+  // set is a possible follow-up, not covered by these overrides.
   hb.registerHelper('sw-cart', function swCart(this: unknown, ...args: unknown[]) {
     const options = args[args.length - 1] as Handlebars.HelperOptions;
+    const h = (options.hash ?? {}) as Record<string, unknown>;
     const root = (options.data?.root ?? {}) as { website?: { shop?: Record<string, unknown> } };
     const shop = (root.website?.shop ?? {}) as Record<string, unknown>;
     const currency = (shop.currency ?? {}) as Record<string, unknown>;
@@ -434,10 +459,22 @@ function createInstance(): typeof Handlebars {
     if (code) attrs += ` data-currency-code="${escapeAttr(code)}"`;
     if (currency.position === 'after') attrs += ` data-currency-pos="after"`;
     if (typeof currency.decimals === 'number') attrs += ` data-currency-decimals="${escapeAttr(String(currency.decimals))}"`;
-    const title = str(shop.title);
+    const title = str(h.title) || str(shop.title);
     if (title) attrs += ` data-cart-title="${escapeAttr(title)}"`;
-    const note = str(shop.note);
+    const note = str(h.note) || str(shop.note);
     if (note) attrs += ` data-note="${escapeAttr(note)}"`;
+    // Hash-only drawer strings (no `website.shop` counterpart): emitted only when overridden, so a
+    // no-args {{sw-cart}} stays byte-identical and cart.js's built-in defaults apply.
+    const added = str(h.added);
+    if (added) attrs += ` data-added-label="${escapeAttr(added)}"`;
+    const empty = str(h.empty);
+    if (empty) attrs += ` data-empty-label="${escapeAttr(empty)}"`;
+    const subtotal = str(h.subtotal);
+    if (subtotal) attrs += ` data-subtotal-label="${escapeAttr(subtotal)}"`;
+    const clear = str(h.clear);
+    if (clear) attrs += ` data-clear-label="${escapeAttr(clear)}"`;
+    const sent = str(h.sent);
+    if (sent) attrs += ` data-sent-label="${escapeAttr(sent)}"`;
     // Project channels to ONLY the fields the runtime needs (defence-in-depth over the schema), then
     // JSON-encode into an escaped attribute (cart.js JSON.parses it; undefined props are dropped).
     const channels = Array.isArray(shop.channels) ? (shop.channels as Array<Record<string, unknown>>) : [];
@@ -461,6 +498,28 @@ function createInstance(): typeof Handlebars {
       attrs += ` data-channels="${escapeAttr(channelsJson)}"`;
     }
     return new Handlebars.SafeString(`<div ${attrs}></div>`);
+  });
+  // {{sw-form "contact" class="card p-8"}} → the COMPLETE markup of a stored form definition
+  // (fields/labels/placeholders/select options, submit button, success/error parts), styled by the
+  // first-party FORM_CSS and wired by FORM_JS. The wrapper carries `data-sw-form="<id>"` and NO
+  // endpoint — the form-embed pass (after render) injects the mode-correct `data-sw-endpoint`,
+  // redirect, honeypot, and hCaptcha widget, for helper-emitted and hand-authored forms alike.
+  // Locale-aware: on a `de` page, "contact" resolves the form `contact-de` when it exists (the
+  // dataset suffix convention). Unknown id → loud render error; a surface with NO forms map
+  // (e.g. the snippet hover preview) renders '' (forms unsupported there, not an authoring error).
+  hb.registerHelper('sw-form', function swForm(this: unknown, ...args: unknown[]) {
+    const options = args[args.length - 1] as Handlebars.HelperOptions;
+    const id = typeof args[0] === 'string' ? args[0] : '';
+    const root = (options.data?.root ?? {}) as { forms?: Record<string, RenderForm>; page?: { locale?: unknown } };
+    if (!root.forms) return new Handlebars.SafeString('');
+    const locale = typeof root.page?.locale === 'string' ? root.page.locale : undefined;
+    const resolvedId = resolveFormId(id, locale, root.forms);
+    if (resolvedId === undefined) throw new Error(unknownFormMessage(id, locale));
+    const hash = (options.hash ?? {}) as Record<string, unknown>;
+    const cls = typeof hash.class === 'string' && hash.class !== '' ? { class: hash.class } : {};
+    // resolveFormId only returns ids it verified present (own-property, proto-guarded).
+    // eslint-disable-next-line security/detect-object-injection -- verified own-property key
+    return new Handlebars.SafeString(renderFormMarkup(resolvedId, root.forms[resolvedId]!, cls));
   });
   // ({{edit}} is RETIRED — editable text is now the `data-sw-text="key"` directive, bound to page.data.)
   //
@@ -623,7 +682,7 @@ export function renderTemplate(source: string, ctx: TemplateContext = {}, opts: 
   // cannot smuggle a <script>/handler/unsafe-context past the main-template check.
   if (ctx.partials) for (const partialSource of Object.values(ctx.partials)) validateTemplate(partialSource);
   const template = compileCached(source);
-  const data = { company: ctx.company, website: ctx.website, page: ctx.page, parentPage: ctx.parentPage, data: ctx.data, item: ctx.item, nav: ctx.nav, media: ctx.media, markEntries: ctx.markEntries };
+  const data = { company: ctx.company, website: ctx.website, page: ctx.page, parentPage: ctx.parentPage, data: ctx.data, item: ctx.item, nav: ctx.nav, media: ctx.media, markEntries: ctx.markEntries, forms: ctx.forms };
   let html: string;
   try {
     html = template(data, {
@@ -648,6 +707,22 @@ export function renderTemplate(source: string, ctx: TemplateContext = {}, opts: 
     data: ctx.page?.data as Record<string, unknown> | undefined,
     preview: ctx.preview,
   });
+  // Resolve `data-sw-form` references (helper-emitted and hand-authored alike) into the
+  // mode-correct submission endpoint + redirect/honeypot/hCaptcha — AFTER the directive pass so
+  // authored data-sw-text labels inside a form resolve first. No-op without a reference or when
+  // the surface provides no forms map. form-embed throws plain Errors (no import cycle) — wrap.
+  const pageLocale = ctx.page?.locale;
+  try {
+    html = resolveFormEmbeds(html, {
+      forms: ctx.forms,
+      locale: typeof pageLocale === 'string' ? pageLocale : undefined,
+      siteRoot: ctx.siteRoot,
+      hcaptchaSiteKey: ctx.hcaptchaSiteKey,
+      preview: ctx.preview,
+    });
+  } catch (err) {
+    throw new TemplateError(err instanceof Error ? err.message : 'form embed failed');
+  }
   const max = opts.maxOutput ?? DEFAULT_MAX_OUTPUT;
   if (html.length > max) throw new TemplateError('template output exceeded the size limit');
   return html;

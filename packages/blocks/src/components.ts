@@ -50,6 +50,13 @@ const CAROUSEL_CSS = [
   // spacing as padding INSIDE the slide (Embla's documented gap pattern).
   '[data-sw-block="Carousel"] [data-sw-part="slide"]{flex:0 0 calc(100%/var(--sw-items,1));scroll-snap-align:start;min-width:0;margin:0}',
   '[data-sw-block="Carousel"] [data-sw-part="slide"] img{display:block;width:100%;height:auto}',
+  // data-item-align: VERTICAL alignment of unequal-height slides in multi-item rows
+  // (default: stretch). CSS-only switch — applied to the no-JS scroll-snap track AND the
+  // runtime-created container, so both render states agree. (AutoHeight separately forces
+  // flex-start above; that rule wins by source order when both are authored.)
+  '[data-sw-block="Carousel"][data-item-align="start"] [data-sw-part="track"],[data-sw-block="Carousel"][data-item-align="start"] [data-sw-part="container"]{align-items:flex-start}',
+  '[data-sw-block="Carousel"][data-item-align="center"] [data-sw-part="track"],[data-sw-block="Carousel"][data-item-align="center"] [data-sw-part="container"]{align-items:center}',
+  '[data-sw-block="Carousel"][data-item-align="end"] [data-sw-part="track"],[data-sw-block="Carousel"][data-item-align="end"] [data-sw-part="container"]{align-items:flex-end}',
   // Enhanced: the track stops being the scroller (Embla translates the container inside it).
   '[data-sw-block="Carousel"][data-sw-enhanced="true"] [data-sw-part="track"]{display:block;overflow:hidden;scroll-snap-type:none}',
   // AutoHeight (data-autoheight="true"): the engine sets the container height to the

@@ -42,15 +42,18 @@ describe('COMPONENT_CATALOG ↔ runtime registry', () => {
     }
   });
 
-  it('every documented data-* config attribute is actually read by the shipped runtime', () => {
-    // Documenting an attribute the runtime never reads would send agents down a dead end —
-    // the attribute name must appear as a literal in the component's bundled JS (minification
-    // keeps attribute strings intact; the render pipeline only resolves data-sw-* bindings).
+  it('every documented data-* config attribute is actually consumed by the shipped assets', () => {
+    // Documenting an attribute nothing consumes would send agents down a dead end — the
+    // attribute name must appear as a literal in the component's bundled JS (runtime reads)
+    // OR its CSS (attribute-selector switches like data-item-align). Minification keeps
+    // attribute strings intact; the render pipeline only resolves data-sw-* bindings.
+    // CAVEAT: an attribute that is SUPPOSED to be read by JS must not lean on a stray CSS
+    // mention to pass here — this check proves consumption exists, not that it's complete.
     for (const entry of COMPONENT_CATALOG) {
-      const { js } = componentAssets([entry.type]);
+      const { js, css } = componentAssets([entry.type]);
       for (const a of entry.attributes) {
         if (!a.name.startsWith('data-') || a.name.startsWith('data-sw-')) continue;
-        expect(js, `${entry.type}: runtime must read ${a.name}`).toContain(a.name);
+        expect(`${js}\n${css}`, `${entry.type}: assets must consume ${a.name}`).toContain(a.name);
       }
     }
   });

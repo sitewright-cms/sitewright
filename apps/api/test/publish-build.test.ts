@@ -40,7 +40,7 @@ describe('buildSite', () => {
         pages: [
           {
             id: 'home', path: '', title: 'Home',
-            root: { id: 'r', type: 'Section' }, // placeholder block tree, ignored when source is set
+            // placeholder block tree, ignored when source is set
             source: '<div class="grid"><h1>{{ company.name }}</h1></div>',
           },
         ],
@@ -64,7 +64,7 @@ describe('buildSite', () => {
       publishedAt: '2026-05-29T00:00:00.000Z',
       outDir,
       bundle: bundle({
-        pages: [{ id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' } }],
+        pages: [{ id: 'home', path: '', title: 'Home' }],
       }),
     });
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
@@ -79,11 +79,11 @@ describe('buildSite', () => {
       bundle: bundle({
         pages: [
           {
-            id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
+            id: 'home', path: '', title: 'Home',
             source: '<div>{{ company.name }}</div>', data: { section_color: 'tomato' },
           },
           {
-            id: 'services', path: 'services', parent: 'home', title: 'Services', root: { id: 'r', type: 'Section' },
+            id: 'services', path: 'services', parent: 'home', title: 'Services',
             source: '<div><b>{{page.slug}}</b> up:{{parentPage.title}} c:{{parentPage.data.section_color}}</div>',
           },
         ],
@@ -102,7 +102,7 @@ describe('buildSite', () => {
       bundle: bundle({
         pages: [
           {
-            id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
+            id: 'home', path: '', title: 'Home',
             source: '<div><section data-sw-html="intro"><p>fallback</p></section></div>',
             data: { intro: '<p>Hello <strong>there</strong></p><script>alert(1)</script>' },
           },
@@ -126,7 +126,7 @@ describe('buildSite', () => {
         entries: [{ id: 'hello', dataset: 'posts', status: 'published', values: { title: 'Hi there' } }],
         pages: [
           {
-            id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
+            id: 'home', path: '', title: 'Home',
             source: '<div><h1>{{item.posts.hello.title}}</h1></div>',
           },
         ],
@@ -148,7 +148,7 @@ describe('buildSite', () => {
         },
         pages: [
           {
-            id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
+            id: 'home', path: '', title: 'Home',
             source: '<div><button class="btn btn-primary">Sign up</button></div>',
           },
         ],
@@ -182,8 +182,8 @@ describe('buildSite', () => {
           },
         },
         pages: [
-          { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<div>Home body</div>', nav: { slots: ['header'], order: 1 } },
-          { id: 'about', path: 'about', parent: 'home', title: 'About', root: { id: 'r2', type: 'Section' }, source: '<div>About body</div>', nav: { slots: ['header'], order: 2 } },
+          { id: 'home', path: '', title: 'Home', source: '<div>Home body</div>', nav: { slots: ['header'], order: 1 } },
+          { id: 'about', path: 'about', parent: 'home', title: 'About', source: '<div>About body</div>', nav: { slots: ['header'], order: 2 } },
         ],
       }),
     });
@@ -228,8 +228,8 @@ describe('buildSite', () => {
           },
         },
         pages: [
-          { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<div>Home body</div>', nav: { slots: ['header'], order: 1 } },
-          { id: 'about', path: 'about', parent: 'home', title: 'About', root: { id: 'r2', type: 'Section' }, source: '<div>About body</div>', nav: { slots: ['header'], order: 2 } },
+          { id: 'home', path: '', title: 'Home', source: '<div>Home body</div>', nav: { slots: ['header'], order: 1 } },
+          { id: 'about', path: 'about', parent: 'home', title: 'About', source: '<div>About body</div>', nav: { slots: ['header'], order: 2 } },
         ],
       }),
     });
@@ -261,7 +261,7 @@ describe('buildSite', () => {
           },
         },
         pages: [
-          { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<a class="btn btn-primary" href="/x">Go</a>', nav: { slots: ['header'], order: 1 } },
+          { id: 'home', path: '', title: 'Home', source: '<a class="btn btn-primary" href="/x">Go</a>', nav: { slots: ['header'], order: 1 } },
         ],
       }),
     });
@@ -289,7 +289,7 @@ describe('buildSite', () => {
           settings: { defaultLocale: 'en', locales: ['en'] },
         },
         pages: [
-          { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<div><h1>Home</h1>{{> promo}}</div>' },
+          { id: 'home', path: '', title: 'Home', source: '<div><h1>Home</h1>{{> promo}}</div>' },
         ],
       }),
     });
@@ -312,7 +312,7 @@ describe('buildSite', () => {
           '<dialog data-sw-part="dialog"><p>Hi</p></dialog></div>',
       },
       bundle: bundle({
-        pages: [{ id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<div>{{> promo}}</div>' }],
+        pages: [{ id: 'home', path: '', title: 'Home', source: '<div>{{> promo}}</div>' }],
       }),
     });
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
@@ -334,7 +334,7 @@ describe('buildSite', () => {
       },
       bundle: bundle({
         pages: [
-          { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<div>{{> used}}</div>' },
+          { id: 'home', path: '', title: 'Home', source: '<div>{{> used}}</div>' },
         ],
       }),
     });
@@ -349,7 +349,7 @@ describe('buildSite', () => {
         publishedAt: '2026-05-29T00:00:00.000Z',
         outDir,
         bundle: bundle({
-          pages: [{ id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<div>{{> missing}}</div>' }],
+          pages: [{ id: 'home', path: '', title: 'Home', source: '<div>{{> missing}}</div>' }],
         }),
       }),
     ).rejects.toThrow(/page "home" template error.*missing/); // pins the cause: the named partial
@@ -364,7 +364,7 @@ describe('buildSite', () => {
         outDir,
         snippets: { a: '<div>{{> b}}</div>', b: '<div>{{> a}}</div>' },
         bundle: bundle({
-          pages: [{ id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<div>{{> a}}</div>' }],
+          pages: [{ id: 'home', path: '', title: 'Home', source: '<div>{{> a}}</div>' }],
         }),
       }),
     ).rejects.toThrow(/page "home" template error/);
@@ -377,7 +377,7 @@ describe('buildSite', () => {
         outDir,
         snippets: { evil: '<div>{{x}}</div><script>steal()</script>' },
         bundle: bundle({
-          pages: [{ id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<div>{{> evil}}</div>' }],
+          pages: [{ id: 'home', path: '', title: 'Home', source: '<div>{{> evil}}</div>' }],
         }),
       }),
     ).rejects.toThrow(/page "home" template error.*script/i); // pins the cause: the validator rejects <script>
@@ -400,7 +400,7 @@ describe('buildSite', () => {
           },
         },
         pages: [
-          { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<div><h1>{{ website.json_data.title }}</h1><p>{{ website.json_data.extract }}</p></div>', nav: { slots: ['header'], order: 1 } },
+          { id: 'home', path: '', title: 'Home', source: '<div><h1>{{ website.json_data.title }}</h1><p>{{ website.json_data.extract }}</p></div>', nav: { slots: ['header'], order: 1 } },
         ],
       }),
     });
@@ -423,7 +423,7 @@ describe('buildSite', () => {
           settings: { defaultLocale: 'en', locales: ['en'] },
         },
         pages: [
-          { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<div><h1>{{ website.json_data.title }}</h1><p>{{ website.json_data.note }}</p></div>' },
+          { id: 'home', path: '', title: 'Home', source: '<div><h1>{{ website.json_data.title }}</h1><p>{{ website.json_data.note }}</p></div>' },
         ],
       }),
     });
@@ -454,7 +454,7 @@ describe('buildSite', () => {
           },
         },
         pages: [
-          { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<div id="page-body">Home body</div>', nav: { slots: ['header'], order: 1 } },
+          { id: 'home', path: '', title: 'Home', source: '<div id="page-body">Home body</div>', nav: { slots: ['header'], order: 1 } },
         ],
       }),
     });
@@ -481,7 +481,7 @@ describe('buildSite', () => {
             settings: { defaultLocale: 'en', locales: ['en'] },
             website: { bottom: '<div>{{website.json}}</div><script>x()</script>' },
           },
-          pages: [{ id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<div>h</div>' }],
+          pages: [{ id: 'home', path: '', title: 'Home', source: '<div>h</div>' }],
         }),
       }),
     ).rejects.toThrow(/website bottom/);
@@ -501,10 +501,10 @@ describe('buildSite', () => {
           website: { topNav: '<div>{{#each nav.header}}<a href="{{sw-url path}}">{{label}}</a>{{/each}}</div>' },
         },
         pages: [
-          { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<div>h</div>', nav: { slots: ['header'], order: 1 }, translationGroup: 'home' },
-          { id: 'about', path: 'about', parent: 'home', title: 'About', root: { id: 'r2', type: 'Section' }, source: '<div>a</div>', nav: { slots: ['header'], order: 2 } },
-          { id: 'home-de', path: 'de', parent: 'home', title: 'Start', locale: 'de', translationGroup: 'home', root: { id: 'r3', type: 'Section' }, source: '<div>hd</div>', nav: { slots: ['header'], order: 1 } },
-          { id: 'about-de', path: 'about', parent: 'home-de', title: 'Über', locale: 'de', root: { id: 'r4', type: 'Section' }, source: '<div>ad</div>', nav: { slots: ['header'], order: 2 } },
+          { id: 'home', path: '', title: 'Home', source: '<div>h</div>', nav: { slots: ['header'], order: 1 }, translationGroup: 'home' },
+          { id: 'about', path: 'about', parent: 'home', title: 'About', source: '<div>a</div>', nav: { slots: ['header'], order: 2 } },
+          { id: 'home-de', path: 'de', parent: 'home', title: 'Start', locale: 'de', translationGroup: 'home', source: '<div>hd</div>', nav: { slots: ['header'], order: 1 } },
+          { id: 'about-de', path: 'about', parent: 'home-de', title: 'Über', locale: 'de', source: '<div>ad</div>', nav: { slots: ['header'], order: 2 } },
         ],
       }),
     });
@@ -533,14 +533,14 @@ describe('buildSite', () => {
         },
         pages: [
           {
-            id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
+            id: 'home', path: '', title: 'Home',
             source: '<h1 data-sw-text="headline" class="text-2xl">EN</h1>', data: { headline: 'Welcome' },
             translationGroup: 'home',
           },
           // Inherit-mode: no source, no template — code follows the owner; own data only.
           {
             id: 'home-de', path: 'de', parent: 'home', title: 'Start', locale: 'de',
-            translationGroup: 'home', root: { id: 'r2', type: 'Section' }, data: { headline: 'Willkommen' },
+            translationGroup: 'home', data: { headline: 'Willkommen' },
           },
         ],
       }),
@@ -567,10 +567,10 @@ describe('buildSite', () => {
           settings: { defaultLocale: 'en', locales: ['en', 'de'] },
         },
         pages: [
-          { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<div>home</div>' },
-          { id: 'home-de', path: 'de', parent: 'home', title: 'Start', locale: 'de', root: { id: 'r2', type: 'Section' }, source: '<div>start</div>' },
+          { id: 'home', path: '', title: 'Home', source: '<div>home</div>' },
+          { id: 'home-de', path: 'de', parent: 'home', title: 'Start', locale: 'de', source: '<div>start</div>' },
           // Locale-only: only exists in de, own code, no translationGroup.
-          { id: 'kontakt-de', path: 'kontakt', parent: 'home-de', title: 'Kontakt', locale: 'de', root: { id: 'r3', type: 'Section' }, source: '<h1>Kontakt DE</h1>' },
+          { id: 'kontakt-de', path: 'kontakt', parent: 'home-de', title: 'Kontakt', locale: 'de', source: '<h1>Kontakt DE</h1>' },
         ],
       }),
     });
@@ -590,7 +590,7 @@ describe('buildSite', () => {
             identity: { name: 'Acme', colors: {} }, settings: { defaultLocale: 'en', locales: ['en'] },
             website: { topNav: '<div>{{#each nav.header}}<a>{{label}}</a></div>' }, // unclosed {{#each}}
           },
-          pages: [{ id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<div>x</div>' }],
+          pages: [{ id: 'home', path: '', title: 'Home', source: '<div>x</div>' }],
         }),
       }),
     ).rejects.toThrow(/website topNav template error/);
@@ -607,7 +607,7 @@ describe('buildSite', () => {
             identity: { name: 'Acme', colors: {} }, settings: { defaultLocale: 'en', locales: ['en'] },
             website: { topNav: '<div>{{#each nav.header}}<a href="{{sw-url path}}">{{label}}</a>{{/each}}</div><script>x()</script>' },
           },
-          pages: [{ id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<div>x</div>' }],
+          pages: [{ id: 'home', path: '', title: 'Home', source: '<div>x</div>' }],
         }),
       }),
     ).rejects.toThrow(/website topNav/);
@@ -620,7 +620,7 @@ describe('buildSite', () => {
       bundle: bundle({
         pages: [
           {
-            id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
+            id: 'home', path: '', title: 'Home',
             source: '<div><h1 data-sw-text="headline">Default headline</h1></div>',
             data: { headline: 'Client wrote this' }, // the override now lives in page.data ({{edit}} reads it)
           },
@@ -638,7 +638,7 @@ describe('buildSite', () => {
         publishedAt: '2026-05-29T00:00:00.000Z',
         outDir,
         bundle: bundle({
-          pages: [{ id: 'bad', path: '', title: 'Bad', root: { id: 'r', type: 'Section' }, source: '<script>x()</script>' }],
+          pages: [{ id: 'bad', path: '', title: 'Bad', source: '<script>x()</script>' }],
         }),
       }),
     ).rejects.toThrow(/page "bad"/);
@@ -653,7 +653,7 @@ describe('buildSite', () => {
         maxOutputBytes: 1024, // tiny cap → the first page already overflows
         bundle: bundle({
           pages: [
-            { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Html', props: { html: big } } },
+            { id: 'home', path: '', title: 'Home', source: `<div>${big}</div>` },
           ],
         }),
       }),
@@ -683,7 +683,7 @@ describe('buildSite', () => {
         return Buffer.from('img');
       },
       bundle: bundle({
-        pages: [{ id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' } }],
+        pages: [{ id: 'home', path: '', title: 'Home' }],
       }),
     });
     expect(manifest.routes).toBe(1);
@@ -706,7 +706,7 @@ describe('buildSite', () => {
         readMedia: async () => {
           throw Object.assign(new Error('disk full'), { code: 'ENOSPC' });
         },
-        bundle: bundle({ pages: [{ id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' } }] }),
+        bundle: bundle({ pages: [{ id: 'home', path: '', title: 'Home' }] }),
       }),
     ).rejects.toThrow('disk full');
     // The previous (absent) build dir was not replaced with a partial one.
@@ -723,7 +723,7 @@ describe('buildSite', () => {
       publishedAt: '2026-05-30T00:00:00.000Z',
       outDir,
       media: [asset], // no readMedia
-      bundle: bundle({ pages: [{ id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' } }] }),
+      bundle: bundle({ pages: [{ id: 'home', path: '', title: 'Home' }] }),
     });
     await expect(readFile(join(outDir, 'media', 'a3', 'a3-10.jpg'), 'utf8')).rejects.toBeTruthy();
   });
@@ -766,7 +766,7 @@ describe('buildSite', () => {
           },
           settings: { defaultLocale: 'en', locales: ['en'] },
         },
-        pages: [{ id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section', children: [{ id: 'h', type: 'Heading', props: { text: 'Hi', level: 1 } }] } }],
+        pages: [{ id: 'home', path: '', title: 'Home' }],
       }),
     });
 
@@ -786,12 +786,12 @@ describe('buildSite', () => {
     const opts = {
       publishedAt: '2026-05-29T00:00:00.000Z',
       outDir,
-      bundle: bundle({ pages: [{ id: 'gone', path: 'gone', title: 'Gone', root: { id: 'r', type: 'Section' } }] }),
+      bundle: bundle({ pages: [{ id: 'gone', path: 'gone', title: 'Gone' }] }),
     };
     await buildSite(opts);
     await expect(readFile(join(outDir, 'gone', 'index.html'), 'utf8')).resolves.toBeTruthy();
 
-    await buildSite({ ...opts, bundle: bundle({ pages: [{ id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' } }] }) });
+    await buildSite({ ...opts, bundle: bundle({ pages: [{ id: 'home', path: '', title: 'Home' }] }) });
     await expect(readFile(join(outDir, 'gone', 'index.html'), 'utf8')).rejects.toBeTruthy();
     await expect(readFile(join(outDir, 'index.html'), 'utf8')).resolves.toBeTruthy();
   });

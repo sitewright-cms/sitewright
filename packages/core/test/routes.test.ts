@@ -16,7 +16,6 @@ import {
 function page(partial: Partial<Page> & { id: string; path: string }): Page {
   return {
     title: partial.id,
-    root: { id: `${partial.id}-root`, type: 'Section' },
     ...partial,
   } as Page;
 }

@@ -178,7 +178,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'get_page',
     {
       description:
-        'Get one page by id. For code-first pages the design is in the `source` field; `root` is a legacy placeholder.',
+        'Get one page by id. For code-first pages the design is in the `source` field.',
       inputSchema: { id: z.string() },
     },
     gate(null, ({ id }) => client.getContent('page', id)),

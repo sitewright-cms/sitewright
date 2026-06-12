@@ -16,7 +16,6 @@ import {
   FONT_WEIGHTS,
   PageSchema,
   migratePageStores,
-  PageNodeSchema,
   InstanceSettingsInputSchema,
   maskInstanceSettings,
   type InstanceSettingsStored,
@@ -25,7 +24,6 @@ import {
   DEFAULT_BRAND_PRIMARY,
   DEFAULT_BRAND_SECONDARY,
   passwordSchema,
-  assertWithinTreeDepth,
   websiteThemeClasses,
   type CorporateIdentity,
   type Entry,
@@ -347,7 +345,6 @@ const PasskeyAuthVerifyBody = z.object({ handle: z.string().min(1).max(200), res
 const MAX_PASSKEYS_PER_USER = 20;
 const AiGenerateBody = z.object({
   instruction: z.string().min(1).max(4000),
-  target: z.enum(['blocks', 'copy']).default('copy'),
   // No client-selectable model: the agency operator pins the funded model via
   // SW_AI_MODEL. Quotas meter tokens, not dollars, so letting a caller pick a
   // premium model would let it drain the budget faster within the same cap.
@@ -1528,7 +1525,6 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       id: 'home',
       path: '',
       title: 'Home',
-      root: { id: 'root', type: 'Section', children: [] },
       // Page content goes inside the skeleton's <main id="page-content"> wrapper, so the source
       // itself uses a neutral <section> (the validator rejects a nested <main>).
       source:
@@ -1809,8 +1805,6 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     { bodyLimit: PREVIEW_BODY_LIMIT, config: rl(120) },
     async (req, reply) => {
       const { ctx, project } = await resolveProject(req, 'content:read');
-      // Guard recursion depth before the recursive Zod parse (untrusted tree).
-      assertWithinTreeDepth((req.body as { root?: unknown } | null)?.root);
       const page = PageSchema.parse(req.body);
 
       // Brand tokens come from the saved Corporate Identity singleton; fall back to
@@ -3024,28 +3018,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         return reply.code(429).send({ error: 'your AI quota is exhausted for this month' });
       }
 
-      // Token-minimizing contract: blocks → JSON tree; copy → plain text.
-      const system =
-        body.target === 'blocks'
-          ? 'Generate Sitewright page content as ONE JSON object with the block-tree shape {id,type,props?,children?}. Output ONLY JSON — no prose, no code fences. Use semantic blocks; never inline styles.'
-          : 'You are a concise corporate-website copywriter. Output plain text only — no markdown.';
+      // Copy generation: the agent writes plain-text content for a code-first page's editable
+      // regions / page.data. (The legacy block-tree JSON target was retired with the block editor.)
+      const system = 'You are a concise corporate-website copywriter. Output plain text only — no markdown.';
       const completion = await aiProvider.complete({ system, prompt: body.instruction });
       await aiUsageRepo.record(ctx.userId, ctx.projectId, completion.model, completion.usage);
-
-      let result: { text: string } | { node: unknown } = { text: completion.text };
-      if (body.target === 'blocks') {
-        try {
-          const raw: unknown = JSON.parse(completion.text);
-          // Bound recursion BEFORE Zod parses — a pathologically deep tree from
-          // the model would otherwise overflow the stack during safeParse.
-          assertWithinTreeDepth(raw);
-          const parsed = PageNodeSchema.safeParse(raw);
-          if (parsed.success) result = { node: parsed.data };
-        } catch {
-          // Model returned non-JSON or an over-deep tree; fall back to raw text.
-        }
-      }
-      return reply.send({ result, usage: completion.usage, model: completion.model });
+      return reply.send({ result: { text: completion.text }, usage: completion.usage, model: completion.model });
     },
   );
 
@@ -3228,7 +3206,6 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           id: 'preview',
           path: String(pageCtx.path ?? '/'),
           title: String(pageCtx.title ?? project.name),
-          root: { id: 'preview-root', type: 'Section' },
         };
         const html = await styledSourceDocument(previewPage, brand, rendered, { bodyClass: themeBodyClass });
         // Mint a previewStore token so the editor loads the doc via an iframe `src` (served under an
@@ -3314,7 +3291,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           item: {},
           partials,
         });
-        const previewPage: Page = { id: 'snippet-preview', path: '/', title: project.name, root: { id: 'snippet-preview-root', type: 'Section' } };
+        const previewPage: Page = { id: 'snippet-preview', path: '/', title: project.name };
         const html = await styledSourceDocument(previewPage, brand, rendered, { bodyClass: themeBodyClass });
         reply.header('content-security-policy', 'sandbox allow-scripts');
         reply.header('x-frame-options', 'SAMEORIGIN');

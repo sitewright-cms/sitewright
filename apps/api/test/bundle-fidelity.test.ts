@@ -45,7 +45,7 @@ async function exportBundle() {
       identity: { name: string; colors: Record<string, string>; legalName?: string; email?: string; social?: Array<{ link: string; name?: string; icon?: string }> };
       settings: { defaultLocale: string; locales: string[] };
     };
-    pages: Array<{ id: string; path: string; title: string; root: unknown; collection?: unknown }>;
+    pages: Array<{ id: string; path: string; title: string; collection?: unknown }>;
     datasets: Array<{ id: string; name: string; slug: string; fields: unknown[] }>;
     entries: Array<{ id: string; dataset: string; status: string; values: Record<string, unknown> }>;
   };
@@ -53,9 +53,8 @@ async function exportBundle() {
 
 // A rich, fully-valid bundle exercising every entity + cross-entity reference:
 //   - brand + company + non-default settings
-//   - a static home page with a block tree
+//   - a static home page with a source template
 //   - a collection page `/blog/[slug]` bound to the `posts` dataset (param match)
-//   - a list-binding block pulling from the `posts` dataset
 //   - the `posts` dataset + a published and a draft entry
 function richBundle() {
   return {
@@ -75,22 +74,14 @@ function richBundle() {
         id: 'home',
         path: '',
         title: 'Home',
-        root: {
-          id: 'root',
-          type: 'Section',
-          children: [{ id: 'hero-ref', type: 'Box', partialRef: 'hero' }],
-        },
+        source: '<h1>{{ company.name }}</h1>',
       },
       {
         id: 'blog-post',
         path: '[slug]',
         title: 'Blog Post',
         collection: { dataset: 'posts', param: 'slug' },
-        root: {
-          id: 'r2',
-          type: 'Section',
-          children: [{ id: 'list', type: 'Grid', binding: { dataset: 'posts', mode: 'list' } }],
-        },
+        source: '{{#each item.posts}}<p>{{title}}</p>{{/each}}',
       },
     ],
     datasets: [
@@ -134,18 +125,6 @@ describe('bundle export/import fidelity (HTTP)', () => {
     expect(pagesById.get('blog-post')?.path).toBe('[slug]');
     expect(pagesById.get('blog-post')?.collection).toEqual({ dataset: 'posts', param: 'slug' });
 
-    // The partial reference on the home page is preserved in the tree.
-    const homeRoot = pagesById.get('home')?.root as {
-      children: Array<{ partialRef?: string }>;
-    };
-    expect(homeRoot.children[0]?.partialRef).toBe('hero');
-
-    // The list binding on the collection page is preserved (mode defaulted to 'list').
-    const blogRoot = pagesById.get('blog-post')?.root as {
-      children: Array<{ binding?: { dataset: string; mode: string } }>;
-    };
-    expect(blogRoot.children[0]?.binding).toMatchObject({ dataset: 'posts', mode: 'list' });
-
     // ---- Datasets ----
     expect(out.datasets).toHaveLength(1);
     expect(out.datasets[0]).toMatchObject({ id: 'd-posts', name: 'Posts', slug: 'posts' });
@@ -188,7 +167,6 @@ describe('bundle export/import fidelity (HTTP)', () => {
             path: '[slug]',
             title: 'P',
             collection: { dataset: 'missing', param: 'slug' },
-            root: { id: 'r', type: 'Section' },
           },
         ],
         // no datasets → the collection's `missing` dataset cannot resolve
@@ -198,7 +176,7 @@ describe('bundle export/import fidelity (HTTP)', () => {
     });
 
     it('rejects duplicate page ids (duplicate_page_id)', async () => {
-      const page = { id: 'dup', path: 'dup', title: 'Dup', root: { id: 'r', type: 'Section' } };
+      const page = { id: 'dup', path: 'dup', title: 'Dup' };
       const res = await importBundle({
         pages: [page, { ...page, path: 'dup-2' }],
       });
@@ -209,8 +187,8 @@ describe('bundle export/import fidelity (HTTP)', () => {
     it('rejects duplicate page paths (duplicate_page_path)', async () => {
       const res = await importBundle({
         pages: [
-          { id: 'a', path: 'same', title: 'A', root: { id: 'r1', type: 'Section' } },
-          { id: 'b', path: 'same', title: 'B', root: { id: 'r2', type: 'Section' } },
+          { id: 'a', path: 'same', title: 'A' },
+          { id: 'b', path: 'same', title: 'B' },
         ],
       });
       expect(res.statusCode).toBe(409);
@@ -254,12 +232,13 @@ describe('bundle export/import fidelity (HTTP)', () => {
     const failing = await importBundle({
       project: { identity: { name: 'Hijacked', colors: {} }, settings: { defaultLocale: 'en', locales: ['en'] } },
       pages: [
-        { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' } },
+        { id: 'home', path: '', title: 'Home' },
+        // Collection page references a missing dataset → validateProject → 409
         {
           id: 'injected',
-          path: 'injected',
+          path: '[slug]',
           title: 'Injected',
-          root: { id: 'x', type: 'Grid', binding: { dataset: 'ghost', mode: 'list' } }, // unknown dataset → 409
+          collection: { dataset: 'ghost', param: 'slug' },
         },
       ],
     });
@@ -281,13 +260,12 @@ describe('bundle export/import fidelity (HTTP)', () => {
         id: 'home',
         path: '',
         title: 'Home',
-        root: { id: 'r', type: 'Section' },
       });
 
       // B targets A's project (B holds no membership) → project membership check
       // fails for B → ForbiddenError → 403.
       const res = await clientB.post(`/projects/${projectId}/import`, {
-        pages: [{ id: 'x', path: 'x', title: 'X', root: { id: 'r', type: 'Section' } }],
+        pages: [{ id: 'x', path: 'x', title: 'X' }],
       });
       expect(res.statusCode).toBe(403);
 
@@ -303,7 +281,7 @@ describe('bundle export/import fidelity (HTTP)', () => {
       // bearer/API-key cross-project probe path.
       const url = `/projects/${projectId}/import`;
       const res = await clientB.post(url, {
-        pages: [{ id: 'x', path: 'x', title: 'X', root: { id: 'r', type: 'Section' } }],
+        pages: [{ id: 'x', path: 'x', title: 'X' }],
       });
       expect(res.statusCode).toBe(403);
     });

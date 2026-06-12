@@ -37,7 +37,7 @@ async function setup(email: string, slug = 'site') {
   return { t, projectId };
 }
 
-const page = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' } };
+const page = { id: 'home', path: '', title: 'Home' };
 
 describe('content API', () => {
   it('a project member may write any content kind (constrained client-write removed)', async () => {
@@ -47,14 +47,8 @@ describe('content API', () => {
       id: 'home',
       path: '',
       title: 'Home',
-      root: {
-        id: 'r',
-        type: 'Section',
-        children: [
-          { id: 'h', type: 'Heading', props: { text: 'Locked', level: 2 } },
-          { id: 't', type: 'RichText', editable: true, props: { text: 'Edit me' } },
-        ],
-      },
+      source: '<h1 data-sw-text="headline">Welcome</h1>',
+      data: { headline: 'Original' },
     };
     expect((await app.inject({ method: 'PUT', url: `${base}/content/page/home`, cookies: { sw_session: t }, payload: editablePage })).statusCode).toBe(200);
 
@@ -71,12 +65,9 @@ describe('content API', () => {
     };
 
     // A member may now write all of these — the old constrained-write gate is gone.
-    // Editable node content → allowed.
-    expect((await edit((p) => { p.root.children[1]!.props.text = 'Client wrote this'; })).statusCode).toBe(200);
-    // Previously-locked node content → now allowed.
-    expect((await edit((p) => { p.root.children[0]!.props.text = 'Member edit'; })).statusCode).toBe(200);
-    // Structural change → now allowed.
-    expect((await edit((p) => { p.root.children.pop(); })).statusCode).toBe(200);
+    expect((await edit((p) => { p.data.headline = 'Client wrote this'; })).statusCode).toBe(200);
+    expect((await edit((p) => { p.data.headline = 'Member edit'; })).statusCode).toBe(200);
+    expect((await edit((p) => { delete (p as Record<string, unknown>).data; })).statusCode).toBe(200);
   });
 
   it('rate-limits the content routes tighter than the global cap (writes 60, reads 120)', async () => {
@@ -120,11 +111,12 @@ describe('content API', () => {
     const { t, projectId } = await setup('a@acme.test');
     const base = `/projects/${projectId}`;
 
+    // Missing required `path` field → Zod validation error → 400
     const bad = await app.inject({
       method: 'PUT',
       url: `${base}/content/page/home`,
       cookies: { sw_session: t },
-      payload: { id: 'home', title: 'No root' },
+      payload: { id: 'home', title: 'No path' },
     });
     expect(bad.statusCode).toBe(400);
 
@@ -155,7 +147,8 @@ describe('content API', () => {
       cookies: { sw_session: t },
       payload: {
         pages: [
-          { id: 'b', path: 'b', title: 'B', root: { id: 'r', type: 'Grid', binding: { dataset: 'ghost', mode: 'list' } } },
+          // Page references a collection dataset that doesn't exist → validateProject → 409
+          { id: 'b', path: '[slug]', title: 'B', collection: { dataset: 'ghost', param: 'slug' } },
         ],
       },
     });
@@ -172,7 +165,7 @@ describe('content API', () => {
     expect(get.statusCode).toBe(404);
   });
 
-  it('isolates content across tenants (a non-member cannot touch another owner’s project)', async () => {
+  it("isolates content across tenants (a non-member cannot touch another owner's project)", async () => {
     const a = await setup('a@acme.test', 'site-a');
     const b = await setup('b@globex.test', 'site-b');
     await app.inject({
@@ -215,7 +208,7 @@ describe('content API — validate-on-save (unsafe Handlebars source rejected at
       (await put(t, projectId, 'page', 'home', { ...page, source: '<section><a href="{{sw-url page.link}}">x</a></section>' })).statusCode,
     ).toBe(200);
     expect(
-      (await put(t, projectId, 'page', 'p2', { id: 'p2', path: 'p2', title: 'P2', root: { id: 'r', type: 'Section' }, template: 'global:landing' })).statusCode,
+      (await put(t, projectId, 'page', 'p2', { id: 'p2', path: 'p2', title: 'P2', template: 'global:landing' })).statusCode,
     ).toBe(200);
   });
 

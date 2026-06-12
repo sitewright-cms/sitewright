@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { PageNodeSchema } from './block.js';
 import { TemplateRefSchema } from './template.js';
 import { LocaleSchema } from './project.js';
 import { AssetRefSchema, IdSchema, KeyNameSchema, NavTargetSchema, PageSlugSchema, SlugSchema } from './primitives.js';
@@ -97,13 +96,11 @@ const PageObject = z
         dropdown: z.boolean().optional(),
       })
       .optional(),
-    /** Root of the block tree rendered for this page. */
-    root: PageNodeSchema,
     /**
-     * Code-first authoring: when set, this page is rendered from a Handlebars TEMPLATE
-     * (HTML + Tailwind + `{{ }}`) instead of the block tree — the templating pivot's page
-     * model. Validated (no scripts/handlers/unsafe contexts) and rendered in an isolated
-     * worker. The `root` stays for back-compat; `source` wins when present.
+     * Code-first authoring: the page is rendered from a Handlebars TEMPLATE (HTML + Tailwind +
+     * `{{ }}`) — `source` directly, or a referenced `template`. Validated (no scripts/handlers/
+     * unsafe contexts) and rendered in an isolated worker. A page with no `source`/`template`
+     * (e.g. a brand-new page) renders an empty body.
      */
     source: z.string().max(256 * 1024).optional(),
     /**

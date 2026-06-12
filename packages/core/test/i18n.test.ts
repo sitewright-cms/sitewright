@@ -22,7 +22,7 @@ import {
 
 // `path` is a SLUG SEGMENT (empty for home); full routes are computed from the parent chain.
 const page = (over: Partial<Page>): Page =>
-  ({ id: 'p', path: '', title: 'T', root: { id: 'r', type: 'Section' }, ...over }) as Page;
+  ({ id: 'p', path: '', title: 'T', ...over }) as Page;
 
 describe('resolveLocaleDatasets (auto locale-suffix)', () => {
   const data = {

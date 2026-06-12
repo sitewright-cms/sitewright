@@ -252,7 +252,6 @@ export function buildLocaleVariant(
     title: owner.title,
     locale,
     translationGroup: group,
-    root: cloneJson(owner.root),
   };
   if (parent !== undefined) variant.parent = parent;
   if (owner.status !== undefined) variant.status = owner.status;

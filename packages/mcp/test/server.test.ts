@@ -6,7 +6,7 @@ import { SitewrightApiError, type Scope, type SitewrightClient } from '../src/cl
 import type { BridgeAuth } from '../src/auth.js';
 import { MCP_TOOL_CATALOG, DEFAULT_AGENT_INSTRUCTIONS } from '@sitewright/schema';
 
-const page = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' } };
+const page = { id: 'home', path: '', title: 'Home' };
 
 const ALL_CAPS: Scope = { projectId: 'p', role: 'admin', capabilities: ['content:read', 'content:write', 'publish'] };
 
@@ -283,7 +283,7 @@ describe('createSitewrightMcpServer — tool wiring', () => {
   it('rejects a put_page whose page fails schema validation (before any client call)', async () => {
     const client = fakeClient();
     const mcp = await connect(client, writeScope);
-    // Missing required fields (path/title/root) → the SDK validates inputSchema and
+    // Missing required fields (path/title) → the SDK validates inputSchema and
     // returns a tool error without ever invoking the handler/client.
     const res = await mcp.callTool({ name: 'put_page', arguments: { page: { id: 'x' } } });
     expect(res.isError).toBe(true);

@@ -9,8 +9,8 @@ open to watch your changes live), then call get_scope again to confirm before co
 \`switch_project\` to connect to a different project.
 
 AUTHOR PAGES IN CODE. A page renders from its Handlebars \`source\` (HTML + Tailwind CSS +
-DaisyUI v5 component classes). The \`root\` field is a legacy placeholder — set a minimal
-root ({"id":"root","type":"Section"}) and put the real design in \`source\`.
+DaisyUI v5 component classes) — put the entire design there. A page with no \`source\`/\`template\`
+renders an empty body.
 
 In \`source\`:
 - Use DaisyUI components for UI (btn / btn-primary, card, navbar, hero, badge, footer,

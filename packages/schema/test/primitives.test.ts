@@ -3,12 +3,10 @@ import {
   AssetRefSchema,
   CssColorSchema,
   IdSchema,
-  MAX_PAGE_TREE_DEPTH,
   NavTargetSchema,
   RoutePathSchema,
   SlugSchema,
   TokenValueSchema,
-  assertWithinTreeDepth,
   safeRecord,
 } from '../src/primitives.js';
 import { z } from 'zod';
@@ -110,26 +108,3 @@ describe('safeRecord', () => {
   });
 });
 
-describe('assertWithinTreeDepth', () => {
-  const nest = (depth: number): unknown => {
-    let node: unknown = { id: 'leaf', type: 'Leaf' };
-    for (let i = 0; i < depth - 1; i++) node = { id: `n${i}`, type: 'Box', children: [node] };
-    return node;
-  };
-
-  it('passes for a shallow tree', () => {
-    expect(() => assertWithinTreeDepth(nest(5))).not.toThrow();
-  });
-
-  it('passes at exactly the maximum depth', () => {
-    expect(() => assertWithinTreeDepth(nest(MAX_PAGE_TREE_DEPTH))).not.toThrow();
-  });
-
-  it('throws beyond the maximum depth', () => {
-    expect(() => assertWithinTreeDepth(nest(MAX_PAGE_TREE_DEPTH + 1))).toThrow(RangeError);
-  });
-
-  it('respects a custom max', () => {
-    expect(() => assertWithinTreeDepth(nest(4), 3)).toThrow(RangeError);
-  });
-});

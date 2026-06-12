@@ -8,7 +8,6 @@ import {
   type Project,
   type Template,
 } from '@sitewright/schema';
-import { findDuplicateIds, walk } from './tree.js';
 import { GLOBAL_TEMPLATES, isGlobalTemplate } from './templates.js';
 import { pagePath, pagesById } from './routes.js';
 
@@ -20,7 +19,7 @@ export interface ProjectBundle {
   templates?: readonly Template[];
   datasets: readonly Dataset[];
   entries: readonly Entry[];
-  /** Per-locale page content overrides (multilingual; default locale uses page.root). */
+  /** Per-locale page TITLE overrides (multilingual; per-locale content is a locale-variant page). */
   translations?: readonly PageTranslation[];
   /** Web form definitions (optional; consumed by the renderer for `Form` blocks). */
   forms?: readonly Form[];
@@ -127,27 +126,7 @@ export function validateProject(bundle: ProjectBundle): ValidationIssue[] {
     }
   }
 
-  const checkTree = (root: Page['root'], location: string, owner: string): void => {
-    for (const duplicate of findDuplicateIds(root)) {
-      issues.push({
-        code: 'duplicate_node_id',
-        message: `${owner} has duplicate node id "${duplicate}"`,
-        path: location,
-      });
-    }
-    walk(root, (node) => {
-      if (node.binding && !datasetSlugs.has(node.binding.dataset)) {
-        issues.push({
-          code: 'unknown_binding_dataset',
-          message: `${owner} binds unknown dataset "${node.binding.dataset}"`,
-          path: location,
-        });
-      }
-    });
-  };
-
   for (const page of bundle.pages) {
-    checkTree(page.root, `pages/${page.id}`, `page "${page.id}"`);
     if (page.collection && !datasetSlugs.has(page.collection.dataset)) {
       issues.push({
         code: 'unknown_collection_dataset',

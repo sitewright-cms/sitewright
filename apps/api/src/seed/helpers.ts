@@ -25,5 +25,3 @@ export const pub = (dataset: string, id: string, values: Record<string, unknown>
   status: 'published',
   values,
 });
-
-export const placeholderRoot = { id: 'root', type: 'Section' as const };

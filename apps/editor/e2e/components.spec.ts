@@ -145,6 +145,24 @@ test('defaults: fade effect with overlay arrows mid-left/right and bottom-center
   await expect(slides.nth(0)).toHaveCSS('opacity', '1');
   await expect(slides.nth(1)).toHaveCSS('opacity', '0');
 
+  // Regression: the ACTIVE slide sits flush with the track in EVERY snap. UA defaults like
+  // figure{margin:1em 40px} survive modern-normalize and used to offset slide 0 by its margin
+  // while later snaps landed flush — the component CSS resets slide margins to prevent it.
+  const track = root.locator('[data-sw-part="track"]');
+  const flush = async (i: number) => {
+    await expect
+      .poll(
+        async () => {
+          const t = (await track.boundingBox())!;
+          const s = (await slides.nth(i).boundingBox())!;
+          return Math.max(Math.abs(s.x - t.x), Math.abs(s.y - t.y));
+        },
+        { message: `slide ${i} flush with track` },
+      )
+      .toBeLessThan(2);
+  };
+  await flush(0);
+
   // Arrows overlay mid-left / mid-right (the :where() defaults).
   const rootBox = (await root.boundingBox())!;
   const prev = root.locator('[data-sw-part="prev"]');
@@ -170,6 +188,8 @@ test('defaults: fade effect with overlay arrows mid-left/right and bottom-center
   await expect(prev).toBeDisabled();
   await next.click();
   await expect(dots.nth(1)).toHaveAttribute('aria-current', 'true');
+  await expect(slides.nth(1)).toHaveCSS('opacity', '1'); // fade settled — the plugin only positions a slide once it's opaque
+  await flush(1);
   await next.focus();
   await page.keyboard.press('ArrowRight');
   await expect(dots.nth(2)).toHaveAttribute('aria-current', 'true');
@@ -234,6 +254,13 @@ test('wheel gestures navigate; auto height animates the track to the active slid
   // Auto height: the container hugs the short first slide, not the tall second one.
   const h0 = (await container.boundingBox())!.height;
   expect(h0).toBeLessThan(150);
+
+  // Regression: AutoHeight sizes the container to the slide's BORDER box, so any surviving
+  // slide margin (UA figure default) pushed the slide past the track's overflow clip and cut
+  // off its bottom edge. The active slide must be fully contained in the track.
+  const tBox = (await root.locator('[data-sw-part="track"]').boundingBox())!;
+  const sBox = (await root.locator('[data-sw-part="slide"]').first().boundingBox())!;
+  expect(sBox.y + sBox.height).toBeLessThanOrEqual(tBox.y + tBox.height + 1);
 
   // Wheel gesture over the track → next slide.
   await root.locator('[data-sw-part="track"]').hover();

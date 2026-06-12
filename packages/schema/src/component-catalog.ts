@@ -58,7 +58,7 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
     authoring: 'markup',
     parts: [
       { part: 'track', element: 'div', required: true, description: 'The slide row (a CSS scroll-snap strip until the runtime enhances it).' },
-      { part: 'slide', element: 'figure|div', required: true, description: 'One slide (any content). At least two slides for the runtime to engage.' },
+      { part: 'slide', element: 'figure|div', required: true, description: 'One slide (any content). At least two slides for the runtime to engage. Slide margins are reset — author spacing as padding INSIDE the slide (e.g. px-2), never as margins.' },
       {
         part: 'prev',
         element: 'button',

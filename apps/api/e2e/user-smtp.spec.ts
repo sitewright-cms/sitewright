@@ -4,7 +4,7 @@ import { test, expect } from '@playwright/test';
 // project configures its own SMTP (encrypted, masked), a userSmtp form is created,
 // and a public submission is stored (email is best-effort — the dummy SMTP host
 // refuses fast, so delivery fails but the submission is captured in the inbox).
-const PW = 'pw-secret-1';
+const PW = 'Pw-secret-1';
 
 test('userSmtp: project SMTP config + a userSmtp form stores submissions', async ({ playwright, baseURL }) => {
   const api = await playwright.request.newContext({ baseURL });

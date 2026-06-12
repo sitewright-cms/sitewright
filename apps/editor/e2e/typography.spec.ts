@@ -9,7 +9,7 @@ test('typography slots: edit heading/body font + weight, persist, and publish ap
   await page.goto('/');
   await page.getByRole('button', { name: /Register/ }).click();
   await page.getByLabel('Email').fill(`typo-${stamp}@e2e.test`);
-  await page.getByLabel('Password').fill('pw-secret-1');
+  await page.getByLabel('Password').fill('Pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Type Site');
@@ -55,7 +55,7 @@ test('google fonts: pick a heading webfont, self-host on select, publish loads i
   await page.goto('/');
   await page.getByRole('button', { name: /Register/ }).click();
   await page.getByLabel('Email').fill(`gfont-${stamp}@e2e.test`);
-  await page.getByLabel('Password').fill('pw-secret-1');
+  await page.getByLabel('Password').fill('Pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Font Site');
@@ -116,7 +116,7 @@ test('custom named font slot: add "boombox", persist, and publish emits its --sw
   await page.goto('/');
   await page.getByRole('button', { name: /Register/ }).click();
   await page.getByLabel('Email').fill(`named-${stamp}@e2e.test`);
-  await page.getByLabel('Password').fill('pw-secret-1');
+  await page.getByLabel('Password').fill('Pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Named Site');
@@ -150,7 +150,7 @@ test('local font upload: upload a .ttf for the body, self-host on save, publish 
   await page.goto('/');
   await page.getByRole('button', { name: /Register/ }).click();
   await page.getByLabel('Email').fill(`upload-${stamp}@e2e.test`);
-  await page.getByLabel('Password').fill('pw-secret-1');
+  await page.getByLabel('Password').fill('Pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Upload Site');

@@ -13,7 +13,7 @@ test('OAuth consent → code → token, then the access token works', async ({ p
   const api = page.request; // shares the browser cookie jar
 
   const reg = await api.post('/auth/register', {
-    data: { email: `oauth-${stamp}@e2e.test`, password: 'pw-secret-1' },
+    data: { email: `oauth-${stamp}@e2e.test`, password: 'Pw-secret-1' },
   });
   expect(reg.status()).toBe(201);
   const proj = await api.post('/projects', { data: { name: 'OAuth Site', slug: `oauth-${stamp}` } });

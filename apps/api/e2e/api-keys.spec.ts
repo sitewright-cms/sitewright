@@ -13,7 +13,7 @@ test('project API key: mint via session, use as Bearer, enforce scope + revoke',
   const session = await playwright.request.newContext({ baseURL });
 
   const reg = await session.post('/auth/register', {
-    data: { email: `keys-${stamp}@e2e.test`, password: 'pw-secret-1' },
+    data: { email: `keys-${stamp}@e2e.test`, password: 'Pw-secret-1' },
   });
   expect(reg.status()).toBe(201);
   const created = await session.post(`/projects`, {
@@ -54,7 +54,7 @@ test('project API key: mint via session, use as Bearer, enforce scope + revoke',
   // Confinement: a second user's project is unreachable with this token (404, not 403).
   const other = await playwright.request.newContext({ baseURL });
   await other.post('/auth/register', {
-    data: { email: `other-${stamp}@e2e.test`, password: 'pw-secret-1' },
+    data: { email: `other-${stamp}@e2e.test`, password: 'Pw-secret-1' },
   });
   const projO = await other.post(`/projects`, { data: { name: 'O', slug: `o-${stamp}` } });
   const projectO = (await projO.json()).project.id as string;

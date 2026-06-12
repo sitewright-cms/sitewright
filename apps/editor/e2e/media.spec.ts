@@ -16,7 +16,7 @@ test('upload an image into the media library and see the optimized thumbnail', a
 
   await page.getByRole('button', { name: /Register/ }).click();
   await page.getByLabel('Email').fill(`media-${stamp}@e2e.test`);
-  await page.getByLabel('Password').fill('pw-secret-1');
+  await page.getByLabel('Password').fill('Pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Media Site');
@@ -41,7 +41,7 @@ test('upload a non-image file into a folder and see it listed with a download li
   await page.goto('/');
   await page.getByRole('button', { name: /Register/ }).click();
   await page.getByLabel('Email').fill(`assets-${stamp}@e2e.test`);
-  await page.getByLabel('Password').fill('pw-secret-1');
+  await page.getByLabel('Password').fill('Pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Assets Site');

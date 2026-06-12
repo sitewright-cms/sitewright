@@ -9,11 +9,11 @@ test('multi-tenant isolation over HTTP (the core guarantee)', async ({ playwrigh
   const b = await playwright.request.newContext({ baseURL });
 
   const regA = await a.post('/auth/register', {
-    data: { email: `a-${stamp}@e2e.test`, password: 'pw-secret-1' },
+    data: { email: `a-${stamp}@e2e.test`, password: 'Pw-secret-1' },
   });
   expect(regA.status()).toBe(201);
   const regB = await b.post('/auth/register', {
-    data: { email: `b-${stamp}@e2e.test`, password: 'pw-secret-1' },
+    data: { email: `b-${stamp}@e2e.test`, password: 'Pw-secret-1' },
   });
   expect(regB.status()).toBe(201);
 
@@ -53,13 +53,13 @@ test('login flow issues a working session', async ({ playwright, baseURL }) => {
   expect(
     (
       await ctx.post('/auth/register', {
-        data: { email, password: 'pw-secret-1' },
+        data: { email, password: 'Pw-secret-1' },
       })
     ).status(),
   ).toBe(201);
   await ctx.post('/auth/logout');
   const login = await ctx.post('/auth/login', {
-    data: { email, password: 'pw-secret-1' },
+    data: { email, password: 'Pw-secret-1' },
   });
   expect(login.status()).toBe(200);
   expect((await ctx.get('/me')).status()).toBe(200);

@@ -10,14 +10,14 @@ test('admin configures an OIDC provider; the login screen offers it', async ({ p
   await page.goto('/');
   await page.getByRole('button', { name: /Register/ }).click();
   await page.getByLabel('Email').fill('admin@e2e.test');
-  await page.getByLabel('Password').fill('pw-secret-1');
+  await page.getByLabel('Password').fill('Pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();
 
   const exists = await page.getByText('email already registered').waitFor({ state: 'visible', timeout: 2500 }).then(() => true).catch(() => false);
   if (exists) {
     await page.getByRole('button', { name: 'Have an account? Sign in' }).click();
     await page.getByLabel('Email').fill('admin@e2e.test');
-    await page.getByLabel('Password').fill('pw-secret-1');
+    await page.getByLabel('Password').fill('Pw-secret-1');
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   }
 

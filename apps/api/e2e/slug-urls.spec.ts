@@ -12,7 +12,7 @@ const PNG_1X1 = Buffer.from(
 // rebases them to the bundled `_assets/`. Verified against a deployed instance.
 test('media + preview URLs are slug-based end to end', async ({ playwright, baseURL }) => {
   const ctx = await playwright.request.newContext({ baseURL });
-  expect((await ctx.post('/auth/register', { data: { email: `slug-${stamp}@e2e.test`, password: 'pw-secret-1' } })).status()).toBe(201);
+  expect((await ctx.post('/auth/register', { data: { email: `slug-${stamp}@e2e.test`, password: 'Pw-secret-1' } })).status()).toBe(201);
   const slug = `acme-studio-${stamp}`;
   const proj = await ctx.post('/projects', { data: { name: 'Acme', slug } });
   expect(proj.status()).toBe(201);

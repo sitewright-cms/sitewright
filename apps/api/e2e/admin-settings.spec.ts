@@ -6,7 +6,7 @@ import { test, expect } from '@playwright/test';
 // are stored but never returned.
 
 const ADMIN_EMAIL = 'admin@e2e.test';
-const PW = 'pw-secret-1';
+const PW = 'Pw-secret-1';
 
 test('instance admin settings: gating, persistence, and secret masking', async ({ playwright, baseURL }) => {
   const api = await playwright.request.newContext({ baseURL });

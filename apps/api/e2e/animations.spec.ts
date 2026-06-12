@@ -11,7 +11,7 @@ test('publish ships the data-aos runtime for an animated code-first site', async
   const ctx = await playwright.request.newContext({ baseURL });
 
   const reg = await ctx.post('/auth/register', {
-    data: { email: `anim-${stamp}@e2e.test`, password: 'pw-secret-1' },
+    data: { email: `anim-${stamp}@e2e.test`, password: 'Pw-secret-1' },
   });
   expect(reg.status()).toBe(201);
   const slug = `anim-${stamp}`;
@@ -70,7 +70,7 @@ test('a site without data-aos ships no animation assets', async ({ playwright, b
   const ctx = await playwright.request.newContext({ baseURL });
 
   const reg = await ctx.post('/auth/register', {
-    data: { email: `plain-${stamp}@e2e.test`, password: 'pw-secret-1' },
+    data: { email: `plain-${stamp}@e2e.test`, password: 'Pw-secret-1' },
   });
   expect(reg.status()).toBe(201);
   const slug = `plain-${stamp}`;

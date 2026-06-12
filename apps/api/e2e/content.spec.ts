@@ -6,7 +6,7 @@ test('content lifecycle + export over HTTP', async ({ playwright, baseURL }) => 
   const ctx = await playwright.request.newContext({ baseURL });
 
   const reg = await ctx.post('/auth/register', {
-    data: { email: `content-${stamp}@e2e.test`, password: 'pw-secret-1' },
+    data: { email: `content-${stamp}@e2e.test`, password: 'Pw-secret-1' },
   });
   expect(reg.status()).toBe(201);
   const proj = await ctx.post(`/projects`, {

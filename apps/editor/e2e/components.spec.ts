@@ -61,7 +61,7 @@ let imgs: string[] = [];
 
 test.beforeAll(async ({ playwright, baseURL }) => {
   const ctx = await playwright.request.newContext({ baseURL: baseURL! });
-  expect((await ctx.post('/auth/register', { data: { email: `comp-${stamp}@e2e.test`, password: 'pw-secret-1' } })).status()).toBe(201);
+  expect((await ctx.post('/auth/register', { data: { email: `comp-${stamp}@e2e.test`, password: 'Pw-secret-1' } })).status()).toBe(201);
   const proj = await ctx.post('/projects', { data: { name: 'Components Site', slug } });
   expect(proj.status()).toBe(201);
   const base = `/projects/${((await proj.json()) as { project: { id: string } }).project.id}`;

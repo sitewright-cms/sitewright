@@ -8,7 +8,7 @@ type PwFixture = PlaywrightWorkerArgs['playwright'];
 // so no provider secret is ever committed and a keyless CI still exercises the wiring.
 
 const ADMIN_EMAIL = 'admin@e2e.test';
-const PW = 'pw-secret-1';
+const PW = 'Pw-secret-1';
 const UNSPLASH_KEY = process.env.SW_E2E_UNSPLASH_KEY;
 const PEXELS_KEY = process.env.SW_E2E_PEXELS_KEY;
 

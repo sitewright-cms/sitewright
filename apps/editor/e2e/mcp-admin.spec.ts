@@ -8,7 +8,7 @@ test('admin: edit agent (MCP) instructions, see the endpoint list + connect guid
   await page.goto('/');
   await page.getByRole('button', { name: /Register/ }).click();
   await page.getByLabel('Email').fill('admin@e2e.test');
-  await page.getByLabel('Password').fill('pw-secret-1');
+  await page.getByLabel('Password').fill('Pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();
 
   // Idempotent: if this admin already exists (a rerun / seeded), sign in instead of registering.
@@ -20,7 +20,7 @@ test('admin: edit agent (MCP) instructions, see the endpoint list + connect guid
   if (alreadyExists) {
     await page.getByRole('button', { name: 'Have an account? Sign in' }).click();
     await page.getByLabel('Email').fill('admin@e2e.test');
-    await page.getByLabel('Password').fill('pw-secret-1');
+    await page.getByLabel('Password').fill('Pw-secret-1');
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   }
 

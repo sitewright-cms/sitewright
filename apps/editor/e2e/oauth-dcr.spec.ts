@@ -11,7 +11,7 @@ test('dynamically-registered client completes the OAuth flow', async ({ page, pl
   const api = page.request;
 
   await api.post('/auth/register', {
-    data: { email: `dcr-${stamp}@e2e.test`, password: 'pw-secret-1' },
+    data: { email: `dcr-${stamp}@e2e.test`, password: 'Pw-secret-1' },
   });
   const proj = await api.post('/projects', { data: { name: 'DCR Site', slug: `dcr-${stamp}` } });
   const projectId = (await proj.json()).project.id as string;

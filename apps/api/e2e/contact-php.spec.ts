@@ -4,7 +4,7 @@ import { test, expect } from '@playwright/test';
 // a form uses it, and publish bakes a contact.php (PHP mail()) into the export while
 // the page form points at it — with the recipient kept server-side (never in HTML).
 // The DinD instance runs with SW_ADMIN_EMAILS=admin@e2e.test + SW_ENCRYPTION_KEY.
-const PW = 'pw-secret-1';
+const PW = 'Pw-secret-1';
 
 test('contactPhp: enabled mode publishes a contact.php and points the form at it', async ({ playwright, baseURL }) => {
   const admin = await playwright.request.newContext({ baseURL });

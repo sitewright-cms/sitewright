@@ -9,7 +9,7 @@ test('author a form in the editor and see a submission in its submissions list',
   await page.goto('/');
   await page.getByRole('button', { name: /Register/ }).click();
   await page.getByLabel('Email').fill(`forms-ui-${stamp}@e2e.test`);
-  await page.getByLabel('Password').fill('pw-secret-1');
+  await page.getByLabel('Password').fill('Pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();
 
   await page.getByRole('button', { name: 'New project' }).click();

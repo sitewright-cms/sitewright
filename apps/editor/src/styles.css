@@ -60,6 +60,8 @@
      follows the brand. 30%/40% alpha reproduce the historic `shadow-indigo-600/30` and `/40` exactly. */
   --sw-brand-shadow: color-mix(in srgb, var(--sw-brand-1) 30%, transparent);
   --sw-brand-shadow-strong: color-mix(in srgb, var(--sw-brand-1) 40%, transparent);
+  /* Brand-tinted focus/selection ring (replaces the hardcoded indigo focus rings + drop-target rings). */
+  --sw-brand-ring: color-mix(in srgb, var(--sw-brand-1) 40%, transparent);
 }
 
 /* The configurable brand gradient — referenced from theme.ts (primaryButton/gradientSurface/accentChip)
@@ -88,6 +90,37 @@
 }
 .sw-brand-shadow-md-hover:hover {
   box-shadow: 0 4px 6px -1px var(--sw-brand-shadow), 0 2px 4px -2px var(--sw-brand-shadow);
+}
+
+/* Brand-tinted focus/selection rings — replace the hardcoded `ring-indigo-*` utilities so the accent
+   follows the instance brand (via --sw-brand-1 / --sw-brand-ring). Box-shadow based, like Tailwind's
+   ring; unlayered so they win over the (now-removed) utilities.
+     - sw-brand-focus:         input border + soft 40% ring on focus (the glassInput accent).
+     - sw-brand-focus-visible: a solid keyboard-focus ring (menu items / pickers).
+     - sw-brand-ring:          a static solid ring (e.g. a drag-and-drop target).
+     - sw-brand-ring-hover:    a soft 40% ring on hover (e.g. the colour-picker swatch). */
+.sw-brand-focus:focus {
+  border-color: var(--sw-brand-1);
+  box-shadow: 0 0 0 2px var(--sw-brand-ring);
+}
+.sw-brand-focus-visible:focus-visible {
+  box-shadow: 0 0 0 2px var(--sw-brand-1);
+}
+.sw-brand-focus-visible-inset:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--sw-brand-1); /* inset — for full-width menu items */
+}
+.sw-brand-ring {
+  box-shadow: 0 0 0 2px var(--sw-brand-1);
+}
+.sw-brand-ring-hover:hover {
+  box-shadow: 0 0 0 2px var(--sw-brand-ring);
+}
+/* Error focus ring (rose, brand-INDEPENDENT). Defined AFTER .sw-brand-focus so that on an input
+   carrying both classes (a glassInput in an invalid state) this wins on equal specificity — keeping
+   the validation cue rose, not brand-coloured. Matches the old `focus:border-rose-400 ring-rose-300/40`. */
+.sw-invalid-focus:focus {
+  border-color: #fb7185; /* rose-400 */
+  box-shadow: 0 0 0 2px rgb(253 164 175 / 0.4); /* rose-300 @ 40% */
 }
 
 /* DaisyUI component previews render on a page-like surface (themed via the :root vars).
@@ -119,7 +152,7 @@ html {
 }
 * {
   scrollbar-width: thin; /* Firefox */
-  scrollbar-color: rgba(99, 102, 241, 0.35) transparent;
+  scrollbar-color: color-mix(in srgb, var(--sw-brand-1) 35%, transparent) transparent;
 }
 ::-webkit-scrollbar {
   width: 10px;
@@ -129,13 +162,13 @@ html {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background-color: rgba(99, 102, 241, 0.3); /* indigo accent, translucent */
+  background-color: color-mix(in srgb, var(--sw-brand-1) 30%, transparent); /* brand accent, translucent */
   border: 2px solid transparent; /* padding-box border → a thin, floating thumb */
   border-radius: 9999px;
   background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(99, 102, 241, 0.55);
+  background-color: color-mix(in srgb, var(--sw-brand-1) 55%, transparent);
   background-clip: padding-box;
 }
 /* The code editor is a dark surface — a translucent indigo thumb is nearly invisible there, so give

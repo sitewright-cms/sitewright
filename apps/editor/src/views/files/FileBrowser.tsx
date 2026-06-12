@@ -370,7 +370,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
       {intro && <p className="mb-3 text-sm text-slate-500">{intro}</p>}
 
       {/* Upload + stock toolbar */}
-      <div className={`mb-4 flex flex-wrap items-center justify-between gap-3 ${glassCard} p-4 ${dropTarget === folder ? 'ring-2 ring-indigo-400' : ''}`}>
+      <div className={`mb-4 flex flex-wrap items-center justify-between gap-3 ${glassCard} p-4 ${dropTarget === folder ? 'sw-brand-ring' : ''}`}>
         <div className="flex flex-col gap-1">
           <label htmlFor={uploadId} className="text-xs font-bold text-slate-700">
             Upload files {dropTarget === folder ? '— drop to upload here' : '(or drag & drop)'}
@@ -573,7 +573,7 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
                 onDragEnd={() => (dragItem.current = null)}
               onDragOver={allowDrop(path)}
               onDrop={(e) => onDropInto(path, e)}
-              className={`group relative flex flex-col items-center gap-1 ${glassCard} p-3 text-center ${dropTarget === path ? 'ring-2 ring-indigo-400' : ''}`}
+              className={`group relative flex flex-col items-center gap-1 ${glassCard} p-3 text-center ${dropTarget === path ? 'sw-brand-ring' : ''}`}
             >
               <button type="button" onClick={() => goTo(path)} className="flex flex-col items-center gap-1">
                 <FolderIcon className="h-10 w-10 text-indigo-400" />

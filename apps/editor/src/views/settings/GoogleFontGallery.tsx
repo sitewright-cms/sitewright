@@ -60,7 +60,7 @@ export function GoogleFontGallery({
       <input
         aria-label="Search Google Fonts"
         autoFocus
-        className="w-full rounded-lg border border-white/60 bg-white/70 px-3 py-2 text-sm outline-none focus:border-indigo-400"
+        className="w-full rounded-lg border border-white/60 bg-white/70 px-3 py-2 text-sm sw-brand-focus outline-none"
         placeholder="Search fonts (e.g. Inter, Playfair)…"
         value={query}
         onChange={(e) => setQuery(e.target.value)}

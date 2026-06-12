@@ -41,7 +41,7 @@ export function CustomFontSlots({
               <span className="text-xs font-bold text-slate-500">font-</span>
               <input
                 aria-label="Custom font name"
-                className="w-40 rounded-lg border border-white/60 bg-white/70 px-2 py-1 text-sm outline-none focus:border-indigo-400"
+                className="w-40 rounded-lg border border-white/60 bg-white/70 px-2 py-1 text-sm sw-brand-focus outline-none"
                 placeholder="boombox"
                 value={row.name}
                 onChange={(e) => update(row.id, { name: toSlug(e.target.value) })}

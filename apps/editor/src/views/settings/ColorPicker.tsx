@@ -165,7 +165,7 @@ function FormatField({ fmt, rgba, onParsed }: { fmt: ColorFormat; rgba: Rgba; on
           if (parsed) onParsed(parsed);
         }}
         onBlur={() => setDraft(null)}
-        className={`${glassInput} px-2 py-1 font-mono text-[11px] ${invalid ? 'border-rose-300 focus:border-rose-400 focus:ring-rose-300/40' : ''}`}
+        className={`${glassInput} px-2 py-1 font-mono text-[11px] ${invalid ? 'sw-invalid-focus border-rose-300' : ''}`}
       />
     </label>
   );
@@ -285,7 +285,7 @@ export function ColorField({ value, onChange, label }: { value: string; onChange
         aria-label={`Edit ${label}`}
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        className="block h-7 w-7 rounded-md border border-white/70 shadow-inner outline-none transition hover:ring-2 hover:ring-indigo-300/50 focus-visible:ring-2 focus-visible:ring-indigo-400/70"
+        className="block h-7 w-7 rounded-md border border-white/70 shadow-inner outline-none transition sw-brand-ring-hover sw-brand-focus-visible"
         style={SAFE_COLOR.test(value) ? { ...CHECKER } : { background: 'transparent' }}
       >
         <span aria-hidden className="block h-full w-full rounded-md" style={{ background: SAFE_COLOR.test(value) ? value : 'transparent' }} />
@@ -322,7 +322,7 @@ export function ColorCard({ title, value, onChange }: { title: string; value: st
         aria-label={`Edit ${title}`}
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
-        className="block h-12 w-full rounded-lg border border-white/70 shadow-inner outline-none transition hover:ring-2 hover:ring-indigo-300/50 focus-visible:ring-2 focus-visible:ring-indigo-400/70"
+        className="block h-12 w-full rounded-lg border border-white/70 shadow-inner outline-none transition sw-brand-ring-hover sw-brand-focus-visible"
         style={valid ? { ...CHECKER } : { background: 'transparent' }}
       >
         <span aria-hidden className="block h-full w-full rounded-lg" style={{ background: valid ? value : 'transparent' }} />

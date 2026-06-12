@@ -194,6 +194,15 @@ export function translationsDe(assets: Record<string, string>): Record<string, P
       comp_h1: 'Slider & Galerien in jeder Variante',
       comp_intro:
         'Die interaktiven Komponenten, mit denen diese Website gebaut ist — erst die Standardeinstellungen, dann jede Option. Alles funktioniert mit Tastatur, Touch und ohne JavaScript.',
+      sec_hero_t: 'Hero-Slider — Hintergründe, Ken Burns & Caption-Animation',
+      sec_hero_d:
+        'Der klassische Startseiten-Auftakt: Folien mit fester Höhe und editierbaren Hintergrundbildern (ohne img-Elemente), Captions, die auf einer milchigen Glasfläche hereingleiten, volle-Höhe-Pfeile mit Verlauf, die beim Hover wachsen, und ein abwechselnder Ken-Burns-Effekt bei jeder Aktivierung. Alles pures CSS über den data-active-Marker der Runtime.',
+      hero_cap_1: 'Willkommen bei Northwind Studio',
+      hero_cap_2: 'Websites mit echtem Handwerk',
+      hero_cap_3: 'Gebaut für Performance',
+      sec_click_t: 'Klicken zum Weiterblättern',
+      sec_click_d:
+        'Ganz ohne Pfeile: Ein Klick oder Tipp irgendwo auf die Folie blättert weiter — jeder Druck antwortet mit einem Ripple. Links in der Folie bleiben Links, Ziehen wischt weiterhin, und die Pfeiltasten funktionieren, sobald der Slider den Fokus hat.',
       sec_fade_t: 'Slider — die Standardeinstellungen',
       sec_fade_d: 'Ganz ohne Optionen: Die Folien überblenden sanft, die Pfeile liegen mittig links und rechts, die Indikatoren zentriert am unteren Rand.',
       sec_slide_t: 'Slide-Effekt, Endlosschleife, Autoplay',
@@ -210,6 +219,11 @@ export function translationsDe(assets: Record<string, string>): Record<string, P
       sec_lbfx_d: 'Dieselbe Galerie mit Fade beim Öffnen und Blättern und Endlos-Navigation — nach dem letzten Bild folgt wieder das erste.',
       a_prev: 'Vorherige Folie',
       a_next: 'Nächste Folie',
+      aria_hero: 'Willkommens-Slideshow',
+      aria_click: 'Projekt-Highlights (Klick blättert weiter)',
+      hero_bg_1: assets['proj-aria'] ?? '',
+      hero_bg_2: assets['proj-flint'] ?? '',
+      hero_bg_3: assets['proj-harbor'] ?? '',
       aria_fade: 'Projekt-Slideshow (Fade)',
       aria_slide: 'Projekt-Slideshow (Slide)',
       aria_items: 'Projektkarten',

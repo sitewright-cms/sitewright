@@ -58,6 +58,11 @@ const CAROUSEL_CSS = [
   // BEFORE the runtime marks the root enhanced — a late gate would measure every slide
   // stretched to the tallest. The container only exists once the runtime creates it.
   '[data-sw-block="Carousel"][data-autoheight="true"] [data-sw-part="container"]{align-items:flex-start;transition:height .25s ease}',
+  // Press-ripple containment ("waves"): the runtime adds .sw-waves to arrows/dots (and
+  // slides in click-to-slide mode). MUST come BEFORE the default control placement below —
+  // all these rules are zero-specificity :where(), so source order decides, and the arrows'
+  // default position:absolute has to win over this relative fallback.
+  ':where([data-sw-block="Carousel"] .sw-waves){position:relative;overflow:hidden}',
   // Controls stay hidden until the runtime enhances — the no-JS fallback never shows
   // inert UI. (These gates are deliberately strong; to drop a control, omit its part.)
   '[data-sw-block="Carousel"] [data-sw-part="prev"],[data-sw-block="Carousel"] [data-sw-part="next"],[data-sw-block="Carousel"] [data-sw-part="dots"]{display:none}',
@@ -77,6 +82,10 @@ const CAROUSEL_CSS = [
   '[data-sw-block="Carousel"] [data-sw-part="dots"] button svg{display:block;width:100%;height:100%}',
   '[data-sw-block="Carousel"] [data-sw-part="dots"] button[aria-current="true"]{opacity:1}',
   '[data-sw-block="Carousel"] [data-sw-part="dots"] button[aria-current="true"] svg circle{fill:currentColor}',
+  '[data-sw-block="Carousel"] .sw-ripple{position:absolute;border-radius:9999px;pointer-events:none;background:rgb(0 0 0/.35);transform:scale(0);animation:sw-ripple .65s ease-out forwards}',
+  '@keyframes sw-ripple{to{transform:scale(1);opacity:0}}',
+  // Click-to-slide (data-click-next="true"): the whole slide is the affordance.
+  '[data-sw-block="Carousel"][data-click-next="true"][data-sw-enhanced="true"] [data-sw-part="slide"]{cursor:pointer}',
   '@media (prefers-reduced-motion: reduce){[data-sw-block="Carousel"] [data-sw-part="track"]{scroll-behavior:auto}[data-sw-block="Carousel"] [data-sw-part="container"]{transition:none}}',
 ].join('');
 

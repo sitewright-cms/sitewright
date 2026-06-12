@@ -115,6 +115,13 @@ test.beforeAll(async ({ playwright, baseURL }) => {
     <figure data-sw-part="slide"><div class="h-40 bg-blue-50">medium</div></figure>
   </div>${arrows}<div data-sw-part="dots" aria-hidden="true"></div>
 </div></section>
+<section id="click"><div class="relative" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-click-next="true" aria-label="Click advance">
+  <div data-sw-part="track">
+    <figure data-sw-part="slide"><div class="h-24 bg-red-200">A</div></figure>
+    <figure data-sw-part="slide"><div class="h-24 bg-green-200">B <a href="#lnk" class="underline">a link</a></div></figure>
+    <figure data-sw-part="slide"><div class="h-24 bg-blue-200">C</div></figure>
+  </div><div data-sw-part="dots" aria-hidden="true"></div>
+</div></section>
 <section id="lb"><div data-sw-component="lightbox" data-sw-block="Lightbox" aria-label="Gallery">
   <div data-sw-part="grid">${lbItems}</div>
 </div></section>
@@ -144,6 +151,11 @@ test('defaults: fade effect with overlay arrows mid-left/right and bottom-center
   const slides = root.locator('[data-sw-part="slide"]');
   await expect(slides.nth(0)).toHaveCSS('opacity', '1');
   await expect(slides.nth(1)).toHaveCSS('opacity', '0');
+
+  // The runtime stamps data-active on the selected slide — the CSS hook for per-activation
+  // effects (caption entrance, Ken Burns). It must move with the snap, not just exist.
+  await expect(slides.nth(0)).toHaveAttribute('data-active', '');
+  await expect(slides.nth(1)).not.toHaveAttribute('data-active', '');
 
   // Regression: the ACTIVE slide sits flush with the track in EVERY snap. UA defaults like
   // figure{margin:1em 40px} survive modern-normalize and used to offset slide 0 by its margin
@@ -186,9 +198,19 @@ test('defaults: fade effect with overlay arrows mid-left/right and bottom-center
 
   // Arrow + keyboard navigation move the active snap; prev is disabled at the start (no loop).
   await expect(prev).toBeDisabled();
-  await next.click();
+  // Press the next arrow via raw mouse events: the down-stroke must spawn the default
+  // ripple ("waves") inside the button; releasing completes the click → snap 1.
+  // Raw mouse coords are viewport-relative and DON'T auto-scroll — bring it on screen first.
+  await next.scrollIntoViewIfNeeded();
+  const press = (await next.boundingBox())!;
+  await page.mouse.move(press.x + press.width / 2, press.y + press.height / 2);
+  await page.mouse.down();
+  await expect(next.locator('.sw-ripple')).toHaveCount(1);
+  await page.mouse.up();
   await expect(dots.nth(1)).toHaveAttribute('aria-current', 'true');
   await expect(slides.nth(1)).toHaveCSS('opacity', '1'); // fade settled — the plugin only positions a slide once it's opaque
+  await expect(slides.nth(1)).toHaveAttribute('data-active', ''); // the marker moved with the snap
+  await expect(slides.nth(0)).not.toHaveAttribute('data-active', '');
   await flush(1);
   await next.focus();
   await page.keyboard.press('ArrowRight');
@@ -269,6 +291,35 @@ test('wheel gestures navigate; auto height animates the track to the active slid
 
   // The tall slide is now active — the container height animates up.
   await expect.poll(async () => (await container.boundingBox())!.height).toBeGreaterThan(h0 + 80);
+});
+
+test('click-to-slide: data-click-next advances on slide press with ripple; inner links keep their meaning', async ({ page }) => {
+  const root = page.locator('#click [data-sw-block="Carousel"]');
+  await expect(root).toHaveAttribute('data-sw-enhanced', 'true');
+  // With no focusable controls required, the root itself becomes keyboard-reachable.
+  await expect(root).toHaveAttribute('tabindex', '0');
+  const dots = root.locator('[data-sw-part="dots"] button');
+  const track = root.locator('[data-sw-part="track"]');
+  await expect(dots.nth(0)).toHaveAttribute('aria-current', 'true');
+
+  // Press anywhere on the slide: the down-stroke ripples ON THE SLIDE, the release advances.
+  // (scroll first — raw mouse coords are viewport-relative and don't auto-scroll)
+  await track.scrollIntoViewIfNeeded();
+  const box = (await track.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await expect(root.locator('[data-sw-part="slide"] .sw-ripple')).toHaveCount(1);
+  await page.mouse.up();
+  await expect(dots.nth(1)).toHaveAttribute('aria-current', 'true');
+
+  // A link inside the (now active) slide keeps its own meaning — no advance on click.
+  await root.locator('a[href="#lnk"]').click();
+  await expect(dots.nth(1)).toHaveAttribute('aria-current', 'true');
+
+  // Arrow keys work once the root has focus (tabindex stamped by the runtime).
+  await root.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(dots.nth(2)).toHaveAttribute('aria-current', 'true');
 });
 
 test('lightbox: gallery viewer with dialog semantics, arrows, keyboard, and focus restore', async ({ page }, testInfo) => {

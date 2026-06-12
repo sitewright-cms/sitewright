@@ -2,9 +2,10 @@ import type { Page } from '@sitewright/schema';
 import { icon } from '../../helpers.js';
 
 // ---------------------------------------------------------------- FAQ (footer nav slot)
-// The first-party ACCORDION: native <details>/<summary> styled by the platform's
-// data-sw-block="AccordionItem" hooks — zero JavaScript, fully interactive even in the
-// script-blocked editor preview. Questions/answers come from the `faq` dataset (auto-resolved
+// An accordion as the PLATFORM PATTERN prescribes it: native <details>/<summary> styled with
+// DaisyUI's collapse classes (themed by the brand tokens) — zero JavaScript, fully interactive
+// even in the script-blocked editor preview. There is deliberately NO accordion component
+// (DaisyUI collapse covers it). Questions/answers come from the `faq` dataset (auto-resolved
 // per locale); answers are RICHTEXT rendered through {{sw-rich}} (sanitized).
 export function pageFaq(): Page {
   return {
@@ -19,11 +20,11 @@ export function pageFaq(): Page {
   <h1 class="mt-4 text-4xl font-bold tracking-tight sm:text-6xl" data-sw-text="faq_h1">Frequently asked questions</h1>
   <p class="mt-5 text-lg leading-relaxed text-base-content/60" data-sw-text="faq_intro">The questions every project starts with — answered plainly. Anything missing? Just ask.</p>
 
-  <div class="mt-14 overflow-hidden rounded-3xl border border-base-200 shadow-sm" data-sw-block="Accordion">
+  <div class="join join-vertical mt-14 w-full rounded-3xl shadow-sm">
     {{#each data.faq}}
-    <details data-sw-block="AccordionItem" class="bg-base-100"{{#if @first}} open{{/if}}>
-      <summary>{{question}}</summary>
-      <div data-sw-part="content" class="prose prose-sm max-w-none text-base-content/70">{{sw-rich answer}}</div>
+    <details class="collapse collapse-plus join-item border border-base-200 bg-base-100"{{#if @first}} open{{/if}}>
+      <summary class="collapse-title font-semibold">{{question}}</summary>
+      <div class="collapse-content prose prose-sm max-w-none text-base-content/70">{{sw-rich answer}}</div>
     </details>
     {{/each}}
   </div>

@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { PageSchema, DEFAULT_AGENT_INSTRUCTIONS } from '@sitewright/schema';
+import { PageSchema, DEFAULT_AGENT_INSTRUCTIONS, COMPONENT_CATALOG } from '@sitewright/schema';
 import { SitewrightApiError, type Capability, type SitewrightClient } from './client.js';
 import type { BridgeAuth, PendingLogin, ScopeHolder } from './auth.js';
 
@@ -165,6 +165,32 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
         'Re-authenticate to connect to a DIFFERENT project (project scope is fixed per connection). Returns a URL + code to approve.',
     },
     () => startLogin(true),
+  );
+
+  // Static platform metadata — the machine-readable authoring contracts of the first-party
+  // interactive components (the data-sw-component runtime). No connection or capability
+  // needed: this is the same constant the platform itself builds from, so an agent can fetch
+  // the exact markup contract instead of guessing from prose.
+  server.registerTool(
+    'get_components',
+    {
+      description:
+        'The authoring contracts of the first-party interactive components (carousel, tabs, lightbox, modal, cookie-consent, form): markers, data-sw-part roles, config attributes, and copy-paste markup skeletons. Optionally filter by type or marker.',
+      inputSchema: { type: z.string().max(100).optional() },
+    },
+    ({ type }: { type?: string }) => {
+      if (type) {
+        const wanted = type.toLowerCase();
+        const entry = COMPONENT_CATALOG.find((c) => c.type.toLowerCase() === wanted || c.marker === wanted);
+        if (!entry) {
+          return toolError(
+            `Unknown component "${type}" — available: ${COMPONENT_CATALOG.map((c) => `${c.type} (${c.marker})`).join(', ')}.`,
+          );
+        }
+        return ok(entry);
+      }
+      return ok({ components: COMPONENT_CATALOG });
+    },
   );
 
   // ---------------------------------------------------------------- reads (content:read)

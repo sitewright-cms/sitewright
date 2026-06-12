@@ -22,7 +22,7 @@ const EXAMPLE_ENTRIES = exampleEntries({});
  * actual publish pipeline ONCE (a single import + publish — the seed is large now) and asserts
  * the exported site carries the multilingual story it exists to demonstrate — inherit-mode
  * German pages (shared code, translated data), localized slugs/datasets/forms/chrome, hreflang,
- * the flag switcher — plus the feature showcases (carousel/tabs/lightbox/modal/accordion/
+ * the flag switcher — plus the feature showcases (carousel/tabs/lightbox/modal/
  * cookie-consent/data-aos/form embed) and the sitemap/noindex behavior of the legal pages.
  */
 describe('seeded demo — flagship multilingual showcase publishes correctly', () => {
@@ -114,7 +114,7 @@ describe('seeded demo — flagship multilingual showcase publishes correctly', (
     expect(de).toContain('Erzählen Sie uns von Ihrem Projekt'); // translated field label
   });
 
-  it('showcases the first-party components: carousel, tabs, lightbox, modal, accordion, data-aos', async () => {
+  it('showcases the first-party components: carousel, tabs, lightbox, modal, data-aos', async () => {
     const home = await page('index.html');
     expect(home).toContain('data-sw-component="carousel"');
     expect(home).toContain('data-aos="fade-up"');
@@ -132,7 +132,8 @@ describe('seeded demo — flagship multilingual showcase publishes correctly', (
     expect(contact).toContain('data-sw-component="modal"');
     expect(contact).toContain('<dialog');
     const faq = await page('faq/index.html');
-    expect(faq).toContain('data-sw-block="AccordionItem"');
+    // the accordion is the PATTERN (native <details> + DaisyUI collapse), not a component
+    expect(faq).toContain('class="collapse collapse-plus join-item');
     expect(faq).toContain('<strong>4–8 weeks</strong>'); // {{sw-rich}} kept the sanitized markup
     const deFaq = await page('de/faq/index.html');
     expect(deFaq).toContain('<strong>4–8 Wochen</strong>'); // faq-de dataset auto-resolved

@@ -102,6 +102,36 @@ The code is ISO 3166-1 alpha-2 (de, us, gb, fr, jp, br…); add "-circle" for th
 LANGUAGES (Spanish ≠ Spain) — use them for country/region selectors; for a language switcher
 prefer text language names, or pass an explicit country code per locale.
 
+INTERACTIVE COMPONENTS: the platform ships audited, first-party runtimes you activate with
+data-sw-component="carousel|tabs|lightbox|modal|cookie-consent" — author semantic HTML with
+data-sw-part roles and the runtime wires the behavior (each ships only when used, and degrades
+to usable HTML without JS — never add your own script). Call the \`get_components\` tool for the
+machine-readable contracts: markers, parts, config attributes, and copy-paste markup skeletons.
+Quick rules vs the similar-looking DaisyUI classes:
+- Slideshow (arrows/dots/autoplay/loop) → data-sw-component="carousel". DaisyUI's \`carousel\`
+  classes are just a CSS scroll-snap strip — fine for a swipeable card row, but they have NO
+  controls (the documented #anchor buttons hijack scrolling — avoid them).
+- Content TABS → data-sw-component="tabs" (APG tablist; panels stack readable without JS).
+  DaisyUI \`tab\` classes are for tab-STYLED NAVIGATION LINKS only; do not build radio-input
+  content tabs.
+- Image viewer/gallery → data-sw-component="lightbox" (no DaisyUI equivalent; pairs with
+  {{#sw-folder}} or a dataset loop).
+- MODAL → data-sw-component="modal" (native <dialog>: focus trap/Esc/backdrop for free).
+  DaisyUI's modal methods need inline JS (rejected) or a checkbox hack (poor a11y) — don't.
+- Cookie banner → data-sw-component="cookie-consent", placed ONCE site-wide in the website
+  \`bottom\` slot, with the \`hidden\` attribute authored on it.
+- ACCORDIONS are NOT a component: use native <details> with DaisyUI collapse classes, e.g.
+  <details class="collapse collapse-plus"><summary class="collapse-title">Q</summary>
+  <div class="collapse-content">A</div></details> (group with \`join join-vertical\`).
+
+FORMS (contact/enquiry/etc.): create a \`form\` content entity first (fields, submission mode,
+success/error messages), then embed it BY REFERENCE — {{sw-form "<id>" class="…"}} renders the
+complete form, or author your own <form data-sw-form="<id>">…custom field markup…</form> and the
+platform injects the submission endpoint, honeypot, and captcha at render. NEVER hand-wire an
+action/endpoint and never write data-sw-component="form" yourself (it is stamped automatically).
+A page in locale "de" auto-resolves "<id>-de" when that form exists. Submissions land in the
+project inbox (\`list_submissions\`).
+
 SET THE BRAND with put_content("settings","settings",{ identity:{ name, colors:{ primary:"#…" } },
 settings:{ defaultLocale:"en", locales:["en"] } }).
 PAGE SETTINGS live on the page: title, path, status ("draft"|"published"),
@@ -226,6 +256,7 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'get_scope', description: "Show whether the agent is connected and, if so, the project, role, and capabilities." },
   { name: 'login', description: "Connect the agent to a project — returns a URL + code for the user to approve in their browser." },
   { name: 'switch_project', description: "Re-authenticate to connect to a DIFFERENT project (scope is fixed per connection)." },
+  { name: 'get_components', description: "The machine-readable authoring contracts of the first-party interactive components (markers, parts, attributes, markup skeletons)." },
   { name: 'list_pages', description: "List the project's pages." },
   { name: 'get_page', description: "Get one page by id (code-first design is in the `source` field)." },
   { name: 'list_content', description: "List all entities of a content kind." },

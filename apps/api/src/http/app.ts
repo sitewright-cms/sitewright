@@ -37,6 +37,7 @@ import {
   type Page,
   type PageTranslation,
   type Template,
+  COMPONENT_CATALOG,
 } from '@sitewright/schema';
 import { downloadGoogleFont, FontFetchError } from '../fonts/service.js';
 import { detectFontFormat, MAX_FONT_BYTES } from '../fonts/upload.js';
@@ -212,7 +213,7 @@ const FontUploadMeta = z.object({
 // "content-only" surface is a UI default, not a hard gate (see PR1 security note). Bearer keys
 // are additionally constrained by capabilities in resolveProject.
 const WRITE_ROLES: ReadonlySet<string> = new Set(['owner', 'member']);
-const API_PREFIXES = ['/auth', '/projects', '/me', '/health', '/admin', '/f', '/invites', '/ai', '/api-key'];
+const API_PREFIXES = ['/auth', '/projects', '/me', '/health', '/admin', '/f', '/invites', '/ai', '/api-key', '/authoring'];
 
 const MEDIA_CONTENT_TYPES = new Map<string, string>([
   ['avif', 'image/avif'],
@@ -3045,6 +3046,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   });
 
   app.get('/health', async () => ({ ok: true }));
+
+  // The machine-readable authoring contracts of the first-party interactive components
+  // (data-sw-component): markers, part roles, config attributes, and markup skeletons.
+  // STATIC platform metadata (the same constant the renderer registry is pinned to — no
+  // tenant data, no instance config), served so agents and tooling can discover the
+  // component vocabulary structurally instead of relying on prose docs. Public like
+  // /health + /version, but rate-limited since the payload is non-trivial.
+  app.get('/authoring/components', { config: rl(60) }, async () => ({ components: COMPONENT_CATALOG }));
 
   // Pull-based update check for the in-app banner. Public + informational.
   app.get('/version', async () => {

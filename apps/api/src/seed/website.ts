@@ -122,7 +122,7 @@ export const EXAMPLE_WEBSITE = {
   },
   // A language→country map for the nav switcher's flags (sw-flag takes a COUNTRY code, not a
   // language — so en→gb), plus the per-locale chrome strings (see strings.ts).
-  data: { locale_flags: { en: 'gb', de: 'de' }, strings: CHROME_STRINGS },
+  data: { locale_flags: { en: 'gb', de: 'de', es: 'es' }, strings: CHROME_STRINGS },
   // Site-wide nav/button effect schemes (CI-themed, contrast-safe). The active nav item is marked
   // `.active` (below); `sw-nav-pill` fills it with the brand primary + its WCAG-derived foreground.
   theme: { navEffect: 'pill', buttonEffect: 'lift' },

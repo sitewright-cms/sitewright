@@ -44,4 +44,19 @@ export const EXAMPLE_FORMS: Form[] = [
     errorMessage: 'Das hat leider nicht geklappt. Schreiben Sie uns an hello@northwindstudio.com.',
     ...SHARED,
   },
+  {
+    id: 'contact-es',
+    name: 'Consulta de proyecto (ES)',
+    fields: [
+      { name: 'name', label: 'Su nombre', type: 'text', required: true, placeholder: 'Juana Pérez' },
+      { name: 'email', label: 'Correo electrónico', type: 'email', required: true, placeholder: 'juana@empresa.es' },
+      { name: 'company', label: 'Empresa', type: 'text', required: false, placeholder: 'Ejemplo S.L.' },
+      { name: 'budget', label: 'Presupuesto', type: 'select', required: false, options: ['Menos de 10.000 $', '10.000 – 25.000 $', '25.000 – 50.000 $', 'Más de 50.000 $'] },
+      { name: 'message', label: 'Cuéntenos su proyecto', type: 'textarea', required: true, placeholder: '¿Qué quiere conseguir?' },
+    ],
+    submitLabel: 'Enviar consulta',
+    successMessage: 'Gracias — hemos recibido su consulta y responderemos en un día laborable.',
+    errorMessage: 'No se pudo enviar. Escríbanos a hello@northwindstudio.com.',
+    ...SHARED,
+  },
 ];

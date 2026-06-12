@@ -10,7 +10,7 @@ import type { Dataset, Field } from '@sitewright/schema';
 // within the locale.
 
 /** The locales the example ships datasets/entries/forms/translations for (en = default). */
-export const EXAMPLE_CONTENT_LOCALES = ['en', 'de'] as const;
+export const EXAMPLE_CONTENT_LOCALES = ['en', 'de', 'es'] as const;
 /** The non-default locales (every localized artifact gets a `-<locale>` twin per entry here). */
 export const EXAMPLE_EXTRA_LOCALES: readonly string[] = EXAMPLE_CONTENT_LOCALES.slice(1);
 

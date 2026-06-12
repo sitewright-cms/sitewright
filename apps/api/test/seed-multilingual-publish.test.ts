@@ -10,7 +10,7 @@ import {
   EXAMPLE_DATASETS,
   exampleEntries,
   EXAMPLE_FORMS,
-} from '../src/seed-data.js';
+} from '../src/seed/index.js';
 
 // Image URLs are irrelevant to the multilingual/publish assertions; seed with an empty asset map.
 const EXAMPLE_PAGES = examplePages({});

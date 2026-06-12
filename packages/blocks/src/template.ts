@@ -395,10 +395,11 @@ function createInstance(): typeof Handlebars {
   // (`@root.page.path`). Default = the ACTIVE TRAIL: a parent/dropdown route lights up while you are
   // on one of its children (so `/services` is active on `/services/web-design`). Pass `exact=true`
   // for the current page ONLY. Both routes are root-relative (e.g. "/about"); trailing slashes are
-  // ignored and the root "/" only ever matches itself (never every page). No JS — resolved at build.
+  // ignored and a HOME route — the root "/" or, on a translated page, the locale home ("/es") —
+  // only ever matches itself (never every page). No JS — resolved server-side (publish + preview).
   hb.registerHelper('sw-active', function swActive(this: unknown, target: unknown, options: Handlebars.HelperOptions) {
     if (typeof target !== 'string' || target === '') return false;
-    const root = options?.data?.root as { page?: { path?: unknown } } | undefined;
+    const root = options?.data?.root as { page?: { path?: unknown; locale?: unknown; defaultLocale?: unknown } } | undefined;
     const current = typeof root?.page?.path === 'string' ? root.page.path : '';
     const norm = (p: string) => (p.length > 1 && p.endsWith('/') ? p.slice(0, -1) : p);
     const t = norm(target);
@@ -406,8 +407,17 @@ function createInstance(): typeof Handlebars {
     if (t === c) return true;
     // Accept both the boolean `exact=true` and the quoted-string `exact="true"` forms.
     if (options?.hash?.exact === true || options?.hash?.exact === 'true') return false;
-    // Active trail: the current page is a descendant of `target`. The "/" root matches only itself.
-    return t !== '/' && c.startsWith(`${t}/`);
+    // Active trail: the current page is a descendant of `target` — EXCEPT when `target` is a home
+    // route, which is every page's ancestor and would stay lit site-wide. That is "/" and, on a
+    // NON-DEFAULT-locale page, the locale home: only non-default locales live under "/<locale>/…",
+    // so their Home link ("/es") prefixes the entire locale tree. `page.locale` alone can't decide
+    // (it is the RESOLVED locale — the default on unprefixed pages too), so the guard also requires
+    // it to differ from `page.defaultLocale`: an ordinary page that merely looks like a locale
+    // prefix (a content page at "/es" on a default-locale site) keeps its trail.
+    const locale = typeof root?.page?.locale === 'string' ? root.page.locale : '';
+    const defaultLocale = typeof root?.page?.defaultLocale === 'string' ? root.page.defaultLocale : '';
+    if (t === '/' || (locale !== '' && locale !== defaultLocale && t === `/${locale}`)) return false;
+    return c.startsWith(`${t}/`);
   });
   // ── MINI SHOP helpers (front-end cart). Both emit a SafeString carrying ESCAPED `data-sw-cart-*`
   // markers the first-party cart.js runtime reads — markers can't come from author HTML (the sanitizer

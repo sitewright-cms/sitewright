@@ -265,6 +265,28 @@ describe('renderTemplate — {{sw-active}} nav active state', () => {
     expect(at('/about', "sw-active '/'")).toBe('');
   });
 
+  it('a locale home ("/es") matches only itself on that locale\'s pages — never the whole locale tree', () => {
+    // Render against a localized page. `page.locale` is the RESOLVED locale and `page.defaultLocale`
+    // the project default — both in every preview + publish projection.
+    const atLocale = (current: string, locale: string, expr: string) =>
+      renderTemplate(`{{#if (${expr})}}A{{/if}}`, { page: { path: current, locale, defaultLocale: 'en' } });
+    // The localized Home link must NOT light up on every /es/... subpage (it is everyone's ancestor).
+    expect(atLocale('/es/tienda', 'es', "sw-active '/es'")).toBe('');
+    expect(atLocale('/es/tienda', 'es', "sw-active '/es/'")).toBe(''); // trailing-slash spelling too
+    expect(atLocale('/es', 'es', "sw-active '/es'")).toBe('A');
+    expect(atLocale('/es/', 'es', "sw-active '/es'")).toBe('A');
+    // Deeper trails inside the locale tree still work.
+    expect(atLocale('/es/servicios/seo', 'es', "sw-active '/es/servicios'")).toBe('A');
+    // A page whose route merely LOOKS like a locale prefix is untouched when the page's locale differs
+    // (default-locale pages are unprefixed, so /es here is an ordinary page with an /es/child).
+    expect(atLocale('/es/child', 'en', "sw-active '/es'")).toBe('A');
+    // The DEFAULT locale never claims a locale home: a monolingual EN site with an ordinary content
+    // page at /en keeps its trail (page.locale resolves to the default on every unprefixed page).
+    expect(atLocale('/en/child', 'en', "sw-active '/en'")).toBe('A');
+    // Without locale context (ad-hoc render-template bodies, snippet hovers) only "/" is special.
+    expect(renderTemplate("{{#if (sw-active '/es')}}A{{/if}}", { page: { path: '/es/tienda' } })).toBe('A');
+  });
+
   it('ignores trailing slashes', () => {
     expect(at('/about/', "sw-active '/about'")).toBe('A');
     expect(at('/about', "sw-active '/about/'")).toBe('A');

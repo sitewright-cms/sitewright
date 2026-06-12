@@ -140,7 +140,7 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         name: 'sw-active',
         keywords: 'nav navbar active current page highlight menu aria-current trail',
         description:
-          'Highlights the current page in a menu — returns a BOOLEAN for use in #if, comparing a route to the page being rendered (no JS; resolved at build, works in the live preview too). By DEFAULT it matches the ACTIVE TRAIL: a parent/dropdown route stays active while you are on one of its children (so "/services" is active on "/services/web-design"). Pass exact=true to match the current page ONLY — use that for aria-current="page". Both routes are root-relative; the root "/" only matches itself. Pair it with the auto-nav: inside {{#each nav.header}} the item route is `path`.',
+          'Highlights the current page in a menu — returns a BOOLEAN for use in #if, comparing a route to the page being rendered (no JS; resolved at build, works in the live preview too). By DEFAULT it matches the ACTIVE TRAIL: a parent/dropdown route stays active while you are on one of its children (so "/services" is active on "/services/web-design"). Pass exact=true to match the current page ONLY — use that for aria-current="page". Both routes are root-relative; a home route — the root "/" or a locale home like "/es" on a localized page — only matches itself. Pair it with the auto-nav: inside {{#each nav.header}} the item route is `path`.',
         args: [
           { name: 'path', desc: 'A root-relative route, e.g. "/about" or the nav item\'s `path`.' },
           { name: 'exact', desc: 'Optional hash — exact=true matches the current page only (no ancestor/trail).' },

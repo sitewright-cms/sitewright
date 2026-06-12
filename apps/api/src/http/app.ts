@@ -1942,6 +1942,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           slug: page.path,
           path: pagePath(page, previewById),
           locale: previewLocale,
+          // The project default alongside the RESOLVED locale — publish parity; lets locale-aware
+          // helpers ({{sw-active}}'s locale-home rule) tell a translated page from a default-locale one.
+          defaultLocale,
           translations: translationsOf(savedPages, page, defaultLocale),
           data: page.data,
           children: previewChildren,
@@ -3136,12 +3139,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // Resolve the template source + page context: a stored source-page (by id) or ad-hoc.
       let templateSource: string;
       let pageCtx: Record<string, unknown> = body.page ?? { title: project.name, path: '/' };
+      let storedPage: Page | undefined;
       if (body.pageId !== undefined) {
         // Re-parse the stored page (not a bare cast) so a dirty/legacy DB row can't reach
         // the render path unvalidated; NotFound → 404.
         const page = PageSchema.parse(await contentRepo.get(ctx, 'page', body.pageId));
         if (!page.source) return reply.code(400).send({ error: 'this page has no template source' });
         templateSource = page.source;
+        storedPage = page;
         // `{{ page.path }}` is the full route computed from the parent chain; `page.slug` is the
         // page's OWN segment (its `path` field) — mirrors the member-preview/publish page context.
         const allForPath = pagesById((await contentRepo.list(ctx, 'page')) as Page[]);
@@ -3156,14 +3161,22 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       let website: Record<string, unknown> | undefined;
       let themeBodyClass = '';
       let brand: CorporateIdentity = { name: project.name, colors: {} };
+      let projectDefaultLocale = 'en';
       try {
         const settings = (await contentRepo.get(ctx, 'settings', SETTINGS_ENTITY_ID)) as Settings;
         company = settings.identity as unknown as Record<string, unknown>;
         brand = settings.identity;
         website = settings.website ? { siteUrl: settings.website.siteUrl, data: settings.website.data } : undefined;
         themeBodyClass = websiteThemeClasses(settings.website?.theme);
+        projectDefaultLocale = settings.settings?.defaultLocale ?? 'en';
       } catch (err) {
         if (!(err instanceof NotFoundError)) throw err;
+      }
+      if (storedPage) {
+        // Locale context (resolved + default) for a stored page — member-preview/publish parity, so
+        // locale-aware helpers ({{sw-active}}'s locale-home rule) behave the same in this authoring
+        // render. Ad-hoc bodies stay locale-less (the helper then falls back to the "/"-only rule).
+        pageCtx = { ...pageCtx, locale: localeOf(storedPage, projectDefaultLocale), defaultLocale: projectDefaultLocale };
       }
       const byDataset = new Map<string, Entry[]>();
       for (const entry of (await contentRepo.list(ctx, 'entry')) as Entry[]) {

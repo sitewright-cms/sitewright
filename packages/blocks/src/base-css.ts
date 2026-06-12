@@ -141,9 +141,15 @@ const PLATFORM_DEFAULTS = `
    a safe link affordance anyway — the underline is.) Separately, links inside
    navigation landmarks, daisyUI menus and buttons drop the underline (their shape
    already signals interactivity); body-copy links keep the default underline,
-   removable per element with a no-underline utility. */
-a { color: inherit; }
-:is(nav, [role="navigation"]) a, .menu a, .btn { text-decoration: inherit; }
+   removable per element with a no-underline utility.
+   MUST live in the weak sw-normalize layer: an UNLAYERED \`a{color:inherit}\` outranks
+   every layered rule in the cascade — it was silently overriding daisyUI's layered
+   \`.btn{color:var(--btn-fg)}\` (black-on-primary anchor buttons) and any other
+   layered colour on links. Layered author rules still beat the UA's link blue. */
+@layer sw-normalize {
+  a { color: inherit; }
+  :is(nav, [role="navigation"]) a, .menu a, .btn { text-decoration: inherit; }
+}
 
 /* Responsive media (icons are <svg>, sized by classes — intentionally untouched). */
 img, video { max-width: 100%; height: auto; }

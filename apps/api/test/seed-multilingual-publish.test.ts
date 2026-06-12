@@ -124,7 +124,8 @@ describe('seeded demo — flagship multilingual showcase publishes correctly', (
     const pricing = await page('services/pricing/index.html');
     expect(pricing).toContain('data-sw-component="tabs"');
     expect(pricing).toContain('data-sw-title="Project work"');
-    expect(pricing).toContain('$4800'); // plans dataset (number price)
+    expect(pricing).toContain('$4,800'); // plans dataset (locale-formatted `display` string)
+    expect(pricing).toContain('Most popular'); // featured plan's gradient badge (pr_badge)
     const work = await page('work/index.html');
     expect(work).toContain('data-sw-component="lightbox"');
     const contact = await page('contact/index.html');
@@ -197,7 +198,7 @@ describe('seeded demo — flagship multilingual showcase publishes correctly', (
   it('publishes the content-only blog with dated, truncated overview cards in both locales', async () => {
     const en = await page('blog/index.html');
     expect(en).toContain('Why static sites win on speed');
-    expect(en).toContain('<time class="text-xs text-base-content/40">2026-05-28</time>');
+    expect(en).toContain('<time class="font-mono text-xs text-base-content/40">2026-05-28</time>');
     expect(en).not.toContain('data-sw-text'); // markers stripped on publish
     const article = await page('blog/why-static-sites-win/index.html');
     expect(article).toContain('Every millisecond of load time');

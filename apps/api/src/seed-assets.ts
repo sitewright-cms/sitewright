@@ -6,286 +6,624 @@ import type { MediaStorage } from './media/storage.js';
 
 // ---------------------------------------------------------------------------
 // Local demo imagery for the Example Project. All art is FIRST-PARTY, generated
-// here as flat web-development-themed SVG illustrations (browser mockups, a code
-// workspace, abstract "team" tiles) — license-free and offline, no remote URLs.
-// Each SVG is rasterized (trusted-input path) → run through the real optimize
-// pipeline → stored as a normal media asset, filed into virtual folders. The
-// pages/datasets then reference the LOCAL `/media/...` URLs (which publish
-// rewrites to `_assets/...`). Shapes only — no <text> — so rasterization never
-// depends on fonts being installed in the container.
+// here as abstract, editorial SVG compositions (deep gradient fields, radial
+// glows, one bold geometric motif per brand, fine grain) — license-free and
+// offline, no remote URLs. Each SVG is rasterized (trusted-input path) → run
+// through the real optimize pipeline → stored as a normal media asset, filed
+// into virtual folders. The pages/datasets then reference the LOCAL `/media/...`
+// URLs (which publish rewrites to `_assets/...`).
+//
+// Renderer constraints (sharp → libvips → librsvg): shapes, paths, and
+// linear/radial gradients ONLY — no <text> (fonts) and no SVG filters
+// (feTurbulence/feGaussianBlur support varies). "Glow" is a radial gradient
+// fading to transparent; "grain" is a deterministic PRNG dot scatter.
 // ---------------------------------------------------------------------------
 
-interface Palette {
-  base: string; // page background
-  panel: string; // card / browser body
-  accent: string; // primary brand
-  accent2: string; // secondary brand
-  ink: string; // dark footer / strong elements
+/** Mulberry32 — a tiny deterministic PRNG so the art (incl. grain) is byte-stable per seed. */
+function rng(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
-/** A flat "client website" shown inside a browser window — varied per palette. */
-function siteMockup(p: Palette, w = 900, h = 650): string {
-  const r = 18;
+/** A film-grain pass: `count` tiny dots scattered deterministically across the canvas. */
+function grain(w: number, h: number, seed: number, count: number, color = '#ffffff', maxOpacity = 0.07): string {
+  const r = rng(seed);
+  let dots = '';
+  for (let i = 0; i < count; i++) {
+    const x = (r() * w).toFixed(1);
+    const y = (r() * h).toFixed(1);
+    const rad = (0.5 + r() * 0.9).toFixed(2);
+    const o = (0.015 + r() * maxOpacity).toFixed(3);
+    dots += `<circle cx="${x}" cy="${y}" r="${rad}" fill="${color}" fill-opacity="${o}"/>`;
+  }
+  return dots;
+}
+
+/** Soft radial glow centred at (cx,cy) — a gradient disc fading to fully transparent. */
+function glow(id: string, cx: number, cy: number, r: number, color: string, opacity: number): string {
+  return (
+    `<radialGradient id="${id}" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="${color}" stop-opacity="${opacity}"/>` +
+    `<stop offset="0.55" stop-color="${color}" stop-opacity="${(opacity * 0.45).toFixed(3)}"/>` +
+    `<stop offset="1" stop-color="${color}" stop-opacity="0"/></radialGradient>` +
+    `<!--use--><circle cx="${cx}" cy="${cy}" r="${r}" fill="url(#${id})"/>`
+  );
+}
+
+/** Splits the glow helper output into its <defs> part and its shape part. */
+function splitGlow(g: string): { def: string; shape: string } {
+  const [def, shape] = g.split('<!--use-->');
+  return { def: def ?? '', shape: shape ?? '' };
+}
+
+/** Edge vignette — darkens the corners so compositions feel finished, not flat.
+ * The gradient ships in its own inline `<defs>` block (SVG allows any number of `<defs>`
+ * anywhere in the document) so paint servers never sit bare in render content — older
+ * librsvg releases only resolve referenced gradients reliably from `<defs>`. */
+function vignette(w: number, h: number, strength = 0.22): string {
+  return (
+    `<defs><radialGradient id="vig" cx="0.5" cy="0.46" r="0.75"><stop offset="0.62" stop-color="#000000" stop-opacity="0"/>` +
+    `<stop offset="1" stop-color="#000000" stop-opacity="${strength}"/></radialGradient></defs>` +
+    `<rect width="${w}" height="${h}" fill="url(#vig)"/>`
+  );
+}
+
+/** A brand's art palette: a deep two-stop field, two glow hues, and a light foreground. */
+interface ArtPalette {
+  bg0: string;
+  bg1: string;
+  glowA: string;
+  glowB: string;
+  fg: string;
+}
+
+type Motif = 'arcs' | 'waves' | 'chart' | 'grid' | 'embers' | 'rays';
+
+/** The big geometric motif per demo client — one strong idea per cover, drawn large. */
+function motifArt(motif: Motif, w: number, h: number, p: ArtPalette, seed: number): string {
+  const r = rng(seed);
+  switch (motif) {
+    case 'arcs': {
+      // Concentric sunrise arcs rising from the lower-right — warm, calm, coffee-ripple energy.
+      const cx = w * 0.68;
+      const cy = h * 0.95;
+      return (
+        [0, 1, 2, 3, 4]
+          .map(
+            (i) =>
+              `<circle cx="${cx}" cy="${cy}" r="${h * 0.22 + i * h * 0.13}" fill="none" stroke="${p.fg}" ` +
+              `stroke-opacity="${(0.68 - i * 0.11).toFixed(2)}" stroke-width="${24 - i * 3}"/>`,
+          )
+          .join('') + `<circle cx="${cx}" cy="${cy - h * 0.08}" r="${h * 0.085}" fill="${p.fg}" fill-opacity="0.85"/>`
+      );
+    }
+    case 'waves': {
+      // Layered breathing ribbons — soft, clinical-calm.
+      const ribbon = (y: number, amp: number, sw: number, o: number, color: string): string =>
+        `<path d="M ${-w * 0.05} ${y} C ${w * 0.25} ${y - amp}, ${w * 0.45} ${y + amp}, ${w * 0.68} ${y - amp * 0.4} S ${w * 1.02} ${y + amp * 0.5}, ${w * 1.08} ${y - amp * 0.2}" fill="none" stroke="${color}" stroke-opacity="${o}" stroke-width="${sw}" stroke-linecap="round"/>`;
+      const floats = [0, 1, 2, 3, 4, 5]
+        .map(() => `<circle cx="${(w * (0.12 + r() * 0.76)).toFixed(0)}" cy="${(h * (0.12 + r() * 0.4)).toFixed(0)}" r="${(6 + r() * 12).toFixed(1)}" fill="${p.fg}" fill-opacity="${(0.35 + r() * 0.4).toFixed(2)}"/>`)
+        .join('');
+      return (
+        ribbon(h * 0.52, 130, 46, 0.95, p.glowA) +
+        ribbon(h * 0.66, 105, 30, 0.5, p.fg) +
+        ribbon(h * 0.79, 80, 20, 0.28, p.fg) +
+        ribbon(h * 0.9, 60, 14, 0.15, p.fg) +
+        floats
+      );
+    }
+    case 'chart': {
+      // An ascending curve over quiet columns — finance without the cliché.
+      const bars = [0.32, 0.45, 0.4, 0.58, 0.72, 0.88]
+        .map((v, i) => {
+          const bw = w * 0.055;
+          const x = w * 0.18 + i * w * 0.115;
+          return `<rect x="${x}" y="${h - h * 0.62 * v - h * 0.12}" width="${bw}" height="${h * 0.62 * v}" rx="${bw / 2}" fill="${p.fg}" fill-opacity="${(0.1 + i * 0.04).toFixed(2)}"/>`;
+        })
+        .join('');
+      const pts: Array<[number, number]> = [0.3, 0.42, 0.38, 0.55, 0.7, 0.86].map((v, i) => [w * 0.18 + i * w * 0.115 + w * 0.0275, h - h * 0.62 * v - h * 0.16]);
+      const path = pts.map((pt, i) => (i === 0 ? `M ${pt[0]} ${pt[1]}` : `L ${pt[0]} ${pt[1]}`)).join(' ');
+      const dots = pts.map((pt) => `<circle cx="${pt[0]}" cy="${pt[1]}" r="7" fill="${p.fg}"/>`).join('');
+      return bars + `<path d="${path}" fill="none" stroke="${p.fg}" stroke-opacity="0.9" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>` + dots;
+    }
+    case 'grid': {
+      // A blueprint of nested frames with one solid gold block — architectural restraint.
+      const fx = w * 0.2;
+      const fy = h * 0.18;
+      const fw = w * 0.6;
+      const fh = h * 0.64;
+      return (
+        `<rect x="${fx}" y="${fy}" width="${fw}" height="${fh}" fill="none" stroke="${p.fg}" stroke-opacity="0.75" stroke-width="4"/>` +
+        `<rect x="${fx + 36}" y="${fy + 36}" width="${fw - 72}" height="${fh - 72}" fill="none" stroke="${p.fg}" stroke-opacity="0.4" stroke-width="2.5"/>` +
+        `<line x1="${fx + fw * 0.62}" y1="${fy}" x2="${fx + fw * 0.62}" y2="${fy + fh}" stroke="${p.fg}" stroke-opacity="0.3" stroke-width="2"/>` +
+        `<line x1="${fx}" y1="${fy + fh * 0.55}" x2="${fx + fw}" y2="${fy + fh * 0.55}" stroke="${p.fg}" stroke-opacity="0.3" stroke-width="2"/>` +
+        `<rect x="${fx + fw * 0.62}" y="${fy + fh * 0.55}" width="${fw * 0.38}" height="${fh * 0.45}" fill="${p.glowB}" fill-opacity="0.85"/>` +
+        `<circle cx="${fx + fw * 0.31}" cy="${fy + fh * 0.275}" r="${fh * 0.13}" fill="none" stroke="${p.fg}" stroke-opacity="0.5" stroke-width="3"/>`
+      );
+    }
+    case 'embers': {
+      // Rising embers over a glowing heat horizon — each ember is a soft gradient disc with a
+      // bright core, so the fire reads even from a thumbnail.
+      // The gradients ride in an inline <defs> (legal anywhere; see vignette()).
+      const horizon =
+        `<defs><radialGradient id="heat" cx="0.5" cy="1" r="1"><stop offset="0" stop-color="${p.glowA}" stop-opacity="0.85"/>` +
+        `<stop offset="0.45" stop-color="${p.glowB}" stop-opacity="0.35"/><stop offset="1" stop-color="${p.glowB}" stop-opacity="0"/></radialGradient>` +
+        `<radialGradient id="ember" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="${p.fg}" stop-opacity="0.95"/>` +
+        `<stop offset="0.35" stop-color="${p.glowA}" stop-opacity="0.8"/><stop offset="1" stop-color="${p.glowA}" stop-opacity="0"/></radialGradient></defs>` +
+        `<ellipse cx="${w * 0.5}" cy="${h * 1.04}" rx="${w * 0.62}" ry="${h * 0.42}" fill="url(#heat)"/>`;
+      let sparks = '';
+      for (let i = 0; i < 34; i++) {
+        const x = w * (0.08 + r() * 0.84);
+        const y = h * (0.1 + r() * 0.78);
+        const rise = y / h; // lower embers are bigger + brighter
+        const rad = 6 + r() * 26 * rise;
+        sparks += `<circle cx="${x.toFixed(0)}" cy="${y.toFixed(0)}" r="${rad.toFixed(1)}" fill="url(#ember)" fill-opacity="${(0.35 + 0.6 * rise).toFixed(2)}"/>`;
+      }
+      const core = `<circle cx="${w * 0.5}" cy="${h * 0.86}" r="${h * 0.05}" fill="${p.fg}" fill-opacity="0.95"/><circle cx="${w * 0.5}" cy="${h * 0.86}" r="${h * 0.12}" fill="url(#ember)"/>`;
+      return horizon + sparks + core;
+    }
+    case 'rays': {
+      // A fan of light beams from the lower-left + confetti — launch-night energy.
+      const ox = w * 0.12;
+      const oy = h * 0.95;
+      const beams = [-82, -68, -54, -40, -26, -12]
+        .map((deg, i) => {
+          const rad = (deg * Math.PI) / 180;
+          const len = h * 1.15;
+          const x2 = ox + Math.cos(rad) * len;
+          const y2 = oy + Math.sin(rad) * len;
+          return `<line x1="${ox}" y1="${oy}" x2="${x2.toFixed(0)}" y2="${y2.toFixed(0)}" stroke="${i % 2 ? p.glowB : p.fg}" stroke-opacity="${(0.7 - i * 0.08).toFixed(2)}" stroke-width="${28 - i * 3}" stroke-linecap="round"/>`;
+        })
+        .join('');
+      let confetti = '';
+      for (let i = 0; i < 18; i++) {
+        const x = w * (0.35 + r() * 0.6);
+        const y = h * (0.08 + r() * 0.55);
+        confetti += `<rect x="${x.toFixed(0)}" y="${y.toFixed(0)}" width="${(6 + r() * 8).toFixed(0)}" height="${(6 + r() * 8).toFixed(0)}" rx="2" transform="rotate(${(r() * 80 - 40).toFixed(0)} ${x.toFixed(0)} ${y.toFixed(0)})" fill="${r() > 0.5 ? p.fg : p.glowB}" fill-opacity="${(0.3 + r() * 0.5).toFixed(2)}"/>`;
+      }
+      return beams + confetti;
+    }
+  }
+}
+
+/** A project cover: deep gradient field + twin glows + the brand motif + grain + vignette. */
+function projectCover(p: ArtPalette, motif: Motif, seed: number, w = 1200, h = 840): string {
+  const g1 = splitGlow(glow('gA', w * 0.78, h * 0.22, w * 0.55, p.glowA, 0.5));
+  const g2 = splitGlow(glow('gB', w * 0.15, h * 0.85, w * 0.5, p.glowB, 0.3));
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
-  <rect width="${w}" height="${h}" fill="${p.base}"/>
-  <g transform="translate(40 40)">
-    <rect width="${w - 80}" height="${h - 80}" rx="${r}" fill="${p.panel}" stroke="${p.accent2}" stroke-opacity="0.25"/>
-    <!-- browser chrome -->
-    <rect width="${w - 80}" height="44" rx="${r}" fill="${p.accent}"/>
-    <rect y="22" width="${w - 80}" height="22" fill="${p.accent}"/>
-    <circle cx="26" cy="22" r="6" fill="#ffffff" fill-opacity="0.9"/>
-    <circle cx="48" cy="22" r="6" fill="#ffffff" fill-opacity="0.6"/>
-    <circle cx="70" cy="22" r="6" fill="#ffffff" fill-opacity="0.4"/>
-    <rect x="110" y="13" width="${w - 80 - 150}" height="18" rx="9" fill="#ffffff" fill-opacity="0.85"/>
-    <!-- hero band -->
-    <rect x="0" y="44" width="${w - 80}" height="190" fill="${p.accent2}" fill-opacity="0.16"/>
-    <rect x="48" y="96" width="300" height="22" rx="6" fill="${p.ink}" fill-opacity="0.8"/>
-    <rect x="48" y="130" width="420" height="12" rx="6" fill="${p.ink}" fill-opacity="0.35"/>
-    <rect x="48" y="150" width="360" height="12" rx="6" fill="${p.ink}" fill-opacity="0.35"/>
-    <rect x="48" y="184" width="150" height="34" rx="17" fill="${p.accent}"/>
-    <rect x="${w - 80 - 300}" y="80" width="252" height="120" rx="12" fill="${p.accent}" fill-opacity="0.85"/>
-    <!-- card row -->
-    ${[0, 1, 2]
-      .map((i) => {
-        const cw = (w - 80 - 96 - 40) / 3;
-        const x = 48 + i * (cw + 20);
-        return `<g transform="translate(${x} 274)">
-        <rect width="${cw}" height="150" rx="12" fill="${p.base}" stroke="${p.accent2}" stroke-opacity="0.3"/>
-        <rect x="16" y="16" width="40" height="40" rx="10" fill="${p.accent2}"/>
-        <rect x="16" y="72" width="${cw - 60}" height="12" rx="6" fill="${p.ink}" fill-opacity="0.5"/>
-        <rect x="16" y="94" width="${cw - 90}" height="10" rx="5" fill="${p.ink}" fill-opacity="0.25"/>
-        <rect x="16" y="112" width="${cw - 110}" height="10" rx="5" fill="${p.ink}" fill-opacity="0.25"/>
-      </g>`;
-      })
-      .join('')}
-    <!-- footer -->
-    <rect x="0" y="${h - 80 - 56}" width="${w - 80}" height="56" rx="0" fill="${p.ink}"/>
-    <rect x="0" y="${h - 80 - 56}" width="${w - 80}" height="14" fill="${p.ink}"/>
-  </g>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${p.bg0}"/><stop offset="1" stop-color="${p.bg1}"/></linearGradient>
+    ${g1.def}${g2.def}
+  </defs>
+  <rect width="${w}" height="${h}" fill="url(#bg)"/>
+  ${g1.shape}${g2.shape}
+  ${motifArt(motif, w, h, p, seed)}
+  ${grain(w, h, seed + 7, 850)}
+  ${vignette(w, h)}
 </svg>`;
 }
 
-/** A web-development workspace: a browser preview beside a code panel. */
-function heroScene(p: Palette, w = 1000, h = 720): string {
-  const codeLines = [0.7, 0.45, 0.6, 0.3, 0.55, 0.4, 0.65, 0.35];
+/** An abstract portrait: a luminous orb on a deep field, a fine orbit ring, per-person geometry. */
+function avatarOrb(a: string, b: string, deep: string, seed: number, w = 600, h = 600): string {
+  const r = rng(seed);
+  const ox = w * (0.42 + r() * 0.16);
+  const oy = h * (0.38 + r() * 0.12);
+  const orad = w * (0.3 + r() * 0.06);
+  const ringRad = orad * (1.32 + r() * 0.18);
+  const ringTilt = (r() * 50 - 25).toFixed(0);
+  const satAngle = r() * Math.PI * 2;
+  const sx = ox + Math.cos(satAngle) * ringRad;
+  const sy = oy + Math.sin(satAngle) * ringRad * 0.6;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
-  <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-    <stop offset="0" stop-color="${p.accent}"/><stop offset="1" stop-color="${p.accent2}"/>
-  </linearGradient></defs>
-  <rect width="${w}" height="${h}" fill="url(#g)"/>
-  <rect width="${w}" height="${h}" fill="${p.ink}" fill-opacity="0.12"/>
-  <!-- code editor panel -->
-  <g transform="translate(70 110)">
-    <rect width="430" height="500" rx="16" fill="${p.ink}"/>
-    <rect width="430" height="40" rx="16" fill="#ffffff" fill-opacity="0.08"/>
-    <circle cx="24" cy="20" r="6" fill="${p.accent2}"/><circle cx="46" cy="20" r="6" fill="#ffffff" fill-opacity="0.5"/>
-    ${codeLines
-      .map((wd, i) => `<rect x="28" y="${70 + i * 46}" width="${Math.round(360 * wd)}" height="14" rx="7" fill="${i % 3 === 0 ? p.accent2 : '#ffffff'}" fill-opacity="${i % 3 === 0 ? 0.9 : 0.3}"/>`)
-      .join('')}
-  </g>
-  <!-- browser preview panel -->
-  <g transform="translate(540 150)">
-    <rect width="390" height="430" rx="16" fill="${p.panel}"/>
-    <rect width="390" height="38" rx="16" fill="${p.accent}"/>
-    <circle cx="22" cy="19" r="5" fill="#ffffff" fill-opacity="0.8"/>
-    <rect x="60" y="56" width="240" height="20" rx="6" fill="${p.ink}" fill-opacity="0.75"/>
-    <rect x="60" y="88" width="300" height="10" rx="5" fill="${p.ink}" fill-opacity="0.3"/>
-    <rect x="60" y="120" width="270" height="120" rx="12" fill="url(#g)"/>
-    <rect x="60" y="260" width="130" height="120" rx="12" fill="${p.accent2}" fill-opacity="0.25"/>
-    <rect x="210" y="260" width="120" height="120" rx="12" fill="${p.accent}" fill-opacity="0.25"/>
-  </g>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${deep}"/><stop offset="1" stop-color="${a}" stop-opacity="0.55"/></linearGradient>
+    <radialGradient id="orb" cx="0.38" cy="0.32" r="0.85"><stop offset="0" stop-color="${b}"/><stop offset="0.55" stop-color="${a}"/><stop offset="1" stop-color="${deep}"/></radialGradient>
+    <radialGradient id="halo" cx="0.5" cy="0.5" r="0.5"><stop offset="0.6" stop-color="${b}" stop-opacity="0.35"/><stop offset="1" stop-color="${b}" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect width="${w}" height="${h}" fill="url(#bg)"/>
+  <circle cx="${ox}" cy="${oy}" r="${orad * 1.45}" fill="url(#halo)"/>
+  <circle cx="${ox}" cy="${oy}" r="${orad}" fill="url(#orb)"/>
+  <ellipse cx="${ox}" cy="${oy}" rx="${ringRad}" ry="${ringRad * 0.6}" transform="rotate(${ringTilt} ${ox} ${oy})" fill="none" stroke="#ffffff" stroke-opacity="0.4" stroke-width="2.5"/>
+  <circle cx="${sx.toFixed(0)}" cy="${sy.toFixed(0)}" r="9" fill="#ffffff" fill-opacity="0.85" transform="rotate(${ringTilt} ${ox} ${oy})"/>
+  ${grain(w, h, seed + 3, 420)}
+  ${vignette(w, h, 0.28)}
 </svg>`;
 }
 
-/** A calm studio/desk scene (monitor + plant + window). */
-function studioScene(p: Palette, w = 800, h = 700): string {
+// ------------------------------------------------------------------ studio scenes
+// The About-page gallery: flat-illustration interiors in the brand's ink/indigo
+// world — consistent light (a warm window glow), soft shadows, no text.
+
+interface ScenePalette {
+  wall0: string;
+  wall1: string;
+  floor: string;
+  ink: string;
+  accent: string;
+  accent2: string;
+  warm: string;
+}
+
+const SCENE: ScenePalette = {
+  wall0: '#1b1a2e',
+  wall1: '#12111f',
+  floor: '#0d0c16',
+  ink: '#070710',
+  accent: '#6366f1',
+  accent2: '#38bdf8',
+  warm: '#f59e0b',
+};
+
+function sceneShell(w: number, h: number, body: string, seed: number): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
-  <rect width="${w}" height="${h}" fill="${p.base}"/>
-  <rect x="60" y="60" width="280" height="200" rx="10" fill="${p.accent2}" fill-opacity="0.18" stroke="${p.accent}" stroke-opacity="0.3"/>
-  <line x1="200" y1="60" x2="200" y2="260" stroke="${p.accent}" stroke-opacity="0.25" stroke-width="4"/>
-  <line x1="60" y1="160" x2="340" y2="160" stroke="${p.accent}" stroke-opacity="0.25" stroke-width="4"/>
-  <!-- desk -->
-  <rect x="0" y="${h - 120}" width="${w}" height="120" fill="${p.ink}" fill-opacity="0.08"/>
-  <rect x="0" y="${h - 124}" width="${w}" height="8" fill="${p.accent}" fill-opacity="0.4"/>
+  <defs>
+    <linearGradient id="wall" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${SCENE.wall0}"/><stop offset="1" stop-color="${SCENE.wall1}"/></linearGradient>
+    <radialGradient id="roomglow" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="${SCENE.accent}" stop-opacity="0.35"/><stop offset="1" stop-color="${SCENE.accent}" stop-opacity="0"/></radialGradient>
+    <radialGradient id="warmglow" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="${SCENE.warm}" stop-opacity="0.4"/><stop offset="1" stop-color="${SCENE.warm}" stop-opacity="0"/></radialGradient>
+    <linearGradient id="screen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${SCENE.accent}"/><stop offset="1" stop-color="${SCENE.accent2}"/></linearGradient>
+  </defs>
+  <rect width="${w}" height="${h}" fill="url(#wall)"/>
+  ${body}
+  ${grain(w, h, seed, 600)}
+  ${vignette(w, h, 0.3)}
+</svg>`;
+}
+
+/** Desk scene: a glowing monitor on a clean desk, window light, a plant. */
+function sceneDesk(w = 1000, h = 750, seed = 41): string {
+  const deskY = h * 0.72;
+  const body = `
+  <circle cx="${w * 0.32}" cy="${h * 0.3}" r="${w * 0.42}" fill="url(#roomglow)"/>
+  <!-- window -->
+  <g>
+    <rect x="${w * 0.06}" y="${h * 0.1}" width="${w * 0.24}" height="${h * 0.42}" rx="10" fill="${SCENE.accent2}" fill-opacity="0.12" stroke="#ffffff" stroke-opacity="0.18" stroke-width="3"/>
+    <line x1="${w * 0.18}" y1="${h * 0.1}" x2="${w * 0.18}" y2="${h * 0.52}" stroke="#ffffff" stroke-opacity="0.15" stroke-width="3"/>
+    <line x1="${w * 0.06}" y1="${h * 0.31}" x2="${w * 0.3}" y2="${h * 0.31}" stroke="#ffffff" stroke-opacity="0.15" stroke-width="3"/>
+  </g>
+  <!-- floor + desk -->
+  <rect x="0" y="${deskY + h * 0.06}" width="${w}" height="${h - deskY}" fill="${SCENE.floor}"/>
+  <rect x="${w * 0.12}" y="${deskY}" width="${w * 0.76}" height="${h * 0.025}" rx="${h * 0.0125}" fill="#2a2840"/>
+  <rect x="${w * 0.17}" y="${deskY + h * 0.025}" width="${w * 0.02}" height="${h * 0.16}" fill="#211f33"/>
+  <rect x="${w * 0.81}" y="${deskY + h * 0.025}" width="${w * 0.02}" height="${h * 0.16}" fill="#211f33"/>
   <!-- monitor -->
-  <g transform="translate(${w / 2 - 170} ${h - 124 - 300})">
-    <rect width="340" height="220" rx="14" fill="${p.ink}"/>
-    <rect x="16" y="16" width="308" height="160" rx="6" fill="${p.accent}" fill-opacity="0.9"/>
-    <rect x="34" y="40" width="150" height="14" rx="7" fill="#ffffff" fill-opacity="0.85"/>
-    <rect x="34" y="66" width="260" height="10" rx="5" fill="#ffffff" fill-opacity="0.4"/>
-    <rect x="34" y="86" width="220" height="10" rx="5" fill="#ffffff" fill-opacity="0.4"/>
-    <rect x="34" y="118" width="90" height="26" rx="13" fill="${p.accent2}"/>
-    <rect x="150" y="220" width="40" height="40" fill="${p.ink}"/>
-    <rect x="110" y="258" width="120" height="14" rx="7" fill="${p.ink}"/>
+  <g>
+    <ellipse cx="${w * 0.5}" cy="${deskY - 2}" rx="${w * 0.17}" ry="8" fill="${SCENE.ink}" fill-opacity="0.5"/>
+    <rect x="${w * 0.47}" y="${deskY - h * 0.07}" width="${w * 0.06}" height="${h * 0.06}" fill="#211f33"/>
+    <rect x="${w * 0.33}" y="${deskY - h * 0.43}" width="${w * 0.34}" height="${h * 0.36}" rx="14" fill="#211f33"/>
+    <rect x="${w * 0.345}" y="${deskY - h * 0.415}" width="${w * 0.31}" height="${h * 0.31}" rx="8" fill="url(#screen)"/>
+    <rect x="${w * 0.365}" y="${deskY - h * 0.385}" width="${w * 0.12}" height="${h * 0.022}" rx="${h * 0.011}" fill="#ffffff" fill-opacity="0.9"/>
+    <rect x="${w * 0.365}" y="${deskY - h * 0.345}" width="${w * 0.2}" height="${h * 0.013}" rx="${h * 0.0065}" fill="#ffffff" fill-opacity="0.45"/>
+    <rect x="${w * 0.365}" y="${deskY - h * 0.32}" width="${w * 0.17}" height="${h * 0.013}" rx="${h * 0.0065}" fill="#ffffff" fill-opacity="0.45"/>
+    <rect x="${w * 0.365}" y="${deskY - h * 0.28}" width="${w * 0.08}" height="${h * 0.034}" rx="${h * 0.017}" fill="#ffffff" fill-opacity="0.92"/>
+    <rect x="${w * 0.49}" y="${deskY - h * 0.225}" width="${w * 0.15}" height="${h * 0.1}" rx="10" fill="#ffffff" fill-opacity="0.16"/>
+    <rect x="${w * 0.365}" y="${deskY - h * 0.225}" width="${w * 0.11}" height="${h * 0.1}" rx="10" fill="#ffffff" fill-opacity="0.1"/>
+  </g>
+  <!-- keyboard + mug -->
+  <rect x="${w * 0.42}" y="${deskY - h * 0.012}" width="${w * 0.16}" height="${h * 0.012}" rx="4" fill="#3a3756"/>
+  <g>
+    <rect x="${w * 0.66}" y="${deskY - h * 0.045}" width="${w * 0.035}" height="${h * 0.045}" rx="6" fill="${SCENE.warm}"/>
+    <path d="M ${w * 0.695} ${deskY - h * 0.038} q ${w * 0.022} 4 0 ${h * 0.026}" fill="none" stroke="${SCENE.warm}" stroke-width="5"/>
   </g>
   <!-- plant -->
-  <g transform="translate(${w - 150} ${h - 124 - 150})">
-    <rect x="20" y="100" width="60" height="50" rx="8" fill="${p.accent}" fill-opacity="0.5"/>
-    <ellipse cx="50" cy="70" rx="44" ry="60" fill="${p.accent2}" fill-opacity="0.7"/>
-    <ellipse cx="24" cy="86" rx="24" ry="40" fill="${p.accent2}" fill-opacity="0.5"/>
-    <ellipse cx="76" cy="86" rx="24" ry="40" fill="${p.accent2}" fill-opacity="0.5"/>
+  <g>
+    <circle cx="${w * 0.88}" cy="${deskY - h * 0.1}" r="${w * 0.09}" fill="url(#warmglow)"/>
+    <rect x="${w * 0.855}" y="${deskY - h * 0.075}" width="${w * 0.05}" height="${h * 0.075}" rx="8" fill="#2a2840"/>
+    <path d="M ${w * 0.88} ${deskY - h * 0.07} C ${w * 0.85} ${deskY - h * 0.16}, ${w * 0.84} ${deskY - h * 0.2}, ${w * 0.855} ${deskY - h * 0.24}" fill="none" stroke="#34d399" stroke-width="7" stroke-linecap="round"/>
+    <path d="M ${w * 0.88} ${deskY - h * 0.07} C ${w * 0.9} ${deskY - h * 0.17}, ${w * 0.92} ${deskY - h * 0.2}, ${w * 0.915} ${deskY - h * 0.25}" fill="none" stroke="#34d399" stroke-width="7" stroke-linecap="round"/>
+    <path d="M ${w * 0.88} ${deskY - h * 0.07} C ${w * 0.88} ${deskY - h * 0.18}, ${w * 0.875} ${deskY - h * 0.23}, ${w * 0.885} ${deskY - h * 0.28}" fill="none" stroke="#10b981" stroke-width="7" stroke-linecap="round"/>
+  </g>`;
+  return sceneShell(w, h, body, seed);
+}
+
+/** Whiteboard scene: a wireframe sketch on a board, warm lamp, two stools. */
+function sceneBoard(w = 1000, h = 750, seed = 42): string {
+  const bx = w * 0.22;
+  const by = h * 0.14;
+  const bw = w * 0.56;
+  const bh = h * 0.46;
+  const floorY = h * 0.78;
+  const body = `
+  <circle cx="${w * 0.5}" cy="${h * 0.35}" r="${w * 0.4}" fill="url(#roomglow)"/>
+  <rect x="0" y="${floorY}" width="${w}" height="${h - floorY}" fill="${SCENE.floor}"/>
+  <!-- board -->
+  <ellipse cx="${w * 0.5}" cy="${floorY + 8}" rx="${bw * 0.42}" ry="9" fill="${SCENE.ink}" fill-opacity="0.5"/>
+  <line x1="${w * 0.34}" y1="${by + bh}" x2="${w * 0.3}" y2="${floorY}" stroke="#2a2840" stroke-width="9"/>
+  <line x1="${w * 0.66}" y1="${by + bh}" x2="${w * 0.7}" y2="${floorY}" stroke="#2a2840" stroke-width="9"/>
+  <rect x="${bx}" y="${by}" width="${bw}" height="${bh}" rx="16" fill="#f4f3fb"/>
+  <rect x="${bx}" y="${by}" width="${bw}" height="${bh}" rx="16" fill="none" stroke="#2a2840" stroke-width="5"/>
+  <!-- the sketch: a wireframe with a highlighted hero -->
+  <rect x="${bx + bw * 0.08}" y="${by + bh * 0.12}" width="${bw * 0.5}" height="${bh * 0.1}" rx="${bh * 0.05}" fill="${SCENE.accent}" fill-opacity="0.9"/>
+  <rect x="${bx + bw * 0.08}" y="${by + bh * 0.3}" width="${bw * 0.36}" height="${bh * 0.045}" rx="${bh * 0.0225}" fill="#3f3d5c" fill-opacity="0.5"/>
+  <rect x="${bx + bw * 0.08}" y="${by + bh * 0.39}" width="${bw * 0.3}" height="${bh * 0.045}" rx="${bh * 0.0225}" fill="#3f3d5c" fill-opacity="0.35"/>
+  <circle cx="${bx + bw * 0.78}" cy="${by + bh * 0.28}" r="${bh * 0.14}" fill="none" stroke="${SCENE.accent2}" stroke-width="6"/>
+  <path d="M ${bx + bw * 0.71} ${by + bh * 0.3} l ${bw * 0.045} -${bh * 0.07} l ${bw * 0.035} ${bh * 0.045} l ${bw * 0.05} -${bh * 0.09}" fill="none" stroke="${SCENE.accent2}" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="${bx + bw * 0.08}" y="${by + bh * 0.56}" width="${bw * 0.24}" height="${bh * 0.3}" rx="10" fill="${SCENE.warm}" fill-opacity="0.55"/>
+  <rect x="${bx + bw * 0.37}" y="${by + bh * 0.56}" width="${bw * 0.24}" height="${bh * 0.3}" rx="10" fill="${SCENE.accent}" fill-opacity="0.35"/>
+  <rect x="${bx + bw * 0.66}" y="${by + bh * 0.56}" width="${bw * 0.24}" height="${bh * 0.3}" rx="10" fill="${SCENE.accent2}" fill-opacity="0.3"/>
+  <!-- lamp -->
+  <circle cx="${w * 0.875}" cy="${h * 0.27}" r="${w * 0.085}" fill="url(#warmglow)"/>
+  <circle cx="${w * 0.875}" cy="${h * 0.27}" r="${w * 0.028}" fill="${SCENE.warm}"/>
+  <line x1="${w * 0.875}" y1="${h * 0.07}" x2="${w * 0.875}" y2="${h * 0.243}" stroke="#2a2840" stroke-width="6"/>
+  <!-- stools -->
+  <g>
+    <rect x="${w * 0.1}" y="${floorY - h * 0.12}" width="${w * 0.085}" height="${h * 0.025}" rx="${h * 0.0125}" fill="${SCENE.accent}" fill-opacity="0.8"/>
+    <line x1="${w * 0.115}" y1="${floorY - h * 0.095}" x2="${w * 0.105}" y2="${floorY}" stroke="#2a2840" stroke-width="7"/>
+    <line x1="${w * 0.17}" y1="${floorY - h * 0.095}" x2="${w * 0.18}" y2="${floorY}" stroke="#2a2840" stroke-width="7"/>
   </g>
-</svg>`;
+  <g>
+    <rect x="${w * 0.82}" y="${floorY - h * 0.12}" width="${w * 0.085}" height="${h * 0.025}" rx="${h * 0.0125}" fill="${SCENE.accent2}" fill-opacity="0.7"/>
+    <line x1="${w * 0.835}" y1="${floorY - h * 0.095}" x2="${w * 0.825}" y2="${floorY}" stroke="#2a2840" stroke-width="7"/>
+    <line x1="${w * 0.89}" y1="${floorY - h * 0.095}" x2="${w * 0.9}" y2="${floorY}" stroke="#2a2840" stroke-width="7"/>
+  </g>`;
+  return sceneShell(w, h, body, seed);
 }
 
-/** An abstract "team" tile: a soft gradient with a simple person silhouette. */
-function avatarTile(a: string, b: string, w = 480, h = 480): string {
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
-  <defs><linearGradient id="a" x1="0" y1="0" x2="1" y2="1">
-    <stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/>
-  </linearGradient></defs>
-  <rect width="${w}" height="${h}" fill="url(#a)"/>
-  <circle cx="${w / 2}" cy="${h * 0.4}" r="${w * 0.16}" fill="#ffffff" fill-opacity="0.92"/>
-  <path d="M ${w / 2 - w * 0.27} ${h} a ${w * 0.27} ${w * 0.30} 0 0 1 ${w * 0.54} 0 Z" fill="#ffffff" fill-opacity="0.92"/>
-</svg>`;
-}
-
-/** A whiteboard/meeting scene: a board with sketch shapes, two chairs, a side table. */
-function meetingScene(p: Palette, w = 800, h = 600): string {
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
-  <rect width="${w}" height="${h}" fill="${p.base}"/>
-  <rect x="${w / 2 - 240}" y="60" width="480" height="300" rx="14" fill="#ffffff" stroke="${p.ink}" stroke-opacity="0.15" stroke-width="3"/>
-  <rect x="${w / 2 - 200}" y="100" width="180" height="16" rx="8" fill="${p.accent}" fill-opacity="0.8"/>
-  <rect x="${w / 2 - 200}" y="136" width="240" height="10" rx="5" fill="${p.ink}" fill-opacity="0.3"/>
-  <rect x="${w / 2 - 200}" y="156" width="210" height="10" rx="5" fill="${p.ink}" fill-opacity="0.3"/>
-  <circle cx="${w / 2 + 120}" cy="160" r="48" fill="${p.accent2}" fill-opacity="0.4"/>
-  <path d="M ${w / 2 + 96} 172 l 18 -26 l 14 14 l 22 -30" stroke="${p.accent}" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-  <rect x="${w / 2 - 200}" y="220" width="120" height="90" rx="10" fill="${p.accent2}" fill-opacity="0.25"/>
-  <rect x="${w / 2 - 60}" y="220" width="120" height="90" rx="10" fill="${p.accent}" fill-opacity="0.2"/>
-  <rect x="0" y="${h - 90}" width="${w}" height="90" fill="${p.ink}" fill-opacity="0.08"/>
-  <rect x="${w / 2 - 300}" y="${h - 200}" width="90" height="110" rx="12" fill="${p.accent}" fill-opacity="0.55"/>
-  <rect x="${w / 2 + 210}" y="${h - 200}" width="90" height="110" rx="12" fill="${p.accent2}" fill-opacity="0.55"/>
-</svg>`;
-}
-
-/** A moodboard wall: pinned swatches and type cards in the brand palette. */
-function moodboardScene(p: Palette, w = 800, h = 600): string {
+/** Moodboard wall: pinned gradient swatches under a wash of light. */
+function sceneWall(w = 1000, h = 750, seed = 43): string {
+  const r = rng(seed);
   const cards = [
-    { x: 70, y: 70, w: 180, h: 130, f: p.accent, o: 0.85 },
-    { x: 280, y: 90, w: 140, h: 180, f: p.accent2, o: 0.7 },
-    { x: 450, y: 60, w: 200, h: 120, f: p.ink, o: 0.8 },
-    { x: 90, y: 240, w: 150, h: 170, f: p.accent2, o: 0.35 },
-    { x: 300, y: 300, w: 200, h: 130, f: p.accent, o: 0.4 },
-    { x: 530, y: 220, w: 160, h: 200, f: p.accent, o: 0.6 },
+    { x: 0.12, y: 0.14, cw: 0.2, ch: 0.24, f: 'url(#screen)', o: 1, rot: -3 },
+    { x: 0.37, y: 0.1, cw: 0.14, ch: 0.32, f: SCENE.warm, o: 0.8, rot: 2 },
+    { x: 0.56, y: 0.16, cw: 0.22, ch: 0.2, f: '#f4f3fb', o: 0.95, rot: -1 },
+    { x: 0.14, y: 0.48, cw: 0.16, ch: 0.26, f: '#f4f3fb', o: 0.9, rot: 2 },
+    { x: 0.36, y: 0.52, cw: 0.22, ch: 0.22, f: SCENE.accent2, o: 0.55, rot: -2 },
+    { x: 0.63, y: 0.46, cw: 0.17, ch: 0.3, f: SCENE.accent, o: 0.75, rot: 3 },
   ];
+  const swatches = cards
+    .map((c) => {
+      const x = w * c.x;
+      const y = h * c.y;
+      const cw = w * c.cw;
+      const ch = h * c.ch;
+      const cx = x + cw / 2;
+      const inner =
+        c.f === '#f4f3fb'
+          ? `<rect x="${x + cw * 0.14}" y="${y + ch * 0.2}" width="${cw * 0.72}" height="${ch * 0.12}" rx="${ch * 0.06}" fill="#3f3d5c" fill-opacity="0.55" transform="rotate(${c.rot} ${cx} ${y + ch / 2})"/>` +
+            `<rect x="${x + cw * 0.14}" y="${y + ch * 0.45}" width="${cw * 0.5}" height="${ch * 0.1}" rx="${ch * 0.05}" fill="#3f3d5c" fill-opacity="0.3" transform="rotate(${c.rot} ${cx} ${y + ch / 2})"/>`
+          : '';
+      return (
+        `<g><rect x="${x + 6}" y="${y + 9}" width="${cw}" height="${ch}" rx="10" fill="${SCENE.ink}" fill-opacity="0.45" transform="rotate(${c.rot} ${cx} ${y + ch / 2})"/>` +
+        `<rect x="${x}" y="${y}" width="${cw}" height="${ch}" rx="10" fill="${c.f}" fill-opacity="${c.o}" transform="rotate(${c.rot} ${cx} ${y + ch / 2})"/>` +
+        inner +
+        `<circle cx="${cx}" cy="${y + 4}" r="5.5" fill="#dcd9ee" transform="rotate(${c.rot} ${cx} ${y + ch / 2})"/></g>`
+      );
+    })
+    .join('');
+  let tape = '';
+  for (let i = 0; i < 7; i++) {
+    tape += `<rect x="${(w * (0.1 + r() * 0.75)).toFixed(0)}" y="${(h * (0.82 + r() * 0.08)).toFixed(0)}" width="${(w * 0.05).toFixed(0)}" height="10" rx="5" fill="#ffffff" fill-opacity="${(0.1 + r() * 0.2).toFixed(2)}"/>`;
+  }
+  const body = `
+  <circle cx="${w * 0.45}" cy="${h * 0.32}" r="${w * 0.45}" fill="url(#roomglow)"/>
+  <circle cx="${w * 0.85}" cy="${h * 0.75}" r="${w * 0.3}" fill="url(#warmglow)"/>
+  ${swatches}
+  ${tape}`;
+  return sceneShell(w, h, body, seed);
+}
+
+/** Still-life scene: keyboard, notebook, and a coffee — warm close-up. */
+function sceneStill(w = 1000, h = 750, seed = 44): string {
+  const body = `
+  <circle cx="${w * 0.7}" cy="${h * 0.25}" r="${w * 0.4}" fill="url(#warmglow)"/>
+  <circle cx="${w * 0.2}" cy="${h * 0.75}" r="${w * 0.35}" fill="url(#roomglow)"/>
+  <!-- keyboard -->
+  <g transform="rotate(-5 ${w * 0.3} ${h * 0.4})">
+    <rect x="${w * 0.08}" y="${h * 0.22}" width="${w * 0.44}" height="${h * 0.26}" rx="18" fill="#211f33"/>
+    ${Array.from({ length: 4 }, (_, row) =>
+      Array.from({ length: 10 }, (_, col) => {
+        const kx = w * 0.1 + col * w * 0.041;
+        const ky = h * 0.245 + row * h * 0.058;
+        const lit = (row === 1 && col === 3) || (row === 2 && col === 7);
+        return `<rect x="${kx.toFixed(0)}" y="${ky.toFixed(0)}" width="${(w * 0.033).toFixed(0)}" height="${(h * 0.046).toFixed(0)}" rx="7" fill="${lit ? SCENE.accent : '#ffffff'}" fill-opacity="${lit ? 0.85 : 0.13}"/>`;
+      }).join(''),
+    ).join('')}
+  </g>
+  <!-- notebook -->
+  <g transform="rotate(6 ${w * 0.72} ${h * 0.55})">
+    <rect x="${w * 0.6}" y="${h * 0.3}" width="${w * 0.26}" height="${h * 0.46}" rx="12" fill="#f4f3fb"/>
+    <rect x="${w * 0.6}" y="${h * 0.3}" width="${w * 0.045}" height="${h * 0.46}" rx="12" fill="${SCENE.accent}"/>
+    <line x1="${w * 0.68}" y1="${h * 0.4}" x2="${w * 0.82}" y2="${h * 0.4}" stroke="#3f3d5c" stroke-opacity="0.5" stroke-width="7" stroke-linecap="round"/>
+    <line x1="${w * 0.68}" y1="${h * 0.47}" x2="${w * 0.8}" y2="${h * 0.47}" stroke="#3f3d5c" stroke-opacity="0.3" stroke-width="7" stroke-linecap="round"/>
+    <line x1="${w * 0.68}" y1="${h * 0.54}" x2="${w * 0.81}" y2="${h * 0.54}" stroke="#3f3d5c" stroke-opacity="0.3" stroke-width="7" stroke-linecap="round"/>
+    <circle cx="${w * 0.71}" cy="${h * 0.66}" r="${h * 0.045}" fill="none" stroke="${SCENE.accent2}" stroke-width="6"/>
+    <path d="M ${w * 0.74} ${h * 0.63} l ${w * 0.05} ${h * 0.06}" stroke="${SCENE.accent2}" stroke-width="6" stroke-linecap="round"/>
+  </g>
+  <!-- coffee -->
+  <g>
+    <ellipse cx="${w * 0.36}" cy="${h * 0.83}" rx="${w * 0.105}" ry="${h * 0.022}" fill="${SCENE.ink}" fill-opacity="0.55"/>
+    <circle cx="${w * 0.36}" cy="${h * 0.76}" r="${w * 0.082}" fill="#2a2840"/>
+    <circle cx="${w * 0.36}" cy="${h * 0.76}" r="${w * 0.062}" fill="${SCENE.warm}" fill-opacity="0.85"/>
+    <path d="M ${w * 0.345} ${h * 0.655} q ${w * 0.012} -${h * 0.03} 0 -${h * 0.05}" fill="none" stroke="#ffffff" stroke-opacity="0.35" stroke-width="5" stroke-linecap="round"/>
+    <path d="M ${w * 0.375} ${h * 0.66} q ${w * 0.012} -${h * 0.025} 0 -${h * 0.045}" fill="none" stroke="#ffffff" stroke-opacity="0.25" stroke-width="5" stroke-linecap="round"/>
+  </g>`;
+  return sceneShell(w, h, body, seed);
+}
+
+/** The hero artwork: floating glass UI panels over an aurora field — the studio's own brand. */
+function heroArt(w = 1100, h = 800, seed = 11): string {
+  const gA = splitGlow(glow('hA', w * 0.75, h * 0.18, w * 0.65, '#6366f1', 0.95));
+  const gB = splitGlow(glow('hB', w * 0.12, h * 0.55, w * 0.6, '#0ea5e9', 0.75));
+  const gC = splitGlow(glow('hC', w * 0.65, h * 0.95, w * 0.55, '#a855f7', 0.65));
+  const gridLines =
+    Array.from({ length: 9 }, (_, i) => `<line x1="${(i + 1) * (w / 10)}" y1="0" x2="${(i + 1) * (w / 10)}" y2="${h}" stroke="#ffffff" stroke-opacity="0.045" stroke-width="1"/>`).join('') +
+    Array.from({ length: 7 }, (_, i) => `<line x1="0" y1="${(i + 1) * (h / 8)}" x2="${w}" y2="${(i + 1) * (h / 8)}" stroke="#ffffff" stroke-opacity="0.045" stroke-width="1"/>`).join('');
+  const panel = (x: number, y: number, pw: number, ph: number, rot: number, inner: string): string =>
+    `<g transform="rotate(${rot} ${x + pw / 2} ${y + ph / 2})">` +
+    `<rect x="${x}" y="${y}" width="${pw}" height="${ph}" rx="20" fill="#ffffff" fill-opacity="0.1" stroke="#ffffff" stroke-opacity="0.35" stroke-width="2"/>` +
+    inner +
+    `</g>`;
+  const mainInner =
+    `<rect x="${w * 0.255}" y="${h * 0.255}" width="${w * 0.16}" height="${h * 0.028}" rx="${h * 0.014}" fill="#ffffff" fill-opacity="0.9"/>` +
+    `<rect x="${w * 0.255}" y="${h * 0.31}" width="${w * 0.26}" height="${h * 0.016}" rx="${h * 0.008}" fill="#ffffff" fill-opacity="0.4"/>` +
+    `<rect x="${w * 0.255}" y="${h * 0.345}" width="${w * 0.22}" height="${h * 0.016}" rx="${h * 0.008}" fill="#ffffff" fill-opacity="0.4"/>` +
+    `<rect x="${w * 0.255}" y="${h * 0.40}" width="${w * 0.1}" height="${h * 0.042}" rx="${h * 0.021}" fill="url(#cta)"/>` +
+    `<rect x="${w * 0.255}" y="${h * 0.49}" width="${w * 0.115}" height="${h * 0.13}" rx="14" fill="#ffffff" fill-opacity="0.1"/>` +
+    `<rect x="${w * 0.385}" y="${h * 0.49}" width="${w * 0.115}" height="${h * 0.13}" rx="14" fill="#ffffff" fill-opacity="0.14"/>`;
+  const sideInner =
+    `<circle cx="${w * 0.715}" cy="${h * 0.42}" r="${h * 0.052}" fill="url(#cta)"/>` +
+    `<path d="M ${w * 0.7} ${h * 0.425} l ${w * 0.011} ${h * 0.014} l ${w * 0.019} -${h * 0.028}" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>` +
+    `<rect x="${w * 0.665}" y="${h * 0.51}" width="${w * 0.1}" height="${h * 0.015}" rx="${h * 0.0075}" fill="#ffffff" fill-opacity="0.55"/>` +
+    `<rect x="${w * 0.665}" y="${h * 0.545}" width="${w * 0.075}" height="${h * 0.015}" rx="${h * 0.0075}" fill="#ffffff" fill-opacity="0.3"/>`;
+  const chipInner =
+    `<rect x="${w * 0.575}" y="${h * 0.745}" width="${w * 0.05}" height="${h * 0.05}" rx="12" fill="url(#cta)"/>` +
+    `<path d="M ${w * 0.645} ${h * 0.79} l ${w * 0.025} -${h * 0.026} l ${w * 0.02} ${h * 0.014} l ${w * 0.03} -${h * 0.032}" fill="none" stroke="#ffffff" stroke-opacity="0.85" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>`;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
-  <rect width="${w}" height="${h}" fill="${p.base}"/>
-  ${cards
-    .map(
-      (c) =>
-        `<g><rect x="${c.x + 5}" y="${c.y + 7}" width="${c.w}" height="${c.h}" rx="10" fill="${p.ink}" fill-opacity="0.12"/>` +
-        `<rect x="${c.x}" y="${c.y}" width="${c.w}" height="${c.h}" rx="10" fill="${c.f}" fill-opacity="${c.o}"/>` +
-        `<circle cx="${c.x + c.w / 2}" cy="${c.y}" r="6" fill="${p.ink}" fill-opacity="0.5"/></g>`,
-    )
-    .join('')}
-  <rect x="120" y="470" width="${w - 240}" height="14" rx="7" fill="${p.ink}" fill-opacity="0.25"/>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#11102b"/><stop offset="1" stop-color="#080714"/></linearGradient>
+    <linearGradient id="cta" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6366f1"/><stop offset="1" stop-color="#0ea5e9"/></linearGradient>
+    ${gA.def}${gB.def}${gC.def}
+  </defs>
+  <rect width="${w}" height="${h}" fill="url(#bg)"/>
+  ${gA.shape}${gB.shape}${gC.shape}
+  ${gridLines}
+  ${panel(w * 0.21, h * 0.19, w * 0.34, h * 0.49, -2, mainInner)}
+  ${panel(w * 0.62, h * 0.33, w * 0.2, h * 0.29, 3, sideInner)}
+  ${panel(w * 0.55, h * 0.7, w * 0.16, h * 0.14, -3, chipInner)}
+  ${grain(w, h, seed, 900)}
+  ${vignette(w, h, 0.25)}
 </svg>`;
 }
 
-/** A close-up desk still life: keyboard, notebook, coffee — flat shapes. */
-function deskDetailScene(p: Palette, w = 800, h = 600): string {
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
-  <rect width="${w}" height="${h}" fill="${p.panel}"/>
-  <rect width="${w}" height="${h}" fill="${p.accent2}" fill-opacity="0.08"/>
-  <g transform="translate(80 120) rotate(-4)">
-    <rect width="380" height="150" rx="14" fill="${p.ink}"/>
-    ${Array.from({ length: 4 }, (_, r) => Array.from({ length: 10 }, (_, c) => `<rect x="${16 + c * 35}" y="${16 + r * 33}" width="28" height="26" rx="6" fill="#ffffff" fill-opacity="0.14"/>`).join('')).join('')}
-  </g>
-  <g transform="translate(520 100) rotate(6)">
-    <rect width="190" height="250" rx="10" fill="#ffffff" stroke="${p.accent}" stroke-opacity="0.4" stroke-width="3"/>
-    <line x1="24" y1="52" x2="166" y2="52" stroke="${p.ink}" stroke-opacity="0.3" stroke-width="6" stroke-linecap="round"/>
-    <line x1="24" y1="92" x2="150" y2="92" stroke="${p.ink}" stroke-opacity="0.2" stroke-width="6" stroke-linecap="round"/>
-    <line x1="24" y1="132" x2="160" y2="132" stroke="${p.ink}" stroke-opacity="0.2" stroke-width="6" stroke-linecap="round"/>
-    <circle cx="60" cy="195" r="22" fill="${p.accent}" fill-opacity="0.7"/>
-  </g>
-  <g transform="translate(330 380)">
-    <ellipse cx="70" cy="120" rx="78" ry="14" fill="${p.ink}" fill-opacity="0.12"/>
-    <rect x="20" y="20" width="100" height="100" rx="14" fill="${p.accent}"/>
-    <path d="M 120 45 q 44 8 0 52" stroke="${p.accent}" stroke-width="12" fill="none"/>
-    <ellipse cx="70" cy="22" rx="50" ry="12" fill="${p.ink}" fill-opacity="0.5"/>
-  </g>
-</svg>`;
-}
-
-/** An abstract blog cover: brand gradient + a per-topic geometric motif (shapes only). */
-function blogCover(p: Palette, motif: 'speed' | 'design' | 'seo', w = 960, h = 540): string {
+/** A blog cover: deep field + one luminous motif, sized for 16:9 article cards. */
+function blogCover(motif: 'speed' | 'design' | 'seo', w = 960, h = 540): string {
+  const gA = splitGlow(glow('bA', w * 0.7, h * 0.25, w * 0.55, '#6366f1', 0.6));
+  const gB = splitGlow(glow('bB', w * 0.2, h * 0.85, w * 0.45, '#0ea5e9', 0.4));
   let art = '';
   if (motif === 'speed') {
     art = [0, 1, 2]
-      .map((i) => `<path d="M ${220 + i * 160} 160 l 120 110 l -120 110" stroke="#ffffff" stroke-opacity="${0.9 - i * 0.25}" stroke-width="34" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`)
+      .map(
+        (i) =>
+          `<path d="M ${w * 0.3 + i * w * 0.14} ${h * 0.28} l ${w * 0.13} ${h * 0.22} l -${w * 0.13} ${h * 0.22}" stroke="#ffffff" stroke-opacity="${(0.9 - i * 0.3).toFixed(2)}" stroke-width="${30 - i * 6}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`,
+      )
       .join('');
   } else if (motif === 'design') {
     art = [0, 1, 2]
-      .map((r) => [0, 1, 2, 3].map((c) => `<rect x="${280 + c * 110}" y="${120 + r * 110}" width="86" height="86" rx="${(r + c) % 2 ? 43 : 14}" fill="#ffffff" fill-opacity="${0.25 + ((r + c) % 3) * 0.25}"/>`).join(''))
+      .map((row) =>
+        [0, 1, 2, 3]
+          .map((col) => {
+            const x = w * 0.3 + col * w * 0.115;
+            const y = h * 0.21 + row * h * 0.21;
+            const round = (row + col) % 2 ? w * 0.0425 : 12;
+            const o = 0.2 + ((row + col) % 3) * 0.28;
+            return `<rect x="${x}" y="${y}" width="${w * 0.085}" height="${w * 0.085}" rx="${round}" fill="#ffffff" fill-opacity="${o.toFixed(2)}"/>`;
+          })
+          .join(''),
+      )
       .join('');
   } else {
     art =
-      `<circle cx="430" cy="250" r="110" fill="none" stroke="#ffffff" stroke-opacity="0.9" stroke-width="26"/>` +
-      `<line x1="515" y1="335" x2="640" y2="455" stroke="#ffffff" stroke-opacity="0.9" stroke-width="30" stroke-linecap="round"/>` +
-      [0, 1, 2].map((i) => `<rect x="${360 + i * 50}" y="${290 - i * 55}" width="32" height="${55 + i * 55}" rx="8" fill="#ffffff" fill-opacity="0.65"/>`).join('');
+      `<circle cx="${w * 0.45}" cy="${h * 0.46}" r="${h * 0.21}" fill="none" stroke="#ffffff" stroke-opacity="0.9" stroke-width="18"/>` +
+      `<line x1="${w * 0.535}" y1="${h * 0.62}" x2="${w * 0.65}" y2="${h * 0.84}" stroke="#ffffff" stroke-opacity="0.9" stroke-width="20" stroke-linecap="round"/>` +
+      [0, 1, 2].map((i) => `<rect x="${w * 0.395 + i * w * 0.04}" y="${h * (0.52 - i * 0.09)}" width="${w * 0.024}" height="${h * (0.08 + i * 0.09)}" rx="6" fill="#ffffff" fill-opacity="0.7"/>`).join('');
   }
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
-  <defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-    <stop offset="0" stop-color="${p.accent}"/><stop offset="1" stop-color="${p.accent2}"/>
-  </linearGradient></defs>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#161434"/><stop offset="1" stop-color="#0a0918"/></linearGradient>
+    ${gA.def}${gB.def}
+  </defs>
   <rect width="${w}" height="${h}" fill="url(#bg)"/>
-  <rect width="${w}" height="${h}" fill="${p.ink}" fill-opacity="0.15"/>
+  ${gA.shape}${gB.shape}
   ${art}
+  ${grain(w, h, 23, 700)}
+  ${vignette(w, h)}
 </svg>`;
 }
 
-/** A flat product tile for the MINI SHOP: soft backdrop + a simple merch silhouette. */
-function productTile(p: Palette, item: 'tee' | 'mug' | 'notebook' | 'poster' | 'stickers' | 'cap', w = 640, h = 640): string {
-  const white = '#ffffff';
+/** A product tile: a lit backdrop, soft floor shadow, and a shaded merch silhouette. */
+function productTile(item: 'tee' | 'mug' | 'notebook' | 'poster' | 'stickers' | 'cap', w = 640, h = 640): string {
+  const accent = '#4f46e5';
+  const accent2 = '#0ea5e9';
+  const shade = '#101024';
+  const white = '#f7f6fd';
   const shapes: Record<string, string> = {
     tee:
-      `<path d="M 200 200 l 80 -50 q 40 26 80 0 l 80 50 l -36 70 l -34 -18 l 0 168 l -100 0 l 0 -168 l -34 18 Z" fill="${white}"/>` +
-      `<circle cx="320" cy="300" r="26" fill="${p.accent}" fill-opacity="0.85"/>`,
+      // a classic tee: shoulders → angled sleeves → straight body, shaded right half + chest mark
+      `<path d="M 277 176 Q 320 208 363 176 L 412 198 L 452 268 L 388 296 L 388 452 Q 320 468 252 452 L 252 296 L 188 268 L 228 198 Z" fill="${white}"/>` +
+      `<path d="M 320 200 Q 344 198 363 176 L 412 198 L 452 268 L 388 296 L 388 452 Q 354 460 320 461 Z" fill="${shade}" fill-opacity="0.07"/>` +
+      `<path d="M 277 176 Q 320 208 363 176" fill="none" stroke="${shade}" stroke-opacity="0.2" stroke-width="7"/>` +
+      `<path d="M 252 296 L 252 452" stroke="${shade}" stroke-opacity="0.08" stroke-width="5"/>` +
+      `<circle cx="320" cy="312" r="24" fill="${accent}"/>` +
+      `<circle cx="320" cy="312" r="24" fill="none" stroke="${accent2}" stroke-opacity="0.6" stroke-width="4"/>`,
     mug:
-      `<rect x="220" y="210" width="170" height="200" rx="20" fill="${white}"/>` +
-      `<path d="M 390 250 q 70 10 0 110" stroke="${white}" stroke-width="26" fill="none"/>` +
-      `<rect x="250" y="250" width="110" height="16" rx="8" fill="${p.accent}" fill-opacity="0.8"/>`,
+      `<path d="M 250 240 q 70 -16 140 0 l -8 176 q -62 18 -124 0 Z" fill="${white}"/>` +
+      `<path d="M 320 232 q 35 1 70 8 l -8 176 q -31 9 -62 10 Z" fill="${shade}" fill-opacity="0.07"/>` +
+      `<ellipse cx="320" cy="240" rx="70" ry="16" fill="#e4e1f5"/>` +
+      `<ellipse cx="320" cy="240" rx="54" ry="11" fill="${accent}" fill-opacity="0.85"/>` +
+      `<path d="M 392 268 q 58 6 50 62 q -7 46 -58 44" fill="none" stroke="${white}" stroke-width="20"/>` +
+      `<path d="M 300 218 q 6 -22 -6 -38" fill="none" stroke="${shade}" stroke-opacity="0.22" stroke-width="7" stroke-linecap="round"/>` +
+      `<path d="M 330 216 q 6 -18 -4 -32" fill="none" stroke="${shade}" stroke-opacity="0.15" stroke-width="7" stroke-linecap="round"/>`,
     notebook:
-      `<rect x="210" y="180" width="220" height="280" rx="14" fill="${white}"/>` +
-      `<rect x="210" y="180" width="36" height="280" rx="14" fill="${p.accent}" fill-opacity="0.85"/>` +
-      Array.from({ length: 5 }, (_, r) => Array.from({ length: 6 }, (_, c) => `<circle cx="${280 + c * 26}" cy="${230 + r * 40}" r="3.5" fill="${p.ink}" fill-opacity="0.35"/>`).join('')).join(''),
+      `<rect x="225" y="185" width="200" height="270" rx="14" fill="${white}" transform="rotate(-3 325 320)"/>` +
+      `<rect x="225" y="185" width="200" height="270" rx="14" fill="${shade}" fill-opacity="0.05" transform="rotate(-3 325 320)"/>` +
+      `<rect x="225" y="185" width="40" height="270" rx="14" fill="${accent}" transform="rotate(-3 325 320)"/>` +
+      `<rect x="380" y="240" width="34" height="90" rx="10" fill="${accent2}" fill-opacity="0.8" transform="rotate(-3 325 320)"/>` +
+      Array.from({ length: 5 }, (_, row) =>
+        Array.from({ length: 5 }, (_, col) => `<circle cx="${300 + col * 26}" cy="${235 + row * 42}" r="3.4" fill="${shade}" fill-opacity="0.3" transform="rotate(-3 325 320)"/>`).join(''),
+      ).join(''),
     poster:
-      `<rect x="220" y="150" width="200" height="300" rx="6" fill="${white}"/>` +
-      `<rect x="246" y="190" width="148" height="60" rx="8" fill="${p.accent}" fill-opacity="0.85"/>` +
-      `<rect x="246" y="270" width="120" height="14" rx="7" fill="${p.ink}" fill-opacity="0.4"/>` +
-      `<rect x="246" y="300" width="148" height="14" rx="7" fill="${p.ink}" fill-opacity="0.3"/>` +
-      `<rect x="246" y="330" width="96" height="14" rx="7" fill="${p.ink}" fill-opacity="0.2"/>`,
+      `<rect x="228" y="150" width="190" height="290" rx="8" fill="${white}" transform="rotate(2 323 295)"/>` +
+      `<rect x="252" y="184" width="142" height="74" rx="10" fill="${accent}" transform="rotate(2 323 295)"/>` +
+      `<rect x="252" y="184" width="142" height="74" rx="10" fill="none" stroke="${accent2}" stroke-opacity="0.7" stroke-width="4" transform="rotate(2 323 295)"/>` +
+      `<rect x="252" y="282" width="116" height="13" rx="6.5" fill="${shade}" fill-opacity="0.45" transform="rotate(2 323 295)"/>` +
+      `<rect x="252" y="310" width="142" height="13" rx="6.5" fill="${shade}" fill-opacity="0.3" transform="rotate(2 323 295)"/>` +
+      `<rect x="252" y="338" width="92" height="13" rx="6.5" fill="${shade}" fill-opacity="0.2" transform="rotate(2 323 295)"/>` +
+      `<circle cx="372" cy="396" r="22" fill="${accent2}" fill-opacity="0.85" transform="rotate(2 323 295)"/>`,
     stickers:
-      `<circle cx="260" cy="250" r="60" fill="${white}"/><circle cx="260" cy="250" r="34" fill="${p.accent}" fill-opacity="0.85"/>` +
-      `<rect x="330" y="200" width="110" height="100" rx="22" fill="${white}" transform="rotate(8 385 250)"/>` +
-      `<path d="M 350 230 l 24 -34 l 24 34 l -16 0 l 0 30 l -16 0 l 0 -30 Z" fill="${p.accent2}" transform="rotate(8 385 250)"/>` +
-      `<rect x="250" y="340" width="150" height="80" rx="40" fill="${white}" transform="rotate(-6 325 380)"/>` +
-      `<circle cx="300" cy="380" r="18" fill="${p.accent2}" fill-opacity="0.8"/><circle cx="350" cy="378" r="18" fill="${p.accent}" fill-opacity="0.7"/>`,
+      `<circle cx="262" cy="252" r="62" fill="${white}"/><circle cx="262" cy="252" r="38" fill="${accent}"/>` +
+      `<path d="M 244 252 l 12 14 l 24 -28" fill="none" stroke="#ffffff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>` +
+      `<rect x="332" y="196" width="116" height="106" rx="24" fill="${white}" transform="rotate(8 390 249)"/>` +
+      `<path d="M 360 240 l 28 -38 l 28 38 l -18 0 l 0 32 l -20 0 l 0 -32 Z" fill="${accent2}" transform="rotate(8 390 249)"/>` +
+      `<rect x="252" y="338" width="156" height="84" rx="42" fill="${white}" transform="rotate(-6 330 380)"/>` +
+      `<circle cx="302" cy="380" r="19" fill="${accent2}" fill-opacity="0.85"/><circle cx="354" cy="376" r="19" fill="${accent}" fill-opacity="0.8"/>`,
     cap:
-      `<path d="M 210 330 a 110 105 0 0 1 220 0 Z" fill="${white}"/>` +
-      `<path d="M 210 330 q 110 36 220 0 l 0 22 q -110 38 -220 0 Z" fill="${white}" fill-opacity="0.85"/>` +
-      `<path d="M 425 330 q 70 -4 86 28 q -50 22 -92 6" fill="${p.accent}" fill-opacity="0.8"/>` +
-      `<circle cx="320" cy="280" r="20" fill="${p.accent}" fill-opacity="0.85"/>`,
+      `<path d="M 212 332 a 108 102 0 0 1 216 0 Z" fill="${white}"/>` +
+      `<path d="M 320 230 a 108 102 0 0 1 108 102 l -108 0 Z" fill="${shade}" fill-opacity="0.07"/>` +
+      `<path d="M 320 230 l 0 102" stroke="${shade}" stroke-opacity="0.15" stroke-width="5"/>` +
+      `<path d="M 264 244 q 22 -16 56 -14" fill="none" stroke="${shade}" stroke-opacity="0.12" stroke-width="5"/>` +
+      `<path d="M 212 332 q 108 34 216 0 l 0 24 q -108 36 -216 0 Z" fill="#e9e6f8"/>` +
+      `<path d="M 424 334 q 74 -6 92 30 q -54 24 -98 6" fill="${accent}"/>` +
+      `<circle cx="320" cy="288" r="19" fill="${accent}"/>` +
+      `<circle cx="320" cy="288" r="19" fill="none" stroke="${accent2}" stroke-opacity="0.6" stroke-width="4"/>`,
   };
   // eslint-disable-next-line security/detect-object-injection -- item is a compile-time literal union
   const art = shapes[item] ?? '';
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
-  <rect width="${w}" height="${h}" fill="${p.base}"/>
-  <circle cx="${w / 2}" cy="${h / 2}" r="225" fill="${p.accent2}" fill-opacity="0.16"/>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#edebfb"/><stop offset="1" stop-color="#dcd9f2"/></linearGradient>
+    <radialGradient id="lit" cx="0.5" cy="0.38" r="0.62"><stop offset="0" stop-color="#ffffff" stop-opacity="0.95"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect width="${w}" height="${h}" fill="url(#bg)"/>
+  <circle cx="${w / 2}" cy="${h * 0.42}" r="${w * 0.4}" fill="url(#lit)"/>
+  <ellipse cx="${w / 2}" cy="${h * 0.77}" rx="${w * 0.27}" ry="${h * 0.035}" fill="#101024" fill-opacity="0.14"/>
+  <ellipse cx="${w / 2}" cy="${h * 0.77}" rx="${w * 0.18}" ry="${h * 0.022}" fill="#101024" fill-opacity="0.12"/>
   <g transform="translate(0 10)">${art}</g>
+  ${grain(w, h, 31, 260, '#101024', 0.05)}
 </svg>`;
 }
 
-// Brand palettes — one per demo client, plus the studio's own indigo→sky.
-const BRAND: Palette = { base: '#eef2ff', panel: '#ffffff', accent: '#4f46e5', accent2: '#0ea5e9', ink: '#1e1b4b' };
-const P = {
-  harbor: { base: '#faf7f2', panel: '#fffdf8', accent: '#b45309', accent2: '#f59e0b', ink: '#44403c' },
-  vela: { base: '#f0fdfa', panel: '#ffffff', accent: '#0d9488', accent2: '#2dd4bf', ink: '#134e4a' },
-  lumen: { base: '#f8fafc', panel: '#ffffff', accent: '#1e3a8a', accent2: '#3b82f6', ink: '#0f172a' },
-  terra: { base: '#fafaf9', panel: '#ffffff', accent: '#57534e', accent2: '#a8a29e', ink: '#292524' },
-  flint: { base: '#fef2f2', panel: '#fffafa', accent: '#b91c1c', accent2: '#f97316', ink: '#450a0a' },
-  aria: { base: '#faf5ff', panel: '#ffffff', accent: '#7e22ce', accent2: '#ec4899', ink: '#3b0764' },
-} satisfies Record<string, Palette>;
+// Per-client art palettes — deep fields with two glow hues, all dark-editorial.
+const ART = {
+  harbor: { bg0: '#2a1505', bg1: '#140a02', glowA: '#f59e0b', glowB: '#b45309', fg: '#fde8c8' },
+  vela: { bg0: '#042f2e', bg1: '#021615', glowA: '#2dd4bf', glowB: '#0d9488', fg: '#ccfbf1' },
+  lumen: { bg0: '#172554', bg1: '#0a102b', glowA: '#3b82f6', glowB: '#6366f1', fg: '#dbeafe' },
+  terra: { bg0: '#292524', bg1: '#171412', glowA: '#a8a29e', glowB: '#d6a35c', fg: '#e7e5e4' },
+  flint: { bg0: '#450a0a', bg1: '#1c0404', glowA: '#f97316', glowB: '#ef4444', fg: '#fee2d5' },
+  aria: { bg0: '#3b0764', bg1: '#190230', glowA: '#ec4899', glowB: '#a855f7', fg: '#fbe8ff' },
+} satisfies Record<string, ArtPalette>;
+
+const MOTIF: Record<keyof typeof ART, Motif> = {
+  harbor: 'arcs',
+  vela: 'waves',
+  lumen: 'chart',
+  terra: 'grid',
+  flint: 'embers',
+  aria: 'rays',
+};
 
 interface AssetSpec {
   key: string;
@@ -297,56 +635,58 @@ interface AssetSpec {
   svg: string;
 }
 
-/** The 25 demo assets: 6 project mockups, 4 team tiles, hero + studio scenes, a 4-shot Studio/
- * gallery (for the {{#sw-folder}} demo), 3 blog covers, and 6 MINI SHOP product tiles. */
-function specs(): AssetSpec[] {
-  const proj = (key: keyof typeof P, alt: string): AssetSpec => ({
+/** The 25 demo assets: 6 project covers, 4 team portraits, hero + studio art, a 4-shot Studio/
+ * gallery (for the {{#sw-folder}} demo), 3 blog covers, and 6 MINI SHOP product tiles.
+ * Exported for tests (count/folder assertions) and offline art review. */
+export function exampleAssetSpecs(): AssetSpec[] {
+  const proj = (key: keyof typeof ART, seed: number, alt: string): AssetSpec => ({
     key: `proj-${key}`,
     id: `ex-proj-${key}`,
     folder: 'Projects',
     alt,
-    w: 900,
-    h: 650,
-    svg: siteMockup(Reflect.get(P, key) as Palette),
+    w: 1200,
+    h: 840,
+    // eslint-disable-next-line security/detect-object-injection -- key is a compile-time literal union
+    svg: projectCover(ART[key], MOTIF[key], seed),
   });
-  const team = (key: string, a: string, b: string): AssetSpec => ({
+  const team = (key: string, seed: number, a: string, b: string, deep: string): AssetSpec => ({
     key: `team-${key}`,
     id: `ex-team-${key}`,
     folder: 'Team',
     alt: 'Northwind team member',
-    w: 480,
-    h: 480,
-    svg: avatarTile(a, b),
+    w: 600,
+    h: 600,
+    svg: avatarOrb(a, b, deep, seed),
   });
   return [
-    proj('harbor', 'Harbor & Co. — a flavour-led coffee storefront'),
-    proj('vela', 'Vela Health — a calm patient portal'),
-    proj('lumen', 'Lumen Capital — a data-rich finance site'),
-    proj('terra', 'Terra Studio — an image-first architecture portfolio'),
-    proj('flint', 'Flint & Steel — a hospitality site with booking'),
-    proj('aria', 'Aria Festival — a bold, high-energy events site'),
-    team('mara', '#6366f1', '#0ea5e9'),
-    team('devon', '#0d9488', '#22d3ee'),
-    team('ines', '#db2777', '#f59e0b'),
-    team('sol', '#7c3aed', '#ec4899'),
-    { key: 'hero', id: 'ex-hero', folder: 'Brand', alt: 'A recent Northwind website in progress', w: 1000, h: 720, svg: heroScene(BRAND) },
-    { key: 'studio', id: 'ex-studio', folder: 'Brand', alt: 'The Northwind studio', w: 800, h: 700, svg: studioScene(BRAND) },
+    proj('harbor', 101, 'Harbor & Co. — a flavour-led coffee storefront'),
+    proj('vela', 102, 'Vela Health — a calm patient portal'),
+    proj('lumen', 103, 'Lumen Capital — a data-rich finance site'),
+    proj('terra', 104, 'Terra Studio — an image-first architecture portfolio'),
+    proj('flint', 105, 'Flint & Steel — a hospitality site with booking'),
+    proj('aria', 106, 'Aria Festival — a bold, high-energy events site'),
+    team('mara', 201, '#6366f1', '#38bdf8', '#11102b'),
+    team('devon', 202, '#0d9488', '#22d3ee', '#021615'),
+    team('ines', 203, '#db2777', '#f59e0b', '#2a0a18'),
+    team('sol', 204, '#7c3aed', '#ec4899', '#1c0833'),
+    { key: 'hero', id: 'ex-hero', folder: 'Brand', alt: 'A recent Northwind website in progress', w: 1100, h: 800, svg: heroArt() },
+    { key: 'studio', id: 'ex-studio', folder: 'Brand', alt: 'The Northwind studio', w: 1000, h: 750, svg: sceneDesk() },
     // Studio/ — the About page's {{#sw-folder}} gallery (alt text renders as the lightbox caption).
-    { key: 'studio-desk', id: 'ex-studio-desk', folder: 'Studio', alt: 'A quiet corner of the studio', w: 800, h: 700, svg: studioScene(BRAND) },
-    { key: 'studio-meeting', id: 'ex-studio-meeting', folder: 'Studio', alt: 'Sketching flows at the whiteboard', w: 800, h: 600, svg: meetingScene(BRAND) },
-    { key: 'studio-wall', id: 'ex-studio-wall', folder: 'Studio', alt: 'The moodboard wall, mid-project', w: 800, h: 600, svg: moodboardScene(BRAND) },
-    { key: 'studio-detail', id: 'ex-studio-detail', folder: 'Studio', alt: 'Tools of the trade', w: 800, h: 600, svg: deskDetailScene(BRAND) },
+    { key: 'studio-desk', id: 'ex-studio-desk', folder: 'Studio', alt: 'A quiet corner of the studio', w: 1000, h: 750, svg: sceneDesk(1000, 750, 51) },
+    { key: 'studio-meeting', id: 'ex-studio-meeting', folder: 'Studio', alt: 'Sketching flows at the whiteboard', w: 1000, h: 750, svg: sceneBoard() },
+    { key: 'studio-wall', id: 'ex-studio-wall', folder: 'Studio', alt: 'The moodboard wall, mid-project', w: 1000, h: 750, svg: sceneWall() },
+    { key: 'studio-detail', id: 'ex-studio-detail', folder: 'Studio', alt: 'Tools of the trade', w: 1000, h: 750, svg: sceneStill() },
     // Blog/ — abstract covers, one motif per article topic.
-    { key: 'blog-speed', id: 'ex-blog-speed', folder: 'Blog', alt: 'Speed — abstract cover', w: 960, h: 540, svg: blogCover(BRAND, 'speed') },
-    { key: 'blog-design', id: 'ex-blog-design', folder: 'Blog', alt: 'Design systems — abstract cover', w: 960, h: 540, svg: blogCover(BRAND, 'design') },
-    { key: 'blog-seo', id: 'ex-blog-seo', folder: 'Blog', alt: 'SEO — abstract cover', w: 960, h: 540, svg: blogCover(BRAND, 'seo') },
+    { key: 'blog-speed', id: 'ex-blog-speed', folder: 'Blog', alt: 'Speed — abstract cover', w: 960, h: 540, svg: blogCover('speed') },
+    { key: 'blog-design', id: 'ex-blog-design', folder: 'Blog', alt: 'Design systems — abstract cover', w: 960, h: 540, svg: blogCover('design') },
+    { key: 'blog-seo', id: 'ex-blog-seo', folder: 'Blog', alt: 'SEO — abstract cover', w: 960, h: 540, svg: blogCover('seo') },
     // Products/ — MINI SHOP merch tiles.
-    { key: 'prod-tee', id: 'ex-prod-tee', folder: 'Products', alt: 'Studio Tee', w: 640, h: 640, svg: productTile(BRAND, 'tee') },
-    { key: 'prod-mug', id: 'ex-prod-mug', folder: 'Products', alt: 'Ceramic Mug', w: 640, h: 640, svg: productTile(BRAND, 'mug') },
-    { key: 'prod-notebook', id: 'ex-prod-notebook', folder: 'Products', alt: 'Dot-grid Notebook', w: 640, h: 640, svg: productTile(BRAND, 'notebook') },
-    { key: 'prod-poster', id: 'ex-prod-poster', folder: 'Products', alt: 'Type Poster', w: 640, h: 640, svg: productTile(BRAND, 'poster') },
-    { key: 'prod-stickers', id: 'ex-prod-stickers', folder: 'Products', alt: 'Sticker Pack', w: 640, h: 640, svg: productTile(BRAND, 'stickers') },
-    { key: 'prod-cap', id: 'ex-prod-cap', folder: 'Products', alt: 'Dad Cap', w: 640, h: 640, svg: productTile(BRAND, 'cap') },
+    { key: 'prod-tee', id: 'ex-prod-tee', folder: 'Products', alt: 'Studio Tee', w: 640, h: 640, svg: productTile('tee') },
+    { key: 'prod-mug', id: 'ex-prod-mug', folder: 'Products', alt: 'Ceramic Mug', w: 640, h: 640, svg: productTile('mug') },
+    { key: 'prod-notebook', id: 'ex-prod-notebook', folder: 'Products', alt: 'Dot-grid Notebook', w: 640, h: 640, svg: productTile('notebook') },
+    { key: 'prod-poster', id: 'ex-prod-poster', folder: 'Products', alt: 'Type Poster', w: 640, h: 640, svg: productTile('poster') },
+    { key: 'prod-stickers', id: 'ex-prod-stickers', folder: 'Products', alt: 'Sticker Pack', w: 640, h: 640, svg: productTile('stickers') },
+    { key: 'prod-cap', id: 'ex-prod-cap', folder: 'Products', alt: 'Dad Cap', w: 640, h: 640, svg: productTile('cap') },
   ];
 }
 
@@ -364,7 +704,7 @@ export async function seedExampleAssets(
 ): Promise<Record<string, string>> {
   const urls: Record<string, string> = {};
   const folders = new Set<string>();
-  for (const spec of specs()) {
+  for (const spec of exampleAssetSpecs()) {
     // Best-effort PER ASSET: a single image failing (a sharp/librsvg blip, disk hiccup) must not
     // abort the demo seed — the content seeds regardless, and the failed image just resolves to ''
     // (see exampleEntries/examplePages). On failure, drop the half-written asset dir so no empty

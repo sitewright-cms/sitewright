@@ -1,5 +1,5 @@
 import type { Page } from '@sitewright/schema';
-
+import { icon } from '../../helpers.js';
 
 // ---------------------------------------------------------------- WORK
 // The portfolio as a first-party LIGHTBOX gallery: each project card is a `data-sw-part="item"`
@@ -15,24 +15,28 @@ export function pageWork(): Page {
     parent: 'home', // home is the tree root — every page nests under it
     nav: { title: 'Work', slots: ['header'], order: 2 },
     data: { aria_caption: 'Project gallery' },
-    source: `<section class="mx-auto max-w-6xl px-6 pt-20 pb-6">
+    source: `<section class="mx-auto max-w-6xl px-6 pb-8 pt-24">
   <div class="nw-rise max-w-2xl">
-    <span class="text-sm font-semibold uppercase tracking-wide text-primary" data-sw-text="work_eyebrow">Portfolio</span>
-    <h1 class="mt-3 text-4xl font-extrabold tracking-tight sm:text-5xl" data-sw-text="work_h1">Work we’re proud of</h1>
-    <p class="mt-4 text-lg text-base-content/60" data-sw-text="work_intro">A selection of recent sites across retail, health, finance, and the arts — each one hand-built and fast. Click any shot to view it full-screen.</p>
+    <span class="text-sm font-semibold uppercase tracking-[0.18em] text-primary" data-sw-text="work_eyebrow">Portfolio</span>
+    <h1 class="mt-4 text-4xl font-bold tracking-tight sm:text-6xl" data-sw-text="work_h1">Work we’re proud of</h1>
+    <p class="mt-5 text-lg leading-relaxed text-base-content/60" data-sw-text="work_intro">A selection of recent sites across retail, health, finance, and the arts — each one hand-built and fast. Click any shot to view it full-screen.</p>
   </div>
 </section>
-<section class="mx-auto max-w-6xl px-6 pb-24">
+<section class="mx-auto max-w-6xl px-6 pb-28">
   <div data-sw-component="lightbox" data-sw-block="Lightbox" aria-label="{{page.data.aria_caption}}">
-    <div data-sw-part="grid" class="!grid-cols-1 gap-8 md:!grid-cols-2">
+    <div data-sw-part="grid" class="!grid-cols-1 gap-10 md:!grid-cols-2">
       {{#each data.projects}}
-      <a data-sw-part="item" href="{{sw-url image}}" data-caption="{{title}} — {{summary}}" class="card nw-card overflow-hidden border border-base-200 bg-base-100 shadow-sm hover:shadow-2xl nw-zoom" data-aos="fade-up">
-        <figure class="aspect-[16/10] overflow-hidden"><img src="{{sw-url image}}" alt="{{title}}" class="!aspect-[16/10] h-full w-full object-cover" loading="lazy" /></figure>
-        <div class="card-body">
-          <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-primary"><span>{{category}}</span><span class="text-base-content/30">·</span><span class="text-base-content/40">{{year}}</span></div>
-          <h2 class="card-title text-2xl">{{title}}</h2>
-          <p class="text-sm text-base-content/40">{{client}}</p>
-          <p class="mt-1 text-base-content/70">{{summary}}</p>
+      <a data-sw-part="item" href="{{sw-url image}}" data-caption="{{title}} — {{summary}}" class="group card nw-card overflow-hidden border border-base-200 bg-base-100 no-underline shadow-sm hover:border-primary/30 hover:shadow-2xl hover:shadow-primary/10 nw-zoom" data-aos="fade-up">
+        <figure class="relative aspect-[16/10] overflow-hidden">
+          <img src="{{sw-url image}}" alt="{{title}}" class="!aspect-[16/10] h-full w-full object-cover" loading="lazy" />
+          <span class="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" aria-hidden="true"></span>
+          <span class="absolute right-5 top-5 inline-flex h-10 w-10 translate-y-1 items-center justify-center rounded-full bg-white/90 text-neutral opacity-0 shadow-lg transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100">${icon('maximize-2', 'h-4 w-4')}</span>
+        </figure>
+        <div class="card-body p-7">
+          <div class="flex items-center gap-2.5 text-xs font-semibold uppercase tracking-wider"><span class="rounded-full bg-primary/10 px-3 py-1 text-primary">{{category}}</span><span class="font-mono font-medium normal-case tracking-normal text-base-content/40">{{year}}</span></div>
+          <h2 class="mt-2 text-2xl font-bold tracking-tight">{{title}}</h2>
+          <p class="text-sm font-medium text-base-content/40">{{client}}</p>
+          <p class="mt-1 leading-relaxed text-base-content/65">{{summary}}</p>
         </div>
       </a>
       {{/each}}

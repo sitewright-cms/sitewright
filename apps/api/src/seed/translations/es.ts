@@ -122,6 +122,7 @@ export function translationsEs(assets: Record<string, string>): Record<string, P
       pr_faq: 'Leer las preguntas frecuentes',
       tab_projects: 'Proyectos',
       tab_care: 'Mantenimiento',
+      pr_badge: 'El más elegido',
       href_contact: '/es/contacto',
       href_faq: '/es/preguntas-frecuentes',
     },

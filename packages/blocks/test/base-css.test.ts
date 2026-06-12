@@ -38,6 +38,18 @@ describe('baseStyles — platform base stylesheet', () => {
       expect(css).toContain(':is(nav, [role="navigation"]) a, .menu a, .btn { text-decoration: inherit; }');
     });
 
+    it('keeps the link rules INSIDE the weak sw-normalize layer (regression: unlayered a{color:inherit} beat daisyUI .btn)', () => {
+      // An UNLAYERED a{color:inherit} outranks every layered rule, so it silently
+      // overrode daisyUI's layered .btn{color:var(--btn-fg)} — black-on-primary anchor
+      // buttons on every published site. The rule must stay inside a layer block.
+      const platform = css.slice(css.indexOf('/* Foundational box model'));
+      const layerIdx = platform.indexOf('@layer sw-normalize {');
+      expect(layerIdx).toBeGreaterThan(-1);
+      expect(platform.indexOf('a { color: inherit; }')).toBeGreaterThan(layerIdx);
+      const layerBlockEnd = platform.indexOf('}', platform.indexOf(':is(nav, [role="navigation"])'));
+      expect(platform.slice(layerIdx, layerBlockEnd)).toContain('a { color: inherit; }');
+    });
+
     it('leaves body-copy links alone (no global text-decoration:none)', () => {
       // we must NOT kill underlines globally — only in nav/buttons
       expect(css).not.toMatch(/(^|\s)a\s*{[^}]*text-decoration:\s*none/);

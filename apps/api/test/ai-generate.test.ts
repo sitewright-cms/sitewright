@@ -60,27 +60,6 @@ describe('AI generate + usage + quota', () => {
     expect(u.user.used).toBe(30);
   });
 
-  it('parses a blocks target into a validated node', async () => {
-    const node = { id: 'n', type: 'Section', children: [{ id: 'hh', type: 'Heading', props: { text: 'Hi' } }] };
-    const provider = new FakeProvider(JSON.stringify(node));
-    h = await makeHarness({ aiProvider: provider });
-    const a = await h.signup();
-    const proj = a.project(await a.createProject());
-    const res = await a.post(`${proj.base}/ai/generate`, { instruction: 'a hero section', target: 'blocks' });
-    expect(res.statusCode).toBe(200);
-    expect((res.json() as { result: { node?: unknown } }).result).toHaveProperty('node');
-    expect(provider.calls[0]?.system).toContain('JSON'); // blocks system prompt differs from copy
-  });
-
-  it('falls back to text when a blocks target returns non-JSON', async () => {
-    h = await makeHarness({ aiProvider: new FakeProvider('not json at all') });
-    const a = await h.signup();
-    const proj = a.project(await a.createProject());
-    const res = await a.post(`${proj.base}/ai/generate`, { instruction: 'x', target: 'blocks' });
-    expect(res.statusCode).toBe(200);
-    expect((res.json() as { result: { text?: string } }).result.text).toBe('not json at all');
-  });
-
   it('enforces the per-user monthly token quota (429 over cap; no further spend)', async () => {
     const provider = new FakeProvider('x', { inputTokens: 40, outputTokens: 0 });
     h = await makeHarness({ aiProvider: provider, aiQuota: { userMonthlyTokens: 30 } });

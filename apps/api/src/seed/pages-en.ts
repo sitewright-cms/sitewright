@@ -1,5 +1,5 @@
 import type { Page } from '@sitewright/schema';
-import { icon, STARS, placeholderRoot } from './helpers.js';
+import { icon, STARS } from './helpers.js';
 
 export function pagesEn(assets: Record<string, string>): Page[] {
   return [
@@ -8,7 +8,6 @@ export function pagesEn(assets: Record<string, string>): Page[] {
     id: 'home',
     path: '',
     title: 'Northwind Web Studio — Websites that mean business',
-    root: placeholderRoot,
     nav: { title: 'Home', slots: ['header'], order: 1 },
     // Linked to its German variant (`home-de`) for hreflang + the language switcher.
     translationGroup: 'home',
@@ -128,7 +127,6 @@ export function pagesEn(assets: Record<string, string>): Page[] {
     id: 'work',
     path: 'work',
     title: 'Our Work',
-    root: placeholderRoot,
     parent: 'home', // home is the tree root — every page nests under it
     nav: { title: 'Work', slots: ['header'], order: 2 },
     source: `<section class="mx-auto max-w-6xl px-6 pt-20 pb-6">
@@ -160,7 +158,6 @@ export function pagesEn(assets: Record<string, string>): Page[] {
     id: 'services',
     path: 'services',
     title: 'Services',
-    root: placeholderRoot,
     parent: 'home', // home is the tree root
     // `dropdown: true` folds this page's CHILD pages (parent = 'services') into a
     // nav dropdown — and the editor's pages list nests them under it (the page tree).
@@ -206,7 +203,6 @@ export function pagesEn(assets: Record<string, string>): Page[] {
     id: 'service-web-design',
     path: 'web-design',
     title: 'Web Design',
-    root: placeholderRoot,
     // A sub-page: it nests under Services (the dropdown label falls back to this title)
     // and is indented under it in the editor's pages list. No own nav slot needed.
     parent: 'services',
@@ -226,7 +222,6 @@ export function pagesEn(assets: Record<string, string>): Page[] {
     id: 'service-seo',
     path: 'seo',
     title: 'SEO & Performance',
-    root: placeholderRoot,
     parent: 'services',
     source: `<section class="mx-auto max-w-4xl px-6 py-20">
   <a class="inline-flex items-center gap-1.5 text-sm font-medium text-primary nw-underline" href="/services">${icon('arrow-left', 'h-4 w-4')} <span data-sw-text="back">All services</span></a>
@@ -246,7 +241,6 @@ export function pagesEn(assets: Record<string, string>): Page[] {
     id: 'about',
     path: 'about',
     title: 'About',
-    root: placeholderRoot,
     parent: 'home', // home is the tree root
     nav: { slots: ['header'], order: 4 },
     source: `<section class="mx-auto grid max-w-6xl items-center gap-12 px-6 py-20 lg:grid-cols-2">
@@ -294,50 +288,23 @@ export function pagesEn(assets: Record<string, string>): Page[] {
     title: 'Contact',
     parent: 'home', // home is the tree root
     nav: { slots: ['header'], order: 5 },
-    root: {
-      id: 'contact-root',
-      type: 'Section',
-      className: 'mx-auto max-w-6xl px-6 py-20',
-      children: [
-        {
-          id: 'c-grid',
-          type: 'Grid',
-          props: { columns: 2 },
-          className: 'gap-10 lg:gap-16 items-start',
-          children: [
-            {
-              id: 'c-info',
-              type: 'Card',
-              className: 'nw-rise',
-              children: [
-                { id: 'c-h', type: 'Heading', props: { level: 1, text: 'Let’s build something great' }, className: 'text-4xl font-extrabold tracking-tight' },
-                { id: 'c-sub', type: 'RichText', props: { text: 'Tell us about your project and we’ll get back within one business day. Prefer email? Reach us directly — we read every message.' }, className: 'mt-4 text-lg text-base-content/70' },
-                {
-                  id: 'c-details',
-                  type: 'Html',
-                  className: 'mt-8',
-                  props: {
-                    html:
-                      '<ul class="space-y-4">' +
-                      `<li class="flex items-center gap-3"><span class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">${icon('mail', 'h-5 w-5')}</span><a class="font-medium text-primary nw-underline" href="mailto:hello@northwindstudio.com">hello@northwindstudio.com</a></li>` +
-                      `<li class="flex items-center gap-3"><span class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">${icon('phone', 'h-5 w-5')}</span><span class="text-base-content/80">+1 (415) 555-0142</span></li>` +
-                      `<li class="flex items-center gap-3"><span class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">${icon('map-pin', 'h-5 w-5')}</span><span class="text-base-content/80">548 Market Street, Suite 200 · San Francisco, CA</span></li>` +
-                      `<li class="flex items-center gap-3"><span class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">${icon('clock', 'h-5 w-5')}</span><span class="text-base-content/80">Mon–Fri, 9–6 PT</span></li>` +
-                      '</ul>',
-                  },
-                },
-              ],
-            },
-            {
-              id: 'c-form-card',
-              type: 'Card',
-              className: 'nw-card rounded-3xl border border-base-200 bg-base-100 p-8 shadow-xl',
-              children: [{ id: 'c-form', type: 'Form', props: { formId: 'contact' } }],
-            },
-          ],
-        },
-      ],
-    },
+    source: `<section class="mx-auto max-w-6xl px-6 py-20">
+  <div class="grid grid-cols-1 items-start gap-10 lg:grid-cols-2 lg:gap-16">
+    <div class="nw-rise">
+      <h1 class="text-4xl font-extrabold tracking-tight" data-sw-text="contact_h">Let’s build something great</h1>
+      <p class="mt-4 text-lg text-base-content/70" data-sw-text="contact_sub">Tell us about your project and we’ll get back within one business day. Prefer email? Reach us directly — we read every message.</p>
+      <ul class="mt-8 space-y-4">
+        <li class="flex items-center gap-3"><span class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">${icon('mail', 'h-5 w-5')}</span><a class="font-medium text-primary nw-underline" href="mailto:hello@northwindstudio.com" data-sw-text="contact_email">hello@northwindstudio.com</a></li>
+        <li class="flex items-center gap-3"><span class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">${icon('phone', 'h-5 w-5')}</span><span class="text-base-content/80" data-sw-text="contact_phone">+1 (415) 555-0142</span></li>
+        <li class="flex items-center gap-3"><span class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">${icon('map-pin', 'h-5 w-5')}</span><span class="text-base-content/80" data-sw-text="contact_addr">548 Market Street, Suite 200 · San Francisco, CA</span></li>
+        <li class="flex items-center gap-3"><span class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">${icon('clock', 'h-5 w-5')}</span><span class="text-base-content/80" data-sw-text="contact_hours">Mon–Fri, 9–6 PT</span></li>
+      </ul>
+    </div>
+    <div class="nw-card rounded-3xl border border-base-200 bg-base-100 p-8 shadow-xl">
+      {{sw-form "contact"}}
+    </div>
+  </div>
+</section>`,
   },
   ];
 }
@@ -352,7 +319,6 @@ export function pagesEnContentOnly(assets: Record<string, string>): Page[] {
     id: 'blog',
     path: 'blog',
     title: 'Blog',
-    root: placeholderRoot,
     parent: 'home',
     nav: { title: 'Blog', slots: ['header'], order: 5 },
     template: 'global:blog-overview',
@@ -363,7 +329,6 @@ export function pagesEnContentOnly(assets: Record<string, string>): Page[] {
     id: 'blog-static-speed',
     path: 'why-static-sites-win',
     title: 'Why static sites win on speed',
-    root: placeholderRoot,
     parent: 'blog',
     template: 'global:blog-article',
     order: 1,
@@ -384,7 +349,6 @@ export function pagesEnContentOnly(assets: Record<string, string>): Page[] {
     id: 'blog-design-systems',
     path: 'design-systems-that-scale',
     title: 'Design systems that scale',
-    root: placeholderRoot,
     parent: 'blog',
     template: 'global:blog-article',
     order: 2,
@@ -403,7 +367,6 @@ export function pagesEnContentOnly(assets: Record<string, string>): Page[] {
     id: 'blog-seo-foundations',
     path: 'seo-foundations',
     title: 'SEO foundations, from day one',
-    root: placeholderRoot,
     parent: 'blog',
     template: 'global:blog-article',
     order: 3,
@@ -426,7 +389,6 @@ export function pagesEnContentOnly(assets: Record<string, string>): Page[] {
     id: 'shop',
     path: 'shop',
     title: 'Studio merch — Northwind shop',
-    root: placeholderRoot,
     parent: 'home',
     nav: { title: 'Shop', slots: ['header'], order: 6 },
     template: 'global:shop',

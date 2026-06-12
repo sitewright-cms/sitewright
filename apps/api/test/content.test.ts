@@ -12,7 +12,7 @@ let pctxA: ProjectContext;
 let pctxB: ProjectContext;
 let projA: { id: string; name: string; slug: string };
 
-const page = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' } };
+const page = { id: 'home', path: '', title: 'Home' };
 
 beforeEach(async () => {
   db = await makeTestDb();
@@ -61,7 +61,7 @@ describe('ContentRepository', () => {
     await expect(content.put(pctxA, 'page', 'other', page)).rejects.toThrow(ConflictError);
   });
 
-  it('isolates content per project (project B cannot read A’s page)', async () => {
+  it("isolates content per project (project B cannot read A's page)", async () => {
     await content.put(pctxA, 'page', 'home', page);
     await expect(content.get(pctxB, 'page', 'home')).rejects.toThrow(NotFoundError);
     expect(await content.list(pctxB, 'page')).toHaveLength(0);
@@ -78,40 +78,34 @@ describe('ContentRepository', () => {
     await content.put(member, 'page', 'home', page);
     expect(await content.get(member, 'page', 'home')).toMatchObject({ title: 'Home' });
 
-    // Author a page with two nodes; a member may freely edit either node...
+    // Author a page with editable data; a member may freely edit it.
     const richPage = {
       id: 'home',
       path: '',
       title: 'Home',
-      root: {
-        id: 'r',
-        type: 'Section',
-        children: [
-          { id: 'h', type: 'Heading', props: { text: 'Heading', level: 2 } },
-          { id: 't', type: 'RichText', props: { text: 'Edit me' } },
-        ],
-      },
+      source: '<h1 data-sw-text="headline">Hi</h1>',
+      data: { headline: 'Heading', body: 'Content' },
     };
     await content.put(member, 'page', 'home', richPage);
 
-    // ...edit any node's content → allowed + persisted.
+    // ...edit any data field → allowed + persisted.
     const edited = JSON.parse(JSON.stringify(richPage));
-    edited.root.children[0].props.text = 'Member edit';
+    edited.data.headline = 'Member edit';
     await content.put(member, 'page', 'home', edited);
     const stored = (await content.get(member, 'page', 'home')) as {
-      root: { children: Array<{ props: { text: string } }> };
+      data: { headline: string; body: string };
     };
-    expect(stored.root.children[0]!.props.text).toBe('Member edit');
+    expect(stored.data.headline).toBe('Member edit');
 
-    // ...restructure the tree (remove a node) → allowed.
+    // ...remove a data field → allowed.
     const restructured = JSON.parse(JSON.stringify(richPage));
-    restructured.root.children.pop();
+    delete restructured.data.body;
     await content.put(member, 'page', 'home', restructured);
-    const after = (await content.get(member, 'page', 'home')) as { root: { children: unknown[] } };
-    expect(after.root.children).toHaveLength(1);
+    const after = (await content.get(member, 'page', 'home')) as { data: Record<string, unknown> };
+    expect(Object.keys(after.data)).toHaveLength(1);
   });
 
-  it('exports a bundle containing the project’s content', async () => {
+  it("exports a bundle containing the project's content", async () => {
     await content.put(pctxA, 'page', 'home', page);
     const bundle = await content.exportBundle(pctxA, projA);
     expect(bundle.pages.map((p) => p.id)).toEqual(['home']);
@@ -123,12 +117,12 @@ describe('ContentRepository', () => {
     expect(result.imported).toBeGreaterThanOrEqual(1);
     expect(await content.get(pctxA, 'page', 'home')).toMatchObject({ title: 'Home' });
 
-    // page binds a dataset that doesn't exist → validateProject rejects
+    // page references a collection dataset that doesn't exist → validateProject rejects
     const badPage = {
       id: 'bad',
-      path: 'bad',
+      path: '[slug]',
       title: 'Bad',
-      root: { id: 'r', type: 'Grid', binding: { dataset: 'ghost', mode: 'list' } },
+      collection: { dataset: 'ghost', param: 'slug' },
     };
     await expect(content.importBundle(pctxA, projA, { pages: [badPage] })).rejects.toThrow(
       ConflictError,
@@ -144,13 +138,6 @@ describe('ContentRepository', () => {
     await content.put(pctxA, 'page', 'home', page);
     await expect(content.get(pctxA2, 'page', 'home')).rejects.toThrow(NotFoundError);
     expect(await content.list(pctxA2, 'page')).toHaveLength(0);
-  });
-
-  it('rejects an over-deep page tree before parsing (DoS guard)', async () => {
-    let node: Record<string, unknown> = { id: 'leaf', type: 'Leaf' };
-    for (let i = 0; i < 250; i++) node = { id: `n${i}`, type: 'Box', children: [node] };
-    const deep = { id: 'deep', path: 'deep', title: 'Deep', root: node };
-    await expect(content.put(pctxA, 'page', 'deep', deep)).rejects.toThrow(RangeError);
   });
 
   it('cannot delete the settings singleton', async () => {

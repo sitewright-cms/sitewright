@@ -30,7 +30,7 @@ import { ProjectView } from '../src/views/Project';
 
 const ownerProject = { id: 'p', name: 'Acme', slug: 'acme', role: 'owner' as const };
 const memberProject = { id: 'p', name: 'Acme', slug: 'acme', role: 'member' as const };
-const pages: Page[] = [{ id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' } }];
+const pages: Page[] = [{ id: 'home', path: '', title: 'Home' }];
 
 beforeEach(() => {
   listPages.mockReset();

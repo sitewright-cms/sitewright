@@ -8,10 +8,6 @@ import { z } from 'zod';
 
 export const MAX_IDENTIFIER_LENGTH = 128;
 export const MAX_RECORD_ENTRIES = 256;
-/** Max block-tree nesting depth (guards against parse-time stack overflow). */
-export const MAX_PAGE_TREE_DEPTH = 100;
-/** Max children per block node (guards against width-based parse-time exhaustion). */
-export const MAX_CHILDREN = 1000;
 
 const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
@@ -242,27 +238,3 @@ export function safeRecord<V extends z.ZodTypeAny>(
   });
 }
 
-/**
- * Iteratively asserts a raw (pre-parse) block-tree value does not exceed `max`
- * nesting depth. MUST be called before `PageNodeSchema.parse` on untrusted
- * input: Zod parses recursively, so a pathologically deep tree would overflow
- * the call stack during parsing itself.
- */
-export function assertWithinTreeDepth(value: unknown, max: number = MAX_PAGE_TREE_DEPTH): void {
-  const stack: Array<{ node: unknown; depth: number }> = [{ node: value, depth: 1 }];
-  while (stack.length > 0) {
-    const frame = stack.pop()!;
-    if (frame.depth > max) {
-      throw new RangeError(`block tree exceeds maximum depth of ${max}`);
-    }
-    const node = frame.node;
-    if (node !== null && typeof node === 'object' && 'children' in node) {
-      const children = (node as { children?: unknown }).children;
-      if (Array.isArray(children)) {
-        for (const child of children) {
-          stack.push({ node: child, depth: frame.depth + 1 });
-        }
-      }
-    }
-  }
-}

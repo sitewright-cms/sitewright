@@ -2,8 +2,6 @@ import { describe, it, expect } from 'vitest';
 import * as schema from '../src/index.js';
 
 const EXPECTED_SCHEMAS = [
-  'PageNodeSchema',
-  'BindingSchema',
   'BrandSchema',
   'DatasetSchema',
   'EntrySchema',

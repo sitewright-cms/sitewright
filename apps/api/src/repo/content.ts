@@ -2,7 +2,6 @@ import { newId } from '../id.js';
 import { and, desc, eq, notInArray } from 'drizzle-orm';
 import { z } from 'zod';
 import {
-  assertWithinTreeDepth,
   CorporateIdentitySchema,
   mergeLegacyIdentity,
   DatasetSchema,
@@ -95,17 +94,6 @@ function schemaFor(kind: ContentKind): z.ZodTypeAny {
   return schema;
 }
 
-/** Guards recursive (page/template/translation) trees before Zod's recursive parse, to prevent stack overflow. */
-function assertTreeSafe(kind: ContentKind, raw: unknown): void {
-  if (
-    kind === 'page' ||
-    kind === 'template' ||
-    kind === 'translation'
-  ) {
-    assertWithinTreeDepth((raw as { root?: unknown })?.root);
-  }
-}
-
 /** Minimal project identity needed to assemble an export bundle. */
 export interface ProjectIdentity {
   id: string;
@@ -191,7 +179,6 @@ export class ContentRepository {
    * team) is gated separately at the route layer.
    */
   async put(ctx: ProjectContext, kind: ContentKind, entityId: string, raw: unknown): Promise<unknown> {
-    assertTreeSafe(kind, raw);
     const parsed = schemaFor(kind).parse(raw);
     // Rich (data-sw-html) content now lives in the single page.data store and is sanitized at RENDER
     // (the html sink always runs sanitizeRichHtml). page.data is generic JSON whose HTML leaves aren't
@@ -247,12 +234,6 @@ export class ContentRepository {
     project: ProjectIdentity,
     raw: unknown,
   ): Promise<{ imported: number }> {
-    // Guard recursive trees before the recursive Zod parse below.
-    const envelope = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
-    for (const item of toArray(envelope.pages)) assertWithinTreeDepth((item as { root?: unknown })?.root);
-    for (const item of toArray(envelope.templates))
-      assertWithinTreeDepth((item as { root?: unknown })?.root);
-
     const input = z
       .object({
         // Accept a v2 `{identity}` project OR a legacy `{brand,company}` one
@@ -337,7 +318,6 @@ export class ContentRepository {
     change: { putPages?: unknown[]; removePageIds?: string[]; settings?: unknown },
   ): Promise<{ pages: Page[] }> {
     const putPages = (change.putPages ?? []).map((raw) => {
-      assertTreeSafe('page', raw);
       return PageSchema.parse(raw) as Page;
     });
     const settings =
@@ -429,10 +409,6 @@ export class ContentRepository {
       );
     return row;
   }
-}
-
-function toArray(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [];
 }
 
 export { SETTINGS_ENTITY_ID };

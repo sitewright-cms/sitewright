@@ -5,7 +5,7 @@ import { buildNav } from '../src/index.js';
 // `path` is a SLUG SEGMENT; the full route is computed from the parent chain (pagePath),
 // so the expected NavItem.path values below are the COMPUTED routes.
 const page = (over: Partial<Page>): Page =>
-  ({ id: 'p', path: '', title: 'T', root: { id: 'r', type: 'Section' }, ...over }) as Page;
+  ({ id: 'p', path: '', title: 'T', ...over }) as Page;
 
 describe('buildNav', () => {
   it('includes only pages whose nav.slots contains the slot, with label fallback', () => {

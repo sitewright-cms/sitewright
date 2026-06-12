@@ -315,9 +315,6 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
       id,
       path: seg,
       title,
-      // `root` stays a valid placeholder so the unified page model is satisfied; the page is
-      // code-first via `source`.
-      root: { id: 'root', type: 'Section', children: [] },
       source: CODE_PAGE_STARTER,
       ...(localeOnly
         ? { parent: localeHomeId(currentLocale), locale: currentLocale } // standalone, lives only in this language
@@ -381,7 +378,6 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
       path: '', // routing-transparent: no slug, no emitted route
       title: name,
       kind: 'link',
-      root: { id: 'root', type: 'Section', children: [] }, // stub — satisfies the unified page model
       link: { ...(target ? { target } : {}), ...(phNewTab ? { newTab: true } : {}) },
       nav: { slots: phSlots, ...(phDropdown ? { dropdown: true } : {}) },
       parent: localeOnly ? localeHomeId(currentLocale) : homeId,

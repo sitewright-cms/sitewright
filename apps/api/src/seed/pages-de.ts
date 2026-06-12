@@ -1,5 +1,5 @@
 import type { Page } from '@sitewright/schema';
-import { icon, placeholderRoot } from './helpers.js';
+import { icon } from './helpers.js';
 
 export function pagesDe(assets: Record<string, string>): Page[] {
   return [
@@ -13,7 +13,6 @@ export function pagesDe(assets: Record<string, string>): Page[] {
     id: 'home-de',
     path: 'de',
     title: 'Northwind Web Studio — Websites, die Geschäft machen',
-    root: placeholderRoot,
     locale: 'de',
     translationGroup: 'home',
     parent: 'home', // even a locale variant nests under the (default-locale) home root
@@ -79,7 +78,6 @@ export function pagesDe(assets: Record<string, string>): Page[] {
     id: 'services-de-page',
     path: 'leistungen',
     title: 'Leistungen',
-    root: placeholderRoot,
     locale: 'de',
     translationGroup: 'services',
     // Nested under the GERMAN home (`home-de`, slug `de`) → computed route /de/leistungen.

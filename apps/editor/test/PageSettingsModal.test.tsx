@@ -10,7 +10,7 @@ const base: Page = {
   // Explicit status: applyPageSettings always writes one (absent = published in the
   // schema), so the round-trip normalizes to the explicit form.
   status: 'published',
-  root: { id: 'r', type: 'Section' },
+  
   // Flat SEO fields: description/image are managed by the modal; noindex is NOT (it passes through).
   noindex: true,
   description: 'old description',
@@ -48,7 +48,7 @@ describe('pageSettingsFromPage ⇄ applyPageSettings', () => {
   });
 
   it('emits dropdown only when true and drops empty SEO fields', () => {
-    const plain: Page = { id: 'p', path: 'p', title: 'P', root: { id: 'r', type: 'Section' } };
+    const plain: Page = { id: 'p', path: 'p', title: 'P' };
     const values = { ...pageSettingsFromPage(plain), navSlots: ['header' as const], navDropdown: false };
     const next = applyPageSettings(plain, values);
     expect(next.nav).toEqual({ slots: ['header'], order: 0 }); // no `dropdown: false` noise
@@ -62,7 +62,7 @@ describe('pageSettingsFromPage ⇄ applyPageSettings', () => {
       path: 'about',
       title: 'Über uns',
       status: 'published',
-      root: { id: 'r', type: 'Section' },
+      
       locale: 'de',
       translationGroup: 'about', // set by "Add translation", NOT by this modal
     };
@@ -75,7 +75,7 @@ describe('pageSettingsFromPage ⇄ applyPageSettings', () => {
       path: 'about',
       title: 'Über uns',
       status: 'published',
-      root: { id: 'r', type: 'Section' },
+      
       locale: 'de',
       translationGroup: 'about',
     };
@@ -91,7 +91,7 @@ describe('PageSettingsModal — link placeholders (kind:"link")', () => {
     path: '',
     title: 'Services',
     status: 'published',
-    root: { id: 'r', type: 'Section', children: [] },
+    
     kind: 'link',
     link: { target: 'https://x.test', newTab: true },
     nav: { slots: ['header'], order: 0, dropdown: true },
@@ -112,7 +112,7 @@ describe('PageSettingsModal — link placeholders (kind:"link")', () => {
   });
 
   it('renders the link target + new-tab controls and hides the slug/meta fields', () => {
-    const home: Page = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' } };
+    const home: Page = { id: 'home', path: '', title: 'Home' };
     const onSubmit = vi.fn();
     render(
       <PageSettingsModal page={linkBase} projectId="p" initial={pageSettingsFromPage(linkBase)} pages={[home, linkBase]} templates={[]} onClose={() => {}} onSubmit={onSubmit} />,
@@ -127,8 +127,8 @@ describe('PageSettingsModal — link placeholders (kind:"link")', () => {
 });
 
 describe('PageSettingsModal parent selector — home is the tree root', () => {
-  const home: Page = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' } };
-  const other: Page = { id: 'about', path: 'about', title: 'About', root: { id: 'r', type: 'Section' } };
+  const home: Page = { id: 'home', path: '', title: 'Home' };
+  const other: Page = { id: 'about', path: 'about', title: 'About' };
 
   it('offers no "None" choice for a non-home page and defaults + submits Home', () => {
     const onSubmit = vi.fn();

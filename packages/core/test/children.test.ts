@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import type { Page } from '@sitewright/schema';
-import { childrenOf, parentPageView, referencesChildren, referencesParentPage, MAX_PAGE_CHILDREN } from '../src/index.js';
+import { childrenOf, parentPageView, referencesChildren, referencesParentPage, MAX_PAGE_CHILDREN, extractRegions, extractClassNames, MAX_EXTRACTED_CLASS_TOKENS } from '../src/index.js';
 
 const page = (over: Partial<Page>): Page =>
-  ({ id: 'p', path: '', title: 'T', root: { id: 'r', type: 'Section' }, ...over }) as Page;
+  ({ id: 'p', path: '', title: 'T', ...over }) as Page;
 
 describe('childrenOf', () => {
   const pages = [
@@ -118,5 +118,81 @@ describe('referencesParentPage', () => {
     expect(referencesParentPage('{{ parentPageView }}')).toBe(false); // longer word
     expect(referencesParentPage('nav-parentPage')).toBe(false); // preceded by an identifier/-
     expect(referencesParentPage('myparentPage.path')).toBe(false);
+  });
+});
+
+describe('extractRegions', () => {
+  it('extracts data-sw-text regions with their default content', () => {
+    const regions = extractRegions('<h1 data-sw-text="headline">Hello world</h1>');
+    expect(regions).toEqual([{ key: 'headline', default: 'Hello world', kind: 'text' }]);
+  });
+
+  it('extracts data-sw-html regions as kind "rich"', () => {
+    const regions = extractRegions('<div data-sw-html="body"><p>Default body</p></div>');
+    expect(regions).toEqual([{ key: 'body', default: '<p>Default body</p>', kind: 'rich' }]);
+  });
+
+  it('extracts data-sw-href regions as kind "link"', () => {
+    const regions = extractRegions('<a data-sw-href="cta" href="/x">Click</a>');
+    expect(regions.find((r) => r.key === 'cta')).toEqual({ key: 'cta', default: '', kind: 'link' });
+  });
+
+  it('extracts data-sw-src regions as kind "image"', () => {
+    const regions = extractRegions('<img data-sw-src="hero" src="/x.png" />');
+    expect(regions.find((r) => r.key === 'hero')).toEqual({ key: 'hero', default: '', kind: 'image' });
+  });
+
+  it('extracts data-sw-bg regions as kind "bg"', () => {
+    const regions = extractRegions('<div data-sw-bg="banner"></div>');
+    expect(regions.find((r) => r.key === 'banner')).toEqual({ key: 'banner', default: '', kind: 'bg' });
+  });
+
+  it('deduplicates regions by key (first occurrence wins)', () => {
+    const src = '<p data-sw-text="k">First</p><p data-sw-text="k">Second</p>';
+    const regions = extractRegions(src);
+    expect(regions).toHaveLength(1);
+    expect(regions[0]?.default).toBe('First');
+  });
+
+  it('returns an empty array when no directives are present', () => {
+    expect(extractRegions('<div><h1>Static</h1></div>')).toHaveLength(0);
+    expect(extractRegions('')).toHaveLength(0);
+  });
+});
+
+describe('extractClassNames', () => {
+  it('extracts tokens from class attributes', () => {
+    const classes = extractClassNames('<div class="flex gap-4 text-blue-500">x</div>');
+    expect(classes).toEqual(['flex', 'gap-4', 'text-blue-500']);
+  });
+
+  it('deduplicates tokens across multiple elements', () => {
+    const classes = extractClassNames('<div class="flex"><span class="flex gap-4">x</span></div>');
+    expect(classes.filter((c) => c === 'flex')).toHaveLength(1);
+    expect(classes).toContain('gap-4');
+  });
+
+  it('strips Handlebars expressions from class values before tokenizing', () => {
+    const classes = extractClassNames('<div class="p-4 {{ dynamicClass }} text-sm">x</div>');
+    expect(classes).toContain('p-4');
+    expect(classes).toContain('text-sm');
+    expect(classes.every((c) => !c.includes('{{'))).toBe(true);
+  });
+
+  it('returns an empty array when there are no class attributes', () => {
+    expect(extractClassNames('<div>x</div>')).toHaveLength(0);
+    expect(extractClassNames('')).toHaveLength(0);
+  });
+
+  it('caps the result at max tokens (default MAX_EXTRACTED_CLASS_TOKENS)', () => {
+    // Build a source with more than max unique classes
+    const src = Array.from({ length: MAX_EXTRACTED_CLASS_TOKENS + 10 }, (_, i) => `c${i}`).join(' ');
+    const classes = extractClassNames(`<div class="${src}">x</div>`);
+    expect(classes.length).toBe(MAX_EXTRACTED_CLASS_TOKENS);
+  });
+
+  it('respects a custom max parameter', () => {
+    const src = '<div class="a b c d e">x</div>';
+    expect(extractClassNames(src, 3)).toHaveLength(3);
   });
 });

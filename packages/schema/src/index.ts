@@ -1,7 +1,5 @@
 export * from './primitives.js';
 export * from './agent.js';
-export * from './binding.js';
-export * from './block.js';
 export * from './brand.js';
 export * from './company.js';
 export * from './corporate-identity.js';

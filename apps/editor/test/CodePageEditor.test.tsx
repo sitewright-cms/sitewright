@@ -30,7 +30,6 @@ const page: Page = {
   id: 'home',
   path: '',
   title: 'Home',
-  root: { id: 'r', type: 'Section' },
   source: '<h1>{{ company.name }}</h1>',
 };
 // A page whose source marks a client-editable region — content mode's subject.

@@ -26,7 +26,7 @@ describe('runWorker', () => {
       media: [],
       bundle: bundle({
         pages: [
-          { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<section><h1>Welcome</h1></section>' },
+          { id: 'home', path: '', title: 'Home', source: '<section><h1>Welcome</h1></section>' },
         ],
       }),
     };
@@ -51,7 +51,7 @@ describe('runWorker', () => {
         // Code-first: the page references the media via a raw <img> editor URL
         // (`/media/<projectSlug>/<assetId>/…`), which the publish-time media rewrite
         // rebases to the bundled `_assets/<assetId>/…` path.
-        pages: [{ id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<section><img src="/media/acme/a1/a1-40.jpg" alt="H" /></section>' }],
+        pages: [{ id: 'home', path: '', title: 'Home', source: '<section><img src="/media/acme/a1/a1-40.jpg" alt="H" /></section>' }],
       }),
     };
     const result = await runWorker(job);

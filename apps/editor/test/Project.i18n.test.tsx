@@ -41,9 +41,8 @@ import { ProjectView } from '../src/views/Project';
 
 const project = { id: 'p', name: 'Acme', slug: 'acme', role: 'owner' as const };
 
-const root = { id: 'r', type: 'Section' as const };
-const home: Page = { id: 'home', path: '', title: 'Home', root, source: '<h1 data-sw-text="h">Hi</h1>' };
-const about: Page = { id: 'about', path: 'about', parent: 'home', title: 'About', root, source: '<h1>About</h1>' };
+const home: Page = { id: 'home', path: '', title: 'Home', source: '<h1 data-sw-text="h">Hi</h1>' };
+const about: Page = { id: 'about', path: 'about', parent: 'home', title: 'About', source: '<h1>About</h1>' };
 
 beforeEach(() => {
   listPages.mockReset().mockResolvedValue({ items: [home, about] });
@@ -94,8 +93,8 @@ describe('ProjectView locale-first i18n', () => {
 
   it('the language switcher filters the list to the selected language', async () => {
     getSettings.mockResolvedValue({ item: { settings: { defaultLocale: 'en', locales: ['en', 'de'] } } });
-    const homeDe: Page = { id: 'home-de', path: 'de', parent: 'home', title: 'Start', locale: 'de', translationGroup: 'home', root };
-    const aboutDe: Page = { id: 'about-de', path: 'about', parent: 'home-de', title: 'Über', locale: 'de', translationGroup: 'about', root };
+    const homeDe: Page = { id: 'home-de', path: 'de', parent: 'home', title: 'Start', locale: 'de', translationGroup: 'home' };
+    const aboutDe: Page = { id: 'about-de', path: 'about', parent: 'home-de', title: 'Über', locale: 'de', translationGroup: 'about' };
     listPages.mockResolvedValue({
       items: [{ ...home, translationGroup: 'home' }, { ...about, translationGroup: 'about' }, homeDe, aboutDe],
     });
@@ -114,8 +113,8 @@ describe('ProjectView locale-first i18n', () => {
 
   it('orders the pages list as a tree and indents sub-pages by depth', async () => {
     getSettings.mockResolvedValue({ item: { settings: { defaultLocale: 'en', locales: ['en'] } } });
-    const child: Page = { id: 'child', path: 'team', title: 'Team', root, parent: 'about', source: '<h1>T</h1>' };
-    const grandchild: Page = { id: 'gc', path: 'lead', title: 'Lead', root, parent: 'child', source: '<h1>L</h1>' };
+    const child: Page = { id: 'child', path: 'team', title: 'Team', parent: 'about', source: '<h1>T</h1>' };
+    const grandchild: Page = { id: 'gc', path: 'lead', title: 'Lead', parent: 'child', source: '<h1>L</h1>' };
     listPages.mockResolvedValue({ items: [grandchild, about, home, child] });
     render(<ProjectView project={project} tab="pages" />);
     await waitFor(() => expect(document.querySelectorAll('ul.mb-8 > li').length).toBe(4));

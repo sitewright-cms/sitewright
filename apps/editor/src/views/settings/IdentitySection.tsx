@@ -65,22 +65,19 @@ export function IdentitySection({ form, patch, projectId }: { form: SettingsForm
         </div>
       </GlassCard>
 
-      <GlassCard title="Brand colors" icon={<Palette className="h-4 w-4" />}>
-        <p className="mb-3 text-xs text-slate-500">
-          The six core colors below always exist and can’t be removed — they theme every page (and any
-          DaisyUI components) automatically. Use them as <code className="rounded bg-slate-100 px-1 py-0.5">bg-primary</code>,{' '}
-          <code className="rounded bg-slate-100 px-1 py-0.5">text-base-content</code>, etc.
-        </p>
+      <GlassCard
+        title="Brand colors"
+        icon={<Palette className="h-4 w-4" />}
+        tooltip="The six core colors below always exist and can’t be removed — they theme every page (and any DaisyUI components) automatically. Use them as bg-primary, text-base-content, etc."
+      >
         <BrandColorsEditor rows={form.colors} onChange={(colors) => patch({ colors })} />
       </GlassCard>
 
-      <GlassCard title="Typography" icon={<Type className="h-4 w-4" />}>
-        <p className="mb-3 text-xs text-slate-500">
-          The heading and body fonts applied across every page — in the editor preview and the
-          published site. Use them anywhere with the <code className="rounded bg-slate-100 px-1 py-0.5">font-heading</code>{' '}
-          and <code className="rounded bg-slate-100 px-1 py-0.5">font-body</code> classes. Fonts can be a system family,
-          a Google webfont, or your own uploaded file — all self-hosted (never loaded from a CDN on your site).
-        </p>
+      <GlassCard
+        title="Typography"
+        icon={<Type className="h-4 w-4" />}
+        tooltip="The heading and body fonts applied across every page — in the editor preview and the published site. Use them anywhere with the font-heading and font-body classes. Fonts can be a system family, a Google webfont, or your own uploaded file — all self-hosted (never loaded from a CDN on your site)."
+      >
         {fontsError && <p className="mb-2 text-xs text-rose-500">Couldn’t load your font library. Saved slots still work; try reloading.</p>}
         <div className="grid gap-3 sm:grid-cols-2">
           <FontSlotEditor
@@ -100,10 +97,7 @@ export function IdentitySection({ form, patch, projectId }: { form: SettingsForm
             onAddFont={addFont}
           />
         </div>
-        <SubLabel>Custom fonts</SubLabel>
-        <p className="mb-2 text-xs text-slate-500">
-          Add extra named fonts you can apply per element with a <code className="rounded bg-slate-100 px-1 py-0.5">font-&lt;name&gt;</code> class.
-        </p>
+        <SubLabel tip="Add extra named fonts you can apply per element with a font-<name> class.">Custom fonts</SubLabel>
         <CustomFontSlots
           slots={form.named}
           onChange={(named) => patch({ named })}
@@ -142,19 +136,14 @@ export function IdentitySection({ form, patch, projectId }: { form: SettingsForm
           <Field label="Latitude" value={form.latitude} onChange={(v) => patch({ latitude: v })} placeholder="34.05" />
           <Field label="Longitude" value={form.longitude} onChange={(v) => patch({ longitude: v })} placeholder="-118.24" />
         </div>
-        <SubLabel>Map</SubLabel>
+        <SubLabel tip="The Google Maps “Embed a map” URL — available in templates as {{ company.mapUrl }} for an <iframe src> (e.g. a footer map).">Map</SubLabel>
         <Field
           label="Map embed URL"
           value={form.mapUrl}
           onChange={(v) => patch({ mapUrl: v })}
           placeholder="https://www.google.com/maps/embed?pb=…"
         />
-        <p className="mt-1 text-xs text-slate-500">
-          The Google Maps “Embed a map” URL — available in templates as{' '}
-          <code className="rounded bg-slate-100 px-1 py-0.5">{'{{ company.mapUrl }}'}</code> for an{' '}
-          <code className="rounded bg-slate-100 px-1 py-0.5">&lt;iframe src&gt;</code> (e.g. a footer map).
-        </p>
-        <SubLabel>Booking</SubLabel>
+        <SubLabel tip="An external booking / reservation / appointment link (a scheduling service) — available in templates as {{ company.bookingUrl }} for a “Book now” button.">Booking</SubLabel>
         <Field
           label="Booking URL"
           value={form.bookingUrl}
@@ -162,20 +151,13 @@ export function IdentitySection({ form, patch, projectId }: { form: SettingsForm
           type="url"
           placeholder="https://calendly.com/acme/intro"
         />
-        <p className="mt-1 text-xs text-slate-500">
-          An external booking / reservation / appointment link (a scheduling service) — available in
-          templates as{' '}
-          <code className="rounded bg-slate-100 px-1 py-0.5">{'{{ company.bookingUrl }}'}</code> for a “Book now” button.
-        </p>
       </GlassCard>
 
-      <GlassCard title="Social profiles" icon={<Share2 className="h-4 w-4" />}>
-        <p className="mb-2 text-xs text-slate-500">
-          Drag to reorder. Entering a URL auto-fills the name + icon (e.g. a WhatsApp link → “WhatsApp”);
-          both are editable. Use them in templates with{' '}
-          <code className="rounded bg-slate-100 px-1 py-0.5">{'{{#each company.social}}…{{sw-icon icon}} {{name}}…{{/each}}'}</code>.
-          The links are also emitted as schema.org <code>sameAs</code>.
-        </p>
+      <GlassCard
+        title="Social profiles"
+        icon={<Share2 className="h-4 w-4" />}
+        tooltip="Drag to reorder. Entering a URL auto-fills the name + icon (e.g. a WhatsApp link → “WhatsApp”); both are editable. Use them in templates with {{#each company.social}}…{{sw-icon icon}} {{name}}…{{/each}}. The links are also emitted as schema.org sameAs."
+      >
         <SocialProfilesEditor rows={form.social} onChange={(social) => patch({ social })} />
       </GlassCard>
 

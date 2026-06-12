@@ -2,9 +2,11 @@ import { motion } from 'motion/react';
 import type { ReactNode } from 'react';
 import { glassCard, glassInput, fieldLabel, accentChip } from '../../theme';
 import { cardVariants, cardHover } from './motion';
+import { SectionHelp } from '../ui/SectionHelp';
 
-/** A frosted-glass card with a gradient accent chip + title; lifts on hover. */
-export function GlassCard({ title, icon, children, wide = false }: { title: string; icon: ReactNode; children: ReactNode; wide?: boolean }) {
+/** A frosted-glass card with a gradient accent chip + title; lifts on hover. An optional `tooltip`
+ *  adds a "?" help affordance next to the title (the section's description, shown on hover/focus). */
+export function GlassCard({ title, icon, tooltip, children, wide = false }: { title: string; icon: ReactNode; tooltip?: string; children: ReactNode; wide?: boolean }) {
   return (
     <motion.section variants={cardVariants} whileHover={cardHover} className={`${glassCard} p-5 ${wide ? 'sm:col-span-2' : ''}`}>
       <header className="mb-4 flex items-center gap-3">
@@ -12,6 +14,7 @@ export function GlassCard({ title, icon, children, wide = false }: { title: stri
           {icon}
         </span>
         <h3 className="text-sm font-bold text-slate-800">{title}</h3>
+        {tooltip && <SectionHelp tip={tooltip} />}
       </header>
       {children}
     </motion.section>
@@ -97,7 +100,12 @@ export function FieldButton({ label, value, onClick }: { label: string; value: R
   );
 }
 
-/** A small section sub-heading inside a card. */
-export function SubLabel({ children }: { children: ReactNode }) {
-  return <p className="mb-2 mt-1 text-xs font-medium uppercase tracking-wide text-slate-400">{children}</p>;
+/** A small section sub-heading inside a card; an optional `tip` adds a "?" help affordance. */
+export function SubLabel({ children, tip }: { children: ReactNode; tip?: string }) {
+  return (
+    <p className="mb-2 mt-1 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">
+      {children}
+      {tip && <SectionHelp tip={tip} />}
+    </p>
+  );
 }

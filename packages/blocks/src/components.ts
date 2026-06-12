@@ -43,7 +43,12 @@ const CAROUSEL_CSS = [
   '[data-sw-block="Carousel"] [data-sw-part="track"]{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scroll-behavior:smooth;-webkit-overflow-scrolling:touch;scrollbar-width:none}',
   '[data-sw-block="Carousel"] [data-sw-part="track"]::-webkit-scrollbar{display:none}',
   '[data-sw-block="Carousel"] [data-sw-part="container"]{display:flex;width:100%}',
-  '[data-sw-block="Carousel"] [data-sw-part="slide"]{flex:0 0 calc(100%/var(--sw-items,1));scroll-snap-align:start;min-width:0}',
+  // margin:0 — the rendered-site baseline is modern-normalize (NOT preflight), so UA defaults
+  // like figure/blockquote `margin: 1em 40px` survive into slides and break Embla: snaps land
+  // 40px apart per slide, fade repositioning drifts, and AutoHeight sizes the container to the
+  // border box so overflow:hidden clips the bottom margin. Slides are layout cells; author
+  // spacing as padding INSIDE the slide (Embla's documented gap pattern).
+  '[data-sw-block="Carousel"] [data-sw-part="slide"]{flex:0 0 calc(100%/var(--sw-items,1));scroll-snap-align:start;min-width:0;margin:0}',
   '[data-sw-block="Carousel"] [data-sw-part="slide"] img{display:block;width:100%;height:auto}',
   // Enhanced: the track stops being the scroller (Embla translates the container inside it).
   '[data-sw-block="Carousel"][data-sw-enhanced="true"] [data-sw-part="track"]{display:block;overflow:hidden;scroll-snap-type:none}',
@@ -166,6 +171,9 @@ const TABS_CSS = [
   '[data-sw-block="Tabs"] [data-sw-part="tab"]{border:0;background:none;padding:.5rem 1rem;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}',
   '[data-sw-block="Tabs"] [data-sw-part="tab"][aria-selected="true"]{border-bottom-color:var(--sw-color-primary,#0a7a5a);font-weight:600}',
   '[data-sw-block="Tabs"][data-sw-enhanced="true"] [data-sw-part="panel"]:not([data-active]){display:none}',
+  // Same UA-margin exposure as carousel slides (modern-normalize keeps figure/dl margins):
+  // a <figure> panel would inset its content by the UA's 40px side margins.
+  '[data-sw-block="Tabs"] [data-sw-part="panel"]{margin:0}',
 ].join('');
 
 const TABS_JS = `(function(){

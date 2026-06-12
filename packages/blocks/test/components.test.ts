@@ -27,6 +27,11 @@ describe('componentTypesInSource (code-first detection)', () => {
     expect(componentTypesInSource(null)).toEqual([]);
   });
 
+  it('detects the CSS-only Accordion by its data-sw-block styling hooks (it has no component marker)', () => {
+    expect(componentTypesInSource('<details data-sw-block="AccordionItem"><summary>Q</summary></details>')).toEqual(['Accordion']);
+    expect(componentTypesInSource('<div data-sw-block="Accordion"></div>')).toEqual(['Accordion']);
+  });
+
   it('detects a form embedded by REFERENCE — {{sw-form}} or data-sw-form (marker only exists post-render)', () => {
     expect(componentTypesInSource('<section>{{sw-form "contact"}}</section>')).toEqual(['Form']);
     expect(componentTypesInSource('<section>{{ sw-form "contact" }}</section>')).toEqual(['Form']);

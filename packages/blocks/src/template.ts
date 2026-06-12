@@ -21,6 +21,7 @@ import { iconBody } from './icons.js';
 import { brandIcon } from './brand-icons.js';
 import { flagIcon } from './flag-icons.js';
 import { resolveDirectives } from './directives.js';
+import { sanitizeRichHtml } from './sanitize-rich.js';
 import { resolveFormEmbeds, resolveFormId, renderFormMarkup, unknownFormMessage, type RenderForm } from './form-embed.js';
 import { selectFolderAssets, projectFolderItem, type FolderKind, type RenderMedia } from './folder.js';
 import { classifyControlTarget, controlCurrentValue, controlOptions, normalizeControlAs } from './control.js';
@@ -376,6 +377,13 @@ function createInstance(): typeof Handlebars {
     if (typeof item.labelHtml === 'string') return new Handlebars.SafeString(item.labelHtml);
     return new Handlebars.SafeString(Handlebars.escapeExpression(typeof item.label === 'string' ? item.label : ''));
   });
+  // {{sw-rich entry.answer}} → emit a stored RICHTEXT value (a dataset `richtext` field, nested
+  // page.data HTML, …) as sanitized HTML. This is the ONE way a template renders stored markup —
+  // `{{{ raw }}}` is banned, and the `data-sw-html` directive only binds top-level page.data. The
+  // value passes `sanitizeRichHtml` (the exact sanitizer behind the data-sw-html sink), so
+  // lower-trust content (dataset entries are member-editable) never reaches the page unsanitized.
+  // Non-strings render nothing. Use in element context.
+  hb.registerHelper('sw-rich', (value: unknown) => new Handlebars.SafeString(typeof value === 'string' ? sanitizeRichHtml(value) : ''));
   // {{sw-truncate text 80}} → clip to N chars with an ellipsis.
   hb.registerHelper('sw-truncate', (value: unknown, max: unknown) => {
     const s = typeof value === 'string' ? value : '';

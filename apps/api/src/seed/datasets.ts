@@ -1,77 +1,106 @@
-import type { Dataset } from '@sitewright/schema';
+import type { Dataset, Field } from '@sitewright/schema';
 
 // ---------------------------------------------------------------- datasets (the CMS)
-export const EXAMPLE_DATASETS: Dataset[] = [
+//
+// Every translatable dataset is declared ONCE and emitted per locale via the platform's
+// `<slug>-<locale>` convention: a `de` page binding `{{#each data.services}}` auto-resolves to
+// `services-de` (resolveLocaleDatasets in @sitewright/core). The default-locale dataset keeps the
+// bare slug. `reference` fields point at the SAME-locale twin of their target (e.g. `roles-de`
+// managers reference `team-de` entry ids), so keyed `{{item.team.<id>.…}}` lookups resolve
+// within the locale.
+
+/** The locales the example ships datasets/entries/forms/translations for (en = default). */
+export const EXAMPLE_CONTENT_LOCALES = ['en', 'de'] as const;
+/** The non-default locales (every localized artifact gets a `-<locale>` twin per entry here). */
+export const EXAMPLE_EXTRA_LOCALES: readonly string[] = EXAMPLE_CONTENT_LOCALES.slice(1);
+
+interface DatasetSpec {
+  id: string;
+  /** Editor-facing name per locale (the suffix tells locales apart in the datasets panel). */
+  name: Record<string, string>;
+  fields: Field[];
+  /** Field names whose `config.targetDataset` must be locale-suffixed in each variant. */
+  referenceFields?: string[];
+}
+
+const text = (name: string, required = false): Field => ({ name, type: 'text', required, localized: false });
+
+const SPECS: DatasetSpec[] = [
   {
     id: 'services',
-    name: 'Services',
-    slug: 'services',
-    fields: [
-      { name: 'icon', type: 'text', required: false, localized: false },
-      { name: 'title', type: 'text', required: true, localized: false },
-      { name: 'summary', type: 'text', required: false, localized: false },
-      { name: 'price', type: 'text', required: false, localized: false },
-    ],
-  },
-  {
-    // German variant of `services` (auto-resolved for locale "de" pages via the
-    // `<slug>-<locale>` convention — see docs/i18n-content-model.md).
-    id: 'services-de',
-    name: 'Leistungen (DE)',
-    slug: 'services-de',
-    fields: [
-      { name: 'icon', type: 'text', required: false, localized: false },
-      { name: 'title', type: 'text', required: true, localized: false },
-      { name: 'summary', type: 'text', required: false, localized: false },
-      { name: 'price', type: 'text', required: false, localized: false },
-    ],
+    name: { en: 'Services', de: 'Leistungen (DE)' },
+    fields: [text('icon'), text('title', true), text('summary'), text('price')],
   },
   {
     id: 'projects',
-    name: 'Work',
-    slug: 'projects',
-    fields: [
-      { name: 'title', type: 'text', required: true, localized: false },
-      { name: 'client', type: 'text', required: false, localized: false },
-      { name: 'category', type: 'text', required: false, localized: false },
-      { name: 'summary', type: 'text', required: false, localized: false },
-      { name: 'image', type: 'image', required: false, localized: false },
-      { name: 'year', type: 'text', required: false, localized: false },
-    ],
+    name: { en: 'Work', de: 'Arbeiten (DE)' },
+    fields: [text('title', true), text('client'), text('category'), text('summary'), { name: 'image', type: 'image', required: false, localized: false }, text('year')],
   },
   {
     id: 'team',
-    name: 'Team',
-    slug: 'team',
-    fields: [
-      { name: 'name', type: 'text', required: true, localized: false },
-      { name: 'role', type: 'text', required: false, localized: false },
-      { name: 'photo', type: 'image', required: false, localized: false },
-      { name: 'bio', type: 'text', required: false, localized: false },
-    ],
+    name: { en: 'Team', de: 'Team (DE)' },
+    fields: [text('name', true), text('role'), { name: 'photo', type: 'image', required: false, localized: false }, text('bio')],
   },
   {
     id: 'testimonials',
-    name: 'Testimonials',
-    slug: 'testimonials',
+    name: { en: 'Testimonials', de: 'Stimmen (DE)' },
+    fields: [text('quote', true), text('author'), text('role')],
+  },
+  {
+    id: 'products',
+    name: { en: 'Products', de: 'Produkte (DE)' },
+    fields: [text('sku', true), text('name', true), { name: 'price', type: 'number', required: true, localized: false }, { name: 'image', type: 'image', required: false, localized: false }, text('description')],
+  },
+  {
+    // FAQ — richtext answers (the one HTML sink, sanitized at render) for the Accordion page.
+    id: 'faq',
+    name: { en: 'FAQ', de: 'FAQ (DE)' },
+    fields: [text('question', true), { name: 'answer', type: 'richtext', required: true, localized: false }],
+  },
+  {
+    // Pricing plans — number price, booleans (monthly/featured drive the Tabs panels + the
+    // highlight ring), and a `features` JSON array looped with a nested {{#each}}.
+    id: 'plans',
+    name: { en: 'Plans', de: 'Pakete (DE)' },
     fields: [
-      { name: 'quote', type: 'text', required: true, localized: false },
-      { name: 'author', type: 'text', required: false, localized: false },
-      { name: 'role', type: 'text', required: false, localized: false },
+      text('name', true),
+      { name: 'price', type: 'number', required: true, localized: false },
+      text('period'),
+      { name: 'monthly', type: 'boolean', required: false, localized: false },
+      { name: 'featured', type: 'boolean', required: false, localized: false },
+      text('blurb'),
+      { name: 'features', type: 'json', required: false, localized: false },
     ],
   },
   {
-    // MINI SHOP catalogue — products the front-end cart adds by `sku`. `price` is a number; the
-    // cart formats it with the currency in website.shop (display-only, non-authoritative).
-    id: 'products',
-    name: 'Products',
-    slug: 'products',
+    // Open roles — select (department), boolean (remote), date (posted, via {{sw-date}}),
+    // richtext description, and a reference to the hiring manager's team entry.
+    id: 'roles',
+    name: { en: 'Open roles', de: 'Offene Stellen (DE)' },
     fields: [
-      { name: 'sku', type: 'text', required: false, localized: false },
-      { name: 'name', type: 'text', required: true, localized: false },
-      { name: 'price', type: 'number', required: false, localized: false },
-      { name: 'image', type: 'image', required: false, localized: false },
-      { name: 'description', type: 'text', required: false, localized: false },
+      text('title', true),
+      { name: 'dept', type: 'select', required: true, localized: false, config: { options: ['Design', 'Engineering', 'Strategy', 'Operations'] } },
+      text('location'),
+      { name: 'remote', type: 'boolean', required: false, localized: false },
+      { name: 'posted', type: 'date', required: false, localized: false },
+      { name: 'description', type: 'richtext', required: true, localized: false },
+      { name: 'manager', type: 'reference', required: false, localized: false, config: { targetDataset: 'team' } },
     ],
+    referenceFields: ['manager'],
   },
 ];
+
+/** One spec → the base dataset + its `-<locale>` twins (schema declared once, emitted per locale). */
+function emit(spec: DatasetSpec): Dataset[] {
+  return EXAMPLE_CONTENT_LOCALES.map((locale) => {
+    const suffix = locale === 'en' ? '' : `-${locale}`;
+    const fields = spec.fields.map((f) =>
+      spec.referenceFields?.includes(f.name)
+        ? { ...f, config: { ...f.config, targetDataset: `${(f.config as { targetDataset: string }).targetDataset}${suffix}` } }
+        : f,
+    );
+    return { id: `${spec.id}${suffix}`, name: spec.name[locale] ?? spec.id, slug: `${spec.id}${suffix}`, fields };
+  });
+}
+
+export const EXAMPLE_DATASETS: Dataset[] = SPECS.flatMap(emit);

@@ -14,9 +14,11 @@ export function compareEntryOrder(a: Entry, b: Entry): number {
 
 // A reference into the keyed-entry namespace: `item.<dataset>.<key>`. The slug must start with a
 // letter (so `item.__proto__` can never name a dataset). `item` must be a ROOT name — not preceded
-// by a word char, `.`, or `-` — so `nav-item.x` or `data.item.x` don't false-match. Used to build
-// the keyed maps lazily.
-const ITEM_REF_RE = /(?<![\w.-])item\.([a-zA-Z][a-zA-Z0-9_-]*)/g;
+// by a word char, `.`, or `-` — so `nav-item.x` or `data.item.x` don't false-match — EXCEPT the
+// explicit `@root.item.…` form, which is how a template reaches the namespace from inside an
+// `{{#each}}` scope (e.g. `(lookup @root.item.team manager)`) and must build the map too. Used to
+// build the keyed maps lazily.
+const ITEM_REF_RE = /(?:@root\.|(?<![\w.-]))item\.([a-zA-Z][a-zA-Z0-9_-]*)/g;
 const DANGEROUS_ID = new Set(['__proto__', 'constructor', 'prototype']);
 
 /**

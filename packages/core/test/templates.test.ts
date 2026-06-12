@@ -53,7 +53,10 @@ describe('resolveTemplateSource (code-first templates)', () => {
     // The overview lists child pages and reads each child's flattened fields + data.
     expect(overview!.source).toContain('{{#each page.children}}');
     expect(overview!.source).toContain('href="{{sw-url path}}"');
-    expect(overview!.source).toContain('{{data.article_excerpt}}');
+    // Excerpts are clipped and an (optional) article_date renders via sw-date.
+    expect(overview!.source).toContain('{{sw-truncate data.article_excerpt 120}}');
+    expect(overview!.source).toContain('{{#if data.article_date}}');
+    expect(overview!.source).toContain('{{sw-date data.article_date}}');
   });
 
   it('ships the MINI SHOP storefront template (product grid + add-to-cart + cart mount)', () => {
@@ -62,7 +65,10 @@ describe('resolveTemplateSource (code-first templates)', () => {
     // Loops the products dataset and emits a first-party add-to-cart button + the cart mount.
     expect(shop!.source).toContain('{{#each data.products}}');
     expect(shop!.source).toContain('{{sw-add-to-cart');
-    expect(shop!.source).toContain('{{sw-cart}}');
+    // The cart mount exposes the i18n string hooks: page.data overrides win over website.shop
+    // (so an inherit-mode locale variant localizes the drawer without forking the template).
+    expect(shop!.source).toContain('{{sw-cart title=(lookup page.data "cart_title")');
+    expect(shop!.source).toContain('sent=(lookup page.data "cart_sent")}}');
     // The editable headings are page.data leaves with declared defaults.
     expect(shop!.source).toContain('data-sw-text="data.heading"');
     expect(Object.keys(shop!.data as object)).toEqual(expect.arrayContaining(['heading', 'intro']));

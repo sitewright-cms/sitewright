@@ -1,18 +1,56 @@
 import { describe, it, expect } from 'vitest';
 import { validateTemplate } from '@sitewright/blocks';
-import { examplePages, EXAMPLE_WEBSITE, EXAMPLE_DATASETS, exampleEntries } from '../src/seed/index.js';
+import { GLOBAL_TEMPLATES } from '@sitewright/core';
+import type { Page } from '@sitewright/schema';
+import {
+  examplePages,
+  pagesEn,
+  EXAMPLE_WEBSITE,
+  EXAMPLE_DATASETS,
+  EXAMPLE_FORMS,
+  EXAMPLE_SETTINGS,
+  CHROME_STRINGS,
+  exampleEntries,
+} from '../src/seed/index.js';
 
-// The image-bearing content is now parameterized by an asset-URL map; for these structural/
+// The image-bearing content is parameterized by an asset-URL map; for these structural/
 // validator checks the URLs are irrelevant, so seed with an empty map (→ empty image refs).
 const EXAMPLE_PAGES = examplePages({});
 const EXAMPLE_ENTRIES = exampleEntries({});
+const EN_PAGES = pagesEn(new Proxy({}, { get: () => '' }) as Record<string, string>);
+const EXTRA_LOCALES = EXAMPLE_SETTINGS.locales.filter((l) => l !== EXAMPLE_SETTINGS.defaultLocale);
+
+// NOTE: the extractor sees only data-sw-* keys and page.data.* references — a translatable
+// string authored as a STATIC attribute literal (e.g. data-sw-title="Project work" instead of
+// data-sw-title="{{page.data.tab_projects}}") would escape the completeness check. Seed pages
+// must keep translatable attribute text behind page.data references.
+/** A page's effective Handlebars source (own `source`, or its referenced global template's). */
+function effectiveSource(page: Page): string | undefined {
+  if (page.source) return page.source;
+  if (page.template) return GLOBAL_TEMPLATES.find((t) => t.id === page.template)?.source;
+  return undefined;
+}
+
+/** The page.data keys a source binds: [data-sw-* keys (DE-only — EN defaults are authored),
+ *  tier-2 keys (page.data refs + quoted lookups — required in EVERY locale incl. EN)]. */
+function boundKeys(source: string): { directive: string[]; attr: string[]; url: string[] } {
+  const strip = (k: string): string => (k.startsWith('data.') ? k.slice('data.'.length).split('.')[0]! : k);
+  const directive = [...source.matchAll(/data-sw-(?:text|html|href)="([^"{}]+)"/g)].map((m) => strip(m[1]!));
+  // Image-URL sinks may legitimately hold '' (asset generation is best-effort) — presence-only.
+  const url = [...source.matchAll(/data-sw-(?:src|bg)="([^"{}]+)"/g)].map((m) => strip(m[1]!));
+  const attr = [
+    ...[...source.matchAll(/page\.data\.([a-zA-Z0-9_]+)/g)].map((m) => m[1]!),
+    ...[...source.matchAll(/\(lookup page\.data "([a-zA-Z0-9_]+)"\)/g)].map((m) => m[1]!),
+  ];
+  return { directive: [...new Set(directive)], attr: [...new Set(attr)], url: [...new Set(url)] };
+}
 
 /**
- * Guards the seeded demo CONTENT against the no-JS template validator + cross-references the
- * dataset bindings. The bootstrap test (`seed.test.ts`) proves the seed PARSES (schemas) and boots;
- * this proves every code-first page `source` + skeleton slot is SAFE to render and that every
- * `{{#each data.<slug>}}` the pages reference resolves to seeded entries — so a future edit to the
- * demo can't silently ship a page that only blows up at publish time.
+ * Guards the seeded demo CONTENT: every source/slot passes the no-JS validator, every dataset
+ * binding resolves, and — the flagship i18n invariants — every locale variant is INHERIT-mode
+ * with a COMPLETE translation (every key its shared code binds), the chrome string sets are
+ * parity-checked, and every localized dataset/form twin matches its base. A future edit to the
+ * demo can't silently ship an untranslated key or a page that only blows up at publish time.
  */
 describe('seed demo content', () => {
   it('every code-first page source passes the no-JS template validator', () => {
@@ -23,9 +61,11 @@ describe('seed demo content', () => {
     }
   });
 
-  it('the skeleton slots (topNav, footer) pass the validator', () => {
+  it('every skeleton slot (topNav, mobileNav, footer, bottom) passes the validator', () => {
     expect(() => validateTemplate(EXAMPLE_WEBSITE.topNav)).not.toThrow();
+    expect(() => validateTemplate(EXAMPLE_WEBSITE.mobileNav)).not.toThrow();
     expect(() => validateTemplate(EXAMPLE_WEBSITE.footer)).not.toThrow();
+    expect(() => validateTemplate(EXAMPLE_WEBSITE.bottom)).not.toThrow();
   });
 
   it('seeds a content-only blog: an overview page + article children using the global blog templates', () => {
@@ -35,24 +75,127 @@ describe('seed demo content', () => {
     expect(articles.length).toBeGreaterThanOrEqual(3);
     for (const a of articles) {
       expect(a.template).toBe('global:blog-article');
-      // Each article's content lives in page.data (read by the template's data-sw-*="data.*" leaves).
       const data = a.data as Record<string, unknown>;
       expect(typeof data.article_title).toBe('string');
       expect(typeof data.article_body).toBe('string');
       expect(typeof data.article_excerpt).toBe('string');
+      expect(typeof data.article_date).toBe('string'); // the overview's {{sw-date}} card line
     }
   });
 
-  it('every dataset the pages bind via {{#each data.<slug>}} has seeded entries', () => {
+  it('every dataset the pages bind via {{#each data.<slug>}} has a schema and seeded entries', () => {
     const entriesByDataset = new Set(EXAMPLE_ENTRIES.map((e) => e.dataset));
     const datasetSlugs = new Set(EXAMPLE_DATASETS.map((d) => d.slug));
-    const sources = EXAMPLE_PAGES.map((p) => p.source ?? '').join('\n');
-    // Datasets are bound via the unified {{#each data.<slug>}} (click-to-edit rows in the editor).
+    const sources = EXAMPLE_PAGES.map((p) => effectiveSource(p) ?? '').join('\n');
     const bound = [...sources.matchAll(/\{\{#each\s+data\.([a-z0-9_-]+)\s*\}\}/g)].map((m) => m[1]);
-    expect(bound.length).toBeGreaterThan(0); // the demo actually exercises datasets
+    expect(bound.length).toBeGreaterThan(0);
     for (const slug of bound) {
       expect(datasetSlugs.has(slug!), `dataset "${slug}" is defined`).toBe(true);
       expect(entriesByDataset.has(slug!), `dataset "${slug}" has entries`).toBe(true);
+    }
+  });
+
+  // ---- the flagship i18n invariants ------------------------------------------------------------
+
+  it('every non-link EN page has exactly one INHERIT-mode variant per extra locale, with translated title + data', () => {
+    for (const locale of EXTRA_LOCALES) {
+      for (const owner of EN_PAGES) {
+        const variants = EXAMPLE_PAGES.filter((p) => p.locale === locale && p.translationGroup === owner.id);
+        expect(variants, `"${owner.id}" → ${locale}`).toHaveLength(1);
+        const v = variants[0]!;
+        // Inherit mode: the variant carries NO code — neither source nor template; its code
+        // resolves to the owner's via resolveCodeRef (the i18n model's default).
+        expect(v.source, `${v.id} must not fork code`).toBeUndefined();
+        expect(v.template, `${v.id} must not pin a template`).toBeUndefined();
+        expect(v.title, `${v.id} translated title`).toBeTruthy();
+        if (owner.kind !== 'link') {
+          // The locale home's slug is the locale code; every other variant gets a localized slug.
+          expect(v.path, `${v.id} localized slug`).toBeTruthy();
+        }
+      }
+    }
+  });
+
+  it('every locale variant carries EVERY page.data key its inherited code binds (translation completeness)', () => {
+    for (const locale of EXTRA_LOCALES) {
+      for (const owner of EN_PAGES) {
+        const source = effectiveSource(owner);
+        if (!source) continue;
+        const v = EXAMPLE_PAGES.find((p) => p.locale === locale && p.translationGroup === owner.id)!;
+        const keys = boundKeys(source);
+        const vData = (v.data ?? {}) as Record<string, unknown>;
+        const enData = (owner.data ?? {}) as Record<string, unknown>;
+        for (const k of [...keys.directive, ...keys.attr]) {
+          const val = vData[k as keyof typeof vData];
+          expect(typeof val === 'string' && val !== '' ? 'ok' : `MISSING ${locale} ${owner.id}.${k}`, `${v.id} data.${k}`).toBe('ok');
+        }
+        for (const k of keys.url) {
+          expect(typeof vData[k as keyof typeof vData], `${v.id} data.${k} (url sink, presence)`).toBe('string');
+        }
+        // Tier-2 (attribute/config) keys have no authored default — the EN page needs them too.
+        for (const k of keys.attr) {
+          expect(typeof enData[k as keyof typeof enData], `en ${owner.id} data.${k}`).toBe('string');
+        }
+      }
+    }
+  });
+
+  it('chrome strings: every locale carries the SAME key set, and every key the slots reference exists', () => {
+    const locales = Object.keys(CHROME_STRINGS);
+    expect(locales).toEqual(expect.arrayContaining([...EXAMPLE_SETTINGS.locales]));
+    const enKeys = Object.keys(CHROME_STRINGS.en!).sort();
+    for (const locale of locales) {
+      expect(Object.keys(CHROME_STRINGS[locale]!).sort(), `strings.${locale} keys`).toEqual(enKeys);
+    }
+    const slots = [EXAMPLE_WEBSITE.topNav, EXAMPLE_WEBSITE.mobileNav, EXAMPLE_WEBSITE.footer, EXAMPLE_WEBSITE.bottom].join('\n');
+    const referenced = [...slots.matchAll(/@root\.website\.data\.strings @root\.page\.locale\) '([a-z_]+)'/g)].map((m) => m[1]!);
+    expect(referenced.length).toBeGreaterThan(0);
+    for (const key of new Set(referenced)) {
+      expect(enKeys.includes(key), `strings key "${key}"`).toBe(true);
+    }
+  });
+
+  it('localized datasets: every base has per-locale twins with identical field shapes and equal entry counts; references resolve in-locale', () => {
+    const bases = EXAMPLE_DATASETS.filter((d) => !EXTRA_LOCALES.some((l) => d.slug.endsWith(`-${l}`)));
+    expect(bases.length).toBeGreaterThanOrEqual(8);
+    for (const locale of EXTRA_LOCALES) {
+      for (const base of bases) {
+        const twin = EXAMPLE_DATASETS.find((d) => d.slug === `${base.slug}-${locale}`);
+        expect(twin, `${base.slug}-${locale}`).toBeDefined();
+        expect(twin!.fields.map((f) => [f.name, f.type])).toEqual(base.fields.map((f) => [f.name, f.type]));
+        const baseCount = EXAMPLE_ENTRIES.filter((e) => e.dataset === base.slug).length;
+        const twinCount = EXAMPLE_ENTRIES.filter((e) => e.dataset === twin!.slug).length;
+        expect(twinCount, `${twin!.slug} entry count`).toBe(baseCount);
+      }
+      // roles-<locale> managers reference team-<locale> entry ids (the keyed item.team lookup).
+      const teamIds = new Set(EXAMPLE_ENTRIES.filter((e) => e.dataset === `team-${locale}`).map((e) => e.id));
+      for (const role of EXAMPLE_ENTRIES.filter((e) => e.dataset === `roles-${locale}`)) {
+        const manager = (role.values as { manager?: string }).manager;
+        expect(manager && teamIds.has(manager), `${role.id} manager "${manager}"`).toBe(true);
+      }
+    }
+    // The English roles reference English team ids too.
+    const enTeam = new Set(EXAMPLE_ENTRIES.filter((e) => e.dataset === 'team').map((e) => e.id));
+    for (const role of EXAMPLE_ENTRIES.filter((e) => e.dataset === 'roles')) {
+      expect(enTeam.has((role.values as { manager?: string }).manager ?? ''), role.id).toBe(true);
+    }
+  });
+
+  it('localized forms: the contact form has a translated twin per locale (the {{sw-form}} suffix convention)', () => {
+    for (const locale of EXTRA_LOCALES) {
+      const twin = EXAMPLE_FORMS.find((f) => f.id === `contact-${locale}`);
+      expect(twin, `contact-${locale}`).toBeDefined();
+      const base = EXAMPLE_FORMS.find((f) => f.id === 'contact')!;
+      expect(twin!.fields.map((f) => f.name)).toEqual(base.fields.map((f) => f.name));
+      expect(twin!.submitLabel).not.toBe(base.submitLabel); // actually translated
+    }
+  });
+
+  it('legal pages are noindex + footer-slot (kept out of the sitemap, listed in the chrome Legal column)', () => {
+    for (const id of ['privacy', 'imprint']) {
+      const page = EXAMPLE_PAGES.find((p) => p.id === id);
+      expect(page?.noindex, id).toBe(true);
+      expect(page?.nav?.slots, id).toContain('footer');
     }
   });
 
@@ -62,21 +205,24 @@ describe('seed demo content', () => {
       'team-mara': '/media/p/ex-team-mara/ex-team-mara-400.jpg',
       // The entry id is `team-dev` but it looks up the `team-devon` asset key — pin that mapping.
       'team-devon': '/media/p/ex-team-devon/ex-team-devon-400.jpg',
+      'prod-tee': '/media/p/ex-prod-tee/ex-prod-tee-640.jpg',
+      'blog-speed': '/media/p/ex-blog-speed/ex-blog-speed-960.jpg',
       hero: '/media/p/ex-hero/ex-hero-800.jpg',
       studio: '/media/p/ex-studio/ex-studio-800.jpg',
     };
     const entries = exampleEntries(assets);
     const pages = examplePages(assets);
-    // Dataset image fields take the local URL.
     expect(JSON.stringify(entries.find((e) => e.id === 'proj-harbor'))).toContain(assets['proj-harbor']);
     expect(JSON.stringify(entries.find((e) => e.id === 'team-mara'))).toContain(assets['team-mara']);
     expect(JSON.stringify(entries.find((e) => e.id === 'team-dev'))).toContain(assets['team-devon']);
-    // Page hero/studio <img> take the local URL.
+    expect(JSON.stringify(entries.find((e) => e.id === 'prod-tee'))).toContain(assets['prod-tee']);
     const sources = pages.map((p) => p.source ?? '').join('\n');
     expect(sources).toContain(assets.hero);
     expect(sources).toContain(assets.studio);
+    // The German article variants carry the same local cover (page.data flows through too).
+    expect(JSON.stringify(pages.find((p) => p.id === 'blog-static-speed-de')?.data)).toContain(assets['blog-speed']);
     // No remote image hosts anywhere in the seeded demo content.
-    const all = [JSON.stringify(entries), sources].join('\n');
+    const all = [JSON.stringify(entries), JSON.stringify(pages.map((p) => p.data)), sources].join('\n');
     expect(all).not.toContain('picsum');
     expect(all).not.toMatch(/https?:\/\/[^"']*\.(?:jpg|jpeg|png|webp|gif|avif)/i);
   });

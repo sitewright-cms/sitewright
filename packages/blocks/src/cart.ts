@@ -171,6 +171,10 @@ export const CART_JS = `(function(){
       title:mount.getAttribute('data-cart-title')||'Your cart',
       addedLabel:mount.getAttribute('data-added-label')||'Added',
       note:mount.getAttribute('data-note')||'Prices are indicative. This sends an order request \\u2014 the seller confirms availability and final price.',
+      emptyLabel:mount.getAttribute('data-empty-label')||'Your cart is empty.',
+      subtotalLabel:mount.getAttribute('data-subtotal-label')||'Subtotal',
+      clearLabel:mount.getAttribute('data-clear-label')||'Clear cart',
+      sentLabel:mount.getAttribute('data-sent-label')||'Order sent \\u2014 we will be in touch.',
       channels:channels
     };
   }
@@ -266,9 +270,9 @@ export const CART_JS = `(function(){
     var head=part('div','head');var h=mk('h2',null,cfg.title);var close=part('button','close','\\u00d7');close.type='button';close.setAttribute('aria-label','Close cart');ripple(close);
     head.appendChild(h);head.appendChild(close);
     var list=part('ul','items');
-    var empty=part('p','empty','Your cart is empty.');
+    var empty=part('p','empty',cfg.emptyLabel);
     var foot=part('div','foot');
-    var subtotal=part('div','subtotal');var stLabel=mk('span',null,'Subtotal');var stVal=mk('span',null,'');subtotal.appendChild(stLabel);subtotal.appendChild(stVal);
+    var subtotal=part('div','subtotal');var stLabel=mk('span',null,cfg.subtotalLabel);var stVal=mk('span',null,'');subtotal.appendChild(stLabel);subtotal.appendChild(stVal);
     var note=part('p','note',cfg.note);
     foot.appendChild(subtotal);foot.appendChild(note);
     // Channels: deep-link kinds (whatsapp/mailto/payment) render as a button; a "form" kind renders an
@@ -284,12 +288,12 @@ export const CART_JS = `(function(){
       })(chx);
     }
     if(formCh&&formCh.endpoint){foot.appendChild(buildOrderForm(formCh));}
-    var clear=part('button','clear','Clear cart');clear.type='button';ripple(clear);
+    var clear=part('button','clear',cfg.clearLabel);clear.type='button';ripple(clear);
     clear.addEventListener('click',function(){items.length=0;persist();});
     foot.appendChild(clear);
     // The post-order confirmation panel (form channel). Kept OUT of the foot (which hides when the cart
     // empties) so the success message stays visible after a submit clears the cart. Toggled in render().
-    var sentMsg=part('p','sent-msg','Order sent \\u2014 we will be in touch.');
+    var sentMsg=part('p','sent-msg',cfg.sentLabel);
     dialog.appendChild(head);dialog.appendChild(empty);dialog.appendChild(list);dialog.appendChild(foot);dialog.appendChild(sentMsg);
     mount.appendChild(toggle);mount.appendChild(dialog);
 

@@ -32,6 +32,7 @@ import {
   type FileAsset,
   type MediaFolderRecord,
   type Form,
+  toPublicForm,
   type ImageAsset,
   type MediaAsset,
   type Snippet,
@@ -59,6 +60,7 @@ import {
   usesCart,
   CART_CSS,
   resolveShopChannels,
+  resolveFormEndpoints,
   validateTemplate,
   TemplateError,
   mediaForRender,
@@ -1888,10 +1890,22 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // Keyed entry access ({{item.<dataset>.<id>.<field>}}) — built only for datasets this source
       // addresses by key, so a looping-only page pays nothing.
       const item = keyedDatasets(pageSource, localeData);
-      // Bound the IPC payload serialized in THIS (parent) process — a large dataset/partial set
-      // (incl. the keyed `item` map) must not spike the API's heap (only the worker carries a
+      // Public form definitions + same-origin `/f/<projectId>/<formId>` endpoints for the form
+      // embed ({{sw-form}} / data-sw-form) — parity with publish, which precomputes
+      // publicBaseUrl-absolute endpoints. The hCaptcha sitekey upgrades opted-in forms' widgets.
+      const previewForms = resolveFormEndpoints(
+        Object.fromEntries(((await contentRepo.list(ctx, 'form')) as Form[]).map((f) => [f.id, toPublicForm(f)])),
+        (fid) => `/f/${project.id}/${fid}`,
+      );
+      // The sitekey only matters for an hcaptcha-flagged form — skip the extra settings read
+      // (per-preview hot path) for the overwhelmingly common case of none.
+      const hcaptchaSiteKey = Object.values(previewForms).some((f) => f.hcaptcha)
+        ? (await instanceSettingsRepo.getStored()).hcaptcha?.siteKey
+        : undefined;
+      // Bound the IPC payload serialized in THIS (parent) process — a large dataset/partial/form
+      // set (incl. the keyed `item` map) must not spike the API's heap (only the worker carries a
       // memory ceiling). Mirrors the owner render-template guard.
-      if (JSON.stringify(localeData).length + JSON.stringify(item).length + JSON.stringify(partials).length > 4 * 1024 * 1024) {
+      if (JSON.stringify(localeData).length + JSON.stringify(item).length + JSON.stringify(partials).length + JSON.stringify(previewForms).length > 4 * 1024 * 1024) {
         return reply.code(413).send({ error: 'project data is too large to render' });
       }
       try {
@@ -1964,6 +1978,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // so a click opens that entry's editor. Always body-safe (wraps the loop body) → no gate needed.
           markEntries: true,
           media: renderMedia,
+          forms: previewForms,
+          ...(hcaptchaSiteKey ? { hcaptchaSiteKey } : {}),
         });
         // Slots render through the SAME isolated worker; a broken slot is skipped here
         // (publish still hard-validates it) so it can never break the page preview. No
@@ -1978,6 +1994,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           data: localeData,
           nav: slotNav as unknown as Record<string, unknown>,
           media: renderMedia,
+          forms: previewForms,
+          ...(hcaptchaSiteKey ? { hcaptchaSiteKey } : {}),
         };
         // Each slot reuses slotCtx (which carries `sourceData`) over IPC; that payload is already
         // bounded by the page-render size guard above, and the pool (capped workers + queue depth)
@@ -3176,9 +3194,19 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // owner render-template tool feeds `data` un-locale-resolved (pre-existing), so `item` here
       // keys the DEFAULT-locale entries — the member /preview + publish paths locale-resolve both.
       const item = keyedDatasets(templateSource, data as Record<string, readonly Entry[]>);
+      // Public form definitions + same-origin endpoints so the code editor's live render shows
+      // {{sw-form}} / data-sw-form embeds (parity with the member /preview path).
+      const renderForms = resolveFormEndpoints(
+        Object.fromEntries(((await contentRepo.list(ctx, 'form')) as Form[]).map((f) => [f.id, toPublicForm(f)])),
+        (fid) => `/f/${project.id}/${fid}`,
+      );
+      // Settings read only when an hcaptcha-flagged form exists (mirrors the /preview gate).
+      const renderHcaptchaSiteKey = Object.values(renderForms).some((f) => f.hcaptcha)
+        ? (await instanceSettingsRepo.getStored()).hcaptcha?.siteKey
+        : undefined;
       // Bound the IPC payload serialized in THIS (parent) process — a large dataset must
       // not spike the API's heap (only the worker carries a --max-old-space ceiling).
-      if (JSON.stringify(data).length + JSON.stringify(item).length + JSON.stringify(partials).length > 4 * 1024 * 1024) {
+      if (JSON.stringify(data).length + JSON.stringify(item).length + JSON.stringify(partials).length + JSON.stringify(renderForms).length > 4 * 1024 * 1024) {
         return reply.code(413).send({ error: 'project data is too large to render' });
       }
 
@@ -3190,6 +3218,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           data,
           item,
           partials,
+          forms: renderForms,
+          ...(renderHcaptchaSiteKey ? { hcaptchaSiteKey: renderHcaptchaSiteKey } : {}),
         });
         if (!body.document) return reply.send({ html: rendered });
         // Styled-document preview: wrap the rendered body in the publish doc shell + inline

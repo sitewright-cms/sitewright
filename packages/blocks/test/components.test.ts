@@ -26,6 +26,15 @@ describe('componentTypesInSource (code-first detection)', () => {
     expect(componentTypesInSource(undefined)).toEqual([]);
     expect(componentTypesInSource(null)).toEqual([]);
   });
+
+  it('detects a form embedded by REFERENCE — {{sw-form}} or data-sw-form (marker only exists post-render)', () => {
+    expect(componentTypesInSource('<section>{{sw-form "contact"}}</section>')).toEqual(['Form']);
+    expect(componentTypesInSource('<section>{{ sw-form "contact" }}</section>')).toEqual(['Form']);
+    expect(componentTypesInSource('<form data-sw-form="contact"><input name="n" /></form>')).toEqual(['Form']);
+    // anchored scan: prose mentions and would-be `sw-format` helpers do NOT over-ship Form assets
+    expect(componentTypesInSource('<p>about sw-form</p>')).toEqual([]);
+    expect(componentTypesInSource('{{sw-formation "x"}}')).toEqual([]);
+  });
 });
 
 describe('component registry', () => {

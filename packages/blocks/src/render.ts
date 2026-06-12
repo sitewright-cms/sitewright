@@ -3,7 +3,7 @@
 // theme-color / favicon / schema.org JSON-LD), brand + typography CSS, the project-wide skeleton
 // slots, and the first-party component scripts. The only raw HTML is the tenant's own head/footer;
 // output is served only inside a sandboxed preview iframe or written to the exported artifact.
-import type { BrandTokens, Entry, FormPublic, MediaAsset, Page } from '@sitewright/schema';
+import type { BrandTokens, Entry, MediaAsset, Page } from '@sitewright/schema';
 import { escapeAttr, escapeHtml } from './escape.js';
 import type { VarContext } from './vars.js';
 import { metaTags, schemaOrgJsonLd, type SeoMeta, type SchemaOrgInfo } from './head.js';
@@ -49,22 +49,8 @@ export interface RenderContext {
    * `resolveInternalUrl`.
    */
   localePrefix?: string;
-  /**
-   * Public form definitions (recipient already stripped) keyed by form id, for
-   * rendering `Form` blocks. The renderer NEVER receives or emits the recipient.
-   */
-  forms?: Record<string, FormPublic>;
-  /**
-   * Resolves the absolute (or same-origin) submission endpoint for a form id.
-   * Publish passes the platform's public base so exported sites post to the
-   * Sitewright instance; preview passes a same-origin path.
-   */
-  formEndpoint?: (formId: string) => string;
-  /**
-   * The instance hCaptcha site key (public). When set, a `Form` with `hcaptcha`
-   * enabled renders the hCaptcha widget; absent → no widget (the flag is inert).
-   */
-  hcaptchaSiteKey?: string;
+  // (forms/formEndpoint/hcaptchaSiteKey moved to TemplateContext — code-first forms resolve in
+  // renderTemplate's form-embed pass; the block-tree Form renderer they fed here was removed.)
   /**
    * Variable context for `{{ company.* }}` / `{{ website.* }}` / `{{ page.* }}`
    * substitution in text props (see vars.ts). Absent → no substitution. Never

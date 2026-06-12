@@ -357,6 +357,11 @@ export function componentTypesInSource(html: string | null | undefined): string[
     const type = COMPONENT_NAME_TO_TYPE.get(name);
     if (type) seen.add(type);
   }
+  // A form embedded by REFERENCE — `{{sw-form "id"}}` or an authored `data-sw-form="id"` — only
+  // gains its `data-sw-component="form"` marker at render (the form-embed pass), so the source
+  // scan must catch the reference itself. Anchored to the two real spellings (helper call /
+  // attribute), so prose or a future `sw-format` helper doesn't over-ship the Form assets.
+  if (/(?:\{\{\s*|data-)sw-form\b/.test(html)) seen.add('Form');
   return [...seen];
 }
 

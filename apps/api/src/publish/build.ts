@@ -50,6 +50,7 @@ import {
   CART_CSS,
   CART_JS,
   resolveShopChannels,
+  resolveFormEndpoints,
   mediaForRender,
 } from '@sitewright/blocks';
 import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
@@ -422,13 +423,16 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     const usesNavLink =
       pubBundle.pages.some((p) => isLinkPage(p) && (p.link?.target ?? '').includes('#')) ||
       usesMarker(usesDialog);
-    // Public form definitions (recipient stripped) + the absolute submission
-    // endpoint for exported `Form` blocks. Built once (same for every page).
+    // Public form definitions (recipient stripped) + the submission endpoint per form — consumed
+    // by the form-embed pass in renderTemplate ({{sw-form}} / data-sw-form) and the cart's form
+    // channel. Built once (same for every page); absolute when a publicBaseUrl is configured,
+    // root-relative same-origin otherwise.
     const forms: Record<string, FormPublic> = Object.fromEntries(
       (bundle.forms ?? []).map((f) => [f.id, toPublicForm(f)]),
     );
     const formBase = (opts.publicBaseUrl ?? '').replace(/\/+$/, '');
     const formEndpoint = (formId: string): string => `${formBase}/f/${bundle.project.id}/${formId}`;
+    const resolvedForms = resolveFormEndpoints(forms, formEndpoint);
     let bytes = 0;
     // Absolute URLs for sitemap.xml (when a production site URL is configured);
     // noindex pages are excluded.
@@ -551,6 +555,12 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // Project media (slim) for {{#sw-folder}} galleries/file lists. Asset `url`s (`/media/<slug>/…`)
           // are rebased to the bundled `_assets/…` by the media rewrite below — portable in the export.
           media: mediaForRender(media),
+          // Form embedding ({{sw-form}} / data-sw-form): the precomputed public definitions, the
+          // instance hCaptcha sitekey, and this page's root path (for the page-relative
+          // contact.php endpoint). Slots render with this same ctx — chrome forms work too.
+          forms: resolvedForms,
+          hcaptchaSiteKey: opts.hcaptchaSiteKey,
+          siteRoot,
         };
         let bodyHtml: string | undefined;
         if (pageSource) {
@@ -617,9 +627,6 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           root: siteRoot,
           lang: pageLocale,
           nav: navForPage,
-          forms,
-          formEndpoint,
-          hcaptchaSiteKey: opts.hcaptchaSiteKey,
           // Images AND fonts resolve through ONE page-relative resolver (a font's @font-face uses
           // this too) so the export is portable + self-hosted (never a font CDN).
           mediaUrl: (asset, file) => `${siteRoot}${ASSET_DIR}/${asset.id}/${file}`,

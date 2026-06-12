@@ -98,6 +98,33 @@ describe('mini shop cart → publish', () => {
     expect(js.body).toContain('localStorage');
   });
 
+  it('bakes per-page cart string overrides (i18n) into the published mount', async () => {
+    const proj = client.project(projectId);
+    expect(
+      (
+        await proj.putContent('settings', 'settings', {
+          identity: { name: 'Acme', colors: { primary: '#0a7' } },
+          website: { shop: { title: 'Your cart' } },
+          settings: {},
+        })
+      ).statusCode,
+    ).toBe(200);
+    // Shared code reads the strings from page.data — the inherit-mode localization pattern.
+    const page = {
+      id: 'shop-de',
+      path: 'warenkorb',
+      title: 'Shop',
+      root: { id: 'r', type: 'Section' },
+      data: { cart_title: 'Warenkorb', cart_empty: 'Ihr Warenkorb ist leer.' },
+      source: '<section>{{sw-cart title=(lookup page.data "cart_title") empty=(lookup page.data "cart_empty")}}</section>',
+    };
+    expect((await proj.putContent('page', 'shop-de', page)).statusCode).toBe(200);
+    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
+    const html = (await client.get(`/sites/${slug}/warenkorb/index.html`)).body;
+    expect(html).toContain('data-cart-title="Warenkorb"'); // hash override beats website.shop.title
+    expect(html).toContain('data-empty-label="Ihr Warenkorb ist leer."');
+  });
+
   it('ships NOTHING extra for a site that uses no cart', async () => {
     const proj = client.project(projectId);
     const page = {

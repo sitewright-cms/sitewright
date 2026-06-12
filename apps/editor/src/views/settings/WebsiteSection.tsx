@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { NAV_EFFECTS, BUTTON_EFFECTS, type JsonValue, type NavEffect, type ButtonEffect } from '@sitewright/schema';
 import { newStr, type Patch, type SettingsForm } from './model';
 import { Field, GlassCard, SubLabel } from './ui';
+import { SectionHelp } from '../ui/SectionHelp';
 import { Globe, Sparkles, Paintbrush, Code, Braces, PanelTop, Smartphone, PanelLeft, PanelRight, PanelBottom, ArrowDownToLine, Signpost, ShoppingCart, Languages } from 'lucide-react';
 import { CodeField } from '../ui/CodeField';
 import { RedirectsEditor } from './RedirectsEditor';
@@ -85,13 +86,12 @@ export function WebsiteSection({
         />
       )}
 
-      <GlassCard title="Nav & button effects" icon={<Sparkles className="h-4 w-4" />} wide>
-        <p className="mb-3 text-xs text-slate-400">
-          CI-themed, contrast-safe hover/active schemes, applied site-wide (no code). The current nav
-          item is highlighted where you mark it <code>.active</code>. Want your own? Leave these
-          “None” and write it in <strong>Critical CSS</strong> (target <code>.active</code> /{' '}
-          <code>.btn</code>).
-        </p>
+      <GlassCard
+        title="Nav & button effects"
+        icon={<Sparkles className="h-4 w-4" />}
+        tooltip="CI-themed, contrast-safe hover/active schemes, applied site-wide (no code). The current nav item is highlighted where you mark it .active. Want your own? Leave these “None” and write it in Critical CSS (target .active / .btn)."
+        wide
+      >
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="flex flex-col">
             <span className={fieldLabel}>Nav effect</span>
@@ -160,14 +160,10 @@ export function WebsiteSection({
       </GlassCard>
 
       <motion.div variants={cardVariants} className="sm:col-span-2 mt-2">
-        <h3 className="text-xs font-medium uppercase tracking-wide text-slate-400">
+        <h3 className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">
           Skeleton slots — shared Handlebars partials rendered around every page
+          <SectionHelp tip="Validated (no JS): HTML + Tailwind/DaisyUI + {{ company.* }}, {{#each nav.header}}, {{ website.json_data.* }}, {{ website.data.* }}." />
         </h3>
-        <p className="mt-1 text-xs text-slate-500">
-          Validated (no JS): HTML + Tailwind/DaisyUI + <code>{'{{ company.* }}'}</code>,{' '}
-          <code>{'{{#each nav.header}}'}</code>, <code>{'{{ website.json_data.* }}'}</code>,{' '}
-          <code>{'{{ website.data.* }}'}</code>.
-        </p>
       </motion.div>
 
       <GlassCard title="Top navigation" icon={<PanelTop className="h-4 w-4" />}>
@@ -236,17 +232,21 @@ export function WebsiteSection({
         />
       </GlassCard>
 
-      <GlassCard title="Redirects" icon={<Signpost className="h-4 w-4" />} wide>
-        <p className="mb-2 text-xs text-slate-500">Emitted to <code>.htaccess</code> + <code>_redirects</code> on publish.</p>
+      <GlassCard
+        title="Redirects"
+        icon={<Signpost className="h-4 w-4" />}
+        tooltip="Emitted to .htaccess + _redirects on publish."
+        wide
+      >
         <RedirectsEditor rows={form.redirects} onChange={(redirects) => patch({ redirects })} />
       </GlassCard>
 
-      <GlassCard title="Shop" icon={<ShoppingCart className="h-4 w-4" />} wide>
-        <p className="mb-3 text-xs text-slate-500">
-          A front-end cart for static sites: drop <code>{'{{sw-cart}}'}</code> + <code>{'{{sw-add-to-cart …}}'}</code> in a page (or use the{' '}
-          <code>global:shop</code> template), and the cart submits an order through the channels below. Prices are{' '}
-          <strong>non-authoritative</strong> — the cart sends an order inquiry; you confirm availability and collect payment.
-        </p>
+      <GlassCard
+        title="Shop"
+        icon={<ShoppingCart className="h-4 w-4" />}
+        tooltip="A front-end cart for static sites: drop {{sw-cart}} + {{sw-add-to-cart …}} in a page (or use the global:shop template), and the cart submits an order through the channels below. Prices are non-authoritative — the cart sends an order inquiry; you confirm availability and collect payment."
+        wide
+      >
         <SubLabel>Currency</SubLabel>
         <div className="grid gap-3 sm:grid-cols-4">
           <Field label="Currency code" value={form.shopCurrencyCode} onChange={(v) => patch({ shopCurrencyCode: v })} placeholder="USD" />

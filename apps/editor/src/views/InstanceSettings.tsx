@@ -16,6 +16,7 @@ import { glassCard, glassInput, primaryButton } from '../theme';
 import { applyBranding } from '../lib/use-branding';
 import { ColorField } from './settings/ColorPicker';
 import { SkeletonList } from './ui/Skeleton';
+import { SectionHelp } from './ui/SectionHelp';
 import { LocalePickerModal } from './i18n/LocalePickerModal';
 import { localeFlag, localeLabel } from './i18n/locale-catalog';
 import { OidcProvidersField, nextOidcProviderKey, type OidcProviderDraft } from './settings/OidcProvidersField';
@@ -305,8 +306,10 @@ export function InstanceSettings() {
     <form onSubmit={save} className="mx-auto flex max-w-2xl flex-col gap-6 p-6">
 
       <fieldset className={`${glassCard} p-4`}>
-        <legend className="px-1 text-sm font-bold">Branding</legend>
-        <p className="mb-3 text-xs text-slate-500">White-label the admin panel — the name, accent gradient, and logo shown across the editor and the sign-in screen.</p>
+        <legend className="flex items-center gap-1.5 px-1 text-sm font-bold">
+          Branding
+          <SectionHelp tip="White-label the admin panel — the name, accent gradient, and logo shown across the editor and the sign-in screen." />
+        </legend>
         <label className="mb-3 block">
           <span className="mb-1 block text-xs font-medium text-slate-600">Platform name</span>
           <input
@@ -362,8 +365,10 @@ export function InstanceSettings() {
       </fieldset>
 
       <fieldset className={`${glassCard} p-4`}>
-        <legend className="px-1 text-sm font-bold">Web-form mail modes</legend>
-        <p className="mb-3 text-xs text-slate-500">Choose which delivery modes projects may use for their forms.</p>
+        <legend className="flex items-center gap-1.5 px-1 text-sm font-bold">
+          Web-form mail modes
+          <SectionHelp tip="Choose which delivery modes projects may use for their forms." />
+        </legend>
         <div className="flex flex-col gap-2">
           {FORM_MODE_LABELS.map(({ key, label, hint }) => {
             // eslint-disable-next-line security/detect-object-injection -- key is a typed FormModes literal from a constant list
@@ -388,8 +393,10 @@ export function InstanceSettings() {
       </fieldset>
 
       <fieldset className={`${glassCard} p-4`}>
-        <legend className="px-1 text-sm font-bold">New projects</legend>
-        <p className="mb-3 text-xs text-slate-500">The language a newly created project starts in. Existing projects are unaffected.</p>
+        <legend className="flex items-center gap-1.5 px-1 text-sm font-bold">
+          New projects
+          <SectionHelp tip="The language a newly created project starts in. Existing projects are unaffected." />
+        </legend>
         <label className="flex flex-col text-xs text-slate-500">
           Default locale for new projects
           <button
@@ -510,11 +517,10 @@ export function InstanceSettings() {
       </fieldset>
 
       <fieldset className={`${glassCard} p-4`}>
-        <legend className="px-1 text-sm font-bold">Stock image providers</legend>
-        <p className="mb-2 text-xs text-slate-500">
-          Openverse needs no key. Add an Unsplash and/or Pexels API key to enable those providers in the media
-          stock picker. Keys are encrypted at rest and never leave the server.
-        </p>
+        <legend className="flex items-center gap-1.5 px-1 text-sm font-bold">
+          Stock image providers
+          <SectionHelp tip="Openverse needs no key. Add an Unsplash and/or Pexels API key to enable those providers in the media stock picker. Keys are encrypted at rest and never leave the server." />
+        </legend>
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
@@ -553,12 +559,10 @@ export function InstanceSettings() {
       </fieldset>
 
       <fieldset className={`${glassCard} p-4`}>
-        <legend className="px-1 text-sm font-bold">Agent (MCP) instructions</legend>
-        <p className="mb-3 text-xs text-slate-500">
-          The system instructions served to AI agents that connect over MCP. Edit to customize how agents
-          build sites on this instance; <strong>Reset to default</strong> (or clear) reverts to the built-in
-          instructions.
-        </p>
+        <legend className="flex items-center gap-1.5 px-1 text-sm font-bold">
+          Agent (MCP) instructions
+          <SectionHelp tip="The system instructions served to AI agents that connect over MCP. Edit to customize how agents build sites on this instance; Reset to default (or clear) reverts to the built-in instructions." />
+        </legend>
         <textarea
           aria-label="Agent instructions"
           className={`${glassInput} h-64 w-full font-mono text-xs`}
@@ -575,12 +579,12 @@ export function InstanceSettings() {
       </fieldset>
 
       <fieldset className={`${glassCard} p-4`}>
-        <legend className="px-1 text-sm font-bold">Agent session length</legend>
-        <p className="mb-3 text-xs text-slate-500">
-          How long an agent connection (MCP / OAuth) stays valid before the user must re-approve — the absolute
-          refresh-token cap. Default {DEFAULT_AGENT_SESSION_HOURS}h. Raise it for agents that work across days;
-          lower it to tighten the window. Refresh tokens still rotate and are theft-detected regardless.
-        </p>
+        <legend className="flex items-center gap-1.5 px-1 text-sm font-bold">
+          Agent session length
+          <SectionHelp
+            tip={`How long an agent connection (MCP / OAuth) stays valid before the user must re-approve — the absolute refresh-token cap. Default ${DEFAULT_AGENT_SESSION_HOURS}h. Raise it for agents that work across days; lower it to tighten the window. Refresh tokens still rotate and are theft-detected regardless.`}
+          />
+        </legend>
         <label className="flex items-center gap-2 text-sm text-slate-600">
           Session length (hours)
           <input
@@ -623,12 +627,12 @@ export function InstanceSettings() {
       </fieldset>
 
       <fieldset className={`${glassCard} p-4`}>
-        <legend className="px-1 text-sm font-bold">Single sign-on (OIDC)</legend>
-        <p className="mb-3 text-xs text-slate-500">
-          Let users sign in via an external identity provider. Register this app at each provider with the redirect
-          URL <code className="break-all">{origin}/auth/oidc/&lt;id&gt;/callback</code>. Only users who already exist
-          or hold a pending invite can sign in; the client secret is stored encrypted.
-        </p>
+        <legend className="flex items-center gap-1.5 px-1 text-sm font-bold">
+          Single sign-on (OIDC)
+          <SectionHelp
+            tip={`Let users sign in via an external identity provider. Register this app at each provider with the redirect URL ${origin}/auth/oidc/<id>/callback. Only users who already exist or hold a pending invite can sign in; the client secret is stored encrypted.`}
+          />
+        </legend>
         <OidcProvidersField providers={oidcProviders} onChange={setOidcProviders} />
       </fieldset>
 
@@ -643,13 +647,10 @@ export function InstanceSettings() {
 
     <div className="mx-auto flex max-w-2xl flex-col gap-6 px-6 pb-10">
       <section className={`${glassCard} p-4`}>
-        <h2 className="text-sm font-bold">MCP endpoints</h2>
-        <p className="mb-3 text-xs text-slate-500">
-          Tools the MCP bridge exposes to a connected agent. Each is gated by the connection’s capabilities — a
-          connection that lacks a tool’s capability can still see it listed, but calling it returns a clear
-          “needs <code>{'<capability>'}</code>” error (the API enforces it server-side). Deletes require the
-          separate <code>content:delete</code> capability, so an agent can create and edit without the power to remove.
-        </p>
+        <h2 className="flex items-center gap-1.5 text-sm font-bold">
+          MCP endpoints
+          <SectionHelp tip="Tools the MCP bridge exposes to a connected agent. Each is gated by the connection’s capabilities — a connection that lacks a tool’s capability can still see it listed, but calling it returns a clear “needs <capability>” error (the API enforces it server-side). Deletes require the separate content:delete capability, so an agent can create and edit without the power to remove." />
+        </h2>
         <ul className="flex flex-col gap-1.5 text-sm">
           {MCP_TOOL_CATALOG.map((t) => (
             <li key={t.name} className="flex flex-wrap items-baseline gap-2">
@@ -664,11 +665,10 @@ export function InstanceSettings() {
       </section>
 
       <section className={`${glassCard} p-4`}>
-        <h2 className="text-sm font-bold">Connect an agent</h2>
-        <p className="mb-3 text-xs text-slate-500">
-          Point any MCP-capable agent at this instance over the local stdio bridge. No up-front login —
-          the agent connects on demand and shows you a link to approve:
-        </p>
+        <h2 className="flex items-center gap-1.5 text-sm font-bold">
+          Connect an agent
+          <SectionHelp tip="Point any MCP-capable agent at this instance over the local stdio bridge. No up-front login — the agent connects on demand and shows you a link to approve." />
+        </h2>
         <ol className="flex list-decimal flex-col gap-2 pl-5 text-sm text-slate-600">
           <li>
             Install the CLI: <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">npm i -g @sitewright/cli</code>

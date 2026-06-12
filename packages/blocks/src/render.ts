@@ -3,27 +3,17 @@
 // theme-color / favicon / schema.org JSON-LD), brand + typography CSS, the project-wide skeleton
 // slots, and the first-party component scripts. The only raw HTML is the tenant's own head/footer;
 // output is served only inside a sandboxed preview iframe or written to the exported artifact.
-import type { BrandTokens, Entry, MediaAsset, Page } from '@sitewright/schema';
+import type { BrandTokens, MediaAsset, Page } from '@sitewright/schema';
 import { escapeAttr, escapeHtml } from './escape.js';
-import type { VarContext } from './vars.js';
 import { metaTags, schemaOrgJsonLd, type SeoMeta, type SchemaOrgInfo } from './head.js';
 import { brandToCss } from './brand-css.js';
 import { baseStyles } from './base-css.js';
 import { previewStyles } from './preview-css.js';
 import { typographyCss, type FontAsset } from './typography-css.js';
 
-/** Context threaded through the tree while rendering. */
+/** Media context for the document shell — the only render-time inputs the code-first shell reads. */
 export interface RenderContext {
-  /** Dataset slug -> entries, for resolving bindings. */
-  datasets?: Record<string, readonly Entry[]>;
-  /** The entry currently in scope (set by `single`/`list` bindings). */
-  entry?: Entry;
-  /** Include `draft` entries (preview), otherwise only `published` (parity with publish). */
-  includeDrafts?: boolean;
-  /** PREVIEW-ONLY: wrap each bound list entry in a `<div data-sw-entry data-sw-dataset>` marker so
-   *  the editor can open that entry on click. Never set on publish (no markers in the artifact). */
-  markEntries?: boolean;
-  /** Project media (matched by `asset.url`) — enables optimized `<picture>` for Image blocks. */
+  /** Project media — resolves self-hosted (`kind:'font'`) `@font-face` URLs in the `<head>`. */
   media?: readonly MediaAsset[];
   /**
    * Resolves the emitted URL for a file of a media asset. Preview returns the
@@ -31,32 +21,6 @@ export interface RenderContext {
    * so the exported artifact is self-contained and portable.
    */
   mediaUrl?: (asset: MediaAsset, file: string) => string;
-  /**
-   * Relative path from the current page to the site root (`''` home, `'../'` one
-   * level deep, …). Internal root-relative links and asset paths are rebased onto
-   * this so the exported site is portable. See `relativeRoot` in @sitewright/core.
-   */
-  root?: string;
-  /**
-   * Page-tree-derived navigation items per slot (`buildNav` in @sitewright/core),
-   * consumed by `Nav` blocks. Keyed by slot (`header`/`footer`/`mobile`).
-   */
-  nav?: Record<string, ReadonlyArray<{ label: string; path: string; external?: boolean; newTab?: boolean; labelHtml?: string }>>;
-  /**
-   * Locale URL prefix for the current locale (`''` for the default/single locale,
-   * `'de/'` for a non-default locale). Internal PAGE links are kept inside this
-   * locale subtree; shared assets (media/css/js) are NOT prefixed. See
-   * `resolveInternalUrl`.
-   */
-  localePrefix?: string;
-  // (forms/formEndpoint/hcaptchaSiteKey moved to TemplateContext — code-first forms resolve in
-  // renderTemplate's form-embed pass; the block-tree Form renderer they fed here was removed.)
-  /**
-   * Variable context for `{{ company.* }}` / `{{ website.* }}` / `{{ page.* }}`
-   * substitution in text props (see vars.ts). Absent → no substitution. Never
-   * applied to the raw `Html` block (its content is emitted unescaped).
-   */
-  vars?: VarContext;
 }
 
 /** Options for {@link renderDocument}. */

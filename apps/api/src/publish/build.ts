@@ -616,17 +616,8 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           sidebarRight: sidebarRightHtml,
           footer: footerHtml,
           bottom: bottomHtml,
-          // {{ company.* }}/{{ website.* }}/{{ page.* }} substitution in text props.
-          // `website` is projected to only its public fields — never the raw
-          // head/footer/CSS blobs, which aren't meant to be surfaced via a variable.
-          vars: { company: identity, website: { siteUrl: website?.siteUrl, json_data: opts.jsonData, data: website?.data, shop: website?.shop }, page: { title: page.title, path: pageFullPath, locale: pageLocale, translations: pageTranslations, data: page.data } },
-          datasets: localeData,
-          entry: route.entry,
-          includeDrafts: false,
           media,
-          root: siteRoot,
           lang: pageLocale,
-          nav: navForPage,
           // Images AND fonts resolve through ONE page-relative resolver (a font's @font-face uses
           // this too) so the export is portable + self-hosted (never a font CDN).
           mediaUrl: (asset, file) => `${siteRoot}${ASSET_DIR}/${asset.id}/${file}`,

@@ -125,6 +125,8 @@ export const EXAMPLE_WEBSITE = {
    below, or captions vanish for reduced-motion users. */
 @keyframes nw-cap-in{from{opacity:0;transform:translateY(26px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:no-preference){
+  /* No anti-snap CSS needed here: the runtime prunes stale data-active markers only on
+     SETTLE, so the outgoing slide keeps its Ken Burns drift until it is fully off-screen. */
   .nw-hero [data-sw-part="slide"][data-active]:nth-child(odd) .nw-hero-bg{animation:nw-kb-l 8s ease-out both}
   .nw-hero [data-sw-part="slide"][data-active]:nth-child(even) .nw-hero-bg{animation:nw-kb-r 8s ease-out both}
   .nw-hero [data-sw-part="slide"][data-active] .nw-hero-cap{animation:nw-cap-in .9s cubic-bezier(.22,1,.36,1) .5s both}

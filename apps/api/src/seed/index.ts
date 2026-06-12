@@ -33,6 +33,7 @@ export { EXAMPLE_FORMS } from './forms.js';
 export { examplePages } from './pages/index.js';
 export { pagesEn } from './pages/en/index.js';
 export { translationsDe } from './translations/de.js';
+export { translationsEs } from './translations/es.js';
 
 /** The locale configuration the seed installs (used by seed.ts + mirrored in tests). */
-export const EXAMPLE_SETTINGS = { defaultLocale: 'en', locales: ['en', 'de'] } as const;
+export const EXAMPLE_SETTINGS = { defaultLocale: 'en', locales: ['en', 'de', 'es'] } as const;

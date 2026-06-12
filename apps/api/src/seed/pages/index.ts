@@ -2,6 +2,7 @@ import type { Page } from '@sitewright/schema';
 import { pagesEn } from './en/index.js';
 import { localeVariants } from './variants.js';
 import { translationsDe } from '../translations/de.js';
+import { translationsEs } from '../translations/es.js';
 
 /**
  * Every page of the Example Project, all locales: the English owners (carrying the
@@ -17,5 +18,7 @@ export function examplePages(assetMap: Record<string, string>): Page[] {
   }) as Record<string, string>;
   const en = pagesEn(assets);
   const de = localeVariants(en, 'de', translationsDe(assets));
-  return [...de.owners, ...de.variants];
+  // Chain on the de-pass owners (they carry the translationGroups) so both locales link the same groups.
+  const es = localeVariants(de.owners, 'es', translationsEs(assets));
+  return [...es.owners, ...de.variants, ...es.variants];
 }

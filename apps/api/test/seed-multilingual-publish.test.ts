@@ -217,10 +217,40 @@ describe('seeded demo — flagship multilingual showcase publishes correctly', (
     expect(de).toContain('Studio-Shirt'); // products-de auto-resolved
   });
 
+  it('renders the Spanish locale end-to-end: /es home, localized slugs, dataset/form/chrome resolution', async () => {
+    const es = await page('es/index.html');
+    expect(es).toContain('<html lang="es">');
+    expect(es).toContain('Webs que le traen más negocio'); // page.data override (inherit-mode)
+    expect(es).toContain('Diseño web'); // services-es auto-resolved
+    expect(es).toContain('Empezar un proyecto'); // chrome strings (es)
+    for (const path of ['es/trabajos', 'es/servicios', 'es/servicios/diseno-web', 'es/servicios/precios', 'es/nosotros', 'es/nosotros/empleo', 'es/contacto', 'es/preguntas-frecuentes', 'es/privacidad', 'es/aviso-legal', 'es/tienda', 'es/blog/por-que-ganan-los-sitios-estaticos']) {
+      expect((await client.get(`/sites/${slug}/${path}/index.html`)).statusCode, path).toBe(200);
+    }
+    const contacto = await page('es/contacto/index.html');
+    expect(contacto).toContain(`data-sw-endpoint="/f/${projectId}/contact-es"`);
+    expect(contacto).toContain('>Enviar consulta</button>');
+    const tienda = await page('es/tienda/index.html');
+    expect(tienda).toContain('data-cart-title="Su carrito"');
+    expect(tienda).toContain('Camiseta del estudio'); // products-es
+  });
+
+  it('emits the full hreflang trio + a three-flag switcher on translated pages', async () => {
+    const html = await page('services/index.html');
+    expect(html).toContain('<link rel="alternate" hreflang="en" href="https://northwind.example/services/" />');
+    expect(html).toContain('<link rel="alternate" hreflang="de" href="https://northwind.example/de/leistungen/" />');
+    expect(html).toContain('<link rel="alternate" hreflang="es" href="https://northwind.example/es/servicios/" />');
+    expect(html).toContain('<link rel="alternate" hreflang="x-default" href="https://northwind.example/services/" />');
+    expect(html).toMatch(/<svg[^>]*aria-label="United Kingdom"/);
+    expect(html).toMatch(/<svg[^>]*aria-label="Germany"/);
+    expect(html).toMatch(/<svg[^>]*aria-label="Spain"/);
+  });
+
   it('renders the rich nav link placeholder with its translated label', async () => {
     const en = await page('index.html');
     expect(en).toContain('Free site audit');
     const de = await page('de/index.html');
     expect(de).toContain('Gratis Site-Check');
+    const es = await page('es/index.html');
+    expect(es).toContain('Auditoría gratis');
   });
 });

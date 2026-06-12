@@ -140,6 +140,142 @@ function avatarTile(a: string, b: string, w = 480, h = 480): string {
 </svg>`;
 }
 
+/** A whiteboard/meeting scene: a board with sketch shapes, two chairs, a side table. */
+function meetingScene(p: Palette, w = 800, h = 600): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+  <rect width="${w}" height="${h}" fill="${p.base}"/>
+  <rect x="${w / 2 - 240}" y="60" width="480" height="300" rx="14" fill="#ffffff" stroke="${p.ink}" stroke-opacity="0.15" stroke-width="3"/>
+  <rect x="${w / 2 - 200}" y="100" width="180" height="16" rx="8" fill="${p.accent}" fill-opacity="0.8"/>
+  <rect x="${w / 2 - 200}" y="136" width="240" height="10" rx="5" fill="${p.ink}" fill-opacity="0.3"/>
+  <rect x="${w / 2 - 200}" y="156" width="210" height="10" rx="5" fill="${p.ink}" fill-opacity="0.3"/>
+  <circle cx="${w / 2 + 120}" cy="160" r="48" fill="${p.accent2}" fill-opacity="0.4"/>
+  <path d="M ${w / 2 + 96} 172 l 18 -26 l 14 14 l 22 -30" stroke="${p.accent}" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="${w / 2 - 200}" y="220" width="120" height="90" rx="10" fill="${p.accent2}" fill-opacity="0.25"/>
+  <rect x="${w / 2 - 60}" y="220" width="120" height="90" rx="10" fill="${p.accent}" fill-opacity="0.2"/>
+  <rect x="0" y="${h - 90}" width="${w}" height="90" fill="${p.ink}" fill-opacity="0.08"/>
+  <rect x="${w / 2 - 300}" y="${h - 200}" width="90" height="110" rx="12" fill="${p.accent}" fill-opacity="0.55"/>
+  <rect x="${w / 2 + 210}" y="${h - 200}" width="90" height="110" rx="12" fill="${p.accent2}" fill-opacity="0.55"/>
+</svg>`;
+}
+
+/** A moodboard wall: pinned swatches and type cards in the brand palette. */
+function moodboardScene(p: Palette, w = 800, h = 600): string {
+  const cards = [
+    { x: 70, y: 70, w: 180, h: 130, f: p.accent, o: 0.85 },
+    { x: 280, y: 90, w: 140, h: 180, f: p.accent2, o: 0.7 },
+    { x: 450, y: 60, w: 200, h: 120, f: p.ink, o: 0.8 },
+    { x: 90, y: 240, w: 150, h: 170, f: p.accent2, o: 0.35 },
+    { x: 300, y: 300, w: 200, h: 130, f: p.accent, o: 0.4 },
+    { x: 530, y: 220, w: 160, h: 200, f: p.accent, o: 0.6 },
+  ];
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+  <rect width="${w}" height="${h}" fill="${p.base}"/>
+  ${cards
+    .map(
+      (c) =>
+        `<g><rect x="${c.x + 5}" y="${c.y + 7}" width="${c.w}" height="${c.h}" rx="10" fill="${p.ink}" fill-opacity="0.12"/>` +
+        `<rect x="${c.x}" y="${c.y}" width="${c.w}" height="${c.h}" rx="10" fill="${c.f}" fill-opacity="${c.o}"/>` +
+        `<circle cx="${c.x + c.w / 2}" cy="${c.y}" r="6" fill="${p.ink}" fill-opacity="0.5"/></g>`,
+    )
+    .join('')}
+  <rect x="120" y="470" width="${w - 240}" height="14" rx="7" fill="${p.ink}" fill-opacity="0.25"/>
+</svg>`;
+}
+
+/** A close-up desk still life: keyboard, notebook, coffee — flat shapes. */
+function deskDetailScene(p: Palette, w = 800, h = 600): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+  <rect width="${w}" height="${h}" fill="${p.panel}"/>
+  <rect width="${w}" height="${h}" fill="${p.accent2}" fill-opacity="0.08"/>
+  <g transform="translate(80 120) rotate(-4)">
+    <rect width="380" height="150" rx="14" fill="${p.ink}"/>
+    ${Array.from({ length: 4 }, (_, r) => Array.from({ length: 10 }, (_, c) => `<rect x="${16 + c * 35}" y="${16 + r * 33}" width="28" height="26" rx="6" fill="#ffffff" fill-opacity="0.14"/>`).join('')).join('')}
+  </g>
+  <g transform="translate(520 100) rotate(6)">
+    <rect width="190" height="250" rx="10" fill="#ffffff" stroke="${p.accent}" stroke-opacity="0.4" stroke-width="3"/>
+    <line x1="24" y1="52" x2="166" y2="52" stroke="${p.ink}" stroke-opacity="0.3" stroke-width="6" stroke-linecap="round"/>
+    <line x1="24" y1="92" x2="150" y2="92" stroke="${p.ink}" stroke-opacity="0.2" stroke-width="6" stroke-linecap="round"/>
+    <line x1="24" y1="132" x2="160" y2="132" stroke="${p.ink}" stroke-opacity="0.2" stroke-width="6" stroke-linecap="round"/>
+    <circle cx="60" cy="195" r="22" fill="${p.accent}" fill-opacity="0.7"/>
+  </g>
+  <g transform="translate(330 380)">
+    <ellipse cx="70" cy="120" rx="78" ry="14" fill="${p.ink}" fill-opacity="0.12"/>
+    <rect x="20" y="20" width="100" height="100" rx="14" fill="${p.accent}"/>
+    <path d="M 120 45 q 44 8 0 52" stroke="${p.accent}" stroke-width="12" fill="none"/>
+    <ellipse cx="70" cy="22" rx="50" ry="12" fill="${p.ink}" fill-opacity="0.5"/>
+  </g>
+</svg>`;
+}
+
+/** An abstract blog cover: brand gradient + a per-topic geometric motif (shapes only). */
+function blogCover(p: Palette, motif: 'speed' | 'design' | 'seo', w = 960, h = 540): string {
+  let art = '';
+  if (motif === 'speed') {
+    art = [0, 1, 2]
+      .map((i) => `<path d="M ${220 + i * 160} 160 l 120 110 l -120 110" stroke="#ffffff" stroke-opacity="${0.9 - i * 0.25}" stroke-width="34" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`)
+      .join('');
+  } else if (motif === 'design') {
+    art = [0, 1, 2]
+      .map((r) => [0, 1, 2, 3].map((c) => `<rect x="${280 + c * 110}" y="${120 + r * 110}" width="86" height="86" rx="${(r + c) % 2 ? 43 : 14}" fill="#ffffff" fill-opacity="${0.25 + ((r + c) % 3) * 0.25}"/>`).join(''))
+      .join('');
+  } else {
+    art =
+      `<circle cx="430" cy="250" r="110" fill="none" stroke="#ffffff" stroke-opacity="0.9" stroke-width="26"/>` +
+      `<line x1="515" y1="335" x2="640" y2="455" stroke="#ffffff" stroke-opacity="0.9" stroke-width="30" stroke-linecap="round"/>` +
+      [0, 1, 2].map((i) => `<rect x="${360 + i * 50}" y="${290 - i * 55}" width="32" height="${55 + i * 55}" rx="8" fill="#ffffff" fill-opacity="0.65"/>`).join('');
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+  <defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="${p.accent}"/><stop offset="1" stop-color="${p.accent2}"/>
+  </linearGradient></defs>
+  <rect width="${w}" height="${h}" fill="url(#bg)"/>
+  <rect width="${w}" height="${h}" fill="${p.ink}" fill-opacity="0.15"/>
+  ${art}
+</svg>`;
+}
+
+/** A flat product tile for the MINI SHOP: soft backdrop + a simple merch silhouette. */
+function productTile(p: Palette, item: 'tee' | 'mug' | 'notebook' | 'poster' | 'stickers' | 'cap', w = 640, h = 640): string {
+  const white = '#ffffff';
+  const shapes: Record<string, string> = {
+    tee:
+      `<path d="M 200 200 l 80 -50 q 40 26 80 0 l 80 50 l -36 70 l -34 -18 l 0 168 l -100 0 l 0 -168 l -34 18 Z" fill="${white}"/>` +
+      `<circle cx="320" cy="300" r="26" fill="${p.accent}" fill-opacity="0.85"/>`,
+    mug:
+      `<rect x="220" y="210" width="170" height="200" rx="20" fill="${white}"/>` +
+      `<path d="M 390 250 q 70 10 0 110" stroke="${white}" stroke-width="26" fill="none"/>` +
+      `<rect x="250" y="250" width="110" height="16" rx="8" fill="${p.accent}" fill-opacity="0.8"/>`,
+    notebook:
+      `<rect x="210" y="180" width="220" height="280" rx="14" fill="${white}"/>` +
+      `<rect x="210" y="180" width="36" height="280" rx="14" fill="${p.accent}" fill-opacity="0.85"/>` +
+      Array.from({ length: 5 }, (_, r) => Array.from({ length: 6 }, (_, c) => `<circle cx="${280 + c * 26}" cy="${230 + r * 40}" r="3.5" fill="${p.ink}" fill-opacity="0.35"/>`).join('')).join(''),
+    poster:
+      `<rect x="220" y="150" width="200" height="300" rx="6" fill="${white}"/>` +
+      `<rect x="246" y="190" width="148" height="60" rx="8" fill="${p.accent}" fill-opacity="0.85"/>` +
+      `<rect x="246" y="270" width="120" height="14" rx="7" fill="${p.ink}" fill-opacity="0.4"/>` +
+      `<rect x="246" y="300" width="148" height="14" rx="7" fill="${p.ink}" fill-opacity="0.3"/>` +
+      `<rect x="246" y="330" width="96" height="14" rx="7" fill="${p.ink}" fill-opacity="0.2"/>`,
+    stickers:
+      `<circle cx="260" cy="250" r="60" fill="${white}"/><circle cx="260" cy="250" r="34" fill="${p.accent}" fill-opacity="0.85"/>` +
+      `<rect x="330" y="200" width="110" height="100" rx="22" fill="${white}" transform="rotate(8 385 250)"/>` +
+      `<path d="M 350 230 l 24 -34 l 24 34 l -16 0 l 0 30 l -16 0 l 0 -30 Z" fill="${p.accent2}" transform="rotate(8 385 250)"/>` +
+      `<rect x="250" y="340" width="150" height="80" rx="40" fill="${white}" transform="rotate(-6 325 380)"/>` +
+      `<circle cx="300" cy="380" r="18" fill="${p.accent2}" fill-opacity="0.8"/><circle cx="350" cy="378" r="18" fill="${p.accent}" fill-opacity="0.7"/>`,
+    cap:
+      `<path d="M 210 330 a 110 105 0 0 1 220 0 Z" fill="${white}"/>` +
+      `<path d="M 210 330 q 110 36 220 0 l 0 22 q -110 38 -220 0 Z" fill="${white}" fill-opacity="0.85"/>` +
+      `<path d="M 425 330 q 70 -4 86 28 q -50 22 -92 6" fill="${p.accent}" fill-opacity="0.8"/>` +
+      `<circle cx="320" cy="280" r="20" fill="${p.accent}" fill-opacity="0.85"/>`,
+  };
+  // eslint-disable-next-line security/detect-object-injection -- item is a compile-time literal union
+  const art = shapes[item] ?? '';
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+  <rect width="${w}" height="${h}" fill="${p.base}"/>
+  <circle cx="${w / 2}" cy="${h / 2}" r="225" fill="${p.accent2}" fill-opacity="0.16"/>
+  <g transform="translate(0 10)">${art}</g>
+</svg>`;
+}
+
 // Brand palettes — one per demo client, plus the studio's own indigo→sky.
 const BRAND: Palette = { base: '#eef2ff', panel: '#ffffff', accent: '#4f46e5', accent2: '#0ea5e9', ink: '#1e1b4b' };
 const P = {
@@ -161,7 +297,8 @@ interface AssetSpec {
   svg: string;
 }
 
-/** The 12 demo assets: 6 project mockups, 4 team tiles, a hero + a studio scene. */
+/** The 25 demo assets: 6 project mockups, 4 team tiles, hero + studio scenes, a 4-shot Studio/
+ * gallery (for the {{#sw-folder}} demo), 3 blog covers, and 6 MINI SHOP product tiles. */
 function specs(): AssetSpec[] {
   const proj = (key: keyof typeof P, alt: string): AssetSpec => ({
     key: `proj-${key}`,
@@ -194,6 +331,22 @@ function specs(): AssetSpec[] {
     team('sol', '#7c3aed', '#ec4899'),
     { key: 'hero', id: 'ex-hero', folder: 'Brand', alt: 'A recent Northwind website in progress', w: 1000, h: 720, svg: heroScene(BRAND) },
     { key: 'studio', id: 'ex-studio', folder: 'Brand', alt: 'The Northwind studio', w: 800, h: 700, svg: studioScene(BRAND) },
+    // Studio/ — the About page's {{#sw-folder}} gallery (alt text renders as the lightbox caption).
+    { key: 'studio-desk', id: 'ex-studio-desk', folder: 'Studio', alt: 'A quiet corner of the studio', w: 800, h: 700, svg: studioScene(BRAND) },
+    { key: 'studio-meeting', id: 'ex-studio-meeting', folder: 'Studio', alt: 'Sketching flows at the whiteboard', w: 800, h: 600, svg: meetingScene(BRAND) },
+    { key: 'studio-wall', id: 'ex-studio-wall', folder: 'Studio', alt: 'The moodboard wall, mid-project', w: 800, h: 600, svg: moodboardScene(BRAND) },
+    { key: 'studio-detail', id: 'ex-studio-detail', folder: 'Studio', alt: 'Tools of the trade', w: 800, h: 600, svg: deskDetailScene(BRAND) },
+    // Blog/ — abstract covers, one motif per article topic.
+    { key: 'blog-speed', id: 'ex-blog-speed', folder: 'Blog', alt: 'Speed — abstract cover', w: 960, h: 540, svg: blogCover(BRAND, 'speed') },
+    { key: 'blog-design', id: 'ex-blog-design', folder: 'Blog', alt: 'Design systems — abstract cover', w: 960, h: 540, svg: blogCover(BRAND, 'design') },
+    { key: 'blog-seo', id: 'ex-blog-seo', folder: 'Blog', alt: 'SEO — abstract cover', w: 960, h: 540, svg: blogCover(BRAND, 'seo') },
+    // Products/ — MINI SHOP merch tiles.
+    { key: 'prod-tee', id: 'ex-prod-tee', folder: 'Products', alt: 'Studio Tee', w: 640, h: 640, svg: productTile(BRAND, 'tee') },
+    { key: 'prod-mug', id: 'ex-prod-mug', folder: 'Products', alt: 'Ceramic Mug', w: 640, h: 640, svg: productTile(BRAND, 'mug') },
+    { key: 'prod-notebook', id: 'ex-prod-notebook', folder: 'Products', alt: 'Dot-grid Notebook', w: 640, h: 640, svg: productTile(BRAND, 'notebook') },
+    { key: 'prod-poster', id: 'ex-prod-poster', folder: 'Products', alt: 'Type Poster', w: 640, h: 640, svg: productTile(BRAND, 'poster') },
+    { key: 'prod-stickers', id: 'ex-prod-stickers', folder: 'Products', alt: 'Sticker Pack', w: 640, h: 640, svg: productTile(BRAND, 'stickers') },
+    { key: 'prod-cap', id: 'ex-prod-cap', folder: 'Products', alt: 'Dad Cap', w: 640, h: 640, svg: productTile(BRAND, 'cap') },
   ];
 }
 

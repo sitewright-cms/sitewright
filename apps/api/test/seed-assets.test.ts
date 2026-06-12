@@ -37,7 +37,7 @@ describe('seedExampleAssets', () => {
     vi.clearAllMocks();
   });
 
-  it('generates 12 local images in 3 folders + a schema-valid url map', async () => {
+  it('generates 25 local images in 6 folders + a schema-valid url map', async () => {
     const puts: Array<{ kind: string; id: string; val: unknown }> = [];
     const repo = {
       put: async (_c: unknown, kind: string, id: string, val: unknown) => {
@@ -50,18 +50,21 @@ describe('seedExampleAssets', () => {
 
     const urls = await seedExampleAssets(ctx, slug, repo, new MediaStorage(root));
 
-    expect(Object.keys(urls)).toHaveLength(12);
+    expect(Object.keys(urls)).toHaveLength(25);
     expect(urls['proj-harbor']).toMatch(/^\/media\/example\/ex-proj-harbor\/[\w-]+\.jpg$/);
     expect(urls['team-devon']).toBeDefined();
     expect(urls['hero']).toBeDefined();
     expect(urls['studio']).toBeDefined();
+    expect(urls['studio-meeting']).toBeDefined(); // the About {{#sw-folder}} gallery
+    expect(urls['blog-speed']).toBeDefined(); // blog covers
+    expect(urls['prod-cap']).toBeDefined(); // MINI SHOP product tiles
 
-    expect(puts.filter((p) => p.kind === 'media')).toHaveLength(12);
+    expect(puts.filter((p) => p.kind === 'media')).toHaveLength(25);
     const folders = puts
       .filter((p) => p.kind === 'mediafolder')
       .map((p) => (p.val as { path: string }).path)
       .sort();
-    expect(folders).toEqual(['Brand', 'Projects', 'Team']);
+    expect(folders).toEqual(['Blog', 'Brand', 'Products', 'Projects', 'Studio', 'Team']);
 
     const harbor = puts.find((p) => p.id === 'ex-proj-harbor')!.val as { kind: string; variants: unknown[]; folder: string };
     expect(harbor.kind).toBe('image');
@@ -87,7 +90,7 @@ describe('seedExampleAssets', () => {
     }) as typeof storage.remove;
 
     const urls = await seedExampleAssets(ctx, slug, repo, storage);
-    expect(Object.keys(urls)).toHaveLength(11); // the failed one is absent
+    expect(Object.keys(urls)).toHaveLength(24); // the failed one is absent
     expect(removed).toBeGreaterThanOrEqual(1); // its half-written dir was removed
   });
 });

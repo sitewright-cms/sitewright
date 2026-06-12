@@ -16,6 +16,7 @@ import {
   EXAMPLE_DATASETS,
   exampleEntries,
   EXAMPLE_FORMS,
+  EXAMPLE_SETTINGS,
 } from './seed/index.js';
 
 /** The built-in first-boot admin identity (override with SW_ADMIN_EMAIL). */
@@ -130,9 +131,10 @@ export async function seedInstance({ db, adminEmail, adminPassword, mediaRoot, l
   await contentRepo.put(ctx, 'settings', 'settings', {
     identity: typography ? { ...EXAMPLE_IDENTITY, typography } : EXAMPLE_IDENTITY,
     website: EXAMPLE_WEBSITE,
-    // Bilingual demo (English default + German): the showcase includes `/de` locale-variant
-    // pages linked by `translationGroup`, a `services-de` dataset, and a language switcher.
-    settings: { defaultLocale: 'en', locales: ['en', 'de'] },
+    // Multilingual demo: the FULL site exists per locale as inherit-mode variants (shared code,
+    // translated page.data + localized slugs/datasets/forms/chrome strings) with hreflang + a
+    // language switcher. EXAMPLE_SETTINGS keeps tests and the seed in lockstep.
+    settings: EXAMPLE_SETTINGS,
   });
   // CMS: dataset schemas + their entries (services / work / team / testimonials), then the
   // contact form, then the pages (which bind the datasets via `{{#each data.<slug>}}` and host the

@@ -37,6 +37,12 @@ describe('keyedDatasets', () => {
   it('does not false-match `item` after a hyphen, word char, or dot', () => {
     expect(keyedDatasets('<div class="nav-item.services">x</div>', data)).toEqual({});
     expect(keyedDatasets('{{data.item.services}}', data)).toEqual({});
+  });
+
+  it('builds the map for the explicit @root.item.<dataset> form (keyed lookups inside {{#each}} scopes)', () => {
+    const out = keyedDatasets("{{#each data.roles}}{{#with (lookup @root.item.services manager)}}{{title}}{{/with}}{{/each}}", data);
+    expect(Object.keys(out)).toEqual(['services']);
+    expect(keyedDatasets('{{data.item.services}}', data)).toEqual({});
     expect(keyedDatasets('xitem.services', data)).toEqual({});
   });
 });

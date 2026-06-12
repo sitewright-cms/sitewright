@@ -73,8 +73,9 @@ export const GLOBAL_TEMPLATES: readonly Template[] = [
     <a class="card bg-base-100 shadow-sm transition hover:shadow-md" href="{{sw-url path}}">
       {{#if data.article_image}}<figure><img src="{{sw-url data.article_image}}" alt="{{title}}" class="aspect-video w-full object-cover"></figure>{{/if}}
       <div class="card-body">
+        {{#if data.article_date}}<time class="text-xs text-base-content/40">{{sw-date data.article_date}}</time>{{/if}}
         <h2 class="card-title">{{title}}</h2>
-        <p class="text-sm text-base-content/60">{{data.article_excerpt}}</p>
+        <p class="text-sm text-base-content/60">{{sw-truncate data.article_excerpt 120}}</p>
       </div>
     </a>
     {{/each}}
@@ -113,7 +114,7 @@ export const GLOBAL_TEMPLATES: readonly Template[] = [
     </div>
     {{/each}}
   </div>
-  {{sw-cart}}
+  {{sw-cart title=(lookup page.data "cart_title") note=(lookup page.data "cart_note") added=(lookup page.data "cart_added") empty=(lookup page.data "cart_empty") subtotal=(lookup page.data "cart_subtotal") clear=(lookup page.data "cart_clear") sent=(lookup page.data "cart_sent")}}
 </section>`,
     data: {
       heading: 'Shop',

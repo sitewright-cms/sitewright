@@ -152,6 +152,27 @@ describe('renderTemplate — Handlebars features', () => {
   });
 });
 
+describe('{{sw-rich}} — sanitized richtext output', () => {
+  it('renders stored HTML through the data-sw-html sanitizer (tags kept, scripts/handlers stripped)', () => {
+    const ctx = { data: { faq: [{ id: 'f1', dataset: 'faq', status: 'published', values: { a: '<p>Hi <strong>there</strong></p><script>alert(1)</script><img src="x" onerror="alert(1)">' } }] } } as TemplateContext;
+    const out = renderTemplate('{{#each data.faq}}<div>{{sw-rich a}}</div>{{/each}}', ctx);
+    expect(out).toContain('<p>Hi <strong>there</strong></p>');
+    expect(out).not.toContain('<script');
+    expect(out).not.toContain('onerror');
+  });
+  it('renders nothing for non-strings and empty strings', () => {
+    expect(renderTemplate('<div>{{sw-rich page.data.x}}</div>', { page: { data: { x: 42 } } })).toBe('<div></div>');
+    expect(renderTemplate('<div>{{sw-rich page.missing}}</div>', {})).toBe('<div></div>');
+    expect(renderTemplate('<div>{{sw-rich page.data.x}}</div>', { page: { data: { x: '' } } })).toBe('<div></div>');
+  });
+  it('strips data-sw-* directive attributes from richtext (no downstream form/html-sink injection)', () => {
+    const html = '<p data-sw-form="contact" data-sw-html="key" data-sw-component="x">safe</p>';
+    const out = renderTemplate('<div>{{sw-rich page.data.v}}</div>', { page: { data: { v: html } } });
+    expect(out).toBe('<div><p>safe</p></div>');
+    expect(out).not.toContain('data-sw-');
+  });
+});
+
 describe('renderTemplate — curated helpers (extensibility)', () => {
   it('{{sw-date}} formats a date (default + iso)', () => {
     expect(renderTemplate('{{sw-date page.published}}', ctx)).toBe('2026-06-01');

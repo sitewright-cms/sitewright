@@ -362,6 +362,9 @@ export function componentTypesInSource(html: string | null | undefined): string[
   // scan must catch the reference itself. Anchored to the two real spellings (helper call /
   // attribute), so prose or a future `sw-format` helper doesn't over-ship the Form assets.
   if (/(?:\{\{\s*|data-)sw-form\b/.test(html)) seen.add('Form');
+  // The Accordion is native-<details>, CSS-only — it carries no `data-sw-component` marker, only
+  // the `data-sw-block="Accordion…"` styling hooks, so a code-first source needs its own check.
+  if (html.includes('data-sw-block="Accordion')) seen.add('Accordion');
   return [...seen];
 }
 

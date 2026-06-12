@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -6,6 +6,7 @@ import { makeHarness, type Harness, type TestClient } from './harness.js';
 import {
   EXAMPLE_IDENTITY,
   EXAMPLE_WEBSITE,
+  EXAMPLE_SETTINGS,
   examplePages,
   EXAMPLE_DATASETS,
   exampleEntries,
@@ -17,135 +18,209 @@ const EXAMPLE_PAGES = examplePages({});
 const EXAMPLE_ENTRIES = exampleEntries({});
 
 /**
- * End-to-end guard for the SEEDED German showcase: pushes the real demo content
- * (identity, datasets, German `services-de` entries, the `/de` locale-variant pages,
- * the language-switcher topNav) through the actual publish pipeline and asserts the
- * exported German pages carry `<html lang="de">`, the localized dataset, hreflang,
- * and a working switcher — so a future edit to the demo can't silently break the
- * multilingual story it exists to showcase.
+ * End-to-end guard for the SEEDED flagship showcase: pushes the real demo content through the
+ * actual publish pipeline ONCE (a single import + publish — the seed is large now) and asserts
+ * the exported site carries the multilingual story it exists to demonstrate — inherit-mode
+ * German pages (shared code, translated data), localized slugs/datasets/forms/chrome, hreflang,
+ * the flag switcher — plus the feature showcases (carousel/tabs/lightbox/modal/accordion/
+ * cookie-consent/data-aos/form embed) and the sitemap/noindex behavior of the legal pages.
  */
-describe('seeded demo — German multilingual showcase publishes correctly', () => {
+describe('seeded demo — flagship multilingual showcase publishes correctly', () => {
   let harness: Harness;
   let client: TestClient;
   let projectId: string;
   const slug = 'example';
   let publishRoot: string;
   let mediaRoot: string;
+  const page = async (path: string): Promise<string> => {
+    const res = await client.get(`/sites/${slug}/${path}`);
+    expect(res.statusCode, path).toBe(200);
+    return res.body;
+  };
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     publishRoot = await mkdtemp(join(tmpdir(), 'sw-seed-sites-'));
     mediaRoot = await mkdtemp(join(tmpdir(), 'sw-seed-media-'));
     harness = await makeHarness({ publishRoot, mediaRoot });
     client = await harness.signup();
     projectId = await client.createProject('Example Project', slug);
-
     const proj = client.project(projectId);
-    // Mirror seed.ts (plus a siteUrl, so hreflang is emitted), then load every seed artifact.
-    await proj.putContent('settings', 'settings', {
-      identity: EXAMPLE_IDENTITY,
-      website: { ...EXAMPLE_WEBSITE, siteUrl: 'https://northwind.example' },
-      settings: { defaultLocale: 'en', locales: ['en', 'de'] },
+    // ONE bundle import (the per-entity PUT loop would trip the per-route rate limit at this
+    // size), mirroring seed.ts plus a siteUrl so hreflang/sitemap are emitted. Forms are not
+    // part of the bundle schema — two PUTs.
+    const res = await client.post(`${proj.base}/import`, {
+      project: {
+        identity: EXAMPLE_IDENTITY,
+        website: { ...EXAMPLE_WEBSITE, siteUrl: 'https://northwind.example' },
+        settings: EXAMPLE_SETTINGS,
+      },
+      pages: EXAMPLE_PAGES,
+      datasets: EXAMPLE_DATASETS,
+      entries: EXAMPLE_ENTRIES,
     });
-    for (const dataset of EXAMPLE_DATASETS) {
-      expect((await proj.putContent('dataset', dataset.id, dataset)).statusCode, dataset.id).toBe(200);
-    }
-    for (const entry of EXAMPLE_ENTRIES) {
-      expect((await proj.putContent('entry', entry.id, entry)).statusCode, entry.id).toBe(200);
-    }
+    expect(res.statusCode).toBe(200);
     for (const form of EXAMPLE_FORMS) {
       expect((await proj.putContent('form', form.id, form)).statusCode, form.id).toBe(200);
     }
-    for (const page of EXAMPLE_PAGES) {
-      expect((await proj.putContent('page', page.id, page)).statusCode, page.id).toBe(200);
-    }
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
-  });
+  }, 120_000);
 
-  afterEach(async () => {
+  afterAll(async () => {
     await harness.close();
     await rm(publishRoot, { recursive: true, force: true });
     await rm(mediaRoot, { recursive: true, force: true });
   });
 
-  it('renders the English home at the root with English service data', async () => {
-    const en = await client.get(`/sites/${slug}/index.html`);
-    expect(en.statusCode).toBe(200);
-    expect(en.body).toContain('<html lang="en">');
-    expect(en.body).toContain('Web Design'); // services (base) dataset
-    expect(en.body).not.toContain('Webdesign'); // not the German variant
+  it('renders the English home at the root with English service data and localized chrome', async () => {
+    const en = await page('index.html');
+    expect(en).toContain('<html lang="en">');
+    expect(en).toContain('Web Design'); // services (base) dataset
+    expect(en).not.toContain('Webdesign'); // not the German variant
+    expect(en).toContain('Start a project'); // chrome strings (en)
+    expect(en).not.toContain('Projekt starten');
   });
 
-  it('publishes the content-only blog: the overview lists its articles, each article renders its page.data', async () => {
-    // The overview page (global:blog-overview) lists its article children via {{#each page.children}}.
-    const overview = await client.get(`/sites/${slug}/blog/index.html`);
-    expect(overview.statusCode).toBe(200);
-    expect(overview.body).toContain('Why static sites win on speed'); // a child page title
-    expect(overview.body).toContain('Design systems that scale');
-    expect(overview.body).toContain('why-static-sites-win'); // {{sw-url path}} link to the child route
-    expect(overview.body).not.toContain('data-sw-text'); // directive markers stripped on publish
-    // An article page (global:blog-article) renders its page.data via data-sw-*="data.*" leaves.
-    const article = await client.get(`/sites/${slug}/blog/why-static-sites-win/index.html`);
-    expect(article.statusCode).toBe(200);
-    expect(article.body).toContain('Why static sites win on speed'); // data.article_title (escaped text)
-    expect(article.body).toContain('Every millisecond of load time'); // data.article_body (sanitized html)
-    expect(article.body).not.toContain('data-sw-html'); // markers stripped on publish
+  it('renders the German home at /de from the SAME inherited code with translated data + datasets + chrome', async () => {
+    const de = await page('de/index.html');
+    expect(de).toContain('<html lang="de">'); // page.locale drives <html lang>
+    expect(de).toContain('Websites, die Ihnen mehr Geschäft'); // page.data override (inherit-mode)
+    expect(de).toContain('Webdesign'); // data.services auto-resolved → services-de
+    expect(de).not.toContain('Web Design');
+    // INHERIT proof: a structural marker unique to the EN home source renders in German too.
+    expect(de).toContain('data-sw-component="carousel"');
+    expect(de).toContain('Projekt starten'); // chrome strings (de)
+    // The spotlight keyed lookup resolved the GERMAN entry (page.data.spotlight → proj-harbor-de).
+    expect(de).toContain('genussgetriebener Shop');
   });
 
-  it('renders the German home at /de with lang=de and the localized service data', async () => {
-    const de = await client.get(`/sites/${slug}/de/index.html`);
-    expect(de.statusCode).toBe(200);
-    expect(de.body).toContain('<html lang="de">'); // page.locale drives <html lang>
-    expect(de.body).toContain('Websites, die Ihnen mehr Geschäft'); // German hero
-    expect(de.body).toContain('Webdesign'); // data.services auto-resolved → services-de
-    expect(de.body).not.toContain('Web Design');
+  it('publishes the localized German slugs through the in-locale parent chain', async () => {
+    for (const path of ['de/arbeiten', 'de/leistungen', 'de/leistungen/webdesign', 'de/leistungen/preise', 'de/ueber-uns', 'de/ueber-uns/karriere', 'de/kontakt', 'de/faq', 'de/datenschutz', 'de/impressum', 'de/blog', 'de/blog/warum-statische-websites-gewinnen']) {
+      expect((await client.get(`/sites/${slug}/${path}/index.html`)).statusCode, path).toBe(200);
+    }
+    const services = await page('de/leistungen/index.html');
+    expect(services).toContain('Strategie &amp; UX'); // services-de entries
+    expect(services).toContain('Wartungspakete');
   });
 
-  it('renders the German Services page at /de/leistungen (slug + parent chain) from the services-de dataset', async () => {
-    // The German Services page has slug `leistungen` and parents to the German home (`de`),
-    // so its computed route is /de/leistungen (the localized URL).
-    const de = await client.get(`/sites/${slug}/de/leistungen/index.html`);
-    expect(de.statusCode).toBe(200);
-    expect(de.body).toContain('<html lang="de">');
-    expect(de.body).toContain('Strategie &amp; UX'); // German service title (HTML-escaped &)
-    expect(de.body).toContain('Wartungspakete');
+  it('embeds the locale\'s own form on the contact pages ({{sw-form}} suffix resolution)', async () => {
+    const en = await page('contact/index.html');
+    expect(en).toContain(`data-sw-endpoint="/f/${projectId}/contact"`);
+    expect(en).toContain('>Send enquiry</button>');
+    expect(en).toContain('name="_hpt"'); // honeypot injected
+    expect(en).not.toContain('hello@northwindstudio.com</p>'); // recipient never rendered as content
+    const de = await page('de/kontakt/index.html');
+    expect(de).toContain(`data-sw-endpoint="/f/${projectId}/contact-de"`);
+    expect(de).toContain('>Anfrage senden</button>');
+    expect(de).toContain('Erzählen Sie uns von Ihrem Projekt'); // translated field label
   });
 
-  it('nests the service sub-pages under Services (page tree → nav dropdown + own routes)', async () => {
-    // The sub-pages publish at their nested paths.
-    const wd = await client.get(`/sites/${slug}/services/web-design/index.html`);
-    expect(wd.statusCode).toBe(200);
-    expect(wd.body).toContain('Web Design');
-    expect((await client.get(`/sites/${slug}/services/seo/index.html`)).statusCode).toBe(200);
-    // Services has dropdown:true → the nav renders it as a CSS hover dropdown whose PARENT stays a
-    // real link (clickable to /services) with its children (Web Design, SEO & Performance) nested —
-    // proving the parent/child tree is wired AND the parent remains navigable.
-    const home = (await client.get(`/sites/${slug}/index.html`)).body;
-    expect(home).toContain('dropdown-hover');
-    expect(home).toMatch(/href="[^"]*services[^"]*"[^>]*>\s*Services/); // parent is a clickable link, not a toggle
-    expect(home).toContain('Web Design');
-    expect(home).toContain('SEO &amp; Performance');
+  it('showcases the first-party components: carousel, tabs, lightbox, modal, accordion, data-aos', async () => {
+    const home = await page('index.html');
+    expect(home).toContain('data-sw-component="carousel"');
+    expect(home).toContain('data-aos="fade-up"');
+    expect(home).toContain('components.js'); // only-used-ships runtime linked
+    expect(home).toContain('data-src'); // lazy-loaded hero (bare attr when the test's asset map is empty)
+    expect(home).toContain('lazyload.js'); // its runtime ships (only-used-ships)
+    const pricing = await page('services/pricing/index.html');
+    expect(pricing).toContain('data-sw-component="tabs"');
+    expect(pricing).toContain('data-sw-title="Project work"');
+    expect(pricing).toContain('$4800'); // plans dataset (number price)
+    const work = await page('work/index.html');
+    expect(work).toContain('data-sw-component="lightbox"');
+    const contact = await page('contact/index.html');
+    expect(contact).toContain('data-sw-component="modal"');
+    expect(contact).toContain('<dialog');
+    const faq = await page('faq/index.html');
+    expect(faq).toContain('data-sw-block="AccordionItem"');
+    expect(faq).toContain('<strong>4–8 weeks</strong>'); // {{sw-rich}} kept the sanitized markup
+    const deFaq = await page('de/faq/index.html');
+    expect(deFaq).toContain('<strong>4–8 Wochen</strong>'); // faq-de dataset auto-resolved
   });
 
-  it('emits hreflang alternates + x-default for the linked home/services groups', async () => {
-    const de = (await client.get(`/sites/${slug}/de/index.html`)).body;
-    expect(de).toContain('<link rel="alternate" hreflang="en" href="https://northwind.example/" />');
-    expect(de).toContain('<link rel="alternate" hreflang="de" href="https://northwind.example/de/" />');
-    expect(de).toContain('<link rel="alternate" hreflang="x-default" href="https://northwind.example/" />');
+  it('renders the careers page from every dataset field type (select/boolean/date/richtext/reference)', async () => {
+    const en = await page('about/careers/index.html');
+    expect(en).toContain('Senior Product Designer');
+    expect(en).toContain('Remote OK'); // boolean badge via page.data label
+    expect(en).toContain('<time>2026-05-18</time>'); // {{sw-date posted}}
+    expect(en).toContain('Mara Whitfield'); // manager REFERENCE via keyed item.team lookup
+    const de = await page('de/ueber-uns/karriere/index.html');
+    expect(de).toContain('Senior Product Designer (m/w/d)'); // roles-de
+    expect(de).toContain('Remote möglich');
+    expect(de).toContain('Gründerin &amp; Design-Direktorin'); // manager resolved within team-de
   });
 
-  it('shows the language switcher (page.translations) on grouped pages and hides it elsewhere', async () => {
-    // The home is grouped → the switcher renders both locale links.
-    const en = (await client.get(`/sites/${slug}/index.html`)).body;
+  it('localizes the site chrome from one shared source (cookie banner, footer columns, mobile nav)', async () => {
+    const en = await page('index.html');
+    expect(en).toContain('data-sw-component="cookie-consent"');
+    expect(en).toContain('OK, got it');
+    expect(en).toContain('>Legal<'); // footer Legal column heading
+    expect(en).toMatch(/aria-label="Menu"/); // mobile slot hamburger
+    const de = await page('de/index.html');
+    expect(de).toContain('Alles klar'); // cookie banner (de)
+    expect(de).toContain('>Rechtliches<');
+    expect(de).toMatch(/aria-label="Menü"/);
+    expect(de).toContain('Datenschutz'); // the Legal column lists the German legal pages
+  });
+
+  it('emits hreflang alternates + x-default for every translated page', async () => {
+    for (const [path, en, de] of [
+      ['de/index.html', '/', '/de/'],
+      ['services/index.html', '/services/', '/de/leistungen/'],
+    ] as const) {
+      const html = await page(path);
+      expect(html).toContain(`<link rel="alternate" hreflang="en" href="https://northwind.example${en}" />`);
+      expect(html).toContain(`<link rel="alternate" hreflang="de" href="https://northwind.example${de}" />`);
+      expect(html).toContain(`<link rel="alternate" hreflang="x-default" href="https://northwind.example${en}" />`);
+    }
+  });
+
+  it('shows the flag language switcher on every page (the whole site is translated)', async () => {
+    const en = await page('index.html');
     expect(en).toContain('aria-label="Language"');
-    // The switcher link is a REAL link, rebased page-relative (from the root: "/de" → "de").
-    expect(en).toContain('href="de"'); // points at the German home, portably
-    expect(en).toMatch(/hreflang="de"[^>]*>.*>de</); // switcher link (flag svg precedes the "de" label)
-    // The switcher shows COUNTRY FLAGS via the website.data.locale_flags map (en→gb, de→de),
-    // looked up per locale with @root inside {{#each}} — proving the flag-switcher showcase renders.
-    expect(en).toMatch(/<svg[^>]*aria-label="Germany"/); // de → 🇩🇪
-    expect(en).toMatch(/<svg[^>]*aria-label="United Kingdom"/); // en → gb flag
-    // The About page is English-only (ungrouped) → no switcher.
-    const about = (await client.get(`/sites/${slug}/about/index.html`)).body;
-    expect(about).not.toContain('aria-label="Language"');
+    expect(en).toContain('href="de"'); // the German home, rebased page-relative
+    expect(en).toMatch(/<svg[^>]*aria-label="Germany"/);
+    expect(en).toMatch(/<svg[^>]*aria-label="United Kingdom"/);
+    const deAbout = await page('de/ueber-uns/index.html');
+    expect(deAbout).toContain('aria-label="Sprache"'); // localized switcher label
+  });
+
+  it('keeps the noindex legal pages out of the sitemap but includes the localized routes', async () => {
+    const sitemap = (await client.get(`/sites/${slug}/sitemap.xml`)).body;
+    expect(sitemap).toContain('https://northwind.example/de/leistungen/preise/');
+    expect(sitemap).toContain('https://northwind.example/about/careers/');
+    expect(sitemap).not.toContain('/privacy/');
+    expect(sitemap).not.toContain('/impressum/');
+    const privacy = await page('privacy/index.html');
+    expect(privacy).toContain('noindex');
+  });
+
+  it('publishes the content-only blog with dated, truncated overview cards in both locales', async () => {
+    const en = await page('blog/index.html');
+    expect(en).toContain('Why static sites win on speed');
+    expect(en).toContain('<time class="text-xs text-base-content/40">2026-05-28</time>');
+    expect(en).not.toContain('data-sw-text'); // markers stripped on publish
+    const article = await page('blog/why-static-sites-win/index.html');
+    expect(article).toContain('Every millisecond of load time');
+    const de = await page('de/blog/index.html');
+    expect(de).toContain('Warum statische Websites beim Tempo gewinnen');
+    const deArticle = await page('de/blog/warum-statische-websites-gewinnen/index.html');
+    expect(deArticle).toContain('Jede Millisekunde Ladezeit kostet Besucher');
+  });
+
+  it('localizes the shop drawer via the {{sw-cart}} page.data hooks', async () => {
+    const en = await page('shop/index.html');
+    expect(en).toContain('data-cart-title="Your cart"');
+    expect(en).toContain('Studio Tee'); // products (en)
+    const de = await page('de/shop/index.html');
+    expect(de).toContain('data-cart-title="Warenkorb"');
+    expect(de).toContain('data-empty-label="Ihr Warenkorb ist leer."');
+    expect(de).toContain('Studio-Shirt'); // products-de auto-resolved
+  });
+
+  it('renders the rich nav link placeholder with its translated label', async () => {
+    const en = await page('index.html');
+    expect(en).toContain('Free site audit');
+    const de = await page('de/index.html');
+    expect(de).toContain('Gratis Site-Check');
   });
 });

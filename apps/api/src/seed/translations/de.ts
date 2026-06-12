@@ -124,6 +124,7 @@ export function translationsDe(assets: Record<string, string>): Record<string, P
       pr_faq: 'FAQ lesen',
       tab_projects: 'Projektarbeit',
       tab_care: 'Wartungspakete',
+      pr_badge: 'Am beliebtesten',
       href_contact: '/de/kontakt',
       href_faq: '/de/faq',
     },

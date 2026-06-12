@@ -101,14 +101,19 @@ export async function seedInstance({ db, adminEmail, adminPassword, mediaRoot, l
   const entries = exampleEntries(assets);
   const pages = examplePages(assets);
 
-  // Showcase typography: self-host a Google heading font (Playfair Display) as a `kind:'font'`
-  // library asset so the demo ships with a real webfont (visible + manageable in Assets), not just a
-  // system stack. BEST-EFFORT (same rationale as the imagery): a fetch failure / no MEDIA_ROOT just
-  // leaves the schema-default serif heading. The body keeps the default sans-serif/400.
-  let typography: CorporateIdentity['typography'] | undefined;
+  // Showcase typography: self-host a Google heading font (Space Grotesk — geometric, confident,
+  // and a match for the studio brand) as a `kind:'font'` library asset so the demo ships with a
+  // real webfont (visible + manageable in Assets), not just a system stack. BEST-EFFORT (same
+  // rationale as the imagery): a fetch failure / no MEDIA_ROOT falls back to a DELIBERATE bold
+  // system sans — never the schema-default serif, which reads as unstyled on Linux/Windows.
+  // The body keeps the default sans-serif/400.
+  let typography: CorporateIdentity['typography'] = {
+    fontFamilies: {},
+    heading: { source: 'system', family: 'sans-serif', weight: 700 },
+  };
   if (mediaRoot) {
     try {
-      const dl = await downloadGoogleFont('Playfair Display', [700]);
+      const dl = await downloadGoogleFont('Space Grotesk', [500, 700]);
       const asset = await createFontAsset(contentRepo, new MediaStorage(mediaRoot), ctx, project.slug, {
         family: dl.family,
         fallback: dl.fallback,
@@ -123,13 +128,13 @@ export async function seedInstance({ db, adminEmail, adminPassword, mediaRoot, l
     } catch (err) {
       log(
         `[sitewright/seed] WARNING: demo Google-font download failed (${err instanceof Error ? err.message : String(err)}); ` +
-          `seeding the Example Project with the default serif heading.`,
+          `seeding the Example Project with a system sans heading instead.`,
       );
     }
   }
 
   await contentRepo.put(ctx, 'settings', 'settings', {
-    identity: typography ? { ...EXAMPLE_IDENTITY, typography } : EXAMPLE_IDENTITY,
+    identity: { ...EXAMPLE_IDENTITY, typography },
     website: EXAMPLE_WEBSITE,
     // Multilingual demo: the FULL site exists per locale as inherit-mode variants (shared code,
     // translated page.data + localized slugs/datasets/forms/chrome strings) with hreflang + a

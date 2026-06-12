@@ -29,6 +29,7 @@ const SPECS: DatasetSpec[] = [
   {
     id: 'services',
     name: { en: 'Services', de: 'Leistungen (DE)' },
+    // `icon` is a Lucide icon NAME (rendered via {{sw-icon icon}}), not an emoji glyph.
     fields: [text('icon'), text('title', true), text('summary'), text('price')],
   },
   {
@@ -65,6 +66,9 @@ const SPECS: DatasetSpec[] = [
     fields: [
       text('name', true),
       { name: 'price', type: 'number', required: true, localized: false },
+      // The locale-formatted price STRING the pricing cards display ('$4,800' / '4.800 $') —
+      // `price` stays the raw number (the number-field demo; machine-readable for sorting).
+      text('display'),
       text('period'),
       { name: 'monthly', type: 'boolean', required: false, localized: false },
       { name: 'featured', type: 'boolean', required: false, localized: false },

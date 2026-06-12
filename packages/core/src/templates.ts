@@ -65,17 +65,17 @@ export const GLOBAL_TEMPLATES: readonly Template[] = [
     // child's flattened fields + its own page.data (excerpt). The two headings are editable leaves.
     id: 'global:blog-overview',
     name: 'Blog overview (global)',
-    source: `<section class="mx-auto max-w-5xl px-6 py-16">
-  <h1 class="mb-2 text-4xl font-bold" data-sw-text="data.heading">From the blog</h1>
-  <p class="mb-10 text-base-content/60" data-sw-text="data.intro">News, guides, and updates.</p>
-  <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+    source: `<section class="mx-auto max-w-5xl px-6 py-20">
+  <h1 class="mb-3 text-4xl font-bold tracking-tight sm:text-5xl" data-sw-text="data.heading">From the blog</h1>
+  <p class="mb-12 max-w-2xl text-lg text-base-content/60" data-sw-text="data.intro">News, guides, and updates.</p>
+  <div class="grid gap-7 sm:grid-cols-2 lg:grid-cols-3">
     {{#each page.children}}
-    <a class="card bg-base-100 shadow-sm transition hover:shadow-md" href="{{sw-url path}}">
-      {{#if data.article_image}}<figure><img src="{{sw-url data.article_image}}" alt="{{title}}" class="aspect-video w-full object-cover"></figure>{{/if}}
+    <a class="card group overflow-hidden border border-base-200 bg-base-100 no-underline shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/30 hover:shadow-xl" href="{{sw-url path}}">
+      {{#if data.article_image}}<figure class="overflow-hidden"><img src="{{sw-url data.article_image}}" alt="{{title}}" class="aspect-video w-full object-cover transition-transform duration-500 group-hover:scale-105"></figure>{{/if}}
       <div class="card-body">
-        {{#if data.article_date}}<time class="text-xs text-base-content/40">{{sw-date data.article_date}}</time>{{/if}}
-        <h2 class="card-title">{{title}}</h2>
-        <p class="text-sm text-base-content/60">{{sw-truncate data.article_excerpt 120}}</p>
+        {{#if data.article_date}}<time class="font-mono text-xs text-base-content/40">{{sw-date data.article_date}}</time>{{/if}}
+        <h2 class="card-title tracking-tight">{{title}}</h2>
+        <p class="text-sm leading-relaxed text-base-content/60">{{sw-truncate data.article_excerpt 120}}</p>
       </div>
     </a>
     {{/each}}
@@ -94,21 +94,21 @@ export const GLOBAL_TEMPLATES: readonly Template[] = [
     // NON-AUTHORITATIVE (a front-end inquiry). The two headings are editable page.data leaves.
     id: 'global:shop',
     name: 'Shop (global)',
-    source: `<section class="mx-auto max-w-6xl px-6 py-16">
-  <header class="mb-12 text-center">
-    <h1 class="text-4xl font-bold sm:text-5xl" data-sw-text="data.heading">Shop</h1>
-    <p class="mx-auto mt-3 max-w-xl text-base-content/60" data-sw-text="data.intro">Browse our products and build your order.</p>
+    source: `<section class="mx-auto max-w-6xl px-6 py-20">
+  <header class="mb-14 text-center">
+    <h1 class="text-4xl font-bold tracking-tight sm:text-5xl" data-sw-text="data.heading">Shop</h1>
+    <p class="mx-auto mt-4 max-w-xl text-lg text-base-content/60" data-sw-text="data.intro">Browse our products and build your order.</p>
   </header>
-  <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+  <div class="grid gap-7 sm:grid-cols-2 lg:grid-cols-3">
     {{#each data.products}}
-    <div class="card overflow-hidden bg-base-100 shadow-sm transition hover:shadow-md">
-      {{#if image}}<figure class="aspect-square overflow-hidden bg-base-200"><img src="{{sw-url image}}" alt="{{name}}" class="h-full w-full object-cover transition duration-500 hover:scale-105"></figure>{{/if}}
+    <div class="card group overflow-hidden border border-base-200 bg-base-100 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/30 hover:shadow-xl">
+      {{#if image}}<figure class="aspect-square overflow-hidden bg-base-200"><img src="{{sw-url image}}" alt="{{name}}" class="h-full w-full object-cover transition duration-500 group-hover:scale-105"></figure>{{/if}}
       <div class="card-body gap-2">
-        <h2 class="card-title text-base">{{name}}</h2>
-        <p class="text-sm text-base-content/60">{{description}}</p>
-        <div class="mt-1 flex items-center justify-between gap-3">
-          <span class="text-xl font-bold">{{@root.website.shop.currency.symbol}}{{price}}</span>
-          {{sw-add-to-cart sku=sku name=name price=price image=image class="btn btn-primary btn-sm"}}
+        <h2 class="card-title text-base tracking-tight">{{name}}</h2>
+        <p class="text-sm leading-relaxed text-base-content/60">{{description}}</p>
+        <div class="mt-2 flex items-center justify-between gap-3">
+          <span class="text-xl font-bold tracking-tight">{{@root.website.shop.currency.symbol}}{{price}}</span>
+          {{sw-add-to-cart sku=sku name=name price=price image=image class="btn btn-primary btn-sm rounded-full px-4"}}
         </div>
       </div>
     </div>

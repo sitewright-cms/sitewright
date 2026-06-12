@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { X, GripVertical } from 'lucide-react';
 import { detectSocial } from '@sitewright/schema';
 import { glassInput, ghostButton } from '../../theme';
 import { newSocial, type KeyedSocial } from './model';
@@ -54,7 +55,7 @@ export function SocialProfilesEditor({ rows, onChange }: { rows: KeyedSocial[]; 
           className={`flex items-center gap-2 rounded-lg ${dragId === r.id ? 'opacity-50' : ''}`}
         >
           <span aria-hidden className="cursor-grab select-none px-1 text-slate-400" title="Drag to reorder">
-            ⠿
+            <GripVertical className="h-4 w-4" />
           </span>
           <input
             aria-label={`Social URL ${i + 1}`}
@@ -83,7 +84,7 @@ export function SocialProfilesEditor({ rows, onChange }: { rows: KeyedSocial[]; 
             onClick={() => onChange(rows.filter((x) => x.id !== r.id))}
             className="shrink-0 rounded-md px-2 py-1 text-slate-400 transition hover:bg-red-50 hover:text-red-600"
           >
-            ✕
+            <X className="h-4 w-4" />
           </button>
         </div>
       ))}

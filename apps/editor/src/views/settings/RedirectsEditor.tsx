@@ -1,4 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react';
+import { ArrowRight, X } from 'lucide-react';
 import { glassInput, ghostButton } from '../../theme';
 import { newRedirect, type KeyedRedirect } from './model';
 
@@ -27,7 +28,7 @@ export function RedirectsEditor({ rows, onChange }: { rows: KeyedRedirect[]; onC
               placeholder="/old-path"
               onChange={(e) => set(r.id, { from: e.target.value })}
             />
-            <span className="text-slate-400">→</span>
+            <ArrowRight className="h-3.5 w-3.5 shrink-0 text-slate-400" />
             <input
               aria-label={`Redirect to ${i + 1}`}
               className={glassInput}
@@ -53,7 +54,7 @@ export function RedirectsEditor({ rows, onChange }: { rows: KeyedRedirect[]; onC
               onClick={() => onChange(rows.filter((x) => x.id !== r.id))}
               className="shrink-0 rounded-md px-2 py-1 text-slate-400 transition hover:bg-red-50 hover:text-red-600"
             >
-              ✕
+              <X className="h-4 w-4" />
             </button>
           </motion.div>
         ))}

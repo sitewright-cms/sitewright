@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { ExternalLink } from 'lucide-react';
 import { api, type Project, type SettingsBundle } from '../../api';
 import { Modal } from '../ui/Modal';
 import { useToast } from '../ui/Toast';
@@ -182,7 +183,7 @@ export function PublishDeployModal({
                         Copy
                       </button>
                       <a className={`${ghostButton} px-2 py-1.5 text-xs`} href={tokenUrl} target="_blank" rel="noreferrer">
-                        Open ↗
+                        Open <ExternalLink className="inline h-3.5 w-3.5" />
                       </a>
                       <button className={`${ghostButton} px-2 py-1.5 text-xs`} onClick={() => setPreviewToken(generateToken())}>
                         Regenerate

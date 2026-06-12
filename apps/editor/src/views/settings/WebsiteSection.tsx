@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { NAV_EFFECTS, BUTTON_EFFECTS, type JsonValue, type NavEffect, type ButtonEffect } from '@sitewright/schema';
 import { newStr, type Patch, type SettingsForm } from './model';
 import { Field, GlassCard, SubLabel } from './ui';
+import { Globe, Sparkles, Paintbrush, Code, Braces, PanelTop, Smartphone, PanelLeft, PanelRight, PanelBottom, ArrowDownToLine, Signpost, ShoppingCart, Languages } from 'lucide-react';
 import { CodeField } from '../ui/CodeField';
 import { RedirectsEditor } from './RedirectsEditor';
 import { ShopChannelsEditor } from './ShopChannelsEditor';
@@ -46,7 +47,7 @@ export function WebsiteSection({
   );
   return (
     <motion.div variants={cardStagger} className="grid gap-4 sm:grid-cols-2">
-      <GlassCard title="Site" icon="🌐" wide>
+      <GlassCard title="Site" icon={<Globe className="h-4 w-4" />} wide>
         <Field
           label="Production URL (for sitemap.xml + robots.txt)"
           value={form.siteUrl}
@@ -84,7 +85,7 @@ export function WebsiteSection({
         />
       )}
 
-      <GlassCard title="Nav & button effects" icon="✨" wide>
+      <GlassCard title="Nav & button effects" icon={<Sparkles className="h-4 w-4" />} wide>
         <p className="mb-3 text-xs text-slate-400">
           CI-themed, contrast-safe hover/active schemes, applied site-wide (no code). The current nav
           item is highlighted where you mark it <code>.active</code>. Want your own? Leave these
@@ -127,7 +128,7 @@ export function WebsiteSection({
         </div>
       </GlassCard>
 
-      <GlassCard title="Critical CSS" icon="◐" wide>
+      <GlassCard title="Critical CSS" icon={<Paintbrush className="h-4 w-4" />} wide>
         <CodeField
           label="Project-wide CSS inlined in <head> (after brand tokens)"
           title="Critical CSS"
@@ -138,7 +139,7 @@ export function WebsiteSection({
         />
       </GlassCard>
 
-      <GlassCard title="Head HTML" icon="⟨⟩">
+      <GlassCard title="Head HTML" icon={<Code className="h-4 w-4" />}>
         <CodeField
           label="Raw HTML injected into <head> (analytics, meta)"
           title="Head HTML"
@@ -148,7 +149,7 @@ export function WebsiteSection({
         />
       </GlassCard>
 
-      <GlassCard title="Scripts" icon="⟨/⟩">
+      <GlassCard title="Scripts" icon={<Braces className="h-4 w-4" />}>
         <CodeField
           label="Raw HTML injected after the page body (3rd-party scripts/widgets)"
           title="Scripts"
@@ -169,7 +170,7 @@ export function WebsiteSection({
         </p>
       </motion.div>
 
-      <GlassCard title="Top navigation" icon="≡">
+      <GlassCard title="Top navigation" icon={<PanelTop className="h-4 w-4" />}>
         <CodeField
           label="topNav — top of every page"
           title="topNav partial"
@@ -180,7 +181,7 @@ export function WebsiteSection({
         />
       </GlassCard>
 
-      <GlassCard title="Mobile navigation" icon="☰">
+      <GlassCard title="Mobile navigation" icon={<Smartphone className="h-4 w-4" />}>
         <CodeField
           label="mobileNav — after topNav"
           title="mobileNav partial"
@@ -191,7 +192,7 @@ export function WebsiteSection({
         />
       </GlassCard>
 
-      <GlassCard title="Left sidebar" icon="◧">
+      <GlassCard title="Left sidebar" icon={<PanelLeft className="h-4 w-4" />}>
         <CodeField
           label="sidebarLeft — after the page body (position via classes)"
           title="sidebarLeft partial"
@@ -202,7 +203,7 @@ export function WebsiteSection({
         />
       </GlassCard>
 
-      <GlassCard title="Right sidebar" icon="◨">
+      <GlassCard title="Right sidebar" icon={<PanelRight className="h-4 w-4" />}>
         <CodeField
           label="sidebarRight — after the page body (position via classes)"
           title="sidebarRight partial"
@@ -213,7 +214,7 @@ export function WebsiteSection({
         />
       </GlassCard>
 
-      <GlassCard title="Footer" icon="▁">
+      <GlassCard title="Footer" icon={<PanelBottom className="h-4 w-4" />}>
         <CodeField
           label="footer — below body + sidebars"
           title="footer partial"
@@ -224,7 +225,7 @@ export function WebsiteSection({
         />
       </GlassCard>
 
-      <GlassCard title="Bottom" icon="▾">
+      <GlassCard title="Bottom" icon={<ArrowDownToLine className="h-4 w-4" />}>
         <CodeField
           label="bottom — after the footer (global modals, schema.org microdata)"
           title="bottom partial"
@@ -235,12 +236,12 @@ export function WebsiteSection({
         />
       </GlassCard>
 
-      <GlassCard title="Redirects" icon="↪" wide>
+      <GlassCard title="Redirects" icon={<Signpost className="h-4 w-4" />} wide>
         <p className="mb-2 text-xs text-slate-500">Emitted to <code>.htaccess</code> + <code>_redirects</code> on publish.</p>
         <RedirectsEditor rows={form.redirects} onChange={(redirects) => patch({ redirects })} />
       </GlassCard>
 
-      <GlassCard title="Shop" icon="🛒" wide>
+      <GlassCard title="Shop" icon={<ShoppingCart className="h-4 w-4" />} wide>
         <p className="mb-3 text-xs text-slate-500">
           A front-end cart for static sites: drop <code>{'{{sw-cart}}'}</code> + <code>{'{{sw-add-to-cart …}}'}</code> in a page (or use the{' '}
           <code>global:shop</code> template), and the cart submits an order through the channels below. Prices are{' '}
@@ -282,7 +283,7 @@ export function WebsiteSection({
         </div>
       </GlassCard>
 
-      <GlassCard title="Localization" icon="🗺" wide>
+      <GlassCard title="Localization" icon={<Languages className="h-4 w-4" />} wide>
         <LocaleManager
           projectId={projectId}
           locales={localeCodes}

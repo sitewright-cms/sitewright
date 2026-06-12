@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { X } from 'lucide-react';
 import type { JsonValue } from '@sitewright/schema';
 import { Modal } from '../ui/Modal';
 import { ghostButton, glassInput, primaryButton } from '../../theme';
@@ -137,7 +138,7 @@ function ObjectEditor({ obj, onChange }: { obj: Record<string, JsonValue>; onCha
         <div key={k} className="flex flex-col gap-1 rounded-lg bg-white/60 p-2">
           <div className="flex items-center gap-2">
             <KeyField value={k} onCommit={(nk) => rename(k, nk)} />
-            <button type="button" aria-label={`Remove ${k}`} onClick={() => removeKey(k)} className={miniBtn}>✕</button>
+            <button type="button" aria-label={`Remove ${k}`} onClick={() => removeKey(k)} className={miniBtn}><X className="h-4 w-4" /></button>
           </div>
           <ValueEditor value={v} onChange={(nv) => setKeyVal(k, nv)} />
         </div>
@@ -154,7 +155,7 @@ function ArrayEditor({ arr, onChange }: { arr: JsonValue[]; onChange: (v: JsonVa
         <div key={i} className="flex flex-col gap-1 rounded-lg bg-white/60 p-2">
           <div className="flex items-center gap-2">
             <span className="font-mono text-xs text-slate-400">[{i}]</span>
-            <button type="button" aria-label={`Remove item ${i}`} onClick={() => onChange(arr.filter((_, j) => j !== i))} className={miniBtn}>✕</button>
+            <button type="button" aria-label={`Remove item ${i}`} onClick={() => onChange(arr.filter((_, j) => j !== i))} className={miniBtn}><X className="h-4 w-4" /></button>
           </div>
           <ValueEditor value={item} onChange={(nv) => onChange(arr.map((x, j) => (j === i ? nv : x)))} />
         </div>

@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { Check } from 'lucide-react';
 import type { Invite } from '../api';
 import { useToast } from './ui/Toast';
 import { useDialogs } from './ui/Dialogs';
@@ -92,7 +93,7 @@ export function InvitePanel({ kind, invites, onInvite, onRevoke, onChanged }: In
               className="rounded border border-amber-400 px-2 py-0.5 text-xs text-amber-800 hover:bg-amber-100"
               onClick={() => copy(link.url)}
             >
-              {copied ? 'Copied ✓' : 'Copy link'}
+              {copied ? <span className="inline-flex items-center gap-1"><Check className="h-3.5 w-3.5" /> Copied</span> : 'Copy link'}
             </button>
             <button className="text-xs text-amber-700 underline" onClick={() => setLink(null)}>
               Dismiss

@@ -1,3 +1,4 @@
+import { Check, Circle } from 'lucide-react';
 import { PASSWORD_RULES } from '@sitewright/schema';
 
 interface PasswordRequirementsProps {
@@ -25,8 +26,8 @@ export function PasswordRequirements({ value, className }: PasswordRequirementsP
             data-met={met ? 'true' : 'false'}
             className={!touched ? 'text-slate-400' : met ? 'text-emerald-600' : 'text-slate-500'}
           >
-            <span aria-hidden="true" className="mr-1.5 inline-block w-3 text-center">
-              {touched && met ? '✓' : '○'}
+            <span aria-hidden="true" className="mr-1.5 inline-flex w-3 justify-center">
+              {touched && met ? <Check className="h-3.5 w-3.5" /> : <Circle className="h-3 w-3" />}
             </span>
             {rule.label}
             <span className="sr-only"> — {touched && met ? 'met' : 'not met'}</span>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Circle } from 'lucide-react';
 import { api, eventsUrl, previewDocUrl } from '../api';
 import type { LiveTarget } from '../lib/live-target';
 import { PreviewPane } from './editor/PreviewPane';
@@ -66,8 +67,9 @@ export function LivePreview({ target }: LivePreviewProps) {
     <div className="flex h-screen flex-col">
       <div className={`m-2 mb-0 flex items-center gap-2 px-4 py-2.5 text-xs ${glassPanel}`}>
         <span className="font-bold tracking-tight text-slate-800">Live preview</span>
-        <span className={connected ? 'text-emerald-600' : 'text-slate-400'} aria-label="connection status">
-          {connected ? '● live' : '○ connecting…'}
+        <span className={`inline-flex items-center gap-1 ${connected ? 'text-emerald-600' : 'text-slate-400'}`} aria-label="connection status">
+          <Circle className="h-2.5 w-2.5" fill={connected ? 'currentColor' : 'none'} />
+          {connected ? 'live' : 'connecting…'}
         </span>
         <span className="ml-auto text-slate-400">{pageId}</span>
       </div>

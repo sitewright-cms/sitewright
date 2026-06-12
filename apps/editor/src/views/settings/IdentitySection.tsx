@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import type { Patch, SettingsForm } from './model';
 import { api, type MediaAsset } from '../../api';
 import { Field, FieldButton, GlassCard, SubLabel, TextArea } from './ui';
+import { Building2, Palette, Type, Images, Mail, Share2 } from 'lucide-react';
 import { BrandColorsEditor } from './BrandColorsEditor';
 import { SocialProfilesEditor } from './SocialProfilesEditor';
 import { FontSlotEditor } from './FontSlotEditor';
@@ -47,7 +48,7 @@ export function IdentitySection({ form, patch, projectId }: { form: SettingsForm
     // Single column: every section is full container width; a section may still use 2 columns
     // INTERNALLY (e.g. the address grid below). A `cardStagger` container so the cards cascade in.
     <motion.div variants={cardStagger} className="flex flex-col gap-4">
-      <GlassCard title="Identity" icon="◆">
+      <GlassCard title="Identity" icon={<Building2 className="h-4 w-4" />}>
         <div className="flex flex-col gap-3">
           <Field label="Display name" value={form.name} onChange={(v) => patch({ name: v })} placeholder="Acme" required />
           <div className="grid grid-cols-2 gap-3">
@@ -64,7 +65,7 @@ export function IdentitySection({ form, patch, projectId }: { form: SettingsForm
         </div>
       </GlassCard>
 
-      <GlassCard title="Brand colors" icon="✦">
+      <GlassCard title="Brand colors" icon={<Palette className="h-4 w-4" />}>
         <p className="mb-3 text-xs text-slate-500">
           The six core colors below always exist and can’t be removed — they theme every page (and any
           DaisyUI components) automatically. Use them as <code className="rounded bg-slate-100 px-1 py-0.5">bg-primary</code>,{' '}
@@ -73,7 +74,7 @@ export function IdentitySection({ form, patch, projectId }: { form: SettingsForm
         <BrandColorsEditor rows={form.colors} onChange={(colors) => patch({ colors })} />
       </GlassCard>
 
-      <GlassCard title="Typography" icon="◐">
+      <GlassCard title="Typography" icon={<Type className="h-4 w-4" />}>
         <p className="mb-3 text-xs text-slate-500">
           The heading and body fonts applied across every page — in the editor preview and the
           published site. Use them anywhere with the <code className="rounded bg-slate-100 px-1 py-0.5">font-heading</code>{' '}
@@ -112,7 +113,7 @@ export function IdentitySection({ form, patch, projectId }: { form: SettingsForm
         />
       </GlassCard>
 
-      <GlassCard title="Logos & images" icon="▣">
+      <GlassCard title="Logos & images" icon={<Images className="h-4 w-4" />}>
         <div className="grid grid-cols-2 gap-3">
           <AssetField label="Logo" value={form.logo} onChange={(v) => patch({ logo: v })} projectId={projectId} placeholder="/logo.svg" />
           <AssetField label="Favicon" value={form.favicon} onChange={(v) => patch({ favicon: v })} projectId={projectId} placeholder="/favicon.ico" />
@@ -123,7 +124,7 @@ export function IdentitySection({ form, patch, projectId }: { form: SettingsForm
         </div>
       </GlassCard>
 
-      <GlassCard title="Contact & location" icon="✉">
+      <GlassCard title="Contact & location" icon={<Mail className="h-4 w-4" />}>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Email" value={form.email} onChange={(v) => patch({ email: v })} type="email" placeholder="hi@acme.com" />
           <Field label="Telephone" value={form.telephone} onChange={(v) => patch({ telephone: v })} placeholder="+1 555 0100" />
@@ -168,7 +169,7 @@ export function IdentitySection({ form, patch, projectId }: { form: SettingsForm
         </p>
       </GlassCard>
 
-      <GlassCard title="Social profiles" icon="🜨">
+      <GlassCard title="Social profiles" icon={<Share2 className="h-4 w-4" />}>
         <p className="mb-2 text-xs text-slate-500">
           Drag to reorder. Entering a URL auto-fills the name + icon (e.g. a WhatsApp link → “WhatsApp”);
           both are editable. Use them in templates with{' '}

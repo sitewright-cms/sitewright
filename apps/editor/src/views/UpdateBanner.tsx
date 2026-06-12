@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { X } from 'lucide-react';
 import { api } from '../api';
 
 /** Pull-based update notice: shows a dismissible banner when a newer release exists. */
@@ -43,7 +44,7 @@ export function UpdateBanner() {
         className="rounded px-1 text-amber-700 hover:text-amber-950"
         onClick={() => setDismissed(true)}
       >
-        ✕
+        <X className="h-4 w-4" />
       </button>
     </div>
   );

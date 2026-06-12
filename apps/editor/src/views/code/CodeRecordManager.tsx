@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { X, Check } from 'lucide-react';
 import { CodeEditorModal } from '../ui/CodeEditorModal';
 import { useDialogs } from '../ui/Dialogs';
 import { useToast } from '../ui/Toast';
@@ -214,18 +215,18 @@ export function CodeRecordManager({ projectId, noun, load, save, remove, makeId,
             Edit
           </button>
           <button className="px-1.5 text-xs text-slate-400 transition hover:text-rose-600" aria-label={`Delete ${r.name}`} onClick={() => void del(r, scope)}>
-            ✕
+            <X className="h-4 w-4" />
           </button>
         </>
       ) : (
         <>
           {includeRef && (
             <button className={`${ghostButton} px-2 py-1 font-mono text-[11px]`} aria-label={`Copy ${includeRef(r)}`} title={`Copy ${includeRef(r)}`} onClick={() => copy(includeRef(r), `inc-${r.id}`)}>
-              {copiedId === `inc-${r.id}` ? '✓' : '{{>}}'}
+              {copiedId === `inc-${r.id}` ? <Check className="h-3.5 w-3.5" /> : '{{>}}'}
             </button>
           )}
           <button className={`${ghostButton} px-2 py-1 text-[11px]`} aria-label={`Copy ${r.name} source`} title="Copy source" onClick={() => copy(r.source, `src-${r.id}`)}>
-            {copiedId === `src-${r.id}` ? '✓' : 'Source'}
+            {copiedId === `src-${r.id}` ? <Check className="h-3.5 w-3.5" /> : 'Source'}
           </button>
         </>
       )}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { MoreHorizontal, ExternalLink } from 'lucide-react';
 import { api, eventsUrl, type Project, type Release } from '../api';
 import { AgentDetailsModal } from './AgentDetailsModal';
 import { AgentIndicator } from './AgentIndicator';
@@ -250,7 +251,7 @@ export function PublishBar({
               onClick={() => setMenuOpen((o) => !o)}
               className="cursor-pointer rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-600 hover:border-slate-400"
             >
-              ⋯
+              <MoreHorizontal className="h-4 w-4" />
             </button>
             {menuOpen && (
               <div
@@ -266,7 +267,7 @@ export function PublishBar({
                     aria-label="View published site"
                     className="block cursor-pointer px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
                   >
-                    View site ↗
+                    View site <ExternalLink className="ml-0.5 inline h-3.5 w-3.5" />
                   </a>
                 )}
                 <a

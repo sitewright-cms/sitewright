@@ -184,6 +184,24 @@ describe('extractClassNames', () => {
     expect(extractClassNames('')).toHaveLength(0);
   });
 
+  it('extracts the class argument of {{sw-icon}} and {{sw-flag}} helper calls', () => {
+    const classes = extractClassNames(
+      '<button>{{sw-icon "chevron-left" "size-6 drop-shadow-lg"}}</button>' +
+        "<span>{{sw-flag 'de' 'size-4 rounded'}}</span>",
+    );
+    expect(classes).toEqual(expect.arrayContaining(['size-6', 'drop-shadow-lg', 'size-4', 'rounded']));
+  });
+
+  it('ignores {{sw-icon}} calls without a class argument', () => {
+    expect(extractClassNames('{{sw-icon "x"}}')).toHaveLength(0);
+  });
+
+  it('handles mixed quote styles across the two helper arguments', () => {
+    expect(extractClassNames('{{sw-icon \'menu\' "size-5 shrink-0"}}')).toEqual(
+      expect.arrayContaining(['size-5', 'shrink-0']),
+    );
+  });
+
   it('caps the result at max tokens (default MAX_EXTRACTED_CLASS_TOKENS)', () => {
     // Build a source with more than max unique classes
     const src = Array.from({ length: MAX_EXTRACTED_CLASS_TOKENS + 10 }, (_, i) => `c${i}`).join(' ');

@@ -85,16 +85,33 @@ export const MAX_EXTRACTED_CLASS_TOKENS = 2048;
  * spike Tailwind's compiler. Real pages use far fewer than the cap.
  */
 export function extractClassNames(html: string, max: number = MAX_EXTRACTED_CLASS_TOKENS): string[] {
-  const re = /class\s*=\s*"([^"]*)"|class\s*=\s*'([^']*)'/g;
+  const attrRe = /class\s*=\s*"([^"]*)"|class\s*=\s*'([^']*)'/g;
+  // {{sw-icon "name" "classes"}} / {{sw-flag "cc" "classes"}}: the helpers emit their second
+  // argument as the svg's class attribute at RENDER time. A source-level scan must read it
+  // here too, or icon utility classes (the catalog's own `{{sw-icon "chevron-left" "size-6"}}`
+  // pattern) never reach the compiled sheet and icons render unsized.
+  // (Helpers with `class="…"` HASH args — sw-form, sw-add-to-cart — are already caught by
+  // attrRe's plain text scan. KNOWN GAP: classes inside pre-rendered DATA values, e.g. nav
+  // labelHtml from decorateNav, are invisible to any source scan; nav icons use stock
+  // classes referenced elsewhere, so this has no practical effect today.)
+  // The two loops run sequentially under ONE shared token cap — a cap-saturating page keeps
+  // the existing attr-first priority; the cap bounds compiler work, not completeness.
+  const helperRe = /\{\{\s*sw-(?:icon|flag)\s+(?:"[^"]*"|'[^']*')\s+(?:"([^"]*)"|'([^']*)')/g;
   const tokens = new Set<string>();
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(html)) !== null) {
-    const value = (m[1] ?? m[2] ?? '').replace(/\{\{[^}]*\}\}/g, ' ');
-    for (const token of value.split(/\s+/)) {
+  const full = (value: string): boolean => {
+    for (const token of value.replace(/\{\{[^}]*\}\}/g, ' ').split(/\s+/)) {
       if (!token) continue;
       tokens.add(token);
-      if (tokens.size >= max) return [...tokens];
+      if (tokens.size >= max) return true;
     }
+    return false;
+  };
+  let m: RegExpExecArray | null;
+  while ((m = attrRe.exec(html)) !== null) {
+    if (full(m[1] ?? m[2] ?? '')) return [...tokens];
+  }
+  while ((m = helperRe.exec(html)) !== null) {
+    if (full(m[1] ?? m[2] ?? '')) return [...tokens];
   }
   return [...tokens];
 }

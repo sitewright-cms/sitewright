@@ -58,11 +58,16 @@ const CAROUSEL_CSS = [
   // BEFORE the runtime marks the root enhanced — a late gate would measure every slide
   // stretched to the tallest. The container only exists once the runtime creates it.
   '[data-sw-block="Carousel"][data-autoheight="true"] [data-sw-part="container"]{align-items:flex-start;transition:height .25s ease}',
-  // Press-ripple containment ("waves"): the runtime adds .sw-waves to arrows/dots (and
-  // slides in click-to-slide mode). MUST come BEFORE the default control placement below —
-  // all these rules are zero-specificity :where(), so source order decides, and the arrows'
-  // default position:absolute has to win over this relative fallback.
-  ':where([data-sw-block="Carousel"] .sw-waves){position:relative;overflow:hidden}',
+  // Press-ripple anchoring ("waves"): the runtime adds .sw-waves to arrows/dots (and to the
+  // ROOT in click-to-slide mode). Deliberately overflow:VISIBLE on controls — the unbounded
+  // Material ripple travels past small buttons/dots. MUST come BEFORE the default control
+  // placement below — all these rules are zero-specificity :where(), so source order decides,
+  // and the arrows' default position:absolute has to win over this relative fallback.
+  ':where([data-sw-block="Carousel"] .sw-waves){position:relative;overflow:visible}',
+  // No mobile tap flash anywhere in the component — the ripple IS the press feedback.
+  ':where([data-sw-block="Carousel"],[data-sw-block="Carousel"] *){-webkit-tap-highlight-color:transparent}',
+  // Click-to-slide roots host the wrapper-level ripple — clip it at the slider bounds.
+  ':where([data-sw-block="Carousel"][data-click-next="true"].sw-waves){overflow:hidden}',
   // Controls stay hidden until the runtime enhances — the no-JS fallback never shows
   // inert UI. (These gates are deliberately strong; to drop a control, omit its part.)
   '[data-sw-block="Carousel"] [data-sw-part="prev"],[data-sw-block="Carousel"] [data-sw-part="next"],[data-sw-block="Carousel"] [data-sw-part="dots"]{display:none}',

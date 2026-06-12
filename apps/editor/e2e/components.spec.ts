@@ -302,13 +302,15 @@ test('click-to-slide: data-click-next advances on slide press with ripple; inner
   const track = root.locator('[data-sw-part="track"]');
   await expect(dots.nth(0)).toHaveAttribute('aria-current', 'true');
 
-  // Press anywhere on the slide: the down-stroke ripples ON THE SLIDE, the release advances.
+  // Press anywhere on the slide: the down-stroke ripples on the WRAPPER (a slide-hosted
+  // ripple would translate away with the outgoing slide), the release advances.
   // (scroll first — raw mouse coords are viewport-relative and don't auto-scroll)
   await track.scrollIntoViewIfNeeded();
   const box = (await track.boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
-  await expect(root.locator('[data-sw-part="slide"] .sw-ripple')).toHaveCount(1);
+  await expect(root.locator('.sw-ripple')).toHaveCount(1);
+  await expect(root.locator('[data-sw-part="slide"] .sw-ripple')).toHaveCount(0); // NOT inside the moving slide
   await page.mouse.up();
   await expect(dots.nth(1)).toHaveAttribute('aria-current', 'true');
 

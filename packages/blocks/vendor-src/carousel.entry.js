@@ -48,7 +48,9 @@ function enhance(root) {
       if (reduce) return;
       if (guarded && e.target && e.target.closest && e.target.closest(INTERACTIVE)) return;
       var r = el.getBoundingClientRect();
-      var d = Math.max(r.width, r.height) * 2;
+      // 2× the control, but never a punier halo than 48px — small controls (dots) get a
+      // real unbounded Material ripple that travels past their bounds.
+      var d = Math.max(Math.max(r.width, r.height) * 2, 48);
       var s = document.createElement('span');
       s.className = 'sw-ripple';
       s.style.width = d + 'px';
@@ -128,12 +130,15 @@ function enhance(root) {
   if (next) { addRipple(next); next.addEventListener('click', function () { embla.scrollNext(); }); }
 
   // Click-to-slide (data-click-next="true"): the whole slide advances the carousel — the
-  // navigation-less pattern. Slides get the press ripple; clicks on interactive elements
-  // inside a slide keep their own meaning, and a click that ends a DRAG never fires (the
-  // pointer travelled). The root becomes focusable so arrow keys still work with no controls.
+  // navigation-less pattern. The press ripple lives on the WRAPPER (root), not the slides —
+  // a slide-hosted ripple would translate away with the outgoing slide mid-advance. The
+  // guarded flag skips presses on interactive descendants (incl. the arrows/dots buttons,
+  // which ripple themselves); clicks on those keep their own meaning, and a click that ends
+  // a DRAG never fires (the pointer travelled). The root becomes focusable so arrow keys
+  // still work with no controls.
   if (attr('data-click-next', '') === 'true') {
     if (!root.hasAttribute('tabindex')) root.setAttribute('tabindex', '0');
-    for (var c = 0; c < slides.length; c++) addRipple(slides[c], true);
+    addRipple(root, true);
     var downX = 0;
     var downY = 0;
     track.addEventListener('pointerdown', function (e) {
@@ -167,23 +172,39 @@ function enhance(root) {
       return b;
     });
   }
+  // data-active stamping (same convention as Tabs panels): the CSS styling hook for
+  // per-activation effects — caption entrances, Ken Burns — because an attribute flip
+  // natively restarts matching keyframes. slideRegistry maps snap → slide indices (a snap
+  // covers several slides in multi-item layouts); it's the same internalEngine surface the
+  // AutoHeight plugin uses. If an Embla upgrade ever drops slideRegistry, the || [] makes
+  // this fail SILENTLY (no data-active anywhere, activation CSS stops); if it drops
+  // internalEngine() ITSELF this THROWS instead — either way, check here first after bumps
+  // (guard pattern if needed: var eng = embla.internalEngine && embla.internalEngine()).
+  //
+  // Marking is SPLIT: the incoming slide is marked immediately on select (its keyframes
+  // must start with the transition), but stale markers are pruned only on SETTLE. Removing
+  // the attribute kills a running animation and the transform SNAPS to base — transitions
+  // can't catch animation removal — so the outgoing slide keeps drifting until the
+  // crossfade/translate has finished and the snap happens off-screen (opacity 0 in fade
+  // mode, translated out of the viewport in slide mode).
+  function snapRegistry() {
+    return embla.internalEngine().slideRegistry[embla.selectedScrollSnap()] || [];
+  }
+  function pruneActive() {
+    var active = snapRegistry();
+    for (var s = 0; s < slides.length; s++) {
+      if (active.indexOf(s) === -1) slides[s].removeAttribute('data-active');
+    }
+  }
   function sync() {
     var sel = embla.selectedScrollSnap();
     for (var i = 0; i < dots.length; i++) {
       dots[i].setAttribute('aria-current', i === sel ? 'true' : 'false');
     }
-    // Stamp data-active on the slide(s) in the selected snap (same convention as Tabs
-    // panels). This is the CSS styling hook for per-activation effects — caption entrance
-    // animations, Ken Burns, etc. — because an attribute flip natively restarts matching
-    // keyframes. slideRegistry maps snap → slide indices (a snap covers several slides in
-    // multi-item layouts); it's the same internalEngine surface the AutoHeight plugin uses.
-    // If an Embla upgrade ever drops slideRegistry, the || [] makes this fail SILENTLY
-    // (no data-active anywhere, activation CSS stops) — check here first after bumps.
-    var active = embla.internalEngine().slideRegistry[sel] || [];
+    var active = snapRegistry();
     live.textContent = 'Slide ' + (sel + 1) + ' of ' + embla.scrollSnapList().length;
     for (var s = 0; s < slides.length; s++) {
       if (active.indexOf(s) !== -1) slides[s].setAttribute('data-active', '');
-      else slides[s].removeAttribute('data-active');
     }
     if (!loop) {
       var pDis = !embla.canScrollPrev();
@@ -198,11 +219,16 @@ function enhance(root) {
     }
   }
   buildDots();
-  embla.on('select', sync).on('reInit', function () {
-    buildDots();
-    sync();
-  });
+  embla
+    .on('select', sync)
+    .on('settle', pruneActive)
+    .on('reInit', function () {
+      buildDots();
+      sync();
+      pruneActive();
+    });
   sync();
+  pruneActive();
 
   root.addEventListener('keydown', function (e) {
     // Don't hijack arrow keys from slide content that consumes them natively

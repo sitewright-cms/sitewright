@@ -55,6 +55,13 @@ jobs:
       # Fails the build on high/critical advisories. Moderate dev-tooling
       # advisories (e.g. vitest's transitive vite/esbuild dev-server issues) are
       # not exploitable in CI/build and are tracked for the next vitest upgrade.
+      # Explicit exemptions live in root package.json pnpm.auditConfig.ignoreGhsas:
+      # - GHSA-gv7w-rqvm-qjhr (esbuild <0.28.1): the flaw is in esbuild's DENO
+      #   installer (no binary integrity check via NPM_CONFIG_REGISTRY) — no Deno
+      #   in this stack, build-time only, registry lockfile-pinned. Vite pins
+      #   esbuild 0.25 and 0.28 drops transpile support for our editor browser
+      #   targets, so a blanket override is NOT viable; re-check on vite bumps.
+      #   (Our own gen-vendor esbuild is already >=0.28.1.)
       - name: Audit dependencies
         run: pnpm audit --audit-level high
 

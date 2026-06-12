@@ -192,6 +192,15 @@ export function translationsEs(assets: Record<string, string>): Record<string, P
       comp_h1: 'Sliders y galerías, en todas sus variantes',
       comp_intro:
         'Los componentes interactivos con los que está construido este sitio — primero los valores por defecto, después cada opción. Todo funciona con teclado, táctil y sin JavaScript.',
+      sec_hero_t: 'Slider hero — fondos, Ken Burns y captions animados',
+      sec_hero_d:
+        'La apertura clásica de portada: diapositivas de altura fija con imágenes de fondo editables (sin elementos img), captions que entran sobre una placa de cristal esmerilado, flechas a toda altura con degradado que crecen al pasar el cursor, y un efecto Ken Burns alternante en cada activación. Todo CSS puro sobre el marcador data-active de la runtime.',
+      hero_cap_1: 'Bienvenido a Northwind Studio',
+      hero_cap_2: 'Webs con verdadero oficio',
+      hero_cap_3: 'Hechas para rendir',
+      sec_click_t: 'Clic para avanzar',
+      sec_click_d:
+        'Sin flechas: un clic o un toque en cualquier punto de la diapositiva avanza — cada pulsación responde con una onda. Los enlaces dentro de la diapositiva siguen siendo enlaces, arrastrar sigue deslizando y las flechas del teclado funcionan en cuanto el slider tiene el foco.',
       sec_fade_t: 'Slider — los valores por defecto',
       sec_fade_d: 'Sin opciones: las diapositivas se funden, las flechas se superponen a media altura y los indicadores quedan centrados abajo.',
       sec_slide_t: 'Efecto slide, bucle y autoplay',
@@ -208,6 +217,11 @@ export function translationsEs(assets: Record<string, string>): Record<string, P
       sec_lbfx_d: 'La misma galería con apertura y cambios de imagen en fundido y navegación circular — tras la última imagen vuelve la primera.',
       a_prev: 'Diapositiva anterior',
       a_next: 'Diapositiva siguiente',
+      aria_hero: 'Presentación de bienvenida',
+      aria_click: 'Proyectos destacados (clic para avanzar)',
+      hero_bg_1: assets['proj-aria'] ?? '',
+      hero_bg_2: assets['proj-flint'] ?? '',
+      hero_bg_3: assets['proj-harbor'] ?? '',
       aria_fade: 'Presentación de proyectos (fundido)',
       aria_slide: 'Presentación de proyectos (deslizante)',
       aria_items: 'Tarjetas de proyectos',

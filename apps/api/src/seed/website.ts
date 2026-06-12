@@ -118,7 +118,17 @@ export const EXAMPLE_WEBSITE = {
 .nw-zoom:hover img{transform:scale(1.06)}
 .nw-underline{background-image:linear-gradient(currentColor,currentColor);background-size:0% 2px;background-position:0 100%;background-repeat:no-repeat;transition:background-size .3s}
 .nw-underline:hover{background-size:100% 2px}
-.nw-ring{border:2px solid transparent;background:linear-gradient(var(--sw-color-base-100,#ffffff),var(--sw-color-base-100,#ffffff)) padding-box,linear-gradient(135deg,#6366f1,#0ea5e9) border-box}`,
+.nw-ring{border:2px solid transparent;background:linear-gradient(var(--sw-color-base-100,#ffffff),var(--sw-color-base-100,#ffffff)) padding-box,linear-gradient(135deg,#6366f1,#0ea5e9) border-box}
+@keyframes nw-kb-l{0%{transform:scale3d(1.18,1.18,1) translate3d(-2.2%,1.6%,0)}100%{transform:scale3d(1,1,1) translate3d(0,0,0)}}
+@keyframes nw-kb-r{0%{transform:scale3d(1.18,1.18,1) translate3d(2.2%,-1.6%,0)}100%{transform:scale3d(1,1,1) translate3d(0,0,0)}}
+/* nw-cap-in starts at opacity:0 — only ever reference it INSIDE the reduced-motion gate
+   below, or captions vanish for reduced-motion users. */
+@keyframes nw-cap-in{from{opacity:0;transform:translateY(26px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:no-preference){
+  .nw-hero [data-sw-part="slide"][data-active]:nth-child(odd) .nw-hero-bg{animation:nw-kb-l 8s ease-out both}
+  .nw-hero [data-sw-part="slide"][data-active]:nth-child(even) .nw-hero-bg{animation:nw-kb-r 8s ease-out both}
+  .nw-hero [data-sw-part="slide"][data-active] .nw-hero-cap{animation:nw-cap-in .9s cubic-bezier(.22,1,.36,1) .5s both}
+}`,
   // MINI SHOP — front-end cart config for the demo Shop page. Currency + the three deep-link channels
   // (WhatsApp, email, PayPal.me payment link). The cart is front-end only and prices are
   // NON-AUTHORITATIVE — the cart submits an order inquiry; Northwind confirms + collects payment.

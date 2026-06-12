@@ -7,7 +7,7 @@ import type { Page } from '@sitewright/schema';
 // per-slide translation keys; the `<code>` attribute chips under each heading are intentionally
 // untranslated (they are code, identical in every locale). Doubles as canonical agent-authored
 // markup for the COMPONENT_CATALOG contracts.
-export function pageComponents(): Page {
+export function pageComponents(assets: Record<string, string>): Page {
   return {
     id: 'components',
     path: 'components',
@@ -16,14 +16,21 @@ export function pageComponents(): Page {
     parent: 'home',
     nav: { title: 'Showcase', slots: ['header'], order: 8 },
     // Tier-2 attribute keys (aria labels) — present in EVERY locale, including EN.
+    // hero_bg_* are data-sw-bg bindings (editable background images): URL values, identical
+    // across locales, repeated in each variant's data — same pattern as the blog article_image.
     data: {
       a_prev: 'Previous slide',
       a_next: 'Next slide',
+      aria_hero: 'Welcome slideshow',
+      hero_bg_1: assets['proj-aria'] ?? '',
+      hero_bg_2: assets['proj-flint'] ?? '',
+      hero_bg_3: assets['proj-harbor'] ?? '',
       aria_fade: 'Project slideshow (fade)',
       aria_slide: 'Project slideshow (slide)',
       aria_items: 'Project cards',
       aria_scroll: 'Project ticker',
       aria_wheel: 'Client quotes',
+      aria_click: 'Project highlights (click to advance)',
       aria_gallery: 'Studio gallery',
       aria_gallery2: 'Project gallery',
     },
@@ -32,6 +39,37 @@ export function pageComponents(): Page {
     <span class="text-sm font-semibold uppercase tracking-[0.18em] text-primary" data-sw-text="comp_eyebrow">Showcase</span>
     <h1 class="mt-4 text-4xl font-bold tracking-tight sm:text-6xl" data-sw-text="comp_h1">Sliders &amp; galleries, every variant</h1>
     <p class="mt-5 text-lg leading-relaxed text-base-content/60" data-sw-text="comp_intro">The interactive components this site is built with, shown in every configuration — defaults first, then each option. Everything below works with keyboard, touch, and without JavaScript.</p>
+  </div>
+</section>
+
+<section class="mx-auto max-w-6xl px-6 pb-20">
+  <h2 class="text-3xl font-bold tracking-tight" data-sw-text="sec_hero_t">Hero slider — backgrounds, Ken Burns &amp; caption motion</h2>
+  <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="sec_hero_d">The classic frontpage opener: fixed-height slides with editable background images (no img elements), captions that rise in on a blurred glass pill, full-height gradient arrows that grow on hover, and an alternating Ken Burns drift on every activation. All of it is plain CSS keyed off the data-active marker the runtime stamps on the current slide.</p>
+  <p class="mt-3 font-mono text-xs text-base-content/40"><code>data-sw-bg + [data-active] CSS hook — kenburns/caption keyframes live in the site stylesheet</code></p>
+  <div class="nw-hero relative mt-8 overflow-hidden rounded-3xl" data-sw-component="carousel" data-sw-block="Carousel" data-loop="true" data-autoplay="true" data-interval="6000" aria-label="{{page.data.aria_hero}}">
+    <div data-sw-part="track">
+      <div data-sw-part="slide" class="relative h-[60vh] min-h-[420px] max-h-[640px] overflow-hidden">
+        <div class="nw-hero-bg absolute inset-0 bg-cover bg-center" data-sw-bg="hero_bg_1"></div>
+        <div class="relative z-10 flex h-full items-center justify-center px-6">
+          <div class="nw-hero-cap rounded-xl bg-black/40 px-7 py-3.5 text-center text-xl font-semibold uppercase tracking-wider text-white shadow-2xl backdrop-blur-md sm:text-2xl" data-sw-text="hero_cap_1">Welcome to Northwind Studio</div>
+        </div>
+      </div>
+      <div data-sw-part="slide" class="relative h-[60vh] min-h-[420px] max-h-[640px] overflow-hidden">
+        <div class="nw-hero-bg absolute inset-0 bg-cover bg-center" data-sw-bg="hero_bg_2"></div>
+        <div class="relative z-10 flex h-full items-center justify-center px-6">
+          <div class="nw-hero-cap rounded-xl bg-black/40 px-7 py-3.5 text-center text-xl font-semibold uppercase tracking-wider text-white shadow-2xl backdrop-blur-md sm:text-2xl" data-sw-text="hero_cap_2">Websites with real craft</div>
+        </div>
+      </div>
+      <div data-sw-part="slide" class="relative h-[60vh] min-h-[420px] max-h-[640px] overflow-hidden">
+        <div class="nw-hero-bg absolute inset-0 bg-cover bg-center" data-sw-bg="hero_bg_3"></div>
+        <div class="relative z-10 flex h-full items-center justify-center px-6">
+          <div class="nw-hero-cap rounded-xl bg-black/40 px-7 py-3.5 text-center text-xl font-semibold uppercase tracking-wider text-white shadow-2xl backdrop-blur-md sm:text-2xl" data-sw-text="hero_cap_3">Built to perform</div>
+        </div>
+      </div>
+    </div>
+    <button type="button" data-sw-part="prev" class="group absolute inset-y-0 left-0 z-10 flex h-full w-20 transform-none items-center justify-start rounded-none bg-transparent bg-gradient-to-r from-black/60 via-black/20 to-transparent pl-4 text-white opacity-70 transition-opacity duration-300 hover:opacity-100 sm:w-36" aria-label="{{page.data.a_prev}}">{{sw-icon "chevron-left" "size-10 drop-shadow-lg transition-transform duration-300 group-hover:-translate-x-1.5 group-hover:scale-150 group-active:-translate-x-5"}}</button>
+    <button type="button" data-sw-part="next" class="group absolute inset-y-0 right-0 z-10 flex h-full w-20 transform-none items-center justify-end rounded-none bg-transparent bg-gradient-to-l from-black/60 via-black/20 to-transparent pr-4 text-white opacity-70 transition-opacity duration-300 hover:opacity-100 sm:w-36" aria-label="{{page.data.a_next}}">{{sw-icon "chevron-right" "size-10 drop-shadow-lg transition-transform duration-300 group-hover:translate-x-1.5 group-hover:scale-150 group-active:translate-x-5"}}</button>
+    <div data-sw-part="dots" aria-hidden="true"></div>
   </div>
 </section>
 
@@ -129,6 +167,23 @@ export function pageComponents(): Page {
     <button type="button" data-sw-part="prev" aria-label="{{page.data.a_prev}}" class="!bg-base-200 !text-base-content">{{sw-icon "chevron-left" "size-6"}}</button>
     <button type="button" data-sw-part="next" aria-label="{{page.data.a_next}}" class="!bg-base-200 !text-base-content">{{sw-icon "chevron-right" "size-6"}}</button>
     <div data-sw-part="dots" aria-hidden="true" class="!bottom-2 text-primary"></div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-6xl px-6 pb-20">
+  <h2 class="text-3xl font-bold tracking-tight" data-sw-text="sec_click_t">Click to slide</h2>
+  <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="sec_click_d">No arrows at all: click or tap anywhere on a slide to advance — every press answers with a ripple. Links inside a slide still behave like links, dragging still swipes, and arrow keys still work once the slider has focus.</p>
+  <p class="mt-3 font-mono text-xs text-base-content/40"><code>data-click-next="true"</code></p>
+  <div class="relative mt-8 overflow-hidden rounded-3xl" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-loop="true" data-click-next="true" aria-label="{{page.data.aria_click}}">
+    <div data-sw-part="track">
+      {{#each data.projects}}
+      <figure data-sw-part="slide" class="relative">
+        <img src="{{sw-url image}}" alt="{{title}}" class="!aspect-[21/9] w-full object-cover" loading="lazy" />
+        <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-6 pb-10 pt-16 text-white"><span class="block text-xl font-bold">{{title}}</span></figcaption>
+      </figure>
+      {{/each}}
+    </div>
+    <div data-sw-part="dots" aria-hidden="true"></div>
   </div>
 </section>
 

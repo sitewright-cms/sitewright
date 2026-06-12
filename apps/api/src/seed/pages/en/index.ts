@@ -25,7 +25,7 @@ export function pagesEn(assets: Record<string, string>): Page[] {
     ...pagesBlog(assets),
     pageContact(),
     pageShop(),
-    pageComponents(),
+    pageComponents(assets),
     pageFaq(),
     ...pagesLegal(),
     ...pageNavLinks(),

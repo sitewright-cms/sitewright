@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { validateTemplate } from '@sitewright/blocks';
-import { examplePages, EXAMPLE_WEBSITE, EXAMPLE_DATASETS, exampleEntries } from '../src/seed-data.js';
+import { examplePages, EXAMPLE_WEBSITE, EXAMPLE_DATASETS, exampleEntries } from '../src/seed/index.js';
 
 // The image-bearing content is now parameterized by an asset-URL map; for these structural/
 // validator checks the URLs are irrelevant, so seed with an empty map (→ empty image refs).

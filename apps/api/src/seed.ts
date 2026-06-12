@@ -16,7 +16,7 @@ import {
   EXAMPLE_DATASETS,
   exampleEntries,
   EXAMPLE_FORMS,
-} from './seed-data.js';
+} from './seed/index.js';
 
 /** The built-in first-boot admin identity (override with SW_ADMIN_EMAIL). */
 export const DEFAULT_ADMIN_EMAIL = 'admin@sitewright.example';

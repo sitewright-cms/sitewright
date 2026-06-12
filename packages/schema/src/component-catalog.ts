@@ -90,6 +90,7 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
       { name: 'data-wheel', on: 'root', description: '"true" to navigate with mouse-wheel / trackpad gestures.' },
       { name: 'data-autoheight', on: 'root', description: '"true" to animate the track height to the in-view slide (slides of different heights). Requires data-effect="slide" — incompatible with the default fade effect.' },
       { name: 'data-align', on: 'root', description: 'Snap alignment: "start" (default), "center" (recommended with peek), or "end".' },
+      { name: 'data-item-align', on: 'root', description: 'VERTICAL alignment of unequal-height slides in multi-item rows: "start", "center", or "end" (default: stretch — slides match the tallest). Only meaningful with data-effect="slide" and multiple visible slides (--sw-items); data-autoheight overrides it with top alignment.' },
       { name: 'data-click-next', on: 'root', description: '"true" makes every slide click-to-advance with ripple feedback (the navigation-less pattern — arrows/dots optional). Clicks on links/buttons/inputs inside a slide keep their own meaning; a drag never counts as a click; the root becomes keyboard-focusable so arrow keys still work.' },
     ],
     skeleton: `<div class="relative" data-sw-component="carousel" data-sw-block="Carousel" data-loop="true" data-autoplay="true" data-interval="6000">

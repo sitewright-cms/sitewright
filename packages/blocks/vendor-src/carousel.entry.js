@@ -55,6 +55,10 @@ function enhance(root) {
       s.className = 'sw-ripple';
       s.style.width = d + 'px';
       s.style.height = d + 'px';
+      // Pace by SIZE: at a fixed duration the ripple's edge speed grows with the diameter —
+      // a wrapper-sized disc (2000px+) would tear across the slider ~45× faster than a dot's
+      // halo. Controls keep the snappy 0.65s; large surfaces ease out over up to 1.4s.
+      s.style.animationDuration = Math.min(1.4, 0.65 + d / 3000).toFixed(2) + 's';
       s.style.left = e.clientX - r.left - d / 2 + 'px';
       s.style.top = e.clientY - r.top - d / 2 + 'px';
       el.appendChild(s);

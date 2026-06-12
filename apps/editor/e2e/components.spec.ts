@@ -91,10 +91,10 @@ test.beforeAll(async ({ playwright, baseURL }) => {
 <section id="slide"><div class="relative" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-loop="true" aria-label="Slide slider">
   <div data-sw-part="track">${slidesImg}</div>${arrows}<div data-sw-part="dots" aria-hidden="true"></div>
 </div></section>
-<section id="items"><div class="relative [--sw-items:2.5]" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" aria-label="Cards">
+<section id="items"><div class="relative [--sw-items:2.5]" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-item-align="center" aria-label="Cards">
   <div data-sw-part="track">
     <figure data-sw-part="slide" class="px-2"><div class="h-24 bg-red-200">A</div></figure>
-    <figure data-sw-part="slide" class="px-2"><div class="h-24 bg-green-200">B</div></figure>
+    <figure data-sw-part="slide" class="px-2"><div class="h-40 bg-green-200">B</div></figure>
     <figure data-sw-part="slide" class="px-2"><div class="h-24 bg-blue-200">C</div></figure>
     <figure data-sw-part="slide" class="px-2"><div class="h-24 bg-amber-200">D</div></figure>
     <figure data-sw-part="slide" class="px-2"><div class="h-24 bg-purple-200">E</div></figure>
@@ -250,6 +250,13 @@ test('multi-item layout: --sw-items:2.5 sizes slides to 1/2.5 of the track (peek
   const track = (await root.locator('[data-sw-part="track"]').boundingBox())!;
   const slide = (await root.locator('[data-sw-part="slide"]').first().boundingBox())!;
   expect(Math.abs(slide.width - track.width / 2.5)).toBeLessThan(2);
+
+  // data-item-align="center": the short slide (h-24) centers on the tall one (h-40)
+  // instead of stretching to match it.
+  const short = (await root.locator('[data-sw-part="slide"]').nth(0).boundingBox())!;
+  const tall = (await root.locator('[data-sw-part="slide"]').nth(1).boundingBox())!;
+  expect(tall.height - short.height).toBeGreaterThan(40); // not stretched to equal height
+  expect(Math.abs(short.y + short.height / 2 - (tall.y + tall.height / 2))).toBeLessThan(2); // centered
 });
 
 test('auto-scroll ticks continuously and pauses on hover', async ({ page }) => {
@@ -311,6 +318,14 @@ test('click-to-slide: data-click-next advances on slide press with ripple; inner
   await page.mouse.down();
   await expect(root.locator('.sw-ripple')).toHaveCount(1);
   await expect(root.locator('[data-sw-part="slide"] .sw-ripple')).toHaveCount(0); // NOT inside the moving slide
+  // Wrapper-sized ripples are PACED to their size — a fixed duration would sweep the edge
+  // across the slider ~45× faster than a button's halo. Controls keep ~0.65s.
+  // dur > 1 requires the wrapper ≥ 525px wide (d > 1050); at this 1280px viewport the
+  // carousel is ~1100px → d ≈ 2200 → dur 1.38s. Revisit if the fixture ever narrows.
+  const dur = await root
+    .locator('.sw-ripple')
+    .evaluate((el) => parseFloat(getComputedStyle(el).animationDuration));
+  expect(dur).toBeGreaterThan(1);
   await page.mouse.up();
   await expect(dots.nth(1)).toHaveAttribute('aria-current', 'true');
 

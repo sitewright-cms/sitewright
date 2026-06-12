@@ -13,7 +13,7 @@ export function pageNavLinks(): Page[] {
       kind: 'link',
       link: { target: '/contact' },
       parent: 'home',
-      nav: { slots: ['header'], order: 8 },
+      nav: { slots: ['header'], order: 9 },
     },
   ];
 }

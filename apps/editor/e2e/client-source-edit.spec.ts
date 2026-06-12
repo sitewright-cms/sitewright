@@ -13,7 +13,7 @@ test('client edits a code page’s bound region (content), template stays immuta
   await page.goto('/');
   await page.getByRole('button', { name: /Register/ }).click();
   await page.getByLabel('Email').fill(ownerEmail);
-  await page.getByLabel('Password').fill('pw-secret-1');
+  await page.getByLabel('Password').fill('Pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Code Site');
@@ -42,7 +42,7 @@ test('client edits a code page’s bound region (content), template stays immuta
   await expect(page.getByText(/invited/)).toBeVisible();
   await page.getByRole('button', { name: /Register/ }).click();
   await page.getByLabel('Email', { exact: true }).fill(clientEmail);
-  await page.getByLabel('Password', { exact: true }).fill('pw-secret-1');
+  await page.getByLabel('Password', { exact: true }).fill('Pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();
 
   // --- Client accepts → the page opens in the editor MODAL, defaulting to CONTENT mode ---

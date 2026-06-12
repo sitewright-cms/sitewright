@@ -53,32 +53,56 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
   {
     type: 'Carousel',
     marker: 'carousel',
-    summary: 'A slideshow: scroll-snap track plus runtime-wired arrows, dots, keyboard navigation, looping, and autoplay.',
+    summary:
+      'An Embla-powered slider: fade (default) or slide effect, arrows/dots/keyboard/swipe, looping, autoplay or continuous auto-scroll, wheel gestures, auto height, and multi-item/peek layouts via --sw-items.',
     authoring: 'markup',
     parts: [
-      { part: 'track', element: 'div', required: true, description: 'The scroll-snap row containing the slides.' },
-      { part: 'slide', element: 'figure|div', required: true, description: 'One slide (any content). At least two slides for controls to appear.' },
-      { part: 'prev', element: 'button', required: false, description: 'Previous-slide button (hidden until the runtime enhances; give it an aria-label).' },
-      { part: 'next', element: 'button', required: false, description: 'Next-slide button (hidden until enhanced; give it an aria-label).' },
-      { part: 'dots', element: 'div', required: false, description: 'Empty mount; the runtime generates one dot per slide with aria-current.' },
+      { part: 'track', element: 'div', required: true, description: 'The slide row (a CSS scroll-snap strip until the runtime enhances it).' },
+      { part: 'slide', element: 'figure|div', required: true, description: 'One slide (any content). At least two slides for the runtime to engage.' },
+      {
+        part: 'prev',
+        element: 'button',
+        required: false,
+        description:
+          'Previous button (hidden until enhanced; give it an aria-label and a Lucide glyph, e.g. {{sw-icon "chevron-left" "size-6"}}). Defaults to a mid-left overlay; reposition freely with utility classes.',
+      },
+      {
+        part: 'next',
+        element: 'button',
+        required: false,
+        description: 'Next button (same rules as prev; {{sw-icon "chevron-right" "size-6"}}). Defaults to a mid-right overlay.',
+      },
+      {
+        part: 'dots',
+        element: 'div',
+        required: false,
+        description:
+          'Empty mount; the runtime generates one indicator per snap point (aria-current marks the active one). Defaults to a bottom-center overlay; reposition freely with utility classes.',
+      },
     ],
     attributes: [
-      { name: 'data-loop', on: 'root', description: '"true" to wrap from the last slide to the first.' },
-      { name: 'data-autoplay', on: 'root', description: '"true" to auto-advance (pauses on hover/focus and under prefers-reduced-motion).' },
-      { name: 'data-interval', on: 'root', description: 'Autoplay interval in ms (default 5000).' },
+      { name: 'data-effect', on: 'root', description: '"fade" (default — crossfade) or "slide" (translating strip; REQUIRED for --sw-items/peek layouts).' },
+      { name: 'data-loop', on: 'root', description: '"true" to wrap from the last slide to the first (also makes autoplay/auto-scroll endless).' },
+      { name: 'data-autoplay', on: 'root', description: '"true" to auto-advance in steps (pauses on hover/focus; disabled under prefers-reduced-motion).' },
+      { name: 'data-interval', on: 'root', description: 'Autoplay step interval in ms (default 5000).' },
+      { name: 'data-autoscroll', on: 'root', description: '"true" for a CONTINUOUS ticker scroll instead of steps (marquee/logo-wall; wins over data-autoplay; pair with data-loop="true" and data-effect="slide").' },
+      { name: 'data-autoscroll-speed', on: 'root', description: 'Auto-scroll speed in px per frame (default 2).' },
+      { name: 'data-wheel', on: 'root', description: '"true" to navigate with mouse-wheel / trackpad gestures.' },
+      { name: 'data-autoheight', on: 'root', description: '"true" to animate the track height to the in-view slide (slides of different heights). Requires data-effect="slide" — incompatible with the default fade effect.' },
+      { name: 'data-align', on: 'root', description: 'Snap alignment: "start" (default), "center" (recommended with peek), or "end".' },
     ],
     skeleton: `<div class="relative" data-sw-component="carousel" data-sw-block="Carousel" data-loop="true" data-autoplay="true" data-interval="6000">
   <div data-sw-part="track">
-    <figure data-sw-part="slide" class="px-2">Slide one content</figure>
-    <figure data-sw-part="slide" class="px-2">Slide two content</figure>
+    <figure data-sw-part="slide">Slide one content</figure>
+    <figure data-sw-part="slide">Slide two content</figure>
   </div>
-  <button type="button" data-sw-part="prev" aria-label="Previous">‹</button>
-  <button type="button" data-sw-part="next" aria-label="Next">›</button>
+  <button type="button" data-sw-part="prev" aria-label="Previous slide">{{sw-icon "chevron-left" "size-6"}}</button>
+  <button type="button" data-sw-part="next" aria-label="Next slide">{{sw-icon "chevron-right" "size-6"}}</button>
   <div data-sw-part="dots" aria-hidden="true"></div>
 </div>`,
     noJs: 'The track is a CSS scroll-snap row — fully swipeable/scrollable; arrows and dots stay hidden so no inert controls show.',
     notes:
-      "DaisyUI's `carousel`/`carousel-item` classes are a plain scroll-snap STRIP (no arrows, dots, autoplay, or looping — its documented \"buttons\" are #anchor hacks). Use the DaisyUI classes as a layout primitive for a swipeable card row; use THIS component for any real slideshow.",
+      'Slides-per-view is the --sw-items CSS variable on the root (Tailwind arbitrary properties): class="[--sw-items:1.15]" shows a peek of the next slide, class="[--sw-items:1] md:[--sw-items:3]" is a responsive 3-up — both REQUIRE data-effect="slide" (fade stacks full-width slides). Give slides internal padding (e.g. px-2) for gaps. To drop a control, omit its part. DaisyUI\'s `carousel`/`carousel-item` classes are a plain scroll-snap STRIP (no arrows, dots, autoplay, or looping — its documented "buttons" are #anchor hacks). Use the DaisyUI classes as a layout primitive for a swipeable card row; use THIS component for any real slideshow.',
   },
   {
     type: 'Tabs',
@@ -102,14 +126,19 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
   {
     type: 'Lightbox',
     marker: 'lightbox',
-    summary: 'A thumbnail grid that opens a full-screen viewer (keyboard navigation, captions, focus management).',
+    summary:
+      'A GLightbox-powered gallery: thumbnails open a full-screen viewer with animated slide changes, swipe, pinch-zoom, keyboard navigation, and captions. Each component root is its own gallery.',
     authoring: 'markup',
     parts: [
       { part: 'grid', element: 'div', required: true, description: 'The thumbnail grid (override columns with !grid-cols-* utilities).' },
       { part: 'item', element: 'a', required: true, description: 'One thumbnail: an anchor whose href is the FULL-SIZE image URL, containing the <img> thumbnail.' },
-      { part: 'overlay', element: 'div', required: true, description: 'Empty mount; the runtime builds the viewer (close/prev/next, image, caption) into it.' },
     ],
-    attributes: [{ name: 'data-caption', on: 'item', description: 'Caption text shown under the image in the viewer.' }],
+    attributes: [
+      { name: 'data-caption', on: 'item', description: 'Caption text shown under the image in the viewer.' },
+      { name: 'data-effect', on: 'root', description: 'Open/close animation: "zoom" (default), "fade", or "none".' },
+      { name: 'data-slide-effect', on: 'root', description: 'Between-picture animation: "slide" (default), "fade", "zoom", or "none".' },
+      { name: 'data-loop', on: 'root', description: '"true" to wrap from the last image to the first while navigating.' },
+    ],
     skeleton: `<div data-sw-component="lightbox" data-sw-block="Lightbox" aria-label="Gallery">
   <div data-sw-part="grid" class="gap-3 !grid-cols-2 md:!grid-cols-4">
     {{#sw-folder "gallery" kind="image"}}
@@ -118,10 +147,10 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
     </a>
     {{/sw-folder}}
   </div>
-  <div data-sw-part="overlay" aria-hidden="true"></div>
 </div>`,
     noJs: 'Each thumbnail is a plain link to the full image — clicking simply opens it.',
-    notes: 'DaisyUI has no gallery/lightbox equivalent. Pairs naturally with a {{#sw-folder}} loop (media-library folder) or a dataset loop.',
+    notes:
+      'The viewer DOM is built entirely by the runtime — author ONLY the grid of anchor items (no overlay element). Multiple lightboxes on one page are independent galleries. DaisyUI has no gallery/lightbox equivalent. Pairs naturally with a {{#sw-folder}} loop (media-library folder) or a dataset loop.',
   },
   {
     type: 'Modal',

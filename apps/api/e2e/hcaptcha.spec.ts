@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-const PW = 'pw-secret-1';
+const PW = 'Pw-secret-1';
 
 // hCaptcha (Phase 4) over HTTP: the admin configures instance hCaptcha keys, a form
 // opts in, publish bakes the widget into the exported HTML, and the public endpoint

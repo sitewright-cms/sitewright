@@ -11,7 +11,7 @@ test('author → publish → public submit → inbox', async ({ playwright, base
   const stamp = Date.now();
 
   const reg = await api.post('/auth/register', {
-    data: { email: `forms-${stamp}@e2e.test`, password: 'pw-secret-1' },
+    data: { email: `forms-${stamp}@e2e.test`, password: 'Pw-secret-1' },
   });
   expect(reg.status()).toBe(201);
   const slug = `forms-${stamp}`;

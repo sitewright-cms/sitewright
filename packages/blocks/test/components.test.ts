@@ -58,14 +58,17 @@ describe('component registry', () => {
     expect(COMPONENT_TYPES.has('Section')).toBe(false);
   });
 
-  it('Lightbox contributes CSS + JS (DOM-built overlay, no innerHTML injection)', () => {
+  it('Lightbox ships the vendored GLightbox runtime + grid CSS', () => {
     const used = componentAssets(['Lightbox']);
-    expect(used.css).toContain('[data-sw-part="overlay"]');
+    expect(used.css).toContain('[data-sw-part="grid"]'); // authored thumbnail grid
+    expect(used.css).toContain('.glightbox'); // vendored viewer stylesheet
+    expect(used.css).not.toContain('url('); // CSP default-src 'self': no external asset refs
+    expect(used.js).toContain('glightbox@'); // license banner names the bundled MIT package
     expect(used.js).toContain('data-sw-component="lightbox"');
-    expect(used.js).toContain('createElement'); // overlay built via DOM, not innerHTML of user data
-    expect(used.js).not.toMatch(/innerHTML\s*=\s*[^']/); // only the one-time `innerHTML=''` clear
+    expect(used.js).toContain('aria-modal'); // a11y shim: dialog semantics on open
     expect(used.js).toContain('Image viewer'); // dialog has an accessible name (WCAG 4.1.2)
-    expect(used.js).toContain("'Tab'"); // focus trap honors the aria-modal contract
+    expect(used.js).toContain('data-slide-effect'); // animated picture changes are configurable
+    expect(used.js).not.toMatch(/\beval\(/); // CSP: no eval in shipped runtime
   });
 
   it('ignores unknown/removed types when bundling', () => {
@@ -77,11 +80,13 @@ describe('component registry', () => {
   it('bundles CSS + JS for used components, empty when none', () => {
     const used = componentAssets(['Carousel']);
     expect(used.css).toContain('[data-sw-block="Carousel"]');
-    expect(used.css).toContain('scroll-snap-type');
+    expect(used.css).toContain('scroll-snap-type'); // no-JS fallback stays a swipeable row
+    expect(used.css).toContain('--sw-items'); // multi-item / peek layout knob
+    expect(used.js).toContain('embla-carousel@'); // license banner names the bundled MIT packages
     expect(used.js).toContain('data-sw-component="carousel"');
     expect(used.js).toContain('data-sw-enhanced'); // progressive enhancement marker
     expect(used.js).toContain('removeAttribute'); // un-hides the dots for screen readers
-    expect(used.js).toContain('relatedTarget'); // focus pause doesn't oscillate within the carousel
+    expect(used.js).not.toMatch(/\beval\(/); // CSP: no eval in shipped runtime
 
     const none = componentAssets([]);
     expect(none.css).toBe('');

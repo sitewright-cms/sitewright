@@ -39,6 +39,18 @@ export default tseslint.config(
     },
   },
   {
+    // Vendored component runtime ENTRIES (bundled for the browser by gen-vendor.mjs):
+    // browser globals, and the same dynamic-index allowance as the equivalent inline
+    // runtimes — they only ever index runtime-built arrays, never tenant objects.
+    files: ['packages/blocks/vendor-src/**/*.js'],
+    languageOptions: {
+      globals: globals.browser,
+    },
+    rules: {
+      'security/detect-object-injection': 'off',
+    },
+  },
+  {
     // Node build scripts (plain ESM): provide Node globals and exempt their
     // trusted, operator-controlled file I/O.
     files: ['**/scripts/**/*.mjs'],

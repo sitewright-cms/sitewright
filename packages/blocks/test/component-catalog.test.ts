@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { COMPONENT_CATALOG } from '@sitewright/schema';
-import { COMPONENT_TYPES, componentTypesInSource } from '../src/components.js';
+import { COMPONENT_TYPES, componentAssets, componentTypesInSource } from '../src/components.js';
 import { validateTemplate } from '../src/template.js';
 
 // The catalog (in @sitewright/schema) is the machine-readable authoring contract served to
@@ -39,6 +39,19 @@ describe('COMPONENT_CATALOG ↔ runtime registry', () => {
       expect(entry.notes.length, entry.type).toBeGreaterThan(20);
       expect(entry.parts.length, entry.type).toBeGreaterThan(0);
       expect(['markup', 'embed']).toContain(entry.authoring);
+    }
+  });
+
+  it('every documented data-* config attribute is actually read by the shipped runtime', () => {
+    // Documenting an attribute the runtime never reads would send agents down a dead end —
+    // the attribute name must appear as a literal in the component's bundled JS (minification
+    // keeps attribute strings intact; the render pipeline only resolves data-sw-* bindings).
+    for (const entry of COMPONENT_CATALOG) {
+      const { js } = componentAssets([entry.type]);
+      for (const a of entry.attributes) {
+        if (!a.name.startsWith('data-') || a.name.startsWith('data-sw-')) continue;
+        expect(js, `${entry.type}: runtime must read ${a.name}`).toContain(a.name);
+      }
     }
   });
 });

@@ -13,7 +13,7 @@ test('assets: image preview modal, rename, copy, delete via modal dialogs', asyn
   await page.goto('/');
   await page.getByRole('button', { name: /Register/ }).click();
   await page.getByLabel('Email').fill(`assetops-${stamp}@e2e.test`);
-  await page.getByLabel('Password').fill('pw-secret-1');
+  await page.getByLabel('Password').fill('Pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Asset Ops');
@@ -53,7 +53,7 @@ test('project selector: search, create, auto-open, and switch', async ({ page })
   await page.goto('/');
   await page.getByRole('button', { name: /Register/ }).click();
   await page.getByLabel('Email').fill(`psel-${stamp}@e2e.test`);
-  await page.getByLabel('Password').fill('pw-secret-1');
+  await page.getByLabel('Password').fill('Pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();
 
   // After auth the selector auto-opens; create the first project from it.

@@ -4,7 +4,7 @@ import { test, expect } from '@playwright/test';
 // form targets an external endpoint, and publish points the exported form directly
 // at that URL — Sitewright is not involved in submission (no /f endpoint, no
 // contact.php). The DinD instance runs with SW_ADMIN_EMAILS=admin@e2e.test.
-const PW = 'pw-secret-1';
+const PW = 'Pw-secret-1';
 
 test('thirdParty: enabled mode points the exported form at the external endpoint', async ({ playwright, baseURL }) => {
   const api = await playwright.request.newContext({ baseURL });

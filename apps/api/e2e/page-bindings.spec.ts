@@ -11,7 +11,7 @@ test('page.slug + parentPage bindings render in preview and the published export
   const ctx = await playwright.request.newContext({ baseURL });
 
   const reg = await ctx.post('/auth/register', {
-    data: { email: `bindings-${stamp}@e2e.test`, password: 'pw-secret-1' },
+    data: { email: `bindings-${stamp}@e2e.test`, password: 'Pw-secret-1' },
   });
   expect(reg.status()).toBe(201);
   const slug = `bindings-${stamp}`;

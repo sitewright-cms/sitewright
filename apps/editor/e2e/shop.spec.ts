@@ -9,7 +9,7 @@ const stamp = Date.now();
 test('published cart: add-to-cart opens the drawer and builds the WhatsApp order link', async ({ page, playwright, baseURL }) => {
   // --- set up + publish a shop over HTTP (PR-1 has no shop settings UI yet — that is PR-3) ---
   const ctx = await playwright.request.newContext({ baseURL });
-  expect((await ctx.post('/auth/register', { data: { email: `shop-${stamp}@e2e.test`, password: 'pw-secret-1' } })).status()).toBe(201);
+  expect((await ctx.post('/auth/register', { data: { email: `shop-${stamp}@e2e.test`, password: 'Pw-secret-1' } })).status()).toBe(201);
   const slug = `shop-${stamp}`;
   const proj = await ctx.post('/projects', { data: { name: 'Shop Site', slug } });
   expect(proj.status()).toBe(201);
@@ -103,7 +103,7 @@ test('published cart: add-to-cart opens the drawer and builds the WhatsApp order
 // lands in the merchant's submissions inbox.
 test('published cart: the form channel submits the order to the /f submissions inbox', async ({ page, playwright, baseURL }) => {
   const ctx = await playwright.request.newContext({ baseURL });
-  expect((await ctx.post('/auth/register', { data: { email: `shopform-${stamp}@e2e.test`, password: 'pw-secret-1' } })).status()).toBe(201);
+  expect((await ctx.post('/auth/register', { data: { email: `shopform-${stamp}@e2e.test`, password: 'Pw-secret-1' } })).status()).toBe(201);
   const slug = `shopform-${stamp}`;
   const proj = await ctx.post('/projects', { data: { name: 'Shop Form Site', slug } });
   expect(proj.status()).toBe(201);
@@ -169,7 +169,7 @@ test('published cart: the form channel submits the order to the /f submissions i
 // the self-contained "waves-effect" ripple class.
 test('published cart: editable note + backdrop/Esc/close-only dismissal + ripple class', async ({ page, playwright, baseURL }) => {
   const ctx = await playwright.request.newContext({ baseURL });
-  expect((await ctx.post('/auth/register', { data: { email: `shopdrawer-${stamp}@e2e.test`, password: 'pw-secret-1' } })).status()).toBe(201);
+  expect((await ctx.post('/auth/register', { data: { email: `shopdrawer-${stamp}@e2e.test`, password: 'Pw-secret-1' } })).status()).toBe(201);
   const slug = `shopdrawer-${stamp}`;
   const proj = await ctx.post('/projects', { data: { name: 'Drawer Site', slug } });
   const projectId = (await proj.json()).project.id as string;

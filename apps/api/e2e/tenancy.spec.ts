@@ -60,7 +60,7 @@ test('project invite → member edits freely; isolation holds; platform invite i
 
   // ---- Client registers (open registration) and accepts ----
   expect(
-    (await client.post('/auth/register', { data: { email: `member-${stamp}@e2e.test`, password: 'pw-secret-1' } })).status(),
+    (await client.post('/auth/register', { data: { email: `member-${stamp}@e2e.test`, password: 'Pw-secret-1' } })).status(),
   ).toBe(201);
   const accept = await client.post('/invites/accept', { data: { token } });
   expect(accept.status()).toBe(200);

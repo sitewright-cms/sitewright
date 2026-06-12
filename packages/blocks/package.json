@@ -38,7 +38,9 @@
     "gen:lucide-icons:check": "node scripts/gen-lucide-icons.mjs && git diff --exit-code src/icons.ts",
     "gen:google-fonts": "node scripts/gen-google-fonts.mjs",
     "gen:flag-icons": "node scripts/gen-flag-icons.mjs",
-    "gen:flag-icons:check": "node scripts/gen-flag-icons.mjs && git diff --exit-code src/flag-icons.ts"
+    "gen:flag-icons:check": "node scripts/gen-flag-icons.mjs && git diff --exit-code src/flag-icons.ts",
+    "gen:vendor": "node scripts/gen-vendor.mjs",
+    "gen:vendor:check": "node scripts/gen-vendor.mjs && git diff --exit-code src/vendor"
   },
   "dependencies": {
     "@sitewright/core": "workspace:*",
@@ -53,12 +55,20 @@
   "devDependencies": {
     "@types/node": "^22.10.2",
     "@types/sanitize-html": "^2.13.0",
-    "circle-flags": "^2.8.3",
-    "flag-icons": "^7.5.0",
     "@vitest/coverage-v8": "^4.1.8",
+    "circle-flags": "^2.8.3",
+    "embla-carousel": "8.6.0",
+    "embla-carousel-auto-height": "8.6.0",
+    "embla-carousel-auto-scroll": "8.6.0",
+    "embla-carousel-autoplay": "8.6.0",
+    "embla-carousel-fade": "8.6.0",
+    "embla-carousel-wheel-gestures": "8.1.0",
+    "esbuild": "^0.28.1",
+    "flag-icons": "^7.5.0",
+    "glightbox": "3.3.1",
+    "lucide-static": "^0.544.0",
     "simple-icons": "^16.21.0",
     "typescript": "^5.7.2",
-    "vitest": "^4.1.8",
-    "lucide-static": "^0.544.0"
+    "vitest": "^4.1.8"
   }
 }

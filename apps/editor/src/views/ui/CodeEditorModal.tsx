@@ -75,7 +75,7 @@ export function CodeEditorModal({ title, value, onSave, onClose, hint, language 
                 aria-label={nameEdit.label ?? 'Name'}
                 spellCheck={false}
                 autoComplete="off"
-                className="min-w-0 flex-1 rounded-md border border-white/15 bg-white/5 px-2 py-1 font-mono text-sm text-slate-100 outline-none transition focus:border-indigo-400"
+                className="min-w-0 flex-1 rounded-md border border-white/15 bg-white/5 px-2 py-1 font-mono text-sm text-slate-100 sw-brand-focus outline-none transition"
               />
             </label>
             {nameError && <p className="mt-1 text-[11px] text-rose-400">{nameError}</p>}

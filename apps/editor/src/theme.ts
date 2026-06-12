@@ -10,9 +10,9 @@ export const glassCard =
 export const glassPanel =
   'rounded-xl border border-white/50 bg-white/50 shadow-sm backdrop-blur-xl';
 
-/** A frosted text input/select with an indigo focus ring. */
+/** A frosted text input/select with a BRAND focus ring (`sw-brand-focus` → border + ring follow --sw-brand-1). */
 export const glassInput =
-  'w-full rounded-lg border border-white/60 bg-white/70 px-3 py-2 text-sm text-slate-800 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-300/40';
+  'sw-brand-focus w-full rounded-lg border border-white/60 bg-white/70 px-3 py-2 text-sm text-slate-800 shadow-sm outline-none transition placeholder:text-slate-400 focus:bg-white';
 
 export const fieldLabel = 'mb-1 block text-xs font-medium text-slate-600';
 

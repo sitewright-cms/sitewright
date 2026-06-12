@@ -145,7 +145,7 @@ export function HeaderSettingsMenu({
                 onClick={pick(it.onClick)}
                 // Usual hover (gradient) + ripple on click. focus-VISIBLE (keyboard only) so the
                 // first item isn't highlighted when the menu is opened by mouse (programmatic focus).
-                className={`waves-effect block w-full cursor-pointer px-3.5 py-2 text-left text-sm text-slate-700 transition ${gradientHover} focus-visible:bg-slate-100 focus-visible:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-400`}
+                className={`waves-effect block w-full cursor-pointer px-3.5 py-2 text-left text-sm text-slate-700 transition ${gradientHover} focus-visible:bg-slate-100 focus-visible:text-slate-900 focus-visible:outline-none sw-brand-focus-visible-inset`}
               >
                 {it.label}
               </button>

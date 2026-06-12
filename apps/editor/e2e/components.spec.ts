@@ -312,9 +312,23 @@ test('click-to-slide: data-click-next advances on slide press with ripple; inner
   await page.mouse.up();
   await expect(dots.nth(1)).toHaveAttribute('aria-current', 'true');
 
+  // AT semantics: the runtime names the widget and announces the active slide politely.
+  await expect(root).toHaveAttribute('role', 'region');
+  await expect(root).toHaveAttribute('aria-roledescription', 'carousel');
+  await expect(root.locator('.sw-sr-only')).toHaveText('Slide 2 of 3');
+
   // A link inside the (now active) slide keeps its own meaning — no advance on click.
   await root.locator('a[href="#lnk"]').click();
   await expect(dots.nth(1)).toHaveAttribute('aria-current', 'true');
+
+  // A DRAG is not a click: pointer travel past the threshold never advances. Vertical drag
+  // keeps this deterministic — Embla won't swipe on the cross axis either.
+  const b2 = (await track.boundingBox())!;
+  await page.mouse.move(b2.x + b2.width / 2, b2.y + b2.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(b2.x + b2.width / 2, b2.y + b2.height / 2 + 40, { steps: 4 });
+  await page.mouse.up();
+  await expect(dots.nth(1)).toHaveAttribute('aria-current', 'true'); // unchanged
 
   // Arrow keys work once the root has focus (tabindex stamped by the runtime).
   await root.focus();

@@ -83,6 +83,8 @@ const CAROUSEL_CSS = [
   '[data-sw-block="Carousel"] [data-sw-part="dots"] button[aria-current="true"]{opacity:1}',
   '[data-sw-block="Carousel"] [data-sw-part="dots"] button[aria-current="true"] svg circle{fill:currentColor}',
   '[data-sw-block="Carousel"] .sw-ripple{position:absolute;border-radius:9999px;pointer-events:none;background:rgb(0 0 0/.35);transform:scale(0);animation:sw-ripple .65s ease-out forwards}',
+  // The runtime's live region announcing the active slide — visually hidden, AT-readable.
+  '[data-sw-block="Carousel"] .sw-sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}',
   '@keyframes sw-ripple{to{transform:scale(1);opacity:0}}',
   // Click-to-slide (data-click-next="true"): the whole slide is the affordance.
   '[data-sw-block="Carousel"][data-click-next="true"][data-sw-enhanced="true"] [data-sw-part="slide"]{cursor:pointer}',

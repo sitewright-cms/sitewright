@@ -78,20 +78,6 @@ const CAROUSEL_JS = `(function(){
   if(document.readyState!=='loading'){init();}else{document.addEventListener('DOMContentLoaded',init);}
 })();`;
 
-// --- Accordion --------------------------------------------------------------
-// ZERO JavaScript: built on native <details>/<summary>, so it is fully
-// interactive everywhere — including the editor's sandboxed (script-free)
-// preview. The registry entry contributes styling only.
-const ACCORDION_CSS = [
-  '[data-sw-block="Accordion"]{display:block}',
-  '[data-sw-block="AccordionItem"]{border:1px solid rgba(0,0,0,.12);border-radius:.375rem;margin-bottom:.5rem;overflow:hidden}',
-  '[data-sw-block="AccordionItem"]>summary{cursor:pointer;padding:.75rem 1rem;font-weight:600;list-style:none;display:flex;justify-content:space-between;align-items:center}',
-  '[data-sw-block="AccordionItem"]>summary::-webkit-details-marker{display:none}',
-  '[data-sw-block="AccordionItem"]>summary::after{content:"+";font-weight:400;margin-left:1rem}',
-  '[data-sw-block="AccordionItem"][open]>summary::after{content:"\\2013"}',
-  '[data-sw-block="AccordionItem"] [data-sw-part="content"]{padding:0 1rem 1rem}',
-].join('');
-
 // --- Lightbox ----------------------------------------------------------------
 // A thumbnail grid that opens a full-screen overlay. PE-first: each item is an
 // anchor to the full image, so with no JS clicking simply opens the image. The
@@ -311,11 +297,10 @@ const FORM_JS = `(function(){
 })();`;
 
 // Registry keyed by block `type`. Only blocks with behavior/styling belong here
-// (child blocks like Slide/AccordionItem/LightboxItem/Tab are styled by their
+// (child blocks like Slide/LightboxItem/Tab are styled by their
 // parent's entry — no entry of their own). Insertion order = bundle order.
 const COMPONENTS = new Map<string, ComponentAsset>([
   ['Carousel', { css: CAROUSEL_CSS, js: CAROUSEL_JS }],
-  ['Accordion', { css: ACCORDION_CSS, js: '' }],
   ['Lightbox', { css: LIGHTBOX_CSS, js: LIGHTBOX_JS }],
   ['Modal', { css: MODAL_CSS, js: MODAL_JS }],
   ['CookieConsent', { css: COOKIE_CONSENT_CSS, js: COOKIE_CONSENT_JS }],
@@ -328,8 +313,7 @@ export const COMPONENT_TYPES: ReadonlySet<string> = new Set(COMPONENTS.keys());
 
 /**
  * `data-sw-component` attribute NAME → component block `type`. MUST stay in sync with the names
- * `render.ts` emits (`data-sw-component="modal"` etc.). (`Accordion` is native `<details>`-only — no
- * `data-sw-component` marker, no JS — so it is intentionally absent.)
+ * the components above expect on their root marker.
  */
 const COMPONENT_NAME_TO_TYPE: ReadonlyMap<string, string> = new Map([
   ['carousel', 'Carousel'],
@@ -362,9 +346,6 @@ export function componentTypesInSource(html: string | null | undefined): string[
   // scan must catch the reference itself. Anchored to the two real spellings (helper call /
   // attribute), so prose or a future `sw-format` helper doesn't over-ship the Form assets.
   if (/(?:\{\{\s*|data-)sw-form\b/.test(html)) seen.add('Form');
-  // The Accordion is native-<details>, CSS-only — it carries no `data-sw-component` marker, only
-  // the `data-sw-block="Accordion…"` styling hooks, so a code-first source needs its own check.
-  if (html.includes('data-sw-block="Accordion')) seen.add('Accordion');
   return [...seen];
 }
 

@@ -27,9 +27,10 @@ describe('componentTypesInSource (code-first detection)', () => {
     expect(componentTypesInSource(null)).toEqual([]);
   });
 
-  it('detects the CSS-only Accordion by its data-sw-block styling hooks (it has no component marker)', () => {
-    expect(componentTypesInSource('<details data-sw-block="AccordionItem"><summary>Q</summary></details>')).toEqual(['Accordion']);
-    expect(componentTypesInSource('<div data-sw-block="Accordion"></div>')).toEqual(['Accordion']);
+  it('ships nothing for a native-details accordion (DaisyUI collapse pattern, not a component)', () => {
+    expect(componentTypesInSource('<details class="collapse collapse-plus"><summary class="collapse-title">Q</summary></details>')).toEqual([]);
+    // legacy Accordion styling hooks no longer trigger a (removed) registry entry
+    expect(componentTypesInSource('<div data-sw-block="Accordion"></div>')).toEqual([]);
   });
 
   it('detects a form embedded by REFERENCE — {{sw-form}} or data-sw-form (marker only exists post-render)', () => {
@@ -45,7 +46,6 @@ describe('componentTypesInSource (code-first detection)', () => {
 describe('component registry', () => {
   it('registers interactive components (container types; child blocks are plain)', () => {
     expect(COMPONENT_TYPES.has('Carousel')).toBe(true);
-    expect(COMPONENT_TYPES.has('Accordion')).toBe(true);
     expect(COMPONENT_TYPES.has('Lightbox')).toBe(true);
     expect(COMPONENT_TYPES.has('Modal')).toBe(true);
     expect(COMPONENT_TYPES.has('CookieConsent')).toBe(true);
@@ -53,15 +53,9 @@ describe('component registry', () => {
     expect(COMPONENT_TYPES.has('Tab')).toBe(false); // a Tab is a plain child panel
     // child / plain blocks have no registry entry of their own
     expect(COMPONENT_TYPES.has('Slide')).toBe(false);
-    expect(COMPONENT_TYPES.has('AccordionItem')).toBe(false);
+    expect(COMPONENT_TYPES.has('Accordion')).toBe(false); // removed — DaisyUI collapse covers it
     expect(COMPONENT_TYPES.has('LightboxItem')).toBe(false);
     expect(COMPONENT_TYPES.has('Section')).toBe(false);
-  });
-
-  it('Accordion contributes CSS but no JS (native <details>, zero-JS)', () => {
-    const used = componentAssets(['Accordion']);
-    expect(used.css).toContain('[data-sw-block="AccordionItem"]');
-    expect(used.js).toBe(''); // no behavior bundle
   });
 
   it('Lightbox contributes CSS + JS (DOM-built overlay, no innerHTML injection)', () => {
@@ -74,7 +68,8 @@ describe('component registry', () => {
     expect(used.js).toContain("'Tab'"); // focus trap honors the aria-modal contract
   });
 
-  it('bundles only the JS of used components (Accordion alone → no JS)', () => {
+  it('ignores unknown/removed types when bundling', () => {
+    expect(componentAssets(['Accordion']).css).toBe('');
     expect(componentAssets(['Accordion']).js).toBe('');
     expect(componentAssets(['Accordion', 'Lightbox']).js).toContain('lightbox');
   });

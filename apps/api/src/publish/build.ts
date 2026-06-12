@@ -541,6 +541,10 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
             slug: page.path,
             path: pageFullPath,
             locale: pageLocale,
+            // The project default alongside the RESOLVED locale, so locale-aware helpers
+            // ({{sw-active}}'s locale-home rule) can tell a translated page (under /<locale>/…)
+            // from a default-locale one (unprefixed, locale == defaultLocale).
+            defaultLocale,
             translations: pageTranslations,
             data: page.data,
             children: pageSource && referencesChildren(pageSource) ? childrenOf(pubBundle.pages, page, defaultLocale) : [],

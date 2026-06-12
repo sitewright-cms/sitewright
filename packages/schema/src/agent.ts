@@ -162,7 +162,8 @@ usual; its title is the menu name (may include {{sw-icon}}/basic HTML). Output a
 .external on each item.
 ACTIVE NAV ITEM: mark the current page in a menu with the {{sw-active <route>}} helper (a boolean,
 no JS; route must be root-relative). By default it matches the active TRAIL (a parent route stays
-active on its child pages); pass exact=true for the current page only. Inside {{#each nav.header}}
+active on its child pages — except a home route, "/" or a locale home like "/es", which matches only
+itself); pass exact=true for the current page only. Inside {{#each nav.header}}
 the item route is \`path\`: <a href="{{sw-url path}}" class="{{#if (sw-active path)}}active{{/if}}"
 {{#if (sw-active path exact=true)}}aria-current="page"{{/if}}>{{sw-label}}</a> (the .active class is what
 the nav EFFECT styles; omit aria-current off the current page). Output the label with {{sw-label}}

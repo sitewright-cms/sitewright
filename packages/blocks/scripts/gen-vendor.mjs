@@ -22,6 +22,9 @@ function resolvePkgJson(name) {
   // Resolve the package's ENTRY (always exported), then cut back to its root dir — `exports`
   // maps routinely omit "./package.json", so it can't be resolved directly.
   const marker = join('node_modules', ...name.split('/'));
+  // Second dir: `wheel-gestures` is a TRANSITIVE dep only reachable through its parent
+  // `embla-carousel-wheel-gestures` under pnpm's isolated layout. If that package is ever
+  // bumped to a version that inlines or drops wheel-gestures, update the libs list + this path.
   for (const dir of [pkgRoot, join(pkgRoot, 'node_modules', 'embla-carousel-wheel-gestures')]) {
     let entry;
     try {
@@ -64,6 +67,11 @@ const TARGETS = [
 function libBanner(libs) {
   const lines = libs.map((name) => {
     const pkg = JSON.parse(readFileSync(resolvePkgJson(name), 'utf8'));
+    // Hard gate: these bundles ship on customer sites, so every vendored package MUST be MIT.
+    // A dep that relicenses (the easepick/Flickity trap) fails generation, not human review.
+    if (pkg.license !== 'MIT') {
+      throw new Error(`gen-vendor: ${pkg.name}@${pkg.version} is licensed "${pkg.license}" — only MIT may be vendored`);
+    }
     return `${pkg.name}@${pkg.version} (${pkg.license})`;
   });
   return `/*! Sitewright component runtime. Bundles: ${lines.join(', ')}. See each package for its MIT license text. */`;

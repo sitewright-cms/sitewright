@@ -135,8 +135,6 @@ test.beforeEach(async ({ page }) => {
   await page.goto(site);
 });
 
-const enhanced = (sel: string) => `${sel} [data-sw-component]`;
-
 test('defaults: fade effect with overlay arrows mid-left/right and bottom-center dots', async ({ page }, testInfo) => {
   const root = page.locator('#fade [data-sw-block="Carousel"]');
   await expect(root).toHaveAttribute('data-sw-enhanced', 'true');

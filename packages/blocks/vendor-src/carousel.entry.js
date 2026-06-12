@@ -129,6 +129,10 @@ function enhance(root) {
   sync();
 
   root.addEventListener('keydown', function (e) {
+    // Don't hijack arrow keys from slide content that consumes them natively
+    // (text inputs, selects, contenteditable regions authored inside slides).
+    var t = e.target;
+    if (t && (t.isContentEditable || /^(INPUT|SELECT|TEXTAREA)$/.test(t.tagName))) return;
     if (e.key === 'ArrowLeft') {
       e.preventDefault();
       embla.scrollPrev();

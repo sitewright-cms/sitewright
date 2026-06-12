@@ -36,8 +36,13 @@ function enhance(root) {
     var img = a.querySelector('img');
     return {
       href: a.getAttribute('href'),
+      // LOAD-BEARING for CSP: an explicit type skips GLightbox's sourceType() sniffing, keeping
+      // its video path (which loads Plyr from cdn.plyr.io) permanently unreachable under the
+      // published sites' default-src 'self' policy.
       type: 'image',
       alt: (img && img.getAttribute('alt')) || '',
+      // GLightbox injects description via innerHTML — tenant trust level (tenants already
+      // author raw HTML); never bind VISITOR-submitted content into data-caption.
       description: a.getAttribute('data-caption') || '',
     };
   });
@@ -58,6 +63,8 @@ function enhance(root) {
   // triggering thumbnail on close (GLightbox only Tab-cycles its own buttons).
   var lastFocus = null;
   gl.on('open', function () {
+    // Coupling note: GLightbox 3.3.1 appends ONE overlay per open and removes it on close, so
+    // a document-level query is unambiguous (no public API exposes the overlay node).
     var overlay = document.querySelector('.glightbox-container');
     if (!overlay) return;
     overlay.setAttribute('role', 'dialog');

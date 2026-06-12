@@ -88,7 +88,7 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
       { name: 'data-autoscroll', on: 'root', description: '"true" for a CONTINUOUS ticker scroll instead of steps (marquee/logo-wall; wins over data-autoplay; pair with data-loop="true" and data-effect="slide").' },
       { name: 'data-autoscroll-speed', on: 'root', description: 'Auto-scroll speed in px per frame (default 2).' },
       { name: 'data-wheel', on: 'root', description: '"true" to navigate with mouse-wheel / trackpad gestures.' },
-      { name: 'data-autoheight', on: 'root', description: '"true" to animate the track height to the in-view slide (slides of different heights).' },
+      { name: 'data-autoheight', on: 'root', description: '"true" to animate the track height to the in-view slide (slides of different heights). Requires data-effect="slide" — incompatible with the default fade effect.' },
       { name: 'data-align', on: 'root', description: 'Snap alignment: "start" (default), "center" (recommended with peek), or "end".' },
     ],
     skeleton: `<div class="relative" data-sw-component="carousel" data-sw-block="Carousel" data-loop="true" data-autoplay="true" data-interval="6000">

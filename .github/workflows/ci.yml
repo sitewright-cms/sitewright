@@ -66,6 +66,10 @@ jobs:
       - name: Check generated flag icons are up to date
         run: pnpm --filter @sitewright/blocks gen:flag-icons:check
 
+      # Same guard for the vendored component runtimes (Embla carousel / GLightbox bundles).
+      - name: Check generated vendor component runtimes are up to date
+        run: pnpm --filter @sitewright/blocks gen:vendor:check
+
       - name: Typecheck
         run: pnpm typecheck
 

@@ -77,7 +77,6 @@ export function pagesAbout(assets: Record<string, string>): Page[] {
       <p class="col-span-full text-base-content/50" data-sw-text="gal_empty">No photos yet — drop some into the Studio folder.</p>
       {{/sw-folder}}
     </div>
-    <div data-sw-part="overlay" aria-hidden="true"></div>
   </div>
 </section>`,
   },

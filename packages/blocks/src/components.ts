@@ -1,15 +1,25 @@
-// Platform-authored, dependency-free behavior + styling for INTERACTIVE component
-// blocks (the "Components" palette: Carousel, and future Modal/Lightbox/etc.).
+// Platform-authored behavior + styling for INTERACTIVE component blocks (Carousel,
+// Lightbox, Modal, Tabs, CookieConsent, Form).
 //
 // These are NOT tenant code — they are first-party, audited, static assets shipped
 // only when the matching block is used (the same "only-used-ships" discipline as
 // icons.ts / brand-icons.ts / the Tailwind sheet). The tenant supplies only DATA
-// (slides, captions) through typed block props; never JavaScript. This keeps the
+// (slides, captions) through declarative markup; never JavaScript. This keeps the
 // "no per-tenant code execution" invariant intact: the JS below is bundled to a
 // `components.js` served from the site's own origin (CSP `default-src 'self'`),
-// and runs on the published/exported site. The editor's sandboxed live-preview
-// shows the progressive-enhancement fallback (no script) — components degrade to
-// usable semantic HTML (a scroll-snap carousel still swipes/scrolls) without JS.
+// and runs on the published/exported site. Components degrade to usable semantic
+// HTML without JS (a carousel stays a swipeable scroll-snap row; a lightbox item
+// stays a working link to the full image).
+//
+// Carousel and Lightbox are powered by VENDORED MIT libraries (Embla Carousel /
+// GLightbox) bundled together with their first-party wiring by scripts/gen-vendor.mjs
+// into the checked-in src/vendor/*-runtime.ts modules (CI guards drift via
+// gen:vendor:check). The libraries stay an implementation detail: agents author only
+// the declarative data-sw-component / data-sw-part / data-* contract documented in
+// COMPONENT_CATALOG — never library API calls.
+import { CAROUSEL_RUNTIME_JS } from './vendor/carousel-runtime.js';
+import { LIGHTBOX_RUNTIME_JS, LIGHTBOX_VENDOR_CSS } from './vendor/lightbox-runtime.js';
+
 /** A component's static styling + behavior (either may be empty). */
 export interface ComponentAsset {
   css: string;
@@ -17,121 +27,81 @@ export interface ComponentAsset {
 }
 
 // --- Carousel -------------------------------------------------------------
-// PE-first: the track is a CSS scroll-snap row (swipeable with no JS). Arrows +
-// dots are hidden until JS marks the root `data-sw-enhanced`, so the no-JS
-// fallback never shows inert controls. Respects prefers-reduced-motion.
+// Embla-powered slider. PE-first: the authored track is a CSS scroll-snap row
+// (swipeable with no JS); the runtime moves the slides into a generated
+// [data-sw-part="container"] and flips the track into Embla's clipping viewport
+// via data-sw-enhanced. `--sw-items` is the slides-per-view knob (set it with
+// Tailwind arbitrary properties, e.g. class="[--sw-items:1.15] md:[--sw-items:3]";
+// fractional values = peek mode) — it drives BOTH the no-JS row and the engine.
+// Arrow/dot POSITIONING defaults live in zero-specificity :where() rules so any
+// authored utility class repositions them; their visibility gates stay strong so
+// inert controls never show before enhancement.
 const CAROUSEL_CSS = [
   '[data-sw-block="Carousel"]{position:relative}',
   // `scrollbar-width:none` hides it in Firefox (the base layer otherwise gives every
   // element `scrollbar-width:thin`); the ::-webkit rule hides it in Chrome/Safari.
   '[data-sw-block="Carousel"] [data-sw-part="track"]{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scroll-behavior:smooth;-webkit-overflow-scrolling:touch;scrollbar-width:none}',
   '[data-sw-block="Carousel"] [data-sw-part="track"]::-webkit-scrollbar{display:none}',
-  '[data-sw-block="Carousel"] [data-sw-part="slide"]{flex:0 0 100%;scroll-snap-align:start;min-width:0}',
+  '[data-sw-block="Carousel"] [data-sw-part="container"]{display:flex;width:100%}',
+  '[data-sw-block="Carousel"] [data-sw-part="slide"]{flex:0 0 calc(100%/var(--sw-items,1));scroll-snap-align:start;min-width:0}',
   '[data-sw-block="Carousel"] [data-sw-part="slide"] img{display:block;width:100%;height:auto}',
+  // Enhanced: the track stops being the scroller (Embla translates the container inside it).
+  '[data-sw-block="Carousel"][data-sw-enhanced="true"] [data-sw-part="track"]{display:block;overflow:hidden;scroll-snap-type:none}',
+  // AutoHeight (data-autoheight="true"): the engine sets the container height to the
+  // in-view slide; top-align the slides (plugin requirement) and animate the change.
+  '[data-sw-block="Carousel"][data-autoheight="true"][data-sw-enhanced="true"] [data-sw-part="container"]{align-items:flex-start;transition:height .25s ease}',
+  // Controls stay hidden until the runtime enhances — the no-JS fallback never shows
+  // inert UI. (These gates are deliberately strong; to drop a control, omit its part.)
   '[data-sw-block="Carousel"] [data-sw-part="prev"],[data-sw-block="Carousel"] [data-sw-part="next"],[data-sw-block="Carousel"] [data-sw-part="dots"]{display:none}',
-  '[data-sw-block="Carousel"][data-sw-enhanced="true"] [data-sw-part="prev"],[data-sw-block="Carousel"][data-sw-enhanced="true"] [data-sw-part="next"]{display:flex;align-items:center;justify-content:center;position:absolute;top:50%;transform:translateY(-50%);width:2.5rem;height:2.5rem;border:0;border-radius:9999px;background:rgba(0,0,0,.5);color:#fff;cursor:pointer;font-size:1.25rem;line-height:1}',
-  '[data-sw-block="Carousel"][data-sw-enhanced="true"] [data-sw-part="prev"]{left:.5rem}',
-  '[data-sw-block="Carousel"][data-sw-enhanced="true"] [data-sw-part="next"]{right:.5rem}',
-  '[data-sw-block="Carousel"][data-sw-enhanced="true"] [data-sw-part="dots"]{display:flex;justify-content:center;gap:.5rem;padding:.75rem 0}',
-  '[data-sw-block="Carousel"] [data-sw-part="dots"] button{width:.6rem;height:.6rem;border-radius:9999px;border:0;background:currentColor;opacity:.35;cursor:pointer;padding:0}',
+  '[data-sw-block="Carousel"][data-sw-enhanced="true"] [data-sw-part="prev"],[data-sw-block="Carousel"][data-sw-enhanced="true"] [data-sw-part="next"]{display:flex;align-items:center;justify-content:center}',
+  '[data-sw-block="Carousel"][data-sw-enhanced="true"] [data-sw-part="dots"]{display:flex}',
+  // DEFAULT placement (zero specificity — any authored utility class wins): arrows
+  // overlaid mid-left/right, dots overlaid centered at the bottom of the slides.
+  ':where([data-sw-block="Carousel"]) :where([data-sw-part="prev"],[data-sw-part="next"]){position:absolute;top:50%;transform:translateY(-50%);width:2.75rem;height:2.75rem;border:0;border-radius:9999px;background:rgb(0 0 0/.45);color:#fff;cursor:pointer;z-index:1}',
+  ':where([data-sw-block="Carousel"]) :where([data-sw-part="prev"]){left:.75rem}',
+  ':where([data-sw-block="Carousel"]) :where([data-sw-part="next"]){right:.75rem}',
+  ':where([data-sw-block="Carousel"]) :where([data-sw-part="dots"]){position:absolute;bottom:.75rem;left:50%;transform:translateX(-50%);gap:.4rem;z-index:1}',
+  '[data-sw-block="Carousel"] [data-sw-part="prev"][disabled],[data-sw-block="Carousel"] [data-sw-part="next"][disabled]{opacity:.35;cursor:default}',
+  '[data-sw-block="Carousel"] [data-sw-part="prev"] svg,[data-sw-block="Carousel"] [data-sw-part="next"] svg{margin:auto}',
+  // Dots are runtime-generated buttons holding the Lucide `circle` glyph; the active
+  // one fills via aria-current.
+  '[data-sw-block="Carousel"] [data-sw-part="dots"] button{display:block;width:.7rem;height:.7rem;padding:0;border:0;background:none;color:#fff;opacity:.65;cursor:pointer}',
+  '[data-sw-block="Carousel"] [data-sw-part="dots"] button svg{display:block;width:100%;height:100%}',
   '[data-sw-block="Carousel"] [data-sw-part="dots"] button[aria-current="true"]{opacity:1}',
-  '@media (prefers-reduced-motion: reduce){[data-sw-block="Carousel"] [data-sw-part="track"]{scroll-behavior:auto}}',
+  '[data-sw-block="Carousel"] [data-sw-part="dots"] button[aria-current="true"] svg circle{fill:currentColor}',
+  '@media (prefers-reduced-motion: reduce){[data-sw-block="Carousel"] [data-sw-part="track"]{scroll-behavior:auto}[data-sw-block="Carousel"] [data-sw-part="container"]{transition:none}}',
 ].join('');
 
-// Dependency-free enhancement. Finds every carousel, wires arrows/dots/keyboard/
-// autoplay, keeps the active dot in sync with manual scroll, and pauses autoplay
-// on hover/focus and under reduced-motion.
-const CAROUSEL_JS = `(function(){
-  function enhance(root){
-    var track=root.querySelector('[data-sw-part="track"]');
-    if(!track)return;
-    var slides=Array.prototype.slice.call(track.querySelectorAll('[data-sw-part="slide"]'));
-    if(slides.length<2)return;
-    var reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    var loop=root.getAttribute('data-loop')==='true';
-    var index=0;
-    function clamp(i){return loop?(i+slides.length)%slides.length:Math.max(0,Math.min(slides.length-1,i));}
-    function go(i){var n=clamp(i);if(n===index&&!loop){return;}index=n;slides[index].scrollIntoView({behavior:reduce?'auto':'smooth',inline:'start',block:'nearest'});sync();}
-    var dotsWrap=root.querySelector('[data-sw-part="dots"]');
-    var dots=[];
-    if(dotsWrap){dotsWrap.removeAttribute('aria-hidden');slides.forEach(function(_,i){var b=document.createElement('button');b.type='button';b.setAttribute('aria-label','Go to slide '+(i+1));b.addEventListener('click',function(){go(i);});dotsWrap.appendChild(b);dots.push(b);});}
-    function sync(){for(var i=0;i<dots.length;i++){dots[i].setAttribute('aria-current',i===index?'true':'false');}}
-    var prev=root.querySelector('[data-sw-part="prev"]');
-    var next=root.querySelector('[data-sw-part="next"]');
-    if(prev)prev.addEventListener('click',function(){go(index-1);});
-    if(next)next.addEventListener('click',function(){go(index+1);});
-    root.addEventListener('keydown',function(e){if(e.key==='ArrowLeft'){go(index-1);}else if(e.key==='ArrowRight'){go(index+1);}});
-    var st;
-    track.addEventListener('scroll',function(){clearTimeout(st);st=setTimeout(function(){var min=Infinity,mi=0,tl=track.getBoundingClientRect().left;slides.forEach(function(s,i){var d=Math.abs(s.getBoundingClientRect().left-tl);if(d<min){min=d;mi=i;}});index=mi;sync();},100);},{passive:true});
-    var auto=root.getAttribute('data-autoplay')==='true';
-    var interval=parseInt(root.getAttribute('data-interval'),10)||5000;
-    var timer=null;
-    function play(){stop();if(auto&&!reduce){timer=setInterval(function(){go(index+1);},interval);}}
-    function stop(){if(timer){clearInterval(timer);timer=null;}}
-    root.addEventListener('mouseenter',stop);root.addEventListener('mouseleave',play);
-    root.addEventListener('focusin',function(e){if(!root.contains(e.relatedTarget)){stop();}});
-    root.addEventListener('focusout',function(e){if(!root.contains(e.relatedTarget)){play();}});
-    root.setAttribute('data-sw-enhanced','true');
-    sync();play();
-  }
-  function init(){Array.prototype.forEach.call(document.querySelectorAll('[data-sw-component="carousel"]'),enhance);}
-  if(document.readyState!=='loading'){init();}else{document.addEventListener('DOMContentLoaded',init);}
-})();`;
+// The Embla-powered runtime (vendored library + first-party wiring; see
+// vendor-src/carousel.entry.js for the readable source). Wires arrows/dots/keyboard,
+// fade or slide effects, autoplay/auto-scroll (paused on hover/focus, skipped under
+// reduced motion), wheel gestures, and auto height — all from data-* attributes.
+const CAROUSEL_JS = CAROUSEL_RUNTIME_JS;
 
 // --- Lightbox ----------------------------------------------------------------
-// A thumbnail grid that opens a full-screen overlay. PE-first: each item is an
-// anchor to the full image, so with no JS clicking simply opens the image. The
-// overlay is hidden until JS marks the root enhanced.
+// GLightbox-powered gallery viewer. PE-first: each item is an anchor to the full
+// image, so with no JS clicking simply opens the image. With JS each component
+// root becomes its own gallery (swipe / pinch-zoom / keyboard / animated slide
+// changes); the viewer DOM is built by the runtime — there is no authored overlay.
+// The vendored GLightbox stylesheet has no url() refs (CSP-safe); the trailing
+// overrides restore stroke rendering for the Lucide icons the wiring passes in
+// (the "clean" skin fills paths by default) and round the buttons.
 const LIGHTBOX_CSS = [
   '[data-sw-block="Lightbox"]{display:block}',
   '[data-sw-block="Lightbox"] [data-sw-part="grid"]{display:grid;grid-template-columns:repeat(auto-fill,minmax(8rem,1fr));gap:.5rem}',
   '[data-sw-block="Lightbox"] [data-sw-part="item"]{display:block}',
   '[data-sw-block="Lightbox"] [data-sw-part="item"] img{display:block;width:100%;height:100%;object-fit:cover;aspect-ratio:1}',
-  '[data-sw-block="Lightbox"] [data-sw-part="overlay"]{display:none}',
-  '[data-sw-block="Lightbox"][data-sw-enhanced="true"] [data-sw-part="overlay"][data-open="true"]{display:flex;position:fixed;inset:0;z-index:9999;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,.92)}',
-  '[data-sw-block="Lightbox"] [data-sw-part="overlay"] img{max-width:90vw;max-height:80vh;object-fit:contain}',
-  '[data-sw-block="Lightbox"] [data-sw-part="overlay"] figcaption{color:#fff;padding:.5rem 1rem;text-align:center}',
-  '[data-sw-block="Lightbox"] [data-sw-part="overlay"] button{position:absolute;background:none;border:0;color:#fff;font-size:2.5rem;line-height:1;cursor:pointer;padding:.5rem}',
-  '[data-sw-block="Lightbox"] [data-sw-part="overlay"] [data-sw-part="close"]{top:.5rem;right:1rem}',
-  '[data-sw-block="Lightbox"] [data-sw-part="overlay"] [data-sw-part="lb-prev"]{left:.5rem;top:50%;transform:translateY(-50%)}',
-  '[data-sw-block="Lightbox"] [data-sw-part="overlay"] [data-sw-part="lb-next"]{right:.5rem;top:50%;transform:translateY(-50%)}',
+  LIGHTBOX_VENDOR_CSS,
+  '.glightbox-clean .gprev,.glightbox-clean .gnext,.glightbox-clean .gclose{background-color:rgb(0 0 0/.45);border-radius:9999px}',
+  '.glightbox-clean .gprev path,.glightbox-clean .gnext path,.glightbox-clean .gclose path{fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}',
+  '.glightbox-clean .gprev svg,.glightbox-clean .gnext svg,.glightbox-clean .gclose svg{width:1.5rem;height:1.5rem}',
 ].join('');
 
-// Dependency-free. Builds the overlay via the DOM (no innerHTML beyond a one-time
-// clear) and shows the full image from each item's own href + data-caption.
-// Focus moves into the overlay on open and returns to the trigger on close;
-// Escape / arrow keys are handled while open.
-const LIGHTBOX_JS = `(function(){
-  function enhance(root){
-    var items=Array.prototype.slice.call(root.querySelectorAll('[data-sw-part="item"]'));
-    var overlay=root.querySelector('[data-sw-part="overlay"]');
-    if(!items.length||!overlay)return;
-    var idx=0,lastFocus=null;
-    function mkBtn(part,label,txt){var b=document.createElement('button');b.type='button';b.setAttribute('data-sw-part',part);b.setAttribute('aria-label',label);b.textContent=txt;return b;}
-    overlay.innerHTML='';
-    overlay.setAttribute('role','dialog');overlay.setAttribute('aria-modal','true');overlay.setAttribute('aria-label','Image viewer');
-    var btnClose=mkBtn('close','Close','\\u00d7'),btnPrev=mkBtn('lb-prev','Previous','\\u2039'),btnNext=mkBtn('lb-next','Next','\\u203a');
-    var img=document.createElement('img'),cap=document.createElement('figcaption');
-    overlay.appendChild(btnClose);overlay.appendChild(btnPrev);overlay.appendChild(img);overlay.appendChild(cap);overlay.appendChild(btnNext);
-    if(items.length<2){btnPrev.style.display='none';btnNext.style.display='none';}
-    function show(i){
-      idx=(i+items.length)%items.length;var a=items[idx],thumb=a.querySelector('img');
-      img.setAttribute('src',a.getAttribute('href'));img.setAttribute('alt',thumb?thumb.getAttribute('alt')||'':'');
-      var c=a.getAttribute('data-caption')||'';cap.textContent=c;cap.style.display=c?'block':'none';
-      overlay.setAttribute('data-open','true');overlay.removeAttribute('aria-hidden');btnClose.focus();
-    }
-    function close(){overlay.removeAttribute('data-open');overlay.setAttribute('aria-hidden','true');if(lastFocus){lastFocus.focus();}}
-    items.forEach(function(a,i){a.addEventListener('click',function(e){e.preventDefault();lastFocus=a;show(i);});});
-    btnClose.addEventListener('click',close);
-    btnPrev.addEventListener('click',function(){show(idx-1);});
-    btnNext.addEventListener('click',function(){show(idx+1);});
-    overlay.addEventListener('click',function(e){if(e.target===overlay){close();}});
-    document.addEventListener('keydown',function(e){if(overlay.getAttribute('data-open')!=='true')return;if(e.key==='Escape'){close();}else if(e.key==='ArrowLeft'){show(idx-1);}else if(e.key==='ArrowRight'){show(idx+1);}else if(e.key==='Tab'){var f=[btnClose,btnPrev,btnNext].filter(function(b){return b.style.display!=='none';}),first=f[0],last=f[f.length-1];if(e.shiftKey){if(document.activeElement===first){e.preventDefault();last.focus();}}else if(document.activeElement===last){e.preventDefault();first.focus();}}});
-    root.setAttribute('data-sw-enhanced','true');
-  }
-  function init(){Array.prototype.forEach.call(document.querySelectorAll('[data-sw-component="lightbox"]'),enhance);}
-  if(document.readyState!=='loading'){init();}else{document.addEventListener('DOMContentLoaded',init);}
-})();`;
+// The GLightbox-powered runtime (vendored library + first-party wiring; see
+// vendor-src/lightbox.entry.js for the readable source). Per-root galleries from the
+// authored anchors, Lucide icons, and an a11y shim (dialog semantics, focus restore)
+// on top of GLightbox's own keyboard/touch handling.
+const LIGHTBOX_JS = LIGHTBOX_RUNTIME_JS;
 
 // --- Modal -------------------------------------------------------------------
 // A trigger button that opens a native <dialog> (which provides focus trap,

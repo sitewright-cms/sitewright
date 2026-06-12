@@ -1,6 +1,7 @@
 import type { Page } from '@sitewright/schema';
 import { pageHome } from './home.js';
 import { pageWork } from './work.js';
+import { pageComponents } from './components.js';
 import { pagesServices } from './services.js';
 import { pagesAbout } from './about.js';
 import { pageContact } from './contact.js';
@@ -24,6 +25,7 @@ export function pagesEn(assets: Record<string, string>): Page[] {
     ...pagesBlog(assets),
     pageContact(),
     pageShop(),
+    pageComponents(),
     pageFaq(),
     ...pagesLegal(),
     ...pageNavLinks(),

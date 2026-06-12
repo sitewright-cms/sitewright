@@ -4,8 +4,8 @@ import { icon } from '../../helpers.js';
 // ---------------------------------------------------------------- WORK
 // The portfolio as a first-party LIGHTBOX gallery: each project card is a `data-sw-part="item"`
 // link whose href is the full-size shot — click-to-zoom with keyboard nav once the runtime
-// enhances it, a plain link to the image without JS. The authored empty `overlay` div is the
-// mount the runtime builds the viewer into.
+// enhances it, a plain link to the image without JS. The viewer DOM is built entirely by the
+// runtime — only the grid of anchor items is authored.
 export function pageWork(): Page {
   return {
     id: 'work',
@@ -41,7 +41,6 @@ export function pageWork(): Page {
       </a>
       {{/each}}
     </div>
-    <div data-sw-part="overlay" aria-hidden="true"></div>
   </div>
 </section>`,
   };

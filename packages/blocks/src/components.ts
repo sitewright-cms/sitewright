@@ -49,7 +49,10 @@ const CAROUSEL_CSS = [
   '[data-sw-block="Carousel"][data-sw-enhanced="true"] [data-sw-part="track"]{display:block;overflow:hidden;scroll-snap-type:none}',
   // AutoHeight (data-autoheight="true"): the engine sets the container height to the
   // in-view slide; top-align the slides (plugin requirement) and animate the change.
-  '[data-sw-block="Carousel"][data-autoheight="true"][data-sw-enhanced="true"] [data-sw-part="container"]{align-items:flex-start;transition:height .25s ease}',
+  // NOT gated on data-sw-enhanced: the plugin caches slide heights when Embla inits,
+  // BEFORE the runtime marks the root enhanced — a late gate would measure every slide
+  // stretched to the tallest. The container only exists once the runtime creates it.
+  '[data-sw-block="Carousel"][data-autoheight="true"] [data-sw-part="container"]{align-items:flex-start;transition:height .25s ease}',
   // Controls stay hidden until the runtime enhances — the no-JS fallback never shows
   // inert UI. (These gates are deliberately strong; to drop a control, omit its part.)
   '[data-sw-block="Carousel"] [data-sw-part="prev"],[data-sw-block="Carousel"] [data-sw-part="next"],[data-sw-block="Carousel"] [data-sw-part="dots"]{display:none}',

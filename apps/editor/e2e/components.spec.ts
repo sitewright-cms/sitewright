@@ -53,7 +53,10 @@ async function uploadPng(ctx: APIRequestContext, base: string, name: string, rgb
     multipart: { file: { name: `${name}.png`, mimeType: 'image/png', buffer: solidPng(...rgb) } },
   });
   expect(res.status(), `upload ${name}`).toBe(201);
-  return ((await res.json()) as { url: string }).url;
+  // Media uploads respond with { item: { url, ... } } — url is slug-keyed (/media/<slug>/<id>/<file>).
+  const { item } = (await res.json()) as { item: { url: string } };
+  expect(item.url, `upload ${name} url`).toBeTruthy();
+  return item.url;
 }
 
 // One slide per color so the visible slide is identifiable by its <img> src.
@@ -138,11 +141,11 @@ test('defaults: fade effect with overlay arrows mid-left/right and bottom-center
   const root = page.locator('#fade [data-sw-block="Carousel"]');
   await expect(root).toHaveAttribute('data-sw-enhanced', 'true');
 
-  // Fade: the engine stacks the slides — same x position, crossfaded via opacity.
+  // Fade: the engine crossfades per-slide opacity (the active slide is opaque, the rest
+  // fully transparent and parked off-viewport — so x positions are NOT comparable here).
   const slides = root.locator('[data-sw-part="slide"]');
-  const b0 = (await slides.nth(0).boundingBox())!;
-  const b1 = (await slides.nth(1).boundingBox())!;
-  expect(Math.abs(b0.x - b1.x)).toBeLessThan(2);
+  await expect(slides.nth(0)).toHaveCSS('opacity', '1');
+  await expect(slides.nth(1)).toHaveCSS('opacity', '0');
 
   // Arrows overlay mid-left / mid-right (the :where() defaults).
   const rootBox = (await root.boundingBox())!;
@@ -173,6 +176,7 @@ test('defaults: fade effect with overlay arrows mid-left/right and bottom-center
   await page.keyboard.press('ArrowRight');
   await expect(dots.nth(2)).toHaveAttribute('aria-current', 'true');
   await expect(next).toBeDisabled(); // end reached, no loop
+  await expect(prev).toBeFocused(); // focus handed off the now-disabled arrow, not dropped to <body>
   await page.keyboard.press('ArrowLeft');
   await expect(dots.nth(1)).toHaveAttribute('aria-current', 'true');
 
@@ -246,6 +250,8 @@ test('lightbox: gallery viewer with dialog semantics, arrows, keyboard, and focu
   const root = page.locator('#lb [data-sw-block="Lightbox"]');
   await expect(root).toHaveAttribute('data-sw-enhanced', 'true');
   const items = root.locator('[data-sw-part="item"]');
+  // href ATTRIBUTE, not property: the wiring hands GLightbox a.getAttribute('href') verbatim,
+  // so the slide image's src is the same (site-relative) string — property would be absolute.
   const hrefs = await items.evaluateAll((as) => as.map((a) => (a as HTMLAnchorElement).getAttribute('href')!));
 
   await items.first().click();
@@ -259,6 +265,7 @@ test('lightbox: gallery viewer with dialog semantics, arrows, keyboard, and focu
   await expect.poll(shownSrc).toBe(hrefs[0]);
   await expect(overlay.locator('.gslide.current .gslide-description')).toContainText('Caption 0');
 
+  await page.waitForTimeout(600); // let the zoom-open animation settle so the artifact is reviewable
   await page.screenshot({ path: testInfo.outputPath('lightbox-open.png') });
 
   // Next button, then keyboard arrow; captions track the slides.
@@ -267,8 +274,9 @@ test('lightbox: gallery viewer with dialog semantics, arrows, keyboard, and focu
   await page.keyboard.press('ArrowRight');
   await expect.poll(shownSrc).toBe(hrefs[2]);
 
-  // No loop by default: at the last image the next button is disabled.
-  await expect(overlay.locator('.gnext')).toBeDisabled();
+  // No loop by default: at the last image the next button is disabled (GLightbox marks
+  // this with a `disabled` CLASS — it never sets the disabled attribute).
+  await expect(overlay.locator('.gnext')).toHaveClass(/disabled/);
 
   // Escape closes; focus returns to the triggering thumbnail.
   await page.keyboard.press('Escape');

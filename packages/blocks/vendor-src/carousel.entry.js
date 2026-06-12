@@ -110,8 +110,15 @@ function enhance(root) {
       dots[i].setAttribute('aria-current', i === sel ? 'true' : 'false');
     }
     if (!loop) {
-      if (prev) prev.disabled = !embla.canScrollPrev();
-      if (next) next.disabled = !embla.canScrollNext();
+      var pDis = !embla.canScrollPrev();
+      var nDis = !embla.canScrollNext();
+      // Disabling a focused button drops keyboard focus to <body>, stranding arrow-key
+      // navigation (the keydown listener lives on the root). Per the APG carousel pattern,
+      // hand focus to the opposite arrow before it happens.
+      if (prev && pDis && document.activeElement === prev && next && !nDis) next.focus();
+      if (next && nDis && document.activeElement === next && prev && !pDis) prev.focus();
+      if (prev) prev.disabled = pDis;
+      if (next) next.disabled = nDis;
     }
   }
   buildDots();

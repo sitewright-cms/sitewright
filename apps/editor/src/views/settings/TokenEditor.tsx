@@ -1,4 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react';
+import { X } from 'lucide-react';
 import { glassInput, ghostButton } from '../../theme';
 import { ColorField } from './ColorPicker';
 import { SAFE_COLOR } from './color';
@@ -76,7 +77,7 @@ export function TokenEditor({
               onClick={() => onChange(rows.filter((x) => x.id !== r.id))}
               className="shrink-0 rounded-md px-2 py-1 text-slate-400 transition hover:bg-red-50 hover:text-red-600"
             >
-              ✕
+              <X className="h-4 w-4" />
             </button>
           </motion.div>
         ))}

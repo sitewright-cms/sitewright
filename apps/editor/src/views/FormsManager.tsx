@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { X } from 'lucide-react';
 import type { Form, FormField, FormMode } from '@sitewright/schema';
 import { api, type Project } from '../api';
 import { identifierize, slugify } from '../lib/entry-form';
@@ -241,7 +242,7 @@ export function FormsManager({ project }: { project: Project }) {
                     className={`${dangerButton} ml-auto px-2 py-0.5 text-xs`}
                     onClick={() => removeField(i)}
                   >
-                    ✕
+                    <X className="h-4 w-4" />
                   </button>
                 </div>
                 <div className="flex flex-wrap items-center gap-2 pl-1">

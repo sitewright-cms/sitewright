@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { X } from 'lucide-react';
 import { createPortal } from 'react-dom';
 
 /** Eye glyph — opens the rendered snippet preview on hover/focus. */
@@ -59,7 +60,7 @@ function PreviewCard({
       <div className="flex items-center justify-between gap-2 border-b border-slate-100 bg-slate-50 px-2.5" style={{ height: HEADER_H }}>
         <span className="truncate font-mono text-[11px] font-medium text-slate-500">{label}</span>
         <button type="button" aria-label="Close preview" onClick={onClose} className="text-slate-400 transition hover:text-slate-700">
-          ✕
+          <X className="h-4 w-4" />
         </button>
       </div>
       <div className="relative" style={{ height: CARD_H - HEADER_H }}>

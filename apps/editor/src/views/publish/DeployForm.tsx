@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { X } from 'lucide-react';
 import { api, type DeployConfig, type DeployTargetView, type Project } from '../../api';
 import { useDialogs } from '../ui/Dialogs';
 import { glassInput, primaryButton, ghostButton, dangerButton } from '../../theme';
@@ -159,7 +160,7 @@ export function DeployForm({ project }: { project: Project }) {
                     );
                   }}
                 >
-                  ✕
+                  <X className="h-4 w-4" />
                 </button>
               </li>
             ))}

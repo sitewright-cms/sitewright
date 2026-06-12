@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { X } from 'lucide-react';
 import { api, type ApiKeyCapability, type ApiKeyView, type Project, type ProjectRole } from '../api';
 import { glassCard, glassPanel, glassInput, fieldLabel, primaryButton, dangerButton } from '../theme';
 import { useDialogs } from './ui/Dialogs';
@@ -90,7 +91,7 @@ export function ApiKeysManager({ project }: ApiKeysManagerProps) {
               className="text-amber-700 hover:text-amber-900"
               onClick={() => setIssued(null)}
             >
-              ✕
+              <X className="h-4 w-4" />
             </button>
           </div>
           <code className="mt-2 block break-all rounded-lg border border-amber-200/70 bg-white/80 px-3 py-2 text-xs" aria-label="New API token">

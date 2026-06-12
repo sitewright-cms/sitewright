@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Check, ExternalLink } from 'lucide-react';
 import { api, type DeployTargetView, type Project } from '../../api';
 import { Modal } from '../ui/Modal';
 
@@ -83,7 +84,7 @@ export function DeployModal({ project, target, onClose }: { project: Project; ta
         {status.kind === 'done' && (
           <div className="space-y-3">
             <p className="flex items-center gap-2 text-sm font-medium text-emerald-700">
-              <span aria-hidden>✓</span> Deployed {status.files} files via {status.protocol.toUpperCase()}.
+              <Check className="h-4 w-4" /> Deployed {status.files} files via {status.protocol.toUpperCase()}.
             </p>
             {siteUrl ? (
               <a
@@ -92,7 +93,7 @@ export function DeployModal({ project, target, onClose }: { project: Project; ta
                 rel="noreferrer"
                 className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-bold text-slate-700 transition hover:border-indigo-400 hover:text-indigo-700"
               >
-                Open production site ↗
+                Open production site <ExternalLink className="h-3.5 w-3.5" />
               </a>
             ) : (
               <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">

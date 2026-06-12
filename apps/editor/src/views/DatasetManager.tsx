@@ -1,4 +1,5 @@
 import { useContext, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { X, GripVertical, ChevronRight } from 'lucide-react';
 import type { Dataset, Entry, Field, FieldType } from '@sitewright/schema';
 import { compareEntryOrder } from '@sitewright/core';
 import { api, type Project } from '../api';
@@ -348,7 +349,7 @@ export function DatasetManager({ project }: { project: Project }) {
                 onClick={() => setSchemaOpen((v) => !v)}
                 className="flex w-full items-center gap-2 text-left"
               >
-                <span aria-hidden className={`text-slate-400 transition-transform ${schemaOpen ? 'rotate-90' : ''}`}>▸</span>
+                <span aria-hidden className={`text-slate-400 transition-transform ${schemaOpen ? 'rotate-90' : ''}`}><ChevronRight className="h-4 w-4" /></span>
                 <h3 className="text-sm font-bold text-slate-700">
                   {selected.name}{' '}
                   <span className="text-xs font-medium text-slate-400">
@@ -410,7 +411,7 @@ export function DatasetManager({ project }: { project: Project }) {
                       title="Drag to reorder"
                       className="shrink-0 cursor-grab text-slate-300 transition hover:text-slate-500 active:cursor-grabbing"
                     >
-                      ⠿
+                      <GripVertical className="h-4 w-4" />
                     </span>
                     <span className="w-40 truncate font-mono text-xs">{field.name}</span>
                     {field.name === titleFieldName && (
@@ -454,7 +455,7 @@ export function DatasetManager({ project }: { project: Project }) {
                       className={`${dangerButton} ml-auto px-2 py-0.5 text-xs`}
                       onClick={() => setDraftFields((fs) => fs.filter((f) => f.name !== field.name))}
                     >
-                      ✕
+                      <X className="h-4 w-4" />
                     </button>
                   </li>
                 ))}
@@ -587,7 +588,7 @@ export function DatasetManager({ project }: { project: Project }) {
                     <div
                       className={`group flex items-center gap-2 ${glassPanel} ${gradientHover} waves-effect pr-2 text-sm transition ${dragId === e.id ? 'opacity-40' : ''}`}
                     >
-                      <span aria-hidden className="shrink-0 cursor-grab pl-3 text-slate-300 transition group-hover:text-white/70 active:cursor-grabbing">⠿</span>
+                      <span aria-hidden className="shrink-0 cursor-grab pl-3 text-slate-300 transition group-hover:text-white/70 active:cursor-grabbing"><GripVertical className="h-4 w-4" /></span>
                       <button
                         type="button"
                         onClick={() => {
@@ -621,7 +622,7 @@ export function DatasetManager({ project }: { project: Project }) {
                         className={`${dangerButton} px-2 py-0.5 text-xs`}
                         onClick={() => void removeEntry(e.id)}
                       >
-                        ✕
+                        <X className="h-4 w-4" />
                       </button>
                     </div>
                   </li>

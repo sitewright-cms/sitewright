@@ -1,6 +1,7 @@
 /* eslint-disable security/detect-object-injection -- every dynamic index in this file keys a local
    const lookup table by a typed `SidePanelSide`/`SidePanelAlign` literal; never user-controlled. */
 import { createContext, useEffect, useId, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type ReactNode } from 'react';
+import { X } from 'lucide-react';
 
 /**
  * True for any subtree rendered inside a {@link SidePanel}'s content. {@link Modal} reads it to
@@ -224,7 +225,7 @@ export function SidePanel({ side, label, icon, size, width, align = 'center', op
             onClick={() => setOpen(false)}
             className="rounded-lg px-2 py-0.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
           >
-            ✕
+            <X className="h-4 w-4" />
           </button>
         </header>
         <div className={`min-h-0 flex-1 overflow-auto ${edgeInset}`}>

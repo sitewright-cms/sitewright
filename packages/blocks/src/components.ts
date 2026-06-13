@@ -50,13 +50,13 @@ const CAROUSEL_CSS = [
   // spacing as padding INSIDE the slide (Embla's documented gap pattern).
   '[data-sw-block="Carousel"] [data-sw-part="slide"]{flex:0 0 calc(100%/var(--sw-items,1));scroll-snap-align:start;min-width:0;margin:0}',
   '[data-sw-block="Carousel"] [data-sw-part="slide"] img{display:block;width:100%;height:auto}',
-  // data-item-align: VERTICAL alignment of unequal-height slides in multi-item rows
-  // (default: stretch). CSS-only switch — applied to the no-JS scroll-snap track AND the
-  // runtime-created container, so both render states agree. (AutoHeight separately forces
-  // flex-start above; that rule wins by source order when both are authored.)
-  '[data-sw-block="Carousel"][data-item-align="start"] [data-sw-part="track"],[data-sw-block="Carousel"][data-item-align="start"] [data-sw-part="container"]{align-items:flex-start}',
-  '[data-sw-block="Carousel"][data-item-align="center"] [data-sw-part="track"],[data-sw-block="Carousel"][data-item-align="center"] [data-sw-part="container"]{align-items:center}',
-  '[data-sw-block="Carousel"][data-item-align="end"] [data-sw-part="track"],[data-sw-block="Carousel"][data-item-align="end"] [data-sw-part="container"]{align-items:flex-end}',
+  // data-item-align: HORIZONTAL distribution of the slides when they DON'T fill the row
+  // (fewer slides than --sw-items, or a partial last page) — start (default), center, or end.
+  // CSS-only justify-content, applied to the no-JS scroll-snap track AND the runtime-created
+  // container so both render states agree. (Distinct from data-align, which sets Embla's SNAP
+  // position; this only engages when the flex content underfills its container.)
+  '[data-sw-block="Carousel"][data-item-align="center"] [data-sw-part="track"],[data-sw-block="Carousel"][data-item-align="center"] [data-sw-part="container"]{justify-content:center}',
+  '[data-sw-block="Carousel"][data-item-align="end"] [data-sw-part="track"],[data-sw-block="Carousel"][data-item-align="end"] [data-sw-part="container"]{justify-content:flex-end}',
   // Enhanced: the track stops being the scroller (Embla translates the container inside it).
   '[data-sw-block="Carousel"][data-sw-enhanced="true"] [data-sw-part="track"]{display:block;overflow:hidden;scroll-snap-type:none}',
   // AutoHeight (data-autoheight="true"): the engine sets the container height to the
@@ -100,6 +100,26 @@ const CAROUSEL_CSS = [
   '@keyframes sw-ripple{to{transform:scale(1);opacity:0}}',
   // Click-to-slide (data-click-next="true"): the whole slide is the affordance.
   '[data-sw-block="Carousel"][data-click-next="true"][data-sw-enhanced="true"] [data-sw-part="slide"]{cursor:pointer}',
+  // ── Hero motion (data-kenburns on the root) ──────────────────────────────────────────────
+  // Turns the slideshow into the "standard hero": the active slide's `.sw-kenburns` background
+  // layer drifts (alternating direction by slide parity so consecutive slides pan opposite
+  // ways), and its `.sw-caption` rises in. Keyed off data-active (JS-set), so without JS the
+  // first slide is simply shown static. Keyframes ship with the component (tiny) but are inert
+  // unless data-kenburns is authored — the whole point is to retire the per-site @keyframes the
+  // hero used to need in criticalCss. The hero-slider global snippet uses exactly these hooks.
+  '@keyframes sw-kb-a{0%{transform:scale3d(1.18,1.18,1) translate3d(-2.2%,1.6%,0)}100%{transform:scale3d(1,1,1) translate3d(0,0,0)}}',
+  '@keyframes sw-kb-b{0%{transform:scale3d(1.18,1.18,1) translate3d(2.2%,-1.6%,0)}100%{transform:scale3d(1,1,1) translate3d(0,0,0)}}',
+  '@keyframes sw-cap-in{from{opacity:0;transform:translateY(26px)}to{opacity:1;transform:none}}',
+  // The bg layer fills its slide and is the Ken Burns target; the slide clips it AND is the
+  // positioning context for the absolute .sw-kenburns/.sw-caption (so authors needn't add
+  // `relative` themselves — without it inset:0 would resolve to the carousel root and stack).
+  '[data-sw-block="Carousel"][data-kenburns] [data-sw-part="slide"]{overflow:hidden;position:relative}',
+  '[data-sw-block="Carousel"][data-kenburns] .sw-kenburns{position:absolute;inset:0;background-size:cover;background-position:center}',
+  '@media (prefers-reduced-motion: no-preference){' +
+    '[data-sw-block="Carousel"][data-kenburns][data-sw-enhanced="true"] [data-sw-part="slide"][data-active]:nth-child(odd) .sw-kenburns{animation:sw-kb-a 8s ease-out both}' +
+    '[data-sw-block="Carousel"][data-kenburns][data-sw-enhanced="true"] [data-sw-part="slide"][data-active]:nth-child(even) .sw-kenburns{animation:sw-kb-b 8s ease-out both}' +
+    '[data-sw-block="Carousel"][data-kenburns][data-sw-enhanced="true"] [data-sw-part="slide"][data-active] .sw-caption{animation:sw-cap-in .9s cubic-bezier(.22,1,.36,1) .4s both}' +
+    '}',
   '@media (prefers-reduced-motion: reduce){[data-sw-block="Carousel"] [data-sw-part="track"]{scroll-behavior:auto}[data-sw-block="Carousel"] [data-sw-part="container"]{transition:none}}',
 ].join('');
 

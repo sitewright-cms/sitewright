@@ -11,6 +11,9 @@ export default defineConfig({
   reporter: [['list']],
   use: {
     baseURL: process.env.E2E_BASE_URL ?? 'http://dind.local:2003',
+    // Deterministic motion: some specs assert keyframe animations (e.g. data-kenburns),
+    // which are gated on prefers-reduced-motion: no-preference — don't inherit the host's.
+    reducedMotion: 'no-preference',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
 });

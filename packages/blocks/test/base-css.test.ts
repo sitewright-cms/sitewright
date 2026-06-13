@@ -59,6 +59,50 @@ describe('baseStyles — platform base stylesheet', () => {
       expect(css).toContain('img, video { max-width: 100%; height: auto; }');
       expect(css).not.toMatch(/svg[^}]*display:\s*block/);
     });
+
+    describe('hover dropdowns (nav submenu pattern)', () => {
+      const guard = '.dropdown-hover:not(.dropdown-top):not(.dropdown-left):not(.dropdown-right)';
+
+      it('resets the inline margin so the submenu aligns under its trigger (kills daisyUI .menu indent leak)', () => {
+        // The dropdown-content is also a .menu, so daisyUI's nested-submenu indent
+        // leaks a margin-inline onto it and pushes it ~16px off its parent item.
+        expect(css).toContain(`${guard} > .dropdown-content {`);
+        const rule = css.slice(css.indexOf(`${guard} > .dropdown-content {`));
+        expect(rule).toMatch(/margin-inline:\s*0;/);
+      });
+
+      it('bridges the trigger→submenu gap with an always-present ::after on the li (hover never drops)', () => {
+        // The bridge MUST be on the .dropdown li (always rendered), NOT on
+        // .dropdown-content (daisyUI removes that element when not hovered → it is
+        // gone in the exact instant the pointer crosses the gap).
+        expect(css).toContain(`${guard}::after {`);
+        const after = css.slice(css.indexOf(`${guard}::after {`));
+        expect(after).toMatch(/content:\s*"";/);
+        expect(after).toMatch(/top:\s*100%;/);
+      });
+
+      it('drives the submenu offset AND the bridge height from ONE var so they cannot desync', () => {
+        // both the content margin-block-start and the ::after height read --sw-dropdown-gap
+        const contentRule = css.slice(css.indexOf(`${guard} > .dropdown-content {`));
+        const afterRule = css.slice(css.indexOf(`${guard}::after {`));
+        expect(contentRule).toMatch(/margin-block-start:\s*var\(--sw-dropdown-gap/);
+        expect(afterRule).toMatch(/height:\s*var\(--sw-dropdown-gap/);
+      });
+
+      it('keeps the bridge hit-testable (pointer-events:none would reopen the dead zone)', () => {
+        // The ::after IS the hover surface — making it pass-through breaks the bridge.
+        const afterRule = css.slice(css.indexOf(`${guard}::after {`), css.indexOf('}', css.indexOf(`${guard}::after {`)));
+        expect(afterRule).not.toContain('pointer-events');
+      });
+
+      it('only bridges DOWNWARD placements (a bottom bridge is wrong for top/left/right)', () => {
+        // the bridge selector must EXCLUDE the non-downward placement variants
+        expect(guard).toContain(':not(.dropdown-top)');
+        expect(guard).toContain(':not(.dropdown-left)');
+        expect(guard).toContain(':not(.dropdown-right)');
+        expect(css).toContain(`${guard}::after {`);
+      });
+    });
   });
 
   describe('custom scrollbars', () => {

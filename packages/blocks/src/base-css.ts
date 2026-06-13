@@ -154,6 +154,38 @@ const PLATFORM_DEFAULTS = `
 /* Responsive media (icons are <svg>, sized by classes — intentionally untouched). */
 img, video { max-width: 100%; height: auto; }
 
+/* Hover dropdowns (the documented \`.dropdown.dropdown-hover\` nav-submenu pattern).
+   Two fixes so the recommended markup behaves without per-site CSS:
+   1. ALIGNMENT — daisyUI's \`.menu\` adds a nested-submenu indent
+      (\`margin-inline-start\`) that leaks onto the absolutely-positioned
+      \`.dropdown-content\` (which is also a \`.menu\`), pushing the submenu ~16px to the
+      side of its trigger. Reset the inline margin so the submenu lines up under its
+      parent item. (Unlayered → wins over daisyUI's layered \`.menu\` rule.)
+   2. HOVER BRIDGE — the small visual gap between the trigger and the submenu is a
+      dead zone: moving the pointer across it drops \`:hover\` and the menu closes
+      before you reach it. An always-present \`::after\` on the \`.dropdown\` li fills the
+      gap so the hover region is continuous. (A pseudo on \`.dropdown-content\` can't do
+      this — daisyUI only renders that element while \`:hover\`, so it's gone in the
+      exact instant the pointer is in the gap.)
+   One \`--sw-dropdown-gap\` drives BOTH the submenu offset and the bridge height so
+   they can't desync; set it on the \`.dropdown\` to change the spacing. Excludes the
+   non-downward placements (\`.dropdown-top/-left/-right\`) where a bottom bridge + top
+   margin would be wrong; \`.dropdown-bottom\`/\`.dropdown-center\` ARE downward and keep
+   the bridge (center positions via inset + translate, so \`margin-inline:0\` is a no-op
+   for it). The bridge MUST stay hit-testable — do NOT add \`pointer-events:none\`: it
+   is the hover surface that keeps \`:hover\` alive across the gap; making it pass
+   pointer events through reopens the dead zone (the menu closes mid-travel again).
+   It carries no behavior/href and spans only the trigger's inline box inside the nav
+   strip, so it isn't a meaningful click target. */
+.dropdown-hover:not(.dropdown-top):not(.dropdown-left):not(.dropdown-right) > .dropdown-content {
+  margin-block-start: var(--sw-dropdown-gap, 0.4rem);
+  margin-inline: 0;
+}
+.dropdown-hover:not(.dropdown-top):not(.dropdown-left):not(.dropdown-right)::after {
+  content: ""; position: absolute; inset-inline: 0; top: 100%;
+  height: var(--sw-dropdown-gap, 0.4rem);
+}
+
 /* Solid scrollbars (NO transparency anywhere): a solid track in the page
    background colour (so it blends with the page) and a solid brand-primary thumb
    that darkens while grabbed; no stepper arrows. WebKit/Blink (Chrome/Safari/Edge)

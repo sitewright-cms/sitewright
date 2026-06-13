@@ -208,15 +208,9 @@ export function translationsDe(assets: Record<string, string>): Record<string, P
       a_next: 'Nächste Folie',
       sld_intro:
         'Eine Komponente, alle Konfigurationen. Jeder Slider unten ist reines deklaratives Markup — ein data-sw-component-Root, data-sw-part-Slots und data-*-Optionen.',
-      hero_caption_1: 'Willkommen bei Northwind Studio',
-      hero_caption_2: 'Websites mit echtem Handwerk',
-      hero_caption_3: 'Gebaut für Performance',
-      hero_image_1: assets['proj-aria'] ?? '',
-      hero_image_2: assets['proj-flint'] ?? '',
-      hero_image_3: assets['proj-harbor'] ?? '',
       sec_hero_t: 'Hero-Slider — ein einziges Include',
       sec_hero_d:
-        'Der klassische Startseiten-Auftakt: Folien mit fester Höhe, Hintergrundbildern, abwechselndem Ken-Burns-Effekt und hereingleitenden Captions. Dieser ganze Block ist das hero-slider-Snippet — einsetzen, drei Bilder und Captions festlegen, fertig. Kein eigenes CSS.',
+        'Der klassische Startseiten-Auftakt: Folien mit fester Höhe, Hintergrundbildern, abwechselndem Ken-Burns-Effekt und hereingleitenden Captions. Dieser ganze Block ist das hero-slider-Widget — einsetzen, dann seine Folien (Bilder + Captions) als Daten bearbeiten. Kein eigenes CSS.',
       sec_fade_t: 'Slider — die Standardeinstellungen',
       sec_fade_d: 'Ganz ohne Optionen: Die Folien überblenden sanft, die Pfeile liegen mittig links und rechts, die Indikatoren zentriert am unteren Rand.',
       aria_fade: 'Projekt-Slideshow (Fade)',

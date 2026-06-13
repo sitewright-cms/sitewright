@@ -2,6 +2,7 @@ export * from './errors.js';
 export * from './tree.js';
 export * from './templates.js';
 export * from './global-snippets.js';
+export * from './widgets.js';
 export * from './nav.js';
 export * from './children.js';
 export * from './bindings.js';

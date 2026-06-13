@@ -22,6 +22,7 @@ import {
   parentPageView,
   referencesChildren,
   referencesParentPage,
+  WIDGET_PARTIALS,
   type ProjectBundle,
 } from '@sitewright/core';
 import { isLinkPage, type Page, type Template } from '@sitewright/schema';
@@ -289,6 +290,14 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
   await mkdir(tmp, { recursive: true });
   try {
     const datasets = datasetEntries(bundle);
+    // Resolvable `{{> name}}` partials. `opts.snippets` carries the global snippets (a DB read —
+    // admin-editable, so it MUST come from the caller, not a constant) ∪ the project's snippets. The
+    // MANAGED Widget bodies are added HERE from the constant — before the Tailwind class scan AND the
+    // page render — so every build caller (preview-build, worker, scheduled publish) resolves widgets
+    // identically without each having to remember to merge them. Widgets are spread LAST so a widget
+    // name can't be shadowed by a snippet of the same name. only-used-ships still applies
+    // (referencedSnippets keeps the reachable subset).
+    const snippets = { ...(opts.snippets ?? {}), ...WIDGET_PARTIALS };
     // The unified Corporate Identity drives BOTH the brand tokens (CSS vars/theme)
     // and the schema.org/favicon/OG fields; it's project-level, computed once.
     const identity = bundle.project.identity;
@@ -378,7 +387,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // Only the snippets a page/template/slot actually composes (transitively) contribute — an
     // un-composed snippet (including a built-in global) ships nothing, so a utility-free site
     // stays utility-free.
-    const usedSnippets = referencedSnippets([...effectiveSources, ...slotSources], opts.snippets ?? {});
+    const usedSnippets = referencedSnippets([...effectiveSources, ...slotSources], snippets);
     // {{> snippet}} partials a source page composes contribute their classes too.
     const snippetClassNames = Object.values(usedSnippets).flatMap((s) => extractClassNames(s));
     // The site-wide nav/button effect scheme classes land on <body> (renderDocument), so feed them
@@ -576,7 +585,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
             bodyHtml = renderTemplate(pageSource, {
               ...renderCtx,
               item: keyedDatasets(pageSource, localeData),
-              partials: opts.snippets,
+              partials: snippets,
             });
           } catch (err) {
             throw new PublishError(

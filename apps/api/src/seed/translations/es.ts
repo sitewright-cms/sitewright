@@ -206,15 +206,9 @@ export function translationsEs(assets: Record<string, string>): Record<string, P
       a_next: 'Diapositiva siguiente',
       sld_intro:
         'Un componente, todas las configuraciones. Cada slider de abajo es marcado declarativo puro — un root data-sw-component, slots data-sw-part y opciones data-*.',
-      hero_caption_1: 'Bienvenido a Northwind Studio',
-      hero_caption_2: 'Webs con verdadero oficio',
-      hero_caption_3: 'Hechas para rendir',
-      hero_image_1: assets['proj-aria'] ?? '',
-      hero_image_2: assets['proj-flint'] ?? '',
-      hero_image_3: assets['proj-harbor'] ?? '',
       sec_hero_t: 'Slider hero — un solo include',
       sec_hero_d:
-        'La apertura clásica de portada: diapositivas de altura fija con imágenes de fondo, un efecto Ken Burns alternante y captions que entran. Todo este bloque es el snippet hero-slider — insértalo, define tres imágenes y captions, listo. Sin CSS propio.',
+        'La apertura clásica de portada: diapositivas de altura fija con imágenes de fondo, un efecto Ken Burns alternante y captions que entran. Todo este bloque es el Widget hero-slider — insértalo y luego edita sus diapositivas (imágenes + captions) como datos. Sin CSS propio.',
       sec_fade_t: 'Slider — los valores por defecto',
       sec_fade_d: 'Sin opciones: las diapositivas se funden, las flechas se superponen a media altura y los indicadores quedan centrados abajo.',
       aria_fade: 'Presentación de proyectos (fundido)',

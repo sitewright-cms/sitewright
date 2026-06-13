@@ -4,10 +4,11 @@ import { icon } from '../../helpers.js';
 // ---------------------------------------------------------------- SLIDER showcase (child of Components)
 // Every Carousel variant the platform ships, defaults-first then each knob. Slide CONTENT comes
 // from the localized `projects` dataset + Studio folder (no per-slide translation keys). The hero
-// section is authored the EASY way — the `hero-slider` GLOBAL snippet ({{> hero-slider}}), reading
-// hero_image_*/hero_caption_* from this page's data — to show that a full Ken Burns hero is one
-// include with zero custom CSS. The `<code>` chips are intentionally untranslated.
-export function pageComponentsSlider(assets: Record<string, string>): Page {
+// section is authored the EASY way — the `hero-slider` WIDGET ({{> hero-slider}}), which on save
+// provisions a `hero` config dataset (settings + an editable slides list) and renders from it — to
+// show that a full Ken Burns hero is one include with zero custom CSS, fully editable as data. The
+// `<code>` chips are intentionally untranslated.
+export function pageComponentsSlider(): Page {
   return {
     id: 'comp-slider',
     path: 'slider',
@@ -20,15 +21,8 @@ export function pageComponentsSlider(assets: Record<string, string>): Page {
       a_prev: 'Previous slide',
       a_next: 'Next slide',
       sld_intro: 'One component, every configuration. Each slider below is plain declarative markup — a data-sw-component root, data-sw-part slots, and data-* options.',
-      // Hero via the {{> hero-slider}} snippet: captions (editable) + background images (assets).
-      hero_caption_1: 'Welcome to Northwind Studio',
-      hero_caption_2: 'Websites with real craft',
-      hero_caption_3: 'Built to perform',
-      hero_image_1: assets['proj-aria'] ?? '',
-      hero_image_2: assets['proj-flint'] ?? '',
-      hero_image_3: assets['proj-harbor'] ?? '',
       sec_hero_t: 'Hero slider — one include',
-      sec_hero_d: 'The classic frontpage opener: fixed-height background slides with an alternating Ken Burns drift and captions that rise in. This entire block is the hero-slider snippet — drop it in, set three images and captions, done. No custom CSS.',
+      sec_hero_d: 'The classic frontpage opener: fixed-height background slides with an alternating Ken Burns drift and captions that rise in. This entire block is the hero-slider Widget — drop it in, then edit its slides (images + captions) as data. No custom CSS.',
       sec_fade_t: 'Slider — the defaults',
       sec_fade_d: 'No options at all: slides crossfade, arrows overlay mid-left and mid-right, indicators sit centered at the bottom.',
       aria_fade: 'Project slideshow (fade)',

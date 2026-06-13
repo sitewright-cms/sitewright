@@ -28,7 +28,7 @@ export function pagesEn(assets: Record<string, string>): Page[] {
     pageContact(),
     pageShop(),
     pageComponents(),
-    pageComponentsSlider(assets),
+    pageComponentsSlider(),
     pageComponentsLightbox(),
     pageFaq(),
     ...pagesLegal(),

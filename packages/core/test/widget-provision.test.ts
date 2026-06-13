@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { widgetDatasetsForSources, GLOBAL_SNIPPET_MANIFESTS, type WidgetProvides } from '../src/global-snippets.js';
+import { GLOBAL_SNIPPET_PARTIALS } from '../src/global-snippets.js';
+import {
+  widgetDatasetsForSources,
+  WIDGET_MANIFESTS,
+  WIDGET_PARTIALS,
+  GLOBAL_WIDGETS,
+  type WidgetProvides,
+} from '../src/widgets.js';
 
 describe('widgetDatasetsForSources', () => {
   it('returns the hero Widget dataset spec when a page composes {{> hero-slider}}', () => {
@@ -15,7 +22,7 @@ describe('widgetDatasetsForSources', () => {
   });
 
   it('the built-in manifest registry exposes hero-slider', () => {
-    expect(GLOBAL_SNIPPET_MANIFESTS['hero-slider']?.datasets[0]?.slug).toBe('hero');
+    expect(WIDGET_MANIFESTS['hero-slider']?.datasets[0]?.slug).toBe('hero');
   });
 
   // Synthetic widgets to exercise transitivity + dedupe without coupling to the built-ins.
@@ -33,5 +40,25 @@ describe('widgetDatasetsForSources', () => {
   it('dedupes a dataset slug referenced from multiple places', () => {
     const specs = widgetDatasetsForSources(['{{> alpha}} {{> alpha}}'], partials, manifests);
     expect(specs.filter((d) => d.slug === 'a')).toHaveLength(1);
+  });
+});
+
+describe('Widget / Snippet hard separation', () => {
+  it('hero-slider is a Widget (in WIDGET_PARTIALS), NOT a global snippet', () => {
+    expect(WIDGET_PARTIALS['hero-slider']).toBeTruthy();
+    // Must NOT leak into the snippet registry (which seeds the editor Snippets rail).
+    expect(GLOBAL_SNIPPET_PARTIALS['hero-slider']).toBeUndefined();
+  });
+
+  it('every Widget declares a config dataset and a data-sw-component', () => {
+    for (const w of GLOBAL_WIDGETS) {
+      expect(w.provides.datasets.length, `widget "${w.name}" must provide a dataset`).toBeGreaterThan(0);
+      expect(w.component.length, `widget "${w.name}" must name its component`).toBeGreaterThan(0);
+    }
+  });
+
+  it('the hero-slider body consumes its provisioned `hero` dataset', () => {
+    expect(WIDGET_PARTIALS['hero-slider']).toContain('{{#each data.hero}}');
+    expect(WIDGET_PARTIALS['hero-slider']).toContain('{{#each slides}}');
   });
 });

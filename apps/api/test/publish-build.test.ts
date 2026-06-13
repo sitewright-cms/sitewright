@@ -3,6 +3,7 @@ import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ProjectBundle } from '@sitewright/core';
+import { WIDGET_MANIFESTS } from '@sitewright/core';
 import { buildSite } from '../src/publish/build.js';
 
 let outDir: string;
@@ -55,6 +56,41 @@ describe('buildSite', () => {
     // The source's literal Tailwind class is compiled into the shared, root-linked sheet.
     expect(home).toContain('<link rel="stylesheet" href="styles.css" />');
     expect(await readFile(join(outDir, 'styles.css'), 'utf8')).toContain('display:grid');
+  });
+
+  it('resolves a composed Widget ({{> hero-slider}}) at publish AND feeds its classes to the sheet', async () => {
+    // The Widget body is NOT a project snippet — it must come from WIDGET_PARTIALS, merged inside
+    // buildSite (no opts.snippets here). Its `hero` dataset + config entry drive the render.
+    const heroDs = WIDGET_MANIFESTS['hero-slider']!.datasets[0]!;
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      // A project snippet of the SAME name must NOT shadow the managed widget (widgets win).
+      snippets: { 'hero-slider': '<p>SHADOW</p>' },
+      bundle: bundle({
+        pages: [{ id: 'home', path: '', title: 'Home', source: '<div>{{> hero-slider}}</div>' }],
+        datasets: [{ id: heroDs.slug, name: heroDs.name, slug: heroDs.slug, fields: heroDs.fields }],
+        entries: [
+          {
+            id: 'config',
+            dataset: 'hero',
+            status: 'published',
+            values: { autoplay: true, interval: 6000, show_arrows: true, show_indicators: true, slides: [{ image: '/media/a.jpg', caption: 'Harbor & Co.' }] },
+          },
+        ],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    // The managed Widget body won over the same-named project snippet (reserved name).
+    expect(home).not.toContain('SHADOW');
+    // The Widget rendered from its dataset: carousel root, an <img> slide, and the caption.
+    expect(home).toContain('data-sw-component="carousel"');
+    // sw-url rebases the asset to the page-relative root at publish (/media/a.jpg → media/a.jpg).
+    expect(home).toMatch(/<img class="sw-kenburns"[^>]*src="[^"]*a\.jpg"/);
+    expect(home).toContain('Harbor &amp; Co.');
+    // The class-extraction gotcha guard: a utility from the WIDGET body (h-[60vh]) must be compiled,
+    // proving referencedSnippets scanned the merged widget partial — not just project snippets.
+    expect(await readFile(join(outDir, 'styles.css'), 'utf8')).toContain('height:60vh');
   });
 
   it('renders a source-less page as an empty body (no crash)', async () => {

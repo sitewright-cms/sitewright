@@ -22,7 +22,7 @@ test('register a passkey and sign in with it', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: /Register/ }).click();
   await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill('Pw-secret-1');
+  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();
 
   // Security tab → add a passkey (the name prompt, then the virtual authenticator auto-approves).

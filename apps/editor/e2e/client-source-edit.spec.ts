@@ -13,7 +13,7 @@ test('client edits a code page’s bound region (content), template stays immuta
   await page.goto('/');
   await page.getByRole('button', { name: /Register/ }).click();
   await page.getByLabel('Email').fill(ownerEmail);
-  await page.getByLabel('Password').fill('Pw-secret-1');
+  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Code Site');

@@ -11,7 +11,7 @@ test('snippets rail: create, edit source, persist across reload, delete', async 
   await page.goto('/');
   await page.getByRole('button', { name: /Register/ }).click();
   await page.getByLabel('Email').fill(`rail-${stamp}@e2e.test`);
-  await page.getByLabel('Password').fill('Pw-secret-1');
+  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Rail Site');
@@ -58,7 +58,7 @@ test('templates rail: 2-column grid + rename a template in the editor, persist a
   await page.goto('/');
   await page.getByRole('button', { name: /Register/ }).click();
   await page.getByLabel('Email').fill(`tplrename-${stamp}@e2e.test`);
-  await page.getByLabel('Password').fill('Pw-secret-1');
+  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Tpl Site');
@@ -107,7 +107,7 @@ test('snippets rail: eye preview renders the snippet, and a snippet can be renam
   await page.goto('/');
   await page.getByRole('button', { name: /Register/ }).click();
   await page.getByLabel('Email').fill(`snip2-${stamp}@e2e.test`);
-  await page.getByLabel('Password').fill('Pw-secret-1');
+  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Snip Site');

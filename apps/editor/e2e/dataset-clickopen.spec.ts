@@ -9,7 +9,7 @@ test('click a rendered dataset row in the preview → edit its entry → preview
   await page.goto('/');
   await page.getByRole('button', { name: /Register/ }).click();
   await page.getByLabel('Email').fill(`clickopen-${stamp}@e2e.test`);
-  await page.getByLabel('Password').fill('Pw-secret-1');
+  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('Click Open');

@@ -10,7 +10,7 @@ test('pages list: auto-home, row actions, list settings, template lock + fork', 
   await page.goto('/');
   await page.getByRole('button', { name: /Register/ }).click();
   await page.getByLabel('Email').fill(`plist-${stamp}@e2e.test`);
-  await page.getByLabel('Password').fill('Pw-secret-1');
+  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();
   await page.getByRole('button', { name: 'New project' }).click();
   await page.getByLabel('Project name').fill('List Site');

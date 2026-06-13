@@ -9,7 +9,7 @@ test('user menu: mint an access key, change password, and re-login', async ({ pa
   await page.goto('/');
   await page.getByRole('button', { name: /Register/ }).click();
   await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill('Pw-secret-1');
+  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();
 
   // A project makes the Access keys tab active (keys are project-scoped, owner-only).
@@ -45,7 +45,7 @@ test('user menu: mint an access key, change password, and re-login', async ({ pa
   await page.getByRole('menuitem', { name: 'Sign out' }).click();
 
   await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill('New-pw-9876');
+  await page.getByRole('textbox', { name: 'Password' }).fill('New-pw-9876');
   await page.getByRole('button', { name: 'Sign in' }).click();
 
   // Signed back in: the account menu icon is present again.

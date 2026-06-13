@@ -5,8 +5,9 @@ import { REFERENCE_GROUPS } from '../src/views/library/reference';
 // The Template reference's HELPER docs are pinned to the engine's actually-registered sw-* helpers,
 // so a new / renamed / removed helper can't silently leave the reference stale — the analog of the
 // component-catalog drift test. Descriptions stay authored; only COVERAGE is enforced here. (The
-// data-sw-* directives, bindings and loop variables are conceptual platform facts with no runtime
-// registry to derive from, so they remain authored.)
+// data-sw-* directives, bindings and loop variables now DERIVE from canonical registries in
+// @sitewright/schema — see derived-reference.test.ts here + authoring-reference.test.ts in
+// @sitewright/blocks; the Expressions / Block-helpers / Partials / Effects tabs stay authored.)
 function documentedSwHelperInvocations(): Set<string> {
   const text = REFERENCE_GROUPS.flatMap((g) => g.entries)
     .flatMap((e) => [e.syntax, e.example ?? '', e.description])

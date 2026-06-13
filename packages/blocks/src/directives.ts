@@ -47,8 +47,13 @@ const HTML_ATTR = 'data-sw-html';
 const HREF_ATTR = 'data-sw-href';
 const SRC_ATTR = 'data-sw-src';
 const BG_ATTR = 'data-sw-bg';
-/** Every directive attribute this pass recognizes. */
-const DIRECTIVE_ATTRS = [TEXT_ATTR, HTML_ATTR, HREF_ATTR, SRC_ATTR, BG_ATTR] as const;
+/**
+ * Every directive attribute this pass recognizes — the canonical runtime SET. The authoring-reference
+ * registry (`SW_DIRECTIVES` in @sitewright/schema) is pinned to it by a drift test, so a new/renamed
+ * data-sw-* sink can't silently leave the Template reference stale. (`data-sw-entry` is NOT here — it
+ * is stamped by the dataset {{#each}}, not processed by this pass.)
+ */
+export const DIRECTIVE_ATTRS = [TEXT_ATTR, HTML_ATTR, HREF_ATTR, SRC_ATTR, BG_ATTR] as const;
 
 /** The `data.` key prefix routes a directive to the page's own `page.data` object. */
 const DATA_PREFIX = 'data.';

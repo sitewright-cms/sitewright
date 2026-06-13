@@ -60,6 +60,33 @@ describe('baseStyles — platform base stylesheet', () => {
       expect(css).not.toMatch(/svg[^}]*display:\s*block/);
     });
 
+    describe('code / kbd / samp / pre chip styling', () => {
+      it('gives bare code/kbd/samp/pre a light chip (bg, padding, colour, radius)', () => {
+        const rule = css.slice(css.indexOf('code, kbd, samp, pre {'));
+        expect(css).toContain('code, kbd, samp, pre {');
+        expect(rule).toMatch(/background:\s*#EEE;/);
+        expect(rule).toMatch(/padding:\s*\.25rem;/);
+        expect(rule).toMatch(/color:\s*#4a4a4a;/);
+        expect(rule).toMatch(/border-radius:\s*5px;/);
+      });
+
+      it('keeps the chip rule INSIDE the weak sw-normalize layer (regression: an unlayered bare kbd{} would beat daisyUI .kbd)', () => {
+        // An UNLAYERED bare-element rule outranks any layered rule regardless of
+        // specificity, so an unlayered `kbd{background:…}` would clobber daisyUI's
+        // layered .kbd / .mockup-code on every site. Must stay layered.
+        const idx = css.indexOf('code, kbd, samp, pre {');
+        const layerOpen = css.lastIndexOf('@layer sw-normalize {', idx);
+        const layerClose = css.indexOf('}', css.indexOf('pre code, pre kbd, pre samp'));
+        expect(layerOpen).toBeGreaterThan(-1);
+        expect(idx).toBeGreaterThan(layerOpen);
+        expect(idx).toBeLessThan(layerClose);
+      });
+
+      it('resets a <code>/<kbd>/<samp> nested in a <pre> so it does not draw a chip-on-a-chip', () => {
+        expect(css).toContain('pre code, pre kbd, pre samp { background: none; padding: 0; border-radius: 0; color: inherit; }');
+      });
+    });
+
     describe('hover dropdowns (nav submenu pattern)', () => {
       const guard = '.dropdown-hover:not(.dropdown-top):not(.dropdown-left):not(.dropdown-right)';
 

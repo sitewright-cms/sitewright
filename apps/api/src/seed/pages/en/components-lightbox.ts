@@ -53,7 +53,7 @@ export function pageComponentsLightbox(): Page {
 <section class="mx-auto max-w-6xl px-6 pb-20">
   <h2 class="text-3xl font-bold tracking-tight" data-sw-text="sec_lb_t">Lightbox — the defaults</h2>
   <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="sec_lb_d">Click any photo to open the gallery full-screen.</p>
-  <p class="mt-3 font-mono text-xs text-base-content/40"><code>data-sw-component="lightbox"</code></p>
+  <pre class="mt-3 inline-block max-w-full overflow-x-auto text-xs"><code>data-sw-component="lightbox"</code></pre>
   <div class="mt-8" data-sw-component="lightbox" data-sw-block="Lightbox" aria-label="{{page.data.aria_gallery}}">
     <div data-sw-part="grid" class="gap-4 !grid-cols-2 md:!grid-cols-4">
       {{#sw-folder "Studio" kind="image"}}
@@ -70,7 +70,7 @@ export function pageComponentsLightbox(): Page {
 <section class="mx-auto max-w-6xl px-6 pb-20">
   <h2 class="text-3xl font-bold tracking-tight" data-sw-text="sec_lbfx_t">Lightbox — stripped down</h2>
   <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="sec_lbfx_d">The same gallery with the thumbnail strip and arrows turned off.</p>
-  <p class="mt-3 font-mono text-xs text-base-content/40"><code>data-thumbnails="false" data-arrows="false"</code></p>
+  <pre class="mt-3 inline-block max-w-full overflow-x-auto text-xs"><code>data-thumbnails="false" data-arrows="false"</code></pre>
   <div class="mt-8" data-sw-component="lightbox" data-sw-block="Lightbox" data-thumbnails="false" data-arrows="false" aria-label="{{page.data.aria_gallery2}}">
     <div data-sw-part="grid" class="gap-4 !grid-cols-3 md:!grid-cols-6">
       {{#each data.projects}}
@@ -87,7 +87,7 @@ export function pageComponentsLightbox(): Page {
 <section class="mx-auto max-w-6xl px-6 pb-28">
   <h2 class="text-3xl font-bold tracking-tight" data-sw-text="sec_lb3_t">Lightbox — fill the screen</h2>
   <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="sec_lb3_d">Fill the viewport, drop the open animation, reflect the image in the URL, and allow tilt-to-pan on mobile.</p>
-  <p class="mt-3 font-mono text-xs text-base-content/40"><code>data-fit="fill" data-animation="false" data-history="true" data-tilt="true"</code></p>
+  <pre class="mt-3 inline-block max-w-full overflow-x-auto text-xs"><code>data-fit="fill" data-animation="false" data-history="true" data-tilt="true"</code></pre>
   <div class="mt-8" data-sw-component="lightbox" data-sw-block="Lightbox" data-fit="fill" data-animation="false" data-history="true" data-tilt="true" aria-label="{{page.data.aria_gallery3}}">
     <div data-sw-part="grid" class="gap-4 !grid-cols-2 md:!grid-cols-4">
       {{#sw-folder "Studio" kind="image"}}
@@ -104,7 +104,7 @@ export function pageComponentsLightbox(): Page {
 <section class="mx-auto max-w-6xl px-6 pb-20">
   <h2 class="text-3xl font-bold tracking-tight" data-sw-text="sec_single_t">Lightbox — a single image (one line)</h2>
   <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="sec_single_d">No grid scaffolding needed — put the attribute straight on an &lt;img&gt; and it opens full-screen on click.</p>
-  <p class="mt-3 font-mono text-xs text-base-content/40"><code>&lt;img data-sw-component="lightbox" src="…" data-caption="…"&gt;</code></p>
+  <pre class="mt-3 inline-block max-w-full overflow-x-auto text-xs"><code>&lt;img data-sw-component="lightbox" src="…" data-caption="…"&gt;</code></pre>
   <div class="mt-8">
     {{#each data.projects}}{{#if @first}}
     <img data-sw-component="lightbox" data-thumbnails="false" src="{{sw-url image}}" data-caption="{{title}} — {{summary}}" alt="{{title}}" loading="lazy" class="mx-auto block w-full max-w-3xl rounded-2xl shadow-sm transition-shadow duration-300 hover:shadow-xl" />
@@ -115,7 +115,7 @@ export function pageComponentsLightbox(): Page {
 <section class="mx-auto max-w-6xl px-6 pb-28">
   <h2 class="text-3xl font-bold tracking-tight" data-sw-text="sec_masonry_t">Lightbox — masonry grid</h2>
   <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="sec_masonry_d">Mixed-aspect images staggered into balanced CSS columns — no cropping — and the whole set is one gallery.</p>
-  <p class="mt-3 font-mono text-xs text-base-content/40"><code>&lt;div data-sw-component="lightbox" class="columns-2 sm:columns-3"&gt;</code></p>
+  <pre class="mt-3 inline-block max-w-full overflow-x-auto text-xs"><code>&lt;div data-sw-component="lightbox" class="columns-2 sm:columns-3"&gt;</code></pre>
   <div class="mt-8 block columns-2 gap-4 sm:columns-3" data-sw-component="lightbox" aria-label="{{page.data.aria_masonry}}">
     {{#sw-folder "Team" kind="image"}}
     <a href="{{sw-url url}}" data-caption="{{alt}}" class="group relative mb-4 block break-inside-avoid overflow-hidden rounded-xl bg-base-200"><span class="skeleton absolute inset-0 z-0" aria-hidden="true"></span><img src="{{sw-url url}}" alt="{{alt}}" width="{{width}}" height="{{height}}" loading="lazy" class="relative z-10 block w-full transition-transform duration-500 group-hover:scale-[1.03]" /><span class="pointer-events-none absolute inset-0 z-20 bg-gradient-to-t from-black/40 via-black/0 to-black/0 opacity-50 transition-opacity duration-300 group-hover:opacity-90" aria-hidden="true"></span></a>
@@ -132,7 +132,7 @@ export function pageComponentsLightbox(): Page {
 <section class="mx-auto max-w-6xl px-6 pb-28">
   <h2 class="text-3xl font-bold tracking-tight" data-sw-text="sec_group_t">Lightbox — one gallery from separate images</h2>
   <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="sec_group_d">Separate images, one gallery — via a shared data-gallery name.</p>
-  <p class="mt-3 font-mono text-xs text-base-content/40"><code>&lt;img data-sw-component="lightbox" data-gallery="studio-tour" …&gt;</code></p>
+  <pre class="mt-3 inline-block max-w-full overflow-x-auto text-xs"><code>&lt;img data-sw-component="lightbox" data-gallery="studio-tour" …&gt;</code></pre>
   <div class="mt-8 grid gap-6 sm:grid-cols-2">
     {{#sw-folder "Brand" kind="image"}}
     <figure class="rounded-2xl border border-base-200/70 bg-base-100 p-3 shadow-sm">

@@ -116,13 +116,14 @@ export interface TemplateContext {
 // `data-src`/`data-bg` mirror `src`/`background`: the lazy-load runtime copies them into
 // `src` / `background-image`, so an INTERPOLATED value must be scheme-fixed by {{sw-url …}} or a
 // safe literal prefix (the data behind it — page.data, dataset entries — is editable by any
-// project member, lower-trust than the template author). `data-srcset` is intentionally absent —
-// and so is plain `srcset` (neither is in this set): both carry a comma-separated `url descriptor`
-// list that doesn't fit the single-URL prefix rule, and a bad scheme there only fails an image
-// fetch (never executes). Don't add `srcset`/`data-srcset` here without first reworking the gate
-// to validate each list entry.
+// project member, lower-trust than the template author). `data-full` likewise becomes a lightbox
+// item's `href` (the full-size image) when the runtime wraps a bare <img> — same single-URL rule.
+// `data-srcset` is intentionally absent — and so is plain `srcset` (neither is in this set): both
+// carry a comma-separated `url descriptor` list that doesn't fit the single-URL prefix rule, and a
+// bad scheme there only fails an image fetch (never executes). Don't add `srcset`/`data-srcset`
+// here without first reworking the gate to validate each list entry.
 const URL_ATTRS = new Set([
-  'href', 'src', 'action', 'formaction', 'poster', 'cite', 'background', 'xlink:href', 'data-src', 'data-bg',
+  'href', 'src', 'action', 'formaction', 'poster', 'cite', 'background', 'xlink:href', 'data-src', 'data-bg', 'data-full',
 ]);
 /** Max distinct compiled templates kept in memory (LRU-ish; bounds the worker's heap). */
 const COMPILE_CACHE_LIMIT = 200;

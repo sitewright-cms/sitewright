@@ -70,6 +70,7 @@ describe('component registry', () => {
     expect(used.js).toContain('smartphoto@'); // license banner MUST keep attributing the bundled MIT package
     expect(used.js).toContain('data-sw-component="lightbox"');
     expect(used.js).toContain('data-thumbnails'); // the thumbnail-strip switch is read from data-*
+    expect(used.js).toContain('data-full'); // minimal form: bare <img> wrapped with href = data-full || src
     expect(used.js).toContain('sw-lightbox'); // runtime builds the viewer with the neutral class names
     expect(used.js).toContain('focus'); // a11y shim: focus restored to the trigger on close
     // The IE-only polyfills SmartPhoto ships are aliased away at bundle time (modern target).

@@ -117,14 +117,17 @@ Quick rules vs the similar-looking DaisyUI classes:
 - Content TABS → data-sw-component="tabs" (APG tablist; panels stack readable without JS).
   DaisyUI \`tab\` classes are for tab-STYLED NAVIGATION LINKS only; do not build radio-input
   content tabs.
-- Image viewer/gallery → data-sw-component="lightbox": each root is its
-  own gallery with a bottom thumbnail strip, an enlarge-from-thumbnail open animation, a header
-  image-counter + caption, swipe, pinch-zoom, and keyboard nav. Author ONLY the grid of
-  <a href="full"><img thumb></a> items — the viewer DOM is runtime-built (no overlay element).
-  Each item MUST contain an <img> (the viewer clones it + reuses its src in the strip); href is
-  the full image, the <img src> the thumbnail (they may differ). Toggle features with data-* on
-  the root: data-thumbnails/data-arrows/data-animation="false", data-fit="fill", data-tilt /
-  data-history="true". No DaisyUI equivalent; pairs with {{#sw-folder}} or a dataset loop.
+- Image viewer/gallery → data-sw-component="lightbox": a full-screen gallery with a bottom
+  thumbnail strip, an enlarge-from-thumbnail open animation, a header image-counter + caption,
+  swipe, pinch-zoom, and keyboard nav (viewer DOM is runtime-built — no overlay element). THREE
+  forms: (1) one line — a single image: <img data-sw-component="lightbox" src="{{sw-url thumb}}"
+  data-full="{{sw-url full}}" data-caption alt> (data-full optional); (2) minimal gallery — a
+  <div data-sw-component="lightbox" class="grid grid-cols-4 gap-2"> of bare <img> or
+  <a href><img></a> children (you style the container); (3) explicit data-sw-block + data-sw-part
+  grid for the batteries-included styled square grid. Every image is an <img> (the open animation
+  clones it). Toggle: data-thumbnails/data-arrows/data-animation="false", data-fit="fill", data-tilt
+  / data-history="true". For no cropping use a masonry (class="block columns-2 sm:columns-3" +
+  natural-aspect imgs) or match the tile aspect to the image. No DaisyUI equivalent.
 - MODAL → data-sw-component="modal" (native <dialog>: focus trap/Esc/backdrop for free).
   DaisyUI's modal methods need inline JS (rejected) or a checkbox hack (poor a11y) — don't.
 - Cookie banner → data-sw-component="cookie-consent", placed ONCE site-wide in the website

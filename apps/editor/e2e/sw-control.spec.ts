@@ -117,9 +117,10 @@ test('sw-control as="select": renders a dropdown of author options and sets the 
   await expect(preview.locator('p.st')).toHaveText('Published');
 });
 
-// Reveal-for-editing: a control inside a display:none (Tailwind `hidden`) wrapper renders at 0x0 and is
-// unreachable in-place — the bridge must reveal its hidden ancestor in content mode so it stays usable.
-test('sw-control: a control hidden behind display:none is revealed + usable in content mode', async ({ page }) => {
+// Overlay handle: a control inside a display:none (Tailwind `hidden`) wrapper renders at 0x0 and is
+// unreachable in-place — the bridge attaches an always-on-top HANDLE (proxied to a visible ancestor)
+// so it stays editable without un-hiding the wrapper.
+test('sw-control: a control hidden behind display:none is reachable via an overlay handle', async ({ page }) => {
   const s = Date.now();
   await page.goto('/');
   await page.getByRole('button', { name: /Register/ }).click();
@@ -135,21 +136,53 @@ test('sw-control: a control hidden behind display:none is revealed + usable in c
   await page.getByRole('button', { name: 'Code Editor', exact: true }).click();
   await page.locator('.cm-content').click();
   await page.keyboard.press('ControlOrMeta+a');
-  // The control lives inside a hidden wrapper (the "settings chips" pattern) — invisible on the page,
-  // but it must be reachable in the editor.
+  // The control lives inside a hidden wrapper (the "settings chips" pattern) — invisible on the page.
   await page.keyboard.insertText('<div class="hidden">{{sw-control target="motto" label="Motto"}}</div><p class="mt">{{page.data.motto}}</p>');
   await page.getByRole('button', { name: 'Content Editor', exact: true }).click();
 
   const preview = page.frameLocator('iframe[title="Preview"]');
-  const chip = preview.locator('[data-sw-control="motto"]');
-  await expect(chip).toBeVisible(); // would be 0x0 (display:none ancestor) without the reveal pass
-  await chip.click();
+  await expect(preview.locator('[data-sw-control="motto"]')).toBeHidden(); // stays hidden (no reveal)
+  const handle = preview.locator('.sw-handle');
+  await expect(handle.first()).toBeVisible(); // an overlay handle stands in for the hidden control
+  await handle.first().click(); // single hidden leaf → opens its control popover directly
   await preview.locator('.sw-pop .sw-cval').fill('Built to last');
   await preview.locator('.sw-pop .sw-ok').click();
 
   await expect(preview.locator('p.mt')).toHaveText('Built to last');
 
-  // Leaving content mode restores the author's hidden wrapper (the reveal is fully reversed).
+  // Leaving content mode removes the overlay handles.
   await page.getByRole('button', { name: 'Code Editor', exact: true }).click();
-  await expect(chip).toBeHidden();
+  await expect(preview.locator('.sw-handle')).toHaveCount(0);
+});
+
+// Occlusion: an editable element covered by an absolute overlay can't be clicked in place — the bridge's
+// top-layer handle sits ABOVE the overlay so the element stays editable (here a plain-text leaf → textarea popover).
+test('overlay handle: an occluded editable element is editable via its top-layer handle', async ({ page }) => {
+  const s = Date.now();
+  await page.goto('/');
+  await page.getByRole('button', { name: /Register/ }).click();
+  await page.getByLabel('Email').fill(`occl-${s}@e2e.test`);
+  await page.getByLabel('Password').fill('Pw-secret-1');
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await page.getByRole('button', { name: 'New project' }).click();
+  await page.getByLabel('Project name').fill('Occluded');
+  await page.getByLabel('Project slug').fill(`occl-${s}`);
+  await page.getByRole('button', { name: 'Create project' }).click();
+
+  await page.getByRole('button', { name: /^Home/ }).click();
+  await page.getByRole('button', { name: 'Code Editor', exact: true }).click();
+  await page.locator('.cm-content').click();
+  await page.keyboard.press('ControlOrMeta+a');
+  // The caption is fully covered by an absolute overlay painted on top (the hero-slider pattern).
+  await page.keyboard.insertText('<div style="position:relative;height:120px"><span class="cap" data-sw-text="cap">Hi</span><div style="position:absolute;inset:0;background:rgba(0,0,0,.3)"></div></div>');
+  await page.getByRole('button', { name: 'Content Editor', exact: true }).click();
+
+  const preview = page.frameLocator('iframe[title="Preview"]');
+  const handle = preview.locator('.sw-handle');
+  await expect(handle.first()).toBeVisible(); // a handle stands over the occluded caption
+  await handle.first().click(); // occluded plain text → textarea popover
+  await preview.locator('.sw-pop .sw-tval').fill('Now editable');
+  await preview.locator('.sw-pop .sw-ok').click();
+
+  await expect(preview.locator('span.cap')).toHaveText('Now editable');
 });

@@ -90,12 +90,19 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       // Positioning host for the absolute badge — applied as a CLASS (added only to elements computed
       // static, so positioned elements are untouched) so it never mutates the inline style attribute.
       '.sw-rel{position:relative}' +
-      // Reveal-for-editing: an editable leaf an author hid behind a display:none ancestor (e.g. a
-      // Tailwind hidden wrapper of {{sw-control}} "settings" chips) is unreachable in-place. While
-      // editing, its display:none ancestors get this class (restored on exit); the dashed ring marks
-      // the region as edit-only (it is not part of the published page).
-      '.sw-reveal{display:revert !important;outline:1px dashed rgba(99,102,241,.45);outline-offset:3px}' +
-      '.sw-tb{position:fixed;z-index:2147483646;display:none;gap:2px;padding:3px;border-radius:8px;background:#0f172a;box-shadow:0 6px 20px rgba(0,0,0,.35);font:600 12px system-ui,sans-serif}' +
+      // Overlay HANDLES: an always-on-top click target for any editable leaf the page would OCCLUDE
+      // (an overlay on top), HIDE (a display:none ancestor — e.g. a Tailwind hidden "settings chips"
+      // wrapper), or PARK off-screen (a non-active carousel slide). The host is a fixed viewport layer
+      // at a near-max z-index (above any normal author overlay / cookie bar / lightbox); each handle is
+      // a small pill positioned by the leaf's (or a visible ancestor's) geometry. Edit popovers (.sw-pop,
+      // z+1 below) therefore always sit ABOVE the handles. Group handles (sky) front a chooser list.
+      '.sw-handles{position:fixed;inset:0;z-index:2147483646;pointer-events:none}' +
+      '.sw-handle{position:absolute;pointer-events:auto;display:flex;align-items:center;justify-content:center;min-width:22px;height:22px;padding:0 6px;border-radius:9999px;border:1.5px solid #fff;background:#6366f1;color:#fff;cursor:pointer;font:700 11px system-ui,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.4);transition:transform .1s,background .1s}' +
+      '.sw-handle:hover{background:#4f46e5;transform:scale(1.12)}' +
+      '.sw-handle.sw-handle-group{background:#0ea5e9}.sw-handle.sw-handle-group:hover{background:#0284c7}' +
+      '.sw-pop .sw-grouprow{all:unset;display:block;cursor:pointer;padding:5px 8px;border-radius:6px;font:13px system-ui,sans-serif;color:#1e293b}' +
+      '.sw-pop .sw-grouprow:hover{background:#eef2ff}' +
+      '.sw-tb{position:fixed;z-index:2147483647;display:none;gap:2px;padding:3px;border-radius:8px;background:#0f172a;box-shadow:0 6px 20px rgba(0,0,0,.35);font:600 12px system-ui,sans-serif}' +
       '.sw-tb button{all:unset;color:#e2e8f0;cursor:pointer;padding:3px 7px;border-radius:5px;min-width:18px;text-align:center}' +
       '.sw-tb button:hover{background:#334155;color:#fff}' +
       '.sw-pop{position:fixed;z-index:2147483647;display:none;flex-direction:column;gap:6px;padding:8px;border-radius:10px;background:#fff;box-shadow:0 8px 24px rgba(0,0,0,.25);font:13px system-ui,sans-serif;min-width:240px}' +
@@ -215,7 +222,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     textRow.style.display = textKey ? 'flex' : 'none';
     if (textKey) p.querySelector('.sw-text').value = anchor.textContent || '';
     p.style.display = 'flex';
-    var rect = anchor.getBoundingClientRect();
+    var rect = rectFor(anchor);
     var top = rect.bottom + 6; var left = rect.left;
     var maxLeft = window.innerWidth - p.offsetWidth - 6; if (left > maxLeft) left = maxLeft > 6 ? maxLeft : 6; if (left < 6) left = 6;
     if (top + p.offsetHeight > window.innerHeight - 6) top = rect.top - p.offsetHeight - 6;
@@ -241,11 +248,10 @@ export const PREVIEW_BRIDGE_JS = `(function () {
   function onLinkClick(e) { e.preventDefault(); e.stopPropagation(); openPop(e.currentTarget); }
 
   // --- Image / background replacement ([data-sw-src] / [data-sw-bg]) → ask the editor to pick. ---
-  function onImgClick(e) {
-    e.preventDefault(); e.stopPropagation();
-    var el = e.currentTarget;
+  function pickImage(el) {
     post({ type: 'pick-image', key: el.getAttribute('data-sw-src') || el.getAttribute('data-sw-bg') || '', kind: el.hasAttribute('data-sw-src') ? 'image' : 'bg' });
   }
+  function onImgClick(e) { e.preventDefault(); e.stopPropagation(); pickImage(e.currentTarget); }
 
   // --- Editor-only CONTROL chips ([data-sw-control]) → a popover (text/textarea/select) or, for
   //     as="image", the editor's file picker — to set the chip's target (page/page.data value). ---
@@ -303,7 +309,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     actions.appendChild(cancel); actions.appendChild(ok);
     p.appendChild(lab); p.appendChild(actions);
     p.style.display = 'flex';
-    var rect = el.getBoundingClientRect();
+    var rect = rectFor(el);
     var top = rect.bottom + 6, left = rect.left;
     var maxLeft = window.innerWidth - p.offsetWidth - 6; if (left > maxLeft) left = maxLeft > 6 ? maxLeft : 6; if (left < 6) left = 6;
     if (top + p.offsetHeight > window.innerHeight - 6) top = rect.top - p.offsetHeight - 6;
@@ -344,28 +350,201 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     if (on) { if (getComputedStyle(el).position === 'static') el.classList.add('sw-rel'); }
     else el.classList.remove('sw-rel');
   }
-  // Make editable content reachable even when an author hid it behind a display:none ancestor (the
-  // canonical case is a Tailwind hidden wrapper of {{sw-control}} "settings" chips, which otherwise
-  // render at 0x0 and can never be clicked). We only act on leaves that are GENUINELY removed from
-  // layout (no client rects), so visible content is never disturbed; ancestors are restored on exit.
-  var REVEAL_SEL = '[data-sw-text],[data-sw-html],[data-sw-href],[data-sw-src],[data-sw-bg],[data-sw-control],[data-sw-entry]';
-  function revealHidden(on) {
-    if (!on) { eachEl('.sw-reveal', function (el) { el.classList.remove('sw-reveal'); }); return; }
-    eachEl(REVEAL_SEL, function (el) {
-      if (el.getClientRects().length) return; // already in layout → leave it alone
-      // Walk the WHOLE ancestor chain (not just the first hit): a leaf can sit under nested hidden
-      // wrappers, and every display:none link must be lifted or the leaf stays collapsed. Only
-      // ancestors whose COMPUTED display is none are touched — a visible ancestor (e.g. a responsive
-      // "hidden md:block" that is block here) computes to block and is skipped — so nothing that was
-      // on-screen is ever disturbed. display:revert restores the element-type default (div to block,
-      // span to inline), correct for the hidden class; a rare !hidden (display:none !important) is
-      // not overridden, which is acceptable for the settings-chips pattern this targets.
-      var walk = el.parentElement, guard = 0;
-      while (walk && walk !== document.body && guard++ < 50) {
-        if (getComputedStyle(walk).display === 'none') walk.classList.add('sw-reveal');
-        walk = walk.parentElement;
+  // ---- Overlay HANDLES ----------------------------------------------------------------------------
+  // In-place affordances fail when the page OCCLUDES an editable leaf (an absolute overlay painted on
+  // top), HIDES it (a display:none ancestor — e.g. a Tailwind hidden "settings chips" wrapper), or
+  // PARKS it off-screen (a non-active carousel slide). For those leaves we attach a click target in a
+  // fixed top-most layer, positioned by geometry, so nothing in the page can cover it and the leaf's
+  // own visibility no longer gates reachability. Edits route through the SAME popover/picker/postMessage
+  // sinks the in-place path uses; directly-reachable leaves keep the lighter in-place editing.
+  var HANDLE_SEL = '[data-sw-text],[data-sw-html],[data-sw-href],[data-sw-src],[data-sw-bg],[data-sw-control],[data-sw-entry]';
+  var handleHost = null, handleList = [], handleScrollRaf = 0, handleRefreshTimer = 0, swAnchorRect = null, groupPop = null;
+
+  function ensureHandleHost() {
+    if (handleHost) return handleHost;
+    handleHost = document.createElement('div'); handleHost.className = 'sw-handles';
+    document.body.appendChild(handleHost);
+    return handleHost;
+  }
+  // A leaf's geometry for popover placement — its own rect, or (when hidden) the rect of the handle
+  // that opened it (swAnchorRect), or a safe corner default.
+  function rectFor(el) {
+    if (el && el.getClientRects && el.getClientRects().length) return el.getBoundingClientRect();
+    return swAnchorRect || { left: 16, top: 16, bottom: 36, right: 120, width: 104, height: 20 };
+  }
+  function leafLabel(el) {
+    return el.getAttribute('data-sw-control-label') || el.getAttribute('data-sw-text') || el.getAttribute('data-sw-html')
+      || el.getAttribute('data-sw-href') || el.getAttribute('data-sw-src') || el.getAttribute('data-sw-bg')
+      || el.getAttribute('data-sw-dataset') || 'field';
+  }
+  function leafGlyph(el) {
+    if (el.hasAttribute('data-sw-control')) return '\\u2699';
+    if (el.hasAttribute('data-sw-src') || el.hasAttribute('data-sw-bg')) return '\\u{1F5BC}';
+    if (el.hasAttribute('data-sw-href')) return '\\u{1F517}';
+    if (el.hasAttribute('data-sw-entry')) return '\\u{1F5C2}';
+    if (el.hasAttribute('data-sw-html')) return '\\u00B6';
+    return '\\u270E';
+  }
+  // Route a leaf to its existing edit flow — none of these need the leaf to be visible (every sink is a
+  // popover/picker/postMessage), except plain inline text, which falls back to a textarea popover.
+  function editLeaf(el) {
+    if (el.hasAttribute('data-sw-control')) return openControlPop(el);
+    if (el.hasAttribute('data-sw-src') || el.hasAttribute('data-sw-bg')) return pickImage(el);
+    if (el.hasAttribute('data-sw-href') && !el.hasAttribute('data-sw-html')) return openPop(el);
+    if (el.hasAttribute('data-sw-html')) return editText(el, true);
+    if (el.hasAttribute('data-sw-text')) return editText(el, false);
+    if (el.hasAttribute('data-sw-entry')) return post({ type: 'open-entry', dataset: el.getAttribute('data-sw-dataset') || '', id: el.getAttribute('data-sw-entry') || '' });
+  }
+  // Reachable inline text → focus + select for in-place editing; otherwise edit via a popover (rich →
+  // the editor HTML-source modal; plain → a textarea writing the same page.data leaf the inline path does).
+  function editText(el, rich) {
+    if (el.getClientRects().length && reachOf(el) === 'ok') {
+      try { el.focus(); var rng = document.createRange(); rng.selectNodeContents(el); var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(rng); } catch (e) {}
+      if (rich) positionToolbar();
+      return;
+    }
+    if (rich) { post({ type: 'edit-html-source', key: el.getAttribute('data-sw-html'), html: el.innerHTML }); return; }
+    openTextPop(el);
+  }
+  // Minimal textarea popover for a plain-text leaf that is not reachable in place.
+  var tpop = null, tpopEl = null;
+  function openTextPop(el) {
+    tpopEl = el;
+    if (!tpop) {
+      tpop = document.createElement('div'); tpop.className = 'sw-pop';
+      tpop.innerHTML = '<label>Text<textarea class="sw-tval" rows="3" maxlength="8000"></textarea></label>' +
+        '<div class="sw-pop-actions"><button type="button" class="sw-cancel">Cancel</button><button type="button" class="sw-ok">Apply</button></div>';
+      document.body.appendChild(tpop);
+      tpop.querySelector('.sw-cancel').addEventListener('click', closeTextPop);
+      tpop.querySelector('.sw-ok').addEventListener('click', applyTextPop);
+      tpop.addEventListener('keydown', function (e) { if (e.key === 'Escape') { e.preventDefault(); closeTextPop(); } });
+    }
+    tpop.querySelector('.sw-tval').value = el.textContent || '';
+    tpop.style.display = 'flex';
+    placeNear(tpop, rectFor(el));
+    tpop.querySelector('.sw-tval').focus();
+    document.addEventListener('mousedown', onTextDocDown, true);
+  }
+  function applyTextPop() { if (tpopEl) post({ type: 'edit', key: tpopEl.getAttribute('data-sw-text') || '', value: tpop.querySelector('.sw-tval').value }); closeTextPop(); }
+  function closeTextPop() { if (tpop) tpop.style.display = 'none'; tpopEl = null; document.removeEventListener('mousedown', onTextDocDown, true); }
+  function onTextDocDown(e) { if (!tpop || tpop.style.display === 'none') return; if (tpop.contains(e.target)) return; closeTextPop(); }
+
+  // Classify how reachable a leaf is RIGHT NOW (depends on scroll position + occluders on top of it).
+  function reachOf(el) {
+    if (!el.getClientRects().length) return 'hidden';
+    var r = el.getBoundingClientRect();
+    var vw = window.innerWidth, vh = window.innerHeight;
+    if (r.bottom > 0 && r.top < vh && r.right > 0 && r.left < vw) {
+      var cx = Math.min(Math.max(r.left + r.width / 2, 1), vw - 1);
+      var cy = Math.min(Math.max(r.top + r.height / 2, 1), vh - 1);
+      var hit = document.elementFromPoint(cx, cy);
+      return (hit && (hit === el || el.contains(hit))) ? 'ok' : 'occluded';
+    }
+    var de = document.documentElement, aT = r.top + window.scrollY, aL = r.left + window.scrollX;
+    return (aT >= -4 && aT <= de.scrollHeight + 4 && aL >= -4 && aL <= de.scrollWidth + 4) ? 'offscreen' : 'parked';
+  }
+  // Nearest on-screen ancestor with layout — the anchor a proxy handle pins to for a hidden/parked
+  // leaf. Falls back to document.body (always present) so a handle is ALWAYS attachable.
+  function nearestAnchor(el) {
+    var n = el.parentElement, guard = 0;
+    while (n && n !== document.body && guard++ < 60) {
+      if (n.getClientRects().length) {
+        var r = n.getBoundingClientRect();
+        if (r.bottom > 0 && r.top < window.innerHeight && r.right > 0 && r.left < window.innerWidth) return n;
       }
+      n = n.parentElement;
+    }
+    return document.body;
+  }
+  function clearHandles() {
+    for (var i = 0; i < handleList.length; i++) handleList[i].btn.remove();
+    handleList = []; closeGroupPop();
+  }
+  function makeHandle(anchor, leaves) {
+    var btn = document.createElement('button'); btn.type = 'button';
+    var grouped = leaves.length > 1 || anchor !== leaves[0];
+    btn.className = grouped ? 'sw-handle sw-handle-group' : 'sw-handle';
+    btn.textContent = leaves.length > 1 ? String(leaves.length) : leafGlyph(leaves[0]);
+    btn.title = leaves.length > 1 ? (leaves.length + ' editable fields here') : ('Edit ' + leafLabel(leaves[0]));
+    btn.addEventListener('click', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      swAnchorRect = btn.getBoundingClientRect();
+      if (leaves.length > 1) openGroupPop(leaves, swAnchorRect);
+      else editLeaf(leaves[0]);
     });
+    ensureHandleHost().appendChild(btn);
+    handleList.push({ btn: btn, anchor: anchor });
+  }
+  function refreshHandles() {
+    if (!editing) return;
+    clearHandles();
+    var groups = [];
+    function groupFor(anchor) {
+      for (var i = 0; i < groups.length; i++) if (groups[i].anchor === anchor) return groups[i];
+      var g = { anchor: anchor, leaves: [] }; groups.push(g); return g;
+    }
+    eachEl(HANDLE_SEL, function (el) {
+      var reach = reachOf(el);
+      // 'offscreen' = within the scrollable canvas but below/above the fold → reachable by scrolling, so
+      // no handle (scroll brings it into view, where it reclassifies to ok/occluded). KNOWN GAP: a leaf
+      // positioned (absolute/translate, not clipped to 0 rects) outside the viewport yet inside scrollHeight
+      // but UNreachable by scroll is misread as offscreen. Real carousels clip via overflow:hidden →
+      // 0 rects → the 'hidden' branch, so this only bites a hand-rolled absolute layout.
+      if (reach === 'ok' || reach === 'offscreen') return;
+      if (reach === 'occluded') { makeHandle(el, [el]); return; } // direct handle over the occluder
+      groupFor(nearestAnchor(el)).leaves.push(el);                // hidden/parked → proxy + group
+    });
+    for (var g = 0; g < groups.length; g++) makeHandle(groups[g].anchor, groups[g].leaves);
+    positionHandles();
+  }
+  function positionHandles() {
+    for (var i = 0; i < handleList.length; i++) {
+      var h = handleList[i], a = h.anchor;
+      if (!a.getClientRects().length) { h.btn.style.display = 'none'; continue; }
+      h.btn.style.display = 'flex';
+      // The document.body fallback (a hidden leaf with no on-screen ancestor) docks in the bottom-left
+      // corner so the catch-all handle never covers the hero / nav at the top.
+      if (a === document.body) { h.btn.style.left = '10px'; h.btn.style.top = (window.innerHeight - 32) + 'px'; continue; }
+      var r = a.getBoundingClientRect();
+      h.btn.style.left = Math.min(Math.max(r.left, 2), window.innerWidth - 26) + 'px';
+      h.btn.style.top = Math.min(Math.max(r.top, 2), window.innerHeight - 26) + 'px';
+    }
+  }
+  function placeNear(p, rect) {
+    var top = rect.bottom + 6, left = rect.left;
+    var maxLeft = window.innerWidth - p.offsetWidth - 6; if (left > maxLeft) left = maxLeft > 6 ? maxLeft : 6; if (left < 6) left = 6;
+    if (top + p.offsetHeight > window.innerHeight - 6) top = rect.top - p.offsetHeight - 6;
+    if (top < 6) top = 6;
+    p.style.top = top + 'px'; p.style.left = left + 'px';
+  }
+  function ensureGroupPop() {
+    if (groupPop) return groupPop;
+    groupPop = document.createElement('div'); groupPop.className = 'sw-pop';
+    document.body.appendChild(groupPop);
+    return groupPop;
+  }
+  function openGroupPop(leaves, rect) {
+    var p = ensureGroupPop();
+    while (p.firstChild) p.removeChild(p.firstChild);
+    for (var i = 0; i < leaves.length; i++) {
+      (function (leaf) {
+        var b = document.createElement('button'); b.type = 'button'; b.className = 'sw-grouprow';
+        b.textContent = leafGlyph(leaf) + ' ' + leafLabel(leaf);
+        b.addEventListener('click', function (e) { e.preventDefault(); closeGroupPop(); swAnchorRect = rect; editLeaf(leaf); });
+        p.appendChild(b);
+      })(leaves[i]);
+    }
+    p.style.display = 'flex';
+    placeNear(p, rect);
+    document.addEventListener('mousedown', onGroupDocDown, true);
+  }
+  function onGroupDocDown(e) { if (!groupPop || groupPop.style.display === 'none') return; if (groupPop.contains(e.target)) return; closeGroupPop(); }
+  function closeGroupPop() { if (groupPop) groupPop.style.display = 'none'; document.removeEventListener('mousedown', onGroupDocDown, true); }
+  function onHandleScroll() {
+    if (!editing) return;
+    if (!handleScrollRaf) handleScrollRaf = requestAnimationFrame(function () { handleScrollRaf = 0; positionHandles(); });
+    if (handleRefreshTimer) clearTimeout(handleRefreshTimer);
+    handleRefreshTimer = setTimeout(function () { handleRefreshTimer = 0; refreshHandles(); }, 150);
   }
   function setEditing(on) {
     if (on === editing) return;
@@ -408,13 +587,22 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       if (on) { el.classList.add('sw-control-on'); el.addEventListener('click', onControlClick); }
       else { el.classList.remove('sw-control-on'); el.removeEventListener('click', onControlClick); }
     });
-    // Reveal hidden editable content AFTER the leaves are activated (the chip's own display is set by
-    // .sw-control-on; this lifts any display:none ancestor that still removes it from layout).
-    revealHidden(on);
+    // Attach overlay handles for any leaf the page occludes / hides / parks off-screen (the rest keep
+    // in-place editing); keep them positioned on scroll / resize. Runs AFTER the per-leaf wiring above
+    // so a hidden chip's own .sw-control-on display is already set when its handle routes to it.
     if (on) {
+      refreshHandles();
+      window.addEventListener('scroll', onHandleScroll, { passive: true });
+      window.addEventListener('resize', onHandleScroll);
       document.addEventListener('selectionchange', onSelChange);
       document.addEventListener('click', onEntryClick);
     } else {
+      window.removeEventListener('scroll', onHandleScroll);
+      window.removeEventListener('resize', onHandleScroll);
+      if (handleScrollRaf) { cancelAnimationFrame(handleScrollRaf); handleScrollRaf = 0; }
+      if (handleRefreshTimer) { clearTimeout(handleRefreshTimer); handleRefreshTimer = 0; }
+      clearHandles();
+      closeTextPop();
       document.removeEventListener('selectionchange', onSelChange);
       document.removeEventListener('click', onEntryClick);
       hideToolbar();

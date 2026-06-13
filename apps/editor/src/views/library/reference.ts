@@ -238,6 +238,52 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         description: 'Built-in: reads a property of an object by a (possibly dynamic) key.',
         example: '{{lookup company.colors "primary"}}',
       },
+      {
+        id: 'h-rich',
+        syntax: '{{sw-rich value}}',
+        name: 'sw-rich',
+        keywords: 'richtext html sanitize markup body content stored',
+        description:
+          'Emits a stored RICHTEXT value (a dataset richtext field, nested page.data HTML) as SANITIZED HTML. This is the ONE way a template renders stored markup — raw {{{…}}} is banned. Non-strings render nothing. Use in element context.',
+        args: [{ name: 'value', desc: 'A richtext / HTML string (e.g. an entry’s body field).' }],
+        example: '{{#each data.posts}}\n  <article class="prose">{{sw-rich body}}</article>\n{{/each}}',
+      },
+      {
+        id: 'h-form',
+        syntax: '{{sw-form "id" [class=…]}}',
+        name: 'sw-form',
+        keywords: 'form contact embed submit fields newsletter',
+        description:
+          'Embeds a configured Form by its id — the form markup is generated for you (no fields to author). Locale-aware: on a translated page it resolves the localized variant. Errors at render if the id is unknown.',
+        args: [
+          { name: '"id"', desc: 'The Form id (from the Forms tab).' },
+          { name: 'class=', desc: 'Optional CSS classes for the <form> wrapper.' },
+        ],
+        example: '{{sw-form "contact"}}\n{{sw-form "newsletter" class="mx-auto max-w-md"}}',
+        note: 'You can also embed by attribute: <div data-sw-form="contact"></div>.',
+      },
+      {
+        id: 'h-label',
+        syntax: '{{sw-label}}',
+        name: 'sw-label',
+        keywords: 'nav menu item label title link icon',
+        description:
+          'Inside a nav / menu item loop, renders the current item’s label — its labelHtml (e.g. icon + text, already safe) when present, else the plain label (escaped). Put it in the item’s text position.',
+        example: '{{#each nav.header}}\n  <a href="{{sw-url path}}">{{sw-label}}</a>\n{{/each}}',
+      },
+      {
+        id: 'h-pick-entry',
+        syntax: '{{#with (sw-pick-entry data.<slug> <id>)}}…{{/with}}',
+        name: 'sw-pick-entry',
+        keywords: 'dataset entry pick choose widget config selection with',
+        description:
+          'Picks ONE dataset entry’s values by id (defaulting to the FIRST entry when the id is unset/unknown), so a #with body binds that entry’s fields. Used to render a chosen config out of several (e.g. a widget picking its settings). An empty dataset → #with renders nothing.',
+        args: [
+          { name: 'data.<slug>', desc: 'The dataset to pick from.' },
+          { name: '<id>', desc: 'The chosen entry id (e.g. a key set by a {{sw-control as="dataset-item"}} picker).' },
+        ],
+        example: '{{#with (sw-pick-entry data.hero @root.page.data.hero_config)}}\n  <h1>{{headline}}</h1>\n{{/with}}',
+      },
     ],
   },
   {

@@ -1,0 +1,109 @@
+// SmartPhoto-backed Lightbox runtime ENTRY — bundled by scripts/gen-vendor.mjs into
+// src/vendor/lightbox-smartphoto-runtime.ts. SmartPhoto (MIT) + a-template/morphdom/delegate
+// (all MIT) + first-party wiring. The IE-only polyfills SmartPhoto pulls in
+// (custom-event-polyfill, es6-promise-polyfill, and ie-array-find-polyfill via a-template)
+// are aliased away at bundle time (gen-vendor.mjs `alias`) — the platform targets modern
+// browsers only, so CustomEvent / Promise / Array.find are all native.
+//
+// Authored contract = the same progressive-enhancement anchor grid as the GLightbox impl
+// it replaces: each [data-sw-part="item"] is <a href="full-image"><img thumbnail></a>. With
+// no JS a click opens the full image directly; with JS each component ROOT becomes its own
+// gallery — SmartPhoto supplies the bottom thumbnail strip, the header counter + caption,
+// swipe / pinch-zoom / keyboard nav, a per-image loader, and the enlarge-from-thumbnail open
+// animation. `href` is the FULL image and the inner <img src> is the THUMBNAIL (they may
+// differ); SmartPhoto clones that <img> for the open animation and reuses its source as the
+// strip thumbnail, so every item MUST contain an <img>.
+//
+// Options are read from data-* on the root (documented in COMPONENT_CATALOG): data-thumbnails,
+// data-arrows, data-animation, data-fit, data-tilt, data-history.
+import SmartPhoto from 'smartphoto/src/core/index.js';
+
+// Unique per-root gallery id, so multiple lightboxes on one page stay independent.
+var groupSeq = 0;
+
+function enhance(root) {
+  if (root.getAttribute('data-sw-enhanced') === 'true') return;
+  var items = Array.prototype.slice.call(root.querySelectorAll('[data-sw-part="item"]'));
+  if (!items.length) return;
+
+  var attr = function (name, fallback) {
+    var v = root.getAttribute(name);
+    return v === null || v === '' ? fallback : v;
+  };
+  // A boolean data-* switch following the HTML convention: present (even bare or "") = true,
+  // "false"/"0"/"off" = false, absent = the default.
+  var flag = function (name, dflt) {
+    var v = root.getAttribute(name);
+    if (v === null) return dflt;
+    return v !== 'false' && v !== '0' && v !== 'off';
+  };
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // Scope this gallery: a unique group id keeps each root independent. SmartPhoto accepts a
+  // NodeList/array as its element set, so we hand it exactly this root's items (per-root
+  // options, no global selector that would merge separate galleries).
+  var group = 'sw-lb-' + ++groupSeq;
+  items.forEach(function (a, i) {
+    a.setAttribute('data-group', group);
+    if (!a.getAttribute('data-id')) a.setAttribute('data-id', group + '-' + i);
+  });
+
+  var sp = new SmartPhoto(items, {
+    nav: flag('data-thumbnails', true), // bottom thumbnail strip
+    arrows: flag('data-arrows', true),
+    showAnimation: reduce ? false : flag('data-animation', true), // enlarge-from-thumbnail open
+    useOrientationApi: flag('data-tilt', false), // accelerometer pan — off by default
+    useHistoryApi: flag('data-history', false), // OFF: a CMS page shouldn't hijack the URL hash
+    resizeStyle: attr('data-fit', 'fit') === 'fill' ? 'fill' : 'fit',
+  });
+  // Caption is SmartPhoto's data-caption, injected into the viewer at TENANT trust (tenants
+  // already author raw HTML) — NEVER bind visitor-submitted content into it.
+
+  // Perf: SmartPhoto's constructor starts a 100Hz inertia-animation interval that it only clears
+  // on destroy(); left alone it would run forever on a static page. Gate it to while-OPEN — clear
+  // the constructor's interval now (the gallery starts closed), re-arm on each open, clear on close.
+  if (sp.interval) {
+    window.clearInterval(sp.interval);
+    sp.interval = null;
+  }
+
+  // a11y shim: SmartPhoto already gives the overlay role="dialog", an aria-live caption,
+  // Escape + arrow-key nav, and focuses the caption on open. We add the one thing it lacks —
+  // RESTORING focus to the triggering thumbnail on close. (We deliberately do NOT stamp
+  // aria-modal: SmartPhoto re-renders its overlay through morphdom, which strips any attribute
+  // absent from its template, so a DOM-set aria-modal would not persist — a JS close handler does.)
+  // SmartPhoto's on() reads the overlay element, so we arm on the first click tick (defensive: the
+  // overlay is built synchronously in the constructor's click handler, but deferring is harmless).
+  var lastFocus = null;
+  var armed = false;
+  function arm() {
+    if (armed) return;
+    try {
+      sp.on('close', function () {
+        window.clearInterval(sp.interval); // stop the inertia loop while the gallery is closed
+        sp.interval = null;
+        if (lastFocus && typeof lastFocus.focus === 'function') lastFocus.focus();
+        lastFocus = null;
+      });
+      armed = true;
+    } catch {
+      /* overlay not built yet — retried on the next open */
+    }
+  }
+  items.forEach(function (a) {
+    a.addEventListener('click', function () {
+      lastFocus = a;
+      // Re-arm the inertia loop for this open (covers the first open too); cleared again on close.
+      if (!sp.interval) sp.interval = window.setInterval(function () { sp._doAnim(); }, 10);
+      window.setTimeout(arm, 0);
+    });
+  });
+
+  root.setAttribute('data-sw-enhanced', 'true');
+}
+
+function init() {
+  Array.prototype.forEach.call(document.querySelectorAll('[data-sw-component="lightbox"]'), enhance);
+}
+if (document.readyState !== 'loading') init();
+else document.addEventListener('DOMContentLoaded', init);

@@ -2,7 +2,7 @@ import { test, expect, type APIRequestContext } from '@playwright/test';
 import { deflateSync } from 'node:zlib';
 
 // Interactive components against a deployed instance: the Embla-powered Carousel and the
-// GLightbox-powered Lightbox, exercised on a PUBLISHED static site exactly as a visitor
+// SmartPhoto-powered Lightbox, exercised on a PUBLISHED static site exactly as a visitor
 // (and the no-JS fallback) experiences it. The page is authored the way the catalog
 // teaches an agent: declarative data-sw-component / data-sw-part / data-* markup only.
 
@@ -137,7 +137,7 @@ test.beforeAll(async ({ playwright, baseURL }) => {
 <section id="lb"><div data-sw-component="lightbox" data-sw-block="Lightbox" aria-label="Gallery">
   <div data-sw-part="grid">${lbItems}</div>
 </div></section>
-<section id="lbfx"><div data-sw-component="lightbox" data-sw-block="Lightbox" data-effect="fade" data-slide-effect="fade" data-loop="true" aria-label="Gallery 2">
+<section id="lbfx"><div data-sw-component="lightbox" data-sw-block="Lightbox" data-thumbnails="false" data-arrows="false" aria-label="Gallery 2">
   <div data-sw-part="grid">${lbItems}</div>
 </div></section>
 </div>`;
@@ -393,58 +393,63 @@ test('click-to-slide: data-click-next advances on slide press with ripple; inner
   await expect(dots.nth(2)).toHaveAttribute('aria-current', 'true');
 });
 
-test('lightbox: gallery viewer with dialog semantics, arrows, keyboard, and focus restore', async ({ page }, testInfo) => {
+test('lightbox: gallery viewer with thumbnail strip, counter, arrows, keyboard, and focus restore', async ({ page }, testInfo) => {
   const root = page.locator('#lb [data-sw-block="Lightbox"]');
   await expect(root).toHaveAttribute('data-sw-enhanced', 'true');
   const items = root.locator('[data-sw-part="item"]');
-  // href ATTRIBUTE, not property: the wiring hands GLightbox a.getAttribute('href') verbatim,
-  // so the slide image's src is the same (site-relative) string — property would be absolute.
+  // href ATTRIBUTE, not property: SmartPhoto sets the slide <img src> to a.getAttribute('href')
+  // verbatim, so the shown src is the same (site-relative) string — the property would be absolute.
   const hrefs = await items.evaluateAll((as) => as.map((a) => (a as HTMLAnchorElement).getAttribute('href')!));
 
   await items.first().click();
-  const overlay = page.locator('.glightbox-container');
+  const overlay = page.locator('.smartphoto');
   await expect(overlay).toBeVisible();
   await expect(overlay).toHaveAttribute('role', 'dialog');
-  await expect(overlay).toHaveAttribute('aria-modal', 'true');
 
-  // The current slide shows the FULL image from the clicked anchor's own href.
-  const shownSrc = () => overlay.locator('.gslide.current img.gslide-image, .gslide.current img').first().getAttribute('src');
+  // The current slide shows the FULL image from the clicked anchor's own href; counter + caption track it.
+  const shownSrc = () => overlay.locator('.smartphoto-list li.current img.smartphoto-img').first().getAttribute('src');
   await expect.poll(shownSrc).toBe(hrefs[0]);
-  await expect(overlay.locator('.gslide.current .gslide-description')).toContainText('Caption 0');
+  await expect(overlay.locator('.smartphoto-count')).toHaveText('1/3');
+  await expect(overlay.locator('.smartphoto-caption')).toContainText('Caption 0');
+  // The bottom thumbnail strip has one thumb per image; the open one is marked current.
+  await expect(overlay.locator('.smartphoto-nav li')).toHaveCount(3);
+  await expect(overlay.locator('.smartphoto-nav a.current')).toHaveCount(1);
 
-  await page.waitForTimeout(600); // let the zoom-open animation settle so the artifact is reviewable
+  await page.waitForTimeout(600); // let the enlarge-from-thumbnail animation settle for the artifact
   await page.screenshot({ path: testInfo.outputPath('lightbox-open.png') });
 
-  // Next button, then keyboard arrow; captions track the slides.
-  await overlay.locator('.gnext').click();
+  // Next arrow, then keyboard arrow; counter + image track the slides.
+  await overlay.locator('.smartphoto-arrow-right a').click();
   await expect.poll(shownSrc).toBe(hrefs[1]);
+  await expect(overlay.locator('.smartphoto-count')).toHaveText('2/3');
   await page.keyboard.press('ArrowRight');
   await expect.poll(shownSrc).toBe(hrefs[2]);
+  await expect(overlay.locator('.smartphoto-count')).toHaveText('3/3');
 
-  // No loop by default: at the last image the next button is disabled (GLightbox marks
-  // this with a `disabled` CLASS — it never sets the disabled attribute).
-  await expect(overlay.locator('.gnext')).toHaveClass(/disabled/);
+  // No loop: at the last image SmartPhoto hides the next arrow (aria-hidden → display:none).
+  await expect(overlay.locator('.smartphoto-arrow-right')).toBeHidden();
 
-  // Escape closes; focus returns to the triggering thumbnail.
+  // Escape closes (the overlay is hidden, not removed); focus returns to the triggering thumbnail.
   await page.keyboard.press('Escape');
-  await expect(overlay).toHaveCount(0);
+  await expect(overlay).toBeHidden();
   await expect(items.first()).toBeFocused();
 });
 
-test('lightbox variants: data-loop wraps past the last image', async ({ page }) => {
+test('lightbox switches: data-thumbnails / data-arrows omit the strip and arrows', async ({ page }) => {
   const root = page.locator('#lbfx [data-sw-block="Lightbox"]');
   await expect(root).toHaveAttribute('data-sw-enhanced', 'true');
   const items = root.locator('[data-sw-part="item"]');
-  const hrefs = await items.evaluateAll((as) => as.map((a) => (a as HTMLAnchorElement).getAttribute('href')!));
 
-  await items.nth(2).click(); // open at the LAST image
-  const overlay = page.locator('.glightbox-container');
+  await items.first().click();
+  const overlay = page.locator('.smartphoto');
   await expect(overlay).toBeVisible();
-  const shownSrc = () => overlay.locator('.gslide.current img').first().getAttribute('src');
-  await expect.poll(shownSrc).toBe(hrefs[2]);
-
-  await overlay.locator('.gnext').click(); // wraps to the first
-  await expect.poll(shownSrc).toBe(hrefs[0]);
+  // The switches drop those parts from the runtime-built DOM entirely.
+  await expect(overlay.locator('.smartphoto-nav')).toHaveCount(0);
+  await expect(overlay.locator('.smartphoto-arrows')).toHaveCount(0);
+  // The counter still tracks, and keyboard navigation still works without arrows.
+  await expect(overlay.locator('.smartphoto-count')).toHaveText('1/3');
+  await page.keyboard.press('ArrowRight');
+  await expect(overlay.locator('.smartphoto-count')).toHaveText('2/3');
   await page.keyboard.press('Escape');
 });
 

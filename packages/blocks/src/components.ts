@@ -18,7 +18,15 @@
 // the declarative data-sw-component / data-sw-part / data-* contract documented in
 // COMPONENT_CATALOG — never library API calls.
 import { CAROUSEL_RUNTIME_JS } from './vendor/carousel-runtime.js';
-import { LIGHTBOX_RUNTIME_JS, LIGHTBOX_VENDOR_CSS } from './vendor/lightbox-runtime.js';
+// ACTIVE lightbox = SmartPhoto (bottom thumbnail strip, enlarge-from-thumbnail open, header
+// counter + caption). The GLightbox runtime (./vendor/lightbox-runtime.js — LIGHTBOX_RUNTIME_JS /
+// LIGHTBOX_VENDOR_CSS) is RETAINED as a revertible fallback: still generated + drift-checked by
+// gen-vendor, just not imported here. To revert, swap this import and the LIGHTBOX_CSS / LIGHTBOX_JS
+// definitions below back to the GLightbox names.
+import {
+  LIGHTBOX_SMARTPHOTO_RUNTIME_JS,
+  LIGHTBOX_SMARTPHOTO_VENDOR_CSS,
+} from './vendor/lightbox-smartphoto-runtime.js';
 
 /** A component's static styling + behavior (either may be empty). */
 export interface ComponentAsset {
@@ -137,29 +145,53 @@ const CAROUSEL_CSS = [
 const CAROUSEL_JS = CAROUSEL_RUNTIME_JS;
 
 // --- Lightbox ----------------------------------------------------------------
-// GLightbox-powered gallery viewer. PE-first: each item is an anchor to the full
-// image, so with no JS clicking simply opens the image. With JS each component
-// root becomes its own gallery (swipe / pinch-zoom / keyboard / animated slide
-// changes); the viewer DOM is built by the runtime — there is no authored overlay.
-// The vendored GLightbox stylesheet has no url() refs (CSP-safe); the trailing
-// overrides restore stroke rendering for the Lucide icons the wiring passes in
-// (the "clean" skin fills paths by default) and round the buttons.
+// SmartPhoto-powered gallery viewer. PE-first: each item is an anchor to the full
+// image, so with no JS clicking simply opens the image. With JS each component root
+// becomes its own gallery — SmartPhoto supplies the bottom thumbnail strip, a header
+// counter + caption, swipe / pinch-zoom / keyboard nav, a per-image loader, and the
+// enlarge-from-thumbnail open animation; the viewer DOM is built by the runtime, there
+// is no authored overlay. The vendored SmartPhoto stylesheet ships only data: URI icons
+// (CSP-safe); the trailing block is a branded reskin (after the vendor sheet so equal-
+// specificity rules win): dim + blurred backdrop, bigger rounded/animated arrows + close,
+// rounded thumbnails with a brand active-ring, and a brand-coloured loader.
 const LIGHTBOX_CSS = [
   '[data-sw-block="Lightbox"]{display:block}',
   '[data-sw-block="Lightbox"] [data-sw-part="grid"]{display:grid;grid-template-columns:repeat(auto-fill,minmax(8rem,1fr));gap:.5rem}',
   '[data-sw-block="Lightbox"] [data-sw-part="item"]{display:block}',
   '[data-sw-block="Lightbox"] [data-sw-part="item"] img{display:block;width:100%;height:100%;object-fit:cover;aspect-ratio:1}',
-  LIGHTBOX_VENDOR_CSS,
-  '.glightbox-clean .gprev,.glightbox-clean .gnext,.glightbox-clean .gclose{background-color:rgb(0 0 0/.45);border-radius:9999px}',
-  '.glightbox-clean .gprev path,.glightbox-clean .gnext path,.glightbox-clean .gclose path{fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}',
-  '.glightbox-clean .gprev svg,.glightbox-clean .gnext svg,.glightbox-clean .gclose svg{width:1.5rem;height:1.5rem}',
+  LIGHTBOX_SMARTPHOTO_VENDOR_CSS,
+  // Dim + blurred backdrop (vendor ships solid black).
+  '.smartphoto{background-color:rgb(0 0 0/.82);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}',
+  // Soft rounding + shadow on the full image.
+  '.smartphoto-img-wrap img.smartphoto-img{border-radius:.5rem;box-shadow:0 12px 40px rgb(0 0 0/.45)}',
+  // Bigger, rounded, hover-animated arrows (sizing on the li, skin on the arrow-* li, icon on the a).
+  '.smartphoto-arrows li{width:3rem;height:3rem;margin-top:-1.5rem}',
+  '.smartphoto-arrow-left,.smartphoto-arrow-right{padding:0;border-radius:9999px;background-color:rgb(0 0 0/.45);transition:background-color .2s ease,transform .2s ease}',
+  '.smartphoto-arrow-left:hover,.smartphoto-arrow-right:hover{background-color:var(--sw-color-primary,#0a7a5a);transform:scale(1.08)}',
+  '.smartphoto-arrows a{background-size:55%;background-position:center;background-repeat:no-repeat}',
+  // Bigger, rounded close button with a hover affordance.
+  '.smartphoto-dismiss{width:2rem;height:2rem;top:12px;right:14px;background-size:55%;background-position:center;background-repeat:no-repeat;border-radius:9999px;transition:background-color .2s ease,transform .2s ease}',
+  '.smartphoto-dismiss:hover{background-color:rgb(255 255 255/.18);transform:scale(1.08)}',
+  // Header gradient for legibility over bright images.
+  '.smartphoto-header{height:auto;min-height:50px;padding:14px 18px;background:linear-gradient(to bottom,rgb(0 0 0/.55),transparent)}',
+  // Thumbnail strip: rounded tiles; the active thumb gets a brand ring.
+  '.smartphoto-nav{padding:.45rem 0}',
+  '.smartphoto-nav li{width:56px;height:56px;border-radius:.5rem;margin:0 .18rem}',
+  '.smartphoto-nav a{border-radius:.5rem;transition:opacity .2s ease,box-shadow .2s ease}',
+  '.smartphoto-nav a:hover{opacity:.85}',
+  '.smartphoto-nav a.current{opacity:1;box-shadow:0 0 0 2px var(--sw-color-primary,#0a7a5a)}',
+  // Loader → brand colour (vendor hard-codes teal #17CDDD).
+  '.smartphoto-loader{border-color:var(--sw-color-primary,#0a7a5a);border-right-color:transparent}',
+  // Reduced motion: drop the overlay/clone transitions (the runtime also disables showAnimation).
+  '@media (prefers-reduced-motion: reduce){.smartphoto,.smartphoto-img-clone,.smartphoto-list li{transition:none}}',
 ].join('');
 
-// The GLightbox-powered runtime (vendored library + first-party wiring; see
-// vendor-src/lightbox.entry.js for the readable source). Per-root galleries from the
-// authored anchors, Lucide icons, and an a11y shim (dialog semantics, focus restore)
-// on top of GLightbox's own keyboard/touch handling.
-const LIGHTBOX_JS = LIGHTBOX_RUNTIME_JS;
+// The SmartPhoto-powered runtime (vendored library + first-party wiring; see
+// vendor-src/lightbox-smartphoto.entry.js for the readable source). Per-root galleries from
+// the authored anchors (options via data-*), plus an a11y shim (focus restore on close) on top
+// of SmartPhoto's own dialog role / keyboard / touch handling. NOTE: aria-modal is intentionally
+// not stamped — SmartPhoto re-renders via morphdom, which strips non-template attributes.
+const LIGHTBOX_JS = LIGHTBOX_SMARTPHOTO_RUNTIME_JS;
 
 // --- Modal -------------------------------------------------------------------
 // A trigger button that opens a native <dialog> (which provides focus trap,

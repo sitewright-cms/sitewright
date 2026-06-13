@@ -320,6 +320,9 @@ importers:
       simple-icons:
         specifier: ^16.21.0
         version: 16.21.0
+      smartphoto:
+        specifier: 1.6.5
+        version: 1.6.5
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
@@ -2120,6 +2123,9 @@ packages:
   '@vitest/utils@4.1.8':
     resolution: {integrity: sha512-uOJamYALNhfJ6iolExyQM40yIQwDqYnkKtQ5VCiSe17E33H0aQ/u+1GlRuz4LZBk6Mm3sg90G9hEbmEt37C1Zg==}
 
+  a-template@0.6.1:
+    resolution: {integrity: sha512-2v4pdCjZewuwp98JXeVv+4ZmPmCtHz7EiEd8ft/lRF03C7VTs9DI0cYZtI1iI4HCtd75D56FR0FrRRrXCa1blA==}
+
   abstract-logging@2.0.1:
     resolution: {integrity: sha512-2BjRTZxTPvheOvGbBslFSYOUkr+SjPtOnrLP33f+VIWLzezQpZcqVg7ja3L4dBXmzzgwT+a029jRx5PCi3JuiA==}
 
@@ -2370,6 +2376,9 @@ packages:
   csstype@3.2.3:
     resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
 
+  custom-event-polyfill@0.3.0:
+    resolution: {integrity: sha512-dgGyHwa3sJVUVgnF1IQmPnco4SdAJKllCDXL2W7wyw70vchJTSubthvyjlrxUagc4QZrHq31Dz7p6tzukJ0OgA==}
+
   daisyui@5.5.20:
     resolution: {integrity: sha512-HemJcjl0Gk9rQ8BcgofN6p+EURrqftQG9wK1Hkxs98i49xe68+QxpNvry+PyxwkIUgrbMpNmZ5ZWjmtffAjfhQ==}
 
@@ -2410,6 +2419,9 @@ packages:
   delayed-stream@1.0.0:
     resolution: {integrity: sha512-ZySD7Nf91aLB0RxL4KGrKHBXl7Eds1DAmEdcoVawXnLD7SDhpNgtuII2aAkg7a7QS41jxPSZ17p4VdGnMHk3MQ==}
     engines: {node: '>=0.4.0'}
+
+  delegate@3.2.0:
+    resolution: {integrity: sha512-IofjkYBZaZivn0V8nnsMJGBr4jVLxHDheKSW88PyxS5QC4Vo9ZbZVvhzlSxY87fVq3STR6r+4cGepyHkcWOQSw==}
 
   depd@2.0.0:
     resolution: {integrity: sha512-g7nH6P6dyDioJogAAGprGpCtVImJhpPk/roCzdb3fIh61/s/nPsfR6onyMwkCAR/OlC3yBC0lESvUoQEAssIrw==}
@@ -2635,6 +2647,9 @@ packages:
   es-set-tostringtag@2.1.0:
     resolution: {integrity: sha512-j6vWzfrGVfyXxge+O0x5sh6cvxAog0a/4Rdd2K36zCMV5eJ+/+tOAngRO8cODMNWbVRdVlmGZQL2YS3yR8bIUA==}
     engines: {node: '>= 0.4'}
+
+  es6-promise-polyfill@1.2.0:
+    resolution: {integrity: sha512-HHb0vydCpoclpd0ySPkRXMmBw80MRt1wM4RBJBlXkux97K7gleabZdsR0gvE1nNPM9mgOZIBTzjjXiPxf4lIqQ==}
 
   esbuild@0.18.20:
     resolution: {integrity: sha512-ceqxoedUrcayh7Y7ZX6NdbbDzGROiyVBgC4PriJThBKSVPWnnFHZAkfI1lJT8QFkOwH4qOS2SJkS4wvpGl8BpA==}
@@ -2975,6 +2990,9 @@ packages:
     resolution: {integrity: sha512-im9DjEDQ55s9fL4EYzOAv0yMqmMBSZp6G0VvFyTMPKWxiSBHUj9NW/qqLmXUwXrrM7AvqSlTCfvqRb0cM8yYqw==}
     engines: {node: '>=0.10.0'}
 
+  ie-array-find-polyfill@1.1.0:
+    resolution: {integrity: sha512-g+GyhE5SmDaUdH1JM+obqFmD3B5hY9dReG1IlkPknwc/c3ZMCuwK9j9Ywt6HOVnI13b+eYYzkDe2SUs+K8wpvA==}
+
   ignore@5.3.2:
     resolution: {integrity: sha512-hsBTNUqQTDwkWtcdYI2i06Y/nUBEsNEDJKjWdigLvegy8kDuJAS8uRlpkkcQpyEXL0Z/pjDy5HBmMjRCJ2gq+g==}
     engines: {node: '>= 4'}
@@ -3129,6 +3147,7 @@ packages:
 
   libsql@0.4.7:
     resolution: {integrity: sha512-T9eIRCs6b0J1SHKYIvD8+KCJMcWZ900iZyxdnSCdqxN12Z1ijzT+jY5nrk72Jw4B0HGzms2NgpryArlJqvc3Lw==}
+    cpu: [x64, arm64, wasm32]
     os: [darwin, linux, win32]
 
   lie@3.3.0:
@@ -3307,6 +3326,9 @@ packages:
   minipass@7.1.3:
     resolution: {integrity: sha512-tEBHqDnIoM/1rXME1zgka9g6Q2lcoCkxHLuc7ODJ5BxbP5d4c2Z5cGgtXAku59200Cx7diuHTOYfSBD8n6mm8A==}
     engines: {node: '>=16 || 14 >=14.17'}
+
+  morphdom@2.7.8:
+    resolution: {integrity: sha512-D/fR4xgGUyVRbdMGU6Nejea1RFzYxYtyurG4Fbv2Fi/daKlWKuXGLOdXtl+3eIwL110cI2hz1ZojGICjjFLgTg==}
 
   motion-dom@12.40.0:
     resolution: {integrity: sha512-HxU3ZaBwNPVQUBQf1xxgq+7JrPNZvjLVxgbpEZL7RrWJnsxOf0/OM+yrHG9ogLQ31Do/r57Oz2gQWPK+6q62mg==}
@@ -3756,6 +3778,9 @@ packages:
   simple-icons@16.21.0:
     resolution: {integrity: sha512-kH6LEx5yvBGVNaVrHnZ7D17G16CmmHiI8DD7MwIwgnWmDFTiFu4PhFZLNdV6bMGr61qbHMMTXLoo/T6C25dMGA==}
     engines: {node: '>=0.12.18'}
+
+  smartphoto@1.6.5:
+    resolution: {integrity: sha512-dtMpzrNnD3q76AMxqmz07WN/dpy8tRmXf5V2h+Rt6ccbGMbrdu2js9s/szRvC47G9ntSEh/G1R0Wl4TmIyGWpw==}
 
   sonic-boom@4.2.1:
     resolution: {integrity: sha512-w6AxtubXa2wTXAUsZMMWERrsIRAdrK0Sc+FUytWvYAhBJLyuI4llrMIC1DtlNSdI99EI86KZum2MMq3EAZlF9Q==}
@@ -5700,6 +5725,12 @@ snapshots:
       convert-source-map: 2.0.0
       tinyrainbow: 3.1.0
 
+  a-template@0.6.1:
+    dependencies:
+      delegate: 3.2.0
+      ie-array-find-polyfill: 1.1.0
+      morphdom: 2.7.8
+
   abstract-logging@2.0.1: {}
 
   accepts@2.0.0:
@@ -5943,6 +5974,8 @@ snapshots:
 
   csstype@3.2.3: {}
 
+  custom-event-polyfill@0.3.0: {}
+
   daisyui@5.5.20: {}
 
   data-uri-to-buffer@4.0.1: {}
@@ -5967,6 +6000,8 @@ snapshots:
   deepmerge@4.3.1: {}
 
   delayed-stream@1.0.0: {}
+
+  delegate@3.2.0: {}
 
   depd@2.0.0: {}
 
@@ -6086,6 +6121,8 @@ snapshots:
       get-intrinsic: 1.3.0
       has-tostringtag: 1.0.2
       hasown: 2.0.4
+
+  es6-promise-polyfill@1.2.0: {}
 
   esbuild@0.18.20:
     optionalDependencies:
@@ -6601,6 +6638,8 @@ snapshots:
     dependencies:
       safer-buffer: 2.1.2
 
+  ie-array-find-polyfill@1.1.0: {}
+
   ignore@5.3.2: {}
 
   ignore@7.0.5: {}
@@ -6891,6 +6930,8 @@ snapshots:
   minimist@1.2.8: {}
 
   minipass@7.1.3: {}
+
+  morphdom@2.7.8: {}
 
   motion-dom@12.40.0:
     dependencies:
@@ -7378,6 +7419,12 @@ snapshots:
   siginfo@2.0.0: {}
 
   simple-icons@16.21.0: {}
+
+  smartphoto@1.6.5:
+    dependencies:
+      a-template: 0.6.1
+      custom-event-polyfill: 0.3.0
+      es6-promise-polyfill: 1.2.0
 
   sonic-boom@4.2.1:
     dependencies:

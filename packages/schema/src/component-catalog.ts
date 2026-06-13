@@ -130,7 +130,7 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
     type: 'Lightbox',
     marker: 'lightbox',
     summary:
-      'A SmartPhoto-powered gallery: thumbnails open a full-screen viewer with a bottom thumbnail strip, an enlarge-from-thumbnail open animation, a header image-counter + caption, swipe / pinch-zoom / keyboard navigation, and a per-image loader. Each component root is its own gallery.',
+      'A full-screen gallery viewer: thumbnails open into a viewer with a bottom thumbnail strip, an enlarge-from-thumbnail open animation, a header image-counter + caption, swipe / pinch-zoom / keyboard navigation, and a per-image loader. Each component root is its own gallery.',
     authoring: 'markup',
     parts: [
       { part: 'grid', element: 'div', required: true, description: 'The thumbnail grid (override columns with !grid-cols-* utilities).' },

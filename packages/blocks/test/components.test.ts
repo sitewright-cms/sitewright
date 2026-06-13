@@ -58,17 +58,19 @@ describe('component registry', () => {
     expect(COMPONENT_TYPES.has('Section')).toBe(false);
   });
 
-  it('Lightbox ships the vendored SmartPhoto runtime + grid CSS', () => {
+  it('Lightbox ships the vendored runtime + grid CSS under vendor-neutral class names', () => {
     const used = componentAssets(['Lightbox']);
     expect(used.css).toContain('[data-sw-part="grid"]'); // authored thumbnail grid
-    expect(used.css).toContain('.smartphoto'); // vendored viewer stylesheet
-    expect(used.css).toContain('.smartphoto{z-index:999999'); // fullscreen viewer sits above site chrome (cookie banner z 9998)
-    // CSP default-src 'self': the only url() refs are inline data: URIs (SmartPhoto's icons) —
-    // never an external http(s):// or protocol-relative asset.
+    expect(used.css).toContain('.sw-lightbox-nav'); // vendored viewer stylesheet, renamed to sw-lightbox-*
+    expect(used.css).toContain('.sw-lightbox{z-index:999999'); // fullscreen viewer sits above site chrome (cookie banner z 9998)
+    expect(used.css).not.toContain('.smartphoto'); // no third-party class name leaks into shipped CSS
+    // CSP default-src 'self': the only url() refs are inline data: URIs (icons) — never an external
+    // http(s):// or protocol-relative asset.
     expect(used.css).not.toMatch(/url\(\s*['"]?(?!data:)/i);
-    expect(used.js).toContain('smartphoto@'); // license banner names the bundled MIT package
+    expect(used.js).toContain('smartphoto@'); // license banner MUST keep attributing the bundled MIT package
     expect(used.js).toContain('data-sw-component="lightbox"');
     expect(used.js).toContain('data-thumbnails'); // the thumbnail-strip switch is read from data-*
+    expect(used.js).toContain('sw-lightbox'); // runtime builds the viewer with the neutral class names
     expect(used.js).toContain('focus'); // a11y shim: focus restored to the trigger on close
     // The IE-only polyfills SmartPhoto ships are aliased away at bundle time (modern target).
     expect(used.js).not.toContain('es6-promise-polyfill');

@@ -117,7 +117,7 @@ Quick rules vs the similar-looking DaisyUI classes:
 - Content TABS → data-sw-component="tabs" (APG tablist; panels stack readable without JS).
   DaisyUI \`tab\` classes are for tab-STYLED NAVIGATION LINKS only; do not build radio-input
   content tabs.
-- Image viewer/gallery → data-sw-component="lightbox" (SmartPhoto-powered): each root is its
+- Image viewer/gallery → data-sw-component="lightbox": each root is its
   own gallery with a bottom thumbnail strip, an enlarge-from-thumbnail open animation, a header
   image-counter + caption, swipe, pinch-zoom, and keyboard nav. Author ONLY the grid of
   <a href="full"><img thumb></a> items — the viewer DOM is runtime-built (no overlay element).

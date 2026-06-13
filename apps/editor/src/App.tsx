@@ -7,6 +7,7 @@ import { ProjectView, MANAGE_TABS, TAB_LABELS, type Tab } from './views/Project'
 import { AssetsPanel } from './views/files/AssetsPanel';
 import { LibraryPanel } from './views/library/LibraryPanel';
 import { SnippetsPanel, TemplatesPanel } from './views/code/CodeRailPanels';
+import { WidgetsPanel } from './views/widgets/WidgetsPanel';
 import { DataPanel } from './views/datasets/DataPanel';
 import { PublishBar } from './views/PublishBar';
 import { PublishDeployModal } from './views/publish/PublishDeployModal';
@@ -380,14 +381,16 @@ function MainApp({
         />
       )}
       {/* Always-present edge side-panels (owners): System Library (left), File Manager (right), and
-          the bottom rails — Datasets (left), Snippets (center), Templates (right). They render above
-          modals so their tabs stay reachable; each opens on hover/click of its own edge tab. */}
+          the bottom rails — Datasets (left), the paired Snippets + Widgets (center), Templates
+          (right). They render above modals so their tabs stay reachable; each opens on hover/click
+          of its own edge tab. */}
       {inProject && !isClient && (
         <>
           <LibraryPanel />
           <AssetsPanel key={inProject.id} projectId={inProject.id} />
           <DataPanel key={`dt-${inProject.id}`} project={inProject} />
           <SnippetsPanel key={`sn-${inProject.id}`} projectId={inProject.id} isAdmin={isInstanceAdmin} />
+          <WidgetsPanel key={`wg-${inProject.id}`} projectId={inProject.id} />
           <TemplatesPanel key={`tp-${inProject.id}`} projectId={inProject.id} isAdmin={isInstanceAdmin} />
         </>
       )}

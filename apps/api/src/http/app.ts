@@ -89,6 +89,7 @@ import {
   referencesParentPage,
   widgetDatasetsForSources,
   WIDGET_PARTIALS,
+  GLOBAL_WIDGETS,
   type ProjectBundle,
 } from '@sitewright/core';
 import type { Database } from '../db/client.js';
@@ -3094,6 +3095,20 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // component vocabulary structurally instead of relying on prose docs. Public like
   // /health + /version, but rate-limited since the payload is non-trivial.
   app.get('/authoring/components', { config: rl(60) }, async () => ({ components: COMPONENT_CATALOG }));
+
+  // The system WIDGET catalog — managed, data-backed drop-ins (hero-slider, …) the editor's Widgets
+  // rail browses and inserts as {{> name}}. STATIC platform metadata (no tenant data): name/label/
+  // description, the component it's built on, and the config dataset(s) it provisions on save. The
+  // body + manifest stay server-side; the editor only needs this slim descriptor.
+  app.get('/authoring/widgets', { config: rl(60) }, async () => ({
+    widgets: GLOBAL_WIDGETS.map((w) => ({
+      name: w.name,
+      label: w.label,
+      description: w.description,
+      component: w.component,
+      datasets: w.provides.datasets.map((d) => ({ slug: d.slug, name: d.name })),
+    })),
+  }));
 
   // Pull-based update check for the in-app banner. Public + informational.
   app.get('/version', async () => {

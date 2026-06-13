@@ -69,7 +69,7 @@ const globalTemplates: RecordAdapters = {
  */
 export function SnippetsPanel({ projectId, isAdmin }: { projectId: string; isAdmin?: boolean }) {
   return (
-    <SidePanel side="bottom" align="center" label="Snippets" icon={<CodeIcon />}>
+    <SidePanel side="bottom" align="center-left" label="Snippets" icon={<CodeIcon />}>
       <CodeRecordManager
         projectId={projectId}
         noun="snippet"

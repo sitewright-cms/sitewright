@@ -65,7 +65,7 @@ export function BusinessTypeModal({ value, onSelect, onClose }: BusinessTypeModa
     `font-mono text-[11px] ${selected ? 'text-white/70' : 'text-slate-400 group-hover:text-white/70'}`;
 
   return (
-    <Modal title="Business type" size="lg" onClose={onClose}>
+    <Modal title="Business type" size="xl" onClose={onClose}>
       <div className="flex flex-col gap-3 p-5">
         <p className="text-xs text-slate-500">
           The schema.org <code className="rounded bg-slate-100 px-1 py-0.5">@type</code> used in your

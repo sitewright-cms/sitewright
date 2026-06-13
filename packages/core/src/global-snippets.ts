@@ -59,21 +59,21 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
     // (the component ships them). Backgrounds bind to page.data via data-sw-bg (set each in the
     // editor); captions are editable data-sw-text regions. The full-height gradient arrows carry
     // the overrides the zero-specificity defaults need (transform-none/rounded-none/bg-gradient).
-    source: `<div class="relative overflow-hidden rounded-3xl" data-sw-component="carousel" data-sw-block="Carousel" data-loop="true" data-autoplay="true" data-interval="6000" data-kenburns aria-label="Hero slideshow">
+    source: `<div class="relative h-[60vh] min-h-[420px] max-h-[640px] overflow-hidden rounded-3xl" data-sw-component="carousel" data-sw-block="Carousel" data-loop="true" data-autoplay="true" data-interval="6000" data-kenburns aria-label="Hero slideshow">
   <div data-sw-part="track">
-    <div data-sw-part="slide" class="h-[60vh] max-h-[640px] min-h-[420px]">
+    <div data-sw-part="slide">
       <div class="sw-kenburns bg-base-200" data-sw-bg="hero_image_1"></div>
       <div class="absolute inset-0 flex items-center justify-center p-6">
         <div class="sw-caption rounded-xl bg-black/40 px-7 py-3.5 text-center text-2xl font-semibold uppercase tracking-wider text-white shadow-2xl backdrop-blur-md" data-sw-text="hero_caption_1">Your headline here</div>
       </div>
     </div>
-    <div data-sw-part="slide" class="h-[60vh] max-h-[640px] min-h-[420px]">
+    <div data-sw-part="slide">
       <div class="sw-kenburns bg-base-200" data-sw-bg="hero_image_2"></div>
       <div class="absolute inset-0 flex items-center justify-center p-6">
         <div class="sw-caption rounded-xl bg-black/40 px-7 py-3.5 text-center text-2xl font-semibold uppercase tracking-wider text-white shadow-2xl backdrop-blur-md" data-sw-text="hero_caption_2">A second slide</div>
       </div>
     </div>
-    <div data-sw-part="slide" class="h-[60vh] max-h-[640px] min-h-[420px]">
+    <div data-sw-part="slide">
       <div class="sw-kenburns bg-base-200" data-sw-bg="hero_image_3"></div>
       <div class="absolute inset-0 flex items-center justify-center p-6">
         <div class="sw-caption rounded-xl bg-black/40 px-7 py-3.5 text-center text-2xl font-semibold uppercase tracking-wider text-white shadow-2xl backdrop-blur-md" data-sw-text="hero_caption_3">A third slide</div>

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { validateTemplate } from '@sitewright/blocks';
-import { GLOBAL_TEMPLATES } from '@sitewright/core';
+import { GLOBAL_TEMPLATES, GLOBAL_SNIPPET_PARTIALS } from '@sitewright/core';
 import type { Page } from '@sitewright/schema';
 import {
   examplePages,
@@ -24,11 +24,17 @@ const EXTRA_LOCALES = EXAMPLE_SETTINGS.locales.filter((l) => l !== EXAMPLE_SETTI
 // string authored as a STATIC attribute literal (e.g. data-sw-title="Project work" instead of
 // data-sw-title="{{page.data.tab_projects}}") would escape the completeness check. Seed pages
 // must keep translatable attribute text behind page.data references.
-/** A page's effective Handlebars source (own `source`, or its referenced global template's). */
+/** A page's effective Handlebars source (own `source`, or its referenced global template's),
+ *  WITH the source of any global snippet it composes via {{> name}} appended — so keys a
+ *  snippet binds (e.g. the hero-slider captions/backgrounds) are seen by the completeness
+ *  guard and can't be dropped from a locale unnoticed. */
 function effectiveSource(page: Page): string | undefined {
-  if (page.source) return page.source;
-  if (page.template) return GLOBAL_TEMPLATES.find((t) => t.id === page.template)?.source;
-  return undefined;
+  const base = page.source ?? (page.template ? GLOBAL_TEMPLATES.find((t) => t.id === page.template)?.source : undefined);
+  if (base === undefined) return undefined;
+  const partials = [...base.matchAll(/\{\{>\s*([a-zA-Z0-9_-]+)\s*\}\}/g)]
+    .map((m) => GLOBAL_SNIPPET_PARTIALS[m[1]!])
+    .filter((s): s is string => Boolean(s));
+  return partials.length ? `${base}\n${partials.join('\n')}` : base;
 }
 
 /** The page.data keys a source binds: [data-sw-* keys (DE-only — EN defaults are authored),

@@ -45,25 +45,25 @@ export function pageComponents(assets: Record<string, string>): Page {
 <section class="mx-auto max-w-6xl px-6 pb-20">
   <h2 class="text-3xl font-bold tracking-tight" data-sw-text="sec_hero_t">Hero slider — backgrounds, Ken Burns &amp; caption motion</h2>
   <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="sec_hero_d">The classic frontpage opener: fixed-height slides with editable background images (no img elements), captions that rise in on a blurred glass pill, full-height gradient arrows that grow on hover, and an alternating Ken Burns drift on every activation. All of it is plain CSS keyed off the data-active marker the runtime stamps on the current slide.</p>
-  <p class="mt-3 font-mono text-xs text-base-content/40"><code>data-sw-bg + [data-active] CSS hook — kenburns/caption keyframes live in the site stylesheet</code></p>
-  <div class="nw-hero relative mt-8 overflow-hidden rounded-3xl" data-sw-component="carousel" data-sw-block="Carousel" data-loop="true" data-autoplay="true" data-interval="6000" aria-label="{{page.data.aria_hero}}">
+  <p class="mt-3 font-mono text-xs text-base-content/40"><code>data-kenburns + .sw-kenburns/.sw-caption — keyframes ship with the component</code></p>
+  <div class="relative mt-8 h-[60vh] min-h-[420px] max-h-[640px] overflow-hidden rounded-3xl" data-sw-component="carousel" data-sw-block="Carousel" data-loop="true" data-autoplay="true" data-interval="6000" data-kenburns aria-label="{{page.data.aria_hero}}">
     <div data-sw-part="track">
-      <div data-sw-part="slide" class="relative h-[60vh] min-h-[420px] max-h-[640px] overflow-hidden">
-        <div class="nw-hero-bg absolute inset-0 bg-cover bg-center" data-sw-bg="hero_bg_1"></div>
-        <div class="relative z-10 flex h-full items-center justify-center px-6">
-          <div class="nw-hero-cap rounded-xl bg-black/40 px-7 py-3.5 text-center text-xl font-semibold uppercase tracking-wider text-white shadow-2xl backdrop-blur-md sm:text-2xl" data-sw-text="hero_cap_1">Welcome to Northwind Studio</div>
+      <div data-sw-part="slide">
+        <div class="sw-kenburns" data-sw-bg="hero_bg_1"></div>
+        <div class="absolute inset-0 flex items-center justify-center px-6">
+          <div class="sw-caption rounded-xl bg-black/40 px-7 py-3.5 text-center text-xl font-semibold uppercase tracking-wider text-white shadow-2xl backdrop-blur-md sm:text-2xl" data-sw-text="hero_cap_1">Welcome to Northwind Studio</div>
         </div>
       </div>
-      <div data-sw-part="slide" class="relative h-[60vh] min-h-[420px] max-h-[640px] overflow-hidden">
-        <div class="nw-hero-bg absolute inset-0 bg-cover bg-center" data-sw-bg="hero_bg_2"></div>
-        <div class="relative z-10 flex h-full items-center justify-center px-6">
-          <div class="nw-hero-cap rounded-xl bg-black/40 px-7 py-3.5 text-center text-xl font-semibold uppercase tracking-wider text-white shadow-2xl backdrop-blur-md sm:text-2xl" data-sw-text="hero_cap_2">Websites with real craft</div>
+      <div data-sw-part="slide">
+        <div class="sw-kenburns" data-sw-bg="hero_bg_2"></div>
+        <div class="absolute inset-0 flex items-center justify-center px-6">
+          <div class="sw-caption rounded-xl bg-black/40 px-7 py-3.5 text-center text-xl font-semibold uppercase tracking-wider text-white shadow-2xl backdrop-blur-md sm:text-2xl" data-sw-text="hero_cap_2">Websites with real craft</div>
         </div>
       </div>
-      <div data-sw-part="slide" class="relative h-[60vh] min-h-[420px] max-h-[640px] overflow-hidden">
-        <div class="nw-hero-bg absolute inset-0 bg-cover bg-center" data-sw-bg="hero_bg_3"></div>
-        <div class="relative z-10 flex h-full items-center justify-center px-6">
-          <div class="nw-hero-cap rounded-xl bg-black/40 px-7 py-3.5 text-center text-xl font-semibold uppercase tracking-wider text-white shadow-2xl backdrop-blur-md sm:text-2xl" data-sw-text="hero_cap_3">Built to perform</div>
+      <div data-sw-part="slide">
+        <div class="sw-kenburns" data-sw-bg="hero_bg_3"></div>
+        <div class="absolute inset-0 flex items-center justify-center px-6">
+          <div class="sw-caption rounded-xl bg-black/40 px-7 py-3.5 text-center text-xl font-semibold uppercase tracking-wider text-white shadow-2xl backdrop-blur-md sm:text-2xl" data-sw-text="hero_cap_3">Built to perform</div>
         </div>
       </div>
     </div>

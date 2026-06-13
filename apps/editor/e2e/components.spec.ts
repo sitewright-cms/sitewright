@@ -106,10 +106,10 @@ test.beforeAll(async ({ playwright, baseURL }) => {
     <figure data-sw-part="slide" class="px-2"><div class="h-24 bg-green-200">B</div></figure>
   </div>
 </div></section>
-<section id="hero"><div class="relative" data-sw-component="carousel" data-sw-block="Carousel" data-loop="true" data-kenburns aria-label="Hero">
+<section id="hero"><div class="relative h-72" data-sw-component="carousel" data-sw-block="Carousel" data-loop="true" data-kenburns aria-label="Hero">
   <div data-sw-part="track">
-    <div data-sw-part="slide" class="relative h-48"><div class="sw-kenburns" style="background-color:#c00"></div><div class="sw-caption absolute inset-x-0 bottom-2 text-center text-white">One</div></div>
-    <div data-sw-part="slide" class="relative h-48"><div class="sw-kenburns" style="background-color:#0c0"></div><div class="sw-caption absolute inset-x-0 bottom-2 text-center text-white">Two</div></div>
+    <div data-sw-part="slide"><div class="sw-kenburns" style="background-color:#c00"></div><div class="sw-caption absolute inset-x-0 bottom-2 text-center text-white">One</div></div>
+    <div data-sw-part="slide"><div class="sw-kenburns" style="background-color:#0c0"></div><div class="sw-caption absolute inset-x-0 bottom-2 text-center text-white">Two</div></div>
   </div>${arrows}<div data-sw-part="dots" aria-hidden="true"></div>
 </div></section>
 <section id="scroll"><div class="relative [--sw-items:2]" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-loop="true" data-autoscroll="true" data-autoscroll-speed="2" aria-label="Ticker">
@@ -290,6 +290,13 @@ test('data-kenburns animates the active slide bg + caption (and only the active 
   expect(await animName('[data-sw-part="slide"][data-active] .sw-caption')).toBe('sw-cap-in');
   // …the inactive slide is NOT animating (no data-active → no rule).
   expect(await animName('[data-sw-part="slide"]:not([data-active]) .sw-kenburns')).toBe('none');
+
+  // Height streamlining: the root sets h-72 (288px) and the slides carry NO height class —
+  // they fill the root height through track/container height:100% + align-items:stretch.
+  const rootH = (await root.boundingBox())!.height;
+  expect(Math.round(rootH)).toBe(288);
+  const slideH = (await root.locator('[data-sw-part="slide"]').first().boundingBox())!.height;
+  expect(Math.abs(slideH - rootH)).toBeLessThan(2);
 });
 
 test('auto-scroll ticks continuously and pauses on hover', async ({ page }) => {

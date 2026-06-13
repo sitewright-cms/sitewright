@@ -52,6 +52,40 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
 </div>`,
   },
   {
+    name: 'hero-slider',
+    label: 'Hero slider',
+    // The "standard hero": a full-bleed background slideshow with Ken Burns drift + rising
+    // captions, driven entirely by the Carousel's data-kenburns mode — no @keyframes to author
+    // (the component ships them). Backgrounds bind to page.data via data-sw-bg (set each in the
+    // editor); captions are editable data-sw-text regions. The full-height gradient arrows carry
+    // the overrides the zero-specificity defaults need (transform-none/rounded-none/bg-gradient).
+    source: `<div class="relative h-[60vh] min-h-[420px] max-h-[640px] overflow-hidden rounded-3xl" data-sw-component="carousel" data-sw-block="Carousel" data-loop="true" data-autoplay="true" data-interval="6000" data-kenburns aria-label="Hero slideshow">
+  <div data-sw-part="track">
+    <div data-sw-part="slide">
+      <div class="sw-kenburns bg-base-200" data-sw-bg="hero_image_1"></div>
+      <div class="absolute inset-0 flex items-center justify-center p-6">
+        <div class="sw-caption rounded-xl bg-black/40 px-7 py-3.5 text-center text-2xl font-semibold uppercase tracking-wider text-white shadow-2xl backdrop-blur-md" data-sw-text="hero_caption_1">Your headline here</div>
+      </div>
+    </div>
+    <div data-sw-part="slide">
+      <div class="sw-kenburns bg-base-200" data-sw-bg="hero_image_2"></div>
+      <div class="absolute inset-0 flex items-center justify-center p-6">
+        <div class="sw-caption rounded-xl bg-black/40 px-7 py-3.5 text-center text-2xl font-semibold uppercase tracking-wider text-white shadow-2xl backdrop-blur-md" data-sw-text="hero_caption_2">A second slide</div>
+      </div>
+    </div>
+    <div data-sw-part="slide">
+      <div class="sw-kenburns bg-base-200" data-sw-bg="hero_image_3"></div>
+      <div class="absolute inset-0 flex items-center justify-center p-6">
+        <div class="sw-caption rounded-xl bg-black/40 px-7 py-3.5 text-center text-2xl font-semibold uppercase tracking-wider text-white shadow-2xl backdrop-blur-md" data-sw-text="hero_caption_3">A third slide</div>
+      </div>
+    </div>
+  </div>
+  <button type="button" data-sw-part="prev" class="group absolute inset-y-0 left-0 z-10 flex h-full w-20 transform-none items-center justify-start rounded-none bg-transparent bg-gradient-to-r from-black/55 via-black/20 to-transparent pl-4 text-white opacity-80 transition-opacity duration-300 hover:opacity-100 sm:w-32" aria-label="Previous slide">{{sw-icon "chevron-left" "size-20 drop-shadow-lg scale-[0.55] transition-transform duration-300 group-hover:scale-[0.65] group-hover:-translate-x-4 group-active:-translate-x-8"}}</button>
+  <button type="button" data-sw-part="next" class="group absolute inset-y-0 right-0 z-10 flex h-full w-20 transform-none items-center justify-end rounded-none bg-transparent bg-gradient-to-l from-black/55 via-black/20 to-transparent pr-4 text-white opacity-80 transition-opacity duration-300 hover:opacity-100 sm:w-32" aria-label="Next slide">{{sw-icon "chevron-right" "size-20 drop-shadow-lg scale-[0.55] transition-transform duration-300 group-hover:scale-[0.65] group-hover:translate-x-4 group-active:translate-x-8"}}</button>
+  <div data-sw-part="dots" aria-hidden="true"></div>
+</div>`,
+  },
+  {
     name: 'features',
     label: 'Feature grid',
     source: `<section class="bg-base-100 px-6 py-20">

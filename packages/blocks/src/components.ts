@@ -43,6 +43,13 @@ const CAROUSEL_CSS = [
   '[data-sw-block="Carousel"] [data-sw-part="track"]{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scroll-behavior:smooth;-webkit-overflow-scrolling:touch;scrollbar-width:none}',
   '[data-sw-block="Carousel"] [data-sw-part="track"]::-webkit-scrollbar{display:none}',
   '[data-sw-block="Carousel"] [data-sw-part="container"]{display:flex;width:100%}',
+  // height:100% on the track + container lets a height set ONCE on the carousel ROOT cascade
+  // to the slides, which then fill it via the default align-items:stretch — so a fixed-height
+  // slider (hero) needs no per-slide height. No-op when the root has no explicit height
+  // (resolves to auto), so card/ticker sliders are unchanged. EXCLUDES data-autoheight, which
+  // OWNS its height (the plugin sets it per active slide) — a resolved 100% there would give
+  // its height transition a value to animate FROM, flashing the tallest slide on init.
+  '[data-sw-block="Carousel"]:not([data-autoheight="true"]) [data-sw-part="track"],[data-sw-block="Carousel"]:not([data-autoheight="true"]) [data-sw-part="container"]{height:100%}',
   // margin:0 — the rendered-site baseline is modern-normalize (NOT preflight), so UA defaults
   // like figure/blockquote `margin: 1em 40px` survive into slides and break Embla: snaps land
   // 40px apart per slide, fade repositioning drifts, and AutoHeight sizes the container to the

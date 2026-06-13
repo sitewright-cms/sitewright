@@ -48,6 +48,12 @@ export function coerceFieldValue(type: FieldType, raw: unknown): unknown {
         return raw;
       }
     }
+    case 'list':
+    case 'object':
+      // Nested values (array / sub-record) are NOT edited as a raw string — pass the value
+      // through untouched so the entry editor can never coerce a stored array/object into a
+      // string. (The structured recursive editor for these lands in a follow-up.)
+      return raw;
     default:
       // text, richtext, date, image, reference, select
       return typeof raw === 'string' ? raw : raw === null || raw === undefined ? '' : String(raw);
@@ -57,7 +63,16 @@ export function coerceFieldValue(type: FieldType, raw: unknown): unknown {
 /** Builds an initial `values` object for a new entry of `dataset`. */
 export function defaultEntryValues(dataset: Dataset): Record<string, unknown> {
   return dataset.fields.reduce<Record<string, unknown>>((acc, field) => {
-    const empty = field.type === 'boolean' ? false : field.type === 'number' || field.type === 'json' ? undefined : '';
+    const empty =
+      field.type === 'boolean'
+        ? false
+        : field.type === 'number' || field.type === 'json'
+          ? undefined
+          : field.type === 'list'
+            ? []
+            : field.type === 'object'
+              ? {}
+              : '';
     return { ...acc, [field.name]: empty };
   }, {});
 }

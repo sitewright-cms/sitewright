@@ -53,6 +53,31 @@ describe('dataset-aware {{#each}} — flattened fields + preview markers', () =>
     expect(out).toBe('<a href="/">Home</a>');
   });
 
+  // Nested-dataset values (a `list` field = an array of objects inside an entry) render with no
+  // template change: the outer {{#each data.x}} flattens to entry.values, and the inner array is a
+  // plain (non-entry) array that falls through to stock #each. This is the render half of the
+  // nested-dataset feature (the schema half is in @sitewright/schema's dataset.ts).
+  it('renders a nested list field (entry.values.slides[]) + a sibling scalar setting', () => {
+    const hero = [
+      {
+        id: 'h1',
+        dataset: 'hero',
+        values: {
+          show_navigation: true,
+          slides: [
+            { image: '/a.jpg', caption: 'A' },
+            { image: '/b.jpg', caption: 'B' },
+          ],
+        },
+      },
+    ];
+    const out = renderTemplate(
+      '{{#each data.hero}}{{#if show_navigation}}[nav]{{/if}}{{#each slides}}<img src="{{sw-url image}}" alt="{{caption}}">{{/each}}{{/each}}',
+      { data: { hero } },
+    );
+    expect(out).toBe('[nav]<img src="/a.jpg" alt="A"><img src="/b.jpg" alt="B">');
+  });
+
   it('supports block params ({{#each data.posts as |post idx|}}) over flattened entry fields', () => {
     const out = renderTemplate('{{#each data.posts as |post idx|}}{{idx}}:{{post.t}};{{/each}}', { data: { posts: items } });
     expect(out).toBe('0:A;1:B;');

@@ -62,6 +62,7 @@ describe('component registry', () => {
     const used = componentAssets(['Lightbox']);
     expect(used.css).toContain('[data-sw-part="grid"]'); // authored thumbnail grid
     expect(used.css).toContain('.smartphoto'); // vendored viewer stylesheet
+    expect(used.css).toContain('.smartphoto{z-index:999999'); // fullscreen viewer sits above site chrome (cookie banner z 9998)
     // CSP default-src 'self': the only url() refs are inline data: URIs (SmartPhoto's icons) —
     // never an external http(s):// or protocol-relative asset.
     expect(used.css).not.toMatch(/url\(\s*['"]?(?!data:)/i);

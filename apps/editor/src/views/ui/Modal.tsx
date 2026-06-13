@@ -29,6 +29,9 @@ const SIZES = {
   md: 'max-w-lg',
   lg: 'max-w-2xl',
   xl: 'max-w-4xl',
+  /** Wider than xl but WITHOUT a forced height (unlike `full`) — for content-sized modals that need
+   *  more horizontal room (e.g. a multi-column picker). */
+  '2xl': 'max-w-6xl',
   full: 'max-w-5xl h-[82vh]',
   /** Near-fullscreen workbench (the page editor): wide + tall (90vh) for maximum editing room. The
    *  bottom side-panel rails are nudged up (z above the modal) so they stay visible over it. */

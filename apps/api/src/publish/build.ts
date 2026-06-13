@@ -22,6 +22,7 @@ import {
   parentPageView,
   referencesChildren,
   referencesParentPage,
+  resolveTranslations,
   WIDGET_PARTIALS,
   type ProjectBundle,
 } from '@sitewright/core';
@@ -535,7 +536,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // `json_data` is the publish-time snapshot of `website.jsonDataUrl` (full object — a
           // code-first page/slot can `{{#each website.json_data.items}}`). siteUrl is the only
           // OTHER website field exposed; the raw head/criticalCss/scripts blobs are never surfaced.
-          website: { siteUrl: website?.siteUrl, json_data: opts.jsonData, data: website?.data, shop: resolveShopChannels(website?.shop, formEndpoint) },
+          website: { siteUrl: website?.siteUrl, json_data: opts.jsonData, data: website?.data, shop: resolveShopChannels(website?.shop, formEndpoint), t: resolveTranslations(website?.translations, pageLocale, defaultLocale) },
           // `page.children` — this page's child pages, flattened — built only when the source loops
           // them (keeps each child's `data` off the render unless used). Published subset → no drafts.
           page: {

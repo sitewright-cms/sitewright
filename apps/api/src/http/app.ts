@@ -79,6 +79,7 @@ import {
   compareEntryOrder,
   keyedDatasets,
   translationsOf,
+  resolveTranslations,
   localeOf,
   pagesInLocale,
   pagePath,
@@ -2001,7 +2002,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         }
         const rendered = await renderPool.render(pageSource, {
           company: brand as unknown as Record<string, unknown>,
-          website: { siteUrl: website?.siteUrl, data: website?.data, shop: resolveShopChannels(website?.shop, (fid) => `/f/${project.id}/${fid}`) },
+          website: { siteUrl: website?.siteUrl, data: website?.data, shop: resolveShopChannels(website?.shop, (fid) => `/f/${project.id}/${fid}`), t: resolveTranslations(website?.translations, previewLocale, defaultLocale) },
           page: previewPage,
           parentPage: previewParent,
           data: localeData,
@@ -2024,7 +2025,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // `{{> snippet}}` is intentionally unavailable in a slot (no WYSIWYG drift).
         const slotCtx = {
           company: brand as unknown as Record<string, unknown>,
-          website: { siteUrl: website?.siteUrl, data: website?.data, shop: resolveShopChannels(website?.shop, (fid) => `/f/${project.id}/${fid}`) },
+          website: { siteUrl: website?.siteUrl, data: website?.data, shop: resolveShopChannels(website?.shop, (fid) => `/f/${project.id}/${fid}`), t: resolveTranslations(website?.translations, previewLocale, defaultLocale) },
           page: previewPage,
           parentPage: previewParent,
           data: localeData,
@@ -3218,9 +3219,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const settings = (await contentRepo.get(ctx, 'settings', SETTINGS_ENTITY_ID)) as Settings;
         company = settings.identity as unknown as Record<string, unknown>;
         brand = settings.identity;
-        website = settings.website ? { siteUrl: settings.website.siteUrl, data: settings.website.data } : undefined;
-        themeBodyClass = websiteThemeClasses(settings.website?.theme);
         projectDefaultLocale = settings.settings?.defaultLocale ?? 'en';
+        // This authoring render-template tool feeds `data` un-locale-resolved (see the note below); to
+        // match, `{{sw-translate}}` here serves the DEFAULT-locale strings regardless of a stored page's
+        // own locale. Locale-accurate translation preview is the /preview path (uses previewLocale).
+        website = settings.website
+          ? { siteUrl: settings.website.siteUrl, data: settings.website.data, t: resolveTranslations(settings.website.translations, projectDefaultLocale, projectDefaultLocale) }
+          : undefined;
+        themeBodyClass = websiteThemeClasses(settings.website?.theme);
       } catch (err) {
         if (!(err instanceof NotFoundError)) throw err;
       }
@@ -3352,6 +3358,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       try {
         const settings = (await contentRepo.get(ctx, 'settings', SETTINGS_ENTITY_ID)) as Settings;
         brand = settings.identity;
+        // Snippet HOVER preview is intentionally lean (empty data/item); `website.t` is omitted too, so
+        // {{sw-translate}} in a hovered snippet renders its `default=`/'' fallback (no locale context here).
         website = settings.website ? { siteUrl: settings.website.siteUrl, data: settings.website.data } : undefined;
         themeBodyClass = websiteThemeClasses(settings.website?.theme);
       } catch (err) {

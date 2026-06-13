@@ -424,6 +424,28 @@ function createInstance(): typeof Handlebars {
     const n = typeof max === 'number' && Number.isFinite(max) ? max : 100;
     return s.length > n ? `${s.slice(0, Math.max(0, n - 1))}…` : s;
   });
+  // {{sw-translate "key"}} / {{sw-translate "key" default="…"}} → the localized string for the current
+  // page locale, from the project translation catalog (website.translations). The render projection
+  // pre-resolves the catalog per page-locale into `website.t` (a flat key→string map, defaultLocale
+  // fallback already applied — see @sitewright/core resolveTranslations), so this is a trivial lookup.
+  // A missing/empty key falls back to `default=` then to ''. Output is ESCAPED (plain-string return),
+  // so it's safe in text or attribute position. Pure render-time — works in publish + preview (incl.
+  // the script-blocked preview). This REPLACES the old `{{lookup (lookup website.data.strings …) …}}`.
+  hb.registerHelper('sw-translate', function swTranslate(this: unknown, ...args: unknown[]) {
+    const options = args[args.length - 1] as Handlebars.HelperOptions;
+    const key = typeof args[0] === 'string' ? args[0] : '';
+    const hash = (options?.hash ?? {}) as Record<string, unknown>;
+    const fallback = typeof hash.default === 'string' ? hash.default : '';
+    if (!key) return fallback;
+    const root = (options.data?.root ?? {}) as { website?: { t?: Record<string, unknown> } };
+    const t = root.website?.t;
+    if (t && Object.prototype.hasOwnProperty.call(t, key)) {
+      // eslint-disable-next-line security/detect-object-injection -- own-property-guarded key
+      const v = t[key];
+      if (typeof v === 'string' && v !== '') return v;
+    }
+    return fallback;
+  });
   // {{#if (sw-active path)}}active{{/if}} → is `path` the page being rendered, OR an ancestor of it?
   // Returns a BOOLEAN (use in #if), comparing the given route to the current page's full route
   // (`@root.page.path`). Default = the ACTIVE TRAIL: a parent/dropdown route lights up while you are

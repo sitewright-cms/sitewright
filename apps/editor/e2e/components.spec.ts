@@ -91,14 +91,26 @@ test.beforeAll(async ({ playwright, baseURL }) => {
 <section id="slide"><div class="relative" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-loop="true" aria-label="Slide slider">
   <div data-sw-part="track">${slidesImg}</div>${arrows}<div data-sw-part="dots" aria-hidden="true"></div>
 </div></section>
-<section id="items"><div class="relative [--sw-items:2.5]" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-item-align="center" aria-label="Cards">
+<section id="items"><div class="relative [--sw-items:2.5]" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" aria-label="Cards">
   <div data-sw-part="track">
     <figure data-sw-part="slide" class="px-2"><div class="h-24 bg-red-200">A</div></figure>
-    <figure data-sw-part="slide" class="px-2"><div class="h-40 bg-green-200">B</div></figure>
+    <figure data-sw-part="slide" class="px-2"><div class="h-24 bg-green-200">B</div></figure>
     <figure data-sw-part="slide" class="px-2"><div class="h-24 bg-blue-200">C</div></figure>
     <figure data-sw-part="slide" class="px-2"><div class="h-24 bg-amber-200">D</div></figure>
     <figure data-sw-part="slide" class="px-2"><div class="h-24 bg-purple-200">E</div></figure>
   </div>${arrows}
+</div></section>
+<section id="itemalign"><div class="relative [--sw-items:3]" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-item-align="end" aria-label="Underfull row">
+  <div data-sw-part="track">
+    <figure data-sw-part="slide" class="px-2"><div class="h-24 bg-red-200">A</div></figure>
+    <figure data-sw-part="slide" class="px-2"><div class="h-24 bg-green-200">B</div></figure>
+  </div>
+</div></section>
+<section id="hero"><div class="relative" data-sw-component="carousel" data-sw-block="Carousel" data-loop="true" data-kenburns aria-label="Hero">
+  <div data-sw-part="track">
+    <div data-sw-part="slide" class="relative h-48"><div class="sw-kenburns" style="background-color:#c00"></div><div class="sw-caption absolute inset-x-0 bottom-2 text-center text-white">One</div></div>
+    <div data-sw-part="slide" class="relative h-48"><div class="sw-kenburns" style="background-color:#0c0"></div><div class="sw-caption absolute inset-x-0 bottom-2 text-center text-white">Two</div></div>
+  </div>${arrows}<div data-sw-part="dots" aria-hidden="true"></div>
 </div></section>
 <section id="scroll"><div class="relative [--sw-items:2]" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-loop="true" data-autoscroll="true" data-autoscroll-speed="2" aria-label="Ticker">
   <div data-sw-part="track">
@@ -250,13 +262,34 @@ test('multi-item layout: --sw-items:2.5 sizes slides to 1/2.5 of the track (peek
   const track = (await root.locator('[data-sw-part="track"]').boundingBox())!;
   const slide = (await root.locator('[data-sw-part="slide"]').first().boundingBox())!;
   expect(Math.abs(slide.width - track.width / 2.5)).toBeLessThan(2);
+});
 
-  // data-item-align="center": the short slide (h-24) centers on the tall one (h-40)
-  // instead of stretching to match it.
-  const short = (await root.locator('[data-sw-part="slide"]').nth(0).boundingBox())!;
-  const tall = (await root.locator('[data-sw-part="slide"]').nth(1).boundingBox())!;
-  expect(tall.height - short.height).toBeGreaterThan(40); // not stretched to equal height
-  expect(Math.abs(short.y + short.height / 2 - (tall.y + tall.height / 2))).toBeLessThan(2); // centered
+test('data-item-align distributes an underfull row horizontally (justify-content)', async ({ page }) => {
+  // 2 slides in a --sw-items:3 track (each 1/3 wide) → the row is only 2/3 full, leaving
+  // a third of the track empty. data-item-align="end" pushes both slides to the right edge.
+  const root = page.locator('#itemalign [data-sw-block="Carousel"]');
+  await expect(root).toHaveAttribute('data-sw-enhanced', 'true');
+  const track = (await root.locator('[data-sw-part="track"]').boundingBox())!;
+  const slides = root.locator('[data-sw-part="slide"]');
+  const first = (await slides.nth(0).boundingBox())!;
+  const last = (await slides.nth(1).boundingBox())!;
+  // The pair is flush to the RIGHT edge: gap on the left ≈ track/3, ~none on the right.
+  expect(first.x - track.x).toBeGreaterThan(track.width / 3 - 4);
+  expect(track.x + track.width - (last.x + last.width)).toBeLessThan(4);
+});
+
+test('data-kenburns animates the active slide bg + caption (and only the active one)', async ({ page }) => {
+  const root = page.locator('#hero [data-sw-block="Carousel"]');
+  await expect(root).toHaveAttribute('data-sw-enhanced', 'true');
+  const animName = (sel: string) =>
+    root.locator(sel).evaluate((el) => getComputedStyle(el).animationName);
+  // Active slide's background layer + caption are running a keyframe animation…
+  await expect
+    .poll(() => animName('[data-sw-part="slide"][data-active] .sw-kenburns'))
+    .toMatch(/sw-kb-/);
+  expect(await animName('[data-sw-part="slide"][data-active] .sw-caption')).toBe('sw-cap-in');
+  // …the inactive slide is NOT animating (no data-active → no rule).
+  expect(await animName('[data-sw-part="slide"]:not([data-active]) .sw-kenburns')).toBe('none');
 });
 
 test('auto-scroll ticks continuously and pauses on hover', async ({ page }) => {

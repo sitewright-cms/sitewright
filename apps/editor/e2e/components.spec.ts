@@ -402,32 +402,32 @@ test('lightbox: gallery viewer with thumbnail strip, counter, arrows, keyboard, 
   const hrefs = await items.evaluateAll((as) => as.map((a) => (a as HTMLAnchorElement).getAttribute('href')!));
 
   await items.first().click();
-  const overlay = page.locator('.smartphoto');
+  const overlay = page.locator('.sw-lightbox');
   await expect(overlay).toBeVisible();
   await expect(overlay).toHaveAttribute('role', 'dialog');
 
   // The current slide shows the FULL image from the clicked anchor's own href; counter + caption track it.
-  const shownSrc = () => overlay.locator('.smartphoto-list li.current img.smartphoto-img').first().getAttribute('src');
+  const shownSrc = () => overlay.locator('.sw-lightbox-list li.current img.sw-lightbox-img').first().getAttribute('src');
   await expect.poll(shownSrc).toBe(hrefs[0]);
-  await expect(overlay.locator('.smartphoto-count')).toHaveText('1/3');
-  await expect(overlay.locator('.smartphoto-caption')).toContainText('Caption 0');
+  await expect(overlay.locator('.sw-lightbox-count')).toHaveText('1/3');
+  await expect(overlay.locator('.sw-lightbox-caption')).toContainText('Caption 0');
   // The bottom thumbnail strip has one thumb per image; the open one is marked current.
-  await expect(overlay.locator('.smartphoto-nav li')).toHaveCount(3);
-  await expect(overlay.locator('.smartphoto-nav a.current')).toHaveCount(1);
+  await expect(overlay.locator('.sw-lightbox-nav li')).toHaveCount(3);
+  await expect(overlay.locator('.sw-lightbox-nav a.current')).toHaveCount(1);
 
   await page.waitForTimeout(600); // let the enlarge-from-thumbnail animation settle for the artifact
   await page.screenshot({ path: testInfo.outputPath('lightbox-open.png') });
 
   // Next arrow, then keyboard arrow; counter + image track the slides.
-  await overlay.locator('.smartphoto-arrow-right a').click();
+  await overlay.locator('.sw-lightbox-arrow-right a').click();
   await expect.poll(shownSrc).toBe(hrefs[1]);
-  await expect(overlay.locator('.smartphoto-count')).toHaveText('2/3');
+  await expect(overlay.locator('.sw-lightbox-count')).toHaveText('2/3');
   await page.keyboard.press('ArrowRight');
   await expect.poll(shownSrc).toBe(hrefs[2]);
-  await expect(overlay.locator('.smartphoto-count')).toHaveText('3/3');
+  await expect(overlay.locator('.sw-lightbox-count')).toHaveText('3/3');
 
   // No loop: at the last image SmartPhoto hides the next arrow (aria-hidden → display:none).
-  await expect(overlay.locator('.smartphoto-arrow-right')).toBeHidden();
+  await expect(overlay.locator('.sw-lightbox-arrow-right')).toBeHidden();
 
   // Escape closes (the overlay is hidden, not removed); focus returns to the triggering thumbnail.
   await page.keyboard.press('Escape');
@@ -441,15 +441,15 @@ test('lightbox switches: data-thumbnails / data-arrows omit the strip and arrows
   const items = root.locator('[data-sw-part="item"]');
 
   await items.first().click();
-  const overlay = page.locator('.smartphoto');
+  const overlay = page.locator('.sw-lightbox');
   await expect(overlay).toBeVisible();
   // The switches drop those parts from the runtime-built DOM entirely.
-  await expect(overlay.locator('.smartphoto-nav')).toHaveCount(0);
-  await expect(overlay.locator('.smartphoto-arrows')).toHaveCount(0);
+  await expect(overlay.locator('.sw-lightbox-nav')).toHaveCount(0);
+  await expect(overlay.locator('.sw-lightbox-arrows')).toHaveCount(0);
   // The counter still tracks, and keyboard navigation still works without arrows.
-  await expect(overlay.locator('.smartphoto-count')).toHaveText('1/3');
+  await expect(overlay.locator('.sw-lightbox-count')).toHaveText('1/3');
   await page.keyboard.press('ArrowRight');
-  await expect(overlay.locator('.smartphoto-count')).toHaveText('2/3');
+  await expect(overlay.locator('.sw-lightbox-count')).toHaveText('2/3');
   await page.keyboard.press('Escape');
 });
 

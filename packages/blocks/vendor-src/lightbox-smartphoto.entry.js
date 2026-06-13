@@ -18,6 +18,39 @@
 // data-arrows, data-animation, data-fit, data-tilt, data-history.
 import SmartPhoto from 'smartphoto/src/core/index.js';
 
+// Generic, vendor-neutral class names for the runtime-built viewer DOM (override SmartPhoto's
+// own "smartphoto-*" defaults so no third-party name leaks into the published markup/CSS). These
+// MUST stay in lockstep with the vendored stylesheet: gen-vendor.mjs rewrites "smartphoto" →
+// "sw-lightbox" in the CSS (and the one hard-coded "smartphoto-sr-only" template class in the JS),
+// so every selector below has a matching rule.
+var CLASS_NAMES = {
+  smartPhoto: 'sw-lightbox',
+  smartPhotoClose: 'sw-lightbox-close',
+  smartPhotoBody: 'sw-lightbox-body',
+  smartPhotoInner: 'sw-lightbox-inner',
+  smartPhotoContent: 'sw-lightbox-content',
+  smartPhotoImg: 'sw-lightbox-img',
+  smartPhotoImgOnMove: 'sw-lightbox-img-onmove',
+  smartPhotoImgElasticMove: 'sw-lightbox-img-elasticmove',
+  smartPhotoImgWrap: 'sw-lightbox-img-wrap',
+  smartPhotoArrows: 'sw-lightbox-arrows',
+  smartPhotoNav: 'sw-lightbox-nav',
+  smartPhotoArrowRight: 'sw-lightbox-arrow-right',
+  smartPhotoArrowLeft: 'sw-lightbox-arrow-left',
+  smartPhotoArrowHideIcon: 'sw-lightbox-arrow-hide',
+  smartPhotoImgLeft: 'sw-lightbox-img-left',
+  smartPhotoImgRight: 'sw-lightbox-img-right',
+  smartPhotoList: 'sw-lightbox-list',
+  smartPhotoListOnMove: 'sw-lightbox-list-onmove',
+  smartPhotoHeader: 'sw-lightbox-header',
+  smartPhotoCount: 'sw-lightbox-count',
+  smartPhotoCaption: 'sw-lightbox-caption',
+  smartPhotoDismiss: 'sw-lightbox-dismiss',
+  smartPhotoLoader: 'sw-lightbox-loader',
+  smartPhotoLoaderWrap: 'sw-lightbox-loader-wrap',
+  smartPhotoImgClone: 'sw-lightbox-img-clone',
+};
+
 // Unique per-root gallery id, so multiple lightboxes on one page stay independent.
 var groupSeq = 0;
 
@@ -49,6 +82,7 @@ function enhance(root) {
   });
 
   var sp = new SmartPhoto(items, {
+    classNames: CLASS_NAMES, // vendor-neutral "sw-lightbox-*" classes (see CLASS_NAMES above)
     nav: flag('data-thumbnails', true), // bottom thumbnail strip
     arrows: flag('data-arrows', true),
     showAnimation: reduce ? false : flag('data-animation', true), // enlarge-from-thumbnail open

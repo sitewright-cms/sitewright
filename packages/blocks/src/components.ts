@@ -162,37 +162,43 @@ const LIGHTBOX_CSS = [
   LIGHTBOX_SMARTPHOTO_VENDOR_CSS,
   // Dim + blurred backdrop (vendor ships solid black). z-index lifts the fullscreen viewer above
   // site chrome — the vendor's z-index:100 sits UNDER the cookie-consent banner (9998) and other
-  // overlays; a fullscreen image modal must be top-most (GLightbox used a very high z-index too).
-  '.smartphoto{z-index:999999;background-color:rgb(0 0 0/.82);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}',
+  // overlays; a fullscreen image modal must be top-most. font-family:inherit adopts the site's CI
+  // body font instead of the vendor's hard-coded sans-serif.
+  '.sw-lightbox{z-index:999999;background-color:rgb(0 0 0/.82);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);font-family:inherit}',
   // Soft rounding + shadow on the full image.
-  '.smartphoto-img-wrap img.smartphoto-img{border-radius:.5rem;box-shadow:0 12px 40px rgb(0 0 0/.45)}',
-  // Open-animation clone: cover (not stretch) the image inside its (possibly square) box, so a
-  // cropped thumbnail enlarges WITHOUT the image being squashed then snapping to the right aspect.
-  '.smartphoto-img-clone{object-fit:cover}',
-  // Arrows: tall semi-transparent edge tabs (rounded inner corners, centered chevron, darken on
-  // hover) — the size/shape on the .arrow-* li, the icon sizing on the inner a. margin-top centers
-  // the ~94px tab on the top:50% anchor.
-  '.smartphoto-arrows li{width:auto;height:auto;margin-top:-47px}',
-  '.smartphoto-arrow-left,.smartphoto-arrow-right{padding:5px 0;background-color:rgb(0 0 0/.5);transition:background-color .4s ease}',
-  '.smartphoto-arrow-right{border-radius:10px 0 0 10px}',
-  '.smartphoto-arrow-left{border-radius:0 10px 10px 0}',
-  '.smartphoto-arrow-left:hover,.smartphoto-arrow-right:hover{background-color:rgb(0 0 0/.72)}',
-  '.smartphoto-arrows a{width:3.5rem;height:5.25rem;background-size:34px;background-position:center;background-repeat:no-repeat}',
+  '.sw-lightbox-img-wrap img.sw-lightbox-img{border-radius:.5rem;box-shadow:0 12px 40px rgb(0 0 0/.45)}',
+  // Open animation = ONE clean enlarge-from-thumbnail zoom. The clone COVERS its box (a cropped
+  // thumbnail enlarges without the image being squashed then snapping to aspect) and sits ABOVE the
+  // slide list (z 101, vendor list is 101 and the clone is later in source) so the image isn't seen
+  // twice during the grow; and we cancel the vendor's secondary "inner slides up 100px" entrance,
+  // which moved the real image against the zoom (the content shift).
+  '.sw-lightbox-img-clone{object-fit:cover;z-index:101}',
+  '.sw-lightbox-inner{animation:none}',
+  // Arrows: tall semi-transparent edge tabs (rounded inner corners, centered chevron) that DARKEN
+  // and GROW WIDER on hover (dune7 behaviour). Shape/colour on the .arrow-* li; size + width-grow on
+  // the inner a. margin-top centers the ~94px tab on the top:50% anchor.
+  '.sw-lightbox-arrows li{width:auto;height:auto;margin-top:-47px}',
+  '.sw-lightbox-arrow-left,.sw-lightbox-arrow-right{padding:5px 0;background-color:rgb(0 0 0/.5);transition:background-color .35s ease}',
+  '.sw-lightbox-arrow-right{border-radius:10px 0 0 10px}',
+  '.sw-lightbox-arrow-left{border-radius:0 10px 10px 0}',
+  '.sw-lightbox-arrow-left:hover,.sw-lightbox-arrow-right:hover{background-color:rgb(0 0 0/.72)}',
+  '.sw-lightbox-arrows a{width:3.5rem;height:5.25rem;background-size:34px;background-position:center;background-repeat:no-repeat;transition:width .35s ease}',
+  '.sw-lightbox-arrow-left:hover a,.sw-lightbox-arrow-right:hover a{width:4.75rem}',
   // Bigger, rounded close button with a hover affordance.
-  '.smartphoto-dismiss{width:2rem;height:2rem;top:12px;right:14px;background-size:55%;background-position:center;background-repeat:no-repeat;border-radius:9999px;transition:background-color .2s ease,transform .2s ease}',
-  '.smartphoto-dismiss:hover{background-color:rgb(255 255 255/.18);transform:scale(1.08)}',
+  '.sw-lightbox-dismiss{width:2rem;height:2rem;top:12px;right:14px;background-size:55%;background-position:center;background-repeat:no-repeat;border-radius:9999px;transition:background-color .2s ease,transform .2s ease}',
+  '.sw-lightbox-dismiss:hover{background-color:rgb(255 255 255/.18);transform:scale(1.08)}',
   // Header gradient for legibility over bright images.
-  '.smartphoto-header{height:auto;min-height:50px;padding:14px 18px;background:linear-gradient(to bottom,rgb(0 0 0/.55),transparent)}',
+  '.sw-lightbox-header{height:auto;min-height:50px;padding:14px 18px;background:linear-gradient(to bottom,rgb(0 0 0/.55),transparent)}',
   // Thumbnail strip: rounded tiles; the active thumb gets a brand ring.
-  '.smartphoto-nav{padding:.45rem 0}',
-  '.smartphoto-nav li{width:56px;height:56px;border-radius:.5rem;margin:0 .18rem}',
-  '.smartphoto-nav a{border-radius:.5rem;transition:opacity .2s ease,box-shadow .2s ease}',
-  '.smartphoto-nav a:hover{opacity:.85}',
-  '.smartphoto-nav a.current{opacity:1;box-shadow:0 0 0 2px var(--sw-color-primary,#0a7a5a)}',
+  '.sw-lightbox-nav{padding:.45rem 0}',
+  '.sw-lightbox-nav li{width:56px;height:56px;border-radius:.5rem;margin:0 .18rem}',
+  '.sw-lightbox-nav a{border-radius:.5rem;transition:opacity .2s ease,box-shadow .2s ease}',
+  '.sw-lightbox-nav a:hover{opacity:.85}',
+  '.sw-lightbox-nav a.current{opacity:1;box-shadow:0 0 0 2px var(--sw-color-primary,#0a7a5a)}',
   // Loader → brand colour (vendor hard-codes teal #17CDDD).
-  '.smartphoto-loader{border-color:var(--sw-color-primary,#0a7a5a);border-right-color:transparent}',
+  '.sw-lightbox-loader{border-color:var(--sw-color-primary,#0a7a5a);border-right-color:transparent}',
   // Reduced motion: drop the overlay/clone transitions (the runtime also disables showAnimation).
-  '@media (prefers-reduced-motion: reduce){.smartphoto,.smartphoto-img-clone,.smartphoto-list li{transition:none}}',
+  '@media (prefers-reduced-motion: reduce){.sw-lightbox,.sw-lightbox-img-clone,.sw-lightbox-list li{transition:none}}',
 ].join('');
 
 // The SmartPhoto-powered runtime (vendored library + first-party wiring; see

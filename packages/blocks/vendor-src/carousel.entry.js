@@ -72,7 +72,24 @@ function enhance(root) {
   // translates; the track itself stops scrolling (CSS flips on data-sw-enhanced).
   var container = document.createElement('div');
   container.setAttribute('data-sw-part', 'container');
-  for (var i = 0; i < slides.length; i++) container.appendChild(slides[i]);
+  for (var i = 0; i < slides.length; i++) {
+    var sl = slides[i];
+    // EDITOR-PREVIEW only: a dataset-backed slider has each slide wrapped in a <div data-sw-entry>
+    // (markEntries) so a click opens that entry's editor. Reparenting the slide into the Embla
+    // container would orphan it from that wrapper, so HOIST the marker onto the slide itself and drop
+    // the emptied wrapper. No-op in publish (no data-sw-entry) and for whole-carousel markers (e.g.
+    // the hero, whose wrapper is OUTSIDE the slides) — there the slide's parent is the track.
+    var wrap = sl.parentNode;
+    if (wrap && wrap !== track && wrap.nodeType === 1 && wrap.hasAttribute('data-sw-entry') && wrap.children.length === 1) {
+      if (!sl.hasAttribute('data-sw-entry')) sl.setAttribute('data-sw-entry', wrap.getAttribute('data-sw-entry') || '');
+      var ds = wrap.getAttribute('data-sw-dataset');
+      if (ds && !sl.hasAttribute('data-sw-dataset')) sl.setAttribute('data-sw-dataset', ds);
+      container.appendChild(sl);
+      if (wrap.parentNode && wrap.children.length === 0) wrap.parentNode.removeChild(wrap);
+    } else {
+      container.appendChild(sl);
+    }
+  }
   track.appendChild(container);
 
   // AT semantics (APG carousel pattern): name the widget and announce slide changes from a

@@ -221,7 +221,8 @@ Or set page.template to "global:shop" (a ready-made storefront over the "product
 floating cart + drawer. Configure the shop in settings under website.shop:
   shop: { currency:{ code:"USD", symbol:"$", position:"before"|"after", decimals:2 },
           addToCartLabel:"Add to cart", title:"Your cart",
-          channels:[ {kind:"whatsapp", number:"+14155550123"},
+          channels:[ {kind:"whatsapp", number:"+14155550123",
+                       fields:[{label:"Your name",required:true},{label:"Your address",type:"textarea"}]},
                      {kind:"mailto", email:"orders@acme.com"},
                      {kind:"payment", urlTemplate:"https://paypal.me/acme/{total}"},
                      {kind:"form", formId:"<an existing Form id>"} ] }
@@ -229,6 +230,10 @@ The cart builds the order in the browser (localStorage) and hands it to a channe
 mailto/payment deep link, or a "form" channel that POSTs the order to that Form's inbox. Prices
 are NON-AUTHORITATIVE — it sends an order INQUIRY; the seller confirms availability + price and
 collects payment. (The cart runtime ships only on pages that use it.)
+A whatsapp/mailto channel may declare \`fields\` (label + type text|textarea|tel|email + optional
+required): the cart collects them before opening the link and appends them as "Label: value" lines
+below the order. An email order's body also starts with "Hi <Corporate-Identity name> — I'd like to
+order:" (the brand name comes from the identity, not the shop config).
 
 Typical flow: get_scope → set the Corporate Identity → put_page(s) with \`source\` →
 preview_page (returns { html, … } — read \`html\` to check the render) → publish_project. All writes are validated

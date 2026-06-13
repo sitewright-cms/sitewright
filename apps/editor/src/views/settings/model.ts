@@ -1,5 +1,5 @@
 import type { CorporateIdentity, SettingsBundle, WebsiteSettings } from '../../api';
-import { DEFAULT_BRAND_COLORS, MANDATORY_COLOR_TOKENS, type JsonValue, type NavEffect, type ButtonEffect, type ShopChannel, type ShopCurrency } from '@sitewright/schema';
+import { DEFAULT_BRAND_COLORS, MANDATORY_COLOR_TOKENS, type JsonValue, type NavEffect, type ButtonEffect, type ShopChannel, type ShopChannelField, type ShopCurrency, type ShopFieldType } from '@sitewright/schema';
 import { pageDataObject } from '../../lib/page-data';
 
 const MANDATORY_COLOR_SET = new Set<string>(MANDATORY_COLOR_TOKENS);
@@ -48,6 +48,16 @@ export interface KeyedShopChannel {
   urlTemplate: string; // payment
   provider: string; // payment ('' | paypal | stripe | custom)
   formId: string; // form
+  /** whatsapp + mailto: buyer-input fields collected in the cart before the deep link opens. */
+  fields: KeyedShopField[];
+}
+
+/** A buyer-input order field as edited in the form — mirrors schema `ShopChannelField`, with a stable row id. */
+export interface KeyedShopField {
+  id: string;
+  label: string;
+  type: ShopFieldType;
+  required: boolean;
 }
 
 /** A typography slot (heading/body/custom) as edited in the form — mirrors schema `FontSlot`. */
@@ -262,6 +272,7 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
       urlTemplate: c.kind === 'payment' ? c.urlTemplate : '',
       provider: c.kind === 'payment' ? c.provider ?? '' : '',
       formId: c.kind === 'form' ? c.formId : '',
+      fields: c.kind === 'whatsapp' || c.kind === 'mailto' ? (c.fields ?? []).map(shopFieldToForm) : [],
     })),
     defaultLocale: bundle.settings.defaultLocale ?? 'en',
     locales: strsToKeyed(bundle.settings.locales ?? ['en']),
@@ -274,17 +285,31 @@ function decimalsOf(raw: string): number {
   return raw.trim() && Number.isFinite(n) ? Math.max(0, Math.min(4, Math.trunc(n))) : 2;
 }
 
+/** Map a stored order field into an editable row (with a stable id; type defaults applied by the schema). */
+function shopFieldToForm(f: ShopChannelField): KeyedShopField {
+  return { id: rowId(), label: f.label, type: f.type, required: f.required ?? false };
+}
+
+/** Map editable order-field rows to schema `ShopChannelField`s, dropping blank-label rows + trimming. */
+function formFieldsToShop(fields: KeyedShopField[]): ShopChannelField[] {
+  return fields
+    .filter((f) => f.label.trim())
+    .map((f) => ({ label: f.label.trim(), type: f.type, ...(f.required ? { required: true } : {}) }));
+}
+
 /** Build a `ShopChannel` from a form row, dropping the row when its required field is blank. */
 function formChannelToShop(c: KeyedShopChannel): ShopChannel | null {
   const label = c.label.trim() ? { label: c.label.trim() } : {};
   if (c.kind === 'whatsapp') {
+    const fields = formFieldsToShop(c.fields);
     return c.number.trim()
-      ? { kind: 'whatsapp', ...label, number: c.number.trim(), ...(c.intro.trim() ? { intro: c.intro.trim() } : {}) }
+      ? { kind: 'whatsapp', ...label, number: c.number.trim(), ...(c.intro.trim() ? { intro: c.intro.trim() } : {}), ...(fields.length ? { fields } : {}) }
       : null;
   }
   if (c.kind === 'mailto') {
+    const fields = formFieldsToShop(c.fields);
     return c.email.trim()
-      ? { kind: 'mailto', ...label, email: c.email.trim(), ...(c.subject.trim() ? { subject: c.subject.trim() } : {}) }
+      ? { kind: 'mailto', ...label, email: c.email.trim(), ...(c.subject.trim() ? { subject: c.subject.trim() } : {}), ...(fields.length ? { fields } : {}) }
       : null;
   }
   if (c.kind === 'payment') {
@@ -473,7 +498,11 @@ export const newShopChannel = (): KeyedShopChannel => ({
   urlTemplate: '',
   provider: '',
   formId: '',
+  fields: [],
 });
+
+/** A fresh order-field row (defaults to a required single-line text input). */
+export const newShopField = (): KeyedShopField => ({ id: rowId(), label: '', type: 'text', required: true });
 
 /** Returns the object only if at least one value is defined, else undefined. */
 function stripEmpty<T extends Record<string, unknown>>(obj: T): T | undefined {

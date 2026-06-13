@@ -88,7 +88,8 @@ describe('cart runtime', () => {
 
   it('builds a mailto link with an encoded subject + body', () => {
     expect(CART_JS).toContain("'mailto:'");
-    expect(CART_JS).toContain('encodeURIComponent(text)');
+    // the body is the composed order message (greeting + order + fields), URL-encoded
+    expect(CART_JS).toContain('encodeURIComponent(orderMessage(ch,items,cfg');
   });
 
   it('substitutes {total}/{currency}/{items} and re-checks https before opening a payment link', () => {
@@ -160,6 +161,41 @@ describe('cart form channel', () => {
     expect(CART_JS).toContain('waves-rippling');
     expect(CART_JS).toContain("addEventListener('pointerdown'");
     expect(CART_JS).not.toContain('innerHTML');
+  });
+});
+
+describe('cart channel order fields (whatsapp/mailto)', () => {
+  it('reads the merchant brand from the mount (data-brand) for the email greeting', () => {
+    expect(CART_JS).toContain("mount.getAttribute('data-brand')");
+    // the greeting prefixes the brand, with a graceful no-brand fallback
+    expect(CART_JS).toContain('Hi ');
+    expect(CART_JS).toContain('like to order:');
+    expect(CART_JS).toContain('cfg.brand');
+  });
+
+  it('composes the order message: mailto greeting / whatsapp intro, the order, then Label: value field lines', () => {
+    // a deep-link channel builds one message via orderMessage(ch,items,cfg,values)
+    expect(CART_JS).toContain('function orderMessage(ch,items,cfg,values)');
+    // collected fields become "Label: value" lines appended below the order
+    expect(CART_JS).toContain('function fieldLines(values)');
+    expect(CART_JS).toContain("v.label+': '+v.value");
+    // whatsapp keeps its optional intro lead; mailto uses the brand greeting
+    expect(CART_JS).toContain('ch.intro');
+  });
+
+  it('renders a collapsible input form for a fielded channel and validates required fields before sending', () => {
+    expect(CART_JS).toContain('function buildChannelForm(ch,toggleBtn)');
+    expect(CART_JS).toContain("'channel-form'");
+    expect(CART_JS).toContain("'channel-submit'");
+    expect(CART_JS).toContain("'channel-status'");
+    expect(CART_JS).toContain('Please fill in: ');
+    // the toggle exposes its state for a11y
+    expect(CART_JS).toContain("setAttribute('aria-expanded'");
+    // values reach the link via input .value — never innerHTML
+    expect(CART_JS).not.toContain('innerHTML');
+    // the form is styled + hidden until toggled open
+    expect(CART_CSS).toContain('[data-sw-part="channel-form"]');
+    expect(CART_CSS).toContain('[data-sw-part="channel-form"][hidden]{display:none}');
   });
 });
 

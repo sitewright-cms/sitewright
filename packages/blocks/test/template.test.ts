@@ -438,6 +438,35 @@ describe('renderTemplate — MINI SHOP helpers', () => {
     expect(renderTemplate('{{sw-cart}}', {})).toBe('<div data-sw-cart></div>');
   });
 
+  it('{{sw-cart}} projects per-channel order fields (label/type/required) for whatsapp + mailto', () => {
+    const ctxShop = {
+      website: {
+        shop: {
+          channels: [
+            { kind: 'whatsapp', number: '+14155550123', fields: [{ label: 'Your name', type: 'text', required: true }] },
+            { kind: 'mailto', email: 'a@b.test', fields: [{ label: 'Your address', type: 'textarea' }] },
+          ],
+        },
+      },
+    };
+    const out = renderTemplate('{{sw-cart}}', ctxShop);
+    expect(out).toContain('&quot;fields&quot;');
+    expect(out).toContain('&quot;label&quot;:&quot;Your name&quot;');
+    expect(out).toContain('&quot;required&quot;:true');
+    expect(out).toContain('&quot;label&quot;:&quot;Your address&quot;');
+    expect(out).toContain('&quot;type&quot;:&quot;textarea&quot;');
+    // a channel WITHOUT fields stays byte-stable (no fields key in its JSON)
+    const noFields = renderTemplate('{{sw-cart}}', { website: { shop: { channels: [{ kind: 'whatsapp', number: '+14155550123' }] } } });
+    expect(noFields).not.toContain('fields');
+  });
+
+  it('{{sw-cart}} emits data-brand from company.name (for the email greeting) only when present', () => {
+    const out = renderTemplate('{{sw-cart}}', { company: { name: 'Acme & Co' }, website: { shop: { channels: [{ kind: 'mailto', email: 'a@b.test' }] } } });
+    expect(out).toContain('data-brand="Acme &amp; Co"');
+    // no identity → no data-brand (byte-stable)
+    expect(renderTemplate('{{sw-cart}}', { website: { shop: { channels: [{ kind: 'mailto', email: 'a@b.test' }] } } })).not.toContain('data-brand');
+  });
+
   it('{{sw-cart}} projects a form channel only when its endpoint is resolved', () => {
     const withEp = { website: { shop: { channels: [{ kind: 'form', formId: 'order', endpoint: '/f/p1/order', label: 'Place order' }] } } };
     const out = renderTemplate('{{sw-cart}}', withEp);

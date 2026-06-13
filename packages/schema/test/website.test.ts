@@ -216,6 +216,41 @@ describe('WebsiteSettingsSchema', () => {
       expect(() => WebsiteSettingsSchema.parse({ shop: { note: 'a'.repeat(301) } })).toThrow();
     });
 
+    it('accepts per-channel order fields on whatsapp + mailto and defaults the field type to text', () => {
+      const parsed = WebsiteSettingsSchema.parse({
+        shop: {
+          channels: [
+            {
+              kind: 'whatsapp',
+              number: '+14155550123',
+              fields: [{ label: 'Your name', required: true }, { label: 'Your address', type: 'textarea' }],
+            },
+            { kind: 'mailto', email: 'a@b.test', fields: [{ label: 'Phone', type: 'tel' }] },
+          ],
+        },
+      });
+      const wa = parsed.shop?.channels?.[0];
+      expect(wa?.kind === 'whatsapp' && wa.fields).toEqual([
+        { label: 'Your name', type: 'text', required: true },
+        { label: 'Your address', type: 'textarea' },
+      ]);
+      const mail = parsed.shop?.channels?.[1];
+      expect(mail?.kind === 'mailto' && mail.fields?.[0]).toEqual({ label: 'Phone', type: 'tel' });
+    });
+
+    it('rejects an order-field label with control chars, an unknown type, and caps the field count', () => {
+      expect(() =>
+        WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'whatsapp', number: '+14155550123', fields: [{ label: 'a\r\nb' }] }] } }),
+      ).toThrow();
+      expect(() =>
+        WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'mailto', email: 'a@b.test', fields: [{ label: 'x', type: 'date' }] }] } }),
+      ).toThrow();
+      const manyFields = Array.from({ length: 9 }, (_, i) => ({ label: `f${i}` }));
+      expect(() =>
+        WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'whatsapp', number: '+14155550123', fields: manyFields }] } }),
+      ).toThrow();
+    });
+
     it('payment provider is paypal/custom — a legacy stripe value is coerced to custom (back-compat)', () => {
       expect(
         WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'payment', urlTemplate: 'https://buy.stripe.com/fixed', provider: 'custom' }] } }).shop?.channels,

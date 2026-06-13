@@ -211,20 +211,23 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
       },
       {
         id: 'h-control',
-        syntax: '{{sw-control target="page.title|page.image|page.description|<page.data key>" as="text|textarea|url|image|file|folder|dataset" label="…"}}',
+        syntax: '{{sw-control target="page.title|page.image|page.description|<page.data key>" as="text|textarea|url|number|color|date|image|file|select|folder|dataset" [options="a,b,c"] label="…"}}',
         name: 'sw-control',
-        keywords: 'control settings client editor title og image folder dataset content directive',
+        keywords: 'control settings client editor title og image folder dataset select number color date content directive',
         description:
           'A CONTENT-EDITOR-ONLY control: drops a chip (shown ONLY in the Content Editor, never on the published site) that lets a client set a whitelisted PAGE value — the page title, the meta description, or the OG/share image — or a page.data value, from inside the live preview. Pair it with other helpers: set a FOLDER name (as="folder") an {{#sw-folder}} gallery reads, or a DATASET name (as="dataset") an {{#each}} loops.',
         args: [
           { name: 'target', desc: 'What to set: page.title, page.image, page.description, or a page.data key/path (e.g. "gallery_folder" or "data.article.title").' },
-          { name: 'as', desc: 'The input: text (default), textarea, url, image (file picker, images), file (file picker, any uploaded file), folder (a dropdown of media folders), or dataset (a dropdown of datasets).' },
+          { name: 'as', desc: 'The input: text (default), textarea, url, number, color, date, image (file picker, images), file (file picker, any uploaded file), select (a dropdown of your own options), folder (a dropdown of media folders), or dataset (a dropdown of datasets). An unknown value is an error — it will NOT silently fall back to a text box.' },
+          { name: 'options', desc: 'For as="select" ONLY: a comma-separated list of choices, e.g. "Draft, Published, Archived". Required for select (a select with no options is rejected).' },
           { name: 'label', desc: 'Optional chip label (defaults to the target).' },
         ],
         example:
           '{{! a client picks the gallery folder; the gallery below reads it }}\n' +
           '{{sw-control target="gallery_folder" as="folder" label="Gallery folder"}}\n' +
-          '{{#sw-folder page.data.gallery_folder}}<img src="{{sw-url url}}" alt="{{alt}}">{{/sw-folder}}',
+          '{{#sw-folder page.data.gallery_folder}}<img src="{{sw-url url}}" alt="{{alt}}">{{/sw-folder}}\n' +
+          '{{! a fixed choice list }}\n' +
+          '{{sw-control target="data.status" as="select" options="Draft, Published, Archived" label="Status"}}',
         note: 'Renders nothing for a non-settable target. It writes into the page draft (saved with everything else) and is REMOVED entirely from the published HTML.',
       },
       {

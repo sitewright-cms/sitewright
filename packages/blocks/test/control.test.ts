@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { classifyControlTarget, controlCurrentValue, controlOptions, normalizeControlAs } from '../src/control.js';
+import {
+  classifyControlTarget,
+  controlCurrentValue,
+  controlOptions,
+  normalizeControlAs,
+  isControlAs,
+  parseSelectOptions,
+  CONTROL_AS_VALUES,
+} from '../src/control.js';
 import { renderTemplate } from '../src/template.js';
 
 describe('classifyControlTarget', () => {
@@ -38,6 +46,34 @@ describe('normalizeControlAs', () => {
     expect(normalizeControlAs('file')).toBe('file');
     expect(normalizeControlAs('bogus')).toBe('text');
     expect(normalizeControlAs(undefined)).toBe('text');
+  });
+  it('keeps the newly-added typed inputs', () => {
+    for (const as of ['number', 'color', 'date', 'select'] as const) expect(normalizeControlAs(as)).toBe(as);
+  });
+});
+
+describe('isControlAs', () => {
+  it('accepts every CONTROL_AS_VALUES member and rejects everything else', () => {
+    for (const as of CONTROL_AS_VALUES) expect(isControlAs(as)).toBe(true);
+    for (const bad of ['bogus', 'checkbox', 'radio', 'datetime-local', '', undefined, null, 7, {}]) {
+      expect(isControlAs(bad)).toBe(false);
+    }
+  });
+});
+
+describe('parseSelectOptions', () => {
+  it('splits, trims, drops empties + dedupes', () => {
+    expect(parseSelectOptions('Draft, Published ,Archived')).toEqual(['Draft', 'Published', 'Archived']);
+    expect(parseSelectOptions('a,,b, ,a')).toEqual(['a', 'b']);
+  });
+  it('returns [] for non-strings / blank input', () => {
+    expect(parseSelectOptions(undefined)).toEqual([]);
+    expect(parseSelectOptions(123)).toEqual([]);
+    expect(parseSelectOptions('  , , ')).toEqual([]);
+  });
+  it('caps the option count', () => {
+    const many = Array.from({ length: 250 }, (_, i) => `o${i}`).join(',');
+    expect(parseSelectOptions(many)).toHaveLength(100);
   });
 });
 
@@ -97,5 +133,42 @@ describe('{{sw-control}} render', () => {
   });
   it('renders nothing for a non-whitelisted target', () => {
     expect(renderTemplate('{{sw-control target="page.path"}}', { preview: true })).toBe('');
+  });
+
+  it('emits the typed inputs (number/color/date) verbatim in data-sw-control-as', () => {
+    for (const as of ['number', 'color', 'date'] as const) {
+      const out = renderTemplate(`{{sw-control target="data.v" as="${as}"}}`, { page: { data: { v: '' } }, preview: true });
+      expect(out).toContain(`data-sw-control-as="${as}"`);
+    }
+  });
+
+  it('embeds the author options for as="select"', () => {
+    const out = renderTemplate('{{sw-control target="data.status" as="select" options="Draft, Published, Archived" label="Status"}}', {
+      page: { data: { status: 'Published' } },
+      preview: true,
+    });
+    expect(out).toContain('data-sw-control-as="select"');
+    expect(out).toContain('data-sw-control-options=');
+    // The options survive HTML-attr escaping of the JSON array.
+    expect(out).toContain('Draft');
+    expect(out).toContain('Published');
+    expect(out).toContain('Archived');
+  });
+
+  it('THROWS (fails loud) on an unknown `as` instead of degrading to text', () => {
+    expect(() => renderTemplate('{{sw-control target="page.title" as="checkbox"}}', { page: { title: 'x' }, preview: true })).toThrow(
+      /unknown as="checkbox"/,
+    );
+  });
+
+  it('THROWS for as="select" with no options (a select with no choices is useless)', () => {
+    expect(() => renderTemplate('{{sw-control target="data.status" as="select"}}', { page: { data: {} }, preview: true })).toThrow(
+      /select.*requires.*options/i,
+    );
+  });
+
+  it('still defaults to text when `as` is omitted (no throw)', () => {
+    const out = renderTemplate('{{sw-control target="page.title"}}', { page: { title: 'Home' }, preview: true });
+    expect(out).toContain('data-sw-control-as="text"');
   });
 });

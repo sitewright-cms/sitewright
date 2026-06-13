@@ -38,9 +38,12 @@ In \`source\`:
   (images by default). The folder may be a subfolder ("products/2024") or a variable. Each iteration
   binds {{url}} {{alt}} {{filename}} {{kind}} {{width}} {{height}} (+ {{@index}}/{{@first}}/{{@last}});
   bind the src with {{sw-url url}}. e.g. {{#sw-folder "gallery"}}<img src="{{sw-url url}}" alt="{{alt}}" loading="lazy">{{/sw-folder}}.
-- CONTENT-EDITOR-ONLY controls: {{sw-control target="…" as="text|textarea|url|image|file|folder|dataset" label="…"}}
+- CONTENT-EDITOR-ONLY controls: {{sw-control target="…" as="text|textarea|url|number|color|date|image|file|select|folder|dataset" [options="a,b,c"] label="…"}}
   drops a chip (visible only in the Content Editor, stripped on publish) letting a client set a whitelisted
-  page value (target=page.title | page.image | page.description) or a page.data key. Use it to expose the
+  page value (target=page.title | page.image | page.description) or a page.data key. \`as\` picks the input:
+  text/textarea/url, number/color/date (native typed inputs), image/file (file picker), select (a dropdown
+  of your \`options="a,b,c"\` list), folder/dataset (a dropdown of media folders / datasets). An unknown \`as\`
+  or a select with no \`options\` is an ERROR (it won't silently become a text box). Use it to expose the
   knobs OTHER helpers read — e.g. {{sw-control target="gallery_folder" as="folder"}} feeds
   {{#sw-folder page.data.gallery_folder}}, and {{sw-control target="list_dataset" as="dataset"}} feeds {{#each}}.
 - Mark text a CLIENT may later edit by adding data-sw-text="key" to a real element, e.g.

@@ -24,7 +24,7 @@ import { resolveDirectives } from './directives.js';
 import { sanitizeRichHtml } from './sanitize-rich.js';
 import { resolveFormEmbeds, resolveFormId, renderFormMarkup, unknownFormMessage, type RenderForm } from './form-embed.js';
 import { selectFolderAssets, projectFolderItem, type FolderKind, type RenderMedia } from './folder.js';
-import { classifyControlTarget, controlCurrentValue, controlOptions, normalizeControlAs } from './control.js';
+import { classifyControlTarget, controlCurrentValue, controlOptions, isControlAs, parseSelectOptions, CONTROL_AS_VALUES } from './control.js';
 
 /** Thrown for an unsafe interpolation context, a Handlebars compile error, or a render error. */
 export class TemplateError extends Error {
@@ -629,11 +629,14 @@ function createInstance(): typeof Handlebars {
     return new Handlebars.SafeString(out);
   });
 
-  // {{sw-control target="page.title|page.image|page.description|<page.data key>" as="text|textarea|url|image|folder|dataset" label="…"}}
+  // {{sw-control target="page.title|page.image|page.description|<page.data key>"
+  //   as="text|textarea|url|number|color|date|image|file|select|folder|dataset" [options="a,b,c"] label="…"}}
   // A content-editor-ONLY control: renders an editable chip (shown only in content mode, wired by the
   // preview bridge; STRIPPED on publish by resolveDirectives) that sets a whitelisted page attribute or
   // a page.data value from inside the preview — e.g. the page title, the OG image, a gallery FOLDER name
   // (for {{#sw-folder}}), or a DATASET name (for {{#each}}). Emits a marker the bridge upgrades.
+  // An unknown `as`, or as="select" without `options`, THROWS (fails loud) rather than silently
+  // degrading to a text box — a degraded control is worse than a clear authoring error.
   hb.registerHelper('sw-control', function swControl(this: unknown, ...args: unknown[]) {
     const options = args[args.length - 1] as Handlebars.HelperOptions;
     const hash = (options.hash ?? {}) as Record<string, unknown>;
@@ -641,10 +644,26 @@ function createInstance(): typeof Handlebars {
     const target = classifyControlTarget(rawTarget);
     if (!target) return new Handlebars.SafeString(''); // invalid/disallowed target → render nothing
     const root = (options.data?.root ?? {}) as Parameters<typeof controlCurrentValue>[1];
-    const as = normalizeControlAs(hash.as);
+    // Fail loud on an unknown `as` (omitting it still defaults to text); the old silent coercion hid
+    // typos like as="number"/"select" the bridge could not honor.
+    const rawAs = hash.as;
+    if (rawAs !== undefined && rawAs !== '' && !isControlAs(rawAs)) {
+      throw new Error(`sw-control: unknown as="${String(rawAs)}" — use one of: ${CONTROL_AS_VALUES.join(', ')}`);
+    }
+    const as = isControlAs(rawAs) ? rawAs : 'text';
     const label = typeof hash.label === 'string' && hash.label ? hash.label : rawTarget;
     const current = controlCurrentValue(target, root);
-    const opts = controlOptions(as, root);
+    // Dropdown options: as="select" → author-provided `options="a,b,c"` (REQUIRED — an empty list is
+    // an authoring error); as="folder"/"dataset" → derived from the page's media folders / datasets.
+    let opts: string[];
+    if (as === 'select') {
+      opts = parseSelectOptions(hash.options);
+      if (opts.length === 0) {
+        throw new Error('sw-control: as="select" requires a non-empty options="a, b, c" list');
+      }
+    } else {
+      opts = controlOptions(as, root);
+    }
     let attrs =
       `data-sw-control="${escapeAttr(rawTarget)}" data-sw-control-as="${escapeAttr(as)}"` +
       ` data-sw-control-label="${escapeAttr(label)}" data-sw-control-value="${escapeAttr(current)}"`;

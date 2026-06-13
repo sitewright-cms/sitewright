@@ -3,6 +3,11 @@
 This document records the foundational decisions. Each is intentional; revisit via a PR that
 updates this file if a decision changes.
 
+> **Authoring building blocks** (Components, Datasets, Snippets, Widgets, Templates, Slots) and how
+> coders/agents/end-users compose them: see [`authoring-model.md`](./authoring-model.md). Note that
+> D2/D3 below describe the original block-tree model, which has been retired — the platform is now
+> code-first (Handlebars `source` + the `data-sw-component`/`data-sw-*` contracts).
+
 ## Product
 
 An open-source website development platform for web-development agencies, serving **developers**

@@ -151,6 +151,24 @@ const PLATFORM_DEFAULTS = `
   :is(nav, [role="navigation"]) a, .menu a, .btn { text-decoration: inherit; }
 }
 
+/* Inline code / keyboard / sample / preformatted text get a light "chip" treatment
+   (monospace font is already set verbatim by normalize above). MUST live in the weak
+   sw-normalize layer: an UNLAYERED bare \`kbd\`/\`code\` rule would outrank daisyUI's
+   LAYERED \`.kbd\` / \`.mockup-code\` components (unlayered beats any layer regardless of
+   specificity — see the link-rule note above), clobbering them on every site. Layered
+   here, daisyUI components + author utilities (\`bg-*\`, \`.kbd\`) + criticalCss all win.
+   A <code>/<kbd>/<samp> nested in a <pre> is reset so the block doesn't draw a second
+   chip-on-a-chip (the <pre> is the box; its inner text inherits). */
+@layer sw-normalize {
+  code, kbd, samp, pre {
+    background: #EEE;
+    padding: .25rem;
+    color: #4a4a4a;
+    border-radius: 5px;
+  }
+  pre code, pre kbd, pre samp { background: none; padding: 0; border-radius: 0; color: inherit; }
+}
+
 /* Responsive media (icons are <svg>, sized by classes — intentionally untouched). */
 img, video { max-width: 100%; height: auto; }
 

@@ -385,21 +385,38 @@ function createInstance(): typeof Handlebars {
   // lower-trust content (dataset entries are member-editable) never reaches the page unsanitized.
   // Non-strings render nothing. Use in element context.
   hb.registerHelper('sw-rich', (value: unknown) => new Handlebars.SafeString(typeof value === 'string' ? sanitizeRichHtml(value) : ''));
-  // {{#with (sw-pick-entry data.<slug> @root.page.data.<key>)}} — pick ONE dataset entry's VALUES by
-  // id (the id a {{sw-control as="dataset-item"}} stores), defaulting to the FIRST entry when the
-  // selection is unset/unknown. Lets a Widget (e.g. the hero slider) render a chosen config out of
-  // several. Returns the entry's `values` (so the #with body binds the config fields) — or undefined
-  // for an empty dataset (→ #with renders nothing). Accepts entry envelopes ({id,values}) OR a plain
-  // values array (returns the element as-is), so it's robust across the render + test contexts.
-  hb.registerHelper('sw-pick-entry', (entries: unknown, selectedId: unknown) => {
-    if (!Array.isArray(entries) || entries.length === 0) return undefined;
+  // Pick ONE dataset entry by id (the id a {{sw-control as="dataset-item"}} stores), defaulting to the
+  // FIRST when the selection is unset/unknown — lets a Widget (e.g. the hero slider) render a chosen
+  // config out of several. DUAL-MODE:
+  //   • BLOCK — {{#sw-pick-entry data.<slug> @root.page.data.<key>}}…{{/sw-pick-entry}} — renders the
+  //     block with the entry's VALUES as context (+ @entry={id,dataset,status}); empty dataset → the
+  //     {{else}}/nothing. In PREVIEW (`root.markEntries`) it WRAPS the block in a data-sw-entry /
+  //     data-sw-dataset marker (using the envelope's id+dataset) so a click in the editor opens THAT
+  //     entry — the same affordance the dataset-aware {{#each}} gives each row.
+  //   • SUBEXPRESSION — {{#with (sw-pick-entry …)}} — returns the entry's VALUES (no marker).
+  // Accepts entry envelopes ({id,values}) OR a plain values array (uses the element as-is) so it's
+  // robust across render + test contexts.
+  hb.registerHelper('sw-pick-entry', function swPickEntry(entries: unknown, selectedId: unknown, options?: Handlebars.HelperOptions) {
+    const block = options && typeof options.fn === 'function' ? options : undefined;
+    if (!Array.isArray(entries) || entries.length === 0) {
+      return block ? (typeof block.inverse === 'function' ? block.inverse(undefined) : '') : undefined;
+    }
     const byId =
       typeof selectedId === 'string' && selectedId
         ? entries.find((e) => e && typeof e === 'object' && (e as { id?: unknown }).id === selectedId)
         : undefined;
-    const chosen = byId ?? entries[0];
-    if (chosen && typeof chosen === 'object' && 'values' in (chosen as object)) return (chosen as { values: unknown }).values;
-    return chosen;
+    const chosen = (byId ?? entries[0]) as { id?: unknown; dataset?: unknown; status?: unknown; values?: unknown };
+    const values = chosen && typeof chosen === 'object' && 'values' in chosen ? chosen.values : chosen;
+    if (!block) return values; // subexpression mode → just the values
+    const frame = Handlebars.createFrame(block.data ?? {});
+    if (chosen && typeof chosen === 'object') frame.entry = { id: chosen.id, dataset: chosen.dataset, status: chosen.status };
+    const body = block.fn(values, { data: frame });
+    const root = (block.data?.root ?? {}) as { markEntries?: boolean };
+    // PREVIEW: wrap so a click opens this entry's editor (publish has markEntries=false → no wrapper).
+    if (root.markEntries && typeof chosen?.id === 'string' && typeof chosen?.dataset === 'string') {
+      return new Handlebars.SafeString(`<div data-sw-entry="${escapeAttr(chosen.id)}" data-sw-dataset="${escapeAttr(chosen.dataset)}">${body}</div>`);
+    }
+    return new Handlebars.SafeString(body);
   });
   // {{sw-truncate text 80}} → clip to N chars with an ellipsis.
   hb.registerHelper('sw-truncate', (value: unknown, max: unknown) => {

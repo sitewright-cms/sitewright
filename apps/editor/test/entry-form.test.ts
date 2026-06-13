@@ -75,6 +75,13 @@ describe('coerceFieldValue', () => {
     expect(coerceFieldValue('json', 'not json')).toBe('not json');
     expect(coerceFieldValue('json', '')).toBeUndefined();
   });
+
+  it('passes nested list/object values through UNCHANGED (never string-coerces an array/object)', () => {
+    const slides = [{ image: '/a.jpg' }, { image: '/b.jpg' }];
+    expect(coerceFieldValue('list', slides)).toBe(slides);
+    const cfg = { autoplay: true };
+    expect(coerceFieldValue('object', cfg)).toBe(cfg);
+  });
 });
 
 describe('defaultEntryValues', () => {
@@ -85,6 +92,14 @@ describe('defaultEntryValues', () => {
       live: false,
       meta: undefined,
     });
+  });
+
+  it('seeds nested fields as an empty array/object (not "")', () => {
+    const ds = { id: 'h', name: 'H', slug: 'h', fields: [
+      { name: 'slides', type: 'list' as const, required: false, localized: false, fields: [{ name: 'image', type: 'image' as const, required: false, localized: false }] },
+      { name: 'cfg', type: 'object' as const, required: false, localized: false, fields: [{ name: 'autoplay', type: 'boolean' as const, required: false, localized: false }] },
+    ] };
+    expect(defaultEntryValues(ds)).toEqual({ slides: [], cfg: {} });
   });
 });
 

@@ -52,6 +52,17 @@ function FieldInput({
           placeholder="/photo.jpg"
         />
       );
+    case 'list':
+    case 'object':
+      // Nested fields: read-only summary for now (a structured recursive editor lands in a
+      // follow-up). Crucially NOT an editable text input — that would coerce the stored array/
+      // object to a string on the first keystroke. Shown so the value is at least visible.
+      return (
+        <div {...common} className={`${glassInput} min-h-10 whitespace-pre-wrap font-mono text-xs text-slate-300`}>
+          {Array.isArray(value) || (typeof value === 'object' && value !== null) ? JSON.stringify(value, null, 2) : '—'}
+          <span className="mt-1 block not-italic text-slate-500">Nested {field.type} — edit coming soon.</span>
+        </div>
+      );
     default:
       // text, reference, select — a plain text input (richer pickers come later).
       return <input {...common} type="text" className={glassInput} value={typeof value === 'string' ? value : ''} onChange={(e) => onRaw(e.target.value)} />;

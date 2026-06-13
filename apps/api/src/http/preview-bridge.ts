@@ -90,18 +90,6 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       // Positioning host for the absolute badge — applied as a CLASS (added only to elements computed
       // static, so positioned elements are untouched) so it never mutates the inline style attribute.
       '.sw-rel{position:relative}' +
-      // Overlay HANDLES: an always-on-top click target for any editable leaf the page would OCCLUDE
-      // (an overlay on top), HIDE (a display:none ancestor — e.g. a Tailwind hidden "settings chips"
-      // wrapper), or PARK off-screen (a non-active carousel slide). The host is a fixed viewport layer
-      // at a near-max z-index (above any normal author overlay / cookie bar / lightbox); each handle is
-      // a small pill positioned by the leaf's (or a visible ancestor's) geometry. Edit popovers (.sw-pop,
-      // z+1 below) therefore always sit ABOVE the handles. Group handles (sky) front a chooser list.
-      '.sw-handles{position:fixed;inset:0;z-index:2147483646;pointer-events:none}' +
-      '.sw-handle{position:absolute;pointer-events:auto;display:flex;align-items:center;justify-content:center;min-width:22px;height:22px;padding:0 6px;border-radius:9999px;border:1.5px solid #fff;background:#6366f1;color:#fff;cursor:pointer;font:700 11px system-ui,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.4);transition:transform .1s,background .1s}' +
-      '.sw-handle:hover{background:#4f46e5;transform:scale(1.12)}' +
-      '.sw-handle.sw-handle-group{background:#0ea5e9}.sw-handle.sw-handle-group:hover{background:#0284c7}' +
-      '.sw-pop .sw-grouprow{all:unset;display:block;cursor:pointer;padding:5px 8px;border-radius:6px;font:13px system-ui,sans-serif;color:#1e293b}' +
-      '.sw-pop .sw-grouprow:hover{background:#eef2ff}' +
       '.sw-tb{position:fixed;z-index:2147483647;display:none;gap:2px;padding:3px;border-radius:8px;background:#0f172a;box-shadow:0 6px 20px rgba(0,0,0,.35);font:600 12px system-ui,sans-serif}' +
       '.sw-tb button{all:unset;color:#e2e8f0;cursor:pointer;padding:3px 7px;border-radius:5px;min-width:18px;text-align:center}' +
       '.sw-tb button:hover{background:#334155;color:#fff}' +
@@ -222,7 +210,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     textRow.style.display = textKey ? 'flex' : 'none';
     if (textKey) p.querySelector('.sw-text').value = anchor.textContent || '';
     p.style.display = 'flex';
-    var rect = rectFor(anchor);
+    var rect = anchor.getBoundingClientRect();
     var top = rect.bottom + 6; var left = rect.left;
     var maxLeft = window.innerWidth - p.offsetWidth - 6; if (left > maxLeft) left = maxLeft > 6 ? maxLeft : 6; if (left < 6) left = 6;
     if (top + p.offsetHeight > window.innerHeight - 6) top = rect.top - p.offsetHeight - 6;
@@ -310,7 +298,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     actions.appendChild(cancel); actions.appendChild(ok);
     p.appendChild(lab); p.appendChild(actions);
     p.style.display = 'flex';
-    var rect = rectFor(el);
+    var rect = el.getBoundingClientRect();
     var top = rect.bottom + 6, left = rect.left;
     var maxLeft = window.innerWidth - p.offsetWidth - 6; if (left > maxLeft) left = maxLeft > 6 ? maxLeft : 6; if (left < 6) left = 6;
     if (top + p.offsetHeight > window.innerHeight - 6) top = rect.top - p.offsetHeight - 6;
@@ -350,238 +338,6 @@ export const PREVIEW_BRIDGE_JS = `(function () {
   function relPos(el, on) {
     if (on) { if (getComputedStyle(el).position === 'static') el.classList.add('sw-rel'); }
     else el.classList.remove('sw-rel');
-  }
-  // ---- Overlay HANDLES ----------------------------------------------------------------------------
-  // In-place affordances fail when the page OCCLUDES an editable leaf (an absolute overlay painted on
-  // top), HIDES it (a display:none ancestor — e.g. a Tailwind hidden "settings chips" wrapper), or
-  // PARKS it off-screen (a non-active carousel slide). For those leaves we attach a click target in a
-  // fixed top-most layer, positioned by geometry, so nothing in the page can cover it and the leaf's
-  // own visibility no longer gates reachability. Edits route through the SAME popover/picker/postMessage
-  // sinks the in-place path uses; directly-reachable leaves keep the lighter in-place editing.
-  var HANDLE_SEL = '[data-sw-text],[data-sw-html],[data-sw-href],[data-sw-src],[data-sw-bg],[data-sw-control],[data-sw-entry]';
-  var handleHost = null, handleList = [], handleScrollRaf = 0, handleRefreshTimer = 0, swAnchorRect = null, groupPop = null;
-
-  function ensureHandleHost() {
-    if (handleHost) return handleHost;
-    handleHost = document.createElement('div'); handleHost.className = 'sw-handles';
-    document.body.appendChild(handleHost);
-    return handleHost;
-  }
-  // A leaf's geometry for popover placement — its own rect, or (when hidden) the rect of the handle
-  // that opened it (swAnchorRect), or a safe corner default.
-  function rectFor(el) {
-    if (el && el.getClientRects && el.getClientRects().length) return el.getBoundingClientRect();
-    return swAnchorRect || { left: 16, top: 16, bottom: 36, right: 120, width: 104, height: 20 };
-  }
-  function leafLabel(el) {
-    return el.getAttribute('data-sw-control-label') || el.getAttribute('data-sw-text') || el.getAttribute('data-sw-html')
-      || el.getAttribute('data-sw-href') || el.getAttribute('data-sw-src') || el.getAttribute('data-sw-bg')
-      || el.getAttribute('data-sw-dataset') || 'field';
-  }
-  function leafGlyph(el) {
-    if (el.hasAttribute('data-sw-control')) return '\\u2699';
-    if (el.hasAttribute('data-sw-src') || el.hasAttribute('data-sw-bg')) return '\\u{1F5BC}';
-    if (el.hasAttribute('data-sw-href')) return '\\u{1F517}';
-    if (el.hasAttribute('data-sw-entry')) return '\\u{1F5C2}';
-    if (el.hasAttribute('data-sw-html')) return '\\u00B6';
-    return '\\u270E';
-  }
-  // Route a leaf to its existing edit flow — none of these need the leaf to be visible (every sink is a
-  // popover/picker/postMessage), except plain inline text, which falls back to a textarea popover.
-  function editLeaf(el) {
-    if (el.hasAttribute('data-sw-control')) return openControlPop(el);
-    if (el.hasAttribute('data-sw-src') || el.hasAttribute('data-sw-bg')) return pickImage(el);
-    if (el.hasAttribute('data-sw-href') && !el.hasAttribute('data-sw-html')) return openPop(el);
-    if (el.hasAttribute('data-sw-html')) return editText(el, true);
-    if (el.hasAttribute('data-sw-text')) return editText(el, false);
-    if (el.hasAttribute('data-sw-entry')) return post({ type: 'open-entry', dataset: el.getAttribute('data-sw-dataset') || '', id: el.getAttribute('data-sw-entry') || '' });
-  }
-  // Reachable inline text → focus + select for in-place editing; otherwise edit via a popover (rich →
-  // the editor HTML-source modal; plain → a textarea writing the same page.data leaf the inline path does).
-  function editText(el, rich) {
-    if (el.getClientRects().length && reachOf(el) === 'ok') {
-      try { el.focus(); var rng = document.createRange(); rng.selectNodeContents(el); var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(rng); } catch (e) {}
-      if (rich) positionToolbar();
-      return;
-    }
-    if (rich) { post({ type: 'edit-html-source', key: el.getAttribute('data-sw-html'), html: el.innerHTML }); return; }
-    openTextPop(el);
-  }
-  // Minimal textarea popover for a plain-text leaf that is not reachable in place.
-  var tpop = null, tpopEl = null;
-  function openTextPop(el) {
-    tpopEl = el;
-    if (!tpop) {
-      tpop = document.createElement('div'); tpop.className = 'sw-pop';
-      tpop.innerHTML = '<label>Text<textarea class="sw-tval" rows="3" maxlength="8000"></textarea></label>' +
-        '<div class="sw-pop-actions"><button type="button" class="sw-cancel">Cancel</button><button type="button" class="sw-ok">Apply</button></div>';
-      document.body.appendChild(tpop);
-      tpop.querySelector('.sw-cancel').addEventListener('click', closeTextPop);
-      tpop.querySelector('.sw-ok').addEventListener('click', applyTextPop);
-      tpop.addEventListener('keydown', function (e) { if (e.key === 'Escape') { e.preventDefault(); closeTextPop(); } });
-    }
-    tpop.querySelector('.sw-tval').value = el.textContent || '';
-    tpop.style.display = 'flex';
-    placeNear(tpop, rectFor(el));
-    tpop.querySelector('.sw-tval').focus();
-    document.addEventListener('mousedown', onTextDocDown, true);
-  }
-  function applyTextPop() {
-    if (tpopEl) {
-      // Mirror the inline path: write the leaf's textContent too, so the editor's 'edit' handler (which
-      // SUPPRESSES the reload, assuming the contenteditable already shows the change) is correct — without
-      // this the occluded/hidden element would keep its stale text until an unrelated reload.
-      var v = tpop.querySelector('.sw-tval').value;
-      try { tpopEl.textContent = v; } catch (e) {}
-      post({ type: 'edit', key: tpopEl.getAttribute('data-sw-text') || '', value: v });
-    }
-    closeTextPop();
-  }
-  function closeTextPop() { if (tpop) tpop.style.display = 'none'; tpopEl = null; document.removeEventListener('mousedown', onTextDocDown, true); }
-  function onTextDocDown(e) { if (!tpop || tpop.style.display === 'none') return; if (tpop.contains(e.target)) return; closeTextPop(); }
-
-  // Classify how reachable a leaf is RIGHT NOW (depends on scroll position + occluders on top of it).
-  function reachOf(el) {
-    if (!el.getClientRects().length) return 'hidden';
-    var r = el.getBoundingClientRect();
-    var vw = window.innerWidth, vh = window.innerHeight;
-    if (r.bottom > 0 && r.top < vh && r.right > 0 && r.left < vw) {
-      var cx = Math.min(Math.max(r.left + r.width / 2, 1), vw - 1);
-      var cy = Math.min(Math.max(r.top + r.height / 2, 1), vh - 1);
-      var hit = document.elementFromPoint(cx, cy);
-      return (hit && (hit === el || el.contains(hit))) ? 'ok' : 'occluded';
-    }
-    var de = document.documentElement, aT = r.top + window.scrollY, aL = r.left + window.scrollX;
-    return (aT >= -4 && aT <= de.scrollHeight + 4 && aL >= -4 && aL <= de.scrollWidth + 4) ? 'offscreen' : 'parked';
-  }
-  // Nearest on-screen ancestor with layout — the anchor a proxy handle pins to for a hidden/parked
-  // leaf. Falls back to document.body (always present) so a handle is ALWAYS attachable.
-  function nearestAnchor(el) {
-    var n = el.parentElement, guard = 0;
-    while (n && n !== document.body && guard++ < 60) {
-      if (n.getClientRects().length) {
-        var r = n.getBoundingClientRect();
-        if (r.bottom > 0 && r.top < window.innerHeight && r.right > 0 && r.left < window.innerWidth) return n;
-      }
-      n = n.parentElement;
-    }
-    return document.body;
-  }
-  function clearHandles() {
-    for (var i = 0; i < handleList.length; i++) handleList[i].btn.remove();
-    handleList = []; closeGroupPop();
-  }
-  // Signature of a handle's target set — a handle with the same anchor + signature is REUSED across a
-  // reclassify (its DOM node survives) instead of being destroyed and recreated, which is what made the
-  // icons flicker/disappear on every scroll-pause.
-  function handleSig(leaves) {
-    var s = [];
-    for (var i = 0; i < leaves.length; i++) s.push(leafLabel(leaves[i]) + '~' + leafGlyph(leaves[i]));
-    return s.sort().join('|');
-  }
-  function buildHandle(anchor, leaves) {
-    var btn = document.createElement('button'); btn.type = 'button';
-    var grouped = leaves.length > 1 || anchor !== leaves[0];
-    btn.className = grouped ? 'sw-handle sw-handle-group' : 'sw-handle';
-    btn.textContent = leaves.length > 1 ? String(leaves.length) : leafGlyph(leaves[0]);
-    btn.title = leaves.length > 1 ? (leaves.length + ' editable fields here') : ('Edit ' + leafLabel(leaves[0]));
-    var rec = { btn: btn, anchor: anchor, leaves: leaves, sig: handleSig(leaves) };
-    btn.addEventListener('click', function (e) {
-      e.preventDefault(); e.stopPropagation();
-      swAnchorRect = btn.getBoundingClientRect();
-      if (rec.leaves.length > 1) openGroupPop(rec.leaves, swAnchorRect);
-      else editLeaf(rec.leaves[0]);
-    });
-    ensureHandleHost().appendChild(btn);
-    return rec;
-  }
-  function refreshHandles() {
-    if (!editing) return;
-    var groups = [];
-    function groupFor(anchor) {
-      for (var i = 0; i < groups.length; i++) if (groups[i].anchor === anchor) return groups[i];
-      var g = { anchor: anchor, leaves: [] }; groups.push(g); return g;
-    }
-    eachEl(HANDLE_SEL, function (el) {
-      var reach = reachOf(el);
-      // 'offscreen' = within the scrollable canvas but below/above the fold → reachable by scrolling, so
-      // no handle (scroll brings it into view, where it reclassifies to ok/occluded). KNOWN GAP: a leaf
-      // positioned (absolute/translate, not clipped to 0 rects) outside the viewport yet inside scrollHeight
-      // but UNreachable by scroll is misread as offscreen. Real carousels clip via overflow:hidden →
-      // 0 rects → the 'hidden' branch, so this only bites a hand-rolled absolute layout.
-      if (reach === 'ok' || reach === 'offscreen') return;
-      if (reach === 'occluded') { groupFor(el).leaves.push(el); return; } // anchor = the leaf itself
-      groupFor(nearestAnchor(el)).leaves.push(el);                         // hidden/parked → proxy + group
-    });
-    // RECONCILE against the live set: reuse a handle whose (anchor element + target signature) is
-    // unchanged so its DOM node survives — only genuinely new/changed handles are (re)built, only gone
-    // ones removed. This is what stops the scroll-time flicker (was: clearHandles + full rebuild).
-    var next = [];
-    for (var d = 0; d < groups.length; d++) {
-      var g = groups[d], sig = handleSig(g.leaves), reused = null;
-      for (var k = 0; k < handleList.length; k++) {
-        var h = handleList[k];
-        if (!h._used && h.anchor === g.anchor && h.sig === sig) { reused = h; break; }
-      }
-      if (reused) { reused._used = true; reused.leaves = g.leaves; next.push(reused); }
-      else { var nb = buildHandle(g.anchor, g.leaves); nb._used = true; next.push(nb); }
-    }
-    for (var r2 = 0; r2 < handleList.length; r2++) if (!handleList[r2]._used) handleList[r2].btn.remove();
-    for (var n = 0; n < next.length; n++) next[n]._used = false;
-    handleList = next;
-    positionHandles();
-  }
-  function positionHandles() {
-    var vw = window.innerWidth, vh = window.innerHeight;
-    for (var i = 0; i < handleList.length; i++) {
-      var h = handleList[i], a = h.anchor;
-      // The document.body fallback (a hidden leaf with no on-screen ancestor) docks bottom-left, always shown.
-      if (a === document.body) { h.btn.style.display = 'flex'; h.btn.style.left = '10px'; h.btn.style.top = (vh - 32) + 'px'; continue; }
-      if (!a.getClientRects().length) { h.btn.style.display = 'none'; continue; }
-      var r = a.getBoundingClientRect();
-      // HIDE (don't clamp) when the anchor is off-screen, so handles don't pile up at the viewport edges
-      // while scrolling — each handle tracks its target and simply vanishes when the target leaves view.
-      if (r.bottom < 6 || r.top > vh - 6 || r.right < 6 || r.left > vw - 6) { h.btn.style.display = 'none'; continue; }
-      h.btn.style.display = 'flex';
-      h.btn.style.left = Math.min(Math.max(r.left, 2), vw - 26) + 'px';
-      h.btn.style.top = Math.min(Math.max(r.top, 2), vh - 26) + 'px';
-    }
-  }
-  function placeNear(p, rect) {
-    var top = rect.bottom + 6, left = rect.left;
-    var maxLeft = window.innerWidth - p.offsetWidth - 6; if (left > maxLeft) left = maxLeft > 6 ? maxLeft : 6; if (left < 6) left = 6;
-    if (top + p.offsetHeight > window.innerHeight - 6) top = rect.top - p.offsetHeight - 6;
-    if (top < 6) top = 6;
-    p.style.top = top + 'px'; p.style.left = left + 'px';
-  }
-  function ensureGroupPop() {
-    if (groupPop) return groupPop;
-    groupPop = document.createElement('div'); groupPop.className = 'sw-pop';
-    document.body.appendChild(groupPop);
-    return groupPop;
-  }
-  function openGroupPop(leaves, rect) {
-    var p = ensureGroupPop();
-    while (p.firstChild) p.removeChild(p.firstChild);
-    for (var i = 0; i < leaves.length; i++) {
-      (function (leaf) {
-        var b = document.createElement('button'); b.type = 'button'; b.className = 'sw-grouprow';
-        b.textContent = leafGlyph(leaf) + ' ' + leafLabel(leaf);
-        b.addEventListener('click', function (e) { e.preventDefault(); closeGroupPop(); swAnchorRect = rect; editLeaf(leaf); });
-        p.appendChild(b);
-      })(leaves[i]);
-    }
-    p.style.display = 'flex';
-    placeNear(p, rect);
-    document.addEventListener('mousedown', onGroupDocDown, true);
-  }
-  function onGroupDocDown(e) { if (!groupPop || groupPop.style.display === 'none') return; if (groupPop.contains(e.target)) return; closeGroupPop(); }
-  function closeGroupPop() { if (groupPop) groupPop.style.display = 'none'; document.removeEventListener('mousedown', onGroupDocDown, true); }
-  function onHandleScroll() {
-    if (!editing) return;
-    if (!handleScrollRaf) handleScrollRaf = requestAnimationFrame(function () { handleScrollRaf = 0; positionHandles(); });
-    if (handleRefreshTimer) clearTimeout(handleRefreshTimer);
-    handleRefreshTimer = setTimeout(function () { handleRefreshTimer = 0; refreshHandles(); }, 150);
   }
   function setEditing(on) {
     if (on === editing) return;
@@ -624,22 +380,10 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       if (on) { el.classList.add('sw-control-on'); el.addEventListener('click', onControlClick); }
       else { el.classList.remove('sw-control-on'); el.removeEventListener('click', onControlClick); }
     });
-    // Attach overlay handles for any leaf the page occludes / hides / parks off-screen (the rest keep
-    // in-place editing); keep them positioned on scroll / resize. Runs AFTER the per-leaf wiring above
-    // so a hidden chip's own .sw-control-on display is already set when its handle routes to it.
     if (on) {
-      refreshHandles();
-      window.addEventListener('scroll', onHandleScroll, { passive: true });
-      window.addEventListener('resize', onHandleScroll);
       document.addEventListener('selectionchange', onSelChange);
       document.addEventListener('click', onEntryClick);
     } else {
-      window.removeEventListener('scroll', onHandleScroll);
-      window.removeEventListener('resize', onHandleScroll);
-      if (handleScrollRaf) { cancelAnimationFrame(handleScrollRaf); handleScrollRaf = 0; }
-      if (handleRefreshTimer) { clearTimeout(handleRefreshTimer); handleRefreshTimer = 0; }
-      clearHandles();
-      closeTextPop();
       document.removeEventListener('selectionchange', onSelChange);
       document.removeEventListener('click', onEntryClick);
       hideToolbar();

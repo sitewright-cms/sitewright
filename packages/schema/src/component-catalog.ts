@@ -130,17 +130,26 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
     type: 'Lightbox',
     marker: 'lightbox',
     summary:
-      'A GLightbox-powered gallery: thumbnails open a full-screen viewer with animated slide changes, swipe, pinch-zoom, keyboard navigation, and captions. Each component root is its own gallery.',
+      'A SmartPhoto-powered gallery: thumbnails open a full-screen viewer with a bottom thumbnail strip, an enlarge-from-thumbnail open animation, a header image-counter + caption, swipe / pinch-zoom / keyboard navigation, and a per-image loader. Each component root is its own gallery.',
     authoring: 'markup',
     parts: [
       { part: 'grid', element: 'div', required: true, description: 'The thumbnail grid (override columns with !grid-cols-* utilities).' },
-      { part: 'item', element: 'a', required: true, description: 'One thumbnail: an anchor whose href is the FULL-SIZE image URL, containing the <img> thumbnail.' },
+      {
+        part: 'item',
+        element: 'a',
+        required: true,
+        description:
+          'One thumbnail: an anchor whose href is the FULL-SIZE image, containing an <img> thumbnail. The <img> is REQUIRED — the viewer clones it for the open animation and reuses its source in the bottom strip. href and the <img src> MAY DIFFER (a small thumbnail tile, a large full image).',
+      },
     ],
     attributes: [
-      { name: 'data-caption', on: 'item', description: 'Caption text shown under the image in the viewer.' },
-      { name: 'data-effect', on: 'root', description: 'Open/close animation: "zoom" (default), "fade", or "none".' },
-      { name: 'data-slide-effect', on: 'root', description: 'Between-picture animation: "slide" (default), "fade", "zoom", or "none".' },
-      { name: 'data-loop', on: 'root', description: '"true" to wrap from the last image to the first while navigating.' },
+      { name: 'data-caption', on: 'item', description: 'Caption shown in the viewer header bar for this image (tenant-trusted text; never bind visitor input).' },
+      { name: 'data-thumbnails', on: 'root', description: '"false" to hide the bottom thumbnail strip (shown by default).' },
+      { name: 'data-arrows', on: 'root', description: '"false" to hide the prev/next arrows (shown by default).' },
+      { name: 'data-animation', on: 'root', description: '"false" to disable the enlarge-from-thumbnail open animation (auto-disabled under prefers-reduced-motion).' },
+      { name: 'data-fit', on: 'root', description: 'How the image sits in the viewport: "fit" (default, whole image) or "fill" (cover the screen on touch).' },
+      { name: 'data-tilt', on: 'root', description: '"true" to pan the zoomed image with the device accelerometer on mobile (off by default).' },
+      { name: 'data-history', on: 'root', description: '"true" to reflect the open image in the URL hash (off by default — a CMS page should not hijack the hash).' },
     ],
     skeleton: `<div data-sw-component="lightbox" data-sw-block="Lightbox" aria-label="Gallery">
   <div data-sw-part="grid" class="gap-3 !grid-cols-2 md:!grid-cols-4">
@@ -153,7 +162,7 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
 </div>`,
     noJs: 'Each thumbnail is a plain link to the full image — clicking simply opens it.',
     notes:
-      'The viewer DOM is built entirely by the runtime — author ONLY the grid of anchor items (no overlay element). Multiple lightboxes on one page are independent galleries. DaisyUI has no gallery/lightbox equivalent. Pairs naturally with a {{#sw-folder}} loop (media-library folder) or a dataset loop.',
+      'The viewer DOM is built entirely by the runtime — author ONLY the grid of anchor items (no overlay element). Each item MUST contain an <img>: its src is the thumbnail shown in the grid + bottom strip; the anchor href is the full-size image (which may be a larger, different file). For a polished tile, render the thumbnail as the anchor\'s CSS background-image (bg-cover bg-center) and keep the <img> for the viewer — e.g. a DaisyUI .skeleton loader behind + a dim gradient overlay on top. The bottom thumbnail strip, arrows, open animation, fit, accelerometer pan, and URL-hash are toggled via data-* (see attributes). Multiple lightboxes on one page are independent galleries. DaisyUI has no gallery/lightbox equivalent. Pairs naturally with a {{#sw-folder}} loop (media-library folder) or a dataset loop.',
   },
   {
     type: 'Modal',

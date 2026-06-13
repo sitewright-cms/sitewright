@@ -58,16 +58,20 @@ describe('component registry', () => {
     expect(COMPONENT_TYPES.has('Section')).toBe(false);
   });
 
-  it('Lightbox ships the vendored GLightbox runtime + grid CSS', () => {
+  it('Lightbox ships the vendored SmartPhoto runtime + grid CSS', () => {
     const used = componentAssets(['Lightbox']);
     expect(used.css).toContain('[data-sw-part="grid"]'); // authored thumbnail grid
-    expect(used.css).toContain('.glightbox'); // vendored viewer stylesheet
-    expect(used.css).not.toContain('url('); // CSP default-src 'self': no external asset refs
-    expect(used.js).toContain('glightbox@'); // license banner names the bundled MIT package
+    expect(used.css).toContain('.smartphoto'); // vendored viewer stylesheet
+    // CSP default-src 'self': the only url() refs are inline data: URIs (SmartPhoto's icons) —
+    // never an external http(s):// or protocol-relative asset.
+    expect(used.css).not.toMatch(/url\(\s*['"]?(?!data:)/i);
+    expect(used.js).toContain('smartphoto@'); // license banner names the bundled MIT package
     expect(used.js).toContain('data-sw-component="lightbox"');
-    expect(used.js).toContain('aria-modal'); // a11y shim: dialog semantics on open
-    expect(used.js).toContain('Image viewer'); // dialog has an accessible name (WCAG 4.1.2)
-    expect(used.js).toContain('data-slide-effect'); // animated picture changes are configurable
+    expect(used.js).toContain('data-thumbnails'); // the thumbnail-strip switch is read from data-*
+    expect(used.js).toContain('focus'); // a11y shim: focus restored to the trigger on close
+    // The IE-only polyfills SmartPhoto ships are aliased away at bundle time (modern target).
+    expect(used.js).not.toContain('es6-promise-polyfill');
+    expect(used.js).not.toContain('custom-event-polyfill');
     expect(used.js).not.toMatch(/\beval\(/); // CSP: no eval in shipped runtime
   });
 

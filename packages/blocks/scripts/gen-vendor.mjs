@@ -22,10 +22,16 @@ function resolvePkgJson(name) {
   // Resolve the package's ENTRY (always exported), then cut back to its root dir — `exports`
   // maps routinely omit "./package.json", so it can't be resolved directly.
   const marker = join('node_modules', ...name.split('/'));
-  // Second dir: `wheel-gestures` is a TRANSITIVE dep only reachable through its parent
-  // `embla-carousel-wheel-gestures` under pnpm's isolated layout. If that package is ever
-  // bumped to a version that inlines or drops wheel-gestures, update the libs list + this path.
-  for (const dir of [pkgRoot, join(pkgRoot, 'node_modules', 'embla-carousel-wheel-gestures')]) {
+  // Extra dirs: TRANSITIVE deps are only reachable through their parent package under pnpm's
+  // isolated layout. `wheel-gestures` resolves from embla-carousel-wheel-gestures; `a-template`
+  // resolves from smartphoto; and `morphdom`/`delegate` are a-template's own deps, resolved from
+  // a-template's real path. If any parent is bumped so it inlines or drops a dep, update libs + this path.
+  for (const dir of [
+    pkgRoot,
+    join(pkgRoot, 'node_modules', 'embla-carousel-wheel-gestures'),
+    join(pkgRoot, 'node_modules', 'smartphoto'),
+    join(pkgRoot, 'node_modules', 'a-template'),
+  ]) {
     let entry;
     try {
       // realpath first: transitive deps are only visible from the package's REAL (.pnpm)
@@ -55,6 +61,28 @@ const TARGETS = [
       'wheel-gestures',
     ],
   },
+  // SmartPhoto is the ACTIVE lightbox (thumbnail strip, enlarge-from-thumbnail open, header
+  // counter/caption). a-template (+ morphdom/delegate) is its templating engine; the IE-only
+  // polyfills it ships are aliased away below (modern-browser target). See lightbox-smartphoto.entry.js.
+  {
+    entry: 'vendor-src/lightbox-smartphoto.entry.js',
+    out: 'src/vendor/lightbox-smartphoto-runtime.ts',
+    jsConst: 'LIGHTBOX_SMARTPHOTO_RUNTIME_JS',
+    libs: ['smartphoto', 'a-template', 'morphdom', 'delegate'],
+    css: { from: 'node_modules/smartphoto/css/smartphoto.css', cssConst: 'LIGHTBOX_SMARTPHOTO_VENDOR_CSS' },
+    // SmartPhoto's core imports its viewer DOM as raw HTML (fed to a-template).
+    loader: { '.html': 'text' },
+    // Drop the IE-only polyfills: native CustomEvent / Array.find (→ empty), native Promise
+    // (→ a one-line re-export). Keeps the bundle to modern code without forking SmartPhoto.
+    alias: {
+      'custom-event-polyfill': 'vendor-src/stubs/empty.js',
+      'ie-array-find-polyfill': 'vendor-src/stubs/empty.js',
+      'es6-promise-polyfill': 'vendor-src/stubs/native-promise.js',
+    },
+  },
+  // GLightbox lightbox — RETAINED as a revertible fallback (not wired into components.ts). To
+  // switch back, re-import LIGHTBOX_RUNTIME_JS/LIGHTBOX_VENDOR_CSS there. Kept here so the
+  // fallback runtime stays buildable + drift-checked.
   {
     entry: 'vendor-src/lightbox.entry.js',
     out: 'src/vendor/lightbox-runtime.ts',
@@ -88,6 +116,11 @@ for (const t of TARGETS) {
     write: false,
     banner: { js: banner },
     legalComments: 'none',
+    ...(t.loader ? { loader: t.loader } : {}),
+    // Alias values are repo-relative paths → resolve to absolute for esbuild.
+    ...(t.alias
+      ? { alias: Object.fromEntries(Object.entries(t.alias).map(([k, v]) => [k, join(pkgRoot, v)])) }
+      : {}),
   });
   const js = result.outputFiles[0].text.trimEnd();
 

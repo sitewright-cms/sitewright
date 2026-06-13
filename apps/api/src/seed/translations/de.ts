@@ -246,16 +246,19 @@ export function translationsDe(assets: Record<string, string>): Record<string, P
     title: 'Lightbox',
     navTitle: 'Lightbox',
     description:
-      'Der bildschirmfüllende Galerie-Viewer — Zoom oder Fade beim Öffnen/Schließen, Navigation per Tastatur und Wischen, Bildunterschriften und optionale Endlosschleife.',
+      'Der bildschirmfüllende Galerie-Viewer — eine Thumbnail-Leiste, eine Vergrößern-aus-dem-Thumbnail-Animation beim Öffnen, ein Bildzähler + Bildunterschrift, Tastatur + Wischen + Pinch-Zoom, plus Schalter für Leiste, Pfeile, Anpassung und mehr.',
     data: {
       lb_intro:
-        'Ein Fotoraster, das sich beim Klick bildschirmfüllend öffnet — Tastatur, Wischen und Pinch-Zoom, mit Fokus-Rückgabe an das Thumbnail beim Schließen.',
+        'Ein Fotoraster, das sich beim Klick bildschirmfüllend öffnet — das Bild vergrößert sich aus seiner Kachel, eine Thumbnail-Leiste und ein Bildzähler kommen mit, und Wischen / Pinch-Zoom / Tastatur funktionieren alle. Der Fokus kehrt beim Schließen zur Kachel zurück.',
       sec_lb_t: 'Lightbox — die Standardeinstellungen',
-      sec_lb_d: 'Ein Klick auf ein Foto: Die Galerie öffnet bildschirmfüllend mit Zoom-Animation, blättert zwischen Bildern und schließt mit Escape. Wischen auf Touch, Pfeiltasten am Rechner.',
+      sec_lb_d: 'Klicke auf ein Foto: Es vergrößert sich aus seiner Kachel in einen bildschirmfüllenden Viewer mit Thumbnail-Leiste, Bildzähler und Bildunterschrift. Wischen oder Pinch auf Touch, Pfeiltasten am Rechner, Escape zum Schließen.',
       aria_gallery: 'Studio-Galerie',
-      sec_lbfx_t: 'Lightbox — Fade & Schleife',
-      sec_lbfx_d: 'Dieselbe Galerie mit Fade beim Öffnen und Blättern und Endlos-Navigation — nach dem letzten Bild folgt wieder das erste.',
+      sec_lbfx_t: 'Lightbox — reduziert',
+      sec_lbfx_d: 'Dieselbe Galerie mit ausgeschalteter Thumbnail-Leiste und Pfeilen — ein klarerer Viewer, allein per Wischen, Tastatur und Zähler gesteuert.',
       aria_gallery2: 'Projektgalerie',
+      sec_lb3_t: 'Lightbox — bildschirmfüllend',
+      sec_lb3_d: 'Die Anpassung kann den Viewport füllen statt das ganze Bild zu zeigen, die Öffnen-Animation lässt sich abschalten, und das geöffnete Bild kann in der URL gespiegelt werden. Auf dem Smartphone kann das gezoomte Bild per Geräteneigung schwenken.',
+      aria_gallery3: 'Studio-Galerie, bildschirmfüllend',
     },
   },
   faq: {

@@ -244,16 +244,19 @@ export function translationsEs(assets: Record<string, string>): Record<string, P
     title: 'Lightbox',
     navTitle: 'Lightbox',
     description:
-      'El visor de galería a pantalla completa — apertura/cierre con zoom o fundido, navegación con teclado y deslizamiento, leyendas y bucle circular opcional.',
+      'El visor de galería a pantalla completa — una tira de miniaturas, una animación de apertura que amplía desde la miniatura, un contador de imágenes + leyenda, teclado + deslizamiento + pinch-zoom, y conmutadores para la tira, las flechas, el ajuste y más.',
     data: {
       lb_intro:
-        'Una cuadrícula de fotos que se abre a pantalla completa al hacer clic — teclado, deslizamiento y pinch-zoom, devolviendo el foco a la miniatura al cerrar.',
+        'Una cuadrícula de fotos que se abre a pantalla completa al hacer clic — la imagen se amplía desde su mosaico, una tira de miniaturas y un contador la acompañan, y el deslizamiento / pinch-zoom / teclado funcionan. El foco vuelve al mosaico al cerrar.',
       sec_lb_t: 'Lightbox — los valores por defecto',
-      sec_lb_d: 'Haz clic en cualquier foto: la galería se abre a pantalla completa con animación de zoom, pasa entre imágenes y se cierra con Escape. Desliza en táctil, flechas en el teclado.',
+      sec_lb_d: 'Haz clic en cualquier foto: se amplía desde su mosaico a un visor a pantalla completa con tira de miniaturas, contador de imágenes y leyenda. Desliza o pellizca en táctil, flechas en el teclado, Escape para cerrar.',
       aria_gallery: 'Galería del estudio',
-      sec_lbfx_t: 'Lightbox — fundido y bucle',
-      sec_lbfx_d: 'La misma galería con apertura y cambios de imagen en fundido y navegación circular — tras la última imagen vuelve la primera.',
+      sec_lbfx_t: 'Lightbox — versión reducida',
+      sec_lbfx_d: 'La misma galería con la tira de miniaturas y las flechas desactivadas — un visor más limpio, gobernado solo por el deslizamiento, el teclado y el contador.',
       aria_gallery2: 'Galería de proyectos',
+      sec_lb3_t: 'Lightbox — llenar la pantalla',
+      sec_lb3_d: 'El ajuste puede llenar el viewport en vez de mostrar la imagen completa, la animación de apertura puede desactivarse y la imagen abierta puede reflejarse en la URL. En el móvil, la imagen ampliada puede desplazarse con la inclinación del dispositivo.',
+      aria_gallery3: 'Galería del estudio, modo llenar',
     },
   },
   faq: {

@@ -691,6 +691,17 @@ function createInstance(): typeof Handlebars {
   return hb;
 }
 
+/**
+ * The custom `sw-*` Handlebars helper names the engine registers — the canonical, single-source list
+ * the Template reference (apps/editor/src/views/library/reference.ts) must document. A test pins the
+ * docs to this set so a new/renamed/removed helper can't silently leave the reference stale.
+ */
+export function registeredSwHelpers(): string[] {
+  return Object.keys(createInstance().helpers)
+    .filter((name) => name.startsWith('sw-'))
+    .sort();
+}
+
 /** The minimal shape of a dataset entry the loop helper recognises (mirrors @sitewright/schema's Entry). */
 interface EntryLike {
   id: string;

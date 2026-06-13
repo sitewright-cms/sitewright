@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { GLOBAL_TEMPLATES } from '@sitewright/core';
 import { resolveDirectives } from '../src/directives.js';
-import { renderTemplate } from '../src/template.js';
+import { renderTemplate, validateTemplate } from '../src/template.js';
 
 describe('resolveDirectives — data-sw-text', () => {
   it('is a no-op when no directive is present (byte-identical)', () => {
@@ -125,6 +125,39 @@ describe('resolveDirectives — data-sw-src / data-sw-bg (images)', () => {
     expect(published).toContain('background-image:url(');
     expect(published).toContain('/media/a.jpg');
     expect(published).not.toContain('data-sw-bg');
+  });
+
+  it('LAZY: data-sw-src fills data-src (not src) when the element opts into lazy-loading', () => {
+    // The author marks the image lazy by adding a (possibly empty) data-src; the runtime swaps it in.
+    const out = resolveDirectives('<img data-sw-src="hero" data-src alt="">', { data: { hero: '/media/p/a/new.jpg' } });
+    expect(out).toContain('data-src="/media/p/a/new.jpg"');
+    expect(out).not.toMatch(/\ssrc="/); // eager src is NOT set
+    expect(out).not.toContain('data-sw-src'); // publish strips the directive marker, keeps data-src
+  });
+
+  it('LAZY: data-sw-bg fills data-bg (not inline style) when the element opts into lazy-loading', () => {
+    const out = resolveDirectives('<section data-sw-bg="bg" data-bg>x</section>', { data: { bg: '/media/p/a/x.jpg' } });
+    expect(out).toContain('data-bg="/media/p/a/x.jpg"');
+    expect(out).not.toContain('background-image'); // no eager inline style — the runtime sets it on intersect
+    expect(out).not.toContain('data-sw-bg');
+  });
+
+  it('non-lazy elements are unchanged (src / inline style as before)', () => {
+    expect(resolveDirectives('<img data-sw-src="h">', { data: { h: '/m/a.jpg' } })).toContain('src="/m/a.jpg"');
+    expect(resolveDirectives('<section data-sw-bg="b">x</section>', { data: { b: '/m/a.jpg' } })).toContain('background-image:url(');
+  });
+
+  it('LAZY paths still scheme-sanitize via safeUrl (no javascript:/data: in data-src/data-bg)', () => {
+    const src = resolveDirectives('<img data-sw-src="h" data-src>', { data: { h: 'javascript:alert(1)' } });
+    expect(src).not.toContain('javascript'); // neutralized to data-src=""
+    const bg = resolveDirectives('<section data-sw-bg="b" data-bg>x</section>', { data: { b: 'javascript:alert(1)' } });
+    expect(bg).not.toContain('javascript'); // rejected → authored data-bg kept, no bad URL
+  });
+
+  it('lazy authoring markup passes the no-JS template validator', () => {
+    // A valueless / empty data-src|data-bg is the lazy opt-in marker (no interpolation → safe).
+    expect(() => validateTemplate('<img data-sw-src="hero" data-src src="/placeholder.jpg" alt="">')).not.toThrow();
+    expect(() => validateTemplate('<section data-sw-bg="bg" data-bg>x</section>')).not.toThrow();
   });
 });
 

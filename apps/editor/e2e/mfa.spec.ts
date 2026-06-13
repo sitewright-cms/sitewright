@@ -10,7 +10,7 @@ test('enrol in TOTP, then sign in through the second-factor step', async ({ page
   await page.goto('/');
   await page.getByRole('button', { name: /Register/ }).click();
   await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill('Pw-secret-1');
+  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();
 
   // Open the account menu → Security → start enrolment.
@@ -35,7 +35,7 @@ test('enrol in TOTP, then sign in through the second-factor step', async ({ page
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Sign out' }).click();
   await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill('Pw-secret-1');
+  await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
   await page.getByRole('button', { name: 'Sign in' }).click();
 
   // Code step appears; a fresh TOTP code completes the sign-in.

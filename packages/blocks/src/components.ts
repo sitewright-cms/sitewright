@@ -156,9 +156,12 @@ const CAROUSEL_JS = CAROUSEL_RUNTIME_JS;
 // rounded thumbnails with a brand active-ring, and a brand-coloured loader.
 const LIGHTBOX_CSS = [
   '[data-sw-block="Lightbox"]{display:block}',
-  '[data-sw-block="Lightbox"] [data-sw-part="grid"]{display:grid;grid-template-columns:repeat(auto-fill,minmax(8rem,1fr));gap:.5rem}',
-  '[data-sw-block="Lightbox"] [data-sw-part="item"]{display:block}',
-  '[data-sw-block="Lightbox"] [data-sw-part="item"] img{display:block;width:100%;height:100%;object-fit:cover;aspect-ratio:1}',
+  // Grid + thumbnail DEFAULTS are zero-specificity :where() so any authored layout wins WITHOUT
+  // !important: the uniform default is a square cover grid, but `block columns-3` makes a masonry,
+  // `aspect-[4/3]`/`h-auto`/`object-contain` change the crop, etc. (same pattern as the Carousel).
+  ':where([data-sw-block="Lightbox"] [data-sw-part="grid"]){display:grid;grid-template-columns:repeat(auto-fill,minmax(8rem,1fr));gap:.5rem}',
+  ':where([data-sw-block="Lightbox"] [data-sw-part="item"]){display:block}',
+  ':where([data-sw-block="Lightbox"] [data-sw-part="item"] img){display:block;width:100%;height:100%;object-fit:cover;aspect-ratio:1}',
   LIGHTBOX_SMARTPHOTO_VENDOR_CSS,
   // Dim + blurred backdrop (vendor ships solid black). z-index lifts the fullscreen viewer above
   // site chrome — the vendor's z-index:100 sits UNDER the cookie-consent banner (9998) and other

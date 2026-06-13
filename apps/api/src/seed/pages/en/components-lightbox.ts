@@ -32,6 +32,14 @@ export function pageComponentsLightbox(): Page {
       sec_lb3_d:
         'Fit can fill the viewport instead of showing the whole image, the open animation can be turned off, and the open picture can be reflected in the URL. On mobile the zoomed image can pan with the device tilt.',
       aria_gallery3: 'Studio gallery, fill mode',
+      sec_single_t: 'Lightbox — a single image',
+      sec_single_d:
+        'A lightbox is not only for grids: one featured photo on its own opens full-screen on click. With a single image there is no strip and no arrows — just the zoom, the caption and Escape to close.',
+      aria_single: 'Featured photo',
+      sec_masonry_t: 'Lightbox — masonry grid',
+      sec_masonry_d:
+        'A masonry layout in CSS columns: images keep their natural proportions (no cropping) and stagger into balanced columns, while each still opens into the same full-screen gallery.',
+      aria_masonry: 'Masonry gallery',
     },
     source: `<section class="mx-auto max-w-6xl px-6 pb-8 pt-24">
   <a class="nw-underline inline-flex items-center gap-1.5 text-sm font-semibold text-primary no-underline" href="{{sw-url parentPage.path}}">${icon('arrow-left', 'h-4 w-4')} {{parentPage.title}}</a>
@@ -86,6 +94,40 @@ export function pageComponentsLightbox(): Page {
         <span class="pointer-events-none absolute inset-0 z-20 bg-gradient-to-t from-black/40 via-black/0 to-black/0 opacity-60 transition-opacity duration-300 group-hover:opacity-90" aria-hidden="true"></span>
       </a>
       {{/sw-folder}}
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-6xl px-6 pb-20">
+  <h2 class="text-3xl font-bold tracking-tight" data-sw-text="sec_single_t">Lightbox — a single image</h2>
+  <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="sec_single_d">One featured photo that opens full-screen on click — no strip, no arrows.</p>
+  <p class="mt-3 font-mono text-xs text-base-content/40"><code>data-thumbnails="false"</code> · one item</p>
+  <div class="mt-8" data-sw-component="lightbox" data-sw-block="Lightbox" data-thumbnails="false" aria-label="{{page.data.aria_single}}">
+    <div data-sw-part="grid" class="block">
+      {{#each data.projects}}{{#if @first}}
+      <a data-sw-part="item" href="{{sw-url image}}" data-caption="{{title}} — {{summary}}" class="group relative mx-auto block max-w-3xl overflow-hidden rounded-2xl bg-base-200 shadow-sm transition-shadow duration-300 hover:shadow-xl">
+        <span class="skeleton absolute inset-0 z-0" aria-hidden="true"></span>
+        <img src="{{sw-url image}}" alt="{{title}}" loading="lazy" class="relative z-10 block aspect-auto h-auto w-full transition-transform duration-500 group-hover:scale-[1.02]" />
+        <span class="pointer-events-none absolute inset-0 z-20 bg-gradient-to-t from-black/45 via-black/0 to-black/0 opacity-60 transition-opacity duration-300 group-hover:opacity-90" aria-hidden="true"></span>
+      </a>
+      {{/if}}{{/each}}
+    </div>
+  </div>
+</section>
+
+<section class="mx-auto max-w-6xl px-6 pb-28">
+  <h2 class="text-3xl font-bold tracking-tight" data-sw-text="sec_masonry_t">Lightbox — masonry grid</h2>
+  <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="sec_masonry_d">Natural-aspect images staggered into balanced columns — no cropping.</p>
+  <p class="mt-3 font-mono text-xs text-base-content/40"><code>data-sw-part="grid" class="block columns-2 sm:columns-3"</code></p>
+  <div class="mt-8" data-sw-component="lightbox" data-sw-block="Lightbox" aria-label="{{page.data.aria_masonry}}">
+    <div data-sw-part="grid" class="block columns-2 gap-4 sm:columns-3">
+      {{#each data.projects}}
+      <a data-sw-part="item" href="{{sw-url image}}" data-caption="{{title}} — {{summary}}" class="group relative mb-4 block break-inside-avoid overflow-hidden rounded-xl bg-base-200">
+        <span class="skeleton absolute inset-0 z-0" aria-hidden="true"></span>
+        <img src="{{sw-url image}}" alt="{{title}}" loading="lazy" class="relative z-10 block aspect-auto h-auto w-full transition-transform duration-500 group-hover:scale-[1.03]" />
+        <span class="pointer-events-none absolute inset-0 z-20 bg-gradient-to-t from-black/40 via-black/0 to-black/0 opacity-50 transition-opacity duration-300 group-hover:opacity-90" aria-hidden="true"></span>
+      </a>
+      {{/each}}
     </div>
   </div>
 </section>`,

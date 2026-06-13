@@ -345,6 +345,16 @@ export interface DeployProgressEvent {
   file?: string;
 }
 
+/** A system Widget descriptor from GET /authoring/widgets — the slim catalog the Widgets rail browses
+ *  (the body + manifest stay server-side; dropping {{> name}} provisions `datasets` on save). */
+export interface WidgetCatalogEntry {
+  name: string;
+  label: string;
+  description: string;
+  component: string;
+  datasets: Array<{ slug: string; name: string }>;
+}
+
 export const api = {
   register: (email: string, password: string) =>
     request<{ userId: string }>('POST', '/auth/register', { email, password }),
@@ -504,6 +514,9 @@ export const api = {
   putGlobalSnippet: (snippet: Snippet) =>
     request<{ item: Snippet }>('PUT', `/admin/global/snippet/${encodeURIComponent(snippet.id)}`, snippet),
   deleteGlobalSnippet: (id: string) => request<void>('DELETE', `/admin/global/snippet/${encodeURIComponent(id)}`),
+  // --- system Widgets (managed, data-backed drop-ins; the catalog the Widgets rail browses) ---
+  listWidgets: () => request<{ widgets: WidgetCatalogEntry[] }>('GET', '/authoring/widgets'),
+
   listGlobalTemplates: () => request<{ items: Template[] }>('GET', '/global/template'),
   putGlobalTemplate: (template: Template) =>
     request<{ item: Template }>('PUT', `/admin/global/template/${encodeURIComponent(template.id)}`, template),

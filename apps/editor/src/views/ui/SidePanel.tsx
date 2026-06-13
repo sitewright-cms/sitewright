@@ -19,8 +19,10 @@ export const InSidePanel = createContext(false);
 export const SidePanelHold = createContext<{ hold: () => void; release: () => void } | null>(null);
 
 export type SidePanelSide = 'left' | 'right' | 'bottom';
-/** Where the collapsed tab sits along its edge (lets several tabs share one edge). */
-export type SidePanelAlign = 'start' | 'center' | 'end';
+/** Where the collapsed tab sits along its edge (lets several tabs share one edge). `center-left`/
+ *  `center-right` are a CLUSTER either side of dead-centre (bottom edge only) — e.g. the paired
+ *  Snippets + Widgets rails; they share the centered panel anchor. */
+export type SidePanelAlign = 'start' | 'center' | 'center-left' | 'center-right' | 'end';
 
 interface SidePanelProps {
   /** Edge the panel is anchored to. */
@@ -68,6 +70,8 @@ function panelPos(side: SidePanelSide, align: SidePanelAlign, width?: string): s
   const w = width ?? 'w-[min(42rem,48vw)]';
   if (align === 'start') return `bottom-0 left-0 ${w} rounded-tr-2xl border-r border-t`;
   if (align === 'end') return `bottom-0 right-0 ${w} rounded-tl-2xl border-l border-t`;
+  // center + the center-left/center-right cluster all use the wide CENTERED panel anchor (it spans
+  // well past the ±4.75rem tab offsets, so it still covers its tab — the no-flicker invariant).
   return `bottom-0 left-1/2 -translate-x-1/2 ${width ?? 'w-[min(72rem,92vw)]'} rounded-t-2xl border-x border-t`;
 }
 
@@ -75,7 +79,14 @@ function panelPos(side: SidePanelSide, align: SidePanelAlign, width?: string): s
 // horizontally placed so three can share the bottom edge (start | center | end).
 function tabPosition(side: SidePanelSide, align: SidePanelAlign): string {
   if (side === 'bottom') {
-    const x = align === 'start' ? 'left-8' : align === 'end' ? 'right-8' : 'left-1/2 -translate-x-1/2';
+    const x =
+      align === 'start' ? 'left-8'
+      : align === 'end' ? 'right-8'
+      // Cluster either side of dead-centre (tab CENTRE lands 4.75rem from viewport centre): the
+      // translate is `50% of own width` ± the offset, so the pair sits adjacent with a small gap.
+      : align === 'center-left' ? 'left-1/2 -translate-x-[calc(50%+4.75rem)]'
+      : align === 'center-right' ? 'left-1/2 translate-x-[calc(4.75rem-50%)]'
+      : 'left-1/2 -translate-x-1/2';
     // Flush to the viewport bottom (no gap), per the docked-rails design.
     return `bottom-0 ${x}`;
   }

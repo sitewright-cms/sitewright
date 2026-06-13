@@ -471,24 +471,32 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     for (var i = 0; i < handleList.length; i++) handleList[i].btn.remove();
     handleList = []; closeGroupPop();
   }
-  function makeHandle(anchor, leaves) {
+  // Signature of a handle's target set — a handle with the same anchor + signature is REUSED across a
+  // reclassify (its DOM node survives) instead of being destroyed and recreated, which is what made the
+  // icons flicker/disappear on every scroll-pause.
+  function handleSig(leaves) {
+    var s = [];
+    for (var i = 0; i < leaves.length; i++) s.push(leafLabel(leaves[i]) + '~' + leafGlyph(leaves[i]));
+    return s.sort().join('|');
+  }
+  function buildHandle(anchor, leaves) {
     var btn = document.createElement('button'); btn.type = 'button';
     var grouped = leaves.length > 1 || anchor !== leaves[0];
     btn.className = grouped ? 'sw-handle sw-handle-group' : 'sw-handle';
     btn.textContent = leaves.length > 1 ? String(leaves.length) : leafGlyph(leaves[0]);
     btn.title = leaves.length > 1 ? (leaves.length + ' editable fields here') : ('Edit ' + leafLabel(leaves[0]));
+    var rec = { btn: btn, anchor: anchor, leaves: leaves, sig: handleSig(leaves) };
     btn.addEventListener('click', function (e) {
       e.preventDefault(); e.stopPropagation();
       swAnchorRect = btn.getBoundingClientRect();
-      if (leaves.length > 1) openGroupPop(leaves, swAnchorRect);
-      else editLeaf(leaves[0]);
+      if (rec.leaves.length > 1) openGroupPop(rec.leaves, swAnchorRect);
+      else editLeaf(rec.leaves[0]);
     });
     ensureHandleHost().appendChild(btn);
-    handleList.push({ btn: btn, anchor: anchor });
+    return rec;
   }
   function refreshHandles() {
     if (!editing) return;
-    clearHandles();
     var groups = [];
     function groupFor(anchor) {
       for (var i = 0; i < groups.length; i++) if (groups[i].anchor === anchor) return groups[i];
@@ -502,23 +510,41 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       // but UNreachable by scroll is misread as offscreen. Real carousels clip via overflow:hidden →
       // 0 rects → the 'hidden' branch, so this only bites a hand-rolled absolute layout.
       if (reach === 'ok' || reach === 'offscreen') return;
-      if (reach === 'occluded') { makeHandle(el, [el]); return; } // direct handle over the occluder
-      groupFor(nearestAnchor(el)).leaves.push(el);                // hidden/parked → proxy + group
+      if (reach === 'occluded') { groupFor(el).leaves.push(el); return; } // anchor = the leaf itself
+      groupFor(nearestAnchor(el)).leaves.push(el);                         // hidden/parked → proxy + group
     });
-    for (var g = 0; g < groups.length; g++) makeHandle(groups[g].anchor, groups[g].leaves);
+    // RECONCILE against the live set: reuse a handle whose (anchor element + target signature) is
+    // unchanged so its DOM node survives — only genuinely new/changed handles are (re)built, only gone
+    // ones removed. This is what stops the scroll-time flicker (was: clearHandles + full rebuild).
+    var next = [];
+    for (var d = 0; d < groups.length; d++) {
+      var g = groups[d], sig = handleSig(g.leaves), reused = null;
+      for (var k = 0; k < handleList.length; k++) {
+        var h = handleList[k];
+        if (!h._used && h.anchor === g.anchor && h.sig === sig) { reused = h; break; }
+      }
+      if (reused) { reused._used = true; reused.leaves = g.leaves; next.push(reused); }
+      else { var nb = buildHandle(g.anchor, g.leaves); nb._used = true; next.push(nb); }
+    }
+    for (var r2 = 0; r2 < handleList.length; r2++) if (!handleList[r2]._used) handleList[r2].btn.remove();
+    for (var n = 0; n < next.length; n++) next[n]._used = false;
+    handleList = next;
     positionHandles();
   }
   function positionHandles() {
+    var vw = window.innerWidth, vh = window.innerHeight;
     for (var i = 0; i < handleList.length; i++) {
       var h = handleList[i], a = h.anchor;
+      // The document.body fallback (a hidden leaf with no on-screen ancestor) docks bottom-left, always shown.
+      if (a === document.body) { h.btn.style.display = 'flex'; h.btn.style.left = '10px'; h.btn.style.top = (vh - 32) + 'px'; continue; }
       if (!a.getClientRects().length) { h.btn.style.display = 'none'; continue; }
-      h.btn.style.display = 'flex';
-      // The document.body fallback (a hidden leaf with no on-screen ancestor) docks in the bottom-left
-      // corner so the catch-all handle never covers the hero / nav at the top.
-      if (a === document.body) { h.btn.style.left = '10px'; h.btn.style.top = (window.innerHeight - 32) + 'px'; continue; }
       var r = a.getBoundingClientRect();
-      h.btn.style.left = Math.min(Math.max(r.left, 2), window.innerWidth - 26) + 'px';
-      h.btn.style.top = Math.min(Math.max(r.top, 2), window.innerHeight - 26) + 'px';
+      // HIDE (don't clamp) when the anchor is off-screen, so handles don't pile up at the viewport edges
+      // while scrolling — each handle tracks its target and simply vanishes when the target leaves view.
+      if (r.bottom < 6 || r.top > vh - 6 || r.right < 6 || r.left > vw - 6) { h.btn.style.display = 'none'; continue; }
+      h.btn.style.display = 'flex';
+      h.btn.style.left = Math.min(Math.max(r.left, 2), vw - 26) + 'px';
+      h.btn.style.top = Math.min(Math.max(r.top, 2), vh - 26) + 'px';
     }
   }
   function placeNear(p, rect) {

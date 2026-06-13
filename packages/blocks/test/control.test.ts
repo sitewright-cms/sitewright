@@ -105,6 +105,12 @@ describe('controlOptions', () => {
     expect(controlOptions('dataset', root)).toEqual(['posts', 'team']);
     expect(controlOptions('text', root)).toEqual([]);
   });
+  it('dataset-item options are the entry IDS of the named dataset (order preserved)', () => {
+    const r = { data: { hero: [{ id: 'config', values: {} }, { id: 'minimal', values: {} }] } };
+    expect(controlOptions('dataset-item', r, 'hero')).toEqual(['config', 'minimal']);
+    expect(controlOptions('dataset-item', r, 'missing')).toEqual([]); // unknown dataset → empty
+    expect(controlOptions('dataset-item', r)).toEqual([]); // no dataset arg → empty
+  });
 });
 
 describe('{{sw-control}} render', () => {
@@ -133,6 +139,18 @@ describe('{{sw-control}} render', () => {
   });
   it('renders nothing for a non-whitelisted target', () => {
     expect(renderTemplate('{{sw-control target="page.path"}}', { preview: true })).toBe('');
+  });
+
+  it('embeds a dataset\'s entry ids as options for as="dataset-item"', () => {
+    const out = renderTemplate('{{sw-control target="data.hero_config" as="dataset-item" dataset="hero" label="Hero config"}}', {
+      page: { data: { hero_config: 'minimal' } },
+      data: { hero: [{ id: 'config', values: {} }, { id: 'minimal', values: {} }] },
+      preview: true,
+    });
+    expect(out).toContain('data-sw-control-as="dataset-item"');
+    expect(out).toContain('config');
+    expect(out).toContain('minimal');
+    expect(out).toContain('Hero config: minimal'); // current value shown
   });
 
   it('emits the typed inputs (number/color/date) verbatim in data-sw-control-as', () => {

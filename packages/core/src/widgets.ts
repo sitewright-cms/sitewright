@@ -25,7 +25,8 @@ import { GLOBAL_SNIPPET_PARTIALS } from './global-snippets.js';
 /** A WIDGET manifest: the backing config dataset(s) a widget needs (provisioned on first use). */
 export interface WidgetProvides {
   datasets: ReadonlyArray<{
-    /** Stable slug bound in the widget body via `{{#each data.<slug>}}`. */
+    /** Stable slug the widget body binds via `{{#each data.<slug>}}` (loop all) or
+     *  `(sw-pick-entry data.<slug> …)` (render one chosen entry). */
     slug: string;
     name: string;
     /** Dataset field tree (scalars + nested list/object) — validated against DatasetSchema on create. */
@@ -57,14 +58,17 @@ export const GLOBAL_WIDGETS: readonly Widget[] = [
     description:
       'Full-bleed background slideshow with alternating Ken Burns drift and rising captions — the standard frontpage hero. Slides and settings are edited as data, no code.',
     component: 'carousel',
-    // The body consumes the provisioned `hero` config (a singleton `config` entry): settings drive the
-    // carousel data-* attributes (the runtime reads them by VALUE, so data-autoplay="false" disables),
-    // and `slides` is the editable image+caption list. Backgrounds are <img> (object-fit:cover, the
-    // Ken Burns target) — a loop can't use data-sw-bg's page.data binding, and an interpolated inline
-    // background-image is validator-forbidden. An empty image falls back to a base-200 placeholder so a
-    // freshly-provisioned hero still renders. `data.hero` falls back to the bare dataset on translated
-    // pages (resolveLocaleDatasets), so the single provisioned `hero` serves every locale.
-    source: `{{#each data.hero}}
+    // The body renders ONE config from the `hero` dataset, chosen via sw-pick-entry: the entry whose
+    // id matches page.data.hero_config (set by a {{sw-control as="dataset-item" dataset="hero"
+    // target="data.hero_config"}} picker), else the FIRST entry — so multiple configs can coexist and
+    // a page switches between them no-code. Settings drive the carousel data-* attributes (the runtime
+    // reads them by VALUE, so data-autoplay="false" disables; data-kenburns="off" stops the drift).
+    // `slides` is the editable image+caption list; backgrounds are <img> (object-fit:cover, the Ken
+    // Burns target) — a loop can't use data-sw-bg's page.data binding, and an interpolated inline
+    // background-image is validator-forbidden; an empty image falls back to a base-200 placeholder.
+    // captions are richtext (sw-rich). `data.hero` falls back to the bare dataset on translated pages
+    // (resolveLocaleDatasets). An empty dataset → sw-pick-entry undefined → #with renders nothing.
+    source: `{{#with (sw-pick-entry data.hero @root.page.data.hero_config)}}
 <div class="relative h-[60vh] min-h-[420px] max-h-[640px] overflow-hidden rounded-3xl" data-sw-component="carousel" data-sw-block="Carousel" data-loop="true" data-autoplay="{{#if autoplay}}true{{else}}false{{/if}}" data-interval="{{interval}}" data-kenburns="{{#if kenburns}}on{{else}}off{{/if}}" aria-label="Hero slideshow">
   <div data-sw-part="track">
     {{#each slides}}
@@ -80,7 +84,7 @@ export const GLOBAL_WIDGETS: readonly Widget[] = [
   <button type="button" data-sw-part="next" class="group absolute inset-y-0 right-0 z-10 flex h-full w-20 transform-none items-center justify-end rounded-none bg-transparent bg-gradient-to-l from-black/55 via-black/20 to-transparent pr-4 text-white opacity-80 transition-opacity duration-300 hover:opacity-100 sm:w-32" aria-label="Next slide">{{sw-icon "chevron-right" "size-20 drop-shadow-lg scale-[0.55] transition-transform duration-300 group-hover:scale-[0.65] group-hover:translate-x-4 group-active:translate-x-8"}}</button>{{/if}}
   {{#if show_indicators}}<div data-sw-part="dots" aria-hidden="true"></div>{{/if}}
 </div>
-{{/each}}`,
+{{/with}}`,
     provides: {
       datasets: [
         {

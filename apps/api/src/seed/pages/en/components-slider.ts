@@ -55,6 +55,8 @@ export function pageComponentsSlider(): Page {
   <h2 class="text-3xl font-bold tracking-tight" data-sw-text="sec_hero_t">Hero slider — one include</h2>
   <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="sec_hero_d">This entire hero is one snippet — no custom CSS.</p>
   <pre class="mt-3 inline-block max-w-full overflow-x-auto text-xs"><code>&#123;&#123;&gt; hero-slider&#125;&#125;</code></pre>
+  {{!-- Editor-only config picker: choose which Hero Slider config this page shows (stripped on publish). --}}
+  <div class="mt-3 text-xs">{{sw-control as="dataset-item" dataset="hero" target="data.hero_config" label="Hero config"}}</div>
   <div class="mt-8">{{> hero-slider}}</div>
 </section>
 

@@ -674,3 +674,31 @@ describe('validateTemplate — skeleton-owned semantic landmarks are reserved', 
     allows('<mainframe>x</mainframe>');
   });
 });
+
+describe('{{sw-pick-entry}} (Widget config selector)', () => {
+  const pick = (sel: string, hero: unknown) =>
+    renderTemplate('{{#with (sw-pick-entry data.hero @root.page.data.pick)}}[{{label}}]{{/with}}', {
+      data: { hero },
+      page: { data: sel ? { pick: sel } : {} },
+    } as TemplateContext);
+
+  const envelopes = [
+    { id: 'a', values: { label: 'Alpha' } },
+    { id: 'b', values: { label: 'Beta' } },
+  ];
+
+  it('selects the entry whose id matches the page.data pointer', () => {
+    expect(pick('b', envelopes)).toBe('[Beta]');
+  });
+  it('defaults to the first entry when the pointer is unset or unknown', () => {
+    expect(pick('', envelopes)).toBe('[Alpha]');
+    expect(pick('zzz', envelopes)).toBe('[Alpha]');
+  });
+  it('renders nothing for an empty/absent dataset', () => {
+    expect(pick('a', [])).toBe('');
+    expect(pick('a', undefined)).toBe('');
+  });
+  it('accepts a plain values array too (returns the element as-is)', () => {
+    expect(pick('', [{ label: 'Plain' }])).toBe('[Plain]');
+  });
+});

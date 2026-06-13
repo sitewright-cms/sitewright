@@ -24,15 +24,20 @@ const EXTRA_LOCALES = EXAMPLE_SETTINGS.locales.filter((l) => l !== EXAMPLE_SETTI
 // string authored as a STATIC attribute literal (e.g. data-sw-title="Project work" instead of
 // data-sw-title="{{page.data.tab_projects}}") would escape the completeness check. Seed pages
 // must keep translatable attribute text behind page.data references.
-/** A page's effective Handlebars source (own `source`, or its referenced global template's),
- *  WITH the source of any global snippet OR Widget it composes via {{> name}} appended — so keys a
- *  snippet binds AND a Widget's `{{#each data.<slug>}}` are seen by the completeness/dataset guards
- *  and can't be dropped unnoticed. */
-function effectiveSource(page: Page): string | undefined {
+/**
+ * A page's effective Handlebars source (own `source`, or its referenced global template's), WITH the
+ * source of any composed `{{> name}}` partial appended. `includeWidgets` controls whether managed
+ * WIDGET bodies are appended too:
+ *  - DATASET guard → true: a Widget's `{{#each data.<slug>}}` must resolve to a seeded dataset.
+ *  - i18n COMPLETENESS guard → false (default): a Widget is system-managed code; its OPTIONAL,
+ *    non-translatable page.data pointers (e.g. the hero slider's `hero_config` config selector) are
+ *    NOT the page's translation responsibility, so they must not be treated as required bound keys.
+ */
+function effectiveSource(page: Page, includeWidgets = false): string | undefined {
   const base = page.source ?? (page.template ? GLOBAL_TEMPLATES.find((t) => t.id === page.template)?.source : undefined);
   if (base === undefined) return undefined;
   const partials = [...base.matchAll(/\{\{>\s*([a-zA-Z0-9_-]+)\s*\}\}/g)]
-    .map((m) => GLOBAL_SNIPPET_PARTIALS[m[1]!] ?? WIDGET_PARTIALS[m[1]!])
+    .map((m) => GLOBAL_SNIPPET_PARTIALS[m[1]!] ?? (includeWidgets ? WIDGET_PARTIALS[m[1]!] : undefined))
     .filter((s): s is string => Boolean(s));
   return partials.length ? `${base}\n${partials.join('\n')}` : base;
 }
@@ -92,8 +97,13 @@ describe('seed demo content', () => {
   it('every dataset the pages bind via {{#each data.<slug>}} has a schema and seeded entries', () => {
     const entriesByDataset = new Set(EXAMPLE_ENTRIES.map((e) => e.dataset));
     const datasetSlugs = new Set(EXAMPLE_DATASETS.map((d) => d.slug));
-    const sources = EXAMPLE_PAGES.map((p) => effectiveSource(p) ?? '').join('\n');
-    const bound = [...sources.matchAll(/\{\{#each\s+data\.([a-z0-9_-]+)\s*\}\}/g)].map((m) => m[1]);
+    // includeWidgets=true: a Widget's dataset usage counts too — both `{{#each data.X}}` and the
+    // `(sw-pick-entry data.X …)` form the hero slider uses to pick one config.
+    const sources = EXAMPLE_PAGES.map((p) => effectiveSource(p, true) ?? '').join('\n');
+    const bound = [
+      ...sources.matchAll(/\{\{#each\s+data\.([a-z0-9_-]+)\s*\}\}/g),
+      ...sources.matchAll(/sw-pick-entry\s+data\.([a-z0-9_-]+)/g),
+    ].map((m) => m[1]);
     expect(bound.length).toBeGreaterThan(0);
     for (const slug of bound) {
       expect(datasetSlugs.has(slug!), `dataset "${slug}" is defined`).toBe(true);

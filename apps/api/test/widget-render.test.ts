@@ -76,4 +76,24 @@ describe('hero-slider Widget render', () => {
   it('renders nothing until the `hero` dataset exists (no config → empty)', () => {
     expect(renderTemplate('{{> hero-slider}}', { data: { hero: [] }, partials: WIDGET_PARTIALS }).trim()).toBe('');
   });
+
+  // Multiple configs (entry envelopes) + a page.data selection → the widget renders the CHOSEN one.
+  const envelopes = [
+    { id: 'config', values: { ...fullConfig, slides: [{ image: '/a.jpg', caption: 'First config' }] } },
+    { id: 'minimal', values: { ...fullConfig, kenburns: false, slides: [{ image: '/b.jpg', caption: 'Minimal config' }] } },
+  ];
+  const renderPick = (selectedId?: string): string =>
+    renderTemplate('{{> hero-slider}}', { data: { hero: envelopes }, page: { data: selectedId ? { hero_config: selectedId } : {} }, partials: WIDGET_PARTIALS });
+
+  it('renders the config selected by page.data.hero_config', () => {
+    const html = renderPick('minimal');
+    expect(html).toContain('Minimal config');
+    expect(html).toContain('data-kenburns="off"');
+    expect(html).not.toContain('First config');
+  });
+
+  it('defaults to the FIRST config when no selection is set (or the id is unknown)', () => {
+    expect(renderPick()).toContain('First config');
+    expect(renderPick('nope')).toContain('First config');
+  });
 });

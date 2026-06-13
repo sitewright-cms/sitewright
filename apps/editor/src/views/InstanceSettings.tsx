@@ -12,7 +12,7 @@ import {
   type PlatformLogo,
 } from '@sitewright/schema';
 import { api, type InstanceSettingsInput, type InstanceSettingsPublic } from '../api';
-import { glassCard, glassInput, primaryButton } from '../theme';
+import { glassCard, glassInput, primaryButton, toggleInput } from '../theme';
 import { applyBranding } from '../lib/use-branding';
 import { ColorField } from './settings/ColorPicker';
 import { SkeletonList } from './ui/Skeleton';
@@ -377,7 +377,7 @@ export function InstanceSettings() {
               <label key={key} className="flex items-start gap-2 text-sm">
                 <input
                   type="checkbox"
-                  className="mt-0.5"
+                  className={toggleInput}
                   aria-label={label}
                   checked={checked}
                   onChange={(e) => setModes((m) => ({ ...m, [key]: e.target.checked }))}
@@ -418,6 +418,7 @@ export function InstanceSettings() {
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
+            className={toggleInput}
             aria-label="Configure global SMTP"
             checked={smtpEnabled}
             onChange={(e) => setSmtpEnabled(e.target.checked)}
@@ -477,7 +478,7 @@ export function InstanceSettings() {
               <input className={field} aria-label="SMTP from name" value={fromName} onChange={(e) => setFromName(e.target.value)} />
             </label>
             <label className="col-span-2 flex items-center gap-2 text-sm">
-              <input type="checkbox" aria-label="Use implicit TLS" checked={secure} onChange={(e) => setSecure(e.target.checked)} />
+              <input type="checkbox" className={toggleInput} aria-label="Use implicit TLS" checked={secure} onChange={(e) => setSecure(e.target.checked)} />
               Use implicit TLS (port 465); otherwise STARTTLS
             </label>
           </div>
@@ -489,6 +490,7 @@ export function InstanceSettings() {
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
+            className={toggleInput}
             aria-label="Configure hCaptcha"
             checked={hcaptchaEnabled}
             onChange={(e) => setHcaptchaEnabled(e.target.checked)}
@@ -524,6 +526,7 @@ export function InstanceSettings() {
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
+            className={toggleInput}
             aria-label="Configure stock provider keys"
             checked={stockEnabled}
             onChange={(e) => setStockEnabled(e.target.checked)}
@@ -610,7 +613,7 @@ export function InstanceSettings() {
         <label className="flex items-start gap-2 text-sm">
           <input
             type="checkbox"
-            className="mt-0.5"
+            className={toggleInput}
             aria-label="Allow user self-registration"
             checked={allowSelfRegistration}
             onChange={(e) => setAllowSelfRegistration(e.target.checked)}

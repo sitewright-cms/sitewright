@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, type Project, type SmtpInput } from '../api';
-import { glassCard, glassInput, primaryButton } from '../theme';
+import { glassCard, glassInput, primaryButton, toggleInput } from '../theme';
 
 /**
  * Per-project SMTP config — used by forms whose delivery mode is "Project SMTP"
@@ -86,7 +86,7 @@ export function ProjectSmtp({ project }: { project: Project }) {
       </summary>
       <form onSubmit={save} className="mt-3 flex flex-col gap-3">
         <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" aria-label="Configure project SMTP" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+          <input type="checkbox" className={toggleInput} aria-label="Configure project SMTP" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
           Send this project’s form mail via its own SMTP
         </label>
         {enabled && (
@@ -135,7 +135,7 @@ export function ProjectSmtp({ project }: { project: Project }) {
               <input className={field} aria-label="SMTP from name" value={fromName} onChange={(e) => setFromName(e.target.value)} />
             </label>
             <label className="col-span-2 flex items-center gap-2 text-sm">
-              <input type="checkbox" aria-label="Use implicit TLS" checked={secure} onChange={(e) => setSecure(e.target.checked)} />
+              <input type="checkbox" className={toggleInput} aria-label="Use implicit TLS" checked={secure} onChange={(e) => setSecure(e.target.checked)} />
               Use implicit TLS (port 465); otherwise STARTTLS
             </label>
           </div>

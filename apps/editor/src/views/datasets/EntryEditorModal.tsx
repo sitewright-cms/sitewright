@@ -3,7 +3,7 @@ import { ChevronUp, ChevronDown, Trash2, Plus } from 'lucide-react';
 import type { Dataset, Entry, Field } from '@sitewright/schema';
 import { coerceFieldValue, defaultFieldValues, entryLabel, identifierize, readValue } from '../../lib/entry-form';
 import { api } from '../../api';
-import { glassInput, gradientSurface } from '../../theme';
+import { glassInput, gradientSurface, toggleInput } from '../../theme';
 import { Modal } from '../ui/Modal';
 import { useDialogs } from '../ui/Dialogs';
 import { AssetField } from '../files/AssetField';
@@ -168,7 +168,7 @@ function FieldInput({
     case 'number':
       return <input {...common} type="number" className={glassInput} value={typeof value === 'number' ? value : ''} onChange={(e) => onRaw(e.target.value)} />;
     case 'boolean':
-      return <input {...common} type="checkbox" checked={value === true} onChange={(e) => onRaw(e.target.checked)} />;
+      return <input {...common} type="checkbox" className={toggleInput} checked={value === true} onChange={(e) => onRaw(e.target.checked)} />;
     case 'date':
       return <input {...common} type="date" className={glassInput} value={typeof value === 'string' ? value : ''} onChange={(e) => onRaw(e.target.value)} />;
     case 'image':

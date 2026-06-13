@@ -24,6 +24,19 @@ export function entriesEn(assets: Record<string, string>): Entry[] {
   pub('team', 'team-dev', { name: 'Devon Park', role: 'Lead Engineer', photo: assets['team-devon'], bio: 'Performance obsessive; ships sites that score 100.' }),
   pub('team', 'team-ines', { name: 'Inés Romero', role: 'UX Strategist', photo: assets['team-ines'], bio: 'Turns fuzzy goals into journeys that convert.' }),
   pub('team', 'team-sol', { name: 'Sol Nakamura', role: 'Brand Designer', photo: assets['team-sol'], bio: 'Builds type systems and logos with staying power.' }),
+  // --- hero (the hero-slider WIDGET config: ONE non-localized `config` entry — settings + an
+  //     editable nested slides list. Shared across locales; dogfoods the nested list field type) ---
+  pub('hero', 'config', {
+    autoplay: true,
+    interval: 6000,
+    show_arrows: true,
+    show_indicators: true,
+    slides: [
+      { image: assets['proj-aria'], caption: 'Welcome to Northwind Studio' },
+      { image: assets['proj-flint'], caption: 'Websites with real craft' },
+      { image: assets['proj-harbor'], caption: 'Built to perform' },
+    ],
+  }),
   // --- testimonials (the home Carousel slides) ---
   pub('testimonials', 'tst-1', { quote: 'Northwind rebuilt our site in six weeks and our enquiries doubled. They are the rare studio that gets both design and engineering right.', author: 'Priya Anand', role: 'CEO, Harbor Coffee' }),
   pub('testimonials', 'tst-2', { quote: 'The fastest, most thoughtful team we have worked with. Our Lighthouse scores went from the 40s to a perfect 100.', author: 'Marcus Lee', role: 'CMO, Lumen Capital' }),

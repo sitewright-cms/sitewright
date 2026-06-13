@@ -88,6 +88,7 @@ import {
   referencesChildren,
   referencesParentPage,
   widgetDatasetsForSources,
+  WIDGET_PARTIALS,
   type ProjectBundle,
 } from '@sitewright/core';
 import type { Database } from '../db/client.js';
@@ -1907,11 +1908,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         }
       }
       if (!renderPool) return reply.code(503).send({ error: 'rendering is not available' });
-      // Built-in global snippets + the project's own (project wins on a name collision). The
-      // preview's CSS is extracted from the RENDERED output, so unused globals add no weight here.
+      // Built-in global snippets + the project's own (project wins on a name collision), then the
+      // MANAGED Widget bodies LAST so a widget name is effectively reserved — no project/global
+      // snippet can shadow the system widget. The preview's CSS is extracted from the RENDERED
+      // output, so unused globals/widgets add no weight here.
       const partials = {
         ...(await globalSnippetPartials(contentRepo)),
         ...Object.fromEntries(((await contentRepo.list(ctx, 'snippet')) as Snippet[]).map((s) => [s.name, s.source])),
+        ...WIDGET_PARTIALS,
       };
       const sourceData = Object.fromEntries(byDataset);
       const localeData = resolveLocaleDatasets(sourceData, page.locale);
@@ -3218,10 +3222,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       for (const list of byDataset.values()) list.sort(compareEntryOrder);
       const data = Object.fromEntries(byDataset);
       // Reusable Handlebars partials the template can {{> name}} (validated at render): built-in
-      // globals + the project's own (project wins on a name collision).
+      // globals + the project's own (project wins on a name collision), then the MANAGED Widget
+      // bodies LAST so a widget name can't be shadowed.
       const partials = {
         ...(await globalSnippetPartials(contentRepo)),
         ...Object.fromEntries(((await contentRepo.list(ctx, 'snippet')) as Snippet[]).map((s) => [s.name, s.source])),
+        ...WIDGET_PARTIALS,
       };
       // Keyed entry access for this template (only the datasets it addresses by key). NOTE: this
       // owner render-template tool feeds `data` un-locale-resolved (pre-existing), so `item` here
@@ -3315,7 +3321,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // leading letter — but a Map is robust regardless).
       const globalPartials = await globalSnippetPartials(contentRepo);
       const projectMap = Object.fromEntries(((await contentRepo.list(ctx, 'snippet')) as Snippet[]).map((s) => [s.name, s.source]));
-      const partials = { ...globalPartials, ...projectMap };
+      // Widget bodies are resolvable as `{{> include}}` targets but are NOT a previewable scope —
+      // they stay out of globalPartials/projectMap (the source-to-preview lookup below) and are
+      // spread LAST so a managed widget name can't be shadowed by a snippet of the same name.
+      const partials = { ...globalPartials, ...projectMap, ...WIDGET_PARTIALS };
       const scope = req.query.scope === 'global' ? 'global' : 'project';
       const source = new Map(Object.entries(scope === 'global' ? globalPartials : projectMap)).get(req.params.id);
       if (typeof source !== 'string') return notice('This snippet no longer exists.', 404);

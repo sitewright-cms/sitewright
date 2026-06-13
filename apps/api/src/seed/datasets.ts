@@ -1,4 +1,5 @@
 import type { Dataset, Field } from '@sitewright/schema';
+import { WIDGET_MANIFESTS } from '@sitewright/core';
 
 // ---------------------------------------------------------------- datasets (the CMS)
 //
@@ -107,4 +108,12 @@ function emit(spec: DatasetSpec): Dataset[] {
   });
 }
 
-export const EXAMPLE_DATASETS: Dataset[] = SPECS.flatMap(emit);
+// The hero-slider WIDGET's config dataset, seeded directly from its manifest so the example mirrors
+// exactly what real save-time provisioning creates. NON-localized + no `-<locale>` twins: the bare
+// `hero` slug serves every locale via resolveLocaleDatasets' bare-slug fallback (the slides/settings
+// are shared, not translated). This dogfoods the nested list/object field types end-to-end.
+const heroSpec = WIDGET_MANIFESTS['hero-slider']?.datasets[0];
+if (!heroSpec) throw new Error('seed: the hero-slider widget manifest is missing its config dataset');
+const HERO_DATASET: Dataset = { id: heroSpec.slug, name: heroSpec.name, slug: heroSpec.slug, fields: heroSpec.fields };
+
+export const EXAMPLE_DATASETS: Dataset[] = [...SPECS.flatMap(emit), HERO_DATASET];

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { validateTemplate } from '@sitewright/blocks';
-import { GLOBAL_TEMPLATES, GLOBAL_SNIPPET_PARTIALS } from '@sitewright/core';
+import { GLOBAL_TEMPLATES, GLOBAL_SNIPPET_PARTIALS, WIDGET_PARTIALS, WIDGET_MANIFESTS } from '@sitewright/core';
 import type { Page } from '@sitewright/schema';
 import {
   examplePages,
@@ -25,14 +25,14 @@ const EXTRA_LOCALES = EXAMPLE_SETTINGS.locales.filter((l) => l !== EXAMPLE_SETTI
 // data-sw-title="{{page.data.tab_projects}}") would escape the completeness check. Seed pages
 // must keep translatable attribute text behind page.data references.
 /** A page's effective Handlebars source (own `source`, or its referenced global template's),
- *  WITH the source of any global snippet it composes via {{> name}} appended — so keys a
- *  snippet binds (e.g. the hero-slider captions/backgrounds) are seen by the completeness
- *  guard and can't be dropped from a locale unnoticed. */
+ *  WITH the source of any global snippet OR Widget it composes via {{> name}} appended — so keys a
+ *  snippet binds AND a Widget's `{{#each data.<slug>}}` are seen by the completeness/dataset guards
+ *  and can't be dropped unnoticed. */
 function effectiveSource(page: Page): string | undefined {
   const base = page.source ?? (page.template ? GLOBAL_TEMPLATES.find((t) => t.id === page.template)?.source : undefined);
   if (base === undefined) return undefined;
   const partials = [...base.matchAll(/\{\{>\s*([a-zA-Z0-9_-]+)\s*\}\}/g)]
-    .map((m) => GLOBAL_SNIPPET_PARTIALS[m[1]!])
+    .map((m) => GLOBAL_SNIPPET_PARTIALS[m[1]!] ?? WIDGET_PARTIALS[m[1]!])
     .filter((s): s is string => Boolean(s));
   return partials.length ? `${base}\n${partials.join('\n')}` : base;
 }
@@ -162,7 +162,13 @@ describe('seed demo content', () => {
   });
 
   it('localized datasets: every base has per-locale twins with identical field shapes and equal entry counts; references resolve in-locale', () => {
-    const bases = EXAMPLE_DATASETS.filter((d) => !EXTRA_LOCALES.some((l) => d.slug.endsWith(`-${l}`)));
+    // Widget CONFIG datasets (e.g. the hero-slider's `hero`) are intentionally NON-localized: a single
+    // bare dataset serves every locale via resolveLocaleDatasets' fallback, matching save-time
+    // provisioning. They're exempt from the per-locale twin requirement.
+    const widgetDatasetSlugs = new Set(Object.values(WIDGET_MANIFESTS).flatMap((m) => m.datasets.map((d) => d.slug)));
+    const bases = EXAMPLE_DATASETS.filter(
+      (d) => !EXTRA_LOCALES.some((l) => d.slug.endsWith(`-${l}`)) && !widgetDatasetSlugs.has(d.slug),
+    );
     expect(bases.length).toBeGreaterThanOrEqual(8);
     for (const locale of EXTRA_LOCALES) {
       for (const base of bases) {

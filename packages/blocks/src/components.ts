@@ -121,15 +121,18 @@ const CAROUSEL_CSS = [
   // ways), and its `.sw-caption` rises in. Keyed off data-active (JS-set), so without JS the
   // first slide is simply shown static. Keyframes ship with the component (tiny) but are inert
   // unless data-kenburns is authored — the whole point is to retire the per-site @keyframes the
-  // hero used to need in criticalCss. The hero-slider global snippet uses exactly these hooks.
+  // hero used to need in criticalCss. The hero-slider Widget uses exactly these hooks.
   '@keyframes sw-kb-a{0%{transform:scale3d(1.18,1.18,1) translate3d(-2.2%,1.6%,0)}100%{transform:scale3d(1,1,1) translate3d(0,0,0)}}',
   '@keyframes sw-kb-b{0%{transform:scale3d(1.18,1.18,1) translate3d(2.2%,-1.6%,0)}100%{transform:scale3d(1,1,1) translate3d(0,0,0)}}',
   '@keyframes sw-cap-in{from{opacity:0;transform:translateY(26px)}to{opacity:1;transform:none}}',
   // The bg layer fills its slide and is the Ken Burns target; the slide clips it AND is the
   // positioning context for the absolute .sw-kenburns/.sw-caption (so authors needn't add
   // `relative` themselves — without it inset:0 would resolve to the carousel root and stack).
+  // .sw-kenburns is either a bg <div> (data-sw-bg) or an <img> (the Widget's data-backed slides):
+  // width/height + object-fit make the <img> behave like background-size:cover, and the transform
+  // animation below applies to both. The two cover declarations are each inert on the other element.
   '[data-sw-block="Carousel"][data-kenburns] [data-sw-part="slide"]{overflow:hidden;position:relative}',
-  '[data-sw-block="Carousel"][data-kenburns] .sw-kenburns{position:absolute;inset:0;background-size:cover;background-position:center}',
+  '[data-sw-block="Carousel"][data-kenburns] .sw-kenburns{position:absolute;inset:0;width:100%;height:100%;background-size:cover;background-position:center;object-fit:cover}',
   '@media (prefers-reduced-motion: no-preference){' +
     '[data-sw-block="Carousel"][data-kenburns][data-sw-enhanced="true"] [data-sw-part="slide"][data-active]:nth-child(odd) .sw-kenburns{animation:sw-kb-a 8s ease-out both}' +
     '[data-sw-block="Carousel"][data-kenburns][data-sw-enhanced="true"] [data-sw-part="slide"][data-active]:nth-child(even) .sw-kenburns{animation:sw-kb-b 8s ease-out both}' +

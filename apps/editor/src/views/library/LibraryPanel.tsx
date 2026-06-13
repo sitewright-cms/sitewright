@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { Modal } from '../ui/Modal';
 import { SidePanel } from '../ui/SidePanel';
 import { useToast } from '../ui/Toast';
@@ -6,6 +6,7 @@ import { useCopy } from '../ui/useCopy';
 import { ghostButton, glassPanel } from '../../theme';
 import { LIBRARY_SECTIONS, type LibraryCategory, type LibraryItem, type LibrarySection } from './catalog';
 import { ReferenceModal } from './ReferenceModal';
+import { SW_COMPONENT_GROUPS } from './sw-components';
 import { GoogleFontGallery } from '../settings/GoogleFontGallery';
 
 /** Library glyph (stacked books) for the side-panel tab. */
@@ -36,7 +37,23 @@ function previewHtml(example: string): string {
 export function LibraryPanel() {
   const [openCategory, setOpenCategory] = useState<LibraryCategory | null>(null);
   const [refOpen, setRefOpen] = useState(false);
+  const [swOpen, setSwOpen] = useState(false);
   const section = openCategory ? (LIBRARY_SECTIONS.find((s) => s.category === openCategory) ?? null) : null;
+
+  // The first-party SiteWright components guide — a tab-based reference (one tab per component),
+  // rendered like the Template reference. Shown immediately before the DaisyUI components entry.
+  const swComponentsButton = (
+    <button
+      key="sw-components"
+      onClick={() => setSwOpen(true)}
+      className="waves-effect rounded-xl border border-emerald-200/70 bg-gradient-to-br from-emerald-50 to-teal-50 px-3 py-2.5 text-left transition hover:from-emerald-100 hover:to-teal-100"
+    >
+      <span className="block text-sm font-bold text-emerald-800">SiteWright Components</span>
+      <span className="mt-0.5 block text-[11px] leading-snug text-emerald-600/80">
+        First-party interactive components (data-sw-component) — usage & examples.
+      </span>
+    </button>
+  );
 
   return (
     <SidePanel side="left" label="System Library" icon={<LibraryIcon />}>
@@ -53,18 +70,29 @@ export function LibraryPanel() {
         </button>
 
         {LIBRARY_SECTIONS.map((s) => (
-          <button
-            key={s.category}
-            onClick={() => setOpenCategory(s.category)}
-            className={`waves-effect ${glassPanel} rounded-xl px-3 py-2.5 text-left transition hover:bg-white`}
-          >
-            <span className="block text-sm font-bold text-slate-700">{s.label}</span>
-            <span className="mt-0.5 block text-[11px] leading-snug text-slate-400">{s.blurb}</span>
-          </button>
+          // The SiteWright Components entry sits immediately before the DaisyUI components section.
+          <Fragment key={s.category}>
+            {s.category === 'daisyui' && swComponentsButton}
+            <button
+              onClick={() => setOpenCategory(s.category)}
+              className={`waves-effect ${glassPanel} rounded-xl px-3 py-2.5 text-left transition hover:bg-white`}
+            >
+              <span className="block text-sm font-bold text-slate-700">{s.label}</span>
+              <span className="mt-0.5 block text-[11px] leading-snug text-slate-400">{s.blurb}</span>
+            </button>
+          </Fragment>
         ))}
       </nav>
 
       {refOpen && <ReferenceModal onClose={() => setRefOpen(false)} />}
+      {swOpen && (
+        <ReferenceModal
+          title="SiteWright Components"
+          allGroups={SW_COMPONENT_GROUPS}
+          searchPlaceholder="Search components…"
+          onClose={() => setSwOpen(false)}
+        />
+      )}
       {section?.category === 'fonts' ? (
         <FontsLibraryModal onClose={() => setOpenCategory(null)} />
       ) : (

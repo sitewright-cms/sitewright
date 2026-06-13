@@ -3,7 +3,7 @@ import { Modal } from '../ui/Modal';
 import { useToast } from '../ui/Toast';
 import { useCopy } from '../ui/useCopy';
 import { ghostButton, glassPanel } from '../../theme';
-import { REFERENCE_GROUPS, type ReferenceEntry } from './reference';
+import { REFERENCE_GROUPS, type ReferenceEntry, type ReferenceGroup } from './reference';
 
 function navBtn(active: boolean): string {
   return `rounded-lg px-3 py-1.5 text-left text-xs font-medium transition ${
@@ -45,11 +45,24 @@ function EntryCard({ entry, copied, onCopy }: { entry: ReferenceEntry; copied: b
 }
 
 /**
- * The Template Reference: a searchable, grouped guide to the code-first authoring surface — the
- * curated Handlebars helpers, the `data-sw-*` editable directives, the binding namespaces, and the
- * loop/system variables. Read-only; each entry has a Copy button. Opened from the Library panel.
+ * A searchable, grouped, tab-based reference modal. Defaults to the Template Reference (Handlebars
+ * helpers, `data-sw-*` directives, bindings, loop/system variables), but `groups`/`title` let it
+ * also drive other references — e.g. the SiteWright Components guide. Read-only; each entry has a
+ * Copy button. The left nav is the set of "tabs" (All + one per group). Opened from the Library panel.
  */
-export function ReferenceModal({ onClose }: { onClose: () => void }) {
+export function ReferenceModal({
+  onClose,
+  title = 'Template reference',
+  allGroups = REFERENCE_GROUPS,
+  searchPlaceholder = 'Search helpers, directives, variables…',
+  entriesNoun = 'entries',
+}: {
+  onClose: () => void;
+  title?: string;
+  allGroups?: ReferenceGroup[];
+  searchPlaceholder?: string;
+  entriesNoun?: string;
+}) {
   const [groupId, setGroupId] = useState<string>('all');
   const [query, setQuery] = useState('');
   const toast = useToast();
@@ -62,7 +75,7 @@ export function ReferenceModal({ onClose }: { onClose: () => void }) {
   };
 
   const groups = useMemo(() => {
-    const base = groupId === 'all' ? REFERENCE_GROUPS : REFERENCE_GROUPS.filter((g) => g.id === groupId);
+    const base = groupId === 'all' ? allGroups : allGroups.filter((g) => g.id === groupId);
     if (!q) return base;
     return base
       .map((g) => ({
@@ -76,18 +89,18 @@ export function ReferenceModal({ onClose }: { onClose: () => void }) {
         ),
       }))
       .filter((g) => g.entries.length > 0);
-  }, [groupId, q]);
+  }, [groupId, q, allGroups]);
 
   const total = groups.reduce((n, g) => n + g.entries.length, 0);
 
   return (
-    <Modal title="Template reference" size="full" onClose={onClose}>
+    <Modal title={title} size="full" onClose={onClose}>
       <div className="flex h-full min-h-0 gap-4 p-5">
         <nav className="hidden w-44 shrink-0 flex-col gap-1 overflow-auto sm:flex">
           <button onClick={() => selectGroup('all')} className={navBtn(groupId === 'all')}>
             All
           </button>
-          {REFERENCE_GROUPS.map((g) => (
+          {allGroups.map((g) => (
             <button key={g.id} onClick={() => selectGroup(g.id)} className={navBtn(groupId === g.id)}>
               {g.title}
             </button>
@@ -96,10 +109,10 @@ export function ReferenceModal({ onClose }: { onClose: () => void }) {
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
           <input
-            aria-label="Search the template reference"
+            aria-label={`Search ${title}`}
             autoFocus
             className="w-full rounded-lg border border-white/60 bg-white/70 px-3 py-2 text-sm sw-brand-focus outline-none"
-            placeholder="Search helpers, directives, variables…"
+            placeholder={searchPlaceholder}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
@@ -120,7 +133,7 @@ export function ReferenceModal({ onClose }: { onClose: () => void }) {
               ))
             )}
           </div>
-          <p className="shrink-0 text-[11px] text-slate-400">{total} entries · click Copy to grab a snippet.</p>
+          <p className="shrink-0 text-[11px] text-slate-400">{total} {entriesNoun} · click Copy to grab a snippet.</p>
         </div>
       </div>
     </Modal>

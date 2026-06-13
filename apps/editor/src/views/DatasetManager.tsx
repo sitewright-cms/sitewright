@@ -5,6 +5,7 @@ import { compareEntryOrder } from '@sitewright/core';
 import { api, type Project } from '../api';
 import { defaultEntryValues, entryLabel, identifierize, reorderByKey, reorderWithInsert, slugify, uniqueSlug } from '../lib/entry-form';
 import { EntryEditorModal } from './datasets/EntryEditorModal';
+import { NestedFieldsEditor, isGroupFieldType, normalizeFieldForType, fieldsHaveEmptyGroup } from './datasets/NestedFieldsEditor';
 import { RenameDatasetModal } from './datasets/RenameDatasetModal';
 import { SidePanelHold } from './ui/SidePanel';
 import { useDialogs } from './ui/Dialogs';
@@ -21,6 +22,10 @@ const FIELD_TYPES: ReadonlyArray<FieldType> = [
   'reference',
   'select',
   'json',
+  // Structural group types — hold child `fields` (edited via the NestedFieldsEditor). A top-level
+  // field is schema level 1, so its children are level 2 (within MAX_FIELD_DEPTH).
+  'list',
+  'object',
 ];
 
 // Entry-id generator. crypto.randomUUID is secure-context-only (undefined on the
@@ -149,13 +154,18 @@ export function DatasetManager({ project }: { project: Project }) {
       setError(`field "${name}" already exists`);
       return;
     }
-    setDraftFields([...draftFields, { name, type: newFieldType, required: false, localized: false }]);
+    // normalize → a list/object gains an empty `fields` so its nested editor appears.
+    setDraftFields([...draftFields, normalizeFieldForType({ name, type: newFieldType, required: false, localized: false })]);
     setNewFieldName('');
   }
 
   async function saveSchema() {
     if (!selected) return;
     setError(null);
+    if (fieldsHaveEmptyGroup(draftFields)) {
+      setError('A list/object field needs at least one child field — add one before saving.');
+      return;
+    }
     try {
       await api.putDataset(project.id, { ...selected, fields: draftFields });
       await load();
@@ -385,7 +395,7 @@ export function DatasetManager({ project }: { project: Project }) {
                       setFieldDrag(null);
                       setFieldDrop(null);
                     }}
-                    className={`relative flex items-center gap-2 text-sm transition ${fieldDrag === field.name ? 'opacity-40' : ''}`}
+                    className={`relative text-sm transition ${fieldDrag === field.name ? 'opacity-40' : ''}`}
                   >
                     {fieldDrop?.name === field.name && (
                       <span
@@ -393,6 +403,7 @@ export function DatasetManager({ project }: { project: Project }) {
                         className={`pointer-events-none absolute inset-x-0 z-10 h-0.5 rounded-full bg-indigo-500 ${fieldDrop.pos === 'before' ? '-top-1' : '-bottom-1'}`}
                       />
                     )}
+                    <div className="flex items-center gap-2">
                     {/* Only the handle is draggable, so the type <select> stays freely operable. */}
                     <span
                       aria-hidden
@@ -427,7 +438,7 @@ export function DatasetManager({ project }: { project: Project }) {
                       value={field.type}
                       onChange={(e) =>
                         setDraftFields((fs) =>
-                          fs.map((f) => (f.name === field.name ? { ...f, type: e.target.value as FieldType } : f)),
+                          fs.map((f) => (f.name === field.name ? normalizeFieldForType({ ...f, type: e.target.value as FieldType }) : f)),
                         )
                       }
                     >
@@ -458,6 +469,17 @@ export function DatasetManager({ project }: { project: Project }) {
                     >
                       <X className="h-4 w-4" />
                     </button>
+                    </div>
+                    {/* Nested schema for a list/object field — recursive child-field editor. */}
+                    {isGroupFieldType(field.type) && (
+                      <NestedFieldsEditor
+                        value={field.fields ?? []}
+                        depth={2}
+                        onChange={(children) =>
+                          setDraftFields((fs) => fs.map((f) => (f.name === field.name ? { ...f, fields: children } : f)))
+                        }
+                      />
+                    )}
                   </li>
                 ))}
                 {draftFields.length === 0 && <li className="text-xs text-slate-400">No fields yet.</li>}

@@ -22,8 +22,18 @@ export function pageHome(assets: Record<string, string>): Page {
       hero_alt: 'A recent Northwind website',
       aria_prev: 'Previous testimonial',
       aria_next: 'Next testimonial',
+      // Demo values for the editor-only {{sw-control}} "studio settings" chips below. These are
+      // page.data knobs an editor sets from inside the preview; nothing renders them on the page, so
+      // they carry no translation obligation (the chips, like all controls, are stripped on publish).
+      demo_team: '12',
+      demo_accent: '#6366f1',
+      demo_launch: '2026-09-01',
+      demo_status: 'Open for projects',
     },
-    source: `<div class="hidden">{{sw-control target="page.title" as="text" label="Page title"}} {{sw-control target="page.description" as="textarea" label="Meta description"}} {{sw-control target="data.spotlight" as="dataset" label="Spotlight project"}}</div>
+    // The "studio settings" block exercises every {{sw-control}} input type. It is class="hidden" (it
+    // renders nothing on the page), and the Content Editor reveals it while editing so the chips are
+    // reachable — text/textarea/dataset plus number/color/date/select.
+    source: `<div class="hidden">{{sw-control target="page.title" as="text" label="Page title"}} {{sw-control target="page.description" as="textarea" label="Meta description"}} {{sw-control target="data.spotlight" as="dataset" label="Spotlight project"}} {{sw-control target="data.demo_team" as="number" label="Team size"}} {{sw-control target="data.demo_accent" as="color" label="Brand accent"}} {{sw-control target="data.demo_launch" as="date" label="Next opening"}} {{sw-control target="data.demo_status" as="select" options="Open for projects, Booked, Waitlist" label="Availability"}}</div>
 <section class="nw-aurora relative overflow-hidden text-white">
   <div class="nw-grid-bg pointer-events-none absolute inset-0" aria-hidden="true"></div>
   <div class="relative mx-auto grid max-w-6xl items-center gap-14 px-6 pb-36 pt-20 lg:grid-cols-[1.05fr_0.95fr] lg:pb-44 lg:pt-28">

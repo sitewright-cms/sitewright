@@ -268,7 +268,9 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     var lab = document.createElement('label');
     lab.appendChild(document.createTextNode(el.getAttribute('data-sw-control-label') || 'Value'));
     var field;
-    if (as === 'folder' || as === 'dataset') {
+    if (as === 'folder' || as === 'dataset' || as === 'select') {
+      // folder/dataset options come from the page (media folders / datasets); select options are the
+      // author's options="…" list — both arrive pre-rendered in data-sw-control-options.
       field = document.createElement('select');
       var blank = document.createElement('option'); blank.value = ''; blank.textContent = '\\u2014 none \\u2014'; field.appendChild(blank);
       var opts = [];
@@ -279,6 +281,10 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       }
     } else if (as === 'textarea') {
       field = document.createElement('textarea'); field.rows = 3; field.maxLength = 8000; field.value = value;
+    } else if (as === 'number' || as === 'color' || as === 'date') {
+      // Native typed inputs (the browser constrains/validates the value); color falls back to #000000
+      // when unset. The chosen value is posted as a string via control-edit, like every other control.
+      field = document.createElement('input'); field.type = as; field.value = value;
     } else {
       field = document.createElement('input'); field.type = 'text'; field.maxLength = 2048; field.value = value;
     }

@@ -6,11 +6,71 @@
 // same allow-list validation via the `@sitewright/blocks/control` subpath without pulling the renderer.
 import type { RenderMedia } from './folder.js';
 
-export type ControlAs = 'text' | 'textarea' | 'url' | 'image' | 'file' | 'folder' | 'dataset';
+export type ControlAs =
+  | 'text'
+  | 'textarea'
+  | 'url'
+  | 'number'
+  | 'color'
+  | 'date'
+  | 'image'
+  | 'file'
+  | 'select'
+  | 'folder'
+  | 'dataset';
 
-const CONTROL_AS = new Set<ControlAs>(['text', 'textarea', 'url', 'image', 'file', 'folder', 'dataset']);
+/** The full, ordered set of valid `as` values — exported so the helper can list them in its error. */
+export const CONTROL_AS_VALUES = [
+  'text',
+  'textarea',
+  'url',
+  'number',
+  'color',
+  'date',
+  'image',
+  'file',
+  'select',
+  'folder',
+  'dataset',
+] as const satisfies readonly ControlAs[];
+
+const CONTROL_AS = new Set<ControlAs>(CONTROL_AS_VALUES);
+
+/** Strict membership test — the {{sw-control}} helper uses it to FAIL LOUDLY on an unknown `as`. */
+export function isControlAs(as: unknown): as is ControlAs {
+  return typeof as === 'string' && CONTROL_AS.has(as as ControlAs);
+}
+
+/**
+ * Lenient coercion of `as` to a known control type, defaulting unknown/missing → 'text'. Used on the
+ * EDITOR's inbound postMessage path (the value there already came from a rendered chip) to keep the
+ * URL-sanitize gate symmetric — NOT for authoring validation, where the helper throws instead.
+ */
 export function normalizeControlAs(as: unknown): ControlAs {
-  return typeof as === 'string' && CONTROL_AS.has(as as ControlAs) ? (as as ControlAs) : 'text';
+  return isControlAs(as) ? as : 'text';
+}
+
+/** Max author-provided as="select" options + per-option length — bounds the chip's attribute size. */
+const MAX_SELECT_OPTIONS = 100;
+const MAX_OPTION_LEN = 200;
+
+/**
+ * Parse an as="select" `options="a, b, c"` list into a clean array (trimmed, empties dropped, deduped,
+ * capped). Returns [] when nothing usable was given — the helper treats an empty result as an authoring
+ * error (a select with no options is useless), mirroring the fail-loud stance on an unknown `as`.
+ */
+export function parseSelectOptions(raw: unknown): string[] {
+  if (typeof raw !== 'string') return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const part of raw.split(',')) {
+    const v = part.trim().slice(0, MAX_OPTION_LEN);
+    if (v === '' || seen.has(v)) continue;
+    seen.add(v);
+    out.push(v);
+    if (out.length >= MAX_SELECT_OPTIONS) break;
+  }
+  return out;
 }
 
 export type PageField = 'title' | 'description' | 'image';

@@ -46,7 +46,7 @@ export function pageComponentsLightbox(): Page {
   <div class="mt-8" data-sw-component="lightbox" data-sw-block="Lightbox" aria-label="{{page.data.aria_gallery}}">
     <div data-sw-part="grid" class="gap-4 !grid-cols-2 md:!grid-cols-4">
       {{#sw-folder "Studio" kind="image"}}
-      <a data-sw-part="item" href="{{sw-url url}}" data-caption="{{alt}}" class="group relative block aspect-square overflow-hidden rounded-2xl bg-base-200 shadow-sm transition-shadow duration-300 hover:shadow-xl">
+      <a data-sw-part="item" href="{{sw-url url}}" data-caption="{{alt}}" class="group relative block aspect-[4/3] overflow-hidden rounded-2xl bg-base-200 shadow-sm transition-shadow duration-300 hover:shadow-xl">
         <span class="skeleton absolute inset-0 z-0" aria-hidden="true"></span>
         <img src="{{sw-url url}}" alt="{{alt}}" loading="lazy" class="relative z-10 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
         <span class="pointer-events-none absolute inset-0 z-20 bg-gradient-to-t from-black/40 via-black/0 to-black/0 opacity-60 transition-opacity duration-300 group-hover:opacity-90" aria-hidden="true"></span>
@@ -63,7 +63,7 @@ export function pageComponentsLightbox(): Page {
   <div class="mt-8" data-sw-component="lightbox" data-sw-block="Lightbox" data-thumbnails="false" data-arrows="false" aria-label="{{page.data.aria_gallery2}}">
     <div data-sw-part="grid" class="gap-4 !grid-cols-3 md:!grid-cols-6">
       {{#each data.projects}}
-      <a data-sw-part="item" href="{{sw-url image}}" data-caption="{{title}} — {{summary}}" class="group relative block aspect-square overflow-hidden rounded-xl bg-base-200">
+      <a data-sw-part="item" href="{{sw-url image}}" data-caption="{{title}} — {{summary}}" class="group relative block aspect-[10/7] overflow-hidden rounded-xl bg-base-200">
         <span class="skeleton absolute inset-0 z-0" aria-hidden="true"></span>
         <img src="{{sw-url image}}" alt="{{title}}" loading="lazy" class="relative z-10 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
         <span class="pointer-events-none absolute inset-0 z-20 bg-gradient-to-t from-black/40 via-black/0 to-black/0 opacity-50 transition-opacity duration-300 group-hover:opacity-90" aria-hidden="true"></span>
@@ -80,7 +80,7 @@ export function pageComponentsLightbox(): Page {
   <div class="mt-8" data-sw-component="lightbox" data-sw-block="Lightbox" data-fit="fill" data-animation="false" data-history="true" data-tilt="true" aria-label="{{page.data.aria_gallery3}}">
     <div data-sw-part="grid" class="gap-4 !grid-cols-2 md:!grid-cols-4">
       {{#sw-folder "Studio" kind="image"}}
-      <a data-sw-part="item" href="{{sw-url url}}" data-caption="{{alt}}" class="group relative block aspect-square overflow-hidden rounded-2xl bg-base-200 shadow-sm transition-shadow duration-300 hover:shadow-xl">
+      <a data-sw-part="item" href="{{sw-url url}}" data-caption="{{alt}}" class="group relative block aspect-[4/3] overflow-hidden rounded-2xl bg-base-200 shadow-sm transition-shadow duration-300 hover:shadow-xl">
         <span class="skeleton absolute inset-0 z-0" aria-hidden="true"></span>
         <img src="{{sw-url url}}" alt="{{alt}}" loading="lazy" class="relative z-10 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
         <span class="pointer-events-none absolute inset-0 z-20 bg-gradient-to-t from-black/40 via-black/0 to-black/0 opacity-60 transition-opacity duration-300 group-hover:opacity-90" aria-hidden="true"></span>

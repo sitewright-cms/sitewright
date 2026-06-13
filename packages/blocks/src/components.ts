@@ -166,11 +166,18 @@ const LIGHTBOX_CSS = [
   '.smartphoto{z-index:999999;background-color:rgb(0 0 0/.82);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}',
   // Soft rounding + shadow on the full image.
   '.smartphoto-img-wrap img.smartphoto-img{border-radius:.5rem;box-shadow:0 12px 40px rgb(0 0 0/.45)}',
-  // Bigger, rounded, hover-animated arrows (sizing on the li, skin on the arrow-* li, icon on the a).
-  '.smartphoto-arrows li{width:3rem;height:3rem;margin-top:-1.5rem}',
-  '.smartphoto-arrow-left,.smartphoto-arrow-right{padding:0;border-radius:9999px;background-color:rgb(0 0 0/.45);transition:background-color .2s ease,transform .2s ease}',
-  '.smartphoto-arrow-left:hover,.smartphoto-arrow-right:hover{background-color:var(--sw-color-primary,#0a7a5a);transform:scale(1.08)}',
-  '.smartphoto-arrows a{background-size:55%;background-position:center;background-repeat:no-repeat}',
+  // Open-animation clone: cover (not stretch) the image inside its (possibly square) box, so a
+  // cropped thumbnail enlarges WITHOUT the image being squashed then snapping to the right aspect.
+  '.smartphoto-img-clone{object-fit:cover}',
+  // Arrows: tall semi-transparent edge tabs (rounded inner corners, centered chevron, darken on
+  // hover) — the size/shape on the .arrow-* li, the icon sizing on the inner a. margin-top centers
+  // the ~94px tab on the top:50% anchor.
+  '.smartphoto-arrows li{width:auto;height:auto;margin-top:-47px}',
+  '.smartphoto-arrow-left,.smartphoto-arrow-right{padding:5px 0;background-color:rgb(0 0 0/.5);transition:background-color .4s ease}',
+  '.smartphoto-arrow-right{border-radius:10px 0 0 10px}',
+  '.smartphoto-arrow-left{border-radius:0 10px 10px 0}',
+  '.smartphoto-arrow-left:hover,.smartphoto-arrow-right:hover{background-color:rgb(0 0 0/.72)}',
+  '.smartphoto-arrows a{width:3.5rem;height:5.25rem;background-size:34px;background-position:center;background-repeat:no-repeat}',
   // Bigger, rounded close button with a hover affordance.
   '.smartphoto-dismiss{width:2rem;height:2rem;top:12px;right:14px;background-size:55%;background-position:center;background-repeat:no-repeat;border-radius:9999px;transition:background-color .2s ease,transform .2s ease}',
   '.smartphoto-dismiss:hover{background-color:rgb(255 255 255/.18);transform:scale(1.08)}',

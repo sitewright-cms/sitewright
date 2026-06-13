@@ -2,6 +2,8 @@ import type { Page } from '@sitewright/schema';
 import { pageHome } from './home.js';
 import { pageWork } from './work.js';
 import { pageComponents } from './components.js';
+import { pageComponentsSlider } from './components-slider.js';
+import { pageComponentsLightbox } from './components-lightbox.js';
 import { pagesServices } from './services.js';
 import { pagesAbout } from './about.js';
 import { pageContact } from './contact.js';
@@ -25,7 +27,9 @@ export function pagesEn(assets: Record<string, string>): Page[] {
     ...pagesBlog(assets),
     pageContact(),
     pageShop(),
-    pageComponents(assets),
+    pageComponents(),
+    pageComponentsSlider(assets),
+    pageComponentsLightbox(),
     pageFaq(),
     ...pagesLegal(),
     ...pageNavLinks(),

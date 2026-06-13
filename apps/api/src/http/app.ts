@@ -1,6 +1,6 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { newId } from '../id.js';
-import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest, type FastifyBaseLogger } from 'fastify';
 import cookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
 import multipart from '@fastify/multipart';
@@ -87,6 +87,7 @@ import {
   parentPageView,
   referencesChildren,
   referencesParentPage,
+  widgetDatasetsForSources,
   type ProjectBundle,
 } from '@sitewright/core';
 import type { Database } from '../db/client.js';
@@ -279,6 +280,40 @@ function parseGenericKind(kind: string): ContentKind {
     throw new ForbiddenError(`${parsed} must be accessed via its dedicated endpoints`);
   }
   return parsed;
+}
+
+/**
+ * Save-time WIDGET provisioning. When a page is saved, ensure the dataset(s) any composed Widget
+ * (`{{> name}}` with a `provides` manifest) declares exist for this project. Create-if-missing,
+ * seed entries ONLY on a fresh create (so a user's edited slides are never overwritten on re-save),
+ * and path-independent (typed / pasted / agent-authored all provision the same). The dataset/entry
+ * writes go through the same content:write context that authorized the page save and are validated
+ * by DatasetSchema/EntrySchema in `put`.
+ */
+async function ensureWidgetDatasets(repo: ContentRepository, ctx: ProjectContext, source: unknown, log: FastifyBaseLogger): Promise<void> {
+  if (typeof source !== 'string') return;
+  for (const ds of widgetDatasetsForSources([source])) {
+    try {
+      const exists = await repo.get(ctx, 'dataset', ds.slug).then(
+        () => true,
+        (err: unknown) => {
+          if (err instanceof NotFoundError) return false;
+          throw err;
+        },
+      );
+      if (exists) continue; // never overwrite an existing dataset (it holds the user's edits)
+      await repo.put(ctx, 'dataset', ds.slug, { id: ds.slug, name: ds.name, slug: ds.slug, fields: ds.fields });
+      for (const e of ds.seed ?? []) {
+        await repo.put(ctx, 'entry', e.id, { id: e.id, dataset: ds.slug, status: 'published', values: e.values });
+      }
+    } catch (err) {
+      // BEST-EFFORT: provisioning is a side-effect of the save, never its gate. A concurrent
+      // save of the same page (TOCTOU between the exists-check and the insert) or any transient
+      // must not fail the user's page save — create-only means the winning save still provisions,
+      // and the next save retries the rest.
+      log.warn({ err, slug: ds.slug, project: ctx.projectId }, 'widget dataset provisioning skipped');
+    }
+  }
 }
 
 /** The two content kinds that have a GLOBAL (instance-wide, admin-managed) variant. */
@@ -1610,13 +1645,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     { config: rl(60) },
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'content:write');
+      const kind = parseGenericKind(req.params.kind);
       validateSourceOnSave(req.params.kind, req.body); // fail fast on unsafe Handlebars source
-      const item = await contentRepo.put(
-        ctx,
-        parseGenericKind(req.params.kind),
-        req.params.entityId,
-        req.body,
-      );
+      const item = await contentRepo.put(ctx, kind, req.params.entityId, req.body);
+      // Saving a page provisions any Widget it composes ({{> name}} → its declared datasets).
+      if (kind === 'page') await ensureWidgetDatasets(contentRepo, ctx, (req.body as { source?: unknown }).source, app.log);
       return reply.send({ item });
     },
   );

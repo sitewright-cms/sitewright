@@ -62,8 +62,8 @@ describe('Widget / Snippet hard separation', () => {
     }
   });
 
-  it('the hero-slider body consumes its provisioned `hero` dataset', () => {
-    expect(WIDGET_PARTIALS['hero-slider']).toContain('{{#each data.hero}}');
+  it('the hero-slider body consumes its provisioned `hero` dataset (picks one config + loops slides)', () => {
+    expect(WIDGET_PARTIALS['hero-slider']).toContain('sw-pick-entry data.hero');
     expect(WIDGET_PARTIALS['hero-slider']).toContain('{{#each slides}}');
   });
 });

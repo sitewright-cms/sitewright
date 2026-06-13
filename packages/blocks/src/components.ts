@@ -131,11 +131,16 @@ const CAROUSEL_CSS = [
   // .sw-kenburns is either a bg <div> (data-sw-bg) or an <img> (the Widget's data-backed slides):
   // width/height + object-fit make the <img> behave like background-size:cover, and the transform
   // animation below applies to both. The two cover declarations are each inert on the other element.
+  // POSITIONING + caption rise-in key off the PRESENCE of data-kenburns (the hero layout), so they
+  // apply whether the drift is on or off. The image DRIFT (sw-kb-a/b) additionally excludes the
+  // explicit off value: `[data-kenburns]:not([data-kenburns="off"])` matches bare `data-kenburns`
+  // (back-compat for hand-authored heroes) AND `data-kenburns="on"`, but NOT `data-kenburns="off"`
+  // (the Widget's Ken-Burns toggle) — so a static hero still gets the cover layout + caption motion.
   '[data-sw-block="Carousel"][data-kenburns] [data-sw-part="slide"]{overflow:hidden;position:relative}',
   '[data-sw-block="Carousel"][data-kenburns] .sw-kenburns{position:absolute;inset:0;width:100%;height:100%;background-size:cover;background-position:center;object-fit:cover}',
   '@media (prefers-reduced-motion: no-preference){' +
-    '[data-sw-block="Carousel"][data-kenburns][data-sw-enhanced="true"] [data-sw-part="slide"][data-active]:nth-child(odd) .sw-kenburns{animation:sw-kb-a 8s ease-out both}' +
-    '[data-sw-block="Carousel"][data-kenburns][data-sw-enhanced="true"] [data-sw-part="slide"][data-active]:nth-child(even) .sw-kenburns{animation:sw-kb-b 8s ease-out both}' +
+    '[data-sw-block="Carousel"][data-kenburns]:not([data-kenburns="off"])[data-sw-enhanced="true"] [data-sw-part="slide"][data-active]:nth-child(odd) .sw-kenburns{animation:sw-kb-a 8s ease-out both}' +
+    '[data-sw-block="Carousel"][data-kenburns]:not([data-kenburns="off"])[data-sw-enhanced="true"] [data-sw-part="slide"][data-active]:nth-child(even) .sw-kenburns{animation:sw-kb-b 8s ease-out both}' +
     '[data-sw-block="Carousel"][data-kenburns][data-sw-enhanced="true"] [data-sw-part="slide"][data-active] .sw-caption{animation:sw-cap-in .9s cubic-bezier(.22,1,.36,1) .4s both}' +
     '}',
   '@media (prefers-reduced-motion: reduce){[data-sw-block="Carousel"] [data-sw-part="track"]{scroll-behavior:auto}[data-sw-block="Carousel"] [data-sw-part="container"]{transition:none}}',

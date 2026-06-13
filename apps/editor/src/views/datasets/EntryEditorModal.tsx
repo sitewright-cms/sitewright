@@ -126,10 +126,10 @@ function ListField({
       ))}
       <button
         type="button"
-        className="inline-flex items-center gap-1.5 rounded-md border border-white/10 px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-white/10"
+        className="flex w-full items-center justify-center gap-2 rounded-md border border-dashed border-white/30 px-3 py-2.5 text-sm font-semibold text-slate-200 transition hover:border-white/50 hover:bg-white/10 hover:text-white"
         onClick={add}
       >
-        <Plus className="h-3.5 w-3.5" /> Add item
+        <Plus className="h-4 w-4" /> Add item
       </button>
     </div>
   );

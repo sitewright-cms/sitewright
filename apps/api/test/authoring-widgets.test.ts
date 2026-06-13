@@ -24,7 +24,7 @@ describe('GET /authoring/widgets', () => {
       description: expect.any(String),
       component: 'carousel',
     });
-    expect(hero?.datasets).toContainEqual({ slug: 'hero', name: 'Hero' });
+    expect(hero?.datasets).toContainEqual({ slug: 'hero', name: 'Hero Slider' });
     // The descriptor is SLIM — it must NOT leak the body source or the full provides manifest,
     // including the nested dataset field tree / seed values.
     for (const w of body.widgets) {

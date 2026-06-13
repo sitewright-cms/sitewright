@@ -160,8 +160,10 @@ const LIGHTBOX_CSS = [
   '[data-sw-block="Lightbox"] [data-sw-part="item"]{display:block}',
   '[data-sw-block="Lightbox"] [data-sw-part="item"] img{display:block;width:100%;height:100%;object-fit:cover;aspect-ratio:1}',
   LIGHTBOX_SMARTPHOTO_VENDOR_CSS,
-  // Dim + blurred backdrop (vendor ships solid black).
-  '.smartphoto{background-color:rgb(0 0 0/.82);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}',
+  // Dim + blurred backdrop (vendor ships solid black). z-index lifts the fullscreen viewer above
+  // site chrome — the vendor's z-index:100 sits UNDER the cookie-consent banner (9998) and other
+  // overlays; a fullscreen image modal must be top-most (GLightbox used a very high z-index too).
+  '.smartphoto{z-index:999999;background-color:rgb(0 0 0/.82);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}',
   // Soft rounding + shadow on the full image.
   '.smartphoto-img-wrap img.smartphoto-img{border-radius:.5rem;box-shadow:0 12px 40px rgb(0 0 0/.45)}',
   // Bigger, rounded, hover-animated arrows (sizing on the li, skin on the arrow-* li, icon on the a).

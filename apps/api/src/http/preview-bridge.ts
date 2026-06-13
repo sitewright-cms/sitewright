@@ -336,10 +336,14 @@ export const PREVIEW_BRIDGE_JS = `(function () {
   //     editable leaf, which wins). data-sw-href/src/bg already stopPropagation in their handlers. ---
   function onEntryClick(e) {
     if (!editing) return;
-    if (closestAttr(e.target, 'data-sw-text') || closestAttr(e.target, 'data-sw-html')) return;
+    // Capture phase: let a click on an editable LEAF inside the entry reach that leaf's own handler
+    // (text/html inline edit, href/src/bg/control popovers + pickers — which stopPropagation in bubble);
+    // only a click on the entry's NON-editable chrome (e.g. the hero slide body) opens the entry.
+    if (e.target && e.target.closest && e.target.closest('[data-sw-text],[data-sw-html],[data-sw-href],[data-sw-src],[data-sw-bg],[data-sw-control]')) return;
     var el = closestAttr(e.target, 'data-sw-entry');
     if (!el) return;
     e.preventDefault();
+    e.stopPropagation(); // win over a component's own click handler (e.g. carousel data-click-next)
     post({ type: 'open-entry', dataset: el.getAttribute('data-sw-dataset') || '', id: el.getAttribute('data-sw-entry') || '' });
   }
 
@@ -632,7 +636,10 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       window.addEventListener('scroll', onHandleScroll, { passive: true });
       window.addEventListener('resize', onHandleScroll);
       document.addEventListener('selectionchange', onSelChange);
-      document.addEventListener('click', onEntryClick);
+      // CAPTURE phase: a click on a data-sw-entry must open the entry editor BEFORE a component's own
+      // bubble-phase handler (e.g. the carousel's data-click-next "advance on slide click") fires —
+      // onEntryClick stopPropagation()s when it handles one, so editing wins over navigation in-editor.
+      document.addEventListener('click', onEntryClick, true);
     } else {
       window.removeEventListener('scroll', onHandleScroll);
       window.removeEventListener('resize', onHandleScroll);
@@ -641,7 +648,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       clearHandles();
       closeTextPop();
       document.removeEventListener('selectionchange', onSelChange);
-      document.removeEventListener('click', onEntryClick);
+      document.removeEventListener('click', onEntryClick, true);
       hideToolbar();
       closePop();
       closeControlPop();

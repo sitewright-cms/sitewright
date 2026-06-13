@@ -683,8 +683,8 @@ describe('{{sw-pick-entry}} (Widget config selector)', () => {
     } as TemplateContext);
 
   const envelopes = [
-    { id: 'a', values: { label: 'Alpha' } },
-    { id: 'b', values: { label: 'Beta' } },
+    { id: 'a', dataset: 'hero', values: { label: 'Alpha' } },
+    { id: 'b', dataset: 'hero', values: { label: 'Beta' } },
   ];
 
   it('selects the entry whose id matches the page.data pointer', () => {
@@ -700,5 +700,27 @@ describe('{{sw-pick-entry}} (Widget config selector)', () => {
   });
   it('accepts a plain values array too (returns the element as-is)', () => {
     expect(pick('', [{ label: 'Plain' }])).toBe('[Plain]');
+  });
+
+  // BLOCK form: renders the block with the chosen entry's values; in PREVIEW wraps in a data-sw-entry
+  // marker so a click opens that entry; @entry exposes the envelope id.
+  const block = (markEntries: boolean) =>
+    renderTemplate('{{#sw-pick-entry data.hero @root.page.data.pick}}<i>{{label}} {{@entry.id}}</i>{{else}}EMPTY{{/sw-pick-entry}}', {
+      data: { hero: envelopes },
+      page: { data: { pick: 'b' } },
+      markEntries,
+    } as TemplateContext);
+
+  it('block form renders the chosen entry + exposes @entry.id', () => {
+    expect(block(false)).toBe('<i>Beta b</i>'); // publish: no wrapper
+  });
+  it('block form wraps in a data-sw-entry marker in PREVIEW (markEntries)', () => {
+    const out = block(true);
+    expect(out).toContain('data-sw-entry="b"');
+    expect(out).toContain('data-sw-dataset="hero"');
+    expect(out).toContain('<i>Beta b</i>');
+  });
+  it('block form routes an empty dataset to {{else}}', () => {
+    expect(renderTemplate('{{#sw-pick-entry data.hero @root.page.data.pick}}X{{else}}EMPTY{{/sw-pick-entry}}', { data: { hero: [] } } as TemplateContext)).toBe('EMPTY');
   });
 });

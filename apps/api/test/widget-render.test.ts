@@ -58,6 +58,22 @@ describe('hero-slider Widget render', () => {
     expect(html).toContain('data-sw-part="dots"');
   });
 
+  it('enables click-to-advance (data-click-next) on the slider', () => {
+    expect(render(fullConfig)).toContain('data-click-next="true"');
+  });
+
+  it('PREVIEW (markEntries) wraps the hero in a data-sw-entry marker → click opens the config entry', () => {
+    const html = renderTemplate('{{> hero-slider}}', {
+      data: { hero: [{ id: 'config', dataset: 'hero', values: fullConfig }] },
+      markEntries: true,
+      partials: WIDGET_PARTIALS,
+    });
+    expect(html).toContain('data-sw-entry="config"');
+    expect(html).toContain('data-sw-dataset="hero"');
+    // publish render (no markEntries) must NOT add the marker.
+    expect(render(fullConfig)).not.toContain('data-sw-entry');
+  });
+
   it('honours the toggles: autoplay off, arrows/indicators hidden, Ken Burns off', () => {
     const html = render({ ...fullConfig, autoplay: false, kenburns: false, show_arrows: false, show_indicators: false });
     expect(html).toContain('data-autoplay="false"');

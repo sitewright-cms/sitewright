@@ -12,12 +12,13 @@ const render = (config: Record<string, unknown>): string =>
 const fullConfig = {
   autoplay: true,
   interval: 6000,
+  kenburns: true,
   show_arrows: true,
   show_indicators: true,
   slides: [
     { image: '/media/a.jpg', caption: 'Alpha' },
     { image: '/media/b.jpg', caption: 'Beta' },
-    { image: '', caption: 'Gamma' },
+    { image: '', caption: '<strong>Gamma</strong>' },
   ],
 };
 
@@ -33,7 +34,14 @@ describe('hero-slider Widget render', () => {
     expect(html).toMatch(/<img class="sw-kenburns"[^>]*src="\/media\/a\.jpg"/);
     expect(html).toContain('Alpha');
     expect(html).toContain('Beta');
-    expect(html).toContain('Gamma');
+  });
+
+  it('captions support basic HTML (richtext via {{sw-rich}}, sanitized)', () => {
+    const html = render(fullConfig);
+    // The <strong> in the caption survives sanitization …
+    expect(html).toContain('<strong>Gamma</strong>');
+    // … but a script would be discarded.
+    expect(render({ ...fullConfig, slides: [{ image: '', caption: 'Hi<script>alert(1)</script>' }] })).not.toContain('<script>');
   });
 
   it('falls back to a base-200 placeholder for an empty image (a freshly-provisioned slide)', () => {
@@ -50,12 +58,19 @@ describe('hero-slider Widget render', () => {
     expect(html).toContain('data-sw-part="dots"');
   });
 
-  it('honours the toggles: autoplay off, arrows/indicators hidden', () => {
-    const html = render({ ...fullConfig, autoplay: false, show_arrows: false, show_indicators: false });
+  it('honours the toggles: autoplay off, arrows/indicators hidden, Ken Burns off', () => {
+    const html = render({ ...fullConfig, autoplay: false, kenburns: false, show_arrows: false, show_indicators: false });
     expect(html).toContain('data-autoplay="false"');
+    expect(html).toContain('data-kenburns="off"');
+    // Ken Burns off keeps the cover layout + caption (only the drift animation is gated, in CSS).
+    expect(html).toContain('class="sw-caption');
     expect(html).not.toContain('data-sw-part="prev"');
     expect(html).not.toContain('data-sw-part="next"');
     expect(html).not.toContain('data-sw-part="dots"');
+  });
+
+  it('Ken Burns on → data-kenburns="on" (drives the drift animation)', () => {
+    expect(render(fullConfig)).toContain('data-kenburns="on"');
   });
 
   it('renders nothing until the `hero` dataset exists (no config → empty)', () => {

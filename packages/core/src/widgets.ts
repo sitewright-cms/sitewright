@@ -65,13 +65,13 @@ export const GLOBAL_WIDGETS: readonly Widget[] = [
     // freshly-provisioned hero still renders. `data.hero` falls back to the bare dataset on translated
     // pages (resolveLocaleDatasets), so the single provisioned `hero` serves every locale.
     source: `{{#each data.hero}}
-<div class="relative h-[60vh] min-h-[420px] max-h-[640px] overflow-hidden rounded-3xl" data-sw-component="carousel" data-sw-block="Carousel" data-loop="true" data-autoplay="{{#if autoplay}}true{{else}}false{{/if}}" data-interval="{{interval}}" data-kenburns aria-label="Hero slideshow">
+<div class="relative h-[60vh] min-h-[420px] max-h-[640px] overflow-hidden rounded-3xl" data-sw-component="carousel" data-sw-block="Carousel" data-loop="true" data-autoplay="{{#if autoplay}}true{{else}}false{{/if}}" data-interval="{{interval}}" data-kenburns="{{#if kenburns}}on{{else}}off{{/if}}" aria-label="Hero slideshow">
   <div data-sw-part="track">
     {{#each slides}}
     <div data-sw-part="slide">
       {{#if image}}<img class="sw-kenburns" src="{{sw-url image}}" alt="" />{{else}}<div class="sw-kenburns bg-base-200"></div>{{/if}}
       <div class="absolute inset-0 flex items-center justify-center p-6">
-        <div class="sw-caption rounded-xl bg-black/40 px-7 py-3.5 text-center text-2xl font-semibold uppercase tracking-wider text-white shadow-2xl backdrop-blur-md">{{caption}}</div>
+        <div class="sw-caption rounded-xl bg-black/40 px-7 py-3.5 text-center text-2xl font-semibold uppercase tracking-wider text-white shadow-2xl backdrop-blur-md">{{sw-rich caption}}</div>
       </div>
     </div>
     {{/each}}
@@ -85,10 +85,11 @@ export const GLOBAL_WIDGETS: readonly Widget[] = [
       datasets: [
         {
           slug: 'hero',
-          name: 'Hero',
+          name: 'Hero Slider',
           fields: [
             { name: 'autoplay', type: 'boolean', required: false, localized: false },
             { name: 'interval', type: 'number', required: false, localized: false },
+            { name: 'kenburns', type: 'boolean', required: false, localized: false },
             { name: 'show_arrows', type: 'boolean', required: false, localized: false },
             { name: 'show_indicators', type: 'boolean', required: false, localized: false },
             {
@@ -98,7 +99,8 @@ export const GLOBAL_WIDGETS: readonly Widget[] = [
               localized: false,
               fields: [
                 { name: 'image', type: 'image', required: false, localized: false },
-                { name: 'caption', type: 'text', required: false, localized: false },
+                // RICHTEXT: captions support basic HTML (bold/links/…), rendered via {{sw-rich}} (sanitized).
+                { name: 'caption', type: 'richtext', required: false, localized: false },
               ],
             },
           ],
@@ -108,6 +110,7 @@ export const GLOBAL_WIDGETS: readonly Widget[] = [
               values: {
                 autoplay: true,
                 interval: 6000,
+                kenburns: true,
                 show_arrows: true,
                 show_indicators: true,
                 slides: [

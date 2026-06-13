@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { X } from 'lucide-react';
 import { api, type ApiKeyCapability, type ApiKeyView, type Project, type ProjectRole } from '../api';
-import { glassCard, glassPanel, glassInput, fieldLabel, primaryButton, dangerButton } from '../theme';
+import { glassCard, glassPanel, glassInput, fieldLabel, primaryButton, dangerButton, toggleInput } from '../theme';
 import { useDialogs } from './ui/Dialogs';
 
 const ALL_CAPABILITIES: ApiKeyCapability[] = ['content:read', 'content:write', 'content:delete', 'publish', 'deploy'];
@@ -144,10 +144,10 @@ export function ApiKeysManager({ project }: ApiKeysManagerProps) {
         </div>
         <fieldset className="flex flex-col">
           <legend className={fieldLabel}>Capabilities</legend>
-          <div className="flex flex-wrap gap-2 pt-1">
+          <div className="flex flex-wrap gap-x-4 gap-y-2 pt-1">
             {ALL_CAPABILITIES.map((cap) => (
-              <label key={cap} className="flex items-center gap-1 text-xs text-slate-600">
-                <input type="checkbox" checked={caps.includes(cap)} onChange={() => toggleCap(cap)} /> {cap}
+              <label key={cap} className="flex items-center gap-1.5 text-xs text-slate-600">
+                <input type="checkbox" className={toggleInput} checked={caps.includes(cap)} onChange={() => toggleCap(cap)} /> {cap}
               </label>
             ))}
           </div>

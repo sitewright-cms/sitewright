@@ -115,6 +115,15 @@
 .sw-brand-ring-hover:hover {
   box-shadow: 0 0 0 2px var(--sw-brand-ring);
 }
+/* Brand-tinted DaisyUI toggle — the checked state follows the instance brand (--sw-brand-1) instead of
+   the static daisyUI --color-primary (which the white-label runtime does NOT override). Pair with the
+   `toggle` class (see theme.ts `toggleInput`). Unlayered, so it wins over daisyUI's layered :checked rule
+   on equal specificity; the brand colour drives --input-color (the knob + track accent). */
+.sw-toggle:checked,
+.sw-toggle[aria-checked='true'] {
+  --input-color: var(--sw-brand-1);
+}
+
 /* Error focus ring (rose, brand-INDEPENDENT). Defined AFTER .sw-brand-focus so that on an input
    carrying both classes (a glassInput in an invalid state) this wins on equal specificity — keeping
    the validation cue rose, not brand-coloured. Matches the old `focus:border-rose-400 ring-rose-300/40`. */

@@ -9,7 +9,7 @@ import { Modal } from './ui/Modal';
 import { Tooltip } from './ui/Tooltip';
 import { FormsManager } from './FormsManager';
 import { SettingsView } from './settings/SettingsView';
-import { glassCard, glassInput, fieldLabel, primaryButton, ghostButton, gradientHover, gradientSurface } from '../theme';
+import { glassCard, glassInput, fieldLabel, primaryButton, ghostButton, gradientHover, gradientSurface, toggleInput } from '../theme';
 import { orderPagesByTree, canReorder, reorderWithinParent, orderedSiblings } from './pages-order';
 import { LocalePickerModal } from './i18n/LocalePickerModal';
 import { localeFlag, localeLabel } from './i18n/locale-catalog';
@@ -907,7 +907,7 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
                     Internal <code>/path</code>, external <code>https://</code>/<code>mailto:</code>/<code>tel:</code>, a same-page <code>#section</code>, or a <code>#dialog-id</code> (opens that modal). Leave empty for a dropdown-only parent.
                   </span>
                   <label className="mt-2 flex items-center gap-2 text-sm text-slate-600">
-                    <input type="checkbox" aria-label="Open in new tab" checked={phNewTab} onChange={(e) => setPhNewTab(e.target.checked)} />
+                    <input type="checkbox" className={toggleInput} aria-label="Open in new tab" checked={phNewTab} onChange={(e) => setPhNewTab(e.target.checked)} />
                     Open in a new tab
                   </label>
                 </div>
@@ -918,6 +918,7 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
                       <label key={slot} className="flex items-center gap-1.5 text-sm capitalize">
                         <input
                           type="checkbox"
+                          className={toggleInput}
                           aria-label={`Menu: ${slot}`}
                           checked={phSlots.includes(slot)}
                           onChange={(e) => setPhSlots((s) => (e.target.checked ? [...s, slot] : s.filter((x) => x !== slot)))}
@@ -927,7 +928,7 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
                     ))}
                   </div>
                   <label className="flex items-center gap-2 text-sm text-slate-600">
-                    <input type="checkbox" aria-label="Dropdown of child pages" checked={phDropdown} onChange={(e) => setPhDropdown(e.target.checked)} />
+                    <input type="checkbox" className={toggleInput} aria-label="Dropdown of child pages" checked={phDropdown} onChange={(e) => setPhDropdown(e.target.checked)} />
                     Dropdown of child pages
                   </label>
                 </fieldset>

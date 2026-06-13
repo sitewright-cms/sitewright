@@ -1,4 +1,4 @@
-import { glassInput } from '../../theme';
+import { glassInput, toggleInput } from '../../theme';
 
 /** An editable OIDC provider row. `scopes` is a space/comma string for the textbox; `secret` is a
  *  newly-typed plaintext client secret (write-only — blank keeps the stored one). `_key` is a stable
@@ -57,7 +57,7 @@ export function OidcProvidersField({ providers, onChange }: OidcProvidersFieldPr
         <div key={p._key} className="rounded-xl border border-white/60 bg-white/40 p-3">
           <div className="mb-2 flex items-center justify-between gap-2">
             <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-              <input type="checkbox" checked={p.enabled} onChange={(e) => update(i, { enabled: e.target.checked })} aria-label={`Provider ${i + 1} enabled`} />
+              <input type="checkbox" className={toggleInput} checked={p.enabled} onChange={(e) => update(i, { enabled: e.target.checked })} aria-label={`Provider ${i + 1} enabled`} />
               Enabled
             </label>
             <button type="button" className="text-sm font-medium text-rose-600 hover:text-rose-700" onClick={() => remove(i)} aria-label={`Remove provider ${i + 1}`}>
@@ -97,14 +97,14 @@ export function OidcProvidersField({ providers, onChange }: OidcProvidersFieldPr
               <input className={glassInput} aria-label={`Provider ${i + 1} scopes`} value={p.scopes} placeholder="openid profile email" onChange={(e) => update(i, { scopes: e.target.value })} />
             </label>
             <label className="flex items-start gap-2 text-xs text-slate-600 sm:col-span-2">
-              <input type="checkbox" className="mt-0.5" checked={p.autoRegister} onChange={(e) => update(i, { autoRegister: e.target.checked })} aria-label={`Provider ${i + 1} auto-register`} />
+              <input type="checkbox" className={toggleInput} checked={p.autoRegister} onChange={(e) => update(i, { autoRegister: e.target.checked })} aria-label={`Provider ${i + 1} auto-register`} />
               <span>
                 <span className="font-medium">Auto-register new users</span>
                 <span className="block text-slate-500">Create an account for any verified email from this provider that isn’t already a user or invited. New users get no project access until they create a project or an admin grants one.</span>
               </span>
             </label>
             <label className="flex items-start gap-2 text-xs text-slate-600 sm:col-span-2">
-              <input type="checkbox" className="mt-0.5" checked={p.usePkce} onChange={(e) => update(i, { usePkce: e.target.checked })} aria-label={`Provider ${i + 1} use PKCE`} />
+              <input type="checkbox" className={toggleInput} checked={p.usePkce} onChange={(e) => update(i, { usePkce: e.target.checked })} aria-label={`Provider ${i + 1} use PKCE`} />
               <span>
                 <span className="font-medium">Use PKCE (S256)</span>
                 <span className="block text-slate-500">On by default. Turn off only if the provider rejects PKCE — disabling it needs a client secret (a public client without PKCE is insecure).</span>

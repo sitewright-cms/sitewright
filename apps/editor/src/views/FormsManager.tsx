@@ -7,7 +7,7 @@ import { ProjectSmtp } from './ProjectSmtp';
 import { SubmissionsInbox } from './SubmissionsInbox';
 import { useDialogs } from './ui/Dialogs';
 import { SkeletonList } from './ui/Skeleton';
-import { glassCard, glassPanel, glassInput, primaryButton, ghostButton, dangerButton } from '../theme';
+import { glassCard, glassPanel, glassInput, primaryButton, ghostButton, dangerButton, toggleInput } from '../theme';
 
 const FIELD_TYPES: ReadonlyArray<FormField['type']> = ['text', 'email', 'tel', 'url', 'number', 'textarea', 'select'];
 
@@ -228,9 +228,10 @@ export function FormsManager({ project }: { project: Project }) {
                       </option>
                     ))}
                   </select>
-                  <label className="flex items-center gap-1 text-xs text-slate-500">
+                  <label className="flex items-center gap-1.5 text-xs text-slate-500">
                     <input
                       type="checkbox"
+                      className={toggleInput}
                       aria-label={`Field ${i + 1} required`}
                       checked={field.required}
                       onChange={(e) => patchField(i, { required: e.target.checked })}
@@ -364,6 +365,7 @@ export function FormsManager({ project }: { project: Project }) {
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
+            className={toggleInput}
             aria-label="Require hCaptcha"
             checked={draft.hcaptcha}
             disabled={draft.mode === 'contactPhp' || draft.mode === 'thirdParty'}

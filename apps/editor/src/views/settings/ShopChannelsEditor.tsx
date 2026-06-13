@@ -1,8 +1,12 @@
 import { AnimatePresence, motion } from 'motion/react';
 import { X } from 'lucide-react';
 import { SHOP_MAX_CHANNEL_FIELDS, type ShopFieldType } from '@sitewright/schema';
-import { glassInput, ghostButton } from '../../theme';
+import { glassInput, ghostButton, toggleInput } from '../../theme';
 import { newShopChannel, newShopField, type KeyedShopChannel, type KeyedShopField } from './model';
+
+/** Glass select styling WITHOUT a width util, so a native <select> auto-sizes to its widest option. */
+const glassSelectAuto =
+  'sw-brand-focus shrink-0 rounded-lg border border-white/60 bg-white/70 px-2 py-2 text-sm text-slate-800 shadow-sm outline-none transition';
 
 const KINDS: Array<{ value: KeyedShopChannel['kind']; label: string }> = [
   { value: 'whatsapp', label: 'WhatsApp' },
@@ -50,7 +54,7 @@ function OrderFieldsEditor({
             />
             <select
               aria-label={`Channel ${channelIndex + 1} field ${fi + 1} type`}
-              className={`${glassInput} w-32 shrink-0`}
+              className={glassSelectAuto}
               value={f.type}
               onChange={(e) => setField(f.id, { type: e.target.value as ShopFieldType })}
             >
@@ -60,9 +64,10 @@ function OrderFieldsEditor({
                 </option>
               ))}
             </select>
-            <label className="flex shrink-0 items-center gap-1 text-xs text-slate-500">
+            <label className="flex shrink-0 items-center gap-1.5 text-xs text-slate-500">
               <input
                 type="checkbox"
+                className={toggleInput}
                 aria-label={`Channel ${channelIndex + 1} field ${fi + 1} required`}
                 checked={f.required}
                 onChange={(e) => setField(f.id, { required: e.target.checked })}

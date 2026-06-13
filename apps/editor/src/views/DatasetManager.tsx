@@ -9,7 +9,7 @@ import { RenameDatasetModal } from './datasets/RenameDatasetModal';
 import { SidePanelHold } from './ui/SidePanel';
 import { useDialogs } from './ui/Dialogs';
 import { Tooltip } from './ui/Tooltip';
-import { glassCard, glassPanel, glassInput, fieldLabel, primaryButton, ghostButton, dangerButton, gradientHover } from '../theme';
+import { glassCard, glassPanel, glassInput, fieldLabel, primaryButton, ghostButton, dangerButton, gradientHover, toggleInput } from '../theme';
 
 const FIELD_TYPES: ReadonlyArray<FieldType> = [
   'text',
@@ -437,9 +437,10 @@ export function DatasetManager({ project }: { project: Project }) {
                         </option>
                       ))}
                     </select>
-                    <label className="flex items-center gap-1 text-xs text-slate-500">
+                    <label className="flex items-center gap-1.5 text-xs text-slate-500">
                       <input
                         type="checkbox"
+                        className={toggleInput}
                         aria-label={`${field.name} required`}
                         checked={field.required}
                         onChange={(e) =>

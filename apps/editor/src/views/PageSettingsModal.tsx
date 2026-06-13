@@ -14,7 +14,7 @@ import {
 import { isLinkPage, NAV_SLOTS, type NavSlot, type Page, type Template } from '@sitewright/schema';
 import { Modal } from './ui/Modal';
 import { AssetField } from './files/AssetField';
-import { glassInput } from '../theme';
+import { glassInput, toggleInput } from '../theme';
 
 /** The editable page-settings fields, flattened for form state. */
 export interface PageSettingsValues {
@@ -327,7 +327,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
               </label>
               {/* A sibling of the label (NOT nested) so the checkbox click toggles the checkbox. */}
               <label className="mt-2 flex items-center gap-2 text-sm font-normal text-slate-600">
-                <input type="checkbox" aria-label="Open in new tab" checked={v.linkNewTab} onChange={(e) => patch({ linkNewTab: e.target.checked })} />
+                <input type="checkbox" className={toggleInput} aria-label="Open in new tab" checked={v.linkNewTab} onChange={(e) => patch({ linkNewTab: e.target.checked })} />
                 Open in a new tab
               </label>
             </div>
@@ -518,6 +518,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
               <label key={slot} className="flex items-center gap-1.5 text-sm capitalize">
                 <input
                   type="checkbox"
+                  className={toggleInput}
                   aria-label={`Nav: ${slot}`}
                   checked={v.navSlots.includes(slot)}
                   onChange={(e) =>
@@ -563,6 +564,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
               <label className="flex items-end gap-2 pb-2 text-sm">
                 <input
                   type="checkbox"
+                  className={toggleInput}
                   aria-label="Show in dropdown"
                   checked={v.navDropdown}
                   onChange={(e) => patch({ navDropdown: e.target.checked })}

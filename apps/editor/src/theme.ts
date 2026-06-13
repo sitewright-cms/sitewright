@@ -16,6 +16,10 @@ export const glassInput =
 
 export const fieldLabel = 'mb-1 block text-xs font-medium text-slate-600';
 
+/** A DaisyUI switch for boolean on/off settings, brand-tinted when on (`sw-toggle` → --sw-brand-1).
+ *  The standard control for booleans across the editor — pair with a `<span>` label in a flex row. */
+export const toggleInput = 'toggle toggle-sm sw-toggle';
+
 /** The primary action: the brand gradient (configurable via `--sw-brand-1/2`), soft glow. Pairs with
  *  `cursor-pointer` (global). `waves-effect waves-light` adds the (white) ripple — see lib/ripple.ts. */
 export const primaryButton =

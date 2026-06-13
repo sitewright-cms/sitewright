@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import type { JsonValue } from '@sitewright/schema';
 import { Modal } from '../ui/Modal';
-import { ghostButton, glassInput, primaryButton } from '../../theme';
+import { ghostButton, glassInput, primaryButton, toggleInput } from '../../theme';
 
 type JsonType = 'string' | 'number' | 'boolean' | 'null' | 'object' | 'array';
 const TYPES: readonly JsonType[] = ['string', 'number', 'boolean', 'null', 'object', 'array'];
@@ -106,7 +106,7 @@ function ValueEditor({ value, onChange }: { value: JsonValue; onChange: (v: Json
           />
         )}
         {t === 'boolean' && (
-          <input aria-label="Value" type="checkbox" checked={value === true} onChange={(e) => onChange(e.target.checked)} className="toggle toggle-sm" />
+          <input aria-label="Value" type="checkbox" checked={value === true} onChange={(e) => onChange(e.target.checked)} className={toggleInput} />
         )}
         {t === 'null' && <span className="text-xs italic text-slate-400">null</span>}
       </div>

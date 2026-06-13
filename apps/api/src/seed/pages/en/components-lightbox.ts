@@ -40,6 +40,9 @@ export function pageComponentsLightbox(): Page {
       sec_masonry_d:
         'Mixed-aspect images — portraits, landscapes and wide covers — staggered into balanced CSS columns with no cropping. The attribute goes straight on the columns container; the images become one gallery.',
       aria_masonry: 'Masonry gallery',
+      sec_group_t: 'Lightbox — one gallery from separate images',
+      sec_group_d:
+        'These images are separate elements in their own cards, but a shared data-gallery name merges them into one lightbox — click either and page through both. The same works across different sections of the page.',
     },
     source: `<section class="mx-auto max-w-6xl px-6 pb-8 pt-24">
   <a class="nw-underline inline-flex items-center gap-1.5 text-sm font-semibold text-primary no-underline" href="{{sw-url parentPage.path}}">${icon('arrow-left', 'h-4 w-4')} {{parentPage.title}}</a>
@@ -122,6 +125,20 @@ export function pageComponentsLightbox(): Page {
     {{/sw-folder}}
     {{#sw-folder "Blog" kind="image"}}
     <a href="{{sw-url url}}" data-caption="{{alt}}" class="group relative mb-4 block break-inside-avoid overflow-hidden rounded-xl bg-base-200"><span class="skeleton absolute inset-0 z-0" aria-hidden="true"></span><img src="{{sw-url url}}" alt="{{alt}}" width="{{width}}" height="{{height}}" loading="lazy" class="relative z-10 block w-full transition-transform duration-500 group-hover:scale-[1.03]" /><span class="pointer-events-none absolute inset-0 z-20 bg-gradient-to-t from-black/40 via-black/0 to-black/0 opacity-50 transition-opacity duration-300 group-hover:opacity-90" aria-hidden="true"></span></a>
+    {{/sw-folder}}
+  </div>
+</section>
+
+<section class="mx-auto max-w-6xl px-6 pb-28">
+  <h2 class="text-3xl font-bold tracking-tight" data-sw-text="sec_group_t">Lightbox — one gallery from separate images</h2>
+  <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="sec_group_d">Separate images, one gallery — via a shared data-gallery name.</p>
+  <p class="mt-3 font-mono text-xs text-base-content/40"><code>&lt;img data-sw-component="lightbox" data-gallery="studio-tour" …&gt;</code></p>
+  <div class="mt-8 grid gap-6 sm:grid-cols-2">
+    {{#sw-folder "Brand" kind="image"}}
+    <figure class="rounded-2xl border border-base-200/70 bg-base-100 p-3 shadow-sm">
+      <img data-sw-component="lightbox" data-gallery="studio-tour" src="{{sw-url url}}" data-caption="{{alt}}" alt="{{alt}}" width="{{width}}" height="{{height}}" loading="lazy" class="block w-full rounded-xl" />
+      <figcaption class="mt-2 px-1 text-sm text-base-content/60">{{alt}}</figcaption>
+    </figure>
     {{/sw-folder}}
   </div>
 </section>`,

@@ -142,6 +142,8 @@ test.beforeAll(async ({ playwright, baseURL }) => {
 </div></section>
 <section id="lbsingle"><img data-sw-component="lightbox" data-thumbnails="false" src="${imgs[1]}" data-full="${imgs[0]}" data-caption="Solo" alt="solo" style="max-width:200px"></section>
 <section id="lbbare"><div data-sw-component="lightbox" aria-label="Bare gallery"><img src="${imgs[0]}" data-caption="Bare 0"><img src="${imgs[1]}" data-caption="Bare 1"><img src="${imgs[2]}" data-caption="Bare 2"></div></section>
+<section id="lbgA"><img data-sw-component="lightbox" data-gallery="tour" data-thumbnails="false" src="${imgs[0]}" data-caption="Tour 0" alt="t0" style="max-width:160px"></section>
+<section id="lbgB"><img data-sw-component="lightbox" data-gallery="tour" data-thumbnails="false" src="${imgs[1]}" data-caption="Tour 1" alt="t1" style="max-width:160px"></section>
 </div>`;
 
   expect(
@@ -477,6 +479,25 @@ test('lightbox minimal forms: a bare <img> one-liner and a <div> of bare <img> b
   await expect(ov2.locator('.sw-lightbox-count')).toHaveText('1/3');
   await expect(ov2.locator('.sw-lightbox-nav li')).toHaveCount(3);
   await expect(ov2.locator('.sw-lightbox-caption')).toContainText('Bare 0'); // data-caption copied onto the wrapped anchor
+  await page.keyboard.press('Escape');
+});
+
+test('lightbox grouping: a shared data-gallery merges separate-section images into one gallery', async ({ page }) => {
+  // Two single-line <img data-sw-component="lightbox" data-gallery="tour"> in DIFFERENT sections.
+  const a = page.locator('#lbgA img[data-sw-component="lightbox"]');
+  const b = page.locator('#lbgB img[data-sw-component="lightbox"]');
+  await a.click();
+  const ov = page.locator('.sw-lightbox[aria-hidden="false"]');
+  await expect(ov).toBeVisible();
+  await expect(ov.locator('.sw-lightbox-count')).toHaveText('1/2'); // merged: both images are one gallery
+  await expect(ov.locator('.sw-lightbox-caption')).toContainText('Tour 0');
+  await page.keyboard.press('Escape');
+  await expect(ov).toBeHidden();
+  // Clicking the OTHER section's image opens the same gallery at the second image (shown as 2/2).
+  await b.click();
+  const ov2 = page.locator('.sw-lightbox[aria-hidden="false"]');
+  await expect(ov2.locator('.sw-lightbox-count')).toHaveText('2/2');
+  await expect(ov2.locator('.sw-lightbox-caption')).toContainText('Tour 1');
   await page.keyboard.press('Escape');
 });
 

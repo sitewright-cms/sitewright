@@ -261,6 +261,9 @@ export function translationsDe(assets: Record<string, string>): Record<string, P
       sec_masonry_d:
         'Bilder unterschiedlicher Seitenverhältnisse — Hochformate, Querformate und breite Cover — versetzt in ausgewogene CSS-Spalten, ohne Beschnitt. Das Attribut steht direkt auf dem Spalten-Container; die Bilder werden zu einer Galerie.',
       aria_masonry: 'Masonry-Galerie',
+      sec_group_t: 'Lightbox — eine Galerie aus getrennten Bildern',
+      sec_group_d:
+        'Diese Bilder sind eigenständige Elemente in eigenen Karten, aber ein gemeinsamer data-gallery-Name fasst sie zu einer Lightbox zusammen — klicke auf eines und blättere durch beide. Das funktioniert auch über verschiedene Abschnitte der Seite hinweg.',
     },
   },
   faq: {

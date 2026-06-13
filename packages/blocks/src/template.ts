@@ -385,6 +385,22 @@ function createInstance(): typeof Handlebars {
   // lower-trust content (dataset entries are member-editable) never reaches the page unsanitized.
   // Non-strings render nothing. Use in element context.
   hb.registerHelper('sw-rich', (value: unknown) => new Handlebars.SafeString(typeof value === 'string' ? sanitizeRichHtml(value) : ''));
+  // {{#with (sw-pick-entry data.<slug> @root.page.data.<key>)}} — pick ONE dataset entry's VALUES by
+  // id (the id a {{sw-control as="dataset-item"}} stores), defaulting to the FIRST entry when the
+  // selection is unset/unknown. Lets a Widget (e.g. the hero slider) render a chosen config out of
+  // several. Returns the entry's `values` (so the #with body binds the config fields) — or undefined
+  // for an empty dataset (→ #with renders nothing). Accepts entry envelopes ({id,values}) OR a plain
+  // values array (returns the element as-is), so it's robust across the render + test contexts.
+  hb.registerHelper('sw-pick-entry', (entries: unknown, selectedId: unknown) => {
+    if (!Array.isArray(entries) || entries.length === 0) return undefined;
+    const byId =
+      typeof selectedId === 'string' && selectedId
+        ? entries.find((e) => e && typeof e === 'object' && (e as { id?: unknown }).id === selectedId)
+        : undefined;
+    const chosen = byId ?? entries[0];
+    if (chosen && typeof chosen === 'object' && 'values' in (chosen as object)) return (chosen as { values: unknown }).values;
+    return chosen;
+  });
   // {{sw-truncate text 80}} → clip to N chars with an ellipsis.
   hb.registerHelper('sw-truncate', (value: unknown, max: unknown) => {
     const s = typeof value === 'string' ? value : '';
@@ -662,7 +678,8 @@ function createInstance(): typeof Handlebars {
         throw new Error('sw-control: as="select" requires a non-empty options="a, b, c" list');
       }
     } else {
-      opts = controlOptions(as, root);
+      // as="dataset-item" needs the dataset slug (which entries to list); folder/dataset ignore it.
+      opts = controlOptions(as, root, typeof hash.dataset === 'string' ? hash.dataset : undefined);
     }
     let attrs =
       `data-sw-control="${escapeAttr(rawTarget)}" data-sw-control-as="${escapeAttr(as)}"` +

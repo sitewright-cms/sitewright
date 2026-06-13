@@ -24,8 +24,8 @@ export function entriesEn(assets: Record<string, string>): Entry[] {
   pub('team', 'team-dev', { name: 'Devon Park', role: 'Lead Engineer', photo: assets['team-devon'], bio: 'Performance obsessive; ships sites that score 100.' }),
   pub('team', 'team-ines', { name: 'Inés Romero', role: 'UX Strategist', photo: assets['team-ines'], bio: 'Turns fuzzy goals into journeys that convert.' }),
   pub('team', 'team-sol', { name: 'Sol Nakamura', role: 'Brand Designer', photo: assets['team-sol'], bio: 'Builds type systems and logos with staying power.' }),
-  // --- hero (the hero-slider WIDGET config: ONE non-localized `config` entry — settings + an
-  //     editable nested slides list. Shared across locales; dogfoods the nested list field type) ---
+  // --- hero (the hero-slider WIDGET config: TWO non-localized configs — the page picks one with a
+  //     {{sw-control as="dataset-item"}}. Shared across locales; dogfoods the nested list field type) ---
   pub('hero', 'config', {
     autoplay: true,
     interval: 6000,
@@ -37,6 +37,19 @@ export function entriesEn(assets: Record<string, string>): Entry[] {
       { image: assets['proj-aria'], caption: 'Welcome to <strong>Northwind Studio</strong>' },
       { image: assets['proj-flint'], caption: 'Websites with real craft' },
       { image: assets['proj-harbor'], caption: 'Built to perform' },
+    ],
+  }),
+  // A second, calmer config to switch to (Ken Burns + autoplay off, no dots) — demonstrates that one
+  // dataset holds multiple Hero Slider configs you pick between with the dataset-item control.
+  pub('hero', 'config-minimal', {
+    autoplay: false,
+    interval: 6000,
+    kenburns: false,
+    show_arrows: true,
+    show_indicators: false,
+    slides: [
+      { image: assets['proj-harbor'], caption: 'A calmer, static hero' },
+      { image: assets['proj-lumen'], caption: 'Two slides, no autoplay' },
     ],
   }),
   // --- testimonials (the home Carousel slides) ---

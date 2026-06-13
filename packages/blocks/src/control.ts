@@ -17,7 +17,8 @@ export type ControlAs =
   | 'file'
   | 'select'
   | 'folder'
-  | 'dataset';
+  | 'dataset'
+  | 'dataset-item';
 
 /** The full, ordered set of valid `as` values — exported so the helper can list them in its error. */
 export const CONTROL_AS_VALUES = [
@@ -32,6 +33,7 @@ export const CONTROL_AS_VALUES = [
   'select',
   'folder',
   'dataset',
+  'dataset-item',
 ] as const satisfies readonly ControlAs[];
 
 const CONTROL_AS = new Set<ControlAs>(CONTROL_AS_VALUES);
@@ -135,8 +137,11 @@ export function controlCurrentValue(t: ControlTarget, root: ControlRoot): string
   return readDataLeaf(root.page?.data, t.key);
 }
 
-/** Dropdown options for as="folder" (media folder paths) / as="dataset" (dataset names). */
-export function controlOptions(as: ControlAs, root: ControlRoot): string[] {
+/** Dropdown options for as="folder" (media folder paths), as="dataset" (dataset names), and
+ *  as="dataset-item" (the ENTRY IDS of `arg`'s dataset — the value a dataset-item control stores,
+ *  picking which entry a Widget like the hero slider renders). Entry order is preserved (NOT sorted)
+ *  so the list matches the dataset panel. */
+export function controlOptions(as: ControlAs, root: ControlRoot, arg?: string): string[] {
   if (as === 'folder') {
     const media = Array.isArray(root.media) ? root.media : [];
     const set = new Set<string>();
@@ -146,6 +151,17 @@ export function controlOptions(as: ControlAs, root: ControlRoot): string[] {
   if (as === 'dataset') {
     const data = root.data;
     return data && typeof data === 'object' ? Object.keys(data).filter((k) => !DANGEROUS.has(k)).sort() : [];
+  }
+  if (as === 'dataset-item') {
+    const slug = typeof arg === 'string' ? arg : '';
+    const data = root.data;
+    if (!slug || DANGEROUS.has(slug) || !data || typeof data !== 'object' || !Object.prototype.hasOwnProperty.call(data, slug)) return [];
+    // eslint-disable-next-line security/detect-object-injection -- slug is proto-guarded + hasOwnProperty-checked
+    const entries = (data as Record<string, unknown>)[slug];
+    if (!Array.isArray(entries)) return [];
+    return entries
+      .map((e) => (e && typeof e === 'object' && typeof (e as { id?: unknown }).id === 'string' ? (e as { id: string }).id : ''))
+      .filter((id) => id && !DANGEROUS.has(id));
   }
   return [];
 }

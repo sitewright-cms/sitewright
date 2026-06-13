@@ -279,9 +279,10 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     var lab = document.createElement('label');
     lab.appendChild(document.createTextNode(el.getAttribute('data-sw-control-label') || 'Value'));
     var field;
-    if (as === 'folder' || as === 'dataset' || as === 'select') {
-      // folder/dataset options come from the page (media folders / datasets); select options are the
-      // author's options="…" list — both arrive pre-rendered in data-sw-control-options.
+    if (as === 'folder' || as === 'dataset' || as === 'dataset-item' || as === 'select') {
+      // folder/dataset/dataset-item options come from the page (media folders / dataset names / a
+      // dataset's entry ids); select options are the author's options="…" list — all arrive
+      // pre-rendered in data-sw-control-options.
       field = document.createElement('select');
       var blank = document.createElement('option'); blank.value = ''; blank.textContent = '\\u2014 none \\u2014'; field.appendChild(blank);
       var opts = [];

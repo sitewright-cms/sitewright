@@ -129,8 +129,9 @@ Quick rules vs the similar-looking DaisyUI classes:
   <a href><img></a> children (you style the container); (3) explicit data-sw-block + data-sw-part
   grid for the batteries-included styled square grid. Every image is an <img> (the open animation
   clones it). Toggle: data-thumbnails/data-arrows/data-animation="false", data-fit="fill", data-tilt
-  / data-history="true". For no cropping use a masonry (class="block columns-2 sm:columns-3" +
-  natural-aspect imgs) or match the tile aspect to the image. No DaisyUI equivalent.
+  / data-history="true". data-gallery="name" merges every lightbox sharing that name (across
+  sections + forms) into one combined gallery. For no cropping use a masonry
+  (class="block columns-2 sm:columns-3" + natural-aspect imgs) or match the tile aspect. No DaisyUI equivalent.
 - MODAL → data-sw-component="modal" (native <dialog>: focus trap/Esc/backdrop for free).
   DaisyUI's modal methods need inline JS (rejected) or a checkbox hack (poor a11y) — don't.
 - Cookie banner → data-sw-component="cookie-consent", placed ONCE site-wide in the website

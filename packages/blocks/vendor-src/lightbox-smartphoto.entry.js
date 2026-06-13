@@ -21,7 +21,9 @@
 // styled grid + thumbnail defaults; the minimal forms are author-styled.
 //
 // Options are read from data-* on the root (documented in COMPONENT_CATALOG): data-thumbnails,
-// data-arrows, data-animation, data-fit, data-tilt, data-history.
+// data-arrows, data-animation, data-fit, data-tilt, data-history. data-gallery="name" MERGES
+// every lightbox sharing that name (across sections and across the single-line/div forms) into one
+// gallery — see init().
 import SmartPhoto from 'smartphoto/src/core/index.js';
 
 // Generic, vendor-neutral class names for the runtime-built viewer DOM (override SmartPhoto's
@@ -56,9 +58,6 @@ var CLASS_NAMES = {
   smartPhotoLoaderWrap: 'sw-lightbox-loader-wrap',
   smartPhotoImgClone: 'sw-lightbox-img-clone',
 };
-
-// Unique per-root gallery id, so multiple lightboxes on one page stay independent.
-var groupSeq = 0;
 
 // Wrap a bare <img> in the <a href><img> structure SmartPhoto expects — href is the FULL image
 // (data-full, else the img's own src), and the caption carries over. No-op if the image is already
@@ -96,10 +95,12 @@ function resolveItems(root) {
   return items;
 }
 
-function enhance(root) {
-  if (root.getAttribute('data-sw-enhanced') === 'true') return;
-  var items = resolveItems(root);
-  if (!items.length) return;
+// Build ONE SmartPhoto gallery from a bucket of items (possibly merged across several roots that
+// share a data-gallery name). Options (data-thumbnails etc.) come from the gallery's optionRoot —
+// the first lightbox element that contributed to it.
+function enhanceGallery(gallery) {
+  var root = gallery.optionRoot;
+  var items = gallery.items;
 
   var attr = function (name, fallback) {
     var v = root.getAttribute(name);
@@ -114,13 +115,11 @@ function enhance(root) {
   };
   var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  // Scope this gallery: a unique group id keeps each root independent. SmartPhoto accepts a
-  // NodeList/array as its element set, so we hand it exactly this root's items (per-root
-  // options, no global selector that would merge separate galleries).
-  var group = 'sw-lb-' + ++groupSeq;
+  // SmartPhoto accepts a NodeList/array as its element set; one shared data-group across all of the
+  // gallery's items makes them a single gallery even when they live in different sections.
   items.forEach(function (a, i) {
-    a.setAttribute('data-group', group);
-    if (!a.getAttribute('data-id')) a.setAttribute('data-id', group + '-' + i);
+    a.setAttribute('data-group', gallery.key);
+    if (!a.getAttribute('data-id')) a.setAttribute('data-id', gallery.key + '-' + i);
   });
 
   var sp = new SmartPhoto(items, {
@@ -174,12 +173,39 @@ function enhance(root) {
       window.setTimeout(arm, 0);
     });
   });
-
-  root.setAttribute('data-sw-enhanced', 'true');
 }
 
+// Collect every lightbox root, resolve its items, and bucket them into galleries: roots that share
+// a data-gallery="name" MERGE into one gallery (images grouped across sections and across the
+// single-line/div forms); roots without the attribute each get their own. Group order + item order
+// follow DOM order; a gallery's options come from the first root that contributed to it.
 function init() {
-  Array.prototype.forEach.call(document.querySelectorAll('[data-sw-component="lightbox"]'), enhance);
+  var galleries = [];
+  var byName = Object.create(null); // null-proto: a data-gallery="__proto__"/"constructor" can't alias a built-in
+  var seq = 0;
+  Array.prototype.forEach.call(document.querySelectorAll('[data-sw-component="lightbox"]'), function (root) {
+    if (root.getAttribute('data-sw-enhanced') === 'true') return;
+    var items = resolveItems(root);
+    if (!items.length) return;
+    root.setAttribute('data-sw-enhanced', 'true');
+    var name = root.getAttribute('data-gallery');
+    var gallery;
+    if (name) {
+      gallery = byName[name];
+      if (!gallery) {
+        gallery = { key: 'sw-lb-g-' + name, items: [], optionRoot: root };
+        byName[name] = gallery;
+        galleries.push(gallery);
+      }
+    } else {
+      gallery = { key: 'sw-lb-' + ++seq, items: [], optionRoot: root };
+      galleries.push(gallery);
+    }
+    items.forEach(function (it) {
+      gallery.items.push(it);
+    });
+  });
+  galleries.forEach(enhanceGallery);
 }
 if (document.readyState !== 'loading') init();
 else document.addEventListener('DOMContentLoaded', init);

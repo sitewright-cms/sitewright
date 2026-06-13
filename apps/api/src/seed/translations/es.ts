@@ -259,6 +259,9 @@ export function translationsEs(assets: Record<string, string>): Record<string, P
       sec_masonry_d:
         'Imágenes de proporciones variadas — verticales, horizontales y portadas anchas — escalonadas en columnas CSS equilibradas, sin recorte. El atributo va directamente en el contenedor de columnas; las imágenes forman una galería.',
       aria_masonry: 'Galería masonry',
+      sec_group_t: 'Lightbox — una galería desde imágenes separadas',
+      sec_group_d:
+        'Estas imágenes son elementos independientes en sus propias tarjetas, pero un mismo nombre data-gallery las une en una sola lightbox — haz clic en cualquiera y pasa por ambas. Lo mismo funciona entre distintas secciones de la página.',
     },
   },
   faq: {

@@ -8,8 +8,14 @@
 //   data-sw-text="key"  → element textContent          (from page.data[key]; serializer escapes)
 //   data-sw-html="key"  → element innerHTML             (from page.data[key]; sanitizeRichHtml)
 //   data-sw-href="key"  → anchor href                   (from page.data[key]; safeUrl)
-//   data-sw-src="key"   → <img> src                     (from page.data[key]; safeUrl)
-//   data-sw-bg="key"    → inline background-image style (from page.data[key]; safeUrl + cssUrlEscape)
+//   data-sw-src="key"   → <img> src, OR `data-src` when the element opts into LAZY-loading (from page.data[key]; safeUrl)
+//   data-sw-bg="key"    → inline background-image style (safeUrl + cssUrlEscape), OR `data-bg` when LAZY (safeUrl; the lazyload runtime escapes the url() itself) (from page.data[key])
+//
+// LAZY-LOAD: when the element already carries the lazy-load attribute (`data-src` for an image,
+// `data-bg` for a background — the vocabulary the lazyload.ts runtime copies into `src`/
+// `background-image` on intersect), the directive writes the resolved URL THERE instead of the eager
+// `src`/inline style. So an author opts an editable image into lazy-loading by adding a (possibly
+// empty) `data-src`/`data-bg` attribute; data-sw-src/bg keep filling it from page.data.
 //
 // STORE: a SINGLE store — every directive reads `page.data`. A BARE key (`data-sw-text="hero_h1"`,
 // `data-sw-html="bio"`) is a top-level page.data property; a `data.<path>` key (`data.article_title`)
@@ -152,9 +158,14 @@ export function resolveDirectives(html: string, ctx: DirectiveContext): string {
     const srcKey = el.attribs[SRC_ATTR];
     if (typeof srcKey === 'string') {
       // Editable image: a non-empty override → <img src> (scheme-sanitized); empty → keep the
-      // authored default (so clearing reverts, rather than producing a broken src="").
+      // authored default (so clearing reverts, rather than producing a broken src=""). When the
+      // element opts into LAZY-loading (it carries a `data-src` attr the lazyload runtime swaps into
+      // `src` on intersect), fill THAT instead so data-sw-src works with deferred images.
       const value = resolveOverride(ctx, srcKey);
-      if (value !== undefined && value !== '') el.attribs.src = safeUrl(value, '');
+      if (value !== undefined && value !== '') {
+        const target = Object.prototype.hasOwnProperty.call(el.attribs, 'data-src') ? 'data-src' : 'src';
+        el.attribs[target] = safeUrl(value, '');
+      }
     }
     const bgKey = el.attribs[BG_ATTR];
     if (typeof bgKey === 'string') {
@@ -165,11 +176,18 @@ export function resolveDirectives(html: string, ctx: DirectiveContext): string {
       // _assets step; a non-/media root-relative bg URL is not rebased — known sub-path-export gap.)
       const value = resolveOverride(ctx, bgKey);
       if (value !== undefined && value !== '') {
-        const css = cssUrlEscape(safeUrl(value, ''));
-        if (css) {
-          const existing = (el.attribs.style ?? '').replace(/background-image\s*:[^;]*;?/gi, '').trim();
-          const prefix = existing ? existing.replace(/;?$/, '; ') : '';
-          el.attribs.style = `${prefix}background-image:url('${css}')`;
+        const safe = safeUrl(value, '');
+        if (Object.prototype.hasOwnProperty.call(el.attribs, 'data-bg')) {
+          // LAZY background: hand the resolved URL to the lazyload runtime via `data-bg` (it sets
+          // `background-image` on intersect and escapes the url() itself) instead of an eager inline style.
+          if (safe) el.attribs['data-bg'] = safe;
+        } else {
+          const css = cssUrlEscape(safe);
+          if (css) {
+            const existing = (el.attribs.style ?? '').replace(/background-image\s*:[^;]*;?/gi, '').trim();
+            const prefix = existing ? existing.replace(/;?$/, '; ') : '';
+            el.attribs.style = `${prefix}background-image:url('${css}')`;
+          }
         }
       }
     }

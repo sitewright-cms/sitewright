@@ -27,6 +27,16 @@ export interface ComponentAttribute {
   description: string;
 }
 
+/** A worked, copy-paste example beyond the canonical `skeleton` (e.g. an alternate authoring form). */
+export interface ComponentCatalogExample {
+  /** Short heading for the example. */
+  label: string;
+  /** The copy-paste snippet (illustrative — may be a fragment; only `skeleton` is validator-checked). */
+  code: string;
+  /** Optional caveat / cross-reference. */
+  note?: string;
+}
+
 /** The authoring contract of one first-party interactive component. */
 export interface ComponentCatalogEntry {
   /** Registry block type (matches `COMPONENT_TYPES` in @sitewright/blocks). */
@@ -47,6 +57,8 @@ export interface ComponentCatalogEntry {
   noJs: string;
   /** Usage guidance, incl. how this relates to the DaisyUI classes that look similar. */
   notes: string;
+  /** Optional worked examples beyond the skeleton (alternate forms, layouts). Illustrative only. */
+  examples?: ComponentCatalogExample[];
 }
 
 export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
@@ -165,6 +177,33 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
     noJs: 'Each thumbnail is a plain link to the full image — clicking simply opens it.',
     notes:
       'The viewer DOM is built entirely by the runtime (no overlay element to author). THREE authoring forms: (1) ONE LINE — a single image: `<img data-sw-component="lightbox" src="{{sw-url thumb}}" data-full="{{sw-url full}}" data-caption="…" alt="…">` (data-full optional; omit it and the src is used full-size). (2) MINIMAL GALLERY — a container of images: `<div data-sw-component="lightbox" class="grid grid-cols-4 gap-2">` whose children are bare `<img>` or `<a href><img></a>` (bare imgs are auto-wrapped; you style the container layout yourself). (3) EXPLICIT — the styled-grid skeleton above (data-sw-block + data-sw-part) for the batteries-included uniform square-cover grid + thumbnail strip. Every image must be an `<img>` (the open animation clones it). PE note: the `<a href>` forms open the full image with NO JS; a bare `<img>` only opens via JS (the image still shows without it). The strip, arrows, open animation, fit, tilt, and URL-hash are toggled via data-* (see attributes). Multiple lightboxes on one page are independent galleries by default; give them a shared data-gallery="name" to MERGE them into one combined gallery (images grouped across sections / forms). For a polished explicit tile, keep the `<img>` and add a DaisyUI .skeleton loader behind + a dim gradient overlay; match the tile aspect to the image (or use a masonry: `class="block columns-2 sm:columns-3"` + natural-aspect imgs) to avoid cropping. DaisyUI has no gallery/lightbox equivalent. Pairs naturally with a {{#sw-folder}} loop or a dataset loop.',
+    examples: [
+      {
+        label: 'Single image (one line)',
+        code: '<img data-sw-component="lightbox" data-thumbnails="false" src="{{sw-url thumb}}" data-full="{{sw-url full}}" data-caption="A quiet corner of the studio" alt="Studio" class="mx-auto block w-full max-w-3xl rounded-2xl" />',
+        note: 'The whole lightbox in one element. data-full is optional — omit it and the src is used full-size.',
+      },
+      {
+        label: 'Gallery (minimal)',
+        code: '<div data-sw-component="lightbox" class="grid grid-cols-2 gap-3 md:grid-cols-4" aria-label="Studio gallery">\n  {{#sw-folder "Studio" kind="image"}}\n  <a href="{{sw-url url}}" data-caption="{{alt}}">\n    <img src="{{sw-url url}}" alt="{{alt}}" loading="lazy" class="aspect-[4/3] w-full rounded-xl object-cover" />\n  </a>\n  {{/sw-folder}}\n</div>',
+        note: 'Any container of <img> or <a href><img> children; you style the layout. Bare <img>s are auto-wrapped.',
+      },
+      {
+        label: 'Thumbnail vs full-size',
+        code: '<!-- bare image: small thumb in the tile, large image in the viewer -->\n<img data-sw-component="lightbox" src="{{sw-url thumb}}" data-full="{{sw-url full}}" data-caption="…">\n\n<!-- anchor form: the href is the full image -->\n<a data-sw-part="item" href="{{sw-url full}}" data-caption="…">\n  <img src="{{sw-url thumb}}" alt="…">\n</a>',
+        note: 'The viewer opens href / data-full (full); the inline <img src> is the thumbnail. Every item MUST contain an <img>.',
+      },
+      {
+        label: 'Masonry (mixed aspect, no crop)',
+        code: '<div data-sw-component="lightbox" class="block columns-2 gap-4 sm:columns-3" aria-label="Gallery">\n  {{#sw-folder "Projects" kind="image"}}\n  <a href="{{sw-url url}}" data-caption="{{alt}}" class="mb-4 block break-inside-avoid overflow-hidden rounded-xl">\n    <img src="{{sw-url url}}" alt="{{alt}}" width="{{width}}" height="{{height}}" loading="lazy" class="block w-full" />\n  </a>\n  {{/sw-folder}}\n</div>',
+        note: 'CSS columns + natural-aspect images stagger without cropping. width/height reserve space (no layout shift).',
+      },
+      {
+        label: 'Group across sections (data-gallery)',
+        code: '<section> … <img data-sw-component="lightbox" data-gallery="tour" src="{{sw-url a}}" data-caption="Exterior"> </section>\n<section> … <img data-sw-component="lightbox" data-gallery="tour" src="{{sw-url b}}" data-caption="Interior"> </section>\n<!-- click either image → one combined gallery -->',
+        note: 'A shared data-gallery name merges lightboxes across sections / forms into one gallery.',
+      },
+    ],
   },
   {
     type: 'Modal',

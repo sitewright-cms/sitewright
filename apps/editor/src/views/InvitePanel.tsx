@@ -85,9 +85,9 @@ export function InvitePanel({ kind, invites, onInvite, onRevoke, onChanged }: In
           <p className="mt-1 text-amber-800">
             Send this link to your {noun}. They accept by signing in (or registering) with that email.
           </p>
-          <code className="mt-2 block overflow-x-auto rounded bg-white px-2 py-1 font-mono text-[12px] text-amber-900">
-            {link.url}
-          </code>
+          <pre className="mt-2 mb-0 overflow-x-auto rounded bg-white px-2 py-1 font-mono text-[12px] text-amber-900">
+            <code>{link.url}</code>
+          </pre>
           <div className="mt-2 flex items-center gap-3">
             <button
               className="rounded border border-amber-400 px-2 py-0.5 text-xs text-amber-800 hover:bg-amber-100"

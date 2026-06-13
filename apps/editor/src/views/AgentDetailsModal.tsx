@@ -135,7 +135,7 @@ function ConnectGuide({ emphasized }: { emphasized: boolean }) {
               <li>
                 Add this MCP server to your agent — the same block works for Cursor, Cline, Windsurf, Gemini CLI and most
                 MCP-aware tools:
-                <pre className={PRE}>{cliConfig}</pre>
+                <pre className={PRE}><code>{cliConfig}</code></pre>
               </li>
               <li>
                 Or let the CLI print the exact snippet (and file path) for your agent:{' '}

@@ -7,7 +7,7 @@ import { icon } from '../../helpers.js';
 // section is authored the EASY way — the `hero-slider` WIDGET ({{> hero-slider}}), which on save
 // provisions a `hero` config dataset (settings + an editable slides list) and renders from it — to
 // show that a full Ken Burns hero is one include with zero custom CSS, fully editable as data. The
-// `<code>` chips are intentionally untranslated.
+// `<pre><code>` samples are intentionally untranslated.
 export function pageComponentsSlider(): Page {
   return {
     id: 'comp-slider',
@@ -54,14 +54,14 @@ export function pageComponentsSlider(): Page {
 <section class="mx-auto max-w-6xl px-6 pb-20">
   <h2 class="text-3xl font-bold tracking-tight" data-sw-text="sec_hero_t">Hero slider — one include</h2>
   <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="sec_hero_d">This entire hero is one snippet — no custom CSS.</p>
-  <p class="mt-3 font-mono text-xs text-base-content/40"><code>&#123;&#123;&gt; hero-slider&#125;&#125;</code></p>
+  <pre class="mt-3 inline-block max-w-full overflow-x-auto text-xs"><code>&#123;&#123;&gt; hero-slider&#125;&#125;</code></pre>
   <div class="mt-8">{{> hero-slider}}</div>
 </section>
 
 <section class="mx-auto max-w-6xl px-6 pb-20">
   <h2 class="text-3xl font-bold tracking-tight" data-sw-text="sec_fade_t">Slider — the defaults</h2>
   <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="sec_fade_d">No options at all: slides crossfade, arrows overlay mid-left and mid-right, indicators sit centered at the bottom.</p>
-  <p class="mt-3 font-mono text-xs text-base-content/40"><code>data-sw-component="carousel"</code></p>
+  <pre class="mt-3 inline-block max-w-full overflow-x-auto text-xs"><code>data-sw-component="carousel"</code></pre>
   <div class="relative mt-8 overflow-hidden rounded-3xl" data-sw-component="carousel" data-sw-block="Carousel" aria-label="{{page.data.aria_fade}}">
     <div data-sw-part="track">
       {{#each data.projects}}
@@ -80,7 +80,7 @@ export function pageComponentsSlider(): Page {
 <section class="mx-auto max-w-6xl px-6 pb-20">
   <h2 class="text-3xl font-bold tracking-tight" data-sw-text="sec_slide_t">Slide effect, looping, autoplay</h2>
   <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="sec_slide_d">The translating strip instead of a crossfade, wrapping endlessly and advancing on its own — hover or focus pauses it.</p>
-  <p class="mt-3 font-mono text-xs text-base-content/40"><code>data-effect="slide" data-loop="true" data-autoplay="true" data-interval="4000"</code></p>
+  <pre class="mt-3 inline-block max-w-full overflow-x-auto text-xs"><code>data-effect="slide" data-loop="true" data-autoplay="true" data-interval="4000"</code></pre>
   <div class="relative mt-8 overflow-hidden rounded-3xl" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-loop="true" data-autoplay="true" data-interval="4000" aria-label="{{page.data.aria_slide}}">
     <div data-sw-part="track">
       {{#each data.projects}}
@@ -99,7 +99,7 @@ export function pageComponentsSlider(): Page {
 <section class="mx-auto max-w-6xl px-6 pb-20">
   <h2 class="text-3xl font-bold tracking-tight" data-sw-text="sec_items_t">Multiple items with a peek</h2>
   <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="sec_items_d">The --sw-items variable sets slides per view; a fractional value leaves the next card peeking in from the edge. Drag, swipe, or use the arrows.</p>
-  <p class="mt-3 font-mono text-xs text-base-content/40"><code>data-effect="slide" data-loop="true" class="[--sw-items:1.2] md:[--sw-items:2.4] lg:[--sw-items:3.2]"</code></p>
+  <pre class="mt-3 inline-block max-w-full overflow-x-auto text-xs"><code>data-effect="slide" data-loop="true" class="[--sw-items:1.2] md:[--sw-items:2.4] lg:[--sw-items:3.2]"</code></pre>
   <div class="relative mt-8 [--sw-items:1.2] md:[--sw-items:2.4] lg:[--sw-items:3.2]" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-loop="true" aria-label="{{page.data.aria_items}}">
     <div data-sw-part="track" class="overflow-hidden rounded-3xl">
       {{#each data.projects}}
@@ -122,7 +122,7 @@ export function pageComponentsSlider(): Page {
 <section class="mx-auto max-w-6xl px-6 pb-20">
   <h2 class="text-3xl font-bold tracking-tight" data-sw-text="sec_align_t">Aligning a partial row</h2>
   <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="sec_align_d">When fewer items are shown than fill the row, data-item-align distributes them horizontally.</p>
-  <p class="mt-3 font-mono text-xs text-base-content/40"><code>data-item-align="center" class="[--sw-items:5]"</code></p>
+  <pre class="mt-3 inline-block max-w-full overflow-x-auto text-xs"><code>data-item-align="center" class="[--sw-items:5]"</code></pre>
   <div class="relative mt-8 [--sw-items:5]" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-item-align="center" aria-label="{{page.data.aria_align}}">
     <div data-sw-part="track">
       <figure data-sw-part="slide" class="px-2"><div class="flex aspect-square flex-col items-center justify-center gap-2 rounded-2xl border border-base-200 bg-base-100 text-primary shadow-sm">${icon('palette', 'h-8 w-8')}</div></figure>
@@ -135,7 +135,7 @@ export function pageComponentsSlider(): Page {
 <section class="mx-auto max-w-6xl px-6 pb-20">
   <h2 class="text-3xl font-bold tracking-tight" data-sw-text="sec_scroll_t">Continuous auto-scroll</h2>
   <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="sec_scroll_d">A steady ticker instead of stepped slides — built for logo walls and image strips. It pauses while hovered or focused.</p>
-  <p class="mt-3 font-mono text-xs text-base-content/40"><code>data-autoscroll="true" data-autoscroll-speed="1.5" data-loop="true" data-effect="slide"</code></p>
+  <pre class="mt-3 inline-block max-w-full overflow-x-auto text-xs"><code>data-autoscroll="true" data-autoscroll-speed="1.5" data-loop="true" data-effect="slide"</code></pre>
   <div class="relative mt-8 [--sw-items:2] md:[--sw-items:4]" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-loop="true" data-autoscroll="true" data-autoscroll-speed="1.5" aria-label="{{page.data.aria_scroll}}">
     <div data-sw-part="track" class="overflow-hidden rounded-2xl">
       {{#each data.projects}}
@@ -150,7 +150,7 @@ export function pageComponentsSlider(): Page {
 <section class="mx-auto max-w-6xl px-6 pb-20">
   <h2 class="text-3xl font-bold tracking-tight" data-sw-text="sec_wheel_t">Wheel gestures &amp; auto height</h2>
   <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="sec_wheel_d">Scroll the mouse wheel or trackpad over the slider to move it; the track animates its height to fit each quote.</p>
-  <p class="mt-3 font-mono text-xs text-base-content/40"><code>data-wheel="true" data-autoheight="true" data-effect="slide"</code></p>
+  <pre class="mt-3 inline-block max-w-full overflow-x-auto text-xs"><code>data-wheel="true" data-autoheight="true" data-effect="slide"</code></pre>
   <div class="relative mt-8 mx-auto max-w-3xl" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-wheel="true" data-autoheight="true" aria-label="{{page.data.aria_wheel}}">
     <div data-sw-part="track">
       {{#each data.projects}}
@@ -171,7 +171,7 @@ export function pageComponentsSlider(): Page {
 <section class="mx-auto max-w-6xl px-6 pb-28">
   <h2 class="text-3xl font-bold tracking-tight" data-sw-text="sec_click_t">Click to slide</h2>
   <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="sec_click_d">No arrows at all: click or tap anywhere on a slide to advance — every press answers with a ripple. Links inside a slide still behave like links, dragging still swipes, and arrow keys still work once the slider has focus.</p>
-  <p class="mt-3 font-mono text-xs text-base-content/40"><code>data-click-next="true"</code></p>
+  <pre class="mt-3 inline-block max-w-full overflow-x-auto text-xs"><code>data-click-next="true"</code></pre>
   <div class="relative mt-8 overflow-hidden rounded-3xl" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-loop="true" data-click-next="true" aria-label="{{page.data.aria_click}}">
     <div data-sw-part="track">
       {{#each data.projects}}

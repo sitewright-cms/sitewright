@@ -81,3 +81,75 @@ test('sw-control as="file": opens the file picker and sets a page.data file URL'
   // page.data.brochure is set → the bound link's href updates after the preview reload.
   await expect(preview.locator('a.dl')).toHaveAttribute('href', '/media/seed/x/file/doc.pdf');
 });
+
+// as="select" renders a dropdown of the author's own options="…" list and writes the chosen value.
+test('sw-control as="select": renders a dropdown of author options and sets the value', async ({ page }) => {
+  const s = Date.now();
+  await page.goto('/');
+  await page.getByRole('button', { name: /Register/ }).click();
+  await page.getByLabel('Email').fill(`ctrlsel-${s}@e2e.test`);
+  await page.getByLabel('Password').fill('Pw-secret-1');
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await page.getByRole('button', { name: 'New project' }).click();
+  await page.getByLabel('Project name').fill('Control Select');
+  await page.getByLabel('Project slug').fill(`ctrlsel-${s}`);
+  await page.getByRole('button', { name: 'Create project' }).click();
+
+  await page.getByRole('button', { name: /^Home/ }).click();
+  await page.getByRole('button', { name: 'Code Editor', exact: true }).click();
+  await page.locator('.cm-content').click();
+  await page.keyboard.press('ControlOrMeta+a');
+  await page.keyboard.insertText('<p class="st">{{page.data.status}}</p>{{sw-control target="status" as="select" options="Draft, Published, Archived" label="Status"}}');
+  await page.getByRole('button', { name: 'Content Editor', exact: true }).click();
+
+  const preview = page.frameLocator('iframe[title="Preview"]');
+  const chip = preview.locator('[data-sw-control="status"]');
+  await expect(chip).toBeVisible();
+  await chip.click();
+
+  // The popover field is a <select> carrying the author's options.
+  const sel = preview.locator('.sw-pop select.sw-cval');
+  await expect(sel).toBeVisible();
+  await expect(sel.locator('option')).toContainText(['Draft', 'Published', 'Archived']);
+  await sel.selectOption('Published');
+  await preview.locator('.sw-pop .sw-ok').click();
+
+  await expect(preview.locator('p.st')).toHaveText('Published');
+});
+
+// Reveal-for-editing: a control inside a display:none (Tailwind `hidden`) wrapper renders at 0x0 and is
+// unreachable in-place — the bridge must reveal its hidden ancestor in content mode so it stays usable.
+test('sw-control: a control hidden behind display:none is revealed + usable in content mode', async ({ page }) => {
+  const s = Date.now();
+  await page.goto('/');
+  await page.getByRole('button', { name: /Register/ }).click();
+  await page.getByLabel('Email').fill(`ctrlrev-${s}@e2e.test`);
+  await page.getByLabel('Password').fill('Pw-secret-1');
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await page.getByRole('button', { name: 'New project' }).click();
+  await page.getByLabel('Project name').fill('Control Reveal');
+  await page.getByLabel('Project slug').fill(`ctrlrev-${s}`);
+  await page.getByRole('button', { name: 'Create project' }).click();
+
+  await page.getByRole('button', { name: /^Home/ }).click();
+  await page.getByRole('button', { name: 'Code Editor', exact: true }).click();
+  await page.locator('.cm-content').click();
+  await page.keyboard.press('ControlOrMeta+a');
+  // The control lives inside a hidden wrapper (the "settings chips" pattern) — invisible on the page,
+  // but it must be reachable in the editor.
+  await page.keyboard.insertText('<div class="hidden">{{sw-control target="motto" label="Motto"}}</div><p class="mt">{{page.data.motto}}</p>');
+  await page.getByRole('button', { name: 'Content Editor', exact: true }).click();
+
+  const preview = page.frameLocator('iframe[title="Preview"]');
+  const chip = preview.locator('[data-sw-control="motto"]');
+  await expect(chip).toBeVisible(); // would be 0x0 (display:none ancestor) without the reveal pass
+  await chip.click();
+  await preview.locator('.sw-pop .sw-cval').fill('Built to last');
+  await preview.locator('.sw-pop .sw-ok').click();
+
+  await expect(preview.locator('p.mt')).toHaveText('Built to last');
+
+  // Leaving content mode restores the author's hidden wrapper (the reveal is fully reversed).
+  await page.getByRole('button', { name: 'Code Editor', exact: true }).click();
+  await expect(chip).toBeHidden();
+});

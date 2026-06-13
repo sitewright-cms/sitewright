@@ -90,6 +90,11 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       // Positioning host for the absolute badge — applied as a CLASS (added only to elements computed
       // static, so positioned elements are untouched) so it never mutates the inline style attribute.
       '.sw-rel{position:relative}' +
+      // Reveal-for-editing: an editable leaf an author hid behind a display:none ancestor (e.g. a
+      // Tailwind hidden wrapper of {{sw-control}} "settings" chips) is unreachable in-place. While
+      // editing, its display:none ancestors get this class (restored on exit); the dashed ring marks
+      // the region as edit-only (it is not part of the published page).
+      '.sw-reveal{display:revert !important;outline:1px dashed rgba(99,102,241,.45);outline-offset:3px}' +
       '.sw-tb{position:fixed;z-index:2147483646;display:none;gap:2px;padding:3px;border-radius:8px;background:#0f172a;box-shadow:0 6px 20px rgba(0,0,0,.35);font:600 12px system-ui,sans-serif}' +
       '.sw-tb button{all:unset;color:#e2e8f0;cursor:pointer;padding:3px 7px;border-radius:5px;min-width:18px;text-align:center}' +
       '.sw-tb button:hover{background:#334155;color:#fff}' +
@@ -339,6 +344,29 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     if (on) { if (getComputedStyle(el).position === 'static') el.classList.add('sw-rel'); }
     else el.classList.remove('sw-rel');
   }
+  // Make editable content reachable even when an author hid it behind a display:none ancestor (the
+  // canonical case is a Tailwind hidden wrapper of {{sw-control}} "settings" chips, which otherwise
+  // render at 0x0 and can never be clicked). We only act on leaves that are GENUINELY removed from
+  // layout (no client rects), so visible content is never disturbed; ancestors are restored on exit.
+  var REVEAL_SEL = '[data-sw-text],[data-sw-html],[data-sw-href],[data-sw-src],[data-sw-bg],[data-sw-control],[data-sw-entry]';
+  function revealHidden(on) {
+    if (!on) { eachEl('.sw-reveal', function (el) { el.classList.remove('sw-reveal'); }); return; }
+    eachEl(REVEAL_SEL, function (el) {
+      if (el.getClientRects().length) return; // already in layout → leave it alone
+      // Walk the WHOLE ancestor chain (not just the first hit): a leaf can sit under nested hidden
+      // wrappers, and every display:none link must be lifted or the leaf stays collapsed. Only
+      // ancestors whose COMPUTED display is none are touched — a visible ancestor (e.g. a responsive
+      // "hidden md:block" that is block here) computes to block and is skipped — so nothing that was
+      // on-screen is ever disturbed. display:revert restores the element-type default (div to block,
+      // span to inline), correct for the hidden class; a rare !hidden (display:none !important) is
+      // not overridden, which is acceptable for the settings-chips pattern this targets.
+      var walk = el.parentElement, guard = 0;
+      while (walk && walk !== document.body && guard++ < 50) {
+        if (getComputedStyle(walk).display === 'none') walk.classList.add('sw-reveal');
+        walk = walk.parentElement;
+      }
+    });
+  }
   function setEditing(on) {
     if (on === editing) return;
     editing = on;
@@ -380,6 +408,9 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       if (on) { el.classList.add('sw-control-on'); el.addEventListener('click', onControlClick); }
       else { el.classList.remove('sw-control-on'); el.removeEventListener('click', onControlClick); }
     });
+    // Reveal hidden editable content AFTER the leaves are activated (the chip's own display is set by
+    // .sw-control-on; this lifts any display:none ancestor that still removes it from layout).
+    revealHidden(on);
     if (on) {
       document.addEventListener('selectionchange', onSelChange);
       document.addEventListener('click', onEntryClick);

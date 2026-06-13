@@ -152,8 +152,10 @@ CHILD pages (parent = its id) nest under its nav item — a nav slot template re
 via {{#if children}}…{{#each children}}. Prefer a CSS-only hover dropdown whose PARENT stays a
 real link: <li class="dropdown dropdown-hover"><a href="{{sw-url path}}">{{sw-label}}</a><ul
 class="dropdown-content menu …">{{#each children}}…{{/each}}</ul></li> (avoid <details>/<summary>,
-which makes the parent a toggle, not navigable). Children need no own nav slots. Every new
-project already has the empty-slug "home" page.
+which makes the parent a toggle, not navigable). The platform auto-aligns the submenu under its
+trigger and bridges the small gap so hover doesn't drop mid-travel — don't add margin utilities
+(\`mt-*\`/\`mx-*\`) to the dropdown-content (set --sw-dropdown-gap on the .dropdown to change the
+spacing). Children need no own nav slots. Every new project already has the empty-slug "home" page.
 NAV PLACEHOLDERS: a page with kind:"link" is a menu item with NO page of its own (no route/HTML) —
 set link.target ("/path", "https://…"/"mailto:"/"tel:", "#section", or "#dialog-id" to open a
 <dialog> placed in the website.bottom slot) + optional link.newTab, and nav.slots/nav.dropdown as

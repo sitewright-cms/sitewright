@@ -425,7 +425,17 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     tpop.querySelector('.sw-tval').focus();
     document.addEventListener('mousedown', onTextDocDown, true);
   }
-  function applyTextPop() { if (tpopEl) post({ type: 'edit', key: tpopEl.getAttribute('data-sw-text') || '', value: tpop.querySelector('.sw-tval').value }); closeTextPop(); }
+  function applyTextPop() {
+    if (tpopEl) {
+      // Mirror the inline path: write the leaf's textContent too, so the editor's 'edit' handler (which
+      // SUPPRESSES the reload, assuming the contenteditable already shows the change) is correct — without
+      // this the occluded/hidden element would keep its stale text until an unrelated reload.
+      var v = tpop.querySelector('.sw-tval').value;
+      try { tpopEl.textContent = v; } catch (e) {}
+      post({ type: 'edit', key: tpopEl.getAttribute('data-sw-text') || '', value: v });
+    }
+    closeTextPop();
+  }
   function closeTextPop() { if (tpop) tpop.style.display = 'none'; tpopEl = null; document.removeEventListener('mousedown', onTextDocDown, true); }
   function onTextDocDown(e) { if (!tpop || tpop.style.display === 'none') return; if (tpop.contains(e.target)) return; closeTextPop(); }
 

@@ -154,6 +154,20 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         note: 'The route must be root-relative (start with "/"). The .active class is what a nav EFFECT (sw-nav-*) styles — see “Nav & button effects”. The trail default lights a dropdown parent while you are on a child; pass exact=true (unquoted, not "true") for a leaf-only highlight — and use it for aria-current="page", omitting the attribute on non-current items.',
       },
       {
+        id: 'h-translate',
+        syntax: '{{sw-translate "key" [default="…"]}}',
+        name: 'sw-translate',
+        keywords: 'translate i18n locale translation localize string label multilingual',
+        description:
+          'Outputs a translated string for the current page locale from the project translation catalog (website.translations), falling back to the default locale, then to default=, then to empty. No JS — resolved at build (works in the live preview too). The output is escaped, so it is safe in text OR an attribute (alt / aria-label / placeholder / title). The catalog is a dedicated per-locale table, separate from website.data.',
+        args: [
+          { name: 'key', desc: 'The translation key — an identifier like nav_cta or cart_title.' },
+          { name: 'default', desc: 'Optional hash — text shown when the key has no value in any locale.' },
+        ],
+        example: '<a href="{{sw-url "/contact"}}">{{sw-translate "nav_contact" default="Contact"}}</a>',
+        note: 'Translations live in the project translation catalog (website.translations), NOT in website.data. A missing/empty cell falls back to the default-locale string, so untranslated locales never render blank.',
+      },
+      {
         id: 'h-add-to-cart',
         syntax: '{{sw-add-to-cart sku= name= price= [image=] [label=] [class=]}}',
         name: 'sw-add-to-cart',

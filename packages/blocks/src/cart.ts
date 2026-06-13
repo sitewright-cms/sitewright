@@ -100,6 +100,13 @@ export const CART_CSS = [
   '[data-sw-cart] [data-sw-part="order-submit"]{display:block;width:100%;border:0;border-radius:.375rem;padding:.5rem 1rem;margin-top:.25rem;background:var(--sw-color-primary,#0a7a5a);color:#fff;cursor:pointer;font:inherit;transition:filter .15s ease}',
   '[data-sw-cart] [data-sw-part="order-submit"][disabled]{opacity:.6;cursor:progress}',
   '[data-sw-cart] [data-sw-part="order-status"]{margin:.5rem 0 0;font-size:.8125rem}',
+  // Collapsible per-channel input form (whatsapp/mailto with custom fields). Reuses the order-field
+  // input styling above; hidden until the channel button toggles it open.
+  '[data-sw-cart] [data-sw-part="channel-form"]{margin:.25rem 0;padding:.625rem .75rem;border:1px solid rgba(0,0,0,.12);border-radius:.375rem;background:rgba(0,0,0,.02)}',
+  '[data-sw-cart] [data-sw-part="channel-form"][hidden]{display:none}',
+  '[data-sw-cart] [data-sw-part="channel-submit"]{display:block;width:100%;border:0;border-radius:.375rem;padding:.5rem 1rem;margin-top:.25rem;background:var(--sw-color-primary,#0a7a5a);color:#fff;cursor:pointer;font:inherit;transition:filter .15s ease}',
+  '[data-sw-cart] [data-sw-part="channel-submit"]:hover{filter:brightness(.92)}',
+  '[data-sw-cart] [data-sw-part="channel-status"]{margin:.4rem 0 0;font-size:.8125rem;color:#b00020}',
   '[data-sw-cart] [data-sw-part="sent-msg"]{padding:1.5rem 1.25rem;text-align:center;color:var(--sw-color-primary,#0a7a5a);font-weight:600}',
   // The "added" pulse on an add-to-cart button (runtime toggles data-sw-added briefly).
   '[data-sw-cart-add][data-sw-added="true"]{opacity:.7}',
@@ -175,6 +182,7 @@ export const CART_JS = `(function(){
       subtotalLabel:mount.getAttribute('data-subtotal-label')||'Subtotal',
       clearLabel:mount.getAttribute('data-clear-label')||'Clear cart',
       sentLabel:mount.getAttribute('data-sent-label')||'Order sent \\u2014 we will be in touch.',
+      brand:mount.getAttribute('data-brand')||'', // merchant brand/business name (for the email greeting)
       channels:channels
     };
   }
@@ -209,18 +217,37 @@ export const CART_JS = `(function(){
     return lines.join('\\n');
   }
   function itemsSummary(items){var p=[];for(var i=0;i<items.length;i++){p.push(items[i].qty+'x '+items[i].name);}return p.join(', ');}
-  // ---- channel execution ----
-  function runChannel(ch,items,cfg){
+  // Collected buyer-input fields → "Label: value" lines (blank values dropped). '' when there are none.
+  function fieldLines(values){
+    if(!values||!values.length){return '';}
+    var lines=[];for(var i=0;i<values.length;i++){var v=values[i];if(v&&v.value){lines.push(v.label+': '+v.value);}}
+    return lines.join('\\n');
+  }
+  // The full order MESSAGE for a deep-link channel: a lead (the email greeting "Hi <brand> \\u2014 I'd
+  // like to order:" for mailto, else the optional whatsapp intro), the order summary, then the collected
+  // input fields as "Label: value" lines BELOW the order. Blocks are blank-line separated.
+  function orderMessage(ch,items,cfg,values){
+    var blocks=[];
+    if(ch.kind==='mailto'){
+      var greet=cfg.brand?('Hi '+cfg.brand+' \\u2014 I\\u2019d like to order:'):'I\\u2019d like to order:';
+      blocks.push(greet+'\\n'+orderText(items,cfg));
+    }else{
+      if(ch.intro){blocks.push(ch.intro);}
+      blocks.push(orderText(items,cfg));
+    }
+    var fl=fieldLines(values);if(fl){blocks.push(fl);}
+    return blocks.join('\\n\\n');
+  }
+  // ---- channel execution. "values" (optional) are the collected buyer-input fields. ----
+  function runChannel(ch,items,cfg,values){
     if(!items.length){return;}
-    var text=orderText(items,cfg);
     if(ch.kind==='whatsapp'){
       var num=String(ch.number||'').replace(/[^0-9]/g,'');if(!num){return;}
-      var msg=(ch.intro?ch.intro+'\\n\\n':'')+text;
-      window.open('https://wa.me/'+num+'?text='+encodeURIComponent(msg),'_blank','noopener');
+      window.open('https://wa.me/'+num+'?text='+encodeURIComponent(orderMessage(ch,items,cfg,values)),'_blank','noopener');
     }else if(ch.kind==='mailto'){
       if(!ch.email){return;}
       var subj=encodeURIComponent(ch.subject||'Order');
-      window.location.href='mailto:'+ch.email+'?subject='+subj+'&body='+encodeURIComponent(text);
+      window.location.href='mailto:'+ch.email+'?subject='+subj+'&body='+encodeURIComponent(orderMessage(ch,items,cfg,values));
     }else if(ch.kind==='payment'){
       var tpl=String(ch.urlTemplate||'');if(!tpl){return;}
       var url=tpl.split('{total}').join(encodeURIComponent(totalOf(items,cfg).toFixed(cfg.decimals)))
@@ -276,15 +303,29 @@ export const CART_JS = `(function(){
     var note=part('p','note',cfg.note);
     foot.appendChild(subtotal);foot.appendChild(note);
     // Channels: deep-link kinds (whatsapp/mailto/payment) render as a button; a "form" kind renders an
-    // inline order form that POSTs to the resolved /f endpoint (the first form channel wins).
+    // inline order form that POSTs to the resolved /f endpoint (the first form channel wins). A whatsapp/
+    // mailto channel WITH configured "fields" renders a collapsible input form instead of firing on click.
     var formCh=null;
     for(var ci=0;ci<cfg.channels.length;ci++){
       var chx=cfg.channels[ci];
       if(chx.kind==='form'){if(!formCh){formCh=chx;}continue;}
       (function(ch){
         var b=part('button','channel',channelLabel(ch));b.type='button';ripple(b,true);
-        b.addEventListener('click',function(){runChannel(ch,items,cfg);});
-        foot.appendChild(b);
+        var cf=(ch.kind==='whatsapp'||ch.kind==='mailto')?buildChannelForm(ch,b):null;
+        if(cf){
+          // The button toggles the field form; the form's own submit performs the order (after validation).
+          b.setAttribute('aria-expanded','false');
+          b.addEventListener('click',function(){
+            var opening=cf.form.hidden;
+            cf.form.hidden=!opening;
+            b.setAttribute('aria-expanded',opening?'true':'false');
+            if(opening){cf.open();}
+          });
+          foot.appendChild(b);foot.appendChild(cf.form);
+        }else{
+          b.addEventListener('click',function(){runChannel(ch,items,cfg);});
+          foot.appendChild(b);
+        }
       })(chx);
     }
     if(formCh&&formCh.endpoint){foot.appendChild(buildOrderForm(formCh));}
@@ -296,6 +337,49 @@ export const CART_JS = `(function(){
     var sentMsg=part('p','sent-msg',cfg.sentLabel);
     dialog.appendChild(head);dialog.appendChild(empty);dialog.appendChild(list);dialog.appendChild(foot);dialog.appendChild(sentMsg);
     mount.appendChild(toggle);mount.appendChild(dialog);
+
+    // A whatsapp/mailto channel WITH custom "fields": a collapsible inline form collecting the buyer
+    // inputs, then opening the deep link with them appended as "Label: value" lines (see orderMessage).
+    // Returns { form, open } or null when the channel declares no fields (then the button fires directly).
+    // "toggleBtn" is the channel button that shows/hides this form — its aria-expanded is re-synced on
+    // submit. Values flow through input .value into the (URL-encoded) deep link — never HTML; no new sink.
+    function buildChannelForm(ch,toggleBtn){
+      var fields=(ch&&ch.fields&&ch.fields.length)?ch.fields:null;
+      if(!fields){return null;}
+      var form=part('form','channel-form');form.setAttribute('novalidate','');form.hidden=true;
+      var inputs=[];
+      for(var i=0;i<fields.length;i++){
+        (function(f){
+          var label=clip(String(f&&f.label!=null?f.label:''),60);
+          if(!label){return;}
+          var t=(f&&(f.type==='textarea'||f.type==='tel'||f.type==='email'))?f.type:'text';
+          var req=!!(f&&f.required);
+          var wrap=part('label','order-field');wrap.appendChild(mk('span',null,req?(label+' *'):label));
+          var inp=t==='textarea'?document.createElement('textarea'):document.createElement('input');
+          if(t!=='textarea'){inp.type=t;}if(req){inp.required=true;}
+          wrap.appendChild(inp);form.appendChild(wrap);
+          inputs.push({label:label,req:req,inp:inp});
+        })(fields[i]);
+      }
+      var submit=part('button','channel-submit',channelLabel(ch));submit.type='submit';ripple(submit,true);
+      var status=part('p','channel-status');
+      form.appendChild(submit);form.appendChild(status);
+      form.addEventListener('submit',function(e){
+        e.preventDefault();
+        if(!items.length){status.textContent='Your cart is empty.';return;}
+        var values=[];var missing=[];
+        for(var i=0;i<inputs.length;i++){
+          var v=(inputs[i].inp.value||'').trim();
+          if(inputs[i].req&&!v){missing.push(inputs[i].label);continue;}
+          if(v){values.push({label:inputs[i].label,value:v});}
+        }
+        if(missing.length){status.textContent='Please fill in: '+missing.join(', ');return;}
+        runChannel(ch,items,cfg,values);
+        // Collapse + re-sync the toggle's a11y state so it doesn't report "expanded" over a hidden form.
+        form.hidden=true;status.textContent='';toggleBtn.setAttribute('aria-expanded','false');
+      });
+      return {form:form,open:function(){if(inputs[0]){inputs[0].inp.focus();}}};
+    }
 
     // The "form" channel: an inline order form (contact fields) that POSTs name/email/phone/note +
     // cart_text + cart_json to the resolved /f endpoint — reusing the spam-guarded submission pipeline

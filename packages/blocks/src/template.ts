@@ -466,7 +466,7 @@ function createInstance(): typeof Handlebars {
   hb.registerHelper('sw-cart', function swCart(this: unknown, ...args: unknown[]) {
     const options = args[args.length - 1] as Handlebars.HelperOptions;
     const h = (options.hash ?? {}) as Record<string, unknown>;
-    const root = (options.data?.root ?? {}) as { website?: { shop?: Record<string, unknown> } };
+    const root = (options.data?.root ?? {}) as { website?: { shop?: Record<string, unknown> }; company?: Record<string, unknown> };
     const shop = (root.website?.shop ?? {}) as Record<string, unknown>;
     const currency = (shop.currency ?? {}) as Record<string, unknown>;
     const str = (v: unknown): string => (typeof v === 'string' ? v : typeof v === 'number' ? String(v) : '');
@@ -493,14 +493,34 @@ function createInstance(): typeof Handlebars {
     if (clear) attrs += ` data-clear-label="${escapeAttr(clear)}"`;
     const sent = str(h.sent);
     if (sent) attrs += ` data-sent-label="${escapeAttr(sent)}"`;
+    // The merchant's brand/business name (the always-present Corporate Identity `name`, projected into the
+    // render ctx as `company`) — cart.js uses it for the email greeting ("Hi <brand> — I'd like to order:").
+    // Emitted only when present, so a no-args {{sw-cart}} with no identity stays byte-identical.
+    const company = (root.company ?? {}) as Record<string, unknown>;
+    const brand = str(company.name);
+    if (brand) attrs += ` data-brand="${escapeAttr(brand)}"`;
+    // Project a channel's buyer-input fields to ONLY {label,type,required} (defence-in-depth over the
+    // schema); an absent/empty list returns undefined so JSON.stringify drops the key (byte-stable).
+    const projFields = (f: unknown): Array<Record<string, unknown>> | undefined => {
+      if (!Array.isArray(f) || f.length === 0) return undefined;
+      const out = f
+        .map((x): Record<string, unknown> | null => {
+          if (!x || typeof x !== 'object') return null;
+          const fx = x as Record<string, unknown>;
+          // `required` only when truthy (mirrors the model.ts projection) — keeps the JSON minimal/explicit.
+          return { label: fx.label, type: fx.type, ...(fx.required ? { required: true } : {}) };
+        })
+        .filter((x): x is Record<string, unknown> => x !== null);
+      return out.length ? out : undefined;
+    };
     // Project channels to ONLY the fields the runtime needs (defence-in-depth over the schema), then
     // JSON-encode into an escaped attribute (cart.js JSON.parses it; undefined props are dropped).
     const channels = Array.isArray(shop.channels) ? (shop.channels as Array<Record<string, unknown>>) : [];
     const clean = channels
       .map((c): Record<string, unknown> | null => {
         if (!c || typeof c !== 'object') return null;
-        if (c.kind === 'whatsapp') return { kind: 'whatsapp', label: c.label, number: c.number, intro: c.intro };
-        if (c.kind === 'mailto') return { kind: 'mailto', label: c.label, email: c.email, subject: c.subject };
+        if (c.kind === 'whatsapp') return { kind: 'whatsapp', label: c.label, number: c.number, intro: c.intro, fields: projFields(c.fields) };
+        if (c.kind === 'mailto') return { kind: 'mailto', label: c.label, email: c.email, subject: c.subject, fields: projFields(c.fields) };
         if (c.kind === 'payment') return { kind: 'payment', label: c.label, urlTemplate: c.urlTemplate };
         // `endpoint` is filled by resolveShopChannels in the render projection (the cart can't build
         // /f/<projectId>/<formId> client-side); a form channel with no resolved endpoint is dropped.

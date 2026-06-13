@@ -123,11 +123,31 @@ export const EXAMPLE_WEBSITE = {
   // (WhatsApp, email, PayPal.me payment link). The cart is front-end only and prices are
   // NON-AUTHORITATIVE — the cart submits an order inquiry; Northwind confirms + collects payment.
   // Drawer strings localize per page via {{sw-cart}} hash overrides fed from page.data (shop page).
+  // The WhatsApp + email channels collect buyer details (`fields`) before the link opens; the cart
+  // appends them as "Label: value" lines below the order (email also opens with a brand greeting).
   shop: {
     currency: { code: 'USD', symbol: '$', position: 'before', decimals: 2 },
     channels: [
-      { kind: 'whatsapp', number: '+14155550123', label: 'Order on WhatsApp', intro: 'Hi Northwind — I’d like to order:' },
-      { kind: 'mailto', email: 'hello@northwindstudio.com', subject: 'Northwind merch order' },
+      {
+        kind: 'whatsapp',
+        number: '+14155550123',
+        label: 'Order on WhatsApp',
+        intro: 'Hi Northwind — I’d like to order:',
+        fields: [
+          { label: 'Your name', required: true },
+          { label: 'Delivery address', type: 'textarea', required: true },
+          { label: 'Phone', type: 'tel' },
+        ],
+      },
+      {
+        kind: 'mailto',
+        email: 'hello@northwindstudio.com',
+        subject: 'Northwind merch order',
+        fields: [
+          { label: 'Your name', required: true },
+          { label: 'Delivery address', type: 'textarea', required: true },
+        ],
+      },
       { kind: 'payment', provider: 'paypal', urlTemplate: 'https://paypal.me/northwind/{total}', label: 'Pay with PayPal' },
     ],
   },

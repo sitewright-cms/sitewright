@@ -78,6 +78,48 @@ describe('settings model', () => {
     expect(back.website?.shop).toEqual(withShop.website!.shop);
   });
 
+  it('round-trips per-channel order fields (whatsapp + mailto) and defaults the field type to text', () => {
+    const withFields: SettingsBundle = {
+      identity: { name: 'Acme', colors: {} },
+      website: {
+        shop: {
+          channels: [
+            {
+              kind: 'whatsapp',
+              number: '+14155550123',
+              fields: [{ label: 'Your name', type: 'text', required: true }, { label: 'Your address', type: 'textarea' }],
+            },
+            { kind: 'mailto', email: 'orders@acme.test', fields: [{ label: 'Phone', type: 'tel' }] },
+          ],
+        },
+      },
+      settings: { defaultLocale: 'en', locales: ['en'] },
+    };
+    const back = toBundle(toForm(withFields), withFields);
+    expect(back.website?.shop).toEqual(withFields.website!.shop);
+  });
+
+  it('drops blank-label order fields and omits the fields key when none remain', () => {
+    const form = toForm(empty());
+    form.shopChannels = [
+      {
+        ...newShopChannel(),
+        kind: 'whatsapp',
+        number: '+14155550123',
+        fields: [
+          { id: 'a', label: '  ', type: 'text', required: true }, // blank label → dropped
+          { id: 'b', label: 'Your name', type: 'text', required: false }, // kept (required omitted when false)
+        ],
+      },
+      { ...newShopChannel(), kind: 'mailto', email: 'a@b.test', fields: [{ id: 'c', label: '', type: 'text', required: false }] },
+    ];
+    const back = toBundle(form, empty());
+    expect(back.website?.shop?.channels).toEqual([
+      { kind: 'whatsapp', number: '+14155550123', fields: [{ label: 'Your name', type: 'text' }] },
+      { kind: 'mailto', email: 'a@b.test' }, // all fields blank → no fields key
+    ]);
+  });
+
   it('round-trips website.theme (nav/button effects) and omits "None"', () => {
     const withTheme: SettingsBundle = {
       identity: { name: 'Acme', colors: {} },

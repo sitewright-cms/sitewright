@@ -27,6 +27,9 @@ export const WebsiteDataSchema = JsonObjectStoreSchema;
 // runtime to read — see packages/blocks/src/cart.ts and the `{{sw-cart}}` helper. PR-2 adds a `form`
 // channel (cart → an order Form). A `Shop` block + a settings UI arrive in PR-3.
 const SHOP_LABEL_MAX = 60;
+const SHOP_FIELD_LABEL_MAX = 60;
+/** Max buyer-input fields a single whatsapp/mailto channel may collect (the editor disables "Add field" here). */
+export const SHOP_MAX_CHANNEL_FIELDS = 8;
 const KNOWN_PAYMENT_PLACEHOLDERS = new Set(['{total}', '{currency}', '{items}']);
 
 /** True if `value` contains an ASCII control char (CR/LF must not reach a mail Subject header). */
@@ -53,6 +56,37 @@ export type ShopCurrency = z.infer<typeof ShopCurrencySchema>;
 
 const shopChannelLabel = z.string().min(1).max(SHOP_LABEL_MAX).optional();
 
+/** Input types a buyer-collected order field may use — controls the rendered control + mobile keyboard. */
+export const SHOP_FIELD_TYPES = ['text', 'textarea', 'tel', 'email'] as const;
+export type ShopFieldType = (typeof SHOP_FIELD_TYPES)[number];
+
+/**
+ * A custom buyer-input field collected in the cart drawer BEFORE a WhatsApp / mailto order is sent.
+ * The cart renders each as an input; on submit every FILLED field is appended to the order message as a
+ * `Label: value` line BELOW the order (see packages/blocks/src/cart.ts). `label` doubles as the prompt
+ * shown to the buyer AND the `Label:` key in the message — it reaches a wa.me text / mailto BODY (both
+ * URL-encoded by cart.js) and is escaped into the cart-mount attribute, but reject ASCII control chars
+ * defensively (a CR/LF in a label is never legitimate and could fold a header if the value were ever
+ * reused in one). Front-end only, like the rest of the mini shop — these collect order context, not
+ * authoritative data.
+ */
+export const ShopChannelFieldSchema = z.object({
+  /** The prompt shown to the buyer + the `Label:` key in the order message (e.g. "Your name"). */
+  label: z
+    .string()
+    .min(1)
+    .max(SHOP_FIELD_LABEL_MAX)
+    .refine((v) => !shopHasControlChars(v), 'label must not contain control characters'),
+  /** Input type — controls the rendered control + the mobile keyboard. Defaults to a single-line text input. */
+  type: z.enum(SHOP_FIELD_TYPES).default('text'),
+  /** Whether the buyer must fill this field before the order can be sent. */
+  required: z.boolean().optional(),
+});
+export type ShopChannelField = z.infer<typeof ShopChannelFieldSchema>;
+
+/** A per-channel list of buyer-input fields (collected before the deep link opens). Capped for sanity. */
+const shopChannelFields = z.array(ShopChannelFieldSchema).max(SHOP_MAX_CHANNEL_FIELDS).optional();
+
 /** Order via a WhatsApp deep link (`wa.me/<number>?text=<order>`) — zero backend. */
 const WhatsappChannelSchema = z.object({
   kind: z.literal('whatsapp'),
@@ -61,6 +95,8 @@ const WhatsappChannelSchema = z.object({
   number: z.string().regex(/^\+[1-9]\d{6,14}$/, 'number must be E.164, e.g. +14155550123'),
   /** Optional intro line prepended to the auto-built order text (URL-encoded by cart.js). */
   intro: z.string().max(280).optional(),
+  /** Buyer-input fields collected in the cart before the WhatsApp link opens; appended as `Label: value` lines. */
+  fields: shopChannelFields,
 });
 
 /** Order via a `mailto:` deep link — zero backend. */
@@ -74,6 +110,8 @@ const MailtoChannelSchema = z.object({
     .max(200)
     .refine((v) => !shopHasControlChars(v), 'subject must not contain control characters')
     .optional(),
+  /** Buyer-input fields collected in the cart before the email opens; appended as `Label: value` lines. */
+  fields: shopChannelFields,
 });
 
 /**

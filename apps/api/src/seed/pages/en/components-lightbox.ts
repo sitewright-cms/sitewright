@@ -32,13 +32,13 @@ export function pageComponentsLightbox(): Page {
       sec_lb3_d:
         'Fit can fill the viewport instead of showing the whole image, the open animation can be turned off, and the open picture can be reflected in the URL. On mobile the zoomed image can pan with the device tilt.',
       aria_gallery3: 'Studio gallery, fill mode',
-      sec_single_t: 'Lightbox — a single image',
+      sec_single_t: 'Lightbox — a single image (one line)',
       sec_single_d:
-        'A lightbox is not only for grids: one featured photo on its own opens full-screen on click. With a single image there is no strip and no arrows — just the zoom, the caption and Escape to close.',
+        'No grid scaffolding needed: put data-sw-component="lightbox" straight on an <img> and that one image opens full-screen on click — the whole lightbox in a single line.',
       aria_single: 'Featured photo',
       sec_masonry_t: 'Lightbox — masonry grid',
       sec_masonry_d:
-        'A masonry layout in CSS columns: images keep their natural proportions (no cropping) and stagger into balanced columns, while each still opens into the same full-screen gallery.',
+        'Mixed-aspect images — portraits, landscapes and wide covers — staggered into balanced CSS columns with no cropping. The attribute goes straight on the columns container; the images become one gallery.',
       aria_masonry: 'Masonry gallery',
     },
     source: `<section class="mx-auto max-w-6xl px-6 pb-8 pt-24">
@@ -99,36 +99,30 @@ export function pageComponentsLightbox(): Page {
 </section>
 
 <section class="mx-auto max-w-6xl px-6 pb-20">
-  <h2 class="text-3xl font-bold tracking-tight" data-sw-text="sec_single_t">Lightbox — a single image</h2>
-  <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="sec_single_d">One featured photo that opens full-screen on click — no strip, no arrows.</p>
-  <p class="mt-3 font-mono text-xs text-base-content/40"><code>data-thumbnails="false"</code> · one item</p>
-  <div class="mt-8" data-sw-component="lightbox" data-sw-block="Lightbox" data-thumbnails="false" aria-label="{{page.data.aria_single}}">
-    <div data-sw-part="grid" class="block">
-      {{#each data.projects}}{{#if @first}}
-      <a data-sw-part="item" href="{{sw-url image}}" data-caption="{{title}} — {{summary}}" class="group relative mx-auto block max-w-3xl overflow-hidden rounded-2xl bg-base-200 shadow-sm transition-shadow duration-300 hover:shadow-xl">
-        <span class="skeleton absolute inset-0 z-0" aria-hidden="true"></span>
-        <img src="{{sw-url image}}" alt="{{title}}" loading="lazy" class="relative z-10 block aspect-auto h-auto w-full transition-transform duration-500 group-hover:scale-[1.02]" />
-        <span class="pointer-events-none absolute inset-0 z-20 bg-gradient-to-t from-black/45 via-black/0 to-black/0 opacity-60 transition-opacity duration-300 group-hover:opacity-90" aria-hidden="true"></span>
-      </a>
-      {{/if}}{{/each}}
-    </div>
+  <h2 class="text-3xl font-bold tracking-tight" data-sw-text="sec_single_t">Lightbox — a single image (one line)</h2>
+  <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="sec_single_d">No grid scaffolding needed — put the attribute straight on an &lt;img&gt; and it opens full-screen on click.</p>
+  <p class="mt-3 font-mono text-xs text-base-content/40"><code>&lt;img data-sw-component="lightbox" src="…" data-caption="…"&gt;</code></p>
+  <div class="mt-8">
+    {{#each data.projects}}{{#if @first}}
+    <img data-sw-component="lightbox" data-thumbnails="false" src="{{sw-url image}}" data-caption="{{title}} — {{summary}}" alt="{{title}}" loading="lazy" class="mx-auto block w-full max-w-3xl rounded-2xl shadow-sm transition-shadow duration-300 hover:shadow-xl" />
+    {{/if}}{{/each}}
   </div>
 </section>
 
 <section class="mx-auto max-w-6xl px-6 pb-28">
   <h2 class="text-3xl font-bold tracking-tight" data-sw-text="sec_masonry_t">Lightbox — masonry grid</h2>
-  <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="sec_masonry_d">Natural-aspect images staggered into balanced columns — no cropping.</p>
-  <p class="mt-3 font-mono text-xs text-base-content/40"><code>data-sw-part="grid" class="block columns-2 sm:columns-3"</code></p>
-  <div class="mt-8" data-sw-component="lightbox" data-sw-block="Lightbox" aria-label="{{page.data.aria_masonry}}">
-    <div data-sw-part="grid" class="block columns-2 gap-4 sm:columns-3">
-      {{#each data.projects}}
-      <a data-sw-part="item" href="{{sw-url image}}" data-caption="{{title}} — {{summary}}" class="group relative mb-4 block break-inside-avoid overflow-hidden rounded-xl bg-base-200">
-        <span class="skeleton absolute inset-0 z-0" aria-hidden="true"></span>
-        <img src="{{sw-url image}}" alt="{{title}}" loading="lazy" class="relative z-10 block aspect-auto h-auto w-full transition-transform duration-500 group-hover:scale-[1.03]" />
-        <span class="pointer-events-none absolute inset-0 z-20 bg-gradient-to-t from-black/40 via-black/0 to-black/0 opacity-50 transition-opacity duration-300 group-hover:opacity-90" aria-hidden="true"></span>
-      </a>
-      {{/each}}
-    </div>
+  <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="sec_masonry_d">Mixed-aspect images staggered into balanced CSS columns — no cropping — and the whole set is one gallery.</p>
+  <p class="mt-3 font-mono text-xs text-base-content/40"><code>&lt;div data-sw-component="lightbox" class="columns-2 sm:columns-3"&gt;</code></p>
+  <div class="mt-8 block columns-2 gap-4 sm:columns-3" data-sw-component="lightbox" aria-label="{{page.data.aria_masonry}}">
+    {{#sw-folder "Team" kind="image"}}
+    <a href="{{sw-url url}}" data-caption="{{alt}}" class="group relative mb-4 block break-inside-avoid overflow-hidden rounded-xl bg-base-200"><span class="skeleton absolute inset-0 z-0" aria-hidden="true"></span><img src="{{sw-url url}}" alt="{{alt}}" width="{{width}}" height="{{height}}" loading="lazy" class="relative z-10 block w-full transition-transform duration-500 group-hover:scale-[1.03]" /><span class="pointer-events-none absolute inset-0 z-20 bg-gradient-to-t from-black/40 via-black/0 to-black/0 opacity-50 transition-opacity duration-300 group-hover:opacity-90" aria-hidden="true"></span></a>
+    {{/sw-folder}}
+    {{#sw-folder "Projects" kind="image"}}
+    <a href="{{sw-url url}}" data-caption="{{alt}}" class="group relative mb-4 block break-inside-avoid overflow-hidden rounded-xl bg-base-200"><span class="skeleton absolute inset-0 z-0" aria-hidden="true"></span><img src="{{sw-url url}}" alt="{{alt}}" width="{{width}}" height="{{height}}" loading="lazy" class="relative z-10 block w-full transition-transform duration-500 group-hover:scale-[1.03]" /><span class="pointer-events-none absolute inset-0 z-20 bg-gradient-to-t from-black/40 via-black/0 to-black/0 opacity-50 transition-opacity duration-300 group-hover:opacity-90" aria-hidden="true"></span></a>
+    {{/sw-folder}}
+    {{#sw-folder "Blog" kind="image"}}
+    <a href="{{sw-url url}}" data-caption="{{alt}}" class="group relative mb-4 block break-inside-avoid overflow-hidden rounded-xl bg-base-200"><span class="skeleton absolute inset-0 z-0" aria-hidden="true"></span><img src="{{sw-url url}}" alt="{{alt}}" width="{{width}}" height="{{height}}" loading="lazy" class="relative z-10 block w-full transition-transform duration-500 group-hover:scale-[1.03]" /><span class="pointer-events-none absolute inset-0 z-20 bg-gradient-to-t from-black/40 via-black/0 to-black/0 opacity-50 transition-opacity duration-300 group-hover:opacity-90" aria-hidden="true"></span></a>
+    {{/sw-folder}}
   </div>
 </section>`,
   };

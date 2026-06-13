@@ -259,13 +259,13 @@ export function translationsDe(assets: Record<string, string>): Record<string, P
       sec_lb3_t: 'Lightbox — bildschirmfüllend',
       sec_lb3_d: 'Die Anpassung kann den Viewport füllen statt das ganze Bild zu zeigen, die Öffnen-Animation lässt sich abschalten, und das geöffnete Bild kann in der URL gespiegelt werden. Auf dem Smartphone kann das gezoomte Bild per Geräteneigung schwenken.',
       aria_gallery3: 'Studio-Galerie, bildschirmfüllend',
-      sec_single_t: 'Lightbox — ein einzelnes Bild',
+      sec_single_t: 'Lightbox — ein einzelnes Bild (eine Zeile)',
       sec_single_d:
-        'Eine Lightbox ist nicht nur für Raster: ein einzelnes Bild öffnet sich beim Klick bildschirmfüllend. Bei nur einem Bild gibt es keine Leiste und keine Pfeile — nur den Zoom, die Bildunterschrift und Escape zum Schließen.',
+        'Kein Raster-Gerüst nötig: Setze data-sw-component="lightbox" direkt auf ein <img>, und dieses eine Bild öffnet sich beim Klick bildschirmfüllend — die ganze Lightbox in einer einzigen Zeile.',
       aria_single: 'Ausgewähltes Bild',
       sec_masonry_t: 'Lightbox — Masonry-Raster',
       sec_masonry_d:
-        'Ein Masonry-Layout in CSS-Spalten: Bilder behalten ihre natürlichen Proportionen (kein Beschnitt) und staffeln sich in ausgewogene Spalten, während sich jedes weiterhin in derselben bildschirmfüllenden Galerie öffnet.',
+        'Bilder unterschiedlicher Seitenverhältnisse — Hochformate, Querformate und breite Cover — versetzt in ausgewogene CSS-Spalten, ohne Beschnitt. Das Attribut steht direkt auf dem Spalten-Container; die Bilder werden zu einer Galerie.',
       aria_masonry: 'Masonry-Galerie',
     },
   },

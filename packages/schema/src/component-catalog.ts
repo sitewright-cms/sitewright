@@ -130,20 +130,21 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
     type: 'Lightbox',
     marker: 'lightbox',
     summary:
-      'A full-screen gallery viewer: thumbnails open into a viewer with a bottom thumbnail strip, an enlarge-from-thumbnail open animation, a header image-counter + caption, swipe / pinch-zoom / keyboard navigation, and a per-image loader. Each component root is its own gallery.',
+      'A full-screen gallery viewer: images open into a viewer with a bottom thumbnail strip, an enlarge-from-thumbnail open animation, a header image-counter + caption, swipe / pinch-zoom / keyboard navigation, and a per-image loader. Put data-sw-component="lightbox" on a single <img> (one-image lightbox), on a <div> of <img>/<a> children (a gallery), or use the explicit styled-grid parts below. Each component root is its own gallery.',
     authoring: 'markup',
     parts: [
-      { part: 'grid', element: 'div', required: true, description: 'The thumbnail grid (override columns with !grid-cols-* utilities).' },
+      { part: 'grid', element: 'div', required: false, description: 'EXPLICIT form only: the thumbnail grid (gives the styled uniform square-cover grid + !grid-cols-* control). Omit it — and data-sw-part — for the one-line minimal forms; see notes.' },
       {
         part: 'item',
         element: 'a',
-        required: true,
+        required: false,
         description:
-          'One thumbnail: an anchor whose href is the FULL-SIZE image, containing an <img> thumbnail. The <img> is REQUIRED — the viewer clones it for the open animation and reuses its source in the bottom strip. href and the <img src> MAY DIFFER (a small thumbnail tile, a large full image).',
+          'EXPLICIT form only: one thumbnail — an anchor whose href is the FULL-SIZE image, containing an <img> thumbnail. Every item MUST contain an <img> (the viewer clones it for the open animation + the strip). href and the <img src> MAY DIFFER (small thumbnail tile, large full image).',
       },
     ],
     attributes: [
-      { name: 'data-caption', on: 'item', description: 'Caption shown in the viewer header bar for this image (tenant-trusted text; never bind visitor input).' },
+      { name: 'data-caption', on: 'item', description: 'Caption shown in the viewer header bar for this image (tenant-trusted text; never bind visitor input). Works on an item anchor OR a bare <img>.' },
+      { name: 'data-full', on: 'item', description: 'MINIMAL form: on a bare <img>, the FULL-SIZE image URL the viewer opens (the img src stays the thumbnail). Use {{sw-url …}}. (In the explicit form the anchor href is the full image instead.)' },
       { name: 'data-thumbnails', on: 'root', description: '"false" to hide the bottom thumbnail strip (shown by default).' },
       { name: 'data-arrows', on: 'root', description: '"false" to hide the prev/next arrows (shown by default).' },
       { name: 'data-animation', on: 'root', description: '"false" to disable the enlarge-from-thumbnail open animation (auto-disabled under prefers-reduced-motion).' },
@@ -162,7 +163,7 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
 </div>`,
     noJs: 'Each thumbnail is a plain link to the full image — clicking simply opens it.',
     notes:
-      'The viewer DOM is built entirely by the runtime — author ONLY the grid of anchor items (no overlay element). Each item MUST contain an <img>: its src is the thumbnail shown in the grid + bottom strip; the anchor href is the full-size image (which may be a larger, different file). For a polished tile, render the thumbnail as the anchor\'s CSS background-image (bg-cover bg-center) and keep the <img> for the viewer — e.g. a DaisyUI .skeleton loader behind + a dim gradient overlay on top. The bottom thumbnail strip, arrows, open animation, fit, accelerometer pan, and URL-hash are toggled via data-* (see attributes). Multiple lightboxes on one page are independent galleries. DaisyUI has no gallery/lightbox equivalent. Pairs naturally with a {{#sw-folder}} loop (media-library folder) or a dataset loop.',
+      'The viewer DOM is built entirely by the runtime (no overlay element to author). THREE authoring forms: (1) ONE LINE — a single image: `<img data-sw-component="lightbox" src="{{sw-url thumb}}" data-full="{{sw-url full}}" data-caption="…" alt="…">` (data-full optional; omit it and the src is used full-size). (2) MINIMAL GALLERY — a container of images: `<div data-sw-component="lightbox" class="grid grid-cols-4 gap-2">` whose children are bare `<img>` or `<a href><img></a>` (bare imgs are auto-wrapped; you style the container layout yourself). (3) EXPLICIT — the styled-grid skeleton above (data-sw-block + data-sw-part) for the batteries-included uniform square-cover grid + thumbnail strip. Every image must be an `<img>` (the open animation clones it). PE note: the `<a href>` forms open the full image with NO JS; a bare `<img>` only opens via JS (the image still shows without it). The strip, arrows, open animation, fit, tilt, and URL-hash are toggled via data-* (see attributes). Multiple lightboxes on one page are independent galleries. For a polished explicit tile, keep the `<img>` and add a DaisyUI .skeleton loader behind + a dim gradient overlay; match the tile aspect to the image (or use a masonry: `class="block columns-2 sm:columns-3"` + natural-aspect imgs) to avoid cropping. DaisyUI has no gallery/lightbox equivalent. Pairs naturally with a {{#sw-folder}} loop or a dataset loop.',
   },
   {
     type: 'Modal',

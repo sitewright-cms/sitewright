@@ -14,6 +14,12 @@
 // differ); SmartPhoto clones that <img> for the open animation and reuses its source as the
 // strip thumbnail, so every item MUST contain an <img>.
 //
+// One-line minimal forms are also accepted (resolveItems): a bare <img data-sw-component="lightbox"
+// src=… data-full=… data-caption=…> is a single-image lightbox, and a <div data-sw-component=
+// "lightbox"> whose children are plain <img> or <a href><img> becomes a gallery (bare imgs are
+// wrapped in an anchor whose href is data-full || src). The explicit data-sw-part form keeps the
+// styled grid + thumbnail defaults; the minimal forms are author-styled.
+//
 // Options are read from data-* on the root (documented in COMPONENT_CATALOG): data-thumbnails,
 // data-arrows, data-animation, data-fit, data-tilt, data-history.
 import SmartPhoto from 'smartphoto/src/core/index.js';
@@ -54,9 +60,45 @@ var CLASS_NAMES = {
 // Unique per-root gallery id, so multiple lightboxes on one page stay independent.
 var groupSeq = 0;
 
+// Wrap a bare <img> in the <a href><img> structure SmartPhoto expects — href is the FULL image
+// (data-full, else the img's own src), and the caption carries over. No-op if the image is already
+// inside a linked anchor.
+function wrapImg(img) {
+  var parent = img.parentNode;
+  if (parent && parent.tagName === 'A' && parent.getAttribute('href')) return parent;
+  var a = document.createElement('a');
+  a.setAttribute('href', img.getAttribute('data-full') || img.getAttribute('src') || '');
+  var cap = img.getAttribute('data-caption');
+  if (cap) a.setAttribute('data-caption', cap);
+  if (parent) parent.insertBefore(a, img);
+  a.appendChild(img);
+  return a;
+}
+
+// Resolve a root to its gallery item anchors, supporting the explicit AND one-line minimal forms:
+//   1. explicit  — [data-sw-part="item"] anchors (full control + the styled grid defaults)
+//   2. one image — the root IS an <img> (a single-image lightbox: <img data-sw-component="lightbox">)
+//   3. minimal   — every descendant <img> that belongs to THIS root becomes an item, via its
+//                  wrapping <a href> if it has one, else a fresh wrapper. Handles a mix of bare
+//                  <img> and <a href><img> in one container, and skips images that belong to a
+//                  NESTED lightbox (they're enhanced as their own gallery).
+function resolveItems(root) {
+  var explicit = Array.prototype.slice.call(root.querySelectorAll('[data-sw-part="item"]'));
+  if (explicit.length) return explicit;
+  if (root.tagName === 'IMG') return [wrapImg(root)];
+  var items = [];
+  Array.prototype.forEach.call(root.querySelectorAll('img'), function (img) {
+    if (img.closest('[data-sw-component="lightbox"]') !== root) return; // belongs to a nested lightbox
+    var anchor = img.closest('a[href]');
+    var item = anchor && root.contains(anchor) ? anchor : wrapImg(img);
+    if (items.indexOf(item) === -1) items.push(item); // dedupe (an anchor with several imgs = one item)
+  });
+  return items;
+}
+
 function enhance(root) {
   if (root.getAttribute('data-sw-enhanced') === 'true') return;
-  var items = Array.prototype.slice.call(root.querySelectorAll('[data-sw-part="item"]'));
+  var items = resolveItems(root);
   if (!items.length) return;
 
   var attr = function (name, fallback) {

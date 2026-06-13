@@ -140,6 +140,8 @@ test.beforeAll(async ({ playwright, baseURL }) => {
 <section id="lbfx"><div data-sw-component="lightbox" data-sw-block="Lightbox" data-thumbnails="false" data-arrows="false" aria-label="Gallery 2">
   <div data-sw-part="grid">${lbItems}</div>
 </div></section>
+<section id="lbsingle"><img data-sw-component="lightbox" data-thumbnails="false" src="${imgs[1]}" data-full="${imgs[0]}" data-caption="Solo" alt="solo" style="max-width:200px"></section>
+<section id="lbbare"><div data-sw-component="lightbox" aria-label="Bare gallery"><img src="${imgs[0]}" data-caption="Bare 0"><img src="${imgs[1]}" data-caption="Bare 1"><img src="${imgs[2]}" data-caption="Bare 2"></div></section>
 </div>`;
 
   expect(
@@ -450,6 +452,31 @@ test('lightbox switches: data-thumbnails / data-arrows omit the strip and arrows
   await expect(overlay.locator('.sw-lightbox-count')).toHaveText('1/3');
   await page.keyboard.press('ArrowRight');
   await expect(overlay.locator('.sw-lightbox-count')).toHaveText('2/3');
+  await page.keyboard.press('Escape');
+});
+
+test('lightbox minimal forms: a bare <img> one-liner and a <div> of bare <img> become galleries', async ({ page }) => {
+  // (1) One-line single image: the <img> IS the component. data-full is the full-size opened.
+  const single = page.locator('#lbsingle img[data-sw-component="lightbox"]');
+  await expect(single).toHaveAttribute('data-sw-enhanced', 'true');
+  const full = (await single.getAttribute('data-full'))!;
+  await single.click();
+  const ov = page.locator('.sw-lightbox[aria-hidden="false"]');
+  await expect(ov).toBeVisible();
+  await expect(ov.locator('.sw-lightbox-count')).toHaveText('1/1');
+  await expect(ov.locator('.sw-lightbox-list li.current img')).toHaveAttribute('src', full); // opened the data-full image
+  await expect(ov.locator('.sw-lightbox-nav')).toHaveCount(0); // data-thumbnails="false"
+  await page.keyboard.press('Escape');
+
+  // (2) Minimal gallery: a <div data-sw-component="lightbox"> of bare <img> (auto-wrapped into items).
+  const bare = page.locator('#lbbare [data-sw-component="lightbox"]');
+  await expect(bare).toHaveAttribute('data-sw-enhanced', 'true');
+  await bare.locator('img').first().click();
+  const ov2 = page.locator('.sw-lightbox[aria-hidden="false"]');
+  await expect(ov2).toBeVisible();
+  await expect(ov2.locator('.sw-lightbox-count')).toHaveText('1/3');
+  await expect(ov2.locator('.sw-lightbox-nav li')).toHaveCount(3);
+  await expect(ov2.locator('.sw-lightbox-caption')).toContainText('Bare 0'); // data-caption copied onto the wrapped anchor
   await page.keyboard.press('Escape');
 });
 

@@ -257,13 +257,13 @@ export function translationsEs(assets: Record<string, string>): Record<string, P
       sec_lb3_t: 'Lightbox — llenar la pantalla',
       sec_lb3_d: 'El ajuste puede llenar el viewport en vez de mostrar la imagen completa, la animación de apertura puede desactivarse y la imagen abierta puede reflejarse en la URL. En el móvil, la imagen ampliada puede desplazarse con la inclinación del dispositivo.',
       aria_gallery3: 'Galería del estudio, modo llenar',
-      sec_single_t: 'Lightbox — una sola imagen',
+      sec_single_t: 'Lightbox — una sola imagen (una línea)',
       sec_single_d:
-        'Una lightbox no es solo para cuadrículas: una foto destacada por sí sola se abre a pantalla completa al hacer clic. Con una sola imagen no hay tira ni flechas — solo el zoom, la leyenda y Escape para cerrar.',
+        'Sin estructura de cuadrícula: pon data-sw-component="lightbox" directamente en un <img> y esa única imagen se abre a pantalla completa al hacer clic — toda la lightbox en una sola línea.',
       aria_single: 'Foto destacada',
       sec_masonry_t: 'Lightbox — cuadrícula masonry',
       sec_masonry_d:
-        'Un diseño masonry en columnas CSS: las imágenes conservan sus proporciones naturales (sin recorte) y se escalonan en columnas equilibradas, mientras cada una sigue abriéndose en la misma galería a pantalla completa.',
+        'Imágenes de proporciones variadas — verticales, horizontales y portadas anchas — escalonadas en columnas CSS equilibradas, sin recorte. El atributo va directamente en el contenedor de columnas; las imágenes forman una galería.',
       aria_masonry: 'Galería masonry',
     },
   },

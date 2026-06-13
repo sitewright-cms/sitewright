@@ -162,6 +162,9 @@ const LIGHTBOX_CSS = [
   ':where([data-sw-block="Lightbox"] [data-sw-part="grid"]){display:grid;grid-template-columns:repeat(auto-fill,minmax(8rem,1fr));gap:.5rem}',
   ':where([data-sw-block="Lightbox"] [data-sw-part="item"]){display:block}',
   ':where([data-sw-block="Lightbox"] [data-sw-part="item"] img){display:block;width:100%;height:100%;object-fit:cover;aspect-ratio:1}',
+  // "Click to enlarge" affordance for ANY lightbox image — keyed on data-sw-component so it covers
+  // the one-line minimal forms (bare <img>/<div> with no data-sw-block/data-sw-part scaffolding) too.
+  ':where([data-sw-component="lightbox"]) img{cursor:zoom-in}',
   LIGHTBOX_SMARTPHOTO_VENDOR_CSS,
   // Dim + blurred backdrop (vendor ships solid black). z-index lifts the fullscreen viewer above
   // site chrome — the vendor's z-index:100 sits UNDER the cookie-consent banner (9998) and other

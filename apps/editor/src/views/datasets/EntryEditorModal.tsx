@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { ChevronUp, ChevronDown, Trash2, Plus } from 'lucide-react';
 import type { Dataset, Entry, Field } from '@sitewright/schema';
-import { coerceFieldValue, entryLabel, identifierize, readValue } from '../../lib/entry-form';
+import { coerceFieldValue, defaultFieldValues, entryLabel, identifierize, readValue } from '../../lib/entry-form';
 import { api } from '../../api';
 import { glassInput, gradientSurface } from '../../theme';
 import { Modal } from '../ui/Modal';
@@ -8,19 +9,150 @@ import { useDialogs } from '../ui/Dialogs';
 import { AssetField } from '../files/AssetField';
 import { ACCEPT } from '../files/FileBrowser';
 
-/** A single field's input, typed by the dataset field's kind. */
-function FieldInput({
+// Monotonic key source for list items (stable React keys that travel with an item across reorder,
+// without polluting the saved data shape). See ListField.
+let listKeySeq = 0;
+
+/** A labelled stack of child-field inputs — shared by the modal body, an `object` field, and each
+ *  item of a `list` field. Each child change is coerced to the child's type before bubbling up.
+ *  `path` makes DOM ids unique across the tree; `itemIndex` (set inside a list) disambiguates the
+ *  accessible labels of repeated fields ("caption (item 2)"). */
+function FieldGroup({
+  fields,
+  values,
+  projectId,
+  path,
+  itemIndex,
+  onChange,
+}: {
+  fields: readonly Field[];
+  values: Record<string, unknown>;
+  projectId: string;
+  path: string;
+  itemIndex?: number;
+  onChange: (name: string, value: unknown) => void;
+}) {
+  return (
+    <div className="space-y-3">
+      {fields.map((f) => (
+        <label key={f.name} htmlFor={`entry-${path}.${f.name}`} className="block">
+          <span className="mb-1 block text-xs font-medium text-slate-400">
+            {f.name}
+            {f.required ? <span className="text-rose-400"> *</span> : null}
+          </span>
+          <FieldInput
+            field={f}
+            value={readValue(values, f.name)}
+            projectId={projectId}
+            path={`${path}.${f.name}`}
+            ariaLabel={itemIndex === undefined ? f.name : `${f.name} (item ${itemIndex + 1})`}
+            onRaw={(raw) => onChange(f.name, coerceFieldValue(f.type, raw))}
+          />
+        </label>
+      ))}
+    </div>
+  );
+}
+
+/** A `list` field: an ordered array of item records (each shaped by `field.fields`) with
+ *  add / remove / move-up / move-down. Items are plain objects with no id, so a parallel `keys`
+ *  ref is kept in lockstep with the ops — React keys then follow an item through a reorder (rather
+ *  than the index, which would swap a child's local state, e.g. an open AssetField picker). */
+function ListField({
   field,
   value,
   projectId,
+  path,
   onRaw,
 }: {
   field: Field;
   value: unknown;
   projectId: string;
-  onRaw: (raw: unknown) => void;
+  path: string;
+  onRaw: (next: Record<string, unknown>[]) => void;
 }) {
-  const common = { id: `entry-${field.name}`, 'aria-label': field.name };
+  const malformed = value !== undefined && !Array.isArray(value);
+  const items = (Array.isArray(value) ? value : []) as Record<string, unknown>[];
+  const sub = field.fields ?? [];
+  const keys = useRef<string[]>([]);
+  // Keep the key list length in sync with items (initial load + any external replacement); the
+  // explicit ops below keep identity aligned through move/remove/add.
+  while (keys.current.length < items.length) keys.current.push(`li${listKeySeq++}`);
+  if (keys.current.length > items.length) keys.current.length = items.length;
+
+  const setItem = (i: number, name: string, value_: unknown) =>
+    onRaw(items.map((it, idx) => (idx === i ? { ...it, [name]: value_ } : it)));
+  const move = (i: number, dir: -1 | 1) => {
+    const j = i + dir;
+    if (j < 0 || j >= items.length) return;
+    const next = [...items];
+    [next[i], next[j]] = [next[j]!, next[i]!];
+    [keys.current[i], keys.current[j]] = [keys.current[j]!, keys.current[i]!];
+    onRaw(next);
+  };
+  const remove = (i: number) => {
+    keys.current.splice(i, 1);
+    onRaw(items.filter((_, idx) => idx !== i));
+  };
+  const add = () => {
+    keys.current.push(`li${listKeySeq++}`);
+    onRaw([...items, defaultFieldValues(sub)]);
+  };
+  const iconBtn = 'rounded p-1 text-slate-400 hover:bg-white/10 hover:text-slate-100 disabled:opacity-30 disabled:hover:bg-transparent';
+  return (
+    <div className="space-y-2.5 rounded-lg border border-white/10 p-3">
+      {malformed ? (
+        <p className="rounded bg-amber-500/15 px-2 py-1 text-xs text-amber-300">This field's stored value isn't a list and is shown empty — saving will replace it.</p>
+      ) : null}
+      {items.length === 0 ? <p className="text-xs text-slate-500">No items yet.</p> : null}
+      {items.map((item, i) => (
+        <div key={keys.current[i]} className="rounded-md border border-white/10 bg-white/5 p-3">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-400">#{i + 1}</span>
+            <div className="flex gap-0.5">
+              <button type="button" className={iconBtn} aria-label={`Move item ${i + 1} up`} disabled={i === 0} onClick={() => move(i, -1)}>
+                <ChevronUp className="h-4 w-4" />
+              </button>
+              <button type="button" className={iconBtn} aria-label={`Move item ${i + 1} down`} disabled={i === items.length - 1} onClick={() => move(i, 1)}>
+                <ChevronDown className="h-4 w-4" />
+              </button>
+              <button type="button" className={iconBtn} aria-label={`Remove item ${i + 1}`} onClick={() => remove(i)}>
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+          <FieldGroup fields={sub} values={item} projectId={projectId} path={`${path}.${i}`} itemIndex={i} onChange={(name, v) => setItem(i, name, v)} />
+        </div>
+      ))}
+      <button
+        type="button"
+        className="inline-flex items-center gap-1.5 rounded-md border border-white/10 px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-white/10"
+        onClick={add}
+      >
+        <Plus className="h-3.5 w-3.5" /> Add item
+      </button>
+    </div>
+  );
+}
+
+/** A single field's input, typed by the dataset field's kind. Recurses for `object`/`list`.
+ *  `path` is a tree-unique id segment; `ariaLabel` is the human label (item-disambiguated). */
+function FieldInput({
+  field,
+  value,
+  projectId,
+  onRaw,
+  path,
+  ariaLabel,
+}: {
+  field: Field;
+  value: unknown;
+  projectId: string;
+  onRaw: (raw: unknown) => void;
+  path: string;
+  ariaLabel?: string;
+}) {
+  const common = { id: `entry-${path}`, 'aria-label': ariaLabel ?? field.name };
   switch (field.type) {
     case 'richtext':
       return <textarea {...common} className={`${glassInput} min-h-20`} value={typeof value === 'string' ? value : ''} onChange={(e) => onRaw(e.target.value)} />;
@@ -52,17 +184,22 @@ function FieldInput({
           placeholder="/photo.jpg"
         />
       );
-    case 'list':
-    case 'object':
-      // Nested fields: read-only summary for now (a structured recursive editor lands in a
-      // follow-up). Crucially NOT an editable text input — that would coerce the stored array/
-      // object to a string on the first keystroke. Shown so the value is at least visible.
+    case 'object': {
+      // A named sub-group: render its child fields, persisting into a nested record.
+      const isObj = !!value && typeof value === 'object' && !Array.isArray(value);
+      const rec = isObj ? (value as Record<string, unknown>) : {};
+      const malformed = value !== undefined && !isObj;
       return (
-        <div {...common} className={`${glassInput} min-h-10 whitespace-pre-wrap font-mono text-xs text-slate-300`}>
-          {Array.isArray(value) || (typeof value === 'object' && value !== null) ? JSON.stringify(value, null, 2) : '—'}
-          <span className="mt-1 block not-italic text-slate-500">Nested {field.type} — edit coming soon.</span>
+        <div className="rounded-lg border border-white/10 p-3">
+          {malformed ? (
+            <p className="mb-2 rounded bg-amber-500/15 px-2 py-1 text-xs text-amber-300">This field's stored value isn't an object and is shown empty — saving will replace it.</p>
+          ) : null}
+          <FieldGroup fields={field.fields ?? []} values={rec} projectId={projectId} path={path} onChange={(name, v) => onRaw({ ...rec, [name]: v })} />
         </div>
       );
+    }
+    case 'list':
+      return <ListField field={field} value={value} projectId={projectId} path={path} onRaw={onRaw} />;
     default:
       // text, reference, select — a plain text input (richer pickers come later).
       return <input {...common} type="text" className={glassInput} value={typeof value === 'string' ? value : ''} onChange={(e) => onRaw(e.target.value)} />;
@@ -230,7 +367,7 @@ export function EntryEditorModal({ projectId, dataset, entry, keyEditable = fals
               <span className="ml-1 text-slate-300">({field.type})</span>
               {field.required && <span className="ml-1 text-red-400">*</span>}
             </label>
-            <FieldInput field={field} value={readValue(values, field.name)} projectId={projectId} onRaw={(raw) => setField(field, raw)} />
+            <FieldInput field={field} value={readValue(values, field.name)} projectId={projectId} path={field.name} onRaw={(raw) => setField(field, raw)} />
           </div>
         ))}
         {error && <p className="text-sm text-red-600">{error}</p>}

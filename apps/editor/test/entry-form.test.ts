@@ -94,12 +94,13 @@ describe('defaultEntryValues', () => {
     });
   });
 
-  it('seeds nested fields as an empty array/object (not "")', () => {
+  it("seeds a list as [] and an object as its children's defaults (recursively), not \"\"", () => {
     const ds = { id: 'h', name: 'H', slug: 'h', fields: [
       { name: 'slides', type: 'list' as const, required: false, localized: false, fields: [{ name: 'image', type: 'image' as const, required: false, localized: false }] },
       { name: 'cfg', type: 'object' as const, required: false, localized: false, fields: [{ name: 'autoplay', type: 'boolean' as const, required: false, localized: false }] },
     ] };
-    expect(defaultEntryValues(ds)).toEqual({ slides: [], cfg: {} });
+    // list → empty array (items added on demand); object → a record seeded with each child's default.
+    expect(defaultEntryValues(ds)).toEqual({ slides: [], cfg: { autoplay: false } });
   });
 });
 

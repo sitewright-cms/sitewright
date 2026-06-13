@@ -1,7 +1,7 @@
 // Pure helpers for the dataset/entry forms: turning form inputs into typed entry
 // values, seeding empty entries, and deriving labels/slugs. Kept framework-free
 // and side-effect-free so it is trivially unit-tested.
-import type { Dataset, Entry, FieldType } from '@sitewright/schema';
+import type { Dataset, Entry, Field, FieldType } from '@sitewright/schema';
 
 /** Lowercases and hyphenates a label into a slug-safe token (may be empty). */
 export function slugify(input: string): string {
@@ -60,21 +60,32 @@ export function coerceFieldValue(type: FieldType, raw: unknown): unknown {
   }
 }
 
+/** The empty initial value for a single field by type — recursive for nested object/list. */
+function emptyFieldValue(field: Field): unknown {
+  switch (field.type) {
+    case 'boolean':
+      return false;
+    case 'number':
+    case 'json':
+      return undefined;
+    case 'list':
+      return []; // items are appended on demand (see defaultFieldValues for one item's shape)
+    case 'object':
+      return defaultFieldValues(field.fields ?? []);
+    default:
+      return '';
+  }
+}
+
+/** Builds an initial values record for a set of fields — used for an entry, an `object` field,
+ *  and (per item) a `list` field. Recurses into nested object fields. */
+export function defaultFieldValues(fields: readonly Field[]): Record<string, unknown> {
+  return fields.reduce<Record<string, unknown>>((acc, field) => ({ ...acc, [field.name]: emptyFieldValue(field) }), {});
+}
+
 /** Builds an initial `values` object for a new entry of `dataset`. */
 export function defaultEntryValues(dataset: Dataset): Record<string, unknown> {
-  return dataset.fields.reduce<Record<string, unknown>>((acc, field) => {
-    const empty =
-      field.type === 'boolean'
-        ? false
-        : field.type === 'number' || field.type === 'json'
-          ? undefined
-          : field.type === 'list'
-            ? []
-            : field.type === 'object'
-              ? {}
-              : '';
-    return { ...acc, [field.name]: empty };
-  }, {});
+  return defaultFieldValues(dataset.fields);
 }
 
 /** A human label for an entry: the first non-empty text field value, else its id. */

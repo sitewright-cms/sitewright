@@ -65,13 +65,15 @@ const CAROUSEL_CSS = [
   // spacing as padding INSIDE the slide (Embla's documented gap pattern).
   '[data-sw-block="Carousel"] [data-sw-part="slide"]{flex:0 0 calc(100%/var(--sw-items,1));scroll-snap-align:start;min-width:0;margin:0}',
   '[data-sw-block="Carousel"] [data-sw-part="slide"] img{display:block;width:100%;height:auto}',
-  // data-item-align: HORIZONTAL distribution of the slides when they DON'T fill the row
-  // (fewer slides than --sw-items, or a partial last page) — start (default), center, or end.
-  // CSS-only justify-content, applied to the no-JS scroll-snap track AND the runtime-created
-  // container so both render states agree. (Distinct from data-align, which sets Embla's SNAP
-  // position; this only engages when the flex content underfills its container.)
-  '[data-sw-block="Carousel"][data-item-align="center"] [data-sw-part="track"],[data-sw-block="Carousel"][data-item-align="center"] [data-sw-part="container"]{justify-content:center}',
-  '[data-sw-block="Carousel"][data-item-align="end"] [data-sw-part="track"],[data-sw-block="Carousel"][data-item-align="end"] [data-sw-part="container"]{justify-content:flex-end}',
+  // data-item-align: HORIZONTAL distribution when the slides DON'T fill the row (fewer than
+  // --sw-items) — start (default), center, or end. justify-content on the NO-JS scroll-snap TRACK
+  // only (gated to the un-enhanced state). The enhanced (Embla) container is handled by the runtime,
+  // which applies justify-content ONLY when the content FITS — because justify-content:center on an
+  // OVERFLOWING flex container centers the overflow and shoves the first slide off-screen left,
+  // fighting Embla's transform. When the track scrolls, Embla's `align` (also driven by
+  // data-item-align) does the centering instead.
+  '[data-sw-block="Carousel"]:not([data-sw-enhanced="true"])[data-item-align="center"] [data-sw-part="track"]{justify-content:center}',
+  '[data-sw-block="Carousel"]:not([data-sw-enhanced="true"])[data-item-align="end"] [data-sw-part="track"]{justify-content:flex-end}',
   // Enhanced: the track stops being the scroller (Embla translates the container inside it).
   '[data-sw-block="Carousel"][data-sw-enhanced="true"] [data-sw-part="track"]{display:block;overflow:hidden;scroll-snap-type:none}',
   // AutoHeight (data-autoheight="true"): the engine sets the container height to the

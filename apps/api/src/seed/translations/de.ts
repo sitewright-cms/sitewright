@@ -17,7 +17,6 @@ export function translationsDe(assets: Record<string, string>): Record<string, P
       hero_eyebrow: 'Boutique-Webstudio · San Francisco',
       hero_title: 'Websites, die Ihnen mehr Geschäft bringen.',
       hero_sub: 'Wir gestalten und bauen schnelle, schöne Websites für ambitionierte Marken — Strategie, Design und Entwicklung aus einer Hand.',
-      hero_cta: 'Projekt starten',
       hero_cta2: 'Arbeiten ansehen',
       hero_alt: 'Eine aktuelle Northwind-Website',
       stat1_n: '120+', stat1_l: 'Websites ausgeliefert',
@@ -288,13 +287,6 @@ export function translationsDe(assets: Record<string, string>): Record<string, P
     data: {
       heading: 'Studio-Merch',
       intro: 'Eine Kleinigkeit für Web-Nerds. In den Warenkorb legen und per WhatsApp, E-Mail oder Zahlungslink bestellen.',
-      cart_title: 'Warenkorb',
-      cart_note: 'Preise unverbindlich. Dies sendet eine Bestellanfrage — der Verkäufer bestätigt Verfügbarkeit und Endpreis.',
-      cart_added: 'Hinzugefügt',
-      cart_empty: 'Ihr Warenkorb ist leer.',
-      cart_subtotal: 'Zwischensumme',
-      cart_clear: 'Warenkorb leeren',
-      cart_sent: 'Bestellung gesendet — wir melden uns.',
     },
   },
   'nav-audit': {

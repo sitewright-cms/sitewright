@@ -124,7 +124,8 @@ export const EXAMPLE_WEBSITE = {
   // MINI SHOP — front-end cart config for the demo Shop page. Currency + the three deep-link channels
   // (WhatsApp, email, PayPal.me payment link). The cart is front-end only and prices are
   // NON-AUTHORITATIVE — the cart submits an order inquiry; Northwind confirms + collects payment.
-  // Drawer strings localize per page via {{sw-cart}} hash overrides fed from page.data (shop page).
+  // Drawer strings + the add-to-cart label auto-localize from the translation catalog (reserved cart_*
+  // keys in website.translations, resolved per page-locale) — bare {{sw-cart}}/{{sw-add-to-cart}}.
   // The WhatsApp + email channels collect buyer details (`fields`) before the link opens; the cart
   // appends them as "Label: value" lines below the order (email also opens with a brand greeting).
   shop: {

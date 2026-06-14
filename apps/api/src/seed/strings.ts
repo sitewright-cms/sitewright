@@ -38,6 +38,16 @@ export interface ChromeStrings {
   cookie_more: string;
   cookie_accept: string;
   href_privacy: string;
+  // MINI SHOP cart — RESERVED keys the {{sw-add-to-cart}}/{{sw-cart}} helpers read from the catalog so a
+  // bare helper auto-localizes its built-in labels (no per-page hash). See packages/blocks reservedTr.
+  cart_add: string;
+  cart_title: string;
+  cart_note: string;
+  cart_added: string;
+  cart_empty: string;
+  cart_subtotal: string;
+  cart_clear: string;
+  cart_sent: string;
 }
 
 export const CHROME_STRINGS: Record<string, ChromeStrings> = {
@@ -58,6 +68,14 @@ export const CHROME_STRINGS: Record<string, ChromeStrings> = {
     cookie_more: 'Learn more',
     cookie_accept: 'OK, got it',
     href_privacy: '/privacy',
+    cart_add: 'Add to cart',
+    cart_title: 'Your cart',
+    cart_note: 'Prices are indicative. This sends an order request — the seller confirms availability and final price.',
+    cart_added: 'Added',
+    cart_empty: 'Your cart is empty.',
+    cart_subtotal: 'Subtotal',
+    cart_clear: 'Clear cart',
+    cart_sent: 'Order sent — we will be in touch.',
   },
   de: {
     href_home: '/de',
@@ -76,6 +94,14 @@ export const CHROME_STRINGS: Record<string, ChromeStrings> = {
     cookie_more: 'Mehr erfahren',
     cookie_accept: 'Alles klar',
     href_privacy: '/de/datenschutz',
+    cart_add: 'In den Warenkorb',
+    cart_title: 'Warenkorb',
+    cart_note: 'Preise unverbindlich. Dies sendet eine Bestellanfrage — der Verkäufer bestätigt Verfügbarkeit und Endpreis.',
+    cart_added: 'Hinzugefügt',
+    cart_empty: 'Ihr Warenkorb ist leer.',
+    cart_subtotal: 'Zwischensumme',
+    cart_clear: 'Warenkorb leeren',
+    cart_sent: 'Bestellung gesendet — wir melden uns.',
   },
   es: {
     href_home: '/es',
@@ -94,6 +120,14 @@ export const CHROME_STRINGS: Record<string, ChromeStrings> = {
     cookie_more: 'Más información',
     cookie_accept: 'Entendido',
     href_privacy: '/es/privacidad',
+    cart_add: 'Añadir al carrito',
+    cart_title: 'Su carrito',
+    cart_note: 'Precios orientativos. Esto envía una solicitud de pedido — el vendedor confirma disponibilidad y precio final.',
+    cart_added: 'Añadido',
+    cart_empty: 'Su carrito está vacío.',
+    cart_subtotal: 'Subtotal',
+    cart_clear: 'Vaciar carrito',
+    cart_sent: 'Pedido enviado — le contactaremos.',
   },
 };
 

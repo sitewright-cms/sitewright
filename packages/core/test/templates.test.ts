@@ -65,10 +65,9 @@ describe('resolveTemplateSource (code-first templates)', () => {
     // Loops the products dataset and emits a first-party add-to-cart button + the cart mount.
     expect(shop!.source).toContain('{{#each data.products}}');
     expect(shop!.source).toContain('{{sw-add-to-cart');
-    // The cart mount exposes the i18n string hooks: page.data overrides win over website.shop
-    // (so an inherit-mode locale variant localizes the drawer without forking the template).
-    expect(shop!.source).toContain('{{sw-cart title=(lookup page.data "cart_title")');
-    expect(shop!.source).toContain('sent=(lookup page.data "cart_sent")}}');
+    // The cart mount is bare — its drawer strings + the add-to-cart label auto-localize from the
+    // translation catalog (reserved cart_* keys), so a locale variant needs no per-page hash wiring.
+    expect(shop!.source).toContain('{{sw-cart}}');
     // The editable headings are page.data leaves with declared defaults.
     expect(shop!.source).toContain('data-sw-text="data.heading"');
     expect(Object.keys(shop!.data as object)).toEqual(expect.arrayContaining(['heading', 'intro']));

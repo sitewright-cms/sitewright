@@ -125,6 +125,42 @@ describe('mini shop cart → publish', () => {
     expect(html).toContain('data-empty-label="Ihr Warenkorb ist leer."');
   });
 
+  it('auto-localizes a bare cart + add-to-cart from the translation catalog (reserved cart_* keys)', async () => {
+    const proj = client.project(projectId);
+    expect(
+      (
+        await proj.putContent('settings', 'settings', {
+          identity: { name: 'Acme', colors: { primary: '#0a7' } },
+          // No per-page hash, no website.shop labels — the strings come from website.translations.
+          website: {
+            footer: '{{sw-cart}}',
+            shop,
+            translations: {
+              cart_add: { en: 'Add to cart' },
+              cart_title: { en: 'Your cart' },
+              cart_empty: { en: 'Your cart is empty.' },
+            },
+          },
+          settings: {},
+        })
+      ).statusCode,
+    ).toBe(200);
+    const home = {
+      id: 'home',
+      path: '',
+      title: 'Shop',
+      root: { id: 'r', type: 'Section' },
+      source: '<section>{{sw-add-to-cart sku="w1" name="Widget" price="5"}}</section>',
+    };
+    expect((await proj.putContent('page', 'home', home)).statusCode).toBe(200);
+    expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
+
+    const html = (await client.get(`/sites/${slug}/index.html`)).body;
+    expect(html).toContain('data-cart-title="Your cart"'); // from website.translations, no hash
+    expect(html).toContain('data-empty-label="Your cart is empty."');
+    expect(html).toContain('>Add to cart</button>'); // sw-add-to-cart label from cart_add
+  });
+
   it('ships NOTHING extra for a site that uses no cart', async () => {
     const proj = client.project(projectId);
     const page = {

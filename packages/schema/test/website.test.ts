@@ -287,4 +287,21 @@ describe('WebsiteSettingsSchema', () => {
       for (const buttonEffect of BUTTON_EFFECTS) expect(WebsiteSettingsSchema.parse({ theme: { buttonEffect } }).theme?.buttonEffect).toBe(buttonEffect);
     });
   });
+
+  describe('translations (i18n message catalog — key-first)', () => {
+    it('accepts a key-first table and is optional + separate from data', () => {
+      const w = { translations: { nav_home: { en: 'Home', de: 'Start' }, cart_title: { en: 'Your cart' } } };
+      const parsed = WebsiteSettingsSchema.parse(w);
+      expect(parsed.translations?.nav_home).toEqual({ en: 'Home', de: 'Start' });
+      expect(WebsiteSettingsSchema.parse({}).translations).toBeUndefined();
+    });
+    it('rejects a prototype-polluting key, an invalid locale code, and an over-long value', () => {
+      expect(() => WebsiteSettingsSchema.parse({ translations: { ['__proto__']: { en: 'x' } } })).toThrow();
+      expect(() => WebsiteSettingsSchema.parse({ translations: { k: { 'en us': 'x' } } })).toThrow(); // space in locale
+      expect(() => WebsiteSettingsSchema.parse({ translations: { k: { en: 'a'.repeat(2001) } } })).toThrow();
+      // a dangerous LOCALE key is also rejected (constructor/prototype pass the locale regex → caught by safeRecord)
+      expect(() => WebsiteSettingsSchema.parse({ translations: { k: { constructor: 'x' } } })).toThrow();
+      expect(() => WebsiteSettingsSchema.parse({ translations: { k: { prototype: 'x' } } })).toThrow();
+    });
+  });
 });

@@ -219,6 +219,18 @@ describe('renderTemplate — curated helpers (extensibility)', () => {
     expect(renderTemplate('{{sw-truncate page.t 5}}', { page: { t: 'abc' } })).toBe('abc');
   });
 
+  it('{{sw-translate}} reads the pre-resolved website.t map, escapes output, falls back to default=', () => {
+    const ctxT = { website: { t: { nav_home: 'Start', amp: 'A & B' } } };
+    expect(renderTemplate('{{sw-translate "nav_home"}}', ctxT)).toBe('Start');
+    expect(renderTemplate('{{sw-translate "amp"}}', ctxT)).toBe('A &amp; B'); // escaped
+    expect(renderTemplate('{{sw-translate "missing" default="Hi"}}', ctxT)).toBe('Hi');
+    expect(renderTemplate('{{sw-translate "missing"}}', ctxT)).toBe('');
+    expect(renderTemplate('{{sw-translate "nav_home"}}', {})).toBe(''); // no website.t → empty
+    // usable in an attribute (escaped), and proto-key safe
+    expect(renderTemplate('<a aria-label="{{sw-translate "nav_home"}}">x</a>', ctxT)).toContain('aria-label="Start"');
+    expect(renderTemplate('{{sw-translate "__proto__" default="ok"}}', ctxT)).toBe('ok');
+  });
+
   it('{{sw-icon}} inlines a built-in SVG (trusted body, escaped class), empty for unknown', () => {
     const out = renderTemplate('{{sw-icon "arrow-right" "h-5 w-5"}}', ctx);
     expect(out).toContain('<svg class="h-5 w-5"');

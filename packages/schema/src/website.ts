@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { JsonObjectStoreSchema } from './json-store.js';
-import { targetsPrivateHost, IdSchema } from './primitives.js';
+import { targetsPrivateHost, IdSchema, KeyNameSchema, safeRecord } from './primitives.js';
 
 // Bounded to limit build-output amplification (these fields are injected into
 // every page of a publish, up to MAX_BUNDLE.pages). CSS is smaller than the
@@ -16,6 +16,22 @@ const HTML_MAX = 20_000;
 // `json-store.ts`.
 /** The `website.data` editable JSON store — a root OBJECT (the shared bounded, prototype-safe store). */
 export const WebsiteDataSchema = JsonObjectStoreSchema;
+
+// --- website.translations: the project's i18n MESSAGE CATALOG — a dedicated, KEY-FIRST table
+// (`key → { locale → string }`) kept SEPARATE from `website.data` (which is the author's free-form
+// JSON, not a translation store). Key-first so it reads as a table (rows = keys, columns = locales)
+// and the editor + "what's untranslated?" view fall out naturally. Resolved per render against
+// `page.locale` (with the project defaultLocale as fallback) by `translate()` in @sitewright/core and
+// the `{{sw-translate}}` helper / `data-sw-text="t:<key>"` directive. Bounded + prototype-safe.
+const TRANSLATION_VALUE_MAX = 2000;
+// Locale codes are the object keys of each cell map. Mirrors project.ts `LocaleSchema` (kept inline to
+// avoid a website ↔ project import cycle — project.ts imports WebsiteSettingsSchema).
+const TranslationLocaleKey = z.string().min(1).max(35).regex(/^[A-Za-z0-9-]+$/, 'invalid locale code');
+/** One key's per-locale cells: `{ en: "…", de: "…" }`. */
+const TranslationCellsSchema = safeRecord(z.string().max(TRANSLATION_VALUE_MAX), TranslationLocaleKey);
+/** The project translation table: `key → { locale → string }`. Sibling of `website.data`. */
+export const TranslationsSchema = safeRecord(TranslationCellsSchema, KeyNameSchema);
+export type Translations = z.infer<typeof TranslationsSchema>;
 
 // --- shop (MINI SHOP): front-end-driven cart configuration ---------------------------------------
 // A "mini shop" is FRONT-END only: the browser builds a cart in localStorage and hands its contents
@@ -298,6 +314,12 @@ const WebsiteSettingsObject = z.object({
    * in the preview too. Bounded + prototype-safe (see {@link WebsiteDataSchema}).
    */
   data: WebsiteDataSchema.optional(),
+  /**
+   * The project i18n MESSAGE CATALOG — a key-first `{ key: { locale: string } }` table, separate from
+   * `data`. Resolved per render against `page.locale` by `{{sw-translate}}` / `data-sw-text="t:<key>"`.
+   * See {@link TranslationsSchema}.
+   */
+  translations: TranslationsSchema.optional(),
   /**
    * The site's production base URL (e.g. `https://acme.com`). Required for an
    * absolute-URL `sitemap.xml` + the `robots.txt` Sitemap line; omit to skip the

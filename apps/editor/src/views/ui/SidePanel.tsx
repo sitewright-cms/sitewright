@@ -41,6 +41,8 @@ interface SidePanelProps {
   width?: string;
   /** Tab position along the edge (default `center`). */
   align?: SidePanelAlign;
+  /** Render a SMALLER collapsed tab (less padding + smaller text) — for secondary rails. */
+  compact?: boolean;
   /** Increment from a parent to force the panel open (e.g. a top-nav button). */
   openSignal?: number;
   /**
@@ -110,7 +112,7 @@ const TAB_RADIUS: Record<SidePanelSide, string> = {
  * thing sits ABOVE modals (so the tabs are always reachable), and exposes {@link InSidePanel} to its
  * children so their own dialogs elevate above it.
  */
-export function SidePanel({ side, label, icon, size, width, align = 'center', openSignal, openOnFileDrag, children }: SidePanelProps) {
+export function SidePanel({ side, label, icon, size, width, align = 'center', compact, openSignal, openOnFileDrag, children }: SidePanelProps) {
   const [open, setOpen] = useState(false);
   const regionId = useId();
   const panelSize = size ?? DEFAULT_SIZE[side];
@@ -199,7 +201,9 @@ export function SidePanel({ side, label, icon, size, width, align = 'center', op
         // order too — a focusable-but-invisible control would break keyboard focus order.
         tabIndex={open ? -1 : undefined}
         className={`sw-brand-gradient sw-brand-shadow-lg sw-brand-shadow-lg-hover fixed z-[55] flex items-center justify-center gap-1.5 font-bold uppercase tracking-wide text-white transition ${TAB_RADIUS[side]} ${tabPosition(side, align)} ${
-          side === 'bottom' ? 'px-4 py-2 text-sm' : 'px-2 py-4 text-sm'
+          side === 'bottom'
+            ? compact ? 'px-2.5 py-1 text-xs' : 'px-4 py-2 text-sm'
+            : compact ? 'gap-1 px-1.5 py-2.5 text-[11px]' : 'px-2 py-4 text-sm'
         } ${open ? 'pointer-events-none opacity-0' : 'opacity-100'}`}
       >
         {side === 'bottom' ? (

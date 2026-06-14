@@ -115,6 +115,7 @@ import { archiveSite, deploySite, DeployConfigSchema } from '../publish/adapters
 import { isNewer } from '../version/checker.js';
 import { registerDeployTargetRoutes } from './deploy-targets.js';
 import { registerLocaleRoutes } from './locales.js';
+import { registerWebsiteDataRoutes } from './website-data.js';
 import { registerFormRoutes } from './form-routes.js';
 import { registerProjectSmtpRoutes } from './project-smtp-routes.js';
 import { registerStockRoutes, type StockServiceLike } from './stock-routes.js';
@@ -2930,6 +2931,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // cascade-delete across languages) — pure content ops, so registered unconditionally
   // (no encryption key needed). See docs/i18n-content-model.md.
   registerLocaleRoutes(app, { resolveProject, contentRepo, rl });
+  registerWebsiteDataRoutes(app, { resolveProject, contentRepo, rl });
 
   // Saved deploy targets (encrypted credentials) — independent of publish serving.
   if (opts.encryptionKey) {

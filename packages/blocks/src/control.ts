@@ -1,6 +1,7 @@
 // {{sw-control}} support: the content-editor-only control directive. A control sets a whitelisted PAGE
-// attribute (title, SEO description / OG image) or a page.data value from inside the live preview —
-// shown ONLY in content mode (wired by the preview bridge) and STRIPPED on publish (directives.ts).
+// attribute (title, SEO description / OG image), a per-page page.data value, OR a GLOBAL website.data
+// value — from inside the live preview — shown ONLY in content mode (wired by the preview bridge) and
+// STRIPPED on publish (directives.ts).
 //
 // This module is PURE (no Handlebars / DOM) so the editor can reuse `classifyControlTarget` for the
 // same allow-list validation via the `@sitewright/blocks/control` subpath without pulling the renderer.
@@ -76,7 +77,12 @@ export function parseSelectOptions(raw: unknown): string[] {
 }
 
 export type PageField = 'title' | 'description' | 'image';
-export type ControlTarget = { kind: 'page'; field: PageField } | { kind: 'data'; key: string };
+export type ControlTarget =
+  | { kind: 'page'; field: PageField }
+  | { kind: 'data'; key: string }
+  // A GLOBAL value in `website.data` — `key` is the path WITHIN website.data (e.g. `footerImage` for
+  // target="website.data.footerImage"). Edited site-wide (every page), unlike the per-page `data` kind.
+  | { kind: 'website'; key: string };
 
 const DANGEROUS = new Set(['__proto__', 'constructor', 'prototype']);
 
@@ -91,6 +97,15 @@ export function classifyControlTarget(target: unknown): ControlTarget | null {
   if (target === 'page.title') return { kind: 'page', field: 'title' };
   if (target === 'page.description') return { kind: 'page', field: 'description' };
   if (target === 'page.image') return { kind: 'page', field: 'image' };
+  // GLOBAL store: only `website.data.<path>` is settable from a control (other website.* fields are
+  // structured settings, not free-form data). `key` is the path WITHIN website.data, proto-guarded.
+  if (target.startsWith('website.')) {
+    const m = /^website\.data\.(.+)$/.exec(target);
+    if (!m) return null;
+    const key = m[1]!;
+    if (key === '' || key.split('.').some((s) => s === '' || DANGEROUS.has(s))) return null;
+    return { kind: 'website', key };
+  }
   // Reserve the page. namespace for the explicit whitelist above — any OTHER page field is rejected
   // (a non-settable field like page.path/canonical/noindex must not silently become an odd page.data
   // leaf). Also reject the RETIRED `seo.` namespace (its fields were flattened onto the page — use
@@ -104,12 +119,13 @@ export function classifyControlTarget(target: unknown): ControlTarget | null {
 
 interface ControlRoot {
   page?: { title?: unknown; description?: unknown; image?: unknown; data?: unknown };
+  website?: { data?: unknown };
   data?: unknown;
   media?: readonly RenderMedia[];
 }
 
-function readDataLeaf(data: unknown, key: string): string {
-  const path = key.startsWith('data.') ? key.slice(5) : key;
+/** Walk a JSON object to the STRING leaf at a dotted `path` (own-property + proto-guarded). */
+function readDataLeaf(data: unknown, path: string): string {
   let cur: unknown = data;
   for (const seg of path.split('.')) {
     if (
@@ -134,7 +150,9 @@ export function controlCurrentValue(t: ControlTarget, root: ControlRoot): string
     const v = root.page?.[t.field];
     return typeof v === 'string' ? v : '';
   }
-  return readDataLeaf(root.page?.data, t.key);
+  // website: `t.key` is already the path WITHIN website.data. page.data: a bare key or `data.<path>`.
+  if (t.kind === 'website') return readDataLeaf(root.website?.data, t.key);
+  return readDataLeaf(root.page?.data, t.key.startsWith('data.') ? t.key.slice(5) : t.key);
 }
 
 /** Dropdown options for as="folder" (media folder paths), as="dataset" (dataset names), and

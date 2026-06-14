@@ -259,8 +259,12 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   pageDataRef.current = pageData;
   const modeRef = useRef(mode);
   modeRef.current = mode;
-  // Apply a {{sw-control}} edit: route a whitelisted target to page settings (title / SEO) or page.data.
-  // Body is stale-safe (functional setState + pure helpers), so the message handler reaches it via a ref.
+  // Set by the website.data queue below; declared here so applyControlEdit can route to it (its body runs
+  // at message time, after the assignment). Avoids a use-before-define on the queue function.
+  const queueWebsiteDataRef = useRef<(key: string, value: string) => void>(() => {});
+  // Apply a {{sw-control}} edit: route a whitelisted target to page settings (title / SEO), per-page
+  // page.data, or the GLOBAL website.data. Body is stale-safe (functional setState + pure helpers / refs),
+  // so the message handler reaches it via a ref.
   function applyControlEdit(target: string, as: string | undefined, value: string): void {
     const t = classifyControlTarget(target);
     if (!t) return;
@@ -278,6 +282,10 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
             ? { ...s, description: v }
             : { ...s, image: v },
       );
+    } else if (t.kind === 'website') {
+      // GLOBAL store: a website.data leaf → saved to the settings entity (debounced, like translations),
+      // independent of the page Save. v is already safeUrl'd above for image/file/url controls.
+      queueWebsiteDataRef.current(t.key, v);
     } else setPageData((prev) => pageDataSet(prev, t.key, v));
   }
   const applyControlEditRef = useRef(applyControlEdit);
@@ -329,6 +337,42 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
       clearTimeout(trTimerRef.current);
       for (const c of pendingTrRef.current.values()) void api.setTranslation(project.id, c.key, c.locale, c.value).catch(() => {});
       pendingTrRef.current.clear();
+    },
+    [],
+  );
+  // --- Inline {{sw-control target="website.data.<path>"}} edits → the GLOBAL website.data store. Like
+  //     translations these auto-save (debounced) to the settings entity via their own endpoint, NOT the
+  //     page Save. website.data isn't part of the editor's draft state, so after a save we bump
+  //     previewNonce to re-POST /preview (the slot/page reading {{website.data.*}} shows the new value). ---
+  const pendingWdRef = useRef(new Map<string, { key: string; value: string }>());
+  const wdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  async function flushWebsiteData(): Promise<void> {
+    wdTimerRef.current = null;
+    const cells = [...pendingWdRef.current.values()];
+    pendingWdRef.current.clear();
+    let saved = false;
+    for (const c of cells) {
+      try {
+        await api.setWebsiteData(project.id, c.key, c.value);
+        saved = true;
+      } catch (err) {
+        if (mounted.current) setSaveError(err instanceof Error ? `Website data not saved: ${err.message}` : 'Website data not saved');
+      }
+    }
+    if (saved && mounted.current) setPreviewNonce((n) => n + 1);
+  }
+  function queueWebsiteData(key: string, value: string): void {
+    pendingWdRef.current.set(key, { key, value });
+    if (wdTimerRef.current) clearTimeout(wdTimerRef.current);
+    wdTimerRef.current = setTimeout(() => void flushWebsiteData(), 600);
+  }
+  queueWebsiteDataRef.current = queueWebsiteData;
+  useEffect(
+    () => () => {
+      if (!wdTimerRef.current) return;
+      clearTimeout(wdTimerRef.current);
+      for (const c of pendingWdRef.current.values()) void api.setWebsiteData(project.id, c.key, c.value).catch(() => {});
+      pendingWdRef.current.clear();
     },
     [],
   );

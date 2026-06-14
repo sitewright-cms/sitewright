@@ -476,6 +476,10 @@ export const api = {
       `/projects/${projectId}/translations`,
       { key, locale, value },
     ),
+  // Set one website.data leaf (a dotted path WITHIN website.data) — the inline {{sw-control
+  // target="website.data.<path>"}} editor. A GLOBAL store, so the edit applies site-wide.
+  setWebsiteData: (projectId: string, key: string, value: string) =>
+    request<{ key: string; value: string }>('PUT', `/projects/${projectId}/website-data`, { key, value }),
   removeLocale: (projectId: string, locale: string) =>
     request<{ locale: string; removed: number }>('DELETE', `/projects/${projectId}/locales/${encodeURIComponent(locale)}`),
   // Make an existing default-language page available in all (or the given) languages.

@@ -5,8 +5,6 @@ import { SidePanel } from '../ui/SidePanel';
 import { api } from '../../api';
 import { entryLabel } from '../../lib/entry-form';
 
-type EditMode = 'source' | 'content';
-
 /** One editable region in the page, as enumerated by the preview bridge (rendered DOM). */
 export interface RegionItem {
   rid: number;
@@ -52,17 +50,15 @@ function Row({ item, display, onEdit }: { item: RegionItem; display: string; onE
  */
 export function RegionsPanel({
   regions,
-  mode,
   projectId,
   onEdit,
 }: {
   regions: RegionItem[];
-  mode: EditMode;
   projectId: string;
   onEdit: (rid: number) => void;
 }) {
   // Resolve real entry titles (the bridge's label is the rendered row text, which is empty for an
-  // image-only entry → its id). Keyed by "<dataset-slug>\0<entry-id>" → first-text-field value.
+  // image-only entry → its id). Keyed by "<dataset-slug>|<entry-id>" → first-text-field value.
   const [titles, setTitles] = useState<Map<string, string>>(new Map());
   // Only load datasets/entries when the page actually renders dataset rows — most pages don't, and
   // listEntries is project-wide, so this skips the fetch entirely for them (re-runs when entries appear).
@@ -112,11 +108,7 @@ export function RegionsPanel({
   return (
     <SidePanel side="left" align="start" compact label="Regions" icon={<LayoutList className="h-3.5 w-3.5" aria-hidden />} size="w-[22rem]">
       <div className="flex flex-col gap-3 p-2">
-        {mode !== 'content' ? (
-          <p className="px-2 py-6 text-center text-sm text-slate-500">
-            Switch to the <span className="font-semibold">Content Editor</span> to list the page&apos;s editable regions.
-          </p>
-        ) : regions.length === 0 ? (
+        {regions.length === 0 ? (
           <p className="px-2 py-6 text-center text-sm text-slate-500">No editable regions on this page.</p>
         ) : (
           <>

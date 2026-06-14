@@ -887,15 +887,17 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
       )}
 
       {/* The Regions rail: a deterministic index of every editable region on the page (bridge manifest);
-          click a row → the preview scrolls to + flashes it and opens its editor. */}
-      <RegionsPanel
-        regions={regions}
-        mode={mode}
-        projectId={project.id}
-        onEdit={(rid) =>
-          iframeRef.current?.contentWindow?.postMessage({ source: 'sitewright-editor', type: 'edit-region', rid }, '*')
-        }
-      />
+          click a row → the preview scrolls to + flashes it and opens its editor. Content mode only —
+          there are no editable regions to index in source/code mode. */}
+      {mode === 'content' && (
+        <RegionsPanel
+          regions={regions}
+          projectId={project.id}
+          onEdit={(rid) =>
+            iframeRef.current?.contentWindow?.postMessage({ source: 'sitewright-editor', type: 'edit-region', rid }, '*')
+          }
+        />
+      )}
 
       {/* Clicking a rendered dataset row opens its entry editor (stacked); saving refreshes the preview. */}
       {openEntry && (

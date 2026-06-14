@@ -15,7 +15,6 @@ import {
   FontFamilyNameSchema,
   FONT_WEIGHTS,
   PageSchema,
-  migratePageStores,
   InstanceSettingsInputSchema,
   maskInstanceSettings,
   type InstanceSettingsStored,
@@ -1878,7 +1877,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       // Saved pages (incl. drafts) — used both to resolve INHERITED code (a locale variant
       // with no own source/template follows its translation-group owner's) and, below, for
       // the per-locale nav / translations / parent views.
-      const allSavedPages = (await contentRepo.list(ctx, 'page')).map(migratePageStores) as Page[];
+      const allSavedPages = (await contentRepo.list(ctx, 'page')) as Page[];
       // Project media, listed once per preview: the FULL list powers optimized <picture> below; the
       // SLIM projection (renderMedia) feeds {{#sw-folder}} galleries in the page render + the slots.
       const media = mediaStorage ? ((await contentRepo.list(ctx, 'media')) as MediaAsset[]) : [];

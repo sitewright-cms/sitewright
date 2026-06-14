@@ -29,7 +29,7 @@ const PageObject = z
      * API/MCP) keep working unchanged. `publishedPages` keys off `!== 'draft'`.
      */
     status: z.enum(['draft', 'published']).optional(),
-    // SEO/meta fields, flattened onto the page (the retired `page.seo` object — see migrateSeoIntoPage).
+    // SEO/meta fields, flattened directly onto the page (there is no nested `page.seo` object).
     // Rendered into the <head> (meta description, og:image, canonical, robots noindex) and bound in
     // templates as {{ page.description }} / {{ page.image }}. There is no separate SEO title — the page
     // title (above) IS the document/og title.
@@ -191,93 +191,10 @@ const PageObject = z
     }
   });
 
-const CONTENT_RESERVED_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
-
-/**
- * Migrate the RETIRED `content` map (the legacy `{{edit}}`/`data-sw-text="key"` flat-text store) into
- * `page.data`: each `content[key]` becomes a top-level `data[key]` (an existing `data` value wins on a
- * collision; prototype-pollution keys are dropped), then `content` is removed. Idempotent — runs on every
- * page parse, so stored pages migrate on the next read/write. Mirrors `migrateRetiredWebsiteFields`.
- * Non-object input or a page with no `content` passes straight through.
- */
-export function migrateContentIntoData(value: unknown): unknown {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
-  const v = value as Record<string, unknown>;
-  const content = v.content;
-  if (!content || typeof content !== 'object' || Array.isArray(content)) return value; // nothing to migrate
-  const existing = v.data && typeof v.data === 'object' && !Array.isArray(v.data) ? (v.data as Record<string, unknown>) : {};
-  const data: Record<string, unknown> = { ...existing };
-  for (const [k, val] of Object.entries(content)) {
-    // page.data wins a collision; skip the empty key (no directive can read it) and never let a content
-    // key define a prototype-pollution property.
-    if (k === '' || CONTENT_RESERVED_KEYS.has(k) || Object.prototype.hasOwnProperty.call(data, k)) continue;
-    // eslint-disable-next-line security/detect-object-injection -- own key from Object.entries + RESERVED-guarded
-    data[k] = val;
-  }
-  const out: Record<string, unknown> = { ...v, data };
-  delete out.content;
-  return out;
-}
-
-/**
- * Migrate the RETIRED `richContent` map (the bare-key `data-sw-html` rich-HTML store) into `page.data`:
- * each `richContent[key]` becomes a top-level `data[key]` string, then `richContent` is removed. Now
- * there is a SINGLE store — bare-key `data-sw-html` reads `page.data` like the other directives, and
- * the value is sanitized at RENDER (the html sink). `page.data` wins a collision; empty/prototype keys
- * are dropped. Idempotent; runs on every page parse so stored pages migrate on the next read/write.
- * (We can't sanitize here — the schema package must not depend on the renderer — but the render html
- * sink always sanitizes, so a migrated value is never emitted unsanitized.)
- */
-export function migrateRichContentIntoData(value: unknown): unknown {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
-  const v = value as Record<string, unknown>;
-  const rich = v.richContent;
-  if (!rich || typeof rich !== 'object' || Array.isArray(rich)) return value; // nothing to migrate
-  const existing = v.data && typeof v.data === 'object' && !Array.isArray(v.data) ? (v.data as Record<string, unknown>) : {};
-  const data: Record<string, unknown> = { ...existing };
-  for (const [k, val] of Object.entries(rich)) {
-    if (k === '' || CONTENT_RESERVED_KEYS.has(k) || Object.prototype.hasOwnProperty.call(data, k)) continue;
-    // eslint-disable-next-line security/detect-object-injection -- own key from Object.entries + RESERVED-guarded
-    data[k] = val;
-  }
-  const out: Record<string, unknown> = { ...v, data };
-  delete out.richContent;
-  return out;
-}
-
-/**
- * Migrate the RETIRED `page.seo` object onto the page: `seo.description` → `description`,
- * `seo.ogImage` → `image`, `seo.canonical` → `canonical`, `seo.noindex` → `noindex`; `seo.title` is
- * DROPPED (the page title is the single document/og title). A top-level field already present wins on a
- * collision. Then `seo` is removed. Idempotent; runs on every page parse so stored pages migrate on the
- * next read/write. Non-object input or a page with no `seo` passes straight through.
- */
-export function migrateSeoIntoPage(value: unknown): unknown {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
-  const v = value as Record<string, unknown>;
-  const seo = v.seo;
-  if (!seo || typeof seo !== 'object' || Array.isArray(seo)) return value; // nothing to migrate
-  const s = seo as Record<string, unknown>;
-  const out: Record<string, unknown> = { ...v };
-  if (s.description !== undefined && out.description === undefined) out.description = s.description;
-  if (s.ogImage !== undefined && out.image === undefined) out.image = s.ogImage;
-  if (s.canonical !== undefined && out.canonical === undefined) out.canonical = s.canonical;
-  if (s.noindex !== undefined && out.noindex === undefined) out.noindex = s.noindex;
-  delete out.seo; // seo.title is intentionally not carried over
-  return out;
-}
-
-/**
- * Apply every retired-store migration to a raw page value (legacy `content` + `richContent` → `data`,
- * and the `seo` object → flat page fields). The single entry point used by both `PageSchema` (on parse)
- * AND the raw `list()` read paths (preview + publish + export), which read rows without parsing and so
- * must migrate explicitly. Idempotent.
- */
-export function migratePageStores(value: unknown): unknown {
-  return migrateSeoIntoPage(migrateRichContentIntoData(migrateContentIntoData(value)));
-}
-
-export const PageSchema = z.preprocess(migratePageStores, PageObject);
+// NOTE: the retired-store migrations (legacy `content`/`richContent` → `page.data`, `seo` object →
+// flat fields) and `social: string[]` → SocialLink[] have been REMOVED — the project is pre-1.0 with
+// no production data to migrate, so the schema is the single shape of record (no back-compat preprocess).
+export const PageSchema = PageObject;
 export type Page = z.infer<typeof PageSchema>;
 
 /**

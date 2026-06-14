@@ -1,6 +1,6 @@
 import { BrandSchema, type Brand } from './brand.js';
 import { CompanySchema, type Company } from './company.js';
-import { CorporateIdentitySchema, type CorporateIdentity } from './corporate-identity.js';
+import { CorporateIdentitySchema, detectSocial, type CorporateIdentity } from './corporate-identity.js';
 
 // Keys we never copy from an untrusted record into a spread (prototype-pollution
 // defense-in-depth; Zod also strips them downstream, but don't carry them at all).
@@ -35,7 +35,10 @@ export function legacyToIdentity(brand: Brand, company?: Company): CorporateIden
     telephone: company?.telephone,
     address: company?.address,
     geo: company?.geo,
-    social: company?.social,
+    // The legacy company stored `social` as bare URL strings; the identity wants {link,name,icon}
+    // objects. (This conversion used to ride on the removed `migrateSocialLinks` preprocess; it now
+    // lives here, in the legacy→identity migration that needs it.)
+    social: company?.social?.map((s) => ({ link: s, ...detectSocial(s) })),
     // design tokens
     colors: brand.colors,
     typography: brand.typography,

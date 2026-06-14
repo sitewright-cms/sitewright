@@ -12,7 +12,6 @@ import {
   MediaAssetSchema,
   MediaFolderRecordSchema,
   PageSchema,
-  migratePageStores,
   SnippetSchema,
   PageTranslationSchema,
   TemplateSchema,
@@ -214,10 +213,7 @@ export class ContentRepository {
         website: settings?.website,
         settings: settings?.settings ?? { defaultLocale: 'en', locales: ['en'] },
       },
-      // Fold any legacy `content` map into `page.data` (list() returns raw rows — the schema
-      // preprocess only fires on parse) so a page never re-saved since the retirement still publishes
-      // its overrides. Idempotent + lenient (no full re-validation).
-      pages: (await this.list(ctx, 'page')).map(migratePageStores) as Page[],
+      pages: (await this.list(ctx, 'page')) as Page[],
       templates: (await this.list(ctx, 'template')) as Template[],
       datasets: (await this.list(ctx, 'dataset')) as Dataset[],
       entries: (await this.list(ctx, 'entry')) as Entry[],
@@ -285,7 +281,8 @@ export class ContentRepository {
       for (const page of input.pages) {
         // Rich (data-sw-html) content lives in page.data (the single store) and is sanitized at RENDER
         // by the html sink; an imported page.data HTML leaf is therefore never emitted unsanitized. The
-        // bundle schema already migrated any legacy richContent into page.data + bounded/proto-checked it.
+        // bundle's PageSchema bounds + proto-checks page.data (and strips any unknown legacy shapes —
+        // no back-compat migration).
         await this.writeRow(exec, ctx, 'page', page.id, page);
         imported += 1;
       }

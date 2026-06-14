@@ -41,11 +41,11 @@ describe('CorporateIdentitySchema', () => {
       legalName: 'Acme Inc.',
       colors: { primary: '#0a7' },
       bookingUrl: 'https://calendly.com/acme/intro',
-      social: ['https://x.com/acme'],
+      social: [{ link: 'https://x.com/acme' }],
     });
     expect(id.legalName).toBe('Acme Inc.');
     expect(id.bookingUrl).toBe('https://calendly.com/acme/intro');
-    expect(() => CorporateIdentitySchema.parse({ name: 'Acme', social: ['javascript:alert(1)'] })).toThrow();
+    expect(() => CorporateIdentitySchema.parse({ name: 'Acme', social: [{ link: 'javascript:alert(1)' }] })).toThrow();
     // bookingUrl must be an absolute http(s) URL (no javascript:/data:).
     expect(() => CorporateIdentitySchema.parse({ name: 'Acme', bookingUrl: 'javascript:alert(1)' })).toThrow();
     expect(() => CorporateIdentitySchema.parse({ name: 'Acme', bookingUrl: 'data:text/html,<script>alert(1)</script>' })).toThrow();
@@ -67,13 +67,7 @@ describe('CorporateIdentitySchema', () => {
     expect(detectSocial('not a url')).toEqual({});
   });
 
-  it('migrates a legacy social string[] into {link,name,icon} objects (auto-detected), idempotently', () => {
-    const migrated = CorporateIdentitySchema.parse({ name: 'Acme', social: ['https://wa.me/1', 'https://acme.io'] });
-    expect(migrated.social).toEqual([
-      { link: 'https://wa.me/1', name: 'WhatsApp', icon: 'brand:whatsapp' },
-      { link: 'https://acme.io', name: 'Acme', icon: 'globe' },
-    ]);
-    // Already-object social passes through unchanged (idempotent); custom name/icon kept.
+  it('accepts object-form social links (custom name/icon kept)', () => {
     const objects = [{ link: 'https://x.com/a', name: 'My X', icon: 'brand:x' }];
     expect(CorporateIdentitySchema.parse({ name: 'Acme', social: objects }).social).toEqual(objects);
   });

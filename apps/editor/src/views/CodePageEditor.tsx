@@ -23,6 +23,7 @@ import { useDialogs } from './ui/Dialogs';
 import { FilePicker } from './files/FilePicker';
 import { ACCEPT } from './files/FileBrowser';
 import { EntryEditorLoader } from './datasets/EntryEditorLoader';
+import { RegionsPanel, type RegionItem } from './code/RegionsPanel';
 import { WebsiteDataModal } from './settings/WebsiteDataModal';
 import {
   DANGEROUS_KEYS,
@@ -143,6 +144,8 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   const [controlPick, setControlPick] = useState<{ target: string; as: 'image' | 'file' } | null>(null);
   // The dataset entry being edited from a preview click (data-sw-entry), or null.
   const [openEntry, setOpenEntry] = useState<{ dataset: string; id: string } | null>(null);
+  // The editable-regions manifest the preview bridge posts in content mode (drives the Regions rail).
+  const [regions, setRegions] = useState<RegionItem[]>([]);
   // The data-sw-html region being edited in the source modal (toolbar </> button): its key + the HTML to
   // seed (the stored page.data override if any, else the live authored default), or null when closed.
   const [htmlSource, setHtmlSource] = useState<{ key: string; html: string } | null>(null);
@@ -303,6 +306,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
         kind?: 'image' | 'bg'; // pick-image: the click origin; both currently use the image picker
         dataset?: string;
         id?: string;
+        items?: RegionItem[]; // 'regions' manifest from the bridge
       } | null;
       if (!d || d.source !== 'sitewright-preview') return;
       if (d.type === 'scroll' && typeof d.y === 'number') {
@@ -359,8 +363,19 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
       ) {
         // Clicked a rendered dataset row in the preview → open that entry's editor.
         setOpenEntry({ dataset: d.dataset, id: d.id });
+      } else if (d.type === 'regions' && Array.isArray(d.items)) {
+        // The bridge enumerated every editable region (content mode) → drive the Regions rail. Empty on
+        // leaving content mode. The items are validated structurally before any action (edit-region only
+        // sends back a numeric rid; open-entry/control-edit are re-validated by their own handlers).
+        setRegions(
+          d.items.filter(
+            (r) => r && Number.isInteger(r.rid) && typeof r.kind === 'string' && typeof r.label === 'string',
+          ),
+        );
       } else if (d.type === 'ready') {
-        // A freshly-(re)loaded preview → (re)apply the current edit mode so its regions stay editable.
+        // A freshly-(re)loaded preview → clear the stale manifest (the new doc re-posts it on entering
+        // content mode below) and (re)apply the current edit mode so its regions stay editable.
+        setRegions([]);
         iframeRef.current?.contentWindow?.postMessage({ source: 'sitewright-editor', type: 'setMode', mode: modeRef.current }, '*');
       }
     };
@@ -820,6 +835,16 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
           onClose={() => setControlPick(null)}
         />
       )}
+
+      {/* The Regions rail: a deterministic index of every editable region on the page (bridge manifest);
+          click a row → the preview scrolls to + flashes it and opens its editor. */}
+      <RegionsPanel
+        regions={regions}
+        mode={mode}
+        onEdit={(rid) =>
+          iframeRef.current?.contentWindow?.postMessage({ source: 'sitewright-editor', type: 'edit-region', rid }, '*')
+        }
+      />
 
       {/* Clicking a rendered dataset row opens its entry editor (stacked); saving refreshes the preview. */}
       {openEntry && (

@@ -18,8 +18,10 @@
  *                     { source:'sitewright-preview', type:'edit-html-source', key, html }          (data-sw-html → source modal)
  *                     { source:'sitewright-preview', type:'control-edit', target, as, value }       (sw-control set)
  *                     { source:'sitewright-preview', type:'control-pick-image', target, as }        (sw-control image/file)
+ *                     { source:'sitewright-preview', type:'regions', items:[{rid,kind,label,dataset?,id?}] } (Regions rail manifest)
  *   editor → preview: { source:'sitewright-editor', type:'scrollTo', y }
  *                     { source:'sitewright-editor', type:'setMode', mode }
+ *                     { source:'sitewright-editor', type:'edit-region', rid }   (Regions rail: locate + edit a region)
  *
  * Editing surfaces (content mode): [data-sw-text] → plaintext contenteditable;
  * [data-sw-html] → rich contenteditable with a floating formatting toolbar; [data-sw-href] anchor →
@@ -90,6 +92,9 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       // Positioning host for the absolute badge — applied as a CLASS (added only to elements computed
       // static, so positioned elements are untouched) so it never mutates the inline style attribute.
       '.sw-rel{position:relative}' +
+      // Locate flash: a brief amber ring when the Regions panel jumps to an element (fades out via the keyframe).
+      '@keyframes sw-flash{0%{box-shadow:0 0 0 3px #f59e0b}100%{box-shadow:0 0 0 3px rgba(245,158,11,0)}}' +
+      '.sw-flash{animation:sw-flash 1.2s ease-out;border-radius:3px}' +
       '.sw-tb{position:fixed;z-index:2147483647;display:none;gap:2px;padding:3px;border-radius:8px;background:#0f172a;box-shadow:0 6px 20px rgba(0,0,0,.35);font:600 12px system-ui,sans-serif}' +
       '.sw-tb button{all:unset;color:#e2e8f0;cursor:pointer;padding:3px 7px;border-radius:5px;min-width:18px;text-align:center}' +
       '.sw-tb button:hover{background:#334155;color:#fff}' +
@@ -210,7 +215,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     textRow.style.display = textKey ? 'flex' : 'none';
     if (textKey) p.querySelector('.sw-text').value = anchor.textContent || '';
     p.style.display = 'flex';
-    var rect = anchor.getBoundingClientRect();
+    var rect = rectOf(anchor);
     var top = rect.bottom + 6; var left = rect.left;
     var maxLeft = window.innerWidth - p.offsetWidth - 6; if (left > maxLeft) left = maxLeft > 6 ? maxLeft : 6; if (left < 6) left = 6;
     if (top + p.offsetHeight > window.innerHeight - 6) top = rect.top - p.offsetHeight - 6;
@@ -298,7 +303,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     actions.appendChild(cancel); actions.appendChild(ok);
     p.appendChild(lab); p.appendChild(actions);
     p.style.display = 'flex';
-    var rect = el.getBoundingClientRect();
+    var rect = rectOf(el);
     var top = rect.bottom + 6, left = rect.left;
     var maxLeft = window.innerWidth - p.offsetWidth - 6; if (left > maxLeft) left = maxLeft > 6 ? maxLeft : 6; if (left < 6) left = 6;
     if (top + p.offsetHeight > window.innerHeight - 6) top = rect.top - p.offsetHeight - 6;
@@ -342,6 +347,87 @@ export const PREVIEW_BRIDGE_JS = `(function () {
   function relPos(el, on) {
     if (on) { if (getComputedStyle(el).position === 'static') el.classList.add('sw-rel'); }
     else el.classList.remove('sw-rel');
+  }
+
+  // ---- Editable-regions manifest + locate/edit (drives the editor's Regions side-panel) ------------
+  // The panel is the RELIABLE way to reach any editable thing — including content the page occludes,
+  // hides (display:none), or repeats (dataset entries / slides). On entering content mode the bridge
+  // tags every editable element with a data-sw-rid and posts a manifest (kind + label + entry title) to
+  // the editor; an inbound edit-region scrolls to + flashes the target (when on-screen) and triggers the
+  // SAME edit a click would (entry → open-entry modal, image → file picker, control/link → popover,
+  // rich → focus or source modal, plain text → focus or a centred popover when off-screen).
+  var REGION_SEL = '[data-sw-text],[data-sw-html],[data-sw-href],[data-sw-src],[data-sw-bg],[data-sw-control],[data-sw-entry]';
+  // A box for a popover anchor — the element's own, or viewport-centred when it has no layout box (hidden).
+  function rectOf(el) {
+    if (el.getClientRects().length) return el.getBoundingClientRect();
+    var w = 240, x = window.innerWidth / 2 - w / 2, y = window.innerHeight / 2 - 30;
+    return { left: x, top: y, bottom: y + 20, right: x + w, width: w, height: 20 };
+  }
+  function regionInfo(el) {
+    if (el.hasAttribute('data-sw-entry')) {
+      var t = (el.textContent || '').replace(/\\s+/g, ' ').trim();
+      return { kind: 'entry', dataset: el.getAttribute('data-sw-dataset') || '', id: el.getAttribute('data-sw-entry') || '', label: t ? t.slice(0, 80) : (el.getAttribute('data-sw-entry') || 'entry') };
+    }
+    if (el.hasAttribute('data-sw-control')) return { kind: 'control', label: el.getAttribute('data-sw-control-label') || el.getAttribute('data-sw-control') || 'control' };
+    if (el.hasAttribute('data-sw-html')) return { kind: 'html', label: el.getAttribute('data-sw-html') || 'rich text' };
+    if (el.hasAttribute('data-sw-href')) return { kind: 'href', label: el.getAttribute('data-sw-href') || 'link' };
+    if (el.hasAttribute('data-sw-src')) return { kind: 'image', label: el.getAttribute('data-sw-src') || 'image' };
+    if (el.hasAttribute('data-sw-bg')) return { kind: 'bg', label: el.getAttribute('data-sw-bg') || 'background' };
+    return { kind: 'text', label: el.getAttribute('data-sw-text') || 'text' };
+  }
+  function postRegions() {
+    var items = [], rid = 0;
+    eachEl(REGION_SEL, function (el) {
+      el.setAttribute('data-sw-rid', String(rid));
+      var info = regionInfo(el); info.rid = rid;
+      items.push(info); rid++;
+    });
+    post({ type: 'regions', items: items });
+  }
+  function flashEl(el) { el.classList.add('sw-flash'); setTimeout(function () { el.classList.remove('sw-flash'); }, 1200); }
+  // A small centred textarea popover for a plain-text leaf with no on-screen box (hidden content).
+  var tpop = null, tpopEl = null;
+  function openTextPop(el) {
+    tpopEl = el;
+    if (!tpop) {
+      tpop = document.createElement('div'); tpop.className = 'sw-pop';
+      tpop.innerHTML = '<label>Text<textarea class="sw-tval" rows="3" maxlength="8000"></textarea></label>' +
+        '<div class="sw-pop-actions"><button type="button" class="sw-cancel">Cancel</button><button type="button" class="sw-ok">Apply</button></div>';
+      document.body.appendChild(tpop);
+      tpop.querySelector('.sw-cancel').addEventListener('click', closeTextPop);
+      tpop.querySelector('.sw-ok').addEventListener('click', applyTextPop);
+      tpop.addEventListener('keydown', function (e) { if (e.key === 'Escape') { e.preventDefault(); closeTextPop(); } });
+    }
+    tpop.querySelector('.sw-tval').value = el.textContent || '';
+    tpop.style.display = 'flex';
+    // Centre AFTER layout — offsetWidth/Height are 0 in the same frame the element is shown.
+    requestAnimationFrame(function () {
+      tpop.style.top = Math.max(8, (window.innerHeight - tpop.offsetHeight) / 2) + 'px';
+      tpop.style.left = Math.max(8, (window.innerWidth - tpop.offsetWidth) / 2) + 'px';
+    });
+    tpop.querySelector('.sw-tval').focus();
+    document.addEventListener('mousedown', onTextDocDown, true);
+  }
+  function applyTextPop() {
+    if (tpopEl) { var v = tpop.querySelector('.sw-tval').value; try { tpopEl.textContent = v; } catch (e) {} post({ type: 'edit', key: tpopEl.getAttribute('data-sw-text') || '', value: v }); }
+    closeTextPop();
+  }
+  function closeTextPop() { if (tpop) tpop.style.display = 'none'; tpopEl = null; document.removeEventListener('mousedown', onTextDocDown, true); }
+  function onTextDocDown(e) { if (!tpop || tpop.style.display === 'none') return; if (tpop.contains(e.target)) return; closeTextPop(); }
+  // Locate + edit a region by rid (from the panel): scroll to + flash it (when on-screen), then trigger
+  // its editor exactly as an in-place click would.
+  function editRegion(rid) {
+    var el = document.querySelector('[data-sw-rid="' + rid + '"]');
+    if (!el) return;
+    closePop(); closeControlPop(); closeTextPop(); // never stack popovers across panel clicks
+    var onScreen = el.getClientRects().length;
+    if (onScreen) { try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {} flashEl(el); }
+    if (el.hasAttribute('data-sw-entry')) { post({ type: 'open-entry', dataset: el.getAttribute('data-sw-dataset') || '', id: el.getAttribute('data-sw-entry') || '' }); return; }
+    if (el.hasAttribute('data-sw-control')) { openControlPop(el); return; }
+    if (el.hasAttribute('data-sw-src') || el.hasAttribute('data-sw-bg')) { pickImage(el); return; }
+    if (el.hasAttribute('data-sw-href') && !el.hasAttribute('data-sw-html')) { openPop(el); return; }
+    if (el.hasAttribute('data-sw-html')) { if (onScreen) { try { el.focus(); } catch (e) {} } else { post({ type: 'edit-html-source', key: el.getAttribute('data-sw-html'), html: el.innerHTML }); } return; }
+    if (onScreen) { try { el.focus(); var r = document.createRange(); r.selectNodeContents(el); var s = window.getSelection(); s.removeAllRanges(); s.addRange(r); } catch (e) {} } else { openTextPop(el); }
   }
   function setEditing(on) {
     if (on === editing) return;
@@ -390,12 +476,16 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       // bubble-phase handler (e.g. the carousel's data-click-next "advance on slide click") fires —
       // onEntryClick stopPropagation()s when it handles one, so editing wins over navigation in-editor.
       document.addEventListener('click', onEntryClick, true);
+      postRegions(); // publish the editable-regions manifest to the editor's Regions panel
     } else {
       document.removeEventListener('selectionchange', onSelChange);
       document.removeEventListener('click', onEntryClick, true);
       hideToolbar();
       closePop();
       closeControlPop();
+      closeTextPop();
+      eachEl('[data-sw-rid]', function (el) { el.removeAttribute('data-sw-rid'); }); // don't leave stale ids
+      post({ type: 'regions', items: [] }); // clear the panel when leaving content mode
     }
   }
 
@@ -405,6 +495,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     if (!d || d.source !== PARENT) return;
     if (d.type === 'scrollTo' && typeof d.y === 'number') { try { window.scrollTo(0, d.y); } catch (err) {} }
     else if (d.type === 'setMode') setEditing(d.mode === 'content');
+    else if (d.type === 'edit-region' && typeof d.rid === 'number') editRegion(d.rid);
   });
   restore();
   window.addEventListener('load', restore); // re-apply once images/fonts settle the layout height

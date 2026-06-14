@@ -11,6 +11,7 @@
  *   preview → editor: { source:'sitewright-preview', type:'ready' }
  *                     { source:'sitewright-preview', type:'scroll', y }
  *                     { source:'sitewright-preview', type:'edit', key, value }          (plain text)
+ *                     { source:'sitewright-preview', type:'translate-edit', key, value } (data-sw-translate → website.translations)
  *                     { source:'sitewright-preview', type:'rich-edit', key, html }       (data-sw-html)
  *                     { source:'sitewright-preview', type:'link-edit', hrefKey, href, textKey, text } (data-sw-href)
  *                     { source:'sitewright-preview', type:'pick-image', key, kind:'image'|'bg' }   (data-sw-src/bg)
@@ -24,7 +25,9 @@
  *                     { source:'sitewright-editor', type:'edit-region', rid }   (Regions rail: locate + edit a region)
  *
  * Editing surfaces (content mode): [data-sw-text] → plaintext contenteditable;
- * [data-sw-html] → rich contenteditable with a floating formatting toolbar; [data-sw-href] anchor →
+ * [data-sw-translate] → plaintext contenteditable too, but the edit writes the SHARED project
+ * translation catalog (website.translations) instead of page.data; [data-sw-html] → rich
+ * contenteditable with a floating formatting toolbar; [data-sw-href] anchor →
  * a URL(+text) popover; [data-sw-src]/[data-sw-bg] → click to replace via the editor's file picker.
  * The parent re-sanitizes rich/link payloads + URLs (the iframe is untrusted).
  *
@@ -58,11 +61,15 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       // Base affordance for EVERY editable leaf: a THICK, INSET, dashed outline (transparent here —
       // each on-state rule below supplies only the outline-COLOR). In content mode the on-state
       // classes light this up so every editable element is clearly marked AT REST, no hover needed.
-      '[data-sw-text],[data-sw-html],[data-sw-href],[data-sw-src],[data-sw-bg]{outline:2px dashed transparent;outline-offset:-2px;border-radius:2px;transition:outline-color .12s,background-color .12s}' +
+      '[data-sw-text],[data-sw-html],[data-sw-href],[data-sw-src],[data-sw-bg],[data-sw-translate]{outline:2px dashed transparent;outline-offset:-2px;border-radius:2px;transition:outline-color .12s,background-color .12s}' +
       // Text/rich: dashed indigo at rest; a faint bg tint on hover; the outline goes SOLID while editing (focus).
       '.sw-edit-on{cursor:text;outline-color:#6366f1}' +
       '.sw-edit-on:hover{background:rgba(99,102,241,.08)}' +
       '.sw-edit-on:focus{outline-style:solid;background:rgba(99,102,241,.12)}' +
+      // Translations: same plaintext editing, but GREEN (a site-wide shared string, not page content).
+      '.sw-tr-on{cursor:text;outline-color:#059669}' +
+      '.sw-tr-on:hover{background:rgba(5,150,105,.08)}' +
+      '.sw-tr-on:focus{outline-style:solid;background:rgba(5,150,105,.12)}' +
       // Links: dashed indigo at rest; a bg tint on hover (a click opens the link editor).
       '[data-sw-href].sw-link-on{cursor:pointer;outline-color:#6366f1}' +
       '[data-sw-href].sw-link-on:hover{background:rgba(99,102,241,.10)}' +
@@ -79,7 +86,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       // display:none at rest (NOT opacity:0): an opacity:0 pseudo stays in the hit-test tree and can
       // block clicks on an element flush with the iframe top even with pointer-events:none; display:none
       // removes it entirely and it still reveals cleanly on hover.
-      '[data-sw-text].sw-edit-on::before,[data-sw-html].sw-edit-on::before,[data-sw-href].sw-link-on::before,[data-sw-src].sw-img-on::before,[data-sw-bg].sw-img-on::before,[data-sw-entry].sw-entry-on::before{display:none;position:absolute;top:0;left:0;transform:translateY(-100%);z-index:2147483640;padding:1px 5px;border-radius:5px 5px 5px 0;font:600 10px/1.5 system-ui,sans-serif;color:#fff;background:#6366f1;white-space:nowrap;pointer-events:none}' +
+      '[data-sw-text].sw-edit-on::before,[data-sw-html].sw-edit-on::before,[data-sw-href].sw-link-on::before,[data-sw-src].sw-img-on::before,[data-sw-bg].sw-img-on::before,[data-sw-translate].sw-tr-on::before,[data-sw-entry].sw-entry-on::before{display:none;position:absolute;top:0;left:0;transform:translateY(-100%);z-index:2147483640;padding:1px 5px;border-radius:5px 5px 5px 0;font:600 10px/1.5 system-ui,sans-serif;color:#fff;background:#6366f1;white-space:nowrap;pointer-events:none}' +
       // Glyphs use JS unicode escapes so the LITERAL char lands in the CSS string; a raw CSS hex
       // escape would be eaten by the inner JS string octal-escape parsing when this script runs.
       '[data-sw-text].sw-edit-on::before{content:"\\u270E " attr(data-sw-text)}' +
@@ -88,7 +95,8 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       '[data-sw-src].sw-img-on::before{content:"\\u{1F5BC} " attr(data-sw-src)}' +
       '[data-sw-bg].sw-img-on::before{content:"\\u{1F5BC} " attr(data-sw-bg)}' +
       '[data-sw-entry].sw-entry-on::before{content:"\\u{1F5C2} " attr(data-sw-dataset);background:#14b8a6}' +
-      '[data-sw-text].sw-edit-on:hover::before,[data-sw-text].sw-edit-on:focus::before,[data-sw-html].sw-edit-on:hover::before,[data-sw-html].sw-edit-on:focus::before,[data-sw-href].sw-link-on:hover::before,[data-sw-href].sw-link-on:focus::before,[data-sw-src].sw-img-on:hover::before,[data-sw-bg].sw-img-on:hover::before,[data-sw-entry].sw-entry-on:hover::before{display:block}' +
+      '[data-sw-translate].sw-tr-on::before{content:"\\u{1F310} " attr(data-sw-translate);background:#059669}' +
+      '[data-sw-text].sw-edit-on:hover::before,[data-sw-text].sw-edit-on:focus::before,[data-sw-html].sw-edit-on:hover::before,[data-sw-html].sw-edit-on:focus::before,[data-sw-href].sw-link-on:hover::before,[data-sw-href].sw-link-on:focus::before,[data-sw-src].sw-img-on:hover::before,[data-sw-bg].sw-img-on:hover::before,[data-sw-translate].sw-tr-on:hover::before,[data-sw-translate].sw-tr-on:focus::before,[data-sw-entry].sw-entry-on:hover::before{display:block}' +
       // Positioning host for the absolute badge — applied as a CLASS (added only to elements computed
       // static, so positioned elements are untouched) so it never mutates the inline style attribute.
       '.sw-rel{position:relative}' +
@@ -124,6 +132,9 @@ export const PREVIEW_BRIDGE_JS = `(function () {
   // --- Plain text ([data-sw-text], excluding link anchors) ---
   function plainKey(el) { return el.getAttribute('data-sw-text') || ''; }
   function onPlainInput(e) { var el = e.currentTarget; post({ type: 'edit', key: plainKey(el), value: el.textContent || '' }); }
+
+  // --- Project translations ([data-sw-translate]): plain-text editing that writes the SHARED catalog. ---
+  function onTranslateInput(e) { var el = e.currentTarget; post({ type: 'translate-edit', key: el.getAttribute('data-sw-translate') || '', value: el.textContent || '' }); }
 
   // --- Rich ([data-sw-html]) + floating toolbar ---
   var toolbar = null;
@@ -356,7 +367,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
   // the editor; an inbound edit-region scrolls to + flashes the target (when on-screen) and triggers the
   // SAME edit a click would (entry → open-entry modal, image → file picker, control/link → popover,
   // rich → focus or source modal, plain text → focus or a centred popover when off-screen).
-  var REGION_SEL = '[data-sw-text],[data-sw-html],[data-sw-href],[data-sw-src],[data-sw-bg],[data-sw-control],[data-sw-entry]';
+  var REGION_SEL = '[data-sw-text],[data-sw-translate],[data-sw-html],[data-sw-href],[data-sw-src],[data-sw-bg],[data-sw-control],[data-sw-entry]';
   // A box for a popover anchor — the element's own, or viewport-centred when it has no layout box (hidden).
   function rectOf(el) {
     if (el.getClientRects().length) return el.getBoundingClientRect();
@@ -369,6 +380,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       return { kind: 'entry', dataset: el.getAttribute('data-sw-dataset') || '', id: el.getAttribute('data-sw-entry') || '', label: t ? t.slice(0, 80) : (el.getAttribute('data-sw-entry') || 'entry') };
     }
     if (el.hasAttribute('data-sw-control')) return { kind: 'control', label: el.getAttribute('data-sw-control-label') || el.getAttribute('data-sw-control') || 'control' };
+    if (el.hasAttribute('data-sw-translate')) return { kind: 'translate', label: el.getAttribute('data-sw-translate') || 'translation' };
     if (el.hasAttribute('data-sw-html')) return { kind: 'html', label: el.getAttribute('data-sw-html') || 'rich text' };
     if (el.hasAttribute('data-sw-href')) return { kind: 'href', label: el.getAttribute('data-sw-href') || 'link' };
     if (el.hasAttribute('data-sw-src')) return { kind: 'image', label: el.getAttribute('data-sw-src') || 'image' };
@@ -409,7 +421,13 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     document.addEventListener('mousedown', onTextDocDown, true);
   }
   function applyTextPop() {
-    if (tpopEl) { var v = tpop.querySelector('.sw-tval').value; try { tpopEl.textContent = v; } catch (e) {} post({ type: 'edit', key: tpopEl.getAttribute('data-sw-text') || '', value: v }); }
+    if (tpopEl) {
+      var v = tpop.querySelector('.sw-tval').value;
+      try { tpopEl.textContent = v; } catch (e) {}
+      // A translate region writes the shared catalog; a plain-text region writes page.data.
+      if (tpopEl.hasAttribute('data-sw-translate')) post({ type: 'translate-edit', key: tpopEl.getAttribute('data-sw-translate') || '', value: v });
+      else post({ type: 'edit', key: tpopEl.getAttribute('data-sw-text') || '', value: v });
+    }
     closeTextPop();
   }
   function closeTextPop() { if (tpop) tpop.style.display = 'none'; tpopEl = null; document.removeEventListener('mousedown', onTextDocDown, true); }
@@ -427,6 +445,7 @@ export const PREVIEW_BRIDGE_JS = `(function () {
     if (el.hasAttribute('data-sw-src') || el.hasAttribute('data-sw-bg')) { pickImage(el); return; }
     if (el.hasAttribute('data-sw-href') && !el.hasAttribute('data-sw-html')) { openPop(el); return; }
     if (el.hasAttribute('data-sw-html')) { if (onScreen) { try { el.focus(); } catch (e) {} } else { post({ type: 'edit-html-source', key: el.getAttribute('data-sw-html'), html: el.innerHTML }); } return; }
+    // Plain text + translations share the focus-in-place / off-screen-popover path (the popover detects which).
     if (onScreen) { try { el.focus(); var r = document.createRange(); r.selectNodeContents(el); var s = window.getSelection(); s.removeAllRanges(); s.addRange(r); } catch (e) {} } else { openTextPop(el); }
   }
   function setEditing(on) {
@@ -438,6 +457,12 @@ export const PREVIEW_BRIDGE_JS = `(function () {
       if (el.hasAttribute('data-sw-href')) return;
       if (on) { el.setAttribute('contenteditable', 'plaintext-only'); el.classList.add('sw-edit-on'); el.addEventListener('input', onPlainInput); }
       else { el.removeAttribute('contenteditable'); el.classList.remove('sw-edit-on'); el.removeEventListener('input', onPlainInput); }
+      relPos(el, on);
+    });
+    // Project translations — plaintext editing like data-sw-text, but the edit writes website.translations.
+    eachEl('[data-sw-translate]', function (el) {
+      if (on) { el.setAttribute('contenteditable', 'plaintext-only'); el.classList.add('sw-tr-on'); el.addEventListener('input', onTranslateInput); }
+      else { el.removeAttribute('contenteditable'); el.classList.remove('sw-tr-on'); el.removeEventListener('input', onTranslateInput); }
       relPos(el, on);
     });
     // Rich

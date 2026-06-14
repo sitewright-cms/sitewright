@@ -41,6 +41,7 @@ const full: SettingsBundle = {
     footer: '<footer class="footer">f</footer>',
     bottom: '<div class="modal">b</div>',
     redirects: [{ from: '/old', to: '/new', status: 301 }],
+    translations: { nav_cta: { en: 'Go', de: 'Los' }, only_en: { en: 'Only EN' } },
   },
   settings: { defaultLocale: 'en', locales: ['en', 'de'] },
 };
@@ -305,5 +306,33 @@ describe('settings model', () => {
   it('falls back locales to ["en"] when emptied', () => {
     const form = toForm({ identity: { name: 'X', colors: {} }, settings: { defaultLocale: '', locales: [] } });
     expect(toBundle(form).settings).toEqual({ defaultLocale: 'en', locales: ['en'] });
+  });
+});
+
+describe('settings model — translations', () => {
+  const bundle = (translations: Record<string, Record<string, string>>, locales = ['en', 'de']): SettingsBundle => ({
+    identity: { name: 'X', colors: {} },
+    website: { translations },
+    settings: { defaultLocale: 'en', locales },
+  });
+
+  it('round-trips a translation catalog for configured locales', () => {
+    const b = bundle({ nav_cta: { en: 'Go', de: 'Los' }, only_en: { en: 'Hi' } });
+    expect(toBundle(toForm(b), b).website?.translations).toEqual({ nav_cta: { en: 'Go', de: 'Los' }, only_en: { en: 'Hi' } });
+  });
+
+  it('drops cells for locales no longer configured (self-heal on locale removal)', () => {
+    const b = bundle({ k: { en: 'E', de: 'D', fr: 'F' } }, ['en', 'de']); // fr was removed
+    expect(toBundle(toForm(b), b).website?.translations).toEqual({ k: { en: 'E', de: 'D' } });
+  });
+
+  it('drops blank/whitespace cells and a key left with none', () => {
+    const b = bundle({ keep: { en: 'A', de: '   ' }, gone: { en: '' } });
+    expect(toBundle(toForm(b), b).website?.translations).toEqual({ keep: { en: 'A' } });
+  });
+
+  it('omits the catalog entirely when there are no (non-blank) translations', () => {
+    const b = bundle({ blank: { en: '' } });
+    expect(toBundle(toForm(b), b).website?.translations).toBeUndefined();
   });
 });

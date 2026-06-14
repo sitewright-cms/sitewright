@@ -44,6 +44,56 @@ describe('resolveDirectives — data-sw-text', () => {
   });
 });
 
+describe('resolveDirectives — data-sw-translate', () => {
+  it('binds the per-locale catalog value to textContent, escaping markup', () => {
+    const html = '<span data-sw-translate="nav_cta">Default</span>';
+    const out = resolveDirectives(html, { t: { nav_cta: 'Projekt <b>starten</b> & los' }, preview: true });
+    expect(out).toContain('data-sw-translate="nav_cta"');
+    expect(out).toContain('Projekt &lt;b&gt;starten&lt;/b&gt; &amp; los');
+    expect(out).not.toContain('<b>');
+  });
+
+  it('reads website.t — NOT page.data (the two stores are independent)', () => {
+    const html = '<span data-sw-translate="k">Authored</span>';
+    // a page.data["k"] must NOT bleed into a translate directive
+    expect(resolveDirectives(html, { data: { k: 'from page.data' }, preview: true })).toContain('>Authored<');
+    expect(resolveDirectives(html, { t: { k: 'from catalog' }, preview: true })).toContain('>from catalog<');
+  });
+
+  it('keeps the authored fallback when the key is untranslated (missing or empty)', () => {
+    expect(resolveDirectives('<span data-sw-translate="k">Fallback</span>', { preview: true })).toContain('>Fallback<');
+    // resolveTranslations omits empties, but a present-but-empty cell must not blank the element either
+    expect(resolveDirectives('<span data-sw-translate="k">Fallback</span>', { t: { k: '' }, preview: true })).toContain('>Fallback<');
+  });
+
+  it('keeps the marker in preview, strips it on publish', () => {
+    const html = '<span data-sw-translate="k">Def</span>';
+    expect(resolveDirectives(html, { t: { k: 'Hi' }, preview: true })).toBe('<span data-sw-translate="k">Hi</span>');
+    expect(resolveDirectives(html, { t: { k: 'Hi' } })).toBe('<span>Hi</span>');
+  });
+
+  it('ignores prototype-pollution keys', () => {
+    const out = resolveDirectives('<span data-sw-translate="__proto__">Def</span>', {
+      t: { __proto__: 'evil' } as Record<string, string>,
+      preview: true,
+    });
+    expect(out).toContain('>Def<');
+    expect(out).not.toContain('evil');
+  });
+
+  it('resolves end-to-end through renderTemplate from website.translations + page.locale', () => {
+    const out = renderTemplate('<span data-sw-translate="hello">Hi</span>', {
+      website: { t: { hello: 'Hola' } },
+      preview: true,
+    });
+    expect(out).toContain('>Hola<');
+  });
+
+  it('passes validateTemplate (no JS) on a translate directive', () => {
+    expect(() => validateTemplate('<span data-sw-translate="k">x</span>')).not.toThrow();
+  });
+});
+
 describe('resolveDirectives — data-sw-html', () => {
   it('sets innerHTML from sanitized rich content in page.data (bare key)', () => {
     const html = '<div data-sw-html="body"><p>fallback</p></div>';

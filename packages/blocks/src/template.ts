@@ -828,8 +828,10 @@ export function renderTemplate(source: string, ctx: TemplateContext = {}, opts: 
   // PRs) — keeps the marker attributes in preview, strips them on publish. No-op when the
   // rendered fragment contains no directive, so non-editable pages stay byte-identical.
   html = resolveDirectives(html, {
-    // Single store: every directive reads page.data (bare key → top-level prop; `data.<path>` → nested).
+    // Single store: text/html/href/src/bg read page.data (bare key → top-level prop; `data.<path>` → nested).
     data: ctx.page?.data as Record<string, unknown> | undefined,
+    // data-sw-translate reads the project i18n catalog, pre-resolved for this page's locale into website.t.
+    t: (ctx.website as { t?: Record<string, unknown> } | undefined)?.t,
     preview: ctx.preview,
   });
   // Resolve `data-sw-form` references (helper-emitted and hand-authored alike) into the

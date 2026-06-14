@@ -32,6 +32,13 @@ export interface KeyedRedirect {
   status: number;
 }
 
+/** One project-translation row: an identifier `key` + its per-locale cells (`{ en: "…", de: "…" }`). */
+export interface TranslationRow {
+  id: string;
+  key: string;
+  cells: Record<string, string>;
+}
+
 /**
  * A MINI SHOP submission channel as edited in the form — a FLAT row holding every kind's fields; only
  * the ones relevant to `kind` are surfaced + persisted (the rest stay blank). Mirrors the schema's
@@ -150,6 +157,8 @@ export interface SettingsForm {
   // localization
   defaultLocale: string;
   locales: KeyedStr[];
+  /** Project i18n message catalog (website.translations) → editable key × locale rows. */
+  translations: TranslationRow[];
 }
 
 const recordToPairs = (r: Record<string, string> | undefined): KeyedPair[] =>
@@ -171,6 +180,35 @@ const colorsToPairs = (r: Record<string, string> | undefined): KeyedPair[] => {
 };
 
 const strsToKeyed = (items: string[] | undefined): KeyedStr[] => (items ?? []).map((value) => ({ id: rowId(), value }));
+
+/** website.translations (`key → { locale → string }`) → editable rows (insertion order preserved). */
+const translationsToRows = (t: Record<string, Record<string, string>> | undefined): TranslationRow[] =>
+  Object.entries(t ?? {}).map(([key, cells]) => ({ id: rowId(), key, cells: { ...cells } }));
+
+/**
+ * Editable rows → website.translations, dropping blank/dangerous keys, blank/whitespace-only cells, and
+ * cells for any locale NOT in `localeSet` (self-heals after a locale removal). A key left with no cell
+ * is omitted entirely. Mirrors the server-side {@link setTranslationCell}/{@link pruneTranslationsLocale}.
+ */
+const rowsToTranslations = (
+  rows: TranslationRow[],
+  localeSet: ReadonlySet<string>,
+): Record<string, Record<string, string>> => {
+  const out: Record<string, Record<string, string>> = {};
+  for (const { key, cells } of rows) {
+    const k = key.trim();
+    if (!k || DANGEROUS_KEYS.has(k)) continue;
+    const cellOut: Record<string, string> = {};
+    for (const [loc, val] of Object.entries(cells)) {
+      if (!loc || DANGEROUS_KEYS.has(loc) || !localeSet.has(loc) || val.trim() === '') continue;
+      // eslint-disable-next-line security/detect-object-injection -- loc guarded (non-dangerous, in localeSet); fresh local object
+      cellOut[loc] = val;
+    }
+    // eslint-disable-next-line security/detect-object-injection -- k guarded above; written to a fresh local object
+    if (Object.keys(cellOut).length) out[k] = cellOut;
+  }
+  return out;
+};
 
 // Prototype-pollution keys are rejected server-side (safeRecord); mirror the guard
 // client-side so they're dropped before the PUT (defense-in-depth).
@@ -276,6 +314,7 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
     })),
     defaultLocale: bundle.settings.defaultLocale ?? 'en',
     locales: strsToKeyed(bundle.settings.locales ?? ['en']),
+    translations: translationsToRows(w?.translations),
   };
 }
 
@@ -458,12 +497,21 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
   const nav = form.navEffect !== 'none' ? { navEffect: form.navEffect } : {};
   const btn = form.buttonEffect !== 'none' ? { buttonEffect: form.buttonEffect } : {};
   const theme = 'navEffect' in nav || 'buttonEffect' in btn ? { ...nav, ...btn } : undefined;
-  if (w || redirects.length || shop || theme) {
+  // i18n catalog — cells are kept only for CONFIGURED locales (defaultLocale + locales), so a settings
+  // save self-heals stale columns and never clobbers the catalog (it always round-trips through the form).
+  const localeSet = new Set<string>([
+    form.defaultLocale.trim() || 'en',
+    ...form.locales.map((l) => l.value.trim()).filter(Boolean),
+  ]);
+  const translations = rowsToTranslations(form.translations, localeSet);
+  const hasTranslations = Object.keys(translations).length > 0;
+  if (w || redirects.length || shop || theme || hasTranslations) {
     website = {
       ...(w ?? {}),
       ...(redirects.length ? { redirects } : {}),
       ...(shop ? { shop } : {}),
       ...(theme ? { theme } : {}),
+      ...(hasTranslations ? { translations } : {}),
     };
   }
 
@@ -486,6 +534,8 @@ export const newPair = (): KeyedPair => ({ id: rowId(), key: '', value: '' });
 export const newStr = (): KeyedStr => ({ id: rowId(), value: '' });
 export const newSocial = (): KeyedSocial => ({ id: rowId(), link: '', name: '', icon: '' });
 export const newRedirect = (): KeyedRedirect => ({ id: rowId(), from: '', to: '', status: 301 });
+/** A fresh, empty translation row (no cells yet — the editor fills one per configured locale). */
+export const newTranslationRow = (): TranslationRow => ({ id: rowId(), key: '', cells: {} });
 /** A fresh shop-channel row (defaults to WhatsApp). */
 export const newShopChannel = (): KeyedShopChannel => ({
   id: rowId(),

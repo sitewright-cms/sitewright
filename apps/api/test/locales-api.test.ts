@@ -51,6 +51,15 @@ async function getLocales(t: string, projectId: string): Promise<string[]> {
   return (res.json() as { item: { settings: { locales: string[] } } }).item.settings.locales;
 }
 
+async function setTranslation(t: string, projectId: string, key: string, locale: string, value: string) {
+  return app.inject({ method: 'PUT', url: `/projects/${projectId}/translations`, cookies: { sw_session: t }, payload: { key, locale, value } });
+}
+
+async function getTranslations(t: string, projectId: string): Promise<Record<string, Record<string, string>> | undefined> {
+  const res = await app.inject({ method: 'GET', url: `/projects/${projectId}/content/settings/settings`, cookies: { sw_session: t } });
+  return (res.json() as { item: { website?: { translations?: Record<string, Record<string, string>> } } }).item.website?.translations;
+}
+
 describe('locale management API', () => {
   it('POST /locales scaffolds an inherit-mode variant of every default page under /<locale>', async () => {
     const { t, projectId } = await setup();
@@ -165,5 +174,55 @@ describe('locale management API', () => {
     expect(res.statusCode).toBe(400); // about-de is a variant, not the main-language owner
     // Nothing was deleted.
     expect((await listPages(t, projectId)).map((p) => p.id)).toContain('about-de');
+  });
+});
+
+describe('translation catalog API', () => {
+  it('PUT /translations sets a cell on website.translations (server-side read-modify-write)', async () => {
+    const { t, projectId } = await setup();
+    const res = await setTranslation(t, projectId, 'greeting', 'en', 'Hi');
+    expect(res.statusCode).toBe(200);
+    await setTranslation(t, projectId, 'greeting', 'en', 'Hello'); // overwrite
+    await setTranslation(t, projectId, 'cta', 'en', 'Go');
+    expect(await getTranslations(t, projectId)).toEqual({ greeting: { en: 'Hello' }, cta: { en: 'Go' } });
+  });
+
+  it('an EMPTY value clears the cell (and drops a key left empty)', async () => {
+    const { t, projectId } = await setup();
+    await setTranslation(t, projectId, 'k', 'en', 'X');
+    await setTranslation(t, projectId, 'k', 'en', '');
+    expect(await getTranslations(t, projectId)).toBeUndefined(); // last cell gone → catalog field omitted
+  });
+
+  it('rejects an invalid (non-identifier) key', async () => {
+    const { t, projectId } = await setup();
+    const res = await setTranslation(t, projectId, 'bad-key!', 'en', 'X');
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('rejects a cell for a locale that is not configured (no orphan columns)', async () => {
+    const { t, projectId } = await setup(); // only 'en' configured
+    const res = await setTranslation(t, projectId, 'greeting', 'fr', 'Bonjour');
+    expect(res.statusCode).toBe(400);
+    expect(await getTranslations(t, projectId)).toBeUndefined();
+    // the default locale is always allowed
+    expect((await setTranslation(t, projectId, 'greeting', 'en', 'Hi')).statusCode).toBe(200);
+  });
+
+  it('locale-sync: removing a locale prunes its column from the catalog', async () => {
+    const { t, projectId } = await setup();
+    await app.inject({ method: 'POST', url: `/projects/${projectId}/locales`, cookies: { sw_session: t }, payload: { locale: 'de' } });
+    await setTranslation(t, projectId, 'greeting', 'en', 'Hi');
+    await setTranslation(t, projectId, 'greeting', 'de', 'Hallo');
+    await setTranslation(t, projectId, 'de_only', 'de', 'Nur DE');
+    expect(await getTranslations(t, projectId)).toEqual({
+      greeting: { en: 'Hi', de: 'Hallo' },
+      de_only: { de: 'Nur DE' },
+    });
+
+    const del = await app.inject({ method: 'DELETE', url: `/projects/${projectId}/locales/de`, cookies: { sw_session: t } });
+    expect(del.statusCode).toBe(200);
+    // de cells gone; greeting keeps its en cell, de_only (de-only) is dropped entirely.
+    expect(await getTranslations(t, projectId)).toEqual({ greeting: { en: 'Hi' } });
   });
 });

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Type, Pilcrow, Link2, Image as ImageIcon, Settings2, Rows3, LayoutList } from 'lucide-react';
+import { Type, Pilcrow, Link2, Image as ImageIcon, Settings2, Rows3, LayoutList, Languages } from 'lucide-react';
 import type { Dataset, Entry } from '@sitewright/schema';
 import { SidePanel } from '../ui/SidePanel';
 import { api } from '../../api';
@@ -10,7 +10,7 @@ type EditMode = 'source' | 'content';
 /** One editable region in the page, as enumerated by the preview bridge (rendered DOM). */
 export interface RegionItem {
   rid: number;
-  kind: 'text' | 'html' | 'href' | 'image' | 'bg' | 'control' | 'entry';
+  kind: 'text' | 'translate' | 'html' | 'href' | 'image' | 'bg' | 'control' | 'entry';
   label: string;
   /** entry only */
   dataset?: string;
@@ -19,6 +19,7 @@ export interface RegionItem {
 
 const KIND_ICON: Record<RegionItem['kind'], ReactNode> = {
   text: <Type className="h-3.5 w-3.5" />,
+  translate: <Languages className="h-3.5 w-3.5" />,
   html: <Pilcrow className="h-3.5 w-3.5" />,
   href: <Link2 className="h-3.5 w-3.5" />,
   image: <ImageIcon className="h-3.5 w-3.5" />,

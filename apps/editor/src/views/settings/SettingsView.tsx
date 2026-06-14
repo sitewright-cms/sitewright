@@ -26,7 +26,7 @@ const WEBSITE_FORM_KEYS = new Set<keyof SettingsForm>([
   'navEffect', 'buttonEffect',
   'shopCurrencyCode', 'shopCurrencySymbol', 'shopCurrencyPosition', 'shopCurrencyDecimals',
   'shopAddToCartLabel', 'shopTitle', 'shopNote', 'shopChannels',
-  'defaultLocale', 'locales',
+  'defaultLocale', 'locales', 'translations',
 ]);
 
 const inSection = (key: string, section: Section): boolean =>

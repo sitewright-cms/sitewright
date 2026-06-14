@@ -9,6 +9,7 @@ import { CodeField } from '../ui/CodeField';
 import { RedirectsEditor } from './RedirectsEditor';
 import { ShopChannelsEditor } from './ShopChannelsEditor';
 import { LocaleManager } from './LocaleManager';
+import { TranslationsEditor } from './TranslationsEditor';
 import { WebsiteDataModal } from './WebsiteDataModal';
 import { ghostButton, glassInput, fieldLabel } from '../../theme';
 import { cardStagger, cardVariants } from './motion';
@@ -290,6 +291,20 @@ export function WebsiteSection({
           defaultLocale={form.defaultLocale}
           onChange={(next) => patch({ locales: next.map((value) => ({ ...newStr(), value })) })}
           onLocalesChanged={onLocalesChanged}
+        />
+      </GlassCard>
+
+      <GlassCard
+        title="Translations"
+        icon={<Languages className="h-4 w-4" />}
+        tooltip="Shared phrases ({{sw-translate}} / data-sw-translate), one row per key and a column per locale. Inline preview edits land here too."
+        wide
+      >
+        <TranslationsEditor
+          rows={form.translations}
+          localeCodes={localeCodes}
+          defaultLocale={form.defaultLocale}
+          onChange={(translations) => patch({ translations })}
         />
       </GlassCard>
     </motion.div>

@@ -4,13 +4,20 @@ import { CHROME_TRANSLATIONS } from './strings.js';
 // ---------------------------------------------------------------- skeleton: nav, footer, motion
 //
 // The chrome is ONE shared source rendered per page — its UI labels localize through the dedicated
-// translation catalog (`website.translations`, see strings.ts), read with the `{{sw-translate}}` helper.
-// `S()` emits the helper for text/attribute position; `SL()` the bare subexpression for use inside
-// another helper (e.g. `{{sw-url (sw-translate …)}}` — URL attributes must go through sw-url). Both
-// resolve against the RENDERING page's locale (the render projection pre-resolves website.translations
-// → website.t per page-locale).
+// translation catalog (`website.translations`, see strings.ts). Three forms read it:
+// - `T()` emits the EDITABLE `data-sw-translate` directive (a span carrying the key + its EN fallback
+//   text) → click-to-edit in the live preview, writing the GLOBAL catalog. Use for chrome TEXT labels.
+// - `S()` emits the read-only `{{sw-translate}}` helper — for ATTRIBUTE positions (aria-label etc.)
+//   where a directive can't reach.
+// - `SL()` the bare subexpression for use inside another helper (`{{sw-url (sw-translate …)}}` — URL
+//   attributes must go through sw-url).
+// All resolve against the RENDERING page's locale (the projection pre-resolves website.translations →
+// website.t per page-locale). Publish strips the directive marker; preview keeps it for the bridge.
 const SL = (key: string): string => `(sw-translate "${key}")`;
 const S = (key: string): string => `{{sw-translate "${key}"}}`;
+// `fallback` is interpolated RAW into the slot HTML (the element's authored untranslated text), so it
+// MUST be a plain-text literal — never a user/dynamic value (that would be an injection surface).
+const T = (key: string, fallback: string): string => `<span data-sw-translate="${key}">${fallback}</span>`;
 
 /** The shared brand mark — a gradient tile with the Northwind compass-N cut as pure CSS borders. */
 const BRAND_MARK = `<span class="relative inline-flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-primary via-primary to-secondary text-primary-content shadow-md shadow-primary/30">${icon('compass', 'h-4.5 w-4.5')}</span>`;
@@ -29,7 +36,7 @@ export const EXAMPLE_WEBSITE = {
   </div>
   <div class="navbar-end gap-2.5">
     {{#if page.translations}}<div class="flex items-center gap-0.5 rounded-full bg-base-200/70 p-0.5" aria-label="${S('aria_language')}">{{#each page.translations}}<a class="btn btn-ghost btn-xs gap-1.5 rounded-full px-2 font-semibold uppercase" href="{{sw-url path}}" hreflang="{{locale}}">{{sw-flag (lookup @root.website.data.locale_flags locale) "h-3.5 w-5 rounded-sm"}}{{locale}}</a>{{/each}}</div>{{/if}}
-    <a class="btn btn-primary btn-sm gap-1.5 rounded-full px-4 shadow-lg shadow-primary/25 waves-effect waves-light" href="{{sw-url ${SL('href_contact')}}}">${S('nav_cta')} ${icon('arrow-right', 'h-4 w-4')}</a>
+    <a class="btn btn-primary btn-sm gap-1.5 rounded-full px-4 shadow-lg shadow-primary/25 waves-effect waves-light" href="{{sw-url ${SL('href_contact')}}}">${T('nav_cta', 'Start a project')} ${icon('arrow-right', 'h-4 w-4')}</a>
   </div>
 </div>`,
   // Mobile header (<lg) — its own skeleton slot. The menu is a NATIVE <details> dropdown
@@ -50,7 +57,7 @@ export const EXAMPLE_WEBSITE = {
     </a>
   </div>
   <div class="navbar-end">
-    <a class="btn btn-primary btn-sm gap-1.5 rounded-full px-4 waves-effect waves-light" href="{{sw-url ${SL('href_contact')}}}">${S('nav_cta')}</a>
+    <a class="btn btn-primary btn-sm gap-1.5 rounded-full px-4 waves-effect waves-light" href="{{sw-url ${SL('href_contact')}}}">${T('nav_cta', 'Start a project')}</a>
   </div>
 </div>`,
   footer: `<div class="relative bg-neutral text-neutral-content">
@@ -62,15 +69,15 @@ export const EXAMPLE_WEBSITE = {
       <ul class="mt-6 flex list-none flex-wrap gap-2.5 p-0">{{#each company.social}}<li><a class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-neutral-content/15 text-neutral-content/60 transition hover:border-primary hover:bg-primary hover:text-primary-content" href="{{sw-url link}}" aria-label="{{name}}" target="_blank" rel="noopener">{{sw-icon icon "h-4 w-4"}}</a></li>{{/each}}</ul>
     </div>
     <div>
-      <h6 class="text-sm font-semibold uppercase tracking-wider text-neutral-content/40">${S('footer_studio')}</h6>
+      <h6 class="text-sm font-semibold uppercase tracking-wider text-neutral-content/40">${T('footer_studio', 'Studio')}</h6>
       <ul class="mt-4 list-none space-y-2.5 p-0 text-sm text-neutral-content/65">{{#each nav.header}}<li><a class="no-underline transition hover:text-neutral-content {{#if (sw-active path)}}font-semibold text-neutral-content{{/if}}" href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}}{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{sw-label}}</a></li>{{/each}}</ul>
     </div>
     <div>
-      <h6 class="text-sm font-semibold uppercase tracking-wider text-neutral-content/40">${S('footer_legal')}</h6>
+      <h6 class="text-sm font-semibold uppercase tracking-wider text-neutral-content/40">${T('footer_legal', 'Legal')}</h6>
       <ul class="mt-4 list-none space-y-2.5 p-0 text-sm text-neutral-content/65">{{#each nav.footer}}<li><a class="no-underline transition hover:text-neutral-content {{#if (sw-active path)}}font-semibold text-neutral-content{{/if}}" href="{{sw-url path}}"{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{sw-label}}</a></li>{{/each}}</ul>
     </div>
     <div>
-      <h6 class="text-sm font-semibold uppercase tracking-wider text-neutral-content/40">${S('footer_contact')}</h6>
+      <h6 class="text-sm font-semibold uppercase tracking-wider text-neutral-content/40">${T('footer_contact', 'Contact')}</h6>
       <ul class="mt-4 list-none space-y-2.5 p-0 text-sm text-neutral-content/65">
         <!-- The mailto target is a LITERAL: the template validator only allows an interpolated
              URL attribute behind a slash/hash/https prefix (a mailto: prefix is not on that
@@ -81,13 +88,13 @@ export const EXAMPLE_WEBSITE = {
       </ul>
     </div>
     <div>
-      <h6 class="text-sm font-semibold uppercase tracking-wider text-neutral-content/40">${S('footer_news_title')}</h6>
-      <p class="mt-4 text-sm leading-relaxed text-neutral-content/60">${S('footer_news')}</p>
-      <a class="btn btn-outline btn-sm mt-5 rounded-full border-neutral-content/25 text-neutral-content hover:border-primary hover:bg-primary hover:text-primary-content" href="{{sw-url ${SL('href_contact')}}}">${S('footer_btn')}</a>
+      <h6 class="text-sm font-semibold uppercase tracking-wider text-neutral-content/40">${T('footer_news_title', 'Newsletter')}</h6>
+      <p class="mt-4 text-sm leading-relaxed text-neutral-content/60">${T('footer_news', 'Occasional notes on web craft. No spam.')}</p>
+      <a class="btn btn-outline btn-sm mt-5 rounded-full border-neutral-content/25 text-neutral-content hover:border-primary hover:bg-primary hover:text-primary-content" href="{{sw-url ${SL('href_contact')}}}">${T('footer_btn', 'Get in touch')}</a>
     </div>
   </div>
   <div class="border-t border-neutral-content/10">
-    <p class="mx-auto max-w-6xl px-6 py-6 text-center text-xs text-neutral-content/40">© {{ company.legalName }} · ${S('footer_built')}</p>
+    <p class="mx-auto max-w-6xl px-6 py-6 text-center text-xs text-neutral-content/40">© {{ company.legalName }} · ${T('footer_built', 'Built with Sitewright — code-first, instantly fast.')}</p>
   </div>
 </div>`,
   // Site-wide bottom slot: the COOKIE-CONSENT banner (first-party component — localStorage state;
@@ -95,8 +102,8 @@ export const EXAMPLE_WEBSITE = {
   // no-JS visitor or the sandboxed preview never sees a stuck banner). The component's own CSS
   // positions/styles it; the copy localizes via the strings lookup.
   bottom: `<div data-sw-component="cookie-consent" data-sw-block="CookieConsent" hidden>
-  <p>${S('cookie_text')} <a class="link" href="{{sw-url ${SL('href_privacy')}}}">${S('cookie_more')}</a></p>
-  <button type="button" data-sw-part="accept">${S('cookie_accept')}</button>
+  <p>${T('cookie_text', 'We use a few essential cookies to make this site work and anonymous analytics to improve it.')} <a class="link" href="{{sw-url ${SL('href_privacy')}}}">${T('cookie_more', 'Learn more')}</a></p>
+  <button type="button" data-sw-part="accept">${T('cookie_accept', 'OK, got it')}</button>
 </div>`,
   // RAW slot (not validated, not escaped): CSS-only motion + the demo's design-system utilities,
   // so the site looks alive in the JS-blocked preview AND on export. Scroll-reveal sections use

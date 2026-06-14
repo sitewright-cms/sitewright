@@ -194,6 +194,41 @@ describe('preview API — code-first source page', () => {
     expect(html).toMatch(/\.navbar/); // the slot's DaisyUI classes compiled into the inlined sheet
   });
 
+  it('keeps a slot\'s data-sw-* directive markers in PREVIEW so chrome is click-to-edit (any directive, not just translate)', async () => {
+    const { t, projectId } = await setup('slot-edit@acme.test', poolApp);
+    const base = `/projects/${projectId}`;
+    await poolApp.inject({
+      method: 'PUT',
+      url: `${base}/content/settings/settings`,
+      cookies: { sw_session: t },
+      payload: {
+        identity: { name: 'Acme', colors: { primary: '#0a7' } },
+        website: {
+          // The platform does not restrict which directive a slot uses: a GLOBAL-catalog translation
+          // AND a PER-PAGE page.data text directive both stay editable in the slot's preview.
+          footer: '<div><span data-sw-translate="footer_cta">Contact us</span> <span data-sw-text="footer_note">Default note</span></div>',
+          translations: { footer_cta: { en: 'Get in touch' } },
+        },
+        settings: {},
+      },
+    });
+    const res = await poolApp.inject({
+      method: 'POST',
+      url: `${base}/preview`,
+      cookies: { sw_session: t },
+      // page.data supplies the per-page value for the slot's data-sw-text directive.
+      payload: { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<section><h1>Body</h1></section>', data: { footer_note: 'Per-page note' } },
+    });
+    expect(res.statusCode).toBe(200);
+    const html = (res.json() as { html: string }).html;
+    // BOTH markers survive in preview (so the bridge can make them click-to-edit) …
+    expect(html).toContain('data-sw-translate="footer_cta"');
+    expect(html).toContain('data-sw-text="footer_note"');
+    // … the translate directive resolved the catalog value, the text directive the page's page.data value.
+    expect(html).toContain('>Get in touch<'); // footer_cta from website.translations
+    expect(html).toContain('>Per-page note<'); // footer_note from this page's page.data
+  });
+
   it('exposes the editable website.data object to a source-page preview ({{website.data.*}} + {{#each}})', async () => {
     const { t, projectId } = await setup('wdata@acme.test', poolApp);
     const base = `/projects/${projectId}`;

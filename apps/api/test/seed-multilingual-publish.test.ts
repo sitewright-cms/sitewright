@@ -156,6 +156,9 @@ describe('seeded demo — flagship multilingual showcase publishes correctly', (
     expect(en).toContain('data-sw-component="cookie-consent"');
     expect(en).toContain('OK, got it');
     expect(en).toContain('>Legal<'); // footer Legal column heading
+    // The chrome now localizes via the EDITABLE data-sw-translate directive (S()→T()); the marker must
+    // still be stripped from the published artifact (only the resolved text remains).
+    expect(en).not.toContain('data-sw-translate');
     expect(en).toMatch(/aria-label="Menu"/); // mobile slot hamburger
     const de = await page('de/index.html');
     expect(de).toContain('Alles klar'); // cookie banner (de)

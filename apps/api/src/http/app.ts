@@ -2029,6 +2029,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           parentPage: previewParent,
           data: localeData,
           nav: slotNav as unknown as Record<string, unknown>,
+          // PREVIEW-only: keep ALL data-sw-* markers so the bridge can make a slot's directives
+          // click-to-edit. The platform does NOT restrict which directives a slot may use — that's the
+          // operator's call. Two valid semantics: `data-sw-translate` writes the GLOBAL catalog (uniform
+          // chrome across every page + locale — what the seed chrome uses), while the page.data
+          // directives (text/html/src/bg/href) write the CURRENT page's page.data, giving deliberate
+          // PER-PAGE slot content. Publish renders slots WITHOUT this flag (build.ts), so every marker is
+          // stripped from the artifact.
+          preview: true,
           media: renderMedia,
           forms: previewForms,
           ...(hcaptchaSiteKey ? { hcaptchaSiteKey } : {}),

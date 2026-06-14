@@ -321,3 +321,18 @@ button:disabled,
   font-size: 0.9em;
   padding: 0.1em 0.3em;
 }
+
+/* Nav-placeholder label preview in the Pages list (PlaceholderLabel): show the rendered icon/flag +
+   text inline, normalizing any authored icon size to the row's line height. Unlayered → beats the
+   authored Tailwind size utilities (h-4/w-4 etc.) without !important. */
+.sw-ph-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.sw-ph-label svg {
+  height: 1.15em;
+  width: 1.15em;
+  flex: none;
+}

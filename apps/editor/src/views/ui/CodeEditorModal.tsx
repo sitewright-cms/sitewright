@@ -43,7 +43,7 @@ export function CodeEditorModal({ title, value, onSave, onClose, hint, language 
   return (
     <Modal
       title={title}
-      size="full"
+      size="screen"
       onClose={onClose}
       saveDisabled={!!nameError}
       onSave={() => {

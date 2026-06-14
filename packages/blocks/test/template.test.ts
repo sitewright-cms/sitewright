@@ -287,6 +287,16 @@ describe('renderTemplate — {{sw-active}} nav active state', () => {
     expect(at('/services/web', "sw-active '/services'")).toBe('A');
   });
 
+  it('never marks a nav PLACEHOLDER active, even when its path matches the current page', () => {
+    const src = '{{#each nav.header}}{{#if (sw-active path)}}A{{/if}}{{/each}}';
+    // A placeholder whose target IS the current page → still NOT active.
+    expect(renderTemplate(src, { page: { path: '/about' }, nav: { header: [{ label: 'About', path: '/about', placeholder: true }] } })).toBe('');
+    // Control: a REAL page nav item at the same path IS active.
+    expect(renderTemplate(src, { page: { path: '/about' }, nav: { header: [{ label: 'About', path: '/about' }] } })).toBe('A');
+    // A placeholder is also never lit by the active TRAIL (its target an ancestor of the current page).
+    expect(renderTemplate(src, { page: { path: '/services/web' }, nav: { header: [{ label: 'Services', path: '/services', placeholder: true }] } })).toBe('');
+  });
+
   it('exact=true matches the current page ONLY (no trail)', () => {
     expect(at('/services/web', "sw-active '/services' exact=true")).toBe('');
     expect(at('/services', "sw-active '/services' exact=true")).toBe('A');

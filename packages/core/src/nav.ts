@@ -23,6 +23,13 @@ export interface NavItem {
    */
   rich?: boolean;
   /**
+   * True for a nav PLACEHOLDER (a `kind:'link'` entry with no page of its own). Placeholders are
+   * link/group items, NOT the page being rendered, so `{{sw-active}}` never marks them active even
+   * when their `path` matches the current URL (a grouping `/services` placeholder, an in-page `#id`,
+   * etc.). Absent for real pages.
+   */
+  placeholder?: boolean;
+  /**
    * Render-ready HTML for the label, populated by `decorateNav` (blocks): the escaped title for a
    * page, or the rendered+validated rich markup for a placeholder. Emitted via the `{{sw-label}}`
    * helper (a SafeString) — `{{label}}` stays the plain-text fallback for older templates.
@@ -59,7 +66,7 @@ function toItem(page: Page, byId: ReadonlyMap<string, Page>): NavItem {
   const label = page.nav?.title || page.title;
   // A link placeholder resolves its href from `link.target` and its label is rich (HTML + icon
   // helpers); a page from its tree route with a plain (escaped) label.
-  return isLinkPage(page) ? { label, rich: true, ...linkHref(page) } : { label, path: pagePath(page, byId) };
+  return isLinkPage(page) ? { label, rich: true, placeholder: true, ...linkHref(page) } : { label, path: pagePath(page, byId) };
 }
 
 /**

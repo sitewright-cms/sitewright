@@ -8,5 +8,6 @@ export * from './children.js';
 export * from './bindings.js';
 export * from './i18n.js';
 export * from './translate.js';
+export * from './website-data.js';
 export * from './validate.js';
 export * from './routes.js';

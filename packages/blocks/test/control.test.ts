@@ -37,6 +37,16 @@ describe('classifyControlTarget', () => {
       expect(classifyControlTarget(t)).toBeNull();
     }
   });
+  it('classifies website.data.<path> as the GLOBAL website kind (key = path WITHIN website.data)', () => {
+    expect(classifyControlTarget('website.data.footerImage')).toEqual({ kind: 'website', key: 'footerImage' });
+    expect(classifyControlTarget('website.data.hero.bg')).toEqual({ kind: 'website', key: 'hero.bg' });
+  });
+  it('rejects a non-data website.* target and a proto-polluting website.data path', () => {
+    expect(classifyControlTarget('website.siteUrl')).toBeNull(); // settings field, not free-form data
+    expect(classifyControlTarget('website.data')).toBeNull(); // no leaf path
+    expect(classifyControlTarget('website.data.')).toBeNull();
+    expect(classifyControlTarget('website.data.__proto__.x')).toBeNull();
+  });
 });
 
 describe('normalizeControlAs', () => {
@@ -88,6 +98,12 @@ describe('controlCurrentValue', () => {
     expect(controlCurrentValue({ kind: 'data', key: 'gallery_folder' }, root)).toBe('photos');
     expect(controlCurrentValue({ kind: 'data', key: 'data.article.title' }, root)).toBe('A');
     expect(controlCurrentValue({ kind: 'data', key: 'missing' }, root)).toBe('');
+  });
+  it('reads a GLOBAL website.data leaf for the website kind (key = path WITHIN website.data)', () => {
+    const r = { website: { data: { footerImage: '/footer.png', hero: { bg: '/bg.jpg' } } } };
+    expect(controlCurrentValue({ kind: 'website', key: 'footerImage' }, r)).toBe('/footer.png');
+    expect(controlCurrentValue({ kind: 'website', key: 'hero.bg' }, r)).toBe('/bg.jpg');
+    expect(controlCurrentValue({ kind: 'website', key: 'missing' }, r)).toBe('');
   });
 });
 

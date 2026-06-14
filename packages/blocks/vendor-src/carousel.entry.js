@@ -138,13 +138,14 @@ function enhance(root) {
     {
       container: container,
       loop: loop,
-      // Active-slide alignment (start|center|end). `data-item-align` is the author-facing knob
-      // (it ALSO sets justify-content for non-scrolling partial rows); it drives Embla's align here so
-      // that, for a scrolling/peek layout, "center" puts the active slide mid-viewport with a peek on
-      // BOTH sides. `containScroll:'trimSnaps'` clamps the ends — so with loop off the first slide is
-      // flush-left and the last flush-right, while the in-between slides centre. `data-align` stays a
-      // fallback for back-compat.
-      align: attr('data-item-align', '') || attr('data-align', 'start'),
+      // Active-slide alignment (start|center|end), DEFAULT "center". `data-item-align` is the
+      // author-facing knob (it ALSO sets justify-content for non-scrolling partial rows); it drives
+      // Embla's align so that, for a scrolling/peek layout, "center" puts the active slide mid-viewport
+      // with a peek on BOTH sides. `containScroll:'trimSnaps'` clamps the ends — so with loop off the
+      // first slide is flush-left and the last flush-right, while in-between slides centre. Centre is
+      // a no-op for single-item (full-width) sliders (centre ≡ start), so the default only shapes
+      // MULTI-item layouts; set data-item-align="start" to opt a slider back to left alignment.
+      align: attr('data-item-align', '') || attr('data-align', 'center'),
       containScroll: 'trimSnaps',
       duration: reduce ? 0 : 25,
     },

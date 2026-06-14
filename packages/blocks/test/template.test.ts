@@ -450,6 +450,47 @@ describe('renderTemplate — MINI SHOP helpers', () => {
     expect(renderTemplate('{{sw-cart}}', {})).toBe('<div data-sw-cart></div>');
   });
 
+  it('{{sw-cart}} auto-localizes its drawer strings from the translation catalog (website.t reserved keys)', () => {
+    // A bare {{sw-cart}} picks up the per-locale catalog values with NO per-page hash wiring.
+    const out = renderTemplate('{{sw-cart}}', {
+      website: {
+        t: {
+          cart_title: 'Warenkorb',
+          cart_note: 'Preise unverbindlich.',
+          cart_added: 'Hinzugefügt',
+          cart_empty: 'Leer.',
+          cart_subtotal: 'Zwischensumme',
+          cart_clear: 'Leeren',
+          cart_sent: 'Gesendet.',
+        },
+      },
+    });
+    expect(out).toContain('data-cart-title="Warenkorb"');
+    expect(out).toContain('data-note="Preise unverbindlich."');
+    expect(out).toContain('data-added-label="Hinzugefügt"');
+    expect(out).toContain('data-empty-label="Leer."');
+    expect(out).toContain('data-subtotal-label="Zwischensumme"');
+    expect(out).toContain('data-clear-label="Leeren"');
+    expect(out).toContain('data-sent-label="Gesendet."');
+  });
+
+  it('{{sw-cart}} string precedence: hash > catalog > website.shop', () => {
+    const ctx = { website: { t: { cart_title: 'Catalog title' }, shop: { title: 'Shop title' } } };
+    // hash wins over catalog
+    expect(renderTemplate('{{sw-cart title="Hash title"}}', ctx)).toContain('data-cart-title="Hash title"');
+    // catalog wins over website.shop
+    expect(renderTemplate('{{sw-cart}}', ctx)).toContain('data-cart-title="Catalog title"');
+    // website.shop is the last resort when the catalog has no cell
+    expect(renderTemplate('{{sw-cart}}', { website: { shop: { title: 'Shop title' } } })).toContain('data-cart-title="Shop title"');
+  });
+
+  it('{{sw-add-to-cart}} label precedence: hash > catalog cart_add > website.shop.addToCartLabel > default', () => {
+    const ctx = { website: { t: { cart_add: 'In den Warenkorb' }, shop: { addToCartLabel: 'Add to basket' } } };
+    expect(renderTemplate('{{sw-add-to-cart sku="x" name="A" price="1"}}', ctx)).toContain('>In den Warenkorb</button>'); // catalog beats shop
+    expect(renderTemplate('{{sw-add-to-cart sku="x" name="A" price="1" label="Buy"}}', ctx)).toContain('>Buy</button>'); // hash beats catalog
+    expect(renderTemplate('{{sw-add-to-cart sku="x" name="A" price="1"}}', {})).toContain('>Add to cart</button>'); // built-in default
+  });
+
   it('{{sw-cart}} projects per-channel order fields (label/type/required) for whatsapp + mailto', () => {
     const ctxShop = {
       website: {

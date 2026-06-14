@@ -209,14 +209,33 @@ describe('seeded demo — flagship multilingual showcase publishes correctly', (
     expect(deArticle).toContain('Jede Millisekunde Ladezeit kostet Besucher');
   });
 
-  it('localizes the shop drawer via the {{sw-cart}} page.data hooks', async () => {
+  it('localizes the shop drawer + add-to-cart label from the translation catalog (reserved cart_* keys)', async () => {
     const en = await page('shop/index.html');
-    expect(en).toContain('data-cart-title="Your cart"');
+    expect(en).toContain('data-cart-title="Your cart"'); // cart_title (en) from website.translations
+    expect(en).toContain('>Add to cart</button>'); // cart_add (en)
     expect(en).toContain('Studio Tee'); // products (en)
     const de = await page('de/shop/index.html');
-    expect(de).toContain('data-cart-title="Warenkorb"');
+    expect(de).toContain('data-cart-title="Warenkorb"'); // cart_title (de) — bare {{sw-cart}}, no per-page hash
     expect(de).toContain('data-empty-label="Ihr Warenkorb ist leer."');
+    expect(de).toContain('>In den Warenkorb</button>'); // cart_add (de) — the button now localizes too
     expect(de).toContain('Studio-Shirt'); // products-de auto-resolved
+    const es = await page('es/tienda/index.html');
+    expect(es).toContain('data-cart-title="Su carrito"');
+    expect(es).toContain('>Añadir al carrito</button>'); // cart_add (es)
+  });
+
+  it('renders the shared hero CTA from the translation catalog (data-sw-translate), stripped on publish', async () => {
+    // The home hero CTA is `data-sw-translate="nav_cta"` — it renders the per-locale catalog value
+    // (shared with the nav) and the marker is stripped from the published HTML.
+    const en = await page('index.html');
+    expect(en).toContain('>Start a project<'); // nav_cta (en)
+    expect(en).not.toContain('data-sw-translate'); // directive marker stripped on publish
+    const de = await page('de/index.html');
+    expect(de).toContain('>Projekt starten<'); // nav_cta (de) — hero CTA localizes via the catalog
+    expect(de).not.toContain('data-sw-translate');
+    const es = await page('es/index.html');
+    expect(es).toContain('>Empezar un proyecto<'); // nav_cta (es)
+    expect(es).not.toContain('data-sw-translate');
   });
 
   it('renders the Spanish locale end-to-end: /es home, localized slugs, dataset/form/chrome resolution', async () => {

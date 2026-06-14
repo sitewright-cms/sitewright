@@ -306,6 +306,23 @@ function pad(n: number): string {
 }
 
 /**
+ * A non-empty translated string for a RESERVED catalog key, read from the pre-resolved per-locale map
+ * `website.t` (own-property + proto-guarded). Empty/missing → '' so the caller's fallback chain applies.
+ * The mini-shop cart helpers use this to localize their built-in labels from `website.translations`
+ * (reserved keys `cart_add`/`cart_title`/`cart_note`/`cart_added`/`cart_empty`/`cart_subtotal`/
+ * `cart_clear`/`cart_sent`) without a per-page hash override.
+ */
+function reservedTr(root: { website?: { t?: Record<string, unknown> } }, key: string): string {
+  const t = root.website?.t;
+  if (t && Object.prototype.hasOwnProperty.call(t, key)) {
+    // eslint-disable-next-line security/detect-object-injection -- own-property guarded; key is a module-literal reserved name
+    const v = t[key];
+    if (typeof v === 'string' && v !== '') return v;
+  }
+  return '';
+}
+
+/**
  * Builds an isolated Handlebars instance with ONLY our curated helpers. Tenants use these;
  * they cannot register their own (that would be the arbitrary-code surface). Add helpers
  * here to extend the language — this is the `{{ date }}` / `{{ url }}` extensibility point.
@@ -494,9 +511,11 @@ function createInstance(): typeof Handlebars {
     if (!key) return new Handlebars.SafeString('');
     const priceNum = Number(h.price);
     const price = Number.isFinite(priceNum) && priceNum >= 0 ? String(priceNum) : '0';
-    const root = (options.data?.root ?? {}) as { website?: { shop?: { addToCartLabel?: unknown } } };
+    const root = (options.data?.root ?? {}) as { website?: { shop?: { addToCartLabel?: unknown }; t?: Record<string, unknown> } };
     const shopLabel = root.website?.shop?.addToCartLabel;
-    const label = str(h.label) || (typeof shopLabel === 'string' ? shopLabel : '') || 'Add to cart';
+    // Label precedence: explicit hash → translation catalog (reserved `cart_add`, localized per page
+    // locale) → site-wide website.shop.addToCartLabel → built-in default.
+    const label = str(h.label) || reservedTr(root, 'cart_add') || (typeof shopLabel === 'string' ? shopLabel : '') || 'Add to cart';
     let attrs = `data-sw-cart-add data-sku="${escapeAttr(key)}" data-name="${escapeAttr(name || key)}" data-price="${escapeAttr(price)}"`;
     const img = str(h.image);
     if (img) {
@@ -512,17 +531,16 @@ function createInstance(): typeof Handlebars {
   // marker is present) builds the floating button + drawer from it. Drop it ONCE per site (e.g. the
   // footer slot) so it is on every page.
   //
-  // i18n: the drawer STRINGS accept per-call hash overrides — title= note= added= empty= subtotal=
-  // clear= sent= — each winning over the `website.shop` value (title/note) or the cart.js default.
-  // Inherit-mode locale variants localize the cart WITHOUT forking the slot/page code:
-  //   {{sw-cart title=(lookup page.data "cart_title") note=(lookup page.data "cart_note")}}
-  // (a missing page.data key → undefined → the site-wide value/default applies). Channel labels and
-  // the order-form strings stay site-wide (`website.shop.channels[].label`) — a per-locale channel
-  // set is a possible follow-up, not covered by these overrides.
+  // i18n: a bare {{sw-cart}} AUTO-LOCALIZES — the drawer STRINGS (title/note/added/empty/subtotal/clear/
+  // sent) resolve per page-locale from the translation catalog (reserved cart_* keys in
+  // website.translations), so a locale variant needs no per-page wiring. Precedence per string:
+  //   hash override (title= note= added= …) → catalog (cart_*) → website.shop value (title/note only) → cart.js default.
+  // The hash path stays for one-off per-call overrides; channel labels + order-form strings stay
+  // site-wide (`website.shop.channels[].label`).
   hb.registerHelper('sw-cart', function swCart(this: unknown, ...args: unknown[]) {
     const options = args[args.length - 1] as Handlebars.HelperOptions;
     const h = (options.hash ?? {}) as Record<string, unknown>;
-    const root = (options.data?.root ?? {}) as { website?: { shop?: Record<string, unknown> }; company?: Record<string, unknown> };
+    const root = (options.data?.root ?? {}) as { website?: { shop?: Record<string, unknown>; t?: Record<string, unknown> }; company?: Record<string, unknown> };
     const shop = (root.website?.shop ?? {}) as Record<string, unknown>;
     const currency = (shop.currency ?? {}) as Record<string, unknown>;
     const str = (v: unknown): string => (typeof v === 'string' ? v : typeof v === 'number' ? String(v) : '');
@@ -533,21 +551,25 @@ function createInstance(): typeof Handlebars {
     if (code) attrs += ` data-currency-code="${escapeAttr(code)}"`;
     if (currency.position === 'after') attrs += ` data-currency-pos="after"`;
     if (typeof currency.decimals === 'number') attrs += ` data-currency-decimals="${escapeAttr(String(currency.decimals))}"`;
-    const title = str(h.title) || str(shop.title);
+    // Drawer-string precedence: explicit hash → translation catalog (reserved cart_* keys, localized
+    // per page locale) → site-wide website.shop value (title/note only) → omit (cart.js built-in
+    // default). So a bare {{sw-cart}} auto-localizes from website.translations with zero per-page wiring.
+    const rt = (k: string): string => reservedTr(root, k);
+    const title = str(h.title) || rt('cart_title') || str(shop.title);
     if (title) attrs += ` data-cart-title="${escapeAttr(title)}"`;
-    const note = str(h.note) || str(shop.note);
+    const note = str(h.note) || rt('cart_note') || str(shop.note);
     if (note) attrs += ` data-note="${escapeAttr(note)}"`;
-    // Hash-only drawer strings (no `website.shop` counterpart): emitted only when overridden, so a
-    // no-args {{sw-cart}} stays byte-identical and cart.js's built-in defaults apply.
-    const added = str(h.added);
+    // Drawer strings with no website.shop counterpart: hash → catalog → omit (cart.js default). A bare
+    // {{sw-cart}} with an empty catalog stays byte-identical (cart.js's built-in defaults apply).
+    const added = str(h.added) || rt('cart_added');
     if (added) attrs += ` data-added-label="${escapeAttr(added)}"`;
-    const empty = str(h.empty);
+    const empty = str(h.empty) || rt('cart_empty');
     if (empty) attrs += ` data-empty-label="${escapeAttr(empty)}"`;
-    const subtotal = str(h.subtotal);
+    const subtotal = str(h.subtotal) || rt('cart_subtotal');
     if (subtotal) attrs += ` data-subtotal-label="${escapeAttr(subtotal)}"`;
-    const clear = str(h.clear);
+    const clear = str(h.clear) || rt('cart_clear');
     if (clear) attrs += ` data-clear-label="${escapeAttr(clear)}"`;
-    const sent = str(h.sent);
+    const sent = str(h.sent) || rt('cart_sent');
     if (sent) attrs += ` data-sent-label="${escapeAttr(sent)}"`;
     // The merchant's brand/business name (the always-present Corporate Identity `name`, projected into the
     // render ctx as `company`) — cart.js uses it for the email greeting ("Hi <brand> — I'd like to order:").

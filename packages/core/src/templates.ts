@@ -91,7 +91,8 @@ export const GLOBAL_TEMPLATES: readonly Template[] = [
     // {{sw-add-to-cart}} button, plus the {{sw-cart}} mount (the floating cart + drawer). The cart is
     // FRONT-END only — it builds an order in localStorage and hands it to a submission channel
     // (WhatsApp / mailto / payment link) configured in Website settings (website.shop). Prices are
-    // NON-AUTHORITATIVE (a front-end inquiry). The two headings are editable page.data leaves.
+    // NON-AUTHORITATIVE (a front-end inquiry). The two headings are editable page.data leaves; the cart
+    // drawer's labels auto-localize from the translation catalog (reserved cart_* keys) — bare {{sw-cart}}.
     id: 'global:shop',
     name: 'Shop (global)',
     source: `<section class="mx-auto max-w-6xl px-6 py-20">
@@ -114,7 +115,7 @@ export const GLOBAL_TEMPLATES: readonly Template[] = [
     </div>
     {{/each}}
   </div>
-  {{sw-cart title=(lookup page.data "cart_title") note=(lookup page.data "cart_note") added=(lookup page.data "cart_added") empty=(lookup page.data "cart_empty") subtotal=(lookup page.data "cart_subtotal") clear=(lookup page.data "cart_clear") sent=(lookup page.data "cart_sent")}}
+  {{sw-cart}}
 </section>`,
     data: {
       heading: 'Shop',

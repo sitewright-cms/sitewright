@@ -15,7 +15,6 @@ export function translationsEs(assets: Record<string, string>): Record<string, P
       hero_eyebrow: 'Estudio web boutique · San Francisco',
       hero_title: 'Webs que le traen más negocio.',
       hero_sub: 'Diseñamos y construimos webs rápidas y hermosas para marcas ambiciosas — estrategia, diseño y desarrollo bajo un mismo techo.',
-      hero_cta: 'Empezar un proyecto',
       hero_cta2: 'Ver nuestro trabajo',
       hero_alt: 'Una web reciente de Northwind',
       stat1_n: '120+', stat1_l: 'Webs entregadas',
@@ -286,13 +285,6 @@ export function translationsEs(assets: Record<string, string>): Record<string, P
     data: {
       heading: 'Merch del estudio',
       intro: 'Un detalle para frikis de la web. Añada al carrito y pida por WhatsApp, correo o enlace de pago.',
-      cart_title: 'Su carrito',
-      cart_note: 'Precios orientativos. Esto envía una solicitud de pedido — el vendedor confirma disponibilidad y precio final.',
-      cart_added: 'Añadido',
-      cart_empty: 'Su carrito está vacío.',
-      cart_subtotal: 'Subtotal',
-      cart_clear: 'Vaciar carrito',
-      cart_sent: 'Pedido enviado — le contactaremos.',
     },
   },
   'nav-audit': {

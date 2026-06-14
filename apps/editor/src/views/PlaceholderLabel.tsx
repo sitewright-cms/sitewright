@@ -1,24 +1,25 @@
 import { useEffect, useState } from 'react';
 
-/** Strip HTML tags + {{handlebars}} helpers to a readable text fallback (shown until the rich renderer
- *  loads, and for any label that renders to no visible text). */
+/** Stripped plain-text fallback (shown until the icon renderer chunk loads, and for a label with no
+ *  visible text). Drops handlebars helpers (incl. `{{{…}}}`, no stray brace), HTML tags, and entities. */
 function plainText(name: string): string {
   return name
-    .replace(/\{\{\{?[^}]*\}\}\}?/g, ' ') // drop handlebars helpers (incl. {{{…}}}) — no stray brace left
-    .replace(/<[^>]*>/g, ' ') // drop HTML tags
-    .replace(/&(?:[a-z]+|#\d+);/gi, ' ') // drop entities
+    .replace(/\{\{\{?[^}]*\}\}\}?/g, ' ')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&(?:[a-z]+|#\d+);/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
-// Lazy singleton: the rich renderer pulls Handlebars + the icon/flag data (a large chunk), so load it
-// on demand rather than baking it into the editor's main bundle.
-let rendererP: Promise<(label: string) => string> | null = null;
-function loadRenderer(): Promise<(label: string) => string> {
+// Lazy singleton: the icon renderer pulls the large icon/flag data (a separate chunk shared with the
+// Library gallery), so load it on demand rather than into the editor's main bundle. The dynamic import
+// targets a module that STATICALLY imports only the icon functions — vite tree-shakes it to the icon
+// subgraph (NOT the Node-only renderTemplate, which breaks in the browser). A transient failure clears
+// the singleton so a later mount retries.
+let rendererP: Promise<(name: string) => string> | null = null;
+function loadRenderer(): Promise<(name: string) => string> {
   if (!rendererP) {
-    rendererP = import('@sitewright/blocks').then((m) => m.renderNavLabel);
-    // A transient chunk-load failure shouldn't stick the fallback forever — clear the singleton so a
-    // later mount retries. (The caller's own .catch handles the rejection for this attempt.)
+    rendererP = import('./placeholder-render').then((m) => m.renderPlaceholderHtml);
     rendererP.catch(() => {
       rendererP = null;
     });
@@ -29,10 +30,8 @@ function loadRenderer(): Promise<(label: string) => string> {
 /**
  * Previews a nav placeholder's rich NAME (basic HTML + `{{sw-icon}}`/`{{sw-flag}}`) in the Pages list
  * the way it renders in the MENU — the icon/flag + text — instead of dumping the raw template markup.
- * Shows a readable text fallback synchronously, then swaps in the engine-rendered HTML once the lazy
- * renderer loads. The HTML comes from `renderNavLabel` (the same validated `renderTemplate` path the
- * published nav uses — scripts / `on*` handlers / `{{{` are rejected), so it is no less safe than the
- * live menu; for a label that produces no visible text it falls back to the stripped text.
+ * Shows a readable text fallback synchronously, then swaps in the icon-rendered HTML once the lazy
+ * renderer chunk loads.
  */
 export function PlaceholderLabel({ name }: { name: string }) {
   const [html, setHtml] = useState<string | null>(null);

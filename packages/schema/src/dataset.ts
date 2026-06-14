@@ -11,6 +11,8 @@ export const FieldTypeSchema = z.enum([
   'number',
   'boolean',
   'date',
+  'time',
+  'datetime',
   'image',
   'reference',
   'select',

@@ -4,9 +4,10 @@ import type { Field, FieldType } from '@sitewright/schema';
 import { MAX_FIELD_DEPTH } from '@sitewright/schema';
 import { identifierize } from '../../lib/entry-form';
 import { glassInput, toggleInput } from '../../theme';
+import { FieldConfigEditor, type DatasetRef } from './FieldConfigEditor';
 
 /** Scalar (leaf) field types — every type except the two structural group types. */
-export const SCALAR_FIELD_TYPES: readonly FieldType[] = ['text', 'richtext', 'number', 'boolean', 'date', 'image', 'reference', 'select', 'json'];
+export const SCALAR_FIELD_TYPES: readonly FieldType[] = ['text', 'richtext', 'number', 'boolean', 'date', 'time', 'datetime', 'image', 'reference', 'select', 'json'];
 
 /** `list` (ordered repeatable group) and `object` (named sub-group) carry child `fields`. */
 export function isGroupFieldType(t: FieldType): boolean {
@@ -44,10 +45,13 @@ export function NestedFieldsEditor({
   value,
   onChange,
   depth,
+  datasets,
 }: {
   value: Field[];
   onChange: (fields: Field[]) => void;
   depth: number;
+  /** Project datasets — for a child `reference` field's target picker. */
+  datasets: readonly DatasetRef[];
 }) {
   const [name, setName] = useState('');
   const [type, setType] = useState<FieldType>('text');
@@ -117,10 +121,12 @@ export function NestedFieldsEditor({
                 </button>
               </div>
             </div>
+            {/* Per-field config for the config-driven types: select choices / reference target. */}
+            <FieldConfigEditor field={field} datasets={datasets} onChange={(config) => setChild(i, { config })} />
             {/* `depth < MAX_FIELD_DEPTH` guards the recursion even if malformed (over-deep) data ever
                 reached the client — the schema rejects writing it, but the render stays bounded. */}
             {isGroupFieldType(field.type) && depth < MAX_FIELD_DEPTH && (
-              <NestedFieldsEditor value={field.fields ?? []} depth={depth + 1} onChange={(children) => setChild(i, { fields: children })} />
+              <NestedFieldsEditor value={field.fields ?? []} depth={depth + 1} datasets={datasets} onChange={(children) => setChild(i, { fields: children })} />
             )}
           </li>
         ))}

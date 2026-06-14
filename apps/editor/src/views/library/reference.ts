@@ -263,7 +263,7 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         description:
           'A CONTENT-EDITOR-ONLY control: drops a chip (shown ONLY in the Content Editor, never on the published site) that lets a client set a whitelisted PAGE value — the page title, the meta description, or the OG/share image — or a page.data value, from inside the live preview. Pair it with other helpers: set a FOLDER name (as="folder") an {{#sw-folder}} gallery reads, or a DATASET name (as="dataset") an {{#each}} loops.',
         args: [
-          { name: 'target', desc: 'What to set: page.title, page.image, page.description, or a page.data key/path (e.g. "gallery_folder" or "data.article.title").' },
+          { name: 'target', desc: 'What to set: page.title, page.image, page.description; a page.data value (bare "gallery_folder" = top-level, or nested "page.data.article.title"); or a GLOBAL "website.data.<path>".' },
           { name: 'as', desc: 'The input: text (default), textarea, url, number, color, date, image (file picker, images), file (file picker, any uploaded file), select (a dropdown of your own options), folder (a dropdown of media folders), or dataset (a dropdown of datasets). An unknown value is an error — it will NOT silently fall back to a text box.' },
           { name: 'options', desc: 'For as="select" ONLY: a comma-separated list of choices, e.g. "Draft, Published, Archived". Required for select (a select with no options is rejected).' },
           { name: 'label', desc: 'Optional chip label (defaults to the target).' },
@@ -273,8 +273,8 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
           '{{sw-control target="gallery_folder" as="folder" label="Gallery folder"}}\n' +
           '{{#sw-folder page.data.gallery_folder}}<img src="{{sw-url url}}" alt="{{alt}}">{{/sw-folder}}\n' +
           '{{! a fixed choice list }}\n' +
-          '{{sw-control target="data.status" as="select" options="Draft, Published, Archived" label="Status"}}',
-        note: 'Renders nothing for a non-settable target. It writes into the page draft (saved with everything else) and is REMOVED entirely from the published HTML.',
+          '{{sw-control target="page.data.status" as="select" options="Draft, Published, Archived" label="Status"}}',
+        note: 'Renders nothing for a non-settable target. page/page.data targets write the page draft (saved with everything else); a website.data target writes the GLOBAL store (auto-saved). REMOVED entirely from the published HTML.',
       },
       {
         id: 'h-lookup',

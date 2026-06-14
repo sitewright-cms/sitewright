@@ -45,7 +45,7 @@ export function pageComponentsLightbox(): Page {
         'These images are separate elements in their own cards, but a shared data-gallery name merges them into one lightbox — click either and page through both. The same works across different sections of the page.',
     },
     source: `<section class="mx-auto max-w-6xl px-6 pb-8 pt-24">
-  <a class="nw-underline inline-flex items-center gap-1.5 text-sm font-semibold text-primary no-underline" href="{{sw-url parentPage.path}}">${icon('arrow-left', 'h-4 w-4')} {{parentPage.title}}</a>
+  <a class="nw-underline inline-flex items-center gap-1.5 text-sm font-semibold text-primary no-underline" href="{{sw-url page.parent.path}}">${icon('arrow-left', 'h-4 w-4')} {{page.parent.title}}</a>
   <h1 class="mt-6 text-4xl font-bold tracking-tight sm:text-6xl">{{page.title}}</h1>
   <p class="mt-5 max-w-2xl text-lg leading-relaxed text-base-content/60" data-sw-text="lb_intro">A photo grid that opens full-screen on click.</p>
 </section>

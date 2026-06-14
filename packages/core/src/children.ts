@@ -43,16 +43,16 @@ export interface PageChild {
 export const MAX_PAGE_CHILDREN = 500;
 
 /**
- * A lean read-only view of a page's PARENT, for the top-level `parentPage` binding —
- * `{{parentPage.path}}`, `{{parentPage.data.x}}`. `undefined` when the page is a tree root / home or
- * its `parent` id doesn't resolve (so `{{parentPage.*}}` renders empty). Mirrors the child projection
+ * A lean read-only view of a page's PARENT, exposed to templates as the `page.parent` binding —
+ * `{{page.parent.path}}`, `{{page.parent.data.x}}`. `undefined` when the page is a tree root / home or
+ * its `parent` id doesn't resolve (so `{{page.parent.*}}` renders empty). Mirrors the child projection
  * in {@link childrenOf}: `slug` is the parent's own segment, `path` its full computed route.
  */
 export interface ParentPageView {
   title: string;
   /** The parent's own slug SEGMENT (its `path` field). */
   slug: string;
-  /** The parent's FULL computed route (use in `href="{{sw-url parentPage.path}}"`). */
+  /** The parent's FULL computed route (use in `href="{{sw-url page.parent.path}}"`). */
   path: string;
   locale: string;
   /** The parent's own `page.data` object (empty object when unset). */
@@ -61,7 +61,7 @@ export interface ParentPageView {
 
 /**
  * Flattens `page`'s direct PARENT to a {@link ParentPageView}, or `undefined` when there is none. ONE
- * level only — the parent's own parent is NOT nested (no `parentPage.parentPage`), which bounds the
+ * level only — the parent's own parent is NOT nested (no `page.parent.parent`), which bounds the
  * render payload and keeps the binding simple. Same projection rules as {@link childrenOf}.
  */
 export function parentPageView(pages: readonly Page[], page: Page, defaultLocale: string): ParentPageView | undefined {

@@ -85,7 +85,7 @@ test('templates rail: 2-column grid + rename a template in the editor, persist a
   await expect(editor).toBeVisible();
   await editor.getByLabel('template name', { exact: true }).fill('Promo Page');
   await editor.locator('.cm-content').click();
-  await page.keyboard.type('<section data-sw-text="data.heading">Promo</section>');
+  await page.keyboard.type('<section data-sw-text="page.data.heading">Promo</section>');
   await editor.getByRole('button', { name: 'Save changes' }).click();
 
   // The chip shows the NEW name; the old name is gone.

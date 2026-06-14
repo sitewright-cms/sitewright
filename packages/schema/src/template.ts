@@ -30,7 +30,7 @@ export const TemplateSchema = z.object({
   source: z.string().max(256 * 1024),
   /**
    * Declared default `page.data` for pages using this template: the attributes (with sensible
-   * defaults) a `data-sw-*="data.<key>"` template reads. When the template is enabled on a page the
+   * defaults) a `data-sw-*="page.data.<key>"` template reads. When the template is enabled on a page the
    * editor copies these into the page's `page.data` (fill-missing, non-destructive), and forking the
    * template carries them along with the source. Bounded + prototype-safe (a root object; {@link JsonObjectStoreSchema}).
    */

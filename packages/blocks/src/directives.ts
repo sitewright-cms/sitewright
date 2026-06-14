@@ -19,8 +19,8 @@
 // empty) `data-src`/`data-bg` attribute; data-sw-src/bg keep filling it from page.data.
 //
 // STORE: the text/html/href/src/bg directives read a SINGLE store — `page.data`. A BARE key
-// (`data-sw-text="hero_h1"`, `data-sw-html="bio"`) is a top-level page.data property; a `data.<path>`
-// key (`data.article_title`) is a nested page.data path. The value resolves to a STRING leaf
+// (`data-sw-text="hero_h1"`, `data-sw-html="bio"`) is a top-level page.data property; a `page.data.<path>`
+// key (`page.data.article_title`) is a nested page.data path. The value resolves to a STRING leaf
 // (non-string / missing → keep the authored default). The retired `content`/`richContent` stores
 // folded into page.data; `data-sw-html` is the one HTML sink and is always sanitized at render
 // (`sanitizeRichHtml`), so storing raw HTML in generic page.data is safe — nothing is emitted unsanitized.
@@ -63,14 +63,14 @@ const TRANSLATE_ATTR = 'data-sw-translate';
  */
 export const DIRECTIVE_ATTRS = [TEXT_ATTR, HTML_ATTR, HREF_ATTR, SRC_ATTR, BG_ATTR, TRANSLATE_ATTR] as const;
 
-/** The `data.` key prefix routes a directive to the page's own `page.data` object. */
-const DATA_PREFIX = 'data.';
+/** The `page.data.` key prefix routes a directive to a NESTED path in the page's own `page.data` object. */
+const DATA_PREFIX = 'page.data.';
 
 export interface DirectiveContext {
   /**
    * The page's own `page.data` object — the SINGLE store for every directive (text/html/href/src/bg):
    * a BARE key (`data-sw-text="k"`, `data-sw-html="bio"`) is a top-level `page.data` property; a
-   * `data.<path>` key is a nested page.data path.
+   * `page.data.<path>` key is a nested page.data path.
    */
   data?: Record<string, unknown>;
   /**
@@ -109,7 +109,7 @@ function flatData(data: Record<string, unknown> | undefined, key: string): strin
 }
 
 /**
- * The override string for a directive `key`, read from the single `page.data` store. A `data.<path>`
+ * The override string for a directive `key`, read from the single `page.data` store. A `page.data.<path>`
  * key reads `page.data` at that nested path; a BARE key reads a FLAT top-level `page.data` property.
  * Undefined → no override (keep the authored default).
  */

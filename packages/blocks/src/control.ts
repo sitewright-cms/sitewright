@@ -88,15 +88,24 @@ const DANGEROUS = new Set(['__proto__', 'constructor', 'prototype']);
 
 /**
  * Validate + classify a control target against the ALLOW-LIST. Returns null for anything a control may
- * not set. Settable: the page fields `page.title` / `page.description` / `page.image`, or a `page.data`
- * key/path (bare key or `data.<path>`, proto-guarded). Other page fields (path/status/template/canonical/
- * noindex/…) are intentionally NOT settable from a content control.
+ * not set. Settable: the page fields `page.title` / `page.description` / `page.image`; a per-page
+ * `page.data` value — a NESTED `page.data.<path>` OR a BARE single-segment key (defaults to a top-level
+ * page.data property); or a GLOBAL `website.data.<path>`. Other page fields (path/status/template/…) are
+ * NOT settable. (A bare `data.<path>` is NO LONGER accepted — use `page.data.<path>` for clarity, since
+ * `{{data.*}}` is the separate datasets namespace.)
  */
 export function classifyControlTarget(target: unknown): ControlTarget | null {
   if (typeof target !== 'string' || target === '') return null;
   if (target === 'page.title') return { kind: 'page', field: 'title' };
   if (target === 'page.description') return { kind: 'page', field: 'description' };
   if (target === 'page.image') return { kind: 'page', field: 'image' };
+  // PER-PAGE store: a NESTED `page.data.<path>` (checked BEFORE the page.* rejection below). `key` keeps
+  // the full target — the directive/editor (resolveOverride / pageDataSet) strip the `page.data.` prefix.
+  if (target.startsWith('page.data.')) {
+    const path = target.slice('page.data.'.length);
+    if (path === '' || path.split('.').some((s) => s === '' || DANGEROUS.has(s))) return null;
+    return { kind: 'data', key: target };
+  }
   // GLOBAL store: only `website.data.<path>` is settable from a control (other website.* fields are
   // structured settings, not free-form data). `key` is the path WITHIN website.data, proto-guarded.
   if (target.startsWith('website.')) {
@@ -108,12 +117,12 @@ export function classifyControlTarget(target: unknown): ControlTarget | null {
   }
   // Reserve the page. namespace for the explicit whitelist above — any OTHER page field is rejected
   // (a non-settable field like page.path/canonical/noindex must not silently become an odd page.data
-  // leaf). Also reject the RETIRED `seo.` namespace (its fields were flattened onto the page — use
-  // page.description / page.image) so a stale `target="seo.ogImage"` fails loudly instead of silently
-  // creating a junk `page.data.seo.*` leaf.
+  // leaf). Also reject the RETIRED `seo.` namespace (use page.description / page.image).
   if (target.startsWith('page.') || target.startsWith('seo.')) return null;
-  const path = target.startsWith('data.') ? target.slice(5) : target;
-  if (path === '' || path.split('.').some((s) => s === '' || DANGEROUS.has(s))) return null;
+  // A BARE single-segment key → a top-level page.data property. Any other dotted key (e.g. the retired
+  // `data.<path>` shorthand) is rejected — write `page.data.<path>` instead.
+  if (target.includes('.')) return null;
+  if (DANGEROUS.has(target)) return null;
   return { kind: 'data', key: target };
 }
 
@@ -150,9 +159,9 @@ export function controlCurrentValue(t: ControlTarget, root: ControlRoot): string
     const v = root.page?.[t.field];
     return typeof v === 'string' ? v : '';
   }
-  // website: `t.key` is already the path WITHIN website.data. page.data: a bare key or `data.<path>`.
+  // website: `t.key` is already the path WITHIN website.data. page.data: a bare key or `page.data.<path>`.
   if (t.kind === 'website') return readDataLeaf(root.website?.data, t.key);
-  return readDataLeaf(root.page?.data, t.key.startsWith('data.') ? t.key.slice(5) : t.key);
+  return readDataLeaf(root.page?.data, t.key.startsWith('page.data.') ? t.key.slice('page.data.'.length) : t.key);
 }
 
 /** Dropdown options for as="folder" (media folder paths), as="dataset" (dataset names), and

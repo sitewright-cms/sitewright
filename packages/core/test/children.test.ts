@@ -84,7 +84,7 @@ describe('parentPageView', () => {
   });
 
   it('reports the PARENT’s own locale, not the child’s (no same-locale filter, unlike childrenOf)', () => {
-    // `web` is `de`, its parent `services` has no locale → defaults to `en`. parentPage crosses locales.
+    // `web` is `de`, its parent `services` has no locale → defaults to `en`. page.parent crosses locales.
     expect(parentPageView(pages, pages[2]!, 'en')?.locale).toBe('en');
   });
 
@@ -110,14 +110,14 @@ describe('referencesChildren', () => {
 });
 
 describe('referencesParentPage', () => {
-  it('matches a parentPage reference but not look-alikes', () => {
-    expect(referencesParentPage('<a href="{{sw-url parentPage.path}}">up</a>')).toBe(true);
-    expect(referencesParentPage('{{ parentPage.title }}')).toBe(true);
-    expect(referencesParentPage('{{parentPage.data.section_color}}')).toBe(true);
+  it('matches a page.parent reference but not look-alikes', () => {
+    expect(referencesParentPage('<a href="{{sw-url page.parent.path}}">up</a>')).toBe(true);
+    expect(referencesParentPage('{{ page.parent.title }}')).toBe(true);
+    expect(referencesParentPage('{{page.parent.data.section_color}}')).toBe(true);
     expect(referencesParentPage('no parent here')).toBe(false);
-    expect(referencesParentPage('{{ parentPageView }}')).toBe(false); // longer word
-    expect(referencesParentPage('nav-parentPage')).toBe(false); // preceded by an identifier/-
-    expect(referencesParentPage('myparentPage.path')).toBe(false);
+    expect(referencesParentPage('{{ page.parental }}')).toBe(false); // longer word (parent + al)
+    expect(referencesParentPage('{{ page.children }}')).toBe(false); // a different page field
+    expect(referencesParentPage('mypage.parent')).toBe(false); // preceded by an identifier
   });
 });
 

@@ -66,7 +66,7 @@ interface CodePageEditorProps {
 
 const PREVIEW_DEBOUNCE_MS = 800;
 
-// The page.data routing/merge helpers (data.<path> keys, immutable leaf get/set, template-default
+// The page.data routing/merge helpers (page.data.<path> keys, immutable leaf get/set, template-default
 // merge, proto-guards) + DANGEROUS_KEYS live in ../lib/page-data so they can be unit-tested directly.
 
 /** Device-rail glyphs (lucide-style outlines, matching the platform icon vocabulary). */
@@ -402,7 +402,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
       if (d.type === 'scroll' && typeof d.y === 'number') {
         scrollYRef.current = d.y;
       } else if (d.type === 'edit' && typeof d.key === 'string' && typeof d.value === 'string' && isSafeKey(d.key)) {
-        // Inline plain-text edit → write the page.data leaf (bare key → top-level prop; data.<path> →
+        // Inline plain-text edit → write the page.data leaf (bare key → top-level prop; page.data.<path> →
         // nested). The iframe DOM already shows it, so suppress the reload.
         const nextData = pageDataSet(pageDataRef.current, d.key, d.value);
         inlineKeyRef.current = inlineToken({ data: nextData });
@@ -412,7 +412,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
         // auto-saved (debounced) on its own endpoint. The contenteditable already shows it; no reload needed.
         queueTranslationRef.current(d.key, d.value);
       } else if (d.type === 'rich-edit' && typeof d.key === 'string' && typeof d.html === 'string' && isSafeKey(d.key)) {
-        // Inline RICH edit → write the page.data leaf (bare key → top-level prop; data.<path> → nested),
+        // Inline RICH edit → write the page.data leaf (bare key → top-level prop; page.data.<path> → nested),
         // the SAME single store as every other directive. The raw iframe HTML is stored as-is; it is
         // sanitized at RENDER (the html sink runs sanitizeRichHtml on each /preview + publish), so the
         // draft value is never executed. Suppress the reload (the rich contenteditable already shows it).
@@ -598,7 +598,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   }
 
   // Writes a text/url region (the in-preview file picker uses this for images) into page.data —
-  // a bare key → top-level prop; a `data.<path>` key → nested.
+  // a bare key → top-level prop; a `page.data.<path>` key → nested.
   function changeRegion(key: string, value: string) {
     setPageData((prev) => pageDataSet(prev, key, value));
   }

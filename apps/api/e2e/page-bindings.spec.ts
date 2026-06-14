@@ -4,10 +4,10 @@ const stamp = Date.now();
 
 // The page-context bindings against a deployed instance: a child code-first page
 // reads its OWN segment ({{page.slug}}) and a lean view of its direct parent
-// ({{parentPage.title}}, {{parentPage.path}}, {{parentPage.data.*}}). Verified
+// ({{page.parent.title}}, {{page.parent.path}}, {{page.parent.data.*}}). Verified
 // through BOTH the sandboxed live preview (WYSIWYG parity) and the published export.
 
-test('page.slug + parentPage bindings render in preview and the published export', async ({ playwright, baseURL }) => {
+test('page.slug + page.parent bindings render in preview and the published export', async ({ playwright, baseURL }) => {
   const ctx = await playwright.request.newContext({ baseURL });
 
   const reg = await ctx.post('/auth/register', {
@@ -29,7 +29,7 @@ test('page.slug + parentPage bindings render in preview and the published export
   };
   expect((await ctx.put(`${base}/content/page/home`, { data: home })).status()).toBe(200);
 
-  // The child reads its own slug + the parent view. `parentPage` resolves from the SAVED home above.
+  // The child reads its own slug + the parent view. `page.parent` resolves from the SAVED home above.
   const child = {
     id: 'services', path: 'services', parent: 'home', title: 'Services',
     root: { id: 'r', type: 'Section' },
@@ -37,8 +37,8 @@ test('page.slug + parentPage bindings render in preview and the published export
       '<div>' +
       '<b id="{{page.slug}}">slug:{{page.slug}}</b> ' +
       'route:{{page.path}} ' +
-      'up:<a href="{{sw-url parentPage.path}}">{{parentPage.title}}</a> ' +
-      'color:{{parentPage.data.section_color}}' +
+      'up:<a href="{{sw-url page.parent.path}}">{{page.parent.title}}</a> ' +
+      'color:{{page.parent.data.section_color}}' +
       '</div>',
   };
   expect((await ctx.put(`${base}/content/page/services`, { data: child })).status()).toBe(200);
@@ -49,8 +49,8 @@ test('page.slug + parentPage bindings render in preview and the published export
   const previewHtml = (await preview.json()).html as string;
   expect(previewHtml).toContain('slug:services'); // page.slug = the page's OWN segment
   expect(previewHtml).toContain('id="services"'); // usable in an attribute too
-  expect(previewHtml).toContain('>Home</a>'); // parentPage.title — the parent (home)
-  expect(previewHtml).toContain('color:tomato'); // parentPage.data.* — inherited from the parent
+  expect(previewHtml).toContain('>Home</a>'); // page.parent.title — the parent (home)
+  expect(previewHtml).toContain('color:tomato'); // page.parent.data.* — inherited from the parent
 
   // Publish, then verify the exported child page over HTTP.
   expect((await ctx.post(`${base}/publish`)).status()).toBe(200);
@@ -59,8 +59,8 @@ test('page.slug + parentPage bindings render in preview and the published export
   const html = await page.text();
   expect(html).toContain('slug:services'); // own segment, NOT the full /services route
   expect(html).toContain('route:/services'); // page.path stays the FULL computed route
-  expect(html).toContain('>Home</a>'); // parentPage.title
-  expect(html).toContain('color:tomato'); // parentPage.data.section_color
+  expect(html).toContain('>Home</a>'); // page.parent.title
+  expect(html).toContain('color:tomato'); // page.parent.data.section_color
 
   await ctx.dispose();
 });

@@ -16,14 +16,18 @@ describe('classifyControlTarget', () => {
     expect(classifyControlTarget('page.image')).toEqual({ kind: 'page', field: 'image' });
     expect(classifyControlTarget('page.description')).toEqual({ kind: 'page', field: 'description' });
   });
-  it('accepts page.data keys (bare + data.<path>)', () => {
+  it('accepts page.data keys (bare top-level + nested page.data.<path>)', () => {
     expect(classifyControlTarget('gallery_folder')).toEqual({ kind: 'data', key: 'gallery_folder' });
-    expect(classifyControlTarget('data.article.title')).toEqual({ kind: 'data', key: 'data.article.title' });
+    expect(classifyControlTarget('page.data.article.title')).toEqual({ kind: 'data', key: 'page.data.article.title' });
+  });
+  it('rejects the RETIRED data.<path> shorthand — page.data.<path> is required now', () => {
+    expect(classifyControlTarget('data.article.title')).toBeNull();
+    expect(classifyControlTarget('data.gallery_folder')).toBeNull();
   });
   it('rejects proto / empty / non-string', () => {
     expect(classifyControlTarget('__proto__')).toBeNull();
-    expect(classifyControlTarget('data.__proto__.x')).toBeNull();
-    expect(classifyControlTarget('data.')).toBeNull();
+    expect(classifyControlTarget('page.data.__proto__.x')).toBeNull();
+    expect(classifyControlTarget('page.data.')).toBeNull();
     expect(classifyControlTarget('')).toBeNull();
     expect(classifyControlTarget(undefined)).toBeNull();
   });
@@ -96,7 +100,7 @@ describe('controlCurrentValue', () => {
     expect(controlCurrentValue({ kind: 'page', field: 'image' }, root)).toBe('/og.jpg');
     expect(controlCurrentValue({ kind: 'page', field: 'description' }, root)).toBe('desc');
     expect(controlCurrentValue({ kind: 'data', key: 'gallery_folder' }, root)).toBe('photos');
-    expect(controlCurrentValue({ kind: 'data', key: 'data.article.title' }, root)).toBe('A');
+    expect(controlCurrentValue({ kind: 'data', key: 'page.data.article.title' }, root)).toBe('A');
     expect(controlCurrentValue({ kind: 'data', key: 'missing' }, root)).toBe('');
   });
   it('reads a GLOBAL website.data leaf for the website kind (key = path WITHIN website.data)', () => {
@@ -158,7 +162,7 @@ describe('{{sw-control}} render', () => {
   });
 
   it('embeds a dataset\'s entry ids as options for as="dataset-item"', () => {
-    const out = renderTemplate('{{sw-control target="data.hero_config" as="dataset-item" dataset="hero" label="Hero config"}}', {
+    const out = renderTemplate('{{sw-control target="page.data.hero_config" as="dataset-item" dataset="hero" label="Hero config"}}', {
       page: { data: { hero_config: 'minimal' } },
       data: { hero: [{ id: 'config', values: {} }, { id: 'minimal', values: {} }] },
       preview: true,
@@ -171,13 +175,13 @@ describe('{{sw-control}} render', () => {
 
   it('emits the typed inputs (number/color/date) verbatim in data-sw-control-as', () => {
     for (const as of ['number', 'color', 'date'] as const) {
-      const out = renderTemplate(`{{sw-control target="data.v" as="${as}"}}`, { page: { data: { v: '' } }, preview: true });
+      const out = renderTemplate(`{{sw-control target="page.data.v" as="${as}"}}`, { page: { data: { v: '' } }, preview: true });
       expect(out).toContain(`data-sw-control-as="${as}"`);
     }
   });
 
   it('embeds the author options for as="select"', () => {
-    const out = renderTemplate('{{sw-control target="data.status" as="select" options="Draft, Published, Archived" label="Status"}}', {
+    const out = renderTemplate('{{sw-control target="page.data.status" as="select" options="Draft, Published, Archived" label="Status"}}', {
       page: { data: { status: 'Published' } },
       preview: true,
     });
@@ -196,7 +200,7 @@ describe('{{sw-control}} render', () => {
   });
 
   it('THROWS for as="select" with no options (a select with no choices is useless)', () => {
-    expect(() => renderTemplate('{{sw-control target="data.status" as="select"}}', { page: { data: {} }, preview: true })).toThrow(
+    expect(() => renderTemplate('{{sw-control target="page.data.status" as="select"}}', { page: { data: {} }, preview: true })).toThrow(
       /select.*requires.*options/i,
     );
   });

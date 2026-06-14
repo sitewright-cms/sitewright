@@ -59,7 +59,10 @@ describe('BINDING_NAMESPACES ↔ the render context', () => {
     | 'markEntries'
     | 'forms'
     | 'hcaptchaSiteKey'
-    | 'siteRoot';
+    | 'siteRoot'
+    // A TRANSPORT input merged into the page object as the `page.parent` binding (documented under the
+    // `page` namespace), NOT an author-facing top-level namespace itself.
+    | 'parentPage';
   type AuthorFacingContextKey = Exclude<keyof TemplateContext, InfraContextKey>;
   type AssertEqual<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
 
@@ -82,7 +85,7 @@ describe('BINDING_NAMESPACES ↔ the render context', () => {
 
   it('every documented namespace actually resolves a value in a real render', () => {
     const html = renderTemplate(
-      'C={{company.name}} W={{website.siteUrl}} P={{page.title}} PP={{parentPage.title}} ' +
+      'C={{company.name}} W={{website.siteUrl}} P={{page.title}} PP={{page.parent.title}} ' +
         'D={{#each data.list}}{{title}}{{/each}} I={{item.set.k1.title}} N={{#each nav.header}}{{path}}{{/each}}',
       {
         company: { name: 'CO' },

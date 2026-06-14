@@ -60,7 +60,7 @@ export const GLOBAL_WIDGETS: readonly Widget[] = [
     component: 'carousel',
     // The body renders ONE config from the `hero` dataset via the {{#sw-pick-entry}} BLOCK helper: the
     // entry whose id matches page.data.hero_config (set by a {{sw-control as="dataset-item"
-    // dataset="hero" target="data.hero_config"}} picker), else the FIRST — so multiple configs coexist
+    // dataset="hero" target="page.data.hero_config"}} picker), else the FIRST — so multiple configs coexist
     // and a page switches between them no-code. In the editor preview the helper wraps the block in a
     // data-sw-entry marker so CLICKING the hero opens that config's entry editor; data-click-next
     // advances on a slide click on the published site (the bridge intercepts the click for editing).

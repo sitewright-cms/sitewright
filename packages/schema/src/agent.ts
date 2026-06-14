@@ -28,7 +28,7 @@ In \`source\`:
   (e.g. a "Book now" button). {{#each company.social}} yields { link, name, icon } per profile — render a
   social bar with {{#each company.social}}<a href="{{sw-url link}}">{{sw-icon icon}} {{name}}</a>{{/each}}.
   Page bindings: {{ page.title }}, {{ page.path }} (full route),
-  {{ page.slug }} (own segment); {{ parentPage.path }} / {{ parentPage.data.<key> }} for the page's
+  {{ page.slug }} (own segment); {{ page.parent.path }} / {{ page.parent.data.<key> }} for the page's
   parent (absent at the tree root); {{ website.siteUrl }}; and {{#each data.<dataset>}}…{{/each}}
   for collections. Inside the loop an entry's fields are read
   DIRECTLY by name — {{title}}, {{price}} (no \`values.\` prefix) — and each row is click-to-edit

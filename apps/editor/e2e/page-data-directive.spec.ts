@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 const stamp = Date.now();
 
-// data-sw-text="data.<key>" binds an editable leaf to the page's page.data (not the content map).
+// data-sw-text="page.data.<key>" binds an editable leaf to the page's page.data (not the content map).
 // In-preview editing it writes into page.data and persists there across a reload.
 test('data-sw-* with a data.* key edits page.data in-preview and persists', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
@@ -20,10 +20,10 @@ test('data-sw-* with a data.* key edits page.data in-preview and persists', asyn
 
   await page.locator('.cm-content').click();
   await page.keyboard.press('ControlOrMeta+a');
-  await page.keyboard.insertText('<div><h1 data-sw-text="data.headline">Default headline</h1></div>');
+  await page.keyboard.insertText('<div><h1 data-sw-text="page.data.headline">Default headline</h1></div>');
 
   const preview = page.frameLocator('iframe[title="Preview"]');
-  const region = preview.locator('[data-sw-text="data.headline"]');
+  const region = preview.locator('[data-sw-text="page.data.headline"]');
   await expect(region).toHaveText('Default headline');
 
   // Content mode → inline-edit the leaf.
@@ -47,5 +47,5 @@ test('data-sw-* with a data.* key edits page.data in-preview and persists', asyn
   await page.reload();
   await page.getByRole('button', { name: /Directive Data Site/ }).click();
   await page.getByRole('button', { name: /^Home/ }).click();
-  await expect(page.frameLocator('iframe[title="Preview"]').locator('[data-sw-text="data.headline"]')).toHaveText('Edited via directive');
+  await expect(page.frameLocator('iframe[title="Preview"]').locator('[data-sw-text="page.data.headline"]')).toHaveText('Edited via directive');
 });

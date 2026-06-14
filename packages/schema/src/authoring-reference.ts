@@ -42,7 +42,6 @@ export const BINDING_NAMESPACE_NAMES = [
   'company',
   'website',
   'page',
-  'parentPage',
   'data',
   'item',
   'nav',
@@ -99,7 +98,7 @@ export const SW_DIRECTIVES: readonly SwDirective[] = [
     name: 'data-sw-text',
     keywords: 'editable plain text inline directive',
     description:
-      'Makes the element’s text editable in place (plain text, HTML-escaped). The override is stored as page.data.<key> (a `data.<path>` key targets a nested page.data path).',
+      'Makes the element’s text editable in place (plain text, HTML-escaped). The override is stored in page.data — a bare key is a top-level property; a `page.data.<path>` key targets a nested page.data path.',
     example: '<h1 data-sw-text="headline">Welcome</h1>',
   },
   {
@@ -109,7 +108,7 @@ export const SW_DIRECTIVES: readonly SwDirective[] = [
     name: 'data-sw-html',
     keywords: 'editable rich text wysiwyg html directive',
     description:
-      'Makes the element a RICH-text region: a floating toolbar in the preview + a side WYSIWYG/HTML-source editor. The override is stored as page.data.<key> (a `data.<path>` key targets a nested path) and sanitized to a safe allowlist at render.',
+      'Makes the element a RICH-text region: a floating toolbar in the preview + a side WYSIWYG/HTML-source editor. The override is stored in page.data (bare key = top-level; `page.data.<path>` = nested) and sanitized to a safe allowlist at render.',
     example: '<div data-sw-html="intro"><p>Default intro…</p></div>',
   },
   {
@@ -273,17 +272,17 @@ export const BINDING_NAMESPACES: readonly BindingDoc[] = [
       '{{/if}}',
   },
   {
-    namespace: 'parentPage',
-    id: 'n-parent-page',
-    syntax: 'parentPage.*',
-    name: 'parentPage',
-    keywords: 'parent page up breadcrumb ancestor inherit section data path slug',
+    namespace: 'page',
+    id: 'n-page-parent',
+    syntax: 'page.parent.*',
+    name: 'page.parent',
+    keywords: 'parent page up breadcrumb ancestor inherit section data path slug parentPage',
     description:
-      'The current page’s direct PARENT (the page above it in the pages tree), as a lean read-only view: parentPage.title, parentPage.slug, parentPage.path (its full route — use {{sw-url parentPage.path}}), parentPage.locale, and parentPage.data (the parent’s own page.data — e.g. read a section’s shared settings). Absent at the tree root / home, so {{parentPage.*}} renders empty there. One level only — there is no parentPage.parentPage.',
+      'The current page’s direct PARENT (the page above it in the pages tree), as a lean read-only view nested under page: page.parent.title, page.parent.slug, page.parent.path (its full route — use {{sw-url page.parent.path}}), page.parent.locale, and page.parent.data (the parent’s own page.data — e.g. read a section’s shared settings). Absent at the tree root / home, so {{page.parent.*}} renders empty there. One level only — there is no page.parent.parent. (Formerly the top-level parentPage namespace.)',
     example:
       '{{! "up" link + inherit a value from the parent’s page.data }}\n' +
-      '<a href="{{sw-url parentPage.path}}">↑ {{parentPage.title}}</a>\n' +
-      '<span class="accent" style="color:{{parentPage.data.section_color}}">{{page.title}}</span>',
+      '<a href="{{sw-url page.parent.path}}">↑ {{page.parent.title}}</a>\n' +
+      '<span class="accent" style="color:{{page.parent.data.section_color}}">{{page.title}}</span>',
   },
   {
     namespace: 'data',

@@ -45,8 +45,8 @@ describe('resolveTemplateSource (code-first templates)', () => {
     expect(article).toBeDefined();
     expect(overview).toBeDefined();
     // The article binds its fields to page.data via data-sw-*; its defaults declare those keys.
-    expect(article!.source).toContain('data-sw-text="data.article_title"');
-    expect(article!.source).toContain('data-sw-html="data.article_body"');
+    expect(article!.source).toContain('data-sw-text="page.data.article_title"');
+    expect(article!.source).toContain('data-sw-html="page.data.article_body"');
     expect(Object.keys(article!.data as object)).toEqual(
       expect.arrayContaining(['article_title', 'article_excerpt', 'article_image', 'article_body']),
     );
@@ -69,7 +69,7 @@ describe('resolveTemplateSource (code-first templates)', () => {
     // translation catalog (reserved cart_* keys), so a locale variant needs no per-page hash wiring.
     expect(shop!.source).toContain('{{sw-cart}}');
     // The editable headings are page.data leaves with declared defaults.
-    expect(shop!.source).toContain('data-sw-text="data.heading"');
+    expect(shop!.source).toContain('data-sw-text="page.data.heading"');
     expect(Object.keys(shop!.data as object)).toEqual(expect.arrayContaining(['heading', 'intro']));
   });
 });

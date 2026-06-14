@@ -62,7 +62,7 @@ export function pagesAbout(assets: Record<string, string>): Page[] {
 <section class="mx-auto max-w-6xl px-6 pb-28">
   <div class="flex flex-wrap items-end justify-between gap-3" data-aos="fade-up">
     <h2 class="text-3xl font-bold tracking-tight sm:text-4xl" data-sw-text="gal_title">Inside the studio</h2>
-    {{sw-control target="data.gallery_folder" as="folder" label="Gallery folder"}}
+    {{sw-control target="page.data.gallery_folder" as="folder" label="Gallery folder"}}
   </div>
   <!-- The sw-folder block iterates a MEDIA FOLDER (the editor's library, not a dataset) — drop
        new photos into Studio/ and they appear here. Wrapped in a Lightbox for click-to-zoom. -->
@@ -90,7 +90,7 @@ export function pagesAbout(assets: Record<string, string>): Page[] {
     parent: 'about',
     data: { badge_remote: 'Remote OK', posted_l: 'Posted' },
     source: `<section class="mx-auto max-w-4xl px-6 py-24">
-  <a class="nw-underline inline-flex items-center gap-1.5 text-sm font-semibold text-primary no-underline" href="{{sw-url parentPage.path}}">${icon('arrow-left', 'h-4 w-4')} {{parentPage.title}}</a>
+  <a class="nw-underline inline-flex items-center gap-1.5 text-sm font-semibold text-primary no-underline" href="{{sw-url page.parent.path}}">${icon('arrow-left', 'h-4 w-4')} {{page.parent.title}}</a>
   <h1 class="mt-8 text-4xl font-bold tracking-tight sm:text-6xl" data-sw-text="ca_h1">Come do the best work of your career</h1>
   <p class="mt-5 text-lg leading-relaxed text-base-content/60" data-sw-text="ca_intro">A small team means your work ships, your name is on it, and nobody manages the manager. These roles are open right now.</p>
 

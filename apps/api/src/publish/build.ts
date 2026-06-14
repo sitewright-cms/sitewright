@@ -559,7 +559,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
             data: page.data,
             children: pageSource && referencesChildren(pageSource) ? childrenOf(pubBundle.pages, page, defaultLocale) : [],
           },
-          // The page's PARENT as a lean view (`{{parentPage.path}}`, `{{parentPage.data.x}}`); absent at the
+          // The page's PARENT as a lean view (`{{page.parent.path}}`, `{{page.parent.data.x}}`); absent at the
           // tree root. Built only when the source references it (gates the parent's own `data` like children).
           parentPage: pageSource && referencesParentPage(pageSource)
             ? (parentPageView(pubBundle.pages, page, defaultLocale) as unknown as Record<string, unknown> | undefined)

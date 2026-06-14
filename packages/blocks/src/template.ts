@@ -65,9 +65,10 @@ export interface TemplateContext {
   website?: Record<string, unknown>;
   page?: Record<string, unknown>;
   /**
-   * The current page's direct PARENT as a lean read-only view (`{{ parentPage.path }}`,
-   * `{{ parentPage.data.* }}`) — absent for a tree root / home or an orphan. Built by `parentPageView`
-   * in @sitewright/core; one level only (no nested `parentPage.parentPage`).
+   * The current page's direct PARENT as a lean read-only view — a TRANSPORT input that is merged into
+   * the page object and exposed to templates as `{{ page.parent.path }}` / `{{ page.parent.data.* }}`
+   * (NOT a top-level `parentPage` binding anymore). Absent for a tree root / home or an orphan. Built by
+   * `parentPageView` in @sitewright/core; one level only (no nested `page.parent.parent`).
    */
   parentPage?: Record<string, unknown>;
   /** Named values/collections, addressable as `{{ data.* }}` / `{{#each data.* }}`. */
@@ -833,7 +834,10 @@ export function renderTemplate(source: string, ctx: TemplateContext = {}, opts: 
   // cannot smuggle a <script>/handler/unsafe-context past the main-template check.
   if (ctx.partials) for (const partialSource of Object.values(ctx.partials)) validateTemplate(partialSource);
   const template = compileCached(source);
-  const data = { company: ctx.company, website: ctx.website, page: ctx.page, parentPage: ctx.parentPage, data: ctx.data, item: ctx.item, nav: ctx.nav, media: ctx.media, markEntries: ctx.markEntries, forms: ctx.forms };
+  // `parentPage` is merged into the page object as `page.parent` (the author binding); it is not a
+  // top-level namespace. Only attach when present so a no-parent page keeps `page.parent` undefined.
+  const page = ctx.parentPage ? { ...(ctx.page ?? {}), parent: ctx.parentPage } : ctx.page;
+  const data = { company: ctx.company, website: ctx.website, page, data: ctx.data, item: ctx.item, nav: ctx.nav, media: ctx.media, markEntries: ctx.markEntries, forms: ctx.forms };
   let html: string;
   try {
     html = template(data, {

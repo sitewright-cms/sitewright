@@ -55,7 +55,7 @@ export function coerceFieldValue(type: FieldType, raw: unknown): unknown {
       // string. (The structured recursive editor for these lands in a follow-up.)
       return raw;
     default:
-      // text, richtext, date, image, reference, select
+      // text, richtext, date, time, datetime, image, reference, select
       return typeof raw === 'string' ? raw : raw === null || raw === undefined ? '' : String(raw);
   }
 }
@@ -142,5 +142,37 @@ export function uniqueSlug(desired: string, taken: ReadonlySet<string>): string 
   for (let n = 2; ; n += 1) {
     const candidate = `${desired}-${n}`;
     if (!taken.has(candidate)) return candidate;
+  }
+}
+
+/**
+ * The string choices configured for a `select` field, read from `config.options` (non-empty strings,
+ * de-duplicated, order preserved). Empty when the field has no options configured yet — the entry
+ * editor then falls back to a plain text input.
+ */
+export function fieldSelectOptions(field: Field): string[] {
+  const raw = field.config?.options;
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  for (const o of raw) {
+    if (typeof o === 'string' && o !== '' && !out.includes(o)) out.push(o);
+  }
+  return out;
+}
+
+/** The target dataset SLUG a `reference` field points at (`config.dataset`), or '' when unset. */
+export function fieldReferenceDataset(field: Field): string {
+  const d = field.config?.dataset;
+  return typeof d === 'string' ? d : '';
+}
+
+/** True when `text` is empty or parses as JSON — drives inline validation of a `json` field. */
+export function isJsonValid(text: string): boolean {
+  if (typeof text !== 'string' || text.trim() === '') return true;
+  try {
+    JSON.parse(text);
+    return true;
+  } catch {
+    return false;
   }
 }

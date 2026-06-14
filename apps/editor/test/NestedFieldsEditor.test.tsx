@@ -10,7 +10,7 @@ function Harness({ initial, depth = 2 }: { initial: Field[]; depth?: number }) {
   const [fields, setFields] = useState<Field[]>(initial);
   return (
     <>
-      <NestedFieldsEditor value={fields} depth={depth} onChange={setFields} />
+      <NestedFieldsEditor value={fields} depth={depth} datasets={[]} onChange={setFields} />
       <pre data-testid="state">{JSON.stringify(fields)}</pre>
     </>
   );

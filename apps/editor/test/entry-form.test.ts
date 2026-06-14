@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import type { Dataset, Entry } from '@sitewright/schema';
+import type { Dataset, Entry, Field } from '@sitewright/schema';
 import {
   coerceFieldValue,
   defaultEntryValues,
   entryLabel,
+  fieldReferenceDataset,
+  fieldSelectOptions,
   identifierize,
+  isJsonValid,
   readValue,
   reorderByKey,
   reorderWithInsert,
@@ -178,5 +181,37 @@ describe('reorderByKey', () => {
     expect(reorderByKey(['a', 'b'], k, 'a', 'a', 'before')).toEqual(['a', 'b']);
     expect(reorderByKey(['a', 'b'], k, 'x', 'a', 'before')).toEqual(['a', 'b']);
     expect(reorderByKey(['a', 'b'], k, 'a', 'x', 'before')).toEqual(['a', 'b']);
+  });
+});
+
+const field = (over: Partial<Field> = {}): Field => ({ name: 'f', type: 'text', required: false, localized: false, ...over });
+
+describe('fieldSelectOptions', () => {
+  it('returns the non-empty string options, de-duplicated, order preserved', () => {
+    expect(fieldSelectOptions(field({ type: 'select', config: { options: ['Draft', '', 'Live', 'Draft', 7] } }))).toEqual(['Draft', 'Live']);
+  });
+  it('is empty when no options are configured', () => {
+    expect(fieldSelectOptions(field({ type: 'select' }))).toEqual([]);
+    expect(fieldSelectOptions(field({ type: 'select', config: { options: 'nope' } }))).toEqual([]);
+  });
+});
+
+describe('fieldReferenceDataset', () => {
+  it('reads config.dataset, else empty', () => {
+    expect(fieldReferenceDataset(field({ type: 'reference', config: { dataset: 'authors' } }))).toBe('authors');
+    expect(fieldReferenceDataset(field({ type: 'reference' }))).toBe('');
+  });
+});
+
+describe('isJsonValid', () => {
+  it('accepts empty / whitespace (optional field)', () => {
+    expect(isJsonValid('')).toBe(true);
+    expect(isJsonValid('   ')).toBe(true);
+  });
+  it('accepts well-formed JSON (objects, arrays, scalars, strings)', () => {
+    for (const ok of ['{"a":1}', '[1,2,3]', '42', 'true', 'null', '"hi"']) expect(isJsonValid(ok)).toBe(true);
+  });
+  it('rejects malformed JSON', () => {
+    for (const bad of ['{', '{a:1}', "{'a':1}", '[1,2,', 'undefined']) expect(isJsonValid(bad)).toBe(false);
   });
 });

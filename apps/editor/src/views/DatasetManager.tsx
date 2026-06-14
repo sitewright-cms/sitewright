@@ -1,16 +1,17 @@
 import { useContext, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { X, GripVertical, ChevronRight } from 'lucide-react';
+import { X, GripVertical, ChevronRight, Search } from 'lucide-react';
 import type { Dataset, Entry, Field, FieldType } from '@sitewright/schema';
 import { compareEntryOrder } from '@sitewright/core';
 import { api, type Project } from '../api';
 import { defaultEntryValues, entryLabel, identifierize, reorderByKey, reorderWithInsert, slugify, uniqueSlug } from '../lib/entry-form';
 import { EntryEditorModal } from './datasets/EntryEditorModal';
+import { FieldConfigEditor } from './datasets/FieldConfigEditor';
 import { NestedFieldsEditor, isGroupFieldType, normalizeFieldForType, fieldsHaveEmptyGroup } from './datasets/NestedFieldsEditor';
 import { RenameDatasetModal } from './datasets/RenameDatasetModal';
 import { SidePanelHold } from './ui/SidePanel';
 import { useDialogs } from './ui/Dialogs';
 import { Tooltip } from './ui/Tooltip';
-import { glassCard, glassPanel, glassInput, fieldLabel, primaryButton, ghostButton, dangerButton, gradientHover, toggleInput } from '../theme';
+import { glassCard, glassPanel, glassInput, fieldLabel, primaryButton, ghostButton, dangerButton, gradientHover, gradientSurface, toggleInput } from '../theme';
 
 const FIELD_TYPES: ReadonlyArray<FieldType> = [
   'text',
@@ -18,6 +19,8 @@ const FIELD_TYPES: ReadonlyArray<FieldType> = [
   'number',
   'boolean',
   'date',
+  'time',
+  'datetime',
   'image',
   'reference',
   'select',
@@ -27,6 +30,17 @@ const FIELD_TYPES: ReadonlyArray<FieldType> = [
   'list',
   'object',
 ];
+
+/** Scrolls the nearest scrollable ancestor of `el` (the Data side-panel's scroll area) back to the
+ *  top — so selecting a dataset reveals its schema + entries rather than leaving the panel scrolled. */
+function scrollPanelToTop(el: HTMLElement | null): void {
+  for (let node = el?.parentElement ?? null; node; node = node.parentElement) {
+    if (node.scrollHeight > node.clientHeight && /(auto|scroll)/.test(getComputedStyle(node).overflowY)) {
+      node.scrollTop = 0;
+      return;
+    }
+  }
+}
 
 // Entry-id generator. crypto.randomUUID is secure-context-only (undefined on the
 // plain-HTTP DinD preview), so we combine a monotonic counter with a random
@@ -44,6 +58,7 @@ export function DatasetManager({ project }: { project: Project }) {
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [selId, setSelId] = useState<string | null>(null);
+  const [datasetQuery, setDatasetQuery] = useState(''); // search filter for the dataset list
   const [error, setError] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
   const [draftFields, setDraftFields] = useState<Field[]>([]);
@@ -61,11 +76,23 @@ export function DatasetManager({ project }: { project: Project }) {
   const lastSyncedSel = useRef<string | null>(null);
   const reordering = useRef(false);
   const duplicatingDataset = useRef(false); // guards against a double-click cloning entries twice
+  const rootRef = useRef<HTMLDivElement>(null);
 
   const { confirm, dialog } = useDialogs();
   const selected = datasets.find((d) => d.id === selId) ?? null;
   // Datasets list, sorted alphabetically by name (stable, case-insensitive).
   const sortedDatasets = useMemo(() => [...datasets].sort((a, b) => a.name.localeCompare(b.name)), [datasets]);
+  // Filtered by the header search box (name or slug, case-insensitive).
+  const filteredDatasets = useMemo(() => {
+    const q = datasetQuery.trim().toLowerCase();
+    return q ? sortedDatasets.filter((d) => d.name.toLowerCase().includes(q) || d.slug.toLowerCase().includes(q)) : sortedDatasets;
+  }, [sortedDatasets, datasetQuery]);
+
+  /** Select a dataset and scroll the panel back to the top so its schema + entries are in view. */
+  function selectDataset(id: string) {
+    setSelId(id);
+    requestAnimationFrame(() => scrollPanelToTop(rootRef.current));
+  }
 
   // A drag-reorder must keep the Data side-panel open: dragging a row otherwise fires the panel's
   // hover-close (mouseleave) and it collapses mid-drag. Hold it open for the duration of the drag,
@@ -291,42 +318,56 @@ export function DatasetManager({ project }: { project: Project }) {
   const titleFieldName = draftFields.find((f) => f.type === 'text')?.name;
 
   return (
-    <div className="flex gap-6">
+    <div ref={rootRef} className="flex gap-6">
       {/* Dataset list + create */}
       <aside className="w-64 shrink-0">
+        {/* Search the dataset list (name or slug). */}
+        <div className="relative mb-2">
+          <Search aria-hidden className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            aria-label="Search datasets"
+            className={`${glassInput} pl-8`}
+            value={datasetQuery}
+            onChange={(e) => setDatasetQuery(e.target.value)}
+            placeholder="Search datasets…"
+          />
+        </div>
         <ul className="mb-3 flex flex-col gap-1">
-          {sortedDatasets.map((d) => (
-            <li key={d.id}>
-              {/* Real <button> for selection (keyboard-native) + a sibling duplicate button — no
-                  nested interactives. The wrapper carries the selected/hover styling. */}
-              <div
-                className={`group flex items-center gap-1 rounded-xl border transition ${
-                  d.id === selId ? 'border-indigo-400/60 bg-white/80 shadow-sm backdrop-blur-xl' : 'border-white/50 bg-white/40 backdrop-blur-xl hover:bg-white/60'
-                }`}
-              >
-                <button
-                  type="button"
-                  aria-pressed={d.id === selId}
-                  onClick={() => setSelId(d.id)}
-                  className="min-w-0 flex-1 truncate px-3 py-2 text-left text-sm"
-                >
-                  <span className="font-medium">{d.name}</span>{' '}
-                  <span className="text-xs text-slate-400">/{d.slug}</span>
-                </button>
-                <Tooltip tip="Duplicate dataset" side="top">
+          {filteredDatasets.map((d) => {
+            const active = d.id === selId;
+            return (
+              <li key={d.id}>
+                {/* Real <button> for selection (keyboard-native) + a sibling duplicate button — no
+                    nested interactives. The wrapper carries the gradient hover/active + ripple, like
+                    the entries rows; clicking scrolls the panel to the top to reveal the schema. */}
+                <div className={`group flex items-center gap-1 rounded-xl waves-effect transition ${active ? `${gradientSurface} waves-light` : `${glassPanel} ${gradientHover}`}`}>
                   <button
                     type="button"
-                    aria-label={`Duplicate dataset ${d.name}`}
-                    className="mr-1 shrink-0 rounded-md px-1.5 py-0.5 text-xs text-slate-400 opacity-0 transition hover:bg-white hover:text-slate-700 focus:opacity-100 group-hover:opacity-100"
-                    onClick={() => void duplicateDataset(d)}
+                    aria-pressed={active}
+                    onClick={() => selectDataset(d.id)}
+                    className={`min-w-0 flex-1 truncate px-3 py-2 text-left text-sm ${active ? 'text-white' : 'group-hover:text-white'}`}
                   >
-                    ⧉
+                    <span className="font-medium">{d.name}</span>{' '}
+                    <span className={`text-xs ${active ? 'text-white/70' : 'text-slate-400 group-hover:text-white/80'}`}>/{d.slug}</span>
                   </button>
-                </Tooltip>
-              </div>
-            </li>
-          ))}
+                  <Tooltip tip="Duplicate dataset" side="top">
+                    <button
+                      type="button"
+                      aria-label={`Duplicate dataset ${d.name}`}
+                      className={`mr-1 shrink-0 rounded-md px-1.5 py-0.5 text-xs opacity-0 transition focus:opacity-100 group-hover:opacity-100 ${
+                        active ? 'text-white/80 hover:bg-white/20 hover:text-white' : 'text-slate-400 hover:bg-white hover:text-slate-700 group-hover:text-white/80'
+                      }`}
+                      onClick={() => void duplicateDataset(d)}
+                    >
+                      ⧉
+                    </button>
+                  </Tooltip>
+                </div>
+              </li>
+            );
+          })}
           {datasets.length === 0 && <li className="text-sm text-slate-400">No datasets yet.</li>}
+          {datasets.length > 0 && filteredDatasets.length === 0 && <li className="text-sm text-slate-400">No datasets match “{datasetQuery}”.</li>}
         </ul>
         <form onSubmit={createDataset} className={`flex flex-col gap-2 ${glassCard} p-3`}>
           <label className={fieldLabel}>New dataset</label>
@@ -470,11 +511,20 @@ export function DatasetManager({ project }: { project: Project }) {
                       <X className="h-4 w-4" />
                     </button>
                     </div>
+                    {/* Per-field config for the config-driven types: select choices / reference target. */}
+                    <FieldConfigEditor
+                      field={field}
+                      datasets={datasets}
+                      onChange={(config) =>
+                        setDraftFields((fs) => fs.map((f) => (f.name === field.name ? { ...f, config } : f)))
+                      }
+                    />
                     {/* Nested schema for a list/object field — recursive child-field editor. */}
                     {isGroupFieldType(field.type) && (
                       <NestedFieldsEditor
                         value={field.fields ?? []}
                         depth={2}
+                        datasets={datasets}
                         onChange={(children) =>
                           setDraftFields((fs) => fs.map((f) => (f.name === field.name ? { ...f, fields: children } : f)))
                         }
@@ -661,10 +711,11 @@ export function DatasetManager({ project }: { project: Project }) {
                   projectId={project.id}
                   keyEditable={newEntry}
                   existingIds={new Set(datasetEntries.map((e) => e.id))}
-                  onSaved={() => {
-                    void load();
-                    setEditingEntry(null);
-                  }}
+                  allDatasets={datasets}
+                  allEntries={entries}
+                  // Reload the list/preview but KEEP the modal open (it resets its own dirty baseline);
+                  // closing is an explicit user action (× / Esc / backdrop).
+                  onSaved={() => void load()}
                   onClose={() => setEditingEntry(null)}
                 />
               )}

@@ -258,3 +258,66 @@ button:disabled,
     }
   }
 }
+
+/* Dataset richtext field (RichTextField): the contentEditable mirrors {{sw-rich}}'s sanitizer
+   allowlist (headings start at h2, lists, blockquote, links). Tailwind preflight strips heading
+   sizes + list markers, so restore them INSIDE the editable so authors see real formatting.
+   Unlayered → beats preflight (which lives in @layer base). */
+.sw-rich-edit {
+  line-height: 1.55;
+}
+.sw-rich-edit:empty::before {
+  content: attr(data-placeholder);
+  color: #94a3b8;
+  pointer-events: none;
+}
+.sw-rich-edit h2 {
+  font-size: 1.4em;
+  font-weight: 700;
+  line-height: 1.25;
+  margin: 0.6em 0 0.3em;
+}
+.sw-rich-edit h3 {
+  font-size: 1.2em;
+  font-weight: 700;
+  line-height: 1.3;
+  margin: 0.6em 0 0.3em;
+}
+.sw-rich-edit h4 {
+  font-size: 1.05em;
+  font-weight: 700;
+  margin: 0.6em 0 0.3em;
+}
+.sw-rich-edit p {
+  margin: 0.5em 0;
+}
+.sw-rich-edit ul {
+  list-style: disc;
+  margin: 0.5em 0;
+  padding-left: 1.5em;
+}
+.sw-rich-edit ol {
+  list-style: decimal;
+  margin: 0.5em 0;
+  padding-left: 1.5em;
+}
+.sw-rich-edit li {
+  margin: 0.15em 0;
+}
+.sw-rich-edit blockquote {
+  border-left: 3px solid #c7d2fe;
+  color: #475569;
+  font-style: italic;
+  margin: 0.5em 0;
+  padding-left: 0.8em;
+}
+.sw-rich-edit a {
+  color: #4f46e5;
+  text-decoration: underline;
+}
+.sw-rich-edit code {
+  background: #eef2ff;
+  border-radius: 4px;
+  font-size: 0.9em;
+  padding: 0.1em 0.3em;
+}

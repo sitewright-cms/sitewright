@@ -245,12 +245,25 @@ function enhance(root) {
       if (next) next.disabled = nDis;
     }
   }
+  // data-item-align on the ENHANCED container: only meaningful when the row FITS (no scrolling) —
+  // then justify-content distributes the underfull items. When the track OVERFLOWS, Embla's `align`
+  // (set from data-item-align above) centres the active slide instead, and justify-content:center
+  // would wrongly centre the overflow (shoving the first slide off-screen left), so it's cleared.
+  // Re-evaluated on reInit (a resize can flip fits ↔ overflows).
+  var itemAlign = attr('data-item-align', '');
+  function applyItemAlign() {
+    if (!itemAlign) return;
+    var fits = !embla.canScrollNext() && !embla.canScrollPrev();
+    container.style.justifyContent = fits ? (itemAlign === 'end' ? 'flex-end' : itemAlign === 'center' ? 'center' : 'flex-start') : '';
+  }
   buildDots();
+  applyItemAlign();
   embla
     .on('select', sync)
     .on('settle', pruneActive)
     .on('reInit', function () {
       buildDots();
+      applyItemAlign();
       sync();
       pruneActive();
     });

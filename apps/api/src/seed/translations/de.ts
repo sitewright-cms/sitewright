@@ -218,7 +218,7 @@ export function translationsDe(assets: Record<string, string>): Record<string, P
       sec_slide_d: 'Die schiebende Leiste statt Überblendung — läuft endlos und wechselt von selbst; Hover oder Fokus pausiert.',
       aria_slide: 'Projekt-Slideshow (Slide)',
       sec_items_t: 'Mehrere Karten mit Peek',
-      sec_items_d: 'Die Variable --sw-items bestimmt die Karten pro Ansicht; ein Bruchwert lässt die nächste Karte am Rand hereinschauen. Ziehen, wischen oder die Pfeile nutzen.',
+      sec_items_d: 'Die Variable --sw-items bestimmt die Karten pro Ansicht; ein Bruchwert lässt eine Karte hereinschauen. data-item-align="center" zentriert die aktive Karte mit einem Ausblick auf beiden Seiten — erste und letzte rasten am Rand ein. Ziehen, wischen oder die Pfeile nutzen.',
       aria_items: 'Projektkarten',
       sec_align_t: 'Eine nicht volle Reihe ausrichten',
       sec_align_d: 'Werden weniger Elemente gezeigt, als die Reihe füllen, verteilt data-item-align sie horizontal — Anfang (Standard), Mitte oder Ende — statt sie links kleben zu lassen.',

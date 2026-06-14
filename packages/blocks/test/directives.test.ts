@@ -161,6 +161,32 @@ describe('resolveDirectives — data-sw-src / data-sw-bg (images)', () => {
   });
 });
 
+describe('resolveDirectives — preview forces lazy images eager (editor must show content)', () => {
+  // In the editor iframe native loading="lazy" is unreliable + arrives after Embla measures → blank
+  // sliders. Preview render flips them eager; publish keeps lazy.
+  it('PREVIEW: loading="lazy" → eager (even on a page whose only marker is the lazy img)', () => {
+    const out = resolveDirectives('<div data-sw-entry="x" data-sw-dataset="d"><img src="/a.jpg" loading="lazy"></div>', { preview: true });
+    expect(out).toContain('loading="eager"');
+    expect(out).not.toContain('loading="lazy"');
+  });
+  it('PREVIEW: processes a no-directive page that only has lazy images', () => {
+    const out = resolveDirectives('<section><img src="/a.jpg" loading="lazy"><img src="/b.jpg" loading="lazy"></section>', { preview: true });
+    expect((out.match(/loading="eager"/g) ?? []).length).toBe(2);
+  });
+  it('PUBLISH: lazy is preserved (performance)', () => {
+    const out = resolveDirectives('<div data-sw-text="t">x</div><img src="/a.jpg" loading="lazy">', { data: { t: 'hi' } });
+    expect(out).toContain('loading="lazy"');
+  });
+  it('a non-directive, non-lazy page is still a byte-identical no-op', () => {
+    const html = '<section><img src="/a.jpg"><p>hi</p></section>';
+    expect(resolveDirectives(html, { preview: true })).toBe(html);
+  });
+  it('does NOT parse a page that only MENTIONS loading="lazy" in a code sample (no <img>)', () => {
+    const html = '<pre><code>&lt;img loading="lazy"&gt;</code></pre>';
+    expect(resolveDirectives(html, { preview: true })).toBe(html); // byte-identical no-op
+  });
+});
+
 describe('resolveDirectives — empty URL override reverts to the authored default', () => {
   it('keeps the default src/href/bg when the stored value is empty (clear = revert)', () => {
     expect(resolveDirectives('<img data-sw-src="hero" src="/default.jpg">', { data: { hero: '' }, preview: true })).toContain(

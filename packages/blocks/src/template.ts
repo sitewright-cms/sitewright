@@ -473,6 +473,9 @@ function createInstance(): typeof Handlebars {
   // only ever matches itself (never every page). No JS — resolved server-side (publish + preview).
   hb.registerHelper('sw-active', function swActive(this: unknown, target: unknown, options: Handlebars.HelperOptions) {
     if (typeof target !== 'string' || target === '') return false;
+    // A nav PLACEHOLDER (kind:'link') is a link/group item, not the current page — never mark it
+    // active, even when its `path` matches the current URL (`this` is the nav item inside {{#each nav.*}}).
+    if (this && typeof this === 'object' && (this as { placeholder?: unknown }).placeholder === true) return false;
     const root = options?.data?.root as { page?: { path?: unknown; locale?: unknown; defaultLocale?: unknown } } | undefined;
     const current = typeof root?.page?.path === 'string' ? root.page.path : '';
     const norm = (p: string) => (p.length > 1 && p.endsWith('/') ? p.slice(0, -1) : p);

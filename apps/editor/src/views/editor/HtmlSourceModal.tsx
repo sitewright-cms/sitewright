@@ -26,7 +26,7 @@ export function HtmlSourceModal({ swKey, value, onSave, onClose }: HtmlSourceMod
   return (
     <Modal
       title={`Edit HTML — ${swKey}`}
-      size="xl"
+      size="screen"
       onClose={onClose}
       onSave={() => onSave(html)}
       saveDisabled={!dirty}

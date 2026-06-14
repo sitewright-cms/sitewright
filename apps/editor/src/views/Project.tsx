@@ -7,6 +7,7 @@ import { PageSettingsModal, applyPageSettings, pageSettingsFromPage, type PageSe
 import { useDialogs } from './ui/Dialogs';
 import { Modal } from './ui/Modal';
 import { Tooltip } from './ui/Tooltip';
+import { PlaceholderLabel } from './PlaceholderLabel';
 import { FormsManager } from './FormsManager';
 import { SettingsView } from './settings/SettingsView';
 import { glassCard, glassInput, fieldLabel, primaryButton, ghostButton, gradientHover, gradientSurface, toggleInput } from '../theme';
@@ -663,7 +664,7 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
                 }}
                 title="A menu item with no page of its own — links somewhere or groups child pages in a dropdown"
               >
-                + Add nav placeholder
+                + New Placeholder
               </button>
               <button
                 type="button"
@@ -771,7 +772,7 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
                     >
                       {isLink ? LINK_ICON : isHome ? HOME_ICON : PAGE_ICON}
                     </span>
-                    <span className="truncate font-medium">{p.title}</span>
+                    <span className="truncate font-medium">{isLink ? <PlaceholderLabel name={p.title} /> : p.title}</span>
                     <span className="truncate text-sm text-slate-400 group-hover:text-white/90">
                       {isLink ? p.link?.target || '— (dropdown)' : fullPath(p)}
                     </span>
@@ -871,7 +872,7 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
           {/* List-level errors (reorder/delete) — the add-page error lives inside its own modal. */}
           {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
           {phOpen && (
-            <Modal title="Add nav placeholder" size="md" onClose={() => { setPhOpen(false); setPhError(null); }}>
+            <Modal title="New Placeholder" size="md" onClose={() => { setPhOpen(false); setPhError(null); }}>
               <form onSubmit={createPlaceholder} className="flex flex-col gap-4 p-5">
                 <div className="flex flex-col">
                   <label className={fieldLabel}>Name (menu label)</label>

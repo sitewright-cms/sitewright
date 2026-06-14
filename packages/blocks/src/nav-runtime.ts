@@ -32,18 +32,27 @@ interface NavItemLike {
   children?: NavItemLike[];
 }
 
-/** Render one item's label: a rich placeholder name via the validated engine, a page title escaped. */
-function renderLabel(item: NavItemLike): string {
-  const label = typeof item.label === 'string' ? item.label : '';
-  if (!item.rich) return escapeHtml(label);
-  // Rich label: run it through the same validated template engine as a slot/source (icon helpers
-  // resolve; scripts/handlers/`{{{` are rejected). On any validation/render error, fall back to the
-  // escaped plain text so a bad label never breaks the whole nav.
+/**
+ * Render a nav PLACEHOLDER's rich label string (basic HTML + `{{sw-icon}}`/`{{sw-flag}}`) to safe HTML
+ * via the SAME validated engine the live nav uses (`renderTemplate` — icon/flag helpers resolve;
+ * scripts/handlers/`{{{` are rejected). Falls back to the escaped plain text on any error, so a bad
+ * label never produces unsafe output. Exposed so the editor's Pages list can preview a placeholder's
+ * label (its icon + text) exactly as it will render in the menu, instead of dumping the raw markup.
+ */
+export function renderNavLabel(label: string): string {
+  if (typeof label !== 'string' || label === '') return '';
   try {
     return renderTemplate(label, {});
   } catch {
     return escapeHtml(label);
   }
+}
+
+/** Render one item's label: a rich placeholder name via the validated engine, a page title escaped. */
+function renderLabel(item: NavItemLike): string {
+  const label = typeof item.label === 'string' ? item.label : '';
+  if (!item.rich) return escapeHtml(label);
+  return renderNavLabel(label);
 }
 
 /**

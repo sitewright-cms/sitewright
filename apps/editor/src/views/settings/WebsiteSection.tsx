@@ -9,7 +9,7 @@ import { CodeField } from '../ui/CodeField';
 import { RedirectsEditor } from './RedirectsEditor';
 import { ShopChannelsEditor } from './ShopChannelsEditor';
 import { LocaleManager } from './LocaleManager';
-import { TranslationsEditor } from './TranslationsEditor';
+import { TranslationsField } from './TranslationsField';
 import { WebsiteDataModal } from './WebsiteDataModal';
 import { ghostButton, glassInput, fieldLabel } from '../../theme';
 import { cardStagger, cardVariants } from './motion';
@@ -300,7 +300,7 @@ export function WebsiteSection({
         tooltip="Shared phrases ({{sw-translate}} / data-sw-translate), one row per key and a column per locale. Inline preview edits land here too."
         wide
       >
-        <TranslationsEditor
+        <TranslationsField
           rows={form.translations}
           localeCodes={localeCodes}
           defaultLocale={form.defaultLocale}

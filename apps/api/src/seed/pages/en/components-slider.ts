@@ -30,7 +30,7 @@ export function pageComponentsSlider(): Page {
       sec_slide_d: 'The translating strip instead of a crossfade, wrapping endlessly and advancing on its own — hover or focus pauses it.',
       aria_slide: 'Project slideshow (slide)',
       sec_items_t: 'Multiple items with a peek',
-      sec_items_d: 'The --sw-items variable sets slides per view; a fractional value leaves the next card peeking in from the edge. Drag, swipe, or use the arrows.',
+      sec_items_d: 'The --sw-items variable sets slides per view; a fractional value leaves a card peeking. data-item-align="center" centres the active card with a peek on both sides — and the first and last clamp to the edges. Drag, swipe, or use the arrows.',
       aria_items: 'Project cards',
       sec_align_t: 'Aligning a partial row',
       sec_align_d: 'When fewer items are shown than fill the row, data-item-align distributes them horizontally — start (default), center, or end — instead of leaving them stuck to the left.',
@@ -100,9 +100,9 @@ export function pageComponentsSlider(): Page {
 
 <section class="mx-auto max-w-6xl px-6 pb-20">
   <h2 class="text-3xl font-bold tracking-tight" data-sw-text="sec_items_t">Multiple items with a peek</h2>
-  <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="sec_items_d">The --sw-items variable sets slides per view; a fractional value leaves the next card peeking in from the edge. Drag, swipe, or use the arrows.</p>
-  <pre class="mt-3 inline-block max-w-full overflow-x-auto text-xs"><code>data-effect="slide" data-loop="true" class="[--sw-items:1.2] md:[--sw-items:2.4] lg:[--sw-items:3.2]"</code></pre>
-  <div class="relative mt-8 [--sw-items:1.2] md:[--sw-items:2.4] lg:[--sw-items:3.2]" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-loop="true" aria-label="{{page.data.aria_items}}">
+  <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="sec_items_d">The --sw-items variable sets slides per view; a fractional value leaves a card peeking. data-item-align="center" centres the active card with a peek on both sides — and the first and last clamp to the edges. Drag, swipe, or use the arrows.</p>
+  <pre class="mt-3 inline-block max-w-full overflow-x-auto text-xs"><code>data-effect="slide" data-item-align="center" class="[--sw-items:1.2] md:[--sw-items:2.4] lg:[--sw-items:3.2]"</code></pre>
+  <div class="relative mt-8 [--sw-items:1.2] md:[--sw-items:2.4] lg:[--sw-items:3.2]" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-item-align="center" aria-label="{{page.data.aria_items}}">
     <div data-sw-part="track" class="overflow-hidden rounded-3xl">
       {{#each data.projects}}
       <figure data-sw-part="slide" class="px-3 py-1">

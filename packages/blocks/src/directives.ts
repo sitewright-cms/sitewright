@@ -133,7 +133,14 @@ function setHtml(el: Element, safeHtml: string): void {
  * pages keep byte-identical output and pay nothing.
  */
 export function resolveDirectives(html: string, ctx: DirectiveContext): string {
-  if (typeof html !== 'string' || !html.includes('data-sw-')) return html;
+  if (typeof html !== 'string') return html;
+  // Fast path: a non-editable, non-lazy page keeps byte-identical output and pays nothing. In PREVIEW
+  // we also process pages that only carry lazy images (no directive), to eager-load them — see below.
+  const hasDirective = html.includes('data-sw-');
+  // Require both `<img` AND the lazy attr so a `loading="lazy"` mentioned in a <code> demo snippet
+  // (the Sliders page has such chips) doesn't drag a non-editable preview page through the parse.
+  const previewLazy = ctx.preview === true && html.includes('<img') && html.includes('loading="lazy"');
+  if (!hasDirective && !previewLazy) return html;
   const doc = parseDocument(html, { decodeEntities: true });
   const targets = findAll(
     (el) => DIRECTIVE_ATTRS.some((attr) => Object.prototype.hasOwnProperty.call(el.attribs, attr)),
@@ -209,6 +216,16 @@ export function resolveDirectives(html: string, ctx: DirectiveContext): string {
   if (!ctx.preview) {
     for (const el of findAll((e) => Object.prototype.hasOwnProperty.call(e.attribs, 'data-sw-control'), doc.children)) {
       removeElement(el);
+    }
+  }
+  // EDITOR PREVIEW: force `loading="lazy"` images EAGER. Native lazy-load is unreliable inside the
+  // preview iframe — images often never load (the viewport heuristic doesn't fire), AND when they do
+  // they arrive AFTER a carousel/Embla has measured its (then-empty) slides, so the slider paints
+  // blank. The editor should always show content; the published artifact keeps lazy (this pass is
+  // preview-only). Native `loading` only; the data-src lazyload runtime is a separate opt-in.
+  if (ctx.preview) {
+    for (const img of findAll((e) => e.name === 'img' && e.attribs.loading === 'lazy', doc.children)) {
+      img.attribs.loading = 'eager';
     }
   }
   // `encodeEntities: 'utf8'` escapes only the markup-significant chars (&,<,>, attr quotes) and keeps

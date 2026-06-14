@@ -216,7 +216,7 @@ export function translationsEs(assets: Record<string, string>): Record<string, P
       sec_slide_d: 'La banda deslizante en lugar del fundido, en bucle sin fin y avanzando sola — se pausa al pasar el cursor o recibir el foco.',
       aria_slide: 'Presentación de proyectos (deslizante)',
       sec_items_t: 'Varias tarjetas con asomo',
-      sec_items_d: 'La variable --sw-items fija las tarjetas por vista; un valor fraccionario deja asomar la siguiente por el borde. Arrastra, desliza o usa las flechas.',
+      sec_items_d: 'La variable --sw-items fija las tarjetas por vista; un valor fraccionario deja asomar una tarjeta. data-item-align="center" centra la tarjeta activa con un asomo a ambos lados — la primera y la última se ajustan a los bordes. Arrastra, desliza o usa las flechas.',
       aria_items: 'Tarjetas de proyectos',
       sec_align_t: 'Alinear una fila incompleta',
       sec_align_d: 'Cuando se muestran menos elementos de los que llenan la fila, data-item-align los distribuye horizontalmente — inicio (por defecto), centro o final — en lugar de dejarlos pegados a la izquierda.',

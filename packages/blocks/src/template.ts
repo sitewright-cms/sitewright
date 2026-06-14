@@ -395,13 +395,14 @@ function createInstance(): typeof Handlebars {
     if (typeof item.labelHtml === 'string') return new Handlebars.SafeString(item.labelHtml);
     return new Handlebars.SafeString(Handlebars.escapeExpression(typeof item.label === 'string' ? item.label : ''));
   });
-  // {{sw-rich entry.answer}} → emit a stored RICHTEXT value (a dataset `richtext` field, nested
-  // page.data HTML, …) as sanitized HTML. This is the ONE way a template renders stored markup —
-  // `{{{ raw }}}` is banned, and the `data-sw-html` directive only binds top-level page.data. The
-  // value passes `sanitizeRichHtml` (the exact sanitizer behind the data-sw-html sink), so
-  // lower-trust content (dataset entries are member-editable) never reaches the page unsanitized.
-  // Non-strings render nothing. Use in element context.
-  hb.registerHelper('sw-rich', (value: unknown) => new Handlebars.SafeString(typeof value === 'string' ? sanitizeRichHtml(value) : ''));
+  // {{sw-html entry.answer}} → emit a stored HTML value (a dataset `richtext` field, nested page.data
+  // HTML, …) as sanitized HTML. This is the ONE way a template renders stored markup — `{{{ raw }}}` is
+  // banned, and the `data-sw-html` directive only binds top-level page.data. The value passes
+  // `sanitizeRichHtml` (the exact sanitizer behind the data-sw-html sink — broad safe HTML incl.
+  // https-sandboxed iframe embeds; script/on*/data-* always stripped), so lower-trust content (dataset
+  // entries are member-editable) never reaches the page unsanitized. Non-strings render nothing. Use in
+  // element context. (Renamed from {{sw-rich}} for clarity — it accepts any safe HTML, not just rich text.)
+  hb.registerHelper('sw-html', (value: unknown) => new Handlebars.SafeString(typeof value === 'string' ? sanitizeRichHtml(value) : ''));
   // Pick ONE dataset entry by id (the id a {{sw-control as="dataset-item"}} stores), defaulting to the
   // FIRST when the selection is unset/unknown — lets a Widget (e.g. the hero slider) render a chosen
   // config out of several. DUAL-MODE:

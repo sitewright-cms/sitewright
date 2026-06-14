@@ -36,7 +36,7 @@ describe('hero-slider Widget render', () => {
     expect(html).toContain('Beta');
   });
 
-  it('captions support basic HTML (richtext via {{sw-rich}}, sanitized)', () => {
+  it('captions support basic HTML (richtext via {{sw-html}}, sanitized)', () => {
     const html = render(fullConfig);
     // The <strong> in the caption survives sanitization …
     expect(html).toContain('<strong>Gamma</strong>');

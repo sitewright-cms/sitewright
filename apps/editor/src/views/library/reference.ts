@@ -285,14 +285,14 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         example: '{{lookup company.colors "primary"}}',
       },
       {
-        id: 'h-rich',
-        syntax: '{{sw-rich value}}',
-        name: 'sw-rich',
-        keywords: 'richtext html sanitize markup body content stored',
+        id: 'h-html',
+        syntax: '{{sw-html value}}',
+        name: 'sw-html',
+        keywords: 'html richtext sanitize markup body content stored iframe embed',
         description:
-          'Emits a stored RICHTEXT value (a dataset richtext field, nested page.data HTML) as SANITIZED HTML. This is the ONE way a template renders stored markup — raw {{{…}}} is banned. Non-strings render nothing. Use in element context.',
-        args: [{ name: 'value', desc: 'A richtext / HTML string (e.g. an entry’s body field).' }],
-        example: '{{#each data.posts}}\n  <article class="prose">{{sw-rich body}}</article>\n{{/each}}',
+          'Emits a stored HTML value (a dataset richtext field, nested page.data HTML) as SANITIZED HTML — broad safe HTML incl. https-sandboxed iframe embeds; <script>, on* handlers, and data-* attributes are always stripped. This is the ONE way a template renders stored markup — raw {{{…}}} is banned. Non-strings render nothing. Use in element context. (Formerly the sw-rich helper.)',
+        args: [{ name: 'value', desc: 'An HTML string (e.g. an entry’s body field).' }],
+        example: '{{#each data.posts}}\n  <article class="prose">{{sw-html body}}</article>\n{{/each}}',
       },
       {
         id: 'h-form',

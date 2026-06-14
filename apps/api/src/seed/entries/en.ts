@@ -33,7 +33,7 @@ export function entriesEn(assets: Record<string, string>): Entry[] {
     show_arrows: true,
     show_indicators: true,
     slides: [
-      // Captions are RICHTEXT (basic HTML) — rendered via {{sw-rich}}, sanitized at render.
+      // Captions are RICHTEXT (basic HTML) — rendered via {{sw-html}}, sanitized at render.
       { image: assets['proj-aria'], caption: 'Welcome to <strong>Northwind Studio</strong>' },
       { image: assets['proj-flint'], caption: 'Websites with real craft' },
       { image: assets['proj-harbor'], caption: 'Built to perform' },

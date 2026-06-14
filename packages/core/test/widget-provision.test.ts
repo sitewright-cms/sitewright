@@ -16,7 +16,7 @@ describe('widgetDatasetsForSources', () => {
     expect(hero.name).toBe('Hero Slider');
     expect(hero.fields.find((f) => f.name === 'slides')?.type).toBe('list');
     expect(hero.fields.find((f) => f.name === 'kenburns')?.type).toBe('boolean');
-    // Captions are RICHTEXT so they support basic HTML (rendered via {{sw-rich}}).
+    // Captions are RICHTEXT so they support basic HTML (rendered via {{sw-html}}).
     const slides = hero.fields.find((f) => f.name === 'slides');
     expect(slides?.fields?.find((f) => f.name === 'caption')?.type).toBe('richtext');
     expect(hero.seed?.[0]?.id).toBe('config');

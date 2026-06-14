@@ -841,6 +841,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
       <RegionsPanel
         regions={regions}
         mode={mode}
+        projectId={project.id}
         onEdit={(rid) =>
           iframeRef.current?.contentWindow?.postMessage({ source: 'sitewright-editor', type: 'edit-region', rid }, '*')
         }

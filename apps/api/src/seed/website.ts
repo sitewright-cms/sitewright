@@ -1,14 +1,16 @@
 import { icon } from './helpers.js';
-import { CHROME_STRINGS } from './strings.js';
+import { CHROME_TRANSLATIONS } from './strings.js';
 
 // ---------------------------------------------------------------- skeleton: nav, footer, motion
 //
-// The chrome is ONE shared source rendered per page — its UI labels localize through the
-// `website.data.strings` double-lookup (see strings.ts). `S()` emits the lookup interpolation,
-// `SL()` the bare subexpression for use inside another helper (e.g. `{{sw-url (lookup …)}}` —
-// URL attributes must go through sw-url). Both resolve against the RENDERING page's locale.
-const SL = (key: string): string => `(lookup (lookup @root.website.data.strings @root.page.locale) '${key}')`;
-const S = (key: string): string => `{{lookup (lookup @root.website.data.strings @root.page.locale) '${key}'}}`;
+// The chrome is ONE shared source rendered per page — its UI labels localize through the dedicated
+// translation catalog (`website.translations`, see strings.ts), read with the `{{sw-translate}}` helper.
+// `S()` emits the helper for text/attribute position; `SL()` the bare subexpression for use inside
+// another helper (e.g. `{{sw-url (sw-translate …)}}` — URL attributes must go through sw-url). Both
+// resolve against the RENDERING page's locale (the render projection pre-resolves website.translations
+// → website.t per page-locale).
+const SL = (key: string): string => `(sw-translate "${key}")`;
+const S = (key: string): string => `{{sw-translate "${key}"}}`;
 
 /** The shared brand mark — a gradient tile with the Northwind compass-N cut as pure CSS borders. */
 const BRAND_MARK = `<span class="relative inline-flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-primary via-primary to-secondary text-primary-content shadow-md shadow-primary/30">${icon('compass', 'h-4.5 w-4.5')}</span>`;
@@ -152,8 +154,11 @@ export const EXAMPLE_WEBSITE = {
     ],
   },
   // A language→country map for the nav switcher's flags (sw-flag takes a COUNTRY code, not a
-  // language — so en→gb), plus the per-locale chrome strings (see strings.ts).
-  data: { locale_flags: { en: 'gb', de: 'de', es: 'es' }, strings: CHROME_STRINGS },
+  // language — so en→gb). This is project DATA (a config map), not translatable text.
+  data: { locale_flags: { en: 'gb', de: 'de', es: 'es' } },
+  // The per-locale chrome UI strings — the dedicated i18n catalog (NOT website.data). Read by the
+  // slots via {{sw-translate "key"}} (see strings.ts CHROME_TRANSLATIONS + the S()/SL() helpers above).
+  translations: CHROME_TRANSLATIONS,
   // Site-wide nav/button effect schemes (CI-themed, contrast-safe). The active nav item is marked
   // `.active` (below); `sw-nav-pill` fills it with the brand primary + its WCAG-derived foreground.
   theme: { navEffect: 'pill', buttonEffect: 'lift' },

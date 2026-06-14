@@ -58,7 +58,7 @@ one new field.
 ## Layering (how they compose)
 
 ```
-Element            raw HTML + data-sw-* leaf directives (data-sw-text/html/src/bg/href)
+Element            raw HTML + data-sw-* leaf directives (data-sw-text/html/src/bg/href/translate)
   └─ Component     interactive primitive (data-sw-component + JS runtime)
        └─ Widget   managed block: composes components + elements, OWNS a dataset, editable
             └─ Template   full-page layout: composes widgets/components/markup

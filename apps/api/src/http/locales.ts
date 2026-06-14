@@ -7,7 +7,7 @@
 // is never committed.
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { LocaleSchema, IdSchema, type Page } from '@sitewright/schema';
+import { LocaleSchema, IdSchema, KeyNameSchema, TRANSLATION_VALUE_MAX, type Page, type WebsiteSettings } from '@sitewright/schema';
 import {
   scaffoldLocale,
   propagatePageToLocales,
@@ -15,6 +15,8 @@ import {
   independentVariants,
   localeOf,
   pagesInLocale,
+  setTranslationCell,
+  pruneTranslationsLocale,
 } from '@sitewright/core';
 import type { ContentRepository, Settings } from '../repo/content.js';
 import type { ProjectContext } from '../repo/context.js';
@@ -33,6 +35,13 @@ export interface LocaleDeps {
 
 const AddLocaleBody = z.object({ locale: LocaleSchema });
 const TranslateBody = z.object({ locales: z.array(LocaleSchema).max(100).optional() });
+// One translation-catalog cell write (the inline `data-sw-translate` editor). `value` reuses the
+// schema's TranslationCellsSchema bound (TRANSLATION_VALUE_MAX); an empty value clears the cell.
+const TranslationCellBody = z.object({
+  key: KeyNameSchema,
+  locale: LocaleSchema,
+  value: z.string().max(TRANSLATION_VALUE_MAX),
+});
 
 /** Read the project's settings bundle + its pages — the inputs every locale op needs. */
 async function loadContext(
@@ -97,6 +106,15 @@ export function registerLocaleRoutes(app: FastifyInstance, deps: LocaleDeps): vo
           locales: settings.settings.locales.filter((l) => l !== locale),
         },
       };
+      // Locale-sync: drop the removed language's column from the translation catalog so it never keeps
+      // cells for a locale that no longer exists (a key left empty is dropped; an emptied catalog removed).
+      if (settings.website?.translations) {
+        const pruned = pruneTranslationsLocale(settings.website.translations, locale);
+        const w: WebsiteSettings = { ...settings.website };
+        if (Object.keys(pruned).length) w.translations = pruned;
+        else delete w.translations;
+        nextSettings.website = w;
+      }
       await contentRepo.applyLocaleChange(ctx, { removePageIds, settings: nextSettings });
       return reply.send({ locale, removed: removePageIds.length });
     },
@@ -156,6 +174,34 @@ export function registerLocaleRoutes(app: FastifyInstance, deps: LocaleDeps): vo
       const removePageIds = [owner.id, ...cascaded.map((p) => p.id)];
       await contentRepo.applyLocaleChange(ctx, { removePageIds, putPages: detached });
       return reply.send({ removed: removePageIds, kept: detached.map((p) => p.id) });
+    },
+  );
+
+  // Set one project-translation cell: `website.translations[key][locale] = value` — the persist behind
+  // the inline `data-sw-translate` editor (and reusable for any single-cell write). An EMPTY value clears
+  // the cell (reverting to the default-language string); a key left with no cells is dropped. A focused,
+  // server-side read-modify-write of the settings singleton so the client never round-trips the whole
+  // bundle (the Settings → Translations grid still saves cells in bulk via the settings PUT).
+  app.put<{ Params: { projectId: string }; Body: unknown }>(
+    '/projects/:projectId/translations',
+    { config: rl(120) },
+    async (req, reply) => {
+      const { ctx } = await resolveProject(req, 'content:write');
+      const { key, locale, value } = TranslationCellBody.parse(req.body);
+      // Read-modify-write of the settings singleton. Like every other settings write it has no optimistic
+      // concurrency (last write wins) — acceptable: the inline editor debounces, and a cell is small.
+      const settings = (await contentRepo.get(ctx, 'settings', 'settings')) as Settings;
+      // Only a CONFIGURED locale may hold a cell (mirrors the DELETE guard) — never accumulate orphan
+      // columns for a language that isn't in the project.
+      if (locale !== settings.settings.defaultLocale && !settings.settings.locales.includes(locale)) {
+        return reply.code(400).send({ error: `locale "${locale}" is not a configured project locale` });
+      }
+      const next = setTranslationCell(settings.website?.translations, key, locale, value);
+      const w: WebsiteSettings = { ...(settings.website ?? {}) };
+      if (Object.keys(next).length) w.translations = next;
+      else delete w.translations;
+      await contentRepo.put(ctx, 'settings', 'settings', { ...settings, website: w });
+      return reply.send({ key, locale, value });
     },
   );
 }

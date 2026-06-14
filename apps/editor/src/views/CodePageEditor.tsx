@@ -42,12 +42,17 @@ function editModeLabel(mode: EditMode): string {
   return mode === 'content' ? 'Content Editor' : 'Code Editor';
 }
 
+/** A valid translation-catalog key (identifier-style; mirrors @sitewright/schema KeyNameSchema) — guards the inline write before the PUT. */
+function isTranslationKey(key: string): boolean {
+  return key.length <= 128 && /^[A-Za-z_][A-Za-z0-9_]*$/.test(key) && !DANGEROUS_KEYS.has(key);
+}
+
 interface CodePageEditorProps {
   project: Project;
   page: Page;
   /** All project pages — feeds the settings modal's Parent Page selector. */
   pages?: readonly Page[];
-  /** The project's configured locales — feeds the settings modal's Language selector. */
+  /** The project's configured locales (default first) — feeds the Language selector + the translate write-locale. */
   locales?: readonly string[];
   onClose: () => void;
   /**
@@ -286,6 +291,47 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
       data: next.data ?? pageDataRef.current,
     });
   }
+  // --- Inline TRANSLATION edits (data-sw-translate) → website.translations[key][writeLocale]. Unlike the
+  //     page.data directives these write the SHARED project catalog, so they auto-save immediately
+  //     (debounced to coalesce typing) via their own endpoint, independent of the page Save button. The
+  //     preview DOM already shows the edit (contenteditable) and a translate edit touches no page state,
+  //     so no reload fires. writeLocale = this page's locale (a default-language page writes defaultLocale). ---
+  // The cell an inline data-sw-translate edit writes: this page's locale, else the project default
+  // (defaultLocale is derived above from locales[0]; a default-language page has page.locale undefined).
+  const writeLocale = page.locale ?? defaultLocale;
+  const pendingTrRef = useRef(new Map<string, { key: string; locale: string; value: string }>());
+  const trTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  async function flushTranslations(): Promise<void> {
+    trTimerRef.current = null;
+    const cells = [...pendingTrRef.current.values()];
+    pendingTrRef.current.clear();
+    for (const c of cells) {
+      try {
+        await api.setTranslation(project.id, c.key, c.locale, c.value);
+      } catch (err) {
+        if (mounted.current) setSaveError(err instanceof Error ? `Translation not saved: ${err.message}` : 'Translation not saved');
+      }
+    }
+  }
+  function queueTranslation(key: string, value: string): void {
+    // Keyed by translation key — every edit on this page targets the same writeLocale, so one entry per
+    // key coalesces a burst of keystrokes into a single PUT.
+    pendingTrRef.current.set(key, { key, locale: writeLocale, value });
+    if (trTimerRef.current) clearTimeout(trTimerRef.current);
+    trTimerRef.current = setTimeout(() => void flushTranslations(), 600);
+  }
+  const queueTranslationRef = useRef(queueTranslation);
+  queueTranslationRef.current = queueTranslation;
+  // Flush a pending translation edit if the editor closes inside the debounce window (fire-and-forget).
+  useEffect(
+    () => () => {
+      if (!trTimerRef.current) return;
+      clearTimeout(trTimerRef.current);
+      for (const c of pendingTrRef.current.values()) void api.setTranslation(project.id, c.key, c.locale, c.value).catch(() => {});
+      pendingTrRef.current.clear();
+    },
+    [],
+  );
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
       // Only trust messages from OUR preview frame, tagged by the bridge (opaque cross-origin doc).
@@ -317,6 +363,10 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
         const nextData = pageDataSet(pageDataRef.current, d.key, d.value);
         inlineKeyRef.current = inlineToken({ data: nextData });
         setPageData(nextData);
+      } else if (d.type === 'translate-edit' && typeof d.key === 'string' && typeof d.value === 'string' && isTranslationKey(d.key)) {
+        // Inline TRANSLATION edit → write the SHARED project catalog (website.translations[key][writeLocale]),
+        // auto-saved (debounced) on its own endpoint. The contenteditable already shows it; no reload needed.
+        queueTranslationRef.current(d.key, d.value);
       } else if (d.type === 'rich-edit' && typeof d.key === 'string' && typeof d.html === 'string' && isSafeKey(d.key)) {
         // Inline RICH edit → write the page.data leaf (bare key → top-level prop; data.<path> → nested),
         // the SAME single store as every other directive. The raw iframe HTML is stored as-is; it is

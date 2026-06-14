@@ -22,8 +22,8 @@ export const WebsiteDataSchema = JsonObjectStoreSchema;
 // JSON, not a translation store). Key-first so it reads as a table (rows = keys, columns = locales)
 // and the editor + "what's untranslated?" view fall out naturally. Resolved per render against
 // `page.locale` (with the project defaultLocale as fallback) by `translate()` in @sitewright/core and
-// the `{{sw-translate}}` helper / `data-sw-text="t:<key>"` directive. Bounded + prototype-safe.
-const TRANSLATION_VALUE_MAX = 2000;
+// the `{{sw-translate}}` helper / `data-sw-translate` directive. Bounded + prototype-safe.
+export const TRANSLATION_VALUE_MAX = 2000;
 // Locale codes are the object keys of each cell map. Mirrors project.ts `LocaleSchema` (kept inline to
 // avoid a website ↔ project import cycle — project.ts imports WebsiteSettingsSchema).
 const TranslationLocaleKey = z.string().min(1).max(35).regex(/^[A-Za-z0-9-]+$/, 'invalid locale code');
@@ -316,8 +316,8 @@ const WebsiteSettingsObject = z.object({
   data: WebsiteDataSchema.optional(),
   /**
    * The project i18n MESSAGE CATALOG — a key-first `{ key: { locale: string } }` table, separate from
-   * `data`. Resolved per render against `page.locale` by `{{sw-translate}}` / `data-sw-text="t:<key>"`.
-   * See {@link TranslationsSchema}.
+   * `data`. Resolved per render against `page.locale` by `{{sw-translate}}` / the `data-sw-translate`
+   * directive. See {@link TranslationsSchema}.
    */
   translations: TranslationsSchema.optional(),
   /**

@@ -5,11 +5,12 @@
 // renderTemplate, in the isolated worker), parses the rendered body fragment, and binds
 // each directive to its element with a single, context-correct SINK rule:
 //
-//   data-sw-text="key"  → element textContent          (from page.data[key]; serializer escapes)
-//   data-sw-html="key"  → element innerHTML             (from page.data[key]; sanitizeRichHtml)
-//   data-sw-href="key"  → anchor href                   (from page.data[key]; safeUrl)
-//   data-sw-src="key"   → <img> src, OR `data-src` when the element opts into LAZY-loading (from page.data[key]; safeUrl)
-//   data-sw-bg="key"    → inline background-image style (safeUrl + cssUrlEscape), OR `data-bg` when LAZY (safeUrl; the lazyload runtime escapes the url() itself) (from page.data[key])
+//   data-sw-text="key"      → element textContent          (from page.data[key]; serializer escapes)
+//   data-sw-html="key"      → element innerHTML             (from page.data[key]; sanitizeRichHtml)
+//   data-sw-href="key"      → anchor href                   (from page.data[key]; safeUrl)
+//   data-sw-src="key"       → <img> src, OR `data-src` when the element opts into LAZY-loading (from page.data[key]; safeUrl)
+//   data-sw-bg="key"        → inline background-image style (safeUrl + cssUrlEscape), OR `data-bg` when LAZY (safeUrl; the lazyload runtime escapes the url() itself) (from page.data[key])
+//   data-sw-translate="key" → element textContent          (from the project TRANSLATION catalog — the pre-resolved per-locale `t` map; serializer escapes)
 //
 // LAZY-LOAD: when the element already carries the lazy-load attribute (`data-src` for an image,
 // `data-bg` for a background — the vocabulary the lazyload.ts runtime copies into `src`/
@@ -17,12 +18,18 @@
 // `src`/inline style. So an author opts an editable image into lazy-loading by adding a (possibly
 // empty) `data-src`/`data-bg` attribute; data-sw-src/bg keep filling it from page.data.
 //
-// STORE: a SINGLE store — every directive reads `page.data`. A BARE key (`data-sw-text="hero_h1"`,
-// `data-sw-html="bio"`) is a top-level page.data property; a `data.<path>` key (`data.article_title`)
-// is a nested page.data path. The value resolves to a STRING leaf (non-string / missing → keep the
-// authored default). The retired `content`/`richContent` stores folded into page.data; `data-sw-html`
-// is the one HTML sink and is always sanitized at render (`sanitizeRichHtml`), so storing raw HTML in
-// generic page.data is safe — nothing is emitted to HTML unsanitized.
+// STORE: the text/html/href/src/bg directives read a SINGLE store — `page.data`. A BARE key
+// (`data-sw-text="hero_h1"`, `data-sw-html="bio"`) is a top-level page.data property; a `data.<path>`
+// key (`data.article_title`) is a nested page.data path. The value resolves to a STRING leaf
+// (non-string / missing → keep the authored default). The retired `content`/`richContent` stores
+// folded into page.data; `data-sw-html` is the one HTML sink and is always sanitized at render
+// (`sanitizeRichHtml`), so storing raw HTML in generic page.data is safe — nothing is emitted unsanitized.
+//
+// `data-sw-translate` is the ONE exception: it reads the project i18n catalog (`website.translations`)
+// rather than page.data, so the same key is SHARED across every page + locale. The render projection
+// pre-resolves the catalog for the page's locale into a FLAT `t` map (key → string, defaultLocale
+// fallback baked in, empties omitted — see resolveTranslations) and hands it here; a missing/empty key
+// keeps the element's authored text (the untranslated fallback). Plain text, serializer-escaped.
 //
 // For the URL directives, an EMPTY stored value means "no override → keep the authored default"
 // (you revert by clearing the field); only a non-empty, scheme-safe value replaces the default.
@@ -47,13 +54,14 @@ const HTML_ATTR = 'data-sw-html';
 const HREF_ATTR = 'data-sw-href';
 const SRC_ATTR = 'data-sw-src';
 const BG_ATTR = 'data-sw-bg';
+const TRANSLATE_ATTR = 'data-sw-translate';
 /**
  * Every directive attribute this pass recognizes — the canonical runtime SET. The authoring-reference
  * registry (`SW_DIRECTIVES` in @sitewright/schema) is pinned to it by a drift test, so a new/renamed
  * data-sw-* sink can't silently leave the Template reference stale. (`data-sw-entry` is NOT here — it
  * is stamped by the dataset {{#each}}, not processed by this pass.)
  */
-export const DIRECTIVE_ATTRS = [TEXT_ATTR, HTML_ATTR, HREF_ATTR, SRC_ATTR, BG_ATTR] as const;
+export const DIRECTIVE_ATTRS = [TEXT_ATTR, HTML_ATTR, HREF_ATTR, SRC_ATTR, BG_ATTR, TRANSLATE_ATTR] as const;
 
 /** The `data.` key prefix routes a directive to the page's own `page.data` object. */
 const DATA_PREFIX = 'data.';
@@ -65,6 +73,12 @@ export interface DirectiveContext {
    * `data.<path>` key is a nested page.data path.
    */
   data?: Record<string, unknown>;
+  /**
+   * The project TRANSLATION catalog pre-resolved for THIS page's locale — a flat `key → string` map
+   * (defaultLocale fallback baked in, empties omitted; see resolveTranslations). The ONLY store
+   * `data-sw-translate` reads (NOT page.data). Absent → every translate directive keeps its authored text.
+   */
+  t?: Record<string, unknown>;
   /**
    * PREVIEW render: keep the `data-sw-*` marker attributes so the editor can make them
    * click-to-edit. Absent/false (PUBLISH) → strip every directive attribute from the output.
@@ -102,6 +116,19 @@ function flatData(data: Record<string, unknown> | undefined, key: string): strin
 function resolveOverride(ctx: DirectiveContext, key: string): string | undefined {
   if (key.startsWith(DATA_PREFIX)) return dataLeaf(ctx.data, key.slice(DATA_PREFIX.length));
   return flatData(ctx.data, key);
+}
+
+/**
+ * The translated STRING for a `data-sw-translate` key, read from the pre-resolved per-locale `t` map
+ * (own-property + proto-guarded). Undefined → no translation (keep the element's authored fallback text);
+ * an empty cell is already omitted from `t`, so a present-but-empty value never blanks the element.
+ */
+function resolveTranslation(ctx: DirectiveContext, key: string): string | undefined {
+  const t = ctx.t;
+  if (!t || key === '' || DANGEROUS_KEYS.has(key) || !Object.prototype.hasOwnProperty.call(t, key)) return undefined;
+  // eslint-disable-next-line security/detect-object-injection -- own-property + DANGEROUS_KEYS guarded above
+  const v = t[key];
+  return typeof v === 'string' && v !== '' ? v : undefined;
 }
 
 /** Replaces an element's children with a single (serializer-escaped) text node. */
@@ -202,6 +229,13 @@ export function resolveDirectives(html: string, ctx: DirectiveContext): string {
           }
         }
       }
+    }
+    const trKey = el.attribs[TRANSLATE_ATTR];
+    if (typeof trKey === 'string') {
+      // Project translation: render the per-locale catalog value (escaped). Missing/empty → keep the
+      // element's authored text (the untranslated fallback). Reads website.translations, not page.data.
+      const value = resolveTranslation(ctx, trKey);
+      if (value !== undefined) setText(el, value);
     }
     // Preview keeps the markers for the bridge; publish strips them for a clean artifact.
     if (!ctx.preview) {

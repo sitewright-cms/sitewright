@@ -468,6 +468,14 @@ export const api = {
   addLocale: (projectId: string, locale: string) =>
     request<{ locale: string; created: number; pages: Page[] }>('POST', `/projects/${projectId}/locales`, { locale }),
   // Remove a translation target: cascade-deletes every page in that language.
+  // Set one project-translation cell (website.translations[key][locale]) — the inline data-sw-translate
+  // editor. An empty value clears the cell (reverting to the default-language string).
+  setTranslation: (projectId: string, key: string, locale: string, value: string) =>
+    request<{ key: string; locale: string; value: string }>(
+      'PUT',
+      `/projects/${projectId}/translations`,
+      { key, locale, value },
+    ),
   removeLocale: (projectId: string, locale: string) =>
     request<{ locale: string; removed: number }>('DELETE', `/projects/${projectId}/locales/${encodeURIComponent(locale)}`),
   // Make an existing default-language page available in all (or the given) languages.

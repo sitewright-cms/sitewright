@@ -35,6 +35,32 @@ projects.
 The template-reuse design below is kept for historical context; "share via the same template" is now just
 one of the three modes, not the default.
 
+### Shared strings — the translation catalog (`website.translations`)
+
+Per-page locale content (above) localizes `page.data` — text that belongs to ONE page. **Site-wide
+phrases** that repeat across pages (nav/footer CTAs, cart labels, common buttons) live instead in a
+dedicated, **key-first** message catalog `website.translations` (`{ key: { locale: string } }`), a
+sibling of `website.data` — NOT inside it (`website.data` is the author's free-form JSON). One edit
+updates every page and locale.
+
+- **Read it** with the `{{sw-translate "key" default="…"}}` helper — a plain (HTML-escaped) string, so
+  it works in text, attributes (`alt`/`placeholder`/`aria-label`), and as a sub-expression
+  (`{{sw-url (sw-translate "href_home")}}`). Used in the skeleton slots.
+- **Edit it in place** with the `data-sw-translate="key"` directive on a real element: it renders the
+  catalog value for the page's locale and is click-to-edit in the live preview, writing back to
+  `website.translations[key][locale]` (the page's locale; a default-language page writes the default
+  locale). The element's authored text is the fallback until the key is translated. This is the i18n twin
+  of `data-sw-text` (which is per-page) — same plaintext editing surface, a different (shared) store.
+- **Resolution:** `translate()` / `resolveTranslations()` (`packages/core/src/translate.ts`) pre-resolve
+  the catalog to a flat `key→string` map for the page locale (defaultLocale fallback baked in, empties
+  omitted) — shipped into the render context as `website.t`, read by both the helper and the directive.
+- **Edit in bulk** in Settings → Website → **Translations** (a key × locale grid). Columns track the
+  configured locales; adding/removing a language in Localization adds/removes the column. Removing a
+  locale **prunes** its cells from the catalog server-side (`pruneTranslationsLocale` in
+  `apps/api/src/http/locales.ts`); a settings save self-heals cells for any unconfigured locale.
+- **Write API:** `PUT /projects/:id/translations {key, locale, value}` sets one cell (empty value clears
+  it); the inline editor uses it directly. Bounded + prototype-safe via `safeRecord` / `KeyNameSchema`.
+
 ---
 
 ## Context

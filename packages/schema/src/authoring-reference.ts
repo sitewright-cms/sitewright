@@ -142,6 +142,16 @@ export const SW_DIRECTIVES: readonly SwDirective[] = [
     example: '<section data-sw-bg="band" class="min-h-64 bg-cover bg-center">…</section>',
   },
   {
+    attr: 'data-sw-translate',
+    id: 'd-translate',
+    syntax: 'data-sw-translate="key"',
+    name: 'data-sw-translate',
+    keywords: 'editable translation i18n locale message catalog shared string directive',
+    description:
+      'Makes the element’s text a PROJECT TRANSLATION (plain text, HTML-escaped) — it renders the website.translations value for the current page locale and is click-to-edit in the preview, writing back to website.translations[key][locale]. Unlike data-sw-text (per-page), the same key is SHARED across every page and locale. The element’s authored text is the fallback when the key isn’t translated yet. The read-only twin for attributes/logic is the {{sw-translate "key"}} helper.',
+    example: '<span data-sw-translate="nav_cta">Start a project</span>',
+  },
+  {
     attr: 'data-sw-entry',
     automatic: true,
     id: 'd-entry',

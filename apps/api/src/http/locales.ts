@@ -7,7 +7,7 @@
 // is never committed.
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { LocaleSchema, IdSchema, migratePageStores, type Page } from '@sitewright/schema';
+import { LocaleSchema, IdSchema, type Page } from '@sitewright/schema';
 import {
   scaffoldLocale,
   propagatePageToLocales,
@@ -34,13 +34,13 @@ export interface LocaleDeps {
 const AddLocaleBody = z.object({ locale: LocaleSchema });
 const TranslateBody = z.object({ locales: z.array(LocaleSchema).max(100).optional() });
 
-/** Read the project's settings bundle + its (migrated) pages — the inputs every locale op needs. */
+/** Read the project's settings bundle + its pages — the inputs every locale op needs. */
 async function loadContext(
   contentRepo: ContentRepository,
   ctx: ProjectContext,
 ): Promise<{ settings: Settings; pages: Page[] }> {
   const settings = (await contentRepo.get(ctx, 'settings', 'settings')) as Settings;
-  const pages = (await contentRepo.list(ctx, 'page')).map(migratePageStores) as Page[];
+  const pages = (await contentRepo.list(ctx, 'page')) as Page[];
   return { settings, pages };
 }
 

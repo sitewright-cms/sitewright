@@ -143,7 +143,7 @@ describe('preview API — code-first source page', () => {
       payload: {
         id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
         source: '<div class="grid"><h1 data-sw-text="headline">Default headline</h1></div>',
-        content: { headline: 'Edited headline' },
+        data: { headline: 'Edited headline' },
       },
     });
     expect(res.statusCode).toBe(200);

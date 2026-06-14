@@ -145,18 +145,8 @@ export function detectSocial(url: string): { name?: string; icon?: string } {
   return { name: hostLabelName(host), icon: 'globe' };
 }
 
-/**
- * Migrate the legacy `social: string[]` (bare URLs) into `social: SocialLink[]` with an auto-detected
- * name + icon per URL. Idempotent — an already-object array passes straight through. Runs on every
- * identity parse (z.preprocess), so stored projects migrate on the next read/write.
- */
-export function migrateSocialLinks(value: unknown): unknown {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
-  const v = value as Record<string, unknown>;
-  if (!Array.isArray(v.social) || !v.social.some((s) => typeof s === 'string')) return value;
-  const social = v.social.map((s) => (typeof s === 'string' ? { link: s, ...detectSocial(s) } : s));
-  return { ...v, social };
-}
+// (The legacy `social: string[]` → SocialLink[] migration was removed — pre-1.0, no production data.
+//  `detectSocial` above is still used by the EDITOR to auto-fill a new link's name + icon.)
 
 /** Font weights the slot selector offers (100–900, the CSS numeric scale). */
 export const FONT_WEIGHTS = [100, 200, 300, 400, 500, 600, 700, 800, 900] as const;
@@ -328,8 +318,7 @@ const CorporateIdentityObject = z.object({
   radii: safeRecord(TokenValueSchema, KeyNameSchema).optional(),
 });
 
-/** Migrates a legacy `social: string[]` into SocialLink objects, then validates the identity object. */
-export const CorporateIdentitySchema = z.preprocess(migrateSocialLinks, CorporateIdentityObject);
+export const CorporateIdentitySchema = CorporateIdentityObject;
 export type CorporateIdentity = z.infer<typeof CorporateIdentitySchema>;
 
 /**

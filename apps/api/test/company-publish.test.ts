@@ -132,7 +132,8 @@ describe('company → schema.org + favicon on publish', () => {
 
   it('preserves company across an import → export round-trip', async () => {
     const proj = client.project(projectId);
-    const company = { legalName: 'Imported Co', businessType: 'LocalBusiness', social: ['https://x.io/co'] };
+    // A directly-imported identity uses the object-form social links (no legacy string[] migration).
+    const company = { legalName: 'Imported Co', businessType: 'LocalBusiness', social: [{ link: 'https://x.io/co', name: 'Co', icon: 'globe' }] };
     const imp = await proj.importBundle({
       project: { identity: { name: 'B', colors: {}, ...company }, settings: { defaultLocale: 'en', locales: ['en'] } },
       pages: [home],
@@ -143,7 +144,7 @@ describe('company → schema.org + favicon on publish', () => {
     expect((exp.json() as { project: { identity: unknown } }).project.identity).toMatchObject({
       legalName: 'Imported Co',
       businessType: 'LocalBusiness',
-      social: [{ link: 'https://x.io/co', name: 'X', icon: 'globe' }], // string[] migrated (x.io is an unknown host)
+      social: [{ link: 'https://x.io/co', name: 'Co', icon: 'globe' }], // round-trips unchanged
     });
   });
 

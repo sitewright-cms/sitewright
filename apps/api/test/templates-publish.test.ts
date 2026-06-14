@@ -11,14 +11,14 @@ import { makeHarness, type Harness, type TestClient } from './harness.js';
 // block-tree/Outlet template model is retired.
 
 /** A page that renders entirely from a template (no own source). */
-function templatePage(templateRef: string, content?: Record<string, string>) {
+function templatePage(templateRef: string, data?: Record<string, string>) {
   return {
     id: 'tpl-page',
     path: 'offer',
     title: 'Offer',
     template: templateRef,
     root: { id: 'pr', type: 'Section' },
-    ...(content ? { content } : {}),
+    ...(data ? { data } : {}),
   };
 }
 
@@ -52,7 +52,7 @@ describe('templates → publish (code-first sources)', () => {
     return res.body;
   }
 
-  it('renders a PROJECT template source, with the page contributing only {{edit}} content', async () => {
+  it('renders a PROJECT template source, with the page contributing only page.data content', async () => {
     const proj = client.project(projectId);
     const template = {
       id: 'promo',

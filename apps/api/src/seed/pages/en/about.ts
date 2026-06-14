@@ -5,7 +5,7 @@ import { icon } from '../../helpers.js';
 // About adds a MEDIA-FOLDER gallery ({{#sw-folder}} over the Studio/ folder, wrapped in a
 // Lightbox; the folder name is a page.data value an editor can repoint via the {{sw-control}}
 // folder chip). Careers showcases the remaining dataset field types: select (dept), boolean
-// (remote), date ({{sw-date posted}}), richtext ({{sw-rich description}}), and a REFERENCE
+// (remote), date ({{sw-date posted}}), richtext ({{sw-html description}}), and a REFERENCE
 // resolved with the keyed {{item.team.…}} lookup.
 export function pagesAbout(assets: Record<string, string>): Page[] {
   return [
@@ -104,7 +104,7 @@ export function pagesAbout(assets: Record<string, string>): Page[] {
       </div>
       <h2 class="mt-4 text-2xl font-bold tracking-tight">{{title}}</h2>
       <p class="mt-1 inline-flex items-center gap-1.5 text-sm text-base-content/50">${icon('map-pin', 'h-3.5 w-3.5')} {{location}}</p>
-      <div class="prose prose-sm mt-4 max-w-none text-base-content/70">{{sw-rich description}}</div>
+      <div class="prose prose-sm mt-4 max-w-none text-base-content/70">{{sw-html description}}</div>
       {{#with (lookup @root.item.team manager)}}
       <div class="mt-6 flex items-center gap-3.5 border-t border-base-200 pt-6">
         <div class="h-11 w-11 overflow-hidden rounded-full ring-2 ring-primary/20"><img src="{{sw-url photo}}" alt="{{name}}" loading="lazy" /></div>

@@ -6,7 +6,7 @@ import { icon } from '../../helpers.js';
 // DaisyUI's collapse classes (themed by the brand tokens) — zero JavaScript, fully interactive
 // even in the script-blocked editor preview. There is deliberately NO accordion component
 // (DaisyUI collapse covers it). Questions/answers come from the `faq` dataset (auto-resolved
-// per locale); answers are RICHTEXT rendered through {{sw-rich}} (sanitized).
+// per locale); answers are RICHTEXT rendered through {{sw-html}} (sanitized).
 export function pageFaq(): Page {
   return {
     id: 'faq',
@@ -24,7 +24,7 @@ export function pageFaq(): Page {
     {{#each data.faq}}
     <details class="collapse collapse-plus join-item border border-base-200 bg-base-100"{{#if @first}} open{{/if}}>
       <summary class="collapse-title font-semibold">{{question}}</summary>
-      <div class="collapse-content prose prose-sm max-w-none text-base-content/70">{{sw-rich answer}}</div>
+      <div class="collapse-content prose prose-sm max-w-none text-base-content/70">{{sw-html answer}}</div>
     </details>
     {{/each}}
   </div>

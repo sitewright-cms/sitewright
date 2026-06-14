@@ -69,7 +69,7 @@ export const GLOBAL_WIDGETS: readonly Widget[] = [
     // image+caption list; backgrounds are <img> (object-fit:cover, the Ken Burns target) — a loop
     // can't use data-sw-bg's page.data binding, and an interpolated inline background-image is
     // validator-forbidden; an empty image falls back to a base-200 placeholder. captions are richtext
-    // (sw-rich). `data.hero` falls back to the bare dataset on translated pages (resolveLocaleDatasets).
+    // (sw-html). `data.hero` falls back to the bare dataset on translated pages (resolveLocaleDatasets).
     // An empty dataset → the {{#sw-pick-entry}} block renders nothing.
     source: `{{#sw-pick-entry data.hero @root.page.data.hero_config}}
 <div class="relative h-[60vh] min-h-[420px] max-h-[640px] overflow-hidden rounded-3xl" data-sw-component="carousel" data-sw-block="Carousel" data-loop="true" data-autoplay="{{#if autoplay}}true{{else}}false{{/if}}" data-interval="{{interval}}" data-kenburns="{{#if kenburns}}on{{else}}off{{/if}}" data-click-next="true" aria-label="Hero slideshow">
@@ -78,7 +78,7 @@ export const GLOBAL_WIDGETS: readonly Widget[] = [
     <div data-sw-part="slide">
       {{#if image}}<img class="sw-kenburns" src="{{sw-url image}}" alt="" />{{else}}<div class="sw-kenburns bg-base-200"></div>{{/if}}
       <div class="absolute inset-0 flex items-center justify-center p-6">
-        <div class="sw-caption rounded-xl bg-black/40 px-7 py-3.5 text-center text-2xl font-semibold uppercase tracking-wider text-white shadow-2xl backdrop-blur-md">{{sw-rich caption}}</div>
+        <div class="sw-caption rounded-xl bg-black/40 px-7 py-3.5 text-center text-2xl font-semibold uppercase tracking-wider text-white shadow-2xl backdrop-blur-md">{{sw-html caption}}</div>
       </div>
     </div>
     {{/each}}
@@ -106,7 +106,7 @@ export const GLOBAL_WIDGETS: readonly Widget[] = [
               localized: false,
               fields: [
                 { name: 'image', type: 'image', required: false, localized: false },
-                // RICHTEXT: captions support basic HTML (bold/links/…), rendered via {{sw-rich}} (sanitized).
+                // RICHTEXT: captions support basic HTML (bold/links/…), rendered via {{sw-html}} (sanitized).
                 { name: 'caption', type: 'richtext', required: false, localized: false },
               ],
             },

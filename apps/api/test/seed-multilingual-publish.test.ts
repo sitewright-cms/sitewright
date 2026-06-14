@@ -134,7 +134,7 @@ describe('seeded demo — flagship multilingual showcase publishes correctly', (
     const faq = await page('faq/index.html');
     // the accordion is the PATTERN (native <details> + DaisyUI collapse), not a component
     expect(faq).toContain('class="collapse collapse-plus join-item');
-    expect(faq).toContain('<strong>4–8 weeks</strong>'); // {{sw-rich}} kept the sanitized markup
+    expect(faq).toContain('<strong>4–8 weeks</strong>'); // {{sw-html}} kept the sanitized markup
     const deFaq = await page('de/faq/index.html');
     expect(deFaq).toContain('<strong>4–8 Wochen</strong>'); // faq-de dataset auto-resolved
   });

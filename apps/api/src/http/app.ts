@@ -1988,7 +1988,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           data: page.data,
           children: previewChildren,
         };
-        // The page's PARENT as a lean view (`{{parentPage.path}}`, `{{parentPage.data.x}}`) — absent
+        // The page's PARENT as a lean view (`{{page.parent.path}}`, `{{page.parent.data.x}}`) — absent
         // at the tree root. Built only when the source references it (the parent carries its own
         // `data`, so the gate keeps it off the IPC otherwise) and from the SAVED pages for the
         // parent (not the unsaved preview overlay).

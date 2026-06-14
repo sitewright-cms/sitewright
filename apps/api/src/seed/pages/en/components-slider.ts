@@ -46,7 +46,7 @@ export function pageComponentsSlider(): Page {
       aria_click: 'Project highlights (click to advance)',
     },
     source: `<section class="mx-auto max-w-6xl px-6 pb-8 pt-24">
-  <a class="nw-underline inline-flex items-center gap-1.5 text-sm font-semibold text-primary no-underline" href="{{sw-url parentPage.path}}">${icon('arrow-left', 'h-4 w-4')} {{parentPage.title}}</a>
+  <a class="nw-underline inline-flex items-center gap-1.5 text-sm font-semibold text-primary no-underline" href="{{sw-url page.parent.path}}">${icon('arrow-left', 'h-4 w-4')} {{page.parent.title}}</a>
   <h1 class="mt-6 text-4xl font-bold tracking-tight sm:text-6xl">{{page.title}}</h1>
   <p class="mt-5 max-w-2xl text-lg leading-relaxed text-base-content/60" data-sw-text="sld_intro">One component, every configuration.</p>
 </section>
@@ -56,7 +56,7 @@ export function pageComponentsSlider(): Page {
   <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="sec_hero_d">This entire hero is one snippet — no custom CSS.</p>
   <pre class="mt-3 inline-block max-w-full overflow-x-auto text-xs"><code>&#123;&#123;&gt; hero-slider&#125;&#125;</code></pre>
   {{!-- Editor-only config picker: choose which Hero Slider config this page shows (stripped on publish). --}}
-  <div class="mt-3 text-xs">{{sw-control as="dataset-item" dataset="hero" target="data.hero_config" label="Hero config"}}</div>
+  <div class="mt-3 text-xs">{{sw-control as="dataset-item" dataset="hero" target="page.data.hero_config" label="Hero config"}}</div>
   <div class="mt-8">{{> hero-slider}}</div>
 </section>
 

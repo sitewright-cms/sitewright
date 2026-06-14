@@ -3,7 +3,7 @@ import { icon } from '../../helpers.js';
 
 // ---------------------------------------------------------------- SERVICES (+ 3 children)
 // The Services hub is a nav DROPDOWN parent (its children fold under it); the detail pages use
-// {{parentPage.*}} back-links and keyed {{item.services.…}} price lookups; the pricing page
+// {{page.parent.*}} back-links and keyed {{item.services.…}} price lookups; the pricing page
 // demonstrates the first-party TABS component over the `plans` dataset (number/boolean/json
 // field types — the `features` JSON array loops with a nested {{#each}}).
 export function pagesServices(): Page[] {
@@ -54,7 +54,7 @@ export function pagesServices(): Page[] {
 
   // -------------------------------------------------- SERVICE DETAIL (sub-pages of /services)
   // Child pages (parent: 'services') — they nest under Services in the nav dropdown AND are
-  // indented under it in the editor's pages list. The back-link reads {{parentPage.*}} (path +
+  // indented under it in the editor's pages list. The back-link reads {{page.parent.*}} (path +
   // title from the parent — per locale, since each variant nests under its own parent variant).
   {
     id: 'service-web-design',
@@ -63,7 +63,7 @@ export function pagesServices(): Page[] {
     parent: 'services',
     data: { svc_ref: 'svc-design' },
     source: `<section class="mx-auto max-w-4xl px-6 py-24">
-  <a class="nw-underline inline-flex items-center gap-1.5 text-sm font-semibold text-primary no-underline" href="{{sw-url parentPage.path}}">${icon('arrow-left', 'h-4 w-4')} {{parentPage.title}}</a>
+  <a class="nw-underline inline-flex items-center gap-1.5 text-sm font-semibold text-primary no-underline" href="{{sw-url page.parent.path}}">${icon('arrow-left', 'h-4 w-4')} {{page.parent.title}}</a>
   <span class="mt-8 block text-sm font-semibold uppercase tracking-[0.18em] text-primary" data-sw-text="wd_eyebrow">Service</span>
   <h1 class="mt-3 text-4xl font-bold tracking-tight sm:text-6xl" data-sw-text="wd_h1">Web Design</h1>
   <p class="mt-5 max-w-2xl text-lg leading-relaxed text-base-content/60" data-sw-text="wd_intro">Distinctive, on-brand interfaces designed pixel-perfect for every screen — from first wireframe to a polished, accessible UI.</p>
@@ -82,7 +82,7 @@ export function pagesServices(): Page[] {
     parent: 'services',
     data: { svc_ref: 'svc-seo' },
     source: `<section class="mx-auto max-w-4xl px-6 py-24">
-  <a class="nw-underline inline-flex items-center gap-1.5 text-sm font-semibold text-primary no-underline" href="{{sw-url parentPage.path}}">${icon('arrow-left', 'h-4 w-4')} {{parentPage.title}}</a>
+  <a class="nw-underline inline-flex items-center gap-1.5 text-sm font-semibold text-primary no-underline" href="{{sw-url page.parent.path}}">${icon('arrow-left', 'h-4 w-4')} {{page.parent.title}}</a>
   <span class="mt-8 block text-sm font-semibold uppercase tracking-[0.18em] text-primary" data-sw-text="seo_eyebrow">Service</span>
   <h1 class="mt-3 text-4xl font-bold tracking-tight sm:text-6xl" data-sw-text="seo_h1">SEO &amp; Performance</h1>
   <p class="mt-5 max-w-2xl text-lg leading-relaxed text-base-content/60" data-sw-text="seo_intro">Technical SEO, Core Web Vitals, and analytics wired in from day one — so the fast, beautiful site you launch is the one Google rewards.</p>
@@ -104,7 +104,7 @@ export function pagesServices(): Page[] {
     parent: 'services',
     data: { tab_projects: 'Project work', tab_care: 'Care plans', pr_badge: 'Most popular' },
     source: `<section class="mx-auto max-w-5xl px-6 py-24">
-  <a class="nw-underline inline-flex items-center gap-1.5 text-sm font-semibold text-primary no-underline" href="{{sw-url parentPage.path}}">${icon('arrow-left', 'h-4 w-4')} {{parentPage.title}}</a>
+  <a class="nw-underline inline-flex items-center gap-1.5 text-sm font-semibold text-primary no-underline" href="{{sw-url page.parent.path}}">${icon('arrow-left', 'h-4 w-4')} {{page.parent.title}}</a>
   <h1 class="mt-8 text-4xl font-bold tracking-tight sm:text-6xl" data-sw-text="pr_h1">Honest, fixed-scope pricing</h1>
   <p class="mt-5 max-w-2xl text-lg leading-relaxed text-base-content/60" data-sw-text="pr_intro">No estimates that double mid-project. Pick a package, know the number, get the site.</p>
 

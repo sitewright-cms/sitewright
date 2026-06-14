@@ -108,7 +108,7 @@ describe('buildSite', () => {
     expect(home).toContain('<main id="page-content"></main>'); // empty body, no crash
   });
 
-  it('exposes page.slug + the parentPage view (title/data) to a child page', async () => {
+  it('exposes page.slug + the page.parent view (title/data) to a child page', async () => {
     await buildSite({
       publishedAt: '2026-05-29T00:00:00.000Z',
       outDir,
@@ -120,15 +120,15 @@ describe('buildSite', () => {
           },
           {
             id: 'services', path: 'services', parent: 'home', title: 'Services',
-            source: '<div><b>{{page.slug}}</b> up:{{parentPage.title}} c:{{parentPage.data.section_color}}</div>',
+            source: '<div><b>{{page.slug}}</b> up:{{page.parent.title}} c:{{page.parent.data.section_color}}</div>',
           },
         ],
       }),
     });
     const svc = await readFile(join(outDir, 'services', 'index.html'), 'utf8');
     expect(svc).toContain('<b>services</b>'); // page.slug = the page's OWN segment (not the full /services route)
-    expect(svc).toContain('up:Home'); // parentPage.title — the parent (home)
-    expect(svc).toContain('c:tomato'); // parentPage.data.section_color — inherited from the parent's page.data
+    expect(svc).toContain('up:Home'); // page.parent.title — the parent (home)
+    expect(svc).toContain('c:tomato'); // page.parent.data.section_color — inherited from the parent's page.data
   });
 
   it('publishes a data-sw-html rich region: override applied, sanitized, markers stripped', async () => {

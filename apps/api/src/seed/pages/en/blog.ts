@@ -4,7 +4,7 @@ import type { Page } from '@sitewright/schema';
 // ---------------------------------------------------------------- BLOG (content-only templates)
 // A page-tree blog: the overview uses global:blog-overview ({{#each page.children}} with
 // {{sw-date}} + {{sw-truncate}} per card), each article global:blog-article (every field a
-// data-sw-*="data.*" in-preview-editable leaf). No code — the content lives entirely in each
+// data-sw-*="page.data.*" in-preview-editable leaf). No code — the content lives entirely in each
 // page's `data`, which is also exactly what a locale variant overrides (fully translated posts).
 export function pagesBlog(assets: Record<string, string>): Page[] {
   return [

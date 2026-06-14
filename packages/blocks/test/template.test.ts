@@ -92,21 +92,21 @@ describe('dataset-aware {{#each}} — flattened fields + preview markers', () =>
   });
 });
 
-describe('page.slug + parentPage bindings', () => {
-  it('renders page.slug and the parentPage view (path + data) through the context whitelist', () => {
+describe('page.slug + page.parent bindings', () => {
+  it('renders page.slug and the page.parent view (path + data) through the context whitelist', () => {
     const ctx = {
       page: { title: 'Web', slug: 'web', path: '/services/web' },
       parentPage: { title: 'Services', slug: 'services', path: '/services', data: { eyebrow: 'What we do' } },
     };
     const out = renderTemplate(
-      '<a href="{{sw-url parentPage.path}}">{{parentPage.title}}</a>/<b>{{page.slug}}</b> — {{parentPage.data.eyebrow}}',
+      '<a href="{{sw-url page.parent.path}}">{{page.parent.title}}</a>/<b>{{page.slug}}</b> — {{page.parent.data.eyebrow}}',
       ctx,
     );
     expect(out).toBe('<a href="/services">Services</a>/<b>web</b> — What we do');
   });
 
-  it('renders empty for parentPage.* when there is no parent (binding absent)', () => {
-    const out = renderTemplate('[{{parentPage.path}}][{{parentPage.data.x}}]', { page: { slug: '', path: '/' } });
+  it('renders empty for page.parent.* when there is no parent (binding absent)', () => {
+    const out = renderTemplate('[{{page.parent.path}}][{{page.parent.data.x}}]', { page: { slug: '', path: '/' } });
     expect(out).toBe('[][]');
   });
 });

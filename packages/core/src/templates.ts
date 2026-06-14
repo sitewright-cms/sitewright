@@ -41,16 +41,16 @@ export const GLOBAL_TEMPLATES: readonly Template[] = [
 </article>`,
   },
   {
-    // A content-only BLOG ARTICLE: every field is an in-preview-editable `data-sw-*="data.<key>"`
+    // A content-only BLOG ARTICLE: every field is an in-preview-editable `data-sw-*="page.data.<key>"`
     // leaf bound to the page's own page.data, seeded from `data` below when the template is enabled.
     id: 'global:blog-article',
     name: 'Blog article (global)',
     source: `<article class="prose mx-auto max-w-3xl px-6 py-16">
-  <p class="not-prose mb-2 text-sm uppercase tracking-wide text-base-content/50" data-sw-text="data.article_kicker">Article</p>
-  <h1 data-sw-text="data.article_title">Your article title</h1>
-  <p class="lead text-base-content/70" data-sw-text="data.article_excerpt">A one-sentence summary that draws the reader in.</p>
-  <div class="not-prose my-6 aspect-video w-full overflow-hidden rounded-2xl bg-base-200 bg-cover bg-center" data-sw-bg="data.article_image"></div>
-  <div data-sw-html="data.article_body"><p>Write the article here. Use the toolbar to format.</p></div>
+  <p class="not-prose mb-2 text-sm uppercase tracking-wide text-base-content/50" data-sw-text="page.data.article_kicker">Article</p>
+  <h1 data-sw-text="page.data.article_title">Your article title</h1>
+  <p class="lead text-base-content/70" data-sw-text="page.data.article_excerpt">A one-sentence summary that draws the reader in.</p>
+  <div class="not-prose my-6 aspect-video w-full overflow-hidden rounded-2xl bg-base-200 bg-cover bg-center" data-sw-bg="page.data.article_image"></div>
+  <div data-sw-html="page.data.article_body"><p>Write the article here. Use the toolbar to format.</p></div>
 </article>`,
     data: {
       article_kicker: 'Article',
@@ -66,8 +66,8 @@ export const GLOBAL_TEMPLATES: readonly Template[] = [
     id: 'global:blog-overview',
     name: 'Blog overview (global)',
     source: `<section class="mx-auto max-w-5xl px-6 py-20">
-  <h1 class="mb-3 text-4xl font-bold tracking-tight sm:text-5xl" data-sw-text="data.heading">From the blog</h1>
-  <p class="mb-12 max-w-2xl text-lg text-base-content/60" data-sw-text="data.intro">News, guides, and updates.</p>
+  <h1 class="mb-3 text-4xl font-bold tracking-tight sm:text-5xl" data-sw-text="page.data.heading">From the blog</h1>
+  <p class="mb-12 max-w-2xl text-lg text-base-content/60" data-sw-text="page.data.intro">News, guides, and updates.</p>
   <div class="grid gap-7 sm:grid-cols-2 lg:grid-cols-3">
     {{#each page.children}}
     <a class="card group overflow-hidden border border-base-200 bg-base-100 no-underline shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/30 hover:shadow-xl" href="{{sw-url path}}">
@@ -97,8 +97,8 @@ export const GLOBAL_TEMPLATES: readonly Template[] = [
     name: 'Shop (global)',
     source: `<section class="mx-auto max-w-6xl px-6 py-20">
   <header class="mb-14 text-center">
-    <h1 class="text-4xl font-bold tracking-tight sm:text-5xl" data-sw-text="data.heading">Shop</h1>
-    <p class="mx-auto mt-4 max-w-xl text-lg text-base-content/60" data-sw-text="data.intro">Browse our products and build your order.</p>
+    <h1 class="text-4xl font-bold tracking-tight sm:text-5xl" data-sw-text="page.data.heading">Shop</h1>
+    <p class="mx-auto mt-4 max-w-xl text-lg text-base-content/60" data-sw-text="page.data.intro">Browse our products and build your order.</p>
   </header>
   <div class="grid gap-7 sm:grid-cols-2 lg:grid-cols-3">
     {{#each data.products}}

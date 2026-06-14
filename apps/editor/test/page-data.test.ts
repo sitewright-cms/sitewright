@@ -2,19 +2,22 @@ import { describe, it, expect } from 'vitest';
 import { dataPathOf, isSafeKey, dataLeafGet, dataLeafSet, mergeDefaults, isEmptyPageData, pageDataObject } from '../src/lib/page-data';
 
 describe('dataPathOf / isSafeKey', () => {
-  it('extracts the page.data path from a data.* key, else null', () => {
-    expect(dataPathOf('data.article_title')).toBe('article_title');
-    expect(dataPathOf('data.a.b')).toBe('a.b');
+  it('extracts the page.data path from a page.data.* key, else null (bare = top-level)', () => {
+    expect(dataPathOf('page.data.article_title')).toBe('article_title');
+    expect(dataPathOf('page.data.a.b')).toBe('a.b');
     expect(dataPathOf('plain_key')).toBeNull();
+    expect(dataPathOf('data.article_title')).toBeNull(); // retired shorthand → no longer a nested path
   });
 
-  it('rejects bare and data.* prototype-pollution keys at the message boundary', () => {
+  it('rejects a prototype-pollution segment in ANY key form at the message boundary', () => {
     expect(isSafeKey('headline')).toBe(true);
-    expect(isSafeKey('data.article_title')).toBe(true);
+    expect(isSafeKey('page.data.article_title')).toBe(true);
     expect(isSafeKey('__proto__')).toBe(false);
-    expect(isSafeKey('data.__proto__')).toBe(false);
-    expect(isSafeKey('data.a.constructor')).toBe(false);
-    expect(isSafeKey('data.a..b')).toBe(false); // empty segment
+    expect(isSafeKey('page.data.__proto__')).toBe(false);
+    expect(isSafeKey('page.data.a.constructor')).toBe(false);
+    expect(isSafeKey('page.data.a..b')).toBe(false); // empty segment
+    expect(isSafeKey('data.__proto__')).toBe(false); // retired shorthand still rejected (any dotted form)
+    expect(isSafeKey('')).toBe(false);
   });
 });
 

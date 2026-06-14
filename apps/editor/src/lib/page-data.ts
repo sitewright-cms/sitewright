@@ -1,30 +1,28 @@
 import type { JsonValue } from '@sitewright/schema';
 
-// Editor-side helpers for the page.data store: routing `data.<path>` directive keys, reading/writing
+// Editor-side helpers for the page.data store: routing `page.data.<path>` directive keys, reading/writing
 // string leaves immutably, seeding template defaults, and the empty check. Mirrors the render-side
 // resolver in @sitewright/blocks/directives. Pure + prototype-safe so it can be unit-tested directly.
 
 /** Prototype-pollution-significant keys — never accepted as a region key nor a data path segment. */
 export const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
-/** The `data.` key prefix routes a directive to the page's own `page.data` object. */
-const DATA_KEY_PREFIX = 'data.';
+/** The `page.data.` key prefix routes a directive to a NESTED path in the page's own `page.data` object. */
+const DATA_KEY_PREFIX = 'page.data.';
 
-/** The page.data path a directive key targets (`data.a.b` → `a.b`), or null for a content/rich key. */
+/** The page.data path a directive key targets (`page.data.a.b` → `a.b`), or null for a bare top-level key. */
 export function dataPathOf(key: string): string | null {
   return key.startsWith(DATA_KEY_PREFIX) ? key.slice(DATA_KEY_PREFIX.length) : null;
 }
 
 /**
- * A region key from the (untrusted) preview frame is safe to accept: not a bare prototype-pollution
- * key, and — for a `data.<path>` key — no reserved/empty path segment. Self-sufficient at the message
- * boundary (dataLeafSet also guards per segment; the server re-validates page.data on save).
+ * A region key from the (untrusted) preview frame is safe to accept: NO dot-segment is empty or a
+ * prototype-pollution key — covers a bare key, a `page.data.<path>` key, and any other dotted form
+ * (a retired `data.__proto__` is rejected here, not just relied on downstream). Self-sufficient at the
+ * message boundary (dataLeafSet also guards per segment; the server re-validates page.data on save).
  */
 export function isSafeKey(key: string): boolean {
-  if (DANGEROUS_KEYS.has(key)) return false;
-  const p = dataPathOf(key);
-  if (p === null) return true;
-  return p.split('.').every((s) => s !== '' && !DANGEROUS_KEYS.has(s));
+  return key !== '' && key.split('.').every((s) => s !== '' && !DANGEROUS_KEYS.has(s));
 }
 
 const isPlainObject = (v: JsonValue | undefined): v is Record<string, JsonValue> =>
@@ -83,14 +81,14 @@ export function flatSet(data: JsonValue, key: string, value: string): JsonValue 
 
 /**
  * Read a region value from page.data by directive key: a bare key (`hero_h1`) is a top-level property;
- * a `data.<path>` key is a nested path. Mirrors the render-side resolver in @sitewright/blocks.
+ * a `page.data.<path>` key is a nested path. Mirrors the render-side resolver in @sitewright/blocks.
  */
 export function pageDataGet(data: JsonValue, key: string): string | undefined {
   const p = dataPathOf(key);
   return p !== null ? dataLeafGet(data, p) : flatGet(data, key);
 }
 
-/** Immutably write a region value into page.data by directive key (bare → flat, `data.<path>` → nested). */
+/** Immutably write a region value into page.data by directive key (bare → flat, `page.data.<path>` → nested). */
 export function pageDataSet(data: JsonValue, key: string, value: string): JsonValue {
   const p = dataPathOf(key);
   return p !== null ? dataLeafSet(data, p, value) : flatSet(data, key, value);

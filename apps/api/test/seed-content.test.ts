@@ -45,13 +45,19 @@ function effectiveSource(page: Page, includeWidgets = false): string | undefined
 /** The page.data keys a source binds: [data-sw-* keys (DE-only — EN defaults are authored),
  *  tier-2 keys (page.data refs + quoted lookups — required in EVERY locale incl. EN)]. */
 function boundKeys(source: string): { directive: string[]; attr: string[]; url: string[] } {
-  const strip = (k: string): string => (k.startsWith('data.') ? k.slice('data.'.length).split('.')[0]! : k);
+  // Directive keys are a nested `page.data.<path>` or a bare top-level key → reduce to the page.data key.
+  const strip = (k: string): string => (k.startsWith('page.data.') ? k.slice('page.data.'.length).split('.')[0]! : k);
   const directive = [...source.matchAll(/data-sw-(?:text|html|href)="([^"{}]+)"/g)].map((m) => strip(m[1]!));
   // Image-URL sinks may legitimately hold '' (asset generation is best-effort) — presence-only.
   const url = [...source.matchAll(/data-sw-(?:src|bg)="([^"{}]+)"/g)].map((m) => strip(m[1]!));
+  // Tier-2 = a page.data value READ via a binding/lookup (no element default → required in EVERY locale).
+  // Exclude the directive ATTRIBUTES (tier-1, handled above) and the editor-only {{sw-control}} chips
+  // (their target is settable, not a required seed) so neither is double-counted now that directive keys
+  // share the same `page.data.` prefix as bindings.
+  const bindings = source.replace(/data-sw-[a-z]+="[^"]*"/g, '').replace(/\{\{\s*sw-control[^}]*\}\}/g, '');
   const attr = [
-    ...[...source.matchAll(/page\.data\.([a-zA-Z0-9_]+)/g)].map((m) => m[1]!),
-    ...[...source.matchAll(/\(lookup page\.data "([a-zA-Z0-9_]+)"\)/g)].map((m) => m[1]!),
+    ...[...bindings.matchAll(/page\.data\.([a-zA-Z0-9_]+)/g)].map((m) => m[1]!),
+    ...[...bindings.matchAll(/\(lookup page\.data "([a-zA-Z0-9_]+)"\)/g)].map((m) => m[1]!),
   ];
   return { directive: [...new Set(directive)], attr: [...new Set(attr)], url: [...new Set(url)] };
 }

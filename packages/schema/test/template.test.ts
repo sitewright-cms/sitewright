@@ -27,7 +27,7 @@ describe('TemplateSchema (code-first: Handlebars source, no block tree)', () => 
   });
 
   it('accepts an optional bounded, prototype-safe declared default data object', () => {
-    const t = { id: 'b', name: 'Blog', source: '<h1 data-sw-text="data.title">x</h1>', data: { title: 'Hi', tags: ['a'] } };
+    const t = { id: 'b', name: 'Blog', source: '<h1 data-sw-text="page.data.title">x</h1>', data: { title: 'Hi', tags: ['a'] } };
     expect(TemplateSchema.parse(t)).toEqual(t);
     expect(TemplateSchema.parse({ id: 'b', name: 'B', source: '<p>x</p>' }).data).toBeUndefined();
     // Prototype-pollution key rejected (own __proto__ via JSON.parse).

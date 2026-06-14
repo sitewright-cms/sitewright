@@ -59,12 +59,12 @@ export function referencesChildren(source: string): boolean {
   return CHILDREN_REF_RE.test(source);
 }
 
-// `parentPage` not preceded by an identifier/`.`/`-` and not part of a longer word (so `parentPageView`
-// / `myparentPage` don't match) — the same cheap gate as `CHILDREN_REF_RE`, so the parent view (which
-// carries the parent's own `data`) is built and serialized over the render IPC only when used.
-const PARENT_PAGE_REF_RE = /(?<![\w.-])parentPage(?![\w-])/;
+// `page.parent` not preceded by an identifier/`.`/`-` and not part of a longer word (so `page.parental`
+// doesn't match) — the same cheap gate as `CHILDREN_REF_RE`, so the parent view (which carries the
+// parent's own `data`) is built and serialized over the render IPC only when used.
+const PARENT_PAGE_REF_RE = /(?<![\w.-])page\.parent(?![\w-])/;
 
-/** Whether a template source references the top-level `parentPage` binding — build the parent view only when it does. */
+/** Whether a template source references the `page.parent` binding — build the parent view only when it does. */
 export function referencesParentPage(source: string): boolean {
   return PARENT_PAGE_REF_RE.test(source);
 }

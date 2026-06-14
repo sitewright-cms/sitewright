@@ -139,7 +139,7 @@ describe('interactive component + dialog runtimes → code-first publish + previ
     // Self-contained preview: component assets + dialog runtime are INLINED (no external <script src>).
     expect(html).toContain('[data-sw-block="Modal"]'); // MODAL component CSS inlined
     expect(html).toContain('[data-sw-component="modal"]'); // MODAL component JS selector inlined
-    expect(html).toContain('scrollIntoView'); // NAV_LINK_JS inlined (a <dialog> is present)
+    expect(html).toContain('showModal'); // NAV_LINK_JS inlined (a <dialog> is present) — unique to it
     expect(html).not.toContain('src="components.js"');
     expect(html).not.toContain('src="nav-link.js"');
   });
@@ -153,6 +153,7 @@ describe('interactive component + dialog runtimes → code-first publish + previ
     expect(res.statusCode).toBe(200);
     const html = (res.json() as { html: string }).html;
     expect(html).not.toContain('[data-sw-component="modal"]');
-    expect(html).not.toContain('scrollIntoView');
+    // NAV_LINK_JS marker (its showModal) — NOT the bridge's own scrollIntoView, which is always present.
+    expect(html).not.toContain('showModal');
   });
 });

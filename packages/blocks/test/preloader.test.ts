@@ -65,15 +65,25 @@ describe('usesPreloader', () => {
 });
 
 describe('PRELOADER_CSS', () => {
-  it('is a frosted, half-transparent brand overlay that fades out when not loading', () => {
+  it('is a frosted, half-transparent brand overlay that fades both ways', () => {
     expect(PRELOADER_CSS).toContain('[data-sw-preloader]{position:fixed');
     expect(PRELOADER_CSS).toContain('backdrop-filter:blur');
     expect(PRELOADER_CSS).toContain('color-mix(in srgb,var(--sw-color-base-100');
     expect(PRELOADER_CSS).toContain('[data-sw-preloader].loading{opacity:1');
+    // fade-OUT via the base opacity transition; fade-IN via a one-shot animation (the overlay ships
+    // already-loading, so a transition wouldn't run on first paint — an animation does).
+    expect(PRELOADER_CSS).toContain('transition:opacity .45s ease');
+    expect(PRELOADER_CSS).toContain('animation:sw-pl-fade .45s ease');
+    expect(PRELOADER_CSS).toContain('@keyframes sw-pl-fade{from{opacity:0}to{opacity:1}}');
     // themed only by brand tokens
     expect(PRELOADER_CSS).toContain('var(--sw-color-primary');
-    // respects reduced motion
+    // respects reduced motion (overlay fade + inner animations frozen)
     expect(PRELOADER_CSS).toContain('prefers-reduced-motion:reduce');
+  });
+
+  it('uses large (~2x) effect sizes for visibility', () => {
+    expect(PRELOADER_CSS).toContain('.pl-spinner{width:116px;height:116px');
+    expect(PRELOADER_CSS).toContain('.pl-mark{width:148px;height:148px');
   });
 
   it('ships a rule for every effect', () => {

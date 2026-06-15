@@ -178,5 +178,5 @@ export const EXAMPLE_WEBSITE = {
   translations: { ...CHROME_TRANSLATIONS, ...PAGE_TRANSLATIONS },
   // Site-wide nav/button effect schemes (CI-themed, contrast-safe). The active nav item is marked
   // `.active` (below); `sw-nav-pill` fills it with the brand primary + its WCAG-derived foreground.
-  theme: { navEffect: 'pill', buttonEffect: 'lift' },
+  theme: { navEffect: 'pill', buttonEffect: 'lift', preloaderEffect: 'logo-pulse' },
 };

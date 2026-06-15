@@ -1,6 +1,14 @@
 import { useState } from 'react';
 import { motion } from 'motion/react';
-import { NAV_EFFECTS, BUTTON_EFFECTS, type JsonValue, type NavEffect, type ButtonEffect } from '@sitewright/schema';
+import {
+  NAV_EFFECTS,
+  BUTTON_EFFECTS,
+  PRELOADER_EFFECTS,
+  type JsonValue,
+  type NavEffect,
+  type ButtonEffect,
+  type PreloaderEffect,
+} from '@sitewright/schema';
 import { newStr, shopLabelKeys, type Patch, type SettingsForm } from './model';
 import { Field, GlassCard } from './ui';
 import { SectionHelp } from '../ui/SectionHelp';
@@ -13,6 +21,12 @@ import { TranslationsEditor } from './TranslationsEditor';
 import { WebsiteDataModal } from './WebsiteDataModal';
 import { ghostButton, glassInput, fieldLabel, toggleInput } from '../../theme';
 import { cardStagger, cardVariants } from './motion';
+
+/** "logo-pulse" → "Logo pulse" for the preloader picker option labels. */
+const effectLabel = (s: string): string => {
+  const t = s.replace(/-/g, ' ');
+  return t[0]!.toUpperCase() + t.slice(1);
+};
 
 /** Shared bindings hint for the validated skeleton-slot editors. */
 const SLOT_HINT =
@@ -123,6 +137,24 @@ export function WebsiteSection({
               {BUTTON_EFFECTS.map((b) => (
                 <option key={b} value={b}>
                   {b[0]!.toUpperCase() + b.slice(1)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col">
+            <span className={fieldLabel}>Preloader</span>
+            <select
+              aria-label="Preloader effect"
+              className={glassInput}
+              value={form.preloaderEffect || 'none'}
+              onChange={(e) =>
+                patch({ preloaderEffect: e.target.value === 'none' ? 'none' : (e.target.value as PreloaderEffect) })
+              }
+            >
+              <option value="none">None</option>
+              {PRELOADER_EFFECTS.map((p) => (
+                <option key={p} value={p}>
+                  {effectLabel(p)}
                 </option>
               ))}
             </select>

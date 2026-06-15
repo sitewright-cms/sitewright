@@ -52,6 +52,9 @@ import {
   usesCart,
   CART_CSS,
   CART_JS,
+  preloaderHtml,
+  PRELOADER_CSS,
+  PRELOADER_JS,
   resolveShopChannels,
   resolveFormEndpoints,
   mediaForRender,
@@ -76,6 +79,8 @@ const RIPPLE_SCRIPT = 'ripple.js';
 const CART_SCRIPT = 'cart.js';
 /** The nav-placeholder runtime (open a <dialog>/smooth-scroll a #section), linked per page. */
 const NAV_LINK_SCRIPT = 'nav-link.js';
+/** The PRELOADER runtime (overlay show/clear + scroll-lock + internal-link bridge), linked per page. */
+const PRELOADER_SCRIPT = 'preloader.js';
 
 /** A static `{{> name}}` / `{{#> name}}` partial include (snippet names are identifier-safe). */
 const PARTIAL_REF = /\{\{~?\s*#?>\s*([a-zA-Z][a-zA-Z0-9_-]*)/g;
@@ -427,6 +432,10 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // MINI SHOP cart runtime — ships only when a page/slot uses the {{sw-cart}}/{{sw-add-to-cart}}
     // helpers (their rendered `data-sw-cart` marker). Same only-used-ships discipline.
     const usesCartRuntime = usesMarker(usesCart);
+    // PRELOADER runtime — ships when the site enables a preloader effect (theme.preloaderEffect ≠
+    // 'none'). The platform injects the overlay markup (renderDocument), so this is gated on the
+    // theme choice rather than an authored marker.
+    const usesPreloaderRuntime = (website?.theme?.preloaderEffect ?? 'none') !== 'none';
     // The nav-link runtime opens a <dialog> (global modal) and smooth-scrolls #section links. Ship it
     // when a nav placeholder targets a #fragment OR any authored surface embeds a <dialog> — so a modal
     // triggered from page CONTENT (a CTA, an in-content `<a href="#id">`), not only a nav placeholder,
@@ -608,12 +617,18 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         const sidebarRightHtml = renderSlot(website?.sidebarRight, 'sidebarRight', renderCtx);
         const footerHtml = renderSlot(website?.footer, 'footer', renderCtx);
         const bottomHtml = renderSlot(website?.bottom, 'bottom', renderCtx);
+        // PRELOADER overlay (first body child). The logo resolves page-relative via `rel` so logo-*
+        // effects work at any page depth; non-logo effects ignore it (fall back to the built-in mark).
+        const preloaderMarkup = usesPreloaderRuntime
+          ? preloaderHtml(website?.theme?.preloaderEffect, { logo: rel(identity.logo) })
+          : undefined;
         const pageInlineStyles = [
           ...(usesComponents && components.css ? [components.css] : []),
           ...(usesAnims ? [ANIMATION_CSS] : []),
           ...(usesLazy ? [LAZYLOAD_CSS] : []),
           ...(usesWaves ? [RIPPLE_CSS] : []),
           ...(usesCartRuntime ? [CART_CSS] : []),
+          ...(usesPreloaderRuntime ? [PRELOADER_CSS] : []),
         ];
         const pageScripts = [
           ...(usesComponents && components.js ? [`${siteRoot}${COMPONENT_SCRIPT}`] : []),
@@ -622,6 +637,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           ...(usesWaves ? [`${siteRoot}${RIPPLE_SCRIPT}`] : []),
           ...(usesCartRuntime ? [`${siteRoot}${CART_SCRIPT}`] : []),
           ...(usesNavLink ? [`${siteRoot}${NAV_LINK_SCRIPT}`] : []),
+          ...(usesPreloaderRuntime ? [`${siteRoot}${PRELOADER_SCRIPT}`] : []),
         ];
         const html = renderDocument(page, {
           brand,
@@ -634,6 +650,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           sidebarRight: sidebarRightHtml,
           footer: footerHtml,
           bottom: bottomHtml,
+          preloader: preloaderMarkup,
           media,
           lang: pageLocale,
           // Images AND fonts resolve through ONE page-relative resolver (a font's @font-face uses
@@ -737,6 +754,12 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
       await writeFile(join(tmp, NAV_LINK_SCRIPT), NAV_LINK_JS, 'utf8');
       bytes += Buffer.byteLength(NAV_LINK_JS);
+    }
+    // The PRELOADER runtime (overlay show/clear + scroll-lock + internal-link bridge; only-used-ships).
+    if (usesPreloaderRuntime) {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
+      await writeFile(join(tmp, PRELOADER_SCRIPT), PRELOADER_JS, 'utf8');
+      bytes += Buffer.byteLength(PRELOADER_JS);
     }
 
     // robots.txt (always) + sitemap.xml (only when a production site URL is set).

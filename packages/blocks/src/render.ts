@@ -51,6 +51,12 @@ export interface RenderDocumentOptions extends RenderContext {
   sidebarRight?: string;
   footer?: string;
   bottom?: string;
+  /**
+   * Pre-rendered PRELOADER overlay (`<div data-sw-preloader …>`), injected as the FIRST body child
+   * when the site enables a preloader. Built by @sitewright/blocks `preloaderHtml()`. A `<noscript>`
+   * rule hiding it is emitted alongside so no-JS visitors are never blocked.
+   */
+  preloader?: string;
   /** Document language attribute (defaults to `en`). */
   lang?: string;
   /** SEO/Open-Graph metadata; `title` is always overridden by the page title (there is no separate SEO title). */
@@ -140,6 +146,7 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     brand,
     bodyHtml,
     bodyClass,
+    preloader,
     topNav,
     mobileNav,
     sidebarLeft,
@@ -211,6 +218,9 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     // A slot wrapper is emitted only when that slot has content; <main id="page-content"> is ALWAYS
     // present (every page has a body).
     `<body${bodyClass ? ` class="${escapeAttr(bodyClass)}"` : ''}>` +
+    // PRELOADER overlay first (covers first paint + navigation); the <noscript> rule hides it when
+    // scripting is off so a no-JS visitor is never trapped behind a never-cleared overlay.
+    (preloader ? `${preloader}<noscript><style>[data-sw-preloader]{display:none!important}</style></noscript>` : '') +
     slotLandmark('nav', 'top-nav', topNav) +
     slotLandmark('nav', 'mobile-nav', mobileNav) +
     `<main id="page-content">${body}</main>` +

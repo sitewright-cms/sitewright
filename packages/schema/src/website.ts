@@ -238,6 +238,26 @@ export const BUTTON_EFFECTS = ['lift', 'glow', 'sheen', 'press', 'pulse', 'ring'
 export type ButtonEffect = (typeof BUTTON_EFFECTS)[number];
 
 /**
+ * Curated PRELOADER effects. The chosen one (≠ 'none') makes the platform inject a
+ * `<div data-sw-preloader class="loading sw-preloader-<name>">` as the first body child and ship the
+ * preloader runtime (overlay shown on load + during navigation, then cleared). 'logo-*' variants use
+ * the site logo (company.logo), falling back to a built-in brand mark. Source-of-truth for the enum
+ * below + the editor picker + the markup/CSS in @sitewright/blocks preloader.ts.
+ */
+export const PRELOADER_EFFECTS = [
+  'spinner',
+  'dual',
+  'dots',
+  'bars',
+  'pulse',
+  'progress',
+  'logo-pulse',
+  'logo-draw',
+  'logo-sheen',
+] as const;
+export type PreloaderEffect = (typeof PRELOADER_EFFECTS)[number];
+
+/**
  * Site-wide nav/button appearance (the no-code "effects" picker). 'none' (or absent) = no effect —
  * the author keeps full freedom to apply a scheme class per element, or write a custom scheme via
  * `criticalCss`. The chosen schemes become `<body>` classes at render (see {@link websiteThemeClasses}).
@@ -245,6 +265,9 @@ export type ButtonEffect = (typeof BUTTON_EFFECTS)[number];
 export const WebsiteThemeSchema = z.object({
   navEffect: z.enum(['none', 'pill', 'underline', 'soft', 'bar', 'ghost']).optional(),
   buttonEffect: z.enum(['none', 'lift', 'glow', 'sheen', 'press', 'pulse', 'ring']).optional(),
+  preloaderEffect: z
+    .enum(['none', 'spinner', 'dual', 'dots', 'bars', 'pulse', 'progress', 'logo-pulse', 'logo-draw', 'logo-sheen'])
+    .optional(),
 });
 export type WebsiteTheme = z.infer<typeof WebsiteThemeSchema>;
 

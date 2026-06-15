@@ -16,6 +16,22 @@ describe('renderDocument — document shell', () => {
     expect(doc).toContain('</html>');
   });
 
+  it('injects the preloader as the FIRST body child + a noscript hide, when provided', () => {
+    const doc = renderDocument(page, { brand, bodyHtml: '<h1>Hi</h1>', preloader: '<div data-sw-preloader class="loading sw-preloader-spinner"></div>' });
+    const bodyOpen = doc.indexOf('<body');
+    const pl = doc.indexOf('data-sw-preloader');
+    const main = doc.indexOf('<main id="page-content">');
+    expect(pl).toBeGreaterThan(bodyOpen);
+    expect(pl).toBeLessThan(main); // before <main> (and before nav slots) → first body child
+    expect(doc).toContain('<noscript><style>[data-sw-preloader]{display:none!important}</style></noscript>');
+  });
+
+  it('omits the preloader (and its noscript) when none is provided', () => {
+    const doc = renderDocument(page, { brand, bodyHtml: '<h1>Hi</h1>' });
+    expect(doc).not.toContain('data-sw-preloader');
+    expect(doc).not.toContain('noscript');
+  });
+
   it('prepends the base layer (modern-normalize + platform defaults) ahead of the skeleton', () => {
     const doc = renderDocument(page, { brand });
     const head = doc.slice(0, doc.indexOf('</head>'));

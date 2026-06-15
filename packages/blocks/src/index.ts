@@ -2,6 +2,7 @@ export * from './animations.js';
 export * from './lazyload.js';
 export * from './ripple.js';
 export * from './cart.js';
+export * from './preloader.js';
 export * from './escape.js';
 export * from './url.js';
 export * from './sanitize-rich.js';

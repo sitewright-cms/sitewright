@@ -2,16 +2,16 @@ import { useState } from 'react';
 import { motion } from 'motion/react';
 import { NAV_EFFECTS, BUTTON_EFFECTS, type JsonValue, type NavEffect, type ButtonEffect } from '@sitewright/schema';
 import { newStr, type Patch, type SettingsForm } from './model';
-import { Field, GlassCard, SubLabel } from './ui';
+import { Field, GlassCard } from './ui';
 import { SectionHelp } from '../ui/SectionHelp';
-import { Globe, Sparkles, Paintbrush, Code, Braces, PanelTop, Smartphone, PanelLeft, PanelRight, PanelBottom, ArrowDownToLine, Signpost, ShoppingCart, Languages } from 'lucide-react';
+import { Globe, Sparkles, Paintbrush, Code, Braces, PanelTop, Smartphone, PanelLeft, PanelRight, PanelBottom, ArrowDownToLine, Signpost, ShoppingCart, Languages, Pencil } from 'lucide-react';
 import { CodeField } from '../ui/CodeField';
 import { RedirectsEditor } from './RedirectsEditor';
-import { ShopChannelsEditor } from './ShopChannelsEditor';
+import { ShopSettingsModal } from './ShopSettingsModal';
 import { LocaleManager } from './LocaleManager';
 import { TranslationsField } from './TranslationsField';
 import { WebsiteDataModal } from './WebsiteDataModal';
-import { ghostButton, glassInput, fieldLabel } from '../../theme';
+import { ghostButton, glassInput, fieldLabel, toggleInput } from '../../theme';
 import { cardStagger, cardVariants } from './motion';
 
 /** Shared bindings hint for the validated skeleton-slot editors. */
@@ -43,6 +43,7 @@ export function WebsiteSection({
   onLocalesChanged?: () => void;
 }) {
   const [dataOpen, setDataOpen] = useState(false);
+  const [shopOpen, setShopOpen] = useState(false);
   // The configured locales, default first (deduped) — for the locale manager.
   const localeCodes = Array.from(
     new Set([form.defaultLocale, ...form.locales.map((l) => l.value).filter(Boolean)]),
@@ -248,40 +249,44 @@ export function WebsiteSection({
         tooltip="A front-end cart for static sites: drop {{sw-cart}} + {{sw-add-to-cart …}} in a page (or use the global:shop template), and the cart submits an order through the channels below. Prices are non-authoritative — the cart sends an order inquiry; you confirm availability and collect payment."
         wide
       >
-        <SubLabel>Currency</SubLabel>
-        <div className="grid gap-3 sm:grid-cols-4">
-          <Field label="Currency code" value={form.shopCurrencyCode} onChange={(v) => patch({ shopCurrencyCode: v })} placeholder="USD" />
-          <Field label="Currency symbol" value={form.shopCurrencySymbol} onChange={(v) => patch({ shopCurrencySymbol: v })} placeholder="$" />
-          <label className="block">
-            <span className={fieldLabel}>Position</span>
-            <select
-              className={glassInput}
-              aria-label="Symbol position"
-              value={form.shopCurrencyPosition}
-              onChange={(e) => patch({ shopCurrencyPosition: e.target.value as 'before' | 'after' })}
-            >
-              <option value="before">Before ($9.99)</option>
-              <option value="after">After (9.99 €)</option>
-            </select>
-          </label>
-          <Field label="Decimals" value={form.shopCurrencyDecimals} onChange={(v) => patch({ shopCurrencyDecimals: v })} type="number" placeholder="2" />
-        </div>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          <Field label="Add-to-cart button label" value={form.shopAddToCartLabel} onChange={(v) => patch({ shopAddToCartLabel: v })} placeholder="Add to cart" />
-          <Field label="Cart drawer title" value={form.shopTitle} onChange={(v) => patch({ shopTitle: v })} placeholder="Your cart" />
-        </div>
-        <div className="mt-3">
-          <Field
-            label="Cart note (shown above checkout)"
-            value={form.shopNote}
-            onChange={(v) => patch({ shopNote: v })}
-            placeholder="Prices are indicative. This sends an order request — the seller confirms availability and final price."
+        {/* Master switch. OFF (default) collapses the whole section — no settings, no Edit — and gates the
+            cart helpers (they render nothing) + the translation table's reserved cart-string ghost rows. */}
+        <label className="flex items-center justify-between gap-3">
+          <span className="min-w-0">
+            <span className={fieldLabel}>Enable shop</span>
+            <span className="block text-[11px] text-slate-400">
+              A front-end cart for static sites. When off, <code>{'{{sw-cart}}'}</code> /{' '}
+              <code>{'{{sw-add-to-cart}}'}</code> render nothing.
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            role="switch"
+            aria-label="Enable shop"
+            className={toggleInput}
+            checked={form.shopEnabled}
+            onChange={(e) => patch({ shopEnabled: e.target.checked })}
           />
-        </div>
-        <div className="mt-4">
-          <SubLabel>Checkout channels</SubLabel>
-          <ShopChannelsEditor rows={form.shopChannels} onChange={(shopChannels) => patch({ shopChannels })} />
-        </div>
+        </label>
+        {form.shopEnabled && (
+          <div className="mt-3">
+            <button
+              type="button"
+              aria-label="Edit shop settings"
+              onClick={() => setShopOpen(true)}
+              className="waves-effect group flex w-full items-center justify-between gap-3 rounded-xl border border-white/60 bg-white/50 px-3 py-2.5 text-left shadow-sm backdrop-blur-xl transition hover:border-indigo-400 hover:bg-white hover:shadow-md"
+            >
+              <span className="min-w-0">
+                <span className="block truncate text-xs font-medium text-slate-700">Shop settings</span>
+                <span className="block text-[11px] text-slate-400">Currency, labels, checkout channels</span>
+              </span>
+              <span className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 transition group-hover:border-indigo-400 group-hover:text-indigo-600">
+                <Pencil className="h-4 w-4" /> Edit
+              </span>
+            </button>
+          </div>
+        )}
+        {shopOpen && <ShopSettingsModal form={form} patch={patch} onClose={() => setShopOpen(false)} />}
       </GlassCard>
 
       <GlassCard title="Localization" icon={<Languages className="h-4 w-4" />} wide>
@@ -304,6 +309,7 @@ export function WebsiteSection({
           rows={form.translations}
           localeCodes={localeCodes}
           defaultLocale={form.defaultLocale}
+          shopEnabled={form.shopEnabled}
           onChange={(translations) => patch({ translations })}
         />
       </GlassCard>

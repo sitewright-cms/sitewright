@@ -8,6 +8,8 @@ interface TranslationsFieldProps {
   rows: TranslationRow[];
   localeCodes: string[];
   defaultLocale: string;
+  /** Whether the shop is enabled — gates the reserved cart-string ghost rows in the editor. */
+  shopEnabled?: boolean;
   onChange: (rows: TranslationRow[]) => void;
 }
 
@@ -17,7 +19,7 @@ interface TranslationsFieldProps {
  * in a large modal (the grid is too wide/tall to sit inline). Edits flow straight through `onChange`
  * into the settings form draft (saved with everything else), so the modal needs no own save/cancel.
  */
-export function TranslationsField({ rows, localeCodes, defaultLocale, onChange }: TranslationsFieldProps) {
+export function TranslationsField({ rows, localeCodes, defaultLocale, shopEnabled, onChange }: TranslationsFieldProps) {
   const [open, setOpen] = useState(false);
   const phrases = rows.length;
   const summary =
@@ -44,7 +46,7 @@ export function TranslationsField({ rows, localeCodes, defaultLocale, onChange }
       {open && (
         <Modal title="Translations" size="2xl" onClose={() => setOpen(false)}>
           <div className="p-5">
-            <TranslationsEditor rows={rows} localeCodes={localeCodes} defaultLocale={defaultLocale} onChange={onChange} />
+            <TranslationsEditor rows={rows} localeCodes={localeCodes} defaultLocale={defaultLocale} shopEnabled={shopEnabled} onChange={onChange} />
           </div>
         </Modal>
       )}

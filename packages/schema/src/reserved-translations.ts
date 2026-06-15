@@ -73,7 +73,7 @@ export const RESERVED_TRANSLATION_GROUPS: readonly ReservedTranslationGroup[] = 
       },
       { key: 'cart_added', label: '“Added” confirmation', default: 'Added' },
       { key: 'cart_empty', label: 'Empty-cart message', default: 'Your cart is empty.' },
-      { key: 'cart_subtotal', label: 'Subtotal label', default: 'Subtotal' },
+      { key: 'cart_subtotal', label: 'Cart total label', default: 'Total' },
       { key: 'cart_clear', label: 'Clear-cart button', default: 'Clear cart' },
       { key: 'cart_sent', label: 'Order-sent confirmation', default: 'Order sent — we will be in touch.' },
       { key: 'cart_order_lead', label: 'Order message lead-in', default: 'I’d like to order:' },

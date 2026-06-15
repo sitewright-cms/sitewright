@@ -61,7 +61,10 @@ export const CART_CSS = [
   // sets `max-width:calc(100% - 6px - 2em)` AND `max-height:calc(100% - 6px - 2em)` (~38px at a 16px font),
   // so without `max-height` the drawer renders ~38px short of the viewport bottom despite `height:100vh`.
   // dvh (with a vh fallback) makes "full height" track the *visible* viewport on mobile browser chrome.
-  '[data-sw-cart] dialog{position:fixed;inset:0 0 0 auto;margin:0;width:min(92vw,24rem);max-width:100vw;max-height:100vh;max-height:100dvh;border:0;padding:0;background:#fff;box-shadow:-8px 0 32px rgba(0,0,0,.25);transform:translateX(100%);transition:transform .3s cubic-bezier(.4,0,.2,1),overlay .3s allow-discrete,display .3s allow-discrete}',
+  // Solid DEFAULT surface: a white background + an explicit dark text colour (rather than inheriting the
+  // page's, which may be light-on-light here) and `color-scheme:light` so native form controls render
+  // light. All chrome neutrals below are SOLID (non-transparent); only shadows/backdrop/ripple stay alpha.
+  '[data-sw-cart] dialog{position:fixed;inset:0 0 0 auto;margin:0;width:min(92vw,24rem);max-width:100vw;max-height:100vh;max-height:100dvh;border:0;padding:0;background:#fff;color:#1f2937;color-scheme:light;box-shadow:-8px 0 32px rgba(0,0,0,.25);transform:translateX(100%);transition:transform .3s cubic-bezier(.4,0,.2,1),overlay .3s allow-discrete,display .3s allow-discrete}',
   // flex/height live on [open] ONLY — a closed <dialog> must keep its UA display:none (else it renders
   // off-screen but counts as visible). When open it is a full-height vertical flex column.
   '[data-sw-cart] dialog[open]{transform:translateX(0);height:100vh;height:100dvh;display:flex;flex-direction:column}',
@@ -70,7 +73,7 @@ export const CART_CSS = [
   '[data-sw-cart] dialog[open]::backdrop{opacity:1}',
   '@starting-style{[data-sw-cart] dialog[open]::backdrop{opacity:0}}',
   '@media (prefers-reduced-motion:reduce){[data-sw-cart] dialog,[data-sw-cart] dialog::backdrop{transition:none}}',
-  '[data-sw-cart] [data-sw-part="head"]{flex:none;display:flex;align-items:center;justify-content:space-between;padding:1rem 1.25rem;border-bottom:1px solid rgba(0,0,0,.12)}',
+  '[data-sw-cart] [data-sw-part="head"]{flex:none;display:flex;align-items:center;justify-content:space-between;padding:1rem 1.25rem;border-bottom:1px solid #e5e7eb}',
   '[data-sw-cart] [data-sw-part="head"] h2{margin:0;font-size:1.125rem}',
   '[data-sw-cart] [data-sw-part="close"]{border:0;background:none;font-size:1.5rem;line-height:1;cursor:pointer}',
   // The items list FILLS the space between the fixed head and foot (flex:1) and scrolls when it overflows.
@@ -78,31 +81,43 @@ export const CART_CSS = [
   // default min-height:auto would otherwise blow the drawer past 100vh on a long cart). This replaces a
   // fragile `max-height:calc(100% - 16rem)` magic constant that left a dead gap on a short cart.
   '[data-sw-cart] [data-sw-part="items"]{list-style:none;margin:0;padding:.5rem 1.25rem;flex:1 1 auto;min-height:0;overflow-y:auto}',
-  '[data-sw-cart] [data-sw-part="line"]{display:grid;grid-template-columns:1fr auto;gap:.25rem .75rem;align-items:center;padding:.75rem 0;border-bottom:1px solid rgba(0,0,0,.08)}',
-  '[data-sw-cart] [data-sw-part="line-name"]{font-weight:600}',
-  '[data-sw-cart] [data-sw-part="line-price"]{color:rgba(0,0,0,.6);font-size:.875rem}',
-  '[data-sw-cart] [data-sw-part="qty"]{display:flex;align-items:center;gap:.5rem}',
-  '[data-sw-cart] [data-sw-part="qty"] button{width:1.75rem;height:1.75rem;border:1px solid rgba(0,0,0,.2);border-radius:.375rem;background:#fff;cursor:pointer;font-size:1rem;line-height:1}',
-  '[data-sw-cart] [data-sw-part="remove"]{border:0;background:none;color:#b00020;cursor:pointer;font-size:.875rem}',
-  '[data-sw-cart] [data-sw-part="empty"]{padding:2rem 1.25rem;color:rgba(0,0,0,.6);text-align:center}',
+  // A cart line: an optional thumbnail beside a body that stacks the name over ONE controls row
+  // (base price · qty stepper · remove · line subtotal). Solid neutral divider.
+  '[data-sw-cart] [data-sw-part="line"]{display:flex;gap:.75rem;align-items:flex-start;padding:.75rem 0;border-bottom:1px solid #f0f0f0}',
+  // Product thumbnail: a solid neutral tile (small padding, slightly-rounded border) framing the image.
+  '[data-sw-cart] [data-sw-part="thumb"]{flex:none;width:3.5rem;height:3.5rem;padding:.25rem;border:1px solid #e5e7eb;border-radius:.5rem;background:#f3f4f6;display:flex;align-items:center;justify-content:center}',
+  '[data-sw-cart] [data-sw-part="thumb"] img{width:100%;height:100%;object-fit:cover;border-radius:.25rem;display:block}',
+  '[data-sw-cart] [data-sw-part="line-body"]{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:.4rem}',
+  '[data-sw-cart] [data-sw-part="line-name"]{font-weight:600;line-height:1.3}',
+  // The controls row; the line subtotal is pushed to the right edge via margin-left:auto.
+  '[data-sw-cart] [data-sw-part="line-controls"]{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}',
+  '[data-sw-cart] [data-sw-part="line-price"]{color:#6b7280;font-size:.875rem}',
+  '[data-sw-cart] [data-sw-part="line-subtotal"]{margin-left:auto;font-weight:600;font-size:.9375rem}',
+  '[data-sw-cart] [data-sw-part="qty"]{display:flex;align-items:center;gap:.4rem}',
+  '[data-sw-cart] [data-sw-part="qty"] button{display:flex;align-items:center;justify-content:center;width:1.625rem;height:1.625rem;border:1px solid #d1d5db;border-radius:.375rem;background:#fff;color:#1f2937;cursor:pointer;font-size:1rem;line-height:1}',
+  '[data-sw-cart] [data-sw-part="qty"]>span{min-width:1.25rem;text-align:center;font-variant-numeric:tabular-nums}',
+  // Remove = a red trash icon button (square hit area; light-red hover wash).
+  '[data-sw-cart] [data-sw-part="remove"]{display:inline-flex;align-items:center;justify-content:center;width:1.75rem;height:1.75rem;padding:0;border:0;border-radius:.375rem;background:none;color:#dc2626;cursor:pointer;transition:background .15s ease}',
+  '[data-sw-cart] [data-sw-part="remove"] svg{width:1.125rem;height:1.125rem}',
+  '[data-sw-cart] [data-sw-part="empty"]{padding:2rem 1.25rem;color:#6b7280;text-align:center}',
   // The foot is a fixed-size flex item; the list (flex:1) above it consumes the free space, so the foot
   // pins to the bottom without needing `margin-top:auto`. flex:none → it never shrinks the checkout area.
-  '[data-sw-cart] [data-sw-part="foot"]{flex:none;padding:1rem 1.25rem;border-top:1px solid rgba(0,0,0,.12)}',
+  '[data-sw-cart] [data-sw-part="foot"]{flex:none;padding:1rem 1.25rem;border-top:1px solid #e5e7eb}',
   '[data-sw-cart] [data-sw-part="subtotal"]{display:flex;justify-content:space-between;font-weight:700;margin-bottom:.25rem}',
-  '[data-sw-cart] [data-sw-part="note"]{font-size:.75rem;color:rgba(0,0,0,.55);margin:.25rem 0 .75rem}',
+  '[data-sw-cart] [data-sw-part="note"]{font-size:.75rem;color:#6b7280;margin:.25rem 0 .75rem}',
   '[data-sw-cart] [data-sw-part="channel"]{display:block;width:100%;border:0;border-radius:.375rem;padding:.625rem 1rem;margin-top:.5rem;background:var(--sw-color-primary,#0a7a5a);color:#fff;cursor:pointer;text-align:center;font:inherit;transition:filter .15s ease}',
-  '[data-sw-cart] [data-sw-part="clear"]{display:block;width:100%;border:0;background:none;color:rgba(0,0,0,.55);cursor:pointer;margin-top:.5rem;font-size:.875rem}',
+  '[data-sw-cart] [data-sw-part="clear"]{display:block;width:100%;border:0;background:none;color:#6b7280;cursor:pointer;margin-top:.5rem;font-size:.875rem}',
   // Inline order form (the `form` channel).
   '[data-sw-cart] [data-sw-part="order"]{margin-top:.75rem}',
   '[data-sw-cart] [data-sw-part="order-field"]{display:block;margin-bottom:.5rem;font-size:.8125rem}',
   '[data-sw-cart] [data-sw-part="order-field"]>span{display:block;margin-bottom:.15rem}',
-  '[data-sw-cart] [data-sw-part="order-field"] input,[data-sw-cart] [data-sw-part="order-field"] textarea{width:100%;padding:.4rem .5rem;border:1px solid rgba(0,0,0,.2);border-radius:.375rem;font:inherit}',
+  '[data-sw-cart] [data-sw-part="order-field"] input,[data-sw-cart] [data-sw-part="order-field"] textarea{width:100%;padding:.4rem .5rem;border:1px solid #d1d5db;border-radius:.375rem;font:inherit}',
   '[data-sw-cart] [data-sw-part="order-submit"]{display:block;width:100%;border:0;border-radius:.375rem;padding:.5rem 1rem;margin-top:.25rem;background:var(--sw-color-primary,#0a7a5a);color:#fff;cursor:pointer;font:inherit;transition:filter .15s ease}',
   '[data-sw-cart] [data-sw-part="order-submit"][disabled]{opacity:.6;cursor:progress}',
   '[data-sw-cart] [data-sw-part="order-status"]{margin:.5rem 0 0;font-size:.8125rem}',
   // Collapsible per-channel input form (whatsapp/mailto with custom fields). Reuses the order-field
   // input styling above; hidden until the channel button toggles it open.
-  '[data-sw-cart] [data-sw-part="channel-form"]{margin:.25rem 0;padding:.625rem .75rem;border:1px solid rgba(0,0,0,.12);border-radius:.375rem;background:rgba(0,0,0,.02)}',
+  '[data-sw-cart] [data-sw-part="channel-form"]{margin:.25rem 0;padding:.625rem .75rem;border:1px solid #e5e7eb;border-radius:.375rem;background:#f9fafb}',
   '[data-sw-cart] [data-sw-part="channel-form"][hidden]{display:none}',
   '[data-sw-cart] [data-sw-part="channel-submit"]{display:block;width:100%;border:0;border-radius:.375rem;padding:.5rem 1rem;margin-top:.25rem;background:var(--sw-color-primary,#0a7a5a);color:#fff;cursor:pointer;font:inherit;transition:filter .15s ease}',
   '[data-sw-cart] [data-sw-part="channel-submit"]:hover{filter:brightness(.92)}',
@@ -123,9 +138,9 @@ export const CART_CSS = [
   '[data-sw-cart] [data-sw-part="close"]{transition:color .15s ease,transform .15s ease}',
   '[data-sw-cart] [data-sw-part="close"]:hover{color:#b00020;transform:rotate(90deg)}',
   '[data-sw-cart] [data-sw-part="qty"] button{transition:background .15s ease,border-color .15s ease}',
-  '[data-sw-cart] [data-sw-part="qty"] button:hover{background:rgba(0,0,0,.06);border-color:rgba(0,0,0,.35)}',
-  '[data-sw-cart] [data-sw-part="clear"]:hover{color:rgba(0,0,0,.8);text-decoration:underline}',
-  '[data-sw-cart] [data-sw-part="remove"]:hover{text-decoration:underline}',
+  '[data-sw-cart] [data-sw-part="qty"] button:hover{background:#f3f4f6;border-color:#9ca3af}',
+  '[data-sw-cart] [data-sw-part="clear"]:hover{color:#374151;text-decoration:underline}',
+  '[data-sw-cart] [data-sw-part="remove"]:hover{background:#fee2e2}',
   // Self-contained "waves" ripple (the platform ripple runtime only enhances elements present at load,
   // so the runtime-built cart wires its own — scoped to the cart so it never double-binds page buttons).
   '[data-sw-cart] .waves-effect{position:relative;overflow:hidden;-webkit-tap-highlight-color:transparent}',
@@ -187,7 +202,7 @@ export const CART_JS = `(function(){
       addedLabel:mount.getAttribute('data-added-label')||'Added',
       note:mount.getAttribute('data-note')||'Prices are indicative. This sends an order request \\u2014 the seller confirms availability and final price.',
       emptyLabel:mount.getAttribute('data-empty-label')||'Your cart is empty.',
-      subtotalLabel:mount.getAttribute('data-subtotal-label')||'Subtotal',
+      subtotalLabel:mount.getAttribute('data-subtotal-label')||'Total',
       clearLabel:mount.getAttribute('data-clear-label')||'Clear cart',
       sentLabel:mount.getAttribute('data-sent-label')||'Order sent \\u2014 we will be in touch.',
       orderLead:mount.getAttribute('data-order-lead')||'I\\u2019d like to order:', // localized order-summary lead-in
@@ -288,6 +303,16 @@ export const CART_JS = `(function(){
     var p=document.createElementNS(ns,'path');
     p.setAttribute('d','M6 6h15l-1.5 9h-12z M6 6l-2-3H2 M9 21a1 1 0 100-2 1 1 0 000 2z M18 21a1 1 0 100-2 1 1 0 000 2z');
     svg.appendChild(p);return svg;
+  }
+  // ---- trash icon (inline SVG) for the line remove button ----
+  function trashIcon(){
+    var ns='http://www.w3.org/2000/svg';
+    var svg=document.createElementNS(ns,'svg');
+    svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('fill','none');svg.setAttribute('stroke','currentColor');
+    svg.setAttribute('stroke-width','2');svg.setAttribute('stroke-linecap','round');svg.setAttribute('stroke-linejoin','round');svg.setAttribute('aria-hidden','true');
+    var d=['M3 6h18','M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6','M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2','M10 11v6','M14 11v6'];
+    for(var i=0;i<d.length;i++){var pa=document.createElementNS(ns,'path');pa.setAttribute('d',d[i]);svg.appendChild(pa);}
+    return svg;
   }
   // ---- enhance one mount ----
   function enhance(mount){
@@ -437,8 +462,13 @@ export const CART_JS = `(function(){
       for(var i=0;i<items.length;i++){
         (function(it){
           var li=part('li','line');
-          var info=mk('div');var nm=part('div','line-name',it.name);var pr=part('div','line-price',money(it.price,cfg)+' each');
-          info.appendChild(nm);info.appendChild(pr);
+          // Optional product thumbnail (only when the item carries an image URL; src via setAttribute, never HTML).
+          if(it.image){var thumb=part('div','thumb');var img=document.createElement('img');img.alt='';img.loading='lazy';img.referrerPolicy='no-referrer';img.onerror=function(){if(thumb.parentNode){thumb.parentNode.removeChild(thumb);}};img.src=it.image;thumb.appendChild(img);li.appendChild(thumb);}
+          var body=part('div','line-body');
+          body.appendChild(part('div','line-name',it.name));
+          // One controls row under the title: base price, qty stepper, remove (trash), then the line subtotal.
+          var row=part('div','line-controls');
+          var pr=part('span','line-price',money(it.price,cfg));
           var ctrl=part('div','qty');
           var minus=mk('button',null,'\\u2212');minus.type='button';minus.setAttribute('aria-label','Decrease quantity');ripple(minus);
           var qv=mk('span',null,String(it.qty));
@@ -446,9 +476,11 @@ export const CART_JS = `(function(){
           minus.addEventListener('click',function(){it.qty-=1;if(it.qty<1){removeSku(it.sku);}persist();});
           plus.addEventListener('click',function(){if(it.qty<MAX_QTY){it.qty+=1;}persist();});
           ctrl.appendChild(minus);ctrl.appendChild(qv);ctrl.appendChild(plus);
-          var rm=part('button','remove','Remove');rm.type='button';ripple(rm);
+          var rm=part('button','remove');rm.type='button';rm.setAttribute('aria-label','Remove');rm.appendChild(trashIcon());ripple(rm);
           rm.addEventListener('click',function(){removeSku(it.sku);persist();});
-          li.appendChild(info);li.appendChild(ctrl);li.appendChild(rm);
+          var sub=part('span','line-subtotal',money(lineTotal(it,cfg),cfg));
+          row.appendChild(pr);row.appendChild(ctrl);row.appendChild(rm);row.appendChild(sub);
+          body.appendChild(row);li.appendChild(body);
           list.appendChild(li);
         })(items[i]);
       }
@@ -474,9 +506,17 @@ export const CART_JS = `(function(){
       toggle.removeAttribute('data-sw-pulse');void toggle.offsetWidth;toggle.setAttribute('data-sw-pulse','1');
     }
 
-    function closeDrawer(){if(dialog.close){dialog.close();}else{dialog.removeAttribute('open');}}
-    toggle.addEventListener('click',function(){if(typeof dialog.showModal==='function'){dialog.showModal();}else{dialog.setAttribute('open','');}});
+    // Lock PAGE scroll while the drawer is open (the modal <dialog> traps focus but does not stop the
+    // page behind from scrolling). Guarded + idempotent; restores the prior inline overflow on close.
+    var scrollLocked=false,prevOverflow='';
+    function lockScroll(){if(scrollLocked){return;}scrollLocked=true;prevOverflow=document.documentElement.style.overflow;document.documentElement.style.overflow='hidden';}
+    function unlockScroll(){if(!scrollLocked){return;}scrollLocked=false;document.documentElement.style.overflow=prevOverflow;}
+    function closeDrawer(){if(dialog.close){dialog.close();}else{dialog.removeAttribute('open');unlockScroll();}}
+    // Open first, THEN lock scroll — so a throwing showModal() (e.g. sandboxed iframe) can't strand overflow:hidden.
+    toggle.addEventListener('click',function(){if(typeof dialog.showModal==='function'){dialog.showModal();}else{dialog.setAttribute('open','');}lockScroll();});
     close.addEventListener('click',closeDrawer);
+    // 'close' fires for Esc + dialog.close() (button/backdrop) → always restore scroll there.
+    dialog.addEventListener('close',unlockScroll);
     // Only the BACKDROP closes on a click — a click on the drawer's own empty space must NOT. A native
     // <dialog> reports e.target===dialog for both, so distinguish by the point being outside the panel
     // rect. (Esc still closes natively; both paths trigger the slide-out via the CSS transition.)

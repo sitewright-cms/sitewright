@@ -133,16 +133,42 @@ describe('component registry', () => {
     expect(css).toContain('translateY(-24px)');
     expect(css).toContain('allow-discrete');
     expect(css).toContain('@starting-style');
-    // Reduced-motion drops straight to a plain show/hide.
+    // Reduced-motion drops straight to a plain show/hide — INCLUDING the ::backdrop fade/blur.
     expect(css).toContain('prefers-reduced-motion:reduce');
+    const rm = css.slice(css.indexOf('@media (prefers-reduced-motion:reduce)'));
+    expect(rm).toContain('dialog[data-sw-component="modal"]::backdrop');
   });
 
   it('Modal is viewport-centered (position:fixed) so opening never scrolls the page', () => {
     const css = componentAssets(['Modal']).css;
     // position:fixed + inset:0 + margin:auto centers in the viewport; position:relative would put
-    // the dialog in document flow and let showModal() scroll-into-view jump the page to it.
-    expect(css).toContain('[data-sw-block="Modal"] dialog{position:fixed;margin:auto;inset:0;');
-    expect(css).not.toContain('[data-sw-block="Modal"] dialog{position:relative');
+    // the dialog in document flow and let showModal() scroll-into-view jump the page to it. The
+    // selector covers BOTH forms (the dialog as a descendant of the marker, or the dialog IS it).
+    // The rule fires for both forms via a combined selector (descendant dialog OR the dialog itself).
+    expect(css).toContain('[data-sw-component="modal"] dialog,dialog[data-sw-component="modal"]{position:fixed;margin:auto;inset:0;');
+    expect(css).not.toContain('position:relative');
+  });
+
+  it('Modal styling keys on data-sw-component (works on a bare <dialog>, no data-sw-block)', () => {
+    const css = componentAssets(['Modal']).css;
+    // The lighter form puts the marker on the <dialog> itself; the legacy wrapper form has it on an
+    // ancestor. Both are covered by data-sw-component selectors, so no parallel data-sw-block needed.
+    expect(css).toContain('dialog[data-sw-component="modal"]');
+    expect(css).not.toContain('data-sw-block');
+  });
+
+  it('Modal lighter form: a <dialog data-sw-component="modal" id> opened by href="#id" / data-sw-modal', () => {
+    const js = componentAssets(['Modal']).js;
+    // The runtime treats a marked <dialog> as the root and wires external triggers by id.
+    expect(js).toContain("tagName==='DIALOG'");
+    expect(js).toContain('a[href="#');
+    expect(js).toContain('data-sw-modal');
+    // Anchor triggers get preventDefault so the fragment nav doesn't fire; the legacy
+    // data-sw-part="open" trigger still works.
+    expect(js).toContain("t.tagName==='A'");
+    expect(js).toContain('[data-sw-part="open"]');
+    // The marked dialog is still detected by the source scanner (asset shipping).
+    expect(componentTypesInSource('<dialog id="m" data-sw-component="modal"></dialog>')).toContain('Modal');
   });
 
   it('Modal locks page scroll while open and restores it on close', () => {
@@ -186,7 +212,7 @@ describe('component registry', () => {
     const css = componentAssets(['Modal']).css;
     // Appearance defaults wrapped in :where() (specificity 0) → utility classes on the dialog
     // override them without !important; bg/text come from the global theme vars; 1.5rem padding.
-    expect(css).toContain(':where([data-sw-block="Modal"] dialog)');
+    expect(css).toContain(':where([data-sw-component="modal"] dialog,dialog[data-sw-component="modal"])');
     expect(css).toContain('var(--sw-color-base-100');
     expect(css).toContain('var(--sw-color-base-content');
     expect(css).toContain('padding:1.5rem');

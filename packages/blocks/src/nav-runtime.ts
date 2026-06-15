@@ -87,7 +87,8 @@ export function decorateNav<T extends Record<string, NavItemLike[]>>(nav: T): T 
 /**
  * Client runtime for nav-placeholder targets. On an in-page `#id` link click: opens a matching
  * `<dialog>` as a modal (a "global modal" placeholder), else smooth-scrolls to that section.
- * Honors `prefers-reduced-motion`, closes a modal on backdrop click (Escape is native), and on
+ * Honors `prefers-reduced-motion`, closes a modal on backdrop click (Escape is native; unless the
+ * dialog/owner opts out with data-backdrop-close="false"), and on
  * load honors a `#hash` (open/scroll). Shipped only when a published link placeholder has a `#`
  * target. Self-contained IIFE, mirroring RIPPLE_JS / ANIMATION_JS.
  */
@@ -118,6 +119,9 @@ export const NAV_LINK_JS = `(function(){
   document.addEventListener('click', function(e){
     var d = e.target;
     if (d && d.tagName === 'DIALOG' && d.open) {
+      // Respect an opt-out on the dialog or its owning component (the Modal component's
+      // data-backdrop-close="false"); without this the global handler would close it anyway.
+      if (d.closest && d.closest('[data-backdrop-close="false"]')) return;
       var r = d.getBoundingClientRect();
       if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) d.close();
     }

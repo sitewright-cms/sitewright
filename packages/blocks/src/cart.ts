@@ -182,6 +182,7 @@ export const CART_JS = `(function(){
       subtotalLabel:mount.getAttribute('data-subtotal-label')||'Subtotal',
       clearLabel:mount.getAttribute('data-clear-label')||'Clear cart',
       sentLabel:mount.getAttribute('data-sent-label')||'Order sent \\u2014 we will be in touch.',
+      orderLead:mount.getAttribute('data-order-lead')||'I\\u2019d like to order:', // localized order-summary lead-in
       brand:mount.getAttribute('data-brand')||'', // merchant brand/business name (for the email greeting)
       channels:channels
     };
@@ -229,7 +230,7 @@ export const CART_JS = `(function(){
   function orderMessage(ch,items,cfg,values){
     var blocks=[];
     if(ch.kind==='mailto'){
-      var greet=cfg.brand?('Hi '+cfg.brand+' \\u2014 I\\u2019d like to order:'):'I\\u2019d like to order:';
+      var greet=cfg.brand?('Hi '+cfg.brand+' \\u2014 '+cfg.orderLead):cfg.orderLead;
       blocks.push(greet+'\\n'+orderText(items,cfg));
     }else{
       if(ch.intro){blocks.push(ch.intro);}

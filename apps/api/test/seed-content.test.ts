@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { validateTemplate } from '@sitewright/blocks';
 import { GLOBAL_TEMPLATES, GLOBAL_SNIPPET_PARTIALS, WIDGET_PARTIALS, WIDGET_MANIFESTS } from '@sitewright/core';
 import type { Page } from '@sitewright/schema';
+import { RESERVED_TRANSLATION_GROUPS } from '@sitewright/schema';
 import {
   examplePages,
   pagesEn,
@@ -10,6 +11,7 @@ import {
   EXAMPLE_FORMS,
   EXAMPLE_SETTINGS,
   CHROME_STRINGS,
+  CHROME_TRANSLATIONS,
   exampleEntries,
 } from '../src/seed/index.js';
 
@@ -175,6 +177,20 @@ describe('seed demo content', () => {
     expect(referenced.length).toBeGreaterThan(0);
     for (const key of new Set(referenced)) {
       expect(enKeys.includes(key), `strings key "${key}"`).toBe(true);
+    }
+  });
+
+  it('reserved-translation registry ↔ seed: every reserved key is seeded, and its EN value is the registry default', () => {
+    // The RESERVED_TRANSLATION registry (@sitewright/schema) is the single source of truth for the
+    // platform's built-in English UI strings (the cart helpers' fallback + the editor ghost rows). The
+    // example's EN chrome must not drift from it, so a populated example matches what an empty project
+    // renders by fallback.
+    for (const group of RESERVED_TRANSLATION_GROUPS) {
+      for (const { key, default: def } of group.keys) {
+        const cell = CHROME_TRANSLATIONS[key];
+        expect(cell, `reserved key "${key}" is seeded in the chrome catalog`).toBeDefined();
+        expect(cell!.en, `reserved key "${key}" EN value matches the registry default`).toBe(def);
+      }
     }
   });
 

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Modal } from '../ui/Modal';
+import { SearchField } from '../ui/SearchField';
 import { useToast } from '../ui/Toast';
 import { useCopy } from '../ui/useCopy';
 import { ghostButton, glassPanel } from '../../theme';
@@ -108,13 +109,12 @@ export function ReferenceModal({
         </nav>
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
-          <input
-            aria-label={`Search ${title}`}
+          <SearchField
+            ariaLabel={`Search ${title}`}
             autoFocus
-            className="w-full rounded-lg border border-white/60 bg-white/70 px-3 py-2 text-sm sw-brand-focus outline-none"
             placeholder={searchPlaceholder}
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={setQuery}
           />
           <div className="min-h-0 flex-1 overflow-auto pr-1">
             {total === 0 ? (

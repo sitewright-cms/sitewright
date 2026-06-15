@@ -40,6 +40,17 @@ describe('baseStyles — platform base stylesheet', () => {
       expect(layerOpen).toBeGreaterThan(-1);
       expect(resetIdx).toBeGreaterThan(layerOpen);
     });
+    // REGRESSION: a stray `*/` inside a comment (e.g. writing a Tailwind glob like "mt-<asterisk>/...")
+    // closes the CSS comment EARLY, turning the rest into garbage that silently DROPS the next rule —
+    // which is exactly why the margin reset never applied at first. Strip comments the way a browser
+    // does (non-greedy /* */) and assert nothing leaks: no orphan markers, no comment prose, reset intact.
+    it('has no comment that closes early and drops a following rule', () => {
+      const stripped = css.replace(/\/\*[\s\S]*?\*\//g, '');
+      expect(stripped).not.toContain('*/'); // an orphan terminator = a comment closed early
+      expect(stripped).not.toContain('/*');
+      expect(stripped).not.toMatch(/Deterministic block|identical across browsers/); // comment prose stayed in comments
+      expect(stripped).toContain('fieldset { margin: 0'); // the reset survives a real comment-strip
+    });
   });
 
   describe('Sitewright platform defaults', () => {

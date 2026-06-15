@@ -226,10 +226,12 @@ const LIGHTBOX_JS = LIGHTBOX_SMARTPHOTO_RUNTIME_JS;
 
 // --- Modal -------------------------------------------------------------------
 // A trigger button that opens a native <dialog> (which provides focus trap,
-// Escape, ::backdrop, and background inerting for free). JS wires open/close AND injects a styled
-// close button (top-right, brand-primary square, white icon, hover zoom + 180° icon spin) unless
-// data-closebutton="false". Authored [data-sw-part="close"] buttons (any number) + arbitrary
-// content still work; data-backdrop-close="false" keeps it open on a backdrop click.
+// Escape, ::backdrop, and background inerting for free). The dialog is VIEWPORT-CENTERED (CSS
+// position:fixed) so opening it never scrolls the page, and the runtime LOCKS page scroll while it
+// is open. JS also wires open/close AND injects a styled close button (overhanging the top-right
+// corner, brand-primary, white icon, hover zoom + 180° icon spin) unless data-closebutton="false".
+// Authored [data-sw-part="close"] buttons (any number) + arbitrary content still work;
+// data-backdrop-close="false" keeps it open on a backdrop click.
 // The dialog FADES + DROPS in from the top on open and FADES + RISES out to the top on close.
 // @starting-style + transition-behavior:allow-discrete keep the native <dialog> animating across
 // its display toggle (closed ↔ open); engines without that support just show/hide instantly. The
@@ -244,9 +246,12 @@ const MODAL_CSS = [
   // top-right corner (override with overflow-hidden/-auto if a dialog needs to clip/scroll content).
   ':where([data-sw-block="Modal"] dialog){background:var(--sw-color-base-100,#fff);color:var(--sw-color-base-content,#0f172a);border:0;border-radius:.75rem;padding:1.5rem;max-width:min(90vw,32rem);overflow:visible;box-shadow:0 10px 40px rgba(0,0,0,.2)}',
   // Structural + the from-the-top enter/exit (normal specificity, NOT author-overridable):
-  // position:relative anchors the absolute close button; opacity/transform + @starting-style /
-  // allow-discrete animate across the display toggle.
-  '[data-sw-block="Modal"] dialog{position:relative;opacity:0;transform:translateY(-24px);transition:opacity .22s ease,transform .22s ease,overlay .22s allow-discrete,display .22s allow-discrete}',
+  // position:fixed + inset:0 + margin:auto CENTERS the dialog in the VIEWPORT (mirrors the native
+  // dialog:modal centering, but explicit so it can't be lost) — opening never scrolls the page and
+  // it appears centered on the current scroll position. It also stays the containing block for the
+  // absolute (overhanging) close button. opacity/transform + @starting-style / allow-discrete
+  // animate across the display toggle.
+  '[data-sw-block="Modal"] dialog{position:fixed;margin:auto;inset:0;opacity:0;transform:translateY(-24px);transition:opacity .22s ease,transform .22s ease,overlay .22s allow-discrete,display .22s allow-discrete}',
   '[data-sw-block="Modal"] dialog[open]{opacity:1;transform:translateY(0)}',
   '@starting-style{[data-sw-block="Modal"] dialog[open]{opacity:0;transform:translateY(-24px)}}',
   // Backdrop: dims + BLURS, both fading in and out.
@@ -264,12 +269,32 @@ const MODAL_CSS = [
 
 const MODAL_JS = `(function(){
   var CLOSE_SVG='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+  // Page-scroll lock while ANY modal is open: hide the document overflow and pad the body by the
+  // scrollbar width so removing it doesn't shift the layout. Ref-counted so nested/sequential
+  // modals don't unlock early; the prior inline styles are restored on the last close.
+  var docEl=document.documentElement,locks=0,prevOverflow='',prevPad='';
+  function lock(){
+    if(locks===0){
+      var gap=window.innerWidth-docEl.clientWidth;
+      prevOverflow=docEl.style.overflow;prevPad=document.body.style.paddingRight;
+      docEl.style.overflow='hidden';
+      if(gap>0)document.body.style.paddingRight=((parseFloat(getComputedStyle(document.body).paddingRight)||0)+gap)+'px';
+    }
+    locks++;
+  }
+  function unlock(){
+    if(locks>0)locks--;
+    if(locks===0){docEl.style.overflow=prevOverflow;document.body.style.paddingRight=prevPad;}
+  }
   function enhance(root){
     if(root.getAttribute('data-sw-enhanced'))return;
     var dialog=root.querySelector('[data-sw-part="dialog"]'),openBtn=root.querySelector('[data-sw-part="open"]');
     if(!dialog||!openBtn||typeof dialog.showModal!=='function')return;
     root.setAttribute('data-sw-enhanced','true');
-    openBtn.addEventListener('click',function(){dialog.showModal();});
+    openBtn.addEventListener('click',function(){if(dialog.open)return;dialog.showModal();lock();});
+    // 'close' fires for EVERY dismissal path (Escape, close button, backdrop, form method=dialog),
+    // so the lock is always released exactly once per open.
+    dialog.addEventListener('close',unlock);
     // Auto close button (top-right), unless opted out with data-closebutton="false".
     if(root.getAttribute('data-closebutton')!=='false'&&!dialog.querySelector('[data-sw-part="autoclose"]')){
       var x=document.createElement('button');

@@ -157,7 +157,7 @@ describe('baseStyles — platform base stylesheet', () => {
     });
 
     it('uses a SOLID track (page background, no transparency) and no arrows', () => {
-      expect(css).toContain('*::-webkit-scrollbar { width: 12px; height: 12px; background: var(--sw-color-base-100, #ffffff); }');
+      expect(css).toContain('*::-webkit-scrollbar { width: 8px; height: 8px; background: var(--sw-color-base-100, #ffffff); }');
       expect(css).toContain('*::-webkit-scrollbar-track,\n  *::-webkit-scrollbar-track-piece,\n  *::-webkit-scrollbar-corner { background: var(--sw-color-base-100, #ffffff); }');
       expect(css).toContain('*::-webkit-scrollbar-button { width: 0; height: 0; display: none; }');
       // NO transparency anywhere in the scrollbar CSS

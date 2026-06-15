@@ -137,6 +137,28 @@ describe('component registry', () => {
     expect(css).toContain('prefers-reduced-motion:reduce');
   });
 
+  it('Modal is viewport-centered (position:fixed) so opening never scrolls the page', () => {
+    const css = componentAssets(['Modal']).css;
+    // position:fixed + inset:0 + margin:auto centers in the viewport; position:relative would put
+    // the dialog in document flow and let showModal() scroll-into-view jump the page to it.
+    expect(css).toContain('[data-sw-block="Modal"] dialog{position:fixed;margin:auto;inset:0;');
+    expect(css).not.toContain('[data-sw-block="Modal"] dialog{position:relative');
+  });
+
+  it('Modal locks page scroll while open and restores it on close', () => {
+    const js = componentAssets(['Modal']).js;
+    // Lock on open, release on the dialog 'close' event (covers Escape / button / backdrop).
+    expect(js).toContain("docEl.style.overflow='hidden'");
+    expect(js).toContain("addEventListener('close',unlock)");
+    // Scrollbar-width compensation so removing the bar doesn't shift the layout.
+    expect(js).toContain('window.innerWidth-docEl.clientWidth');
+    expect(js).toContain('paddingRight');
+    // Ref-counted so nested/sequential modals don't unlock early.
+    expect(js).toContain('locks');
+    // Guard against double-lock if the open button is clicked while already open.
+    expect(js).toContain('if(dialog.open)return');
+  });
+
   it('Modal auto-injects a styled close button and honours data-closebutton / data-backdrop-close', () => {
     const { css, js } = componentAssets(['Modal']);
     // The runtime builds a top-right close button (brand-primary square, white icon) and reads the

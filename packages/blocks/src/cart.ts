@@ -93,11 +93,12 @@ export const CART_CSS = [
   '[data-sw-cart] [data-sw-part="line-controls"]{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}',
   '[data-sw-cart] [data-sw-part="line-price"]{color:#6b7280;font-size:.875rem}',
   '[data-sw-cart] [data-sw-part="line-subtotal"]{margin-left:auto;font-weight:600;font-size:.9375rem}',
-  // Quantity = a COMPACT connected button group [- n +]: one outer border + rounded corners, the buttons
-  // borderless and the value flanked by dividers (its left/right borders). margin-left leaves a slightly
-  // bigger gap to the base price (on top of the row gap).
-  '[data-sw-cart] [data-sw-part="qty"]{display:inline-flex;align-items:stretch;margin-left:.35rem;border:1px solid #d1d5db;border-radius:.375rem;overflow:hidden}',
-  '[data-sw-cart] [data-sw-part="qty"] button{display:flex;align-items:center;justify-content:center;width:1.625rem;height:1.625rem;border:0;background:#fff;color:#1f2937;cursor:pointer;font-size:1rem;line-height:1}',
+  // Quantity = a COMPACT connected button group [- n +]: a PILL outer border (border-radius:2rem) + the
+  // buttons borderless with inline Lucide minus/plus icons, the value flanked by dividers (its left/right
+  // borders). margin-left leaves a slightly bigger gap to the base price (on top of the row gap).
+  '[data-sw-cart] [data-sw-part="qty"]{display:inline-flex;align-items:stretch;margin-left:.35rem;border:1px solid #d1d5db;border-radius:2rem;overflow:hidden}',
+  '[data-sw-cart] [data-sw-part="qty"] button{display:flex;align-items:center;justify-content:center;width:1.5rem;height:1.5rem;border:0;background:#fff;color:#1f2937;cursor:pointer}',
+  '[data-sw-cart] [data-sw-part="qty"] button svg{width:.875rem;height:.875rem}',
   '[data-sw-cart] [data-sw-part="qty"]>span{display:flex;align-items:center;justify-content:center;min-width:1.5rem;padding:0 .25rem;border-left:1px solid #d1d5db;border-right:1px solid #d1d5db;background:#fff;font-variant-numeric:tabular-nums}',
   // Remove = a red trash icon button (square hit area; light-red hover wash).
   '[data-sw-cart] [data-sw-part="remove"]{display:inline-flex;align-items:center;justify-content:center;width:1.75rem;height:1.75rem;padding:0;border:0;border-radius:.375rem;background:none;color:#dc2626;cursor:pointer;transition:background .15s ease}',
@@ -317,6 +318,16 @@ export const CART_JS = `(function(){
     for(var i=0;i<d.length;i++){var pa=document.createElementNS(ns,'path');pa.setAttribute('d',d[i]);svg.appendChild(pa);}
     return svg;
   }
+  // ---- Lucide minus / plus icons for the qty stepper (a horizontal bar, + a vertical bar when plus) ----
+  function signIcon(isPlus){
+    var ns='http://www.w3.org/2000/svg';
+    var svg=document.createElementNS(ns,'svg');
+    svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('fill','none');svg.setAttribute('stroke','currentColor');
+    svg.setAttribute('stroke-width','2');svg.setAttribute('stroke-linecap','round');svg.setAttribute('stroke-linejoin','round');svg.setAttribute('aria-hidden','true');
+    var bar=document.createElementNS(ns,'path');bar.setAttribute('d','M5 12h14');svg.appendChild(bar);
+    if(isPlus){var v=document.createElementNS(ns,'path');v.setAttribute('d','M12 5v14');svg.appendChild(v);}
+    return svg;
+  }
   // ---- enhance one mount ----
   function enhance(mount){
     if(mount.getAttribute('data-sw-enhanced')==='true'){return;}
@@ -473,9 +484,9 @@ export const CART_JS = `(function(){
           var row=part('div','line-controls');
           var pr=part('span','line-price',money(it.price,cfg));
           var ctrl=part('div','qty');
-          var minus=mk('button',null,'\\u2212');minus.type='button';minus.setAttribute('aria-label','Decrease quantity');ripple(minus);
+          var minus=mk('button');minus.type='button';minus.setAttribute('aria-label','Decrease quantity');minus.appendChild(signIcon(false));ripple(minus);
           var qv=mk('span',null,String(it.qty));
-          var plus=mk('button',null,'+');plus.type='button';plus.setAttribute('aria-label','Increase quantity');ripple(plus);
+          var plus=mk('button');plus.type='button';plus.setAttribute('aria-label','Increase quantity');plus.appendChild(signIcon(true));ripple(plus);
           minus.addEventListener('click',function(){it.qty-=1;if(it.qty<1){removeSku(it.sku);}persist();});
           plus.addEventListener('click',function(){if(it.qty<MAX_QTY){it.qty+=1;}persist();});
           ctrl.appendChild(minus);ctrl.appendChild(qv);ctrl.appendChild(plus);

@@ -157,11 +157,19 @@ describe('cart drawer UI (solid neutral scheme + optimized line)', () => {
     expect(CART_CSS).toContain('[data-sw-part="line-subtotal"]{margin-left:auto'); // pushed to the right
   });
 
-  it('renders the qty stepper as a COMPACT connected button group with a bigger gap to the base price', () => {
-    // One outer border + rounded corners on the group container; borderless buttons; the value flanked by dividers.
-    expect(CART_CSS).toContain('[data-sw-part="qty"]{display:inline-flex;align-items:stretch;margin-left:.35rem;border:1px solid #d1d5db;border-radius:.375rem;overflow:hidden}');
-    expect(CART_CSS).toContain('[data-sw-part="qty"] button{display:flex;align-items:center;justify-content:center;width:1.625rem;height:1.625rem;border:0;');
+  it('renders the qty stepper as a COMPACT pill button group (Lucide icons, 1.5rem buttons) with a bigger gap to the base price', () => {
+    // A PILL outer border (border-radius:2rem) on the group container; borderless 1.5rem buttons; the value flanked by dividers.
+    expect(CART_CSS).toContain('[data-sw-part="qty"]{display:inline-flex;align-items:stretch;margin-left:.35rem;border:1px solid #d1d5db;border-radius:2rem;overflow:hidden}');
+    expect(CART_CSS).toContain('[data-sw-part="qty"] button{display:flex;align-items:center;justify-content:center;width:1.5rem;height:1.5rem;border:0;');
+    expect(CART_CSS).toContain('[data-sw-part="qty"] button svg{width:.875rem;height:.875rem}'); // icon sizing
     expect(CART_CSS).toContain('[data-sw-part="qty"]>span{display:flex;align-items:center;justify-content:center;min-width:1.5rem;padding:0 .25rem;border-left:1px solid #d1d5db;border-right:1px solid #d1d5db;');
+    // The +/- buttons use inline Lucide minus/plus SVGs, not text glyphs.
+    expect(CART_JS).toContain('function signIcon(isPlus)');
+    expect(CART_JS).toContain("bar.setAttribute('d','M5 12h14')"); // minus bar
+    expect(CART_JS).toContain("v.setAttribute('d','M12 5v14')"); // plus vertical
+    expect(CART_JS).toContain('minus.appendChild(signIcon(false))');
+    expect(CART_JS).toContain('plus.appendChild(signIcon(true))');
+    expect(CART_JS).not.toContain("mk('button',null,'+')"); // old text glyph gone
   });
 
   it('names the footer grand-total row data-sw-part="total" and reads the cart_total label', () => {

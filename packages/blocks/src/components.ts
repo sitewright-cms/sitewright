@@ -225,46 +225,62 @@ const LIGHTBOX_CSS = [
 const LIGHTBOX_JS = LIGHTBOX_SMARTPHOTO_RUNTIME_JS;
 
 // --- Modal -------------------------------------------------------------------
-// A trigger button that opens a native <dialog> (which provides focus trap,
-// Escape, ::backdrop, and background inerting for free). The dialog is VIEWPORT-CENTERED (CSS
-// position:fixed) so opening it never scrolls the page, and the runtime LOCKS page scroll while it
-// is open. JS also wires open/close AND injects a styled close button (overhanging the top-right
-// corner, brand-primary, white icon, hover zoom + 180° icon spin) unless data-closebutton="false".
-// Authored [data-sw-part="close"] buttons (any number) + arbitrary content still work;
-// data-backdrop-close="false" keeps it open on a backdrop click.
+// A trigger that opens a native <dialog> (which provides focus trap, Escape, ::backdrop, and
+// background inerting for free). The dialog is VIEWPORT-CENTERED (CSS position:fixed) so opening it
+// never scrolls the page, and the runtime LOCKS page scroll while it is open. A styled close button
+// is injected automatically (overhanging the top-right corner) unless data-closebutton="false";
+// authored [data-sw-part="close"] buttons + arbitrary content still work; data-backdrop-close="false"
+// keeps it open on a backdrop click.
+//
+// TWO authoring forms (both detected by the same data-sw-component="modal" marker):
+//   • LIGHTER (preferred): the marker + an id go on the <dialog>, and the trigger is ANY element that
+//     references that id — `<a href="#my-modal">` or `[data-sw-modal="my-modal"]` — anywhere on the
+//     page. No wrapper, no data-sw-part. Config attrs (data-closebutton/-backdrop-close/-close-label)
+//     go on the <dialog>.
+//   • LEGACY: a `data-sw-component="modal"` wrapper containing `[data-sw-part="open"]` + a
+//     `[data-sw-part="dialog"]` <dialog>. Still fully supported.
 // The dialog FADES + DROPS in from the top on open and FADES + RISES out to the top on close.
 // @starting-style + transition-behavior:allow-discrete keep the native <dialog> animating across
 // its display toggle (closed ↔ open); engines without that support just show/hide instantly. The
 // base (closed) rule doubles as the exit target — opacity:0 + translateY(-24px) — and `[open]`
 // is the resting state. Reduced-motion drops straight to a plain show/hide (mirrors the cart drawer).
+// Styling keys on the `data-sw-component="modal"` marker (M) so BOTH authoring forms work without a
+// parallel data-sw-block: the LIGHTER form puts the marker on the <dialog> itself
+// (`<dialog id data-sw-component="modal">`), the LEGACY form puts it on a wrapper whose <dialog> is a
+// descendant. `mdlg(suffix)` yields the dialog selector for both (self + descendant).
+const M = '[data-sw-component="modal"]';
+const mdlg = (suffix = ''): string => `${M} dialog${suffix},dialog${M}${suffix}`;
 const MODAL_CSS = [
-  '[data-sw-block="Modal"]{display:inline-block}',
+  // Legacy wrapper stays inline-flowing; the lighter form has no wrapper (the dialog IS the marker,
+  // and a closed <dialog> is display:none until opened).
+  `${M}:not(dialog){display:inline-block}`,
   // Appearance defaults at ZERO specificity (:where) so utility classes on the <dialog> win
   // without !important — global bg/text vars, rounded corners, 1.5rem padding, a max width and a
   // soft shadow. Override any of them with e.g. bg-transparent / text-white / p-0 / max-w-2xl /
   // rounded-none / shadow-none on the dialog. overflow:visible lets the close button overhang the
   // top-right corner (override with overflow-hidden/-auto if a dialog needs to clip/scroll content).
-  ':where([data-sw-block="Modal"] dialog){background:var(--sw-color-base-100,#fff);color:var(--sw-color-base-content,#0f172a);border:0;border-radius:.75rem;padding:1.5rem;max-width:min(90vw,32rem);overflow:visible;box-shadow:0 10px 40px rgba(0,0,0,.2)}',
+  `:where(${mdlg()}){background:var(--sw-color-base-100,#fff);color:var(--sw-color-base-content,#0f172a);border:0;border-radius:.75rem;padding:1.5rem;max-width:min(90vw,32rem);overflow:visible;box-shadow:0 10px 40px rgba(0,0,0,.2)}`,
   // Structural + the from-the-top enter/exit (normal specificity, NOT author-overridable):
   // position:fixed + inset:0 + margin:auto CENTERS the dialog in the VIEWPORT (mirrors the native
   // dialog:modal centering, but explicit so it can't be lost) — opening never scrolls the page and
   // it appears centered on the current scroll position. It also stays the containing block for the
   // absolute (overhanging) close button. opacity/transform + @starting-style / allow-discrete
   // animate across the display toggle.
-  '[data-sw-block="Modal"] dialog{position:fixed;margin:auto;inset:0;opacity:0;transform:translateY(-24px);transition:opacity .22s ease,transform .22s ease,overlay .22s allow-discrete,display .22s allow-discrete}',
-  '[data-sw-block="Modal"] dialog[open]{opacity:1;transform:translateY(0)}',
-  '@starting-style{[data-sw-block="Modal"] dialog[open]{opacity:0;transform:translateY(-24px)}}',
+  `${mdlg()}{position:fixed;margin:auto;inset:0;opacity:0;transform:translateY(-24px);transition:opacity .22s ease,transform .22s ease,overlay .22s allow-discrete,display .22s allow-discrete}`,
+  `${mdlg('[open]')}{opacity:1;transform:translateY(0)}`,
+  `@starting-style{${mdlg('[open]')}{opacity:0;transform:translateY(-24px)}}`,
   // Backdrop: dims + BLURS, both fading in and out.
-  '[data-sw-block="Modal"] dialog::backdrop{background:rgba(15,23,42,.45);opacity:0;-webkit-backdrop-filter:blur(0);backdrop-filter:blur(0);transition:opacity .22s ease,-webkit-backdrop-filter .22s ease,backdrop-filter .22s ease,overlay .22s allow-discrete,display .22s allow-discrete}',
-  '[data-sw-block="Modal"] dialog[open]::backdrop{opacity:1;-webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px)}',
-  '@starting-style{[data-sw-block="Modal"] dialog[open]::backdrop{opacity:0;-webkit-backdrop-filter:blur(0);backdrop-filter:blur(0)}}',
+  `${mdlg('::backdrop')}{background:rgba(15,23,42,.45);opacity:0;-webkit-backdrop-filter:blur(0);backdrop-filter:blur(0);transition:opacity .22s ease,-webkit-backdrop-filter .22s ease,backdrop-filter .22s ease,overlay .22s allow-discrete,display .22s allow-discrete}`,
+  `${mdlg('[open]::backdrop')}{opacity:1;-webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px)}`,
+  `@starting-style{${mdlg('[open]::backdrop')}{opacity:0;-webkit-backdrop-filter:blur(0);backdrop-filter:blur(0)}}`,
   // Auto-injected close button: brand-primary rounded button OVERHANGING the top-right corner
   // (needs the dialog's overflow:visible), white icon; hover zooms the button and spins the icon 180°.
-  '[data-sw-block="Modal"] [data-sw-part="autoclose"]{position:absolute;top:-1rem;right:-1.5rem;z-index:1;display:inline-flex;align-items:center;justify-content:center;width:3.25rem;height:2.25rem;padding:0;border:0;border-radius:.5rem;background:var(--sw-color-primary,#4f46e5);color:#fff;cursor:pointer;transition:transform .2s ease}',
-  '[data-sw-block="Modal"] [data-sw-part="autoclose"]>svg{width:1.75rem;height:1.75rem;display:block;transition:transform .2s ease}',
-  '[data-sw-block="Modal"] [data-sw-part="autoclose"]:hover{transform:scale(1.1)}',
-  '[data-sw-block="Modal"] [data-sw-part="autoclose"]:hover>svg{transform:rotate(180deg)}',
-  '@media (prefers-reduced-motion:reduce){[data-sw-block="Modal"] dialog,[data-sw-block="Modal"] dialog::backdrop,[data-sw-block="Modal"] [data-sw-part="autoclose"],[data-sw-block="Modal"] [data-sw-part="autoclose"]>svg{transition:none}}',
+  // It's a descendant of the marker in both forms.
+  `${M} [data-sw-part="autoclose"]{position:absolute;top:-1rem;right:-1.5rem;z-index:1;display:inline-flex;align-items:center;justify-content:center;width:3.25rem;height:2.25rem;padding:0;border:0;border-radius:.5rem;background:var(--sw-color-primary,#4f46e5);color:#fff;cursor:pointer;transition:transform .2s ease}`,
+  `${M} [data-sw-part="autoclose"]>svg{width:1.75rem;height:1.75rem;display:block;transition:transform .2s ease}`,
+  `${M} [data-sw-part="autoclose"]:hover{transform:scale(1.1)}`,
+  `${M} [data-sw-part="autoclose"]:hover>svg{transform:rotate(180deg)}`,
+  `@media (prefers-reduced-motion:reduce){${mdlg()},${mdlg('::backdrop')},${M} [data-sw-part="autoclose"],${M} [data-sw-part="autoclose"]>svg{transition:none}}`,
 ].join('');
 
 const MODAL_JS = `(function(){
@@ -286,15 +302,44 @@ const MODAL_JS = `(function(){
     if(locks>0)locks--;
     if(locks===0){docEl.style.overflow=prevOverflow;document.body.style.paddingRight=prevPad;}
   }
+  function openOn(dialog){if(dialog.open)return;dialog.showModal();lock();}
+  function wireTrigger(t,dialog){
+    t.addEventListener('click',function(e){
+      // <a href="#id"> would otherwise jump + change the URL; buttons need no preventDefault.
+      if(t.tagName==='A')e.preventDefault();
+      openOn(dialog);
+    });
+  }
   function enhance(root){
     if(root.getAttribute('data-sw-enhanced'))return;
-    var dialog=root.querySelector('[data-sw-part="dialog"]'),openBtn=root.querySelector('[data-sw-part="open"]');
-    if(!dialog||!openBtn||typeof dialog.showModal!=='function')return;
+    // LIGHTER form: the marker IS the <dialog>. LEGACY form: the marker is a wrapper holding the dialog.
+    var isDialog=root.tagName==='DIALOG';
+    var dialog=isDialog?root:root.querySelector('[data-sw-part="dialog"]');
+    if(!dialog||typeof dialog.showModal!=='function')return;
     root.setAttribute('data-sw-enhanced','true');
-    openBtn.addEventListener('click',function(){if(dialog.open)return;dialog.showModal();lock();});
+    // Triggers: lighter form → any <a href="#id"> / [data-sw-modal="id"] anywhere referencing the
+    // dialog's id; legacy form → the [data-sw-part="open"] inside the wrapper.
+    if(isDialog){
+      var id=root.id;
+      if(id){
+        // Escape the id for the attribute-value selector (author-controlled; an exotic id would
+        // otherwise build a malformed selector). try/catch is a further backstop for old engines.
+        var eid=(window.CSS&&CSS.escape)?CSS.escape(id):id;
+        try{
+          Array.prototype.forEach.call(
+            document.querySelectorAll('a[href="#'+eid+'"],[data-sw-modal="'+eid+'"]'),
+            function(t){wireTrigger(t,dialog);}
+          );
+        }catch(e){}
+      }
+    }else{
+      var openBtn=root.querySelector('[data-sw-part="open"]');
+      if(openBtn)wireTrigger(openBtn,dialog);
+    }
     // 'close' fires for EVERY dismissal path (Escape, close button, backdrop, form method=dialog),
     // so the lock is always released exactly once per open.
     dialog.addEventListener('close',unlock);
+    // Config attrs live on the marker (the wrapper in the legacy form, the <dialog> in the lighter one).
     // Auto close button (top-right), unless opted out with data-closebutton="false".
     if(root.getAttribute('data-closebutton')!=='false'&&!dialog.querySelector('[data-sw-part="autoclose"]')){
       var x=document.createElement('button');

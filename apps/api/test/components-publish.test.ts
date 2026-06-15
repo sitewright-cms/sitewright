@@ -137,7 +137,7 @@ describe('interactive component + dialog runtimes → code-first publish + previ
     expect(res.statusCode).toBe(200);
     const html = (res.json() as { html: string }).html;
     // Self-contained preview: component assets + dialog runtime are INLINED (no external <script src>).
-    expect(html).toContain('[data-sw-block="Modal"]'); // MODAL component CSS inlined
+    expect(html).toContain('dialog[data-sw-component="modal"]'); // MODAL component CSS inlined (keys on the marker)
     expect(html).toContain('[data-sw-component="modal"]'); // MODAL component JS selector inlined
     expect(html).toContain('showModal'); // NAV_LINK_JS inlined (a <dialog> is present) — unique to it
     expect(html).not.toContain('src="components.js"');

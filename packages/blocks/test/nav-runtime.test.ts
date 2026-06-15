@@ -54,6 +54,13 @@ describe('NAV_LINK_JS', () => {
     expect(NAV_LINK_JS).toContain('scrollIntoView');
     expect(NAV_LINK_JS.trim().startsWith('(function')).toBe(true);
   });
+
+  it('global backdrop-close respects data-backdrop-close="false" (Modal opt-out)', () => {
+    // The document-level backdrop handler must bail when the dialog or its owning component opts
+    // out — otherwise it would close a data-backdrop-close="false" Modal that the component itself
+    // deliberately left un-wired.
+    expect(NAV_LINK_JS).toContain('[data-backdrop-close="false"]');
+  });
 });
 
 describe('usesDialog (ship the dialog runtime for code-first <dialog> markup)', () => {

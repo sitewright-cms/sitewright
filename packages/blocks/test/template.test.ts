@@ -16,6 +16,19 @@ const ctx: TemplateContext = {
   },
 };
 
+describe('pages binding (cross-page access — whitelisted into the render context)', () => {
+  // Built upstream by pagesContext in @sitewright/core; here we only verify renderTemplate WHITELISTS the
+  // `pages` key (an un-whitelisted top-level key is silently dropped — template.ts line ~849).
+  const pages = { services: { title: 'Services', path: '/services', seo: { data: { header_title: 'SEO & Performance' } } } };
+  it('resolves a deep pages.<slug>.<slug>.data.<key> path', () => {
+    expect(renderTemplate('{{pages.services.seo.data.header_title}}', { pages })).toBe('SEO &amp; Performance');
+    expect(renderTemplate('{{pages.services.path}}', { pages })).toBe('/services');
+  });
+  it('an unknown pages path renders empty (no error)', () => {
+    expect(renderTemplate('[{{pages.bogus.x.data.y}}]', { pages })).toBe('[]');
+  });
+});
+
 describe('dataset-aware {{#each}} — flattened fields + preview markers', () => {
   const items = [
     { id: 'e1', dataset: 'posts', values: { t: 'A' } },

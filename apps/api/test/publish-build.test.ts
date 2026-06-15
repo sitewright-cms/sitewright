@@ -58,6 +58,24 @@ describe('buildSite', () => {
     expect(await readFile(join(outDir, 'styles.css'), 'utf8')).toContain('display:grid');
   });
 
+  it('resolves the `pages` namespace — cross-page data by slug path — at publish', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        pages: [
+          { id: 'home', path: '', title: 'Home', source: '<p>X={{pages.services.seo.data.header_title}}</p><a href="{{sw-url pages.services.path}}">{{pages.services.title}}</a>' },
+          { id: 'services', path: 'services', parent: 'home', title: 'Services', data: { svc: 'ours' } },
+          { id: 'service-seo', path: 'seo', parent: 'services', title: 'SEO', data: { header_title: 'SEO & Performance' } },
+        ] as unknown as ProjectBundle['pages'],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).toContain('X=SEO &amp; Performance'); // grand-child page's data, walked by slug
+    expect(home).toContain('<a href="services">Services</a>'); // pages.services.path (sw-url page-relative) + .title
+    // A page that doesn't reference `pages` ships no pages payload — covered by the referenced-only core tests.
+  });
+
   it('resolves a composed Widget ({{> hero-slider}}) at publish AND feeds its classes to the sheet', async () => {
     // The Widget body is NOT a project snippet — it must come from WIDGET_PARTIALS, merged inside
     // buildSite (no opts.snippets here). Its `hero` dataset + config entry drive the render.

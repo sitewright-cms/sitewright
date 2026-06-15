@@ -5,6 +5,7 @@ export * from './global-snippets.js';
 export * from './widgets.js';
 export * from './nav.js';
 export * from './children.js';
+export * from './pages.js';
 export * from './bindings.js';
 export * from './i18n.js';
 export * from './translate.js';

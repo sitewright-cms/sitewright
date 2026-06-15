@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { JsonObjectStoreSchema } from './json-store.js';
-import { targetsPrivateHost, IdSchema, KeyNameSchema, safeRecord } from './primitives.js';
+import { targetsPrivateHost, IdSchema, MAX_IDENTIFIER_LENGTH, safeRecord } from './primitives.js';
 
 // Bounded to limit build-output amplification (these fields are injected into
 // every page of a publish, up to MAX_BUNDLE.pages). CSS is smaller than the
@@ -29,8 +29,20 @@ export const TRANSLATION_VALUE_MAX = 2000;
 const TranslationLocaleKey = z.string().min(1).max(35).regex(/^[A-Za-z0-9-]+$/, 'invalid locale code');
 /** One key's per-locale cells: `{ en: "…", de: "…" }`. */
 const TranslationCellsSchema = safeRecord(z.string().max(TRANSLATION_VALUE_MAX), TranslationLocaleKey);
+/**
+ * A catalog key — a flat identifier OR a dotted SCOPE path (`home.headline`, `services.cta`). Scopes are
+ * purely organizational: the catalog is looked up FLAT (`t["home.headline"]`), never path-traversed, so a
+ * dotted key is just an opaque string the editor groups by its first segment. Each segment is a valid
+ * identifier (linear regex, no ReDoS); `safeRecord` rejects a bare proto key, and flat lookup of a dotted
+ * key can never resolve to a prototype property.
+ */
+export const TranslationKeySchema = z
+  .string()
+  .min(1)
+  .max(MAX_IDENTIFIER_LENGTH)
+  .regex(/^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$/, 'must be an identifier or dotted scope path');
 /** The project translation table: `key → { locale → string }`. Sibling of `website.data`. */
-export const TranslationsSchema = safeRecord(TranslationCellsSchema, KeyNameSchema);
+export const TranslationsSchema = safeRecord(TranslationCellsSchema, TranslationKeySchema);
 export type Translations = z.infer<typeof TranslationsSchema>;
 
 // --- shop (MINI SHOP): front-end-driven cart configuration ---------------------------------------

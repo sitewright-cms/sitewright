@@ -303,5 +303,16 @@ describe('WebsiteSettingsSchema', () => {
       expect(() => WebsiteSettingsSchema.parse({ translations: { k: { constructor: 'x' } } })).toThrow();
       expect(() => WebsiteSettingsSchema.parse({ translations: { k: { prototype: 'x' } } })).toThrow();
     });
+    it('accepts dotted SCOPE keys (home.headline) and rejects malformed ones', () => {
+      const w = { translations: { 'home.headline': { en: 'Hi', de: 'Hallo' }, 'services.cta': { en: 'Go' } } };
+      expect(WebsiteSettingsSchema.parse(w).translations?.['home.headline']).toEqual({ en: 'Hi', de: 'Hallo' });
+      // malformed dotted keys: empty segment, leading/trailing dot, hyphen
+      for (const bad of ['home..headline', '.home', 'home.', 'home.head-line', 'home.1bad']) {
+        expect(() => WebsiteSettingsSchema.parse({ translations: { [bad]: { en: 'x' } } }), bad).toThrow();
+      }
+      // a bare proto key is still rejected (safeRecord); a dotted proto SEGMENT is a harmless literal flat key
+      expect(() => WebsiteSettingsSchema.parse({ translations: { ['__proto__']: { en: 'x' } } })).toThrow();
+      expect(WebsiteSettingsSchema.parse({ translations: { 'a.__proto__': { en: 'x' } } }).translations?.['a.__proto__']).toEqual({ en: 'x' });
+    });
   });
 });

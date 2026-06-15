@@ -42,6 +42,6 @@ describe('renderDocument — document shell', () => {
     const doc = renderDocument(page, { brand });
     const head = doc.slice(0, doc.indexOf('</head>'));
     expect(head).toContain('*::-webkit-scrollbar-thumb { background-color: var(--sw-color-primary, #4f46e5); border-radius: 9999px; }');
-    expect(head).toContain('*::-webkit-scrollbar { width: 12px; height: 12px; background: var(--sw-color-base-100, #ffffff); }');
+    expect(head).toContain('*::-webkit-scrollbar { width: 8px; height: 8px; background: var(--sw-color-base-100, #ffffff); }');
   });
 });

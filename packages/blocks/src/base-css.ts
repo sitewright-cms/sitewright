@@ -245,7 +245,7 @@ img, video { max-width: 100%; height: auto; }
 @supports selector(::-webkit-scrollbar) {
   html:root { scrollbar-color: auto; scrollbar-width: auto; }
   /* solid track = page background (blends in) */
-  *::-webkit-scrollbar { width: 12px; height: 12px; background: var(--sw-color-base-100, #ffffff); }
+  *::-webkit-scrollbar { width: 8px; height: 8px; background: var(--sw-color-base-100, #ffffff); }
   *::-webkit-scrollbar-track,
   *::-webkit-scrollbar-track-piece,
   *::-webkit-scrollbar-corner { background: var(--sw-color-base-100, #ffffff); }

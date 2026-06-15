@@ -268,10 +268,10 @@ describe('renderTemplate — directive integration', () => {
 
   it('composes with Handlebars loops — directive markers are page-level, values are dataset-bound', () => {
     const source =
-      '<h1 data-sw-text="title">Title</h1><ul>{{#each data.items}}<li>{{this.name}}</li>{{/each}}</ul>';
+      '<h1 data-sw-text="title">Title</h1><ul>{{#each dataset.items}}<li>{{this.name}}</li>{{/each}}</ul>';
     const out = renderTemplate(source, {
       page: { data: { title: 'Our work' } }, // the directive's bare key reads page.data
-      data: { items: [{ name: 'A' }, { name: 'B' }] }, // the dataset context for {{#each data.items}}
+      dataset: { items: [{ name: 'A' }, { name: 'B' }] }, // the dataset context for {{#each dataset.items}}
       preview: true,
     });
     expect(out).toContain('<h1 data-sw-text="title">Our work</h1>');

@@ -20,13 +20,13 @@ describe('GLOBAL_WIDGETS (built-in system widgets)', () => {
     }
   });
 
-  it('every widget is data-backed (consumes its provided dataset via data.<slug>)', () => {
+  it('every widget is data-backed (consumes its provided dataset via dataset.<slug>)', () => {
     for (const w of GLOBAL_WIDGETS) {
       for (const ds of w.provides.datasets) {
-        // The dataset is consumed by `{{#each data.X}}` (loop all) OR `(sw-pick-entry data.X …)`
-        // (render one chosen config) — both reference data.<slug>.
-        const ok = w.source.includes(`{{#each data.${ds.slug}}}`) || w.source.includes(`sw-pick-entry data.${ds.slug}`);
-        expect(ok, `widget "${w.name}" should consume data.${ds.slug}`).toBe(true);
+        // The dataset is consumed by `{{#each dataset.X}}` (loop all) OR `(sw-pick-entry dataset.X …)`
+        // (render one chosen config) — both reference dataset.<slug>.
+        const ok = w.source.includes(`{{#each dataset.${ds.slug}}}`) || w.source.includes(`sw-pick-entry dataset.${ds.slug}`);
+        expect(ok, `widget "${w.name}" should consume dataset.${ds.slug}`).toBe(true);
       }
     }
   });

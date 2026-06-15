@@ -23,7 +23,7 @@ interface RenameDatasetModalProps {
  * the slug is a MIGRATION — there is no atomic server rename, so we create the dataset under the new
  * slug, re-point every entry to it (entry ids are preserved), then delete the old dataset row
  * (deleting a dataset does NOT cascade to entries, so this is loss-free at every step). Page-source
- * references ({{#each data.<slug>}} / {{item.<slug>…}}) cannot be auto-rewritten — the modal warns
+ * references ({{#each dataset.<slug>}} / {{item.<slug>…}}) cannot be auto-rewritten — the modal warns
  * that they must be updated by hand.
  */
 export function RenameDatasetModal({ projectId, dataset, entries, existingSlugs, onRenamed, onClose }: RenameDatasetModalProps) {
@@ -113,7 +113,7 @@ export function RenameDatasetModal({ projectId, dataset, entries, existingSlugs,
 
         <label className="flex flex-col gap-1">
           <span className="text-xs font-medium text-slate-500">
-            Slug <span className="text-slate-300">— the binding key used in <code>{`{{#each data.<slug>}}`}</code></span>
+            Slug <span className="text-slate-300">— the binding key used in <code>{`{{#each dataset.<slug>}}`}</code></span>
           </span>
           <input
             aria-label="Dataset slug"
@@ -138,7 +138,7 @@ export function RenameDatasetModal({ projectId, dataset, entries, existingSlugs,
             automatically — update every reference:
             <ul className="ml-4 mt-1 list-disc">
               <li>
-                <code>{`{{#each data.${dataset.slug}}}`}</code> → <code>{`{{#each data.${computedSlug}}}`}</code>
+                <code>{`{{#each dataset.${dataset.slug}}}`}</code> → <code>{`{{#each dataset.${computedSlug}}}`}</code>
               </li>
               <li>
                 <code>{`{{item.${dataset.slug}.…}}`}</code> → <code>{`{{item.${computedSlug}.…}}`}</code>

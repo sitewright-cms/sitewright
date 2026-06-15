@@ -25,7 +25,7 @@ export function localizedDatasetName(name: string, locale: string): string {
  * Returns a view of the dataset map for the active `locale`: a base name `<s>`
  * resolves to `<s>-<locale>` when that dataset exists (auto-suffix), otherwise
  * stays itself (fallback to the default-locale dataset). The original suffixed
- * keys remain addressable, so `{{#each data.services-de}}` still works as a
+ * keys remain addressable, so `{{#each dataset.services-de}}` still works as a
  * manual escape hatch. The default locale (no `-<locale>` variants) is unchanged.
  */
 export function resolveLocaleDatasets<T>(

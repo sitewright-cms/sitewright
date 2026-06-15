@@ -37,7 +37,7 @@ test('click a rendered dataset row in the preview → edit its entry → preview
   await page.getByRole('button', { name: 'Code Editor', exact: true }).click();
   await page.locator('.cm-content').click();
   await page.keyboard.press('ControlOrMeta+a');
-  await page.keyboard.insertText('<ul>{{#each data.posts}}<li class="post">{{title}}</li>{{/each}}</ul>');
+  await page.keyboard.insertText('<ul>{{#each dataset.posts}}<li class="post">{{title}}</li>{{/each}}</ul>');
 
   const preview = page.frameLocator('iframe[title="Preview"]');
   const row = preview.locator('[data-sw-entry]');

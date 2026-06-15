@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 const stamp = Date.now();
 
 // The dataset manager (CMS): define a dataset + schema and add an entry. Code-first pages
-// consume datasets via `{{#each data.<set>}}` in the template source (no block-binding UI).
+// consume datasets via `{{#each dataset.<set>}}` in the template source (no block-binding UI).
 test('define a dataset, its schema, and add an entry', async ({ page }) => {
   await page.goto('/');
 
@@ -235,7 +235,7 @@ test('rename a dataset slug migrates its entries; bindings use the new slug', as
   await page.locator('.cm-content').click();
   await page.keyboard.press('ControlOrMeta+a');
   await page.keyboard.insertText(
-    '<ul>{{#each data.articles}}<li class="a">{{title}}</li>{{/each}}</ul><ul>{{#each data.posts}}<li class="p">{{title}}</li>{{/each}}</ul>',
+    '<ul>{{#each dataset.articles}}<li class="a">{{title}}</li>{{/each}}</ul><ul>{{#each dataset.posts}}<li class="p">{{title}}</li>{{/each}}</ul>',
   );
   const preview = page.frameLocator('iframe[title="Preview"]');
   await expect(preview.locator('.a')).toHaveText('Hello');

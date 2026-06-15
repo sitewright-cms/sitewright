@@ -29,7 +29,7 @@ In \`source\`:
   social bar with {{#each company.social}}<a href="{{sw-url link}}">{{sw-icon icon}} {{name}}</a>{{/each}}.
   Page bindings: {{ page.title }}, {{ page.path }} (full route),
   {{ page.slug }} (own segment); {{ page.parent.path }} / {{ page.parent.data.<key> }} for the page's
-  parent (absent at the tree root); {{ website.siteUrl }}; and {{#each data.<dataset>}}…{{/each}}
+  parent (absent at the tree root); {{ website.siteUrl }}; and {{#each dataset.<dataset>}}…{{/each}}
   for collections. Inside the loop an entry's fields are read
   DIRECTLY by name — {{title}}, {{price}} (no \`values.\` prefix) — and each row is click-to-edit
   in the editor. The entry's id/dataset are on {{@entry.id}} / {{@entry.dataset}}.
@@ -208,9 +208,9 @@ every language updates, no copying). Each variant supplies only its own translat
 own \`source\` (fork) or set its \`template\`; a variant that carries its own code stops following
 the main page.
 LOCALIZED DATA: duplicate a dataset per locale as "<name>-<locale>" (lowercased), e.g.
-"services" + "services-de". A page with locale "de" auto-resolves {{#each data.services}}
+"services" + "services-de". A page with locale "de" auto-resolves {{#each dataset.services}}
 to "services-de" when it exists (else it falls back to "services"); address a specific
-variant explicitly with {{#each data.services-de}}. In source, expose the page's language
+variant explicitly with {{#each dataset.services-de}}. In source, expose the page's language
 as {{page.locale}} and its alternates as {{#each page.translations}} (each has \`locale\`,
 \`path\`, \`title\`). The "translation" content kind is legacy — do NOT use it; model
 languages as locale-variant pages instead.
@@ -221,7 +221,7 @@ SHOP (a FRONT-END cart for the static site): the catalogue is a dataset (e.g. "p
 fields name/price/image/description/sku). In a page \`source\` loop it and emit an add-to-cart
 button per product, plus ONE cart mount (drop {{sw-cart}} once — e.g. in the footer slot — so it
 is site-wide):
-  {{#each data.products}}<div class="card">…{{sw-add-to-cart sku=sku name=name price=price image=image}}</div>{{/each}}
+  {{#each dataset.products}}<div class="card">…{{sw-add-to-cart sku=sku name=name price=price image=image}}</div>{{/each}}
   {{sw-cart}}
 Or set page.template to "global:shop" (a ready-made storefront over the "products" dataset).
 {{sw-add-to-cart}} takes sku/name/price (a number)/image/label/class; {{sw-cart}} renders the

@@ -42,7 +42,7 @@ export const BINDING_NAMESPACE_NAMES = [
   'company',
   'website',
   'page',
-  'data',
+  'dataset',
   'item',
   'nav',
 ] as const;
@@ -257,7 +257,7 @@ export const BINDING_NAMESPACES: readonly BindingDoc[] = [
     name: 'multilingual (i18n)',
     keywords: 'language switcher locale translation multilingual flag hreflang i18n alternates',
     description:
-      'page.locale is the current page’s language; page.translations is its locale ALTERNATES (the translation group) as an ARRAY — each with .locale, .path (full route) and .title — for a LANGUAGE SWITCHER and hreflang links. Country flags are a poor proxy for languages ({{sw-flag}} takes a COUNTRY code, not a language code), so map locale→country in website.data and look it up — INSIDE {{#each page.translations}} reach the root with @root: website.data.locale_flags = { en: "gb", de: "de" } then {{sw-flag (lookup @root.website.data.locale_flags locale)}}. DATASETS localize by a "<slug>-<locale>" suffix that auto-resolves on a page in that locale ({{#each data.services}} on a "de" page reads "services-de" when it exists, else "services") — see the {{#each}} helper.',
+      'page.locale is the current page’s language; page.translations is its locale ALTERNATES (the translation group) as an ARRAY — each with .locale, .path (full route) and .title — for a LANGUAGE SWITCHER and hreflang links. Country flags are a poor proxy for languages ({{sw-flag}} takes a COUNTRY code, not a language code), so map locale→country in website.data and look it up — INSIDE {{#each page.translations}} reach the root with @root: website.data.locale_flags = { en: "gb", de: "de" } then {{sw-flag (lookup @root.website.data.locale_flags locale)}}. DATASETS localize by a "<slug>-<locale>" suffix that auto-resolves on a page in that locale ({{#each dataset.services}} on a "de" page reads "services-de" when it exists, else "services") — see the {{#each}} helper.',
     example:
       '<html lang="{{page.locale}}">\n' +
       '\n' +
@@ -285,14 +285,14 @@ export const BINDING_NAMESPACES: readonly BindingDoc[] = [
       '<span class="accent" style="color:{{page.parent.data.section_color}}">{{page.title}}</span>',
   },
   {
-    namespace: 'data',
-    id: 'n-data',
-    syntax: 'data.<dataset>',
-    name: 'data',
-    keywords: 'dataset entries collection rows loop',
+    namespace: 'dataset',
+    id: 'n-dataset',
+    syntax: 'dataset.<dataset>',
+    name: 'dataset',
+    keywords: 'dataset entries collection rows loop data',
     description:
       'A dataset’s entries as an ordered ARRAY (manage rows in the Data panel). Loop with {{#each}} — each row’s fields are read directly ({{name}}), and rows are click-to-edit in the editor. For a direct lookup by key, use item.<dataset> instead.',
-    example: '{{#each data.team}}\n  <li>{{name}}</li>\n{{/each}}',
+    example: '{{#each dataset.team}}\n  <li>{{name}}</li>\n{{/each}}',
   },
   {
     namespace: 'item',
@@ -307,7 +307,7 @@ export const BINDING_NAMESPACES: readonly BindingDoc[] = [
       '<h2>{{item.services.web_development.title}}</h2>\n' +
       '<p class="price">{{item.services.web_development.price}}</p>\n\n' +
       '{{! …vs. looping the whole dataset: }}\n' +
-      '{{#each data.services}}\n' +
+      '{{#each dataset.services}}\n' +
       '  <li>{{title}}</li>\n' +
       '{{/each}}',
   },
@@ -337,7 +337,7 @@ export const LOOP_VARIABLES: readonly LoopVariable[] = [
     description:
       'Inside {{#each}}, this is the current item. Over a DATASET the context IS the entry’s fields, so read them directly ({{title}}, not {{values.title}}); the entry’s envelope is on @entry (@entry.id, @entry.dataset, @entry.status).',
     example:
-      '{{#each data.posts}}\n' +
+      '{{#each dataset.posts}}\n' +
       '  <h3>{{title}}</h3>\n' +
       '  <small>{{@entry.id}}</small>\n' +
       '{{/each}}',
@@ -362,7 +362,7 @@ export const LOOP_VARIABLES: readonly LoopVariable[] = [
     keywords: 'boundary loop edge boolean',
     description: 'Booleans — true on the first / last iteration of a loop.',
     example:
-      '{{#each data.steps}}\n' +
+      '{{#each dataset.steps}}\n' +
       '  {{#unless @first}}<hr>{{/unless}}\n' +
       '  {{sw-label}}\n' +
       '{{/each}}',
@@ -389,7 +389,7 @@ export const LOOP_VARIABLES: readonly LoopVariable[] = [
     name: '@root',
     keywords: 'root context outer global each with scope website page company reach top',
     description:
-      'The OUTERMOST render context (company, website, page, data, nav, …), reachable from ANYWHERE — including deep inside a {{#each}}/{{#with}} where the current context is a loop item, not the page. Use it to read a global while iterating: inside {{#each page.translations}} a bare website.* would resolve against the translation item, so reach it with @root (e.g. a per-locale flag map in a language switcher).',
+      'The OUTERMOST render context (company, website, page, dataset, nav, …), reachable from ANYWHERE — including deep inside a {{#each}}/{{#with}} where the current context is a loop item, not the page. Use it to read a global while iterating: inside {{#each page.translations}} a bare website.* would resolve against the translation item, so reach it with @root (e.g. a per-locale flag map in a language switcher).',
     example:
       '{{#each page.translations}}\n' +
       '  {{! `locale` is the loop item; @root reaches website.data: }}\n' +
@@ -405,7 +405,7 @@ export const LOOP_VARIABLES: readonly LoopVariable[] = [
     description:
       'Steps OUT one context level: inside {{#each}}/{{#with}}, ../x reads x from the ENCLOSING scope (stack ../../ to go up two). Use it to reach an outer-loop value from a nested loop. For the very top, @root is usually clearer than counting ../ levels.',
     example:
-      '{{#each data.categories}}\n' +
+      '{{#each dataset.categories}}\n' +
       '  <h2>{{name}}</h2>\n' +
       '  {{#each products}}\n' +
       '    {{! ../name = the category from the OUTER loop: }}\n' +

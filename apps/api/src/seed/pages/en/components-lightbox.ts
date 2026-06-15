@@ -73,7 +73,7 @@ export function pageComponentsLightbox(): Page {
   <pre class="mt-3 inline-block max-w-full overflow-x-auto text-xs"><code>data-thumbnails="false" data-arrows="false"</code></pre>
   <div class="mt-8" data-sw-component="lightbox" data-sw-block="Lightbox" data-thumbnails="false" data-arrows="false" aria-label="{{page.data.aria_gallery2}}">
     <div data-sw-part="grid" class="gap-4 !grid-cols-3 md:!grid-cols-6">
-      {{#each data.projects}}
+      {{#each dataset.projects}}
       <a data-sw-part="item" href="{{sw-url image}}" data-caption="{{title}} — {{summary}}" class="group relative block aspect-[10/7] overflow-hidden rounded-xl bg-base-200">
         <span class="skeleton absolute inset-0 z-0" aria-hidden="true"></span>
         <img src="{{sw-url image}}" alt="{{title}}" loading="lazy" class="relative z-10 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
@@ -106,7 +106,7 @@ export function pageComponentsLightbox(): Page {
   <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="sec_single_d">No grid scaffolding needed — put the attribute straight on an &lt;img&gt; and it opens full-screen on click.</p>
   <pre class="mt-3 inline-block max-w-full overflow-x-auto text-xs"><code>&lt;img data-sw-component="lightbox" src="…" data-caption="…"&gt;</code></pre>
   <div class="mt-8">
-    {{#each data.projects}}{{#if @first}}
+    {{#each dataset.projects}}{{#if @first}}
     <img data-sw-component="lightbox" data-thumbnails="false" src="{{sw-url image}}" data-caption="{{title}} — {{summary}}" alt="{{title}}" loading="lazy" class="mx-auto block w-full max-w-3xl rounded-2xl shadow-sm transition-shadow duration-300 hover:shadow-xl" />
     {{/if}}{{/each}}
   </div>

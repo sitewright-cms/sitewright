@@ -71,11 +71,11 @@ export interface TemplateContext {
    * `parentPageView` in @sitewright/core; one level only (no nested `page.parent.parent`).
    */
   parentPage?: Record<string, unknown>;
-  /** Named values/collections, addressable as `{{ data.* }}` / `{{#each data.* }}`. */
-  data?: Record<string, unknown>;
+  /** Named collections (datasets), addressable as `{{ dataset.* }}` / `{{#each dataset.* }}`. */
+  dataset?: Record<string, unknown>;
   /**
    * Directly-addressable dataset entries by key: `{{ item.<dataset>.<entryId>.<field> }}` — the
-   * keyed twin of the `data.<dataset>` array, for lookups without a loop. Built per-render (and only
+   * keyed twin of the `dataset.<dataset>` array, for lookups without a loop. Built per-render (and only
    * for the datasets a source references) by `keyedDatasets` in @sitewright/core.
    */
   item?: Record<string, Record<string, unknown>>;
@@ -407,7 +407,7 @@ function createInstance(): typeof Handlebars {
   // Pick ONE dataset entry by id (the id a {{sw-control as="dataset-item"}} stores), defaulting to the
   // FIRST when the selection is unset/unknown — lets a Widget (e.g. the hero slider) render a chosen
   // config out of several. DUAL-MODE:
-  //   • BLOCK — {{#sw-pick-entry data.<slug> @root.page.data.<key>}}…{{/sw-pick-entry}} — renders the
+  //   • BLOCK — {{#sw-pick-entry dataset.<slug> @root.page.data.<key>}}…{{/sw-pick-entry}} — renders the
   //     block with the entry's VALUES as context (+ @entry={id,dataset,status}); empty dataset → the
   //     {{else}}/nothing. In PREVIEW (`root.markEntries`) it WRAPS the block in a data-sw-entry /
   //     data-sw-dataset marker (using the envelope's id+dataset) so a click in the editor opens THAT
@@ -644,7 +644,7 @@ function createInstance(): typeof Handlebars {
   });
   // ({{edit}} is RETIRED — editable text is now the `data-sw-text="key"` directive, bound to page.data.)
   //
-  // {{#each data.x}}…{{/each}} — the ONE loop helper, dataset-aware. When the iterated value is an
+  // {{#each dataset.x}}…{{/each}} — the ONE loop helper, dataset-aware. When the iterated value is an
   // array of DATASET ENTRIES, each iteration's context is the entry's FIELDS (`entry.values`) — so a
   // template reads `{{title}}`, not `{{values.title}}` — and the entry envelope is exposed on the
   // data frame as `@entry` (id/dataset/status). In PREVIEW (`root.markEntries`) each row is wrapped
@@ -778,7 +778,7 @@ interface EntryLike {
 
 /**
  * Is `v` a dataset entry? An entry is the envelope `{ id, dataset, values, … }` bound to
- * `data.<dataset>`. We detect it structurally (string `id` + string `dataset` + object `values`) so
+ * `dataset.<dataset>`. We detect it structurally (string `id` + string `dataset` + object `values`) so
  * the unified `{{#each}}` can flatten entry fields + emit click-to-edit markers, while plain arrays
  * (nav menus, page.children, translations) fall through to the built-in loop untouched.
  */
@@ -837,7 +837,7 @@ export function renderTemplate(source: string, ctx: TemplateContext = {}, opts: 
   // `parentPage` is merged into the page object as `page.parent` (the author binding); it is not a
   // top-level namespace. Only attach when present so a no-parent page keeps `page.parent` undefined.
   const page = ctx.parentPage ? { ...(ctx.page ?? {}), parent: ctx.parentPage } : ctx.page;
-  const data = { company: ctx.company, website: ctx.website, page, data: ctx.data, item: ctx.item, nav: ctx.nav, media: ctx.media, markEntries: ctx.markEntries, forms: ctx.forms };
+  const data = { company: ctx.company, website: ctx.website, page, dataset: ctx.dataset, item: ctx.item, nav: ctx.nav, media: ctx.media, markEntries: ctx.markEntries, forms: ctx.forms };
   let html: string;
   try {
     html = template(data, {

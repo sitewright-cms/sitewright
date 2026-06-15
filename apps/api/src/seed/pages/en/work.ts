@@ -25,7 +25,7 @@ export function pageWork(): Page {
 <section class="mx-auto max-w-6xl px-6 pb-28">
   <div data-sw-component="lightbox" data-sw-block="Lightbox" aria-label="{{page.data.aria_caption}}">
     <div data-sw-part="grid" class="!grid-cols-1 gap-10 md:!grid-cols-2">
-      {{#each data.projects}}
+      {{#each dataset.projects}}
       <a data-sw-part="item" href="{{sw-url image}}" data-caption="{{title}} — {{summary}}" class="group card nw-card overflow-hidden border border-base-200 bg-base-100 no-underline shadow-sm hover:border-primary/30 hover:shadow-2xl hover:shadow-primary/10 nw-zoom" data-aos="fade-up">
         <figure class="relative aspect-[16/10] overflow-hidden">
           <img src="{{sw-url image}}" alt="{{title}}" class="!aspect-[16/10] h-full w-full object-cover" loading="lazy" />

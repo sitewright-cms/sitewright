@@ -66,7 +66,7 @@ export function pageComponentsSlider(): Page {
   <pre class="mt-3 inline-block max-w-full overflow-x-auto text-xs"><code>data-sw-component="carousel"</code></pre>
   <div class="relative mt-8 overflow-hidden rounded-3xl" data-sw-component="carousel" data-sw-block="Carousel" aria-label="{{page.data.aria_fade}}">
     <div data-sw-part="track">
-      {{#each data.projects}}
+      {{#each dataset.projects}}
       <figure data-sw-part="slide" class="relative">
         <img src="{{sw-url image}}" alt="{{title}}" class="!aspect-[16/9] w-full object-cover" loading="lazy" />
         <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-6 pb-12 pt-16 text-white"><span class="text-xs font-semibold uppercase tracking-wider opacity-70">{{category}}</span><span class="block text-xl font-bold">{{title}}</span></figcaption>
@@ -85,7 +85,7 @@ export function pageComponentsSlider(): Page {
   <pre class="mt-3 inline-block max-w-full overflow-x-auto text-xs"><code>data-effect="slide" data-loop="true" data-autoplay="true" data-interval="4000"</code></pre>
   <div class="relative mt-8 overflow-hidden rounded-3xl" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-loop="true" data-autoplay="true" data-interval="4000" aria-label="{{page.data.aria_slide}}">
     <div data-sw-part="track">
-      {{#each data.projects}}
+      {{#each dataset.projects}}
       <figure data-sw-part="slide" class="relative">
         <img src="{{sw-url image}}" alt="{{title}}" class="!aspect-[16/9] w-full object-cover" loading="lazy" />
         <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-6 pb-12 pt-16 text-white"><span class="text-xs font-semibold uppercase tracking-wider opacity-70">{{category}}</span><span class="block text-xl font-bold">{{title}}</span></figcaption>
@@ -104,7 +104,7 @@ export function pageComponentsSlider(): Page {
   <pre class="mt-3 inline-block max-w-full overflow-x-auto text-xs"><code>data-effect="slide" data-item-align="center" class="[--sw-items:1.2] md:[--sw-items:2.4] lg:[--sw-items:3.2]"</code></pre>
   <div class="relative mt-8 [--sw-items:1.2] md:[--sw-items:2.4] lg:[--sw-items:3.2]" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-item-align="center" aria-label="{{page.data.aria_items}}">
     <div data-sw-part="track" class="overflow-hidden rounded-3xl">
-      {{#each data.projects}}
+      {{#each dataset.projects}}
       <figure data-sw-part="slide" class="px-3 py-1">
         <div class="card nw-card h-full overflow-hidden border border-base-200 bg-base-100 shadow-sm">
           <img src="{{sw-url image}}" alt="{{title}}" class="!aspect-[16/10] w-full object-cover" loading="lazy" />
@@ -140,7 +140,7 @@ export function pageComponentsSlider(): Page {
   <pre class="mt-3 inline-block max-w-full overflow-x-auto text-xs"><code>data-autoscroll="true" data-autoscroll-speed="1.5" data-loop="true" data-effect="slide"</code></pre>
   <div class="relative mt-8 [--sw-items:2] md:[--sw-items:4]" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-loop="true" data-autoscroll="true" data-autoscroll-speed="1.5" aria-label="{{page.data.aria_scroll}}">
     <div data-sw-part="track" class="overflow-hidden rounded-2xl">
-      {{#each data.projects}}
+      {{#each dataset.projects}}
       <figure data-sw-part="slide" class="px-2">
         <img src="{{sw-url image}}" alt="{{title}}" class="!aspect-[4/3] w-full rounded-xl object-cover" loading="lazy" />
       </figure>
@@ -155,7 +155,7 @@ export function pageComponentsSlider(): Page {
   <pre class="mt-3 inline-block max-w-full overflow-x-auto text-xs"><code>data-wheel="true" data-autoheight="true" data-effect="slide"</code></pre>
   <div class="relative mt-8 mx-auto max-w-3xl" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-wheel="true" data-autoheight="true" aria-label="{{page.data.aria_wheel}}">
     <div data-sw-part="track">
-      {{#each data.projects}}
+      {{#each dataset.projects}}
       <figure data-sw-part="slide" class="px-2 pb-10">
         <blockquote class="rounded-3xl border border-base-200 bg-base-100 p-8 shadow-sm">
           <p class="text-lg leading-relaxed">{{summary}}</p>
@@ -176,7 +176,7 @@ export function pageComponentsSlider(): Page {
   <pre class="mt-3 inline-block max-w-full overflow-x-auto text-xs"><code>data-click-next="true"</code></pre>
   <div class="relative mt-8 overflow-hidden rounded-3xl" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-loop="true" data-click-next="true" aria-label="{{page.data.aria_click}}">
     <div data-sw-part="track">
-      {{#each data.projects}}
+      {{#each dataset.projects}}
       <figure data-sw-part="slide" class="relative">
         <img src="{{sw-url image}}" alt="{{title}}" class="!aspect-[21/9] w-full object-cover" loading="lazy" />
         <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-6 pb-10 pt-16 text-white"><span class="block text-xl font-bold">{{title}}</span></figcaption>

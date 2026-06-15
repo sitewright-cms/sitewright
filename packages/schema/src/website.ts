@@ -187,6 +187,13 @@ export type ShopChannel = z.infer<typeof ShopChannelSchema>;
 
 /** Per-project MINI SHOP configuration (front-end cart). Every field is optional. */
 export const ShopSchema = z.object({
+  /**
+   * Master ON switch for the mini-shop. When not `true` the cart helpers ({{sw-cart}} /
+   * {{sw-add-to-cart}}) render NOTHING — the shop is off site-wide regardless of any config below — and
+   * the editor collapses the Shop settings section + hides its cart-string ghost rows. A fresh project
+   * starts OFF; the operator opts in with the "Enable shop" toggle (the example seed sets it true).
+   */
+  enabled: z.boolean().optional(),
   currency: ShopCurrencySchema.optional(),
   channels: z.array(ShopChannelSchema).max(8).optional(),
   /** Override the default "Add to cart" button label (the {{sw-add-to-cart}} default). */

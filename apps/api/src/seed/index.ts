@@ -27,7 +27,7 @@
 export { EXAMPLE_IDENTITY } from './identity.js';
 export { EXAMPLE_WEBSITE } from './website.js';
 export { EXAMPLE_DATASETS, EXAMPLE_CONTENT_LOCALES, EXAMPLE_EXTRA_LOCALES } from './datasets.js';
-export { CHROME_STRINGS } from './strings.js';
+export { CHROME_STRINGS, CHROME_TRANSLATIONS } from './strings.js';
 export { exampleEntries } from './entries/index.js';
 export { EXAMPLE_FORMS } from './forms.js';
 export { examplePages } from './pages/index.js';

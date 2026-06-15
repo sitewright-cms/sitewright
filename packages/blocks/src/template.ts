@@ -25,6 +25,7 @@ import { sanitizeRichHtml } from './sanitize-rich.js';
 import { resolveFormEmbeds, resolveFormId, renderFormMarkup, unknownFormMessage, type RenderForm } from './form-embed.js';
 import { selectFolderAssets, projectFolderItem, type FolderKind, type RenderMedia } from './folder.js';
 import { classifyControlTarget, controlCurrentValue, controlOptions, isControlAs, parseSelectOptions, CONTROL_AS_VALUES } from './control.js';
+import { RESERVED_TRANSLATION_DEFAULTS } from '@sitewright/schema';
 
 /** Thrown for an unsafe interpolation context, a Handlebars compile error, or a render error. */
 export class TemplateError extends Error {
@@ -310,8 +311,8 @@ function pad(n: number): string {
  * A non-empty translated string for a RESERVED catalog key, read from the pre-resolved per-locale map
  * `website.t` (own-property + proto-guarded). Empty/missing → '' so the caller's fallback chain applies.
  * The mini-shop cart helpers use this to localize their built-in labels from `website.translations`
- * (reserved keys `cart_add`/`cart_title`/`cart_note`/`cart_added`/`cart_empty`/`cart_subtotal`/
- * `cart_clear`/`cart_sent`) without a per-page hash override.
+ * (the reserved `cart_*` keys — see @sitewright/schema's RESERVED_TRANSLATION_GROUPS for the full set)
+ * without a per-page hash override.
  */
 function reservedTr(root: { website?: { t?: Record<string, unknown> } }, key: string): string {
   const t = root.website?.t;
@@ -510,17 +511,21 @@ function createInstance(): typeof Handlebars {
     const options = args[args.length - 1] as Handlebars.HelperOptions;
     const h = (options?.hash ?? {}) as Record<string, unknown>;
     const str = (v: unknown): string => (typeof v === 'string' ? v : typeof v === 'number' ? String(v) : '');
+    const root = (options.data?.root ?? {}) as { website?: { shop?: { enabled?: unknown; addToCartLabel?: unknown }; t?: Record<string, unknown> } };
+    // Gated by the master switch: with the shop OFF (website.shop.enabled !== true) the cart is disabled
+    // site-wide, so this button renders nothing — even if the helper is still in the template source.
+    if (root.website?.shop?.enabled !== true) return new Handlebars.SafeString('');
     const sku = str(h.sku);
     const name = str(h.name);
     const key = sku || name;
     if (!key) return new Handlebars.SafeString('');
     const priceNum = Number(h.price);
     const price = Number.isFinite(priceNum) && priceNum >= 0 ? String(priceNum) : '0';
-    const root = (options.data?.root ?? {}) as { website?: { shop?: { addToCartLabel?: unknown }; t?: Record<string, unknown> } };
     const shopLabel = root.website?.shop?.addToCartLabel;
     // Label precedence: explicit hash → translation catalog (reserved `cart_add`, localized per page
-    // locale) → site-wide website.shop.addToCartLabel → built-in default.
-    const label = str(h.label) || reservedTr(root, 'cart_add') || (typeof shopLabel === 'string' ? shopLabel : '') || 'Add to cart';
+    // locale) → site-wide website.shop.addToCartLabel → built-in English default (RESERVED_TRANSLATION_DEFAULTS).
+    const label =
+      str(h.label) || reservedTr(root, 'cart_add') || (typeof shopLabel === 'string' ? shopLabel : '') || RESERVED_TRANSLATION_DEFAULTS.cart_add!;
     let attrs = `data-sw-cart-add data-sku="${escapeAttr(key)}" data-name="${escapeAttr(name || key)}" data-price="${escapeAttr(price)}"`;
     const img = str(h.image);
     if (img) {
@@ -537,16 +542,20 @@ function createInstance(): typeof Handlebars {
   // footer slot) so it is on every page.
   //
   // i18n: a bare {{sw-cart}} AUTO-LOCALIZES — the drawer STRINGS (title/note/added/empty/subtotal/clear/
-  // sent) resolve per page-locale from the translation catalog (reserved cart_* keys in
+  // sent/order-lead) resolve per page-locale from the translation catalog (reserved cart_* keys in
   // website.translations), so a locale variant needs no per-page wiring. Precedence per string:
-  //   hash override (title= note= added= …) → catalog (cart_*) → website.shop value (title/note only) → cart.js default.
-  // The hash path stays for one-off per-call overrides; channel labels + order-form strings stay
-  // site-wide (`website.shop.channels[].label`).
+  //   hash override → catalog (cart_*) → website.shop value (title/note only) → built-in English default.
+  // The built-in defaults live in @sitewright/schema's RESERVED_TRANSLATION_DEFAULTS (one source of
+  // truth, also surfaced as the editor's translation-table ghost rows). The hash path stays for one-off
+  // per-call overrides; channel labels + order-form strings stay site-wide (`website.shop.channels[].label`).
   hb.registerHelper('sw-cart', function swCart(this: unknown, ...args: unknown[]) {
     const options = args[args.length - 1] as Handlebars.HelperOptions;
     const h = (options.hash ?? {}) as Record<string, unknown>;
     const root = (options.data?.root ?? {}) as { website?: { shop?: Record<string, unknown>; t?: Record<string, unknown> }; company?: Record<string, unknown> };
     const shop = (root.website?.shop ?? {}) as Record<string, unknown>;
+    // Gated by the master switch (mirrors {{sw-add-to-cart}}): shop OFF (enabled !== true) → no cart
+    // mount at all, so cart.js is never shipped (it loads only when this marker is present).
+    if (shop.enabled !== true) return new Handlebars.SafeString('');
     const currency = (shop.currency ?? {}) as Record<string, unknown>;
     const str = (v: unknown): string => (typeof v === 'string' ? v : typeof v === 'number' ? String(v) : '');
     let attrs = 'data-sw-cart';
@@ -556,26 +565,25 @@ function createInstance(): typeof Handlebars {
     if (code) attrs += ` data-currency-code="${escapeAttr(code)}"`;
     if (currency.position === 'after') attrs += ` data-currency-pos="after"`;
     if (typeof currency.decimals === 'number') attrs += ` data-currency-decimals="${escapeAttr(String(currency.decimals))}"`;
-    // Drawer-string precedence: explicit hash → translation catalog (reserved cart_* keys, localized
-    // per page locale) → site-wide website.shop value (title/note only) → omit (cart.js built-in
-    // default). So a bare {{sw-cart}} auto-localizes from website.translations with zero per-page wiring.
-    const rt = (k: string): string => reservedTr(root, k);
-    const title = str(h.title) || rt('cart_title') || str(shop.title);
-    if (title) attrs += ` data-cart-title="${escapeAttr(title)}"`;
-    const note = str(h.note) || rt('cart_note') || str(shop.note);
-    if (note) attrs += ` data-note="${escapeAttr(note)}"`;
-    // Drawer strings with no website.shop counterpart: hash → catalog → omit (cart.js default). A bare
-    // {{sw-cart}} with an empty catalog stays byte-identical (cart.js's built-in defaults apply).
-    const added = str(h.added) || rt('cart_added');
-    if (added) attrs += ` data-added-label="${escapeAttr(added)}"`;
-    const empty = str(h.empty) || rt('cart_empty');
-    if (empty) attrs += ` data-empty-label="${escapeAttr(empty)}"`;
-    const subtotal = str(h.subtotal) || rt('cart_subtotal');
-    if (subtotal) attrs += ` data-subtotal-label="${escapeAttr(subtotal)}"`;
-    const clear = str(h.clear) || rt('cart_clear');
-    if (clear) attrs += ` data-clear-label="${escapeAttr(clear)}"`;
-    const sent = str(h.sent) || rt('cart_sent');
-    if (sent) attrs += ` data-sent-label="${escapeAttr(sent)}"`;
+    // Drawer-string precedence per key: explicit hash → translation catalog (reserved cart_* key,
+    // localized per page locale) → site-wide website.shop value (title/note only) → built-in English
+    // default (RESERVED_TRANSLATION_DEFAULTS, the single source of truth). The default floor makes every
+    // label always resolve, so a bare {{sw-cart}} auto-localizes from website.translations with zero
+    // per-page wiring and an untranslated locale falls back to English.
+    // eslint-disable-next-line security/detect-object-injection -- k is a reserved-key literal from a frozen const registry, not user input
+    const rt = (k: string): string => reservedTr(root, k) || RESERVED_TRANSLATION_DEFAULTS[k]!;
+    const title = str(h.title) || reservedTr(root, 'cart_title') || str(shop.title) || RESERVED_TRANSLATION_DEFAULTS.cart_title!;
+    attrs += ` data-cart-title="${escapeAttr(title)}"`;
+    const note = str(h.note) || reservedTr(root, 'cart_note') || str(shop.note) || RESERVED_TRANSLATION_DEFAULTS.cart_note!;
+    attrs += ` data-note="${escapeAttr(note)}"`;
+    attrs += ` data-added-label="${escapeAttr(str(h.added) || rt('cart_added'))}"`;
+    attrs += ` data-empty-label="${escapeAttr(str(h.empty) || rt('cart_empty'))}"`;
+    attrs += ` data-subtotal-label="${escapeAttr(str(h.subtotal) || rt('cart_subtotal'))}"`;
+    attrs += ` data-clear-label="${escapeAttr(str(h.clear) || rt('cart_clear'))}"`;
+    attrs += ` data-sent-label="${escapeAttr(str(h.sent) || rt('cart_sent'))}"`;
+    // The order-message lead-in ({{sw-cart}} → cart.js prepends it to the deep-link order summary). The
+    // "Hi <brand> — " greeting connective in cart.js stays fixed; this lead sentence localizes.
+    attrs += ` data-order-lead="${escapeAttr(str(h.orderLead) || rt('cart_order_lead'))}"`;
     // The merchant's brand/business name (the always-present Corporate Identity `name`, projected into the
     // render ctx as `company`) — cart.js uses it for the email greeting ("Hi <brand> — I'd like to order:").
     // Emitted only when present, so a no-args {{sw-cart}} with no identity stays byte-identical.

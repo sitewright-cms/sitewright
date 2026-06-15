@@ -145,7 +145,8 @@ export interface SettingsForm {
   navEffect: 'none' | NavEffect;
   buttonEffect: 'none' | ButtonEffect;
   redirects: KeyedRedirect[];
-  // mini shop (website.shop): currency + submission channels (front-end cart)
+  // mini shop (website.shop): master switch + currency + submission channels (front-end cart)
+  shopEnabled: boolean;
   shopCurrencyCode: string;
   shopCurrencySymbol: string;
   shopCurrencyPosition: 'before' | 'after';
@@ -292,6 +293,7 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
     navEffect: w?.theme?.navEffect ?? 'none',
     buttonEffect: w?.theme?.buttonEffect ?? 'none',
     redirects: (w?.redirects ?? []).map((r) => ({ id: rowId(), from: r.from, to: r.to, status: r.status })),
+    shopEnabled: w?.shop?.enabled === true,
     shopCurrencyCode: w?.shop?.currency?.code ?? '',
     shopCurrencySymbol: w?.shop?.currency?.symbol ?? '',
     shopCurrencyPosition: w?.shop?.currency?.position ?? 'before',
@@ -483,9 +485,13 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
   const shopChannels = form.shopChannels
     .map(formChannelToShop)
     .filter((c): c is ShopChannel => c !== null);
+  // The master switch is part of the shop object; `enabled` is emitted only when ON (omitted = off, the
+  // schema default), so a fresh/disabled shop stays minimal. The object is built when enabled OR any
+  // config is present (so toggling off keeps the config but drops `enabled` → the cart is gated off).
   const shop =
-    shopCurrency || shopChannels.length || form.shopAddToCartLabel.trim() || form.shopTitle.trim() || form.shopNote.trim()
+    form.shopEnabled || shopCurrency || shopChannels.length || form.shopAddToCartLabel.trim() || form.shopTitle.trim() || form.shopNote.trim()
       ? {
+          ...(form.shopEnabled ? { enabled: true } : {}),
           ...(shopCurrency ? { currency: shopCurrency } : {}),
           ...(shopChannels.length ? { channels: shopChannels } : {}),
           ...(trimmed(form.shopAddToCartLabel) ? { addToCartLabel: form.shopAddToCartLabel.trim() } : {}),

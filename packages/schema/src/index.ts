@@ -2,6 +2,7 @@ export * from './primitives.js';
 export * from './agent.js';
 export * from './component-catalog.js';
 export * from './authoring-reference.js';
+export * from './reserved-translations.js';
 export * from './brand.js';
 export * from './company.js';
 export * from './corporate-identity.js';

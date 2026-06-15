@@ -170,6 +170,10 @@ export const CART_JS = `(function(){
     if(isNaN(d)||d<0||d>4){d=2;}
     var channels=[];
     try{var raw=mount.getAttribute('data-channels');if(raw){var p=JSON.parse(raw);if(Object.prototype.toString.call(p)==='[object Array]'){channels=p;}}}catch(e){channels=[];}
+    // NOTE: the {{sw-cart}} helper now ALWAYS emits the drawer-string data-* attrs (its floor is
+    // RESERVED_TRANSLATION_DEFAULTS in @sitewright/schema, the single source of truth), so the English
+    // fallbacks below are only a safety net for a hand-authored data-sw-cart element with the attribute
+    // missing. Change the shipped defaults in the schema registry, not here.
     return {
       symbol:mount.getAttribute('data-currency-symbol')||'',
       code:mount.getAttribute('data-currency-code')||'',
@@ -182,6 +186,7 @@ export const CART_JS = `(function(){
       subtotalLabel:mount.getAttribute('data-subtotal-label')||'Subtotal',
       clearLabel:mount.getAttribute('data-clear-label')||'Clear cart',
       sentLabel:mount.getAttribute('data-sent-label')||'Order sent \\u2014 we will be in touch.',
+      orderLead:mount.getAttribute('data-order-lead')||'I\\u2019d like to order:', // localized order-summary lead-in
       brand:mount.getAttribute('data-brand')||'', // merchant brand/business name (for the email greeting)
       channels:channels
     };
@@ -229,7 +234,7 @@ export const CART_JS = `(function(){
   function orderMessage(ch,items,cfg,values){
     var blocks=[];
     if(ch.kind==='mailto'){
-      var greet=cfg.brand?('Hi '+cfg.brand+' \\u2014 I\\u2019d like to order:'):'I\\u2019d like to order:';
+      var greet=cfg.brand?('Hi '+cfg.brand+' \\u2014 '+cfg.orderLead):cfg.orderLead;
       blocks.push(greet+'\\n'+orderText(items,cfg));
     }else{
       if(ch.intro){blocks.push(ch.intro);}

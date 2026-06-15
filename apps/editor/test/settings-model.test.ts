@@ -79,6 +79,25 @@ describe('settings model', () => {
     expect(back.website?.shop).toEqual(withShop.website!.shop);
   });
 
+  it('round-trips the shop enabled toggle (and toggling on with no config yields a bare {enabled})', () => {
+    const enabled: SettingsBundle = {
+      identity: { name: 'Acme', colors: {} },
+      website: { shop: { enabled: true, currency: { code: 'EUR', symbol: '€', position: 'after', decimals: 2 } } },
+      settings: { defaultLocale: 'en', locales: ['en'] },
+    };
+    expect(toForm(enabled).shopEnabled).toBe(true);
+    expect(toBundle(toForm(enabled), enabled).website?.shop).toEqual(enabled.website!.shop);
+    // toggling on with no other config → a minimal { enabled: true }
+    const form = toForm(empty());
+    form.shopEnabled = true;
+    expect(toBundle(form, empty()).website?.shop).toEqual({ enabled: true });
+    // a disabled shop omits `enabled` (off = the schema default), keeping any config
+    expect(toForm(empty()).shopEnabled).toBe(false);
+    const cfgOnly = toForm(empty());
+    cfgOnly.shopTitle = 'Cart';
+    expect(toBundle(cfgOnly, empty()).website?.shop).toEqual({ title: 'Cart' });
+  });
+
   it('round-trips per-channel order fields (whatsapp + mailto) and defaults the field type to text', () => {
     const withFields: SettingsBundle = {
       identity: { name: 'Acme', colors: {} },

@@ -19,6 +19,7 @@ describe('mini shop cart → publish', () => {
   let mediaRoot: string;
 
   const shop = {
+    enabled: true,
     currency: { code: 'EUR', symbol: '€', position: 'after', decimals: 2 },
     channels: [
       { kind: 'whatsapp', number: '+14155550123', label: 'Order on WhatsApp' },
@@ -104,7 +105,7 @@ describe('mini shop cart → publish', () => {
       (
         await proj.putContent('settings', 'settings', {
           identity: { name: 'Acme', colors: { primary: '#0a7' } },
-          website: { shop: { title: 'Your cart' } },
+          website: { shop: { enabled: true, title: 'Your cart' } },
           settings: {},
         })
       ).statusCode,
@@ -185,7 +186,7 @@ describe('mini shop cart → publish', () => {
       (
         await proj.putContent('settings', 'settings', {
           identity: { name: 'Acme', colors: { primary: '#0a7' } },
-          website: { footer: '{{sw-cart}}', shop: { channels: [{ kind: 'form', formId: 'order', label: 'Place order' }] } },
+          website: { footer: '{{sw-cart}}', shop: { enabled: true, channels: [{ kind: 'form', formId: 'order', label: 'Place order' }] } },
           settings: {},
         })
       ).statusCode,

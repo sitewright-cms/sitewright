@@ -136,6 +136,9 @@ export const EXAMPLE_WEBSITE = {
   // The WhatsApp + email channels collect buyer details (`fields`) before the link opens; the cart
   // appends them as "Label: value" lines below the order (email also opens with a brand greeting).
   shop: {
+    // Master switch: the example ships with the shop ON (a fresh project starts OFF — the operator opts
+    // in with the "Enable shop" toggle). With this false/absent the cart helpers render nothing.
+    enabled: true,
     currency: { code: 'USD', symbol: '$', position: 'before', decimals: 2 },
     channels: [
       {

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import { Plus, Trash2, Pencil, Lock } from 'lucide-react';
 import { RESERVED_TRANSLATION_GROUPS, type ReservedTranslation } from '@sitewright/schema';
 import { localeFlag, localeLabel } from '../i18n/locale-catalog';
@@ -76,6 +76,24 @@ export function TranslationsEditor({ rows, localeCodes, defaultLocale, shopEnabl
   const storedByKey = new Map(rows.map((r) => [r.key.trim(), r] as const));
   // Free rows = everything not owned by a surfaced reserved group (those render in their own section).
   const freeRows = rows.filter((r) => !surfacedKeys.has(r.key.trim()));
+  // SCOPE grouping: a dotted key (`home.headline`) groups under its first segment (`home`); a flat key
+  // groups under "General". Order is first-seen (stable). When NO key uses a scope, render flat (no
+  // headers) so a simple catalog stays simple.
+  const freeGroups = (() => {
+    const order: string[] = [];
+    const byScope = new Map<string, TranslationRow[]>();
+    for (const r of freeRows) {
+      const k = r.key.trim();
+      const scope = k.includes('.') ? k.slice(0, k.indexOf('.')) : '';
+      if (!byScope.has(scope)) {
+        byScope.set(scope, []);
+        order.push(scope);
+      }
+      byScope.get(scope)!.push(r);
+    }
+    return order.map((scope) => ({ scope, rows: byScope.get(scope)! }));
+  })();
+  const hasScopes = freeGroups.some((g) => g.scope !== '');
   const colSpan = localeCodes.length + 2;
 
   const localeHeaders = localeCodes.map((loc) => (
@@ -117,6 +135,61 @@ export function TranslationsEditor({ rows, localeCodes, defaultLocale, shopEnabl
     );
   };
 
+  const freeRow = (row: TranslationRow) => {
+    // Blank keys (new rows) are always editable; a non-blank key locks behind the pencil so a careless
+    // edit can't orphan its references.
+    const locked = row.key.trim() !== '' && !editingKeys.has(row.id);
+    return (
+      <tr key={row.id}>
+        <td className="align-top">
+          <div className="flex items-start gap-1">
+            <input
+              className={`${glassInput} font-mono ${locked ? 'cursor-default bg-slate-50 text-slate-500' : ''}`}
+              value={row.key}
+              readOnly={locked}
+              onChange={(e) => setKey(row.id, e.target.value)}
+              placeholder="nav_cta"
+              aria-label="Translation key"
+            />
+            {row.key.trim() !== '' && (
+              <button
+                type="button"
+                aria-label={locked ? 'Edit key' : 'Lock key'}
+                aria-pressed={!locked}
+                title={locked ? 'Edit key (renaming may break references)' : 'Lock key'}
+                onClick={() => toggleEditKey(row.id)}
+                className={`mt-1 shrink-0 rounded-lg p-2 transition ${locked ? 'text-slate-400 hover:bg-slate-100 hover:text-slate-600' : 'text-indigo-600 hover:bg-indigo-50'}`}
+              >
+                {locked ? <Pencil className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
+              </button>
+            )}
+          </div>
+        </td>
+        {localeCodes.map((loc) => (
+          <td key={loc} className="align-top">
+            <input
+              className={glassInput}
+              value={cellValue(row.cells, loc)}
+              onChange={(e) => setCell(row.id, loc, e.target.value)}
+              placeholder={localeLabel(loc)}
+              aria-label={`${row.key || 'translation'} — ${loc}`}
+            />
+          </td>
+        ))}
+        <td className="align-top">
+          <button
+            type="button"
+            aria-label="Remove translation"
+            onClick={() => remove(row.id)}
+            className="rounded-lg p-2 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </td>
+      </tr>
+    );
+  };
+
   return (
     <div className="flex flex-col gap-2">
       <p className="text-xs text-slate-500">
@@ -135,71 +208,30 @@ export function TranslationsEditor({ rows, localeCodes, defaultLocale, shopEnabl
                 <th className="w-8" />
               </tr>
             </thead>
+            {/* Flat keyed children (no per-group wrapper) — a header `<tr>` and a row `<tr>` each carry
+                their own stable key, so a row never REMOUNTS when its scope changes mid-edit (which would
+                drop input focus); only its position shifts. */}
             <tbody>
-              {surfacedGroups.map((group) => (
-                <FragmentRows key={group.id}>
-                  <tr>
-                    <td colSpan={colSpan} className="px-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                      {group.label}
-                    </td>
-                  </tr>
-                  {group.keys.map((k) => reservedRow(k))}
-                </FragmentRows>
-              ))}
-              {freeRows.map((row) => {
-                // Blank keys (new rows) are always editable; a non-blank key locks behind the pencil so a
-                // careless edit can't orphan its references.
-                const locked = row.key.trim() !== '' && !editingKeys.has(row.id);
-                return (
-                  <tr key={row.id}>
-                    <td className="align-top">
-                      <div className="flex items-start gap-1">
-                        <input
-                          className={`${glassInput} font-mono ${locked ? 'cursor-default bg-slate-50 text-slate-500' : ''}`}
-                          value={row.key}
-                          readOnly={locked}
-                          onChange={(e) => setKey(row.id, e.target.value)}
-                          placeholder="nav_cta"
-                          aria-label="Translation key"
-                        />
-                        {row.key.trim() !== '' && (
-                          <button
-                            type="button"
-                            aria-label={locked ? 'Edit key' : 'Lock key'}
-                            aria-pressed={!locked}
-                            title={locked ? 'Edit key (renaming may break references)' : 'Lock key'}
-                            onClick={() => toggleEditKey(row.id)}
-                            className={`mt-1 shrink-0 rounded-lg p-2 transition ${locked ? 'text-slate-400 hover:bg-slate-100 hover:text-slate-600' : 'text-indigo-600 hover:bg-indigo-50'}`}
-                          >
-                            {locked ? <Pencil className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                    {localeCodes.map((loc) => (
-                      <td key={loc} className="align-top">
-                        <input
-                          className={glassInput}
-                          value={cellValue(row.cells, loc)}
-                          onChange={(e) => setCell(row.id, loc, e.target.value)}
-                          placeholder={localeLabel(loc)}
-                          aria-label={`${row.key || 'translation'} — ${loc}`}
-                        />
-                      </td>
-                    ))}
-                    <td className="align-top">
-                      <button
-                        type="button"
-                        aria-label="Remove translation"
-                        onClick={() => remove(row.id)}
-                        className="rounded-lg p-2 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
+              {surfacedGroups.flatMap((group) => [
+                <tr key={`rhead-${group.id}`}>
+                  <td colSpan={colSpan} className="px-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                    {group.label}
+                  </td>
+                </tr>,
+                ...group.keys.map((k) => reservedRow(k)),
+              ])}
+              {freeGroups.flatMap((g) => [
+                ...(hasScopes
+                  ? [
+                      <tr key={`fhead-${g.scope || '__general__'}`}>
+                        <td colSpan={colSpan} className="px-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                          {g.scope || 'General'}
+                        </td>
+                      </tr>,
+                    ]
+                  : []),
+                ...g.rows.map((row) => freeRow(row)),
+              ])}
             </tbody>
           </table>
         </div>
@@ -211,9 +243,4 @@ export function TranslationsEditor({ rows, localeCodes, defaultLocale, shopEnabl
       </div>
     </div>
   );
-}
-
-/** A keyed group of sibling <tr>s (the `<>` shorthand can't take the group key directly). */
-function FragmentRows({ children }: { children: ReactNode }) {
-  return <>{children}</>;
 }

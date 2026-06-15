@@ -19,9 +19,9 @@ export function pagesServices(): Page[] {
     nav: { slots: ['header'], order: 3, dropdown: true },
     source: `<section class="mx-auto max-w-6xl px-6 pb-10 pt-24">
   <div class="nw-rise max-w-2xl">
-    <span class="text-sm font-semibold uppercase tracking-[0.18em] text-primary" data-sw-text="srv_eyebrow">What we do</span>
-    <h1 class="mt-4 text-4xl font-bold tracking-tight sm:text-6xl" data-sw-text="srv_h1">Services built to grow your business</h1>
-    <p class="mt-5 text-lg leading-relaxed text-base-content/60" data-sw-text="srv_intro">Engage us end-to-end or for a single phase. Either way you work directly with the people doing the work.</p>
+    <span class="text-sm font-semibold uppercase tracking-[0.18em] text-primary" data-sw-translate="services.eyebrow">What we do</span>
+    <h1 class="mt-4 text-4xl font-bold tracking-tight sm:text-6xl" data-sw-translate="services.headline">Services built to grow your business</h1>
+    <p class="mt-5 text-lg leading-relaxed text-base-content/60" data-sw-translate="services.intro">Engage us end-to-end or for a single phase. Either way you work directly with the people doing the work.</p>
   </div>
 </section>
 <section class="mx-auto max-w-6xl px-6 pb-14">

@@ -19,9 +19,9 @@ export function pagesAbout(assets: Record<string, string>): Page[] {
     data: { gallery_folder: 'Studio', aria_gallery: 'Studio photos', ab_img_alt: 'The Northwind studio' },
     source: `<section class="mx-auto grid max-w-6xl items-center gap-14 px-6 py-24 lg:grid-cols-2">
   <div class="nw-rise">
-    <span class="text-sm font-semibold uppercase tracking-[0.18em] text-primary" data-sw-text="ab_eyebrow">About us</span>
-    <h1 class="mt-4 text-4xl font-bold tracking-tight sm:text-6xl" data-sw-text="ab_h1">A small, senior team — by design</h1>
-    <p class="mt-6 text-lg leading-relaxed text-base-content/70" data-sw-text="ab_p1">Northwind is a boutique studio of designers and engineers who’d rather do a few projects brilliantly than many adequately. No juniors learning on your dime, no layers of account managers — just the people doing the work.</p>
+    <span class="text-sm font-semibold uppercase tracking-[0.18em] text-primary" data-sw-translate="about.eyebrow">About us</span>
+    <h1 class="mt-4 text-4xl font-bold tracking-tight sm:text-6xl" data-sw-translate="about.headline">A small, senior team — by design</h1>
+    <p class="mt-6 text-lg leading-relaxed text-base-content/70" data-sw-translate="about.intro">Northwind is a boutique studio of designers and engineers who’d rather do a few projects brilliantly than many adequately. No juniors learning on your dime, no layers of account managers — just the people doing the work.</p>
     <p class="mt-4 leading-relaxed text-base-content/70" data-sw-text="ab_p2">We believe a great website is the hardest-working member of your team: fast, clear, and quietly persuasive. That belief shapes every decision we make.</p>
   </div>
   <div class="relative" data-aos="zoom-in">

@@ -17,9 +17,9 @@ export function pageWork(): Page {
     data: { aria_caption: 'Project gallery' },
     source: `<section class="mx-auto max-w-6xl px-6 pb-8 pt-24">
   <div class="nw-rise max-w-2xl">
-    <span class="text-sm font-semibold uppercase tracking-[0.18em] text-primary" data-sw-text="work_eyebrow">Portfolio</span>
-    <h1 class="mt-4 text-4xl font-bold tracking-tight sm:text-6xl" data-sw-text="work_h1">Work we’re proud of</h1>
-    <p class="mt-5 text-lg leading-relaxed text-base-content/60" data-sw-text="work_intro">A selection of recent sites across retail, health, finance, and the arts — each one hand-built and fast. Click any shot to view it full-screen.</p>
+    <span class="text-sm font-semibold uppercase tracking-[0.18em] text-primary" data-sw-translate="work.eyebrow">Portfolio</span>
+    <h1 class="mt-4 text-4xl font-bold tracking-tight sm:text-6xl" data-sw-translate="work.headline">Work we’re proud of</h1>
+    <p class="mt-5 text-lg leading-relaxed text-base-content/60" data-sw-translate="work.intro">A selection of recent sites across retail, health, finance, and the arts — each one hand-built and fast. Click any shot to view it full-screen.</p>
   </div>
 </section>
 <section class="mx-auto max-w-6xl px-6 pb-28">

@@ -83,7 +83,7 @@ describe('seeded demo — flagship multilingual showcase publishes correctly', (
   it('renders the German home at /de from the SAME inherited code with translated data + datasets + chrome', async () => {
     const de = await page('de/index.html');
     expect(de).toContain('<html lang="de">'); // page.locale drives <html lang>
-    expect(de).toContain('Websites, die Ihnen mehr Geschäft'); // page.data override (inherit-mode)
+    expect(de).toContain('Websites, die Ihnen mehr Geschäft'); // hero headline via the scoped catalog (data-sw-translate="home.headline")
     expect(de).toContain('Webdesign'); // data.services auto-resolved → services-de
     expect(de).not.toContain('Web Design');
     // INHERIT proof: a structural marker unique to the EN home source renders in German too.

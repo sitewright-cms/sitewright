@@ -51,3 +51,28 @@ describe('TranslationsEditor — key edit-protection', () => {
     expect((screen.getByLabelText('Translation key') as HTMLInputElement).readOnly).toBe(false);
   });
 });
+
+describe('TranslationsEditor — scope grouping', () => {
+  it('renders flat (no scope headers) when no key uses a dotted scope', () => {
+    render(<Harness initial={[{ id: 'r1', key: 'nav_cta', cells: {} }]} locales={['en', 'de']} />);
+    expect(screen.queryByText('General')).toBeNull();
+    expect(screen.queryByText('home')).toBeNull();
+  });
+
+  it('groups dotted keys under their scope + flat keys under "General"', () => {
+    render(
+      <Harness
+        initial={[
+          { id: 'r1', key: 'nav_cta', cells: {} },
+          { id: 'r2', key: 'home.headline', cells: {} },
+          { id: 'r3', key: 'home.cta', cells: {} },
+          { id: 'r4', key: 'services.headline', cells: {} },
+        ]}
+        locales={['en', 'de']}
+      />,
+    );
+    expect(screen.getByText('General')).toBeTruthy();
+    expect(screen.getByText('home')).toBeTruthy();
+    expect(screen.getByText('services')).toBeTruthy();
+  });
+});

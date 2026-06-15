@@ -180,6 +180,26 @@ describe('seed demo content', () => {
     }
   });
 
+  it('every page data-sw-translate key resolves in the catalog with a translation for each extra locale', () => {
+    // Pages bind prominent strings via data-sw-translate="<scope>.<key>" (the inline-editable global
+    // catalog). EN is the element's inline fallback; the example is a complete trilingual showcase, so
+    // every such key must carry a non-empty cell for every NON-default locale (de/es).
+    const catalog = (EXAMPLE_WEBSITE.translations ?? {}) as Record<string, Record<string, string>>;
+    const sources = EXAMPLE_PAGES.map((p) => effectiveSource(p, true) ?? '').join('\n');
+    const keys = new Set([...sources.matchAll(/data-sw-translate="([A-Za-z_][A-Za-z0-9_.]*)"/g)].map((m) => m[1]!));
+    expect(keys.size).toBeGreaterThan(0);
+    // at least the migrated page scopes are present (sanity that the migration landed)
+    for (const k of ['home.headline', 'services.headline', 'about.headline']) expect(keys.has(k), `page binds ${k}`).toBe(true);
+    for (const key of keys) {
+      const cell = catalog[key as keyof typeof catalog];
+      expect(cell, `data-sw-translate key "${key}" exists in website.translations`).toBeTruthy();
+      for (const loc of EXTRA_LOCALES) {
+        const v = cell![loc as keyof typeof cell];
+        expect(typeof v === 'string' && v !== '', `catalog "${key}" has a ${loc} translation`).toBe(true);
+      }
+    }
+  });
+
   it('reserved-translation registry ↔ seed: every reserved key is seeded, and its EN value is the registry default', () => {
     // The RESERVED_TRANSLATION registry (@sitewright/schema) is the single source of truth for the
     // platform's built-in English UI strings (the cart helpers' fallback + the editor ghost rows). The

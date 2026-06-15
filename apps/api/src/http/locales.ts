@@ -7,7 +7,7 @@
 // is never committed.
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { LocaleSchema, IdSchema, KeyNameSchema, TRANSLATION_VALUE_MAX, type Page, type WebsiteSettings } from '@sitewright/schema';
+import { LocaleSchema, IdSchema, TranslationKeySchema, TRANSLATION_VALUE_MAX, type Page, type WebsiteSettings } from '@sitewright/schema';
 import {
   scaffoldLocale,
   propagatePageToLocales,
@@ -38,7 +38,7 @@ const TranslateBody = z.object({ locales: z.array(LocaleSchema).max(100).optiona
 // One translation-catalog cell write (the inline `data-sw-translate` editor). `value` reuses the
 // schema's TranslationCellsSchema bound (TRANSLATION_VALUE_MAX); an empty value clears the cell.
 const TranslationCellBody = z.object({
-  key: KeyNameSchema,
+  key: TranslationKeySchema,
   locale: LocaleSchema,
   value: z.string().max(TRANSLATION_VALUE_MAX),
 });

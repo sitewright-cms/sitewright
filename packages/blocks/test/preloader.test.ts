@@ -93,12 +93,15 @@ describe('PRELOADER_JS', () => {
     expect(PRELOADER_JS).toContain("addEventListener('load',done)");
   });
 
-  it('re-shows on internal-link clicks (/ or .) and restores on bfcache, with a failsafe', () => {
-    expect(PRELOADER_JS).toContain("href.charAt(0)==='/'");
-    expect(PRELOADER_JS).toContain("href.charAt(0)==='.'");
+  it('re-shows on ANY internal-link click (same-origin resolve) and restores on bfcache, with a failsafe', () => {
+    // Resolves the href against the current URL so bare-relative links (what {{sw-url}} emits) count,
+    // and excludes external origins + same-page #hash links.
+    expect(PRELOADER_JS).toContain('new URL(href,location.href)');
+    expect(PRELOADER_JS).toContain('url.origin!==location.origin');
+    expect(PRELOADER_JS).toContain('url.pathname===location.pathname');
     expect(PRELOADER_JS).toContain("addEventListener('pageshow'");
     expect(PRELOADER_JS).toContain('MAX'); // failsafe constant
-    // guards: no preloader on modified clicks / new-tab / download / external
+    // guards: no preloader on modified clicks / new-tab / download / external rel
     expect(PRELOADER_JS).toContain('metaKey');
     expect(PRELOADER_JS).toContain('download');
     expect(PRELOADER_JS).toContain('external');

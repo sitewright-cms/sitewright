@@ -10,8 +10,8 @@
 //
 // Behaviour (preloader.js): show on load → clear on window.load (after a short minimum so it doesn't
 // ugly-flash on fast loads) → lock page scroll while shown → re-show on clicks to internal links
-// (href starting with "/" — not "//" — or ".") to bridge the navigation → restore on bfcache
-// (pageshow) → an 8s failsafe so a hung resource can never block the page.
+// (any same-origin href, resolved against the current URL — bare-relative included) to bridge the
+// navigation → restore on bfcache (pageshow) → an 8s failsafe so a hung resource can never block.
 //
 // The overlay is a half-transparent brand-background pane with a backdrop blur, so page content
 // shows softly behind it. Every effect is themed entirely by the --sw-color-* brand tokens.
@@ -157,7 +157,10 @@ export const PRELOADER_JS = `(function(){
   if(document.readyState==='complete'){done();}else{window.addEventListener('load',done);}
   setTimeout(clear,MAX); // failsafe — a hung resource must never block the page
   window.addEventListener('pageshow',function(e){if(e.persisted){clear();}}); // bfcache restore
-  // Re-show during navigation to an internal link (href starts with "/" not "//", or ".").
+  // Re-show during navigation to ANY internal link. We resolve the href against the current URL so
+  // absolute ("/x"), relative ("./x", "../x") AND bare same-dir links ("about", "blog/post" — the
+  // form the platform's own {{sw-url}} emits) all count; external origins, mailto:/tel:, and same-page
+  // #hash links are excluded.
   document.addEventListener('click',function(e){
     var a=e.target.closest?e.target.closest('a'):null;
     if(!a||e.defaultPrevented||e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return;
@@ -165,8 +168,10 @@ export const PRELOADER_JS = `(function(){
     if(!href||a.hasAttribute('download'))return;
     if(a.target&&a.target!=='_self')return;
     if(/\\bexternal\\b/.test(a.getAttribute('rel')||''))return;
-    var internal=(href.charAt(0)==='/'&&href.charAt(1)!=='/')||href.charAt(0)==='.';
-    if(!internal)return;
+    var url;
+    try{url=new URL(href,location.href);}catch(_){return;}
+    if(url.origin!==location.origin)return; // external site, mailto:, tel:, etc.
+    if(url.pathname===location.pathname&&url.search===location.search)return; // same page (#hash only)
     showAgain(); // navigation proceeds; the next page clears its own preloader
   });
 })();`;

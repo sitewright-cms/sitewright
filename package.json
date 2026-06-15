@@ -26,8 +26,14 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": ["esbuild", "@tailwindcss/oxide", "sharp"],
+    "overrides": {
+      "form-data@>=4.0.0 <4.0.6": ">=4.0.6"
+    },
     "auditConfig": {
-      "ignoreGhsas": ["GHSA-gv7w-rqvm-qjhr"]
+      "ignoreGhsas": [
+        "GHSA-gv7w-rqvm-qjhr",
+        "GHSA-fx2h-pf6j-xcff"
+      ]
     }
   }
 }

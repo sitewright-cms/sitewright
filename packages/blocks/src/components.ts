@@ -227,10 +227,20 @@ const LIGHTBOX_JS = LIGHTBOX_SMARTPHOTO_RUNTIME_JS;
 // --- Modal -------------------------------------------------------------------
 // A trigger button that opens a native <dialog> (which provides focus trap,
 // Escape, ::backdrop, and background inerting for free). JS only wires open/close.
+// The dialog FADES + DROPS in from the top on open and FADES + RISES out to the top on close.
+// @starting-style + transition-behavior:allow-discrete keep the native <dialog> animating across
+// its display toggle (closed ↔ open); engines without that support just show/hide instantly. The
+// base (closed) rule doubles as the exit target — opacity:0 + translateY(-24px) — and `[open]`
+// is the resting state. Reduced-motion drops straight to a plain show/hide (mirrors the cart drawer).
 const MODAL_CSS = [
   '[data-sw-block="Modal"]{display:inline-block}',
-  '[data-sw-block="Modal"] dialog{position:relative;border:0;border-radius:.5rem;padding:1.5rem;max-width:min(90vw,32rem);box-shadow:0 10px 40px rgba(0,0,0,.2)}',
-  '[data-sw-block="Modal"] dialog::backdrop{background:rgba(0,0,0,.5)}',
+  '[data-sw-block="Modal"] dialog{position:relative;border:0;border-radius:.5rem;padding:1.5rem;max-width:min(90vw,32rem);box-shadow:0 10px 40px rgba(0,0,0,.2);opacity:0;transform:translateY(-24px);transition:opacity .22s ease,transform .22s ease,overlay .22s allow-discrete,display .22s allow-discrete}',
+  '[data-sw-block="Modal"] dialog[open]{opacity:1;transform:translateY(0)}',
+  '@starting-style{[data-sw-block="Modal"] dialog[open]{opacity:0;transform:translateY(-24px)}}',
+  '[data-sw-block="Modal"] dialog::backdrop{background:rgba(0,0,0,.5);opacity:0;transition:opacity .22s ease,overlay .22s allow-discrete,display .22s allow-discrete}',
+  '[data-sw-block="Modal"] dialog[open]::backdrop{opacity:1}',
+  '@starting-style{[data-sw-block="Modal"] dialog[open]::backdrop{opacity:0}}',
+  '@media (prefers-reduced-motion:reduce){[data-sw-block="Modal"] dialog,[data-sw-block="Modal"] dialog::backdrop{transition:none}}',
   '[data-sw-block="Modal"] [data-sw-part="close"]{position:absolute;top:.5rem;right:.75rem;border:0;background:none;font-size:1.5rem;line-height:1;cursor:pointer}',
 ].join('');
 

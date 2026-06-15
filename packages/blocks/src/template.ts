@@ -311,8 +311,8 @@ function pad(n: number): string {
  * A non-empty translated string for a RESERVED catalog key, read from the pre-resolved per-locale map
  * `website.t` (own-property + proto-guarded). Empty/missing → '' so the caller's fallback chain applies.
  * The mini-shop cart helpers use this to localize their built-in labels from `website.translations`
- * (reserved keys `cart_add`/`cart_title`/`cart_note`/`cart_added`/`cart_empty`/`cart_subtotal`/
- * `cart_clear`/`cart_sent`) without a per-page hash override.
+ * (the reserved `cart_*` keys — see @sitewright/schema's RESERVED_TRANSLATION_GROUPS for the full set)
+ * without a per-page hash override.
  */
 function reservedTr(root: { website?: { t?: Record<string, unknown> } }, key: string): string {
   const t = root.website?.t;

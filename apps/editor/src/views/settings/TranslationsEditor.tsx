@@ -66,7 +66,10 @@ export function TranslationsEditor({ rows, localeCodes, defaultLocale, shopEnabl
   };
 
   // Reserved groups surfaced as ghost rows: the feature is active AND there's more than one locale to
-  // translate into (a single-locale site renders the English defaults, so no table clutter).
+  // translate into (a single-locale site renders the English defaults, so no table clutter). When a group
+  // is NOT surfaced (feature off), any rows the operator already materialized for its keys simply appear
+  // as ordinary free rows — harmless (the render still floors to the English default). Extend the feature
+  // switch below when a second ReservedTranslationGroup.feature is added.
   const multiLocale = localeCodes.length > 1;
   const surfacedGroups = RESERVED_TRANSLATION_GROUPS.filter((g) => (g.feature === 'shop' ? shopEnabled : false) && multiLocale);
   const surfacedKeys = new Set(surfacedGroups.flatMap((g) => g.keys.map((k) => k.key)));

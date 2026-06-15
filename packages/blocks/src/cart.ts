@@ -170,6 +170,10 @@ export const CART_JS = `(function(){
     if(isNaN(d)||d<0||d>4){d=2;}
     var channels=[];
     try{var raw=mount.getAttribute('data-channels');if(raw){var p=JSON.parse(raw);if(Object.prototype.toString.call(p)==='[object Array]'){channels=p;}}}catch(e){channels=[];}
+    // NOTE: the {{sw-cart}} helper now ALWAYS emits the drawer-string data-* attrs (its floor is
+    // RESERVED_TRANSLATION_DEFAULTS in @sitewright/schema, the single source of truth), so the English
+    // fallbacks below are only a safety net for a hand-authored data-sw-cart element with the attribute
+    // missing. Change the shipped defaults in the schema registry, not here.
     return {
       symbol:mount.getAttribute('data-currency-symbol')||'',
       code:mount.getAttribute('data-currency-code')||'',

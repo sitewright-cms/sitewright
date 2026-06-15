@@ -293,7 +293,7 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
     navEffect: w?.theme?.navEffect ?? 'none',
     buttonEffect: w?.theme?.buttonEffect ?? 'none',
     redirects: (w?.redirects ?? []).map((r) => ({ id: rowId(), from: r.from, to: r.to, status: r.status })),
-    shopEnabled: !!w?.shop?.enabled,
+    shopEnabled: w?.shop?.enabled === true,
     shopCurrencyCode: w?.shop?.currency?.code ?? '',
     shopCurrencySymbol: w?.shop?.currency?.symbol ?? '',
     shopCurrencyPosition: w?.shop?.currency?.position ?? 'before',

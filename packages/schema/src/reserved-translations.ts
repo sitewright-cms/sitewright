@@ -68,8 +68,3 @@ export const RESERVED_TRANSLATION_GROUPS: readonly ReservedTranslationGroup[] = 
 export const RESERVED_TRANSLATION_DEFAULTS: Readonly<Record<string, string>> = Object.freeze(
   Object.fromEntries(RESERVED_TRANSLATION_GROUPS.flatMap((g) => g.keys.map((k) => [k.key, k.default] as const))),
 );
-
-/** Every reserved key (e.g. to exclude reserved keys from the editor's free-form rows). */
-export const RESERVED_TRANSLATION_KEYS: readonly string[] = RESERVED_TRANSLATION_GROUPS.flatMap((g) =>
-  g.keys.map((k) => k.key),
-);

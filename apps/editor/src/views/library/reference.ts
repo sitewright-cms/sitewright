@@ -228,7 +228,7 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         name: 'sw-cart',
         keywords: 'shop cart drawer checkout basket ecommerce order',
         description:
-          'MINI SHOP: the cart mount — a floating cart button + a drawer (line items, subtotal, the checkout channel buttons). Drop it ONCE per site (e.g. in the footer slot) so it shows on every page; it reads the currency + channels from Settings → Website → Shop. A WhatsApp/email channel can ask for buyer details first (name, address…) — add them under that channel’s “Order fields” in Shop settings; they’re appended to the message as “Label: value” lines below the order, and an email order opens with “Hi <brand> — I’d like to order:”.',
+          'MINI SHOP: the cart mount — a floating cart button + a drawer (line items, total, the checkout channel buttons). Drop it ONCE per site (e.g. in the footer slot) so it shows on every page; it reads the currency + channels from Settings → Website → Shop. A WhatsApp/email channel can ask for buyer details first (name, address…) — add them under that channel’s “Order fields” in Shop settings; they’re appended to the message as “Label: value” lines below the order, and an email order opens with “Hi <brand> — I’d like to order:”.',
         example: '{{sw-cart}}',
         note: 'The cart is FRONT-END only (localStorage) — it sends an order inquiry, not a charge. The runtime ships only on pages that use the shop.',
       },

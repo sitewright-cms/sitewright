@@ -449,7 +449,7 @@ describe('renderTemplate — MINI SHOP helpers', () => {
     expect(out).toContain('data-cart-title="Your cart"');
     expect(out).toContain('data-added-label="Added"');
     expect(out).toContain('data-empty-label="Your cart is empty."');
-    expect(out).toContain('data-subtotal-label="Total"'); // cart_subtotal default renamed to "Total"
+    expect(out).toContain('data-total-label="Total"'); // cart_total default
     expect(out).toContain('data-clear-label="Clear cart"');
     expect(out).toContain('data-sent-label="Order sent — we will be in touch."');
     expect(out).toContain('data-order-lead="I’d like to order:"');
@@ -458,14 +458,14 @@ describe('renderTemplate — MINI SHOP helpers', () => {
   it('{{sw-cart}} hash overrides win over the catalog and emit the per-string data-*-label attrs', () => {
     const ctxShop = shopCtx({}, { website: { t: { cart_title: 'Catalog title' } } });
     const out = renderTemplate(
-      '{{sw-cart title="Warenkorb" note="Preise unverbindlich." added="Hinzugefügt" empty="Ihr Warenkorb ist leer." subtotal="Zwischensumme" clear="Leeren" sent="Bestellung gesendet."}}',
+      '{{sw-cart title="Warenkorb" note="Preise unverbindlich." added="Hinzugefügt" empty="Ihr Warenkorb ist leer." total="Zwischensumme" clear="Leeren" sent="Bestellung gesendet."}}',
       ctxShop,
     );
     expect(out).toContain('data-cart-title="Warenkorb"');
     expect(out).toContain('data-note="Preise unverbindlich."');
     expect(out).toContain('data-added-label="Hinzugefügt"');
     expect(out).toContain('data-empty-label="Ihr Warenkorb ist leer."');
-    expect(out).toContain('data-subtotal-label="Zwischensumme"');
+    expect(out).toContain('data-total-label="Zwischensumme"');
     expect(out).toContain('data-clear-label="Leeren"');
     expect(out).toContain('data-sent-label="Bestellung gesendet."');
     expect(out).not.toContain('Catalog title'); // the hash override beats the catalog
@@ -481,7 +481,7 @@ describe('renderTemplate — MINI SHOP helpers', () => {
             cart_note: 'Preise unverbindlich.',
             cart_added: 'Hinzugefügt',
             cart_empty: 'Leer.',
-            cart_subtotal: 'Zwischensumme',
+            cart_total: 'Zwischensumme',
             cart_clear: 'Leeren',
             cart_sent: 'Gesendet.',
             cart_order_lead: 'Ich möchte bestellen:',
@@ -497,7 +497,7 @@ describe('renderTemplate — MINI SHOP helpers', () => {
     expect(out).toContain('data-note="Preise unverbindlich."');
     expect(out).toContain('data-added-label="Hinzugefügt"');
     expect(out).toContain('data-empty-label="Leer."');
-    expect(out).toContain('data-subtotal-label="Zwischensumme"');
+    expect(out).toContain('data-total-label="Zwischensumme"');
     expect(out).toContain('data-clear-label="Leeren"');
     expect(out).toContain('data-sent-label="Gesendet."');
     expect(out).toContain('data-order-lead="Ich möchte bestellen:"');

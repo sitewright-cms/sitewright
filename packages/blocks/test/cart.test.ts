@@ -77,12 +77,12 @@ describe('cart runtime', () => {
 
   it('reads the localizable drawer strings from mount attrs, with the previous literals as defaults', () => {
     expect(CART_JS).toContain("mount.getAttribute('data-empty-label')||'Your cart is empty.'");
-    expect(CART_JS).toContain("mount.getAttribute('data-subtotal-label')||'Total'"); // footer label renamed Subtotal -> Total
+    expect(CART_JS).toContain("mount.getAttribute('data-total-label')||'Total'"); // footer label (cart_total)
     expect(CART_JS).toContain("mount.getAttribute('data-clear-label')||'Clear cart'");
     expect(CART_JS).toContain("mount.getAttribute('data-sent-label')||'Order sent \\u2014 we will be in touch.'");
     // the previously-hardcoded literals are now sourced from cfg at every call site
     expect(CART_JS).toContain("part('p','empty',cfg.emptyLabel)");
-    expect(CART_JS).toContain('cfg.subtotalLabel');
+    expect(CART_JS).toContain('cfg.totalLabel');
     expect(CART_JS).toContain("part('button','clear',cfg.clearLabel)");
     expect(CART_JS).toContain("part('p','sent-msg',cfg.sentLabel)");
   });
@@ -155,6 +155,20 @@ describe('cart drawer UI (solid neutral scheme + optimized line)', () => {
     expect(CART_JS).not.toContain("' each'");
     expect(CART_JS).toContain("part('span','line-subtotal',money(lineTotal(it,cfg),cfg))"); // per-line subtotal
     expect(CART_CSS).toContain('[data-sw-part="line-subtotal"]{margin-left:auto'); // pushed to the right
+  });
+
+  it('renders the qty stepper as a COMPACT connected button group with a bigger gap to the base price', () => {
+    // One outer border + rounded corners on the group container; borderless buttons; the value flanked by dividers.
+    expect(CART_CSS).toContain('[data-sw-part="qty"]{display:inline-flex;align-items:stretch;margin-left:.35rem;border:1px solid #d1d5db;border-radius:.375rem;overflow:hidden}');
+    expect(CART_CSS).toContain('[data-sw-part="qty"] button{display:flex;align-items:center;justify-content:center;width:1.625rem;height:1.625rem;border:0;');
+    expect(CART_CSS).toContain('[data-sw-part="qty"]>span{display:flex;align-items:center;justify-content:center;min-width:1.5rem;padding:0 .25rem;border-left:1px solid #d1d5db;border-right:1px solid #d1d5db;');
+  });
+
+  it('names the footer grand-total row data-sw-part="total" and reads the cart_total label', () => {
+    expect(CART_JS).toContain("part('div','total')"); // footer total row (was 'subtotal')
+    expect(CART_JS).not.toContain("part('div','subtotal')");
+    expect(CART_CSS).toContain('[data-sw-part="total"]{display:flex;justify-content:space-between');
+    expect(CART_JS).toContain("mount.getAttribute('data-total-label')"); // carried via data-total-label
   });
 
   it('shows remove as a red trash icon button (not the word "Remove")', () => {

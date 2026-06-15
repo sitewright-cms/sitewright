@@ -86,10 +86,10 @@ test('published cart: add-to-cart opens the drawer and builds the WhatsApp order
   const keys = await page.evaluate(() => Object.keys(localStorage).filter((k) => k.indexOf('sw-cart:') === 0));
   expect(keys.length).toBe(1);
 
-  // Open the drawer via the floating toggle and verify the subtotal (19.90 + 49.00 = 68.90).
+  // Open the drawer via the floating toggle and verify the total (19.90 + 49.00 = 68.90).
   await cart.locator('[data-sw-part="toggle"]').click();
   await expect(dialog).toBeVisible();
-  await expect(cart.locator('[data-sw-part="subtotal"]')).toContainText('$68.90');
+  await expect(cart.locator('[data-sw-part="total"]')).toContainText('$68.90');
 
   // Click the WhatsApp channel → a wa.me deep link with the digit-only number and the encoded order.
   await cart.getByRole('button', { name: 'Order on WhatsApp' }).click();

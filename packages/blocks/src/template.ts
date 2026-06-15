@@ -574,7 +574,7 @@ function createInstance(): typeof Handlebars {
     attrs += ` data-note="${escapeAttr(str(h.note) || tr('cart_note'))}"`;
     attrs += ` data-added-label="${escapeAttr(str(h.added) || rt('cart_added'))}"`;
     attrs += ` data-empty-label="${escapeAttr(str(h.empty) || rt('cart_empty'))}"`;
-    attrs += ` data-subtotal-label="${escapeAttr(str(h.subtotal) || rt('cart_subtotal'))}"`;
+    attrs += ` data-total-label="${escapeAttr(str(h.total) || rt('cart_total'))}"`;
     attrs += ` data-clear-label="${escapeAttr(str(h.clear) || rt('cart_clear'))}"`;
     attrs += ` data-sent-label="${escapeAttr(str(h.sent) || rt('cart_sent'))}"`;
     // The order-message lead-in ({{sw-cart}} → cart.js prepends it to the deep-link order summary). The

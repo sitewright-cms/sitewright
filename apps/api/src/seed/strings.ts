@@ -45,7 +45,7 @@ export interface ChromeStrings {
   cart_note: string;
   cart_added: string;
   cart_empty: string;
-  cart_subtotal: string;
+  cart_total: string;
   cart_clear: string;
   cart_sent: string;
   cart_order_lead: string;
@@ -84,7 +84,7 @@ export const CHROME_STRINGS: Record<string, ChromeStrings> = {
     cart_note: 'Prices are indicative. This sends an order request — the seller confirms availability and final price.',
     cart_added: 'Added',
     cart_empty: 'Your cart is empty.',
-    cart_subtotal: 'Total',
+    cart_total: 'Total',
     cart_clear: 'Clear cart',
     cart_sent: 'Order sent — we will be in touch.',
     cart_order_lead: 'I’d like to order:',
@@ -119,7 +119,7 @@ export const CHROME_STRINGS: Record<string, ChromeStrings> = {
     cart_note: 'Preise unverbindlich. Dies sendet eine Bestellanfrage — der Verkäufer bestätigt Verfügbarkeit und Endpreis.',
     cart_added: 'Hinzugefügt',
     cart_empty: 'Ihr Warenkorb ist leer.',
-    cart_subtotal: 'Gesamt',
+    cart_total: 'Gesamt',
     cart_clear: 'Warenkorb leeren',
     cart_sent: 'Bestellung gesendet — wir melden uns.',
     cart_order_lead: 'Ich möchte gerne bestellen:',
@@ -154,7 +154,7 @@ export const CHROME_STRINGS: Record<string, ChromeStrings> = {
     cart_note: 'Precios orientativos. Esto envía una solicitud de pedido — el vendedor confirma disponibilidad y precio final.',
     cart_added: 'Añadido',
     cart_empty: 'Su carrito está vacío.',
-    cart_subtotal: 'Total',
+    cart_total: 'Total',
     cart_clear: 'Vaciar carrito',
     cart_sent: 'Pedido enviado — le contactaremos.',
     cart_order_lead: 'Me gustaría hacer un pedido:',

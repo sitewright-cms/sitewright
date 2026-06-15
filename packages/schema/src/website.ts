@@ -70,7 +70,7 @@ function shopHasControlChars(value: string): boolean {
 }
 
 /**
- * Currency FORMATTING for the cart subtotal — symbol placement + fraction digits (client-side,
+ * Currency FORMATTING for the cart total — symbol placement + fraction digits (client-side,
  * display-only, non-authoritative). The display SYMBOL + ISO CODE are translatable (per-locale) so they
  * live in the translation catalog under the reserved `cart_currency_symbol` / `cart_currency_code` keys,
  * NOT here — a multi-region site can show `$`/`USD` for one locale and `€`/`EUR` for another.

@@ -93,9 +93,12 @@ export const CART_CSS = [
   '[data-sw-cart] [data-sw-part="line-controls"]{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}',
   '[data-sw-cart] [data-sw-part="line-price"]{color:#6b7280;font-size:.875rem}',
   '[data-sw-cart] [data-sw-part="line-subtotal"]{margin-left:auto;font-weight:600;font-size:.9375rem}',
-  '[data-sw-cart] [data-sw-part="qty"]{display:flex;align-items:center;gap:.4rem}',
-  '[data-sw-cart] [data-sw-part="qty"] button{display:flex;align-items:center;justify-content:center;width:1.625rem;height:1.625rem;border:1px solid #d1d5db;border-radius:.375rem;background:#fff;color:#1f2937;cursor:pointer;font-size:1rem;line-height:1}',
-  '[data-sw-cart] [data-sw-part="qty"]>span{min-width:1.25rem;text-align:center;font-variant-numeric:tabular-nums}',
+  // Quantity = a COMPACT connected button group [- n +]: one outer border + rounded corners, the buttons
+  // borderless and the value flanked by dividers (its left/right borders). margin-left leaves a slightly
+  // bigger gap to the base price (on top of the row gap).
+  '[data-sw-cart] [data-sw-part="qty"]{display:inline-flex;align-items:stretch;margin-left:.35rem;border:1px solid #d1d5db;border-radius:.375rem;overflow:hidden}',
+  '[data-sw-cart] [data-sw-part="qty"] button{display:flex;align-items:center;justify-content:center;width:1.625rem;height:1.625rem;border:0;background:#fff;color:#1f2937;cursor:pointer;font-size:1rem;line-height:1}',
+  '[data-sw-cart] [data-sw-part="qty"]>span{display:flex;align-items:center;justify-content:center;min-width:1.5rem;padding:0 .25rem;border-left:1px solid #d1d5db;border-right:1px solid #d1d5db;background:#fff;font-variant-numeric:tabular-nums}',
   // Remove = a red trash icon button (square hit area; light-red hover wash).
   '[data-sw-cart] [data-sw-part="remove"]{display:inline-flex;align-items:center;justify-content:center;width:1.75rem;height:1.75rem;padding:0;border:0;border-radius:.375rem;background:none;color:#dc2626;cursor:pointer;transition:background .15s ease}',
   '[data-sw-cart] [data-sw-part="remove"] svg{width:1.125rem;height:1.125rem}',
@@ -103,7 +106,7 @@ export const CART_CSS = [
   // The foot is a fixed-size flex item; the list (flex:1) above it consumes the free space, so the foot
   // pins to the bottom without needing `margin-top:auto`. flex:none → it never shrinks the checkout area.
   '[data-sw-cart] [data-sw-part="foot"]{flex:none;padding:1rem 1.25rem;border-top:1px solid #e5e7eb}',
-  '[data-sw-cart] [data-sw-part="subtotal"]{display:flex;justify-content:space-between;font-weight:700;margin-bottom:.25rem}',
+  '[data-sw-cart] [data-sw-part="total"]{display:flex;justify-content:space-between;font-weight:700;margin-bottom:.25rem}',
   '[data-sw-cart] [data-sw-part="note"]{font-size:.75rem;color:#6b7280;margin:.25rem 0 .75rem}',
   '[data-sw-cart] [data-sw-part="channel"]{display:block;width:100%;border:0;border-radius:.375rem;padding:.625rem 1rem;margin-top:.5rem;background:var(--sw-color-primary,#0a7a5a);color:#fff;cursor:pointer;text-align:center;font:inherit;transition:filter .15s ease}',
   '[data-sw-cart] [data-sw-part="clear"]{display:block;width:100%;border:0;background:none;color:#6b7280;cursor:pointer;margin-top:.5rem;font-size:.875rem}',
@@ -137,8 +140,8 @@ export const CART_CSS = [
   '[data-sw-cart] [data-sw-part="channel"]:hover,[data-sw-cart] [data-sw-part="order-submit"]:hover{filter:brightness(.92)}',
   '[data-sw-cart] [data-sw-part="close"]{transition:color .15s ease,transform .15s ease}',
   '[data-sw-cart] [data-sw-part="close"]:hover{color:#b00020;transform:rotate(90deg)}',
-  '[data-sw-cart] [data-sw-part="qty"] button{transition:background .15s ease,border-color .15s ease}',
-  '[data-sw-cart] [data-sw-part="qty"] button:hover{background:#f3f4f6;border-color:#9ca3af}',
+  '[data-sw-cart] [data-sw-part="qty"] button{transition:background .15s ease}',
+  '[data-sw-cart] [data-sw-part="qty"] button:hover{background:#f3f4f6}',
   '[data-sw-cart] [data-sw-part="clear"]:hover{color:#374151;text-decoration:underline}',
   '[data-sw-cart] [data-sw-part="remove"]:hover{background:#fee2e2}',
   // Self-contained "waves" ripple (the platform ripple runtime only enhances elements present at load,
@@ -202,7 +205,7 @@ export const CART_JS = `(function(){
       addedLabel:mount.getAttribute('data-added-label')||'Added',
       note:mount.getAttribute('data-note')||'Prices are indicative. This sends an order request \\u2014 the seller confirms availability and final price.',
       emptyLabel:mount.getAttribute('data-empty-label')||'Your cart is empty.',
-      subtotalLabel:mount.getAttribute('data-subtotal-label')||'Total',
+      totalLabel:mount.getAttribute('data-total-label')||'Total',
       clearLabel:mount.getAttribute('data-clear-label')||'Clear cart',
       sentLabel:mount.getAttribute('data-sent-label')||'Order sent \\u2014 we will be in touch.',
       orderLead:mount.getAttribute('data-order-lead')||'I\\u2019d like to order:', // localized order-summary lead-in
@@ -333,9 +336,9 @@ export const CART_JS = `(function(){
     var list=part('ul','items');
     var empty=part('p','empty',cfg.emptyLabel);
     var foot=part('div','foot');
-    var subtotal=part('div','subtotal');var stLabel=mk('span',null,cfg.subtotalLabel);var stVal=mk('span',null,'');subtotal.appendChild(stLabel);subtotal.appendChild(stVal);
+    var totalRow=part('div','total');var stLabel=mk('span',null,cfg.totalLabel);var stVal=mk('span',null,'');totalRow.appendChild(stLabel);totalRow.appendChild(stVal);
     var note=part('p','note',cfg.note);
-    foot.appendChild(subtotal);foot.appendChild(note);
+    foot.appendChild(totalRow);foot.appendChild(note);
     // Channels: deep-link kinds (whatsapp/mailto/payment) render as a button; a "form" kind renders an
     // inline order form that POSTs to the resolved /f endpoint (the first form channel wins). A whatsapp/
     // mailto channel WITH configured "fields" renders a collapsible input form instead of firing on click.

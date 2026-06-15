@@ -49,7 +49,8 @@ export function TranslationsEditor({ rows, localeCodes, defaultLocale, shopEnabl
   const toggleEditKey = (id: string): void =>
     setEditingKeys((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
 

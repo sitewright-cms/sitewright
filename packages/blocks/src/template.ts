@@ -570,6 +570,7 @@ function createInstance(): typeof Handlebars {
     // default (RESERVED_TRANSLATION_DEFAULTS, the single source of truth). The default floor makes every
     // label always resolve, so a bare {{sw-cart}} auto-localizes from website.translations with zero
     // per-page wiring and an untranslated locale falls back to English.
+    // eslint-disable-next-line security/detect-object-injection -- k is a reserved-key literal from a frozen const registry, not user input
     const rt = (k: string): string => reservedTr(root, k) || RESERVED_TRANSLATION_DEFAULTS[k]!;
     const title = str(h.title) || reservedTr(root, 'cart_title') || str(shop.title) || RESERVED_TRANSLATION_DEFAULTS.cart_title!;
     attrs += ` data-cart-title="${escapeAttr(title)}"`;

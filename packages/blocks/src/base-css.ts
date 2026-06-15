@@ -174,10 +174,12 @@ const PLATFORM_DEFAULTS = `
 }
 
 /* Deterministic block spacing: ZERO the UA margins on flow elements so vertical spacing is set
-   EXPLICITLY (utilities like mt-*/space-y-*/gap-*, or \`.prose\`), identical across browsers — the one
-   Tailwind-preflight-style reset we adopt. We still KEEP the heading font-size SCALE and list MARKERS
-   (font-size + list-style/padding untouched). Weak layer → any author utility / criticalCss / \`.prose\`
-   wins. (\`body\` margin is already zeroed by normalize.) */
+   EXPLICITLY (spacing utilities such as mt-N, space-y-N, gap-N, or \`.prose\`), identical across
+   browsers — the one Tailwind-preflight-style reset we adopt. We still KEEP the heading font-size
+   SCALE and list MARKERS (font-size + list-style/padding untouched). Weak layer → any author utility
+   / criticalCss / \`.prose\` wins. (\`body\` margin is already zeroed by normalize.)
+   NB: do NOT write Tailwind globs like "mt-(asterisk)" in THIS comment — a literal asterisk-slash
+   would close the CSS comment early and drop the rule below (the original bug this fixes). */
 @layer sw-normalize {
   h1, h2, h3, h4, h5, h6, p, blockquote, figure, dl, dd, pre, hr, ul, ol, fieldset { margin: 0; }
 }

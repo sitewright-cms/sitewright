@@ -27,15 +27,24 @@ function loadRenderer(): Promise<(name: string) => string> {
   return rendererP;
 }
 
+/** A label is RICH (worth the icon renderer) only if it carries HTML or a `{{…}}` helper. A plain
+ *  page/menu title has neither — render it as text with NO lazy import (the common case). */
+function isRich(name: string): boolean {
+  return name.includes('<') || name.includes('{{');
+}
+
 /**
- * Previews a nav placeholder's rich NAME (basic HTML + `{{sw-icon}}`/`{{sw-flag}}`) in the Pages list
- * the way it renders in the MENU — the icon/flag + text — instead of dumping the raw template markup.
- * Shows a readable text fallback synchronously, then swaps in the icon-rendered HTML once the lazy
- * renderer chunk loads.
+ * Previews a page/placeholder's MENU label in the Pages list the way it renders in the menu. A plain
+ * title renders as text directly; a RICH label (basic HTML + `{{sw-icon}}`/`{{sw-flag}}`) shows a
+ * readable text fallback synchronously, then swaps in the icon-rendered HTML once the lazy renderer
+ * chunk loads — instead of dumping the raw template markup.
  */
 export function PlaceholderLabel({ name }: { name: string }) {
+  const rich = isRich(name);
   const [html, setHtml] = useState<string | null>(null);
   useEffect(() => {
+    setHtml(null); // clear any prior render so a name change shows the NEW fallback, never stale HTML
+    if (!rich) return; // plain title → no renderer needed
     let active = true;
     loadRenderer()
       .then((render) => {
@@ -47,8 +56,9 @@ export function PlaceholderLabel({ name }: { name: string }) {
     return () => {
       active = false;
     };
-  }, [name]);
+  }, [name, rich]);
 
+  if (!rich) return <>{name}</>;
   if (html === null || html.trim() === '') return <>{plainText(name) || name}</>;
   return <span className="sw-ph-label" dangerouslySetInnerHTML={{ __html: html }} />;
 }

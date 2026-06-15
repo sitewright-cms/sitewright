@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
+import { Settings, RotateCcw } from 'lucide-react';
 import type { JsonValue, Page, Template } from '@sitewright/schema';
 import {
   GLOBAL_TEMPLATES,
@@ -11,7 +12,7 @@ import {
 import { safeUrl } from '@sitewright/blocks/url';
 import { classifyControlTarget, normalizeControlAs } from '@sitewright/blocks/control';
 import { api, previewDocUrl, type Project } from '../api';
-import { CodeEditor } from '../lib/code-editor';
+import { CodeEditor, type CodeEditorHandle } from '../lib/code-editor';
 import { parseTemplateErrorPosition } from '../lib/template-error';
 import { PreviewPane } from './editor/PreviewPane';
 import { DevicePreview, PREVIEW_DEVICES, type PreviewDeviceKey } from './editor/DevicePreview';
@@ -100,16 +101,6 @@ const DEVICE_ICONS: Record<PreviewDeviceKey, ReactNode> = {
   ),
 };
 
-/** Settings gear — matches the pages-list row glyph; opens the stacked Page settings modal. */
-function SettingsIcon() {
-  return (
-    <svg aria-hidden viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="3" />
-      <path d="M12 1v3m0 16v3M4.2 4.2l2.1 2.1m11.4 11.4 2.1 2.1M1 12h3m16 0h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1" />
-    </svg>
-  );
-}
-
 /**
  * THE page editor, contentbase-style: a near-fullscreen modal (90vh, blurred
  * backdrop over the page list) with the live styled preview filling it, plus —
@@ -173,6 +164,11 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  // Source-mode (CodeMirror) undo/redo — the editor reports its own history availability, and the
+  // toolbar drives it through this handle (distinct from the page.data inline-edit history below).
+  const codeRef = useRef<CodeEditorHandle>(null);
+  const [srcCanUndo, setSrcCanUndo] = useState(false);
+  const [srcCanRedo, setSrcCanRedo] = useState(false);
   // Responsive simulation — large desktop (fluid, the modal's full width) is the default.
   const [device, setDevice] = useState<PreviewDeviceKey>('desktop');
   // The authoring strip opens COLLAPSED; it expands while hovered OR focused (so typing
@@ -222,7 +218,8 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
     [page, settings, source, pageData],
   );
   // One key over every editable field (BOTH modes + settings) → dirty + post-save snapshot.
-  const stateKey = JSON.stringify({ source, settings, data: pageData });
+  const keyOf = (s: string, st: PageSettingsValues, d: JsonValue) => JSON.stringify({ source: s, settings: st, data: d });
+  const stateKey = keyOf(source, settings, pageData);
   const [savedKey, setSavedKey] = useState(stateKey);
   const dirty = stateKey !== savedKey;
 
@@ -681,6 +678,38 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
     }
   }
 
+  /** Re-fetch this page from the server, DISCARDING the in-memory draft (source + page.data +
+   *  settings) and resetting the dirty baseline + inline-edit history. Gated by a dirty-warning
+   *  confirm in {@link onReloadClick}. */
+  async function reload() {
+    setSaveError(null);
+    try {
+      const fresh = (await api.getPage(project.id, page.id)).item;
+      if (!mounted.current) return;
+      const freshData = (fresh.data ?? {}) as JsonValue;
+      const freshSettings = pageSettingsFromPage(fresh);
+      // Reset the inline-edit history to the reloaded data (don't record the reset itself).
+      historyRef.current = [{ data: freshData }];
+      histIdxRef.current = 0;
+      applyingHistory.current = true;
+      setSource(fresh.source ?? '');
+      setPageData(freshData);
+      setSettings(freshSettings);
+      setSavedKey(keyOf(fresh.source ?? '', freshSettings, freshData)); // baseline = reloaded → not dirty
+      setSaved(false);
+      // No explicit preview bump: the changed source/settings/data move `stateKey`, which already
+      // re-runs the preview effect (an extra nonce would just issue a redundant in-flight request).
+    } catch (err) {
+      if (mounted.current) setSaveError(err instanceof Error ? `Reload failed: ${err.message}` : 'Reload failed');
+    }
+  }
+
+  /** Reload click: warn before discarding unsaved edits. */
+  async function onReloadClick() {
+    if (dirty && !(await confirm({ title: 'Reload page', message: 'Discard unsaved changes and reload this page from the server?', confirmLabel: 'Discard & reload' }))) return;
+    await reload();
+  }
+
   /**
    * Esc / header × / backdrop close guard: when dirty, confirm via the stacked discard DIALOG
    * first. Returning false keeps the editor open (the Modal aborts its close before animating
@@ -731,59 +760,53 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   );
 
   // Right side, just before Save/Close: the save status + the Page-settings gear (source mode only).
-  const undoBtnClass =
+  const toolBtnClass =
     'inline-flex cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-white p-2 text-slate-500 transition hover:border-slate-300 hover:text-slate-900 disabled:cursor-default disabled:opacity-40';
+  // Undo/redo target the ACTIVE editor: CodeMirror's history in source mode, the page.data inline-edit
+  // history in content mode — so the SAME two buttons work consistently in both modes.
+  const activeCanUndo = mode === 'source' ? srcCanUndo : canUndo;
+  const activeCanRedo = mode === 'source' ? srcCanRedo : canRedo;
+  const doUndo = () => (mode === 'source' ? codeRef.current?.undo() : undo());
+  const doRedo = () => (mode === 'source' ? codeRef.current?.redo() : redo());
+  // BOTH modes share ONE toolbar: Undo · Redo · Page data · Page settings · Reload (+ the Modal's Save/Close).
   const headerExtra = (
     <>
       {saved && !dirty && <span className="text-xs text-emerald-600">Saved</span>}
       {saveError && <span className="text-xs text-red-600">{saveError}</span>}
-      {mode === 'content' && (
-        <>
-          <Tooltip tip="Undo (⌘Z)" side="bottom">
-            <button type="button" aria-label="Undo" disabled={!canUndo} onClick={undo} className={undoBtnClass}>
-              <svg aria-hidden viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M9 14 4 9l5-5" />
-                <path d="M4 9h11a5 5 0 0 1 0 10h-1" />
-              </svg>
-            </button>
-          </Tooltip>
-          <Tooltip tip="Redo (⌘⇧Z)" side="bottom">
-            <button type="button" aria-label="Redo" disabled={!canRedo} onClick={redo} className={undoBtnClass}>
-              <svg aria-hidden viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="m15 14 5-5-5-5" />
-                <path d="M20 9H9a5 5 0 0 0 0 10h1" />
-              </svg>
-            </button>
-          </Tooltip>
-        </>
-      )}
+      <Tooltip tip="Undo (Ctrl+Z)" side="bottom">
+        <button type="button" aria-label="Undo" disabled={!activeCanUndo} onClick={doUndo} className={toolBtnClass}>
+          <svg aria-hidden viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 14 4 9l5-5" />
+            <path d="M4 9h11a5 5 0 0 1 0 10h-1" />
+          </svg>
+        </button>
+      </Tooltip>
+      <Tooltip tip="Redo (Ctrl+Shift+Z)" side="bottom">
+        <button type="button" aria-label="Redo" disabled={!activeCanRedo} onClick={doRedo} className={toolBtnClass}>
+          <svg aria-hidden viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="m15 14 5-5-5-5" />
+            <path d="M20 9H9a5 5 0 0 0 0 10h1" />
+          </svg>
+        </button>
+      </Tooltip>
       <Tooltip tip="Edit page data" side="bottom">
-        <button
-          type="button"
-          aria-label="Edit page data"
-          aria-expanded={pageDataOpen}
-          className="inline-flex cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-white p-2 text-slate-500 transition hover:border-slate-300 hover:text-slate-900"
-          onClick={() => setPageDataOpen(true)}
-        >
+        <button type="button" aria-label="Edit page data" aria-expanded={pageDataOpen} className={toolBtnClass} onClick={() => setPageDataOpen(true)}>
           <svg aria-hidden viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5a2 2 0 0 0 2 2h1" />
             <path d="M16 3h1a2 2 0 0 1 2 2v5a2 2 0 0 0 2 2 2 2 0 0 0-2 2v5a2 2 0 0 1-2 2h-1" />
           </svg>
         </button>
       </Tooltip>
-      {mode === 'source' && (
-        <Tooltip tip="Page settings" side="bottom">
-          <button
-            type="button"
-            aria-label="Page settings"
-            aria-expanded={settingsOpen}
-            className="inline-flex cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-white p-2 text-slate-500 transition hover:border-slate-300 hover:text-slate-900"
-            onClick={() => setSettingsOpen(true)}
-          >
-            <SettingsIcon />
-          </button>
-        </Tooltip>
-      )}
+      <Tooltip tip="Page settings" side="bottom">
+        <button type="button" aria-label="Page settings" aria-expanded={settingsOpen} className={toolBtnClass} onClick={() => setSettingsOpen(true)}>
+          <Settings className="h-5 w-5" />
+        </button>
+      </Tooltip>
+      <Tooltip tip="Reload from the server (discards unsaved changes)" side="bottom">
+        <button type="button" aria-label="Reload page" className={toolBtnClass} onClick={() => void onReloadClick()}>
+          <RotateCcw className="h-5 w-5" />
+        </button>
+      </Tooltip>
     </>
   );
 
@@ -854,7 +877,17 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
                 </p>
               </div>
             ) : (
-              <CodeEditor value={source} onChange={setSource} ariaLabel="Template source" error={editorError} />
+              <CodeEditor
+                ref={codeRef}
+                value={source}
+                onChange={setSource}
+                ariaLabel="Template source"
+                error={editorError}
+                onHistory={(u, r) => {
+                  setSrcCanUndo(u);
+                  setSrcCanRedo(r);
+                }}
+              />
             )}
           </section>
         )}

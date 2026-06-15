@@ -20,4 +20,12 @@ describe('PlaceholderLabel', () => {
     // The fallback shows the stripped text; assert no leftover "}" leaked from the {{{ }}}.
     expect(screen.queryByText(/[{}]/)).toBeNull();
   });
+
+  it('renders a plain menu/page title as text directly (no rich wrapper)', () => {
+    const { container } = render(<PlaceholderLabel name="About us" />);
+    expect(screen.getByText('About us')).toBeInTheDocument();
+    // A plain title is NOT routed through the rich renderer (no .sw-ph-label / svg).
+    expect(container.querySelector('.sw-ph-label')).toBeNull();
+    expect(container.querySelector('svg')).toBeNull();
+  });
 });

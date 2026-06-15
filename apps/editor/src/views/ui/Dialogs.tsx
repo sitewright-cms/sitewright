@@ -1,4 +1,4 @@
-import { useCallback, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Modal } from './Modal';
 import { glassInput, primaryButton, ghostButton } from '../../theme';
 
@@ -55,30 +55,51 @@ export function useDialogs() {
 
   let dialog: ReactNode = null;
   if (state?.kind === 'confirm') {
-    const done = (ok: boolean) => {
-      state.resolve(ok);
-      setState(null);
-    };
-    dialog = (
-      <Modal title={state.title} size="md" onClose={() => done(false)}>
-        <div className="flex flex-col gap-5 p-5">
-          <div className="text-sm text-slate-600">{state.message}</div>
-          <div className="flex justify-end gap-2">
-            <button className={ghostButton} onClick={() => done(false)}>
-              {state.cancelLabel ?? 'Cancel'}
-            </button>
-            <button className={state.danger ? dangerButtonSolid : primaryButton} onClick={() => done(true)} autoFocus>
-              {state.confirmLabel ?? 'Confirm'}
-            </button>
-          </div>
-        </div>
-      </Modal>
-    );
+    dialog = <ConfirmBody state={state} onClose={() => setState(null)} />;
   } else if (state?.kind === 'prompt') {
     dialog = <PromptBody state={state} onClose={() => setState(null)} />;
   }
 
   return { confirm, prompt, dialog };
+}
+
+/** Confirm dialog body: ENTER applies the primary (confirm) action, ESC cancels (the Modal's close →
+ *  `onClose` → resolve(false)). Both are the conventional shortcuts for a confirmation. */
+function ConfirmBody({ state, onClose }: { state: ConfirmState; onClose: () => void }) {
+  const resolved = useRef(false);
+  const done = (ok: boolean) => {
+    if (resolved.current) return; // one-shot — guards the Enter-key + button-click double-fire
+    resolved.current = true;
+    state.resolve(ok);
+    onClose();
+  };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter') return;
+      // A confirm has no inputs; the textarea guard is defensive against a future multiline body.
+      if ((document.activeElement as HTMLElement | null)?.tagName === 'TEXTAREA') return;
+      e.preventDefault();
+      done(true);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+    // Mount-only: this body exists for exactly one confirm; `state`/`done` are stable for its lifetime.
+  }, []);
+  return (
+    <Modal title={state.title} size="md" onClose={() => done(false)}>
+      <div className="flex flex-col gap-5 p-5">
+        <div className="text-sm text-slate-600">{state.message}</div>
+        <div className="flex justify-end gap-2">
+          <button className={ghostButton} onClick={() => done(false)}>
+            {state.cancelLabel ?? 'Cancel'}
+          </button>
+          <button className={state.danger ? dangerButtonSolid : primaryButton} onClick={() => done(true)} autoFocus>
+            {state.confirmLabel ?? 'Confirm'}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
 }
 
 function PromptBody({ state, onClose }: { state: PromptState; onClose: () => void }) {

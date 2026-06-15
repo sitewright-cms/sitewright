@@ -1,8 +1,8 @@
-import { useEffect, useRef } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 import { EditorView, keymap, Decoration, ViewPlugin, MatchDecorator, type DecorationSet, type ViewUpdate } from '@codemirror/view';
 import { EditorState, type Extension } from '@codemirror/state';
 import { HighlightStyle, syntaxHighlighting, indentUnit } from '@codemirror/language';
-import { indentWithTab, indentSelection } from '@codemirror/commands';
+import { indentWithTab, indentSelection, undo, redo, undoDepth, redoDepth } from '@codemirror/commands';
 import { tags as t } from '@lezer/highlight';
 import { basicSetup } from 'codemirror';
 import { html } from '@codemirror/lang-html';
@@ -26,6 +26,16 @@ interface CodeEditorProps {
   language?: CodeLanguage;
   /** When set, draw a red gutter marker (message on hover) at this position; null clears it. */
   error?: CodeEditorError | null;
+  /** Reports CodeMirror's undo/redo availability (on each edit) so a toolbar can drive + disable
+   *  its own Undo/Redo buttons in sync with the editor's history. */
+  onHistory?: (canUndo: boolean, canRedo: boolean) => void;
+}
+
+/** Imperative handle: lets a parent toolbar trigger CodeMirror's own undo/redo (its history is the
+ *  source of truth for source-mode edits — distinct from the page.data inline-edit history). */
+export interface CodeEditorHandle {
+  undo: () => void;
+  redo: () => void;
 }
 
 /** The editor accent — gutter border, cursor, selection, active-line gutter. */
@@ -126,7 +136,10 @@ function languageExtensions(language: CodeLanguage): Extension[] {
  * Tab indents the selection (`indentWithTab`); Shift-Tab auto-indents it (`indentSelection`,
  * syntax-aware re-flow). The indent unit is two spaces.
  */
-export function CodeEditor({ value, onChange, ariaLabel, language = 'html', error = null }: CodeEditorProps) {
+export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function CodeEditor(
+  { value, onChange, ariaLabel, language = 'html', error = null, onHistory },
+  ref,
+) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   // The last document we emitted upward — used to distinguish our own echo from a genuine
@@ -134,6 +147,29 @@ export function CodeEditor({ value, onChange, ariaLabel, language = 'html', erro
   const lastEmitted = useRef(value);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  const onHistoryRef = useRef(onHistory);
+  onHistoryRef.current = onHistory;
+  // Drive CodeMirror's own undo/redo from a parent toolbar (and refocus the editor after).
+  useImperativeHandle(
+    ref,
+    () => ({
+      undo: () => {
+        const v = viewRef.current;
+        if (v) {
+          undo(v);
+          v.focus();
+        }
+      },
+      redo: () => {
+        const v = viewRef.current;
+        if (v) {
+          redo(v);
+          v.focus();
+        }
+      },
+    }),
+    [],
+  );
   // Mode is fixed at mount (CodeMirror owns the document thereafter). Callers never change
   // `language` on a live instance; if that's ever needed, remount via a React `key`.
   const languageRef = useRef(language);
@@ -161,6 +197,7 @@ export function CodeEditor({ value, onChange, ariaLabel, language = 'html', erro
             const doc = u.state.doc.toString();
             lastEmitted.current = doc;
             onChangeRef.current(doc);
+            onHistoryRef.current?.(undoDepth(u.state) > 0, redoDepth(u.state) > 0);
           }),
           // Added after basicSetup so the black theme + rich highlight win.
           blackTheme,
@@ -170,6 +207,7 @@ export function CodeEditor({ value, onChange, ariaLabel, language = 'html', erro
     });
     if (ariaLabel) view.contentDOM.setAttribute('aria-label', ariaLabel);
     viewRef.current = view;
+    onHistoryRef.current?.(undoDepth(view.state) > 0, redoDepth(view.state) > 0);
     return () => {
       view.destroy();
       viewRef.current = null;
@@ -205,4 +243,4 @@ export function CodeEditor({ value, onChange, ariaLabel, language = 'html', erro
   }, [error?.line, error?.column, error?.message]);
 
   return <div ref={hostRef} className="h-full overflow-hidden" data-testid="code-editor" />;
-}
+});

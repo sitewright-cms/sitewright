@@ -250,6 +250,123 @@ export function translationsDe(assets: Record<string, string>): Record<string, P
         'Diese Bilder sind eigenständige Elemente in eigenen Karten, aber ein gemeinsamer data-gallery-Name fasst sie zu einer Lightbox zusammen — klicke auf eines und blättere durch beide. Das funktioniert auch über verschiedene Abschnitte der Seite hinweg.',
     },
   },
+  'comp-tabs': {
+    path: 'tabs',
+    title: 'Tabs',
+    navTitle: 'Tabs',
+    description:
+      'Inhalts-Panels hinter einer barrierefreien Tableiste — Navigation per Pfeiltasten, die Schaltflächen aus jedem Panel-Titel erzeugt, und ein No-JS-Fallback, der alle Panels untereinander stapelt.',
+    data: {
+      tab_intro:
+        'Eine Komponente, beliebiger Inhalt. Ein Tabs-Root mit einem Tablist-Slot und einem Panel pro Tab — die Runtime liest den Titel jedes Panels, erzeugt die Schaltflächen, verdrahtet die Pfeiltasten und stapelt ohne JavaScript alles lesbar untereinander.',
+      sec_basic_t: 'Tabs — die Standardeinstellungen',
+      sec_basic_d:
+        'Ein Panel pro Tab; die Runtime baut die Schaltflächen aus dem data-sw-title jedes Panels und steuert die Auswahl. Auf einen Tab klicken oder einen fokussieren und die Pfeiltasten nutzen.',
+      tab1: 'Überblick',
+      body1:
+        'Tabs bündeln zusammengehörige Inhalte auf engem Raum — der Besucher sieht jeweils ein Panel und wechselt dazwischen, ohne die Seite zu verlassen.',
+      tab2: 'So funktioniert’s',
+      body2:
+        'Gib jedem Panel einen Titel und seinen Inhalt. Die Runtime erzeugt die barrierefreie Tableiste, verknüpft jede Schaltfläche mit ihrem Panel und bewegt den Fokus mit den Pfeiltasten (Pos1 und Ende springen zum ersten und letzten).',
+      tab3: 'Barrierefreiheit',
+      body3:
+        'Das Markup folgt dem WAI-ARIA-Tabs-Muster: eine Tableiste aus Schaltflächen, die je ein beschriftetes Tabpanel steuern. Roving tabindex bedeutet, dass Tab in das aktive Panel führt, statt durch jede Schaltfläche zu wandern.',
+      sec_rich_t: 'Panels nehmen beliebiges Markup auf',
+      sec_rich_d:
+        'Ein Panel ist nur ein Container — setze eine Liste, ein Kennzahlenraster, ein Bild oder einen Call-to-Action hinein. Hier ist ein Panel eine Checkliste und das nächste eine Reihe von Zahlen.',
+      rtab1: 'Inklusive',
+      rli1: 'Beliebig viele Panels, jedes mit eigenem Titel und Inhalt',
+      rli2: 'Tastatur-, Touch- und Screenreader-Unterstützung von Haus aus',
+      rli3: 'Kein eigenes JavaScript — nur deklaratives Markup',
+      rtab2: 'In Zahlen',
+      rstat1_n: '0',
+      rstat1_l: 'Zeilen JavaScript, die du schreibst',
+      rstat2_n: '100 %',
+      rstat2_l: 'allein mit der Tastatur bedienbar',
+      sec_nojs_t: 'Ohne JavaScript',
+      sec_nojs_d:
+        'Laufen keine Skripte, bleibt die Tableiste verborgen und jedes Panel wird untereinander gestapelt gerendert — der gesamte Inhalt bleibt vorhanden und lesbar. Verstecke nie wesentliche Inhalte hinter einem Tab, der nur mit JS erscheint.',
+    },
+  },
+  'comp-modal': {
+    path: 'modal',
+    title: 'Modal',
+    navTitle: 'Modal',
+    description:
+      'Eine Schaltfläche, die einen nativen Dialog öffnet — Fokusfalle, Escape, Backdrop und das Inaktivschalten des Hintergrunds liefert der Browser; die Größe bestimmt eine einzige Klasse.',
+    data: {
+      mod_intro:
+        'Eine Schaltfläche und ein nativer Dialog. Der Browser liefert die Fokusfalle, Escape zum Schließen, das abgedunkelte ::backdrop und das Inaktivschalten der Seite dahinter — die Komponente verdrahtet nur die Öffnen- und Schließen-Schaltflächen. Die Größe bestimmst du mit einer max-w-*-Klasse.',
+      mod_close: 'Schließen',
+      sec_basic_t: 'Modal — die Standardeinstellungen',
+      sec_basic_d:
+        'Ein Auslöser, ein Dialog und eine Schließen-Schaltfläche. Beim Öffnen wird der Fokus eingefangen; Escape, die Schließen-Schaltfläche oder ein Klick auf den Hintergrund schließen ihn.',
+      mod1_open: 'Wie geht es weiter?',
+      mod1_title: 'Wie geht es weiter?',
+      mod1_body:
+        'Nach deiner Anfrage vereinbaren wir ein kurzes Gespräch, stecken den Umfang gemeinsam ab und senden innerhalb von zwei Werktagen ein Festpreisangebot — unverbindlich.',
+      sec_wide_t: 'Ein breiterer Dialog mit reichem Inhalt',
+      sec_wide_d:
+        'Dieselbe Komponente, mit max-w-2xl vergrößert — ein Dialog kann beliebiges Markup aufnehmen: Überschriften, Listen, Medien oder einen Call-to-Action.',
+      mod2_open: 'Den ganzen Ablauf ansehen',
+      mod2_title: 'So arbeiten wir',
+      mod2_step1: 'Entdecken — wir lernen Ziele, Zielgruppe und Rahmenbedingungen kennen.',
+      mod2_step2: 'Design & Umsetzung — wöchentliche Vorschauen, dein Feedback fließt ein.',
+      mod2_step3: 'Launch & Pflege — wir gehen live, messen und verbessern weiter.',
+      sec_form_t: 'Ein Modal mit einem Formular',
+      sec_form_d:
+        'Setze das eingebettete Kontaktformular direkt in den Dialog — es sendet, validiert und zeigt seine Erfolgsmeldung, ohne dass die Seite verlassen wird.',
+      mod3_open: 'Kontakt aufnehmen',
+      mod3_title: 'Schreib uns eine Nachricht',
+      mod3_body: 'Wir antworten meist innerhalb eines Tages.',
+      sec_nojs_t: 'Ohne JavaScript & globale Modals',
+      sec_nojs_d:
+        'Ohne JS tut der Auslöser einfach nichts und die Seite bleibt voll nutzbar — leg also nie wesentliche Inhalte allein in ein Modal. Ein Navigations-Platzhalter, der auf eine #dialog-id zeigt, kann ein Modal auch aus dem Menü öffnen.',
+    },
+  },
+  'comp-cookie': {
+    path: 'cookie-consent',
+    title: 'Cookie-Hinweis',
+    navTitle: 'Cookie-Hinweis',
+    description:
+      'Ein Einwilligungsbanner, das in localStorage gespeichert wird — verborgen ausgeliefert, beim ersten Besuch einmal eingeblendet und nach der Zustimmung endgültig ausgeblendet. Eine Skeleton-Slot-Komponente, die site-weit läuft.',
+    data: {
+      cc_intro:
+        'Ein kleines Einwilligungsbanner, das die Runtime nur einblendet, bis der Besucher zustimmt — die Wahl wird in localStorage gemerkt, also erscheint es einmal und nie wieder. Es lebt in einem Skeleton-Slot und ist damit auf jeder Seite vorhanden; das echte hast du beim ersten Besuch am unteren Rand gesehen.',
+      sec_preview_t: 'So sieht es aus',
+      sec_preview_d:
+        'Eine statische Vorschau des Banners (hier gezeigt, damit es auch sichtbar ist, nachdem du das echte akzeptiert hast). Das Live-Banner ist am unteren Rand fixiert und gleitet beim ersten Besuch herein.',
+      cc_text: 'Wir verwenden wenige notwendige Cookies für den Betrieb dieser Website und anonyme Statistiken zu ihrer Verbesserung.',
+      cc_more: 'Mehr erfahren',
+      cc_accept: 'Alles klar',
+      sec_how_t: 'So funktioniert’s',
+      sec_how_d:
+        'Einmal in einem Skeleton-Slot anlegen (im Footer oder einem eigenen Slot). Der Server rendert es mit einem hidden-Attribut; die Runtime prüft localStorage und blendet es nur ein, wenn keine Wahl gespeichert ist, und blendet es nach Druck auf die Zustimmen-Schaltfläche dauerhaft aus. Das Verhalten trägt der Marker, nicht das ausgezeichnete HTML.',
+      sec_nojs_t: 'Ohne JavaScript',
+      sec_nojs_d:
+        'Es erscheint gar kein Banner — und ohne Skripte gibt es nichts zu setzen oder zu speichern, die Seite wird einfach unverändert ausgeliefert.',
+    },
+  },
+  'comp-forms': {
+    path: 'forms',
+    title: 'Formulare',
+    navTitle: 'Formulare',
+    description:
+      'Bette ein konfiguriertes Formular mit einem einzigen Tag überall ein — Felder, Validierung, Spam-Schutz und Inline-Erfolg werden für dich erzeugt, und die richtige Sprache wird automatisch gewählt.',
+    data: {
+      frm_intro:
+        'Baue ein Formular einmal im Formulare-Tab und bette es dann überall ein — {{sw-form "id"}} oder data-sw-form="id" expandiert das Ganze beim Rendern: Felder, Labels, Validierung, einen Honeypot und eine Inline-Erfolgsmeldung. Es gibt kein Markup von Hand und nichts zu verdrahten.',
+      sec_helper_t: 'Mit dem Helper einbetten',
+      sec_helper_d:
+        'Das einfachste Formular: ein Helper-Aufruf expandiert die gespeicherte „contact“-Definition. Mit class= gestaltest du den Wrapper.',
+      sec_attr_t: 'Per Attribut einbetten, in deinem eigenen Layout',
+      sec_attr_d:
+        'Lieber von Hand platzieren? Ein leeres Element mit data-sw-form="contact" wird mit demselben Markup gefüllt — setze es in jeden Container, den du gestaltet hast, etwa diese Karte.',
+      sec_about_t: 'Spam-Schutz, sprachbewusst, ohne JS',
+      sec_about_d:
+        'Jede Einbettung erhält einen versteckten Honeypot, eine Zeitfalle beim Absenden und optional hCaptcha; sie sendet JSON an den eingefügten Endpunkt und zeigt Erfolg oder Fehler inline. Auf einer übersetzten Seite löst „contact“ automatisch das passende lokalisierte Formular auf. Ohne JavaScript hat das Formular kein action-Attribut und sendet nicht — Spam-Schutz by design.',
+    },
+  },
   faq: {
     path: 'faq',
     title: 'FAQ',

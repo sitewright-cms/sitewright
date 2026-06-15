@@ -4,6 +4,10 @@ import { pageWork } from './work.js';
 import { pageComponents } from './components.js';
 import { pageComponentsSlider } from './components-slider.js';
 import { pageComponentsLightbox } from './components-lightbox.js';
+import { pageComponentsTabs } from './components-tabs.js';
+import { pageComponentsModal } from './components-modal.js';
+import { pageComponentsCookieConsent } from './components-cookieconsent.js';
+import { pageComponentsForms } from './components-forms.js';
 import { pagesServices } from './services.js';
 import { pagesAbout } from './about.js';
 import { pageContact } from './contact.js';
@@ -30,6 +34,10 @@ export function pagesEn(assets: Record<string, string>): Page[] {
     pageComponents(),
     pageComponentsSlider(),
     pageComponentsLightbox(),
+    pageComponentsTabs(),
+    pageComponentsModal(),
+    pageComponentsCookieConsent(),
+    pageComponentsForms(),
     pageFaq(),
     ...pagesLegal(),
     ...pageNavLinks(),

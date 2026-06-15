@@ -248,6 +248,123 @@ export function translationsEs(assets: Record<string, string>): Record<string, P
         'Estas imágenes son elementos independientes en sus propias tarjetas, pero un mismo nombre data-gallery las une en una sola lightbox — haz clic en cualquiera y pasa por ambas. Lo mismo funciona entre distintas secciones de la página.',
     },
   },
+  'comp-tabs': {
+    path: 'pestanas',
+    title: 'Pestañas',
+    navTitle: 'Pestañas',
+    description:
+      'Paneles de contenido tras una lista de pestañas accesible — navegación con las flechas, los botones construidos a partir del título de cada panel, y un respaldo sin JS que apila todos los paneles.',
+    data: {
+      tab_intro:
+        'Un componente, cualquier contenido. Una raíz de pestañas con un slot de lista y un panel por pestaña — el runtime lee el título de cada panel, construye los botones, cablea las flechas y, sin JavaScript, apila todo de forma legible.',
+      sec_basic_t: 'Pestañas — los valores por defecto',
+      sec_basic_d:
+        'Un panel por pestaña; el runtime construye los botones a partir del data-sw-title de cada panel y gestiona la selección. Haz clic en una pestaña, o enfócala y usa las flechas.',
+      tab1: 'Resumen',
+      body1:
+        'Las pestañas agrupan contenido relacionado en un área compacta — el visitante ve un panel a la vez y cambia entre ellos sin salir de la página.',
+      tab2: 'Cómo funciona',
+      body2:
+        'Da a cada panel un título y su contenido. El runtime genera la lista de pestañas accesible, enlaza cada botón con su panel y mueve el foco con las flechas (Inicio y Fin saltan al primero y al último).',
+      tab3: 'Accesibilidad',
+      body3:
+        'El marcado sigue el patrón de pestañas de WAI-ARIA: una lista de botones que controlan cada uno un panel etiquetado. El roving tabindex hace que Tab entre en el panel activo en vez de recorrer cada botón.',
+      sec_rich_t: 'Los paneles admiten cualquier marcado',
+      sec_rich_d:
+        'Un panel es solo un contenedor — pon dentro una lista, una cuadrícula de cifras, una imagen o una llamada a la acción. Aquí un panel es una lista de verificación y el siguiente, un conjunto de cifras.',
+      rtab1: 'Qué incluye',
+      rli1: 'Paneles ilimitados, cada uno con su propio título y contenido',
+      rli2: 'Compatibilidad con teclado, táctil y lector de pantalla de serie',
+      rli3: 'Sin JavaScript propio — solo marcado declarativo',
+      rtab2: 'En cifras',
+      rstat1_n: '0',
+      rstat1_l: 'líneas de JavaScript que escribes',
+      rstat2_n: '100 %',
+      rstat2_l: 'utilizable solo con el teclado',
+      sec_nojs_t: 'Sin JavaScript',
+      sec_nojs_d:
+        'Si los scripts no se ejecutan, la lista de pestañas queda oculta y cada panel se muestra apilado, uno tras otro — todo el contenido sigue ahí y es legible. Nunca ocultes contenido esencial tras una pestaña que solo aparece con JS.',
+    },
+  },
+  'comp-modal': {
+    path: 'modal',
+    title: 'Modal',
+    navTitle: 'Modal',
+    description:
+      'Un botón que abre un diálogo nativo — la trampa de foco, Escape, el fondo y la inactivación del resto de la página los aporta el navegador; el tamaño se ajusta con una sola clase.',
+    data: {
+      mod_intro:
+        'Un botón y un diálogo nativo. El navegador aporta la trampa de foco, Escape para cerrar, el ::backdrop atenuado y la inactivación de la página detrás — el componente solo cablea los botones de abrir y cerrar. El tamaño lo decides con una clase max-w-*.',
+      mod_close: 'Cerrar',
+      sec_basic_t: 'Modal — los valores por defecto',
+      sec_basic_d:
+        'Un disparador, un diálogo y un botón de cerrar. Al abrir, el foco queda atrapado dentro; Escape, el botón de cerrar o un clic en el fondo lo descartan.',
+      mod1_open: '¿Qué pasa después?',
+      mod1_title: '¿Qué pasa después?',
+      mod1_body:
+        'Tras tu consulta concertamos una llamada breve, definimos juntos el alcance y enviamos un presupuesto cerrado en dos días hábiles — sin compromiso.',
+      sec_wide_t: 'Un diálogo más ancho con contenido rico',
+      sec_wide_d:
+        'El mismo componente, ampliado con max-w-2xl — un diálogo admite cualquier marcado: títulos, listas, medios o una llamada a la acción.',
+      mod2_open: 'Ver todo el proceso',
+      mod2_title: 'Cómo trabajamos',
+      mod2_step1: 'Descubrimiento — conocemos tus objetivos, tu público y tus restricciones.',
+      mod2_step2: 'Diseño y desarrollo — vistas previas semanales, con tu feedback integrado.',
+      mod2_step3: 'Lanzamiento y cuidado — publicamos, medimos y seguimos mejorando.',
+      sec_form_t: 'Un modal con un formulario',
+      sec_form_d:
+        'Coloca el formulario de contacto incrustado directamente en el diálogo — envía, valida y muestra su mensaje de éxito sin salir nunca de la página.',
+      mod3_open: 'Ponte en contacto',
+      mod3_title: 'Envíanos un mensaje',
+      mod3_body: 'Solemos responder en un día.',
+      sec_nojs_t: 'Sin JavaScript y modales globales',
+      sec_nojs_d:
+        'Sin JS el disparador simplemente no hace nada y la página sigue siendo plenamente usable — así que nunca pongas contenido esencial solo dentro de un modal. Un marcador de navegación que apunte a un #dialog-id también puede abrir uno desde el menú.',
+    },
+  },
+  'comp-cookie': {
+    path: 'consentimiento-cookies',
+    title: 'Consentimiento de cookies',
+    navTitle: 'Cookies',
+    description:
+      'Un banner de consentimiento guardado en localStorage — se entrega oculto, se muestra una vez en la primera visita y se oculta para siempre al aceptarlo. Es un componente de slot de plantilla, activo en todo el sitio.',
+    data: {
+      cc_intro:
+        'Un pequeño banner de consentimiento que el runtime muestra solo hasta que el visitante acepta — la elección se recuerda en localStorage, así que aparece una vez y nunca más. Vive en un slot de plantilla y por eso está en todas las páginas; el real lo viste al pie de tu primera visita.',
+      sec_preview_t: 'Qué aspecto tiene',
+      sec_preview_d:
+        'Una vista previa estática del banner (mostrada aquí para que sea visible incluso después de aceptar el real). El banner en vivo queda fijo al pie del viewport y se desliza en la primera visita.',
+      cc_text: 'Usamos unas pocas cookies esenciales para que el sitio funcione y estadísticas anónimas para mejorarlo.',
+      cc_more: 'Más información',
+      cc_accept: 'Entendido',
+      sec_how_t: 'Cómo funciona',
+      sec_how_d:
+        'Créalo una vez en un slot de plantilla (el pie u otro propio). El servidor lo renderiza con un atributo hidden; el runtime consulta localStorage y lo muestra solo cuando no hay elección guardada, y lo oculta de forma permanente al pulsar el botón de aceptar. El comportamiento lo aporta el marcador, no el HTML escrito.',
+      sec_nojs_t: 'Sin JavaScript',
+      sec_nojs_d:
+        'No aparece ningún banner — y sin scripts no hay nada que establecer ni guardar, así que la página se sirve tal cual.',
+    },
+  },
+  'comp-forms': {
+    path: 'formularios',
+    title: 'Formularios',
+    navTitle: 'Formularios',
+    description:
+      'Incrusta un formulario configurado en cualquier sitio con una sola etiqueta — campos, validación, antispam y éxito en línea se generan por ti, y se elige el idioma correcto automáticamente.',
+    data: {
+      frm_intro:
+        'Crea un formulario una vez en la pestaña Formularios y luego incrústalo donde quieras — {{sw-form "id"}} o data-sw-form="id" lo expande al renderizar: campos, etiquetas, validación, un honeypot y un mensaje de éxito en línea. No hay marcado que escribir a mano ni nada que cablear.',
+      sec_helper_t: 'Incrustar con el helper',
+      sec_helper_d:
+        'El formulario más simple: una llamada al helper expande la definición «contact» guardada. Añade class= para dar estilo al contenedor.',
+      sec_attr_t: 'Incrustar por atributo, en tu propio diseño',
+      sec_attr_d:
+        '¿Prefieres colocarlo a mano? Un elemento vacío con data-sw-form="contact" se rellena con el mismo marcado — ponlo en cualquier contenedor con estilo, como esta tarjeta.',
+      sec_about_t: 'Antispam, según el idioma, sin JS',
+      sec_about_d:
+        'Cada incrustación recibe un honeypot oculto, una trampa de tiempo al enviar y hCaptcha opcional; envía JSON al endpoint inyectado y muestra el éxito o el error en línea. En una página traducida, «contact» resuelve automáticamente al formulario localizado correspondiente. Sin JavaScript el formulario no tiene atributo action y no se envía — antispam por diseño.',
+    },
+  },
   faq: {
     path: 'preguntas-frecuentes',
     title: 'Preguntas frecuentes',

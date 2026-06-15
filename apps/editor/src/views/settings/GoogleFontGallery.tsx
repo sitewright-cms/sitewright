@@ -47,7 +47,7 @@ export function GoogleFontGallery({
     () => (catalog ? (q ? catalog.filter((f) => f.family.toLowerCase().includes(q)) : catalog) : []),
     [catalog, q],
   );
-  const { visible, reset, onScroll } = useScrollPaging(filtered.length);
+  const { visible, reset, onScroll, ref: scrollRef } = useScrollPaging(filtered.length);
   const shown = useMemo(() => filtered.slice(0, visible), [filtered, visible]);
 
   // Preview the SHOWN families from Google (admin-browser only), loading them in chunks INCREMENTALLY
@@ -89,7 +89,7 @@ export function GoogleFontGallery({
         }}
       />
       {error && <p className="text-sm text-rose-500">{error}</p>}
-      <div className="min-h-0 flex-1 overflow-auto pr-1" onScroll={onScroll}>
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto pr-1" onScroll={onScroll}>
         {!catalog ? (
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {Array.from({ length: 8 }, (_, i) => (

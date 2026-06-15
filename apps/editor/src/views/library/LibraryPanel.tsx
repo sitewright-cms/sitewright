@@ -174,7 +174,8 @@ function SectionModal({ section, onClose }: { section: LibrarySection; onClose: 
   // A grid section (icons, brand logos, or flags) — render a page at a time and append more on scroll
   // (the full sets are large); searching narrows it. Other sections show everything.
   const isGrid = section.category === 'icons' || section.category === 'brand' || section.category === 'flags';
-  const { visible, reset, onScroll } = useScrollPaging(filtered.length);
+  // Only grids page; pass total=0 for other sections so the pager never grows (they show everything).
+  const { visible, reset, onScroll, ref: scrollRef } = useScrollPaging(isGrid ? filtered.length : 0);
   const shown = isGrid ? filtered.slice(0, visible) : filtered;
   const overflow = filtered.length - shown.length;
 
@@ -192,7 +193,7 @@ function SectionModal({ section, onClose }: { section: LibrarySection; onClose: 
             reset();
           }}
         />
-        <div className="min-h-0 flex-1 overflow-auto pr-1" onScroll={onScroll}>
+        <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto pr-1" onScroll={onScroll}>
           {error ? (
             <p className="py-8 text-center text-sm text-rose-500">Couldn’t load the library set. Close and reopen to retry.</p>
           ) : loading ? (

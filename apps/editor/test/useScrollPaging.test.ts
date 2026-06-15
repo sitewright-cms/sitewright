@@ -50,4 +50,12 @@ describe('useScrollPaging', () => {
     act(() => result.current.reset());
     expect(result.current.visible).toBe(50);
   });
+
+  it('exposes a ref for the auto-fill scroll container', () => {
+    // Auto-fill (load until the container overflows) needs real layout metrics, which jsdom does not
+    // compute — it is verified by rendering in the browser. Here we just assert the ref is wired up;
+    // under renderHook the ref stays null, so the auto-fill effect is a safe no-op.
+    const { result } = renderHook(() => useScrollPaging(500));
+    expect(result.current.ref).toMatchObject({ current: null });
+  });
 });

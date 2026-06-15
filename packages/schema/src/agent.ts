@@ -15,6 +15,12 @@ renders an empty body.
 In \`source\`:
 - Use DaisyUI components for UI (btn / btn-primary, card, navbar, hero, badge, footer,
   menu, alert…) plus Tailwind utilities for layout. DaisyUI is OPTIONAL — plain Tailwind works too.
+- SPACING: the platform ZEROES the default browser margins on block elements (h1–h6, p, ul/ol,
+  blockquote, figure, hr, …) for cross-browser consistency, like Tailwind preflight. So bare text
+  has NO gaps — set spacing EXPLICITLY with utilities (\`mt-*\`, \`mb-*\`, \`space-y-*\`, \`gap-*\`, \`py-*\`).
+  Heading font SIZES and list bullets/numbers are kept. For rich/long-form bodies (an article, a
+  legal page) where you can't class each tag, wrap the container in \`class="prose"\` to restore a
+  readable rhythm (and \`class="not-prose"\` on any child to opt out).
 - COLORS: six brand tokens always exist as theme colors — \`primary\`, \`secondary\`, \`accent\`,
   \`neutral\`, \`base-100\` (page background), \`base-content\` (body text). Use them as ordinary
   utilities (\`bg-primary\`, \`text-base-content\`, \`border-neutral\`); if you use DaisyUI, its

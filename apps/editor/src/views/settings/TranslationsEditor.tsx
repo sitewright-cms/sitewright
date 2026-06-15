@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import { Plus, Trash2, Pencil, Lock } from 'lucide-react';
 import { RESERVED_TRANSLATION_GROUPS, type ReservedTranslation } from '@sitewright/schema';
 import { localeFlag, localeLabel } from '../i18n/locale-catalog';
@@ -208,29 +208,30 @@ export function TranslationsEditor({ rows, localeCodes, defaultLocale, shopEnabl
                 <th className="w-8" />
               </tr>
             </thead>
+            {/* Flat keyed children (no per-group wrapper) — a header `<tr>` and a row `<tr>` each carry
+                their own stable key, so a row never REMOUNTS when its scope changes mid-edit (which would
+                drop input focus); only its position shifts. */}
             <tbody>
-              {surfacedGroups.map((group) => (
-                <FragmentRows key={group.id}>
-                  <tr>
-                    <td colSpan={colSpan} className="px-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                      {group.label}
-                    </td>
-                  </tr>
-                  {group.keys.map((k) => reservedRow(k))}
-                </FragmentRows>
-              ))}
-              {hasScopes
-                ? freeGroups.map((g) => (
-                    <FragmentRows key={`scope-${g.scope || '__general__'}`}>
-                      <tr>
+              {surfacedGroups.flatMap((group) => [
+                <tr key={`rhead-${group.id}`}>
+                  <td colSpan={colSpan} className="px-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                    {group.label}
+                  </td>
+                </tr>,
+                ...group.keys.map((k) => reservedRow(k)),
+              ])}
+              {freeGroups.flatMap((g) => [
+                ...(hasScopes
+                  ? [
+                      <tr key={`fhead-${g.scope || '__general__'}`}>
                         <td colSpan={colSpan} className="px-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
                           {g.scope || 'General'}
                         </td>
-                      </tr>
-                      {g.rows.map((row) => freeRow(row))}
-                    </FragmentRows>
-                  ))
-                : freeRows.map((row) => freeRow(row))}
+                      </tr>,
+                    ]
+                  : []),
+                ...g.rows.map((row) => freeRow(row)),
+              ])}
             </tbody>
           </table>
         </div>
@@ -242,9 +243,4 @@ export function TranslationsEditor({ rows, localeCodes, defaultLocale, shopEnabl
       </div>
     </div>
   );
-}
-
-/** A keyed group of sibling <tr>s (the `<>` shorthand can't take the group key directly). */
-function FragmentRows({ children }: { children: ReactNode }) {
-  return <>{children}</>;
 }

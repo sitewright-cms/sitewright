@@ -42,9 +42,12 @@ function editModeLabel(mode: EditMode): string {
   return mode === 'content' ? 'Content Editor' : 'Code Editor';
 }
 
-/** A valid translation-catalog key (identifier-style; mirrors @sitewright/schema KeyNameSchema) — guards the inline write before the PUT. */
+/** A valid translation-catalog key — a flat identifier OR a dotted scope path; mirrors @sitewright/schema
+ *  TranslationKeySchema. Guards the inline write before the PUT (a scoped data-sw-translate key like
+ *  `home.headline` must pass, or the inline edit is silently dropped). */
 function isTranslationKey(key: string): boolean {
-  return key.length <= 128 && /^[A-Za-z_][A-Za-z0-9_]*$/.test(key) && !DANGEROUS_KEYS.has(key);
+  // eslint-disable-next-line security/detect-unsafe-regex -- linear (dot-separated segments), length-capped — see TranslationKeySchema
+  return key.length <= 128 && /^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$/.test(key) && !DANGEROUS_KEYS.has(key);
 }
 
 interface CodePageEditorProps {

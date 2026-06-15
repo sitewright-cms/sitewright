@@ -40,7 +40,9 @@ export const TranslationKeySchema = z
   .string()
   .min(1)
   .max(MAX_IDENTIFIER_LENGTH)
-  .regex(/^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$/, 'must be an identifier or dotted scope path');
+  // Linear: an identifier, then dot-introduced identifier segments (the literal `.` makes the groups
+  // non-overlapping → no backtracking); length-capped above (not ReDoS), like ColorTokenKeySchema.
+  .regex(/^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$/, 'must be an identifier or dotted scope path'); // eslint-disable-line security/detect-unsafe-regex
 /** The project translation table: `key → { locale → string }`. Sibling of `website.data`. */
 export const TranslationsSchema = safeRecord(TranslationCellsSchema, TranslationKeySchema);
 export type Translations = z.infer<typeof TranslationsSchema>;

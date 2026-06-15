@@ -12,6 +12,12 @@ interface TranslationsEditorProps {
   defaultLocale: string;
   /** Whether the shop is enabled — gates the reserved cart-string (shop_cart) ghost rows. */
   shopEnabled?: boolean;
+  /**
+   * EXTRA ghost-row groups derived at runtime (not from the static registry) — e.g. the `shop.<key>`
+   * channel/field labels built from the shop config. Surfaced as-is (the caller decides when to pass them);
+   * unlike reserved groups they're shown regardless of locale count, since these keys have no platform default.
+   */
+  extraGhostGroups?: Array<{ id: string; label: string; keys: readonly ReservedTranslation[] }>;
   onChange: (rows: TranslationRow[]) => void;
 }
 
@@ -36,7 +42,7 @@ function cellValue(cells: Record<string, string>, locale: string): string {
  *  - KEY protection: a free-form row's key is read-only behind a small pencil toggle, so a careless edit
  *    can't silently rename a key (which would orphan its `{{sw-translate}}` / `data-sw-translate` refs).
  */
-export function TranslationsEditor({ rows, localeCodes, defaultLocale, shopEnabled = false, onChange }: TranslationsEditorProps) {
+export function TranslationsEditor({ rows, localeCodes, defaultLocale, shopEnabled = false, extraGhostGroups = [], onChange }: TranslationsEditorProps) {
   // Row ids whose KEY is currently unlocked for editing (blank keys are always editable — new rows).
   const [editingKeys, setEditingKeys] = useState<ReadonlySet<string>>(() => new Set());
   // Scoped/reserved groups are COLLAPSED by default; `expanded` holds the group ids the user opened.
@@ -95,7 +101,13 @@ export function TranslationsEditor({ rows, localeCodes, defaultLocale, shopEnabl
   // as ordinary free rows — harmless (the render still floors to the English default). Extend the feature
   // switch below when a second ReservedTranslationGroup.feature is added.
   const multiLocale = localeCodes.length > 1;
-  const surfacedGroups = RESERVED_TRANSLATION_GROUPS.filter((g) => (g.feature === 'shop' ? shopEnabled : false) && multiLocale);
+  // Reserved (registry) groups need >1 locale (single-locale uses the built-in EN defaults). Extra ghost
+  // groups (e.g. the shop `shop.<key>` channel/field labels) are surfaced as passed — they have no platform
+  // default, so they must be fillable even single-locale. Empty groups (no keys) are dropped.
+  const reservedSurfaced = RESERVED_TRANSLATION_GROUPS.filter((g) => (g.feature === 'shop' ? shopEnabled : false) && multiLocale);
+  const surfacedGroups: Array<{ id: string; label: string; keys: readonly ReservedTranslation[] }> = [...reservedSurfaced, ...extraGhostGroups].filter(
+    (g) => g.keys.length > 0,
+  );
   const surfacedKeys = new Set(surfacedGroups.flatMap((g) => g.keys.map((k) => k.key)));
   const storedByKey = new Map(rows.map((r) => [r.key.trim(), r] as const));
   // Free rows = everything not owned by a surfaced reserved group (those render in their own section).

@@ -77,7 +77,7 @@ describe('cart runtime', () => {
 
   it('reads the localizable drawer strings from mount attrs, with the previous literals as defaults', () => {
     expect(CART_JS).toContain("mount.getAttribute('data-empty-label')||'Your cart is empty.'");
-    expect(CART_JS).toContain("mount.getAttribute('data-subtotal-label')||'Subtotal'");
+    expect(CART_JS).toContain("mount.getAttribute('data-subtotal-label')||'Total'"); // footer label renamed Subtotal -> Total
     expect(CART_JS).toContain("mount.getAttribute('data-clear-label')||'Clear cart'");
     expect(CART_JS).toContain("mount.getAttribute('data-sent-label')||'Order sent \\u2014 we will be in touch.'");
     // the previously-hardcoded literals are now sourced from cfg at every call site
@@ -115,6 +115,60 @@ describe('cart runtime', () => {
 
   it('cannot break out of a <script> block', () => {
     expect(CART_JS.toLowerCase()).not.toContain('</script');
+  });
+});
+
+describe('cart drawer UI (solid neutral scheme + optimized line)', () => {
+  it('locks page scroll while the drawer is open and restores it on close', () => {
+    expect(CART_JS).toContain('function lockScroll()');
+    expect(CART_JS).toContain('function unlockScroll()');
+    expect(CART_JS).toContain("document.documentElement.style.overflow='hidden'"); // lock
+    expect(CART_JS).toContain("dialog.addEventListener('close',unlockScroll)"); // Esc/close restores
+    expect(CART_JS).toContain('lockScroll();'); // wired on the open path
+  });
+
+  it('uses a SOLID default surface (white bg + explicit dark text) — no transparent chrome neutrals', () => {
+    expect(CART_CSS).toContain('background:#fff;color:#1f2937;color-scheme:light'); // dialog default scheme
+    // The structural neutrals (dividers, borders, muted text, fills) are all solid hex, not rgba(0,0,0,*).
+    expect(CART_CSS).not.toContain('border-bottom:1px solid rgba(0,0,0');
+    expect(CART_CSS).not.toContain('border-top:1px solid rgba(0,0,0');
+    expect(CART_CSS).not.toContain('color:rgba(0,0,0'); // no semi-transparent text
+    // Shadows / backdrop / ripple legitimately stay alpha (overlays, not "neutral" chrome colors).
+    expect(CART_CSS).toContain('box-shadow:-8px 0 32px rgba(0,0,0,.25)');
+    expect(CART_CSS).toContain('dialog::backdrop{background:rgba(0,0,0,.35)');
+  });
+
+  it('renders the product image (when present) in a padded, rounded, neutral thumbnail tile', () => {
+    expect(CART_JS).toContain('if(it.image){'); // only when an image URL is present
+    expect(CART_JS).toContain("part('div','thumb')");
+    expect(CART_JS).toContain('img.src=it.image'); // src via property, never innerHTML
+    expect(CART_JS).toContain("img.referrerPolicy='no-referrer'"); // no page-URL leak on a 3rd-party image load
+    expect(CART_JS).toContain('img.onerror='); // a broken image drops its tile (no broken-image glyph)
+    expect(CART_CSS).toContain('[data-sw-part="thumb"]{flex:none;width:3.5rem;height:3.5rem;padding:.25rem;border:1px solid #e5e7eb;border-radius:.5rem;background:#f3f4f6');
+    expect(CART_CSS).toContain('[data-sw-part="thumb"] img{width:100%;height:100%;object-fit:cover');
+  });
+
+  it('lays base price, qty stepper, remove, and the line subtotal in one row under the name (no "each")', () => {
+    expect(CART_JS).toContain("part('div','line-body')");
+    expect(CART_JS).toContain("part('div','line-controls')");
+    expect(CART_JS).toContain("part('span','line-price',money(it.price,cfg))"); // base price, NOT "+ ' each'"
+    expect(CART_JS).not.toContain("' each'");
+    expect(CART_JS).toContain("part('span','line-subtotal',money(lineTotal(it,cfg),cfg))"); // per-line subtotal
+    expect(CART_CSS).toContain('[data-sw-part="line-subtotal"]{margin-left:auto'); // pushed to the right
+  });
+
+  it('shows remove as a red trash icon button (not the word "Remove")', () => {
+    expect(CART_JS).toContain('function trashIcon()');
+    expect(CART_JS).toContain("part('button','remove')"); // no text label arg
+    expect(CART_JS).toContain('rm.appendChild(trashIcon())');
+    expect(CART_JS).toContain("rm.setAttribute('aria-label','Remove')"); // a11y name preserved
+    expect(CART_JS).not.toContain("part('button','remove','Remove')"); // the old text button is gone
+    expect(CART_CSS).toContain('[data-sw-part="remove"] svg{width:1.125rem;height:1.125rem}');
+    expect(CART_CSS).toContain('color:#dc2626'); // red
+  });
+
+  it('still builds the line UI without innerHTML of cart data', () => {
+    expect(CART_JS).not.toContain('innerHTML');
   });
 });
 

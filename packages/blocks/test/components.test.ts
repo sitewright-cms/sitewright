@@ -111,6 +111,20 @@ describe('component registry', () => {
     expect(cc.js).toContain('try{'); // storage access is guarded (sandbox/disabled)
   });
 
+  it('Modal fades in from the top / out to the top across the <dialog> display toggle', () => {
+    const css = componentAssets(['Modal']).css;
+    // The enter/exit transition needs a real duration on opacity+transform (not the default
+    // 0s = instant), a translateY(-24px) offset (from the top), and the native-<dialog>
+    // machinery that lets it animate across the display toggle (@starting-style +
+    // allow-discrete). Dropping any of these collapses the animation to an instant show/hide.
+    expect(css).toContain('transition:opacity .22s ease,transform .22s ease');
+    expect(css).toContain('translateY(-24px)');
+    expect(css).toContain('allow-discrete');
+    expect(css).toContain('@starting-style');
+    // Reduced-motion drops straight to a plain show/hide.
+    expect(css).toContain('prefers-reduced-motion:reduce');
+  });
+
   it('Tabs builds an ARIA tablist with keyboard nav', () => {
     const tabs = componentAssets(['Tabs']);
     expect(tabs.css).toContain('[data-sw-part="tab"]');

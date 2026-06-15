@@ -27,7 +27,7 @@ function swT(key, fallback) {
   if (swT._ === undefined) {
     try {
       swT._ = JSON.parse((typeof document !== 'undefined' && document.documentElement.getAttribute('data-sw-i18n')) || '{}');
-    } catch (e) {
+    } catch {
       swT._ = {};
     }
   }

@@ -109,6 +109,18 @@ describe('component registry', () => {
     const cc = componentAssets(['CookieConsent']);
     expect(cc.js).toContain('localStorage');
     expect(cc.js).toContain('try{'); // storage access is guarded (sandbox/disabled)
+    // The storage key is overridable per-root via data-cookiename (default sw-cookie-consent),
+    // so independent banners track consent separately.
+    expect(cc.js).toContain("getAttribute('data-cookiename')");
+    expect(cc.js).toContain("'sw-cookie-consent'"); // the default when the attribute is absent
+  });
+
+  it('CookieConsent styling keys on data-sw-component (no redundant data-sw-block)', () => {
+    // The banner already carries data-sw-component="cookie-consent" for the JS + asset scan;
+    // its CSS keys on the same marker so authors need not also write a parallel data-sw-block.
+    const cc = componentAssets(['CookieConsent']);
+    expect(cc.css).toContain('[data-sw-component="cookie-consent"]');
+    expect(cc.css).not.toContain('data-sw-block');
   });
 
   it('Modal fades in from the top / out to the top across the <dialog> display toggle', () => {

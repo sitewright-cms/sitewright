@@ -320,7 +320,7 @@ export function translationsEs(assets: Record<string, string>): Record<string, P
       cc_accept: 'Entendido',
       sec_how_t: 'Cómo funciona',
       sec_how_d:
-        'Créalo una vez en un slot de plantilla (el pie u otro propio). El servidor lo renderiza con un atributo hidden; el runtime consulta localStorage y lo muestra solo cuando no hay elección guardada, y lo oculta de forma permanente al pulsar el botón de aceptar. El comportamiento lo aporta el marcador, no el HTML escrito.',
+        'Créalo una vez en un slot de plantilla (el pie u otro propio). El servidor lo renderiza con un atributo hidden; el runtime consulta localStorage y lo muestra solo cuando no hay elección guardada, y lo oculta de forma permanente al pulsar el botón de aceptar. El comportamiento lo aporta el marcador, no el HTML escrito. El consentimiento se guarda bajo la clave sw-cookie-consent por defecto — añade un data-cookiename opcional para usar tu propia clave, de modo que dos banners independientes registren el consentimiento por separado.',
       sec_nojs_t: 'Sin JavaScript',
       sec_nojs_d:
         'No aparece ningún banner — y sin scripts no hay nada que establecer ni guardar, así que la página se sirve tal cual.',

@@ -322,7 +322,7 @@ export function translationsDe(assets: Record<string, string>): Record<string, P
       cc_accept: 'Alles klar',
       sec_how_t: 'So funktioniert’s',
       sec_how_d:
-        'Einmal in einem Skeleton-Slot anlegen (im Footer oder einem eigenen Slot). Der Server rendert es mit einem hidden-Attribut; die Runtime prüft localStorage und blendet es nur ein, wenn keine Wahl gespeichert ist, und blendet es nach Druck auf die Zustimmen-Schaltfläche dauerhaft aus. Das Verhalten trägt der Marker, nicht das ausgezeichnete HTML.',
+        'Einmal in einem Skeleton-Slot anlegen (im Footer oder einem eigenen Slot). Der Server rendert es mit einem hidden-Attribut; die Runtime prüft localStorage und blendet es nur ein, wenn keine Wahl gespeichert ist, und blendet es nach Druck auf die Zustimmen-Schaltfläche dauerhaft aus. Das Verhalten trägt der Marker, nicht das ausgezeichnete HTML. Die Zustimmung wird standardmäßig unter dem Schlüssel sw-cookie-consent gespeichert — mit einem optionalen data-cookiename legst du einen eigenen Schlüssel fest, sodass zwei unabhängige Banner ihre Zustimmung getrennt verwalten.',
       sec_nojs_t: 'Ohne JavaScript',
       sec_nojs_d:
         'Es erscheint gar kein Banner — und ohne Skripte gibt es nichts zu setzen oder zu speichern, die Seite wird einfach unverändert ausgeliefert.',

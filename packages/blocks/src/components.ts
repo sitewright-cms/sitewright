@@ -295,22 +295,28 @@ const MODAL_JS = `(function(){
 // rendered with the `hidden` attribute, so with no JS there is no banner (and no
 // JS means nothing to consent to). localStorage access is guarded (sandboxed
 // preview / disabled storage).
+// Styling keys on `data-sw-component="cookie-consent"` (the marker every banner already
+// carries for the JS + asset scan) rather than a parallel `data-sw-block` — a banner has
+// exactly one authoring form, so the extra attribute was pure duplication.
 const COOKIE_CONSENT_CSS = [
-  '[data-sw-block="CookieConsent"][hidden]{display:none}',
-  '[data-sw-block="CookieConsent"]{position:fixed;left:1rem;right:1rem;bottom:1rem;z-index:9998;display:flex;flex-wrap:wrap;align-items:center;gap:1rem;padding:1rem 1.25rem;background:#fff;border:1px solid rgba(0,0,0,.12);border-radius:.5rem;box-shadow:0 6px 24px rgba(0,0,0,.15)}',
-  '[data-sw-block="CookieConsent"] p{margin:0;flex:1;min-width:12rem;font-size:.875rem}',
-  '[data-sw-block="CookieConsent"] [data-sw-part="accept"]{border:0;border-radius:.375rem;padding:.5rem 1rem;background:var(--sw-color-primary,#0a7a5a);color:#fff;cursor:pointer}',
+  '[data-sw-component="cookie-consent"][hidden]{display:none}',
+  '[data-sw-component="cookie-consent"]{position:fixed;left:1rem;right:1rem;bottom:1rem;z-index:9998;display:flex;flex-wrap:wrap;align-items:center;gap:1rem;padding:1rem 1.25rem;background:#fff;border:1px solid rgba(0,0,0,.12);border-radius:.5rem;box-shadow:0 6px 24px rgba(0,0,0,.15)}',
+  '[data-sw-component="cookie-consent"] p{margin:0;flex:1;min-width:12rem;font-size:.875rem}',
+  '[data-sw-component="cookie-consent"] [data-sw-part="accept"]{border:0;border-radius:.375rem;padding:.5rem 1rem;background:var(--sw-color-primary,#0a7a5a);color:#fff;cursor:pointer}',
 ].join('');
 
 // State is carried by the \`hidden\` attribute (already in the server HTML and
 // toggled here) rather than a \`data-sw-enhanced\` marker — no separate flag needed.
+// The localStorage key defaults to \`sw-cookie-consent\`; an optional \`data-cookiename\`
+// on the root overrides it so independent banners (e.g. a second one on a campaign
+// microsite) track consent separately. Read per-root, so each banner uses its own key.
 const COOKIE_CONSENT_JS = `(function(){
-  var KEY='sw-cookie-consent';
   function enhance(root){
-    try{if(localStorage.getItem(KEY)==='1'){return;}}catch(e){}
+    var key=root.getAttribute('data-cookiename')||'sw-cookie-consent';
+    try{if(localStorage.getItem(key)==='1'){return;}}catch(e){}
     root.removeAttribute('hidden');
     var accept=root.querySelector('[data-sw-part="accept"]');
-    if(accept)accept.addEventListener('click',function(){try{localStorage.setItem(KEY,'1');}catch(e){}root.setAttribute('hidden','');});
+    if(accept)accept.addEventListener('click',function(){try{localStorage.setItem(key,'1');}catch(e){}root.setAttribute('hidden','');});
   }
   function init(){Array.prototype.forEach.call(document.querySelectorAll('[data-sw-component="cookie-consent"]'),enhance);}
   if(document.readyState!=='loading'){init();}else{document.addEventListener('DOMContentLoaded',init);}

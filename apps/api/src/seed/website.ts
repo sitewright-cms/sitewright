@@ -102,7 +102,7 @@ export const EXAMPLE_WEBSITE = {
   // server HTML ships it `hidden` and the runtime reveals it only without prior consent, so a
   // no-JS visitor or the sandboxed preview never sees a stuck banner). The component's own CSS
   // positions/styles it; the copy localizes via the strings lookup.
-  bottom: `<div data-sw-component="cookie-consent" data-sw-block="CookieConsent" hidden>
+  bottom: `<div data-sw-component="cookie-consent" hidden>
   <p>${T('cookie_text', 'We use a few essential cookies to make this site work and anonymous analytics to improve it.')} <a class="link" href="{{sw-url ${SL('href_privacy')}}}">${T('cookie_more', 'Learn more')}</a></p>
   <button type="button" data-sw-part="accept">${T('cookie_accept', 'OK, got it')}</button>
 </div>`,

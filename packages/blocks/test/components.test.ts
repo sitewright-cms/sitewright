@@ -151,6 +151,9 @@ describe('component registry', () => {
     expect(css).toContain('var(--sw-color-primary');
     expect(css).toContain('rotate(180deg)');
     expect(css).toContain('scale(1.1)');
+    // Overhangs the corner (needs the dialog's overflow:visible) at the agreed geometry.
+    expect(css).toContain('top:-1rem;right:-1.5rem');
+    expect(css).toContain('width:3.25rem;height:2.25rem');
   });
 
   it('Modal dialog defaults are zero-specificity so dialog classes win, and the backdrop blurs', () => {
@@ -161,6 +164,7 @@ describe('component registry', () => {
     expect(css).toContain('var(--sw-color-base-100');
     expect(css).toContain('var(--sw-color-base-content');
     expect(css).toContain('padding:1.5rem');
+    expect(css).toContain('overflow:visible'); // lets the close button overhang the corner
     // Backdrop dims AND blurs.
     expect(css).toContain('backdrop-filter:blur(5px)');
   });

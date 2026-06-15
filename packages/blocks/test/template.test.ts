@@ -370,7 +370,9 @@ describe('renderTemplate — {{sw-active}} nav active state', () => {
 
 describe('renderTemplate — MINI SHOP helpers', () => {
   // The cart helpers are GATED on the master switch `website.shop.enabled === true`. Build a render ctx
-  // with the shop enabled; `extra.website` (e.g. a `t` catalog) merges with the enabled shop.
+  // with the shop enabled; `extra.website` (e.g. a `t` catalog) merges with the enabled shop. ALL cart
+  // display text (drawer strings, currency symbol/code, channel/field labels) resolves from the catalog
+  // (website.t); settings (shop) holds only structure (enabled, currency position/decimals, channel config).
   const shopCtx = (shop: Record<string, unknown> = {}, extra: Record<string, unknown> = {}): TemplateContext => {
     const { website: wx = {}, ...rest } = extra as { website?: Record<string, unknown> } & Record<string, unknown>;
     return { ...rest, website: { ...wx, shop: { enabled: true, ...shop } } } as TemplateContext;
@@ -378,10 +380,9 @@ describe('renderTemplate — MINI SHOP helpers', () => {
 
   it('{{sw-cart}} and {{sw-add-to-cart}} render NOTHING unless the shop is enabled', () => {
     expect(renderTemplate('{{sw-cart}}', {})).toBe('');
-    expect(renderTemplate('{{sw-cart}}', { website: { shop: { title: 'X' } } })).toBe(''); // config present but not enabled
+    expect(renderTemplate('{{sw-cart}}', { website: { shop: {} } })).toBe(''); // config present but not enabled
     expect(renderTemplate('{{sw-add-to-cart sku="x" name="A" price="1"}}', {})).toBe('');
     expect(renderTemplate('{{sw-add-to-cart sku="x" name="A" price="1"}}', { website: { shop: {} } })).toBe('');
-    // enabled → renders
     expect(renderTemplate('{{sw-cart}}', shopCtx())).toContain('data-sw-cart');
     expect(renderTemplate('{{sw-add-to-cart sku="x" name="A" price="1"}}', shopCtx())).toContain('data-sw-cart-add');
   });
@@ -394,19 +395,15 @@ describe('renderTemplate — MINI SHOP helpers', () => {
   it('{{sw-add-to-cart}} coerces a bad/negative price to 0 and falls back sku→name', () => {
     expect(renderTemplate('{{sw-add-to-cart name="Free thing" price="nope"}}', shopCtx())).toContain('data-price="0"');
     expect(renderTemplate('{{sw-add-to-cart name="X" price="-5"}}', shopCtx())).toContain('data-price="0"');
-    // No sku → the name becomes the sku key.
     expect(renderTemplate('{{sw-add-to-cart name="X" price="1"}}', shopCtx())).toContain('data-sku="X"');
-    // Neither sku nor name → nothing emitted.
     expect(renderTemplate('[{{sw-add-to-cart price="1"}}]', shopCtx())).toBe('[]');
   });
 
   it('{{sw-add-to-cart}} keeps a quote/ampersand name from breaking out of the attribute', () => {
-    // Hostile value via context (a Handlebars string literal can't itself contain a `"`). A double-quote
-    // must stay escaped after the resolveDirectives parse→serialize round-trip → no attribute breakout.
     const out = renderTemplate('{{sw-add-to-cart sku="x" name=dataset.evil}}', shopCtx({}, {
       dataset: { evil: 'A&B" onerror=alert(1) z="' },
     }));
-    expect(out).not.toContain('" onerror='); // the quote stays &quot; → cannot break out
+    expect(out).not.toContain('" onerror=');
     expect(out).toContain('&quot;');
     expect(out).toContain('A&amp;B');
   });
@@ -416,35 +413,39 @@ describe('renderTemplate — MINI SHOP helpers', () => {
     expect(renderTemplate('{{sw-add-to-cart sku="x" name="A" image="/img/a.png"}}', shopCtx())).toContain('data-image="/img/a.png"');
   });
 
-  it('{{sw-add-to-cart}} uses website.shop.addToCartLabel as the default, label= overrides', () => {
-    const ctxShop = shopCtx({ addToCartLabel: 'Add to basket' });
-    expect(renderTemplate('{{sw-add-to-cart sku="x" name="A" price="1"}}', ctxShop)).toContain('>Add to basket</button>');
-    expect(renderTemplate('{{sw-add-to-cart sku="x" name="A" price="1" label="Buy"}}', ctxShop)).toContain('>Buy</button>');
+  it('{{sw-add-to-cart}} label precedence: hash > catalog cart_add > built-in default', () => {
+    const ctx = shopCtx({}, { website: { t: { cart_add: 'In den Warenkorb' } } });
+    expect(renderTemplate('{{sw-add-to-cart sku="x" name="A" price="1"}}', ctx)).toContain('>In den Warenkorb</button>'); // catalog
+    expect(renderTemplate('{{sw-add-to-cart sku="x" name="A" price="1" label="Buy"}}', ctx)).toContain('>Buy</button>'); // hash beats catalog
+    expect(renderTemplate('{{sw-add-to-cart sku="x" name="A" price="1"}}', shopCtx())).toContain('>Add to cart</button>'); // built-in default
   });
 
-  it('{{sw-cart}} emits the mount with currency + channels JSON from website.shop', () => {
-    const ctxShop = shopCtx({
-      currency: { code: 'EUR', symbol: '€', position: 'after', decimals: 2 },
-      title: 'Your basket',
-      channels: [
-        { kind: 'whatsapp', number: '+14155550123', label: 'WhatsApp' },
-        { kind: 'payment', urlTemplate: 'https://paypal.me/acme/{total}' },
-      ],
-    });
+  it('{{sw-cart}} emits the mount with currency (from the catalog) + channels JSON (labels from shop.<key>)', () => {
+    const ctxShop = shopCtx(
+      {
+        currency: { position: 'after', decimals: 2 },
+        channels: [
+          { kind: 'whatsapp', key: 'whatsapp', number: '+14155550123' },
+          { kind: 'payment', key: 'pay', urlTemplate: 'https://paypal.me/acme/{total}' },
+        ],
+      },
+      { website: { t: { cart_currency_symbol: '€', cart_currency_code: 'EUR', 'shop.whatsapp': 'WhatsApp' } } },
+    );
     const out = renderTemplate('{{sw-cart}}', ctxShop);
     expect(out.startsWith('<div data-sw-cart')).toBe(true);
-    expect(out).toContain('data-currency-symbol="€"');
-    expect(out).toContain('data-currency-code="EUR"');
-    expect(out).toContain('data-currency-pos="after"');
-    expect(out).toContain('data-cart-title="Your basket"');
-    // channels are JSON, attribute-escaped (the JSON quotes become &quot;)
+    expect(out).toContain('data-currency-symbol="€"'); // from cart_currency_symbol
+    expect(out).toContain('data-currency-code="EUR"'); // from cart_currency_code
+    expect(out).toContain('data-currency-pos="after"'); // from settings
     expect(out).toContain('data-channels="');
     expect(out).toContain('&quot;kind&quot;:&quot;whatsapp&quot;');
+    expect(out).toContain('&quot;label&quot;:&quot;WhatsApp&quot;'); // channel label resolved from shop.whatsapp
     expect(out).toContain('&quot;urlTemplate&quot;:&quot;https://paypal.me/acme/{total}&quot;');
   });
 
-  it('{{sw-cart}} emits the built-in English defaults for every drawer string (enabled, empty catalog)', () => {
+  it('{{sw-cart}} emits the built-in English defaults for every drawer string + currency (enabled, empty catalog)', () => {
     const out = renderTemplate('{{sw-cart}}', shopCtx());
+    expect(out).toContain('data-currency-symbol="$"'); // cart_currency_symbol default
+    expect(out).toContain('data-currency-code="USD"'); // cart_currency_code default
     expect(out).toContain('data-cart-title="Your cart"');
     expect(out).toContain('data-added-label="Added"');
     expect(out).toContain('data-empty-label="Your cart is empty."');
@@ -454,13 +455,8 @@ describe('renderTemplate — MINI SHOP helpers', () => {
     expect(out).toContain('data-order-lead="I’d like to order:"');
   });
 
-  it('{{sw-cart}} emits the editable cart note (data-note)', () => {
-    const out = renderTemplate('{{sw-cart}}', shopCtx({ note: 'Order request only.' }));
-    expect(out).toContain('data-note="Order request only."');
-  });
-
-  it('{{sw-cart}} hash overrides win over website.shop and emit the per-string data-*-label attrs', () => {
-    const ctxShop = shopCtx({ title: 'Your basket', note: 'Site-wide note.' });
+  it('{{sw-cart}} hash overrides win over the catalog and emit the per-string data-*-label attrs', () => {
+    const ctxShop = shopCtx({}, { website: { t: { cart_title: 'Catalog title' } } });
     const out = renderTemplate(
       '{{sw-cart title="Warenkorb" note="Preise unverbindlich." added="Hinzugefügt" empty="Ihr Warenkorb ist leer." subtotal="Zwischensumme" clear="Leeren" sent="Bestellung gesendet."}}',
       ctxShop,
@@ -472,30 +468,31 @@ describe('renderTemplate — MINI SHOP helpers', () => {
     expect(out).toContain('data-subtotal-label="Zwischensumme"');
     expect(out).toContain('data-clear-label="Leeren"');
     expect(out).toContain('data-sent-label="Bestellung gesendet."');
-    expect(out).not.toContain('Your basket');
-    // a missing/undefined override (e.g. a lookup of an absent page.data key) falls back to shop
-    const fallback = renderTemplate('{{sw-cart title=(lookup page.data "cart_title")}}', { ...ctxShop, page: { data: {} } });
-    expect(fallback).toContain('data-cart-title="Your basket"');
-    // a bare enabled cart falls back to the built-in English default
-    expect(renderTemplate('{{sw-cart}}', shopCtx())).toContain('data-cart-title="Your cart"');
+    expect(out).not.toContain('Catalog title'); // the hash override beats the catalog
   });
 
-  it('{{sw-cart}} auto-localizes its drawer strings from the translation catalog (website.t reserved keys)', () => {
-    // A bare {{sw-cart}} picks up the per-locale catalog values with NO per-page hash wiring.
-    const out = renderTemplate('{{sw-cart}}', shopCtx({}, {
-      website: {
-        t: {
-          cart_title: 'Warenkorb',
-          cart_note: 'Preise unverbindlich.',
-          cart_added: 'Hinzugefügt',
-          cart_empty: 'Leer.',
-          cart_subtotal: 'Zwischensumme',
-          cart_clear: 'Leeren',
-          cart_sent: 'Gesendet.',
-          cart_order_lead: 'Ich möchte bestellen:',
+  it('{{sw-cart}} auto-localizes drawer strings + currency + channel/field labels from the catalog (no per-page wiring)', () => {
+    const out = renderTemplate('{{sw-cart}}', shopCtx(
+      { channels: [{ kind: 'whatsapp', key: 'whatsapp', number: '+14155550123', fields: [{ key: 'name', type: 'text', required: true }] }] },
+      {
+        website: {
+          t: {
+            cart_title: 'Warenkorb',
+            cart_note: 'Preise unverbindlich.',
+            cart_added: 'Hinzugefügt',
+            cart_empty: 'Leer.',
+            cart_subtotal: 'Zwischensumme',
+            cart_clear: 'Leeren',
+            cart_sent: 'Gesendet.',
+            cart_order_lead: 'Ich möchte bestellen:',
+            cart_currency_symbol: '€',
+            cart_currency_code: 'EUR',
+            'shop.whatsapp': 'Per WhatsApp bestellen',
+            'shop.name': 'Ihr Name',
+          },
         },
       },
-    }));
+    ));
     expect(out).toContain('data-cart-title="Warenkorb"');
     expect(out).toContain('data-note="Preise unverbindlich."');
     expect(out).toContain('data-added-label="Hinzugefügt"');
@@ -504,66 +501,62 @@ describe('renderTemplate — MINI SHOP helpers', () => {
     expect(out).toContain('data-clear-label="Leeren"');
     expect(out).toContain('data-sent-label="Gesendet."');
     expect(out).toContain('data-order-lead="Ich möchte bestellen:"');
+    expect(out).toContain('data-currency-symbol="€"');
+    expect(out).toContain('&quot;label&quot;:&quot;Per WhatsApp bestellen&quot;'); // channel label localized
+    expect(out).toContain('&quot;label&quot;:&quot;Ihr Name&quot;'); // field label localized
   });
 
-  it('{{sw-cart}} string precedence: hash > catalog > website.shop > built-in default', () => {
-    const ctx = shopCtx({ title: 'Shop title' }, { website: { t: { cart_title: 'Catalog title' } } });
-    // hash wins over catalog
-    expect(renderTemplate('{{sw-cart title="Hash title"}}', ctx)).toContain('data-cart-title="Hash title"');
-    // catalog wins over website.shop
-    expect(renderTemplate('{{sw-cart}}', ctx)).toContain('data-cart-title="Catalog title"');
-    // website.shop is the last resort before the built-in default
-    expect(renderTemplate('{{sw-cart}}', shopCtx({ title: 'Shop title' }))).toContain('data-cart-title="Shop title"');
-    // nothing set → built-in English default
-    expect(renderTemplate('{{sw-cart}}', shopCtx())).toContain('data-cart-title="Your cart"');
+  it('{{sw-cart}} drawer-string precedence: hash > catalog > built-in default', () => {
+    const ctx = shopCtx({}, { website: { t: { cart_title: 'Catalog title' } } });
+    expect(renderTemplate('{{sw-cart title="Hash title"}}', ctx)).toContain('data-cart-title="Hash title"'); // hash wins
+    expect(renderTemplate('{{sw-cart}}', ctx)).toContain('data-cart-title="Catalog title"'); // catalog wins over default
+    expect(renderTemplate('{{sw-cart}}', shopCtx())).toContain('data-cart-title="Your cart"'); // built-in default
   });
 
-  it('{{sw-add-to-cart}} label precedence: hash > catalog cart_add > website.shop.addToCartLabel > default', () => {
-    const ctx = shopCtx({ addToCartLabel: 'Add to basket' }, { website: { t: { cart_add: 'In den Warenkorb' } } });
-    expect(renderTemplate('{{sw-add-to-cart sku="x" name="A" price="1"}}', ctx)).toContain('>In den Warenkorb</button>'); // catalog beats shop
-    expect(renderTemplate('{{sw-add-to-cart sku="x" name="A" price="1" label="Buy"}}', ctx)).toContain('>Buy</button>'); // hash beats catalog
-    expect(renderTemplate('{{sw-add-to-cart sku="x" name="A" price="1"}}', shopCtx())).toContain('>Add to cart</button>'); // built-in default
-  });
-
-  it('{{sw-cart}} projects per-channel order fields (label/type/required) for whatsapp + mailto', () => {
-    const ctxShop = shopCtx({
-      channels: [
-        { kind: 'whatsapp', number: '+14155550123', fields: [{ label: 'Your name', type: 'text', required: true }] },
-        { kind: 'mailto', email: 'a@b.test', fields: [{ label: 'Your address', type: 'textarea' }] },
-      ],
-    });
+  it('{{sw-cart}} projects per-channel order fields (label from shop.<key>, type, required) for whatsapp + mailto', () => {
+    const ctxShop = shopCtx(
+      {
+        channels: [
+          { kind: 'whatsapp', key: 'whatsapp', number: '+14155550123', fields: [{ key: 'name', type: 'text', required: true }] },
+          { kind: 'mailto', key: 'email', email: 'a@b.test', fields: [{ key: 'address', type: 'textarea' }] },
+        ],
+      },
+      { website: { t: { 'shop.name': 'Your name', 'shop.address': 'Your address' } } },
+    );
     const out = renderTemplate('{{sw-cart}}', ctxShop);
     expect(out).toContain('&quot;fields&quot;');
-    expect(out).toContain('&quot;label&quot;:&quot;Your name&quot;');
+    expect(out).toContain('&quot;label&quot;:&quot;Your name&quot;'); // resolved from shop.name
     expect(out).toContain('&quot;required&quot;:true');
-    expect(out).toContain('&quot;label&quot;:&quot;Your address&quot;');
+    expect(out).toContain('&quot;label&quot;:&quot;Your address&quot;'); // resolved from shop.address
     expect(out).toContain('&quot;type&quot;:&quot;textarea&quot;');
     // a channel WITHOUT fields has no fields key in its JSON
-    const noFields = renderTemplate('{{sw-cart}}', shopCtx({ channels: [{ kind: 'whatsapp', number: '+14155550123' }] }));
+    const noFields = renderTemplate('{{sw-cart}}', shopCtx({ channels: [{ kind: 'whatsapp', key: 'whatsapp', number: '+14155550123' }] }));
     expect(noFields).not.toContain('&quot;fields&quot;');
   });
 
+  it('{{sw-cart}} falls back to the channel/field KEY when its shop.<key> label is untranslated', () => {
+    const out = renderTemplate('{{sw-cart}}', shopCtx({ channels: [{ kind: 'whatsapp', key: 'whatsapp', number: '+14155550123' }] }));
+    expect(out).toContain('&quot;label&quot;:&quot;whatsapp&quot;'); // no catalog entry → the bare key
+  });
+
   it('{{sw-cart}} emits data-brand from company.name (for the email greeting) only when present', () => {
-    const out = renderTemplate('{{sw-cart}}', shopCtx({ channels: [{ kind: 'mailto', email: 'a@b.test' }] }, { company: { name: 'Acme & Co' } }));
+    const out = renderTemplate('{{sw-cart}}', shopCtx({ channels: [{ kind: 'mailto', key: 'email', email: 'a@b.test' }] }, { company: { name: 'Acme & Co' } }));
     expect(out).toContain('data-brand="Acme &amp; Co"');
-    // no identity → no data-brand
-    expect(renderTemplate('{{sw-cart}}', shopCtx({ channels: [{ kind: 'mailto', email: 'a@b.test' }] }))).not.toContain('data-brand');
+    expect(renderTemplate('{{sw-cart}}', shopCtx({ channels: [{ kind: 'mailto', key: 'email', email: 'a@b.test' }] }))).not.toContain('data-brand');
   });
 
   it('{{sw-cart}} projects a form channel only when its endpoint is resolved', () => {
-    const withEp = shopCtx({ channels: [{ kind: 'form', formId: 'order', endpoint: '/f/p1/order', label: 'Place order' }] });
+    const withEp = shopCtx({ channels: [{ kind: 'form', key: 'order_form', formId: 'order', endpoint: '/f/p1/order' }] });
     const out = renderTemplate('{{sw-cart}}', withEp);
     expect(out).toContain('data-channels=');
     expect(out).toContain('/f/p1/order');
     expect(out).toContain('&quot;kind&quot;:&quot;form&quot;');
-    // a form channel WITHOUT a resolved endpoint is dropped (here it's the only one → no channels attr)
-    expect(renderTemplate('{{sw-cart}}', shopCtx({ channels: [{ kind: 'form', formId: 'order' }] }))).not.toContain('data-channels');
+    expect(renderTemplate('{{sw-cart}}', shopCtx({ channels: [{ kind: 'form', key: 'order_form', formId: 'order' }] }))).not.toContain('data-channels');
   });
 
-  it('{{sw-cart}} unicode-escapes < > & in the channels JSON (survives the directive round-trip)', () => {
-    const ctxShop = shopCtx({ channels: [{ kind: 'mailto', email: 'a@b.test', label: 'B&H <Photo>' }] });
+  it('{{sw-cart}} unicode-escapes < > & in the channels JSON (the resolved label survives the directive round-trip)', () => {
+    const ctxShop = shopCtx({ channels: [{ kind: 'mailto', key: 'email', email: 'a@b.test' }] }, { website: { t: { 'shop.email': 'B&H <Photo>' } } });
     const out = renderTemplate('{{sw-cart}}', ctxShop);
-    // markup-significant chars in the label are \u-escaped inside the JSON, never raw < > &
     expect(out).toContain('B\\u0026H \\u003cPhoto\\u003e');
     expect(out).not.toContain('B&H <Photo>');
   });

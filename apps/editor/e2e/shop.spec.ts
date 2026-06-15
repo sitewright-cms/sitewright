@@ -16,16 +16,22 @@ test('published cart: add-to-cart opens the drawer and builds the WhatsApp order
   const projectId = (await proj.json()).project.id as string;
   const base = `/projects/${projectId}`;
 
-  // website.shop: currency + two deep-link channels (WhatsApp + a PayPal.me payment link).
+  // website.shop: keyed deep-link channels (WhatsApp + a PayPal.me payment link); the currency symbol +
+  // channel labels are translatable → seeded in website.translations.
   const settings = {
     identity: { name: 'Acme', colors: { primary: '#0a7a5a' } },
     website: {
       shop: {
-        currency: { code: 'USD', symbol: '$', position: 'before', decimals: 2 },
+        enabled: true,
         channels: [
-          { kind: 'whatsapp', number: '+14155550123', label: 'Order on WhatsApp' },
-          { kind: 'payment', urlTemplate: 'https://paypal.me/acme/{total}', label: 'Pay now' },
+          { kind: 'whatsapp', key: 'whatsapp', number: '+14155550123' },
+          { kind: 'payment', key: 'pay', urlTemplate: 'https://paypal.me/acme/{total}' },
         ],
+      },
+      translations: {
+        cart_currency_symbol: { en: '$' },
+        'shop.whatsapp': { en: 'Order on WhatsApp' },
+        'shop.pay': { en: 'Pay now' },
       },
     },
     settings: {},
@@ -120,7 +126,7 @@ test('published cart: the form channel submits the order to the /f submissions i
   ).toBe(200);
   const settings = {
     identity: { name: 'Acme', colors: { primary: '#0a7a5a' } },
-    website: { shop: { currency: { code: 'USD', symbol: '$' }, channels: [{ kind: 'form', formId: 'order', label: 'Place order' }] } },
+    website: { shop: { enabled: true, channels: [{ kind: 'form', key: 'order_form', formId: 'order' }] } },
     settings: {},
   };
   expect((await ctx.put(`${base}/content/settings/settings`, { data: settings })).status()).toBe(200);
@@ -178,9 +184,13 @@ test('published cart: editable note + backdrop/Esc/close-only dismissal + ripple
     identity: { name: 'Acme', colors: { primary: '#0a7a5a' } },
     website: {
       shop: {
-        currency: { code: 'USD', symbol: '$' },
-        note: 'We confirm every order by hand.',
-        channels: [{ kind: 'whatsapp', number: '+14155550123', label: 'Order on WhatsApp' }],
+        enabled: true,
+        channels: [{ kind: 'whatsapp', key: 'whatsapp', number: '+14155550123' }],
+      },
+      // The cart note + channel label are translatable → the catalog (resolved per locale at render).
+      translations: {
+        cart_note: { en: 'We confirm every order by hand.' },
+        'shop.whatsapp': { en: 'Order on WhatsApp' },
       },
     },
     settings: {},

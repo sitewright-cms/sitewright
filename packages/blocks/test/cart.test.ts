@@ -210,13 +210,13 @@ describe('cart channel order fields (whatsapp/mailto)', () => {
 describe('resolveShopChannels', () => {
   const ep = (id: string): string => `/f/p1/${id}`;
   it('fills the endpoint for a form channel and leaves others untouched', () => {
-    const shop = { currency: { code: 'USD' }, channels: [{ kind: 'form', formId: 'order' }, { kind: 'mailto', email: 'a@b.test' }] };
+    const shop = { currency: { decimals: 2 }, channels: [{ kind: 'form', key: 'order_form', formId: 'order' }, { kind: 'mailto', key: 'email', email: 'a@b.test' }] };
     const out = resolveShopChannels(shop, ep) as { channels: Array<Record<string, unknown>> };
-    expect(out.channels[0]).toMatchObject({ kind: 'form', formId: 'order', endpoint: '/f/p1/order' });
-    expect(out.channels[1]).toEqual({ kind: 'mailto', email: 'a@b.test' });
+    expect(out.channels[0]).toMatchObject({ kind: 'form', key: 'order_form', formId: 'order', endpoint: '/f/p1/order' });
+    expect(out.channels[1]).toEqual({ kind: 'mailto', key: 'email', email: 'a@b.test' });
   });
   it('is a no-op for an absent shop or one without channels', () => {
     expect(resolveShopChannels(undefined, ep)).toBeUndefined();
-    expect(resolveShopChannels({ currency: { code: 'USD' } }, ep)).toEqual({ currency: { code: 'USD' } });
+    expect(resolveShopChannels({ currency: { decimals: 2 } }, ep)).toEqual({ currency: { decimals: 2 } });
   });
 });

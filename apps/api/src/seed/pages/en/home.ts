@@ -74,25 +74,25 @@ export function pageHome(assets: Record<string, string>): Page {
 <section class="mx-auto max-w-6xl px-6 pt-24">
   <div class="grid gap-12 lg:grid-cols-2 lg:items-center">
     <div data-aos="fade-right">
-      <span class="text-sm font-semibold uppercase tracking-[0.18em] text-primary" data-sw-text="why_eyebrow">Why Northwind</span>
-      <h2 class="mt-4 text-3xl font-bold tracking-tight sm:text-4xl" data-sw-text="why_title">Senior people, no hand-offs, no surprises</h2>
-      <p class="mt-4 text-lg leading-relaxed text-base-content/60" data-sw-text="why_sub">You work directly with the designers and engineers building your site — start to finish.</p>
+      <span class="text-sm font-semibold uppercase tracking-[0.18em] text-primary" data-sw-translate="home.why_eyebrow">Why Northwind</span>
+      <h2 class="mt-4 text-3xl font-bold tracking-tight sm:text-4xl" data-sw-translate="home.why_title">Senior people, no hand-offs, no surprises</h2>
+      <p class="mt-4 text-lg leading-relaxed text-base-content/60" data-sw-translate="home.why_sub">You work directly with the designers and engineers building your site — start to finish.</p>
     </div>
     <ul class="grid list-none gap-4 p-0 sm:grid-cols-2" data-aos="fade-left">
-      <li class="flex items-start gap-3 rounded-2xl border border-base-200 bg-base-100 px-4 py-3.5 shadow-sm"><span class="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">${icon('check', 'h-4 w-4')}</span><span class="font-medium text-base-content/80" data-sw-text="why1">Fixed scope &amp; timeline</span></li>
-      <li class="flex items-start gap-3 rounded-2xl border border-base-200 bg-base-100 px-4 py-3.5 shadow-sm"><span class="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">${icon('check', 'h-4 w-4')}</span><span class="font-medium text-base-content/80" data-sw-text="why2">Perfect Lighthouse scores</span></li>
-      <li class="flex items-start gap-3 rounded-2xl border border-base-200 bg-base-100 px-4 py-3.5 shadow-sm"><span class="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">${icon('check', 'h-4 w-4')}</span><span class="font-medium text-base-content/80" data-sw-text="why3">You can edit the content yourself</span></li>
-      <li class="flex items-start gap-3 rounded-2xl border border-base-200 bg-base-100 px-4 py-3.5 shadow-sm"><span class="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">${icon('check', 'h-4 w-4')}</span><span class="font-medium text-base-content/80" data-sw-text="why4">Accessible &amp; SEO-ready</span></li>
-      <li class="flex items-start gap-3 rounded-2xl border border-base-200 bg-base-100 px-4 py-3.5 shadow-sm"><span class="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">${icon('check', 'h-4 w-4')}</span><span class="font-medium text-base-content/80" data-sw-text="why5">Hosting-friendly static export</span></li>
-      <li class="flex items-start gap-3 rounded-2xl border border-base-200 bg-base-100 px-4 py-3.5 shadow-sm"><span class="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">${icon('check', 'h-4 w-4')}</span><span class="font-medium text-base-content/80" data-sw-text="why6">Ongoing care plans</span></li>
+      <li class="flex items-start gap-3 rounded-2xl border border-base-200 bg-base-100 px-4 py-3.5 shadow-sm"><span class="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">${icon('check', 'h-4 w-4')}</span><span class="font-medium text-base-content/80" data-sw-translate="home.why1">Fixed scope &amp; timeline</span></li>
+      <li class="flex items-start gap-3 rounded-2xl border border-base-200 bg-base-100 px-4 py-3.5 shadow-sm"><span class="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">${icon('check', 'h-4 w-4')}</span><span class="font-medium text-base-content/80" data-sw-translate="home.why2">Perfect Lighthouse scores</span></li>
+      <li class="flex items-start gap-3 rounded-2xl border border-base-200 bg-base-100 px-4 py-3.5 shadow-sm"><span class="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">${icon('check', 'h-4 w-4')}</span><span class="font-medium text-base-content/80" data-sw-translate="home.why3">You can edit the content yourself</span></li>
+      <li class="flex items-start gap-3 rounded-2xl border border-base-200 bg-base-100 px-4 py-3.5 shadow-sm"><span class="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">${icon('check', 'h-4 w-4')}</span><span class="font-medium text-base-content/80" data-sw-translate="home.why4">Accessible &amp; SEO-ready</span></li>
+      <li class="flex items-start gap-3 rounded-2xl border border-base-200 bg-base-100 px-4 py-3.5 shadow-sm"><span class="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">${icon('check', 'h-4 w-4')}</span><span class="font-medium text-base-content/80" data-sw-translate="home.why5">Hosting-friendly static export</span></li>
+      <li class="flex items-start gap-3 rounded-2xl border border-base-200 bg-base-100 px-4 py-3.5 shadow-sm"><span class="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">${icon('check', 'h-4 w-4')}</span><span class="font-medium text-base-content/80" data-sw-translate="home.why6">Ongoing care plans</span></li>
     </ul>
   </div>
 </section>
 
 <section class="mx-auto max-w-6xl px-6 py-24">
   <div class="max-w-2xl" data-aos="fade-up">
-    <h2 class="text-3xl font-bold tracking-tight sm:text-4xl" data-sw-text="svc_title">Everything you need under one roof</h2>
-    <p class="mt-4 text-lg leading-relaxed text-base-content/60" data-sw-text="svc_sub">Strategy, design, and engineering — no hand-offs, no agencies-of-agencies.</p>
+    <h2 class="text-3xl font-bold tracking-tight sm:text-4xl" data-sw-translate="home.svc_title">Everything you need under one roof</h2>
+    <p class="mt-4 text-lg leading-relaxed text-base-content/60" data-sw-translate="home.svc_sub">Strategy, design, and engineering — no hand-offs, no agencies-of-agencies.</p>
   </div>
   <div class="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-3" data-aos="fade-up" data-aos-delay="100">
     {{#each dataset.services}}
@@ -121,11 +121,11 @@ export function pageHome(assets: Record<string, string>): Page {
       </div>
     </div>
     <div data-aos="fade-left">
-      <span class="text-sm font-semibold uppercase tracking-[0.18em] text-primary" data-sw-text="spot_eyebrow">Case study</span>
+      <span class="text-sm font-semibold uppercase tracking-[0.18em] text-primary" data-sw-translate="home.spot_eyebrow">Case study</span>
       <h2 class="mt-4 text-3xl font-bold tracking-tight sm:text-4xl">{{title}}</h2>
       <p class="mt-3 text-sm font-medium text-base-content/45">{{client}} · {{category}} · {{year}}</p>
       <p class="mt-5 text-lg leading-relaxed text-base-content/70">{{summary}}</p>
-      <a class="nw-underline mt-7 inline-flex items-center gap-1.5 font-semibold text-primary no-underline" href="/work" data-sw-href="href_work"><span data-sw-text="spot_link">See the full portfolio</span> ${icon('arrow-right', 'h-4 w-4')}</a>
+      <a class="nw-underline mt-7 inline-flex items-center gap-1.5 font-semibold text-primary no-underline" href="/work" data-sw-href="href_work"><span data-sw-translate="home.spot_link">See the full portfolio</span> ${icon('arrow-right', 'h-4 w-4')}</a>
     </div>
     {{/with}}
   </div>
@@ -133,8 +133,8 @@ export function pageHome(assets: Record<string, string>): Page {
 
 <section class="mx-auto max-w-6xl px-6 py-24">
   <div class="flex flex-wrap items-end justify-between gap-4" data-aos="fade-up">
-    <h2 class="text-3xl font-bold tracking-tight sm:text-4xl" data-sw-text="work_title">Selected work</h2>
-    <a class="nw-underline inline-flex items-center gap-1.5 font-semibold text-primary no-underline" href="/work" data-sw-href="href_work"><span data-sw-text="work_link">View all projects</span> ${icon('arrow-right', 'h-4 w-4')}</a>
+    <h2 class="text-3xl font-bold tracking-tight sm:text-4xl" data-sw-translate="home.work_title">Selected work</h2>
+    <a class="nw-underline inline-flex items-center gap-1.5 font-semibold text-primary no-underline" href="/work" data-sw-href="href_work"><span data-sw-translate="home.work_link">View all projects</span> ${icon('arrow-right', 'h-4 w-4')}</a>
   </div>
   <div class="mt-12 grid gap-7 md:grid-cols-3" data-aos="fade-up" data-aos-delay="100">
     {{#each dataset.projects}}
@@ -158,7 +158,7 @@ export function pageHome(assets: Record<string, string>): Page {
   <div class="pointer-events-none absolute -left-32 top-0 h-96 w-96 rounded-full bg-primary/25 blur-3xl" aria-hidden="true"></div>
   <div class="pointer-events-none absolute -right-32 bottom-0 h-96 w-96 rounded-full bg-secondary/20 blur-3xl" aria-hidden="true"></div>
   <div class="relative mx-auto max-w-4xl px-6 py-24">
-    <h2 class="text-center text-3xl font-bold tracking-tight sm:text-4xl" data-aos="fade-up" data-sw-text="tst_title">Loved by the brands we build for</h2>
+    <h2 class="text-center text-3xl font-bold tracking-tight sm:text-4xl" data-aos="fade-up" data-sw-translate="home.tst_title">Loved by the brands we build for</h2>
     <!-- First-party CAROUSEL: scroll-snap track (swipeable without JS); the runtime adds arrows,
          dots, keyboard nav, and gentle autoplay (pausing on hover/focus/reduced-motion). -->
     <div class="relative mt-12" data-sw-component="carousel" data-sw-block="Carousel" data-loop="true" data-autoplay="true" data-interval="6000" data-aos="fade-up" data-aos-delay="100">
@@ -186,9 +186,9 @@ export function pageHome(assets: Record<string, string>): Page {
   <div class="nw-aurora relative mx-auto max-w-6xl overflow-hidden rounded-[2.5rem] text-white shadow-2xl shadow-primary/15">
     <div class="nw-grid-bg pointer-events-none absolute inset-0" aria-hidden="true"></div>
     <div class="relative mx-auto flex max-w-3xl flex-col items-center gap-6 px-6 py-20 text-center">
-      <h2 class="text-3xl font-bold tracking-tight sm:text-5xl" data-sw-text="cta_title">Have a project in mind?</h2>
-      <p class="max-w-xl text-lg leading-relaxed text-white/65" data-sw-text="cta_sub">Tell us where you want to be in twelve months. We’ll show you how the right website gets you there.</p>
-      <a class="btn btn-lg mt-2 gap-2 rounded-full border-0 bg-white px-8 text-primary shadow-xl hover:bg-white/90" href="/contact" data-sw-href="href_contact">${icon('calendar', 'h-5 w-5')} <span data-sw-text="cta_btn">Book an intro call</span></a>
+      <h2 class="text-3xl font-bold tracking-tight sm:text-5xl" data-sw-translate="home.cta_title">Have a project in mind?</h2>
+      <p class="max-w-xl text-lg leading-relaxed text-white/65" data-sw-translate="home.cta_sub">Tell us where you want to be in twelve months. We’ll show you how the right website gets you there.</p>
+      <a class="btn btn-lg mt-2 gap-2 rounded-full border-0 bg-white px-8 text-primary shadow-xl hover:bg-white/90" href="/contact" data-sw-href="href_contact">${icon('calendar', 'h-5 w-5')} <span data-sw-translate="home.cta_btn">Book an intro call</span></a>
     </div>
   </div>
 </section>`,

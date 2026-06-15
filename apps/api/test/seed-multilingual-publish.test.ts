@@ -217,14 +217,18 @@ describe('seeded demo — flagship multilingual showcase publishes correctly', (
     expect(en).toContain('data-cart-title="Your cart"'); // cart_title (en) from website.translations
     expect(en).toContain('>Add to cart</button>'); // cart_add (en)
     expect(en).toContain('Studio Tee'); // products (en)
+    expect(en).toContain('Order on WhatsApp'); // channel label (en) from shop.whatsapp
+    expect(en).toContain('data-currency-symbol="$"'); // cart_currency_symbol (en)
     const de = await page('de/shop/index.html');
     expect(de).toContain('data-cart-title="Warenkorb"'); // cart_title (de) — bare {{sw-cart}}, no per-page hash
     expect(de).toContain('data-empty-label="Ihr Warenkorb ist leer."');
     expect(de).toContain('>In den Warenkorb</button>'); // cart_add (de) — the button now localizes too
+    expect(de).toContain('Per WhatsApp bestellen'); // channel label (de) from shop.whatsapp (in data-channels JSON)
     expect(de).toContain('Studio-Shirt'); // products-de auto-resolved
     const es = await page('es/tienda/index.html');
     expect(es).toContain('data-cart-title="Su carrito"');
     expect(es).toContain('>Añadir al carrito</button>'); // cart_add (es)
+    expect(es).toContain('Pedir por WhatsApp'); // channel label (es) from shop.whatsapp
   });
 
   it('renders the shared hero CTA from the translation catalog (data-sw-translate), stripped on publish', async () => {
@@ -244,7 +248,7 @@ describe('seeded demo — flagship multilingual showcase publishes correctly', (
   it('renders the Spanish locale end-to-end: /es home, localized slugs, dataset/form/chrome resolution', async () => {
     const es = await page('es/index.html');
     expect(es).toContain('<html lang="es">');
-    expect(es).toContain('Webs que le traen más negocio'); // page.data override (inherit-mode)
+    expect(es).toContain('Webs que le traen más negocio'); // hero headline via the scoped catalog (home.headline)
     expect(es).toContain('Diseño web'); // services-es auto-resolved
     expect(es).toContain('Empezar un proyecto'); // chrome strings (es)
     for (const path of ['es/trabajos', 'es/servicios', 'es/servicios/diseno-web', 'es/servicios/precios', 'es/nosotros', 'es/nosotros/empleo', 'es/contacto', 'es/preguntas-frecuentes', 'es/privacidad', 'es/aviso-legal', 'es/tienda', 'es/blog/por-que-ganan-los-sitios-estaticos']) {

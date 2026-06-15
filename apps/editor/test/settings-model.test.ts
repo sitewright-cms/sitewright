@@ -56,20 +56,17 @@ describe('settings model', () => {
     expect(back.settings).toEqual(full.settings);
   });
 
-  it('round-trips the mini-shop currency + all four channel kinds', () => {
+  it('round-trips the mini-shop currency formatting + all four channel kinds (keyed, no labels)', () => {
     const withShop: SettingsBundle = {
       identity: { name: 'Acme', colors: {} },
       website: {
         shop: {
-          currency: { code: 'EUR', symbol: '€', position: 'after', decimals: 2 },
-          addToCartLabel: 'Add to basket',
-          title: 'Your basket',
-          note: 'Order request only — we confirm price.',
+          currency: { position: 'after', decimals: 2 },
           channels: [
-            { kind: 'whatsapp', label: 'WhatsApp', number: '+14155550123', intro: 'Hi' },
-            { kind: 'mailto', email: 'orders@acme.test', subject: 'Order' },
-            { kind: 'payment', urlTemplate: 'https://paypal.me/acme/{total}', provider: 'paypal' },
-            { kind: 'form', formId: 'order' },
+            { kind: 'whatsapp', key: 'whatsapp', number: '+14155550123', intro: 'Hi' },
+            { kind: 'mailto', key: 'email', email: 'orders@acme.test', subject: 'Order' },
+            { kind: 'payment', key: 'pay', urlTemplate: 'https://paypal.me/acme/{total}', provider: 'paypal' },
+            { kind: 'form', key: 'order_form', formId: 'order' },
           ],
         },
       },
@@ -82,7 +79,7 @@ describe('settings model', () => {
   it('round-trips the shop enabled toggle (and toggling on with no config yields a bare {enabled})', () => {
     const enabled: SettingsBundle = {
       identity: { name: 'Acme', colors: {} },
-      website: { shop: { enabled: true, currency: { code: 'EUR', symbol: '€', position: 'after', decimals: 2 } } },
+      website: { shop: { enabled: true, currency: { position: 'after', decimals: 2 } } },
       settings: { defaultLocale: 'en', locales: ['en'] },
     };
     expect(toForm(enabled).shopEnabled).toBe(true);
@@ -94,8 +91,8 @@ describe('settings model', () => {
     // a disabled shop omits `enabled` (off = the schema default), keeping any config
     expect(toForm(empty()).shopEnabled).toBe(false);
     const cfgOnly = toForm(empty());
-    cfgOnly.shopTitle = 'Cart';
-    expect(toBundle(cfgOnly, empty()).website?.shop).toEqual({ title: 'Cart' });
+    cfgOnly.shopCurrencyPosition = 'after';
+    expect(toBundle(cfgOnly, empty()).website?.shop).toEqual({ currency: { position: 'after', decimals: 2 } });
   });
 
   it('round-trips per-channel order fields (whatsapp + mailto) and defaults the field type to text', () => {
@@ -106,10 +103,11 @@ describe('settings model', () => {
           channels: [
             {
               kind: 'whatsapp',
+              key: 'whatsapp',
               number: '+14155550123',
-              fields: [{ label: 'Your name', type: 'text', required: true }, { label: 'Your address', type: 'textarea' }],
+              fields: [{ key: 'name', type: 'text', required: true }, { key: 'address', type: 'textarea' }],
             },
-            { kind: 'mailto', email: 'orders@acme.test', fields: [{ label: 'Phone', type: 'tel' }] },
+            { kind: 'mailto', key: 'email', email: 'orders@acme.test', fields: [{ key: 'phone', type: 'tel' }] },
           ],
         },
       },
@@ -119,24 +117,25 @@ describe('settings model', () => {
     expect(back.website?.shop).toEqual(withFields.website!.shop);
   });
 
-  it('drops blank-label order fields and omits the fields key when none remain', () => {
+  it('drops keyless order fields and omits the fields key when none remain', () => {
     const form = toForm(empty());
     form.shopChannels = [
       {
         ...newShopChannel(),
         kind: 'whatsapp',
+        key: 'whatsapp',
         number: '+14155550123',
         fields: [
-          { id: 'a', label: '  ', type: 'text', required: true }, // blank label → dropped
-          { id: 'b', label: 'Your name', type: 'text', required: false }, // kept (required omitted when false)
+          { id: 'a', key: '  ', type: 'text', required: true }, // blank key → dropped
+          { id: 'b', key: 'name', type: 'text', required: false }, // kept (required omitted when false)
         ],
       },
-      { ...newShopChannel(), kind: 'mailto', email: 'a@b.test', fields: [{ id: 'c', label: '', type: 'text', required: false }] },
+      { ...newShopChannel(), kind: 'mailto', key: 'email', email: 'a@b.test', fields: [{ id: 'c', key: '', type: 'text', required: false }] },
     ];
     const back = toBundle(form, empty());
     expect(back.website?.shop?.channels).toEqual([
-      { kind: 'whatsapp', number: '+14155550123', fields: [{ label: 'Your name', type: 'text' }] },
-      { kind: 'mailto', email: 'a@b.test' }, // all fields blank → no fields key
+      { kind: 'whatsapp', key: 'whatsapp', number: '+14155550123', fields: [{ key: 'name', type: 'text' }] },
+      { kind: 'mailto', key: 'email', email: 'a@b.test' }, // all fields keyless → no fields key
     ]);
   });
 
@@ -162,24 +161,25 @@ describe('settings model', () => {
     expect(toForm(empty()).buttonEffect).toBe('none');
   });
 
-  it('drops incomplete shop channels (every kind) and an empty currency', () => {
+  it('drops incomplete shop channels (every kind), a keyless channel, and a default currency', () => {
     const form = toForm(empty());
     form.shopChannels = [
-      { ...newShopChannel(), kind: 'whatsapp', number: '' }, // no number → dropped
-      { ...newShopChannel(), kind: 'payment', urlTemplate: '' }, // no urlTemplate → dropped
-      { ...newShopChannel(), kind: 'form', formId: '' }, // no formId → dropped
-      { ...newShopChannel(), kind: 'mailto', email: 'a@b.test' }, // kept
+      { ...newShopChannel(), kind: 'whatsapp', key: 'whatsapp', number: '' }, // no number → dropped
+      { ...newShopChannel(), kind: 'payment', key: 'pay', urlTemplate: '' }, // no urlTemplate → dropped
+      { ...newShopChannel(), kind: 'form', key: 'order_form', formId: '' }, // no formId → dropped
+      { ...newShopChannel(), kind: 'mailto', key: '', email: 'a@b.test' }, // no KEY → dropped
+      { ...newShopChannel(), kind: 'mailto', key: 'email', email: 'b@c.test' }, // kept
     ];
     const back = toBundle(form, empty());
-    expect(back.website?.shop?.channels).toEqual([{ kind: 'mailto', email: 'a@b.test' }]);
-    expect(back.website?.shop?.currency).toBeUndefined();
+    expect(back.website?.shop?.channels).toEqual([{ kind: 'mailto', key: 'email', email: 'b@c.test' }]);
+    expect(back.website?.shop?.currency).toBeUndefined(); // defaults (before / 2) → currency omitted
   });
 
   it('currency decimals: a cleared field falls back to 2 (not 0) and non-integers are truncated + clamped', () => {
+    // position 'after' (non-default) forces the currency object to be emitted so decimals is observable.
     const mk = (decimals: string) => {
       const form = toForm(empty());
-      form.shopCurrencyCode = 'USD';
-      form.shopCurrencySymbol = '$';
+      form.shopCurrencyPosition = 'after';
       form.shopCurrencyDecimals = decimals;
       return toBundle(form, empty()).website?.shop?.currency?.decimals;
     };

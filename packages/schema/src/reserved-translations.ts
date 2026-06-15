@@ -60,6 +60,8 @@ export const RESERVED_TRANSLATION_GROUPS: readonly ReservedTranslationGroup[] = 
       { key: 'cart_clear', label: 'Clear-cart button', default: 'Clear cart' },
       { key: 'cart_sent', label: 'Order-sent confirmation', default: 'Order sent — we will be in touch.' },
       { key: 'cart_order_lead', label: 'Order message lead-in', default: 'I’d like to order:' },
+      { key: 'cart_currency_symbol', label: 'Currency symbol', default: '$' },
+      { key: 'cart_currency_code', label: 'Currency code (ISO 4217)', default: 'USD' },
     ],
   },
 ];

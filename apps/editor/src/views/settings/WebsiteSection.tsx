@@ -246,7 +246,7 @@ export function WebsiteSection({
       <GlassCard
         title="Shop"
         icon={<ShoppingCart className="h-4 w-4" />}
-        tooltip="A front-end cart for static sites: drop {{sw-cart}} + {{sw-add-to-cart …}} in a page (or use the global:shop template), and the cart submits an order through the channels below. Prices are non-authoritative — the cart sends an order inquiry; you confirm availability and collect payment."
+        tooltip="A front-end cart for static sites: drop {{sw-cart}} + {{sw-add-to-cart …}} in a page (or use the global:shop template). This card holds the shop's structure; its wording (cart labels, currency, channel/field labels) is translatable — edit it in Translations & Labels. Prices are non-authoritative — the cart sends an order inquiry; you confirm availability and collect payment."
         wide
       >
         {/* Master switch. OFF (default) collapses the whole section — no settings, no Edit — and gates the

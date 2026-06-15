@@ -108,7 +108,7 @@ export const GLOBAL_TEMPLATES: readonly Template[] = [
         <h2 class="card-title text-base tracking-tight">{{name}}</h2>
         <p class="text-sm leading-relaxed text-base-content/60">{{description}}</p>
         <div class="mt-2 flex items-center justify-between gap-3">
-          <span class="text-xl font-bold tracking-tight">{{@root.website.shop.currency.symbol}}{{price}}</span>
+          <span class="text-xl font-bold tracking-tight">{{sw-translate "cart_currency_symbol" default="$"}}{{price}}</span>
           {{sw-add-to-cart sku=sku name=name price=price image=image class="btn btn-primary btn-sm rounded-full px-4"}}
         </div>
       </div>

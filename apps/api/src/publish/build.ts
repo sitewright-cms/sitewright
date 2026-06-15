@@ -20,6 +20,7 @@ import {
   pagesById,
   childrenOf,
   parentPageView,
+  pagesContext,
   referencesChildren,
   referencesParentPage,
   resolveTranslations,
@@ -544,6 +545,15 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         // Locale-resolved translation catalog for this page — shared by the render context AND the
         // SYSTEM i18n dict injected for the component runtimes (window.__SW_T__).
         const pageT = resolveTranslations(website?.translations, pageLocale, defaultLocale);
+        // Cross-page slug-path access (`{{pages.services.seo.data.x}}`) — referenced-only + same-locale,
+        // scanning the page source AND the site-wide slot sources (the renderCtx is shared with the
+        // slots, so a footer/nav can reference another page too); no-ops when nothing names `pages`.
+        const pagesForRender = pagesContext(pubBundle.pages, page, defaultLocale, [pageSource, ...slotSources].filter(Boolean).join('\n'));
+        // Fail fast (clear error) if a pathological source named many data-heavy pages — bound it like
+        // the render-IPC ceiling rather than letting an oversized payload OOM the render worker mid-build.
+        if (pagesForRender && JSON.stringify(pagesForRender).length > 4 * 1024 * 1024) {
+          throw new PublishError(`page "${page.id}" references too much cross-page data to render`);
+        }
         const renderCtx = {
           company: identity as unknown as Record<string, unknown>,
           // `json_data` is the publish-time snapshot of `website.jsonDataUrl` (full object — a
@@ -577,6 +587,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           parentPage: pageSource && referencesParentPage(pageSource)
             ? (parentPageView(pubBundle.pages, page, defaultLocale) as unknown as Record<string, unknown> | undefined)
             : undefined,
+          pages: pagesForRender,
           dataset: localeData as Record<string, unknown>,
           nav: navForPage as unknown as Record<string, unknown>,
           // Project media (slim) for {{#sw-folder}} galleries/file lists. Asset `url`s (`/media/<slug>/…`)

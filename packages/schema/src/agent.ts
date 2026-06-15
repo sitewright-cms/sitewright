@@ -35,7 +35,11 @@ In \`source\`:
   social bar with {{#each company.social}}<a href="{{sw-url link}}">{{sw-icon icon}} {{name}}</a>{{/each}}.
   Page bindings: {{ page.title }}, {{ page.path }} (full route),
   {{ page.slug }} (own segment); {{ page.parent.path }} / {{ page.parent.data.<key> }} for the page's
-  parent (absent at the tree root); {{ website.siteUrl }}; and {{#each dataset.<dataset>}}…{{/each}}
+  parent (absent at the tree root). CROSS-PAGE: read ANOTHER page's data by SLUG path with
+  {{ pages.<slug>.<slug>….data.<key> }} — walk the tree from home, e.g. {{ pages.services.seo.data.header_title }}
+  (and {{ sw-url pages.services.path }} to link it). Same-locale (German page → German slugs,
+  pages.leistungen.seo); each node also has .title/.slug/.path/.locale; an unknown path renders empty.
+  {{ website.siteUrl }}; and {{#each dataset.<dataset>}}…{{/each}}
   for collections. Inside the loop an entry's fields are read
   DIRECTLY by name — {{title}}, {{price}} (no \`values.\` prefix) — and each row is click-to-edit
   in the editor. The entry's id/dataset are on {{@entry.id}} / {{@entry.dataset}}.

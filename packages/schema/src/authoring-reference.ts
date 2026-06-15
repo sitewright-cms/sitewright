@@ -42,6 +42,7 @@ export const BINDING_NAMESPACE_NAMES = [
   'company',
   'website',
   'page',
+  'pages',
   'dataset',
   'item',
   'nav',
@@ -283,6 +284,19 @@ export const BINDING_NAMESPACES: readonly BindingDoc[] = [
       '{{! "up" link + inherit a value from the parent’s page.data }}\n' +
       '<a href="{{sw-url page.parent.path}}">↑ {{page.parent.title}}</a>\n' +
       '<span class="accent" style="color:{{page.parent.data.section_color}}">{{page.title}}</span>',
+  },
+  {
+    namespace: 'pages',
+    id: 'n-pages',
+    syntax: 'pages.<slug>.<slug>…',
+    name: 'pages',
+    keywords: 'pages cross-page other page data shared global slug tree navigate sibling',
+    description:
+      'DIRECT access to ANOTHER page’s data by slug PATH. Walk the page tree by slug from the home: pages.services is the top-level page slugged “services”, pages.services.seo its child slugged “seo”. Each node exposes .title, .slug, .path (its full route — use {{sw-url pages.x.path}}), .locale and .data (that page’s page.data). Same-locale: on a German page the slugs are the GERMAN ones (pages.leistungen.seo). An unknown path renders empty. NOTE: the 5 node fields (data, title, path, slug, locale) take precedence, so a child page whose slug is exactly one of those words can’t be reached this way (rename it).',
+    example:
+      '{{! reuse another page’s data + link to it }}\n' +
+      '<h2>{{pages.services.seo.data.header_title}}</h2>\n' +
+      '<a href="{{sw-url pages.services.path}}">{{pages.services.title}}</a>',
   },
   {
     namespace: 'dataset',

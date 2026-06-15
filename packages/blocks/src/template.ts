@@ -66,6 +66,13 @@ export interface TemplateContext {
   website?: Record<string, unknown>;
   page?: Record<string, unknown>;
   /**
+   * Cross-page DIRECT access by slug path — `{{ pages.services.seo.data.<key> }}` reads ANOTHER page's
+   * `page.data`. Rooted at the current page's locale HOME and walked by slug; each node also exposes
+   * title/slug/path/locale. Built REFERENCED-ONLY + same-locale by `pagesContext` in @sitewright/core
+   * (no payload unless the source names `pages`). A top-level author binding (see BINDING_NAMESPACES).
+   */
+  pages?: Record<string, unknown>;
+  /**
    * The current page's direct PARENT as a lean read-only view — a TRANSPORT input that is merged into
    * the page object and exposed to templates as `{{ page.parent.path }}` / `{{ page.parent.data.* }}`
    * (NOT a top-level `parentPage` binding anymore). Absent for a tree root / home or an orphan. Built by
@@ -846,7 +853,7 @@ export function renderTemplate(source: string, ctx: TemplateContext = {}, opts: 
   // `parentPage` is merged into the page object as `page.parent` (the author binding); it is not a
   // top-level namespace. Only attach when present so a no-parent page keeps `page.parent` undefined.
   const page = ctx.parentPage ? { ...(ctx.page ?? {}), parent: ctx.parentPage } : ctx.page;
-  const data = { company: ctx.company, website: ctx.website, page, dataset: ctx.dataset, item: ctx.item, nav: ctx.nav, media: ctx.media, markEntries: ctx.markEntries, forms: ctx.forms };
+  const data = { company: ctx.company, website: ctx.website, page, pages: ctx.pages, dataset: ctx.dataset, item: ctx.item, nav: ctx.nav, media: ctx.media, markEntries: ctx.markEntries, forms: ctx.forms };
   let html: string;
   try {
     html = template(data, {

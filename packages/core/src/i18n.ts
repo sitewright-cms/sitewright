@@ -199,7 +199,7 @@ function cloneJson<T>(value: T): T {
 }
 
 /** The locale variant of the site's HOME page (the root of a locale's subtree), if it exists. */
-function localeHomeFor(pages: readonly Page[], locale: string, defaultLocale: string): Page | undefined {
+export function localeHomeFor(pages: readonly Page[], locale: string, defaultLocale: string): Page | undefined {
   const home = pages.find((p) => isHomePage(p) && localeOf(p, defaultLocale) === defaultLocale);
   if (!home) return undefined;
   const group = home.translationGroup ?? home.id;

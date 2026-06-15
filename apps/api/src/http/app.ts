@@ -86,6 +86,7 @@ import {
   pagesById,
   childrenOf,
   parentPageView,
+  pagesContext,
   referencesChildren,
   referencesParentPage,
   widgetDatasetsForSources,
@@ -2005,11 +2006,27 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         if (previewParent && JSON.stringify(previewParent).length > 4 * 1024 * 1024) {
           return reply.code(413).send({ error: 'project data is too large to render' });
         }
+        // Cross-page slug-path access (`{{pages.services.seo.data.x}}`) — referenced-only + same-locale,
+        // shared by the page render AND the slots (a footer/nav may reference another page too).
+        const previewPages = pagesContext(
+          savedPages,
+          page,
+          defaultLocale,
+          [pageSource, website?.topNav, website?.mobileNav, website?.sidebarLeft, website?.sidebarRight, website?.footer, website?.bottom]
+            .filter(Boolean)
+            .join('\n'),
+        );
+        // Bound the cross-page tree against the same IPC ceiling — it carries other pages' `data`
+        // (referenced-only + node-capped, but a source naming many data-heavy pages could still be large).
+        if (previewPages && JSON.stringify(previewPages).length > 4 * 1024 * 1024) {
+          return reply.code(413).send({ error: 'project data is too large to render' });
+        }
         const rendered = await renderPool.render(pageSource, {
           company: brand as unknown as Record<string, unknown>,
           website: { siteUrl: website?.siteUrl, data: website?.data, shop: resolveShopChannels(website?.shop, (fid) => `/f/${project.id}/${fid}`), t: resolveTranslations(website?.translations, previewLocale, defaultLocale) },
           page: previewPage,
           parentPage: previewParent,
+          pages: previewPages,
           dataset: localeData,
           item,
           partials,
@@ -2033,6 +2050,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           website: { siteUrl: website?.siteUrl, data: website?.data, shop: resolveShopChannels(website?.shop, (fid) => `/f/${project.id}/${fid}`), t: resolveTranslations(website?.translations, previewLocale, defaultLocale) },
           page: previewPage,
           parentPage: previewParent,
+          pages: previewPages,
           dataset: localeData,
           nav: slotNav as unknown as Record<string, unknown>,
           // PREVIEW-only: keep ALL data-sw-* markers so the bridge can make a slot's directives

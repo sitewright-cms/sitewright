@@ -2,8 +2,9 @@ import { useMemo, useState } from 'react';
 import type { Project, Branding } from '../api';
 import { Modal } from './ui/Modal';
 import { BrandLogo } from './ui/BrandLogo';
+import { SearchField } from './ui/SearchField';
 import { DEFAULT_BRANDING } from '../lib/use-branding';
-import { glassCard, glassInput, primaryButton, gradientSurface, gradientHover } from '../theme';
+import { glassCard, primaryButton, gradientSurface, gradientHover } from '../theme';
 
 interface ProjectSelectorModalProps {
   projects: Project[];
@@ -43,11 +44,10 @@ export function ProjectSelectorModal({ projects, currentId, branding = DEFAULT_B
       }
     >
       <div className="flex flex-col gap-3 p-5">
-        <input
-          aria-label="Search projects"
-          className={glassInput}
+        <SearchField
+          ariaLabel="Search projects"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={setQuery}
           placeholder="Search projects…"
           autoFocus
         />

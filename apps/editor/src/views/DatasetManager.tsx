@@ -1,5 +1,5 @@
 import { useContext, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { X, GripVertical, ChevronRight, Search } from 'lucide-react';
+import { X, GripVertical, ChevronRight } from 'lucide-react';
 import type { Dataset, Entry, Field, FieldType } from '@sitewright/schema';
 import { compareEntryOrder } from '@sitewright/core';
 import { api, type Project } from '../api';
@@ -11,6 +11,7 @@ import { RenameDatasetModal } from './datasets/RenameDatasetModal';
 import { SidePanelHold } from './ui/SidePanel';
 import { useDialogs } from './ui/Dialogs';
 import { Tooltip } from './ui/Tooltip';
+import { SearchField } from './ui/SearchField';
 import { glassCard, glassPanel, glassInput, fieldLabel, primaryButton, ghostButton, dangerButton, gradientHover, gradientSurface, toggleInput } from '../theme';
 
 const FIELD_TYPES: ReadonlyArray<FieldType> = [
@@ -322,16 +323,13 @@ export function DatasetManager({ project }: { project: Project }) {
       {/* Dataset list + create */}
       <aside className="w-64 shrink-0">
         {/* Search the dataset list (name or slug). */}
-        <div className="relative mb-2">
-          <Search aria-hidden className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input
-            aria-label="Search datasets"
-            className={`${glassInput} pl-8`}
-            value={datasetQuery}
-            onChange={(e) => setDatasetQuery(e.target.value)}
-            placeholder="Search datasets…"
-          />
-        </div>
+        <SearchField
+          ariaLabel="Search datasets"
+          className="mb-2"
+          value={datasetQuery}
+          onChange={setDatasetQuery}
+          placeholder="Search datasets…"
+        />
         <ul className="mb-3 flex flex-col gap-1">
           {filteredDatasets.map((d) => {
             const active = d.id === selId;

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Modal } from '../ui/Modal';
+import { SearchField } from '../ui/SearchField';
 import { glassInput, primaryButton, gradientHover } from '../../theme';
 import { LOCALE_CATALOG, localeFlag, validateLocale } from './locale-catalog';
 
@@ -68,12 +69,11 @@ export function LocalePickerModal({
     <Modal title={title} size="md" onClose={onClose}>
       <div className="flex flex-col gap-3 p-5">
         {description && <p className="text-sm text-slate-500">{description}</p>}
-        <input
-          aria-label="Search languages"
-          className={glassInput}
+        <SearchField
+          ariaLabel="Search languages"
           placeholder="Search languages…"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={setQuery}
           disabled={busy}
           autoFocus
         />

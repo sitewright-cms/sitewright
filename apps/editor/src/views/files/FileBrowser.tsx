@@ -4,6 +4,7 @@ import { api } from '../../api';
 import { StockPicker } from '../media/StockPicker';
 import { FileTypeIcon, FolderIcon } from '../media/file-icons';
 import { Modal } from '../ui/Modal';
+import { SearchField } from '../ui/SearchField';
 import { useDialogs } from '../ui/Dialogs';
 import { SkeletonImage } from '../ui/Skeleton';
 import { glassCard, glassPanel, ghostButton } from '../../theme';
@@ -420,13 +421,12 @@ export function FileBrowser({ projectId, mode = 'manage', accept, onPick, intro 
           })}
         </nav>
         <div className="flex items-center gap-2">
-          <input
-            type="search"
-            aria-label="Search assets by name"
+          <SearchField
+            className="w-44"
+            ariaLabel="Search assets by name"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={setQuery}
             placeholder="Search all folders"
-            className="w-44 rounded-lg border border-white/60 bg-white/60 px-2.5 py-1.5 text-sm"
           />
           {!pick && (
             <button type="button" onClick={() => void promptNewFolder()} className={`${ghostButton} px-3 py-1.5 text-sm`}>

@@ -317,7 +317,7 @@ function pad(n: number): string {
 function reservedTr(root: { website?: { t?: Record<string, unknown> } }, key: string): string {
   const t = root.website?.t;
   if (t && Object.prototype.hasOwnProperty.call(t, key)) {
-    // eslint-disable-next-line security/detect-object-injection -- own-property guarded; key is a module-literal reserved name
+    // eslint-disable-next-line security/detect-object-injection -- own-property guarded (hasOwnProperty); key is a reserved cart_* literal or a shop.<identifier> derived key, never a bare proto name
     const v = t[key];
     if (typeof v === 'string' && v !== '') return v;
   }

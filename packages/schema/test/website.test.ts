@@ -159,9 +159,10 @@ describe('WebsiteSettingsSchema', () => {
       expect(() => WebsiteSettingsSchema.parse({ shop: { currency: { decimals: 9 } } })).toThrow(); // out of [0,4]
     });
 
-    it('requires a stable channel key (its label lives in the catalog)', () => {
+    it('requires a stable channel key (its label lives in the catalog) and rejects proto keys', () => {
       expect(() => WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'whatsapp', number: '+14155550123' }] } })).toThrow(); // no key
       expect(() => WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'whatsapp', key: 'bad key', number: '+14155550123' }] } })).toThrow(); // key not an identifier
+      expect(() => WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'whatsapp', key: '__proto__', number: '+14155550123' }] } })).toThrow(); // proto key rejected
       expect(WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'whatsapp', key: 'whatsapp', number: '+14155550123' }] } }).shop?.channels).toHaveLength(1);
     });
 

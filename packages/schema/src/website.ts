@@ -84,7 +84,14 @@ export const ShopCurrencySchema = z.object({
 export type ShopCurrency = z.infer<typeof ShopCurrencySchema>;
 
 /** Stable per-channel / per-field key — its display LABEL lives in the catalog under `shop.<key>` (translatable). */
-const ShopItemKeySchema = z.string().min(1).max(MAX_IDENTIFIER_LENGTH).regex(/^[A-Za-z_][A-Za-z0-9_]*$/, 'must be a valid identifier');
+const ShopItemKeySchema = z
+  .string()
+  .min(1)
+  .max(MAX_IDENTIFIER_LENGTH)
+  .regex(/^[A-Za-z_][A-Za-z0-9_]*$/, 'must be a valid identifier')
+  // Defence-in-depth: a proto key would only ever form the dotted catalog key `shop.<key>` (a harmless
+  // flat lookup), but reject it at the boundary so the key set stays clean.
+  .refine((k) => k !== '__proto__' && k !== 'constructor' && k !== 'prototype', 'disallowed key');
 
 /** Input types a buyer-collected order field may use — controls the rendered control + mobile keyboard. */
 export const SHOP_FIELD_TYPES = ['text', 'textarea', 'tel', 'email'] as const;

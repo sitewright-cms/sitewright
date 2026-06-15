@@ -16,9 +16,9 @@ export function pageFaq(): Page {
     parent: 'home',
     nav: { slots: ['footer'], order: 1 },
     source: `<section class="mx-auto max-w-3xl px-6 py-24">
-  <span class="text-sm font-semibold uppercase tracking-[0.18em] text-primary" data-sw-text="faq_eyebrow">Good to know</span>
-  <h1 class="mt-4 text-4xl font-bold tracking-tight sm:text-6xl" data-sw-text="faq_h1">Frequently asked questions</h1>
-  <p class="mt-5 text-lg leading-relaxed text-base-content/60" data-sw-text="faq_intro">The questions every project starts with — answered plainly. Anything missing? Just ask.</p>
+  <span class="text-sm font-semibold uppercase tracking-[0.18em] text-primary" data-sw-translate="faq.eyebrow">Good to know</span>
+  <h1 class="mt-4 text-4xl font-bold tracking-tight sm:text-6xl" data-sw-translate="faq.headline">Frequently asked questions</h1>
+  <p class="mt-5 text-lg leading-relaxed text-base-content/60" data-sw-translate="faq.intro">The questions every project starts with — answered plainly. Anything missing? Just ask.</p>
 
   <div class="join join-vertical mt-14 w-full rounded-3xl shadow-sm">
     {{#each dataset.faq}}

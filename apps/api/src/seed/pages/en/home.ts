@@ -38,12 +38,12 @@ export function pageHome(assets: Record<string, string>): Page {
   <div class="nw-grid-bg pointer-events-none absolute inset-0" aria-hidden="true"></div>
   <div class="relative mx-auto grid max-w-6xl items-center gap-14 px-6 pb-36 pt-20 lg:grid-cols-[1.05fr_0.95fr] lg:pb-44 lg:pt-28">
     <div class="nw-rise">
-      <span class="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-1.5 text-sm font-medium text-white/90 backdrop-blur"><span class="inline-block h-2 w-2 rounded-full bg-secondary"></span><span data-sw-text="hero_eyebrow">Boutique web studio · San Francisco</span></span>
-      <h1 class="mt-7 text-5xl font-bold leading-[1.04] tracking-tight sm:text-6xl xl:text-7xl" data-sw-text="hero_title">Websites that win you more business.</h1>
-      <p class="mt-6 max-w-md text-lg leading-relaxed text-white/65" data-sw-text="hero_sub">We design and build fast, beautiful sites for ambitious brands — strategy, design, and engineering under one roof.</p>
+      <span class="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-1.5 text-sm font-medium text-white/90 backdrop-blur"><span class="inline-block h-2 w-2 rounded-full bg-secondary"></span><span data-sw-translate="home.eyebrow">Boutique web studio · San Francisco</span></span>
+      <h1 class="mt-7 text-5xl font-bold leading-[1.04] tracking-tight sm:text-6xl xl:text-7xl" data-sw-translate="home.headline">Websites that win you more business.</h1>
+      <p class="mt-6 max-w-md text-lg leading-relaxed text-white/65" data-sw-translate="home.subhead">We design and build fast, beautiful sites for ambitious brands — strategy, design, and engineering under one roof.</p>
       <div class="mt-9 flex flex-wrap gap-3">
         <a class="btn btn-lg gap-2 rounded-full border-0 bg-white px-7 text-primary shadow-xl shadow-black/20 hover:bg-white/90 waves-effect" href="/contact" data-sw-href="href_contact"><span data-sw-translate="nav_cta">Start a project</span> ${icon('arrow-right', 'h-5 w-5')}</a>
-        <a class="btn btn-lg btn-ghost gap-2 rounded-full border-white/25 px-7 text-white hover:border-white/50 hover:bg-white/10 waves-effect waves-light" href="/work" data-sw-href="href_work"><span data-sw-text="hero_cta2">See our work</span> ${icon('arrow-up-right', 'h-5 w-5')}</a>
+        <a class="btn btn-lg btn-ghost gap-2 rounded-full border-white/25 px-7 text-white hover:border-white/50 hover:bg-white/10 waves-effect waves-light" href="/work" data-sw-href="href_work"><span data-sw-translate="home.cta_work">See our work</span> ${icon('arrow-up-right', 'h-5 w-5')}</a>
       </div>
     </div>
     <div class="relative hidden lg:block">

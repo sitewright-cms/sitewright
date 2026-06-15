@@ -18,8 +18,8 @@ export function pageContact(): Page {
     source: `<section class="mx-auto max-w-6xl px-6 py-24">
   <div class="grid items-start gap-12 lg:grid-cols-2 lg:gap-20">
     <div class="nw-rise">
-      <h1 class="text-4xl font-bold tracking-tight sm:text-5xl" data-sw-text="c_h1">Let’s build something great</h1>
-      <p class="mt-5 text-lg leading-relaxed text-base-content/70" data-sw-text="c_sub">Tell us about your project and we’ll get back within one business day. Prefer email? Reach us directly — we read every message.</p>
+      <h1 class="text-4xl font-bold tracking-tight sm:text-5xl" data-sw-translate="contact.headline">Let’s build something great</h1>
+      <p class="mt-5 text-lg leading-relaxed text-base-content/70" data-sw-translate="contact.subhead">Tell us about your project and we’ll get back within one business day. Prefer email? Reach us directly — we read every message.</p>
       <ul class="mt-10 list-none space-y-4 p-0">
         <li class="flex items-center gap-4"><span class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/15 to-secondary/15 text-primary">${icon('mail', 'h-5 w-5')}</span><a class="nw-underline font-semibold text-primary no-underline" href="mailto:hello@northwindstudio.com">{{company.email}}</a></li>
         <li class="flex items-center gap-4"><span class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/15 to-secondary/15 text-primary">${icon('phone', 'h-5 w-5')}</span><span class="font-medium text-base-content/80">{{company.telephone}}</span></li>

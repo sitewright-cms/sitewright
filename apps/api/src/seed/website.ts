@@ -1,5 +1,6 @@
 import { icon } from './helpers.js';
 import { CHROME_TRANSLATIONS } from './strings.js';
+import { PAGE_TRANSLATIONS } from './page-translations.js';
 
 // ---------------------------------------------------------------- skeleton: nav, footer, motion
 //
@@ -167,9 +168,10 @@ export const EXAMPLE_WEBSITE = {
   // A language→country map for the nav switcher's flags (sw-flag takes a COUNTRY code, not a
   // language — so en→gb). This is project DATA (a config map), not translatable text.
   data: { locale_flags: { en: 'gb', de: 'de', es: 'es' } },
-  // The per-locale chrome UI strings — the dedicated i18n catalog (NOT website.data). Read by the
-  // slots via {{sw-translate "key"}} (see strings.ts CHROME_TRANSLATIONS + the S()/SL() helpers above).
-  translations: CHROME_TRANSLATIONS,
+  // The dedicated i18n catalog (NOT website.data): the per-locale CHROME UI strings (flat keys, read by
+  // the slots via {{sw-translate "key"}} — see strings.ts) PLUS the SCOPED page-content strings the pages
+  // bind via data-sw-translate="<scope>.<key>" (page-translations.ts). One table, grouped by scope.
+  translations: { ...CHROME_TRANSLATIONS, ...PAGE_TRANSLATIONS },
   // Site-wide nav/button effect schemes (CI-themed, contrast-safe). The active nav item is marked
   // `.active` (below); `sw-nav-pill` fills it with the brand primary + its WCAG-derived foreground.
   theme: { navEffect: 'pill', buttonEffect: 'lift' },

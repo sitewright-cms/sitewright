@@ -12,10 +12,6 @@ export function translationsEs(assets: Record<string, string>): Record<string, P
     navTitle: 'Inicio',
     description: 'Estudio web boutique en San Francisco: estrategia, diseño y sitios estáticos artesanales que le traen más negocio.',
     data: {
-      hero_eyebrow: 'Estudio web boutique · San Francisco',
-      hero_title: 'Webs que le traen más negocio.',
-      hero_sub: 'Diseñamos y construimos webs rápidas y hermosas para marcas ambiciosas — estrategia, diseño y desarrollo bajo un mismo techo.',
-      hero_cta2: 'Ver nuestro trabajo',
       hero_alt: 'Una web reciente de Northwind',
       stat1_n: '120+', stat1_l: 'Webs entregadas',
       stat2_n: '9', stat2_l: 'Años en el mercado',
@@ -53,9 +49,6 @@ export function translationsEs(assets: Record<string, string>): Record<string, P
     navTitle: 'Trabajos',
     description: 'Webs recientes de comercio, salud, finanzas y cultura — todas artesanales y rápidas.',
     data: {
-      work_eyebrow: 'Portfolio',
-      work_h1: 'Trabajo del que estamos orgullosos',
-      work_intro: 'Una selección de webs recientes de comercio, salud, finanzas y cultura — todas artesanales y rápidas. Haga clic en cualquier imagen para verla a pantalla completa.',
       aria_caption: 'Galería de proyectos',
     },
   },
@@ -65,9 +58,6 @@ export function translationsEs(assets: Record<string, string>): Record<string, P
     navTitle: 'Servicios',
     description: 'Estrategia, diseño, desarrollo, marca, SEO y mantenimiento — de principio a fin o por fases.',
     data: {
-      srv_eyebrow: 'Qué hacemos',
-      srv_h1: 'Servicios que hacen crecer su negocio',
-      srv_intro: 'Contrátenos de principio a fin o para una sola fase. En cualquier caso trabaja directamente con quienes hacen el trabajo.',
       proc_title: 'Un proceso simple y probado',
       p1_t: 'Descubrir', p1_b: 'Objetivos, audiencia y las métricas que importan.',
       p2_t: 'Diseñar', p2_b: 'Interfaces y un sistema de marca, revisados juntos.',
@@ -132,9 +122,6 @@ export function translationsEs(assets: Record<string, string>): Record<string, P
     navTitle: 'Nosotros',
     description: 'Un equipo pequeño y sénior de diseñadores e ingenieros — a propósito.',
     data: {
-      ab_eyebrow: 'Sobre nosotros',
-      ab_h1: 'Un equipo pequeño y sénior — a propósito',
-      ab_p1: 'Northwind es un estudio boutique de diseñadores e ingenieros que prefieren hacer pocos proyectos de forma brillante antes que muchos de forma correcta. Sin juniors aprendiendo a su costa, sin capas de gestores de cuenta — solo las personas que hacen el trabajo.',
       ab_p2: 'Creemos que una gran web es el miembro más trabajador de su equipo: rápida, clara y discretamente persuasiva. Esa convicción guía cada decisión que tomamos.',
       ab_img_alt: 'El estudio Northwind',
       val_title: 'Lo que valoramos',
@@ -170,8 +157,6 @@ export function translationsEs(assets: Record<string, string>): Record<string, P
     navTitle: 'Contacto',
     description: 'Cuéntenos su proyecto — respondemos en un día laborable.',
     data: {
-      c_h1: 'Construyamos algo grande',
-      c_sub: 'Cuéntenos su proyecto y le responderemos en un día laborable. ¿Prefiere el correo? Escríbanos directamente — leemos cada mensaje.',
       c_hours: 'Lun–Vie, 9–18 h (PT)',
       c_modal_btn: '¿Qué pasa en la llamada inicial?',
       c_modal_t: 'Una conversación de 20 minutos, sin discurso de ventas',
@@ -269,9 +254,6 @@ export function translationsEs(assets: Record<string, string>): Record<string, P
     navTitle: 'FAQ',
     description: 'Respuestas a las preguntas con las que empieza todo proyecto: plazos, coste, edición, hosting.',
     data: {
-      faq_eyebrow: 'Conviene saberlo',
-      faq_h1: 'Preguntas frecuentes',
-      faq_intro: 'Las preguntas con las que empieza todo proyecto — respondidas con claridad. ¿Falta algo? Pregunte sin más.',
       faq_cta_t: '¿Sigue con dudas?',
       faq_cta: 'Pregúntenos lo que sea',
       href_contact: '/es/contacto',

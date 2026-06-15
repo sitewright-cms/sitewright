@@ -34,13 +34,30 @@ export interface ReservedTranslationGroup {
    * The website feature that must be ACTIVE for this group's ghost rows to surface in the editor
    * (`shop` → `website.shop.enabled`). The render-time fallback always applies regardless; this gate
    * only controls editor SURFACING, so a disabled feature never clutters the translation table.
+   * OMIT for a SYSTEM group (always surfaced — built-in component UI strings that every site has).
    */
-  feature: 'shop';
+  feature?: 'shop';
   keys: readonly ReservedTranslation[];
 }
 
 /** The reserved-translation registry. Add a group here to make its keys auto-localizable + discoverable. */
 export const RESERVED_TRANSLATION_GROUPS: readonly ReservedTranslationGroup[] = [
+  {
+    // SYSTEM group (no `feature` → always surfaced): built-in accessibility / UI strings the
+    // first-party component RUNTIMES emit. Resolved per locale and injected as `window.__SW_T__`
+    // ahead of the component scripts (see @sitewright/blocks `systemI18nScript`); the runtimes read
+    // it with the English default as the floor. `{n}`/`{total}` are substituted by the runtime.
+    id: 'system',
+    label: 'System · Components',
+    keys: [
+      { key: 'close', label: 'Close button (aria-label)', default: 'Close' },
+      { key: 'slide_prev', label: 'Slider — previous (aria-label)', default: 'Previous slide' },
+      { key: 'slide_next', label: 'Slider — next (aria-label)', default: 'Next slide' },
+      { key: 'slide_x_of_y', label: 'Slider — position announce', default: 'Slide {n} of {total}' },
+      { key: 'go_to_slide', label: 'Slider — dot (aria-label)', default: 'Go to slide {n}' },
+      { key: 'carousel_label', label: 'Slider — role description', default: 'carousel' },
+    ],
+  },
   {
     id: 'shop_cart',
     label: 'Shop · Cart',
@@ -70,3 +87,8 @@ export const RESERVED_TRANSLATION_GROUPS: readonly ReservedTranslationGroup[] = 
 export const RESERVED_TRANSLATION_DEFAULTS: Readonly<Record<string, string>> = Object.freeze(
   Object.fromEntries(RESERVED_TRANSLATION_GROUPS.flatMap((g) => g.keys.map((k) => [k.key, k.default] as const))),
 );
+
+/** The SYSTEM group's keys — the component-runtime UI strings injected as `window.__SW_T__` per page. */
+const SYSTEM_GROUP = RESERVED_TRANSLATION_GROUPS.find((g) => g.id === 'system');
+if (!SYSTEM_GROUP) throw new Error('reserved-translations: the `system` group is required'); // fail loud on a rename/typo
+export const SYSTEM_TRANSLATION_KEYS: readonly string[] = Object.freeze(SYSTEM_GROUP.keys.map((k) => k.key));

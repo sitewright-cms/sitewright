@@ -51,6 +51,14 @@ export interface ChromeStrings {
   cart_order_lead: string;
   cart_currency_symbol: string;
   cart_currency_code: string;
+  // SYSTEM component UI strings (RESERVED) — the first-party component runtimes read these via the
+  // injected window.__SW_T__ (modal close button + carousel a11y). {n}/{total} are runtime-filled.
+  close: string;
+  slide_prev: string;
+  slide_next: string;
+  slide_x_of_y: string;
+  go_to_slide: string;
+  carousel_label: string;
 }
 
 export const CHROME_STRINGS: Record<string, ChromeStrings> = {
@@ -82,6 +90,12 @@ export const CHROME_STRINGS: Record<string, ChromeStrings> = {
     cart_order_lead: 'I’d like to order:',
     cart_currency_symbol: '$',
     cart_currency_code: 'USD',
+    close: 'Close',
+    slide_prev: 'Previous slide',
+    slide_next: 'Next slide',
+    slide_x_of_y: 'Slide {n} of {total}',
+    go_to_slide: 'Go to slide {n}',
+    carousel_label: 'carousel',
   },
   de: {
     href_home: '/de',
@@ -111,6 +125,12 @@ export const CHROME_STRINGS: Record<string, ChromeStrings> = {
     cart_order_lead: 'Ich möchte gerne bestellen:',
     cart_currency_symbol: '$',
     cart_currency_code: 'USD',
+    close: 'Schließen',
+    slide_prev: 'Vorherige Folie',
+    slide_next: 'Nächste Folie',
+    slide_x_of_y: 'Folie {n} von {total}',
+    go_to_slide: 'Zu Folie {n}',
+    carousel_label: 'Karussell',
   },
   es: {
     href_home: '/es',
@@ -140,6 +160,12 @@ export const CHROME_STRINGS: Record<string, ChromeStrings> = {
     cart_order_lead: 'Me gustaría hacer un pedido:',
     cart_currency_symbol: '$',
     cart_currency_code: 'USD',
+    close: 'Cerrar',
+    slide_prev: 'Diapositiva anterior',
+    slide_next: 'Diapositiva siguiente',
+    slide_x_of_y: 'Diapositiva {n} de {total}',
+    go_to_slide: 'Ir a la diapositiva {n}',
+    carousel_label: 'carrusel',
   },
 };
 

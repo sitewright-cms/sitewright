@@ -12,6 +12,7 @@ export * from './icons.js';
 export * from './brand-icons.js';
 export * from './flag-icons.js';
 export * from './components.js';
+export * from './system-i18n.js';
 export * from './props.js';
 export * from './vars.js';
 export * from './template.js';

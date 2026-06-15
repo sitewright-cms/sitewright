@@ -104,7 +104,13 @@ export function TranslationsEditor({ rows, localeCodes, defaultLocale, shopEnabl
   // Reserved (registry) groups need >1 locale (single-locale uses the built-in EN defaults). Extra ghost
   // groups (e.g. the shop `shop.<key>` channel/field labels) are surfaced as passed — they have no platform
   // default, so they must be fillable even single-locale. Empty groups (no keys) are dropped.
-  const reservedSurfaced = RESERVED_TRANSLATION_GROUPS.filter((g) => (g.feature === 'shop' ? shopEnabled : false) && multiLocale);
+  // Feature-gated groups (shop) surface only when that feature is on AND there's a 2nd locale to fill.
+  // A SYSTEM group (no `feature`) carries a11y strings that exist on EVERY site, so it also surfaces on
+  // a single-locale NON-English site (so e.g. a German-only site can localize the carousel/close labels
+  // — a single English site already matches the built-in defaults, so it stays clutter-free).
+  const reservedSurfaced = RESERVED_TRANSLATION_GROUPS.filter((g) =>
+    g.feature === 'shop' ? shopEnabled && multiLocale : multiLocale || defaultLocale !== 'en',
+  );
   const surfacedGroups: Array<{ id: string; label: string; keys: readonly ReservedTranslation[] }> = [...reservedSurfaced, ...extraGhostGroups].filter(
     (g) => g.keys.length > 0,
   );

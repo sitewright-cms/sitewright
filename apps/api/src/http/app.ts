@@ -45,6 +45,7 @@ import {
   renderDocument,
   componentTypesInSource,
   componentAssets,
+  systemI18nScript,
   usesDialog,
   usesAnimations,
   ANIMATION_CSS,
@@ -413,6 +414,8 @@ interface PreviewShell {
   lang?: string;
   /** Site-wide nav/button effect scheme classes for `<body>` (`sw-nav-*` / `sw-btn-*`). */
   bodyClass?: string;
+  /** Locale-resolved translation catalog → the SYSTEM i18n dict for component runtimes (window.__SW_T__). */
+  systemT?: Record<string, unknown>;
 }
 
 /**
@@ -480,6 +483,8 @@ async function styledSourceDocument(
     bodyHtml: body,
     inlineStyles: inlineStyles.length > 0 ? inlineStyles : undefined,
     inlineScripts: inlineScripts.length > 0 ? inlineScripts : undefined,
+    // SYSTEM i18n dict for the component runtimes (only when a component ships).
+    systemI18n: componentJs ? systemI18nScript(shell.systemT) : undefined,
     ...shell,
   });
 }
@@ -2078,6 +2083,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           customScripts: website?.scripts,
           bodyClass: websiteThemeClasses(website?.theme),
           lang: previewLocale, // `<html lang>` follows the previewed page's locale (publish parity)
+          systemT: resolveTranslations(website?.translations, previewLocale, defaultLocale),
         });
         const sourceToken = previewStore.put(sourceHtml, { projectId: project.id, userId: ctx.userId });
         // `slug` so the editor builds the `/preview/<slug>/<token>` doc URL (same as the block branch below).

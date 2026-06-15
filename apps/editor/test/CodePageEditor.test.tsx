@@ -1,25 +1,31 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { forwardRef, useImperativeHandle } from 'react';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import type { Page } from '@sitewright/schema';
 
-const { preview, putPage, listTemplates } = vi.hoisted(() => ({
+const { preview, putPage, listTemplates, getPage } = vi.hoisted(() => ({
   preview: vi.fn(),
   putPage: vi.fn(),
   listTemplates: vi.fn(),
+  getPage: vi.fn(),
 }));
 vi.mock('../src/api', () => ({
   api: {
     preview: (...args: unknown[]) => preview(...args),
     putPage: (...args: unknown[]) => putPage(...args),
     listTemplates: (...args: unknown[]) => listTemplates(...args),
+    getPage: (...args: unknown[]) => getPage(...args),
   },
   previewDocUrl: (slug: string, token: string) => `/preview/${slug}/${token}`,
 }));
 // Swap the CodeMirror widget for a plain textarea so the authoring flow is exercisable in
-// jsdom; the real CodeMirror editor is covered by the Playwright browser E2E.
+// jsdom; the real CodeMirror editor (incl. its undo/redo handle) is covered by the Playwright E2E.
 vi.mock('../src/lib/code-editor', () => ({
-  CodeEditor: ({ value, onChange, ariaLabel }: { value: string; onChange: (v: string) => void; ariaLabel?: string }) => (
-    <textarea aria-label={ariaLabel} value={value} onChange={(e) => onChange(e.target.value)} />
+  CodeEditor: forwardRef(
+    ({ value, onChange, ariaLabel }: { value: string; onChange: (v: string) => void; ariaLabel?: string }, ref: unknown) => {
+      useImperativeHandle(ref as never, () => ({ undo: () => {}, redo: () => {} }), []);
+      return <textarea aria-label={ariaLabel} value={value} onChange={(e) => onChange(e.target.value)} />;
+    },
   ),
 }));
 
@@ -42,9 +48,11 @@ beforeEach(() => {
   preview.mockReset();
   putPage.mockReset();
   listTemplates.mockReset();
+  getPage.mockReset();
   preview.mockResolvedValue({ html: '<!doctype html><body><h1>Acme</h1></body>', token: 'tok-123' });
   putPage.mockResolvedValue({ item: page });
   listTemplates.mockResolvedValue({ items: [] });
+  getPage.mockResolvedValue({ item: page });
 });
 
 describe('CodePageEditor', () => {
@@ -254,15 +262,25 @@ describe('CodePageEditor', () => {
 describe('CodePageEditor — content mode (in-modal)', () => {
   // Content mode = edit in the live preview (a real browser; covered by the e2e specs) + the "Edit
   // page data" JSON editor. The authoring strip is hidden entirely, so these jsdom tests cover the chrome.
-  it('opens directly in content mode: the live preview fills the modal, code tools hidden', () => {
+  it('opens directly in content mode: the live preview fills the modal; the raw editor is hidden but the shared toolbar shows', () => {
     render(<CodePageEditor project={project} page={editablePage} onClose={() => {}} initialMode="content" />);
     // The Content Editor tab is active…
     expect(screen.getByRole('button', { name: 'Content Editor' })).toHaveAttribute('aria-pressed', 'true');
     // …the live preview fills the modal (no authoring strip)…
     expect(screen.getByTitle('Preview')).toBeInTheDocument();
-    // …and the raw template + code-authoring tools are hidden.
+    // …the raw template editor is hidden…
     expect(screen.queryByLabelText('Template source')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Page settings' })).toBeNull();
+    // …but BOTH modes share the same toolbar (Undo/Redo/Page data/Page settings/Reload + Save/Close).
+    for (const name of ['Undo', 'Redo', 'Edit page data', 'Page settings', 'Reload page', 'Save', 'Close']) {
+      expect(screen.getByRole('button', { name })).toBeInTheDocument();
+    }
+  });
+
+  it('shows the same shared toolbar in code mode too (Undo/Redo/Page data/Page settings/Reload)', () => {
+    render(<CodePageEditor project={project} page={editablePage} onClose={() => {}} initialMode="source" />);
+    for (const name of ['Undo', 'Redo', 'Edit page data', 'Page settings', 'Reload page', 'Save', 'Close']) {
+      expect(screen.getByRole('button', { name })).toBeInTheDocument();
+    }
   });
 
   it('switches modes LOSSLESSLY — the source draft survives the Code⇄Content toggle', () => {
@@ -274,5 +292,20 @@ describe('CodePageEditor — content mode (in-modal)', () => {
     expect(screen.queryByLabelText('Template source')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Code Editor' })); // → back to source: the draft survived
     expect(screen.getByLabelText('Template source')).toHaveValue('<p data-sw-text="headline">Big news</p>');
+  });
+
+  it('Reload warns when dirty, then re-fetches the page and discards the draft', async () => {
+    getPage.mockResolvedValue({ item: { ...page, source: '<h1>FROM SERVER</h1>' } });
+    render(<CodePageEditor project={project} page={page} onClose={() => {}} initialMode="source" />);
+    // Make an unsaved edit, then Reload → a dirty-warning confirm appears.
+    fireEvent.change(screen.getByLabelText('Template source'), { target: { value: '<h1>local edit</h1>' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Reload page' }));
+    const warn = await screen.findByRole('dialog', { name: 'Reload page' });
+    fireEvent.click(within(warn).getByRole('button', { name: 'Discard & reload' }));
+    // The page is re-fetched and the draft is replaced by the server version.
+    await waitFor(() => expect(getPage).toHaveBeenCalledWith('p', 'home'));
+    await waitFor(() => expect(screen.getByLabelText('Template source')).toHaveValue('<h1>FROM SERVER</h1>'));
+    // No longer dirty → Save is disabled again.
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
   });
 });

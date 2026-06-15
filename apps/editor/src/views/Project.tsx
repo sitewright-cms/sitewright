@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { Settings } from 'lucide-react';
 import { isLinkPage, NAV_SLOTS, type NavSlot, type Page, type Template } from '@sitewright/schema';
 import { pagePath, pagesById, pagesInLocale, localeOf } from '@sitewright/core';
 import { api, previewDocUrl, type Project } from '../api';
@@ -86,12 +87,6 @@ const EDIT_ICON = rowIcon(
   <>
     <path d="m16 18 6-6-6-6" />
     <path d="m8 6-6 6 6 6" />
-  </>,
-);
-const GEAR_ICON = rowIcon(
-  <>
-    <circle cx="12" cy="12" r="3" />
-    <path d="M12 1v3m0 16v3M4.2 4.2l2.1 2.1m11.4 11.4 2.1 2.1M1 12h3m16 0h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1" />
   </>,
 );
 const COPY_ICON = rowIcon(
@@ -772,7 +767,9 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
                     >
                       {isLink ? LINK_ICON : isHome ? HOME_ICON : PAGE_ICON}
                     </span>
-                    <span className="truncate font-medium">{isLink ? <PlaceholderLabel name={p.title} /> : p.title}</span>
+                    {/* The MENU label (nav title falls back to the page title), rendered clean — icon/flag
+                        + text for a rich label (placeholder or a page with a rich menu title), never raw markup. */}
+                    <span className="truncate font-medium"><PlaceholderLabel name={p.nav?.title || p.title} /></span>
                     <span className="truncate text-sm text-slate-400 group-hover:text-white/90">
                       {isLink ? p.link?.target || '— (dropdown)' : fullPath(p)}
                     </span>
@@ -817,7 +814,7 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
                     )}
                     <Tooltip tip={isLink ? 'Edit placeholder settings' : 'Edit page settings'} side="top">
                       <button aria-label={`Settings for ${p.title}`} className={ROW_ACTION} onClick={() => void openSettings(p)}>
-                        {GEAR_ICON}
+                        <Settings className="h-4 w-4" />
                       </button>
                     </Tooltip>
                     {/* "Make available in all languages" — only on a MAIN-language page (default

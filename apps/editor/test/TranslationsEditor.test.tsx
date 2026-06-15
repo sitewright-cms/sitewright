@@ -5,10 +5,27 @@ import { TranslationsEditor } from '../src/views/settings/TranslationsEditor';
 import type { TranslationRow } from '../src/views/settings/model';
 
 /** Controlled harness so onChange mutations re-render (needed to test ghost-row materialization). */
-function Harness({ initial, locales, shopEnabled }: { initial: TranslationRow[]; locales: string[]; shopEnabled?: boolean }) {
+function Harness({
+  initial,
+  locales,
+  shopEnabled,
+  extraGhostGroups,
+}: {
+  initial: TranslationRow[];
+  locales: string[];
+  shopEnabled?: boolean;
+  extraGhostGroups?: Array<{ id: string; label: string; keys: Array<{ key: string; label: string; default: string }> }>;
+}) {
   const [rows, setRows] = useState<TranslationRow[]>(initial);
   return (
-    <TranslationsEditor rows={rows} localeCodes={locales} defaultLocale={locales[0]!} shopEnabled={shopEnabled} onChange={setRows} />
+    <TranslationsEditor
+      rows={rows}
+      localeCodes={locales}
+      defaultLocale={locales[0]!}
+      shopEnabled={shopEnabled}
+      extraGhostGroups={extraGhostGroups}
+      onChange={setRows}
+    />
   );
 }
 
@@ -44,6 +61,28 @@ describe('TranslationsEditor — reserved ghost rows', () => {
     fireEvent.change(deCell, { target: { value: 'In den Warenkorb' } });
     // the row stays visible (lastTouched keeps its group open) and holds the new value
     expect((screen.getByLabelText('cart_add — de') as HTMLInputElement).value).toBe('In den Warenkorb');
+  });
+
+  it('surfaces extra (shop.<key>) ghost groups regardless of locale count, and materializes on edit', () => {
+    const shopGroup = {
+      id: 'shop_labels',
+      label: 'Shop · Channels & fields',
+      keys: [
+        { key: 'shop.whatsapp', label: 'WhatsApp button', default: '' },
+        { key: 'shop.name', label: 'Order field', default: '' },
+      ],
+    };
+    // single-locale: the reserved cart_* group does NOT surface, but the extra shop group DOES (its keys
+    // have no platform default, so they must be fillable even with one locale).
+    render(<Harness initial={[]} locales={['en']} shopEnabled extraGhostGroups={[shopGroup]} />);
+    expect(screen.queryByRole('button', { name: /Shop · Cart/ })).toBeNull();
+    const header = screen.getByRole('button', { name: /Shop · Channels & fields/ });
+    expect(header.getAttribute('aria-expanded')).toBe('false'); // collapsed by default
+    fireEvent.click(header);
+    expect(screen.getByText('shop.whatsapp')).toBeTruthy();
+    const enCell = screen.getByLabelText('shop.whatsapp — en') as HTMLInputElement;
+    fireEvent.change(enCell, { target: { value: 'Order on WhatsApp' } });
+    expect((screen.getByLabelText('shop.whatsapp — en') as HTMLInputElement).value).toBe('Order on WhatsApp');
   });
 });
 

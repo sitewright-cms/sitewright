@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { DEFAULT_BRAND_COLORS, MANDATORY_COLOR_TOKENS } from '@sitewright/schema';
-import { toForm, toBundle, newShopChannel } from '../src/views/settings/model';
+import { toForm, toBundle, newShopChannel, newShopField, shopLabelKeys } from '../src/views/settings/model';
 import type { SettingsBundle } from '../src/api';
 
 const full: SettingsBundle = {
@@ -136,6 +136,20 @@ describe('settings model', () => {
     expect(back.website?.shop?.channels).toEqual([
       { kind: 'whatsapp', key: 'whatsapp', number: '+14155550123', fields: [{ key: 'name', type: 'text' }] },
       { kind: 'mailto', key: 'email', email: 'a@b.test' }, // all fields keyless → no fields key
+    ]);
+  });
+
+  it('shopLabelKeys derives a deduped shop.<key> per channel + field (for the Translations ghost rows)', () => {
+    const channels = [
+      { ...newShopChannel(), kind: 'whatsapp' as const, key: 'whatsapp', number: '+1', fields: [{ ...newShopField(), key: 'name' }, { ...newShopField(), key: 'address' }] },
+      { ...newShopChannel(), kind: 'mailto' as const, key: 'email', email: 'a@b.test', fields: [{ ...newShopField(), key: 'name' }] }, // name reused → deduped
+      { ...newShopChannel(), kind: 'payment' as const, key: '', urlTemplate: 'https://x.test' }, // blank key → skipped
+    ];
+    expect(shopLabelKeys(channels)).toEqual([
+      { key: 'shop.whatsapp', label: 'WhatsApp button', default: '' },
+      { key: 'shop.name', label: 'Order field', default: '' },
+      { key: 'shop.address', label: 'Order field', default: '' },
+      { key: 'shop.email', label: 'Email button', default: '' },
     ]);
   });
 

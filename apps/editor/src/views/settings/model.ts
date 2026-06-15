@@ -543,6 +543,32 @@ export const newShopChannel = (): KeyedShopChannel => ({
 /** A fresh order-field row (defaults to a required single-line text input). */
 export const newShopField = (): KeyedShopField => ({ id: rowId(), key: '', type: 'text', required: true });
 
+const SHOP_KIND_LABEL: Record<KeyedShopChannel['kind'], string> = {
+  whatsapp: 'WhatsApp button',
+  mailto: 'Email button',
+  payment: 'Payment button',
+  form: 'Order-form button',
+};
+
+/**
+ * The translatable LABEL keys a shop config implies — one `shop.<key>` per configured channel and order
+ * field. The editor surfaces these as ghost rows in Translations & Labels so the operator can fill the
+ * label text (per locale) without hand-typing the keys. Deduped by key (a field key reused across channels
+ * — e.g. `name` — is one row); blank keys skipped. The cart resolves these at render via `shop.<key>`.
+ */
+export function shopLabelKeys(channels: KeyedShopChannel[]): Array<{ key: string; label: string; default: string }> {
+  const byKey = new Map<string, { key: string; label: string; default: string }>();
+  for (const c of channels) {
+    const ck = c.key.trim();
+    if (ck && !byKey.has(`shop.${ck}`)) byKey.set(`shop.${ck}`, { key: `shop.${ck}`, label: SHOP_KIND_LABEL[c.kind], default: '' });
+    for (const f of c.fields) {
+      const fk = f.key.trim();
+      if (fk && !byKey.has(`shop.${fk}`)) byKey.set(`shop.${fk}`, { key: `shop.${fk}`, label: 'Order field', default: '' });
+    }
+  }
+  return [...byKey.values()];
+}
+
 /** Returns the object only if at least one value is defined, else undefined. */
 function stripEmpty<T extends Record<string, unknown>>(obj: T): T | undefined {
   const entries = Object.entries(obj).filter(([, v]) => v !== undefined);

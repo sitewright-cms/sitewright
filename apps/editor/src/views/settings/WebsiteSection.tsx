@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'motion/react';
 import { NAV_EFFECTS, BUTTON_EFFECTS, type JsonValue, type NavEffect, type ButtonEffect } from '@sitewright/schema';
-import { newStr, type Patch, type SettingsForm } from './model';
+import { newStr, shopLabelKeys, type Patch, type SettingsForm } from './model';
 import { Field, GlassCard } from './ui';
 import { SectionHelp } from '../ui/SectionHelp';
 import { Globe, Sparkles, Paintbrush, Code, Braces, PanelTop, Smartphone, PanelLeft, PanelRight, PanelBottom, ArrowDownToLine, Signpost, ShoppingCart, Languages, Pencil } from 'lucide-react';
@@ -310,6 +310,11 @@ export function WebsiteSection({
             localeCodes={localeCodes}
             defaultLocale={form.defaultLocale}
             shopEnabled={form.shopEnabled}
+            // Auto-surface a ghost row per configured channel/field label (shop.<key>) so the operator fills
+            // the wording here instead of hand-typing the keys — only while the shop is on.
+            extraGhostGroups={
+              form.shopEnabled ? [{ id: 'shop_labels', label: 'Shop · Channels & fields', keys: shopLabelKeys(form.shopChannels) }] : []
+            }
             onChange={(translations) => patch({ translations })}
           />
         </GlassCard>

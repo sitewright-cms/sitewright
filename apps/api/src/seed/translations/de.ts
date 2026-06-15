@@ -281,14 +281,14 @@ export function translationsDe(assets: Record<string, string>): Record<string, P
       mod_close: 'Schließen',
       sec_basic_t: 'Modal — die Standardeinstellungen',
       sec_basic_d:
-        'Ein Auslöser, ein Dialog und eine Schließen-Schaltfläche. Beim Öffnen wird der Fokus eingefangen; Escape, die Schließen-Schaltfläche oder ein Klick auf den Hintergrund schließen ihn.',
+        'Ein Auslöser und ein Dialog — die gestaltete Schließen-Schaltfläche (oben rechts) wird automatisch hinzugefügt. Ein Dialog ohne Klassen nutzt die Hintergrund- und Textfarben deiner Website, abgerundete Ecken und angenehmen Innenabstand. Escape, die Schließen-Schaltfläche oder ein Klick auf den Hintergrund schließen ihn.',
       mod1_open: 'Wie geht es weiter?',
       mod1_title: 'Wie geht es weiter?',
       mod1_body:
         'Nach deiner Anfrage vereinbaren wir ein kurzes Gespräch, stecken den Umfang gemeinsam ab und senden innerhalb von zwei Werktagen ein Festpreisangebot — unverbindlich.',
       sec_wide_t: 'Ein breiterer Dialog mit reichem Inhalt',
       sec_wide_d:
-        'Dieselbe Komponente, mit max-w-2xl vergrößert — ein Dialog kann beliebiges Markup aufnehmen: Überschriften, Listen, Medien oder einen Call-to-Action.',
+        'Dieselbe Komponente, mit max-w-2xl vergrößert. Utility-Klassen am Dialog überschreiben jede Vorgabe — Hintergrund, Text, Innenabstand, Radius. Du kannst außerdem die automatische Schließen-Schaltfläche mit data-closebutton="false" ausblenden und den Dialog bei einem Klick auf den Hintergrund mit data-backdrop-close="false" geöffnet lassen; hier ist beides gesetzt, daher ist die Schaltfläche unten der einzige Ausweg.',
       mod2_open: 'Den ganzen Ablauf ansehen',
       mod2_title: 'So arbeiten wir',
       mod2_step1: 'Entdecken — wir lernen Ziele, Zielgruppe und Rahmenbedingungen kennen.',

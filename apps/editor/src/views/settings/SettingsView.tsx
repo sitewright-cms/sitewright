@@ -23,7 +23,7 @@ const SECTIONS: Array<{ key: Section; label: string }> = [
 const WEBSITE_FORM_KEYS = new Set<keyof SettingsForm>([
   'siteUrl', 'jsonDataUrl', 'data', 'criticalCss', 'head', 'scripts',
   'topNav', 'mobileNav', 'sidebarLeft', 'sidebarRight', 'footer', 'bottom', 'redirects',
-  'navEffect', 'buttonEffect',
+  'navEffect', 'buttonEffect', 'preloaderEffect',
   'shopEnabled', 'shopCurrencyPosition', 'shopCurrencyDecimals', 'shopChannels',
   'defaultLocale', 'locales', 'translations',
 ]);

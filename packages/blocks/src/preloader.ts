@@ -148,7 +148,7 @@ export const PRELOADER_CSS = [
 export const PRELOADER_JS = `(function(){
   var pl=document.querySelector('[data-sw-preloader]');
   if(!pl)return;
-  var docEl=document.documentElement, MIN=500, MAX=8000, start=Date.now();
+  var docEl=document.documentElement, MIN=400, MAX=8000, start=Date.now();
   function lock(){docEl.style.overflow='hidden';}
   function clear(){pl.classList.remove('loading');docEl.style.overflow='';}
   function showAgain(){pl.classList.add('loading');lock();setTimeout(clear,MAX);}

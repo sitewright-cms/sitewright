@@ -304,7 +304,6 @@ export function WebsiteSection({
           title="Translations & Labels"
           icon={<Languages className="h-4 w-4" />}
           tooltip="Shared phrases + UI labels ({{sw-translate}} / data-sw-translate), one row per key and a column per locale. Scoped keys (home.*, shop.*) group into collapsible sections. Inline preview edits land here too."
-          wide
         >
           <TranslationsEditor
             rows={form.translations}

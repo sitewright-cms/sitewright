@@ -13,9 +13,13 @@ function Harness({ initial, locales, shopEnabled }: { initial: TranslationRow[];
 }
 
 describe('TranslationsEditor — reserved ghost rows', () => {
-  it('surfaces the shop_cart reserved keys (locked, default as placeholder) when the shop is enabled and there is >1 locale', () => {
+  it('surfaces the shop_cart reserved group (collapsed) when the shop is enabled and there is >1 locale; expanding reveals the locked-key rows', () => {
     render(<Harness initial={[]} locales={['en', 'de']} shopEnabled />);
-    expect(screen.getByText('Shop · Cart')).toBeTruthy();
+    const header = screen.getByRole('button', { name: /Shop · Cart/ });
+    expect(header).toBeTruthy();
+    expect(header.getAttribute('aria-expanded')).toBe('false'); // collapsed by default
+    expect(screen.queryByLabelText('cart_add — de')).toBeNull(); // rows hidden while collapsed
+    fireEvent.click(header);
     expect(screen.getByText('cart_add')).toBeTruthy();
     // the EN built-in default is shown as a placeholder (discoverability), not a stored value
     const deCell = screen.getByLabelText('cart_add — de') as HTMLInputElement;
@@ -26,7 +30,6 @@ describe('TranslationsEditor — reserved ghost rows', () => {
   it('does NOT surface ghost rows when the shop is disabled', () => {
     render(<Harness initial={[]} locales={['en', 'de']} shopEnabled={false} />);
     expect(screen.queryByText('Shop · Cart')).toBeNull();
-    expect(screen.queryByText('cart_add')).toBeNull();
   });
 
   it('does NOT surface ghost rows for a single-locale site (nothing to translate into)', () => {
@@ -36,8 +39,10 @@ describe('TranslationsEditor — reserved ghost rows', () => {
 
   it('materializes a ghost row into the catalog when an other-locale cell is edited', () => {
     render(<Harness initial={[]} locales={['en', 'de']} shopEnabled />);
+    fireEvent.click(screen.getByRole('button', { name: /Shop · Cart/ }));
     const deCell = screen.getByLabelText('cart_add — de') as HTMLInputElement;
     fireEvent.change(deCell, { target: { value: 'In den Warenkorb' } });
+    // the row stays visible (lastTouched keeps its group open) and holds the new value
     expect((screen.getByLabelText('cart_add — de') as HTMLInputElement).value).toBe('In den Warenkorb');
   });
 });
@@ -52,14 +57,15 @@ describe('TranslationsEditor — key edit-protection', () => {
   });
 });
 
-describe('TranslationsEditor — scope grouping', () => {
+describe('TranslationsEditor — scope grouping (collapsible, collapsed by default)', () => {
   it('renders flat (no scope headers) when no key uses a dotted scope', () => {
     render(<Harness initial={[{ id: 'r1', key: 'nav_cta', cells: {} }]} locales={['en', 'de']} />);
-    expect(screen.queryByText('General')).toBeNull();
-    expect(screen.queryByText('home')).toBeNull();
+    expect(screen.queryByRole('button', { name: /General/ })).toBeNull();
+    // a flat key renders directly (no collapse) — its cell input is present
+    expect(screen.getByLabelText('nav_cta — de')).toBeTruthy();
   });
 
-  it('groups dotted keys under their scope + flat keys under "General"', () => {
+  it('groups dotted keys under collapsible scope headers (collapsed); flat keys stay under an always-open "General"', () => {
     render(
       <Harness
         initial={[
@@ -71,8 +77,17 @@ describe('TranslationsEditor — scope grouping', () => {
         locales={['en', 'de']}
       />,
     );
+    // General header (not a button — always open) + its flat row visible
     expect(screen.getByText('General')).toBeTruthy();
-    expect(screen.getByText('home')).toBeTruthy();
-    expect(screen.getByText('services')).toBeTruthy();
+    expect(screen.getByLabelText('nav_cta — de')).toBeTruthy();
+    // scope headers are collapsible buttons, collapsed by default → their rows are hidden
+    const homeHeader = screen.getByRole('button', { name: /home/ });
+    expect(homeHeader.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByLabelText('home.headline — de')).toBeNull();
+    expect(screen.getByRole('button', { name: /services/ })).toBeTruthy();
+    // expanding reveals the scope's rows
+    fireEvent.click(homeHeader);
+    expect(screen.getByLabelText('home.headline — de')).toBeTruthy();
+    expect(screen.getByLabelText('home.cta — de')).toBeTruthy();
   });
 });

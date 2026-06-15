@@ -11,6 +11,14 @@ describe('cart stylesheet', () => {
     expect(CART_CSS).toContain('var(--sw-color-primary,#0a7a5a)');
   });
 
+  it('pulses the toggle (expanding halo) on every add', () => {
+    expect(CART_CSS).toContain('@keyframes sw-cart-pulse'); // the halo keyframe
+    expect(CART_CSS).toContain('[data-sw-part="toggle"][data-sw-pulse]::after'); // ring behind the toggle
+    expect(CART_CSS).toContain('prefers-reduced-motion:no-preference'); // gated for reduced-motion
+    expect(CART_JS).toContain("setAttribute('data-sw-pulse'"); // add() triggers it
+    expect(CART_JS).toContain('void toggle.offsetWidth'); // reflow restart so rapid adds re-pulse
+  });
+
   it('keeps the toggle fixed + badge-visible under .waves-effect, and lays the drawer out as a flex column with a bottom-pinned footer', () => {
     expect(CART_CSS).toContain('position:fixed !important'); // .waves-effect must not unpin the floating toggle
     expect(CART_CSS).toContain('overflow:visible !important'); // …nor clip its count badge

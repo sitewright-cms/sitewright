@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Trash2, Pencil, Lock } from 'lucide-react';
+import { Plus, Trash2, Pencil, Lock, ChevronRight } from 'lucide-react';
 import { RESERVED_TRANSLATION_GROUPS, type ReservedTranslation } from '@sitewright/schema';
 import { localeFlag, localeLabel } from '../i18n/locale-catalog';
 import { newTranslationRow, type TranslationRow } from './model';
@@ -39,15 +39,36 @@ function cellValue(cells: Record<string, string>, locale: string): string {
 export function TranslationsEditor({ rows, localeCodes, defaultLocale, shopEnabled = false, onChange }: TranslationsEditorProps) {
   // Row ids whose KEY is currently unlocked for editing (blank keys are always editable — new rows).
   const [editingKeys, setEditingKeys] = useState<ReadonlySet<string>>(() => new Set());
+  // Scoped/reserved groups are COLLAPSED by default; `expanded` holds the group ids the user opened.
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
+  // The last row the operator touched — its group stays open even while collapsed, so a row you're
+  // editing (or a freshly added one whose key you're typing into a scope) never vanishes mid-edit.
+  const [lastTouched, setLastTouched] = useState<string | null>(null);
 
   // Free-form (operator-authored) mutators — operate on the full rows array by id.
-  const setKey = (id: string, key: string): void => onChange(rows.map((r) => (r.id === id ? { ...r, key } : r)));
-  const setCell = (id: string, locale: string, value: string): void =>
+  const setKey = (id: string, key: string): void => {
+    setLastTouched(id);
+    onChange(rows.map((r) => (r.id === id ? { ...r, key } : r)));
+  };
+  const setCell = (id: string, locale: string, value: string): void => {
+    setLastTouched(id);
     onChange(rows.map((r) => (r.id === id ? { ...r, cells: { ...r.cells, [locale]: value } } : r)));
-  const add = (): void => onChange([...rows, newTranslationRow()]);
+  };
+  const add = (): void => {
+    const row = newTranslationRow();
+    setLastTouched(row.id);
+    onChange([...rows, row]);
+  };
   const remove = (id: string): void => onChange(rows.filter((r) => r.id !== id));
   const toggleEditKey = (id: string): void =>
     setEditingKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const toggleGroup = (id: string): void =>
+    setExpanded((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -59,9 +80,12 @@ export function TranslationsEditor({ rows, localeCodes, defaultLocale, shopEnabl
   const setReservedCell = (key: string, locale: string, value: string): void => {
     const existing = rows.find((r) => r.key.trim() === key);
     if (existing) {
+      setLastTouched(existing.id);
       onChange(rows.map((r) => (r === existing ? { ...r, cells: { ...r.cells, [locale]: value } } : r)));
     } else {
-      onChange([...rows, { ...newTranslationRow(), key, cells: { [locale]: value } }]);
+      const row = { ...newTranslationRow(), key, cells: { [locale]: value } };
+      setLastTouched(row.id);
+      onChange([...rows, row]);
     }
   };
 
@@ -190,6 +214,28 @@ export function TranslationsEditor({ rows, localeCodes, defaultLocale, shopEnabl
     );
   };
 
+  // A group section header. `collapsible` groups get a chevron toggle (collapsed by default); the
+  // non-collapsible "General" header is a plain label (it hosts new rows, so it stays open).
+  const groupHeader = (id: string, label: string, count: number, open: boolean, collapsible: boolean) => (
+    <tr key={`head-${id}`}>
+      <td colSpan={colSpan} className="px-1 pt-2">
+        {collapsible ? (
+          <button
+            type="button"
+            onClick={() => toggleGroup(id)}
+            aria-expanded={open}
+            className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400 transition hover:text-slate-600"
+          >
+            <ChevronRight aria-hidden className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-90' : ''}`} />
+            {label} <span className="font-normal normal-case text-slate-300">({count})</span>
+          </button>
+        ) : (
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{label}</span>
+        )}
+      </td>
+    </tr>
+  );
+
   return (
     <div className="flex flex-col gap-2">
       <p className="text-xs text-slate-500">
@@ -212,26 +258,21 @@ export function TranslationsEditor({ rows, localeCodes, defaultLocale, shopEnabl
                 their own stable key, so a row never REMOUNTS when its scope changes mid-edit (which would
                 drop input focus); only its position shifts. */}
             <tbody>
-              {surfacedGroups.flatMap((group) => [
-                <tr key={`rhead-${group.id}`}>
-                  <td colSpan={colSpan} className="px-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                    {group.label}
-                  </td>
-                </tr>,
-                ...group.keys.map((k) => reservedRow(k)),
-              ])}
-              {freeGroups.flatMap((g) => [
-                ...(hasScopes
-                  ? [
-                      <tr key={`fhead-${g.scope || '__general__'}`}>
-                        <td colSpan={colSpan} className="px-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-                          {g.scope || 'General'}
-                        </td>
-                      </tr>,
-                    ]
-                  : []),
-                ...g.rows.map((row) => freeRow(row)),
-              ])}
+              {surfacedGroups.flatMap((group) => {
+                const id = `r:${group.id}`;
+                const rowIds = group.keys.map((k) => storedByKey.get(k.key)?.id).filter(Boolean) as string[];
+                const open = expanded.has(id) || (!!lastTouched && rowIds.includes(lastTouched));
+                return [groupHeader(id, group.label, group.keys.length, open, true), ...(open ? group.keys.map((k) => reservedRow(k)) : [])];
+              })}
+              {freeGroups.flatMap((g) => {
+                // "General" (flat keys) is always open — it hosts new rows; only real scopes collapse.
+                if (g.scope === '') {
+                  return [...(hasScopes ? [groupHeader('s:__general__', 'General', g.rows.length, true, false)] : []), ...g.rows.map((row) => freeRow(row))];
+                }
+                const id = `s:${g.scope}`;
+                const open = expanded.has(id) || (!!lastTouched && g.rows.some((r) => r.id === lastTouched));
+                return [groupHeader(id, g.scope, g.rows.length, open, true), ...(open ? g.rows.map((row) => freeRow(row)) : [])];
+              })}
             </tbody>
           </table>
         </div>

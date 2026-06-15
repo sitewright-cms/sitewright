@@ -74,16 +74,18 @@ interface ModalProps {
  * The platform's global modal: a frosted panel over a blurred backdrop, portalled to <body> so it
  * overlays everything. The header carries the title plus icon buttons — CLOSE (×) always, and SAVE
  * (✓) when `onSave` is given. Escape and a backdrop click both close it (the backdrop is ignored
- * when `dirty`); focus moves into the panel on open. It fades+rises in on open and fades+drops out
- * on close (reduced-motion → a plain fade). Sized via `size` ('md'|'lg'|'xl'|'full').
+ * when `dirty`); focus moves into the panel on open. It fades+drops in from the top on open and
+ * fades+rises out to the top on close (reduced-motion → a plain fade). Sized via `size`
+ * ('md'|'lg'|'xl'|'full').
  */
 export function Modal({ title, onClose, onSave, saving = false, saveDisabled = false, saveLabel = 'Save', size = 'lg', children, headerLeft, titleExtra, centerTitle = false, headerExtra, onBeforeClose }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const reduce = useReducedMotion();
   // Local visibility drives the exit animation: a confirmed close flips this to false, the
-  // panel plays its fade-out-down, and AnimatePresence's onExitComplete then calls the parent's
-  // onClose (which unmounts us). So callers keep the simple `{open && <Modal onClose=…/>}` shape.
+  // panel plays its fade-out-up (rises toward the top), and AnimatePresence's onExitComplete then
+  // calls the parent's onClose (which unmounts us). So callers keep the simple
+  // `{open && <Modal onClose=…/>}` shape.
   const [visible, setVisible] = useState(true);
   const onBeforeCloseRef = useRef(onBeforeClose);
   onBeforeCloseRef.current = onBeforeClose;
@@ -224,9 +226,9 @@ export function Modal({ title, onClose, onSave, saving = false, saveDisabled = f
             aria-modal="true"
             aria-labelledby={titleId}
             tabIndex={-1}
-            initial={reduce ? { opacity: 0 } : { opacity: 0, y: 24 }}
+            initial={reduce ? { opacity: 0 } : { opacity: 0, y: -24 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={reduce ? { opacity: 0 } : { opacity: 0, y: 24 }}
+            exit={reduce ? { opacity: 0 } : { opacity: 0, y: -24 }}
             transition={{ duration: 0.22, ease: 'easeOut' }}
             className={`relative flex w-full ${SIZES[size]} ${size === 'screen' ? 'max-h-[calc(100vh-4rem)]' : 'max-h-[82vh]'} flex-col overflow-hidden rounded-2xl border border-white/60 bg-white/95 shadow-2xl outline-none backdrop-blur-xl`}
           >

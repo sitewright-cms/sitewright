@@ -8,6 +8,8 @@ import { LIBRARY_SECTIONS, type LibraryCategory, type LibraryItem, type LibraryS
 import { ReferenceModal } from './ReferenceModal';
 import { SW_COMPONENT_GROUPS } from './sw-components';
 import { GoogleFontGallery } from '../settings/GoogleFontGallery';
+import { SearchField } from '../ui/SearchField';
+import { useScrollPaging } from '../../lib/useScrollPaging';
 
 /** Library glyph (stacked books) for the side-panel tab. */
 function LibraryIcon() {
@@ -125,9 +127,6 @@ function FontsLibraryModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-/** Max icons rendered at once (the full Lucide set is 1865) — search narrows below this. */
-const GRID_CAP = 360;
-
 /** A searchable gallery of one section's items (icons grid, or item cards with optional preview). */
 function SectionModal({ section, onClose }: { section: LibrarySection; onClose: () => void }) {
   const [query, setQuery] = useState('');
@@ -172,25 +171,28 @@ function SectionModal({ section, onClose }: { section: LibrarySection; onClose: 
     [items, q],
   );
 
-  // A grid section (icons, brand logos, or flags) — capped so the large sets stay responsive;
-  // searching narrows it. Other sections show everything.
+  // A grid section (icons, brand logos, or flags) — render a page at a time and append more on scroll
+  // (the full sets are large); searching narrows it. Other sections show everything.
   const isGrid = section.category === 'icons' || section.category === 'brand' || section.category === 'flags';
-  const shown = isGrid ? filtered.slice(0, GRID_CAP) : filtered;
+  const { visible, reset, onScroll } = useScrollPaging(filtered.length);
+  const shown = isGrid ? filtered.slice(0, visible) : filtered;
   const overflow = filtered.length - shown.length;
 
   return (
     <Modal title={section.label} size="full" onClose={onClose}>
       <div className="flex h-full flex-col gap-3 p-5">
         <p className="text-sm text-slate-500">{section.blurb}</p>
-        <input
-          aria-label={`Search ${section.label}`}
+        <SearchField
+          ariaLabel={`Search ${section.label}`}
           autoFocus
-          className="w-full rounded-lg border border-white/60 bg-white/70 px-3 py-2 text-sm sw-brand-focus outline-none"
           placeholder="Search…"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(v) => {
+            setQuery(v);
+            reset();
+          }}
         />
-        <div className="min-h-0 flex-1 overflow-auto pr-1">
+        <div className="min-h-0 flex-1 overflow-auto pr-1" onScroll={onScroll}>
           {error ? (
             <p className="py-8 text-center text-sm text-rose-500">Couldn’t load the library set. Close and reopen to retry.</p>
           ) : loading ? (
@@ -210,7 +212,7 @@ function SectionModal({ section, onClose }: { section: LibrarySection; onClose: 
         </div>
         <p className="shrink-0 text-[11px] text-slate-400">
           {filtered.length} {isGrid ? 'icons' : 'items'}
-          {overflow > 0 ? ` · showing ${shown.length} — search to narrow` : ''} · click to copy the snippet.
+          {overflow > 0 ? ` · showing ${shown.length} — scroll for more` : ''} · click to copy the snippet.
         </p>
       </div>
     </Modal>

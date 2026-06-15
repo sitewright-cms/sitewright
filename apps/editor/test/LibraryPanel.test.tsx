@@ -111,8 +111,11 @@ describe('LibraryPanel', () => {
     fireEvent.mouseEnter(screen.getByLabelText('System Library'));
     fireEvent.click(screen.getByRole('button', { name: /Brand icons/ }));
     const dialog = await screen.findByRole('dialog', { name: 'Brand icons' });
+    // The grid lazy-loads a page at a time (50) and appends more on scroll, so a deep entry like
+    // GitHub isn't in the initial render — search to surface it (jsdom can't drive real scroll).
     // Same code-split module as the icon pack — generous timeout in case this test is the
     // first to trigger the (slow-under-CI) `import('./catalog-icons')`.
+    fireEvent.change(within(dialog).getByLabelText('Search Brand icons'), { target: { value: 'github' } });
     const gh = await within(dialog).findByRole('button', { name: 'Copy GitHub icon snippet' }, { timeout: 15000 });
     fireEvent.click(gh);
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('{{sw-icon "brand:github" "h-6 w-6"}}');

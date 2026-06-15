@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useScrollPaging } from '../../lib/useScrollPaging';
+import { SearchField } from '../ui/SearchField';
 
 /** Catalog entry shape (mirrors @sitewright/blocks/google-fonts-catalog, loaded lazily). */
 export interface GoogleFontMeta {
@@ -7,7 +9,9 @@ export interface GoogleFontMeta {
   weights: number[];
 }
 
-const SHOWN_CAP = 48;
+/** Webfont preview links load this many families at a time — one css2 link per chunk keeps each URL
+ *  short (a single link for hundreds of families would blow the URL limit). */
+const FONT_CHUNK = 50;
 const cssFamilyParam = (family: string) => `family=${encodeURIComponent(family).replace(/%20/g, '+')}`;
 
 /**
@@ -39,34 +43,53 @@ export function GoogleFontGallery({
   }, []);
 
   const q = query.trim().toLowerCase();
-  const shown = useMemo(
-    () => (catalog ? (q ? catalog.filter((f) => f.family.toLowerCase().includes(q)) : catalog).slice(0, SHOWN_CAP) : []),
+  const filtered = useMemo(
+    () => (catalog ? (q ? catalog.filter((f) => f.family.toLowerCase().includes(q)) : catalog) : []),
     [catalog, q],
   );
+  const { visible, reset, onScroll } = useScrollPaging(filtered.length);
+  const shown = useMemo(() => filtered.slice(0, visible), [filtered, visible]);
 
-  // Load the SHOWN families from Google (admin-browser preview only) via one css2 stylesheet link.
+  // Preview the SHOWN families from Google (admin-browser only), loading them in chunks INCREMENTALLY
+  // as you scroll — links are never torn down per-scroll (no preview flicker) and reset per query.
+  const fontLinks = useRef<{ key: string; links: HTMLLinkElement[] }>({ key: '', links: [] });
   useEffect(() => {
-    if (shown.length === 0) return;
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = `https://fonts.googleapis.com/css2?${shown.map((f) => cssFamilyParam(f.family)).join('&')}&display=swap`;
-    document.head.appendChild(link);
-    return () => link.remove();
-  }, [shown]);
+    const s = fontLinks.current;
+    if (s.key !== q) {
+      s.links.forEach((l) => l.remove());
+      s.links = [];
+      s.key = q;
+    }
+    for (let start = s.links.length * FONT_CHUNK; start < shown.length; start += FONT_CHUNK) {
+      const chunk = shown.slice(start, start + FONT_CHUNK);
+      if (chunk.length === 0) break;
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = `https://fonts.googleapis.com/css2?${chunk.map((f) => cssFamilyParam(f.family)).join('&')}&display=swap`;
+      document.head.appendChild(link);
+      s.links.push(link);
+    }
+  }, [q, shown]);
+  useEffect(() => () => {
+    fontLinks.current.links.forEach((l) => l.remove());
+    fontLinks.current.links = [];
+  }, []);
 
   return (
     <div className="flex h-full flex-col gap-3 p-5">
       <p className="text-sm text-slate-500">{intro}</p>
-      <input
-        aria-label="Search Google Fonts"
+      <SearchField
+        ariaLabel="Search Google Fonts"
         autoFocus
-        className="w-full rounded-lg border border-white/60 bg-white/70 px-3 py-2 text-sm sw-brand-focus outline-none"
         placeholder="Search fonts (e.g. Inter, Playfair)…"
         value={query}
-        onChange={(e) => setQuery(e.target.value)}
+        onChange={(v) => {
+          setQuery(v);
+          reset();
+        }}
       />
       {error && <p className="text-sm text-rose-500">{error}</p>}
-      <div className="min-h-0 flex-1 overflow-auto pr-1">
+      <div className="min-h-0 flex-1 overflow-auto pr-1" onScroll={onScroll}>
         {!catalog ? (
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {Array.from({ length: 8 }, (_, i) => (
@@ -95,7 +118,11 @@ export function GoogleFontGallery({
         )}
       </div>
       <p className="shrink-0 text-[11px] text-slate-400">
-        {catalog ? `${shown.length} of ${catalog.length} families${q ? '' : ' — search to narrow'}` : 'Loading…'}
+        {catalog
+          ? `Showing ${shown.length} of ${filtered.length}${q ? ' matches' : ' families'}${
+              shown.length < filtered.length ? ' — scroll for more' : ''
+            }`
+          : 'Loading…'}
       </p>
     </div>
   );

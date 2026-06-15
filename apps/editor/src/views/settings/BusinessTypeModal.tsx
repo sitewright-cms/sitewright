@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Modal } from '../ui/Modal';
+import { SearchField } from '../ui/SearchField';
 import { SCHEMA_ORG_TYPES, type SchemaOrgType } from './schema-org-types';
-import { glassCard, glassInput, ghostButton, gradientSurface, gradientHover } from '../../theme';
+import { glassCard, ghostButton, gradientSurface, gradientHover } from '../../theme';
 
 /** Sentinel businessType that suppresses JSON-LD (see packages/blocks/src/head.ts). */
 export const BUSINESS_TYPE_DISABLED = 'disabled';
@@ -71,11 +72,10 @@ export function BusinessTypeModal({ value, onSelect, onClose }: BusinessTypeModa
           The schema.org <code className="rounded bg-slate-100 px-1 py-0.5">@type</code> used in your
           site’s structured data (JSON-LD). Pick one, or disable structured data entirely.
         </p>
-        <input
-          aria-label="Search business types"
-          className={glassInput}
+        <SearchField
+          ariaLabel="Search business types"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={setQuery}
           placeholder="Search types…"
           autoFocus
         />

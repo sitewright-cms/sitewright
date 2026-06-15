@@ -134,6 +134,24 @@ function enhanceGallery(gallery) {
   // Caption is SmartPhoto's data-caption, injected into the viewer at TENANT trust (tenants
   // already author raw HTML) — NEVER bind visitor-submitted content into it.
 
+  // Keep the (non-zoomed) FITTED image clear of the bottom thumbnail rail. SmartPhoto fits the image
+  // to the FULL viewport height (it doesn't reserve the nav strip), so a tall / portrait image's
+  // bottom slides UNDER the thumbnails (the image list is z-index:101, above the nav). Reserve the
+  // live rail height in the height SmartPhoto fits to — ONLY while the nav is shown and NOT zoomed
+  // (zooming hides the UI and scales via transform, so it must be left at full height).
+  if (flag('data-thumbnails', true) && typeof sp._getWindowHeight === 'function') {
+    var realGetWindowHeight = sp._getWindowHeight.bind(sp);
+    sp._getWindowHeight = function () {
+      var h = realGetWindowHeight();
+      // Pass through the FULL height while zoomed (UI hidden, transform-scaled) or while the overlay
+      // is hiding (so the close fly-out animation travels the full viewport, not the reduced fit box).
+      if (sp.data && (sp.data.scale || sp.data.hide)) return h;
+      var nav = document.querySelector('.' + CLASS_NAMES.smartPhotoNav);
+      var reserve = nav && nav.offsetHeight ? nav.offsetHeight + 16 : 88; // rail + small gap (88 = fallback if the viewer isn't rendered yet)
+      return Math.max(h - reserve, 120);
+    };
+  }
+
   // Perf: SmartPhoto's constructor starts a 100Hz inertia-animation interval that it only clears
   // on destroy(); left alone it would run forever on a static page. Gate it to while-OPEN — clear
   // the constructor's interval now (the gallery starts closed), re-arm on each open, clear on close.

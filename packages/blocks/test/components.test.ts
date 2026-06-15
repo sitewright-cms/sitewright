@@ -74,6 +74,7 @@ describe('component registry', () => {
     expect(used.js).toContain('data-gallery'); // shared data-gallery merges roots into one combined gallery
     expect(used.js).toContain('sw-lightbox'); // runtime builds the viewer with the neutral class names
     expect(used.js).toContain('focus'); // a11y shim: focus restored to the trigger on close
+    expect(used.js).toContain('_getWindowHeight'); // fit reserves the thumbnail-rail height (no image/nav overlap)
     // The IE-only polyfills SmartPhoto ships are aliased away at bundle time (modern target).
     expect(used.js).not.toContain('es6-promise-polyfill');
     expect(used.js).not.toContain('custom-event-polyfill');

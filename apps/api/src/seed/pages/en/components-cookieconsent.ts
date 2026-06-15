@@ -23,7 +23,7 @@ export function pageComponentsCookieConsent(): Page {
       cc_more: 'Learn more',
       cc_accept: 'OK, got it',
       sec_how_t: 'How it works',
-      sec_how_d: 'Author it once in a skeleton slot (the Footer or a dedicated slot). The server renders it with a hidden attribute; the runtime checks localStorage and reveals it only when no choice is stored, then hides it permanently when the accept button is pressed. The marker, not authored HTML, carries the behaviour.',
+      sec_how_d: 'Author it once in a skeleton slot (the Footer or a dedicated slot). The server renders it with a hidden attribute; the runtime checks localStorage and reveals it only when no choice is stored, then hides it permanently when the accept button is pressed. The marker, not authored HTML, carries the behaviour. Consent is stored under the key sw-cookie-consent by default — add an optional data-cookiename to use your own key, so two independent banners can track consent separately.',
       sec_nojs_t: 'Without JavaScript',
       sec_nojs_d: 'No banner appears at all — and with scripts disabled there is nothing to set or store, so the page is simply served as-is.',
     },

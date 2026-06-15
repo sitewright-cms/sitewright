@@ -234,13 +234,21 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
     summary: 'A consent banner stored in localStorage — server HTML ships it hidden; the runtime reveals it only when consent is not yet stored.',
     authoring: 'markup',
     parts: [{ part: 'accept', element: 'button', required: true, description: 'The accept button; stores consent and hides the banner.' }],
-    attributes: [{ name: 'hidden', on: 'root', description: 'REQUIRED in the authored markup — without JS (or after consent) the banner never shows.' }],
-    skeleton: `<div data-sw-component="cookie-consent" data-sw-block="CookieConsent" hidden>
+    attributes: [
+      { name: 'hidden', on: 'root', description: 'REQUIRED in the authored markup — without JS (or after consent) the banner never shows.' },
+      {
+        name: 'data-cookiename',
+        on: 'root',
+        description:
+          'Optional. The localStorage key the consent flag is stored under (default "sw-cookie-consent"). Give two banners different names to track their consent independently.',
+      },
+    ],
+    skeleton: `<div data-sw-component="cookie-consent" hidden>
   <p>We use a few essential cookies. <a class="link" href="/privacy">Learn more</a></p>
   <button type="button" data-sw-part="accept">OK, got it</button>
 </div>`,
     noJs: 'No banner at all — and with no JS there is nothing to consent to.',
-    notes: 'Place it ONCE, site-wide, in the website `bottom` slot (not on individual pages). DaisyUI has no equivalent.',
+    notes: 'Place it ONCE, site-wide, in the website `bottom` slot (not on individual pages). For a second, independent banner (e.g. on a campaign microsite) give it a different data-cookiename so consent is tracked separately. DaisyUI has no equivalent.',
   },
   {
     type: 'Form',

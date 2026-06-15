@@ -113,6 +113,10 @@ export const CART_CSS = [
   // A brief "bump" on the floating cart when an item is added — the non-interrupting add feedback.
   '@keyframes sw-cart-bump{0%,100%{transform:none}30%{transform:scale(1.15)}}',
   '[data-sw-cart] [data-sw-part="toggle"][data-sw-bump]{animation:sw-cart-bump .4s ease}',
+  // A PULSE halo that expands out from the toggle on every add (a brand-coloured ring behind the button,
+  // overflow:visible lets it escape the circle). Reduced-motion users get only the bump above.
+  '@keyframes sw-cart-pulse{from{transform:scale(.9);opacity:.5}to{transform:scale(2);opacity:0}}',
+  '@media (prefers-reduced-motion:no-preference){[data-sw-cart] [data-sw-part="toggle"][data-sw-pulse]::after{content:"";position:absolute;inset:0;z-index:-1;border-radius:9999px;background:var(--sw-color-primary,#0a7a5a);animation:sw-cart-pulse .6s ease-out;pointer-events:none}}',
   // Hover affordances on the interactive controls.
   '[data-sw-cart] [data-sw-part="toggle"]:hover{transform:translateY(-2px) scale(1.04);box-shadow:0 12px 30px rgba(0,0,0,.32)}',
   '[data-sw-cart] [data-sw-part="channel"]:hover,[data-sw-cart] [data-sw-part="order-submit"]:hover{filter:brightness(.92)}',
@@ -465,6 +469,9 @@ export const CART_JS = `(function(){
       // the affordance to open the drawer + check out — we don't pop a modal on every add.
       btn.setAttribute('data-sw-added','true');setTimeout(function(){btn.removeAttribute('data-sw-added');},800);
       toggle.setAttribute('data-sw-bump','1');setTimeout(function(){toggle.removeAttribute('data-sw-bump');},400);
+      // PULSE halo: remove + force reflow + re-set so the ::after animation RESTARTS on every add (even
+      // rapid repeat adds within the .6s window); the end state is opacity:0 so leaving it set is invisible.
+      toggle.removeAttribute('data-sw-pulse');void toggle.offsetWidth;toggle.setAttribute('data-sw-pulse','1');
     }
 
     function closeDrawer(){if(dialog.close){dialog.close();}else{dialog.removeAttribute('open');}}

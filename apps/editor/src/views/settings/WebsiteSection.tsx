@@ -9,7 +9,7 @@ import { CodeField } from '../ui/CodeField';
 import { RedirectsEditor } from './RedirectsEditor';
 import { ShopSettingsModal } from './ShopSettingsModal';
 import { LocaleManager } from './LocaleManager';
-import { TranslationsField } from './TranslationsField';
+import { TranslationsEditor } from './TranslationsEditor';
 import { WebsiteDataModal } from './WebsiteDataModal';
 import { ghostButton, glassInput, fieldLabel, toggleInput } from '../../theme';
 import { cardStagger, cardVariants } from './motion';
@@ -299,20 +299,22 @@ export function WebsiteSection({
         />
       </GlassCard>
 
-      <GlassCard
-        title="Translations"
-        icon={<Languages className="h-4 w-4" />}
-        tooltip="Shared phrases ({{sw-translate}} / data-sw-translate), one row per key and a column per locale. Inline preview edits land here too."
-        wide
-      >
-        <TranslationsField
-          rows={form.translations}
-          localeCodes={localeCodes}
-          defaultLocale={form.defaultLocale}
-          shopEnabled={form.shopEnabled}
-          onChange={(translations) => patch({ translations })}
-        />
-      </GlassCard>
+      <div id="translations-labels" className="scroll-mt-20 sm:col-span-2">
+        <GlassCard
+          title="Translations & Labels"
+          icon={<Languages className="h-4 w-4" />}
+          tooltip="Shared phrases + UI labels ({{sw-translate}} / data-sw-translate), one row per key and a column per locale. Scoped keys (home.*, shop.*) group into collapsible sections. Inline preview edits land here too."
+          wide
+        >
+          <TranslationsEditor
+            rows={form.translations}
+            localeCodes={localeCodes}
+            defaultLocale={form.defaultLocale}
+            shopEnabled={form.shopEnabled}
+            onChange={(translations) => patch({ translations })}
+          />
+        </GlassCard>
+      </div>
     </motion.div>
   );
 }

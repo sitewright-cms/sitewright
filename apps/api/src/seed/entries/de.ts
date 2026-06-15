@@ -1,7 +1,7 @@
 import type { Entry } from '@sitewright/schema';
 import { pub } from '../helpers.js';
 
-// German dataset entries — the `-de` twins auto-resolved on `/de` pages (`{{#each data.services}}`
+// German dataset entries — the `-de` twins auto-resolved on `/de` pages (`{{#each dataset.services}}`
 // → `services-de`). Entry ids carry the same `-de` suffix; `roles-de` manager references point at
 // `team-de` ids so the keyed `{{item.team.…}}` lookup resolves within the locale. Prices stay in
 // USD for the shop (one merchant currency); service/plan prices are localized copy.

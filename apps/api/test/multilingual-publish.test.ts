@@ -107,7 +107,7 @@ describe('multilingual publish (locale variants are pages)', () => {
     await proj.putContent('entry', 'svc-de', { id: 'svc-de', dataset: 'services-de', status: 'published', values: { name: 'Webdesign' } });
 
     // The SAME source on both locale variants — auto-suffix picks the right dataset.
-    const listSource = '<ul>{{#each data.services}}<li>{{ name }}</li>{{/each}}</ul>';
+    const listSource = '<ul>{{#each dataset.services}}<li>{{ name }}</li>{{/each}}</ul>';
     await proj.putContent('page', 'home', { id: 'home', path: '', title: 'Home', root, translationGroup: 'home', source: listSource });
     await proj.putContent('page', 'home-de', { id: 'home-de', path: 'de', parent: 'home', title: 'Start', locale: 'de', translationGroup: 'home', root, source: listSource });
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);

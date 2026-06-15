@@ -515,7 +515,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
                 ...(xDefault ? [{ hreflang: 'x-default', href: siteUrlFor(siteUrl, slugForPath(xDefault.path)) }] : []),
               ]
             : undefined;
-        // `data.<name>` resolves to this page's locale variant (`<name>-<locale>`) when
+        // `dataset.<name>` resolves to this page's locale variant (`<name>-<locale>`) when
         // present, else the base dataset (auto locale-suffix). Translation links for a
         // language switcher (`{{#each page.translations}}<a href="{{sw-url path}}">`) use the
         // ROOT-RELATIVE page path — same as nav — so the `{{sw-url}}` helper (which only
@@ -564,7 +564,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           parentPage: pageSource && referencesParentPage(pageSource)
             ? (parentPageView(pubBundle.pages, page, defaultLocale) as unknown as Record<string, unknown> | undefined)
             : undefined,
-          data: localeData as Record<string, unknown>,
+          dataset: localeData as Record<string, unknown>,
           nav: navForPage as unknown as Record<string, unknown>,
           // Project media (slim) for {{#sw-folder}} galleries/file lists. Asset `url`s (`/media/<slug>/…`)
           // are rebased to the bundled `_assets/…` by the media rewrite below — portable in the export.

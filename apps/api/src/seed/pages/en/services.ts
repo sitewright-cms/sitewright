@@ -26,7 +26,7 @@ export function pagesServices(): Page[] {
 </section>
 <section class="mx-auto max-w-6xl px-6 pb-14">
   <div class="grid gap-6 sm:grid-cols-2" data-aos="fade-up">
-    {{#each data.services}}
+    {{#each dataset.services}}
     <div class="nw-card rounded-3xl border border-base-200 bg-base-100 p-8 shadow-sm hover:border-primary/30 hover:shadow-xl hover:shadow-primary/5">
       <div class="flex items-start justify-between gap-4">
         <span class="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/15 to-secondary/15 text-primary">{{sw-icon icon "h-6 w-6"}}</span>
@@ -114,7 +114,7 @@ export function pagesServices(): Page[] {
     <div data-sw-part="tablist" role="tablist"></div>
     <div data-sw-part="panel" role="tabpanel" data-sw-title="{{page.data.tab_projects}}">
       <div class="grid items-stretch gap-7 pt-2 md:grid-cols-3">
-        {{#each data.plans}}{{#unless monthly}}
+        {{#each dataset.plans}}{{#unless monthly}}
         <div class="nw-card relative flex flex-col rounded-3xl bg-base-100 p-8 {{#if featured}}nw-ring shadow-2xl shadow-primary/15{{else}}border border-base-200 shadow-sm{{/if}}">
           {{#if featured}}<span class="absolute -top-3.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-gradient-to-r from-primary to-secondary px-4 py-1 text-xs font-bold uppercase tracking-wider text-white shadow-lg">{{@root.page.data.pr_badge}}</span>{{/if}}
           <h2 class="text-lg font-bold tracking-tight">{{name}}</h2>
@@ -127,7 +127,7 @@ export function pagesServices(): Page[] {
     </div>
     <div data-sw-part="panel" role="tabpanel" data-sw-title="{{page.data.tab_care}}">
       <div class="grid items-stretch gap-7 pt-2 md:grid-cols-2">
-        {{#each data.plans}}{{#if monthly}}
+        {{#each dataset.plans}}{{#if monthly}}
         <div class="nw-card relative flex flex-col rounded-3xl bg-base-100 p-8 {{#if featured}}nw-ring shadow-2xl shadow-primary/15{{else}}border border-base-200 shadow-sm{{/if}}">
           {{#if featured}}<span class="absolute -top-3.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-gradient-to-r from-primary to-secondary px-4 py-1 text-xs font-bold uppercase tracking-wider text-white shadow-lg">{{@root.page.data.pr_badge}}</span>{{/if}}
           <h2 class="text-lg font-bold tracking-tight">{{name}}</h2>

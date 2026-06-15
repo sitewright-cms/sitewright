@@ -142,9 +142,9 @@ export async function seedInstance({ db, adminEmail, adminPassword, mediaRoot, l
     settings: EXAMPLE_SETTINGS,
   });
   // CMS: dataset schemas + their entries (services / work / team / testimonials), then the
-  // contact form, then the pages (which bind the datasets via `{{#each data.<slug>}}` and host the
+  // contact form, then the pages (which bind the datasets via `{{#each dataset.<slug>}}` and host the
   // Form block). Order doesn't matter for storage; an entry's `dataset` field (= the dataset slug)
-  // keys the `data.*` namespace at build.
+  // keys the `dataset.*` namespace at build.
   for (const dataset of EXAMPLE_DATASETS) {
     await contentRepo.put(ctx, 'dataset', dataset.id, dataset);
   }

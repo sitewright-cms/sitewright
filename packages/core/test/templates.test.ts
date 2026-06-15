@@ -63,7 +63,7 @@ describe('resolveTemplateSource (code-first templates)', () => {
     const shop = GLOBAL_TEMPLATES.find((t) => t.id === 'global:shop');
     expect(shop).toBeDefined();
     // Loops the products dataset and emits a first-party add-to-cart button + the cart mount.
-    expect(shop!.source).toContain('{{#each data.products}}');
+    expect(shop!.source).toContain('{{#each dataset.products}}');
     expect(shop!.source).toContain('{{sw-add-to-cart');
     // The cart mount is bare — its drawer strings + the add-to-cart label auto-localize from the
     // translation catalog (reserved cart_* keys), so a locale variant needs no per-page hash wiring.

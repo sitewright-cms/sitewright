@@ -117,7 +117,7 @@ describe('cart detection', () => {
     expect(usesCart('<button data-sw-cart-add data-sku="x" data-price="9.9">Add</button>')).toBe(true);
     // code-first SOURCE: the helper name (the marker attribute appears only AFTER render)
     expect(usesCart('<footer>{{sw-cart}}</footer>')).toBe(true);
-    expect(usesCart('{{#each data.products}}{{sw-add-to-cart sku=id name=title price=price}}{{/each}}')).toBe(true);
+    expect(usesCart('{{#each dataset.products}}{{sw-add-to-cart sku=id name=title price=price}}{{/each}}')).toBe(true);
     expect(usesCart('<div class="card">plain</div>')).toBe(false);
     expect(usesCart(undefined)).toBe(false);
     expect(usesCart(null)).toBe(false);

@@ -25,8 +25,8 @@ import { GLOBAL_SNIPPET_PARTIALS } from './global-snippets.js';
 /** A WIDGET manifest: the backing config dataset(s) a widget needs (provisioned on first use). */
 export interface WidgetProvides {
   datasets: ReadonlyArray<{
-    /** Stable slug the widget body binds via `{{#each data.<slug>}}` (loop all) or
-     *  `(sw-pick-entry data.<slug> …)` (render one chosen entry). */
+    /** Stable slug the widget body binds via `{{#each dataset.<slug>}}` (loop all) or
+     *  `(sw-pick-entry dataset.<slug> …)` (render one chosen entry). */
     slug: string;
     name: string;
     /** Dataset field tree (scalars + nested list/object) — validated against DatasetSchema on create. */
@@ -45,7 +45,7 @@ export interface Widget {
   description: string;
   /** The `data-sw-component` this widget is built on (for the gallery / catalog). */
   component: string;
-  /** Handlebars + DaisyUI/Tailwind body — consumes its `provides` dataset via `{{#each data.<slug>}}`. */
+  /** Handlebars + DaisyUI/Tailwind body — consumes its `provides` dataset via `{{#each dataset.<slug>}}`. */
   source: string;
   /** The config dataset(s) auto-provisioned when a page composes this widget. */
   provides: WidgetProvides;
@@ -69,9 +69,9 @@ export const GLOBAL_WIDGETS: readonly Widget[] = [
     // image+caption list; backgrounds are <img> (object-fit:cover, the Ken Burns target) — a loop
     // can't use data-sw-bg's page.data binding, and an interpolated inline background-image is
     // validator-forbidden; an empty image falls back to a base-200 placeholder. captions are richtext
-    // (sw-html). `data.hero` falls back to the bare dataset on translated pages (resolveLocaleDatasets).
+    // (sw-html). `dataset.hero` falls back to the bare dataset on translated pages (resolveLocaleDatasets).
     // An empty dataset → the {{#sw-pick-entry}} block renders nothing.
-    source: `{{#sw-pick-entry data.hero @root.page.data.hero_config}}
+    source: `{{#sw-pick-entry dataset.hero @root.page.data.hero_config}}
 <div class="relative h-[60vh] min-h-[420px] max-h-[640px] overflow-hidden rounded-3xl" data-sw-component="carousel" data-sw-block="Carousel" data-loop="true" data-autoplay="{{#if autoplay}}true{{else}}false{{/if}}" data-interval="{{interval}}" data-kenburns="{{#if kenburns}}on{{else}}off{{/if}}" data-click-next="true" aria-label="Hero slideshow">
   <div data-sw-part="track">
     {{#each slides}}

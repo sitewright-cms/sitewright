@@ -205,7 +205,7 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         name: 'sw-add-to-cart',
         keywords: 'shop cart ecommerce buy product add basket order',
         description:
-          'MINI SHOP: an “add to cart” button for a product. The browser cart (see {{sw-cart}}) tracks it and hands the order to a channel configured in Settings → Website → Shop. Prices are non-authoritative — it sends an order inquiry. Use it inside a products loop, e.g. {{#each data.products}}.',
+          'MINI SHOP: an “add to cart” button for a product. The browser cart (see {{sw-cart}}) tracks it and hands the order to a channel configured in Settings → Website → Shop. Prices are non-authoritative — it sends an order inquiry. Use it inside a products loop, e.g. {{#each dataset.products}}.',
         args: [
           { name: 'sku', desc: 'Stable product key (falls back to name); dedupes in the cart.' },
           { name: 'name', desc: 'Product name shown in the cart + order.' },
@@ -215,7 +215,7 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
           { name: 'class', desc: 'Optional CSS classes for the button.' },
         ],
         example:
-          '{{#each data.products}}\n' +
+          '{{#each dataset.products}}\n' +
           '  <div class="card">{{name}}\n' +
           '    {{sw-add-to-cart sku=sku name=name price=price image=image class="btn btn-primary btn-sm"}}\n' +
           '  </div>\n' +
@@ -292,7 +292,7 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         description:
           'Emits a stored HTML value (a dataset richtext field, nested page.data HTML) as SANITIZED HTML — broad safe HTML incl. https-sandboxed iframe embeds; <script>, on* handlers, and data-* attributes are always stripped. This is the ONE way a template renders stored markup — raw {{{…}}} is banned. Non-strings render nothing. Use in element context. (Formerly the sw-rich helper.)',
         args: [{ name: 'value', desc: 'An HTML string (e.g. an entry’s body field).' }],
-        example: '{{#each data.posts}}\n  <article class="prose">{{sw-html body}}</article>\n{{/each}}',
+        example: '{{#each dataset.posts}}\n  <article class="prose">{{sw-html body}}</article>\n{{/each}}',
       },
       {
         id: 'h-form',
@@ -319,16 +319,16 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
       },
       {
         id: 'h-pick-entry',
-        syntax: '{{#with (sw-pick-entry data.<slug> <id>)}}…{{/with}}',
+        syntax: '{{#with (sw-pick-entry dataset.<slug> <id>)}}…{{/with}}',
         name: 'sw-pick-entry',
         keywords: 'dataset entry pick choose widget config selection with',
         description:
           'Picks ONE dataset entry’s values by id (defaulting to the FIRST entry when the id is unset/unknown), so a #with body binds that entry’s fields. Used to render a chosen config out of several (e.g. a widget picking its settings). An empty dataset → #with renders nothing.',
         args: [
-          { name: 'data.<slug>', desc: 'The dataset to pick from.' },
+          { name: 'dataset.<slug>', desc: 'The dataset to pick from.' },
           { name: '<id>', desc: 'The chosen entry id (e.g. a key set by a {{sw-control as="dataset-item"}} picker).' },
         ],
-        example: '{{#with (sw-pick-entry data.hero @root.page.data.hero_config)}}\n  <h1>{{headline}}</h1>\n{{/with}}',
+        example: '{{#with (sw-pick-entry dataset.hero @root.page.data.hero_config)}}\n  <h1>{{headline}}</h1>\n{{/with}}',
       },
     ],
   },
@@ -343,11 +343,11 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         name: 'each',
         keywords: 'loop iterate list array for dataset entries rows click edit',
         description:
-          'The one loop helper. Over a plain list or object, the item is this and you get @index, @key, @first, @last; {{else}} renders for an empty list. Over a DATASET (data.<set>) it is dataset-aware: each iteration’s context is the entry’s FIELDS — read {{title}} directly (no values. prefix) — the entry envelope is on @entry (@entry.id, @entry.dataset), and in the editor each rendered row is click-to-edit (clicking opens that entry’s editor). No separate helper — just loop the dataset.',
-        args: [{ name: 'items', desc: 'A list/object, a dataset (data.<set>), nav.<slot>, page.children, or a website.data/page.data array.' }],
+          'The one loop helper. Over a plain list or object, the item is this and you get @index, @key, @first, @last; {{else}} renders for an empty list. Over a DATASET (dataset.<set>) it is dataset-aware: each iteration’s context is the entry’s FIELDS — read {{title}} directly (no values. prefix) — the entry envelope is on @entry (@entry.id, @entry.dataset), and in the editor each rendered row is click-to-edit (clicking opens that entry’s editor). No separate helper — just loop the dataset.',
+        args: [{ name: 'items', desc: 'A list/object, a dataset (dataset.<set>), nav.<slot>, page.children, or a website.data/page.data array.' }],
         example:
           '{{! A dataset — fields are read directly, rows are click-to-edit: }}\n' +
-          '{{#each data.services}}\n' +
+          '{{#each dataset.services}}\n' +
           '  <div class="card">\n' +
           '    <h3>{{title}}</h3>\n' +
           '    <p>{{summary}}</p>\n' +

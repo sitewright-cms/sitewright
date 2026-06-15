@@ -96,9 +96,9 @@ Adopt a **document-level, template-reuse** model (the "contentBase way"):
   (own source from the start) and can later be **promoted to a template** so its siblings
   share it.
 - **Datasets are duplicated per locale** (`services` → `services-de`) and resolved by
-  **auto locale-suffix** at render: on a `de` page, `data.services` resolves to `services-de`
+  **auto locale-suffix** at render: on a `de` page, `dataset.services` resolves to `services-de`
   when it exists, else falls back to `services`. A **manual escape hatch** stays available
-  (`{{#each data.services-de}}`, or `{{ page.locale }}` + `lookup`).
+  (`{{#each dataset.services-de}}`, or `{{ page.locale }}` + `lookup`).
 
 The legacy `PageTranslation` content kind and the per-locale publish loop are **retired**; each
 locale variant publishes once, as an ordinary page at its own path.
@@ -149,10 +149,10 @@ no-op/forward-compat hint or remove): a locale's dataset is `"<slug>-<locale>"`.
 1. **Retire the locale loop.** Remove the `for (const locale of locales)` pass, the
    `PageTranslation` lookup/override, and `localeSlug`/`localePrefix` derivation. Every page
    (including each locale variant) renders **once** at its own `path`.
-2. **Locale-aware dataset resolution.** Build the per-page `data` namespace so `data.<name>`
+2. **Locale-aware dataset resolution.** Build the per-page `dataset` namespace so `dataset.<name>`
    prefers `<name>-<page.locale>` when that dataset exists, else `<name>`. Implement in the
    render-context assembly (a small locale-aware view over `datasetEntries(bundle)`), keeping
-   explicit `data.<name>-<locale>` working as the manual override.
+   explicit `dataset.<name>-<locale>` working as the manual override.
 3. **Collection pages** honor the same suffix: a collection variant whose `page.locale` is `de`
    expands over `<dataset>-de` when present.
 4. **`<html lang>`** = `page.locale ?? defaultLocale`.

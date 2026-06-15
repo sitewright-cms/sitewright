@@ -4,10 +4,10 @@ import { WIDGET_PARTIALS } from '@sitewright/core';
 
 // Renders the hero-slider WIDGET body through the REAL template engine, resolving `{{> hero-slider}}`
 // from WIDGET_PARTIALS and consuming a `hero` config entry — the end-to-end binding the body relies
-// on (data.hero singleton → settings as carousel data-* + the slides loop). Non-preview render, so
+// on (dataset.hero singleton → settings as carousel data-* + the slides loop). Non-preview render, so
 // the output is the clean static markup a published page ships.
 const render = (config: Record<string, unknown>): string =>
-  renderTemplate('{{> hero-slider}}', { data: { hero: [config] }, partials: WIDGET_PARTIALS });
+  renderTemplate('{{> hero-slider}}', { dataset: { hero: [config] }, partials: WIDGET_PARTIALS });
 
 const fullConfig = {
   autoplay: true,
@@ -64,7 +64,7 @@ describe('hero-slider Widget render', () => {
 
   it('PREVIEW (markEntries) wraps the hero in a data-sw-entry marker → click opens the config entry', () => {
     const html = renderTemplate('{{> hero-slider}}', {
-      data: { hero: [{ id: 'config', dataset: 'hero', values: fullConfig }] },
+      dataset: { hero: [{ id: 'config', dataset: 'hero', values: fullConfig }] },
       markEntries: true,
       partials: WIDGET_PARTIALS,
     });
@@ -90,7 +90,7 @@ describe('hero-slider Widget render', () => {
   });
 
   it('renders nothing until the `hero` dataset exists (no config → empty)', () => {
-    expect(renderTemplate('{{> hero-slider}}', { data: { hero: [] }, partials: WIDGET_PARTIALS }).trim()).toBe('');
+    expect(renderTemplate('{{> hero-slider}}', { dataset: { hero: [] }, partials: WIDGET_PARTIALS }).trim()).toBe('');
   });
 
   // Multiple configs (entry envelopes) + a page.data selection → the widget renders the CHOSEN one.
@@ -99,7 +99,7 @@ describe('hero-slider Widget render', () => {
     { id: 'minimal', values: { ...fullConfig, kenburns: false, slides: [{ image: '/b.jpg', caption: 'Minimal config' }] } },
   ];
   const renderPick = (selectedId?: string): string =>
-    renderTemplate('{{> hero-slider}}', { data: { hero: envelopes }, page: { data: selectedId ? { hero_config: selectedId } : {} }, partials: WIDGET_PARTIALS });
+    renderTemplate('{{> hero-slider}}', { dataset: { hero: envelopes }, page: { data: selectedId ? { hero_config: selectedId } : {} }, partials: WIDGET_PARTIALS });
 
   it('renders the config selected by page.data.hero_config', () => {
     const html = renderPick('minimal');

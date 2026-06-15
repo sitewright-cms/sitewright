@@ -46,7 +46,7 @@ export function pagesAbout(assets: Record<string, string>): Page[] {
 <section class="mx-auto max-w-6xl px-6 py-24">
   <h2 class="text-3xl font-bold tracking-tight sm:text-4xl" data-aos="fade-up" data-sw-text="team_title">The people you’ll work with</h2>
   <div class="mt-12 grid gap-7 sm:grid-cols-2 lg:grid-cols-4" data-aos="fade-up" data-aos-delay="100">
-    {{#each data.team}}
+    {{#each dataset.team}}
     <div class="nw-card group overflow-hidden rounded-3xl border border-base-200 bg-base-100 shadow-sm hover:border-primary/30 hover:shadow-xl hover:shadow-primary/5">
       <figure class="aspect-square overflow-hidden nw-zoom"><img src="{{sw-url photo}}" alt="{{name}}" class="h-full w-full object-cover" loading="lazy" /></figure>
       <div class="p-6">
@@ -95,7 +95,7 @@ export function pagesAbout(assets: Record<string, string>): Page[] {
   <p class="mt-5 text-lg leading-relaxed text-base-content/60" data-sw-text="ca_intro">A small team means your work ships, your name is on it, and nobody manages the manager. These roles are open right now.</p>
 
   <div class="mt-14 space-y-7">
-    {{#each data.roles}}
+    {{#each dataset.roles}}
     <article class="nw-card rounded-3xl border border-base-200 bg-base-100 p-8 shadow-sm hover:border-primary/30 hover:shadow-xl hover:shadow-primary/5" data-aos="fade-up">
       <div class="flex flex-wrap items-center gap-2">
         <span class="rounded-full bg-primary/10 px-3.5 py-1 text-xs font-bold uppercase tracking-wider text-primary">{{dept}}</span>

@@ -118,15 +118,15 @@ describe('controlOptions', () => {
       { folder: 'docs', kind: 'file' as const, filename: 'b', url: '/y' },
       { folder: '', kind: 'image' as const, filename: 'c', url: '/z' },
     ],
-    data: { posts: [], team: [] },
+    dataset: { posts: [], team: [] },
   };
-  it('folder options from media (root skipped, sorted); dataset options from data keys', () => {
+  it('folder options from media (root skipped, sorted); dataset options from dataset keys', () => {
     expect(controlOptions('folder', root)).toEqual(['docs', 'photos']);
     expect(controlOptions('dataset', root)).toEqual(['posts', 'team']);
     expect(controlOptions('text', root)).toEqual([]);
   });
   it('dataset-item options are the entry IDS of the named dataset (order preserved)', () => {
-    const r = { data: { hero: [{ id: 'config', values: {} }, { id: 'minimal', values: {} }] } };
+    const r = { dataset: { hero: [{ id: 'config', values: {} }, { id: 'minimal', values: {} }] } };
     expect(controlOptions('dataset-item', r, 'hero')).toEqual(['config', 'minimal']);
     expect(controlOptions('dataset-item', r, 'missing')).toEqual([]); // unknown dataset → empty
     expect(controlOptions('dataset-item', r)).toEqual([]); // no dataset arg → empty
@@ -164,7 +164,7 @@ describe('{{sw-control}} render', () => {
   it('embeds a dataset\'s entry ids as options for as="dataset-item"', () => {
     const out = renderTemplate('{{sw-control target="page.data.hero_config" as="dataset-item" dataset="hero" label="Hero config"}}', {
       page: { data: { hero_config: 'minimal' } },
-      data: { hero: [{ id: 'config', values: {} }, { id: 'minimal', values: {} }] },
+      dataset: { hero: [{ id: 'config', values: {} }, { id: 'minimal', values: {} }] },
       preview: true,
     });
     expect(out).toContain('data-sw-control-as="dataset-item"');

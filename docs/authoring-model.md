@@ -26,7 +26,7 @@ The most important framing: most blocks belong to one of two audiences.
 | Block | What it is | Scope | Authored by | Edited by | Data-backed | Referenced in code as |
 |---|---|---|---|---|---|---|
 | **Component** | Interactive primitive + `data-sw-component` contract (Carousel, Lightbox, Tabs, Modal, Form, CookieConsent) | element/block | platform | coder/agent (writes the markup) | no — you bring content | `data-sw-component="…"` + `data-sw-part` |
-| **Dataset** | Structured content store — collections of typed records (a "database replacement") | data layer | coder/agent/user | end-user (grid + entry editor) | *is* the data | `{{#each data.<slug>}}` |
+| **Dataset** | Structured content store — collections of typed records (a "database replacement") | data layer | coder/agent/user | end-user (grid + entry editor) | *is* the data | `{{#each dataset.<slug>}}` |
 | **Snippet** | **Reference** markup — a copy-to-own starter ("how to compose a navbar") | any | platform/coder | nobody (you copy it and own the result) | no | `{{> name}}` (or copy the source) |
 | **Widget** | **Managed**, data-backed, editable drop-in block (hero slider, testimonials, logo wall) | block | platform/coder (defines it) | end-user (no-code) | yes — owns a dataset | `{{> name}}` + a `provides` manifest |
 | **Template** | Full-page reusable layout | page | coder/agent | end-user via its data | optional | `template: "global:<id>"` on a Page |
@@ -72,7 +72,7 @@ stay the atoms; Widgets are managed molecules built from them.
 ## Which do I reach for? (litmus tests)
 
 - Need **behavior** (slider, modal, tabs, lightbox)? → **Component** (contract in the catalog / MCP `get_components`).
-- Need **repeating structured content**? → **Dataset**, bound with `{{#each data.x}}`.
+- Need **repeating structured content**? → **Dataset**, bound with `{{#each dataset.x}}`.
 - Need a **whole-page layout**? → **Template**.
 - Want a **code starting point** to copy and own? → **Snippet**.
 - Want a **drop-in that end-users edit without code**, with managed data? → **Widget**.
@@ -85,7 +85,7 @@ stay the atoms; Widgets are managed molecules built from them.
 
 **Coder / agent (producer, code-first):**
 1. Reach for a **Component** when you need behavior — read its contract from the catalog / MCP.
-2. Bind a **Dataset** with `{{#each data.x}}` for repeating content.
+2. Bind a **Dataset** with `{{#each dataset.x}}` for repeating content.
 3. Compose into a page `source` or a **Template**.
 4. Copy a **Snippet** to start; **define a Widget** (snippet + manifest) when end-users will edit it.
 

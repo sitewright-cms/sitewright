@@ -92,7 +92,7 @@ const DANGEROUS = new Set(['__proto__', 'constructor', 'prototype']);
  * `page.data` value — a NESTED `page.data.<path>` OR a BARE single-segment key (defaults to a top-level
  * page.data property); or a GLOBAL `website.data.<path>`. Other page fields (path/status/template/…) are
  * NOT settable. (A bare `data.<path>` is NO LONGER accepted — use `page.data.<path>` for clarity, since
- * `{{data.*}}` is the separate datasets namespace.)
+ * `{{dataset.*}}` is the separate datasets namespace.)
  */
 export function classifyControlTarget(target: unknown): ControlTarget | null {
   if (typeof target !== 'string' || target === '') return null;
@@ -129,7 +129,7 @@ export function classifyControlTarget(target: unknown): ControlTarget | null {
 interface ControlRoot {
   page?: { title?: unknown; description?: unknown; image?: unknown; data?: unknown };
   website?: { data?: unknown };
-  data?: unknown;
+  dataset?: unknown;
   media?: readonly RenderMedia[];
 }
 
@@ -176,15 +176,15 @@ export function controlOptions(as: ControlAs, root: ControlRoot, arg?: string): 
     return [...set].sort();
   }
   if (as === 'dataset') {
-    const data = root.data;
-    return data && typeof data === 'object' ? Object.keys(data).filter((k) => !DANGEROUS.has(k)).sort() : [];
+    const datasets = root.dataset;
+    return datasets && typeof datasets === 'object' ? Object.keys(datasets).filter((k) => !DANGEROUS.has(k)).sort() : [];
   }
   if (as === 'dataset-item') {
     const slug = typeof arg === 'string' ? arg : '';
-    const data = root.data;
-    if (!slug || DANGEROUS.has(slug) || !data || typeof data !== 'object' || !Object.prototype.hasOwnProperty.call(data, slug)) return [];
+    const datasets = root.dataset;
+    if (!slug || DANGEROUS.has(slug) || !datasets || typeof datasets !== 'object' || !Object.prototype.hasOwnProperty.call(datasets, slug)) return [];
     // eslint-disable-next-line security/detect-object-injection -- slug is proto-guarded + hasOwnProperty-checked
-    const entries = (data as Record<string, unknown>)[slug];
+    const entries = (datasets as Record<string, unknown>)[slug];
     if (!Array.isArray(entries)) return [];
     return entries
       .map((e) => (e && typeof e === 'object' && typeof (e as { id?: unknown }).id === 'string' ? (e as { id: string }).id : ''))

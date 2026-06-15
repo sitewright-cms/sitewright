@@ -95,7 +95,7 @@ export function pageHome(assets: Record<string, string>): Page {
     <p class="mt-4 text-lg leading-relaxed text-base-content/60" data-sw-text="svc_sub">Strategy, design, and engineering — no hand-offs, no agencies-of-agencies.</p>
   </div>
   <div class="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-3" data-aos="fade-up" data-aos-delay="100">
-    {{#each data.services}}
+    {{#each dataset.services}}
     <div class="card nw-card border border-base-200 bg-base-100 shadow-sm hover:border-primary/30 hover:shadow-xl hover:shadow-primary/5">
       <div class="card-body p-7">
         <span class="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/15 to-secondary/15 text-primary">{{sw-icon icon "h-6 w-6"}}</span>
@@ -137,7 +137,7 @@ export function pageHome(assets: Record<string, string>): Page {
     <a class="nw-underline inline-flex items-center gap-1.5 font-semibold text-primary no-underline" href="/work" data-sw-href="href_work"><span data-sw-text="work_link">View all projects</span> ${icon('arrow-right', 'h-4 w-4')}</a>
   </div>
   <div class="mt-12 grid gap-7 md:grid-cols-3" data-aos="fade-up" data-aos-delay="100">
-    {{#each data.projects}}
+    {{#each dataset.projects}}
     <a class="group card nw-card overflow-hidden border border-base-200 bg-base-100 no-underline shadow-sm hover:border-primary/30 hover:shadow-xl hover:shadow-primary/5 nw-zoom" href="/work" data-sw-href="href_work">
       <figure class="relative aspect-[4/3] overflow-hidden">
         <img src="{{sw-url image}}" alt="{{title}}" class="h-full w-full object-cover" loading="lazy" />
@@ -163,7 +163,7 @@ export function pageHome(assets: Record<string, string>): Page {
          dots, keyboard nav, and gentle autoplay (pausing on hover/focus/reduced-motion). -->
     <div class="relative mt-12" data-sw-component="carousel" data-sw-block="Carousel" data-loop="true" data-autoplay="true" data-interval="6000" data-aos="fade-up" data-aos-delay="100">
       <div data-sw-part="track">
-        {{#each data.testimonials}}
+        {{#each dataset.testimonials}}
         <figure data-sw-part="slide" class="px-1 sm:px-10">
           <div class="rounded-3xl border border-white/10 bg-white/5 p-10 backdrop-blur">
             <div class="flex flex-col items-center text-center">

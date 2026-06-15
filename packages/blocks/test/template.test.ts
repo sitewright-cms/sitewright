@@ -5,7 +5,7 @@ const ctx: TemplateContext = {
   company: { name: 'Acme & Co', address: { city: 'Berlin' } },
   website: { siteUrl: 'https://acme.test' },
   page: { title: 'Home', published: '2026-06-01T12:00:00Z' },
-  data: {
+  dataset: {
     products: [
       { name: 'Widget', price: 9 },
       { name: 'Gadget', price: 12 },
@@ -22,27 +22,27 @@ describe('dataset-aware {{#each}} — flattened fields + preview markers', () =>
     { id: 'e2', dataset: 'posts', values: { t: 'B' } },
   ];
   // Over a DATASET the iteration context IS entry.values, so fields are read directly ({{t}}, not {{values.t}}).
-  const src = '<ul>{{#each data.posts}}<li>{{t}}</li>{{else}}<li>none</li>{{/each}}</ul>';
+  const src = '<ul>{{#each dataset.posts}}<li>{{t}}</li>{{else}}<li>none</li>{{/each}}</ul>';
 
   it('flattens entry fields and exposes the envelope on @entry', () => {
-    const out = renderTemplate('{{#each data.posts}}{{t}}:{{@entry.id}}:{{@entry.dataset}}{{#if @first}}*{{/if}};{{/each}}', {
-      data: { posts: items },
+    const out = renderTemplate('{{#each dataset.posts}}{{t}}:{{@entry.id}}:{{@entry.dataset}}{{#if @first}}*{{/if}};{{/each}}', {
+      dataset: { posts: items },
     });
     expect(out).toBe('A:e1:posts*;B:e2:posts;');
   });
 
   it('wraps each row in a data-sw-entry marker ONLY when markEntries is set', () => {
-    expect(renderTemplate(src, { data: { posts: items }, markEntries: true })).toBe(
+    expect(renderTemplate(src, { dataset: { posts: items }, markEntries: true })).toBe(
       '<ul><div data-sw-entry="e1" data-sw-dataset="posts"><li>A</li></div><div data-sw-entry="e2" data-sw-dataset="posts"><li>B</li></div></ul>',
     );
   });
 
   it('emits NO wrapper without markEntries — publish is byte-identical to a plain loop', () => {
-    expect(renderTemplate(src, { data: { posts: items } })).toBe('<ul><li>A</li><li>B</li></ul>');
+    expect(renderTemplate(src, { dataset: { posts: items } })).toBe('<ul><li>A</li><li>B</li></ul>');
   });
 
   it('renders the {{else}} inverse for an empty list', () => {
-    expect(renderTemplate(src, { data: { posts: [] }, markEntries: true })).toBe('<ul><li>none</li></ul>');
+    expect(renderTemplate(src, { dataset: { posts: [] }, markEntries: true })).toBe('<ul><li>none</li></ul>');
   });
 
   it('a non-entry array (no id/dataset) falls through to the built-in #each (no flatten, no marker)', () => {
@@ -54,7 +54,7 @@ describe('dataset-aware {{#each}} — flattened fields + preview markers', () =>
   });
 
   // Nested-dataset values (a `list` field = an array of objects inside an entry) render with no
-  // template change: the outer {{#each data.x}} flattens to entry.values, and the inner array is a
+  // template change: the outer {{#each dataset.x}} flattens to entry.values, and the inner array is a
   // plain (non-entry) array that falls through to stock #each. This is the render half of the
   // nested-dataset feature (the schema half is in @sitewright/schema's dataset.ts).
   it('renders a nested list field (entry.values.slides[]) + a sibling scalar setting', () => {
@@ -72,20 +72,20 @@ describe('dataset-aware {{#each}} — flattened fields + preview markers', () =>
       },
     ];
     const out = renderTemplate(
-      '{{#each data.hero}}{{#if show_navigation}}[nav]{{/if}}{{#each slides}}<img src="{{sw-url image}}" alt="{{caption}}">{{/each}}{{/each}}',
-      { data: { hero } },
+      '{{#each dataset.hero}}{{#if show_navigation}}[nav]{{/if}}{{#each slides}}<img src="{{sw-url image}}" alt="{{caption}}">{{/each}}{{/each}}',
+      { dataset: { hero } },
     );
     expect(out).toBe('[nav]<img src="/a.jpg" alt="A"><img src="/b.jpg" alt="B">');
   });
 
-  it('supports block params ({{#each data.posts as |post idx|}}) over flattened entry fields', () => {
-    const out = renderTemplate('{{#each data.posts as |post idx|}}{{idx}}:{{post.t}};{{/each}}', { data: { posts: items } });
+  it('supports block params ({{#each dataset.posts as |post idx|}}) over flattened entry fields', () => {
+    const out = renderTemplate('{{#each dataset.posts as |post idx|}}{{idx}}:{{post.t}};{{/each}}', { dataset: { posts: items } });
     expect(out).toBe('0:A;1:B;');
   });
 
   it('preserves ../ parent access from inside a dataset loop', () => {
-    const out = renderTemplate('{{#each data.posts}}{{t}}@{{../page.title}};{{/each}}', {
-      data: { posts: items },
+    const out = renderTemplate('{{#each dataset.posts}}{{t}}@{{../page.title}};{{/each}}', {
+      dataset: { posts: items },
       page: { title: 'Home' },
     });
     expect(out).toBe('A@Home;B@Home;');
@@ -136,32 +136,32 @@ describe('renderTemplate — Handlebars features', () => {
   });
 
   it('supports {{#if}}/{{else}} and {{#unless}}', () => {
-    expect(renderTemplate('{{#if data.featured}}Y{{else}}N{{/if}}', ctx)).toBe('Y');
-    expect(renderTemplate('{{#if data.empty}}Y{{else}}N{{/if}}', ctx)).toBe('N');
+    expect(renderTemplate('{{#if dataset.featured}}Y{{else}}N{{/if}}', ctx)).toBe('Y');
+    expect(renderTemplate('{{#if dataset.empty}}Y{{else}}N{{/if}}', ctx)).toBe('N');
     expect(renderTemplate('{{#unless page.missing}}ok{{/unless}}', ctx)).toBe('ok');
   });
 
   it('supports {{#each}} with @index/@first/@last and item fields', () => {
-    expect(renderTemplate('{{#each data.products}}{{@index}}:{{name}}{{#unless @last}}, {{/unless}}{{/each}}', ctx)).toBe(
+    expect(renderTemplate('{{#each dataset.products}}{{@index}}:{{name}}{{#unless @last}}, {{/unless}}{{/each}}', ctx)).toBe(
       '0:Widget, 1:Gadget',
     );
-    expect(renderTemplate('{{#each data.tags}}[{{this}}]{{/each}}', ctx)).toBe('[a][b]');
+    expect(renderTemplate('{{#each dataset.tags}}[{{this}}]{{/each}}', ctx)).toBe('[a][b]');
   });
 
   it('supports {{#each}} @key over an object and block params', () => {
-    const c: TemplateContext = { data: { obj: { a: 1, b: 2 } } };
-    expect(renderTemplate('{{#each data.obj as |v k|}}{{k}}={{v}};{{/each}}', c)).toBe('a=1;b=2;');
+    const c: TemplateContext = { dataset: { obj: { a: 1, b: 2 } } };
+    expect(renderTemplate('{{#each dataset.obj as |v k|}}{{k}}={{v}};{{/each}}', c)).toBe('a=1;b=2;');
   });
 
   it('supports {{#with}}, {{lookup}}, subexpressions, and @root', () => {
     expect(renderTemplate('{{#with company.address}}{{city}}{{/with}}', ctx)).toBe('Berlin');
-    expect(renderTemplate('{{#each data.products}}{{ lookup ../data.tags @index }}{{/each}}', ctx)).toBe('ab');
-    expect(renderTemplate('{{#each data.products}}{{ @root.company.name }} {{/each}}', ctx)).toBe('Acme &amp; Co Acme &amp; Co ');
+    expect(renderTemplate('{{#each dataset.products}}{{ lookup ../dataset.tags @index }}{{/each}}', ctx)).toBe('ab');
+    expect(renderTemplate('{{#each dataset.products}}{{ @root.company.name }} {{/each}}', ctx)).toBe('Acme &amp; Co Acme &amp; Co ');
   });
 
   it('renders partials in the current scope (incl. inside each)', () => {
     const c: TemplateContext = { ...ctx, partials: { card: '<li>{{name}} ({{price}})</li>' } };
-    expect(renderTemplate('<ul>{{#each data.products}}{{> card}}{{/each}}</ul>', c)).toBe(
+    expect(renderTemplate('<ul>{{#each dataset.products}}{{> card}}{{/each}}</ul>', c)).toBe(
       '<ul><li>Widget (9)</li><li>Gadget (12)</li></ul>',
     );
   });
@@ -179,8 +179,8 @@ describe('renderTemplate — Handlebars features', () => {
 
 describe('{{sw-html}} — sanitized HTML output', () => {
   it('renders stored HTML through the data-sw-html sanitizer (tags kept, scripts/handlers stripped)', () => {
-    const ctx = { data: { faq: [{ id: 'f1', dataset: 'faq', status: 'published', values: { a: '<p>Hi <strong>there</strong></p><script>alert(1)</script><img src="x" onerror="alert(1)">' } }] } } as TemplateContext;
-    const out = renderTemplate('{{#each data.faq}}<div>{{sw-html a}}</div>{{/each}}', ctx);
+    const ctx = { dataset: { faq: [{ id: 'f1', dataset: 'faq', status: 'published', values: { a: '<p>Hi <strong>there</strong></p><script>alert(1)</script><img src="x" onerror="alert(1)">' } }] } } as TemplateContext;
+    const out = renderTemplate('{{#each dataset.faq}}<div>{{sw-html a}}</div>{{/each}}', ctx);
     expect(out).toContain('<p>Hi <strong>there</strong></p>');
     expect(out).not.toContain('<script');
     expect(out).not.toContain('onerror');
@@ -386,8 +386,8 @@ describe('renderTemplate — MINI SHOP helpers', () => {
   it('{{sw-add-to-cart}} keeps a quote/ampersand name from breaking out of the attribute', () => {
     // Hostile value via context (a Handlebars string literal can't itself contain a `"`). A double-quote
     // must stay escaped after the resolveDirectives parse→serialize round-trip → no attribute breakout.
-    const out = renderTemplate('{{sw-add-to-cart sku="x" name=data.evil}}', {
-      data: { evil: 'A&B" onerror=alert(1) z="' },
+    const out = renderTemplate('{{sw-add-to-cart sku="x" name=dataset.evil}}', {
+      dataset: { evil: 'A&B" onerror=alert(1) z="' },
     });
     expect(out).not.toContain('" onerror='); // the quote stays &quot; → cannot break out
     expect(out).toContain('&quot;');
@@ -561,8 +561,8 @@ describe('renderTemplate — security', () => {
   });
 
   it('caps output size', () => {
-    const c: TemplateContext = { data: { items: Array.from({ length: 5000 }, () => 'xxxxxxxxxx') } };
-    expect(() => renderTemplate('{{#each data.items}}{{this}}{{/each}}', c, { maxOutput: 1000 })).toThrow(TemplateError);
+    const c: TemplateContext = { dataset: { items: Array.from({ length: 5000 }, () => 'xxxxxxxxxx') } };
+    expect(() => renderTemplate('{{#each dataset.items}}{{this}}{{/each}}', c, { maxOutput: 1000 })).toThrow(TemplateError);
   });
 });
 
@@ -615,17 +615,17 @@ describe('validateTemplate — context-aware rejection (Handlebars is not contex
   });
 
   it('rejects interpolation in an unquoted attribute', () => {
-    rejects('<div class={{ data.cls }}>x</div>');
+    rejects('<div class={{ dataset.cls }}>x</div>');
   });
 
   it('rejects interpolation in event-handler and style attributes', () => {
-    rejects('<button onclick="{{ data.x }}">x</button>');
-    rejects('<div style="color:{{ data.c }}">x</div>');
+    rejects('<button onclick="{{ dataset.x }}">x</button>');
+    rejects('<div style="color:{{ dataset.c }}">x</div>');
   });
 
   it('rejects interpolation in <script>, <style>, and HTML comments', () => {
-    rejects('<script>var x = {{ data.x }};</script>');
-    rejects('<style>.a { color: {{ data.c }} }</style>');
+    rejects('<script>var x = {{ dataset.x }};</script>');
+    rejects('<style>.a { color: {{ dataset.c }} }</style>');
     rejects('<!-- {{ page.title }} -->');
   });
 
@@ -652,17 +652,17 @@ describe('validateTemplate — context-aware rejection (Handlebars is not contex
 
   it('does NOT gate data-srcset or other data-* (only data-src/data-bg join the URL set)', () => {
     allows('<img data-srcset="{{ page.srcset }}" alt="x">'); // mirrors plain srcset — image-fetch only
-    allows('<div data-sw-text="{{ data.v }}"></div>'); // editor directive attr — unaffected
-    allows('<div data-aos="{{ data.fx }}"></div>'); // animation attr — unaffected
+    allows('<div data-sw-text="{{ dataset.v }}"></div>'); // editor directive attr — unaffected
+    allows('<div data-aos="{{ dataset.fx }}"></div>'); // animation attr — unaffected
   });
 
   it('allows interpolation in element text and quoted non-URL attributes', () => {
-    allows('<p data-x="{{ data.v }}">{{ data.v }}</p>');
-    allows('{{#each data.products}}<span>{{name}}</span>{{/each}}'); // block tags are not output mustaches
+    allows('<p data-x="{{ dataset.v }}">{{ dataset.v }}</p>');
+    allows('{{#each dataset.products}}<span>{{name}}</span>{{/each}}'); // block tags are not output mustaches
   });
 
   it('renderTemplate runs the validator (rejects an unsafe template before rendering)', () => {
-    expect(() => renderTemplate('<div class={{ data.cls }}>x</div>', ctx)).toThrow(TemplateError);
+    expect(() => renderTemplate('<div class={{ dataset.cls }}>x</div>', ctx)).toThrow(TemplateError);
   });
 });
 
@@ -680,13 +680,13 @@ describe('validateTemplate — no tenant JS + URL scheme (security-review fixes)
 
   it('rejects inline on* event-handler attributes (literal or interpolated)', () => {
     rejects('<div onmouseover="steal()">x</div>');
-    rejects('<button onclick="{{ data.x }}">x</button>');
+    rejects('<button onclick="{{ dataset.x }}">x</button>');
   });
 
   it('rejects a URL whose scheme a bare literal prefix does NOT fix', () => {
-    rejects('<a href="j{{ data.rest }}">x</a>'); // assembles javascript:
-    rejects('<a href="//{{ data.host }}">x</a>'); // protocol-relative
-    rejects('<img src="data:{{ data.b64 }}">'); // data: scheme
+    rejects('<a href="j{{ dataset.rest }}">x</a>'); // assembles javascript:
+    rejects('<a href="//{{ dataset.host }}">x</a>'); // protocol-relative
+    rejects('<img src="data:{{ dataset.b64 }}">'); // data: scheme
   });
 
   it('still allows safe URL prefixes and the {{sw-url}} helper', () => {
@@ -740,8 +740,8 @@ describe('validateTemplate — skeleton-owned semantic landmarks are reserved', 
 
 describe('{{sw-pick-entry}} (Widget config selector)', () => {
   const pick = (sel: string, hero: unknown) =>
-    renderTemplate('{{#with (sw-pick-entry data.hero @root.page.data.pick)}}[{{label}}]{{/with}}', {
-      data: { hero },
+    renderTemplate('{{#with (sw-pick-entry dataset.hero @root.page.data.pick)}}[{{label}}]{{/with}}', {
+      dataset: { hero },
       page: { data: sel ? { pick: sel } : {} },
     } as TemplateContext);
 
@@ -768,8 +768,8 @@ describe('{{sw-pick-entry}} (Widget config selector)', () => {
   // BLOCK form: renders the block with the chosen entry's values; in PREVIEW wraps in a data-sw-entry
   // marker so a click opens that entry; @entry exposes the envelope id.
   const block = (markEntries: boolean) =>
-    renderTemplate('{{#sw-pick-entry data.hero @root.page.data.pick}}<i>{{label}} {{@entry.id}}</i>{{else}}EMPTY{{/sw-pick-entry}}', {
-      data: { hero: envelopes },
+    renderTemplate('{{#sw-pick-entry dataset.hero @root.page.data.pick}}<i>{{label}} {{@entry.id}}</i>{{else}}EMPTY{{/sw-pick-entry}}', {
+      dataset: { hero: envelopes },
       page: { data: { pick: 'b' } },
       markEntries,
     } as TemplateContext);
@@ -784,6 +784,6 @@ describe('{{sw-pick-entry}} (Widget config selector)', () => {
     expect(out).toContain('<i>Beta b</i>');
   });
   it('block form routes an empty dataset to {{else}}', () => {
-    expect(renderTemplate('{{#sw-pick-entry data.hero @root.page.data.pick}}X{{else}}EMPTY{{/sw-pick-entry}}', { data: { hero: [] } } as TemplateContext)).toBe('EMPTY');
+    expect(renderTemplate('{{#sw-pick-entry dataset.hero @root.page.data.pick}}X{{else}}EMPTY{{/sw-pick-entry}}', { dataset: { hero: [] } } as TemplateContext)).toBe('EMPTY');
   });
 });

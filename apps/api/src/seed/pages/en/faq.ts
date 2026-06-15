@@ -21,7 +21,7 @@ export function pageFaq(): Page {
   <p class="mt-5 text-lg leading-relaxed text-base-content/60" data-sw-text="faq_intro">The questions every project starts with — answered plainly. Anything missing? Just ask.</p>
 
   <div class="join join-vertical mt-14 w-full rounded-3xl shadow-sm">
-    {{#each data.faq}}
+    {{#each dataset.faq}}
     <details class="collapse collapse-plus join-item border border-base-200 bg-base-100"{{#if @first}} open{{/if}}>
       <summary class="collapse-title font-semibold">{{question}}</summary>
       <div class="collapse-content prose prose-sm max-w-none text-base-content/70">{{sw-html answer}}</div>

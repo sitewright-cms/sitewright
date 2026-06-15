@@ -101,7 +101,7 @@ export const GLOBAL_TEMPLATES: readonly Template[] = [
     <p class="mx-auto mt-4 max-w-xl text-lg text-base-content/60" data-sw-text="page.data.intro">Browse our products and build your order.</p>
   </header>
   <div class="grid gap-7 sm:grid-cols-2 lg:grid-cols-3">
-    {{#each data.products}}
+    {{#each dataset.products}}
     <div class="card group overflow-hidden border border-base-200 bg-base-100 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary/30 hover:shadow-xl">
       {{#if image}}<figure class="aspect-square overflow-hidden bg-base-200"><img src="{{sw-url image}}" alt="{{name}}" class="h-full w-full object-cover transition duration-500 group-hover:scale-105"></figure>{{/if}}
       <div class="card-body gap-2">

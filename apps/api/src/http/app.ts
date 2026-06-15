@@ -2005,7 +2005,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           website: { siteUrl: website?.siteUrl, data: website?.data, shop: resolveShopChannels(website?.shop, (fid) => `/f/${project.id}/${fid}`), t: resolveTranslations(website?.translations, previewLocale, defaultLocale) },
           page: previewPage,
           parentPage: previewParent,
-          data: localeData,
+          dataset: localeData,
           item,
           partials,
           // PREVIEW-only: keep the data-sw-* leaf-directive markers so the editor bridge can make
@@ -2028,7 +2028,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           website: { siteUrl: website?.siteUrl, data: website?.data, shop: resolveShopChannels(website?.shop, (fid) => `/f/${project.id}/${fid}`), t: resolveTranslations(website?.translations, previewLocale, defaultLocale) },
           page: previewPage,
           parentPage: previewParent,
-          data: localeData,
+          dataset: localeData,
           nav: slotNav as unknown as Record<string, unknown>,
           // PREVIEW-only: keep ALL data-sw-* markers so the bridge can make a slot's directives
           // click-to-edit. The platform does NOT restrict which directives a slot may use — that's the
@@ -3218,7 +3218,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         templateSource = body.template as string; // refine guarantees one of template/pageId
       }
 
-      // Binding context: company (identity), website (public fields only), page, datasets→data.
+      // Binding context: company (identity), website (public fields only), page, datasets→dataset.
       let company: Record<string, unknown> = { name: project.name };
       let website: Record<string, unknown> | undefined;
       let themeBodyClass = '';
@@ -3284,7 +3284,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           company,
           website,
           page: pageCtx,
-          data,
+          dataset: data,
           item,
           partials,
           forms: renderForms,
@@ -3383,7 +3383,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           company: brand as unknown as Record<string, unknown>,
           website,
           page: { title: project.name, path: '/' },
-          data: {},
+          dataset: {},
           item: {},
           partials,
         });

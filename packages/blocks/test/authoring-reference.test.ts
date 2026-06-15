@@ -31,8 +31,8 @@ describe('SW_DIRECTIVES ↔ the resolveDirectives pass', () => {
 
   it('the automatic directive (data-sw-entry) is really emitted by the dataset loop in preview', () => {
     // markEntries (preview-only) makes the dataset `{{#each}}` wrap each row in data-sw-entry.
-    const html = renderTemplate('{{#each data.posts}}<h3>{{title}}</h3>{{/each}}', {
-      data: { posts: [entry('p1', 'Hello')] },
+    const html = renderTemplate('{{#each dataset.posts}}<h3>{{title}}</h3>{{/each}}', {
+      dataset: { posts: [entry('p1', 'Hello')] },
       markEntries: true,
       preview: true,
     });
@@ -86,13 +86,13 @@ describe('BINDING_NAMESPACES ↔ the render context', () => {
   it('every documented namespace actually resolves a value in a real render', () => {
     const html = renderTemplate(
       'C={{company.name}} W={{website.siteUrl}} P={{page.title}} PP={{page.parent.title}} ' +
-        'D={{#each data.list}}{{title}}{{/each}} I={{item.set.k1.title}} N={{#each nav.header}}{{path}}{{/each}}',
+        'D={{#each dataset.list}}{{title}}{{/each}} I={{item.set.k1.title}} N={{#each nav.header}}{{path}}{{/each}}',
       {
         company: { name: 'CO' },
         website: { siteUrl: 'WS' },
         page: { title: 'PG' },
         parentPage: { title: 'PRP' },
-        data: { list: [{ id: 'k1', dataset: 'set', values: { title: 'DV' } }] },
+        dataset: { list: [{ id: 'k1', dataset: 'set', values: { title: 'DV' } }] },
         item: { set: { k1: { title: 'IV' } } },
         nav: { header: [{ path: '/NV' }] },
       },
@@ -106,8 +106,8 @@ describe('BINDING_NAMESPACES ↔ the render context', () => {
 describe('LOOP_VARIABLES ↔ a real {{#each}} / {{#with}} render', () => {
   it('the engine frame variables (@index, @entry, @first, @last) + @root resolve as documented', () => {
     const html = renderTemplate(
-      '{{#each data.list}}[{{@index}}|{{@entry.id}}|{{#if @first}}F{{/if}}{{#if @last}}L{{/if}}|{{@root.company.name}}]{{/each}}',
-      { company: { name: 'ROOT' }, data: { list: [entry('a', 'A'), entry('b', 'B')] } },
+      '{{#each dataset.list}}[{{@index}}|{{@entry.id}}|{{#if @first}}F{{/if}}{{#if @last}}L{{/if}}|{{@root.company.name}}]{{/each}}',
+      { company: { name: 'ROOT' }, dataset: { list: [entry('a', 'A'), entry('b', 'B')] } },
     );
     expect(html).toContain('[0|a|F|ROOT]');
     expect(html).toContain('[1|b|L|ROOT]');

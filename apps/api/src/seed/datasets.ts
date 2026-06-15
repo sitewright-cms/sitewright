@@ -4,7 +4,7 @@ import { WIDGET_MANIFESTS } from '@sitewright/core';
 // ---------------------------------------------------------------- datasets (the CMS)
 //
 // Every translatable dataset is declared ONCE and emitted per locale via the platform's
-// `<slug>-<locale>` convention: a `de` page binding `{{#each data.services}}` auto-resolves to
+// `<slug>-<locale>` convention: a `de` page binding `{{#each dataset.services}}` auto-resolves to
 // `services-de` (resolveLocaleDatasets in @sitewright/core). The default-locale dataset keeps the
 // bare slug. `reference` fields point at the SAME-locale twin of their target (e.g. `roles-de`
 // managers reference `team-de` entry ids), so keyed `{{item.team.<id>.…}}` lookups resolve

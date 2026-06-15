@@ -20,11 +20,18 @@ import { WheelGesturesPlugin } from 'embla-carousel-wheel-gestures';
 var DOT_SVG =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/></svg>';
 
-// Localized SYSTEM UI string (see @sitewright/blocks systemI18nScript → window.__SW_T__), flooring
-// to the English fallback. `{n}`/`{total}` placeholders are filled by the caller.
+// Localized SYSTEM UI string from `<html data-sw-i18n="{…}">` — a CSP-safe attribute set per page by
+// systemI18nData (the published site's `default-src 'self'` CSP blocks inline dict scripts), flooring
+// to the English fallback. Parsed once. `{n}`/`{total}` placeholders are filled by the caller.
 function swT(key, fallback) {
-  var d = (typeof window !== 'undefined' && window.__SW_T__) || {};
-  var v = d[key];
+  if (swT._ === undefined) {
+    try {
+      swT._ = JSON.parse((typeof document !== 'undefined' && document.documentElement.getAttribute('data-sw-i18n')) || '{}');
+    } catch (e) {
+      swT._ = {};
+    }
+  }
+  var v = swT._[key];
   return typeof v === 'string' && v !== '' ? v : fallback;
 }
 

@@ -109,11 +109,12 @@ export interface RenderDocumentOptions extends RenderContext {
    */
   inlineScripts?: readonly string[];
   /**
-   * A tiny inline script body that publishes the resolved SYSTEM UI strings as `window.__SW_T__`
-   * (see @sitewright/blocks `systemI18nScript`) for the first-party component RUNTIMES. Emitted
-   * NON-deferred just before the component scripts so the global is set before they run (it works
-   * in both the publish path — external deferred `scripts` — and preview — `inlineScripts`). Pass
-   * it only when interactive components ship (only-used-ships). First-party; never tenant input.
+   * The resolved SYSTEM UI strings as a JSON string (see @sitewright/blocks `systemI18nData`),
+   * stamped onto `<html data-sw-i18n="…">` for the first-party component RUNTIMES to read +
+   * JSON.parse. It MUST be an ATTRIBUTE, not an inline `<script>`: the published site's CSP is
+   * `default-src 'self'` with NO `script-src 'unsafe-inline'`, so an inline dict script is blocked
+   * (that's also why the component runtimes are external files). Pass it only when interactive
+   * components ship (only-used-ships). First-party; never tenant input.
    */
   systemI18n?: string;
 }
@@ -179,7 +180,7 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
   const jsonLd = schemaOrgJsonLd(organization);
   return (
     `<!doctype html>\n` +
-    `<html lang="${escapeAttr(lang)}">\n` +
+    `<html lang="${escapeAttr(lang)}"${systemI18n ? ` data-sw-i18n="${escapeAttr(systemI18n)}"` : ''}>\n` +
     `<head>\n` +
     `<meta charset="utf-8" />\n` +
     `<meta name="viewport" content="width=device-width, initial-scale=1" />\n` +
@@ -218,9 +219,6 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     slotLandmark('footer', 'footer', footer) +
     slotLandmark('div', 'bottom', bottom) +
     `${customScripts ?? ''}` +
-    // SYSTEM i18n dict — NON-deferred so window.__SW_T__ is set before the (deferred/inline)
-    // component runtimes read it. Same `</script` neutralization as inlineScripts.
-    (systemI18n ? `<script>${systemI18n.replace(/<\/(script)/gi, '<\\/$1')}</script>` : '') +
     (scripts ?? [])
       .map((src) => `<script defer src="${escapeAttr(src)}"></script>`)
       .join('') +

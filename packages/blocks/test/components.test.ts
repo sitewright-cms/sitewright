@@ -125,6 +125,34 @@ describe('component registry', () => {
     expect(css).toContain('prefers-reduced-motion:reduce');
   });
 
+  it('Modal auto-injects a styled close button and honours data-closebutton / data-backdrop-close', () => {
+    const { css, js } = componentAssets(['Modal']);
+    // The runtime builds a top-right close button (brand-primary square, white icon) and reads the
+    // two opt-out switches off the root.
+    expect(js).toContain("setAttribute('data-sw-part','autoclose')");
+    expect(js).toContain("getAttribute('data-closebutton')!=='false'");
+    expect(js).toContain("getAttribute('data-backdrop-close')!=='false'");
+    // Authored close buttons (any number) are wired too.
+    expect(js).toContain("querySelectorAll('[data-sw-part=\"close\"]')");
+    // The close button's appearance: primary background, white icon, hover zoom + 180° spin.
+    expect(css).toContain('[data-sw-part="autoclose"]');
+    expect(css).toContain('var(--sw-color-primary');
+    expect(css).toContain('rotate(180deg)');
+    expect(css).toContain('scale(1.1)');
+  });
+
+  it('Modal dialog defaults are zero-specificity so dialog classes win, and the backdrop blurs', () => {
+    const css = componentAssets(['Modal']).css;
+    // Appearance defaults wrapped in :where() (specificity 0) → utility classes on the dialog
+    // override them without !important; bg/text come from the global theme vars; 1.5rem padding.
+    expect(css).toContain(':where([data-sw-block="Modal"] dialog)');
+    expect(css).toContain('var(--sw-color-base-100');
+    expect(css).toContain('var(--sw-color-base-content');
+    expect(css).toContain('padding:1.5rem');
+    // Backdrop dims AND blurs.
+    expect(css).toContain('backdrop-filter:blur(5px)');
+  });
+
   it('Tabs builds an ARIA tablist with keyboard nav', () => {
     const tabs = componentAssets(['Tabs']);
     expect(tabs.css).toContain('[data-sw-part="tab"]');

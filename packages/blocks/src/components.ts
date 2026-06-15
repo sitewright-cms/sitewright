@@ -226,7 +226,10 @@ const LIGHTBOX_JS = LIGHTBOX_SMARTPHOTO_RUNTIME_JS;
 
 // --- Modal -------------------------------------------------------------------
 // A trigger button that opens a native <dialog> (which provides focus trap,
-// Escape, ::backdrop, and background inerting for free). JS only wires open/close.
+// Escape, ::backdrop, and background inerting for free). JS wires open/close AND injects a styled
+// close button (top-right, brand-primary square, white icon, hover zoom + 180° icon spin) unless
+// data-closebutton="false". Authored [data-sw-part="close"] buttons (any number) + arbitrary
+// content still work; data-backdrop-close="false" keeps it open on a backdrop click.
 // The dialog FADES + DROPS in from the top on open and FADES + RISES out to the top on close.
 // @starting-style + transition-behavior:allow-discrete keep the native <dialog> animating across
 // its display toggle (closed ↔ open); engines without that support just show/hide instantly. The
@@ -234,24 +237,54 @@ const LIGHTBOX_JS = LIGHTBOX_SMARTPHOTO_RUNTIME_JS;
 // is the resting state. Reduced-motion drops straight to a plain show/hide (mirrors the cart drawer).
 const MODAL_CSS = [
   '[data-sw-block="Modal"]{display:inline-block}',
-  '[data-sw-block="Modal"] dialog{position:relative;border:0;border-radius:.5rem;padding:1.5rem;max-width:min(90vw,32rem);box-shadow:0 10px 40px rgba(0,0,0,.2);opacity:0;transform:translateY(-24px);transition:opacity .22s ease,transform .22s ease,overlay .22s allow-discrete,display .22s allow-discrete}',
+  // Appearance defaults at ZERO specificity (:where) so utility classes on the <dialog> win
+  // without !important — global bg/text vars, rounded corners, 1.5rem padding, a max width and a
+  // soft shadow. Override any of them with e.g. bg-transparent / text-white / p-0 / max-w-2xl /
+  // rounded-none / shadow-none on the dialog.
+  ':where([data-sw-block="Modal"] dialog){background:var(--sw-color-base-100,#fff);color:var(--sw-color-base-content,#0f172a);border:0;border-radius:.75rem;padding:1.5rem;max-width:min(90vw,32rem);box-shadow:0 10px 40px rgba(0,0,0,.2)}',
+  // Structural + the from-the-top enter/exit (normal specificity, NOT author-overridable):
+  // position:relative anchors the absolute close button; opacity/transform + @starting-style /
+  // allow-discrete animate across the display toggle.
+  '[data-sw-block="Modal"] dialog{position:relative;opacity:0;transform:translateY(-24px);transition:opacity .22s ease,transform .22s ease,overlay .22s allow-discrete,display .22s allow-discrete}',
   '[data-sw-block="Modal"] dialog[open]{opacity:1;transform:translateY(0)}',
   '@starting-style{[data-sw-block="Modal"] dialog[open]{opacity:0;transform:translateY(-24px)}}',
-  '[data-sw-block="Modal"] dialog::backdrop{background:rgba(0,0,0,.5);opacity:0;transition:opacity .22s ease,overlay .22s allow-discrete,display .22s allow-discrete}',
-  '[data-sw-block="Modal"] dialog[open]::backdrop{opacity:1}',
-  '@starting-style{[data-sw-block="Modal"] dialog[open]::backdrop{opacity:0}}',
-  '@media (prefers-reduced-motion:reduce){[data-sw-block="Modal"] dialog,[data-sw-block="Modal"] dialog::backdrop{transition:none}}',
-  '[data-sw-block="Modal"] [data-sw-part="close"]{position:absolute;top:.5rem;right:.75rem;border:0;background:none;font-size:1.5rem;line-height:1;cursor:pointer}',
+  // Backdrop: dims + BLURS, both fading in and out.
+  '[data-sw-block="Modal"] dialog::backdrop{background:rgba(15,23,42,.45);opacity:0;-webkit-backdrop-filter:blur(0);backdrop-filter:blur(0);transition:opacity .22s ease,-webkit-backdrop-filter .22s ease,backdrop-filter .22s ease,overlay .22s allow-discrete,display .22s allow-discrete}',
+  '[data-sw-block="Modal"] dialog[open]::backdrop{opacity:1;-webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px)}',
+  '@starting-style{[data-sw-block="Modal"] dialog[open]::backdrop{opacity:0;-webkit-backdrop-filter:blur(0);backdrop-filter:blur(0)}}',
+  // Auto-injected close button: brand-primary rounded square pinned top-right, white icon; hover
+  // zooms the button and spins the icon 180°.
+  '[data-sw-block="Modal"] [data-sw-part="autoclose"]{position:absolute;top:.75rem;right:.75rem;z-index:1;display:inline-flex;align-items:center;justify-content:center;width:2.25rem;height:2.25rem;padding:0;border:0;border-radius:.5rem;background:var(--sw-color-primary,#4f46e5);color:#fff;cursor:pointer;transition:transform .2s ease}',
+  '[data-sw-block="Modal"] [data-sw-part="autoclose"]>svg{width:1.25rem;height:1.25rem;display:block;transition:transform .2s ease}',
+  '[data-sw-block="Modal"] [data-sw-part="autoclose"]:hover{transform:scale(1.1)}',
+  '[data-sw-block="Modal"] [data-sw-part="autoclose"]:hover>svg{transform:rotate(180deg)}',
+  '@media (prefers-reduced-motion:reduce){[data-sw-block="Modal"] dialog,[data-sw-block="Modal"] dialog::backdrop,[data-sw-block="Modal"] [data-sw-part="autoclose"],[data-sw-block="Modal"] [data-sw-part="autoclose"]>svg{transition:none}}',
 ].join('');
 
 const MODAL_JS = `(function(){
+  var CLOSE_SVG='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
   function enhance(root){
+    if(root.getAttribute('data-sw-enhanced'))return;
     var dialog=root.querySelector('[data-sw-part="dialog"]'),openBtn=root.querySelector('[data-sw-part="open"]');
     if(!dialog||!openBtn||typeof dialog.showModal!=='function')return;
-    var closeBtn=root.querySelector('[data-sw-part="close"]');
+    root.setAttribute('data-sw-enhanced','true');
     openBtn.addEventListener('click',function(){dialog.showModal();});
-    if(closeBtn)closeBtn.addEventListener('click',function(){dialog.close();});
-    dialog.addEventListener('click',function(e){if(e.target===dialog){dialog.close();}});
+    // Auto close button (top-right), unless opted out with data-closebutton="false".
+    if(root.getAttribute('data-closebutton')!=='false'&&!dialog.querySelector('[data-sw-part="autoclose"]')){
+      var x=document.createElement('button');
+      x.type='button';
+      x.setAttribute('data-sw-part','autoclose');
+      x.setAttribute('aria-label',root.getAttribute('data-close-label')||'Close');
+      x.innerHTML=CLOSE_SVG;
+      x.addEventListener('click',function(){dialog.close();});
+      dialog.insertBefore(x,dialog.firstChild);
+    }
+    // Authored close buttons (any number) inside the dialog dismiss too.
+    Array.prototype.forEach.call(dialog.querySelectorAll('[data-sw-part="close"]'),function(b){b.addEventListener('click',function(){dialog.close();});});
+    // Backdrop click closes unless data-backdrop-close="false".
+    if(root.getAttribute('data-backdrop-close')!=='false'){
+      dialog.addEventListener('click',function(e){if(e.target===dialog){dialog.close();}});
+    }
   }
   function init(){Array.prototype.forEach.call(document.querySelectorAll('[data-sw-component="modal"]'),enhance);}
   if(document.readyState!=='loading'){init();}else{document.addEventListener('DOMContentLoaded',init);}

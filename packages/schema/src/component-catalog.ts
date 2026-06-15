@@ -208,25 +208,28 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
   {
     type: 'Modal',
     marker: 'modal',
-    summary: 'A trigger button that opens a native <dialog> — focus trap, Escape, ::backdrop, and background inerting come from the browser.',
+    summary: 'A trigger button that opens a native <dialog> — focus trap, Escape, ::backdrop, and background inerting come from the browser; a styled close button is added automatically.',
     authoring: 'markup',
     parts: [
       { part: 'open', element: 'button', required: true, description: 'The trigger; the runtime wires it to dialog.showModal().' },
-      { part: 'dialog', element: 'dialog', required: true, description: 'The native dialog element holding the modal content.' },
-      { part: 'close', element: 'button', required: false, description: 'Close button inside the dialog (backdrop click and Escape also close).' },
+      { part: 'dialog', element: 'dialog', required: true, description: 'The native dialog element holding the modal content. With NO classes it uses the global background + text colour, rounded corners and 1.5rem padding; any utility class overrides those (bg-transparent, text-white, p-0, max-w-2xl, rounded-none, …).' },
+      { part: 'close', element: 'button|a', required: false, description: 'OPTIONAL extra close control inside the dialog — the styled top-right close button is added automatically, so you only need this for an additional in-content "Close"/"Got it" button. Any number are wired; place and style them yourself.' },
     ],
-    attributes: [],
+    attributes: [
+      { name: 'data-closebutton', on: 'root', description: '"false" hides the auto-injected top-right close button (default shows it — a brand-primary rounded square with a white icon that zooms + spins 180° on hover). Escape and authored close buttons still dismiss.' },
+      { name: 'data-backdrop-close', on: 'root', description: '"false" keeps the modal open when the backdrop is clicked (default: a backdrop click closes it). Useful for a forced-choice / confirm dialog.' },
+      { name: 'data-close-label', on: 'root', description: 'Accessible label for the auto close button (default "Close"); set it per-locale for i18n, e.g. data-close-label="{{page.data.close_label}}".' },
+    ],
     skeleton: `<div data-sw-component="modal" data-sw-block="Modal">
   <button type="button" data-sw-part="open" class="btn btn-outline">What happens next?</button>
-  <dialog data-sw-part="dialog" class="max-w-md rounded-3xl">
-    <button type="button" data-sw-part="close" aria-label="Close">×</button>
+  <dialog data-sw-part="dialog">
     <h2 class="text-xl font-bold">Dialog title</h2>
     <p class="mt-3 text-sm">Dialog body content.</p>
   </dialog>
 </div>`,
     noJs: 'The trigger does nothing — the page remains fully usable; never put essential content only inside a modal.',
     notes:
-      "This is the ONLY modal that works on this platform: DaisyUI's <dialog> method requires an inline onclick (rejected by the template validator) and its hidden-checkbox method has no focus trap or Escape handling. Style the dialog content with normal Tailwind/DaisyUI classes.",
+      "This is the ONLY modal that works on this platform: DaisyUI's <dialog> method requires an inline onclick (rejected by the template validator) and its hidden-checkbox method has no focus trap or Escape handling. A styled close button is injected automatically (top-right, brand-primary, white icon, hover zoom + icon spin) — do NOT hand-author one unless you want an ADDITIONAL close control; suppress it with data-closebutton=\"false\". A bare <dialog> (no classes) renders on the global background/text colour with rounded corners and 1.5rem padding; add utility classes to override (the defaults are zero-specificity, so no !important needed). The backdrop dims AND blurs, fading in and out. Style the dialog content with normal Tailwind/DaisyUI classes.",
   },
   {
     type: 'CookieConsent',

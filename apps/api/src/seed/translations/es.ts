@@ -279,14 +279,14 @@ export function translationsEs(assets: Record<string, string>): Record<string, P
       mod_close: 'Cerrar',
       sec_basic_t: 'Modal — los valores por defecto',
       sec_basic_d:
-        'Un disparador, un diálogo y un botón de cerrar. Al abrir, el foco queda atrapado dentro; Escape, el botón de cerrar o un clic en el fondo lo descartan.',
+        'Un disparador y un diálogo: el botón de cerrar con estilo (arriba a la derecha) se añade automáticamente. Un diálogo sin clases usa los colores de fondo y de texto de tu sitio, esquinas redondeadas y un relleno cómodo. Escape, el botón de cerrar o un clic en el fondo lo descartan.',
       mod1_open: '¿Qué pasa después?',
       mod1_title: '¿Qué pasa después?',
       mod1_body:
         'Tras tu consulta concertamos una llamada breve, definimos juntos el alcance y enviamos un presupuesto cerrado en dos días hábiles — sin compromiso.',
       sec_wide_t: 'Un diálogo más ancho con contenido rico',
       sec_wide_d:
-        'El mismo componente, ampliado con max-w-2xl — un diálogo admite cualquier marcado: títulos, listas, medios o una llamada a la acción.',
+        'El mismo componente, ampliado con max-w-2xl. Las clases de utilidad en el diálogo anulan cualquier valor por defecto — fondo, texto, relleno, radio. También puedes ocultar el botón de cerrar automático con data-closebutton="false" y mantener el modal abierto al hacer clic en el fondo con data-backdrop-close="false"; aquí están ambos, así que el botón de abajo es la única salida.',
       mod2_open: 'Ver todo el proceso',
       mod2_title: 'Cómo trabajamos',
       mod2_step1: 'Descubrimiento — conocemos tus objetivos, tu público y tus restricciones.',

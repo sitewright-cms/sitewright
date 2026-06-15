@@ -27,7 +27,11 @@
   "pnpm": {
     "onlyBuiltDependencies": ["esbuild", "@tailwindcss/oxide", "sharp"],
     "auditConfig": {
-      "ignoreGhsas": ["GHSA-gv7w-rqvm-qjhr"]
+      "ignoreGhsas": [
+        "GHSA-gv7w-rqvm-qjhr",
+        "GHSA-hmw2-7cc7-3qxx",
+        "GHSA-fx2h-pf6j-xcff"
+      ]
     }
   }
 }

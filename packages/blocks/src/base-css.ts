@@ -2,18 +2,22 @@
 // (publish + preview) ahead of the skeleton, brand and utility CSS. Two parts:
 //
 //   1. modern-normalize (vendored, MIT) — a real cross-browser baseline that
-//      PRESERVES sensible UA defaults (heading scale, list markers, paragraph
-//      margins) and only fixes inconsistencies. It is wrapped in
-//      `@layer sw-normalize` so it is the weakest source in the cascade: the
-//      skeleton CSS, author `criticalCss`, and the compiled (intentionally
-//      unlayered) Tailwind utilities all override it for free. We deliberately do
-//      NOT use Tailwind's preflight — preflight RESETS those defaults, which would
-//      flatten the semantic HTML tenants/agents author across every site.
+//      fixes UA inconsistencies (and KEEPS the heading font-size scale + list
+//      markers). It is wrapped in `@layer sw-normalize` so it is the weakest
+//      source in the cascade: the skeleton CSS, author `criticalCss`, and the
+//      compiled (intentionally unlayered) Tailwind utilities all override it for
+//      free. We do NOT use Tailwind's full preflight (which also flattens the
+//      heading scale + list markers).
 //
 //   2. Sitewright platform defaults — the small set of opinionated choices
 //      normalize leaves out (the link/box-sizing/media rules and the custom
-//      scrollbar). Unlayered so utilities still win, but emitted first in source
-//      order so the skeleton + criticalCss win too.
+//      scrollbar), PLUS a deterministic block-margin reset: UA margins on flow
+//      elements (h1–h6, p, ul/ol, blockquote, figure, hr, pre, dl/dd) are zeroed
+//      so vertical spacing is set EXPLICITLY (utilities / `.prose`), identical
+//      across browsers — the one Tailwind-preflight-style reset we adopt. A
+//      lightweight `.prose` restores rhythm for rich/markdown bodies. All in the
+//      weak sw-normalize layer (utilities still win). Unlayered platform copy is
+//      emitted first in source order so the skeleton + criticalCss win too.
 //
 // CSP-clean (pure CSS, no runtime dependency); the same on every page so it
 // caches well in preview and is a single block on publish.
@@ -167,6 +171,28 @@ const PLATFORM_DEFAULTS = `
     border-radius: 5px;
   }
   pre code, pre kbd, pre samp { background: none; padding: 0; border-radius: 0; color: inherit; }
+}
+
+/* Deterministic block spacing: ZERO the UA margins on flow elements so vertical spacing is set
+   EXPLICITLY (utilities like mt-*/space-y-*/gap-*, or \`.prose\`), identical across browsers — the one
+   Tailwind-preflight-style reset we adopt. We still KEEP the heading font-size SCALE and list MARKERS
+   (font-size + list-style/padding untouched). Weak layer → any author utility / criticalCss / \`.prose\`
+   wins. (\`body\` margin is already zeroed by normalize.) */
+@layer sw-normalize {
+  h1, h2, h3, h4, h5, h6, p, blockquote, figure, dl, dd, pre, hr, ul, ol, fieldset { margin: 0; }
+}
+
+/* Rich/markdown content opt-in: class="prose" restores a readable vertical rhythm to authored
+   long-form bodies (article / legal / FAQ) AFTER the reset above; escape any child with
+   class="not-prose". A LIGHTWEIGHT stand-in for @tailwindcss/typography (margins only — fonts come
+   from typographyCss). Specificity (the \`.prose\` class) beats the bare-element reset within the
+   layer; utilities + criticalCss still override (weak layer). \`:where()\` keeps the selectors at
+   class-level specificity and scopes out \`.not-prose\` subtrees. */
+@layer sw-normalize {
+  .prose :where(p, ul, ol, blockquote, figure, pre, table, hr, h1, h2, h3, h4, h5, h6):not(:where(.not-prose, .not-prose *)) { margin: 1em 0; }
+  .prose :where(h2, h3, h4, h5, h6):not(:where(.not-prose, .not-prose *)) { margin-top: 1.5em; }
+  .prose > :where(:first-child):not(:where(.not-prose, .not-prose *)) { margin-top: 0; }
+  .prose > :where(:last-child):not(:where(.not-prose, .not-prose *)) { margin-bottom: 0; }
 }
 
 /* Responsive media (icons are <svg>, sized by classes — intentionally untouched). */

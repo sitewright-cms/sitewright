@@ -17,10 +17,28 @@ describe('baseStyles — platform base stylesheet', () => {
       expect(css).toContain('modern-normalize v3.0.1 | MIT License');
     });
 
-    it('does NOT strip semantic defaults the way Tailwind preflight would', () => {
-      // No global heading/list/margin reset — authored semantic HTML keeps its look.
+    it('keeps the heading scale + list markers (not a FULL preflight reset)', () => {
+      // We zero block MARGINS (see "deterministic block spacing" below), but unlike Tailwind
+      // preflight we do NOT flatten the heading font-size scale or strip list markers — semantic
+      // HTML still reads as structured content.
       expect(css).not.toMatch(/h1\s*,\s*h2[^}]*font-size:\s*inherit/);
       expect(css).not.toMatch(/\b(ul|ol)\b[^}]*list-style:\s*none/);
+    });
+  });
+
+  describe('deterministic block spacing (zeroed margins + .prose)', () => {
+    it('zeroes UA block margins on flow elements (in the weak layer)', () => {
+      expect(css).toContain('h1, h2, h3, h4, h5, h6, p, blockquote, figure, dl, dd, pre, hr, ul, ol, fieldset { margin: 0; }');
+    });
+    it('ships a lightweight .prose rhythm that opts out of .not-prose subtrees', () => {
+      expect(css).toContain('.prose :where(p, ul, ol, blockquote, figure, pre, table, hr, h1, h2, h3, h4, h5, h6):not(:where(.not-prose, .not-prose *))');
+      expect(css).toContain('.prose > :where(:first-child):not(:where(.not-prose, .not-prose *)) { margin-top: 0; }');
+    });
+    it('keeps both the reset and .prose inside the weak sw-normalize layer (utilities win)', () => {
+      const resetIdx = css.indexOf('fieldset { margin: 0; }');
+      const layerOpen = css.lastIndexOf('@layer sw-normalize {', resetIdx);
+      expect(layerOpen).toBeGreaterThan(-1);
+      expect(resetIdx).toBeGreaterThan(layerOpen);
     });
   });
 

@@ -269,6 +269,10 @@ const MODAL_CSS = [
 
 const MODAL_JS = `(function(){
   var CLOSE_SVG='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+  // Localized SYSTEM UI string from <html data-sw-i18n="{…}"> (CSP-safe attribute, set per page),
+  // flooring to the English fallback. Parsed once.
+  var SW_T;
+  function swt(k,fb){ if(SW_T===undefined){ try{ SW_T=JSON.parse(document.documentElement.getAttribute('data-sw-i18n')||'{}'); }catch(e){ SW_T={}; } } var v=SW_T[k]; return typeof v==='string'&&v?v:fb; }
   // Page-scroll lock while ANY modal is open: hide the document overflow and pad the body by the
   // scrollbar width so removing it doesn't shift the layout. Ref-counted so nested/sequential
   // modals don't unlock early; the prior inline styles are restored on the last close.
@@ -300,7 +304,7 @@ const MODAL_JS = `(function(){
       var x=document.createElement('button');
       x.type='button';
       x.setAttribute('data-sw-part','autoclose');
-      x.setAttribute('aria-label',root.getAttribute('data-close-label')||(window.__SW_T__&&window.__SW_T__.close)||'Close');
+      x.setAttribute('aria-label',root.getAttribute('data-close-label')||swt('close','Close'));
       x.innerHTML=CLOSE_SVG;
       x.addEventListener('click',function(){dialog.close();});
       dialog.insertBefore(x,dialog.firstChild);

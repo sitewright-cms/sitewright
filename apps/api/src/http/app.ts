@@ -45,7 +45,7 @@ import {
   renderDocument,
   componentTypesInSource,
   componentAssets,
-  systemI18nScript,
+  systemI18nData,
   usesDialog,
   usesAnimations,
   ANIMATION_CSS,
@@ -484,7 +484,7 @@ async function styledSourceDocument(
     inlineStyles: inlineStyles.length > 0 ? inlineStyles : undefined,
     inlineScripts: inlineScripts.length > 0 ? inlineScripts : undefined,
     // SYSTEM i18n dict for the component runtimes (only when a component ships).
-    systemI18n: componentJs ? systemI18nScript(shell.systemT) : undefined,
+    systemI18n: componentJs ? systemI18nData(shell.systemT) : undefined,
     ...shell,
   });
 }

@@ -1,27 +1,26 @@
 import { describe, it, expect } from 'vitest';
-import { systemI18nScript } from '../src/system-i18n.js';
+import { systemI18nData } from '../src/system-i18n.js';
 
-describe('systemI18nScript', () => {
-  it('publishes window.__SW_T__ (merged, not clobbered) with English defaults when no catalog', () => {
-    const js = systemI18nScript(undefined);
-    expect(js).toContain('window.__SW_T__=Object.assign(window.__SW_T__||{},');
-    expect(js).toContain('"close":"Close"');
-    expect(js).toContain('"slide_x_of_y":"Slide {n} of {total}"'); // placeholder preserved
-    expect(js).toContain('"go_to_slide":"Go to slide {n}"');
-    expect(js).toContain('"carousel_label":"carousel"');
+describe('systemI18nData (JSON for the <html data-sw-i18n> attribute)', () => {
+  it('returns valid JSON of every system key, flooring to English defaults when no catalog', () => {
+    const dict = JSON.parse(systemI18nData(undefined));
+    expect(dict.close).toBe('Close');
+    expect(dict.slide_x_of_y).toBe('Slide {n} of {total}'); // placeholder preserved
+    expect(dict.go_to_slide).toBe('Go to slide {n}');
+    expect(dict.carousel_label).toBe('carousel');
   });
 
   it('prefers a catalog value over the default, and floors blank/empty to the default', () => {
-    const js = systemI18nScript({ close: 'Schließen', slide_prev: '   ', go_to_slide: '' });
-    expect(js).toContain('"close":"Schließen"'); // catalog wins
-    expect(js).toContain('"slide_prev":"Previous slide"'); // blank → default floor
-    expect(js).toContain('"go_to_slide":"Go to slide {n}"'); // empty → default floor
+    const dict = JSON.parse(systemI18nData({ close: 'Schließen', slide_prev: '   ', go_to_slide: '' }));
+    expect(dict.close).toBe('Schließen'); // catalog wins
+    expect(dict.slide_prev).toBe('Previous slide'); // blank → default floor
+    expect(dict.go_to_slide).toBe('Go to slide {n}'); // empty → default floor
   });
 
   it('includes ONLY system keys (no cart_* leakage; ignores stray catalog keys)', () => {
-    const js = systemI18nScript({ cart_add: 'X', bogus: 'Y', close: 'C' });
-    expect(js).not.toContain('cart_add');
-    expect(js).not.toContain('bogus');
-    expect(js).toContain('"close":"C"');
+    const dict = JSON.parse(systemI18nData({ cart_add: 'X', bogus: 'Y', close: 'C' }));
+    expect(dict).not.toHaveProperty('cart_add');
+    expect(dict).not.toHaveProperty('bogus');
+    expect(dict.close).toBe('C');
   });
 });

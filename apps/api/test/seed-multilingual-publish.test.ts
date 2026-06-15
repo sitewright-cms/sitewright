@@ -73,7 +73,7 @@ describe('seeded demo — flagship multilingual showcase publishes correctly', (
 
   it('renders the English home at the root with English service data and localized chrome', async () => {
     const en = await page('index.html');
-    expect(en).toContain('<html lang="en">');
+    expect(en).toContain('<html lang="en"'); // may carry data-sw-i18n when the page ships components
     expect(en).toContain('Web Design'); // services (base) dataset
     expect(en).not.toContain('Webdesign'); // not the German variant
     expect(en).toContain('Start a project'); // chrome strings (en)
@@ -82,7 +82,12 @@ describe('seeded demo — flagship multilingual showcase publishes correctly', (
 
   it('renders the German home at /de from the SAME inherited code with translated data + datasets + chrome', async () => {
     const de = await page('de/index.html');
-    expect(de).toContain('<html lang="de">'); // page.locale drives <html lang>
+    expect(de).toContain('<html lang="de"'); // page.locale drives <html lang> (may carry data-sw-i18n)
+    // SYSTEM i18n: the home page ships a slider, so the localized component-runtime strings ride on
+    // <html data-sw-i18n="…"> (a CSP-safe attribute, not an inline script) in German.
+    expect(de).toContain('data-sw-i18n=');
+    expect(de).toContain('Schließen'); // close → "Schließen" in the German dict
+    expect(de).toContain('Folie {n} von {total}'); // slide_x_of_y localized
     expect(de).toContain('Websites, die Ihnen mehr Geschäft'); // hero headline via the scoped catalog (data-sw-translate="home.headline")
     expect(de).toContain('Webdesign'); // data.services auto-resolved → services-de
     expect(de).not.toContain('Web Design');
@@ -247,7 +252,7 @@ describe('seeded demo — flagship multilingual showcase publishes correctly', (
 
   it('renders the Spanish locale end-to-end: /es home, localized slugs, dataset/form/chrome resolution', async () => {
     const es = await page('es/index.html');
-    expect(es).toContain('<html lang="es">');
+    expect(es).toContain('<html lang="es"'); // may carry data-sw-i18n when the page ships components
     expect(es).toContain('Webs que le traen más negocio'); // hero headline via the scoped catalog (home.headline)
     expect(es).toContain('Diseño web'); // services-es auto-resolved
     expect(es).toContain('Empezar un proyecto'); // chrome strings (es)

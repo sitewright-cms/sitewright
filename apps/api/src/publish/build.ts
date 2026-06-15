@@ -38,7 +38,7 @@ import {
   relativizeInternalLinks,
   componentTypesInSource,
   componentAssets,
-  systemI18nScript,
+  systemI18nData,
   usesDialog,
   usesAnimations,
   ANIMATION_CSS,
@@ -662,7 +662,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
             pageInlineStyles.length > 0 ? pageInlineStyles : undefined,
           scripts: pageScripts.length > 0 ? pageScripts : undefined,
           // SYSTEM i18n dict for the component runtimes — only when interactive components ship.
-          systemI18n: usesComponents && components.js ? systemI18nScript(pageT) : undefined,
+          systemI18n: usesComponents && components.js ? systemI18nData(pageT) : undefined,
         });
         // Rewrite editor media URLs (`/media/<projectSlug>/<assetId>/…`) to the page-relative
         // bundled path (`<siteRoot>_assets/<assetId>/…`) — across ANY attribute (src, data-src,

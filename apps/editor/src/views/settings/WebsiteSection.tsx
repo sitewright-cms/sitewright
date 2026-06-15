@@ -103,9 +103,9 @@ export function WebsiteSection({
       )}
 
       <GlassCard
-        title="Nav & button effects"
+        title="Nav, Buttons & Preloader Effects"
         icon={<Sparkles className="h-4 w-4" />}
-        tooltip="CI-themed, contrast-safe hover/active schemes, applied site-wide (no code). The current nav item is highlighted where you mark it .active. Want your own? Leave these “None” and write it in Critical CSS (target .active / .btn)."
+        tooltip="CI-themed, contrast-safe nav/button hover-active schemes + a page preloader overlay (shown on load and during navigation), applied site-wide (no code). The current nav item is highlighted where you mark it .active. Want your own nav/button look? Leave those “None” and write it in Critical CSS (target .active / .btn)."
         wide
       >
         <div className="grid gap-3 sm:grid-cols-2">

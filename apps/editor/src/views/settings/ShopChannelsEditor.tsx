@@ -41,16 +41,18 @@ function OrderFieldsEditor({
     onChange(fields.map((f) => (f.id === id ? { ...f, ...patch } : f)));
   return (
     <div className="mt-2 rounded-md border border-slate-200/60 bg-slate-50/50 p-2">
-      <p className="mb-1.5 text-xs font-medium text-slate-500">Order fields — collected before sending (e.g. name, address)</p>
+      <p className="mb-1.5 text-xs font-medium text-slate-500">
+        Order fields — collected before sending. Each has a stable <em>key</em>; its label text is set in Translations &amp; Labels under <code>shop.&lt;key&gt;</code>.
+      </p>
       <div className="flex flex-col gap-2">
         {fields.map((f, fi) => (
           <div key={f.id} className="flex items-center gap-2">
             <input
-              aria-label={`Channel ${channelIndex + 1} field ${fi + 1} label`}
-              className={`${glassInput} flex-1`}
-              value={f.label}
-              placeholder="Field label (e.g. Your name)"
-              onChange={(e) => setField(f.id, { label: e.target.value })}
+              aria-label={`Channel ${channelIndex + 1} field ${fi + 1} key`}
+              className={`${glassInput} flex-1 font-mono`}
+              value={f.key}
+              placeholder="field key (e.g. name)"
+              onChange={(e) => setField(f.id, { key: e.target.value })}
             />
             <select
               aria-label={`Channel ${channelIndex + 1} field ${fi + 1} type`}
@@ -99,9 +101,9 @@ function OrderFieldsEditor({
 
 /**
  * Inline editor for the mini-shop submission channels — a discriminated list (whatsapp/mailto/payment/
- * form). Each row picks a `kind` and shows only that kind's fields; an optional label overrides the
- * cart's default button text. whatsapp/mailto rows also gain an Order-fields sub-editor. Rows are keyed
- * on a stable id so add/remove animate cleanly.
+ * form). Each row picks a `kind`, a stable `key` (its button LABEL text is translatable, set in
+ * Translations & Labels under `shop.<key>`), and that kind's config fields. whatsapp/mailto rows also gain
+ * an Order-fields sub-editor. Rows are keyed on a stable id so add/remove animate cleanly.
  */
 export function ShopChannelsEditor({ rows, onChange }: { rows: KeyedShopChannel[]; onChange: (rows: KeyedShopChannel[]) => void }) {
   const set = (id: string, patch: Partial<KeyedShopChannel>) => onChange(rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
@@ -132,11 +134,11 @@ export function ShopChannelsEditor({ rows, onChange }: { rows: KeyedShopChannel[
                 ))}
               </select>
               <input
-                aria-label={`Channel ${i + 1} label`}
-                className={glassInput}
-                value={r.label}
-                placeholder="Button label (optional)"
-                onChange={(e) => set(r.id, { label: e.target.value })}
+                aria-label={`Channel ${i + 1} key`}
+                className={`${glassInput} font-mono`}
+                value={r.key}
+                placeholder="channel key (e.g. whatsapp)"
+                onChange={(e) => set(r.id, { key: e.target.value })}
               />
               <button
                 type="button"

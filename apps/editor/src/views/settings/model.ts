@@ -47,7 +47,8 @@ export interface TranslationRow {
 export interface KeyedShopChannel {
   id: string;
   kind: ShopChannel['kind'];
-  label: string;
+  /** Stable key — the channel's display LABEL is translatable, edited in Translations & Labels under `shop.<key>`. */
+  key: string;
   number: string; // whatsapp
   intro: string; // whatsapp
   email: string; // mailto
@@ -62,7 +63,8 @@ export interface KeyedShopChannel {
 /** A buyer-input order field as edited in the form — mirrors schema `ShopChannelField`, with a stable row id. */
 export interface KeyedShopField {
   id: string;
-  label: string;
+  /** Stable key — the field's display LABEL is translatable, edited in Translations & Labels under `shop.<key>`. */
+  key: string;
   type: ShopFieldType;
   required: boolean;
 }
@@ -145,15 +147,11 @@ export interface SettingsForm {
   navEffect: 'none' | NavEffect;
   buttonEffect: 'none' | ButtonEffect;
   redirects: KeyedRedirect[];
-  // mini shop (website.shop): master switch + currency + submission channels (front-end cart)
+  // mini shop (website.shop): master switch + currency FORMATTING + submission channels. The cart's
+  // display TEXT (labels, currency symbol/code, channel/field labels) is translatable → Translations & Labels.
   shopEnabled: boolean;
-  shopCurrencyCode: string;
-  shopCurrencySymbol: string;
   shopCurrencyPosition: 'before' | 'after';
   shopCurrencyDecimals: string;
-  shopAddToCartLabel: string;
-  shopTitle: string;
-  shopNote: string;
   shopChannels: KeyedShopChannel[];
   // localization
   defaultLocale: string;
@@ -294,17 +292,12 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
     buttonEffect: w?.theme?.buttonEffect ?? 'none',
     redirects: (w?.redirects ?? []).map((r) => ({ id: rowId(), from: r.from, to: r.to, status: r.status })),
     shopEnabled: w?.shop?.enabled === true,
-    shopCurrencyCode: w?.shop?.currency?.code ?? '',
-    shopCurrencySymbol: w?.shop?.currency?.symbol ?? '',
     shopCurrencyPosition: w?.shop?.currency?.position ?? 'before',
     shopCurrencyDecimals: w?.shop?.currency?.decimals != null ? String(w.shop.currency.decimals) : '2',
-    shopAddToCartLabel: w?.shop?.addToCartLabel ?? '',
-    shopTitle: w?.shop?.title ?? '',
-    shopNote: w?.shop?.note ?? '',
     shopChannels: (w?.shop?.channels ?? []).map((c) => ({
       id: rowId(),
       kind: c.kind,
-      label: c.label ?? '',
+      key: c.key ?? '',
       number: c.kind === 'whatsapp' ? c.number : '',
       intro: c.kind === 'whatsapp' ? c.intro ?? '' : '',
       email: c.kind === 'mailto' ? c.email : '',
@@ -328,29 +321,30 @@ function decimalsOf(raw: string): number {
 
 /** Map a stored order field into an editable row (with a stable id; type defaults applied by the schema). */
 function shopFieldToForm(f: ShopChannelField): KeyedShopField {
-  return { id: rowId(), label: f.label, type: f.type, required: f.required ?? false };
+  return { id: rowId(), key: f.key, type: f.type, required: f.required ?? false };
 }
 
-/** Map editable order-field rows to schema `ShopChannelField`s, dropping blank-label rows + trimming. */
+/** Map editable order-field rows to schema `ShopChannelField`s, dropping keyless rows + trimming. */
 function formFieldsToShop(fields: KeyedShopField[]): ShopChannelField[] {
   return fields
-    .filter((f) => f.label.trim())
-    .map((f) => ({ label: f.label.trim(), type: f.type, ...(f.required ? { required: true } : {}) }));
+    .filter((f) => f.key.trim())
+    .map((f) => ({ key: f.key.trim(), type: f.type, ...(f.required ? { required: true } : {}) }));
 }
 
-/** Build a `ShopChannel` from a form row, dropping the row when its required field is blank. */
+/** Build a `ShopChannel` from a form row, dropping the row when its `key` or required config field is blank. */
 function formChannelToShop(c: KeyedShopChannel): ShopChannel | null {
-  const label = c.label.trim() ? { label: c.label.trim() } : {};
+  const key = c.key.trim();
+  if (!key) return null; // a channel needs a stable key (its label lives in the catalog under shop.<key>)
   if (c.kind === 'whatsapp') {
     const fields = formFieldsToShop(c.fields);
     return c.number.trim()
-      ? { kind: 'whatsapp', ...label, number: c.number.trim(), ...(c.intro.trim() ? { intro: c.intro.trim() } : {}), ...(fields.length ? { fields } : {}) }
+      ? { kind: 'whatsapp', key, number: c.number.trim(), ...(c.intro.trim() ? { intro: c.intro.trim() } : {}), ...(fields.length ? { fields } : {}) }
       : null;
   }
   if (c.kind === 'mailto') {
     const fields = formFieldsToShop(c.fields);
     return c.email.trim()
-      ? { kind: 'mailto', ...label, email: c.email.trim(), ...(c.subject.trim() ? { subject: c.subject.trim() } : {}), ...(fields.length ? { fields } : {}) }
+      ? { kind: 'mailto', key, email: c.email.trim(), ...(c.subject.trim() ? { subject: c.subject.trim() } : {}), ...(fields.length ? { fields } : {}) }
       : null;
   }
   if (c.kind === 'payment') {
@@ -359,13 +353,13 @@ function formChannelToShop(c: KeyedShopChannel): ShopChannel | null {
     return c.urlTemplate.trim()
       ? {
           kind: 'payment',
-          ...label,
+          key,
           urlTemplate: c.urlTemplate.trim(),
           ...(provider === 'paypal' || provider === 'custom' ? { provider } : {}),
         }
       : null;
   }
-  return c.formId.trim() ? { kind: 'form', ...label, formId: c.formId.trim() } : null;
+  return c.formId.trim() ? { kind: 'form', key, formId: c.formId.trim() } : null;
 }
 
 const trimmed = (s: string): string | undefined => (s.trim() ? s.trim() : undefined);
@@ -469,19 +463,11 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
     footer: trimmed(form.footer),
     bottom: trimmed(form.bottom),
   });
-  // mini shop: currency (only when code + symbol are both set) + the configured channels.
+  // mini shop: currency FORMATTING (symbol/code are translatable → catalog, not here) + channels. Emit
+  // `currency` only when it deviates from the schema defaults (position 'before', decimals 2) to stay minimal.
+  const shopDecimals = decimalsOf(form.shopCurrencyDecimals);
   const shopCurrency: ShopCurrency | undefined =
-    form.shopCurrencyCode.trim() && form.shopCurrencySymbol.trim()
-      ? {
-          code: form.shopCurrencyCode.trim(),
-          symbol: form.shopCurrencySymbol.trim(),
-          position: form.shopCurrencyPosition,
-          // Empty or non-numeric → the schema default (2); otherwise truncate to an integer and clamp
-          // to the schema range [0,4] (a cleared field must NOT silently become 0, and "1.5" must not
-          // be sent — the schema is .int().min(0).max(4)).
-          decimals: decimalsOf(form.shopCurrencyDecimals),
-        }
-      : undefined;
+    form.shopCurrencyPosition !== 'before' || shopDecimals !== 2 ? { position: form.shopCurrencyPosition, decimals: shopDecimals } : undefined;
   const shopChannels = form.shopChannels
     .map(formChannelToShop)
     .filter((c): c is ShopChannel => c !== null);
@@ -489,14 +475,11 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
   // schema default), so a fresh/disabled shop stays minimal. The object is built when enabled OR any
   // config is present (so toggling off keeps the config but drops `enabled` → the cart is gated off).
   const shop =
-    form.shopEnabled || shopCurrency || shopChannels.length || form.shopAddToCartLabel.trim() || form.shopTitle.trim() || form.shopNote.trim()
+    form.shopEnabled || shopCurrency || shopChannels.length
       ? {
           ...(form.shopEnabled ? { enabled: true } : {}),
           ...(shopCurrency ? { currency: shopCurrency } : {}),
           ...(shopChannels.length ? { channels: shopChannels } : {}),
-          ...(trimmed(form.shopAddToCartLabel) ? { addToCartLabel: form.shopAddToCartLabel.trim() } : {}),
-          ...(trimmed(form.shopTitle) ? { title: form.shopTitle.trim() } : {}),
-          ...(trimmed(form.shopNote) ? { note: form.shopNote.trim() } : {}),
         }
       : undefined;
   // nav/button effect schemes ('none' = off, so omit them).
@@ -546,7 +529,7 @@ export const newTranslationRow = (): TranslationRow => ({ id: rowId(), key: '', 
 export const newShopChannel = (): KeyedShopChannel => ({
   id: rowId(),
   kind: 'whatsapp',
-  label: '',
+  key: '',
   number: '',
   intro: '',
   email: '',
@@ -558,7 +541,7 @@ export const newShopChannel = (): KeyedShopChannel => ({
 });
 
 /** A fresh order-field row (defaults to a required single-line text input). */
-export const newShopField = (): KeyedShopField => ({ id: rowId(), label: '', type: 'text', required: true });
+export const newShopField = (): KeyedShopField => ({ id: rowId(), key: '', type: 'text', required: true });
 
 /** Returns the object only if at least one value is defined, else undefined. */
 function stripEmpty<T extends Record<string, unknown>>(obj: T): T | undefined {

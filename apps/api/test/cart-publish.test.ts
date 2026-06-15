@@ -20,11 +20,18 @@ describe('mini shop cart → publish', () => {
 
   const shop = {
     enabled: true,
-    currency: { code: 'EUR', symbol: '€', position: 'after', decimals: 2 },
+    currency: { position: 'after', decimals: 2 },
     channels: [
-      { kind: 'whatsapp', number: '+14155550123', label: 'Order on WhatsApp' },
-      { kind: 'payment', urlTemplate: 'https://paypal.me/acme/{total}', provider: 'paypal' },
+      { kind: 'whatsapp', key: 'whatsapp', number: '+14155550123' },
+      { kind: 'payment', key: 'pay', urlTemplate: 'https://paypal.me/acme/{total}', provider: 'paypal' },
     ],
+  };
+  // Currency symbol/code + channel labels are translatable → the catalog (resolved per locale at render).
+  const shopTr = {
+    cart_currency_symbol: { en: '€' },
+    cart_currency_code: { en: 'EUR' },
+    'shop.whatsapp': { en: 'Order on WhatsApp' },
+    'shop.pay': { en: 'Pay with PayPal' },
   };
 
   beforeEach(async () => {
@@ -48,7 +55,7 @@ describe('mini shop cart → publish', () => {
         await proj.putContent('settings', 'settings', {
           identity: { name: 'Acme', colors: { primary: '#0a7' } },
           // The cart mount lives in the footer slot → present on EVERY page.
-          website: { footer: '{{sw-cart}}', shop },
+          website: { footer: '{{sw-cart}}', shop, translations: shopTr },
           settings: {},
         })
       ).statusCode,
@@ -105,7 +112,7 @@ describe('mini shop cart → publish', () => {
       (
         await proj.putContent('settings', 'settings', {
           identity: { name: 'Acme', colors: { primary: '#0a7' } },
-          website: { shop: { enabled: true, title: 'Your cart' } },
+          website: { shop: { enabled: true } },
           settings: {},
         })
       ).statusCode,
@@ -122,7 +129,7 @@ describe('mini shop cart → publish', () => {
     expect((await proj.putContent('page', 'shop-de', page)).statusCode).toBe(200);
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
     const html = (await client.get(`/sites/${slug}/warenkorb/index.html`)).body;
-    expect(html).toContain('data-cart-title="Warenkorb"'); // hash override beats website.shop.title
+    expect(html).toContain('data-cart-title="Warenkorb"'); // per-page hash override (lookup page.data)
     expect(html).toContain('data-empty-label="Ihr Warenkorb ist leer."');
   });
 
@@ -186,7 +193,7 @@ describe('mini shop cart → publish', () => {
       (
         await proj.putContent('settings', 'settings', {
           identity: { name: 'Acme', colors: { primary: '#0a7' } },
-          website: { footer: '{{sw-cart}}', shop: { enabled: true, channels: [{ kind: 'form', formId: 'order', label: 'Place order' }] } },
+          website: { footer: '{{sw-cart}}', shop: { enabled: true, channels: [{ kind: 'form', key: 'order_form', formId: 'order' }] } },
           settings: {},
         })
       ).statusCode,

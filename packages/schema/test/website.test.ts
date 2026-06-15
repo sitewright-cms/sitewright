@@ -135,63 +135,66 @@ describe('WebsiteSettingsSchema', () => {
   });
 
   describe('shop config (MINI SHOP)', () => {
-    it('accepts a currency + the three deep-link channels', () => {
+    it('accepts currency formatting + the three deep-link channels (keyed, no labels)', () => {
       const shop = {
-        currency: { code: 'EUR', symbol: '€', position: 'after' as const, decimals: 2 },
+        currency: { position: 'after' as const, decimals: 2 },
         channels: [
-          { kind: 'whatsapp' as const, number: '+14155550123', label: 'Order on WhatsApp' },
-          { kind: 'mailto' as const, email: 'sales@acme.test', subject: 'New order' },
-          { kind: 'payment' as const, urlTemplate: 'https://paypal.me/acme/{total}', provider: 'paypal' as const },
+          { kind: 'whatsapp' as const, key: 'whatsapp', number: '+14155550123' },
+          { kind: 'mailto' as const, key: 'email', email: 'sales@acme.test', subject: 'New order' },
+          { kind: 'payment' as const, key: 'pay', urlTemplate: 'https://paypal.me/acme/{total}', provider: 'paypal' as const },
         ],
       };
       const parsed = WebsiteSettingsSchema.parse({ shop });
-      expect(parsed.shop?.currency?.code).toBe('EUR');
+      expect(parsed.shop?.currency).toMatchObject({ position: 'after', decimals: 2 });
       expect(parsed.shop?.channels).toHaveLength(3);
+      expect(parsed.shop?.channels?.[0]).toMatchObject({ kind: 'whatsapp', key: 'whatsapp' });
     });
 
-    it('defaults currency position (before) and decimals (2)', () => {
-      const parsed = WebsiteSettingsSchema.parse({ shop: { currency: { code: 'USD', symbol: '$' } } });
+    it('currency holds only formatting (position/decimals) — defaults before/2; symbol/code are not stored here', () => {
+      const parsed = WebsiteSettingsSchema.parse({ shop: { currency: {} } });
       expect(parsed.shop?.currency).toMatchObject({ position: 'before', decimals: 2 });
+      // symbol/code are translatable (catalog) → stripped if passed here
+      const stripped = WebsiteSettingsSchema.parse({ shop: { currency: { code: 'USD', symbol: '$' } as never } });
+      expect(stripped.shop?.currency && 'code' in stripped.shop.currency).toBe(false);
+      expect(() => WebsiteSettingsSchema.parse({ shop: { currency: { decimals: 9 } } })).toThrow(); // out of [0,4]
     });
 
-    it('rejects a non-ISO-4217 currency code', () => {
-      expect(() => WebsiteSettingsSchema.parse({ shop: { currency: { code: 'Euro', symbol: '€' } } })).toThrow();
-      expect(() => WebsiteSettingsSchema.parse({ shop: { currency: { code: 'us', symbol: '$' } } })).toThrow();
-      expect(() => WebsiteSettingsSchema.parse({ shop: { currency: { code: 'USD', symbol: '$', decimals: 9 } } })).toThrow();
+    it('requires a stable channel key (its label lives in the catalog)', () => {
+      expect(() => WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'whatsapp', number: '+14155550123' }] } })).toThrow(); // no key
+      expect(() => WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'whatsapp', key: 'bad key', number: '+14155550123' }] } })).toThrow(); // key not an identifier
+      expect(WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'whatsapp', key: 'whatsapp', number: '+14155550123' }] } }).shop?.channels).toHaveLength(1);
     });
 
     it('rejects a non-E.164 whatsapp number, accepts a valid one', () => {
-      expect(() => WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'whatsapp', number: '0155 1234' }] } })).toThrow();
-      expect(() => WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'whatsapp', number: '+0155123' }] } })).toThrow();
+      expect(() => WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'whatsapp', key: 'w', number: '0155 1234' }] } })).toThrow();
+      expect(() => WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'whatsapp', key: 'w', number: '+0155123' }] } })).toThrow();
       expect(
-        WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'whatsapp', number: '+14155550123' }] } }).shop?.channels,
+        WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'whatsapp', key: 'w', number: '+14155550123' }] } }).shop?.channels,
       ).toHaveLength(1);
     });
 
     it('payment urlTemplate: https-only, known placeholders only, fixed link allowed', () => {
       expect(() =>
-        WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'payment', urlTemplate: 'http://paypal.me/acme/{total}' }] } }),
+        WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'payment', key: 'p', urlTemplate: 'http://paypal.me/acme/{total}' }] } }),
       ).toThrow();
-      // an unknown placeholder is a likely typo → rejected
       expect(() =>
-        WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'payment', urlTemplate: 'https://paypal.me/acme/{amount}' }] } }),
+        WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'payment', key: 'p', urlTemplate: 'https://paypal.me/acme/{amount}' }] } }),
       ).toThrow();
-      // a Stripe-style fixed link (no placeholder) is valid
       expect(
-        WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'payment', urlTemplate: 'https://buy.stripe.com/test_fixed' }] } }).shop
+        WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'payment', key: 'p', urlTemplate: 'https://buy.stripe.com/test_fixed' }] } }).shop
           ?.channels,
       ).toHaveLength(1);
     });
 
     it('rejects control chars in a mailto subject (header-injection hygiene)', () => {
       expect(() =>
-        WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'mailto', email: 'a@b.test', subject: 'x\r\nBcc: e@v.test' }] } }),
+        WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'mailto', key: 'email', email: 'a@b.test', subject: 'x\r\nBcc: e@v.test' }] } }),
       ).toThrow();
     });
 
     it('rejects an unknown channel kind and caps the channel count', () => {
-      expect(() => WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'sms', number: '+14155550123' }] } })).toThrow();
-      const many = Array.from({ length: 9 }, () => ({ kind: 'mailto' as const, email: 'a@b.test' }));
+      expect(() => WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'sms', key: 's', number: '+14155550123' }] } })).toThrow();
+      const many = Array.from({ length: 9 }, (_, i) => ({ kind: 'mailto' as const, key: `e${i}`, email: 'a@b.test' }));
       expect(() => WebsiteSettingsSchema.parse({ shop: { channels: many } })).toThrow();
     });
 
@@ -201,68 +204,62 @@ describe('WebsiteSettingsSchema', () => {
 
     it('accepts a form channel referencing a Form id', () => {
       const parsed = WebsiteSettingsSchema.parse({
-        shop: { channels: [{ kind: 'form', formId: 'order-form', label: 'Place order' }] },
+        shop: { channels: [{ kind: 'form', key: 'order_form', formId: 'order-form' }] },
       });
-      expect(parsed.shop?.channels?.[0]).toMatchObject({ kind: 'form', formId: 'order-form' });
+      expect(parsed.shop?.channels?.[0]).toMatchObject({ kind: 'form', key: 'order_form', formId: 'order-form' });
     });
 
     it('rejects a form channel without a valid formId', () => {
-      expect(() => WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'form' }] } })).toThrow();
-      expect(() => WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'form', formId: 'Bad Id!' }] } })).toThrow();
+      expect(() => WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'form', key: 'f' }] } })).toThrow();
+      expect(() => WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'form', key: 'f', formId: 'Bad Id!' }] } })).toThrow();
     });
 
-    it('accepts an editable cart note (bounded)', () => {
-      expect(WebsiteSettingsSchema.parse({ shop: { note: 'Order request only.' } }).shop?.note).toBe('Order request only.');
-      expect(() => WebsiteSettingsSchema.parse({ shop: { note: 'a'.repeat(301) } })).toThrow();
-    });
-
-    it('accepts per-channel order fields on whatsapp + mailto and defaults the field type to text', () => {
+    it('accepts per-channel order fields on whatsapp + mailto (keyed) and defaults the field type to text', () => {
       const parsed = WebsiteSettingsSchema.parse({
         shop: {
           channels: [
             {
               kind: 'whatsapp',
+              key: 'whatsapp',
               number: '+14155550123',
-              fields: [{ label: 'Your name', required: true }, { label: 'Your address', type: 'textarea' }],
+              fields: [{ key: 'name', required: true }, { key: 'address', type: 'textarea' }],
             },
-            { kind: 'mailto', email: 'a@b.test', fields: [{ label: 'Phone', type: 'tel' }] },
+            { kind: 'mailto', key: 'email', email: 'a@b.test', fields: [{ key: 'phone', type: 'tel' }] },
           ],
         },
       });
       const wa = parsed.shop?.channels?.[0];
       expect(wa?.kind === 'whatsapp' && wa.fields).toEqual([
-        { label: 'Your name', type: 'text', required: true },
-        { label: 'Your address', type: 'textarea' },
+        { key: 'name', type: 'text', required: true },
+        { key: 'address', type: 'textarea' },
       ]);
       const mail = parsed.shop?.channels?.[1];
-      expect(mail?.kind === 'mailto' && mail.fields?.[0]).toEqual({ label: 'Phone', type: 'tel' });
+      expect(mail?.kind === 'mailto' && mail.fields?.[0]).toEqual({ key: 'phone', type: 'tel' });
     });
 
-    it('rejects an order-field label with control chars, an unknown type, and caps the field count', () => {
+    it('rejects an invalid order-field key, an unknown type, and caps the field count', () => {
       expect(() =>
-        WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'whatsapp', number: '+14155550123', fields: [{ label: 'a\r\nb' }] }] } }),
+        WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'whatsapp', key: 'w', number: '+14155550123', fields: [{ key: 'a b' }] }] } }),
+      ).toThrow(); // key not an identifier
+      expect(() =>
+        WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'mailto', key: 'e', email: 'a@b.test', fields: [{ key: 'x', type: 'date' }] }] } }),
       ).toThrow();
+      const manyFields = Array.from({ length: 9 }, (_, i) => ({ key: `f${i}` }));
       expect(() =>
-        WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'mailto', email: 'a@b.test', fields: [{ label: 'x', type: 'date' }] }] } }),
-      ).toThrow();
-      const manyFields = Array.from({ length: 9 }, (_, i) => ({ label: `f${i}` }));
-      expect(() =>
-        WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'whatsapp', number: '+14155550123', fields: manyFields }] } }),
+        WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'whatsapp', key: 'w', number: '+14155550123', fields: manyFields }] } }),
       ).toThrow();
     });
 
     it('payment provider is paypal/custom — a legacy stripe value is coerced to custom (back-compat)', () => {
       expect(
-        WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'payment', urlTemplate: 'https://buy.stripe.com/fixed', provider: 'custom' }] } }).shop?.channels,
+        WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'payment', key: 'p', urlTemplate: 'https://buy.stripe.com/fixed', provider: 'custom' }] } }).shop?.channels,
       ).toHaveLength(1);
-      // a stored `stripe` from before the enum narrowed is folded into `custom`, not rejected
       const coerced = WebsiteSettingsSchema.parse({
-        shop: { channels: [{ kind: 'payment', urlTemplate: 'https://buy.stripe.com/fixed', provider: 'stripe' }] },
+        shop: { channels: [{ kind: 'payment', key: 'p', urlTemplate: 'https://buy.stripe.com/fixed', provider: 'stripe' }] },
       });
       expect(coerced.shop?.channels?.[0]).toMatchObject({ kind: 'payment', provider: 'custom' });
-      // an unknown provider is still rejected
       expect(() =>
-        WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'payment', urlTemplate: 'https://x.test/p', provider: 'venmo' }] } }),
+        WebsiteSettingsSchema.parse({ shop: { channels: [{ kind: 'payment', key: 'p', urlTemplate: 'https://x.test/p', provider: 'venmo' }] } }),
       ).toThrow();
     });
   });

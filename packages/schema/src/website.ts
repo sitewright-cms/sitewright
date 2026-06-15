@@ -56,8 +56,6 @@ export type Translations = z.infer<typeof TranslationsSchema>;
 // merchant) and is emitted into the published HTML on the cart mount for the first-party `cart.js`
 // runtime to read — see packages/blocks/src/cart.ts and the `{{sw-cart}}` helper. PR-2 adds a `form`
 // channel (cart → an order Form). A `Shop` block + a settings UI arrive in PR-3.
-const SHOP_LABEL_MAX = 60;
-const SHOP_FIELD_LABEL_MAX = 60;
 /** Max buyer-input fields a single whatsapp/mailto channel may collect (the editor disables "Add field" here). */
 export const SHOP_MAX_CHANNEL_FIELDS = 8;
 const KNOWN_PAYMENT_PLACEHOLDERS = new Set(['{total}', '{currency}', '{items}']);
@@ -71,12 +69,13 @@ function shopHasControlChars(value: string): boolean {
   return false;
 }
 
-/** Display currency for the cart subtotal. Formatting is client-side + display-only (non-authoritative). */
+/**
+ * Currency FORMATTING for the cart subtotal — symbol placement + fraction digits (client-side,
+ * display-only, non-authoritative). The display SYMBOL + ISO CODE are translatable (per-locale) so they
+ * live in the translation catalog under the reserved `cart_currency_symbol` / `cart_currency_code` keys,
+ * NOT here — a multi-region site can show `$`/`USD` for one locale and `€`/`EUR` for another.
+ */
 export const ShopCurrencySchema = z.object({
-  /** ISO 4217 alphabetic code, e.g. `USD`, `EUR`, `JPY`. */
-  code: z.string().regex(/^[A-Z]{3}$/, 'currency code must be a 3-letter ISO 4217 code (e.g. USD, EUR)'),
-  /** Display symbol, e.g. `$`, `€`, `CHF`. */
-  symbol: z.string().min(1).max(8),
   /** Symbol placement around the amount. */
   position: z.enum(['before', 'after']).default('before'),
   /** Fraction digits shown (0 for JPY, 2 for most). */
@@ -84,7 +83,8 @@ export const ShopCurrencySchema = z.object({
 });
 export type ShopCurrency = z.infer<typeof ShopCurrencySchema>;
 
-const shopChannelLabel = z.string().min(1).max(SHOP_LABEL_MAX).optional();
+/** Stable per-channel / per-field key — its display LABEL lives in the catalog under `shop.<key>` (translatable). */
+const ShopItemKeySchema = z.string().min(1).max(MAX_IDENTIFIER_LENGTH).regex(/^[A-Za-z_][A-Za-z0-9_]*$/, 'must be a valid identifier');
 
 /** Input types a buyer-collected order field may use — controls the rendered control + mobile keyboard. */
 export const SHOP_FIELD_TYPES = ['text', 'textarea', 'tel', 'email'] as const;
@@ -93,20 +93,15 @@ export type ShopFieldType = (typeof SHOP_FIELD_TYPES)[number];
 /**
  * A custom buyer-input field collected in the cart drawer BEFORE a WhatsApp / mailto order is sent.
  * The cart renders each as an input; on submit every FILLED field is appended to the order message as a
- * `Label: value` line BELOW the order (see packages/blocks/src/cart.ts). `label` doubles as the prompt
- * shown to the buyer AND the `Label:` key in the message — it reaches a wa.me text / mailto BODY (both
- * URL-encoded by cart.js) and is escaped into the cart-mount attribute, but reject ASCII control chars
- * defensively (a CR/LF in a label is never legitimate and could fold a header if the value were ever
- * reused in one). Front-end only, like the rest of the mini shop — these collect order context, not
- * authoritative data.
+ * `Label: value` line BELOW the order (see packages/blocks/src/cart.ts). The display LABEL (the buyer
+ * prompt + the `Label:` key in the message) is TRANSLATABLE — it lives in the catalog under `shop.<key>`;
+ * the cart helper resolves it per locale (and the resolved text is URL-encoded by cart.js + escaped into
+ * the mount attribute). Front-end only, like the rest of the mini shop — order context, not authoritative.
  */
 export const ShopChannelFieldSchema = z.object({
-  /** The prompt shown to the buyer + the `Label:` key in the order message (e.g. "Your name"). */
-  label: z
-    .string()
-    .min(1)
-    .max(SHOP_FIELD_LABEL_MAX)
-    .refine((v) => !shopHasControlChars(v), 'label must not contain control characters'),
+  /** Stable key — the field's display LABEL (the buyer prompt + the `Label:` key in the order message)
+   *  is translatable and lives in the catalog under `shop.<key>`. */
+  key: ShopItemKeySchema,
   /** Input type — controls the rendered control + the mobile keyboard. Defaults to a single-line text input. */
   type: z.enum(SHOP_FIELD_TYPES).default('text'),
   /** Whether the buyer must fill this field before the order can be sent. */
@@ -120,7 +115,7 @@ const shopChannelFields = z.array(ShopChannelFieldSchema).max(SHOP_MAX_CHANNEL_F
 /** Order via a WhatsApp deep link (`wa.me/<number>?text=<order>`) — zero backend. */
 const WhatsappChannelSchema = z.object({
   kind: z.literal('whatsapp'),
-  label: shopChannelLabel,
+  key: ShopItemKeySchema,
   /** Recipient in E.164 (`+` then 7–15 digits, no leading 0); cart.js strips the `+` for wa.me. */
   number: z.string().regex(/^\+[1-9]\d{6,14}$/, 'number must be E.164, e.g. +14155550123'),
   /** Optional intro line prepended to the auto-built order text (URL-encoded by cart.js). */
@@ -132,7 +127,7 @@ const WhatsappChannelSchema = z.object({
 /** Order via a `mailto:` deep link — zero backend. */
 const MailtoChannelSchema = z.object({
   kind: z.literal('mailto'),
-  label: shopChannelLabel,
+  key: ShopItemKeySchema,
   email: z.string().email().max(320),
   /** Optional subject; lands in a mail Subject header → reject control chars. */
   subject: z
@@ -154,7 +149,7 @@ const MailtoChannelSchema = z.object({
  */
 const PaymentChannelSchema = z.object({
   kind: z.literal('payment'),
-  label: shopChannelLabel,
+  key: ShopItemKeySchema,
   /** Informational provider tag (does not change behavior). `stripe` is folded into `custom` — Stripe
    *  Payment Links are fixed-amount, so they can't carry the cart total. A legacy stored `stripe` is
    *  COERCED to `custom` (back-compat: re-saving/importing an older config never errors). */
@@ -186,7 +181,7 @@ const PaymentChannelSchema = z.object({
  */
 const FormChannelSchema = z.object({
   kind: z.literal('form'),
-  label: shopChannelLabel,
+  key: ShopItemKeySchema,
   formId: IdSchema,
 });
 
@@ -210,17 +205,9 @@ export const ShopSchema = z.object({
   enabled: z.boolean().optional(),
   currency: ShopCurrencySchema.optional(),
   channels: z.array(ShopChannelSchema).max(8).optional(),
-  /** Override the default "Add to cart" button label (the {{sw-add-to-cart}} default). */
-  addToCartLabel: z.string().min(1).max(SHOP_LABEL_MAX).optional(),
-  /** Cart drawer heading (cart.js default: "Your cart"). */
-  title: z.string().min(1).max(120).optional(),
-  /**
-   * The small disclaimer shown in the cart drawer above the checkout buttons. Defaults (in cart.js) to
-   * "Prices are indicative. This sends an order request — the seller confirms availability and final
-   * price." Reinforces the non-authoritative-pricing model; editable so a merchant can word it for
-   * their jurisdiction/policy.
-   */
-  note: z.string().min(1).max(300).optional(),
+  // NOTE: the cart's display TEXT (add-to-cart button, drawer title/note/etc., currency symbol/code, and
+  // each channel/field label) is all TRANSLATABLE — it lives in the translation catalog (reserved cart_*
+  // keys + per-channel/field `shop.<key>` keys), NOT here. Settings holds only non-text STRUCTURE.
 });
 export type Shop = z.infer<typeof ShopSchema>;
 

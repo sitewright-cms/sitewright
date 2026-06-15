@@ -511,7 +511,7 @@ function createInstance(): typeof Handlebars {
     const options = args[args.length - 1] as Handlebars.HelperOptions;
     const h = (options?.hash ?? {}) as Record<string, unknown>;
     const str = (v: unknown): string => (typeof v === 'string' ? v : typeof v === 'number' ? String(v) : '');
-    const root = (options.data?.root ?? {}) as { website?: { shop?: { enabled?: unknown; addToCartLabel?: unknown }; t?: Record<string, unknown> } };
+    const root = (options.data?.root ?? {}) as { website?: { shop?: { enabled?: unknown }; t?: Record<string, unknown> } };
     // Gated by the master switch: with the shop OFF (website.shop.enabled !== true) the cart is disabled
     // site-wide, so this button renders nothing — even if the helper is still in the template source.
     if (root.website?.shop?.enabled !== true) return new Handlebars.SafeString('');
@@ -521,11 +521,9 @@ function createInstance(): typeof Handlebars {
     if (!key) return new Handlebars.SafeString('');
     const priceNum = Number(h.price);
     const price = Number.isFinite(priceNum) && priceNum >= 0 ? String(priceNum) : '0';
-    const shopLabel = root.website?.shop?.addToCartLabel;
     // Label precedence: explicit hash → translation catalog (reserved `cart_add`, localized per page
-    // locale) → site-wide website.shop.addToCartLabel → built-in English default (RESERVED_TRANSLATION_DEFAULTS).
-    const label =
-      str(h.label) || reservedTr(root, 'cart_add') || (typeof shopLabel === 'string' ? shopLabel : '') || RESERVED_TRANSLATION_DEFAULTS.cart_add!;
+    // locale) → built-in English default (RESERVED_TRANSLATION_DEFAULTS).
+    const label = str(h.label) || reservedTr(root, 'cart_add') || RESERVED_TRANSLATION_DEFAULTS.cart_add!;
     let attrs = `data-sw-cart-add data-sku="${escapeAttr(key)}" data-name="${escapeAttr(name || key)}" data-price="${escapeAttr(price)}"`;
     const img = str(h.image);
     if (img) {
@@ -541,13 +539,12 @@ function createInstance(): typeof Handlebars {
   // marker is present) builds the floating button + drawer from it. Drop it ONCE per site (e.g. the
   // footer slot) so it is on every page.
   //
-  // i18n: a bare {{sw-cart}} AUTO-LOCALIZES — the drawer STRINGS (title/note/added/empty/subtotal/clear/
-  // sent/order-lead) resolve per page-locale from the translation catalog (reserved cart_* keys in
-  // website.translations), so a locale variant needs no per-page wiring. Precedence per string:
-  //   hash override → catalog (cart_*) → website.shop value (title/note only) → built-in English default.
-  // The built-in defaults live in @sitewright/schema's RESERVED_TRANSLATION_DEFAULTS (one source of
-  // truth, also surfaced as the editor's translation-table ghost rows). The hash path stays for one-off
-  // per-call overrides; channel labels + order-form strings stay site-wide (`website.shop.channels[].label`).
+  // i18n: a bare {{sw-cart}} AUTO-LOCALIZES — ALL display text resolves per page-locale from the
+  // translation catalog (website.translations): the drawer strings + currency symbol/code via reserved
+  // cart_* keys, and each channel/field LABEL via its `shop.<key>` key. So a locale variant needs no
+  // per-page wiring. Precedence per drawer string: hash override → catalog (cart_*) → built-in English
+  // default (RESERVED_TRANSLATION_DEFAULTS — one source of truth, also the editor's ghost rows). Settings
+  // (website.shop) holds only non-text STRUCTURE (enabled, currency position/decimals, channel config).
   hb.registerHelper('sw-cart', function swCart(this: unknown, ...args: unknown[]) {
     const options = args[args.length - 1] as Handlebars.HelperOptions;
     const h = (options.hash ?? {}) as Record<string, unknown>;
@@ -558,24 +555,23 @@ function createInstance(): typeof Handlebars {
     if (shop.enabled !== true) return new Handlebars.SafeString('');
     const currency = (shop.currency ?? {}) as Record<string, unknown>;
     const str = (v: unknown): string => (typeof v === 'string' ? v : typeof v === 'number' ? String(v) : '');
+    // A catalog string by key (reserved cart_* OR a free `shop.<key>`), floored to the registry default
+    // when the key is reserved (a non-reserved key has no default → '' floor). One source of truth.
+    // eslint-disable-next-line security/detect-object-injection -- key is a literal/derived shop key; RESERVED_TRANSLATION_DEFAULTS is a frozen const registry (missing key → undefined → '')
+    const tr = (key: string): string => reservedTr(root, key) || RESERVED_TRANSLATION_DEFAULTS[key] || '';
     let attrs = 'data-sw-cart';
-    const sym = str(currency.symbol);
-    if (sym) attrs += ` data-currency-symbol="${escapeAttr(sym)}"`;
-    const code = str(currency.code);
-    if (code) attrs += ` data-currency-code="${escapeAttr(code)}"`;
+    // Currency SYMBOL + CODE are translatable (reserved keys); position + decimals are non-text settings.
+    attrs += ` data-currency-symbol="${escapeAttr(tr('cart_currency_symbol'))}"`;
+    attrs += ` data-currency-code="${escapeAttr(tr('cart_currency_code'))}"`;
     if (currency.position === 'after') attrs += ` data-currency-pos="after"`;
     if (typeof currency.decimals === 'number') attrs += ` data-currency-decimals="${escapeAttr(String(currency.decimals))}"`;
-    // Drawer-string precedence per key: explicit hash → translation catalog (reserved cart_* key,
-    // localized per page locale) → site-wide website.shop value (title/note only) → built-in English
-    // default (RESERVED_TRANSLATION_DEFAULTS, the single source of truth). The default floor makes every
-    // label always resolve, so a bare {{sw-cart}} auto-localizes from website.translations with zero
-    // per-page wiring and an untranslated locale falls back to English.
-    // eslint-disable-next-line security/detect-object-injection -- k is a reserved-key literal from a frozen const registry, not user input
-    const rt = (k: string): string => reservedTr(root, k) || RESERVED_TRANSLATION_DEFAULTS[k]!;
-    const title = str(h.title) || reservedTr(root, 'cart_title') || str(shop.title) || RESERVED_TRANSLATION_DEFAULTS.cart_title!;
-    attrs += ` data-cart-title="${escapeAttr(title)}"`;
-    const note = str(h.note) || reservedTr(root, 'cart_note') || str(shop.note) || RESERVED_TRANSLATION_DEFAULTS.cart_note!;
-    attrs += ` data-note="${escapeAttr(note)}"`;
+    // Drawer-string precedence per key: explicit hash → translation catalog (reserved cart_* key, localized
+    // per page locale) → built-in English default (RESERVED_TRANSLATION_DEFAULTS, the single source of
+    // truth). The default floor makes every label always resolve, so a bare {{sw-cart}} auto-localizes from
+    // website.translations with zero per-page wiring and an untranslated locale falls back to English.
+    const rt = tr; // alias for the reserved cart_* drawer strings below
+    attrs += ` data-cart-title="${escapeAttr(str(h.title) || tr('cart_title'))}"`;
+    attrs += ` data-note="${escapeAttr(str(h.note) || tr('cart_note'))}"`;
     attrs += ` data-added-label="${escapeAttr(str(h.added) || rt('cart_added'))}"`;
     attrs += ` data-empty-label="${escapeAttr(str(h.empty) || rt('cart_empty'))}"`;
     attrs += ` data-subtotal-label="${escapeAttr(str(h.subtotal) || rt('cart_subtotal'))}"`;
@@ -590,6 +586,9 @@ function createInstance(): typeof Handlebars {
     const company = (root.company ?? {}) as Record<string, unknown>;
     const brand = str(company.name);
     if (brand) attrs += ` data-brand="${escapeAttr(brand)}"`;
+    // A channel/field LABEL is translatable: it lives in the catalog under `shop.<key>`, resolved per
+    // page-locale here. No catalog entry → the bare key as a visible fallback (so it's never blank).
+    const shopLabel = (key: string): string => (key ? reservedTr(root, `shop.${key}`) || key : '');
     // Project a channel's buyer-input fields to ONLY {label,type,required} (defence-in-depth over the
     // schema); an absent/empty list returns undefined so JSON.stringify drops the key (byte-stable).
     const projFields = (f: unknown): Array<Record<string, unknown>> | undefined => {
@@ -599,23 +598,25 @@ function createInstance(): typeof Handlebars {
           if (!x || typeof x !== 'object') return null;
           const fx = x as Record<string, unknown>;
           // `required` only when truthy (mirrors the model.ts projection) — keeps the JSON minimal/explicit.
-          return { label: fx.label, type: fx.type, ...(fx.required ? { required: true } : {}) };
+          return { label: shopLabel(str(fx.key)), type: fx.type, ...(fx.required ? { required: true } : {}) };
         })
         .filter((x): x is Record<string, unknown> => x !== null);
       return out.length ? out : undefined;
     };
-    // Project channels to ONLY the fields the runtime needs (defence-in-depth over the schema), then
-    // JSON-encode into an escaped attribute (cart.js JSON.parses it; undefined props are dropped).
+    // Project channels to ONLY the fields the runtime needs (defence-in-depth over the schema), resolving
+    // each channel's translatable label (`shop.<key>`), then JSON-encode into an escaped attribute
+    // (cart.js JSON.parses it; undefined props are dropped).
     const channels = Array.isArray(shop.channels) ? (shop.channels as Array<Record<string, unknown>>) : [];
     const clean = channels
       .map((c): Record<string, unknown> | null => {
         if (!c || typeof c !== 'object') return null;
-        if (c.kind === 'whatsapp') return { kind: 'whatsapp', label: c.label, number: c.number, intro: c.intro, fields: projFields(c.fields) };
-        if (c.kind === 'mailto') return { kind: 'mailto', label: c.label, email: c.email, subject: c.subject, fields: projFields(c.fields) };
-        if (c.kind === 'payment') return { kind: 'payment', label: c.label, urlTemplate: c.urlTemplate };
+        const label = shopLabel(str(c.key));
+        if (c.kind === 'whatsapp') return { kind: 'whatsapp', label, number: c.number, intro: c.intro, fields: projFields(c.fields) };
+        if (c.kind === 'mailto') return { kind: 'mailto', label, email: c.email, subject: c.subject, fields: projFields(c.fields) };
+        if (c.kind === 'payment') return { kind: 'payment', label, urlTemplate: c.urlTemplate };
         // `endpoint` is filled by resolveShopChannels in the render projection (the cart can't build
         // /f/<projectId>/<formId> client-side); a form channel with no resolved endpoint is dropped.
-        if (c.kind === 'form') return typeof c.endpoint === 'string' ? { kind: 'form', label: c.label, endpoint: c.endpoint } : null;
+        if (c.kind === 'form') return typeof c.endpoint === 'string' ? { kind: 'form', label, endpoint: c.endpoint } : null;
         return null;
       })
       .filter((c): c is Record<string, unknown> => c !== null);

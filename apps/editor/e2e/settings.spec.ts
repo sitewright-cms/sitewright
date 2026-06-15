@@ -254,10 +254,11 @@ test('Corporate Identity: pick a schema.org business type via the modal, save, a
   await expect(page.getByRole('button', { name: 'Business type (schema.org @type)' })).toContainText('Restaurant');
 });
 
-// The MINI SHOP config (website.shop) is edited in the Website Settings → Shop card: a currency plus
-// an add/remove list of checkout channels (a discriminated kind selector with per-kind fields).
-// Verifies the currency + a WhatsApp channel round-trip through save + reload.
-test('Website Settings: configure the mini-shop currency + a WhatsApp channel, save, and persist', async ({ page }) => {
+// The MINI SHOP config (website.shop) is edited in the Website Settings → Shop card: an Enable toggle
+// gates the section; when on, an Edit button opens a modal holding the structure (currency formatting +
+// keyed channels). The cart's display TEXT is translatable (Translations & Labels), not here.
+// Verifies the toggle + a keyed WhatsApp channel round-trip through save + reload.
+test('Website Settings: enable the shop + add a keyed WhatsApp channel via the modal, save, and persist', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: /Register/ }).click();
   await page.getByLabel('Email').fill(`shopui-${stamp}@e2e.test`);
@@ -270,11 +271,13 @@ test('Website Settings: configure the mini-shop currency + a WhatsApp channel, s
 
   await page.getByRole('tab', { name: 'Website Settings' }).click();
 
-  // Shop card: set a currency and add a WhatsApp checkout channel.
-  await page.getByLabel('Currency code').fill('EUR');
-  await page.getByLabel('Currency symbol').fill('€');
+  // Enable the shop, open its settings modal, and add a keyed WhatsApp channel.
+  await page.getByRole('switch', { name: 'Enable shop' }).click();
+  await page.getByRole('button', { name: 'Edit shop settings' }).click();
   await page.getByRole('button', { name: '+ Add channel' }).click();
+  await page.getByLabel('Channel 1 key').fill('whatsapp');
   await page.getByLabel('Channel 1 WhatsApp number').fill('+14155550123');
+  await page.keyboard.press('Escape'); // close the modal (edits patch the draft live)
 
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('Settings saved')).toBeVisible();
@@ -283,7 +286,9 @@ test('Website Settings: configure the mini-shop currency + a WhatsApp channel, s
   await page.reload();
   await page.getByRole('button', { name: /Shop UI Site/ }).click();
   await page.getByRole('tab', { name: 'Website Settings' }).click();
-  await expect(page.getByLabel('Currency code')).toHaveValue('EUR');
+  await expect(page.getByRole('switch', { name: 'Enable shop' })).toBeChecked();
+  await page.getByRole('button', { name: 'Edit shop settings' }).click();
+  await expect(page.getByLabel('Channel 1 key')).toHaveValue('whatsapp');
   await expect(page.getByLabel('Channel 1 WhatsApp number')).toHaveValue('+14155550123');
 });
 

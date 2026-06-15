@@ -49,6 +49,8 @@ export interface ChromeStrings {
   cart_clear: string;
   cart_sent: string;
   cart_order_lead: string;
+  cart_currency_symbol: string;
+  cart_currency_code: string;
 }
 
 export const CHROME_STRINGS: Record<string, ChromeStrings> = {
@@ -78,6 +80,8 @@ export const CHROME_STRINGS: Record<string, ChromeStrings> = {
     cart_clear: 'Clear cart',
     cart_sent: 'Order sent — we will be in touch.',
     cart_order_lead: 'I’d like to order:',
+    cart_currency_symbol: '$',
+    cart_currency_code: 'USD',
   },
   de: {
     href_home: '/de',
@@ -105,6 +109,8 @@ export const CHROME_STRINGS: Record<string, ChromeStrings> = {
     cart_clear: 'Warenkorb leeren',
     cart_sent: 'Bestellung gesendet — wir melden uns.',
     cart_order_lead: 'Ich möchte gerne bestellen:',
+    cart_currency_symbol: '$',
+    cart_currency_code: 'USD',
   },
   es: {
     href_home: '/es',
@@ -132,6 +138,8 @@ export const CHROME_STRINGS: Record<string, ChromeStrings> = {
     cart_clear: 'Vaciar carrito',
     cart_sent: 'Pedido enviado — le contactaremos.',
     cart_order_lead: 'Me gustaría hacer un pedido:',
+    cart_currency_symbol: '$',
+    cart_currency_code: 'USD',
   },
 };
 

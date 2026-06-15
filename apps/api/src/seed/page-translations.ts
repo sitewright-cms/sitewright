@@ -54,4 +54,33 @@ export const PAGE_TRANSLATIONS: Record<string, Record<string, string>> = {
     de: 'Die Fragen, mit denen jedes Projekt beginnt — klar beantwortet. Fehlt etwas? Fragen Sie einfach.',
     es: 'Las preguntas con las que empieza todo proyecto — respondidas con claridad. ¿Falta algo? Pregunte sin más.',
   },
+
+  // HOME (secondary sections: why-us, services preview, spotlight, selected work, testimonials, CTA)
+  'home.why_eyebrow': { de: 'Warum Northwind', es: 'Por qué Northwind' },
+  'home.why_title': { de: 'Erfahrene Leute, keine Übergaben, keine Überraschungen', es: 'Gente sénior, sin traspasos, sin sorpresas' },
+  'home.why_sub': { de: 'Sie arbeiten direkt mit den Designern und Entwicklern, die Ihre Website bauen — von Anfang bis Ende.', es: 'Trabaja directamente con los diseñadores e ingenieros que construyen su web — de principio a fin.' },
+  'home.why1': { de: 'Fester Umfang & Zeitplan', es: 'Alcance y plazos cerrados' },
+  'home.why2': { de: 'Perfekte Lighthouse-Werte', es: 'Lighthouse perfecto' },
+  'home.why3': { de: 'Inhalte selbst bearbeiten', es: 'Edite el contenido usted mismo' },
+  'home.why4': { de: 'Barrierearm & SEO-bereit', es: 'Accesible y listo para SEO' },
+  'home.why5': { de: 'Portabler statischer Export', es: 'Exportación estática portable' },
+  'home.why6': { de: 'Laufende Wartungspakete', es: 'Mantenimiento continuo' },
+  'home.svc_title': { de: 'Alles aus einer Hand', es: 'Todo bajo un mismo techo' },
+  'home.svc_sub': { de: 'Strategie, Design und Entwicklung — keine Übergaben, keine Agentur-Ketten.', es: 'Estrategia, diseño y desarrollo — sin traspasos ni cadenas de agencias.' },
+  'home.spot_eyebrow': { de: 'Fallstudie', es: 'Caso de estudio' },
+  'home.spot_link': { de: 'Zum ganzen Portfolio', es: 'Ver todo el portfolio' },
+  'home.work_title': { de: 'Ausgewählte Arbeiten', es: 'Trabajos seleccionados' },
+  'home.work_link': { de: 'Alle Projekte ansehen', es: 'Ver todos los proyectos' },
+  'home.tst_title': { de: 'Geschätzt von den Marken, für die wir bauen', es: 'Las marcas para las que construimos nos quieren' },
+  'home.cta_title': { de: 'Sie haben ein Projekt im Kopf?', es: '¿Tiene un proyecto en mente?' },
+  'home.cta_sub': { de: 'Sagen Sie uns, wo Sie in zwölf Monaten stehen wollen — wir zeigen Ihnen, wie die richtige Website Sie dorthin bringt.', es: 'Cuéntenos dónde quiere estar dentro de doce meses — le mostraremos cómo la web adecuada le lleva hasta allí.' },
+  'home.cta_btn': { de: 'Kennenlern-Termin buchen', es: 'Reservar una llamada' },
+  // SHOP — checkout channel + order-field LABELS (the cart resolves `shop.<key>` from a channel/field's
+  // stable key). These carry EN too (the cart falls back to the bare key, not an inline default).
+  'shop.whatsapp': { en: 'Order on WhatsApp', de: 'Per WhatsApp bestellen', es: 'Pedir por WhatsApp' },
+  'shop.email': { en: 'Order by email', de: 'Per E-Mail bestellen', es: 'Pedir por correo' },
+  'shop.pay': { en: 'Pay with PayPal', de: 'Mit PayPal zahlen', es: 'Pagar con PayPal' },
+  'shop.name': { en: 'Your name', de: 'Ihr Name', es: 'Su nombre' },
+  'shop.address': { en: 'Delivery address', de: 'Lieferadresse', es: 'Dirección de entrega' },
+  'shop.phone': { en: 'Phone', de: 'Telefon', es: 'Teléfono' },
 };

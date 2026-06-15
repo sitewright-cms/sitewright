@@ -140,29 +140,33 @@ export const EXAMPLE_WEBSITE = {
     // Master switch: the example ships with the shop ON (a fresh project starts OFF — the operator opts
     // in with the "Enable shop" toggle). With this false/absent the cart helpers render nothing.
     enabled: true,
-    currency: { code: 'USD', symbol: '$', position: 'before', decimals: 2 },
+    // Currency FORMATTING only (USD is before/2 = the schema defaults → no `currency` object needed). The
+    // symbol/code are translatable (catalog: cart_currency_symbol/code, seeded in strings.ts).
+    // Channels carry a stable `key`; their button LABELS + the field labels live in the catalog under
+    // `shop.<key>` (seeded in page-translations.ts), resolved per locale by the cart helper.
     channels: [
       {
         kind: 'whatsapp',
+        key: 'whatsapp',
         number: '+14155550123',
-        label: 'Order on WhatsApp',
         intro: 'Hi Northwind — I’d like to order:',
         fields: [
-          { label: 'Your name', required: true },
-          { label: 'Delivery address', type: 'textarea', required: true },
-          { label: 'Phone', type: 'tel' },
+          { key: 'name', required: true },
+          { key: 'address', type: 'textarea', required: true },
+          { key: 'phone', type: 'tel' },
         ],
       },
       {
         kind: 'mailto',
+        key: 'email',
         email: 'hello@northwindstudio.com',
         subject: 'Northwind merch order',
         fields: [
-          { label: 'Your name', required: true },
-          { label: 'Delivery address', type: 'textarea', required: true },
+          { key: 'name', required: true },
+          { key: 'address', type: 'textarea', required: true },
         ],
       },
-      { kind: 'payment', provider: 'paypal', urlTemplate: 'https://paypal.me/northwind/{total}', label: 'Pay with PayPal' },
+      { kind: 'payment', key: 'pay', provider: 'paypal', urlTemplate: 'https://paypal.me/northwind/{total}' },
     ],
   },
   // A language→country map for the nav switcher's flags (sw-flag takes a COUNTRY code, not a

@@ -225,22 +225,26 @@ is site-wide):
   {{sw-cart}}
 Or set page.template to "global:shop" (a ready-made storefront over the "products" dataset).
 {{sw-add-to-cart}} takes sku/name/price (a number)/image/label/class; {{sw-cart}} renders the
-floating cart + drawer. Configure the shop in settings under website.shop:
-  shop: { currency:{ code:"USD", symbol:"$", position:"before"|"after", decimals:2 },
-          addToCartLabel:"Add to cart", title:"Your cart",
-          channels:[ {kind:"whatsapp", number:"+14155550123",
-                       fields:[{label:"Your name",required:true},{label:"Your address",type:"textarea"}]},
-                     {kind:"mailto", email:"orders@acme.com"},
-                     {kind:"payment", urlTemplate:"https://paypal.me/acme/{total}"},
-                     {kind:"form", formId:"<an existing Form id>"} ] }
-The cart builds the order in the browser (localStorage) and hands it to a channel: a WhatsApp/
-mailto/payment deep link, or a "form" channel that POSTs the order to that Form's inbox. Prices
-are NON-AUTHORITATIVE — it sends an order INQUIRY; the seller confirms availability + price and
-collects payment. (The cart runtime ships only on pages that use it.)
-A whatsapp/mailto channel may declare \`fields\` (label + type text|textarea|tel|email + optional
-required): the cart collects them before opening the link and appends them as "Label: value" lines
-below the order. An email order's body also starts with "Hi <Corporate-Identity name> — I'd like to
-order:" (the brand name comes from the identity, not the shop config).
+floating cart + drawer. website.shop holds only STRUCTURE — the master switch, currency FORMATTING,
+and the channels (each with a stable \`key\`); all display TEXT is TRANSLATABLE and lives in the
+translation catalog (website.translations):
+  shop: { enabled:true, currency:{ position:"before"|"after", decimals:2 },
+          channels:[ {kind:"whatsapp", key:"whatsapp", number:"+14155550123",
+                       fields:[{key:"name",required:true},{key:"address",type:"textarea"}]},
+                     {kind:"mailto", key:"email", email:"orders@acme.com"},
+                     {kind:"payment", key:"pay", urlTemplate:"https://paypal.me/acme/{total}"},
+                     {kind:"form", key:"order_form", formId:"<an existing Form id>"} ] }
+The cart is OFF unless enabled:true. Its wording — the add-to-cart button, drawer title/note/etc.,
+currency symbol & code, and each channel/field label — comes from website.translations: the reserved
+cart_* keys (cart_add, cart_title, cart_note, cart_currency_symbol, cart_currency_code, …) and each
+channel/field's \`shop.<key>\` key (e.g. shop.whatsapp, shop.name). Set those per locale to localize.
+The cart builds the order in the browser (localStorage) and hands it to a channel (WhatsApp/mailto/
+payment deep link, or a "form" channel that POSTs to that Form's inbox). Prices are NON-AUTHORITATIVE
+— an order INQUIRY; the seller confirms price + collects payment. (Runtime ships only on pages that use it.)
+A whatsapp/mailto channel may declare \`fields\` (key + type text|textarea|tel|email + optional required):
+the cart collects them before opening the link and appends them as "Label: value" lines below the order
+(each label from shop.<field-key>). An email order's body also starts with the localized cart_order_lead
+prefixed by the Corporate-Identity name ("Hi <name> — …").
 
 Typical flow: get_scope → set the Corporate Identity → put_page(s) with \`source\` →
 preview_page (returns { html, … } — read \`html\` to check the render) → publish_project. All writes are validated

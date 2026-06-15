@@ -89,59 +89,65 @@ export function usesPreloader(html: string | null | undefined): boolean {
 
 // --- CSS --------------------------------------------------------------------
 export const PRELOADER_CSS = [
-  // Frosted overlay: half-transparent brand background + backdrop blur, fading out when `loading` is
-  // removed. visibility is delayed to the end of the fade so it stops catching pointer events.
+  // Frosted overlay: half-transparent brand background + backdrop blur. It fades BOTH ways with the
+  // same .45s ease: a transition handles the fade-OUT when `loading` is removed, and a one-shot
+  // `sw-pl-fade` animation handles the fade-IN — an animation (not a transition) because the overlay
+  // ships ALREADY-`loading` and CSS transitions don't run on the first painted state, while animations
+  // do. visibility is delayed to the end of the fade-out so it stops catching pointer events.
   '[data-sw-preloader]{position:fixed;inset:0;z-index:99990;display:grid;place-items:center;background:color-mix(in srgb,var(--sw-color-base-100,#fff) 62%,transparent);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);opacity:0;visibility:hidden;pointer-events:none;transition:opacity .45s ease,visibility 0s linear .45s}',
-  '[data-sw-preloader].loading{opacity:1;visibility:visible;pointer-events:auto;transition:opacity .45s ease}',
+  '[data-sw-preloader].loading{opacity:1;visibility:visible;pointer-events:auto;transition:opacity .45s ease;animation:sw-pl-fade .45s ease}',
+  '@keyframes sw-pl-fade{from{opacity:0}to{opacity:1}}',
   // All inner rules are scoped under the marker so the .pl-* class names can't collide with author CSS.
-  '[data-sw-preloader] .pl-mark{width:74px;height:74px;display:block}',
+  // Sizes are deliberately large (~2×) for visibility on the full-screen overlay.
+  '[data-sw-preloader] .pl-mark{width:148px;height:148px;display:block}',
   '[data-sw-preloader] .pl-mark path{fill:var(--sw-color-primary,#4f46e5)}',
-  '[data-sw-preloader] .pl-logo-img{max-width:140px;max-height:96px;width:auto;height:auto;display:block}',
-  '[data-sw-preloader] .pl-stack{display:grid;place-items:center;gap:16px;text-align:center}',
+  '[data-sw-preloader] .pl-logo-img{max-width:280px;max-height:192px;width:auto;height:auto;display:block}',
+  '[data-sw-preloader] .pl-stack{display:grid;place-items:center;gap:32px;text-align:center}',
   // 1 · spinner
-  '[data-sw-preloader] .pl-spinner{width:58px;height:58px;border-radius:50%;border:5px solid color-mix(in srgb,var(--sw-color-primary,#4f46e5) 18%,transparent);border-top-color:var(--sw-color-primary,#4f46e5);animation:sw-pl-spin .9s linear infinite}',
+  '[data-sw-preloader] .pl-spinner{width:116px;height:116px;border-radius:50%;border:10px solid color-mix(in srgb,var(--sw-color-primary,#4f46e5) 18%,transparent);border-top-color:var(--sw-color-primary,#4f46e5);animation:sw-pl-spin .9s linear infinite}',
   '@keyframes sw-pl-spin{to{transform:rotate(360deg)}}',
   // 2 · dual orbit
-  '[data-sw-preloader] .pl-dual{width:60px;height:60px;position:relative}',
-  '[data-sw-preloader] .pl-dual::before,[data-sw-preloader] .pl-dual::after{content:"";position:absolute;inset:0;border-radius:50%;border:4px solid transparent;animation:sw-pl-spin 1.1s linear infinite}',
+  '[data-sw-preloader] .pl-dual{width:120px;height:120px;position:relative}',
+  '[data-sw-preloader] .pl-dual::before,[data-sw-preloader] .pl-dual::after{content:"";position:absolute;inset:0;border-radius:50%;border:8px solid transparent;animation:sw-pl-spin 1.1s linear infinite}',
   '[data-sw-preloader] .pl-dual::before{border-top-color:var(--sw-color-primary,#4f46e5);border-bottom-color:var(--sw-color-primary,#4f46e5)}',
-  '[data-sw-preloader] .pl-dual::after{inset:9px;border-left-color:var(--sw-color-accent,var(--sw-color-primary,#4f46e5));border-right-color:var(--sw-color-accent,var(--sw-color-primary,#4f46e5));animation-direction:reverse;animation-duration:.8s}',
+  '[data-sw-preloader] .pl-dual::after{inset:18px;border-left-color:var(--sw-color-accent,var(--sw-color-primary,#4f46e5));border-right-color:var(--sw-color-accent,var(--sw-color-primary,#4f46e5));animation-direction:reverse;animation-duration:.8s}',
   // 3 · bouncing dots
-  '[data-sw-preloader] .pl-dots{display:flex;gap:11px}',
-  '[data-sw-preloader] .pl-dots span{width:14px;height:14px;border-radius:50%;background:var(--sw-color-primary,#4f46e5);animation:sw-pl-bounce 1s ease-in-out infinite}',
+  '[data-sw-preloader] .pl-dots{display:flex;gap:22px}',
+  '[data-sw-preloader] .pl-dots span{width:28px;height:28px;border-radius:50%;background:var(--sw-color-primary,#4f46e5);animation:sw-pl-bounce 1s ease-in-out infinite}',
   '[data-sw-preloader] .pl-dots span:nth-child(2){animation-delay:.16s}',
   '[data-sw-preloader] .pl-dots span:nth-child(3){animation-delay:.32s}',
-  '@keyframes sw-pl-bounce{0%,80%,100%{transform:translateY(0);opacity:.45}40%{transform:translateY(-16px);opacity:1}}',
+  '@keyframes sw-pl-bounce{0%,80%,100%{transform:translateY(0);opacity:.45}40%{transform:translateY(-32px);opacity:1}}',
   // 4 · equalizer bars
-  '[data-sw-preloader] .pl-bars{display:flex;align-items:center;gap:6px;height:46px}',
-  '[data-sw-preloader] .pl-bars span{width:7px;height:100%;border-radius:4px;background:var(--sw-color-primary,#4f46e5);transform-origin:center;animation:sw-pl-eq 1s ease-in-out infinite}',
+  '[data-sw-preloader] .pl-bars{display:flex;align-items:center;gap:12px;height:92px}',
+  '[data-sw-preloader] .pl-bars span{width:14px;height:100%;border-radius:8px;background:var(--sw-color-primary,#4f46e5);transform-origin:center;animation:sw-pl-eq 1s ease-in-out infinite}',
   '[data-sw-preloader] .pl-bars span:nth-child(2){animation-delay:.12s}',
   '[data-sw-preloader] .pl-bars span:nth-child(3){animation-delay:.24s}',
   '[data-sw-preloader] .pl-bars span:nth-child(4){animation-delay:.36s}',
   '[data-sw-preloader] .pl-bars span:nth-child(5){animation-delay:.48s}',
   '@keyframes sw-pl-eq{0%,100%{transform:scaleY(.32)}50%{transform:scaleY(1)}}',
   // 5 · radar pulse
-  '[data-sw-preloader] .pl-pulse{position:relative;width:70px;height:70px}',
-  '[data-sw-preloader] .pl-pulse span{position:absolute;inset:0;border-radius:50%;border:3px solid var(--sw-color-primary,#4f46e5);opacity:0;animation:sw-pl-ring 1.8s cubic-bezier(.2,.7,.3,1) infinite}',
+  '[data-sw-preloader] .pl-pulse{position:relative;width:140px;height:140px}',
+  '[data-sw-preloader] .pl-pulse span{position:absolute;inset:0;border-radius:50%;border:6px solid var(--sw-color-primary,#4f46e5);opacity:0;animation:sw-pl-ring 1.8s cubic-bezier(.2,.7,.3,1) infinite}',
   '[data-sw-preloader] .pl-pulse span:nth-child(2){animation-delay:.6s}',
   '[data-sw-preloader] .pl-pulse span:nth-child(3){animation-delay:1.2s}',
   '@keyframes sw-pl-ring{0%{transform:scale(.25);opacity:.9}100%{transform:scale(1);opacity:0}}',
   // 6 · top progress bar (anchored to the top of the overlay)
-  '[data-sw-preloader] .pl-progress{position:absolute;top:0;left:0;right:0;height:4px;background:color-mix(in srgb,var(--sw-color-primary,#4f46e5) 16%,transparent);overflow:hidden}',
-  '[data-sw-preloader] .pl-progress span{position:absolute;inset:0 100% 0 0;background:linear-gradient(90deg,var(--sw-color-primary,#4f46e5),var(--sw-color-accent,var(--sw-color-primary,#4f46e5)));border-radius:0 4px 4px 0;animation:sw-pl-prog 1.4s cubic-bezier(.65,.05,.35,1) infinite}',
+  '[data-sw-preloader] .pl-progress{position:absolute;top:0;left:0;right:0;height:8px;background:color-mix(in srgb,var(--sw-color-primary,#4f46e5) 16%,transparent);overflow:hidden}',
+  '[data-sw-preloader] .pl-progress span{position:absolute;inset:0 100% 0 0;background:linear-gradient(90deg,var(--sw-color-primary,#4f46e5),var(--sw-color-accent,var(--sw-color-primary,#4f46e5)));border-radius:0 8px 8px 0;animation:sw-pl-prog 1.4s cubic-bezier(.65,.05,.35,1) infinite}',
   '@keyframes sw-pl-prog{0%{inset:0 100% 0 0}50%{inset:0 18% 0 0}100%{inset:0 0 0 100%}}',
   // 7 · logo breathe (img or mark)
   '[data-sw-preloader] .pl-logo-pulse .pl-mark,[data-sw-preloader] .pl-logo-pulse .pl-logo-img{animation:sw-pl-breathe 1.5s ease-in-out infinite}',
   '@keyframes sw-pl-breathe{0%,100%{transform:scale(.86);opacity:.55}50%{transform:scale(1);opacity:1}}',
-  // 8 · logo draw-on (built-in mark, stroke → fill loop)
+  // 8 · logo draw-on (built-in mark, stroke → fill loop). stroke-width is in viewBox units so it
+  // scales up automatically with the larger mark.
   '[data-sw-preloader] .pl-logo-draw .pl-mark path{fill:none;stroke:var(--sw-color-primary,#4f46e5);stroke-width:3;stroke-linejoin:round;stroke-linecap:round;stroke-dasharray:240;stroke-dashoffset:240;animation:sw-pl-draw 2s ease-in-out infinite}',
   '@keyframes sw-pl-draw{0%{stroke-dashoffset:240;fill:transparent}55%{stroke-dashoffset:0;fill:transparent}80%,100%{stroke-dashoffset:0;fill:var(--sw-color-primary,#4f46e5)}}',
   // 9 · logo shimmer (sweeping highlight; fine over an <img>)
-  '[data-sw-preloader] .pl-logo-sheen{position:relative;display:inline-block;overflow:hidden;border-radius:12px}',
+  '[data-sw-preloader] .pl-logo-sheen{position:relative;display:inline-block;overflow:hidden;border-radius:24px}',
   '[data-sw-preloader] .pl-logo-sheen::after{content:"";position:absolute;top:0;left:-60%;width:55%;height:100%;background:linear-gradient(100deg,transparent,color-mix(in srgb,#fff 75%,transparent),transparent);animation:sw-pl-sheen 1.6s ease-in-out infinite}',
   '@keyframes sw-pl-sheen{0%{left:-60%}60%,100%{left:130%}}',
-  // reduced motion: drop the fade + freeze the inner animation
-  '@media (prefers-reduced-motion:reduce){[data-sw-preloader]{transition:none}[data-sw-preloader] *{animation-duration:.001s!important;animation-iteration-count:1!important}}',
+  // reduced motion: freeze the fade (overlay included) + the inner animations → instant show/hide.
+  '@media (prefers-reduced-motion:reduce){[data-sw-preloader]{transition:none}[data-sw-preloader],[data-sw-preloader] *{animation-duration:.001s!important;animation-iteration-count:1!important}}',
 ].join('');
 
 // --- runtime ----------------------------------------------------------------

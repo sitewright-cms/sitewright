@@ -4,6 +4,7 @@ import {
   websiteThemeClasses,
   NAV_EFFECTS,
   BUTTON_EFFECTS,
+  PRELOADER_EFFECTS,
 } from '../src/website.js';
 
 describe('WebsiteSettingsSchema', () => {
@@ -283,6 +284,7 @@ describe('WebsiteSettingsSchema', () => {
     it('every effect name is accepted by the schema (enum ⊇ the name lists)', () => {
       for (const navEffect of NAV_EFFECTS) expect(WebsiteSettingsSchema.parse({ theme: { navEffect } }).theme?.navEffect).toBe(navEffect);
       for (const buttonEffect of BUTTON_EFFECTS) expect(WebsiteSettingsSchema.parse({ theme: { buttonEffect } }).theme?.buttonEffect).toBe(buttonEffect);
+      for (const preloaderEffect of PRELOADER_EFFECTS) expect(WebsiteSettingsSchema.parse({ theme: { preloaderEffect } }).theme?.preloaderEffect).toBe(preloaderEffect);
     });
   });
 

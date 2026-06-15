@@ -313,6 +313,50 @@ describe('buildSite', () => {
     expect(sheet).not.toContain('sw-btn-glow');
   });
 
+  it('ships the preloader overlay + runtime when theme.preloaderEffect is set (and nothing when not)', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: { primary: '#4f46e5' } },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+          website: { theme: { preloaderEffect: 'logo-pulse' } },
+        },
+        pages: [{ id: 'home', path: '', title: 'Home', source: '<h1>Hi</h1>' }],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    // Overlay injected as the first body child, in loading state, with the chosen effect + noscript hide.
+    expect(home).toContain('data-sw-preloader');
+    expect(home).toContain('sw-preloader-logo-pulse');
+    expect(home).toContain('class="loading sw-preloader-logo-pulse"');
+    expect(home).toContain('[data-sw-preloader]{display:none!important}'); // noscript no-JS safety
+    expect(home).toContain('preloader.js'); // runtime linked
+    // The runtime file is emitted at the site root.
+    expect(await readFile(join(outDir, 'preloader.js'), 'utf8')).toContain("classList.remove('loading')");
+  });
+
+  it('does NOT ship the preloader when no effect is chosen', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: { primary: '#4f46e5' } },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+          website: {},
+        },
+        pages: [{ id: 'home', path: '', title: 'Home', source: '<h1>Hi</h1>' }],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).not.toContain('data-sw-preloader');
+    expect(home).not.toContain('preloader.js');
+  });
+
   it('composes {{> snippet}} Handlebars partials into a published source page', async () => {
     await buildSite({
       publishedAt: '2026-05-29T00:00:00.000Z',

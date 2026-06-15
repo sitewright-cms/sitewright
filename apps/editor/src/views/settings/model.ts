@@ -1,5 +1,5 @@
 import type { CorporateIdentity, SettingsBundle, WebsiteSettings } from '../../api';
-import { DEFAULT_BRAND_COLORS, MANDATORY_COLOR_TOKENS, type JsonValue, type NavEffect, type ButtonEffect, type ShopChannel, type ShopChannelField, type ShopCurrency, type ShopFieldType } from '@sitewright/schema';
+import { DEFAULT_BRAND_COLORS, MANDATORY_COLOR_TOKENS, type JsonValue, type NavEffect, type ButtonEffect, type PreloaderEffect, type ShopChannel, type ShopChannelField, type ShopCurrency, type ShopFieldType } from '@sitewright/schema';
 import { pageDataObject } from '../../lib/page-data';
 
 const MANDATORY_COLOR_SET = new Set<string>(MANDATORY_COLOR_TOKENS);
@@ -143,9 +143,10 @@ export interface SettingsForm {
   sidebarRight: string;
   footer: string;
   bottom: string;
-  // nav/button effect schemes ('none' = off) → website.theme
+  // nav/button/preloader effect schemes ('none' = off) → website.theme
   navEffect: 'none' | NavEffect;
   buttonEffect: 'none' | ButtonEffect;
+  preloaderEffect: 'none' | PreloaderEffect;
   redirects: KeyedRedirect[];
   // mini shop (website.shop): master switch + currency FORMATTING + submission channels. The cart's
   // display TEXT (labels, currency symbol/code, channel/field labels) is translatable → Translations & Labels.
@@ -290,6 +291,7 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
     bottom: w?.bottom ?? '',
     navEffect: w?.theme?.navEffect ?? 'none',
     buttonEffect: w?.theme?.buttonEffect ?? 'none',
+    preloaderEffect: w?.theme?.preloaderEffect ?? 'none',
     redirects: (w?.redirects ?? []).map((r) => ({ id: rowId(), from: r.from, to: r.to, status: r.status })),
     shopEnabled: w?.shop?.enabled === true,
     shopCurrencyPosition: w?.shop?.currency?.position ?? 'before',
@@ -485,7 +487,9 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
   // nav/button effect schemes ('none' = off, so omit them).
   const nav = form.navEffect !== 'none' ? { navEffect: form.navEffect } : {};
   const btn = form.buttonEffect !== 'none' ? { buttonEffect: form.buttonEffect } : {};
-  const theme = 'navEffect' in nav || 'buttonEffect' in btn ? { ...nav, ...btn } : undefined;
+  const pre = form.preloaderEffect !== 'none' ? { preloaderEffect: form.preloaderEffect } : {};
+  const theme =
+    'navEffect' in nav || 'buttonEffect' in btn || 'preloaderEffect' in pre ? { ...nav, ...btn, ...pre } : undefined;
   // i18n catalog — cells are kept only for CONFIGURED locales (defaultLocale + locales), so a settings
   // save self-heals stale columns and never clobbers the catalog (it always round-trips through the form).
   const localeSet = new Set<string>([

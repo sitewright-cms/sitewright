@@ -300,7 +300,7 @@ const MODAL_JS = `(function(){
       var x=document.createElement('button');
       x.type='button';
       x.setAttribute('data-sw-part','autoclose');
-      x.setAttribute('aria-label',root.getAttribute('data-close-label')||'Close');
+      x.setAttribute('aria-label',root.getAttribute('data-close-label')||(window.__SW_T__&&window.__SW_T__.close)||'Close');
       x.innerHTML=CLOSE_SVG;
       x.addEventListener('click',function(){dialog.close();});
       dialog.insertBefore(x,dialog.firstChild);

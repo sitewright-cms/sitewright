@@ -168,6 +168,9 @@ describe('component registry', () => {
     expect(js).toContain("getAttribute('data-backdrop-close')!=='false'");
     // Authored close buttons (any number) are wired too.
     expect(js).toContain("querySelectorAll('[data-sw-part=\"close\"]')");
+    // The auto close button's aria-label localizes from the injected system i18n dict, flooring to 'Close'.
+    expect(js).toContain('window.__SW_T__');
+    expect(js).toContain("||'Close'");
     // The close button's appearance: primary background, white icon, hover zoom + 180° spin.
     expect(css).toContain('[data-sw-part="autoclose"]');
     expect(css).toContain('var(--sw-color-primary');

@@ -38,6 +38,7 @@ import {
   relativizeInternalLinks,
   componentTypesInSource,
   componentAssets,
+  systemI18nScript,
   usesDialog,
   usesAnimations,
   ANIMATION_CSS,
@@ -531,12 +532,15 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         // The page's own source, or its referenced template's (the page then contributes only its
         // data-sw-text / page.data content). Resolved before renderCtx so `page.children` is built referenced-only.
         const pageSource = effectiveSource(page);
+        // Locale-resolved translation catalog for this page — shared by the render context AND the
+        // SYSTEM i18n dict injected for the component runtimes (window.__SW_T__).
+        const pageT = resolveTranslations(website?.translations, pageLocale, defaultLocale);
         const renderCtx = {
           company: identity as unknown as Record<string, unknown>,
           // `json_data` is the publish-time snapshot of `website.jsonDataUrl` (full object — a
           // code-first page/slot can `{{#each website.json_data.items}}`). siteUrl is the only
           // OTHER website field exposed; the raw head/criticalCss/scripts blobs are never surfaced.
-          website: { siteUrl: website?.siteUrl, json_data: opts.jsonData, data: website?.data, shop: resolveShopChannels(website?.shop, formEndpoint), t: resolveTranslations(website?.translations, pageLocale, defaultLocale) },
+          website: { siteUrl: website?.siteUrl, json_data: opts.jsonData, data: website?.data, shop: resolveShopChannels(website?.shop, formEndpoint), t: pageT },
           // `page.children` — this page's child pages, flattened — built only when the source loops
           // them (keeps each child's `data` off the render unless used). Published subset → no drafts.
           page: {
@@ -657,6 +661,8 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           inlineStyles:
             pageInlineStyles.length > 0 ? pageInlineStyles : undefined,
           scripts: pageScripts.length > 0 ? pageScripts : undefined,
+          // SYSTEM i18n dict for the component runtimes — only when interactive components ship.
+          systemI18n: usesComponents && components.js ? systemI18nScript(pageT) : undefined,
         });
         // Rewrite editor media URLs (`/media/<projectSlug>/<assetId>/…`) to the page-relative
         // bundled path (`<siteRoot>_assets/<assetId>/…`) — across ANY attribute (src, data-src,

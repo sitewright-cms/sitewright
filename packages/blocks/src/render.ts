@@ -108,6 +108,14 @@ export interface RenderDocumentOptions extends RenderContext {
    * sequence is neutralized so a future component can't break out of the tag.
    */
   inlineScripts?: readonly string[];
+  /**
+   * A tiny inline script body that publishes the resolved SYSTEM UI strings as `window.__SW_T__`
+   * (see @sitewright/blocks `systemI18nScript`) for the first-party component RUNTIMES. Emitted
+   * NON-deferred just before the component scripts so the global is set before they run (it works
+   * in both the publish path — external deferred `scripts` — and preview — `inlineScripts`). Pass
+   * it only when interactive components ship (only-used-ships). First-party; never tenant input.
+   */
+  systemI18n?: string;
 }
 
 /**
@@ -147,6 +155,7 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     inlineStyles,
     scripts,
     inlineScripts,
+    systemI18n,
     ...ctx
   } = opts;
   // Code-first only: the body is always the pre-rendered Handlebars `source` output. A page with
@@ -209,6 +218,9 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     slotLandmark('footer', 'footer', footer) +
     slotLandmark('div', 'bottom', bottom) +
     `${customScripts ?? ''}` +
+    // SYSTEM i18n dict — NON-deferred so window.__SW_T__ is set before the (deferred/inline)
+    // component runtimes read it. Same `</script` neutralization as inlineScripts.
+    (systemI18n ? `<script>${systemI18n.replace(/<\/(script)/gi, '<\\/$1')}</script>` : '') +
     (scripts ?? [])
       .map((src) => `<script defer src="${escapeAttr(src)}"></script>`)
       .join('') +

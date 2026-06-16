@@ -415,6 +415,8 @@ interface PreviewShell {
   lang?: string;
   /** Site-wide nav/button effect scheme classes for `<body>` (`sw-nav-*` / `sw-btn-*`). */
   bodyClass?: string;
+  /** Opt-in light/dark color schemes (Website settings) — passed through to renderDocument. */
+  colorScheme?: { enabled: boolean; default?: 'auto' | 'light' | 'dark' };
   /** Locale-resolved translation catalog → the SYSTEM i18n dict for component runtimes (window.__SW_T__). */
   systemT?: Record<string, unknown>;
 }
@@ -2100,6 +2102,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           criticalCss: website?.criticalCss,
           customScripts: website?.scripts,
           bodyClass: websiteThemeClasses(website?.theme),
+          colorScheme: { enabled: !!website?.enableColorSchemes, default: website?.defaultColorScheme },
           lang: previewLocale, // `<html lang>` follows the previewed page's locale (publish parity)
           systemT: resolveTranslations(website?.translations, previewLocale, defaultLocale),
         });

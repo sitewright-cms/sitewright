@@ -179,4 +179,7 @@ export const EXAMPLE_WEBSITE = {
   // Site-wide nav/button effect schemes (CI-themed, contrast-safe). The active nav item is marked
   // `.active` (below); `sw-nav-pill` fills it with the brand primary + its WCAG-derived foreground.
   theme: { navEffect: 'pill', buttonEffect: 'lift', preloaderEffect: 'logo-pulse' },
+  // Opt-in light/dark color schemes — the flagship showcases the feature, following the visitor's OS.
+  enableColorSchemes: true,
+  defaultColorScheme: 'auto',
 };

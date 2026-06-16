@@ -663,19 +663,26 @@ const DATETIMEPICKER_CSS = [
   // Selected day(s): single, range endpoints, multiple set — solid primary, white text.
   '[data-vc-theme] .vc-date[data-vc-date-selected] .vc-date__btn{background-color:var(--sw-color-primary,#0a7a5a)!important;color:#fff!important}',
   // Range MIDDLE days: a lighter brand band (the vendor marks them data-vc-date-selected="middle").
-  '[data-vc-theme] .vc-date[data-vc-date-selected="middle"] .vc-date__btn{background-color:color-mix(in srgb,var(--sw-color-primary,#0a7a5a) 16%,transparent)!important;color:var(--sw-color-base-content,#0f172a)!important}',
+  // Text fallback is currentColor (the theme's own text) so it stays legible on the dark theme too,
+  // even if --sw-color-base-content is out of scope.
+  '[data-vc-theme] .vc-date[data-vc-date-selected="middle"] .vc-date__btn{background-color:color-mix(in srgb,var(--sw-color-primary,#0a7a5a) 16%,transparent)!important;color:var(--sw-color-base-content,currentColor)!important}',
   // Range hover-preview band while dragging the second endpoint.
-  '[data-vc-theme] .vc-date[data-vc-date-hover] .vc-date__btn{background-color:color-mix(in srgb,var(--sw-color-primary,#0a7a5a) 16%,transparent)!important;color:var(--sw-color-base-content,#0f172a)!important}',
+  '[data-vc-theme] .vc-date[data-vc-date-hover] .vc-date__btn{background-color:color-mix(in srgb,var(--sw-color-primary,#0a7a5a) 16%,transparent)!important;color:var(--sw-color-base-content,currentColor)!important}',
   // Today: brand text (the vendor uses its cyan here).
   '[data-vc-theme] .vc-date[data-vc-date-today] .vc-date__btn{color:var(--sw-color-primary,#0a7a5a)!important}',
-  // Neutralise the vendor's RED weekends → the calendar's own slate neutrals, so the CI primary stays
-  // the single accent (cleaner + brand-owned). Headers match the normal weekday slate (#64748b); the
-  // weekend day numbers match the normal day text (#0f172a) — excluding selected (those stay white) and
-  // other-month days (those stay muted). These slate values are the theme's own neutrals, not branded.
-  '[data-vc-theme] .vc-week__day[data-vc-week-day-off]{color:#64748b!important}',
-  // :not([data-vc-date-today]) so a weekend that IS today still gets the primary "today" colour above
-  // (both rules are equal-specificity !important — without the exclusion source order would win here).
-  '[data-vc-theme] .vc-date[data-vc-date-weekend]:not([data-vc-date-selected]):not([data-vc-date-today]):not([data-vc-date-month="next"]):not([data-vc-date-month="prev"]) .vc-date__btn{color:#0f172a!important}',
+  // Neutralise the vendor's RED weekends → the calendar's own neutrals, so the CI primary stays the
+  // single accent (cleaner + brand-owned), in BOTH light and dark. Headers match the normal weekday
+  // header per theme (light #64748b / dark #fff). The weekend day numbers use `inherit` so they take
+  // the calendar's theme text colour automatically (dark text on light, light text on dark) — matching
+  // the normal days — excluding selected (stay white), today (stays primary), and other-month (stay muted).
+  '[data-vc-theme=light] .vc-week__day[data-vc-week-day-off]{color:#64748b!important}',
+  '[data-vc-theme=dark] .vc-week__day[data-vc-week-day-off]{color:#fff!important}',
+  '[data-vc-theme] .vc-date[data-vc-date-weekend]:not([data-vc-date-selected]):not([data-vc-date-today]):not([data-vc-date-month="next"]):not([data-vc-date-month="prev"]) .vc-date__btn{color:inherit!important}',
+  // TIME-ONLY mode (data-mode="time" → layout is just the time control): the time block is the popup's
+  // FIRST child, so drop the calendar-separator border + top spacing it carries when it sits under a
+  // calendar (datetime mode keeps them — there the time block is not first-child). VCP 3.1.0: in
+  // time-only the .vc root's first child is [data-vc=time] — re-verify if bumping vanilla-calendar-pro.
+  '[data-vc=time]:first-child{margin-top:0;padding-top:0;border-width:0}',
   // Month / year drill-in grid: the selected month/year cell = primary.
   '[data-vc-theme] [data-vc-months-month][aria-selected="true"],[data-vc-theme] [data-vc-years-year][aria-selected="true"]{background-color:var(--sw-color-primary,#0a7a5a)!important;color:#fff!important}',
   // Brand-coloured time slider thumbs.

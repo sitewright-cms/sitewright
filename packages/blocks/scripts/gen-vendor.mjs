@@ -96,23 +96,20 @@ const TARGETS = [
     css: { from: 'node_modules/glightbox/dist/css/glightbox.min.css', cssConst: 'LIGHTBOX_VENDOR_CSS' },
   },
   // Vanilla Calendar Pro — date / range / datetime / time picker, with a DUAL-PANEL multi-month
-  // range view (data-mode="range"). We ship its POLISHED stylesheet — the structural `layout.css`
-  // plus ONLY the `light` theme (the runtime pins light, so the bundled `index.css`'s dark theme
-  // would be ~18 KB of dead CSS) — for a finished look, then in components.ts RECOLOUR its cyan
-  // accent to the site CI primary (broad !important overrides — they beat the vendor's non-important
-  // theme rules regardless of specificity) and add the open animation. No renamePrefix: the `vc-` /
-  // `data-vc-` prefix is a generic two-char abbreviation (not a brand name like air-datepicker /
-  // smartphoto), and renaming it across the minified JS + its data-vc-* state attributes would be
-  // high-risk for little benefit. See datetimepicker.entry.js.
+  // range view (data-mode="range"). We ship its POLISHED default `index.css` (structure + BOTH the
+  // light and dark themes — both are used: the runtime picks light/dark from the site's background
+  // luminance so the picker matches a light OR dark site) for a finished look, then in components.ts
+  // RECOLOUR its cyan accent to the site CI primary in both themes (broad !important overrides — they
+  // beat the vendor's non-important theme rules regardless of specificity) and add the open animation.
+  // No renamePrefix: the `vc-` / `data-vc-` prefix is a generic two-char abbreviation (not a brand
+  // name like air-datepicker / smartphoto), and renaming it across the minified JS + its data-vc-*
+  // state attributes would be high-risk for little benefit. See datetimepicker.entry.js.
   {
     entry: 'vendor-src/datetimepicker.entry.js',
     out: 'src/vendor/datetimepicker-runtime.ts',
     jsConst: 'DATETIMEPICKER_RUNTIME_JS',
     libs: ['vanilla-calendar-pro'],
-    css: {
-      from: ['node_modules/vanilla-calendar-pro/styles/layout.css', 'node_modules/vanilla-calendar-pro/styles/themes/light.css'],
-      cssConst: 'DATETIMEPICKER_VENDOR_CSS',
-    },
+    css: { from: 'node_modules/vanilla-calendar-pro/styles/index.css', cssConst: 'DATETIMEPICKER_VENDOR_CSS' },
   },
 ];
 

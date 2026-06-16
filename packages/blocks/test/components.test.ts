@@ -345,15 +345,19 @@ describe('component registry', () => {
     expect(used.js).toContain('data-mode'); // the variant switch is read from data-*
     expect(used.js).toContain('displayMonthsCount'); // range mode shows two months side by side
     expect(used.js).toContain('multiple-ranged'); // the range selection mode
-    expect(used.js).toContain('selectedTheme'); // the light theme is pinned (white card on any site)
+    expect(used.js).toContain('selectedTheme'); // light/dark theme chosen at runtime (see below)
+    // Light or DARK theme is picked from the site's background luminance (no pinned theme).
+    expect(used.js).toContain('--sw-color-base-100'); // the probed surface colour
+    expect(used.js).toMatch(/\.2126/); // relative-luminance coefficient (esbuild may drop the leading 0)
     // CSP default-src 'self' (no 'unsafe-eval'): none of the eval-equivalents in the shipped runtime.
     expect(used.js).not.toMatch(/\beval\(/);
     expect(used.js).not.toMatch(/\bnew\s+Function\s*\(/);
     expect(used.js).not.toMatch(/setTimeout\s*\(\s*['"]/);
     expect(used.js).not.toMatch(/setInterval\s*\(\s*['"]/);
-    // We ship the vendor's POLISHED index.css (layout + its light/dark themes) for a finished look.
+    // We ship the vendor's POLISHED index.css with BOTH the light and dark themes (both are used).
     expect(used.css).toContain('[data-vc-date-btn]'); // structure
-    expect(used.css).toContain('[data-vc-theme=light]'); // the bundled theme (recoloured below)
+    expect(used.css).toContain('[data-vc-theme=light]');
+    expect(used.css).toContain('[data-vc-theme=dark]');
     // CSP: any url() in the bundled CSS must be an inline data: URI, never external.
     expect(used.css).not.toMatch(/url\(\s*(?!['"]?data:)/i);
   });
@@ -366,8 +370,13 @@ describe('component registry', () => {
     expect(css).toContain('[data-vc-date-today]'); // today recoloured to primary
     expect(css).toContain('[data-vc-date-selected="middle"]'); // range middle band
     expect(css).toContain('color-mix(in srgb,var(--sw-color-primary'); // brand range tint
-    // The vendor's red weekends are neutralised to the theme's own slate (brand = the only accent).
-    expect(css).toContain('[data-vc-week-day-off]{color:#64748b');
+    // The vendor's red weekends are neutralised in BOTH themes: headers per theme (light #64748b /
+    // dark #fff), weekend day numbers via `inherit` so they take the calendar's theme text colour.
+    expect(css).toContain('[data-vc-theme=light] .vc-week__day[data-vc-week-day-off]{color:#64748b');
+    expect(css).toContain('[data-vc-theme=dark] .vc-week__day[data-vc-week-day-off]{color:#fff');
+    expect(css).toMatch(/data-vc-date-weekend\][^{]*\.vc-date__btn\{color:inherit!important/);
+    // TIME-ONLY mode: the time block (popup's first child) drops the calendar-separator border + spacing.
+    expect(css).toContain('[data-vc=time]:first-child{margin-top:0;padding-top:0;border-width:0}');
     // Body font adopted; popup lifted above sticky chrome.
     expect(css).toContain('.vc{font-family:var(--sw-font-body');
     expect(css).toContain('.vc[data-vc-input]{z-index:1000');

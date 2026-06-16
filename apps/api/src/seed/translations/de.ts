@@ -353,10 +353,10 @@ export function translationsDe(assets: Record<string, string>): Record<string, P
     title: 'Datums- & Zeitauswahl',
     navTitle: 'Datumsauswahl',
     description:
-      'Ein CI-gestylter Kalender mit Schieberegler-Zeitauswahl auf einem einfachen Textfeld — Datum, Zeitraum, Datum+Zeit und Uhrzeit, alle aus einem Attribut, mit voller data-*-Kontrolle und einem No-JS-Fallback.',
+      'Ein CI-gestylter Kalender mit Schieberegler-Zeitauswahl auf einem einfachen Textfeld — Datum, ein zweimonatiger Zeitraum mit Doppelpanel, Datum+Zeit und Uhrzeit, alle aus einem Attribut, mit voller data-*-Kontrolle und einem No-JS-Fallback.',
     data: {
       dtp_intro:
-        'Ein Attribut auf ein Textfeld und es wird zu einem gebrandeten Kalender mit Schieberegler-Zeitauswahl. Datum, Zeitraum, Datum+Zeit und Uhrzeit — jeweils ein einziger data-mode-Wert, und Farben, Schrift und Übergang stammen automatisch aus der CI deiner Website.',
+        'Ein Attribut auf ein Textfeld und es wird zu einem gebrandeten Kalender mit Schieberegler-Zeitauswahl. Datum, Zeitraum, Datum+Zeit und Uhrzeit — jeweils ein einziger data-mode-Wert, und Farben und Schrift stammen automatisch aus der CI deiner Website. Ein Zeitraum öffnet sich als zwei Monate nebeneinander, sodass monatsübergreifende Spannen leichtfallen.',
       sec_basic_t: 'Eine Zeile für den Normalfall',
       sec_basic_d:
         'Eine Datumsauswahl ist nur data-sw-component="datetimepicker" auf einem Textfeld — ohne Konfiguration. Ins Feld klicken, der Kalender öffnet sich; der gewählte Tag nutzt deine Primärfarbe.',
@@ -364,8 +364,8 @@ export function translationsDe(assets: Record<string, string>): Record<string, P
       ph_date: 'Datum wählen…',
       sec_modes_t: 'Vier Modi, ein Attribut',
       sec_modes_d:
-        'data-mode wechselt die Auswahl: ein einzelnes Datum, ein Start–Ende-Zeitraum in einem Feld, ein Datum mit Zeit-Schieberegler oder nur die Uhrzeit. Alles andere bleibt automatisch.',
-      lbl_range: 'Zeitraum',
+        'data-mode wechselt die Auswahl: ein einzelnes Datum, ein über zwei Monate gezeigter Start–Ende-Zeitraum, ein Datum mit Zeit-Schieberegler oder nur die Uhrzeit. Alles andere bleibt automatisch.',
+      lbl_range: 'Zeitraum (zwei Monate)',
       ph_range: 'Anreise – Abreise',
       lbl_datetime: 'Datum & Zeit',
       ph_datetime: 'Tag und Uhrzeit wählen…',
@@ -373,8 +373,8 @@ export function translationsDe(assets: Record<string, string>): Record<string, P
       ph_time: 'Uhrzeit wählen…',
       sec_full_t: 'Volle Kontrolle, wenn nötig',
       sec_full_d:
-        'Für die übrigen Fälle gibt es data-*-Attribute: Grenzen (data-min / data-max), Anzeigeformat, Wochenstart, Minutenschritt, Heute-/Leeren-Schaltflächen, Sprache und data-inline für einen dauerhaft geöffneten, in die Seite eingebetteten Kalender — hier gezeigt.',
-      lbl_inline: 'Dauerhaft geöffneter Kalender',
+        'Für die übrigen Fälle gibt es data-*-Attribute: Grenzen (data-min / data-max), Wochenstart, mehrere Daten, Minutenschritt, 12-/24-Stunden-Format, Sprache und data-months zum Verbreitern des Panels. Setze die Markierung statt auf ein Eingabefeld auf ein Block-Element für einen dauerhaft geöffneten Kalender — hier ein Doppelpanel-Zeitraum:',
+      lbl_inline: 'Dauerhaft geöffneter Doppelpanel-Kalender',
       sec_nojs_t: 'Ohne JavaScript',
       sec_nojs_d:
         'Laufen keine Skripte, bleibt jedes Feld ein gewöhnliches Textfeld — der Besucher kann weiterhin einen Wert eingeben und er wird im Formular gesendet. Nur das Kalender-Popup steht nicht zur Verfügung.',

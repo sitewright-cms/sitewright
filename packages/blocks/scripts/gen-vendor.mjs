@@ -95,18 +95,19 @@ const TARGETS = [
     libs: ['glightbox'],
     css: { from: 'node_modules/glightbox/dist/css/glightbox.min.css', cssConst: 'LIGHTBOX_VENDOR_CSS' },
   },
-  // Air Datepicker — date / range / datetime / time picker. The library builds its own popup DOM
-  // with "air-datepicker*" classes; renamePrefix rewrites those to a vendor-neutral "sw-datepicker*"
-  // in both the bundled JS (which constructs them) and the stylesheet, so no vendor name reaches the
-  // published DOM/CSS. The "air-datepicker@x (MIT)" license banner is left intact (the rename's
-  // negative lookahead skips the "@" that only the banner has). See datetimepicker.entry.js.
+  // Vanilla Calendar Pro — date / range / datetime / time picker, with a DUAL-PANEL multi-month
+  // range view (data-mode="range"). We ship its COLOURLESS `layout.css` (structure only) and supply
+  // our own CI theme in components.ts against its data-vc-* state hooks — its packaged themes are
+  // Tailwind-compiled (no theming variables), so we don't ship them. No renamePrefix: the `vc-` /
+  // `data-vc-` prefix is a generic two-char abbreviation (not a brand name like air-datepicker /
+  // smartphoto), and renaming it across the minified JS + its data-vc-* state attributes would be
+  // high-risk for little benefit. See datetimepicker.entry.js.
   {
     entry: 'vendor-src/datetimepicker.entry.js',
     out: 'src/vendor/datetimepicker-runtime.ts',
     jsConst: 'DATETIMEPICKER_RUNTIME_JS',
-    libs: ['air-datepicker'],
-    css: { from: 'node_modules/air-datepicker/air-datepicker.css', cssConst: 'DATETIMEPICKER_VENDOR_CSS' },
-    renamePrefix: { from: 'air-datepicker', to: 'sw-datepicker' },
+    libs: ['vanilla-calendar-pro'],
+    css: { from: 'node_modules/vanilla-calendar-pro/styles/layout.css', cssConst: 'DATETIMEPICKER_VENDOR_CSS' },
   },
 ];
 

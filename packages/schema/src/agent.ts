@@ -146,12 +146,14 @@ Quick rules vs the similar-looking DaisyUI classes:
   DaisyUI's modal methods need inline JS (rejected) or a checkbox hack (poor a11y) — don't.
 - Cookie banner → data-sw-component="cookie-consent", placed ONCE site-wide in the website
   \`bottom\` slot, with the \`hidden\` attribute authored on it.
-- DATE / TIME pickers → data-sw-component="datetimepicker" on a TEXT <input> (Air Datepicker): a
-  CI-themed popup calendar + slider time picker. data-mode="date" (default) | "range" (start–end in
-  one field) | "datetime" | "time". Full control via data-* (data-format, data-min/-max, data-locale,
-  data-first-day, data-time-step, data-today/-clear, data-inline for an always-open calendar). It
-  follows the page <html lang> for day/month names automatically; give the input a name to submit it.
-  DaisyUI has no date picker (it only styles the input box).
+- DATE / TIME pickers → data-sw-component="datetimepicker" on a TEXT <input> (Vanilla Calendar Pro):
+  a CI-themed popup calendar + slider time picker. data-mode="date" (default) | "range" (start–end in
+  one field, shown as a DUAL-PANEL two-month view) | "datetime" | "time". Full control via data-*
+  (data-months to widen the panel, data-min/-max, data-locale, data-first-day, data-multiple,
+  data-time-step, data-time-format 12h/24h, data-position); put the marker on a block element (e.g.
+  a <div>) instead of an <input> for an always-open INLINE calendar. It follows the page <html lang>
+  for day/month names automatically; give the input a name to submit it. DaisyUI has no date picker
+  (it only styles the input box).
 - ACCORDIONS are NOT a component: use native <details> with DaisyUI collapse classes, e.g.
   <details class="collapse collapse-plus"><summary class="collapse-title">Q</summary>
   <div class="collapse-content">A</div></details> (group with \`join join-vertical\`).

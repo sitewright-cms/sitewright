@@ -89,14 +89,15 @@ export function usesPreloader(html: string | null | undefined): boolean {
 
 // --- CSS --------------------------------------------------------------------
 export const PRELOADER_CSS = [
-  // Frosted overlay: half-transparent brand background + backdrop blur. It fades BOTH ways with the
-  // same .45s ease: a transition handles the fade-OUT when `loading` is removed, and a one-shot
-  // `sw-pl-fade` animation handles the fade-IN — an animation (not a transition) because the overlay
-  // ships ALREADY-`loading` and CSS transitions don't run on the first painted state, while animations
-  // do. visibility is delayed to the end of the fade-out so it stops catching pointer events.
+  // Frosted overlay: half-transparent brand background + backdrop blur. Fade is purely a TRANSITION
+  // (no keyframe animation), which is the whole point: a fresh page load ships the overlay ALREADY
+  // `loading`, and CSS transitions don't animate the first painted state → it shows INSTANTLY. The
+  // transition only fires when `loading` is toggled afterwards: removed → fade OUT (page ready);
+  // re-added on the leaving page during an internal-link click → fade IN (the runtime delays the
+  // navigation until that fade completes). visibility is delayed to the end of the fade-out so the
+  // overlay stops catching pointer events.
   '[data-sw-preloader]{position:fixed;inset:0;z-index:99990;display:grid;place-items:center;background:color-mix(in srgb,var(--sw-color-base-100,#fff) 62%,transparent);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);opacity:0;visibility:hidden;pointer-events:none;transition:opacity .45s ease,visibility 0s linear .45s}',
-  '[data-sw-preloader].loading{opacity:1;visibility:visible;pointer-events:auto;transition:opacity .45s ease;animation:sw-pl-fade .45s ease}',
-  '@keyframes sw-pl-fade{from{opacity:0}to{opacity:1}}',
+  '[data-sw-preloader].loading{opacity:1;visibility:visible;pointer-events:auto;transition:opacity .45s ease}',
   // All inner rules are scoped under the marker so the .pl-* class names can't collide with author CSS.
   // Sizes are deliberately large (~2×) for visibility on the full-screen overlay.
   '[data-sw-preloader] .pl-mark{width:148px;height:148px;display:block}',
@@ -146,7 +147,8 @@ export const PRELOADER_CSS = [
   '[data-sw-preloader] .pl-logo-sheen{position:relative;display:inline-block;overflow:hidden;border-radius:24px}',
   '[data-sw-preloader] .pl-logo-sheen::after{content:"";position:absolute;top:0;left:-60%;width:55%;height:100%;background:linear-gradient(100deg,transparent,color-mix(in srgb,#fff 75%,transparent),transparent);animation:sw-pl-sheen 1.6s ease-in-out infinite}',
   '@keyframes sw-pl-sheen{0%{left:-60%}60%,100%{left:130%}}',
-  // reduced motion: freeze the fade (overlay included) + the inner animations → instant show/hide.
+  // reduced motion: drop the fade transition (instant show/hide) + freeze any animation on the
+  // overlay or its descendants.
   '@media (prefers-reduced-motion:reduce){[data-sw-preloader]{transition:none}[data-sw-preloader],[data-sw-preloader] *{animation-duration:.001s!important;animation-iteration-count:1!important}}',
 ].join('');
 
@@ -154,19 +156,21 @@ export const PRELOADER_CSS = [
 export const PRELOADER_JS = `(function(){
   var pl=document.querySelector('[data-sw-preloader]');
   if(!pl)return;
-  var docEl=document.documentElement, MIN=400, MAX=8000, start=Date.now();
+  var docEl=document.documentElement, MIN=400, MAX=8000, start=Date.now(), navigated=false, failsafe;
+  var reduce=!!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion:reduce)').matches);
   function lock(){docEl.style.overflow='hidden';}
   function clear(){pl.classList.remove('loading');docEl.style.overflow='';}
-  function showAgain(){pl.classList.add('loading');lock();setTimeout(clear,MAX);}
-  if(pl.classList.contains('loading'))lock();
+  if(pl.classList.contains('loading'))lock(); // shipped already-loading on a fresh load → instant cover
   function done(){setTimeout(clear,Math.max(0,MIN-(Date.now()-start)));}
   if(document.readyState==='complete'){done();}else{window.addEventListener('load',done);}
-  setTimeout(clear,MAX); // failsafe — a hung resource must never block the page
+  failsafe=setTimeout(clear,MAX); // failsafe — a hung resource must never block the page
   window.addEventListener('pageshow',function(e){if(e.persisted){clear();}}); // bfcache restore
-  // Re-show during navigation to ANY internal link. We resolve the href against the current URL so
-  // absolute ("/x"), relative ("./x", "../x") AND bare same-dir links ("about", "blog/post" — the
-  // form the platform's own {{sw-url}} emits) all count; external origins, mailto:/tel:, and same-page
-  // #hash links are excluded.
+  // Internal-link navigation: FADE the overlay in over the current page, THEN navigate — so the
+  // transition to the next page reads as a smooth fade, not an abrupt pop. (A fresh page load shows
+  // the overlay instantly: it ships already-loading and CSS transitions don't animate the first
+  // painted state.) Detect internal links by resolving the href against the current URL so absolute
+  // ("/x"), relative ("./x"/"../x") AND bare same-dir links ("about" — what {{sw-url}} emits) all
+  // count; external origins, mailto:/tel:, and same-page #hash links are excluded.
   document.addEventListener('click',function(e){
     var a=e.target.closest?e.target.closest('a'):null;
     if(!a||e.defaultPrevented||e.button!==0||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return;
@@ -178,6 +182,17 @@ export const PRELOADER_JS = `(function(){
     try{url=new URL(href,location.href);}catch(_){return;}
     if(url.origin!==location.origin)return; // external site, mailto:, tel:, etc.
     if(url.pathname===location.pathname&&url.search===location.search)return; // same page (#hash only)
-    showAgain(); // navigation proceeds; the next page clears its own preloader
+    e.preventDefault(); // take over so the overlay can fade in BEFORE we leave
+    lock();
+    // Replace the boot failsafe (it could fire mid-navigation and clear the overlay) with one that
+    // only fires if the navigation never happens (e.g. a beforeunload prompt is cancelled).
+    clearTimeout(failsafe);failsafe=setTimeout(clear,MAX);
+    // navigated is module-scoped → at most one location.assign even on a rapid double-click.
+    var go=function(){if(navigated)return;navigated=true;window.location.assign(url.href);};
+    // Already covering (clicked during the initial load) or reduced motion → no fade, just go.
+    if(reduce||pl.classList.contains('loading')){pl.classList.add('loading');go();return;}
+    pl.classList.add('loading'); // opacity 0→1 transition fires (the overlay was cleared/hidden)
+    pl.addEventListener('transitionend',function te(ev){if(ev.target===pl&&ev.propertyName==='opacity'){pl.removeEventListener('transitionend',te);go();}});
+    setTimeout(go,600); // fallback if transitionend doesn't fire
   });
 })();`;

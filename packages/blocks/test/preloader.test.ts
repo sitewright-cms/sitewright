@@ -65,19 +65,19 @@ describe('usesPreloader', () => {
 });
 
 describe('PRELOADER_CSS', () => {
-  it('is a frosted, half-transparent brand overlay that fades both ways', () => {
+  it('is a frosted, half-transparent brand overlay whose fade is a pure TRANSITION', () => {
     expect(PRELOADER_CSS).toContain('[data-sw-preloader]{position:fixed');
     expect(PRELOADER_CSS).toContain('backdrop-filter:blur');
     expect(PRELOADER_CSS).toContain('color-mix(in srgb,var(--sw-color-base-100');
     expect(PRELOADER_CSS).toContain('[data-sw-preloader].loading{opacity:1');
-    // fade-OUT via the base opacity transition; fade-IN via a one-shot animation (the overlay ships
-    // already-loading, so a transition wouldn't run on first paint — an animation does).
+    // The fade is a TRANSITION only — so a fresh load (ships already-loading) shows INSTANTLY (no
+    // first-paint animation), and the fade only plays when `loading` is toggled afterwards
+    // (fade-out on ready; fade-in on the leaving page during an internal-link click).
     expect(PRELOADER_CSS).toContain('transition:opacity .45s ease');
-    expect(PRELOADER_CSS).toContain('animation:sw-pl-fade .45s ease');
-    expect(PRELOADER_CSS).toContain('@keyframes sw-pl-fade{from{opacity:0}to{opacity:1}}');
+    expect(PRELOADER_CSS).not.toContain('sw-pl-fade'); // no keyframe fade-in (the #370 wrong approach)
     // themed only by brand tokens
     expect(PRELOADER_CSS).toContain('var(--sw-color-primary');
-    // respects reduced motion (overlay fade + inner animations frozen)
+    // respects reduced motion (fade transition dropped + inner animations frozen)
     expect(PRELOADER_CSS).toContain('prefers-reduced-motion:reduce');
   });
 
@@ -103,12 +103,18 @@ describe('PRELOADER_JS', () => {
     expect(PRELOADER_JS).toContain("addEventListener('load',done)");
   });
 
-  it('re-shows on ANY internal-link click (same-origin resolve) and restores on bfcache, with a failsafe', () => {
-    // Resolves the href against the current URL so bare-relative links (what {{sw-url}} emits) count,
-    // and excludes external origins + same-page #hash links.
+  it('on an internal-link click: fades the overlay in THEN navigates (no pop); fresh load is instant', () => {
+    // Internal-link detection: resolve against the current URL so bare-relative links count; exclude
+    // external origins + same-page #hash links.
     expect(PRELOADER_JS).toContain('new URL(href,location.href)');
     expect(PRELOADER_JS).toContain('url.origin!==location.origin');
     expect(PRELOADER_JS).toContain('url.pathname===location.pathname');
+    // Take over the navigation, fade in (transition), then navigate on transitionend (with a fallback).
+    expect(PRELOADER_JS).toContain('e.preventDefault()');
+    expect(PRELOADER_JS).toContain("addEventListener('transitionend'");
+    expect(PRELOADER_JS).toContain('window.location.assign(url.href)');
+    // reduced motion (or already-covering) → navigate immediately, no fade.
+    expect(PRELOADER_JS).toContain('prefers-reduced-motion:reduce');
     expect(PRELOADER_JS).toContain("addEventListener('pageshow'");
     expect(PRELOADER_JS).toContain('MAX'); // failsafe constant
     // guards: no preloader on modified clicks / new-tab / download / external rel

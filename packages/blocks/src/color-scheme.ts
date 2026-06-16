@@ -126,8 +126,8 @@ export const THEME_TOGGLE_JS = `(function(){
     return (window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';
   }
   function reduced(){return window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;}
-  // Set the scheme + run `done` AFTER the attribute lands (inside the View-Transition callback, which
-  // may run async) so aria-pressed never reflects the pre-click state. Persist the choice immediately.
+  // Set the scheme + run the done callback AFTER the attribute lands (inside the View-Transition
+  // callback, which may run async) so aria-pressed never reflects the pre-click state. Persist now.
   function apply(next,done){
     var set=function(){root.setAttribute('data-sw-scheme',next);if(done){done();}};
     if(document.startViewTransition&&!reduced()){document.startViewTransition(set);}else{set();}

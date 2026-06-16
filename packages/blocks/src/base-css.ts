@@ -165,12 +165,62 @@ const PLATFORM_DEFAULTS = `
    chip-on-a-chip (the <pre> is the box; its inner text inherits). */
 @layer sw-normalize {
   code, kbd, samp, pre {
+    /* Theme-aware chip: a faint base-content tint over the surface, so it INVERTS automatically on a
+       dark palette (subtle light chip on dark) instead of staying a light-grey block. Fallback #EEE
+       for engines without color-mix. */
     background: #EEE;
+    background: color-mix(in srgb, var(--sw-color-base-content, #0f172a) 8%, var(--sw-color-base-100, #fff));
     padding: .25rem;
-    color: #4a4a4a;
+    color: var(--sw-color-base-content, #4a4a4a);
     border-radius: 5px;
   }
   pre code, pre kbd, pre samp { background: none; padding: 0; border-radius: 0; color: inherit; }
+}
+
+/* Text inputs / textarea / select get an attractive, THEME-AWARE default (surface + content + a soft
+   base-content border, all from the brand vars so they invert on a dark palette) with a clean focus:
+   the UA/double outline is dropped for a primary-coloured border + a soft primary ring. Lives in the
+   weak sw-normalize layer, so daisyUI's .input/.select/.textarea and author utilities (bg-*, border-*,
+   focus:*, rounded-*) still win when used — this only styles OTHERWISE-bare controls (e.g. the
+   platform Form component's fields). Scoped to text-like types so checkboxes / radios / range / color
+   / file / buttons keep their native appearance. */
+@layer sw-normalize {
+  input[type="text"], input[type="email"], input[type="password"], input[type="search"],
+  input[type="url"], input[type="tel"], input[type="number"], input[type="date"], input[type="time"],
+  input[type="datetime-local"], input[type="month"], input[type="week"], input:not([type]),
+  textarea, select {
+    background: var(--sw-color-base-100, #ffffff);
+    color: var(--sw-color-base-content, #0f172a);
+    border: 1px solid color-mix(in srgb, var(--sw-color-base-content, #0f172a) 22%, transparent);
+    border-radius: .5rem;
+    padding: .5rem .75rem;
+    transition: border-color .15s ease, box-shadow .15s ease;
+  }
+  /* :focus (not :focus-visible) is deliberate: the active-field ring is useful to ALL users for a
+     form control, not only keyboard users. outline:none is safe because the primary border + ring
+     is a clearly visible replacement indicator (and forced-colors mode remaps the border colour). */
+  input[type="text"]:focus, input[type="email"]:focus, input[type="password"]:focus,
+  input[type="search"]:focus, input[type="url"]:focus, input[type="tel"]:focus,
+  input[type="number"]:focus, input[type="date"]:focus, input[type="time"]:focus,
+  input[type="datetime-local"]:focus, input[type="month"]:focus, input[type="week"]:focus,
+  input:not([type]):focus, textarea:focus, select:focus {
+    outline: none;
+    border-color: var(--sw-color-primary, #4f46e5);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--sw-color-primary, #4f46e5) 22%, transparent);
+  }
+  /* A bare <select> (e.g. the Form component's dropdown fields): drop the native arrow for a custom
+     chevron with room for it, so the arrow is not clipped in Firefox and looks consistent. The
+     chevron is a neutral slate (legible on a light OR dark surface); background-color stays the field
+     surface from the rule above (this only sets the image layer). */
+  select {
+    -webkit-appearance: none;
+    appearance: none;
+    padding-right: 2.25rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right .7rem center;
+    background-size: .8rem;
+  }
 }
 
 /* Deterministic block spacing: ZERO the UA margins on flow elements so vertical spacing is set

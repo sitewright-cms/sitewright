@@ -90,12 +90,15 @@ describe('baseStyles — platform base stylesheet', () => {
     });
 
     describe('code / kbd / samp / pre chip styling', () => {
-      it('gives bare code/kbd/samp/pre a light chip (bg, padding, colour, radius)', () => {
+      it('gives bare code/kbd/samp/pre a THEME-AWARE chip that inverts on a dark palette', () => {
         const rule = css.slice(css.indexOf('code, kbd, samp, pre {'));
         expect(css).toContain('code, kbd, samp, pre {');
+        // #EEE is the no-color-mix fallback; the adaptive bg/text come from the brand vars so the
+        // chip inverts (light chip on light, dark chip on dark) instead of staying a light block.
         expect(rule).toMatch(/background:\s*#EEE;/);
+        expect(rule).toMatch(/background:\s*color-mix\(in srgb,\s*var\(--sw-color-base-content[^)]*\)\s*8%,\s*var\(--sw-color-base-100/);
         expect(rule).toMatch(/padding:\s*\.25rem;/);
-        expect(rule).toMatch(/color:\s*#4a4a4a;/);
+        expect(rule).toMatch(/color:\s*var\(--sw-color-base-content,\s*#4a4a4a\);/);
         expect(rule).toMatch(/border-radius:\s*5px;/);
       });
 
@@ -113,6 +116,40 @@ describe('baseStyles — platform base stylesheet', () => {
 
       it('resets a <code>/<kbd>/<samp> nested in a <pre> so it does not draw a chip-on-a-chip', () => {
         expect(css).toContain('pre code, pre kbd, pre samp { background: none; padding: 0; border-radius: 0; color: inherit; }');
+      });
+    });
+
+    describe('text input / textarea / select styling', () => {
+      it('gives bare text inputs a theme-aware look (surface, content, soft border, radius)', () => {
+        expect(css).toMatch(/input\[type="text"\][^{]*textarea,\s*select\s*\{/);
+        const rule = css.slice(css.indexOf('input[type="text"]'));
+        expect(rule).toMatch(/background:\s*var\(--sw-color-base-100/);
+        expect(rule).toMatch(/color:\s*var\(--sw-color-base-content/);
+        expect(rule).toMatch(/border:\s*1px solid color-mix\(in srgb,\s*var\(--sw-color-base-content/);
+        expect(rule).toMatch(/border-radius:\s*\.5rem;/);
+      });
+
+      it('drops the focus outline for a primary border + soft primary ring (no ugly default ring)', () => {
+        const focus = css.slice(css.indexOf('input[type="text"]:focus'));
+        expect(css).toContain('input[type="text"]:focus');
+        expect(focus).toMatch(/outline:\s*none;/);
+        expect(focus).toMatch(/border-color:\s*var\(--sw-color-primary/);
+        expect(focus).toMatch(/box-shadow:\s*0 0 0 3px color-mix\(in srgb,\s*var\(--sw-color-primary/);
+      });
+
+      it('only styles text-like controls — NOT checkboxes / radios / range / buttons', () => {
+        // The selector enumerates text-like types explicitly, so native controls keep their appearance.
+        expect(css).not.toMatch(/input\[type="checkbox"\][^{]*\{[^}]*border-radius/);
+        expect(css).not.toContain('input[type="range"]');
+      });
+
+      it('keeps the input styling INSIDE the weak sw-normalize layer (daisyUI .input / utilities still win)', () => {
+        const idx = css.indexOf('input[type="text"], input[type="email"]');
+        const layerOpen = css.lastIndexOf('@layer sw-normalize {', idx);
+        const layerClose = css.indexOf('}', css.indexOf('select:focus {'));
+        expect(layerOpen).toBeGreaterThan(-1);
+        expect(idx).toBeGreaterThan(layerOpen);
+        expect(idx).toBeLessThan(layerClose);
       });
     });
 

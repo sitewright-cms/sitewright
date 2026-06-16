@@ -8,6 +8,7 @@ import { escapeAttr, escapeHtml } from './escape.js';
 import { metaTags, schemaOrgJsonLd, type SeoMeta, type SchemaOrgInfo } from './head.js';
 import { brandToCss } from './brand-css.js';
 import { baseStyles } from './base-css.js';
+import { colorSchemeCss, colorSchemeHtmlAttr, type ColorScheme } from './color-scheme.js';
 import { previewStyles } from './preview-css.js';
 import { typographyCss, type FontAsset } from './typography-css.js';
 
@@ -26,6 +27,12 @@ export interface RenderContext {
 /** Options for {@link renderDocument}. */
 export interface RenderDocumentOptions extends RenderContext {
   brand: BrandTokens;
+  /**
+   * Opt-in light/dark color schemes (Website settings). When `enabled`, the dark token CSS is
+   * inlined and the `default` scheme is pinned onto `<html data-theme>` ('auto' follows the OS).
+   * Absent / `enabled:false` → current single-theme behaviour (no change for existing sites).
+   */
+  colorScheme?: { enabled: boolean; default?: ColorScheme };
   /**
    * Pre-rendered `<body>` HTML for a code-first (Handlebars `source`) page — used INSTEAD
    * of rendering the block tree. The same head/SEO/CSS/script shell is applied.
@@ -144,6 +151,7 @@ function slotLandmark(tag: 'nav' | 'aside' | 'footer' | 'div', id: string, html:
 export function renderDocument(page: Page, opts: RenderDocumentOptions): string {
   const {
     brand,
+    colorScheme,
     bodyHtml,
     bodyClass,
     preloader,
@@ -171,7 +179,12 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
   const body = bodyHtml ?? '';
   // Base layer (modern-normalize + platform defaults) FIRST so the skeleton, brand
   // vars, author criticalCss and the unlayered Tailwind utilities all override it.
-  const css = `${baseStyles()}\n${previewStyles()}\n${brandToCss(brand)}`;
+  const css = `${baseStyles()}\n${previewStyles()}\n${brandToCss(brand)}${
+    colorScheme?.enabled ? `\n${colorSchemeCss()}` : ''
+  }`;
+  // Opt-in color schemes pin the project default onto <html data-theme> ('auto' emits nothing →
+  // the prefers-color-scheme media query in the CSS above governs).
+  const dataThemeAttr = colorScheme?.enabled ? colorSchemeHtmlAttr(colorScheme.default) : '';
   // Self-hosted fonts ride in `ctx.media` as `kind:'font'` assets; their `@font-face` urls reuse the
   // media URL resolver (which the publish HTML-rewrite rebases to `_assets/<id>/<file>`).
   const fontAssets = (ctx.media ?? []).filter((m): m is FontAsset => m.kind === 'font');
@@ -187,7 +200,7 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
   const jsonLd = schemaOrgJsonLd(organization);
   return (
     `<!doctype html>\n` +
-    `<html lang="${escapeAttr(lang)}"${systemI18n ? ` data-sw-i18n="${escapeAttr(systemI18n)}"` : ''}>\n` +
+    `<html lang="${escapeAttr(lang)}"${dataThemeAttr}${systemI18n ? ` data-sw-i18n="${escapeAttr(systemI18n)}"` : ''}>\n` +
     `<head>\n` +
     `<meta charset="utf-8" />\n` +
     `<meta name="viewport" content="width=device-width, initial-scale=1" />\n` +

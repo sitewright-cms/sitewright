@@ -435,6 +435,18 @@ const WebsiteSettingsObject = z.object({
    * CSS via `criticalCss`). See {@link WebsiteThemeSchema}.
    */
   theme: WebsiteThemeSchema.optional(),
+  /**
+   * Opt-in light/dark COLOR SCHEMES. When true, the rendered site gains a dark variant (the theme
+   * tokens get DaisyUI's curated dark neutrals; the brand accent is preserved). OFF by default, so
+   * existing single-theme sites are unaffected. Pairs with {@link defaultColorScheme}.
+   */
+  enableColorSchemes: z.boolean().optional(),
+  /**
+   * When color schemes are enabled, the INITIAL scheme: 'auto' follows the visitor's OS via
+   * prefers-color-scheme; 'light'/'dark' pins it (server-rendered onto `<html data-theme>`).
+   * Defaults to 'auto'. Ignored when {@link enableColorSchemes} is off.
+   */
+  defaultColorScheme: z.enum(['auto', 'light', 'dark']).optional(),
 });
 
 /**

@@ -653,6 +653,8 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         const html = renderDocument(page, {
           brand,
           bodyHtml,
+          // Opt-in light/dark color schemes (off by default → single-theme as before).
+          colorScheme: { enabled: !!website?.enableColorSchemes, default: website?.defaultColorScheme },
           // Site-wide nav/button effect schemes → `<body>` classes (the effect CSS tree-shakes).
           bodyClass: websiteThemeClasses(website?.theme),
           topNav: topNavHtml,

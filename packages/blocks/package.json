@@ -56,6 +56,7 @@
     "@types/node": "^22.10.2",
     "@types/sanitize-html": "^2.13.0",
     "@vitest/coverage-v8": "^4.1.8",
+    "air-datepicker": "3.6.0",
     "circle-flags": "^2.8.3",
     "embla-carousel": "8.6.0",
     "embla-carousel-auto-height": "8.6.0",

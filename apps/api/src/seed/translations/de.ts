@@ -240,9 +240,9 @@ export function translationsDe(assets: Record<string, string>): Record<string, P
     data: {
       tab_intro:
         'Eine Komponente, beliebiger Inhalt. Ein Tabs-Root mit einem Tablist-Slot und einem Panel pro Tab — die Runtime liest den Titel jedes Panels, erzeugt die Schaltflächen, verdrahtet die Pfeiltasten und stapelt ohne JavaScript alles lesbar untereinander.',
-      sec_basic_t: 'Tabs — die Standardeinstellungen',
+      sec_basic_t: 'Tab-Beschriftungen — schlicht oder mit Markup',
       sec_basic_d:
-        'Ein Panel pro Tab; die Runtime baut die Schaltflächen aus dem data-sw-title jedes Panels und steuert die Auswahl. Auf einen Tab klicken oder einen fokussieren und die Pfeiltasten nutzen.',
+        'Jedes Panel bekommt eine Beschriftung: ein einfaches data-sw-title oder ein optionales data-sw-part="tabtitle"-Kind für ein Icon oder anderes HTML. Das gilt pro Tab, du kannst also mischen — hier sind die ersten beiden Tabs mit Markup und der dritte schlicht. Auf einen Tab klicken oder einen fokussieren und die Pfeiltasten nutzen.',
       tab1: 'Überblick',
       body1:
         'Tabs bündeln zusammengehörige Inhalte auf engem Raum — der Besucher sieht jeweils ein Panel und wechselt dazwischen, ohne die Seite zu verlassen.',

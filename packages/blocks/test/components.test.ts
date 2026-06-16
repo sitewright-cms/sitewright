@@ -231,6 +231,73 @@ describe('component registry', () => {
     expect(tabs.js).not.toContain('innerHTML'); // tab labels via textContent, not innerHTML
   });
 
+  it('Tabs styling keys on the component marker (data-sw-block not required) + bold labels', () => {
+    const tabs = componentAssets(['Tabs']);
+    // Every CSS rule targets the component marker, not data-sw-block — so authored markup
+    // needs only data-sw-component="tabs".
+    expect(tabs.css).toContain('[data-sw-component="tabs"]');
+    expect(tabs.css).not.toContain('[data-sw-block="Tabs"]');
+    // Bold tab labels.
+    expect(tabs.css).toContain('font-weight:700');
+    // Active tab text is white over the pill; inactive inherits the default colour.
+    expect(tabs.css).toContain('[aria-selected="true"]');
+    expect(tabs.css).toMatch(/\[aria-selected="true"\][^{]*\{color:#fff\}/);
+  });
+
+  it('Tabs has a floating "magic" selector pill that transitions to the active tab', () => {
+    const tabs = componentAssets(['Tabs']);
+    // The indicator part exists, uses the primary colour, and is animated (non-zero duration).
+    expect(tabs.css).toContain('[data-sw-part="tabindicator"]');
+    expect(tabs.css).toContain('var(--sw-color-primary');
+    expect(tabs.css).toMatch(/\[data-sw-part="tabindicator"\][^}]*transition:transform \.3s/);
+    expect(tabs.css).not.toContain('transition:transform 0s');
+    // The runtime positions it from the active tab's box (inline transform/width/height).
+    expect(tabs.js).toContain('tabindicator');
+    expect(tabs.js).toContain('offsetLeft');
+    expect(tabs.js).toContain('offsetWidth');
+  });
+
+  it('Tabs panels get an automatic + repeatable fade-in (non-zero, restarts on data-active)', () => {
+    const tabs = componentAssets(['Tabs']);
+    // Keyframe-on-[data-active]: the attribute flip restarts it on every selection.
+    expect(tabs.css).toContain('@keyframes sw-tab-in');
+    expect(tabs.css).toMatch(/\[data-active\]\{animation:sw-tab-in \.3s/);
+    expect(tabs.css).not.toContain('animation:sw-tab-in 0s');
+    // Reduced-motion users opt out of the fade.
+    expect(tabs.css).toContain('prefers-reduced-motion:reduce');
+  });
+
+  it('Tabs buttons get a press ripple (self-contained, reduced-motion safe, no markup injection)', () => {
+    const tabs = componentAssets(['Tabs']);
+    expect(tabs.css).toContain('.sw-ripple');
+    // Uniquely-named keyframe so it never collides with the Carousel's sw-ripple keyframe.
+    expect(tabs.css).toContain('@keyframes sw-tab-ripple');
+    expect(tabs.css).not.toContain('@keyframes sw-ripple{');
+    // Ripple is spawned on pointerdown and gated behind reduced motion.
+    expect(tabs.js).toContain('pointerdown');
+    expect(tabs.js).toContain('prefers-reduced-motion');
+    expect(tabs.js).toContain("createElement('span')");
+  });
+
+  it('Tabs places the selector pill instantly on load (no slide-in) and uses a scoped resize observer', () => {
+    const tabs = componentAssets(['Tabs']);
+    // Initial placement disables the transition, then a double-rAF restores the CSS glide.
+    expect(tabs.js).toContain("pill.style.transition='none'");
+    expect(tabs.js).toContain('requestAnimationFrame');
+    // No leaked global per-instance resize listener — ResizeObserver scoped to the tablist.
+    expect(tabs.js).toContain('ResizeObserver');
+  });
+
+  it('Tabs runtime creates the tablist mount + ARIA roles when the author omits them', () => {
+    const tabs = componentAssets(['Tabs']);
+    // The tablist is created if absent and roles are added by the runtime, so authored
+    // markup needs neither an empty tablist nor role="…" attributes.
+    expect(tabs.js).toContain("createElement('div')");
+    expect(tabs.js).toContain("setAttribute('data-sw-part','tablist')");
+    expect(tabs.js).toContain("setAttribute('role','tablist')");
+    expect(tabs.js).toContain("setAttribute('role','tabpanel')");
+  });
+
   it('ignores unknown component types', () => {
     expect(componentAssets(['Nope', 'AlsoNope'])).toEqual({ css: '', js: '' });
   });

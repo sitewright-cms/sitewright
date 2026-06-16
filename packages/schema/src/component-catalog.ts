@@ -122,21 +122,20 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
   {
     type: 'Tabs',
     marker: 'tabs',
-    summary: 'Content panels behind an accessible APG tablist (roving tabindex, arrow keys); the runtime builds the tab buttons from each panel title.',
+    summary: 'Content panels behind an accessible APG tablist (roving tabindex, arrow keys); the runtime builds the tab buttons from each panel title and slides a floating primary "magic" selector to the active tab.',
     authoring: 'markup',
     parts: [
-      { part: 'tablist', element: 'div', required: true, description: 'Empty mount with role="tablist"; the runtime generates one tab button per panel.' },
-      { part: 'panel', element: 'div', required: true, description: 'One content panel (role="tabpanel"); any markup inside.' },
+      { part: 'panel', element: 'div', required: true, description: 'One content panel; any markup inside. Give it a data-sw-title — the runtime builds a tab button from it and adds role="tabpanel".' },
+      { part: 'tablist', element: 'div', required: false, description: 'OPTIONAL mount for the tab buttons. Omit it and the runtime creates one as the first child; author one only to position/style the tab bar (e.g. add classes).' },
     ],
     attributes: [{ name: 'data-sw-title', on: 'panel', description: 'The tab button label for this panel (interpolation allowed, e.g. a page.data key for i18n).' }],
-    skeleton: `<div data-sw-component="tabs" data-sw-block="Tabs">
-  <div data-sw-part="tablist" role="tablist"></div>
-  <div data-sw-part="panel" role="tabpanel" data-sw-title="First tab">First panel content</div>
-  <div data-sw-part="panel" role="tabpanel" data-sw-title="Second tab">Second panel content</div>
+    skeleton: `<div data-sw-component="tabs">
+  <div data-sw-part="panel" data-sw-title="First tab">First panel content</div>
+  <div data-sw-part="panel" data-sw-title="Second tab">Second panel content</div>
 </div>`,
     noJs: 'The tablist stays hidden and ALL panels render stacked — every panel remains readable.',
     notes:
-      "Use this whenever tabs switch CONTENT. DaisyUI's `tabs`/`tab` classes are for tab-STYLED navigation links (a row of links that navigate); do not build DaisyUI radio-input content tabs — they lack tablist semantics and their adjacency-dependent markup is brittle.",
+      "Use this whenever tabs switch CONTENT. The markup is minimal: a `data-sw-component=\"tabs\"` root with a `data-sw-part=\"panel\"` per tab — the runtime generates the tablist (creating the mount if you omit it), the tab buttons, the ARIA roles, and roving tabindex (no `data-sw-block` or `role=` attributes to author). Tab labels are BOLD; the active tab shows white text over a floating primary selector pill that glides to it; inactive tabs use the default text colour and turn primary on hover; the buttons get a press ripple; and each panel fades in (re-triggers on every switch). Author a `data-sw-part=\"tablist\"` element yourself only to style the tab bar (e.g. `class=\"px-2\"`) — the runtime still fills it. DaisyUI's `tabs`/`tab` classes are for tab-STYLED navigation links (a row of links that navigate); do not build DaisyUI radio-input content tabs — they lack tablist semantics and their adjacency-dependent markup is brittle.",
   },
   {
     type: 'Lightbox',

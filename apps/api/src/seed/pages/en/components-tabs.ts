@@ -47,16 +47,15 @@ export function pageComponentsTabs(): Page {
 <section class="mx-auto max-w-6xl px-6 pb-20">
   <h2 class="text-3xl font-bold tracking-tight" data-sw-text="sec_basic_t">Tabs — the defaults</h2>
   <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="sec_basic_d">A panel per tab; the runtime builds the buttons from each panel’s title.</p>
-  <pre class="mt-3 inline-block max-w-full overflow-x-auto text-xs"><code>data-sw-component="tabs"  +  data-sw-part="tablist"  +  data-sw-part="panel" data-sw-title="…"</code></pre>
-  <div class="mt-8 overflow-hidden rounded-3xl border border-base-200 bg-base-100 shadow-sm" data-sw-component="tabs" data-sw-block="Tabs">
-    <div data-sw-part="tablist" role="tablist" class="border-b border-base-200 px-2"></div>
-    <div data-sw-part="panel" role="tabpanel" data-sw-title="{{page.data.tab1}}" class="p-8">
+  <pre class="mt-3 inline-block max-w-full overflow-x-auto text-xs"><code>data-sw-component="tabs"  +  a data-sw-part="panel" data-sw-title="…" per tab</code></pre>
+  <div class="mt-8" data-sw-component="tabs">
+    <div data-sw-part="panel" data-sw-title="{{page.data.tab1}}" class="pt-2">
       <p class="leading-relaxed text-base-content/70" data-sw-text="body1">Tabs group related content into one compact area.</p>
     </div>
-    <div data-sw-part="panel" role="tabpanel" data-sw-title="{{page.data.tab2}}" class="p-8">
+    <div data-sw-part="panel" data-sw-title="{{page.data.tab2}}" class="pt-2">
       <p class="leading-relaxed text-base-content/70" data-sw-text="body2">Give each panel a title and its content.</p>
     </div>
-    <div data-sw-part="panel" role="tabpanel" data-sw-title="{{page.data.tab3}}" class="p-8">
+    <div data-sw-part="panel" data-sw-title="{{page.data.tab3}}" class="pt-2">
       <p class="leading-relaxed text-base-content/70" data-sw-text="body3">The markup follows the WAI-ARIA tabs pattern.</p>
     </div>
   </div>
@@ -65,16 +64,18 @@ export function pageComponentsTabs(): Page {
 <section class="mx-auto max-w-6xl px-6 pb-20">
   <h2 class="text-3xl font-bold tracking-tight" data-sw-text="sec_rich_t">Panels hold any markup</h2>
   <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="sec_rich_d">A panel is just a container — put a list, a stat grid, an image, or a call to action inside.</p>
-  <div class="mt-8 overflow-hidden rounded-3xl border border-base-200 bg-base-100 shadow-sm" data-sw-component="tabs" data-sw-block="Tabs">
-    <div data-sw-part="tablist" role="tablist" class="border-b border-base-200 px-2"></div>
-    <div data-sw-part="panel" role="tabpanel" data-sw-title="{{page.data.rtab1}}" class="p-8">
+  <!-- Optional: author the tablist to style the tab bar (here a segmented-control track).
+       The runtime still fills it with the buttons + the floating selector pill. -->
+  <div class="mt-8 rounded-3xl border border-base-200 bg-base-100 p-3 shadow-sm" data-sw-component="tabs">
+    <div data-sw-part="tablist" class="rounded-2xl bg-base-200/50 px-2 py-2"></div>
+    <div data-sw-part="panel" data-sw-title="{{page.data.rtab1}}" class="p-6">
       <ul class="space-y-3">
         <li class="flex items-start gap-3"><span class="mt-0.5 text-primary">${icon('check', 'h-5 w-5')}</span><span class="text-base-content/70" data-sw-text="rli1">Unlimited panels.</span></li>
         <li class="flex items-start gap-3"><span class="mt-0.5 text-primary">${icon('check', 'h-5 w-5')}</span><span class="text-base-content/70" data-sw-text="rli2">Keyboard + screen-reader support.</span></li>
         <li class="flex items-start gap-3"><span class="mt-0.5 text-primary">${icon('check', 'h-5 w-5')}</span><span class="text-base-content/70" data-sw-text="rli3">No custom JavaScript.</span></li>
       </ul>
     </div>
-    <div data-sw-part="panel" role="tabpanel" data-sw-title="{{page.data.rtab2}}" class="p-8">
+    <div data-sw-part="panel" data-sw-title="{{page.data.rtab2}}" class="p-6">
       <div class="grid grid-cols-2 gap-6">
         <div><div class="text-4xl font-bold tracking-tight text-primary" data-sw-text="rstat1_n">0</div><div class="mt-1 text-sm text-base-content/60" data-sw-text="rstat1_l">lines of JavaScript you write</div></div>
         <div><div class="text-4xl font-bold tracking-tight text-primary" data-sw-text="rstat2_n">100%</div><div class="mt-1 text-sm text-base-content/60" data-sw-text="rstat2_l">usable with the keyboard alone</div></div>

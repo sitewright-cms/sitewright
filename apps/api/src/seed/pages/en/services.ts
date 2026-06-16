@@ -108,11 +108,11 @@ export function pagesServices(): Page[] {
   <h1 class="mt-8 text-4xl font-bold tracking-tight sm:text-6xl" data-sw-text="pr_h1">Honest, fixed-scope pricing</h1>
   <p class="mt-5 max-w-2xl text-lg leading-relaxed text-base-content/60" data-sw-text="pr_intro">No estimates that double mid-project. Pick a package, know the number, get the site.</p>
 
-  <!-- First-party TABS (APG pattern): the runtime builds the tablist from each panel's
+  <!-- First-party TABS (APG pattern): just the component marker + a panel per tab. The
+       runtime builds the tablist (buttons + floating selector) from each panel's
        data-sw-title; without JS the panels simply stack — nothing is hidden. -->
-  <div class="mt-14" data-sw-component="tabs" data-sw-block="Tabs">
-    <div data-sw-part="tablist" role="tablist"></div>
-    <div data-sw-part="panel" role="tabpanel" data-sw-title="{{page.data.tab_projects}}">
+  <div class="mt-14" data-sw-component="tabs">
+    <div data-sw-part="panel" data-sw-title="{{page.data.tab_projects}}">
       <div class="grid items-stretch gap-7 pt-2 md:grid-cols-3">
         {{#each dataset.plans}}{{#unless monthly}}
         <div class="nw-card relative flex flex-col rounded-3xl bg-base-100 p-8 {{#if featured}}nw-ring shadow-2xl shadow-primary/15{{else}}border border-base-200 shadow-sm{{/if}}">
@@ -125,7 +125,7 @@ export function pagesServices(): Page[] {
         {{/unless}}{{/each}}
       </div>
     </div>
-    <div data-sw-part="panel" role="tabpanel" data-sw-title="{{page.data.tab_care}}">
+    <div data-sw-part="panel" data-sw-title="{{page.data.tab_care}}">
       <div class="grid items-stretch gap-7 pt-2 md:grid-cols-2">
         {{#each dataset.plans}}{{#if monthly}}
         <div class="nw-card relative flex flex-col rounded-3xl bg-base-100 p-8 {{#if featured}}nw-ring shadow-2xl shadow-primary/15{{else}}border border-base-200 shadow-sm{{/if}}">

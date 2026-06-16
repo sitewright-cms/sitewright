@@ -398,47 +398,116 @@ const COOKIE_CONSENT_JS = `(function(){
 })();`;
 
 // --- Tabs --------------------------------------------------------------------
-// A tablist + panels (APG Tabs pattern). The JS builds the tablist from each
-// panel's title, wires roving-tabindex + arrow-key navigation + aria, and shows
-// one panel at a time. PE-first: with no JS the tablist stays hidden and ALL
-// panels render stacked (fully readable content).
+// A tablist + panels (APG Tabs pattern). The JS builds the tablist (creating the
+// mount if absent) from each panel's title, wires roving-tabindex + arrow-key
+// navigation + aria, slides a floating "magic" selector pill to the active tab,
+// and shows one panel at a time. PE-first: with no JS the tablist stays hidden
+// and ALL panels render stacked (fully readable content). Styling keys on the
+// `data-sw-component="tabs"` marker so `data-sw-block` is NOT required in markup.
 const TABS_CSS = [
-  '[data-sw-block="Tabs"] [data-sw-part="tablist"]{display:none}',
-  '[data-sw-block="Tabs"][data-sw-enhanced="true"] [data-sw-part="tablist"]{display:flex;flex-wrap:wrap;gap:.25rem;border-bottom:1px solid rgba(0,0,0,.12);margin-bottom:1rem}',
-  '[data-sw-block="Tabs"] [data-sw-part="tab"]{border:0;background:none;padding:.5rem 1rem;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}',
-  '[data-sw-block="Tabs"] [data-sw-part="tab"][aria-selected="true"]{border-bottom-color:var(--sw-color-primary,#0a7a5a);font-weight:600}',
-  '[data-sw-block="Tabs"][data-sw-enhanced="true"] [data-sw-part="panel"]:not([data-active]){display:none}',
-  // Same UA-margin exposure as carousel slides (modern-normalize keeps figure/dl margins):
-  // a <figure> panel would inset its content by the UA's 40px side margins.
-  '[data-sw-block="Tabs"] [data-sw-part="panel"]{margin:0}',
+  // PE-first: any authored tablist stays hidden until the runtime enhances.
+  '[data-sw-component="tabs"] [data-sw-part="tablist"]{display:none}',
+  // The enhanced tablist is the positioning context for the floating selector pill.
+  '[data-sw-component="tabs"][data-sw-enhanced="true"] [data-sw-part="tablist"]{position:relative;display:flex;flex-wrap:wrap;gap:.25rem;margin-bottom:1rem}',
+  // The "magic" floating background selector — a primary pill the runtime slides to
+  // the active tab (transform/width/height set inline from the tab's box). Sits BEHIND
+  // the tab labels (z-index:0); zero size until positioned so it never flashes at 0,0.
+  '[data-sw-component="tabs"] [data-sw-part="tabindicator"]{position:absolute;top:0;left:0;width:0;height:0;border-radius:.5rem;background:var(--sw-color-primary,#0a7a5a);transform:translate(0,0);transition:transform .3s cubic-bezier(.4,0,.2,1),width .3s cubic-bezier(.4,0,.2,1),height .3s cubic-bezier(.4,0,.2,1);pointer-events:none;z-index:0}',
+  // Tab buttons: BOLD, default text colour, rounded, above the pill, clipping the ripple.
+  '[data-sw-component="tabs"] [data-sw-part="tab"]{position:relative;z-index:1;overflow:hidden;border:0;background:none;margin:0;padding:.5rem 1rem;border-radius:.5rem;font:inherit;font-weight:700;color:inherit;cursor:pointer;transition:color .2s ease;-webkit-tap-highlight-color:transparent}',
+  // Hover → primary; the active tab (over the primary pill) stays white even on hover.
+  '[data-sw-component="tabs"] [data-sw-part="tab"]:hover{color:var(--sw-color-primary,#0a7a5a)}',
+  '[data-sw-component="tabs"] [data-sw-part="tab"][aria-selected="true"],[data-sw-component="tabs"] [data-sw-part="tab"][aria-selected="true"]:hover{color:#fff}',
+  // Press ripple ("waves") on the buttons — self-contained so it ships with the Tabs
+  // bundle (the shared .waves-effect runtime only binds elements present at load, but
+  // the tab buttons are generated at runtime). Primary tint inactive, white over the pill.
+  '[data-sw-component="tabs"] [data-sw-part="tab"] .sw-ripple{position:absolute;border-radius:9999px;pointer-events:none;transform:scale(0);background:color-mix(in srgb,var(--sw-color-primary,#0a7a5a) 28%,transparent);animation:sw-tab-ripple .6s ease-out forwards}',
+  '[data-sw-component="tabs"] [data-sw-part="tab"][aria-selected="true"] .sw-ripple{background:rgb(255 255 255/.5)}',
+  '@keyframes sw-tab-ripple{to{transform:scale(1);opacity:0}}',
+  // One panel at a time once enhanced; reset the UA figure/dl side margins (modern-normalize
+  // keeps them — a <figure> panel would otherwise inset its content by 40px).
+  '[data-sw-component="tabs"][data-sw-enhanced="true"] [data-sw-part="panel"]:not([data-active]){display:none}',
+  '[data-sw-component="tabs"] [data-sw-part="panel"]{margin:0}',
+  // Automatic + REPEATABLE fade-in: the data-active flip restarts this keyframe every
+  // time a panel is selected (not just the first), so each switch fades the panel in.
+  '[data-sw-component="tabs"][data-sw-enhanced="true"] [data-sw-part="panel"][data-active]{animation:sw-tab-in .3s ease both}',
+  '@keyframes sw-tab-in{from{opacity:0;transform:translateY(.5rem)}to{opacity:1;transform:none}}',
+  // Reduced motion: no pill glide, no panel fade (the ripple is JS-gated off too).
+  '@media(prefers-reduced-motion:reduce){[data-sw-component="tabs"] [data-sw-part="tabindicator"]{transition:none}[data-sw-component="tabs"][data-sw-enhanced="true"] [data-sw-part="panel"][data-active]{animation:none}}',
 ].join('');
 
 const TABS_JS = `(function(){
   var uid=0;
+  var reduce=window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // Press ripple: build one span sized to cover the button from the press point. Built
+  // with createElement + inline numeric styles only — no markup injection from any string.
+  function ripple(e){
+    if(reduce)return;
+    var el=e.currentTarget,rect=el.getBoundingClientRect();
+    var x=(e.clientX!=null?e.clientX:rect.left+rect.width/2)-rect.left;
+    var y=(e.clientY!=null?e.clientY:rect.top+rect.height/2)-rect.top;
+    var size=Math.max(rect.width,rect.height)*2;
+    var s=document.createElement('span');
+    s.className='sw-ripple';
+    s.style.width=s.style.height=size+'px';
+    s.style.left=(x-size/2)+'px';s.style.top=(y-size/2)+'px';
+    el.appendChild(s);
+    var rm=function(){if(s.parentNode)s.parentNode.removeChild(s);};
+    s.addEventListener('animationend',rm,{once:true});setTimeout(rm,800);
+  }
   function enhance(root){
+    if(root.getAttribute('data-sw-enhanced')==='true')return;
     var panels=Array.prototype.slice.call(root.querySelectorAll('[data-sw-part="panel"]'));
+    if(panels.length<2)return;
+    // The tablist mount is optional in authored markup — create it if absent.
     var tablist=root.querySelector('[data-sw-part="tablist"]');
-    if(!tablist||panels.length<2)return;
-    var gid='sw-tabs-'+(uid++),tabs=[];
+    if(!tablist){tablist=document.createElement('div');tablist.setAttribute('data-sw-part','tablist');root.insertBefore(tablist,root.firstChild);}
+    tablist.setAttribute('role','tablist');
+    // The floating "magic" selector pill (positioned behind the tab labels).
+    var pill=document.createElement('div');
+    pill.setAttribute('data-sw-part','tabindicator');pill.setAttribute('aria-hidden','true');
+    tablist.appendChild(pill);
+    var gid='sw-tabs-'+(uid++),tabs=[],current=0;
+    function movePill(){
+      var t=tabs[current];if(!t)return;
+      pill.style.width=t.offsetWidth+'px';pill.style.height=t.offsetHeight+'px';
+      pill.style.transform='translate('+t.offsetLeft+'px,'+t.offsetTop+'px)';
+    }
     function select(i){
+      current=i;
       for(var j=0;j<panels.length;j++){
         var on=j===i;
         if(on){panels[j].setAttribute('data-active','');}else{panels[j].removeAttribute('data-active');}
         tabs[j].setAttribute('aria-selected',on?'true':'false');tabs[j].tabIndex=on?0:-1;
       }
+      movePill();
     }
     panels.forEach(function(panel,i){
+      panel.setAttribute('role','tabpanel');
       var pid=gid+'-p'+i,tid=gid+'-t'+i;
       panel.id=pid;panel.setAttribute('aria-labelledby',tid);
       var btn=document.createElement('button');
       btn.type='button';btn.id=tid;btn.setAttribute('role','tab');btn.setAttribute('data-sw-part','tab');btn.setAttribute('aria-controls',pid);
       btn.textContent=panel.getAttribute('data-sw-title')||('Tab '+(i+1));
+      btn.addEventListener('pointerdown',ripple);
       btn.addEventListener('click',function(){select(i);tabs[i].focus();});
       btn.addEventListener('keydown',function(e){var n=-1;if(e.key==='ArrowRight'){n=(i+1)%tabs.length;}else if(e.key==='ArrowLeft'){n=(i-1+tabs.length)%tabs.length;}else if(e.key==='Home'){n=0;}else if(e.key==='End'){n=tabs.length-1;}if(n>=0){e.preventDefault();select(n);tabs[n].focus();}});
       tablist.appendChild(btn);tabs.push(btn);
     });
     root.setAttribute('data-sw-enhanced','true');
+    // Place the pill INSTANTLY on the initial tab (no slide-in from 0,0), then restore the
+    // CSS glide one frame later so subsequent tab switches animate.
+    pill.style.transition='none';
     select(0);
+    requestAnimationFrame(function(){requestAnimationFrame(function(){pill.style.transition='';});});
+    // Re-measure the pill when the tab bar reflows (responsive wrap) + after web fonts
+    // settle. A ResizeObserver scoped to the tablist avoids leaking a global resize
+    // listener per instance (and catches container resizes, not just window resizes).
+    var ric;
+    function schedule(){clearTimeout(ric);ric=setTimeout(movePill,100);}
+    if(typeof ResizeObserver!=='undefined'){new ResizeObserver(schedule).observe(tablist);}
+    else{window.addEventListener('resize',schedule);}
+    if(document.fonts&&document.fonts.ready&&document.fonts.ready.then){document.fonts.ready.then(movePill);}
   }
   function init(){Array.prototype.forEach.call(document.querySelectorAll('[data-sw-component="tabs"]'),enhance);}
   if(document.readyState!=='loading'){init();}else{document.addEventListener('DOMContentLoaded',init);}

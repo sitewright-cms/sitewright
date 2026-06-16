@@ -38,6 +38,28 @@ function pickLocale(el) {
 var Y_POS = { top: 1, bottom: 1 };
 var X_POS = { left: 1, right: 1, center: 1 };
 
+// Pick the vendor's light or dark theme to match the SITE. Sitewright sites have no separate dark
+// mode toggle — the active palette is whatever --sw-color-base-100 resolves to — so we probe that
+// surface colour's luminance (the browser resolves any format, incl. oklch, to rgb) and choose dark
+// for a dark site. Falls back to light on any failure.
+function siteTheme() {
+  try {
+    var probe = document.createElement('span');
+    probe.style.cssText = 'position:absolute;visibility:hidden;background:var(--sw-color-base-100,#fff)';
+    document.body.appendChild(probe);
+    var rgb = getComputedStyle(probe).backgroundColor;
+    probe.parentNode.removeChild(probe);
+    var m = rgb.match(/[\d.]+/g);
+    if (!m || m.length < 3) return 'light';
+    // A transparent surface (rgba alpha ~0) tells us nothing — don't read it as black/dark.
+    if (m.length >= 4 && +m[3] < 0.05) return 'light';
+    // Relative luminance (sRGB coefficients); <0.5 → treat as a dark surface.
+    return (0.2126 * +m[0] + 0.7152 * +m[1] + 0.0722 * +m[2]) / 255 < 0.5 ? 'dark' : 'light';
+  } catch {
+    return 'light';
+  }
+}
+
 // Reflect the selection into the host <input> (and keep it form-submittable). Dates come back as
 // ISO 'YYYY-MM-DD'; we show a locale-formatted string (range = start – end, multiple = comma list)
 // with the time appended when in a time mode.
@@ -80,9 +102,10 @@ function enhance(el) {
     inputMode: isInput,
     locale: pickLocale(el),
     selectionTimeMode: withTime ? (/a/i.test(tf) ? 12 : 24) : false,
-    // Pin the light theme: the popup is a white card (recoloured to the CI primary in components.ts);
-    // this keeps it consistent on any site and stops the vendor's dark-slate theme from engaging.
-    selectedTheme: 'light',
+    // Match the site: light or dark theme by the page surface luminance (the accent is recoloured to
+    // the CI primary in BOTH themes in components.ts). VCP would otherwise follow prefers-color-scheme,
+    // which can mismatch a site whose palette ignores the OS setting.
+    selectedTheme: siteTheme(),
   };
 
   if (mode === 'range') {

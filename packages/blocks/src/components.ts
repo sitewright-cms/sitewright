@@ -206,8 +206,8 @@ const LIGHTBOX_CSS = [
   // Header gradient for legibility over bright images.
   '.sw-lightbox-header{height:auto;min-height:50px;padding:14px 18px;background:linear-gradient(to bottom,rgb(0 0 0/.55),transparent)}',
   // Thumbnail strip: rounded tiles; the active thumb gets a brand ring.
-  '.sw-lightbox-nav{padding:.45rem 0}',
-  '.sw-lightbox-nav li{width:56px;height:56px;border-radius:.5rem;margin:0 .18rem}',
+  '.sw-lightbox-nav{padding:0}',
+  '.sw-lightbox-nav li{width:50px;height:50px;border-radius:.5rem;margin:0 .18rem}',
   '.sw-lightbox-nav a{border-radius:.5rem;transition:opacity .2s ease,box-shadow .2s ease}',
   '.sw-lightbox-nav a:hover{opacity:.85}',
   '.sw-lightbox-nav a.current{opacity:1;box-shadow:0 0 0 2px var(--sw-color-primary,#0a7a5a)}',

@@ -96,9 +96,11 @@ const TARGETS = [
     css: { from: 'node_modules/glightbox/dist/css/glightbox.min.css', cssConst: 'LIGHTBOX_VENDOR_CSS' },
   },
   // Vanilla Calendar Pro — date / range / datetime / time picker, with a DUAL-PANEL multi-month
-  // range view (data-mode="range"). We ship its COLOURLESS `layout.css` (structure only) and supply
-  // our own CI theme in components.ts against its data-vc-* state hooks — its packaged themes are
-  // Tailwind-compiled (no theming variables), so we don't ship them. No renamePrefix: the `vc-` /
+  // range view (data-mode="range"). We ship its POLISHED stylesheet — the structural `layout.css`
+  // plus ONLY the `light` theme (the runtime pins light, so the bundled `index.css`'s dark theme
+  // would be ~18 KB of dead CSS) — for a finished look, then in components.ts RECOLOUR its cyan
+  // accent to the site CI primary (broad !important overrides — they beat the vendor's non-important
+  // theme rules regardless of specificity) and add the open animation. No renamePrefix: the `vc-` /
   // `data-vc-` prefix is a generic two-char abbreviation (not a brand name like air-datepicker /
   // smartphoto), and renaming it across the minified JS + its data-vc-* state attributes would be
   // high-risk for little benefit. See datetimepicker.entry.js.
@@ -107,7 +109,10 @@ const TARGETS = [
     out: 'src/vendor/datetimepicker-runtime.ts',
     jsConst: 'DATETIMEPICKER_RUNTIME_JS',
     libs: ['vanilla-calendar-pro'],
-    css: { from: 'node_modules/vanilla-calendar-pro/styles/layout.css', cssConst: 'DATETIMEPICKER_VENDOR_CSS' },
+    css: {
+      from: ['node_modules/vanilla-calendar-pro/styles/layout.css', 'node_modules/vanilla-calendar-pro/styles/themes/light.css'],
+      cssConst: 'DATETIMEPICKER_VENDOR_CSS',
+    },
   },
 ];
 
@@ -164,7 +169,10 @@ for (const t of TARGETS) {
     `export const ${t.jsConst}: string = ${JSON.stringify(js)};`,
   ];
   if (t.css) {
-    let css = readFileSync(join(pkgRoot, t.css.from), 'utf8').trim();
+    // `from` may be a single path or several (concatenated in order — e.g. a structural layout sheet
+    // plus a single theme, to avoid shipping a vendor's other unused themes).
+    const fromList = Array.isArray(t.css.from) ? t.css.from : [t.css.from];
+    let css = fromList.map((f) => readFileSync(join(pkgRoot, f), 'utf8').trim()).join('\n');
     // Match the entry's classNames override: every "smartphoto" selector/keyframe → "sw-lightbox".
     if (t.renameClasses) css = css.replace(/smartphoto/g, 'sw-lightbox');
     // Vendor-neutral class prefix in the stylesheet (mirrors the JS rewrite above).

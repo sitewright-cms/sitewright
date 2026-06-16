@@ -80,6 +80,9 @@ function enhance(el) {
     inputMode: isInput,
     locale: pickLocale(el),
     selectionTimeMode: withTime ? (/a/i.test(tf) ? 12 : 24) : false,
+    // Pin the light theme: the popup is a white card (recoloured to the CI primary in components.ts);
+    // this keeps it consistent on any site and stops the vendor's dark-slate theme from engaging.
+    selectedTheme: 'light',
   };
 
   if (mode === 'range') {

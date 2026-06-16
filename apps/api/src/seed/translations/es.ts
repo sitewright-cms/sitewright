@@ -238,9 +238,9 @@ export function translationsEs(assets: Record<string, string>): Record<string, P
     data: {
       tab_intro:
         'Un componente, cualquier contenido. Una raíz de pestañas con un slot de lista y un panel por pestaña — el runtime lee el título de cada panel, construye los botones, cablea las flechas y, sin JavaScript, apila todo de forma legible.',
-      sec_basic_t: 'Pestañas — los valores por defecto',
+      sec_basic_t: 'Etiquetas de pestaña — simples o con HTML',
       sec_basic_d:
-        'Un panel por pestaña; el runtime construye los botones a partir del data-sw-title de cada panel y gestiona la selección. Haz clic en una pestaña, o enfócala y usa las flechas.',
+        'Cada panel recibe una etiqueta: un data-sw-title simple, o un elemento opcional data-sw-part="tabtitle" para un icono u otro HTML. Es por pestaña, así que puedes mezclarlas — aquí las dos primeras pestañas son enriquecidas y la tercera es simple. Haz clic en una pestaña, o enfócala y usa las flechas.',
       tab1: 'Resumen',
       body1:
         'Las pestañas agrupan contenido relacionado en un área compacta — el visitante ve un panel a la vez y cambia entre ellos sin salir de la página.',

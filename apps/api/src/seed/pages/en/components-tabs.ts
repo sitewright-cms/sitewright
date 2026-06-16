@@ -16,8 +16,8 @@ export function pageComponentsTabs(): Page {
     order: 3,
     data: {
       tab_intro: 'One component, any content. A tabs root with a tablist slot and a panel per tab — the runtime reads each panel’s title and builds the buttons, wires roving-tabindex arrow keys, and falls back to a readable stack without JavaScript.',
-      sec_basic_t: 'Tabs — the defaults',
-      sec_basic_d: 'A panel per tab; the runtime builds the buttons from each panel’s data-sw-title and manages selection. Click a tab, or focus one and use the arrow keys.',
+      sec_basic_t: 'Tab labels — plain or rich',
+      sec_basic_d: 'Each panel gets a label: a plain data-sw-title, or an optional data-sw-part="tabtitle" child for an icon or other HTML. It’s per tab, so you can mix them — here the first two tabs are rich and the third is plain. Click a tab, or focus one and use the arrow keys.',
       tab1: 'Overview',
       body1: 'Tabs group related content into one compact area — the visitor sees one panel at a time and switches between them without leaving the page.',
       tab2: 'How it works',
@@ -47,9 +47,10 @@ export function pageComponentsTabs(): Page {
 <section class="mx-auto max-w-6xl px-6 pb-20">
   <h2 class="text-3xl font-bold tracking-tight" data-sw-text="sec_basic_t">Tabs — the defaults</h2>
   <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="sec_basic_d">A panel per tab; the runtime builds the buttons from each panel’s title.</p>
-  <pre class="mt-3 inline-block max-w-full overflow-x-auto text-xs"><code>data-sw-component="tabs"  +  a data-sw-part="panel" data-sw-title="…" per tab</code></pre>
-  <!-- Rich labels: a data-sw-part="tabtitle" child (icon + text) is moved into the button.
-       data-sw-title stays as the plain-text accessible name. -->
+  <pre class="mt-3 inline-block max-w-full overflow-x-auto text-xs"><code>per panel: data-sw-title="…" (plain)  —or—  a &lt;span data-sw-part="tabtitle"&gt; child (HTML)</code></pre>
+  <!-- Mixed labels: tabs 1 & 2 use a data-sw-part="tabtitle" child (icon + text) the runtime
+       moves into the button; tab 3 has no tabtitle, so it falls back to its data-sw-title text.
+       data-sw-title also stays as the accessible name for the rich tabs. -->
   <div class="mt-8" data-sw-component="tabs">
     <div data-sw-part="panel" data-sw-title="{{page.data.tab1}}" class="pt-2">
       <span data-sw-part="tabtitle">${icon('book-open', 'h-4 w-4')} {{page.data.tab1}}</span>
@@ -60,7 +61,6 @@ export function pageComponentsTabs(): Page {
       <p class="leading-relaxed text-base-content/70" data-sw-text="body2">Give each panel a title and its content.</p>
     </div>
     <div data-sw-part="panel" data-sw-title="{{page.data.tab3}}" class="pt-2">
-      <span data-sw-part="tabtitle">${icon('accessibility', 'h-4 w-4')} {{page.data.tab3}}</span>
       <p class="leading-relaxed text-base-content/70" data-sw-text="body3">The markup follows the WAI-ARIA tabs pattern.</p>
     </div>
   </div>

@@ -414,7 +414,12 @@ const TABS_CSS = [
   // the tab labels (z-index:0); zero size until positioned so it never flashes at 0,0.
   '[data-sw-component="tabs"] [data-sw-part="tabindicator"]{position:absolute;top:0;left:0;width:0;height:0;border-radius:.5rem;background:var(--sw-color-primary,#0a7a5a);transform:translate(0,0);transition:transform .3s cubic-bezier(.4,0,.2,1),width .3s cubic-bezier(.4,0,.2,1),height .3s cubic-bezier(.4,0,.2,1);pointer-events:none;z-index:0}',
   // Tab buttons: BOLD, default text colour, rounded, above the pill, clipping the ripple.
-  '[data-sw-component="tabs"] [data-sw-part="tab"]{position:relative;z-index:1;overflow:hidden;border:0;background:none;margin:0;padding:.5rem 1rem;border-radius:.5rem;font:inherit;font-weight:700;color:inherit;cursor:pointer;transition:color .2s ease;-webkit-tap-highlight-color:transparent}',
+  '[data-sw-component="tabs"] [data-sw-part="tab"]{position:relative;z-index:1;display:inline-flex;align-items:center;gap:.4rem;overflow:hidden;border:0;background:none;margin:0;padding:.5rem 1rem;border-radius:.5rem;font:inherit;font-weight:700;color:inherit;cursor:pointer;transition:color .2s ease;-webkit-tap-highlight-color:transparent}',
+  // A rich-label element (data-sw-part="tabtitle") whose nodes the runtime moves into the
+  // tab button. Before enhancement it stays in the panel as that section\'s heading-style
+  // label (block + bottom margin so it reads as a heading in the no-JS stack); the runtime
+  // removes the wrapper from the panel once it builds the button.
+  '[data-sw-component="tabs"] [data-sw-part="tabtitle"]{display:flex;align-items:center;gap:.4rem;font-weight:700;margin-block-end:.5rem}',
   // Hover → primary; the active tab (over the primary pill) stays white even on hover.
   '[data-sw-component="tabs"] [data-sw-part="tab"]:hover{color:var(--sw-color-primary,#0a7a5a)}',
   '[data-sw-component="tabs"] [data-sw-part="tab"][aria-selected="true"],[data-sw-component="tabs"] [data-sw-part="tab"][aria-selected="true"]:hover{color:#fff}',
@@ -488,7 +493,19 @@ const TABS_JS = `(function(){
       panel.id=pid;panel.setAttribute('aria-labelledby',tid);
       var btn=document.createElement('button');
       btn.type='button';btn.id=tid;btn.setAttribute('role','tab');btn.setAttribute('data-sw-part','tab');btn.setAttribute('aria-controls',pid);
-      btn.textContent=panel.getAttribute('data-sw-title')||('Tab '+(i+1));
+      // Rich label: a direct-child data-sw-part="tabtitle" holds already-rendered (server
+      // -escaped/sanitized) markup — MOVE its nodes into the button (no string is ever parsed
+      // into markup, so no XSS sink). data-sw-title is the text fallback + the aria-label.
+      var title=null,kids=panel.children;
+      for(var k=0;k<kids.length;k++){if(kids[k].getAttribute('data-sw-part')==='tabtitle'){title=kids[k];break;}}
+      if(title){
+        while(title.firstChild){btn.appendChild(title.firstChild);}
+        title.parentNode.removeChild(title);
+        // Always give the button an accessible name (icon-only rich titles have no text).
+        btn.setAttribute('aria-label',panel.getAttribute('data-sw-title')||('Tab '+(i+1)));
+      }else{
+        btn.textContent=panel.getAttribute('data-sw-title')||('Tab '+(i+1));
+      }
       btn.addEventListener('pointerdown',ripple);
       btn.addEventListener('click',function(){select(i);tabs[i].focus();});
       btn.addEventListener('keydown',function(e){var n=-1;if(e.key==='ArrowRight'){n=(i+1)%tabs.length;}else if(e.key==='ArrowLeft'){n=(i-1+tabs.length)%tabs.length;}else if(e.key==='Home'){n=0;}else if(e.key==='End'){n=tabs.length-1;}if(n>=0){e.preventDefault();select(n);tabs[n].focus();}});

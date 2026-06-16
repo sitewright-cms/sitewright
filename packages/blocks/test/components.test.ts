@@ -279,6 +279,17 @@ describe('component registry', () => {
     expect(tabs.js).toContain("createElement('span')");
   });
 
+  it('Tabs supports a rich tabtitle by MOVING nodes into the button (never innerHTML a string)', () => {
+    const tabs = componentAssets(['Tabs']);
+    // The runtime reads a data-sw-part="tabtitle" child and moves its nodes into the button.
+    expect(tabs.js).toContain('tabtitle');
+    expect(tabs.js).toContain('appendChild(title.firstChild)'); // node MOVE, not innerHTML
+    expect(tabs.js).toContain("setAttribute('aria-label'"); // data-sw-title becomes the a11y name
+    expect(tabs.js).not.toContain('innerHTML'); // still no string→HTML sink (XSS-safe)
+    // The tabtitle part is styled to lay out icon + text inline.
+    expect(tabs.css).toContain('[data-sw-part="tabtitle"]');
+  });
+
   it('Tabs places the selector pill instantly on load (no slide-in) and uses a scoped resize observer', () => {
     const tabs = componentAssets(['Tabs']);
     // Initial placement disables the transition, then a double-rAF restores the CSS glide.

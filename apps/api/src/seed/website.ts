@@ -37,6 +37,7 @@ export const EXAMPLE_WEBSITE = {
   </div>
   <div class="navbar-end gap-2.5">
     {{#if page.translations}}<div class="flex items-center gap-0.5 rounded-full bg-base-200/70 p-0.5" aria-label="${S('aria_language')}">{{#each page.translations}}<a class="btn btn-ghost btn-xs gap-1.5 rounded-full px-2 font-semibold uppercase" href="{{sw-url path}}" hreflang="{{locale}}">{{sw-flag (lookup @root.website.data.locale_flags locale) "h-3.5 w-5 rounded-sm"}}{{locale}}</a>{{/each}}</div>{{/if}}
+    {{sw-theme-toggle}}
     <a class="btn btn-primary btn-sm gap-1.5 rounded-full px-4 shadow-lg shadow-primary/25 waves-effect waves-light" href="{{sw-url ${SL('href_contact')}}}">${T('nav_cta', 'Start a project')} ${icon('arrow-right', 'h-4 w-4')}</a>
   </div>
 </div>`,
@@ -57,7 +58,8 @@ export const EXAMPLE_WEBSITE = {
       {{ company.shortName }}
     </a>
   </div>
-  <div class="navbar-end">
+  <div class="navbar-end gap-1">
+    {{sw-theme-toggle}}
     <a class="btn btn-primary btn-sm gap-1.5 rounded-full px-4 waves-effect waves-light" href="{{sw-url ${SL('href_contact')}}}">${T('nav_cta', 'Start a project')}</a>
   </div>
 </div>`,
@@ -179,7 +181,8 @@ export const EXAMPLE_WEBSITE = {
   // Site-wide nav/button effect schemes (CI-themed, contrast-safe). The active nav item is marked
   // `.active` (below); `sw-nav-pill` fills it with the brand primary + its WCAG-derived foreground.
   theme: { navEffect: 'pill', buttonEffect: 'lift', preloaderEffect: 'logo-pulse' },
-  // Opt-in light/dark color schemes — the flagship showcases the feature, following the visitor's OS.
+  // Opt-in light/dark color schemes — the flagship showcases the feature: it starts in LIGHT and the
+  // {{sw-theme-toggle}} in the header (navbar-end) lets visitors switch to dark (their choice persists).
   enableColorSchemes: true,
-  defaultColorScheme: 'auto',
+  defaultColorScheme: 'light',
 };

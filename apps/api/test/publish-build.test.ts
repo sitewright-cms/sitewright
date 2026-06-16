@@ -356,6 +356,50 @@ describe('buildSite', () => {
     expect(await readFile(join(outDir, 'preloader.js'), 'utf8')).toContain("classList.remove('loading')");
   });
 
+  it('color schemes: inlines the dark CSS, and a {{sw-theme-toggle}} ships theme.js SYNC in <head>', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: { primary: '#4f46e5' } },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+          website: { enableColorSchemes: true, defaultColorScheme: 'light' },
+        },
+        pages: [{ id: 'home', path: '', title: 'Home', source: '<header>{{sw-theme-toggle}}</header><h1>Hi</h1>' }],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).toContain(':root[data-sw-scheme="dark"]{'); // dark token block inlined
+    expect(home).toContain('data-sw-scheme="light"'); // pinned default → no flash
+    expect(home).toContain('data-sw-theme-toggle'); // the toggle rendered
+    // theme.js is linked SYNC in <head> (no defer) — its no-flash step must run pre-paint.
+    const head = home.slice(home.indexOf('<head>'), home.indexOf('</head>'));
+    expect(head).toContain('<script src="theme.js"></script>');
+    expect(await readFile(join(outDir, 'theme.js'), 'utf8')).toContain("localStorage.setItem(KEY,next)");
+  });
+
+  it('color schemes OFF: no dark CSS, no theme.js, and the toggle helper renders nothing', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: { primary: '#4f46e5' } },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+          website: {},
+        },
+        pages: [{ id: 'home', path: '', title: 'Home', source: '<header>{{sw-theme-toggle}}</header><h1>Hi</h1>' }],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).not.toContain('data-sw-scheme');
+    expect(home).not.toContain('data-sw-theme-toggle');
+    expect(home).not.toContain('theme.js');
+  });
+
   it('does NOT ship the preloader when no effect is chosen', async () => {
     await buildSite({
       publishedAt: '2026-05-29T00:00:00.000Z',

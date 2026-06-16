@@ -87,4 +87,27 @@ describe('renderDocument — document shell', () => {
       expect(light).toContain('data-sw-scheme="light"');
     });
   });
+
+  describe('sync head scripts (the toggle no-flash init)', () => {
+    it('headScripts → a SYNC (no-defer) <script src> in <head>, before <title>', () => {
+      const doc = renderDocument(page, { brand, headScripts: ['theme.js'] });
+      const head = doc.slice(doc.indexOf('<head>'), doc.indexOf('</head>'));
+      expect(head).toContain('<script src="theme.js"></script>');
+      expect(head).not.toContain('<script defer src="theme.js"');
+      // pre-paint: it sits before the <title> (and well before </body>'s deferred component scripts)
+      expect(head.indexOf('<script src="theme.js"')).toBeLessThan(head.indexOf('<title>'));
+    });
+
+    it('headInlineScripts → an inline <script> in <head> with </script> neutralized', () => {
+      const doc = renderDocument(page, { brand, headInlineScripts: ['var x=1;//</script>'] });
+      const head = doc.slice(doc.indexOf('<head>'), doc.indexOf('</head>'));
+      expect(head).toContain('<script>var x=1;//<\\/script></script>');
+    });
+
+    it('omits both when not provided (single-theme sites unchanged)', () => {
+      const doc = renderDocument(page, { brand });
+      const head = doc.slice(doc.indexOf('<head>'), doc.indexOf('</head>'));
+      expect(head).not.toContain('theme.js');
+    });
+  });
 });

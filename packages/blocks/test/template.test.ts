@@ -135,6 +135,31 @@ describe('{{item.<dataset>.<key>}} — direct keyed access', () => {
   });
 });
 
+describe('{{sw-theme-toggle}} — color-scheme toggle helper', () => {
+  const on = { website: { enableColorSchemes: true } } as unknown as TemplateContext;
+  it('renders a marked button with both icons when color schemes are enabled', () => {
+    const out = renderTemplate('{{sw-theme-toggle}}', on);
+    expect(out).toContain('data-sw-theme-toggle');
+    expect(out).toContain('class="sw-theme-toggle"');
+    expect(out).toContain('aria-pressed="false"');
+    expect(out).toContain('class="sw-tt-sun"');
+    expect(out).toContain('class="sw-tt-moon"');
+  });
+  it('renders NOTHING when color schemes are disabled / unset (helper is safe to leave in)', () => {
+    expect(renderTemplate('{{sw-theme-toggle}}', { website: {} } as unknown as TemplateContext)).toBe('');
+    expect(renderTemplate('{{sw-theme-toggle}}', {} as TemplateContext)).toBe('');
+  });
+  it('localizes the accessible label: explicit hash → catalog → English default', () => {
+    expect(renderTemplate('{{sw-theme-toggle label="Switch theme"}}', on)).toContain('aria-label="Switch theme"');
+    const de = { website: { enableColorSchemes: true, t: { theme_toggle: 'Modus' } } } as unknown as TemplateContext;
+    expect(renderTemplate('{{sw-theme-toggle}}', de)).toContain('aria-label="Modus"');
+    expect(renderTemplate('{{sw-theme-toggle}}', on)).toContain('aria-label="Toggle dark mode"');
+  });
+  it('appends author classes to the platform class', () => {
+    expect(renderTemplate('{{sw-theme-toggle class="btn btn-ghost"}}', on)).toContain('class="sw-theme-toggle btn btn-ghost"');
+  });
+});
+
 describe('renderTemplate — Handlebars features', () => {
   it('passes literal HTML through and interpolates + HTML-escapes values', () => {
     expect(renderTemplate('<div class="grid">{{ page.title }}</div>', ctx)).toBe('<div class="grid">Home</div>');

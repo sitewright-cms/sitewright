@@ -53,6 +53,9 @@ import {
   usesCart,
   CART_CSS,
   CART_JS,
+  usesThemeToggle,
+  THEME_TOGGLE_CSS,
+  THEME_TOGGLE_JS,
   preloaderHtml,
   PRELOADER_CSS,
   PRELOADER_JS,
@@ -78,6 +81,8 @@ const LAZYLOAD_SCRIPT = 'lazyload.js';
 const RIPPLE_SCRIPT = 'ripple.js';
 /** The MINI SHOP cart runtime, written at the site root and linked per page. */
 const CART_SCRIPT = 'cart.js';
+/** The color-scheme toggle + no-flash runtime, written at the site root and linked SYNC in <head>. */
+const THEME_SCRIPT = 'theme.js';
 /** The nav-placeholder runtime (open a <dialog>/smooth-scroll a #section), linked per page. */
 const NAV_LINK_SCRIPT = 'nav-link.js';
 /** The PRELOADER runtime (overlay show/clear + scroll-lock + internal-link bridge), linked per page. */
@@ -433,6 +438,10 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // MINI SHOP cart runtime — ships only when a page/slot uses the {{sw-cart}}/{{sw-add-to-cart}}
     // helpers (their rendered `data-sw-cart` marker). Same only-used-ships discipline.
     const usesCartRuntime = usesMarker(usesCart);
+    // Color-scheme toggle runtime — ships only when color schemes are ON *and* a page/slot uses
+    // {{sw-theme-toggle}}. The source-level scan would match the helper call even on a disabled site
+    // (where the helper renders nothing), so the enableColorSchemes gate keeps single-theme output clean.
+    const usesThemeToggleRuntime = !!website?.enableColorSchemes && usesMarker(usesThemeToggle);
     // PRELOADER runtime — ships when the site enables a preloader effect (theme.preloaderEffect ≠
     // 'none'). The platform injects the overlay markup (renderDocument), so this is gated on the
     // theme choice rather than an authored marker.
@@ -559,7 +568,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // `json_data` is the publish-time snapshot of `website.jsonDataUrl` (full object — a
           // code-first page/slot can `{{#each website.json_data.items}}`). siteUrl is the only
           // OTHER website field exposed; the raw head/criticalCss/scripts blobs are never surfaced.
-          website: { siteUrl: website?.siteUrl, json_data: opts.jsonData, data: website?.data, shop: resolveShopChannels(website?.shop, formEndpoint), t: pageT },
+          website: { siteUrl: website?.siteUrl, json_data: opts.jsonData, data: website?.data, shop: resolveShopChannels(website?.shop, formEndpoint), t: pageT, enableColorSchemes: website?.enableColorSchemes },
           // `page.children` — this page's child pages, flattened — built only when the source loops
           // them (keeps each child's `data` off the render unless used). Published subset → no drafts.
           page: {
@@ -639,6 +648,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           ...(usesLazy ? [LAZYLOAD_CSS] : []),
           ...(usesWaves ? [RIPPLE_CSS] : []),
           ...(usesCartRuntime ? [CART_CSS] : []),
+          ...(usesThemeToggleRuntime ? [THEME_TOGGLE_CSS] : []),
           ...(usesPreloaderRuntime ? [PRELOADER_CSS] : []),
         ];
         const pageScripts = [
@@ -655,6 +665,8 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           bodyHtml,
           // Opt-in light/dark color schemes (off by default → single-theme as before).
           colorScheme: { enabled: !!website?.enableColorSchemes, default: website?.defaultColorScheme },
+          // The toggle's no-flash init — sync in <head>, only when a {{sw-theme-toggle}} is present.
+          headScripts: usesThemeToggleRuntime ? [`${siteRoot}${THEME_SCRIPT}`] : undefined,
           // Site-wide nav/button effect schemes → `<body>` classes (the effect CSS tree-shakes).
           bodyClass: websiteThemeClasses(website?.theme),
           topNav: topNavHtml,
@@ -761,6 +773,12 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
       await writeFile(join(tmp, CART_SCRIPT), CART_JS, 'utf8');
       bytes += Buffer.byteLength(CART_JS);
+    }
+    // The color-scheme toggle + no-flash runtime (first-party behavior; only-used-ships).
+    if (usesThemeToggleRuntime) {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
+      await writeFile(join(tmp, THEME_SCRIPT), THEME_TOGGLE_JS, 'utf8');
+      bytes += Buffer.byteLength(THEME_TOGGLE_JS);
     }
     // The nav-placeholder runtime (open a <dialog> / smooth-scroll a #section; only-used-ships).
     if (usesNavLink) {

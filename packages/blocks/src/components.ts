@@ -636,51 +636,51 @@ const FORM_JS = `(function(){
 // stays a usable, submittable text field; the runtime upgrades it into the popup picker (or an
 // inline calendar when the marker is on a block element).
 //
-// We ship the vendor's COLOURLESS layout.css (structure) and theme it ourselves below — Vanilla
-// Calendar Pro's packaged themes are Tailwind-compiled (no theming variables), so the CI palette is
-// applied directly against its data-vc-* state hooks: the selected day(s) + range band + today +
-// month/year selection + time controls all use the site primary, with the body font, card radius,
-// and a popup lifted above sticky chrome. The vendor's own open/opacity transitions ship in
-// layout.css; we only drop them under prefers-reduced-motion. Brand tints use color-mix and simply
-// no-op (no tint) on engines without it — the solid primary states still apply.
+// We ship the vendor's POLISHED index.css (layout + its light theme — compact rounded cells, a clean
+// header, muted weekday/weekend accents, a soft popup shadow) so the picker looks finished, then
+// RECOLOUR its cyan accent to the site CI primary. The recolours are broad `!important` rules: they
+// beat the vendor's (non-important) theme rules regardless of how deeply compound those selectors are
+// (weekend/holiday/other-month variants), so every selected day / range band / today / month-year
+// selection takes the brand colour. We also adopt the body font, lift the popup above sticky chrome,
+// and add a fade+rise OPEN ANIMATION (the vendor toggles the popup via opacity, so a transition
+// animates it) — dropped under prefers-reduced-motion. The runtime pins the light theme.
 const DATETIMEPICKER_CSS = [
   // The enhanced input reads as clickable (the picker opens on focus/click).
   ':where(input[data-sw-component="datetimepicker"][data-sw-enhanced="true"]){cursor:pointer}',
   DATETIMEPICKER_VENDOR_CSS,
-  // Surface: the calendar root + (input mode) the popup wrapper. Body font, theme colours, radius;
-  // the popup is lifted above sticky headers (vendor z-index is low) with a soft shadow + border.
-  '.vc{font-family:var(--sw-font-body,ui-sans-serif,system-ui,sans-serif);color:var(--sw-color-base-content,#0f172a);background:var(--sw-color-base-100,#fff);border-radius:var(--sw-radius-card,.5rem)}',
-  // Input mode renders the calendar (.vc[data-vc-input]) itself as the absolutely-positioned popup —
-  // lift it above sticky chrome and give it a card border + shadow.
-  '.vc[data-vc-input]{z-index:1000;border:1px solid color-mix(in srgb,var(--sw-color-base-content,#0f172a) 12%,transparent);box-shadow:0 10px 30px rgb(0 0 0/.18)}',
-  // Header: arrows + month/year titles turn primary on hover.
-  '[data-vc-arrow]{border-radius:.4rem;transition:background-color .15s ease,color .15s ease}',
-  '[data-vc-arrow]:hover{color:var(--sw-color-primary,#0a7a5a);background:color-mix(in srgb,var(--sw-color-primary,#0a7a5a) 12%,transparent)}',
-  '[data-vc="month"],[data-vc="year"]{font-weight:700;border-radius:.4rem;transition:color .15s ease}',
-  '[data-vc="month"]:hover,[data-vc="year"]:hover{color:var(--sw-color-primary,#0a7a5a)}',
-  // Weekday header names: muted.
-  '[data-vc-week-day]{color:color-mix(in srgb,var(--sw-color-base-content,#0f172a) 55%,transparent);font-weight:600}',
-  // Day cells: rounded, brand-tinted hover.
-  '[data-vc-date-btn]{border-radius:.4rem;transition:background-color .12s ease,color .12s ease}',
-  '[data-vc-date]:not([data-vc-date-disabled]) [data-vc-date-btn]:hover{background:color-mix(in srgb,var(--sw-color-primary,#0a7a5a) 14%,transparent)}',
-  // Today: brand ring.
-  '[data-vc-date-today] [data-vc-date-btn]{box-shadow:inset 0 0 0 1.5px var(--sw-color-primary,#0a7a5a);font-weight:700}',
-  // Range hover-preview band: brand tint (the in-between days while dragging a range). VCP puts all
-  // date state attributes on the [data-vc-date] CELL, so the theme targets the button inside it.
-  '[data-vc-date-hover] [data-vc-date-btn]{background:color-mix(in srgb,var(--sw-color-primary,#0a7a5a) 16%,transparent)}',
-  // Selected day(s) — single, range endpoints, or a multiple set — solid primary.
-  '[data-vc-date-selected] [data-vc-date-btn]{background:var(--sw-color-primary,#0a7a5a);color:#fff}',
-  // Range MIDDLE days: a lighter brand band between the solid endpoints (VCP marks them
-  // data-vc-date-selected="middle"; first/last/first-and-last stay solid via the rule above).
-  '[data-vc-date-selected="middle"] [data-vc-date-btn]{background:color-mix(in srgb,var(--sw-color-primary,#0a7a5a) 18%,transparent);color:var(--sw-color-base-content,#0f172a)}',
-  // Disabled: muted.
-  '[data-vc-date-disabled] [data-vc-date-btn]{color:color-mix(in srgb,var(--sw-color-base-content,#0f172a) 32%,transparent)}',
-  // Month / year grid views (data-mode date with month/year drill-in): selected = primary.
-  '[data-vc-months-month][aria-selected="true"],[data-vc-years-year][aria-selected="true"]{background:var(--sw-color-primary,#0a7a5a);color:#fff;border-radius:.4rem}',
-  // Time control: focus ring on the hour/minute inputs + brand-coloured range slider thumbs.
-  '[data-vc-time-input]:focus-visible{outline:2px solid var(--sw-color-primary,#0a7a5a);outline-offset:1px}',
+  // Adopt the site body font; lift the input-mode popup above sticky chrome.
+  '.vc{font-family:var(--sw-font-body,ui-sans-serif,system-ui,sans-serif)}',
+  '.vc[data-vc-input]{z-index:1000}',
+  // OPEN ANIMATION: the vendor hides the popup with opacity:0 (not display:none), so a transition on
+  // the shown vs hidden state animates it — fade in with a small rise + scale.
+  '.vc[data-vc-input]{transition:opacity .18s ease,transform .18s ease;transform-origin:top center}',
+  '.vc[data-vc-input][data-vc-calendar-hidden]{transform:translateY(-6px) scale(.985)}',
+  // When the popup opens ABOVE the input (vendor sets data-vc-position=top near the viewport bottom),
+  // flip the animation so it still rises out FROM the input instead of away from it.
+  '.vc[data-vc-input][data-vc-position=top]{transform-origin:bottom center}',
+  '.vc[data-vc-input][data-vc-position=top][data-vc-calendar-hidden]{transform:translateY(6px) scale(.985)}',
+  // --- Recolour the vendor cyan accent → CI primary (broad !important beats its theme rules) ---
+  // Selected day(s): single, range endpoints, multiple set — solid primary, white text.
+  '[data-vc-theme] .vc-date[data-vc-date-selected] .vc-date__btn{background-color:var(--sw-color-primary,#0a7a5a)!important;color:#fff!important}',
+  // Range MIDDLE days: a lighter brand band (the vendor marks them data-vc-date-selected="middle").
+  '[data-vc-theme] .vc-date[data-vc-date-selected="middle"] .vc-date__btn{background-color:color-mix(in srgb,var(--sw-color-primary,#0a7a5a) 16%,transparent)!important;color:var(--sw-color-base-content,#0f172a)!important}',
+  // Range hover-preview band while dragging the second endpoint.
+  '[data-vc-theme] .vc-date[data-vc-date-hover] .vc-date__btn{background-color:color-mix(in srgb,var(--sw-color-primary,#0a7a5a) 16%,transparent)!important;color:var(--sw-color-base-content,#0f172a)!important}',
+  // Today: brand text (the vendor uses its cyan here).
+  '[data-vc-theme] .vc-date[data-vc-date-today] .vc-date__btn{color:var(--sw-color-primary,#0a7a5a)!important}',
+  // Neutralise the vendor's RED weekends → the calendar's own slate neutrals, so the CI primary stays
+  // the single accent (cleaner + brand-owned). Headers match the normal weekday slate (#64748b); the
+  // weekend day numbers match the normal day text (#0f172a) — excluding selected (those stay white) and
+  // other-month days (those stay muted). These slate values are the theme's own neutrals, not branded.
+  '[data-vc-theme] .vc-week__day[data-vc-week-day-off]{color:#64748b!important}',
+  // :not([data-vc-date-today]) so a weekend that IS today still gets the primary "today" colour above
+  // (both rules are equal-specificity !important — without the exclusion source order would win here).
+  '[data-vc-theme] .vc-date[data-vc-date-weekend]:not([data-vc-date-selected]):not([data-vc-date-today]):not([data-vc-date-month="next"]):not([data-vc-date-month="prev"]) .vc-date__btn{color:#0f172a!important}',
+  // Month / year drill-in grid: the selected month/year cell = primary.
+  '[data-vc-theme] [data-vc-months-month][aria-selected="true"],[data-vc-theme] [data-vc-years-year][aria-selected="true"]{background-color:var(--sw-color-primary,#0a7a5a)!important;color:#fff!important}',
+  // Brand-coloured time slider thumbs.
   '.vc input[type=range]{accent-color:var(--sw-color-primary,#0a7a5a)}',
-  // Reduced motion: no popup/hover transitions.
+  // Reduced motion: no open/hover transitions.
   '@media (prefers-reduced-motion:reduce){.vc,.vc *{transition:none}}',
 ].join('');
 const DATETIMEPICKER_JS = DATETIMEPICKER_RUNTIME_JS;

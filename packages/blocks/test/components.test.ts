@@ -345,33 +345,36 @@ describe('component registry', () => {
     expect(used.js).toContain('data-mode'); // the variant switch is read from data-*
     expect(used.js).toContain('displayMonthsCount'); // range mode shows two months side by side
     expect(used.js).toContain('multiple-ranged'); // the range selection mode
+    expect(used.js).toContain('selectedTheme'); // the light theme is pinned (white card on any site)
     // CSP default-src 'self' (no 'unsafe-eval'): none of the eval-equivalents in the shipped runtime.
     expect(used.js).not.toMatch(/\beval\(/);
     expect(used.js).not.toMatch(/\bnew\s+Function\s*\(/);
     expect(used.js).not.toMatch(/setTimeout\s*\(\s*['"]/);
     expect(used.js).not.toMatch(/setInterval\s*\(\s*['"]/);
-    // We ship the vendor's COLOURLESS layout.css (structure) — its packaged themes are not bundled,
-    // so no baked theme colours ride along; we theme via the data-vc-* hooks ourselves (below).
-    expect(used.css).toContain('[data-vc-date-btn]');
+    // We ship the vendor's POLISHED index.css (layout + its light/dark themes) for a finished look.
+    expect(used.css).toContain('[data-vc-date-btn]'); // structure
+    expect(used.css).toContain('[data-vc-theme=light]'); // the bundled theme (recoloured below)
     // CSP: any url() in the bundled CSS must be an inline data: URI, never external.
     expect(used.css).not.toMatch(/url\(\s*(?!['"]?data:)/i);
   });
 
-  it('DateTimePicker themes the calendar onto the CI primary + adopts brand font/radius', () => {
+  it('DateTimePicker recolours the vendor theme onto the CI primary + animates the popup', () => {
     const css = componentAssets(['DateTimePicker']).css;
-    // Selected day(s) + range band + today all use the site primary against the data-vc-* state hooks.
-    expect(css).toContain('[data-vc-date-selected]');
-    expect(css).toContain('var(--sw-color-primary');
-    expect(css).toContain('[data-vc-date-today]');
-    expect(css).toContain('[data-vc-date-hover]'); // the range-band tint
-    // Body font + card radius on the calendar root.
+    // The cyan accent is recoloured to the site primary with broad !important rules (they beat the
+    // vendor's non-important theme rules regardless of its deep compound selector specificity).
+    expect(css).toMatch(/\[data-vc-date-selected\][^{]*\.vc-date__btn\{[^}]*var\(--sw-color-primary[^}]*!important/);
+    expect(css).toContain('[data-vc-date-today]'); // today recoloured to primary
+    expect(css).toContain('[data-vc-date-selected="middle"]'); // range middle band
+    expect(css).toContain('color-mix(in srgb,var(--sw-color-primary'); // brand range tint
+    // The vendor's red weekends are neutralised to the theme's own slate (brand = the only accent).
+    expect(css).toContain('[data-vc-week-day-off]{color:#64748b');
+    // Body font adopted; popup lifted above sticky chrome.
     expect(css).toContain('.vc{font-family:var(--sw-font-body');
-    expect(css).toContain('var(--sw-radius-card');
-    // The popup is lifted above sticky chrome.
     expect(css).toContain('.vc[data-vc-input]{z-index:1000');
-    // Brand tints use color-mix off the primary.
-    expect(css).toContain('color-mix(in srgb,var(--sw-color-primary');
-    // Reduced motion drops the calendar transitions.
+    // OPEN ANIMATION: the vendor hides via opacity, so a transition on the shown/hidden state animates
+    // it (fade + rise + scale); dropped under reduced motion.
+    expect(css).toContain('.vc[data-vc-input]{transition:opacity');
+    expect(css).toMatch(/data-vc-calendar-hidden\]\{transform:translateY/);
     expect(css).toContain('prefers-reduced-motion:reduce');
   });
 

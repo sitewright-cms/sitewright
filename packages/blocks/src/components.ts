@@ -11,11 +11,11 @@
 // HTML without JS (a carousel stays a swipeable scroll-snap row; a lightbox item
 // stays a working link to the full image).
 //
-// Carousel and Lightbox are powered by VENDORED MIT libraries (Embla Carousel /
-// GLightbox) bundled together with their first-party wiring by scripts/gen-vendor.mjs
-// into the checked-in src/vendor/*-runtime.ts modules (CI guards drift via
-// gen:vendor:check). The libraries stay an implementation detail: agents author only
-// the declarative data-sw-component / data-sw-part / data-* contract documented in
+// Carousel, Lightbox and DateTimePicker are powered by VENDORED MIT libraries (Embla
+// Carousel / SmartPhoto / Air Datepicker) bundled together with their first-party wiring
+// by scripts/gen-vendor.mjs into the checked-in src/vendor/*-runtime.ts modules (CI guards
+// drift via gen:vendor:check). The libraries stay an implementation detail: agents author
+// only the declarative data-sw-component / data-sw-part / data-* contract documented in
 // COMPONENT_CATALOG — never library API calls.
 import { CAROUSEL_RUNTIME_JS } from './vendor/carousel-runtime.js';
 // ACTIVE lightbox = SmartPhoto (bottom thumbnail strip, enlarge-from-thumbnail open, header
@@ -27,6 +27,10 @@ import {
   LIGHTBOX_SMARTPHOTO_RUNTIME_JS,
   LIGHTBOX_SMARTPHOTO_VENDOR_CSS,
 } from './vendor/lightbox-smartphoto-runtime.js';
+// DateTimePicker = Air Datepicker (vendored MIT), bundled with its first-party wiring + the vendor
+// stylesheet (classes renamed to the vendor-neutral sw-datepicker-* prefix). See
+// vendor-src/datetimepicker.entry.js for the readable runtime source.
+import { DATETIMEPICKER_RUNTIME_JS, DATETIMEPICKER_VENDOR_CSS } from './vendor/datetimepicker-runtime.js';
 
 /** A component's static styling + behavior (either may be empty). */
 export interface ComponentAsset {
@@ -626,6 +630,53 @@ const FORM_JS = `(function(){
   if(document.readyState!=='loading'){init();}else{document.addEventListener('DOMContentLoaded',init);}
 })();`;
 
+// --- DateTimePicker ----------------------------------------------------------
+// Air Datepicker-powered date / range / datetime / time picker. PE-first: the marker sits on a
+// plain text <input>, so with no JS it stays a usable, submittable text field; the runtime upgrades
+// it into the popup picker. The vendor stylesheet is entirely CSS-variable driven (--adp-*), so the
+// reskin below is a small variable-override block: the whole palette maps onto the site CI primary,
+// the body font + card radius are adopted, the popup is lifted above sticky chrome, and the built-in
+// open transition (fade + slide, vendor default) is dropped only under prefers-reduced-motion. The
+// vendor's hard-coded blue (#5cc4ef / orange day-names) never shows.
+const DATETIMEPICKER_CSS = [
+  // The enhanced input reads as clickable (the picker opens on focus/click).
+  ':where(input[data-sw-component="datetimepicker"][data-sw-enhanced="true"]){cursor:pointer}',
+  DATETIMEPICKER_VENDOR_CSS,
+  // Brand reskin (after the vendor sheet so equal-specificity wins): remap the vendor palette to the
+  // CI primary, adopt the body font + card radius, and lift the popup above sticky headers (vendor
+  // z-index is 100). The selected day, current-date marker, range edges and day-name header all go
+  // primary; #fff selected-cell text is the vendor default and stays legible on the brand colour.
+  '.sw-datepicker{' +
+    '--adp-accent-color:var(--sw-color-primary,#0a7a5a);' +
+    '--adp-color-current-date:var(--sw-color-primary,#0a7a5a);' +
+    '--adp-cell-background-color-selected:var(--sw-color-primary,#0a7a5a);' +
+    '--adp-cell-background-color-selected-hover:var(--sw-color-primary,#0a7a5a);' +
+    '--adp-cell-border-color-in-range:var(--sw-color-primary,#0a7a5a);' +
+    '--adp-background-color-selected-other-month:var(--sw-color-primary,#0a7a5a);' +
+    '--adp-background-color-selected-other-month-focused:var(--sw-color-primary,#0a7a5a);' +
+    '--adp-day-name-color:var(--sw-color-primary,#0a7a5a);' +
+    '--adp-day-name-color-hover:var(--sw-color-primary,#0a7a5a);' +
+    '--adp-time-track-color-hover:var(--sw-color-primary,#0a7a5a);' +
+    '--adp-font-family:var(--sw-font-body,ui-sans-serif,system-ui,sans-serif);' +
+    '--adp-border-radius:var(--sw-radius-card,.5rem);' +
+    '--adp-cell-border-radius:var(--sw-radius-card,.5rem);' +
+    '--adp-z-index:1000;' +
+    'box-shadow:0 10px 30px rgb(0 0 0/.18)}',
+  // Range / in-range tints derived from the primary. color-mix gives a true brand tint; the prior
+  // declaration is a neutral fallback (matching the default primary) for engines without it — it
+  // covers all FOUR in-range variables so a pre-color-mix browser never reverts any of them to the
+  // vendor blue (cell + other-month, each in its base and hover/focus states).
+  '.sw-datepicker{--adp-cell-background-color-in-range:rgba(10,122,90,.12);--adp-cell-background-color-in-range-hover:rgba(10,122,90,.2);--adp-background-color-in-range:rgba(10,122,90,.12);--adp-background-color-in-range-focused:rgba(10,122,90,.2)}',
+  '@supports (color:color-mix(in srgb,red,red)){.sw-datepicker{' +
+    '--adp-cell-background-color-in-range:color-mix(in srgb,var(--sw-color-primary,#0a7a5a) 14%,transparent);' +
+    '--adp-cell-background-color-in-range-hover:color-mix(in srgb,var(--sw-color-primary,#0a7a5a) 22%,transparent);' +
+    '--adp-background-color-in-range:color-mix(in srgb,var(--sw-color-primary,#0a7a5a) 14%,transparent);' +
+    '--adp-background-color-in-range-focused:color-mix(in srgb,var(--sw-color-primary,#0a7a5a) 22%,transparent)}}',
+  // Reduced motion: the popup appears instantly (vendor open/overlay transitions are var-driven).
+  '@media (prefers-reduced-motion:reduce){.sw-datepicker,.sw-datepicker-overlay{--adp-transition-duration:0s;--adp-overlay-transition-duration:0s}}',
+].join('');
+const DATETIMEPICKER_JS = DATETIMEPICKER_RUNTIME_JS;
+
 // Registry keyed by block `type`. Only blocks with behavior/styling belong here
 // (child blocks like Slide/LightboxItem/Tab are styled by their
 // parent's entry — no entry of their own). Insertion order = bundle order.
@@ -636,6 +687,7 @@ const COMPONENTS = new Map<string, ComponentAsset>([
   ['CookieConsent', { css: COOKIE_CONSENT_CSS, js: COOKIE_CONSENT_JS }],
   ['Tabs', { css: TABS_CSS, js: TABS_JS }],
   ['Form', { css: FORM_CSS, js: FORM_JS }],
+  ['DateTimePicker', { css: DATETIMEPICKER_CSS, js: DATETIMEPICKER_JS }],
 ]);
 
 /** Block types that are interactive components (have bundled CSS/JS). */
@@ -652,6 +704,7 @@ const COMPONENT_NAME_TO_TYPE: ReadonlyMap<string, string> = new Map([
   ['cookie-consent', 'CookieConsent'],
   ['tabs', 'Tabs'],
   ['form', 'Form'],
+  ['datetimepicker', 'DateTimePicker'],
 ]);
 
 const COMPONENT_MARKER_RE = /data-sw-component="([a-z-]+)"/g;

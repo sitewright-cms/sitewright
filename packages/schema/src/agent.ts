@@ -116,7 +116,7 @@ LANGUAGES (Spanish ≠ Spain) — use them for country/region selectors; for a l
 prefer text language names, or pass an explicit country code per locale.
 
 INTERACTIVE COMPONENTS: the platform ships audited, first-party runtimes you activate with
-data-sw-component="carousel|tabs|lightbox|modal|cookie-consent" — author semantic HTML with
+data-sw-component="carousel|tabs|lightbox|modal|cookie-consent|datetimepicker" — author semantic HTML with
 data-sw-part roles and the runtime wires the behavior (each ships only when used, and degrades
 to usable HTML without JS — never add your own script). Call the \`get_components\` tool for the
 machine-readable contracts: markers, parts, config attributes, and copy-paste markup skeletons.
@@ -146,6 +146,12 @@ Quick rules vs the similar-looking DaisyUI classes:
   DaisyUI's modal methods need inline JS (rejected) or a checkbox hack (poor a11y) — don't.
 - Cookie banner → data-sw-component="cookie-consent", placed ONCE site-wide in the website
   \`bottom\` slot, with the \`hidden\` attribute authored on it.
+- DATE / TIME pickers → data-sw-component="datetimepicker" on a TEXT <input> (Air Datepicker): a
+  CI-themed popup calendar + slider time picker. data-mode="date" (default) | "range" (start–end in
+  one field) | "datetime" | "time". Full control via data-* (data-format, data-min/-max, data-locale,
+  data-first-day, data-time-step, data-today/-clear, data-inline for an always-open calendar). It
+  follows the page <html lang> for day/month names automatically; give the input a name to submit it.
+  DaisyUI has no date picker (it only styles the input box).
 - ACCORDIONS are NOT a component: use native <details> with DaisyUI collapse classes, e.g.
   <details class="collapse collapse-plus"><summary class="collapse-title">Q</summary>
   <div class="collapse-content">A</div></details> (group with \`join join-vertical\`).

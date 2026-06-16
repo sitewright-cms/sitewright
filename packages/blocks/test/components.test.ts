@@ -11,7 +11,7 @@ describe('componentTypesInSource (code-first detection)', () => {
   });
 
   it('maps every emitted component name to a registered type (so its JS/CSS actually bundles)', () => {
-    for (const name of ['carousel', 'lightbox', 'modal', 'cookie-consent', 'tabs', 'form']) {
+    for (const name of ['carousel', 'lightbox', 'modal', 'cookie-consent', 'tabs', 'form', 'datetimepicker']) {
       const [type] = componentTypesInSource(`<div data-sw-component="${name}"></div>`);
       expect(type, name).toBeDefined();
       expect(COMPONENT_TYPES.has(type!), name).toBe(true);
@@ -50,6 +50,7 @@ describe('component registry', () => {
     expect(COMPONENT_TYPES.has('Modal')).toBe(true);
     expect(COMPONENT_TYPES.has('CookieConsent')).toBe(true);
     expect(COMPONENT_TYPES.has('Tabs')).toBe(true);
+    expect(COMPONENT_TYPES.has('DateTimePicker')).toBe(true);
     expect(COMPONENT_TYPES.has('Tab')).toBe(false); // a Tab is a plain child panel
     // child / plain blocks have no registry entry of their own
     expect(COMPONENT_TYPES.has('Slide')).toBe(false);
@@ -333,6 +334,44 @@ describe('component registry', () => {
     expect(tabs.js).toContain("setAttribute('data-sw-part','tablist')");
     expect(tabs.js).toContain("setAttribute('role','tablist')");
     expect(tabs.js).toContain("setAttribute('role','tabpanel')");
+  });
+
+  it('DateTimePicker ships the vendored Air Datepicker runtime under vendor-neutral class names', () => {
+    const used = componentAssets(['DateTimePicker']);
+    // The runtime is bundled with its first-party wiring; the marker query + mode switch are present.
+    expect(used.js).toContain('air-datepicker@'); // license banner MUST keep attributing the MIT package
+    expect(used.js).toContain('input[data-sw-component="datetimepicker"]');
+    expect(used.js).toContain('data-sw-enhanced'); // progressive-enhancement idempotency guard
+    expect(used.js).toContain('data-mode'); // the variant switch is read from data-*
+    // CSP default-src 'self' (no 'unsafe-eval'): none of the eval-equivalents in the shipped runtime.
+    expect(used.js).not.toMatch(/\beval\(/);
+    expect(used.js).not.toMatch(/\bnew\s+Function\s*\(/);
+    expect(used.js).not.toMatch(/setTimeout\s*\(\s*['"]/);
+    expect(used.js).not.toMatch(/setInterval\s*\(\s*['"]/);
+    // Vendor class prefix is rewritten to sw-datepicker-* in BOTH the JS (which builds the DOM) and
+    // the stylesheet — no "air-datepicker" class leaks into the published DOM/CSS (banner aside).
+    expect(used.js).toContain('sw-datepicker');
+    expect(used.css).toContain('.sw-datepicker');
+    expect(used.css).not.toMatch(/[.\s]air-datepicker[-{ ]/); // no vendor class in the CSS
+    // CSP: any url() in the vendor sheet must be an inline data: URI, never external. (The lookahead
+    // sits BEFORE the optional quote so a quoted data: URI can't be mis-flagged.)
+    expect(used.css).not.toMatch(/url\(\s*(?!['"]?data:)/i);
+  });
+
+  it('DateTimePicker reskins the vendor palette onto the CI primary + adopts brand font/radius', () => {
+    const css = componentAssets(['DateTimePicker']).css;
+    // The selected day / accent / current-date all map onto the site primary (vendor blue is gone).
+    expect(css).toContain('--adp-accent-color:var(--sw-color-primary');
+    expect(css).toContain('--adp-cell-background-color-selected:var(--sw-color-primary');
+    expect(css).toContain('--adp-font-family:var(--sw-font-body');
+    // The range band uses color-mix off the primary (with a neutral fallback before it).
+    expect(css).toContain('color-mix(in srgb,var(--sw-color-primary');
+    // The popup is lifted above sticky chrome.
+    expect(css).toContain('--adp-z-index:1000');
+    // Reduced motion drops the built-in open transition (vendor transition is var-driven).
+    expect(css).toContain('prefers-reduced-motion:reduce');
+    const rm = css.slice(css.indexOf('@media (prefers-reduced-motion:reduce)'));
+    expect(rm).toContain('--adp-transition-duration:0s');
   });
 
   it('ignores unknown component types', () => {

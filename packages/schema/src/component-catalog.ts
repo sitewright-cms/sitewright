@@ -282,15 +282,15 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
     type: 'DateTimePicker',
     marker: 'datetimepicker',
     summary:
-      'An Air Datepicker-powered date / date-range / datetime / time picker: a CI-themed popup calendar with a slider time picker, smooth open transition, keyboard support, and per-locale day/month names. The marker goes DIRECTLY on a text <input>; data-mode chooses the variant and data-* attributes give full control.',
+      'A Vanilla Calendar Pro-powered date / date-range / datetime / time picker: a CI-themed popup calendar with a slider time picker, keyboard support, and per-locale day/month names. data-mode="range" shows a DUAL-PANEL two-month view. The marker goes on a text <input> (popup) or a block element (inline calendar); data-mode chooses the variant and data-* attributes give full control.',
     authoring: 'markup',
     parts: [
       {
-        part: '(the input itself — no data-sw-part)',
+        part: '(the marked element — no data-sw-part)',
         element: 'input',
         required: true,
         description:
-          'This component has NO data-sw-part children. Put data-sw-component="datetimepicker" DIRECTLY on a single text <input> (give it a name + id and a <label> for forms) — see the skeleton. The runtime upgrades that input into the picker and writes the chosen value back into it; everything is configured through the data-* attributes below.',
+          'This component has NO data-sw-part children. Put data-sw-component="datetimepicker" on a single text <input> (give it a name + id and a <label> for forms) — see the skeleton — and the runtime upgrades it into a POPUP picker, writing the chosen value back into the input. Put the marker on a block element instead (e.g. a <div>) to render an always-open INLINE calendar in the page flow. Everything else is configured through the data-* attributes below.',
       },
     ],
     attributes: [
@@ -298,21 +298,17 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
         name: 'data-mode',
         on: 'input',
         description:
-          '"date" (default — a calendar), "range" (a start–end span in one field), "datetime" (calendar + time), or "time" (only the time picker). This is the one knob most pickers need.',
+          '"date" (default — a calendar), "range" (a start–end span in one field, shown as a DUAL-PANEL two-month view), "datetime" (calendar + time), or "time" (only the time picker). This is the one knob most pickers need.',
       },
-      { name: 'data-format', on: 'input', description: 'Date display format using Air Datepicker tokens (e.g. "dd.MM.yyyy", "yyyy-MM-dd", "d MMMM yyyy"). Defaults to the locale format. Set an ISO format for a machine-readable submitted value.' },
-      { name: 'data-time-format', on: 'input', description: 'Time format for datetime/time modes, e.g. "HH:mm" (24h) or "hh:mm aa" (12h). Defaults to the locale format.' },
+      { name: 'data-months', on: 'input', description: 'How many months to show side by side (2–12). Defaults to 2 in range mode (the dual panel) and 1 otherwise; set it to widen any mode (e.g. data-months="3").' },
+      { name: 'data-time-format', on: 'input', description: 'Time clock for datetime/time modes: "HH:mm" → 24-hour (default), or any am/pm format like "hh:mm aa" → 12-hour.' },
       { name: 'data-min', on: 'input', description: 'Earliest selectable date (e.g. "2026-01-01"). Days before it are disabled.' },
       { name: 'data-max', on: 'input', description: 'Latest selectable date (e.g. "2026-12-31"). Days after it are disabled.' },
-      { name: 'data-inline', on: 'input', description: '"true" (or bare) renders an always-open calendar in the page flow instead of a popup (good for booking widgets / dashboards).' },
-      { name: 'data-locale', on: 'input', description: 'Force the picker language: "en", "de", or "es". Omit it and the picker follows the page\'s <html lang> (so localized pages localize automatically), flooring to English.' },
-      { name: 'data-first-day', on: 'input', description: 'First weekday column: 0 = Sunday … 1 = Monday … 6 = Saturday. Defaults to the locale convention.' },
-      { name: 'data-multiple', on: 'input', description: '"true" lets the user pick any number of separate dates; a number caps how many (e.g. "3"). Mutually exclusive with data-mode="range".' },
+      { name: 'data-locale', on: 'input', description: 'Force the picker language: "en", "de", or "es" (month/weekday names via the Intl API). Omit it and the picker follows the page\'s <html lang>, so localized pages localize automatically, flooring to English.' },
+      { name: 'data-first-day', on: 'input', description: 'First weekday column: 0 = Sunday, 1 = Monday … 6 = Saturday. Defaults to the locale convention.' },
+      { name: 'data-multiple', on: 'input', description: '"true" lets the user pick any number of separate (non-contiguous) dates. Mutually exclusive with data-mode="range".' },
       { name: 'data-time-step', on: 'input', description: 'Minutes increment for the time slider (e.g. "5", "15", "30") in datetime/time modes.' },
-      { name: 'data-position', on: 'input', description: 'Where the popup opens relative to the input: "bottom left" (default), "bottom right", "top center", "right top", etc.' },
-      { name: 'data-autoclose', on: 'input', description: '"false" keeps the popup open after a pick (default closes it for a single date); "true" closes a range picker after the second date.' },
-      { name: 'data-today', on: 'input', description: '"true" (or bare) shows a "Today" button in the footer (label localized).' },
-      { name: 'data-clear', on: 'input', description: '"true" (or bare) shows a "Clear" button in the footer (label localized).' },
+      { name: 'data-position', on: 'input', description: 'Where the popup opens relative to the input: "bottom left" (default-ish), "bottom right", "top center", "auto", etc. (vertical = top|bottom, horizontal = left|center|right).' },
     ],
     skeleton: `<label class="block">
   <span class="mb-1 block text-sm font-medium">Pick a date</span>
@@ -320,22 +316,22 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
 </label>`,
     noJs: 'The element stays a plain text <input> — the visitor can still type a value and it still submits inside a form; only the calendar popup is unavailable.',
     notes:
-      'THE 90% CASE IS ONE LINE: `<input data-sw-component="datetimepicker">` is a date picker. Add `data-mode="range"` for a start–end span, `data-mode="datetime"` for date + time, or `data-mode="time"` for just the clock — that single attribute covers almost every need. FULL CONTROL for the rest comes from the data-* attributes: data-format / data-time-format (display tokens), data-min / data-max (bounds), data-first-day, data-multiple, data-time-step, data-position, data-today / data-clear (footer buttons), and data-inline for an always-open embedded calendar. The picker is brand-themed automatically — the selected day, current-date marker, range band, day-name header and time slider all use the site CI primary, with the body font and card radius, and it opens with a smooth fade+slide (dropped under prefers-reduced-motion). LOCALE: it follows the page <html lang> (en/de/es) for day/month names and the Today/Clear labels with no extra work — override with data-locale. FORMS: give the input a name; its value submits like any field. The visible value uses data-format (or the locale format) — set data-format to an ISO token string ("yyyy-MM-dd") when you need a canonical submitted value. Put the marker on a TEXT input (not type="date"/"time", which would also trigger the browser\'s own native picker). DaisyUI only styles the input box (input input-bordered) — it has no calendar/date-picker; use this component for the picker itself and the DaisyUI classes to style the input.',
+      'THE 90% CASE IS ONE LINE: `<input data-sw-component="datetimepicker">` is a date picker. Add `data-mode="range"` for a start–end span (rendered as TWO MONTHS side by side so a range across months is easy), `data-mode="datetime"` for date + time, or `data-mode="time"` for just the clock — that single attribute covers almost every need. FULL CONTROL for the rest comes from the data-* attributes: data-months (widen the panel), data-min / data-max (bounds), data-first-day, data-multiple, data-time-step, data-time-format (12h vs 24h), data-position, data-locale. The picker is brand-themed automatically — the selected day(s), the range band, the today ring, the month/year selection and the time slider all use the site CI primary, with the body font and card radius; transitions are dropped under prefers-reduced-motion. LOCALE: it follows the page <html lang> (en/de/es) for day/month names with no extra work — override with data-locale. INLINE: put the marker on a block element (e.g. <div data-sw-component="datetimepicker" data-mode="range">) to render an always-open calendar in the page flow instead of a popup. FORMS: give the <input> a name; the runtime writes the selection back as a locale-formatted string (range = "start – end") which submits like any field. Put the marker on a TEXT input (not type="date"/"time", which would also trigger the browser\'s own native picker). DaisyUI only styles the input box (input input-bordered) — it has no calendar/date-picker; use this component for the picker itself and the DaisyUI classes to style the input.',
     examples: [
       {
-        label: 'Date range with bounds + locale',
-        code: '<input type="text" name="stay" data-sw-component="datetimepicker"\n  data-mode="range" data-min="2026-06-01" data-max="2026-12-31"\n  data-format="dd MMM yyyy" data-clear="true"\n  class="input input-bordered w-full" placeholder="Check-in – Check-out" />',
-        note: 'One field captures the whole span. Bounds disable out-of-window days; a Clear button resets it. Locale follows <html lang> (override with data-locale).',
+        label: 'Dual-panel date range with bounds',
+        code: '<input type="text" name="stay" data-sw-component="datetimepicker"\n  data-mode="range" data-min="2026-06-01" data-max="2026-12-31"\n  class="input input-bordered w-full" placeholder="Check-in – Check-out" />',
+        note: 'range mode shows two months side by side; one field captures the whole span. Bounds disable out-of-window days. Locale follows <html lang> (override with data-locale).',
       },
       {
         label: 'Date + time, 15-minute steps',
-        code: '<input type="text" name="appointment" data-sw-component="datetimepicker"\n  data-mode="datetime" data-time-step="15" data-time-format="HH:mm"\n  data-format="yyyy-MM-dd" class="input input-bordered w-full" />',
-        note: 'datetime mode adds the slider time picker under the calendar. data-format="yyyy-MM-dd" + 24h time keeps the submitted value machine-readable.',
+        code: '<input type="text" name="appointment" data-sw-component="datetimepicker"\n  data-mode="datetime" data-time-step="15" data-time-format="HH:mm"\n  class="input input-bordered w-full" />',
+        note: 'datetime mode adds the slider time picker under the calendar; data-time-format="HH:mm" is a 24-hour clock.',
       },
       {
-        label: 'Inline always-open calendar',
-        code: '<input type="text" name="day" data-sw-component="datetimepicker" data-inline="true" data-today="true" />',
-        note: 'Renders the calendar in the page flow (no popup) — for booking widgets / dashboards. The input still holds the value.',
+        label: 'Inline always-open calendar (block marker)',
+        code: '<div data-sw-component="datetimepicker" data-mode="range" data-months="2"></div>',
+        note: 'A block element (not an <input>) renders the calendar in the page flow — here an inline dual-panel range, e.g. for a booking widget.',
       },
     ],
   },

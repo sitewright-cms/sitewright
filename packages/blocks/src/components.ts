@@ -12,7 +12,7 @@
 // stays a working link to the full image).
 //
 // Carousel, Lightbox and DateTimePicker are powered by VENDORED MIT libraries (Embla
-// Carousel / SmartPhoto / Air Datepicker) bundled together with their first-party wiring
+// Carousel / SmartPhoto / Vanilla Calendar Pro) bundled together with their first-party wiring
 // by scripts/gen-vendor.mjs into the checked-in src/vendor/*-runtime.ts modules (CI guards
 // drift via gen:vendor:check). The libraries stay an implementation detail: agents author
 // only the declarative data-sw-component / data-sw-part / data-* contract documented in
@@ -27,8 +27,8 @@ import {
   LIGHTBOX_SMARTPHOTO_RUNTIME_JS,
   LIGHTBOX_SMARTPHOTO_VENDOR_CSS,
 } from './vendor/lightbox-smartphoto-runtime.js';
-// DateTimePicker = Air Datepicker (vendored MIT), bundled with its first-party wiring + the vendor
-// stylesheet (classes renamed to the vendor-neutral sw-datepicker-* prefix). See
+// DateTimePicker = Vanilla Calendar Pro (vendored MIT), bundled with its first-party wiring + the
+// vendor's COLOURLESS layout.css (we theme it ourselves below against its data-vc-* hooks). See
 // vendor-src/datetimepicker.entry.js for the readable runtime source.
 import { DATETIMEPICKER_RUNTIME_JS, DATETIMEPICKER_VENDOR_CSS } from './vendor/datetimepicker-runtime.js';
 
@@ -631,49 +631,57 @@ const FORM_JS = `(function(){
 })();`;
 
 // --- DateTimePicker ----------------------------------------------------------
-// Air Datepicker-powered date / range / datetime / time picker. PE-first: the marker sits on a
-// plain text <input>, so with no JS it stays a usable, submittable text field; the runtime upgrades
-// it into the popup picker. The vendor stylesheet is entirely CSS-variable driven (--adp-*), so the
-// reskin below is a small variable-override block: the whole palette maps onto the site CI primary,
-// the body font + card radius are adopted, the popup is lifted above sticky chrome, and the built-in
-// open transition (fade + slide, vendor default) is dropped only under prefers-reduced-motion. The
-// vendor's hard-coded blue (#5cc4ef / orange day-names) never shows.
+// Vanilla Calendar Pro-powered date / range / datetime / time picker. data-mode="range" shows a
+// DUAL-PANEL two-month view. PE-first: the marker sits on a plain text <input>, so with no JS it
+// stays a usable, submittable text field; the runtime upgrades it into the popup picker (or an
+// inline calendar when the marker is on a block element).
+//
+// We ship the vendor's COLOURLESS layout.css (structure) and theme it ourselves below — Vanilla
+// Calendar Pro's packaged themes are Tailwind-compiled (no theming variables), so the CI palette is
+// applied directly against its data-vc-* state hooks: the selected day(s) + range band + today +
+// month/year selection + time controls all use the site primary, with the body font, card radius,
+// and a popup lifted above sticky chrome. The vendor's own open/opacity transitions ship in
+// layout.css; we only drop them under prefers-reduced-motion. Brand tints use color-mix and simply
+// no-op (no tint) on engines without it — the solid primary states still apply.
 const DATETIMEPICKER_CSS = [
   // The enhanced input reads as clickable (the picker opens on focus/click).
   ':where(input[data-sw-component="datetimepicker"][data-sw-enhanced="true"]){cursor:pointer}',
   DATETIMEPICKER_VENDOR_CSS,
-  // Brand reskin (after the vendor sheet so equal-specificity wins): remap the vendor palette to the
-  // CI primary, adopt the body font + card radius, and lift the popup above sticky headers (vendor
-  // z-index is 100). The selected day, current-date marker, range edges and day-name header all go
-  // primary; #fff selected-cell text is the vendor default and stays legible on the brand colour.
-  '.sw-datepicker{' +
-    '--adp-accent-color:var(--sw-color-primary,#0a7a5a);' +
-    '--adp-color-current-date:var(--sw-color-primary,#0a7a5a);' +
-    '--adp-cell-background-color-selected:var(--sw-color-primary,#0a7a5a);' +
-    '--adp-cell-background-color-selected-hover:var(--sw-color-primary,#0a7a5a);' +
-    '--adp-cell-border-color-in-range:var(--sw-color-primary,#0a7a5a);' +
-    '--adp-background-color-selected-other-month:var(--sw-color-primary,#0a7a5a);' +
-    '--adp-background-color-selected-other-month-focused:var(--sw-color-primary,#0a7a5a);' +
-    '--adp-day-name-color:var(--sw-color-primary,#0a7a5a);' +
-    '--adp-day-name-color-hover:var(--sw-color-primary,#0a7a5a);' +
-    '--adp-time-track-color-hover:var(--sw-color-primary,#0a7a5a);' +
-    '--adp-font-family:var(--sw-font-body,ui-sans-serif,system-ui,sans-serif);' +
-    '--adp-border-radius:var(--sw-radius-card,.5rem);' +
-    '--adp-cell-border-radius:var(--sw-radius-card,.5rem);' +
-    '--adp-z-index:1000;' +
-    'box-shadow:0 10px 30px rgb(0 0 0/.18)}',
-  // Range / in-range tints derived from the primary. color-mix gives a true brand tint; the prior
-  // declaration is a neutral fallback (matching the default primary) for engines without it — it
-  // covers all FOUR in-range variables so a pre-color-mix browser never reverts any of them to the
-  // vendor blue (cell + other-month, each in its base and hover/focus states).
-  '.sw-datepicker{--adp-cell-background-color-in-range:rgba(10,122,90,.12);--adp-cell-background-color-in-range-hover:rgba(10,122,90,.2);--adp-background-color-in-range:rgba(10,122,90,.12);--adp-background-color-in-range-focused:rgba(10,122,90,.2)}',
-  '@supports (color:color-mix(in srgb,red,red)){.sw-datepicker{' +
-    '--adp-cell-background-color-in-range:color-mix(in srgb,var(--sw-color-primary,#0a7a5a) 14%,transparent);' +
-    '--adp-cell-background-color-in-range-hover:color-mix(in srgb,var(--sw-color-primary,#0a7a5a) 22%,transparent);' +
-    '--adp-background-color-in-range:color-mix(in srgb,var(--sw-color-primary,#0a7a5a) 14%,transparent);' +
-    '--adp-background-color-in-range-focused:color-mix(in srgb,var(--sw-color-primary,#0a7a5a) 22%,transparent)}}',
-  // Reduced motion: the popup appears instantly (vendor open/overlay transitions are var-driven).
-  '@media (prefers-reduced-motion:reduce){.sw-datepicker,.sw-datepicker-overlay{--adp-transition-duration:0s;--adp-overlay-transition-duration:0s}}',
+  // Surface: the calendar root + (input mode) the popup wrapper. Body font, theme colours, radius;
+  // the popup is lifted above sticky headers (vendor z-index is low) with a soft shadow + border.
+  '.vc{font-family:var(--sw-font-body,ui-sans-serif,system-ui,sans-serif);color:var(--sw-color-base-content,#0f172a);background:var(--sw-color-base-100,#fff);border-radius:var(--sw-radius-card,.5rem)}',
+  // Input mode renders the calendar (.vc[data-vc-input]) itself as the absolutely-positioned popup —
+  // lift it above sticky chrome and give it a card border + shadow.
+  '.vc[data-vc-input]{z-index:1000;border:1px solid color-mix(in srgb,var(--sw-color-base-content,#0f172a) 12%,transparent);box-shadow:0 10px 30px rgb(0 0 0/.18)}',
+  // Header: arrows + month/year titles turn primary on hover.
+  '[data-vc-arrow]{border-radius:.4rem;transition:background-color .15s ease,color .15s ease}',
+  '[data-vc-arrow]:hover{color:var(--sw-color-primary,#0a7a5a);background:color-mix(in srgb,var(--sw-color-primary,#0a7a5a) 12%,transparent)}',
+  '[data-vc="month"],[data-vc="year"]{font-weight:700;border-radius:.4rem;transition:color .15s ease}',
+  '[data-vc="month"]:hover,[data-vc="year"]:hover{color:var(--sw-color-primary,#0a7a5a)}',
+  // Weekday header names: muted.
+  '[data-vc-week-day]{color:color-mix(in srgb,var(--sw-color-base-content,#0f172a) 55%,transparent);font-weight:600}',
+  // Day cells: rounded, brand-tinted hover.
+  '[data-vc-date-btn]{border-radius:.4rem;transition:background-color .12s ease,color .12s ease}',
+  '[data-vc-date]:not([data-vc-date-disabled]) [data-vc-date-btn]:hover{background:color-mix(in srgb,var(--sw-color-primary,#0a7a5a) 14%,transparent)}',
+  // Today: brand ring.
+  '[data-vc-date-today] [data-vc-date-btn]{box-shadow:inset 0 0 0 1.5px var(--sw-color-primary,#0a7a5a);font-weight:700}',
+  // Range hover-preview band: brand tint (the in-between days while dragging a range). VCP puts all
+  // date state attributes on the [data-vc-date] CELL, so the theme targets the button inside it.
+  '[data-vc-date-hover] [data-vc-date-btn]{background:color-mix(in srgb,var(--sw-color-primary,#0a7a5a) 16%,transparent)}',
+  // Selected day(s) — single, range endpoints, or a multiple set — solid primary.
+  '[data-vc-date-selected] [data-vc-date-btn]{background:var(--sw-color-primary,#0a7a5a);color:#fff}',
+  // Range MIDDLE days: a lighter brand band between the solid endpoints (VCP marks them
+  // data-vc-date-selected="middle"; first/last/first-and-last stay solid via the rule above).
+  '[data-vc-date-selected="middle"] [data-vc-date-btn]{background:color-mix(in srgb,var(--sw-color-primary,#0a7a5a) 18%,transparent);color:var(--sw-color-base-content,#0f172a)}',
+  // Disabled: muted.
+  '[data-vc-date-disabled] [data-vc-date-btn]{color:color-mix(in srgb,var(--sw-color-base-content,#0f172a) 32%,transparent)}',
+  // Month / year grid views (data-mode date with month/year drill-in): selected = primary.
+  '[data-vc-months-month][aria-selected="true"],[data-vc-years-year][aria-selected="true"]{background:var(--sw-color-primary,#0a7a5a);color:#fff;border-radius:.4rem}',
+  // Time control: focus ring on the hour/minute inputs + brand-coloured range slider thumbs.
+  '[data-vc-time-input]:focus-visible{outline:2px solid var(--sw-color-primary,#0a7a5a);outline-offset:1px}',
+  '.vc input[type=range]{accent-color:var(--sw-color-primary,#0a7a5a)}',
+  // Reduced motion: no popup/hover transitions.
+  '@media (prefers-reduced-motion:reduce){.vc,.vc *{transition:none}}',
 ].join('');
 const DATETIMEPICKER_JS = DATETIMEPICKER_RUNTIME_JS;
 

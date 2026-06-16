@@ -351,10 +351,10 @@ export function translationsEs(assets: Record<string, string>): Record<string, P
     title: 'Selector de fecha y hora',
     navTitle: 'Selector de fecha',
     description:
-      'Un calendario con la identidad visual del sitio y un selector de hora con deslizador sobre un campo de texto simple — fecha, rango, fecha y hora, y solo hora, todos desde un atributo, con control total mediante data-* y una alternativa sin JS.',
+      'Un calendario con la identidad visual del sitio y un selector de hora con deslizador sobre un campo de texto simple — fecha, un rango de dos meses con panel doble, fecha y hora, y solo hora, todos desde un atributo, con control total mediante data-* y una alternativa sin JS.',
     data: {
       dtp_intro:
-        'Pon un atributo en un campo de texto y se convierte en un calendario con la marca del sitio y un selector de hora con deslizador. Fecha, rango, fecha y hora, y solo hora — cada uno es un único valor data-mode, y los colores, la tipografía y la transición provienen automáticamente de la identidad visual de tu sitio.',
+        'Pon un atributo en un campo de texto y se convierte en un calendario con la marca del sitio y un selector de hora con deslizador. Fecha, rango, fecha y hora, y solo hora — cada uno es un único valor data-mode, y los colores y la tipografía provienen automáticamente de la identidad visual de tu sitio. Un rango se abre como dos meses uno al lado del otro, así que los tramos que cruzan de mes son fáciles.',
       sec_basic_t: 'Una línea para el caso común',
       sec_basic_d:
         'Un selector de fecha es solo data-sw-component="datetimepicker" en un campo de texto — sin configuración. Haz clic en el campo para abrir el calendario; el día seleccionado usa tu color primario.',
@@ -362,8 +362,8 @@ export function translationsEs(assets: Record<string, string>): Record<string, P
       ph_date: 'Selecciona una fecha…',
       sec_modes_t: 'Cuatro modos, un atributo',
       sec_modes_d:
-        'data-mode cambia el selector: una sola fecha, un rango inicio–fin en un campo, una fecha con deslizador de hora, o solo la hora. Todo lo demás permanece automático.',
-      lbl_range: 'Rango de fechas',
+        'data-mode cambia el selector: una sola fecha, un rango inicio–fin mostrado en dos meses, una fecha con deslizador de hora, o solo la hora. Todo lo demás permanece automático.',
+      lbl_range: 'Rango de fechas (dos meses)',
       ph_range: 'Entrada – Salida',
       lbl_datetime: 'Fecha y hora',
       ph_datetime: 'Elige un día y una hora…',
@@ -371,8 +371,8 @@ export function translationsEs(assets: Record<string, string>): Record<string, P
       ph_time: 'Elige una hora…',
       sec_full_t: 'Control total cuando lo necesitas',
       sec_full_d:
-        'Para los demás casos hay atributos data-*: límites (data-min / data-max), formato de visualización, inicio de semana, paso de minutos, botones Hoy / Borrar, idioma y data-inline para un calendario siempre abierto incrustado en la página — que se muestra aquí.',
-      lbl_inline: 'Calendario siempre abierto',
+        'Para los demás casos hay atributos data-*: límites (data-min / data-max), inicio de semana, varias fechas, paso de minutos, formato de 12/24 horas, idioma y data-months para ampliar el panel. Pon la marca en un elemento de bloque en lugar de un campo para un calendario siempre abierto — aquí un rango con panel doble:',
+      lbl_inline: 'Calendario de panel doble siempre abierto',
       sec_nojs_t: 'Sin JavaScript',
       sec_nojs_d:
         'Si los scripts no se ejecutan, cada campo sigue siendo un campo de texto normal — el visitante aún puede escribir un valor y se envía dentro de un formulario. Solo el calendario emergente no está disponible.',

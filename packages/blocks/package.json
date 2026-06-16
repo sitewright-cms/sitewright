@@ -56,7 +56,6 @@
     "@types/node": "^22.10.2",
     "@types/sanitize-html": "^2.13.0",
     "@vitest/coverage-v8": "^4.1.8",
-    "air-datepicker": "3.6.0",
     "circle-flags": "^2.8.3",
     "embla-carousel": "8.6.0",
     "embla-carousel-auto-height": "8.6.0",
@@ -71,6 +70,7 @@
     "simple-icons": "^16.21.0",
     "smartphoto": "1.6.5",
     "typescript": "^5.7.2",
+    "vanilla-calendar-pro": "3.1.0",
     "vitest": "^4.1.8"
   }
 }

@@ -75,7 +75,10 @@ export const CART_CSS = [
   '@media (prefers-reduced-motion:reduce){[data-sw-cart] dialog,[data-sw-cart] dialog::backdrop{transition:none}}',
   '[data-sw-cart] [data-sw-part="head"]{flex:none;display:flex;align-items:center;justify-content:space-between;padding:1rem 1.25rem;border-bottom:1px solid #e5e7eb}',
   '[data-sw-cart] [data-sw-part="head"] h2{margin:0;font-size:1.125rem}',
-  '[data-sw-cart] [data-sw-part="close"]{border:0;background:none;font-size:1.5rem;line-height:1;cursor:pointer}',
+  // Flex-centered SQUARE so the (symmetric) icon sits at the box center → the hover rotate() pivots dead-centre
+  // (a baseline-positioned text glyph sits off-centre and appears to hinge around an edge when rotated).
+  '[data-sw-cart] [data-sw-part="close"]{display:flex;align-items:center;justify-content:center;width:2rem;height:2rem;border:0;background:none;cursor:pointer}',
+  '[data-sw-cart] [data-sw-part="close"] svg{width:1.25rem;height:1.25rem}',
   // The items list FILLS the space between the fixed head and foot (flex:1) and scrolls when it overflows.
   // min-height:0 lets a flex item shrink below its content height so overflow-y actually scrolls (the
   // default min-height:auto would otherwise blow the drawer past 100vh on a long cart). This replaces a
@@ -328,6 +331,16 @@ export const CART_JS = `(function(){
     if(isPlus){var v=document.createElementNS(ns,'path');v.setAttribute('d','M12 5v14');svg.appendChild(v);}
     return svg;
   }
+  // ---- Lucide "x" close icon — two diagonals crossing at the viewBox centre (12,12), so a hover rotate() is centred ----
+  function closeIcon(){
+    var ns='http://www.w3.org/2000/svg';
+    var svg=document.createElementNS(ns,'svg');
+    svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('fill','none');svg.setAttribute('stroke','currentColor');
+    svg.setAttribute('stroke-width','2');svg.setAttribute('stroke-linecap','round');svg.setAttribute('stroke-linejoin','round');svg.setAttribute('aria-hidden','true');
+    var d=['M18 6 6 18','M6 6l12 12'];
+    for(var i=0;i<d.length;i++){var pa=document.createElementNS(ns,'path');pa.setAttribute('d',d[i]);svg.appendChild(pa);}
+    return svg;
+  }
   // ---- enhance one mount ----
   function enhance(mount){
     if(mount.getAttribute('data-sw-enhanced')==='true'){return;}
@@ -342,7 +355,7 @@ export const CART_JS = `(function(){
     var count=part('span','count');toggle.appendChild(count);
 
     var dialog=document.createElement('dialog');
-    var head=part('div','head');var h=mk('h2',null,cfg.title);var close=part('button','close','\\u00d7');close.type='button';close.setAttribute('aria-label','Close cart');ripple(close);
+    var head=part('div','head');var h=mk('h2',null,cfg.title);var close=part('button','close');close.type='button';close.setAttribute('aria-label','Close cart');close.appendChild(closeIcon());ripple(close);
     head.appendChild(h);head.appendChild(close);
     var list=part('ul','items');
     var empty=part('p','empty',cfg.emptyLabel);

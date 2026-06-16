@@ -189,6 +189,18 @@ describe('cart drawer UI (solid neutral scheme + optimized line)', () => {
     expect(CART_CSS).toContain('color:#dc2626'); // red
   });
 
+  it('uses a centered Lucide "x" close icon in a flex-centered square so the hover rotate() pivots dead-centre', () => {
+    expect(CART_JS).toContain('function closeIcon()');
+    expect(CART_JS).toContain("part('button','close')"); // no text glyph arg
+    expect(CART_JS).not.toContain("part('button','close','\\\\u00d7')"); // the old × glyph button is gone
+    expect(CART_JS).toContain('close.appendChild(closeIcon())');
+    expect(CART_JS).toContain("close.setAttribute('aria-label','Close cart')"); // a11y name preserved
+    // The button is a flex-centered fixed square (icon at the box centre) and the icon is sized via svg rule.
+    expect(CART_CSS).toContain('[data-sw-part="close"]{display:flex;align-items:center;justify-content:center;width:2rem;height:2rem;border:0;background:none;cursor:pointer}');
+    expect(CART_CSS).toContain('[data-sw-part="close"] svg{width:1.25rem;height:1.25rem}');
+    expect(CART_CSS).toContain('[data-sw-part="close"]:hover{color:#b00020;transform:rotate(90deg)}'); // rotation kept
+  });
+
   it('still builds the line UI without innerHTML of cart data', () => {
     expect(CART_JS).not.toContain('innerHTML');
   });

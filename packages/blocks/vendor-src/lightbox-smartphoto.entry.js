@@ -134,21 +134,49 @@ function enhanceGallery(gallery) {
   // Caption is SmartPhoto's data-caption, injected into the viewer at TENANT trust (tenants
   // already author raw HTML) — NEVER bind visitor-submitted content into it.
 
-  // Keep the (non-zoomed) FITTED image clear of the bottom thumbnail rail. SmartPhoto fits the image
-  // to the FULL viewport height (it doesn't reserve the nav strip), so a tall / portrait image's
-  // bottom slides UNDER the thumbnails (the image list is z-index:101, above the nav). Reserve the
-  // live rail height in the height SmartPhoto fits to — ONLY while the nav is shown and NOT zoomed
-  // (zooming hides the UI and scales via transform, so it must be left at full height).
-  if (flag('data-thumbnails', true) && typeof sp._getWindowHeight === 'function') {
-    var realGetWindowHeight = sp._getWindowHeight.bind(sp);
-    sp._getWindowHeight = function () {
-      var h = realGetWindowHeight();
-      // Pass through the FULL height while zoomed (UI hidden, transform-scaled) or while the overlay
-      // is hiding (so the close fly-out animation travels the full viewport, not the reduced fit box).
-      if (sp.data && (sp.data.scale || sp.data.hide)) return h;
+  // Keep a tall / portrait image's bottom clear of the bottom thumbnail rail (the image list is
+  // z-index:101, above the nav) WITHOUT shrinking it more than necessary or knocking it off-centre.
+  // SmartPhoto sizes the fitted image to `windowHeight - headerHeight - footerHeight` but CENTRES it
+  // within the FULL window height — so EQUAL header/footer keep it vertically centred (incl. when
+  // zoomed, which transform-scales the same centred base) while leaving rail-sized top + bottom
+  // margins, so the bottom clears the rail. The 60/60 defaults are too short for the ~77px strip; we
+  // reserve the LIVE rail height + a small gap.
+  //
+  // [This replaces a `_getWindowHeight` override (#365) that reserved the rail only at the BOTTOM: it
+  //  double-counted the static 60/60 reservation (image far too small) and re-centred within the
+  //  reduced height (image shifted up, and visibly off-centre once zoomed, where the rail is hidden
+  //  and the full viewport is restored).]
+  if (flag('data-thumbnails', true) && typeof sp._setSizeByScreen === 'function') {
+    var RAIL_GAP = 4; // breathing space between the image bottom and the rail's top edge
+    var RAIL_FALLBACK = 81; // ~77px rail height + 4px gap — used for the ONE frame before the nav is measurable
+    sp.data.headerHeight = RAIL_FALLBACK;
+    sp.data.footerHeight = RAIL_FALLBACK;
+    var realSetSizeByScreen = sp._setSizeByScreen.bind(sp);
+    sp._setSizeByScreen = function () {
       var nav = document.querySelector('.' + CLASS_NAMES.smartPhotoNav);
-      var reserve = nav && nav.offsetHeight ? nav.offsetHeight + 16 : 88; // rail + small gap (88 = fallback if the viewer isn't rendered yet)
-      return Math.max(h - reserve, 120);
+      var navH = nav ? nav.offsetHeight : 0;
+      var rail = navH ? navH + RAIL_GAP : RAIL_FALLBACK;
+      sp.data.headerHeight = rail;
+      sp.data.footerHeight = rail;
+      var ret = realSetSizeByScreen();
+      // The nav lays out a frame AFTER the first fit (offsetHeight is 0 at open), so the first fit uses
+      // the fallback. Once the rail is measurable, re-fit ONCE with its exact height — the image ends
+      // up as large as it can be while still clearing the rail, at whatever height the theme renders it.
+      if (!navH && !sp._railRefit) {
+        sp._railRefit = true;
+        window.requestAnimationFrame(function () {
+          // Always clear the latch: on the next open (close removes the nav, so offsetHeight is 0
+          // again) the re-fit must be allowed to run once more — otherwise it stays stuck on the
+          // fallback for every gallery after the first.
+          sp._railRefit = false;
+          var n = document.querySelector('.' + CLASS_NAMES.smartPhotoNav);
+          if (n && n.offsetHeight) {
+            sp._setSizeByScreen();
+            if (typeof sp.update === 'function' && !(sp.data && sp.data.hide)) sp.update();
+          }
+        });
+      }
+      return ret;
     };
   }
 

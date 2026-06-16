@@ -126,8 +126,10 @@ export const THEME_TOGGLE_JS = `(function(){
     return (window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';
   }
   function reduced(){return window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches;}
-  function apply(next){
-    var set=function(){root.setAttribute('data-sw-scheme',next);};
+  // Set the scheme + run `done` AFTER the attribute lands (inside the View-Transition callback, which
+  // may run async) so aria-pressed never reflects the pre-click state. Persist the choice immediately.
+  function apply(next,done){
+    var set=function(){root.setAttribute('data-sw-scheme',next);if(done){done();}};
     if(document.startViewTransition&&!reduced()){document.startViewTransition(set);}else{set();}
     try{localStorage.setItem(KEY,next);}catch(e){}
   }
@@ -136,7 +138,7 @@ export const THEME_TOGGLE_JS = `(function(){
     function reflect(){var p=effective()==='dark'?'true':'false';
       for(var i=0;i<btns.length;i++){btns[i].setAttribute('aria-pressed',p);}}
     for(var j=0;j<btns.length;j++){
-      btns[j].addEventListener('click',function(){apply(effective()==='dark'?'light':'dark');reflect();});
+      btns[j].addEventListener('click',function(){apply(effective()==='dark'?'light':'dark',reflect);});
     }
     reflect();
     // Track OS changes while on 'auto' (no explicit choice) so the button state stays correct.

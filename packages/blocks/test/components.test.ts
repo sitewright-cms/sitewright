@@ -220,6 +220,10 @@ describe('component registry', () => {
     expect(css).toContain('overflow:visible'); // lets the close button overhang the corner
     // Backdrop dims AND blurs.
     expect(css).toContain('backdrop-filter:blur(5px)');
+    // The scrim derives from --sw-color-base-content (with the slate rgba fallback) so it INVERTS
+    // with the palette: a dark dim on a light site, a lighter scrim on a dark site.
+    expect(css).toContain('background:rgba(15,23,42,.45)');
+    expect(css).toContain('background:color-mix(in srgb,var(--sw-color-base-content,#0f172a) 45%,transparent)');
   });
 
   it('Modal taller than the viewport scrolls its body (overhanging close button kept)', () => {

@@ -49,7 +49,7 @@ export function pageComponentsDateTimePicker(): Page {
   <div class="mt-6 max-w-sm">
     <label class="block">
       <span class="mb-1.5 block text-sm font-semibold" data-sw-text="lbl_date">Appointment date</span>
-      <input type="text" name="date" data-sw-component="datetimepicker" placeholder="{{page.data.ph_date}}" class="input input-bordered w-full" />
+      <input type="text" name="date" data-sw-component="datetimepicker" placeholder="{{page.data.ph_date}}" class="w-full" />
     </label>
   </div>
 </section>
@@ -61,15 +61,15 @@ export function pageComponentsDateTimePicker(): Page {
   <div class="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
     <label class="block">
       <span class="mb-1.5 block text-sm font-semibold" data-sw-text="lbl_range">Date range (two months)</span>
-      <input type="text" name="range" data-sw-component="datetimepicker" data-mode="range" placeholder="{{page.data.ph_range}}" class="input input-bordered w-full" />
+      <input type="text" name="range" data-sw-component="datetimepicker" data-mode="range" placeholder="{{page.data.ph_range}}" class="w-full" />
     </label>
     <label class="block">
       <span class="mb-1.5 block text-sm font-semibold" data-sw-text="lbl_datetime">Date &amp; time</span>
-      <input type="text" name="datetime" data-sw-component="datetimepicker" data-mode="datetime" data-time-step="15" data-time-format="HH:mm" placeholder="{{page.data.ph_datetime}}" class="input input-bordered w-full" />
+      <input type="text" name="datetime" data-sw-component="datetimepicker" data-mode="datetime" data-time-step="15" data-time-format="HH:mm" placeholder="{{page.data.ph_datetime}}" class="w-full" />
     </label>
     <label class="block">
       <span class="mb-1.5 block text-sm font-semibold" data-sw-text="lbl_time">Time only</span>
-      <input type="text" name="time" data-sw-component="datetimepicker" data-mode="time" data-time-format="HH:mm" placeholder="{{page.data.ph_time}}" class="input input-bordered w-full" />
+      <input type="text" name="time" data-sw-component="datetimepicker" data-mode="time" data-time-format="HH:mm" placeholder="{{page.data.ph_time}}" class="w-full" />
     </label>
   </div>
 </section>

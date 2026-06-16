@@ -280,8 +280,10 @@ const MODAL_CSS = [
   `${mdlg()}{position:fixed;margin:auto;inset:0;box-sizing:border-box;display:flex;flex-direction:column;max-height:calc(100vh - 4rem);max-height:calc(100dvh - 4rem);opacity:0;transform:translateY(-24px);transition:opacity .22s ease,transform .22s ease,overlay .22s allow-discrete,display .22s allow-discrete}`,
   `${mdlg('[open]')}{opacity:1;transform:translateY(0)}`,
   `@starting-style{${mdlg('[open]')}{opacity:0;transform:translateY(-24px)}}`,
-  // Backdrop: dims + BLURS, both fading in and out.
-  `${mdlg('::backdrop')}{background:rgba(15,23,42,.45);opacity:0;-webkit-backdrop-filter:blur(0);backdrop-filter:blur(0);transition:opacity .22s ease,-webkit-backdrop-filter .22s ease,backdrop-filter .22s ease,overlay .22s allow-discrete,display .22s allow-discrete}`,
+  // Backdrop: dims + BLURS, both fading in and out. The scrim derives from the CONTENT colour so it
+  // INVERTS with the palette — a dark dim on a light site, a LIGHTER scrim on a dark site (where a
+  // near-black dim would be invisible). Fallback = the old slate dim for engines without color-mix.
+  `${mdlg('::backdrop')}{background:rgba(15,23,42,.45);background:color-mix(in srgb,var(--sw-color-base-content,#0f172a) 45%,transparent);opacity:0;-webkit-backdrop-filter:blur(0);backdrop-filter:blur(0);transition:opacity .22s ease,-webkit-backdrop-filter .22s ease,backdrop-filter .22s ease,overlay .22s allow-discrete,display .22s allow-discrete}`,
   `${mdlg('[open]::backdrop')}{opacity:1;-webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px)}`,
   `@starting-style{${mdlg('[open]::backdrop')}{opacity:0;-webkit-backdrop-filter:blur(0);backdrop-filter:blur(0)}}`,
   // Scroll region: the JS moves the authored content into this wrapper so a dialog taller than the

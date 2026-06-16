@@ -48,14 +48,19 @@ export function pageComponentsTabs(): Page {
   <h2 class="text-3xl font-bold tracking-tight" data-sw-text="sec_basic_t">Tabs — the defaults</h2>
   <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="sec_basic_d">A panel per tab; the runtime builds the buttons from each panel’s title.</p>
   <pre class="mt-3 inline-block max-w-full overflow-x-auto text-xs"><code>data-sw-component="tabs"  +  a data-sw-part="panel" data-sw-title="…" per tab</code></pre>
+  <!-- Rich labels: a data-sw-part="tabtitle" child (icon + text) is moved into the button.
+       data-sw-title stays as the plain-text accessible name. -->
   <div class="mt-8" data-sw-component="tabs">
     <div data-sw-part="panel" data-sw-title="{{page.data.tab1}}" class="pt-2">
+      <span data-sw-part="tabtitle">${icon('book-open', 'h-4 w-4')} {{page.data.tab1}}</span>
       <p class="leading-relaxed text-base-content/70" data-sw-text="body1">Tabs group related content into one compact area.</p>
     </div>
     <div data-sw-part="panel" data-sw-title="{{page.data.tab2}}" class="pt-2">
+      <span data-sw-part="tabtitle">${icon('settings', 'h-4 w-4')} {{page.data.tab2}}</span>
       <p class="leading-relaxed text-base-content/70" data-sw-text="body2">Give each panel a title and its content.</p>
     </div>
     <div data-sw-part="panel" data-sw-title="{{page.data.tab3}}" class="pt-2">
+      <span data-sw-part="tabtitle">${icon('accessibility', 'h-4 w-4')} {{page.data.tab3}}</span>
       <p class="leading-relaxed text-base-content/70" data-sw-text="body3">The markup follows the WAI-ARIA tabs pattern.</p>
     </div>
   </div>

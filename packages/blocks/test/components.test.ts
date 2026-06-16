@@ -221,6 +221,32 @@ describe('component registry', () => {
     expect(css).toContain('backdrop-filter:blur(5px)');
   });
 
+  it('Modal taller than the viewport scrolls its body (overhanging close button kept)', () => {
+    const { css, js } = componentAssets(['Modal']);
+    // The dialog is height-capped to the viewport less 4rem (normal specificity so it beats the UA's
+    // own dialog{max-height}; the 4rem keeps the overhanging close button on-screen) and laid out as a
+    // flex column so the body scroll region fills the remaining height.
+    expect(css).toContain('max-height:calc(100dvh - 4rem)');
+    expect(css).toContain('display:flex;flex-direction:column');
+    // box-sizing:border-box keeps the padding inside that cap so the overhang math holds regardless
+    // of the ambient reset.
+    expect(css).toContain('box-sizing:border-box');
+    // The injected body wrapper scrolls; flex:1 + min-height:0 is what lets it shrink and scroll.
+    expect(css).toContain('[data-sw-part="body"]{flex:1 1 auto;min-height:0;overflow:auto');
+    // The dialog itself stays overflow:visible so the close button still overhangs (not clipped).
+    expect(css).toContain('overflow:visible');
+    // The runtime MOVES the authored content into the body wrapper (appendChild, not innerHTML, so
+    // listeners / form state survive), and only when the author hasn't already supplied one.
+    expect(js).toContain("setAttribute('data-sw-part','body')");
+    expect(js).toContain('while(dialog.firstChild){body.appendChild(dialog.firstChild);}');
+    expect(js).not.toContain('body.innerHTML');
+    // The content MUST be wrapped before the close button is injected, so the close button stays a
+    // direct child of the dialog (overhanging) rather than getting swept into the scroll region.
+    expect(js.indexOf("setAttribute('data-sw-part','body')")).toBeLessThan(
+      js.indexOf("setAttribute('data-sw-part','autoclose')"),
+    );
+  });
+
   it('Tabs builds an ARIA tablist with keyboard nav', () => {
     const tabs = componentAssets(['Tabs']);
     expect(tabs.css).toContain('[data-sw-part="tab"]');

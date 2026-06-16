@@ -258,21 +258,34 @@ const MODAL_CSS = [
   // without !important — global bg/text vars, rounded corners, 1.5rem padding, a max width and a
   // soft shadow. Override any of them with e.g. bg-transparent / text-white / p-0 / max-w-2xl /
   // rounded-none / shadow-none on the dialog. overflow:visible lets the close button overhang the
-  // top-right corner (override with overflow-hidden/-auto if a dialog needs to clip/scroll content).
+  // top-right corner; a TALL dialog instead scrolls its content (the JS moves it into a
+  // [data-sw-part="body"] scroll region) so the overhang and scrolling coexist.
   `:where(${mdlg()}){background:var(--sw-color-base-100,#fff);color:var(--sw-color-base-content,#0f172a);border:0;border-radius:.75rem;padding:1.5rem;max-width:min(90vw,32rem);overflow:visible;box-shadow:0 10px 40px rgba(0,0,0,.2)}`,
   // Structural + the from-the-top enter/exit (normal specificity, NOT author-overridable):
   // position:fixed + inset:0 + margin:auto CENTERS the dialog in the VIEWPORT (mirrors the native
   // dialog:modal centering, but explicit so it can't be lost) — opening never scrolls the page and
   // it appears centered on the current scroll position. It also stays the containing block for the
-  // absolute (overhanging) close button. opacity/transform + @starting-style / allow-discrete
-  // animate across the display toggle.
-  `${mdlg()}{position:fixed;margin:auto;inset:0;opacity:0;transform:translateY(-24px);transition:opacity .22s ease,transform .22s ease,overlay .22s allow-discrete,display .22s allow-discrete}`,
+  // absolute (overhanging) close button. display:flex column makes the [data-sw-part="body"] scroll
+  // region fill the capped height so a tall modal scrolls its body; max-height caps the dialog to the
+  // viewport LESS 4rem — this MUST be normal-specificity (not :where) to beat the UA's own
+  // `dialog{max-height:…}`, and the 4rem margin guarantees the -1rem overhanging close button stays
+  // on-screen. box-sizing:border-box keeps the 1.5rem padding INSIDE that cap (so the math holds even
+  // if the ambient reset ever changes). (dvh on capable engines, vh fallback.) opacity/transform +
+  // @starting-style /
+  // allow-discrete animate across the display toggle.
+  `${mdlg()}{position:fixed;margin:auto;inset:0;box-sizing:border-box;display:flex;flex-direction:column;max-height:calc(100vh - 4rem);max-height:calc(100dvh - 4rem);opacity:0;transform:translateY(-24px);transition:opacity .22s ease,transform .22s ease,overlay .22s allow-discrete,display .22s allow-discrete}`,
   `${mdlg('[open]')}{opacity:1;transform:translateY(0)}`,
   `@starting-style{${mdlg('[open]')}{opacity:0;transform:translateY(-24px)}}`,
   // Backdrop: dims + BLURS, both fading in and out.
   `${mdlg('::backdrop')}{background:rgba(15,23,42,.45);opacity:0;-webkit-backdrop-filter:blur(0);backdrop-filter:blur(0);transition:opacity .22s ease,-webkit-backdrop-filter .22s ease,backdrop-filter .22s ease,overlay .22s allow-discrete,display .22s allow-discrete}`,
   `${mdlg('[open]::backdrop')}{opacity:1;-webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px)}`,
   `@starting-style{${mdlg('[open]::backdrop')}{opacity:0;-webkit-backdrop-filter:blur(0);backdrop-filter:blur(0)}}`,
+  // Scroll region: the JS moves the authored content into this wrapper so a dialog taller than the
+  // viewport scrolls its BODY (flex:1 + min-height:0 lets it shrink below content height and scroll)
+  // while the dialog stays overflow:visible for the overhanging close button. Short modals are
+  // unaffected — the body just fits its content with no scrollbar. overscroll-behavior:contain stops
+  // the scroll chaining to the (locked) page behind it.
+  `${M} [data-sw-part="body"]{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain}`,
   // Auto-injected close button: brand-primary rounded button OVERHANGING the top-right corner
   // (needs the dialog's overflow:visible), white icon; hover zooms the button and spins the icon 180°.
   // It's a descendant of the marker in both forms.
@@ -343,6 +356,19 @@ const MODAL_JS = `(function(){
     // 'close' fires for EVERY dismissal path (Escape, close button, backdrop, form method=dialog),
     // so the lock is always released exactly once per open.
     dialog.addEventListener('close',unlock);
+    // Move the authored content into a scroll region so a TALL dialog scrolls its body (the dialog
+    // itself stays overflow:visible for the overhanging close button). Nodes are MOVED, not
+    // re-serialized, so listeners / form state / iframes survive. Done before the close button is
+    // injected so that button stays a direct child of the dialog (overhang), not inside the scroller.
+    // Skipped if the author already supplied a [data-sw-part="body"] wrapper.
+    var hasBody=false;
+    for(var i=0;i<dialog.children.length;i++){if(dialog.children[i].getAttribute('data-sw-part')==='body'){hasBody=true;break;}}
+    if(!hasBody){
+      var body=document.createElement('div');
+      body.setAttribute('data-sw-part','body');
+      while(dialog.firstChild){body.appendChild(dialog.firstChild);}
+      dialog.appendChild(body);
+    }
     // Config attrs live on the marker (the wrapper in the legacy form, the <dialog> in the lighter one).
     // Auto close button (top-right), unless opted out with data-closebutton="false".
     if(root.getAttribute('data-closebutton')!=='false'&&!dialog.querySelector('[data-sw-part="autoclose"]')){

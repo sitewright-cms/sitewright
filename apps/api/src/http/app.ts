@@ -58,6 +58,9 @@ import {
   RIPPLE_JS,
   usesCart,
   CART_CSS,
+  usesThemeToggle,
+  THEME_TOGGLE_CSS,
+  THEME_TOGGLE_JS,
   resolveShopChannels,
   resolveFormEndpoints,
   validateTemplate,
@@ -452,6 +455,9 @@ async function styledSourceDocument(
   // cart.js is deliberately INERT in the editor preview so its click handlers + floating drawer never
   // fight the click-to-edit bridge. The live cart runs on the published /sites/<slug>/ site.
   const cart = usesCart(scanHtml);
+  // Color-scheme toggle: style + run it live in the preview (unlike the cart, it's harmless — it only
+  // flips <html data-sw-scheme> + localStorage, so the author can preview light/dark by clicking it).
+  const themeToggle = usesThemeToggle(scanHtml);
   // Interactive components (modal / tabs / carousel / lightbox / cookie-consent / form) authored in
   // CODE-FIRST source carry their `data-sw-component="…"` marker into the rendered body/slots — scan
   // for them here (the block tree is an empty stub for code-first), mirroring the publish path.
@@ -467,6 +473,7 @@ async function styledSourceDocument(
     ...(lazy ? [LAZYLOAD_CSS] : []),
     ...(waves ? [RIPPLE_CSS] : []),
     ...(cart ? [CART_CSS] : []),
+    ...(themeToggle ? [THEME_TOGGLE_CSS] : []),
     ...(classNames.length > 0
       ? [await compileUtilityCss([classNames.join(' ')], brandToTailwindTheme(brand))]
       : []),
@@ -486,6 +493,8 @@ async function styledSourceDocument(
     bodyHtml: body,
     inlineStyles: inlineStyles.length > 0 ? inlineStyles : undefined,
     inlineScripts: inlineScripts.length > 0 ? inlineScripts : undefined,
+    // The toggle's no-flash init, inlined SYNC in <head> (preview's sandboxed CSP allows inline JS).
+    headInlineScripts: themeToggle ? [THEME_TOGGLE_JS] : undefined,
     // SYSTEM i18n dict for the component runtimes (only when a component ships).
     systemI18n: componentJs ? systemI18nData(shell.systemT) : undefined,
     ...shell,
@@ -2025,7 +2034,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         }
         const rendered = await renderPool.render(pageSource, {
           company: brand as unknown as Record<string, unknown>,
-          website: { siteUrl: website?.siteUrl, data: website?.data, shop: resolveShopChannels(website?.shop, (fid) => `/f/${project.id}/${fid}`), t: resolveTranslations(website?.translations, previewLocale, defaultLocale) },
+          website: { siteUrl: website?.siteUrl, data: website?.data, shop: resolveShopChannels(website?.shop, (fid) => `/f/${project.id}/${fid}`), t: resolveTranslations(website?.translations, previewLocale, defaultLocale), enableColorSchemes: website?.enableColorSchemes },
           page: previewPage,
           parentPage: previewParent,
           pages: previewPages,
@@ -2049,7 +2058,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // `{{> snippet}}` is intentionally unavailable in a slot (no WYSIWYG drift).
         const slotCtx = {
           company: brand as unknown as Record<string, unknown>,
-          website: { siteUrl: website?.siteUrl, data: website?.data, shop: resolveShopChannels(website?.shop, (fid) => `/f/${project.id}/${fid}`), t: resolveTranslations(website?.translations, previewLocale, defaultLocale) },
+          website: { siteUrl: website?.siteUrl, data: website?.data, shop: resolveShopChannels(website?.shop, (fid) => `/f/${project.id}/${fid}`), t: resolveTranslations(website?.translations, previewLocale, defaultLocale), enableColorSchemes: website?.enableColorSchemes },
           page: previewPage,
           parentPage: previewParent,
           pages: previewPages,
@@ -3260,7 +3269,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // match, `{{sw-translate}}` here serves the DEFAULT-locale strings regardless of a stored page's
         // own locale. Locale-accurate translation preview is the /preview path (uses previewLocale).
         website = settings.website
-          ? { siteUrl: settings.website.siteUrl, data: settings.website.data, t: resolveTranslations(settings.website.translations, projectDefaultLocale, projectDefaultLocale) }
+          ? { siteUrl: settings.website.siteUrl, data: settings.website.data, t: resolveTranslations(settings.website.translations, projectDefaultLocale, projectDefaultLocale), enableColorSchemes: settings.website.enableColorSchemes }
           : undefined;
         themeBodyClass = websiteThemeClasses(settings.website?.theme);
       } catch (err) {

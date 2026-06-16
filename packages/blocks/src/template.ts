@@ -636,6 +636,34 @@ function createInstance(): typeof Handlebars {
     }
     return new Handlebars.SafeString(`<div ${attrs}></div>`);
   });
+  // {{sw-theme-toggle [label="…"] [class="…"]}} → a light/dark toggle button for the OPT-IN color
+  // schemes feature (Settings → Website → enable color schemes). It carries both a sun + a moon icon;
+  // CSS (THEME_TOGGLE_CSS) shows the one for the active scheme, so the icon is correct with or without
+  // JS, and the `data-sw-theme-toggle` marker ships the no-flash + click runtime (THEME_TOGGLE_JS).
+  // Gated by the master switch: with color schemes OFF (no dark palette, no runtime) it renders
+  // nothing, even if the helper stays in the template. Drop it ONCE in the nav/header slot. The
+  // accessible label localizes: explicit hash → reserved `theme_toggle` catalog key → English default.
+  hb.registerHelper('sw-theme-toggle', function swThemeToggle(this: unknown, ...args: unknown[]) {
+    const options = args[args.length - 1] as Handlebars.HelperOptions;
+    const h = (options?.hash ?? {}) as Record<string, unknown>;
+    const root = (options.data?.root ?? {}) as { website?: { enableColorSchemes?: unknown; t?: Record<string, unknown> } };
+    if (root.website?.enableColorSchemes !== true) return new Handlebars.SafeString('');
+    const str = (v: unknown): string => (typeof v === 'string' ? v : '');
+    const label =
+      str(h.label) || reservedTr(root, 'theme_toggle') || RESERVED_TRANSLATION_DEFAULTS.theme_toggle || 'Toggle dark mode';
+    const cls = str(h.class);
+    const classAttr = cls ? `sw-theme-toggle ${cls}` : 'sw-theme-toggle';
+    // Icons come ONLY from the trusted Lucide map (never tenant input); the `sw-tt-*` class is the CSS
+    // picker hook. An absent icon → empty body (button still works) — but sun/moon are stock Lucide.
+    const svg = (body: string | undefined, iconClass: string): string =>
+      `<svg class="${iconClass}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ` +
+      `stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body ?? ''}</svg>`;
+    return new Handlebars.SafeString(
+      `<button type="button" class="${escapeAttr(classAttr)}" data-sw-theme-toggle ` +
+        `aria-label="${escapeAttr(label)}" aria-pressed="false" title="${escapeAttr(label)}">` +
+        `${svg(iconBody('sun'), 'sw-tt-sun')}${svg(iconBody('moon'), 'sw-tt-moon')}</button>`,
+    );
+  });
   // {{sw-form "contact" class="card p-8"}} → the COMPLETE markup of a stored form definition
   // (fields/labels/placeholders/select options, submit button, success/error parts), styled by the
   // first-party FORM_CSS and wired by FORM_JS. The wrapper carries `data-sw-form="<id>"` and NO

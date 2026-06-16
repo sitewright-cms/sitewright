@@ -147,6 +147,9 @@ export interface SettingsForm {
   navEffect: 'none' | NavEffect;
   buttonEffect: 'none' | ButtonEffect;
   preloaderEffect: 'none' | PreloaderEffect;
+  // opt-in light/dark color schemes (website.enableColorSchemes / defaultColorScheme)
+  enableColorSchemes: boolean;
+  defaultColorScheme: 'auto' | 'light' | 'dark';
   redirects: KeyedRedirect[];
   // mini shop (website.shop): master switch + currency FORMATTING + submission channels. The cart's
   // display TEXT (labels, currency symbol/code, channel/field labels) is translatable → Translations & Labels.
@@ -292,6 +295,8 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
     navEffect: w?.theme?.navEffect ?? 'none',
     buttonEffect: w?.theme?.buttonEffect ?? 'none',
     preloaderEffect: w?.theme?.preloaderEffect ?? 'none',
+    enableColorSchemes: w?.enableColorSchemes === true,
+    defaultColorScheme: w?.defaultColorScheme ?? 'auto',
     redirects: (w?.redirects ?? []).map((r) => ({ id: rowId(), from: r.from, to: r.to, status: r.status })),
     shopEnabled: w?.shop?.enabled === true,
     shopCurrencyPosition: w?.shop?.currency?.position ?? 'before',
@@ -490,6 +495,15 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
   const pre = form.preloaderEffect !== 'none' ? { preloaderEffect: form.preloaderEffect } : {};
   const theme =
     'navEffect' in nav || 'buttonEffect' in btn || 'preloaderEffect' in pre ? { ...nav, ...btn, ...pre } : undefined;
+  // Opt-in light/dark color schemes. `enableColorSchemes` is emitted only when ON (omitted = off, the
+  // schema default); `defaultColorScheme` only when it deviates from 'auto' (the default) AND the
+  // feature is on — so a single-theme site stays byte-identical and toggling off drops both keys.
+  const colorSchemes = form.enableColorSchemes
+    ? {
+        enableColorSchemes: true as const,
+        ...(form.defaultColorScheme !== 'auto' ? { defaultColorScheme: form.defaultColorScheme } : {}),
+      }
+    : undefined;
   // i18n catalog — cells are kept only for CONFIGURED locales (defaultLocale + locales), so a settings
   // save self-heals stale columns and never clobbers the catalog (it always round-trips through the form).
   const localeSet = new Set<string>([
@@ -498,12 +512,13 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
   ]);
   const translations = rowsToTranslations(form.translations, localeSet);
   const hasTranslations = Object.keys(translations).length > 0;
-  if (w || redirects.length || shop || theme || hasTranslations) {
+  if (w || redirects.length || shop || theme || colorSchemes || hasTranslations) {
     website = {
       ...(w ?? {}),
       ...(redirects.length ? { redirects } : {}),
       ...(shop ? { shop } : {}),
       ...(theme ? { theme } : {}),
+      ...(colorSchemes ?? {}),
       ...(hasTranslations ? { translations } : {}),
     };
   }

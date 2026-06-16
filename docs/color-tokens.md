@@ -37,6 +37,50 @@ Add any number of extra named colors in the settings page. They become utilities
 (`bg-<name>` / `text-<name>` / `border-<name>`). Keys may use letters, digits, `_`, and internal
 hyphens (e.g. `brand-teal`). Custom colors do **not** get an auto-derived `-content`.
 
+## Using tokens in custom CSS — the `--sw-*` variables
+
+The utilities above cover almost everything, but when you write **custom CSS** (a `<style>` block, the
+**Critical CSS** setting, or an inline `style="…"`) read the theme through the platform's own CSS custom
+properties instead of pasting hex values. Every brand value is mirrored under the **`--sw-` namespace**:
+
+| Variable | What it is |
+|----------|------------|
+| `--sw-color-<role>` | A theme colour — `--sw-color-primary`, `--sw-color-base-100`, `--sw-color-base-content`, `--sw-color-accent`, … (one per role/custom colour above) |
+| `--sw-font-<key>`   | A CI font family (e.g. `--sw-font-heading`, `--sw-font-body`) |
+| `--sw-space-<key>`  | A CI spacing value |
+| `--sw-radius-<key>` | A CI corner radius |
+
+```css
+.promo { background: var(--sw-color-base-200); color: var(--sw-color-base-content);
+         border: 1px solid var(--sw-color-primary); border-radius: var(--sw-radius-box, .75rem); }
+```
+
+These are the **only** non-standard (platform-specific) tokens — everything else is stock DaisyUI/Tailwind.
+DaisyUI's own `--color-<role>` variables resolve to the same values, so either works; the `--sw-` ones are
+guaranteed present even on a page that doesn't pull in DaisyUI. Using them (instead of hex) is what keeps
+custom CSS on-brand **and** dark-mode-safe (see below).
+
+## Light / dark color schemes
+
+Color schemes are **opt-in per project** (Settings → Website → "Light / dark color schemes"; off by
+default, so existing sites are unchanged). When enabled:
+
+- The platform adds a **dark variant** by flipping the surface + text tokens (`base-100/200/300` and
+  `base-content`) to a dark palette. Because the whole site is built from those tokens, **anything that
+  uses the token utilities/variables above adapts automatically** — no per-element dark styles. This is the
+  single best reason to use tokens over fixed colours.
+- You pick a **default scheme**: `light`, `dark`, or `auto` (follow the visitor's device). The default is
+  server-rendered onto `<html data-sw-scheme>` so there is no flash.
+- Drop **`{{sw-theme-toggle}}`** in the nav/header to let visitors switch; their choice persists
+  (localStorage) and re-applies before first paint. The toggle (and its tiny runtime) only appear when
+  color schemes are enabled.
+- The brand **accent** roles (`primary`/`secondary`/`accent`) are kept as-is in dark for now — only the
+  neutrals flip — so a brand colour with poor contrast on dark is a design choice to watch.
+
+> **What breaks dark mode:** fixed colours — `bg-white`, `bg-slate-900`, `text-gray-700`, `#fff` in custom
+> CSS. They don't adapt. Use `bg-base-100` / `text-base-content` / `var(--sw-color-*)` instead. A fixed
+> colour on an always-coloured element (a brand badge, a gradient) is fine.
+
 ## For site-builder agents
 
 - The six tokens above always exist — use `bg-primary`, `text-base-content`, `border-neutral`, … in
@@ -45,8 +89,12 @@ hyphens (e.g. `brand-teal`). Custom colors do **not** get an auto-derived `-cont
   automatically from the same tokens. Unset roles (e.g. `info`/`success`/`warning`/`error`,
   `base-200`/`base-300`) fall back to DaisyUI's defaults.
 - For text on a colored surface, use the derived `*-content` foreground.
-- Prefer tokens over hardcoded hex for brand consistency; the stock Tailwind palette
-  (`bg-slate-900`) is fine for one-off non-brand neutrals.
+- **Prefer tokens over hardcoded hex** — for brand consistency AND so the page survives dark mode. Use
+  `bg-base-100` / `bg-base-200` / `text-base-content` / `border-base-300` for surfaces, text, and borders
+  rather than fixed Tailwind palette colours (`bg-white`, `bg-slate-900`, `text-gray-700`). A fixed colour
+  is fine only on an element that is meant to look the same in both schemes (a brand badge, a gradient).
+- In custom CSS, read `var(--sw-color-<role>)` (and `--sw-font/space/radius-<key>`) instead of hex.
+- If the project enables color schemes, add `{{sw-theme-toggle}}` to the nav so visitors can switch.
 
 ## Implementation notes
 

@@ -21,13 +21,25 @@ In \`source\`:
   Heading font SIZES and list bullets/numbers are kept. For rich/long-form bodies (an article, a
   legal page) where you can't class each tag, wrap the container in \`class="prose"\` to restore a
   readable rhythm (and \`class="not-prose"\` on any child to opt out).
-- COLORS: six brand tokens always exist as theme colors — \`primary\`, \`secondary\`, \`accent\`,
-  \`neutral\`, \`base-100\` (page background), \`base-content\` (body text). Use them as ordinary
-  utilities (\`bg-primary\`, \`text-base-content\`, \`border-neutral\`); if you use DaisyUI, its
-  components (\`btn-primary\`, \`bg-base-100\`, \`alert-…\`) read the SAME tokens and are themed
-  automatically. For text on a colored surface use the auto-derived \`*-content\`
-  (\`bg-primary text-primary-content\`). Prefer these tokens over hardcoded hex; stock Tailwind
-  palette (\`bg-slate-900\`) is fine for non-brand neutrals.
+- COLORS — USE THEME TOKENS, NOT FIXED COLORS (this is what makes light/dark work). The theme exposes
+  the standard DaisyUI/Tailwind color roles as utilities: \`primary\`, \`secondary\`, \`accent\`, \`neutral\`,
+  \`info\`/\`success\`/\`warning\`/\`error\`, the surfaces \`base-100\` (page bg) / \`base-200\` / \`base-300\`, and
+  \`base-content\` (body text) — each with an auto-derived \`*-content\` for legible text on top
+  (\`bg-primary text-primary-content\`). Use them as ordinary utilities (\`bg-base-100\`, \`text-base-content\`,
+  \`bg-primary\`, \`border-base-300\`); DaisyUI components read the SAME tokens, so they theme automatically.
+  AVOID hardcoded hex and fixed Tailwind palette colors for surfaces / text / borders (\`bg-white\`,
+  \`bg-slate-900\`, \`text-gray-700\`, \`#fff\`) — they do NOT adapt. (A fixed colour on an always-coloured
+  element, e.g. a brand badge or a gradient, is fine.)
+- LIGHT / DARK MODE (opt-in — Settings → Website → "Light / dark color schemes"): when ON, the platform
+  adds a DARK variant by flipping the \`base-*\` surfaces + \`base-content\` tokens, so ANY UI built from the
+  tokens above adapts with zero extra work — which is exactly why token classes beat fixed colours. Add
+  \`{{sw-theme-toggle}}\` to the nav to let visitors switch (the chosen default — or each visitor's OS on
+  "auto" — applies even without it). For CUSTOM CSS (a \`<style>\` block, Critical CSS, or inline
+  \`style="…"\`) read the tokens as CSS VARIABLES: the platform mirrors every theme colour as
+  \`--sw-color-<role>\` (e.g. \`var(--sw-color-primary)\`, \`var(--sw-color-base-100)\`,
+  \`var(--sw-color-base-content)\`), plus \`--sw-font-<key>\` / \`--sw-space-<key>\` / \`--sw-radius-<key>\` from
+  your CI — so custom CSS stays on-brand AND dark-mode-safe. (DaisyUI's own \`--color-<role>\` variables
+  resolve to the same values; use either.)
 - Bind data: {{ company.* }} exposes the Corporate Identity you set (e.g. {{ company.name }}
   and any contact/address fields on \`identity\`). {{ company.mapUrl }} is a Google Maps embed URL
   for an <iframe src>; {{ company.bookingUrl }} is an external booking/reservation/appointment link

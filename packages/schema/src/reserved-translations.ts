@@ -36,7 +36,7 @@ export interface ReservedTranslationGroup {
    * only controls editor SURFACING, so a disabled feature never clutters the translation table.
    * OMIT for a SYSTEM group (always surfaced — built-in component UI strings that every site has).
    */
-  feature?: 'shop';
+  feature?: 'shop' | 'colorSchemes';
   keys: readonly ReservedTranslation[];
 }
 
@@ -80,6 +80,14 @@ export const RESERVED_TRANSLATION_GROUPS: readonly ReservedTranslationGroup[] = 
       { key: 'cart_currency_symbol', label: 'Currency symbol', default: '$' },
       { key: 'cart_currency_code', label: 'Currency code (ISO 4217)', default: 'USD' },
     ],
+  },
+  {
+    // COLOR SCHEMES group (gated on `website.enableColorSchemes`): the accessible label for the
+    // {{sw-theme-toggle}} light/dark button. The render helper floors to the English default.
+    id: 'color_schemes',
+    label: 'Color schemes',
+    feature: 'colorSchemes',
+    keys: [{ key: 'theme_toggle', label: 'Dark-mode toggle (aria-label)', default: 'Toggle dark mode' }],
   },
 ];
 

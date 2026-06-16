@@ -106,6 +106,22 @@ export interface RenderDocumentOptions extends RenderContext {
    */
   inlineStyles?: readonly string[];
   /**
+   * External script srcs linked SYNCHRONOUSLY (no `defer`) at the START of `<head>` — the color-scheme
+   * NO-FLASH init (theme.js): it re-applies a returning visitor's stored scheme onto `<html
+   * data-sw-scheme>` before first paint, so their choice never flashes the server default. Render-
+   * blocking BY DESIGN (it must run pre-paint) but tiny + cached, and shipped only when a page has a
+   * `{{sw-theme-toggle}}`. Served from the site's own origin so it loads under `default-src 'self'`.
+   * First-party, audited code only; never tenant input.
+   */
+  headScripts?: readonly string[];
+  /**
+   * JS inlined SYNCHRONOUSLY in `<head>` (no `defer`) — the PREVIEW's self-contained equivalent of
+   * `headScripts` (the preview is served under `Content-Security-Policy: sandbox`, an opaque origin,
+   * so inline scripts run but can't touch the editor). Same pre-paint role as `headScripts`. The
+   * `</script` sequence is neutralized. First-party, audited platform code only; never tenant input.
+   */
+  headInlineScripts?: readonly string[];
+  /**
    * Deferred external script srcs linked just before `</body>` — the platform's
    * `components.js` (interactive-component behavior), served from the site's own
    * origin so it loads under the `default-src 'self'` CSP. First-party, audited
@@ -169,6 +185,8 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     criticalCss,
     stylesheets,
     inlineStyles,
+    headScripts,
+    headInlineScripts,
     scripts,
     inlineScripts,
     systemI18n,
@@ -204,6 +222,12 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     `<head>\n` +
     `<meta charset="utf-8" />\n` +
     `<meta name="viewport" content="width=device-width, initial-scale=1" />\n` +
+    // No-flash color-scheme init FIRST (sync, pre-paint): re-applies a returning visitor's stored
+    // scheme before the document renders. External (publish) or inlined (sandboxed preview).
+    (headScripts ?? []).map((src) => `<script src="${escapeAttr(src)}"></script>\n`).join('') +
+    (headInlineScripts ?? [])
+      .map((js) => `<script>${js.replace(/<\/(script)/gi, '<\\/$1')}</script>\n`)
+      .join('') +
     `<title>${escapeHtml(title)}</title>\n` +
     `${meta}\n` +
     (jsonLd ? `${jsonLd}\n` : '') +

@@ -51,6 +51,8 @@ export interface ChromeStrings {
   cart_order_lead: string;
   cart_currency_symbol: string;
   cart_currency_code: string;
+  // COLOR SCHEMES (RESERVED) — accessible label for the {{sw-theme-toggle}} light/dark button.
+  theme_toggle: string;
   // SYSTEM component UI strings (RESERVED) — the first-party component runtimes read these via the
   // injected window.__SW_T__ (modal close button + carousel a11y). {n}/{total} are runtime-filled.
   close: string;
@@ -90,6 +92,7 @@ export const CHROME_STRINGS: Record<string, ChromeStrings> = {
     cart_order_lead: 'I’d like to order:',
     cart_currency_symbol: '$',
     cart_currency_code: 'USD',
+    theme_toggle: 'Toggle dark mode',
     close: 'Close',
     slide_prev: 'Previous slide',
     slide_next: 'Next slide',
@@ -125,6 +128,7 @@ export const CHROME_STRINGS: Record<string, ChromeStrings> = {
     cart_order_lead: 'Ich möchte gerne bestellen:',
     cart_currency_symbol: '$',
     cart_currency_code: 'USD',
+    theme_toggle: 'Dunkelmodus umschalten',
     close: 'Schließen',
     slide_prev: 'Vorherige Folie',
     slide_next: 'Nächste Folie',
@@ -160,6 +164,7 @@ export const CHROME_STRINGS: Record<string, ChromeStrings> = {
     cart_order_lead: 'Me gustaría hacer un pedido:',
     cart_currency_symbol: '$',
     cart_currency_code: 'USD',
+    theme_toggle: 'Cambiar modo oscuro',
     close: 'Cerrar',
     slide_prev: 'Diapositiva anterior',
     slide_next: 'Diapositiva siguiente',

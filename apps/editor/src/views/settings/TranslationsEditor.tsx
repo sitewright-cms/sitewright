@@ -12,6 +12,8 @@ interface TranslationsEditorProps {
   defaultLocale: string;
   /** Whether the shop is enabled — gates the reserved cart-string (shop_cart) ghost rows. */
   shopEnabled?: boolean;
+  /** Whether color schemes are enabled — gates the reserved color-scheme (theme_toggle) ghost row. */
+  colorSchemesEnabled?: boolean;
   /**
    * EXTRA ghost-row groups derived at runtime (not from the static registry) — e.g. the `shop.<key>`
    * channel/field labels built from the shop config. Surfaced as-is (the caller decides when to pass them);
@@ -42,7 +44,7 @@ function cellValue(cells: Record<string, string>, locale: string): string {
  *  - KEY protection: a free-form row's key is read-only behind a small pencil toggle, so a careless edit
  *    can't silently rename a key (which would orphan its `{{sw-translate}}` / `data-sw-translate` refs).
  */
-export function TranslationsEditor({ rows, localeCodes, defaultLocale, shopEnabled = false, extraGhostGroups = [], onChange }: TranslationsEditorProps) {
+export function TranslationsEditor({ rows, localeCodes, defaultLocale, shopEnabled = false, colorSchemesEnabled = false, extraGhostGroups = [], onChange }: TranslationsEditorProps) {
   // Row ids whose KEY is currently unlocked for editing (blank keys are always editable — new rows).
   const [editingKeys, setEditingKeys] = useState<ReadonlySet<string>>(() => new Set());
   // Scoped/reserved groups are COLLAPSED by default; `expanded` holds the group ids the user opened.
@@ -109,7 +111,13 @@ export function TranslationsEditor({ rows, localeCodes, defaultLocale, shopEnabl
   // a single-locale NON-English site (so e.g. a German-only site can localize the carousel/close labels
   // — a single English site already matches the built-in defaults, so it stays clutter-free).
   const reservedSurfaced = RESERVED_TRANSLATION_GROUPS.filter((g) =>
-    g.feature === 'shop' ? shopEnabled && multiLocale : multiLocale || defaultLocale !== 'en',
+    g.feature === 'shop'
+      ? shopEnabled && multiLocale
+      : g.feature === 'colorSchemes'
+        ? // the toggle's aria-label is an a11y string — also surface it on a single-locale NON-English
+          // site (so e.g. a German-only site can localize it without adding a second locale)
+          colorSchemesEnabled && (multiLocale || defaultLocale !== 'en')
+        : multiLocale || defaultLocale !== 'en',
   );
   const surfacedGroups: Array<{ id: string; label: string; keys: readonly ReservedTranslation[] }> = [...reservedSurfaced, ...extraGhostGroups].filter(
     (g) => g.keys.length > 0,

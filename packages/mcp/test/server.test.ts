@@ -403,11 +403,61 @@ describe('createSitewrightMcpServer — every tool forwards to the client', () =
     expect(calls(client).getContent).toHaveBeenCalledWith('dataset', 'x');
   });
 
-  it('preview_page forwards the page to preview', async () => {
-    const client = fakeClient();
+  it('preview_page requests a screenshot; with none it falls back to the HTML source', async () => {
+    const client = fakeClient(); // fake preview returns { html, token } — no screenshots
     const res = await (await connect(client, readScope)).callTool({ name: 'preview_page', arguments: { page } });
-    expect(calls(client).preview).toHaveBeenCalledWith(page);
-    expect(text(res)).toContain('tok');
+    expect(calls(client).preview).toHaveBeenCalledWith(page, { screenshot: true });
+    const texts = (res.content as Array<{ type: string; text?: string }>).filter((c) => c.type === 'text').map((c) => c.text).join('\n');
+    expect(texts).toContain('Screenshots are unavailable'); // graceful fallback note
+    expect(texts).toContain('<html></html>'); // the HTML source is still returned
+  });
+
+  it('preview_page returns desktop + mobile screenshots as image content blocks', async () => {
+    const client = fakeClient({
+      preview: vi.fn(async () => ({
+        html: '<html></html>',
+        token: 'tok',
+        screenshots: {
+          desktop: { base64: 'AAAA', mimeType: 'image/jpeg', width: 1280, height: 2400 },
+          mobile: { base64: 'BBBB', mimeType: 'image/jpeg', width: 390, height: 1800 },
+        },
+      })),
+    });
+    const res = await (await connect(client, readScope)).callTool({ name: 'preview_page', arguments: { page } });
+    const images = (res.content as Array<{ type: string; data?: string; mimeType?: string }>).filter((c) => c.type === 'image');
+    expect(images.map((i) => i.data)).toEqual(['AAAA', 'BBBB']);
+    expect(images.every((i) => i.mimeType === 'image/jpeg')).toBe(true);
+    // The HTML source is NOT dumped by default (the agent SEES it instead) — only on includeHtml.
+    const texts = (res.content as Array<{ type: string; text?: string }>).filter((c) => c.type === 'text').map((c) => c.text).join('\n');
+    expect(texts).not.toContain('<html></html>');
+  });
+
+  it('preview_page includes the HTML source when includeHtml is set (alongside the screenshots)', async () => {
+    const client = fakeClient({
+      preview: vi.fn(async () => ({
+        html: '<html>SRC</html>',
+        token: 'tok',
+        screenshots: { desktop: { base64: 'AAAA', mimeType: 'image/jpeg', width: 1280, height: 2400 } },
+      })),
+    });
+    const res = await (await connect(client, readScope)).callTool({ name: 'preview_page', arguments: { page, includeHtml: true } });
+    expect((res.content as Array<{ type: string }>).some((c) => c.type === 'image')).toBe(true);
+    const texts = (res.content as Array<{ type: string; text?: string }>).filter((c) => c.type === 'text').map((c) => c.text).join('\n');
+    expect(texts).toContain('<html>SRC</html>');
+  });
+
+  it('preview_page reports a clear error when not connected, and surfaces API errors', async () => {
+    // unauthenticated → actionable "not connected" message, no client call
+    const offline = fakeClient();
+    const offRes = await (await connect(offline, null)).callTool({ name: 'preview_page', arguments: { page } });
+    expect(offRes.isError).toBe(true);
+    expect(text(offRes)).toMatch(/not connected/i);
+    expect(calls(offline).preview).not.toHaveBeenCalled();
+    // API failure → surfaced as a tool error
+    const boom = fakeClient({ preview: vi.fn(async () => { throw new SitewrightApiError(400, 'bad page'); }) });
+    const errRes = await (await connect(boom, readScope)).callTool({ name: 'preview_page', arguments: { page } });
+    expect(errRes.isError).toBe(true);
+    expect(text(errRes)).toContain('bad page');
   });
 
   it('get_publish_status forwards to publishStatus', async () => {

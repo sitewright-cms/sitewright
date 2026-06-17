@@ -108,7 +108,8 @@ trigger and bridges the small gap so hover doesn't drop mid-travel — don't add
 spacing). Children need no own nav slots. Every new project already has the empty-slug "home" page.
 
 Typical flow: get_scope → set the Corporate Identity → put_page(s) with \`source\` →
-preview_page (returns { html, … } — read \`html\` to check the render) → publish_project. All writes are validated
+preview_page (returns DESKTOP + MOBILE screenshots — LOOK at them and refine the design before moving on;
+pass includeHtml:true to also get the HTML source) → publish_project. All writes are validated
 server-side (schema + no-JS template safety); you cannot exceed the token's role/capabilities.
 DELETING is separate: delete_page / delete_content need the \`content:delete\` capability, which is
 often NOT granted (it is opt-in, not implied by \`content:write\`). Check get_scope first — if
@@ -173,7 +174,7 @@ IMAGERY: use search_stock_images + import_stock_image for REAL photos — empty 
 
 MOTION (restraint): exactly one data-aos="fade-up" focus per section; stagger a grid's children with increasing data-aos-delay (0/100/200). Animating everything cheapens it.
 
-CHECK BEFORE PUBLISH: 6+ distinct sections? type scale applied (headings are not all the same size)? surfaces alternate? one accent colour, used sparingly? real images, not placeholders? a strong closing CTA? the same container width throughout? Preview the page and read the html to confirm the structure rendered.
+CHECK BEFORE PUBLISH: 6+ distinct sections? type scale applied (headings are not all the same size)? surfaces alternate? one accent colour, used sparingly? real images, not placeholders? a strong closing CTA? the same container width throughout? Call preview_page and LOOK at the desktop + mobile screenshots — fix anything that does not read as flagship-quality before publishing.
 `,
   },
   components: {
@@ -456,7 +457,7 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'get_page', description: "Get one page by id (code-first design is in the `source` field)." },
   { name: 'list_content', description: "List all entities of a content kind." },
   { name: 'get_content', description: "Get one content entity by kind + id." },
-  { name: 'preview_page', description: "Render a (possibly unsaved) page to a full HTML document, without saving." },
+  { name: 'preview_page', description: "Render a (possibly unsaved) page and return desktop + mobile SCREENSHOTS (+ HTML on request), without saving — so you can SEE your work." },
   { name: 'get_publish_status', description: "Read the project's latest published release (or null)." },
   { name: 'list_submissions', description: "List form submissions (newest first; optional formId + pagination).", capability: 'content:read' },
   { name: 'list_stock_providers', description: "List configured stock-image providers and whether each is available.", capability: 'content:read' },

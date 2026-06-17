@@ -36,6 +36,21 @@ export type FetchLike = (
   },
 ) => Promise<{ ok: boolean; status: number; statusText: string; text(): Promise<string> }>;
 
+/** One rendered viewport image (base64) from a preview screenshot request. */
+export interface PreviewShot {
+  base64: string;
+  mimeType: string;
+  width: number;
+  height: number;
+}
+/** The /preview response: the rendered HTML + (when requested) per-viewport screenshots. */
+export interface PreviewResult {
+  html: string;
+  token: string;
+  slug?: string;
+  screenshots?: Partial<Record<'desktop' | 'mobile', PreviewShot>>;
+}
+
 export class SitewrightClient {
   private scope: Scope | undefined;
   private readonly baseUrl: string;
@@ -165,8 +180,12 @@ export class SitewrightClient {
     );
   }
 
-  async preview(page: unknown): Promise<{ html: string; token: string }> {
-    return this.request('POST', this.projectPath('/preview'), page);
+  async preview(page: unknown, opts?: { screenshot?: boolean; viewports?: string }): Promise<PreviewResult> {
+    let path = this.projectPath('/preview');
+    if (opts?.screenshot) {
+      path += `?screenshot=1${opts.viewports ? `&viewports=${encodeURIComponent(opts.viewports)}` : ''}`;
+    }
+    return this.request('POST', path, page);
   }
 
   async publish(): Promise<unknown> {

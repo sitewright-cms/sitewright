@@ -8,7 +8,7 @@ import {
   GUIDE_TOPICS,
   type GuideTopic,
 } from '@sitewright/schema';
-import { SitewrightApiError, type Capability, type SitewrightClient } from './client.js';
+import { SitewrightApiError, type Capability, type SitewrightClient, type PreviewResult } from './client.js';
 import type { BridgeAuth, PendingLogin, ScopeHolder } from './auth.js';
 
 /** Content kinds reachable via the generic content tools (media/deploy_target are excluded). */
@@ -22,7 +22,8 @@ const GENERIC_KIND = z.enum([
   'form',
 ]);
 
-type ToolResult = { content: Array<{ type: 'text'; text: string }>; isError?: boolean };
+type ContentBlock = { type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string };
+type ToolResult = { content: ContentBlock[]; isError?: boolean };
 
 function ok(value: unknown): ToolResult {
   const text = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
@@ -252,10 +253,36 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'preview_page',
     {
       description:
-        'Render a (possibly unsaved) page to a full HTML document and return it, so you can check your work. Does not save.',
-      inputSchema: { page: PageSchema },
+        'Render a (possibly unsaved) page and return DESKTOP + MOBILE screenshots so you can SEE how it looks — check layout, spacing, hierarchy, colour, imagery, and the mobile view, then iterate. Pass includeHtml:true to also get the rendered HTML source. Does not save.',
+      inputSchema: { page: PageSchema, includeHtml: z.boolean().optional() },
     },
-    gate(null, ({ page }) => client.preview(page)),
+    async ({ page, includeHtml }: { page: unknown; includeHtml?: boolean }): Promise<ToolResult> => {
+      if (!holder.scope) {
+        return toolError('Not connected. Use the `login` tool, approve in your browser, then retry this action.');
+      }
+      try {
+        const res = await client.preview(page, { screenshot: true });
+        const shots = Object.entries(res.screenshots ?? {}).filter(([, s]) => s) as Array<
+          [string, NonNullable<PreviewResult['screenshots']>['desktop']]
+        >;
+        const content: ContentBlock[] = [];
+        if (shots.length > 0) {
+          const dims = shots.map(([name, s]) => `${name} ${s!.width}×${s!.height}`).join(', ');
+          content.push({
+            type: 'text',
+            text: `Rendered (${dims}). Look at the screenshot(s) below and judge it like a designer — section rhythm, whitespace, type hierarchy, colour balance, real imagery, and the mobile view — then refine until it reads as flagship-quality.${includeHtml ? '' : ' (Pass includeHtml:true to also get the HTML source.)'}`,
+          });
+          for (const [, s] of shots) content.push({ type: 'image', data: s!.base64, mimeType: s!.mimeType });
+        } else {
+          content.push({ type: 'text', text: 'Rendered. Screenshots are unavailable on this server — returning the HTML source so you can check the structure.' });
+        }
+        if (includeHtml || shots.length === 0) content.push({ type: 'text', text: res.html });
+        return { content };
+      } catch (err) {
+        if (err instanceof SitewrightApiError) return toolError(`Error ${err.status}: ${err.message}`);
+        return toolError(`Error: ${err instanceof Error ? err.message : 'preview failed'}`);
+      }
+    },
   );
 
   server.registerTool(

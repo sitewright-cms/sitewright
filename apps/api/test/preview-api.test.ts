@@ -1,9 +1,13 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, afterAll } from 'vitest';
 import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
 import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
 import { RenderPool } from '../src/render/render-pool.js';
+import { closeScreenshotBrowser } from '../src/render/screenshot.js';
+
+// The screenshot test may launch a shared headless browser; close it so the process exits cleanly.
+afterAll(async () => closeScreenshotBrowser());
 
 const workerPath = fileURLToPath(new URL('./fixtures/blocks-render-worker.mjs', import.meta.url));
 
@@ -158,6 +162,35 @@ describe('preview API — code-first source page', () => {
     // The source's literal Tailwind class compiled + inlined.
     expect(body.html).toContain('display:grid');
     expect(body.token).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it('?screenshot=1 returns the HTML and, when a browser is available, well-formed screenshots', async () => {
+    // Screenshots are BEST-EFFORT: with no Chromium (some CI) the capture is swallowed and only HTML
+    // returns; where Chromium is present the route renders the page to JPEGs. Assert the contract holds
+    // in either environment (and validate the image shape when present).
+    const { t, projectId } = await setup('shot@acme.test', poolApp);
+    const res = await poolApp.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/preview?screenshot=1&viewports=desktop`,
+      cookies: { sw_session: t },
+      payload: {
+        id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
+        source: '<div class="p-8"><h1 class="text-3xl">Hello</h1></div>',
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as {
+      html?: string;
+      screenshots?: { desktop?: { base64: string; mimeType: string; width: number; height: number } };
+    };
+    expect(typeof body.html).toBe('string');
+    if (body.screenshots?.desktop) {
+      const d = body.screenshots.desktop;
+      expect(d.mimeType).toBe('image/jpeg');
+      expect(d.width).toBe(1280);
+      expect(d.height).toBeGreaterThan(0);
+      expect(d.base64.length).toBeGreaterThan(100);
+    }
   });
 
   it('renders the project skeleton slots (topNav/footer) around a source-page preview (WYSIWYG)', async () => {

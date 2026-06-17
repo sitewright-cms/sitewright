@@ -14,7 +14,7 @@ export function pageWork(): Page {
     description: 'Recent sites across retail, health, finance, and the arts — each one hand-built and fast.',
     parent: 'home', // home is the tree root — every page nests under it
     nav: { title: 'Work', slots: ['header'], order: 2 },
-    data: { aria_caption: 'Project gallery' },
+    data: {},
     source: `<section class="mx-auto max-w-6xl px-6 pb-8 pt-24">
   <div class="nw-rise max-w-2xl">
     <span class="text-sm font-semibold uppercase tracking-[0.18em] text-primary" data-sw-translate="work.eyebrow">Portfolio</span>
@@ -23,7 +23,7 @@ export function pageWork(): Page {
   </div>
 </section>
 <section class="mx-auto max-w-6xl px-6 pb-28">
-  <div data-sw-component="lightbox" data-sw-block="Lightbox" aria-label="{{page.data.aria_caption}}">
+  <div data-sw-component="lightbox" data-sw-block="Lightbox" aria-label="{{sw-translate "work.aria_caption"}}">
     <div data-sw-part="grid" class="!grid-cols-1 gap-10 md:!grid-cols-2">
       {{#each dataset.projects}}
       <a data-sw-part="item" href="{{sw-url image}}" data-caption="{{title}} — {{summary}}" class="group card nw-card overflow-hidden border border-base-200 bg-base-100 no-underline shadow-sm hover:border-primary/30 hover:shadow-2xl hover:shadow-primary/10 nw-zoom" data-aos="fade-up">

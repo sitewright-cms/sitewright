@@ -24,6 +24,9 @@ export const WebsiteDataSchema = JsonObjectStoreSchema;
 // `page.locale` (with the project defaultLocale as fallback) by `translate()` in @sitewright/core and
 // the `{{sw-translate}}` helper / `data-sw-translate` directive. Bounded + prototype-safe.
 export const TRANSLATION_VALUE_MAX = 2000;
+/** Max catalog keys. Higher than the generic 256-record cap: a fully-translated multi-locale site
+ *  (chrome + every page's strings) legitimately needs many keys; value/locale-count are still bounded. */
+export const MAX_TRANSLATION_ENTRIES = 2000;
 // Locale codes are the object keys of each cell map. Mirrors project.ts `LocaleSchema` (kept inline to
 // avoid a website ↔ project import cycle — project.ts imports WebsiteSettingsSchema).
 const TranslationLocaleKey = z.string().min(1).max(35).regex(/^[A-Za-z0-9-]+$/, 'invalid locale code');
@@ -44,7 +47,7 @@ export const TranslationKeySchema = z
   // non-overlapping → no backtracking); length-capped above (not ReDoS), like ColorTokenKeySchema.
   .regex(/^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$/, 'must be an identifier or dotted scope path'); // eslint-disable-line security/detect-unsafe-regex
 /** The project translation table: `key → { locale → string }`. Sibling of `website.data`. */
-export const TranslationsSchema = safeRecord(TranslationCellsSchema, TranslationKeySchema);
+export const TranslationsSchema = safeRecord(TranslationCellsSchema, TranslationKeySchema, MAX_TRANSLATION_ENTRIES);
 export type Translations = z.infer<typeof TranslationsSchema>;
 
 // --- shop (MINI SHOP): front-end-driven cart configuration ---------------------------------------

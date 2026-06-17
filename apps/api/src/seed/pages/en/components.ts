@@ -17,7 +17,6 @@ export function pageComponents(): Page {
     // dropdown:true folds the child pages under "Components" in the header nav + the editor tree.
     nav: { title: 'Components', slots: ['header'], order: 8, dropdown: true },
     data: {
-      a_view: 'Explore',
     },
     source: `<section class="mx-auto max-w-6xl px-6 pb-8 pt-24">
   <div class="nw-rise max-w-2xl">
@@ -32,7 +31,7 @@ export function pageComponents(): Page {
     <a class="nw-card group flex flex-col rounded-3xl border border-base-200 bg-base-100 p-8 no-underline shadow-sm hover:border-primary/30 hover:shadow-xl hover:shadow-primary/5" href="{{sw-url path}}">
       <h2 class="text-2xl font-bold tracking-tight">{{title}}</h2>
       <p class="mt-2 grow leading-relaxed text-base-content/60">{{description}}</p>
-      <span class="mt-6 inline-flex items-center gap-1.5 text-sm font-semibold text-primary">{{@root.page.data.a_view}} ${icon('arrow-right', 'h-4 w-4 transition-transform group-hover:translate-x-1')}</span>
+      <span class="mt-6 inline-flex items-center gap-1.5 text-sm font-semibold text-primary">{{sw-translate "components.a_view"}} ${icon('arrow-right', 'h-4 w-4 transition-transform group-hover:translate-x-1')}</span>
     </a>
     {{/each}}
   </div>

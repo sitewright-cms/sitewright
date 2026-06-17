@@ -27,19 +27,19 @@ export function pageComponentsForms(): Page {
     source: `<section class="mx-auto max-w-6xl px-6 pb-8 pt-24">
   <a class="nw-underline inline-flex items-center gap-1.5 text-sm font-semibold text-primary no-underline" href="{{sw-url page.parent.path}}">${icon('arrow-left', 'h-4 w-4')} {{page.parent.title}}</a>
   <h1 class="mt-6 text-4xl font-bold tracking-tight sm:text-6xl">{{page.title}}</h1>
-  <p class="mt-5 max-w-2xl text-lg leading-relaxed text-base-content/60" data-sw-text="frm_intro">Build a form once, embed it anywhere with one tag.</p>
+  <p class="mt-5 max-w-2xl text-lg leading-relaxed text-base-content/60" data-sw-translate="comp_forms.frm_intro">Build a form once, embed it anywhere with one tag.</p>
 </section>
 
 <section class="mx-auto max-w-6xl px-6 pb-20">
-  <h2 class="text-3xl font-bold tracking-tight" data-sw-text="sec_helper_t">Embed with the helper</h2>
-  <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="sec_helper_d">One helper call expands the stored “contact” definition.</p>
+  <h2 class="text-3xl font-bold tracking-tight" data-sw-translate="comp_forms.sec_helper_t">Embed with the helper</h2>
+  <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-translate="comp_forms.sec_helper_d">One helper call expands the stored “contact” definition.</p>
   <pre class="mt-3 inline-block max-w-full overflow-x-auto text-xs"><code>&#123;&#123;sw-form "contact"&#125;&#125;</code></pre>
   <div class="mt-8 max-w-xl">{{sw-form "contact"}}</div>
 </section>
 
 <section class="mx-auto max-w-6xl px-6 pb-20">
-  <h2 class="text-3xl font-bold tracking-tight" data-sw-text="sec_attr_t">Embed by attribute, in your own layout</h2>
-  <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="sec_attr_d">An empty form carrying data-sw-form="contact" is filled with the same markup.</p>
+  <h2 class="text-3xl font-bold tracking-tight" data-sw-translate="comp_forms.sec_attr_t">Embed by attribute, in your own layout</h2>
+  <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-translate="comp_forms.sec_attr_d">An empty form carrying data-sw-form="contact" is filled with the same markup.</p>
   <pre class="mt-3 inline-block max-w-full overflow-x-auto text-xs"><code>&lt;form data-sw-form="contact"&gt;&lt;/form&gt;</code></pre>
   <div class="mt-8 max-w-xl rounded-3xl border border-base-200 bg-base-100 p-8 shadow-sm">
     <form data-sw-form="contact"></form>
@@ -47,8 +47,8 @@ export function pageComponentsForms(): Page {
 </section>
 
 <section class="mx-auto max-w-6xl px-6 pb-28">
-  <h2 class="text-3xl font-bold tracking-tight" data-sw-text="sec_about_t">Anti-spam, locale-aware, no-JS</h2>
-  <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-text="sec_about_d">Honeypot, time-trap, optional hCaptcha; JSON submit with inline success; the localized form is chosen automatically.</p>
+  <h2 class="text-3xl font-bold tracking-tight" data-sw-translate="comp_forms.sec_about_t">Anti-spam, locale-aware, no-JS</h2>
+  <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-translate="comp_forms.sec_about_d">Honeypot, time-trap, optional hCaptcha; JSON submit with inline success; the localized form is chosen automatically.</p>
 </section>`,
   };
 }

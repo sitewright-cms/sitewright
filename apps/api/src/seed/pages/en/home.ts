@@ -19,9 +19,6 @@ export function pageHome(assets: Record<string, string>): Page {
     nav: { title: 'Home', slots: ['header'], order: 1 },
     data: {
       spotlight: 'proj-harbor',
-      hero_alt: 'A recent Northwind website',
-      aria_prev: 'Previous testimonial',
-      aria_next: 'Next testimonial',
       // Demo values for the editor-only {{sw-control}} "studio settings" chips below. These are
       // page.data knobs an editor sets from inside the preview; nothing renders them on the page, so
       // they carry no translation obligation (the chips, like all controls, are stripped on publish).
@@ -50,7 +47,7 @@ export function pageHome(assets: Record<string, string>): Page {
       <div class="absolute -inset-8 rounded-full bg-primary/30 blur-3xl" aria-hidden="true"></div>
       <div class="nw-float relative overflow-hidden rounded-3xl shadow-2xl shadow-black/40 ring-1 ring-white/20 nw-zoom">
         <!-- Lazy-loaded: the URL lives in data-src → the runtime swaps it to src on scroll-in. -->
-        <img class="h-full w-full object-cover" data-src="${assets.hero}" alt="{{page.data.hero_alt}}" />
+        <img class="h-full w-full object-cover" data-src="${assets.hero}" alt="{{sw-translate "home.hero_alt"}}" />
       </div>
       <!-- Floating chip REUSES the stats-band keys (stat3_n / stat3_l) on purpose: one
            translated value renders in both spots, so locale variants stay in sync for free. -->
@@ -175,8 +172,8 @@ export function pageHome(assets: Record<string, string>): Page {
         </figure>
         {{/each}}
       </div>
-      <button type="button" data-sw-part="prev" aria-label="{{page.data.aria_prev}}">‹</button>
-      <button type="button" data-sw-part="next" aria-label="{{page.data.aria_next}}">›</button>
+      <button type="button" data-sw-part="prev" aria-label="{{sw-translate "home.aria_prev"}}">‹</button>
+      <button type="button" data-sw-part="next" aria-label="{{sw-translate "home.aria_next"}}">›</button>
       <div data-sw-part="dots" aria-hidden="true"></div>
     </div>
   </div>

@@ -219,20 +219,23 @@ export function targetsPrivateHost(url: string): boolean {
 /**
  * Builds a record schema that rejects prototype-pollution keys (`__proto__`,
  * `constructor`, `prototype`) and caps cardinality. Use for any user-supplied
- * "property bag" map (props, values, config, query, design tokens).
+ * "property bag" map (props, values, config, query, design tokens). `maxEntries`
+ * defaults to {@link MAX_RECORD_ENTRIES}; pass a higher cap for a record that
+ * legitimately holds more rows (e.g. a multilingual site's translation catalog).
  */
 export function safeRecord<V extends z.ZodTypeAny>(
   value: V,
   baseKey: z.ZodString = z.string().min(1).max(MAX_IDENTIFIER_LENGTH),
+  maxEntries: number = MAX_RECORD_ENTRIES,
 ) {
   const key = baseKey.refine((k) => !DANGEROUS_KEYS.has(k), {
     message: 'disallowed object key',
   });
   return z.record(key, value).superRefine((obj, ctx) => {
-    if (Object.keys(obj).length > MAX_RECORD_ENTRIES) {
+    if (Object.keys(obj).length > maxEntries) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: `too many entries (max ${MAX_RECORD_ENTRIES})`,
+        message: `too many entries (max ${maxEntries})`,
       });
     }
   });

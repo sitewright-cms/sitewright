@@ -102,7 +102,7 @@ export function pagesServices(): Page[] {
     title: 'Pricing',
     description: 'Honest, fixed-scope pricing for project work and monthly care plans.',
     parent: 'services',
-    data: { tab_projects: 'Project work', tab_care: 'Care plans', pr_badge: 'Most popular' },
+    data: {},
     source: `<section class="mx-auto max-w-5xl px-6 py-24">
   <a class="nw-underline inline-flex items-center gap-1.5 text-sm font-semibold text-primary no-underline" href="{{sw-url page.parent.path}}">${icon('arrow-left', 'h-4 w-4')} {{page.parent.title}}</a>
   <h1 class="mt-8 text-4xl font-bold tracking-tight sm:text-6xl" data-sw-translate="service_pricing.pr_h1">Honest, fixed-scope pricing</h1>
@@ -112,11 +112,11 @@ export function pagesServices(): Page[] {
        runtime builds the tablist (buttons + floating selector) from each panel's
        data-sw-title; without JS the panels simply stack — nothing is hidden. -->
   <div class="mt-14" data-sw-component="tabs">
-    <div data-sw-part="panel" data-sw-title="{{page.data.tab_projects}}">
+    <div data-sw-part="panel" data-sw-title="{{sw-translate "service_pricing.tab_projects"}}">
       <div class="grid items-stretch gap-7 pt-2 md:grid-cols-3">
         {{#each dataset.plans}}{{#unless monthly}}
         <div class="nw-card relative flex flex-col rounded-3xl bg-base-100 p-8 {{#if featured}}nw-ring shadow-2xl shadow-primary/15{{else}}border border-base-200 shadow-sm{{/if}}">
-          {{#if featured}}<span class="absolute -top-3.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-gradient-to-r from-primary to-secondary px-4 py-1 text-xs font-bold uppercase tracking-wider text-white shadow-lg">{{@root.page.data.pr_badge}}</span>{{/if}}
+          {{#if featured}}<span class="absolute -top-3.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-gradient-to-r from-primary to-secondary px-4 py-1 text-xs font-bold uppercase tracking-wider text-white shadow-lg">{{sw-translate "service_pricing.pr_badge"}}</span>{{/if}}
           <h2 class="text-lg font-bold tracking-tight">{{name}}</h2>
           <p class="mt-3"><span class="text-4xl font-bold tracking-tight {{#if featured}}bg-gradient-to-br from-primary to-secondary bg-clip-text text-transparent{{/if}}">{{display}}</span><span class="ml-1.5 text-sm text-base-content/50">{{period}}</span></p>
           <p class="mt-3 text-sm leading-relaxed text-base-content/60">{{blurb}}</p>
@@ -125,11 +125,11 @@ export function pagesServices(): Page[] {
         {{/unless}}{{/each}}
       </div>
     </div>
-    <div data-sw-part="panel" data-sw-title="{{page.data.tab_care}}">
+    <div data-sw-part="panel" data-sw-title="{{sw-translate "service_pricing.tab_care"}}">
       <div class="grid items-stretch gap-7 pt-2 md:grid-cols-2">
         {{#each dataset.plans}}{{#if monthly}}
         <div class="nw-card relative flex flex-col rounded-3xl bg-base-100 p-8 {{#if featured}}nw-ring shadow-2xl shadow-primary/15{{else}}border border-base-200 shadow-sm{{/if}}">
-          {{#if featured}}<span class="absolute -top-3.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-gradient-to-r from-primary to-secondary px-4 py-1 text-xs font-bold uppercase tracking-wider text-white shadow-lg">{{@root.page.data.pr_badge}}</span>{{/if}}
+          {{#if featured}}<span class="absolute -top-3.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-gradient-to-r from-primary to-secondary px-4 py-1 text-xs font-bold uppercase tracking-wider text-white shadow-lg">{{sw-translate "service_pricing.pr_badge"}}</span>{{/if}}
           <h2 class="text-lg font-bold tracking-tight">{{name}}</h2>
           <p class="mt-3"><span class="text-4xl font-bold tracking-tight {{#if featured}}bg-gradient-to-br from-primary to-secondary bg-clip-text text-transparent{{/if}}">{{display}}</span><span class="ml-1.5 text-sm text-base-content/50">{{period}}</span></p>
           <p class="mt-3 text-sm leading-relaxed text-base-content/60">{{blurb}}</p>

@@ -8,6 +8,7 @@ import {
   JS_NAV_EFFECTS,
   BUTTON_EFFECTS,
   PRELOADER_EFFECTS,
+  MAX_TRANSLATION_ENTRIES,
 } from '../src/website.js';
 
 describe('WebsiteSettingsSchema', () => {
@@ -345,6 +346,12 @@ describe('WebsiteSettingsSchema', () => {
       // a bare proto key is still rejected (safeRecord); a dotted proto SEGMENT is a harmless literal flat key
       expect(() => WebsiteSettingsSchema.parse({ translations: { ['__proto__']: { en: 'x' } } })).toThrow();
       expect(WebsiteSettingsSchema.parse({ translations: { 'a.__proto__': { en: 'x' } } }).translations?.['a.__proto__']).toEqual({ en: 'x' });
+    });
+    it('allows MANY keys (above the generic 256-record cap) but bounds at MAX_TRANSLATION_ENTRIES', () => {
+      // a fully-translated multi-locale site needs hundreds of catalog keys — more than the generic cap.
+      const make = (n: number) => ({ translations: Object.fromEntries(Array.from({ length: n }, (_, i) => [`k${i}`, { en: 'x' }])) });
+      expect(Object.keys(WebsiteSettingsSchema.parse(make(300)).translations!)).toHaveLength(300);
+      expect(() => WebsiteSettingsSchema.parse(make(MAX_TRANSLATION_ENTRIES + 1))).toThrow();
     });
   });
 });

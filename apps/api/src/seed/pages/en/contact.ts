@@ -14,7 +14,7 @@ export function pageContact(): Page {
     description: 'Tell us about your project — we reply within one business day.',
     parent: 'home', // home is the tree root
     nav: { slots: ['header'], order: 6 },
-    data: { c_close: 'Close' },
+    data: {},
     source: `<section class="mx-auto max-w-6xl px-6 py-24">
   <div class="grid items-start gap-12 lg:grid-cols-2 lg:gap-20">
     <div class="nw-rise">
@@ -29,7 +29,7 @@ export function pageContact(): Page {
 
       <!-- A native-<dialog> MODAL: the runtime wires the open button to showModal() (focus trap,
            Esc, backdrop for free). Without JS the button simply does nothing — the page still works. -->
-      <div class="mt-12" data-sw-component="modal" data-sw-block="Modal" data-close-label="{{page.data.c_close}}">
+      <div class="mt-12" data-sw-component="modal" data-sw-block="Modal" data-close-label="{{sw-translate "contact.c_close"}}">
         <button type="button" data-sw-part="open" class="btn btn-outline gap-2 rounded-full px-6">${icon('calendar', 'h-5 w-5')} <span data-sw-translate="contact.c_modal_btn">What happens on the intro call?</span></button>
         <dialog data-sw-part="dialog" class="max-w-md rounded-3xl">
           <h2 class="text-xl font-bold tracking-tight" data-sw-translate="contact.c_modal_t">A 20-minute conversation, no pitch</h2>

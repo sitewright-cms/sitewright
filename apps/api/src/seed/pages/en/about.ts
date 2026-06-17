@@ -16,7 +16,7 @@ export function pagesAbout(assets: Record<string, string>): Page[] {
     description: 'A small, senior team of designers and engineers — by design.',
     parent: 'home', // home is the tree root
     nav: { slots: ['header'], order: 4, dropdown: true },
-    data: { gallery_folder: 'Studio', aria_gallery: 'Studio photos', ab_img_alt: 'The Northwind studio' },
+    data: { gallery_folder: 'Studio',},
     source: `<section class="mx-auto grid max-w-6xl items-center gap-14 px-6 py-24 lg:grid-cols-2">
   <div class="nw-rise">
     <span class="text-sm font-semibold uppercase tracking-[0.18em] text-primary" data-sw-translate="about.eyebrow">About us</span>
@@ -27,7 +27,7 @@ export function pagesAbout(assets: Record<string, string>): Page[] {
   <div class="relative" data-aos="zoom-in">
     <div class="absolute -inset-6 rotate-2 rounded-[2rem] bg-gradient-to-br from-primary/15 to-secondary/15" aria-hidden="true"></div>
     <div class="nw-zoom relative overflow-hidden rounded-3xl shadow-2xl shadow-neutral/20">
-      <img src="${assets.studio}" alt="{{page.data.ab_img_alt}}" class="h-full w-full object-cover" loading="lazy" />
+      <img src="${assets.studio}" alt="{{sw-translate "about.ab_img_alt"}}" class="h-full w-full object-cover" loading="lazy" />
     </div>
   </div>
 </section>
@@ -66,7 +66,7 @@ export function pagesAbout(assets: Record<string, string>): Page[] {
   </div>
   <!-- The sw-folder block iterates a MEDIA FOLDER (the editor's library, not a dataset) — drop
        new photos into Studio/ and they appear here. Wrapped in a Lightbox for click-to-zoom. -->
-  <div class="mt-10" data-sw-component="lightbox" data-sw-block="Lightbox" aria-label="{{page.data.aria_gallery}}">
+  <div class="mt-10" data-sw-component="lightbox" data-sw-block="Lightbox" aria-label="{{sw-translate "about.aria_gallery"}}">
     <div data-sw-part="grid" class="gap-4 !grid-cols-2 md:!grid-cols-4">
       {{#sw-folder page.data.gallery_folder kind="image"}}
       <a data-sw-part="item" href="{{sw-url url}}" data-caption="{{alt}}" class="group relative overflow-hidden rounded-2xl shadow-sm transition-shadow hover:shadow-xl nw-zoom">
@@ -88,7 +88,7 @@ export function pagesAbout(assets: Record<string, string>): Page[] {
     title: 'Careers',
     description: 'Open roles at Northwind — small team, senior work, no nonsense.',
     parent: 'about',
-    data: { badge_remote: 'Remote OK', posted_l: 'Posted' },
+    data: {},
     source: `<section class="mx-auto max-w-4xl px-6 py-24">
   <a class="nw-underline inline-flex items-center gap-1.5 text-sm font-semibold text-primary no-underline" href="{{sw-url page.parent.path}}">${icon('arrow-left', 'h-4 w-4')} {{page.parent.title}}</a>
   <h1 class="mt-8 text-4xl font-bold tracking-tight sm:text-6xl" data-sw-translate="careers.ca_h1">Come do the best work of your career</h1>
@@ -99,8 +99,8 @@ export function pagesAbout(assets: Record<string, string>): Page[] {
     <article class="nw-card rounded-3xl border border-base-200 bg-base-100 p-8 shadow-sm hover:border-primary/30 hover:shadow-xl hover:shadow-primary/5" data-aos="fade-up">
       <div class="flex flex-wrap items-center gap-2">
         <span class="rounded-full bg-primary/10 px-3.5 py-1 text-xs font-bold uppercase tracking-wider text-primary">{{dept}}</span>
-        {{#if remote}}<span class="rounded-full bg-secondary/10 px-3.5 py-1 text-xs font-bold uppercase tracking-wider text-secondary">{{@root.page.data.badge_remote}}</span>{{/if}}
-        <span class="ml-auto font-mono text-xs text-base-content/40">{{@root.page.data.posted_l}} <time>{{sw-date posted}}</time></span>
+        {{#if remote}}<span class="rounded-full bg-secondary/10 px-3.5 py-1 text-xs font-bold uppercase tracking-wider text-secondary">{{sw-translate "careers.badge_remote"}}</span>{{/if}}
+        <span class="ml-auto font-mono text-xs text-base-content/40">{{sw-translate "careers.posted_l"}} <time>{{sw-date posted}}</time></span>
       </div>
       <h2 class="mt-4 text-2xl font-bold tracking-tight">{{title}}</h2>
       <p class="mt-1 inline-flex items-center gap-1.5 text-sm text-base-content/50">${icon('map-pin', 'h-3.5 w-3.5')} {{location}}</p>

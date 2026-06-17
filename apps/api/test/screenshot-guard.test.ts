@@ -17,14 +17,18 @@ describe('isPrivateIp', () => {
       'fc00::1',
       'fd12:3456::1',
       'fe80::1',
-      '::ffff:127.0.0.1', // IPv4-mapped loopback
+      '::ffff:127.0.0.1', // IPv4-mapped loopback (dotted)
+      '::ffff:7f00:1', // IPv4-mapped loopback (hex group) === 127.0.0.1
+      '::ffff:0a00:0001', // IPv4-mapped 10.0.0.1 (hex group)
+      '[::1]', // bracketed (as URL.hostname yields)
+      '[::ffff:7f00:1]',
     ]) {
       expect(isPrivateIp(ip), ip).toBe(true);
     }
   });
 
   it('allows public addresses', () => {
-    for (const ip of ['8.8.8.8', '1.1.1.1', '93.184.216.34', '172.32.0.1', '2606:4700:4700::1111']) {
+    for (const ip of ['8.8.8.8', '1.1.1.1', '93.184.216.34', '172.32.0.1', '2606:4700:4700::1111', '[2606:4700:4700::1111]']) {
       expect(isPrivateIp(ip), ip).toBe(false);
     }
   });
@@ -55,6 +59,8 @@ describe('isRequestAllowed (SSRF guard)', () => {
 
   it('blocks literal private/link-local IPs and non-http(s) schemes; allows data: and public IPs', async () => {
     expect(await isRequestAllowed('http://169.254.169.254/latest/meta-data/', ORIGIN)).toBe(false);
+    expect(await isRequestAllowed('http://[::1]:80/', ORIGIN)).toBe(false); // bracketed IPv6 loopback
+    expect(await isRequestAllowed('http://[::ffff:7f00:1]/', ORIGIN)).toBe(false); // hex IPv4-mapped loopback
     expect(await isRequestAllowed('http://8.8.8.8/', ORIGIN)).toBe(true);
     expect(await isRequestAllowed('file:///etc/passwd', ORIGIN)).toBe(false);
     expect(await isRequestAllowed('data:image/png;base64,AAAA', ORIGIN)).toBe(true);

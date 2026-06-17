@@ -198,7 +198,7 @@ import {
   type ProjectContext,
 } from '../repo/context.js';
 import { RenderPool, RenderUnavailableError } from '../render/render-pool.js';
-import { captureScreenshots, type ViewportName, type Shot } from '../render/screenshot.js';
+import { captureScreenshots, closeScreenshotBrowser, type ViewportName, type Shot } from '../render/screenshot.js';
 import { API_KEY_CAPABILITIES, type ApiKeyCapability, type ContentKind } from '../db/schema.js';
 
 const SESSION_COOKIE = 'sw_session';
@@ -3515,6 +3515,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       await renderPool.shutdown();
     });
   }
+  // Close the shared screenshot browser too (no-op if it was never launched).
+  app.addHook('onClose', async () => closeScreenshotBrowser());
 
   // Periodic housekeeping: prune expired sessions / MFA tickets / WebAuthn challenges so abandoned
   // flows don't accumulate. The timer is unref'd (never holds the process open) and cleared on close

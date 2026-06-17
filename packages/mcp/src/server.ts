@@ -261,7 +261,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
         return toolError('Not connected. Use the `login` tool, approve in your browser, then retry this action.');
       }
       try {
-        const res = (await client.preview(page, { screenshot: true })) as PreviewResult;
+        const res = await client.preview(page, { screenshot: true });
         const shots = Object.entries(res.screenshots ?? {}).filter(([, s]) => s) as Array<
           [string, NonNullable<PreviewResult['screenshots']>['desktop']]
         >;

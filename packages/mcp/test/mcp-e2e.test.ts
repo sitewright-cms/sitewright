@@ -80,8 +80,8 @@ suite('@sitewright/mcp bridge — end to end', () => {
     const got = (await mcp.callTool({ name: 'get_page', arguments: { id: 'home' } })) as TextResult;
     expect(got.content[0]!.text).toContain('Hallo Welt');
 
-    const prev = (await mcp.callTool({ name: 'preview_page', arguments: { page } })) as TextResult;
-    expect(prev.content[0]!.text).toContain('Hallo'); // the source rendered
+    const prev = (await mcp.callTool({ name: 'preview_page', arguments: { page, includeHtml: true } })) as TextResult;
+    expect(prev.content.some((c) => c.type === 'text' && c.text?.includes('Hallo'))).toBe(true); // the source rendered
 
     await mcp.close();
   });
@@ -123,8 +123,8 @@ suite('@sitewright/mcp bridge — end to end', () => {
     expect(put.isError).toBeFalsy();
 
     // 3. Preview reflects the bound brand name.
-    const prev = (await mcp.callTool({ name: 'preview_page', arguments: { page } })) as TextResult;
-    expect(prev.content[0]!.text).toContain('Windhoek Plumbing Co');
+    const prev = (await mcp.callTool({ name: 'preview_page', arguments: { page, includeHtml: true } })) as TextResult;
+    expect(prev.content.some((c) => c.type === 'text' && c.text?.includes('Windhoek Plumbing Co'))).toBe(true);
 
     // 4. Publish.
     const pub = (await mcp.callTool({ name: 'publish_project', arguments: {} })) as TextResult;

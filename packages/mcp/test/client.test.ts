@@ -153,6 +153,18 @@ describe('SitewrightClient', () => {
     ]);
   });
 
+  it('preview adds the screenshot + viewports query and returns screenshots', async () => {
+    const shots = { desktop: { base64: 'AAAA', mimeType: 'image/jpeg', width: 1280, height: 2400 } };
+    const { client, calls } = await introspected((input) => {
+      if (input.endsWith('/api-key/self')) return { status: 200, body: JSON.stringify(scope) };
+      if (input.includes('/preview?')) return { status: 200, body: JSON.stringify({ html: '<x>', token: 't', screenshots: shots }) };
+      return { status: 404 };
+    });
+    const res = await client.preview({ id: 'home' }, { screenshot: true, viewports: 'desktop,mobile' });
+    expect(res.screenshots).toEqual(shots);
+    expect(calls.some((c) => c.input.includes('/projects/p1/preview?screenshot=1&viewports=desktop%2Cmobile'))).toBe(true);
+  });
+
   it('builds stock provider/search/import paths and unwraps the imported item', async () => {
     const asset = { id: 'a1', url: '/media/p1/a1/x.jpg' };
     const { client, calls } = await introspected((input) => {

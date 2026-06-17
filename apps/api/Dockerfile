@@ -29,6 +29,14 @@ ENV PORT=80
 # The editor SPA is copied into the deploy context as ./editor (see deploy step).
 ENV EDITOR_DIST=/app/editor
 
+# Headless Chromium for server-side preview screenshots (the MCP `preview_page` tool renders the page
+# so an agent can SEE it). Installed (browser + its apt libraries) into a shared, world-readable path;
+# the API later runs as `node`. Adds ~300MB. Drop this layer if screenshots aren't needed.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN apt-get update \
+    && node node_modules/playwright-core/cli.js install --with-deps chromium \
+    && rm -rf /var/lib/apt/lists/*
+
 # Run as the non-root `node` user (present in the base image); own the data dir.
 RUN mkdir -p /data && chown -R node:node /app /data
 USER node

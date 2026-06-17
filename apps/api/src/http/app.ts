@@ -198,6 +198,7 @@ import {
   type ProjectContext,
 } from '../repo/context.js';
 import { RenderPool, RenderUnavailableError } from '../render/render-pool.js';
+import { captureScreenshots, type ViewportName, type Shot } from '../render/screenshot.js';
 import { API_KEY_CAPABILITIES, type ApiKeyCapability, type ContentKind } from '../db/schema.js';
 
 const SESSION_COOKIE = 'sw_session';
@@ -512,6 +513,35 @@ async function styledSourceDocument(
     systemI18n: componentJs ? systemI18nData(shell.systemT) : undefined,
     ...shell,
   });
+}
+
+/**
+ * Best-effort server-side screenshots of a preview document, taken only when the caller passes
+ * `?screenshot=1` (the MCP preview_page tool does). Renders against the API's OWN loopback origin so the
+ * page's self-hosted media resolves; any failure (e.g. no Chromium in this image) → undefined and the
+ * caller still returns the HTML.
+ */
+async function previewScreenshots(
+  req: FastifyRequest,
+  html: string,
+): Promise<Partial<Record<ViewportName, Shot>> | undefined> {
+  const q = req.query as { screenshot?: string; viewports?: string } | undefined;
+  const want = String(q?.screenshot ?? '').toLowerCase();
+  if (want !== '1' && want !== 'true') return undefined;
+  const port = req.socket.localPort ?? (Number(process.env.PORT) || 80);
+  const viewports = (q?.viewports ?? '')
+    .split(',')
+    .map((v) => v.trim())
+    .filter((v): v is ViewportName => v === 'desktop' || v === 'mobile');
+  try {
+    return await captureScreenshots(html, {
+      originHostPort: `127.0.0.1:${port}`,
+      viewports: viewports.length ? viewports : undefined,
+    });
+  } catch (err) {
+    req.log?.warn({ err: err instanceof Error ? err.message : String(err) }, 'preview screenshot failed');
+    return undefined;
+  }
 }
 
 const InviteBody = z.object({
@@ -2134,8 +2164,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           systemT: resolveTranslations(website?.translations, previewLocale, defaultLocale),
         });
         const sourceToken = previewStore.put(sourceHtml, { projectId: project.id, userId: ctx.userId });
+        const screenshots = await previewScreenshots(req, sourceHtml);
         // `slug` so the editor builds the `/preview/<slug>/<token>` doc URL (same as the block branch below).
-        return reply.send({ html: sourceHtml, token: sourceToken, slug: project.slug });
+        return reply.send({ html: sourceHtml, token: sourceToken, slug: project.slug, ...(screenshots ? { screenshots } : {}) });
       } catch (err) {
         if (err instanceof RenderUnavailableError) return reply.code(503).send({ error: err.message });
         return reply.code(400).send({ error: err instanceof Error ? err.message : 'render failed' });

@@ -24,6 +24,7 @@ const WEBSITE_FORM_KEYS = new Set<keyof SettingsForm>([
   'siteUrl', 'jsonDataUrl', 'data', 'criticalCss', 'head', 'scripts',
   'topNav', 'mobileNav', 'sidebarLeft', 'sidebarRight', 'footer', 'bottom', 'redirects',
   'navEffect', 'buttonEffect', 'preloaderEffect',
+  'navCode', 'buttonCode', 'preloaderCode',
   'enableThemes', 'defaultTheme',
   'shopEnabled', 'shopCurrencyPosition', 'shopCurrencyDecimals', 'shopChannels',
   'defaultLocale', 'locales', 'translations',

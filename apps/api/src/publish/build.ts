@@ -72,6 +72,7 @@ import { renderContactPhp, hasContactPhpForm } from './contact-php.js';
 import {
   toPublicForm,
   websiteEffectsClasses,
+  websiteEffectsCustomCode,
   navEffectUsesRuntime,
   type FormPublic,
   type MediaAsset,
@@ -658,6 +659,10 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         const preloaderMarkup = usesPreloaderRuntime
           ? preloaderHtml(website?.effects?.preloaderEffect, { logo: rel(identity.logo) })
           : undefined;
+        // Custom effect code (the "None / Custom Code" slots): nav/button code injects at body-end
+        // (after the tenant's scripts); a custom preloader is the first-body-child overlay. Each
+        // applies only when its built-in effect is 'none', so a site without custom code is unchanged.
+        const fxCode = websiteEffectsCustomCode(website?.effects);
         const pageInlineStyles = [
           ...(usesComponents && components.css ? [components.css] : []),
           ...(usesAnims ? [ANIMATION_CSS] : []),
@@ -692,7 +697,10 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           sidebarRight: sidebarRightHtml,
           footer: footerHtml,
           bottom: bottomHtml,
-          preloader: preloaderMarkup,
+          preloader: fxCode.preloader ?? preloaderMarkup,
+          // Custom effect code references the brand's text-on-brand tokens — make sure they're defined
+          // even on a themes-off site (themes already emit them; this only fires for custom sites).
+          emitBrandContentTokens: !!(fxCode.bodyEnd || fxCode.preloader),
           media,
           lang: pageLocale,
           // Images AND fonts resolve through ONE page-relative resolver (a font's @font-face uses
@@ -712,7 +720,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           organization,
           criticalCss: website?.criticalCss,
           head: website?.head,
-          customScripts: website?.scripts,
+          customScripts: [website?.scripts, fxCode.bodyEnd].filter(Boolean).join('\n') || undefined,
           // Shared assets (site root, NOT locale-prefixed), rebased to page depth.
           // Inline-style order: component CSS, then animation CSS; the linked
           // utility sheet stays last so Tailwind wins at equal specificity.

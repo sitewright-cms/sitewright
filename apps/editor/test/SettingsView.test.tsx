@@ -21,6 +21,8 @@ vi.mock('../src/api', () => ({
     putSettings: (p: string, b: SettingsBundle) => putSettings(p, b),
     // IdentitySection loads the project's font library assets on mount.
     listMedia: () => Promise.resolve({ items: [] }),
+    // WebsiteSection loads the "fork existing effect" snippets on mount.
+    listEffectForks: () => Promise.resolve({ nav: [], button: [], preloader: [] }),
   },
 }));
 

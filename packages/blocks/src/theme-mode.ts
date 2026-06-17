@@ -90,11 +90,12 @@ function darkBrandDeclarations(colors: BrandColorMap): string {
 /**
  * The LIGHT-mode text-on-brand (`--sw-color-*-content`) tokens, derived from each brand colour's
  * lightness. The platform historically hard-coded white labels on brand fills, which is illegible on a
- * light brand colour; deriving `*-content` fixes that. Emitted as an unlayered `:root{…}` ONLY when
- * schemes are enabled (so non-scheme sites are byte-for-byte unchanged); the dark block overrides these
- * at higher specificity for dark mode. Returns '' when no role parses.
+ * light brand colour; deriving `*-content` fixes that. Emitted as an unlayered `:root{…}` when schemes
+ * are enabled OR when a site uses custom effect code (which references these tokens) — so non-scheme,
+ * non-custom sites stay byte-for-byte unchanged; the dark block overrides these for dark mode. Returns
+ * '' when no role parses.
  */
-function lightContentTokensCss(colors: BrandColorMap): string {
+export function lightContentTokensCss(colors: BrandColorMap): string {
   const decls: string[] = [];
   for (const role of TUNED_BRAND_ROLES) {
     // eslint-disable-next-line security/detect-object-injection -- `role` is a fixed TUNED_BRAND_ROLES literal, not user input

@@ -143,10 +143,14 @@ export interface SettingsForm {
   sidebarRight: string;
   footer: string;
   bottom: string;
-  // nav/button/preloader effect schemes ('none' = off) → website.effects
+  // nav/button/preloader effect schemes ('none' = off / custom code) → website.effects
   navEffect: 'none' | NavEffect;
   buttonEffect: 'none' | ButtonEffect;
   preloaderEffect: 'none' | PreloaderEffect;
+  // custom effect code (the "None / Custom Code" slots) → website.effects.*Code
+  navCode: string;
+  buttonCode: string;
+  preloaderCode: string;
   // opt-in light/dark themes (website.enableThemes / defaultTheme)
   enableThemes: boolean;
   defaultTheme: 'auto' | 'light' | 'dark';
@@ -295,6 +299,9 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
     navEffect: w?.effects?.navEffect ?? 'none',
     buttonEffect: w?.effects?.buttonEffect ?? 'none',
     preloaderEffect: w?.effects?.preloaderEffect ?? 'none',
+    navCode: w?.effects?.navCode ?? '',
+    buttonCode: w?.effects?.buttonCode ?? '',
+    preloaderCode: w?.effects?.preloaderCode ?? '',
     enableThemes: w?.enableThemes === true,
     defaultTheme: w?.defaultTheme ?? 'auto',
     redirects: (w?.redirects ?? []).map((r) => ({ id: rowId(), from: r.from, to: r.to, status: r.status })),
@@ -493,8 +500,14 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
   const nav = form.navEffect !== 'none' ? { navEffect: form.navEffect } : {};
   const btn = form.buttonEffect !== 'none' ? { buttonEffect: form.buttonEffect } : {};
   const pre = form.preloaderEffect !== 'none' ? { preloaderEffect: form.preloaderEffect } : {};
-  const effects =
-    'navEffect' in nav || 'buttonEffect' in btn || 'preloaderEffect' in pre ? { ...nav, ...btn, ...pre } : undefined;
+  // Custom-code slots are PRESERVED even when a built-in effect is chosen (so toggling between a
+  // preset and "None / Custom Code" doesn't lose the draft); render applies a code only when its
+  // effect is 'none' (see websiteEffectsCustomCode). Omitted when empty.
+  const navC = form.navCode.trim() ? { navCode: form.navCode } : {};
+  const btnC = form.buttonCode.trim() ? { buttonCode: form.buttonCode } : {};
+  const preC = form.preloaderCode.trim() ? { preloaderCode: form.preloaderCode } : {};
+  const mergedEffects = { ...nav, ...btn, ...pre, ...navC, ...btnC, ...preC };
+  const effects = Object.keys(mergedEffects).length > 0 ? mergedEffects : undefined;
   // Opt-in light/dark themes. `enableThemes` is emitted only when ON (omitted = off, the
   // schema default); `defaultTheme` only when it deviates from 'auto' (the default) AND the
   // feature is on — so a single-theme site stays byte-identical and toggling off drops both keys.

@@ -27,6 +27,16 @@ interface CodeEditorModalProps {
     validate?: (name: string) => string | null;
     onChange?: (name: string) => void;
   };
+  /**
+   * When set, a "fork existing …" `<select>` is shown above the editor. Picking an option APPENDS the
+   * snippet returned by `snippetFor` to the draft (a starting point to edit). Used by the effect
+   * custom-code editors to fork a built-in nav/button/preloader effect.
+   */
+  fork?: {
+    label?: string;
+    options: { value: string; label: string }[];
+    snippetFor: (value: string) => string;
+  };
 }
 
 /**
@@ -34,7 +44,7 @@ interface CodeEditorModalProps {
  * any HTML/Handlebars source (partials, raw slots, …). The editor is the black/single-accent
  * CodeMirror; Save (header ✓ or ⌘S) commits the draft and closes (staying open if the save rejects).
  */
-export function CodeEditorModal({ title, value, onSave, onClose, hint, language = 'html', nameEdit }: CodeEditorModalProps) {
+export function CodeEditorModal({ title, value, onSave, onClose, hint, language = 'html', nameEdit, fork }: CodeEditorModalProps) {
   // `value` seeds the draft when the modal opens; external changes while it is mounted are
   // intentionally ignored — the user's live edits take precedence until they Save or close.
   const [draft, setDraft] = useState(value);
@@ -79,6 +89,31 @@ export function CodeEditorModal({ title, value, onSave, onClose, hint, language 
               />
             </label>
             {nameError && <p className="mt-1 text-[11px] text-rose-400">{nameError}</p>}
+          </div>
+        )}
+        {fork && fork.options.length > 0 && (
+          <div className="shrink-0 border-b border-white/10 px-4 py-2">
+            <label className="flex items-center gap-2 text-xs text-slate-400">
+              <span className="shrink-0">{fork.label ?? 'Insert / fork existing effect'}</span>
+              <select
+                value=""
+                aria-label={fork.label ?? 'Insert / fork existing effect'}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (!v) return;
+                  const snippet = fork.snippetFor(v);
+                  if (snippet) setDraft((prev) => (prev.trim() ? `${prev}\n\n${snippet}` : snippet));
+                }}
+                className="min-w-0 flex-1 rounded-md border border-white/15 bg-white/5 px-2 py-1 font-mono text-xs text-slate-100 sw-brand-focus outline-none transition"
+              >
+                <option value="">Choose an effect to fork…</option>
+                {fork.options.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
         )}
         {hint && (

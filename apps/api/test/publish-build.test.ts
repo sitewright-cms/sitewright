@@ -363,6 +363,59 @@ describe('buildSite', () => {
     expect(sheet).toContain('--sw-ind-left');
   });
 
+  it('injects custom effect code: nav/button at body-end (when "none"), preloader as the first body child', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: { primary: '#4f46e5' } },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+          website: {
+            effects: {
+              // nav + preloader are "none" → their custom code applies; a built-in button stays a class.
+              navCode: '<style id="nav-fx">:is(#top-nav) a{color:red}</style>',
+              preloaderCode: '<div data-sw-preloader id="pre-fx">loading…</div>',
+              buttonEffect: 'lift',
+              buttonCode: '<style id="btn-fx">.btn{}</style>', // INERT — buttonEffect is a built-in
+            },
+          },
+        },
+        pages: [{ id: 'home', path: '', title: 'Home', source: '<p>Hi</p>' }],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).toContain('<style id="nav-fx">'); // custom nav code injected
+    expect(home).not.toContain('id="btn-fx"'); // button code inert (a built-in effect is chosen)
+    expect(home).toContain('sw-btn-lift'); // the built-in button effect still applies
+    // custom preloader is the FIRST body child — it sits right after the opening <body> tag, before
+    // the <main id="page-content"> landmark (whereas the nav code lands at body-end, after <main>).
+    const bodyOpenEnd = home.indexOf('>', home.indexOf('<body')) + 1;
+    expect(home.slice(bodyOpenEnd, bodyOpenEnd + 60)).toContain('id="pre-fx"');
+    expect(home.indexOf('id="pre-fx"')).toBeLessThan(home.indexOf('<main id="page-content"'));
+    expect(home.indexOf('id="nav-fx"')).toBeGreaterThan(home.indexOf('<main id="page-content"'));
+    // the brand's text-on-brand tokens are DECLARED (themes off) so a forked fill effect stays legible
+    // (a trailing ":" distinguishes a declaration from a var(--sw-color-primary-content, …) usage).
+    expect(home).toContain('--sw-color-primary-content:');
+  });
+
+  it('does NOT emit the brand content tokens when there is no custom effect code (byte-identical)', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: { primary: '#4f46e5' } },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+        },
+        pages: [{ id: 'home', path: '', title: 'Home', source: '<p>Hi</p>' }],
+      }),
+    });
+    expect(await readFile(join(outDir, 'index.html'), 'utf8')).not.toContain('--sw-color-primary-content:');
+  });
+
   it('ships the nav-effects runtime for a PER-ELEMENT JS scheme even when the site-wide picker is unset', async () => {
     await buildSite({
       publishedAt: '2026-05-29T00:00:00.000Z',

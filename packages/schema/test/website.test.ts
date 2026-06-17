@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   WebsiteSettingsSchema,
   websiteEffectsClasses,
+  websiteEffectsCustomCode,
   navEffectUsesRuntime,
   NAV_EFFECTS,
   NAV_EFFECT_LABELS,
@@ -299,6 +300,24 @@ describe('WebsiteSettingsSchema', () => {
       // every JS-backed scheme is a real scheme; every scheme has a non-empty picker label.
       for (const n of JS_NAV_EFFECTS) expect(NAV_EFFECTS).toContain(n);
       for (const n of NAV_EFFECTS) expect(NAV_EFFECT_LABELS[n]).toBeTruthy();
+    });
+
+    it('accepts per-effect custom code and websiteEffectsCustomCode applies it only when the effect is "none"', () => {
+      const w = { effects: { navCode: '<style>x</style>', buttonCode: '<style>y</style>', preloaderCode: '<div></div>' } };
+      expect(WebsiteSettingsSchema.parse(w)).toEqual(w);
+
+      // nav/button code → body-end (joined); preloader code → first-body-child overlay.
+      expect(
+        websiteEffectsCustomCode({ navCode: '<style>nav</style>', buttonCode: '<style>btn</style>', preloaderCode: '<div>pre</div>' }),
+      ).toEqual({ bodyEnd: '<style>nav</style>\n<style>btn</style>', preloader: '<div>pre</div>' });
+
+      // A chosen built-in effect makes that slot's custom code INERT (preserved in storage, not applied).
+      expect(websiteEffectsCustomCode({ navEffect: 'box-solid', navCode: '<style>nav</style>' })).toEqual({
+        bodyEnd: '',
+        preloader: undefined,
+      });
+      expect(websiteEffectsCustomCode(undefined)).toEqual({ bodyEnd: '', preloader: undefined });
+      expect(websiteEffectsCustomCode({})).toEqual({ bodyEnd: '', preloader: undefined });
     });
 
     it('accepts the themes opt-in (enableThemes + defaultTheme)', () => {

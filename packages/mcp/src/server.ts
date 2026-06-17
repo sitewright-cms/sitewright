@@ -1,6 +1,13 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { PageSchema, DEFAULT_AGENT_INSTRUCTIONS, COMPONENT_CATALOG } from '@sitewright/schema';
+import {
+  PageSchema,
+  DEFAULT_AGENT_INSTRUCTIONS,
+  COMPONENT_CATALOG,
+  AGENT_GUIDES,
+  GUIDE_TOPICS,
+  type GuideTopic,
+} from '@sitewright/schema';
 import { SitewrightApiError, type Capability, type SitewrightClient } from './client.js';
 import type { BridgeAuth, PendingLogin, ScopeHolder } from './auth.js';
 
@@ -190,6 +197,25 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
         return ok(entry);
       }
       return ok({ components: COMPONENT_CATALOG });
+    },
+  );
+
+  // On-demand reference guides — the detailed how-to for a feature area, kept OUT of the core
+  // instructions (which only list the topics) so the up-front prompt stays small. Static platform
+  // text; no connection or capability needed.
+  server.registerTool(
+    'get_guide',
+    {
+      description: `Fetch the full how-to for one feature area, on demand (the core instructions list these topics). topic = one of: ${GUIDE_TOPICS.join(', ')}.`,
+      inputSchema: { topic: z.string().max(40) },
+    },
+    ({ topic }: { topic: string }) => {
+      const key = topic.trim().toLowerCase();
+      if (!(GUIDE_TOPICS as readonly string[]).includes(key)) {
+        return toolError(`Unknown guide "${topic}" — topics: ${GUIDE_TOPICS.join(', ')}.`);
+      }
+      const guide = AGENT_GUIDES[key as GuideTopic];
+      return ok(`# ${guide.title}\n\n${guide.body.trim()}`);
     },
   );
 

@@ -56,7 +56,7 @@ export function pageHome(assets: Record<string, string>): Page {
            translated value renders in both spots, so locale variants stay in sync for free. -->
       <div class="absolute -bottom-6 -left-8 flex items-center gap-3 rounded-2xl border border-white/15 bg-white/10 px-5 py-4 shadow-xl backdrop-blur-xl">
         <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-secondary text-white">${icon('gauge', 'h-5 w-5')}</span>
-        <span><span class="block text-xl font-bold leading-none" data-sw-text="stat3_n">100</span><span class="mt-1 block text-xs text-white/60" data-sw-text="stat3_l">Avg. Lighthouse score</span></span>
+        <span><span class="block text-xl font-bold leading-none" data-sw-text="stat3_n">100</span><span class="mt-1 block text-xs text-white/60" data-sw-translate="home.stat3_l">Avg. Lighthouse score</span></span>
       </div>
     </div>
   </div>
@@ -64,10 +64,10 @@ export function pageHome(assets: Record<string, string>): Page {
 
 <section class="relative z-10 mx-auto -mt-20 max-w-5xl px-6 lg:-mt-24">
   <dl class="grid grid-cols-2 gap-y-10 rounded-3xl border border-base-200/80 bg-base-100/95 px-6 py-10 shadow-2xl shadow-neutral/10 backdrop-blur-xl md:grid-cols-4">
-    <div class="text-center" data-aos="fade-up"><dt class="bg-gradient-to-br from-primary to-secondary bg-clip-text text-4xl font-bold tracking-tight text-transparent" data-sw-text="stat1_n">120+</dt><dd class="mt-2 text-xs font-medium uppercase tracking-wider text-base-content/50" data-sw-text="stat1_l">Sites shipped</dd></div>
-    <div class="text-center" data-aos="fade-up" data-aos-delay="100"><dt class="bg-gradient-to-br from-primary to-secondary bg-clip-text text-4xl font-bold tracking-tight text-transparent" data-sw-text="stat2_n">9</dt><dd class="mt-2 text-xs font-medium uppercase tracking-wider text-base-content/50" data-sw-text="stat2_l">Years in business</dd></div>
-    <div class="text-center" data-aos="fade-up" data-aos-delay="200"><dt class="bg-gradient-to-br from-primary to-secondary bg-clip-text text-4xl font-bold tracking-tight text-transparent" data-sw-text="stat3_n">100</dt><dd class="mt-2 text-xs font-medium uppercase tracking-wider text-base-content/50" data-sw-text="stat3_l">Avg. Lighthouse score</dd></div>
-    <div class="text-center" data-aos="fade-up" data-aos-delay="300"><dt class="bg-gradient-to-br from-primary to-secondary bg-clip-text text-4xl font-bold tracking-tight text-transparent" data-sw-text="stat4_n">38%</dt><dd class="mt-2 text-xs font-medium uppercase tracking-wider text-base-content/50" data-sw-text="stat4_l">Avg. lift in enquiries</dd></div>
+    <div class="text-center" data-aos="fade-up"><dt class="bg-gradient-to-br from-primary to-secondary bg-clip-text text-4xl font-bold tracking-tight text-transparent" data-sw-text="stat1_n">120+</dt><dd class="mt-2 text-xs font-medium uppercase tracking-wider text-base-content/50" data-sw-translate="home.stat1_l">Sites shipped</dd></div>
+    <div class="text-center" data-aos="fade-up" data-aos-delay="100"><dt class="bg-gradient-to-br from-primary to-secondary bg-clip-text text-4xl font-bold tracking-tight text-transparent" data-sw-text="stat2_n">9</dt><dd class="mt-2 text-xs font-medium uppercase tracking-wider text-base-content/50" data-sw-translate="home.stat2_l">Years in business</dd></div>
+    <div class="text-center" data-aos="fade-up" data-aos-delay="200"><dt class="bg-gradient-to-br from-primary to-secondary bg-clip-text text-4xl font-bold tracking-tight text-transparent" data-sw-text="stat3_n">100</dt><dd class="mt-2 text-xs font-medium uppercase tracking-wider text-base-content/50" data-sw-translate="home.stat3_l">Avg. Lighthouse score</dd></div>
+    <div class="text-center" data-aos="fade-up" data-aos-delay="300"><dt class="bg-gradient-to-br from-primary to-secondary bg-clip-text text-4xl font-bold tracking-tight text-transparent" data-sw-text="stat4_n">38%</dt><dd class="mt-2 text-xs font-medium uppercase tracking-wider text-base-content/50" data-sw-translate="home.stat4_l">Avg. lift in enquiries</dd></div>
   </dl>
 </section>
 

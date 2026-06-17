@@ -83,4 +83,87 @@ export const PAGE_TRANSLATIONS: Record<string, Record<string, string>> = {
   'shop.name': { en: 'Your name', de: 'Ihr Name', es: 'Su nombre' },
   'shop.address': { en: 'Delivery address', de: 'Lieferadresse', es: 'Dirección de entrega' },
   'shop.phone': { en: 'Phone', de: 'Telefon', es: 'Teléfono' },
+
+  // home (migrated from page.data)
+  'home.stat1_l': { de: 'Websites ausgeliefert', es: 'Webs entregadas' },
+  'home.stat2_l': { de: 'Jahre am Markt', es: 'Años en el mercado' },
+  'home.stat3_l': { de: 'Ø Lighthouse-Score', es: 'Lighthouse medio' },
+  'home.stat4_l': { de: 'Ø mehr Anfragen', es: 'Más consultas de media' },
+
+  // contact (migrated from page.data)
+  'contact.c_hours': { de: 'Mo–Fr, 9–18 Uhr (PT)', es: 'Lun–Vie, 9–18 h (PT)' },
+  'contact.c_modal_btn': { de: 'Was passiert im Kennenlern-Gespräch?', es: '¿Qué pasa en la llamada inicial?' },
+  'contact.c_modal_t': { de: 'Ein 20-Minuten-Gespräch, kein Pitch', es: 'Una conversación de 20 minutos, sin discurso de ventas' },
+  'contact.c_form_t': { de: 'Projektanfrage', es: 'Consulta de proyecto' },
+
+  // faq (migrated from page.data)
+  'faq.faq_cta_t': { de: 'Noch Fragen?', es: '¿Sigue con dudas?' },
+  'faq.faq_cta': { de: 'Fragen Sie uns alles', es: 'Pregúntenos lo que sea' },
+
+  // components (migrated from page.data)
+  'components.comp_eyebrow': { de: 'Showcase', es: 'Showcase' },
+  'components.comp_h1': { de: 'Interaktive Komponenten', es: 'Componentes interactivos' },
+  'components.comp_intro': { de: 'Die First-Party-Komponenten, mit denen diese Website gebaut ist — jede in allen Konfigurationen, erst die Standardeinstellungen, dann jede Option. Alles funktioniert mit Tastatur, Touch und ohne JavaScript.', es: 'Los componentes propios con los que está construido este sitio, cada uno en todas sus configuraciones — primero los valores por defecto, después cada opción. Todo funciona con teclado, táctil y sin JavaScript.' },
+
+  // services (migrated from page.data)
+  'services.proc_title': { de: 'Ein einfacher, bewährter Ablauf', es: 'Un proceso simple y probado' },
+  'services.p1_t': { de: 'Entdecken', es: 'Descubrir' },
+  'services.p1_b': { de: 'Ziele, Zielgruppe und die Kennzahlen, die zählen.', es: 'Objetivos, audiencia y las métricas que importan.' },
+  'services.p2_t': { de: 'Gestalten', es: 'Diseñar' },
+  'services.p2_b': { de: 'Oberflächen und ein Markensystem, gemeinsam abgestimmt.', es: 'Interfaces y un sistema de marca, revisados juntos.' },
+  'services.p3_t': { de: 'Bauen', es: 'Construir' },
+  'services.p3_b': { de: 'Schnell, barrierearm, pflegbar, SEO-bereit.', es: 'Rápido, accesible, gestionable, listo para SEO.' },
+  'services.p4_t': { de: 'Launch & Pflege', es: 'Lanzar y cuidar' },
+  'services.p4_b': { de: 'Wir veröffentlichen, messen und verbessern weiter.', es: 'Publicamos, medimos y seguimos mejorando.' },
+  'services.srv_cta': { de: 'Projekt starten', es: 'Empezar un proyecto' },
+
+  // service_web_design (migrated from page.data)
+  'service_web_design.wd_eyebrow': { de: 'Leistung', es: 'Servicio' },
+  'service_web_design.wd_h1': { de: 'Webdesign', es: 'Diseño web' },
+  'service_web_design.wd_intro': { de: 'Unverwechselbare, markengerechte Oberflächen, pixelgenau für jedes Display — vom ersten Wireframe bis zur polierten, barrierearmen UI.', es: 'Interfaces distintivas y fieles a la marca, al píxel en cualquier pantalla — del primer wireframe a una UI pulida y accesible.' },
+  'service_web_design.wd_price_l': { de: 'Typischer Rahmen:', es: 'Rango habitual:' },
+  'service_web_design.wd_1t': { de: 'Designsysteme', es: 'Sistemas de diseño' },
+  'service_web_design.wd_1b': { de: 'Wiederverwendbare Komponenten und Tokens, die mit Ihrer Marke skalieren.', es: 'Componentes y tokens reutilizables que escalan con su marca.' },
+  'service_web_design.wd_2t': { de: 'Responsiv von Haus aus', es: 'Responsivo por defecto' },
+  'service_web_design.wd_2b': { de: 'Jedes Layout ist für Mobil, Tablet und Desktop gestaltet.', es: 'Cada layout se trabaja para móvil, tablet y escritorio.' },
+  'service_web_design.wd_cta': { de: 'Projekt starten', es: 'Empezar un proyecto' },
+
+  // service_seo (migrated from page.data)
+  'service_seo.seo_eyebrow': { de: 'Leistung', es: 'Servicio' },
+  'service_seo.seo_h1': { de: 'SEO & Performance', es: 'SEO y rendimiento' },
+  'service_seo.seo_intro': { de: 'Technisches SEO, Core Web Vitals und Analytics von Tag eins — damit die schnelle, schöne Website, die Sie launchen, auch die ist, die Google belohnt.', es: 'SEO técnico, Core Web Vitals y analítica desde el primer día — para que la web rápida y hermosa que lanza sea la que Google premia.' },
+  'service_seo.seo_price_l': { de: 'Typischer Rahmen:', es: 'Rango habitual:' },
+  'service_seo.seo_1t': { de: 'Core Web Vitals', es: 'Core Web Vitals' },
+  'service_seo.seo_1b': { de: 'Wir tunen LCP, CLS und INP, bis alle Werte grün sind.', es: 'Afinamos LCP, CLS e INP hasta que todo esté en verde.' },
+  'service_seo.seo_2t': { de: 'Technisches SEO', es: 'SEO técnico' },
+  'service_seo.seo_2b': { de: 'Strukturierte Daten, Sitemaps und sauberes, crawlbares Markup.', es: 'Datos estructurados, sitemaps y marcado limpio y rastreable.' },
+  'service_seo.seo_cta': { de: 'Projekt starten', es: 'Empezar un proyecto' },
+
+  // service_pricing (migrated from page.data)
+  'service_pricing.pr_h1': { de: 'Ehrliche Festpreise', es: 'Precios honestos, a alcance cerrado' },
+  'service_pricing.pr_intro': { de: 'Keine Schätzungen, die sich mitten im Projekt verdoppeln. Paket wählen, Zahl kennen, Website bekommen.', es: 'Nada de estimaciones que se duplican a mitad de proyecto. Elija un paquete, conozca la cifra, reciba la web.' },
+  'service_pricing.pr_note': { de: 'Alle Preise in USD, zzgl. Steuern. Größere Vorhaben kalkulieren wir individuell — sprechen Sie uns an.', es: 'Precios en USD, impuestos no incluidos. Los proyectos mayores se presupuestan a medida — consúltenos.' },
+  'service_pricing.pr_cta': { de: 'Projekt starten', es: 'Empezar un proyecto' },
+  'service_pricing.pr_faq': { de: 'FAQ lesen', es: 'Leer las preguntas frecuentes' },
+
+  // about (migrated from page.data)
+  'about.ab_p2': { de: 'Wir glauben: Eine großartige Website ist das fleißigste Mitglied Ihres Teams — schnell, klar und leise überzeugend. Diese Überzeugung prägt jede unserer Entscheidungen.', es: 'Creemos que una gran web es el miembro más trabajador de su equipo: rápida, clara y discretamente persuasiva. Esa convicción guía cada decisión que tomamos.' },
+  'about.val_title': { de: 'Was uns wichtig ist', es: 'Lo que valoramos' },
+  'about.v1_t': { de: 'Handwerk statt Fließband', es: 'Oficio antes que volumen' },
+  'about.v1_b': { de: 'Wir feilen an den Details, die andere überspringen — denn Details sind das, was Menschen spüren.', es: 'Cuidamos los detalles que otros se saltan — porque los detalles son lo que la gente siente.' },
+  'about.v2_t': { de: 'Tempo ist ein Feature', es: 'La velocidad es una funcionalidad' },
+  'about.v2_b': { de: 'Jede Website, die wir ausliefern, ist statisch, optimiert und lädt sofort.', es: 'Cada web que entregamos es estática, optimizada y carga al instante.' },
+  'about.v3_t': { de: 'Klare Worte', es: 'Hablar claro' },
+  'about.v3_b': { de: 'Feste Umfänge, klare Zeitpläne und ehrlicher Rat — auch wenn er uns das Upselling kostet.', es: 'Alcances cerrados, plazos claros y consejo honesto — aunque nos cueste la venta adicional.' },
+  'about.team_title': { de: 'Die Menschen, mit denen Sie arbeiten', es: 'Las personas con las que trabajará' },
+  'about.gal_title': { de: 'Einblicke ins Studio', es: 'Dentro del estudio' },
+  'about.gal_empty': { de: 'Noch keine Fotos — legen Sie welche in den Studio-Ordner.', es: 'Aún no hay fotos — suba algunas a la carpeta Studio.' },
+
+  // careers (migrated from page.data)
+  'careers.ca_h1': { de: 'Machen Sie die beste Arbeit Ihrer Laufbahn', es: 'Venga a hacer el mejor trabajo de su carrera' },
+  'careers.ca_intro': { de: 'Ein kleines Team heißt: Ihre Arbeit geht live, Ihr Name steht darauf, und niemand managt den Manager. Diese Stellen sind gerade offen.', es: 'Un equipo pequeño significa que su trabajo se publica, lleva su nombre y nadie gestiona al gestor. Estas vacantes están abiertas ahora mismo.' },
+  'careers.ca_empty': { de: 'Gerade keine offenen Stellen — aber ein starkes Portfolio lesen wir immer.', es: 'Ahora mismo no hay vacantes — pero un buen portfolio lo leemos siempre.' },
+  'careers.ca_cta_t': { de: 'Ihre Rolle ist nicht dabei?', es: '¿No ve su puesto?' },
+  'careers.ca_cta_b': { de: 'Überzeugen Sie uns. Die besten Leute passen selten in eine Vorlage.', es: 'Convénzanos. La mejor gente rara vez encaja en una plantilla.' },
+  'careers.ca_cta': { de: 'Kontakt aufnehmen', es: 'Escríbanos' },
 };

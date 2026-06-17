@@ -21,9 +21,9 @@ export function pageComponents(): Page {
     },
     source: `<section class="mx-auto max-w-6xl px-6 pb-8 pt-24">
   <div class="nw-rise max-w-2xl">
-    <span class="text-sm font-semibold uppercase tracking-[0.18em] text-primary" data-sw-text="comp_eyebrow">Showcase</span>
-    <h1 class="mt-4 text-4xl font-bold tracking-tight sm:text-6xl" data-sw-text="comp_h1">Interactive components</h1>
-    <p class="mt-5 text-lg leading-relaxed text-base-content/60" data-sw-text="comp_intro">The first-party components this site is built with, each shown in every configuration — defaults first, then each option. Everything works with keyboard, touch, and without JavaScript.</p>
+    <span class="text-sm font-semibold uppercase tracking-[0.18em] text-primary" data-sw-translate="components.comp_eyebrow">Showcase</span>
+    <h1 class="mt-4 text-4xl font-bold tracking-tight sm:text-6xl" data-sw-translate="components.comp_h1">Interactive components</h1>
+    <p class="mt-5 text-lg leading-relaxed text-base-content/60" data-sw-translate="components.comp_intro">The first-party components this site is built with, each shown in every configuration — defaults first, then each option. Everything works with keyboard, touch, and without JavaScript.</p>
   </div>
 </section>
 <section class="mx-auto max-w-6xl px-6 pb-28">

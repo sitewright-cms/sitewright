@@ -40,14 +40,14 @@ export function pagesServices(): Page[] {
 </section>
 <section class="bg-base-200/60">
   <div class="mx-auto max-w-6xl px-6 py-24">
-    <h2 class="text-3xl font-bold tracking-tight sm:text-4xl" data-aos="fade-up" data-sw-text="proc_title">A simple, proven process</h2>
+    <h2 class="text-3xl font-bold tracking-tight sm:text-4xl" data-aos="fade-up" data-sw-translate="services.proc_title">A simple, proven process</h2>
     <ol class="mt-12 grid list-none gap-6 p-0 md:grid-cols-4">
-      <li class="nw-card relative rounded-3xl border border-base-200 bg-base-100 p-7 shadow-sm" data-aos="fade-up"><span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-secondary font-mono text-sm font-bold text-white">01</span><h3 class="mt-4 text-lg font-bold tracking-tight" data-sw-text="p1_t">Discover</h3><p class="mt-1.5 text-sm leading-relaxed text-base-content/60" data-sw-text="p1_b">Goals, audience, and the metrics that matter.</p></li>
-      <li class="nw-card relative rounded-3xl border border-base-200 bg-base-100 p-7 shadow-sm" data-aos="fade-up" data-aos-delay="100"><span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-secondary font-mono text-sm font-bold text-white">02</span><h3 class="mt-4 text-lg font-bold tracking-tight" data-sw-text="p2_t">Design</h3><p class="mt-1.5 text-sm leading-relaxed text-base-content/60" data-sw-text="p2_b">Interfaces and a brand system, reviewed together.</p></li>
-      <li class="nw-card relative rounded-3xl border border-base-200 bg-base-100 p-7 shadow-sm" data-aos="fade-up" data-aos-delay="200"><span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-secondary font-mono text-sm font-bold text-white">03</span><h3 class="mt-4 text-lg font-bold tracking-tight" data-sw-text="p3_t">Build</h3><p class="mt-1.5 text-sm leading-relaxed text-base-content/60" data-sw-text="p3_b">Fast, accessible, content-managed, SEO-ready.</p></li>
-      <li class="nw-card relative rounded-3xl border border-base-200 bg-base-100 p-7 shadow-sm" data-aos="fade-up" data-aos-delay="300"><span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-secondary font-mono text-sm font-bold text-white">04</span><h3 class="mt-4 text-lg font-bold tracking-tight" data-sw-text="p4_t">Launch &amp; care</h3><p class="mt-1.5 text-sm leading-relaxed text-base-content/60" data-sw-text="p4_b">We ship, measure, and keep improving.</p></li>
+      <li class="nw-card relative rounded-3xl border border-base-200 bg-base-100 p-7 shadow-sm" data-aos="fade-up"><span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-secondary font-mono text-sm font-bold text-white">01</span><h3 class="mt-4 text-lg font-bold tracking-tight" data-sw-translate="services.p1_t">Discover</h3><p class="mt-1.5 text-sm leading-relaxed text-base-content/60" data-sw-translate="services.p1_b">Goals, audience, and the metrics that matter.</p></li>
+      <li class="nw-card relative rounded-3xl border border-base-200 bg-base-100 p-7 shadow-sm" data-aos="fade-up" data-aos-delay="100"><span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-secondary font-mono text-sm font-bold text-white">02</span><h3 class="mt-4 text-lg font-bold tracking-tight" data-sw-translate="services.p2_t">Design</h3><p class="mt-1.5 text-sm leading-relaxed text-base-content/60" data-sw-translate="services.p2_b">Interfaces and a brand system, reviewed together.</p></li>
+      <li class="nw-card relative rounded-3xl border border-base-200 bg-base-100 p-7 shadow-sm" data-aos="fade-up" data-aos-delay="200"><span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-secondary font-mono text-sm font-bold text-white">03</span><h3 class="mt-4 text-lg font-bold tracking-tight" data-sw-translate="services.p3_t">Build</h3><p class="mt-1.5 text-sm leading-relaxed text-base-content/60" data-sw-translate="services.p3_b">Fast, accessible, content-managed, SEO-ready.</p></li>
+      <li class="nw-card relative rounded-3xl border border-base-200 bg-base-100 p-7 shadow-sm" data-aos="fade-up" data-aos-delay="300"><span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-secondary font-mono text-sm font-bold text-white">04</span><h3 class="mt-4 text-lg font-bold tracking-tight" data-sw-translate="services.p4_t">Launch &amp; care</h3><p class="mt-1.5 text-sm leading-relaxed text-base-content/60" data-sw-translate="services.p4_b">We ship, measure, and keep improving.</p></li>
     </ol>
-    <div class="mt-12"><a class="btn btn-primary btn-lg gap-2 rounded-full px-8 shadow-lg shadow-primary/25" href="/contact" data-sw-href="href_contact"><span data-sw-text="srv_cta">Start a project</span> ${icon('arrow-right', 'h-5 w-5')}</a></div>
+    <div class="mt-12"><a class="btn btn-primary btn-lg gap-2 rounded-full px-8 shadow-lg shadow-primary/25" href="/contact" data-sw-href="href_contact"><span data-sw-translate="services.srv_cta">Start a project</span> ${icon('arrow-right', 'h-5 w-5')}</a></div>
   </div>
 </section>`,
   },
@@ -64,15 +64,15 @@ export function pagesServices(): Page[] {
     data: { svc_ref: 'svc-design' },
     source: `<section class="mx-auto max-w-4xl px-6 py-24">
   <a class="nw-underline inline-flex items-center gap-1.5 text-sm font-semibold text-primary no-underline" href="{{sw-url page.parent.path}}">${icon('arrow-left', 'h-4 w-4')} {{page.parent.title}}</a>
-  <span class="mt-8 block text-sm font-semibold uppercase tracking-[0.18em] text-primary" data-sw-text="wd_eyebrow">Service</span>
-  <h1 class="mt-3 text-4xl font-bold tracking-tight sm:text-6xl" data-sw-text="wd_h1">Web Design</h1>
-  <p class="mt-5 max-w-2xl text-lg leading-relaxed text-base-content/60" data-sw-text="wd_intro">Distinctive, on-brand interfaces designed pixel-perfect for every screen — from first wireframe to a polished, accessible UI.</p>
-  <p class="mt-6 inline-flex items-center gap-2.5 rounded-full border border-primary/20 bg-primary/5 px-5 py-2.5 text-sm font-semibold text-primary">${icon('tag', 'h-4 w-4')} <span data-sw-text="wd_price_l">Typical engagement:</span> {{lookup (lookup @root.item.services @root.page.data.svc_ref) 'price'}}</p>
+  <span class="mt-8 block text-sm font-semibold uppercase tracking-[0.18em] text-primary" data-sw-translate="service_web_design.wd_eyebrow">Service</span>
+  <h1 class="mt-3 text-4xl font-bold tracking-tight sm:text-6xl" data-sw-translate="service_web_design.wd_h1">Web Design</h1>
+  <p class="mt-5 max-w-2xl text-lg leading-relaxed text-base-content/60" data-sw-translate="service_web_design.wd_intro">Distinctive, on-brand interfaces designed pixel-perfect for every screen — from first wireframe to a polished, accessible UI.</p>
+  <p class="mt-6 inline-flex items-center gap-2.5 rounded-full border border-primary/20 bg-primary/5 px-5 py-2.5 text-sm font-semibold text-primary">${icon('tag', 'h-4 w-4')} <span data-sw-translate="service_web_design.wd_price_l">Typical engagement:</span> {{lookup (lookup @root.item.services @root.page.data.svc_ref) 'price'}}</p>
   <div class="mt-12 grid gap-5 sm:grid-cols-2" data-aos="fade-up">
-    <div class="nw-card rounded-3xl border border-base-200 bg-base-100 p-7 shadow-sm"><span class="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/15 to-secondary/15 text-primary">${icon('layout-grid', 'h-5 w-5')}</span><h3 class="mt-4 font-bold tracking-tight" data-sw-text="wd_1t">Design systems</h3><p class="mt-1.5 text-sm leading-relaxed text-base-content/60" data-sw-text="wd_1b">Reusable components and tokens that scale with your brand.</p></div>
-    <div class="nw-card rounded-3xl border border-base-200 bg-base-100 p-7 shadow-sm"><span class="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/15 to-secondary/15 text-primary">${icon('pen-tool', 'h-5 w-5')}</span><h3 class="mt-4 font-bold tracking-tight" data-sw-text="wd_2t">Responsive by default</h3><p class="mt-1.5 text-sm leading-relaxed text-base-content/60" data-sw-text="wd_2b">Every layout is crafted for mobile, tablet, and desktop.</p></div>
+    <div class="nw-card rounded-3xl border border-base-200 bg-base-100 p-7 shadow-sm"><span class="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/15 to-secondary/15 text-primary">${icon('layout-grid', 'h-5 w-5')}</span><h3 class="mt-4 font-bold tracking-tight" data-sw-translate="service_web_design.wd_1t">Design systems</h3><p class="mt-1.5 text-sm leading-relaxed text-base-content/60" data-sw-translate="service_web_design.wd_1b">Reusable components and tokens that scale with your brand.</p></div>
+    <div class="nw-card rounded-3xl border border-base-200 bg-base-100 p-7 shadow-sm"><span class="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/15 to-secondary/15 text-primary">${icon('pen-tool', 'h-5 w-5')}</span><h3 class="mt-4 font-bold tracking-tight" data-sw-translate="service_web_design.wd_2t">Responsive by default</h3><p class="mt-1.5 text-sm leading-relaxed text-base-content/60" data-sw-translate="service_web_design.wd_2b">Every layout is crafted for mobile, tablet, and desktop.</p></div>
   </div>
-  <div class="mt-12"><a class="btn btn-primary btn-lg gap-2 rounded-full px-8 shadow-lg shadow-primary/25" href="/contact" data-sw-href="href_contact"><span data-sw-text="wd_cta">Start a project</span> ${icon('arrow-right', 'h-5 w-5')}</a></div>
+  <div class="mt-12"><a class="btn btn-primary btn-lg gap-2 rounded-full px-8 shadow-lg shadow-primary/25" href="/contact" data-sw-href="href_contact"><span data-sw-translate="service_web_design.wd_cta">Start a project</span> ${icon('arrow-right', 'h-5 w-5')}</a></div>
 </section>`,
   },
   {
@@ -83,15 +83,15 @@ export function pagesServices(): Page[] {
     data: { svc_ref: 'svc-seo' },
     source: `<section class="mx-auto max-w-4xl px-6 py-24">
   <a class="nw-underline inline-flex items-center gap-1.5 text-sm font-semibold text-primary no-underline" href="{{sw-url page.parent.path}}">${icon('arrow-left', 'h-4 w-4')} {{page.parent.title}}</a>
-  <span class="mt-8 block text-sm font-semibold uppercase tracking-[0.18em] text-primary" data-sw-text="seo_eyebrow">Service</span>
-  <h1 class="mt-3 text-4xl font-bold tracking-tight sm:text-6xl" data-sw-text="seo_h1">SEO &amp; Performance</h1>
-  <p class="mt-5 max-w-2xl text-lg leading-relaxed text-base-content/60" data-sw-text="seo_intro">Technical SEO, Core Web Vitals, and analytics wired in from day one — so the fast, beautiful site you launch is the one Google rewards.</p>
-  <p class="mt-6 inline-flex items-center gap-2.5 rounded-full border border-primary/20 bg-primary/5 px-5 py-2.5 text-sm font-semibold text-primary">${icon('tag', 'h-4 w-4')} <span data-sw-text="seo_price_l">Typical engagement:</span> {{lookup (lookup @root.item.services @root.page.data.svc_ref) 'price'}}</p>
+  <span class="mt-8 block text-sm font-semibold uppercase tracking-[0.18em] text-primary" data-sw-translate="service_seo.seo_eyebrow">Service</span>
+  <h1 class="mt-3 text-4xl font-bold tracking-tight sm:text-6xl" data-sw-translate="service_seo.seo_h1">SEO &amp; Performance</h1>
+  <p class="mt-5 max-w-2xl text-lg leading-relaxed text-base-content/60" data-sw-translate="service_seo.seo_intro">Technical SEO, Core Web Vitals, and analytics wired in from day one — so the fast, beautiful site you launch is the one Google rewards.</p>
+  <p class="mt-6 inline-flex items-center gap-2.5 rounded-full border border-primary/20 bg-primary/5 px-5 py-2.5 text-sm font-semibold text-primary">${icon('tag', 'h-4 w-4')} <span data-sw-translate="service_seo.seo_price_l">Typical engagement:</span> {{lookup (lookup @root.item.services @root.page.data.svc_ref) 'price'}}</p>
   <div class="mt-12 grid gap-5 sm:grid-cols-2" data-aos="fade-up">
-    <div class="nw-card rounded-3xl border border-base-200 bg-base-100 p-7 shadow-sm"><span class="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/15 to-secondary/15 text-primary">${icon('gauge', 'h-5 w-5')}</span><h3 class="mt-4 font-bold tracking-tight" data-sw-text="seo_1t">Core Web Vitals</h3><p class="mt-1.5 text-sm leading-relaxed text-base-content/60" data-sw-text="seo_1b">We tune LCP, CLS, and INP until the scores are green.</p></div>
-    <div class="nw-card rounded-3xl border border-base-200 bg-base-100 p-7 shadow-sm"><span class="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/15 to-secondary/15 text-primary">${icon('search', 'h-5 w-5')}</span><h3 class="mt-4 font-bold tracking-tight" data-sw-text="seo_2t">Technical SEO</h3><p class="mt-1.5 text-sm leading-relaxed text-base-content/60" data-sw-text="seo_2b">Structured data, sitemaps, and clean, crawlable markup.</p></div>
+    <div class="nw-card rounded-3xl border border-base-200 bg-base-100 p-7 shadow-sm"><span class="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/15 to-secondary/15 text-primary">${icon('gauge', 'h-5 w-5')}</span><h3 class="mt-4 font-bold tracking-tight" data-sw-translate="service_seo.seo_1t">Core Web Vitals</h3><p class="mt-1.5 text-sm leading-relaxed text-base-content/60" data-sw-translate="service_seo.seo_1b">We tune LCP, CLS, and INP until the scores are green.</p></div>
+    <div class="nw-card rounded-3xl border border-base-200 bg-base-100 p-7 shadow-sm"><span class="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/15 to-secondary/15 text-primary">${icon('search', 'h-5 w-5')}</span><h3 class="mt-4 font-bold tracking-tight" data-sw-translate="service_seo.seo_2t">Technical SEO</h3><p class="mt-1.5 text-sm leading-relaxed text-base-content/60" data-sw-translate="service_seo.seo_2b">Structured data, sitemaps, and clean, crawlable markup.</p></div>
   </div>
-  <div class="mt-12"><a class="btn btn-primary btn-lg gap-2 rounded-full px-8 shadow-lg shadow-primary/25" href="/contact" data-sw-href="href_contact"><span data-sw-text="seo_cta">Start a project</span> ${icon('arrow-right', 'h-5 w-5')}</a></div>
+  <div class="mt-12"><a class="btn btn-primary btn-lg gap-2 rounded-full px-8 shadow-lg shadow-primary/25" href="/contact" data-sw-href="href_contact"><span data-sw-translate="service_seo.seo_cta">Start a project</span> ${icon('arrow-right', 'h-5 w-5')}</a></div>
 </section>`,
   },
 
@@ -105,8 +105,8 @@ export function pagesServices(): Page[] {
     data: { tab_projects: 'Project work', tab_care: 'Care plans', pr_badge: 'Most popular' },
     source: `<section class="mx-auto max-w-5xl px-6 py-24">
   <a class="nw-underline inline-flex items-center gap-1.5 text-sm font-semibold text-primary no-underline" href="{{sw-url page.parent.path}}">${icon('arrow-left', 'h-4 w-4')} {{page.parent.title}}</a>
-  <h1 class="mt-8 text-4xl font-bold tracking-tight sm:text-6xl" data-sw-text="pr_h1">Honest, fixed-scope pricing</h1>
-  <p class="mt-5 max-w-2xl text-lg leading-relaxed text-base-content/60" data-sw-text="pr_intro">No estimates that double mid-project. Pick a package, know the number, get the site.</p>
+  <h1 class="mt-8 text-4xl font-bold tracking-tight sm:text-6xl" data-sw-translate="service_pricing.pr_h1">Honest, fixed-scope pricing</h1>
+  <p class="mt-5 max-w-2xl text-lg leading-relaxed text-base-content/60" data-sw-translate="service_pricing.pr_intro">No estimates that double mid-project. Pick a package, know the number, get the site.</p>
 
   <!-- First-party TABS (APG pattern): just the component marker + a panel per tab. The
        runtime builds the tablist (buttons + floating selector) from each panel's
@@ -140,10 +140,10 @@ export function pagesServices(): Page[] {
     </div>
   </div>
 
-  <p class="mt-10 text-sm text-base-content/50" data-sw-text="pr_note">All prices in USD, excl. tax. Larger scopes are quoted individually — ask us.</p>
+  <p class="mt-10 text-sm text-base-content/50" data-sw-translate="service_pricing.pr_note">All prices in USD, excl. tax. Larger scopes are quoted individually — ask us.</p>
   <div class="mt-7 flex flex-wrap gap-3">
-    <a class="btn btn-primary btn-lg gap-2 rounded-full px-8 shadow-lg shadow-primary/25" href="/contact" data-sw-href="href_contact"><span data-sw-text="pr_cta">Start a project</span> ${icon('arrow-right', 'h-5 w-5')}</a>
-    <a class="btn btn-ghost btn-lg rounded-full px-8" href="/faq" data-sw-href="href_faq" data-sw-text="pr_faq">Read the FAQ</a>
+    <a class="btn btn-primary btn-lg gap-2 rounded-full px-8 shadow-lg shadow-primary/25" href="/contact" data-sw-href="href_contact"><span data-sw-translate="service_pricing.pr_cta">Start a project</span> ${icon('arrow-right', 'h-5 w-5')}</a>
+    <a class="btn btn-ghost btn-lg rounded-full px-8" href="/faq" data-sw-href="href_faq" data-sw-translate="service_pricing.pr_faq">Read the FAQ</a>
   </div>
 </section>`,
   },

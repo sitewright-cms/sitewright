@@ -270,9 +270,9 @@ describe('component registry', () => {
     expect(tabs.css).not.toContain('[data-sw-block="Tabs"]');
     // Bold tab labels.
     expect(tabs.css).toContain('font-weight:700');
-    // Active tab text is white over the pill; inactive inherits the default colour.
+    // Active tab text uses the on-primary content token over the pill; inactive inherits the default.
     expect(tabs.css).toContain('[aria-selected="true"]');
-    expect(tabs.css).toMatch(/\[aria-selected="true"\][^{]*\{color:#fff\}/);
+    expect(tabs.css).toMatch(/\[aria-selected="true"\][^{]*\{color:var\(--sw-color-primary-content,#fff\)\}/);
   });
 
   it('Tabs has a floating "magic" selector pill that transitions to the active tab', () => {

@@ -127,13 +127,13 @@ describe('cart drawer UI (solid neutral scheme + optimized line)', () => {
     expect(CART_JS).toContain('lockScroll();'); // wired on the open path
   });
 
-  it('uses a SOLID default surface (white bg + explicit dark text) — no transparent chrome neutrals', () => {
-    expect(CART_CSS).toContain('background:#fff;color:#1f2937;color-scheme:light'); // dialog default scheme
-    // The structural neutrals (dividers, borders, muted text, fills) are all solid hex, not rgba(0,0,0,*).
-    expect(CART_CSS).not.toContain('border-bottom:1px solid rgba(0,0,0');
-    expect(CART_CSS).not.toContain('border-top:1px solid rgba(0,0,0');
-    expect(CART_CSS).not.toContain('color:rgba(0,0,0'); // no semi-transparent text
-    // Shadows / backdrop / ripple legitimately stay alpha (overlays, not "neutral" chrome colors).
+  it('uses token-based surfaces that flip with the colour scheme (light fallbacks keep light mode unchanged)', () => {
+    // The drawer surface reads the base tokens (flips dark) instead of a hard-coded white/dark pair.
+    expect(CART_CSS).toContain('background:var(--sw-color-base-100,#fff);color:var(--sw-color-base-content,#1f2937)');
+    // color-scheme is no longer forced to light — it inherits the document (dark on a dark site) so
+    // native form controls in the drawer follow the active scheme.
+    expect(CART_CSS).not.toContain('color-scheme:light');
+    // Surfaces stay SOLID (the base-100/200/300 tokens are opaque); only shadows/backdrop/ripple keep alpha.
     expect(CART_CSS).toContain('box-shadow:-8px 0 32px rgba(0,0,0,.25)');
     expect(CART_CSS).toContain('dialog::backdrop{background:rgba(0,0,0,.35)');
   });
@@ -144,7 +144,7 @@ describe('cart drawer UI (solid neutral scheme + optimized line)', () => {
     expect(CART_JS).toContain('img.src=it.image'); // src via property, never innerHTML
     expect(CART_JS).toContain("img.referrerPolicy='no-referrer'"); // no page-URL leak on a 3rd-party image load
     expect(CART_JS).toContain('img.onerror='); // a broken image drops its tile (no broken-image glyph)
-    expect(CART_CSS).toContain('[data-sw-part="thumb"]{flex:none;width:3.5rem;height:3.5rem;padding:.25rem;border:1px solid #e5e7eb;border-radius:.5rem;background:#f3f4f6');
+    expect(CART_CSS).toContain('[data-sw-part="thumb"]{flex:none;width:3.5rem;height:3.5rem;padding:.25rem;border:1px solid var(--sw-color-base-300,#e5e7eb);border-radius:.5rem;background:var(--sw-color-base-200,#f3f4f6)');
     expect(CART_CSS).toContain('[data-sw-part="thumb"] img{width:100%;height:100%;object-fit:cover');
   });
 
@@ -159,10 +159,10 @@ describe('cart drawer UI (solid neutral scheme + optimized line)', () => {
 
   it('renders the qty stepper as a COMPACT pill button group (Lucide icons, 1.5rem buttons) with a bigger gap to the base price', () => {
     // A PILL outer border (border-radius:2rem) on the group container; borderless 1.5rem buttons; the value flanked by dividers.
-    expect(CART_CSS).toContain('[data-sw-part="qty"]{display:inline-flex;align-items:stretch;margin-left:.35rem;border:1px solid #d1d5db;border-radius:2rem;overflow:hidden}');
+    expect(CART_CSS).toContain('[data-sw-part="qty"]{display:inline-flex;align-items:stretch;margin-left:.35rem;border:1px solid var(--sw-color-base-300,#d1d5db);border-radius:2rem;overflow:hidden}');
     expect(CART_CSS).toContain('[data-sw-part="qty"] button{display:flex;align-items:center;justify-content:center;width:1.5rem;height:1.5rem;border:0;');
     expect(CART_CSS).toContain('[data-sw-part="qty"] button svg{width:.875rem;height:.875rem}'); // icon sizing
-    expect(CART_CSS).toContain('[data-sw-part="qty"]>span{display:flex;align-items:center;justify-content:center;min-width:1.5rem;padding:0 .25rem;border-left:1px solid #d1d5db;border-right:1px solid #d1d5db;');
+    expect(CART_CSS).toContain('[data-sw-part="qty"]>span{display:flex;align-items:center;justify-content:center;min-width:1.5rem;padding:0 .25rem;border-left:1px solid var(--sw-color-base-300,#d1d5db);border-right:1px solid var(--sw-color-base-300,#d1d5db);');
     // The +/- buttons use inline Lucide minus/plus SVGs, not text glyphs.
     expect(CART_JS).toContain('function signIcon(isPlus)');
     expect(CART_JS).toContain("bar.setAttribute('d','M5 12h14')"); // minus bar

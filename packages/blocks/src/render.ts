@@ -198,7 +198,7 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
   // Base layer (modern-normalize + platform defaults) FIRST so the skeleton, brand
   // vars, author criticalCss and the unlayered Tailwind utilities all override it.
   const css = `${baseStyles()}\n${previewStyles()}\n${brandToCss(brand)}${
-    colorScheme?.enabled ? `\n${colorSchemeCss()}` : ''
+    colorScheme?.enabled ? `\n${colorSchemeCss(brand.colors)}` : ''
   }`;
   // Opt-in color schemes pin the project default onto <html data-theme> ('auto' emits nothing →
   // the prefers-color-scheme media query in the CSS above governs).

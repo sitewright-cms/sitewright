@@ -14,13 +14,15 @@
 // - First-party, audited, static code only; tenants add only the marker classes.
 /**
  * The ripple stylesheet. `.waves-effect` clips its overflow so the expanding circle
- * stays inside; `.waves-ripple` is the injected span that scales + fades. `waves-light`
- * tints the ripple white (for dark/colored buttons); default is a subtle dark tint.
+ * stays inside; `.waves-ripple` is the injected span that scales + fades. The default tint
+ * derives from the base-content token so it INVERTS with the palette (a dark tint on a light
+ * surface, a light tint on a dark one); `waves-light` forces a white tint for surfaces that are
+ * dark in BOTH schemes (e.g. a coloured button).
  */
 export const RIPPLE_CSS = [
   '@media (prefers-reduced-motion: no-preference){',
   '.waves-effect{position:relative;overflow:hidden;-webkit-tap-highlight-color:transparent}',
-  '.waves-ripple{position:absolute;border-radius:50%;pointer-events:none;background:rgba(0,0,0,.2);transform:scale(0);opacity:.5;will-change:transform,opacity}',
+  '.waves-ripple{position:absolute;border-radius:50%;pointer-events:none;background:color-mix(in oklab,var(--sw-color-base-content,#000) 20%,transparent);transform:scale(0);opacity:.5;will-change:transform,opacity}',
   '.waves-effect.waves-light .waves-ripple{background:rgba(255,255,255,.45)}',
   '.waves-rippling{animation:sw-waves .6s ease-out forwards}',
   '@keyframes sw-waves{to{transform:scale(1);opacity:0}}',

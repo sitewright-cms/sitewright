@@ -34,9 +34,45 @@ describe('colorSchemeCss — opt-in dark token block', () => {
     expect(css).not.toContain('[data-theme');
   });
 
-  it('does not touch the brand roles (primary/secondary/accent kept; brand-shade tuning is a follow-up)', () => {
-    expect(css).not.toContain('--color-primary');
+  it('the no-arg form is neutral-only — no brand tokens (backwards compatible)', () => {
     expect(css).not.toContain('--sw-color-primary');
+    expect(css).not.toContain('--sw-color-accent');
+    expect(css).not.toContain('-primary-content');
+  });
+});
+
+describe('colorSchemeCss(brandColors) — dark-tuned brand shades + content tokens', () => {
+  // primary indigo L≈0.51 (below the 0.6 floor → lifted), accent amber L≈0.77 (already above).
+  const colors = { primary: '#4f46e5', secondary: '#0ea5e9', accent: '#f59e0b' } as const;
+  const css = colorSchemeCss(colors);
+
+  it('lifts a dark brand fill to the lightness floor in the dark block, preserving hue', () => {
+    expect(css).toMatch(/--sw-color-primary:oklch\(0\.62 [\d.]+ 276/);
+  });
+
+  it('leaves an already-light brand fill above the floor (not pulled down)', () => {
+    const m = /--sw-color-accent:oklch\(([\d.]+) /.exec(css);
+    expect(m, 'accent fill emitted').not.toBeNull();
+    expect(Number(m![1])).toBeGreaterThan(0.6);
+  });
+
+  it('derives text-on-brand --sw-color-*-content for BOTH light (:root) and dark', () => {
+    // a leading light :root{} block carries the light content tokens
+    expect(css).toMatch(/^:root\{[^}]*--sw-color-primary-content:/);
+    // the dark block also carries a (possibly different) content token
+    expect(css).toMatch(/data-sw-scheme="dark"\]\{[^}]*--sw-color-primary-content:/);
+  });
+
+  it('does NOT touch the DaisyUI --color-* brand namespace (it is a static default palette)', () => {
+    expect(css).not.toContain('--color-primary');
+    expect(css).not.toContain('--color-secondary');
+    expect(css).not.toContain('--color-accent');
+  });
+
+  it('skips non-hex / absent roles gracefully but still emits the neutral block', () => {
+    const partial = colorSchemeCss({ primary: 'rebeccapurple' });
+    expect(partial).not.toContain('--sw-color-primary:oklch');
+    expect(partial).toContain('--sw-color-base-100'); // neutral block intact
   });
 });
 

@@ -293,9 +293,9 @@ const MODAL_CSS = [
   // the scroll chaining to the (locked) page behind it.
   `${M} [data-sw-part="body"]{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain}`,
   // Auto-injected close button: brand-primary rounded button OVERHANGING the top-right corner
-  // (needs the dialog's overflow:visible), white icon; hover zooms the button and spins the icon 180°.
+  // (needs the dialog's overflow:visible), on-primary icon colour; hover zooms the button and spins the icon 180°.
   // It's a descendant of the marker in both forms.
-  `${M} [data-sw-part="autoclose"]{position:absolute;top:-1rem;right:-1.5rem;z-index:1;display:inline-flex;align-items:center;justify-content:center;width:3.25rem;height:2.25rem;padding:0;border:0;border-radius:.5rem;background:var(--sw-color-primary,#4f46e5);color:#fff;cursor:pointer;transition:transform .2s ease}`,
+  `${M} [data-sw-part="autoclose"]{position:absolute;top:-1rem;right:-1.5rem;z-index:1;display:inline-flex;align-items:center;justify-content:center;width:3.25rem;height:2.25rem;padding:0;border:0;border-radius:.5rem;background:var(--sw-color-primary,#4f46e5);color:var(--sw-color-primary-content,#fff);cursor:pointer;transition:transform .2s ease}`,
   `${M} [data-sw-part="autoclose"]>svg{width:1.75rem;height:1.75rem;display:block;transition:transform .2s ease}`,
   `${M} [data-sw-part="autoclose"]:hover{transform:scale(1.1)}`,
   `${M} [data-sw-part="autoclose"]:hover>svg{transform:rotate(180deg)}`,
@@ -407,9 +407,9 @@ const MODAL_JS = `(function(){
 // exactly one authoring form, so the extra attribute was pure duplication.
 const COOKIE_CONSENT_CSS = [
   '[data-sw-component="cookie-consent"][hidden]{display:none}',
-  '[data-sw-component="cookie-consent"]{position:fixed;left:1rem;right:1rem;bottom:1rem;z-index:9998;display:flex;flex-wrap:wrap;align-items:center;gap:1rem;padding:1rem 1.25rem;background:#fff;border:1px solid rgba(0,0,0,.12);border-radius:.5rem;box-shadow:0 6px 24px rgba(0,0,0,.15)}',
+  '[data-sw-component="cookie-consent"]{position:fixed;left:1rem;right:1rem;bottom:1rem;z-index:9998;display:flex;flex-wrap:wrap;align-items:center;gap:1rem;padding:1rem 1.25rem;background:var(--sw-color-base-100,#fff);color:var(--sw-color-base-content,#1a1a23);border:1px solid color-mix(in oklab,var(--sw-color-base-content,#000) 12%,transparent);border-radius:.5rem;box-shadow:0 6px 24px rgba(0,0,0,.15)}',
   '[data-sw-component="cookie-consent"] p{margin:0;flex:1;min-width:12rem;font-size:.875rem}',
-  '[data-sw-component="cookie-consent"] [data-sw-part="accept"]{border:0;border-radius:.375rem;padding:.5rem 1rem;background:var(--sw-color-primary,#0a7a5a);color:#fff;cursor:pointer}',
+  '[data-sw-component="cookie-consent"] [data-sw-part="accept"]{border:0;border-radius:.375rem;padding:.5rem 1rem;background:var(--sw-color-primary,#0a7a5a);color:var(--sw-color-primary-content,#fff);cursor:pointer}',
 ].join('');
 
 // State is carried by the \`hidden\` attribute (already in the server HTML and
@@ -452,14 +452,14 @@ const TABS_CSS = [
   // label (block + bottom margin so it reads as a heading in the no-JS stack); the runtime
   // removes the wrapper from the panel once it builds the button.
   '[data-sw-component="tabs"] [data-sw-part="tabtitle"]{display:flex;align-items:center;gap:.4rem;font-weight:700;margin-block-end:.5rem}',
-  // Hover → primary; the active tab (over the primary pill) stays white even on hover.
+  // Hover → primary; the active tab (over the primary pill) keeps the on-primary text colour even on hover.
   '[data-sw-component="tabs"] [data-sw-part="tab"]:hover{color:var(--sw-color-primary,#0a7a5a)}',
-  '[data-sw-component="tabs"] [data-sw-part="tab"][aria-selected="true"],[data-sw-component="tabs"] [data-sw-part="tab"][aria-selected="true"]:hover{color:#fff}',
+  '[data-sw-component="tabs"] [data-sw-part="tab"][aria-selected="true"],[data-sw-component="tabs"] [data-sw-part="tab"][aria-selected="true"]:hover{color:var(--sw-color-primary-content,#fff)}',
   // Press ripple ("waves") on the buttons — self-contained so it ships with the Tabs
   // bundle (the shared .waves-effect runtime only binds elements present at load, but
-  // the tab buttons are generated at runtime). Primary tint inactive, white over the pill.
+  // the tab buttons are generated at runtime). Primary tint inactive, on-primary tint over the pill.
   '[data-sw-component="tabs"] [data-sw-part="tab"] .sw-ripple{position:absolute;border-radius:9999px;pointer-events:none;transform:scale(0);background:color-mix(in srgb,var(--sw-color-primary,#0a7a5a) 28%,transparent);animation:sw-tab-ripple .6s ease-out forwards}',
-  '[data-sw-component="tabs"] [data-sw-part="tab"][aria-selected="true"] .sw-ripple{background:rgb(255 255 255/.5)}',
+  '[data-sw-component="tabs"] [data-sw-part="tab"][aria-selected="true"] .sw-ripple{background:color-mix(in srgb,var(--sw-color-primary-content,#fff) 50%,transparent)}',
   '@keyframes sw-tab-ripple{to{transform:scale(1);opacity:0}}',
   // One panel at a time once enhanced; reset the UA figure/dl side margins (modern-normalize
   // keeps them — a <figure> panel would otherwise inset its content by 40px).
@@ -571,8 +571,8 @@ const TABS_JS = `(function(){
 const FORM_CSS = [
   '[data-sw-block="Form"] [data-sw-part="field"]{display:block;margin-bottom:1rem}',
   '[data-sw-block="Form"] [data-sw-part="label"]{display:block;margin-bottom:.25rem;font-size:.875rem}',
-  '[data-sw-block="Form"] input,[data-sw-block="Form"] textarea,[data-sw-block="Form"] select{width:100%;padding:.5rem .625rem;border:1px solid rgba(0,0,0,.2);border-radius:.375rem;font:inherit}',
-  '[data-sw-block="Form"] [data-sw-part="submit"]{border:0;border-radius:.375rem;padding:.5rem 1.25rem;background:var(--sw-color-primary,#0a7a5a);color:#fff;cursor:pointer}',
+  '[data-sw-block="Form"] input,[data-sw-block="Form"] textarea,[data-sw-block="Form"] select{width:100%;padding:.5rem .625rem;border:1px solid color-mix(in oklab,var(--sw-color-base-content,#000) 20%,transparent);border-radius:.375rem;font:inherit}',
+  '[data-sw-block="Form"] [data-sw-part="submit"]{border:0;border-radius:.375rem;padding:.5rem 1.25rem;background:var(--sw-color-primary,#0a7a5a);color:var(--sw-color-primary-content,#fff);cursor:pointer}',
   '[data-sw-block="Form"] [data-sw-part="submit"][disabled]{opacity:.6;cursor:progress}',
   // Honeypot: take it out of the layout + the a11y tree, off-screen (not display:none,
   // which some bots skip). Real users never see or tab to it.

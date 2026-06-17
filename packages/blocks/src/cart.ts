@@ -41,6 +41,13 @@ function hasCartMarker(s: string): boolean {
  * Cart stylesheet. The floating toggle + drawer are hidden until the runtime adds
  * `data-sw-enhanced` (PE-first: no inert UI before JS). Brand-themed via the same
  * `--sw-color-primary` custom property as the other components.
+ *
+ * Dark-mode aware: every surface/text/divider reads a `--sw-color-*` token whose FALLBACK is the
+ * original light value, so light mode is byte-for-byte unchanged (base-200/base-300 are normally
+ * unset → fallback wins) while dark mode flips with the palette. Labels on the brand fill use the
+ * derived `--sw-color-primary-content` token, and `color-scheme` is inherited (not forced) so native
+ * form controls in the drawer follow the active scheme. Semantic reds (count/remove/error) and the
+ * shadow/backdrop/ripple alphas are intentionally scheme-independent.
  */
 export const CART_CSS = [
   '[data-sw-cart]{display:none}',
@@ -48,7 +55,7 @@ export const CART_CSS = [
   // Floating toggle button (bottom-right) with an item-count badge. position/overflow are !important so
   // the generic `.waves-effect` rule below (position:relative; overflow:hidden) can't unpin the floating
   // toggle or clip its count badge.
-  '[data-sw-cart] [data-sw-part="toggle"]{position:fixed !important;overflow:visible !important;right:1rem;bottom:1rem;z-index:9997;display:flex;align-items:center;justify-content:center;width:3.25rem;height:3.25rem;border:0;border-radius:9999px;background:var(--sw-color-primary,#0a7a5a);color:#fff;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.25);transition:transform .15s ease,box-shadow .15s ease}',
+  '[data-sw-cart] [data-sw-part="toggle"]{position:fixed !important;overflow:visible !important;right:1rem;bottom:1rem;z-index:9997;display:flex;align-items:center;justify-content:center;width:3.25rem;height:3.25rem;border:0;border-radius:9999px;background:var(--sw-color-primary,#0a7a5a);color:var(--sw-color-primary-content,#fff);cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.25);transition:transform .15s ease,box-shadow .15s ease}',
   '[data-sw-cart] [data-sw-part="toggle"] svg{width:1.5rem;height:1.5rem}',
   '[data-sw-cart] [data-sw-part="count"]{position:absolute;top:-.25rem;right:-.25rem;min-width:1.25rem;height:1.25rem;padding:0 .25rem;border-radius:9999px;background:#b00020;color:#fff;font-size:.75rem;line-height:1.25rem;text-align:center}',
   '[data-sw-cart] [data-sw-part="count"][hidden]{display:none}',
@@ -61,10 +68,11 @@ export const CART_CSS = [
   // sets `max-width:calc(100% - 6px - 2em)` AND `max-height:calc(100% - 6px - 2em)` (~38px at a 16px font),
   // so without `max-height` the drawer renders ~38px short of the viewport bottom despite `height:100vh`.
   // dvh (with a vh fallback) makes "full height" track the *visible* viewport on mobile browser chrome.
-  // Solid DEFAULT surface: a white background + an explicit dark text colour (rather than inheriting the
-  // page's, which may be light-on-light here) and `color-scheme:light` so native form controls render
-  // light. All chrome neutrals below are SOLID (non-transparent); only shadows/backdrop/ripple stay alpha.
-  '[data-sw-cart] dialog{position:fixed;inset:0 0 0 auto;margin:0;width:min(92vw,24rem);max-width:100vw;max-height:100vh;max-height:100dvh;border:0;padding:0;background:#fff;color:#1f2937;color-scheme:light;box-shadow:-8px 0 32px rgba(0,0,0,.25);transform:translateX(100%);transition:transform .3s cubic-bezier(.4,0,.2,1),overlay .3s allow-discrete,display .3s allow-discrete}',
+  // Solid surface from the base tokens: the background + text flip with the scheme (light fallbacks keep
+  // light mode identical), and `color-scheme` is INHERITED from the document (the platform sets
+  // `color-scheme:dark` on :root in dark mode) so native form controls in the drawer follow suit. Chrome
+  // surfaces stay SOLID (the base-100/200/300 tokens are opaque); only shadows/backdrop/ripple use alpha.
+  '[data-sw-cart] dialog{position:fixed;inset:0 0 0 auto;margin:0;width:min(92vw,24rem);max-width:100vw;max-height:100vh;max-height:100dvh;border:0;padding:0;background:var(--sw-color-base-100,#fff);color:var(--sw-color-base-content,#1f2937);box-shadow:-8px 0 32px rgba(0,0,0,.25);transform:translateX(100%);transition:transform .3s cubic-bezier(.4,0,.2,1),overlay .3s allow-discrete,display .3s allow-discrete}',
   // flex/height live on [open] ONLY — a closed <dialog> must keep its UA display:none (else it renders
   // off-screen but counts as visible). When open it is a full-height vertical flex column.
   '[data-sw-cart] dialog[open]{transform:translateX(0);height:100vh;height:100dvh;display:flex;flex-direction:column}',
@@ -73,7 +81,7 @@ export const CART_CSS = [
   '[data-sw-cart] dialog[open]::backdrop{opacity:1}',
   '@starting-style{[data-sw-cart] dialog[open]::backdrop{opacity:0}}',
   '@media (prefers-reduced-motion:reduce){[data-sw-cart] dialog,[data-sw-cart] dialog::backdrop{transition:none}}',
-  '[data-sw-cart] [data-sw-part="head"]{flex:none;display:flex;align-items:center;justify-content:space-between;padding:1rem 1.25rem;border-bottom:1px solid #e5e7eb}',
+  '[data-sw-cart] [data-sw-part="head"]{flex:none;display:flex;align-items:center;justify-content:space-between;padding:1rem 1.25rem;border-bottom:1px solid var(--sw-color-base-300,#e5e7eb)}',
   '[data-sw-cart] [data-sw-part="head"] h2{margin:0;font-size:1.125rem}',
   // Flex-centered SQUARE so the (symmetric) icon sits at the box center → the hover rotate() pivots dead-centre
   // (a baseline-positioned text glyph sits off-centre and appears to hinge around an edge when rotated).
@@ -86,47 +94,47 @@ export const CART_CSS = [
   '[data-sw-cart] [data-sw-part="items"]{list-style:none;margin:0;padding:.5rem 1.25rem;flex:1 1 auto;min-height:0;overflow-y:auto}',
   // A cart line: an optional thumbnail beside a body that stacks the name over ONE controls row
   // (base price · qty stepper · remove · line subtotal). Solid neutral divider.
-  '[data-sw-cart] [data-sw-part="line"]{display:flex;gap:.75rem;align-items:flex-start;padding:.75rem 0;border-bottom:1px solid #f0f0f0}',
+  '[data-sw-cart] [data-sw-part="line"]{display:flex;gap:.75rem;align-items:flex-start;padding:.75rem 0;border-bottom:1px solid var(--sw-color-base-300,#f0f0f0)}',
   // Product thumbnail: a solid neutral tile (small padding, slightly-rounded border) framing the image.
-  '[data-sw-cart] [data-sw-part="thumb"]{flex:none;width:3.5rem;height:3.5rem;padding:.25rem;border:1px solid #e5e7eb;border-radius:.5rem;background:#f3f4f6;display:flex;align-items:center;justify-content:center}',
+  '[data-sw-cart] [data-sw-part="thumb"]{flex:none;width:3.5rem;height:3.5rem;padding:.25rem;border:1px solid var(--sw-color-base-300,#e5e7eb);border-radius:.5rem;background:var(--sw-color-base-200,#f3f4f6);display:flex;align-items:center;justify-content:center}',
   '[data-sw-cart] [data-sw-part="thumb"] img{width:100%;height:100%;object-fit:cover;border-radius:.25rem;display:block}',
   '[data-sw-cart] [data-sw-part="line-body"]{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:.4rem}',
   '[data-sw-cart] [data-sw-part="line-name"]{font-weight:600;line-height:1.3}',
   // The controls row; the line subtotal is pushed to the right edge via margin-left:auto.
   '[data-sw-cart] [data-sw-part="line-controls"]{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}',
-  '[data-sw-cart] [data-sw-part="line-price"]{color:#6b7280;font-size:.875rem}',
+  '[data-sw-cart] [data-sw-part="line-price"]{color:color-mix(in oklab,var(--sw-color-base-content,#1f2937) 58%,transparent);font-size:.875rem}',
   '[data-sw-cart] [data-sw-part="line-subtotal"]{margin-left:auto;font-weight:600;font-size:.9375rem}',
   // Quantity = a COMPACT connected button group [- n +]: a PILL outer border (border-radius:2rem) + the
   // buttons borderless with inline Lucide minus/plus icons, the value flanked by dividers (its left/right
   // borders). margin-left leaves a slightly bigger gap to the base price (on top of the row gap).
-  '[data-sw-cart] [data-sw-part="qty"]{display:inline-flex;align-items:stretch;margin-left:.35rem;border:1px solid #d1d5db;border-radius:2rem;overflow:hidden}',
-  '[data-sw-cart] [data-sw-part="qty"] button{display:flex;align-items:center;justify-content:center;width:1.5rem;height:1.5rem;border:0;background:#fff;color:#1f2937;cursor:pointer}',
+  '[data-sw-cart] [data-sw-part="qty"]{display:inline-flex;align-items:stretch;margin-left:.35rem;border:1px solid var(--sw-color-base-300,#d1d5db);border-radius:2rem;overflow:hidden}',
+  '[data-sw-cart] [data-sw-part="qty"] button{display:flex;align-items:center;justify-content:center;width:1.5rem;height:1.5rem;border:0;background:var(--sw-color-base-100,#fff);color:var(--sw-color-base-content,#1f2937);cursor:pointer}',
   '[data-sw-cart] [data-sw-part="qty"] button svg{width:.875rem;height:.875rem}',
-  '[data-sw-cart] [data-sw-part="qty"]>span{display:flex;align-items:center;justify-content:center;min-width:1.5rem;padding:0 .25rem;border-left:1px solid #d1d5db;border-right:1px solid #d1d5db;background:#fff;font-variant-numeric:tabular-nums}',
+  '[data-sw-cart] [data-sw-part="qty"]>span{display:flex;align-items:center;justify-content:center;min-width:1.5rem;padding:0 .25rem;border-left:1px solid var(--sw-color-base-300,#d1d5db);border-right:1px solid var(--sw-color-base-300,#d1d5db);background:var(--sw-color-base-100,#fff);font-variant-numeric:tabular-nums}',
   // Remove = a red trash icon button (square hit area; light-red hover wash).
   '[data-sw-cart] [data-sw-part="remove"]{display:inline-flex;align-items:center;justify-content:center;width:1.75rem;height:1.75rem;padding:0;border:0;border-radius:.375rem;background:none;color:#dc2626;cursor:pointer;transition:background .15s ease}',
   '[data-sw-cart] [data-sw-part="remove"] svg{width:1.125rem;height:1.125rem}',
-  '[data-sw-cart] [data-sw-part="empty"]{padding:2rem 1.25rem;color:#6b7280;text-align:center}',
+  '[data-sw-cart] [data-sw-part="empty"]{padding:2rem 1.25rem;color:color-mix(in oklab,var(--sw-color-base-content,#1f2937) 58%,transparent);text-align:center}',
   // The foot is a fixed-size flex item; the list (flex:1) above it consumes the free space, so the foot
   // pins to the bottom without needing `margin-top:auto`. flex:none → it never shrinks the checkout area.
-  '[data-sw-cart] [data-sw-part="foot"]{flex:none;padding:1rem 1.25rem;border-top:1px solid #e5e7eb}',
+  '[data-sw-cart] [data-sw-part="foot"]{flex:none;padding:1rem 1.25rem;border-top:1px solid var(--sw-color-base-300,#e5e7eb)}',
   '[data-sw-cart] [data-sw-part="total"]{display:flex;justify-content:space-between;font-weight:700;margin-bottom:.25rem}',
-  '[data-sw-cart] [data-sw-part="note"]{font-size:.75rem;color:#6b7280;margin:.25rem 0 .75rem}',
-  '[data-sw-cart] [data-sw-part="channel"]{display:block;width:100%;border:0;border-radius:.375rem;padding:.625rem 1rem;margin-top:.5rem;background:var(--sw-color-primary,#0a7a5a);color:#fff;cursor:pointer;text-align:center;font:inherit;transition:filter .15s ease}',
-  '[data-sw-cart] [data-sw-part="clear"]{display:block;width:100%;border:0;background:none;color:#6b7280;cursor:pointer;margin-top:.5rem;font-size:.875rem}',
+  '[data-sw-cart] [data-sw-part="note"]{font-size:.75rem;color:color-mix(in oklab,var(--sw-color-base-content,#1f2937) 58%,transparent);margin:.25rem 0 .75rem}',
+  '[data-sw-cart] [data-sw-part="channel"]{display:block;width:100%;border:0;border-radius:.375rem;padding:.625rem 1rem;margin-top:.5rem;background:var(--sw-color-primary,#0a7a5a);color:var(--sw-color-primary-content,#fff);cursor:pointer;text-align:center;font:inherit;transition:filter .15s ease}',
+  '[data-sw-cart] [data-sw-part="clear"]{display:block;width:100%;border:0;background:none;color:color-mix(in oklab,var(--sw-color-base-content,#1f2937) 58%,transparent);cursor:pointer;margin-top:.5rem;font-size:.875rem}',
   // Inline order form (the `form` channel).
   '[data-sw-cart] [data-sw-part="order"]{margin-top:.75rem}',
   '[data-sw-cart] [data-sw-part="order-field"]{display:block;margin-bottom:.5rem;font-size:.8125rem}',
   '[data-sw-cart] [data-sw-part="order-field"]>span{display:block;margin-bottom:.15rem}',
-  '[data-sw-cart] [data-sw-part="order-field"] input,[data-sw-cart] [data-sw-part="order-field"] textarea{width:100%;padding:.4rem .5rem;border:1px solid #d1d5db;border-radius:.375rem;font:inherit}',
-  '[data-sw-cart] [data-sw-part="order-submit"]{display:block;width:100%;border:0;border-radius:.375rem;padding:.5rem 1rem;margin-top:.25rem;background:var(--sw-color-primary,#0a7a5a);color:#fff;cursor:pointer;font:inherit;transition:filter .15s ease}',
+  '[data-sw-cart] [data-sw-part="order-field"] input,[data-sw-cart] [data-sw-part="order-field"] textarea{width:100%;padding:.4rem .5rem;border:1px solid var(--sw-color-base-300,#d1d5db);border-radius:.375rem;font:inherit}',
+  '[data-sw-cart] [data-sw-part="order-submit"]{display:block;width:100%;border:0;border-radius:.375rem;padding:.5rem 1rem;margin-top:.25rem;background:var(--sw-color-primary,#0a7a5a);color:var(--sw-color-primary-content,#fff);cursor:pointer;font:inherit;transition:filter .15s ease}',
   '[data-sw-cart] [data-sw-part="order-submit"][disabled]{opacity:.6;cursor:progress}',
   '[data-sw-cart] [data-sw-part="order-status"]{margin:.5rem 0 0;font-size:.8125rem}',
   // Collapsible per-channel input form (whatsapp/mailto with custom fields). Reuses the order-field
   // input styling above; hidden until the channel button toggles it open.
-  '[data-sw-cart] [data-sw-part="channel-form"]{margin:.25rem 0;padding:.625rem .75rem;border:1px solid #e5e7eb;border-radius:.375rem;background:#f9fafb}',
+  '[data-sw-cart] [data-sw-part="channel-form"]{margin:.25rem 0;padding:.625rem .75rem;border:1px solid var(--sw-color-base-300,#e5e7eb);border-radius:.375rem;background:var(--sw-color-base-200,#f9fafb)}',
   '[data-sw-cart] [data-sw-part="channel-form"][hidden]{display:none}',
-  '[data-sw-cart] [data-sw-part="channel-submit"]{display:block;width:100%;border:0;border-radius:.375rem;padding:.5rem 1rem;margin-top:.25rem;background:var(--sw-color-primary,#0a7a5a);color:#fff;cursor:pointer;font:inherit;transition:filter .15s ease}',
+  '[data-sw-cart] [data-sw-part="channel-submit"]{display:block;width:100%;border:0;border-radius:.375rem;padding:.5rem 1rem;margin-top:.25rem;background:var(--sw-color-primary,#0a7a5a);color:var(--sw-color-primary-content,#fff);cursor:pointer;font:inherit;transition:filter .15s ease}',
   '[data-sw-cart] [data-sw-part="channel-submit"]:hover{filter:brightness(.92)}',
   '[data-sw-cart] [data-sw-part="channel-status"]{margin:.4rem 0 0;font-size:.8125rem;color:#b00020}',
   '[data-sw-cart] [data-sw-part="sent-msg"]{padding:1.5rem 1.25rem;text-align:center;color:var(--sw-color-primary,#0a7a5a);font-weight:600}',
@@ -145,14 +153,14 @@ export const CART_CSS = [
   '[data-sw-cart] [data-sw-part="close"]{transition:color .15s ease,transform .15s ease}',
   '[data-sw-cart] [data-sw-part="close"]:hover{color:#b00020;transform:rotate(90deg)}',
   '[data-sw-cart] [data-sw-part="qty"] button{transition:background .15s ease}',
-  '[data-sw-cart] [data-sw-part="qty"] button:hover{background:#f3f4f6}',
-  '[data-sw-cart] [data-sw-part="clear"]:hover{color:#374151;text-decoration:underline}',
-  '[data-sw-cart] [data-sw-part="remove"]:hover{background:#fee2e2}',
+  '[data-sw-cart] [data-sw-part="qty"] button:hover{background:var(--sw-color-base-200,#f3f4f6)}',
+  '[data-sw-cart] [data-sw-part="clear"]:hover{color:var(--sw-color-base-content,#374151);text-decoration:underline}',
+  '[data-sw-cart] [data-sw-part="remove"]:hover{background:color-mix(in oklab,#dc2626 16%,transparent)}',
   // Self-contained "waves" ripple (the platform ripple runtime only enhances elements present at load,
   // so the runtime-built cart wires its own — scoped to the cart so it never double-binds page buttons).
   '[data-sw-cart] .waves-effect{position:relative;overflow:hidden;-webkit-tap-highlight-color:transparent}',
-  '[data-sw-cart] .waves-ripple{position:absolute;border-radius:50%;pointer-events:none;background:rgba(0,0,0,.18);transform:scale(0);opacity:.5;will-change:transform,opacity}',
-  '[data-sw-cart] .waves-light .waves-ripple{background:rgba(255,255,255,.5)}',
+  '[data-sw-cart] .waves-ripple{position:absolute;border-radius:50%;pointer-events:none;background:color-mix(in oklab,var(--sw-color-base-content,#000) 18%,transparent);transform:scale(0);opacity:.5;will-change:transform,opacity}',
+  '[data-sw-cart] .waves-light .waves-ripple{background:color-mix(in srgb,var(--sw-color-primary-content,#fff) 50%,transparent)}',
   '@media (prefers-reduced-motion:no-preference){[data-sw-cart] .waves-rippling{animation:sw-cart-waves .6s ease-out forwards}}',
   '@keyframes sw-cart-waves{to{transform:scale(1);opacity:0}}',
 ].join('');

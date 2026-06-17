@@ -9,14 +9,21 @@
 // runtime): it persists the choice in localStorage and re-applies it BEFORE first paint via a tiny
 // sync `<head>` script (so a returning visitor's choice doesn't flash). The toggle's sun/moon icon is
 // CSS-driven (themeToggleCss), so it reflects the active scheme even with JS off. OKLCH dark-tuned
-// brand shades remain a follow-up PR.
+// brand shades — so a low-contrast brand colour stays legible on dark — are derived in
+// {@link colorSchemeCss} from the tenant's brand colours (see ./color-oklch).
+
+import { darkBrandShade, contrastText } from './color-oklch.js';
 
 export type ColorScheme = 'auto' | 'light' | 'dark';
 
+/** A project's brand colour map (`primary`/`secondary`/`accent`/… → CSS colour string). */
+export type BrandColorMap = Readonly<Record<string, string>>;
+
 // DaisyUI v5's curated dark-theme NEUTRALS, applied to BOTH token namespaces (--color-* drives
-// DaisyUI + utilities; --sw-color-* drives base-css + the first-party components). The brand roles
-// (primary / secondary / accent) are intentionally KEPT at the tenant's light values for now — a
-// follow-up derives dark-tuned brand shades in OKLCH so a dark brand colour stays legible on dark.
+// DaisyUI + utilities; --sw-color-* drives base-css + the first-party components). The tenant's brand
+// roles are NOT here: they are dark-tuned per-project from the brand colours by darkBrandDeclarations,
+// and only in the `--sw-color-*` namespace (the DaisyUI `--color-*` brand tokens are a static default
+// palette, not the tenant brand — that flows only through `--sw-color-*`).
 const DARK_TOKENS = [
   '--color-base-100:oklch(25.33% 0.016 252.42)',
   '--color-base-200:oklch(23.26% 0.014 253.1)',
@@ -41,12 +48,60 @@ const DARK_TOKENS = [
  * We use our OWN `data-sw-scheme` attribute (not DaisyUI's `data-theme`) to stay fully decoupled from
  * DaisyUI's attribute handling. DaisyUI runs with themes:false so it emits no brand `[data-theme=…]`
  * block anyway — but owning the attribute keeps this independent of that.
+ *
+ * When the project's `brandColors` are supplied, the dark block ALSO carries dark-tuned brand shades
+ * (lifted lightness, preserved hue) + matching `*-content` text tokens, and a light-mode `:root{}`
+ * carries the light `*-content` tokens — see {@link darkBrandDeclarations} / {@link lightContentTokensCss}.
+ * With no `brandColors`, the output is exactly the neutral-only block (backwards compatible).
  */
-export function colorSchemeCss(): string {
+export function colorSchemeCss(brandColors?: BrandColorMap): string {
+  const darkBrand = brandColors ? darkBrandDeclarations(brandColors) : '';
+  const dark = darkBrand ? `${DARK_TOKENS};${darkBrand}` : DARK_TOKENS;
+  const lightContent = brandColors ? lightContentTokensCss(brandColors) : '';
   return (
-    `:root[data-sw-scheme="dark"]{${DARK_TOKENS}}\n` +
-    `@media (prefers-color-scheme: dark){:root:not([data-sw-scheme]){${DARK_TOKENS}}}`
+    lightContent +
+    `:root[data-sw-scheme="dark"]{${dark}}\n` +
+    `@media (prefers-color-scheme: dark){:root:not([data-sw-scheme]){${dark}}}`
   );
+}
+
+/** Brand roles we dark-tune (the tenant brand identity colours). */
+const TUNED_BRAND_ROLES = ['primary', 'secondary', 'accent'] as const;
+
+/**
+ * Dark-tuned brand declarations for the dark token block. For each parseable brand role,
+ * {@link darkBrandShade} lifts its OKLCH lightness to the floor so a low-contrast / dark brand colour
+ * stays legible on the dark base (hue + chroma preserved, alpha dropped), and pairs it with a
+ * text-on-brand `*-content` token. Absent or non-hex roles are skipped, so the untuned light value
+ * carries over. Returns a `;`-joined declaration list (no leading/trailing separator) for inlining.
+ */
+function darkBrandDeclarations(colors: BrandColorMap): string {
+  const decls: string[] = [];
+  for (const role of TUNED_BRAND_ROLES) {
+    // eslint-disable-next-line security/detect-object-injection -- `role` is a fixed TUNED_BRAND_ROLES literal, not user input
+    const shade = darkBrandShade(colors[role] ?? '');
+    if (!shade) continue; // absent / non-hex → keep the untuned light value
+    decls.push(`--sw-color-${role}:${shade.fill}`);
+    decls.push(`--sw-color-${role}-content:${shade.content}`);
+  }
+  return decls.join(';');
+}
+
+/**
+ * The LIGHT-mode text-on-brand (`--sw-color-*-content`) tokens, derived from each brand colour's
+ * lightness. The platform historically hard-coded white labels on brand fills, which is illegible on a
+ * light brand colour; deriving `*-content` fixes that. Emitted as an unlayered `:root{…}` ONLY when
+ * schemes are enabled (so non-scheme sites are byte-for-byte unchanged); the dark block overrides these
+ * at higher specificity for dark mode. Returns '' when no role parses.
+ */
+function lightContentTokensCss(colors: BrandColorMap): string {
+  const decls: string[] = [];
+  for (const role of TUNED_BRAND_ROLES) {
+    // eslint-disable-next-line security/detect-object-injection -- `role` is a fixed TUNED_BRAND_ROLES literal, not user input
+    const content = contrastText(colors[role] ?? '');
+    if (content) decls.push(`--sw-color-${role}-content:${content}`);
+  }
+  return decls.length ? `:root{${decls.join(';')}}\n` : '';
 }
 
 /**

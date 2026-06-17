@@ -220,6 +220,13 @@ NAV/BUTTON EFFECTS: curated CI-themed, contrast-safe schemes — add a class for
 Colors auto-derive from the brand (and stay legible in the built-in dark theme); only \`box-solid\` /
 \`box-fill-*\` / \`dot-to-pill\` fill a surface (using the WCAG-derived foreground). The three sliding /
 spotlight schemes load a tiny runtime automatically. Prefer these over hand-rolled active/hover CSS.
+CUSTOM EFFECT (when no built-in scheme fits): leave the effect 'none' and set
+website.effects.navCode / buttonCode / preloaderCode (in the settings entity) — raw HTML (a \`<style>\`
+plus an optional \`<script>\`) injected site-wide ONLY while that effect is 'none' (nav/button code at
+body-end; a custom preloader becomes the FIRST body child). Target the nav links
+(\`:is(#top-nav, #mobile-nav) a\`, \`.menu a\`) or buttons (\`.btn\`) directly, and use the brand custom
+properties — \`var(--sw-color-primary)\`, \`var(--sw-color-primary-content)\` (text-on-brand foreground),
+\`var(--sw-color-base-100)\` — so it stays on-brand AND legible in the built-in dark theme.
 TEMPLATES: set page.template to "global:landing", "global:text", or a project template id
 (kind "template": { id, name, source }) — the page then renders the TEMPLATE's source and
 contributes ONLY its editable \`data\` (page.data) overrides; leave page.source unset.

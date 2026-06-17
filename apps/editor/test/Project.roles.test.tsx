@@ -47,10 +47,11 @@ beforeEach(() => {
 describe('ProjectView role gating (tab is supplied by the App header)', () => {
   it('owner on the Pages tab sees the add-page button + the page list', async () => {
     render(<ProjectView project={ownerProject} tab="pages" />);
-    await waitFor(() => expect(listPages).toHaveBeenCalled());
+    // Wait for the page LIST to actually render (listPages resolving AND re-rendering), not merely for
+    // the mock to fire — a synchronous getByRole here raced the async re-render and flaked in CI.
+    expect(await screen.findByRole('button', { name: 'Home /' })).toBeInTheDocument();
     // The add-page form now lives in a modal opened from this button.
     expect(screen.getByRole('button', { name: '+ New page' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Home /' })).toBeInTheDocument();
   });
 
   it('owner on another tab renders that section (no page form)', async () => {
@@ -61,17 +62,15 @@ describe('ProjectView role gating (tab is supplied by the App header)', () => {
 
   it('a member sees the restricted surface: no add-page form, just their pages', async () => {
     render(<ProjectView project={memberProject} tab="pages" />);
-    await waitFor(() => expect(listPages).toHaveBeenCalled());
+    expect(await screen.findByRole('button', { name: /Home/ })).toBeInTheDocument();
     expect(screen.queryByLabelText('Page path')).toBeNull();
-    expect(screen.getByRole('button', { name: /Home/ })).toBeInTheDocument();
   });
   // The Library + Assets side panels are now App-level (gated on the project role there); see
   // App.test.tsx for their owner-only presence. ProjectView no longer renders them.
 
   it('opens an owner on a page in CONTENT mode (the default for everyone)', async () => {
     render(<ProjectView project={ownerProject} tab="pages" />);
-    await waitFor(() => expect(listPages).toHaveBeenCalled());
-    fireEvent.click(screen.getByRole('button', { name: 'Home /' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Home /' }));
     expect(screen.getByText('PAGE EDITOR mode=content')).toBeInTheDocument();
     // The list (and its add-page button) stays mounted behind the modal.
     expect(screen.getByRole('button', { name: '+ New page' })).toBeInTheDocument();
@@ -79,8 +78,7 @@ describe('ProjectView role gating (tab is supplied by the App header)', () => {
 
   it('opens a member on a page in CONTENT mode (the same default)', async () => {
     render(<ProjectView project={memberProject} tab="pages" />);
-    await waitFor(() => expect(listPages).toHaveBeenCalled());
-    fireEvent.click(screen.getByRole('button', { name: /Home/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Home/ }));
     expect(screen.getByText('PAGE EDITOR mode=content')).toBeInTheDocument();
   });
 

@@ -106,6 +106,8 @@ describe('DatasetManager', () => {
     await waitFor(() =>
       expect(putDataset).toHaveBeenCalledWith('p', expect.objectContaining({ id: 'posts', name: 'Posts', slug: 'posts', fields: [] })),
     );
+    // the create input collapses again after a successful create
+    await waitFor(() => expect(screen.queryByText('Enter Dataset Name')).toBeNull());
   });
 
   it('hides the create input again when Cancel is clicked', async () => {

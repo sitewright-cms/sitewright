@@ -1,7 +1,11 @@
 import { z } from 'zod';
 // Agent (MCP) defaults shared across packages: the bridge's fallback instructions, the API's
 // effective-instructions resolution, and the admin panel's editor + endpoint list all read from here.
-export const DEFAULT_AGENT_INSTRUCTIONS = `This server exposes ONE project over MCP for building a
+// The CORE agent instructions — always sent in the MCP `instructions` field (kept small). The
+// feature-specific how-tos live in {@link AGENT_GUIDES}, fetched on demand via the `get_guide` tool, so
+// the up-front prompt stays focused. A generated topic index (below) tells the agent which guides exist.
+const AGENT_CORE_INSTRUCTIONS = `
+This server exposes ONE project over MCP for building a
 CODE-FIRST static website. You'll work with these content kinds (kind, id): settings, page,
 dataset, entry, form. Call get_scope first. If it returns authenticated:false, call the \`login\`
 tool and relay its URL + code to the user to approve in their browser (ask them to keep that tab
@@ -81,52 +85,46 @@ In \`source\`:
   <aside> — the validator rejects them to keep each landmark unique. Use neutral <div>/<section>/<ul>
   (DaisyUI's .navbar/.footer/.menu classes style any element).
 
-ANIMATIONS (scroll-reveal): use the standard AOS attributes directly on elements —
-data-aos="fade-up" plus optional data-aos-delay="200" / data-aos-duration="600" (ms, max 5000),
-data-aos-once="false" to replay on every re-entry, data-aos-easing="ease-out"
-(linear|ease|ease-in|ease-out|ease-in-out). Effects: fade, fade-up/-down/-left/-right,
-zoom-in, zoom-out, slide-up/-down/-left/-right, flip-up/-down/-left/-right. The platform
-detects data-aos and ships its own tiny runtime automatically — do NOT add the aos
-package, CDN links, or any script (they'd be rejected anyway). Content stays visible
-without JS and motion respects prefers-reduced-motion. Stagger lists by increasing
-data-aos-delay per item (e.g. 0/100/200).
+SET THE BRAND with put_content("settings","settings",{ identity:{ name, colors:{ primary:"#…" } },
+settings:{ defaultLocale:"en", locales:["en"] } }).
+PAGE SETTINGS live on the page: title, path, status ("draft"|"published"),
+description, image (the OG/share image), parent (a parent page's id — makes this a sub-page), nav
+{ slots:["header"|"footer"|"mobile"], order, title, dropdown }. \`path\` is the page's OWN
+SLUG SEGMENT — one lowercase token, NO slashes (e.g. "about", "web-design"); the full URL
+is computed from the parent chain ({root}/{parent slugs}/{slug}). The HOME page is the
+page-tree ROOT: its slug is the EMPTY string "" (→ "/"), and every OTHER page sets "parent"
+to a page's id (defaulting to "home") — its route is /<…parent slugs>/<slug>. So a German
+home is { path:"de", parent:"home" } (→ /de) and a sub-page under it is
+{ path:"leistungen", parent:"home-de" } (→ /de/leistungen). With dropdown:true a page's
+CHILD pages (parent = its id) nest under its nav item — a nav slot template renders them
+via {{#if children}}…{{#each children}}. Prefer a CSS-only hover dropdown whose PARENT stays a
+real link: <li class="dropdown dropdown-hover"><a href="{{sw-url path}}">{{sw-label}}</a><ul
+class="dropdown-content menu …">{{#each children}}…{{/each}}</ul></li> (avoid <details>/<summary>,
+which makes the parent a toggle, not navigable). The platform auto-aligns the submenu under its
+trigger and bridges the small gap so hover doesn't drop mid-travel — don't add margin utilities
+(\`mt-*\`/\`mx-*\`) to the dropdown-content (set --sw-dropdown-gap on the .dropdown to change the
+spacing). Children need no own nav slots. Every new project already has the empty-slug "home" page.
 
-LAZY-LOAD (images, backgrounds, iframes): the platform ships its own tiny runtime when it sees
-data-src / data-srcset / data-bg (the legacy class="lazyload" still works but is no longer needed)
-— never add a lazy-load library. Put the URL in data-* via {{sw-url …}} or as a literal path.
-- Plain image — simplest, works without JS: <img src="…" loading="lazy" alt="…" width="…" height="…">
-  (the image pipeline adds a blur-up LQIP placeholder).
-- Deferred swap with a blur-up fade — put the URL in data-src (+ data-srcset for responsive) INSTEAD
-  of src; no class needed. Works on the elements that take a src — <img data-src="…" alt="…" width
-  height> and <iframe data-src="…" title="…" width height> both get their real src on scroll-in.
-- BACKGROUND image: data-bg="<url>" on any element → set as the background-image on scroll-in.
-- IFRAME, no-JS-safe alternative: native <iframe src="…" loading="lazy" title="…" width height>.
-- SKELETON while loading (whenever the media has a fixed HEIGHT): wrap it in a DaisyUI .skeleton box
-  so an animated shimmer shows until it loads, then the media fades in over it —
-  <div class="skeleton h-64 w-full overflow-hidden rounded-box"><img data-src="…" alt="…" width="800"
-  height="450" class="h-full w-full object-cover"></div>. (A native loading="lazy" iframe can carry
-  class="skeleton" directly, since the runtime doesn't fade it.)
+Typical flow: get_scope → set the Corporate Identity → put_page(s) with \`source\` →
+preview_page (returns { html, … } — read \`html\` to check the render) → publish_project. All writes are validated
+server-side (schema + no-JS template safety); you cannot exceed the token's role/capabilities.
+DELETING is separate: delete_page / delete_content need the \`content:delete\` capability, which is
+often NOT granted (it is opt-in, not implied by \`content:write\`). Check get_scope first — if
+\`content:delete\` is absent, don't attempt removals: ask the user to delete the item in the editor,
+or to grant the agent \`content:delete\` (e.g. a new API key that includes it). Prefer editing or
+replacing over deleting when in doubt.
+`;
 
-RIPPLE (Material "waves") click effect: add class="waves-effect" to a button/link, plus
-"waves-light" for a white ripple on dark/colored buttons (e.g. class="btn btn-primary
-waves-effect waves-light"). The platform ships its own ripple runtime when it sees
-waves-effect — never add Waves.js. Respects prefers-reduced-motion.
-
-ICONS: inline an icon with {{sw-icon "name" "h-5 w-5"}} (the 2nd arg is the CSS class). "name"
-is ANY Lucide icon name (the full ~1865-icon set, kebab-case — e.g. menu, x, search,
-arrow-right, chevron-down, mail, phone, map-pin, calendar, star, home, user, heart,
-shopping-cart, rocket, sparkles). Brand/social logos use the "brand:" prefix — there are ~270
-of them (simple-icons): {{sw-icon "brand:github"}}, brand:x, brand:youtube, brand:instagram,
-brand:facebook, brand:whatsapp, brand:tiktok, brand:linkedin (falls back to a line glyph),
-brand:figma, brand:spotify, brand:discord, brand:telegram, brand:bluesky, etc. Unknown names
-render nothing. (Note: bare "x" is the ✕ close glyph; "brand:x" is the X/Twitter logo.)
-
-FLAGS: country flags are FULL-COLOR, so they use a SEPARATE helper — {{sw-flag "de" "h-4"}}.
-The code is ISO 3166-1 alpha-2 (de, us, gb, fr, jp, br…); add "-circle" for the round variant
-({{sw-flag "de-circle"}}). All ~250 countries are built in. Flags are a poor proxy for
-LANGUAGES (Spanish ≠ Spain) — use them for country/region selectors; for a language switcher
-prefer text language names, or pass an explicit country code per locale.
-
+/**
+ * On-demand reference guides for the feature areas that aren't needed for every task. The agent fetches
+ * one by name via the `get_guide` tool; their summaries form the topic index appended to the core
+ * instructions. Source-of-truth for the guide enum, the index, and the tool — a test asserts coverage.
+ */
+export const AGENT_GUIDES = {
+  components: {
+    title: "Components & forms",
+    summary: "interactive widgets (carousel, tabs, lightbox, modal, cookie-consent, datetimepicker) + Forms",
+    body: `
 INTERACTIVE COMPONENTS: the platform ships audited, first-party runtimes you activate with
 data-sw-component="carousel|tabs|lightbox|modal|cookie-consent|datetimepicker" — author semantic HTML with
 data-sw-part roles and the runtime wires the behavior (each ships only when used, and degrades
@@ -177,40 +175,51 @@ platform injects the submission endpoint, honeypot, and captcha at render. NEVER
 action/endpoint and never write data-sw-component="form" yourself (it is stamped automatically).
 A page in locale "de" auto-resolves "<id>-de" when that form exists. Submissions land in the
 project inbox (\`list_submissions\`).
+`,
+  },
+  images: {
+    title: "Images & lazy-loading",
+    summary: "add images (stock search/import), lazy-load, blur-up, skeletons",
+    body: `
+LAZY-LOAD (images, backgrounds, iframes): the platform ships its own tiny runtime when it sees
+data-src / data-srcset / data-bg (the legacy class="lazyload" still works but is no longer needed)
+— never add a lazy-load library. Put the URL in data-* via {{sw-url …}} or as a literal path.
+- Plain image — simplest, works without JS: <img src="…" loading="lazy" alt="…" width="…" height="…">
+  (the image pipeline adds a blur-up LQIP placeholder).
+- Deferred swap with a blur-up fade — put the URL in data-src (+ data-srcset for responsive) INSTEAD
+  of src; no class needed. Works on the elements that take a src — <img data-src="…" alt="…" width
+  height> and <iframe data-src="…" title="…" width height> both get their real src on scroll-in.
+- BACKGROUND image: data-bg="<url>" on any element → set as the background-image on scroll-in.
+- IFRAME, no-JS-safe alternative: native <iframe src="…" loading="lazy" title="…" width height>.
+- SKELETON while loading (whenever the media has a fixed HEIGHT): wrap it in a DaisyUI .skeleton box
+  so an animated shimmer shows until it loads, then the media fades in over it —
+  <div class="skeleton h-64 w-full overflow-hidden rounded-box"><img data-src="…" alt="…" width="800"
+  height="450" class="h-full w-full object-cover"></div>. (A native loading="lazy" iframe can carry
+  class="skeleton" directly, since the runtime doesn't fade it.)
 
-SET THE BRAND with put_content("settings","settings",{ identity:{ name, colors:{ primary:"#…" } },
-settings:{ defaultLocale:"en", locales:["en"] } }).
-PAGE SETTINGS live on the page: title, path, status ("draft"|"published"),
-description, image (the OG/share image), parent (a parent page's id — makes this a sub-page), nav
-{ slots:["header"|"footer"|"mobile"], order, title, dropdown }. \`path\` is the page's OWN
-SLUG SEGMENT — one lowercase token, NO slashes (e.g. "about", "web-design"); the full URL
-is computed from the parent chain ({root}/{parent slugs}/{slug}). The HOME page is the
-page-tree ROOT: its slug is the EMPTY string "" (→ "/"), and every OTHER page sets "parent"
-to a page's id (defaulting to "home") — its route is /<…parent slugs>/<slug>. So a German
-home is { path:"de", parent:"home" } (→ /de) and a sub-page under it is
-{ path:"leistungen", parent:"home-de" } (→ /de/leistungen). With dropdown:true a page's
-CHILD pages (parent = its id) nest under its nav item — a nav slot template renders them
-via {{#if children}}…{{#each children}}. Prefer a CSS-only hover dropdown whose PARENT stays a
-real link: <li class="dropdown dropdown-hover"><a href="{{sw-url path}}">{{sw-label}}</a><ul
-class="dropdown-content menu …">{{#each children}}…{{/each}}</ul></li> (avoid <details>/<summary>,
-which makes the parent a toggle, not navigable). The platform auto-aligns the submenu under its
-trigger and bridges the small gap so hover doesn't drop mid-travel — don't add margin utilities
-(\`mt-*\`/\`mx-*\`) to the dropdown-content (set --sw-dropdown-gap on the .dropdown to change the
-spacing). Children need no own nav slots. Every new project already has the empty-slug "home" page.
-NAV PLACEHOLDERS: a page with kind:"link" is a menu item with NO page of its own (no route/HTML) —
-set link.target ("/path", "https://…"/"mailto:"/"tel:", "#section", or "#dialog-id" to open a
-<dialog> placed in the website.bottom slot) + optional link.newTab, and nav.slots/nav.dropdown as
-usual; its title is the menu name (may include {{sw-icon}}/basic HTML). Output a nav label with
-{{sw-label}} (renders that rich name; a plain page title is escaped) and honor {{#if newTab}} +
-.external on each item.
-ACTIVE NAV ITEM: mark the current page in a menu with the {{sw-active <route>}} helper (a boolean,
-no JS; route must be root-relative). By default it matches the active TRAIL (a parent route stays
-active on its child pages — except a home route, "/" or a locale home like "/es", which matches only
-itself); pass exact=true for the current page only. Inside {{#each nav.header}}
-the item route is \`path\`: <a href="{{sw-url path}}" class="{{#if (sw-active path)}}active{{/if}}"
-{{#if (sw-active path exact=true)}}aria-current="page"{{/if}}>{{sw-label}}</a> (the .active class is what
-the nav EFFECT styles; omit aria-current off the current page). Output the label with {{sw-label}}
-(renders a placeholder's rich name; a page title is escaped).
+IMAGES: search_stock_images then import_stock_image (self-hosted + attributed); reference the
+returned media url in \`source\`.
+`,
+  },
+  effects: {
+    title: "Effects, animations & ripple",
+    summary: "nav/button/preloader effect schemes (+ custom code), scroll animations, ripple",
+    body: `
+ANIMATIONS (scroll-reveal): use the standard AOS attributes directly on elements —
+data-aos="fade-up" plus optional data-aos-delay="200" / data-aos-duration="600" (ms, max 5000),
+data-aos-once="false" to replay on every re-entry, data-aos-easing="ease-out"
+(linear|ease|ease-in|ease-out|ease-in-out). Effects: fade, fade-up/-down/-left/-right,
+zoom-in, zoom-out, slide-up/-down/-left/-right, flip-up/-down/-left/-right. The platform
+detects data-aos and ships its own tiny runtime automatically — do NOT add the aos
+package, CDN links, or any script (they'd be rejected anyway). Content stays visible
+without JS and motion respects prefers-reduced-motion. Stagger lists by increasing
+data-aos-delay per item (e.g. 0/100/200).
+
+RIPPLE (Material "waves") click effect: add class="waves-effect" to a button/link, plus
+"waves-light" for a white ripple on dark/colored buttons (e.g. class="btn btn-primary
+waves-effect waves-light"). The platform ships its own ripple runtime when it sees
+waves-effect — never add Waves.js. Respects prefers-reduced-motion.
+
 NAV/BUTTON EFFECTS: curated CI-themed, contrast-safe schemes — add a class for nav active/hover
 (\`sw-nav-<name>\` on the nav <ul> or set site-wide in website.effects.navEffect; names:
 \`box-solid\`,\`box-fill-left\`,\`box-fill-up\`,\`box-draw\`,\`box-shadow\`,\`line-bottom\`,\`line-sliding-bottom\`,
@@ -220,6 +229,7 @@ NAV/BUTTON EFFECTS: curated CI-themed, contrast-safe schemes — add a class for
 Colors auto-derive from the brand (and stay legible in the built-in dark theme); only \`box-solid\` /
 \`box-fill-*\` / \`dot-to-pill\` fill a surface (using the WCAG-derived foreground). The three sliding /
 spotlight schemes load a tiny runtime automatically. Prefer these over hand-rolled active/hover CSS.
+
 CUSTOM EFFECT (when no built-in scheme fits): leave the effect 'none' and set
 website.effects.navCode / buttonCode / preloaderCode (in the settings entity) — raw HTML (a \`<style>\`
 plus an optional \`<script>\`) injected site-wide ONLY while that effect is 'none' (nav/button code at
@@ -227,10 +237,12 @@ body-end; a custom preloader becomes the FIRST body child). Target the nav links
 (\`:is(#top-nav, #mobile-nav) a\`, \`.menu a\`) or buttons (\`.btn\`) directly, and use the brand custom
 properties — \`var(--sw-color-primary)\`, \`var(--sw-color-primary-content)\` (text-on-brand foreground),
 \`var(--sw-color-base-100)\` — so it stays on-brand AND legible in the built-in dark theme.
-TEMPLATES: set page.template to "global:landing", "global:text", or a project template id
-(kind "template": { id, name, source }) — the page then renders the TEMPLATE's source and
-contributes ONLY its editable \`data\` (page.data) overrides; leave page.source unset.
-
+`,
+  },
+  i18n: {
+    title: "Multilingual / translations",
+    summary: "locale-variant pages, translation groups, share-by-inheritance, localized datasets",
+    body: `
 MULTILINGUAL (document-level i18n): each language variant is ITS OWN page, not a field
 overlay. First declare the languages in settings: settings:{ defaultLocale:"en",
 locales:["en","de"] }. Then for a translated page create a sibling page that:
@@ -242,12 +254,14 @@ locales:["en","de"] }. Then for a translated page create a sibling page that:
   first ({ path:"<locale>", parent:"home" } → /<locale>, the localized home), then parent the
   locale's other pages under it ({ path:"about", parent:"<locale>-home-id" } → /<locale>/about).
   Each locale's nav lists only its own pages.
+
 SHARE STRUCTURE by INHERITANCE: leave a translated variant's \`source\` AND \`template\` UNSET —
 it then automatically follows the DEFAULT-LOCALE page's code (edit that one page's layout and
 every language updates, no copying). Each variant supplies only its own translated \`data\`
 (data-sw-text values) and \`title\`/\`description\`/\`image\`. For a one-off layout difference, give that variant its
 own \`source\` (fork) or set its \`template\`; a variant that carries its own code stops following
 the main page.
+
 LOCALIZED DATA: duplicate a dataset per locale as "<name>-<locale>" (lowercased), e.g.
 "services" + "services-de". A page with locale "de" auto-resolves {{#each dataset.services}}
 to "services-de" when it exists (else it falls back to "services"); address a specific
@@ -255,9 +269,12 @@ variant explicitly with {{#each dataset.services-de}}. In source, expose the pag
 as {{page.locale}} and its alternates as {{#each page.translations}} (each has \`locale\`,
 \`path\`, \`title\`). The "translation" content kind is legacy — do NOT use it; model
 languages as locale-variant pages instead.
-IMAGES: search_stock_images then import_stock_image (self-hosted + attributed); reference the
-returned media url in \`source\`.
-
+`,
+  },
+  shop: {
+    title: "Front-end shop / cart",
+    summary: "a localStorage cart over a products dataset + checkout channels",
+    body: `
 SHOP (a FRONT-END cart for the static site): the catalogue is a dataset (e.g. "products" with
 fields name/price/image/description/sku). In a page \`source\` loop it and emit an add-to-cart
 button per product, plus ONE cart mount (drop {{sw-cart}} once — e.g. in the footer slot — so it
@@ -286,15 +303,68 @@ A whatsapp/mailto channel may declare \`fields\` (key + type text|textarea|tel|e
 the cart collects them before opening the link and appends them as "Label: value" lines below the order
 (each label from shop.<field-key>). An email order's body also starts with the localized cart_order_lead
 prefixed by the Corporate-Identity name ("Hi <name> — …").
+`,
+  },
+  templates: {
+    title: "Page templates",
+    summary: "render a page from a template + contribute only page.data overrides",
+    body: `
+TEMPLATES: set page.template to "global:landing", "global:text", or a project template id
+(kind "template": { id, name, source }) — the page then renders the TEMPLATE's source and
+contributes ONLY its editable \`data\` (page.data) overrides; leave page.source unset.
+`,
+  },
+  icons: {
+    title: "Icons & flags",
+    summary: "{{sw-icon}} (Lucide + brand:) and {{sw-flag}} country flags",
+    body: `
+ICONS: inline an icon with {{sw-icon "name" "h-5 w-5"}} (the 2nd arg is the CSS class). "name"
+is ANY Lucide icon name (the full ~1865-icon set, kebab-case — e.g. menu, x, search,
+arrow-right, chevron-down, mail, phone, map-pin, calendar, star, home, user, heart,
+shopping-cart, rocket, sparkles). Brand/social logos use the "brand:" prefix — there are ~270
+of them (simple-icons): {{sw-icon "brand:github"}}, brand:x, brand:youtube, brand:instagram,
+brand:facebook, brand:whatsapp, brand:tiktok, brand:linkedin (falls back to a line glyph),
+brand:figma, brand:spotify, brand:discord, brand:telegram, brand:bluesky, etc. Unknown names
+render nothing. (Note: bare "x" is the ✕ close glyph; "brand:x" is the X/Twitter logo.)
 
-Typical flow: get_scope → set the Corporate Identity → put_page(s) with \`source\` →
-preview_page (returns { html, … } — read \`html\` to check the render) → publish_project. All writes are validated
-server-side (schema + no-JS template safety); you cannot exceed the token's role/capabilities.
-DELETING is separate: delete_page / delete_content need the \`content:delete\` capability, which is
-often NOT granted (it is opt-in, not implied by \`content:write\`). Check get_scope first — if
-\`content:delete\` is absent, don't attempt removals: ask the user to delete the item in the editor,
-or to grant the agent \`content:delete\` (e.g. a new API key that includes it). Prefer editing or
-replacing over deleting when in doubt.`;
+FLAGS: country flags are FULL-COLOR, so they use a SEPARATE helper — {{sw-flag "de" "h-4"}}.
+The code is ISO 3166-1 alpha-2 (de, us, gb, fr, jp, br…); add "-circle" for the round variant
+({{sw-flag "de-circle"}}). All ~250 countries are built in. Flags are a poor proxy for
+LANGUAGES (Spanish ≠ Spain) — use them for country/region selectors; for a language switcher
+prefer text language names, or pass an explicit country code per locale.
+`,
+  },
+  nav: {
+    title: "Nav placeholders & active item",
+    summary: "link-only menu items (incl. #dialog) + marking the active item",
+    body: `
+NAV PLACEHOLDERS: a page with kind:"link" is a menu item with NO page of its own (no route/HTML) —
+set link.target ("/path", "https://…"/"mailto:"/"tel:", "#section", or "#dialog-id" to open a
+<dialog> placed in the website.bottom slot) + optional link.newTab, and nav.slots/nav.dropdown as
+usual; its title is the menu name (may include {{sw-icon}}/basic HTML). Output a nav label with
+{{sw-label}} (renders that rich name; a plain page title is escaped) and honor {{#if newTab}} +
+.external on each item.
+
+ACTIVE NAV ITEM: mark the current page in a menu with the {{sw-active <route>}} helper (a boolean,
+no JS; route must be root-relative). By default it matches the active TRAIL (a parent route stays
+active on its child pages — except a home route, "/" or a locale home like "/es", which matches only
+itself); pass exact=true for the current page only. Inside {{#each nav.header}}
+the item route is \`path\`: <a href="{{sw-url path}}" class="{{#if (sw-active path)}}active{{/if}}"
+{{#if (sw-active path exact=true)}}aria-current="page"{{/if}}>{{sw-label}}</a> (the .active class is what
+the nav EFFECT styles; omit aria-current off the current page). Output the label with {{sw-label}}
+(renders a placeholder's rich name; a page title is escaped).
+`,
+  },
+} as const;
+export type GuideTopic = keyof typeof AGENT_GUIDES;
+export const GUIDE_TOPICS = Object.keys(AGENT_GUIDES) as GuideTopic[];
+
+/** The topic index appended to the core instructions, COMPUTED from {@link AGENT_GUIDES} so a guide's
+ *  summary and its index line can never drift apart. */
+const GUIDE_INDEX = `\nGUIDES — these feature areas have a detailed how-to. Call the \`get_guide\` tool with a topic name (below) ONLY when the task needs it, to keep this prompt focused:\n${GUIDE_TOPICS.map((t) => `- ${t} — ${AGENT_GUIDES[t].summary}`).join('\n')}`;
+
+/** The default MCP `instructions` payload: the core + the generated guide index. */
+export const DEFAULT_AGENT_INSTRUCTIONS = `${AGENT_CORE_INSTRUCTIONS.trim()}\n${GUIDE_INDEX}`;
 
 /** Max length of an admin-overridden agent-instructions string. */
 export const AGENT_INSTRUCTIONS_MAX = 32_000;
@@ -326,6 +396,7 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'login', description: "Connect the agent to a project — returns a URL + code for the user to approve in their browser." },
   { name: 'switch_project', description: "Re-authenticate to connect to a DIFFERENT project (scope is fixed per connection)." },
   { name: 'get_components', description: "The machine-readable authoring contracts of the first-party interactive components (markers, parts, attributes, markup skeletons)." },
+  { name: 'get_guide', description: `Fetch the full how-to for one feature area on demand (${GUIDE_TOPICS.join(', ')}) — the core instructions list the topics.` },
   { name: 'list_pages', description: "List the project's pages." },
   { name: 'get_page', description: "Get one page by id (code-first design is in the `source` field)." },
   { name: 'list_content', description: "List all entities of a content kind." },

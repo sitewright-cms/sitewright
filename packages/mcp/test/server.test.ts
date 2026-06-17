@@ -104,6 +104,23 @@ describe('createSitewrightMcpServer — capability gating (call-time, not tool-h
   });
 });
 
+describe('createSitewrightMcpServer — on-demand guides', () => {
+  it('get_guide returns a topic how-to (no auth needed); unknown topic errors with the topic list', async () => {
+    const mcp = await connect(fakeClient(), null);
+    expect(await toolNames(mcp)).toContain('get_guide');
+    // a real topic → the guide prose (distinctive phrase from that section)
+    const shop = await mcp.callTool({ name: 'get_guide', arguments: { topic: 'shop' } });
+    expect(shop.isError).toBeFalsy();
+    expect(text(shop)).toContain('sw-add-to-cart');
+    // case-insensitive
+    expect(text(await mcp.callTool({ name: 'get_guide', arguments: { topic: 'EFFECTS' } }))).toContain('data-aos');
+    // unknown topic → an error that lists the valid topics
+    const bad = await mcp.callTool({ name: 'get_guide', arguments: { topic: 'nope' } });
+    expect(bad.isError).toBe(true);
+    expect(text(bad)).toContain('topics:');
+  });
+});
+
 describe('createSitewrightMcpServer — lazy auth', () => {
   it('boots unauthenticated: get_scope reports authenticated:false + a login hint', async () => {
     const res = await (await connect(fakeClient(), null)).callTool({ name: 'get_scope', arguments: {} });
@@ -305,26 +322,26 @@ describe('createSitewrightMcpServer — agent guidance', () => {
     await mcp.close();
   });
 
-  it('instructions teach the multilingual INHERITANCE model (variants leave source/template unset)', async () => {
+  it('the i18n guide teaches the multilingual INHERITANCE model (variants leave source/template unset)', async () => {
     const mcp = await connect(fakeClient(), writeScope);
-    const instructions = mcp.getInstructions() ?? '';
-    expect(instructions).toMatch(/INHERITANCE/);
-    expect(instructions).toMatch(/translationGroup/);
+    const i18n = text(await mcp.callTool({ name: 'get_guide', arguments: { topic: 'i18n' } }));
+    expect(i18n).toMatch(/INHERITANCE/);
+    expect(i18n).toMatch(/translationGroup/);
     // The variant follows the default-locale page's code; it does NOT copy the source.
-    expect(instructions).toMatch(/follows the DEFAULT-LOCALE page/i);
-    expect(instructions).not.toMatch(/copy the `?source`?\)/i);
+    expect(i18n).toMatch(/follows the DEFAULT-LOCALE page/i);
+    expect(i18n).not.toMatch(/copy the `?source`?\)/i);
     await mcp.close();
   });
 
-  it('instructions teach scroll-reveal animations via the standard data-aos vocabulary', async () => {
+  it('the effects guide teaches scroll-reveal animations via the standard data-aos vocabulary', async () => {
     const mcp = await connect(fakeClient(), writeScope);
-    const instructions = mcp.getInstructions() ?? '';
-    expect(instructions).toContain('data-aos="fade-up"');
-    expect(instructions).toContain('data-aos-delay');
-    expect(instructions).toContain('data-aos-once');
+    const effects = text(await mcp.callTool({ name: 'get_guide', arguments: { topic: 'effects' } }));
+    expect(effects).toContain('data-aos="fade-up"');
+    expect(effects).toContain('data-aos-delay');
+    expect(effects).toContain('data-aos-once');
     // The platform ships its own runtime — agents must NOT add the library themselves.
-    expect(instructions).toMatch(/do NOT add the aos\s+package/i);
-    expect(instructions).toContain('prefers-reduced-motion');
+    expect(effects).toMatch(/do NOT add the aos\s+package/i);
+    expect(effects).toContain('prefers-reduced-motion');
     await mcp.close();
   });
 
@@ -337,19 +354,22 @@ describe('createSitewrightMcpServer — agent guidance', () => {
     await mcp.close();
   });
 
-  it('instructions teach the lazyload, ripple, and icon vocabularies', async () => {
+  it('the images/effects/icons guides teach the lazyload, ripple, and icon vocabularies', async () => {
     const mcp = await connect(fakeClient(), writeScope);
-    const instructions = mcp.getInstructions() ?? '';
+    const g = async (topic: string) => text(await mcp.callTool({ name: 'get_guide', arguments: { topic } }));
+    const images = await g('images');
+    const effects = await g('effects');
+    const icons = await g('icons');
     // Lazy-load (vanilla-lazyload vocabulary).
-    expect(instructions).toMatch(/data-bg/);
-    expect(instructions).toMatch(/class="lazyload"|lazyload/);
-    expect(instructions).toMatch(/never add a lazy-load library/i);
+    expect(images).toMatch(/data-bg/);
+    expect(images).toMatch(/class="lazyload"|lazyload/);
+    expect(images).toMatch(/never add a lazy-load library/i);
     // Ripple (Waves vocabulary).
-    expect(instructions).toContain('waves-effect');
-    expect(instructions).toContain('waves-light');
-    expect(instructions).toMatch(/never add Waves\.js/i);
+    expect(effects).toContain('waves-effect');
+    expect(effects).toContain('waves-light');
+    expect(effects).toMatch(/never add Waves\.js/i);
     // Icons.
-    expect(instructions).toContain('{{sw-icon "name"');
+    expect(icons).toContain('{{sw-icon "name"');
     await mcp.close();
   });
 });

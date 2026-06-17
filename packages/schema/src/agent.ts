@@ -14,7 +14,9 @@ open to watch your changes live), then call get_scope again to confirm before co
 
 AUTHOR PAGES IN CODE. A page renders from its Handlebars \`source\` (HTML + Tailwind CSS +
 DaisyUI v5 component classes) — put the entire design there. A page with no \`source\`/\`template\`
-renders an empty body.
+renders an empty body. Before you lay out a page, call \`get_guide("design")\` for the section
+patterns, type/spacing rhythm, and colour-depth rules that separate a flagship page from a
+skeleton (a real landing page is 6-9 composed sections, not a hero + three cards).
 
 In \`source\`:
 - Use DaisyUI components for UI (btn / btn-primary, card, navbar, hero, badge, footer,
@@ -121,6 +123,59 @@ replacing over deleting when in doubt.
  * instructions. Source-of-truth for the guide enum, the index, and the tool — a test asserts coverage.
  */
 export const AGENT_GUIDES = {
+  design: {
+    title: "Design — section patterns & visual craft",
+    summary: "what flagship looks like: layout rhythm, type scale, layered surfaces + copy-paste section skeletons (hero, feature rows, stats, testimonials, pricing, FAQ, CTA) — READ before laying out a page",
+    body: `
+DESIGN — read this BEFORE composing a page's layout. The other guides tell you HOW to wire a feature; this tells you what GOOD looks like. It is what separates a flagship site from a generic skeleton.
+
+THE BAR. Flagship = generous whitespace, a clear type scale, layered surfaces for depth, ONE accent colour used sparingly, real imagery, an alternating section rhythm, one tasteful motion accent per section, and a strong closing CTA. The #1 failure mode is the "hero + 3 cards + stop" skeleton — a real landing page has 6-9 distinct sections with a narrative arc (hook -> proof -> how it works -> depth -> social proof -> objection handling -> call to action).
+
+LAYOUT RHYTHM (use on every section):
+- Section shell: <section class="py-20 sm:py-28"><div class="mx-auto max-w-6xl px-4 sm:px-6"> ... </div></section>. Keep the SAME max-width + horizontal padding on every section so content lines up edge-to-edge; vary only the vertical py.
+- Depth via ALTERNATING surfaces: give consecutive sections bg-base-100 -> bg-base-200 -> bg-base-100 (never all-white/all-one-colour). Use base-300 for card borders on top. This one move reads as "designed".
+- Type scale (choose from these, do not freestyle sizes): hero h1 = text-4xl sm:text-5xl xl:text-6xl font-bold tracking-tight; section h2 = text-3xl sm:text-4xl font-semibold tracking-tight; an eyebrow label (one per section, above the h2) = text-sm font-semibold uppercase tracking-wide text-primary; lead paragraph = mt-4 text-lg text-base-content/70 max-w-2xl; long-form body = wrap the container in class="prose".
+- In-section spacing: heading->lead mt-4, header->content mt-10 sm:mt-14, grid/list gaps gap-6 sm:gap-8.
+- Cards: rounded-2xl border border-base-300 bg-base-100 p-6 sm:p-8 (optional shadow-sm hover:shadow-md transition).
+
+COLOUR & DEPTH (taste). Stay TOKEN-ONLY (base-100/200/300, base-content, primary, primary-content) so light AND dark both work. Reserve primary for CTAs, links, the eyebrow label, and AT MOST one full colour band per page. Secondary text = text-base-content/70. NEVER paint whole content sections in primary. Gradients only on always-coloured elements (a hero accent shape, the CTA band), e.g. bg-gradient-to-br from-primary to-secondary.
+
+THE SECTION TOOLKIT — compose 6-9 of these into a landing page. Skeletons are token-driven and landmark-safe (use <section>/<div>, never <nav>/<main>/<footer>/<aside>); fill in real copy + images.
+
+1) HERO (split — the flagship default):
+<section class="py-20 sm:py-28"><div class="mx-auto max-w-6xl px-4 sm:px-6 grid lg:grid-cols-2 gap-12 items-center">
+  <div data-aos="fade-up">
+    <p class="text-sm font-semibold uppercase tracking-wide text-primary">{{ company.name }}</p>
+    <h1 class="mt-3 text-4xl sm:text-5xl xl:text-6xl font-bold tracking-tight">Headline that states the value</h1>
+    <p class="mt-5 text-lg text-base-content/70">One sentence that earns the next scroll.</p>
+    <div class="mt-8 flex flex-wrap gap-3"><a href="#contact" class="btn btn-primary">Primary action</a><a href="#work" class="btn btn-ghost">Secondary</a></div>
+  </div>
+  <div data-aos="fade-up" data-aos-delay="100" class="aspect-[4/3] rounded-2xl overflow-hidden bg-base-200"><img src="..." alt="..." class="h-full w-full object-cover"></div>
+</div></section>
+
+2) PROOF STRIP: a muted row of client logos or 3 trust stats directly under the hero.
+
+3) FEATURE GRID (3-up): eyebrow + h2 + lead, then a grid sm:grid-cols-3 gap-6 of cards; each card leads with {{sw-icon "name" "h-6 w-6"}} in a rounded-xl bg-primary/10 text-primary p-3 tile, then a title + a sentence.
+
+4) ALTERNATING FEATURE ROWS (the workhorse — repeat 2-3x, flipping sides each time): grid lg:grid-cols-2 gap-12 items-center, image on one side (swap with lg:order-last on alternate rows), copy on the other (eyebrow + h3 + paragraph + a checklist of {{sw-icon "check"}} items). This is what makes a page feel substantial rather than thin.
+
+5) STATS BAND: a coloured break — <section> with bg-primary text-primary-content (or bg-base-200), grid grid-cols-2 sm:grid-cols-4, each cell a text-4xl font-bold number + a small label.
+
+6) TESTIMONIALS: one large pull-quote, OR several via data-sw-component="carousel" (call get_guide("components")). Quote + avatar + name/role.
+
+7) PRICING: grid sm:grid-cols-3; highlight the middle card (border-primary ring-1 ring-primary + a "Popular" badge); each has a price, a feature list, and a btn.
+
+8) FAQ: native <details> accordions (no JS), grouped with space-y-3 — each MUST carry the collapse-title + collapse-content children: <details class="collapse collapse-plus border border-base-300 rounded-box"><summary class="collapse-title font-semibold">Question?</summary><div class="collapse-content text-base-content/70">Answer.</div></details>
+
+9) CLOSING CTA BAND (end every landing page with one): a centred section, bg-primary text-primary-content rounded-3xl, h2 + lead + a contrasting button — a solid white button reads best: class="btn border-0 bg-base-100 text-primary hover:bg-base-200".
+
+IMAGERY: use search_stock_images + import_stock_image for REAL photos — empty boxes/placeholder greys read as unfinished. Keep a consistent aspect per group (aspect-[4/3], aspect-video, aspect-square) + object-cover + rounded-2xl; galleries -> data-sw-component="lightbox". Never distort an image.
+
+MOTION (restraint): exactly one data-aos="fade-up" focus per section; stagger a grid's children with increasing data-aos-delay (0/100/200). Animating everything cheapens it.
+
+CHECK BEFORE PUBLISH: 6+ distinct sections? type scale applied (headings are not all the same size)? surfaces alternate? one accent colour, used sparingly? real images, not placeholders? a strong closing CTA? the same container width throughout? Preview the page and read the html to confirm the structure rendered.
+`,
+  },
   components: {
     title: "Components & forms",
     summary: "interactive widgets (carousel, tabs, lightbox, modal, cookie-consent, datetimepicker) + Forms",

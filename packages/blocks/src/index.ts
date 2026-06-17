@@ -1,6 +1,7 @@
 export * from './animations.js';
 export * from './lazyload.js';
 export * from './ripple.js';
+export * from './nav-effects.js';
 export * from './cart.js';
 export * from './preloader.js';
 export * from './theme-mode.js';

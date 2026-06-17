@@ -459,19 +459,21 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
     entries: [
       {
         id: 'fx-nav',
-        syntax: 'sw-nav-pill | -underline | -soft | -bar | -ghost',
+        syntax:
+          'sw-nav-box-solid | -box-fill-left | -box-fill-up | -box-draw | -box-shadow | -line-bottom | -line-sliding-bottom | -line-top-down | -line-squiggle | -sliding-pill | -glass-pill | -dot-to-pill | -highlighter | -brackets | -brackets-curly | -blob | -chevron | -corner-ticks | -spotlight-sliding',
         name: 'Nav effects (sw-nav-*)',
-        keywords: 'nav navbar menu active current effect scheme hover underline pill bar ghost highlight appearance',
+        keywords:
+          'nav navbar menu active current effect scheme hover underline line bottom pill box fill draw shadow brackets chevron blob highlighter spotlight squiggle dot appearance',
         description:
-          'Active + hover styling for the MAIN nav links (the #top-nav / #mobile-nav landmarks). Mark the current item with the .active class — e.g. {{#if (sw-active path)}}active{{/if}} — and/or aria-current="page". Colors come from the brand: only `pill` fills a surface (with the WCAG-derived primary foreground); underline/soft/bar keep the readable nav text and add a brand accent; ghost colors the active text in the brand primary. Set the scheme in Website settings (applies everywhere), or add the class to a single <ul> for a one-off.',
+          'Active + hover styling for the MAIN nav links (the #top-nav / #mobile-nav landmarks). Mark the current item with the .active class — e.g. {{#if (sw-active path)}}active{{/if}} — and/or aria-current="page". Colors come from the brand and stay legible in the built-in dark theme (they read the --sw-color-* tokens). The fill schemes (box-solid / box-fill-* / dot-to-pill) invert the label to the WCAG-derived brand foreground; the line / bracket / outline schemes keep the readable nav text and add a brand accent. Three schemes — line-sliding-bottom, sliding-pill and spotlight-sliding — load a tiny runtime automatically (a shared indicator that slides between items, or a glow that follows the cursor). Set the scheme in Website settings (applies everywhere), or add the class to a single <ul> for a one-off.',
         example:
           '{{! Website settings → Nav effect, OR per-nav: }}\n' +
-          '<ul class="menu menu-horizontal sw-nav-pill">{{#each nav.header}}\n' +
+          '<ul class="menu menu-horizontal sw-nav-box-solid">{{#each nav.header}}\n' +
           '  <li><a href="{{sw-url path}}"\n' +
           '         class="{{#if (sw-active path)}}active{{/if}}"\n' +
           '         {{#if (sw-active path exact=true)}}aria-current="page"{{/if}}>{{label}}</a></li>\n' +
           '{{/each}}</ul>',
-        note: 'pill / soft / underline / bar keep WCAG contrast for ANY brand color (the text stays the derived/base foreground). Want your own scheme? Pick "Custom" in Website settings and write it in Custom CSS.',
+        note: 'Every scheme keeps WCAG contrast for ANY brand color and flips correctly in dark mode. Want your own scheme? Leave Nav effect "None" in Website settings and write it in Custom CSS (target .active / the nav links).',
       },
       {
         id: 'fx-btn',

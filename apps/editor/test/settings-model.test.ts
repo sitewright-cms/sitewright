@@ -156,16 +156,16 @@ describe('settings model', () => {
   it('round-trips website.effects (nav/button effects) and omits "None"', () => {
     const withEffects: SettingsBundle = {
       identity: { name: 'Acme', colors: {} },
-      website: { effects: { navEffect: 'pill', buttonEffect: 'lift' } },
+      website: { effects: { navEffect: 'box-solid', buttonEffect: 'lift' } },
       settings: { defaultLocale: 'en', locales: ['en'] },
     };
-    expect(toBundle(toForm(withEffects), withEffects).website?.effects).toEqual({ navEffect: 'pill', buttonEffect: 'lift' });
+    expect(toBundle(toForm(withEffects), withEffects).website?.effects).toEqual({ navEffect: 'box-solid', buttonEffect: 'lift' });
 
     // 'none' (and an unset effect) drop out — only the chosen one is serialized.
     const f = toForm(empty());
-    f.navEffect = 'underline';
+    f.navEffect = 'line-bottom';
     f.buttonEffect = 'none';
-    expect(toBundle(f, empty()).website?.effects).toEqual({ navEffect: 'underline' });
+    expect(toBundle(f, empty()).website?.effects).toEqual({ navEffect: 'line-bottom' });
 
     // both off → no effects block at all.
     expect(toBundle(toForm(empty()), empty()).website?.effects).toBeUndefined();

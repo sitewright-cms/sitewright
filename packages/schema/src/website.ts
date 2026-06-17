@@ -228,10 +228,68 @@ export type Shop = z.infer<typeof ShopSchema>;
  */
 /**
  * Curated NAV-LINK effect schemes — CSS `.sw-nav-<name>` utilities (see @sitewright/tailwind's
- * effect layer). Source-of-truth for the enum below, the editor picker, and a coverage test.
+ * effect layer). Source-of-truth for the enum below, the editor picker label map, and a coverage
+ * test. Most are pure CSS; the three in {@link JS_NAV_EFFECTS} are JS-backed (a shared sliding
+ * indicator / a cursor-following spotlight) and make the platform ship the nav-effects runtime.
  */
-export const NAV_EFFECTS = ['pill', 'underline', 'soft', 'bar', 'ghost'] as const;
+export const NAV_EFFECTS = [
+  'box-solid',
+  'line-bottom',
+  'line-sliding-bottom',
+  'sliding-pill',
+  'highlighter',
+  'brackets',
+  'brackets-curly',
+  'box-fill-left',
+  'box-draw',
+  'glass-pill',
+  'spotlight-sliding',
+  'blob',
+  'line-top-down',
+  'line-squiggle',
+  'box-fill-up',
+  'dot-to-pill',
+  'chevron',
+  'corner-ticks',
+  'box-shadow',
+] as const;
 export type NavEffect = (typeof NAV_EFFECTS)[number];
+
+/** Display labels for the nav-effect picker (the "Family: Detail" names can't be derived from slugs). */
+export const NAV_EFFECT_LABELS: Record<NavEffect, string> = {
+  'box-solid': 'Box: Solid',
+  'line-bottom': 'Line: Bottom',
+  'line-sliding-bottom': 'Line: Sliding at Bottom',
+  'sliding-pill': 'Sliding Pill',
+  highlighter: 'Highlighter',
+  brackets: 'Brackets',
+  'brackets-curly': 'Brackets: Curly',
+  'box-fill-left': 'Box: Fill Left',
+  'box-draw': 'Box: Draw',
+  'glass-pill': 'Glass Pill',
+  'spotlight-sliding': 'Spotlight: Sliding',
+  blob: 'Blob',
+  'line-top-down': 'Line: Top-Down',
+  'line-squiggle': 'Line: Squiggle',
+  'box-fill-up': 'Box: Fill Up',
+  'dot-to-pill': 'Dot-To-Pill',
+  chevron: 'Chevron',
+  'corner-ticks': 'Corner Ticks',
+  'box-shadow': 'Box: Shadow',
+};
+
+/**
+ * Nav schemes that need the nav-effects JS runtime: a shared indicator that *slides* between items
+ * (the two sliding schemes) or a radial glow that *follows the cursor* (spotlight). The platform
+ * ships `nav-effects.js` and the runtime injects the indicator + wires pointer tracking. Every other
+ * scheme is pure CSS. Source-of-truth for the publish/preview runtime gate.
+ */
+export const JS_NAV_EFFECTS = ['line-sliding-bottom', 'sliding-pill', 'spotlight-sliding'] as const;
+
+/** Whether a chosen nav effect needs the nav-effects JS runtime (a sliding indicator / spotlight). */
+export function navEffectUsesRuntime(effect: string | null | undefined): boolean {
+  return !!effect && (JS_NAV_EFFECTS as readonly string[]).includes(effect);
+}
 
 /** Curated BUTTON effect schemes — CSS `.sw-btn-<name>` utilities (layer on any daisyUI `.btn`). */
 export const BUTTON_EFFECTS = ['lift', 'glow', 'sheen', 'press', 'pulse', 'ring'] as const;
@@ -262,8 +320,9 @@ export type PreloaderEffect = (typeof PRELOADER_EFFECTS)[number];
  * the author keeps full freedom to apply a scheme class per element, or write a custom scheme via
  * `criticalCss`. The chosen schemes become `<body>` classes at render (see {@link websiteEffectsClasses}).
  */
+const NAV_EFFECT_CHOICES = ['none', ...NAV_EFFECTS] as const;
 export const WebsiteEffectsSchema = z.object({
-  navEffect: z.enum(['none', 'pill', 'underline', 'soft', 'bar', 'ghost']).optional(),
+  navEffect: z.enum(NAV_EFFECT_CHOICES).optional(),
   buttonEffect: z.enum(['none', 'lift', 'glow', 'sheen', 'press', 'pulse', 'ring']).optional(),
   preloaderEffect: z
     .enum(['none', 'spinner', 'dual', 'dots', 'bars', 'pulse', 'progress', 'logo-pulse', 'logo-draw', 'logo-sheen'])

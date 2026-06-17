@@ -179,8 +179,8 @@ export const EXAMPLE_WEBSITE = {
   // bind via data-sw-translate="<scope>.<key>" (page-translations.ts). One table, grouped by scope.
   translations: { ...CHROME_TRANSLATIONS, ...PAGE_TRANSLATIONS },
   // Site-wide nav/button effect schemes (CI-themed, contrast-safe). The active nav item is marked
-  // `.active` (below); `sw-nav-pill` fills it with the brand primary + its WCAG-derived foreground.
-  effects: { navEffect: 'pill', buttonEffect: 'lift', preloaderEffect: 'logo-pulse' },
+  // `.active` (below); `sw-nav-box-solid` fills it with the brand primary + its WCAG-derived foreground.
+  effects: { navEffect: 'box-solid', buttonEffect: 'lift', preloaderEffect: 'logo-pulse' },
   // Opt-in light/dark themes — the flagship showcases the feature: it starts in LIGHT and the
   // {{sw-theme-toggle}} in the header (navbar-end) lets visitors switch to dark (their choice persists).
   enableThemes: true,

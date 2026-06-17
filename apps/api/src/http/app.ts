@@ -56,6 +56,8 @@ import {
   usesRipple,
   RIPPLE_CSS,
   RIPPLE_JS,
+  usesNavEffects,
+  NAV_EFFECTS_JS,
   usesCart,
   CART_CSS,
   usesThemeToggle,
@@ -467,6 +469,10 @@ async function styledSourceDocument(
   // preview when the rendered body or slots embed a <dialog> — WYSIWYG parity, so an authored modal
   // (incl. a global modal in the bottom slot) actually opens when its trigger is clicked.
   const dialog = usesDialog(scanHtml);
+  // JS-backed nav schemes (sliding indicator / cursor-following spotlight) — the body effect class is
+  // in scanHtml, so run their runtime live in the preview for WYSIWYG parity (harmless: it only injects
+  // an indicator span + reads pointer position).
+  const navRuntime = usesNavEffects(scanHtml);
   const inlineStyles = [
     ...(componentCss ? [componentCss] : []),
     ...(animated ? [ANIMATION_CSS] : []),
@@ -483,6 +489,7 @@ async function styledSourceDocument(
     ...(animated ? [ANIMATION_JS] : []),
     ...(lazy ? [LAZYLOAD_JS] : []),
     ...(waves ? [RIPPLE_JS] : []),
+    ...(navRuntime ? [NAV_EFFECTS_JS] : []),
     ...(dialog ? [NAV_LINK_JS] : []),
     // The editor↔preview bridge (scroll preserve/restore + inline-edit). Preview-only — this shell
     // is never the publish path (build.ts calls renderDocument directly), so it can't leak.

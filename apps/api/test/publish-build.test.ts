@@ -309,7 +309,7 @@ describe('buildSite', () => {
           identity: { name: 'Acme', colors: { primary: '#4f46e5' } },
           settings: { defaultLocale: 'en', locales: ['en'] },
           website: {
-            effects: { navEffect: 'pill', buttonEffect: 'lift' },
+            effects: { navEffect: 'box-solid', buttonEffect: 'lift' },
             topNav:
               '<div class="navbar"><ul class="menu">{{#each nav.header}}<li><a class="{{#if (sw-active path)}}active{{/if}}" href="{{sw-url path}}">{{label}}</a></li>{{/each}}</ul></div>',
           },
@@ -321,14 +321,67 @@ describe('buildSite', () => {
     });
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
     // The chosen schemes become <body> classes (cascade to the nav landmarks + .btn).
-    expect(home).toContain('<body class="sw-nav-pill sw-btn-lift">');
+    expect(home).toContain('<body class="sw-nav-box-solid sw-btn-lift">');
+    // A pure-CSS nav scheme ships NO runtime.
+    expect(home).not.toContain('nav-effects.js');
     const sheet = await readFile(join(outDir, 'styles.css'), 'utf8');
     // Only the chosen schemes ship, scoped to the platform landmarks, themed by the brand.
-    expect(sheet).toContain('.sw-nav-pill');
+    expect(sheet).toContain('.sw-nav-box-solid');
     expect(sheet).toMatch(/#top-nav/);
     expect(sheet).toContain('.sw-btn-lift');
-    expect(sheet).not.toContain('sw-nav-underline'); // tree-shaken (not chosen)
+    expect(sheet).not.toContain('sw-nav-line-bottom'); // tree-shaken (not chosen)
     expect(sheet).not.toContain('sw-btn-glow');
+  });
+
+  it('ships the nav-effects runtime + indicator CSS only for a JS-backed nav scheme', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: { primary: '#4f46e5' } },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+          website: {
+            effects: { navEffect: 'sliding-pill' },
+            topNav:
+              '<div class="navbar"><ul class="menu">{{#each nav.header}}<li><a class="{{#if (sw-active path)}}active{{/if}}" href="{{sw-url path}}">{{label}}</a></li>{{/each}}</ul></div>',
+          },
+        },
+        pages: [
+          { id: 'home', path: '', title: 'Home', source: '<p>Hi</p>', nav: { slots: ['header'], order: 1 } },
+        ],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).toContain('<body class="sw-nav-sliding-pill">');
+    expect(home).toContain('nav-effects.js'); // the runtime is linked
+    const runtime = await readFile(join(outDir, 'nav-effects.js'), 'utf8'); // … and the asset exists
+    expect(runtime).toContain('sw-nav-indicator');
+    const sheet = await readFile(join(outDir, 'styles.css'), 'utf8');
+    expect(sheet).toContain('.sw-nav-indicator'); // the indicator CSS shipped with the scheme
+    expect(sheet).toContain('--sw-ind-left');
+  });
+
+  it('ships the nav-effects runtime for a PER-ELEMENT JS scheme even when the site-wide picker is unset', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: { primary: '#4f46e5' } },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+          // no website.effects.navEffect — the scheme is applied per-element in the source instead
+        },
+        pages: [
+          { id: 'home', path: '', title: 'Home', source: '<ul class="menu menu-horizontal sw-nav-sliding-pill"><li><a class="active">x</a></li></ul>' },
+        ],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).toContain('nav-effects.js'); // source-scan gate caught the per-element class
+    expect(await readFile(join(outDir, 'nav-effects.js'), 'utf8')).toContain('sw-nav-indicator');
   });
 
   it('ships the preloader overlay + runtime when effects.preloaderEffect is set (and nothing when not)', async () => {

@@ -212,10 +212,14 @@ the item route is \`path\`: <a href="{{sw-url path}}" class="{{#if (sw-active pa
 the nav EFFECT styles; omit aria-current off the current page). Output the label with {{sw-label}}
 (renders a placeholder's rich name; a page title is escaped).
 NAV/BUTTON EFFECTS: curated CI-themed, contrast-safe schemes — add a class for nav active/hover
-(\`sw-nav-pill\`|\`-underline\`|\`-soft\`|\`-bar\`|\`-ghost\`, on the nav <ul> or set site-wide in
-website.effects.navEffect) and button hover/press (\`sw-btn-lift\`|\`-glow\`|\`-sheen\`|\`-press\`|\`-pulse\`|
-\`-ring\` on any .btn, or website.effects.buttonEffect). Colors auto-derive from the brand; only sw-nav-pill
-fills a surface (uses the WCAG-derived foreground). Prefer these over hand-rolled active/hover CSS.
+(\`sw-nav-<name>\` on the nav <ul> or set site-wide in website.effects.navEffect; names:
+\`box-solid\`,\`box-fill-left\`,\`box-fill-up\`,\`box-draw\`,\`box-shadow\`,\`line-bottom\`,\`line-sliding-bottom\`,
+\`line-top-down\`,\`line-squiggle\`,\`sliding-pill\`,\`glass-pill\`,\`dot-to-pill\`,\`highlighter\`,\`brackets\`,
+\`brackets-curly\`,\`blob\`,\`chevron\`,\`corner-ticks\`,\`spotlight-sliding\`) and button hover/press
+(\`sw-btn-lift\`|\`-glow\`|\`-sheen\`|\`-press\`|\`-pulse\`|\`-ring\` on any .btn, or website.effects.buttonEffect).
+Colors auto-derive from the brand (and stay legible in the built-in dark theme); only \`box-solid\` /
+\`box-fill-*\` / \`dot-to-pill\` fill a surface (using the WCAG-derived foreground). The three sliding /
+spotlight schemes load a tiny runtime automatically. Prefer these over hand-rolled active/hover CSS.
 TEMPLATES: set page.template to "global:landing", "global:text", or a project template id
 (kind "template": { id, name, source }) — the page then renders the TEMPLATE's source and
 contributes ONLY its editable \`data\` (page.data) overrides; leave page.source unset.

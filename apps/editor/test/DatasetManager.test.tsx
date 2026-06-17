@@ -94,6 +94,30 @@ describe('DatasetManager', () => {
     );
   });
 
+  it('reveals the "Enter Dataset Name" input from the header "New Dataset" button, then creates', async () => {
+    render(<DatasetManager project={project} />);
+    await screen.findByText('Alpha');
+    // The name input is hidden until the header button is clicked (no persistent bottom form).
+    expect(screen.queryByText('Enter Dataset Name')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'New dataset' }));
+    await screen.findByText('Enter Dataset Name');
+    fireEvent.change(screen.getByLabelText('Dataset name'), { target: { value: 'Posts' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    await waitFor(() =>
+      expect(putDataset).toHaveBeenCalledWith('p', expect.objectContaining({ id: 'posts', name: 'Posts', slug: 'posts', fields: [] })),
+    );
+  });
+
+  it('hides the create input again when Cancel is clicked', async () => {
+    render(<DatasetManager project={project} />);
+    await screen.findByText('Alpha');
+    fireEvent.click(screen.getByRole('button', { name: 'New dataset' }));
+    await screen.findByText('Enter Dataset Name');
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByText('Enter Dataset Name')).toBeNull());
+    expect(putDataset).not.toHaveBeenCalled();
+  });
+
   async function openRename() {
     await renderAndSelectAlpha();
     fireEvent.click(screen.getByRole('button', { name: /schema/ }));

@@ -1,5 +1,5 @@
 import { useContext, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { X, GripVertical, ChevronRight } from 'lucide-react';
+import { X, GripVertical, ChevronRight, Plus } from 'lucide-react';
 import type { Dataset, Entry, Field, FieldType } from '@sitewright/schema';
 import { compareEntryOrder } from '@sitewright/core';
 import { api, type Project } from '../api';
@@ -62,6 +62,7 @@ export function DatasetManager({ project }: { project: Project }) {
   const [datasetQuery, setDatasetQuery] = useState(''); // search filter for the dataset list
   const [error, setError] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
+  const [showCreate, setShowCreate] = useState(false); // reveal the "Enter Dataset Name" input from the header button
   const [draftFields, setDraftFields] = useState<Field[]>([]);
   const [newFieldName, setNewFieldName] = useState('');
   const [newFieldType, setNewFieldType] = useState<FieldType>('text');
@@ -164,6 +165,7 @@ export function DatasetManager({ project }: { project: Project }) {
       // stay valid. A future rename feature must migrate those references.
       await api.putDataset(project.id, { id: slug, name: newName, slug, fields: [] });
       setNewName('');
+      setShowCreate(false);
       await load();
       setSelId(slug);
     } catch (err) {
@@ -322,6 +324,49 @@ export function DatasetManager({ project }: { project: Project }) {
     <div ref={rootRef} className="flex gap-6">
       {/* Dataset list + create */}
       <aside className="w-64 shrink-0">
+        {/* Header action: "New Dataset" reveals the name input + Create (no persistent form below). */}
+        {showCreate ? (
+          <form onSubmit={createDataset} className={`mb-2 flex flex-col gap-2 ${glassCard} p-3`}>
+            <label className={fieldLabel}>Enter Dataset Name</label>
+            <input
+              autoFocus
+              aria-label="Dataset name"
+              className={glassInput}
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="Posts"
+              required
+            />
+            <div className="flex gap-2">
+              <button type="submit" className={`flex-1 ${primaryButton}`}>
+                Create
+              </button>
+              <button
+                type="button"
+                className={ghostButton}
+                onClick={() => {
+                  setShowCreate(false);
+                  setNewName('');
+                  setError(null);
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        ) : (
+          <button
+            type="button"
+            aria-label="New dataset"
+            onClick={() => {
+              setShowCreate(true);
+              setError(null);
+            }}
+            className={`mb-2 flex w-full items-center justify-center gap-1.5 ${primaryButton}`}
+          >
+            <Plus className="h-4 w-4" /> New Dataset
+          </button>
+        )}
         {/* Search the dataset list (name or slug). */}
         <SearchField
           ariaLabel="Search datasets"
@@ -367,20 +412,6 @@ export function DatasetManager({ project }: { project: Project }) {
           {datasets.length === 0 && <li className="text-sm text-slate-400">No datasets yet.</li>}
           {datasets.length > 0 && filteredDatasets.length === 0 && <li className="text-sm text-slate-400">No datasets match “{datasetQuery}”.</li>}
         </ul>
-        <form onSubmit={createDataset} className={`flex flex-col gap-2 ${glassCard} p-3`}>
-          <label className={fieldLabel}>New dataset</label>
-          <input
-            aria-label="Dataset name"
-            className={glassInput}
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            placeholder="Posts"
-            required
-          />
-          <button type="submit" className={primaryButton}>
-            Create dataset
-          </button>
-        </form>
       </aside>
 
       {/* Selected dataset detail */}

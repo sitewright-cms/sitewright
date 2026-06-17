@@ -17,8 +17,9 @@ export const EXAMPLE_EXTRA_LOCALES: readonly string[] = EXAMPLE_CONTENT_LOCALES.
 
 interface DatasetSpec {
   id: string;
-  /** Editor-facing name per locale (the suffix tells locales apart in the datasets panel). */
-  name: Record<string, string>;
+  /** Editor-facing ENGLISH name. Non-default locales get a " - <LANG>" suffix (e.g. "Open Roles - DE")
+   *  so the datasets panel always shows the English base + the language it belongs to. */
+  name: string;
   fields: Field[];
   /** Field names whose `config.targetDataset` must be locale-suffixed in each variant. */
   referenceFields?: string[];
@@ -29,41 +30,42 @@ const text = (name: string, required = false): Field => ({ name, type: 'text', r
 const SPECS: DatasetSpec[] = [
   {
     id: 'services',
-    name: { en: 'Services', de: 'Leistungen (DE)' },
-    // `icon` is a Lucide icon NAME (rendered via {{sw-icon icon}}), not an emoji glyph.
-    fields: [text('icon'), text('title', true), text('summary'), text('price')],
+    name: 'Services',
+    // `title` is FIRST so it's the entry-list title; `icon` is a Lucide icon NAME ({{sw-icon icon}}).
+    fields: [text('title', true), text('icon'), text('summary'), text('price')],
   },
   {
     id: 'projects',
-    name: { en: 'Work', de: 'Arbeiten (DE)' },
+    name: 'Work',
     fields: [text('title', true), text('client'), text('category'), text('summary'), { name: 'image', type: 'image', required: false, localized: false }, text('year')],
   },
   {
     id: 'team',
-    name: { en: 'Team', de: 'Team (DE)' },
+    name: 'Team',
     fields: [text('name', true), text('role'), { name: 'photo', type: 'image', required: false, localized: false }, text('bio')],
   },
   {
     id: 'testimonials',
-    name: { en: 'Testimonials', de: 'Stimmen (DE)' },
+    name: 'Testimonials',
     fields: [text('quote', true), text('author'), text('role')],
   },
   {
     id: 'products',
-    name: { en: 'Products', de: 'Produkte (DE)' },
-    fields: [text('sku', true), text('name', true), { name: 'price', type: 'number', required: true, localized: false }, { name: 'image', type: 'image', required: false, localized: false }, text('description')],
+    name: 'Products',
+    // `name` is FIRST so it's the entry-list title (not the `sku` code).
+    fields: [text('name', true), text('sku', true), { name: 'price', type: 'number', required: true, localized: false }, { name: 'image', type: 'image', required: false, localized: false }, text('description')],
   },
   {
     // FAQ — richtext answers (the one HTML sink, sanitized at render) for the Accordion page.
     id: 'faq',
-    name: { en: 'FAQ', de: 'FAQ (DE)' },
+    name: 'FAQ',
     fields: [text('question', true), { name: 'answer', type: 'richtext', required: true, localized: false }],
   },
   {
     // Pricing plans — number price, booleans (monthly/featured drive the Tabs panels + the
     // highlight ring), and a `features` JSON array looped with a nested {{#each}}.
     id: 'plans',
-    name: { en: 'Plans', de: 'Pakete (DE)' },
+    name: 'Plans',
     fields: [
       text('name', true),
       { name: 'price', type: 'number', required: true, localized: false },
@@ -81,7 +83,7 @@ const SPECS: DatasetSpec[] = [
     // Open roles — select (department), boolean (remote), date (posted, via {{sw-date}}),
     // richtext description, and a reference to the hiring manager's team entry.
     id: 'roles',
-    name: { en: 'Open roles', de: 'Offene Stellen (DE)' },
+    name: 'Open Roles',
     fields: [
       text('title', true),
       { name: 'dept', type: 'select', required: true, localized: false, config: { options: ['Design', 'Engineering', 'Strategy', 'Operations'] } },
@@ -104,7 +106,8 @@ function emit(spec: DatasetSpec): Dataset[] {
         ? { ...f, config: { ...f.config, targetDataset: `${(f.config as { targetDataset: string }).targetDataset}${suffix}` } }
         : f,
     );
-    return { id: `${spec.id}${suffix}`, name: spec.name[locale] ?? spec.id, slug: `${spec.id}${suffix}`, fields };
+    const name = locale === 'en' ? spec.name : `${spec.name} - ${locale.toUpperCase()}`;
+    return { id: `${spec.id}${suffix}`, name, slug: `${spec.id}${suffix}`, fields };
   });
 }
 

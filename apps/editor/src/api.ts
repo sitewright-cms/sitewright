@@ -355,6 +355,19 @@ export interface WidgetCatalogEntry {
   datasets: Array<{ slug: string; name: string }>;
 }
 
+/** A "fork existing effect" snippet (GET /authoring/effect-forks) — a built-in effect as ready-to-run
+ *  custom code the editor inserts into a "None / Custom Code" slot. */
+export interface EffectFork {
+  name: string;
+  label: string;
+  code: string;
+}
+export interface EffectForks {
+  nav: EffectFork[];
+  button: EffectFork[];
+  preloader: EffectFork[];
+}
+
 export const api = {
   register: (email: string, password: string) =>
     request<{ userId: string }>('POST', '/auth/register', { email, password }),
@@ -528,6 +541,8 @@ export const api = {
   deleteGlobalSnippet: (id: string) => request<void>('DELETE', `/admin/global/snippet/${encodeURIComponent(id)}`),
   // --- system Widgets (managed, data-backed drop-ins; the catalog the Widgets rail browses) ---
   listWidgets: () => request<{ widgets: WidgetCatalogEntry[] }>('GET', '/authoring/widgets'),
+  /** The "fork existing effect" snippets for the Website-settings custom-code editors. */
+  listEffectForks: () => request<EffectForks>('GET', '/authoring/effect-forks'),
 
   listGlobalTemplates: () => request<{ items: Template[] }>('GET', '/global/template'),
   putGlobalTemplate: (template: Template) =>

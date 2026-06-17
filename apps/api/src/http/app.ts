@@ -24,6 +24,7 @@ import {
   DEFAULT_BRAND_SECONDARY,
   passwordSchema,
   websiteEffectsClasses,
+  websiteEffectsCustomCode,
   type CorporateIdentity,
   type Entry,
   type FileAsset,
@@ -123,6 +124,7 @@ import { isNewer } from '../version/checker.js';
 import { registerDeployTargetRoutes } from './deploy-targets.js';
 import { registerLocaleRoutes } from './locales.js';
 import { registerWebsiteDataRoutes } from './website-data.js';
+import { buildEffectForks } from './effect-forks.js';
 import { registerFormRoutes } from './form-routes.js';
 import { registerProjectSmtpRoutes } from './project-smtp-routes.js';
 import { registerStockRoutes, type StockServiceLike } from './stock-routes.js';
@@ -416,6 +418,10 @@ interface PreviewShell {
   head?: string;
   criticalCss?: string;
   customScripts?: string;
+  /** Custom preloader overlay (the "None / Custom Code" preloader) — first body child. */
+  preloader?: string;
+  /** Emit the brand's text-on-brand tokens (custom effect code references them). */
+  emitBrandContentTokens?: boolean;
   /** `<html lang>` for the preview — the previewed page's locale (publish parity). */
   lang?: string;
   /** Site-wide nav/button effect scheme classes for `<body>` (`sw-nav-*` / `sw-btn-*`). */
@@ -2107,6 +2113,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         ]);
         // Wrap + inline Tailwind INSIDE the try so a compile failure returns the error
         // envelope (not a raw 500), consistent with the rest of this handler.
+        // Custom effect code (the "None / Custom Code" slots): nav/button code injects at body-end
+        // after the tenant's own scripts; a custom preloader becomes the first-body-child overlay.
+        const fxCode = websiteEffectsCustomCode(website?.effects);
         const sourceHtml = await styledSourceDocument(page, brand, rendered, {
           topNav,
           mobileNav,
@@ -2116,7 +2125,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           bottom,
           head: website?.head,
           criticalCss: website?.criticalCss,
-          customScripts: website?.scripts,
+          customScripts: [website?.scripts, fxCode.bodyEnd].filter(Boolean).join('\n') || undefined,
+          preloader: fxCode.preloader,
+          emitBrandContentTokens: !!(fxCode.bodyEnd || fxCode.preloader),
           bodyClass: websiteEffectsClasses(website?.effects),
           theme: { enabled: !!website?.enableThemes, default: website?.defaultTheme },
           lang: previewLocale, // `<html lang>` follows the previewed page's locale (publish parity)
@@ -3149,6 +3160,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // /health + /version, but rate-limited since the payload is non-trivial.
   app.get('/authoring/components', { config: rl(60) }, async () => ({ components: COMPONENT_CATALOG }));
 
+  // "Fork existing effect" snippets for the Website-settings custom-code editors — each built-in
+  // nav/button/preloader effect as a self-contained, ready-to-run HTML snippet (derived from the same
+  // source as the built-ins, so it can't drift). STATIC platform data; computed once + cached.
+  app.get('/authoring/effect-forks', { config: rl(60) }, async () => buildEffectForks());
+
   // The system WIDGET catalog — managed, data-backed drop-ins (hero-slider, …) the editor's Widgets
   // rail browses and inserts as {{> name}}. STATIC platform metadata (no tenant data): name/label/
   // description, the component it's built on, and the config dataset(s) it provisions on save. The
@@ -3265,6 +3281,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       let company: Record<string, unknown> = { name: project.name };
       let website: Record<string, unknown> | undefined;
       let themeBodyClass = '';
+      let themeCustomScripts: string | undefined;
+      let themePreloader: string | undefined;
+      let themeEmitContentTokens = false;
       let brand: CorporateIdentity = { name: project.name, colors: {} };
       let projectDefaultLocale = 'en';
       try {
@@ -3279,6 +3298,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           ? { siteUrl: settings.website.siteUrl, data: settings.website.data, t: resolveTranslations(settings.website.translations, projectDefaultLocale, projectDefaultLocale), enableThemes: settings.website.enableThemes }
           : undefined;
         themeBodyClass = websiteEffectsClasses(settings.website?.effects);
+        const fx = websiteEffectsCustomCode(settings.website?.effects);
+        themeCustomScripts = fx.bodyEnd || undefined;
+        themePreloader = fx.preloader;
+        themeEmitContentTokens = !!(fx.bodyEnd || fx.preloader);
       } catch (err) {
         if (!(err instanceof NotFoundError)) throw err;
       }
@@ -3341,7 +3364,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           path: String(pageCtx.path ?? '/'),
           title: String(pageCtx.title ?? project.name),
         };
-        const html = await styledSourceDocument(previewPage, brand, rendered, { bodyClass: themeBodyClass });
+        const html = await styledSourceDocument(previewPage, brand, rendered, {
+          bodyClass: themeBodyClass,
+          customScripts: themeCustomScripts,
+          preloader: themePreloader,
+          emitBrandContentTokens: themeEmitContentTokens,
+        });
         // Mint a previewStore token so the editor loads the doc via an iframe `src` (served under an
         // opaque-origin `sandbox` CSP) instead of `srcDoc` (which inherits the editor's own CSP).
         // `html` is still returned for API consumers/tests.
@@ -3407,6 +3435,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       let brand: CorporateIdentity = { name: project.name, colors: {} };
       let website: Record<string, unknown> | undefined;
       let themeBodyClass = '';
+      let themeFxBodyEnd: string | undefined;
       try {
         const settings = (await contentRepo.get(ctx, 'settings', SETTINGS_ENTITY_ID)) as Settings;
         brand = settings.identity;
@@ -3414,6 +3443,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // {{sw-translate}} in a hovered snippet renders its `default=`/'' fallback (no locale context here).
         website = settings.website ? { siteUrl: settings.website.siteUrl, data: settings.website.data } : undefined;
         themeBodyClass = websiteEffectsClasses(settings.website?.effects);
+        // Custom nav/button effect code applies here too (a hovered nav snippet should show it); a
+        // custom PRELOADER is deliberately omitted — a snippet hover doesn't want a loading overlay.
+        themeFxBodyEnd = websiteEffectsCustomCode(settings.website?.effects).bodyEnd || undefined;
       } catch (err) {
         if (!(err instanceof NotFoundError)) throw err;
       }
@@ -3431,7 +3463,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           partials,
         });
         const previewPage: Page = { id: 'snippet-preview', path: '/', title: project.name };
-        const html = await styledSourceDocument(previewPage, brand, rendered, { bodyClass: themeBodyClass });
+        const html = await styledSourceDocument(previewPage, brand, rendered, {
+          bodyClass: themeBodyClass,
+          customScripts: themeFxBodyEnd,
+          emitBrandContentTokens: !!themeFxBodyEnd,
+        });
         reply.header('content-security-policy', 'sandbox allow-scripts');
         reply.header('x-frame-options', 'SAMEORIGIN');
         return reply.type('text/html').send(html);

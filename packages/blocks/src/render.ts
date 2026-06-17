@@ -8,7 +8,7 @@ import { escapeAttr, escapeHtml } from './escape.js';
 import { metaTags, schemaOrgJsonLd, type SeoMeta, type SchemaOrgInfo } from './head.js';
 import { brandToCss } from './brand-css.js';
 import { baseStyles } from './base-css.js';
-import { themeCss, themeHtmlAttr, type ThemeMode } from './theme-mode.js';
+import { themeCss, themeHtmlAttr, lightContentTokensCss, type ThemeMode } from './theme-mode.js';
 import { previewStyles } from './preview-css.js';
 import { typographyCss, type FontAsset } from './typography-css.js';
 
@@ -33,6 +33,13 @@ export interface RenderDocumentOptions extends RenderContext {
    * Absent / `enabled:false` → current single-theme behaviour (no change for existing sites).
    */
   theme?: { enabled: boolean; default?: ThemeMode };
+  /**
+   * Emit the brand's derived light `--sw-color-*-content` tokens even when themes are off — set when a
+   * site uses custom effect code (the "None / Custom Code" slots), whose fork snippets reference those
+   * text-on-brand tokens. Themes already emit them, so this only fires for themes-off custom sites;
+   * sites without custom code stay byte-for-byte unchanged.
+   */
+  emitBrandContentTokens?: boolean;
   /**
    * Pre-rendered `<body>` HTML for a code-first (Handlebars `source`) page — used INSTEAD
    * of rendering the block tree. The same head/SEO/CSS/script shell is applied.
@@ -168,6 +175,7 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
   const {
     brand,
     theme,
+    emitBrandContentTokens,
     bodyHtml,
     bodyClass,
     preloader,
@@ -198,7 +206,11 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
   // Base layer (modern-normalize + platform defaults) FIRST so the skeleton, brand
   // vars, author criticalCss and the unlayered Tailwind utilities all override it.
   const css = `${baseStyles()}\n${previewStyles()}\n${brandToCss(brand)}${
-    theme?.enabled ? `\n${themeCss(brand.colors)}` : ''
+    theme?.enabled
+      ? `\n${themeCss(brand.colors)}`
+      : emitBrandContentTokens
+        ? `\n${lightContentTokensCss(brand.colors)}`
+        : ''
   }`;
   // Opt-in themes pin the project default onto <html data-sw-theme> ('auto' emits nothing →
   // the prefers-color-scheme media query in the CSS above governs).

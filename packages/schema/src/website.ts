@@ -319,9 +319,16 @@ export const PRELOADER_EFFECTS = [
 export type PreloaderEffect = (typeof PRELOADER_EFFECTS)[number];
 
 /**
- * Site-wide nav/button appearance (the no-code "effects" picker). 'none' (or absent) = no effect —
- * the author keeps full freedom to apply a scheme class per element, or write a custom scheme via
- * `criticalCss`. The chosen schemes become `<body>` classes at render (see {@link websiteEffectsClasses}).
+ * Site-wide nav/button appearance (the no-code "effects" picker). 'none' (or absent) = no built-in
+ * scheme — the author may instead supply their OWN effect as a custom-code blob (the `*Code` fields,
+ * edited via the "None / Custom Code" option), or apply a scheme class per element. The chosen
+ * built-in schemes become `<body>` classes at render (see {@link websiteEffectsClasses}); the custom
+ * code is injected when its effect is 'none' (see {@link websiteEffectsCustomCode}).
+ *
+ * The `*Code` fields are RAW owner-only HTML (mixed `<style>`/`<script>`/markup), injected UNESCAPED
+ * at render — same @security invariants as `website.head`/`scripts` (owner/admin-set; rendered only
+ * inside the sandboxed preview or written to the exported artifact, never as a same-origin editor
+ * text/html response).
  */
 const NAV_EFFECT_CHOICES = ['none', ...NAV_EFFECTS] as const;
 export const WebsiteEffectsSchema = z.object({
@@ -330,6 +337,12 @@ export const WebsiteEffectsSchema = z.object({
   preloaderEffect: z
     .enum(['none', 'spinner', 'dual', 'dots', 'bars', 'pulse', 'progress', 'logo-pulse', 'logo-draw', 'logo-sheen'])
     .optional(),
+  /** Custom nav effect — raw HTML (style/script) injected at body-end when navEffect is 'none'. */
+  navCode: z.string().max(HTML_MAX).optional(),
+  /** Custom button effect — raw HTML injected at body-end when buttonEffect is 'none'. */
+  buttonCode: z.string().max(HTML_MAX).optional(),
+  /** Custom preloader — raw HTML overlay injected as the first body child when preloaderEffect is 'none'. */
+  preloaderCode: z.string().max(HTML_MAX).optional(),
 });
 export type WebsiteEffects = z.infer<typeof WebsiteEffectsSchema>;
 
@@ -339,6 +352,23 @@ export function websiteEffectsClasses(effects: WebsiteEffects | undefined): stri
   const nav = effects.navEffect && effects.navEffect !== 'none' ? `sw-nav-${effects.navEffect}` : '';
   const btn = effects.buttonEffect && effects.buttonEffect !== 'none' ? `sw-btn-${effects.buttonEffect}` : '';
   return [nav, btn].filter(Boolean).join(' ');
+}
+
+/**
+ * The active custom effect code for a site: a nav/button effect's custom code applies only when that
+ * effect is 'none' (or absent), and is injected at body-end (CSS + optional JS); a custom preloader is
+ * injected as the first body child (the overlay). Returns empty/undefined when no custom code applies,
+ * so a site with built-in (or no) effects emits byte-identical output. Used by publish + preview.
+ */
+export function websiteEffectsCustomCode(effects: WebsiteEffects | undefined): {
+  bodyEnd: string;
+  preloader: string | undefined;
+} {
+  if (!effects) return { bodyEnd: '', preloader: undefined };
+  const navOn = (effects.navEffect ?? 'none') === 'none' && effects.navCode ? effects.navCode : '';
+  const btnOn = (effects.buttonEffect ?? 'none') === 'none' && effects.buttonCode ? effects.buttonCode : '';
+  const preOn = (effects.preloaderEffect ?? 'none') === 'none' && effects.preloaderCode ? effects.preloaderCode : undefined;
+  return { bodyEnd: [navOn, btnOn].filter(Boolean).join('\n'), preloader: preOn };
 }
 
 const WebsiteSettingsObject = z.object({

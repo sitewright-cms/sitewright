@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import {
   NAV_EFFECTS,
@@ -15,6 +15,8 @@ import { Field, GlassCard } from './ui';
 import { SectionHelp } from '../ui/SectionHelp';
 import { Globe, Sparkles, Paintbrush, Code, Braces, PanelTop, Smartphone, PanelLeft, PanelRight, PanelBottom, ArrowDownToLine, Signpost, ShoppingCart, Languages, Pencil, MoonStar } from 'lucide-react';
 import { CodeField } from '../ui/CodeField';
+import { CodeEditorModal } from '../ui/CodeEditorModal';
+import { api, type EffectForks } from '../../api';
 import { RedirectsEditor } from './RedirectsEditor';
 import { ShopSettingsModal } from './ShopSettingsModal';
 import { LocaleManager } from './LocaleManager';
@@ -65,6 +67,40 @@ export function WebsiteSection({
 }) {
   const [dataOpen, setDataOpen] = useState(false);
   const [shopOpen, setShopOpen] = useState(false);
+  // The "fork existing effect" snippets (built-in effects as ready-to-run custom code) + which custom
+  // effect's code editor is open. The forks are static platform data, fetched once.
+  const [forks, setForks] = useState<EffectForks | null>(null);
+  const [editing, setEditing] = useState<null | 'nav' | 'button' | 'preloader'>(null);
+  useEffect(() => {
+    let on = true;
+    api.listEffectForks().then((f) => on && setForks(f)).catch(() => {});
+    return () => {
+      on = false;
+    };
+  }, []);
+  const slotCfg = {
+    nav: {
+      title: 'Custom nav effect code',
+      code: form.navCode,
+      set: (v: string) => patch({ navCode: v }),
+      forks: forks?.nav ?? [],
+      hint: 'Applied site-wide while Nav effect is “None / Custom Code”. Target the nav links (e.g. #top-nav a, .menu a) and use --sw-color-* tokens so it stays legible in dark mode. Fork a built-in effect for a working starting point.',
+    },
+    button: {
+      title: 'Custom button effect code',
+      code: form.buttonCode,
+      set: (v: string) => patch({ buttonCode: v }),
+      forks: forks?.button ?? [],
+      hint: 'Applied site-wide while Button effect is “None / Custom Code”. Target buttons (.btn) and use --sw-color-* tokens for dark-mode safety.',
+    },
+    preloader: {
+      title: 'Custom preloader code',
+      code: form.preloaderCode,
+      set: (v: string) => patch({ preloaderCode: v }),
+      forks: forks?.preloader ?? [],
+      hint: 'A full-screen overlay injected as the first body child while Preloader is “None / Custom Code”. Mark it data-sw-preloader and hide it once loaded — fork a preset for a complete, working example.',
+    },
+  };
   // The configured locales, default first (deduped) — for the locale manager.
   const localeCodes = Array.from(
     new Set([form.defaultLocale, ...form.locales.map((l) => l.value).filter(Boolean)]),
@@ -112,62 +148,119 @@ export function WebsiteSection({
       <GlassCard
         title="Nav, Buttons & Preloader Effects"
         icon={<Sparkles className="h-4 w-4" />}
-        tooltip="CI-themed, contrast-safe nav/button hover-active schemes + a page preloader overlay (shown on load and during navigation), applied site-wide (no code). The current nav item is highlighted where you mark it .active. Want your own nav/button look? Leave those “None” and write it in Critical CSS (target .active / .btn)."
+        tooltip="CI-themed, contrast-safe nav/button hover-active schemes + a page preloader overlay (shown on load and during navigation), applied site-wide (no code). The current nav item is highlighted where you mark it .active. Want your own look? Pick “None / Custom Code” and click Edit to write it (or fork a built-in effect as a starting point)."
         wide
       >
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="flex flex-col">
             <span className={fieldLabel}>Nav effect</span>
-            <select
-              aria-label="Nav effect"
-              className={glassInput}
-              value={form.navEffect || 'none'}
-              onChange={(e) => patch({ navEffect: e.target.value === 'none' ? 'none' : (e.target.value as NavEffect) })}
-            >
-              <option value="none">None</option>
-              {NAV_EFFECTS_SORTED.map((n) => (
-                <option key={n} value={n}>
-                  {NAV_EFFECT_LABELS[n]}
-                </option>
-              ))}
-            </select>
+            <div className="flex items-center gap-2">
+              <select
+                aria-label="Nav effect"
+                className={`${glassInput} min-w-0 flex-1`}
+                value={form.navEffect || 'none'}
+                onChange={(e) => patch({ navEffect: e.target.value === 'none' ? 'none' : (e.target.value as NavEffect) })}
+              >
+                <option value="none">None / Custom Code</option>
+                {NAV_EFFECTS_SORTED.map((n) => (
+                  <option key={n} value={n}>
+                    {NAV_EFFECT_LABELS[n]}
+                  </option>
+                ))}
+              </select>
+              {form.navEffect === 'none' && (
+                <button
+                  type="button"
+                  onClick={() => setEditing('nav')}
+                  className={`${ghostButton} inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap`}
+                  title="Edit the custom nav effect code"
+                >
+                  <Code className="h-3.5 w-3.5" /> {form.navCode.trim() ? 'Edit code' : 'Add code'}
+                </button>
+              )}
+            </div>
           </label>
           <label className="flex flex-col">
             <span className={fieldLabel}>Button effect</span>
-            <select
-              aria-label="Button effect"
-              className={glassInput}
-              value={form.buttonEffect || 'none'}
-              onChange={(e) => patch({ buttonEffect: e.target.value === 'none' ? 'none' : (e.target.value as ButtonEffect) })}
-            >
-              <option value="none">None</option>
-              {BUTTON_EFFECTS_SORTED.map((b) => (
-                <option key={b} value={b}>
-                  {b[0]!.toUpperCase() + b.slice(1)}
-                </option>
-              ))}
-            </select>
+            <div className="flex items-center gap-2">
+              <select
+                aria-label="Button effect"
+                className={`${glassInput} min-w-0 flex-1`}
+                value={form.buttonEffect || 'none'}
+                onChange={(e) =>
+                  patch({ buttonEffect: e.target.value === 'none' ? 'none' : (e.target.value as ButtonEffect) })
+                }
+              >
+                <option value="none">None / Custom Code</option>
+                {BUTTON_EFFECTS_SORTED.map((b) => (
+                  <option key={b} value={b}>
+                    {b[0]!.toUpperCase() + b.slice(1)}
+                  </option>
+                ))}
+              </select>
+              {form.buttonEffect === 'none' && (
+                <button
+                  type="button"
+                  onClick={() => setEditing('button')}
+                  className={`${ghostButton} inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap`}
+                  title="Edit the custom button effect code"
+                >
+                  <Code className="h-3.5 w-3.5" /> {form.buttonCode.trim() ? 'Edit code' : 'Add code'}
+                </button>
+              )}
+            </div>
           </label>
           <label className="flex flex-col">
             <span className={fieldLabel}>Preloader</span>
-            <select
-              aria-label="Preloader effect"
-              className={glassInput}
-              value={form.preloaderEffect || 'none'}
-              onChange={(e) =>
-                patch({ preloaderEffect: e.target.value === 'none' ? 'none' : (e.target.value as PreloaderEffect) })
-              }
-            >
-              <option value="none">None</option>
-              {PRELOADER_EFFECTS_SORTED.map((p) => (
-                <option key={p} value={p}>
-                  {effectLabel(p)}
-                </option>
-              ))}
-            </select>
+            <div className="flex items-center gap-2">
+              <select
+                aria-label="Preloader effect"
+                className={`${glassInput} min-w-0 flex-1`}
+                value={form.preloaderEffect || 'none'}
+                onChange={(e) =>
+                  patch({ preloaderEffect: e.target.value === 'none' ? 'none' : (e.target.value as PreloaderEffect) })
+                }
+              >
+                <option value="none">None / Custom Code</option>
+                {PRELOADER_EFFECTS_SORTED.map((p) => (
+                  <option key={p} value={p}>
+                    {effectLabel(p)}
+                  </option>
+                ))}
+              </select>
+              {form.preloaderEffect === 'none' && (
+                <button
+                  type="button"
+                  onClick={() => setEditing('preloader')}
+                  className={`${ghostButton} inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap`}
+                  title="Edit the custom preloader code"
+                >
+                  <Code className="h-3.5 w-3.5" /> {form.preloaderCode.trim() ? 'Edit code' : 'Add code'}
+                </button>
+              )}
+            </div>
           </label>
         </div>
       </GlassCard>
+
+      {editing && (
+        <CodeEditorModal
+          title={slotCfg[editing].title}
+          value={slotCfg[editing].code}
+          language="html"
+          hint={slotCfg[editing].hint}
+          fork={
+            slotCfg[editing].forks.length
+              ? {
+                  options: slotCfg[editing].forks.map((f) => ({ value: f.name, label: f.label })),
+                  snippetFor: (v) => slotCfg[editing].forks.find((f) => f.name === v)?.code ?? '',
+                }
+              : undefined
+          }
+          onSave={(v) => slotCfg[editing].set(v)}
+          onClose={() => setEditing(null)}
+        />
+      )}
 
       <GlassCard
         title="Themes (light / dark)"

@@ -175,6 +175,29 @@ describe('settings model', () => {
     expect(toForm(empty()).buttonEffect).toBe('none');
   });
 
+  it('round-trips per-effect custom code (preserved even when a built-in effect is chosen)', () => {
+    const withCode: SettingsBundle = {
+      identity: { name: 'Acme', colors: {} },
+      // nav has a built-in effect AND custom code (preserved); preloader is custom-only.
+      website: { effects: { navEffect: 'box-solid', navCode: '<style>n</style>', preloaderCode: '<div>p</div>' } },
+      settings: { defaultLocale: 'en', locales: ['en'] },
+    };
+    const form = toForm(withCode);
+    expect(form.navCode).toBe('<style>n</style>');
+    expect(form.preloaderCode).toBe('<div>p</div>');
+    expect(form.buttonCode).toBe('');
+    expect(toBundle(form, withCode).website?.effects).toEqual({
+      navEffect: 'box-solid',
+      navCode: '<style>n</style>',
+      preloaderCode: '<div>p</div>',
+    });
+
+    // Empty custom code drops out; whitespace-only counts as empty.
+    const f = toForm(empty());
+    f.buttonCode = '   ';
+    expect(toBundle(f, empty()).website?.effects).toBeUndefined();
+  });
+
   it('round-trips the themes opt-in (enableThemes + defaultTheme); omitted when off / on auto', () => {
     const on: SettingsBundle = {
       identity: { name: 'Acme', colors: {} },

@@ -260,22 +260,22 @@ export type PreloaderEffect = (typeof PRELOADER_EFFECTS)[number];
 /**
  * Site-wide nav/button appearance (the no-code "effects" picker). 'none' (or absent) = no effect —
  * the author keeps full freedom to apply a scheme class per element, or write a custom scheme via
- * `criticalCss`. The chosen schemes become `<body>` classes at render (see {@link websiteThemeClasses}).
+ * `criticalCss`. The chosen schemes become `<body>` classes at render (see {@link websiteEffectsClasses}).
  */
-export const WebsiteThemeSchema = z.object({
+export const WebsiteEffectsSchema = z.object({
   navEffect: z.enum(['none', 'pill', 'underline', 'soft', 'bar', 'ghost']).optional(),
   buttonEffect: z.enum(['none', 'lift', 'glow', 'sheen', 'press', 'pulse', 'ring']).optional(),
   preloaderEffect: z
     .enum(['none', 'spinner', 'dual', 'dots', 'bars', 'pulse', 'progress', 'logo-pulse', 'logo-draw', 'logo-sheen'])
     .optional(),
 });
-export type WebsiteTheme = z.infer<typeof WebsiteThemeSchema>;
+export type WebsiteEffects = z.infer<typeof WebsiteEffectsSchema>;
 
-/** The space-joined `<body>` effect classes for a website theme ('' when no effects are chosen). */
-export function websiteThemeClasses(theme: WebsiteTheme | undefined): string {
-  if (!theme) return '';
-  const nav = theme.navEffect && theme.navEffect !== 'none' ? `sw-nav-${theme.navEffect}` : '';
-  const btn = theme.buttonEffect && theme.buttonEffect !== 'none' ? `sw-btn-${theme.buttonEffect}` : '';
+/** The space-joined `<body>` effect classes for the website effects ('' when no effects are chosen). */
+export function websiteEffectsClasses(effects: WebsiteEffects | undefined): string {
+  if (!effects) return '';
+  const nav = effects.navEffect && effects.navEffect !== 'none' ? `sw-nav-${effects.navEffect}` : '';
+  const btn = effects.buttonEffect && effects.buttonEffect !== 'none' ? `sw-btn-${effects.buttonEffect}` : '';
   return [nav, btn].filter(Boolean).join(' ');
 }
 
@@ -432,21 +432,21 @@ const WebsiteSettingsObject = z.object({
   /**
    * Nav/button EFFECT schemes applied site-wide (the no-code picker). Rendered as `<body>` classes;
    * the CSS tree-shakes per scheme. Authors keep full freedom (per-element scheme classes + custom
-   * CSS via `criticalCss`). See {@link WebsiteThemeSchema}.
+   * CSS via `criticalCss`). See {@link WebsiteEffectsSchema}.
    */
-  theme: WebsiteThemeSchema.optional(),
+  effects: WebsiteEffectsSchema.optional(),
   /**
-   * Opt-in light/dark COLOR SCHEMES. When true, the rendered site gains a dark variant (the theme
-   * tokens get DaisyUI's curated dark neutrals; the brand accent is preserved). OFF by default, so
-   * existing single-theme sites are unaffected. Pairs with {@link defaultColorScheme}.
+   * Opt-in light/dark THEMES. When true, the rendered site gains a dark variant (the theme tokens get
+   * DaisyUI's curated dark neutrals; the brand accent is dark-tuned for legibility). OFF by default, so
+   * existing single-theme sites are unaffected. Pairs with {@link defaultTheme}.
    */
-  enableColorSchemes: z.boolean().optional(),
+  enableThemes: z.boolean().optional(),
   /**
-   * When color schemes are enabled, the INITIAL scheme: 'auto' follows the visitor's OS via
-   * prefers-color-scheme; 'light'/'dark' pins it (server-rendered onto `<html data-theme>`).
-   * Defaults to 'auto'. Ignored when {@link enableColorSchemes} is off.
+   * When themes are enabled, the INITIAL theme: 'auto' follows the visitor's OS via
+   * prefers-color-scheme; 'light'/'dark' pins it (server-rendered onto `<html data-sw-theme>`).
+   * Defaults to 'auto'. Ignored when {@link enableThemes} is off.
    */
-  defaultColorScheme: z.enum(['auto', 'light', 'dark']).optional(),
+  defaultTheme: z.enum(['auto', 'light', 'dark']).optional(),
 });
 
 /**

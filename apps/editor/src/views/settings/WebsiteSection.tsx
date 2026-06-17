@@ -163,16 +163,16 @@ export function WebsiteSection({
       </GlassCard>
 
       <GlassCard
-        title="Light / dark color schemes"
+        title="Themes (light / dark)"
         icon={<MoonStar className="h-4 w-4" />}
-        tooltip="Opt-in light + dark mode for the published site. When on, the platform adds a dark variant of your theme; pick whether visitors start on light, dark, or follow their device (auto). Add a {{sw-theme-toggle}} to your nav to let visitors switch. For best results use theme color classes (bg-base-100, text-base-content, text-primary) rather than fixed colors so your content adapts automatically."
+        tooltip="Opt-in light + dark themes for the published site. When on, the platform adds a dark variant of your theme; pick whether visitors start on light, dark, or follow their device (auto). Add a {{sw-theme-toggle}} to your nav to let visitors switch. For best results use theme color classes (bg-base-100, text-base-content, text-primary) rather than fixed colors so your content adapts automatically."
         wide
       >
         {/* Master switch. OFF (default) = single-theme site, byte-identical output; gates the
             {{sw-theme-toggle}} helper (renders nothing) + the reserved theme_toggle ghost row. */}
         <label className="flex items-center justify-between gap-3">
           <span className="min-w-0">
-            <span className={fieldLabel}>Enable color schemes</span>
+            <span className={fieldLabel}>Enable themes</span>
             <span className="block text-[11px] text-slate-400">
               Adds a dark variant of your theme. When off, the site stays single-theme.
             </span>
@@ -180,27 +180,27 @@ export function WebsiteSection({
           <input
             type="checkbox"
             role="switch"
-            aria-label="Enable color schemes"
+            aria-label="Enable themes"
             className={toggleInput}
-            checked={form.enableColorSchemes}
-            onChange={(e) => patch({ enableColorSchemes: e.target.checked })}
+            checked={form.enableThemes}
+            onChange={(e) => patch({ enableThemes: e.target.checked })}
           />
         </label>
-        {form.enableColorSchemes && (
+        {form.enableThemes && (
           <label className="mt-3 flex flex-col">
-            <span className={fieldLabel}>Default scheme</span>
+            <span className={fieldLabel}>Default theme</span>
             <select
-              aria-label="Default color scheme"
+              aria-label="Default theme"
               className={glassInput}
-              value={form.defaultColorScheme}
-              onChange={(e) => patch({ defaultColorScheme: e.target.value as 'auto' | 'light' | 'dark' })}
+              value={form.defaultTheme}
+              onChange={(e) => patch({ defaultTheme: e.target.value as 'auto' | 'light' | 'dark' })}
             >
               <option value="auto">Auto — follow the visitor’s device</option>
               <option value="light">Light</option>
               <option value="dark">Dark</option>
             </select>
             <span className="mt-1 block text-[11px] text-slate-400">
-              The starting scheme. A <code>{'{{sw-theme-toggle}}'}</code> in your nav lets visitors override it.
+              The starting theme. A <code>{'{{sw-theme-toggle}}'}</code> in your nav lets visitors override it.
             </span>
           </label>
         )}
@@ -386,7 +386,7 @@ export function WebsiteSection({
             localeCodes={localeCodes}
             defaultLocale={form.defaultLocale}
             shopEnabled={form.shopEnabled}
-            colorSchemesEnabled={form.enableColorSchemes}
+            themesEnabled={form.enableThemes}
             // Auto-surface a ghost row per configured channel/field label (shop.<key>) so the operator fills
             // the wording here instead of hand-typing the keys — only while the shop is on.
             extraGhostGroups={

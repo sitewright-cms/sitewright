@@ -299,7 +299,7 @@ describe('buildSite', () => {
     expect(about).toContain('<a class="" href="../">Home</a>');
   });
 
-  it('applies website.theme nav/button effects as <body> classes + ships the (tree-shaken) effect CSS', async () => {
+  it('applies website.effects nav/button effects as <body> classes + ships the (tree-shaken) effect CSS', async () => {
     await buildSite({
       publishedAt: '2026-05-29T00:00:00.000Z',
       outDir,
@@ -309,7 +309,7 @@ describe('buildSite', () => {
           identity: { name: 'Acme', colors: { primary: '#4f46e5' } },
           settings: { defaultLocale: 'en', locales: ['en'] },
           website: {
-            theme: { navEffect: 'pill', buttonEffect: 'lift' },
+            effects: { navEffect: 'pill', buttonEffect: 'lift' },
             topNav:
               '<div class="navbar"><ul class="menu">{{#each nav.header}}<li><a class="{{#if (sw-active path)}}active{{/if}}" href="{{sw-url path}}">{{label}}</a></li>{{/each}}</ul></div>',
           },
@@ -331,7 +331,7 @@ describe('buildSite', () => {
     expect(sheet).not.toContain('sw-btn-glow');
   });
 
-  it('ships the preloader overlay + runtime when theme.preloaderEffect is set (and nothing when not)', async () => {
+  it('ships the preloader overlay + runtime when effects.preloaderEffect is set (and nothing when not)', async () => {
     await buildSite({
       publishedAt: '2026-05-29T00:00:00.000Z',
       outDir,
@@ -340,7 +340,7 @@ describe('buildSite', () => {
           formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
           identity: { name: 'Acme', colors: { primary: '#4f46e5' } },
           settings: { defaultLocale: 'en', locales: ['en'] },
-          website: { theme: { preloaderEffect: 'logo-pulse' } },
+          website: { effects: { preloaderEffect: 'logo-pulse' } },
         },
         pages: [{ id: 'home', path: '', title: 'Home', source: '<h1>Hi</h1>' }],
       }),
@@ -356,7 +356,7 @@ describe('buildSite', () => {
     expect(await readFile(join(outDir, 'preloader.js'), 'utf8')).toContain("classList.remove('loading')");
   });
 
-  it('color schemes: inlines the dark CSS, and a {{sw-theme-toggle}} ships theme.js SYNC in <head>', async () => {
+  it('themes: inlines the dark CSS, and a {{sw-theme-toggle}} ships theme.js SYNC in <head>', async () => {
     await buildSite({
       publishedAt: '2026-05-29T00:00:00.000Z',
       outDir,
@@ -365,14 +365,14 @@ describe('buildSite', () => {
           formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
           identity: { name: 'Acme', colors: { primary: '#4f46e5' } },
           settings: { defaultLocale: 'en', locales: ['en'] },
-          website: { enableColorSchemes: true, defaultColorScheme: 'light' },
+          website: { enableThemes: true, defaultTheme: 'light' },
         },
         pages: [{ id: 'home', path: '', title: 'Home', source: '<header>{{sw-theme-toggle}}</header><h1>Hi</h1>' }],
       }),
     });
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
-    expect(home).toContain(':root[data-sw-scheme="dark"]{'); // dark token block inlined
-    expect(home).toContain('data-sw-scheme="light"'); // pinned default → no flash
+    expect(home).toContain(':root[data-sw-theme="dark"]{'); // dark token block inlined
+    expect(home).toContain('data-sw-theme="light"'); // pinned default → no flash
     expect(home).toContain('data-sw-theme-toggle'); // the toggle rendered
     // theme.js is linked SYNC in <head> (no defer) — its no-flash step must run pre-paint.
     const head = home.slice(home.indexOf('<head>'), home.indexOf('</head>'));
@@ -380,7 +380,7 @@ describe('buildSite', () => {
     expect(await readFile(join(outDir, 'theme.js'), 'utf8')).toContain("localStorage.setItem(KEY,next)");
   });
 
-  it('color schemes OFF: no dark CSS, no theme.js, and the toggle helper renders nothing', async () => {
+  it('themes OFF: no dark CSS, no theme.js, and the toggle helper renders nothing', async () => {
     await buildSite({
       publishedAt: '2026-05-29T00:00:00.000Z',
       outDir,
@@ -395,7 +395,7 @@ describe('buildSite', () => {
       }),
     });
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
-    expect(home).not.toContain('data-sw-scheme');
+    expect(home).not.toContain('data-sw-theme');
     expect(home).not.toContain('data-sw-theme-toggle');
     expect(home).not.toContain('theme.js');
   });

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   WebsiteSettingsSchema,
-  websiteThemeClasses,
+  websiteEffectsClasses,
   NAV_EFFECTS,
   BUTTON_EFFECTS,
   PRELOADER_EFFECTS,
@@ -266,25 +266,44 @@ describe('WebsiteSettingsSchema', () => {
     });
   });
 
-  describe('theme (nav/button effects)', () => {
-    it('accepts a valid theme and rejects an unknown effect', () => {
-      const w = { theme: { navEffect: 'pill', buttonEffect: 'lift' } };
+  describe('effects (nav/button) + themes', () => {
+    it('accepts a valid effects object and rejects an unknown effect', () => {
+      const w = { effects: { navEffect: 'pill', buttonEffect: 'lift' } };
       expect(WebsiteSettingsSchema.parse(w)).toEqual(w);
-      expect(() => WebsiteSettingsSchema.parse({ theme: { navEffect: 'sparkle' } })).toThrow();
+      expect(() => WebsiteSettingsSchema.parse({ effects: { navEffect: 'sparkle' } })).toThrow();
     });
 
-    it('websiteThemeClasses maps effects → `<body>` classes ("none"/absent = "")', () => {
-      expect(websiteThemeClasses({ navEffect: 'pill', buttonEffect: 'lift' })).toBe('sw-nav-pill sw-btn-lift');
-      expect(websiteThemeClasses({ navEffect: 'underline' })).toBe('sw-nav-underline');
-      expect(websiteThemeClasses({ navEffect: 'none', buttonEffect: 'glow' })).toBe('sw-btn-glow');
-      expect(websiteThemeClasses({})).toBe('');
-      expect(websiteThemeClasses(undefined)).toBe('');
+    it('websiteEffectsClasses maps effects → `<body>` classes ("none"/absent = "")', () => {
+      expect(websiteEffectsClasses({ navEffect: 'pill', buttonEffect: 'lift' })).toBe('sw-nav-pill sw-btn-lift');
+      expect(websiteEffectsClasses({ navEffect: 'underline' })).toBe('sw-nav-underline');
+      expect(websiteEffectsClasses({ navEffect: 'none', buttonEffect: 'glow' })).toBe('sw-btn-glow');
+      expect(websiteEffectsClasses({})).toBe('');
+      expect(websiteEffectsClasses(undefined)).toBe('');
     });
 
     it('every effect name is accepted by the schema (enum ⊇ the name lists)', () => {
-      for (const navEffect of NAV_EFFECTS) expect(WebsiteSettingsSchema.parse({ theme: { navEffect } }).theme?.navEffect).toBe(navEffect);
-      for (const buttonEffect of BUTTON_EFFECTS) expect(WebsiteSettingsSchema.parse({ theme: { buttonEffect } }).theme?.buttonEffect).toBe(buttonEffect);
-      for (const preloaderEffect of PRELOADER_EFFECTS) expect(WebsiteSettingsSchema.parse({ theme: { preloaderEffect } }).theme?.preloaderEffect).toBe(preloaderEffect);
+      for (const navEffect of NAV_EFFECTS) expect(WebsiteSettingsSchema.parse({ effects: { navEffect } }).effects?.navEffect).toBe(navEffect);
+      for (const buttonEffect of BUTTON_EFFECTS) expect(WebsiteSettingsSchema.parse({ effects: { buttonEffect } }).effects?.buttonEffect).toBe(buttonEffect);
+      for (const preloaderEffect of PRELOADER_EFFECTS) expect(WebsiteSettingsSchema.parse({ effects: { preloaderEffect } }).effects?.preloaderEffect).toBe(preloaderEffect);
+    });
+
+    it('accepts the themes opt-in (enableThemes + defaultTheme)', () => {
+      const w = { enableThemes: true, defaultTheme: 'dark' as const };
+      expect(WebsiteSettingsSchema.parse(w)).toEqual(w);
+      expect(() => WebsiteSettingsSchema.parse({ defaultTheme: 'sepia' })).toThrow();
+    });
+
+    it('drops the legacy keys (no back-compat): theme / enableColorSchemes / defaultColorScheme are ignored', () => {
+      const parsed = WebsiteSettingsSchema.parse({
+        theme: { navEffect: 'pill' },
+        enableColorSchemes: true,
+        defaultColorScheme: 'dark',
+      }) as Record<string, unknown>;
+      // legacy keys are stripped (unknown), and NOT mapped onto the new names
+      expect(parsed.theme).toBeUndefined();
+      expect(parsed.effects).toBeUndefined();
+      expect(parsed.enableThemes).toBeUndefined();
+      expect(parsed.defaultTheme).toBeUndefined();
     });
   });
 

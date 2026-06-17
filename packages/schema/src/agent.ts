@@ -30,7 +30,7 @@ In \`source\`:
   AVOID hardcoded hex and fixed Tailwind palette colors for surfaces / text / borders (\`bg-white\`,
   \`bg-slate-900\`, \`text-gray-700\`, \`#fff\`) — they do NOT adapt. (A fixed colour on an always-coloured
   element, e.g. a brand badge or a gradient, is fine.)
-- LIGHT / DARK MODE (opt-in — Settings → Website → "Light / dark color schemes"): when ON, the platform
+- LIGHT / DARK MODE (opt-in — Settings → Website → "Themes (light / dark)"): when ON, the platform
   adds a DARK variant by flipping the \`base-*\` surfaces + \`base-content\` tokens, so ANY UI built from the
   tokens above adapts with zero extra work — which is exactly why token classes beat fixed colours. Add
   \`{{sw-theme-toggle}}\` to the nav to let visitors switch (the chosen default — or each visitor's OS on
@@ -213,8 +213,8 @@ the nav EFFECT styles; omit aria-current off the current page). Output the label
 (renders a placeholder's rich name; a page title is escaped).
 NAV/BUTTON EFFECTS: curated CI-themed, contrast-safe schemes — add a class for nav active/hover
 (\`sw-nav-pill\`|\`-underline\`|\`-soft\`|\`-bar\`|\`-ghost\`, on the nav <ul> or set site-wide in
-website.theme.navEffect) and button hover/press (\`sw-btn-lift\`|\`-glow\`|\`-sheen\`|\`-press\`|\`-pulse\`|
-\`-ring\` on any .btn, or website.theme.buttonEffect). Colors auto-derive from the brand; only sw-nav-pill
+website.effects.navEffect) and button hover/press (\`sw-btn-lift\`|\`-glow\`|\`-sheen\`|\`-press\`|\`-pulse\`|
+\`-ring\` on any .btn, or website.effects.buttonEffect). Colors auto-derive from the brand; only sw-nav-pill
 fills a surface (uses the WCAG-derived foreground). Prefer these over hand-rolled active/hover CSS.
 TEMPLATES: set page.template to "global:landing", "global:text", or a project template id
 (kind "template": { id, name, source }) — the page then renders the TEMPLATE's source and

@@ -61,30 +61,30 @@ describe('renderDocument — document shell', () => {
     expect(head).toContain('*::-webkit-scrollbar { width: 8px; height: 8px; background: var(--sw-color-base-100, #ffffff); }');
   });
 
-  describe('opt-in color schemes', () => {
+  describe('opt-in themes', () => {
     it('emits NOTHING when disabled / unset (existing single-theme sites unchanged)', () => {
       const off = renderDocument(page, { brand });
       expect(off).not.toContain('prefers-color-scheme: dark');
-      expect(off).not.toContain('data-sw-scheme');
-      const explicitOff = renderDocument(page, { brand, colorScheme: { enabled: false, default: 'dark' } });
+      expect(off).not.toContain('data-sw-theme');
+      const explicitOff = renderDocument(page, { brand, theme: { enabled: false, default: 'dark' } });
       expect(explicitOff).not.toContain('prefers-color-scheme: dark');
-      expect(explicitOff).not.toContain('data-sw-scheme');
+      expect(explicitOff).not.toContain('data-sw-theme');
     });
 
-    it('enabled + auto: inlines the dark CSS and leaves <html> WITHOUT data-sw-scheme (OS governs)', () => {
-      const doc = renderDocument(page, { brand, colorScheme: { enabled: true, default: 'auto' } });
-      expect(doc).toContain(':root[data-sw-scheme="dark"]{');
+    it('enabled + auto: inlines the dark CSS and leaves <html> WITHOUT data-sw-theme (OS governs)', () => {
+      const doc = renderDocument(page, { brand, theme: { enabled: true, default: 'auto' } });
+      expect(doc).toContain(':root[data-sw-theme="dark"]{');
       expect(doc).toContain('@media (prefers-color-scheme: dark)');
-      // auto pins nothing on the <html> TAG (the only data-sw-scheme is inside the CSS selectors).
+      // auto pins nothing on the <html> TAG (the only data-sw-theme is inside the CSS selectors).
       const htmlTag = doc.slice(doc.indexOf('<html'), doc.indexOf('>', doc.indexOf('<html')) + 1);
-      expect(htmlTag).not.toContain('data-sw-scheme');
+      expect(htmlTag).not.toContain('data-sw-theme');
     });
 
-    it('enabled + pinned dark/light: server-sets <html data-sw-scheme> so there is no flash', () => {
-      const dark = renderDocument(page, { brand, colorScheme: { enabled: true, default: 'dark' } });
-      expect(dark).toContain('data-sw-scheme="dark"');
-      const light = renderDocument(page, { brand, colorScheme: { enabled: true, default: 'light' } });
-      expect(light).toContain('data-sw-scheme="light"');
+    it('enabled + pinned dark/light: server-sets <html data-sw-theme> so there is no flash', () => {
+      const dark = renderDocument(page, { brand, theme: { enabled: true, default: 'dark' } });
+      expect(dark).toContain('data-sw-theme="dark"');
+      const light = renderDocument(page, { brand, theme: { enabled: true, default: 'light' } });
+      expect(light).toContain('data-sw-theme="light"');
     });
   });
 

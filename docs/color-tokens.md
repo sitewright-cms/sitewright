@@ -60,22 +60,23 @@ DaisyUI's own `--color-<role>` variables resolve to the same values, so either w
 guaranteed present even on a page that doesn't pull in DaisyUI. Using them (instead of hex) is what keeps
 custom CSS on-brand **and** dark-mode-safe (see below).
 
-## Light / dark color schemes
+## Light / dark themes
 
-Color schemes are **opt-in per project** (Settings → Website → "Light / dark color schemes"; off by
+Themes are **opt-in per project** (Settings → Website → "Themes (light / dark)"; off by
 default, so existing sites are unchanged). When enabled:
 
 - The platform adds a **dark variant** by flipping the surface + text tokens (`base-100/200/300` and
   `base-content`) to a dark palette. Because the whole site is built from those tokens, **anything that
   uses the token utilities/variables above adapts automatically** — no per-element dark styles. This is the
   single best reason to use tokens over fixed colours.
-- You pick a **default scheme**: `light`, `dark`, or `auto` (follow the visitor's device). The default is
-  server-rendered onto `<html data-sw-scheme>` so there is no flash.
+- You pick a **default theme**: `light`, `dark`, or `auto` (follow the visitor's device). The default is
+  server-rendered onto `<html data-sw-theme>` so there is no flash.
 - Drop **`{{sw-theme-toggle}}`** in the nav/header to let visitors switch; their choice persists
   (localStorage) and re-applies before first paint. The toggle (and its tiny runtime) only appear when
-  color schemes are enabled.
-- The brand **accent** roles (`primary`/`secondary`/`accent`) are kept as-is in dark for now — only the
-  neutrals flip — so a brand colour with poor contrast on dark is a design choice to watch.
+  themes are enabled.
+- The brand roles (`primary`/`secondary`/`accent`) are **dark-tuned** in dark mode — their OKLCH lightness
+  is lifted so a low-contrast brand colour stays legible on dark, with a matching `*-content` text colour
+  derived automatically; the neutrals flip too.
 
 > **What breaks dark mode:** fixed colours — `bg-white`, `bg-slate-900`, `text-gray-700`, `#fff` in custom
 > CSS. They don't adapt. Use `bg-base-100` / `text-base-content` / `var(--sw-color-*)` instead. A fixed
@@ -94,7 +95,7 @@ default, so existing sites are unchanged). When enabled:
   rather than fixed Tailwind palette colours (`bg-white`, `bg-slate-900`, `text-gray-700`). A fixed colour
   is fine only on an element that is meant to look the same in both schemes (a brand badge, a gradient).
 - In custom CSS, read `var(--sw-color-<role>)` (and `--sw-font/space/radius-<key>`) instead of hex.
-- If the project enables color schemes, add `{{sw-theme-toggle}}` to the nav so visitors can switch.
+- If the project enables themes, add `{{sw-theme-toggle}}` to the nav so visitors can switch.
 
 ## Implementation notes
 

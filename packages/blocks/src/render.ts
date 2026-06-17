@@ -8,7 +8,7 @@ import { escapeAttr, escapeHtml } from './escape.js';
 import { metaTags, schemaOrgJsonLd, type SeoMeta, type SchemaOrgInfo } from './head.js';
 import { brandToCss } from './brand-css.js';
 import { baseStyles } from './base-css.js';
-import { colorSchemeCss, colorSchemeHtmlAttr, type ColorScheme } from './color-scheme.js';
+import { themeCss, themeHtmlAttr, type ThemeMode } from './theme-mode.js';
 import { previewStyles } from './preview-css.js';
 import { typographyCss, type FontAsset } from './typography-css.js';
 
@@ -28,11 +28,11 @@ export interface RenderContext {
 export interface RenderDocumentOptions extends RenderContext {
   brand: BrandTokens;
   /**
-   * Opt-in light/dark color schemes (Website settings). When `enabled`, the dark token CSS is
-   * inlined and the `default` scheme is pinned onto `<html data-theme>` ('auto' follows the OS).
+   * Opt-in light/dark themes (Website settings). When `enabled`, the dark token CSS is
+   * inlined and the `default` theme is pinned onto `<html data-sw-theme>` ('auto' follows the OS).
    * Absent / `enabled:false` → current single-theme behaviour (no change for existing sites).
    */
-  colorScheme?: { enabled: boolean; default?: ColorScheme };
+  theme?: { enabled: boolean; default?: ThemeMode };
   /**
    * Pre-rendered `<body>` HTML for a code-first (Handlebars `source`) page — used INSTEAD
    * of rendering the block tree. The same head/SEO/CSS/script shell is applied.
@@ -41,7 +41,7 @@ export interface RenderDocumentOptions extends RenderContext {
   /**
    * Space-separated class(es) for the `<body>` element — the site-wide nav/button effect schemes
    * (`sw-nav-*` / `sw-btn-*`) chosen in Website settings. Cascades to the nav landmarks + `.btn`s;
-   * the effect CSS tree-shakes per scheme. Caller-computed (see `websiteThemeClasses`); attribute-escaped.
+   * the effect CSS tree-shakes per scheme. Caller-computed (see `websiteEffectsClasses`); attribute-escaped.
    */
   bodyClass?: string;
   /**
@@ -106,9 +106,9 @@ export interface RenderDocumentOptions extends RenderContext {
    */
   inlineStyles?: readonly string[];
   /**
-   * External script srcs linked SYNCHRONOUSLY (no `defer`) at the START of `<head>` — the color-scheme
-   * NO-FLASH init (theme.js): it re-applies a returning visitor's stored scheme onto `<html
-   * data-sw-scheme>` before first paint, so their choice never flashes the server default. Render-
+   * External script srcs linked SYNCHRONOUSLY (no `defer`) at the START of `<head>` — the theme
+   * NO-FLASH init (theme.js): it re-applies a returning visitor's stored theme onto `<html
+   * data-sw-theme>` before first paint, so their choice never flashes the server default. Render-
    * blocking BY DESIGN (it must run pre-paint) but tiny + cached, and shipped only when a page has a
    * `{{sw-theme-toggle}}`. Served from the site's own origin so it loads under `default-src 'self'`.
    * First-party, audited code only; never tenant input.
@@ -167,7 +167,7 @@ function slotLandmark(tag: 'nav' | 'aside' | 'footer' | 'div', id: string, html:
 export function renderDocument(page: Page, opts: RenderDocumentOptions): string {
   const {
     brand,
-    colorScheme,
+    theme,
     bodyHtml,
     bodyClass,
     preloader,
@@ -198,11 +198,11 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
   // Base layer (modern-normalize + platform defaults) FIRST so the skeleton, brand
   // vars, author criticalCss and the unlayered Tailwind utilities all override it.
   const css = `${baseStyles()}\n${previewStyles()}\n${brandToCss(brand)}${
-    colorScheme?.enabled ? `\n${colorSchemeCss(brand.colors)}` : ''
+    theme?.enabled ? `\n${themeCss(brand.colors)}` : ''
   }`;
-  // Opt-in color schemes pin the project default onto <html data-theme> ('auto' emits nothing →
+  // Opt-in themes pin the project default onto <html data-sw-theme> ('auto' emits nothing →
   // the prefers-color-scheme media query in the CSS above governs).
-  const dataThemeAttr = colorScheme?.enabled ? colorSchemeHtmlAttr(colorScheme.default) : '';
+  const dataThemeAttr = theme?.enabled ? themeHtmlAttr(theme.default) : '';
   // Self-hosted fonts ride in `ctx.media` as `kind:'font'` assets; their `@font-face` urls reuse the
   // media URL resolver (which the publish HTML-rewrite rebases to `_assets/<id>/<file>`).
   const fontAssets = (ctx.media ?? []).filter((m): m is FontAsset => m.kind === 'font');

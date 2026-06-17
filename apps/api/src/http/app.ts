@@ -23,7 +23,7 @@ import {
   DEFAULT_BRAND_PRIMARY,
   DEFAULT_BRAND_SECONDARY,
   passwordSchema,
-  websiteThemeClasses,
+  websiteEffectsClasses,
   type CorporateIdentity,
   type Entry,
   type FileAsset,
@@ -419,7 +419,7 @@ interface PreviewShell {
   /** Site-wide nav/button effect scheme classes for `<body>` (`sw-nav-*` / `sw-btn-*`). */
   bodyClass?: string;
   /** Opt-in light/dark color schemes (Website settings) — passed through to renderDocument. */
-  colorScheme?: { enabled: boolean; default?: 'auto' | 'light' | 'dark' };
+  theme?: { enabled: boolean; default?: 'auto' | 'light' | 'dark' };
   /** Locale-resolved translation catalog → the SYSTEM i18n dict for component runtimes (window.__SW_T__). */
   systemT?: Record<string, unknown>;
 }
@@ -456,7 +456,7 @@ async function styledSourceDocument(
   // fight the click-to-edit bridge. The live cart runs on the published /sites/<slug>/ site.
   const cart = usesCart(scanHtml);
   // Color-scheme toggle: style + run it live in the preview (unlike the cart, it's harmless — it only
-  // flips <html data-sw-scheme> + localStorage, so the author can preview light/dark by clicking it).
+  // flips <html data-sw-theme> + localStorage, so the author can preview light/dark by clicking it).
   const themeToggle = usesThemeToggle(scanHtml);
   // Interactive components (modal / tabs / carousel / lightbox / cookie-consent / form) authored in
   // CODE-FIRST source carry their `data-sw-component="…"` marker into the rendered body/slots — scan
@@ -2034,7 +2034,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         }
         const rendered = await renderPool.render(pageSource, {
           company: brand as unknown as Record<string, unknown>,
-          website: { siteUrl: website?.siteUrl, data: website?.data, shop: resolveShopChannels(website?.shop, (fid) => `/f/${project.id}/${fid}`), t: resolveTranslations(website?.translations, previewLocale, defaultLocale), enableColorSchemes: website?.enableColorSchemes },
+          website: { siteUrl: website?.siteUrl, data: website?.data, shop: resolveShopChannels(website?.shop, (fid) => `/f/${project.id}/${fid}`), t: resolveTranslations(website?.translations, previewLocale, defaultLocale), enableThemes: website?.enableThemes },
           page: previewPage,
           parentPage: previewParent,
           pages: previewPages,
@@ -2058,7 +2058,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // `{{> snippet}}` is intentionally unavailable in a slot (no WYSIWYG drift).
         const slotCtx = {
           company: brand as unknown as Record<string, unknown>,
-          website: { siteUrl: website?.siteUrl, data: website?.data, shop: resolveShopChannels(website?.shop, (fid) => `/f/${project.id}/${fid}`), t: resolveTranslations(website?.translations, previewLocale, defaultLocale), enableColorSchemes: website?.enableColorSchemes },
+          website: { siteUrl: website?.siteUrl, data: website?.data, shop: resolveShopChannels(website?.shop, (fid) => `/f/${project.id}/${fid}`), t: resolveTranslations(website?.translations, previewLocale, defaultLocale), enableThemes: website?.enableThemes },
           page: previewPage,
           parentPage: previewParent,
           pages: previewPages,
@@ -2110,8 +2110,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           head: website?.head,
           criticalCss: website?.criticalCss,
           customScripts: website?.scripts,
-          bodyClass: websiteThemeClasses(website?.theme),
-          colorScheme: { enabled: !!website?.enableColorSchemes, default: website?.defaultColorScheme },
+          bodyClass: websiteEffectsClasses(website?.effects),
+          theme: { enabled: !!website?.enableThemes, default: website?.defaultTheme },
           lang: previewLocale, // `<html lang>` follows the previewed page's locale (publish parity)
           systemT: resolveTranslations(website?.translations, previewLocale, defaultLocale),
         });
@@ -3269,9 +3269,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // match, `{{sw-translate}}` here serves the DEFAULT-locale strings regardless of a stored page's
         // own locale. Locale-accurate translation preview is the /preview path (uses previewLocale).
         website = settings.website
-          ? { siteUrl: settings.website.siteUrl, data: settings.website.data, t: resolveTranslations(settings.website.translations, projectDefaultLocale, projectDefaultLocale), enableColorSchemes: settings.website.enableColorSchemes }
+          ? { siteUrl: settings.website.siteUrl, data: settings.website.data, t: resolveTranslations(settings.website.translations, projectDefaultLocale, projectDefaultLocale), enableThemes: settings.website.enableThemes }
           : undefined;
-        themeBodyClass = websiteThemeClasses(settings.website?.theme);
+        themeBodyClass = websiteEffectsClasses(settings.website?.effects);
       } catch (err) {
         if (!(err instanceof NotFoundError)) throw err;
       }
@@ -3406,7 +3406,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // Snippet HOVER preview is intentionally lean (empty data/item); `website.t` is omitted too, so
         // {{sw-translate}} in a hovered snippet renders its `default=`/'' fallback (no locale context here).
         website = settings.website ? { siteUrl: settings.website.siteUrl, data: settings.website.data } : undefined;
-        themeBodyClass = websiteThemeClasses(settings.website?.theme);
+        themeBodyClass = websiteEffectsClasses(settings.website?.effects);
       } catch (err) {
         if (!(err instanceof NotFoundError)) throw err;
       }

@@ -636,18 +636,18 @@ function createInstance(): typeof Handlebars {
     }
     return new Handlebars.SafeString(`<div ${attrs}></div>`);
   });
-  // {{sw-theme-toggle [label="…"] [class="…"]}} → a light/dark toggle button for the OPT-IN color
-  // schemes feature (Settings → Website → enable color schemes). It carries both a sun + a moon icon;
-  // CSS (THEME_TOGGLE_CSS) shows the one for the active scheme, so the icon is correct with or without
+  // {{sw-theme-toggle [label="…"] [class="…"]}} → a light/dark toggle button for the OPT-IN themes
+  // feature (Settings → Website → enable themes). It carries both a sun + a moon icon;
+  // CSS (THEME_TOGGLE_CSS) shows the one for the active theme, so the icon is correct with or without
   // JS, and the `data-sw-theme-toggle` marker ships the no-flash + click runtime (THEME_TOGGLE_JS).
-  // Gated by the master switch: with color schemes OFF (no dark palette, no runtime) it renders
+  // Gated by the master switch: with themes OFF (no dark palette, no runtime) it renders
   // nothing, even if the helper stays in the template. Drop it ONCE in the nav/header slot. The
   // accessible label localizes: explicit hash → reserved `theme_toggle` catalog key → English default.
   hb.registerHelper('sw-theme-toggle', function swThemeToggle(this: unknown, ...args: unknown[]) {
     const options = args[args.length - 1] as Handlebars.HelperOptions;
     const h = (options?.hash ?? {}) as Record<string, unknown>;
-    const root = (options.data?.root ?? {}) as { website?: { enableColorSchemes?: unknown; t?: Record<string, unknown> } };
-    if (root.website?.enableColorSchemes !== true) return new Handlebars.SafeString('');
+    const root = (options.data?.root ?? {}) as { website?: { enableThemes?: unknown; t?: Record<string, unknown> } };
+    if (root.website?.enableThemes !== true) return new Handlebars.SafeString('');
     const str = (v: unknown): string => (typeof v === 'string' ? v : '');
     const label =
       str(h.label) || reservedTr(root, 'theme_toggle') || RESERVED_TRANSLATION_DEFAULTS.theme_toggle || 'Toggle dark mode';

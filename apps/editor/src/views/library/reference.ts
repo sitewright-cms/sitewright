@@ -238,9 +238,9 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         name: 'sw-theme-toggle',
         keywords: 'dark light mode theme toggle color scheme switch night sun moon',
         description:
-          'A light/dark toggle button for the opt-in COLOR SCHEMES feature (turn it on in Settings → Website → “Light / dark color schemes”, where you also pick the default scheme). It shows a sun/moon icon for the active scheme, and on click flips the whole site between light and dark and remembers the visitor’s choice. With color schemes OFF it renders nothing, so it is safe to leave in the template. Drop it ONCE in the nav/header slot. The accessible label localizes via the reserved `theme_toggle` translation key.',
+          'A light/dark toggle button for the opt-in THEMES feature (turn it on in Settings → Website → “Themes (light / dark)”, where you also pick the default theme). It shows a sun/moon icon for the active theme, and on click flips the whole site between light and dark and remembers the visitor’s choice. With themes OFF it renders nothing, so it is safe to leave in the template. Drop it ONCE in the nav/header slot. The accessible label localizes via the reserved `theme_toggle` translation key.',
         example: '{{sw-theme-toggle class="btn btn-ghost btn-circle"}}',
-        note: 'Dark mode works WITHOUT this button (the default scheme — or each visitor’s OS preference on “auto” — already applies); the toggle just lets visitors override it. It only appears, and its tiny runtime only ships, when color schemes are enabled.',
+        note: 'Dark mode works WITHOUT this button (the default theme — or each visitor’s OS preference on “auto” — already applies); the toggle just lets visitors override it. It only appears, and its tiny runtime only ships, when themes are enabled.',
       },
       {
         id: 'h-folder',

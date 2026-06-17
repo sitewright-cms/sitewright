@@ -153,26 +153,46 @@ describe('settings model', () => {
     ]);
   });
 
-  it('round-trips website.theme (nav/button effects) and omits "None"', () => {
-    const withTheme: SettingsBundle = {
+  it('round-trips website.effects (nav/button effects) and omits "None"', () => {
+    const withEffects: SettingsBundle = {
       identity: { name: 'Acme', colors: {} },
-      website: { theme: { navEffect: 'pill', buttonEffect: 'lift' } },
+      website: { effects: { navEffect: 'pill', buttonEffect: 'lift' } },
       settings: { defaultLocale: 'en', locales: ['en'] },
     };
-    expect(toBundle(toForm(withTheme), withTheme).website?.theme).toEqual({ navEffect: 'pill', buttonEffect: 'lift' });
+    expect(toBundle(toForm(withEffects), withEffects).website?.effects).toEqual({ navEffect: 'pill', buttonEffect: 'lift' });
 
     // 'none' (and an unset effect) drop out — only the chosen one is serialized.
     const f = toForm(empty());
     f.navEffect = 'underline';
     f.buttonEffect = 'none';
-    expect(toBundle(f, empty()).website?.theme).toEqual({ navEffect: 'underline' });
+    expect(toBundle(f, empty()).website?.effects).toEqual({ navEffect: 'underline' });
 
-    // both off → no theme block at all.
-    expect(toBundle(toForm(empty()), empty()).website?.theme).toBeUndefined();
+    // both off → no effects block at all.
+    expect(toBundle(toForm(empty()), empty()).website?.effects).toBeUndefined();
 
-    // A project with no theme loads as "none" (not ''), so it never falsely shows as unsaved.
+    // A project with no effects loads as "none" (not ''), so it never falsely shows as unsaved.
     expect(toForm(empty()).navEffect).toBe('none');
     expect(toForm(empty()).buttonEffect).toBe('none');
+  });
+
+  it('round-trips the themes opt-in (enableThemes + defaultTheme); omitted when off / on auto', () => {
+    const on: SettingsBundle = {
+      identity: { name: 'Acme', colors: {} },
+      website: { enableThemes: true, defaultTheme: 'dark' },
+      settings: { defaultLocale: 'en', locales: ['en'] },
+    };
+    const w = toBundle(toForm(on), on).website;
+    expect(w?.enableThemes).toBe(true);
+    expect(w?.defaultTheme).toBe('dark');
+
+    // OFF (default) → both keys omitted, so a single-theme site stays byte-identical.
+    expect(toBundle(toForm(empty()), empty()).website?.enableThemes).toBeUndefined();
+
+    // ON but 'auto' → enableThemes emitted, defaultTheme omitted (auto is the default).
+    const auto: SettingsBundle = { ...on, website: { enableThemes: true } };
+    const wa = toBundle(toForm(auto), auto).website;
+    expect(wa?.enableThemes).toBe(true);
+    expect(wa?.defaultTheme).toBeUndefined();
   });
 
   it('drops incomplete shop channels (every kind), a keyless channel, and a default currency', () => {

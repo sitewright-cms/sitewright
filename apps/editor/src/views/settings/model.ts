@@ -143,13 +143,13 @@ export interface SettingsForm {
   sidebarRight: string;
   footer: string;
   bottom: string;
-  // nav/button/preloader effect schemes ('none' = off) → website.theme
+  // nav/button/preloader effect schemes ('none' = off) → website.effects
   navEffect: 'none' | NavEffect;
   buttonEffect: 'none' | ButtonEffect;
   preloaderEffect: 'none' | PreloaderEffect;
-  // opt-in light/dark color schemes (website.enableColorSchemes / defaultColorScheme)
-  enableColorSchemes: boolean;
-  defaultColorScheme: 'auto' | 'light' | 'dark';
+  // opt-in light/dark themes (website.enableThemes / defaultTheme)
+  enableThemes: boolean;
+  defaultTheme: 'auto' | 'light' | 'dark';
   redirects: KeyedRedirect[];
   // mini shop (website.shop): master switch + currency FORMATTING + submission channels. The cart's
   // display TEXT (labels, currency symbol/code, channel/field labels) is translatable → Translations & Labels.
@@ -292,11 +292,11 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
     sidebarRight: w?.sidebarRight ?? '',
     footer: w?.footer ?? '',
     bottom: w?.bottom ?? '',
-    navEffect: w?.theme?.navEffect ?? 'none',
-    buttonEffect: w?.theme?.buttonEffect ?? 'none',
-    preloaderEffect: w?.theme?.preloaderEffect ?? 'none',
-    enableColorSchemes: w?.enableColorSchemes === true,
-    defaultColorScheme: w?.defaultColorScheme ?? 'auto',
+    navEffect: w?.effects?.navEffect ?? 'none',
+    buttonEffect: w?.effects?.buttonEffect ?? 'none',
+    preloaderEffect: w?.effects?.preloaderEffect ?? 'none',
+    enableThemes: w?.enableThemes === true,
+    defaultTheme: w?.defaultTheme ?? 'auto',
     redirects: (w?.redirects ?? []).map((r) => ({ id: rowId(), from: r.from, to: r.to, status: r.status })),
     shopEnabled: w?.shop?.enabled === true,
     shopCurrencyPosition: w?.shop?.currency?.position ?? 'before',
@@ -493,15 +493,15 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
   const nav = form.navEffect !== 'none' ? { navEffect: form.navEffect } : {};
   const btn = form.buttonEffect !== 'none' ? { buttonEffect: form.buttonEffect } : {};
   const pre = form.preloaderEffect !== 'none' ? { preloaderEffect: form.preloaderEffect } : {};
-  const theme =
+  const effects =
     'navEffect' in nav || 'buttonEffect' in btn || 'preloaderEffect' in pre ? { ...nav, ...btn, ...pre } : undefined;
-  // Opt-in light/dark color schemes. `enableColorSchemes` is emitted only when ON (omitted = off, the
-  // schema default); `defaultColorScheme` only when it deviates from 'auto' (the default) AND the
+  // Opt-in light/dark themes. `enableThemes` is emitted only when ON (omitted = off, the
+  // schema default); `defaultTheme` only when it deviates from 'auto' (the default) AND the
   // feature is on — so a single-theme site stays byte-identical and toggling off drops both keys.
-  const colorSchemes = form.enableColorSchemes
+  const themes = form.enableThemes
     ? {
-        enableColorSchemes: true as const,
-        ...(form.defaultColorScheme !== 'auto' ? { defaultColorScheme: form.defaultColorScheme } : {}),
+        enableThemes: true as const,
+        ...(form.defaultTheme !== 'auto' ? { defaultTheme: form.defaultTheme } : {}),
       }
     : undefined;
   // i18n catalog — cells are kept only for CONFIGURED locales (defaultLocale + locales), so a settings
@@ -512,13 +512,13 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
   ]);
   const translations = rowsToTranslations(form.translations, localeSet);
   const hasTranslations = Object.keys(translations).length > 0;
-  if (w || redirects.length || shop || theme || colorSchemes || hasTranslations) {
+  if (w || redirects.length || shop || effects || themes || hasTranslations) {
     website = {
       ...(w ?? {}),
       ...(redirects.length ? { redirects } : {}),
       ...(shop ? { shop } : {}),
-      ...(theme ? { theme } : {}),
-      ...(colorSchemes ?? {}),
+      ...(effects ? { effects } : {}),
+      ...(themes ?? {}),
       ...(hasTranslations ? { translations } : {}),
     };
   }

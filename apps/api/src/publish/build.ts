@@ -67,7 +67,7 @@ import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
 import { companyToOrganization } from './company-seo.js';
 import { renderSitemap, renderRobots, renderHtaccess, renderNetlifyRedirects, siteUrlFor, siteBase } from './seo.js';
 import { renderContactPhp, hasContactPhpForm } from './contact-php.js';
-import { toPublicForm, websiteThemeClasses, type FormPublic, type MediaAsset } from '@sitewright/schema';
+import { toPublicForm, websiteEffectsClasses, type FormPublic, type MediaAsset } from '@sitewright/schema';
 
 /** The compiled utility stylesheet, written at the site root and linked per page. */
 const UTILITY_STYLESHEET = 'styles.css';
@@ -405,7 +405,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     const snippetClassNames = Object.values(usedSnippets).flatMap((s) => extractClassNames(s));
     // The site-wide nav/button effect scheme classes land on <body> (renderDocument), so feed them
     // into the candidate set too — else their (tree-shaken) effect CSS wouldn't be compiled.
-    const themeClassNames = websiteThemeClasses(website?.theme).split(' ').filter(Boolean);
+    const themeClassNames = websiteEffectsClasses(website?.effects).split(' ').filter(Boolean);
     const classNames = [
       ...sourceClassNames,
       ...slotClassNames,
@@ -440,12 +440,12 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     const usesCartRuntime = usesMarker(usesCart);
     // Color-scheme toggle runtime — ships only when color schemes are ON *and* a page/slot uses
     // {{sw-theme-toggle}}. The source-level scan would match the helper call even on a disabled site
-    // (where the helper renders nothing), so the enableColorSchemes gate keeps single-theme output clean.
-    const usesThemeToggleRuntime = !!website?.enableColorSchemes && usesMarker(usesThemeToggle);
+    // (where the helper renders nothing), so the enableThemes gate keeps single-theme output clean.
+    const usesThemeToggleRuntime = !!website?.enableThemes && usesMarker(usesThemeToggle);
     // PRELOADER runtime — ships when the site enables a preloader effect (theme.preloaderEffect ≠
     // 'none'). The platform injects the overlay markup (renderDocument), so this is gated on the
     // theme choice rather than an authored marker.
-    const usesPreloaderRuntime = (website?.theme?.preloaderEffect ?? 'none') !== 'none';
+    const usesPreloaderRuntime = (website?.effects?.preloaderEffect ?? 'none') !== 'none';
     // The nav-link runtime opens a <dialog> (global modal) and smooth-scrolls #section links. Ship it
     // when a nav placeholder targets a #fragment OR any authored surface embeds a <dialog> — so a modal
     // triggered from page CONTENT (a CTA, an in-content `<a href="#id">`), not only a nav placeholder,
@@ -568,7 +568,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // `json_data` is the publish-time snapshot of `website.jsonDataUrl` (full object — a
           // code-first page/slot can `{{#each website.json_data.items}}`). siteUrl is the only
           // OTHER website field exposed; the raw head/criticalCss/scripts blobs are never surfaced.
-          website: { siteUrl: website?.siteUrl, json_data: opts.jsonData, data: website?.data, shop: resolveShopChannels(website?.shop, formEndpoint), t: pageT, enableColorSchemes: website?.enableColorSchemes },
+          website: { siteUrl: website?.siteUrl, json_data: opts.jsonData, data: website?.data, shop: resolveShopChannels(website?.shop, formEndpoint), t: pageT, enableThemes: website?.enableThemes },
           // `page.children` — this page's child pages, flattened — built only when the source loops
           // them (keeps each child's `data` off the render unless used). Published subset → no drafts.
           page: {
@@ -640,7 +640,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         // PRELOADER overlay (first body child). The logo resolves page-relative via `rel` so logo-*
         // effects work at any page depth; non-logo effects ignore it (fall back to the built-in mark).
         const preloaderMarkup = usesPreloaderRuntime
-          ? preloaderHtml(website?.theme?.preloaderEffect, { logo: rel(identity.logo) })
+          ? preloaderHtml(website?.effects?.preloaderEffect, { logo: rel(identity.logo) })
           : undefined;
         const pageInlineStyles = [
           ...(usesComponents && components.css ? [components.css] : []),
@@ -664,11 +664,11 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           brand,
           bodyHtml,
           // Opt-in light/dark color schemes (off by default → single-theme as before).
-          colorScheme: { enabled: !!website?.enableColorSchemes, default: website?.defaultColorScheme },
+          theme: { enabled: !!website?.enableThemes, default: website?.defaultTheme },
           // The toggle's no-flash init — sync in <head>, only when a {{sw-theme-toggle}} is present.
           headScripts: usesThemeToggleRuntime ? [`${siteRoot}${THEME_SCRIPT}`] : undefined,
           // Site-wide nav/button effect schemes → `<body>` classes (the effect CSS tree-shakes).
-          bodyClass: websiteThemeClasses(website?.theme),
+          bodyClass: websiteEffectsClasses(website?.effects),
           topNav: topNavHtml,
           mobileNav: mobileNavHtml,
           sidebarLeft: sidebarLeftHtml,

@@ -1,20 +1,20 @@
-// Opt-in light/dark color schemes for the rendered site (website.enableColorSchemes). When enabled,
+// Opt-in light/dark themes for the rendered site (website.enableThemes). When enabled,
 // the platform's theme tokens gain a DARK variant; because every layer reads those tokens — DaisyUI
 // components + Tailwind utilities (bg-base-100 / text-base-content) via `--color-*`, and base-css +
 // the first-party components via `--sw-color-*` — swapping the neutral tokens flips the whole site at
-// once. The per-project DEFAULT scheme is server-rendered onto `<html data-sw-scheme>` and 'auto'
-// follows the OS via prefers-color-scheme, so the default has no flash and needs no script.
+// once. The per-project DEFAULT scheme is server-rendered onto `<html data-sw-theme>` and 'auto'
+// follows the OS via prefers-color-scheme, so the default theme has no flash and needs no script.
 //
 // A visitor can override the default with the `{{sw-theme-toggle}}` helper (this file's THEME_TOGGLE_*
 // runtime): it persists the choice in localStorage and re-applies it BEFORE first paint via a tiny
 // sync `<head>` script (so a returning visitor's choice doesn't flash). The toggle's sun/moon icon is
 // CSS-driven (themeToggleCss), so it reflects the active scheme even with JS off. OKLCH dark-tuned
 // brand shades — so a low-contrast brand colour stays legible on dark — are derived in
-// {@link colorSchemeCss} from the tenant's brand colours (see ./color-oklch).
+// {@link themeCss} from the tenant's brand colours (see ./color-oklch).
 
 import { darkBrandShade, contrastText } from './color-oklch.js';
 
-export type ColorScheme = 'auto' | 'light' | 'dark';
+export type ThemeMode = 'auto' | 'light' | 'dark';
 
 /** A project's brand colour map (`primary`/`secondary`/`accent`/… → CSS colour string). */
 export type BrandColorMap = Readonly<Record<string, string>>;
@@ -37,15 +37,15 @@ const DARK_TOKENS = [
 ].join(';');
 
 /**
- * The dark-scheme CSS for the rendered document — emitted ONLY when color schemes are enabled. It is
+ * The dark-theme CSS for the rendered document — emitted ONLY when themes are enabled. It is
  * emitted UNLAYERED in the inline base <style>, which gives it two cascade advantages so no
  * `!important` is needed: (a) unlayered always beats the compiled utility sheet's layered token
  * declarations (Tailwind's `@layer theme` + DaisyUI's `@layer base`), and (b) at (0,2,0) it beats the
  * unlayered `:root{…}` light tokens from brandToCss (0,1,0) in any source order. Two paths:
- *  - FORCED dark via `:root[data-sw-scheme="dark"]` — the server-set default + the future visitor toggle.
- *  - AUTO dark via `prefers-color-scheme` that YIELDS to an explicit `data-sw-scheme` (so a pinned
+ *  - FORCED dark via `:root[data-sw-theme="dark"]` — the server-set default + the future visitor toggle.
+ *  - AUTO dark via `prefers-color-scheme` that YIELDS to an explicit `data-sw-theme` (so a pinned
  *    light/dark default, or a toggle choice, always wins over the OS).
- * We use our OWN `data-sw-scheme` attribute (not DaisyUI's `data-theme`) to stay fully decoupled from
+ * We use our OWN `data-sw-theme` attribute (not DaisyUI's `data-theme`) to stay fully decoupled from
  * DaisyUI's attribute handling. DaisyUI runs with themes:false so it emits no brand `[data-theme=…]`
  * block anyway — but owning the attribute keeps this independent of that.
  *
@@ -54,14 +54,14 @@ const DARK_TOKENS = [
  * carries the light `*-content` tokens — see {@link darkBrandDeclarations} / {@link lightContentTokensCss}.
  * With no `brandColors`, the output is exactly the neutral-only block (backwards compatible).
  */
-export function colorSchemeCss(brandColors?: BrandColorMap): string {
+export function themeCss(brandColors?: BrandColorMap): string {
   const darkBrand = brandColors ? darkBrandDeclarations(brandColors) : '';
   const dark = darkBrand ? `${DARK_TOKENS};${darkBrand}` : DARK_TOKENS;
   const lightContent = brandColors ? lightContentTokensCss(brandColors) : '';
   return (
     lightContent +
-    `:root[data-sw-scheme="dark"]{${dark}}\n` +
-    `@media (prefers-color-scheme: dark){:root:not([data-sw-scheme]){${dark}}}`
+    `:root[data-sw-theme="dark"]{${dark}}\n` +
+    `@media (prefers-color-scheme: dark){:root:not([data-sw-theme]){${dark}}}`
   );
 }
 
@@ -105,12 +105,12 @@ function lightContentTokensCss(colors: BrandColorMap): string {
 }
 
 /**
- * The `data-sw-scheme` attribute (with a leading space) for the `<html>` tag, given the project's
+ * The `data-sw-theme` attribute (with a leading space) for the `<html>` tag, given the project's
  * default scheme. A forced 'light'/'dark' is pinned server-side; 'auto' (or unset) emits nothing so
  * the prefers-color-scheme media query governs. The value is a fixed enum literal — never user input.
  */
-export function colorSchemeHtmlAttr(defaultScheme: ColorScheme | undefined): string {
-  return defaultScheme === 'light' || defaultScheme === 'dark' ? ` data-sw-scheme="${defaultScheme}"` : '';
+export function themeHtmlAttr(defaultScheme: ThemeMode | undefined): string {
+  return defaultScheme === 'light' || defaultScheme === 'dark' ? ` data-sw-theme="${defaultScheme}"` : '';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -122,7 +122,7 @@ export function colorSchemeHtmlAttr(defaultScheme: ColorScheme | undefined): str
  * the single substring `sw-theme-toggle`, which covers the code-first SOURCE helper call
  * (`{{sw-theme-toggle}}`) AND the rendered output (`data-sw-theme-toggle` / `class="sw-theme-toggle"`),
  * so detection works whether the scan sees source (publish) or rendered HTML (preview). A stray text
- * match only over-ships a tiny inert asset. The publish gate ALSO requires color schemes to be enabled,
+ * match only over-ships a tiny inert asset. The publish gate ALSO requires themes to be enabled,
  * so a disabled site whose source still contains the helper never ships the runtime.
  */
 export function usesThemeToggle(html: string | null | undefined): boolean {
@@ -131,8 +131,8 @@ export function usesThemeToggle(html: string | null | undefined): boolean {
 
 /**
  * The toggle's styles — a round, currentColor icon button + a CSS-DRIVEN icon picker. The picker
- * shows the moon in light and the sun in dark using the SAME two paths as {@link colorSchemeCss}
- * (forced `[data-sw-scheme]` + an `auto` `prefers-color-scheme` path that yields to an explicit
+ * shows the moon in light and the sun in dark using the SAME two paths as {@link themeCss}
+ * (forced `[data-sw-theme]` + an `auto` `prefers-color-scheme` path that yields to an explicit
  * attribute), so the correct icon shows even before — or without — the JS. Shipped only when a toggle
  * is present. Unlayered like the rest of the inline base styles.
  */
@@ -142,13 +142,13 @@ export const THEME_TOGGLE_CSS = [
   '.sw-theme-toggle:active{transform:scale(.92)}',
   '.sw-theme-toggle:focus-visible{outline:2px solid var(--sw-color-primary,currentColor);outline-offset:2px}',
   '.sw-theme-toggle svg{width:1.25rem;height:1.25rem;display:block}',
-  // icon picker — moon by default (light), sun in dark; forced + auto(OS) paths mirror colorSchemeCss
+  // icon picker — moon by default (light), sun in dark; forced + auto(OS) paths mirror themeCss
   '.sw-theme-toggle .sw-tt-sun{display:none}',
-  ':root[data-sw-scheme="dark"] .sw-theme-toggle .sw-tt-sun{display:block}',
-  ':root[data-sw-scheme="dark"] .sw-theme-toggle .sw-tt-moon{display:none}',
-  ':root[data-sw-scheme="light"] .sw-theme-toggle .sw-tt-sun{display:none}',
-  ':root[data-sw-scheme="light"] .sw-theme-toggle .sw-tt-moon{display:block}',
-  '@media (prefers-color-scheme: dark){:root:not([data-sw-scheme]) .sw-theme-toggle .sw-tt-sun{display:block}:root:not([data-sw-scheme]) .sw-theme-toggle .sw-tt-moon{display:none}}',
+  ':root[data-sw-theme="dark"] .sw-theme-toggle .sw-tt-sun{display:block}',
+  ':root[data-sw-theme="dark"] .sw-theme-toggle .sw-tt-moon{display:none}',
+  ':root[data-sw-theme="light"] .sw-theme-toggle .sw-tt-sun{display:none}',
+  ':root[data-sw-theme="light"] .sw-theme-toggle .sw-tt-moon{display:block}',
+  '@media (prefers-color-scheme: dark){:root:not([data-sw-theme]) .sw-theme-toggle .sw-tt-sun{display:block}:root:not([data-sw-theme]) .sw-theme-toggle .sw-tt-moon{display:none}}',
 ].join('');
 
 /**
@@ -156,8 +156,8 @@ export const THEME_TOGGLE_CSS = [
  * before first paint. ES5-style (var/function), served raw and never transpiled (like the other
  * component bundles), and built to be a no-op when the page has no toggle button.
  *
- * Two jobs: (1) NO-FLASH — re-apply the visitor's stored `sw-scheme` choice onto `<html
- * data-sw-scheme>` immediately, before the body renders, so a returning visitor never sees the server
+ * Two jobs: (1) NO-FLASH — re-apply the visitor's stored `sw-theme` choice onto `<html
+ * data-sw-theme>` immediately, before the body renders, so a returning visitor never sees the server
  * default flash to their choice. (2) On DOM-ready, wire every `[data-sw-theme-toggle]` button to flip
  * light⇄dark, persist to localStorage, and keep `aria-pressed` in sync (the icon itself is CSS-driven).
  * The flip uses the View Transitions API for a smooth cross-fade where supported (and reduced-motion
@@ -168,15 +168,15 @@ export const THEME_TOGGLE_CSS = [
  */
 export const THEME_TOGGLE_JS = `(function(){
   'use strict';
-  var KEY='sw-scheme', root=document.documentElement;
+  var KEY='sw-theme', root=document.documentElement;
   // (1) No-flash: re-apply a stored visitor choice before first paint (this runs sync in <head>).
   try{var s=localStorage.getItem(KEY);
-    if(s==='light'||s==='dark'){root.setAttribute('data-sw-scheme',s);}
-    else if(s==='auto'){root.removeAttribute('data-sw-scheme');}
+    if(s==='light'||s==='dark'){root.setAttribute('data-sw-theme',s);}
+    else if(s==='auto'){root.removeAttribute('data-sw-theme');}
   }catch(e){}
   // The scheme in effect right now: an explicit attribute, else the OS preference.
   function effective(){
-    var a=root.getAttribute('data-sw-scheme');
+    var a=root.getAttribute('data-sw-theme');
     if(a==='light'||a==='dark'){return a;}
     return (window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';
   }
@@ -184,7 +184,7 @@ export const THEME_TOGGLE_JS = `(function(){
   // Set the scheme + run the done callback AFTER the attribute lands (inside the View-Transition
   // callback, which may run async) so aria-pressed never reflects the pre-click state. Persist now.
   function apply(next,done){
-    var set=function(){root.setAttribute('data-sw-scheme',next);if(done){done();}};
+    var set=function(){root.setAttribute('data-sw-theme',next);if(done){done();}};
     if(document.startViewTransition&&!reduced()){document.startViewTransition(set);}else{set();}
     try{localStorage.setItem(KEY,next);}catch(e){}
   }
@@ -198,7 +198,7 @@ export const THEME_TOGGLE_JS = `(function(){
     reflect();
     // Track OS changes while on 'auto' (no explicit choice) so the button state stays correct.
     if(window.matchMedia){var mq=window.matchMedia('(prefers-color-scheme: dark)');
-      var onmq=function(){if(!root.getAttribute('data-sw-scheme')){reflect();}};
+      var onmq=function(){if(!root.getAttribute('data-sw-theme')){reflect();}};
       if(mq.addEventListener){mq.addEventListener('change',onmq);}else if(mq.addListener){mq.addListener(onmq);}}
   }
   if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',wire);}else{wire();}

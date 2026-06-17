@@ -8,6 +8,8 @@ import {
   codeOwnerOf,
   resolveCodeRef,
   resolveTemplateSource,
+  pagesById,
+  pagePath,
 } from '@sitewright/core';
 import { safeUrl } from '@sitewright/blocks/url';
 import { classifyControlTarget, normalizeControlAs } from '@sitewright/blocks/control';
@@ -59,6 +61,9 @@ interface CodePageEditorProps {
   /** The project's configured locales (default first) — feeds the Language selector + the translate write-locale. */
   locales?: readonly string[];
   onClose: () => void;
+  /** Open ANOTHER page's editor (the parent swaps which page is being edited → this modal remounts
+   *  for the target page). Used when the user clicks an internal link in the preview. */
+  onNavigate?: (pageId: string) => void;
   /**
    * The mode the modal OPENS in. The pages list opens this in `content` for everyone (the
    * Content Editor — the live preview); `source` is the bare fallback. Source⇄content is a UI
@@ -128,7 +133,7 @@ const DEVICE_ICONS: Record<PreviewDeviceKey, ReactNode> = {
  * in a sandboxed iframe (`src` from the token endpoint under `CSP: sandbox`;
  * never srcDoc) that can't reach the editor's window/cookies/session.
  */
-export function CodePageEditor({ project, page, pages = [], locales = [], onClose, initialMode = 'source' }: CodePageEditorProps) {
+export function CodePageEditor({ project, page, pages = [], locales = [], onClose, onNavigate, initialMode = 'source' }: CodePageEditorProps) {
   const { confirm, dialog } = useDialogs();
   const [mode, setMode] = useState<EditMode>(initialMode);
   const [source, setSource] = useState(page.source ?? '');
@@ -290,6 +295,28 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   }
   const applyControlEditRef = useRef(applyControlEdit);
   applyControlEditRef.current = applyControlEdit;
+  // A click on an internal site link in the preview → open THAT page's editor. Resolve the clicked
+  // route to a page (full path via pagePath), warn (naming the page change) if there are unsaved
+  // edits, then ask the parent to switch. Unknown routes / a link to the page already open → no-op.
+  async function onPreviewLinkClick(href: string): Promise<void> {
+    if (!onNavigate) return;
+    const path = (href.split(/[?#]/)[0] ?? '').replace(/\/+$/, '') || '/';
+    const byId = pagesById(pages);
+    const target = pages.find((p) => ((pagePath(p, byId).replace(/\/+$/, '') || '/') === path));
+    if (!target || target.id === page.id) return;
+    if (
+      dirty &&
+      !(await confirm({
+        title: 'Leave this page?',
+        message: `You have unsaved changes on “${page.title}”. Discard them and open the editor for “${target.title}”?`,
+        confirmLabel: 'Discard & open',
+      }))
+    )
+      return;
+    onNavigate(target.id);
+  }
+  const onLinkClickRef = useRef(onPreviewLinkClick);
+  onLinkClickRef.current = onPreviewLinkClick;
   // The stateKey a given inline (preview-originated) edit will produce — stored in inlineKeyRef so
   // the debounced reload can skip it. MUST mirror `stateKey`'s field set + order exactly.
   function inlineToken(next: { data?: JsonValue }): string {
@@ -466,6 +493,10 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
             (r) => r && Number.isInteger(r.rid) && typeof r.kind === 'string' && typeof r.label === 'string',
           ),
         );
+      } else if (d.type === 'link-click' && typeof d.href === 'string') {
+        // Clicked an internal site link in the preview → switch the editor to that page (via the ref so
+        // this mount-scoped listener sees fresh pages/dirty/onNavigate).
+        void onLinkClickRef.current(d.href);
       } else if (d.type === 'ready') {
         // A freshly-(re)loaded preview → clear the stale manifest (the new doc re-posts it on entering
         // content mode below) and (re)apply the current edit mode so its regions stay editable.
@@ -697,8 +728,11 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
       setSettings(freshSettings);
       setSavedKey(keyOf(fresh.source ?? '', freshSettings, freshData)); // baseline = reloaded → not dirty
       setSaved(false);
-      // No explicit preview bump: the changed source/settings/data move `stateKey`, which already
-      // re-runs the preview effect (an extra nonce would just issue a redundant in-flight request).
+      // ALWAYS force a fresh preview render: when the page wasn't dirty (or the server copy matches the
+      // draft) `stateKey` doesn't change, so the stateKey-driven preview effect wouldn't re-run and the
+      // button would appear to do nothing. Bumping the nonce re-POSTs `/preview`, so Reload reliably
+      // refreshes — and also picks up changes made OUTSIDE this page (dataset entries, website.data).
+      setPreviewNonce((n) => n + 1);
     } catch (err) {
       if (mounted.current) setSaveError(err instanceof Error ? `Reload failed: ${err.message}` : 'Reload failed');
     }

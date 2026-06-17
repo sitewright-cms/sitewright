@@ -1034,6 +1034,13 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
           pages={pages}
           locales={locales}
           onClose={() => void closeEditor()}
+          // Clicking an internal link in the preview switches the editor to that page: swapping
+          // `editing` changes the child's `key`, so the modal remounts (visibly closes + reopens) for
+          // the target. The unsaved-changes warning is handled inside the editor before this fires.
+          onNavigate={(id) => {
+            const target = pages.find((p) => p.id === id);
+            if (target) setEditing(target);
+          }}
           initialMode="content"
         />
       )}

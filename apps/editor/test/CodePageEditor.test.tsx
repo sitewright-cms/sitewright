@@ -308,4 +308,48 @@ describe('CodePageEditor — content mode (in-modal)', () => {
     // No longer dirty → Save is disabled again.
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
   });
+
+  it('Reload refreshes the preview even when the page is NOT dirty (forces a fresh server render)', async () => {
+    render(<CodePageEditor project={project} page={page} onClose={() => {}} initialMode="source" />);
+    await waitFor(() => expect(preview).toHaveBeenCalled());
+    preview.mockClear();
+    // Not dirty → no confirm dialog; Reload still re-fetches AND re-renders the preview (the bug was a
+    // no-op here because state didn't change → the stateKey-driven preview effect never re-ran).
+    fireEvent.click(screen.getByRole('button', { name: 'Reload page' }));
+    await waitFor(() => expect(getPage).toHaveBeenCalledWith('p', 'home'));
+    await waitFor(() => expect(preview).toHaveBeenCalled());
+  });
+
+  it('a preview internal-link click opens the target page editor (clean → immediate)', async () => {
+    const about: Page = { id: 'about', path: 'about', title: 'About' };
+    const onNavigate = vi.fn();
+    render(
+      <CodePageEditor project={project} page={page} pages={[page, about]} onNavigate={onNavigate} onClose={() => {}} initialMode="source" />,
+    );
+    const iframe = screen.getByTitle('Preview') as HTMLIFrameElement;
+    await waitFor(() => expect(iframe.contentWindow).toBeTruthy());
+    window.dispatchEvent(
+      new MessageEvent('message', { data: { source: 'sitewright-preview', type: 'link-click', href: '/about' }, source: iframe.contentWindow }),
+    );
+    await waitFor(() => expect(onNavigate).toHaveBeenCalledWith('about'));
+  });
+
+  it('a preview internal-link click on a DIRTY page warns (naming the target) before switching', async () => {
+    const about: Page = { id: 'about', path: 'about', title: 'About' };
+    const onNavigate = vi.fn();
+    render(
+      <CodePageEditor project={project} page={page} pages={[page, about]} onNavigate={onNavigate} onClose={() => {}} initialMode="source" />,
+    );
+    fireEvent.change(screen.getByLabelText('Template source'), { target: { value: '<h1>local edit</h1>' } });
+    const iframe = screen.getByTitle('Preview') as HTMLIFrameElement;
+    await waitFor(() => expect(iframe.contentWindow).toBeTruthy());
+    window.dispatchEvent(
+      new MessageEvent('message', { data: { source: 'sitewright-preview', type: 'link-click', href: '/about' }, source: iframe.contentWindow }),
+    );
+    const warn = await screen.findByRole('dialog', { name: 'Leave this page?' });
+    expect(within(warn).getByText(/About/)).toBeInTheDocument(); // the message names the target page
+    expect(onNavigate).not.toHaveBeenCalled();
+    fireEvent.click(within(warn).getByRole('button', { name: 'Discard & open' }));
+    await waitFor(() => expect(onNavigate).toHaveBeenCalledWith('about'));
+  });
 });

@@ -54,6 +54,25 @@ export const PREVIEW_BRIDGE_JS = `(function () {
   }, { passive: true });
 
   var editing = false, styled = false;
+
+  // Internal-link navigation: a click on a SITE link (root-relative "/path") tells the EDITOR to open
+  // that page's editor, instead of navigating this sandboxed preview to a non-preview URL (which just
+  // breaks the iframe). Capture phase so it precedes the per-anchor handlers; while editing, an
+  // editable [data-sw-href] link keeps its own link-edit popover (its bubble handler), so skip those.
+  // External ("//"/"http"/"mailto:"…), fragment ("#") and target=_blank links are left alone.
+  document.addEventListener('click', function (e) {
+    var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+    if (!a) return;
+    if (editing && a.hasAttribute('data-sw-href')) return; // editable link → its edit popover wins
+    if (editing && a.closest('[data-sw-entry]')) return; // inside an editable dataset card → entry editor wins
+    if (a.getAttribute('target') === '_blank') return;
+    var href = a.getAttribute('href') || '';
+    if (href.charAt(0) !== '/' || href.charAt(1) === '/') return; // only root-relative site routes
+    e.preventDefault();
+    e.stopPropagation();
+    post({ type: 'link-click', href: href });
+  }, true);
+
   function ensureStyle() {
     if (styled) return; styled = true;
     var s = document.createElement('style');

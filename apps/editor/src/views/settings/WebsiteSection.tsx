@@ -29,6 +29,12 @@ const effectLabel = (s: string): string => {
   return t[0]!.toUpperCase() + t.slice(1);
 };
 
+// The effect pickers list their options alphabetically by the label the user sees (the source-of-truth
+// arrays keep their own curated order). Sorted once at module load, not per render.
+const NAV_EFFECTS_SORTED = [...NAV_EFFECTS].sort((a, b) => NAV_EFFECT_LABELS[a].localeCompare(NAV_EFFECT_LABELS[b]));
+const BUTTON_EFFECTS_SORTED = [...BUTTON_EFFECTS].sort((a, b) => a.localeCompare(b));
+const PRELOADER_EFFECTS_SORTED = [...PRELOADER_EFFECTS].sort((a, b) => effectLabel(a).localeCompare(effectLabel(b)));
+
 /** Shared bindings hint for the validated skeleton-slot editors. */
 const SLOT_HINT =
   'HTML + Tailwind/DaisyUI (no JS). The skeleton wraps this slot in its own landmark (top-nav/footer/…), so do NOT use <nav>/<main>/<footer>/<aside> here — use <div>. Bindings: {{ company.* }}, {{#each nav.header}}…{{/each}}, {{ website.json_data.* }}, {{ website.data.* }}.';
@@ -119,7 +125,7 @@ export function WebsiteSection({
               onChange={(e) => patch({ navEffect: e.target.value === 'none' ? 'none' : (e.target.value as NavEffect) })}
             >
               <option value="none">None</option>
-              {NAV_EFFECTS.map((n) => (
+              {NAV_EFFECTS_SORTED.map((n) => (
                 <option key={n} value={n}>
                   {NAV_EFFECT_LABELS[n]}
                 </option>
@@ -135,7 +141,7 @@ export function WebsiteSection({
               onChange={(e) => patch({ buttonEffect: e.target.value === 'none' ? 'none' : (e.target.value as ButtonEffect) })}
             >
               <option value="none">None</option>
-              {BUTTON_EFFECTS.map((b) => (
+              {BUTTON_EFFECTS_SORTED.map((b) => (
                 <option key={b} value={b}>
                   {b[0]!.toUpperCase() + b.slice(1)}
                 </option>
@@ -153,7 +159,7 @@ export function WebsiteSection({
               }
             >
               <option value="none">None</option>
-              {PRELOADER_EFFECTS.map((p) => (
+              {PRELOADER_EFFECTS_SORTED.map((p) => (
                 <option key={p} value={p}>
                   {effectLabel(p)}
                 </option>

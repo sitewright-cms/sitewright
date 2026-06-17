@@ -25,6 +25,14 @@ describe('buildEffectForks', () => {
     expect(f.button.find((x) => x.name === 'lift')!.code).toContain('.btn');
   });
 
+  it('pretty-prints the CSS (declarations on their own indented lines, no crammed rules)', () => {
+    const box = f.nav.find((x) => x.name === 'box-solid')!.code;
+    expect(box).toContain('\n  border-radius:'); // a declaration indented under its selector
+    expect(box).toContain(' {\n'); // an opening brace ends its selector line
+    // color-mix()'s internal commas are NOT broken onto new lines.
+    expect(box).toContain('color-mix(in oklab, var(--sw-color-primary, var(--color-primary)) 12%, transparent)');
+  });
+
   it('ships the runtime <script> only for the JS-backed nav effects, and the blob keyframes', () => {
     for (const x of f.nav) {
       expect(x.code.includes('<script>')).toBe((JS_NAV_EFFECTS as readonly string[]).includes(x.name));

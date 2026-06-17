@@ -25,8 +25,20 @@ describe('DEFAULT_AGENT_INSTRUCTIONS', () => {
     }
   });
 
+  it('the design guide leads the index and the core steers the agent to it', () => {
+    // Design is the first (most foundational) guide.
+    expect(GUIDE_TOPICS[0]).toBe('design');
+    // The core nudges the agent to read it before laying out a page (so it is not under-used).
+    expect(DEFAULT_AGENT_INSTRUCTIONS).toContain('get_guide("design")');
+    // It carries the flagship section toolkit, not just prose.
+    const body = AGENT_GUIDES.design.body;
+    for (const probe of ['HERO', 'ALTERNATING FEATURE ROWS', 'STATS BAND', 'CLOSING CTA', 'type scale', '6-9']) {
+      expect(body).toContain(probe);
+    }
+  });
+
   it('every guide has a title, summary, and non-trivial body', () => {
-    expect(GUIDE_TOPICS).toEqual(['components', 'images', 'effects', 'i18n', 'shop', 'templates', 'icons', 'nav']);
+    expect(GUIDE_TOPICS).toEqual(['design', 'components', 'images', 'effects', 'i18n', 'shop', 'templates', 'icons', 'nav']);
     for (const t of GUIDE_TOPICS) {
       const g = AGENT_GUIDES[t];
       expect(g.title).toBeTruthy();

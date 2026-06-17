@@ -2,7 +2,10 @@ import { describe, it, expect } from 'vitest';
 import {
   WebsiteSettingsSchema,
   websiteEffectsClasses,
+  navEffectUsesRuntime,
   NAV_EFFECTS,
+  NAV_EFFECT_LABELS,
+  JS_NAV_EFFECTS,
   BUTTON_EFFECTS,
   PRELOADER_EFFECTS,
 } from '../src/website.js';
@@ -268,14 +271,14 @@ describe('WebsiteSettingsSchema', () => {
 
   describe('effects (nav/button) + themes', () => {
     it('accepts a valid effects object and rejects an unknown effect', () => {
-      const w = { effects: { navEffect: 'pill', buttonEffect: 'lift' } };
+      const w = { effects: { navEffect: 'box-solid', buttonEffect: 'lift' } };
       expect(WebsiteSettingsSchema.parse(w)).toEqual(w);
       expect(() => WebsiteSettingsSchema.parse({ effects: { navEffect: 'sparkle' } })).toThrow();
     });
 
     it('websiteEffectsClasses maps effects → `<body>` classes ("none"/absent = "")', () => {
-      expect(websiteEffectsClasses({ navEffect: 'pill', buttonEffect: 'lift' })).toBe('sw-nav-pill sw-btn-lift');
-      expect(websiteEffectsClasses({ navEffect: 'underline' })).toBe('sw-nav-underline');
+      expect(websiteEffectsClasses({ navEffect: 'box-solid', buttonEffect: 'lift' })).toBe('sw-nav-box-solid sw-btn-lift');
+      expect(websiteEffectsClasses({ navEffect: 'line-bottom' })).toBe('sw-nav-line-bottom');
       expect(websiteEffectsClasses({ navEffect: 'none', buttonEffect: 'glow' })).toBe('sw-btn-glow');
       expect(websiteEffectsClasses({})).toBe('');
       expect(websiteEffectsClasses(undefined)).toBe('');
@@ -287,6 +290,16 @@ describe('WebsiteSettingsSchema', () => {
       for (const preloaderEffect of PRELOADER_EFFECTS) expect(WebsiteSettingsSchema.parse({ effects: { preloaderEffect } }).effects?.preloaderEffect).toBe(preloaderEffect);
     });
 
+    it('navEffectUsesRuntime flags only the JS-backed schemes; every scheme has a label', () => {
+      for (const n of JS_NAV_EFFECTS) expect(navEffectUsesRuntime(n)).toBe(true);
+      expect(navEffectUsesRuntime('box-solid')).toBe(false);
+      expect(navEffectUsesRuntime('none')).toBe(false);
+      expect(navEffectUsesRuntime(undefined)).toBe(false);
+      // every JS-backed scheme is a real scheme; every scheme has a non-empty picker label.
+      for (const n of JS_NAV_EFFECTS) expect(NAV_EFFECTS).toContain(n);
+      for (const n of NAV_EFFECTS) expect(NAV_EFFECT_LABELS[n]).toBeTruthy();
+    });
+
     it('accepts the themes opt-in (enableThemes + defaultTheme)', () => {
       const w = { enableThemes: true, defaultTheme: 'dark' as const };
       expect(WebsiteSettingsSchema.parse(w)).toEqual(w);
@@ -295,7 +308,7 @@ describe('WebsiteSettingsSchema', () => {
 
     it('drops the legacy keys (no back-compat): theme / enableColorSchemes / defaultColorScheme are ignored', () => {
       const parsed = WebsiteSettingsSchema.parse({
-        theme: { navEffect: 'pill' },
+        theme: { navEffect: 'box-solid' },
         enableColorSchemes: true,
         defaultColorScheme: 'dark',
       }) as Record<string, unknown>;

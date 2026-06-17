@@ -59,6 +59,8 @@ import {
   preloaderHtml,
   PRELOADER_CSS,
   PRELOADER_JS,
+  NAV_EFFECTS_JS,
+  usesNavEffects,
   resolveShopChannels,
   resolveFormEndpoints,
   mediaForRender,
@@ -67,7 +69,13 @@ import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
 import { companyToOrganization } from './company-seo.js';
 import { renderSitemap, renderRobots, renderHtaccess, renderNetlifyRedirects, siteUrlFor, siteBase } from './seo.js';
 import { renderContactPhp, hasContactPhpForm } from './contact-php.js';
-import { toPublicForm, websiteEffectsClasses, type FormPublic, type MediaAsset } from '@sitewright/schema';
+import {
+  toPublicForm,
+  websiteEffectsClasses,
+  navEffectUsesRuntime,
+  type FormPublic,
+  type MediaAsset,
+} from '@sitewright/schema';
 
 /** The compiled utility stylesheet, written at the site root and linked per page. */
 const UTILITY_STYLESHEET = 'styles.css';
@@ -87,6 +95,8 @@ const THEME_SCRIPT = 'theme.js';
 const NAV_LINK_SCRIPT = 'nav-link.js';
 /** The PRELOADER runtime (overlay show/clear + scroll-lock + internal-link bridge), linked per page. */
 const PRELOADER_SCRIPT = 'preloader.js';
+/** The NAV-EFFECTS runtime (sliding indicator + cursor-following spotlight), linked per page. */
+const NAV_EFFECTS_SCRIPT = 'nav-effects.js';
 
 /** A static `{{> name}}` / `{{#> name}}` partial include (snippet names are identifier-safe). */
 const PARTIAL_REF = /\{\{~?\s*#?>\s*([a-zA-Z][a-zA-Z0-9_-]*)/g;
@@ -446,6 +456,12 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // 'none'). The platform injects the overlay markup (renderDocument), so this is gated on the
     // theme choice rather than an authored marker.
     const usesPreloaderRuntime = (website?.effects?.preloaderEffect ?? 'none') !== 'none';
+    // NAV-EFFECTS runtime — ships when a JS-backed nav scheme is used (a shared sliding indicator or
+    // the cursor-following spotlight). Two ways to opt in: the site-wide picker (effects.navEffect) OR
+    // a per-element class authored on a nav <ul>/snippet — so scan the sources too (same only-used-ships
+    // discipline as cart/ripple), else a one-off `sw-nav-sliding-pill` would preview but ship broken.
+    const usesNavRuntime =
+      navEffectUsesRuntime(website?.effects?.navEffect) || usesMarker(usesNavEffects);
     // The nav-link runtime opens a <dialog> (global modal) and smooth-scrolls #section links. Ship it
     // when a nav placeholder targets a #fragment OR any authored surface embeds a <dialog> — so a modal
     // triggered from page CONTENT (a CTA, an in-content `<a href="#id">`), not only a nav placeholder,
@@ -659,6 +675,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           ...(usesCartRuntime ? [`${siteRoot}${CART_SCRIPT}`] : []),
           ...(usesNavLink ? [`${siteRoot}${NAV_LINK_SCRIPT}`] : []),
           ...(usesPreloaderRuntime ? [`${siteRoot}${PRELOADER_SCRIPT}`] : []),
+          ...(usesNavRuntime ? [`${siteRoot}${NAV_EFFECTS_SCRIPT}`] : []),
         ];
         const html = renderDocument(page, {
           brand,
@@ -791,6 +808,12 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
       await writeFile(join(tmp, PRELOADER_SCRIPT), PRELOADER_JS, 'utf8');
       bytes += Buffer.byteLength(PRELOADER_JS);
+    }
+    // The NAV-EFFECTS runtime (sliding indicator + cursor-following spotlight; only-used-ships).
+    if (usesNavRuntime) {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
+      await writeFile(join(tmp, NAV_EFFECTS_SCRIPT), NAV_EFFECTS_JS, 'utf8');
+      bytes += Buffer.byteLength(NAV_EFFECTS_JS);
     }
 
     // robots.txt (always) + sitemap.xml (only when a production site URL is set).

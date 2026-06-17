@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { motion } from 'motion/react';
 import {
   NAV_EFFECTS,
+  NAV_EFFECT_LABELS,
   BUTTON_EFFECTS,
   PRELOADER_EFFECTS,
   type JsonValue,
@@ -120,7 +121,7 @@ export function WebsiteSection({
               <option value="none">None</option>
               {NAV_EFFECTS.map((n) => (
                 <option key={n} value={n}>
-                  {n[0]!.toUpperCase() + n.slice(1)}
+                  {NAV_EFFECT_LABELS[n]}
                 </option>
               ))}
             </select>

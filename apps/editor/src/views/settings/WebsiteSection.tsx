@@ -252,7 +252,10 @@ export function WebsiteSection({
           fork={
             slotCfg[editing].forks.length
               ? {
-                  options: slotCfg[editing].forks.map((f) => ({ value: f.name, label: f.label })),
+                  // alphabetical by label, like the effect pickers (None / source order aside).
+                  options: slotCfg[editing].forks
+                    .map((f) => ({ value: f.name, label: f.label }))
+                    .sort((a, b) => a.label.localeCompare(b.label)),
                   snippetFor: (v) => slotCfg[editing].forks.find((f) => f.name === v)?.code ?? '',
                 }
               : undefined

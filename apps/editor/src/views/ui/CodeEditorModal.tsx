@@ -104,7 +104,7 @@ export function CodeEditorModal({ title, value, onSave, onClose, hint, language 
                   const snippet = fork.snippetFor(v);
                   if (snippet) setDraft((prev) => (prev.trim() ? `${prev}\n\n${snippet}` : snippet));
                 }}
-                className="min-w-0 flex-1 rounded-md border border-white/15 bg-white/5 px-2 py-1 font-mono text-xs text-slate-100 sw-brand-focus outline-none transition"
+                className="min-w-0 flex-1 rounded-md border border-white/15 bg-white/5 px-2 py-1 font-mono text-xs text-slate-100 sw-brand-focus outline-none transition [&>option]:bg-white [&>option]:text-slate-900"
               >
                 <option value="">Choose an effect to fork…</option>
                 {fork.options.map((o) => (

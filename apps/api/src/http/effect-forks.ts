@@ -50,6 +50,40 @@ function titleCase(s: string): string {
 }
 
 /**
+ * Pretty-print CSS so the forked snippet is readable: each selector and declaration on its own line,
+ * indented by brace depth. Safe for the platform's own effect CSS — its values carry no `{`/`}`/`;`
+ * (the SVG-mask data-URL + color-mix() use none) and the `@utility` bodies have no inline comments.
+ */
+function formatCss(css: string): string {
+  let out = '';
+  let depth = 0;
+  let buf = '';
+  const pad = (d: number): string => '  '.repeat(Math.max(0, d));
+  const flush = (): void => {
+    const t = buf.trim();
+    if (t) out += `${pad(depth)}${t};\n`;
+    buf = '';
+  };
+  for (const ch of css) {
+    if (ch === '{') {
+      const sel = buf.trim();
+      if (sel) out += `${pad(depth)}${sel} {\n`;
+      buf = '';
+      depth++;
+    } else if (ch === '}') {
+      flush(); // a final declaration with no trailing ';' still gets terminated
+      depth--;
+      out += `${pad(depth)}}\n`;
+    } else if (ch === ';') {
+      flush();
+    } else {
+      buf += ch;
+    }
+  }
+  return out.trim();
+}
+
+/**
  * A built-in nav/button effect's standalone CSS: its `@utility` body with the nesting `&` (the scheme
  * class) dropped, so the selectors apply globally. Any top-level `@keyframes` it animates (e.g. the
  * blob morph) is appended so the snippet is complete.
@@ -75,7 +109,7 @@ function effectStyle(util: string): string {
       emitted.add(kf);
     }
   }
-  return css;
+  return formatCss(css);
 }
 
 let cache: EffectForks | null = null;

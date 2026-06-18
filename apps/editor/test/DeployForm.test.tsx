@@ -67,7 +67,48 @@ describe('DeployForm — git target', () => {
     fireEvent.change(screen.getByLabelText('Git repository URL'), { target: { value: 'https://github.com/me/site.git' } });
     fireEvent.change(screen.getByLabelText('Target name'), { target: { value: 'GH' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save target' }));
-    await waitFor(() => expect(screen.getByText(/access token are required/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/access token is required/i)).toBeInTheDocument());
+    expect(createDeployTarget).not.toHaveBeenCalled();
+  });
+
+  it('switching Git auth to SSH key shows the key fields and saves an SSH target', async () => {
+    render(<DeployForm project={project} />);
+    await waitFor(() => expect(screen.getByLabelText('Target name')).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText('Deploy protocol'), { target: { value: 'git' } });
+    fireEvent.change(screen.getByLabelText('Git auth method'), { target: { value: 'key' } });
+    // The SSH key fields replace the token field.
+    expect(screen.getByLabelText('Git SSH private key')).toBeInTheDocument();
+    expect(screen.getByLabelText('Git key passphrase')).toBeInTheDocument();
+    expect(screen.getByLabelText('Git host key')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Git access token')).toBeNull();
+
+    fireEvent.change(screen.getByLabelText('Git repository URL'), { target: { value: 'git@github.com:me/site.git' } });
+    fireEvent.change(screen.getByLabelText('Git SSH private key'), { target: { value: '-----BEGIN OPENSSH PRIVATE KEY-----\nx\n-----END OPENSSH PRIVATE KEY-----' } });
+    fireEvent.change(screen.getByLabelText('Git key passphrase'), { target: { value: 'pw' } });
+    fireEvent.change(screen.getByLabelText('Target name'), { target: { value: 'GH SSH' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save target' }));
+
+    await waitFor(() =>
+      expect(createDeployTarget).toHaveBeenCalledWith('p', {
+        name: 'GH SSH',
+        protocol: 'git',
+        repoUrl: 'git@github.com:me/site.git',
+        branch: 'gh-pages',
+        privateKey: '-----BEGIN OPENSSH PRIVATE KEY-----\nx\n-----END OPENSSH PRIVATE KEY-----',
+        passphrase: 'pw',
+      }),
+    );
+  });
+
+  it('refuses to save an SSH git target with no private key', async () => {
+    render(<DeployForm project={project} />);
+    await waitFor(() => expect(screen.getByLabelText('Target name')).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText('Deploy protocol'), { target: { value: 'git' } });
+    fireEvent.change(screen.getByLabelText('Git auth method'), { target: { value: 'key' } });
+    fireEvent.change(screen.getByLabelText('Git repository URL'), { target: { value: 'git@github.com:me/site.git' } });
+    fireEvent.change(screen.getByLabelText('Target name'), { target: { value: 'GH SSH' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save target' }));
+    await waitFor(() => expect(screen.getByText(/Paste your SSH private key/i)).toBeInTheDocument());
     expect(createDeployTarget).not.toHaveBeenCalled();
   });
 });

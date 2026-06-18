@@ -32,15 +32,39 @@ const PreviewTokenSchema = z
   .max(64)
   .regex(/^[A-Za-z0-9_-]+$/, 'previewToken must be url-safe (A–Z, a–z, 0–9, _ or -)');
 
-/** A git remote URL for a `git` target — http(s) only (token auth), bounded, no control chars. */
+// A git remote URL is one of: http(s) (token auth), `ssh://[user@]host[:port]/path`, or the scp-like
+// `user@host:path` (both SSH = key auth).
+const GIT_HTTP_RE = /^https?:\/\/[^\s]+$/i;
+const GIT_SSH_URL_RE = /^ssh:\/\/[^\s]+$/i;
+const GIT_SCP_RE = /^[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:[^\s]+$/;
+
+/** True for an SSH git remote (`ssh://…` or scp-like `user@host:path`) — i.e. key auth, not token. */
+export function isSshRepoUrl(repoUrl: string): boolean {
+  return GIT_SSH_URL_RE.test(repoUrl) || (GIT_SCP_RE.test(repoUrl) && !repoUrl.includes('://'));
+}
+
+/** Extract the host of a git remote (http(s), ssh://, or scp-like) — used for the SSRF allow-list. */
+export function gitRepoHost(repoUrl: string): string {
+  if (GIT_SCP_RE.test(repoUrl) && !repoUrl.includes('://')) {
+    const afterUser = repoUrl.slice(repoUrl.indexOf('@') + 1);
+    const colon = afterUser.indexOf(':');
+    return colon === -1 ? afterUser : afterUser.slice(0, colon);
+  }
+  return new URL(repoUrl).hostname;
+}
+
+/** A git remote URL for a `git` target — http(s) (token) or ssh (key), bounded, no control chars. */
 const RepoUrlSchema = z
   .string()
   .min(1)
   .max(2048)
-  .regex(/^https?:\/\/[^\s]+$/i, 'repoUrl must be an http(s) URL')
+  .refine((v) => GIT_HTTP_RE.test(v) || GIT_SSH_URL_RE.test(v) || GIT_SCP_RE.test(v), {
+    message: 'repoUrl must be an http(s) URL or an ssh URL (ssh://… or user@host:path)',
+  })
   .refine((v) => !hasControlChars(v), 'repoUrl must not contain control characters')
-  // Must be URL-parseable (so the SSRF host extraction can never throw).
+  // http(s)/ssh:// must be URL-parseable (so host extraction can never throw); scp-like is parsed by hand.
   .refine((v) => {
+    if (GIT_SCP_RE.test(v) && !v.includes('://')) return true;
     try {
       new URL(v);
       return true;
@@ -48,15 +72,18 @@ const RepoUrlSchema = z
       return false;
     }
   }, 'repoUrl must be a valid URL')
-  // No embedded credentials — the token lives in the encrypted `secret`, not in the (plaintext) URL.
+  // http(s) must not embed credentials (the token lives in the encrypted secret). An SSH user (git@) is fine.
   .refine((v) => {
+    if (!GIT_HTTP_RE.test(v)) return true;
     try {
       const u = new URL(v);
       return !u.username && !u.password;
     } catch {
-      return true; // unparseable is already rejected above
+      return true;
     }
-  }, 'repoUrl must not embed credentials — use the token field');
+  }, 'repoUrl must not embed credentials — use the token field')
+  // Belt-and-suspenders against argument injection: a repoUrl can never be read as a git/ssh flag.
+  .refine((v) => !v.startsWith('-'), 'repoUrl must not start with "-"');
 
 /** A git branch/ref name — conservative safe charset, no traversal. */
 const GitBranchSchema = z
@@ -90,8 +117,14 @@ export const DeployTargetSchema = z
       .refine((v) => !hasControlChars(v), 'remoteDir must not contain control characters')
       .refine((v) => !v.split('/').some((seg) => seg === '..'), 'remoteDir must not contain ".." segments')
       .optional(),
-    /** SFTP host-key fingerprint (not secret). */
-    hostFingerprint: z.string().min(1).max(256).optional(),
+    /** SFTP host-key fingerprint, OR a git-SSH `known_hosts` host-key line for pinning (not secret). */
+    hostFingerprint: z
+      .string()
+      .min(1)
+      .max(1024)
+      // No control chars / newlines — a multi-line value would silently pre-trust extra SSH hosts.
+      .refine((v) => !hasControlChars(v), 'hostFingerprint must not contain control characters')
+      .optional(),
     /** Encrypted credentials: FTP/SFTP `{password?, privateKey?, passphrase?}`, or git `{token}`. */
     secret: EncryptedSecretSchema.optional(),
     // ── Local Hosting serve options (only meaningful on a `local` target) ──
@@ -100,7 +133,7 @@ export const DeployTargetSchema = z
     /** Minify each page's HTML at build (collapse whitespace, drop comments). Off by default. */
     minifyHtml: z.boolean().optional(),
     // ── git fields (only meaningful on a `git` target) ──
-    /** The remote repository (http/https; token auth). */
+    /** The remote repository — http(s) (token auth) or ssh (key auth). */
     repoUrl: RepoUrlSchema.optional(),
     /** The branch the built site is force-committed to (gh-pages style). */
     branch: GitBranchSchema.optional(),
@@ -110,9 +143,9 @@ export const DeployTargetSchema = z
     (t) => (t.protocol !== 'ftp' && t.protocol !== 'ftps' && t.protocol !== 'sftp') || (!!t.host && !!t.user && !!t.secret),
     { message: 'host, user and credentials are required for an FTP/FTPS/SFTP target', path: ['host'] },
   )
-  // git needs a repoUrl, a branch, and a token (the `secret`).
+  // git needs a repoUrl, a branch, and credentials (token for https or a key for ssh — the `secret`).
   .refine((t) => t.protocol !== 'git' || (!!t.repoUrl && !!t.branch && !!t.secret), {
-    message: 'repoUrl, branch and a token are required for a git target',
+    message: 'repoUrl, branch and credentials are required for a git target',
     path: ['repoUrl'],
   })
   // A local target has no transport credentials or repository.

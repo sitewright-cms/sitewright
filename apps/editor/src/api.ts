@@ -349,13 +349,12 @@ export interface DeployConfig {
   hostFingerprint?: string;
 }
 
-/** Config for saving a `git` deploy target (commit the built site to a branch via an HTTPS token). */
-export interface GitTargetConfig {
-  protocol: 'git';
-  repoUrl: string;
-  branch: string;
-  token: string;
-}
+/** Config for saving a `git` deploy target (commit the built site to a branch). HTTPS remote → a
+ *  token; SSH remote → a private key (+ optional passphrase and pinned `known_hosts` host key). */
+export type GitTargetConfig = { protocol: 'git'; repoUrl: string; branch: string } & (
+  | { token: string }
+  | { privateKey: string; passphrase?: string; hostFingerprint?: string }
+);
 
 /** A streamed deploy progress event. FTP/SFTP report per-file (`connecting`/`uploading` + index/total);
  *  git reports coarse phases (`preparing`/`committing`/`pushing`) with no file count. */

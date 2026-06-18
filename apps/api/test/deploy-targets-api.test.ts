@@ -212,11 +212,47 @@ describe('saved deploy targets', () => {
     expect(dep.body).not.toContain('ghp_super_secret_token');
   }, 30_000);
 
-  it('rejects a git target missing repoUrl/branch/token (400)', async () => {
+  it('creates an SSH git target (private key encrypted, never leaked) and deploys it (build → push)', async () => {
+    const { t, projectId } = await setup('gitssh@acme.test');
+    const base = `/projects/${projectId}`;
+    const cookies = { sw_session: t };
+    const create = await app.inject({
+      method: 'POST',
+      url: `${base}/deploy-targets`,
+      cookies,
+      payload: {
+        name: 'GitHub Pages (SSH)',
+        protocol: 'git',
+        repoUrl: 'git@allowed.example.com:acme/site.git', // scp-like ssh remote, host on the allow-list
+        branch: 'gh-pages',
+        privateKey: '-----BEGIN OPENSSH PRIVATE KEY-----\nMOCKKEYCONTENTS\n-----END OPENSSH PRIVATE KEY-----',
+        passphrase: 'topsecret',
+      },
+    });
+    expect(create.statusCode).toBe(201);
+    const view = (create.json() as { target: Record<string, unknown> }).target;
+    expect(view.protocol).toBe('git');
+    expect(view.repoUrl).toBe('git@allowed.example.com:acme/site.git');
+    expect(view).not.toHaveProperty('secret');
+    expect(view).not.toHaveProperty('privateKey');
+    expect(view).not.toHaveProperty('passphrase');
+    expect(create.body).not.toContain('OPENSSH PRIVATE KEY'); // the key never leaks to the client
+    expect(create.body).not.toContain('topsecret');
+    // Deploy: builds the site, then the SSH push fails (the host won't resolve) → a generic 502, no leak.
+    const dep = await app.inject({ method: 'POST', url: `${base}/deploy-targets/${String(view.id)}/deploy`, cookies });
+    expect(dep.statusCode).toBe(502);
+    expect(dep.body).not.toContain('OPENSSH PRIVATE KEY');
+  }, 30_000);
+
+  it('rejects a git target missing repoUrl/branch/credential (400)', async () => {
     const { t, projectId } = await setup('git2@acme.test');
     const cookies = { sw_session: t };
-    const bad = await app.inject({ method: 'POST', url: `/projects/${projectId}/deploy-targets`, cookies, payload: { name: 'X', protocol: 'git', branch: 'gh-pages' } });
+    // git with no token and no key.
+    const bad = await app.inject({ method: 'POST', url: `/projects/${projectId}/deploy-targets`, cookies, payload: { name: 'X', protocol: 'git', repoUrl: 'https://allowed.example.com/a/b.git', branch: 'gh-pages' } });
     expect(bad.statusCode).toBe(400);
+    // an ssh remote needs a key, not a token.
+    const noKey = await app.inject({ method: 'POST', url: `/projects/${projectId}/deploy-targets`, cookies, payload: { name: 'Y', protocol: 'git', repoUrl: 'git@allowed.example.com:a/b.git', branch: 'gh-pages', token: 'ghp_x' } });
+    expect(noKey.statusCode).toBe(400);
   });
 
   it('rejects a git repoUrl that embeds credentials (400 — token belongs in the token field)', async () => {

@@ -26,7 +26,11 @@ COPY --chown=node:node node_modules ./node_modules
 # an agent can SEE it). Installed (browser + its apt libraries) into a shared, world-readable path; the
 # API later runs as `node`. Adds ~300MB. Drop this layer (+ the dep above) if screenshots aren't needed.
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+# `git` + `openssh-client` are the transport for SSH-key git deploy targets (the pure-JS isomorphic-git
+# path handles HTTPS-token targets; SSH needs the real binaries). Installed in the same cached heavy
+# layer as Chromium so code-only deploys don't re-fetch them.
 RUN apt-get update \
+    && apt-get install -y --no-install-recommends git openssh-client \
     && node node_modules/playwright-core/cli.js install --with-deps chromium \
     && rm -rf /var/lib/apt/lists/*
 

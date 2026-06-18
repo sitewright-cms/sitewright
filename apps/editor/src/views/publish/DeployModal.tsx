@@ -4,19 +4,36 @@ import { api, type DeployTargetView, type Project } from '../../api';
 import { Modal } from '../ui/Modal';
 
 type Status =
-  | { kind: 'running'; phase: 'connecting' | 'uploading'; index: number; total: number; file?: string }
-  | { kind: 'done'; files: number; protocol: string }
+  | { kind: 'running'; phase: string; index: number; total: number; file?: string }
+  | { kind: 'done'; protocol: string; files?: number; branch?: string; commit?: string }
   | { kind: 'error'; message: string };
 
+/** Human label for a progress phase — FTP/SFTP per-file, or git's coarse phases. */
+function phaseLabel(s: Extract<Status, { kind: 'running' }>, target: DeployTargetView): string {
+  switch (s.phase) {
+    case 'connecting':
+      return 'Connecting…';
+    case 'preparing':
+      return 'Preparing the build…';
+    case 'committing':
+      return 'Committing…';
+    case 'pushing':
+      return `Pushing to ${target.branch ?? 'the branch'}…`;
+    default:
+      return `Uploading ${s.index}/${s.total || '…'}`;
+  }
+}
+
 /**
- * Streams a deploy of a SAVED target to its external server, showing live per-file progress (a
- * DaisyUI progress bar + spinner), the final result, and errors. On success it links to the
- * configured production URL — or warns that none is set (so sitemap.xml / robots.txt are skipped).
+ * Streams a deploy of a SAVED target, showing live progress, the final result, and errors. FTP/SFTP
+ * show a determinate per-file bar; a `git` target shows its coarse phases (prepare → commit → push)
+ * and, on success, the pushed branch. On success it links to the configured production URL.
  */
 export function DeployModal({ project, target, onClose }: { project: Project; target: DeployTargetView; onClose: () => void }) {
-  const [status, setStatus] = useState<Status>({ kind: 'running', phase: 'connecting', index: 0, total: 0 });
+  const [status, setStatus] = useState<Status>({ kind: 'running', phase: target.protocol === 'git' ? 'preparing' : 'connecting', index: 0, total: 0 });
   const [siteUrl, setSiteUrl] = useState<string | undefined>(undefined);
   const abortRef = useRef<AbortController | null>(null);
+  const isGit = target.protocol === 'git';
 
   // Resolve the production URL (for the success link / no-URL warning).
   useEffect(() => {
@@ -41,9 +58,8 @@ export function DeployModal({ project, target, onClose }: { project: Project; ta
       project.id,
       target.id,
       {
-        onProgress: (e) =>
-          alive && setStatus({ kind: 'running', phase: e.phase === 'done' ? 'uploading' : e.phase, index: e.index, total: e.total, file: e.file }),
-        onDone: (d) => alive && setStatus({ kind: 'done', files: d.files, protocol: d.protocol }),
+        onProgress: (e) => alive && setStatus({ kind: 'running', phase: e.phase, index: e.index ?? 0, total: e.total ?? 0, file: e.file }),
+        onDone: (d) => alive && setStatus({ kind: 'done', protocol: d.protocol, files: d.files, branch: d.branch, commit: d.commit }),
         onError: (message) => alive && setStatus({ kind: 'error', message }),
       },
       ac.signal,
@@ -55,23 +71,33 @@ export function DeployModal({ project, target, onClose }: { project: Project; ta
   }, [project.id, target.id]);
 
   const running = status.kind === 'running';
+  // Determinate only when a per-file total is known (FTP/SFTP); git phases stay indeterminate.
   const pct = running && status.total > 0 ? Math.round((status.index / status.total) * 100) : undefined;
 
   return (
     <Modal title={`Deploy to ${target.name}`} size="md" onClose={onClose} saveLabel="Close">
       <div className="space-y-4">
         <p className="text-xs text-slate-500">
-          Uploading the published site to <span className="font-medium text-slate-700">{target.protocol.toUpperCase()}@{target.host}</span>
-          {target.remoteDir ? <span className="text-slate-400"> · {target.remoteDir}</span> : null}
+          {isGit ? (
+            <>
+              Committing the published site to <span className="font-medium text-slate-700">{target.branch}</span>
+              <span className="text-slate-400"> · {target.repoUrl}</span>
+            </>
+          ) : (
+            <>
+              Uploading the published site to <span className="font-medium text-slate-700">{target.protocol.toUpperCase()}@{target.host}</span>
+              {target.remoteDir ? <span className="text-slate-400"> · {target.remoteDir}</span> : null}
+            </>
+          )}
         </p>
 
         {running && (
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-sm text-slate-700">
               <span className="loading loading-spinner loading-sm text-indigo-600" aria-hidden />
-              {status.phase === 'connecting' ? 'Connecting…' : `Uploading ${status.index}/${status.total || '…'}`}
+              {phaseLabel(status, target)}
             </div>
-            {/* Determinate once the file count is known; indeterminate while connecting. */}
+            {/* Determinate once the file count is known; indeterminate otherwise (git / connecting). */}
             <progress
               className="progress progress-primary w-full"
               {...(pct !== undefined ? { value: status.index, max: status.total } : {})}
@@ -84,7 +110,10 @@ export function DeployModal({ project, target, onClose }: { project: Project; ta
         {status.kind === 'done' && (
           <div className="space-y-3">
             <p className="flex items-center gap-2 text-sm font-medium text-emerald-700">
-              <Check className="h-4 w-4" /> Deployed {status.files} files via {status.protocol.toUpperCase()}.
+              <Check className="h-4 w-4" />
+              {status.protocol === 'git'
+                ? `Pushed to ${status.branch ?? 'the branch'}${status.commit ? ` · ${status.commit.slice(0, 7)}` : ''}.`
+                : `Deployed ${status.files ?? 0} files via ${status.protocol.toUpperCase()}.`}
             </p>
             {siteUrl ? (
               <a

@@ -195,7 +195,7 @@ async function streamSse(
   url: string,
   handlers: {
     onProgress?: (e: DeployProgressEvent) => void;
-    onDone?: (deployed: { protocol: string; files: number }) => void;
+    onDone?: (deployed: StreamDoneResult) => void;
     onError?: (message: string) => void;
   },
   signal?: AbortSignal,
@@ -246,7 +246,7 @@ async function streamSse(
         continue;
       }
       if (event === 'progress') handlers.onProgress?.(parsed as DeployProgressEvent);
-      else if (event === 'done') handlers.onDone?.((parsed as { deployed: { protocol: string; files: number } }).deployed);
+      else if (event === 'done') handlers.onDone?.((parsed as { deployed: StreamDoneResult }).deployed);
       else if (event === 'error') handlers.onError?.((parsed as { message: string }).message);
     }
   }
@@ -349,12 +349,29 @@ export interface DeployConfig {
   hostFingerprint?: string;
 }
 
-/** A streamed deploy progress event (mirrors the API's `DeployProgress`). */
+/** Config for saving a `git` deploy target (commit the built site to a branch via an HTTPS token). */
+export interface GitTargetConfig {
+  protocol: 'git';
+  repoUrl: string;
+  branch: string;
+  token: string;
+}
+
+/** A streamed deploy progress event. FTP/SFTP report per-file (`connecting`/`uploading` + index/total);
+ *  git reports coarse phases (`preparing`/`committing`/`pushing`) with no file count. */
 export interface DeployProgressEvent {
-  phase: 'connecting' | 'uploading' | 'done';
-  total: number;
-  index: number;
+  phase: 'connecting' | 'uploading' | 'preparing' | 'committing' | 'pushing' | 'done';
+  total?: number;
+  index?: number;
   file?: string;
+}
+
+/** The `done` payload of a streamed deploy — FTP/SFTP report `files`; git reports `branch`/`commit`. */
+export interface StreamDoneResult {
+  protocol: string;
+  files?: number;
+  branch?: string;
+  commit?: string;
 }
 
 /** A system Widget descriptor from GET /authoring/widgets — the slim catalog the Widgets rail browses
@@ -734,7 +751,7 @@ export const api = {
   // --- saved deploy targets ---
   listDeployTargets: (projectId: string) =>
     request<{ items: DeployTargetView[] }>('GET', `/projects/${projectId}/deploy-targets`),
-  createDeployTarget: (projectId: string, config: DeployConfig & { name: string }) =>
+  createDeployTarget: (projectId: string, config: (DeployConfig | GitTargetConfig) & { name: string }) =>
     request<{ target: DeployTargetView }>('POST', `/projects/${projectId}/deploy-targets`, config),
   deleteDeployTarget: (projectId: string, id: string) =>
     request<void>('DELETE', `/projects/${projectId}/deploy-targets/${id}`),
@@ -752,7 +769,7 @@ export const api = {
     id: string,
     handlers: {
       onProgress?: (e: DeployProgressEvent) => void;
-      onDone?: (deployed: { protocol: string; files: number }) => void;
+      onDone?: (deployed: StreamDoneResult) => void;
       onError?: (message: string) => void;
     },
     signal?: AbortSignal,

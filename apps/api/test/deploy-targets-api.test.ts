@@ -79,7 +79,7 @@ describe('saved deploy targets', () => {
     expect(res.statusCode).toBe(403);
   });
 
-  it('deletes a target, and deploy-by-id 409s before publishing', async () => {
+  it('creates then deletes a target', async () => {
     const { t, projectId } = await setup('a@acme.test');
     const base = `/projects/${projectId}`;
     const cookies = { sw_session: t };
@@ -88,10 +88,6 @@ describe('saved deploy targets', () => {
         target: { id: string };
       }
     ).target.id;
-
-    // No published build yet → deploy-by-id is a 409 (not a 500 / connection attempt).
-    const early = await app.inject({ method: 'POST', url: `${base}/deploy-targets/${id}/deploy`, cookies });
-    expect(early.statusCode).toBe(409);
 
     const del = await app.inject({ method: 'DELETE', url: `${base}/deploy-targets/${id}`, cookies });
     expect(del.statusCode).toBe(204);
@@ -166,16 +162,19 @@ describe('saved deploy targets', () => {
     expect(neither.statusCode).toBe(400);
   });
 
-  it('the streaming deploy endpoint enforces the publish-required preflight (409) before hijacking', async () => {
+  it('the streaming deploy builds first: a bad route graph is a JSON 409 before hijacking', async () => {
     const { t, projectId } = await setup('a@acme.test');
     const cookies = { sw_session: t };
+    // Two top-level pages share a route slug → the build's route graph is invalid (author-correctable).
+    await app.inject({ method: 'PUT', url: `/projects/${projectId}/content/page/a`, cookies, payload: { id: 'a', path: 'dup', title: 'A', source: '<h1>A</h1>' } });
+    await app.inject({ method: 'PUT', url: `/projects/${projectId}/content/page/b`, cookies, payload: { id: 'b', path: 'dup', title: 'B', source: '<h1>B</h1>' } });
     const id = (
       (await app.inject({ method: 'POST', url: `/projects/${projectId}/deploy-targets`, cookies, payload: keyTarget })).json() as {
         target: { id: string };
       }
     ).target.id;
     const res = await app.inject({ method: 'POST', url: `/projects/${projectId}/deploy-targets/${id}/deploy/stream`, cookies });
-    expect(res.statusCode).toBe(409); // a normal JSON error (not a hijacked SSE stream) since no site is published
-    expect(res.json()).toMatchObject({ error: expect.stringMatching(/publish the site/i) });
+    // The build fails BEFORE hijacking → a normal JSON 409 (not a hijacked SSE stream).
+    expect(res.statusCode).toBe(409);
   });
 });

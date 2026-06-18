@@ -26,15 +26,6 @@ const target = {
   remoteDir: '/var/www',
 };
 
-// A minimal page so a project can actually publish a release (needed to reach
-// the deploy transport past the publish-required 409 gate).
-const homePage = {
-  id: 'home',
-  path: '',
-  title: 'Home',
-  root: { id: 'r', type: 'Section', children: [{ id: 'h', type: 'Heading', props: { text: 'Live Site' } }] },
-};
-
 let h: Harness;
 let publishRoot: string;
 
@@ -168,15 +159,9 @@ describe('saved deploy targets — round-trip decryption past the allow-list gat
       (await client.post(`${base}/deploy-targets`, target)).json() as { target: { id: string } }
     ).target.id;
 
-    // Publish a release so the deploy-by-id route gets PAST the "publish first" 409.
-    expect((await client.put(`${base}/content/page/home`, homePage)).statusCode).toBe(200);
-    const pub = await client.post(`${base}/publish`);
-    expect(pub.statusCode).toBe(200);
-
-    // Deploy by id. The host is allow-listed, so the 403 gate is passed; the
-    // secret decrypts and a real SFTP connection is attempted to a non-existent
-    // server → the route surfaces a 502 connection/transfer error. Crucially this
-    // is NOT 403 (allow-list) and NOT 409 (publish-required) — proving both the
+    // Deploy by id. The host is allow-listed, so the 403 gate is passed; the build runs (build-at-deploy),
+    // the secret decrypts, and a real SFTP connection is attempted to a non-existent server → the route
+    // surfaces a 502 connection/transfer error. Crucially this is NOT 403 (allow-list) — proving both the
     // allow-list gate AND credential decryption succeeded.
     const deploy = await client.post(`${base}/deploy-targets/${id}/deploy`);
     expect(deploy.statusCode).toBe(502);
@@ -186,17 +171,19 @@ describe('saved deploy targets — round-trip decryption past the allow-list gat
     expect(deploy.body).not.toContain('super-secret-credential-9f3a');
   }, 30_000);
 
-  it('deploy-by-id 409s before any connection when the site has not been published', async () => {
+  it('deploy-by-id builds fresh then attempts the connection — no prior publish required (502, not 409)', async () => {
     await boot([ALLOWED_HOST]);
     const { client, base } = await ownerWithProject(h);
     const id = (
       (await client.post(`${base}/deploy-targets`, target)).json() as { target: { id: string } }
     ).target.id;
 
-    // No publish → 409 (publish-required), reached before deploySite is called.
-    const early = await client.post(`${base}/deploy-targets/${id}/deploy`);
-    expect(early.statusCode).toBe(409);
-  });
+    // Build-at-deploy-time: no prior publish needed. The build runs, then a real connection is attempted
+    // to the (non-existent) allow-listed host → 502 — NOT the old "publish first" 409.
+    const res = await client.post(`${base}/deploy-targets/${id}/deploy`);
+    expect(res.statusCode).toBe(502);
+    expect(res.statusCode).not.toBe(409);
+  }, 30_000);
 
   it('deploy-by-id for a missing target id is a 404 (not a 502/500)', async () => {
     await boot([ALLOWED_HOST]);
@@ -224,11 +211,8 @@ describe('saved deploy targets — remoteDir validation', () => {
     await boot([ALLOWED_HOST]);
     const { client, base } = await ownerWithProject(h);
 
-    // Publish so we reach DeployConfigSchema parsing (which is gated after the
-    // publish-required check on this route).
-    expect((await client.put(`${base}/content/page/home`, homePage)).statusCode).toBe(200);
-    expect((await client.post(`${base}/publish`)).statusCode).toBe(200);
-
+    // Config validation (DeployConfigSchema) runs BEFORE the build, so a bad remoteDir is rejected up
+    // front — no prior publish needed.
     const baseBody = { protocol: 'sftp', host: ALLOWED_HOST, user: 'u', password: 'p' };
 
     // ".." segment → rejected by the schema BEFORE any connection is attempted.

@@ -3173,40 +3173,64 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       },
     );
 
-    // Serve the draft build (path-safe; mirrors `/sites/:slug/*`). Authenticated members only —
-    // no preview-token gate. The HTML doc is sandboxed (opaque origin) so author JS can't reach the
-    // editor session, and same-origin-frameable so the shell can embed it; `no-store` so a reload
-    // always pulls the freshest rebuild. Left on the global request cap (not a tighter per-route rl):
-    // one page view fans out into many asset sub-requests, so a low cap would break rich pages — and
-    // the only expensive work (a rebuild) is already bounded by the version cache + in-flight
-    // coalescing + the failure cooldown above, regardless of request volume.
+    // Whether a preview path is a STATIC ASSET (a bundled binary under `_assets/`, or a root-level
+    // platform text asset: the compiled stylesheet / runtime bundles / robots / sitemap). Everything
+    // else is a page (HTML) request.
+    const isPreviewAssetPath = (path: string): boolean =>
+      path.startsWith('_assets/') || /^[^/]+\.(css|js|xml|txt)$/.test(path);
+
+    // Serve the draft build (path-safe; mirrors `/sites/:slug/*`). Split by resource kind:
+    //
+    //  • The HTML PAGE (the draft's content + structure) requires project MEMBERSHIP and is served
+    //    under `sandbox allow-scripts` (opaque origin) so author JS can't reach the editor session.
+    //  • STATIC ASSETS (bundled media + the compiled CSS / platform runtime JS — the SAME bytes the
+    //    published `/sites/<slug>/` already serves publicly) are served WITHOUT the membership gate and
+    //    with cross-origin headers. This is REQUIRED, not a convenience: the sandboxed page is an
+    //    opaque origin whose subresource requests carry no cookie (SameSite=Strict → null
+    //    site-for-cookies), so a gated asset would 401 and the page would render unstyled. Assets are
+    //    scoped by an unguessable project id + asset UUID; the protected resource (the page) stays gated.
+    //
+    // Left on the global request cap: a page view fans out into many asset sub-requests, and the only
+    // expensive work (a rebuild) is already bounded by the version cache + coalescing + failure cooldown.
     app.get<{ Params: { projectId: string; '*': string } }>(
       '/projects/:projectId/preview-site/*',
       async (req, reply) => {
-        const { ctx, project } = await resolveProject(req, 'content:read');
-        const slug = project.slug;
         const path = req.params['*'] ?? '';
-        // Bundled binary assets under `_assets/` (images inline; everything else download-only).
-        let binary = null;
-        try {
-          binary = await preview.readBinary(slug, path);
-        } catch {
-          /* invalid slug → fall through to the page path / 404 */
+
+        // ── Static asset: public + cross-origin (no membership gate) ──
+        if (isPreviewAssetPath(path)) {
+          const proj = await projects.get(req.params.projectId).catch(() => null);
+          if (proj) {
+            // Cross-origin markers so the sandboxed, opaque-origin (cookieless) preview document can
+            // load these: fonts are CORS-fetched (need ACAO); CSS/JS/images are no-cors (CORP suffices).
+            const crossOrigin = () =>
+              reply
+                .header('cache-control', 'no-store')
+                .header('x-content-type-options', 'nosniff')
+                .header('access-control-allow-origin', '*')
+                .header('cross-origin-resource-policy', 'cross-origin');
+            let binary = null;
+            try {
+              binary = await preview.readBinary(proj.slug, path);
+            } catch {
+              /* invalid slug → fall through to the 404 below */
+            }
+            if (binary !== null) {
+              crossOrigin();
+              if (binary.attachment) reply.header('content-disposition', 'attachment');
+              return reply.type(binary.contentType).send(binary.body);
+            }
+            const asset = await preview.readAsset(proj.slug, path);
+            if (asset !== null) return crossOrigin().type(asset.contentType).send(asset.body);
+          }
+          // An asset-looking path that doesn't resolve → bare 404 (never the auth/HTML path).
+          return reply.code(404).send();
         }
-        if (binary !== null) {
-          reply.header('cache-control', 'no-store').header('x-content-type-options', 'nosniff');
-          if (binary.attachment) reply.header('content-disposition', 'attachment');
-          return reply.type(binary.contentType).send(binary.body);
-        }
-        // Platform text assets (styles.css / runtime bundles) — rebuilt between versions, so no-store.
-        const asset = await preview.readAsset(slug, path);
-        if (asset !== null) {
-          return reply.header('cache-control', 'no-store').type(asset.contentType).send(asset.body);
-        }
-        // A page (HTML) request: bring the draft build up to date, then serve.
+
+        // ── HTML page: membership-gated, rebuilt on demand, sandboxed ──
+        const { ctx, project } = await resolveProject(req, 'content:read');
         await ensurePreviewBuild(ctx, project);
-        const html = await preview.readHtml(slug, path);
-        // Unknown path → bare 404.
+        const html = await preview.readHtml(project.slug, path);
         if (html === null) return reply.code(404).send();
         // Canonicalize an extensionless, slash-less page URL so its page-relative asset/link paths
         // resolve against the right base (mirrors the /sites redirect).

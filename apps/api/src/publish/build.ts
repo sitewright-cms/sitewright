@@ -306,6 +306,11 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
   const { outDir, bundle, publishedAt } = opts;
   const media = opts.media ?? [];
   const maxOutputBytes = opts.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
+  // The live-preview draft build (set when a previewRuntime is injected). Preview is a CONTENT
+  // surface served under a sandboxed, opaque origin: the site's loading overlay adds no preview
+  // value AND its clear-on-load handshake is unreliable cross-origin (it would cover the page), so
+  // the preloader is omitted entirely from preview builds. The published site is unaffected.
+  const previewMode = opts.previewRuntime !== undefined;
   const base = resolve(outDir);
   const tmp = `${base}.tmp`;
 
@@ -472,7 +477,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // PRELOADER runtime — ships when the site enables a preloader effect (theme.preloaderEffect ≠
     // 'none'). The platform injects the overlay markup (renderDocument), so this is gated on the
     // theme choice rather than an authored marker.
-    const usesPreloaderRuntime = (website?.effects?.preloaderEffect ?? 'none') !== 'none';
+    const usesPreloaderRuntime = !previewMode && (website?.effects?.preloaderEffect ?? 'none') !== 'none';
     // NAV-EFFECTS runtime — ships when a JS-backed nav scheme is used (a shared sliding indicator or
     // the cursor-following spotlight). Two ways to opt in: the site-wide picker (effects.navEffect) OR
     // a per-element class authored on a nav <ul>/snippet — so scan the sources too (same only-used-ships

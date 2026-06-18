@@ -63,6 +63,20 @@ describe('buildSite preview options', () => {
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
     expect(home).toContain('window.__SW_PREVIEW_MARKER__=1;');
   });
+
+  it('omits the preloader overlay from a preview build (the published build keeps it)', async () => {
+    const onePage = [{ id: 'home', path: '', title: 'Home', source: '<h1>Hi</h1>' }] as unknown as ProjectBundle['pages'];
+    const withPreloader = (): ProjectBundle => {
+      const b = bundle(onePage);
+      return { ...b, project: { ...b.project, website: { effects: { preloaderEffect: 'logo-pulse' } } } } as ProjectBundle;
+    };
+    // Published build → the loading overlay is present.
+    await buildSite({ publishedAt: '2026-05-29T00:00:00.000Z', outDir, bundle: withPreloader() });
+    expect(await readFile(join(outDir, 'index.html'), 'utf8')).toContain('data-sw-preloader');
+    // Preview build (previewRuntime set) → no overlay (it would cover the page under the sandbox).
+    await buildSite({ publishedAt: '2026-05-29T00:00:00.000Z', outDir, previewRuntime: '/*x*/', bundle: withPreloader() });
+    expect(await readFile(join(outDir, 'index.html'), 'utf8')).not.toContain('data-sw-preloader');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -179,6 +193,28 @@ describe('preview-site API', () => {
     const res = await app.inject({ method: 'GET', url: `/projects/${projectId}/agent-presence`, cookies: { sw_session: t } });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ connected: 0 });
+  });
+
+  it('serves static assets publicly + cross-origin, but keeps the HTML page membership-gated', async () => {
+    const { t, projectId } = await setup('as@acme.test');
+    const base = `/projects/${projectId}`;
+    const cookies = { sw_session: t };
+    // A Tailwind class makes the build emit styles.css.
+    await putPage(base, cookies, { id: 'home', path: '', title: 'Home', source: '<div class="grid"><h1>Hi</h1></div>' });
+    // A member request builds + serves the page (so styles.css now exists on disk).
+    await app.inject({ method: 'GET', url: `${base}/preview-site/`, cookies });
+
+    // The stylesheet is fetchable WITHOUT a session, with cross-origin headers — the sandboxed,
+    // opaque-origin (cookieless) preview document must be able to load it.
+    const css = await app.inject({ method: 'GET', url: `${base}/preview-site/styles.css` });
+    expect(css.statusCode).toBe(200);
+    expect(css.headers['content-type']).toContain('text/css');
+    expect(css.headers['access-control-allow-origin']).toBe('*');
+    expect(css.headers['cross-origin-resource-policy']).toBe('cross-origin');
+
+    // The HTML PAGE (the draft content) still requires membership.
+    const page = await app.inject({ method: 'GET', url: `${base}/preview-site/` });
+    expect(page.statusCode).toBe(401);
   });
 
   it('requires authentication and tenant membership', async () => {

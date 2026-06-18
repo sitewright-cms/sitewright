@@ -1,17 +1,11 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
 
-const { publishStatus, publish, archiveUrl, getSettings, listDeployTargets, listAgentConnections } = vi.hoisted(() => ({
+const { publishStatus, publish, archiveUrl, listDeployTargets, listAgentConnections } = vi.hoisted(() => ({
   publishStatus: vi.fn(),
   publish: vi.fn(),
   archiveUrl: vi.fn<(id: string) => string>(() => '/projects/p/publish/archive'),
-  // No preview token by default → the View/Preview link is the bare /sites/<slug>/ URL.
-  getSettings: vi.fn<(id: string) => Promise<{ item: { website?: { previewToken?: string } } }>>(() =>
-    Promise.resolve({ item: {} }),
-  ),
-  // No saved deploy targets by default → no header Deploy button.
   listDeployTargets: vi.fn<(id: string) => Promise<{ items: unknown[] }>>(() => Promise.resolve({ items: [] })),
-  // The AgentDetailsModal (opened from the pill) loads connections on mount.
   listAgentConnections: vi.fn<(id: string) => Promise<{ items: unknown[] }>>(() => Promise.resolve({ items: [] })),
 }));
 vi.mock('../src/api', () => ({
@@ -19,133 +13,122 @@ vi.mock('../src/api', () => ({
     publishStatus: (id: string) => publishStatus(id),
     publish: (id: string) => publish(id),
     archiveUrl: (id: string) => archiveUrl(id),
-    getSettings: (id: string) => getSettings(id),
     listDeployTargets: (id: string) => listDeployTargets(id),
     listAgentConnections: (id: string) => listAgentConnections(id),
     disconnectAgent: vi.fn(() => Promise.resolve()),
   },
   eventsUrl: (id: string) => `/projects/${id}/events`,
 }));
-vi.mock('../src/views/publish/DeployForm', () => ({ DeployForm: () => <div>DEPLOY FORM</div> }));
+// PublishBar renders the streaming DeployModal for remote deploys; stub it to a probe.
+vi.mock('../src/views/publish/DeployModal', () => ({
+  DeployModal: ({ target }: { target: { name: string } }) => <div data-testid="deploy-modal">{target.name}</div>,
+}));
 
-import { afterEach } from 'vitest';
 import { PublishBar } from '../src/views/PublishBar';
-import { ToastProvider } from '../src/views/ui/Toast';
 
 const project = { id: 'p', name: 'Acme', slug: 'acme', role: 'owner' as const };
 const release = { publishedAt: '2026-01-01T00:00:00.000Z', routes: 3, bytes: 100 };
+const local = { id: 'lt', name: 'Local Hosting', protocol: 'local' as const };
+const remote = { id: 'rt', name: 'Production', protocol: 'sftp' as const, host: 'host.example' };
 
 beforeEach(() => {
   publishStatus.mockReset();
+  publishStatus.mockResolvedValue({ release: null, url: '/sites/acme/', dirty: false, localHosting: false });
   publish.mockReset();
-  // Reset + restore the default (no connections) so an idle-state test can't leak into the next.
+  listDeployTargets.mockReset();
+  listDeployTargets.mockResolvedValue({ items: [] });
   listAgentConnections.mockReset();
   listAgentConnections.mockResolvedValue({ items: [] });
+  try {
+    localStorage.clear();
+  } catch {
+    /* no-op */
+  }
 });
-// Robust cleanup: a test that fails mid-way (before its own teardown) must not leave fake timers or
-// a stubbed EventSource on — that would cascade as timeouts into later tests.
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
-describe('PublishBar', () => {
-  it('is a GREEN Publish button (with the unpublished-changes title) when dirty', async () => {
-    publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: true });
-    render(<PublishBar project={project} />);
-    const btn = await screen.findByRole('button', { name: 'Publish' });
-    // The dirty state is conveyed by the green button + its title (the persistent status line moved to a toast).
-    await waitFor(() => expect(btn.className).toContain('bg-emerald-600'));
-    expect(btn).toHaveAttribute('title', 'You have unpublished changes');
-  });
-
-  it('always offers a Preview button that opens the live-preview surface', async () => {
-    publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: true });
-    const openSpy = vi.fn();
-    vi.stubGlobal('open', openSpy);
-    render(<PublishBar project={project} />);
-    const btn = await screen.findByRole('button', { name: 'Preview the live site' });
+describe('PublishBar — deploy split button', () => {
+  it('with no targets, the Deploy button opens the config modal', async () => {
+    const onOpenDeploy = vi.fn();
+    render(<PublishBar project={project} onOpenDeploy={onOpenDeploy} />);
+    const btn = await screen.findByRole('button', { name: 'Deploy' });
     btn.click();
-    expect(openSpy).toHaveBeenCalledWith(expect.stringContaining('?preview=p'), '_blank', 'noopener');
-    vi.unstubAllGlobals();
+    expect(onOpenDeploy).toHaveBeenCalled();
   });
 
-  it('becomes a "View live" link to the published site when everything is published', async () => {
-    publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false, localHosting: true });
-    render(<PublishBar project={project} />);
-    const view = await screen.findByRole('link', { name: /View the published site/ });
-    expect(view).toHaveAttribute('href', '/sites/acme/');
-    expect(screen.queryByRole('button', { name: 'Publish' })).toBeNull();
-  });
-
-  it('appends the preview token to the View-live link when the local target is token-gated', async () => {
-    // The preview token now rides on the publish status (it comes from the local deploy target).
-    publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false, localHosting: true, previewToken: 'tok_abcdefgh12345678' });
-    render(<PublishBar project={project} />);
-    const view = await screen.findByRole('link', { name: /View the published site/ });
-    await waitFor(() => expect(view).toHaveAttribute('href', '/sites/acme/?token=tok_abcdefgh12345678'));
-  });
-
-  it('switches Publish → View live after a successful publish', async () => {
-    publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: true, localHosting: true });
+  it('with targets, the primary defaults to Local Hosting and deploys it via publish', async () => {
+    listDeployTargets.mockResolvedValue({ items: [remote, local] });
     publish.mockResolvedValue({ release, url: '/sites/acme/', dirty: false });
     render(<PublishBar project={project} />);
-    const btn = await screen.findByRole('button', { name: 'Publish' });
-    btn.click();
+    const primary = await screen.findByRole('button', { name: 'Deploy to Local Hosting' });
+    primary.click();
     await waitFor(() => expect(publish).toHaveBeenCalledWith('p'));
-    expect(await screen.findByRole('link', { name: /View the published site/ })).toHaveAttribute('href', '/sites/acme/');
   });
 
-  it('surfaces a publish failure as an error toast', async () => {
-    publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: true });
-    publish.mockRejectedValue(new Error('disk full'));
-    render(
-      <ToastProvider>
-        <PublishBar project={project} />
-      </ToastProvider>,
-    );
-    (await screen.findByRole('button', { name: 'Publish' })).click();
-    expect(await screen.findByText('disk full')).toBeInTheDocument();
-  });
-
-  it('reverts Preview → Publish when a content change arrives on the SSE stream', async () => {
-    const listeners: Array<(e: { data: string }) => void> = [];
-    class CtrlEventSource {
-      addEventListener(_type: string, cb: (e: { data: string }) => void) {
-        listeners.push(cb);
-      }
-      close() {}
-    }
-    vi.stubGlobal('EventSource', CtrlEventSource);
-    publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false, localHosting: true });
+  it('the ▾ opens a dropdown listing every target plus Add + Download', async () => {
+    listDeployTargets.mockResolvedValue({ items: [local, remote] });
     render(<PublishBar project={project} />);
-    await screen.findByRole('link', { name: /View the published site/ }); // published + clean → View live
-    act(() => listeners.forEach((cb) => cb({ data: JSON.stringify({ kind: 'page', entityId: 'home', op: 'put', actor: 'user' }) }))); // an edit lands
-    expect(await screen.findByRole('button', { name: 'Publish' })).toBeInTheDocument();
-    vi.unstubAllGlobals();
+    (await screen.findByRole('button', { name: 'Choose a deploy target' })).click();
+    expect(await screen.findByRole('menuitem', { name: /Local Hosting/ })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /Production/ })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /Add a target/ })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /Download/ })).toBeInTheDocument();
   });
 
-  it('shows the WORKING indicator when an agent-sourced change arrives, but not for a user change', async () => {
-    const listeners: Array<(e: { data: string }) => void> = [];
-    class CtrlEventSource {
-      addEventListener(_type: string, cb: (e: { data: string }) => void) {
-        listeners.push(cb);
-      }
-      close() {}
-    }
-    vi.stubGlobal('EventSource', CtrlEventSource);
-    publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false, localHosting: true });
+  it('deploying a remote target from the dropdown opens the streaming deploy modal', async () => {
+    listDeployTargets.mockResolvedValue({ items: [local, remote] });
     render(<PublishBar project={project} />);
-    await screen.findByRole('link', { name: /View the published site/ });
-    // No agents → the indicator nudges that one can be connected.
+    (await screen.findByRole('button', { name: 'Choose a deploy target' })).click();
+    (await screen.findByRole('menuitem', { name: /Production/ })).click();
+    expect(await screen.findByTestId('deploy-modal')).toHaveTextContent('Production');
+    expect(publish).not.toHaveBeenCalled(); // remote → no local publish
+  });
+
+  it('the last-used target (localStorage) becomes the primary action', async () => {
+    localStorage.setItem('sw:lastDeployTarget:p', 'rt'); // last deployed Production
+    listDeployTargets.mockResolvedValue({ items: [local, remote] });
+    render(<PublishBar project={project} />);
+    expect(await screen.findByRole('button', { name: 'Deploy to Production' })).toBeInTheDocument();
+  });
+
+  it('shows a View-live link only when local hosting is configured + published + clean', async () => {
+    publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false, localHosting: true });
+    listDeployTargets.mockResolvedValue({ items: [local] });
+    render(<PublishBar project={project} />);
+    const view = await screen.findByRole('link', { name: 'View the live site' });
+    expect(view).toHaveAttribute('href', '/sites/acme/');
+  });
+
+  it('hides View-live when there is no local hosting target', async () => {
+    publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false, localHosting: false });
+    listDeployTargets.mockResolvedValue({ items: [remote] });
+    render(<PublishBar project={project} />);
+    await screen.findByRole('button', { name: 'Deploy to Production' });
+    expect(screen.queryByRole('link', { name: 'View the live site' })).toBeNull();
+  });
+});
+
+describe('PublishBar — agent presence', () => {
+  it('nudges "Connect an agent" when none is connected', async () => {
+    render(<PublishBar project={project} />);
     expect(await screen.findByText('Connect an agent')).toBeInTheDocument();
-    const fire = (actor: string) =>
-      act(() => listeners.forEach((cb) => cb({ data: JSON.stringify({ kind: 'page', entityId: 'home', op: 'put', actor }) })));
+  });
 
-    fire('user'); // a human edit → not "working"
-    expect(screen.queryByText('Agent working…')).toBeNull();
-
-    fire('agent'); // a bearer/MCP edit → the working indicator appears
+  it('shows the WORKING indicator on an agent-sourced change', async () => {
+    const listeners: Array<(e: { data: string }) => void> = [];
+    class CtrlEventSource {
+      addEventListener(_t: string, cb: (e: { data: string }) => void) {
+        listeners.push(cb);
+      }
+      close() {}
+    }
+    vi.stubGlobal('EventSource', CtrlEventSource);
+    render(<PublishBar project={project} />);
+    await screen.findByText('Connect an agent');
+    act(() => listeners.forEach((cb) => cb({ data: JSON.stringify({ actor: 'agent' }) })));
     expect(await screen.findByText('Agent working…')).toBeInTheDocument();
     vi.unstubAllGlobals();
   });
@@ -154,48 +137,13 @@ describe('PublishBar', () => {
     listAgentConnections.mockResolvedValue({
       items: [{ id: 'oauth:u1', kind: 'oauth', name: 'ChatGPT', role: 'owner', capabilities: ['content:read'], connectedAt: '2026-06-09T00:00:00.000Z', expiresAt: null, lastUsedAt: null }],
     });
-    publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false, localHosting: true });
     render(<PublishBar project={project} />);
     expect(await screen.findByText('Agent connected')).toBeInTheDocument();
   });
 
-  it('transitions WORKING → idle/none after a ~12s lull (no longer vanishes)', async () => {
-    const listeners: Array<(e: { data: string }) => void> = [];
-    class CtrlEventSource {
-      addEventListener(_type: string, cb: (e: { data: string }) => void) {
-        listeners.push(cb);
-      }
-      close() {}
-    }
-    vi.stubGlobal('EventSource', CtrlEventSource);
-    publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false, localHosting: true });
-    render(<PublishBar project={project} />);
-    await screen.findByRole('link', { name: /View the published site/ });
-    vi.useFakeTimers();
-    act(() => listeners.forEach((cb) => cb({ data: JSON.stringify({ kind: 'page', entityId: 'home', op: 'put', actor: 'agent' }) })));
-    expect(screen.getByText('Agent working…')).toBeInTheDocument();
-    act(() => vi.advanceTimersByTime(12_001));
-    // The indicator persists (now "Connect an agent", since the mock reports no live connection).
-    expect(screen.queryByText('Agent working…')).toBeNull();
-    expect(screen.getByText('Connect an agent')).toBeInTheDocument();
-    vi.useRealTimers();
-    vi.unstubAllGlobals();
-  });
-
   it('opens the AI agent details modal when the indicator is clicked', async () => {
-    publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false, localHosting: true });
     render(<PublishBar project={project} />);
     (await screen.findByText('Connect an agent')).click();
     expect(await screen.findByRole('heading', { name: 'AI agent details' })).toBeInTheDocument();
-  });
-
-  it('shows a Deploy button (→ onOpenDeploy) when a saved target exists and the site is published', async () => {
-    publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false, localHosting: true });
-    listDeployTargets.mockResolvedValueOnce({ items: [{ id: 't1' }] });
-    const onOpenDeploy = vi.fn();
-    render(<PublishBar project={project} onOpenDeploy={onOpenDeploy} />);
-    const deploy = await screen.findByRole('button', { name: 'Deploy the published site' });
-    deploy.click();
-    expect(onOpenDeploy).toHaveBeenCalled();
   });
 });

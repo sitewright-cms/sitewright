@@ -2,10 +2,11 @@ import { rm } from 'node:fs/promises';
 import { newId } from '../id.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { DeployTargetSchema, type DeployTarget, type EncryptedSecret } from '@sitewright/schema';
+import { DeployTargetSchema, isSshRepoUrl, gitRepoHost, type DeployTarget, type EncryptedSecret } from '@sitewright/schema';
 import { encryptSecret, decryptSecret } from '../crypto/secret.js';
 import { deploySite, type DeployConfig } from '../publish/adapters.js';
 import { deployGit, type GitDeployConfig } from '../publish/git-deploy.js';
+import { deployGitSsh, type GitSshDeployConfig } from '../publish/git-ssh-deploy.js';
 import { PublishError } from '../publish/build.js';
 import { JsonDataError } from '../publish/json-data.js';
 import type { ContentRepository } from '../repo/content.js';
@@ -21,17 +22,18 @@ const CreateDeployTargetBody = z
     port: z.number().int().min(1).max(65535).optional(),
     user: z.string().min(1).max(255).optional(),
     password: z.string().min(1).max(1024).optional(),
-    privateKey: z.string().min(1).max(16384).optional(), // SFTP private-key CONTENTS (PEM/OpenSSH)
+    privateKey: z.string().min(1).max(16384).optional(), // SFTP or git-SSH private-key CONTENTS (PEM/OpenSSH)
     passphrase: z.string().min(1).max(1024).optional(),
     remoteDir: z.string().min(1).max(1024).optional(),
-    hostFingerprint: z.string().min(1).max(256).optional(),
+    // SFTP host-key fingerprint, OR a git-SSH `known_hosts` host-key line (for pinning).
+    hostFingerprint: z.string().min(1).max(1024).optional(),
     // ── Local Hosting serve options ──
     previewToken: z.string().min(16).max(64).regex(/^[A-Za-z0-9_-]+$/, 'previewToken must be url-safe').optional(),
     minifyHtml: z.boolean().optional(),
     // ── git fields ──
     repoUrl: z.string().min(1).max(2048).optional(),
     branch: z.string().min(1).max(255).optional(),
-    token: z.string().min(1).max(1024).optional(), // HTTPS personal-access token
+    token: z.string().min(1).max(1024).optional(), // HTTPS personal-access token (http(s) repoUrl)
   })
   // FTP/FTPS/SFTP need a host + user.
   .refine((b) => (b.protocol !== 'ftp' && b.protocol !== 'ftps' && b.protocol !== 'sftp') || (!!b.host && !!b.user), {
@@ -43,15 +45,20 @@ const CreateDeployTargetBody = z
     message: 'a password or a private key is required',
     path: ['password'],
   })
-  .refine((b) => b.privateKey === undefined || b.protocol === 'sftp', {
-    message: 'a private key requires the SFTP protocol',
+  // A private key is only meaningful for SFTP or git (over SSH).
+  .refine((b) => b.privateKey === undefined || b.protocol === 'sftp' || b.protocol === 'git', {
+    message: 'a private key requires the SFTP or git protocol',
     path: ['privateKey'],
   })
-  // git needs a repoUrl, a branch, and a token.
-  .refine((b) => b.protocol !== 'git' || (!!b.repoUrl && !!b.branch && !!b.token), {
-    message: 'repoUrl, branch and a token are required for a git target',
-    path: ['repoUrl'],
-  });
+  // git needs a repoUrl + branch, plus a token (http(s) remote) OR a private key (ssh remote).
+  .refine(
+    (b) => {
+      if (b.protocol !== 'git') return true;
+      if (!b.repoUrl || !b.branch) return false;
+      return isSshRepoUrl(b.repoUrl) ? !!b.privateKey : !!b.token;
+    },
+    { message: 'a git target needs a branch and either a token (https remote) or a private key (ssh remote)', path: ['repoUrl'] },
+  );
 
 /** The secret blob stored (encrypted) for a target — FTP/SFTP credentials, or a git token. */
 interface TargetCreds {
@@ -109,9 +116,23 @@ function targetToGitConfig(target: DeployTarget, key: Buffer): GitDeployConfig {
   return { repoUrl: target.repoUrl!, branch: target.branch!, token };
 }
 
-/** The host to SSRF-check for a target: the repo host for `git`, the server host otherwise. */
+/** Build the transient GitSshDeployConfig for a saved SSH `git` target (decrypting its key at use).
+ *  `hostFingerprint` carries the optional pinned `known_hosts` host-key line for a git-SSH target. */
+function targetToGitSshConfig(target: DeployTarget, key: Buffer): GitSshDeployConfig {
+  const { privateKey, passphrase } = decodeCreds(target.secret!, key);
+  if (!privateKey) throw new Error('git deploy target has no stored private key — re-save it with a new key');
+  return {
+    repoUrl: target.repoUrl!,
+    branch: target.branch!,
+    privateKey,
+    ...(passphrase ? { passphrase } : {}),
+    ...(target.hostFingerprint ? { hostKey: target.hostFingerprint } : {}),
+  };
+}
+
+/** The host to SSRF-check for a target: the repo host for `git` (http(s) or ssh), the server host else. */
 function deployHostOf(target: DeployTarget): string {
-  return target.protocol === 'git' ? new URL(target.repoUrl!).hostname : target.host!;
+  return target.protocol === 'git' ? gitRepoHost(target.repoUrl!) : target.host!;
 }
 
 type ProjectReq = FastifyRequest<{ Params: { projectId: string } }>;
@@ -201,9 +222,9 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
       } else if (body.protocol === 'git') {
         let repoHost: string;
         try {
-          repoHost = new URL(body.repoUrl!).hostname;
+          repoHost = gitRepoHost(body.repoUrl!);
         } catch {
-          return reply.code(400).send({ error: 'repoUrl must be a valid http(s) URL' });
+          return reply.code(400).send({ error: 'repoUrl must be a valid http(s) or ssh URL' });
         }
         assertDeployHostAllowed(repoHost);
       }
@@ -226,7 +247,15 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
                 protocol: 'git',
                 repoUrl: body.repoUrl,
                 branch: body.branch,
-                secret: encodeCreds({ token: body.token }, encryptionKey),
+                // SSH remote → encrypt the private key (+ passphrase) and keep the optional pinned host
+                // key; HTTPS remote → encrypt the token.
+                ...(isSshRepoUrl(body.repoUrl!) && body.hostFingerprint ? { hostFingerprint: body.hostFingerprint } : {}),
+                secret: isSshRepoUrl(body.repoUrl!)
+                  ? encodeCreds(
+                      { privateKey: body.privateKey, ...(body.passphrase ? { passphrase: body.passphrase } : {}) },
+                      encryptionKey,
+                    )
+                  : encodeCreds({ token: body.token }, encryptionKey),
               }
             : {
               id,
@@ -307,7 +336,9 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
         try {
           const result =
             target.protocol === 'git'
-              ? await deployGit(dir, targetToGitConfig(target, encryptionKey))
+              ? isSshRepoUrl(target.repoUrl!)
+                ? await deployGitSsh(dir, targetToGitSshConfig(target, encryptionKey))
+                : await deployGit(dir, targetToGitConfig(target, encryptionKey))
               : await deploySite(dir, targetToConfig(target, encryptionKey));
           return reply.send({ deployed: result });
         } catch (err) {
@@ -354,10 +385,13 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
           }
           throw err;
         }
-        // Stream the transport: a git push, or an FTP/SFTP upload. Each forwards its progress events.
+        // Stream the transport: a git push (over SSH or HTTPS), or an FTP/SFTP upload. Each forwards its
+        // progress events.
         const run =
           target.protocol === 'git'
-            ? (onProgress: (e: unknown) => void) => deployGit(dir, targetToGitConfig(target, encryptionKey), (p) => onProgress(p))
+            ? isSshRepoUrl(target.repoUrl!)
+              ? (onProgress: (e: unknown) => void) => deployGitSsh(dir, targetToGitSshConfig(target, encryptionKey), (p) => onProgress(p))
+              : (onProgress: (e: unknown) => void) => deployGit(dir, targetToGitConfig(target, encryptionKey), (p) => onProgress(p))
             : (onProgress: (e: unknown) => void) => deploySite(dir, targetToConfig(target, encryptionKey), undefined, (p) => onProgress(p));
         try {
           // All checks passed → hijack + stream to completion (lock held until the stream ends).

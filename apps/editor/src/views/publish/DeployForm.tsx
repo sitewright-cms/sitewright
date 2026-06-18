@@ -30,6 +30,7 @@ export function DeployForm({ project }: { project: Project }) {
   const [repoUrl, setRepoUrl] = useState('');
   const [branch, setBranch] = useState('gh-pages');
   const [gitToken, setGitToken] = useState('');
+  const [gitAuth, setGitAuth] = useState<'token' | 'key'>('token'); // token = https remote, key = ssh remote
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<string | null>(null);
@@ -120,8 +121,41 @@ export function DeployForm({ project }: { project: Project }) {
       return;
     }
     if (isGit) {
-      if (!repoUrl.trim() || !branch.trim() || !gitToken.trim()) {
-        setError('Repository URL, branch and an access token are required for a git target');
+      if (!repoUrl.trim() || !branch.trim()) {
+        setError('Repository URL and branch are required for a git target');
+        return;
+      }
+      const onSaved = () => {
+        setResult('Git target saved — deploy it from the header.');
+        setName('');
+        setGitToken('');
+        setPrivateKey('');
+        setPassphrase('');
+        setFingerprint('');
+        void loadTargets();
+      };
+      if (gitAuth === 'key') {
+        if (!privateKey.trim()) {
+          setError('Paste your SSH private key (an ssh remote uses key auth)');
+          return;
+        }
+        await run(
+          () =>
+            api.createDeployTarget(project.id, {
+              name: name.trim(),
+              protocol: 'git',
+              repoUrl: repoUrl.trim(),
+              branch: branch.trim(),
+              privateKey: privateKey.trim(),
+              ...(passphrase ? { passphrase } : {}),
+              ...(fingerprint.trim() ? { hostFingerprint: fingerprint.trim() } : {}),
+            }),
+          onSaved,
+        );
+        return;
+      }
+      if (!gitToken.trim()) {
+        setError('An access token is required for an https remote');
         return;
       }
       await run(
@@ -133,12 +167,7 @@ export function DeployForm({ project }: { project: Project }) {
             branch: branch.trim(),
             token: gitToken.trim(),
           }),
-        () => {
-          setResult('Git target saved — deploy it from the header.');
-          setName('');
-          setGitToken('');
-          void loadTargets();
-        },
+        onSaved,
       );
       return;
     }
@@ -209,7 +238,19 @@ export function DeployForm({ project }: { project: Project }) {
         <div className="flex flex-wrap items-end gap-2">
           <label className="flex flex-col text-xs text-slate-500">
             Protocol
-            <select aria-label="Deploy protocol" className={field} value={protocol} onChange={(e) => setProtocol(e.target.value as FormProtocol)}>
+            <select
+              aria-label="Deploy protocol"
+              className={field}
+              value={protocol}
+              onChange={(e) => {
+                setProtocol(e.target.value as FormProtocol);
+                // The key/passphrase/host-key fields are shared with SFTP — clear them on a protocol
+                // switch so a value typed for one transport can't be silently submitted to another.
+                setPrivateKey('');
+                setPassphrase('');
+                setFingerprint('');
+              }}
+            >
               {PROTOCOLS.map((p) => (
                 <option key={p.value} value={p.value}>
                   {p.label}
@@ -220,17 +261,47 @@ export function DeployForm({ project }: { project: Project }) {
           {isGit ? (
             <>
               <label className="flex flex-col text-xs text-slate-500">
+                Auth
+                <select aria-label="Git auth method" className={field} value={gitAuth} onChange={(e) => setGitAuth(e.target.value as 'token' | 'key')}>
+                  <option value="token">Token (HTTPS)</option>
+                  <option value="key">SSH key</option>
+                </select>
+              </label>
+              <label className="flex flex-col text-xs text-slate-500">
                 Repository URL
-                <input aria-label="Git repository URL" className={field} value={repoUrl} onChange={(e) => setRepoUrl(e.target.value)} placeholder="https://github.com/you/repo.git" />
+                <input
+                  aria-label="Git repository URL"
+                  className={field}
+                  value={repoUrl}
+                  onChange={(e) => setRepoUrl(e.target.value)}
+                  placeholder={gitAuth === 'key' ? 'git@github.com:you/repo.git' : 'https://github.com/you/repo.git'}
+                />
               </label>
               <label className="flex w-32 flex-col text-xs text-slate-500">
                 Branch
                 <input aria-label="Git branch" className={field} value={branch} onChange={(e) => setBranch(e.target.value)} placeholder="gh-pages" />
               </label>
-              <label className="flex flex-col text-xs text-slate-500">
-                Access token
-                <input aria-label="Git access token" type="password" className={field} value={gitToken} onChange={(e) => setGitToken(e.target.value)} placeholder="ghp_… (HTTPS token)" />
-              </label>
+              {gitAuth === 'token' ? (
+                <label className="flex flex-col text-xs text-slate-500">
+                  Access token
+                  <input aria-label="Git access token" type="password" className={field} value={gitToken} onChange={(e) => setGitToken(e.target.value)} placeholder="ghp_… (HTTPS token)" />
+                </label>
+              ) : (
+                <>
+                  <label className="flex w-full flex-col text-xs text-slate-500">
+                    SSH private key
+                    <textarea aria-label="Git SSH private key" className={`${field} font-mono`} rows={3} value={privateKey} onChange={(e) => setPrivateKey(e.target.value)} placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" />
+                  </label>
+                  <label className="flex flex-col text-xs text-slate-500">
+                    Key passphrase
+                    <input aria-label="Git key passphrase" type="password" className={field} value={passphrase} onChange={(e) => setPassphrase(e.target.value)} placeholder="leave blank if unencrypted" />
+                  </label>
+                  <label className="flex w-full flex-col text-xs text-slate-500">
+                    Host key (optional)
+                    <input aria-label="Git host key" className={field} value={fingerprint} onChange={(e) => setFingerprint(e.target.value)} placeholder="github.com ssh-ed25519 AAAA… — leave blank to trust on first use" />
+                  </label>
+                </>
+              )}
             </>
           ) : (
             <>

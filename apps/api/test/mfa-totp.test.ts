@@ -202,7 +202,7 @@ describe('TOTP two-factor (enrol, login gate, recovery codes)', () => {
   });
 
   it('is unavailable (503) when the instance has no encryption key', async () => {
-    const noKey = await makeHarness({ authRateMax: 200 }); // no encryptionKey
+    const noKey = await makeHarness({ authRateMax: 200, encryptionKey: undefined }); // no encryptionKey
     try {
       const client = await noKey.signup({ password: PASSWORD });
       const res = await client.post('/account/mfa/totp/setup');

@@ -716,8 +716,12 @@ export const api = {
   publish: (projectId: string) =>
     request<{ release: Release; url: string; dirty: boolean }>('POST', `/projects/${projectId}/publish`),
   publishStatus: (projectId: string) =>
-    // `dirty` = there are unpublished content changes (drives the green publish button).
-    request<{ release: Release | null; url: string; dirty: boolean }>('GET', `/projects/${projectId}/publish`),
+    // `dirty` = unpublished content changes; `localHosting` = a Local Hosting deploy target exists;
+    // `previewToken` = that target's soft preview-token gate (the View-live link carries it).
+    request<{ release: Release | null; url: string; dirty: boolean; localHosting?: boolean; previewToken?: string }>(
+      'GET',
+      `/projects/${projectId}/publish`,
+    ),
   /** URL of the zip artifact (used as an <a href download> — sends the session cookie). */
   archiveUrl: (projectId: string) => `${BASE}/projects/${projectId}/publish/archive`,
   deploy: (projectId: string, config: DeployConfig) =>

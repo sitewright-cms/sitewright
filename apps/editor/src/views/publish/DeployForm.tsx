@@ -134,23 +134,28 @@ export function DeployForm({ project }: { project: Project }) {
               <li key={t.id} className="flex items-center gap-2 text-sm">
                 <span className="font-medium text-slate-800">{t.name}</span>
                 <span className="text-xs text-slate-400">
-                  {t.protocol.toUpperCase()}@{t.host}
+                  {t.protocol === 'local' ? 'Local Hosting' : `${t.protocol.toUpperCase()}@${t.host ?? ''}`}
                 </span>
+                {/* A `local` target is published via the header's Publish action, not the deploy transport. */}
+                {t.protocol !== 'local' && (
+                  <button
+                    className={`ml-auto ${ghostButton} px-2 py-0.5 text-xs`}
+                    disabled={busy}
+                    aria-label={`Deploy to ${t.name}`}
+                    onClick={() => setDeploying(t)}
+                  >
+                    Deploy
+                  </button>
+                )}
                 <button
-                  className={`ml-auto ${ghostButton} px-2 py-0.5 text-xs`}
-                  disabled={busy}
-                  aria-label={`Deploy to ${t.name}`}
-                  onClick={() => setDeploying(t)}
-                >
-                  Deploy
-                </button>
-                <button
-                  className={`${dangerButton} px-1.5 py-0.5 text-xs`}
+                  className={`${t.protocol === 'local' ? 'ml-auto ' : ''}${dangerButton} px-1.5 py-0.5 text-xs`}
                   aria-label={`Delete target ${t.name}`}
                   onClick={async () => {
+                    const where =
+                      t.protocol === 'local' ? 'Local Hosting' : `${t.protocol.toUpperCase()}@${t.host ?? ''}`;
                     const ok = await confirm({
                       title: 'Delete deploy target',
-                      message: `Delete the saved deploy target "${t.name}" (${t.protocol.toUpperCase()}@${t.host})? This cannot be undone.`,
+                      message: `Delete the saved deploy target "${t.name}" (${where})? This cannot be undone.`,
                       confirmLabel: 'Delete',
                     });
                     if (!ok) return;

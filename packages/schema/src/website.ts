@@ -495,26 +495,10 @@ const WebsiteSettingsObject = z.object({
     )
     .max(500)
     .optional(),
-  // ── Publish options (the "PUBLISH" tab of the Publish & Deploy modal) ─────────────────────────
-  /**
-   * Local hosting at `/sites/<slug>/`. Enabled by default (an absent value = enabled). When set to
-   * `false`, publish still BUILDS the artifact (so a configured deploy target can upload it) but the
-   * platform stops SERVING it locally — `/sites/<slug>/…` returns 404.
-   */
-  localPublish: z.boolean().optional(),
-  /**
-   * Optional gate for the locally-hosted site: when set, `/sites/<slug>/…` requires `?token=<this>`
-   * (an unguessable, owner-generated string) or returns 403. A soft "unlisted preview" control, not a
-   * security boundary for secrets. Disabled by default (absent = no token required).
-   */
-  previewToken: z
-    .string()
-    .min(16)
-    .max(64)
-    .regex(/^[A-Za-z0-9_-]+$/, 'previewToken must be url-safe (A–Z, a–z, 0–9, _ or -)')
-    .optional(),
-  /** Minify each page's HTML at publish (collapse whitespace, drop comments). Off by default. */
-  minifyHtml: z.boolean().optional(),
+  // NOTE: local-hosting publish options (enable, preview-token gate, HTML minify) are NO LONGER website
+  // fields. Local hosting is now an opt-in `local` DEPLOY TARGET (see DeployTargetSchema) that carries
+  // those serve options — a project is served at `/sites/<slug>/` only when a local target exists, and
+  // assembly happens at deploy time.
   /**
    * MINI SHOP — front-end-driven cart configuration (currency + submission channels). Exposed to
    * templates as `{{ website.shop }}` and emitted onto the cart mount by the `{{sw-cart}}` helper for

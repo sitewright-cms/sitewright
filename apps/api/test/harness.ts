@@ -35,8 +35,13 @@ export interface TestClient {
   post(url: string, payload?: unknown): Promise<Resp>;
   put(url: string, payload?: unknown): Promise<Resp>;
   del(url: string): Promise<Resp>;
-  /** Creates a project owned by this client; returns its id. */
-  createProject(name?: string, slug?: string): Promise<string>;
+  /**
+   * Creates a project owned by this client; returns its id. By default it also configures a `local`
+   * deploy target (Local Hosting) so the project is served at `/sites/<slug>/` after a publish — the
+   * common case for the publish suites. Pass `{ localHosting: false }` to skip it (e.g. tests that
+   * assert the no-local-target → 404 gate, or that enumerate deploy targets).
+   */
+  createProject(name?: string, slug?: string, opts?: { localHosting?: boolean }): Promise<string>;
   /** A content/publish helper bound to a project the client can access. */
   project(projectId: string): ProjectClient;
 }
@@ -59,7 +64,14 @@ export async function makeHarness(options?: Partial<AppOptions>): Promise<Harnes
   const db = await makeTestDb();
   // Disable the background maintenance timer by default (tests don't want a live interval); a test
   // can still override via options. The sweep function is unit-tested directly.
-  const app = await createApp({ db, maintenanceSweepMs: 0, ...options } as AppOptions);
+  // A fixed 32-byte encryption key by default so deploy targets (incl. Local Hosting) are available;
+  // a test can pass `encryptionKey: undefined` to exercise the no-key path.
+  const app = await createApp({
+    db,
+    maintenanceSweepMs: 0,
+    encryptionKey: Buffer.alloc(32, 7),
+    ...options,
+  } as AppOptions);
   await app.ready();
 
   async function signup(
@@ -87,7 +99,7 @@ export async function makeHarness(options?: Partial<AppOptions>): Promise<Harnes
       post: (url, payload) => inject({ method: 'POST', url, payload: payload as InjectOptions['payload'] }),
       put: (url, payload) => inject({ method: 'PUT', url, payload: payload as InjectOptions['payload'] }),
       del: (url) => inject({ method: 'DELETE', url }),
-      async createProject(name = 'Site', slug = `s-${randomUUID().slice(0, 8)}`) {
+      async createProject(name = 'Site', slug = `s-${randomUUID().slice(0, 8)}`, opts = {}) {
         const r = await inject({
           method: 'POST',
           url: `/projects`,
@@ -96,7 +108,17 @@ export async function makeHarness(options?: Partial<AppOptions>): Promise<Harnes
         if (r.statusCode !== 200 && r.statusCode !== 201) {
           throw new Error(`createProject failed (${r.statusCode}): ${r.body}`);
         }
-        return (r.json() as { project: { id: string } }).project.id;
+        const id = (r.json() as { project: { id: string } }).project.id;
+        // Configure Local Hosting (a `local` deploy target) so the project serves at /sites/<slug>/.
+        if (opts.localHosting !== false) {
+          const lt = await inject({
+            method: 'POST',
+            url: `/projects/${id}/deploy-targets`,
+            payload: { name: 'Local Hosting', protocol: 'local' },
+          });
+          if (lt.statusCode !== 201) throw new Error(`local-target setup failed (${lt.statusCode}): ${lt.body}`);
+        }
+        return id;
       },
       project(projectId: string): ProjectClient {
         const base = `/projects/${projectId}`;

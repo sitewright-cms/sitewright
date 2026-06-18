@@ -162,6 +162,31 @@ describe('saved deploy targets', () => {
     expect(neither.statusCode).toBe(400);
   });
 
+  it('creates a Local Hosting target (no host/credentials) and refuses to deploy it via the deploy route', async () => {
+    const { t, projectId } = await setup('lh@acme.test');
+    const base = `/projects/${projectId}`;
+    const cookies = { sw_session: t };
+    const create = await app.inject({
+      method: 'POST',
+      url: `${base}/deploy-targets`,
+      cookies,
+      payload: { name: 'Local Hosting', protocol: 'local', previewToken: 'tok_abcdefgh12345678', minifyHtml: true },
+    });
+    expect(create.statusCode).toBe(201);
+    const view = (create.json() as { target: Record<string, unknown> }).target;
+    expect(view.protocol).toBe('local');
+    expect(view).not.toHaveProperty('host');
+    expect(view).not.toHaveProperty('secret');
+    expect(view.previewToken).toBe('tok_abcdefgh12345678');
+    expect(view.minifyHtml).toBe(true);
+    // At most one Local Hosting target per project → a second create is a 409.
+    const dup = await app.inject({ method: 'POST', url: `${base}/deploy-targets`, cookies, payload: { name: 'Another', protocol: 'local' } });
+    expect(dup.statusCode).toBe(409);
+    // A local target is published via the Publish action, not the deploy route → 400 (defensive guard).
+    const dep = await app.inject({ method: 'POST', url: `${base}/deploy-targets/${String(view.id)}/deploy`, cookies });
+    expect(dep.statusCode).toBe(400);
+  });
+
   it('the streaming deploy builds first: a bad route graph is a JSON 409 before hijacking', async () => {
     const { t, projectId } = await setup('a@acme.test');
     const cookies = { sw_session: t };

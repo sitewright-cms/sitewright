@@ -55,7 +55,7 @@ describe('multi-tenant isolation + role enforcement (HTTP layer)', () => {
     h = await makeHarness();
     const a = await h.signup();
     const b = await h.signup();
-    const projectId = await a.createProject('Site', 'site-a');
+    const projectId = await a.createProject('Site', 'site-a', { localHosting: false });
     await seedAllKinds(a, projectId);
 
     const aBase = `/projects/${projectId}`;
@@ -111,7 +111,7 @@ describe('multi-tenant isolation + role enforcement (HTTP layer)', () => {
     h = await makeHarness();
     const a = await h.signup();
     const b = await h.signup();
-    const projectId = await a.createProject('Site', 'site-a');
+    const projectId = await a.createProject('Site', 'site-a', { localHosting: false });
     await a.project(projectId).putContent('page', 'home', page);
 
     // Flat model: the list returns the CALLER's accessible projects, so B's
@@ -157,7 +157,7 @@ describe('multi-tenant isolation + role enforcement (HTTP layer)', () => {
     const encryptionKey = randomBytes(32);
     h = await makeHarness({ encryptionKey, deployAllowedHosts: [ALLOWED_HOST] });
     const a = await h.signup();
-    const projectId = await a.createProject('Site', 'site-a');
+    const projectId = await a.createProject('Site', 'site-a', { localHosting: false });
     const base = `/projects/${projectId}`;
 
     // Create a real saved target (encrypts the password) via its dedicated route.
@@ -202,7 +202,7 @@ describe('multi-tenant isolation + role enforcement (HTTP layer)', () => {
     h = await makeHarness({ encryptionKey, deployAllowedHosts: [ALLOWED_HOST] });
     // Seed a real project so the routes would otherwise resolve to data.
     const a = await h.signup();
-    const projectId = await a.createProject('Site', 'site-a');
+    const projectId = await a.createProject('Site', 'site-a', { localHosting: false });
     const base = `/projects/${projectId}`;
 
     // Every probe uses the bare app (no session cookie attached).

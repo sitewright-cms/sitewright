@@ -141,6 +141,13 @@ export async function seedInstance({ db, adminEmail, adminPassword, mediaRoot, l
     // language switcher. EXAMPLE_SETTINGS keeps tests and the seed in lockstep.
     settings: EXAMPLE_SETTINGS,
   });
+  // Local Hosting is now an opt-in `local` deploy target (the clean-break replacement for
+  // website.localPublish). Seed one so the example is served at /sites/example/ after a publish.
+  await contentRepo.put(ctx, 'deploy_target', 'local-hosting', {
+    id: 'local-hosting',
+    name: 'Local Hosting',
+    protocol: 'local',
+  });
   // CMS: dataset schemas + their entries (services / work / team / testimonials), then the
   // contact form, then the pages (which bind the datasets via `{{#each dataset.<slug>}}` and host the
   // Form block). Order doesn't matter for storage; an entry's `dataset` field (= the dataset slug)

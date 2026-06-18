@@ -38,6 +38,7 @@ import {
   type ImageAsset,
   type MediaAsset,
   type Snippet,
+  type DeployTarget,
   type Page,
   type PageTranslation,
   type Template,
@@ -2842,6 +2843,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     ctx: ProjectContext,
     project: Awaited<ReturnType<ProjectRepository['get']>>,
     outDir: string,
+    buildOpts: { minify?: boolean } = {},
   ): Promise<ReleaseManifest> {
     const { bundle, media, hcaptchaSiteKey, snippets, globalTemplates } = await assembleBuildInputs(ctx, project);
     // Publish-time JSON snapshot: fetch + parse `website.jsonDataUrl` in THIS (networked) process —
@@ -2859,10 +2861,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       ...(jsonData !== undefined ? { jsonData } : {}),
       ...(Object.keys(snippets).length ? { snippets } : {}),
       globalTemplates,
-      ...(bundle.project.website?.minifyHtml ? { minifyHtml: true } : {}),
+      // Minify is now a `local` deploy-target serve option (the caller passes it) — no longer a website field.
+      ...(buildOpts.minify ? { minifyHtml: true } : {}),
       // readStored accepts image variant / raw file / font face names (superset) — all copied in.
       readMedia: mediaStorage ? (assetId, file) => mediaStorage.readStored(project.slug, assetId, file) : undefined,
     });
+  }
+
+  // The project's `local` deploy target (Local Hosting), or undefined when none is configured. Local
+  // hosting is opt-in: a project is built + served at `/sites/<slug>/` only when this target exists.
+  async function findLocalTarget(ctx: ProjectContext): Promise<DeployTarget | undefined> {
+    const targets = (await contentRepo.list(ctx, 'deploy_target')) as DeployTarget[];
+    return targets.find((t) => t.protocol === 'local');
   }
 
   // Builds the site fresh into a throwaway temp directory and returns its path — used by deploy so the
@@ -2902,7 +2912,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         }
         activePublishes.add(project.id);
         try {
-          const release = await buildToDir(ctx, project, store.dirFor(project.slug));
+          // Build the local artifact. Minify follows the `local` deploy target's serve option (if one is
+          // configured); the site is only SERVED at /sites/<slug>/ when a local target exists (the gate
+          // there enforces it) — so building without one just produces a downloadable/servable-later build.
+          const local = await findLocalTarget(ctx);
+          const release = await buildToDir(ctx, project, store.dirFor(project.slug), { minify: !!local?.minifyHtml });
           // Just published → nothing newer than this release, so the site is not dirty.
           return reply.send({ release, url: `/sites/${project.slug}/`, dirty: false });
         } catch (err) {
@@ -2923,11 +2937,19 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const { ctx, project } = await resolveProject(req, 'content:read');
         const release = await store.readRelease(project.slug);
         // Dirty = there is publishable content AND it changed since the last release (or there is
-        // no release yet). Drives the editor's green "unpublished changes" publish button.
+        // no release yet). Drives the editor's "changes to deploy" hint.
         const latest = await contentRepo.latestContentUpdate(ctx);
         const dirty =
           latest !== null && (release === null || latest.getTime() > Date.parse(release.publishedAt));
-        return reply.send({ release, url: `/sites/${project.slug}/`, dirty });
+        // `localHosting` = a `local` deploy target exists, so the site is (or can be) served at /sites/.
+        const local = await findLocalTarget(ctx);
+        return reply.send({
+          release,
+          url: `/sites/${project.slug}/`,
+          dirty,
+          localHosting: !!local,
+          ...(local?.previewToken ? { previewToken: local.previewToken } : {}),
+        });
       },
     );
 
@@ -3027,31 +3049,26 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // 404 above are ungated, so the per-request settings read happens ONLY for a real page (never
         // for assets or unknown paths). The protected resource is the page; a sub-resource URL is
         // useless without it.
+        // Local hosting is served ONLY when the project has a `local` deploy target (it carries the
+        // serve options). No project / no local target → behave as if nothing is published here (404).
         const gateProject = await projects.getBySlug(slug).catch(() => null);
-        if (gateProject) {
-          // `get` throws NotFoundError when a project has no settings entity → no gate (serve normally).
-          const gateSettings = (await contentRepo
-            .get({ userId: 'system', projectId: gateProject.id, role: 'owner' as const }, 'settings', SETTINGS_ENTITY_ID)
-            .catch(() => null)) as Settings | null;
-          const web = gateSettings?.website;
-          // Local hosting disabled → behave as if nothing is published here (bare empty 404).
-          if (web?.localPublish === false) return reply.code(404).send();
-          // Preview token set → require a matching `?token=` (constant-time compare; lengths are
-          // equal-or-reject so timingSafeEqual never throws).
-          if (web?.previewToken) {
-            const raw = (req.query as { token?: string | string[] } | undefined)?.token;
-            const token = typeof raw === 'string' ? raw : '';
-            const a = Buffer.from(token);
-            const b = Buffer.from(web.previewToken);
-            if (!(a.length === b.length && timingSafeEqual(a, b))) {
-              // charset=utf-8 so the message renders correctly (without it the browser assumes
-              // Latin-1 and a non-ASCII byte would show as mojibake); kept informative — a bare
-              // 403 would leave a visitor with no idea a preview token is needed.
-              return reply
-                .code(403)
-                .type('text/html; charset=utf-8')
-                .send('<h1>403 - a preview token is required to view this site</h1>');
-            }
+        if (!gateProject) return reply.code(404).send();
+        const local = await findLocalTarget({ userId: 'system', projectId: gateProject.id, role: 'owner' as const });
+        if (!local) return reply.code(404).send();
+        // The target's preview-token gate (a soft "unlisted preview" control) → require a matching
+        // `?token=` (constant-time compare; lengths are equal-or-reject so timingSafeEqual never throws).
+        if (local.previewToken) {
+          const raw = (req.query as { token?: string | string[] } | undefined)?.token;
+          const token = typeof raw === 'string' ? raw : '';
+          const a = Buffer.from(token);
+          const b = Buffer.from(local.previewToken);
+          if (!(a.length === b.length && timingSafeEqual(a, b))) {
+            // charset=utf-8 so the message renders correctly; kept informative — a bare 403 would leave
+            // a visitor with no idea a preview token is needed.
+            return reply
+              .code(403)
+              .type('text/html; charset=utf-8')
+              .send('<h1>403 - a preview token is required to view this site</h1>');
           }
         }
         // Redirect an EXTENSIONLESS page request that lacks its trailing slash to the canonical

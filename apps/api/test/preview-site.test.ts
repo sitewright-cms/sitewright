@@ -63,6 +63,20 @@ describe('buildSite preview options', () => {
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
     expect(home).toContain('window.__SW_PREVIEW_MARKER__=1;');
   });
+
+  it('omits the preloader overlay from a preview build (the published build keeps it)', async () => {
+    const onePage = [{ id: 'home', path: '', title: 'Home', source: '<h1>Hi</h1>' }] as unknown as ProjectBundle['pages'];
+    const withPreloader = (): ProjectBundle => {
+      const b = bundle(onePage);
+      return { ...b, project: { ...b.project, website: { effects: { preloaderEffect: 'logo-pulse' } } } } as ProjectBundle;
+    };
+    // Published build → the loading overlay is present.
+    await buildSite({ publishedAt: '2026-05-29T00:00:00.000Z', outDir, bundle: withPreloader() });
+    expect(await readFile(join(outDir, 'index.html'), 'utf8')).toContain('data-sw-preloader');
+    // Preview build (previewRuntime set) → no overlay (it would cover the page under the sandbox).
+    await buildSite({ publishedAt: '2026-05-29T00:00:00.000Z', outDir, previewRuntime: '/*x*/', bundle: withPreloader() });
+    expect(await readFile(join(outDir, 'index.html'), 'utf8')).not.toContain('data-sw-preloader');
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -1,22 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { MoreHorizontal, ExternalLink } from 'lucide-react';
-import { api, eventsUrl, type Project, type Release } from '../api';
+import { ChevronDown, ExternalLink, Download } from 'lucide-react';
+import { api, eventsUrl, type DeployTargetView, type Project, type Release } from '../api';
 import { AgentDetailsModal } from './AgentDetailsModal';
 import { AgentIndicator } from './AgentIndicator';
+import { DeployModal } from './publish/DeployModal';
 import { buildPreviewUrl } from '../lib/preview-target';
 import { useToast } from './ui/Toast';
 
-/** Cloud-upload glyph for the publish action. */
-function PublishIcon() {
-  return (
-    <svg aria-hidden viewBox="0 0 20 20" fill="none" className="h-4 w-4" stroke="currentColor" strokeWidth="1.7">
-      <path d="M10 13V5m0 0L7 8m3-3 3 3" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M5 13.5A3.5 3.5 0 0 1 5.5 6.6 4.5 4.5 0 0 1 14 7a3 3 0 0 1 1 5.83" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-/** Eye glyph for the post-publish "Preview" (view the live published site). */
+/** Eye glyph for the "Preview" (browse the live draft site). */
 function PreviewIcon() {
   return (
     <svg aria-hidden viewBox="0 0 24 24" fill="none" className="h-4 w-4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
@@ -37,10 +28,16 @@ function DeployIcon() {
   );
 }
 
+/** Where a deploy target sends the site (the dropdown sub-label). */
+function targetWhere(t: DeployTargetView): string {
+  return t.protocol === 'local' ? 'Local Hosting · /sites/' : `${t.protocol.toUpperCase()}@${t.host ?? ''}`;
+}
+
 /**
- * Compact publish control (top-right): a single Publish button — GREEN only when there are
- * unpublished changes (`dirty`), neutral otherwise — with the secondary actions (view, download,
- * deploy) tucked behind a "…" menu so the header stays focused on the one primary action.
+ * The header DEPLOY control. An always-on split button: the primary action deploys the last-used (or
+ * default) target in one click; the ▾ opens a dropdown listing every target (click to deploy) plus
+ * "Add a target…" and "Download .zip". With no targets, the button opens the config modal. A `local`
+ * target is published to Local Hosting (built + served at /sites/); a remote target streams an upload.
  */
 export function PublishBar({
   project,
@@ -48,9 +45,9 @@ export function PublishBar({
   refreshSignal = 0,
 }: {
   project: Project;
-  /** Open the Publish & Deploy modal on its Deploy tab (the header overflow owns the modal). */
+  /** Open the deploy-targets modal (to add/manage targets). */
   onOpenDeploy?: () => void;
-  /** Bumped by the parent when publish settings change, so the preview-token URL stays current. */
+  /** Bumped by the parent when targets change, so the list + default stay current. */
   refreshSignal?: number;
 }) {
   const [release, setRelease] = useState<Release | null>(null);
@@ -60,17 +57,37 @@ export function PublishBar({
   const [menuOpen, setMenuOpen] = useState(false);
   const toast = useToast();
   const [previewToken, setPreviewToken] = useState<string | undefined>(undefined);
-  const [localHosting, setLocalHosting] = useState(false); // a `local` deploy target exists → served at /sites/
-  const [hasTarget, setHasTarget] = useState(false); // a saved deploy target exists → show a Deploy button
-  const [agentActive, setAgentActive] = useState(false); // an agent edited within the lull window (working)
-  const [connectionCount, setConnectionCount] = useState(0); // live agent connections (sessions + PATs)
+  const [localHosting, setLocalHosting] = useState(false); // a `local` target exists → served at /sites/
+  const [targets, setTargets] = useState<DeployTargetView[]>([]);
+  const [deploying, setDeploying] = useState<DeployTargetView | null>(null); // → the streaming DeployModal (remote)
+  const [agentActive, setAgentActive] = useState(false);
+  const [connectionCount, setConnectionCount] = useState(0);
   const [agentModalOpen, setAgentModalOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const agentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const agentActiveRef = useRef(false); // mirrors agentActive for rising-edge detection in the SSE closure
+  const agentActiveRef = useRef(false);
 
-  // The header indicator reflects active connections; poll lightly so a freshly-authorized or expired
-  // session reconciles without a reload (owner-gated endpoint — PublishBar only renders for owners).
+  // The most-recently-deployed target (per project), so the split button's primary action repeats it.
+  const lastKey = `sw:lastDeployTarget:${project.id}`;
+  const [lastTargetId, setLastTargetId] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(lastKey);
+    } catch {
+      return null;
+    }
+  });
+  const rememberTarget = useCallback(
+    (id: string) => {
+      setLastTargetId(id);
+      try {
+        localStorage.setItem(lastKey, id);
+      } catch {
+        /* storage unavailable — the in-memory value still works for this session */
+      }
+    },
+    [lastKey],
+  );
+
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
@@ -89,47 +106,45 @@ export function PublishBar({
   const loadConnectionsRef = useRef(loadConnections);
   loadConnectionsRef.current = loadConnections;
 
-  useEffect(() => {
-    let active = true;
+  const loadStatus = useCallback(() => {
     api
       .publishStatus(project.id)
       .then((res) => {
-        if (!active) return;
+        if (!mountedRef.current) return;
         setRelease(res.release);
         setUrl(res.url);
         setDirty(res.dirty);
-        // The Local Hosting target's preview-token gate (if any) → reflected in the View-live link.
         setPreviewToken(res.previewToken);
-        // Only a project with a `local` target is served at /sites/ — gates the "View live" link.
         setLocalHosting(!!res.localHosting);
       })
       .catch(() => {
-        /* no published site yet, or transient — Publish still works */
+        /* no published site yet, or transient */
       });
-    // A configured deploy target surfaces a prominent Deploy button next to Preview.
+  }, [project.id]);
+
+  useEffect(() => {
+    let active = true;
+    loadStatus();
     api
       .listDeployTargets(project.id)
-      .then((res) => active && setHasTarget(res.items.length > 0))
-      .catch(() => active && setHasTarget(false));
+      .then((res) => active && setTargets(res.items))
+      .catch(() => active && setTargets([]));
     return () => {
       active = false;
     };
-  }, [project.id, refreshSignal]);
+  }, [project.id, refreshSignal, loadStatus]);
 
-  // Agent connections: load on mount and reconcile every 30s (covers a connect/expiry with no edit event).
   useEffect(() => {
     loadConnections();
     const t = setInterval(loadConnections, 30_000);
     return () => clearInterval(t);
   }, [loadConnections]);
 
-  // Any content change (this user, or another channel via the SSE bus) means there are now
-  // unpublished changes — flip back to the green Publish button (out of the "Preview" state).
+  // Any content change means there are unpublished changes (drives the green "changes to deploy" hint).
   useEffect(() => {
     const source = new EventSource(eventsUrl(project.id), { withCredentials: true });
     source.addEventListener('content', (e) => {
       setDirty(true);
-      // Flag "an agent is editing" when the change came from a bearer/MCP write; clear after a lull.
       let actor: string | undefined;
       try {
         actor = (JSON.parse((e as MessageEvent).data) as { actor?: string }).actor;
@@ -137,7 +152,6 @@ export function PublishBar({
         /* non-JSON payload — ignore */
       }
       if (actor === 'agent') {
-        // Rising edge (idle/none → working): a (possibly new) agent just acted — reconcile the count.
         if (!agentActiveRef.current) loadConnectionsRef.current();
         agentActiveRef.current = true;
         setAgentActive(true);
@@ -146,7 +160,6 @@ export function PublishBar({
           agentActiveRef.current = false;
           setAgentActive(false);
           agentTimer.current = null;
-          // Working → idle: re-check whether the connection is still live (e.g. revoked elsewhere).
           loadConnectionsRef.current();
         }, 12_000);
       }
@@ -157,7 +170,7 @@ export function PublishBar({
     };
   }, [project.id]);
 
-  // Close the actions menu on an outside click.
+  // Close the dropdown on an outside click.
   useEffect(() => {
     if (!menuOpen) return;
     const onDown = (e: MouseEvent) => {
@@ -167,15 +180,16 @@ export function PublishBar({
     return () => document.removeEventListener('mousedown', onDown);
   }, [menuOpen]);
 
-  async function publish() {
+  // Deploy to Local Hosting (build the site + serve it at /sites/) via the publish action.
+  async function publishLocal() {
     setBusy(true);
     try {
       const res = await api.publish(project.id);
       setRelease(res.release);
       setUrl(res.url);
-      setDirty(res.dirty); // false right after a successful publish
-      // The publish RESULT surfaces as a transient toast (the persistent status line was removed).
-      toast.show(`Published · ${res.release.routes} page${res.release.routes === 1 ? '' : 's'}`, 'success');
+      setDirty(res.dirty);
+      setLocalHosting(true);
+      toast.show(`Published to Local Hosting · ${res.release.routes} page${res.release.routes === 1 ? '' : 's'}`, 'success');
     } catch (err) {
       toast.show(err instanceof Error ? err.message : 'publish failed', 'error');
     } finally {
@@ -183,128 +197,137 @@ export function PublishBar({
     }
   }
 
+  // Deploy to a chosen target: a `local` target publishes locally; a remote target streams an upload.
+  function deployTo(target: DeployTargetView) {
+    setMenuOpen(false);
+    rememberTarget(target.id);
+    if (target.protocol === 'local') {
+      void publishLocal();
+    } else {
+      setDeploying(target);
+    }
+  }
+
+  // The target the primary button deploys: last-used → the local target → the first target.
+  const defaultTarget =
+    targets.find((t) => t.id === lastTargetId) ?? targets.find((t) => t.protocol === 'local') ?? targets[0] ?? null;
+
   const published = release !== null;
-  // After a clean publish the primary action becomes "View live" (open the served site); it reverts to
-  // the green "Publish" when there are unpublished changes, nothing is published yet, OR there is no
-  // Local Hosting target (without one the site isn't served at /sites/, so "View live" would 404).
-  const showPreview = published && !dirty && localHosting;
-  // When a preview token gates the site, the View/Preview link must carry it.
+  // "View live" opens the served site; shown only when local hosting is configured + published + clean.
+  const showView = published && !dirty && localHosting && !!url;
   const viewUrl = url && previewToken ? `${url}${url.includes('?') ? '&' : '?'}token=${encodeURIComponent(previewToken)}` : url;
+  const btnBase =
+    'inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-bold text-slate-700 transition hover:border-indigo-400 hover:text-indigo-700';
 
   return (
     <div className="flex items-center gap-2">
-      {/* The AI-agent presence indicator sits INLINE, before the Publish button. */}
       <AgentIndicator
         state={agentActive ? 'working' : connectionCount > 0 ? 'idle' : 'none'}
         count={connectionCount}
         onClick={() => setAgentModalOpen(true)}
       />
-      {/* Always-on Preview: browse the live site with the latest (saved) changes — no publish needed.
-          Opens the whole-site draft preview surface (?preview=…) in a new tab. */}
+      {/* Always-on Preview: browse the live site with the latest (saved) changes — no publish needed. */}
       <button
         onClick={() =>
           window.open(buildPreviewUrl(window.location.origin, window.location.pathname, project.id), '_blank', 'noopener')
         }
         title="Preview the live site with your latest changes — no publish needed"
         aria-label="Preview the live site"
-        className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-bold text-slate-700 transition hover:border-indigo-400 hover:text-indigo-700"
+        className={btnBase}
       >
         <PreviewIcon />
         Preview
       </button>
-      {showPreview && url ? (
-          <a
-            href={viewUrl}
-            target="_blank"
-            rel="noreferrer"
-            title="View your published site"
-            aria-label="View the published site"
-            className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-bold text-slate-700 transition hover:border-indigo-400 hover:text-indigo-700"
-          >
-            <ExternalLink className="h-4 w-4" />
-            View live
-          </a>
-        ) : (
-          <button
-            onClick={publish}
-            disabled={busy}
-            title={dirty ? 'You have unpublished changes' : 'Publish your site'}
-            className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-bold transition disabled:opacity-50 ${
-              dirty
-                ? 'bg-emerald-600 text-white shadow-sm hover:bg-emerald-700'
-                : 'border border-slate-300 bg-white text-slate-700 hover:border-slate-400'
-            }`}
-          >
-            <PublishIcon />
-            {busy ? 'Publishing…' : 'Publish'}
-            {dirty && <span aria-hidden className="ml-0.5 h-1.5 w-1.5 rounded-full bg-white/90" />}
-          </button>
-        )}
 
-        {/* A configured deploy target gets a prominent Deploy button (opens the Deploy settings tab,
-            where the streaming deploy modal is launched). */}
-        {published && hasTarget && onOpenDeploy && (
-          <button
-            onClick={onOpenDeploy}
-            title="Deploy the published site to your server"
-            aria-label="Deploy the published site"
-            className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-bold text-slate-700 transition hover:border-indigo-400 hover:text-indigo-700"
-          >
+      {showView && (
+        <a href={viewUrl} target="_blank" rel="noreferrer" title="View your live (served) site" aria-label="View the live site" className={btnBase}>
+          <ExternalLink className="h-4 w-4" />
+          View live
+        </a>
+      )}
+
+      {/* DEPLOY — split button (no targets → opens the config modal). */}
+      <div className="relative" ref={menuRef}>
+        {targets.length === 0 ? (
+          <button onClick={() => onOpenDeploy?.()} title="Set up where to deploy your site" aria-label="Deploy" className={btnBase}>
             <DeployIcon />
             Deploy
           </button>
-        )}
-
-        {published && (
-          <div className="relative" ref={menuRef}>
+        ) : (
+          <div className="inline-flex">
             <button
-              aria-label="Publish actions"
+              onClick={() => defaultTarget && deployTo(defaultTarget)}
+              disabled={busy || !defaultTarget}
+              title={defaultTarget ? `Deploy to ${defaultTarget.name}` : 'Deploy'}
+              aria-label={defaultTarget ? `Deploy to ${defaultTarget.name}` : 'Deploy'}
+              className={`inline-flex cursor-pointer items-center gap-1.5 rounded-l-md border px-3 py-1.5 text-sm font-bold transition disabled:opacity-50 ${
+                dirty
+                  ? 'border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700'
+                  : 'border-slate-300 bg-white text-slate-700 hover:border-indigo-400 hover:text-indigo-700'
+              }`}
+            >
+              <DeployIcon />
+              {busy ? 'Deploying…' : `Deploy to ${defaultTarget?.name ?? ''}`}
+              {dirty && <span aria-hidden className="ml-0.5 h-1.5 w-1.5 rounded-full bg-white/90" />}
+            </button>
+            <button
+              aria-label="Choose a deploy target"
               aria-haspopup="menu"
               aria-expanded={menuOpen}
               onClick={() => setMenuOpen((o) => !o)}
-              className="cursor-pointer rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-600 hover:border-slate-400"
+              className={`inline-flex cursor-pointer items-center rounded-r-md border border-l-0 px-1.5 py-1.5 transition ${
+                dirty
+                  ? 'border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700'
+                  : 'border-slate-300 bg-white text-slate-600 hover:border-indigo-400'
+              }`}
             >
-              <MoreHorizontal className="h-4 w-4" />
+              <ChevronDown className="h-4 w-4" />
             </button>
-            {menuOpen && (
-              <div
-                role="menu"
-                className="absolute right-0 z-10 mt-1 w-44 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
-              >
-                {url && (
-                  <a
-                    role="menuitem"
-                    href={viewUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    aria-label="View published site"
-                    className="block cursor-pointer px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-                  >
-                    View site <ExternalLink className="ml-0.5 inline h-3.5 w-3.5" />
-                  </a>
-                )}
-                <a
-                  role="menuitem"
-                  href={api.archiveUrl(project.id)}
-                  aria-label="Download site zip"
-                  className="block cursor-pointer px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-                >
-                  Download .zip
-                </a>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    onOpenDeploy?.();
-                    setMenuOpen(false);
-                  }}
-                  className="block w-full cursor-pointer px-3 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-50"
-                >
-                  Deploy…
-                </button>
-              </div>
-            )}
           </div>
         )}
+
+        {menuOpen && (
+          <div role="menu" className="absolute right-0 z-10 mt-1 w-60 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+            <p className="px-3 pb-1 pt-1 text-[10px] font-bold uppercase tracking-wide text-slate-400">Deploy to…</p>
+            {targets.map((t) => (
+              <button
+                key={t.id}
+                role="menuitem"
+                onClick={() => deployTo(t)}
+                disabled={busy}
+                className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${t.protocol === 'local' ? 'bg-emerald-500' : 'bg-indigo-500'}`} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium">{t.name}</span>
+                  <span className="block truncate text-[11px] text-slate-400">{targetWhere(t)}</span>
+                </span>
+              </button>
+            ))}
+            <div className="my-1 border-t border-slate-100" />
+            <button
+              role="menuitem"
+              onClick={() => {
+                setMenuOpen(false);
+                onOpenDeploy?.();
+              }}
+              className="block w-full cursor-pointer px-3 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-50"
+            >
+              + Add a target…
+            </button>
+            <a
+              role="menuitem"
+              href={api.archiveUrl(project.id)}
+              aria-label="Download site zip"
+              className="flex cursor-pointer items-center gap-1.5 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+            >
+              <Download className="h-3.5 w-3.5" />
+              Download .zip
+            </a>
+          </div>
+        )}
+      </div>
+
       {agentModalOpen && (
         <AgentDetailsModal
           projectId={project.id}
@@ -312,6 +335,16 @@ export function PublishBar({
           onClose={() => {
             setAgentModalOpen(false);
             loadConnections();
+          }}
+        />
+      )}
+      {deploying && (
+        <DeployModal
+          project={project}
+          target={deploying}
+          onClose={() => {
+            setDeploying(null);
+            loadStatus();
           }}
         />
       )}

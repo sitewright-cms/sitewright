@@ -3,9 +3,9 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 const { listDeployTargets, createDeployTarget, deploy, deleteDeployTarget } = vi.hoisted(() => ({
   listDeployTargets: vi.fn<(id: string) => Promise<{ items: unknown[] }>>(() => Promise.resolve({ items: [] })),
-  createDeployTarget: vi.fn(() => Promise.resolve({ target: { id: 't1' } })),
-  deploy: vi.fn(),
-  deleteDeployTarget: vi.fn(() => Promise.resolve()),
+  createDeployTarget: vi.fn<(id: string, cfg: unknown) => Promise<{ target: { id: string } }>>(() => Promise.resolve({ target: { id: 't1' } })),
+  deploy: vi.fn<(id: string, cfg: unknown) => Promise<unknown>>(),
+  deleteDeployTarget: vi.fn<(id: string, tid: string) => Promise<void>>(() => Promise.resolve()),
 }));
 vi.mock('../src/api', () => ({
   api: {

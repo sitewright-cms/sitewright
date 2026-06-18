@@ -60,6 +60,7 @@ export function PublishBar({
   const [menuOpen, setMenuOpen] = useState(false);
   const toast = useToast();
   const [previewToken, setPreviewToken] = useState<string | undefined>(undefined);
+  const [localHosting, setLocalHosting] = useState(false); // a `local` deploy target exists → served at /sites/
   const [hasTarget, setHasTarget] = useState(false); // a saved deploy target exists → show a Deploy button
   const [agentActive, setAgentActive] = useState(false); // an agent edited within the lull window (working)
   const [connectionCount, setConnectionCount] = useState(0); // live agent connections (sessions + PATs)
@@ -97,16 +98,13 @@ export function PublishBar({
         setRelease(res.release);
         setUrl(res.url);
         setDirty(res.dirty);
+        // The Local Hosting target's preview-token gate (if any) → reflected in the View-live link.
+        setPreviewToken(res.previewToken);
+        // Only a project with a `local` target is served at /sites/ — gates the "View live" link.
+        setLocalHosting(!!res.localHosting);
       })
       .catch(() => {
         /* no published site yet, or transient — Publish still works */
-      });
-    // The preview-token gate (if any) must be reflected in the View/Preview link.
-    api
-      .getSettings(project.id)
-      .then((res) => active && setPreviewToken(res.item.website?.previewToken))
-      .catch(() => {
-        /* settings unreadable → no token gate to honor */
       });
     // A configured deploy target surfaces a prominent Deploy button next to Preview.
     api
@@ -186,9 +184,10 @@ export function PublishBar({
   }
 
   const published = release !== null;
-  // After a clean publish the primary action becomes "Preview" (open the live site); it reverts to
-  // the green "Publish" the moment there are unpublished changes (dirty) or nothing is published yet.
-  const showPreview = published && !dirty;
+  // After a clean publish the primary action becomes "View live" (open the served site); it reverts to
+  // the green "Publish" when there are unpublished changes, nothing is published yet, OR there is no
+  // Local Hosting target (without one the site isn't served at /sites/, so "View live" would 404).
+  const showPreview = published && !dirty && localHosting;
   // When a preview token gates the site, the View/Preview link must carry it.
   const viewUrl = url && previewToken ? `${url}${url.includes('?') ? '&' : '?'}token=${encodeURIComponent(previewToken)}` : url;
 

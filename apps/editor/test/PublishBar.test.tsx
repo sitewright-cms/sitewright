@@ -71,23 +71,23 @@ describe('PublishBar', () => {
   });
 
   it('becomes a "View live" link to the published site when everything is published', async () => {
-    publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false });
+    publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false, localHosting: true });
     render(<PublishBar project={project} />);
     const view = await screen.findByRole('link', { name: /View the published site/ });
     expect(view).toHaveAttribute('href', '/sites/acme/');
     expect(screen.queryByRole('button', { name: 'Publish' })).toBeNull();
   });
 
-  it('appends the preview token to the View-live link when the site is token-gated', async () => {
-    publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false });
-    getSettings.mockResolvedValueOnce({ item: { website: { previewToken: 'tok_abcdefgh12345678' } } });
+  it('appends the preview token to the View-live link when the local target is token-gated', async () => {
+    // The preview token now rides on the publish status (it comes from the local deploy target).
+    publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false, localHosting: true, previewToken: 'tok_abcdefgh12345678' });
     render(<PublishBar project={project} />);
     const view = await screen.findByRole('link', { name: /View the published site/ });
     await waitFor(() => expect(view).toHaveAttribute('href', '/sites/acme/?token=tok_abcdefgh12345678'));
   });
 
   it('switches Publish → View live after a successful publish', async () => {
-    publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: true });
+    publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: true, localHosting: true });
     publish.mockResolvedValue({ release, url: '/sites/acme/', dirty: false });
     render(<PublishBar project={project} />);
     const btn = await screen.findByRole('button', { name: 'Publish' });
@@ -117,7 +117,7 @@ describe('PublishBar', () => {
       close() {}
     }
     vi.stubGlobal('EventSource', CtrlEventSource);
-    publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false });
+    publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false, localHosting: true });
     render(<PublishBar project={project} />);
     await screen.findByRole('link', { name: /View the published site/ }); // published + clean → View live
     act(() => listeners.forEach((cb) => cb({ data: JSON.stringify({ kind: 'page', entityId: 'home', op: 'put', actor: 'user' }) }))); // an edit lands
@@ -134,7 +134,7 @@ describe('PublishBar', () => {
       close() {}
     }
     vi.stubGlobal('EventSource', CtrlEventSource);
-    publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false });
+    publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false, localHosting: true });
     render(<PublishBar project={project} />);
     await screen.findByRole('link', { name: /View the published site/ });
     // No agents → the indicator nudges that one can be connected.
@@ -154,7 +154,7 @@ describe('PublishBar', () => {
     listAgentConnections.mockResolvedValue({
       items: [{ id: 'oauth:u1', kind: 'oauth', name: 'ChatGPT', role: 'owner', capabilities: ['content:read'], connectedAt: '2026-06-09T00:00:00.000Z', expiresAt: null, lastUsedAt: null }],
     });
-    publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false });
+    publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false, localHosting: true });
     render(<PublishBar project={project} />);
     expect(await screen.findByText('Agent connected')).toBeInTheDocument();
   });
@@ -168,7 +168,7 @@ describe('PublishBar', () => {
       close() {}
     }
     vi.stubGlobal('EventSource', CtrlEventSource);
-    publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false });
+    publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false, localHosting: true });
     render(<PublishBar project={project} />);
     await screen.findByRole('link', { name: /View the published site/ });
     vi.useFakeTimers();
@@ -183,14 +183,14 @@ describe('PublishBar', () => {
   });
 
   it('opens the AI agent details modal when the indicator is clicked', async () => {
-    publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false });
+    publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false, localHosting: true });
     render(<PublishBar project={project} />);
     (await screen.findByText('Connect an agent')).click();
     expect(await screen.findByRole('heading', { name: 'AI agent details' })).toBeInTheDocument();
   });
 
   it('shows a Deploy button (→ onOpenDeploy) when a saved target exists and the site is published', async () => {
-    publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false });
+    publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false, localHosting: true });
     listDeployTargets.mockResolvedValueOnce({ items: [{ id: 't1' }] });
     const onOpenDeploy = vi.fn();
     render(<PublishBar project={project} onOpenDeploy={onOpenDeploy} />);

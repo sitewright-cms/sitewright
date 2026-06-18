@@ -4,8 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { makeHarness, type Harness, type TestClient } from './harness.js';
 
-// Integration: the "PUBLISH" tab options on website settings — local hosting toggle, preview-token
-// gate, and HTML minification — flow through publish + the /sites/<slug>/ static route.
+// Integration: the Local Hosting serve options — which are now options on the `local` DEPLOY TARGET
+// (preview-token gate, HTML minify) — and the gate that a project is served at /sites/<slug>/ ONLY
+// when a local target exists. Assembly happens at deploy time (POST /publish builds the artifact).
 
 const home = {
   id: 'home',
@@ -17,7 +18,7 @@ const home = {
   source: '<section class="p-6"><h1 class="text-2xl font-bold">Hello world</h1></section>',
 };
 
-describe('publish options (localPublish / previewToken / minifyHtml)', () => {
+describe('Local Hosting serve options (local deploy target: previewToken / minifyHtml)', () => {
   let harness: Harness;
   let client: TestClient;
   let projectId: string;
@@ -30,7 +31,8 @@ describe('publish options (localPublish / previewToken / minifyHtml)', () => {
     mediaRoot = await mkdtemp(join(tmpdir(), 'sw-opt-media-'));
     harness = await makeHarness({ publishRoot, mediaRoot });
     client = await harness.signup();
-    projectId = await client.createProject('Opt Site', slug);
+    // No auto Local Hosting target — each test configures the `local` target it needs.
+    projectId = await client.createProject('Opt Site', slug, { localHosting: false });
   });
 
   afterEach(async () => {
@@ -39,22 +41,30 @@ describe('publish options (localPublish / previewToken / minifyHtml)', () => {
     await rm(mediaRoot, { recursive: true, force: true });
   });
 
-  async function setWebsite(website: Record<string, unknown> | undefined) {
+  async function seedSite() {
     const proj = client.project(projectId);
-    const payload = {
+    const settings = {
       brand: { name: 'Opt Site', colors: { primary: '#e11' } },
-      ...(website ? { website } : {}),
       settings: { defaultLocale: 'en', locales: ['en'] },
     };
-    expect((await proj.putContent('settings', 'settings', payload)).statusCode).toBe(200);
+    expect((await proj.putContent('settings', 'settings', settings)).statusCode).toBe(200);
     expect((await proj.putContent('page', 'home', home)).statusCode).toBe(200);
   }
+  async function createLocalTarget(opts: { previewToken?: string; minifyHtml?: boolean } = {}): Promise<string> {
+    const r = await client.post(`/projects/${projectId}/deploy-targets`, { name: 'Local Hosting', protocol: 'local', ...opts });
+    expect(r.statusCode).toBe(201);
+    return (r.json() as { target: { id: string } }).target.id;
+  }
+  async function deleteTarget(id: string) {
+    expect((await client.del(`/projects/${projectId}/deploy-targets/${id}`)).statusCode).toBe(204);
+  }
   async function publish() {
-    expect((await client.post(`${client.project(projectId).base}/publish`)).statusCode).toBe(200);
+    expect((await client.post(`/projects/${projectId}/publish`)).statusCode).toBe(200);
   }
 
-  it('preview token: HTML pages require a matching ?token=, but static assets stay ungated', async () => {
-    await setWebsite({ previewToken: 'tok_abcdefgh12345678' });
+  it('preview token (on the local target): HTML pages require a matching ?token=, static assets stay ungated', async () => {
+    await seedSite();
+    await createLocalTarget({ previewToken: 'tok_abcdefgh12345678' });
     await publish();
 
     const noToken = await client.get(`/sites/${slug}/index.html`);
@@ -70,23 +80,26 @@ describe('publish options (localPublish / previewToken / minifyHtml)', () => {
     expect((await client.get(`/sites/${slug}/styles.css`)).statusCode).toBe(200);
   });
 
-  it('localPublish=false stops serving the page locally (the artifact still builds for deploy)', async () => {
-    await setWebsite({ localPublish: false });
-    await publish();
+  it('no Local Hosting target → not served locally (404); adding one serves it without a republish', async () => {
+    await seedSite();
+    await publish(); // builds the artifact, but with no local target it is not served locally
     expect((await client.get(`/sites/${slug}/index.html`)).statusCode).toBe(404);
-    // Re-enabling restores serving without a republish (the gate is live, read from settings).
-    await setWebsite({ localPublish: true });
+    // Add a local target → served (the gate is live, read from the deploy targets).
+    await createLocalTarget();
     expect((await client.get(`/sites/${slug}/index.html`)).statusCode).toBe(200);
   });
 
-  it('minifyHtml collapses the published HTML (smaller; inter-element head whitespace gone)', async () => {
-    await setWebsite(undefined);
+  it('minifyHtml (the local target option) collapses the published HTML (smaller; head whitespace gone)', async () => {
+    await seedSite();
+    const plainTarget = await createLocalTarget(); // no minify
     await publish();
     const plain = await client.get(`/sites/${slug}/index.html`);
     expect(plain.statusCode).toBe(200);
     expect(plain.body).toContain('</title>\n'); // pretty-printed head (a newline after the title)
 
-    await setWebsite({ minifyHtml: true });
+    // Switch Local Hosting to minify (the target carries the option), then republish.
+    await deleteTarget(plainTarget);
+    await createLocalTarget({ minifyHtml: true });
     await publish();
     const min = await client.get(`/sites/${slug}/index.html`);
     expect(min.statusCode).toBe(200);

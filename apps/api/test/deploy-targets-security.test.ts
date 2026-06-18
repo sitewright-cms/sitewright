@@ -38,7 +38,8 @@ async function boot(deployAllowedHosts?: string[]): Promise<Harness> {
 /** Signs up an owner and creates a project; returns the client + its target base path. */
 async function ownerWithProject(harness: Harness): Promise<{ client: TestClient; projectId: string; base: string }> {
   const client = await harness.signup();
-  const projectId = await client.createProject();
+  // No auto Local Hosting target — these tests enumerate/operate on the exact targets they create.
+  const projectId = await client.createProject(undefined, undefined, { localHosting: false });
   const base = `/projects/${projectId}`;
   return { client, projectId, base };
 }
@@ -276,7 +277,7 @@ describe('saved deploy targets — RBAC and cross-tenant isolation', () => {
     await boot([ALLOWED_HOST]);
     const a = await h.signup();
     const b = await h.signup();
-    const aProjectId = await a.createProject();
+    const aProjectId = await a.createProject(undefined, undefined, { localHosting: false });
     const aBase = `/projects/${aProjectId}`;
 
     const id = (

@@ -14,17 +14,27 @@ import type { ApiKeyCapability } from '../db/schema.js';
 const CreateDeployTargetBody = z
   .object({
     name: z.string().min(1).max(120),
-    protocol: z.enum(['ftp', 'ftps', 'sftp']),
-    host: z.string().min(1).max(255),
+    protocol: z.enum(['local', 'ftp', 'ftps', 'sftp']),
+    // ── Remote-transport fields (FTP/FTPS/SFTP) ──
+    host: z.string().min(1).max(255).optional(),
     port: z.number().int().min(1).max(65535).optional(),
-    user: z.string().min(1).max(255),
+    user: z.string().min(1).max(255).optional(),
     password: z.string().min(1).max(1024).optional(),
     privateKey: z.string().min(1).max(16384).optional(), // SFTP private-key CONTENTS (PEM/OpenSSH)
     passphrase: z.string().min(1).max(1024).optional(),
     remoteDir: z.string().min(1).max(1024).optional(),
     hostFingerprint: z.string().min(1).max(256).optional(),
+    // ── Local Hosting serve options ──
+    previewToken: z.string().min(16).max(64).regex(/^[A-Za-z0-9_-]+$/, 'previewToken must be url-safe').optional(),
+    minifyHtml: z.boolean().optional(),
   })
-  .refine((b) => b.password !== undefined || b.privateKey !== undefined, {
+  // A remote (FTP/FTPS/SFTP) target needs a host + user; a local target has neither.
+  .refine((b) => b.protocol === 'local' || (!!b.host && !!b.user), {
+    message: 'host and user are required for an FTP/FTPS/SFTP target',
+    path: ['host'],
+  })
+  // …and a credential (password or key). A local target has no credentials.
+  .refine((b) => b.protocol === 'local' || b.password !== undefined || b.privateKey !== undefined, {
     message: 'a password or a private key is required',
     path: ['password'],
   })
@@ -62,18 +72,19 @@ function decodeCreds(secret: EncryptedSecret, key: Buffer): TargetCreds {
   return { password: raw };
 }
 
-/** Build the transient DeployConfig for a saved target (decrypting its credentials at use). */
+/** Build the transient DeployConfig for a saved REMOTE target (decrypting its credentials at use).
+ *  Only called for a non-`local` target — the schema guarantees host/user/secret are present there. */
 function targetToConfig(target: DeployTarget, key: Buffer): DeployConfig {
-  const creds = decodeCreds(target.secret, key);
+  const creds = decodeCreds(target.secret!, key);
   return {
-    protocol: target.protocol,
-    host: target.host,
+    protocol: target.protocol as DeployConfig['protocol'],
+    host: target.host!,
     port: target.port,
-    user: target.user,
+    user: target.user!,
     ...(creds.password ? { password: creds.password } : {}),
     ...(creds.privateKey ? { privateKey: creds.privateKey } : {}),
     ...(creds.passphrase ? { passphrase: creds.passphrase } : {}),
-    remoteDir: target.remoteDir,
+    remoteDir: target.remoteDir ?? '/',
     hostFingerprint: target.hostFingerprint,
   };
 }
@@ -153,26 +164,47 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
       const { ctx } = await resolveProject(req, 'deploy');
       if (!isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
       const body = CreateDeployTargetBody.parse(req.body);
-      assertDeployHostAllowed(body.host);
+      // At most one Local Hosting target per project — it is THE local-serving config (findLocalTarget
+      // picks one), so a second would silently shadow the first's serve options.
+      if (body.protocol === 'local') {
+        const existing = (await contentRepo.list(ctx, 'deploy_target')) as DeployTarget[];
+        if (existing.some((t) => t.protocol === 'local')) {
+          return reply.code(409).send({ error: 'a Local Hosting target already exists for this project' });
+        }
+      }
+      // A remote target's host is SSRF-checked here; a `local` target has no host.
+      if (body.protocol !== 'local') assertDeployHostAllowed(body.host!);
       const id = newId();
-      const target = DeployTargetSchema.parse({
-        id,
-        name: body.name,
-        protocol: body.protocol,
-        host: body.host,
-        ...(body.port ? { port: body.port } : {}),
-        user: body.user,
-        remoteDir: body.remoteDir ?? '/',
-        ...(body.hostFingerprint ? { hostFingerprint: body.hostFingerprint } : {}),
-        secret: encodeCreds(
-          {
-            ...(body.password ? { password: body.password } : {}),
-            ...(body.privateKey ? { privateKey: body.privateKey } : {}),
-            ...(body.passphrase ? { passphrase: body.passphrase } : {}),
-          },
-          encryptionKey,
-        ),
-      });
+      // A `local` (Local Hosting) target has no host/credentials — only serve options; a remote
+      // target carries the encrypted credentials + the validated host.
+      const target = DeployTargetSchema.parse(
+        body.protocol === 'local'
+          ? {
+              id,
+              name: body.name,
+              protocol: 'local',
+              ...(body.previewToken ? { previewToken: body.previewToken } : {}),
+              ...(body.minifyHtml ? { minifyHtml: true } : {}),
+            }
+          : {
+              id,
+              name: body.name,
+              protocol: body.protocol,
+              host: body.host,
+              ...(body.port ? { port: body.port } : {}),
+              user: body.user,
+              remoteDir: body.remoteDir ?? '/',
+              ...(body.hostFingerprint ? { hostFingerprint: body.hostFingerprint } : {}),
+              secret: encodeCreds(
+                {
+                  ...(body.password ? { password: body.password } : {}),
+                  ...(body.privateKey ? { privateKey: body.privateKey } : {}),
+                  ...(body.passphrase ? { passphrase: body.passphrase } : {}),
+                },
+                encryptionKey,
+              ),
+            },
+      );
       const saved = (await contentRepo.put(ctx, 'deploy_target', id, target)) as DeployTarget;
       return reply.code(201).send({ target: sanitize(saved) });
     },
@@ -193,7 +225,8 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
     '/projects/:projectId/deploy-targets/:id',
     async (req, reply) => {
       const { ctx } = await resolveProject(req, 'deploy');
-      await contentRepo.remove(ctx, 'deploy_target', req.params.id); // enforces write role
+      if (!isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
+      await contentRepo.remove(ctx, 'deploy_target', req.params.id);
       return reply.code(204).send();
     },
   );
@@ -214,7 +247,10 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
         // Domain errors (404 missing target / 403 host not allowed) propagate to the
         // global handler — not the deploy 502 below.
         const target = (await contentRepo.get(ctx, 'deploy_target', req.params.id)) as DeployTarget;
-        assertDeployHostAllowed(target.host);
+        if (target.protocol === 'local') {
+          return reply.code(400).send({ error: 'a Local Hosting target is published via the Publish action, not deployed here' });
+        }
+        assertDeployHostAllowed(target.host!);
         // Build the site FRESH (build-at-deploy-time — no prior publish needed); a build failure
         // (bad route graph / json_data URL) is author-correctable → 409.
         let dir: string;
@@ -259,7 +295,10 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
       try {
         // Preflight (these can still send a normal JSON error — we have not hijacked yet).
         const target = (await contentRepo.get(ctx, 'deploy_target', req.params.id)) as DeployTarget;
-        assertDeployHostAllowed(target.host);
+        if (target.protocol === 'local') {
+          return reply.code(400).send({ error: 'a Local Hosting target is published via the Publish action, not deployed here' });
+        }
+        assertDeployHostAllowed(target.host!);
         // Build the site FRESH before hijacking, so a build error is a normal JSON 409 (not an SSE frame).
         let dir: string;
         try {

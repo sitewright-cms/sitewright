@@ -30,7 +30,9 @@ function DeployIcon() {
 
 /** Where a deploy target sends the site (the dropdown sub-label). */
 function targetWhere(t: DeployTargetView): string {
-  return t.protocol === 'local' ? 'Local Hosting · /sites/' : `${t.protocol.toUpperCase()}@${t.host ?? ''}`;
+  if (t.protocol === 'local') return 'Local Hosting · /sites/';
+  if (t.protocol === 'git') return `Git · ${t.branch ?? ''}`;
+  return `${t.protocol.toUpperCase()}@${t.host ?? ''}`;
 }
 
 /**

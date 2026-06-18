@@ -4,7 +4,8 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { DeployTargetSchema, type DeployTarget, type EncryptedSecret } from '@sitewright/schema';
 import { encryptSecret, decryptSecret } from '../crypto/secret.js';
-import { deploySite, type DeployConfig, type DeployProgress } from '../publish/adapters.js';
+import { deploySite, type DeployConfig } from '../publish/adapters.js';
+import { deployGit, type GitDeployConfig } from '../publish/git-deploy.js';
 import { PublishError } from '../publish/build.js';
 import { JsonDataError } from '../publish/json-data.js';
 import type { ContentRepository } from '../repo/content.js';
@@ -14,7 +15,7 @@ import type { ApiKeyCapability } from '../db/schema.js';
 const CreateDeployTargetBody = z
   .object({
     name: z.string().min(1).max(120),
-    protocol: z.enum(['local', 'ftp', 'ftps', 'sftp']),
+    protocol: z.enum(['local', 'ftp', 'ftps', 'sftp', 'git']),
     // ── Remote-transport fields (FTP/FTPS/SFTP) ──
     host: z.string().min(1).max(255).optional(),
     port: z.number().int().min(1).max(65535).optional(),
@@ -27,27 +28,37 @@ const CreateDeployTargetBody = z
     // ── Local Hosting serve options ──
     previewToken: z.string().min(16).max(64).regex(/^[A-Za-z0-9_-]+$/, 'previewToken must be url-safe').optional(),
     minifyHtml: z.boolean().optional(),
+    // ── git fields ──
+    repoUrl: z.string().min(1).max(2048).optional(),
+    branch: z.string().min(1).max(255).optional(),
+    token: z.string().min(1).max(1024).optional(), // HTTPS personal-access token
   })
-  // A remote (FTP/FTPS/SFTP) target needs a host + user; a local target has neither.
-  .refine((b) => b.protocol === 'local' || (!!b.host && !!b.user), {
+  // FTP/FTPS/SFTP need a host + user.
+  .refine((b) => (b.protocol !== 'ftp' && b.protocol !== 'ftps' && b.protocol !== 'sftp') || (!!b.host && !!b.user), {
     message: 'host and user are required for an FTP/FTPS/SFTP target',
     path: ['host'],
   })
-  // …and a credential (password or key). A local target has no credentials.
-  .refine((b) => b.protocol === 'local' || b.password !== undefined || b.privateKey !== undefined, {
+  // …and a credential (password or key).
+  .refine((b) => (b.protocol !== 'ftp' && b.protocol !== 'ftps' && b.protocol !== 'sftp') || b.password !== undefined || b.privateKey !== undefined, {
     message: 'a password or a private key is required',
     path: ['password'],
   })
   .refine((b) => b.privateKey === undefined || b.protocol === 'sftp', {
     message: 'a private key requires the SFTP protocol',
     path: ['privateKey'],
+  })
+  // git needs a repoUrl, a branch, and a token.
+  .refine((b) => b.protocol !== 'git' || (!!b.repoUrl && !!b.branch && !!b.token), {
+    message: 'repoUrl, branch and a token are required for a git target',
+    path: ['repoUrl'],
   });
 
-/** The secret blob stored (encrypted) for a target. */
+/** The secret blob stored (encrypted) for a target — FTP/SFTP credentials, or a git token. */
 interface TargetCreds {
   password?: string;
   privateKey?: string;
   passphrase?: string;
+  token?: string;
 }
 
 /** Encrypt the credential blob (password and/or private key + passphrase) as the target's secret. */
@@ -63,7 +74,7 @@ function decodeCreds(secret: EncryptedSecret, key: Buffer): TargetCreds {
     const obj: unknown = JSON.parse(raw);
     // Only a credential object (carrying a password or private key) is treated as the blob; any other
     // JSON (or a legacy plaintext password that isn't JSON) falls through to `{ password: raw }`.
-    if (obj && typeof obj === 'object' && !Array.isArray(obj) && ('password' in obj || 'privateKey' in obj)) {
+    if (obj && typeof obj === 'object' && !Array.isArray(obj) && ('password' in obj || 'privateKey' in obj || 'token' in obj)) {
       return obj as TargetCreds;
     }
   } catch {
@@ -87,6 +98,20 @@ function targetToConfig(target: DeployTarget, key: Buffer): DeployConfig {
     remoteDir: target.remoteDir ?? '/',
     hostFingerprint: target.hostFingerprint,
   };
+}
+
+/** Build the transient GitDeployConfig for a saved `git` target (decrypting its token at use).
+ *  Only called for a `git` target — the schema guarantees repoUrl/branch/secret are present. */
+function targetToGitConfig(target: DeployTarget, key: Buffer): GitDeployConfig {
+  const { token } = decodeCreds(target.secret!, key);
+  // A corrupted/legacy secret without a token would otherwise push with empty creds → a confusing 401.
+  if (!token) throw new Error('git deploy target has no stored token — re-save it with a new token');
+  return { repoUrl: target.repoUrl!, branch: target.branch!, token };
+}
+
+/** The host to SSRF-check for a target: the repo host for `git`, the server host otherwise. */
+function deployHostOf(target: DeployTarget): string {
+  return target.protocol === 'git' ? new URL(target.repoUrl!).hostname : target.host!;
 }
 
 type ProjectReq = FastifyRequest<{ Params: { projectId: string } }>;
@@ -120,8 +145,8 @@ function sanitize(t: DeployTarget): Record<string, unknown> {
  */
 async function streamDeploy(
   reply: { hijack: () => void; raw: import('node:http').ServerResponse },
-  siteDir: string,
-  config: DeployConfig,
+  run: (onProgress: (e: unknown) => void) => Promise<unknown>,
+  logCtx: Record<string, unknown>,
   log: { error: (obj: unknown, msg: string) => void },
 ): Promise<void> {
   reply.hijack();
@@ -136,13 +161,10 @@ async function streamDeploy(
     raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
   };
   try {
-    const result = await deploySite(siteDir, config, undefined, (e: DeployProgress) => send('progress', e));
+    const result = await run((e) => send('progress', e));
     send('done', { deployed: result });
   } catch (err) {
-    log.error(
-      { host: config.host, protocol: config.protocol, errMsg: err instanceof Error ? err.message : String(err) },
-      'streaming deploy failed',
-    );
+    log.error({ ...logCtx, errMsg: err instanceof Error ? err.message : String(err) }, 'streaming deploy failed');
     // Generic message — never leak credentials/host internals (parity with the non-streaming route).
     send('error', { message: 'deploy failed: could not connect or transfer to the target' });
   } finally {
@@ -172,8 +194,19 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
           return reply.code(409).send({ error: 'a Local Hosting target already exists for this project' });
         }
       }
-      // A remote target's host is SSRF-checked here; a `local` target has no host.
-      if (body.protocol !== 'local') assertDeployHostAllowed(body.host!);
+      // SSRF-check the destination host: the server host for FTP/SFTP, the repo host for git. (A local
+      // target has no host to check.)
+      if (body.protocol === 'ftp' || body.protocol === 'ftps' || body.protocol === 'sftp') {
+        assertDeployHostAllowed(body.host!);
+      } else if (body.protocol === 'git') {
+        let repoHost: string;
+        try {
+          repoHost = new URL(body.repoUrl!).hostname;
+        } catch {
+          return reply.code(400).send({ error: 'repoUrl must be a valid http(s) URL' });
+        }
+        assertDeployHostAllowed(repoHost);
+      }
       const id = newId();
       // A `local` (Local Hosting) target has no host/credentials — only serve options; a remote
       // target carries the encrypted credentials + the validated host.
@@ -186,7 +219,16 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
               ...(body.previewToken ? { previewToken: body.previewToken } : {}),
               ...(body.minifyHtml ? { minifyHtml: true } : {}),
             }
-          : {
+          : body.protocol === 'git'
+            ? {
+                id,
+                name: body.name,
+                protocol: 'git',
+                repoUrl: body.repoUrl,
+                branch: body.branch,
+                secret: encodeCreds({ token: body.token }, encryptionKey),
+              }
+            : {
               id,
               name: body.name,
               protocol: body.protocol,
@@ -250,7 +292,7 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
         if (target.protocol === 'local') {
           return reply.code(400).send({ error: 'a Local Hosting target is published via the Publish action, not deployed here' });
         }
-        assertDeployHostAllowed(target.host!);
+        assertDeployHostAllowed(deployHostOf(target));
         // Build the site FRESH (build-at-deploy-time — no prior publish needed); a build failure
         // (bad route graph / json_data URL) is author-correctable → 409.
         let dir: string;
@@ -263,11 +305,14 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
           throw err;
         }
         try {
-          const result = await deploySite(dir, targetToConfig(target, encryptionKey));
+          const result =
+            target.protocol === 'git'
+              ? await deployGit(dir, targetToGitConfig(target, encryptionKey))
+              : await deploySite(dir, targetToConfig(target, encryptionKey));
           return reply.send({ deployed: result });
         } catch (err) {
           app.log.error(
-            { host: target.host, protocol: target.protocol, errMsg: err instanceof Error ? err.message : String(err) },
+            { host: deployHostOf(target), protocol: target.protocol, errMsg: err instanceof Error ? err.message : String(err) },
             'saved-target deploy failed',
           );
           return reply.code(502).send({ error: 'deploy failed: could not connect or transfer to the target' });
@@ -298,7 +343,7 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
         if (target.protocol === 'local') {
           return reply.code(400).send({ error: 'a Local Hosting target is published via the Publish action, not deployed here' });
         }
-        assertDeployHostAllowed(target.host!);
+        assertDeployHostAllowed(deployHostOf(target));
         // Build the site FRESH before hijacking, so a build error is a normal JSON 409 (not an SSE frame).
         let dir: string;
         try {
@@ -309,9 +354,14 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
           }
           throw err;
         }
+        // Stream the transport: a git push, or an FTP/SFTP upload. Each forwards its progress events.
+        const run =
+          target.protocol === 'git'
+            ? (onProgress: (e: unknown) => void) => deployGit(dir, targetToGitConfig(target, encryptionKey), (p) => onProgress(p))
+            : (onProgress: (e: unknown) => void) => deploySite(dir, targetToConfig(target, encryptionKey), undefined, (p) => onProgress(p));
         try {
           // All checks passed → hijack + stream to completion (lock held until the stream ends).
-          await streamDeploy(reply, dir, targetToConfig(target, encryptionKey), app.log);
+          await streamDeploy(reply, run, { host: deployHostOf(target), protocol: target.protocol }, app.log);
         } finally {
           await rm(dir, { recursive: true, force: true });
         }

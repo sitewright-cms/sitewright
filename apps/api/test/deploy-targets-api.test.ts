@@ -187,6 +187,50 @@ describe('saved deploy targets', () => {
     expect(dep.statusCode).toBe(400);
   });
 
+  it('creates a git deploy target (repoUrl/branch, token encrypted) and deploys it (build → push)', async () => {
+    const { t, projectId } = await setup('git@acme.test');
+    const base = `/projects/${projectId}`;
+    const cookies = { sw_session: t };
+    const create = await app.inject({
+      method: 'POST',
+      url: `${base}/deploy-targets`,
+      cookies,
+      payload: { name: 'GitHub Pages', protocol: 'git', repoUrl: 'https://allowed.example.com/acme/site.git', branch: 'gh-pages', token: 'ghp_super_secret_token' },
+    });
+    expect(create.statusCode).toBe(201);
+    const view = (create.json() as { target: Record<string, unknown> }).target;
+    expect(view.protocol).toBe('git');
+    expect(view.repoUrl).toBe('https://allowed.example.com/acme/site.git');
+    expect(view.branch).toBe('gh-pages');
+    expect(view).not.toHaveProperty('secret');
+    expect(view).not.toHaveProperty('token');
+    expect(create.body).not.toContain('ghp_super_secret_token'); // the token never leaks
+    // Deploy: the route BUILDS the site fresh, then attempts the git push — which fails on the bogus
+    // (non-resolving) host → a generic 502, distinct from the 400 a local target would get.
+    const dep = await app.inject({ method: 'POST', url: `${base}/deploy-targets/${String(view.id)}/deploy`, cookies });
+    expect(dep.statusCode).toBe(502);
+    expect(dep.body).not.toContain('ghp_super_secret_token');
+  }, 30_000);
+
+  it('rejects a git target missing repoUrl/branch/token (400)', async () => {
+    const { t, projectId } = await setup('git2@acme.test');
+    const cookies = { sw_session: t };
+    const bad = await app.inject({ method: 'POST', url: `/projects/${projectId}/deploy-targets`, cookies, payload: { name: 'X', protocol: 'git', branch: 'gh-pages' } });
+    expect(bad.statusCode).toBe(400);
+  });
+
+  it('rejects a git repoUrl that embeds credentials (400 — token belongs in the token field)', async () => {
+    const { t, projectId } = await setup('git3@acme.test');
+    const cookies = { sw_session: t };
+    const bad = await app.inject({
+      method: 'POST',
+      url: `/projects/${projectId}/deploy-targets`,
+      cookies,
+      payload: { name: 'X', protocol: 'git', repoUrl: 'https://ghp_leak@allowed.example.com/a/b.git', branch: 'gh-pages', token: 'ghp_x' },
+    });
+    expect(bad.statusCode).toBe(400);
+  });
+
   it('the streaming deploy builds first: a bad route graph is a JSON 409 before hijacking', async () => {
     const { t, projectId } = await setup('a@acme.test');
     const cookies = { sw_session: t };

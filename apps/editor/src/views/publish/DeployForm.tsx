@@ -5,15 +5,18 @@ import { useDialogs } from '../ui/Dialogs';
 import { glassInput, primaryButton, ghostButton, dangerButton } from '../../theme';
 import { DeployModal } from './DeployModal';
 
-const PROTOCOLS: ReadonlyArray<{ value: DeployConfig['protocol']; label: string }> = [
+/** The transports the form can configure — `git` commits the built site to a branch of a repo. */
+type FormProtocol = 'ftp' | 'ftps' | 'sftp' | 'git';
+const PROTOCOLS: ReadonlyArray<{ value: FormProtocol; label: string }> = [
   { value: 'ftp', label: 'FTP' },
   { value: 'ftps', label: 'FTPS' },
   { value: 'sftp', label: 'SFTP' },
+  { value: 'git', label: 'Git (push to a branch)' },
 ];
 
-/** Deploy the published site to an external FTP/FTPS/SFTP target (ad-hoc or saved). */
+/** Configure an external deploy target: FTP/FTPS/SFTP (ad-hoc or saved) or a git push (saved). */
 export function DeployForm({ project }: { project: Project }) {
-  const [protocol, setProtocol] = useState<DeployConfig['protocol']>('sftp');
+  const [protocol, setProtocol] = useState<FormProtocol>('sftp');
   const [host, setHost] = useState('');
   const [port, setPort] = useState('');
   const [user, setUser] = useState('');
@@ -23,6 +26,10 @@ export function DeployForm({ project }: { project: Project }) {
   const [passphrase, setPassphrase] = useState('');
   const [remoteDir, setRemoteDir] = useState('/');
   const [fingerprint, setFingerprint] = useState('');
+  // git fields
+  const [repoUrl, setRepoUrl] = useState('');
+  const [branch, setBranch] = useState('gh-pages');
+  const [gitToken, setGitToken] = useState('');
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<string | null>(null);
@@ -32,6 +39,7 @@ export function DeployForm({ project }: { project: Project }) {
   const { confirm, dialog } = useDialogs();
   // SFTP key auth is only offered for SFTP; FTP/FTPS are password-only.
   const useKey = protocol === 'sftp' && authMethod === 'key';
+  const isGit = protocol === 'git';
 
   async function loadTargets() {
     try {
@@ -70,7 +78,7 @@ export function DeployForm({ project }: { project: Project }) {
       return null;
     }
     return {
-      protocol,
+      protocol: protocol as DeployConfig['protocol'], // buildConfig is only called for FTP/FTPS/SFTP
       host,
       user,
       // Either password auth, or SFTP private-key auth (key contents + optional passphrase).
@@ -97,6 +105,7 @@ export function DeployForm({ project }: { project: Project }) {
 
   async function deployNow(e: FormEvent) {
     e.preventDefault();
+    if (isGit) return; // git has no ad-hoc deploy — it is saved, then deployed from the header
     const config = buildConfig();
     if (!config) return;
     await run(
@@ -106,12 +115,35 @@ export function DeployForm({ project }: { project: Project }) {
   }
 
   async function saveTarget() {
-    const config = buildConfig();
-    if (!config) return;
     if (!name.trim()) {
       setError('Give the target a name to save it');
       return;
     }
+    if (isGit) {
+      if (!repoUrl.trim() || !branch.trim() || !gitToken.trim()) {
+        setError('Repository URL, branch and an access token are required for a git target');
+        return;
+      }
+      await run(
+        () =>
+          api.createDeployTarget(project.id, {
+            name: name.trim(),
+            protocol: 'git',
+            repoUrl: repoUrl.trim(),
+            branch: branch.trim(),
+            token: gitToken.trim(),
+          }),
+        () => {
+          setResult('Git target saved — deploy it from the header.');
+          setName('');
+          setGitToken('');
+          void loadTargets();
+        },
+      );
+      return;
+    }
+    const config = buildConfig();
+    if (!config) return;
     await run(
       () => api.createDeployTarget(project.id, { ...config, name: name.trim() }),
       () => {
@@ -134,7 +166,7 @@ export function DeployForm({ project }: { project: Project }) {
               <li key={t.id} className="flex items-center gap-2 text-sm">
                 <span className="font-medium text-slate-800">{t.name}</span>
                 <span className="text-xs text-slate-400">
-                  {t.protocol === 'local' ? 'Local Hosting' : `${t.protocol.toUpperCase()}@${t.host ?? ''}`}
+                  {t.protocol === 'local' ? 'Local Hosting' : t.protocol === 'git' ? `Git · ${t.branch ?? ''}` : `${t.protocol.toUpperCase()}@${t.host ?? ''}`}
                 </span>
                 {/* A `local` target is published via the header's Publish action, not the deploy transport. */}
                 {t.protocol !== 'local' && (
@@ -152,7 +184,7 @@ export function DeployForm({ project }: { project: Project }) {
                   aria-label={`Delete target ${t.name}`}
                   onClick={async () => {
                     const where =
-                      t.protocol === 'local' ? 'Local Hosting' : `${t.protocol.toUpperCase()}@${t.host ?? ''}`;
+                      t.protocol === 'local' ? 'Local Hosting' : t.protocol === 'git' ? `Git · ${t.branch ?? ''}` : `${t.protocol.toUpperCase()}@${t.host ?? ''}`;
                     const ok = await confirm({
                       title: 'Delete deploy target',
                       message: `Delete the saved deploy target "${t.name}" (${where})? This cannot be undone.`,
@@ -177,7 +209,7 @@ export function DeployForm({ project }: { project: Project }) {
         <div className="flex flex-wrap items-end gap-2">
           <label className="flex flex-col text-xs text-slate-500">
             Protocol
-            <select aria-label="Deploy protocol" className={field} value={protocol} onChange={(e) => setProtocol(e.target.value as DeployConfig['protocol'])}>
+            <select aria-label="Deploy protocol" className={field} value={protocol} onChange={(e) => setProtocol(e.target.value as FormProtocol)}>
               {PROTOCOLS.map((p) => (
                 <option key={p.value} value={p.value}>
                   {p.label}
@@ -185,33 +217,52 @@ export function DeployForm({ project }: { project: Project }) {
               ))}
             </select>
           </label>
-          <label className="flex flex-col text-xs text-slate-500">
-            Host
-            <input aria-label="Deploy host" className={field} value={host} onChange={(e) => setHost(e.target.value)} required />
-          </label>
-          <label className="flex w-20 flex-col text-xs text-slate-500">
-            Port
-            <input aria-label="Deploy port" type="number" min={1} max={65535} className={field} value={port} onChange={(e) => setPort(e.target.value)} placeholder="auto" />
-          </label>
-          <label className="flex flex-col text-xs text-slate-500">
-            User
-            <input aria-label="Deploy user" className={field} value={user} onChange={(e) => setUser(e.target.value)} required />
-          </label>
-          {!useKey && (
-            <label className="flex flex-col text-xs text-slate-500">
-              Password
-              <input aria-label="Deploy password" type="password" className={field} value={password} onChange={(e) => setPassword(e.target.value)} required={!useKey} />
-            </label>
+          {isGit ? (
+            <>
+              <label className="flex flex-col text-xs text-slate-500">
+                Repository URL
+                <input aria-label="Git repository URL" className={field} value={repoUrl} onChange={(e) => setRepoUrl(e.target.value)} placeholder="https://github.com/you/repo.git" />
+              </label>
+              <label className="flex w-32 flex-col text-xs text-slate-500">
+                Branch
+                <input aria-label="Git branch" className={field} value={branch} onChange={(e) => setBranch(e.target.value)} placeholder="gh-pages" />
+              </label>
+              <label className="flex flex-col text-xs text-slate-500">
+                Access token
+                <input aria-label="Git access token" type="password" className={field} value={gitToken} onChange={(e) => setGitToken(e.target.value)} placeholder="ghp_… (HTTPS token)" />
+              </label>
+            </>
+          ) : (
+            <>
+              <label className="flex flex-col text-xs text-slate-500">
+                Host
+                <input aria-label="Deploy host" className={field} value={host} onChange={(e) => setHost(e.target.value)} required />
+              </label>
+              <label className="flex w-20 flex-col text-xs text-slate-500">
+                Port
+                <input aria-label="Deploy port" type="number" min={1} max={65535} className={field} value={port} onChange={(e) => setPort(e.target.value)} placeholder="auto" />
+              </label>
+              <label className="flex flex-col text-xs text-slate-500">
+                User
+                <input aria-label="Deploy user" className={field} value={user} onChange={(e) => setUser(e.target.value)} required />
+              </label>
+              {!useKey && (
+                <label className="flex flex-col text-xs text-slate-500">
+                  Password
+                  <input aria-label="Deploy password" type="password" className={field} value={password} onChange={(e) => setPassword(e.target.value)} required={!useKey} />
+                </label>
+              )}
+              <label className="flex flex-col text-xs text-slate-500">
+                Remote dir
+                <input aria-label="Deploy remote directory" className={field} value={remoteDir} onChange={(e) => setRemoteDir(e.target.value)} />
+              </label>
+              <button type="submit" disabled={busy} className={`${primaryButton} disabled:opacity-50`}>
+                {busy ? 'Working…' : 'Deploy'}
+              </button>
+            </>
           )}
-          <label className="flex flex-col text-xs text-slate-500">
-            Remote dir
-            <input aria-label="Deploy remote directory" className={field} value={remoteDir} onChange={(e) => setRemoteDir(e.target.value)} />
-          </label>
-          <button type="submit" disabled={busy} className={`${primaryButton} disabled:opacity-50`}>
-            {busy ? 'Working…' : 'Deploy'}
-          </button>
         </div>
-        {protocol === 'sftp' && (
+        {!isGit && protocol === 'sftp' && (
           <>
             <label className="flex flex-col text-xs text-slate-500">
               Authentication

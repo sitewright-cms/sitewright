@@ -19,6 +19,9 @@ const cookieSecret = process.env.COOKIE_SECRET;
 const isProduction = process.env.NODE_ENV === 'production';
 const mediaRoot = resolve(process.env.MEDIA_ROOT ?? './data/media');
 const publishRoot = resolve(process.env.PUBLISH_ROOT ?? './data/sites');
+// Ephemeral live-preview draft builds (members-only, rebuilt on change). Kept apart from the
+// published artifact so a draft can never collide with a deployable build.
+const previewRoot = resolve(process.env.PREVIEW_ROOT ?? './data/preview');
 
 // A signing secret is mandatory in production; refuse to start without one.
 if (isProduction && !cookieSecret) {
@@ -142,6 +145,8 @@ await runMigrations(db);
 await mkdir(mediaRoot, { recursive: true });
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- trusted startup env path
 await mkdir(publishRoot, { recursive: true });
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- trusted startup env path
+await mkdir(previewRoot, { recursive: true });
 
 const app = await createApp({
   db,
@@ -151,6 +156,7 @@ const app = await createApp({
   secureCookies: process.env.COOKIE_SECURE === 'true',
   mediaRoot,
   publishRoot,
+  previewRoot,
   trustProxy,
   encryptionKey,
   // WebAuthn RP overrides for deployments behind a proxy (default: derived from the request host).

@@ -18,9 +18,11 @@ import { ProjectSelectorModal } from './views/ProjectSelectorModal';
 import { NewProjectModal } from './views/NewProjectModal';
 import { AcceptInvite } from './views/AcceptInvite';
 import { LivePreview } from './views/LivePreview';
+import { SitePreview } from './views/SitePreview';
 import { UpdateBanner } from './views/UpdateBanner';
 import { BrandLogo } from './views/ui/BrandLogo';
 import { parseLiveTarget } from './lib/live-target';
+import { parsePreviewTarget } from './lib/preview-target';
 import { gradientSurface, gradientHover } from './theme';
 import { SkeletonList } from './views/ui/Skeleton';
 import { installRipple } from './lib/ripple';
@@ -33,6 +35,8 @@ import { installRipple } from './lib/ripple';
 export function App() {
   const liveTarget = parseLiveTarget(window.location.search);
   if (liveTarget) return <LivePreview target={liveTarget} />;
+  const previewTarget = parsePreviewTarget(window.location.search);
+  if (previewTarget) return <SitePreview target={previewTarget} />;
   const params = new URLSearchParams(window.location.search);
   return (
     <MainApp

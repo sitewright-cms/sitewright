@@ -59,30 +59,41 @@ describe('PublishBar', () => {
     expect(btn).toHaveAttribute('title', 'You have unpublished changes');
   });
 
-  it('becomes a PREVIEW link to the published site when everything is published', async () => {
+  it('always offers a Preview button that opens the live-preview surface', async () => {
+    publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: true });
+    const openSpy = vi.fn();
+    vi.stubGlobal('open', openSpy);
+    render(<PublishBar project={project} />);
+    const btn = await screen.findByRole('button', { name: 'Preview the live site' });
+    btn.click();
+    expect(openSpy).toHaveBeenCalledWith(expect.stringContaining('?preview=p'), '_blank', 'noopener');
+    vi.unstubAllGlobals();
+  });
+
+  it('becomes a "View live" link to the published site when everything is published', async () => {
     publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false });
     render(<PublishBar project={project} />);
-    const preview = await screen.findByRole('link', { name: /Preview/ });
-    expect(preview).toHaveAttribute('href', '/sites/acme/');
+    const view = await screen.findByRole('link', { name: /View the published site/ });
+    expect(view).toHaveAttribute('href', '/sites/acme/');
     expect(screen.queryByRole('button', { name: 'Publish' })).toBeNull();
   });
 
-  it('appends the preview token to the View/Preview link when the site is token-gated', async () => {
+  it('appends the preview token to the View-live link when the site is token-gated', async () => {
     publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false });
     getSettings.mockResolvedValueOnce({ item: { website: { previewToken: 'tok_abcdefgh12345678' } } });
     render(<PublishBar project={project} />);
-    const preview = await screen.findByRole('link', { name: /Preview/ });
-    await waitFor(() => expect(preview).toHaveAttribute('href', '/sites/acme/?token=tok_abcdefgh12345678'));
+    const view = await screen.findByRole('link', { name: /View the published site/ });
+    await waitFor(() => expect(view).toHaveAttribute('href', '/sites/acme/?token=tok_abcdefgh12345678'));
   });
 
-  it('switches Publish → Preview after a successful publish', async () => {
+  it('switches Publish → View live after a successful publish', async () => {
     publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: true });
     publish.mockResolvedValue({ release, url: '/sites/acme/', dirty: false });
     render(<PublishBar project={project} />);
     const btn = await screen.findByRole('button', { name: 'Publish' });
     btn.click();
     await waitFor(() => expect(publish).toHaveBeenCalledWith('p'));
-    expect(await screen.findByRole('link', { name: /Preview/ })).toHaveAttribute('href', '/sites/acme/');
+    expect(await screen.findByRole('link', { name: /View the published site/ })).toHaveAttribute('href', '/sites/acme/');
   });
 
   it('surfaces a publish failure as an error toast', async () => {
@@ -108,7 +119,7 @@ describe('PublishBar', () => {
     vi.stubGlobal('EventSource', CtrlEventSource);
     publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false });
     render(<PublishBar project={project} />);
-    await screen.findByRole('link', { name: /Preview/ }); // published + clean → Preview
+    await screen.findByRole('link', { name: /View the published site/ }); // published + clean → View live
     act(() => listeners.forEach((cb) => cb({ data: JSON.stringify({ kind: 'page', entityId: 'home', op: 'put', actor: 'user' }) }))); // an edit lands
     expect(await screen.findByRole('button', { name: 'Publish' })).toBeInTheDocument();
     vi.unstubAllGlobals();
@@ -125,7 +136,7 @@ describe('PublishBar', () => {
     vi.stubGlobal('EventSource', CtrlEventSource);
     publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false });
     render(<PublishBar project={project} />);
-    await screen.findByRole('link', { name: /Preview/ });
+    await screen.findByRole('link', { name: /View the published site/ });
     // No agents → the indicator nudges that one can be connected.
     expect(await screen.findByText('Connect an agent')).toBeInTheDocument();
     const fire = (actor: string) =>
@@ -159,7 +170,7 @@ describe('PublishBar', () => {
     vi.stubGlobal('EventSource', CtrlEventSource);
     publishStatus.mockResolvedValue({ release, url: '/sites/acme/', dirty: false });
     render(<PublishBar project={project} />);
-    await screen.findByRole('link', { name: /Preview/ });
+    await screen.findByRole('link', { name: /View the published site/ });
     vi.useFakeTimers();
     act(() => listeners.forEach((cb) => cb({ data: JSON.stringify({ kind: 'page', entityId: 'home', op: 'put', actor: 'agent' }) })));
     expect(screen.getByText('Agent working…')).toBeInTheDocument();

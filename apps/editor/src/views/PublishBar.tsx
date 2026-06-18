@@ -3,6 +3,7 @@ import { MoreHorizontal, ExternalLink } from 'lucide-react';
 import { api, eventsUrl, type Project, type Release } from '../api';
 import { AgentDetailsModal } from './AgentDetailsModal';
 import { AgentIndicator } from './AgentIndicator';
+import { buildPreviewUrl } from '../lib/preview-target';
 import { useToast } from './ui/Toast';
 
 /** Cloud-upload glyph for the publish action. */
@@ -199,17 +200,30 @@ export function PublishBar({
         count={connectionCount}
         onClick={() => setAgentModalOpen(true)}
       />
+      {/* Always-on Preview: browse the live site with the latest (saved) changes — no publish needed.
+          Opens the whole-site draft preview surface (?preview=…) in a new tab. */}
+      <button
+        onClick={() =>
+          window.open(buildPreviewUrl(window.location.origin, window.location.pathname, project.id), '_blank', 'noopener')
+        }
+        title="Preview the live site with your latest changes — no publish needed"
+        aria-label="Preview the live site"
+        className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-bold text-slate-700 transition hover:border-indigo-400 hover:text-indigo-700"
+      >
+        <PreviewIcon />
+        Preview
+      </button>
       {showPreview && url ? (
           <a
             href={viewUrl}
             target="_blank"
             rel="noreferrer"
             title="View your published site"
-            aria-label="Preview the published site"
+            aria-label="View the published site"
             className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-bold text-slate-700 transition hover:border-indigo-400 hover:text-indigo-700"
           >
-            <PreviewIcon />
-            Preview
+            <ExternalLink className="h-4 w-4" />
+            View live
           </a>
         ) : (
           <button

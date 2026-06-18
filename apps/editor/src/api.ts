@@ -91,6 +91,18 @@ export function eventsUrl(projectId: string): string {
 }
 
 /**
+ * Absolute URL of a page within the live whole-site PREVIEW — the always-on DRAFT browse surface
+ * (members-only, rebuilt on change, no publish required). `path` is a route slug (`about`,
+ * `de/leistungen`), '' for the home page; a trailing slash is appended so the page's relative
+ * assets/links resolve against the right base (avoiding a canonicalizing redirect).
+ */
+export function previewSiteUrl(projectId: string, path = ''): string {
+  const clean = path.replace(/^\/+/, '');
+  const suffix = clean === '' || clean.endsWith('/') ? '' : '/';
+  return `${BASE}/projects/${projectId}/preview-site/${clean}${suffix}`;
+}
+
+/**
  * URL of a single snippet's server-rendered preview document — the snippet rendered with the
  * project's brand styling + resolvable partials, served under an opaque `sandbox` CSP. Loaded via
  * the hover-preview iframe's `src` (so it gets its own CSP, like {@link previewDocUrl}).
@@ -607,6 +619,16 @@ export const api = {
   /** Disconnect one connection (revokes a PAT, or fully severs an OAuth session for the project). */
   disconnectAgent: (projectId: string, id: string) =>
     request<void>('DELETE', `/projects/${projectId}/agent-connections/${encodeURIComponent(id)}`),
+  /**
+   * Resolve a changed page entity (a content id from the SSE stream) to its preview ROUTE, so the
+   * live-preview surface can auto-navigate to the page an agent just created/edited. `{ path: null }`
+   * for a non-page entity or a routeless page (the surface then just reloads the current page).
+   */
+  previewLocate: (projectId: string, entity: string) =>
+    request<{ path: string | null }>('GET', `/projects/${projectId}/preview-locate?entity=${encodeURIComponent(entity)}`),
+  /** Member-safe agent presence COUNT for the preview surface's pill (no connection details). */
+  agentPresence: (projectId: string) =>
+    request<{ connected: number }>('GET', `/projects/${projectId}/agent-presence`),
   createApiKey: (projectId: string, body: CreateApiKeyBody) =>
     request<{ token: string; key: ApiKeyView }>('POST', `/projects/${projectId}/api-keys`, body),
   deleteApiKey: (projectId: string, id: string) =>

@@ -198,6 +198,19 @@ export interface BuildSiteOptions {
   globalTemplates?: Template[];
   /** Minify each rendered page's HTML before writing (the `website.minifyHtml` publish option). */
   minifyHtml?: boolean;
+  /**
+   * Include `draft` pages too. The PUBLISHED build excludes drafts; the live PREVIEW
+   * browse-surface sets this so an author/agent sees work-in-progress pages before they
+   * are marked `published`. Off (published-only) by default.
+   */
+  includeDrafts?: boolean;
+  /**
+   * First-party runtime injected INLINE into every rendered page (preview only). The live
+   * preview's parent-bridge reports the iframe's location to the editor shell so it can
+   * auto-reload / auto-navigate on a content change. Empty in a published build — the
+   * artifact stays clean and self-contained.
+   */
+  previewRuntime?: string;
 }
 
 /** The published directory that holds each project's bundled asset binaries. */
@@ -300,7 +313,10 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
   // and the sitemap all see only published pages. Draft *collection pages* are
   // excluded here too (collectionRoutes iterates this filtered set); draft
   // *collection entries* are filtered separately inside collectionRoutes.
-  const pubBundle: ProjectBundle = { ...bundle, pages: publishedPages(bundle.pages) };
+  const pubBundle: ProjectBundle = {
+    ...bundle,
+    pages: opts.includeDrafts ? [...bundle.pages] : publishedPages(bundle.pages),
+  };
   let routes;
   try {
     routes = allRoutes(pubBundle);
@@ -730,6 +746,9 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           scripts: pageScripts.length > 0 ? pageScripts : undefined,
           // SYSTEM i18n dict for the component runtimes — only when interactive components ship.
           systemI18n: usesComponents && components.js ? systemI18nData(pageT) : undefined,
+          // PREVIEW only: the parent-bridge runtime (reports this iframe's location to the editor
+          // shell for auto-reload / auto-navigate). First-party + audited; never set in a publish.
+          inlineScripts: opts.previewRuntime ? [opts.previewRuntime] : undefined,
         });
         // Rewrite editor media URLs (`/media/<projectSlug>/<assetId>/…`) to the page-relative
         // bundled path (`<siteRoot>_assets/<assetId>/…`) — across ANY attribute (src, data-src,

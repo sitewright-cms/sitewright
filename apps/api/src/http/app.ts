@@ -25,6 +25,7 @@ import {
   passwordSchema,
   websiteEffectsClasses,
   websiteEffectsCustomCode,
+  isLinkPage,
   type CorporateIdentity,
   type Entry,
   type FileAsset,
@@ -90,6 +91,7 @@ import {
   pagesInLocale,
   pagePath,
   pagesById,
+  pathToSlug,
   childrenOf,
   parentPageView,
   pagesContext,
@@ -117,6 +119,7 @@ import { fetchJsonData, JsonDataError } from '../publish/json-data.js';
 import { InProcessBuildRunner, type BuildRunner } from '../publish/runner.js';
 import { AiProviderError, type AiProvider } from '../ai/provider.js';
 import { PublishStore } from '../publish/store.js';
+import { PREVIEW_SITE_RUNTIME_JS } from './preview-site-runtime.js';
 import { PreviewStore } from './preview-store.js';
 import { PREVIEW_BRIDGE_JS } from './preview-bridge.js';
 import { archiveSite, deploySite, DeployConfigSchema } from '../publish/adapters.js';
@@ -590,6 +593,13 @@ export interface AppOptions {
   /** Absolute path to the published-sites root; enables publish/serve when set. */
   publishRoot?: string;
   /**
+   * Absolute path to the live-PREVIEW draft-sites root; enables the always-on whole-site
+   * preview (`/projects/:id/preview-site/*`) when set. Separate from `publishRoot`: these
+   * are ephemeral, rebuilt-on-change, members-only draft builds (include drafts), never served
+   * publicly. Distinct dir so a draft build never collides with the deployable artifact.
+   */
+  previewRoot?: string;
+  /**
    * Trust `X-Forwarded-For` so `req.ip` is the real client IP behind a reverse
    * proxy (required for correct per-IP rate limiting). `true`, or a CIDR/list of
    * trusted proxy addresses. Leave unset for direct connections.
@@ -674,6 +684,17 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   await seedGlobalLibrary(db, contentRepo);
   const mediaStorage = opts.mediaRoot ? new MediaStorage(opts.mediaRoot) : undefined;
   const publishStore = opts.publishRoot ? new PublishStore(opts.publishRoot) : undefined;
+  // The live-preview draft-site store: same on-disk layout as a published site (so the
+  // proven path-safe serving logic is reused verbatim), but a separate root holding
+  // ephemeral, rebuilt-on-change DRAFT builds served only to authenticated members.
+  const previewSiteStore = opts.previewRoot ? new PublishStore(opts.previewRoot) : undefined;
+  // Live-preview draft-build state, keyed by project id: the content version currently built,
+  // any in-flight build (so concurrent requests coalesce onto one), and the last failed
+  // version+time (a short cooldown so a persistently-broken project can't spin a fresh build on
+  // every request). Defined unconditionally + cleared on project delete so they can't leak.
+  const previewBuiltVersion = new Map<string, string>();
+  const previewBuilds = new Map<string, Promise<void>>();
+  const previewBuildFail = new Map<string, { version: string; at: number }>();
   // Short-lived store of rendered preview docs, so they can be served (via a token
   // URL) under a `Content-Security-Policy: sandbox` for true WYSIWYG interactivity.
   const previewStore = new PreviewStore();
@@ -1669,8 +1690,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           { what, errCode: (err as NodeJS.ErrnoException).code, errMsg: err instanceof Error ? err.message : String(err) },
           'project asset cleanup failed on delete',
         );
-      // Both the published site and media storage are keyed by the project's (immutable) slug.
+      // The published site, the ephemeral preview build, and media storage are all keyed by the
+      // project's (immutable) slug.
       await publishStore?.removeProject(project.slug).catch(onCleanupError('publish'));
+      await previewSiteStore?.removeProject(project.slug).catch(onCleanupError('preview'));
+      // Drop the in-memory preview-build bookkeeping for this project so the maps can't leak.
+      previewBuiltVersion.delete(project.id);
+      previewBuilds.delete(project.id);
+      previewBuildFail.delete(project.id);
       await mediaStorage?.removeProject(project.slug).catch(onCleanupError('media'));
       return reply.code(204).send();
     },
@@ -2763,6 +2790,48 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     );
   }
 
+  // Assembles the inputs a static build needs from the project's current DB content — shared by
+  // the published build (`POST /publish`) and the live-preview DRAFT build, so the two always
+  // render from an identical bundle (no drift). The publish-time JSON snapshot is fetched by each
+  // caller (different error policy: publish 409s on a bad URL; preview skips best-effort).
+  async function assembleBuildInputs(
+    ctx: ProjectContext,
+    project: Awaited<ReturnType<ProjectRepository['get']>>,
+  ): Promise<{
+    bundle: ProjectBundle;
+    media: MediaAsset[];
+    hcaptchaSiteKey: string | undefined;
+    snippets: Record<string, string>;
+    globalTemplates: Template[];
+  }> {
+    const exp = await contentRepo.exportBundle(ctx, project);
+    // Per-locale page overrides + form definitions are publish INPUTS (like media), not portable
+    // project artifacts — loaded here rather than in the export bundle.
+    const translations = (await contentRepo.list(ctx, 'translation')) as PageTranslation[];
+    const forms = (await contentRepo.list(ctx, 'form')) as Form[];
+    const bundle: ProjectBundle = {
+      // ExportBundle.project omits formatVersion (a format concern, not a DB field); re-add it.
+      project: { formatVersion: exp.formatVersion, ...exp.project },
+      pages: exp.pages,
+      templates: exp.templates,
+      datasets: exp.datasets,
+      entries: exp.entries,
+      translations,
+      forms,
+    };
+    // `media` includes `kind:'font'` assets — copyMedia bundles their faces (zero font-CDN refs).
+    const media = mediaStorage ? ((await contentRepo.list(ctx, 'media')) as MediaAsset[]) : [];
+    const hcaptchaSiteKey = (await instanceSettingsRepo.getStored()).hcaptcha?.siteKey;
+    // Reusable `{{> compose}}` partials: built-in globals + the project's own (project wins).
+    const snippets = {
+      ...(await globalSnippetPartials(contentRepo)),
+      ...Object.fromEntries(((await contentRepo.list(ctx, 'snippet')) as Snippet[]).map((s) => [s.name, s.source])),
+    };
+    // The runtime GLOBAL template library so a `global:<id>` ref resolves to the admin-edited source.
+    const globalTemplates = await listGlobalTemplates(contentRepo);
+    return { bundle, media, hcaptchaSiteKey, snippets, globalTemplates };
+  }
+
   // ---- Publishing (build a static site + serve it) ----
   if (publishStore) {
     const store = publishStore;
@@ -2784,30 +2853,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         }
         activePublishes.add(project.id);
         try {
-          const exp = await contentRepo.exportBundle(ctx, project);
-          // Per-locale page overrides (multilingual). Loaded here (not in the
-          // export bundle) — like media, a publish input rather than a portable
-          // project artifact in v1.
-          const translations = (await contentRepo.list(ctx, 'translation')) as PageTranslation[];
-          // Form definitions — like translations, a publish input (the renderer emits
-          // the public form; the recipient is never written to the exported HTML).
-          const forms = (await contentRepo.list(ctx, 'form')) as Form[];
-          const bundle: ProjectBundle = {
-            // ExportBundle.project omits formatVersion (it's a format concern, not a
-            // DB field); re-add it to satisfy the ProjectBundle.project (Project) type.
-            project: { formatVersion: exp.formatVersion, ...exp.project },
-            pages: exp.pages,
-            templates: exp.templates,
-            datasets: exp.datasets,
-            entries: exp.entries,
-            translations,
-            forms,
-          };
-          // `media` includes `kind:'font'` assets — copyMedia bundles their faces, so a published
-          // page self-hosts its fonts (zero font-CDN references) via the normal media path.
-          const media = mediaStorage ? ((await contentRepo.list(ctx, 'media')) as MediaAsset[]) : [];
-          // Instance hCaptcha site key (public) — baked into forms that require it.
-          const hcaptchaSiteKey = (await instanceSettingsRepo.getStored()).hcaptcha?.siteKey;
+          const { bundle, media, hcaptchaSiteKey, snippets, globalTemplates } = await assembleBuildInputs(ctx, project);
           // Publish-time JSON snapshot: fetch + parse `website.jsonDataUrl` in THIS (networked) process
           // — SSRF-guarded — then pass the parsed value into the build job. The `--network none` worker
           // and the exported static site never fetch anything. A bad URL fails the publish (author-fixable).
@@ -2822,12 +2868,6 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
                 .send({ error: err instanceof JsonDataError ? err.message : 'JSON data fetch failed' });
             }
           }
-          // Reusable Handlebars partials a source page can {{> compose}} (same as the editor preview):
-          // built-in globals + the project's own (project wins on a name collision).
-          const snippets = {
-            ...(await globalSnippetPartials(contentRepo)),
-            ...Object.fromEntries(((await contentRepo.list(ctx, 'snippet')) as Snippet[]).map((s) => [s.name, s.source])),
-          };
           const release = await buildRunner.run({
             outDir: store.dirFor(project.slug),
             bundle,
@@ -2838,9 +2878,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             ...(hcaptchaSiteKey ? { hcaptchaSiteKey } : {}),
             ...(jsonData !== undefined ? { jsonData } : {}),
             ...(Object.keys(snippets).length ? { snippets } : {}),
-            // The runtime GLOBAL template library so the worker resolves `global:<id>` refs to the
-            // admin-edited source (the built-in constants are only the boot seed). Always seeded.
-            globalTemplates: await listGlobalTemplates(contentRepo),
+            globalTemplates,
             // The `website.minifyHtml` publish option — minify each page's HTML in the worker.
             ...(bundle.project.website?.minifyHtml ? { minifyHtml: true } : {}),
             // readStored accepts image variant names, raw file names, AND font face names (superset),
@@ -3008,6 +3046,185 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           return reply.redirect(`/sites/${slug}/${safePath}/${query}`, 301);
         }
         return reply.type('text/html').send(html);
+      },
+    );
+  }
+
+  // ---- Live PREVIEW: the always-on, whole-site DRAFT browse surface ----
+  // A members-only render of the project's CURRENT saved content (drafts included), browsable like
+  // a real site (working navigation) with NO publish required. The editor's same-origin SitePreview
+  // shell embeds these pages in a sandboxed iframe and reloads/navigates on the SSE change stream, so
+  // an author or agent sees edits land live. The build is ephemeral + lazy: rebuilt on the first
+  // request after content changes (keyed by the latest-update stamp), then served from disk via the
+  // same path-safe logic as a published site (a distinct root, never served publicly).
+  if (previewSiteStore) {
+    const preview = previewSiteStore;
+    // After a failed build, skip rebuilding the SAME version for this long, so a project stuck in a
+    // broken state (e.g. a bad Handlebars source) can't trigger a fresh build on every request.
+    const PREVIEW_BUILD_COOLDOWN_MS = 3_000;
+
+    async function buildPreviewSite(
+      ctx: ProjectContext,
+      project: Awaited<ReturnType<ProjectRepository['get']>>,
+      version: string,
+    ): Promise<void> {
+      const inputs = await assembleBuildInputs(ctx, project);
+      // Preview is best-effort about the publish-time JSON snapshot: a bad/unreachable source must
+      // never break the live preview (publish, by contrast, 409s so the author fixes it before shipping).
+      let jsonData: unknown;
+      const jsonDataUrl = inputs.bundle.project.website?.jsonDataUrl;
+      if (jsonDataUrl) {
+        try {
+          jsonData = await fetchJsonData(jsonDataUrl);
+        } catch {
+          /* preview tolerates a missing JSON source */
+        }
+      }
+      await buildRunner.run({
+        outDir: preview.dirFor(project.slug),
+        bundle: inputs.bundle,
+        publishedAt: new Date().toISOString(),
+        media: inputs.media,
+        // The two preview-only switches: show work-in-progress drafts, and inject the parent-bridge
+        // runtime so the editor shell can track + auto-navigate the iframe. (No minify — stays readable.)
+        includeDrafts: true,
+        previewRuntime: PREVIEW_SITE_RUNTIME_JS,
+        ...(opts.publicUrl ? { publicBaseUrl: opts.publicUrl } : {}),
+        ...(inputs.hcaptchaSiteKey ? { hcaptchaSiteKey: inputs.hcaptchaSiteKey } : {}),
+        ...(jsonData !== undefined ? { jsonData } : {}),
+        ...(Object.keys(inputs.snippets).length ? { snippets: inputs.snippets } : {}),
+        globalTemplates: inputs.globalTemplates,
+        readMedia: mediaStorage
+          ? (assetId, file) => mediaStorage.readStored(project.slug, assetId, file)
+          : undefined,
+      });
+      previewBuiltVersion.set(project.id, version);
+    }
+
+    // Bring the on-disk draft build up to date before serving a page. A burst of edits during a
+    // build advances the version, so re-check a bounded number of times — eventually consistent
+    // without an unbounded spin under constant editing (the client reloads on the next change anyway).
+    // A build FAILURE stops the loop (and arms the cooldown above) so one bad save can't fan a single
+    // page request into four failed builds; the stale prior build is served until content changes.
+    async function ensurePreviewBuild(
+      ctx: ProjectContext,
+      project: Awaited<ReturnType<ProjectRepository['get']>>,
+    ): Promise<void> {
+      for (let i = 0; i < 4; i++) {
+        const latest = await contentRepo.latestContentUpdate(ctx);
+        const version = latest ? String(latest.getTime()) : 'empty';
+        if (previewBuiltVersion.get(project.id) === version) return;
+        const failed = previewBuildFail.get(project.id);
+        if (failed && failed.version === version && Date.now() - failed.at < PREVIEW_BUILD_COOLDOWN_MS) return;
+        let inflight = previewBuilds.get(project.id);
+        if (!inflight) {
+          inflight = buildPreviewSite(ctx, project, version)
+            .then(() => void previewBuildFail.delete(project.id))
+            .catch((err: unknown) => {
+              previewBuildFail.set(project.id, { version, at: Date.now() });
+              app.log.warn(
+                { projectId: project.id, errMsg: err instanceof Error ? err.message : String(err) },
+                'preview build failed',
+              );
+              throw err;
+            })
+            .finally(() => previewBuilds.delete(project.id));
+          previewBuilds.set(project.id, inflight);
+        }
+        try {
+          await inflight;
+        } catch {
+          // Logged + cooldown armed above; stop retrying this request (serve the prior build / 404).
+          return;
+        }
+      }
+    }
+
+    // Resolve a changed content entity (a page id off the SSE stream) to its preview ROUTE, so the
+    // shell can auto-navigate the iframe to the page an agent just created/edited. Non-page entities
+    // (settings, entries, translations) and routeless pages (link placeholders, collection parents)
+    // → `null`, and the shell simply reloads the current page instead.
+    app.get<{ Params: { projectId: string }; Querystring: { entity?: string } }>(
+      '/projects/:projectId/preview-locate',
+      { config: rl(120) }, // a page-list read per call; the client debounces, so this is generous
+      async (req, reply) => {
+        const { ctx } = await resolveProject(req, 'content:read');
+        const entity = req.query.entity;
+        if (!entity) return reply.send({ path: null });
+        const pages = (await contentRepo.list(ctx, 'page')) as Page[];
+        const byId = pagesById(pages);
+        const page = byId.get(entity);
+        if (!page || isLinkPage(page) || page.collection) return reply.send({ path: null });
+        return reply.send({ path: pathToSlug(pagePath(page, byId)) ?? '' });
+      },
+    );
+
+    // A members-only presence COUNT for the preview surface's agent pill (no connection details —
+    // the owner-only /agent-connections endpoint carries those). Counts live OAuth/MCP sessions +
+    // active PATs; the transient "working" state is derived client-side from the SSE actor tag.
+    app.get<{ Params: { projectId: string } }>(
+      '/projects/:projectId/agent-presence',
+      { config: rl(60) },
+      async (req, reply) => {
+        const { ctx, project } = await resolveProject(req, 'content:read');
+        const sessions = await oauthRepo.listActiveSessions(project.id);
+        const pats = await apiKeysRepo.listAgentConnections(ctx);
+        return reply.send({ connected: sessions.length + pats.length });
+      },
+    );
+
+    // Serve the draft build (path-safe; mirrors `/sites/:slug/*`). Authenticated members only —
+    // no preview-token gate. The HTML doc is sandboxed (opaque origin) so author JS can't reach the
+    // editor session, and same-origin-frameable so the shell can embed it; `no-store` so a reload
+    // always pulls the freshest rebuild. Left on the global request cap (not a tighter per-route rl):
+    // one page view fans out into many asset sub-requests, so a low cap would break rich pages — and
+    // the only expensive work (a rebuild) is already bounded by the version cache + in-flight
+    // coalescing + the failure cooldown above, regardless of request volume.
+    app.get<{ Params: { projectId: string; '*': string } }>(
+      '/projects/:projectId/preview-site/*',
+      async (req, reply) => {
+        const { ctx, project } = await resolveProject(req, 'content:read');
+        const slug = project.slug;
+        const path = req.params['*'] ?? '';
+        // Bundled binary assets under `_assets/` (images inline; everything else download-only).
+        let binary = null;
+        try {
+          binary = await preview.readBinary(slug, path);
+        } catch {
+          /* invalid slug → fall through to the page path / 404 */
+        }
+        if (binary !== null) {
+          reply.header('cache-control', 'no-store').header('x-content-type-options', 'nosniff');
+          if (binary.attachment) reply.header('content-disposition', 'attachment');
+          return reply.type(binary.contentType).send(binary.body);
+        }
+        // Platform text assets (styles.css / runtime bundles) — rebuilt between versions, so no-store.
+        const asset = await preview.readAsset(slug, path);
+        if (asset !== null) {
+          return reply.header('cache-control', 'no-store').type(asset.contentType).send(asset.body);
+        }
+        // A page (HTML) request: bring the draft build up to date, then serve.
+        await ensurePreviewBuild(ctx, project);
+        const html = await preview.readHtml(slug, path);
+        // Unknown path → bare 404.
+        if (html === null) return reply.code(404).send();
+        // Canonicalize an extensionless, slash-less page URL so its page-relative asset/link paths
+        // resolve against the right base (mirrors the /sites redirect).
+        const lastSegment = path.slice(path.lastIndexOf('/') + 1);
+        if (path !== '' && !path.endsWith('/') && !lastSegment.includes('.')) {
+          const q = req.url.indexOf('?');
+          const query = q === -1 ? '' : req.url.slice(q);
+          const safePath = path.replace(/[\r\n\0]/g, '');
+          return reply.redirect(`/projects/${project.id}/preview-site/${safePath}/${query}`, 301);
+        }
+        return reply
+          .header('cache-control', 'no-store')
+          // Sandbox the author content (opaque origin) — scripts run for true WYSIWYG, but can't reach
+          // the editor's same-origin session; forms stay inert (no accidental preview submissions).
+          .header('content-security-policy', 'sandbox allow-scripts')
+          .header('x-frame-options', 'SAMEORIGIN')
+          .type('text/html')
+          .send(html);
       },
     );
   }

@@ -17,7 +17,28 @@ RUN set -eux; \
     apt-get purge -y --auto-remove curl; rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY . .
+
+# --- dependencies + Chromium FIRST, so this heavy layer is CACHED across code-only rebuilds ---
+# node_modules changes only when deps change; copying it before the Chromium install means a plain code
+# change (dist/) no longer re-downloads the ~300MB browser on every deploy.
+COPY --chown=node:node node_modules ./node_modules
+# Headless Chromium for server-side preview screenshots (the MCP `preview_page` tool renders the page so
+# an agent can SEE it). Installed (browser + its apt libraries) into a shared, world-readable path; the
+# API later runs as `node`. Adds ~300MB. Drop this layer (+ the dep above) if screenshots aren't needed.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN apt-get update \
+    && node node_modules/playwright-core/cli.js install --with-deps chromium \
+    && rm -rf /var/lib/apt/lists/*
+
+# --- application artifacts (re-copied each build; cheap layers AFTER the cached Chromium one) ---
+# Only the runtime needs: compiled dist/, the drizzle/ migrations (loaded relative to dist at boot),
+# the editor SPA, and package.json. (If the runtime ever needs another top-level file, add a COPY here.)
+# COPY --chown sets ownership inline, so we skip a slow `chown -R /app` (which would re-scan node_modules
+# on every code change). node_modules above was copied --chown too.
+COPY --chown=node:node dist ./dist
+COPY --chown=node:node drizzle ./drizzle
+COPY --chown=node:node editor ./editor
+COPY --chown=node:node package.json ./
 
 ENV NODE_ENV=production
 # The DB runs in WAL mode, so /data also holds `sitewright.db-wal` (+ `-shm`). BACKUP NOTE: a bare
@@ -29,16 +50,11 @@ ENV PORT=80
 # The editor SPA is copied into the deploy context as ./editor (see deploy step).
 ENV EDITOR_DIST=/app/editor
 
-# Headless Chromium for server-side preview screenshots (the MCP `preview_page` tool renders the page
-# so an agent can SEE it). Installed (browser + its apt libraries) into a shared, world-readable path;
-# the API later runs as `node`. Adds ~300MB. Drop this layer if screenshots aren't needed.
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-RUN apt-get update \
-    && node node_modules/playwright-core/cli.js install --with-deps chromium \
-    && rm -rf /var/lib/apt/lists/*
-
-# Run as the non-root `node` user (present in the base image); own the data dir.
-RUN mkdir -p /data && chown -R node:node /app /data
+# Run as the non-root `node` user (present in the base image). Own /data AND the /app dir itself so the
+# app can create its relative media root (./data/media → /app/data/media) at boot — the COPY'd contents
+# are already node-owned, and a non-recursive chown of these two dirs avoids re-scanning node_modules.
+# (Chromium lives in /ms-playwright, root-owned + world-readable, which node only needs to read.)
+RUN mkdir -p /data && chown node:node /data /app
 USER node
 
 EXPOSE 80

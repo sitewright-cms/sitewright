@@ -90,24 +90,13 @@ describe('publish API', () => {
     expect(zip.rawPayload[1]).toBe(0x4b);
   });
 
-  it('validates deploy config and requires a prior publish', async () => {
+  it('validates deploy config and builds fresh at deploy time (no prior publish required)', async () => {
     const { t, projectId } = await setup('a@acme.test');
     const base = `/projects/${projectId}`;
     const cookies = { sw_session: t };
-
-    // Not published yet → 409 regardless of body.
-    const notPublished = await app.inject({
-      method: 'POST',
-      url: `${base}/publish/deploy`,
-      cookies,
-      payload: { protocol: 'ftp', host: 'h', user: 'u', password: 'p' },
-    });
-    expect(notPublished.statusCode).toBe(409);
-
     await app.inject({ method: 'PUT', url: `${base}/content/page/home`, cookies, payload: homePage });
-    await app.inject({ method: 'POST', url: `${base}/publish`, cookies });
 
-    // Published, but an unknown protocol is a 400.
+    // An unknown protocol is rejected by config validation, before any build/connection → 400.
     const bad = await app.inject({
       method: 'POST',
       url: `${base}/publish/deploy`,
@@ -115,6 +104,16 @@ describe('publish API', () => {
       payload: { protocol: 'telnet', host: 'h', user: 'u', password: 'p' },
     });
     expect(bad.statusCode).toBe(400);
+
+    // A valid config WITHOUT a prior publish: the route now BUILDS fresh then attempts the connection
+    // (build-at-deploy-time). A bogus host can't connect → 502 (the old "publish first" 409 is gone).
+    const fresh = await app.inject({
+      method: 'POST',
+      url: `${base}/publish/deploy`,
+      cookies,
+      payload: { protocol: 'ftp', host: 'nonexistent.invalid', user: 'u', password: 'p' },
+    });
+    expect(fresh.statusCode).toBe(502);
   });
 
   it('forbids exporting another tenant’s archive', async () => {

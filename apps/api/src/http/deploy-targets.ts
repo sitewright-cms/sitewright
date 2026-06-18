@@ -1,11 +1,13 @@
+import { rm } from 'node:fs/promises';
 import { newId } from '../id.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { DeployTargetSchema, type DeployTarget, type EncryptedSecret } from '@sitewright/schema';
 import { encryptSecret, decryptSecret } from '../crypto/secret.js';
 import { deploySite, type DeployConfig, type DeployProgress } from '../publish/adapters.js';
+import { PublishError } from '../publish/build.js';
+import { JsonDataError } from '../publish/json-data.js';
 import type { ContentRepository } from '../repo/content.js';
-import type { PublishStore } from '../publish/store.js';
 import type { ProjectContext } from '../repo/context.js';
 import type { ApiKeyCapability } from '../db/schema.js';
 
@@ -84,12 +86,13 @@ export interface DeployTargetDeps {
     access: ApiKeyCapability | 'session-only',
   ) => Promise<{ ctx: ProjectContext; project: { id: string; slug: string } }>;
   contentRepo: ContentRepository;
-  publishStore?: PublishStore;
   encryptionKey: Buffer;
   /** Per-project deploy lock, shared with the ad-hoc deploy route. */
   activeDeploys: Set<string>;
   assertDeployHostAllowed: (host: string) => void;
   isWriter: (ctx: ProjectContext) => boolean;
+  /** Build the site fresh into a temp dir at deploy time, returning its path (caller removes it). */
+  buildForDeploy: (ctx: ProjectContext, projectId: string) => Promise<string>;
   rl: (max: number) => { rateLimit: { max: number; timeWindow: string } };
 }
 
@@ -202,8 +205,6 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
     async (req, reply) => {
       const { ctx, project } = await resolveProject(req, 'deploy');
       if (!isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
-      const store = deps.publishStore;
-      if (!store) return reply.code(503).send({ error: 'publishing is not configured' });
       // Claim the per-project deploy slot before any async I/O to close the race.
       if (activeDeploys.has(project.id)) {
         return reply.code(409).send({ error: 'a deploy is already in progress for this project' });
@@ -214,11 +215,19 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
         // global handler — not the deploy 502 below.
         const target = (await contentRepo.get(ctx, 'deploy_target', req.params.id)) as DeployTarget;
         assertDeployHostAllowed(target.host);
-        if ((await store.readRelease(project.slug)) === null) {
-          return reply.code(409).send({ error: 'publish the site before deploying' });
+        // Build the site FRESH (build-at-deploy-time — no prior publish needed); a build failure
+        // (bad route graph / json_data URL) is author-correctable → 409.
+        let dir: string;
+        try {
+          dir = await deps.buildForDeploy(ctx, project.id);
+        } catch (err) {
+          if (err instanceof PublishError || err instanceof JsonDataError) {
+            return reply.code(409).send({ error: err.message });
+          }
+          throw err;
         }
         try {
-          const result = await deploySite(store.dirFor(project.slug), targetToConfig(target, encryptionKey));
+          const result = await deploySite(dir, targetToConfig(target, encryptionKey));
           return reply.send({ deployed: result });
         } catch (err) {
           app.log.error(
@@ -226,6 +235,8 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
             'saved-target deploy failed',
           );
           return reply.code(502).send({ error: 'deploy failed: could not connect or transfer to the target' });
+        } finally {
+          await rm(dir, { recursive: true, force: true });
         }
       } finally {
         activeDeploys.delete(project.id);
@@ -241,8 +252,6 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
     async (req, reply) => {
       const { ctx, project } = await resolveProject(req, 'deploy');
       if (!isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
-      const store = deps.publishStore;
-      if (!store) return reply.code(503).send({ error: 'publishing is not configured' });
       if (activeDeploys.has(project.id)) {
         return reply.code(409).send({ error: 'a deploy is already in progress for this project' });
       }
@@ -251,11 +260,22 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
         // Preflight (these can still send a normal JSON error — we have not hijacked yet).
         const target = (await contentRepo.get(ctx, 'deploy_target', req.params.id)) as DeployTarget;
         assertDeployHostAllowed(target.host);
-        if ((await store.readRelease(project.slug)) === null) {
-          return reply.code(409).send({ error: 'publish the site before deploying' });
+        // Build the site FRESH before hijacking, so a build error is a normal JSON 409 (not an SSE frame).
+        let dir: string;
+        try {
+          dir = await deps.buildForDeploy(ctx, project.id);
+        } catch (err) {
+          if (err instanceof PublishError || err instanceof JsonDataError) {
+            return reply.code(409).send({ error: err.message });
+          }
+          throw err;
         }
-        // All checks passed → hijack + stream to completion (lock held until the stream ends).
-        await streamDeploy(reply, store.dirFor(project.slug), targetToConfig(target, encryptionKey), app.log);
+        try {
+          // All checks passed → hijack + stream to completion (lock held until the stream ends).
+          await streamDeploy(reply, dir, targetToConfig(target, encryptionKey), app.log);
+        } finally {
+          await rm(dir, { recursive: true, force: true });
+        }
       } finally {
         activeDeploys.delete(project.id);
       }

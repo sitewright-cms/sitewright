@@ -27,7 +27,8 @@
   "pnpm": {
     "onlyBuiltDependencies": ["esbuild", "@tailwindcss/oxide", "sharp"],
     "overrides": {
-      "hono@<4.12.25": ">=4.12.25"
+      "hono@<4.12.25": ">=4.12.25",
+      "nodemailer@<9.0.1": ">=9.0.1"
     },
     "auditConfig": {
       "ignoreGhsas": [

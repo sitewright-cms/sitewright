@@ -1,4 +1,7 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { newId } from '../id.js';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest, type FastifyBaseLogger } from 'fastify';
 import cookie from '@fastify/cookie';
@@ -114,7 +117,7 @@ import {
 import { MediaStorage } from '../media/storage.js';
 import { MediaValidationError } from '../media/errors.js';
 import { ancestorPaths, isUnderFolder, reparentPath, validateFolderMove } from '../media/folders.js';
-import { PublishError } from '../publish/build.js';
+import { PublishError, type ReleaseManifest } from '../publish/build.js';
 import { fetchJsonData, JsonDataError } from '../publish/json-data.js';
 import { InProcessBuildRunner, type BuildRunner } from '../publish/runner.js';
 import { AiProviderError, type AiProvider } from '../ai/provider.js';
@@ -2832,6 +2835,52 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     return { bundle, media, hcaptchaSiteKey, snippets, globalTemplates };
   }
 
+  // Renders the project's full static site to `outDir` — the shared build for BOTH local publish and
+  // (now) deploy, so a deploy always ships the latest content (build-at-deploy-time). Throws
+  // PublishError (bad route graph) or JsonDataError (bad json_data URL) — both author-correctable (409).
+  async function buildToDir(
+    ctx: ProjectContext,
+    project: Awaited<ReturnType<ProjectRepository['get']>>,
+    outDir: string,
+  ): Promise<ReleaseManifest> {
+    const { bundle, media, hcaptchaSiteKey, snippets, globalTemplates } = await assembleBuildInputs(ctx, project);
+    // Publish-time JSON snapshot: fetch + parse `website.jsonDataUrl` in THIS (networked) process —
+    // SSRF-guarded — then pass the parsed value into the build. A bad URL throws JsonDataError (→ 409).
+    let jsonData: unknown;
+    const jsonDataUrl = bundle.project.website?.jsonDataUrl;
+    if (jsonDataUrl) jsonData = await fetchJsonData(jsonDataUrl);
+    return buildRunner.run({
+      outDir,
+      bundle,
+      publishedAt: new Date().toISOString(),
+      media,
+      ...(opts.publicUrl ? { publicBaseUrl: opts.publicUrl } : {}),
+      ...(hcaptchaSiteKey ? { hcaptchaSiteKey } : {}),
+      ...(jsonData !== undefined ? { jsonData } : {}),
+      ...(Object.keys(snippets).length ? { snippets } : {}),
+      globalTemplates,
+      ...(bundle.project.website?.minifyHtml ? { minifyHtml: true } : {}),
+      // readStored accepts image variant / raw file / font face names (superset) — all copied in.
+      readMedia: mediaStorage ? (assetId, file) => mediaStorage.readStored(project.slug, assetId, file) : undefined,
+    });
+  }
+
+  // Builds the site fresh into a throwaway temp directory and returns its path — used by deploy so the
+  // upload ships the CURRENT content without first running (or disturbing) the local-publish artifact.
+  // Takes the project ID (re-fetched here) so the deploy-target module needn't carry the project type.
+  // The caller MUST remove the directory when done. Propagates PublishError/JsonDataError for a 409.
+  async function buildForDeploy(ctx: ProjectContext, projectId: string): Promise<string> {
+    const project = await projects.get(projectId);
+    const dir = await mkdtemp(join(tmpdir(), 'sw-deploy-'));
+    try {
+      await buildToDir(ctx, project, dir);
+      return dir;
+    } catch (err) {
+      await rm(dir, { recursive: true, force: true });
+      throw err;
+    }
+  }
+
   // ---- Publishing (build a static site + serve it) ----
   if (publishStore) {
     const store = publishStore;
@@ -2853,45 +2902,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         }
         activePublishes.add(project.id);
         try {
-          const { bundle, media, hcaptchaSiteKey, snippets, globalTemplates } = await assembleBuildInputs(ctx, project);
-          // Publish-time JSON snapshot: fetch + parse `website.jsonDataUrl` in THIS (networked) process
-          // — SSRF-guarded — then pass the parsed value into the build job. The `--network none` worker
-          // and the exported static site never fetch anything. A bad URL fails the publish (author-fixable).
-          let jsonData: unknown;
-          const jsonDataUrl = bundle.project.website?.jsonDataUrl;
-          if (jsonDataUrl) {
-            try {
-              jsonData = await fetchJsonData(jsonDataUrl);
-            } catch (err) {
-              return reply
-                .code(409)
-                .send({ error: err instanceof JsonDataError ? err.message : 'JSON data fetch failed' });
-            }
-          }
-          const release = await buildRunner.run({
-            outDir: store.dirFor(project.slug),
-            bundle,
-            publishedAt: new Date().toISOString(),
-            media,
-            // Exported Form blocks post to this absolute platform endpoint.
-            ...(opts.publicUrl ? { publicBaseUrl: opts.publicUrl } : {}),
-            ...(hcaptchaSiteKey ? { hcaptchaSiteKey } : {}),
-            ...(jsonData !== undefined ? { jsonData } : {}),
-            ...(Object.keys(snippets).length ? { snippets } : {}),
-            globalTemplates,
-            // The `website.minifyHtml` publish option — minify each page's HTML in the worker.
-            ...(bundle.project.website?.minifyHtml ? { minifyHtml: true } : {}),
-            // readStored accepts image variant names, raw file names, AND font face names (superset),
-            // so image/file/font assets are all copied into the published artifact.
-            readMedia: mediaStorage
-              ? (assetId, file) => mediaStorage.readStored(project.slug, assetId, file)
-              : undefined,
-          });
+          const release = await buildToDir(ctx, project, store.dirFor(project.slug));
           // Just published → nothing newer than this release, so the site is not dirty.
           return reply.send({ release, url: `/sites/${project.slug}/`, dirty: false });
         } catch (err) {
-          // A bad route graph (duplicate slugs, unsafe segment) is author-correctable.
-          if (err instanceof PublishError) {
+          // Author-correctable: a bad route graph (PublishError) or a bad json_data URL (JsonDataError).
+          if (err instanceof PublishError || err instanceof JsonDataError) {
             return reply.code(409).send({ error: err.message });
           }
           throw err;
@@ -2943,30 +2959,38 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         if (!WRITE_ROLES.has(ctx.role)) {
           return reply.code(403).send({ error: 'insufficient role for this operation' });
         }
-        if ((await store.readRelease(project.slug)) === null) {
-          return reply.code(409).send({ error: 'publish the site before deploying' });
-        }
         const config = DeployConfigSchema.parse(req.body);
         assertDeployHostAllowed(config.host);
         if (activeDeploys.has(project.id)) {
           return reply.code(409).send({ error: 'a deploy is already in progress for this project' });
         }
         activeDeploys.add(project.id);
+        // Build the site FRESH, then upload it (build-at-deploy-time — no prior publish needed). A
+        // build failure (bad route graph / json_data URL) is author-correctable → 409.
+        let dir: string;
         try {
-          const result = await deploySite(store.dirFor(project.slug), config);
+          dir = await buildForDeploy(ctx, project.id);
+        } catch (err) {
+          activeDeploys.delete(project.id);
+          if (err instanceof PublishError || err instanceof JsonDataError) {
+            return reply.code(409).send({ error: err.message });
+          }
+          throw err;
+        }
+        try {
+          const result = await deploySite(dir, config);
           return reply.send({ deployed: result });
         } catch (err) {
           // Connection/auth/transfer failure against the operator's target server.
           // Log the detail server-side; return a generic message so the response
           // does not leak the target's banner/timing (SSRF oracle reduction).
-          // Log only the message (not the raw err object) so a library error that
-          // happens to embed connection details can't reach the structured log.
           app.log.error(
             { host: config.host, protocol: config.protocol, errMsg: err instanceof Error ? err.message : String(err) },
             'deploy failed',
           );
           return reply.code(502).send({ error: 'deploy failed: could not connect or transfer to the target' });
         } finally {
+          await rm(dir, { recursive: true, force: true });
           activeDeploys.delete(project.id);
         }
       },
@@ -3264,11 +3288,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     registerDeployTargetRoutes(app, {
       resolveProject,
       contentRepo,
-      publishStore,
       encryptionKey: opts.encryptionKey,
       activeDeploys,
       assertDeployHostAllowed,
       isWriter: (ctx) => WRITE_ROLES.has(ctx.role),
+      // Build the site fresh into a temp dir at deploy time; the route uploads it then removes it.
+      buildForDeploy,
       rl,
     });
     // Per-project SMTP config (for the userSmtp form mode) — encrypted, like deploy targets.

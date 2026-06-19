@@ -1,13 +1,14 @@
-// Website-import routes: crawl a live URL → mechanical Sitewright scaffold → import into a project,
-// streaming progress over SSE. Highest-SSRF surface in the app, so: OWNER-only, every outbound request
-// SSRF-guarded (DNS-resolving), crawl budgets clamped server-side, per-project lock + global cap, and a
-// hard assertion that no <script> reached any slot before the bundle is written. The AI rewrite stage
-// (separate) turns the faithful scaffold into native idioms afterwards.
+// Website-import routes: crawl a live URL OR ingest an uploaded ZIP/HTML bundle → a mechanical
+// Sitewright scaffold → import into a project, streaming progress over SSE. Highest-SSRF surface in the
+// app, so: OWNER-only, every outbound request SSRF-guarded (DNS-resolving), budgets clamped server-side,
+// per-project lock + global cap, and a hard assertion that no <script> reached any slot before the
+// bundle is written. The AI rewrite stage (separate) turns the faithful scaffold into native idioms.
 import type { FastifyBaseLogger, FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { targetsPrivateHost } from '@sitewright/schema';
-import { buildImportBundle, type ImportBundle, type ImportResult, type MediaPort } from '@sitewright/site-import';
-import { crawlSite, type CrawlResult, type FetchedResource } from '../import/crawl.js';
+import { buildImportBundle, type CapturedSite, type ImportBundle, type ImportResult, type MediaPort } from '@sitewright/site-import';
+import { crawlSite, type FetchedResource } from '../import/crawl.js';
+import { buildCapturedSiteFromUpload, UploadError, type UploadResult } from '../import/upload.js';
 import { isRequestAllowed } from '../render/screenshot.js';
 import type { ProjectContext } from '../repo/context.js';
 import type { ContentRepository } from '../repo/content.js';
@@ -21,6 +22,7 @@ const IMPORT_FETCH_TIMEOUT_MS = 12_000;
 const MAX_RESOURCE_BYTES = 15 * 1024 * 1024; // per fetched page/asset
 const MAX_CRAWL_BYTES = 60 * 1024 * 1024; // whole-crawl byte budget
 const MAX_STYLESHEETS = 40;
+const IMPORT_UPLOAD_MAX_BYTES = 50 * 1024 * 1024; // compressed upload cap (uncompressed bounded in upload.ts)
 const IMPORT_UA = 'SitewrightImporter/1.0 (+website import)';
 
 const ImportWebsiteBody = z.object({
@@ -43,7 +45,7 @@ export interface ImportRouteDeps {
   createMediaAsset: (ctx: ProjectContext, slug: string, buffer: Buffer, meta: { filename: string; mimetype: string }) => Promise<{ url: string }>;
   rl: (max: number) => { rateLimit: { max: number; timeWindow: string } };
   log: FastifyBaseLogger;
-  // Injectable seams (default to the real implementations) so the route is testable without a network.
+  // Injectable seams (default to the real implementations) so the routes are testable without a network.
   crawl?: typeof crawlSite;
   buildBundle?: typeof buildImportBundle;
   isAllowed?: (url: string, allowHostPort: string) => Promise<boolean>;
@@ -78,12 +80,18 @@ export function assertNoScripts(bundle: ImportBundle): void {
 
 /** The importBundle input shape (the engine bundle minus its non-importable framing). */
 function toImportInput(bundle: ImportBundle): unknown {
+  return { project: bundle.project, pages: bundle.pages, templates: bundle.templates, datasets: bundle.datasets, entries: bundle.entries };
+}
+
+function buildReport(site: CapturedSite, result: ImportResult, extra: { truncated: boolean; warnings: string[] }): Record<string, unknown> {
   return {
-    project: bundle.project,
-    pages: bundle.pages,
-    templates: bundle.templates,
-    datasets: bundle.datasets,
-    entries: bundle.entries,
+    pagesImported: result.stats.pages,
+    pagesFound: site.pages.length,
+    mediaSelfHosted: result.stats.imagesHosted,
+    scriptsDropped: result.stats.scriptsDropped,
+    chromeExtracted: result.stats.chromeExtracted,
+    truncated: extra.truncated,
+    warnings: [...extra.warnings.slice(0, 30), ...result.diagnostics.map((d) => `${d.code}: ${d.message}`).slice(0, 100)],
   };
 }
 
@@ -96,12 +104,7 @@ async function streamImport(
 ): Promise<void> {
   reply.hijack();
   const raw = reply.raw;
-  raw.writeHead(200, {
-    'content-type': 'text/event-stream; charset=utf-8',
-    'cache-control': 'no-cache, no-transform',
-    connection: 'keep-alive',
-    'x-accel-buffering': 'no',
-  });
+  raw.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache, no-transform', connection: 'keep-alive', 'x-accel-buffering': 'no' });
   const send = (event: string, data: unknown): void => {
     raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
   };
@@ -110,6 +113,8 @@ async function streamImport(
     send('done', { report });
   } catch (err) {
     log.error({ ...logCtx, errMsg: err instanceof Error ? err.message : String(err) }, 'website import failed');
+    // Generic message only — never leak internals. (Client-fixable upload errors are surfaced as a clean
+    // JSON 400 BEFORE the stream is hijacked, so they never reach here.)
     send('error', { message: 'import failed: could not crawl or convert the site' });
   } finally {
     raw.end();
@@ -192,29 +197,58 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
     };
   }
 
+  /** Convert a CapturedSite → bundle (assert script-free, reject invalid) → write it; returns the report. */
+  async function convertAndImport(
+    ctx: ProjectContext,
+    project: { id: string; name: string; slug: string },
+    site: CapturedSite,
+    media: MediaPort,
+    onProgress: (e: unknown) => void,
+    extra: { truncated: boolean; warnings: string[] },
+  ): Promise<Record<string, unknown>> {
+    onProgress({ phase: 'transform', detail: `converting ${site.pages.length} pages` });
+    const result = await buildBundle(site, { media, onProgress });
+    const bundle = result.bundles[0];
+    if (!bundle) throw new Error('the import produced no content');
+    if (result.diagnostics.some((d) => d.code === 'bundle-invalid')) throw new Error('the import produced an invalid bundle');
+    assertNoScripts(bundle);
+    onProgress({ phase: 'assemble', detail: 'saving content' });
+    await contentRepo.importBundle(ctx, project, toImportInput(bundle));
+    return buildReport(site, result, extra);
+  }
+
+  /** Claim the per-project lock + a global slot; sends the 409/429 and returns false if unavailable. */
+  function acquireSlot(reply: FastifyReply, projectId: string): boolean {
+    if (activeImports.has(projectId)) {
+      reply.code(409).send({ error: 'an import is already in progress for this project' });
+      return false;
+    }
+    if (activeImportCount >= MAX_CONCURRENT_IMPORTS) {
+      reply.code(429).send({ error: 'too many imports in progress; try again shortly' });
+      return false;
+    }
+    activeImports.add(projectId);
+    activeImportCount += 1;
+    return true;
+  }
+  function releaseSlot(projectId: string): void {
+    activeImports.delete(projectId);
+    activeImportCount -= 1;
+  }
+
+  // ──────────────────────────────── crawl a live URL ────────────────────────────────
   app.post<{ Params: { projectId: string } }>('/projects/:projectId/import/website/stream', { config: rl(5) }, async (req, reply) => {
     const { ctx, project } = await resolveProject(req, 'content:write');
-    // Importing arbitrary third-party markup is an elevated, owner-trust operation (it can land in raw,
-    // unsanitized website slots) — stricter than the usual writer gate.
     if (ctx.role !== 'owner') return reply.code(403).send({ error: 'only the project owner can import a website' });
 
     const parsed = ImportWebsiteBody.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'invalid request' });
     const { url } = parsed.data;
-    if (!/^https:\/\//i.test(url) || targetsPrivateHost(url)) {
-      return reply.code(400).send({ error: 'only public https URLs can be imported' });
-    }
+    if (!/^https:\/\//i.test(url) || targetsPrivateHost(url)) return reply.code(400).send({ error: 'only public https URLs can be imported' });
 
-    if (activeImports.has(project.id)) return reply.code(409).send({ error: 'an import is already in progress for this project' });
-    if (activeImportCount >= MAX_CONCURRENT_IMPORTS) return reply.code(429).send({ error: 'too many imports in progress; try again shortly' });
-
+    if (!acquireSlot(reply, project.id)) return;
     const maxPages = clamp(parsed.data.maxPages ?? IMPORT_DEFAULT_PAGES, 1, IMPORT_PAGE_CEIL);
     const maxDepth = clamp(parsed.data.maxDepth ?? IMPORT_DEFAULT_DEPTH, 0, IMPORT_DEPTH_CEIL);
-    // Always same-origin: cross-origin crawl would turn the importer into an open proxy crawler.
-    const sameOriginOnly = true;
-
-    activeImports.add(project.id);
-    activeImportCount += 1;
     const abort = new AbortController();
     req.raw.on('close', () => abort.abort());
 
@@ -224,43 +258,70 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
         async (onProgress) => {
           const fetcher = makeFetcher(abort.signal);
           const media = makeMediaPort(ctx, project.slug, fetcher);
-          const crawlResult: CrawlResult = await crawl(
+          const crawlResult = await crawl(
             url,
-            { maxPages, maxDepth, sameOriginOnly, maxBytesTotal: MAX_CRAWL_BYTES, maxStylesheets: MAX_STYLESHEETS },
+            { maxPages, maxDepth, sameOriginOnly: true, maxBytesTotal: MAX_CRAWL_BYTES, maxStylesheets: MAX_STYLESHEETS },
             { fetchResource: fetcher, isAllowed: (u) => isAllowed(u, ''), onProgress: (e) => onProgress({ phase: 'crawl', ...e }), signal: abort.signal },
           );
           if (crawlResult.site.pages.length === 0) throw new Error('no pages could be crawled from the URL');
-          onProgress({ phase: 'transform', detail: `crawled ${crawlResult.site.pages.length} pages` });
-          const result: ImportResult = await buildBundle(crawlResult.site, { media, onProgress: (e) => onProgress(e) });
-          const bundle = result.bundles[0];
-          if (!bundle) throw new Error('the import produced no content');
-          if (result.diagnostics.some((d) => d.code === 'bundle-invalid')) throw new Error('the import produced an invalid bundle');
-          assertNoScripts(bundle);
-          onProgress({ phase: 'assemble', detail: 'saving content' });
-          await contentRepo.importBundle(ctx as ProjectContext, project, toImportInput(bundle));
-          return buildReport(crawlResult, result);
+          return convertAndImport(ctx, project, crawlResult.site, media, onProgress, { truncated: crawlResult.truncated, warnings: crawlResult.warnings });
         },
         { projectId: project.id },
         log,
       );
     } finally {
-      activeImports.delete(project.id);
-      activeImportCount -= 1;
+      releaseSlot(project.id);
     }
   });
-}
 
-function buildReport(crawl: CrawlResult, result: ImportResult): Record<string, unknown> {
-  return {
-    pagesImported: result.stats.pages,
-    pagesCrawled: crawl.site.pages.length,
-    mediaSelfHosted: result.stats.imagesHosted,
-    scriptsDropped: result.stats.scriptsDropped,
-    chromeExtracted: result.stats.chromeExtracted,
-    truncated: crawl.truncated,
-    warnings: [
-      ...crawl.warnings.slice(0, 30),
-      ...result.diagnostics.map((d) => `${d.code}: ${d.message}`).slice(0, 100),
-    ],
-  };
+  // ──────────────────────────────── upload a ZIP/HTML bundle ────────────────────────────────
+  app.post<{ Params: { projectId: string } }>('/projects/:projectId/import/upload/stream', { config: rl(5) }, async (req, reply) => {
+    const { ctx, project } = await resolveProject(req, 'content:write');
+    if (ctx.role !== 'owner') return reply.code(403).send({ error: 'only the project owner can import a website' });
+
+    let buffer: Buffer;
+    let filename: string;
+    try {
+      const file = await req.file({ limits: { fileSize: IMPORT_UPLOAD_MAX_BYTES, files: 1 } });
+      if (!file) return reply.code(400).send({ error: 'no file uploaded' });
+      filename = file.filename || 'upload';
+      buffer = await file.toBuffer();
+      // Belt-and-suspenders: @fastify/multipart throws on oversize by default, but also flag a silent truncation.
+      if (file.file.truncated) return reply.code(413).send({ error: 'file exceeds the upload size limit' });
+    } catch (err) {
+      // toBuffer throws when the file exceeds the per-request size limit.
+      if (err instanceof Error && /file too large|maxFileSize|request file too large/i.test(err.message)) {
+        return reply.code(413).send({ error: 'file exceeds the upload size limit' });
+      }
+      return reply.code(400).send({ error: 'expected a multipart file upload' });
+    }
+
+    // Extract BEFORE hijacking so a bad archive returns a clean JSON 400 (with a helpful message).
+    let upload: UploadResult;
+    try {
+      upload = await buildCapturedSiteFromUpload(buffer, filename);
+    } catch (err) {
+      if (err instanceof UploadError) return reply.code(400).send({ error: err.message });
+      throw err;
+    }
+
+    if (!acquireSlot(reply, project.id)) return;
+    const abort = new AbortController();
+    req.raw.on('close', () => abort.abort());
+
+    try {
+      await streamImport(
+        reply,
+        async (onProgress) => {
+          const fetcher = makeFetcher(abort.signal);
+          const media = makeMediaPort(ctx, project.slug, fetcher);
+          return convertAndImport(ctx, project, upload.site, media, onProgress, { truncated: false, warnings: upload.warnings });
+        },
+        { projectId: project.id },
+        log,
+      );
+    } finally {
+      releaseSlot(project.id);
+    }
+  });
 }

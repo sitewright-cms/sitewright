@@ -4,7 +4,7 @@
 // apart from the injected MediaPort.
 export { buildImportBundle } from './build.js';
 export { DEFAULT_LIMITS, resolveLimits } from './limits.js';
-export { normalizePageUrl, assetKey, routePath, sameOrigin, resolveUrl } from './url-util.js';
+export { normalizePageUrl, assetKey, routePath, sameOrigin, resolveUrl, UPLOAD_BASE } from './url-util.js';
 export type {
   AssetKind,
   CapturedAsset,

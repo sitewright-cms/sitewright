@@ -57,6 +57,13 @@ describe('transformBody', () => {
     expect(source).toContain('https://ex.com/missing.png');
   });
 
+  it('drops an unhostable image on the synthetic upload host (no dead link)', () => {
+    const uctx: TransformCtx = { pageUrl: 'https://import.local/about', siteBase: 'https://import.local/', internalRoutes: new Map(), assetMap: new Map(), limits: DEFAULT_LIMITS };
+    const { source } = transformBody(parse('<html><body><img src="/img/missing.png" alt="x"></body></html>'), uctx);
+    expect(source).not.toContain('import.local');
+    expect(source).not.toContain('missing.png');
+  });
+
   it('keeps inline data:image URIs verbatim', () => {
     const dataUri = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==';
     const { source } = run(`<img src="${dataUri}">`);

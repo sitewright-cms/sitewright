@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
+import multipart from '@fastify/multipart';
+import JSZip from 'jszip';
 import { assertNoScripts, registerImportRoutes } from '../src/http/import-routes.js';
 import type { CrawlResult } from '../src/import/crawl.js';
 import type { ImportBundle } from '@sitewright/site-import';
@@ -25,6 +27,7 @@ interface Built {
 
 function makeApp(opts: { role?: 'owner' | 'member'; crawl?: () => Promise<CrawlResult>; buildBundle?: () => Promise<{ bundles: ImportBundle[]; diagnostics: []; stats: { pages: number; imagesHosted: number; scriptsDropped: number; chromeExtracted: boolean } }> } = {}): Built {
   const app = Fastify();
+  void app.register(multipart, { limits: { fileSize: 60 * 1024 * 1024, files: 1, fields: 0 } });
   const importBundle = vi.fn(async () => ({ imported: 1 }));
   const createMediaAsset = vi.fn(async () => ({ url: '/media/x/1.jpg' }));
   registerImportRoutes(app, {
@@ -52,6 +55,56 @@ function track(b: Built): Built {
 afterEach(async () => {
   await Promise.all(apps.map((a) => a.close()));
   apps = [];
+});
+
+async function siteZip(): Promise<Buffer> {
+  const z = new JSZip();
+  z.file('index.html', '<html><body><main><h1>Home</h1><img src="img/logo.png"></main></body></html>');
+  z.file('about/index.html', '<html><body><main><h2>About</h2></main></body></html>');
+  z.file('img/logo.png', 'PNGBYTES');
+  return z.generateAsync({ type: 'nodebuffer' });
+}
+
+function multipartBody(file: Buffer, filename: string, contentType: string): { payload: Buffer; headers: Record<string, string> } {
+  const boundary = '----swimporttest';
+  const head = Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: ${contentType}\r\n\r\n`);
+  const tail = Buffer.from(`\r\n--${boundary}--\r\n`);
+  return { payload: Buffer.concat([head, file, tail]), headers: { 'content-type': `multipart/form-data; boundary=${boundary}` } };
+}
+
+describe('POST /projects/:id/import/upload/stream', () => {
+  it('imports an uploaded ZIP (owner) and self-hosts its images', async () => {
+    const { app, importBundle, createMediaAsset } = track(makeApp());
+    const { payload, headers } = multipartBody(await siteZip(), 'site.zip', 'application/zip');
+    const res = await app.inject({ method: 'POST', url: '/projects/pa/import/upload/stream', payload, headers });
+    expect(importBundle).toHaveBeenCalledTimes(1);
+    expect(createMediaAsset).toHaveBeenCalledTimes(1); // the in-zip image
+    expect(res.payload).toContain('event: done');
+    expect(res.payload).toContain('"pagesImported":2');
+  });
+
+  it('imports a single uploaded HTML file', async () => {
+    const { app, importBundle } = track(makeApp());
+    const { payload, headers } = multipartBody(Buffer.from('<html><body><main>solo</main></body></html>'), 'page.html', 'text/html');
+    const res = await app.inject({ method: 'POST', url: '/projects/pa/import/upload/stream', payload, headers });
+    expect(importBundle).toHaveBeenCalledTimes(1);
+    expect(res.payload).toContain('event: done');
+  });
+
+  it('rejects an unsupported upload with 400 (before streaming)', async () => {
+    const { app, importBundle } = track(makeApp());
+    const { payload, headers } = multipartBody(Buffer.from('just notes'), 'notes.txt', 'text/plain');
+    const res = await app.inject({ method: 'POST', url: '/projects/pa/import/upload/stream', payload, headers });
+    expect(res.statusCode).toBe(400);
+    expect(importBundle).not.toHaveBeenCalled();
+  });
+
+  it('rejects a non-owner upload with 403', async () => {
+    const { app } = track(makeApp({ role: 'member' }));
+    const { payload, headers } = multipartBody(await siteZip(), 'site.zip', 'application/zip');
+    const res = await app.inject({ method: 'POST', url: '/projects/pa/import/upload/stream', payload, headers });
+    expect(res.statusCode).toBe(403);
+  });
 });
 
 describe('assertNoScripts', () => {

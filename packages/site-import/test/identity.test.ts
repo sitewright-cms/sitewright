@@ -1,0 +1,102 @@
+import { describe, expect, it } from 'vitest';
+import { parse } from '../src/dom.js';
+import { extractIdentity, extractPageSeo } from '../src/transform/identity.js';
+
+const assetMap = new Map([
+  ['https://ex.com/logo.png', '/media/x/logo.jpg'],
+  ['https://ex.com/og.jpg', '/media/x/og.jpg'],
+  ['https://ex.com/favicon.png', '/media/x/fav.png'],
+]);
+
+describe('extractIdentity', () => {
+  it('pulls name, description, assets, contact, colors and social', () => {
+    const html = `<html><head>
+      <title>Acme Studio | Home</title>
+      <meta name="description" content="We build sites">
+      <meta property="og:site_name" content="Acme Studio">
+      <meta property="og:image" content="https://ex.com/og.jpg">
+      <meta name="theme-color" content="#ff8800">
+      <link rel="icon" href="/favicon.png">
+      <script type="application/ld+json">{"@type":"Organization","email":"hi@acme.com","telephone":"+1 555","sameAs":["https://twitter.com/acme","https://www.linkedin.com/company/acme"]}</script>
+      </head><body><header><img src="/logo.png" alt="Acme logo"></header></body></html>`;
+    const id = extractIdentity(parse(html), { baseUrl: 'https://ex.com/', assetMap, fallbackName: 'X' });
+    expect(id.name).toBe('Acme Studio');
+    expect(id.description).toBe('We build sites');
+    expect(id.logo).toBe('/media/x/logo.jpg');
+    expect(id.icon).toBe('/media/x/fav.png');
+    expect(id.image).toBe('/media/x/og.jpg');
+    expect(id.email).toBe('hi@acme.com');
+    expect(id.telephone).toBe('+1 555');
+    expect(id.colors.primary).toBe('#ff8800');
+    expect(id.social?.map((s) => s.link)).toEqual(['https://twitter.com/acme', 'https://www.linkedin.com/company/acme']);
+  });
+
+  it('derives the name from <title> then host when og:site_name is absent', () => {
+    const fromTitle = extractIdentity(parse('<html><head><title>Beta Co — Welcome</title></head><body></body></html>'), {
+      baseUrl: 'https://beta.example/',
+      assetMap: new Map(),
+      fallbackName: 'X',
+    });
+    expect(fromTitle.name).toBe('Beta Co');
+    const fromHost = extractIdentity(parse('<html><body></body></html>'), { baseUrl: 'https://www.gamma.io/', assetMap: new Map(), fallbackName: 'X' });
+    expect(fromHost.name).toBe('Gamma');
+  });
+
+  it('uses a single-segment title and an https hotlink when assets are not hosted', () => {
+    const id = extractIdentity(
+      parse('<html><head><title>SoloName</title></head><body><header><img src="https://cdn.x/logo.png" alt="logo"></header></body></html>'),
+      { baseUrl: 'https://ex.com/', assetMap: new Map(), fallbackName: 'X' },
+    );
+    expect(id.name).toBe('SoloName');
+    expect(id.logo).toBe('https://cdn.x/logo.png');
+  });
+
+  it('drops a non-https icon that cannot be self-hosted', () => {
+    const id = extractIdentity(
+      parse('<html><head><link rel="icon" href="http://cdn.x/fav.ico"></head><body></body></html>'),
+      { baseUrl: 'https://ex.com/', assetMap: new Map(), fallbackName: 'X' },
+    );
+    expect(id.icon).toBeUndefined();
+  });
+
+  it('ignores invalid theme-color and malformed JSON-LD', () => {
+    const id = extractIdentity(parse('<html><head><meta name="theme-color" content="not-a-color"><script type="application/ld+json">{bad json</script></head><body></body></html>'), {
+      baseUrl: 'https://ex.com/',
+      assetMap: new Map(),
+      fallbackName: 'Fallback',
+    });
+    // primary falls back to the mandatory default, not "not-a-color"
+    expect(id.colors.primary).not.toBe('not-a-color');
+    expect(id.email).toBeUndefined();
+  });
+});
+
+describe('extractPageSeo', () => {
+  it('reads title, description, image, canonical and noindex', () => {
+    const html = `<html><head>
+      <title>About — Acme</title>
+      <meta name="description" content="about us">
+      <link rel="canonical" href="https://ex.com/about">
+      <meta name="robots" content="noindex,follow">
+      <meta property="og:image" content="https://ex.com/og.jpg">
+      </head><body></body></html>`;
+    const seo = extractPageSeo(parse(html), { baseUrl: 'https://ex.com/about', assetMap });
+    expect(seo.title).toBe('About — Acme');
+    expect(seo.description).toBe('about us');
+    expect(seo.canonical).toBe('https://ex.com/about');
+    expect(seo.noindex).toBe(true);
+    expect(seo.image).toBe('/media/x/og.jpg');
+  });
+
+  it('falls back to the full title when it starts with a separator, and ignores a canonical without href', () => {
+    const id = extractIdentity(parse('<html><head><title> | Acme</title></head><body></body></html>'), { baseUrl: 'https://ex.com/', assetMap: new Map(), fallbackName: 'X' });
+    expect(id.name.length).toBeGreaterThan(0);
+    const seo = extractPageSeo(parse('<html><head><link rel="canonical"></head><body></body></html>'), { baseUrl: 'https://ex.com/', assetMap: new Map() });
+    expect(seo.canonical).toBeUndefined();
+  });
+
+  it('omits a non-https canonical', () => {
+    const seo = extractPageSeo(parse('<html><head><link rel="canonical" href="http://ex.com/x"></head><body></body></html>'), { baseUrl: 'https://ex.com/x', assetMap: new Map() });
+    expect(seo.canonical).toBeUndefined();
+  });
+});

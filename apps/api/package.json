@@ -26,6 +26,7 @@
     "@sitewright/image-pipeline": "workspace:*",
     "@sitewright/mcp": "workspace:*",
     "@sitewright/schema": "workspace:*",
+    "@sitewright/site-import": "workspace:*",
     "@sitewright/tailwind": "workspace:*",
     "basic-ftp": "^5",
     "drizzle-orm": "^0.45.2",

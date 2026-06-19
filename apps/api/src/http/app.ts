@@ -136,6 +136,7 @@ import { buildEffectForks } from './effect-forks.js';
 import { registerFormRoutes } from './form-routes.js';
 import { registerProjectSmtpRoutes } from './project-smtp-routes.js';
 import { registerStockRoutes, type StockServiceLike } from './stock-routes.js';
+import { registerImportRoutes } from './import-routes.js';
 import { StockService } from '../stock/service.js';
 import { defaultStockProviders } from '../stock/providers.js';
 import { SubmissionRepository } from '../repo/submissions.js';
@@ -2532,6 +2533,17 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       stockService,
       createMediaAsset,
       rl,
+    });
+
+    // Import an external website (crawl a live URL) → a faithful, self-contained Sitewright scaffold,
+    // streamed over SSE. Owner-only + SSRF-guarded; the AI rewrite stage turns the scaffold into native
+    // idioms afterwards. Lives in the media block since it self-hosts the source site's images.
+    registerImportRoutes(app, {
+      resolveProject,
+      contentRepo,
+      createMediaAsset,
+      rl,
+      log: app.log,
     });
 
     app.get<{ Params: { projectId: string }; Querystring: { kind?: string } }>(

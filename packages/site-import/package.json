@@ -1,0 +1,37 @@
+{
+  "name": "@sitewright/site-import",
+  "version": "0.0.0",
+  "description": "Pure, deterministic engine that turns a captured external website (crawled HTML or an uploaded bundle) into a Sitewright import bundle: faithful literal-HTML page sources, self-hosted media (via an injected port), extracted brand identity, and a route/nav tree that passes validateTemplate + validateProject.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run --coverage",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@sitewright/blocks": "workspace:*",
+    "@sitewright/core": "workspace:*",
+    "@sitewright/schema": "workspace:*",
+    "dom-serializer": "^2.0.0",
+    "domhandler": "^5.0.3",
+    "domutils": "^3.2.2",
+    "htmlparser2": "^9.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@vitest/coverage-v8": "^4.1.8",
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.8"
+  }
+}

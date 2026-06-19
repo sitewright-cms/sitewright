@@ -1,0 +1,266 @@
+// Website-import routes: crawl a live URL → mechanical Sitewright scaffold → import into a project,
+// streaming progress over SSE. Highest-SSRF surface in the app, so: OWNER-only, every outbound request
+// SSRF-guarded (DNS-resolving), crawl budgets clamped server-side, per-project lock + global cap, and a
+// hard assertion that no <script> reached any slot before the bundle is written. The AI rewrite stage
+// (separate) turns the faithful scaffold into native idioms afterwards.
+import type { FastifyBaseLogger, FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import { z } from 'zod';
+import { targetsPrivateHost } from '@sitewright/schema';
+import { buildImportBundle, type ImportBundle, type ImportResult, type MediaPort } from '@sitewright/site-import';
+import { crawlSite, type CrawlResult, type FetchedResource } from '../import/crawl.js';
+import { isRequestAllowed } from '../render/screenshot.js';
+import type { ProjectContext } from '../repo/context.js';
+import type { ContentRepository } from '../repo/content.js';
+
+const MAX_CONCURRENT_IMPORTS = 2;
+const IMPORT_PAGE_CEIL = 200;
+const IMPORT_DEPTH_CEIL = 5;
+const IMPORT_DEFAULT_PAGES = 50;
+const IMPORT_DEFAULT_DEPTH = 3;
+const IMPORT_FETCH_TIMEOUT_MS = 12_000;
+const MAX_RESOURCE_BYTES = 15 * 1024 * 1024; // per fetched page/asset
+const MAX_CRAWL_BYTES = 60 * 1024 * 1024; // whole-crawl byte budget
+const MAX_STYLESHEETS = 40;
+const IMPORT_UA = 'SitewrightImporter/1.0 (+website import)';
+
+const ImportWebsiteBody = z.object({
+  url: z.string().url().max(2048),
+  maxPages: z.number().int().min(1).max(IMPORT_PAGE_CEIL).optional(),
+  maxDepth: z.number().int().min(0).max(IMPORT_DEPTH_CEIL).optional(),
+});
+
+/** Website slots that are RAW (unsanitized) or validated — all must be script-free after import. */
+const SCRIPTABLE_SLOTS = ['topNav', 'mobileNav', 'sidebarLeft', 'sidebarRight', 'footer', 'bottom', 'head', 'scripts', 'criticalCss'] as const;
+/** Raw HTML code slots nested under `website.effects` (the engine never writes these, but assert anyway). */
+const EFFECT_CODE_SLOTS = ['navCode', 'buttonCode', 'preloaderCode'] as const;
+
+export interface ImportRouteDeps {
+  resolveProject: (
+    req: FastifyRequest<{ Params: { projectId: string } }>,
+    access: 'content:write',
+  ) => Promise<{ ctx: ProjectContext; project: { id: string; name: string; slug: string } }>;
+  contentRepo: Pick<ContentRepository, 'importBundle'>;
+  createMediaAsset: (ctx: ProjectContext, slug: string, buffer: Buffer, meta: { filename: string; mimetype: string }) => Promise<{ url: string }>;
+  rl: (max: number) => { rateLimit: { max: number; timeWindow: string } };
+  log: FastifyBaseLogger;
+  // Injectable seams (default to the real implementations) so the route is testable without a network.
+  crawl?: typeof crawlSite;
+  buildBundle?: typeof buildImportBundle;
+  isAllowed?: (url: string, allowHostPort: string) => Promise<boolean>;
+}
+
+function clamp(n: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, n));
+}
+
+/** Throws if any page source or website slot contains a <script> — defense-in-depth over the engine. */
+export function assertNoScripts(bundle: ImportBundle): void {
+  for (const page of bundle.pages) {
+    if (page.source && /<script[\s/>]/i.test(page.source)) throw new Error(`page "${page.id}" source contains a script`);
+  }
+  const website = bundle.project.website as Record<string, unknown> | undefined;
+  if (website) {
+    for (const slot of SCRIPTABLE_SLOTS) {
+      // eslint-disable-next-line security/detect-object-injection -- `slot` is from the constant SCRIPTABLE_SLOTS list
+      const value = website[slot];
+      if (typeof value === 'string' && /<script[\s/>]/i.test(value)) throw new Error(`website.${slot} contains a script`);
+    }
+    const effects = website.effects;
+    if (effects && typeof effects === 'object') {
+      for (const slot of EFFECT_CODE_SLOTS) {
+        // eslint-disable-next-line security/detect-object-injection -- `slot` is from the constant EFFECT_CODE_SLOTS list
+        const value = (effects as Record<string, unknown>)[slot];
+        if (typeof value === 'string' && /<script[\s/>]/i.test(value)) throw new Error(`website.effects.${slot} contains a script`);
+      }
+    }
+  }
+}
+
+/** The importBundle input shape (the engine bundle minus its non-importable framing). */
+function toImportInput(bundle: ImportBundle): unknown {
+  return {
+    project: bundle.project,
+    pages: bundle.pages,
+    templates: bundle.templates,
+    datasets: bundle.datasets,
+    entries: bundle.entries,
+  };
+}
+
+/** SSE wrapper: hijacks the reply and streams `progress` frames, then `done {report}` / `error`. */
+async function streamImport(
+  reply: FastifyReply,
+  run: (onProgress: (e: unknown) => void) => Promise<unknown>,
+  logCtx: Record<string, unknown>,
+  log: FastifyBaseLogger,
+): Promise<void> {
+  reply.hijack();
+  const raw = reply.raw;
+  raw.writeHead(200, {
+    'content-type': 'text/event-stream; charset=utf-8',
+    'cache-control': 'no-cache, no-transform',
+    connection: 'keep-alive',
+    'x-accel-buffering': 'no',
+  });
+  const send = (event: string, data: unknown): void => {
+    raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  };
+  try {
+    const report = await run((e) => send('progress', e));
+    send('done', { report });
+  } catch (err) {
+    log.error({ ...logCtx, errMsg: err instanceof Error ? err.message : String(err) }, 'website import failed');
+    send('error', { message: 'import failed: could not crawl or convert the site' });
+  } finally {
+    raw.end();
+  }
+}
+
+export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps): void {
+  const { resolveProject, contentRepo, createMediaAsset, rl, log } = deps;
+  const crawl = deps.crawl ?? crawlSite;
+  const buildBundle = deps.buildBundle ?? buildImportBundle;
+  const isAllowed = deps.isAllowed ?? isRequestAllowed;
+
+  const activeImports = new Set<string>();
+  let activeImportCount = 0;
+
+  /**
+   * An SSRF-guarded, size/redirect-bounded fetcher tied to the request's abort signal. The guard
+   * (https-only + DNS-resolving `isAllowed`) lives HERE so no call path can fetch without it.
+   * ★Residual: like the screenshot renderer, there is a DNS-rebinding TOCTOU window between this
+   * resolve-time check and the kernel's connect-time resolve. The exposure is bounded by owner-only
+   * access (the owner supplies the seed + trusts their own project) and `redirect:'error'`; a
+   * connect-time-pinning proxy would close it fully and is a documented follow-up.
+   */
+  function makeFetcher(signal: AbortSignal): (url: string) => Promise<FetchedResource | null> {
+    return async (url) => {
+      if (!/^https:\/\//i.test(url) || !(await isAllowed(url, ''))) return null;
+      const controller = new AbortController();
+      const onAbort = (): void => controller.abort();
+      signal.addEventListener('abort', onAbort);
+      const timer = setTimeout(() => controller.abort(), IMPORT_FETCH_TIMEOUT_MS);
+      try {
+        const res = await fetch(url, { signal: controller.signal, redirect: 'error', headers: { 'user-agent': IMPORT_UA } });
+        if (!res.ok) return null;
+        if (Number(res.headers.get('content-length') ?? '0') > MAX_RESOURCE_BYTES) return null;
+        const contentType = (res.headers.get('content-type') ?? '').split(';')[0]?.trim().toLowerCase() || 'application/octet-stream';
+        const bytes = new Uint8Array(await res.arrayBuffer());
+        if (bytes.length > MAX_RESOURCE_BYTES) return null;
+        return { url, status: res.status, contentType, bytes };
+      } catch {
+        return null;
+      } finally {
+        clearTimeout(timer);
+        signal.removeEventListener('abort', onAbort);
+      }
+    };
+  }
+
+  /** MediaPort: host an asset's bytes, or fetch a remote image (SSRF-guarded) then self-host it. */
+  function makeMediaPort(ctx: ProjectContext, slug: string, fetcher: (url: string) => Promise<FetchedResource | null>): MediaPort {
+    return {
+      hostAsset: async (asset) => {
+        let buffer: Buffer | null = null;
+        let mimetype = asset.contentType ?? '';
+        let filename = 'image';
+        if (asset.bytes) {
+          buffer = Buffer.from(asset.bytes);
+        } else if (asset.remoteUrl) {
+          if (!/^https:\/\//i.test(asset.remoteUrl) || targetsPrivateHost(asset.remoteUrl)) return null;
+          if (!(await isAllowed(asset.remoteUrl, ''))) return null;
+          const fetched = await fetcher(asset.remoteUrl);
+          if (!fetched) return null;
+          buffer = Buffer.from(fetched.bytes);
+          mimetype = fetched.contentType;
+          try {
+            filename = decodeURIComponent(new URL(asset.remoteUrl).pathname.split('/').pop() || 'image') || 'image';
+          } catch {
+            filename = 'image';
+          }
+        }
+        if (!buffer) return null;
+        if (mimetype === 'image/svg+xml' || mimetype === 'image/svg') return null; // sharp rejects SVG; engine inlines small ones
+        if (mimetype && !mimetype.startsWith('image/')) return null; // only host images
+        try {
+          const saved = await createMediaAsset(ctx, slug, buffer, { filename, mimetype: mimetype || 'image/jpeg' });
+          return { ref: saved.url };
+        } catch {
+          return null;
+        }
+      },
+    };
+  }
+
+  app.post<{ Params: { projectId: string } }>('/projects/:projectId/import/website/stream', { config: rl(5) }, async (req, reply) => {
+    const { ctx, project } = await resolveProject(req, 'content:write');
+    // Importing arbitrary third-party markup is an elevated, owner-trust operation (it can land in raw,
+    // unsanitized website slots) — stricter than the usual writer gate.
+    if (ctx.role !== 'owner') return reply.code(403).send({ error: 'only the project owner can import a website' });
+
+    const parsed = ImportWebsiteBody.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'invalid request' });
+    const { url } = parsed.data;
+    if (!/^https:\/\//i.test(url) || targetsPrivateHost(url)) {
+      return reply.code(400).send({ error: 'only public https URLs can be imported' });
+    }
+
+    if (activeImports.has(project.id)) return reply.code(409).send({ error: 'an import is already in progress for this project' });
+    if (activeImportCount >= MAX_CONCURRENT_IMPORTS) return reply.code(429).send({ error: 'too many imports in progress; try again shortly' });
+
+    const maxPages = clamp(parsed.data.maxPages ?? IMPORT_DEFAULT_PAGES, 1, IMPORT_PAGE_CEIL);
+    const maxDepth = clamp(parsed.data.maxDepth ?? IMPORT_DEFAULT_DEPTH, 0, IMPORT_DEPTH_CEIL);
+    // Always same-origin: cross-origin crawl would turn the importer into an open proxy crawler.
+    const sameOriginOnly = true;
+
+    activeImports.add(project.id);
+    activeImportCount += 1;
+    const abort = new AbortController();
+    req.raw.on('close', () => abort.abort());
+
+    try {
+      await streamImport(
+        reply,
+        async (onProgress) => {
+          const fetcher = makeFetcher(abort.signal);
+          const media = makeMediaPort(ctx, project.slug, fetcher);
+          const crawlResult: CrawlResult = await crawl(
+            url,
+            { maxPages, maxDepth, sameOriginOnly, maxBytesTotal: MAX_CRAWL_BYTES, maxStylesheets: MAX_STYLESHEETS },
+            { fetchResource: fetcher, isAllowed: (u) => isAllowed(u, ''), onProgress: (e) => onProgress({ phase: 'crawl', ...e }), signal: abort.signal },
+          );
+          if (crawlResult.site.pages.length === 0) throw new Error('no pages could be crawled from the URL');
+          onProgress({ phase: 'transform', detail: `crawled ${crawlResult.site.pages.length} pages` });
+          const result: ImportResult = await buildBundle(crawlResult.site, { media, onProgress: (e) => onProgress(e) });
+          const bundle = result.bundles[0];
+          if (!bundle) throw new Error('the import produced no content');
+          if (result.diagnostics.some((d) => d.code === 'bundle-invalid')) throw new Error('the import produced an invalid bundle');
+          assertNoScripts(bundle);
+          onProgress({ phase: 'assemble', detail: 'saving content' });
+          await contentRepo.importBundle(ctx as ProjectContext, project, toImportInput(bundle));
+          return buildReport(crawlResult, result);
+        },
+        { projectId: project.id },
+        log,
+      );
+    } finally {
+      activeImports.delete(project.id);
+      activeImportCount -= 1;
+    }
+  });
+}
+
+function buildReport(crawl: CrawlResult, result: ImportResult): Record<string, unknown> {
+  return {
+    pagesImported: result.stats.pages,
+    pagesCrawled: crawl.site.pages.length,
+    mediaSelfHosted: result.stats.imagesHosted,
+    scriptsDropped: result.stats.scriptsDropped,
+    chromeExtracted: result.stats.chromeExtracted,
+    truncated: crawl.truncated,
+    warnings: [
+      ...crawl.warnings.slice(0, 30),
+      ...result.diagnostics.map((d) => `${d.code}: ${d.message}`).slice(0, 100),
+    ],
+  };
+}

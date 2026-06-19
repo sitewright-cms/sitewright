@@ -92,14 +92,14 @@ export function eventsUrl(projectId: string): string {
 
 /**
  * Absolute URL of a page within the live whole-site PREVIEW — the always-on DRAFT browse surface
- * (members-only, rebuilt on change, no publish required). `path` is a route slug (`about`,
- * `de/leistungen`), '' for the home page; a trailing slash is appended so the page's relative
- * assets/links resolve against the right base (avoiding a canonicalizing redirect).
+ * (rebuilt on change, no publish required). `base` is the SIGNED preview base from the API
+ * (`/preview/<id>/<sig>/`); `path` is a route slug (`about`, `de/leistungen`), '' for the home page.
+ * A trailing slash is appended so the page's relative assets/links resolve against the right base.
  */
-export function previewSiteUrl(projectId: string, path = ''): string {
+export function previewUrlFrom(base: string, path = ''): string {
   const clean = path.replace(/^\/+/, '');
   const suffix = clean === '' || clean.endsWith('/') ? '' : '/';
-  return `${BASE}/projects/${projectId}/preview-site/${clean}${suffix}`;
+  return `${BASE}${base}${clean}${suffix}`;
 }
 
 /**
@@ -642,6 +642,8 @@ export const api = {
    */
   previewLocate: (projectId: string, entity: string) =>
     request<{ path: string | null }>('GET', `/projects/${projectId}/preview-locate?entity=${encodeURIComponent(entity)}`),
+  /** The SIGNED, share-able preview base (`/preview/<id>/<sig>/`) — members-only to mint. */
+  previewBase: (projectId: string) => request<{ base: string }>('GET', `/projects/${projectId}/preview-url`),
   /** Member-safe agent presence COUNT for the preview surface's pill (no connection details). */
   agentPresence: (projectId: string) =>
     request<{ connected: number }>('GET', `/projects/${projectId}/agent-presence`),

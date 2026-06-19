@@ -2,6 +2,11 @@
 // contract) the intake adapters. Keeping page/asset keys canonical here is what lets an internal
 // link in one page resolve to the FINAL route of the target page, and an <img src> to its hosted ref.
 
+/** The synthetic base an UPLOAD intake assigns its pages/assets (no real host behind it). */
+export const UPLOAD_BASE = 'https://import.local/';
+/** Host of {@link UPLOAD_BASE}: a reference to it is never a usable hotlink (drop it on a host miss). */
+export const SYNTHETIC_HOST = 'import.local';
+
 /** Schemes that must never survive into a page source (they can execute / smuggle). */
 const UNSAFE_SCHEME = /^(?:javascript|data|vbscript|file):/i;
 /** Non-navigational handler schemes kept verbatim (validateTemplate allows literal values). */
@@ -29,7 +34,7 @@ export function normalizePageUrl(absUrl: string): string | null {
   } catch {
     return null;
   }
-  let path = u.pathname.replace(/\/(?:index)\.html?$/i, '/').replace(/\/{2,}/g, '/');
+  let path = u.pathname.replace(/\/(?:index)\.x?html?$/i, '/').replace(/\/{2,}/g, '/');
   if (path.length > 1) path = path.replace(/\/+$/, '');
   if (path === '') path = '/';
   return `${u.protocol}//${u.host.toLowerCase()}${path}`;

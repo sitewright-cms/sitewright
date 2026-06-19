@@ -14,7 +14,7 @@ import {
   type Document,
   type Element,
 } from '../dom.js';
-import { assetKey, pickFromSrcset, resolveUrl, rewriteHref } from '../url-util.js';
+import { assetKey, pickFromSrcset, resolveUrl, rewriteHref, SYNTHETIC_HOST } from '../url-util.js';
 import type { ImportDiagnostic, ImportLimits } from '../types.js';
 
 /** Skeleton-owned landmarks the platform declares once — author content must use a neutral element. */
@@ -41,7 +41,14 @@ function imageRef(raw: string, ctx: TransformCtx): string | null {
   const key = assetKey(raw, ctx.pageUrl);
   if (key && ctx.assetMap.has(key)) return ctx.assetMap.get(key) ?? null;
   const abs = resolveUrl(raw, ctx.pageUrl);
-  return abs && /^https:\/\//i.test(abs) ? abs : null;
+  if (!abs || !/^https:\/\//i.test(abs)) return null;
+  // A miss on the synthetic upload host is a dead link (no real server) → drop it, don't "hotlink".
+  try {
+    if (new URL(abs).host === SYNTHETIC_HOST) return null;
+  } catch {
+    return null;
+  }
+  return abs;
 }
 
 /** Rewrite every `url(...)` inside an inline style: hosted ref if known, else absolute https, else left. */

@@ -6,16 +6,23 @@ import {
   COMPONENT_CATALOG,
   AGENT_GUIDES,
   GUIDE_TOPICS,
+  SW_HELPERS,
+  SW_DIRECTIVES,
+  BINDING_NAMESPACES,
+  LOOP_VARIABLES,
   type GuideTopic,
 } from '@sitewright/schema';
 import { SitewrightApiError, type Capability, type SitewrightClient, type PreviewResult } from './client.js';
 import type { BridgeAuth, PendingLogin, ScopeHolder } from './auth.js';
 
-/** Content kinds reachable via the generic content tools (media/deploy_target are excluded). */
+/** Content kinds reachable via the generic content tools. The DEDICATED kinds the API blocks from
+ *  the generic route (media/mediafolder/deploy_target/project_smtp) are excluded; everything else an
+ *  agent can author — including `snippet` (reusable `{{> name}}` fragments). */
 const GENERIC_KIND = z.enum([
   'settings',
   'page',
   'template',
+  'snippet',
   'translation',
   'dataset',
   'entry',
@@ -217,6 +224,23 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
       }
       const guide = AGENT_GUIDES[key as GuideTopic];
       return ok(`# ${guide.title}\n\n${guide.body.trim()}`);
+    },
+  );
+
+  // The machine-readable authoring REFERENCE for writing a page `source` — the exact vocabulary the
+  // engine ships, derived from it (so it can't drift): the {{sw-*}} helpers, the data-sw-* editable
+  // directives, the binding namespaces, and the {{#each}} loop variables. Static; no connection needed.
+  server.registerTool(
+    'get_reference',
+    {
+      description:
+        'The authoring REFERENCE for writing a page `source`: the {{sw-*}} HELPERS, the data-sw-* editable DIRECTIVES, the BINDING namespaces (company / website / page / page.data / pages / dataset / item / nav …), and the {{#each}} LOOP VARIABLES. Derived from the live engine, so it always matches what ships. Optionally pass section = helpers | directives | bindings | loops.',
+      inputSchema: { section: z.enum(['helpers', 'directives', 'bindings', 'loops']).optional() },
+    },
+    ({ section }: { section?: 'helpers' | 'directives' | 'bindings' | 'loops' }) => {
+      const all = { helpers: SW_HELPERS, directives: SW_DIRECTIVES, bindings: BINDING_NAMESPACES, loops: LOOP_VARIABLES };
+      // eslint-disable-next-line security/detect-object-injection -- `section` is a validated enum key
+      return ok(section ? { [section]: all[section] } : all);
     },
   );
 

@@ -1,13 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import {
   SW_DIRECTIVES,
+  SW_HELPERS,
   BINDING_NAMESPACES,
   BINDING_NAMESPACE_NAMES,
   LOOP_VARIABLES,
   type BindingNamespaceName,
 } from '@sitewright/schema';
 import { DIRECTIVE_ATTRS } from '../src/directives.js';
-import { renderTemplate, type TemplateContext } from '../src/template.js';
+import { renderTemplate, registeredSwHelpers, type TemplateContext } from '../src/template.js';
 
 // The authoring-reference registries (@sitewright/schema) are the single source the editor's Template
 // reference DERIVES its Directives / Bindings / Variables tabs from. These tests pin each registry to
@@ -16,6 +17,18 @@ import { renderTemplate, type TemplateContext } from '../src/template.js';
 
 // One dataset entry envelope (the shape `{{#each}}` flattens) — reused across the loop-variable cases.
 const entry = (id: string, title: string) => ({ id, dataset: 'd', status: 'published', values: { title } });
+
+describe('SW_HELPERS ↔ the registered sw-* helpers', () => {
+  it('documents EXACTLY the helpers the engine registers (no missing, no stale)', () => {
+    expect(SW_HELPERS.map((h) => h.name).sort()).toEqual(registeredSwHelpers().sort());
+  });
+  it('every helper entry has a syntax + summary', () => {
+    for (const h of SW_HELPERS) {
+      expect(h.syntax.length).toBeGreaterThan(0);
+      expect(h.summary.length).toBeGreaterThan(0);
+    }
+  });
+});
 
 describe('SW_DIRECTIVES ↔ the resolveDirectives pass', () => {
   it('documents exactly the directive attrs the engine processes (excluding the automatic ones)', () => {

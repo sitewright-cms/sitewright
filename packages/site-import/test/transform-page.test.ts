@@ -82,7 +82,7 @@ describe('transformBody', () => {
   });
 
   it('trims oversized pages to the source byte cap', () => {
-    const big = '<section>x</section>'.repeat(2000);
+    const big = '<section>x</section>'.repeat(400);
     const tiny: TransformCtx = { ...ctx, limits: { ...DEFAULT_LIMITS, maxSourceBytes: 500 } };
     const { source, diagnostics } = transformBody(parse(`<html><body>${big}</body></html>`), tiny);
     expect(Buffer.byteLength(source, 'utf8')).toBeLessThanOrEqual(500);

@@ -157,17 +157,24 @@ function contentNodes(doc: Document): AnyNode[] {
   return doc.children;
 }
 
-/** Trim trailing top-level children until the serialized source fits, keeping well-formed HTML. */
-function fitSource(nodes: AnyNode[], maxBytes: number): { source: string; truncated: boolean } {
-  const working = [...nodes];
-  let source = serialize(working);
-  let truncated = false;
-  while (byteLength(source) > maxBytes && working.length > 1) {
-    working.pop();
-    source = serialize(working);
-    truncated = true;
+/**
+ * Keep the longest prefix of top-level children whose serialized bytes fit `maxBytes` (well-formed
+ * HTML — never splits an element). O(n): each child is serialized once. `droppedAll` means not even the
+ * first child fit, so the caller falls back to text.
+ */
+function fitSource(nodes: AnyNode[], maxBytes: number): { source: string; truncated: boolean; droppedAll: boolean } {
+  const parts = nodes.map((n) => serialize(n));
+  const full = parts.join('');
+  if (byteLength(full) <= maxBytes) return { source: full, truncated: false, droppedAll: false };
+  const kept: string[] = [];
+  let total = 0;
+  for (const part of parts) {
+    const b = byteLength(part);
+    if (total + b > maxBytes) break;
+    kept.push(part);
+    total += b;
   }
-  return { source, truncated };
+  return { source: kept.join(''), truncated: true, droppedAll: kept.length === 0 && parts.length > 0 };
 }
 
 function byteLength(s: string): number {
@@ -186,7 +193,7 @@ export function transformBody(doc: Document, ctx: TransformCtx): { source: strin
   const fit = fitSource(nodes, maxBytes);
   let source = fit.source;
   // A single oversized top-level element can't be trimmed by dropping siblings → fall back to text.
-  if (byteLength(source) > maxBytes) {
+  if (fit.droppedAll) {
     source = textFallback(nodes, maxBytes);
     diagnostics.push({ code: 'source-truncated', message: 'oversized page reduced to text to fit the source cap', page: ctx.pageUrl });
   } else if (fit.truncated) {

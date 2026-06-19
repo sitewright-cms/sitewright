@@ -119,6 +119,36 @@ describe('createSitewrightMcpServer — on-demand guides', () => {
     expect(bad.isError).toBe(true);
     expect(text(bad)).toContain('topics:');
   });
+
+  it('get_reference returns the authoring vocabulary (no auth); a section filters it', async () => {
+    const mcp = await connect(fakeClient(), null);
+    expect(await toolNames(mcp)).toContain('get_reference');
+    const all = JSON.parse(text(await mcp.callTool({ name: 'get_reference', arguments: {} }))) as {
+      helpers: Array<{ name: string }>;
+      directives: unknown[];
+      bindings: unknown[];
+      loops: unknown[];
+    };
+    expect(all.helpers.some((h) => h.name === 'sw-icon')).toBe(true);
+    expect(all.directives.length).toBeGreaterThan(0);
+    expect(all.bindings.length).toBeGreaterThan(0);
+    expect(all.loops.length).toBeGreaterThan(0);
+    const helpersOnly = JSON.parse(text(await mcp.callTool({ name: 'get_reference', arguments: { section: 'helpers' } }))) as Record<string, unknown>;
+    expect(Object.keys(helpersOnly)).toEqual(['helpers']);
+  });
+});
+
+describe('createSitewrightMcpServer — snippet authoring (was unreachable)', () => {
+  it('snippet is a reachable generic content kind via put_content/get_content', async () => {
+    const client = fakeClient();
+    const mcp = await connect(client, writeScope);
+    const res = await mcp.callTool({
+      name: 'put_content',
+      arguments: { kind: 'snippet', id: 'cta', data: { id: 'cta', name: 'CTA', source: '<div>x</div>' } },
+    });
+    expect(res.isError).toBeFalsy();
+    expect(callsOf(client).putContent).toHaveBeenCalledWith('snippet', 'cta', expect.anything());
+  });
 });
 
 describe('createSitewrightMcpServer — lazy auth', () => {

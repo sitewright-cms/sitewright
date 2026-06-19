@@ -16,7 +16,9 @@ AUTHOR PAGES IN CODE. A page renders from its Handlebars \`source\` (HTML + Tail
 DaisyUI v5 component classes) — put the entire design there. A page with no \`source\`/\`template\`
 renders an empty body. Before you lay out a page, call \`get_guide("design")\` for the section
 patterns, type/spacing rhythm, and colour-depth rules that separate a flagship page from a
-skeleton (a real landing page is 6-9 composed sections, not a hero + three cards).
+skeleton (a real landing page is 6-9 composed sections, not a hero + three cards). The exact
+authoring vocabulary — every \`{{sw-*}}\` helper, \`data-sw-*\` directive, binding namespace, and
+loop variable — is in the \`get_reference\` tool (don't guess helper names).
 
 In \`source\`:
 - Use DaisyUI components for UI (btn / btn-primary, card, navbar, hero, badge, footer,
@@ -452,6 +454,7 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'login', description: "Connect the agent to a project — returns a URL + code for the user to approve in their browser." },
   { name: 'switch_project', description: "Re-authenticate to connect to a DIFFERENT project (scope is fixed per connection)." },
   { name: 'get_components', description: "The machine-readable authoring contracts of the first-party interactive components (markers, parts, attributes, markup skeletons)." },
+  { name: 'get_reference', description: "The authoring reference for writing a page source: the {{sw-*}} helpers, the data-sw-* directives, the binding namespaces, and the loop variables (derived from the engine, can't drift)." },
   { name: 'get_guide', description: `Fetch the full how-to for one feature area on demand (${GUIDE_TOPICS.join(', ')}) — the core instructions list the topics.` },
   { name: 'list_pages', description: "List the project's pages." },
   { name: 'get_page', description: "Get one page by id (code-first design is in the `source` field)." },

@@ -428,3 +428,36 @@ export const LOOP_VARIABLES: readonly LoopVariable[] = [
       '{{/each}}',
   },
 ];
+
+/** One curated `{{sw-*}}` template helper — the platform-provided authoring vocabulary (tenants
+ *  cannot register their own). The SET is drift-pinned to the engine's `registeredSwHelpers()` by a
+ *  test in @sitewright/blocks, so this list can never silently fall out of sync with what ships. */
+export interface SwHelper {
+  /** The helper name as written in a template (e.g. `sw-icon`). */
+  name: string;
+  /** A compact usage signature. */
+  syntax: string;
+  /** One-line summary of what it does. */
+  summary: string;
+}
+
+/** The complete set of registered `{{sw-*}}` helpers (alphabetical). Concise by design — the deep
+ *  how-to for the richer ones lives in the agent guides (icons / components / shop / i18n / nav). */
+export const SW_HELPERS: readonly SwHelper[] = [
+  { name: 'sw-active', syntax: '{{#if (sw-active path [exact=true])}}…{{/if}}', summary: 'Boolean: is `path` the active page? Matches the active TRAIL by default (a parent stays active on its children); exact=true matches the leaf only (use for aria-current).' },
+  { name: 'sw-add-to-cart', syntax: '{{sw-add-to-cart sku= name= price= [image=] [label=] [class=]}}', summary: 'MINI SHOP: an add-to-cart button; the browser cart hands the order to a channel configured in website.shop. Prices are non-authoritative.' },
+  { name: 'sw-cart', syntax: '{{sw-cart [class=]}}', summary: 'MINI SHOP: the cart button/widget (item count + collapsible order form); labels come from the reserved cart_* translation keys.' },
+  { name: 'sw-control', syntax: '{{sw-control "path" as="type" [options/min/max/…]}}', summary: 'Content-editor-only inline CONTROL chip (text/number/color/date/select/…) bound to page.data.* or website.data.*. Renders the plain value on the published site.' },
+  { name: 'sw-date', syntax: '{{sw-date value [format]}}', summary: 'Formats a date as UTC YYYY-MM-DD, or the full ISO string with "iso". Empty for an unparseable value.' },
+  { name: 'sw-flag', syntax: '{{sw-flag "code" ["classes"]}}', summary: 'Inlines a FULL-COLOR country-flag SVG by ISO 3166-1 alpha-2 code; "code-circle" for the round variant. Flags are a poor proxy for languages — map locale→country first.' },
+  { name: 'sw-folder', syntax: '{{#sw-folder "name"}}…{{/sw-folder}}', summary: 'Block helper that loops the images of a media FOLDER (galleries); the block context is each image (url/alt/width/height).' },
+  { name: 'sw-form', syntax: '{{sw-form "id"}}', summary: 'Embeds a configured web FORM by id (locale-suffix aware). Never hand-wire the endpoint; submissions land in the inbox.' },
+  { name: 'sw-html', syntax: '{{sw-html value}}', summary: 'Outputs SANITIZED rich HTML from a value (safe-HTML allowlist incl. https-sandboxed iframes; script/on*/form stripped). For trusted rich-text fields.' },
+  { name: 'sw-icon', syntax: '{{sw-icon "name" ["classes"]}}', summary: 'Inlines an SVG icon — a BARE name is a Lucide line glyph; "brand:slug" is a themed brand/social logo (e.g. "brand:whatsapp"). "x" ≠ "brand:x".' },
+  { name: 'sw-label', syntax: '{{sw-label}}', summary: 'Renders the current nav item\'s (possibly rich, {{sw-icon}}-bearing) label inside {{#each nav.*}}.' },
+  { name: 'sw-pick-entry', syntax: '{{#sw-pick-entry "dataset" id}}…{{/sw-pick-entry}}  ·  (sw-pick-entry "dataset" id)', summary: 'Selects ONE dataset entry by id as the block context (or as a subexpression) — for referencing a specific entry outside a loop.' },
+  { name: 'sw-theme-toggle', syntax: '{{sw-theme-toggle [class=]}}', summary: 'A light/dark THEME toggle button (no-flash, View-Transitions). Needs website.enableThemes.' },
+  { name: 'sw-translate', syntax: '{{sw-translate "key" [default="…"]}}', summary: 'Outputs a translated string for the page locale from the website.translations CATALOG (read-only twin of the data-sw-translate directive); falls back default-locale → default= → empty. Escaped, so safe in text or an attribute.' },
+  { name: 'sw-truncate', syntax: '{{sw-truncate text [N]}}', summary: 'Clips text to at most N characters (default 100), adding an ellipsis when clipped.' },
+  { name: 'sw-url', syntax: '{{sw-url value}}', summary: 'Scheme-sanitizes a URL for an href/src (blocks javascript:/data:/protocol-relative) and rebases internal links at publish. ALWAYS use it for href/src.' },
+];

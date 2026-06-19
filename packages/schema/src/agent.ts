@@ -465,10 +465,12 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'list_submissions', description: "List form submissions (newest first; optional formId + pagination).", capability: 'content:read' },
   { name: 'list_stock_providers', description: "List configured stock-image providers and whether each is available.", capability: 'content:read' },
   { name: 'search_stock_images', description: "Search a stock-image provider for photos.", capability: 'content:read' },
+  { name: 'list_media', description: "List the project's self-hosted media assets (URLs to reference, kind, dimensions, alt).", capability: 'content:read' },
   { name: 'put_page', description: "Create or replace a page (id taken from page.id).", capability: 'content:write' },
   { name: 'delete_page', description: "Delete a page by id.", capability: 'content:delete' },
   { name: 'put_content', description: "Create or replace a content entity of the given kind.", capability: 'content:write' },
   { name: 'delete_content', description: "Delete a content entity by kind + id.", capability: 'content:delete' },
   { name: 'import_stock_image', description: "Import a stock photo into the project (downloaded, optimized, self-hosted with attribution).", capability: 'content:write' },
+  { name: 'import_image', description: "Import an image into the project from a public https URL (downloaded, optimized, self-hosted).", capability: 'content:write' },
   { name: 'publish_project', description: "Build the project's static site from current saved content.", capability: 'publish' },
 ];

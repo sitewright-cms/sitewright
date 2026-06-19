@@ -352,6 +352,16 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     gate('content:read', ({ provider, query, page }) => client.stockSearch(provider, query, page ?? 1)),
   );
 
+  server.registerTool(
+    'list_media',
+    {
+      description:
+        'List the project’s self-hosted media assets — each with the URL to reference in an <img src> / href, plus kind, dimensions and alt. Optionally filter by kind = image | file | font.',
+      inputSchema: { kind: z.enum(['image', 'file', 'font']).optional() },
+    },
+    gate('content:read', ({ kind }) => client.listMedia(kind)),
+  );
+
   // ---------------------------------------------------------------- writes (content:write)
   // Deletes are gated on `content:delete`, NOT `content:write` — an agent can be allowed to
   // create/update without the irreversible power to remove pages or content.
@@ -397,6 +407,16 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
       },
     },
     gate('content:write', ({ provider, id, alt }) => client.importStock(provider, id, alt)),
+  );
+
+  server.registerTool(
+    'import_image',
+    {
+      description:
+        'Import an image into the project from a PUBLIC https URL — the server downloads, optimizes, and self-hosts it (never a hotlink), returning the stored asset (use its `url` in your <img src>). For STOCK photos use search_stock_images + import_stock_image instead.',
+      inputSchema: { url: z.string().url().max(2048), folder: z.string().max(1024).optional() },
+    },
+    gate('content:write', ({ url, folder }) => client.importImageUrl(url, folder)),
   );
 
   // ---------------------------------------------------------------- publish (publish)

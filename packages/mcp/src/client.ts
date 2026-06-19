@@ -223,4 +223,19 @@ export class SitewrightClient {
     );
     return res.item;
   }
+
+  /** List the project's media assets (optionally filtered by kind). */
+  async listMedia(kind?: 'image' | 'file' | 'font'): Promise<unknown> {
+    return this.request('GET', this.projectPath(`/media${kind ? `?kind=${kind}` : ''}`));
+  }
+
+  /** Import a PUBLIC https image by URL: the server downloads, optimizes, and self-hosts it. */
+  async importImageUrl(url: string, folder?: string): Promise<unknown> {
+    const res = await this.request<{ item: unknown }>(
+      'POST',
+      this.projectPath('/media/import-url'),
+      { url, ...(folder ? { folder } : {}) },
+    );
+    return res.item;
+  }
 }

@@ -24,6 +24,8 @@ function fakeClient(overrides: Partial<Record<keyof SitewrightClient, unknown>> 
     stockProviders: vi.fn(async () => ({ providers: [{ name: 'openverse', available: true, requiresKey: false }] })),
     stockSearch: vi.fn(async () => ({ provider: 'openverse', page: 1, results: [{ provider: 'openverse', id: 'ov1', author: 'Ann' }] })),
     importStock: vi.fn(async () => ({ id: 'asset1', url: '/media/p/asset1/x.jpg' })),
+    listMedia: vi.fn(async () => ({ items: [{ id: 'm1', kind: 'image', url: '/media/p/m1/x.webp', alt: '' }] })),
+    importImageUrl: vi.fn(async () => ({ id: 'm2', kind: 'image', url: '/media/p/m2/y.webp' })),
     ...overrides,
   } as unknown as SitewrightClient & Record<string, ReturnType<typeof vi.fn>>;
 }
@@ -148,6 +150,29 @@ describe('createSitewrightMcpServer — snippet authoring (was unreachable)', ()
     });
     expect(res.isError).toBeFalsy();
     expect(callsOf(client).putContent).toHaveBeenCalledWith('snippet', 'cta', expect.anything());
+  });
+});
+
+describe('createSitewrightMcpServer — media tools', () => {
+  it('list_media is content:read; import_image is gated on content:write', async () => {
+    const reader = fakeClient();
+    const r = await connect(reader, readScope);
+    const list = await r.callTool({ name: 'list_media', arguments: {} });
+    expect(list.isError).toBeFalsy();
+    expect(callsOf(reader).listMedia).toHaveBeenCalled();
+    // import_image needs content:write — a read token gets a clear capability error + no client call.
+    const imp = await r.callTool({ name: 'import_image', arguments: { url: 'https://example.com/a.jpg' } });
+    expect(imp.isError).toBe(true);
+    expect(text(imp)).toMatch(/content:write/);
+    expect(callsOf(reader).importImageUrl).not.toHaveBeenCalled();
+  });
+
+  it('import_image imports a public URL (folder forwarded) with a write token', async () => {
+    const writer = fakeClient();
+    const w = await connect(writer, writeScope);
+    const res = await w.callTool({ name: 'import_image', arguments: { url: 'https://example.com/a.jpg', folder: 'team' } });
+    expect(res.isError).toBeFalsy();
+    expect(callsOf(writer).importImageUrl).toHaveBeenCalledWith('https://example.com/a.jpg', 'team');
   });
 });
 

@@ -215,4 +215,27 @@ describe('SitewrightClient', () => {
     await none.client.listSubmissions();
     expect(none.calls.at(-1)!.input).toBe('https://cms.test/projects/p1/submissions');
   });
+
+  it('listMedia builds the media path and forwards an optional kind filter', async () => {
+    const { client, calls } = await introspected((input) =>
+      input.endsWith('/api-key/self') ? { status: 200, body: JSON.stringify(scope) } : { status: 200, body: '{"items":[]}' },
+    );
+    await client.listMedia();
+    expect(calls[1]!.input).toBe('https://cms.test/projects/p1/media');
+    await client.listMedia('image');
+    expect(calls[2]!.input).toBe('https://cms.test/projects/p1/media?kind=image');
+  });
+
+  it('importImageUrl POSTs the url (+ optional folder) and returns the saved item', async () => {
+    const asset = { id: 'm2', kind: 'image', url: '/media/p1/m2/y.webp' };
+    const { client, calls } = await introspected((input) =>
+      input.endsWith('/api-key/self') ? { status: 200, body: JSON.stringify(scope) } : { status: 201, body: JSON.stringify({ item: asset }) },
+    );
+    expect(await client.importImageUrl('https://x.test/a.jpg')).toEqual(asset);
+    expect(calls[1]!.input).toBe('https://cms.test/projects/p1/media/import-url');
+    expect(calls[1]!.init?.method).toBe('POST');
+    expect(JSON.parse(calls[1]!.init!.body!)).toEqual({ url: 'https://x.test/a.jpg' });
+    await client.importImageUrl('https://x.test/b.jpg', 'team');
+    expect(JSON.parse(calls[2]!.init!.body!)).toEqual({ url: 'https://x.test/b.jpg', folder: 'team' });
+  });
 });

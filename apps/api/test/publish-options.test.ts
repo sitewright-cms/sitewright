@@ -62,21 +62,46 @@ describe('Local Hosting serve options (local deploy target: previewToken / minif
     expect((await client.post(`/projects/${projectId}/publish`)).statusCode).toBe(200);
   }
 
-  it('preview token (on the local target): HTML pages require a matching ?token=, static assets stay ungated', async () => {
+  it('preview token (local target): a valid ?token= sets a path-scoped cookie + redirects clean; nav then carries the cookie', async () => {
     await seedSite();
     await createLocalTarget({ previewToken: 'tok_abcdefgh12345678' });
     await publish();
 
+    // No token + no cookie → 403 (informative, utf-8).
     const noToken = await client.get(`/sites/${slug}/index.html`);
-    expect(noToken.statusCode).toBe(403); // no token
-    // The 403 explains itself, with an explicit utf-8 charset so the message renders correctly.
+    expect(noToken.statusCode).toBe(403);
     expect(noToken.headers['content-type']).toContain('charset=utf-8');
     expect(noToken.body).toContain('a preview token is required');
-    expect((await client.get(`/sites/${slug}/index.html?token=nope`)).statusCode).toBe(403); // wrong token
-    const ok = await client.get(`/sites/${slug}/index.html?token=tok_abcdefgh12345678`);
-    expect(ok.statusCode).toBe(200);
-    expect(ok.body).toContain('Hello world');
-    // A static asset (the compiled utility sheet) is a sub-resource, not the protected page → ungated.
+    // Wrong token → 403.
+    expect((await client.get(`/sites/${slug}/index.html?token=nope`)).statusCode).toBe(403);
+
+    // Valid ?token= (the entry link) → 302 to the token-free URL + a path-scoped, Lax site cookie.
+    const entry = await client.get(`/sites/${slug}/index.html?token=tok_abcdefgh12345678`);
+    expect(entry.statusCode).toBe(302);
+    expect(entry.headers.location).toBe(`/sites/${slug}/index.html`); // token stripped from the URL
+    const cookie = entry.cookies.find((c) => c.name === `sw_site_${slug}`);
+    expect(cookie?.value).toBe('tok_abcdefgh12345678');
+    expect(cookie?.path).toBe(`/sites/${slug}/`);
+    expect(cookie?.httpOnly).toBe(true);
+    expect(String(cookie?.sameSite).toLowerCase()).toBe('lax');
+
+    // With the cookie (what in-site navigation sends), the CLEAN URL serves — no token in the path.
+    const withCookie = await client.inject({
+      method: 'GET',
+      url: `/sites/${slug}/index.html`,
+      cookies: { [`sw_site_${slug}`]: 'tok_abcdefgh12345678' },
+    });
+    expect(withCookie.statusCode).toBe(200);
+    expect(withCookie.body).toContain('Hello world');
+    // A wrong cookie value is rejected (constant-time compare).
+    const badCookie = await client.inject({
+      method: 'GET',
+      url: `/sites/${slug}/index.html`,
+      cookies: { [`sw_site_${slug}`]: 'wrong' },
+    });
+    expect(badCookie.statusCode).toBe(403);
+
+    // A static asset (sub-resource) stays ungated.
     expect((await client.get(`/sites/${slug}/styles.css`)).statusCode).toBe(200);
   });
 

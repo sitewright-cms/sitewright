@@ -3059,14 +3059,37 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         if (!gateProject) return reply.code(404).send();
         const local = await findLocalTarget({ userId: 'system', projectId: gateProject.id, role: 'owner' as const });
         if (!local) return reply.code(404).send();
-        // The target's preview-token gate (a soft "unlisted preview" control) → require a matching
-        // `?token=` (constant-time compare; lengths are equal-or-reject so timingSafeEqual never throws).
+        // The target's preview-token gate (a soft "unlisted preview" control). Keep clean path URLs
+        // for in-site NAVIGATION: a first visit with a valid `?token=` stashes the token in a
+        // path-scoped, SameSite=Lax cookie and redirects to the token-free URL; every later page (a
+        // same-site top-level navigation) carries the cookie. A bare `?token=` query would be DROPPED
+        // by the page's relative links, so nav would break — hence the cookie. (Constant-time compare;
+        // lengths are equal-or-reject so timingSafeEqual never throws.)
         if (local.previewToken) {
-          const raw = (req.query as { token?: string | string[] } | undefined)?.token;
-          const token = typeof raw === 'string' ? raw : '';
-          const a = Buffer.from(token);
-          const b = Buffer.from(local.previewToken);
-          if (!(a.length === b.length && timingSafeEqual(a, b))) {
+          const SITE_COOKIE = `sw_site_${slug}`;
+          const matches = (v: string | undefined): boolean => {
+            if (!v) return false;
+            const a = Buffer.from(v);
+            const b = Buffer.from(local.previewToken!);
+            return a.length === b.length && timingSafeEqual(a, b);
+          };
+          // eslint-disable-next-line security/detect-object-injection -- key is `sw_site_<validated-slug>`
+          const cookieTok = (req.cookies as Record<string, string | undefined> | undefined)?.[SITE_COOKIE];
+          if (!matches(cookieTok)) {
+            const raw = (req.query as { token?: string | string[] } | undefined)?.token;
+            const queryTok = typeof raw === 'string' ? raw : '';
+            if (matches(queryTok)) {
+              // Valid token in the URL → remember it in a cookie + redirect to the clean (token-free) URL.
+              reply.setCookie(SITE_COOKIE, local.previewToken, {
+                path: `/sites/${slug}/`,
+                httpOnly: true,
+                sameSite: 'lax', // sent on same-site top-level navigations (in-site link clicks)
+                secure: opts.secureCookies ?? false,
+                maxAge: 60 * 60 * 24 * 30, // 30 days
+              });
+              const safePath = path.replace(/[\r\n\0]/g, '');
+              return reply.redirect(`/sites/${slug}/${safePath}`, 302);
+            }
             // charset=utf-8 so the message renders correctly; kept informative — a bare 403 would leave
             // a visitor with no idea a preview token is needed.
             return reply

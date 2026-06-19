@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, eventsUrl, previewSiteUrl } from '../api';
+import { api, eventsUrl, previewUrlFrom } from '../api';
 import type { PreviewTarget } from '../lib/preview-target';
 
 /** Coalesce a burst of edits into one reload/navigate. */
@@ -14,36 +14,61 @@ const PRESENCE_POLL_MS = 30_000;
  * authenticated page that embeds the project's live DRAFT site in a SANDBOXED iframe and:
  *   - subscribes to the change stream and RELOADS the shown page on any edit (from any channel),
  *   - AUTO-NAVIGATES to a page an agent just created/edited (resolved via `/preview-locate`),
- *   - shows a minimal "agent connected / working" pill — and NOTHING else (no editor chrome).
+ *   - offers a "copy link" for the SHARE-ABLE preview URL, and a minimal agent presence pill.
  *
+ * The iframe loads the draft via a SIGNED path (`/preview/<id>/<sig>/…`) fetched once from the API:
+ * the signature gates the draft, so the sandboxed (cookieless) frame can NAVIGATE between pages —
+ * a session cookie would be dropped on in-frame navigation, but the sig rides in every relative link.
  * The sandboxed child can't be inspected cross-origin, so its injected runtime postMessages its
- * location here; this shell tracks that to reload the RIGHT page and to update the tab title.
+ * location here; this shell tracks that to reload the RIGHT page and update the tab title.
  */
 export function SitePreview({ target }: { target: PreviewTarget }) {
   const { projectId } = target;
   // The route currently shown in the iframe (reported by the child runtime) — drives reload targeting.
   const currentPath = useRef<string>(target.path);
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const [src, setSrc] = useState(() => previewSiteUrl(projectId, target.path));
+  // The SIGNED preview base (`/preview/<id>/<sig>/`), fetched once; the iframe src + nav build on it.
+  const [base, setBase] = useState<string | null>(null);
+  const baseRef = useRef<string | null>(null);
+  const [src, setSrc] = useState('');
   const [connectedCount, setConnectedCount] = useState(0);
   const [working, setWorking] = useState(false);
+  const [copied, setCopied] = useState(false);
   const workingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Fetch the signed base on mount, then load the initial route into the iframe.
+  useEffect(() => {
+    let active = true;
+    api
+      .previewBase(projectId)
+      .then((r) => {
+        if (!active) return;
+        baseRef.current = r.base;
+        setBase(r.base);
+        setSrc(previewUrlFrom(r.base, target.path));
+      })
+      .catch(() => {
+        /* preview unavailable (e.g. feature off) — the shell stays blank */
+      });
+    return () => {
+      active = false;
+    };
+  }, [projectId, target.path]);
+
   // Navigate the embedded iframe to a preview route (home = '').
-  const go = useCallback(
-    (path: string) => {
-      currentPath.current = path;
-      setSrc(previewSiteUrl(projectId, path));
-    },
-    [projectId],
-  );
+  const go = useCallback((path: string) => {
+    if (!baseRef.current) return;
+    currentPath.current = path;
+    setSrc(previewUrlFrom(baseRef.current, path));
+  }, []);
 
   // Reload the page currently shown. The src must differ from the last value or the iframe won't
   // refetch — a cache-busting param forces it (the route also sends `no-store`).
   const reloadCurrent = useCallback(() => {
-    const base = previewSiteUrl(projectId, currentPath.current);
-    setSrc(`${base}${base.includes('?') ? '&' : '?'}r=${Date.now()}`);
-  }, [projectId]);
+    if (!baseRef.current) return;
+    const b = previewUrlFrom(baseRef.current, currentPath.current);
+    setSrc(`${b}${b.includes('?') ? '&' : '?'}r=${Date.now()}`);
+  }, []);
 
   // A content change landed: navigate to the changed page if it resolves to a navigable route
   // (covers "agent created/edited page X"); otherwise just reload the current page (global edits).
@@ -94,21 +119,22 @@ export function SitePreview({ target }: { target: PreviewTarget }) {
     };
   }, [projectId, onChange]);
 
-  // The child runtime reports the iframe's location so we can target reloads + title the tab.
+  // The child runtime reports the iframe's location so we can target reloads + title the tab. The
+  // reported pathname is under the signed base; strip it back to a bare route.
   useEffect(() => {
-    const prefix = `/projects/${projectId}/preview-site/`;
+    if (!base) return;
     const onMessage = (e: MessageEvent) => {
       if (e.source !== iframeRef.current?.contentWindow) return;
       const d = e.data as { source?: string; type?: string; path?: string; title?: string } | null;
       if (!d || d.source !== 'sitewright-preview-site' || d.type !== 'location') return;
-      if (typeof d.path === 'string' && d.path.startsWith(prefix)) {
-        currentPath.current = d.path.slice(prefix.length).replace(/\/+$/, '');
+      if (typeof d.path === 'string' && d.path.startsWith(base)) {
+        currentPath.current = d.path.slice(base.length).replace(/\/+$/, '');
       }
       if (typeof d.title === 'string' && d.title) document.title = `Preview · ${d.title}`;
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [projectId]);
+  }, [base]);
 
   // Agent presence count (member-safe): load on mount + reconcile periodically.
   useEffect(() => {
@@ -128,19 +154,41 @@ export function SitePreview({ target }: { target: PreviewTarget }) {
     };
   }, [projectId]);
 
+  // The share-able preview URL (absolute) — resolve the iframe URL against this origin so it stays
+  // correct whether the API is same-origin (relative) or a separate origin (absolute via VITE_API_BASE).
+  const shareUrl = base ? new URL(previewUrlFrom(base, ''), window.location.origin).href : '';
+  const copyShareUrl = () => {
+    if (!shareUrl) return;
+    void navigator.clipboard.writeText(shareUrl).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  };
+
   const showPill = working || connectedCount > 0;
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-white">
-      <iframe
-        ref={iframeRef}
-        title="Site preview"
-        src={src}
-        // Author content runs (true WYSIWYG) but stays opaque-origin — it can't reach this
-        // shell's authenticated session. Matches the API route's own `sandbox` CSP.
-        sandbox="allow-scripts"
-        className="h-full w-full border-0"
-      />
+      {src && (
+        <iframe
+          ref={iframeRef}
+          title="Site preview"
+          src={src}
+          // Author content runs (true WYSIWYG) but stays opaque-origin — it can't reach this
+          // shell's authenticated session. Matches the API route's own `sandbox` CSP.
+          sandbox="allow-scripts"
+          className="h-full w-full border-0"
+        />
+      )}
+      {base && (
+        <button
+          onClick={copyShareUrl}
+          title={shareUrl}
+          className="absolute left-3 top-3 z-10 inline-flex items-center gap-1.5 rounded-full bg-slate-900/70 px-2.5 py-1 text-[11px] font-medium text-white opacity-60 shadow-sm backdrop-blur transition hover:opacity-100"
+        >
+          {copied ? 'Link copied' : 'Copy preview link'}
+        </button>
+      )}
       {showPill && (
         // pointer-events-none so the indicator never intercepts clicks meant for the preview.
         <div className="pointer-events-none absolute right-3 top-3 z-10">

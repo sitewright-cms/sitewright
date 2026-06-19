@@ -1,4 +1,4 @@
-import { randomUUID, timingSafeEqual } from 'node:crypto';
+import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -124,6 +124,7 @@ import { InProcessBuildRunner, type BuildRunner } from '../publish/runner.js';
 import { AiProviderError, type AiProvider } from '../ai/provider.js';
 import { PublishStore } from '../publish/store.js';
 import { PREVIEW_SITE_RUNTIME_JS } from './preview-site-runtime.js';
+import { signPreview, verifyPreview } from './preview-token.js';
 import { PreviewStore } from './preview-store.js';
 import { PREVIEW_BRIDGE_JS } from './preview-bridge.js';
 import { archiveSite, deploySite, DeployConfigSchema } from '../publish/adapters.js';
@@ -598,9 +599,10 @@ export interface AppOptions {
   publishRoot?: string;
   /**
    * Absolute path to the live-PREVIEW draft-sites root; enables the always-on whole-site
-   * preview (`/projects/:id/preview-site/*`) when set. Separate from `publishRoot`: these
-   * are ephemeral, rebuilt-on-change, members-only draft builds (include drafts), never served
-   * publicly. Distinct dir so a draft build never collides with the deployable artifact.
+   * preview (`/preview-site/:projectId/:sig/*`, minted member-only via `/projects/:id/preview-url`)
+   * when set. Separate from `publishRoot`: these are ephemeral, rebuilt-on-change draft builds
+   * (include drafts), never served as the canonical public site. Distinct dir so a draft build
+   * never collides with the deployable artifact.
    */
   previewRoot?: string;
   /**
@@ -804,7 +806,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // Baseline security headers (the API also serves the SPA in single-container mode).
   app.addHook('onSend', async (_req, reply) => {
     reply.header('x-content-type-options', 'nosniff');
-    reply.header('referrer-policy', 'same-origin');
+    // Default to `same-origin`, but let a route opt into a stricter policy (the signed preview doc
+    // sets `no-referrer` so its bearer URL can't leak via the Referer header).
+    if (!reply.hasHeader('referrer-policy')) reply.header('referrer-policy', 'same-origin');
     // A route may set its OWN Content-Security-Policy (the sandboxed preview-doc,
     // which needs `sandbox allow-scripts` + to be framable by the editor). When it
     // does, don't override its CSP — and skip the default DENY framing too, since
@@ -3100,6 +3104,19 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // same path-safe logic as a published site (a distinct root, never served publicly).
   if (previewSiteStore) {
     const preview = previewSiteStore;
+    // Secret backing the preview SIGNATURE (a path segment that gates the draft so the sandboxed,
+    // cookieless preview can navigate). `cookieSecret` is mandatory in production; the encryption key
+    // covers most local/test runs. With NEITHER, fall back to a PER-BOOT random — never a hardcoded
+    // string (that would let anyone who knows a projectId forge the sig and read every draft).
+    const previewSecret =
+      opts.cookieSecret ??
+      opts.encryptionKey?.toString('hex') ??
+      (() => {
+        app.log.warn(
+          'preview: no COOKIE_SECRET/encryption key — using a per-boot random preview secret (share links reset on restart). Set COOKIE_SECRET for stable links.',
+        );
+        return randomBytes(32).toString('hex');
+      })();
     // After a failed build, skip rebuilding the SAME version for this long, so a project stuck in a
     // broken state (e.g. a bad Handlebars source) can't trigger a fresh build on every request.
     const PREVIEW_BUILD_COOLDOWN_MS = 3_000;
@@ -3220,57 +3237,63 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     const isPreviewAssetPath = (path: string): boolean =>
       path.startsWith('_assets/') || /^[^/]+\.(css|js|xml|txt)$/.test(path);
 
-    // Serve the draft build (path-safe; mirrors `/sites/:slug/*`). Split by resource kind:
-    //
-    //  • The HTML PAGE (the draft's content + structure) requires project MEMBERSHIP and is served
-    //    under `sandbox allow-scripts` (opaque origin) so author JS can't reach the editor session.
-    //  • STATIC ASSETS (bundled media + the compiled CSS / platform runtime JS — the SAME bytes the
-    //    published `/sites/<slug>/` already serves publicly) are served WITHOUT the membership gate and
-    //    with cross-origin headers. This is REQUIRED, not a convenience: the sandboxed page is an
-    //    opaque origin whose subresource requests carry no cookie (SameSite=Strict → null
-    //    site-for-cookies), so a gated asset would 401 and the page would render unstyled. Assets are
-    //    scoped by an unguessable project id + asset UUID; the protected resource (the page) stays gated.
+    // The member-only endpoint that hands the editor (and a "copy link" affordance) the SIGNED,
+    // share-able preview base — `/preview/<projectId>/<sig>/`. Resolving it requires content:read, so
+    // only a member can MINT the link; the link itself then works without a login (the sig is the auth).
+    app.get<{ Params: { projectId: string } }>(
+      '/projects/:projectId/preview-url',
+      async (req, reply) => {
+        const { project } = await resolveProject(req, 'content:read');
+        return reply.send({ base: `/preview-site/${project.id}/${signPreview(project.id, previewSecret)}/` });
+      },
+    );
+
+    // Serve the draft build at a SIGNED path. The `<sig>` segment IS the auth (verified here), so NO
+    // membership/cookie is required — which is exactly what lets the sandboxed, opaque-origin preview
+    // NAVIGATE: a SameSite=Strict cookie is dropped on in-frame navigation, but the signature lives in
+    // the path and every relative link carries it. HTML pages are sandboxed (author JS can't reach the
+    // editor session); assets get cross-origin headers (the opaque-origin frame fetches them with no
+    // credentials) — both kinds sit behind the same signature.
     //
     // Left on the global request cap: a page view fans out into many asset sub-requests, and the only
-    // expensive work (a rebuild) is already bounded by the version cache + coalescing + failure cooldown.
-    app.get<{ Params: { projectId: string; '*': string } }>(
-      '/projects/:projectId/preview-site/*',
+    // expensive work (a rebuild) is bounded by the version cache + coalescing + failure cooldown.
+    app.get<{ Params: { projectId: string; sig: string; '*': string } }>(
+      '/preview-site/:projectId/:sig/*',
       async (req, reply) => {
+        const { projectId, sig } = req.params;
+        if (!verifyPreview(projectId, sig, previewSecret)) return reply.code(404).send();
+        const project = await projects.get(projectId).catch(() => null);
+        if (!project) return reply.code(404).send();
         const path = req.params['*'] ?? '';
+        const base = `/preview-site/${projectId}/${sig}/`;
 
-        // ── Static asset: public + cross-origin (no membership gate) ──
+        // ── Static asset: cross-origin headers so the opaque-origin frame can load it (still signed) ──
         if (isPreviewAssetPath(path)) {
-          const proj = await projects.get(req.params.projectId).catch(() => null);
-          if (proj) {
-            // Cross-origin markers so the sandboxed, opaque-origin (cookieless) preview document can
-            // load these: fonts are CORS-fetched (need ACAO); CSS/JS/images are no-cors (CORP suffices).
-            const crossOrigin = () =>
-              reply
-                .header('cache-control', 'no-store')
-                .header('x-content-type-options', 'nosniff')
-                .header('access-control-allow-origin', '*')
-                .header('cross-origin-resource-policy', 'cross-origin');
-            let binary = null;
-            try {
-              binary = await preview.readBinary(proj.slug, path);
-            } catch {
-              /* invalid slug → fall through to the 404 below */
-            }
-            if (binary !== null) {
-              crossOrigin();
-              if (binary.attachment) reply.header('content-disposition', 'attachment');
-              return reply.type(binary.contentType).send(binary.body);
-            }
-            const asset = await preview.readAsset(proj.slug, path);
-            if (asset !== null) return crossOrigin().type(asset.contentType).send(asset.body);
+          const crossOrigin = () =>
+            reply
+              .header('cache-control', 'no-store')
+              .header('x-content-type-options', 'nosniff')
+              .header('access-control-allow-origin', '*')
+              .header('cross-origin-resource-policy', 'cross-origin');
+          let binary = null;
+          try {
+            binary = await preview.readBinary(project.slug, path);
+          } catch {
+            /* invalid slug → fall through to the 404 below */
           }
-          // An asset-looking path that doesn't resolve → bare 404 (never the auth/HTML path).
+          if (binary !== null) {
+            crossOrigin();
+            if (binary.attachment) reply.header('content-disposition', 'attachment');
+            return reply.type(binary.contentType).send(binary.body);
+          }
+          const asset = await preview.readAsset(project.slug, path);
+          if (asset !== null) return crossOrigin().type(asset.contentType).send(asset.body);
           return reply.code(404).send();
         }
 
-        // ── HTML page: membership-gated, rebuilt on demand, sandboxed ──
-        const { ctx, project } = await resolveProject(req, 'content:read');
-        await ensurePreviewBuild(ctx, project);
+        // ── HTML page: rebuilt on demand (system ctx — the sig already authorized this), sandboxed ──
+        const systemCtx = { userId: 'system', projectId: project.id, role: 'owner' as const };
+        await ensurePreviewBuild(systemCtx, project);
         const html = await preview.readHtml(project.slug, path);
         if (html === null) return reply.code(404).send();
         // Canonicalize an extensionless, slash-less page URL so its page-relative asset/link paths
@@ -3280,10 +3303,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           const q = req.url.indexOf('?');
           const query = q === -1 ? '' : req.url.slice(q);
           const safePath = path.replace(/[\r\n\0]/g, '');
-          return reply.redirect(`/projects/${project.id}/preview-site/${safePath}/${query}`, 301);
+          return reply.redirect(`${base}${safePath}/${query}`, 301);
         }
         return reply
           .header('cache-control', 'no-store')
+          // Don't leak the signed (bearer) URL to third parties via the Referer header on outbound links.
+          .header('referrer-policy', 'no-referrer')
           // Sandbox the author content (opaque origin) — scripts run for true WYSIWYG, but can't reach
           // the editor's same-origin session; forms stay inert (no accidental preview submissions).
           .header('content-security-policy', 'sandbox allow-scripts')

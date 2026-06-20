@@ -16,6 +16,7 @@ import {
 } from '../dom.js';
 import { assetKey, pickFromSrcset, resolveUrl, rewriteHref, SYNTHETIC_HOST } from '../url-util.js';
 import { LAZY_ATTRS, effectiveBg, effectiveSrc, effectiveSrcset } from './assets.js';
+import { isAllowedEmbed } from '../embeds.js';
 import type { ImportDiagnostic, ImportLimits } from '../types.js';
 
 /** Skeleton-owned landmarks the platform declares once — author content must use a neutral element. */
@@ -32,6 +33,8 @@ export interface TransformCtx {
   internalRoutes: ReadonlyMap<string, string>;
   /** asset key → hosted `AssetRef` (`/media/...`). */
   assetMap: ReadonlyMap<string, string>;
+  /** asset key → responsive WebP `srcset` for hosted images (so `<img>` serves the efficient format). */
+  srcsetMap?: ReadonlyMap<string, string>;
   limits: ImportLimits;
 }
 
@@ -96,11 +99,13 @@ export function sanitizeForSource(nodes: AnyNode[], ctx: TransformCtx, diags: Im
 /** Promote JS lazy-load attrs (`data-src`/`data-srcset`/`data-bg`) to real `src`/`srcset`/inline bg,
  *  then drop the now-redundant lazy attrs — so images survive after the loader script is stripped. */
 function promoteLazyAttrs(el: Element): void {
-  if (el.name === 'img' || el.name === 'source') {
-    const src = effectiveSrc(el.attribs);
-    const srcset = effectiveSrcset(el.attribs);
+  if (el.name === 'img' || el.name === 'source' || el.name === 'iframe') {
+    const src = effectiveSrc(el.attribs); // iframes (video/maps) are often lazy too (data-src)
     if (src) el.attribs.src = src;
-    if (srcset) el.attribs.srcset = srcset;
+    if (el.name !== 'iframe') {
+      const srcset = effectiveSrcset(el.attribs);
+      if (srcset) el.attribs.srcset = srcset;
+    }
   }
   const bg = effectiveBg(el.attribs);
   if (bg) {
@@ -116,6 +121,9 @@ function rewriteElementAttrs(el: Element, ctx: TransformCtx, diags: ImportDiagno
   promoteLazyAttrs(el); // lazy-load data-* → real src/srcset/bg before the normal url rewrite hosts them
   const isImageEl = el.name === 'img';
   const isMediaSource = el.name === 'source' || el.name === 'picture';
+  // Capture the <img>'s ORIGINAL asset key now (before the loop rewrites src to the /media ref) so we
+  // can attach the hosted WebP srcset after the foreign srcset has been stripped.
+  const imgKey = isImageEl && el.attribs.src ? assetKey(el.attribs.src, ctx.pageUrl) : null;
   /* eslint-disable security/detect-object-injection -- `name` iterates the element's OWN attribute keys (a plain parsed Record), not attacker-controlled object access */
   for (const name of Object.keys(el.attribs)) {
     const value = el.attribs[name] ?? '';
@@ -143,8 +151,19 @@ function rewriteElementAttrs(el: Element, ctx: TransformCtx, diags: ImportDiagno
     if (name === 'src') {
       if (el.name === 'iframe') {
         const abs = resolveUrl(value, ctx.pageUrl);
-        if (abs && /^https:\/\//i.test(abs)) el.attribs.src = abs;
-        else removeElement(el);
+        // Keep embeds only from the trusted provider allowlist (video, maps, social incl. Facebook,
+        // audio, forms, code, commerce, …); they're origin-isolated. Defer loading, allow the usual
+        // embed capabilities + fullscreen, and don't leak the full referrer. Anything else is dropped.
+        if (abs && isAllowedEmbed(abs)) {
+          el.attribs.src = abs;
+          if (!el.attribs.loading) el.attribs.loading = 'lazy';
+          if (!el.attribs.referrerpolicy) el.attribs.referrerpolicy = 'no-referrer-when-downgrade';
+          if (!('allow' in el.attribs)) el.attribs.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen';
+          if (!('allowfullscreen' in el.attribs)) el.attribs.allowfullscreen = '';
+        } else {
+          removeElement(el);
+          if (abs) diags.push({ code: 'unsafe-url-dropped', message: `iframe from non-allowlisted host dropped: ${truncate(abs)}`, page: ctx.pageUrl });
+        }
       } else if (isImageEl || isMediaSource || el.name === 'video' || el.name === 'audio') {
         const ref = el.name === 'video' || el.name === 'audio' ? keepHttps(value, ctx) : imageRef(value, ctx);
         if (ref) el.attribs.src = ref;
@@ -166,6 +185,16 @@ function rewriteElementAttrs(el: Element, ctx: TransformCtx, diags: ImportDiagno
     el.attribs[name] = neutralizeMustaches(value);
   }
   /* eslint-enable security/detect-object-injection */
+
+  // Serve the efficient WebP variants: attach the hosted responsive srcset to a self-hosted <img>
+  // (the foreign srcset was stripped above; `src` stays the fallback for legacy browsers).
+  const srcset = imgKey ? ctx.srcsetMap?.get(imgKey) : undefined;
+  if (isImageEl && srcset && el.attribs.src && !el.attribs.srcset) {
+    el.attribs.srcset = srcset;
+    if (!el.attribs.sizes) el.attribs.sizes = '100vw';
+    if (!el.attribs.loading) el.attribs.loading = 'lazy';
+    if (!el.attribs.decoding) el.attribs.decoding = 'async';
+  }
 }
 
 function keepHttps(raw: string, ctx: TransformCtx): string | null {

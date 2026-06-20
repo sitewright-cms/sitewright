@@ -7,6 +7,7 @@ import type { FastifyBaseLogger, FastifyInstance, FastifyReply, FastifyRequest }
 import { z } from 'zod';
 import { targetsPrivateHost } from '@sitewright/schema';
 import { buildImportBundle, type CapturedSite, type ImportBundle, type ImportResult, type MediaPort } from '@sitewright/site-import';
+import { buildSrcset } from '@sitewright/image-pipeline';
 import { crawlSite, type FetchedResource } from '../import/crawl.js';
 import { buildCapturedSiteFromUpload, UploadError, type UploadResult } from '../import/upload.js';
 import { pinnedFetch } from '../import/pinned-fetch.js';
@@ -43,7 +44,12 @@ export interface ImportRouteDeps {
     access: 'content:write',
   ) => Promise<{ ctx: ProjectContext; project: { id: string; name: string; slug: string } }>;
   contentRepo: Pick<ContentRepository, 'importBundle'>;
-  createMediaAsset: (ctx: ProjectContext, slug: string, buffer: Buffer, meta: { filename: string; mimetype: string }) => Promise<{ url: string }>;
+  createMediaAsset: (
+    ctx: ProjectContext,
+    slug: string,
+    buffer: Buffer,
+    meta: { filename: string; mimetype: string },
+  ) => Promise<{ url: string; variants?: ReadonlyArray<{ format: 'avif' | 'webp'; width: number; height: number; path: string }> }>;
   /** Self-host an `@font-face` web font (validates the bytes are a real font; null if not). Omit to
    *  disable font hosting (e.g. in tests) — the importer then leaves the @font-face url() as-is. */
   hostFontAsset?: (ctx: ProjectContext, slug: string, buffer: Buffer, font: { family: string; weight: number; style: 'normal' | 'italic' }) => Promise<{ url: string } | null>;
@@ -184,7 +190,11 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
         if (mimetype && !mimetype.startsWith('image/')) return null; // only host images
         try {
           const saved = await createMediaAsset(ctx, slug, buffer, { filename, mimetype: mimetype || 'image/jpeg' });
-          return { ref: saved.url };
+          // Serve the efficient WebP variants the pipeline already produced via a responsive srcset
+          // (the <img src> stays the fallback for legacy browsers). Base = the asset dir of saved.url.
+          const base = saved.url.slice(0, saved.url.lastIndexOf('/'));
+          const srcset = saved.variants ? buildSrcset(saved.variants, 'webp', base) : undefined;
+          return { ref: saved.url, ...(srcset ? { srcset } : {}) };
         } catch {
           return null;
         }

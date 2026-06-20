@@ -17,11 +17,34 @@ function run(bodyHtml: string) {
 }
 
 describe('transformBody', () => {
+  it('attaches a responsive WebP srcset to a self-hosted <img> (src stays the fallback)', () => {
+    const ctxWithSrcset: TransformCtx = { ...ctx, srcsetMap: new Map([['https://ex.com/logo.png', '/media/p/a/logo-400.webp 400w, /media/p/a/logo-800.webp 800w']]) };
+    const { source } = transformBody(parse('<html><body><img src="/logo.png" alt="logo"></body></html>'), ctxWithSrcset);
+    expect(source).toContain('src="/media/p/a/logo.jpg"'); // fallback for legacy browsers
+    expect(source).toContain('srcset="/media/p/a/logo-400.webp 400w, /media/p/a/logo-800.webp 800w"');
+    expect(source).toMatch(/loading="lazy"/);
+    expect(() => validateTemplate(source)).not.toThrow();
+  });
+
   it('promotes lazy-loaded images (data-src) to a real, self-hosted src and drops the lazy attrs', () => {
     const { source } = run('<img src="data:image/gif;base64,placeholder" data-src="/logo.png" alt="logo" loading="lazy">');
     expect(source).toContain('src="/media/p/a/logo.jpg"'); // data-src promoted + self-hosted
     expect(source).not.toContain('data-src'); // lazy attr removed
     expect(source).not.toContain('data:image/gif'); // placeholder replaced
+  });
+
+  it('preserves allowlisted embeds (lazy map, YouTube, Facebook page) and drops non-allowlisted iframes', () => {
+    const map = run('<iframe data-src="https://www.google.com/maps/embed?pb=1" title="map"></iframe>').source;
+    expect(map).toContain('src="https://www.google.com/maps/embed?pb=1"'); // lazy data-src promoted + kept
+    expect(map).toContain('loading="lazy"');
+    expect(map).toContain('allowfullscreen');
+    const yt = run('<iframe src="https://www.youtube.com/embed/abc"></iframe>').source;
+    expect(yt).toContain('https://www.youtube.com/embed/abc');
+    const fb = run('<iframe src="https://www.facebook.com/plugins/page.php?href=acme"></iframe>').source;
+    expect(fb).toContain('https://www.facebook.com/plugins/page.php');
+    const evil = run('<iframe src="https://evil.example.com/tracker"></iframe>').source;
+    expect(evil).not.toContain('evil.example.com'); // non-allowlisted → dropped
+    expect(() => validateTemplate(yt)).not.toThrow();
   });
 
   it('promotes a data-srcset and a data-bg lazy background', () => {
@@ -96,10 +119,11 @@ describe('transformBody', () => {
     expect(diagnostics.some((d) => d.code === 'form-inerted')).toBe(true);
   });
 
-  it('drops a non-https iframe but keeps an https one', () => {
-    const { source } = run('<iframe src="http://insecure/x"></iframe><iframe src="https://ok/y"></iframe>');
+  it('drops a non-https iframe and a non-allowlisted https iframe; keeps an allowlisted embed', () => {
+    const { source } = run('<iframe src="http://insecure/x"></iframe><iframe src="https://random.example/y"></iframe><iframe src="https://player.vimeo.com/video/123"></iframe>');
     expect(source).not.toContain('http://insecure');
-    expect(source).toContain('https://ok/y');
+    expect(source).not.toContain('random.example'); // https but not an allowlisted embed host → dropped
+    expect(source).toContain('https://player.vimeo.com/video/123');
   });
 
   it('trims oversized pages to the source byte cap', () => {

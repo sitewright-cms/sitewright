@@ -66,6 +66,17 @@ describe('optimizeImage', () => {
     expect(bytes[1]).toBe(0xd8);
   });
 
+  it('preserves transparency: a source with alpha gets a WebP (not black-flattened JPEG) fallback', async () => {
+    const transparent = join(workDir, 'logo.png');
+    await sharp({ create: { width: 600, height: 400, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+      .png()
+      .toFile(transparent);
+    const result = await optimizeImage(transparent, join(workDir, 'out-alpha'));
+    expect(result.fallback.endsWith('.webp')).toBe(true); // alpha-capable fallback, not JPEG
+    const meta = await sharp(join(workDir, 'out-alpha', result.fallback)).metadata();
+    expect(meta.hasAlpha).toBe(true); // transparency survived (no black background)
+  });
+
   it('throws for a non-image input', async () => {
     const bad = join(workDir, 'notimage.txt');
     await writeFile(bad, 'not an image');

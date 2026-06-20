@@ -149,10 +149,11 @@ describe('stock API — injected fake service', () => {
     expect(asset.attribution?.author).toBe('Ann');
     expect(asset.variants.length).toBeGreaterThan(0);
     // The imported image is self-hosted (served locally, not hotlinked).
-    expect(asset.url).toMatch(/^\/media\/[\w-]+\/[\w-]+\/[\w-]+\.jpg$/);
+    // Fallback format is alpha-aware: opaque → jpg, transparent → webp.
+    expect(asset.url).toMatch(/^\/media\/[\w-]+\/[\w-]+\/[\w-]+\.(jpg|webp)$/);
     const served = await app.inject({ method: 'GET', url: asset.url });
     expect(served.statusCode).toBe(200);
-    expect(served.headers['content-type']).toBe('image/jpeg');
+    expect(['image/jpeg', 'image/webp']).toContain(served.headers['content-type']);
 
     // And it shows up in the media list.
     const list = await app.inject({ method: 'GET', url: `${base}/media`, cookies: { sw_session: t } });

@@ -24,6 +24,14 @@ function infer(html: string) {
 }
 
 describe('inferDatasets', () => {
+  it('reads a lazy-loaded (data-src) image into the entry value, not an empty string', () => {
+    // A carousel of logos where the real URL is in data-src (the loader script is stripped on import).
+    const cards = Array.from({ length: 4 }, () => '<div class="logo"><img src="data:image/gif;base64,PLACEHOLDER" data-src="/a.jpg"></div>').join('');
+    const { inf } = infer(`<html><body><section class="partners">${cards}</section></body></html>`);
+    expect(inf.entries).toHaveLength(4);
+    expect(inf.entries.every((e) => e.values.image === '/media/x/a.jpg')).toBe(true); // hosted ref, not ''
+  });
+
   it('turns a uniform card grid into a dataset + entries + an {{#each}} loop', () => {
     const { inf, doc } = infer(grid(4));
     expect(inf.datasets).toHaveLength(1);

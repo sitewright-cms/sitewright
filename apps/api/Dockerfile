@@ -26,8 +26,14 @@ COPY --chown=node:node node_modules ./node_modules
 # an agent can SEE it). We install ONLY `chromium-headless-shell` — the purpose-built headless build the
 # screenshot code launches (render/screenshot.ts, `channel: 'chromium-headless-shell'`) — NOT the full
 # `chromium`, which would ALSO drop a ~377MB headed browser we never launch (+ ffmpeg). Installed (browser
-# + its apt libraries) into a shared, world-readable path; the API later runs as `node`. Adds ~260MB.
-# Drop this layer (+ the dep above) if screenshots aren't needed.
+# + its apt libraries) into a shared, world-readable path; the API later runs as `node`.
+#
+# Then we PURGE the Mesa software-GL stack (`libgl1-mesa-dri` → which drags in `libllvm15`, ~135MB
+# together): the renderer runs with --disable-gpu (CPU/Skia 2D — no system GL), and any WebGL falls back
+# to the SwiftShader that ships inside the browser bundle, so the Mesa DRI drivers are dead weight. The
+# CI `snapshot` job renders a real screenshot INSIDE this image to prove rendering still works. (CJK +
+# emoji fonts are deliberately KEPT so multi-language pages screenshot correctly.) Adds ~125MB net.
+# Drop this whole layer (+ the dep above) if screenshots aren't needed.
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 # `git` + `openssh-client` are the transport for SSH-key git deploy targets (the pure-JS isomorphic-git
 # path handles HTTPS-token targets; SSH needs the real binaries). Installed in the same cached heavy
@@ -35,6 +41,7 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git openssh-client \
     && node node_modules/playwright-core/cli.js install --with-deps chromium-headless-shell \
+    && apt-get purge -y --auto-remove libgl1-mesa-dri \
     && rm -rf /var/lib/apt/lists/*
 
 # --- application artifacts (re-copied each build; cheap layers AFTER the cached Chromium one) ---

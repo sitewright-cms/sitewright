@@ -6,10 +6,13 @@ import {
   PROJECT_FORMAT_VERSION,
   WebsiteSettingsSchema,
   type CorporateIdentity,
+  type Dataset,
+  type Entry,
   type Project,
   type WebsiteSettings,
 } from '@sitewright/schema';
 import { validateProject } from '@sitewright/core';
+import { validateTemplate } from '@sitewright/blocks';
 import { firstByName, getBody, parse, allByName, type Document, type Element } from './dom.js';
 import { normalizePageUrl, resolveUrl, routePath, sameOrigin } from './url-util.js';
 import { resolveLimits } from './limits.js';
@@ -19,6 +22,7 @@ import { collectImageRefs, hostAssets } from './transform/assets.js';
 import { collectCssRefs, packCss } from './transform/css.js';
 import { extractIdentity, extractPageSeo } from './transform/identity.js';
 import { extractChrome } from './transform/chrome.js';
+import { inferDatasets } from './transform/datasets.js';
 import { transformBody, type TransformCtx } from './transform/page.js';
 import type { CapturedSite, ImportBundle, ImportDiagnostic, ImportResult, TransformOptions } from './types.js';
 
@@ -141,6 +145,9 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
   // Transform each captured page body into source and attach SEO/title by id.
   opts.onProgress?.({ phase: 'transform', total: parsed.length });
   const pageById = new Map(routeRes.pages.map((p) => [p.id, p] as const));
+  const usedSlugs = new Set<string>();
+  const datasets: Dataset[] = [];
+  const entries: Entry[] = [];
   let scriptsDropped = 0;
   let transformed = 0;
   for (const x of parsed) {
@@ -156,7 +163,35 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
       assetMap,
       limits,
     };
-    const { source, diagnostics: pageDiags } = transformBody(x.doc, ctx);
+    // Conservative dataset inference (runs BEFORE the transform so its sentinel markers serialize as
+    // plain text); each marker is swapped for the generated {{#each}} loop after the page transform.
+    const inf = inferDatasets(x.doc, ctx, usedSlugs, `@@SWDS${transformed}_`);
+    const { source: rawSource, diagnostics: pageDiags } = transformBody(x.doc, ctx);
+    // Splice each loop in, but ONLY keep the dataset if its marker survived the transform AND the swap
+    // leaves the page validateTemplate-clean (the marker can be dropped by fitSource or land inside a
+    // text fallback). Un-kept markers are stripped so they never leak as visible text.
+    let source = rawSource;
+    const keptSlugs = new Set<string>();
+    for (const [marker, { loop, slug }] of inf.markers) {
+      if (source.includes(marker)) {
+        const swapped = source.split(marker).join(loop);
+        try {
+          validateTemplate(swapped);
+          source = swapped;
+          keptSlugs.add(slug);
+          continue;
+        } catch {
+          /* the swap would invalidate the page → fall through and strip the marker */
+        }
+      }
+      source = source.split(marker).join('');
+    }
+    // Safety net: scrub any residual marker text (e.g. a fragment a fallback truncation cut mid-marker).
+    if (inf.markers.size > 0) source = source.replace(/@@SWDS\d*_?\d*@{0,2}/g, '');
+    const keptDatasets = inf.datasets.filter((d) => keptSlugs.has(d.slug));
+    datasets.push(...keptDatasets);
+    entries.push(...inf.entries.filter((e) => keptSlugs.has(e.dataset)));
+    if (keptDatasets.length > 0) diagnostics.push({ code: 'dataset-inferred', message: `inferred ${keptDatasets.length} dataset(s) from repeated content on ${x.url}` });
     diagnostics.push(...pageDiags);
     scriptsDropped += pageDiags.filter((d) => d.code === 'script-dropped').length;
     page.source = source;
@@ -180,8 +215,8 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
     project: { identity, website, settings: { defaultLocale: i18n.defaultLocale, locales: i18n.locales } },
     pages: routeRes.pages,
     templates: [],
-    datasets: [],
-    entries: [],
+    datasets,
+    entries,
   };
 
   // Final cross-entity check: any issue is surfaced as a `bundle-invalid` diagnostic — the import route
@@ -194,7 +229,7 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
     identity,
     settings: { defaultLocale: i18n.defaultLocale, locales: i18n.locales },
   };
-  const issues = validateProject({ project: stubProject, pages: bundle.pages, datasets: [], entries: [] });
+  const issues = validateProject({ project: stubProject, pages: bundle.pages, datasets, entries });
   for (const issue of issues) {
     diagnostics.push({ code: 'bundle-invalid', message: `${issue.code}: ${issue.message}` });
   }

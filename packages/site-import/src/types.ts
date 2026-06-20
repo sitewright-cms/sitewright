@@ -100,6 +100,7 @@ export type DiagnosticCode =
   | 'page-skipped'
   | 'chrome-extracted'
   | 'locales-detected'
+  | 'dataset-inferred'
   | 'invalid-source-fallback'
   | 'bundle-invalid';
 

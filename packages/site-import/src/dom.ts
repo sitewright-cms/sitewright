@@ -3,7 +3,7 @@
 import { parseDocument } from 'htmlparser2';
 import render from 'dom-serializer';
 import { findAll, findOne } from 'domutils';
-import { isComment, isTag, isText, type AnyNode, type Document, type Element } from 'domhandler';
+import { isComment, isTag, isText, Text, type AnyNode, type Document, type Element } from 'domhandler';
 
 /** Parse an HTML fragment/document (entities decoded, mirroring the renderer's pass). */
 export function parse(html: string): Document {
@@ -57,6 +57,17 @@ const ZWSP = '\u200B';
 export function neutralizeMustaches(s: string): string {
   if (!s.includes('{{') && !s.includes('}}')) return s;
   return s.replace(/\{(?=\{)/g, `{${ZWSP}`).replace(/\}(?=\})/g, `}${ZWSP}`);
+}
+
+/** Replace an element's children with a single raw text node (caller controls escaping at serialize).
+ *  NOTE: the displaced children keep their stale `.parent` pointer — don't traverse upward from them
+ *  after calling this (the callers here discard them). */
+export function setText(el: Element, value: string): void {
+  const node = new Text(value);
+  node.parent = el;
+  node.prev = null;
+  node.next = null;
+  el.children = [node];
 }
 
 export { isTag, isText, isComment };

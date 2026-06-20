@@ -9,6 +9,36 @@ export interface ParsedDoc {
   doc: Document;
 }
 
+// JS lazy-loaders stash the REAL image URL in a data-* attribute and leave `src` as a placeholder
+// (1×1 gif / blurred LQIP / blank). Since the importer strips the loader script, we must promote these
+// to real `src`/`srcset` or the images vanish. Ordered by precedence (most common first).
+const LAZY_SRC_ATTRS = ['data-src', 'data-original', 'data-lazy-src', 'data-lazy', 'data-echo', 'data-fallback-src'] as const;
+const LAZY_SRCSET_ATTRS = ['data-srcset', 'data-lazy-srcset'] as const;
+const LAZY_BG_ATTRS = ['data-bg', 'data-background', 'data-background-image'] as const;
+/** All lazy-load attrs (for stripping after promotion). */
+export const LAZY_ATTRS: readonly string[] = [...LAZY_SRC_ATTRS, ...LAZY_SRCSET_ATTRS, ...LAZY_BG_ATTRS];
+
+const firstAttr = (attribs: Record<string, string>, names: readonly string[]): string | undefined => {
+  for (const n of names) {
+    const v = attribs[n]?.trim();
+    if (v) return v;
+  }
+  return undefined;
+};
+
+/** The real image URL of an `<img>`/`<source>`: a lazy-load data-* attr wins over the placeholder `src`. */
+export function effectiveSrc(attribs: Record<string, string>): string | undefined {
+  return firstAttr(attribs, LAZY_SRC_ATTRS) ?? attribs.src?.trim();
+}
+/** The real `srcset`: a lazy-load data-* attr wins over the placeholder `srcset`. */
+export function effectiveSrcset(attribs: Record<string, string>): string | undefined {
+  return firstAttr(attribs, LAZY_SRCSET_ATTRS) ?? attribs.srcset?.trim();
+}
+/** A lazy-loaded BACKGROUND url stashed on a `data-bg`-style attr (no inline style yet). */
+export function effectiveBg(attribs: Record<string, string>): string | undefined {
+  return firstAttr(attribs, LAZY_BG_ATTRS);
+}
+
 /** Every image/icon URL referenced by the pages, keyed canonically; bytes pulled from the IR when present. */
 export function collectImageRefs(docs: ParsedDoc[], site: CapturedSite): Map<string, CapturedAsset> {
   const refs = new Map<string, CapturedAsset>();
@@ -25,11 +55,18 @@ export function collectImageRefs(docs: ParsedDoc[], site: CapturedSite): Map<str
 
   for (const { url, doc } of docs) {
     for (const img of allByName(doc.children, 'img')) {
-      add(img.attribs.src, url);
-      if (img.attribs.srcset) add(pickFromSrcset(img.attribs.srcset), url);
+      add(effectiveSrc(img.attribs), url); // lazy-load data-src wins over a placeholder src
+      const srcset = effectiveSrcset(img.attribs);
+      if (srcset) add(pickFromSrcset(srcset), url);
     }
     for (const source of allByName(doc.children, 'source')) {
-      if (source.attribs.srcset) add(pickFromSrcset(source.attribs.srcset), url);
+      const srcset = effectiveSrcset(source.attribs);
+      if (srcset) add(pickFromSrcset(srcset), url);
+    }
+    // Lazy-loaded backgrounds (data-bg on any element) → collected so the transform can inline them.
+    for (const el of elements(doc.children)) {
+      const bg = effectiveBg(el.attribs);
+      if (bg) add(bg, url);
     }
     for (const video of allByName(doc.children, 'video')) add(video.attribs.poster, url);
     for (const el of allByName(doc.children, 'meta')) {

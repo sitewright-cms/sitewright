@@ -44,6 +44,9 @@ export interface ImportRouteDeps {
   ) => Promise<{ ctx: ProjectContext; project: { id: string; name: string; slug: string } }>;
   contentRepo: Pick<ContentRepository, 'importBundle'>;
   createMediaAsset: (ctx: ProjectContext, slug: string, buffer: Buffer, meta: { filename: string; mimetype: string }) => Promise<{ url: string }>;
+  /** Self-host an `@font-face` web font (validates the bytes are a real font; null if not). Omit to
+   *  disable font hosting (e.g. in tests) — the importer then leaves the @font-face url() as-is. */
+  hostFontAsset?: (ctx: ProjectContext, slug: string, buffer: Buffer, font: { family: string; weight: number; style: 'normal' | 'italic' }) => Promise<{ url: string } | null>;
   rl: (max: number) => { rateLimit: { max: number; timeWindow: string } };
   log: FastifyBaseLogger;
   // Injectable seams (default to the real implementations) so the routes are testable without a network.
@@ -171,6 +174,12 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
           }
         }
         if (!buffer) return null;
+        // @font-face web fonts → the self-hosted-font pipeline (magic-byte validated, served inline).
+        if (asset.kind === 'font') {
+          if (!deps.hostFontAsset || !asset.font) return null;
+          const saved = await deps.hostFontAsset(ctx, slug, buffer, asset.font).catch(() => null);
+          return saved ? { ref: saved.url } : null;
+        }
         if (mimetype === 'image/svg+xml' || mimetype === 'image/svg') return null; // sharp rejects SVG; engine inlines small ones
         if (mimetype && !mimetype.startsWith('image/')) return null; // only host images
         try {

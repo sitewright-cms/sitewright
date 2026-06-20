@@ -19,7 +19,8 @@ import { resolveLimits } from './limits.js';
 import { buildRoutes } from './transform/routes.js';
 import { applyLocales, detectLocaleSet } from './transform/locales.js';
 import { collectImageRefs, hostAssets } from './transform/assets.js';
-import { collectCssRefs, packCss } from './transform/css.js';
+import { collectCssRefs, buildPageStyles } from './transform/css.js';
+import { collectFontFaces } from './transform/fonts.js';
 import { extractIdentity, extractPageSeo } from './transform/identity.js';
 import { extractChrome } from './transform/chrome.js';
 import { inferDatasets } from './transform/datasets.js';
@@ -63,15 +64,10 @@ function extractNavLinks(home: ParsedPage | undefined, baseUrl: string): string[
   return out;
 }
 
-function buildWebsite(
-  chrome: { topNav?: string; footer?: string },
-  css: { criticalCss?: string; headStyle?: string },
-): WebsiteSettings | undefined {
+function buildWebsite(chrome: { topNav?: string; footer?: string }): WebsiteSettings | undefined {
   const input: Record<string, string> = {};
   if (chrome.topNav) input.topNav = chrome.topNav;
   if (chrome.footer) input.footer = chrome.footer;
-  if (css.criticalCss) input.criticalCss = css.criticalCss;
-  if (css.headStyle) input.head = css.headStyle;
   if (Object.keys(input).length === 0) return undefined;
   return WebsiteSettingsSchema.parse(input);
 }
@@ -115,15 +111,19 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
   opts.onProgress?.({ phase: 'host-media', detail: 'collecting assets' });
   const refs = collectImageRefs(parsed.map((x) => ({ url: x.url, doc: x.doc })), workSite);
   for (const [key, asset] of cssCollection.imageRefs) if (!refs.has(key)) refs.set(key, asset);
+  // Self-host @font-face web fonts too (keyed like images → the same host pass; buildPageStyles then
+  // rewrites the @font-face url() to the hosted file). The page renders rawFidelity, so these fonts
+  // — not the platform typography — apply.
+  for (const [key, asset] of collectFontFaces(cssCollection.cssText)) if (!refs.has(key)) refs.set(key, asset);
   const host = await hostAssets(refs, opts.media, limits, opts.onProgress);
   diagnostics.push(...host.diagnostics);
   const assetMap = host.assetMap;
 
-  // Rewrite CSS url()s to the self-hosted refs, then pack into the bounded raw slots.
-  const css = packCss(cssCollection.cssText, assetMap, limits);
-  if (css.overflow) {
-    diagnostics.push({ code: 'css-overflow', message: 'source CSS exceeded the inline slot budget; excess dropped (the AI rewrite re-derives styling)' });
-  }
+  // Accurate-replica CSS: the FULL stylesheet (url()s → self-hosted refs) as ONE `<style>` block,
+  // inlined at the top of every imported page's source (the uncapped slot — vs. the tiny criticalCss/
+  // head website slots that dropped most styling). Imported pages render in `rawFidelity` so the
+  // platform's own base CSS doesn't fight it.
+  const pageStyles = buildPageStyles(cssCollection.cssText, assetMap);
 
   const identity: CorporateIdentity = home
     ? extractIdentity(home.doc, { baseUrl: home.url, assetMap, fallbackName: hostFallbackName(workSite.baseUrl) })
@@ -195,7 +195,26 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
     if (keptDatasets.length > 0) diagnostics.push({ code: 'dataset-inferred', message: `inferred ${keptDatasets.length} dataset(s) from repeated content on ${x.url}` });
     diagnostics.push(...pageDiags);
     scriptsDropped += pageDiags.filter((d) => d.code === 'script-dropped').length;
-    page.source = source;
+    // Inline the full imported stylesheet at the top of the page so it's an accurate replica (the
+    // page renders in rawFidelity → no platform base CSS to fight it). `pageStyles` is already
+    // validateTemplate-safe (</style + {{ neutralized) and `source` was validated by transformBody;
+    // re-validate the JOIN as defense-in-depth so page.source is ALWAYS validateTemplate-clean, and
+    // fall back to the body alone if (unexpectedly) the combination is rejected.
+    let finalSource = pageStyles ? `${pageStyles}\n${source}` : source;
+    if (pageStyles) {
+      // The body was already fit to maxSourceBytes; the prepended CSS can push the total past the
+      // PageSchema.source cap (a hard Zod reject) → fall back to the body alone with a diagnostic.
+      if (Buffer.byteLength(finalSource, 'utf8') > limits.maxSourceBytes) {
+        finalSource = source;
+        diagnostics.push({ code: 'css-overflow', message: `full CSS + content exceeds the page size cap on ${x.url}; CSS omitted for this page` });
+      }
+      try {
+        validateTemplate(finalSource); // defense-in-depth: page.source is always validateTemplate-clean
+      } catch {
+        finalSource = source;
+      }
+    }
+    page.source = finalSource;
     // Mark the captured page for the AI rewrite stage (sourceUrl + rewritten:false; see get_guide("import")).
     page.data = { ...(page.data ?? {}), swImport: { sourceUrl: x.url, rewritten: false, ...(opts.importedAt ? { importedAt: opts.importedAt } : {}) } };
     const seo = seoByNorm.get(norm);
@@ -211,7 +230,7 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
   // stubs have no source HTML to rewrite.
   for (const p of routeRes.pages) p.status = 'draft';
 
-  const website = buildWebsite(chrome, css);
+  const website = buildWebsite(chrome);
   const bundle: ImportBundle = {
     project: { identity, website, settings: { defaultLocale: i18n.defaultLocale, locales: i18n.locales } },
     pages: routeRes.pages,

@@ -15,6 +15,7 @@ import {
   type Element,
 } from '../dom.js';
 import { assetKey, pickFromSrcset, resolveUrl, rewriteHref, SYNTHETIC_HOST } from '../url-util.js';
+import { LAZY_ATTRS, effectiveBg, effectiveSrc, effectiveSrcset } from './assets.js';
 import type { ImportDiagnostic, ImportLimits } from '../types.js';
 
 /** Skeleton-owned landmarks the platform declares once — author content must use a neutral element. */
@@ -92,7 +93,27 @@ export function sanitizeForSource(nodes: AnyNode[], ctx: TransformCtx, diags: Im
   });
 }
 
+/** Promote JS lazy-load attrs (`data-src`/`data-srcset`/`data-bg`) to real `src`/`srcset`/inline bg,
+ *  then drop the now-redundant lazy attrs — so images survive after the loader script is stripped. */
+function promoteLazyAttrs(el: Element): void {
+  if (el.name === 'img' || el.name === 'source') {
+    const src = effectiveSrc(el.attribs);
+    const srcset = effectiveSrcset(el.attribs);
+    if (src) el.attribs.src = src;
+    if (srcset) el.attribs.srcset = srcset;
+  }
+  const bg = effectiveBg(el.attribs);
+  if (bg) {
+    const url = bg.replace(/['")]/g, ''); // strip quotes/paren so it can't break out of url(...)
+    // The constructed style value (incl. any pre-existing style) is later run through
+    // rewriteStyleUrls + neutralizeMustaches by the main attribute loop (this runs BEFORE it).
+    el.attribs.style = `${el.attribs.style ? `${el.attribs.style};` : ''}background-image:url('${url}')`;
+  }
+  for (const a of LAZY_ATTRS) delete el.attribs[a];
+}
+
 function rewriteElementAttrs(el: Element, ctx: TransformCtx, diags: ImportDiagnostic[]): void {
+  promoteLazyAttrs(el); // lazy-load data-* → real src/srcset/bg before the normal url rewrite hosts them
   const isImageEl = el.name === 'img';
   const isMediaSource = el.name === 'source' || el.name === 'picture';
   /* eslint-disable security/detect-object-injection -- `name` iterates the element's OWN attribute keys (a plain parsed Record), not attacker-controlled object access */

@@ -32,6 +32,21 @@ describe('renderDocument — document shell', () => {
     expect(doc).not.toContain('noscript');
   });
 
+  it('rawFidelity omits the platform base + typography CSS but keeps the page body/head', () => {
+    const opts = { brand, bodyHtml: '<style>.a{color:red}</style><h1 class="a">Hi</h1>', head: '<link rel="stylesheet" href="/x.css" />' };
+    const normal = renderDocument(page, opts);
+    const raw = renderDocument(page, { ...opts, rawFidelity: true });
+    // Normal render ships the platform base CSS (normalize layer + brand vars); raw fidelity does not.
+    expect(normal).toContain('@layer sw-normalize {');
+    expect(normal).toContain('--sw-color-primary');
+    expect(raw).not.toContain('@layer sw-normalize {');
+    expect(raw).not.toContain('--sw-color-primary');
+    // The imported page's own styling + head survive in raw mode.
+    expect(raw).toContain('<style>.a{color:red}</style>');
+    expect(raw).toContain('<link rel="stylesheet" href="/x.css" />');
+    expect(raw).toContain('<main id="page-content">');
+  });
+
   it('prepends the base layer (modern-normalize + platform defaults) ahead of the skeleton', () => {
     const doc = renderDocument(page, { brand });
     const head = doc.slice(0, doc.indexOf('</head>'));

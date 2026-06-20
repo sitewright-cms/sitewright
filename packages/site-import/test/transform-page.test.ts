@@ -17,6 +17,20 @@ function run(bodyHtml: string) {
 }
 
 describe('transformBody', () => {
+  it('promotes lazy-loaded images (data-src) to a real, self-hosted src and drops the lazy attrs', () => {
+    const { source } = run('<img src="data:image/gif;base64,placeholder" data-src="/logo.png" alt="logo" loading="lazy">');
+    expect(source).toContain('src="/media/p/a/logo.jpg"'); // data-src promoted + self-hosted
+    expect(source).not.toContain('data-src'); // lazy attr removed
+    expect(source).not.toContain('data:image/gif'); // placeholder replaced
+  });
+
+  it('promotes a data-srcset and a data-bg lazy background', () => {
+    const { source } = run('<img data-srcset="/logo.png 1x" alt="x"><div data-bg="/logo.png" class="hero">h</div>');
+    expect(source).toContain('src="/media/p/a/logo.jpg"');
+    expect(source).toContain("background-image:url('/media/p/a/logo.jpg')");
+    expect(source).not.toMatch(/data-(srcset|bg)/);
+  });
+
   it('renames skeleton landmarks and produces validateTemplate-clean source', () => {
     const { source } = run('<nav>menu</nav><main><footer>f</footer><aside>a</aside></main>');
     expect(source).not.toMatch(/<(nav|main|footer|aside)[\s>]/);

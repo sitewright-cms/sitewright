@@ -89,3 +89,48 @@ jobs:
 
       - name: Test (with coverage gate)
         run: pnpm test
+
+  # Snapshot functionality (the MCP `preview_page` screenshots) can't run in the hermetic unit suite —
+  # it needs a real browser. The image ships a heavily-slimmed Chromium (headless-shell only, Mesa/LLVM
+  # stripped — see apps/api/Dockerfile), so a stripped dep could silently break rendering. This job
+  # builds the ACTUAL runtime image and renders a real screenshot INSIDE it, so any regression in the
+  # render path OR the image's dependency set fails CI. Runs in parallel with `verify`.
+  snapshot:
+    name: Snapshot smoke · renders in the runtime image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0c17529a66aca453f9227af23103ed11469b1e47 # v4.0.0
+
+      - name: Setup Node
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # The runtime image is built from a `pnpm deploy --prod` output (resolved node_modules + dist).
+      - name: Build API
+        run: pnpm --filter "@sitewright/api..." build
+
+      - name: Assemble deploy output
+        run: |
+          pnpm --filter @sitewright/api deploy --prod /tmp/deploy
+          mkdir -p /tmp/deploy/editor   # the Dockerfile COPYs editor/; the smoke doesn't serve the SPA
+
+      - name: Build runtime image
+        run: docker build -t sw-snapshot -f apps/api/Dockerfile /tmp/deploy
+
+      # Render a real screenshot (Latin + CJK + emoji) INSIDE the image, asserting both viewports produce
+      # a plausible JPEG — proves the slimmed Chromium (Mesa/LLVM stripped, fonts kept) still renders.
+      - name: Render a screenshot inside the runtime image
+        run: |
+          docker run --rm --workdir /app -v "$PWD/apps/api/scripts:/smoke:ro" \
+            --entrypoint node sw-snapshot /smoke/snapshot-smoke.mjs

@@ -157,7 +157,9 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
     if (seo?.noindex) page.noindex = true;
     opts.onProgress?.({ phase: 'transform', done: transformed, total: parsed.length });
   }
-  // Imported pages start as DRAFTS — a faithful scaffold shouldn't auto-publish before review/rewrite.
+  // ALL pages (incl. synthesized stub parents) start as DRAFTS — a faithful scaffold shouldn't
+  // auto-publish before review/rewrite. Only captured pages carry the swImport marker (set above);
+  // stubs have no source HTML to rewrite.
   for (const p of routeRes.pages) p.status = 'draft';
 
   const website = buildWebsite(chrome, css);

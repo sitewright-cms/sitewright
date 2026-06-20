@@ -51,7 +51,7 @@ describe('DEFAULT_AGENT_INSTRUCTIONS', () => {
     expect(DEFAULT_AGENT_INSTRUCTIONS).toContain('get_guide("import")');
     expect(DEFAULT_AGENT_INSTRUCTIONS).toContain('data.swImport');
     const body = AGENT_GUIDES.import.body;
-    for (const probe of ['swImport', 'rewritten:false', 'status:"draft"', 'import_image', 'STRIPPED']) {
+    for (const probe of ['swImport', 'rewritten:false', 'status:"draft"', 'import_image', 'inert <div>']) {
       expect(body).toContain(probe);
     }
   });

@@ -474,9 +474,9 @@ REWRITE CHECKLIST (per page):
 8. IMAGES: the import self-hosts what it found; fill gaps with import_image (from a URL) or
    search_stock_images (SVGs and oversize images may have been dropped).
 
-SAFETY: <script> and <form> were intentionally STRIPPED on import. Do NOT re-add raw JavaScript —
-rebuild interactivity with platform components (carousel/tabs/modal — get_guide("components")) and real
-Forms (create a form entity, embed with {{sw-form}}).
+SAFETY: <script> tags were REMOVED and <form>s converted to inert <div>s on import. Do NOT re-add raw
+JavaScript — rebuild interactivity with platform components (carousel/tabs/modal — get_guide("components"))
+and real Forms (create a form entity, embed with {{sw-form}}).
 
 WHEN A PAGE IS DONE: set page.data.swImport.rewritten:true (or remove the marker) and flip its
 status to "published".

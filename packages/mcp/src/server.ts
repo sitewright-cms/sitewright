@@ -11,7 +11,10 @@ import {
   BINDING_NAMESPACES,
   LOOP_VARIABLES,
   StockProviderNameSchema,
+  ScreenshotViewportNameSchema,
+  SCREENSHOT_VIEWPORT_NAMES,
   type GuideTopic,
+  type ScreenshotViewportName,
 } from '@sitewright/schema';
 import { SitewrightApiError, type Capability, type SitewrightClient, type PreviewResult } from './client.js';
 import type { BridgeAuth, PendingLogin, ScopeHolder } from './auth.js';
@@ -278,17 +281,24 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
     'preview_page',
     {
       description:
-        'Render a (possibly unsaved) page and return DESKTOP + MOBILE screenshots so you can SEE how it looks — check layout, spacing, hierarchy, colour, imagery, and the mobile view, then iterate. Pass includeHtml:true to also get the rendered HTML source. Does not save.',
-      inputSchema: { page: PageSchema, includeHtml: z.boolean().optional() },
+        `Render a (possibly unsaved) page and return screenshots so you can SEE how it looks — check layout, spacing, hierarchy, colour, imagery, and the responsive views, then iterate. Defaults to a desktop (Full HD) + mobile pair; pass viewports (any of: ${SCREENSHOT_VIEWPORT_NAMES.join(', ')}) to check specific breakpoints — e.g. all five for a full responsive sweep. Pass includeHtml:true to also get the rendered HTML source. Does not save.`,
+      inputSchema: {
+        page: PageSchema,
+        includeHtml: z.boolean().optional(),
+        viewports: z.array(ScreenshotViewportNameSchema).optional(),
+      },
     },
-    async ({ page, includeHtml }: { page: unknown; includeHtml?: boolean }): Promise<ToolResult> => {
+    async ({ page, includeHtml, viewports }: { page: unknown; includeHtml?: boolean; viewports?: ScreenshotViewportName[] }): Promise<ToolResult> => {
       if (!holder.scope) {
         return toolError('Not connected. Use the `login` tool, approve in your browser, then retry this action.');
       }
       try {
-        const res = await client.preview(page, { screenshot: true });
+        const res = await client.preview(page, {
+          screenshot: true,
+          ...(viewports?.length ? { viewports: viewports.join(',') } : {}),
+        });
         const shots = Object.entries(res.screenshots ?? {}).filter(([, s]) => s) as Array<
-          [string, NonNullable<PreviewResult['screenshots']>['desktop']]
+          [string, NonNullable<PreviewResult['screenshots']>[ScreenshotViewportName]]
         >;
         const content: ContentBlock[] = [];
         if (shots.length > 0) {

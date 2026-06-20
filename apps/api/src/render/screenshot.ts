@@ -4,6 +4,11 @@
 import { chromium, type Browser, type Route, type Request as PwRequest } from 'playwright-core';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
+import {
+  SCREENSHOT_VIEWPORTS,
+  DEFAULT_SCREENSHOT_VIEWPORTS,
+  type ScreenshotViewportName,
+} from '@sitewright/schema';
 
 export interface Shot {
   /** PNG/JPEG bytes, base64 (for an MCP image content block). */
@@ -13,13 +18,10 @@ export interface Shot {
   height: number;
 }
 
-export type ViewportName = 'desktop' | 'mobile';
-
-const VIEWPORTS: Record<ViewportName, { width: number; height: number; capHeight: number; isMobile: boolean }> = {
-  // capHeight bounds the full-page screenshot so a long page can't produce a giant image (token cost).
-  desktop: { width: 1280, height: 800, capHeight: 2400, isMobile: false },
-  mobile: { width: 390, height: 844, capHeight: 1800, isMobile: true },
-};
+// The named breakpoints + their dimensions/caps live in @sitewright/schema (SCREENSHOT_VIEWPORTS) so the
+// MCP `viewports` enum and this renderer can't drift. wqhd / fullhd / laptop / tablet / mobile.
+export type ViewportName = ScreenshotViewportName;
+const VIEWPORTS = SCREENSHOT_VIEWPORTS;
 
 const JPEG_QUALITY = 78;
 const DEFAULT_TIMEOUT_MS = 8000;
@@ -205,7 +207,7 @@ export async function captureScreenshots(
   html: string,
   opts: { originHostPort: string; viewports?: ViewportName[]; timeoutMs?: number },
 ): Promise<Partial<Record<ViewportName, Shot>>> {
-  const wanted = opts.viewports ?? ['desktop', 'mobile'];
+  const wanted = opts.viewports ?? DEFAULT_SCREENSHOT_VIEWPORTS;
   const timeout = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const doc = injectBaseHref(html, opts.originHostPort);
   const browser = await getBrowser();

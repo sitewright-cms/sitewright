@@ -45,6 +45,7 @@ import {
   type PageTranslation,
   type Template,
   COMPONENT_CATALOG,
+  isScreenshotViewportName,
 } from '@sitewright/schema';
 import { downloadGoogleFont, FontFetchError } from '../fonts/service.js';
 import { detectFontFormat, MAX_FONT_BYTES } from '../fonts/upload.js';
@@ -547,7 +548,7 @@ async function previewScreenshots(
   const viewports = (q?.viewports ?? '')
     .split(',')
     .map((v) => v.trim())
-    .filter((v): v is ViewportName => v === 'desktop' || v === 'mobile');
+    .filter((v): v is ViewportName => isScreenshotViewportName(v));
   try {
     return await captureScreenshots(html, {
       originHostPort: `127.0.0.1:${port}`,

@@ -171,7 +171,7 @@ describe('preview API — code-first source page', () => {
     const { t, projectId } = await setup('shot@acme.test', poolApp);
     const res = await poolApp.inject({
       method: 'POST',
-      url: `/projects/${projectId}/preview?screenshot=1&viewports=desktop`,
+      url: `/projects/${projectId}/preview?screenshot=1&viewports=fullhd`,
       cookies: { sw_session: t },
       payload: {
         id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
@@ -181,13 +181,13 @@ describe('preview API — code-first source page', () => {
     expect(res.statusCode).toBe(200);
     const body = res.json() as {
       html?: string;
-      screenshots?: { desktop?: { base64: string; mimeType: string; width: number; height: number } };
+      screenshots?: { fullhd?: { base64: string; mimeType: string; width: number; height: number } };
     };
     expect(typeof body.html).toBe('string');
-    if (body.screenshots?.desktop) {
-      const d = body.screenshots.desktop;
+    if (body.screenshots?.fullhd) {
+      const d = body.screenshots.fullhd;
       expect(d.mimeType).toBe('image/jpeg');
-      expect(d.width).toBe(1280);
+      expect(d.width).toBe(1920);
       expect(d.height).toBeGreaterThan(0);
       expect(d.base64.length).toBeGreaterThan(100);
     }

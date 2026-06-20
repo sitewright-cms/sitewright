@@ -467,13 +467,13 @@ describe('createSitewrightMcpServer — every tool forwards to the client', () =
     expect(texts).toContain('<html></html>'); // the HTML source is still returned
   });
 
-  it('preview_page returns desktop + mobile screenshots as image content blocks', async () => {
+  it('preview_page returns the screenshots as image content blocks', async () => {
     const client = fakeClient({
       preview: vi.fn(async () => ({
         html: '<html></html>',
         token: 'tok',
         screenshots: {
-          desktop: { base64: 'AAAA', mimeType: 'image/jpeg', width: 1280, height: 2400 },
+          fullhd: { base64: 'AAAA', mimeType: 'image/jpeg', width: 1920, height: 2400 },
           mobile: { base64: 'BBBB', mimeType: 'image/jpeg', width: 390, height: 1800 },
         },
       })),

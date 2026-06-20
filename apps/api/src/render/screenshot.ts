@@ -44,6 +44,7 @@ export function isPrivateIp(ip: string): boolean {
     if (a === 172 && b >= 16 && b <= 31) return true; // private
     if (a === 192 && b === 168) return true; // private
     if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
+    if (a >= 240) return true; // class E / reserved (240.0.0.0/4) — not publicly routable
     return false;
   }
   if (v === 6) {
@@ -126,7 +127,8 @@ export function injectBaseHref(html: string, originHostPort: string): string {
 
 let browserPromise: Promise<Browser> | null = null;
 
-async function getBrowser(): Promise<Browser> {
+/** The shared headless Chromium singleton (reused by screenshots + the import SPA renderer). */
+export async function getBrowser(): Promise<Browser> {
   if (!browserPromise) {
     browserPromise = chromium
       // --no-sandbox: we run as a non-root user in a container with no SUID sandbox helper. The trust

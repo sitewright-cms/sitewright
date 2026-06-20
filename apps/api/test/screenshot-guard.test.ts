@@ -12,6 +12,8 @@ describe('isPrivateIp', () => {
       '192.168.1.1',
       '169.254.169.254', // cloud metadata
       '100.64.0.1', // CGNAT
+      '240.0.0.1', // class E / reserved
+      '255.255.255.255', // broadcast / reserved
       '::1',
       '::',
       'fc00::1',

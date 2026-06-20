@@ -85,6 +85,27 @@ describe('buildImportBundle (integration)', () => {
     expect(marker).toEqual({ sourceUrl: 'https://ex.com/', rewritten: false, importedAt: '2026-06-20T00:00:00.000Z' });
   });
 
+  it('labels a trilingual crawl with locales + translationGroups', async () => {
+    const ALT = '<link rel="alternate" hreflang="en" href="https://ex.com/about"><link rel="alternate" hreflang="de" href="https://ex.com/de/about">';
+    const result = await buildImportBundle(
+      site([
+        { sourceUrl: 'https://ex.com/', html: page('Acme', '<h1>Home</h1>', `${HOME_HEAD}<link rel="alternate" hreflang="de" href="https://ex.com/de/">`) },
+        { sourceUrl: 'https://ex.com/about', html: page('About', '<h2>About</h2>', ALT) },
+        { sourceUrl: 'https://ex.com/de/', html: page('Acme DE', '<h1>Startseite</h1>') },
+        { sourceUrl: 'https://ex.com/de/about', html: page('Über uns', '<h2>Über uns</h2>', ALT) },
+      ]),
+      { media: stubMedia() },
+    );
+    const bundle = result.bundles[0]!;
+    expect(bundle.project.settings).toEqual({ defaultLocale: 'en', locales: ['en', 'de'] });
+    const deAbout = bundle.pages.find((p) => p.path === 'about' && p.locale === 'de')!;
+    expect(deAbout).toBeTruthy();
+    const enAbout = bundle.pages.find((p) => p.path === 'about' && !p.locale)!;
+    expect(deAbout.translationGroup).toBe(enAbout.translationGroup); // same group links the variants
+    // No validateProject failures (en /about and de /de/about are distinct routes).
+    expect(result.diagnostics.filter((d) => d.code === 'bundle-invalid')).toEqual([]);
+  });
+
   it('does not extract chrome for a single page (keeps it inline)', async () => {
     const result = await buildImportBundle(
       site([{ sourceUrl: 'https://ex.com/', html: page('Solo', '<h1>Solo</h1>', HOME_HEAD) }]),

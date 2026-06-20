@@ -14,6 +14,7 @@ import { firstByName, getBody, parse, allByName, type Document, type Element } f
 import { normalizePageUrl, resolveUrl, routePath, sameOrigin } from './url-util.js';
 import { resolveLimits } from './limits.js';
 import { buildRoutes } from './transform/routes.js';
+import { applyLocales, detectLocaleSet } from './transform/locales.js';
 import { collectImageRefs, hostAssets } from './transform/assets.js';
 import { collectCssRefs, packCss } from './transform/css.js';
 import { extractIdentity, extractPageSeo } from './transform/identity.js';
@@ -95,6 +96,13 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
   const routeRes = buildRoutes(workSite, { navLinks });
   diagnostics.push(...routeRes.diagnostics);
 
+  // Multilingual: label locale-prefixed pages (/de/…) with locale + translationGroup; derive locales.
+  const localeSet = detectLocaleSet(parsed.map((x) => ({ doc: x.doc })));
+  const i18n = applyLocales(routeRes.pages, localeSet, defaultLocale);
+  if (i18n.locales.length > 1) {
+    diagnostics.push({ code: 'locales-detected', message: `detected ${i18n.locales.length} locales (${i18n.locales.join(', ')}); default ${i18n.defaultLocale}` });
+  }
+
   // Collect CSS (incl. its url() image refs, resolved absolute) BEFORE the transform removes <style>,
   // so those images are self-hosted in the same pass as the DOM images.
   const cssCollection = collectCssRefs(parsed.map((x) => ({ url: x.url, doc: x.doc })), workSite);
@@ -169,7 +177,7 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
 
   const website = buildWebsite(chrome, css);
   const bundle: ImportBundle = {
-    project: { identity, website, settings: { defaultLocale, locales: [defaultLocale] } },
+    project: { identity, website, settings: { defaultLocale: i18n.defaultLocale, locales: i18n.locales } },
     pages: routeRes.pages,
     templates: [],
     datasets: [],
@@ -184,7 +192,7 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
     name: identity.name.slice(0, 200) || 'Imported site',
     slug: 'import',
     identity,
-    settings: { defaultLocale, locales: [defaultLocale] },
+    settings: { defaultLocale: i18n.defaultLocale, locales: i18n.locales },
   };
   const issues = validateProject({ project: stubProject, pages: bundle.pages, datasets: [], entries: [] });
   for (const issue of issues) {

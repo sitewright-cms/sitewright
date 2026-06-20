@@ -35,7 +35,7 @@ export interface TransformCtx {
 }
 
 /** Rewrite an image-bearing URL to its hosted ref; keep an absolute https hotlink; else null (drop). */
-function imageRef(raw: string, ctx: TransformCtx): string | null {
+export function imageRef(raw: string, ctx: TransformCtx): string | null {
   // Inline data:image URIs are already self-contained — keep them verbatim (no hosting needed).
   if (/^data:image\//i.test(raw.trim())) return raw.trim();
   const key = assetKey(raw, ctx.pageUrl);

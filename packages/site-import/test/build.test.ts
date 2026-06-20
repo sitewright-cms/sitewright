@@ -106,6 +106,40 @@ describe('buildImportBundle (integration)', () => {
     expect(result.diagnostics.filter((d) => d.code === 'bundle-invalid')).toEqual([]);
   });
 
+  it('infers a dataset + {{#each}} loop from a repeated card grid', async () => {
+    const cards = Array.from({ length: 5 }, (_, i) => `<article class="member"><img src="/p${i}.jpg"><h3>Person ${i}</h3><p>Role ${i}</p></article>`).join('');
+    const result = await buildImportBundle(
+      site([{ sourceUrl: 'https://ex.com/', html: page('Acme', `<h2>Our Team</h2><section class="team">${cards}</section>`, HOME_HEAD) }]),
+      { media: stubMedia() },
+    );
+    const bundle = result.bundles[0]!;
+    expect(bundle.datasets).toHaveLength(1);
+    expect(bundle.datasets[0]!.slug).toBe('ourteam');
+    expect(bundle.entries).toHaveLength(5);
+    expect(bundle.entries.every((e) => e.dataset === 'ourteam')).toBe(true);
+    const home = bundle.pages.find((p) => p.path === '')!;
+    expect(home.source).toContain('{{#each dataset.ourteam}}');
+    expect(home.source).not.toContain('Person 0'); // the literal cards are gone, replaced by the loop
+    expect(() => validateTemplate(home.source!)).not.toThrow();
+    expect(result.diagnostics.some((d) => d.code === 'dataset-inferred')).toBe(true);
+    expect(result.diagnostics.filter((d) => d.code === 'bundle-invalid')).toEqual([]);
+  });
+
+  it('drops an inferred dataset (no orphan, no leaked marker) when its container is truncated away', async () => {
+    const cards = Array.from({ length: 6 }, (_, i) => `<article class="member"><img src="/p${i}.jpg"><h3>Person ${i}</h3><p>Role ${i}</p></article>`).join('');
+    const result = await buildImportBundle(
+      site([{ sourceUrl: 'https://ex.com/', html: page('Acme', `<h2>Our Team</h2><section class="team">${cards}</section>`, HOME_HEAD) }]),
+      { media: stubMedia(), limits: { maxSourceBytes: 40 } }, // tiny → fitSource drops the grid container
+    );
+    const bundle = result.bundles[0]!;
+    const home = bundle.pages.find((p) => p.path === '')!;
+    expect(home.source).not.toContain('@@SWDS'); // the sentinel never leaks as visible text
+    // Any dataset that wasn't actually wired into a page is dropped (no orphans).
+    expect(bundle.entries.every((e) => bundle.datasets.some((d) => d.slug === e.dataset))).toBe(true);
+    if (!home.source!.includes('{{#each')) expect(bundle.datasets).toHaveLength(0);
+    expect(() => validateTemplate(home.source!)).not.toThrow();
+  });
+
   it('does not extract chrome for a single page (keeps it inline)', async () => {
     const result = await buildImportBundle(
       site([{ sourceUrl: 'https://ex.com/', html: page('Solo', '<h1>Solo</h1>', HOME_HEAD) }]),

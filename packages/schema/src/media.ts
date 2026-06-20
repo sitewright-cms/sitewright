@@ -151,8 +151,29 @@ export const StylesheetAssetSchema = z.object({
 });
 export type StylesheetAsset = z.infer<typeof StylesheetAssetSchema>;
 
-/** Any uploaded asset — an optimized image, a raw file, a font, or a stylesheet — discriminated by `kind`. */
-export const MediaAssetSchema = z.discriminatedUnion('kind', [ImageAssetSchema, FileAssetSchema, FontAssetSchema, StylesheetAssetSchema]);
+/**
+ * A self-hosted JavaScript file from a WEBSITE IMPORT (the cloned site's own + third-party scripts),
+ * inline-served as `text/javascript` and `<script src>`-linked from `website.scripts` so the imported
+ * site stays interactive. @security Foreign script execution is a deliberate, owner-only import choice
+ * (the cornerstone "no foreign scripts" rule is relaxed ONLY for these self-hosted refs); preview runs
+ * sandboxed and the published site is the owner's own origin. Bundled into `_assets/<id>/<file>`.
+ */
+export const ScriptAssetSchema = z.object({
+  kind: z.literal('script'),
+  ...baseShape,
+  /** On-disk stored file name (e.g. `script.js`). */
+  storedName: StoredFileNameSchema,
+  /** Root-relative URL of the inline-served script. */
+  url: z
+    .string()
+    .min(1)
+    .max(2048)
+    .regex(/^\/media\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\.js$/),
+});
+export type ScriptAsset = z.infer<typeof ScriptAssetSchema>;
+
+/** Any uploaded asset — an optimized image, a raw file, a font, a stylesheet, or an imported script. */
+export const MediaAssetSchema = z.discriminatedUnion('kind', [ImageAssetSchema, FileAssetSchema, FontAssetSchema, StylesheetAssetSchema, ScriptAssetSchema]);
 export type MediaAsset = z.infer<typeof MediaAssetSchema>;
 
 /**

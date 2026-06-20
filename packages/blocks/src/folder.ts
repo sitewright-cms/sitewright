@@ -21,9 +21,9 @@ export type FolderSort = 'name' | 'name-desc';
 
 /** Slim a project's media list for the render context (drops placeholder / variants / bytes / etc.). */
 export function mediaForRender(media: readonly MediaAsset[]): RenderMedia[] {
-  // `stylesheet` assets are an importer implementation detail (a linked CSS file), not pickable media.
+  // `stylesheet`/`script` assets are importer implementation details (linked CSS/JS), not pickable media.
   return media
-    .filter((a): a is Exclude<MediaAsset, { kind: 'stylesheet' }> => a.kind !== 'stylesheet')
+    .filter((a): a is Exclude<MediaAsset, { kind: 'stylesheet' | 'script' }> => a.kind !== 'stylesheet' && a.kind !== 'script')
     .map((a) => {
       const out: RenderMedia = { folder: a.folder, kind: a.kind, filename: a.filename, url: a.url };
       if (a.kind === 'image') {

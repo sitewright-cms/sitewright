@@ -36,6 +36,10 @@ const PUBLISHED_IMAGE_TYPES = new Map<string, string>([
   // An imported site's bundled stylesheet — CSS is inert (no script execution; its url()s were
   // rewritten/stripped on import), so it's served inline as text/css so the page's <link> applies.
   ['.css', 'text/css; charset=utf-8'],
+  // An imported site's bundled script (kind 'script'). @security Serving foreign JS inline is a
+  // DELIBERATE, owner-only import choice (the cornerstone no-foreign-scripts rule is relaxed for these
+  // self-hosted refs) so the cloned site stays interactive on the owner's own published origin.
+  ['.js', 'text/javascript; charset=utf-8'],
 ]);
 
 /** A bundled binary asset to serve: its bytes, content type, and whether it's download-only. */

@@ -20,6 +20,7 @@ import { buildRoutes } from './transform/routes.js';
 import { applyLocales, detectLocaleSet } from './transform/locales.js';
 import { collectImageRefs, hostAssets } from './transform/assets.js';
 import { collectCssRefs, buildPageStyles, buildHostableCss } from './transform/css.js';
+import { collectAndHostScripts } from './transform/scripts.js';
 import { collectFontFaces } from './transform/fonts.js';
 import { extractIdentity, extractPageSeo } from './transform/identity.js';
 import { extractChrome, type ChromeResult } from './transform/chrome.js';
@@ -67,7 +68,7 @@ function extractNavLinks(home: ParsedPage | undefined, baseUrl: string): string[
   return out;
 }
 
-function buildWebsite(chrome: ChromeResult, head?: string): WebsiteSettings | undefined {
+function buildWebsite(chrome: ChromeResult, head?: string, scripts?: string): WebsiteSettings | undefined {
   const input: Record<string, unknown> = {};
   if (chrome.topNav) input.topNav = chrome.topNav;
   if (chrome.mobileNav) input.mobileNav = chrome.mobileNav;
@@ -75,6 +76,7 @@ function buildWebsite(chrome: ChromeResult, head?: string): WebsiteSettings | un
   if (chrome.sidebarLeft) input.sidebarLeft = chrome.sidebarLeft;
   if (chrome.sidebarRight) input.sidebarRight = chrome.sidebarRight;
   if (head) input.head = head; // the <link> to the hosted imported stylesheet (tiny; well under HTML_MAX)
+  if (scripts) input.scripts = scripts; // <script src> links to the self-hosted imported JS (after the body)
   if (chrome.preloaderEffect) input.effects = { preloaderEffect: chrome.preloaderEffect };
   if (Object.keys(input).length === 0) return undefined;
   return WebsiteSettingsSchema.parse(input);
@@ -142,6 +144,11 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
   const cssUrl = hostableCss && opts.media.hostStylesheet ? await opts.media.hostStylesheet(hostableCss) : null;
   const cssLink = cssUrl ? `<link rel="stylesheet" href="${cssUrl}">` : '';
   const pageStyles = cssUrl ? '' : buildPageStyles(cssCollection.cssText, assetMap);
+
+  // Self-host the imported site's scripts (inline + external) as `<script src>` links for the
+  // website.scripts slot — done BEFORE the transform strips <script> from page sources/chrome. Empty
+  // string when the media port has no `hostScript` (the safe, scripts-dropped default).
+  const scriptLinks = await collectAndHostScripts(parsed, opts.media);
 
   const identity: CorporateIdentity = home
     ? extractIdentity(home.doc, { baseUrl: home.url, assetMap, fallbackName: hostFallbackName(workSite.baseUrl) })
@@ -256,7 +263,7 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
   // stubs have no source HTML to rewrite.
   for (const p of routeRes.pages) p.status = 'draft';
 
-  const website = buildWebsite(chrome, cssLink || undefined);
+  const website = buildWebsite(chrome, cssLink || undefined, scriptLinks || undefined);
   const bundle: ImportBundle = {
     project: { identity, website, settings: { defaultLocale: i18n.defaultLocale, locales: i18n.locales } },
     pages: routeRes.pages,

@@ -9,7 +9,6 @@ import {
   eachTextLike,
   getBody,
   neutralizeMustaches,
-  serialize,
   prettySerialize,
   type AnyNode,
   type Document,
@@ -288,7 +287,7 @@ function textFallback(nodes: AnyNode[], maxBytes: number): string {
 export function transformFragment(node: Element, ctx: TransformCtx, maxBytes: number): string | null {
   const diags: ImportDiagnostic[] = [];
   sanitizeForSource([node], ctx, diags);
-  const html = serialize(node);
+  const html = prettySerialize(node); // readable/editable slot HTML (block elements indented)
   if (byteLength(html) > maxBytes) return null;
   try {
     validateTemplate(html);

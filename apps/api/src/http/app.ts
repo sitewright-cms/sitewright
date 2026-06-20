@@ -15,6 +15,7 @@ import {
   ImageAssetSchema,
   FileAssetSchema,
   StylesheetAssetSchema,
+  ScriptAssetSchema,
   FontWeightSchema,
   FontFamilyNameSchema,
   FONT_WEIGHTS,
@@ -34,6 +35,7 @@ import {
   type Entry,
   type FileAsset,
   type StylesheetAsset,
+  type ScriptAsset,
   type MediaFolderRecord,
   type Form,
   toPublicForm,
@@ -2445,6 +2447,31 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       }
     }
 
+    // Store an imported site's JS as one inline-served `.js` file (kind 'script') so the importer can
+    // `<script src>`-link it. @security Owner-only import; the cornerstone no-foreign-scripts rule is
+    // relaxed ONLY for these self-hosted refs (see ScriptAssetSchema); preview is sandboxed.
+    async function createScriptAsset(ctx: ProjectContext, projectSlug: string, js: string): Promise<ScriptAsset> {
+      const assetId = randomUUID();
+      const storedName = 'script.js';
+      const buffer = Buffer.from(js, 'utf8');
+      try {
+        await storage.storeFile(projectSlug, assetId, storedName, buffer);
+        const asset = ScriptAssetSchema.parse({
+          kind: 'script',
+          id: assetId,
+          filename: storedName,
+          folder: '',
+          bytes: buffer.length,
+          storedName,
+          url: `/media/${projectSlug}/${assetId}/${storedName}`,
+        });
+        return (await contentRepo.put(ctx, 'media', assetId, asset)) as ScriptAsset;
+      } catch (err) {
+        await storage.remove(projectSlug, assetId);
+        throw err;
+      }
+    }
+
     // Store a self-hosted FONT family (kind 'font') — used by the local upload + Google select routes.
     const createFontAsset = (ctx: ProjectContext, projectSlug: string, input: Parameters<typeof storeFontAsset>[4]) =>
       storeFontAsset(contentRepo, storage, ctx, projectSlug, input);
@@ -2643,6 +2670,17 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       hostStylesheet: async (ctx, slug, css) => {
         try {
           const saved = await createStylesheetAsset(ctx, slug, css);
+          return saved.url;
+        } catch {
+          return null;
+        }
+      },
+      // Self-host an imported script (inline body OR fetched external) as one inline-served `.js` file,
+      // returning its /media URL so the importer can `<script src>`-link it. Owner-only; relaxes the
+      // no-foreign-scripts rule for self-hosted refs only (the import was an explicit owner choice).
+      hostScript: async (ctx, slug, js) => {
+        try {
+          const saved = await createScriptAsset(ctx, slug, js);
           return saved.url;
         } catch {
           return null;
@@ -2891,6 +2929,24 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             .header('access-control-allow-origin', '*')
             .header('cross-origin-resource-policy', 'cross-origin')
             .type('text/css; charset=utf-8')
+            .send(bytes);
+        }
+        // A `kind:'script'` (imported site JS) served INLINE as text/javascript (+ nosniff + CORS) so a
+        // page can `<script src>`-link it. @security Owner-only import choice; the published site is the
+        // owner's own origin and the preview iframe is sandboxed. Stored via storeFile alongside CSS/fonts.
+        if (/^[A-Za-z0-9_-]+\.js$/.test(file)) {
+          let bytes: Buffer;
+          try {
+            bytes = await storage.readStored(projectSlug, assetId, file);
+          } catch {
+            return reply.code(404).send({ error: 'not found' });
+          }
+          return reply
+            .header('cache-control', 'public, max-age=31536000, immutable')
+            .header('x-content-type-options', 'nosniff')
+            .header('access-control-allow-origin', '*')
+            .header('cross-origin-resource-policy', 'cross-origin')
+            .type('text/javascript; charset=utf-8')
             .send(bytes);
         }
         let bytes: Buffer;

@@ -58,6 +58,9 @@ export interface MediaPort {
   /** Host the imported site's concatenated CSS as one inline-served stylesheet, returning its URL (so
    *  the importer `<link>`s it and keeps the bulk CSS out of the editable page source). Omit to inline. */
   hostStylesheet?(css: string): Promise<string | null>;
+  /** Host one imported script — an inline body (`{code}`) or a fetched external file (`{url}`) — as a
+   *  served `.js`, returning its URL so the importer `<script src>`-links it. Omit to strip scripts. */
+  hostScript?(arg: { code: string } | { url: string }): Promise<string | null>;
 }
 
 /** Hard caps applied inside the engine (defense-in-depth alongside the intake/route limits). */

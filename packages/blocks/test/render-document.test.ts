@@ -47,6 +47,12 @@ describe('renderDocument — document shell', () => {
     expect(raw).toContain('<main id="page-content">');
   });
 
+  it('rawFidelity skips the platform utility stylesheet (its Tailwind utilities would collide with imported classes)', () => {
+    const opts = { brand, bodyHtml: '<div class="w-100">x</div>', stylesheets: ['/styles.css'] };
+    expect(renderDocument(page, opts)).toContain('<link rel="stylesheet" href="/styles.css" />'); // normal: linked
+    expect(renderDocument(page, { ...opts, rawFidelity: true })).not.toContain('/styles.css'); // raw: skipped
+  });
+
   it('prepends the base layer (modern-normalize + platform defaults) ahead of the skeleton', () => {
     const doc = renderDocument(page, { brand });
     const head = doc.slice(0, doc.indexOf('</head>'));

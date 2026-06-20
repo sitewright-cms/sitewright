@@ -10,6 +10,11 @@ const MIN_BASE64 = 2000; // a blank/failed frame is far smaller than a real rend
 
 const { captureScreenshots, closeScreenshotBrowser } = await import(MODULE);
 
+// Render EVERY named breakpoint so CI proves each one works in the slimmed image (keep in sync with
+// @sitewright/schema SCREENSHOT_VIEWPORTS). The per-viewport check below fails loudly if any requested
+// name produced no shot — so a typo or a dropped breakpoint surfaces as a failure, not a silent skip.
+const VIEWPORTS = ['wqhd', 'fullhd', 'laptop', 'tablet', 'mobile'];
+
 // CJK + emoji in the content exercises the bundled fonts; a missing-font regression renders tofu (still
 // bytes, so this is a smoke for "renders at all", not pixel-perfect glyphs — the fonts stay in the image).
 const html =
@@ -22,9 +27,9 @@ let failed = false;
 try {
   const shots = await captureScreenshots(html, {
     originHostPort: '127.0.0.1:80',
-    viewports: ['desktop', 'mobile'],
+    viewports: VIEWPORTS,
   });
-  for (const vp of ['desktop', 'mobile']) {
+  for (const vp of VIEWPORTS) {
     const shot = shots[vp];
     const len = shot?.base64?.length ?? 0;
     if (len < MIN_BASE64) {

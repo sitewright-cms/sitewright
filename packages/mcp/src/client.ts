@@ -5,6 +5,8 @@
  * tree-safety) is enforced server-side; this layer only forwards.
  */
 
+import type { ScreenshotViewportName } from '@sitewright/schema';
+
 export type Capability = 'content:read' | 'content:write' | 'content:delete' | 'publish' | 'deploy';
 
 export interface Scope {
@@ -48,7 +50,7 @@ export interface PreviewResult {
   html: string;
   token: string;
   slug?: string;
-  screenshots?: Partial<Record<'desktop' | 'mobile', PreviewShot>>;
+  screenshots?: Partial<Record<ScreenshotViewportName, PreviewShot>>;
 }
 
 export class SitewrightClient {

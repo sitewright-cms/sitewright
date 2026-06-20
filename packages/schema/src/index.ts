@@ -16,6 +16,7 @@ export * from './media.js';
 export * from './page.js';
 export * from './password.js';
 export * from './project.js';
+export * from './screenshot-viewports.js';
 export * from './snippet.js';
 export * from './stock.js';
 export * from './template.js';

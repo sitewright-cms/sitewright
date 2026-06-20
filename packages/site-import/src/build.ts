@@ -27,6 +27,9 @@ import { inferDatasets } from './transform/datasets.js';
 import { transformBody, type TransformCtx } from './transform/page.js';
 import type { CapturedSite, ImportBundle, ImportDiagnostic, ImportResult, TransformOptions } from './types.js';
 
+/** Upper bound on the hosted imported stylesheet (a real site's full minified CSS is far smaller). */
+const MAX_HOSTABLE_CSS_BYTES = 2 * 1024 * 1024;
+
 interface ParsedPage {
   url: string;
   doc: Document;
@@ -125,7 +128,13 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
   // and `<link>` it from the head, so the bulk CSS stays OUT of the page source (which stays editable
   // markup). FALLBACK (no hostStylesheet port, e.g. tests): inline a single `<style>` per page. Either
   // way imported pages render in `rawFidelity` so the platform's own base CSS doesn't fight it.
-  const hostableCss = buildHostableCss(cssCollection.cssText, assetMap);
+  let hostableCss = buildHostableCss(cssCollection.cssText, assetMap);
+  // Cap the hosted CSS so a pathological source (e.g. a ZIP packed with megabytes of CSS) can't
+  // exhaust disk/memory — real sites' full minified CSS is well under this. Over the cap → drop it.
+  if (hostableCss && Buffer.byteLength(hostableCss, 'utf8') > MAX_HOSTABLE_CSS_BYTES) {
+    hostableCss = '';
+    diagnostics.push({ code: 'css-overflow', message: `imported CSS exceeds ${Math.round(MAX_HOSTABLE_CSS_BYTES / 1024)} KB; omitted` });
+  }
   const cssUrl = hostableCss && opts.media.hostStylesheet ? await opts.media.hostStylesheet(hostableCss) : null;
   const cssLink = cssUrl ? `<link rel="stylesheet" href="${cssUrl}">` : '';
   const pageStyles = cssUrl ? '' : buildPageStyles(cssCollection.cssText, assetMap);

@@ -25,8 +25,8 @@ const utf8 = new TextDecoder('utf-8');
 function lightMinify(css: string): string {
   return css
     .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/@import\b[^;]*(?:;|$)/gi, '') // no external stylesheet chain-loading (incl. a no-semicolon tail)
-    .replace(/\s+/g, ' ')
+    .replace(/\s+/g, ' ') // collapse to one line FIRST so the @import strip can't cross newlines
+    .replace(/@import\b[^;]*(?:;|$)/gi, '') // no external stylesheet chain-loading (single-line now)
     .replace(/\s*([{}:;,>])\s*/g, '$1')
     .replace(/;}/g, '}')
     .trim();

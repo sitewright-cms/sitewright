@@ -21,8 +21,8 @@ const isHeader: Matcher = (el) => el.name === 'header' || el.attribs.role === 'b
 const isFooter: Matcher = (el) => el.name === 'footer' || el.attribs.role === 'contentinfo';
 const isAside: Matcher = (el) => el.name === 'aside' || el.attribs.role === 'complementary';
 const byClass = (rx: RegExp): Matcher => (el) => cls(el, rx);
-const HEADER_CLASS = byClass(/(?:^|\s)(?:site-?header|masthead|topbar|navbar|main-?nav)(?:$|[\s_-])/i);
-const FOOTER_CLASS = byClass(/(?:^|\s)(?:site-?footer|colophon)(?:$|[\s_-])/i);
+const HEADER_CLASS = byClass(/(?:^|\s)(?:site-?header|page-?header|masthead|top-?bar|top-?nav|nav-?bar|nav-?wrapper|navbar|main-?nav|primary-?nav|menu-?bar)(?:$|[\s_-])/i);
+const FOOTER_CLASS = byClass(/(?:^|\s)(?:site-?footer|page-?footer|footer-?wrapper|colophon|bottom-?bar)(?:$|[\s_-])/i);
 const ASIDE_CLASS = byClass(/(?:^|\s)sidebar(?:$|[\s_-])/i);
 const PRELOADER: Matcher = byClass(/(?:^|\s)(?:preloader|pre-?load|loading-?overlay|page-?loader|site-?loader|loader-?wrap|spinner-?overlay)(?:$|[\s_-])/i);
 const COOKIE: Matcher = byClass(/(?:^|\s)(?:cookie|consent|gdpr)(?:$|[\s_-])/i);

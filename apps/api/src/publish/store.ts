@@ -18,10 +18,9 @@ const ASSET_CONTENT_TYPES = new Map<string, string>([
   ['.txt', 'text/plain; charset=utf-8'],
 ]);
 
-// Inline-servable image types for the bundled `_assets/` binaries. Anything NOT in this map
-// (raw uploads, .svg, .html, …) is served download-only (octet-stream + attachment), so an
-// uploaded file can never render/execute on this cookie-bearing origin. Mirrors the /media
-// route's image allowlist.
+// Inline-servable types for the bundled `_assets/` binaries. Anything NOT in this map (raw uploads,
+// .svg, .html, .js, …) is served download-only (octet-stream + attachment), so an uploaded file can
+// never render/execute on this cookie-bearing origin. Mirrors the /media route's allowlist.
 const PUBLISHED_IMAGE_TYPES = new Map<string, string>([
   ['.avif', 'image/avif'],
   ['.webp', 'image/webp'],
@@ -34,6 +33,9 @@ const PUBLISHED_IMAGE_TYPES = new Map<string, string>([
   ['.woff', 'font/woff'],
   ['.ttf', 'font/ttf'],
   ['.otf', 'font/otf'],
+  // An imported site's bundled stylesheet — CSS is inert (no script execution; its url()s were
+  // rewritten/stripped on import), so it's served inline as text/css so the page's <link> applies.
+  ['.css', 'text/css; charset=utf-8'],
 ]);
 
 /** A bundled binary asset to serve: its bytes, content type, and whether it's download-only. */

@@ -136,6 +136,19 @@ describe('buildImportBundle (integration)', () => {
     expect(result.bundles[0]!.project.website?.criticalCss).toBeUndefined(); // no longer in the bounded slot
   });
 
+  it('EDITABLE path: hosts CSS as a linked stylesheet (out of source) when hostStylesheet is available', async () => {
+    const media: MediaPort = { ...stubMedia(), hostStylesheet: async () => '/media/site/css1/styles.css' };
+    const result = await buildImportBundle(
+      site([{ sourceUrl: 'https://ex.com/', html: page('Acme', '<h1>Welcome</h1>', '<style>.brand{color:#1565a8}</style>') }]),
+      { media },
+    );
+    const bundle = result.bundles[0]!;
+    const home = bundle.pages.find((p) => p.path === '')!;
+    expect(home.source).not.toContain('<style>'); // CSS is NOT inlined — page source stays editable markup
+    expect(home.source).toContain('<h1>Welcome</h1>');
+    expect(bundle.project.website?.head).toContain('<link rel="stylesheet" href="/media/site/css1/styles.css">');
+  });
+
   it('falls back to body-only (css-overflow) when full CSS + content exceeds the source cap', async () => {
     const bigCss = '.x{color:red}'.repeat(60); // ~780 bytes, over the tiny cap below
     const result = await buildImportBundle(

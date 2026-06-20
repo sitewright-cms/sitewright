@@ -120,3 +120,14 @@ export function buildPageStyles(cssText: string, assetMap: ReadonlyMap<string, s
     .replace(/<(\/?script)/gi, '<​$1');
   return `<style>${safe}</style>`;
 }
+
+/**
+ * Build the imported CSS as a plain stylesheet to HOST as a served `.css` file (the editable path):
+ * url()s rewritten to self-hosted refs + minified. No `</style>`/`{{`/`<script>` neutralization (it's
+ * served as text/css, never embedded in validated HTML/Handlebars source). The importer `<link>`s it
+ * from the head so the bulk CSS stays OUT of the editable page source. Returns '' when there is no CSS.
+ */
+export function buildHostableCss(cssText: string, assetMap: ReadonlyMap<string, string>): string {
+  if (cssText.trim() === '') return '';
+  return lightMinify(rewriteCssUrls(cssText, assetMap));
+}

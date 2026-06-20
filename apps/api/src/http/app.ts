@@ -14,6 +14,7 @@ import {
   targetsPrivateHost,
   ImageAssetSchema,
   FileAssetSchema,
+  StylesheetAssetSchema,
   FontWeightSchema,
   FontFamilyNameSchema,
   FONT_WEIGHTS,
@@ -32,6 +33,7 @@ import {
   type CorporateIdentity,
   type Entry,
   type FileAsset,
+  type StylesheetAsset,
   type MediaFolderRecord,
   type Form,
   toPublicForm,
@@ -2418,6 +2420,30 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       }
     }
 
+    // Store an imported site's CSS as one inline-served `.css` file (kind 'stylesheet') so the importer
+    // can `<link>` it instead of inlining the bulk CSS into each page's editable source.
+    async function createStylesheetAsset(ctx: ProjectContext, projectSlug: string, css: string): Promise<StylesheetAsset> {
+      const assetId = randomUUID();
+      const storedName = 'styles.css';
+      const buffer = Buffer.from(css, 'utf8');
+      try {
+        await storage.storeFile(projectSlug, assetId, storedName, buffer);
+        const asset = StylesheetAssetSchema.parse({
+          kind: 'stylesheet',
+          id: assetId,
+          filename: storedName,
+          folder: '',
+          bytes: buffer.length,
+          storedName,
+          url: `/media/${projectSlug}/${assetId}/${storedName}`,
+        });
+        return (await contentRepo.put(ctx, 'media', assetId, asset)) as StylesheetAsset;
+      } catch (err) {
+        await storage.remove(projectSlug, assetId);
+        throw err;
+      }
+    }
+
     // Store a self-hosted FONT family (kind 'font') — used by the local upload + Google select routes.
     const createFontAsset = (ctx: ProjectContext, projectSlug: string, input: Parameters<typeof storeFontAsset>[4]) =>
       storeFontAsset(contentRepo, storage, ctx, projectSlug, input);
@@ -2609,6 +2635,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           return { url: saved.url };
         } catch {
           return null; // invalid family/metadata → leave the original url()
+        }
+      },
+      // Self-host the imported site's CSS as one inline-served stylesheet, returning its /media URL so
+      // the importer can <link> it (keeping the bulk CSS out of the page source).
+      hostStylesheet: async (ctx, slug, css) => {
+        try {
+          const saved = await createStylesheetAsset(ctx, slug, css);
+          return saved.url;
+        } catch {
+          return null;
         }
       },
       rl,
@@ -2836,6 +2872,24 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             .header('access-control-allow-origin', '*')
             .header('cross-origin-resource-policy', 'cross-origin')
             .type(FONT_CONTENT_TYPES.get(ext) ?? 'font/woff2')
+            .send(bytes);
+        }
+        // A `kind:'stylesheet'` (imported site CSS) is served INLINE as text/css (+ nosniff + CORS) so
+        // a page can `<link>` it — incl. from the sandboxed, opaque-origin preview iframe. CSS is inert
+        // (no script execution); it's stored via storeFile alongside fonts.
+        if (/^[A-Za-z0-9_-]+\.css$/.test(file)) {
+          let bytes: Buffer;
+          try {
+            bytes = await storage.readStored(projectSlug, assetId, file);
+          } catch {
+            return reply.code(404).send({ error: 'not found' });
+          }
+          return reply
+            .header('cache-control', 'public, max-age=31536000, immutable')
+            .header('x-content-type-options', 'nosniff')
+            .header('access-control-allow-origin', '*')
+            .header('cross-origin-resource-policy', 'cross-origin')
+            .type('text/css; charset=utf-8')
             .send(bytes);
         }
         let bytes: Buffer;

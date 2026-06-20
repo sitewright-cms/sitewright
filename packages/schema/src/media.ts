@@ -132,8 +132,27 @@ export const FontAssetSchema = z.object({
 });
 export type FontAsset = z.infer<typeof FontAssetSchema>;
 
-/** Any uploaded asset — an optimized image, a raw file, or a self-hosted font — discriminated by `kind`. */
-export const MediaAssetSchema = z.discriminatedUnion('kind', [ImageAssetSchema, FileAssetSchema, FontAssetSchema]);
+/**
+ * A self-hosted **stylesheet** (kind `stylesheet`): an imported site's CSS, stored as one `.css` file
+ * and served INLINE (`text/css` + nosniff + CORS) so a page can `<link>` it — keeping the bulk CSS OUT
+ * of the page `source` (which stays editable HTML). Bundled into `_assets/<id>/<file>` like other media.
+ */
+export const StylesheetAssetSchema = z.object({
+  kind: z.literal('stylesheet'),
+  ...baseShape,
+  /** On-disk stored file name (e.g. `styles.css`). */
+  storedName: StoredFileNameSchema,
+  /** Root-relative URL of the inline-served stylesheet. */
+  url: z
+    .string()
+    .min(1)
+    .max(2048)
+    .regex(/^\/media\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\.css$/),
+});
+export type StylesheetAsset = z.infer<typeof StylesheetAssetSchema>;
+
+/** Any uploaded asset — an optimized image, a raw file, a font, or a stylesheet — discriminated by `kind`. */
+export const MediaAssetSchema = z.discriminatedUnion('kind', [ImageAssetSchema, FileAssetSchema, FontAssetSchema, StylesheetAssetSchema]);
 export type MediaAsset = z.infer<typeof MediaAssetSchema>;
 
 /**

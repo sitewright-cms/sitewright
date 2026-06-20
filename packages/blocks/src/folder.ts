@@ -21,15 +21,18 @@ export type FolderSort = 'name' | 'name-desc';
 
 /** Slim a project's media list for the render context (drops placeholder / variants / bytes / etc.). */
 export function mediaForRender(media: readonly MediaAsset[]): RenderMedia[] {
-  return media.map((a) => {
-    const out: RenderMedia = { folder: a.folder, kind: a.kind, filename: a.filename, url: a.url };
-    if (a.kind === 'image') {
-      if (typeof a.alt === 'string') out.alt = a.alt;
-      out.width = a.width;
-      out.height = a.height;
-    }
-    return out;
-  });
+  // `stylesheet` assets are an importer implementation detail (a linked CSS file), not pickable media.
+  return media
+    .filter((a): a is Exclude<MediaAsset, { kind: 'stylesheet' }> => a.kind !== 'stylesheet')
+    .map((a) => {
+      const out: RenderMedia = { folder: a.folder, kind: a.kind, filename: a.filename, url: a.url };
+      if (a.kind === 'image') {
+        if (typeof a.alt === 'string') out.alt = a.alt;
+        out.width = a.width;
+        out.height = a.height;
+      }
+      return out;
+    });
 }
 
 /** Trim leading/trailing slashes from a folder-path argument; non-strings → '' (the root). */

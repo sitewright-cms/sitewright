@@ -55,14 +55,18 @@ In \`source\`:
   social bar with {{#each company.social}}<a href="{{sw-url link}}">{{sw-icon icon}} {{name}}</a>{{/each}}.
   Page bindings: {{ page.title }}, {{ page.path }} (full route),
   {{ page.slug }} (own segment); {{ page.parent.path }} / {{ page.parent.data.<key> }} for the page's
-  parent (absent at the tree root). CROSS-PAGE: read ANOTHER page's data by SLUG path with
+  parent (absent at the tree root); and {{#each page.children}} for its CHILD pages — a section
+  index or a blog overview that lists its sub-pages (each child has .title/.slug/.path/.data).
+  CROSS-PAGE: read ANOTHER page's data by SLUG path with
   {{ pages.<slug>.<slug>….data.<key> }} — walk the tree from home, e.g. {{ pages.services.seo.data.header_title }}
   (and {{ sw-url pages.services.path }} to link it). Same-locale (German page → German slugs,
   pages.leistungen.seo); each node also has .title/.slug/.path/.locale; an unknown path renders empty.
   {{ website.siteUrl }}; and {{#each dataset.<dataset>}}…{{/each}}
   for collections. Inside the loop an entry's fields are read
   DIRECTLY by name — {{title}}, {{price}} (no \`values.\` prefix) — and each row is click-to-edit
-  in the editor. The entry's id/dataset are on {{@entry.id}} / {{@entry.dataset}}.
+  in the editor. The entry's id/dataset are on {{@entry.id}} / {{@entry.dataset}}. A dataset field
+  may itself be a LIST (a repeating group → {{#each <field>}}) or an OBJECT (a nested group →
+  {{<field>.<key>}}), so an entry can hold structured/nested data.
 - IMAGE GALLERIES / file lists: loop a MEDIA FOLDER with
   {{#sw-folder "folder" [kind="image|file|all"] [recursive=false] [sort="name|name-desc"]}}…{{else}}…{{/sw-folder}}
   (images by default). The folder may be a subfolder ("products/2024") or a variable. Each iteration
@@ -299,7 +303,7 @@ properties — \`var(--sw-color-primary)\`, \`var(--sw-color-primary-content)\` 
   },
   i18n: {
     title: "Multilingual / translations",
-    summary: "locale-variant pages, translation groups, share-by-inheritance, localized datasets",
+    summary: "locale-variant pages, translation groups, share-by-inheritance, localized datasets, the key-first translation catalog",
     body: `
 MULTILINGUAL (document-level i18n): each language variant is ITS OWN page, not a field
 overlay. First declare the languages in settings: settings:{ defaultLocale:"en",
@@ -319,6 +323,16 @@ every language updates, no copying). Each variant supplies only its own translat
 (data-sw-text values) and \`title\`/\`description\`/\`image\`. For a one-off layout difference, give that variant its
 own \`source\` (fork) or set its \`template\`; a variant that carries its own code stops following
 the main page.
+
+TRANSLATION CATALOG (key-first STRINGS): for short UI strings that aren't page body content —
+nav labels, button text, a tagline reused across pages — use the shared catalog rather than
+per-page data. It lives at website.translations as { "<key>": { "<locale>": "<text>" } }. Read a
+string with {{sw-translate "key" default="…"}} (output is escaped, so safe in text OR an attribute
+like alt / aria-label / placeholder); it resolves the page locale, falling back to the default
+locale, then to default=. Write cells via put_content("settings", …) under website.translations —
+or, to make a string editable IN PLACE in the content editor, put the key on an element with the
+data-sw-translate="key" directive. (The catalog is separate from website.data, the global
+NON-localized JSON store.)
 
 LOCALIZED DATA: duplicate a dataset per locale as "<name>-<locale>" (lowercased), e.g.
 "services" + "services-de". A page with locale "de" auto-resolves {{#each dataset.services}}
@@ -364,12 +378,28 @@ prefixed by the Corporate-Identity name ("Hi <name> — …").
 `,
   },
   templates: {
-    title: "Page templates",
-    summary: "render a page from a template + contribute only page.data overrides",
+    title: "Templates, snippets & reuse",
+    summary: "render a page from a template; reusable {{> snippets}} & widgets; ready-made global partials",
     body: `
 TEMPLATES: set page.template to "global:landing", "global:text", or a project template id
 (kind "template": { id, name, source }) — the page then renders the TEMPLATE's source and
-contributes ONLY its editable \`data\` (page.data) overrides; leave page.source unset.
+contributes ONLY its editable \`data\` (page.data) overrides; leave page.source unset. Use it when
+MANY pages share one layout (e.g. a blog-post template; the pages supply only their content via
+page.data).
+
+SNIPPETS — reusable source fragments INCLUDED with the Handlebars partial syntax {{> name}}.
+Create one with put_content("snippet", "<name>", { id:"<name>", name:"<name>", source:"<…>" }),
+then drop {{> <name>}} in any page / template / other snippet. Factor out anything repeated (a CTA
+band, a card, a contact block) so you edit it in ONE place. The include runs in the CURRENT
+context, so {{> card}} inside {{#each dataset.x}} sees the item. (\`name\` must be a bare partial
+name — letters/digits/-/_ only.)
+
+READY-MADE GLOBAL SNIPPETS — include these as starting points without creating anything, then
+restyle: {{> navbar}}, {{> hero}}, {{> features}}, {{> cta}}, {{> pricing}}, {{> footer}}.
+
+WIDGETS — a snippet packaged with auto-provisioning. The built-in {{> hero-slider}} renders a
+full-bleed background SLIDESHOW (Ken-Burns drift + rising captions, the standard frontpage hero);
+its slides are EDITED AS DATA (a "hero" dataset it sets up), no code. Just include it.
 `,
   },
   icons: {

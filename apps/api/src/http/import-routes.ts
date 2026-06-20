@@ -106,7 +106,7 @@ function clamp(n: number, lo: number, hi: number): number {
 
 // The ONLY script tags allowed in a bundle: a self-hosted `<script src="/media/<slug>/<id>/<file>.js">`
 // (optionally `defer`/`async`) — the importer's JS-hosting output. No inline body, no foreign src, no
-// `on*`/other attributes. The `head`/`scripts` slots may carry these; everything else stays script-free.
+// `on*`/other attributes. ONLY the `scripts` slot may carry these; everything else stays script-free.
 const SELF_HOSTED_SCRIPT = /<script src="\/media\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\.js"(?:\s+(?:defer|async))*><\/script>/gi;
 const JS_HOST_SLOTS: ReadonlySet<string> = new Set(['scripts']); // ONLY website.scripts carries hosted <script src> (head holds the CSS <link> only)
 

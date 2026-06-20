@@ -34,8 +34,10 @@ function collectRefs(parsed: ReadonlyArray<{ url: string; doc: Document }>): Scr
   const seen = new Set<string>();
   const refs: ScriptRef[] = [];
   for (const { url: pageUrl, doc } of parsed) {
+    if (refs.length >= MAX_SCRIPTS) break; // cap reached → stop walking further pages
     for (const el of elements(doc.children)) {
-      if (el.name !== 'script' || refs.length >= MAX_SCRIPTS) continue;
+      if (refs.length >= MAX_SCRIPTS) break; // cap reached → stop walking this page's remaining nodes
+      if (el.name !== 'script') continue;
       if (!JS_TYPES.has((el.attribs.type ?? '').toLowerCase())) continue;
       const src = el.attribs.src;
       if (src !== undefined) {

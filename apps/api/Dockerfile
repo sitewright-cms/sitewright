@@ -23,15 +23,18 @@ WORKDIR /app
 # change (dist/) no longer re-downloads the ~300MB browser on every deploy.
 COPY --chown=node:node node_modules ./node_modules
 # Headless Chromium for server-side preview screenshots (the MCP `preview_page` tool renders the page so
-# an agent can SEE it). Installed (browser + its apt libraries) into a shared, world-readable path; the
-# API later runs as `node`. Adds ~300MB. Drop this layer (+ the dep above) if screenshots aren't needed.
+# an agent can SEE it). We install ONLY `chromium-headless-shell` — the purpose-built headless build the
+# screenshot code launches (render/screenshot.ts, `channel: 'chromium-headless-shell'`) — NOT the full
+# `chromium`, which would ALSO drop a ~377MB headed browser we never launch (+ ffmpeg). Installed (browser
+# + its apt libraries) into a shared, world-readable path; the API later runs as `node`. Adds ~260MB.
+# Drop this layer (+ the dep above) if screenshots aren't needed.
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 # `git` + `openssh-client` are the transport for SSH-key git deploy targets (the pure-JS isomorphic-git
 # path handles HTTPS-token targets; SSH needs the real binaries). Installed in the same cached heavy
 # layer as Chromium so code-only deploys don't re-fetch them.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git openssh-client \
-    && node node_modules/playwright-core/cli.js install --with-deps chromium \
+    && node node_modules/playwright-core/cli.js install --with-deps chromium-headless-shell \
     && rm -rf /var/lib/apt/lists/*
 
 # --- application artifacts (re-copied each build; cheap layers AFTER the cached Chromium one) ---

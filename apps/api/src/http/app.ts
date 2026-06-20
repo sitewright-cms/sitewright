@@ -675,6 +675,13 @@ export interface AppOptions {
    * → same-origin `/f/…` (works only when the platform serves the export).
    */
   publicUrl?: string;
+  /**
+   * Base domain for SUBDOMAIN routing of locally-hosted sites. When set (e.g. `agency.site`), a
+   * request whose Host is `<slug>.<sitesDomain>` is served as that local site at the ROOT path
+   * (the canonical "View live" URL); the path form `/sites/<slug>/` keeps working too. Requires
+   * wildcard DNS `*.<sitesDomain>` → this host. Unset → subdomain routing off.
+   */
+  sitesDomain?: string;
   /** Monthly token quotas for agency-funded metering. Unset/0 = unlimited. */
   aiQuota?: { orgMonthlyTokens?: number; userMonthlyTokens?: number };
 }
@@ -743,7 +750,35 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // Isolated template renderer (child-process worker pool). Injected in tests; in
   // production server.ts constructs one. Absent → the render route returns 503.
   const renderPool = opts.renderPool;
+  // Subdomain routing for locally-hosted sites: `<slug>.<sitesDomain>` → serve that local site at
+  // the root. `siteSubdomainSlug` extracts the slug from a Host header (a single valid DNS/slug
+  // label, not the apex and not `www`); used by `rewriteUrl` below (to route the request into the
+  // existing `/sites/:slug/*` handler) and by that handler (to emit root-relative redirects/cookies).
+  const sitesDomain = opts.sitesDomain?.replace(/^\.+|\.+$/g, '').toLowerCase() || undefined;
+  const siteSubdomainSlug = (host: string | undefined): string | null => {
+    if (!sitesDomain || !host) return null;
+    const h = (host.split(':')[0] ?? '').toLowerCase(); // strip any :port
+    if (!h.endsWith(`.${sitesDomain}`)) return null;
+    const label = h.slice(0, h.length - sitesDomain.length - 1);
+    // one valid DNS/slug label (≤63 per DNS), not the reserved `www`.
+    if (label.length > 63 || !/^[a-z0-9-]+$/.test(label) || label === 'www') return null;
+    return label;
+  };
+  /** The canonical URL a local site is served at — the subdomain when configured + the slug is a valid
+   *  DNS label, else the path form. Protocol-relative so it follows the current scheme. */
+  const servedSiteUrl = (slug: string): string =>
+    sitesDomain && /^[a-z0-9-]+$/.test(slug) ? `//${slug}.${sitesDomain}/` : `/sites/${slug}/`;
+
   const app = Fastify({
+    // A `<slug>.<sitesDomain>` request is rewritten (BEFORE routing) into the existing path-based
+    // site route, so subdomain + `/sites/<slug>/` share one serving code path. The Host header is
+    // untouched, so the handler can still tell it was reached via the subdomain.
+    rewriteUrl(req) {
+      const slug = siteSubdomainSlug(req.headers.host);
+      if (!slug) return req.url ?? '/';
+      const url = req.url && req.url !== '/' ? req.url : '/';
+      return `/sites/${slug}${url}`;
+    },
     // Redact deploy credentials defensively (Fastify omits bodies by default, but
     // guard against any future body logging).
     logger: opts.logger
@@ -2948,7 +2983,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           const local = await findLocalTarget(ctx);
           const release = await buildToDir(ctx, project, store.dirFor(project.slug), { minify: !!local?.minifyHtml });
           // Just published → nothing newer than this release, so the site is not dirty.
-          return reply.send({ release, url: `/sites/${project.slug}/`, dirty: false });
+          return reply.send({ release, url: servedSiteUrl(project.slug), dirty: false });
         } catch (err) {
           // Author-correctable: a bad route graph (PublishError) or a bad json_data URL (JsonDataError).
           if (err instanceof PublishError || err instanceof JsonDataError) {
@@ -2975,7 +3010,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const local = await findLocalTarget(ctx);
         return reply.send({
           release,
-          url: `/sites/${project.slug}/`,
+          url: servedSiteUrl(project.slug),
           dirty,
           localHosting: !!local,
           ...(local?.previewToken ? { previewToken: local.previewToken } : {}),
@@ -3056,6 +3091,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       async (req, reply) => {
         const { slug } = req.params;
         const path = req.params['*'] ?? '';
+        // Reached via `<slug>.<sitesDomain>` (rewritten into this route)? Then this host serves the
+        // site at its ROOT, so redirects + the token cookie must be root-relative, not `/sites/<slug>/`.
+        const siteBase = siteSubdomainSlug(req.headers.host) === slug ? '/' : `/sites/${slug}/`;
         // Bundled binary assets under `_assets/` (images inline; everything else download-only).
         let binary = null;
         try {
@@ -3107,14 +3145,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             if (matches(queryTok)) {
               // Valid token in the URL → remember it in a cookie + redirect to the clean (token-free) URL.
               reply.setCookie(SITE_COOKIE, local.previewToken, {
-                path: `/sites/${slug}/`,
+                path: siteBase,
                 httpOnly: true,
                 sameSite: 'lax', // sent on same-site top-level navigations (in-site link clicks)
                 secure: opts.secureCookies ?? false,
                 maxAge: 60 * 60 * 24 * 30, // 30 days
               });
               const safePath = path.replace(/[\r\n\0]/g, '');
-              return reply.redirect(`/sites/${slug}/${safePath}`, 302);
+              return reply.redirect(`${siteBase}${safePath}`, 302);
             }
             // charset=utf-8 so the message renders correctly; kept informative — a bare 403 would leave
             // a visitor with no idea a preview token is needed.
@@ -3137,7 +3175,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           // it's already unreachable here (a CRLF path maps to no published file → 404 above,
           // never this branch), but the redirect target must never carry header-breaking bytes.
           const safePath = path.replace(/[\r\n\0]/g, '');
-          return reply.redirect(`/sites/${slug}/${safePath}/${query}`, 301);
+          return reply.redirect(`${siteBase}${safePath}/${query}`, 301);
         }
         return reply.type('text/html').send(html);
       },

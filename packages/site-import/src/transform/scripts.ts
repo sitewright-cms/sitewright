@@ -13,6 +13,7 @@ import { elements, type Document } from '../dom.js';
 import type { MediaPort } from '../types.js';
 
 const MAX_SCRIPTS = 60; // bound the number of hosted scripts per import
+const MAX_INLINE_SCRIPT_BYTES = 512 * 1024; // bound each inline <script> body (defense-in-depth vs. the crawl budget)
 
 /** Script `type` values that are executable JS (so we host them); others (ld+json, templates) are skipped. */
 const JS_TYPES = new Set(['', 'text/javascript', 'application/javascript', 'module']);
@@ -44,7 +45,7 @@ function collectRefs(parsed: ReadonlyArray<{ url: string; doc: Document }>): Scr
         refs.push({ kind: 'external', url: abs });
       } else {
         const code = textContent([el]).trim();
-        if (!code || seen.has(`i:${code}`)) continue;
+        if (!code || code.length > MAX_INLINE_SCRIPT_BYTES || seen.has(`i:${code}`)) continue;
         seen.add(`i:${code}`);
         refs.push({ kind: 'inline', code });
       }

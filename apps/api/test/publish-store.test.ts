@@ -57,13 +57,13 @@ describe('PublishStore HTML serving', () => {
     expect(css?.attachment).toBe(false); // inline, so the page's <link> applies it
   });
 
-  it('serves a bundled script (imported JS) inline as text/javascript, not a download', async () => {
+  it('serves a bundled script (imported JS) DOWNLOAD-ONLY (never executes on the same-origin platform)', async () => {
     const dir = store.dirFor('site');
     await mkdir(join(dir, '_assets', 'js1'), { recursive: true });
     await writeFile(join(dir, '_assets', 'js1', 'script.js'), 'console.log(1)');
     const js = await store.readBinary('site', '/_assets/js1/script.js');
-    expect(js?.contentType).toBe('text/javascript; charset=utf-8'); // inline so the page's <script src> runs
-    expect(js?.attachment).toBe(false);
+    expect(js?.contentType).toBe('application/octet-stream'); // NOT text/javascript on the platform origin
+    expect(js?.attachment).toBe(true); // runs only on the owner's own external deploy
   });
 
   it('still rejects traversal segments', () => {

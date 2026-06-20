@@ -131,11 +131,14 @@ let browserPromise: Promise<Browser> | null = null;
 export async function getBrowser(): Promise<Browser> {
   if (!browserPromise) {
     browserPromise = chromium
+      // `chromium-headless-shell`: the purpose-built headless Chromium (no headed/GUI code path) — the
+      // right tool for server-side screenshots, and ~380MB smaller in the image than the full browser
+      // (we install ONLY the shell; see apps/api/Dockerfile). It is inherently headless, so no `headless`.
       // --no-sandbox: we run as a non-root user in a container with no SUID sandbox helper. The trust
       // boundary is the SSRF guard + the fact that the rendered HTML is the agent's OWN scoped content;
       // a renderer-exploit breakout would have container-level reach (accepted, standard for headless
       // Chrome services). --disable-dev-shm-usage avoids /dev/shm exhaustion in small containers.
-      .launch({ headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'] })
+      .launch({ channel: 'chromium-headless-shell', args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'] })
       .then((b) => {
         // If the browser crashes/disconnects post-launch, drop the singleton so the next call relaunches
         // (otherwise getBrowser() would keep handing back a dead Browser and every newContext() throws).

@@ -85,4 +85,25 @@ describe('crawlSite', () => {
     expect(res.site.pages).toHaveLength(0);
     expect(res.warnings.some((w) => w.startsWith('fetch failed'))).toBe(true);
   });
+
+  it('re-renders a client-rendered shell and discovers its runtime links', async () => {
+    const SHELL = '<html><body><div id="root"></div><script src="/app.js"></script></body></html>';
+    const RENDERED = '<html><body><nav><a href="/team">Team</a></nav><main>home</main></body></html>';
+    const fetchResource = async (url: string): Promise<FetchedResource | null> => {
+      if (url === 'https://spa.com/') return { url, status: 200, contentType: 'text/html', bytes: enc(SHELL) };
+      if (url === 'https://spa.com/team') return { url, status: 200, contentType: 'text/html', bytes: enc('<html><body>team page</body></html>') };
+      return null;
+    };
+    const render = vi.fn(async () => RENDERED);
+    const res = await crawlSite('https://spa.com/', baseOpts, { fetchResource, isAllowed: async () => true, render });
+    expect(render).toHaveBeenCalledWith('https://spa.com/', expect.anything()); // the shell was re-rendered
+    expect(res.site.pages.map((p) => p.sourceUrl)).toEqual(['https://spa.com/', 'https://spa.com/team']);
+    expect(res.site.pages[0]!.html).toContain('home'); // stored HTML is the rendered DOM, not the shell
+  });
+
+  it('does not re-render a server-rendered page', async () => {
+    const render = vi.fn(async () => '<html><body>UNUSED</body></html>');
+    await crawlSite('https://ex.com/', baseOpts, { fetchResource: fetcher(), isAllowed: async () => true, render });
+    expect(render).not.toHaveBeenCalled();
+  });
 });

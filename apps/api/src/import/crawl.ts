@@ -1,9 +1,10 @@
 // Fetch-based site crawler: BFS over same-origin links from a seed URL, producing the CapturedSite the
 // site-import engine consumes. Every outbound request goes through an injected SSRF guard + fetcher
 // (so the BFS logic is unit-testable without the network). Stylesheets are fetched as CSS assets;
-// images stay as remote refs for the engine's MediaPort to fetch + optimize. HTML pages only (no
-// headless rendering in this version — server-rendered sites are covered; SPA rendering is a follow-up).
-import { normalizePageUrl, sameOrigin, type CapturedAsset, type CapturedPage, type CapturedSite } from '@sitewright/site-import';
+// images stay as remote refs for the engine's MediaPort to fetch + optimize. A page that looks
+// client-rendered (SPA shell) is re-rendered via the injected `render` (headless browser) so its
+// runtime-built content + links are captured.
+import { looksClientRendered, normalizePageUrl, sameOrigin, type CapturedAsset, type CapturedPage, type CapturedSite } from '@sitewright/site-import';
 
 /** A fetched resource the crawler received (already SSRF-checked + size-bounded by the fetcher). */
 export interface FetchedResource {
@@ -17,8 +18,10 @@ export interface FetchedResource {
 export interface CrawlDeps {
   /** SSRF-guarded fetch. Returns null when blocked, non-OK, or oversized. */
   fetchResource: (url: string) => Promise<FetchedResource | null>;
-  /** SSRF predicate (DNS-resolving). Checked before every fetch. */
+  /** SSRF predicate. Checked before every fetch (the fetcher is the binding guard). */
   isAllowed: (url: string) => Promise<boolean>;
+  /** Optional headless render of a client-rendered page → post-JS HTML (null if it can't render). */
+  render?: (url: string, opts?: { signal?: AbortSignal }) => Promise<string | null>;
   onProgress?: (e: { fetched: number; queued: number; url: string }) => void;
   signal?: AbortSignal;
 }
@@ -118,7 +121,13 @@ export async function crawlSite(seedUrl: string, opts: CrawlOptions, deps: Crawl
     }
     if (!HTML_RE.test(res.contentType)) continue;
 
-    const html = decoder.decode(res.bytes);
+    let html = decoder.decode(res.bytes);
+    // A client-rendered shell has no real content when fetched — re-render it (headless) so its
+    // runtime-built DOM + links are captured. Discovery below then reads the rendered HTML.
+    if (deps.render && looksClientRendered(html)) {
+      const rendered = await deps.render(res.url, { signal: deps.signal });
+      if (rendered) html = rendered;
+    }
     pages.push({ sourceUrl: res.url, html, statusCode: res.status });
     deps.onProgress?.({ fetched: pages.length, queued: queue.length, url: res.url });
 

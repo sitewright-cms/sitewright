@@ -25,7 +25,9 @@ interface Built {
   createMediaAsset: ReturnType<typeof vi.fn>;
 }
 
-function makeApp(opts: { role?: 'owner' | 'member'; crawl?: () => Promise<CrawlResult>; buildBundle?: () => Promise<{ bundles: ImportBundle[]; diagnostics: []; stats: { pages: number; imagesHosted: number; scriptsDropped: number; chromeExtracted: boolean } }> } = {}): Built {
+type PinnedStub = (url: string) => Promise<{ status: number; contentType: string; bytes: Uint8Array } | null>;
+
+function makeApp(opts: { role?: 'owner' | 'member'; crawl?: () => Promise<CrawlResult>; buildBundle?: () => Promise<{ bundles: ImportBundle[]; diagnostics: []; stats: { pages: number; imagesHosted: number; scriptsDropped: number; chromeExtracted: boolean } }>; pinnedFetch?: PinnedStub } = {}): Built {
   const app = Fastify();
   void app.register(multipart, { limits: { fileSize: 60 * 1024 * 1024, files: 1, fields: 0 } });
   const importBundle = vi.fn(async () => ({ imported: 1 }));
@@ -38,7 +40,9 @@ function makeApp(opts: { role?: 'owner' | 'member'; crawl?: () => Promise<CrawlR
     log: app.log,
     crawl: (opts.crawl ?? (async () => onePageCrawl())) as never,
     ...(opts.buildBundle ? { buildBundle: opts.buildBundle as never } : {}),
-    isAllowed: async () => true,
+    // Default: no network (pinnedFetch returns null); SPA render disabled in tests (no headless browser).
+    pinnedFetch: (opts.pinnedFetch ?? (async () => null)) as never,
+    render: undefined,
   });
   return { app, importBundle, createMediaAsset };
 }
@@ -146,30 +150,23 @@ describe('POST /projects/:id/import/website/stream', () => {
   });
 
   it('fetches + self-hosts a remote image, and skips an SVG', async () => {
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input: unknown) => {
-      const u = String(input);
-      const ct = u.endsWith('.svg') ? 'image/svg+xml' : 'image/png';
-      return new Response(new Uint8Array([1, 2, 3, 4]), { status: 200, headers: { 'content-type': ct } });
+    // Inject a stub pinnedFetch (the route's outbound) — png hosted, svg returned as image/svg+xml.
+    const pinnedFetch: PinnedStub = async (u) => ({ status: 200, contentType: u.endsWith('.svg') ? 'image/svg+xml' : 'image/png', bytes: new Uint8Array([1, 2, 3, 4]) });
+    const crawl = async (): Promise<CrawlResult> => ({
+      site: {
+        baseUrl: 'https://ex.com/',
+        pages: [{ sourceUrl: 'https://ex.com/', html: '<html><body><main><img src="https://ex.com/a.png"><img src="https://ex.com/logo.svg"></main></body></html>' }],
+        assets: new Map(),
+        origin: { kind: 'crawl', label: 'ex.com' },
+      },
+      truncated: true,
+      warnings: ['blocked (SSRF): https://ex.com/secret'],
     });
-    try {
-      const crawl = async (): Promise<CrawlResult> => ({
-        site: {
-          baseUrl: 'https://ex.com/',
-          pages: [{ sourceUrl: 'https://ex.com/', html: '<html><body><main><img src="https://ex.com/a.png"><img src="https://ex.com/logo.svg"></main></body></html>' }],
-          assets: new Map(),
-          origin: { kind: 'crawl', label: 'ex.com' },
-        },
-        truncated: true,
-        warnings: ['blocked (SSRF): https://ex.com/secret'],
-      });
-      const { app, createMediaAsset } = track(makeApp({ crawl }));
-      const res = await app.inject({ method: 'POST', url: '/projects/pa/import/website/stream', payload: { url: 'https://ex.com/' } });
-      // png hosted, svg skipped.
-      expect(createMediaAsset).toHaveBeenCalledTimes(1);
-      expect(res.payload).toContain('"truncated":true');
-    } finally {
-      fetchSpy.mockRestore();
-    }
+    const { app, createMediaAsset } = track(makeApp({ crawl, pinnedFetch }));
+    const res = await app.inject({ method: 'POST', url: '/projects/pa/import/website/stream', payload: { url: 'https://ex.com/' } });
+    // png hosted, svg skipped (MediaPort rejects image/svg+xml).
+    expect(createMediaAsset).toHaveBeenCalledTimes(1);
+    expect(res.payload).toContain('"truncated":true');
   });
 
   it('rejects a non-owner with 403', async () => {

@@ -9,7 +9,8 @@ import { targetsPrivateHost } from '@sitewright/schema';
 import { buildImportBundle, type CapturedSite, type ImportBundle, type ImportResult, type MediaPort } from '@sitewright/site-import';
 import { crawlSite, type FetchedResource } from '../import/crawl.js';
 import { buildCapturedSiteFromUpload, UploadError, type UploadResult } from '../import/upload.js';
-import { isRequestAllowed } from '../render/screenshot.js';
+import { pinnedFetch } from '../import/pinned-fetch.js';
+import { renderViaBrowser } from '../import/render.js';
 import type { ProjectContext } from '../repo/context.js';
 import type { ContentRepository } from '../repo/content.js';
 
@@ -48,7 +49,10 @@ export interface ImportRouteDeps {
   // Injectable seams (default to the real implementations) so the routes are testable without a network.
   crawl?: typeof crawlSite;
   buildBundle?: typeof buildImportBundle;
-  isAllowed?: (url: string, allowHostPort: string) => Promise<boolean>;
+  /** The connect-pinned, SSRF-validated fetcher (the binding outbound guard). */
+  pinnedFetch?: typeof pinnedFetch;
+  /** Headless render of a client-rendered page (omit to disable SPA rendering, e.g. in tests). */
+  render?: (url: string, opts?: { signal?: AbortSignal }) => Promise<string | null>;
 }
 
 function clamp(n: number, lo: number, hi: number): number {
@@ -125,44 +129,26 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
   const { resolveProject, contentRepo, createMediaAsset, rl, log } = deps;
   const crawl = deps.crawl ?? crawlSite;
   const buildBundle = deps.buildBundle ?? buildImportBundle;
-  const isAllowed = deps.isAllowed ?? isRequestAllowed;
+  const fetchPinned = deps.pinnedFetch ?? pinnedFetch;
+  const render = 'render' in deps ? deps.render : renderViaBrowser;
 
   const activeImports = new Set<string>();
   let activeImportCount = 0;
 
   /**
-   * An SSRF-guarded, size/redirect-bounded fetcher tied to the request's abort signal. The guard
-   * (https-only + DNS-resolving `isAllowed`) lives HERE so no call path can fetch without it.
-   * ★Residual: like the screenshot renderer, there is a DNS-rebinding TOCTOU window between this
-   * resolve-time check and the kernel's connect-time resolve. The exposure is bounded by owner-only
-   * access (the owner supplies the seed + trusts their own project) and `redirect:'error'`; a
-   * connect-time-pinning proxy would close it fully and is a documented follow-up.
+   * The outbound fetcher for the crawl + media. It is `pinnedFetch`: resolve once, reject any private
+   * IP, then connect to the PINNED IP — so there is no DNS-rebinding TOCTOU window (this fetcher stores
+   * response bytes, unlike the pixels-only screenshot renderer). https-only, redirect-refusing, size +
+   * timeout bounded. The guard lives in the fetcher so no call path can bypass it.
    */
   function makeFetcher(signal: AbortSignal): (url: string) => Promise<FetchedResource | null> {
     return async (url) => {
-      if (!/^https:\/\//i.test(url) || !(await isAllowed(url, ''))) return null;
-      const controller = new AbortController();
-      const onAbort = (): void => controller.abort();
-      signal.addEventListener('abort', onAbort);
-      const timer = setTimeout(() => controller.abort(), IMPORT_FETCH_TIMEOUT_MS);
-      try {
-        const res = await fetch(url, { signal: controller.signal, redirect: 'error', headers: { 'user-agent': IMPORT_UA } });
-        if (!res.ok) return null;
-        if (Number(res.headers.get('content-length') ?? '0') > MAX_RESOURCE_BYTES) return null;
-        const contentType = (res.headers.get('content-type') ?? '').split(';')[0]?.trim().toLowerCase() || 'application/octet-stream';
-        const bytes = new Uint8Array(await res.arrayBuffer());
-        if (bytes.length > MAX_RESOURCE_BYTES) return null;
-        return { url, status: res.status, contentType, bytes };
-      } catch {
-        return null;
-      } finally {
-        clearTimeout(timer);
-        signal.removeEventListener('abort', onAbort);
-      }
+      const r = await fetchPinned(url, { timeoutMs: IMPORT_FETCH_TIMEOUT_MS, maxBytes: MAX_RESOURCE_BYTES, headers: { 'user-agent': IMPORT_UA }, signal });
+      return r ? { url, status: r.status, contentType: r.contentType, bytes: r.bytes } : null;
     };
   }
 
-  /** MediaPort: host an asset's bytes, or fetch a remote image (SSRF-guarded) then self-host it. */
+  /** MediaPort: host an asset's bytes, or fetch a remote image (pinned-fetch guarded) then self-host it. */
   function makeMediaPort(ctx: ProjectContext, slug: string, fetcher: (url: string) => Promise<FetchedResource | null>): MediaPort {
     return {
       hostAsset: async (asset) => {
@@ -172,8 +158,8 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
         if (asset.bytes) {
           buffer = Buffer.from(asset.bytes);
         } else if (asset.remoteUrl) {
+          // pinnedFetch enforces https + the SSRF check; this cheap pre-check just skips the obvious.
           if (!/^https:\/\//i.test(asset.remoteUrl) || targetsPrivateHost(asset.remoteUrl)) return null;
-          if (!(await isAllowed(asset.remoteUrl, ''))) return null;
           const fetched = await fetcher(asset.remoteUrl);
           if (!fetched) return null;
           buffer = Buffer.from(fetched.bytes);
@@ -261,7 +247,14 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
           const crawlResult = await crawl(
             url,
             { maxPages, maxDepth, sameOriginOnly: true, maxBytesTotal: MAX_CRAWL_BYTES, maxStylesheets: MAX_STYLESHEETS },
-            { fetchResource: fetcher, isAllowed: (u) => isAllowed(u, ''), onProgress: (e) => onProgress({ phase: 'crawl', ...e }), signal: abort.signal },
+            {
+              fetchResource: fetcher,
+              // Cheap sync pre-filter for the discovery skip; pinnedFetch is the binding SSRF guard.
+              isAllowed: async (u) => !targetsPrivateHost(u),
+              ...(render ? { render } : {}),
+              onProgress: (e) => onProgress({ phase: 'crawl', ...e }),
+              signal: abort.signal,
+            },
           );
           if (crawlResult.site.pages.length === 0) throw new Error('no pages could be crawled from the URL');
           return convertAndImport(ctx, project, crawlResult.site, media, onProgress, { truncated: crawlResult.truncated, warnings: crawlResult.warnings });

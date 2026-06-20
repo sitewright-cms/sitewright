@@ -10,6 +10,7 @@ import { textContent } from 'domutils';
 import type { Dataset, Entry, Field } from '@sitewright/schema';
 import { elements, isTag, isText, serialize, setText, type AnyNode, type Document, type Element } from '../dom.js';
 import { pickFromSrcset, rewriteHref } from '../url-util.js';
+import { effectiveSrc, effectiveSrcset } from './assets.js';
 import { imageRef, sanitizeForSource, type TransformCtx } from './page.js';
 
 const MIN_CHILDREN = 4;
@@ -79,7 +80,10 @@ function fieldNames(types: SlotType[]): string[] {
 function slotValue(slot: Slot, ctx: TransformCtx): string {
   if (slot.type === 'text') return textContent([slot.el]).trim();
   if (slot.type === 'image') {
-    const src = slot.el.attribs.src || (slot.el.attribs.srcset ? pickFromSrcset(slot.el.attribs.srcset) : undefined);
+    // Lazy-aware: a carousel/grid image often keeps its real URL in data-src (the loader script is
+    // stripped), so read the effective src — otherwise the inferred dataset gets empty images.
+    const srcset = effectiveSrcset(slot.el.attribs);
+    const src = effectiveSrc(slot.el.attribs) || (srcset ? pickFromSrcset(srcset) : undefined);
     return src ? imageRef(src, ctx) ?? '' : '';
   }
   const d = rewriteHref(slot.el.attribs.href ?? '', ctx.pageUrl, ctx.siteBase, ctx.internalRoutes);

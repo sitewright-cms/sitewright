@@ -87,6 +87,8 @@ export function collectImageRefs(docs: ParsedDoc[], site: CapturedSite): Map<str
 
 export interface HostResult {
   assetMap: Map<string, string>;
+  /** assetKey → a responsive WebP `srcset` for the hosted image (only for image assets that have one). */
+  srcsetMap: Map<string, string>;
   hosted: number;
   diagnostics: ImportDiagnostic[];
 }
@@ -99,6 +101,7 @@ export async function hostAssets(
   onProgress?: (e: ImportProgress) => void,
 ): Promise<HostResult> {
   const assetMap = new Map<string, string>();
+  const srcsetMap = new Map<string, string>();
   const diagnostics: ImportDiagnostic[] = [];
   let hosted = 0;
   let budgetWarned = false;
@@ -118,6 +121,7 @@ export async function hostAssets(
       const result = await media.hostAsset(asset);
       if (result) {
         assetMap.set(key, result.ref);
+        if (result.srcset) srcsetMap.set(key, result.srcset);
         hosted += 1;
       } else {
         diagnostics.push({ code: 'image-host-failed', message: `could not self-host ${key}` });
@@ -127,5 +131,5 @@ export async function hostAssets(
     }
     onProgress?.({ phase: 'host-media', done, total });
   }
-  return { assetMap, hosted, diagnostics };
+  return { assetMap, srcsetMap, hosted, diagnostics };
 }

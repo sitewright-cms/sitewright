@@ -86,11 +86,16 @@ export async function optimizeImage(
     }),
   );
 
-  const fallback = `${name}-${fallbackWidth}.jpg`;
-  const fallbackTask = sharp(input, SHARP_OPTIONS)
-    .resize(fallbackWidth)
-    .jpeg({ quality })
-    .toFile(join(outDir, fallback));
+  // Fallback for the bare <img src>. JPEG has NO alpha — encoding a transparent source as JPEG
+  // flattens it onto BLACK. So for a source WITH transparency, emit a WebP fallback (alpha-capable +
+  // more efficient than JPEG anyway); for an opaque source keep the universal JPEG, flattened onto
+  // white defensively so it can never go black.
+  const hasAlpha = metadata.hasAlpha === true;
+  const fallback = `${name}-${fallbackWidth}.${hasAlpha ? 'webp' : 'jpg'}`;
+  const fallbackResized = sharp(input, SHARP_OPTIONS).resize(fallbackWidth);
+  const fallbackTask = (
+    hasAlpha ? fallbackResized.webp({ quality }) : fallbackResized.flatten({ background: '#ffffff' }).jpeg({ quality })
+  ).toFile(join(outDir, fallback));
 
   // Strong blur on a tiny image → a smooth LQIP that blends into the real image.
   const lqipTask = sharp(input, SHARP_OPTIONS).resize(20).blur(20).webp({ quality: 40 }).toBuffer();

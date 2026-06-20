@@ -118,6 +118,7 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
   const host = await hostAssets(refs, opts.media, limits, opts.onProgress);
   diagnostics.push(...host.diagnostics);
   const assetMap = host.assetMap;
+  const srcsetMap = host.srcsetMap;
 
   // Accurate-replica CSS: the FULL stylesheet (url()s → self-hosted refs) as ONE `<style>` block,
   // inlined at the top of every imported page's source (the uncapped slot — vs. the tiny criticalCss/
@@ -161,6 +162,7 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
       siteBase: workSite.baseUrl,
       internalRoutes: routeRes.internalRoutes,
       assetMap,
+      srcsetMap,
       limits,
     };
     // Conservative dataset inference (runs BEFORE the transform so its sentinel markers serialize as

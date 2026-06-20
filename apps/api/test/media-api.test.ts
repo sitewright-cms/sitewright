@@ -78,7 +78,8 @@ describe('media API', () => {
     const asset = (up.json() as { item: { id: string; url: string; variants: unknown[] } }).item;
     expect(asset.variants.length).toBeGreaterThan(0);
     // The public URL is keyed by the project's SLUG (not its UUID) + the asset id.
-    expect(asset.url).toMatch(/^\/media\/site\/[\w-]+\/[\w-]+\.jpg$/);
+    // Fallback format is alpha-aware: opaque → jpg, transparent → webp (this fixture has alpha).
+    expect(asset.url).toMatch(/^\/media\/site\/[\w-]+\/[\w-]+\.(jpg|webp)$/);
     expect(asset.url.startsWith(`/media/${slug}/${asset.id}/`)).toBe(true);
     // …and the on-disk mount mirrors that URL exactly: `<mediaRoot>/<slug>/<assetId>/` (NOT the UUID).
     expect(existsSync(join(mediaRoot, slug, asset.id))).toBe(true);
@@ -90,7 +91,7 @@ describe('media API', () => {
     // The served binary is publicly fetchable (no auth) and is an image.
     const served = await app.inject({ method: 'GET', url: asset.url });
     expect(served.statusCode).toBe(200);
-    expect(served.headers['content-type']).toBe('image/jpeg');
+    expect(['image/jpeg', 'image/webp']).toContain(served.headers['content-type']);
     expect(served.rawPayload.length).toBeGreaterThan(0);
 
     const del = await app.inject({ method: 'DELETE', url: `${base}/media/${asset.id}`, cookies });

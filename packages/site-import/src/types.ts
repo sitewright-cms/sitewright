@@ -51,7 +51,10 @@ export interface CapturedSite {
  * URL in place and records a diagnostic.
  */
 export interface MediaPort {
-  hostAsset(asset: CapturedAsset): Promise<{ ref: string } | null>;
+  /** Host an asset. `ref` is the fallback URL (used wherever a single URL is needed: `<img src>`,
+   *  CSS `url()`, og:image). `srcset` (images only) is a ready-to-use responsive WebP srcset for the
+   *  `<img>` so modern browsers fetch the efficient variant and legacy ones fall back to `ref`. */
+  hostAsset(asset: CapturedAsset): Promise<{ ref: string; srcset?: string } | null>;
 }
 
 /** Hard caps applied inside the engine (defense-in-depth alongside the intake/route limits). */

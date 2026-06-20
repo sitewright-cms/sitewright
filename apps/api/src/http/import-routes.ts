@@ -207,7 +207,7 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
     extra: { truncated: boolean; warnings: string[] },
   ): Promise<Record<string, unknown>> {
     onProgress({ phase: 'transform', detail: `converting ${site.pages.length} pages` });
-    const result = await buildBundle(site, { media, onProgress });
+    const result = await buildBundle(site, { media, onProgress, importedAt: new Date().toISOString() });
     const bundle = result.bundles[0];
     if (!bundle) throw new Error('the import produced no content');
     if (result.diagnostics.some((d) => d.code === 'bundle-invalid')) throw new Error('the import produced an invalid bundle');

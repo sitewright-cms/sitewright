@@ -38,12 +38,21 @@ describe('DEFAULT_AGENT_INSTRUCTIONS', () => {
   });
 
   it('every guide has a title, summary, and non-trivial body', () => {
-    expect(GUIDE_TOPICS).toEqual(['design', 'components', 'images', 'effects', 'i18n', 'shop', 'templates', 'icons', 'nav']);
+    expect(GUIDE_TOPICS).toEqual(['design', 'components', 'images', 'effects', 'i18n', 'shop', 'templates', 'icons', 'nav', 'import']);
     for (const t of GUIDE_TOPICS) {
       const g = AGENT_GUIDES[t];
       expect(g.title).toBeTruthy();
       expect(g.summary).toBeTruthy();
       expect(g.body.trim().length).toBeGreaterThan(200);
+    }
+  });
+
+  it('the import guide teaches the rewrite handoff (marker, draft, checklist) and the core points at it', () => {
+    expect(DEFAULT_AGENT_INSTRUCTIONS).toContain('get_guide("import")');
+    expect(DEFAULT_AGENT_INSTRUCTIONS).toContain('data.swImport');
+    const body = AGENT_GUIDES.import.body;
+    for (const probe of ['swImport', 'rewritten:false', 'status:"draft"', 'import_image', 'STRIPPED']) {
+      expect(body).toContain(probe);
     }
   });
 

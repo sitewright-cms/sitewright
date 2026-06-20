@@ -81,6 +81,8 @@ export interface TransformOptions {
   limits?: Partial<ImportLimits>;
   /** Locale assigned to the produced pages/settings (the project default). Defaults to `en`. */
   defaultLocale?: string;
+  /** ISO timestamp stamped onto each imported page's `data.swImport` marker (the route supplies it). */
+  importedAt?: string;
   onProgress?: (e: ImportProgress) => void;
 }
 

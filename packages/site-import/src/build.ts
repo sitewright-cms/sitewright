@@ -147,6 +147,8 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
     diagnostics.push(...pageDiags);
     scriptsDropped += pageDiags.filter((d) => d.code === 'script-dropped').length;
     page.source = source;
+    // Mark the captured page for the AI rewrite stage (sourceUrl + rewritten:false; see get_guide("import")).
+    page.data = { ...(page.data ?? {}), swImport: { sourceUrl: x.url, rewritten: false, ...(opts.importedAt ? { importedAt: opts.importedAt } : {}) } };
     const seo = seoByNorm.get(norm);
     if (seo?.title) page.title = seo.title;
     if (seo?.description) page.description = seo.description;
@@ -155,6 +157,8 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
     if (seo?.noindex) page.noindex = true;
     opts.onProgress?.({ phase: 'transform', done: transformed, total: parsed.length });
   }
+  // Imported pages start as DRAFTS — a faithful scaffold shouldn't auto-publish before review/rewrite.
+  for (const p of routeRes.pages) p.status = 'draft';
 
   const website = buildWebsite(chrome, css);
   const bundle: ImportBundle = {

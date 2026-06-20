@@ -18,7 +18,9 @@ renders an empty body. Before you lay out a page, call \`get_guide("design")\` f
 patterns, type/spacing rhythm, and colour-depth rules that separate a flagship page from a
 skeleton (a real landing page is 6-9 composed sections, not a hero + three cards). The exact
 authoring vocabulary — every \`{{sw-*}}\` helper, \`data-sw-*\` directive, binding namespace, and
-loop variable — is in the \`get_reference\` tool (don't guess helper names).
+loop variable — is in the \`get_reference\` tool (don't guess helper names). If a page carries a
+\`data.swImport\` marker it was IMPORTED from an external site as a raw scaffold — call
+\`get_guide("import")\` and rewrite it into native idioms.
 
 In \`source\`:
 - Use DaisyUI components for UI (btn / btn-primary, card, navbar, hero, badge, footer,
@@ -441,6 +443,43 @@ the item route is \`path\`: <a href="{{sw-url path}}" class="{{#if (sw-active pa
 {{#if (sw-active path exact=true)}}aria-current="page"{{/if}}>{{sw-label}}</a> (the .active class is what
 the nav EFFECT styles; omit aria-current off the current page). Output the label with {{sw-label}}
 (renders a placeholder's rich name; a page title is escaped).
+`,
+  },
+  import: {
+    title: "Rewrite an imported website into native idioms",
+    summary: "turn a faithfully-imported page (literal HTML, marked data.swImport + draft) into native sections, datasets, components & brand tokens",
+    body: `
+IMPORTED PAGES. When an external site is imported (the OWNER does this in the editor — you don't trigger
+it), each page lands as a FAITHFUL but generic scaffold: literal HTML in \`source\` (no Handlebars),
+foreign CSS folded into the website criticalCss/head slots, the shared header/footer hoisted into the
+topNav/footer slots, and images self-hosted. Each imported page is MARKED:
+\`page.data.swImport = { sourceUrl, rewritten:false }\` and \`status:"draft"\`. Your job is to REWRITE them
+into native idioms so they become on-brand and editable.
+
+FIND THEM: list_pages, then get_page — an imported page has \`data.swImport\` with rewritten:false.
+
+REWRITE CHECKLIST (per page):
+1. Read get_guide("design") FIRST — restructure the literal markup into the flagship section toolkit
+   (composed <section>s, layout rhythm, alternating surfaces). Don't just keep the raw blob.
+2. COLORS: replace fixed colours with theme tokens (primary, base-100/200/300, base-content) so light AND
+   dark work; set the brand from the imported identity (see "SET THE BRAND" in the core instructions).
+3. BINDINGS: swap hardcoded company name/contact for {{ company.* }} (use get_reference for exact names).
+4. REPEATED MARKUP -> DATA: turn repeated blocks (cards, team members, posts, logos) into a dataset +
+   {{#each}} (get_guide("components") / the reference) instead of copy-pasted HTML.
+5. CHROME: the header/footer already live in the website slots — refine them, or extract reusable bits
+   into {{> snippets}} / a template (get_guide("templates")).
+6. EDIT AFFORDANCES: add data-sw-* directives + {{sw-control}} where the client should edit content.
+7. CSS: the foreign CSS in criticalCss/head is a BOUNDED approximation — re-express the important rules
+   as Tailwind/DaisyUI utilities and trim the raw CSS once a section is rebuilt.
+8. IMAGES: the import self-hosts what it found; fill gaps with import_image (from a URL) or
+   search_stock_images (SVGs and oversize images may have been dropped).
+
+SAFETY: <script> and <form> were intentionally STRIPPED on import. Do NOT re-add raw JavaScript —
+rebuild interactivity with platform components (carousel/tabs/modal — get_guide("components")) and real
+Forms (create a form entity, embed with {{sw-form}}).
+
+WHEN A PAGE IS DONE: set page.data.swImport.rewritten:true (or remove the marker) and flip its
+status to "published".
 `,
   },
 } as const;

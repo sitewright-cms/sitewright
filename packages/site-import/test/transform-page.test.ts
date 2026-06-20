@@ -17,6 +17,14 @@ function run(bodyHtml: string) {
 }
 
 describe('transformBody', () => {
+  it('pretty-prints the source (block elements indented on their own lines; inline kept compact)', () => {
+    const { source } = run('<section class="s"><div class="row"><p>Hello <a href="/x">link</a> world</p></div></section>');
+    expect(source).toMatch(/\n/); // multi-line, not a single minified blob
+    expect(source).toMatch(/\n {2}<div class="row">/); // nested block indented
+    expect(source).toContain('<p>Hello <a href="/x">link</a> world</p>'); // inline run stays on one line
+    expect(() => validateTemplate(source)).not.toThrow();
+  });
+
   it('attaches a responsive WebP srcset to a self-hosted <img> (src stays the fallback)', () => {
     const ctxWithSrcset: TransformCtx = { ...ctx, srcsetMap: new Map([['https://ex.com/logo.png', '/media/p/a/logo-400.webp 400w, /media/p/a/logo-800.webp 800w']]) };
     const { source } = transformBody(parse('<html><body><img src="/logo.png" alt="logo"></body></html>'), ctxWithSrcset);

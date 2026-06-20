@@ -22,7 +22,7 @@ import { collectImageRefs, hostAssets } from './transform/assets.js';
 import { collectCssRefs, buildPageStyles, buildHostableCss } from './transform/css.js';
 import { collectFontFaces } from './transform/fonts.js';
 import { extractIdentity, extractPageSeo } from './transform/identity.js';
-import { extractChrome } from './transform/chrome.js';
+import { extractChrome, type ChromeResult } from './transform/chrome.js';
 import { inferDatasets } from './transform/datasets.js';
 import { transformBody, type TransformCtx } from './transform/page.js';
 import type { CapturedSite, ImportBundle, ImportDiagnostic, ImportResult, TransformOptions } from './types.js';
@@ -67,11 +67,14 @@ function extractNavLinks(home: ParsedPage | undefined, baseUrl: string): string[
   return out;
 }
 
-function buildWebsite(chrome: { topNav?: string; footer?: string }, head?: string): WebsiteSettings | undefined {
-  const input: Record<string, string> = {};
+function buildWebsite(chrome: ChromeResult, head?: string): WebsiteSettings | undefined {
+  const input: Record<string, unknown> = {};
   if (chrome.topNav) input.topNav = chrome.topNav;
   if (chrome.footer) input.footer = chrome.footer;
+  if (chrome.sidebarLeft) input.sidebarLeft = chrome.sidebarLeft;
+  if (chrome.sidebarRight) input.sidebarRight = chrome.sidebarRight;
   if (head) input.head = head; // the <link> to the hosted imported stylesheet (tiny; well under HTML_MAX)
+  if (chrome.preloaderEffect) input.effects = { preloaderEffect: chrome.preloaderEffect };
   if (Object.keys(input).length === 0) return undefined;
   return WebsiteSettingsSchema.parse(input);
 }
@@ -149,11 +152,17 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
     seoByNorm.set(norm, extractPageSeo(x.doc, { baseUrl: x.url, assetMap }));
   }
 
-  // Hoist shared chrome into slots (mutates docs: removes the hoisted header/footer).
+  // Hoist shared chrome into its slots (mutates docs: removes the hoisted regions + preloader/cookie cruft).
   const chrome = extractChrome(parsed, { siteBase: workSite.baseUrl, internalRoutes: routeRes.internalRoutes, assetMap, limits });
   if (chrome.extracted) {
-    const parts = [chrome.topNav ? 'header' : '', chrome.footer ? 'footer' : ''].filter(Boolean).join(' + ');
-    diagnostics.push({ code: 'chrome-extracted', message: `hoisted shared ${parts} into the site slots` });
+    const parts = [
+      chrome.topNav && 'header→topNav',
+      chrome.sidebarLeft && 'sidebar→left',
+      chrome.sidebarRight && 'sidebar→right',
+      chrome.footer && 'footer',
+      chrome.preloaderEffect && 'preloader→platform',
+    ].filter(Boolean).join(', ');
+    diagnostics.push({ code: 'chrome-extracted', message: `hoisted shared chrome into the site slots: ${parts}` });
   }
 
   // Transform each captured page body into source and attach SEO/title by id.

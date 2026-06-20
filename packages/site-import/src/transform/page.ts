@@ -10,6 +10,7 @@ import {
   getBody,
   neutralizeMustaches,
   serialize,
+  prettySerialize,
   type AnyNode,
   type Document,
   type Element,
@@ -222,18 +223,20 @@ function contentNodes(doc: Document): AnyNode[] {
  * first child fit, so the caller falls back to text.
  */
 function fitSource(nodes: AnyNode[], maxBytes: number): { source: string; truncated: boolean; droppedAll: boolean } {
-  const parts = nodes.map((n) => serialize(n));
-  const full = parts.join('');
+  // Pretty-print each top-level child so the imported page `source` is readable/editable (block elements
+  // on their own indented lines); inter-element whitespace only — semantically identical to serialize().
+  const parts = nodes.map((n) => prettySerialize(n)).filter((p) => p !== '');
+  const full = parts.join('\n');
   if (byteLength(full) <= maxBytes) return { source: full, truncated: false, droppedAll: false };
   const kept: string[] = [];
   let total = 0;
   for (const part of parts) {
-    const b = byteLength(part);
+    const b = byteLength(part) + (kept.length > 0 ? 1 : 0); // a joining newline precedes every part but the first
     if (total + b > maxBytes) break;
     kept.push(part);
     total += b;
   }
-  return { source: kept.join(''), truncated: true, droppedAll: kept.length === 0 && parts.length > 0 };
+  return { source: kept.join('\n'), truncated: true, droppedAll: kept.length === 0 && parts.length > 0 };
 }
 
 function byteLength(s: string): number {

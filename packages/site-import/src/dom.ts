@@ -18,6 +18,62 @@ export function serialize(nodes: AnyNode | AnyNode[]): string {
   return render(nodes, { encodeEntities: 'utf8' });
 }
 
+// Block-level tags get their own line + indentation in prettySerialize; everything else (inline runs,
+// rawtext) is kept compact so text/inline formatting + whitespace-significant content are preserved.
+const BLOCK_TAGS = new Set([
+  'html', 'head', 'body', 'div', 'section', 'header', 'footer', 'nav', 'aside', 'main', 'article',
+  'ul', 'ol', 'li', 'dl', 'dt', 'dd', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'table', 'thead',
+  'tbody', 'tfoot', 'tr', 'td', 'th', 'form', 'fieldset', 'figure', 'figcaption', 'blockquote',
+  'picture', 'hr',
+]);
+// Content is whitespace-significant or rawtext — never re-indent the inside.
+const VERBATIM_TAGS = new Set(['pre', 'textarea', 'style', 'script', 'code']);
+
+/** The element's opening tag only (`<div class="x">`), with dom-serializer's correct attribute escaping. */
+function openTag(el: Element): string {
+  const kids = el.children;
+  el.children = [];
+  const s = render(el, { encodeEntities: 'utf8' });
+  el.children = kids;
+  return s.replace(new RegExp(`</${el.name}>$`, 'i'), '');
+}
+
+/**
+ * Serialize `nodes` as READABLE, indented HTML so an imported page's source is editable: a block element
+ * that contains other block elements is opened/closed on its own indented lines with its children
+ * recursed; everything else (inline-only elements, text, rawtext like <pre>) is emitted compact on one
+ * line. Output is semantically identical to serialize() — only inter-element whitespace differs.
+ */
+export function prettySerialize(nodes: AnyNode | AnyNode[]): string {
+  const list = Array.isArray(nodes) ? nodes : [nodes];
+  const out: string[] = [];
+  const walk = (ns: AnyNode[], depth: number): void => {
+    const pad = '  '.repeat(depth);
+    for (const n of ns) {
+      if (isText(n)) {
+        const t = n.data.trim();
+        if (t) out.push(pad + t);
+        continue;
+      }
+      if (isComment(n)) {
+        out.push(`${pad}<!--${n.data}-->`);
+        continue;
+      }
+      if (!isTag(n)) continue;
+      const hasBlockChild = n.children.some((c) => isTag(c) && BLOCK_TAGS.has(c.name));
+      if (VERBATIM_TAGS.has(n.name) || !hasBlockChild) {
+        out.push(pad + render(n, { encodeEntities: 'utf8' })); // compact: preserves inline + rawtext
+      } else {
+        out.push(pad + openTag(n));
+        walk(n.children, depth + 1);
+        out.push(`${pad}</${n.name}>`);
+      }
+    }
+  };
+  walk(list, 0);
+  return out.join('\n');
+}
+
 /** The `<body>` element if the document has one (a full HTML doc), else undefined (a bare fragment). */
 export function getBody(doc: Document): Element | undefined {
   return findOne((e) => e.name === 'body', doc.children, true) ?? undefined;

@@ -186,8 +186,9 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
       }
       source = source.split(marker).join('');
     }
-    // Safety net: scrub any residual marker text (e.g. a fragment a fallback truncation cut mid-marker).
-    if (inf.markers.size > 0) source = source.replace(/@@SWDS\d*_?\d*@{0,2}/g, '');
+    // Safety net: scrub any residual marker text (incl. a fragment a fallback truncation cut mid-marker).
+    // Requires ≥1 digit after the prefix so a bare "@@SWDS" in real page text is never touched.
+    if (inf.markers.size > 0) source = source.replace(/@@SWDS\d+(?:_\d*)?@{0,2}/g, '');
     const keptDatasets = inf.datasets.filter((d) => keptSlugs.has(d.slug));
     datasets.push(...keptDatasets);
     entries.push(...inf.entries.filter((e) => keptSlugs.has(e.dataset)));

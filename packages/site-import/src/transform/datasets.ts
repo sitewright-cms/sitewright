@@ -16,6 +16,7 @@ const MIN_CHILDREN = 4;
 const MAX_ENTRIES = 100;
 const MAX_DATASETS_PER_PAGE = 3;
 const MAX_SLOTS = 12;
+const MAX_DEPTH = 64;
 
 type SlotType = 'text' | 'image' | 'link';
 interface Slot {
@@ -34,7 +35,8 @@ export interface DatasetInference {
 /** Ordered leaf slots of a card subtree: <img> (image), <a href> (link), and leaf text elements. */
 function collectSlots(root: Element): Slot[] {
   const out: Slot[] = [];
-  const visit = (nodes: AnyNode[]): void => {
+  const visit = (nodes: AnyNode[], depth: number): void => {
+    if (depth > MAX_DEPTH) return; // guard pathologically deep card markup (stack safety)
     for (const n of nodes) {
       if (out.length >= MAX_SLOTS) break;
       if (!isTag(n)) continue;
@@ -45,7 +47,7 @@ function collectSlots(root: Element): Slot[] {
       const href = (n.attribs.href ?? '').trim();
       if (n.name === 'a' && href !== '' && !href.startsWith('#')) {
         out.push({ type: 'link', el: n });
-        visit(n.children); // an <a> may wrap an <img>
+        visit(n.children, depth + 1); // an <a> may wrap an <img>
         continue;
       }
       const childEls = n.children.filter(isTag);
@@ -54,10 +56,10 @@ function collectSlots(root: Element): Slot[] {
         out.push({ type: 'text', el: n });
         continue;
       }
-      visit(n.children);
+      visit(n.children, depth + 1);
     }
   };
-  visit(root.children);
+  visit(root.children, 0);
   return out;
 }
 

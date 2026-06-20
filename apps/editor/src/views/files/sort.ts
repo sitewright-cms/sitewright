@@ -16,7 +16,7 @@ export interface FolderEntry {
 
 /** The Type-column sort value for an asset (image → format, font → 'font', else MIME type). */
 export function assetType(m: MediaAsset): string {
-  return m.kind === 'image' ? m.format : m.kind === 'font' ? 'font' : m.kind === 'stylesheet' ? 'stylesheet' : m.contentType;
+  return m.kind === 'image' ? m.format : m.kind === 'font' ? 'font' : m.kind === 'stylesheet' ? 'stylesheet' : m.kind === 'script' ? 'script' : m.contentType;
 }
 
 /** Total bytes of every asset filed directly in `path` or any descendant folder. */

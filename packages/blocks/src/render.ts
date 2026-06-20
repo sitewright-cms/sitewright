@@ -259,7 +259,10 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     // Neutralize any `</style` so inlined CSS can't break out of the <style> element
     // (defense-in-depth; mirrors the inlineScripts guard below).
     (inlineStyles ?? []).map((style) => `<style>${style.replace(/<\/(style)/gi, '<\\/$1')}</style>\n`).join('') +
-    (stylesheets ?? [])
+    // RAW-FIDELITY replicas also skip the platform's compiled utility sheet (styles.css) — its Tailwind
+    // utilities collide with the imported site's same-named classes (e.g. `.w-100` = 100 spacing units
+    // here vs. the site's `width:100%`), which would clobber the imported layout.
+    (rawFidelity ? [] : (stylesheets ?? []))
       .map((href) => `<link rel="stylesheet" href="${escapeAttr(href)}" />\n`)
       .join('') +
     // Heading/body fonts LAST so they win over Tailwind preflight's element resets (utility

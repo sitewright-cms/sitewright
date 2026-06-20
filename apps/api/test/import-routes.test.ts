@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
 import multipart from '@fastify/multipart';
 import JSZip from 'jszip';
-import { assertNoScripts, registerImportRoutes } from '../src/http/import-routes.js';
+import { assertNoScripts, importMediaFolder, registerImportRoutes } from '../src/http/import-routes.js';
 import type { CrawlResult } from '../src/import/crawl.js';
 import type { ImportBundle } from '@sitewright/site-import';
 import type { ProjectContext } from '../src/repo/context.js';
@@ -23,6 +23,7 @@ interface Built {
   app: FastifyInstance;
   importBundle: ReturnType<typeof vi.fn>;
   createMediaAsset: ReturnType<typeof vi.fn>;
+  hostScript: ReturnType<typeof vi.fn>;
 }
 
 type PinnedStub = (url: string) => Promise<{ status: number; contentType: string; bytes: Uint8Array } | null>;
@@ -32,10 +33,12 @@ function makeApp(opts: { role?: 'owner' | 'member'; crawl?: () => Promise<CrawlR
   void app.register(multipart, { limits: { fileSize: 60 * 1024 * 1024, files: 1, fields: 0 } });
   const importBundle = vi.fn(async () => ({ imported: 1 }));
   const createMediaAsset = vi.fn(async () => ({ url: '/media/x/1.jpg' }));
+  const hostScript = vi.fn(async (_ctx: unknown, slug: string) => `/media/${slug}/sid/script.js`);
   registerImportRoutes(app, {
     resolveProject: async (req) => ({ ctx: ctxFor(req.params.projectId, opts.role ?? 'owner'), project: { id: req.params.projectId, name: 'P', slug: 'p' } }),
     contentRepo: { importBundle } as never,
     createMediaAsset,
+    hostScript: hostScript as never,
     rl: (max) => ({ rateLimit: { max, timeWindow: '1 minute' } }),
     log: app.log,
     crawl: (opts.crawl ?? (async () => onePageCrawl())) as never,
@@ -44,7 +47,7 @@ function makeApp(opts: { role?: 'owner' | 'member'; crawl?: () => Promise<CrawlR
     pinnedFetch: (opts.pinnedFetch ?? (async () => null)) as never,
     render: undefined,
   });
-  return { app, importBundle, createMediaAsset };
+  return { app, importBundle, createMediaAsset, hostScript };
 }
 
 const ticks = async (n = 4): Promise<void> => {
@@ -87,6 +90,18 @@ describe('POST /projects/:id/import/upload/stream', () => {
     expect(res.payload).toContain('"pagesImported":2');
   });
 
+  it('self-hosts the imported JS (inline + external) into website.scripts via hostScript', async () => {
+    const html = '<html><body><main><h1>Home</h1></main><script src="https://cdn.com/lib.js"></script><script>init();</script></body></html>';
+    const pinnedFetch: PinnedStub = async (url) => (url === 'https://cdn.com/lib.js' ? { status: 200, contentType: 'text/javascript', bytes: new TextEncoder().encode('LIB();') } : null);
+    const { app, importBundle, hostScript } = track(makeApp({ pinnedFetch }));
+    const { payload, headers } = multipartBody(Buffer.from(html), 'page.html', 'text/html');
+    const res = await app.inject({ method: 'POST', url: '/projects/pa/import/upload/stream', payload, headers });
+    expect(res.payload).toContain('event: done');
+    expect(hostScript).toHaveBeenCalledTimes(2); // external (fetched) + inline (body)
+    const bundle = importBundle.mock.calls[0]![2] as { project: { website?: { scripts?: string } } };
+    expect(bundle.project.website?.scripts).toContain('<script src="/media/p/sid/script.js" defer></script>'); // self-hosted refs
+  });
+
   it('imports a single uploaded HTML file', async () => {
     const { app, importBundle } = track(makeApp());
     const { payload, headers } = multipartBody(Buffer.from('<html><body><main>solo</main></body></html>'), 'page.html', 'text/html');
@@ -111,6 +126,20 @@ describe('POST /projects/:id/import/upload/stream', () => {
   });
 });
 
+describe('importMediaFolder', () => {
+  it('mirrors the source path into imported/<last-meaningful-dir>, dropping noise + numeric segments', () => {
+    expect(importMediaFolder('https://site.com/wp-content/uploads/2024/03/logo.png', true)).toBe('imported/uploads');
+    expect(importMediaFolder('https://site.com/assets/img/team/jane.jpg', true)).toBe('imported/team');
+    expect(importMediaFolder('https://site.com/static/2023/photo.jpg', true)).toBe('imported/static'); // all-noise→numeric falls back to last clean
+  });
+  it('falls back by kind at the site root / unparseable refs, and sanitizes odd segments', () => {
+    expect(importMediaFolder('https://site.com/logo.png', true)).toBe('imported/images');
+    expect(importMediaFolder('https://site.com/doc.pdf', false)).toBe('imported/files');
+    expect(importMediaFolder('a/b/c/file.png', true)).toBe('imported/c'); // relative (upload) ref
+    expect(importMediaFolder('https://site.com/My Photos/x.jpg', true)).toBe('imported/My Photos'); // %20 decoded; space is a valid folder char
+  });
+});
+
 describe('assertNoScripts', () => {
   const base: ImportBundle = { project: { identity: { name: 'X', colors: {} } as never, settings: { defaultLocale: 'en', locales: ['en'] } }, pages: [], templates: [], datasets: [], entries: [] };
   it('passes a clean bundle', () => {
@@ -121,6 +150,19 @@ describe('assertNoScripts', () => {
   });
   it('throws on a script in a website slot', () => {
     expect(() => assertNoScripts({ ...base, project: { ...base.project, website: { footer: '<script>x</script>' } as never } })).toThrow();
+  });
+  it('ALLOWS a self-hosted <script src="/media/…js"> in the scripts slot (the JS-hosting output)', () => {
+    const scripts = '<script src="/media/proj/abc-1/script.js" defer></script>\n<script src="/media/proj/def-2/script.js"></script>';
+    expect(() => assertNoScripts({ ...base, project: { ...base.project, website: { scripts } as never } })).not.toThrow();
+  });
+  it('still rejects an inline body / foreign src / on* even in the scripts slot', () => {
+    const w = (scripts: string) => ({ ...base, project: { ...base.project, website: { scripts } as never } });
+    expect(() => assertNoScripts(w('<script>evil()</script>'))).toThrow(); // inline body
+    expect(() => assertNoScripts(w('<script src="https://evil.com/x.js"></script>'))).toThrow(); // foreign src
+    expect(() => assertNoScripts(w('<script src="/media/p/i/s.js" onload="evil()"></script>'))).toThrow(); // on* handler
+  });
+  it('still rejects a self-hosted script in a NON-script slot (e.g. footer)', () => {
+    expect(() => assertNoScripts({ ...base, project: { ...base.project, website: { footer: '<script src="/media/p/i/s.js"></script>' } as never } })).toThrow();
   });
 });
 

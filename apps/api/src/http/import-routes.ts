@@ -27,6 +27,38 @@ const MAX_STYLESHEETS = 40;
 const IMPORT_UPLOAD_MAX_BYTES = 50 * 1024 * 1024; // compressed upload cap (uncompressed bounded in upload.ts)
 const IMPORT_UA = 'SitewrightImporter/1.0 (+website import)';
 
+// Framework/noise path segments that don't make a useful media folder name.
+const FOLDER_NOISE = new Set(['wp-content', 'wp-includes', 'assets', 'static', 'cdn', 'public', 'dist', 'build', 'sites', 'default', 'content', 'themes', 'plugins', 'i', 'image', 'images', 'img']);
+
+/** Derive a clean media folder mirroring the source path so imported assets are sorted, not dumped flat:
+ *  `imported/<last-meaningful-dir>` (e.g. /wp-content/uploads/2024/logo.png → `imported/uploads`). Falls
+ *  back to `imported/images` | `imported/files`. Segments are sanitized to MediaFolderSchema's charset. */
+export function importMediaFolder(source: string, isImage: boolean): string {
+  let path = source;
+  try {
+    path = new URL(source).pathname;
+  } catch {
+    /* relative (upload) ref — use as-is */
+  }
+  const dirs = path
+    .split('/')
+    .filter(Boolean)
+    .slice(0, -1) // drop the filename
+    .map((s) => {
+      try {
+        return decodeURIComponent(s);
+      } catch {
+        return s;
+      }
+    });
+  const clean = dirs
+    .map((s) => s.replace(/[^A-Za-z0-9 _-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').trim())
+    .filter((s) => s && !/^\d+$/.test(s)); // drop empty + pure-numeric (year/month) segments
+  const meaningful = clean.filter((s) => !FOLDER_NOISE.has(s.toLowerCase()));
+  const pick = meaningful.at(-1) ?? clean.at(-1);
+  return pick ? `imported/${pick}` : `imported/${isImage ? 'images' : 'files'}`;
+}
+
 const ImportWebsiteBody = z.object({
   url: z.string().url().max(2048),
   maxPages: z.number().int().min(1).max(IMPORT_PAGE_CEIL).optional(),
@@ -48,13 +80,15 @@ export interface ImportRouteDeps {
     ctx: ProjectContext,
     slug: string,
     buffer: Buffer,
-    meta: { filename: string; mimetype: string },
+    meta: { filename: string; mimetype: string; folder?: string },
   ) => Promise<{ url: string; variants?: ReadonlyArray<{ format: 'avif' | 'webp'; width: number; height: number; path: string }> }>;
   /** Self-host an `@font-face` web font (validates the bytes are a real font; null if not). Omit to
    *  disable font hosting (e.g. in tests) — the importer then leaves the @font-face url() as-is. */
   hostFontAsset?: (ctx: ProjectContext, slug: string, buffer: Buffer, font: { family: string; weight: number; style: 'normal' | 'italic' }) => Promise<{ url: string } | null>;
   /** Host the imported CSS as one inline-served stylesheet → its /media URL (or null). Omit to inline. */
   hostStylesheet?: (ctx: ProjectContext, slug: string, css: string) => Promise<string | null>;
+  /** Host an imported script's JS → its /media URL (or null). Omit to strip scripts (the safe default). */
+  hostScript?: (ctx: ProjectContext, slug: string, js: string) => Promise<string | null>;
   rl: (max: number) => { rateLimit: { max: number; timeWindow: string } };
   log: FastifyBaseLogger;
   // Injectable seams (default to the real implementations) so the routes are testable without a network.
@@ -70,7 +104,21 @@ function clamp(n: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, n));
 }
 
-/** Throws if any page source or website slot contains a <script> — defense-in-depth over the engine. */
+// The ONLY script tags allowed in a bundle: a self-hosted `<script src="/media/<slug>/<id>/<file>.js">`
+// (optionally `defer`/`async`) — the importer's JS-hosting output. No inline body, no foreign src, no
+// `on*`/other attributes. ONLY the `scripts` slot may carry these; everything else stays script-free.
+const SELF_HOSTED_SCRIPT = /<script src="\/media\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\.js"(?:\s+(?:defer|async))*><\/script>/gi;
+const JS_HOST_SLOTS: ReadonlySet<string> = new Set(['scripts']); // ONLY website.scripts carries hosted <script src> (head holds the CSS <link> only)
+
+/** True if the value contains any `<script>` OTHER than allowed self-hosted refs. */
+function hasDisallowedScript(value: string, allowSelfHosted: boolean): boolean {
+  const stripped = allowSelfHosted ? value.replace(SELF_HOSTED_SCRIPT, '') : value;
+  return /<script[\s/>]/i.test(stripped);
+}
+
+/** Throws if any page source or website slot contains a disallowed <script> — defense-in-depth over the
+ *  engine. Self-hosted `<script src="/media/…js">` refs ARE allowed in head/scripts (the JS-hosting output);
+ *  page sources + all other slots stay strictly script-free. */
 export function assertNoScripts(bundle: ImportBundle): void {
   for (const page of bundle.pages) {
     if (page.source && /<script[\s/>]/i.test(page.source)) throw new Error(`page "${page.id}" source contains a script`);
@@ -80,7 +128,7 @@ export function assertNoScripts(bundle: ImportBundle): void {
     for (const slot of SCRIPTABLE_SLOTS) {
       // eslint-disable-next-line security/detect-object-injection -- `slot` is from the constant SCRIPTABLE_SLOTS list
       const value = website[slot];
-      if (typeof value === 'string' && /<script[\s/>]/i.test(value)) throw new Error(`website.${slot} contains a script`);
+      if (typeof value === 'string' && hasDisallowedScript(value, JS_HOST_SLOTS.has(slot))) throw new Error(`website.${slot} contains a disallowed script`);
     }
     const effects = website.effects;
     if (effects && typeof effects === 'object') {
@@ -191,7 +239,8 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
         if (mimetype === 'image/svg+xml' || mimetype === 'image/svg') return null; // sharp rejects SVG; engine inlines small ones
         if (mimetype && !mimetype.startsWith('image/')) return null; // only host images
         try {
-          const saved = await createMediaAsset(ctx, slug, buffer, { filename, mimetype: mimetype || 'image/jpeg' });
+          const folder = importMediaFolder(asset.remoteUrl || asset.sourceRef || '', true);
+          const saved = await createMediaAsset(ctx, slug, buffer, { filename, mimetype: mimetype || 'image/jpeg', folder });
           // Serve the efficient WebP variants the pipeline already produced via a responsive srcset
           // (the <img src> stays the fallback for legacy browsers). Base = the asset dir of saved.url.
           const base = saved.url.slice(0, saved.url.lastIndexOf('/'));
@@ -202,6 +251,23 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
         }
       },
       ...(deps.hostStylesheet ? { hostStylesheet: (css: string) => deps.hostStylesheet!(ctx, slug, css) } : {}),
+      ...(deps.hostScript
+        ? {
+            // Inline script → store its body; external → SSRF-fetch then store. Returns the /media URL.
+            hostScript: async (arg: { code: string } | { url: string }): Promise<string | null> => {
+              let js: string;
+              if ('code' in arg) {
+                js = arg.code;
+              } else {
+                if (!/^https:\/\//i.test(arg.url) || targetsPrivateHost(arg.url)) return null;
+                const fetched = await fetcher(arg.url);
+                if (!fetched) return null;
+                js = Buffer.from(fetched.bytes).toString('utf8');
+              }
+              return deps.hostScript!(ctx, slug, js);
+            },
+          }
+        : {}),
     };
   }
 

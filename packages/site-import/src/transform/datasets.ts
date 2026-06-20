@@ -64,7 +64,8 @@ function collectSlots(root: Element): Slot[] {
   return out;
 }
 
-/** Generic, unique-per-dataset field names for a slot-type sequence (the user/AI renames later). */
+/** Readable, unique-per-dataset field names for a slot-type sequence (the user/AI renames later):
+ *  first text → title, second → description, then text3…; first image → image, first link → link. */
 function fieldNames(types: SlotType[]): string[] {
   let t = 0;
   let i = 0;
@@ -73,8 +74,18 @@ function fieldNames(types: SlotType[]): string[] {
     if (ty === 'image') return i++ === 0 ? 'image' : `image${i}`;
     if (ty === 'link') return l++ === 0 ? 'link' : `link${l}`;
     const n = t++;
-    return n === 0 ? 'title' : n === 1 ? 'text' : `text${n}`;
+    return n === 0 ? 'title' : n === 1 ? 'description' : `text${n + 1}`;
   });
+}
+
+/** A hyphenated, human-ish slug for an ENTRY id (hyphens are fine in ids — unlike the hyphenless dataset
+ *  slug used in `{{#each dataset.<slug>}}`). Empty when the source text has no usable characters. */
+function slugifyId(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 50);
 }
 
 function slotValue(slot: Slot, ctx: TransformCtx): string {
@@ -120,17 +131,52 @@ function slugify(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 40);
 }
 
-/** A friendly hyphenless slug from a nearby heading (so `{{#each dataset.<slug>}}` needs no [brackets]). */
-function slugFor(container: Element, usedSlugs: Set<string>): string {
-  let base = '';
-  for (let sib = container.prev; sib && !base; sib = sib.prev) {
-    if (isTag(sib) && /^h[1-4]$/.test(sib.name)) base = slugify(textContent([sib]));
+/** Class patterns marking a JS slider/carousel — excluded from dataset inference (needs its own DOM+JS). */
+const CAROUSEL_CLASS = /(?:^|[\s_-])(?:slider|carousel|swiper|slick|owl|flickity|splide|glide|embla|marquee)(?:$|[\s_-])/i;
+
+/** Tailwind/Bootstrap-style utility class tokens that make poor dataset names. */
+const UTILITY_CLASS = /^(?:d|w|h|p|m|p[xytblr]|m[xytblr]|col|row|grid|flex|order|gap|text|bg|border|rounded|shadow|align|justify|items|self|wow|lazy|animated|fade\w*|relative|absolute|fixed|sticky|container|no|vh|vw)([-\d]|$)/i;
+
+/** The nearest preceding heading at the container's level OR any ANCESTOR level (so a section's `<h2>`
+ *  before the grid's wrapper is found, not just an immediate sibling). '' if none. */
+function nearestHeading(container: Element): string {
+  for (let node: Element | null = container; node; node = node.parent && isTag(node.parent) ? node.parent : null) {
+    for (let sib = node.prev; sib; sib = sib.prev) {
+      if (isTag(sib) && /^h[1-6]$/.test(sib.name)) {
+        const t = textContent([sib]).trim().replace(/\s+/g, ' ').slice(0, 60);
+        if (t) return t;
+      }
+    }
   }
-  if (!base) base = slugify(container.attribs.class ?? '') || 'items';
+  return '';
+}
+
+/** A hyphenless slug (for `{{#each dataset.<slug>}}` — no [brackets] needed) PLUS a human display name.
+ *  Prefers a nearby heading ("Our Team"); else the first MEANINGFUL class token ("Team", not the whole
+ *  utility-class blob); else a generic "List". */
+function slugFor(container: Element, usedSlugs: Set<string>): { slug: string; name: string } {
+  const heading = nearestHeading(container);
+  let base = '';
+  let name = '';
+  if (heading) {
+    base = slugify(heading);
+    name = heading;
+  }
+  if (!base) {
+    const token = (container.attribs.class ?? '').split(/\s+/).find((c) => c && !UTILITY_CLASS.test(c));
+    if (token) {
+      base = slugify(token);
+      name = titleCase(token.replace(/[-_]+/g, ' ').trim());
+    }
+  }
+  const generic = !base;
+  if (generic) base = 'items';
   let slug = base;
   for (let n = 2; usedSlugs.has(slug); n += 1) slug = `${base}${n}`;
   usedSlugs.add(slug);
-  return slug;
+  // A heading/token name stays as-is; a generic name is made UNIQUE from the deduped slug ("List 2").
+  if (generic) name = slug === 'items' ? 'List' : `List ${slug.slice('items'.length)}`;
+  return { slug, name };
 }
 
 /** Are these element children uniform enough to be a dataset (same tag + class + leaf signature)? */
@@ -165,10 +211,13 @@ export function inferDatasets(doc: Document, ctx: TransformCtx, usedSlugs: Set<s
   for (const { el, children } of candidates) {
     if (markers.size >= MAX_DATASETS_PER_PAGE) break;
     if (taken.some((t) => isAncestor(t, el) || isAncestor(el, t))) continue;
+    // Skip JS carousels/sliders: turning their slides into a {{#each}} loop breaks the widget's own DOM
+    // (it needs its literal structure + script to initialize); leave them literal so the hosted JS works.
+    if (CAROUSEL_CLASS.test(el.attribs.class ?? '') || CAROUSEL_CLASS.test(children[0]!.attribs.class ?? '')) continue;
     const uniform = uniformChildren(children);
     if (!uniform) continue;
     const names = fieldNames(uniform.types);
-    const slug = slugFor(el, usedSlugs);
+    const { slug, name: datasetName } = slugFor(el, usedSlugs);
     // Extract entries from the (original) children BEFORE templatizing the first one.
     const rows = children.slice(0, MAX_ENTRIES).map((child) => {
       const slots = collectSlots(child);
@@ -184,8 +233,18 @@ export function inferDatasets(doc: Document, ctx: TransformCtx, usedSlugs: Set<s
       continue;
     }
     const fields: Field[] = uniform.types.map((ty, idx) => ({ name: names[idx]!, type: ty === 'image' ? 'image' : 'text', required: false, localized: false }));
-    datasets.push({ id: slug, name: titleCase(slug), slug, fields });
-    rows.forEach((values, n) => entries.push({ id: `${slug}-${n + 1}`, dataset: slug, status: 'published', order: n, values }));
+    datasets.push({ id: slug, name: datasetName, slug, fields });
+    // Entry id from its title value (e.g. `team-jane-doe`) so entries read meaningfully; deduped, with a
+    // positional fallback. The first text field is the title (fieldNames puts it first).
+    const titleField = fields.find((f) => f.type === 'text')?.name;
+    const usedEntryIds = new Set<string>();
+    rows.forEach((values, n) => {
+      const fromTitle = titleField ? slugifyId(values[titleField] ?? '') : '';
+      let id = fromTitle ? `${slug}-${fromTitle}` : `${slug}-${n + 1}`;
+      for (let k = 2; usedEntryIds.has(id); k += 1) id = `${slug}-${fromTitle || n + 1}-${k}`;
+      usedEntryIds.add(id);
+      entries.push({ id, dataset: slug, status: 'published', order: n, values });
+    });
     const marker = `${markerPrefix}${markers.size}@@`;
     markers.set(marker, { loop, slug });
     setText(el, marker); // replace the grid's children with the sentinel (build.ts swaps it for `loop`)
@@ -199,6 +258,6 @@ function isAncestor(maybeAncestor: Element, node: Element): boolean {
   return false;
 }
 
-function titleCase(slug: string): string {
-  return slug.charAt(0).toUpperCase() + slug.slice(1);
+function titleCase(s: string): string {
+  return s.replace(/\b\w/g, (c) => c.toUpperCase());
 }

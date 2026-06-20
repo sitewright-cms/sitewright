@@ -37,9 +37,11 @@ describe('inferDatasets', () => {
     expect(inf.datasets).toHaveLength(1);
     const ds = inf.datasets[0]!;
     expect(ds.slug).toBe('ourteam'); // from the preceding <h2>, hyphenless
-    expect(ds.fields.map((f) => `${f.name}:${f.type}`)).toEqual(['image:image', 'title:text', 'text:text', 'link:text']);
+    expect(ds.name).toBe('Our Team'); // display name = the real heading text (not "Ourteam")
+    expect(ds.fields.map((f) => `${f.name}:${f.type}`)).toEqual(['image:image', 'title:text', 'description:text', 'link:text']);
     expect(inf.entries).toHaveLength(4);
-    expect(inf.entries[0]!.values).toEqual({ image: '/media/x/a.jpg', title: 'Name 0', text: 'Role 0', link: '/p0' });
+    expect(inf.entries[0]!.values).toEqual({ image: '/media/x/a.jpg', title: 'Name 0', description: 'Role 0', link: '/p0' });
+    expect(inf.entries[0]!.id).toBe('ourteam-name-0'); // entry id from its title value, not "ourteam-1"
     expect(inf.entries[0]!.dataset).toBe('ourteam');
     expect(inf.entries[0]!.status).toBe('published');
 
@@ -61,6 +63,12 @@ describe('inferDatasets', () => {
   it('skips a non-uniform grid (different child structures)', () => {
     const mixed = '<html><body><section>' + card(0) + card(1) + '<div class="card"><h3>Only text</h3></div>' + card(3) + '</section></body></html>';
     expect(infer(mixed).inf.datasets).toHaveLength(0);
+  });
+
+  it('does NOT dataset-ify a JS carousel/slider (it needs its literal DOM + script)', () => {
+    const slides = Array.from({ length: 4 }, (_, i) => `<div class="slide"><img src="/a.jpg"><h3>S${i}</h3></div>`).join('');
+    const inf = inferDatasets(parse(`<html><body><div class="slider owl-carousel">${slides}</div></body></html>`), ctx, new Set<string>(), '@@D_');
+    expect(inf.datasets).toHaveLength(0); // left literal, not turned into {{#each}}
   });
 
   it('falls back to "items" + a heading-less container, and keeps slugs unique', () => {

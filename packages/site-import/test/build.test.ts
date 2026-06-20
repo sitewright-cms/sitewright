@@ -69,6 +69,22 @@ describe('buildImportBundle (integration)', () => {
     expect(result.stats.scriptsDropped).toBeGreaterThanOrEqual(1);
   });
 
+  it('marks imported pages as drafts with a swImport rewrite marker', async () => {
+    const result = await buildImportBundle(
+      site([
+        { sourceUrl: 'https://ex.com/', html: page('Acme | Home', '<h1>Welcome</h1>', HOME_HEAD) },
+        { sourceUrl: 'https://ex.com/about', html: page('About', '<h2>About</h2>') },
+      ]),
+      { media: stubMedia(), importedAt: '2026-06-20T00:00:00.000Z' },
+    );
+    const pages = result.bundles[0]!.pages;
+    expect(pages.length).toBeGreaterThan(0);
+    for (const p of pages) expect(p.status).toBe('draft');
+    const home = pages.find((p) => p.path === '')!;
+    const marker = (home.data as { swImport?: { sourceUrl?: string; rewritten?: boolean; importedAt?: string } }).swImport;
+    expect(marker).toEqual({ sourceUrl: 'https://ex.com/', rewritten: false, importedAt: '2026-06-20T00:00:00.000Z' });
+  });
+
   it('does not extract chrome for a single page (keeps it inline)', async () => {
     const result = await buildImportBundle(
       site([{ sourceUrl: 'https://ex.com/', html: page('Solo', '<h1>Solo</h1>', HOME_HEAD) }]),

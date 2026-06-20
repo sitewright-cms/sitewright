@@ -39,10 +39,11 @@ export const ScreenshotViewportNameSchema = z.enum(
 );
 
 /**
- * Default when the caller doesn't choose — a representative desktop (Full HD) + mobile pair, so a plain
- * `preview_page` stays at ~2 images. Request specific names (or all five) for a full responsive sweep.
+ * Default when the caller doesn't choose — a representative spread across desktop (Full HD), tablet, and
+ * mobile, so a plain `preview_page` shows the responsive picture (~3 images). Request specific names (or
+ * all five, incl. wqhd/laptop) for a fuller sweep.
  */
-export const DEFAULT_SCREENSHOT_VIEWPORTS: readonly ScreenshotViewportName[] = ['fullhd', 'mobile'];
+export const DEFAULT_SCREENSHOT_VIEWPORTS: readonly ScreenshotViewportName[] = ['fullhd', 'tablet', 'mobile'];
 
 export function isScreenshotViewportName(v: string): v is ScreenshotViewportName {
   return (SCREENSHOT_VIEWPORT_NAMES as readonly string[]).includes(v);

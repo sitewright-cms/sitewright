@@ -99,6 +99,7 @@ export type DiagnosticCode =
   | 'css-overflow'
   | 'page-skipped'
   | 'chrome-extracted'
+  | 'locales-detected'
   | 'invalid-source-fallback'
   | 'bundle-invalid';
 

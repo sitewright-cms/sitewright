@@ -23,8 +23,8 @@ describe('screenshot viewports registry', () => {
     }
   });
 
-  it('the default set is a non-empty subset of the registry', () => {
-    expect(DEFAULT_SCREENSHOT_VIEWPORTS.length).toBeGreaterThan(0);
+  it('the default set is fullhd + tablet + mobile (a desktop/tablet/mobile responsive spread)', () => {
+    expect(DEFAULT_SCREENSHOT_VIEWPORTS).toEqual(['fullhd', 'tablet', 'mobile']);
     for (const n of DEFAULT_SCREENSHOT_VIEWPORTS) expect(SCREENSHOT_VIEWPORT_NAMES).toContain(n);
   });
 

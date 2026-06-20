@@ -220,6 +220,7 @@ const IMPORT_BODY_LIMIT = 4 * 1024 * 1024; // 4 MiB for a full project import
 const PREVIEW_BODY_LIMIT = 2 * 1024 * 1024; // 2 MiB for a single draft page
 const MAX_UPLOAD_BYTES = 15 * 1024 * 1024; // 15 MiB per uploaded image
 const IMPORT_TIMEOUT_MS = 10_000; // import-url: cap the whole download (headers + body)
+const MAX_IMPORT_REDIRECTS = 4; // import-url: follow this many redirects (each re-checked vs the SSRF guard)
 
 /** Font metadata accompanying an upload (query params) — sensible defaults for a generic drop. */
 const FontUploadMeta = z.object({
@@ -2490,7 +2491,20 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), IMPORT_TIMEOUT_MS);
       try {
-        const res = await fetch(url, { signal: controller.signal, redirect: 'error' });
+        // Follow redirects MANUALLY (most image URLs 302 to a CDN), re-checking EVERY hop against the
+        // SSRF guard — a redirect must never become a way to reach a private/internal host or downgrade
+        // off https. (The initial `url` was already checked above.)
+        let current = url;
+        let res = await fetch(current, { signal: controller.signal, redirect: 'manual' });
+        for (let hop = 0; res.status >= 300 && res.status < 400 && res.headers.get('location'); hop++) {
+          if (hop >= MAX_IMPORT_REDIRECTS) return reply.code(400).send({ error: 'too many redirects' });
+          const next = new URL(res.headers.get('location')!, current).href; // resolve relative against the current hop
+          if (!/^https:\/\//i.test(next) || targetsPrivateHost(next)) {
+            return reply.code(400).send({ error: 'a redirect to a non-public URL was blocked' });
+          }
+          current = next;
+          res = await fetch(next, { signal: controller.signal, redirect: 'manual' });
+        }
         if (!res.ok) return reply.code(400).send({ error: `download failed (${res.status})` });
         if (Number(res.headers.get('content-length') ?? '0') > MAX_UPLOAD_BYTES) {
           return reply.code(413).send({ error: 'file exceeds size limit' });

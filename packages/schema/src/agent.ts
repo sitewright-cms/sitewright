@@ -261,8 +261,13 @@ data-src / data-srcset / data-bg (the legacy class="lazyload" still works but is
   height="450" class="h-full w-full object-cover"></div>. (A native loading="lazy" iframe can carry
   class="skeleton" directly, since the runtime doesn't fade it.)
 
-IMAGES: search_stock_images then import_stock_image (self-hosted + attributed); reference the
-returned media url in \`source\`.
+IMAGES — three ways to bring one in, all self-hosted (never hotlink), then reference the returned
+media url in \`source\`:
+- STOCK: call list_stock_providers to see which are enabled (openverse is always on; unsplash /
+  pexels need an instance API key), then search_stock_images on an available one → import_stock_image
+  (downloaded, optimized, attributed).
+- BY URL: import_image with a public https image URL (downloaded + optimized, follows redirects).
+- EXISTING: list_media to find assets already in the project and reuse their url.
 `,
   },
   effects: {

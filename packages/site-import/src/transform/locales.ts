@@ -60,11 +60,17 @@ export function applyLocales(pages: Page[], localeSet: Set<string>, defaultLocal
     ? defaultLocaleHint
     : unprefixed[0] ?? (localeSet.has(defaultLocaleHint) ? defaultLocaleHint : realLocales[0]!);
 
-  // Default-locale (unprefixed) pages, keyed by route — the translation owners.
+  const strip = (route: string, seg: string): string => (route === `/${seg}` ? '/' : route.slice(`/${seg}`.length));
+
+  // Translation owners (the default-locale pages), keyed by their CANONICAL (prefix-stripped) route — so
+  // variants link correctly whether the default is served unprefixed (/about) or prefixed (/en/about,
+  // the all-locales-prefixed shape). An unprefixed owner wins over a prefixed one for the same route.
   const ownerByRoute = new Map<string, Page>();
   for (const p of pages) {
-    const s = firstSeg(routeOf.get(p.id)!);
-    if (!s || !prefixLocales.has(s)) ownerByRoute.set(routeOf.get(p.id)!, p);
+    const route = routeOf.get(p.id)!;
+    const s = firstSeg(route);
+    if (!s || !prefixLocales.has(s)) ownerByRoute.set(route, p); // unprefixed default-locale page
+    else if (s === defaultLocale && !ownerByRoute.has(strip(route, s))) ownerByRoute.set(strip(route, s), p); // prefixed default
   }
 
   for (const p of pages) {
@@ -73,9 +79,7 @@ export function applyLocales(pages: Page[], localeSet: Set<string>, defaultLocal
     if (!seg || !prefixLocales.has(seg) || seg === defaultLocale) continue; // default-locale page → leave as-is
     p.locale = seg;
     delete p.nav; // the default locale owns the auto-nav; variants would just duplicate header items
-    // Strip the /<seg> prefix to find the default-locale owner (the locale home maps to "/").
-    const ownerRoute = route === `/${seg}` ? '/' : route.slice(`/${seg}`.length);
-    const owner = ownerByRoute.get(ownerRoute);
+    const owner = ownerByRoute.get(strip(route, seg)); // prefix-stripped → the default-locale owner
     if (owner) {
       const group = owner.translationGroup ?? owner.id;
       owner.translationGroup = group;
@@ -83,5 +87,6 @@ export function applyLocales(pages: Page[], localeSet: Set<string>, defaultLocal
     }
   }
 
-  return { locales: [defaultLocale, ...realLocales.filter((l) => l !== defaultLocale)], defaultLocale };
+  // Deterministic order (default first, then the rest alphabetically) — independent of crawl order.
+  return { locales: [defaultLocale, ...realLocales.filter((l) => l !== defaultLocale).sort()], defaultLocale };
 }

@@ -50,6 +50,23 @@ describe('applyLocales', () => {
     expect(byId.es__about!.translationGroup).toBe('about');
   });
 
+  it('links translationGroups for an all-prefixed site (/en/ + /de/, no bare /)', () => {
+    const pages: Page[] = [
+      { id: 'en', path: 'en', title: 'en' },
+      { id: 'en__about', path: 'about', title: 'About', parent: 'en' },
+      { id: 'de', path: 'de', title: 'de' },
+      { id: 'de__about', path: 'about', title: 'About', parent: 'de' },
+    ];
+    const res = applyLocales(pages, new Set(['en', 'de']), 'en');
+    expect(res.defaultLocale).toBe('en');
+    const byId = Object.fromEntries(pages.map((p) => [p.id, p]));
+    expect(byId.en__about!.locale).toBeUndefined(); // en = default (even though prefixed)
+    expect(byId.de__about!.locale).toBe('de');
+    expect(byId.de__about!.translationGroup).toBe(byId.en__about!.translationGroup); // linked, not orphaned
+    expect(byId.de__about!.translationGroup).toBeTruthy();
+    expect(byId.de!.translationGroup).toBe(byId.en!.translationGroup); // locale homes linked too
+  });
+
   it('is a no-op for a single-locale site', () => {
     const pages = trilingualPages();
     const before = JSON.stringify(pages);

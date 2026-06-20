@@ -48,6 +48,15 @@ describe('PublishStore HTML serving', () => {
     expect(await store.readBinary('site', '/styles.css')).toBeNull();
   });
 
+  it('serves a bundled stylesheet (imported CSS) inline as text/css, not a download', async () => {
+    const dir = store.dirFor('site');
+    await mkdir(join(dir, '_assets', 'css1'), { recursive: true });
+    await writeFile(join(dir, '_assets', 'css1', 'styles.css'), '.a{color:red}');
+    const css = await store.readBinary('site', '/_assets/css1/styles.css');
+    expect(css?.contentType).toBe('text/css; charset=utf-8'); // not octet-stream
+    expect(css?.attachment).toBe(false); // inline, so the page's <link> applies it
+  });
+
   it('still rejects traversal segments', () => {
     expect(() => store.resolveHtml('site', '/../../etc/passwd.html')).toThrow();
     expect(store.readBinary('site', '/_assets/../../etc/passwd.png')).resolves.toBeNull();

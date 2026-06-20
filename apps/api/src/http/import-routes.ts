@@ -53,6 +53,8 @@ export interface ImportRouteDeps {
   /** Self-host an `@font-face` web font (validates the bytes are a real font; null if not). Omit to
    *  disable font hosting (e.g. in tests) — the importer then leaves the @font-face url() as-is. */
   hostFontAsset?: (ctx: ProjectContext, slug: string, buffer: Buffer, font: { family: string; weight: number; style: 'normal' | 'italic' }) => Promise<{ url: string } | null>;
+  /** Host the imported CSS as one inline-served stylesheet → its /media URL (or null). Omit to inline. */
+  hostStylesheet?: (ctx: ProjectContext, slug: string, css: string) => Promise<string | null>;
   rl: (max: number) => { rateLimit: { max: number; timeWindow: string } };
   log: FastifyBaseLogger;
   // Injectable seams (default to the real implementations) so the routes are testable without a network.
@@ -199,6 +201,7 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
           return null;
         }
       },
+      ...(deps.hostStylesheet ? { hostStylesheet: (css: string) => deps.hostStylesheet!(ctx, slug, css) } : {}),
     };
   }
 

@@ -55,6 +55,9 @@ export interface MediaPort {
    *  CSS `url()`, og:image). `srcset` (images only) is a ready-to-use responsive WebP srcset for the
    *  `<img>` so modern browsers fetch the efficient variant and legacy ones fall back to `ref`. */
   hostAsset(asset: CapturedAsset): Promise<{ ref: string; srcset?: string } | null>;
+  /** Host the imported site's concatenated CSS as one inline-served stylesheet, returning its URL (so
+   *  the importer `<link>`s it and keeps the bulk CSS out of the editable page source). Omit to inline. */
+  hostStylesheet?(css: string): Promise<string | null>;
 }
 
 /** Hard caps applied inside the engine (defense-in-depth alongside the intake/route limits). */

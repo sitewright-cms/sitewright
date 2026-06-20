@@ -19,13 +19,16 @@ import { resolveLimits } from './limits.js';
 import { buildRoutes } from './transform/routes.js';
 import { applyLocales, detectLocaleSet } from './transform/locales.js';
 import { collectImageRefs, hostAssets } from './transform/assets.js';
-import { collectCssRefs, buildPageStyles } from './transform/css.js';
+import { collectCssRefs, buildPageStyles, buildHostableCss } from './transform/css.js';
 import { collectFontFaces } from './transform/fonts.js';
 import { extractIdentity, extractPageSeo } from './transform/identity.js';
 import { extractChrome } from './transform/chrome.js';
 import { inferDatasets } from './transform/datasets.js';
 import { transformBody, type TransformCtx } from './transform/page.js';
 import type { CapturedSite, ImportBundle, ImportDiagnostic, ImportResult, TransformOptions } from './types.js';
+
+/** Upper bound on the hosted imported stylesheet (a real site's full minified CSS is far smaller). */
+const MAX_HOSTABLE_CSS_BYTES = 2 * 1024 * 1024;
 
 interface ParsedPage {
   url: string;
@@ -64,10 +67,11 @@ function extractNavLinks(home: ParsedPage | undefined, baseUrl: string): string[
   return out;
 }
 
-function buildWebsite(chrome: { topNav?: string; footer?: string }): WebsiteSettings | undefined {
+function buildWebsite(chrome: { topNav?: string; footer?: string }, head?: string): WebsiteSettings | undefined {
   const input: Record<string, string> = {};
   if (chrome.topNav) input.topNav = chrome.topNav;
   if (chrome.footer) input.footer = chrome.footer;
+  if (head) input.head = head; // the <link> to the hosted imported stylesheet (tiny; well under HTML_MAX)
   if (Object.keys(input).length === 0) return undefined;
   return WebsiteSettingsSchema.parse(input);
 }
@@ -120,11 +124,20 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
   const assetMap = host.assetMap;
   const srcsetMap = host.srcsetMap;
 
-  // Accurate-replica CSS: the FULL stylesheet (url()s → self-hosted refs) as ONE `<style>` block,
-  // inlined at the top of every imported page's source (the uncapped slot — vs. the tiny criticalCss/
-  // head website slots that dropped most styling). Imported pages render in `rawFidelity` so the
-  // platform's own base CSS doesn't fight it.
-  const pageStyles = buildPageStyles(cssCollection.cssText, assetMap);
+  // Imported CSS (url()s → self-hosted refs). EDITABLE path: host it as ONE inline-served stylesheet
+  // and `<link>` it from the head, so the bulk CSS stays OUT of the page source (which stays editable
+  // markup). FALLBACK (no hostStylesheet port, e.g. tests): inline a single `<style>` per page. Either
+  // way imported pages render in `rawFidelity` so the platform's own base CSS doesn't fight it.
+  let hostableCss = buildHostableCss(cssCollection.cssText, assetMap);
+  // Cap the hosted CSS so a pathological source (e.g. a ZIP packed with megabytes of CSS) can't
+  // exhaust disk/memory — real sites' full minified CSS is well under this. Over the cap → drop it.
+  if (hostableCss && Buffer.byteLength(hostableCss, 'utf8') > MAX_HOSTABLE_CSS_BYTES) {
+    hostableCss = '';
+    diagnostics.push({ code: 'css-overflow', message: `imported CSS exceeds ${Math.round(MAX_HOSTABLE_CSS_BYTES / 1024)} KB; omitted` });
+  }
+  const cssUrl = hostableCss && opts.media.hostStylesheet ? await opts.media.hostStylesheet(hostableCss) : null;
+  const cssLink = cssUrl ? `<link rel="stylesheet" href="${cssUrl}">` : '';
+  const pageStyles = cssUrl ? '' : buildPageStyles(cssCollection.cssText, assetMap);
 
   const identity: CorporateIdentity = home
     ? extractIdentity(home.doc, { baseUrl: home.url, assetMap, fallbackName: hostFallbackName(workSite.baseUrl) })
@@ -232,7 +245,7 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
   // stubs have no source HTML to rewrite.
   for (const p of routeRes.pages) p.status = 'draft';
 
-  const website = buildWebsite(chrome);
+  const website = buildWebsite(chrome, cssLink || undefined);
   const bundle: ImportBundle = {
     project: { identity, website, settings: { defaultLocale: i18n.defaultLocale, locales: i18n.locales } },
     pages: routeRes.pages,

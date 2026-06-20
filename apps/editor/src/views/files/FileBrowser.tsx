@@ -56,7 +56,7 @@ export const ACCEPT = {
 
 /** A short type label per asset kind (the list view's Type column). */
 const typeLabel = (m: MediaAsset): string =>
-  m.kind === 'image' ? m.format : m.kind === 'font' ? `font · ${m.files.length}` : m.contentType;
+  m.kind === 'image' ? m.format : m.kind === 'font' ? `font · ${m.files.length}` : m.kind === 'stylesheet' ? 'stylesheet' : m.contentType;
 
 // What's being dragged WITHIN the app (move). Held in a ref because dataTransfer can't be
 // read during dragover, and the desktop-file case is detected via dataTransfer.files.

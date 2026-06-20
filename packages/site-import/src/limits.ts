@@ -10,8 +10,6 @@ export const DEFAULT_LIMITS: ImportLimits = {
   maxSourceBytes: 256 * 1024,
   maxImages: 500,
   maxSlotBytes: 20_000,
-  maxCriticalCssBytes: 10_000,
-  maxHeadCssBytes: 20_000,
 };
 
 /** Merge caller overrides over the defaults (undefined fields fall back to the default). */

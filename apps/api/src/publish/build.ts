@@ -69,6 +69,7 @@ import { compileUtilityCss, brandToTailwindTheme } from '@sitewright/tailwind';
 import { companyToOrganization } from './company-seo.js';
 import { renderSitemap, renderRobots, renderHtaccess, renderNetlifyRedirects, siteUrlFor, siteBase } from './seo.js';
 import { renderContactPhp, hasContactPhpForm } from './contact-php.js';
+import { isRawFidelityPage } from '../import/raw-fidelity.js';
 import {
   toPublicForm,
   websiteEffectsClasses,
@@ -741,6 +742,9 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           organization,
           criticalCss: website?.criticalCss,
           head: website?.head,
+          // A still-faithful imported page (swImport present, not yet nativized) renders as a raw
+          // replica: omit the platform's own CSS so the imported stylesheet isn't fought.
+          rawFidelity: isRawFidelityPage(page),
           customScripts: [website?.scripts, fxCode.bodyEnd].filter(Boolean).join('\n') || undefined,
           // Shared assets (site root, NOT locale-prefixed), rebased to page depth.
           // Inline-style order: component CSS, then animation CSS; the linked

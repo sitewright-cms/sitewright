@@ -125,6 +125,30 @@ describe('buildImportBundle (integration)', () => {
     expect(result.diagnostics.filter((d) => d.code === 'bundle-invalid')).toEqual([]);
   });
 
+  it('inlines the full CSS as a <style> in the page source (accurate replica)', async () => {
+    const result = await buildImportBundle(
+      site([{ sourceUrl: 'https://ex.com/', html: page('Acme', '<h1>Welcome</h1>', '<style>.brand{color:#1565a8}</style>') }]),
+      { media: stubMedia() },
+    );
+    const home = result.bundles[0]!.pages.find((p) => p.path === '')!;
+    expect(home.source!.startsWith('<style>')).toBe(true);
+    expect(home.source).toContain('.brand{color:#1565a8}');
+    expect(result.bundles[0]!.project.website?.criticalCss).toBeUndefined(); // no longer in the bounded slot
+  });
+
+  it('falls back to body-only (css-overflow) when full CSS + content exceeds the source cap', async () => {
+    const bigCss = '.x{color:red}'.repeat(60); // ~780 bytes, over the tiny cap below
+    const result = await buildImportBundle(
+      site([{ sourceUrl: 'https://ex.com/', html: page('Acme', '<h1>Welcome</h1>', `<style>${bigCss}</style>`) }]),
+      { media: stubMedia(), limits: { maxSourceBytes: 320 } },
+    );
+    const home = result.bundles[0]!.pages.find((p) => p.path === '')!;
+    expect(home.source).not.toContain('<style>'); // CSS omitted (would have blown the cap)
+    expect(home.source).toContain('Welcome'); // content kept
+    expect(result.diagnostics.some((d) => d.code === 'css-overflow')).toBe(true);
+    expect(() => validateTemplate(home.source!)).not.toThrow();
+  });
+
   it('drops an inferred dataset (no orphan, no leaked marker) when its container is truncated away', async () => {
     const cards = Array.from({ length: 6 }, (_, i) => `<article class="member"><img src="/p${i}.jpg"><h3>Person ${i}</h3><p>Role ${i}</p></article>`).join('');
     const result = await buildImportBundle(

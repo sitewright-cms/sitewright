@@ -22,6 +22,9 @@ export interface CapturedAsset {
   contentType?: string;
   bytes?: Uint8Array;
   remoteUrl?: string;
+  /** `@font-face` metadata for `kind:'font'` (parsed from the source CSS); the actual file format is
+   *  detected from the bytes when hosted. */
+  font?: { family: string; weight: number; style: 'normal' | 'italic' };
 }
 
 /** One captured page: its canonical source URL (the link-rewrite key) and its raw outer HTML. */
@@ -61,10 +64,6 @@ export interface ImportLimits {
   maxImages: number;
   /** Max bytes per skeleton slot (topNav/footer); schema cap is 20 KB. */
   maxSlotBytes: number;
-  /** Max bytes of CSS inlined into `criticalCss` (schema cap 10 KB) before overflow goes to `head`. */
-  maxCriticalCssBytes: number;
-  /** Max bytes of CSS inlined into the raw `head` `<style>` block (schema cap 20 KB). */
-  maxHeadCssBytes: number;
 }
 
 /** Progress callback granularity (the API streams these as SSE frames). */

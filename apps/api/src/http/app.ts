@@ -137,6 +137,7 @@ import { registerFormRoutes } from './form-routes.js';
 import { registerProjectSmtpRoutes } from './project-smtp-routes.js';
 import { registerStockRoutes, type StockServiceLike } from './stock-routes.js';
 import { registerImportRoutes } from './import-routes.js';
+import { isRawFidelityPage } from '../import/raw-fidelity.js';
 import { StockService } from '../stock/service.js';
 import { defaultStockProviders } from '../stock/providers.js';
 import { SubmissionRepository } from '../repo/submissions.js';
@@ -515,6 +516,8 @@ async function styledSourceDocument(
   return renderDocument(page, {
     brand,
     bodyHtml: body,
+    // A still-faithful imported page renders as a raw replica (no platform base CSS) in preview too.
+    rawFidelity: isRawFidelityPage(page),
     inlineStyles: inlineStyles.length > 0 ? inlineStyles : undefined,
     inlineScripts: inlineScripts.length > 0 ? inlineScripts : undefined,
     // The toggle's no-flash init, inlined SYNC in <head> (preview's sandboxed CSP allows inline JS).
@@ -2591,6 +2594,23 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       resolveProject,
       contentRepo,
       createMediaAsset,
+      // Self-host an imported @font-face web font through the existing font pipeline (magic-byte
+      // validated + served inline). Invalid/oversize bytes → null (the importer keeps the url() as-is).
+      hostFontAsset: async (ctx, slug, buffer, font) => {
+        const format = detectFontFormat(buffer);
+        if (!format || buffer.length > MAX_FONT_BYTES) return null;
+        try {
+          const saved = await createFontAsset(ctx, slug, {
+            family: font.family,
+            fallback: 'sans-serif',
+            source: 'local',
+            faces: [{ weight: font.weight, style: font.style, format, bytes: buffer }],
+          });
+          return { url: saved.url };
+        } catch {
+          return null; // invalid family/metadata → leave the original url()
+        }
+      },
       rl,
       log: app.log,
     });

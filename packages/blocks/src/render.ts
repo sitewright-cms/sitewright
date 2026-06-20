@@ -41,6 +41,14 @@ export interface RenderDocumentOptions extends RenderContext {
    */
   emitBrandContentTokens?: boolean;
   /**
+   * RAW-FIDELITY mode for an imported page that is still a faithful replica of its source (i.e. not yet
+   * "nativized"): omit the platform's OWN CSS — modern-normalize, the unlayered platform defaults, brand
+   * tokens and the typography/@font-face block — so the imported site's own stylesheet (which rides in
+   * the page `source` as a `<style>` block, or its hoisted chrome slots) renders exactly as on the
+   * original, without the platform base CSS fighting it. The page's own `<style>`/head still apply.
+   */
+  rawFidelity?: boolean;
+  /**
    * Pre-rendered `<body>` HTML for a code-first (Handlebars `source`) page — used INSTEAD
    * of rendering the block tree. The same head/SEO/CSS/script shell is applied.
    */
@@ -175,6 +183,7 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
   const {
     brand,
     theme,
+    rawFidelity,
     emitBrandContentTokens,
     bodyHtml,
     bodyClass,
@@ -244,7 +253,8 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     `${meta}\n` +
     (jsonLd ? `${jsonLd}\n` : '') +
     (head ? `${head}\n` : '') +
-    `<style>${css}</style>\n` +
+    // RAW-FIDELITY replicas omit the platform's own base CSS so it can't fight the imported stylesheet.
+    (rawFidelity ? '' : `<style>${css}</style>\n`) +
     (criticalCss ? `<style>${criticalCss}</style>\n` : '') +
     // Neutralize any `</style` so inlined CSS can't break out of the <style> element
     // (defense-in-depth; mirrors the inlineScripts guard below).
@@ -257,7 +267,7 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     // No `</style` neutralization needed (unlike inlineStyles): the output is built only from
     // hardcoded stacks + schema-validated weights + a regex-checked (no `<`) family name + the
     // app-controlled fontUrl (no `<`). @font-face urls point at LOCAL self-hosted woff2.
-    `<style>${typographyCss(brand?.typography, fontAssets, { fontUrl })}</style>\n` +
+    (rawFidelity ? '' : `<style>${typographyCss(brand?.typography, fontAssets, { fontUrl })}</style>\n`) +
     `</head>\n` +
     // Skeleton landmarks: the platform OWNS the semantic element + unique id for each slot and the
     // page body, so a slot/page author writes neutral HTML (the validator rejects <nav>/<main>/

@@ -173,6 +173,9 @@ const app = await createApp({
   // Public base URL baked into exported forms (so static sites post submissions
   // back to this platform). Validated above; trailing slash normalized at build time.
   publicUrl,
+  // Subdomain routing for locally-hosted sites: `<slug>.<SW_SITES_DOMAIN>` serves that site at root
+  // (needs wildcard DNS `*.<domain>` → this host). Unset → off; the `/sites/<slug>/` path form always works.
+  sitesDomain: process.env.SW_SITES_DOMAIN,
   buildRunner,
   aiProvider,
   aiQuota,

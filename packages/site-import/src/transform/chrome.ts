@@ -1,11 +1,32 @@
-// Detect repeated site chrome (a shared <header> / <footer>) across the captured pages and hoist it
-// into the website skeleton slots (topNav / footer), removing it from each page body so it isn't
-// duplicated. Conservative: only an exact (class/id-insensitive) match on ≥60% of pages is extracted;
-// otherwise each page keeps its own chrome inline (still renders, just not consolidated).
-import { removeElement } from 'domutils';
-import { allByName, firstByName, serialize, type Document, type Element } from '../dom.js';
+// Detect repeated site chrome across the captured pages and hoist each region into its website skeleton
+// slot (header→topNav, footer→footer, asides→sidebarLeft/Right), removing it from every page body so it
+// isn't duplicated. Regions are matched by landmark tag + ARIA role + common class/id patterns.
+// Conservative: a region is only hoisted when an exact (class/id-insensitive) match appears on ≥60% of
+// pages; otherwise each page keeps it inline (still renders, just not consolidated). JS-driven overlays
+// (preloader, cookie banner) are REMOVED from every page (they'd block/persist without their stripped
+// scripts); a detected preloader instead enables the platform's own preloader effect.
+import { findOne, removeElement } from 'domutils';
+import { isTag } from 'domhandler';
+import { serialize, type Document, type Element } from '../dom.js';
 import { transformFragment, type TransformCtx } from './page.js';
 import type { ImportLimits } from '../types.js';
+
+type Matcher = (el: Element) => boolean;
+const cls = (el: Element, rx: RegExp): boolean => rx.test(el.attribs.class ?? '') || rx.test(el.attribs.id ?? '');
+
+// Region matchers split into the SEMANTIC landmark (tag/role) and a CLASS fallback — picks prefer the
+// landmark so a real `<header>` wins over a nested `div.navbar`. The class leading anchor is `(?:^|\s)`
+// (a class TOKEN boundary, not `-`/`_`) so "no-sidebar"/"main-sidebar" don't substring-match "sidebar".
+const isHeader: Matcher = (el) => el.name === 'header' || el.attribs.role === 'banner';
+const isFooter: Matcher = (el) => el.name === 'footer' || el.attribs.role === 'contentinfo';
+const isAside: Matcher = (el) => el.name === 'aside' || el.attribs.role === 'complementary';
+const byClass = (rx: RegExp): Matcher => (el) => cls(el, rx);
+const HEADER_CLASS = byClass(/(?:^|\s)(?:site-?header|page-?header|masthead|top-?bar|top-?nav|nav-?bar|nav-?wrapper|navbar|main-?nav|primary-?nav|menu-?bar)(?:$|[\s_-])/i);
+const FOOTER_CLASS = byClass(/(?:^|\s)(?:site-?footer|page-?footer|footer-?wrapper|colophon|bottom-?bar)(?:$|[\s_-])/i);
+const ASIDE_CLASS = byClass(/(?:^|\s)sidebar(?:$|[\s_-])/i);
+const MOBILE_CLASS = byClass(/(?:^|\s)(?:mobile-?nav|mobile-?menu|off-?canvas|side-?nav|nav-?drawer|drawer-?menu|slide-?menu|burger-?menu)(?:$|[\s_-])/i);
+const PRELOADER: Matcher = byClass(/(?:^|\s)(?:preloader|pre-?load|loading-?overlay|page-?loader|site-?loader|loader-?wrap|spinner-?overlay)(?:$|[\s_-])/i);
+const COOKIE: Matcher = byClass(/(?:^|\s)(?:cookie|consent|gdpr)(?:$|[\s_-])/i);
 
 export interface ParsedPage {
   url: string;
@@ -23,7 +44,11 @@ export interface ChromeCtx {
 /** Comparison signature: serialized HTML with volatile attributes (class/id/aria-current) and whitespace removed. */
 function signature(el: Element): string {
   return serialize(el)
-    .replace(/\s+(?:class|id|aria-current|aria-selected)="[^"]*"/gi, '')
+    // Drop attributes that legitimately vary per page for the SAME chrome — active-state (class/id/aria),
+    // lazy-load hints (srcset/sizes/loading/decoding/fetchpriority), framework data-*, and style/title/
+    // target/rel/tabindex — so "this header, with the current link active" reads as one shared region.
+    .replace(/\s+(?:class|id|style|title|target|rel|tabindex|srcset|sizes|loading|decoding|fetchpriority|aria-current|aria-selected)="[^"]*"/gi, '')
+    .replace(/\s+data-[\w-]+(?:="[^"]*")?/gi, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -53,19 +78,69 @@ function extractRegion(pages: ParsedPage[], ctx: ChromeCtx, pick: (body: Element
   };
   const html = transformFragment(rep.el, tctx, ctx.limits.maxSlotBytes);
   if (!html) return undefined;
-  for (const c of best) removeElement(c.el);
+  // The region is confirmed shared chrome → replace EVERY page's variant with the one hoisted slot
+  // (remove from all candidates, not just the matched group), so a page whose copy differs only by
+  // per-page noise — e.g. the active link or a lazy-load hint — doesn't end up rendering it twice.
+  for (const c of candidates) removeElement(c.el);
   return html;
 }
 
-/** Extract shared chrome into slots; mutates the page docs (removes the hoisted elements). */
-export function extractChrome(pages: ParsedPage[], ctx: ChromeCtx): { topNav?: string; footer?: string; extracted: boolean } {
-  const topNav = extractRegion(pages, ctx, (body) => firstByName(body.children, 'header'));
-  const footer = extractRegion(pages, ctx, (body) => {
-    const all = allByName(body.children, 'footer');
-    return all[all.length - 1];
-  });
-  const result: { topNav?: string; footer?: string; extracted: boolean } = { extracted: Boolean(topNav || footer) };
+/** All matching descendant elements, in document order. */
+function findAllMatch(body: Element, m: Matcher): Element[] {
+  const out: Element[] = [];
+  const walk = (nodes: Element['children']): void => {
+    for (const n of nodes) {
+      if (!isTag(n)) continue;
+      if (m(n)) out.push(n);
+      walk(n.children);
+    }
+  };
+  walk(body.children);
+  return out;
+}
+const findFirst = (body: Element, m: Matcher): Element | undefined => (findOne(m, body.children, true) as Element | null) ?? undefined;
+const findLast = (body: Element, m: Matcher): Element | undefined => findAllMatch(body, m).at(-1);
+
+export interface ChromeResult {
+  topNav?: string;
+  mobileNav?: string;
+  sidebarLeft?: string;
+  sidebarRight?: string;
+  footer?: string;
+  /** A detected foreign preloader → enable the platform's own preloader effect (the foreign one is removed). */
+  preloaderEffect?: 'spinner';
+  extracted: boolean;
+}
+
+/** Extract shared chrome into its slots; mutates the page docs (removes the hoisted/cruft elements). */
+export function extractChrome(pages: ParsedPage[], ctx: ChromeCtx): ChromeResult {
+  // JS-driven overlays (preloader, cookie banner) would block/persist without their stripped scripts.
+  // Remove them — but ONLY when they're SHARED site chrome (≥60% of pages, via extractRegion's gate), so
+  // page-specific content that merely matches the pattern (e.g. a `cookie-recipe` article) is never lost.
+  // The hoisted HTML is discarded (we don't reproduce the broken overlay); a preloader enables the
+  // platform's own effect instead.
+  const preloaderFound = extractRegion(pages, ctx, (body) => findFirst(body, PRELOADER)) !== undefined;
+  extractRegion(pages, ctx, (body) => findFirst(body, COOKIE));
+
+  // Header → topNav. A SEPARATE slide-out/off-canvas mobile menu (its own element, not nested in the
+  // header) → mobileNav. Footer = the LAST match. Up to two asides → left/right sidebars. The header is
+  // hoisted first so a mobile menu nested inside it travels with topNav (then mobileNav finds nothing).
+  const topNav = extractRegion(pages, ctx, (body) => findFirst(body, isHeader) ?? findFirst(body, HEADER_CLASS));
+  const mobileNav = extractRegion(pages, ctx, (body) => findFirst(body, MOBILE_CLASS));
+  const footer = extractRegion(pages, ctx, (body) => findLast(body, isFooter) ?? findLast(body, FOOTER_CLASS));
+  // Left = the first aside; right = whatever aside REMAINS after the left is hoisted+removed (so a
+  // single-aside site yields only a left sidebar, and a two-aside site fills both — no index drift).
+  const sidebarLeft = extractRegion(pages, ctx, (body) => findFirst(body, isAside) ?? findFirst(body, ASIDE_CLASS));
+  const sidebarRight = extractRegion(pages, ctx, (body) => findLast(body, isAside) ?? findLast(body, ASIDE_CLASS));
+
+  const result: ChromeResult = {
+    extracted: Boolean(topNav || mobileNav || footer || sidebarLeft || sidebarRight || preloaderFound),
+  };
   if (topNav) result.topNav = topNav;
+  if (mobileNav) result.mobileNav = mobileNav;
   if (footer) result.footer = footer;
+  if (sidebarLeft) result.sidebarLeft = sidebarLeft;
+  if (sidebarRight) result.sidebarRight = sidebarRight;
+  if (preloaderFound) result.preloaderEffect = 'spinner';
   return result;
 }

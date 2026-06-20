@@ -70,6 +70,7 @@ function extractNavLinks(home: ParsedPage | undefined, baseUrl: string): string[
 function buildWebsite(chrome: ChromeResult, head?: string): WebsiteSettings | undefined {
   const input: Record<string, unknown> = {};
   if (chrome.topNav) input.topNav = chrome.topNav;
+  if (chrome.mobileNav) input.mobileNav = chrome.mobileNav;
   if (chrome.footer) input.footer = chrome.footer;
   if (chrome.sidebarLeft) input.sidebarLeft = chrome.sidebarLeft;
   if (chrome.sidebarRight) input.sidebarRight = chrome.sidebarRight;
@@ -157,6 +158,7 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
   if (chrome.extracted) {
     const parts = [
       chrome.topNav && 'header→topNav',
+      chrome.mobileNav && 'mobile→mobileNav',
       chrome.sidebarLeft && 'sidebar→left',
       chrome.sidebarRight && 'sidebar→right',
       chrome.footer && 'footer',

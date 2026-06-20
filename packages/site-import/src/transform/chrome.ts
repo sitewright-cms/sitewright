@@ -24,6 +24,7 @@ const byClass = (rx: RegExp): Matcher => (el) => cls(el, rx);
 const HEADER_CLASS = byClass(/(?:^|\s)(?:site-?header|page-?header|masthead|top-?bar|top-?nav|nav-?bar|nav-?wrapper|navbar|main-?nav|primary-?nav|menu-?bar)(?:$|[\s_-])/i);
 const FOOTER_CLASS = byClass(/(?:^|\s)(?:site-?footer|page-?footer|footer-?wrapper|colophon|bottom-?bar)(?:$|[\s_-])/i);
 const ASIDE_CLASS = byClass(/(?:^|\s)sidebar(?:$|[\s_-])/i);
+const MOBILE_CLASS = byClass(/(?:^|\s)(?:mobile-?nav|mobile-?menu|off-?canvas|side-?nav|nav-?drawer|drawer-?menu|slide-?menu|burger-?menu)(?:$|[\s_-])/i);
 const PRELOADER: Matcher = byClass(/(?:^|\s)(?:preloader|pre-?load|loading-?overlay|page-?loader|site-?loader|loader-?wrap|spinner-?overlay)(?:$|[\s_-])/i);
 const COOKIE: Matcher = byClass(/(?:^|\s)(?:cookie|consent|gdpr)(?:$|[\s_-])/i);
 
@@ -43,7 +44,11 @@ export interface ChromeCtx {
 /** Comparison signature: serialized HTML with volatile attributes (class/id/aria-current) and whitespace removed. */
 function signature(el: Element): string {
   return serialize(el)
-    .replace(/\s+(?:class|id|aria-current|aria-selected)="[^"]*"/gi, '')
+    // Drop attributes that legitimately vary per page for the SAME chrome — active-state (class/id/aria),
+    // lazy-load hints (srcset/sizes/loading/decoding/fetchpriority), framework data-*, and style/title/
+    // target/rel/tabindex — so "this header, with the current link active" reads as one shared region.
+    .replace(/\s+(?:class|id|style|title|target|rel|tabindex|srcset|sizes|loading|decoding|fetchpriority|aria-current|aria-selected)="[^"]*"/gi, '')
+    .replace(/\s+data-[\w-]+(?:="[^"]*")?/gi, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -73,7 +78,10 @@ function extractRegion(pages: ParsedPage[], ctx: ChromeCtx, pick: (body: Element
   };
   const html = transformFragment(rep.el, tctx, ctx.limits.maxSlotBytes);
   if (!html) return undefined;
-  for (const c of best) removeElement(c.el);
+  // The region is confirmed shared chrome → replace EVERY page's variant with the one hoisted slot
+  // (remove from all candidates, not just the matched group), so a page whose copy differs only by
+  // per-page noise — e.g. the active link or a lazy-load hint — doesn't end up rendering it twice.
+  for (const c of candidates) removeElement(c.el);
   return html;
 }
 
@@ -95,6 +103,7 @@ const findLast = (body: Element, m: Matcher): Element | undefined => findAllMatc
 
 export interface ChromeResult {
   topNav?: string;
+  mobileNav?: string;
   sidebarLeft?: string;
   sidebarRight?: string;
   footer?: string;
@@ -113,17 +122,22 @@ export function extractChrome(pages: ParsedPage[], ctx: ChromeCtx): ChromeResult
   const preloaderFound = extractRegion(pages, ctx, (body) => findFirst(body, PRELOADER)) !== undefined;
   extractRegion(pages, ctx, (body) => findFirst(body, COOKIE));
 
-  // Header is a single responsive element → topNav (its CSS media queries drive the mobile menu, so no
-  // separate mobileNav). Footer = the LAST match. Up to two asides → left/right sidebars.
+  // Header → topNav. A SEPARATE slide-out/off-canvas mobile menu (its own element, not nested in the
+  // header) → mobileNav. Footer = the LAST match. Up to two asides → left/right sidebars. The header is
+  // hoisted first so a mobile menu nested inside it travels with topNav (then mobileNav finds nothing).
   const topNav = extractRegion(pages, ctx, (body) => findFirst(body, isHeader) ?? findFirst(body, HEADER_CLASS));
+  const mobileNav = extractRegion(pages, ctx, (body) => findFirst(body, MOBILE_CLASS));
   const footer = extractRegion(pages, ctx, (body) => findLast(body, isFooter) ?? findLast(body, FOOTER_CLASS));
   // Left = the first aside; right = whatever aside REMAINS after the left is hoisted+removed (so a
   // single-aside site yields only a left sidebar, and a two-aside site fills both — no index drift).
   const sidebarLeft = extractRegion(pages, ctx, (body) => findFirst(body, isAside) ?? findFirst(body, ASIDE_CLASS));
   const sidebarRight = extractRegion(pages, ctx, (body) => findLast(body, isAside) ?? findLast(body, ASIDE_CLASS));
 
-  const result: ChromeResult = { extracted: Boolean(topNav || footer || sidebarLeft || sidebarRight || preloaderFound) };
+  const result: ChromeResult = {
+    extracted: Boolean(topNav || mobileNav || footer || sidebarLeft || sidebarRight || preloaderFound),
+  };
   if (topNav) result.topNav = topNav;
+  if (mobileNav) result.mobileNav = mobileNav;
   if (footer) result.footer = footer;
   if (sidebarLeft) result.sidebarLeft = sidebarLeft;
   if (sidebarRight) result.sidebarRight = sidebarRight;

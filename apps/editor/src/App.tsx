@@ -16,6 +16,7 @@ import { SettingsModalHost, type SettingsView } from './views/SettingsModalHost'
 import { UserMenu } from './views/UserMenu';
 import { ProjectSelectorModal } from './views/ProjectSelectorModal';
 import { NewProjectModal } from './views/NewProjectModal';
+import { ImportWebsiteModal } from './views/ImportWebsiteModal';
 import { AcceptInvite } from './views/AcceptInvite';
 import { LivePreview } from './views/LivePreview';
 import { SitePreview } from './views/SitePreview';
@@ -97,6 +98,12 @@ function MainApp({
   // The project picker is shown automatically on first load and reachable from the header.
   const [selectorOpen, setSelectorOpen] = useState(false);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
+  // After a new project is created, either open its editor ('open') or open the import wizard ('import').
+  const [newProjectIntent, setNewProjectIntent] = useState<'open' | 'import'>('open');
+  // The project the import wizard targets (existing project or a freshly-created one), if open.
+  const [importFor, setImportFor] = useState<Project | null>(null);
+  // Bumped after an import so an already-open project re-mounts and refetches its new content.
+  const [projectNonce, setProjectNonce] = useState(0);
   // The Publish & Deploy Options modal (header overflow); `publishRefresh` bumps PublishBar so its
   // preview-token link stays current after the options are saved.
   const [publishModalTab, setPublishModalTab] = useState<'publish' | 'deploy' | null>(null);
@@ -292,6 +299,7 @@ function MainApp({
           isClient={isClient}
           isInstanceAdmin={isInstanceAdmin}
           onPublishDeploy={() => setPublishModalTab('publish')}
+          onImportWebsite={inProject && !isClient ? () => setImportFor(inProject) : undefined}
           onSystemSettings={() => setSettingsView('system')}
           onClients={() => setSettingsView('clients')}
           onTeam={() => setSettingsView('team')}
@@ -331,7 +339,7 @@ function MainApp({
           </button>
         </main>
       )}
-      {stage.name === 'project' && <ProjectView key={stage.project.id} project={stage.project} tab={tab} />}
+      {stage.name === 'project' && <ProjectView key={`${stage.project.id}:${projectNonce}`} project={stage.project} tab={tab} />}
 
       {selectorOpen && (
         <ProjectSelectorModal
@@ -342,6 +350,12 @@ function MainApp({
           onOpen={openProject}
           onNew={() => {
             setSelectorOpen(false);
+            setNewProjectIntent('open');
+            setNewProjectOpen(true);
+          }}
+          onNewFromWebsite={() => {
+            setSelectorOpen(false);
+            setNewProjectIntent('import');
             setNewProjectOpen(true);
           }}
         />
@@ -351,10 +365,25 @@ function MainApp({
           onClose={() => setNewProjectOpen(false)}
           onCreated={(project) => {
             setNewProjectOpen(false);
-            // Re-resolve the list (so the selector is current) and open the new project.
+            // Re-resolve the list (so the selector is current) and either open the project or import into it.
             void refresh();
             setProjects((prev) => (prev.some((p) => p.id === project.id) ? prev : [...prev, project]));
-            openProject(project);
+            if (newProjectIntent === 'import') setImportFor(project);
+            else openProject(project);
+          }}
+        />
+      )}
+      {importFor && (
+        <ImportWebsiteModal
+          projectId={importFor.id}
+          projectName={importFor.name}
+          onClose={() => setImportFor(null)}
+          onImported={() => {
+            const target = importFor;
+            setImportFor(null);
+            void refresh();
+            setProjectNonce((n) => n + 1); // force the project view to refetch the imported content
+            openProject(target);
           }}
         />
       )}

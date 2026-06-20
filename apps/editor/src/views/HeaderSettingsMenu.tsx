@@ -19,6 +19,8 @@ interface HeaderSettingsMenuProps {
   /** A platform/system admin (gates System Settings). */
   isInstanceAdmin: boolean;
   onPublishDeploy: () => void;
+  /** Owner-only: import an external website into the current project (absent → item hidden). */
+  onImportWebsite?: () => void;
   onSystemSettings: () => void;
   onClients: () => void;
   onTeam: () => void;
@@ -36,6 +38,7 @@ export function HeaderSettingsMenu({
   isClient,
   isInstanceAdmin,
   onPublishDeploy,
+  onImportWebsite,
   onSystemSettings,
   onClients,
   onTeam,
@@ -74,6 +77,7 @@ export function HeaderSettingsMenu({
     ...(
       [
         { label: 'Publish & Deploy Options', onClick: onPublishDeploy, show: owner },
+        { label: 'Import a website', onClick: onImportWebsite ?? (() => {}), show: owner && !!onImportWebsite },
         { label: 'System Settings', onClick: onSystemSettings, show: isInstanceAdmin },
         { label: 'Clients', onClick: onClients, show: owner },
         // Team manages the instance-wide platform team via admin-only APIs (/admin/users) — admins only.

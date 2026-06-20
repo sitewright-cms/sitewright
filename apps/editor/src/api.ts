@@ -191,16 +191,18 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
  * response (a preflight JSON error like 409/403/503) is surfaced via `onError`. Resolves when the
  * stream ends.
  */
-async function streamSse(
+async function streamSse<P, D>(
   url: string,
   handlers: {
-    onProgress?: (e: DeployProgressEvent) => void;
-    onDone?: (deployed: StreamDoneResult) => void;
+    onProgress?: (e: P) => void;
+    /** Receives the RAW parsed `done` payload (callers unwrap their own envelope, e.g. `.deployed`/`.report`). */
+    onDone?: (raw: D) => void;
     onError?: (message: string) => void;
   },
-  signal?: AbortSignal,
+  opts?: { signal?: AbortSignal; init?: Pick<RequestInit, 'headers' | 'body'> },
 ): Promise<void> {
-  const res = await fetch(url, { method: 'POST', credentials: 'include', signal });
+  // Merge only headers/body — method/credentials/signal are fixed here so a caller's init can't drop them.
+  const res = await fetch(url, { method: 'POST', credentials: 'include', signal: opts?.signal, headers: opts?.init?.headers, body: opts?.init?.body });
   if (!res.ok || !res.body) {
     let message = res.statusText || 'request failed';
     try {
@@ -245,9 +247,12 @@ async function streamSse(
       } catch {
         continue;
       }
-      if (event === 'progress') handlers.onProgress?.(parsed as DeployProgressEvent);
-      else if (event === 'done') handlers.onDone?.((parsed as { deployed: StreamDoneResult }).deployed);
-      else if (event === 'error') handlers.onError?.((parsed as { message: string }).message);
+      if (event === 'progress') handlers.onProgress?.(parsed as P);
+      else if (event === 'done') handlers.onDone?.(parsed as D);
+      else if (event === 'error') {
+        const msg = (parsed as { message?: unknown }).message;
+        handlers.onError?.(typeof msg === 'string' ? msg : 'request failed');
+      }
     }
   }
 }
@@ -371,6 +376,28 @@ export interface StreamDoneResult {
   files?: number;
   branch?: string;
   commit?: string;
+}
+
+/** A streamed website-import progress event (crawl / transform / host-media / assemble phases). */
+export interface ImportProgressEvent {
+  phase: string;
+  detail?: string;
+  done?: number;
+  total?: number;
+  fetched?: number;
+  queued?: number;
+  url?: string;
+}
+
+/** The `done` report of a website import. */
+export interface ImportReport {
+  pagesImported: number;
+  pagesFound: number;
+  mediaSelfHosted: number;
+  scriptsDropped: number;
+  chromeExtracted: boolean;
+  truncated: boolean;
+  warnings: string[];
 }
 
 /** A system Widget descriptor from GET /authoring/widgets — the slim catalog the Widgets rail browses
@@ -775,7 +802,55 @@ export const api = {
     },
     signal?: AbortSignal,
   ): Promise<void> =>
-    streamSse(`${BASE}/projects/${projectId}/deploy-targets/${id}/deploy/stream`, handlers, signal),
+    streamSse<DeployProgressEvent, { deployed: StreamDoneResult }>(
+      `${BASE}/projects/${projectId}/deploy-targets/${id}/deploy/stream`,
+      {
+        onProgress: handlers.onProgress,
+        onDone: handlers.onDone ? (raw) => handlers.onDone!(raw.deployed) : undefined,
+        onError: handlers.onError,
+      },
+      { signal },
+    ),
+
+  /**
+   * Import an external website by CRAWLING a live URL, streaming progress over SSE. Owner-only.
+   * `onDone` receives the import report; preflight errors (403/400/409/429) arrive via `onError`.
+   */
+  importWebsiteStream: (
+    projectId: string,
+    body: { url: string; maxPages?: number; maxDepth?: number },
+    handlers: { onProgress?: (e: ImportProgressEvent) => void; onDone?: (report: ImportReport) => void; onError?: (message: string) => void },
+    signal?: AbortSignal,
+  ): Promise<void> =>
+    streamSse<ImportProgressEvent, { report: ImportReport }>(
+      `${BASE}/projects/${projectId}/import/website/stream`,
+      {
+        onProgress: handlers.onProgress,
+        onDone: handlers.onDone ? (raw) => handlers.onDone!(raw.report) : undefined,
+        onError: handlers.onError,
+      },
+      { signal, init: { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } },
+    ),
+
+  /** Import an external website by UPLOADING a ZIP/HTML bundle, streaming progress over SSE. Owner-only. */
+  importUploadStream: (
+    projectId: string,
+    file: File,
+    handlers: { onProgress?: (e: ImportProgressEvent) => void; onDone?: (report: ImportReport) => void; onError?: (message: string) => void },
+    signal?: AbortSignal,
+  ): Promise<void> => {
+    const form = new FormData();
+    form.append('file', file);
+    return streamSse<ImportProgressEvent, { report: ImportReport }>(
+      `${BASE}/projects/${projectId}/import/upload/stream`,
+      {
+        onProgress: handlers.onProgress,
+        onDone: handlers.onDone ? (raw) => handlers.onDone!(raw.report) : undefined,
+        onError: handlers.onError,
+      },
+      { signal, init: { body: form } },
+    );
+  },
 
   // --- instance admin settings (global mail / hCaptcha / enabled form modes) ---
   getInstanceSettings: () =>

@@ -15,7 +15,7 @@ import { normalizePageUrl, resolveUrl, routePath, sameOrigin } from './url-util.
 import { resolveLimits } from './limits.js';
 import { buildRoutes } from './transform/routes.js';
 import { collectImageRefs, hostAssets } from './transform/assets.js';
-import { collectCss } from './transform/css.js';
+import { collectCssRefs, packCss } from './transform/css.js';
 import { extractIdentity, extractPageSeo } from './transform/identity.js';
 import { extractChrome } from './transform/chrome.js';
 import { transformBody, type TransformCtx } from './transform/page.js';
@@ -95,15 +95,20 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
   const routeRes = buildRoutes(workSite, { navLinks });
   diagnostics.push(...routeRes.diagnostics);
 
-  // Collect + self-host images.
+  // Collect CSS (incl. its url() image refs, resolved absolute) BEFORE the transform removes <style>,
+  // so those images are self-hosted in the same pass as the DOM images.
+  const cssCollection = collectCssRefs(parsed.map((x) => ({ url: x.url, doc: x.doc })), workSite);
+
+  // Collect + self-host images (DOM refs + CSS url() refs).
   opts.onProgress?.({ phase: 'host-media', detail: 'collecting assets' });
   const refs = collectImageRefs(parsed.map((x) => ({ url: x.url, doc: x.doc })), workSite);
+  for (const [key, asset] of cssCollection.imageRefs) if (!refs.has(key)) refs.set(key, asset);
   const host = await hostAssets(refs, opts.media, limits, opts.onProgress);
   diagnostics.push(...host.diagnostics);
   const assetMap = host.assetMap;
 
-  // CSS + identity + per-page SEO must read the docs BEFORE the transform removes <style>/<script>.
-  const css = collectCss(parsed.map((x) => x.doc), workSite, limits);
+  // Rewrite CSS url()s to the self-hosted refs, then pack into the bounded raw slots.
+  const css = packCss(cssCollection.cssText, assetMap, limits);
   if (css.overflow) {
     diagnostics.push({ code: 'css-overflow', message: 'source CSS exceeded the inline slot budget; excess dropped (the AI rewrite re-derives styling)' });
   }

@@ -1,10 +1,13 @@
 // Allowlist of trusted third-party EMBED providers. An imported `<iframe>` is kept only if its host
 // matches one of these domains (exact host or any subdomain); every other iframe is dropped, so the
 // rebuilt site never carries an arbitrary foreign frame. Covers the common real-world embeds: video,
-// maps, social (incl. Facebook page plugins), audio/podcasts, forms/scheduling, code, commerce, docs
-// & data-viz. Add a base domain here to support a new provider (subdomains are matched automatically,
+// maps, social (incl. Facebook page plugins), audio/podcasts, forms/scheduling, commerce, docs &
+// data-viz. Add a base domain here to support a new provider (subdomains are matched automatically,
 // e.g. `player.vimeo.com` ⊂ `vimeo.com`, `www.facebook.com` ⊂ `facebook.com`, `docs.google.com` ⊂
 // `google.com`).
+// NOTE: developer code-playground hosts (codepen/codesandbox/jsfiddle/stackblitz/replit/glitch/gist)
+// are deliberately EXCLUDED — they run arbitrary visitor-authored JS in their own origin and aren't a
+// common business-site embed; the importer should not preserve an unsandboxed arbitrary-code frame.
 export const EMBED_HOSTS: readonly string[] = [
   // ── video ──
   'youtube.com', 'youtube-nocookie.com', 'youtu.be', 'vimeo.com', 'dailymotion.com', 'wistia.com',
@@ -21,9 +24,8 @@ export const EMBED_HOSTS: readonly string[] = [
   // ── forms / scheduling / surveys ──
   'calendly.com', 'typeform.com', 'airtable.com', 'notion.so', 'notion.site', 'jotform.com', 'cal.com',
   'acuityscheduling.com', 'surveymonkey.com', 'hsforms.com', 'hsforms.net', 'wufoo.com', 'formstack.com',
-  // ── code / docs / data-viz ──
-  'codepen.io', 'codesandbox.io', 'jsfiddle.net', 'stackblitz.com', 'replit.com', 'observablehq.com',
-  'glitch.me', 'github.com', 'gist.github.com', 'figma.com', 'canva.com', 'slideshare.net', 'scribd.com',
+  // ── docs / data-viz / design ──
+  'figma.com', 'canva.com', 'slideshare.net', 'scribd.com',
   'issuu.com', 'flourish.studio', 'datawrapper.de', 'dwcdn.net', 'tableau.com', 'powerbi.com', 'giphy.com',
   // ── commerce / events / reviews ──
   'gumroad.com', 'eventbrite.com', 'opentable.com', 'shopify.com', 'stripe.com', 'paypal.com',

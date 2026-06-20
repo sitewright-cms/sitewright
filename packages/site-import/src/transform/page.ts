@@ -157,8 +157,10 @@ function rewriteElementAttrs(el: Element, ctx: TransformCtx, diags: ImportDiagno
         if (abs && isAllowedEmbed(abs)) {
           el.attribs.src = abs;
           if (!el.attribs.loading) el.attribs.loading = 'lazy';
-          if (!el.attribs.referrerpolicy) el.attribs.referrerpolicy = 'no-referrer-when-downgrade';
-          if (!('allow' in el.attribs)) el.attribs.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen';
+          // Modern strict default: send only the origin (not the page path/query) to the embed host.
+          if (!el.attribs.referrerpolicy) el.attribs.referrerpolicy = 'strict-origin-when-cross-origin';
+          // No clipboard-write by default (silent-clipboard risk); a legit embed's own allow is kept.
+          if (!('allow' in el.attribs)) el.attribs.allow = 'accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen';
           if (!('allowfullscreen' in el.attribs)) el.attribs.allowfullscreen = '';
         } else {
           removeElement(el);

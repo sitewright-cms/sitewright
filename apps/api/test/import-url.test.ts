@@ -85,6 +85,37 @@ describe('POST /projects/:projectId/media/import-url', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('FOLLOWS a redirect to a public https URL, then imports (most CDNs 302)', async () => {
+    let n = 0;
+    const fetchMock = vi.fn(async () => {
+      n += 1;
+      if (n === 1) return new Response(null, { status: 302, headers: { location: 'https://cdn2.example.com/real.png' } });
+      return new Response(PNG_1X1, { headers: { 'content-type': 'image/png' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const { t, projectId } = await setup();
+    const res = await app.inject({ method: 'POST', url: `/projects/${projectId}/media/import-url`, cookies: { sw_session: t }, payload: { url: 'https://cdn.example.com/redir.png' } });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().item.kind).toBe('image');
+    expect(fetchMock).toHaveBeenCalledTimes(2); // original + the redirect target
+  });
+
+  it('BLOCKS a redirect that points at a private host (SSRF — re-checked every hop)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 302, headers: { location: 'https://127.0.0.1/x.png' } })));
+    const { t, projectId } = await setup();
+    const res = await app.inject({ method: 'POST', url: `/projects/${projectId}/media/import-url`, cookies: { sw_session: t }, payload: { url: 'https://cdn.example.com/evil-redir.png' } });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toMatch(/non-public/);
+  });
+
+  it('rejects a redirect LOOP / too many hops', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 302, headers: { location: 'https://cdn.example.com/loop.png' } })));
+    const { t, projectId } = await setup();
+    const res = await app.inject({ method: 'POST', url: `/projects/${projectId}/media/import-url`, cookies: { sw_session: t }, payload: { url: 'https://cdn.example.com/loop.png' } });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toMatch(/too many redirects/);
+  });
+
   it('rejects an SVG download (consistent with the upload route)', async () => {
     vi.stubGlobal('fetch', fetchReturning(Buffer.from('<svg/>'), 'image/svg+xml'));
     const { t, projectId } = await setup();

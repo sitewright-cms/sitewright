@@ -10,6 +10,7 @@ import {
   SW_DIRECTIVES,
   BINDING_NAMESPACES,
   LOOP_VARIABLES,
+  StockProviderNameSchema,
   type GuideTopic,
 } from '@sitewright/schema';
 import { SitewrightApiError, type Capability, type SitewrightClient, type PreviewResult } from './client.js';
@@ -344,7 +345,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
       description:
         'Search a stock-image provider for photos. Returns provider-hosted thumbnails to preview; use import_stock_image to bring one into the project.',
       inputSchema: {
-        provider: z.enum(['openverse', 'unsplash', 'pexels']),
+        provider: StockProviderNameSchema,
         query: z.string().min(1).max(200),
         page: z.number().int().min(1).max(100).optional(),
       },
@@ -401,7 +402,7 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
       description:
         'Import a stock photo (by provider + id from search_stock_images) into the project. The server downloads, optimizes, and self-hosts it as a media asset with attribution — never a hotlink.',
       inputSchema: {
-        provider: z.enum(['openverse', 'unsplash', 'pexels']),
+        provider: StockProviderNameSchema,
         id: z.string().min(1).max(256),
         alt: z.string().max(500).optional(),
       },

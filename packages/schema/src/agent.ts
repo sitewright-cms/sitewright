@@ -124,6 +124,8 @@ often NOT granted (it is opt-in, not implied by \`content:write\`). Check get_sc
 \`content:delete\` is absent, don't attempt removals: ask the user to delete the item in the editor,
 or to grant the agent \`content:delete\` (e.g. a new API key that includes it). Prefer editing or
 replacing over deleting when in doubt.
+UNDO: every save is versioned. If an edit went wrong, list_revisions(kind,id) shows the history and
+restore_revision(kind,id,revisionId) rolls it back (non-destructive — a deleted entity is recreated).
 `;
 
 /**
@@ -544,6 +546,8 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'delete_page', description: "Delete a page by id.", capability: 'content:delete' },
   { name: 'put_content', description: "Create or replace a content entity of the given kind.", capability: 'content:write' },
   { name: 'delete_content', description: "Delete a content entity by kind + id.", capability: 'content:delete' },
+  { name: 'list_revisions', description: "List a content entity's revision history (newest first: id, op, who, when).", capability: 'content:read' },
+  { name: 'restore_revision', description: "Restore a content entity to an earlier revision (non-destructive; recreates a deleted entity).", capability: 'content:write' },
   { name: 'import_stock_image', description: "Import a stock photo into the project (downloaded, optimized, self-hosted with attribution).", capability: 'content:write' },
   { name: 'import_image', description: "Import an image into the project from a public https URL (downloaded, optimized, self-hosted).", capability: 'content:write' },
   { name: 'publish_project', description: "Build the project's static site from current saved content.", capability: 'publish' },

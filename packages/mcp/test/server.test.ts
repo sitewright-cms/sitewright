@@ -15,6 +15,8 @@ function fakeClient(overrides: Partial<Record<keyof SitewrightClient, unknown>> 
     introspect: vi.fn(async () => ALL_CAPS),
     listContent: vi.fn(async () => [page]),
     getContent: vi.fn(async () => page),
+    listRevisions: vi.fn(async () => [{ id: 'rev1', op: 'put', actor: 'user' }]),
+    restoreRevision: vi.fn(async () => ({ id: 'home', title: 'Home' })),
     putContent: vi.fn(async (_k: string, _id: string, data: unknown) => data),
     deleteContent: vi.fn(async () => undefined),
     preview: vi.fn(async () => ({ html: '<html></html>', token: 'tok' })),
@@ -103,6 +105,22 @@ describe('createSitewrightMcpServer — capability gating (call-time, not tool-h
     expect(imp.isError).toBe(true);
     expect(text(imp)).toMatch(/content:write/);
     expect(callsOf(reader).importStock).not.toHaveBeenCalled();
+  });
+
+  it('list_revisions is read-capable; restore_revision needs content:write and forwards', async () => {
+    const reader = fakeClient();
+    const r = await connect(reader, readScope);
+    expect((await r.callTool({ name: 'list_revisions', arguments: { kind: 'page', id: 'home' } })).isError).toBeFalsy();
+    expect(callsOf(reader).listRevisions).toHaveBeenCalledWith('page', 'home');
+    const denied = await r.callTool({ name: 'restore_revision', arguments: { kind: 'page', id: 'home', revisionId: 'rev1' } });
+    expect(denied.isError).toBe(true);
+    expect(text(denied)).toMatch(/content:write/);
+    expect(callsOf(reader).restoreRevision).not.toHaveBeenCalled();
+
+    const writer = fakeClient();
+    const w = await connect(writer, writeScope);
+    expect((await w.callTool({ name: 'restore_revision', arguments: { kind: 'page', id: 'home', revisionId: 'rev1' } })).isError).toBeFalsy();
+    expect(callsOf(writer).restoreRevision).toHaveBeenCalledWith('page', 'home', 'rev1');
   });
 });
 

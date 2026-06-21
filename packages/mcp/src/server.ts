@@ -278,6 +278,26 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
   );
 
   server.registerTool(
+    'list_revisions',
+    {
+      description:
+        "List a content entity's revision history, newest first (id, op, who, when, note). Pair with restore_revision to roll back a bad edit.",
+      inputSchema: { kind: GENERIC_KIND, id: z.string() },
+    },
+    gate('content:read', ({ kind, id }) => client.listRevisions(kind, id)),
+  );
+
+  server.registerTool(
+    'restore_revision',
+    {
+      description:
+        'Restore a content entity to an earlier revision (its id from list_revisions). Non-destructive: the current version stays in history, and a deleted entity is recreated.',
+      inputSchema: { kind: GENERIC_KIND, id: z.string(), revisionId: z.string() },
+    },
+    gate('content:write', ({ kind, id, revisionId }) => client.restoreRevision(kind, id, revisionId)),
+  );
+
+  server.registerTool(
     'preview_page',
     {
       description:

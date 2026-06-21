@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import {
   InstanceSettingsStoredSchema,
@@ -125,6 +126,39 @@ export class InstanceSettingsRepository {
   }
 
   /**
+   * The persisted session-cookie signing key, generating + storing one on first call (when no
+   * `COOKIE_SECRET` env pins it). Stable across restarts so sessions survive a redeploy.
+   */
+  async getOrCreateCookieSecret(): Promise<string> {
+    const stored = await this.getStored();
+    if (stored.cookieSecret) return stored.cookieSecret;
+    const secret = randomBytes(32).toString('hex');
+    await this.writeCookieSecret(secret);
+    // Re-read so two processes racing a first-boot generate converge on whichever value won the upsert
+    // (single-node is the norm; pin COOKIE_SECRET for a true multi-replica deploy).
+    return (await this.getStored()).cookieSecret ?? secret;
+  }
+
+  /** Rotates the session-cookie signing key (admin action): persists a fresh one and returns it.
+   *  Existing signed cookies stop verifying → everyone re-logs-in (the intended effect). */
+  async rotateCookieSecret(): Promise<string> {
+    const secret = randomBytes(32).toString('hex');
+    await this.writeCookieSecret(secret);
+    return secret;
+  }
+
+  /** Merge `cookieSecret` into the stored doc, preserving every other field. */
+  private async writeCookieSecret(secret: string): Promise<void> {
+    const current = await this.getStored();
+    const validated = InstanceSettingsStoredSchema.parse({ ...current, cookieSecret: secret });
+    const now = new Date();
+    await this.db
+      .insert(instanceSettings)
+      .values({ id: INSTANCE_SETTINGS_ID, data: validated, updatedAt: now })
+      .onConflictDoUpdate({ target: instanceSettings.id, set: { data: validated, updatedAt: now } });
+  }
+
+  /**
    * Merges `input` onto the current document and persists it. Provided plaintext
    * secrets are encrypted; an omitted secret retains the stored one; a `null`
    * section clears it; an absent (undefined) section is left unchanged.
@@ -134,6 +168,9 @@ export class InstanceSettingsRepository {
     const next: InstanceSettingsStored = {
       formModes: { ...current.formModes, ...(input.formModes ?? {}) },
     };
+    // The cookie secret is INTERNAL (never in the Input schema). Preserve it across a settings save —
+    // `next` is rebuilt from scratch, so without this an admin's PUT would silently drop it.
+    if (current.cookieSecret) next.cookieSecret = current.cookieSecret;
 
     if (input.smtp === null) {
       // cleared — leave next.smtp undefined

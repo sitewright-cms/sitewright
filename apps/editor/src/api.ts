@@ -933,9 +933,13 @@ export const api = {
 
   // --- instance admin settings (global mail / hCaptcha / enabled form modes) ---
   getInstanceSettings: () =>
-    request<{ settings: InstanceSettingsPublic }>('GET', '/admin/settings'),
+    // `cookieSecretPinned` = the session-signing key is fixed via the COOKIE_SECRET env (rotation off).
+    request<{ settings: InstanceSettingsPublic; cookieSecretPinned?: boolean }>('GET', '/admin/settings'),
   putInstanceSettings: (body: InstanceSettingsInput) =>
     request<{ settings: InstanceSettingsPublic }>('PUT', '/admin/settings', body),
+  /** Rotate the session-cookie signing key — logs EVERYONE out (incl. the caller). 409 if env-pinned. */
+  rotateCookieSecret: () =>
+    request<{ ok: true }>('POST', '/admin/cookie-secret/rotate'),
 
   // --- web forms (definitions live as `form` content) ---
   listForms: (projectId: string) =>

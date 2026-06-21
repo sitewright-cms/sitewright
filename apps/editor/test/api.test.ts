@@ -820,6 +820,22 @@ describe('api client', () => {
     expect(JSON.parse(putInit.body)).toMatchObject({ smtp: { host: 'h', password: 'pw' } });
   });
 
+  it('reads cookieSecretPinned and rotates the session signing key', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(200, { settings: { formModes: { globalSmtp: false, userSmtp: false, contactPhp: false, thirdParty: false } }, cookieSecretPinned: true }),
+    );
+    const got = await api.getInstanceSettings();
+    expect(got.cookieSecretPinned).toBe(true);
+
+    fetchMock.mockResolvedValue(jsonResponse(200, { ok: true }));
+    const rot = await api.rotateCookieSecret();
+    expect(rot.ok).toBe(true);
+    const [url, init] = fetchMock.mock.calls[1]!;
+    expect(url).toBe('/admin/cookie-secret/rotate');
+    expect(init.method).toBe('POST');
+    expect(init.credentials).toBe('include');
+  });
+
   it('lists, puts and deletes forms on the content/form route', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { items: [] }));
     await api.listForms('p');

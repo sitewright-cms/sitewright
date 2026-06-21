@@ -4,6 +4,7 @@ import type { Database } from '../db/client.js';
 import {
   apiKeys,
   content,
+  contentRevisions,
   formSubmissions,
   invites,
   oauthAuthCodes,
@@ -85,7 +86,7 @@ export class ProjectRepository {
 
   /**
    * Deletes a project + all of its dependent rows in one transaction (no DB-level ON DELETE
-   * CASCADE). Drops content, form submissions (visitor PII), API keys + OAuth grants (revokes all
+   * CASCADE). Drops content + its revision history, form submissions (visitor PII), API keys + OAuth grants (revokes all
    * tokens), project memberships, and project invites. On-disk media/publish artifacts are not
    * removed here (follow-up).
    */
@@ -93,6 +94,7 @@ export class ProjectRepository {
     await this.get(id); // NotFound if absent
     await this.db.transaction(async (tx) => {
       await tx.delete(content).where(eq(content.projectId, id));
+      await tx.delete(contentRevisions).where(eq(contentRevisions.projectId, id));
       await tx.delete(formSubmissions).where(eq(formSubmissions.projectId, id));
       await tx.delete(apiKeys).where(eq(apiKeys.projectId, id));
       await tx.delete(oauthAuthCodes).where(eq(oauthAuthCodes.projectId, id));

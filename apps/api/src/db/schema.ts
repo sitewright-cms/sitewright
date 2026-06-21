@@ -442,6 +442,38 @@ export const content = sqliteTable(
 );
 
 /**
+ * Append-only version history for content. Each row is a full JSON snapshot of one entity's `data` at a
+ * point in time (for `op: 'delete'` it is the state AT deletion, so a restore can recreate the entity).
+ * Written best-effort alongside the live `content` write (a failure here never breaks a save). Rapid
+ * same-author edits to one entity coalesce into the latest row; history is capped per entity + pruned by
+ * age (see RevisionsRepository). Restore re-writes `content`, producing a new `op: 'restore'` row.
+ */
+export const contentRevisions = sqliteTable(
+  'content_revisions',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id),
+    // Mirrors content.kind (same text enum, no SQL CHECK). Recording is gated to the user-editable
+    // subset in code (REVISIONED_KINDS) — credentials + media binaries are never snapshotted.
+    kind: text('kind', {
+      enum: ['settings', 'page', 'template', 'snippet', 'dataset', 'entry', 'media', 'mediafolder', 'deploy_target', 'translation', 'form', 'project_smtp'],
+    }).notNull(),
+    entityId: text('entity_id').notNull(),
+    data: text('data', { mode: 'json' }).notNull(),
+    op: text('op', { enum: ['put', 'delete', 'restore'] }).notNull(),
+    /** Who authored this revision (the session user, or the API-key creator for an agent write). */
+    userId: text('user_id').notNull(),
+    actor: text('actor', { enum: ['user', 'agent'] }).notNull(),
+    /** Optional human label, e.g. "Restored from 2026-06-20 10:31". */
+    note: text('note'),
+    revisionAt: integer('revision_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  (t) => [index('content_rev_entity_idx').on(t.projectId, t.kind, t.entityId, t.revisionAt)],
+);
+
+/**
  * Per-call AI usage ledger (online generation). Powers agency-funded metering +
  * per-org/per-user monthly token quotas. `projectId` is nullable for org-level ops.
  */

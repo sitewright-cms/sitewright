@@ -166,6 +166,36 @@ describe('public form submission endpoint', () => {
     expect(res.headers['access-control-allow-methods']).toContain('POST');
   });
 
+  it('allows a CROSS-DOMAIN post: preflight + POST from a foreign Origin (externally-deployed site)', async () => {
+    // A site deployed to the owner's OWN host (or served from a `<slug>.<sitesDomain>` subdomain with an
+    // absolute publicBaseUrl endpoint) posts cross-origin. The JSON content-type makes it a NON-simple
+    // request → the browser preflights. Both the preflight and the POST must advertise CORS so the
+    // browser lets the foreign origin send the body + read the `{ok:true}` response.
+    const origin = 'https://acme.example.com'; // a different registrable domain than the API host
+    const pre = await app.inject({
+      method: 'OPTIONS',
+      url: `/f/${projectId}/contact`,
+      headers: { origin, 'access-control-request-method': 'POST', 'access-control-request-headers': 'content-type' },
+    });
+    expect(pre.statusCode).toBe(204);
+    expect(pre.headers['access-control-allow-origin']).toBe('*'); // wildcard → any deploy host is allowed
+    expect(pre.headers['access-control-allow-methods']).toContain('POST');
+    expect(String(pre.headers['access-control-allow-headers']).toLowerCase()).toContain('content-type');
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/f/${projectId}/contact`,
+      headers: { origin, 'content-type': 'application/json' },
+      payload: { email: 'lead@x.co', message: 'cross-domain hello', _elapsed: '5000' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ ok: true });
+    expect(res.headers['access-control-allow-origin']).toBe('*');
+    // No credentials are involved (a visitor has no platform session), so `*` is safe — and there is
+    // deliberately NO `Access-Control-Allow-Credentials: true` (which would be invalid with `*`).
+    expect(res.headers['access-control-allow-credentials']).toBeUndefined();
+  });
+
   it('silently drops (200, not stored) once the per-form storage cap is reached', async () => {
     // Seed the table to the cap with a chunked batch insert (fast), then a public
     // submit must be silently dropped (200, no store, no email).

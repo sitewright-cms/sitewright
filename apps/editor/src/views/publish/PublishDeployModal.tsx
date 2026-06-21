@@ -1,12 +1,12 @@
 import { type Project } from '../../api';
 import { Modal } from '../ui/Modal';
-import { DeployForm } from './DeployForm';
+import { DeployTargetWizard } from './DeployTargetWizard';
 
 /**
- * The deploy-targets modal (opened from the header). Local hosting + external servers are now both
- * DEPLOY TARGETS (the old "Local Publish" website options moved onto the `local` target), managed here
- * via {@link DeployForm}. `onSaved` (bumped on close) refreshes the header so a newly-added target
- * surfaces its Deploy button.
+ * The deploy-targets modal (opened from the header). Local hosting + external servers are all DEPLOY
+ * TARGETS, configured here via the {@link DeployTargetWizard} (four entry points: Local Hosting /
+ * FTP-FTPS / SSH-SFTP / Git, each creatable + editable in place). `onSaved` (bumped on close) refreshes
+ * the header so a newly-added target surfaces its Deploy button.
  */
 export function PublishDeployModal({
   project,
@@ -30,12 +30,12 @@ export function PublishDeployModal({
     >
       <div className="p-5">
         <p className="mb-3 rounded-lg bg-slate-50 p-3 text-xs text-slate-500">
-          Deploy your site to a server. <strong className="font-bold text-slate-700">Local Hosting</strong> serves it on
-          this platform at <code className="rounded bg-white px-1">/sites/{project.slug}/</code>;{' '}
-          <strong>FTP / FTPS / SFTP</strong> upload it to your own external server. Final page assembly happens at deploy
-          time.
+          Choose where to deploy your site. <strong className="font-bold text-slate-700">Local Hosting</strong> serves it
+          on this platform at <code className="rounded bg-white px-1">/sites/{project.slug}/</code>;{' '}
+          <strong>FTP / FTPS / SFTP</strong> upload it to your own server; <strong>Git</strong> pushes it to a branch.
+          Final page assembly happens at deploy time.
         </p>
-        <DeployForm project={project} />
+        <DeployTargetWizard project={project} />
       </div>
     </Modal>
   );

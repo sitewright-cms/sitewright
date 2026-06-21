@@ -603,9 +603,16 @@ describe('api client', () => {
     await api.deployToTarget('p', 't1');
     expect(fetchMock.mock.calls[2]![0]).toBe('/projects/p/deploy-targets/t1/deploy');
 
+    fetchMock.mockResolvedValue(jsonResponse(200, { target: { id: 't1' } }));
+    await api.updateDeployTarget('p', 't1', { name: 'Prod 2', minifyHtml: true });
+    const [putUrl, putInit] = fetchMock.mock.calls[3]!;
+    expect(putUrl).toBe('/projects/p/deploy-targets/t1');
+    expect(putInit.method).toBe('PUT');
+    expect(JSON.parse(putInit.body)).toMatchObject({ name: 'Prod 2', minifyHtml: true });
+
     fetchMock.mockResolvedValue({ ok: true, status: 204 } as Response);
     await api.deleteDeployTarget('p', 't1');
-    expect(fetchMock.mock.calls[3]![1].method).toBe('DELETE');
+    expect(fetchMock.mock.calls[4]![1].method).toBe('DELETE');
   });
 
   it('deployTargetStream POSTs to the SSE endpoint and dispatches progress + done frames', async () => {

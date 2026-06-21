@@ -370,14 +370,45 @@ export interface DeployConfig {
   remoteDir?: string;
   /** Optional SFTP host-key fingerprint (SHA-256) to pin the server. */
   hostFingerprint?: string;
+  /** Minify each page's HTML at build — a serve option available for EVERY target type. */
+  minifyHtml?: boolean;
 }
 
 /** Config for saving a `git` deploy target (commit the built site to a branch). HTTPS remote → a
  *  token; SSH remote → a private key (+ optional passphrase and pinned `known_hosts` host key). */
-export type GitTargetConfig = { protocol: 'git'; repoUrl: string; branch: string } & (
+export type GitTargetConfig = { protocol: 'git'; repoUrl: string; branch: string; minifyHtml?: boolean } & (
   | { token: string }
   | { privateKey: string; passphrase?: string; hostFingerprint?: string }
 );
+
+/** Config for saving a `local` Local Hosting target (serve the built site on this platform at
+ *  `/sites/<slug>/`). `previewToken` gates it behind `?token=` (an unlisted preview link). */
+export interface LocalTargetConfig {
+  protocol: 'local';
+  previewToken?: string;
+  minifyHtml?: boolean;
+}
+
+/** Fields for editing a saved target in place (PUT). The protocol is immutable (omit it). A credential
+ *  left undefined keeps the existing encrypted secret. `clearPreviewToken` removes a local target's
+ *  unlisted-link gate (a bare `previewToken` omission means "keep"). */
+export interface UpdateDeployTargetConfig {
+  name?: string;
+  host?: string;
+  port?: number;
+  user?: string;
+  password?: string;
+  privateKey?: string;
+  passphrase?: string;
+  remoteDir?: string;
+  hostFingerprint?: string;
+  previewToken?: string;
+  clearPreviewToken?: boolean;
+  minifyHtml?: boolean;
+  repoUrl?: string;
+  branch?: string;
+  token?: string;
+}
 
 /** A streamed deploy progress event. FTP/SFTP report per-file (`connecting`/`uploading` + index/total);
  *  git reports coarse phases (`preparing`/`committing`/`pushing`) with no file count. */
@@ -824,8 +855,11 @@ export const api = {
   // --- saved deploy targets ---
   listDeployTargets: (projectId: string) =>
     request<{ items: DeployTargetView[] }>('GET', `/projects/${projectId}/deploy-targets`),
-  createDeployTarget: (projectId: string, config: (DeployConfig | GitTargetConfig) & { name: string }) =>
+  createDeployTarget: (projectId: string, config: (DeployConfig | GitTargetConfig | LocalTargetConfig) & { name: string }) =>
     request<{ target: DeployTargetView }>('POST', `/projects/${projectId}/deploy-targets`, config),
+  /** Edit a saved target in place. Protocol is immutable; omitted credentials keep the stored secret. */
+  updateDeployTarget: (projectId: string, id: string, config: UpdateDeployTargetConfig) =>
+    request<{ target: DeployTargetView }>('PUT', `/projects/${projectId}/deploy-targets/${id}`, config),
   deleteDeployTarget: (projectId: string, id: string) =>
     request<void>('DELETE', `/projects/${projectId}/deploy-targets/${id}`),
   deployToTarget: (projectId: string, id: string) =>

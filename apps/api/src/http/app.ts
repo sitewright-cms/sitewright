@@ -150,6 +150,7 @@ import { SubmissionRepository } from '../repo/submissions.js';
 import { GlobalSmtpMailer, ProjectSmtpMailer, type SubmissionMailer, type ProjectMailer } from '../mail/mailer.js';
 import { HttpHcaptchaVerifier, type HcaptchaVerifier } from '../mail/hcaptcha.js';
 import { createSession, revokeOtherSessions, revokeSession, validateSession } from '../auth/sessions.js';
+import { LoginThrottle } from '../auth/login-throttle.js';
 import {
   changeEmail,
   changePassword,
@@ -647,12 +648,6 @@ export interface AppOptions {
   /** When set, per-project SMTP hosts are restricted to these exact hostnames (SaaS SSRF guard). */
   smtpAllowedHosts?: string[];
   /**
-   * Per-IP request cap (per minute) for the auth routes (`/auth/register`, `/auth/login`). Defaults
-   * to 10 — the safe production value. Raise it ONLY for the integration/E2E harness, which drives
-   * many registrations from a single IP and would otherwise exhaust the shared bucket.
-   */
-  authRateMax?: number;
-  /**
    * How often (ms) to sweep expired ephemeral auth rows (sessions, MFA tickets, WebAuthn
    * challenges). Default 1h. Set to 0 to disable the timer (e.g. in tests that don't want a
    * background timer); the sweep is also opportunistic at access time, so disabling only skips the
@@ -717,6 +712,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // Built before the content repo so the revision policy (coalesce window / retention) can read the
   // admin instance settings live (see further `instanceSettingsRepo` uses below — this is the one site).
   const instanceSettingsRepo = new InstanceSettingsRepository(db, opts.encryptionKey);
+  // Per-IP failed-login throttle (in-memory, per-process) for the /auth/login(/totp) routes.
+  const loginThrottle = new LoginThrottle();
   // Session-cookie signing secret. An explicit `cookieSecret` (from `COOKIE_SECRET` env) PINS it;
   // otherwise it's auto-generated + persisted on first boot and live-rotatable from System Settings.
   // Held in a mutable ref so a rotation takes effect immediately — existing cookies stop verifying,
@@ -1117,8 +1114,21 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // Serialize deploys per project (shared by ad-hoc and saved-target deploys).
   const activeDeploys = new Set<string>();
 
-  // Auth routes share a per-IP cap; defaults to 10/min (production), raisable for the E2E harness.
-  const authRl = rl(opts.authRateMax ?? 10);
+  // Brute-force protection for the LOGIN routes: a per-IP FAILED-attempt throttle (successful logins
+  // never consume the budget). The threshold is the admin `authMaxFailures` setting (default 10), read
+  // live per request. Flood protection for the whole auth surface is the GLOBAL 200/min limiter.
+  const authFailLimit = (): Promise<number> => instanceSettingsRepo.getAuthMaxFailures();
+  async function loginThrottleBlocked(reply: FastifyReply, ip: string): Promise<boolean> {
+    if (!loginThrottle.isBlocked(ip, await authFailLimit())) return false;
+    reply.code(429).send({ error: 'too many failed sign-in attempts — please wait a minute and try again' });
+    return true;
+  }
+  // A fixed per-IP, per-route ALL-REQUESTS cap for the OTHER credential-verifying / sensitive auth routes
+  // (account password/email re-verify, MFA, passkey, OIDC) — they don't get the failed-login throttle but
+  // still need tighter-than-global anti-abuse. NOT on /auth/register (→ global 200/min, so the E2E harness
+  // registers freely) nor /auth/login(/totp) (→ the throttle). Fixed, not env-driven (SW_AUTH_RATE_LIMIT_MAX
+  // is gone).
+  const authRl = rl(20);
 
   // Whether anyone may self-register, given a settings doc. The admin instance setting is authoritative
   // once set; until then the factory default (`opts.openRegistration`) applies — the production entry
@@ -1130,7 +1140,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     return resolveSelfRegistration(await instanceSettingsRepo.getStored());
   }
 
-  app.post('/auth/register', { config: authRl }, async (req, reply) => {
+  app.post('/auth/register', async (req, reply) => {
     const body = RegisterBody.parse(req.body);
     // When registration is closed, it is invitation-only: only an email holding a pending invite
     // may register (then accept it). The instance admin is seeded out-of-band (seed.ts), never
@@ -1163,9 +1173,16 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     });
   }
 
-  app.post('/auth/login', { config: authRl }, async (req, reply) => {
+  app.post('/auth/login', async (req, reply) => {
     const body = LoginBody.parse(req.body);
-    const userId = await login(db, body.email, body.password);
+    if (await loginThrottleBlocked(reply, req.ip)) return reply;
+    let userId: string;
+    try {
+      userId = await login(db, body.email, body.password);
+    } catch (err) {
+      loginThrottle.recordFailure(req.ip); // count only FAILED credential checks
+      throw err;
+    }
     // Password OK. If the user has a CONFIRMED TOTP factor, don't issue a session yet — hand back a
     // single-use, short-lived ticket and require the code at /auth/login/totp (step 2). No cookie is
     // set, so a stolen password alone never yields a session.
@@ -1178,14 +1195,21 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   });
 
   // Login step 2: redeem the ticket from step 1 with a TOTP code OR a one-time recovery code. The
-  // ticket is consumed only on SUCCESS, so a mistyped code can be retried within the ticket TTL (the
-  // route's auth rate limit bounds brute force). Generic failures — never reveal which factor failed.
-  app.post('/auth/login/totp', { config: authRl }, async (req, reply) => {
+  // ticket is consumed only on SUCCESS, so a mistyped code can be retried within the ticket TTL; the
+  // per-IP failed-attempt throttle bounds brute force. Generic failures — never reveal which factor failed.
+  app.post('/auth/login/totp', async (req, reply) => {
     const body = LoginTotpBody.parse(req.body);
+    if (await loginThrottleBlocked(reply, req.ip)) return reply;
     const userId = await mfaRepo.resolveLoginTicket(body.ticket);
-    if (!userId) throw new UnauthorizedError('invalid or expired login request — please sign in again');
+    if (!userId) {
+      loginThrottle.recordFailure(req.ip);
+      throw new UnauthorizedError('invalid or expired login request — please sign in again');
+    }
     const ok = (await mfaRepo.verifyTotpCode(userId, body.code)) || (await mfaRepo.consumeRecoveryCode(userId, body.code));
-    if (!ok) throw new UnauthorizedError('invalid code');
+    if (!ok) {
+      loginThrottle.recordFailure(req.ip);
+      throw new UnauthorizedError('invalid code');
+    }
     await mfaRepo.consumeLoginTicket(body.ticket);
     await issueSessionCookie(reply, userId);
     return reply.send({ userId });
@@ -1222,7 +1246,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // ---- Self-service account management (the header "Account" / user menu) ----
   // Interactive-session only: a Bearer (API-key) caller must never change a human's credentials.
   // Each route re-authenticates with the current password before applying the change.
-  app.put('/account/email', { config: authRl }, async (req, reply) => {
+  app.put('/account/email', { config: authRl },async (req, reply) => {
     if (bearerToken(req) !== undefined) {
       throw new ForbiddenError('this operation requires an interactive session');
     }
@@ -1236,7 +1260,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     return reply.send({ email });
   });
 
-  app.put('/account/password', { config: authRl }, async (req, reply) => {
+  app.put('/account/password', { config: authRl },async (req, reply) => {
     if (bearerToken(req) !== undefined) {
       throw new ForbiddenError('this operation requires an interactive session');
     }
@@ -1262,7 +1286,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // Re-enrolling while TOTP is ALREADY active re-authenticates with the password — a stolen session
   // alone must not be able to swap the second factor and rotate recovery codes. (The normal UI path
   // disables first, which is itself password-gated, so it never hits this branch.)
-  app.post('/account/mfa/totp/setup', { config: authRl }, async (req, reply) => {
+  app.post('/account/mfa/totp/setup', { config: authRl },async (req, reply) => {
     const userId = await requireAccountSession(req);
     if (await mfaRepo.isTotpEnabled(userId)) {
       const { currentPassword } = MfaPasswordBody.parse(req.body);
@@ -1278,7 +1302,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   });
 
   // Confirm enrolment with a code from the app → enables TOTP + returns recovery codes ONCE.
-  app.post('/account/mfa/totp/confirm', { config: authRl }, async (req, reply) => {
+  app.post('/account/mfa/totp/confirm', { config: authRl },async (req, reply) => {
     const userId = await requireAccountSession(req);
     const body = MfaCodeBody.parse(req.body);
     const recoveryCodes = await mfaRepo.confirmTotpSetup(userId, body.code);
@@ -1286,7 +1310,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   });
 
   // Disable TOTP entirely (wipes secret + recovery codes). Password-confirmed.
-  app.delete('/account/mfa/totp', { config: authRl }, async (req, reply) => {
+  app.delete('/account/mfa/totp', { config: authRl },async (req, reply) => {
     const userId = await requireAccountSession(req);
     const body = MfaPasswordBody.parse(req.body);
     if (!(await verifyUserPassword(db, userId, body.currentPassword))) {
@@ -1297,7 +1321,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   });
 
   // Regenerate recovery codes (invalidates the old set). Password-confirmed; returns the new set once.
-  app.post('/account/mfa/recovery-codes', { config: authRl }, async (req, reply) => {
+  app.post('/account/mfa/recovery-codes', { config: authRl },async (req, reply) => {
     const userId = await requireAccountSession(req);
     const body = MfaPasswordBody.parse(req.body);
     if (!(await verifyUserPassword(db, userId, body.currentPassword))) {
@@ -1312,7 +1336,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
   // Begin registering a new passkey: returns the creation options + an opaque challenge `handle` the
   // client echoes back at verify. The challenge is bound to this user.
-  app.post('/account/passkeys/register/options', { config: authRl }, async (req, reply) => {
+  app.post('/account/passkeys/register/options', { config: authRl },async (req, reply) => {
     const userId = await requireAccountSession(req);
     const email = await getUserEmail(db, userId);
     if (!email) throw new UnauthorizedError('authentication required');
@@ -1325,7 +1349,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   });
 
   // Finish registration: verify the attestation against the stored challenge and persist the credential.
-  app.post('/account/passkeys/register/verify', { config: authRl }, async (req, reply) => {
+  app.post('/account/passkeys/register/verify', { config: authRl },async (req, reply) => {
     const userId = await requireAccountSession(req);
     const body = PasskeyRegisterVerifyBody.parse(req.body);
     const ch = await passkeyRepo.consumeChallenge(body.handle, 'reg');
@@ -1357,14 +1381,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     return reply.send({ items: await passkeyRepo.listForUser(userId) });
   });
 
-  app.patch('/account/passkeys/:id', { config: authRl }, async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
+  app.patch('/account/passkeys/:id', { config: authRl },async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
     const userId = await requireAccountSession(req);
     const { name } = PasskeyRenameBody.parse(req.body);
     if (!(await passkeyRepo.rename(userId, req.params.id, name))) throw new NotFoundError('passkey not found');
     return reply.code(204).send();
   });
 
-  app.delete('/account/passkeys/:id', { config: authRl }, async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
+  app.delete('/account/passkeys/:id', { config: authRl },async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
     const userId = await requireAccountSession(req);
     if (!(await passkeyRepo.remove(userId, req.params.id))) throw new NotFoundError('passkey not found');
     return reply.code(204).send();
@@ -1374,7 +1398,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
   // Usernameless: returns authentication options for a DISCOVERABLE credential + a challenge handle.
   // No user is named, so there is no account-existence oracle.
-  app.post('/auth/passkey/options', { config: authRl }, async (req, reply) => {
+  app.post('/auth/passkey/options', { config: authRl },async (req, reply) => {
     const options = await authenticationOptions({ rp: rpFor(req), allow: [] });
     const handle = await passkeyRepo.createChallenge('auth', options.challenge, null);
     return reply.send({ options, handle });
@@ -1382,7 +1406,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
   // Verify the assertion. The credential identifies the user; on success we either issue a session or,
   // if that user also has TOTP, hand back an MFA ticket — TOTP gates on TOP of a passkey (by design).
-  app.post('/auth/passkey/verify', { config: authRl }, async (req, reply) => {
+  app.post('/auth/passkey/verify', { config: authRl },async (req, reply) => {
     const body = PasskeyAuthVerifyBody.parse(req.body);
     const ch = await passkeyRepo.consumeChallenge(body.handle, 'auth');
     if (!ch) throw new UnauthorizedError('passkey sign-in expired — please try again');
@@ -1445,7 +1469,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   });
 
   // Step 1: build the IdP authorization URL, persist the single-use state, and redirect there.
-  app.get('/auth/oidc/:id/start', { config: authRl }, async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
+  app.get('/auth/oidc/:id/start', { config: authRl },async (req: FastifyRequest<{ Params: { id: string } }>, reply) => {
     const providerId = req.params.id;
     try {
       const provider = await instanceSettingsRepo.getEnabledOidcProvider(providerId);
@@ -1461,7 +1485,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
   // Step 2: validate the callback, resolve/provision the user (existing-or-invited only), then issue
   // a session — or an MFA ticket when the user has TOTP (TOTP gates on top of OIDC).
-  app.get('/auth/oidc/:id/callback', { config: authRl }, async (req: FastifyRequest<{ Params: { id: string }; Querystring: { state?: string } }>, reply) => {
+  app.get('/auth/oidc/:id/callback', { config: authRl },async (req: FastifyRequest<{ Params: { id: string }; Querystring: { state?: string } }>, reply) => {
     const providerId = req.params.id;
     try {
       const provider = await instanceSettingsRepo.getEnabledOidcProvider(providerId);

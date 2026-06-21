@@ -29,7 +29,7 @@
 #   --image REF  redeploy an existing local image as-is (skips build + package + docker build)
 #
 # Env overrides: SW_E2E_PORT_MIN/MAX, SW_E2E_HOST (default dind.local),
-#   SW_E2E_ADMIN_EMAILS (admin@e2e.test), SW_E2E_AUTH_RATE_LIMIT_MAX (200),
+#   SW_E2E_ADMIN_EMAILS (admin@e2e.test),
 #   SW_E2E_HEALTH_TIMEOUT (90s), SW_E2E_TMP (/tmp).
 set -euo pipefail
 
@@ -43,7 +43,6 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # credential (so a forced-password-change on the default never blocks the harness).
 : "${SW_E2E_ADMIN_EMAILS:=admin@e2e.test}"
 : "${SW_E2E_ADMIN_PASSWORD:=Pw-secret-1}"
-: "${SW_E2E_AUTH_RATE_LIMIT_MAX:=200}"
 : "${SW_E2E_HEALTH_TIMEOUT:=90}"
 
 log() { printf '\033[36m[e2e-deploy]\033[0m %s\n' "$*" >&2; }
@@ -199,7 +198,6 @@ cmd_up() {
           -e SW_ENCRYPTION_KEY="$(secret)" \
           -e SW_ADMIN_EMAIL="$SW_E2E_ADMIN_EMAILS" \
           -e SW_ADMIN_PASSWORD="$SW_E2E_ADMIN_PASSWORD" \
-          -e SW_AUTH_RATE_LIMIT_MAX="$SW_E2E_AUTH_RATE_LIMIT_MAX" \
           "$_up_tmp_image" 2>&1 >/dev/null)"; then
       claimed=1; break
     fi

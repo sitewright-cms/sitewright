@@ -8,7 +8,7 @@ describe('account management (/account/email, /account/password)', () => {
   let harness: Harness;
   beforeEach(async () => {
     // Raise the auth rate cap so the multi-call flows below never trip the limiter.
-    harness = await makeHarness({ authRateMax: 100 });
+    harness = await makeHarness();
   });
   afterEach(async () => {
     await harness.close();

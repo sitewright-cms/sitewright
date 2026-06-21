@@ -175,6 +175,8 @@ export const InstanceSettingsStoredSchema = z.object({
    */
   revisionCoalesceMs: z.number().int().min(0).max(86_400_000).optional(),
   revisionRetentionDays: z.number().int().min(1).max(3650).optional(),
+  /** Max FAILED login/2FA attempts per source IP per minute before throttling (429). Unset → default 10. */
+  authMaxFailures: z.number().int().min(1).max(10_000).optional(),
   /**
    * The locale a NEW project starts in (its `defaultLocale` + sole initial `locales` entry).
    * Unset → English (`en`). Changing it does not touch existing projects.
@@ -203,6 +205,8 @@ export const DEFAULT_AGENT_SESSION_HOURS = 8;
 /** Built-in revision-history defaults when the admin hasn't set them. */
 export const DEFAULT_REVISION_COALESCE_MS = 0;
 export const DEFAULT_REVISION_RETENTION_DAYS = 90;
+/** Failed login/2FA attempts allowed per source IP per minute before further tries are throttled (429). */
+export const DEFAULT_AUTH_MAX_FAILURES = 10;
 
 /** Built-in default locale for new projects when the admin hasn't set one. */
 export const DEFAULT_NEW_PROJECT_LOCALE = 'en';
@@ -270,6 +274,8 @@ export const InstanceSettingsInputSchema = z.object({
   // default (0 / 90), and an absent value leaves the stored one unchanged.
   revisionCoalesceMs: z.number().int().min(0).max(86_400_000).nullable().optional(),
   revisionRetentionDays: z.number().int().min(1).max(3650).nullable().optional(),
+  // Max failed login/2FA attempts per IP per minute: a number sets it, `null` reverts to the default (10).
+  authMaxFailures: z.number().int().min(1).max(10_000).nullable().optional(),
   // Default locale for new projects: a tag sets it, `null` reverts to `en`, undefined leaves it.
   defaultLocale: LocaleSchema.nullable().optional(),
   // OIDC providers: an array REPLACES the whole set (secrets preserved per-id when omitted), `null`
@@ -346,6 +352,7 @@ export interface InstanceSettingsPublic {
   /** Revision coalesce window (ms) / retention (days), or absent when using the built-in defaults (0 / 90). */
   revisionCoalesceMs?: number;
   revisionRetentionDays?: number;
+  authMaxFailures?: number;
   /** The default locale for new projects, or absent when using `en`. */
   defaultLocale?: string;
   /** Configured OIDC providers (client secrets masked to `hasClientSecret`). */
@@ -389,6 +396,7 @@ export function maskInstanceSettings(stored: InstanceSettingsStored): InstanceSe
   if (stored.agentSessionHours !== undefined) result.agentSessionHours = stored.agentSessionHours;
   if (stored.revisionCoalesceMs !== undefined) result.revisionCoalesceMs = stored.revisionCoalesceMs;
   if (stored.revisionRetentionDays !== undefined) result.revisionRetentionDays = stored.revisionRetentionDays;
+  if (stored.authMaxFailures !== undefined) result.authMaxFailures = stored.authMaxFailures;
   if (stored.defaultLocale !== undefined) result.defaultLocale = stored.defaultLocale;
   if (stored.oidcProviders) result.oidcProviders = stored.oidcProviders.map(maskOidcProvider);
   if (stored.allowSelfRegistration !== undefined) result.allowSelfRegistration = stored.allowSelfRegistration;

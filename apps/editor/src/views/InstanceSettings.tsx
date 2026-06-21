@@ -4,6 +4,7 @@ import {
   DEFAULT_AGENT_SESSION_HOURS,
   DEFAULT_REVISION_COALESCE_MS,
   DEFAULT_REVISION_RETENTION_DAYS,
+  DEFAULT_AUTH_MAX_FAILURES,
   DEFAULT_NEW_PROJECT_LOCALE,
   DEFAULT_PLATFORM_NAME,
   DEFAULT_BRAND_PRIMARY,
@@ -96,6 +97,9 @@ export function InstanceSettings() {
   // Whether anyone may create an account from the login screen (invited users always can). The GET
   // resolves this to its effective value, so the toggle reflects reality even before it's been saved.
   const [allowSelfRegistration, setAllowSelfRegistration] = useState(false);
+  // Max failed login/2FA attempts per IP per minute before throttling (brute-force protection).
+  const [authMaxFailures, setAuthMaxFailures] = useState(DEFAULT_AUTH_MAX_FAILURES);
+  const initialAuthMaxFailuresRef = useRef(DEFAULT_AUTH_MAX_FAILURES);
 
   // Session-cookie signing key: whether it's env-pinned (rotation disabled), + the rotate action's state.
   const [cookieSecretPinned, setCookieSecretPinned] = useState(false);
@@ -133,6 +137,9 @@ export function InstanceSettings() {
   function hydrate(s: InstanceSettingsPublic) {
     setModes(s.formModes);
     setAllowSelfRegistration(s.allowSelfRegistration ?? false);
+    const maxFail = s.authMaxFailures ?? DEFAULT_AUTH_MAX_FAILURES;
+    setAuthMaxFailures(maxFail);
+    initialAuthMaxFailuresRef.current = maxFail;
     setSmtpEnabled(Boolean(s.smtp));
     setHost(s.smtp?.host ?? '');
     setPort(s.smtp?.port ?? 587);
@@ -264,6 +271,11 @@ export function InstanceSettings() {
     const clampedRetention = clampRetentionDays(retentionDays);
     if (clampedRetention !== initialRetentionDaysRef.current) {
       input.revisionRetentionDays = clampedRetention === DEFAULT_REVISION_RETENTION_DAYS ? null : clampedRetention;
+    }
+    // Failed-login throttle threshold: default sends null (revert), else the clamped number (1..10000).
+    const clampedMaxFail = Math.min(10_000, Math.max(1, Math.round(authMaxFailures) || DEFAULT_AUTH_MAX_FAILURES));
+    if (clampedMaxFail !== initialAuthMaxFailuresRef.current) {
+      input.authMaxFailures = clampedMaxFail === DEFAULT_AUTH_MAX_FAILURES ? null : clampedMaxFail;
     }
     // Default locale for new projects: only touch it when changed; the built-in default sends
     // null (revert), any other tag sends the value.
@@ -717,6 +729,26 @@ export function InstanceSettings() {
               admin grants access.
             </span>
           </span>
+        </label>
+        <label className="mt-3 block text-sm">
+          <span className="font-medium">Failed sign-in attempts before throttling</span>
+          <span className="mb-1 block text-xs text-slate-500">
+            Per IP per minute. After this many FAILED login or 2FA attempts, further tries from that IP are
+            blocked for a minute (a successful sign-in never counts). Default {DEFAULT_AUTH_MAX_FAILURES}.
+          </span>
+          <input
+            type="number"
+            min={1}
+            max={10000}
+            className={`${glassInput} w-28`}
+            aria-label="Failed sign-in attempts before throttling"
+            value={authMaxFailures}
+            onChange={(e) => {
+              const n = e.target.valueAsNumber;
+              if (!Number.isNaN(n)) setAuthMaxFailures(n);
+            }}
+            onBlur={() => setAuthMaxFailures((v) => Math.min(10000, Math.max(1, Math.round(v) || DEFAULT_AUTH_MAX_FAILURES)))}
+          />
         </label>
       </fieldset>
 

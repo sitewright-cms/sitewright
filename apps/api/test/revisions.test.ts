@@ -86,6 +86,24 @@ describe('RevisionsRepository', () => {
     expect(await revs.list(ctx, 'media', 'asset1')).toHaveLength(0);
   });
 
+  it('a live policy provider drives the coalesce window (admin setting, no restart)', async () => {
+    let windowMs = 60_000;
+    const { revs, content, ctx } = await setup({ policy: async () => ({ coalesceWindowMs: windowMs }) });
+    await content.put(ctx, 'page', 'home', page('A'));
+    await content.put(ctx, 'page', 'home', page('B'));
+    expect((await revs.list(ctx, 'page', 'home')).length).toBe(1); // coalesced (60s window)
+    windowMs = 0; // admin turns coalescing off
+    await content.put(ctx, 'page', 'home', page('C'));
+    expect((await revs.list(ctx, 'page', 'home')).length).toBe(2); // distinct now
+  });
+
+  it('defaults to NO coalescing (window 0) — every save is its own revision', async () => {
+    const { revs, content, ctx } = await setup(); // no opts → default coalesce 0
+    await content.put(ctx, 'page', 'home', page('A'));
+    await content.put(ctx, 'page', 'home', page('B'));
+    expect((await revs.list(ctx, 'page', 'home')).length).toBe(2);
+  });
+
   it('listProject feeds across entities with labels (title/name/id) + kind/before filters', async () => {
     const { revs, content, ctx } = await setup({ coalesceWindowMs: 0 });
     await content.put(ctx, 'page', 'home', page('A'));

@@ -52,9 +52,16 @@ export interface RevisionsOptions {
   maxPerEntity?: number;
   /** Delete revisions older than this many days (maintenance sweep). */
   retentionDays?: number;
+  /**
+   * Live policy provider (wired to the admin instance settings) — read on each record/sweep so an admin
+   * changing the coalesce window / retention takes effect without a restart. Wins over the static
+   * options above; an undefined field falls through to the static option, then the built-in default.
+   */
+  policy?: () => Promise<{ coalesceWindowMs?: number; retentionDays?: number }>;
 }
 
-const DEFAULT_COALESCE_WINDOW_MS = 3 * 60 * 1000;
+// Default coalesce window: 0 = every save is its own revision (admins opt into coalescing via settings).
+const DEFAULT_COALESCE_WINDOW_MS = 0;
 const DEFAULT_MAX_PER_ENTITY = 50;
 const DEFAULT_RETENTION_DAYS = 90;
 
@@ -80,11 +87,18 @@ export class RevisionsRepository {
     private readonly options: RevisionsOptions = {},
   ) {}
 
-  private get coalesceWindowMs(): number {
-    return this.options.coalesceWindowMs ?? DEFAULT_COALESCE_WINDOW_MS;
-  }
   private get maxPerEntity(): number {
     return this.options.maxPerEntity ?? DEFAULT_MAX_PER_ENTITY;
+  }
+
+  /** Effective coalesce window + retention: the live policy (admin settings) if wired, else the static
+   *  options, else the built-in defaults. Read fresh each call so an admin change applies immediately. */
+  private async policyValues(): Promise<{ coalesceWindowMs: number; retentionDays: number }> {
+    const p = this.options.policy ? await this.options.policy() : {};
+    return {
+      coalesceWindowMs: p.coalesceWindowMs ?? this.options.coalesceWindowMs ?? DEFAULT_COALESCE_WINDOW_MS,
+      retentionDays: p.retentionDays ?? this.options.retentionDays ?? DEFAULT_RETENTION_DAYS,
+    };
   }
 
   /**
@@ -109,7 +123,9 @@ export class RevisionsRepository {
     // The read+write isn't transactional: two truly-concurrent saves to one entity could each find no
     // coalescing candidate and both INSERT (two rows instead of one). That's acceptable — history is
     // best-effort and the per-entity cap trims any surplus; we don't pay a transaction on every save.
-    if (op === 'put') {
+    // Only look for a coalescing candidate when coalescing is ON (window > 0) — the default (0) skips it.
+    const { coalesceWindowMs } = await this.policyValues();
+    if (op === 'put' && coalesceWindowMs > 0) {
       const [latest] = await this.db
         .select()
         .from(contentRevisions)
@@ -121,7 +137,7 @@ export class RevisionsRepository {
         latest.op === 'put' &&
         latest.userId === ctx.userId &&
         latest.actor === actor &&
-        now.getTime() - new Date(latest.revisionAt).getTime() < this.coalesceWindowMs
+        now.getTime() - new Date(latest.revisionAt).getTime() < coalesceWindowMs
       ) {
         await this.db
           .update(contentRevisions)
@@ -194,8 +210,8 @@ export class RevisionsRepository {
 
   /** Housekeeping: drop revisions older than the retention window. */
   async sweepOld(now: Date = new Date()): Promise<void> {
-    const days = this.options.retentionDays ?? DEFAULT_RETENTION_DAYS;
-    const cutoff = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+    const { retentionDays } = await this.policyValues();
+    const cutoff = new Date(now.getTime() - retentionDays * 24 * 60 * 60 * 1000);
     await this.db.delete(contentRevisions).where(lt(contentRevisions.revisionAt, cutoff));
   }
 

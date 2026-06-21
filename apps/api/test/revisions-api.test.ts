@@ -16,7 +16,7 @@ let client: TestClient;
 let pid: string;
 
 beforeEach(async () => {
-  h = await makeHarness({ revisionCoalesceMs: 0 }); // every save is a distinct revision
+  h = await makeHarness(); // coalesce defaults to 0 → every save is a distinct revision
   client = await h.signup({ email: 'rev@e2e.test' });
   pid = await client.createProject('Site', 'site');
 });
@@ -143,7 +143,7 @@ describe('revision author email is scoped to CURRENT members', () => {
 
   beforeEach(async () => {
     db = await makeTestDb();
-    app = await createApp({ db, revisionCoalesceMs: 0, openRegistration: true });
+    app = await createApp({ db, openRegistration: true });
     await app.ready();
     ownerCookie = cookie(await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'owner@e2e.test', password: 'Pw-secret-1' } }));
     projectId = (await app.inject({ method: 'POST', url: '/projects', cookies: { sw_session: ownerCookie }, payload: { name: 'S', slug: 'site' } })).json().project.id;

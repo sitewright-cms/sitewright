@@ -656,11 +656,6 @@ export interface AppOptions {
    */
   maintenanceSweepMs?: number;
   /**
-   * Coalesce window (ms) for content revision history — same-author edits to one entity within this
-   * window collapse into one revision. Defaults to ~3 min; tests pass 0 to make every save distinct.
-   */
-  revisionCoalesceMs?: number;
-  /**
    * Whether public `POST /auth/register` is open. Default `true` (the embeddable factory + the
    * test suite). The production entry point (`server.ts`) sets this from `SW_OPEN_REGISTRATION`
    * and defaults it CLOSED — a closed instance is invitation-only (an email must hold a pending
@@ -716,7 +711,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // In-process change bus: content writes (from any channel) publish here; the
   // SSE endpoint below relays them to live-preview clients.
   const events = new ProjectEventBus();
-  const revisionsRepo = new RevisionsRepository(db, { coalesceWindowMs: opts.revisionCoalesceMs });
+  // Built before the content repo so the revision policy (coalesce window / retention) can read the
+  // admin instance settings live (see further `instanceSettingsRepo` uses below — this is the one site).
+  const instanceSettingsRepo = new InstanceSettingsRepository(db, opts.encryptionKey);
+  const revisionsRepo = new RevisionsRepository(db, { policy: () => instanceSettingsRepo.getRevisionPolicy() });
   const contentRepo = new ContentRepository(db, events, revisionsRepo);
   // Populate the editable global snippet/template library from the built-in constants on first boot
   // (idempotent — only fills an empty kind, so an admin's deletions aren't resurrected).
@@ -743,7 +741,6 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const apiKeysRepo = new ApiKeyRepository(db);
   const oauthRepo = new OAuthRepository(db);
   const oauthClients = new OAuthClientRepository(db);
-  const instanceSettingsRepo = new InstanceSettingsRepository(db, opts.encryptionKey);
   // TOTP second factor: the shared secret is encrypted at rest under the operator's key (same key as
   // instance secrets) — so TOTP enrolment/verification is unavailable (503) when no key is configured.
   const mfaRepo = new MfaRepository(db, opts.encryptionKey);

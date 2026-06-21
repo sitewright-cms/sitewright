@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { AnimatePresence, motion, MotionConfig } from 'motion/react';
+import { History } from 'lucide-react';
 import { ApiError, api, type Project, type SettingsBundle } from '../../api';
+import { RevisionHistoryModal } from '../RevisionHistoryModal';
 import { toForm, toBundle, type SettingsForm } from './model';
 import { IdentitySection } from './IdentitySection';
 import { WebsiteSection } from './WebsiteSection';
@@ -109,6 +111,7 @@ export function SettingsView({
   const showSwitcher = fixedSection === undefined;
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const tabRefs = useRef<Record<Section, HTMLButtonElement | null>>({ identity: null, website: null });
   const toast = useToast();
 
@@ -244,6 +247,16 @@ export function SettingsView({
               <motion.button
                 type="button"
                 whileTap={{ scale: 0.96 }}
+                onClick={() => setHistoryOpen(true)}
+                className={floatingDiscard}
+                aria-label="Revision history"
+              >
+                <History className="h-4 w-4" aria-hidden />
+                History
+              </motion.button>
+              <motion.button
+                type="button"
+                whileTap={{ scale: 0.96 }}
                 onClick={discard}
                 disabled={!dirty || saving}
                 className={floatingDiscard}
@@ -286,6 +299,19 @@ export function SettingsView({
           </AnimatePresence>
         </div>
       </div>
+      {historyOpen && (
+        <RevisionHistoryModal
+          projectId={project.id}
+          kind="settings"
+          entityId="settings"
+          label="Project settings"
+          onClose={() => setHistoryOpen(false)}
+          onRestored={async () => {
+            const res = await api.getSettings(project.id);
+            applyBundle(res.item);
+          }}
+        />
+      )}
     </MotionConfig>
   );
 }

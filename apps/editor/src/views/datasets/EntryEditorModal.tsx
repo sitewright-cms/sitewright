@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronRight, ChevronUp, ChevronDown, Trash2, Plus, Copy, GripVertical } from 'lucide-react';
+import { ChevronRight, ChevronUp, ChevronDown, Trash2, Plus, Copy, GripVertical, History } from 'lucide-react';
 import type { Dataset, Entry, Field } from '@sitewright/schema';
 import { compareEntryOrder } from '@sitewright/core';
 import {
@@ -13,6 +13,7 @@ import {
   readValue,
 } from '../../lib/entry-form';
 import { api } from '../../api';
+import { RevisionHistoryModal } from '../RevisionHistoryModal';
 import { ghostButton, glassInput, gradientSurface, toggleInput } from '../../theme';
 import { Modal } from '../ui/Modal';
 import { useDialogs } from '../ui/Dialogs';
@@ -487,6 +488,7 @@ interface EntryEditorModalProps {
 export function EntryEditorModal({ projectId, dataset, entry, keyEditable = false, existingIds, allDatasets, allEntries, onSaved, onClose }: EntryEditorModalProps) {
   const { confirm, dialog } = useDialogs();
   const toast = useToast();
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [values, setValues] = useState<Record<string, unknown>>(entry.values);
   const [status, setStatus] = useState<'draft' | 'published'>(entry.status);
   const [keyInput, setKeyInput] = useState('');
@@ -564,9 +566,21 @@ export function EntryEditorModal({ projectId, dataset, entry, keyEditable = fals
     return confirm({ title: 'Discard changes', message: 'Discard unsaved entry changes?', confirmLabel: 'Discard' });
   }
 
-  // A segmented Draft|Published switch — mirrors the page editor's Code/Content mode switch.
+  // Draft|Published switch + (for an already-saved entry) a Revision-history button.
   const statusSwitch = (
-    <div role="group" aria-label="Status" className="flex items-center rounded-xl border border-white/60 bg-white/50 p-0.5 text-xs font-medium shadow-sm backdrop-blur-xl">
+    <div className="flex items-center gap-2">
+      {existsServer && (
+        <button
+          type="button"
+          aria-label="Revision history"
+          title="Revision history"
+          onClick={() => setHistoryOpen(true)}
+          className={`${ghostButton} px-2 py-1`}
+        >
+          <History className="h-4 w-4" aria-hidden />
+        </button>
+      )}
+      <div role="group" aria-label="Status" className="flex items-center rounded-xl border border-white/60 bg-white/50 p-0.5 text-xs font-medium shadow-sm backdrop-blur-xl">
       {(['draft', 'published'] as const).map((s) => (
         <button
           key={s}
@@ -578,6 +592,7 @@ export function EntryEditorModal({ projectId, dataset, entry, keyEditable = fals
           {s}
         </button>
       ))}
+      </div>
     </div>
   );
 
@@ -585,6 +600,7 @@ export function EntryEditorModal({ projectId, dataset, entry, keyEditable = fals
   const title = `Edit ${entryLabel(dataset, { ...entry, id: base.id, values })}`;
 
   return (
+    <>
     <Modal title={title} size="lg" onClose={onClose} onBeforeClose={confirmClose} onSave={() => void submit()} saving={saving} saveDisabled={!canSave} headerExtra={statusSwitch}>
       <EntryFormContext.Provider value={ctx}>
         <div className="flex flex-col gap-3 p-5">
@@ -646,5 +662,23 @@ export function EntryEditorModal({ projectId, dataset, entry, keyEditable = fals
       </EntryFormContext.Provider>
       {dialog}
     </Modal>
+    {historyOpen && (
+      <RevisionHistoryModal
+        projectId={projectId}
+        kind="entry"
+        entityId={entry.id}
+        label={entryLabel(dataset, { ...entry, id: base.id, values })}
+        onClose={() => setHistoryOpen(false)}
+        onRestored={async () => {
+          // Rehydrate the form in place from the restored entry (keeps the editor open + non-dirty).
+          const res = await api.getEntry(projectId, entry.id);
+          const e = res.item;
+          setValues(e.values);
+          setStatus(e.status);
+          setBase({ id: e.id, status: e.status, values: e.values });
+        }}
+      />
+    )}
+    </>
   );
 }

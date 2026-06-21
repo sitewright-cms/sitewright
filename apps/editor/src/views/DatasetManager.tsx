@@ -1,5 +1,5 @@
 import { useContext, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { X, GripVertical, ChevronRight, Plus } from 'lucide-react';
+import { X, GripVertical, ChevronRight, Plus, History } from 'lucide-react';
 import type { Dataset, Entry, Field, FieldType } from '@sitewright/schema';
 import { compareEntryOrder } from '@sitewright/core';
 import { api, type Project } from '../api';
@@ -8,6 +8,7 @@ import { EntryEditorModal } from './datasets/EntryEditorModal';
 import { FieldConfigEditor } from './datasets/FieldConfigEditor';
 import { NestedFieldsEditor, isGroupFieldType, normalizeFieldForType, fieldsHaveEmptyGroup } from './datasets/NestedFieldsEditor';
 import { RenameDatasetModal } from './datasets/RenameDatasetModal';
+import { RevisionHistoryModal } from './RevisionHistoryModal';
 import { SidePanelHold } from './ui/SidePanel';
 import { useDialogs } from './ui/Dialogs';
 import { Tooltip } from './ui/Tooltip';
@@ -70,6 +71,7 @@ export function DatasetManager({ project }: { project: Project }) {
   const [newEntry, setNewEntry] = useState(false); // the open entry editor is for a brand-new entry (key settable)
   const [schemaOpen, setSchemaOpen] = useState(false); // the schema editor is collapsed by default
   const [renaming, setRenaming] = useState(false); // the rename-dataset modal is open
+  const [historyOpen, setHistoryOpen] = useState(false); // the revision-history modal is open
   const [dragId, setDragId] = useState<string | null>(null);
   const [drop, setDrop] = useState<{ id: string; pos: 'before' | 'after' } | null>(null);
   // Separate drag state for the schema-fields list (it shares the panel with the entries list).
@@ -604,6 +606,14 @@ export function DatasetManager({ project }: { project: Project }) {
                   <div className="mt-4 flex items-center justify-end gap-2 border-t border-slate-200/60 pt-3">
                     <button
                       type="button"
+                      aria-label="Revision history"
+                      className={`${ghostButton} mr-auto`}
+                      onClick={() => setHistoryOpen(true)}
+                    >
+                      <History className="h-4 w-4" aria-hidden /> History
+                    </button>
+                    <button
+                      type="button"
                       aria-label="Rename dataset"
                       className={ghostButton}
                       onClick={() => setRenaming(true)}
@@ -764,6 +774,16 @@ export function DatasetManager({ project }: { project: Project }) {
                     setSelId(slug);
                   }}
                   onClose={() => setRenaming(false)}
+                />
+              )}
+              {historyOpen && selected && (
+                <RevisionHistoryModal
+                  projectId={project.id}
+                  kind="dataset"
+                  entityId={selected.id}
+                  label={selected.name}
+                  onClose={() => setHistoryOpen(false)}
+                  onRestored={() => void load()}
                 />
               )}
             </div>

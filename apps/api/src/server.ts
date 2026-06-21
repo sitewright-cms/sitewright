@@ -176,6 +176,9 @@ const app = await createApp({
   // Subdomain routing for locally-hosted sites: `<slug>.<SW_SITES_DOMAIN>` serves that site at root
   // (needs wildcard DNS `*.<domain>` → this host). Unset → off; the `/sites/<slug>/` path form always works.
   sitesDomain: process.env.SW_SITES_DOMAIN,
+  // Coalesce window for content revision history (ms); unset → the ~3-min default. 0 makes every save a
+  // distinct revision (a fine-grained-history operator preference; also used in testing).
+  revisionCoalesceMs: process.env.SW_REVISION_COALESCE_MS ? Number(process.env.SW_REVISION_COALESCE_MS) : undefined,
   buildRunner,
   aiProvider,
   aiQuota,

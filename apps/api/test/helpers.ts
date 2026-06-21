@@ -3,8 +3,11 @@ import { rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll } from 'vitest';
+import { eq } from 'drizzle-orm';
 import type { Client } from '@libsql/client';
 import { createDb, runMigrations, type Database } from '../src/db/client.js';
+import { users } from '../src/db/schema.js';
+import { setPlatformRole } from '../src/repo/accounts.js';
 
 // Every file DB created below + its libsql client, so each is closed and unlinked when the suite
 // ends. Without this, makeTestDb() leaked a ~2 MB SQLite file (plus its -wal/-shm siblings) into
@@ -44,4 +47,15 @@ export async function makeTestDb(): Promise<Database> {
   createdDbs.push({ file, client });
   await runMigrations(db);
   return db;
+}
+
+/**
+ * Grants instance-admin to an existing user by email — the only admin mechanism (a persisted
+ * `platform_role='admin'`; there is no env email allowlist). Tests register the user via
+ * `/auth/register`, then call this to promote them.
+ */
+export async function promoteToAdmin(db: Database, email: string): Promise<void> {
+  const [u] = await db.select({ id: users.id }).from(users).where(eq(users.email, email.toLowerCase()));
+  if (!u) throw new Error(`promoteToAdmin: no user "${email}"`);
+  await setPlatformRole(db, u.id, 'admin');
 }

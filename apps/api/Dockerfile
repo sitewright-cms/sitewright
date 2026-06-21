@@ -55,20 +55,21 @@ COPY --chown=node:node editor ./editor
 COPY --chown=node:node package.json ./
 
 ENV NODE_ENV=production
-# The DB runs in WAL mode, so /data also holds `sitewright.db-wal` (+ `-shm`). BACKUP NOTE: a bare
-# `cp sitewright.db` (or a snapshot that misses the -wal) can be CORRUPT — back up with
-# `sqlite3 sitewright.db ".backup out.db"` or run `PRAGMA wal_checkpoint(TRUNCATE)` first. (-shm is
-# always rebuilt on open and need not be copied.)
-ENV DATABASE_URL=file:/data/sitewright.db
 ENV PORT=80
 # The editor SPA is copied into the deploy context as ./editor (see deploy step).
 ENV EDITOR_DIST=/app/editor
+# ONE persistent data dir holds the SQLite DB, media, published sites + preview builds — mount a single
+# volume here to persist an instance (`-v sw-data:/app/data`). No DATABASE_URL needed; the app defaults
+# the DB to <SW_DATA_DIR>/sitewright.db (SW_DATA_DIR defaults to ./data → /app/data, since WORKDIR=/app).
+# WAL note: the DB dir also holds `sitewright.db-wal`/`-shm`. BACKUP: a bare `cp sitewright.db` (missing
+# the -wal) can be CORRUPT — use `sqlite3 sitewright.db ".backup out.db"` or `PRAGMA wal_checkpoint(TRUNCATE)`.
+ENV SW_DATA_DIR=/app/data
 
-# Run as the non-root `node` user (present in the base image). Own /data AND the /app dir itself so the
-# app can create its relative media root (./data/media → /app/data/media) at boot — the COPY'd contents
-# are already node-owned, and a non-recursive chown of these two dirs avoids re-scanning node_modules.
-# (Chromium lives in /ms-playwright, root-owned + world-readable, which node only needs to read.)
-RUN mkdir -p /data && chown node:node /data /app
+# Run as the non-root `node` user (present in the base image). Own the data dir AND the /app dir itself
+# so the app can create the DB + media subdirs at boot — the COPY'd contents are already node-owned, and
+# a non-recursive chown of these two dirs avoids re-scanning node_modules. (Chromium lives in
+# /ms-playwright, root-owned + world-readable, which node only needs to read.)
+RUN mkdir -p /app/data && chown node:node /app /app/data
 USER node
 
 EXPOSE 80

@@ -1,10 +1,14 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { randomBytes } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import { makeTestDb } from './helpers.js';
+import { makeTestDb, promoteToAdmin } from './helpers.js';
+import type { Database } from '../src/db/client.js';
 import { createApp } from '../src/http/app.js';
 
 const ENC_KEY = randomBytes(32).toString('base64');
+// The test DB for the current `beforeEach` app — needed to promote a user to instance admin (the
+// persisted-role mechanism; there is no env email allowlist anymore).
+let db: Database;
 
 function token(res: { cookies: Array<{ name: string; value: string }> }): string {
   const t = res.cookies.find((c) => c.name === 'sw_session')?.value;
@@ -21,20 +25,27 @@ async function register(app: FastifyInstance, email: string) {
   return { t: token(reg) };
 }
 
+/** Register a user and promote them to instance admin (`platform_role='admin'`). */
+async function registerAdmin(app: FastifyInstance, email = 'admin@acme.test') {
+  const r = await register(app, email);
+  await promoteToAdmin(db, email);
+  return r;
+}
+
 describe('admin settings API', () => {
   describe('with an admin allowlist + encryption key', () => {
     let app: FastifyInstance;
     beforeEach(async () => {
+      db = await makeTestDb();
       app = await createApp({
-        db: await makeTestDb(),
-        adminEmails: ['admin@acme.test'],
+        db,
         encryptionKey: Buffer.from(ENC_KEY, 'base64'),
       });
       await app.ready();
     });
 
     it('marks the admin in /me and a normal user as not-admin', async () => {
-      const admin = await register(app, 'admin@acme.test');
+      const admin = await registerAdmin(app);
       const user = await register(app, 'user@acme.test');
       const meAdmin = await app.inject({ method: 'GET', url: '/me', cookies: { sw_session: admin.t } });
       expect((meAdmin.json() as { isInstanceAdmin: boolean }).isInstanceAdmin).toBe(true);
@@ -61,7 +72,7 @@ describe('admin settings API', () => {
     });
 
     it('lets the admin read defaults, write settings, and never leaks the password', async () => {
-      const admin = await register(app, 'admin@acme.test');
+      const admin = await registerAdmin(app);
       const cookies = { sw_session: admin.t };
 
       const initial = await app.inject({ method: 'GET', url: '/admin/settings', cookies });
@@ -104,7 +115,7 @@ describe('admin settings API', () => {
     });
 
     it('rejects an invalid settings body (400)', async () => {
-      const admin = await register(app, 'admin@acme.test');
+      const admin = await registerAdmin(app);
       const put = await app.inject({
         method: 'PUT',
         url: '/admin/settings',
@@ -115,7 +126,7 @@ describe('admin settings API', () => {
     });
 
     it('applies the admin "default locale for new projects" to a newly created project', async () => {
-      const admin = await register(app, 'admin@acme.test');
+      const admin = await registerAdmin(app);
       const cookies = { sw_session: admin.t };
       const put = await app.inject({ method: 'PUT', url: '/admin/settings', cookies, payload: { defaultLocale: 'de' } });
       expect(put.statusCode).toBe(200);
@@ -155,12 +166,13 @@ describe('admin settings API', () => {
   describe('without an encryption key', () => {
     let app: FastifyInstance;
     beforeEach(async () => {
-      app = await createApp({ db: await makeTestDb(), adminEmails: ['admin@acme.test'] });
+      db = await makeTestDb();
+      app = await createApp({ db });
       await app.ready();
     });
 
     it('allows non-secret settings but returns 503 when a secret is supplied', async () => {
-      const admin = await register(app, 'admin@acme.test');
+      const admin = await registerAdmin(app);
       const cookies = { sw_session: admin.t };
       const ok = await app.inject({
         method: 'PUT',
@@ -183,9 +195,9 @@ describe('admin settings API', () => {
     const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
     let app: FastifyInstance;
     beforeEach(async () => {
+      db = await makeTestDb();
       app = await createApp({
-        db: await makeTestDb(),
-        adminEmails: ['admin@acme.test'],
+        db,
         encryptionKey: Buffer.from(ENC_KEY, 'base64'),
       });
       await app.ready();
@@ -201,7 +213,7 @@ describe('admin settings API', () => {
     });
 
     it('reflects an admin branding update in /auth/config and serves the logo bytes', async () => {
-      const admin = await register(app, 'admin@acme.test');
+      const admin = await registerAdmin(app);
       const put = await app.inject({
         method: 'PUT',
         url: '/admin/settings',
@@ -231,7 +243,8 @@ describe('admin settings API', () => {
   describe('with no admin allowlist configured', () => {
     let app: FastifyInstance;
     beforeEach(async () => {
-      app = await createApp({ db: await makeTestDb() });
+      db = await makeTestDb();
+      app = await createApp({ db });
       await app.ready();
     });
 

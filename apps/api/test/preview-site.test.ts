@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, rm, readFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
@@ -192,6 +192,70 @@ describe('preview-site API (signed path)', () => {
     expect(css.headers['content-type']).toContain('text/css');
     expect(css.headers['access-control-allow-origin']).toBe('*');
     expect(css.headers['cross-origin-resource-policy']).toBe('cross-origin');
+  });
+
+  it('runs an imported .js for the sandboxed (cross-site) frame, but keeps it download-only same-origin', async () => {
+    const { t, projectId, slug } = await setup('js@acme.test');
+    const api = `/projects/${projectId}`;
+    const cookies = { sw_session: t };
+    await putPage(api, cookies, { id: 'home', path: '', title: 'Home', source: '<h1>H</h1>' });
+    const pbase = await signedBase(projectId, t);
+    await app.inject({ method: 'GET', url: pbase }); // build the site so its dir exists on disk
+    // Drop a bundled (imported) script into the built tree — mirrors `_assets/<id>/file/<name>.js`.
+    const jsDir = join(previewRoot, slug, '_assets', 'imp', 'file');
+    await mkdir(jsDir, { recursive: true });
+    await writeFile(join(jsDir, 'app.js'), 'window.__SW_IMPORTED__=1;');
+    const url = `${pbase}_assets/imp/file/app.js`;
+
+    // The opaque-origin sandbox loads it as a cross-site script subresource → runnable text/javascript.
+    const exec = await app.inject({
+      method: 'GET',
+      url,
+      headers: { 'sec-fetch-dest': 'script', 'sec-fetch-site': 'cross-site' },
+    });
+    expect(exec.statusCode).toBe(200);
+    expect(exec.headers['content-type']).toContain('text/javascript');
+    expect(exec.headers['content-disposition']).toBeUndefined();
+    expect(exec.headers['access-control-allow-origin']).toBe('*');
+
+    // A same-origin loader — a `/sites/<slug>/` page on this host embedding the signed URL — must NOT
+    // get an executable script (CSP there allows `script-src 'self'`): it stays download-only + inert.
+    const sameOrigin = await app.inject({
+      method: 'GET',
+      url,
+      headers: { 'sec-fetch-dest': 'script', 'sec-fetch-site': 'same-origin' },
+    });
+    expect(sameOrigin.statusCode).toBe(200);
+    expect(sameOrigin.headers['content-type']).toContain('application/octet-stream');
+    expect(sameOrigin.headers['content-disposition']).toContain('attachment');
+
+    // A same-SITE loader — a locally-hosted site at `<slug>.<sitesDomain>` (same registrable domain,
+    // different origin) — is also blocked. The gate is a whitelist (=== 'cross-site'), so this pins
+    // that `same-site` keeps the download-only default and a future refactor can't regress it.
+    const sameSite = await app.inject({
+      method: 'GET',
+      url,
+      headers: { 'sec-fetch-dest': 'script', 'sec-fetch-site': 'same-site' },
+    });
+    expect(sameSite.statusCode).toBe(200);
+    expect(sameSite.headers['content-type']).toContain('application/octet-stream');
+    expect(sameSite.headers['content-disposition']).toContain('attachment');
+
+    // No Fetch-Metadata headers (old/non-browser client) → download-only (default-deny).
+    const bare = await app.inject({ method: 'GET', url });
+    expect(bare.statusCode).toBe(200);
+    expect(bare.headers['content-type']).toContain('application/octet-stream');
+    expect(bare.headers['content-disposition']).toContain('attachment');
+
+    // A non-script destination, even cross-site, stays download-only (only <script> loads execute).
+    const notScript = await app.inject({
+      method: 'GET',
+      url,
+      headers: { 'sec-fetch-dest': 'empty', 'sec-fetch-site': 'cross-site' },
+    });
+    expect(notScript.statusCode).toBe(200);
+    expect(notScript.headers['content-type']).toContain('application/octet-stream');
+    expect(notScript.headers['content-disposition']).toContain('attachment');
   });
 
   it('preview-locate resolves a page id to its route; null for non-pages', async () => {

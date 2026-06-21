@@ -3493,9 +3493,21 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
               .header('x-content-type-options', 'nosniff')
               .header('access-control-allow-origin', '*')
               .header('cross-origin-resource-policy', 'cross-origin');
+          // Run a bundled (imported) `.js` ONLY for a genuinely isolated script load — a subresource
+          // fetched BY the opaque-origin sandboxed preview frame, which reports `Sec-Fetch-Site:
+          // cross-site` (an opaque origin is cross-site to everything) + `Sec-Fetch-Dest: script`.
+          // A same-origin loader — e.g. a `/sites/<slug>/` page on THIS host embedding this signed
+          // URL via its raw `website.scripts` slot (CSP there allows `script-src 'self'`) — reports
+          // `same-origin`/`same-site`, so it falls through to download-only and foreign JS can never
+          // execute on the cookie-bearing app origin. Absent headers (old/non-browser client) stay
+          // download-only too. `Sec-Fetch-*` are browser-set forbidden headers, so a page can't forge
+          // them; a non-browser client that could has no victim session to abuse.
+          const fetchSite = String(req.headers['sec-fetch-site'] ?? '');
+          const fetchDest = String(req.headers['sec-fetch-dest'] ?? '');
+          const executableScripts = fetchDest === 'script' && fetchSite === 'cross-site';
           let binary = null;
           try {
-            binary = await preview.readBinary(project.slug, path);
+            binary = await preview.readBinary(project.slug, path, { executableScripts });
           } catch {
             /* invalid slug → fall through to the 404 below */
           }

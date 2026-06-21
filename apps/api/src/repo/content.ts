@@ -31,6 +31,7 @@ import type { Database } from '../db/client.js';
 import { content, type ContentKind } from '../db/schema.js';
 import { ConflictError, ForbiddenError, NotFoundError, type ProjectContext } from './context.js';
 import type { ProjectEventBus } from '../events/bus.js';
+import type { RevisionsRepository, RevisionOp } from './revisions.js';
 
 /**
  * The project's settings singleton (Corporate Identity + website settings + locale).
@@ -133,7 +134,29 @@ export class ContentRepository {
   constructor(
     private readonly db: Database,
     private readonly events?: ProjectEventBus,
+    private readonly revisions?: RevisionsRepository,
   ) {}
+
+  /**
+   * Snapshot a content write into history — BEST-EFFORT: a failure here is logged-away (swallowed) and
+   * never breaks the user's save, mirroring the fire-and-forget change-event emit. Non-revisioned kinds
+   * are filtered inside the repo. No-op when no RevisionsRepository is wired (unit tests).
+   */
+  private async recordRevision(
+    ctx: ProjectContext,
+    kind: ContentKind,
+    entityId: string,
+    data: unknown,
+    op: RevisionOp,
+    note?: string,
+  ): Promise<void> {
+    if (!this.revisions) return;
+    try {
+      await this.revisions.record(ctx, kind, entityId, data, op, note);
+    } catch {
+      /* best-effort: never fail a save because history couldn't be written */
+    }
+  }
 
   async list(ctx: ProjectContext, kind: ContentKind): Promise<unknown[]> {
     const rows = await this.db
@@ -177,13 +200,21 @@ export class ContentRepository {
    * a UI default (toggle), not a write restriction. Project administration (delete project, manage
    * team) is gated separately at the route layer.
    */
-  async put(ctx: ProjectContext, kind: ContentKind, entityId: string, raw: unknown): Promise<unknown> {
+  async put(
+    ctx: ProjectContext,
+    kind: ContentKind,
+    entityId: string,
+    raw: unknown,
+    revisionMeta?: { op?: RevisionOp; note?: string },
+  ): Promise<unknown> {
     const parsed = schemaFor(kind).parse(raw);
     // Rich (data-sw-html) content now lives in the single page.data store and is sanitized at RENDER
     // (the html sink always runs sanitizeRichHtml). page.data is generic JSON whose HTML leaves aren't
     // known at this boundary, so there is no at-rest HTML pass here — the render sink is authoritative.
     const key = this.entityKey(kind, entityId, parsed);
     await this.writeRow(this.db, ctx, kind, key, parsed);
+    // `revisionMeta` lets a restore tag its new revision as `restore` (+ a note); a normal save is `put`.
+    await this.recordRevision(ctx, kind, key, parsed, revisionMeta?.op ?? 'put', revisionMeta?.note);
     this.events?.emit(ctx.projectId, { kind, entityId: key, op: 'put', actor: ctx.actor });
     return parsed;
   }
@@ -194,6 +225,11 @@ export class ContentRepository {
     }
     const row = await this.row(this.db, ctx, kind, entityId);
     if (!row) throw new NotFoundError(`${kind} not found`);
+    // Tombstone BEFORE the delete, and NOT best-effort (unlike `put` history): a lost put-revision is
+    // harmless because the entity still exists, but a lost delete-tombstone would make the entity
+    // unrecoverable. So if history can't be written we abort the delete rather than destroy data.
+    // (No-op for non-revisioned kinds — record() filters them.)
+    await this.revisions?.record(ctx, kind, entityId, row.data, 'delete');
     await this.db
       .delete(content)
       .where(and(eq(content.id, row.id), eq(content.projectId, ctx.projectId)));
@@ -224,6 +260,11 @@ export class ContentRepository {
    * Imports an on-disk-format bundle (the import side of D11): bounds the input,
    * guards tree depth, validates every entity, runs cross-entity integrity checks
    * via `validateProject`, then writes **atomically** in one transaction.
+   *
+   * NOTE: batch writes here go straight through `writeRow` (for the transaction) and therefore do NOT
+   * record revisions — a bulk import is itself a checkpoint and the pre-import state is still in each
+   * entity's history. Per-entity import/locale revisioning is a deferred enhancement (see
+   * `applyLocaleChange` too).
    */
   async importBundle(
     ctx: ProjectContext,
@@ -309,6 +350,9 @@ export class ContentRepository {
    * half-built locale subtree behind. Validates every entity up front (so a bad payload
    * fails before any write); change events fire only AFTER the commit succeeds, so
    * live-preview clients reload against committed state.
+   *
+   * NOTE: like `importBundle`, the transactional `writeRow`s here do NOT record revisions — locale
+   * scaffolding/teardown is structural; per-entity revisioning of batch ops is a deferred enhancement.
    */
   async applyLocaleChange(
     ctx: ProjectContext,

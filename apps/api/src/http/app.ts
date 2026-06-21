@@ -198,6 +198,7 @@ import { OAuthRepository } from '../repo/oauth.js';
 import { OAuthClientRepository } from '../repo/oauth-clients.js';
 import { registerOAuthRoutes } from './oauth-routes.js';
 import { registerMcpRoutes } from './mcp-routes.js';
+import { registerRevisionRoutes } from './revisions-routes.js';
 import { ProjectEventBus } from '../events/bus.js';
 import {
   ContentRepository,
@@ -205,6 +206,7 @@ import {
   SETTINGS_ENTITY_ID,
   type Settings,
 } from '../repo/content.js';
+import { RevisionsRepository } from '../repo/revisions.js';
 import {
   ConflictError,
   ForbiddenError,
@@ -653,6 +655,11 @@ export interface AppOptions {
    */
   maintenanceSweepMs?: number;
   /**
+   * Coalesce window (ms) for content revision history — same-author edits to one entity within this
+   * window collapse into one revision. Defaults to ~3 min; tests pass 0 to make every save distinct.
+   */
+  revisionCoalesceMs?: number;
+  /**
    * Whether public `POST /auth/register` is open. Default `true` (the embeddable factory + the
    * test suite). The production entry point (`server.ts`) sets this from `SW_OPEN_REGISTRATION`
    * and defaults it CLOSED — a closed instance is invitation-only (an email must hold a pending
@@ -701,7 +708,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // In-process change bus: content writes (from any channel) publish here; the
   // SSE endpoint below relays them to live-preview clients.
   const events = new ProjectEventBus();
-  const contentRepo = new ContentRepository(db, events);
+  const revisionsRepo = new RevisionsRepository(db, { coalesceWindowMs: opts.revisionCoalesceMs });
+  const contentRepo = new ContentRepository(db, events, revisionsRepo);
   // Populate the editable global snippet/template library from the built-in constants on first boot
   // (idempotent — only fills an empty kind, so an admin's deletions aren't resurrected).
   await seedGlobalLibrary(db, contentRepo);
@@ -3542,6 +3550,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // (no encryption key needed). See docs/i18n-content-model.md.
   registerLocaleRoutes(app, { resolveProject, contentRepo, rl });
   registerWebsiteDataRoutes(app, { resolveProject, contentRepo, rl });
+  registerRevisionRoutes(app, {
+    resolveProject,
+    contentRepo,
+    revisionsRepo,
+    isWriter: (ctx) => WRITE_ROLES.has(ctx.role),
+    db,
+    rl,
+  });
 
   // Saved deploy targets (encrypted credentials) — independent of publish serving.
   if (opts.encryptionKey) {
@@ -4051,6 +4067,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   if (sweepMs > 0) {
     const sweepTimer = setInterval(() => {
       void sweepExpiredAuthRows(db).catch((err) => app.log.warn(err, 'auth-row maintenance sweep failed'));
+      void revisionsRepo.sweepOld().catch((err) => app.log.warn(err, 'revision retention sweep failed'));
     }, sweepMs);
     sweepTimer.unref();
     app.addHook('onClose', async () => clearInterval(sweepTimer));

@@ -99,6 +99,13 @@
       "when": 1781190000000,
       "tag": "0013_drop_block_entities",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1782036818681,
+      "tag": "0014_fantastic_scorpion",
+      "breakpoints": true
     }
   ]
 }

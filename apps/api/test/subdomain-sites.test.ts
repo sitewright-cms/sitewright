@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { makeHarness, type Harness, type TestClient } from './harness.js';
@@ -85,6 +85,30 @@ describe('subdomain routing for local sites (sitesDomain)', () => {
     await seedAndPublish();
     const st = await client.get(`/projects/${projectId}/publish`);
     expect((st.json() as { url: string }).url).toBe(`//${slug}.${DOMAIN}/`);
+  });
+
+  it('runs a bundled .js on the isolated subdomain origin, but keeps it download-only on the path form', async () => {
+    await seedAndPublish();
+    // Drop a bundled (imported) script into the published tree (`_assets/<id>/file/<name>.js`).
+    const jsDir = join(publishRoot, slug, '_assets', 'imp', 'file');
+    await mkdir(jsDir, { recursive: true });
+    await writeFile(join(jsDir, 'app.js'), 'console.log(1)');
+
+    // Via the subdomain `<slug>.<DOMAIN>` — a SEPARATE origin from the editor/API (host-only session
+    // cookie never sent there) — the imported script is runnable text/javascript.
+    const viaSub = await site('/_assets/imp/file/app.js');
+    expect(viaSub.statusCode).toBe(200);
+    expect(viaSub.headers['content-type']).toContain('text/javascript');
+    expect(viaSub.headers['content-disposition']).toBeUndefined();
+    // Content-type depends on Host under an immutable cache → must vary on Host.
+    expect(viaSub.headers['vary']).toBe('Host');
+
+    // Via the app-origin `/sites/<slug>/` PATH form (no sitesDomain host) it stays download-only +
+    // inert — the platform origin is cookie-bearing, so foreign JS must never execute there.
+    const viaPath = await client.inject({ method: 'GET', url: `/sites/${slug}/_assets/imp/file/app.js` });
+    expect(viaPath.statusCode).toBe(200);
+    expect(viaPath.headers['content-type']).toContain('application/octet-stream');
+    expect(viaPath.headers['content-disposition']).toContain('attachment');
   });
 
   it('a token-gated site via subdomain sets a ROOT-scoped cookie + redirects clean', async () => {

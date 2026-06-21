@@ -704,6 +704,13 @@ export interface AppOptions {
 export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const { db } = opts;
   const signed = Boolean(opts.cookieSecret);
+  // `__Host-` prefix (HTTPS/production only — the prefix REQUIRES `Secure`, which a dev/http instance
+  // can't set, so browsers would reject the cookie) hardens the session against COOKIE-TOSSING from a
+  // sibling site subdomain: it makes the browser refuse to set this name WITH a `Domain` attribute, so
+  // a locally-hosted site at `<slug>.<sitesDomain>` (same registrable domain as the app, and now able
+  // to run foreign JS) can't shadow or fixate the session cookie. The cookie is already host-only +
+  // `path=/` (the prefix's other requirements). The bare name is kept where `secureCookies` is off.
+  const sessionCookie = opts.secureCookies ? `__Host-${SESSION_COOKIE}` : SESSION_COOKIE;
   const projects = new ProjectRepository(db);
   // In-process change bus: content writes (from any channel) publish here; the
   // SSE endpoint below relays them to live-preview clients.
@@ -916,8 +923,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   });
 
   function sessionToken(req: FastifyRequest): string | undefined {
-    // eslint-disable-next-line security/detect-object-injection -- SESSION_COOKIE is a constant cookie name
-    const raw = req.cookies[SESSION_COOKIE];
+    // eslint-disable-next-line security/detect-object-injection -- sessionCookie is a constant cookie name
+    const raw = req.cookies[sessionCookie];
     if (!raw) return undefined;
     if (!signed) return raw;
     // When a secret is configured, only accept correctly-signed cookies.
@@ -1101,7 +1108,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     }
     const { userId } = await registerAccount(db, body.email, body.password);
     const { token, expiresAt } = await createSession(db, userId);
-    reply.setCookie(SESSION_COOKIE, token, {
+    reply.setCookie(sessionCookie, token, {
       httpOnly: true,
       sameSite: 'strict',
       path: '/',
@@ -1116,7 +1123,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // cookie attributes stay identical everywhere a session is issued.
   async function issueSessionCookie(reply: FastifyReply, userId: string): Promise<void> {
     const { token, expiresAt } = await createSession(db, userId);
-    reply.setCookie(SESSION_COOKIE, token, {
+    reply.setCookie(sessionCookie, token, {
       httpOnly: true,
       sameSite: 'strict',
       path: '/',
@@ -1157,7 +1164,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   app.post('/auth/logout', async (req, reply) => {
     const token = sessionToken(req);
     if (token) await revokeSession(db, token);
-    reply.clearCookie(SESSION_COOKIE, { path: '/' });
+    // Match the set-time attributes so a `__Host-`-prefixed cookie's deletion isn't rejected (the
+    // prefix requires `Secure` + `path=/` on every Set-Cookie carrying that name, deletions included)
+    // and the clearing header stays byte-identical to the set-time one.
+    reply.clearCookie(sessionCookie, { path: '/', secure: opts.secureCookies ?? false, sameSite: 'strict' });
     return reply.code(204).send();
   });
 
@@ -3232,17 +3242,27 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         const path = req.params['*'] ?? '';
         // Reached via `<slug>.<sitesDomain>` (rewritten into this route)? Then this host serves the
         // site at its ROOT, so redirects + the token cookie must be root-relative, not `/sites/<slug>/`.
-        const siteBase = siteSubdomainSlug(req.headers.host) === slug ? '/' : `/sites/${slug}/`;
-        // Bundled binary assets under `_assets/` (images inline; everything else download-only).
+        // That subdomain is also a SEPARATE origin from the editor/API — the host-only session cookie
+        // is never sent to it — so it's safe to RUN the imported site's own JS there. The `/sites/<slug>/`
+        // PATH form shares the cookie-bearing app origin, so it stays script-inert (download-only).
+        const viaSubdomain = siteSubdomainSlug(req.headers.host) === slug;
+        const siteBase = viaSubdomain ? '/' : `/sites/${slug}/`;
+        // Bundled binary assets under `_assets/` (images inline; a foreign `.js` runs ONLY on the
+        // isolated subdomain origin — never on the app origin; everything else download-only).
         let binary = null;
         try {
-          binary = await store.readBinary(slug, path);
+          binary = await store.readBinary(slug, path, { executableScripts: viaSubdomain });
         } catch {
           /* invalid slug → fall through to 404 below */
         }
         if (binary !== null) {
           reply
             .header('cache-control', 'public, max-age=31536000, immutable')
+            // A `.js` asset's content-type depends on the Host (executable via the subdomain origin,
+            // download-only via the path form), and the response is `immutable`-cached — so vary on Host
+            // to stop a non-host-keyed shared cache serving the subdomain's executable copy to an
+            // app-origin path-form request (defense-in-depth; compliant caches key on host already).
+            .header('vary', 'Host')
             .header('x-content-type-options', 'nosniff');
           if (binary.attachment) reply.header('content-disposition', 'attachment');
           return reply.type(binary.contentType).send(binary.body);
@@ -3269,6 +3289,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // by the page's relative links, so nav would break — hence the cookie. (Constant-time compare;
         // lengths are equal-or-reject so timingSafeEqual never throws.)
         if (local.previewToken) {
+          // SOFT access only — NOT a security boundary. The gate is the SECRET token (constant-time
+          // compared below), not the cookie's integrity: a sibling subdomain that runs imported JS (now
+          // possible per this change) could toss a `Domain=<sitesDomain>` `sw_site_<slug>` cookie, but a
+          // wrong value just 403s and a right value means the attacker already holds the token — so the
+          // cookie is host-only and left unprefixed. The platform SESSION cookie (the real credential)
+          // is `__Host-`-hardened against exactly this tossing; see `sessionCookie`.
           const SITE_COOKIE = `sw_site_${slug}`;
           const matches = (v: string | undefined): boolean => {
             if (!v) return false;

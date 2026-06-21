@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { randomBytes } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import { makeTestDb } from './helpers.js';
+import { makeTestDb, promoteToAdmin } from './helpers.js';
+import type { Database } from '../src/db/client.js';
 import { createApp } from '../src/http/app.js';
 import type { HcaptchaVerifier } from '../src/mail/hcaptcha.js';
 
@@ -23,16 +24,19 @@ function token(res: { cookies: Array<{ name: string; value: string }> }): string
 }
 
 let app: FastifyInstance;
+let appDb: Database;
 let hcaptcha: FakeHcaptcha;
 let t: string;
 let projectId: string;
 
 async function setup(opts: { configureSecret: boolean }) {
   hcaptcha = new FakeHcaptcha();
-  app = await createApp({ db: await makeTestDb(), hcaptcha, encryptionKey: ENC_KEY, adminEmails: ['admin@acme.test'] });
+  appDb = await makeTestDb();
+  app = await createApp({ db: appDb, hcaptcha, encryptionKey: ENC_KEY });
   await app.ready();
   const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'admin@acme.test', password: 'Pw-secret-1'} });
   t = token(reg);
+  await promoteToAdmin(appDb, 'admin@acme.test');
   const proj = await app.inject({ method: 'POST', url: `/projects`, cookies: { sw_session: t }, payload: { name: 'Site', slug: 'site' } });
   projectId = (proj.json() as { project: { id: string } }).project.id;
   // A form that requires hCaptcha.
@@ -90,10 +94,11 @@ describe('form submission hCaptcha enforcement', () => {
     hcaptcha = new FakeHcaptcha();
     const db = await makeTestDb();
     // First app (with key) to store a secret, then a second app (no key) to read it.
-    const keyed = await createApp({ db, hcaptcha, encryptionKey: ENC_KEY, adminEmails: ['admin@acme.test'] });
+    const keyed = await createApp({ db, hcaptcha, encryptionKey: ENC_KEY });
     await keyed.ready();
     const reg = await keyed.inject({ method: 'POST', url: '/auth/register', payload: { email: 'admin@acme.test', password: 'Pw-secret-1'} });
     const tok = token(reg);
+    await promoteToAdmin(db, 'admin@acme.test');
     const proj = await keyed.inject({ method: 'POST', url: `/projects`, cookies: { sw_session: tok }, payload: { name: 'S', slug: 's' } });
     const pid = (proj.json() as { project: { id: string } }).project.id;
     await keyed.inject({ method: 'PUT', url: `/projects/${pid}/content/form/contact`, cookies: { sw_session: tok }, payload: { id: 'contact', name: 'C', fields: [{ name: 'email', label: 'Email', type: 'email' }], recipient: 'a@b.co', hcaptcha: true } });

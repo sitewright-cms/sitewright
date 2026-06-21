@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { FastifyInstance, InjectOptions, LightMyRequestResponse } from 'fastify';
 import { createApp } from '../src/http/app.js';
+import { setPlatformRole } from '../src/repo/accounts.js';
 import { makeTestDb } from './helpers.js';
 
 const SESSION_COOKIE = 'sw_session';
@@ -48,8 +49,9 @@ export interface TestClient {
 
 export interface Harness {
   readonly app: FastifyInstance;
-  /** Registers a fresh user and returns a client scoped to them. */
-  signup(opts?: { email?: string; password?: string }): Promise<TestClient>;
+  /** Registers a fresh user and returns a client scoped to them. `admin: true` promotes the user to the
+   *  persisted `platform_role='admin'` (instance admin) — the only way to grant admin now. */
+  signup(opts?: { email?: string; password?: string; admin?: boolean }): Promise<TestClient>;
   close(): Promise<void>;
 }
 
@@ -75,7 +77,7 @@ export async function makeHarness(options?: Partial<AppOptions>): Promise<Harnes
   await app.ready();
 
   async function signup(
-    opts: { email?: string; password?: string } = {},
+    opts: { email?: string; password?: string; admin?: boolean } = {},
   ): Promise<TestClient> {
     const email = opts.email ?? `u-${randomUUID()}@test.local`;
     const password = opts.password ?? 'Pw-secret-1';
@@ -87,6 +89,8 @@ export async function makeHarness(options?: Partial<AppOptions>): Promise<Harnes
     if (res.statusCode !== 201) throw new Error(`register failed (${res.statusCode}): ${res.body}`);
     const token = sessionToken(res);
     const { userId } = res.json() as { userId: string };
+    // Grant instance-admin via the persisted role (the single admin mechanism — no env allowlist).
+    if (opts.admin) await setPlatformRole(db, userId, 'admin');
 
     const inject = (o: InjectOptions): Promise<Resp> =>
       app.inject({ ...o, cookies: { ...(o.cookies ?? {}), [SESSION_COOKIE]: token } });

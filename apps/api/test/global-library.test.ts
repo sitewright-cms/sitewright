@@ -1,15 +1,18 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
-import { makeTestDb } from './helpers.js';
+import { makeTestDb, promoteToAdmin } from './helpers.js';
+import type { Database } from '../src/db/client.js';
 import { createApp } from '../src/http/app.js';
 import { RenderPool } from '../src/render/render-pool.js';
 
 const workerPath = fileURLToPath(new URL('./fixtures/blocks-render-worker.mjs', import.meta.url));
 let app: FastifyInstance;
+let db: Database;
 
 beforeEach(async () => {
-  app = await createApp({ db: await makeTestDb(), adminEmails: ['admin@e2e.test'], renderPool: new RenderPool({ size: 1, workerPath }) });
+  db = await makeTestDb();
+  app = await createApp({ db, renderPool: new RenderPool({ size: 1, workerPath }) });
 });
 afterEach(async () => {
   await app.close(); // drains + terminates the render worker
@@ -22,6 +25,12 @@ function token(res: { cookies: Array<{ name: string; value: string }> }): string
 }
 async function register(email: string): Promise<string> {
   return token(await app.inject({ method: 'POST', url: '/auth/register', payload: { email, password: 'Pw-secret-1' } }));
+}
+/** Register + promote to instance admin (the persisted-role mechanism). */
+async function registerAdmin(email: string): Promise<string> {
+  const t = await register(email);
+  await promoteToAdmin(db, email);
+  return t;
 }
 async function project(t: string, slug: string): Promise<string> {
   const proj = await app.inject({ method: 'POST', url: '/projects', cookies: { sw_session: t }, payload: { name: 'Site', slug } });
@@ -65,7 +74,7 @@ describe('global snippet/template library', () => {
     expect(await previewHtml()).toContain('nav_cta');
 
     // An admin rewrites the global navbar in the store.
-    const admin = await register('admin@e2e.test'); // adminEmails → instance admin
+    const admin = await registerAdmin('admin@e2e.test');
     const edit = await app.inject({
       method: 'PUT',
       url: '/admin/global/snippet/navbar',
@@ -81,7 +90,7 @@ describe('global snippet/template library', () => {
   });
 
   it('the reserved global scope is hidden from the admin project list and is not deletable', async () => {
-    const admin = await register('admin@e2e.test');
+    const admin = await registerAdmin('admin@e2e.test');
     const me = await app.inject({ method: 'GET', url: '/me', cookies: { sw_session: admin } });
     const slugs = ((me.json() as { projects: { slug: string }[] }).projects).map((p) => p.slug);
     expect(slugs).not.toContain('__global__');
@@ -91,7 +100,7 @@ describe('global snippet/template library', () => {
   it('the reserved scope is unreachable through the per-project content routes (no requireInstanceAdmin bypass)', async () => {
     // A platform admin resolves to `owner` on every project — but the per-project content routes must
     // 404 on `__global__` so the only write path to the library stays the admin-gated /admin/global/*.
-    const admin = await register('admin@e2e.test');
+    const admin = await registerAdmin('admin@e2e.test');
     const write = await app.inject({
       method: 'PUT',
       url: '/projects/__global__/content/snippet/navbar',

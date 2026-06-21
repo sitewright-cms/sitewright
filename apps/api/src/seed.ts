@@ -31,7 +31,8 @@ export const DEFAULT_ADMIN_PASSWORD = '123456';
 
 export interface SeedOptions {
   db: Database;
-  /** The super-admin email (SW_ADMIN_EMAIL). Must also be in the instance-admin allowlist. */
+  /** The super-admin email (SW_ADMIN_EMAIL). The seeded user gets a persisted `platform_role='admin'`
+   *  (admin is a role now, not an env email allowlist). */
   adminEmail: string;
   /** SW_ADMIN_PASSWORD; absent, empty, or whitespace-only → the FIXED default `123456` (warned about). */
   adminPassword?: string;

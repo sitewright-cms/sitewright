@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { resolve, join } from 'node:path';
 import { createApp } from './http/app.js';
 import { seedInstance, DEFAULT_ADMIN_EMAIL } from './seed.js';
 import { users } from './db/schema.js';
@@ -13,15 +13,19 @@ import { AnthropicProvider } from './ai/provider.js';
 
 const RELEASE_REPO = 'sitewright-cms/sitewright';
 
-const url = process.env.DATABASE_URL ?? 'file:./data/sitewright.db';
+// ONE data directory holds everything persistent — the SQLite DB, media, published sites, and the
+// ephemeral preview builds. Mount a single volume at this path to persist an instance. Each path keeps
+// an optional individual override, but the common case needs no env at all (defaults to ./data).
+const dataDir = resolve(process.env.SW_DATA_DIR ?? './data');
+const url = process.env.DATABASE_URL ?? `file:${join(dataDir, 'sitewright.db')}`;
 const port = Number(process.env.PORT ?? 2002);
 const cookieSecret = process.env.COOKIE_SECRET;
 const isProduction = process.env.NODE_ENV === 'production';
-const mediaRoot = resolve(process.env.MEDIA_ROOT ?? './data/media');
-const publishRoot = resolve(process.env.PUBLISH_ROOT ?? './data/sites');
+const mediaRoot = resolve(process.env.MEDIA_ROOT ?? join(dataDir, 'media'));
+const publishRoot = resolve(process.env.PUBLISH_ROOT ?? join(dataDir, 'sites'));
 // Ephemeral live-preview draft builds (members-only, rebuilt on change). Kept apart from the
 // published artifact so a draft can never collide with a deployable build.
-const previewRoot = resolve(process.env.PREVIEW_ROOT ?? './data/preview');
+const previewRoot = resolve(process.env.PREVIEW_ROOT ?? join(dataDir, 'preview'));
 
 // A signing secret is mandatory in production; refuse to start without one.
 if (isProduction && !cookieSecret) {
@@ -57,21 +61,13 @@ const smtpAllowedHosts = process.env.SW_SMTP_ALLOWED_HOSTS
       .filter(Boolean)
   : undefined;
 
-// Instance admins: a comma-separated email allowlist. These users may read/write
-// instance settings (global SMTP, hCaptcha keys, enabled web-form mail modes).
-// Normalization (trim/lowercase) is owned by createApp — pass the raw split here
-// so there is a single source of truth for the matching rule.
-// The bootstrap super-admin (seeded on first boot) is always an instance admin.
-// SW_ADMIN_EMAIL overrides the well-known default identity.
+// Instance admin: a persisted user role (`platform_role='admin'`), NOT an env allowlist. The first
+// admin is seeded on first boot (below); further admins are granted in-app via a platform invite.
+// SW_ADMIN_EMAIL only overrides the seeded admin's identity (optional first-boot convenience).
 const seedAdminEmail = process.env.SW_ADMIN_EMAIL?.trim() || DEFAULT_ADMIN_EMAIL;
-const adminEmails = [
-  ...(process.env.SW_ADMIN_EMAILS ? process.env.SW_ADMIN_EMAILS.split(',') : []),
-  seedAdminEmail,
-];
 
-// Public registration is CLOSED by default (invitation-only + a seeded admin); an operator
-// who wants open self-signup sets SW_OPEN_REGISTRATION=true.
-const openRegistration = process.env.SW_OPEN_REGISTRATION === 'true';
+// Public registration is CLOSED by default (invitation-only + a seeded admin). An admin opens
+// self-signup at runtime in System Settings (`allowSelfRegistration`) — no env var.
 
 // The platform's public base URL, baked into exported forms as the absolute
 // submission endpoint. A malformed value would silently misdirect every form's
@@ -139,6 +135,9 @@ const renderPool = new RenderPool({
   maxRendersPerWorker: renderEnvInt(process.env.SW_RENDER_MAX_RENDERS, 500),
 });
 
+// Ensure the data directory exists before opening the DB (the DB file lives directly in it).
+// eslint-disable-next-line security/detect-non-literal-fs-filename -- trusted startup env path
+await mkdir(dataDir, { recursive: true });
 const { db } = await createDb(url);
 await runMigrations(db);
 // eslint-disable-next-line security/detect-non-literal-fs-filename -- trusted startup env path
@@ -164,8 +163,9 @@ const app = await createApp({
   webauthnOrigin: process.env.SW_WEBAUTHN_ORIGIN,
   deployAllowedHosts,
   smtpAllowedHosts,
-  adminEmails,
-  openRegistration,
+  // A DEPLOYED instance is invitation-only by default (no env var) — an admin opens public self-signup
+  // at runtime in System Settings (`allowSelfRegistration`). The first admin is seeded on first boot.
+  openRegistration: false,
   // Per-IP auth rate cap; defaults to 10/min. Raise via SW_AUTH_RATE_LIMIT_MAX only for the
   // integration/E2E harness (many registrations from one IP).
   authRateMax: process.env.SW_AUTH_RATE_LIMIT_MAX ? Number(process.env.SW_AUTH_RATE_LIMIT_MAX) : undefined,
@@ -221,20 +221,16 @@ try {
   );
 }
 
-// Refuse to boot into a permanently-locked state: closed registration with NO users means nobody
-// can ever sign in (no admin was seeded and no invite can be created). Mirror the COOKIE_SECRET
-// fail-fast. We check the DB (not just the env) so removing SW_ADMIN_EMAIL after a successful first
-// boot — when an admin already exists — still restarts cleanly.
-if (!openRegistration) {
-  const anyUser = await db.select({ id: users.id }).from(users).limit(1);
-  if (anyUser.length === 0) {
-    throw new Error(
-      'Registration is closed (SW_OPEN_REGISTRATION is not "true") and the instance has no users — ' +
-        'nobody could ever sign in. The first-boot admin seed must have failed (check the ' +
-        '"[sitewright/seed]" entries on stderr); fix the cause and re-deploy, or set ' +
-        'SW_OPEN_REGISTRATION=true to allow public self-signup.',
-    );
-  }
+// Refuse to boot into a permanently-locked state: registration is CLOSED by default (self-signup is an
+// in-app admin opt-in), so NO users means nobody can ever sign in. The first-boot seed creates the
+// admin, so an empty users table means that seed failed — fail fast rather than serve an unusable
+// instance. (Checked against the DB, so a normal restart with an existing admin proceeds cleanly.)
+const anyUser = await db.select({ id: users.id }).from(users).limit(1);
+if (anyUser.length === 0) {
+  throw new Error(
+    'The instance has no users — nobody could sign in. The first-boot admin seed must have failed ' +
+      '(check the "[sitewright/seed]" entries on stderr); fix the cause and re-deploy.',
+  );
 }
 
 await app.listen({ host: '0.0.0.0', port });

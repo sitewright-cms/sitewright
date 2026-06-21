@@ -1,17 +1,20 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { makeTestDb } from './helpers.js';
+import { makeTestDb, promoteToAdmin } from './helpers.js';
+import type { Database } from '../src/db/client.js';
 import { createApp } from '../src/http/app.js';
 
 let app: FastifyInstance;
+let db: Database;
 
-// The owner registers as `owner@acme.test`; listing it in `adminEmails` makes that user a
-// platform (instance) admin, which is the easy way to exercise the platform-admin endpoints
-// (platform invites, platform invite listing) in an HTTP test.
+// The owner registers as `owner@acme.test` and is promoted to a platform (instance) admin via the
+// persisted `platform_role` (registerOwner promotes it) — the way to exercise the platform-admin
+// endpoints (platform invites, platform invite listing) in an HTTP test.
 const ADMIN_EMAIL = 'owner@acme.test';
 
 beforeEach(async () => {
-  app = await createApp({ db: await makeTestDb(), adminEmails: [ADMIN_EMAIL] });
+  db = await makeTestDb();
+  app = await createApp({ db });
   await app.ready();
 });
 
@@ -23,6 +26,8 @@ function token(res: { cookies: Array<{ name: string; value: string }> }): string
 
 async function registerOwner(email: string) {
   const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email, password: 'Pw-secret-1' } });
+  // The owner is the instance admin in these tests — promote via the persisted role (no allowlist).
+  if (email === ADMIN_EMAIL) await promoteToAdmin(db, email);
   return { t: token(reg) };
 }
 
@@ -72,7 +77,7 @@ describe('invites API', () => {
   });
 
   it('platform-admin invite → accept → instance admin reaching ALL projects', async () => {
-    // Owner (an instance admin via adminEmails) owns a project nobody else is a member of.
+    // Owner (an instance admin via the persisted role) owns a project nobody else is a member of.
     const { t } = await registerOwner('owner@acme.test');
     const ownerProject = await makeProject(t, 'site');
 

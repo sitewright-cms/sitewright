@@ -32,12 +32,12 @@ describe('seedInstance — first-boot bootstrap', { timeout: 30_000 }, () => {
     await app.close();
   });
 
-  it('the seeded admin is an instance admin when its email is in the allowlist', async () => {
-    // Mirrors server.ts, which adds SW_ADMIN_EMAIL to the instance-admin allowlist.
+  it('the seeded admin is an instance admin via its persisted platform_role', async () => {
+    // Admin is a persisted role (the seed sets platform_role='admin') — no env email allowlist.
     const db = await makeTestDb();
     await seedInstance({ db, adminEmail: 'admin@sitewright.example', adminPassword: 'Pw-secret-1' });
 
-    const app = await createApp({ db, adminEmails: ['admin@sitewright.example'] });
+    const app = await createApp({ db });
     await app.ready();
     const login = await app.inject({
       method: 'POST',

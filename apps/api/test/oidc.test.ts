@@ -26,8 +26,8 @@ describe('OIDC single sign-on', () => {
   let admin: TestClient;
 
   beforeEach(async () => {
-    harness = await makeHarness({ encryptionKey: randomBytes(32), authRateMax: 500, adminEmails: ['admin@test.local'] });
-    admin = await harness.signup({ email: 'admin@test.local', password: 'Pw-secret-1' });
+    harness = await makeHarness({ encryptionKey: randomBytes(32), authRateMax: 500 });
+    admin = await harness.signup({ email: 'admin@test.local', password: 'Pw-secret-1', admin: true });
     // Configure one enabled provider (the secret is encrypted at rest).
     const res = await admin.put('/admin/settings', {
       oidcProviders: [{ id: 'acme', label: 'Acme SSO', issuer: ISSUER, clientId: 'client-1', clientSecret: 'shh', enabled: true }],

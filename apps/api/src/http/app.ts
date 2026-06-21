@@ -647,11 +647,6 @@ export interface AppOptions {
   /** When set, per-project SMTP hosts are restricted to these exact hostnames (SaaS SSRF guard). */
   smtpAllowedHosts?: string[];
   /**
-   * Normalized (lowercased) email allowlist designating instance admins — the
-   * users who may read/write instance settings. Empty/unset = no instance admins.
-   */
-  adminEmails?: string[];
-  /**
    * Per-IP request cap (per minute) for the auth routes (`/auth/register`, `/auth/login`). Defaults
    * to 10 — the safe production value. Raise it ONLY for the integration/E2E harness, which drives
    * many registrations from a single IP and would otherwise exhaust the shared bucket.
@@ -665,10 +660,10 @@ export interface AppOptions {
    */
   maintenanceSweepMs?: number;
   /**
-   * Whether public `POST /auth/register` is open. Default `true` (the embeddable factory + the
-   * test suite). The production entry point (`server.ts`) sets this from `SW_OPEN_REGISTRATION`
-   * and defaults it CLOSED — a closed instance is invitation-only (an email must hold a pending
-   * invite), with the first admin seeded out-of-band (see seed.ts).
+   * Factory default for public `POST /auth/register` when the persisted `allowSelfRegistration`
+   * instance setting is unset. Default `true` (the embeddable factory + the test suite). The production
+   * entry point (`server.ts`) passes `false` so a DEPLOYED instance is invitation-only by default; an
+   * admin re-opens it at runtime via `allowSelfRegistration`. Not wired to any env var.
    */
   openRegistration?: boolean;
   /** Current running version (for the pull-based update check). */
@@ -772,10 +767,6 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const projectMailer = opts.projectMailer ?? new ProjectSmtpMailer(db, instanceSettingsRepo, opts.encryptionKey);
   const hcaptchaVerifier = opts.hcaptcha ?? new HttpHcaptchaVerifier();
   const stockService = opts.stockService ?? new StockService(defaultStockProviders(), instanceSettingsRepo);
-  // Normalized once at startup; membership is a constant-time-ish Set lookup per request.
-  const adminEmails: ReadonlySet<string> = new Set(
-    (opts.adminEmails ?? []).map((e) => e.trim().toLowerCase()).filter(Boolean),
-  );
   const aiQuota = opts.aiQuota ?? {};
   // Isolated template renderer (child-process worker pool). Injected in tests; in
   // production server.ts constructs one. Absent → the render route returns 503.
@@ -857,14 +848,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     trustProxy: opts.trustProxy ?? false,
   });
 
-  // Public registration is open unless the embedder closes it. Leaving the default open is
-  // safe for the test harness but a footgun for a direct `createApp` consumer who forgot to
-  // set it, so surface it loudly (the production entry point always passes an explicit value,
-  // so this never fires there).
+  // The embeddable factory default for self-registration is OPEN (convenient for the test suite and a
+  // direct `createApp` embedder). The production entry point (server.ts) passes `false`, so a DEPLOYED
+  // instance is invitation-only by default; an admin re-opens it at runtime via `allowSelfRegistration`.
+  // Warn a direct embedder who left it open implicitly (never fires in production — it passes a value).
   if (opts.openRegistration === undefined) {
     app.log.warn(
       '[sitewright/api] openRegistration left at its default (OPEN); anyone may self-register. ' +
-        'Pass openRegistration:false (set SW_OPEN_REGISTRATION to opt in) for an invite-only instance.',
+        'Pass openRegistration:false for an invitation-only instance (the production entry point does).',
     );
   }
 
@@ -987,16 +978,13 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     return token ? await validateSession(db, token) : null;
   }
 
-  // Instance/platform admin = a user whose DB `platform_role` is `admin` (seeded from
-  // SW_ADMIN_EMAIL, granted via a platform invite). The legacy `adminEmails` allowlist is still
-  // honored as a fallback so an operator can designate admins by env without a DB role (and so the
-  // test harness keeps working). Instance settings are global, decided here — never by a project
-  // role. Bearer (API-key) callers are never instance admins — admin config is session-only.
+  // Instance/platform admin = a user whose persisted DB `platform_role` is `admin` (the first admin is
+  // seeded on first boot — see seed.ts — and further admins are granted via a platform invite with
+  // `role:'admin'`). This is the SINGLE source of truth: there is no env email allowlist. Instance
+  // settings are global, decided here — never by a project role. Bearer (API-key) callers are never
+  // instance admins — admin config is session-only.
   async function isInstanceAdmin(userId: string): Promise<boolean> {
-    if ((await getPlatformRole(db, userId)) === 'admin') return true;
-    if (adminEmails.size === 0) return false;
-    const email = await getUserEmail(db, userId);
-    return email !== null && adminEmails.has(email);
+    return (await getPlatformRole(db, userId)) === 'admin';
   }
 
   async function requireInstanceAdmin(req: FastifyRequest): Promise<string> {
@@ -1111,8 +1099,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const authRl = rl(opts.authRateMax ?? 10);
 
   // Whether anyone may self-register, given a settings doc. The admin instance setting is authoritative
-  // once set; until then the deploy-time factory default (`opts.openRegistration` / SW_OPEN_REGISTRATION,
-  // else open) applies. Invited users register regardless of this (see the register route's invite fallback).
+  // once set; until then the factory default (`opts.openRegistration`) applies — the production entry
+  // point (server.ts) passes `false`, so a DEPLOYED instance is closed by default; the embeddable
+  // factory/test default is open. Invited users register regardless (see the register route's fallback).
   const resolveSelfRegistration = (stored: InstanceSettingsStored): boolean =>
     stored.allowSelfRegistration ?? (opts.openRegistration ?? true);
   async function selfRegistrationOpen(): Promise<boolean> {

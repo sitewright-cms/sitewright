@@ -38,11 +38,30 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$here/lib/slots.sh"
 
 : "${SW_E2E_HOST:=dind.local}"
+# The first-boot SEEDED admin identity (SW_ADMIN_EMAIL) — admin is a persisted role now, not an env
+# allowlist. The E2E specs log in as this account; the password is set so it's a real (non-default)
+# credential (so a forced-password-change on the default never blocks the harness).
 : "${SW_E2E_ADMIN_EMAILS:=admin@e2e.test}"
+: "${SW_E2E_ADMIN_PASSWORD:=Pw-secret-1}"
 : "${SW_E2E_AUTH_RATE_LIMIT_MAX:=200}"
 : "${SW_E2E_HEALTH_TIMEOUT:=90}"
 
 log() { printf '\033[36m[e2e-deploy]\033[0m %s\n' "$*" >&2; }
+
+# A deployed instance is invitation-only by default (registration is no longer an env var). The E2E
+# specs create throwaway users via /auth/register, so open self-registration once at deploy: log in as
+# the SEEDED admin (SW_ADMIN_EMAIL/SW_ADMIN_PASSWORD), then flip the persisted `allowSelfRegistration`.
+open_self_registration() {
+  local port="$1" base jar rc
+  base="http://${SW_E2E_HOST}:${port}"
+  jar="$(mktemp)"
+  curl -fsS -c "$jar" -X POST "${base}/auth/login" -H 'content-type: application/json' \
+    -d "{\"email\":\"${SW_E2E_ADMIN_EMAILS}\",\"password\":\"${SW_E2E_ADMIN_PASSWORD}\"}" >/dev/null 2>&1 \
+    || { rm -f "$jar"; return 1; }
+  curl -fsS -b "$jar" -X PUT "${base}/admin/settings" -H 'content-type: application/json' \
+    -d '{"allowSelfRegistration":true}' >/dev/null 2>&1
+  rc=$?; rm -f "$jar"; return $rc
+}
 err() { printf '\033[31m[e2e-deploy] ERROR:\033[0m %s\n' "$*" >&2; }
 die() { err "$*"; exit 1; }
 
@@ -178,8 +197,8 @@ cmd_up() {
     if run_err="$(docker run -d --name "$container" -p "${port}:80" \
           -e COOKIE_SECRET="$(secret)" \
           -e SW_ENCRYPTION_KEY="$(secret)" \
-          -e SW_ADMIN_EMAILS="$SW_E2E_ADMIN_EMAILS" \
-          -e SW_OPEN_REGISTRATION=true \
+          -e SW_ADMIN_EMAIL="$SW_E2E_ADMIN_EMAILS" \
+          -e SW_ADMIN_PASSWORD="$SW_E2E_ADMIN_PASSWORD" \
           -e SW_AUTH_RATE_LIMIT_MAX="$SW_E2E_AUTH_RATE_LIMIT_MAX" \
           "$_up_tmp_image" 2>&1 >/dev/null)"; then
       claimed=1; break
@@ -219,6 +238,14 @@ cmd_up() {
     docker rm -f "$container" >/dev/null 2>&1 || true
     if [ "$_up_built" = 1 ]; then docker rmi -f "$image" >/dev/null 2>&1 || true; rm -rf "$deploy_dir"; fi
     die "deploy failed health check on slot $port"
+  fi
+
+  # Open self-registration for the E2E specs (the instance is invitation-only by default now).
+  if ! open_self_registration "$port"; then
+    docker logs --tail 40 "$container" >&2 || true
+    docker rm -f "$container" >/dev/null 2>&1 || true
+    if [ "$_up_built" = 1 ]; then docker rmi -f "$image" >/dev/null 2>&1 || true; rm -rf "$deploy_dir"; fi
+    die "could not open self-registration on slot $port (admin login / settings write failed)"
   fi
 
   log "Slot ready: http://${SW_E2E_HOST}:${port}  (container $container)"

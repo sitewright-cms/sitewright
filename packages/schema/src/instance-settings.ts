@@ -177,8 +177,8 @@ export const InstanceSettingsStoredSchema = z.object({
   /**
    * Whether anyone may create an account from the login screen. Left OPTIONAL on purpose: `undefined`
    * means "the admin has never set this", which the API distinguishes from an explicit `false` so it
-   * can fall back to the deploy-time factory default (`openRegistration` / `SW_OPEN_REGISTRATION`).
-   * Once set, the stored value wins. Invited users can always register regardless of this flag.
+   * can fall back to the factory default (the `openRegistration` createApp option — the production
+   * entry point passes `false`). Once set, the stored value wins. Invited users register regardless.
    */
   allowSelfRegistration: z.boolean().optional(),
   /** Admin-panel branding (white-label the CHROME): name, gradient stops, logo. Unset → defaults. */

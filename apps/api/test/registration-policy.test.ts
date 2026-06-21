@@ -11,7 +11,9 @@ function token(res: { cookies: Array<{ name: string; value: string }> }): string
 }
 
 describe('registration policy', () => {
-  it('open registration (default) lets anyone register', async () => {
+  it('the factory default (createApp) leaves registration open', async () => {
+    // The embeddable default is open; the production entry point (server.ts) passes openRegistration:false
+    // so a DEPLOYED instance is closed (asserted via the explicit openRegistration:false cases below).
     const app = await createApp({ db: await makeTestDb() });
     await app.ready();
     const res = await app.inject({
@@ -23,13 +25,25 @@ describe('registration policy', () => {
     await app.close();
   });
 
+  it('a DEPLOYED instance (openRegistration:false) is invitation-only by default', async () => {
+    const app = await createApp({ db: await makeTestDb(), openRegistration: false });
+    await app.ready();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: { email: 'anyone@x.test', password: 'Pw-secret-1'},
+    });
+    expect(res.statusCode).toBe(403); // an admin opens it at runtime via allowSelfRegistration
+    await app.close();
+  });
+
   describe('closed (invitation-only)', () => {
     let app: FastifyInstance;
     beforeEach(async () => {
       const db = await makeTestDb();
       // Seed the bootstrap admin out-of-band (bypasses the closed route), then run closed.
       await seedInstance({ db, adminEmail: 'admin@sitewright.example', adminPassword: 'Pw-secret-1' });
-      app = await createApp({ db, openRegistration: false, adminEmails: ['admin@sitewright.example'] });
+      app = await createApp({ db, openRegistration: false });
       await app.ready();
     });
 
@@ -65,7 +79,7 @@ describe('registration policy', () => {
       const db = await makeTestDb();
       await seedInstance({ db, adminEmail: 'admin@sitewright.example', adminPassword: 'Pw-secret-1' });
       // Factory default CLOSED — so only the admin setting can re-open it.
-      const app = await createApp({ db, openRegistration: false, adminEmails: ['admin@sitewright.example'], authRateMax: 100 });
+      const app = await createApp({ db, openRegistration: false, authRateMax: 100 });
       await app.ready();
       const login = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'admin@sitewright.example', password: 'Pw-secret-1' } });
       return { app, adminCookie: token(login) };
@@ -89,7 +103,7 @@ describe('registration policy', () => {
     it('closes self-registration when disabled, despite an open factory default', async () => {
       const db = await makeTestDb();
       await seedInstance({ db, adminEmail: 'admin@sitewright.example', adminPassword: 'Pw-secret-1' });
-      const app = await createApp({ db, openRegistration: true, adminEmails: ['admin@sitewright.example'], authRateMax: 100 });
+      const app = await createApp({ db, openRegistration: true, authRateMax: 100 });
       await app.ready();
       const login = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'admin@sitewright.example', password: 'Pw-secret-1' } });
       const put = await app.inject({ method: 'PUT', url: '/admin/settings', cookies: { sw_session: token(login) }, payload: { allowSelfRegistration: false } });

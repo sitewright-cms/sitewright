@@ -133,6 +133,7 @@ import { signPreview, verifyPreview } from './preview-token.js';
 import { PreviewStore } from './preview-store.js';
 import { PREVIEW_BRIDGE_JS } from './preview-bridge.js';
 import { archiveSite, deploySite, DeployConfigSchema } from '../publish/adapters.js';
+import { assertRemoteFormEndpointsReachable } from '../publish/form-guard.js';
 import { isNewer } from '../version/checker.js';
 import { registerDeployTargetRoutes } from './deploy-targets.js';
 import { registerLocaleRoutes } from './locales.js';
@@ -3112,6 +3113,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     const dir = await mkdtemp(join(tmpdir(), 'sw-deploy-'));
     try {
       await buildToDir(ctx, project, dir);
+      // A remote deploy ships this build to the OWNER's host. Without a configured public URL, a
+      // platform-routed (Email/SMTP) form's endpoint is baked root-relative (`/f/…`) and would resolve
+      // to the deployed host (no such route → 404). Refuse rather than ship a form that silently fails
+      // to submit. Local hosting builds via buildToDir directly (not this path), so relative endpoints
+      // there — which DO work on the platform origin / via the subdomain carve-out — are unaffected.
+      // Gated on `!opts.publicUrl`: when it IS set, buildToDir bakes ABSOLUTE endpoints, so the guard
+      // would never match — skipping it is both correct and a small win, not a behavioural exception.
+      if (!opts.publicUrl) await assertRemoteFormEndpointsReachable(dir);
       return dir;
     } catch (err) {
       await rm(dir, { recursive: true, force: true });

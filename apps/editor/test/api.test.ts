@@ -925,4 +925,20 @@ describe('unauthorized (401) handling', () => {
     fetchMock.mockResolvedValue(jsonResponse(401, { error: 'Not authenticated' }));
     await expect(api.me()).rejects.toBeInstanceOf(ApiError);
   });
+
+  it('revision-history wrappers hit the content/<kind>/<id>/revisions endpoints', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { items: [] }));
+    await api.listRevisions('p1', 'page', 'home');
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p1/content/page/home/revisions');
+
+    fetchMock.mockResolvedValue(jsonResponse(200, { revision: {} }));
+    await api.getRevision('p1', 'dataset', 'team', 'rev9');
+    expect(fetchMock.mock.calls[1]![0]).toBe('/projects/p1/content/dataset/team/revisions/rev9');
+
+    fetchMock.mockResolvedValue(jsonResponse(200, { item: {} }));
+    await api.restoreRevision('p1', 'settings', 'settings', 'rev3');
+    const [url, init] = fetchMock.mock.calls[2]!;
+    expect(url).toBe('/projects/p1/content/settings/settings/revisions/rev3/restore');
+    expect(init.method).toBe('POST');
+  });
 });

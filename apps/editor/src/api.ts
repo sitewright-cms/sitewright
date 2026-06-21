@@ -270,6 +270,17 @@ export type ProjectRole = 'owner' | 'member';
 export type PlatformRole = 'admin' | 'developer' | null;
 /** The role an invite/membership can carry: a project tier (owner|member) or a platform tier (admin|developer). */
 export type Role = 'owner' | 'member' | 'admin' | 'developer';
+
+/** One entry in a content entity's revision history (metadata only — no snapshot blob). */
+export interface RevisionMeta {
+  id: string;
+  op: 'put' | 'delete' | 'restore';
+  actor: 'user' | 'agent';
+  note: string | null;
+  /** ISO timestamp. */
+  revisionAt: string;
+  author: { userId: string; email: string | null; isYou: boolean };
+}
 /**
  * A member returned by a management list. Shared by two surfaces: `/admin/users` (platform staff —
  * role `admin`|`developer`) and `/projects/:id/members` (the project team — role `owner`|`member`).
@@ -612,6 +623,20 @@ export const api = {
       'PUT',
       `/projects/${projectId}/content/settings/settings`,
       bundle,
+    ),
+
+  // --- content revision history (any revisioned kind: page/template/snippet/translation/dataset/entry/form/settings) ---
+  listRevisions: (projectId: string, kind: string, id: string) =>
+    request<{ items: RevisionMeta[] }>('GET', `/projects/${projectId}/content/${kind}/${encodeURIComponent(id)}/revisions`),
+  getRevision: (projectId: string, kind: string, id: string, revId: string) =>
+    request<{ revision: RevisionMeta & { data: unknown } }>(
+      'GET',
+      `/projects/${projectId}/content/${kind}/${encodeURIComponent(id)}/revisions/${encodeURIComponent(revId)}`,
+    ),
+  restoreRevision: (projectId: string, kind: string, id: string, revId: string) =>
+    request<{ item: unknown }>(
+      'POST',
+      `/projects/${projectId}/content/${kind}/${encodeURIComponent(id)}/revisions/${encodeURIComponent(revId)}/restore`,
     ),
 
   // --- Google fonts: download a family's weights → self-host as a kind:'font' library asset ---

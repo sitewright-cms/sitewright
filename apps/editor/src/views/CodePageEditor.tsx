@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
-import { Settings, RotateCcw } from 'lucide-react';
+import { Settings, RotateCcw, History } from 'lucide-react';
 import type { JsonValue, Page, Template } from '@sitewright/schema';
 import {
   GLOBAL_TEMPLATES,
@@ -27,6 +27,7 @@ import { FilePicker } from './files/FilePicker';
 import { ACCEPT } from './files/FileBrowser';
 import { EntryEditorLoader } from './datasets/EntryEditorLoader';
 import { RegionsPanel, type RegionItem } from './code/RegionsPanel';
+import { RevisionHistoryModal } from './RevisionHistoryModal';
 import { WebsiteDataModal } from './settings/WebsiteDataModal';
 import {
   DANGEROUS_KEYS,
@@ -150,6 +151,7 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
   const [openEntry, setOpenEntry] = useState<{ dataset: string; id: string } | null>(null);
   // The editable-regions manifest the preview bridge posts in content mode (drives the Regions rail).
   const [regions, setRegions] = useState<RegionItem[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
   // The data-sw-html region being edited in the source modal (toolbar </> button): its key + the HTML to
   // seed (the stored page.data override if any, else the live authored default), or null when closed.
   const [htmlSource, setHtmlSource] = useState<{ key: string; html: string } | null>(null);
@@ -841,6 +843,11 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
           <RotateCcw className="h-5 w-5" />
         </button>
       </Tooltip>
+      <Tooltip tip="Revision history" side="bottom">
+        <button type="button" aria-label="Revision history" className={toolBtnClass} onClick={() => setHistoryOpen(true)}>
+          <History className="h-5 w-5" />
+        </button>
+      </Tooltip>
     </>
   );
 
@@ -1052,6 +1059,16 @@ export function CodePageEditor({ project, page, pages = [], locales = [], onClos
           value={pageData}
           onSave={setPageData}
           onClose={() => setPageDataOpen(false)}
+        />
+      )}
+      {historyOpen && (
+        <RevisionHistoryModal
+          projectId={project.id}
+          kind="page"
+          entityId={page.id}
+          label={page.title}
+          onClose={() => setHistoryOpen(false)}
+          onRestored={() => void reload()}
         />
       )}
       {dialog}

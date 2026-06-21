@@ -26,7 +26,7 @@ describe('OIDC single sign-on', () => {
   let admin: TestClient;
 
   beforeEach(async () => {
-    harness = await makeHarness({ encryptionKey: randomBytes(32), authRateMax: 500 });
+    harness = await makeHarness({ encryptionKey: randomBytes(32) });
     admin = await harness.signup({ email: 'admin@test.local', password: 'Pw-secret-1', admin: true });
     // Configure one enabled provider (the secret is encrypted at rest).
     const res = await admin.put('/admin/settings', {

@@ -165,9 +165,8 @@ const app = await createApp({
   // A DEPLOYED instance is invitation-only by default (no env var) — an admin opens public self-signup
   // at runtime in System Settings (`allowSelfRegistration`). The first admin is seeded on first boot.
   openRegistration: false,
-  // Per-IP auth rate cap; defaults to 10/min. Raise via SW_AUTH_RATE_LIMIT_MAX only for the
-  // integration/E2E harness (many registrations from one IP).
-  authRateMax: process.env.SW_AUTH_RATE_LIMIT_MAX ? Number(process.env.SW_AUTH_RATE_LIMIT_MAX) : undefined,
+  // Brute-force protection is a per-IP FAILED-login throttle (admin setting `authMaxFailures`, default
+  // 10), not an env var. Flood protection for all routes is the global 200/min limiter.
   renderPool,
   // Public base URL baked into exported forms (so static sites post submissions
   // back to this platform). Validated above; trailing slash normalized at build time.

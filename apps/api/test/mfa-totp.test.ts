@@ -17,7 +17,7 @@ describe('TOTP two-factor (enrol, login gate, recovery codes)', () => {
   let harness: Harness;
   beforeEach(async () => {
     // An encryption key is required (the TOTP secret is encrypted at rest); raise the auth cap.
-    harness = await makeHarness({ encryptionKey: randomBytes(32), authRateMax: 200 });
+    harness = await makeHarness({ encryptionKey: randomBytes(32) });
   });
   afterEach(async () => {
     await harness.close();
@@ -202,7 +202,7 @@ describe('TOTP two-factor (enrol, login gate, recovery codes)', () => {
   });
 
   it('is unavailable (503) when the instance has no encryption key', async () => {
-    const noKey = await makeHarness({ authRateMax: 200, encryptionKey: undefined }); // no encryptionKey
+    const noKey = await makeHarness({ encryptionKey: undefined }); // no encryptionKey
     try {
       const client = await noKey.signup({ password: PASSWORD });
       const res = await client.post('/account/mfa/totp/setup');

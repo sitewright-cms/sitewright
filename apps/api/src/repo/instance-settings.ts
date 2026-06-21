@@ -7,6 +7,7 @@ import {
   DEFAULT_AGENT_SESSION_HOURS,
   DEFAULT_REVISION_COALESCE_MS,
   DEFAULT_REVISION_RETENTION_DAYS,
+  DEFAULT_AUTH_MAX_FAILURES,
   DEFAULT_FORM_MODES,
   DEFAULT_PLATFORM_NAME,
   type InstanceSettingsInput,
@@ -99,6 +100,11 @@ export class InstanceSettingsRepository {
       coalesceWindowMs: s.revisionCoalesceMs ?? DEFAULT_REVISION_COALESCE_MS,
       retentionDays: s.revisionRetentionDays ?? DEFAULT_REVISION_RETENTION_DAYS,
     };
+  }
+
+  /** Max FAILED login/2FA attempts per IP per minute before throttling — the admin setting or default 10. */
+  async getAuthMaxFailures(): Promise<number> {
+    return (await this.getStored()).authMaxFailures ?? DEFAULT_AUTH_MAX_FAILURES;
   }
 
   /** The configured platform name, or the built-in default — for TOTP/passkey prompts + the chrome. */
@@ -262,6 +268,9 @@ export class InstanceSettingsRepository {
     } else {
       next.revisionRetentionDays = input.revisionRetentionDays;
     }
+
+    // Max failed-auth attempts: a number sets it, `null` reverts to the default (10), undefined keeps.
+    mergeNullable(input.authMaxFailures, current.authMaxFailures, (v) => { next.authMaxFailures = v; });
 
     // Default locale for new projects: a tag sets it, `null` reverts to `en`, undefined keeps.
     if (input.defaultLocale === null) {

@@ -27,7 +27,7 @@ function hasSessionCookie(res: { cookies: { name: string }[] }): boolean {
 describe('passkeys (WebAuthn registration + passwordless login)', () => {
   let harness: Harness;
   beforeEach(async () => {
-    harness = await makeHarness({ encryptionKey: randomBytes(32), authRateMax: 200 });
+    harness = await makeHarness({ encryptionKey: randomBytes(32) });
     verifyReg.mockReset();
     verifyAuth.mockReset();
     // Default: a successful registration of `cred-default` and a successful assertion.

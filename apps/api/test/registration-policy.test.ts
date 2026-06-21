@@ -79,7 +79,7 @@ describe('registration policy', () => {
       const db = await makeTestDb();
       await seedInstance({ db, adminEmail: 'admin@sitewright.example', adminPassword: 'Pw-secret-1' });
       // Factory default CLOSED — so only the admin setting can re-open it.
-      const app = await createApp({ db, openRegistration: false, authRateMax: 100 });
+      const app = await createApp({ db, openRegistration: false });
       await app.ready();
       const login = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'admin@sitewright.example', password: 'Pw-secret-1' } });
       return { app, adminCookie: token(login) };
@@ -103,7 +103,7 @@ describe('registration policy', () => {
     it('closes self-registration when disabled, despite an open factory default', async () => {
       const db = await makeTestDb();
       await seedInstance({ db, adminEmail: 'admin@sitewright.example', adminPassword: 'Pw-secret-1' });
-      const app = await createApp({ db, openRegistration: true, authRateMax: 100 });
+      const app = await createApp({ db, openRegistration: true });
       await app.ready();
       const login = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'admin@sitewright.example', password: 'Pw-secret-1' } });
       const put = await app.inject({ method: 'PUT', url: '/admin/settings', cookies: { sw_session: token(login) }, payload: { allowSelfRegistration: false } });
@@ -125,7 +125,7 @@ describe('registration policy', () => {
   // The shared password policy applies to the register body.
   describe('password policy on register', () => {
     it('rejects a password missing a character class (400 with the specific rule)', async () => {
-      const app = await createApp({ db: await makeTestDb(), authRateMax: 100 });
+      const app = await createApp({ db: await makeTestDb() });
       await app.ready();
       const res = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'weak@x.test', password: 'alllowercase1!' } });
       expect(res.statusCode).toBe(400);
@@ -136,7 +136,7 @@ describe('registration policy', () => {
     });
 
     it('accepts a fully-compliant password (201)', async () => {
-      const app = await createApp({ db: await makeTestDb(), authRateMax: 100 });
+      const app = await createApp({ db: await makeTestDb() });
       await app.ready();
       const res = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'strong@x.test', password: 'Str0ng-Pw!' } });
       expect(res.statusCode).toBe(201);

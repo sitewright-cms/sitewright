@@ -119,11 +119,21 @@ export class PublishStore {
   /**
    * Reads a bundled binary asset from the builder's `_assets/` tree (optimized image variants
    * and raw uploads), or null if the path is outside `_assets/`, traverses, or is absent.
-   * Images are served inline with their type; everything else is download-only (octet-stream
-   * + attachment) so it can never render as HTML/script on this origin. The path is confined
-   * to the site directory.
+   * Images, fonts, and bundled stylesheets are served inline with their type; everything else is
+   * download-only (octet-stream + attachment) so it can never render as HTML/script on this origin.
+   * The path is confined to the site directory.
+   *
+   * `executableScripts` opts a `.js` asset into being served as runnable `text/javascript` instead of
+   * download-only. It MUST stay off for the cookie-bearing `/sites/<slug>/` origin (where executing a
+   * foreign imported script could read a visitor's session) and is set ONLY by the opaque-origin,
+   * sandboxed preview route, and only for a genuinely isolated (cross-site) script subresource load —
+   * see the preview-site asset handler in `app.ts`.
    */
-  async readBinary(slug: string, requestPath: string): Promise<PublishedBinary | null> {
+  async readBinary(
+    slug: string,
+    requestPath: string,
+    opts?: { executableScripts?: boolean },
+  ): Promise<PublishedBinary | null> {
     const dir = resolve(this.dirFor(slug));
     const rel = requestPath.replace(/^\/+/, '').replace(/\/+$/, '');
     const segments = rel.split('/');
@@ -138,10 +148,15 @@ export class PublishStore {
     } catch {
       return null;
     }
-    const imageType = PUBLISHED_IMAGE_TYPES.get(extname(rel).toLowerCase());
-    return imageType
-      ? { body, contentType: imageType, attachment: false }
-      : { body, contentType: 'application/octet-stream', attachment: true };
+    const ext = extname(rel).toLowerCase();
+    const imageType = PUBLISHED_IMAGE_TYPES.get(ext);
+    if (imageType) return { body, contentType: imageType, attachment: false };
+    // Sandboxed-preview ONLY (opt-in, cross-site script load): run an imported `.js` in the opaque
+    // origin. Never set by the same-origin `/sites/` route, so local hosting stays inert.
+    if (opts?.executableScripts && ext === '.js') {
+      return { body, contentType: 'text/javascript; charset=utf-8', attachment: false };
+    }
+    return { body, contentType: 'application/octet-stream', attachment: true };
   }
 
   /**

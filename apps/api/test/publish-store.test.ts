@@ -66,6 +66,20 @@ describe('PublishStore HTML serving', () => {
     expect(js?.attachment).toBe(true); // runs only on the owner's own external deploy
   });
 
+  it('serves a bundled script EXECUTABLE only when executableScripts is opted in (the sandboxed preview)', async () => {
+    const dir = store.dirFor('site');
+    await mkdir(join(dir, '_assets', 'js1'), { recursive: true });
+    await writeFile(join(dir, '_assets', 'js1', 'script.js'), 'console.log(1)');
+    const js = await store.readBinary('site', '/_assets/js1/script.js', { executableScripts: true });
+    expect(js?.contentType).toBe('text/javascript; charset=utf-8'); // runnable in the opaque-origin frame
+    expect(js?.attachment).toBe(false);
+    // The flag is scoped to scripts: a non-.js binary is unaffected (still download-only).
+    await writeFile(join(dir, '_assets', 'js1', 'data.bin'), 'x');
+    const bin = await store.readBinary('site', '/_assets/js1/data.bin', { executableScripts: true });
+    expect(bin?.contentType).toBe('application/octet-stream');
+    expect(bin?.attachment).toBe(true);
+  });
+
   it('still rejects traversal segments', () => {
     expect(() => store.resolveHtml('site', '/../../etc/passwd.html')).toThrow();
     expect(store.readBinary('site', '/_assets/../../etc/passwd.png')).resolves.toBeNull();

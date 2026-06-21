@@ -30,6 +30,24 @@ describe('InstanceSettingsRepository', () => {
     expect(pub.hcaptcha).toEqual({ siteKey: 'site-1', hasSecret: false });
   });
 
+  it('revision policy: defaults 0/90, round-trips a set value (+ masked view), null reverts', async () => {
+    const repo = new InstanceSettingsRepository(db, KEY);
+    expect(await repo.getRevisionPolicy()).toEqual({ coalesceWindowMs: 0, retentionDays: 90 }); // built-in defaults
+
+    await repo.put({ revisionCoalesceMs: 120_000, revisionRetentionDays: 30 });
+    expect(await repo.getRevisionPolicy()).toEqual({ coalesceWindowMs: 120_000, retentionDays: 30 });
+    const pub = await repo.getPublic();
+    expect(pub.revisionCoalesceMs).toBe(120_000);
+    expect(pub.revisionRetentionDays).toBe(30);
+
+    await repo.put({ allowSelfRegistration: true }); // unrelated update keeps them
+    expect(await repo.getRevisionPolicy()).toEqual({ coalesceWindowMs: 120_000, retentionDays: 30 });
+
+    await repo.put({ revisionCoalesceMs: null, revisionRetentionDays: null }); // null reverts to defaults
+    expect(await repo.getRevisionPolicy()).toEqual({ coalesceWindowMs: 0, retentionDays: 90 });
+    expect((await repo.getPublic()).revisionCoalesceMs).toBeUndefined();
+  });
+
   it('round-trips the allowSelfRegistration toggle (unset → set → keep on unrelated update)', async () => {
     const repo = new InstanceSettingsRepository(db, KEY);
     // Unset by default — the route, not the repo, supplies the factory fallback.

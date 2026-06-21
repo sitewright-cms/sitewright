@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   DEFAULT_AGENT_INSTRUCTIONS,
   DEFAULT_AGENT_SESSION_HOURS,
+  DEFAULT_REVISION_COALESCE_MS,
+  DEFAULT_REVISION_RETENTION_DAYS,
   DEFAULT_NEW_PROJECT_LOCALE,
   DEFAULT_PLATFORM_NAME,
   DEFAULT_BRAND_PRIMARY,
@@ -32,6 +34,10 @@ const EMPTY_MODES = { globalSmtp: false, userSmtp: false, contactPhp: false, thi
 
 /** Coerce the agent-session field to the server-accepted integer range [1, 720] (hours). */
 const clampSessionHours = (n: number): number => Math.max(1, Math.min(720, Math.round(n)));
+// Revision coalesce window shown in SECONDS (0 = every save a separate revision); stored in ms.
+const clampCoalesceSeconds = (n: number): number => Math.max(0, Math.min(86_400, Math.round(n)));
+const clampRetentionDays = (n: number): number => Math.max(1, Math.min(3650, Math.round(n)));
+const DEFAULT_COALESCE_SECONDS = DEFAULT_REVISION_COALESCE_MS / 1000;
 
 /**
  * Instance admin → settings: the global mail transport, hCaptcha keys, and which
@@ -52,6 +58,11 @@ export function InstanceSettings() {
   // The agent session cap (hours) — how long an MCP/OAuth connection lasts before re-consent.
   const [agentSessionHours, setAgentSessionHours] = useState(DEFAULT_AGENT_SESSION_HOURS);
   const initialSessionHoursRef = useRef(DEFAULT_AGENT_SESSION_HOURS);
+  // Revision history: coalesce window (seconds; 0 = every save distinct) + retention (days).
+  const [coalesceSeconds, setCoalesceSeconds] = useState(DEFAULT_COALESCE_SECONDS);
+  const initialCoalesceSecondsRef = useRef(DEFAULT_COALESCE_SECONDS);
+  const [retentionDays, setRetentionDays] = useState(DEFAULT_REVISION_RETENTION_DAYS);
+  const initialRetentionDaysRef = useRef(DEFAULT_REVISION_RETENTION_DAYS);
   // The default locale new projects start in (their defaultLocale + sole initial locale).
   const [newProjectLocale, setNewProjectLocale] = useState(DEFAULT_NEW_PROJECT_LOCALE);
   const initialLocaleRef = useRef(DEFAULT_NEW_PROJECT_LOCALE);
@@ -142,6 +153,12 @@ export function InstanceSettings() {
     const hours = s.agentSessionHours ?? DEFAULT_AGENT_SESSION_HOURS;
     setAgentSessionHours(hours);
     initialSessionHoursRef.current = hours;
+    const coalesceSec = Math.round((s.revisionCoalesceMs ?? DEFAULT_REVISION_COALESCE_MS) / 1000);
+    setCoalesceSeconds(coalesceSec);
+    initialCoalesceSecondsRef.current = coalesceSec;
+    const retention = s.revisionRetentionDays ?? DEFAULT_REVISION_RETENTION_DAYS;
+    setRetentionDays(retention);
+    initialRetentionDaysRef.current = retention;
     const locale = s.defaultLocale ?? DEFAULT_NEW_PROJECT_LOCALE;
     setNewProjectLocale(locale);
     initialLocaleRef.current = locale;
@@ -216,6 +233,15 @@ export function InstanceSettings() {
     const clampedHours = clampSessionHours(agentSessionHours);
     if (clampedHours !== initialSessionHoursRef.current) {
       input.agentSessionHours = clampedHours === DEFAULT_AGENT_SESSION_HOURS ? null : clampedHours;
+    }
+    // Revisions: coalesce (seconds→ms) + retention (days). Default value sends null (revert), else the number.
+    const clampedCoalesce = clampCoalesceSeconds(coalesceSeconds);
+    if (clampedCoalesce !== initialCoalesceSecondsRef.current) {
+      input.revisionCoalesceMs = clampedCoalesce === DEFAULT_COALESCE_SECONDS ? null : clampedCoalesce * 1000;
+    }
+    const clampedRetention = clampRetentionDays(retentionDays);
+    if (clampedRetention !== initialRetentionDaysRef.current) {
+      input.revisionRetentionDays = clampedRetention === DEFAULT_REVISION_RETENTION_DAYS ? null : clampedRetention;
     }
     // Default locale for new projects: only touch it when changed; the built-in default sends
     // null (revert), any other tag sends the value.
@@ -606,6 +632,49 @@ export function InstanceSettings() {
             onBlur={() => setAgentSessionHours((h) => clampSessionHours(h))}
           />
         </label>
+      </fieldset>
+
+      <fieldset className={`${glassCard} p-4`}>
+        <legend className="flex items-center gap-1.5 px-1 text-sm font-bold">
+          Revision history
+          <SectionHelp
+            tip={`Every content save is versioned. "Coalesce window" merges a rapid burst of edits by the same person to one item into a single revision — 0 (the default) keeps every save as its own revision. "Keep for" is how long history is retained before old revisions are swept. Applies to new saves; existing history is unaffected.`}
+          />
+        </legend>
+        <div className="flex flex-wrap items-center gap-6">
+          <label className="flex items-center gap-2 text-sm text-slate-600">
+            Coalesce window (seconds)
+            <input
+              type="number"
+              min={0}
+              max={86400}
+              aria-label="Revision coalesce window in seconds"
+              className={`${glassInput} w-28`}
+              value={coalesceSeconds}
+              onChange={(e) => {
+                const n = e.target.valueAsNumber;
+                if (!Number.isNaN(n)) setCoalesceSeconds(n);
+              }}
+              onBlur={() => setCoalesceSeconds((s) => clampCoalesceSeconds(s))}
+            />
+          </label>
+          <label className="flex items-center gap-2 text-sm text-slate-600">
+            Keep history for (days)
+            <input
+              type="number"
+              min={1}
+              max={3650}
+              aria-label="Revision retention in days"
+              className={`${glassInput} w-28`}
+              value={retentionDays}
+              onChange={(e) => {
+                const n = e.target.valueAsNumber;
+                if (!Number.isNaN(n)) setRetentionDays(n);
+              }}
+              onBlur={() => setRetentionDays((d) => clampRetentionDays(d))}
+            />
+          </label>
+        </div>
       </fieldset>
 
       <fieldset className={`${glassCard} p-4`}>

@@ -4,6 +4,8 @@ import {
   maskInstanceSettings,
   DEFAULT_AGENT_INSTRUCTIONS,
   DEFAULT_AGENT_SESSION_HOURS,
+  DEFAULT_REVISION_COALESCE_MS,
+  DEFAULT_REVISION_RETENTION_DAYS,
   DEFAULT_FORM_MODES,
   DEFAULT_PLATFORM_NAME,
   type InstanceSettingsInput,
@@ -86,6 +88,16 @@ export class InstanceSettingsRepository {
   /** The absolute agent-session (OAuth refresh) cap in ms — the admin setting or the 8h default. */
   async getAgentSessionMs(): Promise<number> {
     return ((await this.getStored()).agentSessionHours ?? DEFAULT_AGENT_SESSION_HOURS) * 60 * 60 * 1000;
+  }
+
+  /** The effective revision-history policy (admin settings or the built-in defaults) — read by the
+   *  RevisionsRepository on each record/sweep so an admin change takes effect without a restart. */
+  async getRevisionPolicy(): Promise<{ coalesceWindowMs: number; retentionDays: number }> {
+    const s = await this.getStored();
+    return {
+      coalesceWindowMs: s.revisionCoalesceMs ?? DEFAULT_REVISION_COALESCE_MS,
+      retentionDays: s.revisionRetentionDays ?? DEFAULT_REVISION_RETENTION_DAYS,
+    };
   }
 
   /** The configured platform name, or the built-in default — for TOTP/passkey prompts + the chrome. */
@@ -194,6 +206,24 @@ export class InstanceSettingsRepository {
       if (current.agentSessionHours !== undefined) next.agentSessionHours = current.agentSessionHours;
     } else {
       next.agentSessionHours = input.agentSessionHours;
+    }
+
+    // Revision coalesce window (ms): a number sets it, `null` reverts to the 0 default, undefined keeps.
+    if (input.revisionCoalesceMs === null) {
+      // cleared — undefined → default at read time
+    } else if (input.revisionCoalesceMs === undefined) {
+      if (current.revisionCoalesceMs !== undefined) next.revisionCoalesceMs = current.revisionCoalesceMs;
+    } else {
+      next.revisionCoalesceMs = input.revisionCoalesceMs;
+    }
+
+    // Revision retention (days): a number sets it, `null` reverts to the 90-day default, undefined keeps.
+    if (input.revisionRetentionDays === null) {
+      // cleared — undefined → default at read time
+    } else if (input.revisionRetentionDays === undefined) {
+      if (current.revisionRetentionDays !== undefined) next.revisionRetentionDays = current.revisionRetentionDays;
+    } else {
+      next.revisionRetentionDays = input.revisionRetentionDays;
     }
 
     // Default locale for new projects: a tag sets it, `null` reverts to `en`, undefined keeps.

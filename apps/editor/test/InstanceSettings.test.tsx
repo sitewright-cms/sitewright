@@ -34,6 +34,29 @@ describe('InstanceSettings', () => {
     expect(screen.getByLabelText('Third-party')).toBeInTheDocument();
   });
 
+  it('renders the revision-history fields (coalesce shown in seconds) and defaults to 0s / 90 days', async () => {
+    getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
+    render(<InstanceSettings />);
+    expect(await screen.findByLabelText('Revision coalesce window in seconds')).toHaveValue(0);
+    expect(screen.getByLabelText('Revision retention in days')).toHaveValue(90);
+  });
+
+  it('loads + saves the revision settings: coalesce seconds→ms, retention days, default→null revert', async () => {
+    getInstanceSettings.mockResolvedValue({ settings: { ...DEFAULTS, revisionCoalesceMs: 60_000, revisionRetentionDays: 45 } });
+    render(<InstanceSettings />);
+    const coalesce = await screen.findByLabelText('Revision coalesce window in seconds');
+    expect(coalesce).toHaveValue(60); // 60_000 ms → 60 s
+    expect(screen.getByLabelText('Revision retention in days')).toHaveValue(45);
+
+    fireEvent.change(coalesce, { target: { value: '120' } });
+    fireEvent.change(screen.getByLabelText('Revision retention in days'), { target: { value: '90' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(putInstanceSettings).toHaveBeenCalledTimes(1));
+    const body = putInstanceSettings.mock.calls[0]![0] as InstanceSettingsInput;
+    expect(body.revisionCoalesceMs).toBe(120_000); // 120 s → ms
+    expect(body.revisionRetentionDays).toBeNull(); // back to the 90-day default → null (revert)
+  });
+
   it('saves a toggled form mode and clears disabled sections to null', async () => {
     getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
     render(<InstanceSettings />);

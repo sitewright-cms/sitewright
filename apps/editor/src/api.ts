@@ -281,6 +281,13 @@ export interface RevisionMeta {
   revisionAt: string;
   author: { userId: string; email: string | null; isYou: boolean };
 }
+/** A row in the project-wide History feed — a RevisionMeta plus which entity it belongs to. */
+export interface ProjectRevisionRow extends RevisionMeta {
+  kind: string;
+  entityId: string;
+  /** A short title for the entity (from the snapshot: title → name → id). */
+  label: string;
+}
 /**
  * A member returned by a management list. Shared by two surfaces: `/admin/users` (platform staff —
  * role `admin`|`developer`) and `/projects/:id/members` (the project team — role `owner`|`member`).
@@ -638,6 +645,19 @@ export const api = {
       'POST',
       `/projects/${projectId}/content/${kind}/${encodeURIComponent(id)}/revisions/${encodeURIComponent(revId)}/restore`,
     ),
+  /** The project-wide activity feed (History view). Optional kind/op filters + a `before` ISO cursor. */
+  listProjectRevisions: (projectId: string, opts: { kind?: string; op?: string; limit?: number; before?: string } = {}) => {
+    const q = new URLSearchParams();
+    if (opts.kind) q.set('kind', opts.kind);
+    if (opts.op) q.set('op', opts.op);
+    if (opts.limit) q.set('limit', String(opts.limit));
+    if (opts.before) q.set('before', opts.before);
+    const qs = q.toString();
+    return request<{ items: ProjectRevisionRow[]; nextBefore: string | null }>(
+      'GET',
+      `/projects/${projectId}/revisions${qs ? `?${qs}` : ''}`,
+    );
+  },
 
   // --- Google fonts: download a family's weights → self-host as a kind:'font' library asset ---
   selectFont: (projectId: string, family: string, weights: number[], folder = '') =>

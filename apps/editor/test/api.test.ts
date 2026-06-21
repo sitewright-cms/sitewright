@@ -941,4 +941,13 @@ describe('unauthorized (401) handling', () => {
     expect(url).toBe('/projects/p1/content/settings/settings/revisions/rev3/restore');
     expect(init.method).toBe('POST');
   });
+
+  it('listProjectRevisions builds the project-wide feed URL with optional filters', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { items: [], nextBefore: null }));
+    await api.listProjectRevisions('p1', { kind: 'page', op: 'delete', limit: 25, before: '2026-06-21T00:00:00.000Z' });
+    expect(fetchMock.mock.calls[0]![0]).toBe('/projects/p1/revisions?kind=page&op=delete&limit=25&before=2026-06-21T00%3A00%3A00.000Z');
+
+    await api.listProjectRevisions('p1');
+    expect(fetchMock.mock.calls[1]![0]).toBe('/projects/p1/revisions'); // no opts → bare path
+  });
 });

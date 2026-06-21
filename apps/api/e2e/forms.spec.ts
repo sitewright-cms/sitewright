@@ -33,16 +33,23 @@ test('author → publish → public submit → inbox', async ({ playwright, base
   });
   expect(putForm.status()).toBe(200);
 
-  // A page embedding the form.
+  // A page embedding the form (code-first: the `{{sw-form}}` helper resolves to the full definition
+  // with a same-origin `/f/<id>/<form>` endpoint at publish time).
   const putPage = await api.put(`${base}/content/page/contact`, {
     data: {
       id: 'contact',
       path: 'contact',
       title: 'Contact',
-      root: { id: 'r', type: 'Section', children: [{ id: 'f', type: 'Form', props: { formId: 'contact' } }] },
+      source: '<section class="mx-auto max-w-3xl px-6 py-16">{{sw-form "contact"}}</section>',
     },
   });
   expect(putPage.status()).toBe(200);
+
+  // Local Hosting is opt-in (a `local` deploy target) — required for the site to be SERVED at the
+  // `/sites/<slug>/` path form AND the `<slug>.<SW_SITES_DOMAIN>` subdomain. (Tolerate 409 in case the
+  // instance auto-provisions one.)
+  const localTarget = await api.post(`${base}/deploy-targets`, { data: { name: 'Local Hosting', protocol: 'local' } });
+  expect([201, 409]).toContain(localTarget.status());
 
   expect((await api.post(`${base}/publish`)).status()).toBe(200);
 
@@ -55,7 +62,7 @@ test('author → publish → public submit → inbox', async ({ playwright, base
   expect(html).toContain(`data-sw-endpoint="/f/${projectId}/contact"`);
   expect(html).not.toContain('secret-recipient@acme.example');
 
-  // Public submission (cross-origin in production; assert CORS + storage).
+  // LOCAL HOSTING TARGET 1 — the `/sites/<slug>/` PATH FORM (same-origin as the API). Assert CORS + storage.
   const submit = await api.post(`/f/${projectId}/contact`, {
     data: { email: 'lead@x.co', message: 'Hello from E2E', _elapsed: '5000' },
   });
@@ -63,19 +70,43 @@ test('author → publish → public submit → inbox', async ({ playwright, base
   expect(await submit.json()).toEqual({ ok: true });
   expect(submit.headers()['access-control-allow-origin']).toBe('*');
 
-  // Read it back from the authenticated inbox.
+  // LOCAL HOSTING TARGET 2 — the `<slug>.<SW_SITES_DOMAIN>` SUBDOMAIN. The page is served at the
+  // subdomain root, so its form posts to the root-relative `/f/<id>/contact` ON the subdomain host. That
+  // must reach the platform endpoint (not be rewritten into `/sites/<slug>/f/…`). Drive it with a Host
+  // header (the :2003 instance runs SW_SITES_DOMAIN=dind.local). The page is reachable at the subdomain
+  // root too. A cross-domain `Origin` exercises the CORS path.
+  const subHost = `${slug}.dind.local`;
+  const subPage = await api.get(`/contact/`, { headers: { host: subHost } });
+  expect(subPage.status()).toBe(200);
+  expect(await subPage.text()).toContain(`data-sw-endpoint="/f/${projectId}/contact"`);
+  const subPre = await api.fetch(`/f/${projectId}/contact`, {
+    method: 'OPTIONS',
+    headers: { host: subHost, origin: `http://${subHost}`, 'access-control-request-method': 'POST' },
+  });
+  expect(subPre.status()).toBe(204);
+  expect(subPre.headers()['access-control-allow-origin']).toBe('*');
+  const subSubmit = await api.post(`/f/${projectId}/contact`, {
+    headers: { host: subHost, origin: `http://${subHost}` },
+    data: { email: 'sub@x.co', message: 'Hello from the subdomain', _elapsed: '5000' },
+  });
+  expect(subSubmit.status()).toBe(200);
+  expect(await subSubmit.json()).toEqual({ ok: true });
+  expect(subSubmit.headers()['access-control-allow-origin']).toBe('*');
+
+  // Read BOTH submissions back from the authenticated inbox — one per local hosting target.
   const inbox = await api.get(`${base}/submissions`);
   expect(inbox.status()).toBe(200);
   const body = await inbox.json();
-  expect(body.total).toBe(1);
-  expect(body.items[0].fields).toEqual({ email: 'lead@x.co', message: 'Hello from E2E' });
+  expect(body.total).toBe(2);
+  const emails = body.items.map((i: { fields: { email: string } }) => i.fields.email).sort();
+  expect(emails).toEqual(['lead@x.co', 'sub@x.co']);
 
-  // Honeypot-filled submission is dropped (still 200, not stored).
+  // Honeypot-filled submission is dropped (still 200, not stored) — count stays at the 2 real ones.
   const trap = await api.post(`/f/${projectId}/contact`, {
     data: { email: 'bot@x.co', _hpt: 'i am a bot', _elapsed: '5000' },
   });
   expect(trap.status()).toBe(200);
-  expect((await (await api.get(`${base}/submissions`)).json()).total).toBe(1);
+  expect((await (await api.get(`${base}/submissions`)).json()).total).toBe(2);
 
   // Unknown form → 404.
   expect((await api.post(`/f/${projectId}/nope`, { data: { a: '1' } })).status()).toBe(404);

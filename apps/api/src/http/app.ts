@@ -800,6 +800,20 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       const slug = siteSubdomainSlug(req.headers.host);
       if (!slug) return req.url ?? '/';
       const url = req.url && req.url !== '/' ? req.url : '/';
+      // The PUBLIC form-submission API (`POST /f/<projectId>/<formId>` + its OPTIONS preflight) must
+      // reach the platform route even on a site subdomain: a published page posts to the root-relative
+      // `/f/<id>/<form>`, which on `<slug>.<sitesDomain>` resolves to THIS origin. Don't rewrite it into
+      // the site namespace (it isn't a site asset → would 404). Gated to POST/OPTIONS (the only verbs
+      // the endpoint serves) + the exact 2-segment shape (optional trailing slash) so a real site page
+      // path under `/f/…` is unaffected. A GET `/f/<a>/<b>` still rewrites to the site namespace — if the
+      // form endpoint ever gains a GET handler, add GET here too. (Externally deployed copies instead
+      // post to the absolute `publicBaseUrl` endpoint — cross-origin + the endpoint's `*` CORS.)
+      if (
+        (req.method === 'POST' || req.method === 'OPTIONS') &&
+        /^\/f\/[^/]+\/[^/]+\/?$/.test(url.split('?')[0] ?? url)
+      ) {
+        return url;
+      }
       return `/sites/${slug}${url}`;
     },
     // Redact deploy credentials defensively (Fastify omits bodies by default, but

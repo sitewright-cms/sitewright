@@ -111,6 +111,34 @@ describe('subdomain routing for local sites (sitesDomain)', () => {
     expect(viaPath.headers['content-disposition']).toContain('attachment');
   });
 
+  it('routes a form post to the platform /f/ endpoint even when reached via the subdomain host', async () => {
+    // A locally-hosted site served at `<slug>.<DOMAIN>` posts to the root-relative `/f/<pid>/<form>`,
+    // which resolves to the subdomain origin. rewriteUrl must NOT rewrite that into `/sites/<slug>/f/…`
+    // (a site asset → 404); the public form endpoint has to reach the platform route. Without the
+    // carve-out this POST 404s. (No publish needed — `/f/` reads the form from the content store; this
+    // exercises the routing carve-out, not the full published-page round-trip, which the E2E covers.)
+    await client.project(projectId).putContent('form', 'contact', {
+      id: 'contact',
+      name: 'Contact',
+      fields: [{ name: 'email', label: 'Email', type: 'email' }],
+      recipient: 'x@acme.example',
+    });
+    const host = `${slug}.${DOMAIN}`;
+    const pre = await client.inject({ method: 'OPTIONS', url: `/f/${projectId}/contact`, headers: { host } });
+    expect(pre.statusCode).toBe(204); // preflight reaches the route via the subdomain too
+    const post = await client.inject({
+      method: 'POST',
+      url: `/f/${projectId}/contact`,
+      headers: { host },
+      payload: { email: 'lead@x.co', _elapsed: '5000' },
+    });
+    expect(post.statusCode).toBe(200);
+    expect(post.json()).toEqual({ ok: true });
+    // It genuinely stored (the post reached the platform endpoint, not the site 404).
+    const inbox = await client.get(`/projects/${projectId}/submissions`);
+    expect((inbox.json() as { total: number }).total).toBe(1);
+  });
+
   it('a token-gated site via subdomain sets a ROOT-scoped cookie + redirects clean', async () => {
     await seedAndPublish({ previewToken: 'tok_abcdefgh12345678' });
     expect((await site('/')).statusCode).toBe(403); // no token, no cookie

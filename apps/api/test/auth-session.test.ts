@@ -187,3 +187,61 @@ describe('auth + session lifecycle (HTTP)', () => {
     expect(res.json()).toMatchObject({ error: 'invalid request' });
   });
 });
+
+// Session-cookie hardening: on an HTTPS instance the session cookie is renamed with the `__Host-`
+// prefix, which makes browsers refuse to set that name WITH a `Domain` attribute — so a locally-hosted
+// site at `<slug>.<sitesDomain>` (same registrable domain as the app, now able to run foreign JS) can't
+// shadow or fixate the session via cookie-tossing. Over plain HTTP the prefix can't be used (it
+// requires `Secure`), so the bare name is kept.
+describe('session cookie hardening (__Host- prefix on HTTPS)', () => {
+  it('uses __Host-sw_session (Secure, Path=/, no Domain) when secureCookies is on, and it authenticates', async () => {
+    const harness = await makeHarness({ secureCookies: true });
+    try {
+      const reg = await harness.app.inject({
+        method: 'POST',
+        url: '/auth/register',
+        payload: { email: `host-${randomUUID()}@test.local`, password: 'Pw-secret-1' },
+      });
+      expect(reg.statusCode).toBe(201);
+      const c = reg.cookies.find((c) => c.name === '__Host-sw_session');
+      expect(c, 'expected a __Host-sw_session Set-Cookie').toBeTruthy();
+      expect(reg.cookies.find((c) => c.name === 'sw_session')).toBeUndefined();
+      // The prefix's invariants (also what the browser enforces before accepting the cookie).
+      expect(c!.secure).toBe(true);
+      expect(c!.path).toBe('/');
+      expect(c!.domain).toBeUndefined();
+      expect(c!.httpOnly).toBe(true);
+      expect(String(c!.sameSite).toLowerCase()).toBe('strict');
+
+      // Round-trip: the server reads the prefixed name → an authed endpoint succeeds with it.
+      const me = await harness.app.inject({ method: 'GET', url: '/me', cookies: { '__Host-sw_session': c!.value } });
+      expect(me.statusCode).toBe(200);
+
+      // Logout's clearing Set-Cookie must ALSO carry Secure + Path=/ or the browser rejects the
+      // deletion of a `__Host-`-prefixed cookie.
+      const out = await harness.app.inject({ method: 'POST', url: '/auth/logout', cookies: { '__Host-sw_session': c!.value } });
+      expect(out.statusCode).toBe(204);
+      const cleared = out.cookies.find((c) => c.name === '__Host-sw_session');
+      expect(cleared, 'expected a __Host-sw_session clearing Set-Cookie on logout').toBeDefined();
+      expect(cleared!.secure).toBe(true);
+      expect(cleared!.path).toBe('/');
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it('keeps the bare sw_session name over plain HTTP (the prefix needs Secure, which dev cannot set)', async () => {
+    const harness = await makeHarness(); // secureCookies defaults off
+    try {
+      const reg = await harness.app.inject({
+        method: 'POST',
+        url: '/auth/register',
+        payload: { email: `bare-${randomUUID()}@test.local`, password: 'Pw-secret-1' },
+      });
+      expect(reg.cookies.find((c) => c.name === 'sw_session')).toBeTruthy();
+      expect(reg.cookies.find((c) => c.name === '__Host-sw_session')).toBeUndefined();
+    } finally {
+      await harness.close();
+    }
+  });
+});

@@ -124,10 +124,13 @@ export class PublishStore {
    * The path is confined to the site directory.
    *
    * `executableScripts` opts a `.js` asset into being served as runnable `text/javascript` instead of
-   * download-only. It MUST stay off for the cookie-bearing `/sites/<slug>/` origin (where executing a
-   * foreign imported script could read a visitor's session) and is set ONLY by the opaque-origin,
-   * sandboxed preview route, and only for a genuinely isolated (cross-site) script subresource load —
-   * see the preview-site asset handler in `app.ts`.
+   * download-only. It MUST stay off for the cookie-bearing app origin (the `/sites/<slug>/` PATH form),
+   * where executing a foreign imported script could read a visitor's session. Two callers set it, each
+   * only for a context that is NOT the cookie-bearing app origin (see the call sites in `app.ts`):
+   *   - the opaque-origin sandboxed preview route, gated on a genuinely isolated (cross-site) script
+   *     subresource load (`Sec-Fetch-Site: cross-site`); and
+   *   - the public sites route, ONLY when the request arrived via the isolated `<slug>.<sitesDomain>`
+   *     subdomain origin (a separate origin to which the host-only session cookie is never sent).
    */
   async readBinary(
     slug: string,

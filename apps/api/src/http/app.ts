@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { randomUUID, timingSafeEqual, createHmac } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -703,7 +703,6 @@ export interface AppOptions {
 
 export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   const { db } = opts;
-  const signed = Boolean(opts.cookieSecret);
   // `__Host-` prefix (HTTPS/production only — the prefix REQUIRES `Secure`, which a dev/http instance
   // can't set, so browsers would reject the cookie) hardens the session against COOKIE-TOSSING from a
   // sibling site subdomain: it makes the browser refuse to set this name WITH a `Domain` attribute, so
@@ -718,6 +717,28 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // Built before the content repo so the revision policy (coalesce window / retention) can read the
   // admin instance settings live (see further `instanceSettingsRepo` uses below — this is the one site).
   const instanceSettingsRepo = new InstanceSettingsRepository(db, opts.encryptionKey);
+  // Session-cookie signing secret. An explicit `cookieSecret` (from `COOKIE_SECRET` env) PINS it;
+  // otherwise it's auto-generated + persisted on first boot and live-rotatable from System Settings.
+  // Held in a mutable ref so a rotation takes effect immediately — existing cookies stop verifying,
+  // so everyone re-logs-in (the intended effect). It only signs the cookie WRAPPER: the real session
+  // is a hashed token row, so the secret can't forge a session even if leaked.
+  const cookieSecretPinned = opts.cookieSecret !== undefined;
+  let currentCookieSecret = opts.cookieSecret ?? (await instanceSettingsRepo.getOrCreateCookieSecret());
+  // Custom HMAC sign/verify for the session cookie (NOT @fastify/cookie's `signed`, whose secret is
+  // fixed at plugin-registration time) so a runtime rotation of `currentCookieSecret` applies live.
+  const signSession = (token: string): string =>
+    `${token}.${createHmac('sha256', currentCookieSecret).update(token).digest('base64url')}`;
+  // NOTE: this is our own `<token>.<base64url-hmac>` format, distinct from @fastify/cookie's previous
+  // `<token>.<base64-sig>` signing — so upgrading from an old COOKIE_SECRET-pinned deployment forces a
+  // one-time re-login of existing sessions (acceptable: sessions are short-lived + this is a clean break).
+  const unsignSession = (raw: string): string | undefined => {
+    const dot = raw.lastIndexOf('.');
+    if (dot <= 0) return undefined;
+    const token = raw.slice(0, dot);
+    const sig = Buffer.from(raw.slice(dot + 1));
+    const expected = Buffer.from(createHmac('sha256', currentCookieSecret).update(token).digest('base64url'));
+    return sig.length === expected.length && timingSafeEqual(sig, expected) ? token : undefined;
+  };
   const revisionsRepo = new RevisionsRepository(db, { policy: () => instanceSettingsRepo.getRevisionPolicy() });
   const contentRepo = new ContentRepository(db, events, revisionsRepo);
   // Populate the editable global snippet/template library from the built-in constants on first boot
@@ -861,7 +882,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
   // Plugins that integrate per-route (rate-limit hooks `onRoute`) must finish
   // loading BEFORE routes are registered, so these are awaited up front.
-  await app.register(cookie, opts.cookieSecret ? { secret: opts.cookieSecret } : {});
+  // No `secret` here: the session cookie is signed/verified by our own HMAC (signSession/unsignSession)
+  // so a runtime secret rotation applies live. The plugin is still needed for cookie PARSING + setCookie.
+  await app.register(cookie, {});
   if (mediaStorage) {
     await app.register(multipart, { limits: { fileSize: MAX_UPLOAD_BYTES, files: 1, fields: 0 } });
   }
@@ -938,10 +961,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     // eslint-disable-next-line security/detect-object-injection -- sessionCookie is a constant cookie name
     const raw = req.cookies[sessionCookie];
     if (!raw) return undefined;
-    if (!signed) return raw;
-    // When a secret is configured, only accept correctly-signed cookies.
-    const unsigned = req.unsignCookie(raw);
-    return unsigned.valid ? (unsigned.value ?? undefined) : undefined;
+    // Only accept a correctly-signed cookie (our own HMAC, against the CURRENT secret — so a rotated
+    // secret rejects cookies signed with the old one).
+    return unsignSession(raw);
   }
 
   /** Extracts a `Authorization: Bearer swk_…` project API token, if present. */
@@ -1118,12 +1140,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     }
     const { userId } = await registerAccount(db, body.email, body.password);
     const { token, expiresAt } = await createSession(db, userId);
-    reply.setCookie(sessionCookie, token, {
+    reply.setCookie(sessionCookie, signSession(token), {
       httpOnly: true,
       sameSite: 'strict',
       path: '/',
       secure: opts.secureCookies ?? false,
-      signed,
       expires: expiresAt,
     });
     return reply.code(201).send({ userId });
@@ -1133,12 +1154,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // cookie attributes stay identical everywhere a session is issued.
   async function issueSessionCookie(reply: FastifyReply, userId: string): Promise<void> {
     const { token, expiresAt } = await createSession(db, userId);
-    reply.setCookie(sessionCookie, token, {
+    reply.setCookie(sessionCookie, signSession(token), {
       httpOnly: true,
       sameSite: 'strict',
       path: '/',
       secure: opts.secureCookies ?? false,
-      signed,
       expires: expiresAt,
     });
   }
@@ -1492,7 +1512,24 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     const stored = await instanceSettingsRepo.getStored();
     return reply.send({
       settings: { ...maskInstanceSettings(stored), allowSelfRegistration: resolveSelfRegistration(stored) },
+      // Whether the cookie secret is pinned via the COOKIE_SECRET env (rotation is then disabled).
+      cookieSecretPinned,
     });
+  });
+
+  // Rotate the session-cookie signing key. Takes effect immediately: every existing session cookie stops
+  // verifying, so all users (including this admin) must sign in again. Refused when pinned via env.
+  app.post('/admin/cookie-secret/rotate', { config: rl(20) }, async (req, reply) => {
+    const userId = await requireInstanceAdmin(req);
+    if (cookieSecretPinned) {
+      return reply.code(409).send({ error: 'the session signing key is pinned via the COOKIE_SECRET environment variable and cannot be rotated here' });
+    }
+    currentCookieSecret = await instanceSettingsRepo.rotateCookieSecret();
+    app.log.info({ userId }, 'session signing key rotated');
+    // The caller's own cookie is now invalid too — clear it so the browser drops the dead cookie
+    // immediately (don't rely on a follow-up 401). Match the set-time attributes (incl. the __Host- name).
+    reply.clearCookie(sessionCookie, { path: '/', secure: opts.secureCookies ?? false, sameSite: 'strict' });
+    return reply.send({ ok: true });
   });
 
   app.put('/admin/settings', { config: rl(30) }, async (req, reply) => {
@@ -3382,18 +3419,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   if (previewSiteStore) {
     const preview = previewSiteStore;
     // Secret backing the preview SIGNATURE (a path segment that gates the draft so the sandboxed,
-    // cookieless preview can navigate). `cookieSecret` is mandatory in production; the encryption key
-    // covers most local/test runs. With NEITHER, fall back to a PER-BOOT random — never a hardcoded
-    // string (that would let anyone who knows a projectId forge the sig and read every draft).
-    const previewSecret =
-      opts.cookieSecret ??
-      opts.encryptionKey?.toString('hex') ??
-      (() => {
-        app.log.warn(
-          'preview: no COOKIE_SECRET/encryption key — using a per-boot random preview secret (share links reset on restart). Set COOKIE_SECRET for stable links.',
-        );
-        return randomBytes(32).toString('hex');
-      })();
+    // cookieless preview can navigate). Read the LIVE `currentCookieSecret` at sign/verify time (below),
+    // so a security-motivated rotation invalidates outstanding preview share-links too — not just sessions.
     // After a failed build, skip rebuilding the SAME version for this long, so a project stuck in a
     // broken state (e.g. a bad Handlebars source) can't trigger a fresh build on every request.
     const PREVIEW_BUILD_COOLDOWN_MS = 3_000;
@@ -3521,7 +3548,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       '/projects/:projectId/preview-url',
       async (req, reply) => {
         const { project } = await resolveProject(req, 'content:read');
-        return reply.send({ base: `/preview-site/${project.id}/${signPreview(project.id, previewSecret)}/` });
+        return reply.send({ base: `/preview-site/${project.id}/${signPreview(project.id, currentCookieSecret)}/` });
       },
     );
 
@@ -3538,7 +3565,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       '/preview-site/:projectId/:sig/*',
       async (req, reply) => {
         const { projectId, sig } = req.params;
-        if (!verifyPreview(projectId, sig, previewSecret)) return reply.code(404).send();
+        if (!verifyPreview(projectId, sig, currentCookieSecret)) return reply.code(404).send();
         const project = await projects.get(projectId).catch(() => null);
         if (!project) return reply.code(404).send();
         const path = req.params['*'] ?? '';

@@ -97,6 +97,25 @@ export function InstanceSettings() {
   // resolves this to its effective value, so the toggle reflects reality even before it's been saved.
   const [allowSelfRegistration, setAllowSelfRegistration] = useState(false);
 
+  // Session-cookie signing key: whether it's env-pinned (rotation disabled), + the rotate action's state.
+  const [cookieSecretPinned, setCookieSecretPinned] = useState(false);
+  const [rotating, setRotating] = useState(false);
+  const [rotateMsg, setRotateMsg] = useState<string | null>(null);
+
+  async function rotateSessionKey() {
+    if (!window.confirm('Rotate the session signing key? This signs everyone out immediately (you will need to log in again) and invalidates existing preview share-links.')) return;
+    setRotating(true);
+    setRotateMsg(null);
+    try {
+      await api.rotateCookieSecret();
+      // The current session cookie is now invalid → send the admin to log in again.
+      window.location.reload();
+    } catch (err) {
+      setRotateMsg(err instanceof Error ? err.message : 'Could not rotate the key.');
+      setRotating(false);
+    }
+  }
+
   // Admin-panel branding (white-label). Name/colors are sent only when changed (refs track the
   // hydrated value); the logo is `undefined` = keep, `null` = remove, or a fresh `{mime,data}` upload.
   const [platformName, setPlatformName] = useState(DEFAULT_PLATFORM_NAME);
@@ -183,7 +202,10 @@ export function InstanceSettings() {
     (async () => {
       try {
         const res = await api.getInstanceSettings();
-        if (active) hydrate(res.settings);
+        if (active) {
+          hydrate(res.settings);
+          setCookieSecretPinned(res.cookieSecretPinned ?? false);
+        }
       } catch (err) {
         // A failed load must NOT fall through to an editable form: saving from a
         // default/empty form would clobber the real settings. Show an error instead.
@@ -696,6 +718,29 @@ export function InstanceSettings() {
             </span>
           </span>
         </label>
+      </fieldset>
+
+      <fieldset className={`${glassCard} p-4`}>
+        <legend className="px-1 text-sm font-bold">Security</legend>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="text-sm">
+            <span className="font-medium">Session signing key</span>
+            <span className="block text-xs text-slate-500">
+              {cookieSecretPinned
+                ? 'Pinned via the COOKIE_SECRET environment variable — rotate it there.'
+                : 'Rotate to invalidate every active session (e.g. after a suspected leak). Everyone, including you, is signed out and must log in again.'}
+            </span>
+          </div>
+          <button
+            type="button"
+            className={`${glassCard} px-3 py-1.5 text-sm font-medium text-rose-600 hover:bg-rose-50 disabled:opacity-50`}
+            disabled={cookieSecretPinned || rotating}
+            onClick={() => void rotateSessionKey()}
+          >
+            {rotating ? 'Rotating…' : 'Rotate session key'}
+          </button>
+        </div>
+        {rotateMsg && <p className="mt-2 text-sm text-rose-600">{rotateMsg}</p>}
       </fieldset>
 
       <fieldset className={`${glassCard} p-4`}>

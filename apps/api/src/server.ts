@@ -27,10 +27,9 @@ const publishRoot = resolve(process.env.PUBLISH_ROOT ?? join(dataDir, 'sites'));
 // published artifact so a draft can never collide with a deployable build.
 const previewRoot = resolve(process.env.PREVIEW_ROOT ?? join(dataDir, 'preview'));
 
-// A signing secret is mandatory in production; refuse to start without one.
-if (isProduction && !cookieSecret) {
-  throw new Error('COOKIE_SECRET must be set in production');
-}
+// COOKIE_SECRET is OPTIONAL now: when set it PINS the session-signing key (e.g. to share across
+// replicas); when unset, createApp auto-generates + persists one on first boot and lets an admin rotate
+// it from System Settings. So there is no fail-fast here anymore.
 if (isProduction && process.env.COOKIE_SECURE !== 'true') {
   process.stderr.write('[sitewright/api] WARNING: COOKIE_SECURE is not true in production\n');
 }

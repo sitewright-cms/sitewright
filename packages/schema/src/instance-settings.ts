@@ -151,6 +151,14 @@ export const InstanceSettingsStoredSchema = z.object({
   hcaptcha: HcaptchaStoredSchema.optional(),
   stock: StockKeysStoredSchema.optional(),
   formModes: FormModesSchema.default(DEFAULT_FORM_MODES),
+  /**
+   * The session-cookie signing key (hex). Auto-generated + persisted on first boot when no
+   * `COOKIE_SECRET` env is set, and live-rotatable by an admin. INTERNAL-only: never accepted via the
+   * public Input schema, and stripped from the masked public view (`maskInstanceSettings` is a
+   * whitelist). Safe to store plaintext — it only signs the cookie WRAPPER (the real session is a hashed
+   * token row), so leaking it cannot forge a session.
+   */
+  cookieSecret: z.string().min(1).max(256).optional(),
   /** Admin override for the agent (MCP) system instructions; unset → the built-in default is served. */
   agentInstructions: AgentInstructionsSchema.optional(),
   /**

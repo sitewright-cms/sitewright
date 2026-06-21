@@ -128,4 +128,47 @@ describe('code-first preview', () => {
     expect(res.statusCode).toBe(400);
     expect((res.json() as { error?: string }).error).toMatch(/unknown form "missing"/);
   });
+
+  // A raw-fidelity imported page (swImport, not yet nativized) carries FOREIGN classes (e.g. Bootstrap
+  // `w-100`) that collide with Tailwind utility NAMES. The editor canvas must NOT compile a per-page
+  // utility sheet from them — Tailwind would emit `.w-100{width:calc(var(--spacing)*100)}` (=400px) and
+  // clobber the import (collapsing full-width chrome like the footer). A normal page still gets it.
+  it('does NOT inline a Tailwind utility sheet for an imported (raw-fidelity) page — foreign classes survive', async () => {
+    const html = await previewHtml({
+      id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
+      source: '<section><div class="w-100 m-0">hi</div></section>',
+      data: { swImport: { sourceUrl: 'https://example.com/', rewritten: false } },
+    });
+    expect(html).not.toContain('.w-100{width:calc'); // the colliding compiled utility is absent
+    expect(html).not.toContain('--tw-'); // no Tailwind utility/preflight layer at all
+    expect(html).toContain('class="w-100 m-0"'); // the imported markup is preserved literally
+  });
+
+  it('DOES inline the Tailwind utility sheet for a normal (non-imported) page using the same class', async () => {
+    const html = await previewHtml({
+      id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
+      source: '<section><div class="w-100 m-0">hi</div></section>',
+    });
+    expect(html).toContain('.w-100{width:calc'); // Tailwind compiled the utility for a platform page
+  });
+
+  it('still inlines the utility sheet once an imported page is nativized (rewritten:true)', async () => {
+    const html = await previewHtml({
+      id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
+      source: '<section><div class="w-100 m-0">hi</div></section>',
+      data: { swImport: { sourceUrl: 'https://example.com/', rewritten: true } },
+    });
+    expect(html).toContain('.w-100{width:calc'); // back to normal platform rendering
+  });
+
+  it('still inlines the platform RUNTIME css/js (animation) for a raw-fidelity page — only the utility sheet is skipped', async () => {
+    const html = await previewHtml({
+      id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
+      source: '<section><div data-aos="fade-up" class="w-100">hi</div></section>',
+      data: { swImport: { sourceUrl: 'https://example.com/', rewritten: false } },
+    });
+    expect(html).toContain('aos-init'); // ANIMATION_CSS still inlined (matches the publish path)
+    expect(html).toContain('IntersectionObserver'); // ANIMATION_JS still inlined
+    expect(html).not.toContain('--tw-'); // but the colliding Tailwind utility sheet is absent
+  });
 });

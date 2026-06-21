@@ -470,7 +470,11 @@ export const contentRevisions = sqliteTable(
     note: text('note'),
     revisionAt: integer('revision_at', { mode: 'timestamp_ms' }).notNull(),
   },
-  (t) => [index('content_rev_entity_idx').on(t.projectId, t.kind, t.entityId, t.revisionAt)],
+  (t) => [
+    index('content_rev_entity_idx').on(t.projectId, t.kind, t.entityId, t.revisionAt),
+    // The project-wide activity feed (History view) orders all of a project's revisions by time.
+    index('content_rev_project_time_idx').on(t.projectId, t.revisionAt),
+  ],
 );
 
 /**

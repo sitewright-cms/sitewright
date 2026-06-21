@@ -86,6 +86,21 @@ describe('RevisionsRepository', () => {
     expect(await revs.list(ctx, 'media', 'asset1')).toHaveLength(0);
   });
 
+  it('listProject feeds across entities with labels (title/name/id) + kind/before filters', async () => {
+    const { revs, content, ctx } = await setup({ coalesceWindowMs: 0 });
+    await content.put(ctx, 'page', 'home', page('A'));
+    await content.put(ctx, 'template', 'hero', { id: 'hero', name: 'Hero', source: '<section>x</section>' });
+    const all = await revs.listProject(ctx, { limit: 50 });
+    expect(all.length).toBe(2);
+    expect(all.map((r) => r.kind).sort()).toEqual(['page', 'template']);
+    expect(all.find((r) => r.kind === 'template')!.label).toBe('Hero'); // from name
+    expect(all.find((r) => r.kind === 'page')!.label).toBe('A'); // from title
+    expect((await revs.listProject(ctx, { kind: 'template' })).every((r) => r.kind === 'template')).toBe(true);
+    const newest = all[0]!;
+    const older = await revs.listProject(ctx, { before: newest.revisionAt });
+    expect(older.every((r) => r.revisionAt < newest.revisionAt)).toBe(true);
+  });
+
   it('sweepOld drops revisions past the retention window', async () => {
     const { revs, content, ctx } = await setup({ coalesceWindowMs: 0, retentionDays: 90 });
     await content.put(ctx, 'page', 'home', page('A'));

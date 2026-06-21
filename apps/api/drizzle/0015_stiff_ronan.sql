@@ -1,0 +1,1 @@
+CREATE INDEX `content_rev_project_time_idx` ON `content_revisions` (`project_id`,`revision_at`);

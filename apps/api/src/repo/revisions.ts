@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, lt } from 'drizzle-orm';
+import { and, desc, eq, inArray, lt, sql } from 'drizzle-orm';
 import { newId } from '../id.js';
 import type { Database } from '../db/client.js';
 import { contentRevisions, type ContentKind } from '../db/schema.js';
@@ -33,6 +33,11 @@ export interface RevisionMeta {
   actor: RevisionActor;
   note: string | null;
   revisionAt: Date;
+}
+
+/** A revision in the project-wide feed — adds a short `label` for the entity (from the snapshot). */
+export interface ProjectRevisionMeta extends RevisionMeta {
+  label: string;
 }
 
 /** A full revision, including the snapshot `data` (for preview / restore). */
@@ -151,6 +156,30 @@ export class RevisionsRepository {
       .where(this.entityWhere(ctx.projectId, kind, entityId))
       .orderBy(desc(contentRevisions.revisionAt));
     return rows as RevisionMeta[];
+  }
+
+  /**
+   * The project-wide activity feed (newest first) for the History view — across ALL entities, with a
+   * short `label` per row pulled straight from the snapshot (title → name → id) via SQLite json_extract
+   * (no full-blob load). Optional kind/op filters + a `before` (revisionAt) cursor for pagination.
+   */
+  async listProject(
+    ctx: ProjectContext,
+    opts: { limit?: number; kind?: ContentKind; op?: RevisionOp; before?: Date } = {},
+  ): Promise<ProjectRevisionMeta[]> {
+    const limit = Math.min(Math.max(opts.limit ?? 50, 1), 100);
+    const label = sql<string | null>`coalesce(json_extract(${contentRevisions.data}, '$.title'), json_extract(${contentRevisions.data}, '$.name'), json_extract(${contentRevisions.data}, '$.id'))`;
+    const conds = [eq(contentRevisions.projectId, ctx.projectId)];
+    if (opts.kind) conds.push(eq(contentRevisions.kind, opts.kind));
+    if (opts.op) conds.push(eq(contentRevisions.op, opts.op));
+    if (opts.before) conds.push(lt(contentRevisions.revisionAt, opts.before));
+    const rows = await this.db
+      .select({ ...META_COLUMNS, label })
+      .from(contentRevisions)
+      .where(and(...conds))
+      .orderBy(desc(contentRevisions.revisionAt))
+      .limit(limit);
+    return rows.map((r) => ({ ...r, label: (r.label as string | null) ?? r.entityId }) as ProjectRevisionMeta);
   }
 
   /** A single revision (incl. `data`), scoped to the caller's project. */

@@ -77,6 +77,30 @@ describe('revision routes', () => {
     expect((await client.get(revBase('media', 'x'))).statusCode).toBe(404);
   });
 
+  it('the project-wide feed lists revisions across kinds with labels + op/kind filters', async () => {
+    const proj = client.project(pid);
+    await proj.putContent('page', 'about', aboutPage('A'));
+    await proj.putContent('template', 'hero', { id: 'hero', name: 'Hero', source: '<section class="p-4">Hero</section>' });
+    await proj.putContent('page', 'gone', { id: 'gone', path: 'gone', title: 'Gone' });
+    await client.del(`/projects/${pid}/content/page/gone`); // a delete tombstone
+
+    const feed = (await client.get(`/projects/${pid}/revisions?limit=50`)).json();
+    const kinds = new Set(feed.items.map((i: { kind: string }) => i.kind));
+    expect(kinds.has('page')).toBe(true);
+    expect(kinds.has('template')).toBe(true);
+    expect(feed.items[0]).toHaveProperty('label');
+    expect(feed.items[0].author).toHaveProperty('isYou');
+    expect(feed.items.find((i: { kind: string }) => i.kind === 'template').label).toBe('Hero');
+
+    const deletes = (await client.get(`/projects/${pid}/revisions?op=delete`)).json();
+    expect(deletes.items.length).toBeGreaterThan(0);
+    expect(deletes.items.every((i: { op: string }) => i.op === 'delete')).toBe(true);
+    expect(deletes.items.some((i: { entityId: string }) => i.entityId === 'gone')).toBe(true);
+
+    const onlyPages = (await client.get(`/projects/${pid}/revisions?kind=page`)).json();
+    expect(onlyPages.items.every((i: { kind: string }) => i.kind === 'page')).toBe(true);
+  });
+
   it('isolates history across tenants (a non-member is forbidden)', async () => {
     await client.project(pid).putContent('page', 'about', aboutPage('A'));
     const other = await h.signup({ email: 'other@e2e.test' });

@@ -11,6 +11,7 @@ import { Tooltip } from './ui/Tooltip';
 import { PlaceholderLabel } from './PlaceholderLabel';
 import { FormsManager } from './FormsManager';
 import { SettingsView } from './settings/SettingsView';
+import { HistoryView } from './HistoryView';
 import { glassCard, glassInput, fieldLabel, primaryButton, ghostButton, gradientHover, gradientSurface, toggleInput } from '../theme';
 import { orderPagesByTree, canReorder, reorderWithinParent, orderedSiblings } from './pages-order';
 import { LocalePickerModal } from './i18n/LocalePickerModal';
@@ -31,6 +32,7 @@ export const MANAGE_TABS = [
   'website-settings',
   'pages',
   'forms',
+  'history',
 ] as const;
 export type Tab = (typeof MANAGE_TABS)[number];
 export const TAB_LABELS: Record<Tab, string> = {
@@ -38,6 +40,7 @@ export const TAB_LABELS: Record<Tab, string> = {
   'website-settings': 'Website Settings',
   pages: 'Pages',
   forms: 'Forms',
+  history: 'History',
 };
 
 // A new code page opens with a small, valid Handlebars + Tailwind scaffold so the live
@@ -607,6 +610,8 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
       ) : tab === 'forms' ? (
         // Submissions are folded in per-form (each row's "Show submissions").
         <FormsManager key={project.id} project={project} />
+      ) : tab === 'history' ? (
+        <HistoryView key={project.id} project={project} />
       ) : (
         <>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">

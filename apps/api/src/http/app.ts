@@ -499,6 +499,15 @@ async function styledSourceDocument(
   // in scanHtml, so run their runtime live in the preview for WYSIWYG parity (harmless: it only injects
   // an indicator span + reads pointer position).
   const navRuntime = usesNavEffects(scanHtml);
+  // A still-faithful imported page (swImport present, not yet nativized) is a raw replica — it renders
+  // with ONLY its own imported stylesheet (renderDocument omits the platform base CSS, and SKIPS the
+  // LINKED Tailwind utility sheet for raw pages). The editor canvas INLINES a per-page utility sheet
+  // instead of linking it, so renderDocument can't skip it — we must skip the compile here for parity.
+  // Otherwise the imported site's foreign classes (e.g. Bootstrap `w-100`/`m-0`) collide with Tailwind
+  // utility NAMES, so Tailwind emits `.w-100{width:calc(var(--spacing)*100)}` (=400px) and clobbers the
+  // import — collapsing full-width chrome like the footer. (The runtime CSS below matches publish, where
+  // it's injected for raw pages too and is harmless.)
+  const rawFidelity = isRawFidelityPage(page);
   const inlineStyles = [
     ...(componentCss ? [componentCss] : []),
     ...(animated ? [ANIMATION_CSS] : []),
@@ -506,7 +515,7 @@ async function styledSourceDocument(
     ...(waves ? [RIPPLE_CSS] : []),
     ...(cart ? [CART_CSS] : []),
     ...(themeToggle ? [THEME_TOGGLE_CSS] : []),
-    ...(classNames.length > 0
+    ...(!rawFidelity && classNames.length > 0
       ? [await compileUtilityCss([classNames.join(' ')], brandToTailwindTheme(brand))]
       : []),
   ];
@@ -525,7 +534,7 @@ async function styledSourceDocument(
     brand,
     bodyHtml: body,
     // A still-faithful imported page renders as a raw replica (no platform base CSS) in preview too.
-    rawFidelity: isRawFidelityPage(page),
+    rawFidelity,
     inlineStyles: inlineStyles.length > 0 ? inlineStyles : undefined,
     inlineScripts: inlineScripts.length > 0 ? inlineScripts : undefined,
     // The toggle's no-flash init, inlined SYNC in <head> (preview's sandboxed CSP allows inline JS).

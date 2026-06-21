@@ -60,6 +60,34 @@ const CreateDeployTargetBody = z
     { message: 'a git target needs a branch and either a token (https remote) or a private key (ssh remote)', path: ['repoUrl'] },
   );
 
+// Edit body for PUT /deploy-targets/:id. Every field optional — an OMITTED credential keeps the existing
+// encrypted secret (never re-typed). `protocol` is intentionally absent: a target's protocol is immutable
+// (to change it, delete + create). `clearPreviewToken` removes a local target's unlisted-link gate (a bare
+// `previewToken` omission means "keep", so a dedicated flag is needed to express "remove"). The route does
+// protocol-aware validation + merge; the final object is re-validated by DeployTargetSchema.parse.
+const UpdateDeployTargetBody = z.object({
+  name: z.string().min(1).max(120).optional(),
+  host: z.string().min(1).max(255).optional(),
+  port: z.number().int().min(1).max(65535).optional(),
+  user: z.string().min(1).max(255).optional(),
+  password: z.string().min(1).max(1024).optional(),
+  privateKey: z.string().min(1).max(16384).optional(),
+  passphrase: z.string().min(1).max(1024).optional(),
+  remoteDir: z.string().min(1).max(1024).optional(),
+  hostFingerprint: z.string().min(1).max(1024).optional(),
+  previewToken: z.string().min(16).max(64).regex(/^[A-Za-z0-9_-]+$/, 'previewToken must be url-safe').optional(),
+  clearPreviewToken: z.boolean().optional(),
+  minifyHtml: z.boolean().optional(),
+  repoUrl: z.string().min(1).max(2048).optional(),
+  branch: z.string().min(1).max(255).optional(),
+  token: z.string().min(1).max(1024).optional(),
+})
+  // `clearPreviewToken` removes the token; a `previewToken` value sets it — sending both is contradictory.
+  .refine((b) => !(b.clearPreviewToken && b.previewToken !== undefined), {
+    message: 'send either previewToken or clearPreviewToken, not both',
+    path: ['clearPreviewToken'],
+  });
+
 /** The secret blob stored (encrypted) for a target — FTP/SFTP credentials, or a git token. */
 interface TargetCreds {
   password?: string;
@@ -148,8 +176,9 @@ export interface DeployTargetDeps {
   activeDeploys: Set<string>;
   assertDeployHostAllowed: (host: string) => void;
   isWriter: (ctx: ProjectContext) => boolean;
-  /** Build the site fresh into a temp dir at deploy time, returning its path (caller removes it). */
-  buildForDeploy: (ctx: ProjectContext, projectId: string) => Promise<string>;
+  /** Build the site fresh into a temp dir at deploy time, returning its path (caller removes it).
+   *  `minify` mirrors the target's `minifyHtml` serve option (available for all target types). */
+  buildForDeploy: (ctx: ProjectContext, projectId: string, opts?: { minify?: boolean }) => Promise<string>;
   rl: (max: number) => { rateLimit: { max: number; timeWindow: string } };
 }
 
@@ -247,6 +276,7 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
                 protocol: 'git',
                 repoUrl: body.repoUrl,
                 branch: body.branch,
+                ...(body.minifyHtml ? { minifyHtml: true } : {}),
                 // SSH remote → encrypt the private key (+ passphrase) and keep the optional pinned host
                 // key; HTTPS remote → encrypt the token.
                 ...(isSshRepoUrl(body.repoUrl!) && body.hostFingerprint ? { hostFingerprint: body.hostFingerprint } : {}),
@@ -265,6 +295,7 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
               ...(body.port ? { port: body.port } : {}),
               user: body.user,
               remoteDir: body.remoteDir ?? '/',
+              ...(body.minifyHtml ? { minifyHtml: true } : {}),
               ...(body.hostFingerprint ? { hostFingerprint: body.hostFingerprint } : {}),
               secret: encodeCreds(
                 {
@@ -278,6 +309,119 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
       );
       const saved = (await contentRepo.put(ctx, 'deploy_target', id, target)) as DeployTarget;
       return reply.code(201).send({ target: sanitize(saved) });
+    },
+  );
+
+  // Edit an existing target IN PLACE. The protocol is immutable; credentials are preserved unless a new
+  // value is supplied (so passwords/keys/tokens are never re-typed to change an unrelated field). Mirrors
+  // the secret-preserve PUT idiom in project-smtp-routes.ts.
+  app.put<{ Params: { projectId: string; id: string } }>(
+    '/projects/:projectId/deploy-targets/:id',
+    { config: rl(20) },
+    async (req, reply) => {
+      const { ctx } = await resolveProject(req, 'deploy');
+      if (!isWriter(ctx)) return reply.code(403).send({ error: 'insufficient role for this operation' });
+      // 404 for free if the target is missing (NotFoundError → global handler).
+      const existing = (await contentRepo.get(ctx, 'deploy_target', req.params.id)) as DeployTarget;
+      const body = UpdateDeployTargetBody.parse(req.body);
+      const protocol = existing.protocol; // immutable — never read from the body
+      const name = body.name ?? existing.name;
+      // Keep-or-set: an OMITTED minifyHtml keeps the current value; an explicit true/false overrides it.
+      // Stored only when truthy (below), so a stored target is ever present-true or absent — never false.
+      const minifyHtml = body.minifyHtml ?? existing.minifyHtml;
+
+      let target: unknown;
+      if (protocol === 'local') {
+        // A local target carries no credentials or repository — reject any such field.
+        if (
+          body.host || body.user || body.password || body.privateKey || body.passphrase ||
+          body.repoUrl || body.branch || body.token || body.remoteDir || body.hostFingerprint
+        ) {
+          return reply.code(400).send({ error: 'a Local Hosting target has no host, credentials or repository' });
+        }
+        const previewToken = body.clearPreviewToken ? undefined : (body.previewToken ?? existing.previewToken);
+        target = {
+          id: existing.id,
+          name,
+          protocol: 'local',
+          ...(previewToken ? { previewToken } : {}),
+          ...(minifyHtml ? { minifyHtml: true } : {}),
+        };
+      } else if (protocol === 'git') {
+        const repoUrl = body.repoUrl ?? existing.repoUrl!;
+        let repoHost: string;
+        try {
+          repoHost = gitRepoHost(repoUrl);
+        } catch {
+          return reply.code(400).send({ error: 'repoUrl must be a valid http(s) or ssh URL' });
+        }
+        assertDeployHostAllowed(repoHost);
+        const branch = body.branch ?? existing.branch;
+        // Overlay only the provided credential fields onto the existing decrypted blob.
+        const creds = decodeCreds(existing.secret!, encryptionKey);
+        const merged: TargetCreds = {
+          ...creds,
+          ...(body.token !== undefined ? { token: body.token } : {}),
+          ...(body.privateKey !== undefined ? { privateKey: body.privateKey } : {}),
+          ...(body.passphrase !== undefined ? { passphrase: body.passphrase } : {}),
+        };
+        // Scheme ↔ credential match: an https↔ssh repoUrl flip must carry the matching credential, and
+        // the wrong-kind credential is dropped so the stored blob stays clean.
+        if (isSshRepoUrl(repoUrl)) {
+          if (!merged.privateKey) return reply.code(400).send({ error: 'an SSH git remote requires a private key' });
+          delete merged.token;
+        } else {
+          if (!merged.token) return reply.code(400).send({ error: 'an HTTPS git remote requires an access token' });
+          delete merged.privateKey;
+          delete merged.passphrase;
+        }
+        const hostFingerprint = body.hostFingerprint ?? existing.hostFingerprint;
+        target = {
+          id: existing.id,
+          name,
+          protocol: 'git',
+          repoUrl,
+          branch,
+          ...(minifyHtml ? { minifyHtml: true } : {}),
+          ...(isSshRepoUrl(repoUrl) && hostFingerprint ? { hostFingerprint } : {}),
+          secret: encodeCreds(merged, encryptionKey),
+        };
+      } else {
+        // ftp / ftps / sftp
+        const host = body.host ?? existing.host!;
+        assertDeployHostAllowed(host);
+        const creds = decodeCreds(existing.secret!, encryptionKey);
+        const merged: TargetCreds = {
+          ...creds,
+          ...(body.password !== undefined ? { password: body.password } : {}),
+          ...(body.privateKey !== undefined ? { privateKey: body.privateKey } : {}),
+          ...(body.passphrase !== undefined ? { passphrase: body.passphrase } : {}),
+        };
+        if (!merged.password && !merged.privateKey) {
+          return reply.code(400).send({ error: 'a password or a private key is required' });
+        }
+        if (merged.privateKey && protocol !== 'sftp') {
+          return reply.code(400).send({ error: 'a private key requires the SFTP protocol' });
+        }
+        const port = body.port ?? existing.port;
+        const remoteDir = body.remoteDir ?? existing.remoteDir ?? '/';
+        const hostFingerprint = body.hostFingerprint ?? existing.hostFingerprint;
+        target = {
+          id: existing.id,
+          name,
+          protocol,
+          host,
+          ...(port ? { port } : {}),
+          user: body.user ?? existing.user,
+          remoteDir,
+          ...(minifyHtml ? { minifyHtml: true } : {}),
+          ...(hostFingerprint ? { hostFingerprint } : {}),
+          secret: encodeCreds(merged, encryptionKey),
+        };
+      }
+      const parsed = DeployTargetSchema.parse(target);
+      const saved = (await contentRepo.put(ctx, 'deploy_target', existing.id, parsed)) as DeployTarget;
+      return reply.send({ target: sanitize(saved) });
     },
   );
 
@@ -326,7 +470,7 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
         // (bad route graph / json_data URL) is author-correctable → 409.
         let dir: string;
         try {
-          dir = await deps.buildForDeploy(ctx, project.id);
+          dir = await deps.buildForDeploy(ctx, project.id, { minify: !!target.minifyHtml });
         } catch (err) {
           if (err instanceof PublishError || err instanceof JsonDataError) {
             return reply.code(409).send({ error: err.message });
@@ -378,7 +522,7 @@ export function registerDeployTargetRoutes(app: FastifyInstance, deps: DeployTar
         // Build the site FRESH before hijacking, so a build error is a normal JSON 409 (not an SSE frame).
         let dir: string;
         try {
-          dir = await deps.buildForDeploy(ctx, project.id);
+          dir = await deps.buildForDeploy(ctx, project.id, { minify: !!target.minifyHtml });
         } catch (err) {
           if (err instanceof PublishError || err instanceof JsonDataError) {
             return reply.code(409).send({ error: err.message });

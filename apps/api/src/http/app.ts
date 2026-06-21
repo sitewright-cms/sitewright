@@ -3114,11 +3114,18 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // upload ships the CURRENT content without first running (or disturbing) the local-publish artifact.
   // Takes the project ID (re-fetched here) so the deploy-target module needn't carry the project type.
   // The caller MUST remove the directory when done. Propagates PublishError/JsonDataError for a 409.
-  async function buildForDeploy(ctx: ProjectContext, projectId: string): Promise<string> {
+  async function buildForDeploy(
+    ctx: ProjectContext,
+    projectId: string,
+    deployOpts: { minify?: boolean } = {},
+  ): Promise<string> {
     const project = await projects.get(projectId);
     const dir = await mkdtemp(join(tmpdir(), 'sw-deploy-'));
     try {
-      await buildToDir(ctx, project, dir);
+      // `minify` mirrors the saved target's `minifyHtml` serve option — available for ALL deploy
+      // targets (the caller passes it). The legacy ad-hoc `/publish/deploy` route has no saved target,
+      // so it omits this and builds unminified by design.
+      await buildToDir(ctx, project, dir, { minify: !!deployOpts.minify });
       // A remote deploy ships this build to the OWNER's host. Without a configured public URL, a
       // platform-routed (Email/SMTP) form's endpoint is baked root-relative (`/f/…`) and would resolve
       // to the deployed host (no such route → 404). Refuse rather than ship a form that silently fails

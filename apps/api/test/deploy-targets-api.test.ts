@@ -282,4 +282,134 @@ describe('saved deploy targets', () => {
     // The build fails BEFORE hijacking → a normal JSON 409 (not a hijacked SSE stream).
     expect(res.statusCode).toBe(409);
   });
+
+  // ── minify is now a serve option for ALL target types (not just local) ──────────────────────────
+  it('stores minifyHtml on a remote (sftp) and a git target at create', async () => {
+    const { t, projectId } = await setup('m@acme.test');
+    const cookies = { sw_session: t };
+    const sftp = await app.inject({
+      method: 'POST', url: `/projects/${projectId}/deploy-targets`, cookies,
+      payload: { ...target, name: 'Min SFTP', minifyHtml: true },
+    });
+    expect((sftp.json() as { target: { minifyHtml?: boolean } }).target.minifyHtml).toBe(true);
+    const git = await app.inject({
+      method: 'POST', url: `/projects/${projectId}/deploy-targets`, cookies,
+      payload: { name: 'Min Git', protocol: 'git', repoUrl: 'https://allowed.example.com/a/b.git', branch: 'gh-pages', token: 'ghp_x', minifyHtml: true },
+    });
+    expect((git.json() as { target: { minifyHtml?: boolean } }).target.minifyHtml).toBe(true);
+  });
+});
+
+// ── editing a target in place (PUT) — credentials preserved unless re-supplied ──────────────────
+describe('editing deploy targets (PUT)', () => {
+  const create = async (projectId: string, cookies: Record<string, string>, payload: Record<string, unknown>) =>
+    (await app.inject({ method: 'POST', url: `/projects/${projectId}/deploy-targets`, cookies, payload })).json() as {
+      target: { id: string };
+    };
+  const put = (projectId: string, id: string, cookies: Record<string, string>, payload: Record<string, unknown>) =>
+    app.inject({ method: 'PUT', url: `/projects/${projectId}/deploy-targets/${id}`, cookies, payload });
+
+  it('edits a non-secret field, keeps the protocol/host, and never returns the secret', async () => {
+    const { t, projectId } = await setup('e@acme.test');
+    const cookies = { sw_session: t };
+    const { target: created } = await create(projectId, cookies, { ...target });
+    const res = await put(projectId, created.id, cookies, { name: 'Renamed', protocol: 'git' /* must be ignored */ });
+    expect(res.statusCode).toBe(200);
+    const view = (res.json() as { target: Record<string, unknown> }).target;
+    expect(view.name).toBe('Renamed');
+    expect(view.protocol).toBe('sftp'); // protocol is immutable — the body's `git` is ignored
+    expect(view.host).toBe('allowed.example.com');
+    expect(view).not.toHaveProperty('secret');
+    expect(res.body).not.toContain('super-secret');
+    // The target is still deployable (secret preserved) — reaches the transport (502) on the bogus host.
+    const dep = await app.inject({ method: 'POST', url: `/projects/${projectId}/deploy-targets/${created.id}/deploy`, cookies });
+    expect(dep.statusCode).toBe(502);
+  });
+
+  it('returns 404 for an unknown target id', async () => {
+    const { t, projectId } = await setup('e404@acme.test');
+    const res = await put(projectId, 'nope', { sw_session: t }, { name: 'x' });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('re-runs the SSRF host check on an edited FTP host', async () => {
+    const { t, projectId } = await setup('essrf@acme.test');
+    const cookies = { sw_session: t };
+    const { target: created } = await create(projectId, cookies, { ...target });
+    const res = await put(projectId, created.id, cookies, { host: 'evil.internal' });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('rejects credentials/repository fields on a local target edit', async () => {
+    const { t, projectId } = await setup('eloc@acme.test');
+    const cookies = { sw_session: t };
+    const { target: created } = await create(projectId, cookies, { name: 'Local Hosting', protocol: 'local', minifyHtml: true });
+    const bad = await put(projectId, created.id, cookies, { host: 'allowed.example.com', password: 'x' });
+    expect(bad.statusCode).toBe(400);
+  });
+
+  it('sets, then clears, a local previewToken; toggles minifyHtml off', async () => {
+    const { t, projectId } = await setup('etok@acme.test');
+    const cookies = { sw_session: t };
+    const { target: created } = await create(projectId, cookies, { name: 'Local Hosting', protocol: 'local', previewToken: 'tok_abcdefgh12345678', minifyHtml: true });
+    const cleared = await put(projectId, created.id, cookies, { clearPreviewToken: true, minifyHtml: false });
+    expect(cleared.statusCode).toBe(200);
+    const view = (cleared.json() as { target: Record<string, unknown> }).target;
+    expect(view).not.toHaveProperty('previewToken');
+    expect(view).not.toHaveProperty('minifyHtml');
+  });
+
+  // The strongest secret-preserve proof: a git https→ssh flip decodes the EXISTING blob (token only) and
+  // demands the matching new credential (a private key) — proving the stored secret is read + merged.
+  it('rejects a git https→ssh repoUrl flip when no private key is supplied (and the reverse for token)', async () => {
+    const { t, projectId } = await setup('eflip@acme.test');
+    const cookies = { sw_session: t };
+    const https = await create(projectId, cookies, { name: 'G', protocol: 'git', repoUrl: 'https://allowed.example.com/a/b.git', branch: 'gh-pages', token: 'ghp_keep' });
+    const flip = await put(projectId, https.target.id, cookies, { repoUrl: 'git@allowed.example.com:a/b.git' });
+    expect(flip.statusCode).toBe(400); // ssh remote needs a private key — the kept token is not enough
+
+    const ssh = await create(projectId, cookies, { name: 'G2', protocol: 'git', repoUrl: 'git@allowed.example.com:a/b.git', branch: 'gh-pages', privateKey: '-----BEGIN OPENSSH PRIVATE KEY-----\nMOCK\n-----END OPENSSH PRIVATE KEY-----' });
+    const flip2 = await put(projectId, ssh.target.id, cookies, { repoUrl: 'https://allowed.example.com/a/b.git' });
+    expect(flip2.statusCode).toBe(400); // https remote needs a token — the kept key is not enough
+  });
+
+  it('rotates a git branch (token preserved) and stays deployable', async () => {
+    const { t, projectId } = await setup('ebranch@acme.test');
+    const cookies = { sw_session: t };
+    const { target: created } = await create(projectId, cookies, { name: 'G', protocol: 'git', repoUrl: 'https://allowed.example.com/a/b.git', branch: 'gh-pages', token: 'ghp_keep' });
+    const res = await put(projectId, created.id, cookies, { branch: 'main' });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { target: { branch?: string } }).target.branch).toBe('main');
+    expect(res.body).not.toContain('ghp_keep');
+    // Still deployable with the preserved token → reaches the push (502 on the bogus host).
+    const dep = await app.inject({ method: 'POST', url: `/projects/${projectId}/deploy-targets/${created.id}/deploy`, cookies });
+    expect(dep.statusCode).toBe(502);
+  }, 30_000);
+
+  it('rejects a contradictory clearPreviewToken + previewToken in the same edit (400)', async () => {
+    const { t, projectId } = await setup('econf@acme.test');
+    const cookies = { sw_session: t };
+    const { target: created } = await create(projectId, cookies, { name: 'Local Hosting', protocol: 'local' });
+    const res = await put(projectId, created.id, cookies, { clearPreviewToken: true, previewToken: 'tok_abcdefgh12345678' });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('does not let one tenant edit another tenant’s target', async () => {
+    const a = await setup('ea@acme.test', 'site-ea');
+    const b = await setup('eb@globex.test', 'site-eb');
+    const { target: created } = await create(a.projectId, { sw_session: a.t }, { ...target });
+    // B references A's target id under A's project URL → resolveProject denies (403).
+    const res = await put(a.projectId, created.id, { sw_session: b.t }, { name: 'pwned' });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('toggles minifyHtml on a remote target via edit', async () => {
+    const { t, projectId } = await setup('emin@acme.test');
+    const cookies = { sw_session: t };
+    const { target: created } = await create(projectId, cookies, { ...target });
+    const on = await put(projectId, created.id, cookies, { minifyHtml: true });
+    expect((on.json() as { target: { minifyHtml?: boolean } }).target.minifyHtml).toBe(true);
+    const off = await put(projectId, created.id, cookies, { minifyHtml: false });
+    expect((off.json() as { target: Record<string, unknown> }).target).not.toHaveProperty('minifyHtml');
+  });
 });

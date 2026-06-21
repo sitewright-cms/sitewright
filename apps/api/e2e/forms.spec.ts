@@ -33,16 +33,23 @@ test('author → publish → public submit → inbox', async ({ playwright, base
   });
   expect(putForm.status()).toBe(200);
 
-  // A page embedding the form.
+  // A page embedding the form (code-first: the `{{sw-form}}` helper resolves to the full definition
+  // with a same-origin `/f/<id>/<form>` endpoint at publish time).
   const putPage = await api.put(`${base}/content/page/contact`, {
     data: {
       id: 'contact',
       path: 'contact',
       title: 'Contact',
-      root: { id: 'r', type: 'Section', children: [{ id: 'f', type: 'Form', props: { formId: 'contact' } }] },
+      source: '<section class="mx-auto max-w-3xl px-6 py-16">{{sw-form "contact"}}</section>',
     },
   });
   expect(putPage.status()).toBe(200);
+
+  // Local Hosting is opt-in (a `local` deploy target) — required for the site to be SERVED at the
+  // `/sites/<slug>/` path form AND the `<slug>.<SW_SITES_DOMAIN>` subdomain. (Tolerate 409 in case the
+  // instance auto-provisions one.)
+  const localTarget = await api.post(`${base}/deploy-targets`, { data: { name: 'Local Hosting', protocol: 'local' } });
+  expect([201, 409]).toContain(localTarget.status());
 
   expect((await api.post(`${base}/publish`)).status()).toBe(200);
 

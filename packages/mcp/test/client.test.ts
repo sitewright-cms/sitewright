@@ -153,6 +153,23 @@ describe('SitewrightClient', () => {
     ]);
   });
 
+  it('lists + restores revisions on the content/<kind>/<id>/revisions routes', async () => {
+    const { client, calls } = await introspected((input) =>
+      input.endsWith('/api-key/self')
+        ? { status: 200, body: JSON.stringify(scope) }
+        : input.endsWith('/revisions')
+          ? { status: 200, body: '{"items":[{"id":"r1","op":"put"}]}' }
+          : { status: 200, body: '{"item":{"id":"home","title":"Home"}}' },
+    );
+    expect(await client.listRevisions('page', 'home')).toEqual([{ id: 'r1', op: 'put' }]);
+    expect(calls[1]!.input).toBe('https://cms.test/projects/p1/content/page/home/revisions');
+    expect(calls[1]!.init?.method ?? 'GET').toBe('GET');
+
+    expect(await client.restoreRevision('page', 'home', 'r1')).toEqual({ id: 'home', title: 'Home' });
+    expect(calls[2]!.input).toBe('https://cms.test/projects/p1/content/page/home/revisions/r1/restore');
+    expect(calls[2]!.init?.method).toBe('POST');
+  });
+
   it('preview adds the screenshot + viewports query and returns screenshots', async () => {
     const shots = { desktop: { base64: 'AAAA', mimeType: 'image/jpeg', width: 1280, height: 2400 } };
     const { client, calls } = await introspected((input) => {

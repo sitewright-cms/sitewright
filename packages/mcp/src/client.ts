@@ -182,6 +182,24 @@ export class SitewrightClient {
     );
   }
 
+  async listRevisions(kind: string, entityId: string): Promise<unknown[]> {
+    const res = await this.request<{ items: unknown[] }>(
+      'GET',
+      this.projectPath(`/content/${encodeURIComponent(kind)}/${encodeURIComponent(entityId)}/revisions`),
+    );
+    return res.items;
+  }
+
+  async restoreRevision(kind: string, entityId: string, revisionId: string): Promise<unknown> {
+    const res = await this.request<{ item: unknown }>(
+      'POST',
+      this.projectPath(
+        `/content/${encodeURIComponent(kind)}/${encodeURIComponent(entityId)}/revisions/${encodeURIComponent(revisionId)}/restore`,
+      ),
+    );
+    return res.item;
+  }
+
   async preview(page: unknown, opts?: { screenshot?: boolean; viewports?: string }): Promise<PreviewResult> {
     let path = this.projectPath('/preview');
     if (opts?.screenshot) {

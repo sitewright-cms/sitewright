@@ -43,6 +43,14 @@ if (isProduction && trustProxy === false) {
     '[sitewright/api] WARNING: TRUST_PROXY is not set; behind a proxy, per-IP rate limits key on the proxy IP\n',
   );
 }
+// In development the forced default-password change is OFF (admin@sitewright.example / 123456 just works);
+// say so loudly so a dev instance is never left internet-reachable on the default credentials.
+if (!isProduction) {
+  process.stderr.write(
+    '[sitewright/api] NOTE: development mode (NODE_ENV != production) — the forced default-password ' +
+      'change is DISABLED; do not expose this instance publicly on the default credentials.\n',
+  );
+}
 
 // Optional secret-encryption key (enables saved deploy targets) + deploy SSRF allow-list.
 const encryptionKey = process.env.SW_ENCRYPTION_KEY
@@ -165,6 +173,9 @@ const app = await createApp({
   // A DEPLOYED instance is invitation-only by default (no env var) — an admin opens public self-signup
   // at runtime in System Settings (`allowSelfRegistration`). The first admin is seeded on first boot.
   openRegistration: false,
+  // Force the seeded default-password admin to change it ONLY in production. A local dev run
+  // (NODE_ENV !== 'production') skips the gate so admin@sitewright.example / 123456 just works.
+  forcePasswordChange: isProduction,
   // Brute-force protection is a per-IP FAILED-login throttle (admin setting `authMaxFailures`, default
   // 10), not an env var. Flood protection for all routes is the global 200/min limiter.
   renderPool,

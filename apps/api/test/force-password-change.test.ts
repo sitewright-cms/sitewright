@@ -127,6 +127,27 @@ describe('the forced-change guard', () => {
     await app.close();
   });
 
+  it('is disabled in development (forcePasswordChange:false): a flagged user is unblocked and /me reports false', async () => {
+    const db = await makeTestDb();
+    const app = await createApp({ db, forcePasswordChange: false }); // server.ts passes NODE_ENV==='production'
+    await app.ready();
+    const { cookie } = await flaggedAdmin(db, app);
+
+    // /me hides the flag (so the editor never shows the forced screen).
+    const me = await app.inject({ method: 'GET', url: '/me', cookies: { sw_session: cookie } });
+    expect((me.json() as { mustChangePassword: boolean }).mustChangePassword).toBe(false);
+
+    // A state-changing request goes straight through — no `password-change-required` 403.
+    const write = await app.inject({
+      method: 'POST',
+      url: '/projects',
+      cookies: { sw_session: cookie },
+      payload: { name: 'Dev OK', slug: 'dev-ok' },
+    });
+    expect(write.statusCode).toBe(201);
+    await app.close();
+  });
+
   it('does not affect a normal (non-flagged) user', async () => {
     const db = await makeTestDb();
     const app = await createApp({ db });

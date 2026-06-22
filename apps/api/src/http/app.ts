@@ -154,6 +154,7 @@ import { LoginThrottle } from '../auth/login-throttle.js';
 import {
   changeEmail,
   changePassword,
+  isPasswordChangeRequired,
   getPlatformRole,
   getUserEmail,
   listPlatformUsers,
@@ -983,9 +984,21 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     keyGenerator: (req) => sessionToken(req) ?? bearerToken(req) ?? req.ip,
   });
 
-  async function requireUserId(req: FastifyRequest): Promise<string> {
+  // Resolve the session user ONCE per request and memoize it for the request's lifetime (keyed by the
+  // request object; GC'd with it). The forced-password preHandler, requireUserId, and currentUserId all
+  // funnel through here, so a single write request hits the sessions table once, not three times.
+  const sessionUserMemo = new WeakMap<FastifyRequest, string | null>();
+  async function resolveSessionUserId(req: FastifyRequest): Promise<string | null> {
+    const cached = sessionUserMemo.get(req);
+    if (cached !== undefined) return cached;
     const token = sessionToken(req);
     const userId = token ? await validateSession(db, token) : null;
+    sessionUserMemo.set(req, userId);
+    return userId;
+  }
+
+  async function requireUserId(req: FastifyRequest): Promise<string> {
+    const userId = await resolveSessionUserId(req);
     if (!userId) throw new UnauthorizedError('authentication required');
     return userId;
   }
@@ -993,9 +1006,34 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // Soft variant for the OAuth authorize page: resolve the session user, or null
   // (so we can render a sign-in prompt rather than throw a JSON 401).
   async function currentUserId(req: FastifyRequest): Promise<string | null> {
-    const token = sessionToken(req);
-    return token ? await validateSession(db, token) : null;
+    return resolveSessionUserId(req);
   }
+
+  // ---- Forced password change (the seeded default-password admin) ----
+  // While a session user still carries the `mustChangePassword` flag (set ONLY for an admin left on
+  // the well-known default password), block every STATE-CHANGING request with a `password-change-
+  // required` sentinel the editor recognizes — so the known default credentials can't actually DO
+  // anything until a new password is set. Reads (GET/HEAD) pass through so the SPA can load `/me` and
+  // render the forced screen. The escape hatch — changing the password — and signing out are
+  // allowlisted. Only the interactive SESSION path is gated: a Bearer (API-key) caller is a project
+  // integration, never a fresh forced-change human, so it's skipped (and would have no flag anyway).
+  // Fastify normalizes the URL (resolves `..`, collapses `//`, decodes) before routing, so a literal
+  // match of the query-stripped path against the two escape routes can't be tricked into mismatching a
+  // real /account/password (or into smuggling another route INTO the allowlist).
+  const passwordChangeEscapes = (req: FastifyRequest): boolean => {
+    const path = (req.url.split('?')[0] ?? '').replace(/\/+$/, '') || '/';
+    return (req.method === 'PUT' && path === '/account/password') || (req.method === 'POST' && path === '/auth/logout');
+  };
+  app.addHook('preHandler', async (req, reply) => {
+    if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return;
+    if (bearerToken(req) !== undefined) return; // API-key path — not a forced-change human
+    if (passwordChangeEscapes(req)) return; // the change-password + logout escape hatches
+    const userId = await resolveSessionUserId(req);
+    if (!userId) return; // anonymous / expired sessions are each route's own concern (its requireUserId)
+    if (await isPasswordChangeRequired(db, userId)) {
+      return reply.code(403).send({ error: 'password-change-required' });
+    }
+  });
 
   // Instance/platform admin = a user whose persisted DB `platform_role` is `admin` (the first admin is
   // seeded on first boot — see seed.ts — and further admins are granted via a platform invite with
@@ -1227,20 +1265,22 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
 
   app.get('/me', { config: rl(60) }, async (req, reply) => {
     const userId = await requireUserId(req);
-    const [email, platformRole, access, instanceAdmin, totpEnabled, recoveryCodesRemaining, hasPassword] = await Promise.all([
-      getUserEmail(db, userId),
-      getPlatformRole(db, userId),
-      // Projects the caller can reach: a platform admin → all; everyone else → their memberships.
-      listProjectAccessForUser(db, userId),
-      isInstanceAdmin(userId),
-      mfaRepo.isTotpEnabled(userId),
-      mfaRepo.remainingRecoveryCodes(userId),
-      userHasPassword(db, userId),
-    ]);
+    const [email, platformRole, access, instanceAdmin, totpEnabled, recoveryCodesRemaining, hasPassword, mustChangePassword] =
+      await Promise.all([
+        getUserEmail(db, userId),
+        getPlatformRole(db, userId),
+        // Projects the caller can reach: a platform admin → all; everyone else → their memberships.
+        listProjectAccessForUser(db, userId),
+        isInstanceAdmin(userId),
+        mfaRepo.isTotpEnabled(userId),
+        mfaRepo.remainingRecoveryCodes(userId),
+        userHasPassword(db, userId),
+        isPasswordChangeRequired(db, userId),
+      ]);
     const projects = access.map((a) => ({ id: a.projectId, name: a.projectName, slug: a.projectSlug, role: a.role }));
     // email is non-null for a live session (the row exists); coerce the theoretical TOCTOU-deleted
     // case to '' so the response always matches the client's `email: string` contract.
-    return reply.send({ userId, email: email ?? '', platformRole, isInstanceAdmin: instanceAdmin, totpEnabled, recoveryCodesRemaining, hasPassword, projects });
+    return reply.send({ userId, email: email ?? '', platformRole, isInstanceAdmin: instanceAdmin, totpEnabled, recoveryCodesRemaining, hasPassword, mustChangePassword, projects });
   });
 
   // ---- Self-service account management (the header "Account" / user menu) ----

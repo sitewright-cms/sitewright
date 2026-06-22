@@ -3,6 +3,7 @@ import { api, setUnauthorizedHandler, type Project } from './api';
 import { useSessionPoll } from './lib/use-session-poll';
 import { useBranding } from './lib/use-branding';
 import { Login } from './views/Login';
+import { ForcePasswordChange } from './views/ForcePasswordChange';
 import { ProjectView, MANAGE_TABS, TAB_LABELS, type Tab } from './views/Project';
 import { AssetsPanel } from './views/files/AssetsPanel';
 import { LibraryPanel } from './views/library/LibraryPanel';
@@ -93,6 +94,9 @@ function MainApp({
   const [totpEnabled, setTotpEnabled] = useState(false);
   const [recoveryCodesRemaining, setRecoveryCodesRemaining] = useState(0);
   const [hasPassword, setHasPassword] = useState(true);
+  // Set when the signed-in user still has the seeded default password; gates the whole app behind a
+  // forced "set a new password" screen until they change it (the server enforces this independently).
+  const [mustChangePassword, setMustChangePassword] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [tab, setTab] = useState<Tab>('pages');
   // The project picker is shown automatically on first load and reachable from the header.
@@ -121,6 +125,7 @@ function MainApp({
     setEmail('');
     setTotpEnabled(false);
     setRecoveryCodesRemaining(0);
+    setMustChangePassword(false);
     setStage({ name: 'auth' });
   }
 
@@ -133,6 +138,7 @@ function MainApp({
       setTotpEnabled(me.totpEnabled);
       setRecoveryCodesRemaining(me.recoveryCodesRemaining);
       setHasPassword(me.hasPassword);
+      setMustChangePassword(me.mustChangePassword);
       // First successful load with no project open → show the selector automatically.
       setStage((s) => (s.name === 'project' ? s : { name: 'home' }));
       return me.projects;
@@ -227,6 +233,20 @@ function MainApp({
     // A forced logout (expired session) explains itself; otherwise show any OIDC callback notice.
     const notice = stage.expired ? 'Your session expired — please sign in again.' : oidcNotice;
     return <Login onAuthed={() => void refresh().then(() => setSelectorOpen(true))} initialMfaTicket={mfaTicket} initialNotice={notice} branding={branding} />;
+  }
+
+  // A signed-in user on the seeded default password can't reach the editor until they change it. The
+  // server independently 403s every write with a `password-change-required` sentinel, so this is the UX
+  // half of a hard gate, not just a nag. Changing the password re-fetches `/me` (the flag clears).
+  if (mustChangePassword) {
+    return (
+      <ForcePasswordChange
+        email={email}
+        branding={branding}
+        onDone={() => void refresh()}
+        onSignOut={() => void signOut()}
+      />
+    );
   }
 
   const inProject = stage.name === 'project' ? stage.project : null;

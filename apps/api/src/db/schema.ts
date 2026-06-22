@@ -15,6 +15,14 @@ export const users = sqliteTable('users', {
    * only the projects they're a member of. NULL = a client (reaches only their own project(s)).
    */
   platformRole: text('platform_role', { enum: ['admin', 'developer'] }),
+  /**
+   * When true, the user must set a new password before they can do anything else — the first-boot
+   * seed sets it ONLY for an admin still on the well-known DEFAULT password (never when
+   * SW_ADMIN_PASSWORD provided a real one). Cleared the moment the password is changed. While set, a
+   * server guard rejects every state-changing request with a `password-change-required` sentinel and
+   * the editor forces a "set a new password" screen. Defaults to false for every normal account.
+   */
+  mustChangePassword: integer('must_change_password', { mode: 'boolean' }).notNull().default(false),
   createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
 });
 

@@ -453,37 +453,52 @@ the nav EFFECT styles; omit aria-current off the current page). Output the label
 `,
   },
   import: {
-    title: "Rewrite an imported website into native idioms",
-    summary: "turn a faithfully-imported page (literal HTML, marked data.swImport + draft) into native sections, datasets, components & brand tokens",
+    title: "Nativize an imported website — a faithful port to native primitives",
+    summary: "re-express a faithfully-imported page (literal HTML, marked data.swImport + draft) in native primitives (theme tokens, components, datasets, bindings) WITHOUT changing its layout — then clean up the foreign CSS/JS",
     body: `
 IMPORTED PAGES. When an external site is imported (the OWNER does this in the editor — you don't trigger
-it), each page lands as a FAITHFUL but generic scaffold: literal HTML in \`source\` (no Handlebars),
-foreign CSS folded into the website criticalCss/head slots, the shared header/footer hoisted into the
-topNav/footer slots, and images self-hosted. Each imported page is MARKED:
-\`page.data.swImport = { sourceUrl, rewritten:false }\` and \`status:"draft"\`. Your job is to REWRITE them
-into native idioms so they become on-brand and editable.
+it), each page lands as a FAITHFUL replica: literal HTML in \`source\` (no Handlebars), the foreign CSS
+folded into the website criticalCss/head slots, the shared header/footer hoisted into the topNav/mobileNav/
+footer slots, and images self-hosted. Each page is MARKED \`page.data.swImport = { sourceUrl, rewritten:false }\`
+and \`status:"draft"\`.
+
+NATIVIZE = A FAITHFUL PORT, NOT A REDESIGN. Your job is to REPLICATE the existing layout and look using
+native primitives — keep the SAME sections, structure, order, and visual design; swap only the
+IMPLEMENTATION. Do NOT apply get_guide("design") here — that flagship section toolkit is for NET-NEW pages.
+An imported page is "done" when it renders the SAME as the original but is now token-driven, on-brand,
+editable, and free of the foreign framework's CSS/JS. Compare your result against the source site, not a
+design ideal.
 
 FIND THEM: list_pages, then get_page — an imported page has \`data.swImport\` with rewritten:false.
 
-REWRITE CHECKLIST (per page):
-1. Read get_guide("design") FIRST — restructure the literal markup into the flagship section toolkit
-   (composed <section>s, layout rhythm, alternating surfaces). Don't just keep the raw blob.
-2. COLORS: replace fixed colours with theme tokens (primary, base-100/200/300, base-content) so light AND
-   dark work; set the brand from the imported identity (see "SET THE BRAND" in the core instructions).
-3. BINDINGS: swap hardcoded company name/contact for {{ company.* }} (use get_reference for exact names).
-4. REPEATED MARKUP -> DATA: turn repeated blocks (cards, team members, posts, logos) into a dataset +
-   {{#each}} (get_guide("components") / the reference) instead of copy-pasted HTML.
-5. CHROME: the header/footer already live in the website slots — refine them, or extract reusable bits
-   into {{> snippets}} / a template (get_guide("templates")).
+PORT CHECKLIST (per page — preserve the layout at every step):
+1. STRUCTURE: keep the page's existing sections/grid/spacing. Translate the foreign framework's classes
+   (e.g. d-flex, row/col, custom utility names) and the folded-in CSS rules into the EQUIVALENT Tailwind/
+   DaisyUI utilities — same layout, native classes. Don't invent new sections or drop existing ones.
+2. COLORS: replace the foreign palette (fixed hexes, --primary-color vars, named colour classes) with the
+   MATCHING theme tokens (primary, secondary, base-100/200/300, base-content) so light AND dark work; set
+   the brand from the imported identity (see "SET THE BRAND" in the core instructions) to the source's colours.
+3. BINDINGS: swap hardcoded company name/contact/social for {{ company.* }} (use get_reference for exact names).
+4. REPEATED MARKUP -> DATA: turn repeated blocks (cards, team, posts, logos) into a dataset + {{#each}}
+   (get_guide("components") / the reference) instead of copy-pasted HTML — same rendered output, less markup.
+5. INTERACTIVITY: rebuild sliders/carousels/lightboxes/tabs/accordions/modals with the matching platform
+   COMPONENT (get_guide("components")) so they keep working — the import stripped their JS.
 6. EDIT AFFORDANCES: add data-sw-* directives + {{sw-control}} where the client should edit content.
-7. CSS: the foreign CSS in criticalCss/head is a BOUNDED approximation — re-express the important rules
-   as Tailwind/DaisyUI utilities and trim the raw CSS once a section is rebuilt.
-8. IMAGES: the import self-hosts what it found; fill gaps with import_image (from a URL) or
-   search_stock_images (SVGs and oversize images may have been dropped).
+7. IMAGES: keep the self-hosted images the import found (same src); fill gaps with import_image (from a URL)
+   or search_stock_images (SVGs and oversize images may have been dropped).
+
+CHROME (do this too — it isn't done until the slots are ported). The header / mobileNav / footer slots
+(in the settings entity, website.topNav/.mobileNav/.footer) still hold literal foreign HTML. Port them the
+same way — same layout, native classes + tokens + {{company.*}} — editing the settings entity.
+
+CLEAN UP THE FOREIGN FILES (do this LAST, once the pages + chrome are ported). The folded-in foreign CSS
+(website criticalCss / head) and any leftover dropped/self-hosted JS are now dead weight — REMOVE what is
+no longer referenced (trim the criticalCss/head to nothing once every section is token-driven; delete unused
+self-hosted .js/.css media). Re-render and confirm nothing regressed.
 
 SAFETY: <script> tags were REMOVED and <form>s converted to inert <div>s on import. Do NOT re-add raw
-JavaScript — rebuild interactivity with platform components (carousel/tabs/modal — get_guide("components"))
-and real Forms (create a form entity, embed with {{sw-form}}).
+JavaScript — rebuild interactivity with platform components (step 5) and real Forms (create a form entity,
+embed with {{sw-form}}).
 
 WHEN A PAGE IS DONE: set page.data.swImport.rewritten:true (or remove the marker) and flip its
 status to "published".

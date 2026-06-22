@@ -499,6 +499,8 @@ export const api = {
       recoveryCodesRemaining: number;
       /** Whether the account has a password set (false for an OIDC-provisioned user who hasn't set one). */
       hasPassword: boolean;
+      /** When true, the user must set a new password before doing anything (seeded default-password admin). */
+      mustChangePassword: boolean;
       projects: Project[];
     }>('GET', '/me'),
   // Self-service account management (the header user menu). Both re-authenticate with the

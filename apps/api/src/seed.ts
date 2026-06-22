@@ -65,8 +65,13 @@ export async function seedInstance({ db, adminEmail, adminPassword, mediaRoot, l
   const password = configured || DEFAULT_ADMIN_PASSWORD;
 
   // The seeded super-admin holds the platform `admin` role (full access to every project +
-  // instance settings); registration is otherwise invitation-only.
-  const { userId } = await registerAccount(db, adminEmail, password, { platformRole: 'admin' });
+  // instance settings); registration is otherwise invitation-only. When the well-known DEFAULT
+  // password is in use, force a password change on first login (closes the known-credential hole);
+  // an explicit SW_ADMIN_PASSWORD is trusted as already-chosen and is NOT forced.
+  const { userId } = await registerAccount(db, adminEmail, password, {
+    platformRole: 'admin',
+    mustChangePassword: usingDefault,
+  });
   log(
     usingDefault
       ? `[sitewright/seed] WARNING: created admin "${adminEmail}" with the DEFAULT password ` +

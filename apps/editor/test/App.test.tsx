@@ -53,7 +53,7 @@ const projects: Project[] = [
 
 beforeEach(() => {
   vi.clearAllMocks();
-  me.mockResolvedValue({ userId: 'u', email: 'u@acme.test', isInstanceAdmin: false, projects });
+  me.mockResolvedValue({ userId: 'u', email: 'u@acme.test', isInstanceAdmin: false, mustChangePassword: false, projects });
   createProject.mockResolvedValue({ project: { id: 'p3', name: 'New Co', slug: 'new-co', role: 'owner' } });
   // useBranding() runs at the App root — give it a default config so it resolves (DOM ops are inert in jsdom).
   loginConfig.mockResolvedValue({
@@ -73,6 +73,15 @@ describe('App shell', () => {
     fireEvent.change(within(dialog).getByLabelText('Search projects'), { target: { value: 'glob' } });
     expect(within(dialog).queryByRole('button', { name: /Acme/ })).toBeNull();
     expect(within(dialog).getByRole('button', { name: /Globex/ })).toBeInTheDocument();
+  });
+
+  it('gates the whole app behind the forced password screen when mustChangePassword is set', async () => {
+    me.mockResolvedValue({ userId: 'u', email: 'admin@x.test', isInstanceAdmin: true, mustChangePassword: true, projects });
+    render(<App />);
+    // The forced "set a new password" screen replaces the editor + selector entirely.
+    expect(await screen.findByText('Choose a new password')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'SiteWright' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Acme/ })).toBeNull();
   });
 
   it('opens a project from the selector → header shows its name + tablist', async () => {

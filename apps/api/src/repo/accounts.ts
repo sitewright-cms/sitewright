@@ -41,7 +41,7 @@ export async function registerAccount(
   db: Database,
   email: string,
   password: string,
-  opts: { platformRole?: PlatformRole } = {},
+  opts: { platformRole?: PlatformRole; mustChangePassword?: boolean } = {},
 ): Promise<RegisteredAccount> {
   const normalizedEmail = email.trim().toLowerCase();
   const existing = await db.select().from(users).where(eq(users.email, normalizedEmail));
@@ -50,9 +50,14 @@ export async function registerAccount(
   const userId = newId();
   const passwordHash = await hashPassword(password);
   try {
-    await db
-      .insert(users)
-      .values({ id: userId, email: normalizedEmail, passwordHash, platformRole: opts.platformRole ?? null, createdAt: now });
+    await db.insert(users).values({
+      id: userId,
+      email: normalizedEmail,
+      passwordHash,
+      platformRole: opts.platformRole ?? null,
+      mustChangePassword: opts.mustChangePassword ?? false,
+      createdAt: now,
+    });
   } catch (err) {
     // The pre-check above is racy: two concurrent registrations of the same email both pass it and
     // one loses the UNIQUE(email) insert. Map that to a clean ConflictError (409) instead of letting
@@ -229,7 +234,19 @@ export async function changePassword(
     }
   }
   const passwordHash = await hashPassword(newPassword);
-  await db.update(users).set({ passwordHash }).where(eq(users.id, userId));
+  // Setting a new password always clears any forced-change flag — the account is no longer on the
+  // well-known default. (A no-op for the vast majority of accounts, whose flag is already false.)
+  await db.update(users).set({ passwordHash, mustChangePassword: false }).where(eq(users.id, userId));
+}
+
+/**
+ * Whether the user must change their password before doing anything else (set by the first-boot seed
+ * for an admin still on the default password; cleared by {@link changePassword}). A missing user
+ * resolves to false (the session guard already rejects an unknown user upstream).
+ */
+export async function isPasswordChangeRequired(db: Database, userId: string): Promise<boolean> {
+  const [u] = await db.select({ flag: users.mustChangePassword }).from(users).where(eq(users.id, userId));
+  return u?.flag ?? false;
 }
 
 /** The user's platform-staff role (`admin`/`developer`), or null for a client. */

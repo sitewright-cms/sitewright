@@ -662,6 +662,15 @@ export interface AppOptions {
    * admin re-opens it at runtime via `allowSelfRegistration`. Not wired to any env var.
    */
   openRegistration?: boolean;
+  /**
+   * Whether to ENFORCE the seeded default-password admin's forced password change (the
+   * `must_change_password` flag → a 403 `password-change-required` guard + the editor's forced screen).
+   * Default `true` (the embeddable factory + the test suite). The production entry point (`server.ts`)
+   * passes `NODE_ENV === 'production'`, so a real deployment enforces it but a local DEV run does NOT —
+   * the default `admin@sitewright.example` / `123456` just works while developing. The seed still RECORDS
+   * the flag regardless (it's a fact about the password), so flipping to production re-enforces it.
+   */
+  forcePasswordChange?: boolean;
   /** Current running version (for the pull-based update check). */
   version?: string;
   /** Provider of the latest released version tag (cached; null when unavailable). */
@@ -1020,20 +1029,26 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // Fastify normalizes the URL (resolves `..`, collapses `//`, decodes) before routing, so a literal
   // match of the query-stripped path against the two escape routes can't be tricked into mismatching a
   // real /account/password (or into smuggling another route INTO the allowlist).
+  // ENFORCE the forced change in production; a local DEV run (server.ts passes NODE_ENV==='production')
+  // skips it entirely so the default admin just works. The flag is still recorded at seed time, and
+  // `mustChangePassword` is only ever surfaced/enforced when this is on.
+  const forcePasswordChange = opts.forcePasswordChange ?? true;
   const passwordChangeEscapes = (req: FastifyRequest): boolean => {
     const path = (req.url.split('?')[0] ?? '').replace(/\/+$/, '') || '/';
     return (req.method === 'PUT' && path === '/account/password') || (req.method === 'POST' && path === '/auth/logout');
   };
-  app.addHook('preHandler', async (req, reply) => {
-    if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return;
-    if (bearerToken(req) !== undefined) return; // API-key path — not a forced-change human
-    if (passwordChangeEscapes(req)) return; // the change-password + logout escape hatches
-    const userId = await resolveSessionUserId(req);
-    if (!userId) return; // anonymous / expired sessions are each route's own concern (its requireUserId)
-    if (await isPasswordChangeRequired(db, userId)) {
-      return reply.code(403).send({ error: 'password-change-required' });
-    }
-  });
+  if (forcePasswordChange) {
+    app.addHook('preHandler', async (req, reply) => {
+      if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return;
+      if (bearerToken(req) !== undefined) return; // API-key path — not a forced-change human
+      if (passwordChangeEscapes(req)) return; // the change-password + logout escape hatches
+      const userId = await resolveSessionUserId(req);
+      if (!userId) return; // anonymous / expired sessions are each route's own concern (its requireUserId)
+      if (await isPasswordChangeRequired(db, userId)) {
+        return reply.code(403).send({ error: 'password-change-required' });
+      }
+    });
+  }
 
   // Instance/platform admin = a user whose persisted DB `platform_role` is `admin` (the first admin is
   // seeded on first boot — see seed.ts — and further admins are granted via a platform invite with
@@ -1275,7 +1290,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         mfaRepo.isTotpEnabled(userId),
         mfaRepo.remainingRecoveryCodes(userId),
         userHasPassword(db, userId),
-        isPasswordChangeRequired(db, userId),
+        // Only surface the forced-change flag when enforcement is on (off in dev) — so the editor never
+        // shows the forced screen for a feature the server isn't enforcing.
+        forcePasswordChange ? isPasswordChangeRequired(db, userId) : Promise.resolve(false),
       ]);
     const projects = access.map((a) => ({ id: a.projectId, name: a.projectName, slug: a.projectSlug, role: a.role }));
     // email is non-null for a live session (the row exists); coerce the theoretical TOCTOU-deleted

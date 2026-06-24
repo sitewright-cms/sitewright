@@ -3,17 +3,18 @@ import { motion } from 'motion/react';
 import {
   NAV_EFFECTS,
   NAV_EFFECT_LABELS,
-  BUTTON_EFFECTS,
+  BUTTON_EFFECT_LABELS,
+  BUTTON_SHAPE_LABELS,
   PRELOADER_EFFECTS,
   type JsonValue,
   type NavEffect,
-  type ButtonEffect,
   type PreloaderEffect,
 } from '@sitewright/schema';
 import { newStr, shopLabelKeys, type Patch, type SettingsForm } from './model';
 import { Field, GlassCard } from './ui';
 import { SectionHelp } from '../ui/SectionHelp';
-import { Globe, Sparkles, Paintbrush, Code, Braces, PanelTop, Smartphone, PanelLeft, PanelRight, PanelBottom, ArrowDownToLine, Signpost, ShoppingCart, Languages, Pencil, MoonStar, MoveHorizontal } from 'lucide-react';
+import { ButtonEffectsModal } from './ButtonEffectsModal';
+import { Globe, Sparkles, Paintbrush, Code, Braces, PanelTop, Smartphone, PanelLeft, PanelRight, PanelBottom, ArrowDownToLine, Signpost, ShoppingCart, Languages, Pencil, MoonStar, MoveHorizontal, SlidersHorizontal } from 'lucide-react';
 import { CodeField } from '../ui/CodeField';
 import { CodeEditorModal } from '../ui/CodeEditorModal';
 import { api, type EffectForks } from '../../api';
@@ -34,7 +35,6 @@ const effectLabel = (s: string): string => {
 // The effect pickers list their options alphabetically by the label the user sees (the source-of-truth
 // arrays keep their own curated order). Sorted once at module load, not per render.
 const NAV_EFFECTS_SORTED = [...NAV_EFFECTS].sort((a, b) => NAV_EFFECT_LABELS[a].localeCompare(NAV_EFFECT_LABELS[b]));
-const BUTTON_EFFECTS_SORTED = [...BUTTON_EFFECTS].sort((a, b) => a.localeCompare(b));
 const PRELOADER_EFFECTS_SORTED = [...PRELOADER_EFFECTS].sort((a, b) => effectLabel(a).localeCompare(effectLabel(b)));
 
 /** Shared bindings hint for the validated skeleton-slot editors. */
@@ -79,6 +79,7 @@ export function WebsiteSection({
   // effect's code editor is open. The forks are static platform data, fetched once.
   const [forks, setForks] = useState<EffectForks | null>(null);
   const [editing, setEditing] = useState<null | 'nav' | 'button' | 'preloader'>(null);
+  const [btnModalOpen, setBtnModalOpen] = useState(false);
   useEffect(() => {
     let on = true;
     api.listEffectForks().then((f) => on && setForks(f)).catch(() => {});
@@ -188,24 +189,24 @@ export function WebsiteSection({
               )}
             </div>
           </label>
-          <label className="flex flex-col">
-            <span className={fieldLabel}>Button effect</span>
+          <div className="flex flex-col">
+            <span className={fieldLabel}>Buttons</span>
             <div className="flex items-center gap-2">
-              <select
-                aria-label="Button effect"
-                className={`${glassInput} min-w-0 flex-1`}
-                value={form.buttonEffect || 'none'}
-                onChange={(e) =>
-                  patch({ buttonEffect: e.target.value === 'none' ? 'none' : (e.target.value as ButtonEffect) })
-                }
+              <button
+                type="button"
+                onClick={() => setBtnModalOpen(true)}
+                className={`${glassInput} flex min-w-0 flex-1 items-center justify-between gap-2 text-left`}
+                title="Configure button effect, hover accent + shape with a live preview"
               >
-                <option value="none">None / Custom Code</option>
-                {BUTTON_EFFECTS_SORTED.map((b) => (
-                  <option key={b} value={b}>
-                    {b[0]!.toUpperCase() + b.slice(1)}
-                  </option>
-                ))}
-              </select>
+                <span className="truncate">
+                  {form.buttonEffect === 'none' ? 'Baseline' : BUTTON_EFFECT_LABELS[form.buttonEffect]}
+                  {' · '}
+                  {(form.buttonAccent || 'secondary')[0]!.toUpperCase() + (form.buttonAccent || 'secondary').slice(1)}
+                  {' accent · '}
+                  {BUTTON_SHAPE_LABELS[form.buttonShape || 'rounded']}
+                </span>
+                <SlidersHorizontal className="h-3.5 w-3.5 shrink-0 opacity-70" />
+              </button>
               {form.buttonEffect === 'none' && (
                 <button
                   type="button"
@@ -217,7 +218,7 @@ export function WebsiteSection({
                 </button>
               )}
             </div>
-          </label>
+          </div>
           <label className="flex flex-col">
             <span className={fieldLabel}>Preloader</span>
             <div className="flex items-center gap-2">
@@ -270,6 +271,16 @@ export function WebsiteSection({
           }
           onSave={(v) => slotCfg[editing].set(v)}
           onClose={() => setEditing(null)}
+        />
+      )}
+
+      {btnModalOpen && (
+        <ButtonEffectsModal
+          form={form}
+          onApply={(v) =>
+            patch({ buttonEffect: v.buttonEffect, buttonAccent: v.buttonAccent, buttonShape: v.buttonShape })
+          }
+          onClose={() => setBtnModalOpen(false)}
         />
       )}
 

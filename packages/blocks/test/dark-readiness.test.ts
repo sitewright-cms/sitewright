@@ -31,7 +31,9 @@ const FIRST_PARTY_COMPONENTS = ['CookieConsent', 'Modal', 'Tabs', 'Form', 'Carou
 //    it stays legible on its own regardless of the page scheme (an editor warning, not themed chrome).
 //  - `waves-light`: the shared ripple's explicit "light ripple for a surface that is dark in BOTH
 //    schemes" marker (e.g. a coloured button).
-const ALLOWED_BG_SELECTOR_SUBSTRINGS = ['Unknown', 'waves-light'];
+//  - `sw-btn-ripple`: the button baseline's ripple span — a light tint over the accent-filled (coloured)
+//    button it fires on, the same intentional light-on-coloured-surface case as `waves-light`.
+const ALLOWED_BG_SELECTOR_SUBSTRINGS = ['Unknown', 'waves-light', 'sw-btn-ripple'];
 
 // Above this OKLCH lightness a colour reads as a "light" surface.
 const LIGHT_L = 0.72;

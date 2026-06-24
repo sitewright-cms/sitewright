@@ -8,7 +8,7 @@
 // #mobile-nav landmarks) OR per-element (class on the nav container, e.g. <ul class="menu
 // sw-nav-box-solid">). The active item is marked with `.active` (author-applied, e.g.
 // `{{#if (sw-active path)}}active{{/if}}`) and/or `[aria-current="page"]`. BUTTON effects layer on any
-// daisyUI `.btn` — site-wide (class on <body>) or on the button itself (`<button class="btn sw-btn-lift">`).
+// daisyUI `.btn` — site-wide (class on <body>) or on the button itself (`<button class="btn sw-btn-fx-lift">`).
 //
 // CONTRAST + DARK MODE: every scheme reads the dark-mode-aware `--sw-color-*` tokens FIRST (P / PC /
 // S1 below) with the static daisyUI `--color-*` palette as fallback, so it stays legible AND flips
@@ -43,6 +43,13 @@ const navScope = (s = ''): string =>
   `& :is(#top-nav, #mobile-nav)${s}, &:is(.menu, nav, [role="navigation"])${s}`;
 //   button, optional `<suffix>` — descendant (class on an ancestor) AND compound (class on the .btn):
 const btn = (s = ''): string => `& .btn${s}, &.btn${s}`;
+//   button AXIS helpers (effect / shape / accent). Each class doubles as a site DEFAULT (on <body>,
+//   scoped to descendant .btn that DON'T carry their own override for that axis) OR a per-button
+//   override (on the .btn itself). The `:not([class*="sw-btn-<axis>-"])` guard makes the body default
+//   and a per-button override mutually exclusive per axis — so one CSS block serves both placements.
+const btnFx = (s = ''): string => `& .btn:not([class*="sw-btn-fx-"])${s}, &.btn${s}`;
+const btnShape = (s = ''): string => `& .btn:not([class*="sw-btn-shape-"])${s}, &.btn${s}`;
+const btnAccent = (s = ''): string => `& .btn:not([class*="sw-btn-accent-"])${s}, &.btn${s}`;
 
 // Dark-mode-aware colour tokens. Every effect reads the tenant `--sw-color-*` namespace FIRST — those
 // flip / dark-tune in the built-in dark scheme (blocks/theme-mode.ts) — falling back to the static
@@ -52,6 +59,16 @@ const P = 'var(--sw-color-primary, var(--color-primary))';
 const PC = 'var(--sw-color-primary-content, var(--color-primary-content))';
 const S1 = 'var(--sw-color-base-100, var(--color-base-100))';
 const RAD = 'var(--radius-field, .375rem)';
+
+// Button colour model. FACE = the button's own daisyUI variant colour (read-only); FX = the ACCENT
+// (hover / fill / glow colour) the baseline + `sw-btn-accent-*` publish via `--sw-btn-fx` (default
+// secondary). `--sw-btn-hover-bg` is the baseline's hover fill (defaults to FX; the hollow/gradient
+// effects set it to `transparent` so their own pseudo animation fills instead). All defined on the
+// baseline `.btn` (blocks/base-css.ts), so the fallbacks here only matter outside that baseline.
+const FACE = 'var(--btn-color, var(--sw-color-primary, var(--color-primary)))';
+const FACEC = 'var(--btn-fg, var(--sw-color-primary-content, var(--color-primary-content)))';
+const FX = 'var(--sw-btn-fx, var(--sw-color-secondary, var(--color-secondary)))';
+const FXC = 'var(--sw-btn-fx-content, var(--sw-color-secondary-content, var(--color-secondary-content)))';
 
 /**
  * The effect `@utility` blocks, appended to the Tailwind compile input. Tree-shaken per scheme.
@@ -227,47 +244,195 @@ export const EFFECT_UTILITIES = `
    CSS keeps them iff that scheme ships and prunes them otherwise → they still tree-shake). */
 @keyframes sw-nav-blob { 0%, 100% { border-radius: 42% 58% 63% 37% / 41% 44% 56% 59%; } 50% { border-radius: 58% 42% 38% 62% / 56% 51% 49% 44%; } }
 
-/* ── button effects (on any .btn — site-wide via <body>, or per-button) ──── */
-@utility sw-btn-lift {
-  ${btn()} { transition: box-shadow .18s ease, transform .18s ease; }
-  @media (prefers-reduced-motion: no-preference) {
-    ${btn(':hover')} { transform: translateY(-2px); box-shadow: 0 10px 24px -8px rgb(0 0 0 / .28); }
-    ${btn(':active')} { transform: translateY(0); box-shadow: 0 4px 10px -6px rgb(0 0 0 / .25); }
-  }
-  @media (prefers-reduced-motion: reduce) { ${btn(':hover')} { box-shadow: 0 10px 24px -8px rgb(0 0 0 / .28); } }
+/* ── button EFFECTS (sw-btn-fx-<name>) — signature flourishes on the always-on .btn baseline (ripple +
+   hover lift/shadow + fill-to-accent, in blocks/base-css.ts). Each class works as a site DEFAULT on
+   <body> or a per-button override on the .btn; the :not() guard keeps them mutually exclusive. ─────── */
+/* solid family — lean on the baseline fill, add a flourish */
+@utility sw-btn-fx-lift {
+  @media (prefers-reduced-motion: no-preference) { ${btnFx()} { transition: transform .2s cubic-bezier(.16,1,.3,1), box-shadow .2s ease; } }
+  ${btnFx(':hover')} { transform: translateY(-3px); box-shadow: 0 16px 32px -10px color-mix(in oklab, ${FX} 65%, transparent); }
+  ${btnFx(':active')} { transform: translateY(-1px); }
 }
-@utility sw-btn-glow {
-  ${btn()} { transition: box-shadow .2s ease; }
-  ${btn(':hover')}, ${btn(':focus-visible')} { box-shadow: 0 0 0 1px color-mix(in oklab, var(--btn-color, var(--color-primary)) 40%, transparent), 0 8px 26px -6px color-mix(in oklab, var(--btn-color, var(--color-primary)) 60%, transparent); }
+@utility sw-btn-fx-glow {
+  @media (prefers-reduced-motion: no-preference) { ${btnFx()} { transition: box-shadow .25s ease; } }
+  ${btnFx(':hover')}, ${btnFx(':focus-visible')} { box-shadow: 0 0 0 1px color-mix(in oklab, ${FX} 50%, transparent), 0 0 22px color-mix(in oklab, ${FX} 60%, transparent), 0 0 44px color-mix(in oklab, ${FX} 35%, transparent); }
 }
-@utility sw-btn-sheen {
-  ${btn()} { position: relative; overflow: hidden; isolation: isolate; }
-  ${btn('::after')} { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(105deg, transparent 35%, rgb(255 255 255 / .35) 50%, transparent 65%); translate: -120% 0; }
+@utility sw-btn-fx-pulse {
+  ${btnFx(':hover')} { box-shadow: 0 0 0 5px color-mix(in oklab, ${FX} 22%, transparent); }
   @media (prefers-reduced-motion: no-preference) {
-    ${btn('::after')} { transition: translate .6s ease; }
-    ${btn(':hover::after')} { translate: 120% 0; }
-  }
-}
-@utility sw-btn-press {
-  ${btn()} { transition: transform .08s ease; }
-  @media (prefers-reduced-motion: no-preference) {
-    ${btn(':hover')} { transform: scale(1.02); }
-    ${btn(':active')} { transform: scale(.96); }
+    ${btnFx(':not(:hover)')} { animation: sw-btn-pulse 2.2s ease-out infinite; }
+    @keyframes sw-btn-pulse { 0% { box-shadow: 0 0 0 0 color-mix(in oklab, ${FX} 55%, transparent); } 70%, 100% { box-shadow: 0 0 0 14px color-mix(in oklab, ${FX} 0%, transparent); } }
   }
 }
-@utility sw-btn-pulse {
+@utility sw-btn-fx-ring {
+  @media (prefers-reduced-motion: no-preference) { ${btnFx()} { transition: box-shadow .3s cubic-bezier(.16,1,.3,1); } }
+  ${btnFx(':hover')}, ${btnFx(':focus-visible')} { box-shadow: 0 10px 24px -11px color-mix(in oklab, ${FX} 55%, transparent), 0 0 0 8px color-mix(in oklab, ${FX} 30%, transparent); }
+}
+@utility sw-btn-fx-magnetic {
+  ${btnFx()} { will-change: transform; }
+  /* the JS drives transform via inline style; cancel the baseline hover scale so they don't fight. */
+  ${btnFx(':hover')} { transform: none; box-shadow: 0 12px 28px -10px color-mix(in oklab, ${FX} 60%, transparent); }
+}
+@utility sw-btn-fx-arrow {
+  ${btnFx('::after')} { content: "\\2192"; width: 0; opacity: 0; overflow: hidden; }
+  @media (prefers-reduced-motion: no-preference) { ${btnFx('::after')} { transition: width .25s ease, opacity .25s ease, margin .25s ease; } }
+  ${btnFx(':hover::after')} { width: 1.1em; opacity: 1; margin-inline-start: .35em; }
+}
+@utility sw-btn-fx-bounce {
+  @media (prefers-reduced-motion: no-preference) { ${btnFx()} { transition: transform .45s cubic-bezier(.34,1.7,.4,1); } }
+  ${btnFx(':hover')} { transform: scale(1.08); }
+  ${btnFx(':active')} { transform: scale(.96); }
+}
+@utility sw-btn-fx-jelly {
   @media (prefers-reduced-motion: no-preference) {
-    ${btn(':not(:hover)')} { animation: sw-pulse 2.4s ease-in-out infinite; }
-    @keyframes sw-pulse {
-      0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--btn-color, var(--color-primary)) 45%, transparent); }
-      50% { box-shadow: 0 0 0 6px color-mix(in oklab, var(--btn-color, var(--color-primary)) 0%, transparent); }
-    }
+    ${btnFx(':hover')} { animation: sw-btn-jelly .55s; }
+    @keyframes sw-btn-jelly { 0% { transform: scale(1,1); } 25% { transform: scale(1.12,.88); } 50% { transform: scale(.9,1.1); } 70% { transform: scale(1.05,.95); } 100% { transform: scale(1,1); } }
   }
 }
-@utility sw-btn-ring {
-  ${btn()} { position: relative; }
-  ${btn('::after')} { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: 0 0 0 0 color-mix(in oklab, var(--btn-color, var(--color-primary)) 55%, transparent); }
-  @media (prefers-reduced-motion: no-preference) { ${btn('::after')} { transition: box-shadow .25s ease; } }
-  ${btn(':hover::after')}, ${btn(':focus-visible::after')} { box-shadow: 0 0 0 4px color-mix(in oklab, var(--btn-color, var(--color-primary)) 30%, transparent); }
+@utility sw-btn-fx-icon-spin {
+  @media (prefers-reduced-motion: no-preference) { ${btnFx(' svg')} { transition: transform .45s cubic-bezier(.34,1.4,.5,1); } }
+  ${btnFx(':hover svg')} { transform: rotate(360deg); }
 }
+@utility sw-btn-fx-long-shadow {
+  @media (prefers-reduced-motion: no-preference) { ${btnFx()} { transition: box-shadow .22s ease, transform .22s ease; } }
+  ${btnFx(':hover')} { transform: translate(-2px,-2px); box-shadow: 4px 4px 0 color-mix(in oklab, ${FX} 55%, #000), 8px 8px 0 color-mix(in oklab, ${FX} 32%, #000); }
+  ${btnFx(':active')} { transform: translate(0,0); box-shadow: 1px 1px 0 color-mix(in oklab, ${FX} 55%, #000); }
+}
+@utility sw-btn-fx-frost {
+  ${btnFx()} { background: color-mix(in oklab, ${FACE} 22%, transparent); color: ${FACE}; backdrop-filter: blur(8px); box-shadow: inset 0 0 0 1px color-mix(in oklab, ${FACE} 35%, transparent); --sw-btn-hover-bg: color-mix(in oklab, ${FACE} 32%, transparent); --sw-btn-hover-fg: ${FACE}; }
+  ${btnFx(':hover')} { box-shadow: inset 0 0 0 1px color-mix(in oklab, ${FACE} 55%, transparent), 0 10px 26px -12px color-mix(in oklab, ${FX} 55%, transparent); }
+}
+@utility sw-btn-fx-width-expand {
+  @media (prefers-reduced-motion: no-preference) { ${btnFx()} { transition: padding .28s cubic-bezier(.16,1,.3,1), letter-spacing .28s ease, box-shadow .25s ease; } }
+  ${btnFx(':hover')} { transform: none; padding-inline: 2.25rem; letter-spacing: .04em; box-shadow: 0 12px 26px -12px color-mix(in oklab, ${FX} 55%, transparent); }
+}
+/* glint family — a white light effect over the baseline */
+@utility sw-btn-fx-sheen {
+  ${btnFx('::after')} { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: linear-gradient(105deg, transparent 35%, rgb(255 255 255 / .4) 50%, transparent 65%); translate: -130% 0; }
+  @media (prefers-reduced-motion: no-preference) { ${btnFx('::after')} { transition: translate .65s cubic-bezier(.16,1,.3,1); } ${btnFx(':hover::after')} { translate: 130% 0; } }
+}
+@utility sw-btn-fx-spotlight {
+  ${btnFx('::after')} { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; opacity: 0; background: radial-gradient(80px 80px at var(--sw-btn-mx, 50%) var(--sw-btn-my, 50%), rgb(255 255 255 / .35), transparent 70%); }
+  @media (prefers-reduced-motion: no-preference) { ${btnFx('::after')} { transition: opacity .25s ease; } }
+  ${btnFx(':hover::after')} { opacity: 1; }
+}
+@utility sw-btn-fx-shine {
+  @media (prefers-reduced-motion: no-preference) {
+    ${btnFx('::after')} { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: linear-gradient(105deg, transparent 35%, rgb(255 255 255 / .4) 50%, transparent 65%); background-size: 250% 100%; animation: sw-btn-shine 2.6s linear infinite; }
+    @keyframes sw-btn-shine { 0% { background-position: 200% 0; } 100% { background-position: -60% 0; } }
+  }
+}
+@utility sw-btn-fx-sparkle {
+  ${btnFx('::before')}, ${btnFx('::after')} { content: "\\2726"; position: absolute; color: #fff; opacity: 0; pointer-events: none; z-index: 1; }
+  ${btnFx('::before')} { top: 2px; right: 10px; font-size: .7rem; }
+  ${btnFx('::after')} { bottom: 3px; left: 12px; font-size: .55rem; }
+  @media (prefers-reduced-motion: no-preference) {
+    ${btnFx(':hover::before')} { animation: sw-btn-sparkle .8s ease infinite; }
+    ${btnFx(':hover::after')} { animation: sw-btn-sparkle .8s ease .28s infinite; }
+    @keyframes sw-btn-sparkle { 0%, 100% { opacity: 0; transform: scale(.4) rotate(0); } 50% { opacity: 1; transform: scale(1) rotate(90deg); } }
+  }
+}
+/* hollow family — transparent face, the accent does the work (opt out of the baseline instant fill) */
+@utility sw-btn-fx-fill-center {
+  ${btnFx()} { background: transparent; color: ${FX}; box-shadow: inset 0 0 0 2px ${FX}; --sw-btn-hover-bg: transparent; }
+  ${btnFx('::before')} { content: ""; position: absolute; inset: 0; z-index: -1; background: ${FX}; border-radius: 50%; transform: scale(0); }
+  @media (prefers-reduced-motion: no-preference) { ${btnFx('::before')} { transition: transform .4s cubic-bezier(.16,1,.3,1); } }
+  ${btnFx(':hover::before')} { transform: scale(2.2); }
+  ${btnFx(':hover')} { color: ${FXC}; }
+}
+@utility sw-btn-fx-fill-slide {
+  ${btnFx()} { background: transparent; color: ${FX}; box-shadow: inset 0 0 0 2px ${FX}; --sw-btn-hover-bg: transparent; }
+  ${btnFx('::before')} { content: ""; position: absolute; inset: 0; z-index: -1; background: ${FX}; transform: scaleX(0); transform-origin: left; }
+  @media (prefers-reduced-motion: no-preference) { ${btnFx('::before')} { transition: transform .35s cubic-bezier(.16,1,.3,1); } }
+  ${btnFx(':hover::before')} { transform: scaleX(1); }
+  ${btnFx(':hover')} { color: ${FXC}; }
+}
+@utility sw-btn-fx-fill-up {
+  ${btnFx()} { background: transparent; color: ${FX}; box-shadow: inset 0 0 0 2px ${FX}; --sw-btn-hover-bg: transparent; }
+  ${btnFx('::before')} { content: ""; position: absolute; inset: 0; z-index: -1; background: ${FX}; transform: scaleY(0); transform-origin: bottom; }
+  @media (prefers-reduced-motion: no-preference) { ${btnFx('::before')} { transition: transform .35s cubic-bezier(.16,1,.3,1); } }
+  ${btnFx(':hover::before')} { transform: scaleY(1); }
+  ${btnFx(':hover')} { color: ${FXC}; }
+}
+@utility sw-btn-fx-fill-down {
+  ${btnFx()} { background: transparent; color: ${FX}; box-shadow: inset 0 0 0 2px ${FX}; --sw-btn-hover-bg: transparent; }
+  ${btnFx('::before')} { content: ""; position: absolute; inset: 0; z-index: -1; background: ${FX}; transform: scaleY(0); transform-origin: top; }
+  @media (prefers-reduced-motion: no-preference) { ${btnFx('::before')} { transition: transform .35s cubic-bezier(.16,1,.3,1); } }
+  ${btnFx(':hover::before')} { transform: scaleY(1); }
+  ${btnFx(':hover')} { color: ${FXC}; }
+}
+@utility sw-btn-fx-skew-sweep {
+  ${btnFx()} { background: transparent; color: ${FX}; box-shadow: inset 0 0 0 2px ${FX}; --sw-btn-hover-bg: transparent; }
+  ${btnFx('::before')} { content: ""; position: absolute; top: 0; bottom: 0; left: -10%; width: 120%; z-index: -1; background: ${FX}; transform: scaleX(0) skewX(-18deg); transform-origin: left; }
+  @media (prefers-reduced-motion: no-preference) { ${btnFx('::before')} { transition: transform .4s cubic-bezier(.16,1,.3,1); } }
+  ${btnFx(':hover::before')} { transform: scaleX(1) skewX(-18deg); }
+  ${btnFx(':hover')} { color: ${FXC}; }
+}
+@utility sw-btn-fx-bubble {
+  ${btnFx()} { background: transparent; color: ${FX}; box-shadow: inset 0 0 0 2px ${FX}; --sw-btn-hover-bg: transparent; }
+  ${btnFx('::before')} { content: ""; position: absolute; left: 12px; bottom: 8px; width: 8px; height: 8px; z-index: -1; background: ${FX}; border-radius: 50%; transform: scale(0); }
+  @media (prefers-reduced-motion: no-preference) { ${btnFx('::before')} { transition: transform .5s cubic-bezier(.16,1,.3,1); } }
+  ${btnFx(':hover::before')} { transform: scale(28); }
+  ${btnFx(':hover')} { color: ${FXC}; }
+}
+@utility sw-btn-fx-border-draw {
+  ${btnFx()} { background: transparent; color: ${FX}; --sw-btn-hover-bg: transparent; --sw-btn-hover-fg: ${FX}; }
+  ${btnFx(':hover')} { box-shadow: none; }
+  ${btnFx('::before')}, ${btnFx('::after')} { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; }
+  ${btnFx('::before')} { border-top: 2px solid ${FX}; border-right: 2px solid ${FX}; clip-path: inset(0 0 100% 100%); }
+  ${btnFx('::after')} { border-bottom: 2px solid ${FX}; border-left: 2px solid ${FX}; clip-path: inset(100% 100% 0 0); }
+  @media (prefers-reduced-motion: no-preference) { ${btnFx('::before')} { transition: clip-path .3s ease .05s; } ${btnFx('::after')} { transition: clip-path .3s ease; } }
+  ${btnFx(':hover::before')}, ${btnFx(':hover::after')} { clip-path: inset(0 0 0 0); }
+}
+@utility sw-btn-fx-outline-fill {
+  ${btnFx()} { background: transparent; color: ${FX}; box-shadow: inset 0 0 0 2px ${FX}; }
+  ${btnFx(':hover')} { color: ${FXC}; box-shadow: inset 0 0 0 2px ${FX}, 0 10px 24px -10px color-mix(in oklab, ${FX} 60%, transparent); }
+}
+@utility sw-btn-fx-text-link {
+  ${btnFx()} { background: transparent; color: ${FX}; box-shadow: none; padding-inline: .25rem; --sw-btn-hover-bg: transparent; --sw-btn-hover-fg: ${FX}; }
+  ${btnFx(':hover')} { transform: none; box-shadow: none; }
+  ${btnFx('::after')} { content: ""; position: absolute; left: .25rem; right: .25rem; bottom: .15rem; height: 2px; background: ${FX}; transform: scaleX(0); transform-origin: left; }
+  @media (prefers-reduced-motion: no-preference) { ${btnFx('::after')} { transition: transform .3s cubic-bezier(.16,1,.3,1); } }
+  ${btnFx(':hover::after')} { transform: scaleX(1); }
+}
+/* gradient family — two-colour, face → accent */
+@utility sw-btn-fx-gradient-move {
+  ${btnFx()} { background: linear-gradient(120deg, ${FACE}, ${FX}, ${FACE}); background-size: 200% 100%; color: ${FACEC}; --sw-btn-hover-fg: ${FACEC}; }
+  @media (prefers-reduced-motion: no-preference) { ${btnFx()} { transition: background-position .5s ease; } }
+  ${btnFx(':hover')} { background-position: 100% 0; }
+}
+@utility sw-btn-fx-two-tone {
+  ${btnFx()} { background: linear-gradient(90deg, ${FACE} 50%, ${FX} 50%); background-size: 200% 100%; background-position: 0 0; color: ${FACEC}; --sw-btn-hover-fg: ${FXC}; }
+  @media (prefers-reduced-motion: no-preference) { ${btnFx()} { transition: background-position .42s ease; } }
+  ${btnFx(':hover')} { background-position: -100% 0; }
+}
+@utility sw-btn-fx-ghost-gradient {
+  ${btnFx()} { background: linear-gradient(120deg, ${FACE}, ${FX}); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent; box-shadow: inset 0 0 0 1.5px color-mix(in oklab, ${FX} 45%, transparent); --sw-btn-hover-bg: transparent; --sw-btn-hover-fg: transparent; }
+  @media (prefers-reduced-motion: no-preference) { ${btnFx()} { transition: box-shadow .25s ease; } }
+  ${btnFx(':hover')} { box-shadow: inset 0 0 0 1.5px ${FX}, 0 10px 24px -13px color-mix(in oklab, ${FX} 55%, transparent); }
+  /* a disabled button: drop the text-clip so daisyUI's disabled colour shows (else the label is invisible). */
+  ${btnFx(':disabled')}, ${btnFx('.btn-disabled')} { -webkit-text-fill-color: currentColor; background: none; }
+}
+
+/* ── button SHAPES (sw-btn-shape-<name>) — radius / clip-path / icon silhouette ──────────────────── */
+@utility sw-btn-shape-rounded { ${btnShape()} { --sw-btn-radius: .7rem; clip-path: none; } }
+@utility sw-btn-shape-soft { ${btnShape()} { --sw-btn-radius: .35rem; clip-path: none; } }
+@utility sw-btn-shape-sharp { ${btnShape()} { --sw-btn-radius: 0; clip-path: none; } }
+@utility sw-btn-shape-pill { ${btnShape()} { --sw-btn-radius: 999px; clip-path: none; } }
+@utility sw-btn-shape-cut {
+  ${btnShape()} { --sw-btn-radius: 0; clip-path: polygon(9px 0, calc(100% - 9px) 0, 100% 9px, 100% calc(100% - 9px), calc(100% - 9px) 100%, 9px 100%, 0 calc(100% - 9px), 0 9px); }
+  ${btnShape(':hover')} { box-shadow: none; filter: drop-shadow(0 7px 12px color-mix(in oklab, ${FX} 45%, transparent)); }
+}
+@utility sw-btn-shape-skewed {
+  ${btnShape()} { --sw-btn-radius: 0; clip-path: polygon(12px 0, 100% 0, calc(100% - 12px) 100%, 0 100%); }
+  ${btnShape(':hover')} { box-shadow: none; filter: drop-shadow(0 7px 12px color-mix(in oklab, ${FX} 45%, transparent)); }
+}
+@utility sw-btn-shape-square { ${btnShape()} { --sw-btn-radius: .5rem; clip-path: none; aspect-ratio: 1; padding-inline: 0; } }
+@utility sw-btn-shape-circle { ${btnShape()} { --sw-btn-radius: 999px; clip-path: none; aspect-ratio: 1; padding-inline: 0; } }
+
+/* ── button ACCENTS (sw-btn-accent-<role>) — the hover/fill/glow colour role (default secondary) ──── */
+@utility sw-btn-accent-primary { ${btnAccent()} { --sw-btn-fx: ${P}; --sw-btn-fx-content: ${PC}; } }
+@utility sw-btn-accent-secondary { ${btnAccent()} { --sw-btn-fx: var(--sw-color-secondary, var(--color-secondary)); --sw-btn-fx-content: var(--sw-color-secondary-content, var(--color-secondary-content)); } }
+@utility sw-btn-accent-accent { ${btnAccent()} { --sw-btn-fx: var(--sw-color-accent, var(--color-accent)); --sw-btn-fx-content: var(--sw-color-accent-content, var(--color-accent-content)); } }
+@utility sw-btn-accent-neutral { ${btnAccent()} { --sw-btn-fx: var(--sw-color-neutral, var(--color-neutral)); --sw-btn-fx-content: var(--sw-color-neutral-content, var(--color-neutral-content)); } }
 `;

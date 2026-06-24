@@ -649,6 +649,8 @@ export const api = {
   listWidgets: () => request<{ widgets: WidgetCatalogEntry[] }>('GET', '/authoring/widgets'),
   /** The "fork existing effect" snippets for the Website-settings custom-code editors. */
   listEffectForks: () => request<EffectForks>('GET', '/authoring/effect-forks'),
+  /** The compiled button-preview stylesheet (.btn baseline + all effect/shape/accent utilities) for the Button-effects modal. */
+  buttonPreviewCss: () => request<{ css: string }>('GET', '/authoring/button-preview-css'),
 
   listGlobalTemplates: () => request<{ items: Template[] }>('GET', '/global/template'),
   putGlobalTemplate: (template: Template) =>

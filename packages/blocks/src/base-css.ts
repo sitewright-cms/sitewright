@@ -290,6 +290,41 @@ img, video { max-width: 100%; height: auto; }
   height: var(--sw-dropdown-gap, 0.4rem);
 }
 
+/* ── BUTTON BASELINE — every .btn gets: a ripple on click, a small hover lift + soft shadow, and its
+   background FILLS to the accent (--sw-btn-fx, default secondary). The per-button radius rides
+   --sw-btn-radius. The button EFFECT / SHAPE / ACCENT utilities (@sitewright/tailwind effects.ts) layer
+   on top; the ripple needs the JS runtime (button-effects.ts, only-when-used). UNLAYERED so it overrides
+   daisyUI's layered .btn hover state (intentional) — but it only sets the hover background/transform, so
+   a button's rest appearance stays its daisy variant. */
+.btn {
+  --sw-btn-fx: var(--sw-color-secondary, var(--color-secondary, #0ea5e9));
+  --sw-btn-fx-content: var(--sw-color-secondary-content, var(--color-secondary-content, #ffffff));
+  --sw-btn-hover-bg: var(--sw-btn-fx);
+  --sw-btn-hover-fg: var(--sw-btn-fx-content);
+  --sw-btn-radius: .7rem;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: var(--sw-btn-radius);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .btn { transition: transform .22s cubic-bezier(.16, 1, .3, 1), box-shadow .22s ease, background-color .25s ease, color .25s ease; }
+}
+/* the hover fill / lift / shadow skip text-link + disabled buttons (a .btn-link is a bare anchor-style
+   button that must stay text-only; .btn-ghost DOES fill — that is the intended transparent-to-accent hover). */
+.btn:not(.btn-link):not(.btn-disabled):not(:disabled):hover {
+  background-color: var(--sw-btn-hover-bg);
+  color: var(--sw-btn-hover-fg);
+  transform: scale(1.03);
+  box-shadow: 0 10px 24px -11px color-mix(in oklab, var(--sw-btn-fx) 60%, transparent);
+}
+.btn:not(.btn-link):not(.btn-disabled):not(:disabled):active { transform: scale(.97); }
+/* the injected ripple span (the runtime appends one per pointerdown; clipped by the .btn overflow). The
+   white tint is the intentional light-on-coloured-button ripple — see the dark-readiness allowlist. */
+.btn .sw-btn-ripple { position: absolute; border-radius: 50%; background: rgb(255 255 255 / .45); transform: translate(-50%, -50%) scale(0); pointer-events: none; z-index: 1; }
+@media (prefers-reduced-motion: no-preference) { .btn .sw-btn-ripple { animation: sw-btn-ripple .6s ease-out forwards; } }
+@keyframes sw-btn-ripple { to { transform: translate(-50%, -50%) scale(1); opacity: 0; } }
+
 /* Solid scrollbars (NO transparency anywhere): a solid track in the page
    background colour (so it blends with the page) and a solid brand-primary thumb
    that darkens while grabbed; no stepper arrows. WebKit/Blink (Chrome/Safari/Edge)

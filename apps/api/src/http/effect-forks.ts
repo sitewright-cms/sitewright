@@ -13,10 +13,12 @@ import {
   NAV_EFFECT_LABELS,
   JS_NAV_EFFECTS,
   BUTTON_EFFECTS,
+  BUTTON_EFFECT_LABELS,
+  JS_BUTTON_EFFECTS,
   PRELOADER_EFFECTS,
 } from '@sitewright/schema';
 import { EFFECT_UTILITIES } from '@sitewright/tailwind';
-import { NAV_EFFECTS_JS, preloaderHtml, PRELOADER_CSS, PRELOADER_JS } from '@sitewright/blocks';
+import { NAV_EFFECTS_JS, BUTTON_EFFECTS_JS, preloaderHtml, PRELOADER_CSS, PRELOADER_JS } from '@sitewright/blocks';
 
 export interface EffectFork {
   name: string;
@@ -123,11 +125,12 @@ export function buildEffectForks(): EffectForks {
       : '';
     return { name, label: NAV_EFFECT_LABELS[name], code: `<style>\n${effectStyle(`sw-nav-${name}`)}\n</style>${js}` };
   });
-  const button: EffectFork[] = BUTTON_EFFECTS.map((name) => ({
-    name,
-    label: titleCase(name),
-    code: `<style>\n${effectStyle(`sw-btn-${name}`)}\n</style>`,
-  }));
+  const button: EffectFork[] = BUTTON_EFFECTS.map((name) => {
+    const js = (JS_BUTTON_EFFECTS as readonly string[]).includes(name)
+      ? `\n<script>\n${BUTTON_EFFECTS_JS}\n</script>`
+      : '';
+    return { name, label: BUTTON_EFFECT_LABELS[name], code: `<style>\n${effectStyle(`sw-btn-fx-${name}`)}\n</style>${js}` };
+  });
   // Preloaders aren't @utility-based: a fork is the overlay markup + the full preloader stylesheet +
   // the show/hide runtime — a working, editable starting point (logo-* fall back to the brand mark).
   const preloader: EffectFork[] = PRELOADER_EFFECTS.map((name) => ({

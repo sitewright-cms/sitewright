@@ -298,9 +298,100 @@ export function navEffectUsesRuntime(effect: string | null | undefined): boolean
   return !!effect && (JS_NAV_EFFECTS as readonly string[]).includes(effect);
 }
 
-/** Curated BUTTON effect schemes — CSS `.sw-btn-<name>` utilities (layer on any daisyUI `.btn`). */
-export const BUTTON_EFFECTS = ['lift', 'glow', 'sheen', 'press', 'pulse', 'ring'] as const;
+/**
+ * Curated BUTTON effect flourishes — CSS `.sw-btn-fx-<name>` utilities. Each layers a signature
+ * motion on top of the always-on `.btn` baseline (ripple + hover lift/shadow + fill-to-accent). The
+ * SAME class is used as the site-wide default (on `<body>`, via {@link websiteEffectsClasses}) or as a
+ * per-button override (on the `.btn` itself); the effect CSS guards with `:not([class*="sw-btn-fx-"])`
+ * so a per-button choice cleanly replaces the site default. Source-of-truth for the editor picker, the
+ * `@utility sw-btn-fx-<name>` blocks in @sitewright/tailwind effects.ts, and the JS runtime markers.
+ */
+export const BUTTON_EFFECTS = [
+  // solid — baseline fill + a signature flourish
+  'lift', 'glow', 'pulse', 'ring', 'magnetic', 'arrow', 'bounce', 'jelly',
+  'icon-spin', 'long-shadow', 'frost', 'width-expand',
+  // glint — a light effect on top of the baseline
+  'sheen', 'spotlight', 'shine', 'sparkle',
+  // hollow — transparent face, the accent does the work
+  'fill-center', 'fill-slide', 'border-draw', 'outline-fill', 'fill-up', 'fill-down',
+  'skew-sweep', 'bubble', 'text-link',
+  // gradient — two-colour (face → accent)
+  'gradient-move', 'two-tone', 'ghost-gradient',
+] as const;
 export type ButtonEffect = (typeof BUTTON_EFFECTS)[number];
+
+/** Display labels for the button-effect picker ("Family: Detail" style where useful). */
+export const BUTTON_EFFECT_LABELS: Record<ButtonEffect, string> = {
+  lift: 'Lift',
+  glow: 'Glow',
+  pulse: 'Pulse',
+  ring: 'Ring Expand',
+  magnetic: 'Magnetic',
+  arrow: 'Arrow',
+  bounce: 'Bounce',
+  jelly: 'Jelly',
+  'icon-spin': 'Icon Spin',
+  'long-shadow': 'Long Shadow',
+  frost: 'Frost',
+  'width-expand': 'Width Expand',
+  sheen: 'Sheen',
+  spotlight: 'Spotlight',
+  shine: 'Shine',
+  sparkle: 'Sparkle',
+  'fill-center': 'Fill: Center',
+  'fill-slide': 'Fill: Slide',
+  'border-draw': 'Border Draw',
+  'outline-fill': 'Outline Fill',
+  'fill-up': 'Fill: Up',
+  'fill-down': 'Fill: Down',
+  'skew-sweep': 'Skew Sweep',
+  bubble: 'Bubble',
+  'text-link': 'Text Link',
+  'gradient-move': 'Gradient Move',
+  'two-tone': 'Two-Tone',
+  'ghost-gradient': 'Ghost Gradient',
+};
+
+/** Button effects that need the button-effects JS runtime (pointer-driven). Ripple is always-on baseline. */
+export const JS_BUTTON_EFFECTS = ['magnetic', 'spotlight'] as const;
+
+/** Whether a chosen button effect needs the pointer-driven JS runtime (magnetic / spotlight). */
+export function buttonEffectUsesRuntime(effect: string | null | undefined): boolean {
+  return !!effect && (JS_BUTTON_EFFECTS as readonly string[]).includes(effect);
+}
+
+/**
+ * Button SHAPE — the corner/silhouette axis (`.sw-btn-shape-<name>`). Radius shapes set
+ * `--sw-btn-radius`; clip shapes (cut/skewed) use `clip-path` (a drop-shadow replaces the box-shadow,
+ * so they don't combine with the outer-glow effects); icon shapes (square/circle) are 1:1, label-less.
+ * Like effects, the class doubles as a site default (on `<body>`) or a per-button override.
+ */
+export const BUTTON_SHAPES = ['rounded', 'soft', 'sharp', 'pill', 'cut', 'skewed', 'square', 'circle'] as const;
+export type ButtonShape = (typeof BUTTON_SHAPES)[number];
+
+/** Display labels for the shape picker. */
+export const BUTTON_SHAPE_LABELS: Record<ButtonShape, string> = {
+  rounded: 'Rounded',
+  soft: 'Soft',
+  sharp: 'Sharp',
+  pill: 'Pill',
+  cut: 'Cut',
+  skewed: 'Skewed',
+  square: 'Square (icon)',
+  circle: 'Circle (icon)',
+};
+
+/** Shapes valid as a SITE-WIDE default (excludes the icon-only square/circle, which make no sense for every button). */
+export const BUTTON_DEFAULT_SHAPES = ['rounded', 'soft', 'sharp', 'pill', 'cut', 'skewed'] as const;
+export type ButtonDefaultShape = (typeof BUTTON_DEFAULT_SHAPES)[number];
+
+/** Button ACCENT — the hover/fill/glow colour role (`.sw-btn-accent-<role>`), default secondary. */
+export const BUTTON_ACCENTS = ['primary', 'secondary', 'accent', 'neutral'] as const;
+export type ButtonAccent = (typeof BUTTON_ACCENTS)[number];
+
+/** Baseline defaults for a bare `.btn` (no override classes) — emitted as `<body>` classes only when a non-default is chosen. */
+export const DEFAULT_BUTTON_ACCENT: ButtonAccent = 'secondary';
+export const DEFAULT_BUTTON_SHAPE: ButtonDefaultShape = 'rounded';
 
 /**
  * Curated PRELOADER effects. The chosen one (≠ 'none') makes the platform inject a
@@ -335,9 +426,15 @@ export type PreloaderEffect = (typeof PRELOADER_EFFECTS)[number];
  * text/html response).
  */
 const NAV_EFFECT_CHOICES = ['none', ...NAV_EFFECTS] as const;
+const BUTTON_EFFECT_CHOICES = ['none', ...BUTTON_EFFECTS] as const;
 export const WebsiteEffectsSchema = z.object({
   navEffect: z.enum(NAV_EFFECT_CHOICES).optional(),
-  buttonEffect: z.enum(['none', 'lift', 'glow', 'sheen', 'press', 'pulse', 'ring']).optional(),
+  /** Site-wide DEFAULT button flourish (a bare `.btn` inherits it; 'none' = baseline only). */
+  buttonEffect: z.enum(BUTTON_EFFECT_CHOICES).optional(),
+  /** Site-wide DEFAULT button hover/fill accent role (a bare `.btn` inherits it; baseline = secondary). */
+  buttonAccent: z.enum(BUTTON_ACCENTS).optional(),
+  /** Site-wide DEFAULT button shape (a bare `.btn` inherits it; baseline = rounded). Icon shapes are per-button only. */
+  buttonShape: z.enum(BUTTON_DEFAULT_SHAPES).optional(),
   preloaderEffect: z
     .enum(['none', 'spinner', 'dual', 'dots', 'bars', 'pulse', 'progress', 'logo-pulse', 'logo-draw', 'logo-sheen'])
     .optional(),
@@ -350,12 +447,23 @@ export const WebsiteEffectsSchema = z.object({
 });
 export type WebsiteEffects = z.infer<typeof WebsiteEffectsSchema>;
 
-/** The space-joined `<body>` effect classes for the website effects ('' when no effects are chosen). */
+/**
+ * The space-joined `<body>` effect classes for the website effects ('' when all-default). Buttons use
+ * three per-axis default classes — `sw-btn-fx-<effect>` / `sw-btn-accent-<role>` / `sw-btn-shape-<shape>`
+ * — each only emitted for a NON-default choice (the baseline `.btn` already covers secondary accent +
+ * rounded shape + no flourish), so a default site stays byte-identical. The same class names double as
+ * per-button override classes; the effect CSS guards with `:not([class*="sw-btn-<axis>-"])` so a
+ * per-button override on a `.btn` cleanly replaces the body default.
+ */
 export function websiteEffectsClasses(effects: WebsiteEffects | undefined): string {
   if (!effects) return '';
   const nav = effects.navEffect && effects.navEffect !== 'none' ? `sw-nav-${effects.navEffect}` : '';
-  const btn = effects.buttonEffect && effects.buttonEffect !== 'none' ? `sw-btn-${effects.buttonEffect}` : '';
-  return [nav, btn].filter(Boolean).join(' ');
+  const btnFx = effects.buttonEffect && effects.buttonEffect !== 'none' ? `sw-btn-fx-${effects.buttonEffect}` : '';
+  const btnAccent =
+    effects.buttonAccent && effects.buttonAccent !== DEFAULT_BUTTON_ACCENT ? `sw-btn-accent-${effects.buttonAccent}` : '';
+  const btnShape =
+    effects.buttonShape && effects.buttonShape !== DEFAULT_BUTTON_SHAPE ? `sw-btn-shape-${effects.buttonShape}` : '';
+  return [nav, btnFx, btnAccent, btnShape].filter(Boolean).join(' ');
 }
 
 /**

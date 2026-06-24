@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildEffectForks } from '../src/http/effect-forks.js';
-import { NAV_EFFECTS, BUTTON_EFFECTS, PRELOADER_EFFECTS, JS_NAV_EFFECTS } from '@sitewright/schema';
+import { NAV_EFFECTS, BUTTON_EFFECTS, PRELOADER_EFFECTS, JS_NAV_EFFECTS, JS_BUTTON_EFFECTS } from '@sitewright/schema';
 
 describe('buildEffectForks', () => {
   const f = buildEffectForks();
@@ -36,6 +36,9 @@ describe('buildEffectForks', () => {
   it('ships the runtime <script> only for the JS-backed nav effects, and the blob keyframes', () => {
     for (const x of f.nav) {
       expect(x.code.includes('<script>')).toBe((JS_NAV_EFFECTS as readonly string[]).includes(x.name));
+    }
+    for (const x of f.button) {
+      expect(x.code.includes('<script>')).toBe((JS_BUTTON_EFFECTS as readonly string[]).includes(x.name));
     }
     expect(f.nav.find((x) => x.name === 'blob')!.code).toContain('@keyframes sw-nav-blob');
   });

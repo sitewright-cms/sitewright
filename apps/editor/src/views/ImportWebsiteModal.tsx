@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Globe, Upload, Loader2, CircleCheck, TriangleAlert, FileUp } from 'lucide-react';
-import { api, type ImportProgressEvent, type ImportReport } from '../api';
+import { Globe, Upload, Loader2, CircleCheck, TriangleAlert, FileUp, Wand2 } from 'lucide-react';
+import { api, type ImportProgressEvent, type ImportReport, type NativizeReport } from '../api';
 import { Modal } from './ui/Modal';
 import { glassInput, primaryButton } from '../theme';
 
@@ -13,7 +13,7 @@ interface ImportWebsiteModalProps {
 }
 
 type Mode = 'url' | 'upload';
-type Step = 'source' | 'running' | 'report';
+type Step = 'source' | 'running' | 'report' | 'nativizing' | 'nativized';
 
 /** A human, per-step line for a streamed progress event (the scrolling detail log). */
 function progressLine(e: ImportProgressEvent): string {
@@ -30,6 +30,10 @@ function progressLine(e: ImportProgressEvent): string {
     }
     case 'assemble':
       return e.detail ?? 'Saving content…';
+    case 'nativize': {
+      if (!e.done) return e.detail ?? 'Nativizing pages…';
+      return `Nativizing page ${e.done}/${e.total ?? '?'}${e.detail ? ` · ${e.detail}` : ''}`;
+    }
     default:
       return e.detail ?? e.phase;
   }
@@ -42,6 +46,7 @@ function phaseSummary(e: ImportProgressEvent): { label: string; done?: number; t
     case 'host-media': return { label: 'Importing images', done: e.done, total: e.total };
     case 'transform': return { label: 'Converting pages', done: e.done, total: e.total };
     case 'assemble': return { label: 'Saving content' };
+    case 'nativize': return { label: 'Nativizing pages', done: e.done, total: e.total };
     default: return { label: e.phase };
   }
 }
@@ -55,6 +60,7 @@ export function ImportWebsiteModal({ projectId, projectName, onClose, onImported
   const [lines, setLines] = useState<{ id: number; text: string }[]>([]);
   const [prog, setProg] = useState<{ label: string; done?: number; total?: number } | null>(null);
   const [report, setReport] = useState<ImportReport | null>(null);
+  const [natReport, setNatReport] = useState<NativizeReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const lineSeq = useRef(0);
@@ -93,13 +99,33 @@ export function ImportWebsiteModal({ projectId, projectName, onClose, onImported
     else if (file) void api.importUploadStream(projectId, file, handlers, abort.signal);
   }
 
-  function onSave(): void {
-    if (step === 'running') return; // the Save button is disabled while importing
-    if (step === 'source') start();
-    else if (step === 'report') onImported();
+  function startNativize(): void {
+    setStep('nativizing');
+    setError(null);
+    setLines([]);
+    setProg(null);
+    const abort = new AbortController();
+    abortRef.current = abort;
+    void api.nativizeStream(
+      projectId,
+      {
+        onProgress: (e: ImportProgressEvent) => { pushLine(progressLine(e)); setProg(phaseSummary(e)); },
+        onDone: (r: NativizeReport) => { setNatReport(r); setStep('nativized'); },
+        onError: (message: string) => { setError(message); setStep('report'); }, // keep the import report to retry
+      },
+      abort.signal,
+    );
   }
 
-  const saveLabel = step === 'report' ? 'Open project' : step === 'running' ? 'Importing…' : 'Start import';
+  const busy = step === 'running' || step === 'nativizing';
+
+  function onSave(): void {
+    if (busy) return; // the footer button is disabled while a stream runs
+    if (step === 'source') start();
+    else onImported(); // report / nativized → open the project
+  }
+
+  const saveLabel = step === 'report' || step === 'nativized' ? 'Open project' : step === 'nativizing' ? 'Nativizing…' : step === 'running' ? 'Importing…' : 'Start import';
 
   return (
     <Modal
@@ -109,11 +135,11 @@ export function ImportWebsiteModal({ projectId, projectName, onClose, onImported
       onClose={onClose}
       onSave={onSave}
       saveLabel={saveLabel}
-      saving={step === 'running'}
+      saving={busy}
       saveDisabled={step === 'source' && !valid}
       onBeforeClose={() => {
-        // Closing mid-import aborts the stream (the server stops on the dropped connection).
-        if (step === 'running') abortRef.current?.abort();
+        // Closing mid-stream aborts it (the server stops on the dropped connection).
+        if (busy) abortRef.current?.abort();
         return true;
       }}
     >
@@ -152,17 +178,17 @@ export function ImportWebsiteModal({ projectId, projectName, onClose, onImported
             )}
 
             <p className="rounded-lg bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
-              Imported pages are a faithful scaffold for review — scripts and forms are stripped for safety. You can then have the AI agent rewrite them into native Sitewright components.
+              Imported pages are a faithful scaffold for review — scripts and forms are stripped for safety. After importing you can <strong>Nativize</strong> them into native Sitewright components, then have the AI agent fine-tune.
             </p>
             {error && <p className="text-sm text-red-600">{error}</p>}
           </>
         )}
 
-        {step === 'running' && (
+        {busy && (
           <div className="flex flex-col gap-3 py-2">
             <div className="flex items-center justify-between gap-2 text-sm font-medium text-slate-700">
               <span className="flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" /> {prog?.label ?? 'Importing'}…
+                <Loader2 className="h-4 w-4 animate-spin" /> {prog?.label ?? (step === 'nativizing' ? 'Nativizing' : 'Importing')}…
               </span>
               {prog?.total ? <span className="font-mono text-[11px] text-slate-400">{prog.done ?? 0}/{prog.total}</span>
                 : prog?.done ? <span className="font-mono text-[11px] text-slate-400">{prog.done}</span> : null}
@@ -202,6 +228,29 @@ export function ImportWebsiteModal({ projectId, projectName, onClose, onImported
                   {report.warnings.map((w, i) => <li key={i}>{w}</li>)}
                 </ul>
               </details>
+            )}
+            <div className="rounded-lg bg-indigo-50 px-3 py-3 text-[11px] text-indigo-900">
+              <p className="mb-2">Imported pages are a faithful replica. <strong>Nativize</strong> rebuilds them as native Sitewright components (Tailwind + your theme tokens) — the AI agent can then fine-tune the result.</p>
+              <button type="button" onClick={startNativize} className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold ${primaryButton}`}>
+                <Wand2 className="h-4 w-4" /> Nativize {report.pagesImported} page{report.pagesImported === 1 ? '' : 's'}
+              </button>
+            </div>
+            {error && <p className="text-sm text-red-600">{error}</p>}
+          </div>
+        )}
+
+        {step === 'nativized' && natReport && (
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center gap-2 text-sm font-bold text-emerald-700">
+              <CircleCheck className="h-5 w-5" /> Nativized {natReport.pagesNativized} of {natReport.pagesTotal} page{natReport.pagesTotal === 1 ? '' : 's'}
+            </div>
+            <p className="rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
+              Pages are now native Tailwind + theme-token components. Open the project and have the AI agent fine-tune anything JS-driven (sliders, embeds) the mechanical pass couldn’t reproduce.
+            </p>
+            {natReport.skipped.length > 0 && (
+              <p className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+                <TriangleAlert className="h-4 w-4 shrink-0" /> {natReport.skipped.length} page{natReport.skipped.length === 1 ? '' : 's'} kept as the original replica (could not be nativized).
+              </p>
             )}
           </div>
         )}

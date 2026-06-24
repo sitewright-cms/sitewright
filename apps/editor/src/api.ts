@@ -449,6 +449,14 @@ export interface ImportReport {
   warnings: string[];
 }
 
+/** The `done` report of a server-side mechanical nativize. */
+export interface NativizeReport {
+  pagesNativized: number;
+  pagesTotal: number;
+  marqueeLogos: number;
+  skipped: string[];
+}
+
 /** A system Widget descriptor from GET /authoring/widgets — the slim catalog the Widgets rail browses
  *  (the body + manifest stay server-side; dropping {{> name}} provisions `datasets` on save). */
 export interface WidgetCatalogEntry {
@@ -934,6 +942,26 @@ export const api = {
       { signal, init: { body: form } },
     );
   },
+
+  /**
+   * Mechanically nativize a project's imported (rawFidelity) pages server-side, streaming per-page
+   * progress over SSE. Owner-only; `onDone` receives the nativize report. The progress frames share the
+   * import's `ImportProgressEvent` shape (phase 'nativize').
+   */
+  nativizeStream: (
+    projectId: string,
+    handlers: { onProgress?: (e: ImportProgressEvent) => void; onDone?: (report: NativizeReport) => void; onError?: (message: string) => void },
+    signal?: AbortSignal,
+  ): Promise<void> =>
+    streamSse<ImportProgressEvent, { report: NativizeReport }>(
+      `${BASE}/projects/${projectId}/nativize/stream`,
+      {
+        onProgress: handlers.onProgress,
+        onDone: handlers.onDone ? (raw) => handlers.onDone!(raw.report) : undefined,
+        onError: handlers.onError,
+      },
+      { signal },
+    ),
 
   // --- instance admin settings (global mail / hCaptcha / enabled form modes) ---
   getInstanceSettings: () =>

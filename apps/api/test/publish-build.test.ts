@@ -211,9 +211,11 @@ describe('buildSite', () => {
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
     expect(home).toContain('<button class="btn btn-primary">Sign up</button>');
     expect(home).toContain('<link rel="stylesheet" href="styles.css" />');
+    // The button is VENDORED (daisyUI's button component is excluded): its CSS + the brand primary
+    // ship INLINE in the page head (baseStyles + brandToCss), not the compiled sheet.
+    expect(home).toMatch(/\.btn\s*\{/); // the vendored .btn base
+    expect(home).toContain('#0a7fae'); // themed by the brand primary (--sw-color-primary), not DaisyUI's default
     const sheet = await readFile(join(outDir, 'styles.css'), 'utf8');
-    expect(sheet).toMatch(/\.btn/); // the DaisyUI component compiled into the shared sheet
-    expect(sheet).toContain('#0a7fae'); // themed by the brand primary, not DaisyUI's default
     expect(sheet).not.toContain('oklch(45% 0.24 277.023)'); // DaisyUI's indigo default is gone
   });
 
@@ -252,9 +254,10 @@ describe('buildSite', () => {
     // The shared footer slot is wrapped in the platform's <footer id="footer"> landmark.
     expect(home).toContain('<footer id="footer"><div class="footer">© Acme</div></footer>'); // shared footer + brand
     expect(home).toContain('<link rel="stylesheet" href="styles.css" />');
-    // The slot's DaisyUI/Tailwind classes are compiled into the shared sheet.
+    // The slot's DaisyUI/Tailwind classes are compiled into the shared sheet (the button is vendored
+    // inline, but .navbar / .menu are real daisyUI components and still compile here).
     const sheet = await readFile(join(outDir, 'styles.css'), 'utf8');
-    expect(sheet).toMatch(/\.btn/);
+    expect(sheet).toMatch(/\.navbar/);
 
     // A second page shares the exact same nav + footer (authored once); from /about/
     // (depth 1) the internal links rebase onto '../'.

@@ -57,7 +57,7 @@ export async function compileUtilityCss(
   // The nav/button EFFECT utilities are appended in both branches — they tree-shake per scheme
   // (only schemes whose class appears in the HTML are emitted), so they cost nothing when unused.
   const input = usesDaisyComponents(candidates)
-    ? `${BASE_INPUT}\n@plugin "${DAISY_PLUGIN_PATH}" {\n  themes: false;\n}${renderThemeBlock(daisyThemeVars(theme))}\n${EFFECT_UTILITIES}`
+    ? `${BASE_INPUT}\n@plugin "${DAISY_PLUGIN_PATH}" {\n  themes: false;\n  exclude: button;\n}${renderThemeBlock(daisyThemeVars(theme))}\n${EFFECT_UTILITIES}`
     : `${BASE_INPUT}${renderThemeBlock(brandVars(theme))}\n${EFFECT_UTILITIES}`;
 
   // Build the compiler (auto-resolves `@import "tailwindcss/*"` from node_modules).

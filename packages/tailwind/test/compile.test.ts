@@ -78,13 +78,15 @@ describe('compileUtilityCss', () => {
 
   it('emits DaisyUI component CSS when a daisyUI class is used, themed by the brand', async () => {
     const css = await compileUtilityCss(
-      ['<button class="btn btn-primary">Go</button><div class="card bg-base-100"><div class="card-body">x</div></div>'],
+      ['<div class="card bg-base-100"><div class="card-body"><span class="badge badge-primary text-primary">x</span></div></div>'],
       { colors: { primary: '#e11d48' } },
       { minify: false },
     );
-    // The component classes are present…
-    expect(css).toMatch(/\.btn(\s|\{|,)/);
+    // DaisyUI's components are present…
     expect(css).toContain('.card-body');
+    // …EXCEPT the button component, which we exclude + vendor ourselves (blocks/base-css.ts) so we own
+    // the .btn cascade/contrast — so the compile must NOT emit daisyUI's .btn.
+    expect(css).not.toMatch(/\.btn(\s|\{|,)/);
     // …the brand color themes `--color-primary` (and NOT DaisyUI's default indigo)…
     expect(css).toContain('#e11d48');
     expect(css).not.toContain('oklch(45% 0.24 277.023)');

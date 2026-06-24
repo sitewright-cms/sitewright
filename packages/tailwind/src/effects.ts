@@ -17,7 +17,7 @@
 // outline / pill-outline schemes keep the inherited (base-content) text and use the brand only for
 // decoration — readable for ANY brand color. Button effects change motion/shadow only, never the
 // button's own colors, so they can't break a button's contrast; brand-aware glows read the button's
-// variant color via daisyUI's `--btn-color` (falls back to primary).
+// face colour via the vendored `--sw-btn-face` / the accent via `--sw-btn-fx`.
 //
 // RUNTIME: three nav schemes are JS-backed — `line-sliding-bottom` / `sliding-pill` use a shared
 // `.sw-nav-indicator` the runtime injects + positions via the `--sw-ind-*` rect vars; `spotlight-sliding`
@@ -58,15 +58,20 @@ const PC = 'var(--sw-color-primary-content, var(--color-primary-content))';
 const S1 = 'var(--sw-color-base-100, var(--color-base-100))';
 const RAD = 'var(--radius-field, .375rem)';
 
-// Button colour model. FACE = the button's own daisyUI variant colour (read-only); FX = the ACCENT
-// (hover / fill / glow colour) the baseline + `sw-btn-accent-*` publish via `--sw-btn-fx` (default
-// secondary). `--sw-btn-hover-bg` is the baseline's hover fill (defaults to FX; the hollow/gradient
-// effects set it to `transparent` so their own pseudo animation fills instead). All defined on the
-// baseline `.btn` (blocks/base-css.ts), so the fallbacks here only matter outside that baseline.
-const FACE = 'var(--btn-color, var(--sw-color-primary, var(--color-primary)))';
-const FACEC = 'var(--btn-fg, var(--sw-color-primary-content, var(--color-primary-content)))';
+// Button colour model. FACE = the button's own face colour, FACEC its contrast-correct foreground —
+// both published by the VENDORED .btn (blocks/base-css.ts): a variant sets them, ghost/outline are
+// transparent. FX = the ACCENT (hover / fill / glow) the baseline + `sw-btn-accent-*` publish via
+// `--sw-btn-fx` (default secondary). `--sw-btn-hover-bg` is the baseline's hover fill (defaults to FX;
+// the hollow effects set it to `transparent` so their own pseudo animation fills instead).
+const FACE = 'var(--sw-btn-face, transparent)';
+const FACEC = 'var(--sw-btn-face-content, var(--sw-color-base-content, var(--color-base-content)))';
 const FX = 'var(--sw-btn-fx, var(--sw-color-secondary, var(--color-secondary)))';
 const FXC = 'var(--sw-btn-fx-content, var(--sw-color-secondary-content, var(--color-secondary-content)))';
+// face-CHANGING effects (gradient-move / two-tone / frost) paint a SOLID face, so they skip the
+// intentionally-transparent variants — a ghost / outline / link button stays transparent.
+const SOLID = ':not(.btn-ghost):not(.btn-outline):not(.btn-link):not(.btn-dash)';
+const btnFace = (s = ''): string =>
+  `& .btn:not([class*="sw-btn-fx-"])${SOLID}${s}, &.btn${SOLID}${s}`;
 
 /**
  * The effect `@utility` blocks, appended to the Tailwind compile input. Tree-shaken per scheme.
@@ -297,8 +302,8 @@ export const EFFECT_UTILITIES = `
   ${btnFx(':active')} { transform: translate(0,0); box-shadow: 1px 1px 0 color-mix(in oklab, ${FX} 55%, #000); }
 }
 @utility sw-btn-fx-frost {
-  ${btnFx()} { background: color-mix(in oklab, ${FACE} 22%, transparent); color: ${FACE}; backdrop-filter: blur(8px); box-shadow: inset 0 0 0 1px color-mix(in oklab, ${FACE} 35%, transparent); --sw-btn-hover-bg: color-mix(in oklab, ${FACE} 32%, transparent); --sw-btn-hover-fg: ${FACE}; }
-  ${btnFx(':hover')} { box-shadow: inset 0 0 0 1px color-mix(in oklab, ${FACE} 55%, transparent), 0 10px 26px -12px color-mix(in oklab, ${FX} 55%, transparent); }
+  ${btnFace()} { background: color-mix(in oklab, ${FACE} 22%, transparent); color: ${FACE}; backdrop-filter: blur(8px); box-shadow: inset 0 0 0 1px color-mix(in oklab, ${FACE} 35%, transparent); --sw-btn-hover-bg: color-mix(in oklab, ${FACE} 32%, transparent); --sw-btn-hover-fg: ${FACE}; }
+  ${btnFace(':hover')} { box-shadow: inset 0 0 0 1px color-mix(in oklab, ${FACE} 55%, transparent), 0 10px 26px -12px color-mix(in oklab, ${FX} 55%, transparent); }
 }
 @utility sw-btn-fx-width-expand {
   @media (prefers-reduced-motion: no-preference) { ${btnFx()} { transition: padding .28s cubic-bezier(.16,1,.3,1), letter-spacing .28s ease, box-shadow .25s ease; } }
@@ -395,14 +400,14 @@ export const EFFECT_UTILITIES = `
 }
 /* gradient family — two-colour, face → accent */
 @utility sw-btn-fx-gradient-move {
-  ${btnFx()} { background: linear-gradient(120deg, ${FACE}, ${FX}, ${FACE}); background-size: 200% 100%; color: ${FACEC}; --sw-btn-hover-fg: ${FACEC}; }
-  @media (prefers-reduced-motion: no-preference) { ${btnFx()} { transition: background-position .5s ease; } }
-  ${btnFx(':hover')} { background-position: 100% 0; }
+  ${btnFace()} { background: linear-gradient(120deg, ${FACE}, ${FX}, ${FACE}); background-size: 200% 100%; color: ${FACEC}; --sw-btn-hover-fg: ${FACEC}; }
+  @media (prefers-reduced-motion: no-preference) { ${btnFace()} { transition: background-position .5s ease; } }
+  ${btnFace(':hover')} { background-position: 100% 0; }
 }
 @utility sw-btn-fx-two-tone {
-  ${btnFx()} { background: linear-gradient(90deg, ${FACE} 50%, ${FX} 50%); background-size: 200% 100%; background-position: 0 0; color: ${FACEC}; --sw-btn-hover-fg: ${FXC}; }
-  @media (prefers-reduced-motion: no-preference) { ${btnFx()} { transition: background-position .42s ease; } }
-  ${btnFx(':hover')} { background-position: -100% 0; }
+  ${btnFace()} { background: linear-gradient(90deg, ${FACE} 50%, ${FX} 50%); background-size: 200% 100%; background-position: 0 0; color: ${FACEC}; --sw-btn-hover-fg: ${FXC}; }
+  @media (prefers-reduced-motion: no-preference) { ${btnFace()} { transition: background-position .42s ease; } }
+  ${btnFace(':hover')} { background-position: -100% 0; }
 }
 @utility sw-btn-fx-ghost-gradient {
   ${btnFx()} { background: linear-gradient(120deg, ${FACE}, ${FX}); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent; box-shadow: inset 0 0 0 1.5px color-mix(in oklab, ${FX} 45%, transparent); --sw-btn-hover-bg: transparent; --sw-btn-hover-fg: transparent; }

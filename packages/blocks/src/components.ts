@@ -31,6 +31,9 @@ import {
 // vendor's COLOURLESS layout.css (we theme it ourselves below against its data-vc-* hooks). See
 // vendor-src/datetimepicker.entry.js for the readable runtime source.
 import { DATETIMEPICKER_RUNTIME_JS, DATETIMEPICKER_VENDOR_CSS } from './vendor/datetimepicker-runtime.js';
+// ShaderBg = first-party WebGL animated background (no vendored library). Its CSS/JS are authored in
+// shader-bg.ts and the GLSL presets are single-sourced in shader-bg-presets.ts.
+import { SHADER_BG_CSS, SHADER_BG_JS } from './shader-bg.js';
 
 /** A component's static styling + behavior (either may be empty). */
 export interface ComponentAsset {
@@ -705,6 +708,7 @@ const COMPONENTS = new Map<string, ComponentAsset>([
   ['Tabs', { css: TABS_CSS, js: TABS_JS }],
   ['Form', { css: FORM_CSS, js: FORM_JS }],
   ['DateTimePicker', { css: DATETIMEPICKER_CSS, js: DATETIMEPICKER_JS }],
+  ['ShaderBg', { css: SHADER_BG_CSS, js: SHADER_BG_JS }],
 ]);
 
 /** Block types that are interactive components (have bundled CSS/JS). */
@@ -722,6 +726,7 @@ const COMPONENT_NAME_TO_TYPE: ReadonlyMap<string, string> = new Map([
   ['tabs', 'Tabs'],
   ['form', 'Form'],
   ['datetimepicker', 'DateTimePicker'],
+  ['shader-bg', 'ShaderBg'],
 ]);
 
 const COMPONENT_MARKER_RE = /data-sw-component="([a-z-]+)"/g;

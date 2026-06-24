@@ -7,6 +7,7 @@ import { ghostButton, glassPanel } from '../../theme';
 import { LIBRARY_SECTIONS, type LibraryCategory, type LibraryItem, type LibrarySection } from './catalog';
 import { ReferenceModal } from './ReferenceModal';
 import { SW_COMPONENT_GROUPS } from './sw-components';
+import { BackgroundPicker } from './BackgroundPicker';
 import { GoogleFontGallery } from '../settings/GoogleFontGallery';
 import { SearchField } from '../ui/SearchField';
 import { useScrollPaging } from '../../lib/useScrollPaging';
@@ -40,6 +41,7 @@ export function LibraryPanel() {
   const [openCategory, setOpenCategory] = useState<LibraryCategory | null>(null);
   const [refOpen, setRefOpen] = useState(false);
   const [swOpen, setSwOpen] = useState(false);
+  const [bgOpen, setBgOpen] = useState(false);
   const section = openCategory ? (LIBRARY_SECTIONS.find((s) => s.category === openCategory) ?? null) : null;
 
   // The first-party SiteWright components guide — a tab-based reference (one tab per component),
@@ -71,6 +73,17 @@ export function LibraryPanel() {
           </span>
         </button>
 
+        {/* The animated-background preset picker — live WebGL previews; copies data-sw-component="shader-bg" markup. */}
+        <button
+          onClick={() => setBgOpen(true)}
+          className="waves-effect rounded-xl border border-fuchsia-200/70 bg-gradient-to-br from-fuchsia-50 to-violet-50 px-3 py-2.5 text-left transition hover:from-fuchsia-100 hover:to-violet-100"
+        >
+          <span className="block text-sm font-bold text-fuchsia-800">Animated backgrounds</span>
+          <span className="mt-0.5 block text-[11px] leading-snug text-fuchsia-500/80">
+            WebGL background presets, themed by your CI colors — preview & copy the markup.
+          </span>
+        </button>
+
         {LIBRARY_SECTIONS.map((s) => (
           // The SiteWright Components entry sits immediately before the DaisyUI components section.
           <Fragment key={s.category}>
@@ -87,6 +100,7 @@ export function LibraryPanel() {
       </nav>
 
       {refOpen && <ReferenceModal onClose={() => setRefOpen(false)} />}
+      {bgOpen && <BackgroundPicker onClose={() => setBgOpen(false)} />}
       {swOpen && (
         <ReferenceModal
           title="SiteWright Components"

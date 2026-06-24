@@ -189,7 +189,7 @@ CHECK BEFORE PUBLISH: 6+ distinct sections? type scale applied (headings are not
   },
   components: {
     title: "Components & forms",
-    summary: "interactive widgets (carousel, tabs, lightbox, modal, cookie-consent, datetimepicker) + Forms",
+    summary: "interactive widgets (carousel, tabs, lightbox, modal, cookie-consent, datetimepicker, shader-bg) + Forms",
     body: `
 INTERACTIVE COMPONENTS: the platform ships audited, first-party runtimes you activate with
 data-sw-component="carousel|tabs|lightbox|modal|cookie-consent|datetimepicker" — author semantic HTML with
@@ -230,6 +230,10 @@ Quick rules vs the similar-looking DaisyUI classes:
   a <div>) instead of an <input> for an always-open INLINE calendar. It follows the page <html lang>
   for day/month names automatically; give the input a name to submit it. DaisyUI has no date picker
   (it only styles the input box).
+- ANIMATED BACKGROUND → data-sw-component="shader-bg" on a section/hero/full-page wrapper: a WebGL
+  background themed by the CI colors (30 presets via data-preset; plus data-speed/intensity/angle/
+  interactive/colors). Content renders above it; add a data-sw-part="overlay" scrim for legible text.
+  Falls back to a CI gradient with no JS. Details + presets: the effects guide and get_components.
 - ACCORDIONS are NOT a component: use native <details> with DaisyUI collapse classes, e.g.
   <details class="collapse collapse-plus"><summary class="collapse-title">Q</summary>
   <div class="collapse-content">A</div></details> (group with \`join join-vertical\`).
@@ -274,7 +278,7 @@ media url in \`source\`:
   },
   effects: {
     title: "Effects, animations & ripple",
-    summary: "nav/button/preloader effect schemes (+ custom code), scroll animations, ripple",
+    summary: "nav/button/preloader effect schemes (+ custom code), scroll animations, ripple, WebGL animated backgrounds (shader-bg)",
     body: `
 ANIMATIONS (scroll-reveal): use the standard AOS attributes directly on elements —
 data-aos="fade-up" plus optional data-aos-delay="200" / data-aos-duration="600" (ms, max 5000),
@@ -308,6 +312,19 @@ body-end; a custom preloader becomes the FIRST body child). Target the nav links
 (\`:is(#top-nav, #mobile-nav) a\`, \`.menu a\`) or buttons (\`.btn\`) directly, and use the brand custom
 properties — \`var(--sw-color-primary)\`, \`var(--sw-color-primary-content)\` (text-on-brand foreground),
 \`var(--sw-color-base-100)\` — so it stays on-brand AND legible in the built-in dark theme.
+
+ANIMATED BACKGROUNDS (WebGL): put \`data-sw-component="shader-bg"\` on a section/hero/full-page wrapper to
+render a GPU animated background BEHIND its content, themed by the CI colors. Choose a look with
+\`data-preset\` (default \`mesh-gradient\`; also e.g. \`silk-flow\`, \`gradient-flow\`, \`plasma\`, \`voronoi-cells\`,
+\`mist-layers\` — 30 in all, see get_components). Optional knobs: \`data-speed\` (0–4; \`"0"\` = a single static
+frame), \`data-intensity\` (0–1; lower = subtler behind text), \`data-angle\` (degrees), \`data-interactive="true"\`
+(the cursor morphs it on hover), and \`data-colors\` to remap the three palette slots (CI token names like
+\`accent,primary,base-100\` or literal colors). Give the section a height (min-height/padding); content renders
+above it automatically — never author a \`<canvas>\` or add a WebGL/three.js library, the runtime ships when
+the marker is seen. For legible text add a \`data-sw-part="overlay"\` scrim (e.g. \`class="bg-black/30"\`) and/or
+lower \`data-intensity\`. Falls back to a static CI gradient with no JS, re-themes on a light/dark switch,
+respects prefers-reduced-motion, and pauses while offscreen — keep to a few instances per page. Full
+contract + every preset: get_components.
 `,
   },
   i18n: {

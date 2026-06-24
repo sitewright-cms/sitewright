@@ -256,7 +256,9 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
     if (seo?.image) page.image = seo.image;
     if (seo?.canonical) page.canonical = seo.canonical;
     if (seo?.noindex) page.noindex = true;
-    opts.onProgress?.({ phase: 'transform', done: transformed, total: parsed.length });
+    let pageLabel: string;
+    try { pageLabel = new URL(x.url).pathname || '/'; } catch { pageLabel = x.url; }
+    opts.onProgress?.({ phase: 'transform', done: transformed, total: parsed.length, detail: page.title ? `${page.title} · ${pageLabel}` : pageLabel });
   }
   // ALL pages (incl. synthesized stub parents) start as DRAFTS — a faithful scaffold shouldn't
   // auto-publish before review/rewrite. Only captured pages carry the swImport marker (set above);

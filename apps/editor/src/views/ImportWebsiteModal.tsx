@@ -15,19 +15,34 @@ interface ImportWebsiteModalProps {
 type Mode = 'url' | 'upload';
 type Step = 'source' | 'running' | 'report';
 
-/** A human line for a streamed progress event. */
+/** A human, per-step line for a streamed progress event (the scrolling detail log). */
 function progressLine(e: ImportProgressEvent): string {
   switch (e.phase) {
     case 'crawl':
       return `Crawling — ${e.fetched ?? 0} page${(e.fetched ?? 0) === 1 ? '' : 's'} fetched${e.url ? ` · ${e.url}` : ''}`;
-    case 'host-media':
-      return e.detail ?? `Importing images${e.total ? ` ${e.done ?? 0}/${e.total}` : ''}…`;
-    case 'transform':
-      return e.detail ?? 'Converting pages…';
+    case 'host-media': {
+      const count = e.total ? ` ${e.done ?? 0}/${e.total}` : '';
+      return `Importing image${count}${e.detail ? ` · ${e.detail}` : '…'}`;
+    }
+    case 'transform': {
+      if (!e.done) return e.detail ?? `Converting ${e.total ?? ''} page${e.total === 1 ? '' : 's'}…`;
+      return `Converting page ${e.done}/${e.total ?? '?'}${e.detail ? ` · ${e.detail}` : ''}`;
+    }
     case 'assemble':
       return e.detail ?? 'Saving content…';
     default:
       return e.detail ?? e.phase;
+  }
+}
+
+/** The headline phase + determinate-bar fraction for the current step. */
+function phaseSummary(e: ImportProgressEvent): { label: string; done?: number; total?: number } {
+  switch (e.phase) {
+    case 'crawl': return { label: 'Crawling pages', done: e.fetched };
+    case 'host-media': return { label: 'Importing images', done: e.done, total: e.total };
+    case 'transform': return { label: 'Converting pages', done: e.done, total: e.total };
+    case 'assemble': return { label: 'Saving content' };
+    default: return { label: e.phase };
   }
 }
 
@@ -38,6 +53,7 @@ export function ImportWebsiteModal({ projectId, projectName, onClose, onImported
   const [maxPages, setMaxPages] = useState(50);
   const [file, setFile] = useState<File | null>(null);
   const [lines, setLines] = useState<{ id: number; text: string }[]>([]);
+  const [prog, setProg] = useState<{ label: string; done?: number; total?: number } | null>(null);
   const [report, setReport] = useState<ImportReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -59,10 +75,11 @@ export function ImportWebsiteModal({ projectId, projectName, onClose, onImported
     setStep('running');
     setError(null);
     setLines([]);
+    setProg(null);
     const abort = new AbortController();
     abortRef.current = abort;
     const handlers = {
-      onProgress: (e: ImportProgressEvent) => pushLine(progressLine(e)),
+      onProgress: (e: ImportProgressEvent) => { pushLine(progressLine(e)); setProg(phaseSummary(e)); },
       onDone: (r: ImportReport) => {
         setReport(r);
         setStep('report');
@@ -143,8 +160,18 @@ export function ImportWebsiteModal({ projectId, projectName, onClose, onImported
 
         {step === 'running' && (
           <div className="flex flex-col gap-3 py-2">
-            <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
-              <Loader2 className="h-4 w-4 animate-spin" /> Importing — this can take a minute…
+            <div className="flex items-center justify-between gap-2 text-sm font-medium text-slate-700">
+              <span className="flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" /> {prog?.label ?? 'Importing'}…
+              </span>
+              {prog?.total ? <span className="font-mono text-[11px] text-slate-400">{prog.done ?? 0}/{prog.total}</span>
+                : prog?.done ? <span className="font-mono text-[11px] text-slate-400">{prog.done}</span> : null}
+            </div>
+            {/* Determinate bar when the phase reports a total; otherwise an indeterminate sweep. */}
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+              {prog?.total
+                ? <div className="h-full rounded-full bg-indigo-500 transition-all duration-300" style={{ width: `${Math.round(100 * Math.min(1, (prog.done ?? 0) / prog.total))}%` }} />
+                : <div className="h-full w-1/3 animate-pulse rounded-full bg-indigo-400" />}
             </div>
             <ul className="flex flex-col gap-1 rounded-xl bg-slate-50 p-3 font-mono text-[11px] text-slate-500">
               {lines.length === 0 ? <li>Starting…</li> : lines.map((l) => <li key={l.id} className="truncate">{l.text}</li>)}

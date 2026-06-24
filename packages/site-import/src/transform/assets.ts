@@ -129,7 +129,8 @@ export async function hostAssets(
     } catch {
       diagnostics.push({ code: 'image-host-failed', message: `error self-hosting ${key}` });
     }
-    onProgress?.({ phase: 'host-media', done, total });
+    const fname = (key.split(/[/?#]/).filter(Boolean).pop() || key).slice(0, 48);
+    onProgress?.({ phase: 'host-media', done, total, detail: fname });
   }
   return { assetMap, srcsetMap, hosted, diagnostics };
 }

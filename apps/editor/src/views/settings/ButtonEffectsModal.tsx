@@ -75,7 +75,6 @@ export function ButtonEffectsModal({ form, onApply, onClose }: ButtonEffectsModa
     }
     v += `--sw-color-base-100:${colorOf('base-100')};--sw-color-base-200:${colorOf('base-100')};--sw-color-base-content:${colorOf('base-content')};`;
     return v;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.colors]);
 
   const axisClasses = [

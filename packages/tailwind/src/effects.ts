@@ -41,8 +41,6 @@ const on = (p = ''): string =>
 //   JS-backed schemes' injected `.sw-nav-indicator` and the spotlight background:
 const navScope = (s = ''): string =>
   `& :is(#top-nav, #mobile-nav)${s}, &:is(.menu, nav, [role="navigation"])${s}`;
-//   button, optional `<suffix>` — descendant (class on an ancestor) AND compound (class on the .btn):
-const btn = (s = ''): string => `& .btn${s}, &.btn${s}`;
 //   button AXIS helpers (effect / shape / accent). Each class doubles as a site DEFAULT (on <body>,
 //   scoped to descendant .btn that DON'T carry their own override for that axis) OR a per-button
 //   override (on the .btn itself). The `:not([class*="sw-btn-<axis>-"])` guard makes the body default

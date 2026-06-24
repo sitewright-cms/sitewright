@@ -373,7 +373,6 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
       },
     ],
     skeleton: `<section class="relative grid min-h-[60vh] place-items-center" data-sw-component="shader-bg" data-preset="mesh-gradient">
-  <div data-sw-part="overlay" class="bg-black/30"></div>
   <div class="sw-container text-center text-white">
     <h1 class="text-4xl font-bold">Your headline</h1>
     <p class="mt-3 opacity-90">A short supporting line over the animated background.</p>

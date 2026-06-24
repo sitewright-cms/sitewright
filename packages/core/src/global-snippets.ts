@@ -143,10 +143,10 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
     source: `<div data-sw-marquee aria-label="Partners">
   <div class="sw-marquee-track">
     {{#sw-folder "Partners" kind="image"}}
-    <div class="sw-marquee-item"><img src="{{sw-url url}}" alt="{{alt}}" loading="lazy"></div>
+    <div class="sw-marquee-item bg-base-100 rounded-box p-4"><img src="{{sw-url url}}" alt="{{alt}}" loading="lazy"></div>
     {{/sw-folder}}
     {{#sw-folder "Partners" kind="image"}}
-    <div class="sw-marquee-item" data-sw-marquee-dup aria-hidden="true"><img src="{{sw-url url}}" alt="" loading="lazy"></div>
+    <div class="sw-marquee-item bg-base-100 rounded-box p-4" data-sw-marquee-dup aria-hidden="true"><img src="{{sw-url url}}" alt="" loading="lazy"></div>
     {{/sw-folder}}
   </div>
 </div>`,

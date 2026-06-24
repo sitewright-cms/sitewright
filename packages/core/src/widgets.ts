@@ -147,11 +147,11 @@ export const GLOBAL_WIDGETS: readonly Widget[] = [
 <div data-sw-marquee data-speed="{{speed}}" aria-label="Logos">
   <div class="sw-marquee-track">
     {{#if logos}}
-    {{#each logos}}<div class="sw-marquee-item">{{#if link}}<a href="{{sw-url link}}" target="_blank" rel="noopener"><img src="{{sw-url image}}" alt="{{alt}}" loading="lazy"></a>{{else}}<img src="{{sw-url image}}" alt="{{alt}}" loading="lazy">{{/if}}</div>{{/each}}
-    {{#each logos}}<div class="sw-marquee-item" data-sw-marquee-dup aria-hidden="true"><img src="{{sw-url image}}" alt="" loading="lazy"></div>{{/each}}
+    {{#each logos}}<div class="sw-marquee-item bg-base-100 rounded-box p-4">{{#if link}}<a href="{{sw-url link}}" target="_blank" rel="noopener"><img src="{{sw-url image}}" alt="{{alt}}" loading="lazy"></a>{{else}}<img src="{{sw-url image}}" alt="{{alt}}" loading="lazy">{{/if}}</div>{{/each}}
+    {{#each logos}}<div class="sw-marquee-item bg-base-100 rounded-box p-4" data-sw-marquee-dup aria-hidden="true"><img src="{{sw-url image}}" alt="" loading="lazy"></div>{{/each}}
     {{else}}
-    {{#sw-folder folder kind="image"}}<div class="sw-marquee-item"><img src="{{sw-url url}}" alt="{{alt}}" loading="lazy"></div>{{/sw-folder}}
-    {{#sw-folder folder kind="image"}}<div class="sw-marquee-item" data-sw-marquee-dup aria-hidden="true"><img src="{{sw-url url}}" alt="" loading="lazy"></div>{{/sw-folder}}
+    {{#sw-folder folder kind="image"}}<div class="sw-marquee-item bg-base-100 rounded-box p-4"><img src="{{sw-url url}}" alt="{{alt}}" loading="lazy"></div>{{/sw-folder}}
+    {{#sw-folder folder kind="image"}}<div class="sw-marquee-item bg-base-100 rounded-box p-4" data-sw-marquee-dup aria-hidden="true"><img src="{{sw-url url}}" alt="" loading="lazy"></div>{{/sw-folder}}
     {{/if}}
   </div>
 </div>

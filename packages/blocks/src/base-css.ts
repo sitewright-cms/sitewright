@@ -147,9 +147,8 @@ const PLATFORM_DEFAULTS = `
    already signals interactivity); body-copy links keep the default underline,
    removable per element with a no-underline utility.
    MUST live in the weak sw-normalize layer: an UNLAYERED \`a{color:inherit}\` outranks
-   every layered rule in the cascade — it was silently overriding daisyUI's layered
-   \`.btn{color:var(--btn-fg)}\` (black-on-primary anchor buttons) and any other
-   layered colour on links. Layered author rules still beat the UA's link blue. */
+   every layered rule in the cascade — it would silently override any layered colour on a
+   link (e.g. a themed anchor button). Layered author rules still beat the UA's link blue. */
 @layer sw-normalize {
   a { color: inherit; }
   :is(nav, [role="navigation"]) a, .menu a, .btn { text-decoration: inherit; }
@@ -290,32 +289,47 @@ img, video { max-width: 100%; height: auto; }
   height: var(--sw-dropdown-gap, 0.4rem);
 }
 
-/* ── BUTTON BASELINE — every .btn gets: a ripple on click, a small hover lift + soft shadow, and its
-   background FILLS to the accent (--sw-btn-fx, default secondary). The per-button radius rides
-   --sw-btn-radius. The button EFFECT / SHAPE / ACCENT utilities (@sitewright/tailwind effects.ts) layer
-   on top; the ripple needs the JS runtime (button-effects.ts, only-when-used). UNLAYERED so it overrides
-   daisyUI's layered .btn hover state (intentional) — but it only sets the hover background/transform, so
-   a button's rest appearance stays its daisy variant. */
+/* ── BUTTONS — VENDORED (daisyUI's button component is EXCLUDED in the Tailwind compile; we own the
+   whole .btn here so we control the cascade, contrast and behaviour — no fighting daisy's var system).
+   Model: every .btn has a FACE colour (--sw-btn-face / --sw-btn-face-content) and an ACCENT
+   (--sw-btn-fx / --sw-btn-fx-content — the hover-fill / effect colour, default secondary). Variants set
+   the face with its WCAG-derived foreground; ghost/outline are transparent; on hover the face fills to
+   the accent. The EFFECT / SHAPE / ACCENT utilities (@sitewright/tailwind effects.ts) read these vars;
+   the ripple needs button-effects.ts (only-when-used). Same class vocabulary as daisyUI. */
 .btn {
+  /* --sw-btn-face / --sw-btn-face-content are intentionally LEFT UNSET on the base, so a bare .btn is
+     transparent (via the property defaults below) BUT a face-CHANGING effect can default to the brand
+     primary rather than paint transparent. Variants set them; ghost/outline/soft set them explicitly. */
   --sw-btn-fx: var(--sw-color-secondary, var(--color-secondary, #0ea5e9));
   --sw-btn-fx-content: var(--sw-color-secondary-content, var(--color-secondary-content, #ffffff));
   --sw-btn-hover-bg: var(--sw-btn-fx);
   --sw-btn-hover-fg: var(--sw-btn-fx-content);
   --sw-btn-radius: .7rem;
-  position: relative;
-  isolation: isolate;
-  overflow: hidden;
-  /* Feed daisyUI's OWN logical radius (border-start-start-radius: var(--join-ss, var(--radius-field))) so
-     the corner radius applies to a.btn too — a physical border-radius shorthand loses to daisy's logical
-     props on an anchor (it only wins on a button element). The shape utilities set --sw-btn-radius. */
-  --radius-field: var(--sw-btn-radius);
-  border-radius: var(--sw-btn-radius);
+  --sw-btn-h: 2.75rem;
+  --sw-btn-px: 1.15rem;
+  --sw-btn-fs: .95rem;
+  display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
+  height: var(--sw-btn-h); min-height: var(--sw-btn-h); padding-inline: var(--sw-btn-px);
+  font: inherit; font-weight: 600; font-size: var(--sw-btn-fs); line-height: 1;
+  text-align: center; text-decoration: none; white-space: nowrap; vertical-align: middle;
+  cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
+  border: 0; border-radius: var(--sw-btn-radius);
+  /* logical corners so a daisyUI .join group can round only its outer corners (it sets --join-*) */
+  border-start-start-radius: var(--join-ss, var(--sw-btn-radius));
+  border-start-end-radius: var(--join-se, var(--sw-btn-radius));
+  border-end-end-radius: var(--join-ee, var(--sw-btn-radius));
+  border-end-start-radius: var(--join-es, var(--sw-btn-radius));
+  background: var(--sw-btn-face, transparent);
+  color: var(--sw-btn-face-content, var(--sw-color-base-content, var(--color-base-content, #1a1a23)));
+  position: relative; isolation: isolate; overflow: hidden;
 }
+/* a checkbox/radio styled as a button (daisyUI's join toggle pattern) must lose its native control */
+.btn:is(input[type="checkbox"], input[type="radio"]) { appearance: none; -webkit-appearance: none; }
 @media (prefers-reduced-motion: no-preference) {
   .btn { transition: transform .22s cubic-bezier(.16, 1, .3, 1), box-shadow .22s ease, background-color .25s ease, color .25s ease; }
 }
-/* the hover fill / lift / shadow skip text-link + disabled buttons (a .btn-link is a bare anchor-style
-   button that must stay text-only; .btn-ghost DOES fill — that is the intended transparent-to-accent hover). */
+.btn:focus-visible { outline: 2px solid var(--sw-btn-fx); outline-offset: 2px; }
+/* hover: the face fills to the accent + a small lift + shadow (text-link + disabled stay flat) */
 .btn:not(.btn-link):not(.btn-disabled):not(:disabled):hover {
   background-color: var(--sw-btn-hover-bg);
   color: var(--sw-btn-hover-fg);
@@ -323,6 +337,53 @@ img, video { max-width: 100%; height: auto; }
   box-shadow: 0 10px 24px -11px color-mix(in oklab, var(--sw-btn-fx) 60%, transparent);
 }
 .btn:not(.btn-link):not(.btn-disabled):not(:disabled):active { transform: scale(.97); }
+.btn:disabled, .btn[disabled], .btn-disabled { cursor: not-allowed; pointer-events: none; opacity: .45; }
+/* active / selected (a toggle, or the current item in a join group): the accent-filled state */
+.btn-active { background-color: var(--sw-btn-fx); color: var(--sw-btn-fx-content); box-shadow: none; transform: none; }
+/* solid variants — face + its WCAG-derived foreground (always contrast-correct) */
+.btn-primary   { --sw-btn-face: var(--sw-color-primary,   var(--color-primary,   #4f46e5)); --sw-btn-face-content: var(--sw-color-primary-content,   var(--color-primary-content,   #ffffff)); }
+.btn-secondary { --sw-btn-face: var(--sw-color-secondary, var(--color-secondary, #0ea5e9)); --sw-btn-face-content: var(--sw-color-secondary-content, var(--color-secondary-content, #06283a)); }
+.btn-accent    { --sw-btn-face: var(--sw-color-accent,    var(--color-accent,    #f59e0b)); --sw-btn-face-content: var(--sw-color-accent-content,    var(--color-accent-content,    #3a2406)); }
+.btn-neutral   { --sw-btn-face: var(--sw-color-neutral,   var(--color-neutral,   #171627)); --sw-btn-face-content: var(--sw-color-neutral-content,   var(--color-neutral-content,   #ffffff)); }
+.btn-info      { --sw-btn-face: var(--color-info,    #0ea5e9); --sw-btn-face-content: var(--color-info-content,    #ffffff); }
+.btn-success   { --sw-btn-face: var(--color-success, #16a34a); --sw-btn-face-content: var(--color-success-content, #ffffff); }
+.btn-warning   { --sw-btn-face: var(--color-warning, #f59e0b); --sw-btn-face-content: var(--color-warning-content, #3a2406); }
+.btn-error     { --sw-btn-face: var(--color-error,   #dc2626); --sw-btn-face-content: var(--color-error-content,   #ffffff); }
+/* ghost: transparent, page-text colour (fills the accent on hover like every button) */
+.btn-ghost { --sw-btn-face: transparent; --sw-btn-face-content: var(--sw-color-base-content, var(--color-base-content, #1a1a23)); }
+/* soft: a translucent tint of the face (defaults to primary so a bare btn-soft stays visible) */
+.btn-soft { --sw-btn-face: var(--sw-color-primary, var(--color-primary, #4f46e5)); background: color-mix(in oklab, var(--sw-btn-face) 16%, transparent); color: var(--sw-btn-face); }
+/* outline: transparent face, the face colour as text + a hairline border (inherits the variant; default primary) */
+.btn-outline { --sw-btn-face: var(--sw-color-primary, var(--color-primary, #4f46e5)); background: transparent; color: var(--sw-btn-face); box-shadow: inset 0 0 0 1.5px var(--sw-btn-face); }
+/* outline / dash inherit the semantic variant colour */
+.btn-outline.btn-secondary, .btn-dash.btn-secondary { --sw-btn-face: var(--sw-color-secondary, var(--color-secondary, #0ea5e9)); }
+.btn-outline.btn-accent,    .btn-dash.btn-accent    { --sw-btn-face: var(--sw-color-accent,    var(--color-accent,    #f59e0b)); }
+.btn-outline.btn-neutral,   .btn-dash.btn-neutral   { --sw-btn-face: var(--sw-color-neutral,   var(--color-neutral,   #171627)); }
+.btn-outline.btn-info,      .btn-dash.btn-info      { --sw-btn-face: var(--color-info,    #0ea5e9); }
+.btn-outline.btn-success,   .btn-dash.btn-success   { --sw-btn-face: var(--color-success, #16a34a); }
+.btn-outline.btn-warning,   .btn-dash.btn-warning   { --sw-btn-face: var(--color-warning, #f59e0b); }
+.btn-outline.btn-error,     .btn-dash.btn-error     { --sw-btn-face: var(--color-error,   #dc2626); }
+/* outline keeps its inset border on hover (matches the generic hover's specificity, declared later so
+   it wins — else the generic hover box-shadow would drop the border) */
+.btn-outline:not(.btn-link):not(.btn-disabled):not(:disabled):hover { box-shadow: inset 0 0 0 1.5px var(--sw-btn-face), 0 10px 24px -11px color-mix(in oklab, var(--sw-btn-fx) 60%, transparent); }
+/* dash: an outline with a dashed border */
+.btn-dash { --sw-btn-face: var(--sw-color-primary, var(--color-primary, #4f46e5)); background: transparent; color: var(--sw-btn-face); border: 1.5px dashed var(--sw-btn-face); box-shadow: none; }
+/* link: a bare text button (no fill / lift) */
+.btn-link { background: transparent; color: var(--sw-color-primary, var(--color-primary, #4f46e5)); height: auto; min-height: 0; padding-inline: .25rem; text-decoration: underline; text-underline-offset: 3px; }
+/* sizes */
+.btn-xs { --sw-btn-h: 1.75rem; --sw-btn-px: .6rem;  --sw-btn-fs: .75rem; gap: .3rem; }
+.btn-sm { --sw-btn-h: 2.25rem; --sw-btn-px: .85rem; --sw-btn-fs: .85rem; }
+.btn-md { --sw-btn-h: 2.75rem; --sw-btn-px: 1.15rem; --sw-btn-fs: .95rem; }
+.btn-lg { --sw-btn-h: 3.3rem;  --sw-btn-px: 1.6rem; --sw-btn-fs: 1.05rem; }
+.btn-xl { --sw-btn-h: 3.85rem; --sw-btn-px: 2rem;   --sw-btn-fs: 1.15rem; }
+/* width / icon shapes */
+.btn-block { width: 100%; }
+.btn-wide { width: 100%; max-width: 16rem; }
+.btn-square { --sw-btn-px: 0; width: var(--sw-btn-h); }
+.btn-circle { --sw-btn-px: 0; width: var(--sw-btn-h); --sw-btn-radius: 999px; }
+/* daisyUI's file-input styles ::file-selector-button via the daisy --btn-* vars we no longer define;
+   restyle it with our tokens so it still reads as a button. */
+.file-input::file-selector-button { background: var(--sw-color-neutral, var(--color-neutral, #171627)); color: var(--sw-color-neutral-content, var(--color-neutral-content, #ffffff)); border: 0; border-inline-end: 1px solid color-mix(in oklab, currentColor 12%, transparent); border-radius: 0; padding-inline: 1rem; margin-inline-end: .75rem; font-weight: 600; cursor: pointer; }
 /* the injected ripple span (the runtime appends one per pointerdown; clipped by the .btn overflow). The
    white tint is the intentional light-on-coloured-button ripple — see the dark-readiness allowlist. */
 .btn .sw-btn-ripple { position: absolute; border-radius: 50%; background: rgb(255 255 255 / .45); transform: translate(-50%, -50%) scale(0); pointer-events: none; z-index: 1; }

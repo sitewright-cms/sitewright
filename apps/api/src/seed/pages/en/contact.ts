@@ -30,7 +30,7 @@ export function pageContact(): Page {
       <!-- A native-<dialog> MODAL: the runtime wires the open button to showModal() (focus trap,
            Esc, backdrop for free). Without JS the button simply does nothing — the page still works. -->
       <div class="mt-12" data-sw-component="modal" data-sw-block="Modal" data-close-label="{{sw-translate "contact.c_close"}}">
-        <button type="button" data-sw-part="open" class="btn btn-outline gap-2 rounded-full px-6">${icon('calendar', 'h-5 w-5')} <span data-sw-translate="contact.c_modal_btn">What happens on the intro call?</span></button>
+        <button type="button" data-sw-part="open" class="btn btn-outline">${icon('calendar', 'h-5 w-5')} <span data-sw-translate="contact.c_modal_btn">What happens on the intro call?</span></button>
         <dialog data-sw-part="dialog" class="max-w-md rounded-3xl">
           <h2 class="text-xl font-bold tracking-tight" data-sw-translate="contact.c_modal_t">A 20-minute conversation, no pitch</h2>
           <div class="mt-3 space-y-2 text-sm leading-relaxed text-base-content/70" data-sw-html="c_modal_b"><p>We ask about your goals, your timeline, and what “working” looks like in a year. You ask us anything.</p><p>If we’re a fit, you get a fixed quote within two days. If we’re not, we’ll say so and point you somewhere good.</p></div>

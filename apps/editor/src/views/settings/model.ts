@@ -154,6 +154,8 @@ export interface SettingsForm {
   // opt-in light/dark themes (website.enableThemes / defaultTheme)
   enableThemes: boolean;
   defaultTheme: 'auto' | 'light' | 'dark';
+  // site-wide content width (website.containerWidth); '' = platform default (1200px)
+  containerWidth: string;
   redirects: KeyedRedirect[];
   // mini shop (website.shop): master switch + currency FORMATTING + submission channels. The cart's
   // display TEXT (labels, currency symbol/code, channel/field labels) is translatable → Translations & Labels.
@@ -304,6 +306,7 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
     preloaderCode: w?.effects?.preloaderCode ?? '',
     enableThemes: w?.enableThemes === true,
     defaultTheme: w?.defaultTheme ?? 'auto',
+    containerWidth: w?.containerWidth ?? '',
     redirects: (w?.redirects ?? []).map((r) => ({ id: rowId(), from: r.from, to: r.to, status: r.status })),
     shopEnabled: w?.shop?.enabled === true,
     shopCurrencyPosition: w?.shop?.currency?.position ?? 'before',
@@ -525,7 +528,7 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
   ]);
   const translations = rowsToTranslations(form.translations, localeSet);
   const hasTranslations = Object.keys(translations).length > 0;
-  if (w || redirects.length || shop || effects || themes || hasTranslations) {
+  if (w || redirects.length || shop || effects || themes || hasTranslations || form.containerWidth.trim()) {
     website = {
       ...(w ?? {}),
       ...(redirects.length ? { redirects } : {}),
@@ -533,6 +536,8 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
       ...(effects ? { effects } : {}),
       ...(themes ?? {}),
       ...(hasTranslations ? { translations } : {}),
+      // '' clears it (→ platform default); a value pins the site-wide content width.
+      containerWidth: form.containerWidth.trim() || undefined,
     };
   }
 

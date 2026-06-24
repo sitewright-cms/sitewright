@@ -44,6 +44,8 @@ import {
   usesAnimations,
   ANIMATION_CSS,
   ANIMATION_JS,
+  usesMarquee,
+  MARQUEE_CSS,
   usesLazyload,
   LAZYLOAD_CSS,
   LAZYLOAD_JS,
@@ -466,6 +468,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       slotSources.some(strFn) ||
       Object.values(usedSnippets).some(strFn);
     const usesAnims = usesMarker(usesAnimations);
+    const usesMarq = usesMarker(usesMarquee); // CSS-only logo marquee → ship MARQUEE_CSS when used
     const usesLazy = usesMarker(usesLazyload);
     const usesWaves = usesMarker(usesRipple);
     // MINI SHOP cart runtime — ships only when a page/slot uses the {{sw-cart}}/{{sw-add-to-cart}}
@@ -688,6 +691,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         const pageInlineStyles = [
           ...(usesComponents && components.css ? [components.css] : []),
           ...(usesAnims ? [ANIMATION_CSS] : []),
+          ...(usesMarq ? [MARQUEE_CSS] : []),
           ...(usesLazy ? [LAZYLOAD_CSS] : []),
           ...(usesWaves ? [RIPPLE_CSS] : []),
           ...(usesCartRuntime ? [CART_CSS] : []),
@@ -742,6 +746,8 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           organization,
           criticalCss: website?.criticalCss,
           head: website?.head,
+          // Site-wide content width → --sw-container (the .sw-container helper consumes it).
+          containerWidth: website?.containerWidth,
           // A still-faithful imported page (swImport present, not yet nativized) renders as a raw
           // replica: omit the platform's own CSS so the imported stylesheet isn't fought.
           rawFidelity: isRawFidelityPage(page),

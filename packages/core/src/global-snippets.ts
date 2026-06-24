@@ -133,6 +133,24 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
   </div>
 </div>`,
   },
+  {
+    name: 'logo-marquee',
+    label: 'Logo marquee',
+    // A CSS-only, auto-scrolling logo strip (no JS). The `data-sw-marquee` marker ships MARQUEE_CSS; the
+    // track holds the logos TWICE (the second set aria-hidden + data-sw-marquee-dup) so the scroll loops
+    // seamlessly and reduced-motion can drop the copy. Logos come from a media folder — edit the folder
+    // name ("Partners") to your own. Logo height / speed are tunable via the marquee CSS variables.
+    source: `<div data-sw-marquee aria-label="Partners">
+  <div class="sw-marquee-track">
+    {{#sw-folder "Partners" kind="image"}}
+    <div class="sw-marquee-item"><img src="{{sw-url url}}" alt="{{alt}}" loading="lazy"></div>
+    {{/sw-folder}}
+    {{#sw-folder "Partners" kind="image"}}
+    <div class="sw-marquee-item" data-sw-marquee-dup aria-hidden="true"><img src="{{sw-url url}}" alt="" loading="lazy"></div>
+    {{/sw-folder}}
+  </div>
+</div>`,
+  },
 ];
 
 /**

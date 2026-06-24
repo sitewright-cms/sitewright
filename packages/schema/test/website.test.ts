@@ -10,6 +10,9 @@ import {
   BUTTON_EFFECTS,
   PRELOADER_EFFECTS,
   MAX_TRANSLATION_ENTRIES,
+  containerWidthVar,
+  DEFAULT_CONTAINER_WIDTH,
+  CONTAINER_WIDTH_PRESETS,
 } from '../src/website.js';
 
 describe('WebsiteSettingsSchema', () => {
@@ -63,13 +66,12 @@ describe('WebsiteSettingsSchema', () => {
     expect(WebsiteSettingsSchema.parse(w)).toEqual(w);
   });
 
-  it('caps each validated slot at the HTML size limit', () => {
-    expect(() => WebsiteSettingsSchema.parse({ topNav: 'a'.repeat(20_001) })).toThrow();
-    expect(() => WebsiteSettingsSchema.parse({ footer: 'a'.repeat(20_001) })).toThrow();
-    expect(() => WebsiteSettingsSchema.parse({ mobileNav: 'a'.repeat(20_001) })).toThrow();
-    expect(() => WebsiteSettingsSchema.parse({ sidebarLeft: 'a'.repeat(20_001) })).toThrow();
-    expect(() => WebsiteSettingsSchema.parse({ sidebarRight: 'a'.repeat(20_001) })).toThrow();
-    expect(() => WebsiteSettingsSchema.parse({ bottom: 'a'.repeat(20_001) })).toThrow();
+  it('caps each chrome slot at SLOT_MAX (64k — room for nativized chrome), rejects beyond it', () => {
+    // A real/nativized footer can be ~40k; 30k is accepted, 64k+1 is rejected.
+    for (const slot of ['topNav', 'mobileNav', 'sidebarLeft', 'sidebarRight', 'footer', 'bottom']) {
+      expect(WebsiteSettingsSchema.parse({ [slot]: 'a'.repeat(30_000) })[slot as 'footer']).toHaveLength(30_000);
+      expect(() => WebsiteSettingsSchema.parse({ [slot]: 'a'.repeat(64_001) })).toThrow();
+    }
   });
 
   it('rejects fields beyond the size caps', () => {
@@ -371,6 +373,29 @@ describe('WebsiteSettingsSchema', () => {
       const make = (n: number) => ({ translations: Object.fromEntries(Array.from({ length: n }, (_, i) => [`k${i}`, { en: 'x' }])) });
       expect(Object.keys(WebsiteSettingsSchema.parse(make(300)).translations!)).toHaveLength(300);
       expect(() => WebsiteSettingsSchema.parse(make(MAX_TRANSLATION_ENTRIES + 1))).toThrow();
+    });
+  });
+
+  describe('containerWidth', () => {
+    it('accepts a px length or "none", rejects anything else', () => {
+      expect(WebsiteSettingsSchema.parse({ containerWidth: '1200px' }).containerWidth).toBe('1200px');
+      expect(WebsiteSettingsSchema.parse({ containerWidth: 'none' }).containerWidth).toBe('none');
+      expect(() => WebsiteSettingsSchema.parse({ containerWidth: '80%' })).toThrow();
+      expect(() => WebsiteSettingsSchema.parse({ containerWidth: '1200' })).toThrow();
+      expect(() => WebsiteSettingsSchema.parse({ containerWidth: 'calc(100% - 1rem)' })).toThrow();
+    });
+
+    it('containerWidthVar resolves to the value or the default', () => {
+      expect(containerWidthVar('960px')).toBe('960px');
+      expect(containerWidthVar('none')).toBe('none');
+      expect(containerWidthVar(undefined)).toBe(DEFAULT_CONTAINER_WIDTH);
+      expect(containerWidthVar('garbage')).toBe(DEFAULT_CONTAINER_WIDTH); // defense-in-depth
+    });
+
+    it('every preset value is itself a valid containerWidth', () => {
+      for (const { value } of CONTAINER_WIDTH_PRESETS) {
+        expect(WebsiteSettingsSchema.parse({ containerWidth: value }).containerWidth).toBe(value);
+      }
     });
   });
 });

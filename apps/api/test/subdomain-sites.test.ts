@@ -81,10 +81,13 @@ describe('subdomain routing for local sites (sitesDomain)', () => {
     expect(r.body).toContain('Hello world');
   });
 
-  it('publishStatus returns the SUBDOMAIN url as canonical when sitesDomain is set', async () => {
+  it('publishStatus returns the PATH-form url as the preview link even when sitesDomain is set', async () => {
+    // The "View live" link must be the dependable `/sites/<slug>/` path form — it works on the app
+    // origin with no wildcard DNS. The subdomain still SERVES the site (asserted above), but advertising
+    // `<slug>.<DOMAIN>` as the link 404s wherever `*.<DOMAIN>` isn't resolvable.
     await seedAndPublish();
     const st = await client.get(`/projects/${projectId}/publish`);
-    expect((st.json() as { url: string }).url).toBe(`//${slug}.${DOMAIN}/`);
+    expect((st.json() as { url: string }).url).toBe(`/sites/${slug}/`);
   });
 
   it('runs a bundled .js on the isolated subdomain origin, but keeps it download-only on the path form', async () => {

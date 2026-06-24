@@ -155,6 +155,14 @@ const PLATFORM_DEFAULTS = `
   :is(nav, [role="navigation"]) a, .menu a, .btn { text-decoration: inherit; }
 }
 
+/* Site-wide CONTENT CONTAINER — one knob (\`--sw-container\`, from the Website "Content width" setting)
+   aligns + retunes every section's content. \`width:100%\` keeps it fluid; \`max-width\` caps it; auto
+   inline margins centre it; a responsive gutter keeps content off the viewport edges. \`--sw-container:
+   none\` → full-bleed (no cap). In the weak sw-normalize layer so author utilities/CSS override it. */
+@layer sw-normalize {
+  .sw-container { width: 100%; max-width: var(--sw-container, 1200px); margin-inline: auto; padding-inline: clamp(1rem, 5vw, 5rem); }
+}
+
 /* Inline code / keyboard / sample / preformatted text get a light "chip" treatment
    (monospace font is already set verbatim by normalize above). MUST live in the weak
    sw-normalize layer: an UNLAYERED bare \`kbd\`/\`code\` rule would outrank daisyUI's

@@ -61,6 +61,8 @@ import {
   usesAnimations,
   ANIMATION_CSS,
   ANIMATION_JS,
+  usesMarquee,
+  MARQUEE_CSS,
   usesLazyload,
   LAZYLOAD_CSS,
   LAZYLOAD_JS,
@@ -440,6 +442,8 @@ interface PreviewShell {
   head?: string;
   criticalCss?: string;
   customScripts?: string;
+  /** Site-wide content width → `--sw-container` (the `.sw-container` helper consumes it). */
+  containerWidth?: string;
   /** Custom preloader overlay (the "None / Custom Code" preloader) — first body child. */
   preloader?: string;
   /** Emit the brand's text-on-brand tokens (custom effect code references them). */
@@ -479,6 +483,7 @@ async function styledSourceDocument(
   // runtime(s) so they work live in the sandboxed preview (its CSP allows scripts).
   // The runtime CSS goes BEFORE the utility sheet, so Tailwind wins at equal specificity.
   const animated = usesAnimations(scanHtml);
+  const marquee = usesMarquee(scanHtml);
   const lazy = usesLazyload(scanHtml);
   const waves = usesRipple(scanHtml);
   // MINI SHOP: style the add-to-cart buttons in the preview, but do NOT ship the cart runtime here —
@@ -513,6 +518,7 @@ async function styledSourceDocument(
   const inlineStyles = [
     ...(componentCss ? [componentCss] : []),
     ...(animated ? [ANIMATION_CSS] : []),
+    ...(marquee ? [MARQUEE_CSS] : []),
     ...(lazy ? [LAZYLOAD_CSS] : []),
     ...(waves ? [RIPPLE_CSS] : []),
     ...(cart ? [CART_CSS] : []),
@@ -813,10 +819,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     if (label.length > 63 || !/^[a-z0-9-]+$/.test(label) || label === 'www') return null;
     return label;
   };
-  /** The canonical URL a local site is served at — the subdomain when configured + the slug is a valid
-   *  DNS label, else the path form. Protocol-relative so it follows the current scheme. */
-  const servedSiteUrl = (slug: string): string =>
-    sitesDomain && /^[a-z0-9-]+$/.test(slug) ? `//${slug}.${sitesDomain}/` : `/sites/${slug}/`;
+  /** The preview / "View live" URL for a locally-hosted site. Always the path form `/sites/<slug>/`:
+   *  it works on the app origin with no extra DNS, so it's the dependable default link. Subdomain
+   *  hosting (`<slug>.<sitesDomain>`) still SERVES the site (see `rewriteUrl` below) for anyone who has
+   *  wildcard `*.<sitesDomain>` DNS, but we don't advertise it as the link — it 404s in the browser
+   *  wherever that wildcard isn't resolvable (e.g. a bare `dind.local` host). */
+  const servedSiteUrl = (slug: string): string => `/sites/${slug}/`;
 
   const app = Fastify({
     // A `<slug>.<sitesDomain>` request is rewritten (BEFORE routing) into the existing path-based
@@ -2381,6 +2389,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           bottom,
           head: website?.head,
           criticalCss: website?.criticalCss,
+          containerWidth: website?.containerWidth,
           customScripts: [website?.scripts, fxCode.bodyEnd].filter(Boolean).join('\n') || undefined,
           preloader: fxCode.preloader,
           emitBrandContentTokens: !!(fxCode.bodyEnd || fxCode.preloader),
@@ -4180,12 +4189,14 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       let website: Record<string, unknown> | undefined;
       let themeBodyClass = '';
       let themeFxBodyEnd: string | undefined;
+      let containerWidth: string | undefined;
       try {
         const settings = (await contentRepo.get(ctx, 'settings', SETTINGS_ENTITY_ID)) as Settings;
         brand = settings.identity;
         // Snippet HOVER preview is intentionally lean (empty data/item); `website.t` is omitted too, so
         // {{sw-translate}} in a hovered snippet renders its `default=`/'' fallback (no locale context here).
         website = settings.website ? { siteUrl: settings.website.siteUrl, data: settings.website.data } : undefined;
+        containerWidth = settings.website?.containerWidth;
         themeBodyClass = websiteEffectsClasses(settings.website?.effects);
         // Custom nav/button effect code applies here too (a hovered nav snippet should show it); a
         // custom PRELOADER is deliberately omitted — a snippet hover doesn't want a loading overlay.
@@ -4211,6 +4222,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           bodyClass: themeBodyClass,
           customScripts: themeFxBodyEnd,
           emitBrandContentTokens: !!themeFxBodyEnd,
+          containerWidth,
         });
         reply.header('content-security-policy', 'sandbox allow-scripts');
         reply.header('x-frame-options', 'SAMEORIGIN');

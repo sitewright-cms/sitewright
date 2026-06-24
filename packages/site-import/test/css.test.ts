@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { validateTemplate } from '@sitewright/blocks';
 import { parse } from '../src/dom.js';
-import { collectCssRefs, buildPageStyles } from '../src/transform/css.js';
+import { collectCssRefs, buildPageStyles, buildHostableCss } from '../src/transform/css.js';
 import type { CapturedSite } from '../src/types.js';
 
 const PAGE = 'https://ex.com/';
@@ -77,5 +77,29 @@ describe('collectCssRefs + buildPageStyles', () => {
     const style = buildPageStyles(c.cssText, new Map());
     expect(style).toContain("url('https://cdn.x/a.png')");
     expect(style).toContain('url(data:image/png;base64,AAA)');
+  });
+});
+
+describe('buildHostableCss — Tailwind utility-collision sanitizing', () => {
+  const host = (css: string): string => {
+    const c = collectCssRefs(pages('<html><head></head><body></body></html>'), siteWithCss(css));
+    return buildHostableCss(c.cssText, new Map());
+  };
+
+  it('strips !important from colliding layout utilities so the platform Tailwind can override', () => {
+    // The MDB/Bootstrap `.hidden{display:none!important}` would otherwise beat the platform `lg:block`.
+    expect(host('.hidden{display:none!important}')).toBe('.hidden{display:none}');
+    expect(host('.invisible{visibility:hidden !important}')).toBe('.invisible{visibility:hidden}');
+    expect(host('.flex{display:flex!important}')).toBe('.flex{display:flex}');
+    expect(host('.relative{position:relative!important}')).toBe('.relative{position:relative}');
+  });
+
+  it('leaves !important on NON-colliding (framework-specific) classes untouched', () => {
+    // `.primary-color` is not a Tailwind utility name → no collision → keep the author intent.
+    expect(host('.primary-color{color:#0ca3c8!important}')).toContain('!important');
+  });
+
+  it('only touches the targeted rule, not neighbours', () => {
+    expect(host('.hidden{display:none!important}.card{padding:8px!important}')).toBe('.hidden{display:none}.card{padding:8px!important}');
   });
 });

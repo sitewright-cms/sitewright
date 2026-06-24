@@ -13,7 +13,7 @@ import {
 import { newStr, shopLabelKeys, type Patch, type SettingsForm } from './model';
 import { Field, GlassCard } from './ui';
 import { SectionHelp } from '../ui/SectionHelp';
-import { Globe, Sparkles, Paintbrush, Code, Braces, PanelTop, Smartphone, PanelLeft, PanelRight, PanelBottom, ArrowDownToLine, Signpost, ShoppingCart, Languages, Pencil, MoonStar } from 'lucide-react';
+import { Globe, Sparkles, Paintbrush, Code, Braces, PanelTop, Smartphone, PanelLeft, PanelRight, PanelBottom, ArrowDownToLine, Signpost, ShoppingCart, Languages, Pencil, MoonStar, MoveHorizontal } from 'lucide-react';
 import { CodeField } from '../ui/CodeField';
 import { CodeEditorModal } from '../ui/CodeEditorModal';
 import { api, type EffectForks } from '../../api';
@@ -51,6 +51,14 @@ function dataSummary(v: JsonValue): string {
   }
   return 'a value';
 }
+
+/** Content-width presets (value = the `--sw-container` value; '' = platform default 1200px). */
+const CW_PRESETS: ReadonlyArray<{ label: string; value: string }> = [
+  { label: 'Default (1200px)', value: '' },
+  { label: 'Narrow (960px)', value: '960px' },
+  { label: 'Wide (1440px)', value: '1440px' },
+  { label: 'Full width', value: 'none' },
+];
 
 /** Website settings: production URL, injected CSS/HTML, redirects, and localization. */
 export function WebsiteSection({
@@ -307,6 +315,49 @@ export function WebsiteSection({
             </span>
           </label>
         )}
+      </GlassCard>
+
+      <GlassCard
+        title="Content width"
+        icon={<MoveHorizontal className="h-4 w-4" />}
+        tooltip="The max-width of the main content area, applied site-wide so every section's content aligns to one width. Pick a preset or a custom pixel width; Full width removes the cap (edge-to-edge). Full-bleed section backgrounds still span the viewport."
+        wide
+      >
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <label className="flex flex-1 flex-col">
+            <span className={fieldLabel}>Width</span>
+            <select
+              aria-label="Content width"
+              className={glassInput}
+              value={CW_PRESETS.some((o) => o.value === form.containerWidth) ? form.containerWidth : 'custom'}
+              onChange={(e) => patch({ containerWidth: e.target.value === 'custom' ? '1080px' : e.target.value })}
+            >
+              {CW_PRESETS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+              <option value="custom">Custom…</option>
+            </select>
+          </label>
+          {!CW_PRESETS.some((o) => o.value === form.containerWidth) && (
+            <label className="flex flex-col">
+              <span className={fieldLabel}>Custom (px)</span>
+              <input
+                type="number"
+                min={320}
+                max={2560}
+                aria-label="Custom content width in pixels"
+                className={glassInput}
+                value={parseInt(form.containerWidth, 10) || ''}
+                onChange={(e) => patch({ containerWidth: e.target.value ? `${e.target.value}px` : '' })}
+              />
+            </label>
+          )}
+        </div>
+        <span className="mt-2 block text-[11px] text-slate-400">
+          Sets the content container width used by every section, so the whole site aligns to one width.
+        </span>
       </GlassCard>
 
       <GlassCard title="Critical CSS" icon={<Paintbrush className="h-4 w-4" />} wide>

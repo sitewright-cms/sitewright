@@ -143,7 +143,7 @@ DESIGN — read this BEFORE composing a page's layout. The other guides tell you
 THE BAR. Flagship = generous whitespace, a clear type scale, layered surfaces for depth, ONE accent colour used sparingly, real imagery, an alternating section rhythm, one tasteful motion accent per section, and a strong closing CTA. The #1 failure mode is the "hero + 3 cards + stop" skeleton — a real landing page has 6-9 distinct sections with a narrative arc (hook -> proof -> how it works -> depth -> social proof -> objection handling -> call to action).
 
 LAYOUT RHYTHM (use on every section):
-- Section shell: <section class="py-20 sm:py-28"><div class="mx-auto max-w-6xl px-4 sm:px-6"> ... </div></section>. Keep the SAME max-width + horizontal padding on every section so content lines up edge-to-edge; vary only the vertical py.
+- Section shell: <section class="py-20 sm:py-28"><div class="sw-container"> ... </div></section>. Put the platform .sw-container on EVERY section's inner wrapper — it applies the SITE-WIDE content width (the Website "Content width" setting → the --sw-container CSS var, default 1200px) plus centering + a responsive gutter, so every section lines up edge-to-edge AND the owner can retune the whole site from one control. Vary only the vertical py. For a FULL-BLEED band (an edge-to-edge coloured/photo background), put the bg-* on the <section> and keep the .sw-container inside it (the background spans the viewport; the content stays aligned). (.sw-container replaces a hand-rolled mx-auto max-w-* px-* — use it so your pages match imported/nativized pages and respond to the Content width setting.)
 - Depth via ALTERNATING surfaces: give consecutive sections bg-base-100 -> bg-base-200 -> bg-base-100 (never all-white/all-one-colour). Use base-300 for card borders on top. This one move reads as "designed".
 - Type scale (choose from these, do not freestyle sizes): hero h1 = text-4xl sm:text-5xl xl:text-6xl font-bold tracking-tight; section h2 = text-3xl sm:text-4xl font-semibold tracking-tight; an eyebrow label (one per section, above the h2) = text-sm font-semibold uppercase tracking-wide text-primary; lead paragraph = mt-4 text-lg text-base-content/70 max-w-2xl; long-form body = wrap the container in class="prose".
 - In-section spacing: heading->lead mt-4, header->content mt-10 sm:mt-14, grid/list gaps gap-6 sm:gap-8.
@@ -154,7 +154,7 @@ COLOUR & DEPTH (taste). Stay TOKEN-ONLY (base-100/200/300, base-content, primary
 THE SECTION TOOLKIT — compose 6-9 of these into a landing page. Skeletons are token-driven and landmark-safe (use <section>/<div>, never <nav>/<main>/<footer>/<aside>); fill in real copy + images.
 
 1) HERO (split — the flagship default):
-<section class="py-20 sm:py-28"><div class="mx-auto max-w-6xl px-4 sm:px-6 grid lg:grid-cols-2 gap-12 items-center">
+<section class="py-20 sm:py-28"><div class="sw-container grid lg:grid-cols-2 gap-12 items-center">
   <div data-aos="fade-up">
     <p class="text-sm font-semibold uppercase tracking-wide text-primary">{{ company.name }}</p>
     <h1 class="mt-3 text-4xl sm:text-5xl xl:text-6xl font-bold tracking-tight">Headline that states the value</h1>
@@ -184,7 +184,7 @@ IMAGERY: use search_stock_images + import_stock_image for REAL photos — empty 
 
 MOTION (restraint): exactly one data-aos="fade-up" focus per section; stagger a grid's children with increasing data-aos-delay (0/100/200). Animating everything cheapens it.
 
-CHECK BEFORE PUBLISH: 6+ distinct sections? type scale applied (headings are not all the same size)? surfaces alternate? one accent colour, used sparingly? real images, not placeholders? a strong closing CTA? the same container width throughout? Call preview_page and LOOK at the desktop + mobile screenshots — fix anything that does not read as flagship-quality before publishing.
+CHECK BEFORE PUBLISH: 6+ distinct sections? type scale applied (headings are not all the same size)? surfaces alternate? one accent colour, used sparingly? real images, not placeholders? a strong closing CTA? every section's content wrapped in .sw-container (one aligned width throughout)? Call preview_page and LOOK at the desktop + mobile screenshots — fix anything that does not read as flagship-quality before publishing.
 `,
   },
   components: {
@@ -491,7 +491,10 @@ FIND THEM: list_pages, then get_page — an imported page has \`data.swImport\` 
 PORT CHECKLIST (per page — preserve the layout at every step):
 1. STRUCTURE: keep the page's existing sections/grid/spacing. Translate the foreign framework's classes
    (e.g. d-flex, row/col, custom utility names) and the folded-in CSS rules into the EQUIVALENT Tailwind/
-   DaisyUI utilities — same layout, native classes. Don't invent new sections or drop existing ones.
+   DaisyUI utilities — same layout, native classes. Don't invent new sections or drop existing ones. Port
+   the foreign content container (a .container / centered max-width wrapper) to the platform .sw-container so
+   every section aligns to the site-wide Content width (the --sw-container var); keep full-bleed backgrounds
+   on the <section> with the .sw-container inside. Sections are full-width (w-full), not pinned pixel widths.
 2. COLORS: replace the foreign palette (fixed hexes, --primary-color vars, named colour classes) with the
    MATCHING theme tokens (primary, secondary, base-100/200/300, base-content) so light AND dark work; set
    the brand from the imported identity (see "SET THE BRAND" in the core instructions) to the source's colours.

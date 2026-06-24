@@ -1,4 +1,5 @@
 export * from './animations.js';
+export * from './marquee.js';
 export * from './lazyload.js';
 export * from './ripple.js';
 export * from './nav-effects.js';

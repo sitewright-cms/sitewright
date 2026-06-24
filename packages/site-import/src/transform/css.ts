@@ -37,6 +37,30 @@ function stripStyleClose(css: string): string {
   return css.replace(/<\/style/gi, '<\\/style');
 }
 
+// Source frameworks (MDB/Bootstrap/Tailwind) ship bare utility classes whose NAMES collide with the
+// platform's own Tailwind utilities — `.hidden`, `.flex`, `.relative`, … . On a NATIVIZED page (which
+// uses those same Tailwind class names) a foreign `.hidden{display:none!important}` then wins over the
+// platform's responsive `lg:block` REGARDLESS of load order, silently breaking show/hide (e.g. a column
+// that never appears at desktop). For non-`!important` collisions the platform sheet (loaded last) wins,
+// so only the `!important` ones are dangerous. Strip `!important` from these specific layout utilities so
+// the platform variants can override. Safe for the raw-fidelity replica too: it renders with only its own
+// CSS, where nothing competes with these rules, so display:none (sans !important) still hides as before.
+const TW_COLLIDING_UTILS = [
+  'hidden', 'block', 'inline-block', 'inline', 'flex', 'inline-flex', 'grid', 'inline-grid',
+  'table', 'contents', 'flow-root', 'visible', 'invisible', 'static', 'fixed', 'absolute', 'relative', 'sticky',
+];
+const UTIL_COLLISION_RE = new RegExp(`(\\.(?:${TW_COLLIDING_UTILS.join('|')})\\{[^}]*?)\\s*!important`, 'gi');
+function neutralizeUtilityCollisions(css: string): string {
+  let prev: string;
+  let out = css;
+  // A rule may carry more than one `!important`; loop until none of the targeted ones remain.
+  do {
+    prev = out;
+    out = out.replace(UTIL_COLLISION_RE, '$1');
+  } while (out !== prev);
+  return out;
+}
+
 /**
  * Resolve a CSS block's `url()`s to absolute against `base`; collect the IMAGE ones for hosting (they're
  * rewritten to /media refs in buildPageStyles). Non-image url()s are left absolute here; @font-face fonts
@@ -129,5 +153,5 @@ export function buildPageStyles(cssText: string, assetMap: ReadonlyMap<string, s
  */
 export function buildHostableCss(cssText: string, assetMap: ReadonlyMap<string, string>): string {
   if (cssText.trim() === '') return '';
-  return lightMinify(rewriteCssUrls(cssText, assetMap));
+  return neutralizeUtilityCollisions(lightMinify(rewriteCssUrls(cssText, assetMap)));
 }

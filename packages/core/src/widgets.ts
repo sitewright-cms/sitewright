@@ -132,6 +132,57 @@ export const GLOBAL_WIDGETS: readonly Widget[] = [
       ],
     },
   },
+  {
+    name: 'logo-marquee',
+    label: 'Logo marquee',
+    description:
+      'A CSS-only, auto-scrolling strip of partner/client logos (no JavaScript). Feed it an explicit list of logos OR a media folder name to render every image in that folder. Speed + logos are edited as data, no code.',
+    component: 'marquee',
+    // Renders ONE config from the `marquee` dataset via {{#sw-pick-entry}} (the entry matching
+    // page.data.marquee_config, else the first). EITHER an explicit `logos` list OR — when empty — every
+    // image in the `folder` (via {{#sw-folder}}). The track is rendered TWICE (second set aria-hidden +
+    // data-sw-marquee-dup) so the CSS scroll loops seamlessly; `data-sw-marquee` ships MARQUEE_CSS and
+    // `data-speed` selects a preset duration. URLs go through {{sw-url}} (validator-required for src/href).
+    source: `{{#sw-pick-entry dataset.marquee @root.page.data.marquee_config}}
+<div data-sw-marquee data-speed="{{speed}}" aria-label="Logos">
+  <div class="sw-marquee-track">
+    {{#if logos}}
+    {{#each logos}}<div class="sw-marquee-item">{{#if link}}<a href="{{sw-url link}}" target="_blank" rel="noopener"><img src="{{sw-url image}}" alt="{{alt}}" loading="lazy"></a>{{else}}<img src="{{sw-url image}}" alt="{{alt}}" loading="lazy">{{/if}}</div>{{/each}}
+    {{#each logos}}<div class="sw-marquee-item" data-sw-marquee-dup aria-hidden="true"><img src="{{sw-url image}}" alt="" loading="lazy"></div>{{/each}}
+    {{else}}
+    {{#sw-folder folder kind="image"}}<div class="sw-marquee-item"><img src="{{sw-url url}}" alt="{{alt}}" loading="lazy"></div>{{/sw-folder}}
+    {{#sw-folder folder kind="image"}}<div class="sw-marquee-item" data-sw-marquee-dup aria-hidden="true"><img src="{{sw-url url}}" alt="" loading="lazy"></div>{{/sw-folder}}
+    {{/if}}
+  </div>
+</div>
+{{/sw-pick-entry}}`,
+    provides: {
+      datasets: [
+        {
+          slug: 'marquee',
+          name: 'Logo Marquee',
+          fields: [
+            // Auto mode: every image in this media folder (used when `logos` is empty).
+            { name: 'folder', type: 'text', required: false, localized: false },
+            { name: 'speed', type: 'select', required: false, localized: false, config: { options: ['Normal', 'Slow', 'Fast'] } },
+            // Explicit mode: a hand-picked list of logos (wins over `folder` when non-empty).
+            {
+              name: 'logos',
+              type: 'list',
+              required: false,
+              localized: false,
+              fields: [
+                { name: 'image', type: 'image', required: false, localized: false },
+                { name: 'alt', type: 'text', required: false, localized: false },
+                { name: 'link', type: 'text', required: false, localized: false },
+              ],
+            },
+          ],
+          seed: [{ id: 'config', values: { folder: 'Partners', speed: 'Normal', logos: [] } }],
+        },
+      ],
+    },
+  },
 ];
 
 /** `name → source` for merging widget bodies into a render's partials map so `{{> name}}` resolves.

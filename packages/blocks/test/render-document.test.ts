@@ -131,4 +131,32 @@ describe('renderDocument — document shell', () => {
       expect(head).not.toContain('theme.js');
     });
   });
+
+  describe('content width (--sw-container)', () => {
+    it('ships the .sw-container helper in the base CSS (consumes --sw-container)', () => {
+      const doc = renderDocument(page, { brand, bodyHtml: '<div class="sw-container">x</div>' });
+      expect(doc).toContain('.sw-container');
+      expect(doc).toContain('max-width: var(--sw-container');
+    });
+
+    it('emits :root{--sw-container} from the setting (px or none)', () => {
+      expect(renderDocument(page, { brand, containerWidth: '1440px' })).toContain('--sw-container:1440px');
+      expect(renderDocument(page, { brand, containerWidth: 'none' })).toContain('--sw-container:none');
+    });
+
+    it('does not emit the var when unset (the helper falls back to its default)', () => {
+      expect(renderDocument(page, { brand })).not.toContain(':root{--sw-container:');
+    });
+
+    it('sanitizes a bad containerWidth (defense-in-depth — never injects CSS)', () => {
+      const doc = renderDocument(page, { brand, containerWidth: '1px}html{display:none' });
+      expect(doc).not.toContain('--sw-container:1px}');
+      expect(doc).not.toContain('html{display:none');
+    });
+
+    it('omits the container var on a raw-fidelity page (no platform CSS)', () => {
+      const doc = renderDocument(page, { brand, rawFidelity: true, containerWidth: '1440px' });
+      expect(doc).not.toContain('--sw-container:1440px');
+    });
+  });
 });

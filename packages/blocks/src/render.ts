@@ -49,6 +49,12 @@ export interface RenderDocumentOptions extends RenderContext {
    */
   rawFidelity?: boolean;
   /**
+   * Site-wide CONTENT WIDTH (Website "Content width" setting): a CSS px length (e.g. `1200px`) or
+   * `none` (full-bleed). Emitted as `:root{--sw-container:…}`, consumed by the `.sw-container` helper.
+   * Unset → the helper's built-in `1200px` default. Sanitized before emit (defense-in-depth).
+   */
+  containerWidth?: string;
+  /**
    * Pre-rendered `<body>` HTML for a code-first (Handlebars `source`) page — used INSTEAD
    * of rendering the block tree. The same head/SEO/CSS/script shell is applied.
    */
@@ -185,6 +191,7 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     theme,
     rawFidelity,
     emitBrandContentTokens,
+    containerWidth,
     bodyHtml,
     bodyClass,
     preloader,
@@ -214,13 +221,17 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
   const body = bodyHtml ?? '';
   // Base layer (modern-normalize + platform defaults) FIRST so the skeleton, brand
   // vars, author criticalCss and the unlayered Tailwind utilities all override it.
+  // Site-wide content width → the `--sw-container` var consumed by the `.sw-container` helper (base CSS).
+  // Sanitized (schema already constrains it; defense-in-depth keeps any future caller from injecting CSS).
+  const containerCss =
+    containerWidth && /^(none|\d{2,4}px)$/.test(containerWidth) ? `\n:root{--sw-container:${containerWidth}}` : '';
   const css = `${baseStyles()}\n${previewStyles()}\n${brandToCss(brand)}${
     theme?.enabled
       ? `\n${themeCss(brand.colors)}`
       : emitBrandContentTokens
         ? `\n${lightContentTokensCss(brand.colors)}`
         : ''
-  }`;
+  }${containerCss}`;
   // Opt-in themes pin the project default onto <html data-sw-theme> ('auto' emits nothing →
   // the prefers-color-scheme media query in the CSS above governs).
   const dataThemeAttr = theme?.enabled ? themeHtmlAttr(theme.default) : '';

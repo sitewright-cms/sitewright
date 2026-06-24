@@ -7,6 +7,10 @@ import { targetsPrivateHost, IdSchema, MAX_IDENTIFIER_LENGTH, safeRecord } from 
 // HTML head/footer blocks in practice.
 const CSS_MAX = 10_000;
 const HTML_MAX = 20_000;
+// Chrome SLOTS (topNav/mobileNav/sidebars/footer/bottom) get a larger cap than the raw head/scripts:
+// they hold a full shared header/footer — and a mechanically NATIVIZED chrome (ported from an imported
+// site) is verbose (responsive variants + per-element utilities), so 20k is too tight for a real footer.
+const SLOT_MAX = 64_000;
 
 // --- website.data: an editable, free-form JSON object the author manages in the CMS (a graphical
 // tree editor), exposed in templates as {{ website.data.* }} and {{#each website.data.x}}. It is the
@@ -419,12 +423,12 @@ const WebsiteSettingsObject = z.object({
    *   `<script type="application/ld+json">` block is NOT allowed here — the no-JS slot validator
    *   rejects all `<script>`; the platform emits JSON-LD in `<head>` from company data.)
    */
-  topNav: z.string().max(HTML_MAX).optional(),
-  mobileNav: z.string().max(HTML_MAX).optional(),
-  sidebarLeft: z.string().max(HTML_MAX).optional(),
-  sidebarRight: z.string().max(HTML_MAX).optional(),
-  footer: z.string().max(HTML_MAX).optional(),
-  bottom: z.string().max(HTML_MAX).optional(),
+  topNav: z.string().max(SLOT_MAX).optional(),
+  mobileNav: z.string().max(SLOT_MAX).optional(),
+  sidebarLeft: z.string().max(SLOT_MAX).optional(),
+  sidebarRight: z.string().max(SLOT_MAX).optional(),
+  footer: z.string().max(SLOT_MAX).optional(),
+  bottom: z.string().max(SLOT_MAX).optional(),
   /**
    * URL to an external JSON file fetched once at PUBLISH time (SSRF-guarded, public-https-only) and
    * decoded into `{{ website.json_data }}` — e.g. a code-first page can render `{{ website.json_data.title }}`
@@ -523,7 +527,31 @@ const WebsiteSettingsObject = z.object({
    * Defaults to 'auto'. Ignored when {@link enableThemes} is off.
    */
   defaultTheme: z.enum(['auto', 'light', 'dark']).optional(),
+  /**
+   * Site-wide CONTENT WIDTH — the max-width of the main content container in every section. Exposed as
+   * the `--sw-container` CSS custom property and applied through the platform `.sw-container` helper, so
+   * one knob aligns (and retunes) every section's content. A CSS px length (e.g. `1200px`) or `none`
+   * for a full-bleed site. The editor offers presets (Narrow 960 / Normal 1200 / Wide 1440 / Full) plus
+   * a custom px value. Unset → the platform default (1200px).
+   */
+  containerWidth: z
+    .string()
+    .regex(/^(none|\d{2,4}px)$/, 'containerWidth must be a px length (e.g. "1200px") or "none"')
+    .optional(),
 });
+
+/** Resolve {@link WebsiteSettings.containerWidth} to the `--sw-container` value (`none` = full-bleed). */
+export const DEFAULT_CONTAINER_WIDTH = '1200px';
+export function containerWidthVar(containerWidth: string | undefined): string {
+  return containerWidth && /^(none|\d{2,4}px)$/.test(containerWidth) ? containerWidth : DEFAULT_CONTAINER_WIDTH;
+}
+/** Editor presets → `--sw-container` value (`none` = Full); custom values are any px. */
+export const CONTAINER_WIDTH_PRESETS: ReadonlyArray<{ label: string; value: string }> = [
+  { label: 'Narrow', value: '960px' },
+  { label: 'Normal', value: '1200px' },
+  { label: 'Wide', value: '1440px' },
+  { label: 'Full', value: 'none' },
+];
 
 /**
  * Migrate the RETIRED raw-field names (`customHead`→`head`, `customFooter`→`scripts`) so settings

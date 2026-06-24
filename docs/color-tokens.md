@@ -5,6 +5,9 @@ Tailwind theme variables (`--color-<token>`), so every color is a first-class ut
 (`bg-<token>`, `text-<token>`, `border-<token>`). DaisyUI, when a page uses it, reads the same
 variables — so components are themed from the identical source with no translation.
 
+> For the site-wide content **width** (the `.sw-container` helper + the Content width setting), see
+> [Layout — content width](layout.md).
+
 ## The six mandatory tokens
 
 Every project always has these, with sensible defaults. They are **non-deletable** in the

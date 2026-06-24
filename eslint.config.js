@@ -71,4 +71,15 @@ export default tseslint.config(
       'security/detect-non-literal-fs-filename': 'off',
     },
   },
+  {
+    // The mechanical-nativizer DOM walk runs in the BROWSER via page.evaluate (Playwright serializes the
+    // function source); it's intentionally unchecked against the Node tsconfig (no DOM lib) and indexes
+    // fixed property lists, not tenant objects — same allowance as the vendored browser runtimes above.
+    files: ['apps/api/src/render/nativize-walk.ts'],
+    languageOptions: { globals: globals.browser },
+    rules: {
+      '@typescript-eslint/ban-ts-comment': 'off',
+      'security/detect-object-injection': 'off',
+    },
+  },
 );

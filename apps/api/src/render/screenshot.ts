@@ -200,6 +200,19 @@ function release(): void {
 }
 
 /**
+ * Run `fn` while holding a headless-render slot — shares the same concurrency cap as screenshots so a
+ * nativize capture + a burst of agent screenshots can't together exhaust container memory.
+ */
+export async function withRenderSlot<T>(fn: () => Promise<T>): Promise<T> {
+  await acquire();
+  try {
+    return await fn();
+  } finally {
+    release();
+  }
+}
+
+/**
  * Capture `viewports` of the given preview HTML. Returns one Shot per viewport that rendered; throws
  * only if the browser itself is unavailable (the caller treats screenshots as best-effort).
  */

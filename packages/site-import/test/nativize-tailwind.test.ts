@@ -37,6 +37,7 @@ describe('tokens — px/color snapping', () => {
     expect(colorToken('rgb(255, 255, 255)', palette)).toBe('white');
     expect(colorToken('rgb(0, 0, 0)', palette)).toBe('black');
     expect(colorToken('rgb(50, 60, 70)', palette)).toBeNull();
+    expect(colorToken('rgba(0, 0, 0, 0)', palette)).toBeNull(); // transparent → not 'black'
     expect(colorValue('rgb(11, 74, 119)', palette)).toBe('var(--sw-color-primary)');
     expect(colorValue('rgb(255, 255, 255)', palette)).toBe('#fff');
     expect(colorValue('rgb(50, 60, 70)', palette)).toBe('#323c46');

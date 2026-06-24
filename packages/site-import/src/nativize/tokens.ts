@@ -64,8 +64,10 @@ export function radiusClass(v: string): string {
 }
 
 const rgbKey = (v: string): string | null => {
-  const m = (v || '').match(/(\d+),\s*(\d+),\s*(\d+)/);
-  return m ? `${m[1]},${m[2]},${m[3]}` : null;
+  const m = (v || '').match(/(\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?/);
+  if (!m) return null;
+  if (m[4] !== undefined && parseFloat(m[4]) === 0) return null; // fully transparent (alpha 0) → not a color
+  return `${m[1]},${m[2]},${m[3]}`;
 };
 
 /** Captured `rgb(...)` → `#rrggbb` (passthrough for anything without an rgb triple). */

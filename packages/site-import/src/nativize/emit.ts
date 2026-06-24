@@ -104,7 +104,7 @@ export function mergeTree(nb: CapturedNode, nm: CapturedNode, nl: CapturedNode, 
   let swicon: string | null = null;
   if ((nl.tag === 'i' || nl.tag === 'span') && nl.icon) {
     swicon = mapFaIcon(nl.icon);
-    if (!swicon) { const fa = nl.icon.split(/\s+/).filter((x) => /^fa([bsrl]?$|-)/.test(x)).join(' '); if (fa) cls = (cls ? cls + ' ' : '') + fa; }
+    if (!swicon) { const fa = nl.icon.split(/\s+/).filter((x) => /^fa([bsrl]?$|-)/.test(x) && !/['"<>&]/.test(x)).join(' '); if (fa) cls = (cls ? cls + ' ' : '') + fa; } // keep only attr-safe FA tokens
   }
 
   const node: MergedNode = {
@@ -130,12 +130,25 @@ export function toRoute(href: string | undefined, hosts: readonly string[]): str
   let x = href;
   for (const h of hosts) {
     const bare = h.replace(/^www\./, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (!bare) continue; // an empty host would build a catch-all that strips ANY origin → skip
     x = x.replace(new RegExp(`^https?://(www\\.)?${bare}`, 'i'), '');
   }
   x = x.replace(/^\.\//, '/');
   if (x === '' || x === '/' || x === '.') return `{{sw-url '/'}}`;
   const m = x.match(/^\/([a-z0-9-]+)\/?(#[^"']*)?$/i);
   return m ? `{{sw-url '/${m[1]}'}}${m[2] || ''}` : href;
+}
+
+// Captured text/attrs come from an EXTERNAL imported site — entity-encode before inserting into HTML so a
+// stray `"`/`<`/`&` can't break out of an attribute or inject markup (defense-in-depth; page.source is
+// also validateTemplate-checked downstream). Handlebars expressions emit() inserts are added separately,
+// so they pass through intact.
+const escAttr = (v: string): string => v.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+const escText = (v: string): string => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+/** Route an href, then neutralize script-y schemes (javascript:/vbscript:/data:) → '#'. */
+function safeHref(href: string | undefined, hosts: readonly string[]): string {
+  const r = toRoute(href, hosts) ?? '';
+  return /^\s*(javascript|vbscript|data):/i.test(r) ? '#' : r;
 }
 
 export interface RenderResult {
@@ -164,14 +177,14 @@ function emitNode(n: MergedNode, d: number, ctx: NativizeContext, logos: { image
   if (n.ariaHidden) at.push('aria-hidden="true"');
   if (n.marqueeDup) at.push('data-sw-marquee-dup');
   if (n.aos) { at.push(`data-aos="${n.aos.effect}"`); if (n.aos.delay) at.push(`data-aos-delay="${n.aos.delay}"`); if (n.aos.dur) at.push(`data-aos-duration="${n.aos.dur}"`); }
-  if (n.tag === 'img') { at.push(`src="${n.src ?? ''}"`); if (n.alt) at.push(`alt="${n.alt}"`); at.push('loading="lazy"'); }
-  if (n.tag === 'a') at.push(`href="${toRoute(n.href, ctx.originHosts) ?? ''}"`);
-  if (n.tag === 'iframe') { at.push(`src="${n.src ?? ''}"`); if (n.title) at.push(`title="${n.title}"`); at.push('loading="lazy"'); }
+  if (n.tag === 'img') { at.push(`src="${escAttr(n.src ?? '')}"`); if (n.alt) at.push(`alt="${escAttr(n.alt)}"`); at.push('loading="lazy"'); }
+  if (n.tag === 'a') at.push(`href="${escAttr(safeHref(n.href, ctx.originHosts))}"`);
+  if (n.tag === 'iframe') { at.push(`src="${escAttr(n.src ?? '')}"`); if (n.title) at.push(`title="${escAttr(n.title)}"`); at.push('loading="lazy"'); }
 
   const open = `<${n.tag}${at.length ? ' ' + at.join(' ') : ''}>`;
   if (VOID.has(n.tag)) return ind + open;
   const inner: string[] = [];
-  if (n.text) inner.push('  '.repeat(d + 1) + n.text);
+  if (n.text) inner.push('  '.repeat(d + 1) + escText(n.text));
   for (const ch of n.children) inner.push(emitNode(ch, d + 1, ctx, logos));
   // Marquee seamless loop: render the slide set TWICE (2nd copy aria-hidden + data-sw-marquee-dup so
   // reduced-motion can drop it) so the platform translateX(-50%) keyframe wraps without a visible seam.
@@ -200,10 +213,10 @@ function emitFlip(n: MergedNode, ind: string): string {
 ${ind}  <div class="relative h-full w-full transition-transform duration-700 transform-3d group-hover:rotate-y-180">
 ${ind}    <div class="absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-box bg-base-100 p-6 text-center shadow backface-hidden">
 ${ind}      {{sw-icon "${icon}" "h-10 w-10 text-primary"}}
-${ind}      <h3 class="font-heading text-lg font-semibold text-base-content">${title}</h3>
+${ind}      <h3 class="font-heading text-lg font-semibold text-base-content">${escText(title)}</h3>
 ${ind}    </div>
 ${ind}    <div class="absolute inset-0 flex items-center justify-center rounded-box bg-primary p-6 text-center text-primary-content shadow rotate-y-180 backface-hidden">
-${ind}      <p>${desc}</p>
+${ind}      <p>${escText(desc)}</p>
 ${ind}    </div>
 ${ind}  </div>
 ${ind}</div>`;

@@ -33,7 +33,7 @@ export function ms(v: string | undefined): number {
   const m = String(v).match(/([\d.]+)\s*(ms|s)?/);
   if (!m) return 0;
   let n = parseFloat(m[1]!);
-  if (m[2] !== 'ms') n *= 1000;
+  if (m[2] === 's') n *= 1000; // seconds → ms; "ms" and a bare unitless number stay as-is
   return Math.max(0, Math.min(5000, Math.round(n)));
 }
 

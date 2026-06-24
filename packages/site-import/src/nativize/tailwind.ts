@@ -63,7 +63,7 @@ export function emitGroups(s: StyleMap, tag: string, pflex: boolean, ctx: EmitCo
     // tracks that overflow narrow viewports. Re-fluidize: equal px → grid-cols-N; unequal px → proportional
     // fr (keeps the ratio); non-px tracks kept as-is.
     const tr = s['grid-template-columns'].trim().split(/\s+/), px = tr.map(parseFloat);
-    const allPx = px.length === tr.length && px.length > 0 && px.every((n) => !Number.isNaN(n) && n > 0);
+    const allPx = px.length === tr.length && px.length > 0 && tr.every((t) => t.endsWith('px')) && px.every((n) => !Number.isNaN(n) && n > 0);
     const allEq = allPx && px.every((n) => Math.abs(n - px[0]!) <= Math.max(2, px[0]! * 0.05));
     g.gridcols = allEq ? `grid-cols-${tr.length}` : allPx ? `grid-cols-[${px.map((n) => `minmax(0,${Math.round(n)}fr)`).join('_')}]` : `grid-cols-[${arbitrary(s['grid-template-columns'])}]`;
   }

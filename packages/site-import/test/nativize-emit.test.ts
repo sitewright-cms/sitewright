@@ -86,6 +86,40 @@ describe('mergeTree — responsive merge + snap decisions', () => {
   });
 });
 
+describe('emit hardening — captured external content is escaped, not injected', () => {
+  it('entity-encodes attribute values (no breakout)', () => {
+    const img = node('img', {}, { src: 'x.jpg" onload="alert(1)', alt: 'A " B & C' });
+    const html = renderTree(mergeTrees([img], [img], [img], ctx), ctx).html;
+    expect(html).not.toContain('onload="alert(1)"');
+    expect(html).toContain('&quot;');
+    expect(html).toContain('A &quot; B &amp; C');
+  });
+
+  it('entity-encodes text content (no markup injection)', () => {
+    const p = node('p', {}, { text: '<script>alert(1)</script> & more' });
+    const html = renderTree(mergeTrees([p], [p], [p], ctx), ctx).html;
+    expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt; &amp; more');
+  });
+
+  it('neutralizes javascript:/data: hrefs to #', () => {
+    const a = node('a', {}, { href: 'javascript:alert(1)', text: 'x' });
+    expect(renderTree(mergeTrees([a], [a], [a], ctx), ctx).html).toContain('href="#"');
+    const a2 = node('a', {}, { href: 'data:text/html,<x>', text: 'y' });
+    expect(renderTree(mergeTrees([a2], [a2], [a2], ctx), ctx).html).toContain('href="#"');
+  });
+
+  it('drops attr-unsafe FA passthrough tokens', () => {
+    const i = node('i', {}, { icon: 'fa fa-notanicon" onmouseover="evil' }); // unmapped → passthrough, but unsafe
+    const html = renderTree(mergeTrees([i], [i], [i], ctx), ctx).html;
+    expect(html).not.toContain('onmouseover');
+  });
+
+  it('an empty origin host does NOT become a catch-all that internalizes external links', () => {
+    expect(toRoute('https://google.com/page', [''])).toBe('https://google.com/page');
+  });
+});
+
 describe('renderTree — tree → Handlebars HTML', () => {
   it('renders a basic section with classes + an internal link', () => {
     const a = node('a', {}, { href: 'https://www.advancedtechcc.com/about-us/', text: 'About' });

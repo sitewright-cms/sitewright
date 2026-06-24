@@ -73,6 +73,8 @@ export async function nativizeProject(
 
   onProgress({ phase: 'nativize', total: targets.length, detail: `${targets.length} page${targets.length === 1 ? '' : 's'} to nativize` });
   const capture = deps.capture ?? captureStyledTrees;
+  const loopbackHost = deps.originHostPort.split(':')[0] ?? '127.0.0.1';
+  const loopbackOrigin = new RegExp(`http://${loopbackHost.replace(/[.]/g, '\\.')}(:\\d+)?`, 'g'); // host with OR without port
   const skipped: string[] = [];
   let nativized = 0;
   let marqueeLogos = 0;
@@ -93,9 +95,18 @@ export async function nativizeProject(
         dataset: {},
       } as unknown as TemplateContext;
       const body = await deps.renderPool.render(page.source ?? '', context);
-      const doc = `<!doctype html><html lang="en"><head><meta charset="utf-8"></head><body>${body}</body></html>`;
+      // website.head carries the <link> to the import's hosted stylesheet — without it the headless
+      // capture sees an UNSTYLED page (no layout/colors). injectBaseHref (in the capture) resolves the
+      // /media link to the API loopback so the imported CSS actually loads.
+      const head = typeof website?.head === 'string' ? website.head : '';
+      const doc = `<!doctype html><html lang="en"><head><meta charset="utf-8">${head}</head><body>${body}</body></html>`;
       const { base, md, lg } = await capture(doc, { originHostPort: deps.originHostPort, rootSelector: 'body' });
-      const { html, marqueeLogos: logos } = renderTree(mergeTrees(base, md, lg, nctx), nctx);
+      const result = renderTree(mergeTrees(base, md, lg, nctx), nctx);
+      // The headless capture resolved media URLs against the loopback <base href> → strip that origin so
+      // the self-hosted /media stays ROOT-RELATIVE and loads wherever the page is served (preview/publish).
+      // The host may appear with OR without its port (new URL() drops the default :80), so match both.
+      const html = result.html.replace(loopbackOrigin, '');
+      const logos = result.marqueeLogos;
       validateTemplate(html); // page.source must be validator-safe before it's written
       const updated = {
         ...page,

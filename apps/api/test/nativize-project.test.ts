@@ -5,9 +5,15 @@ import type { CapturedNode } from '@sitewright/site-import';
 
 const ctx: ProjectContext = { userId: 'u1', projectId: 'p1', role: 'owner' };
 
-// A tiny styled tree: a brand-colored div wrapping a paragraph (same at every breakpoint).
+// A tiny styled tree: a brand-colored div wrapping a paragraph + a self-hosted image whose src the
+// headless capture resolved to the loopback origin (the orchestrator must strip it back to root-relative).
 const tree = (): CapturedNode[] => [
-  { tag: 'div', s: { color: 'rgb(11, 74, 119)' }, children: [{ tag: 'p', s: {}, text: 'Hello world', children: [] }] },
+  {
+    tag: 'div', s: { color: 'rgb(11, 74, 119)' }, children: [
+      { tag: 'p', s: {}, text: 'Hello world', children: [] },
+      { tag: 'img', s: {}, src: 'http://127.0.0.1/media/logo.webp', alt: 'Logo', children: [] },
+    ],
+  },
 ];
 const okCapture: CaptureFn = async () => ({ base: tree(), md: tree(), lg: tree() });
 
@@ -47,6 +53,8 @@ describe('nativizeProject', () => {
       expect(raw.data.swImport.rewritten).toBe(true);
       expect(raw.source).toContain('text-primary'); // brand rgb → token via the theme-derived palette
       expect(raw.source).not.toContain('raw'); // literal source replaced by the nativized output
+      expect(raw.source).toContain('src="/media/logo.webp"'); // loopback origin stripped → root-relative
+      expect(raw.source).not.toContain('127.0.0.1');
     }
     expect(progress.some((e) => e.phase === 'nativize' && !!e.detail)).toBe(true);
   });

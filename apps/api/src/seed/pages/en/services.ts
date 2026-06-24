@@ -47,7 +47,7 @@ export function pagesServices(): Page[] {
       <li class="nw-card relative rounded-3xl border border-base-200 bg-base-100 p-7 shadow-sm" data-aos="fade-up" data-aos-delay="200"><span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-secondary font-mono text-sm font-bold text-white">03</span><h3 class="mt-4 text-lg font-bold tracking-tight" data-sw-translate="services.p3_t">Build</h3><p class="mt-1.5 text-sm leading-relaxed text-base-content/60" data-sw-translate="services.p3_b">Fast, accessible, content-managed, SEO-ready.</p></li>
       <li class="nw-card relative rounded-3xl border border-base-200 bg-base-100 p-7 shadow-sm" data-aos="fade-up" data-aos-delay="300"><span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-secondary font-mono text-sm font-bold text-white">04</span><h3 class="mt-4 text-lg font-bold tracking-tight" data-sw-translate="services.p4_t">Launch &amp; care</h3><p class="mt-1.5 text-sm leading-relaxed text-base-content/60" data-sw-translate="services.p4_b">We ship, measure, and keep improving.</p></li>
     </ol>
-    <div class="mt-12"><a class="btn btn-primary btn-lg gap-2 rounded-full px-8 shadow-lg shadow-primary/25" href="/contact" data-sw-href="href_contact"><span data-sw-translate="services.srv_cta">Start a project</span> ${icon('arrow-right', 'h-5 w-5')}</a></div>
+    <div class="mt-12"><a class="btn btn-primary" href="/contact" data-sw-href="href_contact"><span data-sw-translate="services.srv_cta">Start a project</span> ${icon('arrow-right', 'h-5 w-5')}</a></div>
   </div>
 </section>`,
   },
@@ -72,7 +72,7 @@ export function pagesServices(): Page[] {
     <div class="nw-card rounded-3xl border border-base-200 bg-base-100 p-7 shadow-sm"><span class="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/15 to-secondary/15 text-primary">${icon('layout-grid', 'h-5 w-5')}</span><h3 class="mt-4 font-bold tracking-tight" data-sw-translate="service_web_design.wd_1t">Design systems</h3><p class="mt-1.5 text-sm leading-relaxed text-base-content/60" data-sw-translate="service_web_design.wd_1b">Reusable components and tokens that scale with your brand.</p></div>
     <div class="nw-card rounded-3xl border border-base-200 bg-base-100 p-7 shadow-sm"><span class="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/15 to-secondary/15 text-primary">${icon('pen-tool', 'h-5 w-5')}</span><h3 class="mt-4 font-bold tracking-tight" data-sw-translate="service_web_design.wd_2t">Responsive by default</h3><p class="mt-1.5 text-sm leading-relaxed text-base-content/60" data-sw-translate="service_web_design.wd_2b">Every layout is crafted for mobile, tablet, and desktop.</p></div>
   </div>
-  <div class="mt-12"><a class="btn btn-primary btn-lg gap-2 rounded-full px-8 shadow-lg shadow-primary/25" href="/contact" data-sw-href="href_contact"><span data-sw-translate="service_web_design.wd_cta">Start a project</span> ${icon('arrow-right', 'h-5 w-5')}</a></div>
+  <div class="mt-12"><a class="btn btn-primary" href="/contact" data-sw-href="href_contact"><span data-sw-translate="service_web_design.wd_cta">Start a project</span> ${icon('arrow-right', 'h-5 w-5')}</a></div>
 </section>`,
   },
   {
@@ -91,7 +91,7 @@ export function pagesServices(): Page[] {
     <div class="nw-card rounded-3xl border border-base-200 bg-base-100 p-7 shadow-sm"><span class="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/15 to-secondary/15 text-primary">${icon('gauge', 'h-5 w-5')}</span><h3 class="mt-4 font-bold tracking-tight" data-sw-translate="service_seo.seo_1t">Core Web Vitals</h3><p class="mt-1.5 text-sm leading-relaxed text-base-content/60" data-sw-translate="service_seo.seo_1b">We tune LCP, CLS, and INP until the scores are green.</p></div>
     <div class="nw-card rounded-3xl border border-base-200 bg-base-100 p-7 shadow-sm"><span class="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/15 to-secondary/15 text-primary">${icon('search', 'h-5 w-5')}</span><h3 class="mt-4 font-bold tracking-tight" data-sw-translate="service_seo.seo_2t">Technical SEO</h3><p class="mt-1.5 text-sm leading-relaxed text-base-content/60" data-sw-translate="service_seo.seo_2b">Structured data, sitemaps, and clean, crawlable markup.</p></div>
   </div>
-  <div class="mt-12"><a class="btn btn-primary btn-lg gap-2 rounded-full px-8 shadow-lg shadow-primary/25" href="/contact" data-sw-href="href_contact"><span data-sw-translate="service_seo.seo_cta">Start a project</span> ${icon('arrow-right', 'h-5 w-5')}</a></div>
+  <div class="mt-12"><a class="btn btn-primary" href="/contact" data-sw-href="href_contact"><span data-sw-translate="service_seo.seo_cta">Start a project</span> ${icon('arrow-right', 'h-5 w-5')}</a></div>
 </section>`,
   },
 
@@ -142,8 +142,8 @@ export function pagesServices(): Page[] {
 
   <p class="mt-10 text-sm text-base-content/50" data-sw-translate="service_pricing.pr_note">All prices in USD, excl. tax. Larger scopes are quoted individually — ask us.</p>
   <div class="mt-7 flex flex-wrap gap-3">
-    <a class="btn btn-primary btn-lg gap-2 rounded-full px-8 shadow-lg shadow-primary/25" href="/contact" data-sw-href="href_contact"><span data-sw-translate="service_pricing.pr_cta">Start a project</span> ${icon('arrow-right', 'h-5 w-5')}</a>
-    <a class="btn btn-ghost btn-lg rounded-full px-8" href="/faq" data-sw-href="href_faq" data-sw-translate="service_pricing.pr_faq">Read the FAQ</a>
+    <a class="btn btn-primary" href="/contact" data-sw-href="href_contact"><span data-sw-translate="service_pricing.pr_cta">Start a project</span> ${icon('arrow-right', 'h-5 w-5')}</a>
+    <a class="btn btn-ghost" href="/faq" data-sw-href="href_faq" data-sw-translate="service_pricing.pr_faq">Read the FAQ</a>
   </div>
 </section>`,
   },

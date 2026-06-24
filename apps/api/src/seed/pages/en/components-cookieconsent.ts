@@ -39,7 +39,7 @@ export function pageComponentsCookieConsent(): Page {
   {{!-- Static visual preview — NOT the live component (the real one is the site-wide bottom-slot banner). --}}
   <div class="mt-8 flex flex-col items-start gap-4 rounded-2xl border border-base-200 bg-base-100 p-6 shadow-lg sm:flex-row sm:items-center">
     <p class="grow text-sm leading-relaxed text-base-content/70"><span data-sw-translate="comp_cookie.cc_text">We use a few essential cookies.</span> <span class="font-semibold text-primary underline" data-sw-translate="comp_cookie.cc_more">Learn more</span></p>
-    <button type="button" class="btn btn-primary btn-sm shrink-0" data-sw-translate="comp_cookie.cc_accept">OK, got it</button>
+    <button type="button" class="btn btn-primary shrink-0" data-sw-translate="comp_cookie.cc_accept">OK, got it</button>
   </div>
 </section>
 

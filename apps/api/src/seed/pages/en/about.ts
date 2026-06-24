@@ -121,7 +121,7 @@ export function pagesAbout(assets: Record<string, string>): Page[] {
     <div class="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-primary/25 blur-3xl" aria-hidden="true"></div>
     <p class="relative text-xl font-bold tracking-tight" data-sw-translate="careers.ca_cta_t">Don’t see your role?</p>
     <p class="relative mt-2 text-sm leading-relaxed text-neutral-content/60" data-sw-translate="careers.ca_cta_b">Pitch us. The best people rarely fit a template.</p>
-    <a class="btn btn-primary relative mt-6 gap-2 rounded-full px-7 shadow-lg shadow-primary/30" href="/contact" data-sw-href="href_contact"><span data-sw-translate="careers.ca_cta">Get in touch</span> ${icon('arrow-right', 'h-4 w-4')}</a>
+    <a class="btn btn-primary relative mt-6" href="/contact" data-sw-href="href_contact"><span data-sw-translate="careers.ca_cta">Get in touch</span> ${icon('arrow-right', 'h-4 w-4')}</a>
   </div>
 </section>`,
   },

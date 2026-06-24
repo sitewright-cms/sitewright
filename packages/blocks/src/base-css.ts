@@ -305,6 +305,10 @@ img, video { max-width: 100%; height: auto; }
   position: relative;
   isolation: isolate;
   overflow: hidden;
+  /* Feed daisyUI's OWN logical radius (border-start-start-radius: var(--join-ss, var(--radius-field))) so
+     the corner radius applies to a.btn too — a physical border-radius shorthand loses to daisy's logical
+     props on an anchor (it only wins on a button element). The shape utilities set --sw-btn-radius. */
+  --radius-field: var(--sw-btn-radius);
   border-radius: var(--sw-btn-radius);
 }
 @media (prefers-reduced-motion: no-preference) {

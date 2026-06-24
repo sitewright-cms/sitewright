@@ -36,9 +36,9 @@ export const EXAMPLE_WEBSITE = {
     <ul class="menu menu-horizontal gap-1 px-1 font-medium">{{#each nav.header}}{{#if children}}<li class="dropdown dropdown-hover"><a href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}} class="{{#if (sw-active path)}}active{{/if}}"{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{sw-label}} ${icon('chevron-down', 'h-4 w-4 opacity-60')}</a><ul class="dropdown-content menu z-30 w-52 rounded-xl border border-base-200/70 bg-base-100/95 p-2 shadow-xl backdrop-blur-xl">{{#each children}}<li><a href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}} class="{{#if (sw-active path)}}active{{/if}}"{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{sw-label}}</a></li>{{/each}}</ul></li>{{else}}<li><a href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}} class="{{#if (sw-active path)}}active{{/if}}"{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{sw-label}}</a></li>{{/if}}{{/each}}</ul>
   </div>
   <div class="navbar-end gap-2.5">
-    {{#if page.translations}}<div class="flex items-center gap-0.5 rounded-full bg-base-200/70 p-0.5" aria-label="${S('aria_language')}">{{#each page.translations}}<a class="btn btn-ghost btn-xs gap-1.5 rounded-full px-2 font-semibold uppercase" href="{{sw-url path}}" hreflang="{{locale}}">{{sw-flag (lookup @root.website.data.locale_flags locale) "h-3.5 w-5 rounded-sm"}}{{locale}}</a>{{/each}}</div>{{/if}}
+    {{#if page.translations}}<div class="flex items-center gap-0.5 rounded-full bg-base-200/70 p-0.5" aria-label="${S('aria_language')}">{{#each page.translations}}<a class="btn btn-ghost" href="{{sw-url path}}" hreflang="{{locale}}">{{sw-flag (lookup @root.website.data.locale_flags locale) "h-3.5 w-5 rounded-sm"}}{{locale}}</a>{{/each}}</div>{{/if}}
     {{sw-theme-toggle}}
-    <a class="btn btn-primary btn-sm gap-1.5 rounded-full px-4 shadow-lg shadow-primary/25 waves-effect waves-light" href="{{sw-url ${SL('href_contact')}}}">${T('nav_cta', 'Start a project')} ${icon('arrow-right', 'h-4 w-4')}</a>
+    <a class="btn btn-primary" href="{{sw-url ${SL('href_contact')}}}">${T('nav_cta', 'Start a project')} ${icon('arrow-right', 'h-4 w-4')}</a>
   </div>
 </div>`,
   // Mobile header (<lg) — its own skeleton slot. The menu is a NATIVE <details> dropdown
@@ -50,7 +50,7 @@ export const EXAMPLE_WEBSITE = {
       <summary class="btn btn-ghost btn-square" aria-label="${S('mobile_menu')}">${icon('menu', 'h-6 w-6')}</summary>
       <ul class="menu dropdown-content z-30 mt-2 w-64 rounded-xl border border-base-200/70 bg-base-100/95 p-2 shadow-2xl backdrop-blur-xl">
         {{#each nav.header}}<li><a href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}} class="{{#if (sw-active path)}}active{{/if}}">{{sw-label}}</a>{{#if children}}<ul>{{#each children}}<li><a href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}} class="{{#if (sw-active path)}}active{{/if}}">{{sw-label}}</a></li>{{/each}}</ul>{{/if}}</li>{{/each}}
-        {{#if page.translations}}<li class="mt-1 border-t border-base-200 pt-2"><div class="flex gap-1 px-1" aria-label="${S('aria_language')}">{{#each page.translations}}<a class="btn btn-ghost btn-xs gap-1.5 rounded-full px-2 font-semibold uppercase" href="{{sw-url path}}" hreflang="{{locale}}">{{sw-flag (lookup @root.website.data.locale_flags locale) "h-3.5 w-5 rounded-sm"}}{{locale}}</a>{{/each}}</div></li>{{/if}}
+        {{#if page.translations}}<li class="mt-1 border-t border-base-200 pt-2"><div class="flex gap-1 px-1" aria-label="${S('aria_language')}">{{#each page.translations}}<a class="btn btn-ghost" href="{{sw-url path}}" hreflang="{{locale}}">{{sw-flag (lookup @root.website.data.locale_flags locale) "h-3.5 w-5 rounded-sm"}}{{locale}}</a>{{/each}}</div></li>{{/if}}
       </ul>
     </details>
     <a class="btn btn-ghost gap-2 px-2 text-lg font-bold tracking-tight" href="{{sw-url ${SL('href_home')}}}">
@@ -60,7 +60,7 @@ export const EXAMPLE_WEBSITE = {
   </div>
   <div class="navbar-end gap-1">
     {{sw-theme-toggle}}
-    <a class="btn btn-primary btn-sm gap-1.5 rounded-full px-4 waves-effect waves-light" href="{{sw-url ${SL('href_contact')}}}">${T('nav_cta', 'Start a project')}</a>
+    <a class="btn btn-primary" href="{{sw-url ${SL('href_contact')}}}">${T('nav_cta', 'Start a project')}</a>
   </div>
 </div>`,
   footer: `<div class="relative bg-neutral text-neutral-content">
@@ -93,7 +93,7 @@ export const EXAMPLE_WEBSITE = {
     <div>
       <h6 class="text-sm font-semibold uppercase tracking-wider text-neutral-content/40">${T('footer_news_title', 'Newsletter')}</h6>
       <p class="mt-4 text-sm leading-relaxed text-neutral-content/60">${T('footer_news', 'Occasional notes on web craft. No spam.')}</p>
-      <a class="btn btn-outline btn-sm mt-5 rounded-full border-neutral-content/25 text-neutral-content hover:border-primary hover:bg-primary hover:text-primary-content" href="{{sw-url ${SL('href_contact')}}}">${T('footer_btn', 'Get in touch')}</a>
+      <a class="btn btn-outline mt-5" href="{{sw-url ${SL('href_contact')}}}">${T('footer_btn', 'Get in touch')}</a>
     </div>
   </div>
   <div class="border-t border-neutral-content/10">

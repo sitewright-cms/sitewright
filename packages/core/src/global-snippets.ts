@@ -151,6 +151,49 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
   </div>
 </div>`,
   },
+  {
+    name: 'rotating-tiles',
+    label: 'Rotating tiles (flip cards)',
+    // A grid of 3D FLIP CARDS — pure Tailwind, no JS. Each card flips on hover to reveal its back. The 3D
+    // is plain Tailwind: `[perspective]` on the cell, `[transform-style:preserve-3d]` on the rotating inner,
+    // `[backface-visibility:hidden]` on both faces, and `group-hover:[transform:rotateY(180deg)]` to flip.
+    // Source-editable: copy a card, change the icon / front title / back text. Each face uses theme tokens.
+    source: `<div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+  <div class="group h-56 [perspective:1000px]">
+    <div class="relative h-full w-full transition-transform duration-700 [transform-style:preserve-3d] group-hover:[transform:rotateY(180deg)]">
+      <div class="absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-box bg-base-100 p-6 text-center shadow [backface-visibility:hidden]">
+        {{sw-icon "rocket" "h-10 w-10 text-primary"}}
+        <h3 class="font-heading text-lg font-semibold text-base-content" data-sw-text="tile1_title">Migrations &amp; Setup</h3>
+      </div>
+      <div class="absolute inset-0 flex items-center justify-center rounded-box bg-primary p-6 text-center text-primary-content shadow [transform:rotateY(180deg)] [backface-visibility:hidden]">
+        <p data-sw-text="tile1_back">Moving your data across and getting you set up, ready to go.</p>
+      </div>
+    </div>
+  </div>
+  <div class="group h-56 [perspective:1000px]">
+    <div class="relative h-full w-full transition-transform duration-700 [transform-style:preserve-3d] group-hover:[transform:rotateY(180deg)]">
+      <div class="absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-box bg-base-100 p-6 text-center shadow [backface-visibility:hidden]">
+        {{sw-icon "graduation-cap" "h-10 w-10 text-primary"}}
+        <h3 class="font-heading text-lg font-semibold text-base-content" data-sw-text="tile2_title">Training</h3>
+      </div>
+      <div class="absolute inset-0 flex items-center justify-center rounded-box bg-primary p-6 text-center text-primary-content shadow [transform:rotateY(180deg)] [backface-visibility:hidden]">
+        <p data-sw-text="tile2_back">Hands-on training so your team is confident from day one.</p>
+      </div>
+    </div>
+  </div>
+  <div class="group h-56 [perspective:1000px]">
+    <div class="relative h-full w-full transition-transform duration-700 [transform-style:preserve-3d] group-hover:[transform:rotateY(180deg)]">
+      <div class="absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-box bg-base-100 p-6 text-center shadow [backface-visibility:hidden]">
+        {{sw-icon "life-buoy" "h-10 w-10 text-primary"}}
+        <h3 class="font-heading text-lg font-semibold text-base-content" data-sw-text="tile3_title">Continuous Support</h3>
+      </div>
+      <div class="absolute inset-0 flex items-center justify-center rounded-box bg-primary p-6 text-center text-primary-content shadow [transform:rotateY(180deg)] [backface-visibility:hidden]">
+        <p data-sw-text="tile3_back">Ongoing help whenever you need a hand.</p>
+      </div>
+    </div>
+  </div>
+</div>`,
+  },
 ];
 
 /**

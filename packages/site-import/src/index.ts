@@ -7,6 +7,8 @@ export { DEFAULT_LIMITS, resolveLimits } from './limits.js';
 export { normalizePageUrl, assetKey, routePath, sameOrigin, resolveUrl, UPLOAD_BASE } from './url-util.js';
 export { looksClientRendered } from './spa-detect.js';
 export { mapFaIcon } from './nativize/icon-map.js';
+export { type NativizePalette, space, dim, fontSizeClass, radiusClass, colorToken, colorValue, hexOf, spaceToken, arbitrary, DEFAULT_FONT_MAP } from './nativize/tokens.js';
+export { type StyleMap, type EmitContext, type GroupResult, type BreakpointGroups, emitGroups, mergeGroups, RESET } from './nativize/tailwind.js';
 export type {
   AssetKind,
   CapturedAsset,

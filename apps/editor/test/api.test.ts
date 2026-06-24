@@ -973,4 +973,52 @@ describe('unauthorized (401) handling', () => {
     await api.listProjectRevisions('p1');
     expect(fetchMock.mock.calls[1]![0]).toBe('/projects/p1/revisions'); // no opts → bare path
   });
+
+  it('builds the thin preview / dataset / entry / stock / authoring GET URLs', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, {}));
+    await api.previewLocate('p1', 'page:home');
+    await api.previewBase('p1');
+    await api.agentPresence('p1');
+    await api.listDatasets('p1');
+    await api.getDataset('p1', 'team');
+    await api.listEntries('p1');
+    await api.getEntry('p1', 'e1');
+    await api.stockProviders('p1');
+    await api.listMediaFolders('p1');
+    await api.buttonPreviewCss();
+    await api.listEffectForks();
+    expect(fetchMock.mock.calls.map((c) => c[0])).toEqual([
+      '/projects/p1/preview-locate?entity=page%3Ahome',
+      '/projects/p1/preview-url',
+      '/projects/p1/agent-presence',
+      '/projects/p1/content/dataset',
+      '/projects/p1/content/dataset/team',
+      '/projects/p1/content/entry',
+      '/projects/p1/content/entry/e1',
+      '/projects/p1/stock/providers',
+      '/projects/p1/media/folders',
+      '/authoring/button-preview-css',
+      '/authoring/effect-forks',
+    ]);
+  });
+
+  it('builds the media-mutation + media-folder request URLs with the right verbs', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, {}));
+    await api.importMediaUrl('p1', 'https://x/y.png', 'logos');
+    await api.patchMedia('p1', 'm1', { folder: 'logos' });
+    await api.copyMedia('p1', 'm1', 'dup');
+    await api.createMediaFolder('p1', 'a/b');
+    await api.renameMediaFolder('p1', 'a', 'c');
+    await api.copyMediaFolder('p1', 'a', 'd');
+    await api.deleteMediaFolder('p1', 'a/b');
+    expect(fetchMock.mock.calls.map((c) => [c[1].method, c[0]])).toEqual([
+      ['POST', '/projects/p1/media/import-url'],
+      ['PATCH', '/projects/p1/media/m1'],
+      ['POST', '/projects/p1/media/m1/copy'],
+      ['POST', '/projects/p1/media/folders'],
+      ['POST', '/projects/p1/media/folders/rename'],
+      ['POST', '/projects/p1/media/folders/copy'],
+      ['DELETE', '/projects/p1/media/folders'],
+    ]);
+  });
 });

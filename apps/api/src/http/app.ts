@@ -71,6 +71,8 @@ import {
   RIPPLE_JS,
   usesNavEffects,
   NAV_EFFECTS_JS,
+  usesButtonEffects,
+  BUTTON_EFFECTS_JS,
   usesCart,
   CART_CSS,
   usesThemeToggle,
@@ -141,6 +143,7 @@ import { registerDeployTargetRoutes } from './deploy-targets.js';
 import { registerLocaleRoutes } from './locales.js';
 import { registerWebsiteDataRoutes } from './website-data.js';
 import { buildEffectForks } from './effect-forks.js';
+import { buttonPreviewCss } from './button-preview.js';
 import { registerFormRoutes } from './form-routes.js';
 import { registerProjectSmtpRoutes } from './project-smtp-routes.js';
 import { registerStockRoutes, type StockServiceLike } from './stock-routes.js';
@@ -506,6 +509,8 @@ async function styledSourceDocument(
   // in scanHtml, so run their runtime live in the preview for WYSIWYG parity (harmless: it only injects
   // an indicator span + reads pointer position).
   const navRuntime = usesNavEffects(scanHtml);
+  // Button-effects runtime — ripple on every .btn (+ magnetic / spotlight); inline it live for preview parity.
+  const btnRuntime = usesButtonEffects(scanHtml);
   // A still-faithful imported page (swImport present, not yet nativized) is a raw replica — it renders
   // with ONLY its own imported stylesheet (renderDocument omits the platform base CSS, and SKIPS the
   // LINKED Tailwind utility sheet for raw pages). The editor canvas INLINES a per-page utility sheet
@@ -533,6 +538,7 @@ async function styledSourceDocument(
     ...(lazy ? [LAZYLOAD_JS] : []),
     ...(waves ? [RIPPLE_JS] : []),
     ...(navRuntime ? [NAV_EFFECTS_JS] : []),
+    ...(btnRuntime ? [BUTTON_EFFECTS_JS] : []),
     ...(dialog ? [NAV_LINK_JS] : []),
     // The editor↔preview bridge (scroll preserve/restore + inline-edit). Preview-only — this shell
     // is never the publish path (build.ts calls renderDocument directly), so it can't leak.
@@ -3917,6 +3923,11 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // nav/button/preloader effect as a self-contained, ready-to-run HTML snippet (derived from the same
   // source as the built-ins, so it can't drift). STATIC platform data; computed once + cached.
   app.get('/authoring/effect-forks', { config: rl(60) }, async () => buildEffectForks());
+
+  // The compiled button-preview stylesheet for the Website-settings "Button effects" modal — the .btn
+  // baseline + every effect/shape/accent utility. STATIC platform CSS (brand-agnostic; the editor
+  // injects the project's --sw-color-* into the preview iframe); computed once + cached.
+  app.get('/authoring/button-preview-css', { config: rl(60) }, async () => ({ css: await buttonPreviewCss() }));
 
   // The system WIDGET catalog — managed, data-backed drop-ins (hero-slider, …) the editor's Widgets
   // rail browses and inserts as {{> name}}. STATIC platform metadata (no tenant data): name/label/

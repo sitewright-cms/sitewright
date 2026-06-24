@@ -63,6 +63,8 @@ import {
   PRELOADER_JS,
   NAV_EFFECTS_JS,
   usesNavEffects,
+  BUTTON_EFFECTS_JS,
+  usesButtonEffects,
   resolveShopChannels,
   resolveFormEndpoints,
   mediaForRender,
@@ -77,6 +79,7 @@ import {
   websiteEffectsClasses,
   websiteEffectsCustomCode,
   navEffectUsesRuntime,
+  buttonEffectUsesRuntime,
   type FormPublic,
   type MediaAsset,
 } from '@sitewright/schema';
@@ -101,6 +104,8 @@ const NAV_LINK_SCRIPT = 'nav-link.js';
 const PRELOADER_SCRIPT = 'preloader.js';
 /** The NAV-EFFECTS runtime (sliding indicator + cursor-following spotlight), linked per page. */
 const NAV_EFFECTS_SCRIPT = 'nav-effects.js';
+/** The BUTTON-EFFECTS runtime (ripple on every .btn + magnetic + spotlight), linked per page. */
+const BUTTON_EFFECTS_SCRIPT = 'button-effects.js';
 
 /** A static `{{> name}}` / `{{#> name}}` partial include (snippet names are identifier-safe). */
 const PARTIAL_REF = /\{\{~?\s*#?>\s*([a-zA-Z][a-zA-Z0-9_-]*)/g;
@@ -488,6 +493,10 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // discipline as cart/ripple), else a one-off `sw-nav-sliding-pill` would preview but ship broken.
     const usesNavRuntime =
       navEffectUsesRuntime(website?.effects?.navEffect) || usesMarker(usesNavEffects);
+    // BUTTON-EFFECTS runtime — ripple is the always-on .btn baseline, so this ships whenever the page has
+    // a button (or a JS-backed magnetic/spotlight default). usesButtonEffects scans for a `.btn`.
+    const usesBtnRuntime =
+      buttonEffectUsesRuntime(website?.effects?.buttonEffect) || usesMarker(usesButtonEffects);
     // The nav-link runtime opens a <dialog> (global modal) and smooth-scrolls #section links. Ship it
     // when a nav placeholder targets a #fragment OR any authored surface embeds a <dialog> — so a modal
     // triggered from page CONTENT (a CTA, an in-content `<a href="#id">`), not only a nav placeholder,
@@ -707,6 +716,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           ...(usesNavLink ? [`${siteRoot}${NAV_LINK_SCRIPT}`] : []),
           ...(usesPreloaderRuntime ? [`${siteRoot}${PRELOADER_SCRIPT}`] : []),
           ...(usesNavRuntime ? [`${siteRoot}${NAV_EFFECTS_SCRIPT}`] : []),
+          ...(usesBtnRuntime ? [`${siteRoot}${BUTTON_EFFECTS_SCRIPT}`] : []),
         ];
         const html = renderDocument(page, {
           brand,
@@ -856,6 +866,12 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
       await writeFile(join(tmp, NAV_EFFECTS_SCRIPT), NAV_EFFECTS_JS, 'utf8');
       bytes += Buffer.byteLength(NAV_EFFECTS_JS);
+    }
+    // The BUTTON-EFFECTS runtime (ripple on every .btn + magnetic + spotlight; only-used-ships).
+    if (usesBtnRuntime) {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
+      await writeFile(join(tmp, BUTTON_EFFECTS_SCRIPT), BUTTON_EFFECTS_JS, 'utf8');
+      bytes += Buffer.byteLength(BUTTON_EFFECTS_JS);
     }
 
     // robots.txt (always) + sitemap.xml (only when a production site URL is set).

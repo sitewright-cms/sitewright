@@ -1,5 +1,5 @@
 import type { CorporateIdentity, SettingsBundle, WebsiteSettings } from '../../api';
-import { DEFAULT_BRAND_COLORS, MANDATORY_COLOR_TOKENS, type JsonValue, type NavEffect, type ButtonEffect, type PreloaderEffect, type ShopChannel, type ShopChannelField, type ShopCurrency, type ShopFieldType } from '@sitewright/schema';
+import { DEFAULT_BRAND_COLORS, MANDATORY_COLOR_TOKENS, type JsonValue, type NavEffect, type ButtonEffect, type ButtonAccent, type ButtonDefaultShape, type PreloaderEffect, type ShopChannel, type ShopChannelField, type ShopCurrency, type ShopFieldType } from '@sitewright/schema';
 import { pageDataObject } from '../../lib/page-data';
 
 const MANDATORY_COLOR_SET = new Set<string>(MANDATORY_COLOR_TOKENS);
@@ -146,6 +146,9 @@ export interface SettingsForm {
   // nav/button/preloader effect schemes ('none' = off / custom code) → website.effects
   navEffect: 'none' | NavEffect;
   buttonEffect: 'none' | ButtonEffect;
+  // site-wide DEFAULT button accent + shape ('' = baseline: secondary accent / rounded shape) → website.effects
+  buttonAccent: '' | ButtonAccent;
+  buttonShape: '' | ButtonDefaultShape;
   preloaderEffect: 'none' | PreloaderEffect;
   // custom effect code (the "None / Custom Code" slots) → website.effects.*Code
   navCode: string;
@@ -300,6 +303,8 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
     bottom: w?.bottom ?? '',
     navEffect: w?.effects?.navEffect ?? 'none',
     buttonEffect: w?.effects?.buttonEffect ?? 'none',
+    buttonAccent: w?.effects?.buttonAccent ?? '',
+    buttonShape: w?.effects?.buttonShape ?? '',
     preloaderEffect: w?.effects?.preloaderEffect ?? 'none',
     navCode: w?.effects?.navCode ?? '',
     buttonCode: w?.effects?.buttonCode ?? '',
@@ -502,6 +507,9 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
   // nav/button effect schemes ('none' = off, so omit them).
   const nav = form.navEffect !== 'none' ? { navEffect: form.navEffect } : {};
   const btn = form.buttonEffect !== 'none' ? { buttonEffect: form.buttonEffect } : {};
+  // button accent/shape: '' = the baseline default (secondary / rounded), so omit them.
+  const btnA = form.buttonAccent ? { buttonAccent: form.buttonAccent } : {};
+  const btnSh = form.buttonShape ? { buttonShape: form.buttonShape } : {};
   const pre = form.preloaderEffect !== 'none' ? { preloaderEffect: form.preloaderEffect } : {};
   // Custom-code slots are PRESERVED even when a built-in effect is chosen (so toggling between a
   // preset and "None / Custom Code" doesn't lose the draft); render applies a code only when its
@@ -509,7 +517,7 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
   const navC = form.navCode.trim() ? { navCode: form.navCode } : {};
   const btnC = form.buttonCode.trim() ? { buttonCode: form.buttonCode } : {};
   const preC = form.preloaderCode.trim() ? { preloaderCode: form.preloaderCode } : {};
-  const mergedEffects = { ...nav, ...btn, ...pre, ...navC, ...btnC, ...preC };
+  const mergedEffects = { ...nav, ...btn, ...btnA, ...btnSh, ...pre, ...navC, ...btnC, ...preC };
   const effects = Object.keys(mergedEffects).length > 0 ? mergedEffects : undefined;
   // Opt-in light/dark themes. `enableThemes` is emitted only when ON (omitted = off, the
   // schema default); `defaultTheme` only when it deviates from 'auto' (the default) AND the

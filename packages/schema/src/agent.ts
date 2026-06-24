@@ -299,11 +299,21 @@ NAV/BUTTON EFFECTS: curated CI-themed, contrast-safe schemes — add a class for
 (\`sw-nav-<name>\` on the nav <ul> or set site-wide in website.effects.navEffect; names:
 \`box-solid\`,\`box-fill-left\`,\`box-fill-up\`,\`box-draw\`,\`box-shadow\`,\`line-bottom\`,\`line-sliding-bottom\`,
 \`line-top-down\`,\`line-squiggle\`,\`sliding-pill\`,\`glass-pill\`,\`dot-to-pill\`,\`highlighter\`,\`brackets\`,
-\`brackets-curly\`,\`blob\`,\`chevron\`,\`corner-ticks\`,\`spotlight-sliding\`) and button hover/press
-(\`sw-btn-lift\`|\`-glow\`|\`-sheen\`|\`-press\`|\`-pulse\`|\`-ring\` on any .btn, or website.effects.buttonEffect).
-Colors auto-derive from the brand (and stay legible in the built-in dark theme); only \`box-solid\` /
-\`box-fill-*\` / \`dot-to-pill\` fill a surface (using the WCAG-derived foreground). The three sliding /
-spotlight schemes load a tiny runtime automatically. Prefer these over hand-rolled active/hover CSS.
+\`brackets-curly\`,\`blob\`,\`chevron\`,\`corner-ticks\`,\`spotlight-sliding\`). Nav colors auto-derive from
+the brand and stay legible in dark; only \`box-solid\`/\`box-fill-*\`/\`dot-to-pill\` fill a surface.
+
+BUTTONS: every \`.btn\` already has a BASELINE — a ripple on click, a small hover lift + shadow, and its
+background fills to the hover ACCENT (default secondary). Layer three independent axes as classes (each
+works on a single .btn OR site-wide via website.effects):
+ • EFFECT — \`sw-btn-fx-<name>\`: \`lift\`,\`glow\`,\`pulse\`,\`ring\`,\`magnetic\`,\`arrow\`,\`bounce\`,\`jelly\`,
+   \`icon-spin\`,\`long-shadow\`,\`frost\`,\`width-expand\`,\`sheen\`,\`spotlight\`,\`shine\`,\`sparkle\`,
+   \`fill-center\`,\`fill-slide\`,\`border-draw\`,\`outline-fill\`,\`fill-up\`,\`fill-down\`,\`skew-sweep\`,\`bubble\`,
+   \`text-link\`,\`gradient-move\`,\`two-tone\`,\`ghost-gradient\` (or website.effects.buttonEffect for the site default).
+ • ACCENT — \`sw-btn-accent-<primary|secondary|accent|neutral>\` overrides the hover/fill colour (or website.effects.buttonAccent).
+ • SHAPE — \`sw-btn-shape-<rounded|soft|sharp|pill|cut|skewed|square|circle>\` (square/circle = icon-only) (or website.effects.buttonShape).
+FACE = the daisyUI variant (\`btn-primary\`/\`btn-ghost\`=transparent/\`btn-outline\`/\`btn-soft\`). A class on
+a button OVERRIDES the site default for that axis. \`magnetic\`/\`spotlight\` (+ the ripple) load a tiny
+runtime automatically. Prefer these over hand-rolled hover CSS.
 
 CUSTOM EFFECT (when no built-in scheme fits): leave the effect 'none' and set
 website.effects.navCode / buttonCode / preloaderCode (in the settings entity) — raw HTML (a \`<style>\`

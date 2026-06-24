@@ -321,16 +321,16 @@ describe('buildSite', () => {
     });
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
     // The chosen schemes become <body> classes (cascade to the nav landmarks + .btn).
-    expect(home).toContain('<body class="sw-nav-box-solid sw-btn-lift">');
-    // A pure-CSS nav scheme ships NO runtime.
+    expect(home).toContain('<body class="sw-nav-box-solid sw-btn-fx-lift">');
+    // A pure-CSS nav scheme ships NO nav runtime.
     expect(home).not.toContain('nav-effects.js');
     const sheet = await readFile(join(outDir, 'styles.css'), 'utf8');
     // Only the chosen schemes ship, scoped to the platform landmarks, themed by the brand.
     expect(sheet).toContain('.sw-nav-box-solid');
     expect(sheet).toMatch(/#top-nav/);
-    expect(sheet).toContain('.sw-btn-lift');
+    expect(sheet).toContain('.sw-btn-fx-lift');
     expect(sheet).not.toContain('sw-nav-line-bottom'); // tree-shaken (not chosen)
-    expect(sheet).not.toContain('sw-btn-glow');
+    expect(sheet).not.toContain('sw-btn-fx-glow');
   });
 
   it('ships the nav-effects runtime + indicator CSS only for a JS-backed nav scheme', async () => {
@@ -388,7 +388,7 @@ describe('buildSite', () => {
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
     expect(home).toContain('<style id="nav-fx">'); // custom nav code injected
     expect(home).not.toContain('id="btn-fx"'); // button code inert (a built-in effect is chosen)
-    expect(home).toContain('sw-btn-lift'); // the built-in button effect still applies
+    expect(home).toContain('sw-btn-fx-lift'); // the built-in button effect still applies
     // custom preloader is the FIRST body child — it sits right after the opening <body> tag, before
     // the <main id="page-content"> landmark (whereas the nav code lands at body-end, after <main>).
     const bodyOpenEnd = home.indexOf('>', home.indexOf('<body')) + 1;

@@ -477,15 +477,16 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
       },
       {
         id: 'fx-btn',
-        syntax: 'sw-btn-lift | -glow | -sheen | -press | -pulse | -ring',
+        syntax: 'sw-btn-fx-<effect> · sw-btn-accent-<role> · sw-btn-shape-<shape>',
         name: 'Button effects (sw-btn-*)',
-        keywords: 'button btn effect hover press lift glow sheen pulse ring motion animation appearance state',
+        keywords:
+          'button btn effect hover ripple fill lift glow shape accent pill sharp cut skewed pulse ring motion animation appearance state',
         description:
-          'Hover/press motion + glow layered on any daisyUI .btn — the button keeps its own colors, so contrast is never affected. Brand-aware glows read the button variant color (--btn-color). All motion respects prefers-reduced-motion. Set one site-wide in Website settings, or add a class to a single button.',
+          'Every .btn has a baseline: a ripple on click, a hover lift + shadow, and a background fill to the hover ACCENT (default secondary). Layer three independent axes — EFFECT sw-btn-fx-<name> (lift, glow, fill-slide, two-tone, …28), ACCENT sw-btn-accent-<primary|secondary|accent|neutral>, SHAPE sw-btn-shape-<rounded|soft|sharp|pill|cut|skewed|square|circle>. The FACE is the daisyUI variant (btn-primary / btn-ghost / btn-outline / btn-soft). Set site-wide defaults in Website settings, or add a class to a single button to override that axis. Motion respects prefers-reduced-motion.',
         example:
-          '<button class="btn btn-primary sw-btn-lift">Get started</button>\n' +
-          '<a class="btn btn-outline sw-btn-glow" href="/contact">Contact</a>',
-        note: 'Pick ONE motion effect per button (each manages its own transition, so stacking two can cancel a transition). The click ripple is separate and composes on top — add waves-effect (plus waves-light on dark/colored buttons).',
+          '<button class="btn btn-primary sw-btn-fx-fill-slide sw-btn-shape-pill">Get started</button>\n' +
+          '<a class="btn btn-ghost sw-btn-fx-outline-fill sw-btn-accent-primary" href="/contact">Contact</a>',
+        note: 'Pick ONE sw-btn-fx-* per button (each manages its own transition). A per-button class overrides the site default for that axis only. The ripple + magnetic/spotlight load a tiny runtime automatically.',
       },
     ],
   },

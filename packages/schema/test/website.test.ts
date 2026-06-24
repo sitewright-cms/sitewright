@@ -8,6 +8,13 @@ import {
   NAV_EFFECT_LABELS,
   JS_NAV_EFFECTS,
   BUTTON_EFFECTS,
+  BUTTON_EFFECT_LABELS,
+  JS_BUTTON_EFFECTS,
+  buttonEffectUsesRuntime,
+  BUTTON_SHAPES,
+  BUTTON_SHAPE_LABELS,
+  BUTTON_DEFAULT_SHAPES,
+  BUTTON_ACCENTS,
   PRELOADER_EFFECTS,
   MAX_TRANSLATION_ENTRIES,
   containerWidthVar,
@@ -280,18 +287,47 @@ describe('WebsiteSettingsSchema', () => {
       expect(() => WebsiteSettingsSchema.parse({ effects: { navEffect: 'sparkle' } })).toThrow();
     });
 
-    it('websiteEffectsClasses maps effects → `<body>` classes ("none"/absent = "")', () => {
-      expect(websiteEffectsClasses({ navEffect: 'box-solid', buttonEffect: 'lift' })).toBe('sw-nav-box-solid sw-btn-lift');
+    it('websiteEffectsClasses maps effects → `<body>` classes ("none"/absent/default = "")', () => {
+      expect(websiteEffectsClasses({ navEffect: 'box-solid', buttonEffect: 'lift' })).toBe('sw-nav-box-solid sw-btn-fx-lift');
       expect(websiteEffectsClasses({ navEffect: 'line-bottom' })).toBe('sw-nav-line-bottom');
-      expect(websiteEffectsClasses({ navEffect: 'none', buttonEffect: 'glow' })).toBe('sw-btn-glow');
+      expect(websiteEffectsClasses({ navEffect: 'none', buttonEffect: 'glow' })).toBe('sw-btn-fx-glow');
       expect(websiteEffectsClasses({})).toBe('');
       expect(websiteEffectsClasses(undefined)).toBe('');
     });
 
-    it('every effect name is accepted by the schema (enum ⊇ the name lists)', () => {
+    it('button accent/shape defaults emit nothing; non-defaults emit override classes', () => {
+      // baseline (secondary accent + rounded shape) → no class (the .btn baseline already covers it)
+      expect(websiteEffectsClasses({ buttonAccent: 'secondary', buttonShape: 'rounded' })).toBe('');
+      expect(websiteEffectsClasses({ buttonAccent: 'primary' })).toBe('sw-btn-accent-primary');
+      expect(websiteEffectsClasses({ buttonShape: 'pill' })).toBe('sw-btn-shape-pill');
+      expect(websiteEffectsClasses({ buttonEffect: 'fill-slide', buttonAccent: 'accent', buttonShape: 'sharp' })).toBe(
+        'sw-btn-fx-fill-slide sw-btn-accent-accent sw-btn-shape-sharp',
+      );
+    });
+
+    it('every effect/shape/accent name is accepted by the schema (enum ⊇ the name lists)', () => {
       for (const navEffect of NAV_EFFECTS) expect(WebsiteSettingsSchema.parse({ effects: { navEffect } }).effects?.navEffect).toBe(navEffect);
       for (const buttonEffect of BUTTON_EFFECTS) expect(WebsiteSettingsSchema.parse({ effects: { buttonEffect } }).effects?.buttonEffect).toBe(buttonEffect);
+      for (const buttonAccent of BUTTON_ACCENTS) expect(WebsiteSettingsSchema.parse({ effects: { buttonAccent } }).effects?.buttonAccent).toBe(buttonAccent);
+      for (const buttonShape of BUTTON_DEFAULT_SHAPES) expect(WebsiteSettingsSchema.parse({ effects: { buttonShape } }).effects?.buttonShape).toBe(buttonShape);
       for (const preloaderEffect of PRELOADER_EFFECTS) expect(WebsiteSettingsSchema.parse({ effects: { preloaderEffect } }).effects?.preloaderEffect).toBe(preloaderEffect);
+    });
+
+    it('icon-only shapes (square/circle) are NOT valid as a site-wide default', () => {
+      expect(() => WebsiteSettingsSchema.parse({ effects: { buttonShape: 'square' } })).toThrow();
+      expect(() => WebsiteSettingsSchema.parse({ effects: { buttonShape: 'circle' } })).toThrow();
+      expect(BUTTON_SHAPES).toContain('square'); // …but they remain valid per-button shape classes
+      expect(BUTTON_SHAPES).toContain('circle');
+    });
+
+    it('buttonEffectUsesRuntime flags only the JS-backed effects; every effect/shape has a label', () => {
+      for (const e of JS_BUTTON_EFFECTS) expect(buttonEffectUsesRuntime(e)).toBe(true);
+      expect(buttonEffectUsesRuntime('lift')).toBe(false);
+      expect(buttonEffectUsesRuntime('none')).toBe(false);
+      expect(buttonEffectUsesRuntime(undefined)).toBe(false);
+      for (const e of JS_BUTTON_EFFECTS) expect(BUTTON_EFFECTS).toContain(e);
+      for (const e of BUTTON_EFFECTS) expect(BUTTON_EFFECT_LABELS[e]).toBeTruthy();
+      for (const s of BUTTON_SHAPES) expect(BUTTON_SHAPE_LABELS[s]).toBeTruthy();
     });
 
     it('navEffectUsesRuntime flags only the JS-backed schemes; every scheme has a label', () => {

@@ -8,6 +8,7 @@ import { LIBRARY_SECTIONS, type LibraryCategory, type LibraryItem, type LibraryS
 import { ReferenceModal } from './ReferenceModal';
 import { SW_COMPONENT_GROUPS } from './sw-components';
 import { BackgroundPicker } from './BackgroundPicker';
+import { ButtonBuilderModal } from './ButtonBuilderModal';
 import { GoogleFontGallery } from '../settings/GoogleFontGallery';
 import { SearchField } from '../ui/SearchField';
 import { useScrollPaging } from '../../lib/useScrollPaging';
@@ -42,6 +43,7 @@ export function LibraryPanel() {
   const [refOpen, setRefOpen] = useState(false);
   const [swOpen, setSwOpen] = useState(false);
   const [bgOpen, setBgOpen] = useState(false);
+  const [btnOpen, setBtnOpen] = useState(false);
   const section = openCategory ? (LIBRARY_SECTIONS.find((s) => s.category === openCategory) ?? null) : null;
 
   // The first-party SiteWright components guide — a tab-based reference (one tab per component),
@@ -84,6 +86,18 @@ export function LibraryPanel() {
           </span>
         </button>
 
+        {/* The Button builder + effects lab — compose a button (face/effect/accent/shape), preview it live
+            with your CI colors, and copy the <button class="…"> markup. */}
+        <button
+          onClick={() => setBtnOpen(true)}
+          className="waves-effect rounded-xl border border-amber-200/70 bg-gradient-to-br from-amber-50 to-orange-50 px-3 py-2.5 text-left transition hover:from-amber-100 hover:to-orange-100"
+        >
+          <span className="block text-sm font-bold text-amber-800">Button builder</span>
+          <span className="mt-0.5 block text-[11px] leading-snug text-amber-600/80">
+            Compose a button (effect, accent, shape) + browse the effects lab — preview & copy the markup.
+          </span>
+        </button>
+
         {LIBRARY_SECTIONS.map((s) => (
           // The SiteWright Components entry sits immediately before the DaisyUI components section.
           <Fragment key={s.category}>
@@ -101,6 +115,7 @@ export function LibraryPanel() {
 
       {refOpen && <ReferenceModal onClose={() => setRefOpen(false)} />}
       {bgOpen && <BackgroundPicker onClose={() => setBgOpen(false)} />}
+      {btnOpen && <ButtonBuilderModal onClose={() => setBtnOpen(false)} />}
       {swOpen && (
         <ReferenceModal
           title="SiteWright Components"

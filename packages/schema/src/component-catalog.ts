@@ -335,4 +335,65 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
       },
     ],
   },
+  {
+    type: 'ShaderBg',
+    marker: 'shader-bg',
+    summary:
+      'A first-party WebGL animated background, themed by the project CI colors. Put it on any section/hero/full-page wrapper; the runtime renders the chosen preset on a canvas BEHIND the content. 30 presets, optional pointer interactivity, a global angle, and speed/intensity knobs. CSP-clean, reduced-motion aware, pauses when offscreen.',
+    authoring: 'markup',
+    parts: [
+      {
+        part: 'overlay',
+        element: 'div',
+        required: false,
+        description:
+          'OPTIONAL legibility scrim between the animated background and your content (improves text contrast). Tint it with utilities, e.g. class="bg-black/30" or class="bg-gradient-to-t from-black/50". It sits above the canvas, below your content; the runtime injects the canvas itself — never author a canvas.',
+      },
+    ],
+    attributes: [
+      {
+        name: 'data-preset',
+        on: 'root',
+        description:
+          'Which background to render (default "mesh-gradient"). One of: mesh-gradient, silk-flow, plasma, halftone-pulse, caustics, marble-ink, sun-rays, lava-lamp, corner-mesh, flow-field, interference, ribbons, brushed-streaks, voronoi-cells, pointer-ripples, liquid-metal, rising-smoke, edge-glow, waterfall, heat-haze, bokeh-drift, contours, starfield, sine-strands, vortex-swirl, ink-bloom, mist-layers, drifting-blobs, glow-orbits, gradient-flow.',
+      },
+      { name: 'data-speed', on: 'root', description: 'Animation speed multiplier 0–4 (default 1). "0" renders a single static frame.' },
+      { name: 'data-intensity', on: 'root', description: 'Saturation/brightness 0–1 (default 0.5). Lower = more muted/subtle behind text.' },
+      { name: 'data-angle', on: 'root', description: 'Rotates the whole field, in degrees -360–360 (default 0). Reorients directional presets (gradients, sweeps, rays).' },
+      {
+        name: 'data-interactive',
+        on: 'root',
+        description: '"true" lets the pointer morph the effect while hovering the section (default off). Ignored under prefers-reduced-motion.',
+      },
+      {
+        name: 'data-colors',
+        on: 'root',
+        description:
+          'Override the 3 palette slots, comma-separated. Use CI token names ("accent,primary,base-content") or literal CSS colors ("#fff,rgb(0,0,0),steelblue"). Defaults to primary,secondary,neutral, and follows light/dark themes automatically.',
+      },
+    ],
+    skeleton: `<section class="relative grid min-h-[60vh] place-items-center" data-sw-component="shader-bg" data-preset="mesh-gradient">
+  <div data-sw-part="overlay" class="bg-black/30"></div>
+  <div class="sw-container text-center text-white">
+    <h1 class="text-4xl font-bold">Your headline</h1>
+    <p class="mt-3 opacity-90">A short supporting line over the animated background.</p>
+  </div>
+</section>`,
+    noJs:
+      'Until enhanced (and with JavaScript off or WebGL unavailable) the host shows a static CSS gradient built from the same CI color tokens — never a blank box. Content stays fully readable; nothing is hidden behind a stuck overlay.',
+    notes:
+      'Place this on a wrapper that already sizes itself (give the section a min-height or padding) — the canvas fills the host and your content renders above it (no z-index work needed; the host becomes an isolated stacking context). For legible text add a data-sw-part="overlay" scrim and/or lower data-intensity. Performance: one WebGL context per instance; the animation pauses when the element scrolls offscreen or the tab is hidden, and prefers-reduced-motion renders a single static frame — keep to a few instances per page. Colors are read live from the --sw-color-* tokens, so the background re-themes itself on a light/dark theme switch. Subtle presets (mesh-gradient, gradient-flow, mist-layers, edge-glow) read best behind content; bolder ones (plasma, caustics, voronoi-cells) suit decorative bands. This is NOT a DaisyUI/utility gradient — use a plain bg-* gradient for a flat background; use this for motion.',
+    examples: [
+      {
+        label: 'Full-bleed hero with a darkening scrim',
+        code: '<section class="relative grid min-h-screen place-items-center" data-sw-component="shader-bg" data-preset="silk-flow" data-intensity="0.4" data-interactive="true">\n  <div data-sw-part="overlay" class="bg-gradient-to-t from-black/60 to-black/10"></div>\n  <div class="sw-container text-center text-white">\n    <h1 class="text-5xl font-bold">Build something striking</h1>\n  </div>\n</section>',
+        note: 'data-interactive lets the cursor morph the flow; the gradient scrim keeps the headline legible.',
+      },
+      {
+        label: 'Static, angled accent band',
+        code: '<section class="relative py-24" data-sw-component="shader-bg" data-preset="gradient-flow" data-speed="0" data-angle="135" data-colors="accent,primary,base-100">\n  <div class="sw-container">…</div>\n</section>',
+        note: 'data-speed="0" renders one still frame (no animation); data-colors remaps the palette to the accent/primary/background tokens.',
+      },
+    ],
+  },
 ];

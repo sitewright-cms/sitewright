@@ -9,6 +9,8 @@ export { looksClientRendered } from './spa-detect.js';
 export { mapFaIcon } from './nativize/icon-map.js';
 export { type NativizePalette, space, dim, fontSizeClass, radiusClass, colorToken, colorValue, hexOf, spaceToken, arbitrary, DEFAULT_FONT_MAP } from './nativize/tokens.js';
 export { type StyleMap, type EmitContext, type GroupResult, type BreakpointGroups, emitGroups, mergeGroups, RESET } from './nativize/tailwind.js';
+export { mapAosEffect, ms, aosAttrs, type AosAttrs } from './nativize/aos.js';
+export { type CapturedNode, type MergedNode, type NativizeContext, type RenderResult, mergeTree, mergeTrees, renderTree, toRoute } from './nativize/emit.js';
 export type {
   AssetKind,
   CapturedAsset,

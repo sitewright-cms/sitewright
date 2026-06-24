@@ -63,8 +63,10 @@ const RAD = 'var(--radius-field, .375rem)';
 // transparent. FX = the ACCENT (hover / fill / glow) the baseline + `sw-btn-accent-*` publish via
 // `--sw-btn-fx` (default secondary). `--sw-btn-hover-bg` is the baseline's hover fill (defaults to FX;
 // the hollow effects set it to `transparent` so their own pseudo animation fills instead).
-const FACE = 'var(--sw-btn-face, transparent)';
-const FACEC = 'var(--sw-btn-face-content, var(--sw-color-base-content, var(--color-base-content)))';
+// A face-changing effect on a bare .btn (no variant — --sw-btn-face unset) falls back to the brand
+// primary + its foreground, so the gradient/two-tone paints a real face instead of transparent.
+const FACE = 'var(--sw-btn-face, var(--sw-color-primary, var(--color-primary)))';
+const FACEC = 'var(--sw-btn-face-content, var(--sw-color-primary-content, var(--color-primary-content)))';
 const FX = 'var(--sw-btn-fx, var(--sw-color-secondary, var(--color-secondary)))';
 const FXC = 'var(--sw-btn-fx-content, var(--sw-color-secondary-content, var(--color-secondary-content)))';
 // face-CHANGING effects (gradient-move / two-tone / frost) paint a SOLID face, so they skip the
@@ -413,7 +415,7 @@ export const EFFECT_UTILITIES = `
   ${btnFx()} { background: linear-gradient(120deg, ${FACE}, ${FX}); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent; box-shadow: inset 0 0 0 1.5px color-mix(in oklab, ${FX} 45%, transparent); --sw-btn-hover-bg: transparent; --sw-btn-hover-fg: transparent; }
   @media (prefers-reduced-motion: no-preference) { ${btnFx()} { transition: box-shadow .25s ease; } }
   ${btnFx(':hover')} { box-shadow: inset 0 0 0 1.5px ${FX}, 0 10px 24px -13px color-mix(in oklab, ${FX} 55%, transparent); }
-  /* a disabled button: drop the text-clip so daisyUI's disabled colour shows (else the label is invisible). */
+  /* a disabled button: drop the text-clip so the label colour shows (else the label is invisible). */
   ${btnFx(':disabled')}, ${btnFx('.btn-disabled')} { -webkit-text-fill-color: currentColor; background: none; }
 }
 

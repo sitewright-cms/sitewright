@@ -297,8 +297,9 @@ img, video { max-width: 100%; height: auto; }
    the accent. The EFFECT / SHAPE / ACCENT utilities (@sitewright/tailwind effects.ts) read these vars;
    the ripple needs button-effects.ts (only-when-used). Same class vocabulary as daisyUI. */
 .btn {
-  --sw-btn-face: transparent;
-  --sw-btn-face-content: var(--sw-color-base-content, var(--color-base-content, #1a1a23));
+  /* --sw-btn-face / --sw-btn-face-content are intentionally LEFT UNSET on the base, so a bare .btn is
+     transparent (via the property defaults below) BUT a face-CHANGING effect can default to the brand
+     primary rather than paint transparent. Variants set them; ghost/outline/soft set them explicitly. */
   --sw-btn-fx: var(--sw-color-secondary, var(--color-secondary, #0ea5e9));
   --sw-btn-fx-content: var(--sw-color-secondary-content, var(--color-secondary-content, #ffffff));
   --sw-btn-hover-bg: var(--sw-btn-fx);
@@ -313,9 +314,17 @@ img, video { max-width: 100%; height: auto; }
   text-align: center; text-decoration: none; white-space: nowrap; vertical-align: middle;
   cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
   border: 0; border-radius: var(--sw-btn-radius);
-  background: var(--sw-btn-face); color: var(--sw-btn-face-content);
+  /* logical corners so a daisyUI .join group can round only its outer corners (it sets --join-*) */
+  border-start-start-radius: var(--join-ss, var(--sw-btn-radius));
+  border-start-end-radius: var(--join-se, var(--sw-btn-radius));
+  border-end-end-radius: var(--join-ee, var(--sw-btn-radius));
+  border-end-start-radius: var(--join-es, var(--sw-btn-radius));
+  background: var(--sw-btn-face, transparent);
+  color: var(--sw-btn-face-content, var(--sw-color-base-content, var(--color-base-content, #1a1a23)));
   position: relative; isolation: isolate; overflow: hidden;
 }
+/* a checkbox/radio styled as a button (daisyUI's join toggle pattern) must lose its native control */
+.btn:is(input[type="checkbox"], input[type="radio"]) { appearance: none; -webkit-appearance: none; }
 @media (prefers-reduced-motion: no-preference) {
   .btn { transition: transform .22s cubic-bezier(.16, 1, .3, 1), box-shadow .22s ease, background-color .25s ease, color .25s ease; }
 }
@@ -329,6 +338,8 @@ img, video { max-width: 100%; height: auto; }
 }
 .btn:not(.btn-link):not(.btn-disabled):not(:disabled):active { transform: scale(.97); }
 .btn:disabled, .btn[disabled], .btn-disabled { cursor: not-allowed; pointer-events: none; opacity: .45; }
+/* active / selected (a toggle, or the current item in a join group): the accent-filled state */
+.btn-active { background-color: var(--sw-btn-fx); color: var(--sw-btn-fx-content); box-shadow: none; transform: none; }
 /* solid variants — face + its WCAG-derived foreground (always contrast-correct) */
 .btn-primary   { --sw-btn-face: var(--sw-color-primary,   var(--color-primary,   #4f46e5)); --sw-btn-face-content: var(--sw-color-primary-content,   var(--color-primary-content,   #ffffff)); }
 .btn-secondary { --sw-btn-face: var(--sw-color-secondary, var(--color-secondary, #0ea5e9)); --sw-btn-face-content: var(--sw-color-secondary-content, var(--color-secondary-content, #06283a)); }
@@ -340,17 +351,25 @@ img, video { max-width: 100%; height: auto; }
 .btn-error     { --sw-btn-face: var(--color-error,   #dc2626); --sw-btn-face-content: var(--color-error-content,   #ffffff); }
 /* ghost: transparent, page-text colour (fills the accent on hover like every button) */
 .btn-ghost { --sw-btn-face: transparent; --sw-btn-face-content: var(--sw-color-base-content, var(--color-base-content, #1a1a23)); }
-/* soft: a translucent tint of the face */
-.btn-soft { background: color-mix(in oklab, var(--sw-btn-face) 16%, transparent); color: var(--sw-btn-face); }
+/* soft: a translucent tint of the face (defaults to primary so a bare btn-soft stays visible) */
+.btn-soft { --sw-btn-face: var(--sw-color-primary, var(--color-primary, #4f46e5)); background: color-mix(in oklab, var(--sw-btn-face) 16%, transparent); color: var(--sw-btn-face); }
 /* outline: transparent face, the face colour as text + a hairline border (inherits the variant; default primary) */
 .btn-outline { --sw-btn-face: var(--sw-color-primary, var(--color-primary, #4f46e5)); background: transparent; color: var(--sw-btn-face); box-shadow: inset 0 0 0 1.5px var(--sw-btn-face); }
-.btn-outline.btn-secondary { --sw-btn-face: var(--sw-color-secondary, var(--color-secondary)); }
-.btn-outline.btn-accent { --sw-btn-face: var(--sw-color-accent, var(--color-accent)); }
-.btn-outline.btn-neutral { --sw-btn-face: var(--sw-color-neutral, var(--color-neutral)); }
+/* outline / dash inherit the semantic variant colour */
+.btn-outline.btn-secondary, .btn-dash.btn-secondary { --sw-btn-face: var(--sw-color-secondary, var(--color-secondary, #0ea5e9)); }
+.btn-outline.btn-accent,    .btn-dash.btn-accent    { --sw-btn-face: var(--sw-color-accent,    var(--color-accent,    #f59e0b)); }
+.btn-outline.btn-neutral,   .btn-dash.btn-neutral   { --sw-btn-face: var(--sw-color-neutral,   var(--color-neutral,   #171627)); }
+.btn-outline.btn-info,      .btn-dash.btn-info      { --sw-btn-face: var(--color-info,    #0ea5e9); }
+.btn-outline.btn-success,   .btn-dash.btn-success   { --sw-btn-face: var(--color-success, #16a34a); }
+.btn-outline.btn-warning,   .btn-dash.btn-warning   { --sw-btn-face: var(--color-warning, #f59e0b); }
+.btn-outline.btn-error,     .btn-dash.btn-error     { --sw-btn-face: var(--color-error,   #dc2626); }
+/* outline keeps its inset border on hover (matches the generic hover's specificity, declared later so
+   it wins — else the generic hover box-shadow would drop the border) */
+.btn-outline:not(.btn-link):not(.btn-disabled):not(:disabled):hover { box-shadow: inset 0 0 0 1.5px var(--sw-btn-face), 0 10px 24px -11px color-mix(in oklab, var(--sw-btn-fx) 60%, transparent); }
 /* dash: an outline with a dashed border */
-.btn-dash { --sw-btn-face: var(--sw-color-primary, var(--color-primary, #4f46e5)); background: transparent; color: var(--sw-btn-face); border: 1.5px dashed var(--sw-btn-face); }
+.btn-dash { --sw-btn-face: var(--sw-color-primary, var(--color-primary, #4f46e5)); background: transparent; color: var(--sw-btn-face); border: 1.5px dashed var(--sw-btn-face); box-shadow: none; }
 /* link: a bare text button (no fill / lift) */
-.btn-link { background: transparent; color: var(--sw-color-primary, var(--color-primary, #4f46e5)); height: auto; min-height: 0; padding-inline: .25rem; text-decoration: underline; text-underline-offset: 3px; overflow: visible; }
+.btn-link { background: transparent; color: var(--sw-color-primary, var(--color-primary, #4f46e5)); height: auto; min-height: 0; padding-inline: .25rem; text-decoration: underline; text-underline-offset: 3px; }
 /* sizes */
 .btn-xs { --sw-btn-h: 1.75rem; --sw-btn-px: .6rem;  --sw-btn-fs: .75rem; gap: .3rem; }
 .btn-sm { --sw-btn-h: 2.25rem; --sw-btn-px: .85rem; --sw-btn-fs: .85rem; }
@@ -359,9 +378,12 @@ img, video { max-width: 100%; height: auto; }
 .btn-xl { --sw-btn-h: 3.85rem; --sw-btn-px: 2rem;   --sw-btn-fs: 1.15rem; }
 /* width / icon shapes */
 .btn-block { width: 100%; }
-.btn-wide { padding-inline: 3rem; }
+.btn-wide { width: 100%; max-width: 16rem; }
 .btn-square { --sw-btn-px: 0; width: var(--sw-btn-h); }
 .btn-circle { --sw-btn-px: 0; width: var(--sw-btn-h); --sw-btn-radius: 999px; }
+/* daisyUI's file-input styles ::file-selector-button via the daisy --btn-* vars we no longer define;
+   restyle it with our tokens so it still reads as a button. */
+.file-input::file-selector-button { background: var(--sw-color-neutral, var(--color-neutral, #171627)); color: var(--sw-color-neutral-content, var(--color-neutral-content, #ffffff)); border: 0; border-inline-end: 1px solid color-mix(in oklab, currentColor 12%, transparent); border-radius: 0; padding-inline: 1rem; margin-inline-end: .75rem; font-weight: 600; cursor: pointer; }
 /* the injected ripple span (the runtime appends one per pointerdown; clipped by the .btn overflow). The
    white tint is the intentional light-on-coloured-button ripple — see the dark-readiness allowlist. */
 .btn .sw-btn-ripple { position: absolute; border-radius: 50%; background: rgb(255 255 255 / .45); transform: translate(-50%, -50%) scale(0); pointer-events: none; z-index: 1; }

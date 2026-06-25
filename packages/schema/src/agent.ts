@@ -207,7 +207,7 @@ Quick rules vs the similar-looking DaisyUI classes:
   slider-logowall / slider-dataset; get_components("Carousel") carries short examples of each.
 - Content TABS → data-sw-component="tabs" (APG tablist; panels stack readable without JS).
   DaisyUI \`tab\` classes are for tab-STYLED NAVIGATION LINKS only; do not build radio-input
-  content tabs.
+  content tabs. Recipes to copy: tabs-mixed (rich + plain labels) / tabs-dataset (one tab per entry).
 - Image viewer/gallery → data-sw-component="lightbox": a full-screen gallery with a bottom
   thumbnail strip, an enlarge-from-thumbnail open animation, a header image-counter + caption,
   swipe, pinch-zoom, and keyboard nav (viewer DOM is runtime-built — no overlay element). THREE
@@ -220,8 +220,10 @@ Quick rules vs the similar-looking DaisyUI classes:
   / data-history="true". data-gallery="name" merges every lightbox sharing that name (across
   sections + forms) into one combined gallery. For no cropping use a masonry
   (class="block columns-2 sm:columns-3" + natural-aspect imgs) or match the tile aspect. No DaisyUI equivalent.
+  Recipes to copy: gallery-grid (styled folder grid) / gallery-masonry (no-crop) / gallery-dataset.
 - MODAL → data-sw-component="modal" (native <dialog>: focus trap/Esc/backdrop for free).
   DaisyUI's modal methods need inline JS (rejected) or a checkbox hack (poor a11y) — don't.
+  Recipes to copy: modal-basic (link trigger + editable body) / modal-confirm (forced-choice).
 - Cookie banner → data-sw-component="cookie-consent", placed ONCE site-wide in the website
   \`bottom\` slot, with the \`hidden\` attribute authored on it.
 - DATE / TIME pickers → data-sw-component="datetimepicker" on a TEXT <input> (Vanilla Calendar Pro):

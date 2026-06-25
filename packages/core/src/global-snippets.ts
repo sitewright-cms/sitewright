@@ -25,8 +25,13 @@
  * constraint).
  */
 
-/** Editor-rail grouping for the reference cookbook (grows as PR2/PR3 add component families). */
-export type SnippetCategory = 'slider' | 'data' | 'chrome' | 'effects';
+/**
+ * Editor-rail grouping for the reference cookbook (grows as later PRs add component families).
+ * Keep in sync with the editor's SNIPPET_CATEGORY_LABELS + SNIPPET_CATEGORY_KEY_ORDER in
+ * apps/editor/src/views/code/CodeRailPanels.tsx (the labels map is `Record<SnippetCategory, …>`,
+ * so a new member there is a compile error until labelled).
+ */
+export type SnippetCategory = 'slider' | 'gallery' | 'tabs' | 'modal' | 'data' | 'chrome' | 'effects';
 
 export interface GlobalSnippet {
   /** The `{{> name}}` partial name — a valid Handlebars identifier (also the override key). */
@@ -209,6 +214,154 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
   <button type="button" data-sw-part="next" aria-label="Next slide">{{sw-icon "chevron-right" "size-6"}}</button>
   <div data-sw-part="dots" aria-hidden="true"></div>
 </div>`,
+  },
+
+  // ── Gallery / Lightbox (data-sw-component="lightbox") ───────────────────────────────────────────
+  {
+    name: 'gallery-grid',
+    label: 'Gallery — lightbox grid',
+    category: 'gallery',
+    description:
+      'A uniform square-cover lightbox grid fed from a media folder; click any tile to open the full-screen viewer.',
+    demonstrates: ['lightbox', 'data-sw-part:grid/item', 'data-caption', '{{#sw-folder}}', 'sw-url'],
+    // Explicit lightbox form: the data-sw-part="grid"/"item" structure gives the batteries-included
+    // styled square grid + thumbnail strip. The viewer DOM is built by the runtime (nothing to author).
+    // Each item is an <a href=full-image> containing an <img> thumbnail (here both are the folder url).
+    source: `{{!-- Lightbox gallery (explicit styled grid) bound to a media folder — set the folder name. --}}
+<div data-sw-component="lightbox" data-sw-block="Lightbox" aria-label="Gallery">
+  <div data-sw-part="grid" class="gap-3 !grid-cols-2 md:!grid-cols-4">
+    {{#sw-folder "Gallery" kind="image"}}
+    <a data-sw-part="item" href="{{sw-url url}}" data-caption="{{alt}}" class="overflow-hidden rounded-2xl">
+      <img src="{{sw-url url}}" alt="{{alt}}" loading="lazy" />
+    </a>
+    {{else}}
+    <p class="text-base-content/50">Upload images to the &ldquo;Gallery&rdquo; folder to show them here.</p>
+    {{/sw-folder}}
+  </div>
+</div>`,
+  },
+  {
+    name: 'gallery-masonry',
+    label: 'Gallery — masonry (no crop)',
+    category: 'gallery',
+    description:
+      'A mixed-aspect masonry lightbox (CSS columns); natural-aspect images stagger without cropping.',
+    demonstrates: ['lightbox', 'masonry columns', 'item.width/height', '{{#sw-folder}}', 'sw-url'],
+    // Minimal lightbox form: any container of <a href><img> children is a gallery — here a CSS-columns
+    // masonry. width/height reserve space (no layout shift); natural aspect ratios avoid cropping.
+    source: `{{!-- Masonry lightbox: mixed aspect ratios, no cropping. --}}
+<div data-sw-component="lightbox" class="block columns-2 gap-4 sm:columns-3" aria-label="Gallery">
+  {{#sw-folder "Gallery" kind="image"}}
+  <a href="{{sw-url url}}" data-caption="{{alt}}" class="mb-4 block break-inside-avoid overflow-hidden rounded-xl border border-base-200">
+    <img src="{{sw-url url}}" alt="{{alt}}" width="{{width}}" height="{{height}}" loading="lazy" class="block w-full" />
+  </a>
+  {{else}}
+  <p class="text-base-content/50">Upload images to the &ldquo;Gallery&rdquo; folder to show them here.</p>
+  {{/sw-folder}}
+</div>`,
+  },
+  {
+    name: 'gallery-dataset',
+    label: 'Gallery — bound to a dataset',
+    category: 'gallery',
+    description:
+      'A lightbox gallery whose images come from a dataset (image + caption per entry), with an empty-state.',
+    demonstrates: ['lightbox', '{{#each dataset}}', 'data-caption', 'sw-url', '{{else}}'],
+    source: `{{!-- Lightbox bound to the "portfolio" dataset: one tile per entry (image + title). --}}
+<div data-sw-component="lightbox" class="grid grid-cols-2 gap-3 md:grid-cols-4" aria-label="Portfolio">
+  {{#each dataset.portfolio}}
+  <a href="{{sw-url image}}" data-caption="{{title}}" class="overflow-hidden rounded-xl">
+    <img src="{{sw-url image}}" alt="{{title}}" loading="lazy" class="aspect-square w-full object-cover" />
+  </a>
+  {{else}}
+  <p class="text-base-content/50">Add entries to the &ldquo;portfolio&rdquo; dataset to populate this gallery.</p>
+  {{/each}}
+</div>`,
+  },
+
+  // ── Tabs (data-sw-component="tabs") ─────────────────────────────────────────────────────────────
+  {
+    name: 'tabs-mixed',
+    label: 'Tabs — mixed rich + plain labels',
+    category: 'tabs',
+    description:
+      'Accessible content tabs; the runtime builds the tablist from each panel. Mix a rich (icon) label with plain ones.',
+    demonstrates: ['tabs', 'data-sw-part:panel/tabtitle', 'data-sw-title', 'sw-icon'],
+    // The runtime generates the tablist, buttons, ARIA + roving tabindex. Per-panel labels: a rich label
+    // is a data-sw-part="tabtitle" child (non-interactive markup the runtime MOVES into the button —
+    // XSS-safe); a plain label is the data-sw-title attribute. Keep data-sw-title as the accessible name.
+    source: `{{!-- Content tabs. First tab has a rich (icon) label; the others use plain data-sw-title text. --}}
+<div data-sw-component="tabs">
+  <div data-sw-part="panel" data-sw-title="Overview">
+    <span data-sw-part="tabtitle">{{sw-icon "sparkles" "size-4"}} Overview</span>
+    <div class="prose mt-4 max-w-none"><p>What we do, in one paragraph. Each panel can hold any markup.</p></div>
+  </div>
+  <div data-sw-part="panel" data-sw-title="Process">
+    <div class="prose mt-4 max-w-none"><p>How we work — discovery, build, launch.</p></div>
+  </div>
+  <div data-sw-part="panel" data-sw-title="FAQ">
+    <div class="prose mt-4 max-w-none"><p>Answers to the questions we hear most.</p></div>
+  </div>
+</div>`,
+  },
+  {
+    name: 'tabs-dataset',
+    label: 'Tabs — generated from a dataset',
+    category: 'tabs',
+    description:
+      'One tab per dataset entry: the loop emits a panel whose data-sw-title interpolates a field (e.g. an FAQ).',
+    demonstrates: ['tabs', '{{#each dataset}}', 'data-sw-title interpolation', '{{else}}'],
+    source: `{{!-- Tabs built from the "faqs" dataset: one panel per entry, label from the question field. --}}
+<div data-sw-component="tabs">
+  {{#each dataset.faqs}}
+  <div data-sw-part="panel" data-sw-title="{{question}}">
+    <div class="prose mt-4 max-w-none"><p>{{answer}}</p></div>
+  </div>
+  {{else}}
+  <div data-sw-part="panel" data-sw-title="Getting started">
+    <p class="mt-4 text-base-content/50">Add entries to the &ldquo;faqs&rdquo; dataset to build these tabs.</p>
+  </div>
+  {{/each}}
+</div>`,
+  },
+
+  // ── Modals (data-sw-component="modal" → native <dialog>) ─────────────────────────────────────────
+  {
+    name: 'modal-basic',
+    label: 'Modal — trigger + dialog',
+    category: 'modal',
+    description:
+      'A link opens a native <dialog> modal (focus trap / Escape / backdrop for free); editable title + body.',
+    demonstrates: ['modal', 'href="#id" trigger', 'data-close-label', 'data-sw-text', 'data-sw-html'],
+    // Put id + data-sw-component="modal" on the <dialog>; open it from any <a href="#id"> (or a
+    // [data-sw-modal="id"] trigger). The browser supplies focus trap, Escape, ::backdrop + inerting;
+    // a styled close button is injected automatically. Body content uses normal editable directives.
+    source: `{{!-- A link-triggered modal. The styled close button is added automatically. --}}
+<a href="#how-it-works" class="btn btn-primary">What happens next?</a>
+<dialog id="how-it-works" data-sw-component="modal" data-close-label="Close" class="max-w-lg">
+  <h2 class="text-xl font-bold" data-sw-text="page.data.modal_title">How it works</h2>
+  <div class="prose mt-3 max-w-none text-base-content/80" data-sw-html="page.data.modal_body"><p>An editable modal body. Never put essential content ONLY in a modal — it does nothing without JS.</p></div>
+</dialog>`,
+  },
+  {
+    name: 'modal-confirm',
+    label: 'Modal — forced-choice confirm',
+    category: 'modal',
+    description:
+      'A button-triggered confirm dialog: backdrop click disabled, the auto close button hidden, explicit actions.',
+    demonstrates: ['modal', 'data-sw-modal trigger', 'data-backdrop-close', 'data-closebutton', 'data-sw-part:close', 'data-sw-href'],
+    // The confirm action is a real link the developer points at their own destructive route: href="#"
+    // is the inert placeholder, data-sw-href binds the real URL from page.data (kept "#" until set).
+    source: `{{!-- Forced-choice modal: a backdrop click won't dismiss it; the auto close button is hidden. --}}
+<button type="button" class="btn btn-outline btn-error" data-sw-modal="confirm-delete">Delete item</button>
+<dialog id="confirm-delete" data-sw-component="modal" data-backdrop-close="false" data-closebutton="false" class="max-w-sm">
+  <h2 class="text-lg font-bold">Are you sure?</h2>
+  <p class="mt-2 text-sm text-base-content/70">This action can&rsquo;t be undone.</p>
+  <div class="mt-6 flex justify-end gap-2">
+    <button type="button" class="btn btn-ghost" data-sw-part="close">Cancel</button>
+    <a class="btn btn-error" href="#" data-sw-href="page.data.confirm_url">Yes, delete</a>
+  </div>
+</dialog>`,
   },
 
   // ── Data, loops & bindings (the authoring primitives) ───────────────────────────────────────────

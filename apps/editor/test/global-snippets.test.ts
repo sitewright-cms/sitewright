@@ -19,10 +19,11 @@ describe('GLOBAL_SNIPPETS (reference cookbook)', () => {
     }
   });
 
-  it('every snippet is built from the DaisyUI vocabulary', () => {
-    const daisy = /\b(btn|card|navbar|hero|menu|footer|link|badge|base-100|base-200|base-content|primary-content)\b/;
+  it('is built from platform primitives (a DaisyUI class, a data-sw-* component/region, or an sw-* helper)', () => {
+    const daisy = /\b(btn|card|navbar|hero|menu|footer|link|badge|base-100|base-200|base-300|base-content|primary-content)\b/;
+    const primitive = /(data-sw-|\{\{\s*sw-|\{\{#sw-)/; // a component/part/directive or an sw-* helper/block
     for (const s of GLOBAL_SNIPPETS) {
-      expect(daisy.test(s.source), `snippet "${s.name}" should use DaisyUI`).toBe(true);
+      expect(daisy.test(s.source) || primitive.test(s.source), `snippet "${s.name}" should use a platform primitive`).toBe(true);
     }
   });
 
@@ -35,7 +36,7 @@ describe('GLOBAL_SNIPPETS (reference cookbook)', () => {
   });
 
   it('every recipe declares a grouping category + a one-line description (for the rail + agents)', () => {
-    const categories = new Set(['slider', 'data', 'chrome', 'effects']);
+    const categories = new Set(['slider', 'gallery', 'tabs', 'modal', 'data', 'chrome', 'effects']);
     for (const s of GLOBAL_SNIPPETS) {
       expect(categories.has(s.category), `recipe "${s.name}" category`).toBe(true);
       expect(s.description.trim().length, `recipe "${s.name}" description`).toBeGreaterThan(10);

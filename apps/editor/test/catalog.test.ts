@@ -10,6 +10,22 @@ describe('Library catalog', () => {
     expect(aos.items.map((i) => i.name)).toEqual([...ANIMATION_EFFECTS]);
   });
 
+  it('documents the parallax channels as a read-only reference section (every data-sw-parallax* knob)', () => {
+    const px = LIBRARY_SECTIONS.find((s) => s.category === 'parallax')!;
+    expect(px).toBeDefined();
+    const examples = px.items.map((i) => i.example).join('\n');
+    for (const attr of [
+      'data-sw-parallax=',
+      'data-sw-parallax-opacity=',
+      'data-sw-parallax-scale=',
+      'data-sw-parallax-blur=',
+      'data-sw-parallax-bg',
+      'data-sw-parallax-layer',
+    ]) {
+      expect(examples).toContain(attr);
+    }
+  });
+
   it('icons + brand sections are lazy; DaisyUI ships a broad component set', () => {
     const icons = LIBRARY_SECTIONS.find((s) => s.category === 'icons')!;
     const brand = LIBRARY_SECTIONS.find((s) => s.category === 'brand')!;

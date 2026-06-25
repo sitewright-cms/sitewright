@@ -52,16 +52,20 @@ export function ClientsManager({ project }: ClientsManagerProps) {
     }
   }
 
+  // Agency staff (platform admin/developer) aren't clients — hide them from this list (and the server
+  // refuses to remove them anyway). Only plain client members are listed/removable here.
+  const clients = members.filter((m) => !m.platformRole);
+
   return (
     <div className="max-w-2xl">
       <h3 className="mb-1 text-lg font-bold">Clients</h3>
       <p className="mb-4 text-sm text-slate-500">
-        People who can edit <strong>{project.name}</strong>’s content — only the blocks you mark
-        “Editable by client”, and only this project.
+        People you’ve invited to edit <strong>{project.name}</strong> — full editing of this one
+        project (they can’t delete it or invite others).
       </p>
 
       <ul className="mb-6 flex flex-col gap-2">
-        {members.map((m) => (
+        {clients.map((m) => (
           <li
             key={m.userId}
             className={`flex items-center justify-between ${glassPanel} px-4 py-2.5`}
@@ -76,7 +80,7 @@ export function ClientsManager({ project }: ClientsManagerProps) {
             </button>
           </li>
         ))}
-        {members.length === 0 && <li className="text-sm text-slate-400">No clients yet.</li>}
+        {clients.length === 0 && <li className="text-sm text-slate-400">No clients yet.</li>}
       </ul>
 
       <InvitePanel

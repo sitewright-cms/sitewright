@@ -323,6 +323,9 @@ export interface ProjectMemberView {
   userId: string;
   email: string;
   role: ProjectRole;
+  /** The user's PLATFORM role (admin/developer = agency staff), or null for a plain client. The
+   *  Clients modal hides staff and they can't be removed from a project. */
+  platformRole: PlatformRole | null;
   createdAt: Date;
 }
 
@@ -334,6 +337,7 @@ export async function listProjectMembers(db: Database, ctx: ProjectContext): Pro
       userId: users.id,
       email: users.email,
       role: projectMembers.role,
+      platformRole: users.platformRole,
       createdAt: projectMembers.createdAt,
     })
     .from(projectMembers)
@@ -341,13 +345,19 @@ export async function listProjectMembers(db: Database, ctx: ProjectContext): Pro
     .where(eq(projectMembers.projectId, ctx.projectId));
 }
 
-/** Removes a member from a project. Owner only; you cannot remove yourself or the project owner. */
+/** Removes a member from a project. Owner only; you cannot remove yourself, the project owner, or an
+ *  agency staff (platform admin/developer) account. */
 export async function removeProjectMember(db: Database, ctx: ProjectContext, userId: string): Promise<void> {
   if (ctx.role !== 'owner') throw new ForbiddenError('insufficient role to manage members');
   if (userId === ctx.userId) throw new ForbiddenError('you cannot remove yourself from the project');
   const target = await getProjectMembership(db, userId, ctx.projectId);
   if (!target) throw new NotFoundError('membership not found');
   if (target === 'owner') throw new ForbiddenError('the project owner cannot be removed');
+  // Agency staff (admin/developer) are not client members — they can't be removed from a project.
+  const targetPlatformRole = await getPlatformRole(db, userId);
+  if (targetPlatformRole === 'admin' || targetPlatformRole === 'developer') {
+    throw new ForbiddenError('agency staff accounts cannot be removed from a project');
+  }
   await db
     .delete(projectMembers)
     .where(and(eq(projectMembers.userId, userId), eq(projectMembers.projectId, ctx.projectId)));

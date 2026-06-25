@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { nativizeProject, type CaptureFn, type NativizeDeps } from '../src/render/nativize-project.js';
+import { nativizeProject, bodyBgCss, buildTypography, detectContainerWidth, type CaptureFn, type NativizeDeps } from '../src/render/nativize-project.js';
 import type { ProjectContext } from '../src/repo/context.js';
+import type { BodyBackground } from '../src/render/nativize-capture.js';
 import type { CapturedNode } from '@sitewright/site-import';
 
 const ctx: ProjectContext = { userId: 'u1', projectId: 'p1', role: 'owner' };
@@ -15,7 +16,10 @@ const tree = (): CapturedNode[] => [
     ],
   },
 ];
-const okCapture: CaptureFn = async () => ({ base: tree(), md: tree(), lg: tree() });
+const okCapture: CaptureFn = async () => ({
+  base: tree(), md: tree(), lg: tree(),
+  bodyBg: { image: 'url("http://127.0.0.1/media/bg.webp")', color: 'rgba(0, 0, 0, 0)', htmlColor: 'rgba(0, 0, 0, 0)', size: 'auto', position: '0% 0%', repeat: 'repeat', attachment: 'scroll', bodyFont: 'text-font, sans-serif', headingFont: 'primary-font, sans-serif' },
+});
 
 interface DepOverrides {
   pages?: unknown[];
@@ -33,12 +37,13 @@ function makeDeps(o: DepOverrides = {}) {
     website: { head: '<link rel="stylesheet" href="/media/import.css">', scripts: '<script src="/media/foreign.js"></script>', topNav: '<div><a href="/a">A</a></div>', footer: '<div class="rgba-black-strong">Foreign footer</div>' },
   };
   const pagePuts: Array<{ id: string; raw: { status: string; source: string; data: { swImport: { rewritten: boolean } } } }> = [];
-  let settingsPut: { website: { head: string; scripts: string; topNav: string; mobileNav: string; footer: string } } | null = null;
+  let settingsPut: { website: { head: string; scripts: string; topNav: string; mobileNav: string; footer: string; criticalCss?: string }; identity?: { typography?: { heading?: { assetId?: string; family?: string }; body?: { assetId?: string } } } } | null = null;
   const entries = o.entries ?? [];
+  const fonts = [{ id: 'f-primary', kind: 'font', family: 'primary-font' }, { id: 'f-text', kind: 'font', family: 'text-font' }];
   const renderContexts: unknown[] = [];
   const contentRepo = {
     get: vi.fn(async () => settings),
-    list: vi.fn(async (_c: unknown, kind: string) => (kind === 'entry' ? entries : pages)),
+    list: vi.fn(async (_c: unknown, kind: string) => (kind === 'entry' ? entries : kind === 'media' ? fonts : pages)),
     put: vi.fn(async (_c: unknown, kind: string, id: string, raw: unknown) => {
       if (kind === 'settings') settingsPut = raw as never;
       else pagePuts.push({ id, raw: raw as never });
@@ -76,6 +81,15 @@ describe('nativizeProject', () => {
     const w = getSettingsPut()!.website;
     expect(w.topNav).toContain('{{#each nav.header}}'); // #6 data-driven nav
     expect(w.topNav).not.toContain('href="/a"'); // the imported hard-coded link is gone
+    expect(w.topNav).toContain('{{company.name}}'); // nav shows the company name
+    expect(w.topNav).toContain('{{company.slogan}}'); // …and the slogan
+    expect(w.topNav).toContain('peer-checked'); // mobile = a CSS drawer (sidebar), not a dropdown
+    expect(w.criticalCss).toContain('background-image:url("/media/bg.webp")'); // page background (loopback stripped)
+    expect(w.criticalCss).toContain('background-color:#ffffff'); // white base behind a semi-transparent texture (no black)
+    expect(w.criticalCss).toContain('body{'); // applied site-wide
+    const typo = getSettingsPut()!.identity!.typography!; // fonts matched to hosted assets
+    expect(typo.heading).toMatchObject({ assetId: 'f-primary', family: 'primary-font' });
+    expect(typo.body).toMatchObject({ assetId: 'f-text' });
     expect(w.head).not.toMatch(/<link[^>]+stylesheet/i); // #5 foreign stylesheet dropped
     expect(w.scripts).toBe(''); // #5 foreign JS dropped
     expect(w.mobileNav).toBe('');
@@ -135,5 +149,64 @@ describe('nativizeProject', () => {
     expect(report.pagesNativized).toBeGreaterThanOrEqual(1); // the in-flight pages complete
     expect(report.pagesNativized).toBeLessThan(6); // …but the tail is skipped once aborted
     expect(report.chromeRebuilt).toBe(false); // not all native → chrome untouched
+  });
+});
+
+const LOOPBACK = /http:\/\/127\.0\.0\.1(:\d+)?/g;
+const bg = (o: Partial<BodyBackground>): BodyBackground => ({ image: 'none', color: 'rgba(0, 0, 0, 0)', htmlColor: 'rgba(0, 0, 0, 0)', size: 'auto', position: '0% 0%', repeat: 'repeat', attachment: 'scroll', bodyFont: '', headingFont: '', ...o });
+
+describe('bodyBgCss', () => {
+  it('returns empty for no background / no image and transparent colors', () => {
+    expect(bodyBgCss(undefined, LOOPBACK)).toBe('');
+    expect(bodyBgCss(bg({}), LOOPBACK)).toBe(''); // image:none + transparent → nothing
+  });
+  it('uses an opaque body color, else the html color', () => {
+    expect(bodyBgCss(bg({ color: 'rgb(20, 30, 40)' }), LOOPBACK)).toBe('body{background-color:rgb(20, 30, 40)}');
+    expect(bodyBgCss(bg({ htmlColor: 'rgb(250, 250, 250)' }), LOOPBACK)).toBe('body{background-color:rgb(250, 250, 250)}');
+  });
+  it('adds a WHITE base behind a url() image (loopback stripped, first layer only)', () => {
+    const css = bodyBgCss(bg({ image: 'url("http://127.0.0.1:80/media/x.webp"), url("http://127.0.0.1/y.webp")' }), LOOPBACK);
+    expect(css).toContain('background-color:#ffffff');
+    expect(css).toContain('background-image:url("/media/x.webp")');
+    expect(css).not.toContain('y.webp'); // only the first layer
+  });
+  it('keeps a gradient image WHOLE (no comma truncation)', () => {
+    const css = bodyBgCss(bg({ image: 'linear-gradient(to right, #fff, #000)', color: 'rgb(1, 2, 3)' }), LOOPBACK);
+    expect(css).toContain('background-image:linear-gradient(to right, #fff, #000)');
+  });
+  it('drops a data: URI image', () => {
+    expect(bodyBgCss(bg({ image: 'url("data:image/png;base64,AAAA")' }), LOOPBACK)).toBe('');
+  });
+});
+
+describe('buildTypography', () => {
+  const fonts = [{ id: 'fh', family: 'primary-font' }, { id: 'fb', family: 'text-font' }];
+  it('returns undefined without bodyBg or fonts', () => {
+    expect(buildTypography(undefined, fonts)).toBeUndefined();
+    expect(buildTypography(bg({ headingFont: 'primary-font' }), [])).toBeUndefined();
+  });
+  it('matches heading + body fonts to hosted assets', () => {
+    const t = buildTypography(bg({ headingFont: '"primary-font", sans-serif', bodyFont: 'text-font' }), fonts)!;
+    expect(t.heading).toMatchObject({ source: 'asset', family: 'primary-font', assetId: 'fh', weight: 700 });
+    expect(t.body).toMatchObject({ source: 'asset', family: 'text-font', assetId: 'fb', weight: 400 });
+  });
+  it('returns undefined when no captured font matches a hosted asset', () => {
+    expect(buildTypography(bg({ headingFont: 'Arial', bodyFont: 'Georgia' }), fonts)).toBeUndefined();
+  });
+});
+
+describe('detectContainerWidth', () => {
+  const node = (s: Record<string, string>, children: CapturedNode[] = []): CapturedNode => ({ tag: 'div', s, children } as CapturedNode);
+  it('finds the largest centered wide block (recursing into children)', () => {
+    const trees = [node({ width: '100%' }, [
+      node({ width: '1120px', 'margin-left': '140px', 'margin-right': '140px' }, [node({ width: '50px' }, [])]),
+      node({ width: '1400px', 'margin-left': '68px', 'margin-right': '68px' }, [node({ width: '10px' }, [])]),
+    ])];
+    expect(detectContainerWidth(trees)).toBe(1400);
+  });
+  it('ignores non-centered / too-narrow / childless blocks', () => {
+    expect(detectContainerWidth([node({ width: '1400px', 'margin-left': '0px', 'margin-right': '0px' }, [node({}, [])])])).toBeUndefined(); // not centered
+    expect(detectContainerWidth([node({ width: '400px', 'margin-left': '50px', 'margin-right': '50px' }, [node({}, [])])])).toBeUndefined(); // too narrow
+    expect(detectContainerWidth([node({ width: '1400px', 'margin-left': '68px', 'margin-right': '68px' }, [])])).toBeUndefined(); // no children
   });
 });

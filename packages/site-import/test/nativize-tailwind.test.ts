@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { space, dim, fontSizeClass, radiusClass, colorToken, colorValue, hexOf, spaceToken, type NativizePalette, DEFAULT_FONT_MAP } from '../src/nativize/tokens.js';
+import { space, dim, fontSizeClass, radiusClass, colorToken, colorValue, hexOf, spaceToken, graySnap, zIndexClass, opacityClass, leadingClass, type NativizePalette, DEFAULT_FONT_MAP } from '../src/nativize/tokens.js';
 import { emitGroups, mergeGroups, type EmitContext, type BreakpointGroups } from '../src/nativize/tailwind.js';
 
 const palette: NativizePalette = {
@@ -16,7 +16,7 @@ describe('tokens — px/color snapping', () => {
     expect(space('p', '17px')).toBe('p-4'); // within 6% tolerance
     expect(space('p', '500px')).toBe('p-[500px]'); // beyond the scale → arbitrary
     expect(dim('h', '16px')).toBe('h-4');
-    expect(dim('w', '200px')).toBe('w-[200px]'); // tight tol → arbitrary (192/208 are >1px off)
+    expect(dim('w', '200px')).toBe('w-48'); // generous tol (≤10%) snaps 200→192 → w-48
     expect(spaceToken('16px')).toBe('4');
     expect(spaceToken('500px')).toBeNull();
   });
@@ -25,7 +25,8 @@ describe('tokens — px/color snapping', () => {
     expect(fontSizeClass('16px')).toBe('text-base');
     expect(fontSizeClass('18px')).toBe('text-lg');
     expect(fontSizeClass('36px')).toBe('text-4xl');
-    expect(fontSizeClass('42px')).toBe('text-[42px]'); // between 36/48, beyond tolerance
+    expect(fontSizeClass('42px')).toBe('text-4xl'); // generous tol (≤15%) snaps 42→36 → text-4xl
+    expect(fontSizeClass('200px')).toBe('text-[200px]'); // far off-scale (no scale step within 15%) → arbitrary
     expect(radiusClass('8px')).toBe('rounded-lg');
     expect(radiusClass('0px')).toBe('rounded-none');
     expect(radiusClass('9999px')).toBe('rounded-full');
@@ -44,8 +45,23 @@ describe('tokens — px/color snapping', () => {
     expect(colorValue('rgb(0, 0, 0)', palette)).toBe('#000');
     expect(hexOf('rgb(12, 163, 200)')).toBe('#0ca3c8');
     expect(hexOf('transparent')).toBe('transparent'); // no rgb triple → passthrough
-    expect(radiusClass('20px')).toBe('rounded-[20px]'); // off-scale → arbitrary
+    expect(radiusClass('20px')).toBe('rounded-2xl'); // generous tol snaps 20→16 → rounded-2xl
+    expect(radiusClass('50%')).toBe('rounded-full'); // percentage radius → pill/circle
     expect(fontSizeClass('abc')).toBe('text-[abc]'); // unparseable → arbitrary
+  });
+
+  it('snaps z-index / opacity / gray / line-height to canonical tokens', () => {
+    expect(zIndexClass('998')).toBe('z-50');
+    expect(zIndexClass('9')).toBe('z-10');
+    expect(zIndexClass('-1')).toBe('z-[-1]'); // negative z (behind content) preserved, not snapped to z-0
+    expect(opacityClass('0')).toBe('opacity-0');
+    expect(opacityClass('0.5')).toBe('opacity-50');
+    expect(graySnap('rgb(204, 204, 204)')).toBe('neutral-300'); // near-gray → neutral scale
+    expect(graySnap('rgb(239, 239, 239)')).toBe('neutral-100');
+    expect(graySnap('rgb(11, 74, 119)')).toBeNull(); // chromatic → keep hex
+    expect(leadingClass('24px', '16px')).toBe('leading-normal'); // ratio 1.5
+    expect(leadingClass('24px')).toBe('leading-6'); // px, no font-size → fixed scale
+    expect(leadingClass('103px', '40px')).toBeNull(); // 2.6× → implausible, drop
   });
 });
 
@@ -53,6 +69,9 @@ describe('emitGroups — computed style → keyed utility groups', () => {
   it('maps typography + brand colors to theme tokens', () => {
     expect(emitGroups({ 'background-color': 'rgb(11, 74, 119)' }, 'div', false, ctx).g.bg).toBe('bg-primary');
     expect(emitGroups({ color: 'rgb(50, 60, 70)' }, 'p', false, ctx).g.color).toBe('text-[#323c46]');
+    // a SEMI-TRANSPARENT overlay keeps its alpha (must NOT collapse to opaque bg-black)
+    expect(emitGroups({ 'background-color': 'rgba(0, 0, 0, 0.1)' }, 'div', false, ctx).g.bg).toBe('bg-[rgba(0,0,0,0.1)]');
+    expect(emitGroups({ 'background-color': 'rgb(0, 0, 0)' }, 'div', false, ctx).g.bg).toBe('bg-black');
     expect(emitGroups({ 'font-size': '18px', 'font-weight': '700' }, 'h2', false, ctx).g).toMatchObject({ fsize: 'text-lg', fweight: 'font-bold' });
     expect(emitGroups({ 'text-transform': 'uppercase' }, 'span', false, ctx).g.ttransform).toBe('uppercase');
   });
@@ -74,7 +93,9 @@ describe('emitGroups — computed style → keyed utility groups', () => {
     const centered = emitGroups({ width: '1200px', 'margin-left': '40px', 'margin-right': '40px' }, 'div', false, ctx).g;
     expect(centered).toMatchObject({ w: 'w-full', maxw: 'max-w-[1200px]', mx: 'mx-auto' });
     const plain = emitGroups({ width: '200px' }, 'div', false, ctx).g;
-    expect(plain).toMatchObject({ w: 'w-[200px]', maxw: 'max-w-full' });
+    expect(plain).toMatchObject({ w: 'w-48', maxw: 'max-w-full' });
+    const wide = emitGroups({ width: '1280px' }, 'div', false, ctx).g; // non-centered viewport-wide block
+    expect(wide.w).toBe('w-full');
     expect(emitGroups({}, 'img', false, ctx).g).toMatchObject({ h: 'h-auto', maxw: 'max-w-full' });
   });
 
@@ -105,8 +126,8 @@ describe('emitGroups — computed style → keyed utility groups', () => {
     }, 'div', false, ctx);
     expect(g).toMatchObject({
       leading: 'leading-6', tracking: 'tracking-[0.5px]', talign: 'text-center', whitespace: 'whitespace-nowrap',
-      fstyle: 'italic', fontfam: 'font-heading', position: 'absolute', zindex: 'z-[10]', top: 'top-2', left: 'left-4',
-      opacity: 'opacity-[0.5]', transform: '[transform:rotate(5deg)]', overflow: 'overflow-hidden', objectfit: 'object-cover',
+      fstyle: 'italic', fontfam: 'font-heading', position: 'absolute', zindex: 'z-10', top: 'top-2', left: 'left-4',
+      opacity: 'opacity-50', transform: '[transform:rotate(5deg)]', overflow: 'overflow-hidden', objectfit: 'object-cover',
       aspect: 'aspect-[16/9]', flexwrap: 'flex-wrap', maxw: 'max-w-[600px]',
     });
     expect(st).toContain('border-radius:10px / 20px'); // elliptical radius → inline (can't be a utility)

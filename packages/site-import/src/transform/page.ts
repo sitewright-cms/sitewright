@@ -30,6 +30,10 @@ const REMOVE_TAGS = new Set(['script', 'noscript', 'template', 'style', 'object'
 const BACK_TO_TOP_RE = /back-?to-?top|backtotop|scroll-?to-?top|scroll-?top|go-?to-?top|gototop|scroll-?up|\btotop\b|\bbtt\b/i;
 const isBackToTop = (el: Element): boolean =>
   (el.name === 'a' || el.name === 'button') && BACK_TO_TOP_RE.test(`${el.attribs.id ?? ''} ${el.attribs.class ?? ''}`);
+/** Foreign page PRELOADER / loading overlay (the spinner cover shown on `<body class="loading">`) — the
+ *  platform has its own preloader; the imported one nativizes to a stray full-screen / black band. */
+const PRELOADER_RE = /\b(?:preloader|pre-loader|page-loader|site-loader|loading-(?:animation|overlay|screen|spinner|wrap|wrapper|container))\b/i;
+const isPreloader = (el: Element): boolean => PRELOADER_RE.test(`${el.attribs.id ?? ''} ${el.attribs.class ?? ''}`);
 /** A wrapper with no element children and no non-whitespace text (e.g. once its only child was removed). */
 const isEmptyWrapper = (el: Element): boolean => el.children.filter(isTag).length === 0 && textContent([el]).trim() === '';
 
@@ -85,6 +89,11 @@ export function sanitizeForSource(nodes: AnyNode[], ctx: TransformCtx, diags: Im
       else if (el.name === 'style') diags.push({ code: 'style-removed', message: '<style> block removed (CSS hoisted separately)', page: ctx.pageUrl });
       removeElement(el);
     }
+  }
+  // Strip foreign PRELOADER / loading overlays (the platform provides its own; the imported one nativizes
+  // to a stray full-screen grey/black band). Remove the whole subtree.
+  for (const el of elements(nodes)) {
+    if (isPreloader(el)) { removeElement(el); diags.push({ code: 'preloader-removed', message: 'foreign preloader/loading overlay removed', page: ctx.pageUrl }); }
   }
   // Strip foreign BACK-TO-TOP buttons (the platform injects its own); also drop any ancestor wrapper left
   // empty once the button is gone (a section/div that ONLY held the back-to-top → would nativize to a

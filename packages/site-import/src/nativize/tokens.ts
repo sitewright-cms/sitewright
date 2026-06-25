@@ -26,41 +26,95 @@ const nearest = (px: number, arr: readonly number[]): number => arr.reduce((b, s
 /** A CSS value for a Tailwind arbitrary bracket: spaces → underscores (`1px solid` → `1px_solid`). */
 export const arbitrary = (v: string): string => (v || '').replace(/\s+/g, '_');
 
-/** px → spacing-scale token (`"16px"` → `"4"`), or null if off-scale beyond tolerance. */
+/** px → spacing-scale token (`"16px"` → `"4"`), or null if off-scale beyond tolerance. The default
+ *  tolerance is GENEROUS (≤3px or 18%) so captured values snap to canonical p-4/m-6/gap-8 rather than
+ *  staying arbitrary [..] soup — a few px of drift is invisible and the output stays theme-idiomatic. */
 export function spaceToken(v: string, tol?: number): string | null {
   const px = parseFloat(v);
   if (Number.isNaN(px)) return null;
   const b = nearest(px, SPX);
-  return Math.abs(b - px) <= (tol ?? Math.max(1.5, px * 0.06)) ? STOK[b]! : null;
+  return Math.abs(b - px) <= (tol ?? Math.max(3, px * 0.18)) ? STOK[b]! : null;
+}
+
+/** A spacing/size class snapping a captured value to the scale, handling `auto` and NEGATIVES (a captured
+ *  `-60px` → `-ml-14`); off-scale → an arbitrary bracket. */
+function scaleClass(prefix: string, v: string, tol?: number): string {
+  const raw = (v || '').trim();
+  if (raw === 'auto') return `${prefix}-auto`;
+  const px = parseFloat(raw);
+  if (Number.isNaN(px)) return `${prefix}-[${raw}]`;
+  const t = spaceToken(String(Math.abs(px)), tol);
+  if (t === null) return `${prefix}-[${raw}]`;
+  return (px < 0 ? '-' : '') + `${prefix}-${t}`;
 }
 
 /** Loose spacing class for padding/margin/gap: `space("p", "16px")` → `"p-4"`; off-scale → `"p-[16.2px]"`. */
 export function space(prefix: string, v: string): string {
-  const t = spaceToken(v);
-  return t !== null ? `${prefix}-${t}` : `${prefix}-[${v}]`;
+  return scaleClass(prefix, v);
 }
 
-/** Tight spacing class for w/h/insets/icons (default tol 1px): `dim("h", "16px")` → `"h-4"`. */
-export function dim(prefix: string, v: string, tol = 1): string {
-  const t = spaceToken(v, tol);
-  return t !== null ? `${prefix}-${t}` : `${prefix}-[${v}]`;
+/** Spacing class for w/h/insets/icons. Default tolerance ≤3px or 10% so fixed sizes snap to the scale
+ *  (`90px` → `w-24`) instead of staying arbitrary; pass a tighter `tol` where exactness matters. */
+export function dim(prefix: string, v: string, tol?: number): string {
+  return scaleClass(prefix, v, tol ?? Math.max(3, Math.abs(parseFloat(v) || 0) * 0.1));
 }
 
-/** Font-size px → `text-*` token, or an arbitrary `text-[19.2px]` when off-scale. */
+/** Font-size px → `text-*` token, or an arbitrary `text-[19.2px]` when off-scale. Generous tolerance
+ *  (≤2px or 15%) so headings/body snap to text-2xl/text-base instead of arbitrary px. */
 export function fontSizeClass(v: string): string {
   const px = parseFloat(v);
   if (Number.isNaN(px)) return `text-[${v}]`;
   const b = nearest(px, Object.keys(FPX).map(Number));
-  return Math.abs(b - px) <= Math.max(1.5, px * 0.08) ? FPX[b]! : `text-[${v}]`;
+  return Math.abs(b - px) <= Math.max(2, px * 0.15) ? FPX[b]! : `text-[${v}]`;
 }
 
-/** Border-radius px → `rounded-*` (≥400px → `rounded-full`), or an arbitrary value when off-scale. */
+/** Border-radius → `rounded-*`: a `%`/`9999px`/large value → `rounded-full` (a pill/circle); else snap px
+ *  to the scale (generous), or an arbitrary value when far off-scale. */
 export function radiusClass(v: string): string {
+  if (/%/.test(v) && parseFloat(v) >= 50) return 'rounded-full'; // 50%+ radius = circle/pill
   const px = parseFloat(v);
   if (Number.isNaN(px)) return `rounded-[${arbitrary(v)}]`;
-  if (px >= 400) return 'rounded-full';
+  if (px >= 32) return 'rounded-full'; // a big pixel radius is effectively a pill on normal-sized elements
   const b = nearest(px, Object.keys(RPX).map(Number));
-  return Math.abs(b - px) <= Math.max(2, px * 0.12) ? RPX[b]! : `rounded-[${arbitrary(v)}]`;
+  return Math.abs(b - px) <= Math.max(3, px * 0.25) ? RPX[b]! : `rounded-[${arbitrary(v)}]`;
+}
+
+// z-index canonical scale (0/10/.../50) — captured 998 / 9 etc. snap to the nearest.
+const ZPX = [0, 10, 20, 30, 40, 50];
+/** z-index → canonical `z-N` (snaps 998→z-50, 9→z-10); huge values cap at z-50. */
+export function zIndexClass(v: string): string {
+  const n = parseFloat(v);
+  if (Number.isNaN(n)) return `z-[${v}]`;
+  if (n < 0) return `z-[${n}]`; // negative z (decorative layer behind content) must NOT snap to z-0
+  if (n >= 45) return 'z-50';
+  return `z-${nearest(n, ZPX)}`;
+}
+
+/** opacity 0..1 → canonical `opacity-N` (nearest 5%): "0"→opacity-0, "0.5"→opacity-50. */
+export function opacityClass(v: string): string {
+  const n = parseFloat(v);
+  if (Number.isNaN(n)) return `opacity-[${v}]`;
+  return `opacity-${Math.round((n * 100) / 5) * 5}`;
+}
+
+const LEAD: ReadonlyArray<readonly [number, string]> = [[1, 'leading-none'], [1.25, 'leading-tight'], [1.375, 'leading-snug'], [1.5, 'leading-normal'], [1.625, 'leading-relaxed'], [2, 'leading-loose']];
+// Tailwind fixed-px leading scale (leading-3 .. leading-10 = 12 .. 40px) for a px line-height we can't ratio.
+const LEAD_PX: ReadonlyArray<readonly [number, string]> = [[12, 'leading-3'], [16, 'leading-4'], [20, 'leading-5'], [24, 'leading-6'], [28, 'leading-7'], [32, 'leading-8'], [36, 'leading-9'], [40, 'leading-10']];
+const byRatio = (r: number): string => LEAD.reduce((a, c) => (Math.abs(c[0] - r) < Math.abs(a[0] - r) ? c : a))[1];
+/** line-height → a `leading-*`: a RATIO name when computable against font-size (or unitless), else the
+ *  fixed-px scale. Returns null to DROP an implausible line-height (e.g. a 2.6× tall line-box from a
+ *  centered single-line heading) so the platform default applies instead of pinning excess vertical space. */
+export function leadingClass(lh: string, fontSize?: string): string | null {
+  const n = parseFloat(lh);
+  if (Number.isNaN(n)) return null;
+  if (/px/.test(lh)) {
+    const f = parseFloat(fontSize ?? '');
+    if (f > 0) { const r = n / f; return r < 0.9 || r > 2.2 ? null : byRatio(r); }
+    if (n < 10 || n > 44) return null; // off the fixed-px leading scale → platform default
+    return LEAD_PX.reduce((a, c) => (Math.abs(c[0] - n) < Math.abs(a[0] - n) ? c : a))[1];
+  }
+  if (/[%a-z]/i.test(lh.trim())) return null; // em/rem/% line-height — leave to default
+  return n < 0.9 || n > 2.2 ? null : byRatio(n); // unitless
 }
 
 const rgbKey = (v: string): string | null => {
@@ -75,6 +129,30 @@ export const hexOf = (v: string): string => {
   const m = (v || '').match(/(\d+),\s*(\d+),\s*(\d+)/);
   return m ? '#' + [1, 2, 3].map((i) => (+m[i]!).toString(16).padStart(2, '0')).join('') : v;
 };
+
+// Tailwind neutral (pure-gray) scale: average channel value → token. Snaps an off-brand gray to a
+// canonical bg-neutral-200 / text-neutral-800 instead of an arbitrary [#cccccc].
+const NEUTRAL: ReadonlyArray<readonly [number, string]> = [[250, 'neutral-50'], [245, 'neutral-100'], [229, 'neutral-200'], [212, 'neutral-300'], [163, 'neutral-400'], [115, 'neutral-500'], [82, 'neutral-600'], [64, 'neutral-700'], [38, 'neutral-800'], [23, 'neutral-900'], [10, 'neutral-950']];
+/** A near-gray captured color → the nearest `neutral-*` token, or null if it's chromatic (keep the hex). */
+export function graySnap(v: string): string | null {
+  const m = (v || '').match(/(\d+),\s*(\d+),\s*(\d+)/);
+  if (!m) return null;
+  const r = +m[1]!, g = +m[2]!, b = +m[3]!;
+  if (Math.max(r, g, b) - Math.min(r, g, b) > 18) return null; // chromatic → not a neutral
+  const lvl = (r + g + b) / 3;
+  return NEUTRAL.reduce((a, c) => (Math.abs(c[0] - lvl) < Math.abs(a[0] - lvl) ? c : a))[1];
+}
+
+/** A `text-`/`bg-` class for a captured color: a SEMI-TRANSPARENT color keeps its exact rgba (a 10% dark
+ *  overlay must NOT collapse to opaque `bg-black`); else brand token → neutral snap → hex arbitrary. */
+export function colorClass(prefix: string, v: string, palette: NativizePalette): string {
+  const a = (v || '').match(/rgba\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+\s*,\s*([\d.]+)\s*\)/);
+  if (a) { const al = parseFloat(a[1]!); if (al > 0 && al < 1) return `${prefix}-[${(v || '').replace(/\s+/g, '')}]`; } // keep the alpha
+  const t = colorToken(v, palette);
+  if (t) return `${prefix}-${t}`;
+  const gray = graySnap(v);
+  return gray ? `${prefix}-${gray}` : `${prefix}-[${hexOf(v)}]`;
+}
 
 /** Captured color → a token name (brand primary/secondary/accent, or white/black), or null if no match. */
 export function colorToken(v: string, palette: NativizePalette): string | null {

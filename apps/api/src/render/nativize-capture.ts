@@ -7,16 +7,35 @@
 import type { Route, Request as PwRequest } from 'playwright-core';
 import type { CapturedNode } from '@sitewright/site-import';
 import { getBrowser, injectBaseHref, isRequestAllowed, withRenderSlot } from './screenshot.js';
-import { NAVDATA, SCROLL_SETTLE, WALK } from './nativize-walk.js';
+import { BODYBG, NAVDATA, SCROLL_SETTLE, WALK } from './nativize-walk.js';
 
-// Mobile-first capture widths (smallest→largest); the transform emits base + md:/lg: from these.
-const VIEWPORTS = [390, 768, 1280] as const;
+// Mobile-first capture widths (smallest→largest); the transform emits base + md:/lg: from these. The
+// largest is WIDE (1536) so a centered max-width content container actually CAPS there (margins appear) —
+// it reads as full-width at a 1280 capture, hiding the container, and a wide screen is where the missing
+// container is most visible.
+const VIEWPORTS = [400, 768, 1536] as const;
 const DEFAULT_TIMEOUT_MS = 12_000;
 
+export interface BodyBackground {
+  image: string;
+  color: string;
+  /** The <html> element's background-color — the base behind a semi-transparent body texture. */
+  htmlColor: string;
+  size: string;
+  position: string;
+  repeat: string;
+  attachment: string;
+  /** Computed font-family of the body + a heading → matched to a hosted font asset for typography. */
+  bodyFont: string;
+  headingFont: string;
+}
 export interface CapturedTrees {
   base: CapturedNode[];
   md: CapturedNode[];
   lg: CapturedNode[];
+  /** The document body's OWN computed background (the page background) — applied site-wide via criticalCss
+   *  (the per-node WALK only sees the body's CHILDREN, never the body itself). */
+  bodyBg?: BodyBackground;
 }
 export interface NavData {
   logo: { src: string; alt: string } | null;
@@ -69,7 +88,8 @@ export async function captureStyledTrees(
       const tree = (await page.evaluate(WALK as (sel: string) => unknown, rootSel)) as CapturedNode[];
       trees.push(tree);
     }
-    return { base: trees[0]!, md: trees[1]!, lg: trees[2]! };
+    const bodyBg = (await page.evaluate(BODYBG as () => unknown)) as BodyBackground;
+    return { base: trees[0]!, md: trees[1]!, lg: trees[2]!, bodyBg };
   });
 }
 

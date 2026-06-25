@@ -65,14 +65,30 @@ function findIcon(doc: Document): string | undefined {
   return icon?.attribs.href;
 }
 
+interface LdAddress { street?: string; locality?: string; region?: string; country?: string; postalCode?: string }
 interface JsonLdOrg {
   email?: string;
   telephone?: string;
   sameAs?: string[];
   type?: string;
+  address?: LdAddress;
+  geo?: { latitude: string; longitude: string };
 }
 
-/** Pull Organization-ish fields from JSON-LD <script type="application/ld+json"> blocks. */
+/** A JSON-LD value that's a string OR a typed object with a `name` (e.g. addressCountry: {name}). */
+function ldStr(v: unknown): string | undefined {
+  if (typeof v === 'string') return v.trim() || undefined;
+  if (v && typeof v === 'object') { const n = (v as Record<string, unknown>).name; if (typeof n === 'string') return n.trim() || undefined; }
+  return undefined;
+}
+/** A JSON-LD number (number or numeric string) → its string form (GeoSchema stores lat/long as strings). */
+function ldNum(v: unknown): string | undefined {
+  if (typeof v === 'number' && Number.isFinite(v)) return String(v);
+  if (typeof v === 'string' && /^-?\d+(?:\.\d+)?$/.test(v.trim())) return v.trim();
+  return undefined;
+}
+
+/** Pull Organization-ish fields (incl. postal address + geo) from JSON-LD `application/ld+json` blocks. */
 function parseJsonLd(doc: Document): JsonLdOrg {
   const out: JsonLdOrg = {};
   for (const script of allByName(doc.children, 'script')) {
@@ -91,9 +107,50 @@ function parseJsonLd(doc: Document): JsonLdOrg {
       if (!out.telephone && typeof node.telephone === 'string') out.telephone = node.telephone;
       const sameAs = node.sameAs;
       if (!out.sameAs && Array.isArray(sameAs)) out.sameAs = sameAs.filter((s): s is string => typeof s === 'string');
+      if (!out.address && node.address) {
+        const a = (Array.isArray(node.address) ? node.address[0] : node.address) as Record<string, unknown> | undefined;
+        if (a && typeof a === 'object') {
+          const addr: LdAddress = { street: ldStr(a.streetAddress), locality: ldStr(a.addressLocality), region: ldStr(a.addressRegion), country: ldStr(a.addressCountry), postalCode: ldStr(a.postalCode) };
+          if (Object.values(addr).some((x) => x !== undefined)) out.address = addr;
+        }
+      }
+      if (!out.geo && node.geo && typeof node.geo === 'object') {
+        const g = node.geo as Record<string, unknown>;
+        const lat = ldNum(g.latitude), lon = ldNum(g.longitude);
+        if (lat !== undefined && lon !== undefined) out.geo = { latitude: lat, longitude: lon };
+      }
     }
   }
   return out;
+}
+
+const MAP_EMBED_RE = /google\.[a-z.]+\/maps\/embed|maps\.google\.[a-z.]+\/.*embed|\/maps\/embed/i;
+
+/** Scan the home DOM for contact signals JSON-LD often omits: tel:/mailto:, footer social links, a map. */
+function scanContacts(doc: Document): { phone?: string; email?: string; social: { link: string; name?: string; icon?: string }[]; mapUrl?: string } {
+  let phone: string | undefined, email: string | undefined, mapUrl: string | undefined;
+  const social: { link: string; name?: string; icon?: string }[] = [];
+  const seen = new Set<string>();
+  for (const a of allByName(doc.children, 'a')) {
+    const href = (a.attribs.href ?? '').trim();
+    if (!href) continue;
+    if (!phone && /^tel:/i.test(href)) { const p = decodeURIComponent(href.slice(4)).replace(/\s+/g, ' ').trim(); if (p) phone = p.slice(0, 60); continue; }
+    if (!email && /^mailto:/i.test(href)) { const e = href.slice(7).split('?')[0]!.trim(); if (isEmail(e)) email = e; continue; }
+    if (/^https:\/\//i.test(href)) {
+      const det = detectSocial(href);
+      // detectSocial falls back to icon 'globe' for UNKNOWN hosts — only KNOWN providers are real social.
+      if (det.icon && det.icon !== 'globe') {
+        const key = det.name ?? href;
+        if (!seen.has(key) && social.length < 12) { seen.add(key); social.push({ link: href, ...det }); }
+      }
+    }
+  }
+  // A Google Maps EMBED iframe (a plain maps link can't be framed) → mapUrl, rendered as the footer map.
+  for (const f of allByName(doc.children, 'iframe')) {
+    const src = (f.attribs.src ?? '').trim();
+    if (/^https:\/\//i.test(src) && MAP_EMBED_RE.test(src)) { mapUrl = src.slice(0, 2000); break; }
+  }
+  return { phone, email, social, mapUrl };
 }
 
 function flattenLd(data: unknown): Record<string, unknown>[] {
@@ -119,12 +176,17 @@ export function extractIdentity(homeDoc: Document, ctx: IdentityCtx): CorporateI
   const meta = metaMap(homeDoc);
   const name = meta.get('og:site_name') ?? meta.get('application-name') ?? titleName(homeDoc) ?? hostName(ctx.baseUrl) ?? ctx.fallbackName;
   const ld = parseJsonLd(homeDoc);
+  const dom = scanContacts(homeDoc); // tel:/mailto:/social/map signals JSON-LD usually lacks
   const primary = cssColor(meta.get('theme-color'));
 
-  const social = (ld.sameAs ?? [])
+  // JSON-LD sameAs is the cleanest social source; fall back to scanned footer links when it's absent.
+  const ldSocial = (ld.sameAs ?? [])
     .filter((url) => /^https?:\/\//i.test(url))
     .slice(0, 50)
     .map((url) => ({ link: url, ...detectSocial(url) }));
+  const social = ldSocial.length > 0 ? ldSocial : dom.social;
+  const email = isEmail(ld.email) ? ld.email : isEmail(dom.email) ? dom.email : undefined;
+  const telephone = (ld.telephone ?? dom.phone)?.slice(0, 60);
 
   const input: Record<string, unknown> = {
     name: name.slice(0, 200),
@@ -133,8 +195,11 @@ export function extractIdentity(homeDoc: Document, ctx: IdentityCtx): CorporateI
     logo: assetRef(findLogo(homeDoc), ctx),
     icon: assetRef(findIcon(homeDoc), ctx),
     image: assetRef(meta.get('og:image'), ctx),
-    email: isEmail(ld.email) ? ld.email : undefined,
-    telephone: ld.telephone?.slice(0, 60),
+    email,
+    telephone,
+    address: ld.address, // postal address (JSON-LD PostalAddress) — schema AddressSchema
+    geo: ld.geo,
+    mapUrl: dom.mapUrl,
     social: social.length > 0 ? social : undefined,
     ...(primary ? { colors: { primary } } : {}),
   };

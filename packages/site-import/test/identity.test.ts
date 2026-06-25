@@ -31,6 +31,34 @@ describe('extractIdentity', () => {
     expect(id.social?.map((s) => s.link)).toEqual(['https://twitter.com/acme', 'https://www.linkedin.com/company/acme']);
   });
 
+  it('extracts postal address + geo from JSON-LD', () => {
+    const html = `<html><head><title>Acme</title>
+      <script type="application/ld+json">{"@type":"LocalBusiness","address":{"@type":"PostalAddress","streetAddress":"1 Main St","addressLocality":"Windhoek","addressRegion":"Khomas","postalCode":"9000","addressCountry":{"name":"Namibia"}},"geo":{"@type":"GeoCoordinates","latitude":-22.55,"longitude":17.08}}</script>
+      </head><body></body></html>`;
+    const id = extractIdentity(parse(html), { baseUrl: 'https://ex.com/', assetMap: new Map(), fallbackName: 'X' });
+    expect(id.address).toEqual({ street: '1 Main St', locality: 'Windhoek', region: 'Khomas', postalCode: '9000', country: 'Namibia' });
+    expect(id.geo).toEqual({ latitude: '-22.55', longitude: '17.08' });
+  });
+
+  it('scans the DOM for tel:/mailto:, footer social links, and a maps embed (when JSON-LD lacks them)', () => {
+    const html = `<html><head><title>Acme</title></head><body><footer>
+      <a href="tel:+264 61 379 000">Call</a>
+      <a href="mailto:hi@acme.com.na">Email</a>
+      <a href="https://www.facebook.com/acme">FB</a>
+      <a href="https://www.instagram.com/acme">IG</a>
+      <a href="https://example.com/not-social">Other</a>
+      <iframe src="https://www.google.com/maps/embed?pb=xyz"></iframe>
+    </footer></body></html>`;
+    const id = extractIdentity(parse(html), { baseUrl: 'https://ex.com/', assetMap: new Map(), fallbackName: 'X' });
+    expect(id.telephone).toBe('+264 61 379 000');
+    expect(id.email).toBe('hi@acme.com.na');
+    expect(id.mapUrl).toBe('https://www.google.com/maps/embed?pb=xyz');
+    const names = (id.social ?? []).map((s) => s.name);
+    expect(names).toContain('Facebook');
+    expect(names).toContain('Instagram');
+    expect(names).not.toContain('Example'); // a non-social link (icon 'globe') is excluded
+  });
+
   it('derives the name from <title> then host when og:site_name is absent', () => {
     const fromTitle = extractIdentity(parse('<html><head><title>Beta Co — Welcome</title></head><body></body></html>'), {
       baseUrl: 'https://beta.example/',

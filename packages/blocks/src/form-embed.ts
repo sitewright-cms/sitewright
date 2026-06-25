@@ -140,7 +140,7 @@ export function renderFormMarkup(resolvedId: string, form: RenderForm, opts: { c
     `<form data-sw-block="Form"${cls} data-sw-component="form" data-sw-form="${escapeAttr(resolvedId)}" novalidate>` +
     `<div data-sw-part="fields">${fields}</div>` +
     captcha +
-    `<button type="submit" data-sw-part="submit">${escapeHtml(form.submitLabel)}</button>` +
+    `<button type="submit" data-sw-part="submit" class="btn btn-primary">${escapeHtml(form.submitLabel)}</button>` +
     `<p data-sw-part="success" role="status" hidden>${escapeHtml(form.successMessage)}</p>` +
     `<p data-sw-part="error" role="alert" hidden>${escapeHtml(form.errorMessage)}</p>` +
     `</form>`

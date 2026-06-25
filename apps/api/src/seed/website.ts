@@ -106,7 +106,7 @@ export const EXAMPLE_WEBSITE = {
   // positions/styles it; the copy localizes via the strings lookup.
   bottom: `<div data-sw-component="cookie-consent" hidden>
   <p>${T('cookie_text', 'We use a few essential cookies to make this site work and anonymous analytics to improve it.')} <a class="link" href="{{sw-url ${SL('href_privacy')}}}">${T('cookie_more', 'Learn more')}</a></p>
-  <button type="button" data-sw-part="accept">${T('cookie_accept', 'OK, got it')}</button>
+  <button type="button" class="btn btn-primary btn-sm" data-sw-part="accept">${T('cookie_accept', 'OK, got it')}</button>
 </div>`,
   // RAW slot (not validated, not escaped): CSS-only motion + the demo's design-system utilities,
   // so the site looks alive in the JS-blocked preview AND on export. Scroll-reveal sections use

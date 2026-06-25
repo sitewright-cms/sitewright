@@ -305,12 +305,14 @@ img, video { max-width: 100%; height: auto; }
   --sw-btn-hover-bg: var(--sw-btn-fx);
   --sw-btn-hover-fg: var(--sw-btn-fx-content);
   --sw-btn-radius: .7rem;
-  --sw-btn-h: 2.75rem;
+  --sw-btn-py: .8rem;
   --sw-btn-px: 1.15rem;
   --sw-btn-fs: .95rem;
   display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
-  height: var(--sw-btn-h); min-height: var(--sw-btn-h); padding-inline: var(--sw-btn-px);
-  font: inherit; font-weight: 600; font-size: var(--sw-btn-fs); line-height: 1;
+  /* PADDING-based sizing (no fixed height) so a button grows with its content — multi-line labels, an
+     icon + text, larger glyphs — instead of clipping. Sizes set --sw-btn-py / --sw-btn-px. */
+  padding: var(--sw-btn-py) var(--sw-btn-px);
+  font: inherit; font-weight: 600; font-size: var(--sw-btn-fs); line-height: 1.25;
   text-align: center; text-decoration: none; white-space: nowrap; vertical-align: middle;
   cursor: pointer; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
   border: 0; border-radius: var(--sw-btn-radius);
@@ -368,19 +370,19 @@ img, video { max-width: 100%; height: auto; }
 .btn-outline:not(.btn-link):not(.btn-disabled):not(:disabled):hover { box-shadow: inset 0 0 0 1.5px var(--sw-btn-face), 0 10px 24px -11px color-mix(in oklab, var(--sw-btn-fx) 60%, transparent); }
 /* dash: an outline with a dashed border */
 .btn-dash { --sw-btn-face: var(--sw-color-primary, var(--color-primary, #4f46e5)); background: transparent; color: var(--sw-btn-face); border: 1.5px dashed var(--sw-btn-face); box-shadow: none; }
-/* link: a bare text button (no fill / lift) */
-.btn-link { background: transparent; color: var(--sw-color-primary, var(--color-primary, #4f46e5)); height: auto; min-height: 0; padding-inline: .25rem; text-decoration: underline; text-underline-offset: 3px; }
-/* sizes */
-.btn-xs { --sw-btn-h: 1.75rem; --sw-btn-px: .6rem;  --sw-btn-fs: .75rem; gap: .3rem; }
-.btn-sm { --sw-btn-h: 2.25rem; --sw-btn-px: .85rem; --sw-btn-fs: .85rem; }
-.btn-md { --sw-btn-h: 2.75rem; --sw-btn-px: 1.15rem; --sw-btn-fs: .95rem; }
-.btn-lg { --sw-btn-h: 3.3rem;  --sw-btn-px: 1.6rem; --sw-btn-fs: 1.05rem; }
-.btn-xl { --sw-btn-h: 3.85rem; --sw-btn-px: 2rem;   --sw-btn-fs: 1.15rem; }
-/* width / icon shapes */
+/* link: a bare text button (no fill / lift / vertical padding) */
+.btn-link { background: transparent; color: var(--sw-color-primary, var(--color-primary, #4f46e5)); padding: 0 .25rem; text-decoration: underline; text-underline-offset: 3px; }
+/* sizes — only the vertical/horizontal padding + font scale (no fixed height) */
+.btn-xs { --sw-btn-py: .4rem;  --sw-btn-px: .6rem;  --sw-btn-fs: .75rem; gap: .3rem; }
+.btn-sm { --sw-btn-py: .6rem;  --sw-btn-px: .85rem; --sw-btn-fs: .85rem; }
+.btn-md { --sw-btn-py: .8rem;  --sw-btn-px: 1.15rem; --sw-btn-fs: .95rem; }
+.btn-lg { --sw-btn-py: 1rem;   --sw-btn-px: 1.6rem; --sw-btn-fs: 1.05rem; }
+.btn-xl { --sw-btn-py: 1.2rem; --sw-btn-px: 2rem;   --sw-btn-fs: 1.15rem; }
+/* width / icon shapes — square/circle stay 1:1 via aspect-ratio (equal padding, no fixed height) */
 .btn-block { width: 100%; }
 .btn-wide { width: 100%; max-width: 16rem; }
-.btn-square { --sw-btn-px: 0; width: var(--sw-btn-h); }
-.btn-circle { --sw-btn-px: 0; width: var(--sw-btn-h); --sw-btn-radius: 999px; }
+.btn-square { padding-inline: var(--sw-btn-py); aspect-ratio: 1; }
+.btn-circle { padding-inline: var(--sw-btn-py); aspect-ratio: 1; --sw-btn-radius: 999px; }
 /* daisyUI's file-input styles ::file-selector-button via the daisy --btn-* vars we no longer define;
    restyle it with our tokens so it still reads as a button. */
 .file-input::file-selector-button { background: var(--sw-color-neutral, var(--color-neutral, #171627)); color: var(--sw-color-neutral-content, var(--color-neutral-content, #ffffff)); border: 0; border-inline-end: 1px solid color-mix(in oklab, currentColor 12%, transparent); border-radius: 0; padding-inline: 1rem; margin-inline-end: .75rem; font-weight: 600; cursor: pointer; }

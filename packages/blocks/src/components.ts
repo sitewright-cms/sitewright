@@ -412,7 +412,7 @@ const COOKIE_CONSENT_CSS = [
   '[data-sw-component="cookie-consent"][hidden]{display:none}',
   '[data-sw-component="cookie-consent"]{position:fixed;left:1rem;right:1rem;bottom:1rem;z-index:9998;display:flex;flex-wrap:wrap;align-items:center;gap:1rem;padding:1rem 1.25rem;background:var(--sw-color-base-100,#fff);color:var(--sw-color-base-content,#1a1a23);border:1px solid color-mix(in oklab,var(--sw-color-base-content,#000) 12%,transparent);border-radius:.5rem;box-shadow:0 6px 24px rgba(0,0,0,.15)}',
   '[data-sw-component="cookie-consent"] p{margin:0;flex:1;min-width:12rem;font-size:.875rem}',
-  '[data-sw-component="cookie-consent"] [data-sw-part="accept"]{border:0;border-radius:.375rem;padding:.5rem 1rem;background:var(--sw-color-primary,#0a7a5a);color:var(--sw-color-primary-content,#fff);cursor:pointer}',
+  // The accept button uses the vendored .btn (authored as `class="btn btn-primary btn-sm"`); no face CSS here.
 ].join('');
 
 // State is carried by the \`hidden\` attribute (already in the server HTML and
@@ -575,8 +575,9 @@ const FORM_CSS = [
   '[data-sw-block="Form"] [data-sw-part="field"]{display:block;margin-bottom:1rem}',
   '[data-sw-block="Form"] [data-sw-part="label"]{display:block;margin-bottom:.25rem;font-size:.875rem}',
   '[data-sw-block="Form"] input,[data-sw-block="Form"] textarea,[data-sw-block="Form"] select{width:100%;padding:.5rem .625rem;border:1px solid color-mix(in oklab,var(--sw-color-base-content,#000) 20%,transparent);border-radius:.375rem;font:inherit}',
-  '[data-sw-block="Form"] [data-sw-part="submit"]{border:0;border-radius:.375rem;padding:.5rem 1.25rem;background:var(--sw-color-primary,#0a7a5a);color:var(--sw-color-primary-content,#fff);cursor:pointer}',
-  '[data-sw-block="Form"] [data-sw-part="submit"][disabled]{opacity:.6;cursor:progress}',
+  // The submit button uses the vendored .btn (rendered with `class="btn btn-primary"`); only the
+  // submitting/disabled cursor is kept here.
+  '[data-sw-block="Form"] [data-sw-part="submit"][disabled]{cursor:progress}',
   // Honeypot: take it out of the layout + the a11y tree, off-screen (not display:none,
   // which some bots skip). Real users never see or tab to it.
   '[data-sw-block="Form"] [data-sw-part="hp"]{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}',

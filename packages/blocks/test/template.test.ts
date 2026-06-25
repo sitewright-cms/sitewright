@@ -427,7 +427,7 @@ describe('renderTemplate — MINI SHOP helpers', () => {
 
   it('{{sw-add-to-cart}} emits an escaped add-to-cart button with a canonical numeric price', () => {
     const out = renderTemplate('{{sw-add-to-cart sku="w1" name="Widget" price="19.90"}}', shopCtx());
-    expect(out).toBe('<button type="button" data-sw-cart-add data-sku="w1" data-name="Widget" data-price="19.9">Add to cart</button>');
+    expect(out).toBe('<button type="button" data-sw-cart-add data-sku="w1" data-name="Widget" data-price="19.9" class="btn btn-primary">Add to cart</button>');
   });
 
   it('{{sw-add-to-cart}} coerces a bad/negative price to 0 and falls back sku→name', () => {

@@ -65,6 +65,7 @@ export const RESERVED_TRANSLATION_GROUPS: readonly ReservedTranslationGroup[] = 
     keys: [
       { key: 'cart_add', label: 'Add-to-cart button', default: 'Add to cart' },
       { key: 'cart_title', label: 'Cart drawer heading', default: 'Your cart' },
+      { key: 'cart_toggle', label: 'Cart toggle tab label', default: 'Shopping Cart' },
       {
         key: 'cart_note',
         label: 'Cart disclaimer note',

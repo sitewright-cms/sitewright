@@ -42,6 +42,7 @@ export interface ChromeStrings {
   // bare helper auto-localizes its built-in labels (no per-page hash). See packages/blocks reservedTr.
   cart_add: string;
   cart_title: string;
+  cart_toggle: string;
   cart_note: string;
   cart_added: string;
   cart_empty: string;
@@ -83,6 +84,7 @@ export const CHROME_STRINGS: Record<string, ChromeStrings> = {
     href_privacy: '/privacy',
     cart_add: 'Add to cart',
     cart_title: 'Your cart',
+    cart_toggle: 'Shopping Cart',
     cart_note: 'Prices are indicative. This sends an order request — the seller confirms availability and final price.',
     cart_added: 'Added',
     cart_empty: 'Your cart is empty.',
@@ -119,6 +121,7 @@ export const CHROME_STRINGS: Record<string, ChromeStrings> = {
     href_privacy: '/de/datenschutz',
     cart_add: 'In den Warenkorb',
     cart_title: 'Warenkorb',
+    cart_toggle: 'Warenkorb',
     cart_note: 'Preise unverbindlich. Dies sendet eine Bestellanfrage — der Verkäufer bestätigt Verfügbarkeit und Endpreis.',
     cart_added: 'Hinzugefügt',
     cart_empty: 'Ihr Warenkorb ist leer.',
@@ -155,6 +158,7 @@ export const CHROME_STRINGS: Record<string, ChromeStrings> = {
     href_privacy: '/es/privacidad',
     cart_add: 'Añadir al carrito',
     cart_title: 'Su carrito',
+    cart_toggle: 'Carrito',
     cart_note: 'Precios orientativos. Esto envía una solicitud de pedido — el vendedor confirma disponibilidad y precio final.',
     cart_added: 'Añadido',
     cart_empty: 'Su carrito está vacío.',

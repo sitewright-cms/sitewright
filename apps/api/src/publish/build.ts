@@ -506,9 +506,10 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     const usesNavRuntime =
       navEffectUsesRuntime(website?.effects?.navEffect) || usesMarker(usesNavEffects);
     // BUTTON-EFFECTS runtime — ripple is the always-on .btn baseline, so this ships whenever the page has
-    // a button (or a JS-backed magnetic/spotlight default). usesButtonEffects scans for a `.btn`.
+    // a button (or a JS-backed magnetic/spotlight default). usesButtonEffects scans for a `.btn`; the
+    // back-to-top button is a platform-injected `.btn` no scan sees, so OR it in for its ripple.
     const usesBtnRuntime =
-      buttonEffectUsesRuntime(website?.effects?.buttonEffect) || usesMarker(usesButtonEffects);
+      buttonEffectUsesRuntime(website?.effects?.buttonEffect) || usesMarker(usesButtonEffects) || usesBackToTopRuntime;
     // The nav-link runtime opens a <dialog> (global modal) and smooth-scrolls #section links. Ship it
     // when a nav placeholder targets a #fragment OR any authored surface embeds a <dialog> — so a modal
     // triggered from page CONTENT (a CTA, an in-content `<a href="#id">`), not only a nav placeholder,

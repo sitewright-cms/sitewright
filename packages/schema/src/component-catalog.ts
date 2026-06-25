@@ -217,7 +217,7 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
     ],
     skeleton: `<div data-sw-component="lightbox" data-sw-block="Lightbox" aria-label="Gallery">
   <div data-sw-part="grid" class="gap-3 !grid-cols-2 md:!grid-cols-4">
-    {{#sw-folder "gallery" kind="image"}}
+    {{#sw-folder "Gallery" kind="image"}}
     <a data-sw-part="item" href="{{sw-url url}}" data-caption="{{alt}}" class="overflow-hidden rounded-2xl">
       <img src="{{sw-url url}}" alt="{{alt}}" loading="lazy" />
     </a>
@@ -278,6 +278,27 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
     noJs: 'The trigger does nothing — the page remains fully usable; never put essential content only inside a modal.',
     notes:
       "This is the ONLY modal that works on this platform: DaisyUI's <dialog> method requires an inline onclick (rejected by the template validator) and its hidden-checkbox method has no focus trap or Escape handling. AUTHORING (lighter form, preferred): put id + data-sw-component=\"modal\" on the <dialog> and open it from any <a href=\"#<id>\"> or [data-sw-modal=\"<id>\"] trigger anywhere on the page — no wrapper or data-sw-part needed; config attrs (data-closebutton / -backdrop-close / -close-label) go on the <dialog>. LEGACY form (still supported): a data-sw-component=\"modal\" wrapper holding [data-sw-part=\"open\"] + a [data-sw-part=\"dialog\"] <dialog>. A styled close button is injected automatically (top-right, brand-primary, white icon, hover zoom + icon spin) — do NOT hand-author one unless you want an ADDITIONAL close control; suppress it with data-closebutton=\"false\". A bare <dialog> (no classes) renders on the global background/text colour with rounded corners and 1.5rem padding; add utility classes to override (the defaults are zero-specificity, so no !important needed). The backdrop dims AND blurs, fading in and out. Style the dialog content with normal Tailwind/DaisyUI classes.",
+    examples: [
+      {
+        label: 'Link trigger + editable body',
+        code: `<a href="#how-it-works" class="btn btn-primary">What happens next?</a>
+<dialog id="how-it-works" data-sw-component="modal" data-close-label="Close" class="max-w-lg">
+  <h2 class="text-xl font-bold" data-sw-text="modal_title">How it works</h2>
+  <div class="prose mt-3 max-w-none" data-sw-html="page.data.modal_body">…</div>
+</dialog>`,
+        note: 'Open from any <a href="#id">; the close button is auto-injected. Full recipe: the `modal-basic` snippet ({{> modal-basic}}).',
+      },
+      {
+        label: 'Forced-choice confirm',
+        code: `<button type="button" class="btn" data-sw-modal="confirm-delete">Delete</button>
+<dialog id="confirm-delete" data-sw-component="modal" data-backdrop-close="false" data-closebutton="false">
+  <p>This can't be undone.</p>
+  <button type="button" class="btn btn-ghost" data-sw-part="close">Cancel</button>
+  <a class="btn btn-error" href="/contact">Confirm</a>
+</dialog>`,
+        note: 'data-sw-modal opens from a <button>; data-backdrop-close="false" forces a choice. Recipe: {{> modal-confirm}}.',
+      },
+    ],
   },
   {
     type: 'CookieConsent',

@@ -17,6 +17,7 @@ describe('reference cookbook — catalog shape', () => {
     const names = new Set(GLOBAL_SNIPPETS.map((s) => s.name));
     for (const want of [
       'slider-fullscreen', 'slider-cards', 'slider-multi', 'slider-logowall', 'slider-dataset',
+      'gallery-grid', 'gallery-masonry', 'gallery-dataset', 'tabs-mixed', 'tabs-dataset', 'modal-basic', 'modal-confirm',
       'recipe-dataset-grid', 'recipe-folder-gallery', 'recipe-i18n', 'recipe-page-vars',
       'navbar', 'logo-marquee', 'rotating-tiles',
     ]) {
@@ -28,7 +29,7 @@ describe('reference cookbook — catalog shape', () => {
   });
 
   it('every recipe carries grouping metadata (category + description)', () => {
-    const categories = new Set(['slider', 'data', 'chrome', 'effects']);
+    const categories = new Set(['slider', 'gallery', 'tabs', 'modal', 'data', 'chrome', 'effects']);
     for (const s of GLOBAL_SNIPPETS) {
       expect(categories.has(s.category), `recipe "${s.name}" category`).toBe(true);
       expect(s.description.length, `recipe "${s.name}" description`).toBeGreaterThan(10);
@@ -143,5 +144,83 @@ describe('reference cookbook — primitives sampler render', () => {
     expect(html).toContain('Child A');
     expect(html).toContain('Child B');
     expect(html).toContain('Parent page'); // page.parent breadcrumb
+  });
+});
+
+describe('reference cookbook — gallery / tabs / modal recipes render', () => {
+  const itemCount = (html: string, sel: RegExp): number => (html.match(sel) ?? []).length;
+
+  it('gallery-grid: a lightbox grid with one item per folder image (else placeholder when empty)', () => {
+    const media = [
+      { url: '/media/g/1.jpg', filename: '1.jpg', kind: 'image' as const, folder: 'Gallery', alt: 'One' },
+      { url: '/media/g/2.jpg', filename: '2.jpg', kind: 'image' as const, folder: 'Gallery', alt: 'Two' },
+    ];
+    const html = renderTemplate(src('gallery-grid'), { media });
+    expect(html).toContain('data-sw-component="lightbox"');
+    expect(html).toContain('data-sw-part="grid"'); // the EXPLICIT styled-grid form (its flagship value)
+    expect(itemCount(html, /data-sw-part="item"/g)).toBe(2);
+    expect(html).toContain('href="/media/g/1.jpg"');
+    expect(html).toContain('data-caption="One"');
+    expect(renderTemplate(src('gallery-grid'), { media: [] })).toContain('Upload images to the');
+  });
+
+  it('gallery-masonry: a columns lightbox with width/height from folder items (no-crop)', () => {
+    const media = [
+      { url: '/m/1.jpg', filename: '1.jpg', kind: 'image' as const, folder: 'Gallery', alt: 'One', width: 800, height: 600 },
+      { url: '/m/2.jpg', filename: '2.jpg', kind: 'image' as const, folder: 'Gallery', alt: 'Two', width: 600, height: 900 },
+    ];
+    const html = renderTemplate(src('gallery-masonry'), { media });
+    expect(html).toContain('columns-2'); // the masonry layout
+    expect(itemCount(html, /<a href="\/m\//g)).toBe(2);
+    expect(html).toContain('data-caption="One"');
+    expect(html).toContain('width="800"'); // item width/height reserve space (no layout shift)
+    expect(html).toContain('height="900"');
+    expect(renderTemplate(src('gallery-masonry'), { media: [] })).toContain('Upload images to the');
+  });
+
+  it('gallery-dataset: a lightbox tile per dataset entry, with the bound image + caption', () => {
+    const html = renderTemplate(src('gallery-dataset'), {
+      dataset: { portfolio: [ { image: '/p/a.jpg', title: 'Alpha' }, { image: '/p/b.jpg', title: 'Beta' } ] },
+    });
+    expect(html).toContain('data-sw-component="lightbox"');
+    // MINIMAL form (no data-sw-part) — items are plain <a href><img>, so we count the anchors.
+    expect(itemCount(html, /<a href="\/p\//g)).toBe(2);
+    expect(html).toContain('data-caption="Alpha"');
+    expect(renderTemplate(src('gallery-dataset'), { dataset: { portfolio: [] } })).toContain('Add entries to the');
+  });
+
+  it('tabs-mixed: a tabs component with 3 panels and a rich tabtitle on the first', () => {
+    const html = renderTemplate(src('tabs-mixed'), {});
+    expect(html).toContain('data-sw-component="tabs"');
+    expect(itemCount(html, /data-sw-part="panel"/g)).toBe(3);
+    expect(html).toContain('data-sw-part="tabtitle"');
+    expect(html).toContain('data-sw-title="Overview"'); // accessible name kept alongside the rich label
+    expect(html).toContain('<svg'); // {{sw-icon "sparkles"}} in the rich label
+  });
+
+  it('tabs-dataset: one panel per dataset entry with the label interpolated from a field', () => {
+    const html = renderTemplate(src('tabs-dataset'), {
+      dataset: { faqs: [ { question: 'How long?', answer: 'Weeks.' }, { question: 'How much?', answer: 'Depends.' } ] },
+    });
+    expect(itemCount(html, /data-sw-part="panel"/g)).toBe(2);
+    expect(html).toContain('data-sw-title="How long?"');
+    expect(html).toContain('Depends.');
+    // Empty dataset → the {{else}} fallback panel keeps the tabs component non-empty.
+    const empty = renderTemplate(src('tabs-dataset'), { dataset: { faqs: [] } });
+    expect(itemCount(empty, /data-sw-part="panel"/g)).toBe(1);
+  });
+
+  it('modal-basic: a link trigger + a native <dialog> modal with editable title/body', () => {
+    const html = renderTemplate(src('modal-basic'), {});
+    expect(html).toContain('href="#how-it-works"');
+    expect(html).toMatch(/<dialog id="how-it-works"[^>]*data-sw-component="modal"/);
+    expect(html).toContain('How it works'); // data-sw-text default kept (publish)
+  });
+
+  it('modal-confirm: a button trigger opens a forced-choice dialog (backdrop close off)', () => {
+    const html = renderTemplate(src('modal-confirm'), {});
+    expect(html).toContain('data-sw-modal="confirm-delete"');
+    expect(html).toContain('data-backdrop-close="false"');
+    expect(html).toContain('data-sw-part="close"');
   });
 });

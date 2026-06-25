@@ -13,6 +13,7 @@ import { DataPanel } from './views/datasets/DataPanel';
 import { PublishBar } from './views/PublishBar';
 import { PublishDeployModal } from './views/publish/PublishDeployModal';
 import { HeaderSettingsMenu } from './views/HeaderSettingsMenu';
+import { UserDropdown } from './views/UserDropdown';
 import { SettingsModalHost, type SettingsView } from './views/SettingsModalHost';
 import { UserMenu } from './views/UserMenu';
 import { ProjectSelectorModal } from './views/ProjectSelectorModal';
@@ -323,22 +324,11 @@ function MainApp({
           onSystemSettings={() => setSettingsView('system')}
           onClients={() => setSettingsView('clients')}
           onTeam={() => setSettingsView('team')}
-          onSignOut={() => void signOut()}
         />
-        {/* The user/account menu — account email, password, access keys, and security (MFA). Sits
-            immediately to the right of the settings gear. */}
-        <button
-          type="button"
-          aria-label="Account"
-          title="Account"
-          onClick={() => setUserMenuOpen(true)}
-          className="waves-effect rounded-md p-1.5 text-slate-500 transition hover:bg-white/70 hover:text-slate-900"
-        >
-          <svg aria-hidden viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="8" r="4" />
-            <path d="M4 21v-1a7 7 0 0 1 7-7h2a7 7 0 0 1 7 7v1" />
-          </svg>
-        </button>
+        {/* The user/account menu (person icon → dropdown): "Account Settings" opens the tabbed account
+            modal (email, password, access keys, security/MFA); "Logout" signs out (relocated here from
+            the settings gear). Sits immediately to the right of the settings gear. */}
+        <UserDropdown onAccountSettings={() => setUserMenuOpen(true)} onSignOut={() => void signOut()} />
       </nav>
       </div>
     </header>

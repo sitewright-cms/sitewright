@@ -13,8 +13,9 @@ test('enrol in TOTP, then sign in through the second-factor step', async ({ page
   await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
   await page.getByRole('button', { name: 'Create account' }).click();
 
-  // Open the account menu → Security → start enrolment.
+  // Open the account menu → Account Settings → Security → start enrolment.
   await page.getByRole('button', { name: 'Account' }).click();
+  await page.getByRole('menuitem', { name: 'Account Settings' }).click();
   const account = page.getByRole('dialog', { name: 'Account' });
   await account.getByRole('button', { name: 'Security' }).click();
   await account.getByRole('button', { name: 'Set up two-factor' }).click();
@@ -32,8 +33,8 @@ test('enrol in TOTP, then sign in through the second-factor step', async ({ page
   await page.keyboard.press('Escape');
 
   // Sign out, then sign back in — the password now yields the second-factor step.
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Sign out' }).click();
+  await page.getByRole('button', { name: 'Account' }).click();
+  await page.getByRole('menuitem', { name: 'Logout' }).click();
   await page.getByLabel('Email').fill(email);
   await page.getByRole('textbox', { name: 'Password' }).fill('Pw-secret-1');
   await page.getByRole('button', { name: 'Sign in' }).click();

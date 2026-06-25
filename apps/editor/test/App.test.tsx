@@ -140,14 +140,14 @@ describe('App shell', () => {
     expect(await screen.findByText(/PROJECT New Co/)).toBeInTheDocument();
   });
 
-  it('the header gear menu unifies the settings surfaces + Sign out (no legacy Admin/⋮)', async () => {
+  it('the gear menu holds the settings surfaces; the account menu holds Account Settings + Logout', async () => {
     render(<App />);
     fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: /Acme/ }));
     await screen.findByText(/PROJECT Acme/);
     // The retired surfaces are gone from the header.
     expect(screen.queryByRole('button', { name: 'Admin' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Site options' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Sign out' })).toBeNull(); // moved into the menu
+    expect(screen.queryByRole('button', { name: 'Sign out' })).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     const menu = await screen.findByRole('menu', { name: 'Settings' });
@@ -157,13 +157,15 @@ describe('App shell', () => {
     // System Settings + Team are admin-only — hidden for this non-admin owner.
     expect(within(menu).queryByRole('menuitem', { name: 'System Settings' })).toBeNull();
     expect(within(menu).queryByRole('menuitem', { name: 'Team' })).toBeNull();
-    // Access keys moved out of the gear menu into the user/account menu (person icon).
+    // Account actions are NOT in the gear menu — Access keys + Logout live under the user icon now.
     expect(within(menu).queryByRole('menuitem', { name: 'Access' })).toBeNull();
-    // The account menu lives next to the gear.
-    expect(screen.getByRole('button', { name: 'Account' })).toBeInTheDocument();
+    expect(within(menu).queryByRole('menuitem', { name: /Sign out|Logout/ })).toBeNull();
 
-    // Sign out lives in the menu and returns to the login screen.
-    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Sign out' }));
+    // The account menu (person icon) → "Account Settings" + "Logout"; Logout returns to the login screen.
+    fireEvent.click(screen.getByRole('button', { name: 'Account' }));
+    const accountMenu = await screen.findByRole('menu', { name: 'Account' });
+    expect(within(accountMenu).getByRole('menuitem', { name: 'Account Settings' })).toBeInTheDocument();
+    fireEvent.click(within(accountMenu).getByRole('menuitem', { name: 'Logout' }));
     await waitFor(() => expect(logout).toHaveBeenCalled());
     expect(await screen.findByText('LOGIN')).toBeInTheDocument();
   });

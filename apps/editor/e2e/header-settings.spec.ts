@@ -20,17 +20,24 @@ test('header gear menu unifies settings + inline agent indicator + publish toast
   // The AI-agent indicator sits INLINE in the header (next to Publish), not under it.
   await expect(page.getByRole('button', { name: 'Connect an agent' })).toBeVisible();
 
-  // The gear menu lists the unified items. A non-admin owner has no admin-only items (System
-  // Settings, Team).
+  // Account actions live under the person icon (a dropdown): "Account Settings" + "Logout".
+  await page.getByRole('button', { name: 'Account' }).click();
+  const account = page.getByRole('menu', { name: 'Account' });
+  await expect(account.getByRole('menuitem', { name: 'Account Settings' })).toBeVisible();
+  await expect(account.getByRole('menuitem', { name: 'Logout' })).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  // The gear menu lists the unified settings items. A non-admin owner has no admin-only items (System
+  // Settings, Team). Account actions (Access keys, Logout) are NOT here — they moved to the user menu.
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   const menu = page.getByRole('menu', { name: 'Settings' });
-  for (const label of ['Publish & Deploy Options', 'Clients', 'Sign out']) {
+  for (const label of ['Publish & Deploy Options', 'Clients']) {
     await expect(menu.getByRole('menuitem', { name: label })).toBeVisible();
   }
   await expect(menu.getByRole('menuitem', { name: 'System Settings' })).toHaveCount(0);
   await expect(menu.getByRole('menuitem', { name: 'Team' })).toHaveCount(0);
-  // Access keys moved out of the gear menu into the user/account menu (person icon).
   await expect(menu.getByRole('menuitem', { name: 'Access', exact: true })).toHaveCount(0);
+  await expect(menu.getByRole('menuitem', { name: /Sign out|Logout/ })).toHaveCount(0);
 
   // A target (Clients) opens AS A MODAL.
   await menu.getByRole('menuitem', { name: 'Clients' }).click();

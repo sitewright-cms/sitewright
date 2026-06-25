@@ -21,9 +21,9 @@ export function resolvedPages(bundle: ProjectBundle): Page[] {
 }
 
 /**
- * Groups entries by dataset slug. NOTE: this is unfiltered (includes drafts);
- * callers must gate by status before display (the publish path filters to
- * published entries before rendering `{{#each}}`).
+ * Groups entries by dataset slug. NOTE: this is unfiltered (includes drafts) — the editor preview
+ * shows work-in-progress entries. The publish boundary uses {@link publishedDatasetEntries} so a
+ * published site's `{{#each dataset.x}}` loops + keyed `{{item.x.key}}` access show published only.
  */
 export function datasetEntries(bundle: ProjectBundle): Record<string, Entry[]> {
   const map = new Map<string, Entry[]>();
@@ -33,6 +33,16 @@ export function datasetEntries(bundle: ProjectBundle): Record<string, Entry[]> {
   // Apply the canonical drag-reorder `order` so published `{{#each}}` + block bindings match the editor.
   for (const list of map.values()) list.sort(compareEntryOrder);
   return Object.fromEntries(map);
+}
+
+/**
+ * Like {@link datasetEntries}, but PUBLISHED entries only — the publish boundary for `{{#each dataset.x}}`
+ * loops, keyed `{{item.x.key}}` access, and widget block bindings. `Entry.status` defaults to `draft`
+ * (the OPPOSITE of `Page.status`), so this matches `=== 'published'` (the same test `collectionRoutes`
+ * uses), keeping a draft entry out of published HTML even though its dataset is rendered.
+ */
+export function publishedDatasetEntries(bundle: ProjectBundle): Record<string, Entry[]> {
+  return datasetEntries({ ...bundle, entries: bundle.entries.filter((entry) => entry.status === 'published') });
 }
 
 /** Converts a full route (`/`, `/about`, `/de/services`) to an Astro `[...slug]` param. */

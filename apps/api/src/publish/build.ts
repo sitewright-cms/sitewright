@@ -5,6 +5,7 @@ import {
   allRoutes,
   buildNav,
   datasetEntries,
+  publishedDatasetEntries,
   keyedDatasets,
   extractClassNames,
   publishedPages,
@@ -342,7 +343,9 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- tmp derives from a resolved, validated dir
   await mkdir(tmp, { recursive: true });
   try {
-    const datasets = datasetEntries(bundle);
+    // Drafts appear in the preview (includeDrafts) but NOT in a published build — mirrors the page
+    // filter above so `{{#each dataset.x}}` loops + keyed `{{item.x.key}}` show published entries only.
+    const datasets = opts.includeDrafts ? datasetEntries(bundle) : publishedDatasetEntries(bundle);
     // Resolvable `{{> name}}` partials. `opts.snippets` carries the global snippets (a DB read —
     // admin-editable, so it MUST come from the caller, not a constant) ∪ the project's snippets. The
     // MANAGED Widget bodies are added HERE from the constant — before the Tailwind class scan AND the

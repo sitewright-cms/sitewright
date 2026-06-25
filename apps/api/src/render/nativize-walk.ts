@@ -42,6 +42,9 @@ export function WALK(ROOT_SEL) {
     const s = {};
     for (const k of INH) { const v = cs.getPropertyValue(k); if (v && (own || !pcs || v !== pcs.getPropertyValue(k))) s[k] = v; }
     for (const k in BOX) { const v = cs.getPropertyValue(k); if (v && v !== BOX[k]) s[k] = v; }
+    // Drop a data:-URI background — it's a lazy-load SPINNER / tiny decorative pattern, never real content;
+    // emitting it bloats the source and (for a not-yet-loaded lazy element) paints a stray placeholder band.
+    if (s['background-image'] && /url\(\s*["']?data:/i.test(s['background-image'])) delete s['background-image'];
     if (fullW) s.width = '100%';
     // Lock SHORT single-line text as nowrap (this viewport): one line by design, often relying on a
     // condensed web font; a fallback font would wrap it. Short cap so real prose can still wrap.
@@ -66,7 +69,7 @@ export function WALK(ROOT_SEL) {
     if (tag === 'img') { const cur = el.currentSrc || el.src; const r = (cur && !/^data:|\/1x1|blank|placeholder/.test(cur)) ? cur : (el.getAttribute('data-src') || el.getAttribute('data-original') || el.getAttribute('data-lazy-src') || cur || ''); try { node.src = r ? new URL(r, location.href).href : ''; } catch { node.src = r || ''; } node.alt = el.getAttribute('alt') || ''; }
     if (tag === 'a') node.href = el.getAttribute('href') || '';
     if (tag === 'i' || tag === 'span') { node.icon = el.getAttribute('class') || ''; if (/\bfa/.test(node.icon)) { node.iconSize = cs.fontSize; node.iconColor = cs.color; } } // FontAwesome → capture size+color
-    if (tag === 'iframe') { node.src = el.src || el.getAttribute('src') || ''; node.title = el.getAttribute('title') || ''; s.height = cs.getPropertyValue('height'); }
+    if (tag === 'iframe') { node.src = el.src || el.getAttribute('src') || el.getAttribute('data-src') || el.getAttribute('data-lazy-src') || ''; node.title = el.getAttribute('title') || ''; s.height = cs.getPropertyValue('height'); }
     // ROTATING TILES (3D flip): the source marks the card `.flippable` + its hidden face `.back` (matrix3d
     // rotateY(180)). The flip mechanics are JS/CSS we strip → record them so emit() rebuilds a clean flip.
     { const acl = el.getAttribute('class') || ''; if (/\bflippable\b/.test(acl)) { node.flip = true; node.flipH = cs.getPropertyValue('height'); } if (/\bback\b/.test(acl) && /matrix3d/.test(cs.transform)) node.isBack = true; }

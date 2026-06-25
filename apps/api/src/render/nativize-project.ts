@@ -82,7 +82,7 @@ const escAttr = (v: string): string => v.replace(/&/g, '&amp;').replace(/"/g, '&
  */
 function buildNavbar(logo: string | undefined): string {
   const logoHtml = logo
-    ? `<a href="{{sw-url '/'}}" class="flex shrink-0 items-center"><img src="${escAttr(logo)}" alt="{{company.name}}" class="h-10 w-auto max-w-full"></a>`
+    ? `<a href="{{sw-url '/'}}" class="flex shrink-0 items-center"><img src="${escAttr(logo)}" alt="{{company.name}}" class="h-14 w-auto max-w-full"></a>`
     : `<a href="{{sw-url '/'}}" class="font-heading text-xl font-bold text-primary no-underline">{{company.name}}</a>`;
   return `<div class="sw-container flex items-center gap-4 py-3">
   ${logoHtml}

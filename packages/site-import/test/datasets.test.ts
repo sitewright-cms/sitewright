@@ -52,6 +52,15 @@ describe('inferDatasets', () => {
     expect(() => validateTemplate(loop)).not.toThrow();
   });
 
+  it('captures a card text block (leading text + inline span) as ONE field — no first-card text baked across the grid', () => {
+    // Regression: burmeister directors read "<p>Name <span>role</span></p>"; dropping the leading text and
+    // field-izing only the span baked the FIRST card's name into every card ("Mr. Ronald L. Kubas <name>").
+    const cards = [0, 1, 2, 3].map((i) => `<div class="card"><img src="/a.jpg"><p>Person ${i} <span>(role ${i})</span></p></div>`).join('');
+    const { inf } = infer(`<html><body><h2>Team</h2><section class="team">${cards}</section></body></html>`);
+    expect(inf.datasets).toHaveLength(1);
+    expect(inf.entries.map((e) => e.values.title)).toEqual(['Person 0 (role 0)', 'Person 1 (role 1)', 'Person 2 (role 2)', 'Person 3 (role 3)']);
+  });
+
   it('turns a uniform card grid into a dataset + entries + an {{#each}} loop', () => {
     const { inf, doc } = infer(grid(4));
     expect(inf.datasets).toHaveLength(1);

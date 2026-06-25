@@ -69,6 +69,9 @@ describe('emitGroups — computed style → keyed utility groups', () => {
   it('maps typography + brand colors to theme tokens', () => {
     expect(emitGroups({ 'background-color': 'rgb(11, 74, 119)' }, 'div', false, ctx).g.bg).toBe('bg-primary');
     expect(emitGroups({ color: 'rgb(50, 60, 70)' }, 'p', false, ctx).g.color).toBe('text-[#323c46]');
+    // a floated element keeps its float (text wraps beside it) instead of dropping to a full-width block
+    expect(emitGroups({ float: 'right' }, 'img', false, ctx).g.float).toBe('float-right ml-6 mb-4');
+    expect(emitGroups({ float: 'left' }, 'img', false, ctx).g.float).toBe('float-left mr-6 mb-4');
     // a SEMI-TRANSPARENT overlay keeps its alpha (must NOT collapse to opaque bg-black)
     expect(emitGroups({ 'background-color': 'rgba(0, 0, 0, 0.1)' }, 'div', false, ctx).g.bg).toBe('bg-[rgba(0,0,0,0.1)]');
     expect(emitGroups({ 'background-color': 'rgb(0, 0, 0)' }, 'div', false, ctx).g.bg).toBe('bg-black');

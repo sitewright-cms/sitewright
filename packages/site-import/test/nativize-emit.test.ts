@@ -212,6 +212,12 @@ describe('snapButton — button / button-link → SW button system', () => {
     expect(snapButton({ 'background-color': 'rgb(34, 197, 94)', ...pad }, 'a', ctx.palette)).toEqual({ classes: 'btn', keepColor: true });
     expect(snapButton({}, 'button', ctx.palette)).toEqual({ classes: 'btn btn-neutral', keepColor: false });
   });
+  it('a transparent text/icon button (a text color, no fill/border) → btn-ghost KEEPING its color', () => {
+    expect(snapButton({ color: 'rgb(180, 42, 51)', ...pad }, 'button', ctx.palette)).toEqual({ classes: 'btn btn-ghost', keepColor: true });
+  });
+  it('a LARGE-font box (heading-sized link/card) is NOT a button', () => {
+    expect(snapButton({ 'font-size': '36px', 'border-top-width': '2px', 'border-top-color': 'rgb(180, 42, 51)', ...pad }, 'a', ctx.palette)).toBeNull();
+  });
   it('snaps a small ~square fill with no padding to a btn-square icon button', () => {
     expect(snapButton({ 'background-color': 'rgb(12, 163, 200)', width: '50px', height: '50px' }, 'a', ctx.palette)).toEqual({ classes: 'btn btn-square', keepColor: true });
     expect(snapButton({ 'background-color': 'rgb(11, 74, 119)', width: '48px', height: '48px' }, 'a', ctx.palette)?.classes).toBe('btn btn-square btn-primary');

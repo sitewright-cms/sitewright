@@ -34,10 +34,10 @@ function makeDeps(o: DepOverrides = {}) {
   ];
   const settings = {
     identity: { colors: { primary: '#0b4a77' }, logo: '/media/logo.png' },
-    website: { head: '<link rel="stylesheet" href="/media/import.css">', scripts: '<script src="/media/foreign.js"></script>', topNav: '<div><a href="/a">A</a></div>', footer: '<div class="rgba-black-strong">Foreign footer</div>' },
+    website: { head: '<link rel="stylesheet" href="/media/import.css">', scripts: '<script src="/media/foreign.js"></script>', topNav: '<div><a href="/a">A</a></div>', footer: '<div class="rgba-black-strong">Foreign footer</div>', sidebarLeft: '<div id="facebook-page"><iframe src="https://www.facebook.com/plugins/page.php?href=https%3A%2F%2Fwww.facebook.com%2Facme%2F&tabs=timeline"></iframe></div>' },
   };
   const pagePuts: Array<{ id: string; raw: { status: string; source: string; data: { swImport: { rewritten: boolean } } } }> = [];
-  let settingsPut: { website: { head: string; scripts: string; topNav: string; mobileNav: string; footer: string; criticalCss?: string }; identity?: { typography?: { heading?: { assetId?: string; family?: string }; body?: { assetId?: string } } } } | null = null;
+  let settingsPut: { website: { head: string; scripts: string; topNav: string; mobileNav: string; footer: string; criticalCss?: string; sidebarLeft?: string; bottom?: string }; identity?: { typography?: { heading?: { assetId?: string; family?: string }; body?: { assetId?: string } } } } | null = null;
   const entries = o.entries ?? [];
   const fonts = [{ id: 'f-primary', kind: 'font', family: 'primary-font' }, { id: 'f-text', kind: 'font', family: 'text-font' }];
   const renderContexts: unknown[] = [];
@@ -84,6 +84,9 @@ describe('nativizeProject', () => {
     expect(w.topNav).toContain('{{company.name}}'); // nav shows the company name
     expect(w.topNav).toContain('{{company.slogan}}'); // …and the slogan
     expect(w.topNav).toContain('peer-checked'); // mobile = a CSS drawer (sidebar), not a dropdown
+    expect(w.topNav).toContain('bg-base-100'); // nav bar is solid white (page-bg texture must not show through)
+    expect(w.sidebarLeft).toBe(''); // the Facebook widget is moved OUT of the in-flow sidebar
+    expect(w.bottom).toMatch(/fixed left-0[^"]*facebook|facebook[\s\S]*fixed left-0|href="https:\/\/www\.facebook\.com\/acme/i); // …into a fixed edge-tab in bottom
     expect(w.criticalCss).toContain('background-image:url("/media/bg.webp")'); // page background (loopback stripped)
     expect(w.criticalCss).toContain('background-color:#ffffff'); // white base behind a semi-transparent texture (no black)
     expect(w.criticalCss).toContain('body{'); // applied site-wide

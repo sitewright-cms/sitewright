@@ -51,7 +51,19 @@ export function WALK(ROOT_SEL) {
     if (own && own.length < 25) { const lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.2; if (lh > 0 && el.getBoundingClientRect().height <= lh * 1.4) s['white-space'] = 'nowrap'; }
     for (const sd of ['top', 'right', 'bottom', 'left']) { if (s[`border-${sd}-width`]) { s[`border-${sd}-style`] = cs.getPropertyValue(`border-${sd}-style`); s[`border-${sd}-color`] = cs.getPropertyValue(`border-${sd}-color`); } }
     if (own) { delete s.width; delete s.height; }
-    const node = { tag, s, children: [], text: own };
+    // INLINE TEXT BLOCK: an element with its OWN text AND only inline-formatting children (<b>/<i>/<span>…
+    // — no link/img/media/block descendant) → capture the FULL textContent IN ORDER and DON'T recurse, so
+    // an inline <b>/<span> isn't torn out of the sentence and appended at the end (which dropped spaces and
+    // reordered rich paragraphs, e.g. burmeister social-investment: "a bigger .We recognize…people.We").
+    let flatText = '';
+    {
+      const kids = [...el.children];
+      if (own && kids.length > 0 && kids.every((c) => {
+        const d = getComputedStyle(c).display;
+        return (d === 'inline' || d === 'inline-block') && !/^(A|IMG|BUTTON|SVG|IFRAME|VIDEO|INPUT|SELECT|CANVAS|OBJECT)$/.test(c.tagName) && !c.querySelector('a[href],img,svg,button,iframe,video');
+      })) flatText = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim(); // innerText keeps <br>/line breaks as spaces (textContent drops them → run-on sentences)
+    }
+    const node = { tag, s, children: [], text: flatText || own };
     // CONTENT CONTAINER hint: a foreign `.container` / content-wrapper class is the most reliable signal of
     // a centered max-width wrapper (the computed cap is unreliable — it depends on a media query firing at
     // the capture width AND on the foreign CSS not colliding with the platform's own `.container`).
@@ -94,9 +106,11 @@ export function WALK(ROOT_SEL) {
     {
       const acl = el.getAttribute('class') || '';
       if (/(^|\s)(carousel|swiper|swiper-container)(\s|$)/.test(acl) && el.querySelector('.carousel-item,.swiper-slide,.carousel-inner,.swiper-wrapper')) node.snap = 'carousel';
-      // owl / declarative-slick: the root has a static marker (.owl-carousel or data-slick) but its slides
-      // are the DIRECT children (slick/owl add the wrapper+slide classes at RUNTIME) → expanded later.
-      else if ((/(^|\s)owl-carousel(\s|$)/.test(acl) || el.hasAttribute('data-slick')) && el.children.length >= 2) node.snap = 'carousel-direct';
+      // owl / slick / any *-slider|*-carousel container whose slides are DIRECT children (the lib adds the
+      // wrapper/slide classes at RUNTIME). Detected by .owl-carousel / data-slick, OR a *-slider|*-carousel
+      // class with ≥2 `.slide` children (e.g. burmeister `cb-slider` → 19 `.slide`s; without this the slick
+      // slides render as stacked static divs instead of one carousel).
+      else if ((/(^|\s)owl-carousel(\s|$)/.test(acl) || el.hasAttribute('data-slick') || (/(^|\s)[\w-]*(?:slider|carousel)(\s|$)/i.test(acl) && [...el.children].filter((c) => /(^|\s)slide(\s|$)/.test(c.getAttribute('class') || '')).length >= 2)) && el.children.length >= 2) node.snap = 'carousel-direct';
       else if (/(^|\s)(carousel-inner|swiper-wrapper)(\s|$)/.test(acl)) node.snap = 'carousel-track';
       else if (/(^|\s)(carousel-item|swiper-slide)(\s|$)/.test(acl)) node.snap = 'carousel-slide';
       else if (/(^|\s)tab-content(\s|$)/.test(acl) && el.querySelector('.tab-pane')) node.snap = 'tabs';
@@ -110,7 +124,7 @@ export function WALK(ROOT_SEL) {
       else if (/(^|\s)(accordion-header|accordion-collapse)(\s|$)/.test(acl)) node.snap = 'unwrap'; // remove the wrapper so <summary>/body are direct children of <details>
       else if (/(^|\s)accordion-button(\s|$)/.test(acl)) node.snap = 'summary';
     }
-    for (const c of el.children) { const cn = walk(c, cs); if (cn) node.children.push(cn); }
+    if (!flatText) for (const c of el.children) { const cn = walk(c, cs); if (cn) node.children.push(cn); }
     return node;
   }
   const root = document.querySelector(ROOT_SEL) || document.querySelector('#main-content') || document.querySelector('main') || document.body;

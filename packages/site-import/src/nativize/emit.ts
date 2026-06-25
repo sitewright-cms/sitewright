@@ -129,6 +129,10 @@ export function snapButton(s: StyleMap, tag: string, palette: NativizePalette): 
   const bgTok = bg ? colorToken(bg, palette) : null;
   const brandFace = bgTok && bgTok !== 'white' && bgTok !== 'black' ? `btn-${bgTok}` : null;
   const fs = parseFloat(s['font-size'] || '16');
+  // A LARGE-font box (a heading-sized link with an icon, e.g. burmeister's "The Company"/"New Building
+  // Inauguration" cards) is a CONTENT CARD, not a button — snapping it to `.btn` collapses it to an
+  // inline pill (icon beside text, nowrap title clipped). Leave it as a styled link.
+  if (fs >= 24) return null;
   const size = padY >= 16 || fs >= 19 ? 'btn-lg' : (padY > 0 && padY <= 6) || (fs > 0 && fs <= 13) ? 'btn-sm' : '';
   const wrap = (face: string, keepColor: boolean): ButtonSnap => ({ classes: ['btn', face, size].filter(Boolean).join(' '), keepColor });
 
@@ -137,7 +141,10 @@ export function snapButton(s: StyleMap, tag: string, palette: NativizePalette): 
     if (brandFace) return wrap(brandFace, false); // face owns the color → drop the captured fill/text
     if (!bg && borderW > 0) { const bt = colorToken(s['border-top-color'] || '', palette); return wrap(bt && bt !== 'white' && bt !== 'black' ? `btn-outline btn-${bt}` : 'btn-outline', false); }
     if (bg) return wrap('', true); // non-brand fill → bare .btn, KEEP the color
-    return wrap('btn-neutral', false); // a bare <button> with no fill → neutral
+    // No fill + no border: a TEXT/ICON button (e.g. a `bg-transparent primary-text` table action). If it
+    // carries a text color it's a styled text link → `btn-ghost` KEEPING that color (not a dark `btn-neutral`
+    // fill — burmeister's red "VIEW" buttons were rendering as dark boxes).
+    return s.color ? wrap('btn-ghost', true) : wrap('btn-neutral', false);
   }
   // SQUARE ICON button: a small ~square fixed-size control with a fill but little/no padding.
   if (!!bg && w >= 24 && w <= 80 && h >= 24 && h <= 80 && Math.abs(w - h) <= 10 && padX < BTN_PAD_X) {

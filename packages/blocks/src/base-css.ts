@@ -156,10 +156,11 @@ const PLATFORM_DEFAULTS = `
 
 /* Site-wide CONTENT CONTAINER — one knob (\`--sw-container\`, from the Website "Content width" setting)
    aligns + retunes every section's content. \`width:100%\` keeps it fluid; \`max-width\` caps it; auto
-   inline margins centre it; a responsive gutter keeps content off the viewport edges. \`--sw-container:
+   inline margins centre it. The inline GUTTER is a STATIC \`2rem\` default (\`--sw-container-gutter\`) — a
+   fluid \`clamp(…,5vw,5rem)\` ballooned to ~80px on wide screens and squeezed content. \`--sw-container:
    none\` → full-bleed (no cap). In the weak sw-normalize layer so author utilities/CSS override it. */
 @layer sw-normalize {
-  .sw-container { width: 100%; max-width: var(--sw-container, 1200px); margin-inline: auto; padding-inline: clamp(1rem, 5vw, 5rem); }
+  .sw-container { width: 100%; max-width: var(--sw-container, 1200px); margin-inline: auto; padding-inline: var(--sw-container-gutter, 2rem); }
 }
 
 /* Inline code / keyboard / sample / preformatted text get a light "chip" treatment

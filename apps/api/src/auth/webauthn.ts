@@ -56,7 +56,9 @@ export function resolveRp(host: string | undefined, protocol: string, override?:
  * or relay a passkey onto another origin. `SW_WEBAUTHN_ORIGIN`/`_RP_ID` remain the authoritative override.
  */
 export function firstForwardedValue(v: string | string[] | undefined): string | undefined {
-  const raw = Array.isArray(v) ? v[0] : v;
+  // For the duplicate-header array form, skip empty leading entries (a misconfigured proxy may emit
+  // an empty `X-Forwarded-Proto:` before the real one appends `https`).
+  const raw = Array.isArray(v) ? v.find((s) => s.trim() !== '') : v;
   const first = raw?.split(',')[0]?.trim();
   return first ? first : undefined;
 }

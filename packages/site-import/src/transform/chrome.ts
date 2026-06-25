@@ -23,7 +23,9 @@ const isAside: Matcher = (el) => el.name === 'aside' || el.attribs.role === 'com
 const byClass = (rx: RegExp): Matcher => (el) => cls(el, rx);
 const HEADER_CLASS = byClass(/(?:^|\s)(?:site-?header|page-?header|masthead|top-?bar|top-?nav|nav-?bar|nav-?wrapper|navbar|main-?nav|primary-?nav|menu-?bar)(?:$|[\s_-])/i);
 const FOOTER_CLASS = byClass(/(?:^|\s)(?:site-?footer|page-?footer|footer-?wrapper|colophon|bottom-?bar)(?:$|[\s_-])/i);
-const ASIDE_CLASS = byClass(/(?:^|\s)sidebar(?:$|[\s_-])/i);
+// Left anchor is start-or-whitespace ONLY (not `-`): a token must BEGIN with the sidebar word, so a
+// `#side-bar-left-wrapper` matches but a modifier like `no-sidebar`/`hide-sidebar` does not.
+const ASIDE_CLASS = byClass(/(?:^|\s)(?:side-?bar|side-?panel|sidebar-?(?:left|right))(?:$|[\s_-])/i);
 const MOBILE_CLASS = byClass(/(?:^|\s)(?:mobile-?nav|mobile-?menu|off-?canvas|side-?nav|nav-?drawer|drawer-?menu|slide-?menu|burger-?menu)(?:$|[\s_-])/i);
 const PRELOADER: Matcher = byClass(/(?:^|\s)(?:preloader|pre-?load|loading-?overlay|page-?loader|site-?loader|loader-?wrap|spinner-?overlay)(?:$|[\s_-])/i);
 const COOKIE: Matcher = byClass(/(?:^|\s)(?:cookie|consent|gdpr)(?:$|[\s_-])/i);

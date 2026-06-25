@@ -4,7 +4,7 @@
 // reset it per breakpoint. Pure — runs server-side, unit-tested without a browser. Ported from the
 // matured _clone.mjs spike; the brand palette is injected (not hardcoded) so it works for any project.
 import {
-  type NativizePalette, arbitrary, colorToken, colorValue, dim, fontSizeClass, hexOf, radiusClass, space, spaceToken,
+  type NativizePalette, arbitrary, colorClass, colorValue, dim, fontSizeClass, leadingClass, opacityClass, radiusClass, space, zIndexClass,
 } from './tokens.js';
 
 /** A node's captured computed styles at one viewport — only props that differ from the browser default. */
@@ -29,18 +29,17 @@ const JUSTIFY: Readonly<Record<string, string>> = { 'flex-start': 'start', 'flex
  */
 export function emitGroups(s: StyleMap, tag: string, pflex: boolean, ctx: EmitContext): GroupResult {
   const { palette } = ctx;
-  const tok = (v: string): string | null => colorToken(v, palette);
   const cvar = (v: string): string => colorValue(v, palette);
   const g: Record<string, string> = {};
   const st: string[] = [];
 
-  if (s.color) { const t = tok(s.color); g.color = `text-${t ? t : `[${hexOf(s.color)}]`}`; }
-  if (s['background-color']) { const t = tok(s['background-color']); g.bg = `bg-${t ? t : `[${hexOf(s['background-color'])}]`}`; }
+  if (s.color) g.color = colorClass('text', s.color, palette);
+  if (s['background-color']) g.bg = colorClass('bg', s['background-color'], palette);
   if (s['font-family']) { const ff = s['font-family']; const f = palette.fonts.find(([k]) => ff.includes(k)); if (f) g.fontfam = f[1]; }
   if (s['font-size']) g.fsize = fontSizeClass(s['font-size']);
   if (s['font-weight']) g.fweight = FWEIGHT[s['font-weight']] ?? `font-[${s['font-weight']}]`;
   if (s['font-style'] === 'italic') g.fstyle = 'italic';
-  if (s['line-height'] && s['line-height'] !== 'normal') { const lt = spaceToken(s['line-height'], 2.5); g.leading = lt !== null ? `leading-${lt}` : `leading-[${s['line-height']}]`; }
+  if (s['line-height'] && s['line-height'] !== 'normal') { const lc = leadingClass(s['line-height'], s['font-size']); if (lc) g.leading = lc; }
   if (s['letter-spacing'] && s['letter-spacing'] !== 'normal') g.tracking = `tracking-[${s['letter-spacing']}]`;
   if (s['text-align'] && s['text-align'] !== 'start' && s['text-align'] !== 'left') g.talign = `text-${s['text-align']}`;
   if (s['text-transform'] && s['text-transform'] !== 'none') g.ttransform = s['text-transform']; // 'uppercase'/'lowercase'/'capitalize' ARE Tailwind classes
@@ -68,14 +67,14 @@ export function emitGroups(s: StyleMap, tag: string, pflex: boolean, ctx: EmitCo
     g.gridcols = allEq ? `grid-cols-${tr.length}` : allPx ? `grid-cols-[${px.map((n) => `minmax(0,${Math.round(n)}fr)`).join('_')}]` : `grid-cols-[${arbitrary(s['grid-template-columns'])}]`;
   }
   if (s.position && s.position !== 'static') g.position = s.position;
-  if (s['z-index'] && s['z-index'] !== 'auto') g.zindex = `z-[${s['z-index']}]`;
+  if (s['z-index'] && s['z-index'] !== 'auto') g.zindex = zIndexClass(s['z-index']);
   for (const pp of ['top', 'right', 'bottom', 'left'] as const) { const v = s[pp]; if (v && v !== 'auto' && v !== '0px') g[pp] = dim(pp, v); } // skip no-op 0 insets
 
   // width: a centered fixed-width container → responsive `w-full max-w-[W]`; a plain fixed width → pin it
   // BUT cap with max-w-full so it can never overflow a narrow viewport.
   const ml = s['margin-left'], mr = s['margin-right'];
   const centered = !!(ml && mr && ml === mr && parseFloat(ml) > 0);
-  if (s.width && s.width !== 'auto') { if (s.width === '100%') g.w = 'w-full'; else if (centered) { g.w = 'w-full'; g.maxw = dim('max-w', s.width); } else { g.w = dim('w', s.width); g.maxw = 'max-w-full'; } }
+  if (s.width && s.width !== 'auto') { const wpx = parseFloat(s.width); if (s.width === '100%') g.w = 'w-full'; else if (centered) { g.w = 'w-full'; g.maxw = dim('max-w', s.width); } else if (wpx >= 1024) g.w = 'w-full'; else { g.w = dim('w', s.width); g.maxw = 'max-w-full'; } }
   // height: pin for <iframe> (video/map) or a clipping (overflow-hidden) viewport; a background BAND keeps
   // a min-h floor; plain content containers size to content (no floor → no empty space when content reflows).
   if (s.height && s.height !== 'auto' && s.height !== '100%') {
@@ -108,7 +107,7 @@ export function emitGroups(s: StyleMap, tag: string, pflex: boolean, ctx: EmitCo
   for (const sd of ['top', 'right', 'bottom', 'left'] as const) { const w = s[`border-${sd}-width`]; if (w) g[`border${sd}`] = `[border-${sd}:${w}_${s[`border-${sd}-style`] || 'solid'}_${cvar(s[`border-${sd}-color`] || '')}]`; }
   if (s['border-radius']) { if (s['border-radius'].includes('/')) st.push(`border-radius:${s['border-radius']}`); else g.radius = radiusClass(s['border-radius']); }
   if (s['box-shadow'] && s['box-shadow'] !== 'none') st.push(`box-shadow:${s['box-shadow']}`);
-  if (s.opacity && s.opacity !== '1') g.opacity = `opacity-[${s.opacity}]`;
+  if (s.opacity && s.opacity !== '1') g.opacity = opacityClass(s.opacity);
   if (s.transform && s.transform !== 'none' && !/matrix3d/.test(s.transform) && !/^matrix\(1,\s*0,\s*0,\s*1,\s*0,\s*0\)$/.test(s.transform)) g.transform = `[transform:${arbitrary(s.transform)}]`;
   if (s.overflow && s.overflow !== 'visible') g.overflow = `overflow-${s.overflow}`;
   if (s['object-fit'] && s['object-fit'] !== 'fill') g.objectfit = `object-${s['object-fit']}`;

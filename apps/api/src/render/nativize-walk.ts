@@ -52,6 +52,10 @@ export function WALK(ROOT_SEL) {
     for (const sd of ['top', 'right', 'bottom', 'left']) { if (s[`border-${sd}-width`]) { s[`border-${sd}-style`] = cs.getPropertyValue(`border-${sd}-style`); s[`border-${sd}-color`] = cs.getPropertyValue(`border-${sd}-color`); } }
     if (own) { delete s.width; delete s.height; }
     const node = { tag, s, children: [], text: own };
+    // CONTENT CONTAINER hint: a foreign `.container` / content-wrapper class is the most reliable signal of
+    // a centered max-width wrapper (the computed cap is unreliable — it depends on a media query firing at
+    // the capture width AND on the foreign CSS not colliding with the platform's own `.container`).
+    { const acl = el.getAttribute('class') || ''; if (/(^|\s)(container|content-wrapper|content-container|page-container|site-container|inner-wrap|content-wrap)(\s|$)/i.test(acl)) node.containerHint = true; }
     // FOLD: an element starting past the first viewport-height (absolute doc position) can lazy-load its
     // image/background; an above-the-fold one stays eager (LCP). Robust to any scroll position at walk time.
     node.belowFold = (el.getBoundingClientRect().top + window.scrollY) > window.innerHeight;
@@ -79,7 +83,9 @@ export function WALK(ROOT_SEL) {
     // scripts are stripped), and the hidden modal subtree is still walked (display:none, not skipped).
     {
       const acl = el.getAttribute('class') || ''; const id = el.getAttribute('id') || '';
-      if (id && (/(^|\s)modal(\s|$)/.test(acl) || el.getAttribute('role') === 'dialog')) { node.isModal = true; node.id = id; }
+      // "modal" as a whole token OR a SUFFIX (cb-modal, my-modal) — but NOT a prefix (modal-content/-dialog
+      // /-backdrop are the inner Bootstrap parts): match `modal` ending a token (end-or-space, never a hyphen).
+      if (id && (/(?:^|[\s_-])modal(?:$|\s)/i.test(acl) || el.getAttribute('role') === 'dialog')) { node.isModal = true; node.id = id; }
       const tgl = el.getAttribute('data-toggle') || el.getAttribute('data-bs-toggle') || '';
       if (tgl === 'modal') { const t = el.getAttribute('data-target') || el.getAttribute('data-bs-target') || el.getAttribute('href') || ''; const m = t.match(/^#(.+)$/); if (m) node.modalTarget = m[1]; }
     }
@@ -127,6 +133,15 @@ export function NAVDATA(sel) {
     links.push({ text, href: a.getAttribute('href') || '' });
   }
   return { logo, links };
+}
+
+/** The document BODY's own computed background (the page background) — WALK(body) only sees its children,
+ *  never the body itself; the orchestrator applies this site-wide via criticalCss. */
+export function BODYBG() {
+  const cs = getComputedStyle(document.body);
+  const hs = getComputedStyle(document.documentElement);
+  const fam = (sel) => { const el = document.querySelector(sel); return el ? getComputedStyle(el).fontFamily : ''; };
+  return { image: cs.backgroundImage, color: cs.backgroundColor, htmlColor: hs.backgroundColor, size: cs.backgroundSize, position: cs.backgroundPosition, repeat: cs.backgroundRepeat, attachment: cs.backgroundAttachment, bodyFont: cs.fontFamily, headingFont: fam('h1,h2,h3,.h1,.h2') || cs.fontFamily };
 }
 
 /** Scroll through the page to trigger lazy-load + settle reveal animations, then return to the top. */

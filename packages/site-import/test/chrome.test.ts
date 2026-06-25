@@ -24,6 +24,18 @@ describe('extractChrome', () => {
     for (const p of pages) expect(serialize(getBody(p.doc)!.children)).not.toContain('rail');
   });
 
+  it('hoists a hyphenated-id sidebar wrapper (e.g. #side-bar-left-wrapper) but not a no-sidebar modifier', () => {
+    const sidebar = '<div id="side-bar-left-wrapper" class="wrapper">fb rail</div>';
+    const ok = ['/a', '/b', '/c'].map((u) => pp(u, `<html><body>${sidebar}<main>content</main></body></html>`));
+    expect(extractChrome(ok, ctx).sidebarLeft).toContain('fb rail');
+
+    const modifier = '<div class="no-sidebar">page wrapper</div>';
+    const no = ['/a', '/b', '/c'].map((u) => pp(u, `<html><body>${modifier}<main>content</main></body></html>`));
+    const r = extractChrome(no, ctx);
+    expect(r.sidebarLeft).toBeUndefined(); // a `no-sidebar` layout modifier must NOT be hoisted as a sidebar
+    for (const p of no) expect(serialize(getBody(p.doc)!.children)).toContain('page wrapper');
+  });
+
   it('hoists a separate slide-out mobile menu into mobileNav (distinct from the header)', () => {
     const chrome = '<div id="top-nav"><a href="/about">Desktop</a></div><div id="mobile-nav"><a href="/about">MobileMenu</a></div>';
     const pages = ['/a', '/b', '/c'].map((u) => pp(u, `<html><body>${chrome}<main>content</main></body></html>`));

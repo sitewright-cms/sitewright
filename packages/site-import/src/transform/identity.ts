@@ -223,6 +223,18 @@ function cssColor(value: string | undefined): string | undefined {
   return /^#[0-9a-fA-F]{3,8}$|^(?:rgb|hsl)a?\([0-9\s%,./deg-]+\)$/.test(v) ? v : undefined;
 }
 
+/** A SHORT brand tagline for the nav/CI slogan: a `.slogan`/`.tagline`/`.subtitle` element's text with a
+ *  leading company name (+ legal suffix) stripped, else a short og:description. NOT the long meta
+ *  description (which belongs in `description`). */
+function extractSlogan(doc: Document, meta: Map<string, string>, name: string): string | undefined {
+  const el = findAll((n) => /\b(?:slogan|tagline|sub-?title|motto)\b/i.test(`${(n as Element).attribs?.class ?? ''} ${(n as Element).attribs?.id ?? ''}`), doc.children)[0] as Element | undefined;
+  let s = el ? textContent([el]).replace(/\s+/g, ' ').trim() : '';
+  if (s && name) { const re = new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*(?:\\(?(?:pty|ltd|limited|inc|llc|gmbh|co)\\)?[.\\s]*)*`, 'i'); s = s.replace(re, '').trim(); }
+  if (s.length >= 3 && s.length <= 90) return s;
+  const og = meta.get('og:description');
+  return og && og.length <= 90 ? og : undefined; // a long meta description is NOT a slogan
+}
+
 /** Build a CorporateIdentity from the home document. Parsed through the schema so it's always valid. */
 export function extractIdentity(homeDoc: Document, ctx: IdentityCtx): CorporateIdentity {
   const meta = metaMap(homeDoc);
@@ -244,7 +256,7 @@ export function extractIdentity(homeDoc: Document, ctx: IdentityCtx): CorporateI
   const input: Record<string, unknown> = {
     name: name.slice(0, 200),
     description: meta.get('description')?.slice(0, 4000),
-    slogan: meta.get('og:description')?.slice(0, 300),
+    slogan: extractSlogan(homeDoc, meta, name),
     logo: assetRef(findLogo(homeDoc), ctx),
     icon: assetRef(findIcon(homeDoc), ctx),
     image: assetRef(meta.get('og:image'), ctx),

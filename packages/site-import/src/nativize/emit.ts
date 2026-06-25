@@ -40,6 +40,8 @@ export interface CapturedNode {
   /** This element started BELOW the fold in this viewport (top past the viewport height) → its image /
    *  background can be lazy-loaded; an above-the-fold one stays eager (LCP). */
   belowFold?: boolean;
+  /** The element carries a foreign `.container`/content-wrapper class → snap to `.sw-container`. */
+  containerHint?: boolean;
 }
 
 /** A component part recognized from the source's static class markers → a platform primitive on emit. */
@@ -164,9 +166,19 @@ export function mergeTree(nb: CapturedNode, nm: CapturedNode, nl: CapturedNode, 
   const hasTrackChild = nl.children.some((c) => parseFloat((c.s || {}).width || '0') > SLIDER_TRACK_PX);
   const isSlide = !!pTrack;
   const slider = !!(inSlider || isTrack || hasTrackChild);
-  // CONTENT CONTAINER: a wide, horizontally-centered structural block (at desktop) is a section's content
-  // wrapper → emit the site-wide `.sw-container` instead of a captured per-section width.
-  const isContainer = !slider && !nl.snap && cw >= CONTAINER_MIN_PX && cml > 0 && Math.abs(cml - cmr) < 2 && nl.tag !== 'img' && nl.tag !== 'iframe' && nl.children.length > 0;
+  // CONTENT CONTAINER → the site-wide `.sw-container` (capped + centred + responsive gutter) instead of a
+  // captured per-section width. Detected EITHER as a wide horizontally-centred block (visible only at a
+  // viewport wider than its max-width) OR — crucially — by a captured `max-width` cap (a `width:100%;
+  // max-width:Npx; margin:auto` container reads as full-width at the capture viewport, with margin:auto
+  // resolving to 0, so the centring is invisible; the max-width cap is the reliable signal).
+  const cmw = parseFloat(nl.s['max-width'] || '0');
+  const structural = !slider && !nl.snap && nl.tag !== 'img' && nl.tag !== 'iframe' && nl.children.length > 0;
+  const wideOrFull = cw >= 400 || nl.s.width === '100%' || !nl.s.width; // not a narrow fixed-width widget
+  const isContainer = structural && (
+    (nl.containerHint && wideOrFull) || // a foreign `.container`/content-wrapper class (most reliable)
+    (cw >= CONTAINER_MIN_PX && cml > 0 && Math.abs(cml - cmr) < 2) || // a wide centered block (at a wide capture)
+    (cmw >= CONTAINER_MIN_PX && cmw <= 2000) // a captured max-width cap
+  );
   if (isContainer) for (const m of maps) for (const k of ['w', 'maxw', 'mx', 'px', 'pl', 'pr']) delete m.g[k];
   // A modal container becomes a native <dialog>, which owns its open/closed visibility — drop the captured
   // display:none (it's hidden in the static capture) so the dialog isn't permanently invisible when opened.

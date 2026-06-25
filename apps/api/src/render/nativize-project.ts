@@ -8,12 +8,12 @@ import type { FastifyBaseLogger } from 'fastify';
 import type { Page, Entry } from '@sitewright/schema';
 import { validateTemplate, type TemplateContext } from '@sitewright/blocks';
 import { resolveLocaleDatasets, compareEntryOrder, keyedDatasets } from '@sitewright/core';
-import { buildPalette, mergeTrees, renderTree, type NativizeContext } from '@sitewright/site-import';
+import { buildPalette, hoistGlobalModals, mergeTrees, renderTree, type CapturedNode, type NativizeContext } from '@sitewright/site-import';
 import { type ContentRepository, SETTINGS_ENTITY_ID, type Settings } from '../repo/content.js';
 import type { ProjectContext } from '../repo/context.js';
 import type { RenderPool } from './render-pool.js';
 import { isRawFidelityPage } from '../import/raw-fidelity.js';
-import { captureStyledTrees } from './nativize-capture.js';
+import { captureStyledTrees, type BodyBackground } from './nativize-capture.js';
 
 /** The headless capture seam — defaults to the real Playwright capture; tests inject a fixture. */
 export type CaptureFn = typeof captureStyledTrees;
@@ -81,30 +81,91 @@ const escAttr = (v: string): string => v.replace(/&/g, '&amp;').replace(/"/g, '&
  * config) with `{{sw-active}}` highlighting. No `<nav>` (the platform wraps the topNav slot in one).
  */
 function buildNavbar(logo: string | undefined): string {
-  const logoHtml = logo
-    ? `<a href="{{sw-url '/'}}" class="flex shrink-0 items-center"><img src="${escAttr(logo)}" alt="{{company.name}}" class="h-14 w-auto max-w-full"></a>`
-    : `<a href="{{sw-url '/'}}" class="font-heading text-xl font-bold text-primary no-underline">{{company.name}}</a>`;
+  // Brand block: logo (if any) + company NAME + SLOGAN (matches the original nav's logo + tagline).
+  const brand = `<a href="{{sw-url '/'}}" class="flex shrink-0 items-center gap-3 no-underline">${
+    logo ? `<img src="${escAttr(logo)}" alt="{{company.name}}" class="h-12 w-auto max-w-full">` : ''
+  }<span class="flex flex-col justify-center leading-tight">
+    <span class="font-heading text-base font-bold text-primary lg:text-lg">{{company.name}}</span>
+    {{#if company.slogan}}<span class="text-[11px] font-medium text-base-content/70 lg:text-xs">{{company.slogan}}</span>{{/if}}
+  </span></a>`;
+  // Mobile menu = a left SIDEBAR DRAWER (no-JS, CSS peer-checkbox): hamburger toggles a slide-in panel +
+  // dimmed overlay. The checkbox must PRECEDE the overlay/panel for `peer-checked:` to reach them.
   return `<div class="sw-container flex items-center gap-4 py-3">
-  ${logoHtml}
-  <ul class="ml-auto flex list-none items-center gap-2 max-lg:hidden">
+  ${brand}
+  <ul class="ml-auto flex list-none items-center gap-1 max-lg:hidden">
     {{#each nav.header}}
     <li><a href="{{sw-url path}}" class="px-3 py-2 font-medium no-underline transition-colors {{#if (sw-active path)}}rounded-full bg-secondary text-secondary-content{{else}}text-base-content hover:text-secondary{{/if}}">{{sw-label}}</a></li>
     {{/each}}
   </ul>
-  <details class="dropdown dropdown-end ml-auto lg:hidden">
-    <summary class="btn btn-ghost btn-square list-none" aria-label="Open menu">{{sw-icon "menu" "h-6 w-6"}}</summary>
-    <ul class="dropdown-content z-20 mt-2 w-56 list-none space-y-1 rounded-box bg-base-100 p-2 shadow-lg ring-1 ring-base-200">
+  <input type="checkbox" id="sw-nav-drawer" class="peer sr-only" aria-label="Open menu">
+  <label for="sw-nav-drawer" class="btn btn-ghost btn-square ml-auto lg:hidden">{{sw-icon "menu" "h-6 w-6"}}</label>
+  <label for="sw-nav-drawer" class="fixed inset-0 z-40 bg-black/40 opacity-0 pointer-events-none transition-opacity duration-300 peer-checked:opacity-100 peer-checked:pointer-events-auto lg:hidden"></label>
+  <div class="fixed inset-y-0 left-0 z-50 w-72 max-w-[80%] -translate-x-full bg-base-100 shadow-xl transition-transform duration-300 peer-checked:translate-x-0 lg:hidden">
+    <ul class="menu w-full p-4 pt-16">
       {{#each nav.header}}
-      <li><a href="{{sw-url path}}" class="block rounded-md px-3 py-2 font-medium no-underline {{#if (sw-active path)}}bg-secondary text-secondary-content{{else}}text-base-content hover:bg-base-200{{/if}}">{{sw-label}}</a></li>
+      <li><a href="{{sw-url path}}" class="{{#if (sw-active path)}}active{{/if}}">{{sw-label}}</a></li>
       {{/each}}
     </ul>
-  </details>
+  </div>
 </div>`;
 }
 
 /** Remove the imported foreign stylesheet `<link>` from `website.head` (keep any other head content). */
 function stripForeignStylesheet(head: string | undefined): string {
   return (head ?? '').replace(/<link\b[^>]*\brel=["']?stylesheet["']?[^>]*>/gi, '').trim();
+}
+
+/** The dominant content-container width from a captured (WIDE-viewport) tree: the largest horizontally
+ *  CENTERED structural block (a `width:Npx; margin:auto` container caps + shows margins at the wide
+ *  capture). → website.containerWidth so the platform `.sw-container` matches the source's max-width. */
+export function detectContainerWidth(nodes: readonly CapturedNode[]): number | undefined {
+  let best: number | undefined;
+  const visit = (n: CapturedNode): void => {
+    const w = parseFloat(n.s.width || '0'), ml = parseFloat(n.s['margin-left'] || '0'), mr = parseFloat(n.s['margin-right'] || '0');
+    if (w >= 760 && w <= 2000 && ml > 4 && Math.abs(ml - mr) < 3 && n.children.length > 0 && (best === undefined || w > best)) best = w;
+    n.children.forEach(visit);
+  };
+  nodes.forEach(visit);
+  return best;
+}
+
+/** Match the captured heading/body font-family to a hosted font asset (kind:'font') by family → an
+ *  `identity.typography` so the nativized site renders in the SOURCE's fonts, not the platform defaults. */
+export function buildTypography(bodyBg: BodyBackground | undefined, fonts: ReadonlyArray<{ id: string; family: string }>): Record<string, unknown> | undefined {
+  if (!bodyBg || fonts.length === 0) return undefined;
+  const firstFamily = (stack: string): string => (stack || '').split(',')[0]!.replace(/['"]/g, '').trim();
+  const byFamily = new Map(fonts.map((a) => [a.family.toLowerCase(), a]));
+  const slot = (font: string, weight: number): Record<string, unknown> | undefined => {
+    const fam = firstFamily(font);
+    const a = fam ? byFamily.get(fam.toLowerCase()) : undefined;
+    return a && /^[A-Za-z0-9][A-Za-z0-9 '-]*$/.test(fam) ? { source: 'asset', family: fam, assetId: a.id, weight } : undefined;
+  };
+  const t: Record<string, unknown> = {};
+  const h = slot(bodyBg.headingFont, 700); if (h) t.heading = h;
+  const b = slot(bodyBg.bodyFont, 400); if (b) t.body = b;
+  return Object.keys(t).length ? t : undefined;
+}
+
+/** Build a site-wide `body{…}` rule from the captured page background, for `website.criticalCss`. The
+ *  loopback origin the capture resolved /media against is stripped (→ root-relative). Returns '' for no
+ *  meaningful background. (`</style` can't appear — url()/colors only — so it's criticalCss-safe.) */
+export function bodyBgCss(bg: BodyBackground | undefined, loopbackOrigin: RegExp): string {
+  if (!bg) return '';
+  const first = (v: string): string => (v || '').split(',')[0]!.trim();
+  const opaque = (c: string): string => (c && c !== 'rgba(0, 0, 0, 0)' && c !== 'transparent' && !/,\s*0\)$/.test(c) ? c : '');
+  // Only take the first layer for a url() STACK — a gradient (`linear-gradient(to right, …, …)`) has commas
+  // INSIDE its parens, so splitting on `,` would truncate it to invalid CSS. Keep gradients whole.
+  const rawImg = bg.image && bg.image !== 'none' && !/url\(\s*["']?data:/i.test(bg.image) ? bg.image : '';
+  const image = rawImg ? (rawImg.trimStart().startsWith('url(') ? first(rawImg) : rawImg).replace(loopbackOrigin, '') : '';
+  // The base color BEHIND the image: the body's, else the <html>'s, else WHITE (the browser default the
+  // source relied on). Critical for a SEMI-TRANSPARENT texture — without it the platform's (dark) base
+  // shows through and the page reads black instead of the source's light grey.
+  const color = opaque(bg.color) || opaque(bg.htmlColor) || (image ? '#ffffff' : '');
+  if (!image && !color) return '';
+  const decls: string[] = [];
+  if (color) decls.push(`background-color:${color}`);
+  if (image) decls.push(`background-image:${image}`, `background-size:${first(bg.size) || 'auto'}`, `background-position:${first(bg.position) || '0% 0%'}`, `background-repeat:${first(bg.repeat) || 'repeat'}`, `background-attachment:${first(bg.attachment) || 'scroll'}`);
+  return `body{${decls.join(';')}}`;
 }
 
 /**
@@ -168,6 +229,9 @@ export async function nativizeProject(
   let nativized = 0;
   let marqueeLogos = 0;
   let done = 0;
+  const bodyBgByPath = new Map<string, BodyBackground>(); // page bg per page → prefer the HOME's after the pool
+  let containerWidth: number | undefined; // the source content-container max-width → website.containerWidth
+  const nativizedPages: Array<{ id: string; html: string; page: Record<string, unknown> }> = []; // → global-modal hoisting
 
   await runPool(targets, PAGE_CONCURRENCY, async (page) => {
     if (deps.signal?.aborted) return; // client disconnected → stop taking new pages (those done persist)
@@ -187,7 +251,13 @@ export async function nativizeProject(
       // capture sees an UNSTYLED page. injectBaseHref (in the capture) resolves the /media link to loopback.
       const head = typeof website?.head === 'string' ? website.head : '';
       const doc = `<!doctype html><html lang="en"><head><meta charset="utf-8">${head}</head><body>${body}</body></html>`;
-      const { base, md, lg } = await capture(doc, { originHostPort: deps.originHostPort, rootSelector: 'body' });
+      const cap = await capture(doc, { originHostPort: deps.originHostPort, rootSelector: 'body' });
+      const { base, md, lg } = cap;
+      // Site-wide page bg + fonts: record PER PAGE (distinct Map keys → no concurrency race on a shared
+      // scalar); the HOME page is preferred after the pool (its headings give the real heading font; a
+      // heading-less page would wrongly fall the heading font back to the body font).
+      if (cap.bodyBg && cap.bodyBg.image && cap.bodyBg.image !== 'none') bodyBgByPath.set(page.path ?? '', cap.bodyBg);
+      if (!containerWidth) containerWidth = detectContainerWidth(lg); // content-container width (site-wide)
       const result = renderTree(mergeTrees(base, md, lg, nctx), nctx);
       // Strip the loopback <base> origin the capture resolved media against, so /media stays root-relative
       // (the host may appear with or without its port — new URL() drops the default :80).
@@ -200,6 +270,7 @@ export async function nativizeProject(
         data: { ...(page.data ?? {}), swImport: { ...((page.data as { swImport?: object })?.swImport ?? {}), rewritten: true } },
       };
       await deps.contentRepo.put(ctx, 'page', page.id, updated, { op: 'put', note: 'nativize' });
+      nativizedPages.push({ id: page.id, html, page: updated }); // for global-modal hoisting once the site is native
       nativized += 1;
       marqueeLogos += result.marqueeLogos.length;
     } catch (err) {
@@ -209,6 +280,9 @@ export async function nativizeProject(
     done += 1;
     onProgress({ phase: 'nativize', done, total: targets.length, detail: page.title || page.path || page.id });
   });
+
+  // Site-wide background + fonts come from the HOME page (path ''), else any page that has one.
+  const bodyBg: BodyBackground | undefined = bodyBgByPath.get('') ?? [...bodyBgByPath.values()][0];
 
   // Once the WHOLE site is native (no rawFidelity page remains), transition the chrome: drop the foreign
   // stylesheet + scripts (native pages don't need them) and rebuild the nav into the data-driven menu.
@@ -240,8 +314,34 @@ export async function nativizeProject(
       newWebsite.head = stripForeignStylesheet(website?.head); // #5 — safe now nothing foreign-styled remains
       newWebsite.scripts = ''; // drop the imported foreign JS — native pages use the platform runtimes
       if (footerSrc) newWebsite.footer = nativeFooter;
+      const bgCss = bodyBgCss(bodyBg, loopbackOrigin); // site-wide PAGE BACKGROUND → criticalCss
+      if (bgCss) newWebsite.criticalCss = `${bgCss}${typeof website?.criticalCss === 'string' && website.criticalCss.trim() ? `\n${website.criticalCss}` : ''}`;
+      if (containerWidth && containerWidth >= 760 && containerWidth <= 2000) newWebsite.containerWidth = `${Math.round(containerWidth)}px`; // sw-container cap = source's
     }
-    await deps.contentRepo.put(ctx, 'settings', SETTINGS_ENTITY_ID, { ...settings, website: newWebsite }, { op: 'put', note: 'nativize-chrome' });
+    // Typography: match the captured heading/body fonts to the hosted @font-face assets → identity.typography
+    // so the nativized site renders in the SOURCE fonts (not the platform defaults).
+    const fontAssets = ((await deps.contentRepo.list(ctx, 'media')) as Array<{ id: string; kind?: string; family?: string }>)
+      .filter((a) => a.kind === 'font' && typeof a.family === 'string').map((a) => ({ id: a.id, family: a.family! }));
+    const typography = buildTypography(bodyBg, fontAssets);
+    // GLOBAL MODALS → website.bottom: a `<dialog data-sw-component="modal">` repeated across the site lives
+    // ONCE in the site-wide slot (rendered on every page); the per-page triggers (`<a href="#id">`) still
+    // open it via the platform modal runtime. Page-LOCAL modals stay in their page.
+    const { bottom: modalBottom, stripped: strippedPages } = hoistGlobalModals(nativizedPages.map((p) => ({ id: p.id, html: p.html })));
+    if (modalBottom) {
+      newWebsite.bottom = `${modalBottom}${typeof website?.bottom === 'string' && website.bottom.trim() ? `\n${website.bottom}` : ''}`;
+      for (const np of nativizedPages) {
+        const h = strippedPages.get(np.id);
+        if (h === undefined) continue;
+        try {
+          validateTemplate(h);
+          await deps.contentRepo.put(ctx, 'page', np.id, { ...np.page, source: h }, { op: 'put', note: 'nativize-modal-hoist' });
+        } catch (err) {
+          deps.log.warn({ pageId: np.id, err: err instanceof Error ? err.message : String(err) }, 'nativize: modal hoist skipped');
+        }
+      }
+    }
+    const newSettings = typography ? { ...settings, identity: { ...(settings.identity ?? {}), typography }, website: newWebsite } : { ...settings, website: newWebsite };
+    await deps.contentRepo.put(ctx, 'settings', SETTINGS_ENTITY_ID, newSettings, { op: 'put', note: 'nativize-chrome' });
     chromeRebuilt = footerOk;
   }
 

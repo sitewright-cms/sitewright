@@ -100,6 +100,7 @@ export type DiagnosticCode =
   | 'style-removed'
   | 'form-inerted'
   | 'back-to-top-removed'
+  | 'preloader-removed'
   | 'image-host-failed'
   | 'image-budget-exceeded'
   | 'unsafe-url-dropped'

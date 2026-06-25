@@ -45,6 +45,22 @@ export interface DatasetInference {
  *  text elements. The card ROOT itself is inspected first — a clickable card (`<a href>`) and/or a
  *  background-image card carries its per-item link/image ON THE ROOT, which the descendant walk never sees
  *  (so without this they'd bake static into the loop — every tile the same link + image). */
+/** Does `el` contain an `<img>`, a real `<a href>` link, or a background image anywhere below it? Such a
+ *  node must be RECURSED (to field-ize the media/link), not flattened into a single text slot. */
+function hasMediaDescendant(el: Element): boolean {
+  const stack: AnyNode[] = [...el.children];
+  let guard = 0;
+  while (stack.length > 0 && guard++ < 500) {
+    const n = stack.pop();
+    if (!n || !isTag(n)) continue;
+    if (n.name === 'img' || bgUrl(n)) return true;
+    const href = (n.attribs.href ?? '').trim();
+    if (n.name === 'a' && href !== '' && !href.startsWith('#')) return true;
+    stack.push(...n.children);
+  }
+  return false;
+}
+
 function collectSlots(root: Element): Slot[] {
   const out: Slot[] = [];
   const rootHref = (root.attribs.href ?? '').trim();
@@ -68,6 +84,15 @@ function collectSlots(root: Element): Slot[] {
       }
       const childEls = n.children.filter(isTag);
       const directText = n.children.filter(isText).map((t) => t.data).join('').trim();
+      // A TEXT BLOCK — direct text plus only inline styling (a `<span>`/`<b>`/… with NO media/link
+      // descendant) → ONE text slot capturing the WHOLE node's text. Previously leading text before an
+      // inner element was DROPPED and only the inner element field-ized, so a repeated card baked the first
+      // card's leading text as fixed and bound every other card's value into the span (burmeister
+      // management: every director read "Mr. Ronald L. Kubas <their name>").
+      if (directText !== '' && !hasMediaDescendant(n)) {
+        out.push({ type: 'text', el: n });
+        continue;
+      }
       if (childEls.length === 0 && directText !== '') {
         out.push({ type: 'text', el: n });
         continue;

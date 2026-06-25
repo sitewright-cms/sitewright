@@ -75,6 +75,17 @@ function originHostsOf(pages: readonly Page[]): string[] {
 
 const escAttr = (v: string): string => v.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 
+/** A Facebook page widget (a `#facebook-page` / FB plugin iframe in a sidebar) doesn't map to an in-flow
+ *  sidebar column without dominating every page. Reproduce the source's collapsed LEFT EDGE-TAB instead: a
+ *  small fixed vertical tab linking to the FB page. Returns null if no FB page URL is found. */
+function fbFloatingTab(sidebarHtml: string | undefined): string | null {
+  if (!sidebarHtml || !/facebook\.com/i.test(sidebarHtml)) return null;
+  const hrefParam = sidebarHtml.match(/[?&]href=([^&"']+)/i);
+  const url = hrefParam ? decodeURIComponent(hrefParam[1]!) : (sidebarHtml.match(/https?:\/\/(?:www\.)?facebook\.com\/[^"'?&\s]+/i)?.[0] ?? '');
+  if (!/^https?:\/\/(?:www\.)?facebook\.com\//i.test(url)) return null;
+  return `<a href="${escAttr(url)}" target="_blank" rel="noopener" aria-label="Facebook" class="fixed left-0 top-1/2 z-30 hidden -translate-y-1/2 rotate-180 items-center gap-1 rounded-r-md bg-[#1877f2] px-1.5 py-3 text-xs font-semibold uppercase tracking-wide text-white shadow-lg [writing-mode:vertical-rl] transition-[padding] hover:pl-2.5 lg:flex">${'{{sw-icon "brand:facebook" "h-4 w-4 rotate-180"}}'}<span>Facebook</span></a>`;
+}
+
 /**
  * A clean, RESPONSIVE, data-driven navbar to replace the imported chrome's hard-coded links: a desktop
  * menu + a CSS-only mobile dropdown, both looping `{{#each nav.header}}` (built from each page's nav
@@ -90,11 +101,14 @@ function buildNavbar(logo: string | undefined): string {
   </span></a>`;
   // Mobile menu = a left SIDEBAR DRAWER (no-JS, CSS peer-checkbox): hamburger toggles a slide-in panel +
   // dimmed overlay. The checkbox must PRECEDE the overlay/panel for `peer-checked:` to reach them.
-  return `<div class="sw-container flex items-center gap-4 py-3">
+  // Full-width SOLID bar (bg-base-100 = white surface) so the site-wide page-background texture never
+  // shows THROUGH the header; the inner sw-container holds the brand + links.
+  return `<div class="bg-base-100 border-b border-base-200">
+  <div class="sw-container flex items-center gap-4 py-3">
   ${brand}
   <ul class="ml-auto flex list-none items-center gap-1 max-lg:hidden">
     {{#each nav.header}}
-    <li><a href="{{sw-url path}}" class="px-3 py-2 font-medium no-underline transition-colors {{#if (sw-active path)}}rounded-full bg-secondary text-secondary-content{{else}}text-base-content hover:text-secondary{{/if}}">{{sw-label}}</a></li>
+    <li><a href="{{sw-url path}}" class="rounded px-3 py-2 font-medium no-underline transition-colors {{#if (sw-active path)}}bg-neutral text-neutral-content{{else}}text-base-content hover:bg-base-200{{/if}}">{{sw-label}}</a></li>
     {{/each}}
   </ul>
   <input type="checkbox" id="sw-nav-drawer" class="peer sr-only" aria-label="Open menu">
@@ -106,6 +120,7 @@ function buildNavbar(logo: string | undefined): string {
       <li><a href="{{sw-url path}}" class="{{#if (sw-active path)}}active{{/if}}">{{sw-label}}</a></li>
       {{/each}}
     </ul>
+  </div>
   </div>
 </div>`;
 }
@@ -327,8 +342,13 @@ export async function nativizeProject(
     // ONCE in the site-wide slot (rendered on every page); the per-page triggers (`<a href="#id">`) still
     // open it via the platform modal runtime. Page-LOCAL modals stay in their page.
     const { bottom: modalBottom, stripped: strippedPages } = hoistGlobalModals(nativizedPages.map((p) => ({ id: p.id, html: p.html })));
+    // Facebook sidebar widget → a fixed left EDGE-TAB in `bottom` (not the full-width in-flow sidebar block).
+    const fbTab = fbFloatingTab(typeof website?.sidebarLeft === 'string' ? website.sidebarLeft : undefined);
+    if (fbTab) newWebsite.sidebarLeft = '';
+    const priorBottom = typeof website?.bottom === 'string' && website.bottom.trim() ? website.bottom : '';
+    const bottomParts = [modalBottom, fbTab, priorBottom].filter((s): s is string => Boolean(s));
+    if (bottomParts.length) newWebsite.bottom = bottomParts.join('\n');
     if (modalBottom) {
-      newWebsite.bottom = `${modalBottom}${typeof website?.bottom === 'string' && website.bottom.trim() ? `\n${website.bottom}` : ''}`;
       for (const np of nativizedPages) {
         const h = strippedPages.get(np.id);
         if (h === undefined) continue;

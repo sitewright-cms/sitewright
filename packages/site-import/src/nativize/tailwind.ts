@@ -70,6 +70,10 @@ export function emitGroups(s: StyleMap, tag: string, pflex: boolean, ctx: EmitCo
   if (s['z-index'] && s['z-index'] !== 'auto') g.zindex = zIndexClass(s['z-index']);
   for (const pp of ['top', 'right', 'bottom', 'left'] as const) { const v = s[pp]; if (v && v !== 'auto' && v !== '0px') g[pp] = dim(pp, v); } // skip no-op 0 insets
 
+  // FLOAT: a right/left-floated element (e.g. a profile-page thumbnail with text wrapping beside it) — keep
+  // it floated (with its captured width below) instead of letting it fall to a full-width block.
+  if (s.float === 'right') g.float = 'float-right ml-6 mb-4';
+  else if (s.float === 'left') g.float = 'float-left mr-6 mb-4';
   // width: a centered fixed-width container → responsive `w-full max-w-[W]`; a plain fixed width → pin it
   // BUT cap with max-w-full so it can never overflow a narrow viewport.
   const ml = s['margin-left'], mr = s['margin-right'];

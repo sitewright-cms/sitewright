@@ -49,6 +49,9 @@ export function WALK(ROOT_SEL) {
     for (const sd of ['top', 'right', 'bottom', 'left']) { if (s[`border-${sd}-width`]) { s[`border-${sd}-style`] = cs.getPropertyValue(`border-${sd}-style`); s[`border-${sd}-color`] = cs.getPropertyValue(`border-${sd}-color`); } }
     if (own) { delete s.width; delete s.height; }
     const node = { tag, s, children: [], text: own };
+    // FOLD: an element starting past the first viewport-height (absolute doc position) can lazy-load its
+    // image/background; an above-the-fold one stays eager (LCP). Robust to any scroll position at walk time.
+    node.belowFold = (el.getBoundingClientRect().top + window.scrollY) > window.innerHeight;
     // A flex child defaults to min-width:auto → a fixed/large child won't shrink + overflows a narrow row.
     // Mark it so we emit min-w-0 (the standard flex-overflow fix).
     node.pflex = !!(pcs && /flex/.test(pcs.display));

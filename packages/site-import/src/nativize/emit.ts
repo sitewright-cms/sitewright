@@ -37,6 +37,9 @@ export interface CapturedNode {
   snap?: SnapKind;
   /** A tab panel's label (looked up from the source's matching tab button) → data-sw-title. */
   tabTitle?: string;
+  /** This element started BELOW the fold in this viewport (top past the viewport height) → its image /
+   *  background can be lazy-loaded; an above-the-fold one stays eager (LCP). */
+  belowFold?: boolean;
 }
 
 /** A component part recognized from the source's static class markers → a platform primitive on emit. */
@@ -82,6 +85,8 @@ export interface MergedNode {
   children: MergedNode[];
   ariaHidden?: boolean;
   marqueeDup?: boolean;
+  /** Below the fold in EVERY captured viewport → eligible for lazy image/background loading. */
+  belowFold?: boolean;
 }
 
 export interface NativizeContext extends EmitContext {
@@ -208,6 +213,9 @@ export function mergeTree(nb: CapturedNode, nm: CapturedNode, nl: CapturedNode, 
     tabTitle: nl.tabTitle,
     aos: (slider || nl.tag === 'img') ? null : aosAttrs(nl.anim ?? null),
     title: nl.title, cls, style: maps[2]!.st.filter(Boolean).join(';'), children: [],
+    // Lazy-eligible only when below the fold in EVERY viewport (so an above-the-fold-anywhere hero/LCP
+    // image or background stays eager).
+    belowFold: !!(nb.belowFold && nm.belowFold && nl.belowFold),
   };
   for (let i = 0; i < nl.children.length; i++) node.children.push(mergeTree(nb.children[i] ?? EMPTY, nm.children[i] ?? EMPTY, nl.children[i]!, ctx, slider, isTrack));
   return node;
@@ -303,16 +311,23 @@ function emitNode(n: MergedNode, d: number, ctx: NativizeContext, logos: { image
   else if (n.snap === 'tabs') at.push('data-sw-component="tabs"');
   else if (n.snap === 'tab-panel') { at.push('data-sw-part="panel"'); if (n.tabTitle) at.push(`data-sw-title="${escAttr(n.tabTitle)}"`); }
   if (n.cls || clsPrefix) at.push(`class="${(clsPrefix + (n.cls ?? '')).trim()}"`);
-  if (n.style) at.push(`style="${n.style}"`);
+  // A BELOW-THE-FOLD background → hand the URL to the lazyload runtime via `data-bg` (keep size/position
+  // in the inline style); an above-the-fold one stays an eager inline `background-image`.
+  let style = n.style;
+  if (style && n.belowFold) {
+    const m = style.match(/background-image:\s*url\((['"]?)([^'")]+)\1\)\s*;?/i);
+    if (m) { at.push(`data-bg="${escAttr(m[2]!)}"`); style = style.replace(m[0], '').replace(/^;+|;+$/g, '').trim(); }
+  }
+  if (style) at.push(`style="${style}"`);
   if (n.ariaHidden) at.push('aria-hidden="true"');
   if (n.marqueeDup) at.push('data-sw-marquee-dup');
   if (n.aos) { at.push(`data-aos="${n.aos.effect}"`); if (n.aos.delay) at.push(`data-aos-delay="${n.aos.delay}"`); if (n.aos.dur) at.push(`data-aos-duration="${n.aos.dur}"`); }
-  if (tag === 'img') { at.push(`src="${escAttr(n.src ?? '')}"`); if (n.alt) at.push(`alt="${escAttr(n.alt)}"`); at.push('loading="lazy"'); }
+  if (tag === 'img') { at.push(`src="${escAttr(n.src ?? '')}"`); if (n.alt) at.push(`alt="${escAttr(n.alt)}"`); at.push(`loading="${n.belowFold ? 'lazy' : 'eager'}"`); }
   // MODAL trigger → reference the dialog: an <a> uses href="#id"; any other element uses [data-sw-modal].
   else if (n.modalTarget && tag === 'a') at.push(`href="#${escAttr(n.modalTarget)}"`);
   else if (n.modalTarget) at.push(`data-sw-modal="${escAttr(n.modalTarget)}"`);
   else if (tag === 'a') at.push(`href="${escAttr(safeHref(n.href, ctx.originHosts))}"`);
-  if (tag === 'iframe') { at.push(`src="${escAttr(n.src ?? '')}"`); if (n.title) at.push(`title="${escAttr(n.title)}"`); at.push('loading="lazy"'); }
+  if (tag === 'iframe') { at.push(`src="${escAttr(n.src ?? '')}"`); if (n.title) at.push(`title="${escAttr(n.title)}"`); at.push(`loading="${n.belowFold === false ? 'eager' : 'lazy'}"`); }
 
   const open = `<${tag}${at.length ? ' ' + at.join(' ') : ''}>`;
   if (VOID.has(tag)) return ind + open;

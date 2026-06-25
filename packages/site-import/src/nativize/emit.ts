@@ -129,10 +129,11 @@ export function snapButton(s: StyleMap, tag: string, palette: NativizePalette): 
   const bgTok = bg ? colorToken(bg, palette) : null;
   const brandFace = bgTok && bgTok !== 'white' && bgTok !== 'black' ? `btn-${bgTok}` : null;
   const fs = parseFloat(s['font-size'] || '16');
-  // A LARGE-font box (a heading-sized link with an icon, e.g. burmeister's "The Company"/"New Building
-  // Inauguration" cards) is a CONTENT CARD, not a button — snapping it to `.btn` collapses it to an
-  // inline pill (icon beside text, nowrap title clipped). Leave it as a styled link.
-  if (fs >= 24) return null;
+  // CONTENT CARD, not a button → leave it a styled link (a `.btn` is inline-flex, so it crams the card's
+  // stacked children into one row, overlapping them). Detected by a LARGE font (a heading-sized link with
+  // an icon — burmeister "New Building Inauguration") OR a COLUMN flex layout (a stacked icon/title/body/
+  // link card — the hatzlacha programme cards).
+  if (fs >= 24 || s['flex-direction'] === 'column') return null;
   const size = padY >= 16 || fs >= 19 ? 'btn-lg' : (padY > 0 && padY <= 6) || (fs > 0 && fs <= 13) ? 'btn-sm' : '';
   const wrap = (face: string, keepColor: boolean): ButtonSnap => ({ classes: ['btn', face, size].filter(Boolean).join(' '), keepColor });
 

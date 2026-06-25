@@ -215,8 +215,10 @@ describe('snapButton — button / button-link → SW button system', () => {
   it('a transparent text/icon button (a text color, no fill/border) → btn-ghost KEEPING its color', () => {
     expect(snapButton({ color: 'rgb(180, 42, 51)', ...pad }, 'button', ctx.palette)).toEqual({ classes: 'btn btn-ghost', keepColor: true });
   });
-  it('a LARGE-font box (heading-sized link/card) is NOT a button', () => {
+  it('a LARGE-font box OR a COLUMN-flex card is NOT a button', () => {
     expect(snapButton({ 'font-size': '36px', 'border-top-width': '2px', 'border-top-color': 'rgb(180, 42, 51)', ...pad }, 'a', ctx.palette)).toBeNull();
+    // a stacked content card (icon/title/body/link in a column) — a `.btn` would cram them into one row
+    expect(snapButton({ 'background-color': 'rgb(255, 255, 255)', 'flex-direction': 'column', ...pad }, 'a', ctx.palette)).toBeNull();
   });
   it('snaps a small ~square fill with no padding to a btn-square icon button', () => {
     expect(snapButton({ 'background-color': 'rgb(12, 163, 200)', width: '50px', height: '50px' }, 'a', ctx.palette)).toEqual({ classes: 'btn btn-square', keepColor: true });

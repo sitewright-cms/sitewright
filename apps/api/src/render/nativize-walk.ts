@@ -67,6 +67,16 @@ export function WALK(ROOT_SEL) {
     // ROTATING TILES (3D flip): the source marks the card `.flippable` + its hidden face `.back` (matrix3d
     // rotateY(180)). The flip mechanics are JS/CSS we strip → record them so emit() rebuilds a clean flip.
     { const acl = el.getAttribute('class') || ''; if (/\bflippable\b/.test(acl)) { node.flip = true; node.flipH = cs.getPropertyValue('height'); } if (/\bback\b/.test(acl) && /matrix3d/.test(cs.transform)) node.isBack = true; }
+    // MODAL: a Bootstrap/MDB modal CONTAINER (class "modal" — not the inner modal-* parts — or role=dialog,
+    // with an id) → snap to <dialog data-sw-component="modal">. A TRIGGER (data-(bs-)toggle="modal") records
+    // the referenced modal id so emit() wires it (href="#id" / data-sw-modal). Attrs survive import (only
+    // scripts are stripped), and the hidden modal subtree is still walked (display:none, not skipped).
+    {
+      const acl = el.getAttribute('class') || ''; const id = el.getAttribute('id') || '';
+      if (id && (/(^|\s)modal(\s|$)/.test(acl) || el.getAttribute('role') === 'dialog')) { node.isModal = true; node.id = id; }
+      const tgl = el.getAttribute('data-toggle') || el.getAttribute('data-bs-toggle') || '';
+      if (tgl === 'modal') { const t = el.getAttribute('data-target') || el.getAttribute('data-bs-target') || el.getAttribute('href') || ''; const m = t.match(/^#(.+)$/); if (m) node.modalTarget = m[1]; }
+    }
     for (const c of el.children) { const cn = walk(c, cs); if (cn) node.children.push(cn); }
     return node;
   }

@@ -4,9 +4,9 @@
 // to `{{> logo-marquee}}`, icons to `{{sw-icon}}`, internal links to `{{sw-url}}`) rather than
 // reconstructing dynamic markup. Pure — no browser — so it unit-tests with fixture trees. Ported from
 // the matured _clone.mjs spike.
-import { type EmitContext, emitGroups, mergeGroups } from './tailwind.js';
+import { type EmitContext, type StyleMap, emitGroups, mergeGroups } from './tailwind.js';
 import { mapFaIcon } from './icon-map.js';
-import { colorToken, dim, hexOf } from './tokens.js';
+import { colorToken, dim, hexOf, type NativizePalette } from './tokens.js';
 import { aosAttrs, type AosAttrs } from './aos.js';
 
 /** A node from the multi-viewport DOM walk (structure is shared; the style map `s` is per-viewport). */
@@ -27,6 +27,12 @@ export interface CapturedNode {
   flip?: boolean;
   isBack?: boolean;
   flipH?: string;
+  /** Element id (captured only when it's a modal target or a modal container — for trigger↔dialog wiring). */
+  id?: string;
+  /** This element is a modal/dialog container (class~="modal" / role="dialog") with an id → snap to <dialog>. */
+  isModal?: boolean;
+  /** This element triggers a modal: the referenced modal id (from data-(bs-)target / href="#id"). */
+  modalTarget?: string;
 }
 
 /** A merged node: final responsive classes + the snap flags the renderer acts on. */
@@ -45,6 +51,10 @@ export interface MergedNode {
   flip?: boolean;
   isBack?: boolean;
   flipH?: string;
+  /** A modal container → rendered as `<dialog id data-sw-component="modal">`. */
+  modalId?: string;
+  /** A trigger → rendered with `href="#<modalTarget>"` so the platform modal runtime opens it. */
+  modalTarget?: string;
   aos: AosAttrs | null;
   cls: string;
   style: string;
@@ -63,6 +73,34 @@ export interface NativizeContext extends EmitContext {
 const EMPTY: CapturedNode = { tag: '', s: {}, children: [] };
 const SLIDER_TRACK_PX = 2500; // a JS slider leaves a huge transformed track (e.g. 45000px) → snap to marquee
 const CONTAINER_MIN_PX = 760; // a wide, centered structural block → the site-wide .sw-container
+const BTN_PAD_X = 8; // a button-like <a> needs real horizontal padding (a fill/outline + padding, not a text link)
+const BTN_PAD_Y = 4;
+
+/**
+ * Snap a button-like `<a>`/`<button>` to the platform button system (`.btn` + a daisyUI FACE + size), or
+ * null if it's a plain link. A brand fill → `btn-primary/secondary/accent` (theme-editable); a border-only
+ * control → `btn-outline` (+ the brand face if the border is a brand color); any other fill → `btn-neutral`.
+ * Effects/shapes/accents (sw-btn-*) are the operator's site-wide design choice, not derived from the import.
+ */
+export function snapButton(s: StyleMap, tag: string, palette: NativizePalette): string | null {
+  if (tag !== 'a' && tag !== 'button') return null;
+  const bg = s['background-color']; // the walk records this ONLY when it differs from the transparent default
+  const borderW = parseFloat(s['border-top-width'] || s['border-left-width'] || s['border-bottom-width'] || s['border-right-width'] || '0');
+  const padX = Math.max(parseFloat(s['padding-left'] || '0'), parseFloat(s['padding-right'] || '0'));
+  const padY = Math.max(parseFloat(s['padding-top'] || '0'), parseFloat(s['padding-bottom'] || '0'));
+  // A <button> is always a control; an <a> must LOOK like one (a fill OR an outline, plus button padding)
+  // so plain text/nav links stay links.
+  const looksButton = tag === 'button' || ((!!bg || borderW > 0) && padX >= BTN_PAD_X && padY >= BTN_PAD_Y);
+  if (!looksButton) return null;
+  const bgTok = bg ? colorToken(bg, palette) : null;
+  let face: string;
+  if (bgTok && bgTok !== 'white' && bgTok !== 'black') face = `btn-${bgTok}`;
+  else if (!bg && borderW > 0) { const bt = colorToken(s['border-top-color'] || '', palette); face = bt && bt !== 'white' && bt !== 'black' ? `btn-outline btn-${bt}` : 'btn-outline'; }
+  else face = 'btn-neutral'; // white/black/non-brand fill → neutral (theme-editable; the agent can recolor)
+  const fs = parseFloat(s['font-size'] || '16');
+  const size = padY >= 16 || fs >= 19 ? 'btn-lg' : (padY > 0 && padY <= 6) || fs <= 13 ? 'btn-sm' : '';
+  return ['btn', face, size].filter(Boolean).join(' ');
+}
 
 /**
  * Walk the 3 same-shape trees (small→large) in parallel into one merged node with responsive classes +
@@ -88,18 +126,27 @@ export function mergeTree(nb: CapturedNode, nm: CapturedNode, nl: CapturedNode, 
   // wrapper → emit the site-wide `.sw-container` instead of a captured per-section width.
   const isContainer = !slider && cw >= CONTAINER_MIN_PX && cml > 0 && Math.abs(cml - cmr) < 2 && nl.tag !== 'img' && nl.tag !== 'iframe' && nl.children.length > 0;
   if (isContainer) for (const m of maps) for (const k of ['w', 'maxw', 'mx', 'px', 'pl', 'pr']) delete m.g[k];
+  // A modal container becomes a native <dialog>, which owns its open/closed visibility — drop the captured
+  // display:none (it's hidden in the static capture) so the dialog isn't permanently invisible when opened.
+  if (nl.isModal) for (const m of maps) delete m.g.display;
 
   let cls: string;
   let marqueeTrack = false;
   let swMarquee = false;
+  // Button/button-link → the platform button system (drop the captured fill/padding/radius; keep only
+  // positioning auto-margins). Skipped inside a slider/marquee track (those nodes have their own snap).
+  const btn = !slider && !isSlide ? snapButton(nl.s, nl.tag, ctx.palette) : null;
   if (hasTrackChild) { swMarquee = true; cls = ''; } // the VIEWPORT → data-sw-marquee
   else if (isTrack) { marqueeTrack = true; cls = 'sw-marquee-track'; } // the TRACK
   else if (isSlide) { cls = 'sw-marquee-item'; } // each SLIDE
-  else {
+  else if (btn) {
+    const keep = mergeGroups(maps).filter((c) => /(?:^|:)(?:mx-auto|ml-auto|mr-auto|my-auto|w-full)$/.test(c));
+    cls = [btn, ...keep].join(' ');
+  } else {
     cls = (isContainer ? 'sw-container ' : '') + mergeGroups(maps).join(' ');
     if (nl.pflex && !isContainer) cls = (cls ? cls + ' ' : '') + 'min-w-0';
   }
-  if (nl.tag === 'a' && (nl.s['text-decoration-line'] || 'none') !== 'underline') cls = (cls ? cls + ' ' : '') + 'no-underline';
+  if (!btn && nl.tag === 'a' && (nl.s['text-decoration-line'] || 'none') !== 'underline') cls = (cls ? cls + ' ' : '') + 'no-underline';
 
   let swicon: string | null = null;
   if ((nl.tag === 'i' || nl.tag === 'span') && nl.icon) {
@@ -110,6 +157,8 @@ export function mergeTree(nb: CapturedNode, nm: CapturedNode, nl: CapturedNode, 
   const node: MergedNode = {
     tag: nl.tag, text: nl.text, href: nl.href, src: nl.src, alt: nl.alt, swicon, iconSize: nl.iconSize, iconColor: nl.iconColor,
     marqueeTrack, swMarquee, flip: nl.flip, isBack: nl.isBack, flipH: nl.flipH,
+    modalId: nl.isModal && nl.id ? nl.id : undefined,
+    modalTarget: nl.modalTarget,
     aos: (slider || nl.tag === 'img') ? null : aosAttrs(nl.anim ?? null),
     title: nl.title, cls, style: maps[2]!.st.filter(Boolean).join(';'), children: [],
   };
@@ -171,25 +220,31 @@ function emitNode(n: MergedNode, d: number, ctx: NativizeContext, logos: { image
   if (n.flip) return emitFlip(n, ind);
   if (n.swicon) return emitIcon(n, ind, ctx);
 
+  // MODAL container → a native <dialog data-sw-component="modal"> (the platform runtime opens it).
+  const tag = n.modalId ? 'dialog' : n.tag;
   const at: string[] = [];
+  if (n.modalId) { at.push(`id="${escAttr(n.modalId)}"`, 'data-sw-component="modal"'); }
   if (n.cls) at.push(`class="${n.cls}"`);
   if (n.style) at.push(`style="${n.style}"`);
   if (n.ariaHidden) at.push('aria-hidden="true"');
   if (n.marqueeDup) at.push('data-sw-marquee-dup');
   if (n.aos) { at.push(`data-aos="${n.aos.effect}"`); if (n.aos.delay) at.push(`data-aos-delay="${n.aos.delay}"`); if (n.aos.dur) at.push(`data-aos-duration="${n.aos.dur}"`); }
-  if (n.tag === 'img') { at.push(`src="${escAttr(n.src ?? '')}"`); if (n.alt) at.push(`alt="${escAttr(n.alt)}"`); at.push('loading="lazy"'); }
-  if (n.tag === 'a') at.push(`href="${escAttr(safeHref(n.href, ctx.originHosts))}"`);
-  if (n.tag === 'iframe') { at.push(`src="${escAttr(n.src ?? '')}"`); if (n.title) at.push(`title="${escAttr(n.title)}"`); at.push('loading="lazy"'); }
+  if (tag === 'img') { at.push(`src="${escAttr(n.src ?? '')}"`); if (n.alt) at.push(`alt="${escAttr(n.alt)}"`); at.push('loading="lazy"'); }
+  // MODAL trigger → reference the dialog: an <a> uses href="#id"; any other element uses [data-sw-modal].
+  else if (n.modalTarget && tag === 'a') at.push(`href="#${escAttr(n.modalTarget)}"`);
+  else if (n.modalTarget) at.push(`data-sw-modal="${escAttr(n.modalTarget)}"`);
+  else if (tag === 'a') at.push(`href="${escAttr(safeHref(n.href, ctx.originHosts))}"`);
+  if (tag === 'iframe') { at.push(`src="${escAttr(n.src ?? '')}"`); if (n.title) at.push(`title="${escAttr(n.title)}"`); at.push('loading="lazy"'); }
 
-  const open = `<${n.tag}${at.length ? ' ' + at.join(' ') : ''}>`;
-  if (VOID.has(n.tag)) return ind + open;
+  const open = `<${tag}${at.length ? ' ' + at.join(' ') : ''}>`;
+  if (VOID.has(tag)) return ind + open;
   const inner: string[] = [];
   if (n.text) inner.push('  '.repeat(d + 1) + escText(n.text));
   for (const ch of n.children) inner.push(emitNode(ch, d + 1, ctx, logos));
   // Marquee seamless loop: render the slide set TWICE (2nd copy aria-hidden + data-sw-marquee-dup so
   // reduced-motion can drop it) so the platform translateX(-50%) keyframe wraps without a visible seam.
   if (n.marqueeTrack && n.children.length) for (const ch of n.children) inner.push(emitNode({ ...ch, ariaHidden: true, marqueeDup: true }, d + 1, ctx, logos));
-  return inner.length ? `${ind}${open}\n${inner.join('\n')}\n${ind}</${n.tag}>` : `${ind}${open}</${n.tag}>`;
+  return inner.length ? `${ind}${open}\n${inner.join('\n')}\n${ind}</${tag}>` : `${ind}${open}</${tag}>`;
 }
 
 function emitIcon(n: MergedNode, ind: string, ctx: NativizeContext): string {

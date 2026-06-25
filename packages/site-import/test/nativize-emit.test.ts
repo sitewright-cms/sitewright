@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { mapAosEffect, ms, aosAttrs } from '../src/nativize/aos.js';
-import { mergeTree, mergeTrees, renderTree, toRoute, type CapturedNode, type NativizeContext } from '../src/nativize/emit.js';
+import { mergeTree, mergeTrees, renderTree, toRoute, snapButton, type CapturedNode, type NativizeContext } from '../src/nativize/emit.js';
 import { DEFAULT_FONT_MAP } from '../src/nativize/tokens.js';
 
 const ctx: NativizeContext = {
@@ -188,5 +188,57 @@ describe('renderTree — tree → Handlebars HTML', () => {
     const m = mergeTree(node('div', colS), node('div', colS), node('div', rowS), ctx);
     expect(m.cls).toContain('flex-col');
     expect(m.cls).toContain('lg:flex-row');
+  });
+});
+
+describe('snapButton — button / button-link → SW button system', () => {
+  const pad = { 'padding-left': '24px', 'padding-right': '24px', 'padding-top': '12px', 'padding-bottom': '12px' };
+  it('snaps a brand-fill control to the matching daisyUI face', () => {
+    expect(snapButton({ 'background-color': 'rgb(11, 74, 119)', ...pad }, 'a', ctx.palette)).toBe('btn btn-primary');
+    expect(snapButton({ 'background-color': 'rgb(57, 193, 240)', ...pad }, 'a', ctx.palette)).toBe('btn btn-secondary');
+  });
+  it('snaps a border-only control to btn-outline (+ brand face when the border is a brand color)', () => {
+    expect(snapButton({ 'border-top-width': '2px', 'border-top-color': 'rgb(11, 74, 119)', ...pad }, 'a', ctx.palette)).toBe('btn btn-outline btn-primary');
+    expect(snapButton({ 'border-top-width': '1px', 'border-top-color': 'rgb(20, 20, 20)', ...pad }, 'a', ctx.palette)).toBe('btn btn-outline');
+  });
+  it('snaps a non-brand fill to btn-neutral; a <button> is always a control', () => {
+    expect(snapButton({ 'background-color': 'rgb(34, 197, 94)', ...pad }, 'a', ctx.palette)).toBe('btn btn-neutral');
+    expect(snapButton({}, 'button', ctx.palette)).toBe('btn btn-neutral');
+  });
+  it('derives size from padding / font-size', () => {
+    expect(snapButton({ 'background-color': 'rgb(11, 74, 119)', 'padding-left': '32px', 'padding-right': '32px', 'padding-top': '18px', 'padding-bottom': '18px' }, 'a', ctx.palette)).toBe('btn btn-primary btn-lg');
+    expect(snapButton({ 'background-color': 'rgb(11, 74, 119)', 'padding-left': '12px', 'padding-right': '12px', 'padding-top': '5px', 'padding-bottom': '5px' }, 'a', ctx.palette)).toBe('btn btn-primary btn-sm');
+  });
+  it('leaves plain links alone', () => {
+    expect(snapButton({ color: 'rgb(11, 74, 119)' }, 'a', ctx.palette)).toBeNull();
+    expect(snapButton({ 'background-color': 'rgb(11, 74, 119)', ...pad }, 'div', ctx.palette)).toBeNull(); // not a/button
+  });
+  it('renders a button-link as <a class="btn …"> with its route + label', () => {
+    const a = node('a', { 'background-color': 'rgb(11, 74, 119)', ...pad }, { href: 'https://www.advancedtechcc.com/contact/', text: 'Contact us' });
+    const html = renderTree(mergeTrees([a], [a], [a], ctx), ctx).html;
+    expect(html).toContain('class="btn btn-primary"');
+    expect(html).toContain("href=\"{{sw-url '/contact'}}\"");
+    expect(html).toContain('Contact us');
+    expect(html).not.toContain('bg-['); // captured fill dropped in favor of the face
+  });
+});
+
+describe('modal snapping → <dialog data-sw-component="modal"> + wired triggers', () => {
+  it('renders a modal container as a native dialog (drops the hidden display)', () => {
+    const modal = node('div', { display: 'none', 'background-color': 'rgb(255, 255, 255)' }, { isModal: true, id: 'signup', children: [node('p', {}, { text: 'Join us' })] });
+    const html = renderTree(mergeTrees([modal], [modal], [modal], ctx), ctx).html;
+    expect(html).toContain('<dialog id="signup" data-sw-component="modal"');
+    expect(html).toContain('</dialog>');
+    expect(html).toContain('Join us');
+    expect(html).not.toContain('hidden'); // the captured display:none is dropped — the dialog owns visibility
+  });
+  it('wires an <a> trigger via href="#id" and a <button> trigger via data-sw-modal', () => {
+    const pad = { 'padding-left': '24px', 'padding-right': '24px', 'padding-top': '12px', 'padding-bottom': '12px' };
+    const aTrig = node('a', { 'background-color': 'rgb(11, 74, 119)', ...pad }, { modalTarget: 'signup', text: 'Open' });
+    expect(renderTree(mergeTrees([aTrig], [aTrig], [aTrig], ctx), ctx).html).toContain('href="#signup"');
+    const btnTrig = node('button', {}, { modalTarget: 'signup', text: 'Open' });
+    const bh = renderTree(mergeTrees([btnTrig], [btnTrig], [btnTrig], ctx), ctx).html;
+    expect(bh).toContain('data-sw-modal="signup"');
+    expect(bh).toContain('class="btn btn-neutral"');
   });
 });

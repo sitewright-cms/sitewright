@@ -20,6 +20,7 @@ const okCapture: CaptureFn = async () => ({ base: tree(), md: tree(), lg: tree()
 interface DepOverrides {
   pages?: unknown[];
   capture?: CaptureFn;
+  entries?: unknown[];
 }
 function makeDeps(o: DepOverrides = {}) {
   const pages = o.pages ?? [
@@ -33,19 +34,21 @@ function makeDeps(o: DepOverrides = {}) {
   };
   const pagePuts: Array<{ id: string; raw: { status: string; source: string; data: { swImport: { rewritten: boolean } } } }> = [];
   let settingsPut: { website: { head: string; scripts: string; topNav: string; mobileNav: string } } | null = null;
+  const entries = o.entries ?? [];
+  const renderContexts: unknown[] = [];
   const contentRepo = {
     get: vi.fn(async () => settings),
-    list: vi.fn(async () => pages),
+    list: vi.fn(async (_c: unknown, kind: string) => (kind === 'entry' ? entries : pages)),
     put: vi.fn(async (_c: unknown, kind: string, id: string, raw: unknown) => {
       if (kind === 'settings') settingsPut = raw as never;
       else pagePuts.push({ id, raw: raw as never });
       return raw;
     }),
   } as unknown as NativizeDeps['contentRepo'];
-  const renderPool = { render: vi.fn(async (src: string) => src) } as unknown as NativizeDeps['renderPool'];
+  const renderPool = { render: vi.fn(async (src: string, context: unknown) => { renderContexts.push(context); return src; }) } as unknown as NativizeDeps['renderPool'];
   const log = { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() } as unknown as NativizeDeps['log'];
   const deps: NativizeDeps = { contentRepo, renderPool, originHostPort: '127.0.0.1:80', log, capture: o.capture ?? okCapture };
-  return { deps, pagePuts, getSettingsPut: () => settingsPut, log };
+  return { deps, pagePuts, getSettingsPut: () => settingsPut, renderContexts, log };
 }
 
 describe('nativizeProject', () => {
@@ -89,6 +92,18 @@ describe('nativizeProject', () => {
     expect(getSettingsPut()).toBeNull(); // settings untouched
     expect(pagePuts).toHaveLength(1);
     expect(log.warn).toHaveBeenCalled();
+  });
+
+  it('feeds real dataset entries into the render context (so {{#each}} loops render, not vanish)', async () => {
+    const entries = [
+      { id: 'e1', dataset: 'svc', status: 'published', values: { title: 'Mining' } },
+      { id: 'e2', dataset: 'svc', status: 'published', values: { title: 'Energy' } },
+    ];
+    const { deps, renderContexts } = makeDeps({ entries });
+    await nativizeProject(ctx, deps, () => {});
+    const withData = renderContexts.find((c) => (c as { dataset?: Record<string, unknown> }).dataset?.svc);
+    expect(withData).toBeDefined();
+    expect((withData as { dataset: { svc: unknown[] } }).dataset.svc).toHaveLength(2);
   });
 
   it('the abort signal stops the tail of a concurrent batch', async () => {

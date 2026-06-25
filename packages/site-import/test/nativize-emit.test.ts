@@ -84,6 +84,13 @@ describe('mergeTree — responsive merge + snap decisions', () => {
     const m = mergeTree(viewport, viewport, viewport, ctx);
     expect(m.swMarquee).toBe(true);
   });
+
+  it('adds a subtle hover to a content-wrapping link TILE, not to a plain text link', () => {
+    const tile = node('a', {}, { href: '/services/mining', children: [node('img', {}, { src: 'm.jpg', alt: '' }), node('h3', {}, { text: 'Mining' })] });
+    expect(mergeTree(tile, tile, tile, ctx).cls).toContain('hover:opacity-90');
+    const textLink = node('a', {}, { href: '/about', text: 'About' });
+    expect(mergeTree(textLink, textLink, textLink, ctx).cls).not.toContain('hover:opacity-90');
+  });
 });
 
 describe('emit hardening — captured external content is escaped, not injected', () => {

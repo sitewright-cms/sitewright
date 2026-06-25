@@ -188,6 +188,10 @@ export function mergeTree(nb: CapturedNode, nm: CapturedNode, nl: CapturedNode, 
     if (nl.pflex && !isContainer) cls = (cls ? cls + ' ' : '') + 'min-w-0';
   }
   if (!btn && nl.tag === 'a' && (nl.s['text-decoration-line'] || 'none') !== 'underline') cls = (cls ? cls + ' ' : '') + 'no-underline';
+  // A content-wrapping link (an image/card TILE, not a text link) lost its :hover in the static capture —
+  // restore a subtle, universally-safe hover so tiles still feel interactive (the exact original hover
+  // can't be captured: getComputedStyle only sees the resting state).
+  if (!btn && nl.tag === 'a' && !nl.text && nl.children.length > 0) cls = (cls ? cls + ' ' : '') + 'transition-opacity hover:opacity-90';
 
   let swicon: string | null = null;
   if ((nl.tag === 'i' || nl.tag === 'span') && nl.icon) {

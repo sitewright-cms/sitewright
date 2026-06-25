@@ -5,8 +5,9 @@
 // the imported foreign CSS/JS are dropped and the chrome nav is rebuilt as a data-driven menu. This is
 // the "bulk of the job"; an agent can fine-tune individual pages afterward.
 import type { FastifyBaseLogger } from 'fastify';
-import type { Page } from '@sitewright/schema';
+import type { Page, Entry } from '@sitewright/schema';
 import { validateTemplate, type TemplateContext } from '@sitewright/blocks';
+import { resolveLocaleDatasets, compareEntryOrder, keyedDatasets } from '@sitewright/core';
 import { buildPalette, mergeTrees, renderTree, type NativizeContext } from '@sitewright/site-import';
 import { type ContentRepository, SETTINGS_ENTITY_ID, type Settings } from '../repo/content.js';
 import type { ProjectContext } from '../repo/context.js';
@@ -128,6 +129,14 @@ export async function nativizeProject(
   const targets = allPages.filter((p) => isRawFidelityPage(p));
   const nctx: NativizeContext = { palette, originHosts: originHostsOf(allPages), breakpoints: ['', 'md:', 'lg:'] };
 
+  // Group dataset entries (sorted) so dataset-driven {{#each}} loops — e.g. an inferred service-tile
+  // grid — actually RENDER during capture. (Rendering with an empty dataset silently dropped them.)
+  const entries = (await deps.contentRepo.list(ctx, 'entry')) as Entry[];
+  const byDataset = new Map<string, Entry[]>();
+  for (const e of entries) byDataset.set(e.dataset, [...(byDataset.get(e.dataset) ?? []), e]);
+  for (const list of byDataset.values()) list.sort(compareEntryOrder);
+  const sourceData = Object.fromEntries(byDataset);
+
   onProgress({ phase: 'nativize', total: targets.length, detail: `${targets.length} page${targets.length === 1 ? '' : 's'} to nativize` });
   const capture = deps.capture ?? captureStyledTrees;
   const loopbackHost = deps.originHostPort.split(':')[0] ?? '127.0.0.1';
@@ -142,11 +151,13 @@ export async function nativizeProject(
     try {
       // Render the page's literal source (its inlined imported CSS comes along) → a minimal full document
       // (no platform chrome/base CSS) so the headless capture sees the page exactly as the import styled it.
+      const localeData = resolveLocaleDatasets(sourceData, (page as { locale?: string }).locale);
       const context = {
         company: brand as unknown as Record<string, unknown>,
         website: { siteUrl: website?.siteUrl, data: website?.data },
         page: page as unknown as Record<string, unknown>,
-        dataset: {},
+        dataset: localeData, // real dataset entries → {{#each}} loops (e.g. service tiles) render + are captured
+        item: keyedDatasets(page.source ?? '', localeData),
       } as unknown as TemplateContext;
       const body = await deps.renderPool.render(page.source ?? '', context);
       // website.head carries the <link> to the import's hosted stylesheet — without it the headless

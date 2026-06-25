@@ -190,6 +190,29 @@ describe('buildSite', () => {
     expect(home).toContain('<h1>Hi there</h1>');
   });
 
+  it('excludes DRAFT dataset entries from {{#each}} loops AND keyed access in a published build', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        datasets: [{ id: 'posts', name: 'Posts', slug: 'posts', fields: [{ name: 'title', type: 'text', required: false, localized: false }] }],
+        entries: [
+          { id: 'live', dataset: 'posts', status: 'published', values: { title: 'Live post' } },
+          { id: 'wip', dataset: 'posts', status: 'draft', values: { title: 'Draft post' } },
+        ],
+        pages: [
+          {
+            id: 'home', path: '', title: 'Home',
+            source: '<ul>{{#each dataset.posts}}<li class="p">{{title}}</li>{{/each}}</ul><div class="k">{{item.posts.wip.title}}</div>',
+          },
+        ],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).toContain('Live post'); // the published entry renders
+    expect(home).not.toContain('Draft post'); // the draft is absent from the loop AND keyed `{{item.posts.wip}}`
+  });
+
   it('compiles brand-themed DaisyUI components into the shared sheet for a source page', async () => {
     await buildSite({
       publishedAt: '2026-05-29T00:00:00.000Z',

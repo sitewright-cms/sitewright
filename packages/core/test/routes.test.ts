@@ -5,6 +5,7 @@ import {
   allRoutes,
   collectionRoutes,
   datasetEntries,
+  publishedDatasetEntries,
   entrySlug,
   pagePath,
   pagesById,
@@ -99,6 +100,17 @@ describe('datasetEntries', () => {
     ];
     const grouped = datasetEntries(bundle({ entries }));
     expect(grouped.posts).toHaveLength(2);
+    expect(grouped.authors).toHaveLength(1);
+  });
+
+  it('publishedDatasetEntries drops drafts (the publish boundary)', () => {
+    const entries: Entry[] = [
+      { id: 'a', dataset: 'posts', status: 'published', values: {} },
+      { id: 'b', dataset: 'posts', status: 'draft', values: {} },
+      { id: 'c', dataset: 'authors', status: 'published', values: {} },
+    ];
+    const grouped = publishedDatasetEntries(bundle({ entries }));
+    expect(grouped.posts!.map((e) => e.id)).toEqual(['a']); // only the published entry, draft excluded
     expect(grouped.authors).toHaveLength(1);
   });
 

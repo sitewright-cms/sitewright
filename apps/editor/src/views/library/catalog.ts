@@ -13,7 +13,7 @@ const ANIMATION_EFFECTS: readonly string[] = [
 // The icon set is large + self-contained, so it lives in `catalog-icons.ts` and is
 // LAZY-loaded (dynamic import) the first time the Icons modal opens.
 
-export type LibraryCategory = 'icons' | 'brand' | 'flags' | 'fonts' | 'aos' | 'lazyload' | 'ripple' | 'daisyui';
+export type LibraryCategory = 'icons' | 'brand' | 'flags' | 'fonts' | 'aos' | 'parallax' | 'lazyload' | 'ripple' | 'daisyui';
 
 /**
  * One documented VARIANT of a component (e.g. "Primary", "Outline", "Large") — a labeled,
@@ -217,12 +217,61 @@ const DAISYUI_ITEMS: LibraryItem[] = [
   daisy('Mockup window', 'mockup window app frame', 'An app window frame.', '<div class="mockup-window border-base-300 border w-80">\n  <div class="bg-base-200 grid h-32 place-content-center">Hello!</div>\n</div>'),
 ];
 
+// Parallax / scroll-linked effects (data-sw-parallax*) — the read-only attribute reference. The Library
+// "Parallax builder" card composes + previews these; this section is the copy-paste lookup.
+const PARALLAX_ITEMS: LibraryItem[] = [
+  {
+    id: 'px-speed',
+    name: 'Depth (translate speed)',
+    keywords: 'parallax scroll depth translate speed move data-sw-parallax',
+    description: 'Drift an element as it scrolls: 0 static, + recedes (lags the scroll), − leads (floats forward); clamp ±2. Add data-sw-parallax-axis="x" for horizontal.',
+    example: '<div data-sw-parallax="0.3">…</div>',
+  },
+  {
+    id: 'px-opacity',
+    name: 'Fade (opacity)',
+    keywords: 'parallax scroll fade opacity appear data-sw-parallax-opacity',
+    description: 'Interpolate opacity from,to across the element’s pass through the viewport.',
+    example: '<div data-sw-parallax-opacity="0,1">…</div>',
+  },
+  {
+    id: 'px-scale',
+    name: 'Zoom (scale)',
+    keywords: 'parallax scroll scale zoom grow shrink data-sw-parallax-scale',
+    description: 'Interpolate scale from,to across the scroll; composes with translate on one transform.',
+    example: '<div data-sw-parallax-scale="0.9,1.05">…</div>',
+  },
+  {
+    id: 'px-blur',
+    name: 'Sharpen (blur)',
+    keywords: 'parallax scroll blur filter focus sharpen data-sw-parallax-blur',
+    description: 'Interpolate a blur radius (px) from,to across the scroll. Heavier to composite — use sparingly.',
+    example: '<div data-sw-parallax-blur="8,0">…</div>',
+  },
+  {
+    id: 'px-combined',
+    name: 'Combined channels',
+    keywords: 'parallax scroll combine compose translate opacity scale blur',
+    description: 'Channels are composable — stack any of speed, opacity, scale and blur on one element.',
+    example: '<div data-sw-parallax="-0.2" data-sw-parallax-opacity="0,1" data-sw-parallax-scale="0.9,1.05">…</div>',
+  },
+  {
+    id: 'px-bg',
+    name: 'Background drift section',
+    keywords: 'parallax scroll background hero section layer drift data-sw-parallax-bg',
+    description: 'A clipped section whose oversized background layer drifts slower than the page (no-JS → a static clipped background).',
+    example:
+      '<section data-sw-parallax-bg data-sw-parallax="0.4">\n  <div data-sw-parallax-layer style="background-image:url(/media/<id>/<file>)"></div>\n  <div>…your content…</div>\n</section>',
+  },
+];
+
 export const LIBRARY_SECTIONS: LibrarySection[] = [
   { category: 'icons', label: 'Icons', blurb: 'The full Lucide icon set. Insert with {{sw-icon "name"}} — searchable by name + keyword.', items: [], lazy: 'icons' },
   { category: 'brand', label: 'Brand icons', blurb: 'Brand / social logos. Insert with {{sw-icon "brand:slug"}}.', items: [], lazy: 'brand' },
   { category: 'flags', label: 'Country flags', blurb: 'Full-color country flags. Insert with {{sw-flag "de"}} (rectangular) or {{sw-flag "de-circle"}} (round).', items: [], lazy: 'flags' },
   { category: 'fonts', label: 'Google Fonts', blurb: 'Browse + preview Google Fonts. Pick per-slot fonts in Settings → Typography (self-hosted on select).', items: [] },
   { category: 'aos', label: 'AOS (scroll reveal)', blurb: 'Animate elements as they scroll into view via data-aos.', items: AOS_ITEMS },
+  { category: 'parallax', label: 'Parallax (scroll-linked)', blurb: 'Depth, fade, scale & blur tied to scroll via data-sw-parallax* — or compose one in the builder above.', items: PARALLAX_ITEMS },
   { category: 'lazyload', label: 'Lazy-load', blurb: 'Defer offscreen images with data-bg / lazyload.', items: LAZYLOAD_ITEMS },
   { category: 'ripple', label: 'Ripple effect', blurb: 'Material “waves” click ripple via waves-effect.', items: RIPPLE_ITEMS },
   { category: 'daisyui', label: 'DaisyUI components', blurb: 'Brand-themed component classes (Tailwind + DaisyUI).', items: DAISYUI_ITEMS, preview: true },

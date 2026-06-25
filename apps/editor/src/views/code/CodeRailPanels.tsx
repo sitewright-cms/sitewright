@@ -1,6 +1,26 @@
+import { GLOBAL_SNIPPET_CATALOG, type SnippetCategory } from '@sitewright/core';
 import { SidePanel } from '../ui/SidePanel';
 import { CodeRecordManager, type CodeRecord, type MakeId, type RecordAdapters } from './CodeRecordManager';
 import { api, snippetPreviewUrl } from '../../api';
+
+// Group labels (+ display order) for the built-in reference cookbook, keyed by SnippetCategory.
+const SNIPPET_CATEGORY_LABELS: Record<SnippetCategory, string> = {
+  slider: 'Sliders',
+  data: 'Data & loops',
+  chrome: 'Site chrome',
+  effects: 'Effects',
+};
+// Display order, defined over the category KEYS (single source of truth — the label strings are not
+// duplicated, so a rename can't drift). New categories without an entry append after these.
+const SNIPPET_CATEGORY_KEY_ORDER: readonly SnippetCategory[] = ['slider', 'data', 'chrome', 'effects'];
+// name → { group label, description } for grouping/describing the global snippet chips in the rail.
+const SNIPPET_CATALOG = {
+  meta: Object.fromEntries(
+    GLOBAL_SNIPPET_CATALOG.map((m) => [m.name, { group: SNIPPET_CATEGORY_LABELS[m.category], description: m.description }]),
+  ),
+  // eslint-disable-next-line security/detect-object-injection -- k is a typed SnippetCategory union key (bounded)
+  groupOrder: SNIPPET_CATEGORY_KEY_ORDER.map((k) => SNIPPET_CATEGORY_LABELS[k]),
+};
 
 /** Code glyph (`</>`) for the bottom rail tabs. */
 function CodeIcon() {
@@ -78,6 +98,7 @@ export function SnippetsPanel({ projectId, isAdmin }: { projectId: string; isAdm
         remove={snippets.remove}
         makeId={snippetId}
         globalAdapters={globalSnippets}
+        globalCatalog={SNIPPET_CATALOG}
         isAdmin={isAdmin}
         includeRef={(r) => `{{> ${r.name}}}`}
         previewUrl={(r, scope) => snippetPreviewUrl(projectId, r.id, scope)}

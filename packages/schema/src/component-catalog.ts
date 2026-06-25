@@ -118,6 +118,49 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
     noJs: 'The track is a CSS scroll-snap row — fully swipeable/scrollable; arrows and dots stay hidden so no inert controls show.',
     notes:
       'Slides-per-view is the --sw-items CSS variable on the root (Tailwind arbitrary properties): class="[--sw-items:1.15]" shows a peek of the next slide, class="[--sw-items:1] md:[--sw-items:3]" is a responsive 3-up — both REQUIRE data-effect="slide" (fade stacks full-width slides). Give slides internal padding (e.g. px-2) for gaps. For a FIXED-HEIGHT slider (hero), set the height ONCE on the ROOT (e.g. class="h-[60vh]") plus overflow-hidden to clip cleanly — the slides fill it automatically (no per-slide height); omit a root height for content/auto-height sliders. To drop a control, omit its part. Arrows and dots get a Material-style press ripple automatically (unbounded — it travels past the control; under data-click-next the WRAPPER ripples on slide presses; suppressed under prefers-reduced-motion; tap-highlight is transparent throughout). The runtime also adds role="region" + aria-roledescription="carousel" and a hidden live region announcing the active slide (silent while auto-rotating) — keep an aria-label on the root. The runtime stamps `data-active` on the slide(s) in the selected snap — a pure CSS styling hook: the attribute flip restarts matching keyframes, so per-activation effects (caption entrance, Ken Burns zoom on a background div) are authored as `[data-sw-part="slide"][data-active] .caption { animation: ... }`. Animate transform/inner elements only — the fade effect owns slide opacity. Hero sliders: slides can be plain divs with data-sw-bg backgrounds (no <img>), fixed height, and fully restyled full-height gradient arrows (the arrow defaults are zero-specificity). DaisyUI\'s `carousel`/`carousel-item` classes are a plain scroll-snap STRIP (no arrows, dots, autoplay, or looping — its documented "buttons" are #anchor hacks). Use the DaisyUI classes as a layout primitive for a swipeable card row; use THIS component for any real slideshow.',
+    examples: [
+      {
+        label: 'Full-screen hero (Ken Burns)',
+        code: `<div class="relative h-[80vh] overflow-hidden rounded-3xl" data-sw-component="carousel" data-sw-block="Carousel" data-effect="fade" data-loop="true" data-autoplay="true" data-kenburns aria-label="Highlights">
+  <div data-sw-part="track">
+    <figure data-sw-part="slide">
+      <div class="sw-kenburns bg-gradient-to-br from-primary to-secondary" data-sw-bg="page.data.hero_1"></div>
+      <div class="absolute inset-0 flex items-center justify-center bg-black/30"><div class="sw-caption text-white">…</div></div>
+    </figure>
+    <figure data-sw-part="slide">…</figure>
+  </div>
+</div>`,
+        note: 'Height once on the ROOT; the .sw-kenburns layer is the cover (data-sw-bg or <img>), the .sw-caption rises in. Full worked recipe: the `slider-fullscreen` snippet ({{> slider-fullscreen}}).',
+      },
+      {
+        label: 'Multi-item peek (--sw-items)',
+        code: `<div class="relative [--sw-items:1.15] md:[--sw-items:2.4] lg:[--sw-items:3.2]" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-item-align="center">
+  <div data-sw-part="track">
+    <figure data-sw-part="slide" class="px-3">…card…</figure>
+    <figure data-sw-part="slide" class="px-3">…card…</figure>
+  </div>
+</div>`,
+        note: 'Fractional --sw-items leaves a peek; REQUIRES data-effect="slide"; gap is padding INSIDE the slide. Recipe: {{> slider-multi}}.',
+      },
+      {
+        label: 'Logo-wall ticker (auto-scroll)',
+        code: `<div class="relative [--sw-items:2] md:[--sw-items:5]" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-loop="true" data-autoscroll="true" data-autoscroll-speed="1.2">
+  <div data-sw-part="track"><figure data-sw-part="slide" class="px-4">{{sw-icon "brand:react" "h-9 w-auto"}}</figure>…</div>
+</div>`,
+        note: 'Continuous marquee (pair data-autoscroll + data-loop + data-effect="slide"); pauses on hover/focus. Recipe: {{> slider-logowall}}.',
+      },
+      {
+        label: 'Bound to a dataset',
+        code: `<div class="relative" data-sw-component="carousel" data-sw-block="Carousel" data-effect="slide" data-loop="true">
+  <div data-sw-part="track">
+    {{#each dataset.projects}}
+    <figure data-sw-part="slide"><img src="{{sw-url image}}" alt="{{title}}" loading="lazy" /></figure>
+    {{/each}}
+  </div>
+</div>`,
+        note: 'One slide per dataset entry; fields are read directly inside the loop. Recipe: {{> slider-dataset}}.',
+      },
+    ],
   },
   {
     type: 'Tabs',

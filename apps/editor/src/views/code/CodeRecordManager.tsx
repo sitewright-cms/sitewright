@@ -40,6 +40,12 @@ export interface CodeRecordManagerProps {
   nameHint?: string;
   /** Adapters for the GLOBAL (instance-wide) library — present → a "Global" section is shown. */
   globalAdapters?: RecordAdapters;
+  /**
+   * Optional metadata to GROUP + describe the global library chips (the reference cookbook): `meta`
+   * maps a record name → { group label, optional description-tooltip }; `groupOrder` lists the group
+   * labels in display order. A name without an entry falls into an "Other" group. Omit → flat list.
+   */
+  globalCatalog?: { meta: Record<string, { group: string; description?: string }>; groupOrder: readonly string[] };
   /** True for an instance admin: globals become editable + a global scope can be chosen on create. */
   isAdmin?: boolean;
   /** How to reference a record for the copy button (snippets → `{{> name}}`); omit for templates. */
@@ -67,7 +73,7 @@ const byName = (a: CodeRecord, b: CodeRecord) => a.name.localeCompare(b.name);
  * with a confirm. Storage-agnostic via injected adapters. Project users manage only their own records;
  * an instance admin can additionally edit/delete globals and create at the global scope.
  */
-export function CodeRecordManager({ projectId, noun, load, save, remove, makeId, hint, nameHint, globalAdapters, isAdmin, includeRef, gridClassName, previewUrl, editableName, renamable }: CodeRecordManagerProps) {
+export function CodeRecordManager({ projectId, noun, load, save, remove, makeId, hint, nameHint, globalAdapters, globalCatalog, isAdmin, includeRef, gridClassName, previewUrl, editableName, renamable }: CodeRecordManagerProps) {
   const toast = useToast();
   const [copiedId, copy] = useCopy(() => toast.show('Copied to clipboard'));
   const [records, setRecords] = useState<CodeRecord[]>([]);
@@ -202,10 +208,16 @@ export function CodeRecordManager({ projectId, noun, load, save, remove, makeId,
     }
   };
 
+  /** Chip tooltip: the record name, plus the reference-cookbook description for a catalogued global. */
+  const chipTitle = (r: CodeRecord, scope: Scope): string => {
+    const desc = scope === 'global' ? globalCatalog?.meta[r.name]?.description : undefined;
+    return desc ? `${r.name} — ${desc}` : r.name;
+  };
+
   /** One record chip: edit/delete (when editable) or copy (read-only globals for non-admins). */
   const chip = (r: CodeRecord, scope: Scope, editable: boolean) => (
     <li key={`${scope}:${r.id}`} className={`${glassPanel} flex items-center gap-2 rounded-xl px-3 py-2`}>
-      <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700" title={r.name}>
+      <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700" title={chipTitle(r, scope)}>
         {r.name}
       </span>
       {previewUrl && <SnippetPreviewButton url={previewUrl(r, scope)} label={r.name} />}
@@ -235,6 +247,27 @@ export function CodeRecordManager({ projectId, noun, load, save, remove, makeId,
 
   const grid = gridClassName ?? 'grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4';
 
+  /** The global library chips: grouped by category when a `globalCatalog` is supplied, else a flat grid. */
+  const globalChips = () => {
+    if (!globalCatalog) return <ul className={grid}>{globals.map((g) => chip(g, 'global', !!isAdmin))}</ul>;
+    const byGroup = new Map<string, CodeRecord[]>();
+    for (const g of globals) {
+      const group = globalCatalog.meta[g.name]?.group ?? 'Other';
+      (byGroup.get(group) ?? byGroup.set(group, []).get(group)!).push(g);
+    }
+    const order = [...globalCatalog.groupOrder, ...[...byGroup.keys()].filter((k) => !globalCatalog.groupOrder.includes(k))];
+    return (
+      <div className="space-y-2">
+        {order.filter((group) => byGroup.has(group)).map((group) => (
+          <div key={group}>
+            <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">{group}</p>
+            <ul className={grid}>{byGroup.get(group)!.map((g) => chip(g, 'global', !!isAdmin))}</ul>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div className="p-3">
       {globalAdapters && (
@@ -252,7 +285,7 @@ export function CodeRecordManager({ projectId, noun, load, save, remove, makeId,
           {globals.length === 0 ? (
             <p className="text-[11px] text-slate-400">No global {noun}s.</p>
           ) : (
-            <ul className={grid}>{globals.map((g) => chip(g, 'global', !!isAdmin))}</ul>
+            globalChips()
           )}
           <p className="mt-2 text-[11px] font-bold uppercase tracking-wide text-slate-400">Your {noun}s</p>
         </div>

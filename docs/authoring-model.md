@@ -27,7 +27,7 @@ The most important framing: most blocks belong to one of two audiences.
 |---|---|---|---|---|---|---|
 | **Component** | Interactive primitive + `data-sw-component` contract (Carousel, Lightbox, Tabs, Modal, Form, CookieConsent, ShaderBg) | element/block | platform | coder/agent (writes the markup) | no — you bring content | `data-sw-component="…"` + `data-sw-part` |
 | **Dataset** | Structured content store — collections of typed records (a "database replacement") | data layer | coder/agent/user | end-user (grid + entry editor) | *is* the data | `{{#each dataset.<slug>}}` |
-| **Snippet** | **Reference** markup — a copy-to-own starter ("how to compose a navbar") | any | platform/coder | nobody (you copy it and own the result) | no | `{{> name}}` (or copy the source) |
+| **Snippet** | **Reference** markup — a worked recipe to learn from / copy & own ("how to build a slider from primitives"); the built-ins are a curated cookbook (see below) | any | platform/coder | nobody (you copy it and own the result) | no | `{{> name}}` (or copy the source) |
 | **Widget** | **Managed**, data-backed, editable drop-in block (hero slider, testimonials, logo wall) | block | platform/coder (defines it) | end-user (no-code) | yes — owns a dataset | `{{> name}}` + a `provides` manifest |
 | **Template** | Full-page reusable layout | page | coder/agent | end-user via its data | optional | `template: "global:<id>"` on a Page |
 | **Slot** | Chrome region the skeleton wraps (topNav, mobileNav, sidebars, footer, bottom) | chrome | coder/agent | end-user (slot editor) | no | `nav: { slots: [...] }` / `website.<slot>` |
@@ -54,6 +54,17 @@ one new field.
 | Provisions a dataset on use | no | yes (save-time reconciliation) |
 | End-user editing | none (copy & own) | dataset UI + options |
 | Mental model | "show me how" | "drop it in and edit it" |
+
+### The built-in snippet cookbook
+
+The platform seeds a curated **reference cookbook** (`packages/core/src/global-snippets.ts`), not a pile
+of trivial marketing sections. Each entry is a worked, validator-safe recipe that shows how to compose a
+component or an authoring technique from bare principles — e.g. the `slider-*` family (full-screen hero,
+single cards, multi-item peek, logo-wall ticker, dataset-bound) and `recipe-*` primitives (dataset grid,
+folder gallery, i18n, page variables). Entries carry a `category` (grouping in the editor's Snippets rail)
++ a `description`; the worked component examples also surface via `get_components` and the `templates`
+agent-guide. Read one (`get_content("snippet", "<name>")`) to learn the pattern, or `{{> name}}` it and
+restyle.
 
 ## Layering (how they compose)
 

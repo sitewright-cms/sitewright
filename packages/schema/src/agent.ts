@@ -202,7 +202,9 @@ Quick rules vs the similar-looking DaisyUI classes:
   autoplay or continuous auto-scroll, wheel gestures, auto height, and multi-item/peek layouts
   via the --sw-items CSS variable (with data-effect="slide"). DaisyUI's \`carousel\` classes are
   just a CSS scroll-snap strip — fine for a swipeable card row, but they have NO controls (the
-  documented #anchor buttons hijack scrolling — avoid them).
+  documented #anchor buttons hijack scrolling — avoid them). Worked variants to copy: the slider-*
+  reference snippets (get_content "snippet") — slider-fullscreen / slider-cards / slider-multi /
+  slider-logowall / slider-dataset; get_components("Carousel") carries short examples of each.
 - Content TABS → data-sw-component="tabs" (APG tablist; panels stack readable without JS).
   DaisyUI \`tab\` classes are for tab-STYLED NAVIGATION LINKS only; do not build radio-input
   content tabs.
@@ -436,15 +438,25 @@ page.data).
 
 SNIPPETS — reusable source fragments INCLUDED with the Handlebars partial syntax {{> name}}.
 Create one with put_content("snippet", "<name>", { id:"<name>", name:"<name>", source:"<…>" }),
-then drop {{> <name>}} in any page / template / other snippet. Factor out anything repeated (a CTA
-band, a card, a contact block) so you edit it in ONE place. The include runs in the CURRENT
-context, so {{> card}} inside {{#each dataset.x}} sees the item. (\`name\` must be a bare partial
-name — letters/digits/-/_ only.)
+then drop {{> <name>}} in any page / template / other snippet. Factor out anything repeated (a card,
+a contact block) so you edit it in ONE place. The include runs in the CURRENT context, so {{> card}}
+inside {{#each dataset.x}} sees the item. (\`name\` must be a bare partial name — letters/digits/-/_ only.)
 
-READY-MADE GLOBAL SNIPPETS — include these as starting points without creating anything, then
-restyle: {{> navbar}}, {{> hero}}, {{> features}}, {{> cta}}, {{> pricing}}, {{> footer}}.
+REFERENCE COOKBOOK (built-in global snippets) — worked recipes that show HOW to compose a component
+or an authoring technique from primitives. READ one with get_content("snippet","<name>") to learn the
+pattern, or {{> <name>}} it and restyle. The fastest way to see real markup for a feature:
+- Sliders → {{> slider-fullscreen}} (full-screen hero, Ken Burns), {{> slider-cards}} (single content
+  cards), {{> slider-multi}} (multi-item peek via --sw-items), {{> slider-logowall}} (auto-scroll
+  ticker), {{> slider-dataset}} (one slide per dataset entry). Full attribute contract: get_components.
+- Data & bindings → {{> recipe-dataset-grid}} ({{#each dataset.x}} + sw-date/sw-truncate),
+  {{> recipe-folder-gallery}} ({{#sw-folder}} media reads), {{> recipe-i18n}} (sw-translate +
+  data-sw-translate + sw-flag switcher), {{> recipe-page-vars}} (data-sw-text/html/src/bg on
+  page.data, page.children, page.parent, sw-active).
+- Chrome & effects → {{> navbar}}, {{> logo-marquee}}, {{> rotating-tiles}}.
 
-WIDGETS — a snippet packaged with auto-provisioning. The built-in {{> hero-slider}} renders a
+SNIPPET vs WIDGET vs COMPONENT: a SNIPPET is reference markup you copy and OWN (edit it freely); a
+COMPONENT is a runtime you activate with data-sw-component=… (behaviour — see get_components); a
+WIDGET is a snippet packaged with auto-provisioning. The built-in {{> hero-slider}} renders a
 full-bleed background SLIDESHOW (Ken-Burns drift + rising captions, the standard frontpage hero);
 its slides are EDITED AS DATA (a "hero" dataset it sets up), no code. Just include it.
 `,

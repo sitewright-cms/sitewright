@@ -59,23 +59,28 @@ export const PARALLAX_JS = `(function(){
   var items=[];
   Array.prototype.forEach.call(els,function(el){
     var bg=el.hasAttribute('data-sw-parallax-bg');
+    var opacity=pair(el.getAttribute('data-sw-parallax-opacity'),${PARALLAX_LIMITS.opacity.min},${PARALLAX_LIMITS.opacity.max});
+    var blur=pair(el.getAttribute('data-sw-parallax-blur'),${PARALLAX_LIMITS.blur.min},${PARALLAX_LIMITS.blur.max});
     items.push({
       el:el,
       target:bg?(el.querySelector('[data-sw-parallax-layer]')||el):el,
       bg:bg,
-      speed:clamp(num(el.getAttribute('data-sw-parallax'),bg?0.3:0),-2,2),
+      speed:clamp(num(el.getAttribute('data-sw-parallax'),bg?0.3:0),${PARALLAX_LIMITS.speed.min},${PARALLAX_LIMITS.speed.max}),
       axis:el.getAttribute('data-sw-parallax-axis')==='x'?'x':'y',
-      opacity:pair(el.getAttribute('data-sw-parallax-opacity'),0,1),
-      scale:pair(el.getAttribute('data-sw-parallax-scale'),0,4),
-      blur:pair(el.getAttribute('data-sw-parallax-blur'),0,40),
-      active:true
+      opacity:opacity,
+      scale:pair(el.getAttribute('data-sw-parallax-scale'),${PARALLAX_LIMITS.scale.min},${PARALLAX_LIMITS.scale.max}),
+      blur:blur,
+      // only hint the properties this element actually animates
+      wc:'transform'+(opacity?',opacity':'')+(blur?',filter':''),
+      active:true,
+      r:null
     });
   });
   var io=('IntersectionObserver' in window)?new IntersectionObserver(function(es){
     es.forEach(function(e){
       for(var i=0;i<items.length;i++){if(items[i].el===e.target){
         items[i].active=e.isIntersecting;
-        items[i].target.style.willChange=e.isIntersecting?'transform':'';
+        items[i].target.style.willChange=e.isIntersecting?items[i].wc:'';
       }}
     });
   },{rootMargin:'25% 0px 25% 0px'}):null;
@@ -83,10 +88,12 @@ export const PARALLAX_JS = `(function(){
   var vh=window.innerHeight,ticking=false;
   function render(){
     ticking=false;
-    var vc=vh/2;
-    for(var i=0;i<items.length;i++){
-      var it=items[i];if(!it.active)continue;
-      var r=it.el.getBoundingClientRect();
+    var vc=vh/2,i,it,r;
+    // PASS 1 — read every rect first (no interleaved writes → one layout, no thrash)
+    for(i=0;i<items.length;i++){it=items[i];it.r=it.active?it.el.getBoundingClientRect():null;}
+    // PASS 2 — write styles only (no reads)
+    for(i=0;i<items.length;i++){
+      it=items[i];r=it.r;if(!r)continue;
       var raw=(vc-(r.top+r.height/2))*it.speed;
       var d=raw*(it.bg?0.4:0.2);
       var tx=it.axis==='x'?d:0,ty=it.axis==='x'?0:d;

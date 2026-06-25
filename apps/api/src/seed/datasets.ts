@@ -21,7 +21,7 @@ interface DatasetSpec {
    *  so the datasets panel always shows the English base + the language it belongs to. */
   name: string;
   fields: Field[];
-  /** Field names whose `config.targetDataset` must be locale-suffixed in each variant. */
+  /** Field names whose `config.dataset` (the reference target slug) must be locale-suffixed per variant. */
   referenceFields?: string[];
 }
 
@@ -91,7 +91,7 @@ const SPECS: DatasetSpec[] = [
       { name: 'remote', type: 'boolean', required: false, localized: false },
       { name: 'posted', type: 'date', required: false, localized: false },
       { name: 'description', type: 'richtext', required: true, localized: false },
-      { name: 'manager', type: 'reference', required: false, localized: false, config: { targetDataset: 'team' } },
+      { name: 'manager', type: 'reference', required: false, localized: false, config: { dataset: 'team' } },
     ],
     referenceFields: ['manager'],
   },
@@ -103,7 +103,7 @@ function emit(spec: DatasetSpec): Dataset[] {
     const suffix = locale === 'en' ? '' : `-${locale}`;
     const fields = spec.fields.map((f) =>
       spec.referenceFields?.includes(f.name)
-        ? { ...f, config: { ...f.config, targetDataset: `${(f.config as { targetDataset: string }).targetDataset}${suffix}` } }
+        ? { ...f, config: { ...f.config, dataset: `${(f.config as { dataset: string }).dataset}${suffix}` } }
         : f,
     );
     const name = locale === 'en' ? spec.name : `${spec.name} - ${locale.toUpperCase()}`;

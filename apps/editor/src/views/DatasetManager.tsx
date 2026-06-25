@@ -46,16 +46,27 @@ function scrollPanelToTop(el: HTMLElement | null): void {
   }
 }
 
-// Entry-id generator. crypto.randomUUID is secure-context-only (undefined on the
-// plain-HTTP DinD preview), so we combine a monotonic counter with a random
-// suffix — the random component avoids collisions between two concurrent tabs
-// that would otherwise generate the same `${slug}-${ms}-1` id and silently
-// overwrite each other on the upsert PUT.
-let entrySeq = 0;
-function newEntryId(slug: string): string {
-  entrySeq += 1;
-  const rand = Math.floor(Math.random() * 0xffffffff).toString(36);
-  return `${slug}-${Date.now().toString(36)}-${entrySeq.toString(36)}-${rand}`;
+const KEY_LETTERS = 'abcdefghijklmnopqrstuvwxyz';
+const KEY_ALNUM = 'abcdefghijklmnopqrstuvwxyz0123456789';
+
+// Entry-key generator. A SHORT, identifier-safe key — a letter + 6 base36 chars (~35 bits / ~4 bytes
+// of randomness). The leading letter and the absence of hyphens keep it a valid bare Handlebars path
+// segment, so an entry is directly addressable as {{item.<set>.<key>.<field>}} without renaming it.
+// crypto.getRandomValues (unlike crypto.randomUUID) is NOT secure-context-only, so it works in the
+// plain-HTTP DinD preview. `taken` (the dataset's existing entry ids) is consulted to avoid the rare
+// collision — two concurrent tabs would otherwise risk the same id and silently overwrite each other
+// on the upsert PUT.
+function newEntryId(taken: ReadonlySet<string> = new Set()): string {
+  const gen = (): string => {
+    const buf = new Uint8Array(7);
+    crypto.getRandomValues(buf);
+    let s = KEY_LETTERS[buf[0]! % 26]!;
+    for (let i = 1; i < buf.length; i += 1) s += KEY_ALNUM[buf[i]! % 36]!;
+    return s;
+  };
+  let key = gen();
+  for (let n = 0; n < 20 && taken.has(key); n += 1) key = gen();
+  return key;
 }
 
 export function DatasetManager({ project }: { project: Project }) {
@@ -218,10 +229,14 @@ export function DatasetManager({ project }: { project: Project }) {
     const srcEntries = entries.filter((e) => e.dataset === src.slug).slice().sort(compareEntryOrder);
     try {
       await api.putDataset(project.id, { id: newSlug, name: `${src.name} copy`, slug: newSlug, fields: src.fields.map((f) => ({ ...f })) });
+      // Fresh, collision-free keys for the cloned entries (the set grows as each id is minted).
+      const usedIds = new Set<string>();
       await Promise.all(
-        srcEntries.map((e, i) =>
-          api.putEntry(project.id, { ...e, id: newEntryId(newSlug), dataset: newSlug, order: i, values: { ...e.values } }),
-        ),
+        srcEntries.map((e, i) => {
+          const id = newEntryId(usedIds);
+          usedIds.add(id);
+          return api.putEntry(project.id, { ...e, id, dataset: newSlug, order: i, values: { ...e.values } });
+        }),
       );
       await load();
       setSelId(newSlug);
@@ -256,7 +271,8 @@ export function DatasetManager({ project }: { project: Project }) {
     if (!selected) return;
     setError(null);
     // A working copy: a fresh id, reset to draft (publishing a duplicate should be deliberate).
-    const copy: Entry = { ...src, id: newEntryId(selected.slug), status: 'draft', values: { ...src.values } };
+    const taken = new Set(entries.filter((e) => e.dataset === selected.slug).map((e) => e.id));
+    const copy: Entry = { ...src, id: newEntryId(taken), status: 'draft', values: { ...src.values } };
     // Insert it DIRECTLY AFTER its source (not at the end): dense-reindex the list with the copy in
     // place, then PUT the copy + only the entries whose order actually shifted.
     const list = entries.filter((e) => e.dataset === selected.slug).slice().sort(compareEntryOrder);
@@ -644,9 +660,11 @@ export function DatasetManager({ project }: { project: Project }) {
                   onClick={() => {
                     setNewEntry(true);
                     setEditingEntry({
-                      id: newEntryId(selected.slug),
+                      id: newEntryId(new Set(datasetEntries.map((e) => e.id))),
                       dataset: selected.slug,
-                      status: 'draft',
+                      // New entries default to PUBLISHED — most authoring is "add it and it's live";
+                      // the modal's Draft/Published switch flips it back when a draft is intended.
+                      status: 'published',
                       values: defaultEntryValues(selected),
                     });
                   }}

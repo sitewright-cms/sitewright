@@ -78,6 +78,22 @@ describe('DatasetManager', () => {
     expect(screen.getByRole('button', { name: 'published' })).toHaveAttribute('aria-pressed', 'false');
   });
 
+  it('creates a NEW entry defaulting to published, with a short identifier-safe auto key', async () => {
+    await renderAndSelectAlpha();
+    fireEvent.click(screen.getByRole('button', { name: 'New entry' }));
+    // The new-entry modal defaults the status switch to Published (not Draft).
+    expect(await screen.findByRole('button', { name: 'published' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'draft' })).toHaveAttribute('aria-pressed', 'false');
+    // Save the (empty, no required fields) new entry → its auto key is a short, hyphen-free, letter-led
+    // identifier (valid as a bare {{item.<set>.<key>}} segment), and it persists as published.
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(putEntry).toHaveBeenCalledTimes(1));
+    const saved = putEntry.mock.calls[0]![1];
+    expect(saved.status).toBe('published');
+    expect(saved.id).toMatch(/^[a-z][a-z0-9]{6}$/);
+    expect(saved.dataset).toBe('alpha');
+  });
+
   it('duplicates a dataset under a "<slug>-copy" id, cloning its entries', async () => {
     render(<DatasetManager project={project} />);
     await screen.findByText('Alpha');

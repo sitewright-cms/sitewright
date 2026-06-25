@@ -246,6 +246,17 @@ describe('seed demo content', () => {
     }
   });
 
+  it('the roles "manager" reference field targets the locale-correct team via config.dataset', () => {
+    // The editor's reference picker reads `config.dataset` (NOT `targetDataset`), so the per-locale
+    // roles twin must point its manager at the same-locale team slug.
+    for (const suffix of ['', ...EXTRA_LOCALES.map((l) => `-${l}`)]) {
+      const roles = EXAMPLE_DATASETS.find((d) => d.slug === `roles${suffix}`);
+      const manager = roles?.fields.find((f) => f.name === 'manager');
+      expect(manager?.type, `roles${suffix} manager type`).toBe('reference');
+      expect((manager?.config as { dataset?: string })?.dataset, `roles${suffix} manager target`).toBe(`team${suffix}`);
+    }
+  });
+
   it('localized forms: the contact form has a translated twin per locale (the {{sw-form}} suffix convention)', () => {
     for (const locale of EXTRA_LOCALES) {
       const twin = EXAMPLE_FORMS.find((f) => f.id === `contact-${locale}`);

@@ -429,7 +429,7 @@ export const EFFECT_UTILITIES = `
   ${btnShape(':hover')} { box-shadow: none; filter: drop-shadow(0 7px 12px color-mix(in oklab, ${FX} 45%, transparent)); }
 }
 @utility sw-btn-shape-skewed {
-  ${btnShape()} { --sw-btn-radius: 0; clip-path: polygon(12px 0, 100% 0, calc(100% - 12px) 100%, 0 100%); }
+  ${btnShape()} { --sw-btn-radius: 0; padding-inline: 1.5rem; clip-path: polygon(12px 0, 100% 0, calc(100% - 12px) 100%, 0 100%); }
   ${btnShape(':hover')} { box-shadow: none; filter: drop-shadow(0 7px 12px color-mix(in oklab, ${FX} 45%, transparent)); }
 }
 @utility sw-btn-shape-square { ${btnShape()} { --sw-btn-radius: .5rem; clip-path: none; aspect-ratio: 1; padding-inline: 0; } }

@@ -52,13 +52,19 @@ function hasCartMarker(s: string): boolean {
 export const CART_CSS = [
   '[data-sw-cart]{display:none}',
   '[data-sw-cart][data-sw-enhanced="true"]{display:block}',
-  // Floating toggle (bottom-right) with an item-count badge. The FACE comes from the vendored
-  // `.btn.btn-primary.btn-circle` (added in the runtime); only positioning + size + elevation live here.
-  // position/overflow are !important so the generic `.waves-effect` rule below (position:relative;
-  // overflow:hidden) can't unpin the floating toggle or clip its count badge.
-  '[data-sw-cart] [data-sw-part="toggle"]{position:fixed !important;overflow:visible !important;right:1rem;bottom:1rem;z-index:9997;width:3.25rem;height:3.25rem;box-shadow:0 6px 20px rgba(0,0,0,.25)}',
-  '[data-sw-cart] [data-sw-part="toggle"] svg{width:1.5rem;height:1.5rem}',
-  '[data-sw-cart] [data-sw-part="count"]{position:absolute;top:-.25rem;right:-.25rem;min-width:1.25rem;height:1.25rem;padding:0 .25rem;border-radius:9999px;background:#b00020;color:#fff;font-size:.75rem;line-height:1.25rem;text-align:center}',
+  // SIDEBAR-STYLE toggle TAB on the right edge (icon + "Shopping Cart"), mirroring the editor's
+  // SidePanel tab — DETACHED from .btn: its own CI-gradient face. The label rides a vertical
+  // writing-mode so it reads down the edge. position/overflow are !important so no stray site or
+  // component rule (e.g. a `position:relative; overflow:hidden`) can unpin the tab or clip its badge.
+  '[data-sw-cart] [data-sw-part="toggle"]{position:fixed !important;overflow:visible !important;right:0;top:50%;translate:0 -50%;z-index:9997;display:flex;align-items:center;padding:1.1rem .55rem;border:0;border-radius:.9rem 0 0 .9rem;background:linear-gradient(155deg,var(--sw-color-primary,#0a7a5a),color-mix(in oklab,var(--sw-color-primary,#0a7a5a) 60%,var(--sw-color-secondary,#0ea5e9)));color:var(--sw-color-primary-content,#fff);font:inherit;font-weight:700;font-size:.74rem;text-transform:uppercase;letter-spacing:.07em;cursor:pointer;box-shadow:-4px 6px 22px rgba(0,0,0,.28)}',
+  '[data-sw-cart] [data-sw-part="toggle"] .sw-cart-tab{display:flex;align-items:center;gap:.5rem;writing-mode:vertical-rl}',
+  '[data-sw-cart] [data-sw-part="toggle"] svg{width:1.3rem;height:1.3rem}',
+  // INDIVIDUAL transform props (translate/scale) so the hover slide + the add-bump compose instead of
+  // clobbering each other (a `transform:` keyframe would override the hover transform mid-animation).
+  '@media (prefers-reduced-motion:no-preference){[data-sw-cart] [data-sw-part="toggle"]{transition:translate .2s cubic-bezier(.16,1,.3,1),box-shadow .2s ease}}',
+  // hover: the tab slides out from the edge + the shadow deepens (translate keeps the -50% centring).
+  '[data-sw-cart] [data-sw-part="toggle"]:hover{translate:-4px -50%;box-shadow:-9px 9px 30px rgba(0,0,0,.36)}',
+  '[data-sw-cart] [data-sw-part="count"]{position:absolute;top:-.4rem;left:-.4rem;min-width:1.3rem;height:1.3rem;padding:0 .3rem;border-radius:9999px;background:#b00020;color:#fff;font-size:.72rem;font-weight:700;line-height:1.3rem;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.3)}',
   '[data-sw-cart] [data-sw-part="count"][hidden]{display:none}',
   // Right-side drawer (native <dialog> → focus trap + Esc + ::backdrop). It SLIDES in/out (transform)
   // and the backdrop FADES + BLURS, on both open and close — @starting-style + transition-behavior:
@@ -73,10 +79,13 @@ export const CART_CSS = [
   // light mode identical), and `color-scheme` is INHERITED from the document (the platform sets
   // `color-scheme:dark` on :root in dark mode) so native form controls in the drawer follow suit. Chrome
   // surfaces stay SOLID (the base-100/200/300 tokens are opaque); only shadows/backdrop/ripple use alpha.
-  '[data-sw-cart] dialog{position:fixed;inset:0 0 0 auto;margin:0;width:min(92vw,24rem);max-width:100vw;max-height:100vh;max-height:100dvh;border:0;padding:0;background:var(--sw-color-base-100,#fff);color:var(--sw-color-base-content,#1f2937);box-shadow:-8px 0 32px rgba(0,0,0,.25);transform:translateX(100%);transition:transform .3s cubic-bezier(.4,0,.2,1),overlay .3s allow-discrete,display .3s allow-discrete}',
-  // flex/height live on [open] ONLY — a closed <dialog> must keep its UA display:none (else it renders
+  // HEIGHT lives on the BASE rule (a closed <dialog> is display:none, so a full height is harmless) so it
+  // PERSISTS through the close transition — otherwise it would collapse to content height (the drawer
+  // "shrinks" as it slides out, since `display:flex` is still held by `transition: display allow-discrete`).
+  '[data-sw-cart] dialog{position:fixed;inset:0 0 0 auto;margin:0;width:min(92vw,24rem);height:100vh;height:100dvh;max-width:100vw;max-height:100vh;max-height:100dvh;border:0;padding:0;background:var(--sw-color-base-100,#fff);color:var(--sw-color-base-content,#1f2937);box-shadow:-8px 0 32px rgba(0,0,0,.25);transform:translateX(100%);transition:transform .3s cubic-bezier(.4,0,.2,1),overlay .3s allow-discrete,display .3s allow-discrete}',
+  // flex/transform live on [open] ONLY — a closed <dialog> must keep its UA display:none (else it renders
   // off-screen but counts as visible). When open it is a full-height vertical flex column.
-  '[data-sw-cart] dialog[open]{transform:translateX(0);height:100vh;height:100dvh;display:flex;flex-direction:column}',
+  '[data-sw-cart] dialog[open]{transform:translateX(0);display:flex;flex-direction:column}',
   '@starting-style{[data-sw-cart] dialog[open]{transform:translateX(100%)}}',
   '[data-sw-cart] dialog::backdrop{background:rgba(0,0,0,.35);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);opacity:0;transition:opacity .3s ease,overlay .3s allow-discrete,display .3s allow-discrete}',
   '[data-sw-cart] dialog[open]::backdrop{opacity:1}',
@@ -143,13 +152,14 @@ export const CART_CSS = [
   '[data-sw-cart] [data-sw-part="sent-msg"]{padding:1.5rem 1.25rem;text-align:center;color:var(--sw-color-primary,#0a7a5a);font-weight:600}',
   // The "added" pulse on an add-to-cart button (runtime toggles data-sw-added briefly).
   '[data-sw-cart-add][data-sw-added="true"]{opacity:.7}',
-  // A brief "bump" on the floating cart when an item is added — the non-interrupting add feedback.
-  '@keyframes sw-cart-bump{0%,100%{transform:none}30%{transform:scale(1.15)}}',
+  // A brief "bump" on the cart tab when an item is added — the non-interrupting add feedback. It animates
+  // `scale` ONLY (the tab's translate centring + any hover slide stay independent, so neither clobbers it).
+  '@keyframes sw-cart-bump{0%,100%{scale:1}30%{scale:1.1}}',
   '[data-sw-cart] [data-sw-part="toggle"][data-sw-bump]{animation:sw-cart-bump .4s ease}',
-  // A PULSE halo that expands out from the toggle on every add (a brand-coloured ring behind the button,
-  // overflow:visible lets it escape the circle). Reduced-motion users get only the bump above.
+  // A PULSE halo that expands out from the tab on every add (a brand-coloured ring behind it; the tab's
+  // overflow:visible lets it escape). Matches the tab's rounded-left shape. Reduced motion → bump only.
   '@keyframes sw-cart-pulse{from{transform:scale(.9);opacity:.5}to{transform:scale(2);opacity:0}}',
-  '@media (prefers-reduced-motion:no-preference){[data-sw-cart] [data-sw-part="toggle"][data-sw-pulse]::after{content:"";position:absolute;inset:0;z-index:-1;border-radius:9999px;background:var(--sw-color-primary,#0a7a5a);animation:sw-cart-pulse .6s ease-out;pointer-events:none}}',
+  '@media (prefers-reduced-motion:no-preference){[data-sw-cart] [data-sw-part="toggle"][data-sw-pulse]::after{content:"";position:absolute;inset:0;z-index:-1;border-radius:.9rem 0 0 .9rem;background:var(--sw-color-primary,#0a7a5a);animation:sw-cart-pulse .6s ease-out;pointer-events:none}}',
   // Hover affordances on the icon controls (the toggle + checkout buttons get their hover from .btn).
   '[data-sw-cart] [data-sw-part="close"]{transition:color .15s ease,transform .15s ease}',
   '[data-sw-cart] [data-sw-part="close"]:hover{color:#b00020;transform:rotate(90deg)}',
@@ -215,6 +225,7 @@ export const CART_JS = `(function(){
       pos:mount.getAttribute('data-currency-pos')==='after'?'after':'before',
       decimals:d,
       title:mount.getAttribute('data-cart-title')||'Your cart',
+      toggleLabel:mount.getAttribute('data-toggle-label')||'Shopping Cart',
       addedLabel:mount.getAttribute('data-added-label')||'Added',
       note:mount.getAttribute('data-note')||'Prices are indicative. This sends an order request \\u2014 the seller confirms availability and final price.',
       emptyLabel:mount.getAttribute('data-empty-label')||'Your cart is empty.',
@@ -359,8 +370,8 @@ export const CART_JS = `(function(){
     var started=Date.now(); // for the /f time-trap (_elapsed must be >= the server minimum)
     var sent=false; // true after a successful form-channel submit → show the "order sent" panel
 
-    var toggle=part('button','toggle');toggle.type='button';toggle.className='btn btn-primary btn-circle';toggle.setAttribute('aria-label','Open cart');ripple(toggle,true);
-    toggle.appendChild(cartIcon());
+    var toggle=part('button','toggle');toggle.type='button';toggle.setAttribute('aria-label',cfg.toggleLabel);
+    var tab=mk('span','sw-cart-tab');tab.appendChild(cartIcon());tab.appendChild(mk('span',null,cfg.toggleLabel));toggle.appendChild(tab);
     var count=part('span','count');toggle.appendChild(count);
 
     var dialog=document.createElement('dialog');

@@ -579,6 +579,7 @@ function createInstance(): typeof Handlebars {
     // website.translations with zero per-page wiring and an untranslated locale falls back to English.
     const rt = tr; // alias for the reserved cart_* drawer strings below
     attrs += ` data-cart-title="${escapeAttr(str(h.title) || tr('cart_title'))}"`;
+    attrs += ` data-toggle-label="${escapeAttr(str(h.toggle) || rt('cart_toggle'))}"`;
     attrs += ` data-note="${escapeAttr(str(h.note) || tr('cart_note'))}"`;
     attrs += ` data-added-label="${escapeAttr(str(h.added) || rt('cart_added'))}"`;
     attrs += ` data-empty-label="${escapeAttr(str(h.empty) || rt('cart_empty'))}"`;

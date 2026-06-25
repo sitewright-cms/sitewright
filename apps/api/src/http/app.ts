@@ -2833,6 +2833,15 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           return null; // invalid family/metadata → leave the original url()
         }
       },
+      // Self-host a linked document (PDF/doc/…) as-is via the file-asset path (download-only, no sharp).
+      hostFileAsset: async (ctx, slug, buffer, meta) => {
+        try {
+          const saved = await createFileAsset(ctx, slug, buffer, meta);
+          return { url: saved.url };
+        } catch {
+          return null; // oversize / storage error → leave the original href
+        }
+      },
       // Self-host the imported site's CSS as one inline-served stylesheet, returning its /media URL so
       // the importer can <link> it (keeping the bulk CSS out of the page source).
       hostStylesheet: async (ctx, slug, css) => {

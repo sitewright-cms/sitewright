@@ -85,6 +85,25 @@ export function collectImageRefs(docs: ParsedDoc[], site: CapturedSite): Map<str
   return refs;
 }
 
+// Document downloads worth self-hosting so the imported site is self-contained (else a <a href="x.pdf">
+// becomes a dead route or a hotlink to the source server). Stored download-only via the file-asset path.
+const DOC_EXT = /\.(pdf|docx?|xlsx?|pptx?|csv|rtf|odt|ods|odp|zip)(?:[?#]|$)/i;
+
+/** Every same-or-cross-origin document `<a href>` (PDF/doc/…), keyed canonically (kind 'other'). */
+export function collectDocumentRefs(docs: ParsedDoc[]): Map<string, CapturedAsset> {
+  const refs = new Map<string, CapturedAsset>();
+  for (const { url, doc } of docs) {
+    for (const a of allByName(doc.children, 'a')) {
+      const href = a.attribs.href?.trim();
+      if (!href || href.toLowerCase().startsWith('data:') || !DOC_EXT.test(href)) continue;
+      const key = assetKey(href, url);
+      if (!key || refs.has(key)) continue;
+      refs.set(key, { sourceRef: key, kind: 'other', remoteUrl: key });
+    }
+  }
+  return refs;
+}
+
 export interface HostResult {
   assetMap: Map<string, string>;
   /** assetKey → a responsive WebP `srcset` for the hosted image (only for image assets that have one). */

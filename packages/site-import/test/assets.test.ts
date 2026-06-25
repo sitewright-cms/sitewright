@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { parse } from '../src/dom.js';
-import { collectImageRefs, hostAssets } from '../src/transform/assets.js';
+import { collectDocumentRefs, collectImageRefs, hostAssets } from '../src/transform/assets.js';
 import { DEFAULT_LIMITS } from '../src/limits.js';
 import type { CapturedSite, MediaPort } from '../src/types.js';
 
@@ -34,6 +34,25 @@ describe('collectImageRefs', () => {
     const captured = { sourceRef: 'https://ex.com/a.png', kind: 'image' as const, bytes: new Uint8Array([1, 2, 3]) };
     const refs = collectImageRefs([{ url: 'https://ex.com/p', doc: parse('<img src="/a.png">') }], emptySite(new Map([['https://ex.com/a.png', captured]])));
     expect(refs.get('https://ex.com/a.png')).toBe(captured);
+  });
+});
+
+describe('collectDocumentRefs', () => {
+  it('collects PDF/doc links (kind other), ignores normal links + data:', () => {
+    const html = `<html><body>
+      <a href="/files/brochure.pdf">Brochure</a>
+      <a href="https://cdn.x/report.docx?v=2">Report</a>
+      <a href="/about">About</a>
+      <a href="data:application/pdf;base64,xxx">inline</a>
+      <a href="/page.html">Page</a>
+    </body></html>`;
+    const refs = collectDocumentRefs([{ url: 'https://ex.com/', doc: parse(html) }]);
+    const keys = [...refs.keys()];
+    expect(refs.size).toBe(2);
+    expect(keys.some((k) => k.includes('brochure.pdf'))).toBe(true);
+    expect(keys.some((k) => k.includes('report.docx'))).toBe(true);
+    expect(keys.some((k) => k.includes('/about'))).toBe(false);
+    expect([...refs.values()].every((a) => a.kind === 'other')).toBe(true);
   });
 });
 

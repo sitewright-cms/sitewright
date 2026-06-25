@@ -25,6 +25,12 @@ describe('transformBody', () => {
     expect(() => validateTemplate(source)).not.toThrow();
   });
 
+  it('rewrites a self-hosted document <a href> to its /media file', () => {
+    const docCtx: TransformCtx = { ...ctx, assetMap: new Map([['https://ex.com/brochure.pdf', '/media/p/a/file/brochure.pdf']]) };
+    const { source } = transformBody(parse('<html><body><a href="/brochure.pdf">Download</a></body></html>'), docCtx);
+    expect(source).toContain('href="/media/p/a/file/brochure.pdf"');
+  });
+
   it('attaches a responsive WebP srcset to a self-hosted <img> (src stays the fallback)', () => {
     const ctxWithSrcset: TransformCtx = { ...ctx, srcsetMap: new Map([['https://ex.com/logo.png', '/media/p/a/logo-400.webp 400w, /media/p/a/logo-800.webp 800w']]) };
     const { source } = transformBody(parse('<html><body><img src="/logo.png" alt="logo"></body></html>'), ctxWithSrcset);

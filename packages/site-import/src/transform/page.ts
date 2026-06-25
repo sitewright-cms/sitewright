@@ -140,6 +140,11 @@ function rewriteElementAttrs(el: Element, ctx: TransformCtx, diags: ImportDiagno
       continue;
     }
     if (name === 'href') {
+      // A self-hosted document (PDF/doc/…) → point at its /media file instead of the source server or a
+      // dead internal route (the asset map now also carries document downloads).
+      const docKey = assetKey(value, ctx.pageUrl);
+      const hostedDoc = docKey ? ctx.assetMap.get(docKey) : undefined;
+      if (hostedDoc) { el.attribs.href = hostedDoc; continue; }
       const decision = rewriteHref(value, ctx.pageUrl, ctx.siteBase, ctx.internalRoutes);
       if (decision.kind === 'set') el.attribs.href = decision.value;
       else if (decision.kind === 'unsafe') {

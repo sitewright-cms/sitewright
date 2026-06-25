@@ -89,6 +89,8 @@ export interface ImportRouteDeps {
   /** Self-host an `@font-face` web font (validates the bytes are a real font; null if not). Omit to
    *  disable font hosting (e.g. in tests) — the importer then leaves the @font-face url() as-is. */
   hostFontAsset?: (ctx: ProjectContext, slug: string, buffer: Buffer, font: { family: string; weight: number; style: 'normal' | 'italic' }) => Promise<{ url: string } | null>;
+  /** Self-host a linked document (PDF/doc/…) as-is, served download-only → its /media URL (or null). */
+  hostFileAsset?: (ctx: ProjectContext, slug: string, buffer: Buffer, meta: { filename: string; mimetype: string; folder?: string }) => Promise<{ url: string } | null>;
   /** Host the imported CSS as one inline-served stylesheet → its /media URL (or null). Omit to inline. */
   hostStylesheet?: (ctx: ProjectContext, slug: string, css: string) => Promise<string | null>;
   /** Host an imported script's JS → its /media URL (or null). Omit to strip scripts (the safe default). */
@@ -238,6 +240,13 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
         if (asset.kind === 'font') {
           if (!deps.hostFontAsset || !asset.font) return null;
           const saved = await deps.hostFontAsset(ctx, slug, buffer, asset.font).catch(() => null);
+          return saved ? { ref: saved.url } : null;
+        }
+        // Documents (PDF/doc/…) → the file-asset path: stored as-is, served download-only (no sharp).
+        if (asset.kind === 'other') {
+          if (!deps.hostFileAsset) return null;
+          const folder = importMediaFolder(asset.remoteUrl || asset.sourceRef || '', false);
+          const saved = await deps.hostFileAsset(ctx, slug, buffer, { filename, mimetype: mimetype || 'application/octet-stream', folder }).catch(() => null);
           return saved ? { ref: saved.url } : null;
         }
         if (mimetype === 'image/svg+xml' || mimetype === 'image/svg') return null; // sharp rejects SVG; engine inlines small ones

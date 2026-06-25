@@ -18,7 +18,7 @@ import { normalizePageUrl, resolveUrl, routePath, sameOrigin } from './url-util.
 import { resolveLimits } from './limits.js';
 import { buildRoutes } from './transform/routes.js';
 import { applyLocales, detectLocaleSet } from './transform/locales.js';
-import { collectImageRefs, hostAssets } from './transform/assets.js';
+import { collectDocumentRefs, collectImageRefs, hostAssets } from './transform/assets.js';
 import { collectCssRefs, buildPageStyles, buildHostableCss } from './transform/css.js';
 import { collectAndHostScripts } from './transform/scripts.js';
 import { collectFontFaces } from './transform/fonts.js';
@@ -125,6 +125,8 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
   // rewrites the @font-face url() to the hosted file). The page renders rawFidelity, so these fonts
   // — not the platform typography — apply.
   for (const [key, asset] of collectFontFaces(cssCollection.cssText)) if (!refs.has(key)) refs.set(key, asset);
+  // Self-host linked documents (PDFs/docs) too, so a `<a href="brochure.pdf">` keeps working off /media.
+  for (const [key, asset] of collectDocumentRefs(parsed.map((x) => ({ url: x.url, doc: x.doc })))) if (!refs.has(key)) refs.set(key, asset);
   const host = await hostAssets(refs, opts.media, limits, opts.onProgress);
   diagnostics.push(...host.diagnostics);
   const assetMap = host.assetMap;

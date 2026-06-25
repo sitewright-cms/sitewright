@@ -496,8 +496,8 @@ export const api = {
   loginTotp: (ticket: string, code: string) =>
     request<{ userId: string }>('POST', '/auth/login/totp', { ticket, code }),
   logout: () => request<void>('POST', '/auth/logout'),
-  // Public login-screen config — unauthenticated, no secrets: the enabled OIDC providers, whether
-  // self-registration is open, and the admin-panel branding (so the pre-auth screen skins itself).
+  // Public login-screen config — unauthenticated, no secrets: the enabled OIDC providers and the
+  // admin-panel branding (so the pre-auth screen skins itself).
   loginConfig: () =>
     request<{ oidcProviders: { id: string; label: string }[]; branding: Branding }>('GET', '/auth/config'),
   // The (full) URL to begin an OIDC login — the browser navigates here (a redirect to the IdP).

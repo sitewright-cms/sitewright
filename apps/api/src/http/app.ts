@@ -1519,8 +1519,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   };
 
   app.get('/auth/config', { config: rl(60) }, async (_req, reply) => {
-    // ONE snapshot of the settings row drives the provider buttons, the self-registration flag, AND
-    // the admin-panel branding the (pre-auth) login screen needs to skin itself.
+    // ONE snapshot of the settings row drives the provider buttons AND the admin-panel branding the
+    // (pre-auth) login screen needs to skin itself.
     const { stored, updatedAtMs } = await instanceSettingsRepo.getStoredWithUpdatedAt();
     // The logo is MUTABLE, so bust the cache with the row's mtime rather than relying on ETag infra.
     const logoUrl = stored.platformLogo ? `/branding/logo?v=${updatedAtMs}` : null;
@@ -1604,8 +1604,6 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // are encrypted at rest and never returned (the read view masks them).
   app.get('/admin/settings', { config: rl(30) }, async (req, reply) => {
     await requireInstanceAdmin(req);
-    // Overlay the EFFECTIVE self-registration state so the admin toggle reflects reality even before
-    // it has been explicitly saved (it resolves the factory default when the setting is still unset).
     const stored = await instanceSettingsRepo.getStored();
     return reply.send({
       settings: maskInstanceSettings(stored),

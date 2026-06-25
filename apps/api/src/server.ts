@@ -73,8 +73,8 @@ const smtpAllowedHosts = process.env.SW_SMTP_ALLOWED_HOSTS
 // SW_ADMIN_EMAIL only overrides the seeded admin's identity (optional first-boot convenience).
 const seedAdminEmail = process.env.SW_ADMIN_EMAIL?.trim() || DEFAULT_ADMIN_EMAIL;
 
-// Public registration is CLOSED by default (invitation-only + a seeded admin). An admin opens
-// self-signup at runtime in System Settings (`allowSelfRegistration`) — no env var.
+// Registration is unconditionally INVITE-ONLY (a seeded admin + invited users only); there is no
+// public self-signup and no runtime toggle.
 
 // The platform's public base URL, baked into exported forms as the absolute
 // submission endpoint. A malformed value would silently misdirect every form's

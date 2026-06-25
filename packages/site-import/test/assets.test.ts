@@ -70,4 +70,21 @@ describe('hostAssets', () => {
     expect(res.hosted).toBe(1);
     expect(res.diagnostics.some((d) => d.code === 'image-budget-exceeded')).toBe(true);
   });
+
+  it('hosts concurrently (bounded), not serially', async () => {
+    let inFlight = 0, maxInFlight = 0;
+    const many = new Map(Array.from({ length: 20 }, (_, i) => [`https://ex.com/${i}.png`, { sourceRef: String(i), kind: 'image' as const, remoteUrl: `https://ex.com/${i}.png` }]));
+    const media: MediaPort = {
+      hostAsset: async (a) => {
+        inFlight += 1; maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise((r) => setTimeout(r, 5));
+        inFlight -= 1;
+        return { ref: `/media/${a.sourceRef}.jpg` };
+      },
+    };
+    const res = await hostAssets(many, media, DEFAULT_LIMITS);
+    expect(res.hosted).toBe(20);
+    expect(maxInFlight).toBeGreaterThan(1); // proves parallelism (was strictly serial)
+    expect(maxInFlight).toBeLessThanOrEqual(8); // bounded by the concurrency cap
+  });
 });

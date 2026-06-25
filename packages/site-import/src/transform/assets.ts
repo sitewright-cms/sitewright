@@ -93,7 +93,27 @@ export interface HostResult {
   diagnostics: ImportDiagnostic[];
 }
 
-/** Host each collected image via the MediaPort, bounded by `maxImages`. Failures degrade gracefully. */
+// Self-host this many assets at once. Each host is a network fetch + a sharp re-encode; ~8 in flight
+// keeps the network busy without exhausting the libuv/sharp thread pool or container memory. (JS is
+// single-threaded, so the shared Map/counter writes between awaits need no locking.)
+const HOST_CONCURRENCY = 8;
+
+/** Run `fn` over `items` with at most `limit` promises in flight. */
+async function runPool<T>(items: readonly T[], limit: number, fn: (item: T) => Promise<void>): Promise<void> {
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (next < items.length) {
+      const item = items[next++]!;
+      await fn(item);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+}
+
+/**
+ * Host each collected image via the MediaPort, bounded by `maxImages` and run with bounded CONCURRENCY
+ * (was strictly serial — the dominant cost of an import). Failures degrade gracefully to source links.
+ */
 export async function hostAssets(
   refs: Map<string, CapturedAsset>,
   media: MediaPort,
@@ -104,19 +124,16 @@ export async function hostAssets(
   const srcsetMap = new Map<string, string>();
   const diagnostics: ImportDiagnostic[] = [];
   let hosted = 0;
-  let budgetWarned = false;
-  const total = refs.size;
+  // The maxImages budget caps how many we ATTEMPT (close enough); the overflow stays as source links.
+  const entries = [...refs];
+  const toHost = entries.slice(0, limits.maxImages);
+  if (entries.length > toHost.length) {
+    diagnostics.push({ code: 'image-budget-exceeded', message: `image limit (${limits.maxImages}) reached; ${entries.length - toHost.length} remaining image(s) left as source links` });
+  }
+  const total = toHost.length;
   let done = 0;
 
-  for (const [key, asset] of refs) {
-    done += 1;
-    if (hosted >= limits.maxImages) {
-      if (!budgetWarned) {
-        diagnostics.push({ code: 'image-budget-exceeded', message: `image limit (${limits.maxImages}) reached; remaining images left as source links` });
-        budgetWarned = true;
-      }
-      continue;
-    }
+  await runPool(toHost, HOST_CONCURRENCY, async ([key, asset]) => {
     try {
       const result = await media.hostAsset(asset);
       if (result) {
@@ -129,8 +146,9 @@ export async function hostAssets(
     } catch {
       diagnostics.push({ code: 'image-host-failed', message: `error self-hosting ${key}` });
     }
+    done += 1;
     const fname = (key.split(/[/?#]/).filter(Boolean).pop() || key).slice(0, 48);
     onProgress?.({ phase: 'host-media', done, total, detail: fname });
-  }
+  });
   return { assetMap, srcsetMap, hosted, diagnostics };
 }

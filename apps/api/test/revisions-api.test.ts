@@ -143,9 +143,12 @@ describe('revision author email is scoped to CURRENT members', () => {
 
   beforeEach(async () => {
     db = await makeTestDb();
-    app = await createApp({ db, openRegistration: true });
+    app = await createApp({ db });
     await app.ready();
-    ownerCookie = cookie(await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'owner@e2e.test', password: 'Pw-secret-1' } }));
+    // Seed the owner as agency staff (developer) — project creation is staff-only — then log in. The
+    // /auth/register route is invite-only, so accounts are seeded via the repo (which bypasses the gate).
+    await registerAccount(db, 'owner@e2e.test', 'Pw-secret-1', { platformRole: 'developer' });
+    ownerCookie = cookie(await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'owner@e2e.test', password: 'Pw-secret-1' } }));
     projectId = (await app.inject({ method: 'POST', url: '/projects', cookies: { sw_session: ownerCookie }, payload: { name: 'S', slug: 'site' } })).json().project.id;
     // A second user, added as a member, who authors a revision.
     const member = await registerAccount(db, 'member@e2e.test', 'Pw-secret-1');

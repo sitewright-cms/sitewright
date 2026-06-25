@@ -89,6 +89,8 @@ function MainApp({
   const oidcNotice = oidcError ? OIDC_ERROR_MESSAGES.get(oidcError) ?? 'Sign-in failed. Please try again.' : null;
   const [projects, setProjects] = useState<Project[]>([]);
   const [isInstanceAdmin, setIsInstanceAdmin] = useState(false);
+  // Only AGENCY staff (platform admin/developer) may create projects; invited clients cannot.
+  const [canCreateProjects, setCanCreateProjects] = useState(false);
   // The signed-in user's email (from /me), surfaced in the header user menu. The user-menu modal is
   // toggled by the person icon next to the settings gear.
   const [email, setEmail] = useState('');
@@ -123,6 +125,7 @@ function MainApp({
       // best-effort; always return to the auth screen
     }
     setIsInstanceAdmin(false);
+    setCanCreateProjects(false);
     setEmail('');
     setTotpEnabled(false);
     setRecoveryCodesRemaining(0);
@@ -135,6 +138,7 @@ function MainApp({
       const me = await api.me();
       setProjects(me.projects);
       setIsInstanceAdmin(me.isInstanceAdmin);
+      setCanCreateProjects(me.platformRole === 'admin' || me.platformRole === 'developer');
       setEmail(me.email);
       setTotpEnabled(me.totpEnabled);
       setRecoveryCodesRemaining(me.recoveryCodesRemaining);
@@ -162,6 +166,7 @@ function MainApp({
       const current = stageRef.current.name;
       if (current !== 'home' && current !== 'project') return;
       setIsInstanceAdmin(false);
+      setCanCreateProjects(false);
       setEmail('');
       setTotpEnabled(false);
       setRecoveryCodesRemaining(0);
@@ -356,6 +361,7 @@ function MainApp({
           projects={projects}
           currentId={inProject?.id}
           branding={branding}
+          canCreate={canCreateProjects}
           onClose={() => setSelectorOpen(false)}
           onOpen={openProject}
           onNew={() => {

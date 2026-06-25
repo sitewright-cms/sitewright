@@ -1,12 +1,16 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { makeTestDb } from './helpers.js';
+import type { Database } from '../src/db/client.js';
 import { createApp } from '../src/http/app.js';
+import { registerAccount } from '../src/repo/accounts.js';
+import type { PlatformRole } from '../src/db/schema.js';
 
 let app: FastifyInstance;
+let db: Database;
 
 beforeEach(async () => {
-  const db = await makeTestDb();
+  db = await makeTestDb();
   app = await createApp({ db });
   await app.ready();
 });
@@ -17,19 +21,19 @@ function sessionToken(res: { cookies: Array<{ name: string; value: string }> }):
   return token;
 }
 
-async function register(email: string) {
-  const res = await app.inject({
-    method: 'POST',
-    url: '/auth/register',
-    payload: { email, password: 'Pw-secret-1' },
-  });
-  return { res, token: sessionToken(res), body: res.json() as { userId: string } };
+// The /auth/register route is invite-only now, so seed accounts via the repo (bypasses the gate +
+// password policy), then log in for a session cookie — `res` is the LOGIN response (200, `{ userId }`).
+// Pass `platformRole: 'developer'` for a user that creates a project (agency staff); none for a plain client.
+async function register(email: string, platformRole?: PlatformRole) {
+  const { userId } = await registerAccount(db, email, 'Pw-secret-1', platformRole ? { platformRole } : {});
+  const res = await app.inject({ method: 'POST', url: '/auth/login', payload: { email, password: 'Pw-secret-1' } });
+  return { res, token: sessionToken(res), body: res.json() as { userId: string }, userId };
 }
 
 describe('API — auth + tenant-scoped projects', () => {
   it('registers, sets a session, and returns the current user', async () => {
     const { res, token, body } = await register('a@acme.test');
-    expect(res.statusCode).toBe(201);
+    expect(res.statusCode).toBe(200); // seed + login (register route is invite-only)
     expect(body.userId).toBeTruthy();
 
     const me = await app.inject({ method: 'GET', url: '/me', cookies: { sw_session: token } });
@@ -65,7 +69,7 @@ describe('API — auth + tenant-scoped projects', () => {
   });
 
   it('creates and lists projects for the caller', async () => {
-    const { token } = await register('a@acme.test');
+    const { token } = await register('a@acme.test', 'developer'); // creates a project → agency staff
     const created = await app.inject({
       method: 'POST',
       url: `/projects`,
@@ -83,8 +87,8 @@ describe('API — auth + tenant-scoped projects', () => {
   });
 
   it('isolates tenants by project: B’s project list excludes A’s project and B cannot read it', async () => {
-    const a = await register('a@acme.test');
-    const b = await register('b@globex.test');
+    const a = await register('a@acme.test', 'developer'); // both create a project → agency staff
+    const b = await register('b@globex.test', 'developer');
     const created = await app.inject({
       method: 'POST',
       url: `/projects`,
@@ -138,12 +142,14 @@ describe('signed sessions (cookieSecret configured)', () => {
     const signedApp = await createApp({ db, cookieSecret: 'test-cookie-secret' });
     await signedApp.ready();
 
+    // Seed a plain client (register is invite-only) and log in for a signed session cookie.
+    await registerAccount(db, 's@x.test', 'Pw-secret-1');
     const reg = await signedApp.inject({
       method: 'POST',
-      url: '/auth/register',
-      payload: { email: 's@x.test', password: 'Pw-secret-1'},
+      url: '/auth/login',
+      payload: { email: 's@x.test', password: 'Pw-secret-1' },
     });
-    expect(reg.statusCode).toBe(201);
+    expect(reg.statusCode).toBe(200);
     const token = sessionToken(reg);
 
     // A correctly-signed cookie authenticates.

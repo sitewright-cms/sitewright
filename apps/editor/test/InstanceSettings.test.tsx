@@ -179,25 +179,6 @@ describe('InstanceSettings', () => {
     expect(screen.queryByRole('button', { name: 'Save settings' })).not.toBeInTheDocument();
   });
 
-  it('hydrates and saves the self-registration toggle', async () => {
-    getInstanceSettings.mockResolvedValue({ settings: { ...DEFAULTS, allowSelfRegistration: true } });
-    render(<InstanceSettings />);
-    const toggle = await screen.findByLabelText('Allow user self-registration');
-    expect(toggle).toBeChecked();
-    // Turn it off and save → the input carries the new boolean.
-    fireEvent.click(toggle);
-    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
-    await waitFor(() => expect(putInstanceSettings).toHaveBeenCalledTimes(1));
-    const body = putInstanceSettings.mock.calls[0]![0] as InstanceSettingsInput;
-    expect(body.allowSelfRegistration).toBe(false);
-  });
-
-  it('defaults the self-registration toggle to off when the flag is absent', async () => {
-    getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
-    render(<InstanceSettings />);
-    expect(await screen.findByLabelText('Allow user self-registration')).not.toBeChecked();
-  });
-
   it('adds an OIDC provider and saves it (with the typed secret) in oidcProviders', async () => {
     getInstanceSettings.mockResolvedValue({ settings: DEFAULTS });
     render(<InstanceSettings />);
@@ -211,32 +192,29 @@ describe('InstanceSettings', () => {
     await waitFor(() => expect(putInstanceSettings).toHaveBeenCalledTimes(1));
     const body = putInstanceSettings.mock.calls[0]![0] as InstanceSettingsInput;
     expect(body.oidcProviders).toEqual([
-      { id: 'google', label: 'Google', issuer: 'https://accounts.google.com', clientId: 'cid', scopes: ['openid', 'profile', 'email'], enabled: true, autoRegister: false, usePkce: true, clientSecret: 'csecret' },
+      { id: 'google', label: 'Google', issuer: 'https://accounts.google.com', clientId: 'cid', scopes: ['openid', 'profile', 'email'], enabled: true, usePkce: true, clientSecret: 'csecret' },
     ]);
   });
 
-  it('hydrates and saves the per-provider auto-register + PKCE toggles', async () => {
+  it('hydrates and saves the per-provider PKCE toggle', async () => {
     const withProvider: InstanceSettingsPublic = {
       formModes: DEFAULTS.formModes,
       oidcProviders: [
-        { id: 'acme', label: 'Acme', issuer: 'https://idp.example.com', clientId: 'cid', scopes: ['openid', 'email'], enabled: true, hasClientSecret: true, autoRegister: false, usePkce: true },
+        { id: 'acme', label: 'Acme', issuer: 'https://idp.example.com', clientId: 'cid', scopes: ['openid', 'email'], enabled: true, hasClientSecret: true, usePkce: true },
       ],
     };
     getInstanceSettings.mockResolvedValue({ settings: withProvider });
     putInstanceSettings.mockResolvedValue({ settings: withProvider });
     render(<InstanceSettings />);
-    // Hydrated state: auto-register off, PKCE on.
-    const autoReg = await screen.findByLabelText('Provider 1 auto-register');
-    const pkce = screen.getByLabelText('Provider 1 use PKCE');
-    expect(autoReg).not.toBeChecked();
+    // Hydrated state: PKCE on.
+    const pkce = await screen.findByLabelText('Provider 1 use PKCE');
     expect(pkce).toBeChecked();
-    // Flip both, then save → the new values are sent.
-    fireEvent.click(autoReg);
+    // Flip it, then save → the new value is sent.
     fireEvent.click(pkce);
     fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
     await waitFor(() => expect(putInstanceSettings).toHaveBeenCalledTimes(1));
     const body = putInstanceSettings.mock.calls[0]![0] as InstanceSettingsInput;
-    expect(body.oidcProviders?.[0]).toMatchObject({ id: 'acme', autoRegister: true, usePkce: false });
+    expect(body.oidcProviders?.[0]).toMatchObject({ id: 'acme', usePkce: false });
   });
 
   it('"Add provider" works in an insecure context where crypto.randomUUID is unavailable', async () => {

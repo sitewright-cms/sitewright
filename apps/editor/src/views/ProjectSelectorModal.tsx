@@ -14,6 +14,8 @@ interface ProjectSelectorModalProps {
   branding?: Branding;
   onClose: () => void;
   onOpen: (project: Project) => void;
+  /** Whether the user may create projects (agency staff only) — hides the New/From-website buttons. */
+  canCreate?: boolean;
   /** Open the New Project modal (the selector closes first). */
   onNew: () => void;
   /** Create a new project then open the import wizard against it (the selector closes first). */
@@ -25,7 +27,7 @@ interface ProjectSelectorModalProps {
  * NEW PROJECT button. Shown automatically on first load and reachable anytime by
  * clicking the project name in the header.
  */
-export function ProjectSelectorModal({ projects, currentId, branding = DEFAULT_BRANDING, onClose, onOpen, onNew, onNewFromWebsite }: ProjectSelectorModalProps) {
+export function ProjectSelectorModal({ projects, currentId, branding = DEFAULT_BRANDING, canCreate = false, onClose, onOpen, onNew, onNewFromWebsite }: ProjectSelectorModalProps) {
   const [query, setQuery] = useState('');
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -40,14 +42,17 @@ export function ProjectSelectorModal({ projects, currentId, branding = DEFAULT_B
       onClose={onClose}
       headerLeft={<BrandLogo logoUrl={branding.logoUrl} name={branding.name} className="h-6 w-6 text-slate-900" />}
       headerExtra={
-        <div className="flex gap-2">
-          <button type="button" className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900" onClick={onNewFromWebsite}>
-            From website
-          </button>
-          <button type="button" className={`${primaryButton} px-3 py-1.5 text-xs`} onClick={onNew}>
-            New project
-          </button>
-        </div>
+        // Creating projects is an agency-staff action; clients only ever pick from their invited projects.
+        canCreate ? (
+          <div className="flex gap-2">
+            <button type="button" className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900" onClick={onNewFromWebsite}>
+              From website
+            </button>
+            <button type="button" className={`${primaryButton} px-3 py-1.5 text-xs`} onClick={onNew}>
+              New project
+            </button>
+          </div>
+        ) : undefined
       }
     >
       <div className="flex flex-col gap-3 p-5">
@@ -86,7 +91,9 @@ export function ProjectSelectorModal({ projects, currentId, branding = DEFAULT_B
             </li>
           ))}
           {filtered.length === 0 && (
-            <li className="py-2 text-sm text-slate-400">{query ? 'No projects match your search.' : 'No projects yet — create your first one.'}</li>
+            <li className="py-2 text-sm text-slate-400">
+              {query ? 'No projects match your search.' : canCreate ? 'No projects yet — create your first one.' : 'No projects yet.'}
+            </li>
           )}
         </ul>
       </div>

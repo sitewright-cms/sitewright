@@ -6,6 +6,7 @@ import type { FastifyInstance } from 'fastify';
 import type { MediaAsset, MediaFolderRecord } from '@sitewright/schema';
 import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
+import { registerAccount } from '../src/repo/accounts.js';
 
 // Integration: persistent media folders + file/folder operations. Folders are first-class
 // records (survive reload, empty or not); rename/move/copy/delete cascade to the assets
@@ -17,11 +18,13 @@ const PNG_1X1 = Buffer.from(
 );
 
 let app: FastifyInstance;
+let db: Awaited<ReturnType<typeof makeTestDb>>;
 let mediaRoot: string;
 
 beforeEach(async () => {
   mediaRoot = await mkdtemp(join(tmpdir(), 'sw-media-ops-'));
-  app = await createApp({ db: await makeTestDb(), mediaRoot });
+  db = await makeTestDb();
+  app = await createApp({ db, mediaRoot });
   await app.ready();
 });
 afterEach(async () => {
@@ -36,8 +39,10 @@ function token(res: { cookies: Array<{ name: string; value: string }> }): string
 
 let slugCounter = 0;
 async function setup(email: string) {
-  const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email, password: 'Pw-secret-1' } });
-  const t = token(reg);
+  // Project creation is agency-staff-only now; seed the creator as `developer` (agency staff). The
+  // register route is invite-only, so seed via the repo, then log in for a session cookie.
+  await registerAccount(db, email, 'Pw-secret-1', { platformRole: 'developer' });
+  const t = token(await app.inject({ method: 'POST', url: '/auth/login', payload: { email, password: 'Pw-secret-1' } }));
   const proj = await app.inject({ method: 'POST', url: '/projects', cookies: { sw_session: t }, payload: { name: 'Site', slug: `site-${slugCounter++}` } });
   return { t, projectId: (proj.json() as { project: { id: string } }).project.id };
 }

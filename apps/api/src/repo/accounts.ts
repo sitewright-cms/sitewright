@@ -110,16 +110,13 @@ export type OidcResolution = { ok: true; userId: string } | { ok: false; reason:
  *  1. a prior `(issuer, subject)` identity → that user (the IdP email may have changed since);
  *  2. else — a verified email is REQUIRED — an existing account with that email → link it;
  *  3. else a pending invite for that email → provision a passwordless account + materialize the invite(s);
- *  4. else, when the provider has `autoRegister` on → provision a passwordless account (no invite needed);
- *  5. else denied (a stranger is auto-created ONLY when the provider opted into auto-register).
- * Auto-register still requires a verified email (the step-2 gate) and is independent of the instance
- * `allowSelfRegistration` toggle. The identity link is recorded/refreshed on every success.
+ *  4. else denied — OIDC is EXISTING-OR-INVITED ONLY; a stranger's verified email is never auto-provisioned.
+ * The identity link is recorded/refreshed on every success.
  */
 export async function resolveOidcUser(
   db: Database,
   oidcRepo: OidcRepository,
   claims: { issuer: string; subject: string; email: string | null; emailVerified: boolean },
-  opts: { autoRegister?: boolean } = {},
 ): Promise<OidcResolution> {
   const linked = await oidcRepo.findUserByIdentity(claims.issuer, claims.subject);
   if (linked) {
@@ -142,11 +139,12 @@ export async function resolveOidcUser(
     await acceptPendingInvitesForEmail(db, existing.id, email);
     return { ok: true, userId: existing.id };
   }
-  // No account yet: provision one only if an invite is pending OR the provider auto-registers.
+  // No account yet: provision one ONLY if an invite is pending (existing-or-invited only — no stranger
+  // auto-provisioning).
   const invited = await hasPendingInvite(db, email);
-  if (!invited && !opts.autoRegister) return { ok: false, reason: 'not_provisioned' };
+  if (!invited) return { ok: false, reason: 'not_provisioned' };
   const userId = await registerOidcUser(db, email);
-  if (invited) await acceptPendingInvitesForEmail(db, userId, email);
+  await acceptPendingInvitesForEmail(db, userId, email);
   await oidcRepo.linkIdentity({ userId, issuer: claims.issuer, subject: claims.subject, email });
   return { ok: true, userId };
 }

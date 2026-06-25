@@ -69,44 +69,32 @@ describe('InstanceSettingsInputSchema', () => {
       formModes: { globalSmtp: true },
     });
   });
-
-  it('accepts the allowSelfRegistration toggle', () => {
-    expect(InstanceSettingsInputSchema.parse({ allowSelfRegistration: true })).toEqual({ allowSelfRegistration: true });
-    expect(InstanceSettingsInputSchema.parse({ allowSelfRegistration: false })).toEqual({ allowSelfRegistration: false });
-  });
 });
 
 describe('InstanceSettingsStoredSchema', () => {
   it('defaults formModes to all-disabled', () => {
     expect(InstanceSettingsStoredSchema.parse({}).formModes).toEqual(DEFAULT_FORM_MODES);
   });
-
-  it('leaves allowSelfRegistration absent when unset (distinguishable from an explicit false)', () => {
-    expect(InstanceSettingsStoredSchema.parse({}).allowSelfRegistration).toBeUndefined();
-    expect(InstanceSettingsStoredSchema.parse({ allowSelfRegistration: false }).allowSelfRegistration).toBe(false);
-  });
 });
 
 describe('OIDC provider schema', () => {
   const base = { id: 'acme', label: 'Acme', issuer: 'https://idp.example.com', clientId: 'c1' };
 
-  it('defaults autoRegister=false and usePkce=true (Stored + Input) when omitted', () => {
+  it('defaults usePkce=true (Stored + Input) when omitted', () => {
     const stored = OidcProviderStoredSchema.parse(base);
-    expect(stored.autoRegister).toBe(false);
     expect(stored.usePkce).toBe(true);
     const input = OidcProviderInputSchema.parse(base);
-    expect(input.autoRegister).toBe(false);
     expect(input.usePkce).toBe(true);
   });
 
-  it('honors explicit autoRegister/usePkce values', () => {
-    const stored = OidcProviderStoredSchema.parse({ ...base, autoRegister: true, usePkce: false });
-    expect(stored).toMatchObject({ autoRegister: true, usePkce: false });
+  it('honors an explicit usePkce value', () => {
+    const stored = OidcProviderStoredSchema.parse({ ...base, usePkce: false });
+    expect(stored).toMatchObject({ usePkce: false });
   });
 
-  it('maskOidcProvider passes autoRegister/usePkce through and drops the secret', () => {
-    const masked = maskOidcProvider(OidcProviderStoredSchema.parse({ ...base, autoRegister: true, usePkce: false }));
-    expect(masked).toMatchObject({ id: 'acme', hasClientSecret: false, autoRegister: true, usePkce: false });
+  it('maskOidcProvider passes usePkce through and drops the secret', () => {
+    const masked = maskOidcProvider(OidcProviderStoredSchema.parse({ ...base, usePkce: false }));
+    expect(masked).toMatchObject({ id: 'acme', hasClientSecret: false, usePkce: false });
     expect('clientSecret' in masked).toBe(false);
   });
 });
@@ -153,12 +141,6 @@ describe('maskInstanceSettings', () => {
     expect(masked.smtp).toBeUndefined();
     expect(masked.hcaptcha).toBeUndefined();
     expect(masked.formModes).toEqual(DEFAULT_FORM_MODES);
-    expect(masked.allowSelfRegistration).toBeUndefined();
-  });
-
-  it('passes allowSelfRegistration through (non-secret) only when set', () => {
-    expect(maskInstanceSettings({ formModes: DEFAULT_FORM_MODES, allowSelfRegistration: true }).allowSelfRegistration).toBe(true);
-    expect(maskInstanceSettings({ formModes: DEFAULT_FORM_MODES, allowSelfRegistration: false }).allowSelfRegistration).toBe(false);
   });
 });
 

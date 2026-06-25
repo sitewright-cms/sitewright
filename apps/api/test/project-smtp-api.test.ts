@@ -4,6 +4,7 @@ import type { FastifyInstance } from 'fastify';
 import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
 import { projectMembers } from '../src/db/schema.js';
+import { registerAccount } from '../src/repo/accounts.js';
 import type { Database } from '../src/db/client.js';
 
 const ENC_KEY = randomBytes(32);
@@ -24,8 +25,10 @@ beforeEach(async () => {
   db = await makeTestDb();
   app = await createApp({ db, encryptionKey: ENC_KEY });
   await app.ready();
-  const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'owner@acme.test', password: 'Pw-secret-1'} });
-  t = token(reg);
+  // Project creation is agency-staff-only now; seed the creator as `developer` (agency staff). The
+  // register route is invite-only, so seed via the repo, then log in for a session cookie.
+  await registerAccount(db, 'owner@acme.test', 'Pw-secret-1', { platformRole: 'developer' });
+  t = token(await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'owner@acme.test', password: 'Pw-secret-1' } }));
   const proj = await app.inject({ method: 'POST', url: `/projects`, cookies: { sw_session: t }, payload: { name: 'Site', slug: 'site' } });
   projectId = (proj.json() as { project: { id: string } }).project.id;
   base = `/projects/${projectId}`;
@@ -70,9 +73,8 @@ describe('per-project SMTP API', () => {
   });
 
   it('lets a project member read and write SMTP (constrained client-write removed)', async () => {
-    const memberReg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'member@x.test', password: 'Pw-secret-1'} });
-    const mt = token(memberReg);
-    const mUser = (memberReg.json() as { userId: string }).userId;
+    const { userId: mUser } = await registerAccount(db, 'member@x.test', 'Pw-secret-1');
+    const mt = token(await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'member@x.test', password: 'Pw-secret-1' } }));
     await db.insert(projectMembers).values({ id: randomUUID(), userId: mUser, projectId, role: 'member', createdAt: new Date() });
     // Any project member may now manage SMTP — the old owner/admin-only gate is gone.
     expect((await app.inject({ method: 'GET', url: `${base}/smtp`, cookies: { sw_session: mt } })).statusCode).toBe(200);
@@ -95,8 +97,8 @@ describe('per-project SMTP API with a host allowlist', () => {
     const adb = await makeTestDb();
     const app2 = await createApp({ db: adb, encryptionKey: ENC_KEY, smtpAllowedHosts: ['mail.allowed.com'] });
     await app2.ready();
-    const reg = await app2.inject({ method: 'POST', url: '/auth/register', payload: { email: 'o@a.test', password: 'Pw-secret-1'} });
-    const tok = token(reg);
+    await registerAccount(adb, 'o@a.test', 'Pw-secret-1', { platformRole: 'developer' });
+    const tok = token(await app2.inject({ method: 'POST', url: '/auth/login', payload: { email: 'o@a.test', password: 'Pw-secret-1' } }));
     const proj = await app2.inject({ method: 'POST', url: `/projects`, cookies: { sw_session: tok }, payload: { name: 'S', slug: 's' } });
     const pid = (proj.json() as { project: { id: string } }).project.id;
     const b = `/projects/${pid}`;

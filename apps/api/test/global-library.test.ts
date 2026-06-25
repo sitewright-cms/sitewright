@@ -1,9 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
-import { makeTestDb, promoteToAdmin } from './helpers.js';
+import { makeTestDb } from './helpers.js';
 import type { Database } from '../src/db/client.js';
 import { createApp } from '../src/http/app.js';
+import { registerAccount } from '../src/repo/accounts.js';
+import type { PlatformRole } from '../src/db/schema.js';
 import { RenderPool } from '../src/render/render-pool.js';
 
 const workerPath = fileURLToPath(new URL('./fixtures/blocks-render-worker.mjs', import.meta.url));
@@ -23,14 +25,19 @@ function token(res: { cookies: Array<{ name: string; value: string }> }): string
   if (!t) throw new Error('no session cookie');
   return t;
 }
-async function register(email: string): Promise<string> {
-  return token(await app.inject({ method: 'POST', url: '/auth/register', payload: { email, password: 'Pw-secret-1' } }));
+/**
+ * Seed an account via the repo (the /auth/register route is invite-only now) and log in for a session
+ * cookie. Pass a `platformRole` for agency staff: `developer` for a user that creates a project,
+ * `admin` for an instance admin. A plain client passes none.
+ */
+async function register(email: string, platformRole?: PlatformRole): Promise<string> {
+  await registerAccount(db, email, 'Pw-secret-1', platformRole ? { platformRole } : {});
+  const login = await app.inject({ method: 'POST', url: '/auth/login', payload: { email, password: 'Pw-secret-1' } });
+  return token(login);
 }
-/** Register + promote to instance admin (the persisted-role mechanism). */
+/** Seed an instance admin (the persisted-role mechanism) and log in. */
 async function registerAdmin(email: string): Promise<string> {
-  const t = await register(email);
-  await promoteToAdmin(db, email);
-  return t;
+  return register(email, 'admin');
 }
 async function project(t: string, slug: string): Promise<string> {
   const proj = await app.inject({ method: 'POST', url: '/projects', cookies: { sw_session: t }, payload: { name: 'Site', slug } });
@@ -61,7 +68,7 @@ describe('global snippet/template library', () => {
   });
 
   it('an admin-edited global snippet drives the render (the runtime store, not the built-in constant)', async () => {
-    const memberT = await register('author@e2e.test');
+    const memberT = await register('author@e2e.test', 'developer'); // creates a project → agency staff
     const projectId = await project(memberT, 'site');
     // A page that composes the GLOBAL `navbar` snippet.
     const page = { id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' }, source: '<section>{{> navbar}}</section>' };

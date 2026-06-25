@@ -35,7 +35,7 @@ import { Login } from '../src/views/Login';
 beforeEach(() => {
   for (const m of [login, register, loginTotp, passkeyLoginOptions, passkeyLoginVerify, startAuthentication, loginConfig]) m.mockReset();
   browserSupportsWebAuthn.mockReturnValue(true);
-  loginConfig.mockResolvedValue({ oidcProviders: [], allowSelfRegistration: false });
+  loginConfig.mockResolvedValue({ oidcProviders: [] });
 });
 
 async function fillCredsAndSubmit() {
@@ -150,19 +150,19 @@ describe('Login', () => {
     expect(await screen.findByText('Your account isn’t set up yet.')).toBeInTheDocument();
   });
 
-  it('hides the "Register" option when self-registration is closed', async () => {
-    loginConfig.mockResolvedValue({ oidcProviders: [], allowSelfRegistration: false });
+  it('hides the "Register" option on the public sign-in screen (registration is invite-only)', async () => {
+    loginConfig.mockResolvedValue({ oidcProviders: [] });
     render(<Login onAuthed={vi.fn()} />);
     // Wait for the config to load (the OIDC link area would render here if any).
     await waitFor(() => expect(loginConfig).toHaveBeenCalled());
     expect(screen.queryByRole('button', { name: 'Need an account? Register' })).not.toBeInTheDocument();
   });
 
-  it('shows the "Register" option when self-registration is open, and gates submit on the password policy', async () => {
-    loginConfig.mockResolvedValue({ oidcProviders: [], allowSelfRegistration: true });
+  it('shows the "Register" option in the invite flow (allowRegister), gating submit on the password policy', async () => {
     register.mockResolvedValue({ userId: 'u' });
     const onAuthed = vi.fn();
-    render(<Login onAuthed={onAuthed} />);
+    // `allowRegister` is set only by the invite-accept flow — public self-registration no longer exists.
+    render(<Login onAuthed={onAuthed} allowRegister />);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Need an account? Register' }));
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'new@acme.test' } });
@@ -182,8 +182,8 @@ describe('Login', () => {
     await waitFor(() => expect(onAuthed).toHaveBeenCalled());
   });
 
-  it('allowRegister forces the Register option even when the instance flag is closed (invite flow)', async () => {
-    loginConfig.mockResolvedValue({ oidcProviders: [], allowSelfRegistration: false });
+  it('allowRegister forces the Register option (invite flow)', async () => {
+    loginConfig.mockResolvedValue({ oidcProviders: [] });
     render(<Login onAuthed={vi.fn()} allowRegister />);
     expect(await screen.findByRole('button', { name: 'Need an account? Register' })).toBeInTheDocument();
   });

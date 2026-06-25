@@ -6,6 +6,7 @@ import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
 import { RenderPool } from '../src/render/render-pool.js';
 import { content, projectMembers } from '../src/db/schema.js';
+import { registerAccount } from '../src/repo/accounts.js';
 
 const workerPath = fileURLToPath(new URL('./fixtures/blocks-render-worker.mjs', import.meta.url));
 
@@ -28,8 +29,10 @@ function token(res: { cookies: Array<{ name: string; value: string }> }): string
 }
 
 async function setup() {
-  const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'owner@acme.test', password: 'Pw-secret-1'} });
-  const t = token(reg);
+  // Project creation is agency-staff-only now; seed the creator as `developer` (agency staff). The
+  // register route is invite-only, so seed via the repo, then log in for a session cookie.
+  await registerAccount(db, 'owner@acme.test', 'Pw-secret-1', { platformRole: 'developer' });
+  const t = token(await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'owner@acme.test', password: 'Pw-secret-1' } }));
   const proj = await app.inject({ method: 'POST', url: `/projects`, cookies: { sw_session: t }, payload: { name: 'Site', slug: 'site' } });
   const projectId = (proj.json() as { project: { id: string } }).project.id;
   return { t, projectId };
@@ -189,9 +192,8 @@ describe('render-template API (isolated worker)', () => {
 
   it('lets a project member render a template (constrained client-write removed)', async () => {
     const { projectId } = await setup();
-    const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'client@acme.test', password: 'Pw-secret-1'} });
-    const memberT = token(reg);
-    const memberId = (reg.json() as { userId: string }).userId;
+    const { userId: memberId } = await registerAccount(db, 'client@acme.test', 'Pw-secret-1');
+    const memberT = token(await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'client@acme.test', password: 'Pw-secret-1' } }));
     await db.insert(projectMembers).values({ id: randomUUID(), userId: memberId, projectId, role: 'member', createdAt: new Date() });
     const res = await app.inject({
       method: 'POST',
@@ -205,10 +207,11 @@ describe('render-template API (isolated worker)', () => {
   });
 
   it('returns 503 when no render pool is configured', async () => {
-    const noPool = await createApp({ db: await makeTestDb() });
+    const noPoolDb = await makeTestDb();
+    const noPool = await createApp({ db: noPoolDb });
     await noPool.ready();
-    const reg = await noPool.inject({ method: 'POST', url: '/auth/register', payload: { email: 'o@a.test', password: 'Pw-secret-1'} });
-    const t = token(reg);
+    await registerAccount(noPoolDb, 'o@a.test', 'Pw-secret-1', { platformRole: 'developer' });
+    const t = token(await noPool.inject({ method: 'POST', url: '/auth/login', payload: { email: 'o@a.test', password: 'Pw-secret-1' } }));
     const proj = await noPool.inject({ method: 'POST', url: `/projects`, cookies: { sw_session: t }, payload: { name: 'S', slug: 's' } });
     const projectId = (proj.json() as { project: { id: string } }).project.id;
     const res = await noPool.inject({ method: 'POST', url: `/projects/${projectId}/render-template`, cookies: { sw_session: t }, payload: { template: '<p>x</p>' } });

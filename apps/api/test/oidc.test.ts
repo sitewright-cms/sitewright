@@ -55,8 +55,8 @@ describe('OIDC single sign-on', () => {
     expect(settings.oidcProviders).toHaveLength(1);
     expect(settings.oidcProviders[0]).toMatchObject({ id: 'acme', label: 'Acme SSO', issuer: ISSUER, clientId: 'client-1', enabled: true, hasClientSecret: true });
     expect(settings.oidcProviders[0].clientSecret).toBeUndefined(); // never echoed
-    // Defaults for the new per-provider options when not specified.
-    expect(settings.oidcProviders[0]).toMatchObject({ autoRegister: false, usePkce: true });
+    // Default for the per-provider PKCE option when not specified.
+    expect(settings.oidcProviders[0]).toMatchObject({ usePkce: true });
 
     // /auth/config is unauthenticated and exposes only id + label.
     const cfg = await harness.app.inject({ method: 'GET', url: '/auth/config' });
@@ -123,53 +123,26 @@ describe('OIDC single sign-on', () => {
     expect(hasSessionCookie(res)).toBe(false);
   });
 
-  describe('auto-register', () => {
-    /** Re-saves the provider with autoRegister on (the secret is preserved by id when omitted). */
-    async function enableAutoRegister() {
-      const res = await admin.put('/admin/settings', {
-        oidcProviders: [{ id: 'acme', label: 'Acme SSO', issuer: ISSUER, clientId: 'client-1', enabled: true, autoRegister: true }],
-      });
-      expect(res.statusCode).toBe(200);
-      expect(res.json().settings.oidcProviders[0].autoRegister).toBe(true);
-    }
-
-    it('auto-registers an unknown VERIFIED email into a bare passwordless account when the provider opts in', async () => {
-      await enableAutoRegister();
+  describe('provisioning policy (existing-or-invited only — no auto-register)', () => {
+    it('REJECTS an unknown VERIFIED email with NO pending invite (no stranger auto-provisioning)', async () => {
       const res = await login({ sub: 'sub-auto', email: 'newcomer@test.local', emailVerified: true });
       expect(res.statusCode).toBe(302);
-      expect(res.headers.location).toBe('/');
-      expect(hasSessionCookie(res)).toBe(true);
-      // The freshly provisioned account: no platform role, no password, no projects.
-      const me = (await harness.app.inject({ method: 'GET', url: '/me', cookies: { [SESSION_COOKIE]: sessionToken(res) } })).json();
-      expect(me.email).toBe('newcomer@test.local');
-      expect(me.platformRole).toBeNull();
-      expect(me.hasPassword).toBe(false);
-      expect(me.projects).toEqual([]);
+      expect(res.headers.location).toBe('/?oidc_error=not_provisioned');
+      expect(hasSessionCookie(res)).toBe(false);
     });
 
-    it('still REJECTS an unverified email even with autoRegister on (verified email is required)', async () => {
-      await enableAutoRegister();
+    it('REJECTS an unverified email (verified email is required at first federation)', async () => {
       const res = await login({ sub: 'sub-auto-unv', email: 'unverified@test.local', emailVerified: false });
       expect(res.headers.location).toBe('/?oidc_error=email_unverified');
       expect(hasSessionCookie(res)).toBe(false);
     });
 
-    it('a second auto-register login by the same identity reuses the account (no duplicate)', async () => {
-      await enableAutoRegister();
-      const first = await login({ sub: 'sub-dup', email: 'repeat@test.local', emailVerified: true });
-      const firstId = (await harness.app.inject({ method: 'GET', url: '/me', cookies: { [SESSION_COOKIE]: sessionToken(first) } })).json().userId;
-      const second = await login({ sub: 'sub-dup', email: 'repeat@test.local', emailVerified: true });
-      const secondId = (await harness.app.inject({ method: 'GET', url: '/me', cookies: { [SESSION_COOKIE]: sessionToken(second) } })).json().userId;
-      expect(secondId).toBe(firstId);
-    });
-
-    it('with autoRegister AND a pending invite, the invite is still materialized', async () => {
-      await enableAutoRegister();
+    it('with a pending invite, the unknown verified email is provisioned and the invite is materialized', async () => {
       await admin.post('/admin/invites', { email: 'both@test.local' }); // a platform (developer) invite
       const res = await login({ sub: 'sub-both', email: 'both@test.local', emailVerified: true });
       expect(res.statusCode).toBe(302);
       const me = (await harness.app.inject({ method: 'GET', url: '/me', cookies: { [SESSION_COOKIE]: sessionToken(res) } })).json();
-      expect(me.platformRole).toBe('developer'); // the invite grant, not a bare auto-register account
+      expect(me.platformRole).toBe('developer'); // the invite grant materialized the account
     });
   });
 

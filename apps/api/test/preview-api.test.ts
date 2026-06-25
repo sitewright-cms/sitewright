@@ -1,8 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, afterAll } from 'vitest';
 import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
+import type { Database } from '../src/db/client.js';
 import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
+import { registerAccount } from '../src/repo/accounts.js';
 import { RenderPool } from '../src/render/render-pool.js';
 import { closeScreenshotBrowser } from '../src/render/screenshot.js';
 
@@ -12,9 +14,15 @@ afterAll(async () => closeScreenshotBrowser());
 const workerPath = fileURLToPath(new URL('./fixtures/blocks-render-worker.mjs', import.meta.url));
 
 let app: FastifyInstance;
+let db: Database;
+// The nested "code-first source page" describe boots a SECOND app (`poolApp`, with a render pool) over
+// its OWN db; `setup` seeds against whichever app's db matches the `instance` it's given (the module
+// `app` → `db`, anything else → the pool's `poolDb`).
+let poolDb: Database | undefined;
 
 beforeEach(async () => {
-  app = await createApp({ db: await makeTestDb() });
+  db = await makeTestDb();
+  app = await createApp({ db });
   await app.ready();
 });
 
@@ -25,12 +33,12 @@ function token(res: { cookies: Array<{ name: string; value: string }> }): string
 }
 
 async function setup(email: string, instance: FastifyInstance = app, slug = 'site') {
-  const reg = await instance.inject({
-    method: 'POST',
-    url: '/auth/register',
-    payload: { email, password: 'Pw-secret-1' },
-  });
-  const t = token(reg);
+  // Project creation is agency-staff-only now; seed the creator as `developer` (agency staff). The
+  // register route is invite-only, so seed via the repo (against the instance's db), then log in for a
+  // session cookie.
+  const seedDb = instance === app ? db : poolDb!;
+  await registerAccount(seedDb, email, 'Pw-secret-1', { platformRole: 'developer' });
+  const t = token(await instance.inject({ method: 'POST', url: '/auth/login', payload: { email, password: 'Pw-secret-1' } }));
   const proj = await instance.inject({
     method: 'POST',
     url: `/projects`,
@@ -131,11 +139,13 @@ describe('preview API', () => {
 describe('preview API — code-first source page', () => {
   let poolApp: FastifyInstance;
   beforeEach(async () => {
-    poolApp = await createApp({ db: await makeTestDb(), renderPool: new RenderPool({ size: 1, workerPath }) });
+    poolDb = await makeTestDb();
+    poolApp = await createApp({ db: poolDb, renderPool: new RenderPool({ size: 1, workerPath }) });
     await poolApp.ready();
   });
   afterEach(async () => {
     await poolApp.close(); // drains + terminates the render worker
+    poolDb = undefined;
   });
 
   it('renders a source page through the worker, applying client-edited content, styled + tokenized', async () => {

@@ -130,13 +130,6 @@ export const OidcProviderStoredSchema = z.object({
   scopes: OidcScopesSchema.default([...DEFAULT_OIDC_SCOPES]),
   enabled: z.boolean().default(true),
   /**
-   * Auto-provision a NEW passwordless account when a verified email from this provider matches no
-   * existing account and no pending invite (otherwise such a login is denied). Per-provider trust,
-   * independent of the instance `allowSelfRegistration` toggle. Off by default. Defaulted (not optional)
-   * so existing stored providers read back as `false`.
-   */
-  autoRegister: z.boolean().default(false),
-  /**
    * Use PKCE (S256) in the authorization-code flow. On by default (the secure norm). Turn off only for
    * an IdP that rejects the `code_challenge` parameter — off relies on state + nonce and is intended for
    * confidential clients (with a client secret). Defaulted so existing stored providers read back `true`.
@@ -184,13 +177,6 @@ export const InstanceSettingsStoredSchema = z.object({
   defaultLocale: LocaleSchema.optional(),
   /** Configured OIDC single-sign-on providers (the client secret of each is encrypted at rest). */
   oidcProviders: z.array(OidcProviderStoredSchema).max(10).optional(),
-  /**
-   * Whether anyone may create an account from the login screen. Left OPTIONAL on purpose: `undefined`
-   * means "the admin has never set this", which the API distinguishes from an explicit `false` so it
-   * can fall back to the factory default (the `openRegistration` createApp option — the production
-   * entry point passes `false`). Once set, the stored value wins. Invited users register regardless.
-   */
-  allowSelfRegistration: z.boolean().optional(),
   /** Admin-panel branding (white-label the CHROME): name, gradient stops, logo. Unset → defaults. */
   platformName: PlatformNameSchema.optional(),
   brandPrimary: CssColorSchema.optional(),
@@ -250,8 +236,7 @@ export const OidcProviderInputSchema = z.object({
   clientSecret: z.string().min(1).max(1024).optional(),
   scopes: OidcScopesSchema.optional(),
   enabled: z.boolean().default(true),
-  // Defaulted so older clients that omit them get the safe values (auto-register off, PKCE on).
-  autoRegister: z.boolean().default(false),
+  // Defaulted so older clients that omit it get the safe value (PKCE on).
   usePkce: z.boolean().default(true),
 });
 export type OidcProviderInput = z.infer<typeof OidcProviderInputSchema>;
@@ -286,9 +271,6 @@ export const InstanceSettingsInputSchema = z.object({
     .refine((arr) => new Set(arr.map((p) => p.id)).size === arr.length, 'provider ids must be unique')
     .nullable()
     .optional(),
-  // Self-registration toggle: a boolean sets it; an absent value leaves the stored one unchanged.
-  // (No `null` semantic — `false` already expresses "closed".)
-  allowSelfRegistration: z.boolean().optional(),
   // Branding (white-label the admin chrome): a value sets it, `null` clears it (revert to the default
   // name/color/logo), and an absent (undefined) value leaves the stored one unchanged.
   platformName: PlatformNameSchema.nullable().optional(),
@@ -326,7 +308,7 @@ export interface StockKeysPublic {
 /**
  * A configured OIDC provider, masked: the client secret collapses to a presence flag. Returned only
  * from the admin-gated `GET /admin/settings` (not the unauthenticated `/auth/config`, which exposes
- * just id + label) — `autoRegister`/`usePkce` are admin-config flags, never surfaced to the login screen.
+ * just id + label) — `usePkce` is an admin-config flag, never surfaced to the login screen.
  */
 export interface OidcProviderPublic {
   id: string;
@@ -336,7 +318,6 @@ export interface OidcProviderPublic {
   scopes: string[];
   enabled: boolean;
   hasClientSecret: boolean;
-  autoRegister: boolean;
   usePkce: boolean;
 }
 
@@ -357,8 +338,6 @@ export interface InstanceSettingsPublic {
   defaultLocale?: string;
   /** Configured OIDC providers (client secrets masked to `hasClientSecret`). */
   oidcProviders?: OidcProviderPublic[];
-  /** Whether self-registration is open. Absent when the admin has never set it (factory default applies). */
-  allowSelfRegistration?: boolean;
   /** Admin-panel branding — name + gradient stops returned as-is; the logo collapses to a presence flag
    *  (`hasLogo`). The bytes are NEVER returned here; they are served by `GET /branding/logo`. */
   platformName?: string;
@@ -399,7 +378,6 @@ export function maskInstanceSettings(stored: InstanceSettingsStored): InstanceSe
   if (stored.authMaxFailures !== undefined) result.authMaxFailures = stored.authMaxFailures;
   if (stored.defaultLocale !== undefined) result.defaultLocale = stored.defaultLocale;
   if (stored.oidcProviders) result.oidcProviders = stored.oidcProviders.map(maskOidcProvider);
-  if (stored.allowSelfRegistration !== undefined) result.allowSelfRegistration = stored.allowSelfRegistration;
   if (stored.platformName !== undefined) result.platformName = stored.platformName;
   if (stored.brandPrimary !== undefined) result.brandPrimary = stored.brandPrimary;
   if (stored.brandSecondary !== undefined) result.brandSecondary = stored.brandSecondary;

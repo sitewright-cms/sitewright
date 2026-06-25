@@ -16,10 +16,9 @@ interface LoginProps {
   /** A notice (e.g. an OIDC callback error) to show on the sign-in screen. */
   initialNotice?: string | null;
   /**
-   * Force-OPEN the "create account" option regardless of the instance's self-registration flag.
-   * Set by the invite-accept flow (an invited user must be able to register even when self-registration
-   * is closed). This can only force-enable — `undefined` defers to the public `allowSelfRegistration`
-   * config (the type is `true` so a caller can't accidentally force-CLOSE registration with `false`).
+   * Enable the "create account" (set-password) option. Registration is INVITE-ONLY, so this is set
+   * ONLY by the invite-accept flow (an invited email holds a pending invite). `undefined` → sign-in
+   * only (no public self-registration). Typed `true` so it can only ever force-enable.
    */
   allowRegister?: true;
   /** Lock the email to a fixed address (pre-filled + disabled) — the invite-accept flow passes the
@@ -42,20 +41,14 @@ export function Login({ onAuthed, initialMfaTicket, initialNotice, allowRegister
   const [code, setCode] = useState('');
   const [useRecovery, setUseRecovery] = useState(false);
   const [providers, setProviders] = useState<{ id: string; label: string }[]>([]);
-  // Whether the instance has self-registration open (drives the "create account" option). Best-effort:
-  // defaults closed until the config loads, so the option never flashes on a registration-closed instance.
-  const [selfRegOpen, setSelfRegOpen] = useState(false);
 
-  // The public login config drives the OIDC "Sign in with …" buttons and the self-registration option
-  // (best-effort; both stay absent on failure).
+  // The public login config drives the OIDC "Sign in with …" buttons (best-effort; absent on failure).
   useEffect(() => {
     let active = true;
     api
       .loginConfig()
       .then((c) => {
-        if (!active) return;
-        setProviders(c.oidcProviders);
-        setSelfRegOpen(c.allowSelfRegistration);
+        if (active) setProviders(c.oidcProviders);
       })
       .catch(() => {});
     return () => {
@@ -63,16 +56,11 @@ export function Login({ onAuthed, initialMfaTicket, initialNotice, allowRegister
     };
   }, []);
 
-  // Invited users (allowRegister) may always create an account; otherwise it follows the instance flag.
-  const canRegister = allowRegister ?? selfRegOpen;
+  // Registration is INVITE-ONLY: there is no public self-registration. Only the invite-accept flow
+  // (which passes `allowRegister`) ever reaches register mode.
+  const canRegister = allowRegister ?? false;
   // In register mode, gate submit on the shared password policy (the server enforces it regardless).
   const registerBlocked = mode === 'register' && !isPasswordValid(password);
-
-  // If registration becomes disallowed while the form is in register mode (e.g. the config loads
-  // closed after a brief window), fall back to sign-in instead of leaving it stuck.
-  useEffect(() => {
-    if (mode === 'register' && !canRegister) setMode('login');
-  }, [mode, canRegister]);
 
   async function submit(e: FormEvent) {
     e.preventDefault();

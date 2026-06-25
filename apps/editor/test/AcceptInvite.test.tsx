@@ -26,7 +26,7 @@ const invite = (over: Record<string, unknown> = {}) => ({
 beforeEach(() => {
   peekInvite.mockReset();
   loginConfig.mockReset();
-  loginConfig.mockResolvedValue({ oidcProviders: [], allowSelfRegistration: false, branding: BRAND });
+  loginConfig.mockResolvedValue({ oidcProviders: [], branding: BRAND });
 });
 
 const noop = () => {};
@@ -34,7 +34,7 @@ const noop = () => {};
 describe('AcceptInvite', () => {
   it('offers a choice (set a password vs. complete with OIDC) when providers are configured', async () => {
     peekInvite.mockResolvedValue(invite());
-    loginConfig.mockResolvedValue({ oidcProviders: [{ id: 'sso', label: 'E2E SSO' }], allowSelfRegistration: false, branding: BRAND });
+    loginConfig.mockResolvedValue({ oidcProviders: [{ id: 'sso', label: 'E2E SSO' }], branding: BRAND });
     render(<AcceptInvite token="t" authed={false} onAuthed={noop} onDone={noop} />);
     // The invited email is disclosed + the project named; the choice screen shows both paths.
     expect(await screen.findByText('client@acme.test')).toBeInTheDocument();
@@ -53,7 +53,7 @@ describe('AcceptInvite', () => {
 
   it('frames the choice as sign-in when the invited email already has an account', async () => {
     peekInvite.mockResolvedValue(invite({ hasAccount: true }));
-    loginConfig.mockResolvedValue({ oidcProviders: [{ id: 'sso', label: 'E2E SSO' }], allowSelfRegistration: false, branding: BRAND });
+    loginConfig.mockResolvedValue({ oidcProviders: [{ id: 'sso', label: 'E2E SSO' }], branding: BRAND });
     render(<AcceptInvite token="t" authed={false} onAuthed={noop} onDone={noop} />);
     expect(await screen.findByRole('button', { name: 'Sign in with a password' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Continue with E2E SSO' })).toBeInTheDocument();

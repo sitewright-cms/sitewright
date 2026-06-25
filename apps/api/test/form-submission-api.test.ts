@@ -6,6 +6,7 @@ import { createApp } from '../src/http/app.js';
 import { projectMembers, formSubmissions } from '../src/db/schema.js';
 import { MAX_SUBMISSIONS_PER_FORM } from '@sitewright/schema';
 import { SubmissionRepository } from '../src/repo/submissions.js';
+import { registerAccount } from '../src/repo/accounts.js';
 import type { Database } from '../src/db/client.js';
 import type { SubmissionMail, SubmissionMailer, ProjectMailer } from '../src/mail/mailer.js';
 
@@ -56,12 +57,10 @@ beforeEach(async () => {
   db = await makeTestDb();
   app = await createApp({ db, mailer, projectMailer });
   await app.ready();
-  const reg = await app.inject({
-    method: 'POST',
-    url: '/auth/register',
-    payload: { email: 'owner@acme.test', password: 'Pw-secret-1'},
-  });
-  t = token(reg);
+  // Project creation is agency-staff-only now; seed the creator as `developer` (agency staff). The
+  // register route is invite-only, so seed via the repo, then log in for a session cookie.
+  await registerAccount(db, 'owner@acme.test', 'Pw-secret-1', { platformRole: 'developer' });
+  t = token(await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'owner@acme.test', password: 'Pw-secret-1' } }));
   const proj = await app.inject({
     method: 'POST',
     url: `/projects`,
@@ -259,13 +258,8 @@ describe('submissions inbox (authenticated)', () => {
 
   it('lets a project member read and delete a submission (constrained client-write removed)', async () => {
     // A second user, granted access to THIS project as a member.
-    const memberReg = await app.inject({
-      method: 'POST',
-      url: '/auth/register',
-      payload: { email: 'member@x.test', password: 'Pw-secret-1'},
-    });
-    const memberT = token(memberReg);
-    const memberUserId = (memberReg.json() as { userId: string }).userId;
+    const { userId: memberUserId } = await registerAccount(db, 'member@x.test', 'Pw-secret-1');
+    const memberT = token(await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'member@x.test', password: 'Pw-secret-1' } }));
     await db.insert(projectMembers).values({ id: randomUUID(), userId: memberUserId, projectId, role: 'member', createdAt: new Date() });
 
     const list = await app.inject({ method: 'GET', url: `/projects/${projectId}/submissions`, cookies: { sw_session: memberT } });
@@ -276,12 +270,8 @@ describe('submissions inbox (authenticated)', () => {
   });
 
   it('isolates a non-member from these submissions (403 project)', async () => {
-    const other = await app.inject({
-      method: 'POST',
-      url: '/auth/register',
-      payload: { email: 'other@x.test', password: 'Pw-secret-1'},
-    });
-    const ot = token(other);
+    await registerAccount(db, 'other@x.test', 'Pw-secret-1');
+    const ot = token(await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'other@x.test', password: 'Pw-secret-1' } }));
     // A user who holds no membership on this project cannot reach it over a session (403).
     const res = await app.inject({
       method: 'GET',

@@ -4,8 +4,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import type { ProjectBundle } from '@sitewright/core';
+import type { Database } from '../src/db/client.js';
 import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
+import { registerAccount } from '../src/repo/accounts.js';
 import { buildSite } from '../src/publish/build.js';
 
 // ---------------------------------------------------------------------------
@@ -85,11 +87,13 @@ describe('buildSite preview options', () => {
 // ---------------------------------------------------------------------------
 describe('preview-site API (signed path)', () => {
   let app: FastifyInstance;
+  let db: Database;
   let previewRoot: string;
 
   beforeEach(async () => {
     previewRoot = await mkdtemp(join(tmpdir(), 'sw-preview-'));
-    app = await createApp({ db: await makeTestDb(), previewRoot, cookieSecret: 'preview-test-secret' });
+    db = await makeTestDb();
+    app = await createApp({ db, previewRoot, cookieSecret: 'preview-test-secret' });
     await app.ready();
   });
   afterEach(async () => {
@@ -102,8 +106,10 @@ describe('preview-site API (signed path)', () => {
     return t;
   }
   async function setup(email: string, slug = 'site') {
-    const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email, password: 'Pw-secret-1' } });
-    const t = token(reg);
+    // Project creation is agency-staff-only now; seed the creator as `developer` (agency staff). The
+    // register route is invite-only, so seed via the repo, then log in for a session cookie.
+    await registerAccount(db, email, 'Pw-secret-1', { platformRole: 'developer' });
+    const t = token(await app.inject({ method: 'POST', url: '/auth/login', payload: { email, password: 'Pw-secret-1' } }));
     const proj = await app.inject({ method: 'POST', url: `/projects`, cookies: { sw_session: t }, payload: { name: 'Site', slug } });
     const projectId = (proj.json() as { project: { id: string } }).project.id;
     return { t, projectId, slug };

@@ -33,7 +33,23 @@ export interface CapturedNode {
   isModal?: boolean;
   /** This element triggers a modal: the referenced modal id (from data-(bs-)target / href="#id"). */
   modalTarget?: string;
+  /** A JS-component snap recognized from STATIC markup (carousel/tabs/accordion parts). */
+  snap?: SnapKind;
+  /** A tab panel's label (looked up from the source's matching tab button) → data-sw-title. */
+  tabTitle?: string;
 }
+
+/** A component part recognized from the source's static class markers → a platform primitive on emit. */
+export type SnapKind =
+  | 'carousel' // root → data-sw-component="carousel" data-sw-block="Carousel" (+ prev/next/dots)
+  | 'carousel-track' // the slide row → data-sw-part="track"
+  | 'carousel-slide' // one slide → data-sw-part="slide"
+  | 'tabs' // the panel container → data-sw-component="tabs"
+  | 'tab-panel' // one panel → data-sw-part="panel" data-sw-title
+  | 'details' // an accordion item → native <details>
+  | 'summary' // an accordion header button → native <summary>
+  | 'unwrap' // a structural wrapper to remove (e.g. an accordion header/collapse) → emit its children only
+  | 'drop'; // the source's own tab BUTTONS (the runtime rebuilds them) → omit
 
 /** A merged node: final responsive classes + the snap flags the renderer acts on. */
 export interface MergedNode {
@@ -55,6 +71,10 @@ export interface MergedNode {
   modalId?: string;
   /** A trigger → rendered with `href="#<modalTarget>"` so the platform modal runtime opens it. */
   modalTarget?: string;
+  /** A component-part snap (carousel/tabs/accordion) → platform markup on emit. */
+  snap?: SnapKind;
+  /** A tab panel's data-sw-title. */
+  tabTitle?: string;
   aos: AosAttrs | null;
   cls: string;
   style: string;
@@ -140,7 +160,7 @@ export function mergeTree(nb: CapturedNode, nm: CapturedNode, nl: CapturedNode, 
   const slider = !!(inSlider || isTrack || hasTrackChild);
   // CONTENT CONTAINER: a wide, horizontally-centered structural block (at desktop) is a section's content
   // wrapper → emit the site-wide `.sw-container` instead of a captured per-section width.
-  const isContainer = !slider && cw >= CONTAINER_MIN_PX && cml > 0 && Math.abs(cml - cmr) < 2 && nl.tag !== 'img' && nl.tag !== 'iframe' && nl.children.length > 0;
+  const isContainer = !slider && !nl.snap && cw >= CONTAINER_MIN_PX && cml > 0 && Math.abs(cml - cmr) < 2 && nl.tag !== 'img' && nl.tag !== 'iframe' && nl.children.length > 0;
   if (isContainer) for (const m of maps) for (const k of ['w', 'maxw', 'mx', 'px', 'pl', 'pr']) delete m.g[k];
   // A modal container becomes a native <dialog>, which owns its open/closed visibility — drop the captured
   // display:none (it's hidden in the static capture) so the dialog isn't permanently invisible when opened.
@@ -151,7 +171,7 @@ export function mergeTree(nb: CapturedNode, nm: CapturedNode, nl: CapturedNode, 
   let swMarquee = false;
   // Button/button-link → the platform button system (drop the captured fill/padding/radius; keep only
   // positioning auto-margins). Skipped inside a slider/marquee track (those nodes have their own snap).
-  const btn = !slider && !isSlide ? snapButton(nl.s, nl.tag, ctx.palette) : null;
+  const btn = !slider && !isSlide && !nl.snap ? snapButton(nl.s, nl.tag, ctx.palette) : null;
   if (hasTrackChild) { swMarquee = true; cls = ''; } // the VIEWPORT → data-sw-marquee
   else if (isTrack) { marqueeTrack = true; cls = 'sw-marquee-track'; } // the TRACK
   else if (isSlide) { cls = 'sw-marquee-item'; } // each SLIDE
@@ -179,6 +199,8 @@ export function mergeTree(nb: CapturedNode, nm: CapturedNode, nl: CapturedNode, 
     marqueeTrack, swMarquee, flip: nl.flip, isBack: nl.isBack, flipH: nl.flipH,
     modalId: nl.isModal && nl.id ? nl.id : undefined,
     modalTarget: nl.modalTarget,
+    snap: nl.snap,
+    tabTitle: nl.tabTitle,
     aos: (slider || nl.tag === 'img') ? null : aosAttrs(nl.anim ?? null),
     title: nl.title, cls, style: maps[2]!.st.filter(Boolean).join(';'), children: [],
   };
@@ -240,11 +262,23 @@ function emitNode(n: MergedNode, d: number, ctx: NativizeContext, logos: { image
   if (n.flip) return emitFlip(n, ind);
   if (n.swicon) return emitIcon(n, ind, ctx);
 
-  // MODAL container → a native <dialog data-sw-component="modal"> (the platform runtime opens it).
-  const tag = n.modalId ? 'dialog' : n.tag;
+  if (n.snap === 'drop') return ''; // the source's own tab buttons — the tabs runtime rebuilds them
+  // UNWRAP a structural wrapper (accordion header/collapse) → emit its children at THIS depth so a native
+  // <summary>/body lands as a direct child of <details> (a <summary> must be the dialog's direct child).
+  if (n.snap === 'unwrap') { const kids = n.children.map((ch) => emitNode(ch, d, ctx, logos)).filter(Boolean); return kids.join('\n'); }
+  // Effective tag: an accordion item/header → native <details>/<summary>; a modal → <dialog>; else as-is.
+  const tag = n.snap === 'details' ? 'details' : n.snap === 'summary' ? 'summary' : n.modalId ? 'dialog' : n.tag;
+  // A carousel root needs position:relative for its overlay arrows/dots.
+  const clsPrefix = n.snap === 'carousel' && !/(^|\s)relative(\s|$)/.test(n.cls || '') ? 'relative ' : '';
   const at: string[] = [];
-  if (n.modalId) { at.push(`id="${escAttr(n.modalId)}"`, 'data-sw-component="modal"'); }
-  if (n.cls) at.push(`class="${n.cls}"`);
+  if (n.modalId) at.push(`id="${escAttr(n.modalId)}"`, 'data-sw-component="modal"');
+  // Component-part markers (carousel/tabs) → the platform runtime + CSS enhance these.
+  if (n.snap === 'carousel') at.push('data-sw-component="carousel"', 'data-sw-block="Carousel"');
+  else if (n.snap === 'carousel-track') at.push('data-sw-part="track"');
+  else if (n.snap === 'carousel-slide') at.push('data-sw-part="slide"');
+  else if (n.snap === 'tabs') at.push('data-sw-component="tabs"');
+  else if (n.snap === 'tab-panel') { at.push('data-sw-part="panel"'); if (n.tabTitle) at.push(`data-sw-title="${escAttr(n.tabTitle)}"`); }
+  if (n.cls || clsPrefix) at.push(`class="${(clsPrefix + (n.cls ?? '')).trim()}"`);
   if (n.style) at.push(`style="${n.style}"`);
   if (n.ariaHidden) at.push('aria-hidden="true"');
   if (n.marqueeDup) at.push('data-sw-marquee-dup');
@@ -260,10 +294,17 @@ function emitNode(n: MergedNode, d: number, ctx: NativizeContext, logos: { image
   if (VOID.has(tag)) return ind + open;
   const inner: string[] = [];
   if (n.text) inner.push('  '.repeat(d + 1) + escText(n.text));
-  for (const ch of n.children) inner.push(emitNode(ch, d + 1, ctx, logos));
+  for (const ch of n.children) { const e = emitNode(ch, d + 1, ctx, logos); if (e) inner.push(e); } // skip dropped nodes
   // Marquee seamless loop: render the slide set TWICE (2nd copy aria-hidden + data-sw-marquee-dup so
   // reduced-motion can drop it) so the platform translateX(-50%) keyframe wraps without a visible seam.
   if (n.marqueeTrack && n.children.length) for (const ch of n.children) inner.push(emitNode({ ...ch, ariaHidden: true, marqueeDup: true }, d + 1, ctx, logos));
+  // A carousel root gets prev/next arrows + a dots mount (hidden until the runtime enhances it).
+  if (n.snap === 'carousel') {
+    const ci = '  '.repeat(d + 1);
+    inner.push(`${ci}<button type="button" data-sw-part="prev" aria-label="Previous slide">{{sw-icon "chevron-left" "size-6"}}</button>`);
+    inner.push(`${ci}<button type="button" data-sw-part="next" aria-label="Next slide">{{sw-icon "chevron-right" "size-6"}}</button>`);
+    inner.push(`${ci}<div data-sw-part="dots" aria-hidden="true"></div>`);
+  }
   return inner.length ? `${ind}${open}\n${inner.join('\n')}\n${ind}</${tag}>` : `${ind}${open}</${tag}>`;
 }
 

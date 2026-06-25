@@ -247,3 +247,52 @@ describe('modal snapping → <dialog data-sw-component="modal"> + wired triggers
     expect(bh).toContain('class="btn btn-neutral"');
   });
 });
+
+describe('component snapping → carousel / tabs / accordion (static markup)', () => {
+  it('snaps a carousel: root markers + track/slide parts + prev/next/dots', () => {
+    const slide1 = node('div', {}, { snap: 'carousel-slide', children: [node('p', {}, { text: 'Slide one' })] });
+    const slide2 = node('div', {}, { snap: 'carousel-slide', children: [node('p', {}, { text: 'Slide two' })] });
+    const track = node('div', {}, { snap: 'carousel-track', children: [slide1, slide2] });
+    const root = node('div', {}, { snap: 'carousel', children: [track] });
+    const html = renderTree(mergeTrees([root], [root], [root], ctx), ctx).html;
+    expect(html).toContain('data-sw-component="carousel"');
+    expect(html).toContain('data-sw-block="Carousel"');
+    expect(html).toContain('class="relative"'); // overlay arrows need a positioned root
+    expect(html).toContain('data-sw-part="track"');
+    expect((html.match(/data-sw-part="slide"/g) || []).length).toBe(2);
+    expect(html).toContain('data-sw-part="prev"');
+    expect(html).toContain('data-sw-part="next"');
+    expect(html).toContain('data-sw-part="dots"');
+    expect(html).toContain('Slide one');
+  });
+
+  it('snaps Bootstrap tabs: container → tabs, panes → panels w/ titles, nav buttons dropped', () => {
+    const nav = node('ul', {}, { snap: 'drop', children: [node('li', {}, { text: 'NAV-LABEL' })] });
+    const pane1 = node('div', {}, { snap: 'tab-panel', tabTitle: 'Overview', children: [node('p', {}, { text: 'Panel one' })] });
+    const pane2 = node('div', {}, { snap: 'tab-panel', tabTitle: 'Details', children: [node('p', {}, { text: 'Panel two' })] });
+    const content = node('div', {}, { snap: 'tabs', children: [pane1, pane2] });
+    const wrapper = node('div', {}, { children: [nav, content] });
+    const html = renderTree(mergeTrees([wrapper], [wrapper], [wrapper], ctx), ctx).html;
+    expect(html).toContain('data-sw-component="tabs"');
+    expect((html.match(/data-sw-part="panel"/g) || []).length).toBe(2);
+    expect(html).toContain('data-sw-title="Overview"');
+    expect(html).toContain('data-sw-title="Details"');
+    expect(html).toContain('Panel one');
+    expect(html).not.toContain('NAV-LABEL'); // the source's tab buttons are dropped (runtime rebuilds them)
+  });
+
+  it('snaps a Bootstrap accordion to native <details>/<summary> (wrappers unwrapped)', () => {
+    const btn = node('button', {}, { snap: 'summary', text: 'Question one' });
+    const header = node('h2', {}, { snap: 'unwrap', children: [btn] });
+    const body = node('div', {}, { children: [node('p', {}, { text: 'Answer one' })] });
+    const collapse = node('div', { display: 'none' }, { snap: 'unwrap', children: [body] });
+    const item = node('div', {}, { snap: 'details', children: [header, collapse] });
+    const html = renderTree(mergeTrees([item], [item], [item], ctx), ctx).html;
+    expect(html).toContain('<details');
+    expect(html).toContain('<summary');
+    expect(html).toContain('Question one');
+    expect(html).toContain('Answer one');
+    expect(html).not.toContain('<h2'); // accordion-header unwrapped
+    expect(html).not.toContain('hidden'); // collapse unwrapped → its display:none is gone
+  });
+});

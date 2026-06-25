@@ -77,6 +77,24 @@ export function WALK(ROOT_SEL) {
       const tgl = el.getAttribute('data-toggle') || el.getAttribute('data-bs-toggle') || '';
       if (tgl === 'modal') { const t = el.getAttribute('data-target') || el.getAttribute('data-bs-target') || el.getAttribute('href') || ''; const m = t.match(/^#(.+)$/); if (m) node.modalTarget = m[1]; }
     }
+    // CAROUSEL / TABS / ACCORDION → platform components, recognized from STATIC author markup (class
+    // markers + the slide/panel structure survive import; Bootstrap/Swiper write these in HTML, pre-JS).
+    {
+      const acl = el.getAttribute('class') || '';
+      if (/(^|\s)(carousel|swiper|swiper-container)(\s|$)/.test(acl) && el.querySelector('.carousel-item,.swiper-slide,.carousel-inner,.swiper-wrapper')) node.snap = 'carousel';
+      else if (/(^|\s)(carousel-inner|swiper-wrapper)(\s|$)/.test(acl)) node.snap = 'carousel-track';
+      else if (/(^|\s)(carousel-item|swiper-slide)(\s|$)/.test(acl)) node.snap = 'carousel-slide';
+      else if (/(^|\s)tab-content(\s|$)/.test(acl) && el.querySelector('.tab-pane')) node.snap = 'tabs';
+      else if (/(^|\s)(nav-tabs|nav-pills)(\s|$)/.test(acl)) node.snap = 'drop'; // the source tab buttons — runtime rebuilds them
+      else if (/(^|\s)tab-pane(\s|$)/.test(acl)) {
+        node.snap = 'tab-panel';
+        const tid = el.getAttribute('id') || ''; let t = '';
+        if (tid) { try { const btn = document.querySelector('[href="#' + tid + '"],[data-bs-target="#' + tid + '"],[aria-controls="' + tid + '"]'); if (btn) t = (btn.textContent || '').replace(/\s+/g, ' ').trim(); } catch { /* odd id → fall back */ } }
+        node.tabTitle = t || 'Tab';
+      } else if (/(^|\s)accordion-item(\s|$)/.test(acl)) node.snap = 'details';
+      else if (/(^|\s)(accordion-header|accordion-collapse)(\s|$)/.test(acl)) node.snap = 'unwrap'; // remove the wrapper so <summary>/body are direct children of <details>
+      else if (/(^|\s)accordion-button(\s|$)/.test(acl)) node.snap = 'summary';
+    }
     for (const c of el.children) { const cn = walk(c, cs); if (cn) node.children.push(cn); }
     return node;
   }

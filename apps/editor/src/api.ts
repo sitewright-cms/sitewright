@@ -664,6 +664,8 @@ export const api = {
   listEffectForks: () => request<EffectForks>('GET', '/authoring/effect-forks'),
   /** The compiled button-preview stylesheet (.btn baseline + all effect/shape/accent utilities) for the Button-effects modal. */
   buttonPreviewCss: () => request<{ css: string }>('GET', '/authoring/button-preview-css'),
+  /** The parallax runtime (CSS + JS) for the Library "Parallax" builder's live scrolling preview. */
+  parallaxRuntime: () => request<{ css: string; js: string }>('GET', '/authoring/parallax-runtime'),
 
   listGlobalTemplates: () => request<{ items: Template[] }>('GET', '/global/template'),
   putGlobalTemplate: (template: Template) =>

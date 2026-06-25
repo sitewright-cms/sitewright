@@ -9,6 +9,7 @@ import { ReferenceModal } from './ReferenceModal';
 import { SW_COMPONENT_GROUPS } from './sw-components';
 import { BackgroundPicker } from './BackgroundPicker';
 import { ButtonBuilderModal } from './ButtonBuilderModal';
+import { ParallaxBuilder } from './ParallaxBuilder';
 import { GoogleFontGallery } from '../settings/GoogleFontGallery';
 import { SearchField } from '../ui/SearchField';
 import { useScrollPaging } from '../../lib/useScrollPaging';
@@ -44,6 +45,7 @@ export function LibraryPanel() {
   const [swOpen, setSwOpen] = useState(false);
   const [bgOpen, setBgOpen] = useState(false);
   const [btnOpen, setBtnOpen] = useState(false);
+  const [pxOpen, setPxOpen] = useState(false);
   const section = openCategory ? (LIBRARY_SECTIONS.find((s) => s.category === openCategory) ?? null) : null;
 
   // The first-party SiteWright components guide — a tab-based reference (one tab per component),
@@ -98,6 +100,18 @@ export function LibraryPanel() {
           </span>
         </button>
 
+        {/* The Parallax builder — compose a scroll-linked element (speed/axis + opacity/scale/blur),
+            scroll the live preview, and copy the data-sw-parallax* markup. */}
+        <button
+          onClick={() => setPxOpen(true)}
+          className="waves-effect rounded-xl border border-cyan-200/70 bg-gradient-to-br from-cyan-50 to-sky-50 px-3 py-2.5 text-left transition hover:from-cyan-100 hover:to-sky-100"
+        >
+          <span className="block text-sm font-bold text-cyan-800">Parallax builder</span>
+          <span className="mt-0.5 block text-[11px] leading-snug text-cyan-600/80">
+            Scroll-linked depth, fade, scale & blur — compose, scroll the preview & copy the markup.
+          </span>
+        </button>
+
         {LIBRARY_SECTIONS.map((s) => (
           // The SiteWright Components entry sits immediately before the DaisyUI components section.
           <Fragment key={s.category}>
@@ -116,6 +130,7 @@ export function LibraryPanel() {
       {refOpen && <ReferenceModal onClose={() => setRefOpen(false)} />}
       {bgOpen && <BackgroundPicker onClose={() => setBgOpen(false)} />}
       {btnOpen && <ButtonBuilderModal onClose={() => setBtnOpen(false)} />}
+      {pxOpen && <ParallaxBuilder onClose={() => setPxOpen(false)} />}
       {swOpen && (
         <ReferenceModal
           title="SiteWright Components"

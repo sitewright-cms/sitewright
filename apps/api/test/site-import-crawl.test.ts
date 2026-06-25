@@ -39,6 +39,21 @@ describe('crawlSite', () => {
     expect(res.truncated).toBe(false);
   });
 
+  it('fetches a depth level concurrently, not serially', async () => {
+    let inFlight = 0, maxInFlight = 0;
+    const slow = async (url: string): Promise<FetchedResource | null> => {
+      inFlight += 1; maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((r) => setTimeout(r, 5));
+      inFlight -= 1;
+      if (url in SITE) return { url, status: 200, contentType: 'text/html; charset=utf-8', bytes: enc(SITE[url]!) };
+      if (url in CSS) return { url, status: 200, contentType: 'text/css', bytes: enc(CSS[url]!) };
+      return null;
+    };
+    const res = await crawlSite('https://ex.com/', baseOpts, { fetchResource: slow, isAllowed: async () => true });
+    expect(res.site.pages).toHaveLength(4);
+    expect(maxInFlight).toBeGreaterThan(1); // about + contact (depth 1) fetched together (was strictly serial)
+  });
+
   it('respects maxDepth', async () => {
     const res = await crawlSite('https://ex.com/', { ...baseOpts, maxDepth: 1 }, { fetchResource: fetcher(), isAllowed: async () => true });
     const urls = res.site.pages.map((p) => p.sourceUrl);

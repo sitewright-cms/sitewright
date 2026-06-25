@@ -108,6 +108,29 @@ function stripForeignStylesheet(head: string | undefined): string {
 }
 
 /**
+ * Nativize one HTML fragment (a chrome slot like the footer): render it, capture its computed styles
+ * headlessly UNDER the foreign CSS (`head` carries the import's stylesheet link), transform to native
+ * Tailwind, strip the loopback origin. Returns null on any failure (caller keeps the original). Mirrors
+ * the per-page path so a footer's dark bg / grid / map iframe survive the foreign-CSS drop.
+ */
+async function nativizeFragment(
+  html: string, context: TemplateContext, head: string,
+  deps: NativizeDeps, capture: CaptureFn, nctx: NativizeContext, loopbackOrigin: RegExp,
+): Promise<string | null> {
+  try {
+    const body = await deps.renderPool.render(html, context);
+    const doc = `<!doctype html><html lang="en"><head><meta charset="utf-8">${head}</head><body>${body}</body></html>`;
+    const { base, md, lg } = await capture(doc, { originHostPort: deps.originHostPort, rootSelector: 'body' });
+    const out = renderTree(mergeTrees(base, md, lg, nctx), nctx).html.replace(loopbackOrigin, '');
+    validateTemplate(out);
+    return out;
+  } catch (err) {
+    deps.log.warn({ err: err instanceof Error ? err.message : String(err) }, 'nativize: chrome fragment skipped');
+    return null;
+  }
+}
+
+/**
  * Nativize every rawFidelity page in `project` (concurrently). Emits per-page progress and returns a
  * summary. A page that fails to render/capture/validate is left untouched (still a faithful replica) and
  * reported in `skipped`, so one bad page never aborts the batch. Once EVERY page is native (no rawFidelity
@@ -193,15 +216,33 @@ export async function nativizeProject(
   // on the foreign sheet + the literal imported chrome.
   let chromeRebuilt = false;
   if (nativized > 0 && skipped.length === 0 && !deps.signal?.aborted) {
-    const newWebsite = {
+    const fctx = {
+      company: brand as unknown as Record<string, unknown>,
+      website: { siteUrl: website?.siteUrl, data: website?.data },
+      page: {}, dataset: {}, item: {},
+    } as unknown as TemplateContext;
+    const foreignHead = typeof website?.head === 'string' ? website.head : '';
+    // Nativize the FOOTER (still foreign markup) under the foreign CSS BEFORE we drop it — else clearing
+    // the sheet leaves the footer unstyled (its dark bg / 3-col grid / map come from the foreign classes).
+    const footerSrc = typeof website?.footer === 'string' && website.footer.trim() ? website.footer : '';
+    const nativeFooter = footerSrc ? await nativizeFragment(footerSrc, fctx, foreignHead, deps, capture, nctx, loopbackOrigin) : '';
+    // The foreign CSS/JS can only be dropped once the footer no longer needs it. If the footer couldn't be
+    // nativized, keep the foreign sheet so it stays styled (the data-driven nav uses platform classes, so
+    // it renders regardless).
+    const footerOk = !footerSrc || nativeFooter !== null;
+
+    const newWebsite: Record<string, unknown> = {
       ...website,
-      head: stripForeignStylesheet(website?.head),
-      scripts: '', // drop the imported foreign JS — native pages use the platform component runtimes
       topNav: buildNavbar(brand?.logo),
       mobileNav: '', // the rebuilt navbar is self-contained responsive (its own mobile dropdown)
     };
+    if (footerOk) {
+      newWebsite.head = stripForeignStylesheet(website?.head); // #5 — safe now nothing foreign-styled remains
+      newWebsite.scripts = ''; // drop the imported foreign JS — native pages use the platform runtimes
+      if (footerSrc) newWebsite.footer = nativeFooter;
+    }
     await deps.contentRepo.put(ctx, 'settings', SETTINGS_ENTITY_ID, { ...settings, website: newWebsite }, { op: 'put', note: 'nativize-chrome' });
-    chromeRebuilt = true;
+    chromeRebuilt = footerOk;
   }
 
   return { pagesNativized: nativized, pagesTotal: targets.length, marqueeLogos, skipped, chromeRebuilt };

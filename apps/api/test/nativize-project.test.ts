@@ -30,10 +30,10 @@ function makeDeps(o: DepOverrides = {}) {
   ];
   const settings = {
     identity: { colors: { primary: '#0b4a77' }, logo: '/media/logo.png' },
-    website: { head: '<link rel="stylesheet" href="/media/import.css">', scripts: '<script src="/media/foreign.js"></script>', topNav: '<div><a href="/a">A</a></div>' },
+    website: { head: '<link rel="stylesheet" href="/media/import.css">', scripts: '<script src="/media/foreign.js"></script>', topNav: '<div><a href="/a">A</a></div>', footer: '<div class="rgba-black-strong">Foreign footer</div>' },
   };
   const pagePuts: Array<{ id: string; raw: { status: string; source: string; data: { swImport: { rewritten: boolean } } } }> = [];
-  let settingsPut: { website: { head: string; scripts: string; topNav: string; mobileNav: string } } | null = null;
+  let settingsPut: { website: { head: string; scripts: string; topNav: string; mobileNav: string; footer: string } } | null = null;
   const entries = o.entries ?? [];
   const renderContexts: unknown[] = [];
   const contentRepo = {
@@ -79,6 +79,24 @@ describe('nativizeProject', () => {
     expect(w.head).not.toMatch(/<link[^>]+stylesheet/i); // #5 foreign stylesheet dropped
     expect(w.scripts).toBe(''); // #5 foreign JS dropped
     expect(w.mobileNav).toBe('');
+    expect(w.footer).toContain('text-primary'); // footer nativized (foreign classes → platform tokens)
+    expect(w.footer).not.toContain('rgba-black-strong'); // foreign footer class gone
+  });
+
+  it('keeps the foreign CSS when the footer cannot be nativized (so it stays styled)', async () => {
+    // Capture throws ONLY for the footer fragment (its rendered body carries the foreign footer class).
+    const capture: CaptureFn = async (doc, opts) => {
+      if (doc.includes('rgba-black-strong')) throw new Error('footer capture boom');
+      return okCapture(doc, opts);
+    };
+    const { deps, getSettingsPut } = makeDeps({ capture });
+    const report = await nativizeProject(ctx, deps, () => {});
+    expect(report.pagesNativized).toBe(2); // pages still nativized fine
+    expect(report.chromeRebuilt).toBe(false); // footer failed → not a full chrome transition
+    const w = getSettingsPut()!.website;
+    expect(w.topNav).toContain('{{#each nav.header}}'); // nav still rebuilt (platform classes)
+    expect(w.head).toMatch(/<link[^>]+stylesheet/i); // foreign CSS KEPT so the un-nativized footer stays styled
+    expect(w.footer).toContain('rgba-black-strong'); // original footer kept
   });
 
   it('skips a page whose capture throws, and does NOT rebuild chrome (a rawFidelity page remains)', async () => {

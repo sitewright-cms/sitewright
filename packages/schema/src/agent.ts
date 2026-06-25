@@ -225,7 +225,7 @@ Quick rules vs the similar-looking DaisyUI classes:
   DaisyUI's modal methods need inline JS (rejected) or a checkbox hack (poor a11y) — don't.
   Recipes to copy: modal-basic (link trigger + editable body) / modal-confirm (forced-choice).
 - Cookie banner → data-sw-component="cookie-consent", placed ONCE site-wide in the website
-  \`bottom\` slot, with the \`hidden\` attribute authored on it.
+  \`bottom\` slot, with the \`hidden\` attribute authored on it. Recipe to copy: cookie-consent.
 - DATE / TIME pickers → data-sw-component="datetimepicker" on a TEXT <input> (Vanilla Calendar Pro):
   a CI-themed popup calendar + slider time picker. data-mode="date" (default) | "range" (start–end in
   one field, shown as a DUAL-PANEL two-month view) | "datetime" | "time". Full control via data-*
@@ -233,11 +233,12 @@ Quick rules vs the similar-looking DaisyUI classes:
   data-time-step, data-time-format 12h/24h, data-position); put the marker on a block element (e.g.
   a <div>) instead of an <input> for an always-open INLINE calendar. It follows the page <html lang>
   for day/month names automatically; give the input a name to submit it. DaisyUI has no date picker
-  (it only styles the input box).
+  (it only styles the input box). Recipe to copy: datetimepicker-field.
 - ANIMATED BACKGROUND → data-sw-component="shader-bg" on a section/hero/full-page wrapper: a WebGL
   background themed by the CI colors (30 presets via data-preset; plus data-speed/intensity/angle/
   interactive/colors). Content renders above it; add a data-sw-part="overlay" scrim for legible text.
   Falls back to a CI gradient with no JS. Details + presets: the effects guide and get_components.
+  Recipe to copy: shader-hero.
 - ACCORDIONS are NOT a component: use native <details> with DaisyUI collapse classes, e.g.
   <details class="collapse collapse-plus"><summary class="collapse-title">Q</summary>
   <div class="collapse-content">A</div></details> (group with \`join join-vertical\`).
@@ -248,7 +249,8 @@ complete form, or author your own <form data-sw-form="<id>">…custom field mark
 platform injects the submission endpoint, honeypot, and captcha at render. NEVER hand-wire an
 action/endpoint and never write data-sw-component="form" yourself (it is stamped automatically).
 A page in locale "de" auto-resolves "<id>-de" when that form exists. Submissions land in the
-project inbox (\`list_submissions\`).
+project inbox (\`list_submissions\`). Recipes to copy: form-embed ({{sw-form}}) / form-custom (your
+own fields) / datetimepicker-field.
 `,
   },
   images: {
@@ -300,10 +302,10 @@ optional + composable: data-sw-parallax="0.3" = translate SPEED (0 static, + rec
 − leads/foreground, clamp ±2) with data-sw-parallax-axis="y|x"; data-sw-parallax-opacity="0,1",
 data-sw-parallax-scale="0.9,1.05", data-sw-parallax-blur="8,0" each interpolate from,to across the
 element's pass through the viewport. Background section: <section data-sw-parallax-bg
-data-sw-parallax="0.4"><div data-sw-parallax-layer style="background-image:url(...)"></div>…content…
+data-sw-parallax="0.4"><div data-sw-parallax-layer data-sw-bg="page.data.bg"></div>…content…
 </section> — the clipped oversized layer drifts behind the content. RESTRAINT: at most one parallax
 accent per section, keep speeds subtle (0.15–0.4); it inherits prefers-reduced-motion (no motion = static,
-in-flow — never breaks layout). Blur is heavier — use sparingly.
+in-flow — never breaks layout). Blur is heavier — use sparingly. Recipe to copy: parallax-hero.
 
 RIPPLE (Material "waves") click effect: add class="waves-effect" to a button/link, plus
 "waves-light" for a white ripple on dark/colored buttons (e.g. class="btn btn-primary
@@ -406,7 +408,8 @@ is site-wide):
   {{sw-cart}}
 Or set page.template to "global:shop" (a ready-made storefront over the "products" dataset).
 {{sw-add-to-cart}} takes sku/name/price (a number)/image/label/class; {{sw-cart}} renders the
-floating cart + drawer. website.shop holds only STRUCTURE — the master switch, currency FORMATTING,
+floating cart + drawer. Recipe to copy: shop-product (card + add-to-cart + cart mount).
+website.shop holds only STRUCTURE — the master switch, currency FORMATTING,
 and the channels (each with a stable \`key\`); all display TEXT is TRANSLATABLE and lives in the
 translation catalog (website.translations):
   shop: { enabled:true, currency:{ position:"before"|"after", decimals:2 },
@@ -450,11 +453,18 @@ pattern, or {{> <name>}} it and restyle. The fastest way to see real markup for 
 - Sliders → {{> slider-fullscreen}} (full-screen hero, Ken Burns), {{> slider-cards}} (single content
   cards), {{> slider-multi}} (multi-item peek via --sw-items), {{> slider-logowall}} (auto-scroll
   ticker), {{> slider-dataset}} (one slide per dataset entry). Full attribute contract: get_components.
+- Gallery/lightbox → {{> gallery-grid}} (styled folder grid), {{> gallery-masonry}} (no-crop),
+  {{> gallery-dataset}}. Tabs → {{> tabs-mixed}}, {{> tabs-dataset}}. Modals → {{> modal-basic}},
+  {{> modal-confirm}}.
+- Forms & inputs → {{> form-embed}} ({{sw-form}}), {{> form-custom}} (your own fields),
+  {{> datetimepicker-field}}. Shop → {{> shop-product}} (enable the shop first — the cart helpers
+  are gated).
 - Data & bindings → {{> recipe-dataset-grid}} ({{#each dataset.x}} + sw-date/sw-truncate),
   {{> recipe-folder-gallery}} ({{#sw-folder}} media reads), {{> recipe-i18n}} (sw-translate +
   data-sw-translate + sw-flag switcher), {{> recipe-page-vars}} (data-sw-text/html/src/bg on
   page.data, page.children, page.parent, sw-active).
-- Chrome & effects → {{> navbar}}, {{> logo-marquee}}, {{> rotating-tiles}}.
+- Chrome & effects → {{> navbar}}, {{> cookie-consent}}, {{> logo-marquee}}, {{> rotating-tiles}},
+  {{> parallax-hero}} (scroll drift), {{> shader-hero}} (WebGL background).
 
 SNIPPET vs WIDGET vs COMPONENT: a SNIPPET is reference markup you copy and OWN (edit it freely); a
 COMPONENT is a runtime you activate with data-sw-component=… (behaviour — see get_components); a

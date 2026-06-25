@@ -9,13 +9,15 @@ const SNIPPET_CATEGORY_LABELS: Record<SnippetCategory, string> = {
   gallery: 'Gallery & lightbox',
   tabs: 'Tabs',
   modal: 'Modals',
+  forms: 'Forms & inputs',
+  shop: 'Shop & cart',
   data: 'Data & loops',
   chrome: 'Site chrome',
   effects: 'Effects',
 };
 // Display order, defined over the category KEYS (single source of truth — the label strings are not
 // duplicated, so a rename can't drift). New categories without an entry append after these.
-const SNIPPET_CATEGORY_KEY_ORDER: readonly SnippetCategory[] = ['slider', 'gallery', 'tabs', 'modal', 'data', 'chrome', 'effects'];
+const SNIPPET_CATEGORY_KEY_ORDER: readonly SnippetCategory[] = ['slider', 'gallery', 'tabs', 'modal', 'forms', 'shop', 'data', 'chrome', 'effects'];
 // name → { group label, description } for grouping/describing the global snippet chips in the rail.
 const SNIPPET_CATALOG = {
   meta: Object.fromEntries(

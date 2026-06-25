@@ -36,7 +36,7 @@ describe('GLOBAL_SNIPPETS (reference cookbook)', () => {
   });
 
   it('every recipe declares a grouping category + a one-line description (for the rail + agents)', () => {
-    const categories = new Set(['slider', 'gallery', 'tabs', 'modal', 'data', 'chrome', 'effects']);
+    const categories = new Set(['slider', 'gallery', 'tabs', 'modal', 'forms', 'shop', 'data', 'chrome', 'effects']);
     for (const s of GLOBAL_SNIPPETS) {
       expect(categories.has(s.category), `recipe "${s.name}" category`).toBe(true);
       expect(s.description.trim().length, `recipe "${s.name}" description`).toBeGreaterThan(10);

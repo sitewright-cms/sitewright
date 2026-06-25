@@ -31,7 +31,7 @@
  * apps/editor/src/views/code/CodeRailPanels.tsx (the labels map is `Record<SnippetCategory, …>`,
  * so a new member there is a compile error until labelled).
  */
-export type SnippetCategory = 'slider' | 'gallery' | 'tabs' | 'modal' | 'data' | 'chrome' | 'effects';
+export type SnippetCategory = 'slider' | 'gallery' | 'tabs' | 'modal' | 'forms' | 'shop' | 'data' | 'chrome' | 'effects';
 
 export interface GlobalSnippet {
   /** The `{{> name}}` partial name — a valid Handlebars identifier (also the override key). */
@@ -364,6 +364,92 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
 </dialog>`,
   },
 
+  // ── Forms & inputs (data-sw-form / data-sw-component="datetimepicker") ───────────────────────────
+  {
+    name: 'form-embed',
+    label: 'Form — embed by id',
+    category: 'forms',
+    description:
+      'Drop a stored form into the page with {{sw-form "id"}}; the platform renders fields + anti-spam + messages.',
+    demonstrates: ['sw-form', 'form embed'],
+    // Create a form named "contact" first (kind "form": fields, submission mode, success/error
+    // messages). {{sw-form}} then renders the COMPLETE markup. On a translated page "contact"
+    // auto-resolves "contact-<locale>". (In the snippet preview, with no forms, it renders nothing.)
+    source: `{{!-- Embed a stored form by id. Create a "contact" form (kind "form") FIRST — referencing a
+  form id that does not exist throws at render once the project has any form (rename to match yours). --}}
+<section class="mx-auto max-w-xl px-6 py-16">
+  <h2 class="text-3xl font-bold tracking-tight">Get in touch</h2>
+  <p class="mt-2 text-base-content/60">We usually reply within a day.</p>
+  <div class="mt-8">{{sw-form "contact" class="space-y-4"}}</div>
+</section>`,
+  },
+  {
+    name: 'form-custom',
+    label: 'Form — custom field markup',
+    category: 'forms',
+    description:
+      'Author your own <form data-sw-form="id"> markup; the platform injects the endpoint, honeypot and captcha at render.',
+    demonstrates: ['data-sw-form', 'custom fields', 'no action='],
+    // Write your OWN field markup inside <form data-sw-form="<id>">; NEVER add an action= or
+    // data-sw-component="form" yourself. The platform wires submission at render. Still needs a
+    // stored form named "contact" (its definition drives validation + where submissions land).
+    source: `{{!-- Hand-authored form: your own fields; the platform injects the submission wiring.
+  IMPORTANT: data-sw-form="contact" throws at render if the project has forms but none named "contact"
+  — create that form (or rename to your id) first. Never add action=/method=/onsubmit yourself. --}}
+<form data-sw-form="contact" class="mx-auto max-w-xl space-y-4 px-6 py-16">
+  <label class="block"><span class="mb-1 block text-sm font-medium">Name</span>
+    <input type="text" name="name" required class="input input-bordered w-full" /></label>
+  <label class="block"><span class="mb-1 block text-sm font-medium">Email</span>
+    <input type="email" name="email" required class="input input-bordered w-full" /></label>
+  <label class="block"><span class="mb-1 block text-sm font-medium">Message</span>
+    <textarea name="message" rows="4" required class="textarea textarea-bordered w-full"></textarea></label>
+  <button type="submit" class="btn btn-primary">Send message</button>
+</form>`,
+  },
+  {
+    name: 'datetimepicker-field',
+    label: 'Input — date / time picker',
+    category: 'forms',
+    description:
+      'A CI-themed calendar/time picker on a text input; data-mode switches date / range / datetime / time.',
+    demonstrates: ['datetimepicker', 'data-mode', 'data-min/max', 'forms input'],
+    // Put data-sw-component="datetimepicker" on a TEXT <input> (give it a name so it submits). The
+    // runtime upgrades it into a popup picker; data-mode chooses the variant (here a bounded range).
+    // Use a block element instead of an <input> for an always-open inline calendar.
+    source: `{{!-- A date-range picker field (a booking widget). data-mode="date|range|datetime|time".
+  Add bounds when you need them, e.g. data-min="2026-06-01" data-max="2026-12-31". --}}
+<label class="mx-auto block max-w-sm px-6 py-16">
+  <span class="mb-1 block text-sm font-medium">Choose your dates</span>
+  <input type="text" name="stay" placeholder="Check-in &ndash; Check-out" class="w-full" data-sw-component="datetimepicker" data-mode="range" />
+</label>`,
+  },
+
+  // ── Shop & cart (gated by website.shop.enabled — render nothing when the shop is off) ────────────
+  {
+    name: 'shop-product',
+    label: 'Shop — product card + cart',
+    category: 'shop',
+    description:
+      'An add-to-cart product card plus the cart mount; both auto-localize and only render when the shop is enabled.',
+    demonstrates: ['sw-add-to-cart', 'sw-cart', 'website.shop'],
+    // The mini-shop helpers are GATED: {{sw-add-to-cart}} and {{sw-cart}} render '' unless
+    // website.shop.enabled is true (enable it in Website settings). Prices are non-authoritative
+    // (front-end localStorage cart); checkout goes through the configured channel (WhatsApp/email/…).
+    source: `{{!-- A product card with an add-to-cart button, plus the cart mount. Enable the shop first. --}}
+<section class="mx-auto max-w-md px-6 py-16">
+  <div class="card overflow-hidden border border-base-200 bg-base-100 shadow-sm">
+    <div class="aspect-[4/3] w-full bg-gradient-to-br from-primary/70 to-secondary/70"></div>
+    <div class="card-body p-6">
+      <h3 class="text-lg font-bold tracking-tight">Studio mug</h3>
+      <p class="text-sm text-base-content/60">Ceramic, 350ml.</p>
+      <p class="mt-1 text-xl font-bold">&euro;19.90</p>
+      {{sw-add-to-cart sku="mug" name="Studio mug" price="19.90" class="btn btn-primary mt-3"}}
+    </div>
+  </div>
+  <div class="mt-8">{{sw-cart}}</div>
+</section>`,
+  },
+
   // ── Data, loops & bindings (the authoring primitives) ───────────────────────────────────────────
   {
     name: 'recipe-dataset-grid',
@@ -488,6 +574,22 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
   </div>
 </div>`,
   },
+  {
+    name: 'cookie-consent',
+    label: 'Cookie consent banner',
+    category: 'chrome',
+    description:
+      'A consent banner that the runtime reveals only until accepted (stored in localStorage). Place it ONCE site-wide.',
+    demonstrates: ['cookie-consent', 'data-sw-part:accept', 'hidden'],
+    // Ships HIDDEN (the `hidden` attribute is REQUIRED) — the runtime reveals it only when consent
+    // is not yet stored, and the accept button hides it for good. Put this ONCE in the website
+    // `bottom` slot (not per page); give a second banner a different data-cookiename to track separately.
+    source: `{{!-- Place ONCE in the website "bottom" slot. The "hidden" attribute is required. --}}
+<div data-sw-component="cookie-consent" hidden class="fixed inset-x-0 bottom-0 z-50 flex flex-wrap items-center justify-center gap-3 border-t border-base-300 bg-base-100 p-4 text-sm shadow-lg">
+  <p class="text-base-content/70">We use a few essential cookies. <a class="link" href="/privacy">Learn more</a>.</p>
+  <button type="button" class="btn btn-primary btn-sm" data-sw-part="accept">OK, got it</button>
+</div>`,
+  },
 
   // ── Effects (pure-CSS motion, no JS) ────────────────────────────────────────────────────────────
   {
@@ -556,6 +658,45 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
     </div>
   </div>
 </div>`,
+  },
+  {
+    name: 'parallax-hero',
+    label: 'Parallax — background drift',
+    category: 'effects',
+    description:
+      'A clipped section whose background layer drifts slower than the page on scroll (data-sw-parallax-bg).',
+    demonstrates: ['data-sw-parallax-bg', 'data-sw-parallax-layer', 'data-sw-parallax', 'data-sw-text'],
+    // data-sw-parallax-bg marks the clipped section; the inner data-sw-parallax-layer is the drifting
+    // background (here a gradient — bind an image with data-sw-bg instead). data-sw-parallax sets the
+    // speed (0 static, + recedes, - leads; clamped ±2). The runtime only ships when used and bails
+    // under prefers-reduced-motion. Element parallax also supports -opacity / -scale / -blur (from,to).
+    source: `{{!-- A scroll-linked parallax band. Try data-sw-parallax-opacity="0,1" / -scale=".9,1.05" on any element. --}}
+<section data-sw-parallax-bg data-sw-parallax="0.4" class="my-10 flex min-h-[60vh] items-center justify-center overflow-hidden rounded-3xl px-6">
+  <div data-sw-parallax-layer class="bg-gradient-to-br from-primary to-secondary"></div>
+  <div class="text-center text-white">
+    <h2 class="text-4xl font-bold tracking-tight drop-shadow-lg sm:text-6xl" data-sw-text="page.data.parallax_title">Background drift</h2>
+    <p class="mx-auto mt-3 max-w-xl text-lg text-white/85" data-sw-text="page.data.parallax_lead">The background recedes as you scroll past it.</p>
+  </div>
+</section>`,
+  },
+  {
+    name: 'shader-hero',
+    label: 'Shader background hero',
+    category: 'effects',
+    description:
+      'A WebGL animated background (data-sw-component="shader-bg"), CI-themed, with a legibility overlay scrim.',
+    demonstrates: ['shader-bg', 'data-preset', 'data-sw-part:overlay', 'data-sw-text'],
+    // The runtime draws the chosen preset on a canvas BEHIND the content (never author a canvas). The
+    // optional data-sw-part="overlay" is a scrim for text contrast. Falls back to a CI gradient with no
+    // JS, pauses offscreen, and is reduced-motion aware. 30 presets via data-preset.
+    source: `{{!-- WebGL animated hero. Swap data-preset (e.g. "silk-flow", "caustics", "plasma"). --}}
+<section data-sw-component="shader-bg" data-preset="mesh-gradient" data-speed="1" data-intensity="0.5" class="relative flex min-h-[70vh] items-center justify-center overflow-hidden rounded-3xl">
+  <div data-sw-part="overlay" class="bg-black/30"></div>
+  <div class="relative z-10 max-w-2xl px-6 text-center text-white">
+    <h2 class="text-4xl font-bold tracking-tight sm:text-6xl" data-sw-text="page.data.shader_title">Animated background</h2>
+    <p class="mt-4 text-lg text-white/85" data-sw-text="page.data.shader_lead">A CI-themed WebGL hero — content sits above the canvas.</p>
+  </div>
+</section>`,
   },
 ];
 

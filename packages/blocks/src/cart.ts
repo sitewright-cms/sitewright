@@ -54,14 +54,16 @@ export const CART_CSS = [
   '[data-sw-cart][data-sw-enhanced="true"]{display:block}',
   // SIDEBAR-STYLE toggle TAB on the right edge (icon + "Shopping Cart"), mirroring the editor's
   // SidePanel tab — DETACHED from .btn: its own CI-gradient face. The label rides a vertical
-  // writing-mode so it reads down the edge. position/overflow are !important so the generic
-  // `.waves-effect` rule (position:relative; overflow:hidden) can't unpin the tab or clip its badge.
-  '[data-sw-cart] [data-sw-part="toggle"]{position:fixed !important;overflow:visible !important;right:0;top:50%;transform:translateY(-50%);z-index:9997;display:flex;align-items:center;padding:1.1rem .55rem;border:0;border-radius:.9rem 0 0 .9rem;background:linear-gradient(155deg,var(--sw-color-primary,#0a7a5a),color-mix(in oklab,var(--sw-color-primary,#0a7a5a) 60%,var(--sw-color-secondary,#0ea5e9)));color:var(--sw-color-primary-content,#fff);font:inherit;font-weight:700;font-size:.74rem;text-transform:uppercase;letter-spacing:.07em;cursor:pointer;box-shadow:-4px 6px 22px rgba(0,0,0,.28)}',
+  // writing-mode so it reads down the edge. position/overflow are !important so no stray site or
+  // component rule (e.g. a `position:relative; overflow:hidden`) can unpin the tab or clip its badge.
+  '[data-sw-cart] [data-sw-part="toggle"]{position:fixed !important;overflow:visible !important;right:0;top:50%;translate:0 -50%;z-index:9997;display:flex;align-items:center;padding:1.1rem .55rem;border:0;border-radius:.9rem 0 0 .9rem;background:linear-gradient(155deg,var(--sw-color-primary,#0a7a5a),color-mix(in oklab,var(--sw-color-primary,#0a7a5a) 60%,var(--sw-color-secondary,#0ea5e9)));color:var(--sw-color-primary-content,#fff);font:inherit;font-weight:700;font-size:.74rem;text-transform:uppercase;letter-spacing:.07em;cursor:pointer;box-shadow:-4px 6px 22px rgba(0,0,0,.28)}',
   '[data-sw-cart] [data-sw-part="toggle"] .sw-cart-tab{display:flex;align-items:center;gap:.5rem;writing-mode:vertical-rl}',
   '[data-sw-cart] [data-sw-part="toggle"] svg{width:1.3rem;height:1.3rem}',
-  '@media (prefers-reduced-motion:no-preference){[data-sw-cart] [data-sw-part="toggle"]{transition:transform .2s cubic-bezier(.16,1,.3,1),box-shadow .2s ease}}',
-  // hover: the tab slides out from the edge + the shadow deepens (keeps the translateY centring).
-  '[data-sw-cart] [data-sw-part="toggle"]:hover{transform:translateY(-50%) translateX(-4px);box-shadow:-9px 9px 30px rgba(0,0,0,.36)}',
+  // INDIVIDUAL transform props (translate/scale) so the hover slide + the add-bump compose instead of
+  // clobbering each other (a `transform:` keyframe would override the hover transform mid-animation).
+  '@media (prefers-reduced-motion:no-preference){[data-sw-cart] [data-sw-part="toggle"]{transition:translate .2s cubic-bezier(.16,1,.3,1),box-shadow .2s ease}}',
+  // hover: the tab slides out from the edge + the shadow deepens (translate keeps the -50% centring).
+  '[data-sw-cart] [data-sw-part="toggle"]:hover{translate:-4px -50%;box-shadow:-9px 9px 30px rgba(0,0,0,.36)}',
   '[data-sw-cart] [data-sw-part="count"]{position:absolute;top:-.4rem;left:-.4rem;min-width:1.3rem;height:1.3rem;padding:0 .3rem;border-radius:9999px;background:#b00020;color:#fff;font-size:.72rem;font-weight:700;line-height:1.3rem;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.3)}',
   '[data-sw-cart] [data-sw-part="count"][hidden]{display:none}',
   // Right-side drawer (native <dialog> → focus trap + Esc + ::backdrop). It SLIDES in/out (transform)
@@ -150,9 +152,9 @@ export const CART_CSS = [
   '[data-sw-cart] [data-sw-part="sent-msg"]{padding:1.5rem 1.25rem;text-align:center;color:var(--sw-color-primary,#0a7a5a);font-weight:600}',
   // The "added" pulse on an add-to-cart button (runtime toggles data-sw-added briefly).
   '[data-sw-cart-add][data-sw-added="true"]{opacity:.7}',
-  // A brief "bump" on the cart tab when an item is added — the non-interrupting add feedback. The
-  // keyframes carry the tab's translateY(-50%) centring so it doesn't jump out of place mid-bump.
-  '@keyframes sw-cart-bump{0%,100%{transform:translateY(-50%)}30%{transform:translateY(-50%) scale(1.1)}}',
+  // A brief "bump" on the cart tab when an item is added — the non-interrupting add feedback. It animates
+  // `scale` ONLY (the tab's translate centring + any hover slide stay independent, so neither clobbers it).
+  '@keyframes sw-cart-bump{0%,100%{scale:1}30%{scale:1.1}}',
   '[data-sw-cart] [data-sw-part="toggle"][data-sw-bump]{animation:sw-cart-bump .4s ease}',
   // A PULSE halo that expands out from the tab on every add (a brand-coloured ring behind it; the tab's
   // overflow:visible lets it escape). Matches the tab's rounded-left shape. Reduced motion → bump only.
@@ -368,7 +370,7 @@ export const CART_JS = `(function(){
     var started=Date.now(); // for the /f time-trap (_elapsed must be >= the server minimum)
     var sent=false; // true after a successful form-channel submit → show the "order sent" panel
 
-    var toggle=part('button','toggle');toggle.type='button';toggle.setAttribute('aria-label','Shopping cart');
+    var toggle=part('button','toggle');toggle.type='button';toggle.setAttribute('aria-label',cfg.toggleLabel);
     var tab=mk('span','sw-cart-tab');tab.appendChild(cartIcon());tab.appendChild(mk('span',null,cfg.toggleLabel));toggle.appendChild(tab);
     var count=part('span','count');toggle.appendChild(count);
 

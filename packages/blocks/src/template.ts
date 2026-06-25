@@ -538,7 +538,7 @@ function createInstance(): typeof Handlebars {
       if (safe && safe !== '#') attrs += ` data-image="${escapeAttr(safe)}"`;
     }
     // Default to the vendored .btn (btn-primary); an explicit `class=` overrides it per-button.
-    const cls = str(h.class) || 'btn btn-primary';
+    const cls = str(h.class) || 'btn btn-sm';
     attrs += ` class="${escapeAttr(cls)}"`;
     return new Handlebars.SafeString(`<button type="button" ${attrs}>${escapeHtml(label)}</button>`);
   });

@@ -22,11 +22,17 @@ interface LoginProps {
    * config (the type is `true` so a caller can't accidentally force-CLOSE registration with `false`).
    */
   allowRegister?: true;
+  /** Lock the email to a fixed address (pre-filled + disabled) — the invite-accept flow passes the
+   *  invited email so it can't be changed. With `allowRegister`, the form opens in set-password
+   *  (register) mode; the sign-in/register toggle is hidden (the invite determines the path). */
+  lockedEmail?: string;
+  /** Hide the OIDC "Sign in with …" buttons (the invite landing offers those on its own choice screen). */
+  hideOidc?: boolean;
 }
 
-export function Login({ onAuthed, initialMfaTicket, initialNotice, allowRegister, branding = DEFAULT_BRANDING }: LoginProps) {
-  const [mode, setMode] = useState<'login' | 'register'>('login');
-  const [email, setEmail] = useState('');
+export function Login({ onAuthed, initialMfaTicket, initialNotice, allowRegister, lockedEmail, hideOidc, branding = DEFAULT_BRANDING }: LoginProps) {
+  const [mode, setMode] = useState<'login' | 'register'>(lockedEmail && allowRegister ? 'register' : 'login');
+  const [email, setEmail] = useState(lockedEmail ?? '');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(initialNotice ?? null);
   const [busy, setBusy] = useState(false);
@@ -198,6 +204,7 @@ export function Login({ onAuthed, initialMfaTicket, initialNotice, allowRegister
                 placeholder="you@agency.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                disabled={!!lockedEmail}
                 required
               />
               <input
@@ -222,13 +229,14 @@ export function Login({ onAuthed, initialMfaTicket, initialNotice, allowRegister
               </button>
             )}
             {mode === 'login' &&
+              !hideOidc &&
               providers.map((p) => (
                 // A real navigation (not fetch): the GET /start route 302s to the identity provider.
                 <a key={p.id} href={api.oidcStartUrl(p.id)} className={`${ghostButton} mt-3 w-full`}>
                   Sign in with {p.label}
                 </a>
               ))}
-            {canRegister && (
+            {canRegister && !lockedEmail && (
               <button
                 className="mt-4 text-sm text-slate-500 hover:text-slate-900"
                 onClick={() => {

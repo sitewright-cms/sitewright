@@ -315,6 +315,8 @@ export interface InvitePeek {
   projectName: string | null;
   expired: boolean;
   accepted: boolean;
+  /** Whether the invited email already has an account (→ sign in instead of setting a password). */
+  hasAccount: boolean;
 }
 export type ApiKeyCapability = 'content:read' | 'content:write' | 'content:delete' | 'publish' | 'deploy';
 /** Redacted view of a project API key (the management list never returns the token). */

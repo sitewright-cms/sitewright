@@ -93,6 +93,18 @@ describe('OIDC single sign-on', () => {
     expect(me.platformRole).toBe('developer');
   });
 
+  it('materializes a pending invite for an EXISTING account on OIDC sign-in (the OIDC invite path)', async () => {
+    // An invited client who already has an account can accept by continuing with the provider: the
+    // verified-email match links the identity AND grants the pending invite (resolveOidcUser existing path).
+    const user = await harness.signup({ email: 'member@test.local', password: 'Pw-secret-1' });
+    await admin.post('/admin/invites', { email: 'member@test.local' });
+    const res = await login({ sub: 'sub-existing-inv', email: 'member@test.local', emailVerified: true });
+    expect(res.statusCode).toBe(302);
+    const me = (await harness.app.inject({ method: 'GET', url: '/me', cookies: { [SESSION_COOKIE]: sessionToken(res) } })).json();
+    expect(me.userId).toBe(user.userId); // the same existing account (not a duplicate)
+    expect(me.platformRole).toBe('developer'); // the pending invite was applied
+  });
+
   it('lets an OIDC-provisioned (passwordless) user set a password, then log in with it', async () => {
     await admin.post('/admin/invites', { email: 'newpw@test.local' });
     const res = await login({ sub: 'sub-pw', email: 'newpw@test.local', emailVerified: true });

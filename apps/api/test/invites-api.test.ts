@@ -49,10 +49,10 @@ describe('invites API', () => {
     expect(inv.statusCode).toBe(201);
     const inviteToken = (inv.json() as { token: string }).token;
 
-    // The token holder can peek to see context — but the email is masked, not disclosed.
+    // The token holder peeks for context — the invited email is DISCLOSED (the unguessable token proves
+    // they were sent it) so the accept form can pre-fill it, and hasAccount is false (no account yet).
     const peek = await app.inject({ method: 'GET', url: `/invites/peek?token=${inviteToken}` });
-    expect(peek.json()).toMatchObject({ invite: { role: 'member', projectName: 'site-a' } });
-    expect((peek.json() as { invite: { email: string } }).invite.email).not.toBe('client@acme.test');
+    expect(peek.json()).toMatchObject({ invite: { role: 'member', projectName: 'site-a', email: 'client@acme.test', hasAccount: false } });
 
     // The client registers and accepts.
     const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'client@acme.test', password: 'Pw-secret-1' } });

@@ -19,7 +19,7 @@ interface HeaderSettingsMenuProps {
   /** A platform/system admin (gates System Settings). */
   isInstanceAdmin: boolean;
   onPublishDeploy: () => void;
-  /** Owner-only: import an external website into the current project (absent → item hidden). */
+  /** Import an external website into the current project — any project member (absent → item hidden). */
   onImportWebsite?: () => void;
   onSystemSettings: () => void;
   onClients: () => void;
@@ -69,13 +69,15 @@ export function HeaderSettingsMenu({
   }, [open]);
 
   const owner = inProject && !isClient;
-  // In project order: Publish & Deploy, System Settings, Clients, Team — each gated by context.
-  // Account actions (Account Settings + Logout) live under the adjacent user icon (UserDropdown).
+  // Editing surfaces (Publish & Deploy, Import) are available to ANY project member — invited clients
+  // get full editing of their own site. CLIENT MANAGEMENT (the "Clients" panel = invite/manage other
+  // users) stays owner/agency-only. System Settings + Team are instance-admin-only. Account actions
+  // (Account Settings + Logout) live under the adjacent user icon (UserDropdown).
   const items: { label: string; onClick: () => void; dividerBefore?: boolean }[] = [
     ...(
       [
-        { label: 'Publish & Deploy Options', onClick: onPublishDeploy, show: owner },
-        { label: 'Import a website', onClick: onImportWebsite ?? (() => {}), show: owner && !!onImportWebsite },
+        { label: 'Publish & Deploy Options', onClick: onPublishDeploy, show: inProject },
+        { label: 'Import a website', onClick: onImportWebsite ?? (() => {}), show: inProject && !!onImportWebsite },
         { label: 'System Settings', onClick: onSystemSettings, show: isInstanceAdmin },
         { label: 'Clients', onClick: onClients, show: owner },
         // Team manages the instance-wide platform team via admin-only APIs (/admin/users) — admins only.

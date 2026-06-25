@@ -46,6 +46,9 @@ describe('Local Hosting serve options (local deploy target: previewToken / minif
     const settings = {
       brand: { name: 'Opt Site', colors: { primary: '#e11' } },
       settings: { defaultLocale: 'en', locales: ['en'] },
+      // back-to-top is ON by default; off here so this minimal page's minify savings aren't offset by
+      // the injected button's SVG (this test is about minify, not the back-to-top feature).
+      website: { effects: { backToTop: false } },
     };
     expect((await proj.putContent('settings', 'settings', settings)).statusCode).toBe(200);
     expect((await proj.putContent('page', 'home', home)).statusCode).toBe(200);

@@ -150,6 +150,7 @@ export interface SettingsForm {
   buttonAccent: '' | ButtonAccent;
   buttonShape: '' | ButtonDefaultShape;
   preloaderEffect: 'none' | PreloaderEffect;
+  backToTop: boolean;
   // custom effect code (the "None / Custom Code" slots) → website.effects.*Code
   navCode: string;
   buttonCode: string;
@@ -306,6 +307,7 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
     buttonAccent: w?.effects?.buttonAccent ?? '',
     buttonShape: w?.effects?.buttonShape ?? '',
     preloaderEffect: w?.effects?.preloaderEffect ?? 'none',
+    backToTop: w?.effects?.backToTop !== false, // ON by default; only an explicit `false` disables it
     navCode: w?.effects?.navCode ?? '',
     buttonCode: w?.effects?.buttonCode ?? '',
     preloaderCode: w?.effects?.preloaderCode ?? '',
@@ -511,13 +513,15 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
   const btnA = form.buttonAccent ? { buttonAccent: form.buttonAccent } : {};
   const btnSh = form.buttonShape ? { buttonShape: form.buttonShape } : {};
   const pre = form.preloaderEffect !== 'none' ? { preloaderEffect: form.preloaderEffect } : {};
+  // back-to-top button: ON by default, so emit only the explicit OFF state (omitted = on).
+  const bk = form.backToTop ? {} : { backToTop: false as const };
   // Custom-code slots are PRESERVED even when a built-in effect is chosen (so toggling between a
   // preset and "None / Custom Code" doesn't lose the draft); render applies a code only when its
   // effect is 'none' (see websiteEffectsCustomCode). Omitted when empty.
   const navC = form.navCode.trim() ? { navCode: form.navCode } : {};
   const btnC = form.buttonCode.trim() ? { buttonCode: form.buttonCode } : {};
   const preC = form.preloaderCode.trim() ? { preloaderCode: form.preloaderCode } : {};
-  const mergedEffects = { ...nav, ...btn, ...btnA, ...btnSh, ...pre, ...navC, ...btnC, ...preC };
+  const mergedEffects = { ...nav, ...btn, ...btnA, ...btnSh, ...pre, ...bk, ...navC, ...btnC, ...preC };
   const effects = Object.keys(mergedEffects).length > 0 ? mergedEffects : undefined;
   // Opt-in light/dark themes. `enableThemes` is emitted only when ON (omitted = off, the
   // schema default); `defaultTheme` only when it deviates from 'auto' (the default) AND the

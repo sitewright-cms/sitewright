@@ -85,6 +85,11 @@ export interface RenderDocumentOptions extends RenderContext {
    * rule hiding it is emitted alongside so no-JS visitors are never blocked.
    */
   preloader?: string;
+  /**
+   * Pre-rendered BACK-TO-TOP button (`<button data-sw-back-to-top …>`), injected at body-END (after the
+   * bottom slot, before the script slot) when the site enables it. Built by `backToTopHtml()`.
+   */
+  backToTop?: string;
   /** Document language attribute (defaults to `en`). */
   lang?: string;
   /** SEO/Open-Graph metadata; `title` is always overridden by the page title (there is no separate SEO title). */
@@ -195,6 +200,7 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     bodyHtml,
     bodyClass,
     preloader,
+    backToTop,
     topNav,
     mobileNav,
     sidebarLeft,
@@ -301,6 +307,7 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     slotLandmark('aside', 'sidebar-right', sidebarRight) +
     slotLandmark('footer', 'footer', footer) +
     slotLandmark('div', 'bottom', bottom) +
+    `${backToTop ?? ''}` +
     `${customScripts ?? ''}` +
     (scripts ?? [])
       .map((src) => `<script defer src="${escapeAttr(src)}"></script>`)

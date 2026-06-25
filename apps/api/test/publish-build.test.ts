@@ -465,6 +465,49 @@ describe('buildSite', () => {
     expect(await readFile(join(outDir, 'preloader.js'), 'utf8')).toContain("classList.remove('loading')");
   });
 
+  it('ships the back-to-top button + CSS + runtime BY DEFAULT (no setting needed)', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: { primary: '#4f46e5' } },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+          // no website.effects.backToTop → ON by default
+        },
+        pages: [{ id: 'home', path: '', title: 'Home', source: '<h1>Hi</h1>' }],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).toContain('data-sw-back-to-top'); // platform-injected button at body-end
+    expect(home).toContain('class="btn sw-btn-shape-square"'); // the requested classes
+    expect(home).toContain('back-to-top.js'); // runtime linked
+    expect(home).toContain('position:fixed'); // BACK_TO_TOP_CSS inlined
+    // The square-shape utility (tree-shaken) compiles into the sheet because build feeds the injected classes in.
+    expect(await readFile(join(outDir, 'styles.css'), 'utf8')).toContain('sw-btn-shape-square');
+    expect(await readFile(join(outDir, 'back-to-top.js'), 'utf8')).toContain('scrollTo');
+  });
+
+  it('omits the back-to-top button entirely when effects.backToTop is explicitly false', async () => {
+    await buildSite({
+      publishedAt: '2026-05-29T00:00:00.000Z',
+      outDir,
+      bundle: bundle({
+        project: {
+          formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
+          identity: { name: 'Acme', colors: { primary: '#4f46e5' } },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+          website: { effects: { backToTop: false } },
+        },
+        pages: [{ id: 'home', path: '', title: 'Home', source: '<h1>Hi</h1>' }],
+      }),
+    });
+    const home = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(home).not.toContain('data-sw-back-to-top');
+    expect(home).not.toContain('back-to-top.js');
+  });
+
   it('themes: inlines the dark CSS, and a {{sw-theme-toggle}} ships theme.js SYNC in <head>', async () => {
     await buildSite({
       publishedAt: '2026-05-29T00:00:00.000Z',

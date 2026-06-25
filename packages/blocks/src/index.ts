@@ -7,6 +7,7 @@ export * from './button-effects.js';
 export { baseStyles } from './base-css.js';
 export * from './cart.js';
 export * from './preloader.js';
+export * from './back-to-top.js';
 export * from './theme-mode.js';
 export * from './escape.js';
 export * from './url.js';

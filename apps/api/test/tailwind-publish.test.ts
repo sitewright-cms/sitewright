@@ -40,6 +40,17 @@ describe('Tailwind utility layer → publish', () => {
       root: { id: 'r', type: 'Section', children: [{ id: 'h', type: 'Heading', props: { text: 'Hi' } }] },
     };
     expect((await proj.putContent('page', 'home', page)).statusCode).toBe(200);
+    // The back-to-top button is ON by default and carries `btn sw-btn-shape-square`; turn it off so this
+    // site genuinely uses NO utility classes (the optimization under test).
+    expect(
+      (
+        await proj.putContent('settings', 'settings', {
+          identity: { name: 'Site', colors: { primary: '#4f46e5' } },
+          settings: { defaultLocale: 'en', locales: ['en'] },
+          website: { effects: { backToTop: false } },
+        })
+      ).statusCode,
+    ).toBe(200);
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
 
     const index = await client.get(`/sites/${slug}/index.html`);

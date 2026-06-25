@@ -1,7 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { validateTemplate } from '@sitewright/blocks';
-import { buildImportBundle } from '../src/build.js';
+import { buildImportBundle, navLabelFromTitle } from '../src/build.js';
 import type { CapturedSite, MediaPort } from '../src/types.js';
+
+describe('navLabelFromTitle', () => {
+  it('strips a " — Site Name" SEO suffix; passes other titles through', () => {
+    expect(navLabelFromTitle('Programmes — Hatzlacha College', 'Hatzlacha College')).toBe('Programmes');
+    expect(navLabelFromTitle('Contact Us | Hatzlacha College', 'Hatzlacha College')).toBe('Contact Us');
+    expect(navLabelFromTitle('Admissions - Hatzlacha College', 'Hatzlacha College')).toBe('Admissions');
+    expect(navLabelFromTitle('Hatzlacha College — Here comes success', 'Hatzlacha College')).toBe('Hatzlacha College — Here comes success'); // suffix not the site name → kept
+    expect(navLabelFromTitle('About', 'Hatzlacha College')).toBe('About'); // no separator → unchanged
+    expect(navLabelFromTitle('Hatzlacha College', 'Hatzlacha College')).toBe('Hatzlacha College'); // would empty → keep original
+  });
+});
 
 function stubMedia(): MediaPort {
   let n = 0;

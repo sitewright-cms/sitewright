@@ -47,6 +47,15 @@ function hostFallbackName(baseUrl: string): string {
   }
 }
 
+/** A clean nav label from a page title: strips a trailing " <sep> Site Name" (— – - | : ·) suffix that
+ *  page <title>s carry for SEO ("Programmes — Hatzlacha College" → "Programmes"). Falls back to the
+ *  original title if stripping would empty it. */
+export function navLabelFromTitle(title: string, siteName: string): string {
+  if (!title || !siteName) return title;
+  const esc = siteName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return title.replace(new RegExp(`\\s*[-–—|:·]\\s*${esc}\\s*$`, 'i'), '').trim() || title;
+}
+
 /** Ordered, deduped, internal page URLs linked from the home page's <header> — the preferred nav order.
  *  Returns [] when there is no <header> (so we don't mistake footer/body links for the nav). */
 function extractNavLinks(home: ParsedPage | undefined, baseUrl: string): string[] {
@@ -257,6 +266,12 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
     page.data = { ...(page.data ?? {}), swImport: { sourceUrl: x.url, rewritten: false, ...(opts.importedAt ? { importedAt: opts.importedAt } : {}) } };
     const seo = seoByNorm.get(norm);
     if (seo?.title) page.title = seo.title;
+    // NAV LABEL: page titles usually carry a " — Site Name" suffix; the nav menu should show just the page
+    // name (the full title stays for <title>/SEO). Only for pages actually in a nav slot.
+    if (page.nav && page.title && identity.name) {
+      const navTitle = navLabelFromTitle(page.title, identity.name);
+      if (navTitle !== page.title) page.nav = { ...page.nav, title: navTitle };
+    }
     if (seo?.description) page.description = seo.description;
     if (seo?.image) page.image = seo.image;
     if (seo?.canonical) page.canonical = seo.canonical;

@@ -504,7 +504,7 @@ describe('buildSite', () => {
     });
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
     expect(home).toContain('data-sw-back-to-top'); // platform-injected button at body-end
-    expect(home).toContain('class="btn sw-btn-shape-square"'); // the requested classes
+    expect(home).toContain('class="btn btn-primary sw-btn-shape-square"'); // the requested classes (solid primary FAB)
     expect(home).toContain('back-to-top.js'); // runtime linked
     expect(home).toContain('position:fixed'); // BACK_TO_TOP_CSS inlined
     // The square-shape utility (tree-shaken) compiles into the sheet because build feeds the injected classes in.

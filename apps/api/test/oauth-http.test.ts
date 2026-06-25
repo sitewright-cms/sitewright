@@ -5,7 +5,9 @@ import { join } from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { makeTestDb } from './helpers.js';
+import type { Database } from '../src/db/client.js';
 import { createApp } from '../src/http/app.js';
+import { registerAccount } from '../src/repo/accounts.js';
 
 const VERIFIER = 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk';
 const CHALLENGE = 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM';
@@ -13,11 +15,13 @@ const REDIRECT = 'http://127.0.0.1:8976/callback';
 const CLIENT = 'sitewright-cli';
 
 let app: FastifyInstance;
+let db: Database;
 let publishRoot: string;
 
 beforeEach(async () => {
   publishRoot = await mkdtemp(join(tmpdir(), 'sw-oauth-'));
-  app = await createApp({ db: await makeTestDb(), publishRoot, encryptionKey: randomBytes(32) });
+  db = await makeTestDb();
+  app = await createApp({ db, publishRoot, encryptionKey: randomBytes(32) });
   await app.ready();
 });
 afterEach(async () => {
@@ -32,12 +36,12 @@ function cookie(res: { cookies: Array<{ name: string; value: string }> }): strin
 
 async function setup() {
   const uid = randomUUID().slice(0, 8);
-  const reg = await app.inject({
-    method: 'POST',
-    url: '/auth/register',
-    payload: { email: `a-${uid}@e2e.test`, password: 'Pw-secret-1' },
-  });
-  const session = cookie(reg);
+  const email = `a-${uid}@e2e.test`;
+  // Project creation is agency-staff-only now; seed the creator as `developer`. The /auth/register
+  // route is invite-only, so seed via the repo, then log in for a session cookie.
+  await registerAccount(db, email, 'Pw-secret-1', { platformRole: 'developer' });
+  const login = await app.inject({ method: 'POST', url: '/auth/login', payload: { email, password: 'Pw-secret-1' } });
+  const session = cookie(login);
   const proj = await app.inject({
     method: 'POST',
     url: `/projects`,

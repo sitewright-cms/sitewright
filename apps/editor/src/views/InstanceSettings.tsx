@@ -94,9 +94,6 @@ export function InstanceSettings() {
 
   const [oidcProviders, setOidcProviders] = useState<OidcProviderDraft[]>([]);
 
-  // Whether anyone may create an account from the login screen (invited users always can). The GET
-  // resolves this to its effective value, so the toggle reflects reality even before it's been saved.
-  const [allowSelfRegistration, setAllowSelfRegistration] = useState(false);
   // Max failed login/2FA attempts per IP per minute before throttling (brute-force protection).
   const [authMaxFailures, setAuthMaxFailures] = useState(DEFAULT_AUTH_MAX_FAILURES);
   const initialAuthMaxFailuresRef = useRef(DEFAULT_AUTH_MAX_FAILURES);
@@ -136,7 +133,6 @@ export function InstanceSettings() {
 
   function hydrate(s: InstanceSettingsPublic) {
     setModes(s.formModes);
-    setAllowSelfRegistration(s.allowSelfRegistration ?? false);
     const maxFail = s.authMaxFailures ?? DEFAULT_AUTH_MAX_FAILURES;
     setAuthMaxFailures(maxFail);
     initialAuthMaxFailuresRef.current = maxFail;
@@ -169,7 +165,6 @@ export function InstanceSettings() {
         enabled: p.enabled,
         hasClientSecret: p.hasClientSecret,
         secret: '',
-        autoRegister: p.autoRegister,
         usePkce: p.usePkce,
       })),
     );
@@ -231,7 +226,6 @@ export function InstanceSettings() {
     setError(null);
     setSaved(false);
     const input: InstanceSettingsInput = { formModes: modes };
-    input.allowSelfRegistration = allowSelfRegistration;
     input.smtp = smtpEnabled
       ? {
           host,
@@ -293,7 +287,6 @@ export function InstanceSettings() {
         clientId: p.clientId.trim(),
         ...(p.scopes.trim() ? { scopes: p.scopes.trim().split(/[\s,]+/).filter(Boolean) } : {}),
         enabled: p.enabled,
-        autoRegister: p.autoRegister,
         usePkce: p.usePkce,
         ...(p.secret ? { clientSecret: p.secret } : {}),
       }));
@@ -713,24 +706,11 @@ export function InstanceSettings() {
 
       <fieldset className={`${glassCard} p-4`}>
         <legend className="px-1 text-sm font-bold">Accounts</legend>
-        <label className="flex items-start gap-2 text-sm">
-          <input
-            type="checkbox"
-            className={toggleInput}
-            aria-label="Allow user self-registration"
-            checked={allowSelfRegistration}
-            onChange={(e) => setAllowSelfRegistration(e.target.checked)}
-          />
-          <span>
-            <span className="font-medium">Allow user self-registration</span>
-            <span className="block text-xs text-slate-500">
-              When on, anyone can create an account from the login screen. When off, only invited users can
-              register. Self-registered users start with no project access until they create a project or an
-              admin grants access.
-            </span>
-          </span>
-        </label>
-        <label className="mt-3 block text-sm">
+        <p className="mb-3 text-xs text-slate-500">
+          Registration is invite-only — new users join by accepting an invitation. There is no public
+          self-registration.
+        </p>
+        <label className="block text-sm">
           <span className="font-medium">Failed sign-in attempts before throttling</span>
           <span className="mb-1 block text-xs text-slate-500">
             Per IP per minute. After this many FAILED login or 2FA attempts, further tries from that IP are

@@ -170,9 +170,6 @@ const app = await createApp({
   webauthnOrigin: process.env.SW_WEBAUTHN_ORIGIN,
   deployAllowedHosts,
   smtpAllowedHosts,
-  // A DEPLOYED instance is invitation-only by default (no env var) — an admin opens public self-signup
-  // at runtime in System Settings (`allowSelfRegistration`). The first admin is seeded on first boot.
-  openRegistration: false,
   // Force the seeded default-password admin to change it ONLY in production. A local dev run
   // (NODE_ENV !== 'production') skips the gate so admin@sitewright.example / 123456 just works.
   forcePasswordChange: isProduction,

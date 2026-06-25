@@ -6,6 +6,7 @@ import type { ProjectBundle } from '@sitewright/core';
 import type { Form, Page } from '@sitewright/schema';
 import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
+import { registerAccount } from '../src/repo/accounts.js';
 import { buildSite } from '../src/publish/build.js';
 import { deploySite, DeployConfigSchema, type DeployConfig, type DeployTransport } from '../src/publish/adapters.js';
 
@@ -83,10 +84,13 @@ const sessionOf = (res: { cookies: Array<{ name: string; value: string }> }): st
 
 describe('form submission across deploy targets', () => {
   it('ships a working ABSOLUTE form endpoint to every remote target, and submissions are accepted + stored', async () => {
-    const app = await createApp({ db: await makeTestDb() });
+    const db = await makeTestDb();
+    const app = await createApp({ db });
     await app.ready();
-    const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'o@acme.test', password: 'Pw-secret-1' } });
-    const t = sessionOf(reg);
+    // Project creation is agency-staff-only now; seed the creator as `developer` (agency staff). The
+    // register route is invite-only, so seed via the repo, then log in for a session cookie.
+    await registerAccount(db, 'o@acme.test', 'Pw-secret-1', { platformRole: 'developer' });
+    const t = sessionOf(await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'o@acme.test', password: 'Pw-secret-1' } }));
     const proj = await app.inject({ method: 'POST', url: '/projects', cookies: { sw_session: t }, payload: { name: 'Site', slug: 'acme' } });
     const pid = (proj.json() as { project: { id: string } }).project.id;
     await app.inject({ method: 'PUT', url: `/projects/${pid}/content/form/contact`, cookies: { sw_session: t }, payload: contactForm() });
@@ -135,10 +139,13 @@ describe('form submission across deploy targets', () => {
   it('REFUSES a remote deploy of a platform-routed form when no public URL is configured (would 404 on the remote host)', async () => {
     const publishRoot = await mkTmp('sw-pub-');
     // No `publicUrl` → the form endpoint would be baked root-relative, broken on a remote host.
-    const app = await createApp({ db: await makeTestDb(), publishRoot, encryptionKey: Buffer.alloc(32, 9) });
+    const db = await makeTestDb();
+    const app = await createApp({ db, publishRoot, encryptionKey: Buffer.alloc(32, 9) });
     await app.ready();
-    const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'g@acme.test', password: 'Pw-secret-1' } });
-    const t = sessionOf(reg);
+    // Project creation is agency-staff-only now; seed the creator as `developer` (agency staff). The
+    // register route is invite-only, so seed via the repo, then log in for a session cookie.
+    await registerAccount(db, 'g@acme.test', 'Pw-secret-1', { platformRole: 'developer' });
+    const t = sessionOf(await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'g@acme.test', password: 'Pw-secret-1' } }));
     const proj = await app.inject({ method: 'POST', url: '/projects', cookies: { sw_session: t }, payload: { name: 'Site', slug: 'guard' } });
     const pid = (proj.json() as { project: { id: string } }).project.id;
     await app.inject({ method: 'PUT', url: `/projects/${pid}/content/form/contact`, cookies: { sw_session: t }, payload: contactForm() });

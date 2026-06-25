@@ -152,7 +152,9 @@ describe('the forced-change guard', () => {
     const db = await makeTestDb();
     const app = await createApp({ db });
     await app.ready();
-    await registerAccount(db, 'normal@x.test', 'Pw-secret-1');
+    // A normal (non-flagged) agency-staff user: the forced-change guard must NOT block their writes.
+    // `developer` is the minimal staff role that may create a project (the sample mutating request).
+    await registerAccount(db, 'normal@x.test', 'Pw-secret-1', { platformRole: 'developer' });
     const cookie = await login(app, 'normal@x.test', 'Pw-secret-1');
     const write = await app.inject({
       method: 'POST',

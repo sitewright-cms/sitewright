@@ -1,13 +1,62 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import type { InjectOptions } from 'fastify';
+import type { FastifyInstance, InjectOptions, LightMyRequestResponse } from 'fastify';
+import { createApp } from '../src/http/app.js';
+import { registerAccount } from '../src/repo/accounts.js';
+import type { Database } from '../src/db/client.js';
+import { makeTestDb } from './helpers.js';
 import { makeHarness, type Harness } from './harness.js';
 
 // One harness (and its temp DB) per test; closed in afterEach to release the file.
 let h: Harness;
+// A locally-booted app for the route tests that drive POST /projects directly (they need an agency-
+// STAFF caller — `developer`, NOT an instance admin, so cross-tenant isolation still holds). The
+// harness's signup() only seeds plain clients or instance admins, so these tests boot their own app
+// over a db we hold and seed `developer`s via the repo. Closed alongside the harness in afterEach.
+let staffApp: FastifyInstance | undefined;
+let staffDb: Database | undefined;
 afterEach(async () => {
   await h?.close();
+  await staffApp?.close();
+  staffApp = undefined;
+  staffDb = undefined;
 });
+
+const SESSION_COOKIE = 'sw_session';
+
+/** A minimal authed client over `staffApp` whose user is agency staff (`developer`). */
+interface StaffClient {
+  userId: string;
+  post(url: string, payload?: unknown): Promise<LightMyRequestResponse>;
+  get(url: string): Promise<LightMyRequestResponse>;
+  del(url: string): Promise<LightMyRequestResponse>;
+}
+
+/** Boots the shared staff app (once per test) over a db we hold so we can seed `developer`s. */
+async function bootStaffApp(): Promise<void> {
+  staffDb = await makeTestDb();
+  staffApp = await createApp({ db: staffDb });
+  await staffApp.ready();
+}
+
+/**
+ * Seeds a `developer` (agency staff, not an instance admin) directly via the repo — the register
+ * route is invite-only — and logs in for a session, returning a client bound to it. Call bootStaffApp()
+ * first; multiple staff users can share the one app (for the cross-creator slug-uniqueness test).
+ */
+async function staffClient(email = `dev-${randomUUID()}@test.local`): Promise<StaffClient> {
+  const app = staffApp!;
+  const { userId } = await registerAccount(staffDb!, email, 'Pw-secret-1', { platformRole: 'developer' });
+  const login = await app.inject({ method: 'POST', url: '/auth/login', payload: { email, password: 'Pw-secret-1' } });
+  const token = login.cookies.find((c) => c.name === SESSION_COOKIE)!.value;
+  const inject = (o: InjectOptions) => app.inject({ ...o, cookies: { [SESSION_COOKIE]: token } });
+  return {
+    userId,
+    post: (url, payload) => inject({ method: 'POST', url, payload: payload as InjectOptions['payload'] }),
+    get: (url) => inject({ method: 'GET', url }),
+    del: (url) => inject({ method: 'DELETE', url }),
+  };
+}
 
 // Flat tenancy: there is no org layer. A signed-in non-member hitting a specific
 // project they don't belong to is denied with 403 (they cannot probe other
@@ -27,8 +76,8 @@ interface ProjectShape {
 describe('project lifecycle (HTTP layer)', () => {
   // ---- 1. Create → echo → list → get-by-id ----
   it('creates a project that echoes name/slug, appears in the accessible-project list, and is fetchable by id', async () => {
-    h = await makeHarness();
-    const a = await h.signup();
+    await bootStaffApp();
+    const a = await staffClient(); // agency staff (developer) — POST /projects is staff-only
 
     const create = await a.post(`/projects`, { name: 'My Site', slug: 'my-site' });
     expect(create.statusCode).toBe(201);
@@ -62,8 +111,8 @@ describe('project lifecycle (HTTP layer)', () => {
 
   // ---- 2. Slug rules (instance-unique) ----
   it('rejects invalid slugs (uppercase / spaces / special chars) with 400', async () => {
-    h = await makeHarness();
-    const a = await h.signup();
+    await bootStaffApp();
+    const a = await staffClient(); // staff — POST /projects is agency-staff-only
 
     const invalidSlugs = ['UpperCase', 'has spaces', 'special_char', 'trailing-', '-leading', 'co..m', 'slug!'];
     for (const slug of invalidSlugs) {
@@ -76,8 +125,8 @@ describe('project lifecycle (HTTP layer)', () => {
   });
 
   it('accepts a valid slug but rejects a duplicate slug from the same caller with 409', async () => {
-    h = await makeHarness();
-    const a = await h.signup();
+    await bootStaffApp();
+    const a = await staffClient(); // staff — POST /projects is agency-staff-only
 
     const first = await a.post(`/projects`, { name: 'Site One', slug: 'shared-slug' });
     expect(first.statusCode).toBe(201);
@@ -92,9 +141,12 @@ describe('project lifecycle (HTTP layer)', () => {
   });
 
   it('rejects a duplicate slug even from a DIFFERENT user (slugs are instance-unique)', async () => {
-    h = await makeHarness();
-    const a = await h.signup();
-    const b = await h.signup();
+    await bootStaffApp();
+    // Both are agency staff (developer) on the SAME instance so each can create projects; the
+    // assertion is about slug uniqueness across creators, not about the staff gate. As plain
+    // developers (not instance admins) they retain isolated, per-membership project lists.
+    const a = await staffClient();
+    const b = await staffClient();
 
     expect((await a.post(`/projects`, { name: 'A Site', slug: 'shared-slug' })).statusCode).toBe(201);
     // Flat model: slugs are instance-unique — a different user reusing the slug is REJECTED (409).

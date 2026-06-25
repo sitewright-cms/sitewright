@@ -40,30 +40,12 @@ describe('InstanceSettingsRepository', () => {
     expect(pub.revisionCoalesceMs).toBe(120_000);
     expect(pub.revisionRetentionDays).toBe(30);
 
-    await repo.put({ allowSelfRegistration: true }); // unrelated update keeps them
+    await repo.put({ formModes: { userSmtp: true } }); // unrelated update keeps them
     expect(await repo.getRevisionPolicy()).toEqual({ coalesceWindowMs: 120_000, retentionDays: 30 });
 
     await repo.put({ revisionCoalesceMs: null, revisionRetentionDays: null }); // null reverts to defaults
     expect(await repo.getRevisionPolicy()).toEqual({ coalesceWindowMs: 0, retentionDays: 90 });
     expect((await repo.getPublic()).revisionCoalesceMs).toBeUndefined();
-  });
-
-  it('round-trips the allowSelfRegistration toggle (unset → set → keep on unrelated update)', async () => {
-    const repo = new InstanceSettingsRepository(db, KEY);
-    // Unset by default — the route, not the repo, supplies the factory fallback.
-    expect((await repo.getStored()).allowSelfRegistration).toBeUndefined();
-    expect((await repo.getPublic()).allowSelfRegistration).toBeUndefined();
-
-    await repo.put({ allowSelfRegistration: true });
-    expect((await repo.getPublic()).allowSelfRegistration).toBe(true);
-
-    // An unrelated update (toggle absent) leaves it on.
-    await repo.put({ formModes: { userSmtp: true } });
-    expect((await repo.getPublic()).allowSelfRegistration).toBe(true);
-
-    // Explicit false persists (and is distinguishable from "unset").
-    await repo.put({ allowSelfRegistration: false });
-    expect((await repo.getStored()).allowSelfRegistration).toBe(false);
   });
 
   it('round-trips the agent-instructions override (set → keep → clear → effective)', async () => {

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { FastifyInstance, InjectOptions, LightMyRequestResponse } from 'fastify';
 import { createApp } from '../src/http/app.js';
-import { setPlatformRole } from '../src/repo/accounts.js';
+import { getPlatformRole, registerAccount, setPlatformRole } from '../src/repo/accounts.js';
 import { makeTestDb } from './helpers.js';
 
 const SESSION_COOKIE = 'sw_session';
@@ -81,16 +81,13 @@ export async function makeHarness(options?: Partial<AppOptions>): Promise<Harnes
   ): Promise<TestClient> {
     const email = opts.email ?? `u-${randomUUID()}@test.local`;
     const password = opts.password ?? 'Pw-secret-1';
-    const res = await app.inject({
-      method: 'POST',
-      url: '/auth/register',
-      payload: { email, password },
-    });
-    if (res.statusCode !== 201) throw new Error(`register failed (${res.statusCode}): ${res.body}`);
+    // The /auth/register ROUTE is invite-only now, so seed the account directly via the repo (seeding
+    // has always bypassed the registration gate + password policy), then log in for a session. `admin`
+    // seeds the instance-admin platform role.
+    const { userId } = await registerAccount(db, email, password, opts.admin ? { platformRole: 'admin' } : {});
+    const res = await app.inject({ method: 'POST', url: '/auth/login', payload: { email, password } });
+    if (res.statusCode !== 200) throw new Error(`login failed (${res.statusCode}): ${res.body}`);
     const token = sessionToken(res);
-    const { userId } = res.json() as { userId: string };
-    // Grant instance-admin via the persisted role (the single admin mechanism — no env allowlist).
-    if (opts.admin) await setPlatformRole(db, userId, 'admin');
 
     const inject = (o: InjectOptions): Promise<Resp> =>
       app.inject({ ...o, cookies: { ...(o.cookies ?? {}), [SESSION_COOKIE]: token } });
@@ -104,6 +101,10 @@ export async function makeHarness(options?: Partial<AppOptions>): Promise<Harnes
       put: (url, payload) => inject({ method: 'PUT', url, payload: payload as InjectOptions['payload'] }),
       del: (url) => inject({ method: 'DELETE', url }),
       async createProject(name = 'Site', slug = `s-${randomUUID().slice(0, 8)}`, opts = {}) {
+        // Project creation is agency-staff-only now (admin/developer). Tests just want a project, so
+        // promote a plain user to the minimal agency role (`developer`); admins already qualify. This
+        // mirrors the real model where the agency — never an invited client — creates projects.
+        if (!(await getPlatformRole(db, userId))) await setPlatformRole(db, userId, 'developer');
         const r = await inject({
           method: 'POST',
           url: `/projects`,

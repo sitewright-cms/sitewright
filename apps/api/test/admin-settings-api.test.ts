@@ -1,13 +1,14 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { randomBytes } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import { makeTestDb, promoteToAdmin } from './helpers.js';
+import { makeTestDb } from './helpers.js';
 import type { Database } from '../src/db/client.js';
 import { createApp } from '../src/http/app.js';
+import { registerAccount } from '../src/repo/accounts.js';
 
 const ENC_KEY = randomBytes(32).toString('base64');
-// The test DB for the current `beforeEach` app — needed to promote a user to instance admin (the
-// persisted-role mechanism; there is no env email allowlist anymore).
+// The test DB for the current `beforeEach` app — needed to seed users (the registration route is
+// invite-only now, so accounts are created via the repo and then logged in for a session cookie).
 let db: Database;
 
 function token(res: { cookies: Array<{ name: string; value: string }> }): string {
@@ -16,20 +17,18 @@ function token(res: { cookies: Array<{ name: string; value: string }> }): string
   return t;
 }
 
+/** Seed a plain client account (no platform role) and log in for a session cookie. */
 async function register(app: FastifyInstance, email: string) {
-  const reg = await app.inject({
-    method: 'POST',
-    url: '/auth/register',
-    payload: { email, password: 'Pw-secret-1'},
-  });
-  return { t: token(reg) };
+  await registerAccount(db, email, 'Pw-secret-1');
+  const login = await app.inject({ method: 'POST', url: '/auth/login', payload: { email, password: 'Pw-secret-1' } });
+  return { t: token(login) };
 }
 
-/** Register a user and promote them to instance admin (`platform_role='admin'`). */
+/** Seed an instance admin (`platform_role='admin'`) and log in for a session cookie. */
 async function registerAdmin(app: FastifyInstance, email = 'admin@acme.test') {
-  const r = await register(app, email);
-  await promoteToAdmin(db, email);
-  return r;
+  await registerAccount(db, email, 'Pw-secret-1', { platformRole: 'admin' });
+  const login = await app.inject({ method: 'POST', url: '/auth/login', payload: { email, password: 'Pw-secret-1' } });
+  return { t: token(login) };
 }
 
 describe('admin settings API', () => {

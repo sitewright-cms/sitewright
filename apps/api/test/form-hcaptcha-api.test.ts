@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { randomBytes } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import { makeTestDb, promoteToAdmin } from './helpers.js';
+import { makeTestDb } from './helpers.js';
 import type { Database } from '../src/db/client.js';
 import { createApp } from '../src/http/app.js';
+import { registerAccount } from '../src/repo/accounts.js';
 import type { HcaptchaVerifier } from '../src/mail/hcaptcha.js';
 
 const ENC_KEY = randomBytes(32);
@@ -34,9 +35,11 @@ async function setup(opts: { configureSecret: boolean }) {
   appDb = await makeTestDb();
   app = await createApp({ db: appDb, hcaptcha, encryptionKey: ENC_KEY });
   await app.ready();
-  const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'admin@acme.test', password: 'Pw-secret-1'} });
-  t = token(reg);
-  await promoteToAdmin(appDb, 'admin@acme.test');
+  // The /auth/register route is invite-only now; seed the instance admin via the repo, then log in.
+  // An admin is agency staff, so it may create the project below.
+  await registerAccount(appDb, 'admin@acme.test', 'Pw-secret-1', { platformRole: 'admin' });
+  const login = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'admin@acme.test', password: 'Pw-secret-1' } });
+  t = token(login);
   const proj = await app.inject({ method: 'POST', url: `/projects`, cookies: { sw_session: t }, payload: { name: 'Site', slug: 'site' } });
   projectId = (proj.json() as { project: { id: string } }).project.id;
   // A form that requires hCaptcha.
@@ -96,9 +99,9 @@ describe('form submission hCaptcha enforcement', () => {
     // First app (with key) to store a secret, then a second app (no key) to read it.
     const keyed = await createApp({ db, hcaptcha, encryptionKey: ENC_KEY });
     await keyed.ready();
-    const reg = await keyed.inject({ method: 'POST', url: '/auth/register', payload: { email: 'admin@acme.test', password: 'Pw-secret-1'} });
-    const tok = token(reg);
-    await promoteToAdmin(db, 'admin@acme.test');
+    await registerAccount(db, 'admin@acme.test', 'Pw-secret-1', { platformRole: 'admin' });
+    const login = await keyed.inject({ method: 'POST', url: '/auth/login', payload: { email: 'admin@acme.test', password: 'Pw-secret-1' } });
+    const tok = token(login);
     const proj = await keyed.inject({ method: 'POST', url: `/projects`, cookies: { sw_session: tok }, payload: { name: 'S', slug: 's' } });
     const pid = (proj.json() as { project: { id: string } }).project.id;
     await keyed.inject({ method: 'PUT', url: `/projects/${pid}/content/form/contact`, cookies: { sw_session: tok }, payload: { id: 'contact', name: 'C', fields: [{ name: 'email', label: 'Email', type: 'email' }], recipient: 'a@b.co', hcaptcha: true } });

@@ -6,6 +6,7 @@ import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
 import { RenderPool } from '../src/render/render-pool.js';
 import { projectMembers } from '../src/db/schema.js';
+import { registerAccount } from '../src/repo/accounts.js';
 
 const workerPath = fileURLToPath(new URL('./fixtures/blocks-render-worker.mjs', import.meta.url));
 
@@ -27,8 +28,10 @@ function token(res: { cookies: Array<{ name: string; value: string }> }): string
   return t;
 }
 async function setup() {
-  const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'owner@acme.test', password: 'Pw-secret-1' } });
-  const t = token(reg);
+  // Project creation is agency-staff-only now; seed the creator as `developer` (agency staff). The
+  // register route is invite-only, so seed via the repo, then log in for a session cookie.
+  await registerAccount(db, 'owner@acme.test', 'Pw-secret-1', { platformRole: 'developer' });
+  const t = token(await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'owner@acme.test', password: 'Pw-secret-1' } }));
   const proj = await app.inject({ method: 'POST', url: '/projects', cookies: { sw_session: t }, payload: { name: 'Site', slug: 'site' } });
   return { t, projectId: (proj.json() as { project: { id: string } }).project.id };
 }
@@ -84,9 +87,8 @@ describe('snippet preview API (server-rendered, sandboxed)', () => {
   it('lets a project MEMBER preview (content:read gate, not owner-only like render-template)', async () => {
     const { t, projectId } = await setup();
     await putSnippet(t, projectId, 'm', '<p>{{ company.name }}</p>');
-    const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'member@acme.test', password: 'Pw-secret-1' } });
-    const memberT = token(reg);
-    const memberId = (reg.json() as { userId: string }).userId;
+    const { userId: memberId } = await registerAccount(db, 'member@acme.test', 'Pw-secret-1');
+    const memberT = token(await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'member@acme.test', password: 'Pw-secret-1' } }));
     await db.insert(projectMembers).values({ id: randomUUID(), userId: memberId, projectId, role: 'member', createdAt: new Date() });
     const res = await preview(memberT, projectId, 'm');
     expect(res.statusCode).toBe(200);
@@ -98,16 +100,18 @@ describe('snippet preview API (server-rendered, sandboxed)', () => {
     await putSnippet(t, projectId, 'x', '<p>x</p>');
     const anon = await app.inject({ method: 'GET', url: `/projects/${projectId}/snippets/x/preview` });
     expect(anon.statusCode).toBe(401);
-    const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'outsider@acme.test', password: 'Pw-secret-1' } });
-    const cross = await preview(token(reg), projectId, 'x');
+    await registerAccount(db, 'outsider@acme.test', 'Pw-secret-1');
+    const outsiderT = token(await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'outsider@acme.test', password: 'Pw-secret-1' } }));
+    const cross = await preview(outsiderT, projectId, 'x');
     expect(cross.statusCode).toBe(403);
   });
 
   it('returns a 503 notice when no render pool is configured', async () => {
-    const noPool = await createApp({ db: await makeTestDb() });
+    const noPoolDb = await makeTestDb();
+    const noPool = await createApp({ db: noPoolDb });
     await noPool.ready();
-    const reg = await noPool.inject({ method: 'POST', url: '/auth/register', payload: { email: 'o@a.test', password: 'Pw-secret-1' } });
-    const t = token(reg);
+    await registerAccount(noPoolDb, 'o@a.test', 'Pw-secret-1', { platformRole: 'developer' });
+    const t = token(await noPool.inject({ method: 'POST', url: '/auth/login', payload: { email: 'o@a.test', password: 'Pw-secret-1' } }));
     const proj = await noPool.inject({ method: 'POST', url: '/projects', cookies: { sw_session: t }, payload: { name: 'S', slug: 's' } });
     const projectId = (proj.json() as { project: { id: string } }).project.id;
     const res = await noPool.inject({ method: 'GET', url: `/projects/${projectId}/snippets/x/preview`, cookies: { sw_session: t } });

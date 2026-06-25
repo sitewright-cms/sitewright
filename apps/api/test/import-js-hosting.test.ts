@@ -3,15 +3,19 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
+import type { Database } from '../src/db/client.js';
 import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
+import { registerAccount } from '../src/repo/accounts.js';
 
 let app: FastifyInstance;
+let db: Database;
 let mediaRoot: string;
 
 beforeEach(async () => {
   mediaRoot = await mkdtemp(join(tmpdir(), 'sw-importjs-'));
-  app = await createApp({ db: await makeTestDb(), mediaRoot });
+  db = await makeTestDb();
+  app = await createApp({ db, mediaRoot });
   await app.ready();
 });
 afterEach(async () => {
@@ -34,8 +38,10 @@ function htmlUpload(html: string): { payload: Buffer; headers: Record<string, st
 
 describe('website import — JS hosting (end to end through the app)', () => {
   it('self-hosts an inline <script> as a served .js and links it from website.scripts', async () => {
-    const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'js@e2e.test', password: 'Pw-secret-1' } });
-    const t = token(reg);
+    // Project creation is agency-staff-only now; seed the creator as `developer` (agency staff). The
+    // register route is invite-only, so seed via the repo, then log in for a session cookie.
+    await registerAccount(db, 'js@e2e.test', 'Pw-secret-1', { platformRole: 'developer' });
+    const t = token(await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'js@e2e.test', password: 'Pw-secret-1' } }));
     const proj = await app.inject({ method: 'POST', url: '/projects', cookies: { sw_session: t }, payload: { name: 'Site', slug: 'site' } });
     const projectId = (proj.json() as { project: { id: string } }).project.id;
 

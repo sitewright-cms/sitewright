@@ -22,7 +22,6 @@ import {
   PageSchema,
   InstanceSettingsInputSchema,
   maskInstanceSettings,
-  type InstanceSettingsStored,
   DEFAULT_NEW_PROJECT_LOCALE,
   DEFAULT_PLATFORM_NAME,
   DEFAULT_BRAND_PRIMARY,
@@ -676,13 +675,6 @@ export interface AppOptions {
    */
   maintenanceSweepMs?: number;
   /**
-   * Factory default for public `POST /auth/register` when the persisted `allowSelfRegistration`
-   * instance setting is unset. Default `true` (the embeddable factory + the test suite). The production
-   * entry point (`server.ts`) passes `false` so a DEPLOYED instance is invitation-only by default; an
-   * admin re-opens it at runtime via `allowSelfRegistration`. Not wired to any env var.
-   */
-  openRegistration?: boolean;
-  /**
    * Whether to ENFORCE the seeded default-password admin's forced password change (the
    * `must_change_password` flag → a 403 `password-change-required` guard + the editor's forced screen).
    * Default `true` (the embeddable factory + the test suite). The production entry point (`server.ts`)
@@ -909,17 +901,6 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     trustProxy: opts.trustProxy ?? false,
   });
 
-  // The embeddable factory default for self-registration is OPEN (convenient for the test suite and a
-  // direct `createApp` embedder). The production entry point (server.ts) passes `false`, so a DEPLOYED
-  // instance is invitation-only by default; an admin re-opens it at runtime via `allowSelfRegistration`.
-  // Warn a direct embedder who left it open implicitly (never fires in production — it passes a value).
-  if (opts.openRegistration === undefined) {
-    app.log.warn(
-      '[sitewright/api] openRegistration left at its default (OPEN); anyone may self-register. ' +
-        'Pass openRegistration:false for an invitation-only instance (the production entry point does).',
-    );
-  }
-
   // Plugins that integrate per-route (rate-limit hooks `onRoute`) must finish
   // loading BEFORE routes are registered, so these are awaited up front.
   // No `secret` here: the session cookie is signed/verified by our own HMAC (signSession/unsignSession)
@@ -1104,6 +1085,21 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     return userId;
   }
 
+  // Platform STAFF = the agency: an instance admin OR a developer. Session-only. Gates actions that are
+  // the agency's to take rather than a client's — currently creating projects (invited clients, who are
+  // project `member`s, must never self-provision new projects).
+  async function requirePlatformStaff(req: FastifyRequest): Promise<string> {
+    if (bearerToken(req) !== undefined) {
+      throw new ForbiddenError('this operation requires an interactive session');
+    }
+    const userId = await requireUserId(req);
+    const role = await getPlatformRole(db, userId);
+    if (role !== 'admin' && role !== 'developer') {
+      throw new ForbiddenError('only agency staff can create projects');
+    }
+    return userId;
+  }
+
 
   // The access a project route requires. A `Capability` is enforced for bearer
   // (API-key) requests — the key must hold it — and ignored for interactive
@@ -1217,22 +1213,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // is gone).
   const authRl = rl(20);
 
-  // Whether anyone may self-register, given a settings doc. The admin instance setting is authoritative
-  // once set; until then the factory default (`opts.openRegistration`) applies — the production entry
-  // point (server.ts) passes `false`, so a DEPLOYED instance is closed by default; the embeddable
-  // factory/test default is open. Invited users register regardless (see the register route's fallback).
-  const resolveSelfRegistration = (stored: InstanceSettingsStored): boolean =>
-    stored.allowSelfRegistration ?? (opts.openRegistration ?? true);
-  async function selfRegistrationOpen(): Promise<boolean> {
-    return resolveSelfRegistration(await instanceSettingsRepo.getStored());
-  }
-
   app.post('/auth/register', async (req, reply) => {
     const body = RegisterBody.parse(req.body);
-    // When registration is closed, it is invitation-only: only an email holding a pending invite
-    // may register (then accept it). The instance admin is seeded out-of-band (seed.ts), never
-    // registered, so closing this never locks the operator out.
-    if (!(await selfRegistrationOpen()) && !(await hasPendingInvite(db, body.email))) {
+    // Registration is INVITATION-ONLY: only an email holding a pending invite may register (then accept
+    // it). There is no self-registration toggle. The instance admin is seeded out-of-band (seed.ts),
+    // never registered, so this never locks the operator out.
+    if (!(await hasPendingInvite(db, body.email))) {
       return reply.code(403).send({ error: 'registration is by invitation only' });
     }
     const { userId } = await registerAccount(db, body.email, body.password);
@@ -1540,8 +1526,6 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     const logoUrl = stored.platformLogo ? `/branding/logo?v=${updatedAtMs}` : null;
     return reply.send({
       oidcProviders: (stored.oidcProviders ?? []).filter((p) => p.enabled).map((p) => ({ id: p.id, label: p.label })),
-      // Tells the login screen whether to offer a "create account" option (invited users always can).
-      allowSelfRegistration: resolveSelfRegistration(stored),
       branding: {
         name: stored.platformName ?? DEFAULT_PLATFORM_NAME,
         primary: stored.brandPrimary ?? DEFAULT_BRAND_PRIMARY,
@@ -1600,7 +1584,6 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         db,
         oidcRepo,
         { issuer: claims.iss, subject: claims.sub, email: claims.email, emailVerified: claims.emailVerified },
-        { autoRegister: provider.autoRegister },
       );
       if (!resolution.ok) return oidcErrorRedirect(reply, resolution.reason);
 
@@ -1623,10 +1606,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     await requireInstanceAdmin(req);
     // Overlay the EFFECTIVE self-registration state so the admin toggle reflects reality even before
     // it has been explicitly saved (it resolves the factory default when the setting is still unset).
-    // One read of the stored doc serves both the masked view and the resolved flag.
     const stored = await instanceSettingsRepo.getStored();
     return reply.send({
-      settings: { ...maskInstanceSettings(stored), allowSelfRegistration: resolveSelfRegistration(stored) },
+      settings: maskInstanceSettings(stored),
       // Whether the cookie secret is pinned via the COOKIE_SECRET env (rotation is then disabled).
       cookieSecretPinned,
     });
@@ -1849,13 +1831,10 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   );
 
   app.post('/projects', async (req, reply) => {
-    // Session-only (a non-interactive token must not create projects). Any authenticated user may
-    // create a project and becomes its owner. (Restricting creation to platform staff — so invited
-    // clients can't self-provision — is handled together with the invite-only registration change.)
-    if (bearerToken(req) !== undefined) {
-      throw new ForbiddenError('this operation requires an interactive session');
-    }
-    const userId = await requireUserId(req);
+    // Project creation is an AGENCY action: only platform staff (admin/developer) may create a project
+    // and become its owner. Invited clients are project `member`s and must not self-provision projects.
+    // Session-only (a non-interactive token must not create projects).
+    const userId = await requirePlatformStaff(req);
     const body = CreateProjectBody.parse(req.body);
     // Atomic: the project + the creator's owner membership are written together (never an
     // ownerless, unreachable project).

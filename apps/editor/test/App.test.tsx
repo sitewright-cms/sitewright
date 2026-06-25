@@ -53,12 +53,13 @@ const projects: Project[] = [
 
 beforeEach(() => {
   vi.clearAllMocks();
-  me.mockResolvedValue({ userId: 'u', email: 'u@acme.test', isInstanceAdmin: false, mustChangePassword: false, projects });
+  // Default to an agency owner (platformRole 'admin') so project-creation UI is available; member-only
+  // cases override `me` with platformRole null/absent to assert the create buttons are hidden.
+  me.mockResolvedValue({ userId: 'u', email: 'u@acme.test', platformRole: 'admin', isInstanceAdmin: false, mustChangePassword: false, projects });
   createProject.mockResolvedValue({ project: { id: 'p3', name: 'New Co', slug: 'new-co', role: 'owner' } });
   // useBranding() runs at the App root — give it a default config so it resolves (DOM ops are inert in jsdom).
   loginConfig.mockResolvedValue({
     oidcProviders: [],
-    allowSelfRegistration: false,
     branding: { name: 'SiteWright', primary: '#4f46e5', secondary: '#0ea5e9', logoUrl: null },
   });
 });
@@ -109,7 +110,11 @@ describe('App shell', () => {
       projects: [{ id: 'pm', name: 'Client Co', slug: 'client-co', role: 'member' }],
     });
     render(<App />);
-    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: /Client Co/ }));
+    const selector = await screen.findByRole('dialog');
+    // A client (platformRole null/absent) is not agency staff → no project-creation buttons.
+    expect(within(selector).queryByRole('button', { name: 'New project' })).toBeNull();
+    expect(within(selector).queryByRole('button', { name: 'From website' })).toBeNull();
+    fireEvent.click(within(selector).getByRole('button', { name: /Client Co/ }));
     await screen.findByText(/PROJECT Client Co/);
     // Invited clients now get the full editor: the side panels + the section tablist are present.
     expect(screen.getByText('LIBRARY PANEL')).toBeInTheDocument();

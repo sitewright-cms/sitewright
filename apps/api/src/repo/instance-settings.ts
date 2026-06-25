@@ -304,17 +304,11 @@ export class InstanceSettingsRepository {
           clientId: p.clientId,
           scopes: p.scopes && p.scopes.length > 0 ? p.scopes : ['openid', 'profile', 'email'],
           enabled: p.enabled,
-          autoRegister: p.autoRegister,
           usePkce: p.usePkce,
           ...(clientSecret !== undefined ? { clientSecret } : {}),
         };
       });
     }
-
-    // Self-registration: a boolean sets it; undefined keeps the stored value (which may itself be
-    // undefined → the route falls back to the deploy-time factory default).
-    const allowSelfRegistration = input.allowSelfRegistration ?? current.allowSelfRegistration;
-    if (allowSelfRegistration !== undefined) next.allowSelfRegistration = allowSelfRegistration;
 
     // Branding (non-secret): a value sets it, `null` clears it (revert to default), undefined keeps.
     // Same null/undefined/value pattern as agentInstructions; nothing here is encrypted.
@@ -374,7 +368,6 @@ export class InstanceSettingsRepository {
     clientId: string;
     clientSecret?: string;
     scopes: string[];
-    autoRegister: boolean;
     usePkce: boolean;
   } | null> {
     const stored = await this.getStored();
@@ -386,7 +379,6 @@ export class InstanceSettingsRepository {
       issuer: p.issuer,
       clientId: p.clientId,
       scopes: p.scopes,
-      autoRegister: p.autoRegister,
       usePkce: p.usePkce,
       ...(p.clientSecret ? { clientSecret: this.decrypt(p.clientSecret) } : {}),
     };

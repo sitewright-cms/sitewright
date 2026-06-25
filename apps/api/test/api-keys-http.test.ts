@@ -6,7 +6,7 @@ import { randomBytes } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
-import { addProjectMember } from '../src/repo/accounts.js';
+import { addProjectMember, registerAccount } from '../src/repo/accounts.js';
 import type { Database } from '../src/db/client.js';
 
 let app: FastifyInstance;
@@ -36,12 +36,11 @@ function sessionCookie(res: { cookies: Array<{ name: string; value: string }> })
 }
 
 async function setup(email: string, slug = 'site') {
-  const reg = await app.inject({
-    method: 'POST',
-    url: '/auth/register',
-    payload: { email, password: 'Pw-secret-1' },
-  });
-  const t = sessionCookie(reg);
+  // Project creation is agency-staff-only now; seed the creator/owner as `developer`. The
+  // /auth/register route is invite-only, so seed via the repo, then log in for a session cookie.
+  await registerAccount(db, email, 'Pw-secret-1', { platformRole: 'developer' });
+  const login = await app.inject({ method: 'POST', url: '/auth/login', payload: { email, password: 'Pw-secret-1' } });
+  const t = sessionCookie(login);
   const proj = await app.inject({
     method: 'POST',
     url: `/projects`,
@@ -331,10 +330,11 @@ describe('agent connections — list + disconnect', () => {
   it('forbids a project MEMBER (non-owner) from listing or disconnecting — including the oauth: path', async () => {
     const { projectId } = await setup('owner@acme.test');
     const base = `/projects/${projectId}`;
-    // A second user, added as a plain member of the same project.
-    const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'member@acme.test', password: 'Pw-secret-1' } });
-    const memberCookie = sessionCookie(reg);
-    const memberId = (reg.json() as { userId: string }).userId;
+    // A second user, added as a plain member of the same project. Seed via the repo (register is
+    // invite-only) — a plain client with no platform role — then log in for a session cookie.
+    const { userId: memberId } = await registerAccount(db, 'member@acme.test', 'Pw-secret-1');
+    const login = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'member@acme.test', password: 'Pw-secret-1' } });
+    const memberCookie = sessionCookie(login);
     await addProjectMember(db, memberId, projectId, 'member');
 
     // List → 403 (the route's own owner gate, not just the inner repo throw).

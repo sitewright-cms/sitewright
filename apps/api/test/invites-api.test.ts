@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { makeTestDb, promoteToAdmin } from './helpers.js';
+import { makeTestDb } from './helpers.js';
 import type { Database } from '../src/db/client.js';
 import { createApp } from '../src/http/app.js';
+import { registerAccount } from '../src/repo/accounts.js';
 
 let app: FastifyInstance;
 let db: Database;
@@ -25,10 +26,11 @@ function token(res: { cookies: Array<{ name: string; value: string }> }): string
 }
 
 async function registerOwner(email: string) {
-  const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email, password: 'Pw-secret-1' } });
-  // The owner is the instance admin in these tests — promote via the persisted role (no allowlist).
-  if (email === ADMIN_EMAIL) await promoteToAdmin(db, email);
-  return { t: token(reg) };
+  // The owner is the instance admin in these tests. The /auth/register route is invite-only now, so
+  // seed the account via the repo with the admin platform role, then log in for a session cookie.
+  await registerAccount(db, email, 'Pw-secret-1', email === ADMIN_EMAIL ? { platformRole: 'admin' } : {});
+  const login = await app.inject({ method: 'POST', url: '/auth/login', payload: { email, password: 'Pw-secret-1' } });
+  return { t: token(login) };
 }
 
 async function makeProject(t: string, slug: string) {
@@ -119,8 +121,10 @@ describe('invites API', () => {
     const inv = await app.inject({ method: 'POST', url: `/projects/${proj}/invites`, cookies: { sw_session: t }, payload: { email: 'client@acme.test' } });
     const inviteToken = (inv.json() as { token: string }).token;
 
-    // A different person cannot accept the client invite.
-    const intruder = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'intruder@evil.test', password: 'Pw-secret-1' } });
+    // A different person cannot accept the client invite. The intruder holds NO pending invite, so it
+    // can't self-register (invite-only) — seed a plain account via the repo, then log in for a session.
+    await registerAccount(db, 'intruder@evil.test', 'Pw-secret-1');
+    const intruder = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'intruder@evil.test', password: 'Pw-secret-1' } });
     expect((await app.inject({ method: 'POST', url: '/invites/accept', cookies: { sw_session: token(intruder) }, payload: { token: inviteToken } })).statusCode).toBe(403);
 
     // The intruder (a non-member) cannot create invites for this project.

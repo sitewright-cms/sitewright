@@ -125,10 +125,11 @@ describe('multi-tenant isolation + role enforcement (HTTP layer)', () => {
     const bGetProject = await b.get(`/projects/${projectId}`);
     expect(ISOLATION_CODES).toContain(bGetProject.statusCode);
 
-    // B creating a project only creates B's OWN project; it never touches A's data.
-    // Confirm A's list is unchanged at exactly its one project.
-    const bCreate = await b.post(`/projects`, { name: 'Intruder', slug: 'intruder' });
-    expect(bCreate.statusCode).toBe(201);
+    // B creating a project only creates B's OWN project; it never touches A's data. (createProject
+    // promotes B to the agency-staff `developer` role — project creation is staff-only now — and
+    // returns the new project's id; B's own project is isolated from A's.)
+    const bProjectId = await b.createProject('Intruder', 'intruder', { localHosting: false });
+    expect(bProjectId).toBeTruthy();
     const aProjects = await a.get(`/projects`);
     const aProjectIds = (aProjects.json() as { projects: Array<{ id: string }> }).projects.map((p) => p.id);
     expect(aProjectIds).toEqual([projectId]);

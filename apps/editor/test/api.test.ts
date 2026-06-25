@@ -251,11 +251,10 @@ describe('api client', () => {
     expect(fetchMock.mock.calls[0]![0]).toBe('/me');
   });
 
-  it('reads the unauth login config (providers + allowSelfRegistration) and builds the OIDC start URL', async () => {
-    fetchMock.mockResolvedValue(jsonResponse(200, { oidcProviders: [{ id: 'google', label: 'Google' }], allowSelfRegistration: true }));
+  it('reads the unauth login config (providers) and builds the OIDC start URL', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { oidcProviders: [{ id: 'google', label: 'Google' }] }));
     const cfg = await api.loginConfig();
     expect(cfg.oidcProviders).toEqual([{ id: 'google', label: 'Google' }]);
-    expect(cfg.allowSelfRegistration).toBe(true);
     expect(fetchMock.mock.calls[0]![0]).toBe('/auth/config');
     // The start URL is a navigable path (encoded id).
     expect(api.oidcStartUrl('acme sso')).toBe('/auth/oidc/acme%20sso/start');

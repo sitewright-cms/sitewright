@@ -3,8 +3,10 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
+import type { Database } from '../src/db/client.js';
 import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
+import { registerAccount } from '../src/repo/accounts.js';
 
 // A tiny but valid 1x1 PNG — enough for the sharp pipeline to decode and optimize.
 const PNG_1X1 = Buffer.from(
@@ -13,11 +15,13 @@ const PNG_1X1 = Buffer.from(
 );
 
 let app: FastifyInstance;
+let db: Database;
 let mediaRoot: string;
 
 beforeEach(async () => {
   mediaRoot = await mkdtemp(join(tmpdir(), 'sw-importurl-'));
-  app = await createApp({ db: await makeTestDb(), mediaRoot });
+  db = await makeTestDb();
+  app = await createApp({ db, mediaRoot });
   await app.ready();
 });
 afterEach(async () => {
@@ -32,8 +36,10 @@ function token(res: { cookies: Array<{ name: string; value: string }> }): string
   return t;
 }
 async function setup(email = 'importer@e2e.test', slug = 'site') {
-  const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email, password: 'Pw-secret-1' } });
-  const t = token(reg);
+  // Project creation is agency-staff-only now; seed the creator as `developer` (agency staff). The
+  // register route is invite-only, so seed via the repo, then log in for a session cookie.
+  await registerAccount(db, email, 'Pw-secret-1', { platformRole: 'developer' });
+  const t = token(await app.inject({ method: 'POST', url: '/auth/login', payload: { email, password: 'Pw-secret-1' } }));
   const proj = await app.inject({ method: 'POST', url: '/projects', cookies: { sw_session: t }, payload: { name: 'Site', slug } });
   return { t, projectId: (proj.json() as { project: { id: string } }).project.id };
 }

@@ -4,6 +4,7 @@ import type { FastifyInstance } from 'fastify';
 import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
 import { projectMembers } from '../src/db/schema.js';
+import { registerAccount } from '../src/repo/accounts.js';
 
 let app: FastifyInstance;
 let db: Awaited<ReturnType<typeof makeTestDb>>;
@@ -21,12 +22,10 @@ function token(res: { cookies: Array<{ name: string; value: string }> }): string
 }
 
 async function setup(email: string, slug = 'site') {
-  const reg = await app.inject({
-    method: 'POST',
-    url: '/auth/register',
-    payload: { email, password: 'Pw-secret-1' },
-  });
-  const t = token(reg);
+  // Project creation is agency-staff-only now; seed the creator as `developer` (agency staff). The
+  // register route is invite-only, so seed via the repo, then log in for a session cookie.
+  await registerAccount(db, email, 'Pw-secret-1', { platformRole: 'developer' });
+  const t = token(await app.inject({ method: 'POST', url: '/auth/login', payload: { email, password: 'Pw-secret-1' } }));
   const proj = await app.inject({
     method: 'POST',
     url: `/projects`,
@@ -53,9 +52,8 @@ describe('content API', () => {
     expect((await app.inject({ method: 'PUT', url: `${base}/content/page/home`, cookies: { sw_session: t }, payload: editablePage })).statusCode).toBe(200);
 
     // A second user granted access to this project as a member.
-    const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: 'client@acme.test', password: 'Pw-secret-1'} });
-    const memberT = token(reg);
-    const memberUserId = (reg.json() as { userId: string }).userId;
+    const { userId: memberUserId } = await registerAccount(db, 'client@acme.test', 'Pw-secret-1');
+    const memberT = token(await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'client@acme.test', password: 'Pw-secret-1' } }));
     await db.insert(projectMembers).values({ id: randomUUID(), userId: memberUserId, projectId, role: 'member', createdAt: new Date() });
 
     const edit = (mut: (p: typeof editablePage) => void) => {

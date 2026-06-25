@@ -36,7 +36,7 @@ describe('applyBranding', () => {
 
 describe('useBranding', () => {
   it('returns the defaults first, then fetches + applies the branding', async () => {
-    loginConfig.mockResolvedValue({ oidcProviders: [], allowSelfRegistration: false, branding: BRANDING });
+    loginConfig.mockResolvedValue({ oidcProviders: [], branding: BRANDING });
     const { result } = renderHook(() => useBranding());
     expect(result.current).toEqual(DEFAULT_BRANDING); // before the fetch resolves
     await waitFor(() => expect(result.current.name).toBe('Acme CMS'));

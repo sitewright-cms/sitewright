@@ -4,16 +4,20 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
+import type { Database } from '../src/db/client.js';
 import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
+import { registerAccount } from '../src/repo/accounts.js';
 
 let app: FastifyInstance;
+let db: Database;
 let publishRoot: string;
 const encryptionKey = randomBytes(32);
 
 beforeEach(async () => {
   publishRoot = await mkdtemp(join(tmpdir(), 'sw-mcphttp-'));
-  app = await createApp({ db: await makeTestDb(), publishRoot, encryptionKey });
+  db = await makeTestDb();
+  app = await createApp({ db, publishRoot, encryptionKey });
   await app.ready();
 });
 afterEach(async () => {
@@ -29,8 +33,11 @@ function sessionCookie(res: { cookies: Array<{ name: string; value: string }> })
 
 /** Register a user, create a project, and mint an owner bearer token for it. */
 async function setup(): Promise<{ projectId: string; token: string }> {
-  const reg = await app.inject({ method: 'POST', url: '/auth/register', payload: { email: `mcp-${Date.now()}@e2e.test`, password: 'Pw-secret-1' } });
-  const cookie = sessionCookie(reg);
+  // Project creation is agency-staff-only now; seed the creator as `developer` (agency staff). The
+  // register route is invite-only, so seed via the repo, then log in for a session cookie.
+  const email = `mcp-${Date.now()}@e2e.test`;
+  await registerAccount(db, email, 'Pw-secret-1', { platformRole: 'developer' });
+  const cookie = sessionCookie(await app.inject({ method: 'POST', url: '/auth/login', payload: { email, password: 'Pw-secret-1' } }));
   const proj = await app.inject({ method: 'POST', url: '/projects', cookies: { sw_session: cookie }, payload: { name: 'Site', slug: `mcp-${Date.now()}` } });
   const projectId = (proj.json() as { project: { id: string } }).project.id;
   const key = await app.inject({

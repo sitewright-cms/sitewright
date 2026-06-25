@@ -17,10 +17,11 @@ test('define a dataset, its schema, and add an entry', async ({ page }) => {
   await page.getByRole('button', { name: 'Create project' }).click();
 
   // Data rail (bottom-left panel): create a "Posts" dataset with a "title" field.
-  await page.getByRole('button', { name: 'Open Datasets' }).hover();
+  await page.getByRole('button', { name: 'Open Datasets' }).click();
+  await page.getByRole('button', { name: 'New dataset' }).click();
   await expect(page.getByLabel('Dataset name')).toBeVisible();
   await page.getByLabel('Dataset name').fill('Posts');
-  await page.getByRole('button', { name: 'Create dataset' }).click();
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
   // The schema editor is collapsed by default — expand it to add fields.
   await page.getByRole('button', { name: /schema/ }).click();
   await page.getByLabel('New field name').fill('title');
@@ -46,9 +47,10 @@ test('deleting a dataset requires confirmation (cancel keeps it, confirm removes
   await page.getByLabel('Project slug').fill(`datadel-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
 
-  await page.getByRole('button', { name: 'Open Datasets' }).hover();
+  await page.getByRole('button', { name: 'Open Datasets' }).click();
+  await page.getByRole('button', { name: 'New dataset' }).click();
   await page.getByLabel('Dataset name').fill('Temp');
-  await page.getByRole('button', { name: 'Create dataset' }).click();
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
   // Delete dataset now lives inside the schema editor, which is collapsed by default — expand it.
   await page.getByRole('button', { name: /schema/ }).click();
   await expect(page.getByRole('button', { name: 'Delete dataset' })).toBeVisible();
@@ -80,10 +82,11 @@ test('dataset image field uses the file picker (browse a URL into an entry)', as
   await page.getByRole('button', { name: 'Create project' }).click();
 
   // Open the Data rail. A "Gallery" dataset with a text "title" + an "image"-type "photo" field.
-  await page.getByRole('button', { name: 'Open Datasets' }).hover();
+  await page.getByRole('button', { name: 'Open Datasets' }).click();
+  await page.getByRole('button', { name: 'New dataset' }).click();
   await expect(page.getByLabel('Dataset name')).toBeVisible();
   await page.getByLabel('Dataset name').fill('Gallery');
-  await page.getByRole('button', { name: 'Create dataset' }).click();
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
   // The schema editor is collapsed by default — expand it to add fields.
   await page.getByRole('button', { name: /schema/ }).click();
   await page.getByLabel('New field name').fill('title');
@@ -122,9 +125,10 @@ test('entry editor modal: status toggle + duplicate', async ({ page }) => {
   await page.getByLabel('Project slug').fill(`dataedit-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
 
-  await page.getByRole('button', { name: 'Open Datasets' }).hover();
+  await page.getByRole('button', { name: 'Open Datasets' }).click();
+  await page.getByRole('button', { name: 'New dataset' }).click();
   await page.getByLabel('Dataset name').fill('Posts');
-  await page.getByRole('button', { name: 'Create dataset' }).click();
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
   // The schema editor is collapsed by default — expand it to add fields.
   await page.getByRole('button', { name: /schema/ }).click();
   await page.getByLabel('New field name').fill('title');
@@ -136,6 +140,8 @@ test('entry editor modal: status toggle + duplicate', async ({ page }) => {
   await page.getByLabel('title', { exact: true }).fill('Alpha');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Alpha' })).toBeVisible();
+  // The entry editor stays open after Save (baseline reset) — close it before clicking the row behind it.
+  await page.keyboard.press('Escape');
 
   // Open it → the modal has a Draft/Published switch; select Published, save, and the badge updates.
   await page.getByRole('button', { name: 'Alpha', exact: true }).click();
@@ -145,6 +151,8 @@ test('entry editor modal: status toggle + duplicate', async ({ page }) => {
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   const alphaRow = page.locator('li', { has: page.getByRole('button', { name: 'Alpha', exact: true }) });
   await expect(alphaRow.getByText('published', { exact: true })).toBeVisible();
+  // Close the (still-open) entry editor before clicking the row's Duplicate action behind it.
+  await page.keyboard.press('Escape');
 
   // Duplicate it → a second "Alpha" appears (reset to draft).
   await alphaRow.getByRole('button', { name: /Duplicate entry/ }).click();
@@ -164,9 +172,10 @@ test('duplicate a dataset, then edit an existing entry key', async ({ page }) =>
   await page.getByLabel('Project slug').fill(`datadup-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
 
-  await page.getByRole('button', { name: 'Open Datasets' }).hover();
+  await page.getByRole('button', { name: 'Open Datasets' }).click();
+  await page.getByRole('button', { name: 'New dataset' }).click();
   await page.getByLabel('Dataset name').fill('Posts');
-  await page.getByRole('button', { name: 'Create dataset' }).click();
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
   await page.getByRole('button', { name: /schema/ }).click();
   await page.getByLabel('New field name').fill('title');
   await page.getByRole('button', { name: 'Add field' }).click();
@@ -175,6 +184,8 @@ test('duplicate a dataset, then edit an existing entry key', async ({ page }) =>
   await page.getByLabel('title', { exact: true }).fill('Hello');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Hello' })).toBeVisible();
+  // The entry editor stays open after Save (baseline reset) — close it before clicking the side panel.
+  await page.keyboard.press('Escape');
 
   // Duplicate the dataset → "posts-copy" appears and is auto-selected, with the entry cloned.
   await page.getByRole('button', { name: 'Duplicate dataset Posts' }).click();
@@ -205,9 +216,10 @@ test('rename a dataset slug migrates its entries; bindings use the new slug', as
   await page.getByLabel('Project slug').fill(`datarename-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
 
-  await page.getByRole('button', { name: 'Open Datasets' }).hover();
+  await page.getByRole('button', { name: 'Open Datasets' }).click();
+  await page.getByRole('button', { name: 'New dataset' }).click();
   await page.getByLabel('Dataset name').fill('Posts');
-  await page.getByRole('button', { name: 'Create dataset' }).click();
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
   await page.getByRole('button', { name: /schema/ }).click();
   await page.getByLabel('New field name').fill('title');
   await page.getByRole('button', { name: 'Add field' }).click();
@@ -216,6 +228,8 @@ test('rename a dataset slug migrates its entries; bindings use the new slug', as
   await page.getByLabel('title', { exact: true }).fill('Hello');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Hello' })).toBeVisible();
+  // The entry editor stays open after Save (baseline reset) — close it before clicking the side panel.
+  await page.keyboard.press('Escape');
 
   // Rename the slug posts → articles (schema editor stays expanded after adding the field).
   await page.getByRole('button', { name: 'Rename dataset' }).click();
@@ -257,9 +271,10 @@ test('drag-reorder schema fields to change which field is the entry title', asyn
   await page.getByRole('button', { name: 'Create project' }).click();
 
   // Two text fields, added in the order [blurb, heading] → blurb is the first text field (the title).
-  await page.getByRole('button', { name: 'Open Datasets' }).hover();
+  await page.getByRole('button', { name: 'Open Datasets' }).click();
+  await page.getByRole('button', { name: 'New dataset' }).click();
   await page.getByLabel('Dataset name').fill('Posts');
-  await page.getByRole('button', { name: 'Create dataset' }).click();
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
   await page.getByRole('button', { name: /schema/ }).click();
   await page.getByLabel('New field name').fill('blurb');
   await page.getByRole('button', { name: 'Add field' }).click();
@@ -273,6 +288,8 @@ test('drag-reorder schema fields to change which field is the entry title', asyn
   await page.getByLabel('heading', { exact: true }).fill('Heading text');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Blurb text' })).toBeVisible();
+  // The entry editor stays open after Save (baseline reset) — close it before dragging the schema field.
+  await page.keyboard.press('Escape');
 
   // Drag `heading` above `blurb` so heading becomes the first text field, then save.
   const headingHandle = page

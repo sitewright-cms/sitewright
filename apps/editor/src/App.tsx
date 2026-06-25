@@ -320,7 +320,7 @@ function MainApp({
           isClient={isClient}
           isInstanceAdmin={isInstanceAdmin}
           onPublishDeploy={() => setPublishModalTab('publish')}
-          onImportWebsite={inProject ? () => setImportFor(inProject) : undefined}
+          onImportWebsite={inProject && !isClient ? () => setImportFor(inProject) : undefined}
           onSystemSettings={() => setSettingsView('system')}
           onClients={() => setSettingsView('clients')}
           onTeam={() => setSettingsView('team')}

@@ -1104,6 +1104,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     return userId;
   }
 
+
   // The access a project route requires. A `Capability` is enforced for bearer
   // (API-key) requests — the key must hold it — and ignored for interactive
   // sessions (which are gated by role as before). `'session-only'` forbids the
@@ -1848,10 +1849,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   );
 
   app.post('/projects', async (req, reply) => {
-    // Session-only (a non-interactive token must not create projects); check the bearer first for
-    // consistency with the other management gates. Any authenticated user may create a project and
-    // becomes its owner — restricting creation to platform staff is deferred to a later PR
-    // (production registration is invitation-only by default, so this is not openly exploitable).
+    // Session-only (a non-interactive token must not create projects). Any authenticated user may
+    // create a project and becomes its owner. (Restricting creation to platform staff — so invited
+    // clients can't self-provision — is handled together with the invite-only registration change.)
     if (bearerToken(req) !== undefined) {
       throw new ForbiddenError('this operation requires an interactive session');
     }

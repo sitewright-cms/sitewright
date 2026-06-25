@@ -146,6 +146,26 @@ describe('project member management', () => {
     await expect(listProjectMembers(db, memberCtx)).rejects.toThrow(ForbiddenError);
   });
 
+  it('exposes platformRole on members and refuses to remove an agency-staff (admin/developer) member', async () => {
+    const owner = await registerAccount(db, 'owner@acme.test', 'pw-secret');
+    const staff = await registerAccount(db, 'dev@acme.test', 'pw-secret', { platformRole: 'developer' });
+    const client = await registerAccount(db, 'client@acme.test', 'pw-secret');
+    const project = await new ProjectRepository(db).create({ name: 'Site', slug: 'site' });
+    await addProjectMember(db, owner.userId, project.id, 'owner');
+    await addProjectMember(db, staff.userId, project.id, 'member');
+    await addProjectMember(db, client.userId, project.id, 'member');
+    const ctx = ownerCtx(owner.userId, project.id);
+
+    // The member view carries platformRole so the Clients modal can hide agency staff.
+    const members = await listProjectMembers(db, ctx);
+    expect(members.find((m) => m.email === 'dev@acme.test')?.platformRole).toBe('developer');
+    expect(members.find((m) => m.email === 'client@acme.test')?.platformRole).toBeNull();
+
+    // An agency-staff account cannot be removed from a project; a plain client can.
+    await expect(removeProjectMember(db, ctx, staff.userId)).rejects.toThrow(ForbiddenError);
+    await removeProjectMember(db, ctx, client.userId);
+  });
+
   it('removes a member, but never an owner, yourself, or a missing user', async () => {
     const owner = await registerAccount(db, 'owner@acme.test', 'pw-secret');
     const coOwner = await registerAccount(db, 'co-owner@acme.test', 'pw-secret');

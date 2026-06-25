@@ -296,6 +296,9 @@ export interface OrgMember {
   userId: string;
   email: string;
   role: Role;
+  /** Platform role (admin/developer = agency staff) — null/absent for a plain client. Project-member
+   *  lists always include it; staff members are hidden in the Clients modal and can't be removed. */
+  platformRole?: PlatformRole | null;
   createdAt: string;
 }
 /** A pending invite (the management list never returns the token). */

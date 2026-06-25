@@ -272,16 +272,18 @@ const MODAL_CSS = [
   // position:fixed + inset:0 + margin:auto CENTERS the dialog in the VIEWPORT (mirrors the native
   // dialog:modal centering, but explicit so it can't be lost) — opening never scrolls the page and
   // it appears centered on the current scroll position. It also stays the containing block for the
-  // absolute (overhanging) close button. display:flex column makes the [data-sw-part="body"] scroll
-  // region fill the capped height so a tall modal scrolls its body; max-height caps the dialog to the
-  // viewport LESS 4rem — this MUST be normal-specificity (not :where) to beat the UA's own
-  // `dialog{max-height:…}`, and the 4rem margin guarantees the -1rem overhanging close button stays
-  // on-screen. box-sizing:border-box keeps the 1.5rem padding INSIDE that cap (so the math holds even
-  // if the ambient reset ever changes). (dvh on capable engines, vh fallback.) opacity/transform +
-  // @starting-style /
-  // allow-discrete animate across the display toggle.
-  `${mdlg()}{position:fixed;margin:auto;inset:0;box-sizing:border-box;display:flex;flex-direction:column;max-height:calc(100vh - 4rem);max-height:calc(100dvh - 4rem);opacity:0;transform:translateY(-24px);transition:opacity .22s ease,transform .22s ease,overlay .22s allow-discrete,display .22s allow-discrete}`,
-  `${mdlg('[open]')}{opacity:1;transform:translateY(0)}`,
+  // absolute (overhanging) close button. The CLOSED (base) state MUST be display:none so an inactive
+  // modal never lays out — otherwise this fixed, centered box (opacity:0 but present) would intercept
+  // clicks + scroll over the middle of the page even when shut. `[open]` flips it to display:flex column
+  // (the [data-sw-part="body"] scroll region then fills the capped height so a tall modal scrolls its
+  // body); the `display .22s allow-discrete` transition animates the none↔flex toggle so the exit
+  // animation still plays. max-height caps the dialog to the viewport LESS 4rem — this MUST be
+  // normal-specificity (not :where) to beat the UA's own `dialog{max-height:…}`, and the 4rem margin
+  // guarantees the -1rem overhanging close button stays on-screen. box-sizing:border-box keeps the
+  // 1.5rem padding INSIDE that cap (so the math holds even if the ambient reset ever changes). (dvh on
+  // capable engines, vh fallback.) opacity/transform + @starting-style / allow-discrete animate the open.
+  `${mdlg()}{position:fixed;margin:auto;inset:0;box-sizing:border-box;display:none;flex-direction:column;max-height:calc(100vh - 4rem);max-height:calc(100dvh - 4rem);opacity:0;transform:translateY(-24px);transition:opacity .22s ease,transform .22s ease,overlay .22s allow-discrete,display .22s allow-discrete}`,
+  `${mdlg('[open]')}{display:flex;opacity:1;transform:translateY(0)}`,
   `@starting-style{${mdlg('[open]')}{opacity:0;transform:translateY(-24px)}}`,
   // Backdrop: dims + BLURS, both fading in and out. The scrim derives from the CONTENT colour so it
   // INVERTS with the palette — a dark dim on a light site, a LIGHTER scrim on a dark site (where a

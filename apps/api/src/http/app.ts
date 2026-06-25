@@ -3944,6 +3944,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // baseline + every effect/shape/accent utility. STATIC platform CSS (brand-agnostic; the editor
   // injects the project's --sw-color-* into the preview iframe); computed once + cached.
   app.get('/authoring/button-preview-css', { config: rl(60) }, async () => ({ css: await buttonPreviewCss() }));
+  // The parallax / scroll-linked runtime (CSS + JS) for the Library "Parallax" builder's live preview.
+  // STATIC platform strings (no compile, no tenant data) — served verbatim for the sandboxed iframe.
+  app.get('/authoring/parallax-runtime', { config: rl(60) }, async () => ({ css: PARALLAX_CSS, js: PARALLAX_JS }));
 
   // The system WIDGET catalog — managed, data-backed drop-ins (hero-slider, …) the editor's Widgets
   // rail browses and inserts as {{> name}}. STATIC platform metadata (no tenant data): name/label/

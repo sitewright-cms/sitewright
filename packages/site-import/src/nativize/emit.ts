@@ -311,14 +311,10 @@ function emitNode(n: MergedNode, d: number, ctx: NativizeContext, logos: { image
   else if (n.snap === 'tabs') at.push('data-sw-component="tabs"');
   else if (n.snap === 'tab-panel') { at.push('data-sw-part="panel"'); if (n.tabTitle) at.push(`data-sw-title="${escAttr(n.tabTitle)}"`); }
   if (n.cls || clsPrefix) at.push(`class="${(clsPrefix + (n.cls ?? '')).trim()}"`);
-  // A BELOW-THE-FOLD background → hand the URL to the lazyload runtime via `data-bg` (keep size/position
-  // in the inline style); an above-the-fold one stays an eager inline `background-image`.
-  let style = n.style;
-  if (style && n.belowFold) {
-    const m = style.match(/background-image:\s*url\((['"]?)([^'")]+)\1\)\s*;?/i);
-    if (m) { at.push(`data-bg="${escAttr(m[2]!)}"`); style = style.replace(m[0], '').replace(/^;+|;+$/g, '').trim(); }
-  }
-  if (style) at.push(`style="${style}"`);
+  // Backgrounds stay EAGER inline styles: these tiles carry a dark overlay, so a deferred (data-bg) load
+  // flashes BLACK until it resolves — worse than the original. Below-the-fold lazy loading is applied to
+  // <img>/<iframe> instead (native loading="lazy", robust), via `belowFold` below.
+  if (n.style) at.push(`style="${n.style}"`);
   if (n.ariaHidden) at.push('aria-hidden="true"');
   if (n.marqueeDup) at.push('data-sw-marquee-dup');
   if (n.aos) { at.push(`data-aos="${n.aos.effect}"`); if (n.aos.delay) at.push(`data-aos-delay="${n.aos.delay}"`); if (n.aos.dur) at.push(`data-aos-duration="${n.aos.dur}"`); }

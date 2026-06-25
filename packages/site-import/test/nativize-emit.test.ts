@@ -343,12 +343,11 @@ describe('renderTree — fold-based lazy loading', () => {
     expect(r(node('img', {}, { src: '/tile.jpg', alt: 't', belowFold: true }))).toContain('loading="lazy"');
   });
 
-  it('backgrounds: eager inline style above the fold, data-bg (lazy) below', () => {
+  it('backgrounds stay EAGER inline styles regardless of fold (a deferred bg would flash black under a dark overlay)', () => {
     const above = r(node('div', { 'background-image': 'url(/a.jpg)' }, { belowFold: false, children: [node('p', {}, { text: 'x' })] }));
-    expect(above).toMatch(/style="[^"]*background-image:url\(\/a\.jpg\)/);
-    expect(above).not.toContain('data-bg');
     const below = r(node('div', { 'background-image': 'url(/b.jpg)' }, { belowFold: true, children: [node('p', {}, { text: 'y' })] }));
-    expect(below).toContain('data-bg="/b.jpg"');
-    expect(below).not.toMatch(/style="[^"]*background-image/); // url moved to data-bg; size/pos may remain
+    expect(above).toMatch(/style="[^"]*background-image:url\(\/a\.jpg\)/);
+    expect(below).toMatch(/style="[^"]*background-image:url\(\/b\.jpg\)/);
+    expect(below).not.toContain('data-bg'); // never deferred
   });
 });

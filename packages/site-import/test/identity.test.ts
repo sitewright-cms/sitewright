@@ -59,6 +59,28 @@ describe('extractIdentity', () => {
     expect(names).not.toContain('Example'); // a non-social link (icon 'globe') is excluded
   });
 
+  it('extracts a free-text address from a location-icon footer block (no JSON-LD/microdata)', () => {
+    const html = `<html><body><footer>
+      <div class="d-flex"><i class="fa fa-home"></i><span>Corner of A &amp; B Streets, Suiderhof</span></div>
+    </footer></body></html>`;
+    const id = extractIdentity(parse(html), { baseUrl: 'https://ex.com/', assetMap: new Map(), fallbackName: 'X' });
+    expect(id.address).toEqual({ street: 'Corner of A & B Streets', locality: 'Suiderhof' });
+  });
+
+  it('extracts a postal address from schema.org microdata', () => {
+    const html = `<html><body><div itemtype="http://schema.org/PostalAddress">
+      <span itemprop="streetAddress">1 Main St</span><span itemprop="addressLocality">Windhoek</span><span itemprop="postalCode">9000</span>
+    </div></body></html>`;
+    const id = extractIdentity(parse(html), { baseUrl: 'https://ex.com/', assetMap: new Map(), fallbackName: 'X' });
+    expect(id.address).toMatchObject({ street: '1 Main St', locality: 'Windhoek', postalCode: '9000' });
+  });
+
+  it('does NOT mistake a nav "Home" link (fa-home) for an address', () => {
+    const html = `<html><body><nav><a href="/"><i class="fa fa-home"></i> Home</a></nav></body></html>`;
+    const id = extractIdentity(parse(html), { baseUrl: 'https://ex.com/', assetMap: new Map(), fallbackName: 'X' });
+    expect(id.address).toBeUndefined();
+  });
+
   it('derives the name from <title> then host when og:site_name is absent', () => {
     const fromTitle = extractIdentity(parse('<html><head><title>Beta Co — Welcome</title></head><body></body></html>'), {
       baseUrl: 'https://beta.example/',

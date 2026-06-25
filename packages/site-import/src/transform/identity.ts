@@ -3,7 +3,7 @@
 // self-hosted ref (from the asset map) and fall back to an absolute https hotlink.
 import { CorporateIdentitySchema, detectSocial, type CorporateIdentity } from '@sitewright/schema';
 import { allByName, type Document, type Element } from '../dom.js';
-import { textContent } from 'domutils';
+import { textContent, findAll } from 'domutils';
 import { assetKey, resolveUrl } from '../url-util.js';
 
 export interface IdentityCtx {
@@ -153,6 +153,53 @@ function scanContacts(doc: Document): { phone?: string; email?: string; social: 
   return { phone, email, social, mapUrl };
 }
 
+const ADDR_ICON = /\b(?:fa-)?(?:map-marker(?:-alt)?|map-pin|location(?:-dot|-arrow)?|geo-alt|geo)\b|\bfa-home\b|\bbi-geo(?:-alt)?(?:-fill)?\b/i;
+const STREET_HINT = /\b(?:street|str\.?|st\.|stra(?:ss|ß)e|avenue|ave\.?|road|rd\.?|lane|ln\.?|drive|dr\.?|boulevard|blvd\.?|suite|floor|p\.?\s?o\.?\s?box|postbus|corner|rue|calle|plaza|highway|hwy)\b/i;
+
+/** Does `t` read like a postal-address line (not a phone/url/single word)? Conservative, to avoid junk. */
+function isAddressLike(t: string): boolean {
+  if (t.length < 8 || t.length > 200 || /@/.test(t) || /^(?:https?:|tel:|mailto:|www\.)/i.test(t)) return false;
+  return /,/.test(t) || STREET_HINT.test(t) || t.split(/\s+/).length >= 4;
+}
+
+/** Split a free-text address into street (+ a short trailing ", City" as locality when present). */
+function parseAddress(text: string): LdAddress {
+  const parts = text.split(',').map((s) => s.trim()).filter(Boolean);
+  if (parts.length >= 2) {
+    const last = parts[parts.length - 1]!;
+    if (last.split(/\s+/).length <= 3 && !STREET_HINT.test(last)) {
+      return { street: parts.slice(0, -1).join(', ').slice(0, 300), locality: last.slice(0, 160) };
+    }
+  }
+  return { street: text.slice(0, 300) };
+}
+
+/**
+ * A postal address from the home DOM (what JSON-LD usually omits): schema.org microdata → an `<address>`
+ * element → the text next to a location/home/map icon (the common footer pattern, e.g. burmeister's
+ * `<i class="fa fa-home"><span>Corner of … Suiderhof</span>`). Conservative — `isAddressLike` rejects nav
+ * "Home" links and the like so junk never lands in the CI.
+ */
+function extractAddress(doc: Document): LdAddress | undefined {
+  const els = findAll(() => true, doc.children) as Element[];
+  const prop = (p: string): string | undefined => {
+    const el = els.find((e) => (e.attribs.itemprop ?? '') === p);
+    return el ? (textContent([el]).replace(/\s+/g, ' ').trim() || undefined) : undefined;
+  };
+  const md: LdAddress = { street: prop('streetAddress'), locality: prop('addressLocality'), region: prop('addressRegion'), country: prop('addressCountry'), postalCode: prop('postalCode') };
+  if (Object.values(md).some((x) => x !== undefined)) return md;
+  const addrEl = allByName(doc.children, 'address')[0];
+  if (addrEl) { const t = textContent([addrEl]).replace(/\s+/g, ' ').trim(); if (isAddressLike(t)) return parseAddress(t); }
+  for (const el of els) {
+    if (!ADDR_ICON.test(el.attribs.class ?? '')) continue;
+    const parent = el.parent as Element | null;
+    if (!parent || !parent.attribs) continue;
+    const t = textContent([parent]).replace(/\s+/g, ' ').trim();
+    if (isAddressLike(t)) return parseAddress(t);
+  }
+  return undefined;
+}
+
 function flattenLd(data: unknown): Record<string, unknown>[] {
   if (Array.isArray(data)) return data.flatMap(flattenLd);
   if (data && typeof data === 'object') {
@@ -187,6 +234,7 @@ export function extractIdentity(homeDoc: Document, ctx: IdentityCtx): CorporateI
   const social = ldSocial.length > 0 ? ldSocial : dom.social;
   const email = isEmail(ld.email) ? ld.email : isEmail(dom.email) ? dom.email : undefined;
   const telephone = (ld.telephone ?? dom.phone)?.slice(0, 60);
+  const address = ld.address ?? extractAddress(homeDoc); // JSON-LD wins; else scan the DOM (microdata/<address>/icon)
 
   const input: Record<string, unknown> = {
     name: name.slice(0, 200),
@@ -197,7 +245,7 @@ export function extractIdentity(homeDoc: Document, ctx: IdentityCtx): CorporateI
     image: assetRef(meta.get('og:image'), ctx),
     email,
     telephone,
-    address: ld.address, // postal address (JSON-LD PostalAddress) — schema AddressSchema
+    address, // postal address: JSON-LD PostalAddress, else scanned from the DOM — schema AddressSchema
     geo: ld.geo,
     mapUrl: dom.mapUrl,
     social: social.length > 0 ? social : undefined,

@@ -59,11 +59,12 @@ export const CART_CSS = [
   '[data-sw-cart] [data-sw-part="toggle"]{position:fixed !important;overflow:visible !important;right:0;top:50%;translate:0 -50%;z-index:9997;display:flex;align-items:center;padding:1.1rem .55rem;border:0;border-radius:.9rem 0 0 .9rem;background:linear-gradient(155deg,var(--sw-color-primary,#0a7a5a),color-mix(in oklab,var(--sw-color-primary,#0a7a5a) 60%,var(--sw-color-secondary,#0ea5e9)));color:var(--sw-color-primary-content,#fff);font:inherit;font-weight:700;font-size:.74rem;text-transform:uppercase;letter-spacing:.07em;cursor:pointer;box-shadow:-4px 6px 22px rgba(0,0,0,.28)}',
   '[data-sw-cart] [data-sw-part="toggle"] .sw-cart-tab{display:flex;align-items:center;gap:.5rem;writing-mode:vertical-rl}',
   '[data-sw-cart] [data-sw-part="toggle"] svg{width:1.3rem;height:1.3rem}',
-  // INDIVIDUAL transform props (translate/scale) so the hover slide + the add-bump compose instead of
-  // clobbering each other (a `transform:` keyframe would override the hover transform mid-animation).
-  '@media (prefers-reduced-motion:no-preference){[data-sw-cart] [data-sw-part="toggle"]{transition:translate .2s cubic-bezier(.16,1,.3,1),box-shadow .2s ease}}',
-  // hover: the tab slides out from the edge + the shadow deepens (translate keeps the -50% centring).
-  '[data-sw-cart] [data-sw-part="toggle"]:hover{translate:-4px -50%;box-shadow:-9px 9px 30px rgba(0,0,0,.36)}',
+  // The bump animates `scale` (INDIVIDUAL prop) so it composes with the tab's `translate` centring
+  // instead of a `transform:` keyframe clobbering it.
+  '@media (prefers-reduced-motion:no-preference){[data-sw-cart] [data-sw-part="toggle"]{transition:padding-right .2s cubic-bezier(.16,1,.3,1),box-shadow .2s ease}}',
+  // hover: GROW the tab inward by widening its edge-side padding (NOT translateX — that would leave a
+  // gap at the right edge). The tab stays flush to the edge; its left side extends toward the page.
+  '[data-sw-cart] [data-sw-part="toggle"]:hover{padding-right:1.15rem;box-shadow:-9px 9px 30px rgba(0,0,0,.36)}',
   '[data-sw-cart] [data-sw-part="count"]{position:absolute;top:-.4rem;left:-.4rem;min-width:1.3rem;height:1.3rem;padding:0 .3rem;border-radius:9999px;background:#b00020;color:#fff;font-size:.72rem;font-weight:700;line-height:1.3rem;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.3)}',
   '[data-sw-cart] [data-sw-part="count"][hidden]{display:none}',
   // Right-side drawer (native <dialog> → focus trap + Esc + ::backdrop). It SLIDES in/out (transform)

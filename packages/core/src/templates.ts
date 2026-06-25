@@ -109,7 +109,7 @@ export const GLOBAL_TEMPLATES: readonly Template[] = [
         <p class="text-sm leading-relaxed text-base-content/60">{{description}}</p>
         <div class="mt-2 flex items-center justify-between gap-3">
           <span class="text-xl font-bold tracking-tight">{{sw-translate "cart_currency_symbol" default="$"}}{{price}}</span>
-          {{sw-add-to-cart sku=sku name=name price=price image=image class="btn btn-primary btn-sm rounded-full px-4"}}
+          {{sw-add-to-cart sku=sku name=name price=price image=image class="btn btn-sm"}}
         </div>
       </div>
     </div>

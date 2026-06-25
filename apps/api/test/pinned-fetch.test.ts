@@ -38,3 +38,21 @@ describe('pinnedFetch SSRF guard', () => {
     expect(await pinnedFetch('https://nope.invalid/', { resolve })).toBeNull();
   });
 });
+
+describe('pinnedFetch — redirect following (re-pinned per hop)', () => {
+  const ok = { status: 200, contentType: 'text/html', bytes: new Uint8Array() };
+  it('follows up to 5 hops to a 2xx', async () => {
+    const map: Record<string, unknown> = { 'https://x/a': { redirect: 'https://x/b' }, 'https://x/b': { redirect: 'https://x/c' }, 'https://x/c': ok };
+    const r = await pinnedFetch('https://x/a', { _fetchOnce: async (u) => map[u] as never });
+    expect(r?.status).toBe(200);
+  });
+  it('returns null on a redirect loop', async () => {
+    const r = await pinnedFetch('https://x/loop', { _fetchOnce: async () => ({ redirect: 'https://x/loop' }) });
+    expect(r).toBeNull();
+  });
+  it('returns null after too many redirects', async () => {
+    let n = 0;
+    const r = await pinnedFetch('https://x/0', { _fetchOnce: async () => ({ redirect: `https://x/${++n}` }) });
+    expect(r).toBeNull();
+  });
+})

@@ -23,6 +23,18 @@ export function WALK(ROOT_SEL) {
     'box-shadow': 'none', 'opacity': '1', 'transform': 'none', 'overflow': 'visible', 'object-fit': 'fill', 'text-decoration-color': '',
   };
   const skip = new Set(['script', 'style', 'noscript', 'br', 'svg', 'path', 'use', 'link', 'meta']); // keep <i> — FontAwesome icons
+  // Normalize a captured colour to sRGB rgb()/rgba() via a canvas — Chromium's getComputedStyle returns
+  // modern color-spaces verbatim (oklab/oklch/lab/lch/color()), and those emit as `text-[oklab(L a b / x)]`
+  // arbitrary classes whose SPACES break Tailwind → no CSS → the colour silently falls back to black
+  // (faint/invisible text on dark or coloured backgrounds — e.g. the hatzlacha Tailwind-v4 footer/CTA).
+  const CCX = (() => { try { return document.createElement('canvas').getContext('2d'); } catch { return null; } })();
+  const COLOR_KEYS = ['color', 'background-color', 'border-top-color', 'border-bottom-color', 'border-left-color', 'border-right-color', 'text-decoration-color'];
+  const normColor = (v) => {
+    if (!v || !CCX) return v;
+    const t = v.trim();
+    if (t === '' || t === 'transparent' || t === 'none' || t === 'currentcolor' || /^(?:rgb|hsl|#)/i.test(t)) return v;
+    try { CCX.fillStyle = '#000000'; CCX.fillStyle = t; return CCX.fillStyle || v; } catch { return v; }
+  };
   function walk(el, pcs) {
     const raw = el.tagName.toLowerCase(); if (skip.has(raw)) return null;
     // The platform OWNS the semantic landmarks (it wraps the page body + each chrome slot in
@@ -42,6 +54,7 @@ export function WALK(ROOT_SEL) {
     const s = {};
     for (const k of INH) { const v = cs.getPropertyValue(k); if (v && (own || !pcs || v !== pcs.getPropertyValue(k))) s[k] = v; }
     for (const k in BOX) { const v = cs.getPropertyValue(k); if (v && v !== BOX[k]) s[k] = v; }
+    for (const k of COLOR_KEYS) { if (s[k]) s[k] = normColor(s[k]); } // oklab/oklch/lab/… → sRGB rgb() (Tailwind-safe)
     // Drop a data:-URI background — it's a lazy-load SPINNER / tiny decorative pattern, never real content;
     // emitting it bloats the source and (for a not-yet-loaded lazy element) paints a stray placeholder band.
     if (s['background-image'] && /url\(\s*["']?data:/i.test(s['background-image'])) delete s['background-image'];

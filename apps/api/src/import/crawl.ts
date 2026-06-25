@@ -8,7 +8,8 @@ import { looksClientRendered, normalizePageUrl, sameOrigin, type CapturedAsset, 
 
 /** A fetched resource the crawler received (already SSRF-checked + size-bounded by the fetcher). */
 export interface FetchedResource {
-  /** The final URL (the fetcher must reject redirects, so this equals the request URL). */
+  /** The REQUESTED URL (the fetcher follows redirects internally + re-pins each hop; links on the page are
+   *  resolved against this — fine for the common trailing-slash redirect). */
   url: string;
   status: number;
   contentType: string;

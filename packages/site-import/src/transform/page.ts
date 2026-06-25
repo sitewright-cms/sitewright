@@ -8,6 +8,7 @@ import {
   elements,
   eachTextLike,
   getBody,
+  isTag,
   neutralizeMustaches,
   prettySerialize,
   type AnyNode,
@@ -23,6 +24,14 @@ import type { ImportDiagnostic, ImportLimits } from '../types.js';
 const LANDMARK_TAGS = new Set(['nav', 'main', 'footer', 'aside']);
 /** Elements removed outright from a page source (no execution / no foreign embeds we can't self-host). */
 const REMOVE_TAGS = new Set(['script', 'noscript', 'template', 'style', 'object', 'embed', 'applet', 'base']);
+
+/** Foreign "back to top" control idioms (id/class) — the platform injects its OWN back-to-top, so a
+ *  duplicate imported one (and any wrapper it leaves empty) is stripped. */
+const BACK_TO_TOP_RE = /back-?to-?top|backtotop|scroll-?to-?top|scroll-?top|go-?to-?top|gototop|scroll-?up|\btotop\b|\bbtt\b/i;
+const isBackToTop = (el: Element): boolean =>
+  (el.name === 'a' || el.name === 'button') && BACK_TO_TOP_RE.test(`${el.attribs.id ?? ''} ${el.attribs.class ?? ''}`);
+/** A wrapper with no element children and no non-whitespace text (e.g. once its only child was removed). */
+const isEmptyWrapper = (el: Element): boolean => el.children.filter(isTag).length === 0 && textContent([el]).trim() === '';
 
 export interface TransformCtx {
   /** This page's own source URL — the base for resolving its relative references. */
@@ -75,6 +84,20 @@ export function sanitizeForSource(nodes: AnyNode[], ctx: TransformCtx, diags: Im
       if (el.name === 'script') diags.push({ code: 'script-dropped', message: 'inline/external <script> removed', page: ctx.pageUrl });
       else if (el.name === 'style') diags.push({ code: 'style-removed', message: '<style> block removed (CSS hoisted separately)', page: ctx.pageUrl });
       removeElement(el);
+    }
+  }
+  // Strip foreign BACK-TO-TOP buttons (the platform injects its own); also drop any ancestor wrapper left
+  // empty once the button is gone (a section/div that ONLY held the back-to-top → would nativize to a
+  // stray empty band). Snapshot, since removeElement mutates the tree.
+  for (const el of elements(nodes)) {
+    if (!isBackToTop(el)) continue;
+    let parent = el.parent;
+    removeElement(el);
+    diags.push({ code: 'back-to-top-removed', message: 'foreign back-to-top button removed (the platform provides one)', page: ctx.pageUrl });
+    while (parent && isTag(parent) && ['div', 'section', 'nav', 'aside', 'span'].includes(parent.name) && isEmptyWrapper(parent)) {
+      const grandparent = parent.parent;
+      removeElement(parent);
+      parent = grandparent;
     }
   }
   // Then rewrite the survivors.

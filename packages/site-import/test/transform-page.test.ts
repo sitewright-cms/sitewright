@@ -181,4 +181,21 @@ describe('transformBody', () => {
     expect(source).not.toContain('srcset');
     expect(source).not.toContain('/big.png');
   });
+
+  it('strips a foreign back-to-top button + the wrapper it leaves empty (platform injects its own)', () => {
+    const { source, diagnostics } = run('<p>real content</p><div class="floating"><button id="backtotop" class="scroll-top"><i class="fa fa-chevron-up"></i></button></div>');
+    expect(source).toContain('real content');
+    expect(source).not.toContain('backtotop');
+    expect(source).not.toContain('scroll-top');
+    expect(source).not.toContain('chevron-up');
+    expect(source).not.toContain('floating'); // the empty wrapper div is removed too
+    expect(diagnostics.some((d) => d.code === 'back-to-top-removed')).toBe(true);
+  });
+
+  it('keeps a wrapper that has OTHER content besides the back-to-top', () => {
+    const { source } = run('<div class="bar"><span>Keep me</span><a class="back-to-top" href="#top">Top</a></div>');
+    expect(source).not.toContain('back-to-top');
+    expect(source).toContain('Keep me'); // sibling content preserved
+    expect(source).toContain('class="bar"'); // wrapper kept (not empty)
+  });
 });

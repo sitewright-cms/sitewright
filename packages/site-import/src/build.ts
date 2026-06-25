@@ -77,8 +77,11 @@ function buildWebsite(chrome: ChromeResult, head?: string, scripts?: string): We
   if (chrome.sidebarRight) input.sidebarRight = chrome.sidebarRight;
   if (head) input.head = head; // the <link> to the hosted imported stylesheet (tiny; well under HTML_MAX)
   if (scripts) input.scripts = scripts; // <script src> links to the self-hosted imported JS (after the body)
-  if (chrome.preloaderEffect) input.effects = { preloaderEffect: chrome.preloaderEffect };
-  if (Object.keys(input).length === 0) return undefined;
+  // Enable the platform BACK-TO-TOP explicitly (it's the replacement for the foreign back-to-top buttons
+  // stripped from the page bodies; default-on, but set so it's clearly enabled in the editor's settings).
+  const effects: Record<string, unknown> = { backToTop: true };
+  if (chrome.preloaderEffect) effects.preloaderEffect = chrome.preloaderEffect;
+  input.effects = effects;
   return WebsiteSettingsSchema.parse(input);
 }
 

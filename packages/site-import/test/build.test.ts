@@ -61,6 +61,7 @@ describe('buildImportBundle (integration)', () => {
     expect(bundle.project.website?.topNav).toContain('/media/test/');
     expect(bundle.project.website?.footer).toContain('© Acme');
     expect(bundle.project.website?.topNav).not.toContain('<script');
+    expect(bundle.project.website?.effects?.backToTop).toBe(true); // platform back-to-top enabled
     expect(home.source).toContain('Welcome');
     expect(home.source).not.toContain('© Acme');
 

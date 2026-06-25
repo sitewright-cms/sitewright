@@ -99,6 +99,7 @@ export type DiagnosticCode =
   | 'script-dropped'
   | 'style-removed'
   | 'form-inerted'
+  | 'back-to-top-removed'
   | 'image-host-failed'
   | 'image-budget-exceeded'
   | 'unsafe-url-dropped'

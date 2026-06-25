@@ -23,10 +23,10 @@ interface ProjectViewProps {
   tab: Tab;
 }
 
-// The owner's top-level tabs. Settings is lifted into the two leading tabs (Corporate Identity /
-// Website Settings); the submissions Inbox is folded into Forms. Administration (Clients / Team /
-// Access / System Settings) now lives in the header gear menu (opened as modals), not a tab. The
-// constrained client role sees none of these — just the pages list + restricted editor.
+// The project's top-level tabs (every project member, incl. invited clients, gets them). Settings is
+// lifted into the two leading tabs (Corporate Identity / Website Settings); the submissions Inbox is
+// folded into Forms. Administration (Clients / Team / Access / System Settings) lives in the header
+// gear menu (opened as modals), not a tab — and Clients/Team stay owner/agency-only there.
 export const MANAGE_TABS = [
   'corporate-identity',
   'website-settings',
@@ -132,8 +132,6 @@ const ROW_ACTION =
 
 export function ProjectView({ project, tab }: ProjectViewProps) {
   const { confirm, dialog } = useDialogs();
-  // An owner gets the full studio; a `member` is a client with a content-first default surface.
-  const isClient = project.role === 'member';
   const [pages, setPages] = useState<Page[]>([]);
   const [editing, setEditing] = useState<Page | null>(null);
   const [slug, setSlug] = useState('');
@@ -591,14 +589,12 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
     {/* `inert` while the editor modal is open: everything behind the blurred backdrop is
         unfocusable/unclickable (belt-and-suspenders beyond the modal's focus trap). The
         empty-string spread is the React 18 idiom for this boolean HTML attribute. */}
-    {/* Owners get the left Library rail (a fixed 44px strip); pad the content so it
-        never sits under the collapsed rail. */}
-    <main {...(editing ? ({ inert: '' } as object) : {})} className={`mx-auto max-w-5xl px-6 py-8${isClient ? '' : ' pl-14'}`}>
+    {/* The left Library rail (a fixed 44px strip); pad the content so it never sits under the
+        collapsed rail. Every project member (incl. invited clients) gets the full studio. */}
+    <main {...(editing ? ({ inert: '' } as object) : {})} className="mx-auto max-w-5xl px-6 py-8 pl-14">
       {dialog}
       {/* The project name, tablist, and Publish control now live in the App header bar. */}
-      {isClient ? (
-        <ClientPagesList pages={pages} onOpen={setEditing} />
-      ) : tab === 'corporate-identity' || tab === 'website-settings' ? (
+      {tab === 'corporate-identity' || tab === 'website-settings' ? (
         // ONE SettingsView instance across both settings tabs (section is a prop, not a remount),
         // so switching Corporate Identity ↔ Website Settings preserves the in-progress form.
         <SettingsView
@@ -1069,31 +1065,3 @@ export function ProjectView({ project, tab }: ProjectViewProps) {
   );
 }
 
-interface ClientPagesListProps {
-  pages: Page[];
-  onOpen: (page: Page) => void;
-}
-
-/** The client's read-only list of pages — pick one to open the restricted editor. */
-function ClientPagesList({ pages, onOpen }: ClientPagesListProps) {
-  const byId = pagesById(pages);
-  return (
-    <>
-      <p className="mb-3 text-sm text-slate-500">Choose a page to edit its content.</p>
-      <ul className="flex flex-col gap-2">
-        {pages.map((p, i) => (
-          <li key={p.id} className="sw-stack-in" style={{ animationDelay: `${Math.min(i, 24) * 35}ms` }}>
-            <button
-              className={`w-full ${glassCard} px-4 py-3 text-left transition hover:bg-white/80`}
-              onClick={() => onOpen(p)}
-            >
-              <span className="font-medium">{p.title}</span>{' '}
-              <span className="text-sm text-slate-400">{pagePath(p, byId)}</span>
-            </button>
-          </li>
-        ))}
-        {pages.length === 0 && <li className="text-sm text-slate-400">No pages to edit yet.</li>}
-      </ul>
-    </>
-  );
-}

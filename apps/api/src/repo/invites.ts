@@ -132,21 +132,16 @@ export async function revokeInvite(db: Database, inviteId: string): Promise<void
 }
 
 export interface InvitePeek {
-  /** The invited email, MASKED — enough for the recipient to recognize, not to disclose. */
+  /** The invited email, in FULL. Possessing the (unguessable) token proves the holder was sent this
+   *  invite, so the address is disclosed to pre-fill the set-password / sign-in form. */
   email: string;
   role: InviteRole;
   projectName: string | null;
   expired: boolean;
   accepted: boolean;
-}
-
-function maskEmail(email: string): string {
-  const at = email.indexOf('@');
-  if (at <= 0) return '***';
-  const local = email.slice(0, at);
-  const domain = email.slice(at + 1);
-  const head = local.slice(0, 1);
-  return `${head}${'*'.repeat(Math.max(2, local.length - 1))}@${domain}`;
+  /** Whether that email already has an account → the landing offers SIGN-IN instead of set-password
+   *  (a client may already hold other projects). Not an enumeration oracle: it needs the token. */
+  hasAccount: boolean;
 }
 
 /** Context of an invite token for the accept screen (the holder already has the token). Null if unknown. */
@@ -163,12 +158,15 @@ export async function peekInvite(db: Database, token: string, now: Date = new Da
     .leftJoin(projects, eq(invites.projectId, projects.id))
     .where(eq(invites.tokenHash, hashInviteToken(token)));
   if (!row) return null;
+  // Does the invited email already have an account? (users.email is stored trimmed + lowercased.)
+  const [account] = await db.select({ id: users.id }).from(users).where(eq(users.email, row.email.trim().toLowerCase()));
   return {
-    email: maskEmail(row.email),
+    email: row.email,
     role: row.role,
     projectName: row.projectName ?? null,
     expired: row.expiresAt.getTime() < now.getTime(),
     accepted: row.acceptedAt != null,
+    hasAccount: !!account,
   };
 }
 

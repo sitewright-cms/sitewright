@@ -126,6 +126,10 @@ export async function resolveOidcUser(
     // The durable (issuer, subject) link IS the identity here — `email_verified` is required only at
     // FIRST federation (below); subsequent logins authenticate by the established link, not the email.
     await oidcRepo.linkIdentity({ userId: linked, issuer: claims.issuer, subject: claims.subject, email: claims.email });
+    // Materialize any invite pending for THIS account's (verified) email — lets an invited client who
+    // already signs in via SSO accept by simply continuing with the provider from the invite landing.
+    const linkedEmail = await getUserEmail(db, linked);
+    if (linkedEmail) await acceptPendingInvitesForEmail(db, linked, linkedEmail);
     return { ok: true, userId: linked };
   }
   // First-time federation requires a verified email (prevents linking to an unowned address).
@@ -134,6 +138,8 @@ export async function resolveOidcUser(
   const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, email));
   if (existing) {
     await oidcRepo.linkIdentity({ userId: existing.id, issuer: claims.issuer, subject: claims.subject, email });
+    // Verified email matches an existing account → accept any invite pending for it (the OIDC invite path).
+    await acceptPendingInvitesForEmail(db, existing.id, email);
     return { ok: true, userId: existing.id };
   }
   // No account yet: provision one only if an invite is pending OR the provider auto-registers.

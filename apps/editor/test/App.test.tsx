@@ -102,7 +102,7 @@ describe('App shell', () => {
     expect(screen.getByText('ASSETS PANEL')).toBeInTheDocument();
   });
 
-  it('a client (member) project gets no side panels and no tablist', async () => {
+  it('a client (member) gets the FULL studio (panels + tablist), minus owner-only client management', async () => {
     me.mockResolvedValue({
       userId: 'u',
       isInstanceAdmin: false,
@@ -111,11 +111,17 @@ describe('App shell', () => {
     render(<App />);
     fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: /Client Co/ }));
     await screen.findByText(/PROJECT Client Co/);
-    expect(screen.queryByText('LIBRARY PANEL')).toBeNull();
-    expect(screen.queryByText(/ASSETS PANEL/)).toBeNull();
-    expect(screen.queryByText('SNIPPETS PANEL')).toBeNull();
-    expect(screen.queryByText('WIDGETS PANEL')).toBeNull();
-    expect(screen.queryByRole('tab', { name: 'Pages' })).toBeNull();
+    // Invited clients now get the full editor: the side panels + the section tablist are present.
+    expect(screen.getByText('LIBRARY PANEL')).toBeInTheDocument();
+    expect(screen.getByText(/ASSETS PANEL/)).toBeInTheDocument();
+    expect(screen.getByText('SNIPPETS PANEL')).toBeInTheDocument();
+    expect(screen.getByText('WIDGETS PANEL')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Pages' })).toBeInTheDocument();
+    // The gear menu offers editing/publish, but NOT owner-only client management (invite/manage users).
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    const menu = await screen.findByRole('menu', { name: 'Settings' });
+    expect(within(menu).getByRole('menuitem', { name: 'Publish & Deploy Options' })).toBeInTheDocument();
+    expect(within(menu).queryByRole('menuitem', { name: 'Clients' })).toBeNull();
   });
 
   it('the header project name re-opens the selector', async () => {

@@ -60,10 +60,11 @@ describe('ProjectView role gating (tab is supplied by the App header)', () => {
     expect(screen.queryByLabelText('Page path')).toBeNull();
   });
 
-  it('a member sees the restricted surface: no add-page form, just their pages', async () => {
+  it('a member (invited client) now gets the FULL studio — page list + add-page', async () => {
     render(<ProjectView project={memberProject} tab="pages" />);
-    expect(await screen.findByRole('button', { name: /Home/ })).toBeInTheDocument();
-    expect(screen.queryByLabelText('Page path')).toBeNull();
+    expect(await screen.findByRole('button', { name: 'Home /' })).toBeInTheDocument();
+    // Full editing: members get the same add-page affordance as owners (no more content-only list).
+    expect(screen.getByRole('button', { name: '+ New page' })).toBeInTheDocument();
   });
   // The Library + Assets side panels are now App-level (gated on the project role there); see
   // App.test.tsx for their owner-only presence. ProjectView no longer renders them.
@@ -76,9 +77,9 @@ describe('ProjectView role gating (tab is supplied by the App header)', () => {
     expect(screen.getByRole('button', { name: '+ New page' })).toBeInTheDocument();
   });
 
-  it('opens a member on a page in CONTENT mode (the same default)', async () => {
+  it('opens a member on a page in CONTENT mode (the same default; the in-modal toggle reaches Code)', async () => {
     render(<ProjectView project={memberProject} tab="pages" />);
-    fireEvent.click(await screen.findByRole('button', { name: /Home/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Home /' }));
     expect(screen.getByText('PAGE EDITOR mode=content')).toBeInTheDocument();
   });
 

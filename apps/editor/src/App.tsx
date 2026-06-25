@@ -281,9 +281,9 @@ function MainApp({
         )}
       </div>
 
-      {/* Center: the project tablist (owners only) — mx-auto centers it between the left/right groups. */}
+      {/* Center: the project tablist (any project member — clients get the full studio too) — mx-auto centers it. */}
       <div className="mx-auto flex justify-center">
-        {inProject && !isClient && (
+        {inProject && (
           <div role="tablist" aria-label="Project sections" className="flex flex-wrap justify-center gap-1 rounded-2xl border border-white/50 bg-white/50 p-1 shadow-sm">
             {MANAGE_TABS.map((t) => (
               <button
@@ -303,9 +303,9 @@ function MainApp({
         )}
       </div>
 
-      {/* Right: the publish control (owners) + the unified settings gear menu, far right. */}
+      {/* Right: the publish control (any project member) + the unified settings gear menu, far right. */}
       <nav className="flex items-center justify-end gap-3">
-        {inProject && !isClient && (
+        {inProject && (
           <PublishBar
             project={inProject}
             onOpenDeploy={() => setPublishModalTab('deploy')}
@@ -320,7 +320,7 @@ function MainApp({
           isClient={isClient}
           isInstanceAdmin={isInstanceAdmin}
           onPublishDeploy={() => setPublishModalTab('publish')}
-          onImportWebsite={inProject && !isClient ? () => setImportFor(inProject) : undefined}
+          onImportWebsite={inProject ? () => setImportFor(inProject) : undefined}
           onSystemSettings={() => setSettingsView('system')}
           onClients={() => setSettingsView('clients')}
           onTeam={() => setSettingsView('team')}
@@ -397,7 +397,7 @@ function MainApp({
           }}
         />
       )}
-      {inProject && !isClient && publishModalTab && (
+      {inProject && publishModalTab && (
         <PublishDeployModal
           project={inProject}
           initialTab={publishModalTab}
@@ -423,11 +423,11 @@ function MainApp({
           onPasswordChanged={() => void refresh()}
         />
       )}
-      {/* Always-present edge side-panels (owners): System Library (left), File Manager (right), and
-          the bottom rails — Datasets (left), the paired Snippets + Widgets (center), Templates
-          (right). They render above modals so their tabs stay reachable; each opens on hover/click
-          of its own edge tab. */}
-      {inProject && !isClient && (
+      {/* Always-present edge side-panels (any project member): System Library (left), File Manager
+          (right), and the bottom rails — Datasets (left), the paired Snippets + Widgets (center),
+          Templates (right). They render above modals so their tabs stay reachable; each opens on
+          hover/click of its own edge tab. */}
+      {inProject && (
         <>
           <LibraryPanel />
           <AssetsPanel key={inProject.id} projectId={inProject.id} />

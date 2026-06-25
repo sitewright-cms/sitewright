@@ -162,7 +162,7 @@ describe('acceptInvite', () => {
 });
 
 describe('peekInvite', () => {
-  it('returns the invite context (with a MASKED email) and null for an unknown token', async () => {
+  it('discloses the invited email + whether it has an account (token holder); null for an unknown token', async () => {
     const { admin, project } = await fixture();
     const { token } = await createInvite(db, admin.userId, {
       email: 'client@acme.test',
@@ -170,11 +170,18 @@ describe('peekInvite', () => {
       projectId: project.id,
     });
     const peek = await peekInvite(db, token);
-    expect(peek).toMatchObject({ role: 'member', projectName: 'Acme Site', expired: false, accepted: false });
-    // The full email is never disclosed to a token holder; it is masked.
-    expect(peek!.email).not.toBe('client@acme.test');
-    expect(peek!.email).toMatch(/^c\*+@acme\.test$/);
+    // The email is disclosed in FULL (the unguessable token proves the holder was sent it), so the
+    // accept form can pre-fill it; hasAccount is false (this email has no account yet).
+    expect(peek).toMatchObject({ role: 'member', projectName: 'Acme Site', expired: false, accepted: false, email: 'client@acme.test', hasAccount: false });
     expect(await peekInvite(db, 'swi_unknown')).toBeNull();
+  });
+
+  it('reports hasAccount=true when the invited email already has an account', async () => {
+    const { admin, project } = await fixture();
+    await registerAccount(db, 'existing@acme.test', 'Pw-secret-1');
+    const { token } = await createInvite(db, admin.userId, { email: 'existing@acme.test', role: 'member', projectId: project.id });
+    const peek = await peekInvite(db, token);
+    expect(peek).toMatchObject({ email: 'existing@acme.test', hasAccount: true });
   });
 });
 

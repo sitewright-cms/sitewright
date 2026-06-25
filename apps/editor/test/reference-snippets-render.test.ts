@@ -18,6 +18,7 @@ describe('reference cookbook — catalog shape', () => {
     for (const want of [
       'slider-fullscreen', 'slider-cards', 'slider-multi', 'slider-logowall', 'slider-dataset',
       'gallery-grid', 'gallery-masonry', 'gallery-dataset', 'tabs-mixed', 'tabs-dataset', 'modal-basic', 'modal-confirm',
+      'form-embed', 'form-custom', 'datetimepicker-field', 'cookie-consent', 'shop-product', 'parallax-hero', 'shader-hero',
       'recipe-dataset-grid', 'recipe-folder-gallery', 'recipe-i18n', 'recipe-page-vars',
       'navbar', 'logo-marquee', 'rotating-tiles',
     ]) {
@@ -29,7 +30,7 @@ describe('reference cookbook — catalog shape', () => {
   });
 
   it('every recipe carries grouping metadata (category + description)', () => {
-    const categories = new Set(['slider', 'gallery', 'tabs', 'modal', 'data', 'chrome', 'effects']);
+    const categories = new Set(['slider', 'gallery', 'tabs', 'modal', 'forms', 'shop', 'data', 'chrome', 'effects']);
     for (const s of GLOBAL_SNIPPETS) {
       expect(categories.has(s.category), `recipe "${s.name}" category`).toBe(true);
       expect(s.description.length, `recipe "${s.name}" description`).toBeGreaterThan(10);
@@ -222,5 +223,65 @@ describe('reference cookbook — gallery / tabs / modal recipes render', () => {
     expect(html).toContain('data-sw-modal="confirm-delete"');
     expect(html).toContain('data-backdrop-close="false"');
     expect(html).toContain('data-sw-part="close"');
+  });
+});
+
+describe('reference cookbook — forms / inputs / shop / effects recipes render', () => {
+  it('form-embed: renders the section; {{sw-form}} is empty in preview (no forms map), never throws', () => {
+    const html = renderTemplate(src('form-embed'), {});
+    expect(html).toContain('Get in touch'); // the surrounding section renders
+    expect(html).not.toContain('<form'); // {{sw-form}} → '' with no forms map (safe preview)
+  });
+
+  it('form-custom: a hand-authored <form data-sw-form> with the custom fields (graceful with no forms map)', () => {
+    const html = renderTemplate(src('form-custom'), {});
+    expect(html).toMatch(/<form[^>]*data-sw-form="contact"/);
+    expect(html).toContain('name="email"');
+    expect(html).toContain('name="message"');
+    expect(html).not.toContain('data-sw-endpoint'); // no forms map → the embed pass is a no-op (no throw)
+  });
+
+  it('form-custom: throws at render when a forms map is present but "contact" is unknown (documented footgun)', () => {
+    // A project that already has OTHER forms (so a forms map is present) but not "contact".
+    const ctx = { forms: { other: {} } } as unknown as Parameters<typeof renderTemplate>[1];
+    expect(() => renderTemplate(src('form-custom'), ctx)).toThrow(/unknown form/i);
+  });
+
+  it('datetimepicker-field: a text input upgraded to a range picker', () => {
+    const html = renderTemplate(src('datetimepicker-field'), {});
+    expect(html).toContain('data-sw-component="datetimepicker"');
+    expect(html).toContain('data-mode="range"');
+    expect(html).toContain('name="stay"');
+  });
+
+  it('cookie-consent: a hidden consent banner with an accept part', () => {
+    const html = renderTemplate(src('cookie-consent'), {});
+    expect(html).toContain('data-sw-component="cookie-consent"');
+    expect(html).toMatch(/\bhidden\b/); // ships hidden (the runtime reveals it only until accepted)
+    expect(html).toContain('data-sw-part="accept"');
+  });
+
+  it('shop-product: the cart helpers are gated — empty when the shop is off, present when enabled', () => {
+    const off = renderTemplate(src('shop-product'), {});
+    expect(off).toContain('Studio mug'); // the card renders regardless
+    expect(off).not.toContain('data-sw-cart'); // both {{sw-add-to-cart}} and {{sw-cart}} → '' when shop off
+
+    const on = renderTemplate(src('shop-product'), { website: { shop: { enabled: true } } });
+    expect(on).toContain('data-sw-cart-add'); // the add-to-cart button
+    expect(on).toMatch(/data-sw-cart[ >"]/); // the {{sw-cart}} mount (distinct from data-sw-cart-add)
+  });
+
+  it('parallax-hero: a clipped parallax-bg section with a drifting layer', () => {
+    const html = renderTemplate(src('parallax-hero'), {});
+    expect(html).toContain('data-sw-parallax-bg');
+    expect(html).toContain('data-sw-parallax-layer');
+    expect(html).toContain('data-sw-parallax="0.4"');
+  });
+
+  it('shader-hero: a shader-bg section with a preset and an overlay scrim', () => {
+    const html = renderTemplate(src('shader-hero'), {});
+    expect(html).toContain('data-sw-component="shader-bg"');
+    expect(html).toContain('data-preset="mesh-gradient"');
+    expect(html).toContain('data-sw-part="overlay"');
   });
 });

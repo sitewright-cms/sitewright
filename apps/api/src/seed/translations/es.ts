@@ -148,6 +148,34 @@ export function translationsEs(assets: Record<string, string>): Record<string, P
     data: {
     },
   },
+  'comp-parallax': {
+    path: 'parallax',
+    title: 'Parallax',
+    navTitle: 'Parallax',
+    description:
+      'Profundidad, atenuación, escala y desenfoque a partir del scroll — un runtime diminuto gobernado por atributos data-sw-parallax, con una sección de deriva de fondo recortada. Discreto por defecto y desactivado por completo con movimiento reducido.',
+    data: {
+      px_intro:
+        'Profundidad a partir del scroll. Añade un atributo data-sw-parallax a cualquier elemento y la plataforma incluye un runtime diminuto que lo desplaza, atenúa, escala o desenfoca a medida que pasa por el viewport — combinable, acotado y desactivado por completo para quienes prefieren menos movimiento. Desplázate hacia abajo.',
+      hero_t: 'Deriva de fondo',
+      hero_d: 'Una sección recortada cuya capa de fondo sobredimensionada se desplaza más lenta que la página.',
+      depth_t: 'Profundidad — velocidad de desplazamiento',
+      depth_d:
+        'data-sw-parallax="s" define la velocidad: 0 es estático, un valor positivo retrocede (va por detrás del scroll), un valor negativo avanza (flota hacia ti). Acotado a ±2. Observa cómo las tarjetas se desplazan a distinto ritmo.',
+      c1: 'avanza',
+      c2: 'estático',
+      c3: 'retrocede',
+      fx_t: 'Atenuar · escalar · desenfocar',
+      fx_d:
+        'Cada canal adicional interpola de,a a lo largo del paso del elemento por el viewport — data-sw-parallax-opacity, -scale y -blur — y se combinan en un mismo elemento.',
+      t_fade: 'Aparece al subir',
+      t_scale: 'Crece al desplazarse',
+      t_blur: 'Entra en foco',
+      nojs_t: 'Sin JavaScript (o con movimiento reducido)',
+      nojs_d:
+        'Cada elemento permanece exactamente donde está en el documento — el runtime solo añade encima una transformación/opacidad/filtro, así que nada se desplaza, se solapa ni desaparece. El parallax es decoración, nunca estructura.',
+    },
+  },
   'comp-forms': {
     path: 'formularios',
     title: 'Formularios',

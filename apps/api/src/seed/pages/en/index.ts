@@ -9,6 +9,7 @@ import { pageComponentsModal } from './components-modal.js';
 import { pageComponentsCookieConsent } from './components-cookieconsent.js';
 import { pageComponentsForms } from './components-forms.js';
 import { pageComponentsDateTimePicker } from './components-datetimepicker.js';
+import { pageComponentsParallax } from './components-parallax.js';
 import { pagesServices } from './services.js';
 import { pagesAbout } from './about.js';
 import { pageContact } from './contact.js';
@@ -40,6 +41,7 @@ export function pagesEn(assets: Record<string, string>): Page[] {
     pageComponentsCookieConsent(),
     pageComponentsForms(),
     pageComponentsDateTimePicker(),
+    pageComponentsParallax(),
     pageFaq(),
     ...pagesLegal(),
     ...pageNavLinks(),

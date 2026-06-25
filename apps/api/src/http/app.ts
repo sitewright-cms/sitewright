@@ -61,6 +61,9 @@ import {
   usesAnimations,
   ANIMATION_CSS,
   ANIMATION_JS,
+  usesParallax,
+  PARALLAX_CSS,
+  PARALLAX_JS,
   usesMarquee,
   MARQUEE_CSS,
   usesLazyload,
@@ -494,6 +497,7 @@ async function styledSourceDocument(
   // runtime(s) so they work live in the sandboxed preview (its CSP allows scripts).
   // The runtime CSS goes BEFORE the utility sheet, so Tailwind wins at equal specificity.
   const animated = usesAnimations(scanHtml);
+  const parallaxed = usesParallax(scanHtml);
   const marquee = usesMarquee(scanHtml);
   const lazy = usesLazyload(scanHtml);
   const waves = usesRipple(scanHtml);
@@ -531,6 +535,7 @@ async function styledSourceDocument(
   const inlineStyles = [
     ...(componentCss ? [componentCss] : []),
     ...(animated ? [ANIMATION_CSS] : []),
+    ...(parallaxed ? [PARALLAX_CSS] : []),
     ...(marquee ? [MARQUEE_CSS] : []),
     ...(lazy ? [LAZYLOAD_CSS] : []),
     ...(waves ? [RIPPLE_CSS] : []),
@@ -543,6 +548,7 @@ async function styledSourceDocument(
   const inlineScripts = [
     ...(componentJs ? [componentJs] : []),
     ...(animated ? [ANIMATION_JS] : []),
+    ...(parallaxed ? [PARALLAX_JS] : []),
     ...(lazy ? [LAZYLOAD_JS] : []),
     ...(waves ? [RIPPLE_JS] : []),
     ...(navRuntime ? [NAV_EFFECTS_JS] : []),

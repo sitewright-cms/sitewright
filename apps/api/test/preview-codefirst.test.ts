@@ -91,6 +91,15 @@ describe('code-first preview', () => {
     expect(html).toContain('waves'); // RIPPLE runtime inlined
   });
 
+  it('inlines the parallax runtime CSS + JS for its code-first marker', async () => {
+    const html = await previewHtml({
+      id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },
+      source: '<section><h1 data-sw-parallax="0.3">Drift</h1></section>',
+    });
+    expect(html).toContain('[data-sw-parallax-bg]{position:relative;overflow:hidden}'); // PARALLAX_CSS inlined
+    expect(html).toContain('data-sw-parallax-blur'); // PARALLAX_JS inlined (the runtime selector list)
+  });
+
   it('returns a 400 error envelope (never a raw 500) when the source fails to render', async () => {
     const res = await client.post(`/projects/${projectId}/preview`, {
       id: 'home', path: '', title: 'Home', root: { id: 'r', type: 'Section' },

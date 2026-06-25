@@ -22,6 +22,16 @@ describe('Dataset schemas', () => {
     expect(() => FieldSchema.parse({ name: 'x', type: 'nope' })).toThrow();
   });
 
+  it('accepts the asset-valued leaf types (image / file / folder)', () => {
+    for (const type of ['image', 'file', 'folder'] as const) {
+      const f = FieldSchema.parse({ name: type, type });
+      expect(f.type).toBe(type);
+    }
+    // They are scalar — children are forbidden (same rule as text/image).
+    expect(() => FieldSchema.parse({ name: 'f', type: 'file', fields: [{ name: 'x', type: 'text' }] })).toThrow();
+    expect(() => FieldSchema.parse({ name: 'd', type: 'folder', fields: [{ name: 'x', type: 'text' }] })).toThrow();
+  });
+
   // ---- nested datasets (list / object field types) -------------------------------------------
 
   it('parses a nested list field (settings + a repeatable group), recursively', () => {

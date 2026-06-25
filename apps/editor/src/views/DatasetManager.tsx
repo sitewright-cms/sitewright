@@ -24,6 +24,8 @@ const FIELD_TYPES: ReadonlyArray<FieldType> = [
   'time',
   'datetime',
   'image',
+  'file',
+  'folder',
   'reference',
   'select',
   'json',

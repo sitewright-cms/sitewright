@@ -7,7 +7,7 @@ import { glassInput, toggleInput } from '../../theme';
 import { FieldConfigEditor, type DatasetRef } from './FieldConfigEditor';
 
 /** Scalar (leaf) field types — every type except the two structural group types. */
-export const SCALAR_FIELD_TYPES: readonly FieldType[] = ['text', 'richtext', 'number', 'boolean', 'date', 'time', 'datetime', 'image', 'reference', 'select', 'json'];
+export const SCALAR_FIELD_TYPES: readonly FieldType[] = ['text', 'richtext', 'number', 'boolean', 'date', 'time', 'datetime', 'image', 'file', 'folder', 'reference', 'select', 'json'];
 
 /** `list` (ordered repeatable group) and `object` (named sub-group) carry child `fields`. */
 export function isGroupFieldType(t: FieldType): boolean {

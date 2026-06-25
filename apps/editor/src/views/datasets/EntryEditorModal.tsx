@@ -21,7 +21,9 @@ import { useToast } from '../ui/Toast';
 import { isGroupFieldType } from './NestedFieldsEditor';
 import { RichTextField } from './RichTextField';
 import { AssetField } from '../files/AssetField';
+import { FolderField } from '../files/FolderField';
 import { ACCEPT } from '../files/FileBrowser';
+import { CodeEditor } from '../../lib/code-editor';
 
 // Monotonic key source for list items (stable React keys that travel with an item across reorder,
 // without polluting the saved data shape). See ListField.
@@ -379,32 +381,50 @@ function ReferenceField({ field, value, onRaw, id, ariaLabel }: { field: Field; 
   );
 }
 
-/** A `json` field: a monospace textarea with live syntax validation. Keeps its OWN text state so a
- *  parsed value isn't re-pretty-printed mid-keystroke; reports validity (by `path`) so the modal can
- *  block Save while the JSON is malformed. */
+/** A `json` field: the platform's CodeMirror editor in JSON mode — syntax highlighting + an inline
+ *  parse-error gutter — plus a Format (prettify) button. Keeps its OWN text state so a parsed value
+ *  isn't re-pretty-printed mid-keystroke; reports validity (by `path`) so the modal can block Save
+ *  while the JSON is malformed. */
 function JsonField({ value, onRaw, id, ariaLabel, path }: { value: unknown; onRaw: (raw: unknown) => void; id: string; ariaLabel: string; path: string }) {
   const ctx = useContext(EntryFormContext);
   const [text, setText] = useState(() => (typeof value === 'string' ? value : value === undefined ? '' : JSON.stringify(value, null, 2)));
   const valid = isJsonValid(text);
+  const empty = text.trim() === '';
   useEffect(() => {
     ctx?.reportValidity(path, valid);
     return () => ctx?.reportValidity(path, true);
   }, [ctx, path, valid]);
+  const change = (v: string) => {
+    setText(v);
+    onRaw(v);
+  };
+  /** Prettify (2-space) — enabled only when the current text parses. */
+  const format = () => {
+    try {
+      change(JSON.stringify(JSON.parse(text), null, 2));
+    } catch {
+      /* unreachable: the button is disabled while invalid — guard anyway */
+    }
+  };
   return (
-    <>
-      <textarea
-        id={id}
-        aria-label={ariaLabel}
-        aria-invalid={!valid}
-        className={`${glassInput} min-h-20 font-mono text-xs ${valid ? '' : 'border-rose-400 focus:border-rose-400'}`}
-        value={text}
-        onChange={(e) => {
-          setText(e.target.value);
-          onRaw(e.target.value);
-        }}
-      />
-      {valid ? null : <p className="mt-1 text-[11px] text-rose-500">Invalid JSON — fix the syntax to save.</p>}
-    </>
+    <div className={`overflow-hidden rounded-lg border ${valid ? 'border-slate-300' : 'border-rose-400'}`}>
+      <div className="flex items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-2 py-1">
+        <span className={`text-[11px] ${valid ? 'text-slate-400' : 'text-rose-500'}`}>
+          {empty ? 'Empty (optional — no value stored)' : valid ? 'Valid JSON' : 'Invalid JSON — fix the syntax to save'}
+        </span>
+        <button
+          type="button"
+          onClick={format}
+          disabled={!valid || empty}
+          className="rounded px-1.5 py-0.5 text-[11px] font-medium text-slate-500 transition hover:bg-white hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Format
+        </button>
+      </div>
+      <div className="h-56">
+        <CodeEditor language="json" value={text} onChange={change} id={id} ariaLabel={ariaLabel} />
+      </div>
+    </div>
   );
 }
 
@@ -446,6 +466,14 @@ function FieldInput({
     case 'image':
       return (
         <AssetField label={field.name} inputId={id} hideLabel value={typeof value === 'string' ? value : ''} onChange={onRaw} projectId={projectId} accept={ACCEPT.image} placeholder="/photo.jpg" />
+      );
+    case 'file':
+      return (
+        <AssetField label={field.name} inputId={id} hideLabel value={typeof value === 'string' ? value : ''} onChange={onRaw} projectId={projectId} accept={ACCEPT.any} placeholder="/files/brochure.pdf" />
+      );
+    case 'folder':
+      return (
+        <FolderField label={field.name} inputId={id} hideLabel value={typeof value === 'string' ? value : ''} onChange={onRaw} projectId={projectId} />
       );
     case 'select':
       return <SelectField field={field} value={value} onRaw={onRaw} id={id} ariaLabel={aria} />;

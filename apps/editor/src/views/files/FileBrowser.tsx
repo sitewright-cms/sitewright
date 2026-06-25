@@ -52,6 +52,8 @@ export const ACCEPT = {
   image: (a: MediaAsset) => a.kind === 'image',
   font: (a: MediaAsset) => a.kind === 'font',
   file: (a: MediaAsset) => a.kind === 'file',
+  /** Any asset, regardless of kind — for a generic `file` field (PDFs, docs, zips, images, fonts…). */
+  any: () => true,
 };
 
 /** A short type label per asset kind (the list view's Type column). */

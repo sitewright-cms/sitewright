@@ -4,7 +4,11 @@ import { IdSchema, KeyNameSchema, SlugSchema, safeRecord } from './primitives.js
 /** Supported CMS field types. `list` (an ordered, repeatable group of sub-fields) and `object`
  *  (a named sub-group) are the NESTED types: they carry their own child `fields`, so a single
  *  entry can model a config object with settings + a repeatable array (e.g. a hero Widget:
- *  `{ show_navigation, autoplay, slides: [{ image, caption }, …] }`). */
+ *  `{ show_navigation, autoplay, slides: [{ image, caption }, …] }`).
+ *
+ *  The asset-valued leaves store a STRING: `image`/`file` hold a media URL or path (an `<img src>` /
+ *  download link), `folder` holds a media-library folder PATH (e.g. `gallery/team`, '' = root) — handy
+ *  for templates that enumerate a folder's contents. `json` holds an arbitrary parsed value. */
 export const FieldTypeSchema = z.enum([
   'text',
   'richtext',
@@ -14,6 +18,8 @@ export const FieldTypeSchema = z.enum([
   'time',
   'datetime',
   'image',
+  'file',
+  'folder',
   'reference',
   'select',
   'json',

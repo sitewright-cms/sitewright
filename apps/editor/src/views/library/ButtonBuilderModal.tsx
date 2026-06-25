@@ -58,10 +58,11 @@ function brandVarsFromDom(): string {
     'base-100': '#ffffff',
     'base-content': '#1a1a23',
   };
-  // only trust hex / rgb(...) values (the schema validates brand colours as hex); else the default.
+  // only trust a FULLY-matched hex / rgb(a) value (defence-in-depth before it's interpolated into the
+  // iframe's <style>: the closing-anchored regexes admit no `;`/`<`/`}` break-out chars); else the default.
   const read = (role: string): string => {
     const raw = root.getPropertyValue(`--sw-color-${role}`).trim();
-    return /^#[0-9a-fA-F]{3,8}$/.test(raw) || /^rgb/i.test(raw) ? raw : DEFAULTS[role]!;
+    return /^#[0-9a-fA-F]{3,8}$/.test(raw) || /^rgba?\([0-9\s,./%]+\)$/i.test(raw) ? raw : DEFAULTS[role]!;
   };
   let v = '';
   for (const role of ['primary', 'secondary', 'accent', 'neutral'] as const) {

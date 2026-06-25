@@ -14,6 +14,8 @@ export interface CapturedNode {
   tag: string;
   s: Readonly<Record<string, string>>;
   children: CapturedNode[];
+  /** A verbatim HTML passthrough (an inline SVG icon) — emitted as-is, ignoring classes/children. */
+  raw?: string;
   text?: string;
   pflex?: boolean;
   anim?: { name: string; delay: string; dur: string } | null;
@@ -60,6 +62,8 @@ export type SnapKind =
 /** A merged node: final responsive classes + the snap flags the renderer acts on. */
 export interface MergedNode {
   tag: string;
+  /** A verbatim HTML passthrough (an inline SVG icon) — emitted as-is. */
+  raw?: string;
   text?: string;
   href?: string;
   src?: string;
@@ -225,7 +229,7 @@ export function mergeTree(nb: CapturedNode, nm: CapturedNode, nl: CapturedNode, 
   }
 
   const node: MergedNode = {
-    tag: nl.tag, text: nl.text, href: nl.href, src: nl.src, alt: nl.alt, swicon, iconSize: nl.iconSize, iconColor: nl.iconColor,
+    tag: nl.tag, raw: nl.raw, text: nl.text, href: nl.href, src: nl.src, alt: nl.alt, swicon, iconSize: nl.iconSize, iconColor: nl.iconColor,
     marqueeTrack, swMarquee, flip: nl.flip, isBack: nl.isBack, flipH: nl.flipH,
     modalId: nl.isModal && nl.id ? nl.id : undefined,
     modalTarget: nl.modalTarget,
@@ -309,6 +313,7 @@ export function renderTree(nodes: readonly MergedNode[], ctx: NativizeContext): 
 
 function emitNode(n: MergedNode, d: number, ctx: NativizeContext, logos: { image: string; alt: string }[]): string {
   const ind = '  '.repeat(d);
+  if (n.raw) return ind + n.raw; // verbatim passthrough (inline SVG icon)
   // MARQUEE → snap to the official widget; collect its logos for the config dataset.
   if (n.swMarquee) { collectLogos(n, logos); return ind + '{{> logo-marquee}}'; }
   if (n.flip) return emitFlip(n, ind);

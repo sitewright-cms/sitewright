@@ -71,6 +71,15 @@ describe('mergeTree — responsive merge + snap decisions', () => {
     expect(mergeTree(child, child, child, ctx).cls).toContain('min-w-0');
   });
 
+  it('passes an inline SVG icon through verbatim (raw), keeping it in the rendered output', () => {
+    const svg = '<svg class="h-6 w-6" viewBox="0 0 24 24" stroke="currentColor"><path d="M5 13l4 4"/></svg>';
+    const icon: CapturedNode = { tag: 'svg', s: {}, children: [], raw: svg };
+    const span = node('span', { color: 'rgb(11, 74, 119)' }, { children: [icon] });
+    const merged = mergeTree(span, span, span, ctx);
+    expect(merged.children[0]?.raw).toBe(svg);
+    expect(renderTree([merged], ctx).html).toContain(svg);
+  });
+
   it('maps an <i> FontAwesome icon to {{sw-icon}} (carrying size + color)', () => {
     const n = node('i', {}, { icon: 'fa fa-suitcase', iconSize: '40px', iconColor: 'rgb(11, 74, 119)' });
     const m = mergeTree(n, n, n, ctx);

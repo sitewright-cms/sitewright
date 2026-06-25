@@ -36,7 +36,12 @@ export function WALK(ROOT_SEL) {
     try { CCX.fillStyle = '#000000'; CCX.fillStyle = t; return CCX.fillStyle || v; } catch { return v; }
   };
   function walk(el, pcs) {
-    const raw = el.tagName.toLowerCase(); if (skip.has(raw)) return null;
+    const raw = el.tagName.toLowerCase();
+    // Inline SVG ICON → keep it verbatim (sized/coloured by its own classes + currentColor). Capped + free
+    // of <script>/on*-handlers; the import already sanitized page.source + the emit re-validates. (Without
+    // this the WALK skips <svg>, leaving empty icon boxes on heroicon/Tailwind sites like hatzlacha.)
+    if (raw === 'svg') { const oh = el.outerHTML || ''; return oh && oh.length < 4000 && !/<script|\son[a-z]+\s*=/i.test(oh) ? { tag: 'svg', s: {}, children: [], raw: oh } : null; }
+    if (skip.has(raw)) return null;
     // The platform OWNS the semantic landmarks (it wraps the page body + each chrome slot in
     // <nav>/<main>/<footer>/<aside>) and the no-JS validator rejects them inside a page source/slot.
     // Rename to <div> so nativized content + chrome both pass validation (<header> is allowed).

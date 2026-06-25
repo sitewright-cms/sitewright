@@ -483,6 +483,12 @@ async function styledSourceDocument(
   // Include the `<body>` effect classes in the scan so the preview sheet carries those schemes.
   const scanHtml = `${body} ${slotHtml} ${shell.bodyClass ?? ''}`;
   const classNames = extractClassNames(scanHtml);
+  // `shell.bodyClass` is a BARE class string (not a `class="…"` attribute), so extractClassNames — which
+  // only reads `class="…"` — never sees it. Extract its tokens explicitly + prepend, so the site-wide
+  // nav / button effect + shape + accent schemes ALWAYS compile into the preview sheet (the publish path
+  // adds them the same way via `themeClassNames`). Without this the selected global button configuration
+  // is not applied in the page-editor preview.
+  const compileCandidates = [...new Set([...(shell.bodyClass ?? '').split(/\s+/).filter(Boolean), ...classNames])];
   // Platform-runtime markers in the rendered body/slots → inline the first-party
   // runtime(s) so they work live in the sandboxed preview (its CSP allows scripts).
   // The runtime CSS goes BEFORE the utility sheet, so Tailwind wins at equal specificity.
@@ -529,8 +535,8 @@ async function styledSourceDocument(
     ...(waves ? [RIPPLE_CSS] : []),
     ...(cart ? [CART_CSS] : []),
     ...(themeToggle ? [THEME_TOGGLE_CSS] : []),
-    ...(!rawFidelity && classNames.length > 0
-      ? [await compileUtilityCss([classNames.join(' ')], brandToTailwindTheme(brand))]
+    ...(!rawFidelity && compileCandidates.length > 0
+      ? [await compileUtilityCss([compileCandidates.join(' ')], brandToTailwindTheme(brand))]
       : []),
   ];
   const inlineScripts = [

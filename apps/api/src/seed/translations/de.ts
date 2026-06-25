@@ -150,6 +150,34 @@ export function translationsDe(assets: Record<string, string>): Record<string, P
     data: {
     },
   },
+  'comp-parallax': {
+    path: 'parallax',
+    title: 'Parallax',
+    navTitle: 'Parallax',
+    description:
+      'Tiefe, Blende, Skalierung und Unschärfe aus dem Scrollen — eine winzige Laufzeit, gesteuert über data-sw-parallax-Attribute, mit einem beschnittenen Hintergrund-Drift-Bereich. Standardmäßig dezent und bei reduzierter Bewegung vollständig abgeschaltet.',
+    data: {
+      px_intro:
+        'Tiefe aus dem Scrollen. Füge einem beliebigen Element ein data-sw-parallax-Attribut hinzu, und die Plattform liefert eine winzige Laufzeit, die es beim Durchlaufen des Viewports verschiebt, ein-/ausblendet, skaliert oder weichzeichnet — kombinierbar, begrenzt und für Besucher mit reduzierter Bewegung vollständig abgeschaltet. Scroll nach unten.',
+      hero_t: 'Hintergrund-Drift',
+      hero_d: 'Ein beschnittener Bereich, dessen überdimensionierte Hintergrundebene langsamer scrollt als die Seite.',
+      depth_t: 'Tiefe — Verschiebungstempo',
+      depth_d:
+        'data-sw-parallax="s" legt das Tempo fest: 0 ist statisch, ein positiver Wert tritt zurück (läuft dem Scrollen hinterher), ein negativer Wert führt (schwebt auf dich zu). Begrenzt auf ±2. Beobachte, wie die Karten unterschiedlich schnell driften.',
+      c1: 'führt',
+      c2: 'statisch',
+      c3: 'tritt zurück',
+      fx_t: 'Blende · Skalierung · Unschärfe',
+      fx_d:
+        'Jeder zusätzliche Kanal interpoliert von,bis über den Durchlauf des Elements durch den Viewport — data-sw-parallax-opacity, -scale und -blur — und sie lassen sich auf einem Element kombinieren.',
+      t_fade: 'Blendet beim Aufsteigen ein',
+      t_scale: 'Wächst beim Hochscrollen',
+      t_blur: 'Kommt in den Fokus',
+      nojs_t: 'Ohne JavaScript (oder bei reduzierter Bewegung)',
+      nojs_d:
+        'Jedes Element bleibt genau dort, wo es im Dokument steht — die Laufzeit fügt nur eine Transformation/Deckkraft/Filter darüber hinzu, sodass nichts verrutscht, überlappt oder verschwindet. Parallax ist Dekoration, niemals Struktur.',
+    },
+  },
   'comp-forms': {
     path: 'forms',
     title: 'Formulare',

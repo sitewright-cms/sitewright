@@ -44,6 +44,25 @@ export function resolveRp(host: string | undefined, protocol: string, override?:
   };
 }
 
+/**
+ * The first value of a (possibly array / comma-chained) forwarded header. `X-Forwarded-Proto` /
+ * `X-Forwarded-Host` can chain through multiple proxies (`https, http`); the LEFTMOST is the original
+ * client-facing value. Returns undefined when absent/empty so callers fall back to the connection's
+ * own protocol/host.
+ *
+ * Safe to honor unconditionally for WebAuthn ORIGIN derivation: a spoofed value only makes the
+ * server's `expectedOrigin` disagree with the browser's real origin (or sends an rpID the browser
+ * rejects as not a suffix of its origin), which fails the spoofer's OWN ceremony — it can never forge
+ * or relay a passkey onto another origin. `SW_WEBAUTHN_ORIGIN`/`_RP_ID` remain the authoritative override.
+ */
+export function firstForwardedValue(v: string | string[] | undefined): string | undefined {
+  // For the duplicate-header array form, skip empty leading entries (a misconfigured proxy may emit
+  // an empty `X-Forwarded-Proto:` before the real one appends `https`).
+  const raw = Array.isArray(v) ? v.find((s) => s.trim() !== '') : v;
+  const first = raw?.split(',')[0]?.trim();
+  return first ? first : undefined;
+}
+
 /** Copies any Uint8Array into one backed by a definite ArrayBuffer (the simplewebauthn helpers and
  *  generic Uint8Array default to ArrayBufferLike, which TS won't narrow to ArrayBuffer). */
 function toBufferView(u: Uint8Array): Uint8Array<ArrayBuffer> {

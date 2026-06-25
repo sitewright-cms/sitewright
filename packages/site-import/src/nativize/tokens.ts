@@ -143,9 +143,39 @@ export function graySnap(v: string): string | null {
   return NEUTRAL.reduce((a, c) => (Math.abs(c[0] - lvl) < Math.abs(a[0] - lvl) ? c : a))[1];
 }
 
+const pctOrNum = (x: string): number => (x.trim().endsWith('%') ? parseFloat(x) / 100 : parseFloat(x));
+
+/** oklab/oklch (Lab) → sRGB rgb()/rgba(). Chromium's getComputedStyle returns modern color-spaces verbatim
+ *  on Tailwind-v4 sites, and an `oklab(L a b / x)` value emits as a `text-[oklab(L a b / x)]` arbitrary
+ *  class whose SPACES break Tailwind → no CSS → the colour silently falls back to black. */
+function oklabToRgb(L: number, a: number, b: number, alpha: number): string {
+  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+  const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+  const s = (L - 0.0894841775 * a - 1.291485548 * b) ** 3;
+  const gam = (c: number): number => {
+    const v = c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(Math.max(0, c), 1 / 2.4) - 0.055;
+    return Math.max(0, Math.min(255, Math.round(v * 255)));
+  };
+  const r = gam(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s);
+  const g = gam(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s);
+  const bl = gam(-0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s);
+  return alpha < 1 ? `rgba(${r}, ${g}, ${bl}, ${Math.round(alpha * 1000) / 1000})` : `rgb(${r}, ${g}, ${bl})`;
+}
+
+/** Convert a modern color-space value (oklab/oklch) to sRGB rgb(); pass anything else through unchanged. */
+export function normalizeColor(v: string): string {
+  if (!v || !/^okl(?:ab|ch)\(/i.test(v.trim())) return v;
+  const lab = v.match(/^oklab\(\s*([\d.]+%?)\s+(-?[\d.]+%?)\s+(-?[\d.]+%?)\s*(?:\/\s*([\d.]+%?))?\s*\)/i);
+  if (lab) return oklabToRgb(pctOrNum(lab[1]!), pctOrNum(lab[2]!), pctOrNum(lab[3]!), lab[4] ? pctOrNum(lab[4]) : 1);
+  const lch = v.match(/^oklch\(\s*([\d.]+%?)\s+([\d.]+%?)\s+(-?[\d.]+)(?:deg)?\s*(?:\/\s*([\d.]+%?))?\s*\)/i);
+  if (lch) { const h = (parseFloat(lch[3]!) * Math.PI) / 180, c = pctOrNum(lch[2]!); return oklabToRgb(pctOrNum(lch[1]!), c * Math.cos(h), c * Math.sin(h), lch[4] ? pctOrNum(lch[4]) : 1); }
+  return v;
+}
+
 /** A `text-`/`bg-` class for a captured color: a SEMI-TRANSPARENT color keeps its exact rgba (a 10% dark
  *  overlay must NOT collapse to opaque `bg-black`); else brand token → neutral snap → hex arbitrary. */
 export function colorClass(prefix: string, v: string, palette: NativizePalette): string {
+  v = normalizeColor(v);
   const a = (v || '').match(/rgba\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+\s*,\s*([\d.]+)\s*\)/);
   if (a) { const al = parseFloat(a[1]!); if (al > 0 && al < 1) return `${prefix}-[${(v || '').replace(/\s+/g, '')}]`; } // keep the alpha
   const t = colorToken(v, palette);
@@ -164,6 +194,7 @@ export function colorToken(v: string, palette: NativizePalette): string | null {
 
 /** Captured color → a CSS value for arbitrary props (e.g. borders): brand → var(--sw-color-*), else hex. */
 export function colorValue(v: string, palette: NativizePalette): string {
+  v = normalizeColor(v);
   const t = colorToken(v, palette);
   return t && t !== 'white' && t !== 'black' ? `var(--sw-color-${t})` : t === 'white' ? '#fff' : t === 'black' ? '#000' : hexOf(v);
 }

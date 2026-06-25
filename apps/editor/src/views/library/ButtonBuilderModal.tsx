@@ -9,11 +9,17 @@ import {
   type ButtonAccent,
   type ButtonShape,
 } from '@sitewright/schema';
+import { BUTTON_EFFECTS_JS } from '@sitewright/blocks';
 import { Modal } from '../ui/Modal';
 import { useToast } from '../ui/Toast';
 import { useCopy } from '../ui/useCopy';
 import { api } from '../../api';
-import { glassInput, fieldLabel, ghostButton } from '../../theme';
+import { glassInput, fieldLabel, ghostButton, gradientSurface } from '../../theme';
+
+// A small inline icon for the Lab effect buttons so icon-bearing effects (icon-spin) showcase, and the
+// previews read like real buttons. (Builder previews stay icon-free to match the copied markup.)
+const LAB_ICON =
+  '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg>';
 
 const EFFECTS_SORTED = [...BUTTON_EFFECTS].sort((a, b) => BUTTON_EFFECT_LABELS[a].localeCompare(BUTTON_EFFECT_LABELS[b]));
 
@@ -120,9 +126,11 @@ export function ButtonBuilderModal({ onClose }: ButtonBuilderModalProps) {
   const fullClass = ['btn', face, axisClasses].filter(Boolean).join(' ');
   const code = `<button class="${fullClass}">${escapeHtml(label.trim()) || 'Button'}</button>`;
 
+  // The runtime (ripple + magnetic + spotlight) is injected so the JS-backed effects animate in the
+  // preview exactly as on a published page (the iframe is sandboxed: allow-scripts only).
   const frame = (bodyInner: string): string =>
     css
-      ? `<!doctype html><html><head><meta charset="utf-8"><style>:root{${brandVars}}\n${css}\n${PAGE_CSS}</style></head><body>${bodyInner}</body></html>`
+      ? `<!doctype html><html><head><meta charset="utf-8"><style>:root{${brandVars}}\n${css}\n${PAGE_CSS}</style></head><body>${bodyInner}<script>${BUTTON_EFFECTS_JS}</script></body></html>`
       : '';
 
   const builderBody =
@@ -135,7 +143,7 @@ export function ButtonBuilderModal({ onClose }: ButtonBuilderModalProps) {
       `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:16px;padding:0 16px">${cells}</div>`;
     const cell = (btn: string, name: string) =>
       `<figure style="margin:0;display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px;border:1px solid color-mix(in oklab,var(--sw-color-base-content) 12%,transparent);border-radius:12px">${btn}<figcaption style="font-size:11px;font-family:ui-monospace,monospace;opacity:.6">${name}</figcaption></figure>`;
-    const effects = EFFECTS_SORTED.map((e) => cell(`<button class="btn btn-primary sw-btn-fx-${e}">Get started</button>`, e)).join('');
+    const effects = EFFECTS_SORTED.map((e) => cell(`<button class="btn btn-primary sw-btn-fx-${e}">${LAB_ICON}Get started</button>`, e)).join('');
     const shapes = BUTTON_SHAPES.map((s) =>
       cell(`<button class="btn btn-primary sw-btn-fx-lift sw-btn-shape-${s}">${s === 'square' || s === 'circle' ? '★' : 'Shape'}</button>`, s),
     ).join('');
@@ -151,14 +159,20 @@ export function ButtonBuilderModal({ onClose }: ButtonBuilderModalProps) {
     );
   }, []);
 
+  // Same segmented control as the page editor's Code Editor / Content Editor switch.
   const modeToggle = (
-    <div className="flex items-center gap-1 rounded-lg bg-black/20 p-0.5 text-xs">
+    <div
+      role="group"
+      aria-label="Builder mode"
+      className="flex items-center rounded-xl border border-white/60 bg-white/50 p-0.5 text-xs font-medium shadow-sm backdrop-blur-xl"
+    >
       {(['builder', 'lab'] as const).map((m) => (
         <button
           key={m}
           type="button"
+          aria-pressed={mode === m}
           onClick={() => setMode(m)}
-          className={`rounded-md px-2.5 py-1 font-semibold transition ${mode === m ? 'bg-white/15 text-white' : 'text-white/50 hover:text-white/80'}`}
+          className={`waves-effect rounded-lg px-2.5 py-1 transition ${mode === m ? `${gradientSurface} font-bold` : 'text-slate-500 hover:text-slate-800'}`}
         >
           {m === 'builder' ? 'Builder' : 'Lab'}
         </button>
@@ -169,7 +183,7 @@ export function ButtonBuilderModal({ onClose }: ButtonBuilderModalProps) {
   return (
     <Modal title="Button builder" size="full" onClose={onClose} headerLeft={modeToggle}>
       {mode === 'builder' ? (
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-4 p-5">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <label className="flex flex-col">
               <span className={fieldLabel}>Label</span>
@@ -240,7 +254,7 @@ export function ButtonBuilderModal({ onClose }: ButtonBuilderModalProps) {
           </p>
         </div>
       ) : (
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 p-5">
           <p className="text-xs text-white/50">Every button effect, shape and hover-accent, live with your brand. Switch to the Builder to compose &amp; copy one.</p>
           <div className="overflow-hidden rounded-xl border border-white/10 bg-black/20">
             {css ? (

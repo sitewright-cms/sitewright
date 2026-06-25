@@ -331,14 +331,17 @@ img, video { max-width: 100%; height: auto; }
   .btn { transition: transform .22s cubic-bezier(.16, 1, .3, 1), box-shadow .22s ease, background-color .25s ease, color .25s ease; }
 }
 .btn:focus-visible { outline: 2px solid var(--sw-btn-fx); outline-offset: 2px; }
-/* hover: the face fills to the accent + a small lift + shadow (text-link + disabled stay flat) */
-.btn:not(.btn-link):not(.btn-disabled):not(:disabled):hover {
+/* hover: the face fills to the accent + a small lift + shadow (text-link + disabled stay flat). The
+   exclusions ride inside :where() so this stays (0,2,0) — a per-button effect's own
+   sw-btn-fx hover rule (0,3,0) OVERRIDES the baseline transform/shadow/fill, while a plain .btn still
+   gets this default. (Without :where() the :not() chain would be (0,4,0) and suppress effects.) */
+.btn:where(:not(.btn-link):not(.btn-disabled):not(:disabled)):hover {
   background-color: var(--sw-btn-hover-bg);
   color: var(--sw-btn-hover-fg);
   transform: scale(1.03);
   box-shadow: 0 10px 24px -11px color-mix(in oklab, var(--sw-btn-fx) 60%, transparent);
 }
-.btn:not(.btn-link):not(.btn-disabled):not(:disabled):active { transform: scale(.97); }
+.btn:where(:not(.btn-link):not(.btn-disabled):not(:disabled)):active { transform: scale(.97); }
 .btn:disabled, .btn[disabled], .btn-disabled { cursor: not-allowed; pointer-events: none; opacity: .45; }
 /* active / selected (a toggle, or the current item in a join group): the accent-filled state */
 .btn-active { background-color: var(--sw-btn-fx); color: var(--sw-btn-fx-content); box-shadow: none; transform: none; }

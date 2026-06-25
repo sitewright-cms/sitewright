@@ -10,6 +10,7 @@ import {
   type ButtonAccent,
   type ButtonDefaultShape,
 } from '@sitewright/schema';
+import { BUTTON_EFFECTS_JS } from '@sitewright/blocks';
 import { Modal } from '../ui/Modal';
 import { api } from '../../api';
 import { glassInput, fieldLabel } from '../../theme';
@@ -92,6 +93,7 @@ export function ButtonEffectsModal({ form, onApply, onClose }: ButtonEffectsModa
       `<button class="btn btn-primary ${axisClasses}">Get started</button>` +
       `<button class="btn btn-ghost ${axisClasses}">Learn more</button>` +
       `<button class="btn btn-outline btn-primary ${axisClasses}">Contact</button>` +
+      `<script>${BUTTON_EFFECTS_JS}</script>` +
       `</body></html>`
     : '';
 

@@ -183,6 +183,7 @@ import { completeOidcAuth, startOidcAuth, OidcError } from '../auth/oidc.js';
 import {
   authenticationOptions,
   encodePublicKey,
+  firstForwardedValue,
   registrationOptions,
   resolveRp,
   verifyAuthentication,
@@ -796,10 +797,17 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // instance secrets) — so TOTP enrolment/verification is unavailable (503) when no key is configured.
   const mfaRepo = new MfaRepository(db, opts.encryptionKey);
   // Passkeys (WebAuthn). The Relying Party is resolved per-request from the host (overridable via
-  // opts) — passkeys bind to that rpID, so they don't transfer across deploy hosts.
+  // opts) — passkeys bind to that rpID, so they don't transfer across deploy hosts. Behind a
+  // TLS-terminating reverse proxy the connection to the container is plain HTTP, so req.protocol/host
+  // describe the proxy→app hop, not the browser's real origin; honor the standard X-Forwarded-Proto /
+  // X-Forwarded-Host the proxy sets (else expectedOrigin is `http://…` while the browser sent
+  // `https://…` → verifyRegistration rejects → "could not verify this passkey"). The env override wins.
   const passkeyRepo = new PasskeyRepository(db);
-  const rpFor = (req: FastifyRequest): RpConfig =>
-    resolveRp(req.headers.host, req.protocol, { rpID: opts.webauthnRpId, origin: opts.webauthnOrigin });
+  const rpFor = (req: FastifyRequest): RpConfig => {
+    const protocol = firstForwardedValue(req.headers['x-forwarded-proto']) ?? req.protocol;
+    const host = firstForwardedValue(req.headers['x-forwarded-host']) ?? req.headers.host;
+    return resolveRp(host, protocol, { rpID: opts.webauthnRpId, origin: opts.webauthnOrigin });
+  };
   // OIDC single sign-on (the platform as a Relying Party). Provider config (incl. the encrypted
   // client secret) lives in instance settings; this repo holds the single-use login state + identities.
   const oidcRepo = new OidcRepository(db);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { space, dim, fontSizeClass, radiusClass, colorToken, colorValue, hexOf, spaceToken, graySnap, zIndexClass, opacityClass, leadingClass, type NativizePalette, DEFAULT_FONT_MAP } from '../src/nativize/tokens.js';
+import { space, dim, fontSizeClass, radiusClass, colorToken, colorValue, hexOf, spaceToken, graySnap, zIndexClass, opacityClass, leadingClass, normalizeColor, type NativizePalette, DEFAULT_FONT_MAP } from '../src/nativize/tokens.js';
 import { emitGroups, mergeGroups, type EmitContext, type BreakpointGroups } from '../src/nativize/tailwind.js';
 
 const palette: NativizePalette = {
@@ -72,6 +72,11 @@ describe('emitGroups — computed style → keyed utility groups', () => {
     // a floated element keeps its float (text wraps beside it) instead of dropping to a full-width block
     expect(emitGroups({ float: 'right' }, 'img', false, ctx).g.float).toBe('float-right ml-6 mb-4');
     expect(emitGroups({ float: 'left' }, 'img', false, ctx).g.float).toBe('float-left mr-6 mb-4');
+    // oklab/oklch (Tailwind-v4) → sRGB so the class is Tailwind-parseable (an oklab arbitrary value's spaces break it → black text)
+    expect(normalizeColor('oklab(0.999994 0.0000455677 0.0000200868 / 0.8)')).toBe('rgba(255, 255, 255, 0.8)');
+    expect(normalizeColor('oklch(0.7 0.15 30)')).toMatch(/^rgb\(\d+, \d+, \d+\)$/);
+    expect(normalizeColor('rgb(1, 2, 3)')).toBe('rgb(1, 2, 3)'); // pass-through
+    expect(emitGroups({ color: 'oklab(0.999994 0.0000455677 0.0000200868 / 0.8)' }, 'p', false, ctx).g.color).toBe('text-[rgba(255,255,255,0.8)]');
     // a SEMI-TRANSPARENT overlay keeps its alpha (must NOT collapse to opaque bg-black)
     expect(emitGroups({ 'background-color': 'rgba(0, 0, 0, 0.1)' }, 'div', false, ctx).g.bg).toBe('bg-[rgba(0,0,0,0.1)]');
     expect(emitGroups({ 'background-color': 'rgb(0, 0, 0)' }, 'div', false, ctx).g.bg).toBe('bg-black');

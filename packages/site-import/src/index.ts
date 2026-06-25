@@ -10,7 +10,7 @@ export { mapFaIcon } from './nativize/icon-map.js';
 export { type NativizePalette, space, dim, fontSizeClass, radiusClass, colorToken, colorValue, hexOf, spaceToken, arbitrary, DEFAULT_FONT_MAP } from './nativize/tokens.js';
 export { type StyleMap, type EmitContext, type GroupResult, type BreakpointGroups, emitGroups, mergeGroups, RESET } from './nativize/tailwind.js';
 export { mapAosEffect, ms, aosAttrs, type AosAttrs } from './nativize/aos.js';
-export { type CapturedNode, type MergedNode, type NativizeContext, type RenderResult, mergeTree, mergeTrees, renderTree, toRoute, snapButton } from './nativize/emit.js';
+export { type CapturedNode, type MergedNode, type NativizeContext, type RenderResult, type SnapKind, mergeTree, mergeTrees, renderTree, toRoute, snapButton, expandCarouselDirect } from './nativize/emit.js';
 export { buildPalette, colorToRgbKey } from './nativize/palette.js';
 export type {
   AssetKind,

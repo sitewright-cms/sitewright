@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { mapAosEffect, ms, aosAttrs } from '../src/nativize/aos.js';
-import { mergeTree, mergeTrees, renderTree, toRoute, snapButton, type CapturedNode, type NativizeContext } from '../src/nativize/emit.js';
+import { mergeTree, mergeTrees, renderTree, toRoute, snapButton, expandCarouselDirect, type CapturedNode, type NativizeContext } from '../src/nativize/emit.js';
 import { DEFAULT_FONT_MAP } from '../src/nativize/tokens.js';
 
 const ctx: NativizeContext = {
@@ -294,5 +294,36 @@ describe('component snapping → carousel / tabs / accordion (static markup)', (
     expect(html).toContain('Answer one');
     expect(html).not.toContain('<h2'); // accordion-header unwrapped
     expect(html).not.toContain('hidden'); // collapse unwrapped → its display:none is gone
+  });
+});
+
+describe('expandCarouselDirect — owl / declarative-slick (slides are direct children)', () => {
+  it('synthesizes a track wrapping the direct children, each marked a slide', () => {
+    const root = node('div', { width: '900px' }, { snap: 'carousel-direct', children: [
+      node('div', {}, { text: 'Slide A' }),
+      node('div', {}, { text: 'Slide B' }),
+      node('div', {}, { text: 'Slide C' }),
+    ] });
+    const [expanded] = expandCarouselDirect([root]);
+    expect(expanded!.snap).toBe('carousel');
+    expect(expanded!.children).toHaveLength(1);
+    const track = expanded!.children[0]!;
+    expect(track.snap).toBe('carousel-track');
+    expect(track.children).toHaveLength(3);
+    expect(track.children.every((c) => c.snap === 'carousel-slide')).toBe(true);
+  });
+
+  it('renders an owl/slick-direct root as a full platform carousel', () => {
+    const root = node('div', {}, { snap: 'carousel-direct', children: [
+      node('div', {}, { children: [node('p', {}, { text: 'One' })] }),
+      node('div', {}, { children: [node('p', {}, { text: 'Two' })] }),
+    ] });
+    const html = renderTree(mergeTrees([root], [root], [root], ctx), ctx).html;
+    expect(html).toContain('data-sw-component="carousel"');
+    expect(html).toContain('data-sw-part="track"');
+    expect((html.match(/data-sw-part="slide"/g) || []).length).toBe(2);
+    expect(html).toContain('data-sw-part="prev"');
+    expect(html).toContain('One');
+    expect(html).toContain('Two');
   });
 });

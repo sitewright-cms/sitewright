@@ -42,6 +42,7 @@ export interface CapturedNode {
 /** A component part recognized from the source's static class markers → a platform primitive on emit. */
 export type SnapKind =
   | 'carousel' // root → data-sw-component="carousel" data-sw-block="Carousel" (+ prev/next/dots)
+  | 'carousel-direct' // owl/declarative-slick root: slides are DIRECT children (no track/slide classes) → expanded to a carousel + synthesized track in the mergeTrees pre-pass
   | 'carousel-track' // the slide row → data-sw-part="track"
   | 'carousel-slide' // one slide → data-sw-part="slide"
   | 'tabs' // the panel container → data-sw-component="tabs"
@@ -208,9 +209,28 @@ export function mergeTree(nb: CapturedNode, nm: CapturedNode, nl: CapturedNode, 
   return node;
 }
 
+/**
+ * Pre-pass: expand owl/declarative-slick roots (snap 'carousel-direct' — slides are the root's DIRECT
+ * children, with no track/slide classes) into the normal carousel shape — a synthesized `track` wrapping
+ * the children, each marked a `slide` — so the standard carousel emit handles them. Pure + immutable; run
+ * on EACH capture tree before the merge so all three trees share the new shape (the index-zip stays aligned).
+ */
+export function expandCarouselDirect(nodes: readonly CapturedNode[]): CapturedNode[] {
+  return nodes.map((n) => {
+    const children = expandCarouselDirect(n.children);
+    if (n.snap === 'carousel-direct') {
+      const slides = children.map((c) => (c.snap ? c : { ...c, snap: 'carousel-slide' as const }));
+      const track: CapturedNode = { tag: 'div', s: {}, children: slides, snap: 'carousel-track' };
+      return { ...n, snap: 'carousel' as const, children: [track] };
+    }
+    return { ...n, children };
+  });
+}
+
 /** Convenience: merge a triple of root node lists (smallest→largest), padding missing trees. */
 export function mergeTrees(base: CapturedNode[], md: CapturedNode[], lg: CapturedNode[], ctx: NativizeContext): MergedNode[] {
-  return lg.map((n, i) => mergeTree(base[i] ?? EMPTY, md[i] ?? EMPTY, n, ctx));
+  const b = expandCarouselDirect(base), m = expandCarouselDirect(md), l = expandCarouselDirect(lg);
+  return l.map((n, i) => mergeTree(b[i] ?? EMPTY, m[i] ?? EMPTY, n, ctx));
 }
 
 const VOID = new Set(['img', 'input', 'br', 'hr']); // NB: <iframe> is NOT void

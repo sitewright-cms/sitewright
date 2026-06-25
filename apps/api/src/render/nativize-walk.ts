@@ -82,6 +82,9 @@ export function WALK(ROOT_SEL) {
     {
       const acl = el.getAttribute('class') || '';
       if (/(^|\s)(carousel|swiper|swiper-container)(\s|$)/.test(acl) && el.querySelector('.carousel-item,.swiper-slide,.carousel-inner,.swiper-wrapper')) node.snap = 'carousel';
+      // owl / declarative-slick: the root has a static marker (.owl-carousel or data-slick) but its slides
+      // are the DIRECT children (slick/owl add the wrapper+slide classes at RUNTIME) → expanded later.
+      else if ((/(^|\s)owl-carousel(\s|$)/.test(acl) || el.hasAttribute('data-slick')) && el.children.length >= 2) node.snap = 'carousel-direct';
       else if (/(^|\s)(carousel-inner|swiper-wrapper)(\s|$)/.test(acl)) node.snap = 'carousel-track';
       else if (/(^|\s)(carousel-item|swiper-slide)(\s|$)/.test(acl)) node.snap = 'carousel-slide';
       else if (/(^|\s)tab-content(\s|$)/.test(acl) && el.querySelector('.tab-pane')) node.snap = 'tabs';

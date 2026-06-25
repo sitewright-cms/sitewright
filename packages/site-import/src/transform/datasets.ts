@@ -10,7 +10,7 @@ import { textContent } from 'domutils';
 import type { Dataset, Entry, Field } from '@sitewright/schema';
 import { elements, isTag, isText, serialize, setText, type AnyNode, type Document, type Element } from '../dom.js';
 import { pickFromSrcset, rewriteHref } from '../url-util.js';
-import { effectiveSrc, effectiveSrcset } from './assets.js';
+import { effectiveBg, effectiveSrc, effectiveSrcset } from './assets.js';
 import { imageRef, sanitizeForSource, type TransformCtx } from './page.js';
 
 const MIN_CHILDREN = 4;
@@ -19,10 +19,18 @@ const MAX_DATASETS_PER_PAGE = 3;
 const MAX_SLOTS = 12;
 const MAX_DEPTH = 64;
 
-type SlotType = 'text' | 'image' | 'link';
+type SlotType = 'text' | 'image' | 'link' | 'bg';
 interface Slot {
   type: SlotType;
   el: Element;
+}
+
+/** A real background-image URL on an element — lazy (`data-background-image` etc.) or inline `style`.
+ *  Excludes data: URIs / gradients (no per-item value to field-ize). */
+function bgUrl(el: Element): string | undefined {
+  const fromStyle = (el.attribs.style ?? '').match(/background-image\s*:\s*url\(\s*['"]?([^'")]+)['"]?\s*\)/i)?.[1];
+  const url = (effectiveBg(el.attribs) || fromStyle || '').trim();
+  return url && !/^data:/i.test(url) ? url : undefined;
 }
 
 export interface DatasetInference {
@@ -33,14 +41,21 @@ export interface DatasetInference {
   markers: Map<string, { loop: string; slug: string }>;
 }
 
-/** Ordered leaf slots of a card subtree: <img> (image), <a href> (link), and leaf text elements. */
+/** Ordered slots of a card subtree: a (lazy) BACKGROUND image, <img> (image), <a href> (link), and leaf
+ *  text elements. The card ROOT itself is inspected first — a clickable card (`<a href>`) and/or a
+ *  background-image card carries its per-item link/image ON THE ROOT, which the descendant walk never sees
+ *  (so without this they'd bake static into the loop — every tile the same link + image). */
 function collectSlots(root: Element): Slot[] {
   const out: Slot[] = [];
+  const rootHref = (root.attribs.href ?? '').trim();
+  if (root.name === 'a' && rootHref !== '' && !rootHref.startsWith('#')) out.push({ type: 'link', el: root });
+  if (bgUrl(root)) out.push({ type: 'bg', el: root });
   const visit = (nodes: AnyNode[], depth: number): void => {
     if (depth > MAX_DEPTH) return; // guard pathologically deep card markup (stack safety)
     for (const n of nodes) {
       if (out.length >= MAX_SLOTS) break;
       if (!isTag(n)) continue;
+      if (bgUrl(n)) out.push({ type: 'bg', el: n }); // an inner element's background image (e.g. a card thumb)
       if (n.name === 'img') {
         out.push({ type: 'image', el: n });
         continue;
@@ -71,7 +86,7 @@ function fieldNames(types: SlotType[]): string[] {
   let i = 0;
   let l = 0;
   return types.map((ty) => {
-    if (ty === 'image') return i++ === 0 ? 'image' : `image${i}`;
+    if (ty === 'image' || ty === 'bg') return i++ === 0 ? 'image' : `image${i}`;
     if (ty === 'link') return l++ === 0 ? 'link' : `link${l}`;
     const n = t++;
     return n === 0 ? 'title' : n === 1 ? 'description' : `text${n + 1}`;
@@ -90,6 +105,10 @@ function slugifyId(s: string): string {
 
 function slotValue(slot: Slot, ctx: TransformCtx): string {
   if (slot.type === 'text') return textContent([slot.el]).trim();
+  if (slot.type === 'bg') {
+    const url = bgUrl(slot.el);
+    return url ? imageRef(url, ctx) ?? '' : '';
+  }
   if (slot.type === 'image') {
     // Lazy-aware: a carousel/grid image often keeps its real URL in data-src (the loader script is
     // stripped), so read the effective src — otherwise the inferred dataset gets empty images.
@@ -114,6 +133,15 @@ function buildLoop(child: Element, types: SlotType[], names: string[], slug: str
     else if (s.type === 'image') {
       s.el.attribs.src = `{{sw-url ${field}}}`;
       delete s.el.attribs.srcset;
+    } else if (s.type === 'bg') {
+      // Bind the background via the data-sw-bg DIRECTIVE (a quoted attr — the validator forbids interpolation
+      // in `style`). The engine resolves it to a real background at render time, so each entry's image
+      // renders + is captured at nativize, and it stays editable through the dataset. Strip the static
+      // background-image promoteLazyAttrs baked into the inline style so it can't shadow the binding.
+      s.el.attribs['data-sw-bg'] = `{{sw-url ${field}}}`;
+      const style = (s.el.attribs.style ?? '').replace(/background-image\s*:\s*url\([^)]*\)\s*;?/i, '').replace(/;\s*$/, '').trim();
+      if (style) s.el.attribs.style = style; else delete s.el.attribs.style;
+      for (const a of ['data-bg', 'data-background', 'data-background-image']) delete s.el.attribs[a];
     } else {
       s.el.attribs.href = `{{sw-url ${field}}}`;
     }
@@ -232,7 +260,7 @@ export function inferDatasets(doc: Document, ctx: TransformCtx, usedSlugs: Set<s
       usedSlugs.delete(slug); // release the reserved slug — this container stays literal
       continue;
     }
-    const fields: Field[] = uniform.types.map((ty, idx) => ({ name: names[idx]!, type: ty === 'image' ? 'image' : 'text', required: false, localized: false }));
+    const fields: Field[] = uniform.types.map((ty, idx) => ({ name: names[idx]!, type: ty === 'image' || ty === 'bg' ? 'image' : 'text', required: false, localized: false }));
     datasets.push({ id: slug, name: datasetName, slug, fields });
     // Entry id from its title value (e.g. `team-jane-doe`) so entries read meaningfully; deduped, with a
     // positional fallback. The first text field is the title (fieldNames puts it first).

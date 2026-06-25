@@ -177,6 +177,17 @@ describe('resolveDirectives — data-sw-src / data-sw-bg (images)', () => {
     expect(published).not.toContain('data-sw-bg');
   });
 
+  it('accepts a DIRECT URL value (a resolved dataset field), not only a page.data key', () => {
+    // A {{#each}} dataset loop renders data-sw-bg/data-sw-src to a real URL (the validator forbids
+    // interpolating into `style`, so a per-item background must ride a directive). No page.data needed.
+    const bg = resolveDirectives('<a data-sw-bg="/media/agri.jpg">x</a>', {});
+    expect(bg).toContain("background-image:url('/media/agri.jpg')");
+    const src = resolveDirectives('<img data-sw-src="/media/tile.jpg" src="" alt="">', {});
+    expect(src).toContain('src="/media/tile.jpg"');
+    // A bare non-URL key with no page.data override stays the authored default (no breakout).
+    expect(resolveDirectives('<a data-sw-bg="image">x</a>', {})).not.toContain('background-image');
+  });
+
   it('LAZY: data-sw-src fills data-src (not src) when the element opts into lazy-loading', () => {
     // The author marks the image lazy by adding a (possibly empty) data-src; the runtime swaps it in.
     const out = resolveDirectives('<img data-sw-src="hero" data-src alt="">', { data: { hero: '/media/p/a/new.jpg' } });

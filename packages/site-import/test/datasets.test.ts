@@ -32,6 +32,26 @@ describe('inferDatasets', () => {
     expect(inf.entries.every((e) => e.values.image === '/media/x/a.jpg')).toBe(true); // hosted ref, not ''
   });
 
+  it('field-izes a clickable card ROOT link + a (lazy) BACKGROUND image (not baked static)', () => {
+    // Burmeister-style tiles: <a href data-background-image> with an inner title — the link AND the bg live
+    // on the card ROOT, which the descendant walk never sees. Without root capture both bake static (every
+    // tile the same link + image).
+    const tile = (i: number) => `<a href="/s${i}" data-background-image="/bg${i}.jpg" class="tile"><div class="overlay"><div class="h6">Service ${i}</div></div></a>`;
+    const html = `<html><body><h2>Our Services</h2><section class="grid">${Array.from({ length: 4 }, (_, i) => tile(i)).join('')}</section></body></html>`;
+    const { inf } = infer(html);
+    expect(inf.datasets).toHaveLength(1);
+    const types = inf.datasets[0]!.fields.map((f) => `${f.name}:${f.type}`);
+    expect(types).toContain('link:text'); // root href → link field
+    expect(types).toContain('image:image'); // root background → image field
+    expect(new Set(inf.entries.map((e) => e.values.link)).size).toBe(4); // DISTINCT per-tile links
+    expect(new Set(inf.entries.map((e) => e.values.image)).size).toBe(4); // DISTINCT per-tile backgrounds
+    const loop = [...inf.markers.values()][0]!.loop;
+    expect(loop).toContain('data-sw-bg="{{sw-url image}}"'); // bg bound via the directive (validator-safe)
+    expect(loop).toContain('href="{{sw-url link}}"');
+    expect(loop).not.toMatch(/style="[^"]*background-image/); // NOT baked into an inline style
+    expect(() => validateTemplate(loop)).not.toThrow();
+  });
+
   it('turns a uniform card grid into a dataset + entries + an {{#each}} loop', () => {
     const { inf, doc } = infer(grid(4));
     expect(inf.datasets).toHaveLength(1);

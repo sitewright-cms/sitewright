@@ -8,8 +8,8 @@
 //   data-sw-text="key"      → element textContent          (from page.data[key]; serializer escapes)
 //   data-sw-html="key"      → element innerHTML             (from page.data[key]; sanitizeRichHtml)
 //   data-sw-href="key"      → anchor href                   (from page.data[key]; safeUrl)
-//   data-sw-src="key"       → <img> src, OR `data-src` when the element opts into LAZY-loading (from page.data[key]; safeUrl)
-//   data-sw-bg="key"        → inline background-image style (safeUrl + cssUrlEscape), OR `data-bg` when LAZY (safeUrl; the lazyload runtime escapes the url() itself) (from page.data[key])
+//   data-sw-src="key"       → <img> src, OR `data-src` when the element opts into LAZY-loading (from page.data[key], OR a direct URL value — e.g. a dataset loop's {{sw-url image}}; safeUrl)
+//   data-sw-bg="key"        → inline background-image style (safeUrl + cssUrlEscape), OR `data-bg` when LAZY (safeUrl; the lazyload runtime escapes the url() itself) (from page.data[key], OR a direct URL value — e.g. a dataset loop's {{sw-url image}})
 //   data-sw-translate="key" → element textContent          (from the project TRANSLATION catalog — the pre-resolved per-locale `t` map; serializer escapes)
 //
 // LAZY-LOAD: when the element already carries the lazy-load attribute (`data-src` for an image,
@@ -118,6 +118,19 @@ function resolveOverride(ctx: DirectiveContext, key: string): string | undefined
   return flatData(ctx.data, key);
 }
 
+/** A direct URL/path value — `/media/…`, `./x`, `https:…`, `data:…` — vs a page.data KEY. Lets the URL
+ *  directives (src/bg) carry an ALREADY-RESOLVED url, e.g. a dataset loop's `{{sw-url image}}`, so a
+ *  background can be bound per-item (the validator forbids interpolating into `style`). */
+const DIRECT_URL = /^(?:\/|\.{1,2}\/|https?:|data:)/i;
+
+/** The URL for a src/bg directive: a `page.data` override if the key resolves to one, else the key itself
+ *  when it is already a direct URL/path (a dataset/loop value). A bare non-URL key → undefined (default). */
+function resolveUrlOverride(ctx: DirectiveContext, key: string): string | undefined {
+  const stored = resolveOverride(ctx, key);
+  if (stored !== undefined) return stored;
+  return DIRECT_URL.test(key) ? key : undefined;
+}
+
 /**
  * The translated STRING for a `data-sw-translate` key, read from the pre-resolved per-locale `t` map
  * (own-property + proto-guarded). Undefined → no translation (keep the element's authored fallback text);
@@ -200,7 +213,7 @@ export function resolveDirectives(html: string, ctx: DirectiveContext): string {
       // authored default (so clearing reverts, rather than producing a broken src=""). When the
       // element opts into LAZY-loading (it carries a `data-src` attr the lazyload runtime swaps into
       // `src` on intersect), fill THAT instead so data-sw-src works with deferred images.
-      const value = resolveOverride(ctx, srcKey);
+      const value = resolveUrlOverride(ctx, srcKey);
       if (value !== undefined && value !== '') {
         const target = Object.prototype.hasOwnProperty.call(el.attribs, 'data-src') ? 'data-src' : 'src';
         el.attribs[target] = safeUrl(value, '');
@@ -213,7 +226,7 @@ export function resolveDirectives(html: string, ctx: DirectiveContext): string {
       // it), so there is no string-interpolation-into-style surface and no validateTemplate exception.
       // Empty → keep the authored default. (Publish rebases `/media/…` bg URLs via build.ts's
       // _assets step; a non-/media root-relative bg URL is not rebased — known sub-path-export gap.)
-      const value = resolveOverride(ctx, bgKey);
+      const value = resolveUrlOverride(ctx, bgKey);
       if (value !== undefined && value !== '') {
         const safe = safeUrl(value, '');
         if (Object.prototype.hasOwnProperty.call(el.attribs, 'data-bg')) {

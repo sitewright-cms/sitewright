@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { validateTemplate } from '@sitewright/blocks';
 import { GLOBAL_SNIPPETS } from '@sitewright/core';
 
-describe('GLOBAL_SNIPPETS (built-in starter snippets)', () => {
+describe('GLOBAL_SNIPPETS (reference cookbook)', () => {
   it('has unique, identifier-safe names (usable as {{> name}}) and non-empty labels/sources', () => {
     const names = GLOBAL_SNIPPETS.map((s) => s.name);
     expect(new Set(names).size).toBe(names.length);
@@ -26,11 +26,19 @@ describe('GLOBAL_SNIPPETS (built-in starter snippets)', () => {
     }
   });
 
-  it('exposes client-editable regions and/or brand bindings', () => {
+  it('binds content — an editable region, a component, a loop, or a helper (never a static blob)', () => {
     for (const s of GLOBAL_SNIPPETS) {
-      const hasEditable = /data-sw-/.test(s.source); // editable leaves (the retired {{edit}} is gone)
-      const hasBinding = /\{\{\s*company\./.test(s.source);
-      expect(hasEditable || hasBinding, `snippet "${s.name}" should bind content`).toBe(true);
+      const hasEditable = /data-sw-/.test(s.source); // editable leaves + component/part markers
+      const hasDynamic = /\{\{/.test(s.source); // a Handlebars binding/loop/helper (each, sw-*, company, …)
+      expect(hasEditable || hasDynamic, `snippet "${s.name}" should bind content`).toBe(true);
+    }
+  });
+
+  it('every recipe declares a grouping category + a one-line description (for the rail + agents)', () => {
+    const categories = new Set(['slider', 'data', 'chrome', 'effects']);
+    for (const s of GLOBAL_SNIPPETS) {
+      expect(categories.has(s.category), `recipe "${s.name}" category`).toBe(true);
+      expect(s.description.trim().length, `recipe "${s.name}" description`).toBeGreaterThan(10);
     }
   });
 });

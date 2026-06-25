@@ -23,7 +23,7 @@ describe('widgetDatasetsForSources', () => {
   });
 
   it('returns nothing for a page with no Widget references', () => {
-    expect(widgetDatasetsForSources(['<div class="hero">{{> features}}</div>'])).toEqual([]);
+    expect(widgetDatasetsForSources(['<div class="hero">{{> navbar}}</div>'])).toEqual([]);
   });
 
   it('the built-in manifest registry exposes hero-slider', () => {

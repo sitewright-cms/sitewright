@@ -804,8 +804,12 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // `https://…` → verifyRegistration rejects → "could not verify this passkey"). The env override wins.
   const passkeyRepo = new PasskeyRepository(db);
   const rpFor = (req: FastifyRequest): RpConfig => {
-    const protocol = firstForwardedValue(req.headers['x-forwarded-proto']) ?? req.protocol;
-    const host = firstForwardedValue(req.headers['x-forwarded-host']) ?? req.headers.host;
+    // Constrain the forwarded values (a spoofed scheme/host can't bypass the ceremony — the browser
+    // binds origin/rpID — but validating keeps attacker-controlled junk out of the rpID + logs).
+    const fwdProto = firstForwardedValue(req.headers['x-forwarded-proto']);
+    const protocol = fwdProto === 'http' || fwdProto === 'https' ? fwdProto : req.protocol;
+    const fwdHost = firstForwardedValue(req.headers['x-forwarded-host']);
+    const host = fwdHost && /^[a-zA-Z0-9.-]+(:\d+)?$/.test(fwdHost) ? fwdHost : req.headers.host;
     return resolveRp(host, protocol, { rpID: opts.webauthnRpId, origin: opts.webauthnOrigin });
   };
   // OIDC single sign-on (the platform as a Relying Party). Provider config (incl. the encrypted

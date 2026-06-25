@@ -131,24 +131,29 @@ function scanContacts(doc: Document): { phone?: string; email?: string; social: 
   let phone: string | undefined, email: string | undefined, mapUrl: string | undefined;
   const social: { link: string; name?: string; icon?: string }[] = [];
   const seen = new Set<string>();
+  const addSocial = (url: string): void => {
+    if (!/^https?:\/\//i.test(url)) return;
+    const det = detectSocial(url);
+    // detectSocial falls back to icon 'globe' for UNKNOWN hosts — only KNOWN providers are real social.
+    if (!det.icon || det.icon === 'globe') return;
+    const key = det.name ?? url;
+    if (!seen.has(key) && social.length < 12) { seen.add(key); social.push({ link: url, ...det }); }
+  };
   for (const a of allByName(doc.children, 'a')) {
     const href = (a.attribs.href ?? '').trim();
     if (!href) continue;
     if (!phone && /^tel:/i.test(href)) { const p = decodeURIComponent(href.slice(4)).replace(/\s+/g, ' ').trim(); if (p) phone = p.slice(0, 60); continue; }
     if (!email && /^mailto:/i.test(href)) { const e = href.slice(7).split('?')[0]!.trim(); if (isEmail(e)) email = e; continue; }
-    if (/^https:\/\//i.test(href)) {
-      const det = detectSocial(href);
-      // detectSocial falls back to icon 'globe' for UNKNOWN hosts — only KNOWN providers are real social.
-      if (det.icon && det.icon !== 'globe') {
-        const key = det.name ?? href;
-        if (!seen.has(key) && social.length < 12) { seen.add(key); social.push({ link: href, ...det }); }
-      }
-    }
+    if (/^https:\/\//i.test(href)) addSocial(href);
   }
-  // A Google Maps EMBED iframe (a plain maps link can't be framed) → mapUrl, rendered as the footer map.
+  // Iframes (incl. LAZY ones whose real URL is in data-src): a Google Maps EMBED → mapUrl; a Facebook/X
+  // page-plugin → the embedded profile URL becomes a social link (a common "no <a> social" pattern).
   for (const f of allByName(doc.children, 'iframe')) {
-    const src = (f.attribs.src ?? '').trim();
-    if (/^https:\/\//i.test(src) && MAP_EMBED_RE.test(src)) { mapUrl = src.slice(0, 2000); break; }
+    const src = (f.attribs.src || f.attribs['data-src'] || f.attribs['data-lazy-src'] || f.attribs['data-original'] || '').trim();
+    if (!/^https:\/\//i.test(src)) continue;
+    if (!mapUrl && MAP_EMBED_RE.test(src)) mapUrl = src.slice(0, 2000);
+    const plugin = src.match(/(?:facebook|twitter|x)\.com\/plugins\/[^?]*\?[^"']*\bhref=([^&"']+)/i);
+    if (plugin) { try { addSocial(decodeURIComponent(plugin[1]!)); } catch { /* malformed href param */ } }
   }
   return { phone, email, social, mapUrl };
 }

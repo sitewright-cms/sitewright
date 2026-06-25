@@ -59,6 +59,16 @@ describe('extractIdentity', () => {
     expect(names).not.toContain('Example'); // a non-social link (icon 'globe') is excluded
   });
 
+  it('extracts a LAZY (data-src) map iframe + a Facebook page-plugin profile (no <a> social)', () => {
+    const html = `<html><head><title>Acme</title></head><body><footer>
+      <iframe class="lazy" data-src="https://www.google.com/maps/embed?pb=!1m14!abc"></iframe>
+      <iframe src="https://www.facebook.com/plugins/page.php?href=https%3A%2F%2Fwww.facebook.com%2Facmeco%2F&tabs=timeline"></iframe>
+    </footer></body></html>`;
+    const id = extractIdentity(parse(html), { baseUrl: 'https://ex.com/', assetMap: new Map(), fallbackName: 'X' });
+    expect(id.mapUrl).toContain('google.com/maps/embed'); // read from data-src, not src
+    expect(id.social?.[0]).toMatchObject({ name: 'Facebook', link: 'https://www.facebook.com/acmeco/' });
+  });
+
   it('extracts a free-text address from a location-icon footer block (no JSON-LD/microdata)', () => {
     const html = `<html><body><footer>
       <div class="d-flex"><i class="fa fa-home"></i><span>Corner of A &amp; B Streets, Suiderhof</span></div>

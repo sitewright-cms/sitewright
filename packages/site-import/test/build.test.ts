@@ -69,7 +69,7 @@ describe('buildImportBundle (integration)', () => {
     expect(result.stats.scriptsDropped).toBeGreaterThanOrEqual(1);
   });
 
-  it('marks imported pages as drafts with a swImport rewrite marker', async () => {
+  it('publishes captured pages (draft stubs) with a swImport rewrite marker', async () => {
     const result = await buildImportBundle(
       site([
         { sourceUrl: 'https://ex.com/', html: page('Acme | Home', '<h1>Welcome</h1>', HOME_HEAD) },
@@ -79,7 +79,11 @@ describe('buildImportBundle (integration)', () => {
     );
     const pages = result.bundles[0]!.pages;
     expect(pages.length).toBeGreaterThan(0);
-    for (const p of pages) expect(p.status).toBe('draft');
+    // Captured pages (real content, swImport marker) go live; synthesized stub parents stay draft.
+    for (const p of pages) {
+      const captured = !!(p.data as { swImport?: unknown } | undefined)?.swImport;
+      expect(p.status).toBe(captured ? 'published' : 'draft');
+    }
     const home = pages.find((p) => p.path === '')!;
     const marker = (home.data as { swImport?: { sourceUrl?: string; rewritten?: boolean; importedAt?: string } }).swImport;
     expect(marker).toEqual({ sourceUrl: 'https://ex.com/', rewritten: false, importedAt: '2026-06-20T00:00:00.000Z' });

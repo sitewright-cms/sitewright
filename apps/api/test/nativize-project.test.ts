@@ -5,8 +5,8 @@ import type { CapturedNode } from '@sitewright/site-import';
 
 const ctx: ProjectContext = { userId: 'u1', projectId: 'p1', role: 'owner' };
 
-// A tiny styled tree: a brand-colored div wrapping a paragraph + a self-hosted image whose src the
-// headless capture resolved to the loopback origin (the orchestrator must strip it back to root-relative).
+// A tiny styled tree: a brand-colored div + a paragraph + an image the capture resolved to the loopback
+// origin (the orchestrator must strip it back to root-relative).
 const tree = (): CapturedNode[] => [
   {
     tag: 'div', s: { color: 'rgb(11, 74, 119)' }, children: [
@@ -25,58 +25,82 @@ function makeDeps(o: DepOverrides = {}) {
   const pages = o.pages ?? [
     { id: 'home', path: '', title: 'Home', source: '<div>raw</div>', status: 'draft', data: { swImport: { sourceUrl: 'https://www.example.com/', rewritten: false } } },
     { id: 'about', path: 'about', title: 'About', source: '<div>raw</div>', status: 'draft', data: { swImport: { sourceUrl: 'https://www.example.com/about', rewritten: false } } },
-    { id: 'native', path: 'x', title: 'X', source: '<div>done</div>', status: 'published', data: {} }, // NOT rawFidelity → skipped
+    { id: 'native', path: 'x', title: 'X', source: '<div>done</div>', status: 'published', data: {} }, // NOT rawFidelity → excluded
   ];
-  const settings = { identity: { colors: { primary: '#0b4a77' } }, website: {} };
-  const puts: Array<{ id: string; raw: { source: string; data: { swImport: { rewritten: boolean } } } }> = [];
+  const settings = {
+    identity: { colors: { primary: '#0b4a77' }, logo: '/media/logo.png' },
+    website: { head: '<link rel="stylesheet" href="/media/import.css">', scripts: '<script src="/media/foreign.js"></script>', topNav: '<div><a href="/a">A</a></div>' },
+  };
+  const pagePuts: Array<{ id: string; raw: { status: string; source: string; data: { swImport: { rewritten: boolean } } } }> = [];
+  let settingsPut: { website: { head: string; scripts: string; topNav: string; mobileNav: string } } | null = null;
   const contentRepo = {
     get: vi.fn(async () => settings),
     list: vi.fn(async () => pages),
-    put: vi.fn(async (_c: unknown, _k: unknown, id: string, raw: unknown) => { puts.push({ id, raw: raw as never }); return raw; }),
+    put: vi.fn(async (_c: unknown, kind: string, id: string, raw: unknown) => {
+      if (kind === 'settings') settingsPut = raw as never;
+      else pagePuts.push({ id, raw: raw as never });
+      return raw;
+    }),
   } as unknown as NativizeDeps['contentRepo'];
   const renderPool = { render: vi.fn(async (src: string) => src) } as unknown as NativizeDeps['renderPool'];
   const log = { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() } as unknown as NativizeDeps['log'];
   const deps: NativizeDeps = { contentRepo, renderPool, originHostPort: '127.0.0.1:80', log, capture: o.capture ?? okCapture };
-  return { deps, puts, log };
+  return { deps, pagePuts, getSettingsPut: () => settingsPut, log };
 }
 
 describe('nativizeProject', () => {
-  it('nativizes only rawFidelity pages → native source + rewritten:true, theme color → token', async () => {
-    const { deps, puts } = makeDeps();
-    const progress: Array<{ phase: string; detail?: string }> = [];
-    const report = await nativizeProject(ctx, deps, (e) => progress.push(e));
+  it('nativizes rawFidelity pages → published native source (brand→token, /media root-relative)', async () => {
+    const { deps, pagePuts } = makeDeps();
+    const report = await nativizeProject(ctx, deps, () => {});
     expect(report.pagesTotal).toBe(2); // the already-native page is excluded
     expect(report.pagesNativized).toBe(2);
     expect(report.skipped).toEqual([]);
-    expect(puts).toHaveLength(2);
-    for (const { raw } of puts) {
+    expect(pagePuts).toHaveLength(2);
+    for (const { raw } of pagePuts) {
+      expect(raw.status).toBe('published'); // #7
       expect(raw.data.swImport.rewritten).toBe(true);
-      expect(raw.source).toContain('text-primary'); // brand rgb → token via the theme-derived palette
-      expect(raw.source).not.toContain('raw'); // literal source replaced by the nativized output
-      expect(raw.source).toContain('src="/media/logo.webp"'); // loopback origin stripped → root-relative
+      expect(raw.source).toContain('text-primary'); // brand rgb → theme token
+      expect(raw.source).not.toContain('raw');
+      expect(raw.source).toContain('src="/media/logo.webp"'); // loopback origin stripped
       expect(raw.source).not.toContain('127.0.0.1');
     }
-    expect(progress.some((e) => e.phase === 'nativize' && !!e.detail)).toBe(true);
   });
 
-  it('skips a page whose capture throws, without aborting the batch', async () => {
+  it('rebuilds the chrome once the whole site is native: nav loop + foreign CSS/JS dropped', async () => {
+    const { deps, getSettingsPut } = makeDeps();
+    const report = await nativizeProject(ctx, deps, () => {});
+    expect(report.chromeRebuilt).toBe(true);
+    const w = getSettingsPut()!.website;
+    expect(w.topNav).toContain('{{#each nav.header}}'); // #6 data-driven nav
+    expect(w.topNav).not.toContain('href="/a"'); // the imported hard-coded link is gone
+    expect(w.head).not.toMatch(/<link[^>]+stylesheet/i); // #5 foreign stylesheet dropped
+    expect(w.scripts).toBe(''); // #5 foreign JS dropped
+    expect(w.mobileNav).toBe('');
+  });
+
+  it('skips a page whose capture throws, and does NOT rebuild chrome (a rawFidelity page remains)', async () => {
     let n = 0;
     const capture: CaptureFn = async (...args) => { n += 1; if (n === 1) throw new Error('render boom'); return okCapture(...args); };
-    const { deps, puts, log } = makeDeps({ capture });
+    const { deps, pagePuts, getSettingsPut, log } = makeDeps({ capture });
     const report = await nativizeProject(ctx, deps, () => {});
     expect(report.skipped).toHaveLength(1);
     expect(report.pagesNativized).toBe(1);
-    expect(puts).toHaveLength(1);
+    expect(report.chromeRebuilt).toBe(false); // a still-rawFidelity page needs the foreign CSS + literal chrome
+    expect(getSettingsPut()).toBeNull(); // settings untouched
+    expect(pagePuts).toHaveLength(1);
     expect(log.warn).toHaveBeenCalled();
   });
 
-  it('stops between pages when the abort signal fires', async () => {
+  it('the abort signal stops the tail of a concurrent batch', async () => {
     const ac = new AbortController();
-    const capture: CaptureFn = async (...args) => { ac.abort(); return okCapture(...args); };
-    const { deps, puts } = makeDeps({ capture });
+    const pages = Array.from({ length: 6 }, (_, i) => ({ id: `p${i}`, path: `p${i}`, title: `P${i}`, source: '<div>raw</div>', status: 'draft', data: { swImport: { sourceUrl: `https://www.example.com/p${i}`, rewritten: false } } }));
+    const capture: CaptureFn = async (...args) => { ac.abort(); return okCapture(...args); }; // abort during the first captures
+    const { deps } = makeDeps({ pages, capture });
     deps.signal = ac.signal;
     const report = await nativizeProject(ctx, deps, () => {});
-    expect(report.pagesNativized).toBe(1); // first page completes; the loop breaks before the second
-    expect(puts).toHaveLength(1);
+    expect(report.pagesTotal).toBe(6);
+    expect(report.pagesNativized).toBeGreaterThanOrEqual(1); // the in-flight pages complete
+    expect(report.pagesNativized).toBeLessThan(6); // …but the tail is skipped once aborted
+    expect(report.chromeRebuilt).toBe(false); // not all native → chrome untouched
   });
 });

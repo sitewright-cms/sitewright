@@ -260,10 +260,10 @@ export async function buildImportBundle(site: CapturedSite, opts: TransformOptio
     try { pageLabel = new URL(x.url).pathname || '/'; } catch { pageLabel = x.url; }
     opts.onProgress?.({ phase: 'transform', done: transformed, total: parsed.length, detail: page.title ? `${page.title} · ${pageLabel}` : pageLabel });
   }
-  // ALL pages (incl. synthesized stub parents) start as DRAFTS — a faithful scaffold shouldn't
-  // auto-publish before review/rewrite. Only captured pages carry the swImport marker (set above);
-  // stubs have no source HTML to rewrite.
-  for (const p of routeRes.pages) p.status = 'draft';
+  // Captured pages (real imported content, marked with swImport) are PUBLISHED so the imported site is
+  // live by default; synthesized stub parents (no source HTML) stay DRAFT so an empty placeholder never
+  // goes live. The subsequent nativize keeps published pages published.
+  for (const p of routeRes.pages) p.status = (p.data as { swImport?: unknown } | undefined)?.swImport ? 'published' : 'draft';
 
   const website = buildWebsite(chrome, cssLink || undefined, scriptLinks || undefined);
   const bundle: ImportBundle = {

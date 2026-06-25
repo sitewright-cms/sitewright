@@ -129,15 +129,16 @@ export const CART_CSS = [
   '[data-sw-cart] [data-sw-part="order-field"]{display:block;margin-bottom:.5rem;font-size:.8125rem}',
   '[data-sw-cart] [data-sw-part="order-field"]>span{display:block;margin-bottom:.15rem}',
   '[data-sw-cart] [data-sw-part="order-field"] input,[data-sw-cart] [data-sw-part="order-field"] textarea{width:100%;padding:.4rem .5rem;border:1px solid var(--sw-color-base-300,#d1d5db);border-radius:.375rem;font:inherit}',
-  '[data-sw-cart] [data-sw-part="order-submit"]{display:block;width:100%;border:0;border-radius:.375rem;padding:.5rem 1rem;margin-top:.25rem;background:var(--sw-color-primary,#0a7a5a);color:var(--sw-color-primary-content,#fff);cursor:pointer;font:inherit;transition:filter .15s ease}',
-  '[data-sw-cart] [data-sw-part="order-submit"][disabled]{opacity:.6;cursor:progress}',
+  // order-submit / channel-submit are checkout CTAs — they render as .btn.btn-primary.btn-block; only
+  // their stacking gap + the submitting cursor are kept (the face/hover come from .btn).
+  '[data-sw-cart] [data-sw-part="order-submit"]{margin-top:.25rem}',
+  '[data-sw-cart] [data-sw-part="order-submit"][disabled]{cursor:progress}',
   '[data-sw-cart] [data-sw-part="order-status"]{margin:.5rem 0 0;font-size:.8125rem}',
   // Collapsible per-channel input form (whatsapp/mailto with custom fields). Reuses the order-field
   // input styling above; hidden until the channel button toggles it open.
   '[data-sw-cart] [data-sw-part="channel-form"]{margin:.25rem 0;padding:.625rem .75rem;border:1px solid var(--sw-color-base-300,#e5e7eb);border-radius:.375rem;background:var(--sw-color-base-200,#f9fafb)}',
   '[data-sw-cart] [data-sw-part="channel-form"][hidden]{display:none}',
-  '[data-sw-cart] [data-sw-part="channel-submit"]{display:block;width:100%;border:0;border-radius:.375rem;padding:.5rem 1rem;margin-top:.25rem;background:var(--sw-color-primary,#0a7a5a);color:var(--sw-color-primary-content,#fff);cursor:pointer;font:inherit;transition:filter .15s ease}',
-  '[data-sw-cart] [data-sw-part="channel-submit"]:hover{filter:brightness(.92)}',
+  '[data-sw-cart] [data-sw-part="channel-submit"]{margin-top:.25rem}',
   '[data-sw-cart] [data-sw-part="channel-status"]{margin:.4rem 0 0;font-size:.8125rem;color:#b00020}',
   '[data-sw-cart] [data-sw-part="sent-msg"]{padding:1.5rem 1.25rem;text-align:center;color:var(--sw-color-primary,#0a7a5a);font-weight:600}',
   // The "added" pulse on an add-to-cart button (runtime toggles data-sw-added briefly).

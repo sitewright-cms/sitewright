@@ -24,14 +24,14 @@ interface HeaderSettingsMenuProps {
   onSystemSettings: () => void;
   onClients: () => void;
   onTeam: () => void;
-  onSignOut: () => void;
 }
 
 /**
  * The header's far-right SETTINGS menu (gear icon → dropdown). Unifies what used to be the ⋮
- * "Publish & deploy options", the Admin tab (Clients/Team/Access), the admin "System Settings",
- * and Sign out. Each item is shown only in its valid context; every target opens as a modal.
- * Always present when signed in, so Sign out + System Settings never disappear with no project open.
+ * "Publish & deploy options", the Admin tab (Clients/Team/Access), and the admin "System Settings".
+ * Each item is shown only in its valid context; every target opens as a modal. Account actions
+ * (Account Settings + Logout) live under the adjacent user/person icon ({@link UserDropdown}); this
+ * menu renders nothing when it has no items for the current context.
  */
 export function HeaderSettingsMenu({
   inProject,
@@ -42,7 +42,6 @@ export function HeaderSettingsMenu({
   onSystemSettings,
   onClients,
   onTeam,
-  onSignOut,
 }: HeaderSettingsMenuProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -70,9 +69,8 @@ export function HeaderSettingsMenu({
   }, [open]);
 
   const owner = inProject && !isClient;
-  // In project order: Publish & Deploy, System Settings, Clients, Team — each gated — then a divider
-  // and the always-present Sign out (one flat list so arrow-key focus crosses the rule). Access keys
-  // moved to the user/account menu (the person icon next to this gear).
+  // In project order: Publish & Deploy, System Settings, Clients, Team — each gated by context.
+  // Account actions (Account Settings + Logout) live under the adjacent user icon (UserDropdown).
   const items: { label: string; onClick: () => void; dividerBefore?: boolean }[] = [
     ...(
       [
@@ -87,7 +85,7 @@ export function HeaderSettingsMenu({
       .filter((i) => i.show)
       .map(({ label, onClick }) => ({ label, onClick })),
   ];
-  const all = [...items, { label: 'Sign out', onClick: onSignOut, dividerBefore: items.length > 0 }];
+  const all = items;
 
   const pick = (fn: () => void) => () => {
     setOpen(false);
@@ -114,6 +112,10 @@ export function HeaderSettingsMenu({
       focus(n - 1);
     }
   }
+
+  // With account actions moved to the user menu, the gear can be empty (e.g. a non-admin with no
+  // project open) — render nothing rather than an empty popover.
+  if (all.length === 0) return null;
 
   return (
     <div className="relative" ref={ref}>

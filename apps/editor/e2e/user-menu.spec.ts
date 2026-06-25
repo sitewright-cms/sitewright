@@ -18,8 +18,9 @@ test('user menu: mint an access key, change password, and re-login', async ({ pa
   await page.getByLabel('Project slug').fill(`menu-${stamp}`);
   await page.getByRole('button', { name: 'Create project' }).click();
 
-  // Open the account menu; the Account tab shows the current login email.
+  // Open the account menu → Account Settings; the Account tab shows the current login email.
   await page.getByRole('button', { name: 'Account' }).click();
+  await page.getByRole('menuitem', { name: 'Account Settings' }).click();
   const account = page.getByRole('dialog', { name: 'Account' });
   await expect(account).toBeVisible();
   await expect(account.getByLabel('Email')).toHaveValue(email);
@@ -41,8 +42,8 @@ test('user menu: mint an access key, change password, and re-login', async ({ pa
   // Close, sign out, then sign back in with the NEW password.
   await page.keyboard.press('Escape');
   await expect(account).toBeHidden();
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'Sign out' }).click();
+  await page.getByRole('button', { name: 'Account' }).click();
+  await page.getByRole('menuitem', { name: 'Logout' }).click();
 
   await page.getByLabel('Email').fill(email);
   await page.getByRole('textbox', { name: 'Password' }).fill('New-pw-9876');

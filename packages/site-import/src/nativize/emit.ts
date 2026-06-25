@@ -76,30 +76,46 @@ const CONTAINER_MIN_PX = 760; // a wide, centered structural block → the site-
 const BTN_PAD_X = 8; // a button-like <a> needs real horizontal padding (a fill/outline + padding, not a text link)
 const BTN_PAD_Y = 4;
 
+/** The result of a button snap: the `.btn …` classes, and whether the captured fill/text color should be
+ *  dropped (a brand/outline face owns the color) or KEPT (a non-brand color the theme can't tokenize). */
+export interface ButtonSnap {
+  classes: string;
+  keepColor: boolean;
+}
+
 /**
  * Snap a button-like `<a>`/`<button>` to the platform button system (`.btn` + a daisyUI FACE + size), or
- * null if it's a plain link. A brand fill → `btn-primary/secondary/accent` (theme-editable); a border-only
- * control → `btn-outline` (+ the brand face if the border is a brand color); any other fill → `btn-neutral`.
- * Effects/shapes/accents (sw-btn-*) are the operator's site-wide design choice, not derived from the import.
+ * null if it's a plain link. A brand fill → `btn-primary/secondary/accent` (theme-editable, color dropped);
+ * a border-only control → `btn-outline` (+ brand face if the border is a brand color); a small ~square
+ * fill → `btn-square` (icon button); any other fill → bare `.btn` with the captured color KEPT (so a
+ * non-brand button stays its real color — the agent can map it to a token). Effects/shapes/accents
+ * (sw-btn-*) are the operator's site-wide design choice, not derived from the import.
  */
-export function snapButton(s: StyleMap, tag: string, palette: NativizePalette): string | null {
+export function snapButton(s: StyleMap, tag: string, palette: NativizePalette): ButtonSnap | null {
   if (tag !== 'a' && tag !== 'button') return null;
   const bg = s['background-color']; // the walk records this ONLY when it differs from the transparent default
   const borderW = parseFloat(s['border-top-width'] || s['border-left-width'] || s['border-bottom-width'] || s['border-right-width'] || '0');
   const padX = Math.max(parseFloat(s['padding-left'] || '0'), parseFloat(s['padding-right'] || '0'));
   const padY = Math.max(parseFloat(s['padding-top'] || '0'), parseFloat(s['padding-bottom'] || '0'));
-  // A <button> is always a control; an <a> must LOOK like one (a fill OR an outline, plus button padding)
-  // so plain text/nav links stay links.
-  const looksButton = tag === 'button' || ((!!bg || borderW > 0) && padX >= BTN_PAD_X && padY >= BTN_PAD_Y);
-  if (!looksButton) return null;
+  const w = parseFloat(s.width || '0'), h = parseFloat(s.height || '0');
   const bgTok = bg ? colorToken(bg, palette) : null;
-  let face: string;
-  if (bgTok && bgTok !== 'white' && bgTok !== 'black') face = `btn-${bgTok}`;
-  else if (!bg && borderW > 0) { const bt = colorToken(s['border-top-color'] || '', palette); face = bt && bt !== 'white' && bt !== 'black' ? `btn-outline btn-${bt}` : 'btn-outline'; }
-  else face = 'btn-neutral'; // white/black/non-brand fill → neutral (theme-editable; the agent can recolor)
+  const brandFace = bgTok && bgTok !== 'white' && bgTok !== 'black' ? `btn-${bgTok}` : null;
   const fs = parseFloat(s['font-size'] || '16');
-  const size = padY >= 16 || fs >= 19 ? 'btn-lg' : (padY > 0 && padY <= 6) || fs <= 13 ? 'btn-sm' : '';
-  return ['btn', face, size].filter(Boolean).join(' ');
+  const size = padY >= 16 || fs >= 19 ? 'btn-lg' : (padY > 0 && padY <= 6) || (fs > 0 && fs <= 13) ? 'btn-sm' : '';
+  const wrap = (face: string, keepColor: boolean): ButtonSnap => ({ classes: ['btn', face, size].filter(Boolean).join(' '), keepColor });
+
+  // PADDED control (a fill OR an outline + button padding), or ANY <button>.
+  if (tag === 'button' || ((!!bg || borderW > 0) && padX >= BTN_PAD_X && padY >= BTN_PAD_Y)) {
+    if (brandFace) return wrap(brandFace, false); // face owns the color → drop the captured fill/text
+    if (!bg && borderW > 0) { const bt = colorToken(s['border-top-color'] || '', palette); return wrap(bt && bt !== 'white' && bt !== 'black' ? `btn-outline btn-${bt}` : 'btn-outline', false); }
+    if (bg) return wrap('', true); // non-brand fill → bare .btn, KEEP the color
+    return wrap('btn-neutral', false); // a bare <button> with no fill → neutral
+  }
+  // SQUARE ICON button: a small ~square fixed-size control with a fill but little/no padding.
+  if (!!bg && w >= 24 && w <= 80 && h >= 24 && h <= 80 && Math.abs(w - h) <= 10 && padX < BTN_PAD_X) {
+    return brandFace ? { classes: `btn btn-square ${brandFace}`, keepColor: false } : { classes: 'btn btn-square', keepColor: true };
+  }
+  return null;
 }
 
 /**
@@ -140,8 +156,12 @@ export function mergeTree(nb: CapturedNode, nm: CapturedNode, nl: CapturedNode, 
   else if (isTrack) { marqueeTrack = true; cls = 'sw-marquee-track'; } // the TRACK
   else if (isSlide) { cls = 'sw-marquee-item'; } // each SLIDE
   else if (btn) {
-    const keep = mergeGroups(maps).filter((c) => /(?:^|:)(?:mx-auto|ml-auto|mr-auto|my-auto|w-full)$/.test(c));
-    cls = [btn, ...keep].join(' ');
+    // Keep positioning (auto-margins / w-full) always; keep the captured fill/text color only when the
+    // chosen face doesn't own it (a non-brand button stays its real color).
+    const keep = mergeGroups(maps).filter((c) =>
+      /(?:^|:)(?:mx-auto|ml-auto|mr-auto|my-auto|w-full)$/.test(c) || (btn.keepColor && /(?:^|:)(?:bg-|text-)/.test(c)),
+    );
+    cls = [btn.classes, ...keep].join(' ');
   } else {
     cls = (isContainer ? 'sw-container ' : '') + mergeGroups(maps).join(' ');
     if (nl.pflex && !isContainer) cls = (cls ? cls + ' ' : '') + 'min-w-0';

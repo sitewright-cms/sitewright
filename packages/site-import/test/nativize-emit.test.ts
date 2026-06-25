@@ -193,33 +193,38 @@ describe('renderTree — tree → Handlebars HTML', () => {
 
 describe('snapButton — button / button-link → SW button system', () => {
   const pad = { 'padding-left': '24px', 'padding-right': '24px', 'padding-top': '12px', 'padding-bottom': '12px' };
-  it('snaps a brand-fill control to the matching daisyUI face', () => {
-    expect(snapButton({ 'background-color': 'rgb(11, 74, 119)', ...pad }, 'a', ctx.palette)).toBe('btn btn-primary');
-    expect(snapButton({ 'background-color': 'rgb(57, 193, 240)', ...pad }, 'a', ctx.palette)).toBe('btn btn-secondary');
+  it('snaps a brand-fill control to the matching face (captured color dropped)', () => {
+    expect(snapButton({ 'background-color': 'rgb(11, 74, 119)', ...pad }, 'a', ctx.palette)).toEqual({ classes: 'btn btn-primary', keepColor: false });
+    expect(snapButton({ 'background-color': 'rgb(57, 193, 240)', ...pad }, 'a', ctx.palette)?.classes).toBe('btn btn-secondary');
   });
   it('snaps a border-only control to btn-outline (+ brand face when the border is a brand color)', () => {
-    expect(snapButton({ 'border-top-width': '2px', 'border-top-color': 'rgb(11, 74, 119)', ...pad }, 'a', ctx.palette)).toBe('btn btn-outline btn-primary');
-    expect(snapButton({ 'border-top-width': '1px', 'border-top-color': 'rgb(20, 20, 20)', ...pad }, 'a', ctx.palette)).toBe('btn btn-outline');
+    expect(snapButton({ 'border-top-width': '2px', 'border-top-color': 'rgb(11, 74, 119)', ...pad }, 'a', ctx.palette)?.classes).toBe('btn btn-outline btn-primary');
+    expect(snapButton({ 'border-top-width': '1px', 'border-top-color': 'rgb(20, 20, 20)', ...pad }, 'a', ctx.palette)?.classes).toBe('btn btn-outline');
   });
-  it('snaps a non-brand fill to btn-neutral; a <button> is always a control', () => {
-    expect(snapButton({ 'background-color': 'rgb(34, 197, 94)', ...pad }, 'a', ctx.palette)).toBe('btn btn-neutral');
-    expect(snapButton({}, 'button', ctx.palette)).toBe('btn btn-neutral');
+  it('keeps the color for a non-brand fill; a bare <button> → neutral', () => {
+    expect(snapButton({ 'background-color': 'rgb(34, 197, 94)', ...pad }, 'a', ctx.palette)).toEqual({ classes: 'btn', keepColor: true });
+    expect(snapButton({}, 'button', ctx.palette)).toEqual({ classes: 'btn btn-neutral', keepColor: false });
+  });
+  it('snaps a small ~square fill with no padding to a btn-square icon button', () => {
+    expect(snapButton({ 'background-color': 'rgb(12, 163, 200)', width: '50px', height: '50px' }, 'a', ctx.palette)).toEqual({ classes: 'btn btn-square', keepColor: true });
+    expect(snapButton({ 'background-color': 'rgb(11, 74, 119)', width: '48px', height: '48px' }, 'a', ctx.palette)?.classes).toBe('btn btn-square btn-primary');
   });
   it('derives size from padding / font-size', () => {
-    expect(snapButton({ 'background-color': 'rgb(11, 74, 119)', 'padding-left': '32px', 'padding-right': '32px', 'padding-top': '18px', 'padding-bottom': '18px' }, 'a', ctx.palette)).toBe('btn btn-primary btn-lg');
-    expect(snapButton({ 'background-color': 'rgb(11, 74, 119)', 'padding-left': '12px', 'padding-right': '12px', 'padding-top': '5px', 'padding-bottom': '5px' }, 'a', ctx.palette)).toBe('btn btn-primary btn-sm');
+    expect(snapButton({ 'background-color': 'rgb(11, 74, 119)', 'padding-left': '32px', 'padding-right': '32px', 'padding-top': '18px', 'padding-bottom': '18px' }, 'a', ctx.palette)?.classes).toBe('btn btn-primary btn-lg');
+    expect(snapButton({ 'background-color': 'rgb(11, 74, 119)', 'padding-left': '12px', 'padding-right': '12px', 'padding-top': '5px', 'padding-bottom': '5px' }, 'a', ctx.palette)?.classes).toBe('btn btn-primary btn-sm');
   });
   it('leaves plain links alone', () => {
     expect(snapButton({ color: 'rgb(11, 74, 119)' }, 'a', ctx.palette)).toBeNull();
     expect(snapButton({ 'background-color': 'rgb(11, 74, 119)', ...pad }, 'div', ctx.palette)).toBeNull(); // not a/button
   });
-  it('renders a button-link as <a class="btn …"> with its route + label', () => {
+  it('renders a brand button-link with the face (no color), and KEEPS a non-brand color', () => {
     const a = node('a', { 'background-color': 'rgb(11, 74, 119)', ...pad }, { href: 'https://www.advancedtechcc.com/contact/', text: 'Contact us' });
     const html = renderTree(mergeTrees([a], [a], [a], ctx), ctx).html;
     expect(html).toContain('class="btn btn-primary"');
     expect(html).toContain("href=\"{{sw-url '/contact'}}\"");
-    expect(html).toContain('Contact us');
-    expect(html).not.toContain('bg-['); // captured fill dropped in favor of the face
+    expect(html).not.toContain('bg-['); // brand face → captured fill dropped
+    const g = node('a', { 'background-color': 'rgb(34, 197, 94)', ...pad }, { href: '/x', text: 'Go' });
+    expect(renderTree(mergeTrees([g], [g], [g], ctx), ctx).html).toMatch(/class="btn[^"]*bg-\[#22c55e\]/); // non-brand → color kept
   });
 });
 

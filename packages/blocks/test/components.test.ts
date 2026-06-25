@@ -226,13 +226,31 @@ describe('component registry', () => {
     expect(css).toContain('background:color-mix(in srgb,var(--sw-color-base-content,#0f172a) 45%,transparent)');
   });
 
+  it('an INACTIVE (closed) modal is display:none so it never intercepts clicks/scroll', () => {
+    // Regression: a closed <dialog> is display:none via the UA stylesheet, but an AUTHOR rule beats the
+    // UA at equal specificity — so the base modal rule MUST set display:none. If it sets display:flex
+    // (the bug), the closed, fixed, centered box stays laid out (just opacity:0) and swallows clicks +
+    // scroll over the middle of the page. display lives on [open]; the allow-discrete transition still
+    // animates the none↔flex toggle for the exit.
+    const { css } = componentAssets(['Modal']);
+    // The base (closed) rule is display:none (asserted in context so it can't match the [open] rule).
+    expect(css).toContain('box-sizing:border-box;display:none;flex-direction:column');
+    // It must NOT lay the closed box out as flex (the bug) — that's the click/scroll-eating state.
+    expect(css).not.toContain('box-sizing:border-box;display:flex');
+    // The OPEN state provides display:flex (so it lays out + centers only when shown).
+    expect(css).toContain('[data-sw-component="modal"][open]{display:flex');
+    // …and the display toggle is animated discretely so the exit animation plays.
+    expect(css).toContain('display .22s allow-discrete');
+  });
+
   it('Modal taller than the viewport scrolls its body (overhanging close button kept)', () => {
     const { css, js } = componentAssets(['Modal']);
     // The dialog is height-capped to the viewport less 4rem (normal specificity so it beats the UA's
     // own dialog{max-height}; the 4rem keeps the overhanging close button on-screen) and laid out as a
-    // flex column so the body scroll region fills the remaining height.
+    // flex column (when OPEN) so the body scroll region fills the remaining height.
     expect(css).toContain('max-height:calc(100dvh - 4rem)');
-    expect(css).toContain('display:flex;flex-direction:column');
+    expect(css).toContain('flex-direction:column');
+    expect(css).toContain('[open]{display:flex');
     // box-sizing:border-box keeps the padding inside that cap so the overhang math holds regardless
     // of the ambient reset.
     expect(css).toContain('box-sizing:border-box');

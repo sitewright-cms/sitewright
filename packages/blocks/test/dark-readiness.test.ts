@@ -118,11 +118,11 @@ describe('dark-readiness: scheme-aware chrome flips its surfaces (no hard-coded 
 });
 
 describe('dark-readiness: labels on the brand fill use the on-primary content token', () => {
+  // CookieConsent + Form no longer carry their own brand-fill button — their accept/submit buttons render
+  // as the vendored .btn.btn-primary, whose on-primary content token is asserted from baseStyles below.
   const brandChrome: Array<[string, string]> = [
-    ['CookieConsent', componentAssets(['CookieConsent']).css],
     ['Modal', componentAssets(['Modal']).css],
     ['Tabs', componentAssets(['Tabs']).css],
-    ['Form', componentAssets(['Form']).css],
     ['cart', CART_CSS],
     ['preview-css', previewStyles()],
   ];
@@ -131,5 +131,8 @@ describe('dark-readiness: labels on the brand fill use the on-primary content to
     for (const [label, css] of brandChrome) {
       expect(css, label).toContain('var(--sw-color-primary-content');
     }
+    // The cookie accept / form submit / add-to-cart / cart checkout buttons all render as .btn.btn-primary,
+    // whose foreground rides the WCAG-derived on-primary token — so their labels stay legible everywhere.
+    expect(baseStyles(), 'baseStyles .btn-primary').toContain('--sw-btn-face-content: var(--sw-color-primary-content');
   });
 });

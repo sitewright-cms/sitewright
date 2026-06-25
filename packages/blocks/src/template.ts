@@ -510,10 +510,10 @@ function createInstance(): typeof Handlebars {
   // strips custom data-* there). The product DATA is escaped; the elements carry no behavior (cart.js
   // wires clicks). Prices are NON-AUTHORITATIVE (a front-end inquiry, not a charge). See blocks/cart.ts.
   //
-  // {{sw-add-to-cart sku=id name=title price=price image=img label="Add" class="btn btn-primary"}} →
+  // {{sw-add-to-cart sku=id name=title price=price image=img label="Add" class="btn btn-outline"}} →
   // an "add to cart" <button>. `price` is coerced to a finite, non-negative number (canonical numeric
   // string; unknown/negative → 0). A bare key (sku, else name) is required or nothing is emitted. With
-  // no `class=`, cart.js's first-party default button style applies (`[data-sw-cart-add]:not([class])`).
+  // no `class=`, the button defaults to the vendored `btn btn-primary`; pass `class=` to override.
   hb.registerHelper('sw-add-to-cart', function swAddToCart(this: unknown, ...args: unknown[]) {
     const options = args[args.length - 1] as Handlebars.HelperOptions;
     const h = (options?.hash ?? {}) as Record<string, unknown>;
@@ -537,8 +537,9 @@ function createInstance(): typeof Handlebars {
       const safe = safeUrl(img); // blocks javascript:/data:/protocol-relative → '#'
       if (safe && safe !== '#') attrs += ` data-image="${escapeAttr(safe)}"`;
     }
-    const cls = str(h.class);
-    if (cls) attrs += ` class="${escapeAttr(cls)}"`;
+    // Default to the vendored .btn (btn-primary); an explicit `class=` overrides it per-button.
+    const cls = str(h.class) || 'btn btn-primary';
+    attrs += ` class="${escapeAttr(cls)}"`;
     return new Handlebars.SafeString(`<button type="button" ${attrs}>${escapeHtml(label)}</button>`);
   });
   // {{sw-cart}} → the cart MOUNT: a single <div data-sw-cart> carrying the currency + submission

@@ -52,10 +52,11 @@ function hasCartMarker(s: string): boolean {
 export const CART_CSS = [
   '[data-sw-cart]{display:none}',
   '[data-sw-cart][data-sw-enhanced="true"]{display:block}',
-  // Floating toggle button (bottom-right) with an item-count badge. position/overflow are !important so
-  // the generic `.waves-effect` rule below (position:relative; overflow:hidden) can't unpin the floating
-  // toggle or clip its count badge.
-  '[data-sw-cart] [data-sw-part="toggle"]{position:fixed !important;overflow:visible !important;right:1rem;bottom:1rem;z-index:9997;display:flex;align-items:center;justify-content:center;width:3.25rem;height:3.25rem;border:0;border-radius:9999px;background:var(--sw-color-primary,#0a7a5a);color:var(--sw-color-primary-content,#fff);cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.25);transition:transform .15s ease,box-shadow .15s ease}',
+  // Floating toggle (bottom-right) with an item-count badge. The FACE comes from the vendored
+  // `.btn.btn-primary.btn-circle` (added in the runtime); only positioning + size + elevation live here.
+  // position/overflow are !important so the generic `.waves-effect` rule below (position:relative;
+  // overflow:hidden) can't unpin the floating toggle or clip its count badge.
+  '[data-sw-cart] [data-sw-part="toggle"]{position:fixed !important;overflow:visible !important;right:1rem;bottom:1rem;z-index:9997;width:3.25rem;height:3.25rem;box-shadow:0 6px 20px rgba(0,0,0,.25)}',
   '[data-sw-cart] [data-sw-part="toggle"] svg{width:1.5rem;height:1.5rem}',
   '[data-sw-cart] [data-sw-part="count"]{position:absolute;top:-.25rem;right:-.25rem;min-width:1.25rem;height:1.25rem;padding:0 .25rem;border-radius:9999px;background:#b00020;color:#fff;font-size:.75rem;line-height:1.25rem;text-align:center}',
   '[data-sw-cart] [data-sw-part="count"][hidden]{display:none}',
@@ -120,7 +121,8 @@ export const CART_CSS = [
   '[data-sw-cart] [data-sw-part="foot"]{flex:none;padding:1rem 1.25rem;border-top:1px solid var(--sw-color-base-300,#e5e7eb)}',
   '[data-sw-cart] [data-sw-part="total"]{display:flex;justify-content:space-between;font-weight:700;margin-bottom:.25rem}',
   '[data-sw-cart] [data-sw-part="note"]{font-size:.75rem;color:color-mix(in oklab,var(--sw-color-base-content,#1f2937) 58%,transparent);margin:.25rem 0 .75rem}',
-  '[data-sw-cart] [data-sw-part="channel"]{display:block;width:100%;border:0;border-radius:.375rem;padding:.625rem 1rem;margin-top:.5rem;background:var(--sw-color-primary,#0a7a5a);color:var(--sw-color-primary-content,#fff);cursor:pointer;text-align:center;font:inherit;transition:filter .15s ease}',
+  // checkout / channel buttons use the vendored `.btn.btn-primary.btn-block`; only their stacking gap is kept.
+  '[data-sw-cart] [data-sw-part="channel"]{margin-top:.5rem}',
   '[data-sw-cart] [data-sw-part="clear"]{display:block;width:100%;border:0;background:none;color:color-mix(in oklab,var(--sw-color-base-content,#1f2937) 58%,transparent);cursor:pointer;margin-top:.5rem;font-size:.875rem}',
   // Inline order form (the `form` channel).
   '[data-sw-cart] [data-sw-part="order"]{margin-top:.75rem}',
@@ -147,9 +149,7 @@ export const CART_CSS = [
   // overflow:visible lets it escape the circle). Reduced-motion users get only the bump above.
   '@keyframes sw-cart-pulse{from{transform:scale(.9);opacity:.5}to{transform:scale(2);opacity:0}}',
   '@media (prefers-reduced-motion:no-preference){[data-sw-cart] [data-sw-part="toggle"][data-sw-pulse]::after{content:"";position:absolute;inset:0;z-index:-1;border-radius:9999px;background:var(--sw-color-primary,#0a7a5a);animation:sw-cart-pulse .6s ease-out;pointer-events:none}}',
-  // Hover affordances on the interactive controls.
-  '[data-sw-cart] [data-sw-part="toggle"]:hover{transform:translateY(-2px) scale(1.04);box-shadow:0 12px 30px rgba(0,0,0,.32)}',
-  '[data-sw-cart] [data-sw-part="channel"]:hover,[data-sw-cart] [data-sw-part="order-submit"]:hover{filter:brightness(.92)}',
+  // Hover affordances on the icon controls (the toggle + checkout buttons get their hover from .btn).
   '[data-sw-cart] [data-sw-part="close"]{transition:color .15s ease,transform .15s ease}',
   '[data-sw-cart] [data-sw-part="close"]:hover{color:#b00020;transform:rotate(90deg)}',
   '[data-sw-cart] [data-sw-part="qty"] button{transition:background .15s ease}',
@@ -358,7 +358,7 @@ export const CART_JS = `(function(){
     var started=Date.now(); // for the /f time-trap (_elapsed must be >= the server minimum)
     var sent=false; // true after a successful form-channel submit → show the "order sent" panel
 
-    var toggle=part('button','toggle');toggle.type='button';toggle.setAttribute('aria-label','Open cart');ripple(toggle,true);
+    var toggle=part('button','toggle');toggle.type='button';toggle.className='btn btn-primary btn-circle';toggle.setAttribute('aria-label','Open cart');ripple(toggle,true);
     toggle.appendChild(cartIcon());
     var count=part('span','count');toggle.appendChild(count);
 
@@ -379,7 +379,7 @@ export const CART_JS = `(function(){
       var chx=cfg.channels[ci];
       if(chx.kind==='form'){if(!formCh){formCh=chx;}continue;}
       (function(ch){
-        var b=part('button','channel',channelLabel(ch));b.type='button';ripple(b,true);
+        var b=part('button','channel',channelLabel(ch));b.type='button';b.className='btn btn-primary btn-block';ripple(b,true);
         var cf=(ch.kind==='whatsapp'||ch.kind==='mailto')?buildChannelForm(ch,b):null;
         if(cf){
           // The button toggles the field form; the form's own submit performs the order (after validation).
@@ -430,7 +430,7 @@ export const CART_JS = `(function(){
           inputs.push({label:label,req:req,inp:inp});
         })(fields[i]);
       }
-      var submit=part('button','channel-submit',channelLabel(ch));submit.type='submit';ripple(submit,true);
+      var submit=part('button','channel-submit',channelLabel(ch));submit.type='submit';submit.className='btn btn-primary btn-block';ripple(submit,true);
       var status=part('p','channel-status');
       form.appendChild(submit);form.appendChild(status);
       form.addEventListener('submit',function(e){
@@ -465,7 +465,7 @@ export const CART_JS = `(function(){
       var emailI=field('email','Email','email',true);
       var phoneI=field('phone','Phone (optional)','tel',false);
       var noteI=field('note','Note (optional)','textarea',false);
-      var submit=part('button','order-submit',channelLabel(ch));submit.type='submit';ripple(submit,true);
+      var submit=part('button','order-submit',channelLabel(ch));submit.type='submit';submit.className='btn btn-primary btn-block';ripple(submit,true);
       var status=part('p','order-status');
       form.appendChild(submit);form.appendChild(status);
       form.addEventListener('submit',function(e){

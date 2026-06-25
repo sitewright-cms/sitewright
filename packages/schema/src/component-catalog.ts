@@ -253,7 +253,7 @@ export const COMPONENT_CATALOG: readonly ComponentCatalogEntry[] = [
     ],
     skeleton: `<div data-sw-component="cookie-consent" hidden>
   <p>We use a few essential cookies. <a class="link" href="/privacy">Learn more</a></p>
-  <button type="button" data-sw-part="accept">OK, got it</button>
+  <button type="button" class="btn btn-primary btn-sm" data-sw-part="accept">OK, got it</button>
 </div>`,
     noJs: 'No banner at all — and with no JS there is nothing to consent to.',
     notes: 'Place it ONCE, site-wide, in the website `bottom` slot (not on individual pages). For a second, independent banner (e.g. on a campaign microsite) give it a different data-cookiename so consent is tracked separately. DaisyUI has no equivalent.',

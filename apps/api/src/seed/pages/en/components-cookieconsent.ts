@@ -48,7 +48,7 @@ export function pageComponentsCookieConsent(): Page {
   <p class="mt-2 max-w-2xl leading-relaxed text-base-content/60" data-sw-translate="comp_cookie.sec_how_d">The server renders it hidden; the runtime reveals it only when no choice is stored.</p>
   <pre class="mt-4 max-w-full overflow-x-auto rounded-2xl bg-base-200 p-4 text-xs leading-relaxed"><code>&lt;div data-sw-component="cookie-consent" hidden&gt;
   &lt;p&gt;We use a few essential cookies. &lt;a class="link" href="/privacy"&gt;Learn more&lt;/a&gt;&lt;/p&gt;
-  &lt;button type="button" data-sw-part="accept"&gt;OK, got it&lt;/button&gt;
+  &lt;button type="button" class="btn btn-primary btn-sm" data-sw-part="accept"&gt;OK, got it&lt;/button&gt;
 &lt;/div&gt;</code></pre>
 </section>
 

@@ -94,7 +94,7 @@ describe('renderFormMarkup — the {{sw-form}} markup contract', () => {
     expect(html).toContain('<textarea name="message" required></textarea>');
   });
   it('renders submit + hidden success/error parts with escaped copy', () => {
-    expect(html).toContain('<button type="submit" data-sw-part="submit">Send enquiry</button>');
+    expect(html).toContain('<button type="submit" data-sw-part="submit" class="btn btn-primary">Send enquiry</button>');
     expect(html).toContain('<p data-sw-part="success" role="status" hidden>Thanks — we got it.</p>');
     expect(html).toContain('<p data-sw-part="error" role="alert" hidden>Sorry, that &amp; failed.</p>');
   });
@@ -210,7 +210,7 @@ describe('{{sw-form}} through renderTemplate (helper + pass composed)', () => {
   it('renders the full form with the endpoint injected', () => {
     const out = renderTemplate('<section>{{sw-form "contact"}}</section>', { forms });
     expect(out).toContain('data-sw-endpoint="/f/proj1/contact"');
-    expect(out).toContain('<button type="submit" data-sw-part="submit">Send enquiry</button>');
+    expect(out).toContain('<button type="submit" data-sw-part="submit" class="btn btn-primary">Send enquiry</button>');
     expect(out).toContain('name="_hpt"');
     expect(out).not.toContain('data-sw-form');
   });

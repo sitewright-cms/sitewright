@@ -250,6 +250,22 @@ export function WebsiteSection({
             </div>
           </label>
         </div>
+        <label className="mt-4 flex items-center justify-between gap-3">
+          <span className="min-w-0">
+            <span className={fieldLabel}>Back-to-top button</span>
+            <span className="block text-[11px] text-slate-400">
+              Shows a chevron-up button after the first screen of scrolling that scrolls back to the top.
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            role="switch"
+            aria-label="Enable back-to-top button"
+            className={toggleInput}
+            checked={form.backToTop}
+            onChange={(e) => patch({ backToTop: e.target.checked })}
+          />
+        </label>
       </GlassCard>
 
       {editing && (

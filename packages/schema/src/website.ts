@@ -438,6 +438,8 @@ export const WebsiteEffectsSchema = z.object({
   preloaderEffect: z
     .enum(['none', 'spinner', 'dual', 'dots', 'bars', 'pulse', 'progress', 'logo-pulse', 'logo-draw', 'logo-sheen'])
     .optional(),
+  /** Show a BACK-TO-TOP button (a `.btn sw-btn-shape-square` that appears after the first viewport of scroll). */
+  backToTop: z.boolean().optional(),
   /** Custom nav effect — raw HTML (style/script) injected at body-end when navEffect is 'none'. */
   navCode: z.string().max(HTML_MAX).optional(),
   /** Custom button effect — raw HTML injected at body-end when buttonEffect is 'none'. */

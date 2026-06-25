@@ -62,6 +62,9 @@ import {
   preloaderHtml,
   PRELOADER_CSS,
   PRELOADER_JS,
+  backToTopHtml,
+  BACK_TO_TOP_CSS,
+  BACK_TO_TOP_JS,
   NAV_EFFECTS_JS,
   usesNavEffects,
   BUTTON_EFFECTS_JS,
@@ -103,6 +106,8 @@ const THEME_SCRIPT = 'theme.js';
 const NAV_LINK_SCRIPT = 'nav-link.js';
 /** The PRELOADER runtime (overlay show/clear + scroll-lock + internal-link bridge), linked per page. */
 const PRELOADER_SCRIPT = 'preloader.js';
+/** The BACK-TO-TOP runtime (show after the first viewport of scroll + scroll-to-top), linked per page. */
+const BACK_TO_TOP_SCRIPT = 'back-to-top.js';
 /** The NAV-EFFECTS runtime (sliding indicator + cursor-following spotlight), linked per page. */
 const NAV_EFFECTS_SCRIPT = 'nav-effects.js';
 /** The BUTTON-EFFECTS runtime (ripple on every .btn + magnetic + spotlight), linked per page. */
@@ -449,11 +454,15 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // The site-wide nav/button effect scheme classes land on <body> (renderDocument), so feed them
     // into the candidate set too — else their (tree-shaken) effect CSS wouldn't be compiled.
     const themeClassNames = websiteEffectsClasses(website?.effects).split(' ').filter(Boolean);
+    // The platform-injected BACK-TO-TOP button (renderDocument) carries `btn sw-btn-shape-square` — feed
+    // those classes in so the (tree-shaken) square-shape utility compiles into the sheet.
+    const backToTopClassNames = website?.effects?.backToTop !== false ? ['btn', 'sw-btn-shape-square'] : [];
     const classNames = [
       ...sourceClassNames,
       ...slotClassNames,
       ...snippetClassNames,
       ...themeClassNames,
+      ...backToTopClassNames,
     ];
     const usesUtilities = classNames.length > 0;
     // Interactive component JS/CSS (modal / tabs / carousel / lightbox / cookie-consent / form) ships
@@ -490,6 +499,9 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     // 'none'). The platform injects the overlay markup (renderDocument), so this is gated on the
     // theme choice rather than an authored marker.
     const usesPreloaderRuntime = !previewMode && (website?.effects?.preloaderEffect ?? 'none') !== 'none';
+    // BACK-TO-TOP runtime — ON BY DEFAULT (ships unless website.effects.backToTop is explicitly false).
+    // The platform injects the button markup (renderDocument), so this is gated on the setting only.
+    const usesBackToTopRuntime = website?.effects?.backToTop !== false;
     // NAV-EFFECTS runtime — ships when a JS-backed nav scheme is used (a shared sliding indicator or
     // the cursor-following spotlight). Two ways to opt in: the site-wide picker (effects.navEffect) OR
     // a per-element class authored on a nav <ul>/snippet — so scan the sources too (same only-used-ships
@@ -497,9 +509,10 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     const usesNavRuntime =
       navEffectUsesRuntime(website?.effects?.navEffect) || usesMarker(usesNavEffects);
     // BUTTON-EFFECTS runtime — ripple is the always-on .btn baseline, so this ships whenever the page has
-    // a button (or a JS-backed magnetic/spotlight default). usesButtonEffects scans for a `.btn`.
+    // a button (or a JS-backed magnetic/spotlight default). usesButtonEffects scans for a `.btn`; the
+    // back-to-top button is a platform-injected `.btn` no scan sees, so OR it in for its ripple.
     const usesBtnRuntime =
-      buttonEffectUsesRuntime(website?.effects?.buttonEffect) || usesMarker(usesButtonEffects);
+      buttonEffectUsesRuntime(website?.effects?.buttonEffect) || usesMarker(usesButtonEffects) || usesBackToTopRuntime;
     // The nav-link runtime opens a <dialog> (global modal) and smooth-scrolls #section links. Ship it
     // when a nav placeholder targets a #fragment OR any authored surface embeds a <dialog> — so a modal
     // triggered from page CONTENT (a CTA, an in-content `<a href="#id">`), not only a nav placeholder,
@@ -696,6 +709,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         const preloaderMarkup = usesPreloaderRuntime
           ? preloaderHtml(website?.effects?.preloaderEffect, { logo: rel(identity.logo) })
           : undefined;
+        const backToTopMarkup = usesBackToTopRuntime ? backToTopHtml(true) : undefined;
         // Custom effect code (the "None / Custom Code" slots): nav/button code injects at body-end
         // (after the tenant's scripts); a custom preloader is the first-body-child overlay. Each
         // applies only when its built-in effect is 'none', so a site without custom code is unchanged.
@@ -709,6 +723,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           ...(usesCartRuntime ? [CART_CSS] : []),
           ...(usesThemeToggleRuntime ? [THEME_TOGGLE_CSS] : []),
           ...(usesPreloaderRuntime ? [PRELOADER_CSS] : []),
+          ...(usesBackToTopRuntime ? [BACK_TO_TOP_CSS] : []),
         ];
         const pageScripts = [
           ...(usesComponents && components.js ? [`${siteRoot}${COMPONENT_SCRIPT}`] : []),
@@ -720,6 +735,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           ...(usesPreloaderRuntime ? [`${siteRoot}${PRELOADER_SCRIPT}`] : []),
           ...(usesNavRuntime ? [`${siteRoot}${NAV_EFFECTS_SCRIPT}`] : []),
           ...(usesBtnRuntime ? [`${siteRoot}${BUTTON_EFFECTS_SCRIPT}`] : []),
+          ...(usesBackToTopRuntime ? [`${siteRoot}${BACK_TO_TOP_SCRIPT}`] : []),
         ];
         const html = renderDocument(page, {
           brand,
@@ -737,6 +753,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           footer: footerHtml,
           bottom: bottomHtml,
           preloader: fxCode.preloader ?? preloaderMarkup,
+          backToTop: backToTopMarkup,
           // Custom effect code references the brand's text-on-brand tokens — make sure they're defined
           // even on a themes-off site (themes already emit them; this only fires for custom sites).
           emitBrandContentTokens: !!(fxCode.bodyEnd || fxCode.preloader),
@@ -863,6 +880,12 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
       await writeFile(join(tmp, PRELOADER_SCRIPT), PRELOADER_JS, 'utf8');
       bytes += Buffer.byteLength(PRELOADER_JS);
+    }
+    // The BACK-TO-TOP runtime (show after the first viewport of scroll + scroll-to-top; only-used-ships).
+    if (usesBackToTopRuntime) {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
+      await writeFile(join(tmp, BACK_TO_TOP_SCRIPT), BACK_TO_TOP_JS, 'utf8');
+      bytes += Buffer.byteLength(BACK_TO_TOP_JS);
     }
     // The NAV-EFFECTS runtime (sliding indicator + cursor-following spotlight; only-used-ships).
     if (usesNavRuntime) {

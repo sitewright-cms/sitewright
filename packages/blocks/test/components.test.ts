@@ -233,11 +233,10 @@ describe('component registry', () => {
     // scroll over the middle of the page. display lives on [open]; the allow-discrete transition still
     // animates the none↔flex toggle for the exit.
     const { css } = componentAssets(['Modal']);
-    // The base (closed) rule is display:none — find the mdlg() base block and assert it.
-    const base = css.match(/dialog,dialog\[data-sw-component="modal"\]\{([^}]*)\}/);
-    expect(base, 'base modal rule present').not.toBeNull();
-    expect(base?.[1]).toContain('display:none');
-    expect(base?.[1]).not.toContain('display:flex');
+    // The base (closed) rule is display:none (asserted in context so it can't match the [open] rule).
+    expect(css).toContain('box-sizing:border-box;display:none;flex-direction:column');
+    // It must NOT lay the closed box out as flex (the bug) — that's the click/scroll-eating state.
+    expect(css).not.toContain('box-sizing:border-box;display:flex');
     // The OPEN state provides display:flex (so it lays out + centers only when shown).
     expect(css).toContain('[data-sw-component="modal"][open]{display:flex');
     // …and the display toggle is animated discretely so the exit animation plays.

@@ -16,9 +16,10 @@ test('keyed dataset access: set an entry key, then read it directly with {{item.
   await page.getByRole('button', { name: 'Create project' }).click();
 
   // Data rail: a "Services" dataset (slug "services") with a "title" field.
-  await page.getByRole('button', { name: 'Open Datasets' }).hover();
+  await page.getByRole('button', { name: 'Open Datasets' }).click();
+  await page.getByRole('button', { name: 'New dataset' }).click();
   await page.getByLabel('Dataset name').fill('Services');
-  await page.getByRole('button', { name: 'Create dataset' }).click();
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
   // The schema editor is collapsed by default — expand it to add fields.
   await page.getByRole('button', { name: /schema/ }).click();
   await page.getByLabel('New field name').fill('title');
@@ -31,6 +32,8 @@ test('keyed dataset access: set an entry key, then read it directly with {{item.
   await page.getByLabel('title', { exact: true }).fill('Web Development');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Web Development' })).toBeVisible();
+  // The entry editor stays open after Save (baseline reset) — close it before clicking behind it.
+  await page.keyboard.press('Escape');
 
   // Close the (full-height) Data rail, then open Home and address the entry directly by key — no loop.
   await page.getByRole('region', { name: 'Datasets' }).getByRole('button', { name: 'Close Datasets' }).click();

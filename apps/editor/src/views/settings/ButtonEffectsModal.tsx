@@ -108,6 +108,7 @@ export function ButtonEffectsModal({ form, onApply, onClose }: ButtonEffectsModa
         onClose();
       }}
     >
+      <div className="p-5">
       <div className="grid gap-4 sm:grid-cols-3">
         <label className="flex flex-col">
           <span className={fieldLabel}>Effect</span>
@@ -167,9 +168,10 @@ export function ButtonEffectsModal({ form, onApply, onClose }: ButtonEffectsModa
       </div>
       <p className="mt-2 text-xs text-white/50">
         Hover the sample buttons. These are the SITE DEFAULTS — every <code>.btn</code> inherits them; add a
-        per-button class (e.g. <code>sw-btn-fx-pill</code>) to override one button. For a fully custom effect,
+        per-button class (e.g. <code>sw-btn-fx-lift</code>) to override one button. For a fully custom effect,
         pick “None” and use the Edit-code option.
       </p>
+      </div>
     </Modal>
   );
 }

@@ -218,7 +218,7 @@ export function ImportWebsiteModal({ projectId, projectName, onClose, onImported
             </dl>
             {report.truncated && (
               <p className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
-                <TriangleAlert className="h-4 w-4 shrink-0" /> A crawl limit was reached — not every page was imported.
+                <TriangleAlert className="h-4 w-4 shrink-0" /> A crawl limit was reached — some pages may be missing. Raise “Max pages” or re-run to capture more.
               </p>
             )}
             {report.warnings.length > 0 && (

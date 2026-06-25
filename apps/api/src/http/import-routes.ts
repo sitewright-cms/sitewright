@@ -22,7 +22,11 @@ const IMPORT_DEFAULT_PAGES = 50;
 const IMPORT_DEFAULT_DEPTH = 3;
 const IMPORT_FETCH_TIMEOUT_MS = 12_000;
 const MAX_RESOURCE_BYTES = 15 * 1024 * 1024; // per fetched page/asset
-const MAX_CRAWL_BYTES = 60 * 1024 * 1024; // whole-crawl byte budget
+// Whole-crawl byte budget (HTML pages + fetched stylesheets; images don't count — they're hosted later).
+// 60MB was too low: a small but asset-heavy site (big HTML + many/large stylesheets) blew it and dropped
+// pages even on a ~19-page crawl. 200MB comfortably covers a normal small/medium site; still bounded
+// (held in memory during the crawl) against a runaway.
+const MAX_CRAWL_BYTES = 200 * 1024 * 1024;
 const MAX_STYLESHEETS = 40;
 const IMPORT_UPLOAD_MAX_BYTES = 50 * 1024 * 1024; // compressed upload cap (uncompressed bounded in upload.ts)
 const IMPORT_UA = 'SitewrightImporter/1.0 (+website import)';

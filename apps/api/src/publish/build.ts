@@ -45,6 +45,9 @@ import {
   usesAnimations,
   ANIMATION_CSS,
   ANIMATION_JS,
+  usesParallax,
+  PARALLAX_CSS,
+  PARALLAX_JS,
   usesMarquee,
   MARQUEE_CSS,
   usesLazyload,
@@ -94,6 +97,8 @@ const UTILITY_STYLESHEET = 'styles.css';
 const COMPONENT_SCRIPT = 'components.js';
 /** The scroll-reveal (data-aos) runtime, written at the site root and linked per page. */
 const ANIMATION_SCRIPT = 'animations.js';
+/** The parallax / scroll-linked property runtime (translate/opacity/scale/blur), linked per page. */
+const PARALLAX_SCRIPT = 'parallax.js';
 /** The lazy-load (data-bg / lazyload) runtime, written at the site root and linked per page. */
 const LAZYLOAD_SCRIPT = 'lazyload.js';
 /** The ripple (waves-effect) runtime, written at the site root and linked per page. */
@@ -485,6 +490,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       slotSources.some(strFn) ||
       Object.values(usedSnippets).some(strFn);
     const usesAnims = usesMarker(usesAnimations);
+    const usesPx = usesMarker(usesParallax);
     const usesMarq = usesMarker(usesMarquee); // CSS-only logo marquee → ship MARQUEE_CSS when used
     const usesLazy = usesMarker(usesLazyload);
     const usesWaves = usesMarker(usesRipple);
@@ -717,6 +723,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         const pageInlineStyles = [
           ...(usesComponents && components.css ? [components.css] : []),
           ...(usesAnims ? [ANIMATION_CSS] : []),
+          ...(usesPx ? [PARALLAX_CSS] : []),
           ...(usesMarq ? [MARQUEE_CSS] : []),
           ...(usesLazy ? [LAZYLOAD_CSS] : []),
           ...(usesWaves ? [RIPPLE_CSS] : []),
@@ -728,6 +735,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         const pageScripts = [
           ...(usesComponents && components.js ? [`${siteRoot}${COMPONENT_SCRIPT}`] : []),
           ...(usesAnims ? [`${siteRoot}${ANIMATION_SCRIPT}`] : []),
+          ...(usesPx ? [`${siteRoot}${PARALLAX_SCRIPT}`] : []),
           ...(usesLazy ? [`${siteRoot}${LAZYLOAD_SCRIPT}`] : []),
           ...(usesWaves ? [`${siteRoot}${RIPPLE_SCRIPT}`] : []),
           ...(usesCartRuntime ? [`${siteRoot}${CART_SCRIPT}`] : []),
@@ -844,6 +852,12 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
       await writeFile(join(tmp, ANIMATION_SCRIPT), ANIMATION_JS, 'utf8');
       bytes += Buffer.byteLength(ANIMATION_JS);
+    }
+    // The parallax / scroll-linked property runtime (first-party behavior; only-used-ships).
+    if (usesPx) {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- constant filename under the validated tmp dir
+      await writeFile(join(tmp, PARALLAX_SCRIPT), PARALLAX_JS, 'utf8');
+      bytes += Buffer.byteLength(PARALLAX_JS);
     }
     // The lazy-load runtime (first-party behavior; only-used-ships).
     if (usesLazy) {

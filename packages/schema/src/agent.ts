@@ -290,6 +290,17 @@ package, CDN links, or any script (they'd be rejected anyway). Content stays vis
 without JS and motion respects prefers-reduced-motion. Stagger lists by increasing
 data-aos-delay per item (e.g. 0/100/200).
 
+PARALLAX (scroll-linked): drive depth/scale/fade/blur off scroll with data-sw-parallax* attributes on
+any element (the platform ships a tiny runtime automatically — no library/script). Channels, all
+optional + composable: data-sw-parallax="0.3" = translate SPEED (0 static, + recedes/lags scroll,
+− leads/foreground, clamp ±2) with data-sw-parallax-axis="y|x"; data-sw-parallax-opacity="0,1",
+data-sw-parallax-scale="0.9,1.05", data-sw-parallax-blur="8,0" each interpolate from,to across the
+element's pass through the viewport. Background section: <section data-sw-parallax-bg
+data-sw-parallax="0.4"><div data-sw-parallax-layer style="background-image:url(...)"></div>…content…
+</section> — the clipped oversized layer drifts behind the content. RESTRAINT: at most one parallax
+accent per section, keep speeds subtle (0.15–0.4); it inherits prefers-reduced-motion (no motion = static,
+in-flow — never breaks layout). Blur is heavier — use sparingly.
+
 RIPPLE (Material "waves") click effect: add class="waves-effect" to a button/link, plus
 "waves-light" for a white ripple on dark/colored buttons (e.g. class="btn btn-primary
 waves-effect waves-light"). The platform ships its own ripple runtime when it sees

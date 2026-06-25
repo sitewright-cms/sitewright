@@ -17,6 +17,13 @@ export interface PinnedResponse {
   bytes: Uint8Array;
 }
 
+/** A 3xx hop: the resolved absolute Location to re-fetch (re-pinned + re-guarded on the next hop). */
+interface Redirect {
+  redirect: string;
+}
+
+const MAX_REDIRECTS = 5;
+
 export interface PinnedOptions {
   timeoutMs?: number;
   maxBytes?: number;
@@ -24,6 +31,8 @@ export interface PinnedOptions {
   signal?: AbortSignal;
   /** Injectable resolver (tests); defaults to the real DNS lookup. */
   resolve?: (host: string) => Promise<{ address: string; family: number }[]>;
+  /** @internal test seam — override the single-hop fetch to exercise the redirect-follow loop. */
+  _fetchOnce?: (url: string, opts: PinnedOptions) => Promise<PinnedResponse | Redirect | null>;
 }
 
 const DEFAULT_TIMEOUT_MS = 12_000;
@@ -35,10 +44,28 @@ async function defaultResolve(host: string): Promise<{ address: string; family: 
 }
 
 /**
- * Fetch `rawUrl` over https against a pinned, SSRF-validated IP. Returns null on: non-https, a private/
- * unresolvable host, any redirect, a non-OK transport, or an oversize/timed-out body.
+ * Fetch `rawUrl` over https against a pinned, SSRF-validated IP, FOLLOWING up to {@link MAX_REDIRECTS}
+ * 3xx hops — each hop is independently resolved + private-IP-guarded + pinned (so a redirect can never
+ * escape the SSRF guard or rebind). Returns null on: non-https, a private/unresolvable host, a redirect
+ * loop / too many hops, a non-OK transport, or an oversize/timed-out body.
  */
 export async function pinnedFetch(rawUrl: string, opts: PinnedOptions = {}): Promise<PinnedResponse | null> {
+  const once = opts._fetchOnce ?? pinnedFetchOnce;
+  let url = rawUrl;
+  const seen = new Set<string>();
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
+    if (seen.has(url)) return null; // redirect loop
+    seen.add(url);
+    const r = await once(url, opts);
+    if (!r) return null;
+    if ('redirect' in r) { url = r.redirect; continue; } // re-pinned + re-guarded on the next iteration
+    return r;
+  }
+  return null; // too many redirects
+}
+
+/** One pinned hop: a 2xx PinnedResponse, a {@link Redirect} (3xx with a resolvable Location), or null. */
+async function pinnedFetchOnce(rawUrl: string, opts: PinnedOptions = {}): Promise<PinnedResponse | Redirect | null> {
   let u: URL;
   try {
     u = new URL(rawUrl);
@@ -74,9 +101,9 @@ export async function pinnedFetch(rawUrl: string, opts: PinnedOptions = {}): Pro
   // The actual pinned TLS request — real network I/O, exercised by the deploy-time end-to-end check.
   // (Everything above — the URL/scheme/private-IP guard — is unit-tested via the injected resolver.)
   /* v8 ignore start */
-  return await new Promise<PinnedResponse | null>((resolve) => {
+  return await new Promise<PinnedResponse | Redirect | null>((resolve) => {
     let done = false;
-    const finish = (v: PinnedResponse | null): void => {
+    const finish = (v: PinnedResponse | Redirect | null): void => {
       if (!done) {
         done = true;
         resolve(v);
@@ -97,8 +124,15 @@ export async function pinnedFetch(rawUrl: string, opts: PinnedOptions = {}): Pro
       },
       (res) => {
         const status = res.statusCode ?? 0;
-        // Accept ONLY 2xx. 3xx can't be re-pinned (redirect:'error'); 1xx/4xx/5xx aren't real content
-        // (a 404 error page must not be imported as a real site page).
+        // A 3xx with a Location → hand the RESOLVED target back up to be re-pinned on the next hop (a bare
+        // trailing-slash redirect, /foo → /foo/, is the common multi-page case). 1xx/4xx/5xx aren't real
+        // content (a 404 error page must not be imported as a real site page).
+        if (status >= 300 && status < 400) {
+          const loc = res.headers.location;
+          res.destroy();
+          if (!loc) return finish(null);
+          try { return finish({ redirect: new URL(loc, u).href }); } catch { return finish(null); }
+        }
         if (status < 200 || status >= 300) {
           res.destroy();
           return finish(null);

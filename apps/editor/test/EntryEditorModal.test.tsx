@@ -6,6 +6,14 @@ import type { Dataset, Entry } from '@sitewright/schema';
 const { putEntry } = vi.hoisted(() => ({ putEntry: vi.fn<(pid: string, e: Entry) => Promise<unknown>>() }));
 vi.mock('../src/api', () => ({ api: { putEntry: (pid: string, e: Entry) => putEntry(pid, e) } }));
 
+// Swap CodeMirror for a plain textarea so the json edit→validate flow runs in jsdom; the real
+// editor is covered by the Playwright browser E2E (mirrors CodeField.test).
+vi.mock('../src/lib/code-editor', () => ({
+  CodeEditor: ({ value, onChange, ariaLabel }: { value: string; onChange: (v: string) => void; ariaLabel?: string }) => (
+    <textarea aria-label={ariaLabel} value={value} onChange={(e) => onChange(e.target.value)} />
+  ),
+}));
+
 import { EntryEditorModal } from '../src/views/datasets/EntryEditorModal';
 
 // A nested dataset: a scalar setting + a `list` of items shaped by child fields.
@@ -106,6 +114,40 @@ describe('EntryEditorModal — Save gating + toasts behaviour', () => {
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
     fireEvent.change(screen.getByLabelText('meta'), { target: { value: '{"a":2}' } });
     expect(screen.getByRole('button', { name: 'Save' })).not.toBeDisabled();
+  });
+
+  it('Format prettifies a valid json field (and is disabled while malformed)', () => {
+    render(<EntryEditorModal projectId="p" dataset={ds([{ name: 'meta', type: 'json', required: false, localized: false }])} entry={row({ values: {} })} onSaved={() => {}} onClose={() => {}} />);
+    const field = () => screen.getByLabelText('meta') as HTMLTextAreaElement;
+    const format = () => screen.getByRole('button', { name: 'Format' });
+    fireEvent.change(field(), { target: { value: '{ bad' } });
+    expect(format()).toBeDisabled();
+    fireEvent.change(field(), { target: { value: '{"a":1,"b":2}' } });
+    expect(format()).not.toBeDisabled();
+    fireEvent.click(format());
+    expect(field().value).toBe('{\n  "a": 1,\n  "b": 2\n}');
+  });
+});
+
+describe('EntryEditorModal — asset-valued fields (image / file / folder)', () => {
+  it('renders a file field as a browsable asset input holding its path', () => {
+    const dataset = ds([{ name: 'attachment', type: 'file', required: false, localized: false }]);
+    render(<EntryEditorModal projectId="p" dataset={dataset} entry={row({ values: { attachment: '/files/brochure.pdf' } })} onSaved={() => {}} onClose={() => {}} />);
+    // The asset input is labelled by the field heading ("attachment (file)") — match by role + name.
+    expect((screen.getByRole('textbox', { name: /attachment/ }) as HTMLInputElement).value).toBe('/files/brochure.pdf');
+    expect(screen.getByRole('button', { name: /browse for attachment/i })).toBeInTheDocument();
+  });
+
+  it('renders a folder field as a browsable input holding a folder path, and saves it', async () => {
+    const dataset = ds([{ name: 'gallery', type: 'folder', required: false, localized: false }]);
+    render(<EntryEditorModal projectId="p" dataset={dataset} entry={row({ values: { gallery: 'photos/team' } })} onSaved={() => {}} onClose={() => {}} />);
+    const input = screen.getByRole('textbox', { name: /gallery/ }) as HTMLInputElement;
+    expect(input.value).toBe('photos/team');
+    expect(screen.getByRole('button', { name: /browse for gallery/i })).toBeInTheDocument();
+    fireEvent.change(input, { target: { value: 'photos/events' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(putEntry).toHaveBeenCalledTimes(1));
+    expect(putEntry.mock.calls[0]![1].values.gallery).toBe('photos/events');
   });
 });
 

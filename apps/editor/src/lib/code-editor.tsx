@@ -7,9 +7,10 @@ import { tags as t } from '@lezer/highlight';
 import { basicSetup } from 'codemirror';
 import { html } from '@codemirror/lang-html';
 import { css } from '@codemirror/lang-css';
-import { lintGutter, setDiagnostics, type Diagnostic } from '@codemirror/lint';
+import { json, jsonParseLinter } from '@codemirror/lang-json';
+import { lintGutter, linter, setDiagnostics, type Diagnostic } from '@codemirror/lint';
 
-export type CodeLanguage = 'html' | 'css';
+export type CodeLanguage = 'html' | 'css' | 'json';
 
 /** A validation failure to mark in the gutter, at a 1-based line/column. */
 export interface CodeEditorError {
@@ -22,7 +23,9 @@ interface CodeEditorProps {
   value: string;
   onChange: (value: string) => void;
   ariaLabel?: string;
-  /** Syntax mode — `html` (HTML + Handlebars, the default) or `css` (e.g. critical CSS). */
+  /** Optional id set on the editable surface so an external `<label htmlFor>` can target it. */
+  id?: string;
+  /** Syntax mode — `html` (HTML + Handlebars, the default), `css` (e.g. critical CSS), or `json`. */
   language?: CodeLanguage;
   /** When set, draw a red gutter marker (message on hover) at this position; null clears it. */
   error?: CodeEditorError | null;
@@ -117,9 +120,13 @@ const handlebarsHighlight = ViewPlugin.fromClass(
   { decorations: (v) => v.decorations },
 );
 
-/** Language extensions per mode (HTML carries the Handlebars overlay; CSS does not). */
+/** Language extensions per mode. HTML carries the Handlebars overlay; CSS is plain; JSON adds a
+ *  parse linter so syntax errors surface as inline gutter diagnostics (its tokens are coloured by the
+ *  shared `richHighlight` palette — propertyName/string/number/bool/null all map to a hue). */
 function languageExtensions(language: CodeLanguage): Extension[] {
-  return language === 'css' ? [css()] : [html(), handlebarsHighlight];
+  if (language === 'css') return [css()];
+  if (language === 'json') return [json(), linter(jsonParseLinter())];
+  return [html(), handlebarsHighlight];
 }
 
 /**
@@ -137,7 +144,7 @@ function languageExtensions(language: CodeLanguage): Extension[] {
  * syntax-aware re-flow). The indent unit is two spaces.
  */
 export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function CodeEditor(
-  { value, onChange, ariaLabel, language = 'html', error = null, onHistory },
+  { value, onChange, ariaLabel, id, language = 'html', error = null, onHistory },
   ref,
 ) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -206,6 +213,8 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
       }),
     });
     if (ariaLabel) view.contentDOM.setAttribute('aria-label', ariaLabel);
+    // Set the id on the editable surface so an external `<label htmlFor>` associates with it.
+    if (id) view.contentDOM.setAttribute('id', id);
     viewRef.current = view;
     onHistoryRef.current?.(undoDepth(view.state) > 0, redoDepth(view.state) > 0);
     return () => {
@@ -227,10 +236,11 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
   }, [value]);
 
   // Mirror the validation error into a CodeMirror lint diagnostic → a red gutter marker at the
-  // offending line/column (its message shows on hover). Clears when `error` is null.
+  // offending line/column (its message shows on hover). Clears when `error` is null. Skipped for
+  // JSON, whose OWN parse linter owns the lint state (dispatching here would clobber it).
   useEffect(() => {
     const view = viewRef.current;
-    if (!view) return;
+    if (!view || languageRef.current === 'json') return;
     const diagnostics: Diagnostic[] = [];
     if (error && error.line >= 1 && error.line <= view.state.doc.lines) {
       const ln = view.state.doc.line(error.line);

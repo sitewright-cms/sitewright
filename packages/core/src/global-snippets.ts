@@ -556,20 +556,137 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
 
   // ── Site chrome ─────────────────────────────────────────────────────────────────────────────────
   {
-    name: 'navbar',
-    label: 'Navbar',
+    name: 'nav-header',
+    label: 'Main navigation (header + mobile drawer)',
     category: 'chrome',
-    description: 'A top navigation bar with active-link highlighting (sw-active) and an editable CTA.',
-    demonstrates: ['sw-active', 'data-sw-text', 'company.name'],
-    source: `<div class="navbar bg-base-100 shadow-sm">
-  <div class="flex-1">
-    <a class="btn btn-ghost text-xl" href="/">{{ company.name }}</a>
+    description:
+      'The full default site header: data-driven desktop bar with hover dropdowns + a pure-CSS mobile slide-in drawer (accordions, logo, close), an auto language dropdown when the page is translated, and an auto light/dark toggle when themes are on.',
+    demonstrates: ['nav.header', 'nav.mobile', 'sw-active', 'sw-label', 'dropdown-hover', 'peer-checkbox drawer', 'details accordion', 'sw-flag', 'sw-theme-toggle'],
+    // Goes in the MAIN NAVIGATION slot (Website settings) — the skeleton wraps it in <nav id="main-nav">.
+    // Desktop loops nav.header (pages in the "Main navigation" slot); the mobile DRAWER loops nav.mobile
+    // (pages in the "Mobile menu" slot) and falls back to nav.header until you curate a mobile menu. The
+    // drawer is no-JS: the hidden peer-checkbox toggles the slide-in panel — the <input> MUST precede the
+    // backdrop/panel. "Show child pages in dropdown" (page settings) → a hover dropdown (parent stays a
+    // real link) on desktop + a <details> accordion in the drawer. The language dropdown auto-appears when
+    // the page has translations; {{sw-theme-toggle}} appears when themes are on. For flags, set
+    // website.data.locale_flags = { "en": "gb", "de": "de", "es": "es" }.
+    source: `<div>
+  {{!-- DESKTOP bar (>=lg) --}}
+  <div class="navbar hidden border-b border-base-200 bg-base-100 px-4 sm:px-8 lg:flex">
+    <div class="navbar-start">
+      <a class="btn btn-ghost gap-2.5 px-2 text-lg font-bold tracking-tight" href="{{sw-url '/'}}">
+        <span class="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-secondary text-primary-content shadow">{{sw-icon "compass" "h-4.5 w-4.5"}}</span>
+        {{ company.name }}
+      </a>
+    </div>
+    <div class="navbar-center">
+      <ul class="menu menu-horizontal gap-1 px-1 font-medium">
+        {{#each nav.header}}
+        {{#if children}}
+        <li class="dropdown dropdown-hover">
+          <a href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}} class="{{#if (sw-active path)}}active{{/if}}"{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{sw-label}} {{sw-icon "chevron-down" "h-4 w-4 opacity-60"}}</a>
+          <ul class="dropdown-content menu z-30 w-52 rounded-xl border border-base-200 bg-base-100 p-2 shadow-xl">{{#each children}}<li><a href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}} class="{{#if (sw-active path)}}active{{/if}}"{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{sw-label}}</a></li>{{/each}}</ul>
+        </li>
+        {{else}}
+        <li><a href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}} class="{{#if (sw-active path)}}active{{/if}}"{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{sw-label}}</a></li>
+        {{/if}}
+        {{/each}}
+      </ul>
+    </div>
+    <div class="navbar-end gap-2">
+      {{#if page.translations}}
+      <div class="dropdown dropdown-end">
+        <div tabindex="0" role="button" class="btn btn-ghost btn-sm gap-1.5">{{sw-flag (lookup @root.website.data.locale_flags page.locale) "h-3.5 w-5 rounded-sm"}}<span class="uppercase">{{page.locale}}</span>{{sw-icon "chevron-down" "h-3 w-3 opacity-60"}}</div>
+        <ul tabindex="0" class="dropdown-content menu z-30 mt-2 w-40 rounded-xl border border-base-200 bg-base-100 p-2 shadow-xl">{{#each page.translations}}<li><a href="{{sw-url path}}" hreflang="{{locale}}">{{sw-flag (lookup @root.website.data.locale_flags locale) "h-3.5 w-5 rounded-sm"}}<span class="uppercase">{{locale}}</span></a></li>{{/each}}</ul>
+      </div>
+      {{/if}}
+      {{sw-theme-toggle}}
+      <a class="btn btn-primary" href="{{sw-url '/contact'}}">{{sw-translate "nav.cta" default="Contact"}}</a>
+    </div>
   </div>
+
+  {{!-- MOBILE bar + slide-in DRAWER (<lg). The peer-checkbox MUST be the first sibling. --}}
+  <div class="navbar relative border-b border-base-200 bg-base-100 px-3 lg:hidden">
+    <input type="checkbox" id="sw-nav-drawer" class="peer sr-only" aria-label="Menu" />
+    <div class="navbar-start">
+      <label for="sw-nav-drawer" class="btn btn-ghost btn-square" aria-hidden="true">{{sw-icon "menu" "h-6 w-6"}}</label>
+      <a class="btn btn-ghost gap-2 px-1 text-base font-bold tracking-tight" href="{{sw-url '/'}}">
+        <span class="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-secondary text-primary-content">{{sw-icon "compass" "h-4 w-4"}}</span>
+        {{ company.name }}
+      </a>
+    </div>
+    <div class="navbar-end">{{sw-theme-toggle}}</div>
+    {{!-- backdrop (closes on click) --}}
+    <label for="sw-nav-drawer" class="pointer-events-none fixed inset-0 z-40 bg-black/40 opacity-0 transition-opacity duration-300 peer-checked:pointer-events-auto peer-checked:opacity-100" aria-hidden="true"></label>
+    {{!-- slide-in panel --}}
+    <div class="fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85%] -translate-x-full flex-col bg-base-100 shadow-2xl transition-transform duration-300 peer-checked:translate-x-0">
+      <div class="flex items-center justify-between border-b border-base-200 p-4">
+        <a class="flex items-center gap-2 text-base font-bold tracking-tight" href="{{sw-url '/'}}"><span class="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-secondary text-primary-content">{{sw-icon "compass" "h-4 w-4"}}</span>{{ company.name }}</a>
+        <label for="sw-nav-drawer" class="btn btn-ghost btn-square btn-sm" aria-label="Close">{{sw-icon "x" "h-5 w-5"}}</label>
+      </div>
+      <ul class="menu w-full flex-1 overflow-y-auto p-3">
+        {{#each nav.mobile}}{{#if children}}<li><details><summary>{{sw-label}}</summary><ul><li><a href="{{sw-url path}}" class="{{#if (sw-active path exact=true)}}active{{/if}}">{{sw-label}}</a></li>{{#each children}}<li><a href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}} class="{{#if (sw-active path)}}active{{/if}}">{{sw-label}}</a></li>{{/each}}</ul></details></li>{{else}}<li><a href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}} class="{{#if (sw-active path)}}active{{/if}}">{{sw-label}}</a></li>{{/if}}{{else}}{{!-- no "Mobile menu" pages yet → mirror the main navigation --}}{{#each nav.header}}{{#if children}}<li><details><summary>{{sw-label}}</summary><ul><li><a href="{{sw-url path}}" class="{{#if (sw-active path exact=true)}}active{{/if}}">{{sw-label}}</a></li>{{#each children}}<li><a href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}} class="{{#if (sw-active path)}}active{{/if}}">{{sw-label}}</a></li>{{/each}}</ul></details></li>{{else}}<li><a href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}} class="{{#if (sw-active path)}}active{{/if}}">{{sw-label}}</a></li>{{/if}}{{/each}}{{/each}}
+      </ul>
+      {{#if page.translations}}
+      <div class="border-t border-base-200 p-3">
+        <div class="flex flex-wrap gap-1" aria-label="Language">{{#each page.translations}}<a class="btn btn-ghost btn-sm gap-1.5" href="{{sw-url path}}" hreflang="{{locale}}">{{sw-flag (lookup @root.website.data.locale_flags locale) "h-3.5 w-5 rounded-sm"}}<span class="uppercase">{{locale}}</span></a>{{/each}}</div>
+      </div>
+      {{/if}}
+    </div>
+  </div>
+</div>`,
+  },
+  {
+    name: 'nav-footer',
+    label: 'Footer (data-driven)',
+    category: 'chrome',
+    description:
+      'A data-driven site footer: brand + a main-nav column (nav.header), a legal column (nav.footer), social icons, and a copyright line.',
+    demonstrates: ['nav.header', 'nav.footer', 'company.social', 'sw-label', 'sw-active'],
+    // Goes in the FOOTER slot — the skeleton wraps it in <footer id="footer"> (so no <footer> here).
+    source: `<div class="bg-neutral text-neutral-content">
+  <div class="mx-auto grid max-w-6xl gap-x-8 gap-y-10 px-6 py-16 sm:grid-cols-2 lg:grid-cols-4">
+    <div class="sm:col-span-2">
+      <a class="flex items-center gap-2.5 text-lg font-bold" href="{{sw-url '/'}}"><span class="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-secondary text-primary-content">{{sw-icon "compass" "h-4.5 w-4.5"}}</span>{{ company.name }}</a>
+      <p class="mt-3 max-w-sm text-sm text-neutral-content/70" data-sw-text="footer_tagline">A short line about what you do.</p>
+      {{#if company.social}}<ul class="mt-5 flex flex-wrap gap-2">{{#each company.social}}<li><a class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-neutral-content/15 text-neutral-content/70 transition hover:border-primary hover:bg-primary hover:text-primary-content" href="{{sw-url link}}" aria-label="{{name}}" target="_blank" rel="noopener">{{sw-icon icon "h-4 w-4"}}</a></li>{{/each}}</ul>{{/if}}
+    </div>
+    <div>
+      <p class="text-xs font-semibold uppercase tracking-wider text-neutral-content/50">{{sw-translate "footer.menu" default="Menu"}}</p>
+      <ul class="mt-3 space-y-2 text-sm">{{#each nav.header}}<li><a class="text-neutral-content/70 transition hover:text-neutral-content{{#if (sw-active path)}} font-semibold text-neutral-content{{/if}}" href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}}>{{sw-label}}</a></li>{{/each}}</ul>
+    </div>
+    <div>
+      <p class="text-xs font-semibold uppercase tracking-wider text-neutral-content/50">{{sw-translate "footer.legal" default="Legal"}}</p>
+      <ul class="mt-3 space-y-2 text-sm">{{#each nav.footer}}<li><a class="text-neutral-content/70 transition hover:text-neutral-content{{#if (sw-active path)}} font-semibold text-neutral-content{{/if}}" href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}}>{{sw-label}}</a></li>{{/each}}</ul>
+    </div>
+  </div>
+  <div class="border-t border-neutral-content/10 px-6 py-5 text-center text-xs text-neutral-content/60">&copy; {{ company.name }}. All rights reserved.</div>
+</div>`,
+  },
+  {
+    name: 'navbar',
+    label: 'Navbar — simple (data-driven)',
+    category: 'chrome',
+    description:
+      'A simple top bar driven by the page tree (nav.header) with hover dropdowns + active highlighting. No mobile drawer — use nav-header for the full default.',
+    demonstrates: ['nav.header', 'sw-active', 'sw-label', 'dropdown-hover', 'sw-url'],
+    // Goes in the MAIN NAVIGATION slot. Every page you add to the "Main navigation" slot (page settings)
+    // appears here, in order; "Show child pages in dropdown" gives a hover dropdown whose parent stays a
+    // real link. The skeleton wraps this in <nav id="main-nav"> — no <nav> here.
+    source: `<div class="navbar bg-base-100 shadow-sm">
+  <div class="flex-1"><a class="btn btn-ghost text-xl" href="{{sw-url '/'}}">{{ company.name }}</a></div>
   <div class="flex-none">
-    <ul class="menu menu-horizontal px-1 sw-nav-box-solid">
-      <li><a href="/features" class="{{#if (sw-active '/features')}}active{{/if}}"{{#if (sw-active '/features' exact=true)}} aria-current="page"{{/if}}>Features</a></li>
-      <li><a href="/pricing" class="{{#if (sw-active '/pricing')}}active{{/if}}"{{#if (sw-active '/pricing' exact=true)}} aria-current="page"{{/if}}>Pricing</a></li>
-      <li><a class="btn btn-primary btn-sm" href="/contact" data-sw-text="nav_cta">Contact</a></li>
+    <ul class="menu menu-horizontal gap-1 px-1">
+      {{#each nav.header}}
+      {{#if children}}
+      <li class="dropdown dropdown-hover">
+        <a href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}} class="{{#if (sw-active path)}}active{{/if}}"{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{sw-label}} {{sw-icon "chevron-down" "h-4 w-4 opacity-60"}}</a>
+        <ul class="dropdown-content menu z-30 w-52 rounded-xl border border-base-200 bg-base-100 p-2 shadow-xl">{{#each children}}<li><a href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}} class="{{#if (sw-active path)}}active{{/if}}">{{sw-label}}</a></li>{{/each}}</ul>
+      </li>
+      {{else}}
+      <li><a href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}} class="{{#if (sw-active path)}}active{{/if}}"{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{sw-label}}</a></li>
+      {{/if}}
+      {{/each}}
     </ul>
   </div>
 </div>`,

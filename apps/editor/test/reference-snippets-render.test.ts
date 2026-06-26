@@ -20,7 +20,7 @@ describe('reference cookbook — catalog shape', () => {
       'gallery-grid', 'gallery-masonry', 'gallery-dataset', 'tabs-mixed', 'tabs-dataset', 'modal-basic', 'modal-confirm',
       'form-embed', 'form-custom', 'datetimepicker-field', 'cookie-consent', 'shop-product', 'parallax-hero', 'shader-hero',
       'recipe-dataset-grid', 'recipe-folder-gallery', 'recipe-i18n', 'recipe-page-vars',
-      'navbar', 'logo-marquee', 'rotating-tiles',
+      'nav-header', 'nav-footer', 'navbar', 'logo-marquee', 'rotating-tiles',
     ]) {
       expect(names.has(want), `expected recipe "${want}"`).toBe(true);
     }
@@ -283,5 +283,75 @@ describe('reference cookbook — forms / inputs / shop / effects recipes render'
     expect(html).toContain('data-sw-component="shader-bg"');
     expect(html).toContain('data-preset="mesh-gradient"');
     expect(html).toContain('data-sw-part="overlay"');
+  });
+});
+
+describe('reference cookbook — navigation recipes render', () => {
+  // A representative data-driven nav context: a dropdown parent, a flat page, translations + themes on.
+  const navCtx = (over: Record<string, unknown> = {}) => ({
+    nav: {
+      header: [
+        { label: 'Home', path: '/' },
+        { label: 'Services', path: '/services', children: [ { label: 'Web', path: '/services/web' }, { label: 'SEO', path: '/services/seo' } ] },
+        { label: 'Contact', path: '/contact' },
+      ],
+      footer: [ { label: 'Privacy', path: '/privacy' }, { label: 'Terms', path: '/terms' } ],
+      mobile: [] as Array<Record<string, unknown>>,
+    },
+    page: { path: '/services/web', locale: 'en', translations: [ { locale: 'de', path: '/de/services/web' }, { locale: 'es', path: '/es/services/web' } ] },
+    company: { name: 'Acme', social: [ { link: 'https://x.com/acme', name: 'X', icon: 'brand:x' } ] },
+    website: { enableThemes: true, data: { locale_flags: { en: 'gb', de: 'de', es: 'es' } } },
+    ...over,
+  });
+
+  it('nav-header: desktop hover-dropdown + the pure-CSS mobile drawer (peer-checkbox + accordion)', () => {
+    const html = renderTemplate(src('nav-header'), navCtx());
+    expect(html).toContain('dropdown dropdown-hover'); // Services (has children) → desktop hover dropdown
+    expect(html).toContain('id="sw-nav-drawer"'); // the peer-checkbox toggle
+    expect(html).toContain('peer-checked:translate-x-0'); // the slide-in panel
+    expect(html).toContain('<details>'); // child pages → accordion in the drawer
+    expect(html).toContain('aria-label="Close"'); // the drawer close button
+    expect(html).toContain('Services');
+    expect(html).toContain('href="/services/web"'); // a child link
+  });
+
+  it('nav-header: the mobile drawer loops nav.mobile, falling back to nav.header when empty', () => {
+    // Curated mobile menu → only those items appear in the drawer.
+    const curated = renderTemplate(src('nav-header'), navCtx({
+      nav: { header: [ { label: 'Home', path: '/' } ], footer: [], mobile: [ { label: 'Shop', path: '/shop' } ] },
+    }));
+    const drawer = curated.slice(curated.indexOf('peer-checked:translate-x-0'));
+    expect(drawer).toContain('/shop'); // from nav.mobile
+    // Empty nav.mobile (the default navCtx) → the drawer mirrors nav.header.
+    const fallback = renderTemplate(src('nav-header'), navCtx());
+    const fbDrawer = fallback.slice(fallback.indexOf('peer-checked:translate-x-0'));
+    expect(fbDrawer).toContain('/contact'); // a nav.header item shows in the drawer via the fallback
+  });
+
+  it('nav-header: language dropdown is gated on page.translations; theme toggle on website.enableThemes', () => {
+    const on = renderTemplate(src('nav-header'), navCtx());
+    expect(on).toContain('hreflang="de"'); // the language switcher
+    expect(on).toContain('hreflang="es"');
+    expect(on).toContain('<svg'); // {{sw-flag}} rendered (locale_flags maps en→gb etc.)
+    expect(on).toContain('data-sw-theme-toggle'); // {{sw-theme-toggle}} present (themes on)
+
+    const off = renderTemplate(src('nav-header'), navCtx({ page: { path: '/', locale: 'en' }, website: { enableThemes: false } }));
+    expect(off).not.toContain('hreflang='); // no translations → no language switcher
+    expect(off).not.toContain('data-sw-theme-toggle'); // themes off → no toggle
+  });
+
+  it('nav-footer: data-driven columns (nav.header / nav.footer) + social icons', () => {
+    const html = renderTemplate(src('nav-footer'), navCtx());
+    expect(html).toContain('Services'); // Menu column from nav.header
+    expect(html).toContain('Privacy'); // Legal column from nav.footer
+    expect(html).toContain('href="https://x.com/acme"'); // a social link
+    expect(html).toContain('<svg'); // the brand social icon
+  });
+
+  it('navbar: data-driven (loops nav.header, no hardcoded links)', () => {
+    const html = renderTemplate(src('navbar'), navCtx());
+    expect(html).toContain('dropdown dropdown-hover'); // Services dropdown
+    expect(html).toContain('Contact');
+    expect(html).not.toContain('/features'); // the old hardcoded link is gone
   });
 });

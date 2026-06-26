@@ -14,6 +14,7 @@ export { type CapturedNode, type MergedNode, type NativizeContext, type RenderRe
 export { buildPalette, colorToRgbKey } from './nativize/palette.js';
 export { type HoistedModals, hoistGlobalModals } from './nativize/modals.js';
 export { type RefoldResult, type RenderProbe, refoldLoops } from './nativize/refold.js';
+export { type TemplateGroup, type TemplateMember, type DatasetItems, extractTemplates } from './nativize/templatize.js';
 export type {
   AssetKind,
   CapturedAsset,

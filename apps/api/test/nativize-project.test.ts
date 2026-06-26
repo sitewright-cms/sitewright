@@ -25,6 +25,7 @@ interface DepOverrides {
   pages?: unknown[];
   capture?: CaptureFn;
   entries?: unknown[];
+  datasets?: unknown[];
 }
 function makeDeps(o: DepOverrides = {}) {
   const pages = o.pages ?? [
@@ -74,6 +75,29 @@ describe('nativizeProject', () => {
       expect(raw.source).not.toContain('raw');
       expect(raw.source).toContain('src="/media/logo.webp"'); // loopback origin stripped
       expect(raw.source).not.toContain('127.0.0.1');
+    }
+  });
+
+  it('extracts a cross-page TEMPLATE from same-parent pages sharing a structure (+ folds the loop to page.data)', async () => {
+    const svcSrc = (title: string): string =>
+      `<section class="hero"><h1>${title}</h1></section><section class="intro"><p>one</p><p>two</p></section>` +
+      `<div class="proj"><h2>Projects</h2>{{#each dataset.svc}}<div class="row"><span>{{title}}</span></div>{{/each}}</div>` +
+      `<div class="cta"><a href="/apply">Apply</a></div>`;
+    const svc = (id: string, title: string) => ({ id, path: id, parent: 'svc', title, status: 'published', source: svcSrc(title), data: { swImport: { sourceUrl: `https://x/${id}`, rewritten: true } } });
+    const { deps, pagePuts } = makeDeps({
+      pages: [
+        { id: 'home', path: '', title: 'Home', source: '<div>raw</div>', status: 'draft', data: { swImport: { sourceUrl: 'https://x/', rewritten: false } } },
+        svc('a', 'Alpha'), svc('b', 'Beta'), svc('c', 'Gamma'),
+      ],
+      entries: [{ id: 'e1', dataset: 'svc', status: 'published', order: 0, values: { title: 'P1' } }],
+      datasets: [{ id: 'svc', name: 'Svc', slug: 'svc', fields: [{ name: 'title', type: 'text', required: false, localized: false }] }],
+    });
+    await nativizeProject(ctx, deps, () => {});
+    const templated = pagePuts.filter((p) => (p.raw as { template?: string }).template === 'page-template-1');
+    expect(templated.map((p) => p.id).sort()).toEqual(['a', 'b', 'c']); // the 3 same-structure siblings share one template
+    for (const p of templated) {
+      expect((p.raw as { source: string }).source).toBe(''); // the template provides the source
+      expect((p.raw as { data: { projects?: unknown[] } }).data.projects).toEqual([{ title: 'P1' }]); // loop folded into page.data
     }
   });
 

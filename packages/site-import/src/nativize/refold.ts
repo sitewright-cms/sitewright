@@ -11,7 +11,7 @@ import { validateTemplate } from '@sitewright/blocks';
 import { textContent } from 'domutils';
 import type { Dataset, Entry, Field } from '@sitewright/schema';
 import { elements, getBody, isTag, parse, serialize, setText, type Element } from '../dom.js';
-import { bgUrl, collectSlots, fieldNames, slugFor, slugifyId, uniformChildren, type Slot } from '../transform/datasets.js';
+import { bgUrl, collectSlots, fieldNames, slugFor, slugifyId, type Slot, type SlotType } from '../transform/datasets.js';
 
 const MIN_CHILDREN = 4;
 const MAX_ENTRIES = 100;
@@ -88,6 +88,27 @@ function isAncestor(a: Element, n: Element): boolean {
   return false;
 }
 
+/** A child's fold signature: tag + class + leaf-slot types (the same identity uniformChildren uses). */
+function childSig(el: Element): string {
+  return `${el.name}|${el.attribs.class ?? ''}|${collectSlots(el).map((s) => s.type).join(',')}`;
+}
+
+/** The LONGEST run of adjacent same-signature children (≥MIN), so a grid with an odd sibling — a heading
+ *  row above the data rows, a special "blue" card after the uniform ones — still folds its uniform part. */
+function largestRun(children: readonly Element[]): { run: Element[]; types: SlotType[] } | null {
+  let best: Element[] = [];
+  for (let i = 0; i < children.length; ) {
+    const sig = childSig(children[i]!);
+    let j = i + 1;
+    while (j < children.length && childSig(children[j]!) === sig) j += 1;
+    if (j - i > best.length) best = children.slice(i, j);
+    i = j;
+  }
+  if (best.length < MIN_CHILDREN) return null;
+  const types = collectSlots(best[0]!).map((s) => s.type);
+  return types.length > 0 ? { run: best, types } : null;
+}
+
 /**
  * Re-fold uniform card grids in `html` (already-nativized page source) into `{{#each}}` loops + datasets,
  * keeping ONLY render-equivalent folds. `usedSlugs` is shared across the whole site (unique slugs). `probe`
@@ -101,8 +122,9 @@ export async function refoldLoops(html: string, usedSlugs: Set<string>, probe: R
 
   const datasets: Dataset[] = [];
   const entries: Entry[] = [];
-  const markers = new Map<string, string>();
+  const replacements: Array<{ from: string; to: string }> = []; // run-html → loop, applied after serialize
   const taken: Element[] = [];
+  let folded = 0;
 
   // Largest grids first; skip a container nested in one already folded.
   const candidates = elements(body.children)
@@ -111,34 +133,41 @@ export async function refoldLoops(html: string, usedSlugs: Set<string>, probe: R
     .sort((a, b) => b.children.length - a.children.length);
 
   for (const { el, children } of candidates) {
-    if (markers.size >= MAX_DATASETS_PER_PAGE) break;
+    if (folded >= MAX_DATASETS_PER_PAGE) break;
     if (taken.some((t) => isAncestor(t, el) || isAncestor(el, t))) continue;
-    const uniform = uniformChildren(children);
-    if (!uniform) continue;
-    const names = fieldNames(uniform.types);
+    const found = largestRun(children);
+    if (!found) continue;
+    const { run, types } = found;
+    const rowEls = run.slice(0, MAX_ENTRIES);
+    const names = fieldNames(types);
     const { slug, name } = slugFor(el, usedSlugs);
     const release = (): void => { usedSlugs.delete(slug); };
 
-    const rows = children.slice(0, MAX_ENTRIES).map((c) => {
+    const rows = rowEls.map((c) => {
       const values: Record<string, string> = {};
       collectSlots(c).forEach((s, i) => { values[names[i]!] = literalSlotValue(s); });
       return values;
     });
-    const clone = cloneEl(children[0]!);
+    const clone = cloneEl(rowEls[0]!);
     if (!clone) { release(); continue; }
-    const loop = buildLoop(clone, uniform.types, names, slug);
+    const loop = buildLoop(clone, types, names, slug);
     if (!loop) { release(); continue; }
 
-    // SAFETY: the loop (with its entries) must render byte-equal to the expanded cards, or we don't fold.
-    const expandedHtml = children.slice(0, MAX_ENTRIES).map((c) => serialize(c)).join('');
+    // The run AS IT APPEARS in the source (its children + the whitespace between them) — the exact substring
+    // we'll swap for the loop, and the baseline the loop must reproduce.
+    const all = el.children;
+    const slice = all.slice(all.indexOf(rowEls[0]!), all.indexOf(rowEls[rowEls.length - 1]!) + 1);
+    const runHtml = serialize(slice);
+
+    // SAFETY: the loop (with its entries) must render byte-equal to the expanded run, or we don't fold.
     let ok = false;
     try {
-      const [renderedExpanded, renderedLoop] = await Promise.all([probe(expandedHtml, {}), probe(loop, { dataset: { [slug]: rows } })]);
+      const [renderedExpanded, renderedLoop] = await Promise.all([probe(runHtml, {}), probe(loop, { dataset: { [slug]: rows } })]);
       ok = renderedExpanded !== '' && norm(renderedExpanded) === norm(renderedLoop);
     } catch { ok = false; }
     if (!ok) { release(); continue; }
 
-    const fields: Field[] = uniform.types.map((ty, i) => ({ name: names[i]!, type: ty === 'image' || ty === 'bg' ? 'image' : 'text', required: false, localized: false }));
+    const fields: Field[] = types.map((ty, i) => ({ name: names[i]!, type: ty === 'image' || ty === 'bg' ? 'image' : 'text', required: false, localized: false }));
     datasets.push({ id: slug, name, slug, fields });
     const titleField = fields.find((f) => f.type === 'text')?.name;
     const usedEntryIds = new Set<string>();
@@ -149,14 +178,13 @@ export async function refoldLoops(html: string, usedSlugs: Set<string>, probe: R
       usedEntryIds.add(id);
       entries.push({ id, dataset: slug, status: 'published', order: n, values });
     });
-    const marker = `@@RF${markers.size}@@`;
-    markers.set(marker, loop);
-    setText(el, marker); // grid children → sentinel; spliced for the loop after serialize
+    replacements.push({ from: runHtml, to: loop });
     taken.push(el);
+    folded += 1;
   }
 
-  if (markers.size === 0) return { html, datasets: [], entries: [] };
+  if (replacements.length === 0) return { html, datasets: [], entries: [] };
   let out = serialize(body.children);
-  for (const [marker, loop] of markers) out = out.replace(marker, loop);
+  for (const { from, to } of replacements) out = out.replace(from, () => to); // fn form → no $-substitution
   return { html: out, datasets, entries };
 }

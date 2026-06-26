@@ -8,7 +8,7 @@ import type { FastifyBaseLogger } from 'fastify';
 import type { Page, Entry, Dataset } from '@sitewright/schema';
 import { validateTemplate, renderTemplate, type TemplateContext } from '@sitewright/blocks';
 import { resolveLocaleDatasets, compareEntryOrder, keyedDatasets } from '@sitewright/core';
-import { buildPalette, hoistGlobalModals, mergeTrees, renderTree, refoldLoops, type RenderProbe, type CapturedNode, type NativizeContext } from '@sitewright/site-import';
+import { buildPalette, hoistGlobalModals, mergeTrees, renderTree, refoldLoops, extractTemplates, type RenderProbe, type CapturedNode, type NativizeContext } from '@sitewright/site-import';
 import { type ContentRepository, SETTINGS_ENTITY_ID, type Settings } from '../repo/content.js';
 import type { ProjectContext } from '../repo/context.js';
 import type { RenderPool } from './render-pool.js';
@@ -407,6 +407,47 @@ export async function nativizeProject(
     const newSettings = typography ? { ...settings, identity: { ...(settings.identity ?? {}), typography }, website: newWebsite } : { ...settings, website: newWebsite };
     await deps.contentRepo.put(ctx, 'settings', SETTINGS_ENTITY_ID, newSettings, { op: 'put', note: 'nativize-chrome' });
     chromeRebuilt = footerOk;
+  }
+
+  // CROSS-PAGE TEMPLATES: collapse pages that share ONE skeleton (the service pages — hero/intro/projects/
+  // CTA differing only in content) into a single `template` entity + per-page `page.data`; the per-page
+  // projects loop becomes `{{#each page.data.projects}}`, so the structure lives once. Only on a full
+  // nativize, render-equivalence-guarded (extractTemplates keeps a group ONLY if the template + each page's
+  // data renders byte-identical to that page) → a group that wouldn't reproduce stays as ordinary pages.
+  if (chromeRebuilt && !deps.signal?.aborted) {
+    try {
+      const finalPages = (await deps.contentRepo.list(ctx, 'page')) as Page[];
+      const candidates = finalPages.filter((p) => typeof p.source === 'string' && p.source !== '' && !p.template);
+      const finalEntries = (await deps.contentRepo.list(ctx, 'entry')) as Entry[];
+      const itemsBySlug = new Map<string, Record<string, string>[]>();
+      for (const e of [...finalEntries].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))) {
+        itemsBySlug.set(e.dataset, [...(itemsBySlug.get(e.dataset) ?? []), (e.values ?? {}) as Record<string, string>]);
+      }
+      const baseCtx = { company: brand as unknown as Record<string, unknown>, website: { siteUrl: website?.siteUrl, data: website?.data } };
+      const tplProbe: RenderProbe = (tpl, extra) => Promise.resolve(renderTemplate(tpl, { ...baseCtx, ...extra } as unknown as TemplateContext));
+      // Group by PARENT — sibling pages (e.g. all /services/* children) are the template candidates.
+      const groups = await extractTemplates(candidates.map((p) => ({ id: p.id, source: p.source as string, group: (p as { parent?: string }).parent })), (slug) => itemsBySlug.get(slug) ?? [], tplProbe);
+      const byId = new Map(candidates.map((p) => [p.id, p] as const));
+      const allDatasets = groups.length ? ((await deps.contentRepo.list(ctx, 'dataset')) as Dataset[]) : [];
+      let tn = 0;
+      for (const g of groups) {
+        tn += 1;
+        const tplId = `page-template-${tn}`;
+        await deps.contentRepo.put(ctx, 'template', tplId, { id: tplId, name: `Page template ${tn}`, source: g.templateSource }, { op: 'put', note: 'nativize-template' });
+        const consumed = new Set<string>();
+        for (const m of g.members) {
+          const page = byId.get(m.id);
+          if (!page) continue;
+          await deps.contentRepo.put(ctx, 'page', m.id, { ...page, template: tplId, data: { ...(page.data ?? {}), ...m.data }, source: '' }, { op: 'put', note: 'nativize-template' });
+          m.consumedSlugs.forEach((s) => consumed.add(s));
+        }
+        for (const e of finalEntries) if (consumed.has(e.dataset)) await deps.contentRepo.remove(ctx, 'entry', e.id);
+        for (const d of allDatasets) if (consumed.has(d.slug)) await deps.contentRepo.remove(ctx, 'dataset', d.id);
+      }
+      if (groups.length) deps.log.info({ templates: groups.length, pages: groups.reduce((n, g) => n + g.members.length, 0) }, 'nativize: extracted cross-page templates');
+    } catch (err) {
+      deps.log.warn({ err: err instanceof Error ? err.message : String(err) }, 'nativize: template extraction skipped');
+    }
   }
 
   return { pagesNativized: nativized, pagesTotal: targets.length, marqueeLogos, skipped, chromeRebuilt };

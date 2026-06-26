@@ -19,15 +19,15 @@ const MAX_DATASETS_PER_PAGE = 3;
 const MAX_SLOTS = 12;
 const MAX_DEPTH = 64;
 
-type SlotType = 'text' | 'image' | 'link' | 'bg';
-interface Slot {
+export type SlotType = 'text' | 'image' | 'link' | 'bg';
+export interface Slot {
   type: SlotType;
   el: Element;
 }
 
 /** A real background-image URL on an element — lazy (`data-background-image` etc.) or inline `style`.
  *  Excludes data: URIs / gradients (no per-item value to field-ize). */
-function bgUrl(el: Element): string | undefined {
+export function bgUrl(el: Element): string | undefined {
   const fromStyle = (el.attribs.style ?? '').match(/background-image\s*:\s*url\(\s*['"]?([^'")]+)['"]?\s*\)/i)?.[1];
   const url = (effectiveBg(el.attribs) || fromStyle || '').trim();
   return url && !/^data:/i.test(url) ? url : undefined;
@@ -61,7 +61,7 @@ function hasMediaDescendant(el: Element): boolean {
   return false;
 }
 
-function collectSlots(root: Element): Slot[] {
+export function collectSlots(root: Element): Slot[] {
   const out: Slot[] = [];
   const rootHref = (root.attribs.href ?? '').trim();
   if (root.name === 'a' && rootHref !== '' && !rootHref.startsWith('#')) out.push({ type: 'link', el: root });
@@ -106,7 +106,7 @@ function collectSlots(root: Element): Slot[] {
 
 /** Readable, unique-per-dataset field names for a slot-type sequence (the user/AI renames later):
  *  first text → title, second → description, then text3…; first image → image, first link → link. */
-function fieldNames(types: SlotType[]): string[] {
+export function fieldNames(types: SlotType[]): string[] {
   let t = 0;
   let i = 0;
   let l = 0;
@@ -120,7 +120,7 @@ function fieldNames(types: SlotType[]): string[] {
 
 /** A hyphenated, human-ish slug for an ENTRY id (hyphens are fine in ids — unlike the hyphenless dataset
  *  slug used in `{{#each dataset.<slug>}}`). Empty when the source text has no usable characters. */
-function slugifyId(s: string): string {
+export function slugifyId(s: string): string {
   return s
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
@@ -207,7 +207,7 @@ function nearestHeading(container: Element): string {
 /** A hyphenless slug (for `{{#each dataset.<slug>}}` — no [brackets] needed) PLUS a human display name.
  *  Prefers a nearby heading ("Our Team"); else the first MEANINGFUL class token ("Team", not the whole
  *  utility-class blob); else a generic "List". */
-function slugFor(container: Element, usedSlugs: Set<string>): { slug: string; name: string } {
+export function slugFor(container: Element, usedSlugs: Set<string>): { slug: string; name: string } {
   const heading = nearestHeading(container);
   let base = '';
   let name = '';
@@ -233,7 +233,7 @@ function slugFor(container: Element, usedSlugs: Set<string>): { slug: string; na
 }
 
 /** Are these element children uniform enough to be a dataset (same tag + class + leaf signature)? */
-function uniformChildren(children: Element[]): { types: SlotType[] } | null {
+export function uniformChildren(children: Element[]): { types: SlotType[] } | null {
   if (children.length < MIN_CHILDREN) return null;
   const tag = children[0]!.name;
   const cls = children[0]!.attribs.class ?? '';

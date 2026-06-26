@@ -17,6 +17,19 @@ const MIN_CHILDREN = 4;
 const MAX_ENTRIES = 100;
 const MAX_DATASETS_PER_PAGE = 6;
 
+// PER-ELEMENT CAPTURE ARTIFACTS — class tokens the headless capture bakes from each element's measured box,
+// so they differ across otherwise-identical repeated cards/rows (the column fractions + row height of a
+// table row, the one-line `whitespace-nowrap`). They're NOT design intent (the responsive md:/lg: values
+// the capture produces ARE uniform), so we ignore them for uniformity + the render-equivalence compare, and
+// drop the height ones from the loop template (auto height → a longer entry can't clip). `grid-cols-[…]` is
+// KEPT in the template (a grid needs its columns; `fr` units stay proportional, so one row's is consistent
+// for all). NOTE: `aspect-[…]` is deliberately NOT here — a real per-image ratio, so image grids still
+// (correctly) refuse to fold. */
+const BP = '(?:[a-z]+:)?';
+const DIM_CMP = new RegExp(`^(?:${BP}(?:grid-cols-\\[|h-\\d|h-\\[|min-h-\\d|min-h-\\[)|whitespace-nowrap$)`); // sig + compare
+const DIM_TPL = new RegExp(`^(?:${BP}(?:h-\\d|h-\\[|min-h-\\d|min-h-\\[)|whitespace-nowrap$)`); // template (keep grid-cols)
+const stripCls = (cls: string, re: RegExp): string => cls.split(/\s+/).filter((t) => t && !re.test(t)).join(' ');
+
 /** Render a fragment with the page's render context plus `extra` (the engine + helpers, async). */
 export type RenderProbe = (template: string, extra: Record<string, unknown>) => Promise<string>;
 
@@ -26,14 +39,13 @@ export interface RefoldResult {
   entries: Entry[];
 }
 
-/** Compare-normalize (applied to BOTH sides equally): strip tag-adjacent whitespace + collapse runs, so
- *  the source's formatting whitespace around a value (`<h3> Title </h3>`) doesn't differ from the loop's
- *  trimmed field render (`<h3>Title</h3>`). Attribute order is stable — both sides go through `serialize`. */
+/** Compare-normalize (applied to BOTH sides equally): drop per-element capture-artifact classes from every
+ *  class attr, then strip tag-adjacent whitespace + collapse runs (so `<h3> Title </h3>` matches the loop's
+ *  trimmed `<h3>Title</h3>`). Attribute order is stable — both sides go through `serialize`. */
 function norm(s: string): string {
-  // `whitespace-nowrap` is a per-card capture artifact (added when THAT card's text fit one line) → it
-  // differs across cards; ignore it so it doesn't block an otherwise-equivalent fold (buildLoop also
-  // drops it from the template, so a longer entry can't clip).
-  return s.replace(/\bwhitespace-nowrap\b/g, '').replace(/>\s+/g, '>').replace(/\s+</g, '<').replace(/\s+/g, ' ').trim();
+  return s
+    .replace(/class="([^"]*)"/g, (_m, c: string) => `class="${stripCls(c, DIM_CMP)}"`)
+    .replace(/>\s+/g, '>').replace(/\s+</g, '<').replace(/\s+/g, ' ').trim();
 }
 
 /** The LITERAL value of a slot in an ALREADY-nativized card (urls/text are final — no rewrite). */
@@ -50,15 +62,17 @@ function cloneEl(el: Element): Element | undefined {
   return body ? body.children.filter(isTag)[0] : undefined;
 }
 
-/** Templatize a (cloned) card: bind each slot to its field. Same bindings the import uses, so a clean grid
- *  renders identically; `{{sw-url}}` is identity for already-resolved /media + same-locale routes. */
-function buildLoop(child: Element, types: readonly string[], names: readonly string[], slug: string): string | null {
+/** Templatize a (cloned) card: bind each VARYING slot to its field (`slotFields[i]`); a CONSTANT slot
+ *  (null) keeps row-0's literal content — e.g. a shared `{{sw-icon "eye"}} VIEW` cell that's identical on
+ *  every row stays static, instead of being baked into a field value (which would render escaped). */
+function buildLoop(child: Element, types: readonly string[], slotFields: readonly (string | null)[], slug: string): string | null {
   const slots = collectSlots(child);
   if (slots.length !== types.length) return null;
   for (let i = 0; i < slots.length; i += 1) {
     const s = slots[i]!;
     if (s.type !== types[i]) return null;
-    const field = names[i]!;
+    const field = slotFields[i];
+    if (!field) continue; // constant slot → leave literal
     // href/src MUST use {{sw-url …}} (the validator forbids a bare value in a URL attribute). The entry
     // value is the ALREADY-resolved nativized url, and sw-url is idempotent on a resolved root-relative
     // path (sw-url('/x') → '/x'), so the loop renders identically to the expanded cards — and the per-group
@@ -71,12 +85,14 @@ function buildLoop(child: Element, types: readonly string[], names: readonly str
       if (style) s.el.attribs.style = style; else delete s.el.attribs.style;
     } else s.el.attribs.href = `{{sw-url ${field}}}`;
   }
-  // Drop the per-card `whitespace-nowrap` capture artifact from EVERY element so the single template can't
-  // impose card-0's nowrap on a longer entry (which would clip it). Safe: it's only ever added to text that
-  // already fit one line, so removing it never changes the layout of the cards that had it.
+  // Drop the per-element capture-artifact HEIGHT/nowrap classes from EVERY element so the single template
+  // can't impose card-0's measured height (or one-line nowrap) on a longer entry and clip it — height goes
+  // auto (content-driven, which is what the source intended before the capture baked a px value). grid-cols
+  // is KEPT (a grid needs columns; row-0's `fr` ratios apply consistently to all rows).
   for (const e of elements([child])) {
-    if (!e.attribs.class || !/\bwhitespace-nowrap\b/.test(e.attribs.class)) continue;
-    const c = e.attribs.class.replace(/\bwhitespace-nowrap\b/g, '').replace(/\s+/g, ' ').trim();
+    if (!e.attribs.class) continue;
+    const c = stripCls(e.attribs.class, DIM_TPL);
+    if (c === e.attribs.class) continue;
     if (c) e.attribs.class = c; else delete e.attribs.class;
   }
   const loop = `{{#each dataset.${slug}}}${serialize(child)}{{/each}}`;
@@ -88,9 +104,10 @@ function isAncestor(a: Element, n: Element): boolean {
   return false;
 }
 
-/** A child's fold signature: tag + class + leaf-slot types (the same identity uniformChildren uses). */
+/** A child's fold signature: tag + class (minus per-element capture artifacts) + leaf-slot types — so two
+ *  table rows that differ only in their captured `grid-cols-[…]`/`h-…` still count as the same shape. */
 function childSig(el: Element): string {
-  return `${el.name}|${el.attribs.class ?? ''}|${collectSlots(el).map((s) => s.type).join(',')}`;
+  return `${el.name}|${stripCls(el.attribs.class ?? '', DIM_CMP)}|${collectSlots(el).map((s) => s.type).join(',')}`;
 }
 
 /** The LONGEST run of adjacent same-signature children (≥MIN), so a grid with an odd sibling — a heading
@@ -139,18 +156,35 @@ export async function refoldLoops(html: string, usedSlugs: Set<string>, probe: R
     if (!found) continue;
     const { run, types } = found;
     const rowEls = run.slice(0, MAX_ENTRIES);
-    const names = fieldNames(types);
-    const { slug, name } = slugFor(el, usedSlugs);
-    const release = (): void => { usedSlugs.delete(slug); };
 
-    const rows = rowEls.map((c) => {
-      const values: Record<string, string> = {};
-      collectSlots(c).forEach((s, i) => { values[names[i]!] = literalSlotValue(s); });
-      return values;
-    });
+    // Per-slot values across every row, then split CONSTANT slots (same on all rows → stay static in the
+    // template) from VARYING slots (→ fields). A constant cell is often a shared `{{sw-icon …}} VIEW` label
+    // that must NOT be field-ized (a {{x}} field renders its value ESCAPED, breaking the helper).
+    const perRow = rowEls.map((c) => collectSlots(c).map(literalSlotValue));
+    const nSlots = types.length;
+    if (perRow.some((r) => r.length !== nSlots)) continue; // a row's slot shape shifted under sanitize → skip
+    const varying = types.map((_t, i) => new Set(perRow.map((r) => r[i])).size > 1);
+    const varIdx = types.map((_t, i) => i).filter((i) => varying[i]);
+    if (varIdx.length === 0) continue; // every cell identical → not data (a repeated decorative block)
+    const varNames = fieldNames(varIdx.map((i) => types[i]!));
+    const slotFields: (string | null)[] = types.map(() => null);
+    varIdx.forEach((i, k) => { slotFields[i] = varNames[k]!; });
+
+    // A short label right before the rows (e.g. "RECENT PROJECTS") makes a far better slug than the
+    // container's utility class (`sw-container` → "swcontainer").
+    let hint = '';
+    for (let sib = rowEls[0]!.prev; sib; sib = sib.prev) {
+      if (!isTag(sib)) continue;
+      const t = textContent([sib]).trim().replace(/\s+/g, ' ');
+      hint = t.length > 0 && t.length <= 40 ? t : '';
+      break;
+    }
+    const { slug, name } = slugFor(el, usedSlugs, hint);
+    const release = (): void => { usedSlugs.delete(slug); };
+    const rows = perRow.map((r) => { const v: Record<string, string> = {}; varIdx.forEach((i, k) => { v[varNames[k]!] = r[i]!; }); return v; });
     const clone = cloneEl(rowEls[0]!);
     if (!clone) { release(); continue; }
-    const loop = buildLoop(clone, types, names, slug);
+    const loop = buildLoop(clone, types, slotFields, slug);
     if (!loop) { release(); continue; }
 
     // The run AS IT APPEARS in the source (its children + the whitespace between them) — the exact substring
@@ -167,7 +201,7 @@ export async function refoldLoops(html: string, usedSlugs: Set<string>, probe: R
     } catch { ok = false; }
     if (!ok) { release(); continue; }
 
-    const fields: Field[] = types.map((ty, i) => ({ name: names[i]!, type: ty === 'image' || ty === 'bg' ? 'image' : 'text', required: false, localized: false }));
+    const fields: Field[] = varIdx.map((i, k) => ({ name: varNames[k]!, type: types[i] === 'image' || types[i] === 'bg' ? 'image' : 'text', required: false, localized: false }));
     datasets.push({ id: slug, name, slug, fields });
     const titleField = fields.find((f) => f.type === 'text')?.name;
     const usedEntryIds = new Set<string>();

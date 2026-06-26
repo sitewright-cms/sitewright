@@ -89,7 +89,7 @@ function fbFloatingTab(sidebarHtml: string | undefined): string | null {
 /**
  * A clean, RESPONSIVE, data-driven navbar to replace the imported chrome's hard-coded links: a desktop
  * menu + a CSS-only mobile dropdown, both looping `{{#each nav.header}}` (built from each page's nav
- * config) with `{{sw-active}}` highlighting. No `<nav>` (the platform wraps the topNav slot in one).
+ * config) with `{{sw-active}}` highlighting. No `<nav>` (the platform wraps the mainNav slot in one).
  */
 function buildNavbar(logo: string | undefined): string {
   // Brand block: logo (if any) + company NAME + SLOGAN (matches the original nav's logo + tagline).
@@ -366,8 +366,8 @@ export async function nativizeProject(
 
     const newWebsite: Record<string, unknown> = {
       ...website,
-      topNav: buildNavbar(brand?.logo),
-      mobileNav: '', // the rebuilt navbar is self-contained responsive (its own mobile dropdown)
+      // The rebuilt navbar is a self-contained responsive bar (its own pure-CSS mobile drawer).
+      mainNav: buildNavbar(brand?.logo),
     };
     if (footerOk) {
       newWebsite.head = stripForeignStylesheet(website?.head); // #5 — safe now nothing foreign-styled remains

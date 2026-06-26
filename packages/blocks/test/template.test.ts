@@ -769,7 +769,7 @@ describe('validateTemplate — skeleton-owned semantic landmarks are reserved', 
   });
 
   it('the error names the element and points at the reserved id + a fix', () => {
-    expect(() => validateTemplate('<nav>x</nav>')).toThrow(/<nav> element is not allowed.*top-nav.*<div>/s);
+    expect(() => validateTemplate('<nav>x</nav>')).toThrow(/<nav> element is not allowed.*main-nav.*<div>/s);
     expect(() => validateTemplate('<main>x</main>')).toThrow(/<main>.*page-content/s);
     expect(() => validateTemplate('<footer>x</footer>')).toThrow(/<footer>.*id="footer".*<div>/s);
     expect(() => validateTemplate('<aside>x</aside>')).toThrow(/<aside>.*sidebar-left/s);

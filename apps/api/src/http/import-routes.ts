@@ -70,7 +70,7 @@ const ImportWebsiteBody = z.object({
 });
 
 /** Website slots that are RAW (unsanitized) or validated — all must be script-free after import. */
-const SCRIPTABLE_SLOTS = ['topNav', 'mobileNav', 'sidebarLeft', 'sidebarRight', 'footer', 'bottom', 'head', 'scripts', 'criticalCss'] as const;
+const SCRIPTABLE_SLOTS = ['mainNav', 'sidebarLeft', 'sidebarRight', 'footer', 'bottom', 'head', 'scripts', 'criticalCss'] as const;
 /** Raw HTML code slots nested under `website.effects` (the engine never writes these, but assert anyway). */
 const EFFECT_CODE_SLOTS = ['navCode', 'buttonCode', 'preloaderCode'] as const;
 

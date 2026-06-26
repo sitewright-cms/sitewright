@@ -63,8 +63,7 @@ describe('WebsiteSettingsSchema', () => {
 
   it('accepts the full set of validated skeleton slots', () => {
     const w = {
-      topNav: '<nav class="navbar">x</nav>',
-      mobileNav: '<nav class="drawer">m</nav>',
+      mainNav: '<nav class="navbar">x</nav>',
       sidebarLeft: '<aside class="menu">l</aside>',
       sidebarRight: '<aside class="menu">r</aside>',
       footer: '<footer class="footer">f</footer>',
@@ -75,7 +74,7 @@ describe('WebsiteSettingsSchema', () => {
 
   it('caps each chrome slot at SLOT_MAX (64k — room for nativized chrome), rejects beyond it', () => {
     // A real/nativized footer can be ~40k; 30k is accepted, 64k+1 is rejected.
-    for (const slot of ['topNav', 'mobileNav', 'sidebarLeft', 'sidebarRight', 'footer', 'bottom']) {
+    for (const slot of ['mainNav', 'sidebarLeft', 'sidebarRight', 'footer', 'bottom']) {
       expect(WebsiteSettingsSchema.parse({ [slot]: 'a'.repeat(30_000) })[slot as 'footer']).toHaveLength(30_000);
       expect(() => WebsiteSettingsSchema.parse({ [slot]: 'a'.repeat(64_001) })).toThrow();
     }

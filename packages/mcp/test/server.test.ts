@@ -422,7 +422,7 @@ describe('createSitewrightMcpServer — agent guidance', () => {
     const mcp = await connect(fakeClient(), writeScope);
     const instructions = mcp.getInstructions() ?? '';
     expect(instructions).toContain('page-content'); // <main id="page-content">
-    expect(instructions).toContain('top-nav'); // <nav id="top-nav">
+    expect(instructions).toContain('main-nav'); // <nav id="main-nav">
     expect(instructions).toMatch(/must NOT use <nav>, <main>, <footer>, or\s+<aside>/i);
     await mcp.close();
   });

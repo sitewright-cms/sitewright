@@ -203,7 +203,7 @@ describe('preview API — code-first source page', () => {
     }
   });
 
-  it('renders the project skeleton slots (topNav/footer) around a source-page preview (WYSIWYG)', async () => {
+  it('renders the project skeleton slots (mainNav/footer) around a source-page preview (WYSIWYG)', async () => {
     const { t, projectId } = await setup('slots@acme.test', poolApp);
     const base = `/projects/${projectId}`;
     await poolApp.inject({
@@ -214,8 +214,8 @@ describe('preview API — code-first source page', () => {
         identity: { name: 'Acme', colors: { primary: '#0a7' } },
         website: {
           // Slot content is neutral (no landmark tags — the validator forbids those); the platform
-          // wraps topNav in <nav id="top-nav"> and footer in <footer id="footer">.
-          topNav: '<div class="navbar">{{ company.name }}</div>',
+          // wraps mainNav in <nav id="main-nav"> and footer in <footer id="footer">.
+          mainNav: '<div class="navbar">{{ company.name }}</div>',
           footer: '<div class="footer">© {{ company.name }}</div>',
         },
         settings: {},
@@ -229,9 +229,9 @@ describe('preview API — code-first source page', () => {
     });
     expect(res.statusCode).toBe(200);
     const html = (res.json() as { html: string }).html;
-    expect(html).toContain('<nav id="top-nav"><div class="navbar">Acme</div></nav>'); // shared topNav, {{ company.name }} bound, wrapped in the platform landmark
+    expect(html).toContain('<nav id="main-nav"><div class="navbar">Acme</div></nav>'); // shared mainNav, {{ company.name }} bound, wrapped in the platform landmark
     expect(html).toContain('<footer id="footer"><div class="footer">© Acme</div></footer>'); // shared footer, wrapped in the platform landmark
-    // Source order: topNav before the page body, footer after it.
+    // Source order: mainNav before the page body, footer after it.
     expect(html.indexOf('class="navbar"')).toBeLessThan(html.indexOf('<h1>Body</h1>'));
     expect(html.indexOf('<h1>Body</h1>')).toBeLessThan(html.indexOf('class="footer"'));
     expect(html).toMatch(/\.navbar/); // the slot's DaisyUI classes compiled into the inlined sheet
@@ -353,8 +353,8 @@ describe('preview API — code-first source page', () => {
       // The shared nav lists nav.header labels; expose the locale + switcher too.
       website: {
         // Neutral slot content (no <nav> — that's the skeleton's landmark); the platform wraps it
-        // in <nav id="top-nav">.
-        topNav:
+        // in <nav id="main-nav">.
+        mainNav:
           '<div class="navbar"><ul>{{#each nav.header}}<li><a href="{{sw-url path}}">{{label}}</a></li>{{/each}}</ul>' +
           '<span class="loc">{{page.locale}}</span>{{#each page.translations}}<a class="sw" href="{{sw-url path}}">{{locale}}</a>{{/each}}</div>',
       },
@@ -417,9 +417,9 @@ describe('preview API — code-first source page', () => {
       cookies: { sw_session: t },
       payload: {
         identity: { name: 'Acme', colors: {} },
-        // topNav is unsafe (a <script> — rejected by the no-JS validator); footer is fine (neutral
+        // mainNav is unsafe (a <script> — rejected by the no-JS validator); footer is fine (neutral
         // content; the platform wraps it in <footer id="footer">).
-        website: { topNav: '<div><script>x()</script></div>', footer: '<div class="footer">ok</div>' },
+        website: { mainNav: '<div><script>x()</script></div>', footer: '<div class="footer">ok</div>' },
         settings: {},
       },
     });

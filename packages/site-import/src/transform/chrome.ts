@@ -1,5 +1,5 @@
 // Detect repeated site chrome across the captured pages and hoist each region into its website skeleton
-// slot (header→topNav, footer→footer, asides→sidebarLeft/Right), removing it from every page body so it
+// slot (header→mainNav, footer→footer, asides→sidebarLeft/Right), removing it from every page body so it
 // isn't duplicated. Regions are matched by landmark tag + ARIA role + common class/id patterns.
 // Conservative: a region is only hoisted when an exact (class/id-insensitive) match appears on ≥60% of
 // pages; otherwise each page keeps it inline (still renders, just not consolidated). JS-driven overlays
@@ -26,7 +26,6 @@ const FOOTER_CLASS = byClass(/(?:^|\s)(?:site-?footer|page-?footer|footer-?wrapp
 // Left anchor is start-or-whitespace ONLY (not `-`): a token must BEGIN with the sidebar word, so a
 // `#side-bar-left-wrapper` matches but a modifier like `no-sidebar`/`hide-sidebar` does not.
 const ASIDE_CLASS = byClass(/(?:^|\s)(?:side-?bar|side-?panel|sidebar-?(?:left|right))(?:$|[\s_-])/i);
-const MOBILE_CLASS = byClass(/(?:^|\s)(?:mobile-?nav|mobile-?menu|off-?canvas|side-?nav|nav-?drawer|drawer-?menu|slide-?menu|burger-?menu)(?:$|[\s_-])/i);
 const PRELOADER: Matcher = byClass(/(?:^|\s)(?:preloader|pre-?load|loading-?overlay|page-?loader|site-?loader|loader-?wrap|spinner-?overlay)(?:$|[\s_-])/i);
 const COOKIE: Matcher = byClass(/(?:^|\s)(?:cookie|consent|gdpr)(?:$|[\s_-])/i);
 
@@ -104,8 +103,7 @@ const findFirst = (body: Element, m: Matcher): Element | undefined => (findOne(m
 const findLast = (body: Element, m: Matcher): Element | undefined => findAllMatch(body, m).at(-1);
 
 export interface ChromeResult {
-  topNav?: string;
-  mobileNav?: string;
+  mainNav?: string;
   sidebarLeft?: string;
   sidebarRight?: string;
   footer?: string;
@@ -124,11 +122,10 @@ export function extractChrome(pages: ParsedPage[], ctx: ChromeCtx): ChromeResult
   const preloaderFound = extractRegion(pages, ctx, (body) => findFirst(body, PRELOADER)) !== undefined;
   extractRegion(pages, ctx, (body) => findFirst(body, COOKIE));
 
-  // Header → topNav. A SEPARATE slide-out/off-canvas mobile menu (its own element, not nested in the
-  // header) → mobileNav. Footer = the LAST match. Up to two asides → left/right sidebars. The header is
-  // hoisted first so a mobile menu nested inside it travels with topNav (then mobileNav finds nothing).
-  const topNav = extractRegion(pages, ctx, (body) => findFirst(body, isHeader) ?? findFirst(body, HEADER_CLASS));
-  const mobileNav = extractRegion(pages, ctx, (body) => findFirst(body, MOBILE_CLASS));
+  // Header → mainNav (a slide-out mobile menu nested in the header travels with it; the platform's
+  // single Main Navigation slot has no separate mobile slot). Footer = the LAST match. Up to two
+  // asides → left/right sidebars.
+  const mainNav = extractRegion(pages, ctx, (body) => findFirst(body, isHeader) ?? findFirst(body, HEADER_CLASS));
   const footer = extractRegion(pages, ctx, (body) => findLast(body, isFooter) ?? findLast(body, FOOTER_CLASS));
   // Left = the first aside; right = whatever aside REMAINS after the left is hoisted+removed (so a
   // single-aside site yields only a left sidebar, and a two-aside site fills both — no index drift).
@@ -136,10 +133,9 @@ export function extractChrome(pages: ParsedPage[], ctx: ChromeCtx): ChromeResult
   const sidebarRight = extractRegion(pages, ctx, (body) => findLast(body, isAside) ?? findLast(body, ASIDE_CLASS));
 
   const result: ChromeResult = {
-    extracted: Boolean(topNav || mobileNav || footer || sidebarLeft || sidebarRight || preloaderFound),
+    extracted: Boolean(mainNav || footer || sidebarLeft || sidebarRight || preloaderFound),
   };
-  if (topNav) result.topNav = topNav;
-  if (mobileNav) result.mobileNav = mobileNav;
+  if (mainNav) result.mainNav = mainNav;
   if (footer) result.footer = footer;
   if (sidebarLeft) result.sidebarLeft = sidebarLeft;
   if (sidebarRight) result.sidebarRight = sidebarRight;

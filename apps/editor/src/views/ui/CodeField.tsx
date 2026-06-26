@@ -23,6 +23,8 @@ interface CodeFieldProps {
   placeholder?: string;
   /** Editor mode — `html` (HTML + Handlebars, default) or `css` (Critical CSS). */
   language?: CodeLanguage;
+  /** Optional one-click STARTER: when the field is empty, an insert button drops `code` in. */
+  starter?: { label: string; code: string };
 }
 
 /**
@@ -30,7 +32,7 @@ interface CodeFieldProps {
  * full black CodeMirror editor in a modal. No inline preview — the modal is the single authoring
  * surface (HTML+Handlebars, or CSS when `language="css"`).
  */
-export function CodeField({ label, value, onChange, title, hint, placeholder, language = 'html' }: CodeFieldProps) {
+export function CodeField({ label, value, onChange, title, hint, placeholder, language = 'html', starter }: CodeFieldProps) {
   const [open, setOpen] = useState(false);
   const trimmed = value.trim();
   const lineCount = trimmed === '' ? 0 : trimmed.split('\n').length;
@@ -55,6 +57,15 @@ export function CodeField({ label, value, onChange, title, hint, placeholder, la
           <CodeIcon /> Edit
         </span>
       </button>
+      {starter && trimmed === '' && (
+        <button
+          type="button"
+          onClick={() => onChange(starter.code)}
+          className="mt-1.5 inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-medium text-indigo-700 transition hover:bg-indigo-100"
+        >
+          + {starter.label}
+        </button>
+      )}
       {open && (
         <CodeEditorModal
           title={title ?? label}

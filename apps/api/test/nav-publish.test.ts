@@ -6,7 +6,7 @@ import { makeHarness, type Harness, type TestClient } from './harness.js';
 
 // Integration: page-tree-driven auto-nav. Pages declare nav placement; a code-first
 // SKELETON SLOT renders the slot's menu (page-relative links) into the published site.
-// The platform wraps the topNav slot in <nav id="top-nav"> and the footer slot in
+// The platform wraps the mainNav slot in <nav id="main-nav"> and the footer slot in
 // <footer id="footer">; the slot iterates `nav.header` / `nav.footer` (the page-tree-
 // derived menus). Internal links emitted via {{sw-url path}} are rebased page-relative.
 
@@ -68,17 +68,17 @@ describe('auto-nav → publish', () => {
 
   it('renders the header menu from the page tree, with page-relative links', async () => {
     const proj = client.project(projectId);
-    await putSlots({ topNav: HEADER_SLOT });
+    await putSlots({ mainNav: HEADER_SLOT });
     expect((await proj.putContent('page', 'home', navPage('home', '', 'Home', { slots: ['header'], order: 0 }))).statusCode).toBe(200);
     expect(
       (await proj.putContent('page', 'about', navPage('about', 'about', 'About Page', { title: 'About', slots: ['header'], order: 1 }))).statusCode,
     ).toBe(200);
     expect((await client.post(`${proj.base}/publish`)).statusCode).toBe(200);
 
-    // Home page (site root): the nav lives in the platform's <nav id="top-nav"> landmark;
+    // Home page (site root): the nav lives in the platform's <nav id="main-nav"> landmark;
     // links are root-relative-from-home.
     const home = await fetchSite('index.html');
-    expect(home).toContain('<nav id="top-nav">');
+    expect(home).toContain('<nav id="main-nav">');
     expect(home).toContain('href="./"'); // Home link
     expect(home).toContain('href="about"'); // About link, label from nav.title
     expect(home).toContain('>About<');
@@ -115,7 +115,7 @@ describe('auto-nav → publish', () => {
 
   it('excludes draft pages from the published site, its routes, and the nav', async () => {
     const proj = client.project(projectId);
-    await putSlots({ topNav: HEADER_SLOT });
+    await putSlots({ mainNav: HEADER_SLOT });
     expect((await proj.putContent('page', 'home', navPage('home', '', 'Home', { slots: ['header'], order: 0 }))).statusCode).toBe(200);
     // A draft page placed in the header nav — must NOT publish, route, or appear in the menu.
     expect(
@@ -135,7 +135,7 @@ describe('auto-nav → publish', () => {
 
   it('publishes link placeholders into the nav (external new-tab + #modal), ships nav-link.js, emits no page for them', async () => {
     const proj = client.project(projectId);
-    await putSlots({ topNav: HEADER_SLOT });
+    await putSlots({ mainNav: HEADER_SLOT });
     expect((await proj.putContent('page', 'home', navPage('home', '', 'Home', { slots: ['header'], order: 0 }))).statusCode).toBe(200);
     // A "global modal" placeholder (opens a #contact <dialog>) — kind:'link', no own route.
     expect(
@@ -168,7 +168,7 @@ describe('auto-nav → publish', () => {
 
   it('omits pages without nav placement from the menu', async () => {
     const proj = client.project(projectId);
-    await putSlots({ topNav: HEADER_SLOT });
+    await putSlots({ mainNav: HEADER_SLOT });
     expect((await proj.putContent('page', 'home', navPage('home', '', 'Home', { slots: ['header'] }))).statusCode).toBe(200);
     // 'secret' has no nav → not in the menu.
     expect((await proj.putContent('page', 'secret', navPage('secret', 'secret', 'Secret'))).statusCode).toBe(200);

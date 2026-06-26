@@ -68,13 +68,12 @@ export interface RenderDocumentOptions extends RenderContext {
   /**
    * Pre-rendered project-wide skeleton SLOTS (already validated + Handlebars-rendered HTML),
    * injected around the page body in this source order:
-   *   `topNav`, `mobileNav`, [body], `sidebarLeft`, `sidebarRight`, `footer`, `bottom`.
+   *   `mainNav`, [body], `sidebarLeft`, `sidebarRight`, `footer`, `bottom`.
    * Shared by every page of a multi-page site (authored once in Website settings). Sidebars
    * render after the body and position themselves via their own classes; `bottom` sits after
    * the footer (global modals / schema.org) and before the raw `customScripts` slot.
    */
-  topNav?: string;
-  mobileNav?: string;
+  mainNav?: string;
   sidebarLeft?: string;
   sidebarRight?: string;
   footer?: string;
@@ -201,8 +200,7 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     bodyClass,
     preloader,
     backToTop,
-    topNav,
-    mobileNav,
+    mainNav,
     sidebarLeft,
     sidebarRight,
     footer,
@@ -300,8 +298,7 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
     // PRELOADER overlay first (covers first paint + navigation); the <noscript> rule hides it when
     // scripting is off so a no-JS visitor is never trapped behind a never-cleared overlay.
     (preloader ? `${preloader}<noscript><style>[data-sw-preloader]{display:none!important}</style></noscript>` : '') +
-    slotLandmark('nav', 'top-nav', topNav) +
-    slotLandmark('nav', 'mobile-nav', mobileNav) +
+    slotLandmark('nav', 'main-nav', mainNav) +
     `<main id="page-content">${body}</main>` +
     slotLandmark('aside', 'sidebar-left', sidebarLeft) +
     slotLandmark('aside', 'sidebar-right', sidebarRight) +

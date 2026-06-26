@@ -152,9 +152,9 @@ test('edit a website partial in the code-editor modal, save, and persist across 
 
   await page.getByRole('tab', { name: 'Website Settings' }).click();
 
-  // Open the topNav partial's code editor in a modal (no inline textarea).
-  await page.getByRole('button', { name: /Edit topNav/ }).click();
-  const dialog = page.getByRole('dialog', { name: 'topNav partial' });
+  // Open the mainNav partial's code editor in a modal (no inline textarea).
+  await page.getByRole('button', { name: /Edit mainNav/ }).click();
+  const dialog = page.getByRole('dialog', { name: 'Main Navigation' });
   await expect(dialog).toBeVisible();
 
   // Type into the black CodeMirror editor, then Save (the modal's ✓ button).
@@ -175,8 +175,8 @@ test('edit a website partial in the code-editor modal, save, and persist across 
   await page.reload();
   await page.getByRole('button', { name: /Partials Site/ }).click();
   await page.getByRole('tab', { name: 'Website Settings' }).click();
-  await page.getByRole('button', { name: /Edit topNav/ }).click();
-  const reopened = page.getByRole('dialog', { name: 'topNav partial' });
+  await page.getByRole('button', { name: /Edit mainNav/ }).click();
+  const reopened = page.getByRole('dialog', { name: 'Main Navigation' });
   await expect(reopened.locator('.cm-content')).toContainText(marker);
 });
 

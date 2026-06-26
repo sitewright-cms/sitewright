@@ -36,16 +36,18 @@ describe('extractChrome', () => {
     for (const p of no) expect(serialize(getBody(p.doc)!.children)).toContain('page wrapper');
   });
 
-  it('hoists a separate slide-out mobile menu into mobileNav (distinct from the header)', () => {
-    const chrome = '<div id="top-nav"><a href="/about">Desktop</a></div><div id="mobile-nav"><a href="/about">MobileMenu</a></div>';
+  it('extracts only the header → mainNav; a standalone mobile menu is left in the body (one nav slot)', () => {
+    // The platform has a SINGLE Main Navigation slot, so a separate slide-out mobile menu is NOT
+    // hoisted into its own slot anymore — only the header goes to mainNav.
+    const chrome = '<header><a href="/about">Desktop</a></header><div class="mobile-menu"><a href="/about">MobileMenu</a></div>';
     const pages = ['/a', '/b', '/c'].map((u) => pp(u, `<html><body>${chrome}<main>content</main></body></html>`));
     const result = extractChrome(pages, ctx);
-    expect(result.topNav).toContain('Desktop');
-    expect(result.mobileNav).toContain('MobileMenu'); // the slide-out menu went to its own slot
+    expect(result.mainNav).toContain('Desktop');
+    expect('mobileNav' in result).toBe(false); // the separate mobile slot was removed
     for (const p of pages) {
       const html = serialize(getBody(p.doc)!.children);
-      expect(html).not.toContain('mobile-nav');
-      expect(html).not.toContain('top-nav');
+      expect(html).not.toContain('Desktop'); // the header was hoisted out of the body
+      expect(html).toContain('MobileMenu'); // the standalone mobile menu stays in the body (not hoisted)
     }
   });
 
@@ -58,7 +60,7 @@ describe('extractChrome', () => {
       pp('/c', `<html><body>${hdr('', ' loading="lazy" srcset="/logo2.png 2x"')}<main>c</main></body></html>`),
     ];
     const result = extractChrome(pages, ctx);
-    expect(result.topNav).toBeDefined();
+    expect(result.mainNav).toBeDefined();
     for (const p of pages) expect(serialize(getBody(p.doc)!.children)).not.toContain('<header'); // incl. the variant page
   });
 
@@ -81,7 +83,7 @@ describe('extractChrome', () => {
     ];
     const result = extractChrome(pages, ctx);
     expect(result.extracted).toBe(true);
-    expect(result.topNav).toContain('href="/about"');
+    expect(result.mainNav).toContain('href="/about"');
     expect(result.footer).toContain('shared footer');
     // Removed from the page bodies.
     for (const p of pages) {
@@ -98,7 +100,7 @@ describe('extractChrome', () => {
       pp('https://ex.com/c', wrap()),
     ];
     const result = extractChrome(pages, ctx);
-    expect(result.topNav).toBeUndefined();
+    expect(result.mainNav).toBeUndefined();
     expect(result.extracted).toBe(false);
   });
 
@@ -108,7 +110,7 @@ describe('extractChrome', () => {
       pp('https://ex.com/b', `<html><body><main>b</main>${FOOTER}</body></html>`),
     ];
     const result = extractChrome(pages, ctx);
-    expect(result.topNav).toBeUndefined();
+    expect(result.mainNav).toBeUndefined();
     expect(result.footer).toContain('shared footer');
   });
 });

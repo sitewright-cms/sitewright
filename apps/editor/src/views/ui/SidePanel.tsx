@@ -43,7 +43,7 @@ interface SidePanelProps {
   align?: SidePanelAlign;
   /** Render a SMALLER collapsed tab (less padding + smaller text) — for secondary rails. */
   compact?: boolean;
-  /** Increment from a parent to force the panel open (e.g. a top-nav button). */
+  /** Increment from a parent to force the panel open (e.g. a main-nav button). */
   openSignal?: number;
   /**
    * When set, dragging OS files over the collapsed tab opens the panel, so the drop can land on

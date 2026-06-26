@@ -115,6 +115,7 @@ import {
   widgetDatasetsForSources,
   WIDGET_PARTIALS,
   GLOBAL_WIDGETS,
+  GLOBAL_SNIPPET_PARTIALS,
   type ProjectBundle,
 } from '@sitewright/core';
 import type { Database } from '../db/client.js';
@@ -440,8 +441,7 @@ function startOfMonthUTC(now: Date): Date {
  * parity with publish: the author sees their page inside the shared header/footer/sidebars.
  */
 interface PreviewShell {
-  topNav?: string;
-  mobileNav?: string;
+  mainNav?: string;
   sidebarLeft?: string;
   sidebarRight?: string;
   footer?: string;
@@ -480,7 +480,7 @@ async function styledSourceDocument(
 ): Promise<string> {
   // The slots' Tailwind/DaisyUI classes must be in the inlined preview sheet too, else the shared
   // header/footer renders unstyled in the editor.
-  const slotHtml = [shell.topNav, shell.mobileNav, shell.sidebarLeft, shell.sidebarRight, shell.footer, shell.bottom]
+  const slotHtml = [shell.mainNav, shell.sidebarLeft, shell.sidebarRight, shell.footer, shell.bottom]
     .filter(Boolean)
     .join(' ');
   // Include the `<body>` effect classes in the scan so the preview sheet carries those schemes.
@@ -1852,6 +1852,9 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
     await contentRepo.put(ownerCtx, 'settings', 'settings', {
       identity: { name: body.name, colors: { primary: '#2563eb' } },
       settings: { defaultLocale: newProjectLocale, locales: [newProjectLocale] },
+      // Ship the platform DEFAULT navigation + footer (the nav-header / nav-footer recipes) so a fresh
+      // project has a working, data-driven Main Navigation (desktop bar + mobile drawer) out of the box.
+      website: { mainNav: GLOBAL_SNIPPET_PARTIALS['nav-header'] ?? '', footer: GLOBAL_SNIPPET_PARTIALS['nav-footer'] ?? '' },
     });
     // Every project starts with a HOME page (the tree root: empty slug → "/", header nav),
     // so the pages list, auto-nav, and the first publish work out of the box. Same scaffold
@@ -2308,7 +2311,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
           savedPages,
           page,
           defaultLocale,
-          [pageSource, website?.topNav, website?.mobileNav, website?.sidebarLeft, website?.sidebarRight, website?.footer, website?.bottom]
+          [pageSource, website?.mainNav, website?.sidebarLeft, website?.sidebarRight, website?.footer, website?.bottom]
             .filter(Boolean)
             .join('\n'),
         );
@@ -2375,9 +2378,8 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
             return undefined;
           }
         };
-        const [topNav, mobileNav, sidebarLeft, sidebarRight, footer, bottom] = await Promise.all([
-          renderSlot('topNav', website?.topNav),
-          renderSlot('mobileNav', website?.mobileNav),
+        const [mainNav, sidebarLeft, sidebarRight, footer, bottom] = await Promise.all([
+          renderSlot('mainNav', website?.mainNav),
           renderSlot('sidebarLeft', website?.sidebarLeft),
           renderSlot('sidebarRight', website?.sidebarRight),
           renderSlot('footer', website?.footer),
@@ -2389,8 +2391,7 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
         // after the tenant's own scripts; a custom preloader becomes the first-body-child overlay.
         const fxCode = websiteEffectsCustomCode(website?.effects);
         const sourceHtml = await styledSourceDocument(page, brand, rendered, {
-          topNav,
-          mobileNav,
+          mainNav,
           sidebarLeft,
           sidebarRight,
           footer,

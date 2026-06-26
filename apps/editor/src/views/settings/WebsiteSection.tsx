@@ -14,7 +14,8 @@ import { newStr, shopLabelKeys, type Patch, type SettingsForm } from './model';
 import { Field, GlassCard } from './ui';
 import { SectionHelp } from '../ui/SectionHelp';
 import { ButtonEffectsModal } from './ButtonEffectsModal';
-import { Globe, Sparkles, Paintbrush, Code, Braces, PanelTop, Smartphone, PanelLeft, PanelRight, PanelBottom, ArrowDownToLine, Signpost, ShoppingCart, Languages, Pencil, MoonStar, MoveHorizontal, SlidersHorizontal } from 'lucide-react';
+import { Globe, Sparkles, Paintbrush, Code, Braces, PanelTop, PanelLeft, PanelRight, PanelBottom, ArrowDownToLine, Signpost, ShoppingCart, Languages, Pencil, MoonStar, MoveHorizontal, SlidersHorizontal } from 'lucide-react';
+import { GLOBAL_SNIPPET_PARTIALS } from '@sitewright/core';
 import { CodeField } from '../ui/CodeField';
 import { CodeEditorModal } from '../ui/CodeEditorModal';
 import { api, type EffectForks } from '../../api';
@@ -39,7 +40,7 @@ const PRELOADER_EFFECTS_SORTED = [...PRELOADER_EFFECTS].sort((a, b) => effectLab
 
 /** Shared bindings hint for the validated skeleton-slot editors. */
 const SLOT_HINT =
-  'HTML + Tailwind/DaisyUI (no JS). The skeleton wraps this slot in its own landmark (top-nav/footer/…), so do NOT use <nav>/<main>/<footer>/<aside> here — use <div>. Bindings: {{ company.* }}, {{#each nav.header}}…{{/each}}, {{ website.json_data.* }}, {{ website.data.* }}.';
+  'HTML + Tailwind/DaisyUI (no JS). The skeleton wraps this slot in its own landmark (main-nav/footer/…), so do NOT use <nav>/<main>/<footer>/<aside> here — use <div>. Bindings: {{ company.* }}, {{#each nav.header}}…{{/each}}, {{ website.json_data.* }}, {{ website.data.* }}.';
 
 /** A one-line summary of the current `website.data` value for the "Edit data" row. */
 function dataSummary(v: JsonValue): string {
@@ -93,7 +94,7 @@ export function WebsiteSection({
       code: form.navCode,
       set: (v: string) => patch({ navCode: v }),
       forks: forks?.nav ?? [],
-      hint: 'Applied site-wide while Nav effect is “None / Custom Code”. Target the nav links (e.g. #top-nav a, .menu a) and use --sw-color-* tokens so it stays legible in dark mode. Fork a built-in effect for a working starting point.',
+      hint: 'Applied site-wide while Nav effect is “None / Custom Code”. Target the nav links (e.g. #main-nav a, .menu a) and use --sw-color-* tokens so it stays legible in dark mode. Fork a built-in effect for a working starting point.',
     },
     button: {
       title: 'Custom button effect code',
@@ -425,25 +426,15 @@ export function WebsiteSection({
         </h3>
       </motion.div>
 
-      <GlassCard title="Top navigation" icon={<PanelTop className="h-4 w-4" />}>
+      <GlassCard title="Main Navigation" icon={<PanelTop className="h-4 w-4" />}>
         <CodeField
-          label="topNav — top of every page"
-          title="topNav partial"
+          label="mainNav — desktop bar + mobile drawer, on every page"
+          title="Main Navigation"
           hint={SLOT_HINT}
-          value={form.topNav}
-          onChange={(v) => patch({ topNav: v })}
+          value={form.mainNav}
+          onChange={(v) => patch({ mainNav: v })}
+          starter={{ label: 'Insert the default navigation', code: GLOBAL_SNIPPET_PARTIALS['nav-header'] ?? '' }}
           placeholder={'<div class="navbar">{{ company.name }}</div>'}
-        />
-      </GlassCard>
-
-      <GlassCard title="Mobile navigation" icon={<Smartphone className="h-4 w-4" />}>
-        <CodeField
-          label="mobileNav — after topNav"
-          title="mobileNav partial"
-          hint={SLOT_HINT}
-          value={form.mobileNav}
-          onChange={(v) => patch({ mobileNav: v })}
-          placeholder={'<div class="drawer">…</div>'}
         />
       </GlassCard>
 
@@ -476,6 +467,7 @@ export function WebsiteSection({
           hint={SLOT_HINT}
           value={form.footer}
           onChange={(v) => patch({ footer: v })}
+          starter={{ label: 'Insert the default footer', code: GLOBAL_SNIPPET_PARTIALS['nav-footer'] ?? '' }}
           placeholder={'<div class="footer">© {{ company.name }}</div>'}
         />
       </GlassCard>

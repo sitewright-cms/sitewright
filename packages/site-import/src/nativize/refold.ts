@@ -170,7 +170,16 @@ export async function refoldLoops(html: string, usedSlugs: Set<string>, probe: R
     const slotFields: (string | null)[] = types.map(() => null);
     varIdx.forEach((i, k) => { slotFields[i] = varNames[k]!; });
 
-    const { slug, name } = slugFor(el, usedSlugs);
+    // A short label right before the rows (e.g. "RECENT PROJECTS") makes a far better slug than the
+    // container's utility class (`sw-container` → "swcontainer").
+    let hint = '';
+    for (let sib = rowEls[0]!.prev; sib; sib = sib.prev) {
+      if (!isTag(sib)) continue;
+      const t = textContent([sib]).trim().replace(/\s+/g, ' ');
+      hint = t.length > 0 && t.length <= 40 ? t : '';
+      break;
+    }
+    const { slug, name } = slugFor(el, usedSlugs, hint);
     const release = (): void => { usedSlugs.delete(slug); };
     const rows = perRow.map((r) => { const v: Record<string, string> = {}; varIdx.forEach((i, k) => { v[varNames[k]!] = r[i]!; }); return v; });
     const clone = cloneEl(rowEls[0]!);

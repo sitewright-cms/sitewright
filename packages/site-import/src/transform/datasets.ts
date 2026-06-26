@@ -207,10 +207,16 @@ function nearestHeading(container: Element): string {
 /** A hyphenless slug (for `{{#each dataset.<slug>}}` — no [brackets] needed) PLUS a human display name.
  *  Prefers a nearby heading ("Our Team"); else the first MEANINGFUL class token ("Team", not the whole
  *  utility-class blob); else a generic "List". */
-export function slugFor(container: Element, usedSlugs: Set<string>): { slug: string; name: string } {
-  const heading = nearestHeading(container);
+export function slugFor(container: Element, usedSlugs: Set<string>, hint?: string): { slug: string; name: string } {
   let base = '';
   let name = '';
+  // An explicit hint (e.g. a "RECENT PROJECTS" label right before the rows) wins — the container's own
+  // class is often just a utility wrapper (`sw-container`), giving an ugly slug.
+  if (hint && slugify(hint)) {
+    base = slugify(hint);
+    name = hint;
+  }
+  const heading = base ? '' : nearestHeading(container);
   if (heading) {
     base = slugify(heading);
     name = heading;

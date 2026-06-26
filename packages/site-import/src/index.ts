@@ -13,6 +13,7 @@ export { mapAosEffect, ms, aosAttrs, type AosAttrs } from './nativize/aos.js';
 export { type CapturedNode, type MergedNode, type NativizeContext, type RenderResult, type SnapKind, mergeTree, mergeTrees, renderTree, toRoute, snapButton, expandCarouselDirect } from './nativize/emit.js';
 export { buildPalette, colorToRgbKey } from './nativize/palette.js';
 export { type HoistedModals, hoistGlobalModals } from './nativize/modals.js';
+export { type RefoldResult, type RenderProbe, refoldLoops } from './nativize/refold.js';
 export type {
   AssetKind,
   CapturedAsset,

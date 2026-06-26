@@ -5,10 +5,10 @@
 // the imported foreign CSS/JS are dropped and the chrome nav is rebuilt as a data-driven menu. This is
 // the "bulk of the job"; an agent can fine-tune individual pages afterward.
 import type { FastifyBaseLogger } from 'fastify';
-import type { Page, Entry } from '@sitewright/schema';
-import { validateTemplate, type TemplateContext } from '@sitewright/blocks';
+import type { Page, Entry, Dataset } from '@sitewright/schema';
+import { validateTemplate, renderTemplate, type TemplateContext } from '@sitewright/blocks';
 import { resolveLocaleDatasets, compareEntryOrder, keyedDatasets } from '@sitewright/core';
-import { buildPalette, hoistGlobalModals, mergeTrees, renderTree, type CapturedNode, type NativizeContext } from '@sitewright/site-import';
+import { buildPalette, hoistGlobalModals, mergeTrees, renderTree, refoldLoops, type RenderProbe, type CapturedNode, type NativizeContext } from '@sitewright/site-import';
 import { type ContentRepository, SETTINGS_ENTITY_ID, type Settings } from '../repo/content.js';
 import type { ProjectContext } from '../repo/context.js';
 import type { RenderPool } from './render-pool.js';
@@ -248,6 +248,16 @@ export async function nativizeProject(
   let containerWidth: number | undefined; // the source content-container max-width → website.containerWidth
   const nativizedPages: Array<{ id: string; html: string; page: Record<string, unknown> }> = []; // → global-modal hoisting
 
+  // POST-NATIVIZE re-fold: the capture EXPANDS the import's {{#each}} loops (so they render styled) → high
+  // LOC + orphaned datasets. After each page's emit we try to fold uniform card grids BACK into loops +
+  // fresh datasets, keeping ONLY render-equivalent folds. Slugs are seeded with the import's so the new
+  // ones don't collide; the originals are dropped after a full nativize. (slugFor + array push are sync —
+  // reserved before any await — so the shared state is race-free under the concurrent pool.)
+  const priorDatasets = (await deps.contentRepo.list(ctx, 'dataset')) as Dataset[];
+  const refoldSlugs = new Set<string>(priorDatasets.map((d) => d.slug));
+  const refoldDatasets: Dataset[] = [];
+  const refoldEntries: Entry[] = [];
+
   await runPool(targets, PAGE_CONCURRENCY, async (page) => {
     if (deps.signal?.aborted) return; // client disconnected → stop taking new pages (those done persist)
     try {
@@ -276,7 +286,22 @@ export async function nativizeProject(
       const result = renderTree(mergeTrees(base, md, lg, nctx), nctx);
       // Strip the loopback <base> origin the capture resolved media against, so /media stays root-relative
       // (the host may appear with or without its port — new URL() drops the default :80).
-      const html = result.html.replace(loopbackOrigin, '');
+      let html = result.html.replace(loopbackOrigin, '');
+      // Re-fold expanded card grids back into {{#each}} loops (zero fidelity risk — see refoldLoops). The
+      // probe renders fragments in-process against THIS page's context (+ the candidate dataset entries).
+      try {
+        const probe: RenderProbe = (tpl, extra) =>
+          Promise.resolve(renderTemplate(tpl, { ...(context as Record<string, unknown>), ...extra, dataset: { ...(localeData as Record<string, unknown>), ...((extra.dataset as Record<string, unknown>) ?? {}) } } as unknown as TemplateContext));
+        const refold = await refoldLoops(html, refoldSlugs, probe);
+        if (refold.datasets.length > 0) {
+          validateTemplate(refold.html);
+          html = refold.html;
+          refoldDatasets.push(...refold.datasets);
+          refoldEntries.push(...refold.entries);
+        }
+      } catch (err) {
+        deps.log.warn({ pageId: page.id, err: err instanceof Error ? err.message : String(err) }, 'nativize: refold skipped (kept expanded)');
+      }
       validateTemplate(html); // page.source must be validator-safe before it's written
       const updated = {
         ...page,
@@ -295,6 +320,25 @@ export async function nativizeProject(
     done += 1;
     onProgress({ phase: 'nativize', done, total: targets.length, detail: page.title || page.path || page.id });
   });
+
+  // Persist the re-folded datasets/entries. On a FULL nativize (skipped===0) every import-inferred loop was
+  // expanded → either re-folded here or left literal, so the ORIGINAL import datasets/entries are orphaned
+  // and dropped (else they'd clutter the dataset list). If anything was skipped, a rawFidelity page may
+  // still reference an import dataset, so we keep them all (the new ones use non-colliding slugs).
+  if (refoldDatasets.length > 0 && !deps.signal?.aborted) {
+    for (const d of refoldDatasets) await deps.contentRepo.put(ctx, 'dataset', d.id, d);
+    for (const e of refoldEntries) await deps.contentRepo.put(ctx, 'entry', e.id, e);
+  }
+  if (skipped.length === 0 && !deps.signal?.aborted) {
+    const keepSlugs = new Set(refoldDatasets.map((d) => d.slug));
+    const orphanDatasets = priorDatasets.filter((d) => !keepSlugs.has(d.slug));
+    const orphanSlugs = new Set(orphanDatasets.map((d) => d.slug));
+    if (orphanSlugs.size > 0) {
+      const allEntries = (await deps.contentRepo.list(ctx, 'entry')) as Entry[];
+      for (const e of allEntries) if (orphanSlugs.has(e.dataset)) await deps.contentRepo.remove(ctx, 'entry', e.id);
+      for (const d of orphanDatasets) await deps.contentRepo.remove(ctx, 'dataset', d.id);
+    }
+  }
 
   // Site-wide background + fonts come from the HOME page (path ''), else any page that has one.
   const bodyBg: BodyBackground | undefined = bodyBgByPath.get('') ?? [...bodyBgByPath.values()][0];

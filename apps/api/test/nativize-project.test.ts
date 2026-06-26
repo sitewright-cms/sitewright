@@ -39,16 +39,19 @@ function makeDeps(o: DepOverrides = {}) {
   const pagePuts: Array<{ id: string; raw: { status: string; source: string; data: { swImport: { rewritten: boolean } } } }> = [];
   let settingsPut: { website: { head: string; scripts: string; topNav: string; mobileNav: string; footer: string; criticalCss?: string; sidebarLeft?: string; bottom?: string }; identity?: { typography?: { heading?: { assetId?: string; family?: string }; body?: { assetId?: string } } } } | null = null;
   const entries = o.entries ?? [];
+  const datasets = (o as { datasets?: unknown[] }).datasets ?? [];
   const fonts = [{ id: 'f-primary', kind: 'font', family: 'primary-font' }, { id: 'f-text', kind: 'font', family: 'text-font' }];
   const renderContexts: unknown[] = [];
+  const removed: Array<{ kind: string; id: string }> = [];
   const contentRepo = {
     get: vi.fn(async () => settings),
-    list: vi.fn(async (_c: unknown, kind: string) => (kind === 'entry' ? entries : kind === 'media' ? fonts : pages)),
+    list: vi.fn(async (_c: unknown, kind: string) => (kind === 'entry' ? entries : kind === 'media' ? fonts : kind === 'dataset' ? datasets : pages)),
     put: vi.fn(async (_c: unknown, kind: string, id: string, raw: unknown) => {
       if (kind === 'settings') settingsPut = raw as never;
-      else pagePuts.push({ id, raw: raw as never });
+      else if (kind === 'page') pagePuts.push({ id, raw: raw as never });
       return raw;
     }),
+    remove: vi.fn(async (_c: unknown, kind: string, id: string) => { removed.push({ kind, id }); }),
   } as unknown as NativizeDeps['contentRepo'];
   const renderPool = { render: vi.fn(async (src: string, context: unknown) => { renderContexts.push(context); return src; }) } as unknown as NativizeDeps['renderPool'];
   const log = { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() } as unknown as NativizeDeps['log'];

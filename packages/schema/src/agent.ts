@@ -494,24 +494,52 @@ prefer text language names, or pass an explicit country code per locale.
 `,
   },
   nav: {
-    title: "Nav placeholders & active item",
-    summary: "link-only menu items (incl. #dialog) + marking the active item",
+    title: "Navigation — menus, dropdowns, mobile drawer",
+    summary: "slot menus (header/mobile/footer) + child-page dropdowns + a pure-CSS mobile drawer + active item + auto language/theme",
     body: `
-NAV PLACEHOLDERS: a page with kind:"link" is a menu item with NO page of its own (no route/HTML) —
-set link.target ("/path", "https://…"/"mailto:"/"tel:", "#section", or "#dialog-id" to open a
-<dialog> placed in the website.bottom slot) + optional link.newTab, and nav.slots/nav.dropdown as
-usual; its title is the menu name (may include {{sw-icon}}/basic HTML). Output a nav label with
-{{sw-label}} (renders that rich name; a plain page title is escaped) and honor {{#if newTab}} +
-.external on each item.
+DON'T REINVENT THIS — copy the recipes: {{> nav-header}} (the full default: data-driven desktop bar +
+a pure-CSS mobile drawer + language dropdown + theme toggle), {{> nav-footer}}, or {{> navbar}} (simple).
+Read one with get_content("snippet","nav-header"). New projects already ship {{> nav-header}} in their
+Main Navigation slot. The notes below explain how it works so you can adapt it.
 
-ACTIVE NAV ITEM: mark the current page in a menu with the {{sw-active <route>}} helper (a boolean,
-no JS; route must be root-relative). By default it matches the active TRAIL (a parent route stays
-active on its child pages — except a home route, "/" or a locale home like "/es", which matches only
-itself); pass exact=true for the current page only. Inside {{#each nav.header}}
-the item route is \`path\`: <a href="{{sw-url path}}" class="{{#if (sw-active path)}}active{{/if}}"
-{{#if (sw-active path exact=true)}}aria-current="page"{{/if}}>{{sw-label}}</a> (the .active class is what
-the nav EFFECT styles; omit aria-current off the current page). Output the label with {{sw-label}}
-(renders a placeholder's rich name; a page title is escaped).
+NAV SLOTS (page settings): each page's nav.slots places it in a menu — "header" (the Main Navigation),
+"mobile" (the mobile drawer), and/or "footer". nav.title overrides the menu label (else the page title);
+nav.order sorts; nav.dropdown:true folds the page's CHILD pages into a dropdown under it. The menus are
+built for you: loop {{#each nav.header}} / {{#each nav.mobile}} / {{#each nav.footer}}, each item exposing
+path, children (sub-pages, when nav.dropdown is on), newTab, external, and the label.
+
+ONE MENU ITEM: output the label with {{sw-label}} (renders a placeholder's rich name; a page title is
+escaped — never use {{{ }}}), the link with {{sw-url path}}, honor {{#if newTab}} target/rel, and mark the
+active item with {{sw-active path}} (boolean, no JS, root-relative). Active matches the TRAIL by default (a
+parent stays active on its children — except home "/" or a locale home "/es", which match only themselves);
+pass exact=true for the current page only:
+  <a href="{{sw-url path}}" class="{{#if (sw-active path)}}active{{/if}}"{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{sw-label}}</a>
+(.active is what the nav EFFECT styles.)
+
+CHILD-PAGE DROPDOWN (desktop): a CSS hover dropdown whose PARENT STAYS A REAL LINK — <li class="dropdown
+dropdown-hover"><a href="{{sw-url path}}">{{sw-label}}</a><ul class="dropdown-content menu …">{{#each
+children}}<li><a href="{{sw-url path}}">{{sw-label}}</a></li>{{/each}}</ul></li>. Do NOT use
+<details>/<summary> for a desktop dropdown (it makes the parent a toggle, not navigable).
+
+MOBILE DRAWER: there is NO drawer runtime — build a pure-CSS slide-in drawer with a peer-checkbox (no JS).
+The hidden <input type="checkbox" id="sw-nav-drawer" class="peer sr-only"> MUST be the first sibling; a
+<label for> is the hamburger, a second <label for> the backdrop, and the panel uses -translate-x-full →
+peer-checked:translate-x-0. The hamburger and the drawer MUST be in the SAME slot (no cross-slot toggle).
+Use <details>/<summary> accordions for child pages INSIDE the drawer; include the logo + a CLOSE <label
+for>. Loop {{#each nav.mobile}} (the "Mobile menu" pages), with an {{else}} fallback to {{#each nav.header}}
+until one is curated.
+
+AUTO LANGUAGE + THEME: gate a flag language switcher on {{#if page.translations}} (loop page.translations;
+{{sw-flag (lookup @root.website.data.locale_flags locale)}} — set website.data.locale_flags = {"en":"gb",…});
+add {{sw-theme-toggle}} (renders nothing unless themes are enabled). Both auto-appear.
+
+NAV PLACEHOLDERS: a page with kind:"link" is a menu item with NO page of its own — set link.target
+("/path", "https://…"/"mailto:"/"tel:", "#section", or "#dialog-id" to open a <dialog> in website.bottom) +
+optional link.newTab, and nav.slots/nav.dropdown as usual; its title is the menu name (may include
+{{sw-icon}}/basic HTML, output via {{sw-label}}).
+
+LANDMARK RULE: never author <nav>/<main>/<footer>/<aside> — the skeleton owns those; nav content is the
+INNER markup of the Main Navigation / Footer slots.
 `,
   },
   import: {

@@ -25,6 +25,21 @@ describe('refoldLoops', () => {
     expect(res.html).toContain('Title 3'); // every card stays literal (its own icon preserved)
   });
 
+  it('folds a grid with per-row grid-cols/height artifacts (a table) — only varying cells become fields', async () => {
+    // Each row carries a captured per-row grid-cols + height (artifacts), a CONSTANT "{{sw-icon}} VIEW"
+    // action cell, and the varying project name/file. Expect: it folds; only name + file are fields; the
+    // shared action cell + the column grid stay in the template (not field-ized).
+    const row = (i: number, w: number, h: number) =>
+      `<div class="grid grid-cols-[minmax(0,${w}fr)_minmax(0,90fr)] h-${h} rounded"><span>Project ${i}</span><a href="/files/${i}.pdf"><span>{{sw-icon "eye"}} VIEW</span></a></div>`;
+    const html = `<section class="list">${[0, 1, 2, 3].map((i) => row(i, 80 + i, 10 + i)).join('')}</section>`;
+    const res = await refoldLoops(html, new Set<string>(), probe);
+    expect(res.datasets).toHaveLength(1);
+    expect(res.datasets[0]!.fields.map((f) => f.type)).toEqual(['text', 'text']); // name + file href; the action label is constant → static
+    expect(res.entries).toHaveLength(4);
+    expect(res.html).toContain('{{#each dataset.');
+    expect(res.html).toContain('{{sw-icon "eye"}}'); // the shared helper stays literal (NOT baked into a field → would render escaped)
+  });
+
   it('leaves html unchanged when there is no qualifying grid', async () => {
     const res = await refoldLoops('<div><p>just some prose</p></div>', new Set<string>(), probe);
     expect(res.datasets).toHaveLength(0);

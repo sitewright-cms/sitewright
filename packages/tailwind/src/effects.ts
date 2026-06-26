@@ -4,8 +4,8 @@
 // `<body>` for a site-wide effect (what the no-code picker does), or on a single element for a
 // one-off — full code-first freedom either way.
 //
-// NAV schemes style the main nav links — site-wide (class on <body>, scoped to the #top-nav /
-// #mobile-nav landmarks) OR per-element (class on the nav container, e.g. <ul class="menu
+// NAV schemes style the main nav links — site-wide (class on <body>, scoped to the #main-nav
+// landmark) OR per-element (class on the nav container, e.g. <ul class="menu
 // sw-nav-box-solid">). The active item is marked with `.active` (author-applied, e.g.
 // `{{#if (sw-active path)}}active{{/if}}`) and/or `[aria-current="page"]`. BUTTON effects layer on any
 // daisyUI `.btn` — site-wide (class on <body>) or on the button itself (`<button class="btn sw-btn-fx-lift">`).
@@ -32,7 +32,7 @@
 // use `${...} { … }` with no extra leading `&`.
 //   nav link, optional `<suffix>` (':hover', '.active', '::after', …):
 const navLink = (s = ''): string =>
-  `& :is(#top-nav, #mobile-nav) a${s}, &:is(.menu, nav, [role="navigation"]) a${s}`;
+  `& #main-nav a${s}, &:is(.menu, nav, [role="navigation"]) a${s}`;
 const navActive = `${navLink('.active')}, ${navLink('[aria-current="page"]')}`;
 //   the "effect-on" states for a link / pseudo — hover preview + BOTH active markers:
 const on = (p = ''): string =>
@@ -40,7 +40,7 @@ const on = (p = ''): string =>
 //   the nav CONTAINER itself (landmark or per-element nav) — the positioning context for the
 //   JS-backed schemes' injected `.sw-nav-indicator` and the spotlight background:
 const navScope = (s = ''): string =>
-  `& :is(#top-nav, #mobile-nav)${s}, &:is(.menu, nav, [role="navigation"])${s}`;
+  `& #main-nav${s}, &:is(.menu, nav, [role="navigation"])${s}`;
 //   button AXIS helpers (effect / shape / accent). Each class doubles as a site DEFAULT (on <body>,
 //   scoped to descendant .btn that DON'T carry their own override for that axis) OR a per-button
 //   override (on the .btn itself). The `:not([class*="sw-btn-<axis>-"])` guard makes the body default

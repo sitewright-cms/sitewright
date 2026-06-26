@@ -35,10 +35,10 @@ function makeDeps(o: DepOverrides = {}) {
   ];
   const settings = {
     identity: { colors: { primary: '#0b4a77' }, logo: '/media/logo.png' },
-    website: { head: '<link rel="stylesheet" href="/media/import.css">', scripts: '<script src="/media/foreign.js"></script>', topNav: '<div><a href="/a">A</a></div>', footer: '<div class="rgba-black-strong">Foreign footer</div>', sidebarLeft: '<div id="facebook-page"><iframe src="https://www.facebook.com/plugins/page.php?href=https%3A%2F%2Fwww.facebook.com%2Facme%2F&tabs=timeline"></iframe></div>' },
+    website: { head: '<link rel="stylesheet" href="/media/import.css">', scripts: '<script src="/media/foreign.js"></script>', mainNav: '<div><a href="/a">A</a></div>', footer: '<div class="rgba-black-strong">Foreign footer</div>', sidebarLeft: '<div id="facebook-page"><iframe src="https://www.facebook.com/plugins/page.php?href=https%3A%2F%2Fwww.facebook.com%2Facme%2F&tabs=timeline"></iframe></div>' },
   };
   const pagePuts: Array<{ id: string; raw: { status: string; source: string; data: { swImport: { rewritten: boolean } } } }> = [];
-  let settingsPut: { website: { head: string; scripts: string; topNav: string; mobileNav: string; footer: string; criticalCss?: string; sidebarLeft?: string; bottom?: string }; identity?: { typography?: { heading?: { assetId?: string; family?: string }; body?: { assetId?: string } } } } | null = null;
+  let settingsPut: { website: { head: string; scripts: string; mainNav: string; footer: string; criticalCss?: string; sidebarLeft?: string; bottom?: string }; identity?: { typography?: { heading?: { assetId?: string; family?: string }; body?: { assetId?: string } } } } | null = null;
   const entries = o.entries ?? [];
   const datasets = (o as { datasets?: unknown[] }).datasets ?? [];
   const fonts = [{ id: 'f-primary', kind: 'font', family: 'primary-font' }, { id: 'f-text', kind: 'font', family: 'text-font' }];
@@ -106,12 +106,12 @@ describe('nativizeProject', () => {
     const report = await nativizeProject(ctx, deps, () => {});
     expect(report.chromeRebuilt).toBe(true);
     const w = getSettingsPut()!.website;
-    expect(w.topNav).toContain('{{#each nav.header}}'); // #6 data-driven nav
-    expect(w.topNav).not.toContain('href="/a"'); // the imported hard-coded link is gone
-    expect(w.topNav).toContain('{{company.name}}'); // nav shows the company name
-    expect(w.topNav).toContain('{{company.slogan}}'); // …and the slogan
-    expect(w.topNav).toContain('peer-checked'); // mobile = a CSS drawer (sidebar), not a dropdown
-    expect(w.topNav).toContain('bg-base-100'); // nav bar is solid white (page-bg texture must not show through)
+    expect(w.mainNav).toContain('{{#each nav.header}}'); // #6 data-driven nav
+    expect(w.mainNav).not.toContain('href="/a"'); // the imported hard-coded link is gone
+    expect(w.mainNav).toContain('{{company.name}}'); // nav shows the company name
+    expect(w.mainNav).toContain('{{company.slogan}}'); // …and the slogan
+    expect(w.mainNav).toContain('peer-checked'); // mobile = a CSS drawer (sidebar), not a dropdown
+    expect(w.mainNav).toContain('bg-base-100'); // nav bar is solid white (page-bg texture must not show through)
     expect(w.sidebarLeft).toBe(''); // the Facebook widget is moved OUT of the in-flow sidebar
     expect(w.bottom).toMatch(/fixed left-0[^"]*facebook|facebook[\s\S]*fixed left-0|href="https:\/\/www\.facebook\.com\/acme/i); // …into a fixed edge-tab in bottom
     expect(w.criticalCss).toContain('background-image:url("/media/bg.webp")'); // page background (loopback stripped)
@@ -122,7 +122,7 @@ describe('nativizeProject', () => {
     expect(typo.body).toMatchObject({ assetId: 'f-text' });
     expect(w.head).not.toMatch(/<link[^>]+stylesheet/i); // #5 foreign stylesheet dropped
     expect(w.scripts).toBe(''); // #5 foreign JS dropped
-    expect(w.mobileNav).toBe('');
+    expect(w.mainNav).toContain('sw-nav-drawer'); // the rebuilt navbar is a self-contained responsive bar
     expect(w.footer).toContain('text-primary'); // footer nativized (foreign classes → platform tokens)
     expect(w.footer).not.toContain('rgba-black-strong'); // foreign footer class gone
   });
@@ -138,7 +138,7 @@ describe('nativizeProject', () => {
     expect(report.pagesNativized).toBe(2); // pages still nativized fine
     expect(report.chromeRebuilt).toBe(false); // footer failed → not a full chrome transition
     const w = getSettingsPut()!.website;
-    expect(w.topNav).toContain('{{#each nav.header}}'); // nav still rebuilt (platform classes)
+    expect(w.mainNav).toContain('{{#each nav.header}}'); // nav still rebuilt (platform classes)
     expect(w.head).toMatch(/<link[^>]+stylesheet/i); // foreign CSS KEPT so the un-nativized footer stays styled
     expect(w.footer).toContain('rgba-black-strong'); // original footer kept
   });

@@ -111,7 +111,7 @@ describe('CodePageEditor', () => {
     // The settings modal stacks ABOVE the editor modal (two dialogs open).
     expect(screen.getAllByRole('dialog')).toHaveLength(2);
     fireEvent.click(screen.getByRole('button', { name: 'draft' }));
-    fireEvent.click(screen.getByLabelText('Nav: header'));
+    fireEvent.click(screen.getByLabelText('Nav: Main navigation'));
     fireEvent.change(screen.getByLabelText('Nav order'), { target: { value: '3' } });
     fireEvent.click(screen.getByLabelText('Show in dropdown'));
     fireEvent.click(screen.getByRole('button', { name: 'Save settings' })); // applies to the DRAFT

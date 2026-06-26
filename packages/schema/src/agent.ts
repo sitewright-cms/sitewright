@@ -89,8 +89,8 @@ In \`source\`:
   DaisyUI's CSS-only patterns (<details>, the popover attribute, checkbox). Put URLs in
   href/src as literal paths or via the {{sw-url …}} helper.
 - NO SEMANTIC LANDMARK ELEMENTS: the page SKELETON already wraps every page body in
-  <main id="page-content"> and each skeleton slot in its own landmark — <nav id="top-nav">,
-  <nav id="mobile-nav">, <footer id="footer">, <aside id="sidebar-left">/<aside id="sidebar-right">.
+  <main id="page-content"> and each skeleton slot in its own landmark — <nav id="main-nav">,
+  <footer id="footer">, <aside id="sidebar-left">/<aside id="sidebar-right">.
   So a page \`source\` (and any snippet/template/slot HTML) must NOT use <nav>, <main>, <footer>, or
   <aside> — the validator rejects them to keep each landmark unique. Use neutral <div>/<section>/<ul>
   (DaisyUI's .navbar/.footer/.menu classes style any element).
@@ -336,7 +336,7 @@ CUSTOM EFFECT (when no built-in scheme fits): leave the effect 'none' and set
 website.effects.navCode / buttonCode / preloaderCode (in the settings entity) — raw HTML (a \`<style>\`
 plus an optional \`<script>\`) injected site-wide ONLY while that effect is 'none' (nav/button code at
 body-end; a custom preloader becomes the FIRST body child). Target the nav links
-(\`:is(#top-nav, #mobile-nav) a\`, \`.menu a\`) or buttons (\`.btn\`) directly, and use the brand custom
+(\`#main-nav a\`, \`.menu a\`) or buttons (\`.btn\`) directly, and use the brand custom
 properties — \`var(--sw-color-primary)\`, \`var(--sw-color-primary-content)\` (text-on-brand foreground),
 \`var(--sw-color-base-100)\` — so it stays on-brand AND legible in the built-in dark theme.
 
@@ -548,8 +548,8 @@ INNER markup of the Main Navigation / Footer slots.
     body: `
 IMPORTED PAGES. When an external site is imported (the OWNER does this in the editor — you don't trigger
 it), each page lands as a FAITHFUL replica: literal HTML in \`source\` (no Handlebars), the foreign CSS
-folded into the website criticalCss/head slots, the shared header/footer hoisted into the topNav/mobileNav/
-footer slots, and images self-hosted. Each page is MARKED \`page.data.swImport = { sourceUrl, rewritten:false }\`
+folded into the website criticalCss/head slots, the shared header/footer hoisted into the mainNav/footer
+slots, and images self-hosted. Each page is MARKED \`page.data.swImport = { sourceUrl, rewritten:false }\`
 and \`status:"draft"\`.
 
 NATIVIZE = A FAITHFUL PORT, NOT A REDESIGN. Your job is to REPLICATE the existing layout and look using
@@ -580,8 +580,8 @@ PORT CHECKLIST (per page — preserve the layout at every step):
 7. IMAGES: keep the self-hosted images the import found (same src); fill gaps with import_image (from a URL)
    or search_stock_images (SVGs and oversize images may have been dropped).
 
-CHROME (do this too — it isn't done until the slots are ported). The header / mobileNav / footer slots
-(in the settings entity, website.topNav/.mobileNav/.footer) still hold literal foreign HTML. Port them the
+CHROME (do this too — it isn't done until the slots are ported). The header / footer slots
+(in the settings entity, website.mainNav/.footer) still hold literal foreign HTML. Port them the
 same way — same layout, native classes + tokens + {{company.*}} — editing the settings entity.
 
 CLEAN UP THE FOREIGN FILES (do this LAST, once the pages + chrome are ported). The folded-in foreign CSS

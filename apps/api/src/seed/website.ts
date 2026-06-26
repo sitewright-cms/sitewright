@@ -1,3 +1,4 @@
+import { GLOBAL_SNIPPET_PARTIALS } from '@sitewright/core';
 import { icon } from './helpers.js';
 import { CHROME_TRANSLATIONS } from './strings.js';
 import { PAGE_TRANSLATIONS } from './page-translations.js';
@@ -8,14 +9,11 @@ import { PAGE_TRANSLATIONS } from './page-translations.js';
 // translation catalog (`website.translations`, see strings.ts). Three forms read it:
 // - `T()` emits the EDITABLE `data-sw-translate` directive (a span carrying the key + its EN fallback
 //   text) → click-to-edit in the live preview, writing the GLOBAL catalog. Use for chrome TEXT labels.
-// - `S()` emits the read-only `{{sw-translate}}` helper — for ATTRIBUTE positions (aria-label etc.)
-//   where a directive can't reach.
 // - `SL()` the bare subexpression for use inside another helper (`{{sw-url (sw-translate …)}}` — URL
 //   attributes must go through sw-url).
 // All resolve against the RENDERING page's locale (the projection pre-resolves website.translations →
 // website.t per page-locale). Publish strips the directive marker; preview keeps it for the bridge.
 const SL = (key: string): string => `(sw-translate "${key}")`;
-const S = (key: string): string => `{{sw-translate "${key}"}}`;
 // `fallback` is interpolated RAW into the slot HTML (the element's authored untranslated text), so it
 // MUST be a plain-text literal — never a user/dynamic value (that would be an injection surface).
 const T = (key: string, fallback: string): string => `<span data-sw-translate="${key}">${fallback}</span>`;
@@ -24,45 +22,10 @@ const T = (key: string, fallback: string): string => `<span data-sw-translate="$
 const BRAND_MARK = `<span class="relative inline-flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-primary via-primary to-secondary text-primary-content shadow-md shadow-primary/30">${icon('compass', 'h-4.5 w-4.5')}</span>`;
 
 export const EXAMPLE_WEBSITE = {
-  // Desktop header (≥lg) — the mobile slot below covers smaller screens.
-  topNav: `<div class="navbar sticky top-0 z-30 hidden border-b border-base-200/70 bg-base-100/70 px-4 backdrop-blur-xl lg:flex sm:px-8">
-  <div class="navbar-start">
-    <a class="btn btn-ghost gap-2.5 px-2 text-lg font-bold tracking-tight" href="{{sw-url ${SL('href_home')}}}">
-      ${BRAND_MARK}
-      {{ company.name }}
-    </a>
-  </div>
-  <div class="navbar-center">
-    <ul class="menu menu-horizontal gap-1 px-1 font-medium">{{#each nav.header}}{{#if children}}<li class="dropdown dropdown-hover"><a href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}} class="{{#if (sw-active path)}}active{{/if}}"{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{sw-label}} ${icon('chevron-down', 'h-4 w-4 opacity-60')}</a><ul class="dropdown-content menu z-30 w-52 rounded-xl border border-base-200/70 bg-base-100/95 p-2 shadow-xl backdrop-blur-xl">{{#each children}}<li><a href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}} class="{{#if (sw-active path)}}active{{/if}}"{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{sw-label}}</a></li>{{/each}}</ul></li>{{else}}<li><a href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}} class="{{#if (sw-active path)}}active{{/if}}"{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{sw-label}}</a></li>{{/if}}{{/each}}</ul>
-  </div>
-  <div class="navbar-end gap-2.5">
-    {{#if page.translations}}<div class="flex items-center gap-0.5 rounded-full bg-base-200/70 p-0.5" aria-label="${S('aria_language')}">{{#each page.translations}}<a class="btn btn-ghost" href="{{sw-url path}}" hreflang="{{locale}}">{{sw-flag (lookup @root.website.data.locale_flags locale) "h-3.5 w-5 rounded-sm"}}{{locale}}</a>{{/each}}</div>{{/if}}
-    {{sw-theme-toggle}}
-    <a class="btn btn-primary" href="{{sw-url ${SL('href_contact')}}}">${T('nav_cta', 'Start a project')} ${icon('arrow-right', 'h-4 w-4')}</a>
-  </div>
-</div>`,
-  // Mobile header (<lg) — its own skeleton slot. The menu is a NATIVE <details> dropdown
-  // (CSS/HTML only, so it works in the script-blocked editor preview AND with JS disabled),
-  // listing the same per-locale auto-nav the desktop header uses.
-  mobileNav: `<div class="navbar sticky top-0 z-30 border-b border-base-200/70 bg-base-100/85 px-3 backdrop-blur-xl lg:hidden">
-  <div class="navbar-start gap-1">
-    <details class="dropdown">
-      <summary class="btn btn-ghost btn-square" aria-label="${S('mobile_menu')}">${icon('menu', 'h-6 w-6')}</summary>
-      <ul class="menu dropdown-content z-30 mt-2 w-64 rounded-xl border border-base-200/70 bg-base-100/95 p-2 shadow-2xl backdrop-blur-xl">
-        {{#each nav.header}}<li><a href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}} class="{{#if (sw-active path)}}active{{/if}}">{{sw-label}}</a>{{#if children}}<ul>{{#each children}}<li><a href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}} class="{{#if (sw-active path)}}active{{/if}}">{{sw-label}}</a></li>{{/each}}</ul>{{/if}}</li>{{/each}}
-        {{#if page.translations}}<li class="mt-1 border-t border-base-200 pt-2"><div class="flex gap-1 px-1" aria-label="${S('aria_language')}">{{#each page.translations}}<a class="btn btn-ghost" href="{{sw-url path}}" hreflang="{{locale}}">{{sw-flag (lookup @root.website.data.locale_flags locale) "h-3.5 w-5 rounded-sm"}}{{locale}}</a>{{/each}}</div></li>{{/if}}
-      </ul>
-    </details>
-    <a class="btn btn-ghost gap-2 px-2 text-lg font-bold tracking-tight" href="{{sw-url ${SL('href_home')}}}">
-      ${BRAND_MARK}
-      {{ company.shortName }}
-    </a>
-  </div>
-  <div class="navbar-end gap-1">
-    {{sw-theme-toggle}}
-    <a class="btn btn-primary" href="{{sw-url ${SL('href_contact')}}}">${T('nav_cta', 'Start a project')}</a>
-  </div>
-</div>`,
+  // Main Navigation — the platform DEFAULT (the nav-header recipe): a data-driven desktop bar +
+  // a pure-CSS mobile drawer. This trilingual demo auto-shows the language dropdown; the theme
+  // toggle appears because themes are on. Edit it like any slot in Website settings.
+  mainNav: GLOBAL_SNIPPET_PARTIALS['nav-header'] ?? '',
   footer: `<div class="relative bg-neutral text-neutral-content">
   <div class="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/70 to-transparent"></div>
   <div class="mx-auto grid max-w-6xl gap-x-8 gap-y-12 px-6 py-20 sm:grid-cols-2 lg:grid-cols-6">

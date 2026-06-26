@@ -16,6 +16,10 @@ import { Modal } from './ui/Modal';
 import { AssetField } from './files/AssetField';
 import { glassInput, toggleInput } from '../theme';
 
+/** Human labels for the nav slots: header = the Main Navigation (desktop + mobile drawer), mobile = the
+ *  drawer's own curated menu (else it mirrors Main navigation), footer = the footer. */
+const NAV_SLOT_LABELS: Record<NavSlot, string> = { header: 'Main navigation', mobile: 'Mobile menu', footer: 'Footer' };
+
 /** The editable page-settings fields, flattened for form state. */
 export interface PageSettingsValues {
   title: string;
@@ -515,11 +519,11 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
           <p className="mb-2 text-xs font-bold text-slate-700">Navigation</p>
           <div className="flex flex-wrap items-center gap-4">
             {NAV_SLOTS.map((slot) => (
-              <label key={slot} className="flex items-center gap-1.5 text-sm capitalize">
+              <label key={slot} className="flex items-center gap-1.5 text-sm">
                 <input
                   type="checkbox"
                   className={toggleInput}
-                  aria-label={`Nav: ${slot}`}
+                  aria-label={`Nav: ${NAV_SLOT_LABELS[slot]}`}
                   checked={v.navSlots.includes(slot)}
                   onChange={(e) =>
                     patch({
@@ -527,7 +531,7 @@ export function PageSettingsModal({ page, projectId, initial, pages, templates, 
                     })
                   }
                 />
-                {slot}
+                {NAV_SLOT_LABELS[slot]}
               </label>
             ))}
           </div>

@@ -15,34 +15,34 @@ describe('nav/button effect utilities', () => {
   });
 
   it('emits a nav scheme scoped to the nav landmarks, filled with the brand + derived foreground', async () => {
-    const css = await compile('<body class="sw-nav-box-solid"><nav id="top-nav"><a class="active">x</a></nav></body>');
+    const css = await compile('<body class="sw-nav-box-solid"><nav id="main-nav"><a class="active">x</a></nav></body>');
     expect(css).toContain('.sw-nav-box-solid');
-    expect(css).toMatch(/#top-nav/);
+    expect(css).toMatch(/#main-nav/);
     expect(css).toContain('var(--color-primary)');
     expect(css).toContain('var(--color-primary-content)');
   });
 
   it('tree-shakes the schemes whose class is absent', async () => {
-    const css = await compile('<body class="sw-nav-box-solid"><nav id="top-nav"><a>x</a></nav></body>');
+    const css = await compile('<body class="sw-nav-box-solid"><nav id="main-nav"><a>x</a></nav></body>');
     expect(css).not.toContain('sw-nav-line-bottom');
     expect(css).not.toContain('sw-btn-fx-lift');
   });
 
   it('nav schemes read the dark-mode-aware --sw-color-* tokens (legible in the built-in dark theme)', async () => {
-    const css = await compile('<body class="sw-nav-line-bottom"><nav id="top-nav"><a class="active">x</a></nav></body>');
+    const css = await compile('<body class="sw-nav-line-bottom"><nav id="main-nav"><a class="active">x</a></nav></body>');
     expect(css).toContain('--sw-color-primary');
   });
 
   it('a JS-backed scheme emits the injected-indicator selector + rect vars; a CSS scheme does not', async () => {
     const slide = await compileUtilityCss(
-      ['<body class="sw-nav-sliding-pill"><nav id="top-nav"><a class="active">x</a></nav></body>'],
+      ['<body class="sw-nav-sliding-pill"><nav id="main-nav"><a class="active">x</a></nav></body>'],
       theme,
       { minify: true },
     );
     expect(slide).toContain('.sw-nav-indicator');
     expect(slide).toContain('--sw-ind-left');
     const css = await compileUtilityCss(
-      ['<body class="sw-nav-line-bottom"><nav id="top-nav"><a class="active">x</a></nav></body>'],
+      ['<body class="sw-nav-line-bottom"><nav id="main-nav"><a class="active">x</a></nav></body>'],
       theme,
       { minify: true },
     );
@@ -51,7 +51,7 @@ describe('nav/button effect utilities', () => {
 
   it('derives a readable primary-content even on a pure-Tailwind (non-daisy) page', async () => {
     // No daisy class → the non-daisy compile branch; the WCAG -content derivation must still run.
-    const css = await compile('<body class="sw-nav-box-solid"><nav id="top-nav"><a class="active">x</a></nav></body>');
+    const css = await compile('<body class="sw-nav-box-solid"><nav id="main-nav"><a class="active">x</a></nav></body>');
     expect(css).toContain('--color-primary-content: #ffffff'); // dark indigo → white
   });
 
@@ -92,7 +92,7 @@ describe('nav/button effect utilities', () => {
       { minify: true },
     );
     expect(nav).toContain('.sw-nav-box-solid:is(.menu,nav,[role=navigation]) a'); // per-element (class on the <ul>)
-    expect(nav).toContain('.sw-nav-box-solid :is(#top-nav,#mobile-nav) a'); // + the site-wide landmark form
+    expect(nav).toContain('.sw-nav-box-solid #main-nav a'); // + the site-wide landmark form
     const btn = await compileUtilityCss(['<button class="btn sw-btn-fx-lift">x</button>'], theme, { minify: true });
     expect(btn).toContain('.sw-btn-fx-lift.btn'); // per-button compound
     expect(btn).toContain('.sw-btn-fx-lift .btn'); // + the site-wide descendant form
@@ -100,11 +100,11 @@ describe('nav/button effect utilities', () => {
 
   it('scopes the aria-current active rule to the scheme (guards the double-& regression)', async () => {
     const css = await compileUtilityCss(
-      ['<body class="sw-nav-box-solid"><nav id="top-nav"><a aria-current="page">x</a></nav></body>'],
+      ['<body class="sw-nav-box-solid"><nav id="main-nav"><a aria-current="page">x</a></nav></body>'],
       theme,
       { minify: true },
     );
-    expect(css).toContain('.sw-nav-box-solid :is(#top-nav,#mobile-nav) a[aria-current=page]');
+    expect(css).toContain('.sw-nav-box-solid #main-nav a[aria-current=page]');
     expect(css).not.toMatch(/\.sw-nav-box-solid\s+\.sw-nav-box-solid/); // the old dead doubled selector
   });
 });

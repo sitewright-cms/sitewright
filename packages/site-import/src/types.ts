@@ -71,7 +71,7 @@ export interface ImportLimits {
   maxSourceBytes: number;
   /** Max images self-hosted across the whole import. */
   maxImages: number;
-  /** Max bytes per skeleton slot (topNav/footer); schema cap is 20 KB. */
+  /** Max bytes per skeleton slot (mainNav/footer); schema cap is 20 KB. */
   maxSlotBytes: number;
 }
 

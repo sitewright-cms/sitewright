@@ -242,7 +242,7 @@ describe('buildSite', () => {
     expect(sheet).not.toContain('oklch(45% 0.24 277.023)'); // DaisyUI's indigo default is gone
   });
 
-  it('renders project-wide skeleton slots (topNav/footer + auto-nav) into every page', async () => {
+  it('renders project-wide skeleton slots (mainNav/footer + auto-nav) into every page', async () => {
     await buildSite({
       publishedAt: '2026-05-29T00:00:00.000Z',
       outDir,
@@ -253,8 +253,8 @@ describe('buildSite', () => {
           settings: { defaultLocale: 'en', locales: ['en'] },
           website: {
             // Slot content uses NEUTRAL elements (a <div> with the DaisyUI .navbar / .footer
-            // classes) — the skeleton owns the <nav id="top-nav"> / <footer id="footer"> landmarks.
-            topNav:
+            // classes) — the skeleton owns the <nav id="main-nav"> / <footer id="footer"> landmarks.
+            mainNav:
               '<div class="navbar bg-base-100"><a class="btn btn-ghost" href="/">{{ company.name }}</a>' +
               '<ul class="menu menu-horizontal">{{#each nav.header}}<li><a href="{{sw-url path}}">{{label}}</a></li>{{/each}}</ul></div>',
             footer: '<div class="footer">© {{ company.name }}</div>',
@@ -268,8 +268,8 @@ describe('buildSite', () => {
     });
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
     expect(home).toContain('Home body'); // the page's own source
-    // The shared topNav slot is wrapped in the platform's <nav id="top-nav"> landmark.
-    expect(home).toContain('<nav id="top-nav"><div class="navbar bg-base-100">');
+    // The shared mainNav slot is wrapped in the platform's <nav id="main-nav"> landmark.
+    expect(home).toContain('<nav id="main-nav"><div class="navbar bg-base-100">');
     // The auto-nav lists BOTH pages (built from each page's nav settings); internal links
     // are rebased page-relative (portable): from the home page, "/" → "./", "/about" → "about".
     expect(home).toContain('<a href="./">Home</a>');
@@ -300,7 +300,7 @@ describe('buildSite', () => {
           identity: { name: 'Acme', colors: { primary: '#0a7' } },
           settings: { defaultLocale: 'en', locales: ['en'] },
           website: {
-            topNav:
+            mainNav:
               '<div class="navbar"><ul class="menu">{{#each nav.header}}' +
               '<li><a class="{{#if (sw-active path)}}active{{/if}}" href="{{sw-url path}}"' +
               '{{#if (sw-active path exact=true)}} aria-current="page"{{/if}}>{{label}}</a></li>' +
@@ -336,7 +336,7 @@ describe('buildSite', () => {
           settings: { defaultLocale: 'en', locales: ['en'] },
           website: {
             effects: { navEffect: 'box-solid', buttonEffect: 'lift' },
-            topNav:
+            mainNav:
               '<div class="navbar"><ul class="menu">{{#each nav.header}}<li><a class="{{#if (sw-active path)}}active{{/if}}" href="{{sw-url path}}">{{label}}</a></li>{{/each}}</ul></div>',
           },
         },
@@ -353,7 +353,7 @@ describe('buildSite', () => {
     const sheet = await readFile(join(outDir, 'styles.css'), 'utf8');
     // Only the chosen schemes ship, scoped to the platform landmarks, themed by the brand.
     expect(sheet).toContain('.sw-nav-box-solid');
-    expect(sheet).toMatch(/#top-nav/);
+    expect(sheet).toMatch(/#main-nav/);
     expect(sheet).toContain('.sw-btn-fx-lift');
     expect(sheet).not.toContain('sw-nav-line-bottom'); // tree-shaken (not chosen)
     expect(sheet).not.toContain('sw-btn-fx-glow');
@@ -370,7 +370,7 @@ describe('buildSite', () => {
           settings: { defaultLocale: 'en', locales: ['en'] },
           website: {
             effects: { navEffect: 'sliding-pill' },
-            topNav:
+            mainNav:
               '<div class="navbar"><ul class="menu">{{#each nav.header}}<li><a class="{{#if (sw-active path)}}active{{/if}}" href="{{sw-url path}}">{{label}}</a></li>{{/each}}</ul></div>',
           },
         },
@@ -401,7 +401,7 @@ describe('buildSite', () => {
           website: {
             effects: {
               // nav + preloader are "none" → their custom code applies; a built-in button stays a class.
-              navCode: '<style id="nav-fx">:is(#top-nav) a{color:red}</style>',
+              navCode: '<style id="nav-fx">:is(#main-nav) a{color:red}</style>',
               preloaderCode: '<div data-sw-preloader id="pre-fx">loading…</div>',
               buttonEffect: 'lift',
               buttonCode: '<style id="btn-fx">.btn{}</style>', // INERT — buttonEffect is a built-in
@@ -750,7 +750,7 @@ describe('buildSite', () => {
     expect(body).toContain('&lt;script&gt;alert(1)&lt;/script&gt;'); // HTML-escaped
   });
 
-  it('renders all validated skeleton slots (mobileNav/sidebars/bottom) in source order', async () => {
+  it('renders all validated skeleton slots (mainNav/sidebars/bottom) in source order', async () => {
     await buildSite({
       publishedAt: '2026-05-29T00:00:00.000Z',
       outDir,
@@ -761,9 +761,8 @@ describe('buildSite', () => {
           settings: { defaultLocale: 'en', locales: ['en'] },
           website: {
             // Slot content uses NEUTRAL elements (a <div> keeps the author's id + DaisyUI classes);
-            // the skeleton wraps each non-empty slot in its own landmark (<nav id="top-nav"> etc.).
-            topNav: '<div id="slot-top" class="navbar">top</div>',
-            mobileNav: '<div id="slot-mob" class="drawer">mobile</div>',
+            // the skeleton wraps each non-empty slot in its own landmark (<nav id="main-nav"> etc.).
+            mainNav: '<div id="slot-top" class="navbar">top</div>',
             sidebarLeft: '<div id="slot-sl" class="menu">left</div>',
             sidebarRight: '<div id="slot-sr" class="menu">right</div>',
             footer: '<div id="slot-foot" class="footer">foot</div>',
@@ -776,13 +775,13 @@ describe('buildSite', () => {
       }),
     });
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
-    const order = ['slot-top', 'slot-mob', 'page-body', 'slot-sl', 'slot-sr', 'slot-foot', 'slot-bottom'].map((id) => home.indexOf(id));
+    const order = ['slot-top', 'page-body', 'slot-sl', 'slot-sr', 'slot-foot', 'slot-bottom'].map((id) => home.indexOf(id));
     order.forEach((p) => expect(p).toBeGreaterThanOrEqual(0));
     expect(order).toEqual([...order].sort((a, b) => a - b)); // strictly increasing
     expect(home).toContain('>Acme</div>'); // the bottom slot got the company-name binding
     // Every validated slot's classes feed the shared utility sheet.
     const sheet = await readFile(join(outDir, 'styles.css'), 'utf8');
-    expect(sheet).toMatch(/\.drawer/);
+    expect(sheet).toMatch(/\.navbar/);
     expect(sheet).toMatch(/\.menu/);
   });
 
@@ -815,7 +814,7 @@ describe('buildSite', () => {
           formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
           identity: { name: 'Acme', colors: {} },
           settings: { defaultLocale: 'en', locales: ['en', 'de'] },
-          website: { topNav: '<div>{{#each nav.header}}<a href="{{sw-url path}}">{{label}}</a>{{/each}}</div>' },
+          website: { mainNav: '<div>{{#each nav.header}}<a href="{{sw-url path}}">{{label}}</a>{{/each}}</div>' },
         },
         pages: [
           { id: 'home', path: '', title: 'Home', source: '<div>h</div>', nav: { slots: ['header'], order: 1 }, translationGroup: 'home' },
@@ -905,12 +904,12 @@ describe('buildSite', () => {
           project: {
             formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
             identity: { name: 'Acme', colors: {} }, settings: { defaultLocale: 'en', locales: ['en'] },
-            website: { topNav: '<div>{{#each nav.header}}<a>{{label}}</a></div>' }, // unclosed {{#each}}
+            website: { mainNav: '<div>{{#each nav.header}}<a>{{label}}</a></div>' }, // unclosed {{#each}}
           },
           pages: [{ id: 'home', path: '', title: 'Home', source: '<div>x</div>' }],
         }),
       }),
-    ).rejects.toThrow(/website topNav template error/);
+    ).rejects.toThrow(/website mainNav template error/);
   });
 
   it('fails the publish with a clear error when a skeleton slot is unsafe', async () => {
@@ -922,12 +921,12 @@ describe('buildSite', () => {
           project: {
             formatVersion: 2 as const, id: 'p', name: 'Acme', slug: 'acme',
             identity: { name: 'Acme', colors: {} }, settings: { defaultLocale: 'en', locales: ['en'] },
-            website: { topNav: '<div>{{#each nav.header}}<a href="{{sw-url path}}">{{label}}</a>{{/each}}</div><script>x()</script>' },
+            website: { mainNav: '<div>{{#each nav.header}}<a href="{{sw-url path}}">{{label}}</a>{{/each}}</div><script>x()</script>' },
           },
           pages: [{ id: 'home', path: '', title: 'Home', source: '<div>x</div>' }],
         }),
       }),
-    ).rejects.toThrow(/website topNav/);
+    ).rejects.toThrow(/website mainNav/);
   });
 
   it('bakes client-edited region content ({{edit}} overrides) into a source-page build', async () => {

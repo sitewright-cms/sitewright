@@ -601,13 +601,13 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
       </div>
       {{/if}}
       {{sw-theme-toggle}}
-      <a class="btn btn-primary" href="{{sw-url '/contact'}}">{{sw-translate "nav.cta" default="Contact"}}</a>
+      <a class="btn btn-primary" href="{{sw-url '/contact'}}">{{sw-translate "nav_cta" default="Contact"}}</a>
     </div>
   </div>
 
   {{!-- MOBILE bar + slide-in DRAWER (<lg). The peer-checkbox MUST be the first sibling. --}}
   <div class="navbar relative border-b border-base-200 bg-base-100 px-3 lg:hidden">
-    <input type="checkbox" id="sw-nav-drawer" class="peer sr-only" aria-label="Menu" />
+    <input type="checkbox" id="sw-nav-drawer" class="peer sr-only" aria-label="{{sw-translate "mobile_menu" default='Menu'}}" />
     <div class="navbar-start">
       <label for="sw-nav-drawer" class="btn btn-ghost btn-square" aria-hidden="true">{{sw-icon "menu" "h-6 w-6"}}</label>
       <a class="btn btn-ghost gap-2 px-1 text-base font-bold tracking-tight" href="{{sw-url '/'}}">
@@ -629,7 +629,7 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
       </ul>
       {{#if page.translations}}
       <div class="border-t border-base-200 p-3">
-        <div class="flex flex-wrap gap-1" aria-label="Language">{{#each page.translations}}<a class="btn btn-ghost btn-sm gap-1.5" href="{{sw-url path}}" hreflang="{{locale}}">{{sw-flag (lookup @root.website.data.locale_flags locale) "h-3.5 w-5 rounded-sm"}}<span class="uppercase">{{locale}}</span></a>{{/each}}</div>
+        <div class="flex flex-wrap gap-1" aria-label="{{sw-translate "aria_language" default='Language'}}">{{#each page.translations}}<a class="btn btn-ghost btn-sm gap-1.5" href="{{sw-url path}}" hreflang="{{locale}}">{{sw-flag (lookup @root.website.data.locale_flags locale) "h-3.5 w-5 rounded-sm"}}<span class="uppercase">{{locale}}</span></a>{{/each}}</div>
       </div>
       {{/if}}
     </div>

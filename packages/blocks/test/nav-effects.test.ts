@@ -10,7 +10,7 @@ describe('nav-effects runtime', () => {
   });
 
   it('mirrors the effect CSS scope selector (landmarks + per-element nav containers)', () => {
-    expect(NAV_EFFECTS_JS).toContain('#top-nav,#mobile-nav');
+    expect(NAV_EFFECTS_JS).toContain('#main-nav');
     expect(NAV_EFFECTS_JS).toContain('.menu,nav,[role="navigation"]');
   });
 

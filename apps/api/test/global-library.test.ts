@@ -77,8 +77,9 @@ describe('global snippet/template library', () => {
     const previewHtml = async () =>
       ((await app.inject({ method: 'POST', url: `/projects/${projectId}/preview`, cookies: { sw_session: memberT }, payload: page })).json() as { html: string }).html;
 
-    // Before: the built-in navbar (a data-driven `menu menu-horizontal` bar).
-    expect(await previewHtml()).toContain('menu-horizontal');
+    // Before: the built-in navbar snippet (its brand link is `btn btn-ghost text-xl` — a marker unique
+    // to the snippet, distinct from the default nav-header in the mainNav slot).
+    expect(await previewHtml()).toContain('btn-ghost text-xl');
 
     // An admin rewrites the global navbar in the store.
     const admin = await registerAdmin('admin@e2e.test');
@@ -93,7 +94,7 @@ describe('global snippet/template library', () => {
     // After: the SAME project page now renders the admin-edited global — proving the store drives render.
     const after = await previewHtml();
     expect(after).toContain('edited-global-nav');
-    expect(after).not.toContain('menu-horizontal');
+    expect(after).not.toContain('btn-ghost text-xl');
   });
 
   it('the reserved global scope is hidden from the admin project list and is not deletable', async () => {

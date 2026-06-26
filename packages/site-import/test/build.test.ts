@@ -68,10 +68,10 @@ describe('buildImportBundle (integration)', () => {
 
     // Shared chrome hoisted into slots (and removed from page bodies).
     expect(result.stats.chromeExtracted).toBe(true);
-    expect(bundle.project.website?.topNav).toContain('href="/about"');
-    expect(bundle.project.website?.topNav).toContain('/media/test/');
+    expect(bundle.project.website?.mainNav).toContain('href="/about"');
+    expect(bundle.project.website?.mainNav).toContain('/media/test/');
     expect(bundle.project.website?.footer).toContain('© Acme');
-    expect(bundle.project.website?.topNav).not.toContain('<script');
+    expect(bundle.project.website?.mainNav).not.toContain('<script');
     expect(bundle.project.website?.effects?.backToTop).toBe(true); // platform back-to-top enabled
     expect(home.source).toContain('Welcome');
     expect(home.source).not.toContain('© Acme');

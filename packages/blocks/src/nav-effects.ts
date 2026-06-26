@@ -5,7 +5,7 @@
 // @sitewright/schema.
 //
 // What it does, mirroring the effect CSS selectors exactly (class on <body> → scoped to the
-// #top-nav / #mobile-nav landmarks; or class on a per-element nav container):
+// #main-nav landmark; or class on a per-element nav container):
 //   • the two SLIDING schemes get a single `<span class="sw-nav-indicator">` appended to each nav
 //     scope; the runtime publishes the active/hovered link's rect as the `--sw-ind-*` custom props on
 //     the scope, and the CSS composes those into a bottom bar (line) or a full pill. The pill/line
@@ -29,7 +29,7 @@ export const NAV_EFFECTS_JS = `(function(){
     function add(el){ if(out.indexOf(el)<0) out.push(el); }
     Array.prototype.forEach.call(document.querySelectorAll('.'+cls),function(el){
       if(el.matches('.menu,nav,[role="navigation"]')) add(el);
-      Array.prototype.forEach.call(el.querySelectorAll('#top-nav,#mobile-nav'),add);
+      Array.prototype.forEach.call(el.querySelectorAll('#main-nav'),add);
     });
     return out;
   }

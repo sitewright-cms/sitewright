@@ -64,6 +64,15 @@ async function getTranslations(t: string, projectId: string): Promise<Record<str
 }
 
 describe('locale management API', () => {
+  it('a new project is seeded with the DEFAULT Main Navigation + footer (nav-header / nav-footer)', async () => {
+    const { t, projectId } = await setup('navdefault@i18n.test', 'navsite');
+    const res = await app.inject({ method: 'GET', url: `/projects/${projectId}/content/settings/settings`, cookies: { sw_session: t } });
+    const website = (res.json() as { item: { website?: { mainNav?: string; footer?: string } } }).item.website;
+    expect(website?.mainNav).toContain('id="sw-nav-drawer"'); // the nav-header's pure-CSS mobile drawer
+    expect(website?.mainNav).toContain('{{#each nav.header}}'); // data-driven from the page tree
+    expect(website?.footer).toContain('{{#each nav.footer}}'); // the nav-footer's legal column
+  });
+
   it('POST /locales scaffolds an inherit-mode variant of every default page under /<locale>', async () => {
     const { t, projectId } = await setup();
     await putPage(t, projectId, {

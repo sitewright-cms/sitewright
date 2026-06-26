@@ -442,8 +442,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
     const sourceClassNames = effectiveSources.flatMap((s) => extractClassNames(s));
     // Project-wide skeleton slots feed the shared sheet too.
     const slotSources = [
-      website?.topNav,
-      website?.mobileNav,
+      website?.mainNav,
       website?.sidebarLeft,
       website?.sidebarRight,
       website?.footer,
@@ -549,7 +548,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
       await copyMedia(tmp, media, opts.readMedia);
     }
 
-    // Render a project-wide skeleton slot (topNav/mobileNav/sidebarLeft/sidebarRight/footer/bottom)
+    // Render a project-wide skeleton slot (mainNav/sidebarLeft/sidebarRight/footer/bottom)
     // for a page, validated; an unsafe or
     // invalid slot fails the publish with a clear, slot-scoped error. Hoisted above the loops
     // so the closure isn't rebuilt per page.
@@ -704,8 +703,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
         }
         // Project-wide skeleton slots, validated + rendered per page (the page binding lets a
         // nav highlight the active link).
-        const topNavHtml = renderSlot(website?.topNav, 'topNav', renderCtx);
-        const mobileNavHtml = renderSlot(website?.mobileNav, 'mobileNav', renderCtx);
+        const mainNavHtml = renderSlot(website?.mainNav, 'mainNav', renderCtx);
         const sidebarLeftHtml = renderSlot(website?.sidebarLeft, 'sidebarLeft', renderCtx);
         const sidebarRightHtml = renderSlot(website?.sidebarRight, 'sidebarRight', renderCtx);
         const footerHtml = renderSlot(website?.footer, 'footer', renderCtx);
@@ -754,8 +752,7 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           headScripts: usesThemeToggleRuntime ? [`${siteRoot}${THEME_SCRIPT}`] : undefined,
           // Site-wide nav/button effect schemes → `<body>` classes (the effect CSS tree-shakes).
           bodyClass: websiteEffectsClasses(website?.effects),
-          topNav: topNavHtml,
-          mobileNav: mobileNavHtml,
+          mainNav: mainNavHtml,
           sidebarLeft: sidebarLeftHtml,
           sidebarRight: sidebarRightHtml,
           footer: footerHtml,

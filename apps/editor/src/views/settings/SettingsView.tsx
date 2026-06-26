@@ -24,7 +24,7 @@ const SECTIONS: Array<{ key: Section; label: string }> = [
 // pending edits intact.
 const WEBSITE_FORM_KEYS = new Set<keyof SettingsForm>([
   'siteUrl', 'jsonDataUrl', 'data', 'criticalCss', 'head', 'scripts',
-  'topNav', 'mobileNav', 'sidebarLeft', 'sidebarRight', 'footer', 'bottom', 'redirects',
+  'mainNav', 'sidebarLeft', 'sidebarRight', 'footer', 'bottom', 'redirects',
   'navEffect', 'buttonEffect', 'buttonAccent', 'buttonShape', 'preloaderEffect',
   'navCode', 'buttonCode', 'preloaderCode',
   'enableThemes', 'defaultTheme', 'containerWidth',

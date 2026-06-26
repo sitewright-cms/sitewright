@@ -30,7 +30,7 @@ The most important framing: most blocks belong to one of two audiences.
 | **Snippet** | **Reference** markup — a worked recipe to learn from / copy & own ("how to build a slider from primitives"); the built-ins are a curated cookbook (see below) | any | platform/coder | nobody (you copy it and own the result) | no | `{{> name}}` (or copy the source) |
 | **Widget** | **Managed**, data-backed, editable drop-in block (hero slider, testimonials, logo wall) | block | platform/coder (defines it) | end-user (no-code) | yes — owns a dataset | `{{> name}}` + a `provides` manifest |
 | **Template** | Full-page reusable layout | page | coder/agent | end-user via its data | optional | `template: "global:<id>"` on a Page |
-| **Slot** | Chrome region the skeleton wraps (topNav, mobileNav, sidebars, footer, bottom) | chrome | coder/agent | end-user (slot editor) | no | `nav: { slots: [...] }` / `website.<slot>` |
+| **Slot** | Chrome region the skeleton wraps (mainNav, sidebars, footer, bottom) | chrome | coder/agent | end-user (slot editor) | no | `nav: { slots: [...] }` / `website.<slot>` |
 
 > **"Partials" is deliberately NOT a noun.** In Handlebars `{{> x}}` *is* a partial, and Snippets/
 > Widgets already resolve as partials — so naming the chrome regions "partials" overloads the word.

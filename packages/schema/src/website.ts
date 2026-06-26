@@ -7,7 +7,7 @@ import { targetsPrivateHost, IdSchema, MAX_IDENTIFIER_LENGTH, safeRecord } from 
 // HTML head/footer blocks in practice.
 const CSS_MAX = 10_000;
 const HTML_MAX = 20_000;
-// Chrome SLOTS (topNav/mobileNav/sidebars/footer/bottom) get a larger cap than the raw head/scripts:
+// Chrome SLOTS (mainNav/sidebars/footer/bottom) get a larger cap than the raw head/scripts:
 // they hold a full shared header/footer — and a mechanically NATIVIZED chrome (ported from an imported
 // site) is verbose (responsive variants + per-element utilities), so 20k is too tight for a real footer.
 const SLOT_MAX = 64_000;
@@ -508,20 +508,20 @@ const WebsiteSettingsObject = z.object({
    * the SAME no-JS template validator as a page `source` (HTML + Tailwind + DaisyUI) and get
    * the page render context PLUS `nav` — the auto-menu built from each page's nav settings:
    *   {{#each nav.header}}<a href="{{sw-url path}}"{{#if newTab}} target="_blank" rel="noopener"{{/if}}>{{sw-label}}</a>{{/each}}
-   * Body source order: `topNav`, `mobileNav`, [page body], `sidebarLeft`, `sidebarRight`,
+   * Body source order: `mainNav`, [page body], `sidebarLeft`, `sidebarRight`,
    * `footer`, `bottom`. Nav links use root-absolute paths (`{{sw-url path}}`); on a multilingual
    * site they are auto-prefixed with the current locale at publish.
    *
    * SEMANTIC LANDMARKS ARE PLATFORM-OWNED. The skeleton wraps each slot (and the page body) in a
-   * semantic element with a fixed unique id — `<nav id="top-nav">`, `<nav id="mobile-nav">`,
+   * semantic element with a fixed unique id — `<nav id="main-nav">`,
    * `<main id="page-content">`, `<aside id="sidebar-left">`, `<aside id="sidebar-right">`,
    * `<footer id="footer">`, `<div id="bottom">`. So slot content (and page `source`) must NOT
    * itself use `<nav>`, `<main>`, `<footer>`, or `<aside>` — the validator rejects them to keep
    * each landmark unique. Use neutral `<div>`/`<section>`/`<ul>` (DaisyUI's `.footer`/`.navbar`
    * classes style any element).
    *
-   * - `topNav` / `mobileNav` — main + mobile navigation, top of `<body>` (→ `<nav id="top-nav">` /
-   *   `<nav id="mobile-nav">`).
+   * - `mainNav` — the site navigation (desktop bar + mobile drawer, one recipe), top of `<body>`
+   *   (→ `<nav id="main-nav">`).
    * - `sidebarLeft` / `sidebarRight` — rendered AFTER the page body (position via the slot's own
    *   Tailwind classes, e.g. fixed/absolute) so they don't disturb body flow (→ `<aside id="sidebar-left">` /
    *   `<aside id="sidebar-right">`).
@@ -533,8 +533,7 @@ const WebsiteSettingsObject = z.object({
    *   `<script type="application/ld+json">` block is NOT allowed here — the no-JS slot validator
    *   rejects all `<script>`; the platform emits JSON-LD in `<head>` from company data.)
    */
-  topNav: z.string().max(SLOT_MAX).optional(),
-  mobileNav: z.string().max(SLOT_MAX).optional(),
+  mainNav: z.string().max(SLOT_MAX).optional(),
   sidebarLeft: z.string().max(SLOT_MAX).optional(),
   sidebarRight: z.string().max(SLOT_MAX).optional(),
   footer: z.string().max(SLOT_MAX).optional(),

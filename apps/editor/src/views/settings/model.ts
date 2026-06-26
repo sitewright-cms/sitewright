@@ -137,8 +137,7 @@ export interface SettingsForm {
   head: string;
   scripts: string;
   // validated skeleton slots (Handlebars partials)
-  topNav: string;
-  mobileNav: string;
+  mainNav: string;
   sidebarLeft: string;
   sidebarRight: string;
   footer: string;
@@ -296,8 +295,7 @@ export function toForm(bundle: SettingsBundle): SettingsForm {
     criticalCss: w?.criticalCss ?? '',
     head: w?.head ?? '',
     scripts: w?.scripts ?? '',
-    topNav: w?.topNav ?? '',
-    mobileNav: w?.mobileNav ?? '',
+    mainNav: w?.mainNav ?? '',
     sidebarLeft: w?.sidebarLeft ?? '',
     sidebarRight: w?.sidebarRight ?? '',
     footer: w?.footer ?? '',
@@ -480,8 +478,7 @@ export function toBundle(form: SettingsForm, base?: SettingsBundle): SettingsBun
     criticalCss: trimmed(form.criticalCss),
     head: trimmed(form.head),
     scripts: trimmed(form.scripts),
-    topNav: trimmed(form.topNav),
-    mobileNav: trimmed(form.mobileNav),
+    mainNav: trimmed(form.mainNav),
     sidebarLeft: trimmed(form.sidebarLeft),
     sidebarRight: trimmed(form.sidebarRight),
     footer: trimmed(form.footer),

@@ -77,8 +77,8 @@ describe('global snippet/template library', () => {
     const previewHtml = async () =>
       ((await app.inject({ method: 'POST', url: `/projects/${projectId}/preview`, cookies: { sw_session: memberT }, payload: page })).json() as { html: string }).html;
 
-    // Before: the built-in navbar (its `data-sw-text="nav_cta"` Contact link).
-    expect(await previewHtml()).toContain('nav_cta');
+    // Before: the built-in navbar (a data-driven `menu menu-horizontal` bar).
+    expect(await previewHtml()).toContain('menu-horizontal');
 
     // An admin rewrites the global navbar in the store.
     const admin = await registerAdmin('admin@e2e.test');
@@ -93,7 +93,7 @@ describe('global snippet/template library', () => {
     // After: the SAME project page now renders the admin-edited global — proving the store drives render.
     const after = await previewHtml();
     expect(after).toContain('edited-global-nav');
-    expect(after).not.toContain('nav_cta');
+    expect(after).not.toContain('menu-horizontal');
   });
 
   it('the reserved global scope is hidden from the admin project list and is not deletable', async () => {
@@ -117,10 +117,10 @@ describe('global snippet/template library', () => {
     expect(write.statusCode).toBe(404);
     const del = await app.inject({ method: 'DELETE', url: '/projects/__global__/content/snippet/navbar', cookies: { sw_session: admin } });
     expect(del.statusCode).toBe(404);
-    // The library is untouched: the built-in navbar still resolves (its `nav_cta` marker present).
+    // The library is untouched: the built-in navbar still resolves (its data-driven `nav.header` loop present).
     const snips = await app.inject({ method: 'GET', url: '/global/snippet', cookies: { sw_session: admin } });
     const navbar = (snips.json().items as { name: string; source: string }[]).find((s) => s.name === 'navbar');
-    expect(navbar?.source).toContain('nav_cta');
+    expect(navbar?.source).toContain('nav.header');
     expect(navbar?.source).not.toContain('smuggled');
   });
 });

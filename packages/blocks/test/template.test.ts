@@ -257,6 +257,20 @@ describe('renderTemplate — curated helpers (extensibility)', () => {
     expect(renderTemplate('{{sw-truncate page.t 5}}', { page: { t: 'abc' } })).toBe('abc');
   });
 
+  it('{{#unless (sw-blank v)}} omits a wrapper only when the value has visible content', () => {
+    const at = (v: unknown): string =>
+      renderTemplate('{{#unless (sw-blank page.v)}}X{{/unless}}', { page: { v } });
+    // Blank → no output (missing, empty, whitespace, cleared-WYSIWYG markup residue, a no-output custom
+    // element, and an adversarial run of unclosed `<` — the linear strip must handle it, not backtrack).
+    for (const v of [undefined, null, '', '   ', '<p></p>', '<p><br></p>', '<div><br></div>', '<br>', '&nbsp;', '<p>&nbsp;</p>', '<svg-icon></svg-icon>', '<<<<<<<<<<', 42]) {
+      expect(at(v)).toBe('');
+    }
+    // Real content (incl. media-only and HTML-wrapped text) → rendered.
+    for (const v of ['Hello', '<p>Hi</p>', '<strong>x</strong>', '<img src="/a.jpg" alt="">', '<svg viewBox="0 0 1 1"></svg>']) {
+      expect(at(v)).toBe('X');
+    }
+  });
+
   it('{{sw-translate}} reads the pre-resolved website.t map, escapes output, falls back to default=', () => {
     const ctxT = { website: { t: { nav_home: 'Start', amp: 'A & B' } } };
     expect(renderTemplate('{{sw-translate "nav_home"}}', ctxT)).toBe('Start');

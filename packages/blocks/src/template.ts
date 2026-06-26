@@ -451,6 +451,31 @@ function createInstance(): typeof Handlebars {
     const n = typeof max === 'number' && Number.isFinite(max) ? max : 100;
     return s.length > n ? `${s.slice(0, Math.max(0, n - 1))}…` : s;
   });
+  // {{#unless (sw-blank value)}} → does `value` have NO visible content? Returns a BOOLEAN. True when the
+  // value is missing/non-string, OR when stripping its HTML tags (and decoding &nbsp;) leaves no
+  // non-whitespace text AND it embeds no media element (img/svg/iframe/video/picture/audio/hr) that would
+  // render on its own. Lets a template OMIT a wrapper around an empty optional richtext field — e.g. the
+  // hero-slider hides a slide's caption pill when the caption is blank, including the
+  // `<p></p>`/`<p><br></p>`/whitespace residue a cleared WYSIWYG editor can leave behind (which a plain
+  // `{{#if}}` would treat as truthy). Resolved server-side (publish + preview), so no empty box ever ships.
+  hb.registerHelper('sw-blank', (value: unknown) => {
+    if (typeof value !== 'string') return true;
+    // A media/void element renders with no text of its own → not blank. The `[\s/>]` boundary (vs `\b`)
+    // keeps `<svg-icon>` — a no-output custom element — from counting as the `svg` media tag.
+    if (/<(?:img|svg|iframe|video|picture|audio|hr)[\s/>]/i.test(value)) return false;
+    // Strip tags with a LINEAR single pass — `/<[^>]*>/g` backtracks quadratically on adversarial input
+    // (many unclosed `<`), and `value` is a member-editable richtext field, so a crafted caption could
+    // otherwise stall the render worker (DoS).
+    let text = '';
+    let inTag = false;
+    for (let i = 0; i < value.length; i += 1) {
+      const ch = value[i];
+      if (ch === '<') inTag = true;
+      else if (ch === '>') inTag = false;
+      else if (!inTag) text += ch;
+    }
+    return text.replace(/&nbsp;|&#0*160;|&#x0*a0;/gi, ' ').trim() === '';
+  });
   // {{sw-translate "key"}} / {{sw-translate "key" default="…"}} → the localized string for the current
   // page locale, from the project translation catalog (website.translations). The render projection
   // pre-resolves the catalog per page-locale into `website.t` (a flat key→string map, defaultLocale

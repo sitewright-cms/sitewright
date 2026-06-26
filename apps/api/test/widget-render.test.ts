@@ -49,6 +49,25 @@ describe('hero-slider Widget render', () => {
     expect(html).toContain('<div class="sw-kenburns bg-base-200"></div>');
   });
 
+  it('hides the caption pill for a slide with a blank caption (no empty box ships)', () => {
+    // One real caption, then a run of "empty" forms: cleared (''), whitespace, and the markup residue a
+    // cleared WYSIWYG can leave (<p></p>, <p><br></p>). Only the real caption renders a .sw-caption pill.
+    const html = render({
+      ...fullConfig,
+      slides: [
+        { image: '/media/a.jpg', caption: 'Alpha' },
+        { image: '/media/b.jpg', caption: '' },
+        { image: '/media/c.jpg', caption: '   ' },
+        { image: '/media/d.jpg', caption: '<p></p>' },
+        { image: '/media/e.jpg', caption: '<p><br></p>' },
+      ],
+    });
+    // five slides, but exactly one caption pill
+    expect((html.match(/data-sw-part="slide"/g) ?? []).length).toBe(5);
+    expect((html.match(/class="sw-caption/g) ?? []).length).toBe(1);
+    expect(html).toContain('Alpha');
+  });
+
   it('maps settings onto the carousel data-* attributes (read by VALUE by the runtime)', () => {
     const html = render(fullConfig);
     expect(html).toContain('data-autoplay="true"');

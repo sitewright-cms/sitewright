@@ -186,6 +186,22 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
         note: 'The route must be root-relative (start with "/"). The .active class is what a nav EFFECT (sw-nav-*) styles — see “Nav & button effects”. The trail default lights a dropdown parent while you are on a child; pass exact=true (unquoted, not "true") for a leaf-only highlight — and use it for aria-current="page", omitting the attribute on non-current items.',
       },
       {
+        id: 'h-blank',
+        syntax: '{{#unless (sw-blank value)}}…{{/unless}}',
+        name: 'sw-blank',
+        keywords: 'empty blank optional caption hide wrapper conditional richtext whitespace',
+        description:
+          'Returns a BOOLEAN: does `value` have NO visible content? True when it is missing, whitespace-only, or the empty richtext markup a cleared WYSIWYG editor leaves behind (<p></p>, <p><br></p>, &nbsp;) — which a plain {{#if}} would wrongly treat as truthy. Embedded media (img/svg/iframe/video/…) counts as content, so an image-only value is NOT blank. No JS — resolved at build (works in the live preview too). Use it with {{#unless}} to OMIT a wrapper/box around an empty optional field, so it never ships an empty panel.',
+        args: [{ name: 'value', desc: 'A text or richtext value, e.g. an optional caption or dataset field.' }],
+        example:
+          '{{#each slides}}\n' +
+          '  {{#unless (sw-blank caption)}}\n' +
+          '    <div class="caption-pill">{{sw-html caption}}</div>\n' +
+          '  {{/unless}}\n' +
+          '{{/each}}',
+        note: 'This is exactly how the Hero slider widget hides a slide’s caption pill when that slide has no caption. Reach for {{#if value}} only for plain text; for an optional richtext field use {{#unless (sw-blank value)}} so cleared-editor residue doesn’t render an empty box.',
+      },
+      {
         id: 'h-translate',
         syntax: '{{sw-translate "key" [default="…"]}}',
         name: 'sw-translate',

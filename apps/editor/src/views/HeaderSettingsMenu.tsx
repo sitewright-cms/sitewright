@@ -70,14 +70,14 @@ export function HeaderSettingsMenu({
 
   const owner = inProject && !isClient;
   // Publish & Deploy is available to ANY project member (invited clients publish their own site).
-  // Owner/agency-only: Import a website + CLIENT MANAGEMENT (the "Clients" panel = invite/manage other
+  // Owner/agency-only: Clone a website with AI + CLIENT MANAGEMENT (the "Clients" panel = invite/manage other
   // users). System Settings + Team are instance-admin-only. Account actions (Account Settings + Logout)
   // live under the adjacent user icon (UserDropdown).
   const items: { label: string; onClick: () => void; dividerBefore?: boolean }[] = [
     ...(
       [
         { label: 'Publish & Deploy Options', onClick: onPublishDeploy, show: inProject },
-        { label: 'Import a website', onClick: onImportWebsite ?? (() => {}), show: owner && !!onImportWebsite },
+        { label: 'Clone a website with AI', onClick: onImportWebsite ?? (() => {}), show: owner && !!onImportWebsite },
         { label: 'System Settings', onClick: onSystemSettings, show: isInstanceAdmin },
         { label: 'Clients', onClick: onClients, show: owner },
         // Team manages the instance-wide platform team via admin-only APIs (/admin/users) — admins only.

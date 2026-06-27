@@ -920,8 +920,9 @@ export const api = {
     handlers: { onProgress?: (e: ImportProgressEvent) => void; onDone?: (report: ImportReport) => void; onError?: (message: string) => void },
     signal?: AbortSignal,
   ): Promise<void> =>
+    // foundation=1 → the AI-clone pipeline: native theme/fonts/chrome, foreign CSS/JS discarded.
     streamSse<ImportProgressEvent, { report: ImportReport }>(
-      `${BASE}/projects/${projectId}/import/website/stream`,
+      `${BASE}/projects/${projectId}/import/website/stream?foundation=1`,
       {
         onProgress: handlers.onProgress,
         onDone: handlers.onDone ? (raw) => handlers.onDone!(raw.report) : undefined,
@@ -940,7 +941,7 @@ export const api = {
     const form = new FormData();
     form.append('file', file);
     return streamSse<ImportProgressEvent, { report: ImportReport }>(
-      `${BASE}/projects/${projectId}/import/upload/stream`,
+      `${BASE}/projects/${projectId}/import/upload/stream?foundation=1`,
       {
         onProgress: handlers.onProgress,
         onDone: handlers.onDone ? (raw) => handlers.onDone!(raw.report) : undefined,

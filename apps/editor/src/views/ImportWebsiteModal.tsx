@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Globe, Upload, Loader2, CircleCheck, TriangleAlert, FileUp, Wand2 } from 'lucide-react';
-import { api, type ImportProgressEvent, type ImportReport, type NativizeReport } from '../api';
+import { Globe, Upload, Loader2, CircleCheck, TriangleAlert, FileUp, Sparkles, Bot } from 'lucide-react';
+import { api, type ImportProgressEvent, type ImportReport } from '../api';
 import { Modal } from './ui/Modal';
 import { glassInput, primaryButton } from '../theme';
 
@@ -13,7 +13,7 @@ interface ImportWebsiteModalProps {
 }
 
 type Mode = 'url' | 'upload';
-type Step = 'source' | 'running' | 'report' | 'nativizing' | 'nativized';
+type Step = 'source' | 'running' | 'report';
 
 /** A human, per-step line for a streamed progress event (the scrolling detail log). */
 function progressLine(e: ImportProgressEvent): string {
@@ -29,11 +29,7 @@ function progressLine(e: ImportProgressEvent): string {
       return `Converting page ${e.done}/${e.total ?? '?'}${e.detail ? ` · ${e.detail}` : ''}`;
     }
     case 'assemble':
-      return e.detail ?? 'Saving content…';
-    case 'nativize': {
-      if (!e.done) return e.detail ?? 'Nativizing pages…';
-      return `Nativizing page ${e.done}/${e.total ?? '?'}${e.detail ? ` · ${e.detail}` : ''}`;
-    }
+      return e.detail ?? 'Laying the foundation…';
     default:
       return e.detail ?? e.phase;
   }
@@ -44,9 +40,8 @@ function phaseSummary(e: ImportProgressEvent): { label: string; done?: number; t
   switch (e.phase) {
     case 'crawl': return { label: 'Crawling pages', done: e.fetched };
     case 'host-media': return { label: 'Importing images', done: e.done, total: e.total };
-    case 'transform': return { label: 'Converting pages', done: e.done, total: e.total };
+    case 'transform': return { label: 'Building the foundation', done: e.done, total: e.total };
     case 'assemble': return { label: 'Saving content' };
-    case 'nativize': return { label: 'Nativizing pages', done: e.done, total: e.total };
     default: return { label: e.phase };
   }
 }
@@ -60,7 +55,6 @@ export function ImportWebsiteModal({ projectId, projectName, onClose, onImported
   const [lines, setLines] = useState<{ id: number; text: string }[]>([]);
   const [prog, setProg] = useState<{ label: string; done?: number; total?: number } | null>(null);
   const [report, setReport] = useState<ImportReport | null>(null);
-  const [natReport, setNatReport] = useState<NativizeReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const lineSeq = useRef(0);
@@ -95,41 +89,25 @@ export function ImportWebsiteModal({ projectId, projectName, onClose, onImported
         setStep('source'); // keep the entered URL/file so the user can retry
       },
     };
+    // Both routes run the foundation pipeline (api appends ?foundation=1): native theme/fonts/chrome
+    // + assets, foreign CSS/JS discarded — the deterministic INGEST half of the AI-clone pipeline.
     if (mode === 'url') void api.importWebsiteStream(projectId, { url: url.trim(), maxPages }, handlers, abort.signal);
     else if (file) void api.importUploadStream(projectId, file, handlers, abort.signal);
   }
 
-  function startNativize(): void {
-    setStep('nativizing');
-    setError(null);
-    setLines([]);
-    setProg(null);
-    const abort = new AbortController();
-    abortRef.current = abort;
-    void api.nativizeStream(
-      projectId,
-      {
-        onProgress: (e: ImportProgressEvent) => { pushLine(progressLine(e)); setProg(phaseSummary(e)); },
-        onDone: (r: NativizeReport) => { setNatReport(r); setStep('nativized'); },
-        onError: (message: string) => { setError(message); setStep('report'); }, // keep the import report to retry
-      },
-      abort.signal,
-    );
-  }
-
-  const busy = step === 'running' || step === 'nativizing';
+  const busy = step === 'running';
 
   function onSave(): void {
     if (busy) return; // the footer button is disabled while a stream runs
     if (step === 'source') start();
-    else onImported(); // report / nativized → open the project
+    else onImported(); // report → open the project
   }
 
-  const saveLabel = step === 'report' || step === 'nativized' ? 'Open project' : step === 'nativizing' ? 'Nativizing…' : step === 'running' ? 'Importing…' : 'Start import';
+  const saveLabel = step === 'report' ? 'Open project' : step === 'running' ? 'Cloning…' : 'Clone with AI';
 
   return (
     <Modal
-      title="Import a website"
+      title="Clone a website with AI"
       titleExtra={<span className="truncate text-xs font-normal text-slate-400">→ {projectName}</span>}
       size="lg"
       onClose={onClose}
@@ -177,8 +155,9 @@ export function ImportWebsiteModal({ projectId, projectName, onClose, onImported
               </label>
             )}
 
-            <p className="rounded-lg bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
-              Imported pages are a faithful scaffold for review — scripts and forms are stripped for safety. After importing you can <strong>Nativize</strong> them into native Sitewright components, then have the AI agent fine-tune.
+            <p className="flex items-start gap-2 rounded-lg bg-indigo-50 px-3 py-2 text-[11px] text-indigo-900">
+              <Sparkles className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>We lay a <strong>native foundation</strong> — your brand colors, fonts, navigation and footer rebuilt with Sitewright primitives (the original's CSS &amp; scripts are discarded). Your AI assistant then authors each page on top of it.</span>
             </p>
             {error && <p className="text-sm text-red-600">{error}</p>}
           </>
@@ -188,7 +167,7 @@ export function ImportWebsiteModal({ projectId, projectName, onClose, onImported
           <div className="flex flex-col gap-3 py-2">
             <div className="flex items-center justify-between gap-2 text-sm font-medium text-slate-700">
               <span className="flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" /> {prog?.label ?? (step === 'nativizing' ? 'Nativizing' : 'Importing')}…
+                <Loader2 className="h-4 w-4 animate-spin" /> {prog?.label ?? 'Cloning'}…
               </span>
               {prog?.total ? <span className="font-mono text-[11px] text-slate-400">{prog.done ?? 0}/{prog.total}</span>
                 : prog?.done ? <span className="font-mono text-[11px] text-slate-400">{prog.done}</span> : null}
@@ -208,13 +187,13 @@ export function ImportWebsiteModal({ projectId, projectName, onClose, onImported
         {step === 'report' && report && (
           <div className="flex flex-col gap-4">
             <div className="flex items-center gap-2 text-sm font-bold text-emerald-700">
-              <CircleCheck className="h-5 w-5" /> Imported {report.pagesImported} page{report.pagesImported === 1 ? '' : 's'}
+              <CircleCheck className="h-5 w-5" /> Foundation ready — {report.pagesImported} page{report.pagesImported === 1 ? '' : 's'} imported
             </div>
             <dl className="grid grid-cols-2 gap-2 text-sm">
               <Stat label="Pages imported" value={`${report.pagesImported} of ${report.pagesFound} found`} />
               <Stat label="Images self-hosted" value={String(report.mediaSelfHosted)} />
               <Stat label="Scripts stripped" value={String(report.scriptsDropped)} />
-              <Stat label="Shared header/footer" value={report.chromeExtracted ? 'extracted to slots' : 'kept per-page'} />
+              <Stat label="Native chrome" value={report.chromeExtracted ? 'nav + footer rebuilt' : 'kept per-page'} />
             </dl>
             {report.truncated && (
               <p className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
@@ -229,33 +208,36 @@ export function ImportWebsiteModal({ projectId, projectName, onClose, onImported
                 </ul>
               </details>
             )}
-            <div className="rounded-lg bg-indigo-50 px-3 py-3 text-[11px] text-indigo-900">
-              <p className="mb-2">Imported pages are a faithful replica. <strong>Nativize</strong> rebuilds them as native Sitewright components (Tailwind + your theme tokens) — the AI agent can then fine-tune the result.</p>
-              <button type="button" onClick={startNativize} className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold ${primaryButton}`}>
-                <Wand2 className="h-4 w-4" /> Nativize {report.pagesImported} page{report.pagesImported === 1 ? '' : 's'}
-              </button>
-            </div>
-            {error && <p className="text-sm text-red-600">{error}</p>}
-          </div>
-        )}
-
-        {step === 'nativized' && natReport && (
-          <div className="flex flex-col gap-4">
-            <div className="flex items-center gap-2 text-sm font-bold text-emerald-700">
-              <CircleCheck className="h-5 w-5" /> Nativized {natReport.pagesNativized} of {natReport.pagesTotal} page{natReport.pagesTotal === 1 ? '' : 's'}
-            </div>
-            <p className="rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
-              Pages are now native Tailwind + theme-token components. Open the project and have the AI agent fine-tune anything JS-driven (sliders, embeds) the mechanical pass couldn’t reproduce.
-            </p>
-            {natReport.skipped.length > 0 && (
-              <p className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
-                <TriangleAlert className="h-4 w-4 shrink-0" /> {natReport.skipped.length} page{natReport.skipped.length === 1 ? '' : 's'} kept as the original replica (could not be nativized).
-              </p>
-            )}
+            {/* NEXT STEP — handoff to the user's AI assistant (via MCP). This block is the seam where a
+                future in-app AI agent / "AI runner" container would drive the authoring itself; for now
+                it guides the user to their own connected assistant. */}
+            <NextStepAuthorWithAI pages={report.pagesImported} />
           </div>
         )}
       </div>
     </Modal>
+  );
+}
+
+/**
+ * Post-clone guidance: the native foundation is in place; the per-page authoring is done by an AI agent
+ * through the Sitewright MCP toolset. Today that's the user's OWN connected assistant (the handoff
+ * below). A later iteration can replace this with an in-app trigger that runs the authoring agents
+ * inside the platform (or a dedicated AI-runner container) — same place, same intent.
+ */
+function NextStepAuthorWithAI({ pages }: { pages: number }) {
+  return (
+    <div className="rounded-lg bg-indigo-50 px-3 py-3 text-[11px] text-indigo-900">
+      <p className="mb-1.5 flex items-center gap-2 text-xs font-semibold">
+        <Bot className="h-4 w-4" /> Author with AI
+      </p>
+      <p>
+        The foundation (theme, fonts, navigation, footer, assets) is set and the {pages} page
+        {pages === 1 ? '' : 's'} are imported as a faithful reference. Open the project, then ask your
+        connected AI assistant to <strong>“author the imported pages”</strong> — it rebuilds each one as
+        native Sitewright components on top of the foundation, render-checking against the original.
+      </p>
+    </div>
   );
 }
 

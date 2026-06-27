@@ -6,6 +6,7 @@ import { useToast } from '../ui/Toast';
 import { useCopy } from '../ui/useCopy';
 import { primaryButton, ghostButton, glassPanel } from '../../theme';
 import { SnippetPreviewButton } from './SnippetPreviewButton';
+import { Tooltip } from '../ui/Tooltip';
 
 /** The shared shape of a name + Handlebars source record (snippet, template). */
 export interface CodeRecord {
@@ -208,18 +209,25 @@ export function CodeRecordManager({ projectId, noun, load, save, remove, makeId,
     }
   };
 
-  /** Chip tooltip: the record name, plus the reference-cookbook description for a catalogued global. */
-  const chipTitle = (r: CodeRecord, scope: Scope): string => {
-    const desc = scope === 'global' ? globalCatalog?.meta[r.name]?.description : undefined;
-    return desc ? `${r.name} — ${desc}` : r.name;
-  };
+  /** The reference-cookbook description for a catalogued global snippet (drives the hover tooltip). */
+  const chipDesc = (r: CodeRecord, scope: Scope): string | undefined =>
+    scope === 'global' ? globalCatalog?.meta[r.name]?.description : undefined;
 
   /** One record chip: edit/delete (when editable) or copy (read-only globals for non-admins). */
-  const chip = (r: CodeRecord, scope: Scope, editable: boolean) => (
+  const chip = (r: CodeRecord, scope: Scope, editable: boolean) => {
+    const desc = chipDesc(r, scope);
+    return (
     <li key={`${scope}:${r.id}`} className={`${glassPanel} flex items-center gap-2 rounded-xl px-3 py-2`}>
-      <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700" title={chipTitle(r, scope)}>
-        {r.name}
-      </span>
+      {desc ? (
+        // Hover the name → a DaisyUI tooltip with the cookbook description (richer than a native title).
+        <Tooltip tip={desc} side="top" className="min-w-0 flex-1">
+          <span className="block w-full truncate text-left text-sm font-medium text-slate-700">{r.name}</span>
+        </Tooltip>
+      ) : (
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700" title={r.name}>
+          {r.name}
+        </span>
+      )}
       {previewUrl && <SnippetPreviewButton url={previewUrl(r, scope)} label={r.name} />}
       {editable ? (
         <>
@@ -243,7 +251,8 @@ export function CodeRecordManager({ projectId, noun, load, save, remove, makeId,
         </>
       )}
     </li>
-  );
+    );
+  };
 
   const grid = gridClassName ?? 'grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4';
 

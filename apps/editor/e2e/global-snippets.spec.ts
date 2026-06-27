@@ -21,7 +21,7 @@ test('a global snippet renders via {{> name}} and is listed (copyable) in the Sn
   await page.getByRole('button', { name: 'Code Editor', exact: true }).click();
   await page.locator('.cm-content').click();
   await page.keyboard.press('ControlOrMeta+a');
-  await page.keyboard.insertText('{{> recipe-page-vars}}');
+  await page.keyboard.insertText('{{> page-vars}}');
 
   // The global partial resolves + renders its data-sw-text default in the preview.
   const preview = page.frameLocator('iframe[title="Preview"]');
@@ -32,13 +32,13 @@ test('a global snippet renders via {{> name}} and is listed (copyable) in the Sn
   await page.getByRole('button', { name: 'Close', exact: true }).click();
 
   // The Snippets rail lists the built-in globals (read-only for a project user) with copy buttons —
-  // the chip's name is the partial identifier (`recipe-page-vars`), which is what you type in {{> … }}.
+  // the chip's name is the partial identifier (`page-vars`), which is what you type in {{> … }}.
   await page.getByRole('button', { name: 'Open Snippets' }).click();
   const snippets = page.locator('[role="region"][aria-label="Snippets"]');
   await expect(snippets.getByText(/Global snippets/)).toContainText('built-in, read-only');
-  await expect(snippets.getByText('recipe-page-vars', { exact: true })).toBeVisible();
-  await expect(snippets.getByRole('button', { name: 'Copy {{> recipe-page-vars}}' })).toBeVisible();
-  await expect(snippets.getByRole('button', { name: 'Copy recipe-page-vars source' })).toBeVisible();
+  await expect(snippets.getByText('page-vars', { exact: true })).toBeVisible();
+  await expect(snippets.getByRole('button', { name: 'Copy {{> page-vars}}' })).toBeVisible();
+  await expect(snippets.getByRole('button', { name: 'Copy page-vars source' })).toBeVisible();
   // A non-admin gets no editing affordances on the global library.
   await expect(snippets.getByRole('button', { name: '+ New global' })).toHaveCount(0);
 });

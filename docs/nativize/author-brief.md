@@ -67,7 +67,7 @@ desktop AND mobile, (3) uses SW primitives, (4) content client-editable, (5) res
 - **R13a** Prefer a SW snippet/component over DaisyUI or hand-rolled markup whenever one exists — check
   the snippet library FIRST: tabs → `tabs-mixed` / `tabs-dataset` (NOT DaisyUI `tabs`); sliders →
   `slider-*`; galleries → `gallery-*`; modal → `modal-*`; forms → `form-embed`/`form-custom`; dataset
-  card grid → `recipe-dataset-grid`; nav/footer → `nav-header`/`nav-footer`. DaisyUI is the fallback,
+  card grid → `dataset-grid`; nav/footer → `nav-header`/`nav-footer`. DaisyUI is the fallback,
   not the default.
 - **R13b** Use each page's NAV LABEL + page SETTINGS — don't hardcode menu text. The nav renders
   `{{sw-label}}`, which reads the page's nav label; set a clean per-page nav label (e.g. `Why eTaxi`),

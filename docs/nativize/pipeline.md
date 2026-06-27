@@ -163,22 +163,34 @@ to build this tooling + the prompts, not to hand-clone.
 - **Single sequential AUTHOR agent**, not parallel per-page — one agent retains memory/conventions across
   the whole site (datasets, chrome, tokens) and compares each page as it goes.
 
-**Build spec:**
-1. **Source reference capture (ingest).** Add `captureSourceShots(url, viewports)` to
-   `apps/api/src/import/render.ts` — same pinned-route headless Chromium as `renderViaBrowser` (SSRF-safe),
-   but `page.screenshot({fullPage})` at desktop + mobile. During the foundation import, screenshot each
-   crawled page and store the shots (media in a reserved `__source__` folder, or a dedicated reference
-   store) keyed by route; record `page.data.swImport.reference = { desktop, mobile }`.
-2. **`compare_to_source` MCP tool** (+ HTTP route). Input: a page id (+ optional viewports). Server:
-   renders the agent's BUILD via the existing `captureScreenshots(html, …)` path; loads the stored SOURCE
-   reference shots; computes a **pixelmatch** difference (resize to common width) → a 0–1 diff score per
-   viewport. Returns the build + source images **side-by-side as MCP image blocks** + the diff scores +
-   page-height deltas. Register in `MCP_TOOL_CATALOG` (content:read), add `client.ts` method, document in
-   the agent guide.
-3. **Prompt/brief loop.** Author a page → `compare_to_source(pageId)` → enumerate the visible diffs from
-   the side-by-side AND read the diff score → fix → repeat until the score is under a threshold (e.g. <8%).
-   NEVER self-declare "faithful"; the diff score + the side-by-side ARE the verdict. Goes in author-brief
-   (replaces the unenforceable "render-diff yourself") + the MCP agent import guide.
+**Status: ✅ IMPLEMENTED** (#502 the tool + loop; ingest caching follow-up). What shipped (differs from
+the original sketch above — there is **no pixelmatch dep**: a vision-capable MCP agent compares the two
+images directly, which is the whole point):
 
-This makes the verification a tool call an agent cannot skip or fake — the structural fix for the
-repeated "looked at my own render and called it faithful" failure.
+1. **Screenshot capture** — `apps/api/src/render/compare.ts` `captureUrlShots(url, {mode})`: one headless
+   path for both sides. `mode:'loopback'` shoots the build's own signed preview URL; `mode:'pinned'` shoots
+   an EXTERNAL source through the SSRF-pinned fetcher (the `renderViaBrowser` guard). Releases preloader
+   scroll-locks so `fullPage` isn't clipped. Pure URL/target logic is the unit-tested `compareTargets`.
+2. **Source reference cached at INGEST** — `apps/api/src/render/source-ref.ts`: `SourceRefStore` is a
+   per-project file store (one JSON of base64 shots per page, `<root>/<slug>/<base64url(pageId)>.json`,
+   slug-confined, `removeProject` cleanup). `captureSourceRefs` runs during a FOUNDATION import — pinned
+   screenshot of each page's live source, capped at `REFERENCE_PAGE_CAP` (rest backfill lazily), sequential,
+   non-fatal, streamed as a `reference` progress phase. Wired via `SOURCE_REF_ROOT` (default
+   `<dataDir>/source-refs`). So the reference is a STABLE snapshot from import time (reproducible / offline /
+   fast), not a live re-render per call.
+3. **`compare_to_source` MCP tool** (+ `GET /projects/:id/compare/:pageId`, content:read). Renders the
+   BUILD live (loopback); the SOURCE prefers the cached reference, falls back to a live pinned render on a
+   miss and backfills the cache. `?refresh=1` (tool: `refresh:true`) re-snapshots the live site. Returns the
+   build + source **side-by-side as MCP image blocks** plus `sourceFrom` (`cache`|`live`) + `capturedAt` so
+   the agent knows whether it's comparing against a snapshot and from when. In `MCP_TOOL_CATALOG`;
+   `client.compareToSource`; documented in the import agent guide.
+4. **Prompt/brief loop.** Author a page → `compare_to_source(pageId)` → enumerate the visible diffs from the
+   side-by-side → fix → repeat until the build matches the original. NEVER self-declare "faithful"; the
+   side-by-side IS the verdict. In author-brief (replaced the unenforceable "render-diff yourself") + the
+   MCP agent import guide.
+
+This makes verification a tool call an agent cannot skip or fake — the structural fix for the repeated
+"looked at my own render and called it faithful" failure.
+
+**Still pending:** imported assets to the ROOT folder (`importMediaFolder` → `''` in foundation mode) so
+the author agent regroups them per R21; today they still land under `imported/<dir>`.

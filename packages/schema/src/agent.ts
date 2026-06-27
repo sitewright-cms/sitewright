@@ -280,6 +280,13 @@ media url in \`source\`:
   (downloaded, optimized, attributed).
 - BY URL: import_image with a public https image URL (downloaded + optimized, follows redirects).
 - EXISTING: list_media to find assets already in the project and reuse their url.
+
+ORGANIZE — keep the media library tidy with virtual folders (grouping labels only; the asset url
+never changes when you move it). list_media_folders to see what exists; create_media_folder to make
+one; move_media to file an asset (folder) and/or set its display name (filename); rename_media_folder
+to rename/move a whole folder. Organize PER PAGE, and only make a folder when the grouping earns it:
+a picture gallery → its own folder (e.g. "About/Gallery"); one-off hero images → a shared "Header
+Images"; loose singletons like the logo/icon → "Main".
 `,
   },
   effects: {
@@ -650,6 +657,7 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'list_stock_providers', description: "List configured stock-image providers and whether each is available.", capability: 'content:read' },
   { name: 'search_stock_images', description: "Search a stock-image provider for photos.", capability: 'content:read' },
   { name: 'list_media', description: "List the project's self-hosted media assets (URLs to reference, kind, dimensions, alt).", capability: 'content:read' },
+  { name: 'list_media_folders', description: "List the project's media folders (virtual grouping labels; '' = root).", capability: 'content:read' },
   { name: 'put_page', description: "Create or replace a page (id taken from page.id).", capability: 'content:write' },
   { name: 'delete_page', description: "Delete a page by id.", capability: 'content:delete' },
   { name: 'put_content', description: "Create or replace a content entity of the given kind.", capability: 'content:write' },
@@ -658,5 +666,8 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'restore_revision', description: "Restore a content entity to an earlier revision (non-destructive; recreates a deleted entity).", capability: 'content:write' },
   { name: 'import_stock_image', description: "Import a stock photo into the project (downloaded, optimized, self-hosted with attribution).", capability: 'content:write' },
   { name: 'import_image', description: "Import an image into the project from a public https URL (downloaded, optimized, self-hosted).", capability: 'content:write' },
+  { name: 'create_media_folder', description: "Create an (empty) media folder + any missing ancestors.", capability: 'content:write' },
+  { name: 'rename_media_folder', description: "Rename or move a media folder (re-roots the subtree + re-files every asset under it).", capability: 'content:write' },
+  { name: 'move_media', description: "Move and/or rename a single media asset (folder re-files it; filename sets its display name).", capability: 'content:write' },
   { name: 'publish_project', description: "Build the project's static site from current saved content.", capability: 'publish' },
 ];

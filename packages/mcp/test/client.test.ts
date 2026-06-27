@@ -255,4 +255,28 @@ describe('SitewrightClient', () => {
     await client.importImageUrl('https://x.test/b.jpg', 'team');
     expect(JSON.parse(calls[2]!.init!.body!)).toEqual({ url: 'https://x.test/b.jpg', folder: 'team' });
   });
+
+  it('lists, creates and renames media folders on the /media/folders routes', async () => {
+    const { client, calls } = await introspected((input) =>
+      input.endsWith('/api-key/self') ? { status: 200, body: JSON.stringify(scope) } : { status: 200, body: '{"ok":true}' },
+    );
+    await client.listMediaFolders();
+    expect(`${calls[1]!.init?.method} ${calls[1]!.input}`).toBe('GET https://cms.test/projects/p1/media/folders');
+    await client.createMediaFolder('About/Gallery');
+    expect(`${calls[2]!.init?.method} ${calls[2]!.input}`).toBe('POST https://cms.test/projects/p1/media/folders');
+    expect(JSON.parse(calls[2]!.init!.body!)).toEqual({ path: 'About/Gallery' });
+    await client.renameMediaFolder('About', 'Company');
+    expect(calls[3]!.input).toBe('https://cms.test/projects/p1/media/folders/rename');
+    expect(JSON.parse(calls[3]!.init!.body!)).toEqual({ from: 'About', to: 'Company' });
+  });
+
+  it('updateMedia PATCHes /media/:id and unwraps the saved item', async () => {
+    const asset = { id: 'm1', kind: 'image', url: '/media/p1/m1/x.webp', folder: 'Main', filename: 'logo.svg' };
+    const { client, calls } = await introspected((input) =>
+      input.endsWith('/api-key/self') ? { status: 200, body: JSON.stringify(scope) } : { status: 200, body: JSON.stringify({ item: asset }) },
+    );
+    expect(await client.updateMedia('m1', { folder: 'Main', filename: 'logo.svg' })).toEqual(asset);
+    expect(`${calls[1]!.init?.method} ${calls[1]!.input}`).toBe('PATCH https://cms.test/projects/p1/media/m1');
+    expect(JSON.parse(calls[1]!.init!.body!)).toEqual({ folder: 'Main', filename: 'logo.svg' });
+  });
 });

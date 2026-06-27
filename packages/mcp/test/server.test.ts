@@ -28,6 +28,10 @@ function fakeClient(overrides: Partial<Record<keyof SitewrightClient, unknown>> 
     importStock: vi.fn(async () => ({ id: 'asset1', url: '/media/p/asset1/x.jpg' })),
     listMedia: vi.fn(async () => ({ items: [{ id: 'm1', kind: 'image', url: '/media/p/m1/x.webp', alt: '' }] })),
     importImageUrl: vi.fn(async () => ({ id: 'm2', kind: 'image', url: '/media/p/m2/y.webp' })),
+    listMediaFolders: vi.fn(async () => ({ items: [{ id: 'f1', path: 'Header Images' }] })),
+    createMediaFolder: vi.fn(async () => ({ ok: true })),
+    renameMediaFolder: vi.fn(async () => ({ ok: true })),
+    updateMedia: vi.fn(async (_id: string, changes: unknown) => ({ id: 'm1', kind: 'image', url: '/media/p/m1/x.webp', ...(changes as object) })),
     ...overrides,
   } as unknown as SitewrightClient & Record<string, ReturnType<typeof vi.fn>>;
 }
@@ -191,6 +195,61 @@ describe('createSitewrightMcpServer — media tools', () => {
     const res = await w.callTool({ name: 'import_image', arguments: { url: 'https://example.com/a.jpg', folder: 'team' } });
     expect(res.isError).toBeFalsy();
     expect(callsOf(writer).importImageUrl).toHaveBeenCalledWith('https://example.com/a.jpg', 'team');
+  });
+
+  it('list_media_folders is content:read', async () => {
+    const reader = fakeClient();
+    const r = await connect(reader, readScope);
+    const res = await r.callTool({ name: 'list_media_folders', arguments: {} });
+    expect(res.isError).toBeFalsy();
+    expect(callsOf(reader).listMediaFolders).toHaveBeenCalled();
+  });
+
+  it('create_media_folder / rename_media_folder / move_media need content:write', async () => {
+    const reader = fakeClient();
+    const r = await connect(reader, readScope);
+    for (const call of [
+      { name: 'create_media_folder', arguments: { path: 'About/Gallery' } },
+      { name: 'rename_media_folder', arguments: { from: 'About', to: 'Company' } },
+      { name: 'move_media', arguments: { id: 'm1', folder: 'Main' } },
+    ]) {
+      const res = await r.callTool(call);
+      expect(res.isError, call.name).toBe(true);
+      expect(text(res)).toMatch(/content:write/);
+    }
+    expect(callsOf(reader).createMediaFolder).not.toHaveBeenCalled();
+    expect(callsOf(reader).renameMediaFolder).not.toHaveBeenCalled();
+    expect(callsOf(reader).updateMedia).not.toHaveBeenCalled();
+  });
+
+  it('create_media_folder + rename_media_folder forward their paths with a write token', async () => {
+    const writer = fakeClient();
+    const w = await connect(writer, writeScope);
+    const c = await w.callTool({ name: 'create_media_folder', arguments: { path: 'About/Gallery' } });
+    expect(c.isError).toBeFalsy();
+    expect(callsOf(writer).createMediaFolder).toHaveBeenCalledWith('About/Gallery');
+    const m = await w.callTool({ name: 'rename_media_folder', arguments: { from: 'About', to: 'Company' } });
+    expect(m.isError).toBeFalsy();
+    expect(callsOf(writer).renameMediaFolder).toHaveBeenCalledWith('About', 'Company');
+  });
+
+  it('move_media forwards only the provided changes (folder and/or filename)', async () => {
+    const writer = fakeClient();
+    const w = await connect(writer, writeScope);
+    const moved = await w.callTool({ name: 'move_media', arguments: { id: 'm1', folder: 'Main' } });
+    expect(moved.isError).toBeFalsy();
+    expect(callsOf(writer).updateMedia).toHaveBeenCalledWith('m1', { folder: 'Main' });
+    const renamed = await w.callTool({ name: 'move_media', arguments: { id: 'm1', filename: 'logo.svg' } });
+    expect(renamed.isError).toBeFalsy();
+    expect(callsOf(writer).updateMedia).toHaveBeenCalledWith('m1', { filename: 'logo.svg' });
+  });
+
+  it('move_media rejects an invalid folder segment (schema-validated input)', async () => {
+    const writer = fakeClient();
+    const w = await connect(writer, writeScope);
+    const res = await w.callTool({ name: 'move_media', arguments: { id: 'm1', folder: 'bad/seg!' } });
+    expect(res.isError).toBe(true);
+    expect(callsOf(writer).updateMedia).not.toHaveBeenCalled();
   });
 });
 

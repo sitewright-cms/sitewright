@@ -182,3 +182,25 @@ fonts populate live).
 
 Known limitation (not fixed here): the crawler didn't self-host the `text-font` woff (only primary/
 secondary/FontAwesome) — the body falls back to the other brand face. A separate font-capture issue.
+
+## 2026-06-27 — Step 6 CLOSED (fix re-confirmed live; #493 → main-69ea455 deployed)
+
+Second `:2003` redeploy (main-69ea455), re-cloned burmeister with `?foundation=1`. **Font fix confirmed
+LIVE:** diagnostic now `fonts` (was `no-fonts`); `identity.typography` = heading `primary-font` (700) +
+body `secondary-font` (400), both `source:'asset'` with real hosted assetIds. Colors still all 7 tokens
+incl. `base-200`. Render check (preview): the inlined `criticalCss` carries `background-color:#CCCCCC`
+(captured page bg — the review fix) + `.bp-hero` band, so the foundation CSS renders.
+
+**Step 6 result:** the AI-clone pipeline (Phase A foundation + the `?foundation=1` route + media MCP
+tools + the Clone-with-AI UI) is validated end-to-end on the live deployed code; one real defect (font
+extraction) was found, fixed, merged, redeployed, and re-confirmed live. **Epic Steps 1–6 COMPLETE.**
+
+Follow-ups (separate from the AI-clone PRs — NOT introduced by them):
+- **Font capture:** the crawler self-hosts only some `@font-face` woffs (missed `text-font`). The body
+  falls back to another brand face; ideally capture all referenced families.
+- **Publishing an un-authored foundation project** (raw-scaffold pages, `swImport.rewritten=false`):
+  the release builds (4 routes/85KB) but `/sites/<slug>/` 404s (the editor SPA fallback answers the
+  no-slash form). Pre-existing raw-fidelity publish/serve behavior — the AUTHOR phase (pages →
+  `rewritten=true` native) is the intended path before publish. Worth a separate look.
+- **Mechanical nativizer deletion:** the dormant `/nativize/stream` + `render/nativize-project.ts` can
+  now be removed (post-validation, per the Step-5 decision).

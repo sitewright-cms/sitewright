@@ -54,6 +54,32 @@ describe('CodeRecordManager', () => {
     expect(await screen.findByText('hero')).toBeInTheDocument();
   });
 
+  it('shows a catalogued global snippet’s description in a DaisyUI tooltip (data-tip) on hover', async () => {
+    render(
+      <CodeRecordManager
+        projectId="p1"
+        noun="snippet"
+        load={vi.fn().mockResolvedValue([])}
+        save={vi.fn().mockResolvedValue({})}
+        remove={vi.fn().mockResolvedValue(undefined)}
+        makeId={makeId}
+        globalAdapters={{
+          load: vi.fn().mockResolvedValue([{ id: 'page-vars', name: 'page-vars', source: '<x/>' }]),
+          save: vi.fn(),
+          remove: vi.fn(),
+        }}
+        globalCatalog={{
+          meta: { 'page-vars': { group: 'Data', description: 'Bind page variables and list children.' } },
+          groupOrder: ['Data'],
+        }}
+      />,
+    );
+    const name = await screen.findByText('page-vars');
+    const tip = name.closest('[data-tip]');
+    expect(tip).toHaveClass('tooltip');
+    expect(tip).toHaveAttribute('data-tip', 'Bind page variables and list children.');
+  });
+
   it('creates via the name prompt → saves an empty-source record → opens the editor', async () => {
     const { save } = setup();
     await screen.findByText('hero');

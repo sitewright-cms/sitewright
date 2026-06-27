@@ -472,9 +472,9 @@ pattern, or {{> <name>}} it and restyle. The fastest way to see real markup for 
 - Forms & inputs → {{> form-embed}} ({{sw-form}}), {{> form-custom}} (your own fields),
   {{> datetimepicker-field}}. Shop → {{> shop-product}} (enable the shop first — the cart helpers
   are gated).
-- Data & bindings → {{> recipe-dataset-grid}} ({{#each dataset.x}} + sw-date/sw-truncate),
-  {{> recipe-folder-gallery}} ({{#sw-folder}} media reads), {{> recipe-i18n}} (sw-translate +
-  data-sw-translate + sw-flag switcher), {{> recipe-page-vars}} (data-sw-text/html/src/bg on
+- Data & bindings → {{> dataset-grid}} ({{#each dataset.x}} + sw-date/sw-truncate),
+  {{> folder-gallery}} ({{#sw-folder}} media reads), {{> i18n}} (sw-translate +
+  data-sw-translate + sw-flag switcher), {{> page-vars}} (data-sw-text/html/src/bg on
   page.data, page.children, page.parent, sw-active).
 - Chrome & effects → {{> navbar}}, {{> cookie-consent}}, {{> logo-marquee}}, {{> rotating-tiles}},
   {{> parallax-hero}} (scroll drift), {{> shader-hero}} (WebGL background).

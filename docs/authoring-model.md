@@ -60,8 +60,8 @@ one new field.
 The platform seeds a curated **reference cookbook** (`packages/core/src/global-snippets.ts`), not a pile
 of trivial marketing sections. Each entry is a worked, validator-safe recipe that shows how to compose a
 component or an authoring technique from bare principles — e.g. the `slider-*` family (full-screen hero,
-single cards, multi-item peek, logo-wall ticker, dataset-bound) and `recipe-*` primitives (dataset grid,
-folder gallery, i18n, page variables). Entries carry a `category` (grouping in the editor's Snippets rail)
+single cards, multi-item peek, logo-wall ticker, dataset-bound) and the data/binding primitives
+(`dataset-grid`, `folder-gallery`, `i18n`, `page-vars`). Entries carry a `category` (grouping in the editor's Snippets rail)
 + a `description`; the worked component examples also surface via `get_components` and the `templates`
 agent-guide. Read one (`get_content("snippet", "<name>")`) to learn the pattern, or `{{> name}}` it and
 restyle.

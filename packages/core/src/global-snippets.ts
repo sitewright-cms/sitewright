@@ -452,8 +452,8 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
 
   // ── Data, loops & bindings (the authoring primitives) ───────────────────────────────────────────
   {
-    name: 'recipe-dataset-grid',
-    label: 'Recipe — dataset card grid',
+    name: 'dataset-grid',
+    label: 'Data — dataset card grid',
     category: 'data',
     description:
       'Loop a dataset into a responsive card grid; uses loop variables, sw-date, sw-truncate and sw-url.',
@@ -480,8 +480,8 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
 </section>`,
   },
   {
-    name: 'recipe-folder-gallery',
-    label: 'Recipe — media folder gallery',
+    name: 'folder-gallery',
+    label: 'Data — media folder gallery',
     category: 'data',
     description:
       'Render every image in a media folder with {{#sw-folder}}, using the per-item url/alt and block params.',
@@ -502,8 +502,8 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
 </section>`,
   },
   {
-    name: 'recipe-i18n',
-    label: 'Recipe — translated section',
+    name: 'i18n',
+    label: 'Data — translated section',
     category: 'data',
     description:
       'Translate text with {{sw-translate}} + editable data-sw-translate, plus a flag language switcher over page.translations.',
@@ -525,8 +525,8 @@ export const GLOBAL_SNIPPETS: readonly GlobalSnippet[] = [
 </section>`,
   },
   {
-    name: 'recipe-page-vars',
-    label: 'Recipe — page variables & children',
+    name: 'page-vars',
+    label: 'Data — page variables & children',
     category: 'data',
     description:
       'Bind editable page.data values (text/html/src/bg), list child pages, reach the parent, and mark the active page.',

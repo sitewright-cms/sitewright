@@ -127,6 +127,13 @@
       "when": 1782564578434,
       "tag": "0017_keen_mattie_franklin",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1782598239108,
+      "tag": "0018_normalize_recipe_snippet_names",
+      "breakpoints": true
     }
   ]
 }

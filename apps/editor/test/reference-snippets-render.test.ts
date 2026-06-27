@@ -19,7 +19,7 @@ describe('reference cookbook — catalog shape', () => {
       'slider-fullscreen', 'slider-cards', 'slider-multi', 'slider-logowall', 'slider-dataset',
       'gallery-grid', 'gallery-masonry', 'gallery-dataset', 'tabs-mixed', 'tabs-dataset', 'modal-basic', 'modal-confirm',
       'form-embed', 'form-custom', 'datetimepicker-field', 'cookie-consent', 'shop-product', 'parallax-hero', 'shader-hero',
-      'recipe-dataset-grid', 'recipe-folder-gallery', 'recipe-i18n', 'recipe-page-vars',
+      'dataset-grid', 'folder-gallery', 'i18n', 'page-vars',
       'nav-header', 'nav-footer', 'navbar', 'logo-marquee', 'rotating-tiles',
     ]) {
       expect(names.has(want), `expected recipe "${want}"`).toBe(true);
@@ -94,8 +94,8 @@ describe('reference cookbook — slider recipes render', () => {
 });
 
 describe('reference cookbook — primitives sampler render', () => {
-  it('recipe-dataset-grid: loops a dataset into cards (sw-date / sw-truncate / @first)', () => {
-    const html = renderTemplate(src('recipe-dataset-grid'), {
+  it('dataset-grid: loops a dataset into cards (sw-date / sw-truncate / @first)', () => {
+    const html = renderTemplate(src('dataset-grid'), {
       dataset: { posts: [
         { title: 'First post', summary: 'x'.repeat(200), date: '2026-01-15', image: '/i/1.jpg', url: '/blog/1' },
         { title: 'Second post', summary: 'short', date: '2026-02-20', image: '/i/2.jpg', url: '/blog/2' },
@@ -107,18 +107,18 @@ describe('reference cookbook — primitives sampler render', () => {
     expect(html).toContain('…'); // sw-truncate ellipsis on the 200-char summary
     expect(html).toContain('sm:col-span-2'); // @first card spans wider
 
-    const empty = renderTemplate(src('recipe-dataset-grid'), { dataset: { posts: [] } });
+    const empty = renderTemplate(src('dataset-grid'), { dataset: { posts: [] } });
     expect(empty).toContain('Add entries to the');
   });
 
-  it('recipe-folder-gallery: empty media folder routes to the {{else}} placeholder', () => {
-    const html = renderTemplate(src('recipe-folder-gallery'), { media: [] });
+  it('folder-gallery: empty media folder routes to the {{else}} placeholder', () => {
+    const html = renderTemplate(src('folder-gallery'), { media: [] });
     expect(html).toContain('Upload images to the');
   });
 
-  it('recipe-i18n: resolves the catalog (sw-translate + data-sw-translate) and the flag switcher', () => {
+  it('i18n: resolves the catalog (sw-translate + data-sw-translate) and the flag switcher', () => {
     const t = { 'home.headline': 'Hallo', 'home.lead': 'Aus dem Katalog' };
-    const html = renderTemplate(src('recipe-i18n'), {
+    const html = renderTemplate(src('i18n'), {
       website: { t }, // data-sw-translate + {{sw-translate}} both read website.t
       page: { translations: [ { locale: 'de', path: '/de' }, { locale: 'fr', path: '/fr' } ] },
     });
@@ -128,12 +128,12 @@ describe('reference cookbook — primitives sampler render', () => {
     expect(html).toContain('href="/fr"');
     expect(html).toContain('<svg'); // {{sw-flag}} rendered
 
-    const noTr = renderTemplate(src('recipe-i18n'), {});
+    const noTr = renderTemplate(src('i18n'), {});
     expect(noTr).not.toContain('aria-label="Languages"'); // switcher hidden without page.translations
   });
 
-  it('recipe-page-vars: binds page.data (text/html/src/bg), lists children, shows the parent', () => {
-    const html = renderTemplate(src('recipe-page-vars'), {
+  it('page-vars: binds page.data (text/html/src/bg), lists children, shows the parent', () => {
+    const html = renderTemplate(src('page-vars'), {
       page: { data: { headline: 'My Section', intro: '<p>Intro HTML</p>', cover: '/cover.jpg', cover_image: '/ci.jpg' },
         children: [ { title: 'Child A', path: '/a', description: 'DA' }, { title: 'Child B', path: '/b', description: 'DB' } ] },
       parentPage: { title: 'Parent page', path: '/parent' },

@@ -120,6 +120,7 @@ export type DiagnosticCode =
   | 'dataset-inferred'
   | 'invalid-source-fallback'
   | 'foundation-applied'
+  | 'sidebar-discarded'
   | 'bundle-invalid';
 
 export interface ImportDiagnostic {

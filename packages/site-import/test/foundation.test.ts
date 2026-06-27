@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 import type { Page } from '@sitewright/schema';
 import {
   applyFoundation,
+  cleanNavLabel,
   configurePageNav,
   extractColors,
   extractTypography,
   foundationCriticalCss,
+  isIconFont,
   nativeFooter,
   nativeMainNav,
   readCssVars,
@@ -150,6 +152,38 @@ describe('configurePageNav', () => {
     expect(byId.agri!.nav).toBeUndefined();
     expect(byId.agri!.order).toBe(0); // first (only) child of services
   });
+
+  it('sets a clean per-page nav LABEL (strips the site-name suffix) — R13b', () => {
+    const pages = [
+      page('home', '', 'eTaxi Worldwide'),
+      page('imprint', 'imprint', 'Imprint | eTaxi Worldwide'),
+      page('privacy', 'privacy-policy', 'Privacy Policy – eTaxi Worldwide'),
+    ];
+    configurePageNav(pages, 'eTaxi Worldwide');
+    const byId = Object.fromEntries(pages.map((p) => [p.id, p])) as Record<string, Page>;
+    expect(byId.home!.nav!.title).toBe('Home');
+    expect(byId.imprint!.nav!.title).toBe('Imprint'); // suffix stripped
+    expect(byId.privacy!.nav!.title).toBe('Privacy Policy'); // en-dash suffix stripped
+  });
+});
+
+describe('cleanNavLabel', () => {
+  it('strips a trailing or leading site-name separator', () => {
+    expect(cleanNavLabel('Imprint | eTaxi Worldwide', 'eTaxi Worldwide')).toBe('Imprint');
+    expect(cleanNavLabel('eTaxi Worldwide - About', 'eTaxi Worldwide')).toBe('About');
+    expect(cleanNavLabel('Contact', 'eTaxi Worldwide')).toBe('Contact'); // no suffix → unchanged
+    expect(cleanNavLabel('eTaxi Worldwide', 'eTaxi Worldwide')).toBe('eTaxi Worldwide'); // don't blank it out
+  });
+});
+
+describe('isIconFont', () => {
+  it('flags icon/glyph fonts, not text fonts', () => {
+    expect(isIconFont('FontAwesome')).toBe(true);
+    expect(isIconFont('icomoon')).toBe(true);
+    expect(isIconFont('Material Icons')).toBe(true);
+    expect(isIconFont('primary-font')).toBe(false);
+    expect(isIconFont(undefined)).toBe(false);
+  });
 });
 
 describe('applyFoundation', () => {
@@ -173,5 +207,16 @@ describe('applyFoundation', () => {
     // page nav configured
     expect(pages.find((p) => p.id === 'home')!.nav).toMatchObject({ title: 'Home' });
     expect(r.diagnostics[0]!.code).toBe('foundation-applied');
+  });
+
+  it('reports (does not silently swallow) a discarded foreign sidebar — R28', () => {
+    const identity = { name: 'Acme', logo: '/media/s/m/logo.webp', colors: {} } as never;
+    const withSidebar = { sidebarLeft: '<div class="foreign-sidebar">menu</div>' } as never;
+    const r1 = applyFoundation({ cssText: CSS, identity, website: withSidebar, pages: [page('home', '', 'Home')], hostedFonts: FONTS });
+    expect(r1.website.sidebarLeft ?? '').toBe(''); // foreign sidebar removed from the slot
+    expect(r1.diagnostics.some((d) => d.code === 'sidebar-discarded')).toBe(true);
+    // no sidebar → no such diagnostic
+    const r2 = applyFoundation({ cssText: CSS, identity, website: {} as never, pages: [page('home', '', 'Home')], hostedFonts: FONTS });
+    expect(r2.diagnostics.some((d) => d.code === 'sidebar-discarded')).toBe(false);
   });
 });

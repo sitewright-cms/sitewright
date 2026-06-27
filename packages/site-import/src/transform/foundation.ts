@@ -109,8 +109,12 @@ function familyFromVars(vars: Map<string, string>, role: 'heading' | 'body'): st
   return undefined;
 }
 
-// Icon/glyph fonts are not text typography — never adopt them as a heading/body face.
+// Icon/glyph fonts are not text typography — never adopt them as a heading/body face, and don't
+// self-host them in foundation mode (the foreign CSS that referenced them is discarded).
 const ICON_FONT = /(font[\s-]?awesome|^fa[\s-]|icomoon|glyphicons?|material[\s-]?icons|ionicons|feather|bootstrap[\s-]?icons|dashicons|elegant[\s-]?icons|themify)/i;
+export function isIconFont(family: string | undefined): boolean {
+  return !!family && ICON_FONT.test(family);
+}
 
 const FAMILY_OK = /^[A-Za-z0-9][A-Za-z0-9 '-]*$/; // FontFamilyNameSchema
 
@@ -225,12 +229,27 @@ export function nativeFooter(identity: Pick<CorporateIdentity, 'name' | 'email' 
 
 // ─────────────────────────────── page nav config ───────────────────────────────
 
+/** A clean per-page NAV LABEL: the page title minus the site-name suffix/prefix (`Imprint | eTaxi
+ *  Worldwide` → `Imprint`), so the menu doesn't leak the imported `<title>` boilerplate (R13b). */
+export function cleanNavLabel(title: string, siteName?: string): string {
+  let t = (title ?? '').trim();
+  const n = (siteName ?? '').trim();
+  if (n) {
+    const esc = n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    t = t
+      .replace(new RegExp(`\\s*[|\\-–—:·]\\s*${esc}\\s*$`, 'i'), '')
+      .replace(new RegExp(`^\\s*${esc}\\s*[|\\-–—:·]\\s*`, 'i'), '')
+      .trim();
+  }
+  return t || (title ?? '').trim();
+}
+
 /**
  * Configure page nav so `buildNav('header')` yields the right menu: top-level pages in header+mobile
  * (ordered, dropdown when they have children); children carry NO nav object (they nest via `parent`).
- * The home page (path '') gets nav.title "Home".
+ * Every top-level page gets a clean `nav.title` LABEL (R13b); the home page (path '') → "Home".
  */
-export function configurePageNav(pages: Page[]): void {
+export function configurePageNav(pages: Page[], siteName?: string): void {
   const childParentIds = new Set(pages.filter((p) => p.parent).map((p) => p.parent));
   const isHome = (p: Page): boolean => !p.path || p.path === '' || p.path === '/';
   const topLevel = pages.filter((p) => !p.parent && !p.collection).sort((a, b) => {
@@ -242,7 +261,12 @@ export function configurePageNav(pages: Page[]): void {
   for (const p of topLevel) {
     const o = order++;
     p.order = o;
-    p.nav = { slots: ['header'], order: o, ...(childParentIds.has(p.id) ? { dropdown: true } : {}), ...(isHome(p) ? { title: 'Home' } : {}) };
+    p.nav = {
+      slots: ['header'],
+      order: o,
+      ...(childParentIds.has(p.id) ? { dropdown: true } : {}),
+      title: isHome(p) ? 'Home' : cleanNavLabel(p.title, siteName),
+    };
   }
   // Children: order within their sibling group; remove any (empty-slots) nav object so the PUT validates
   // and so they nest under the dropdown parent rather than appearing flat.
@@ -285,6 +309,9 @@ export function applyFoundation(input: FoundationInput): FoundationResult {
   const websiteIn: Record<string, unknown> = { ...(input.website ?? {}) };
   delete websiteIn.head; // drop the foreign stylesheet <link>
   delete websiteIn.scripts; // drop the foreign scripts
+  // The foreign sidebar is removed (its markup uses foreign classes the discarded CSS styled) — but say
+  // so loudly so the author rebuilds it natively if the design needs it (R28), rather than losing it silently.
+  const hadSidebar = !!((websiteIn.sidebarLeft as string)?.trim?.() || (websiteIn.sidebarRight as string)?.trim?.());
   delete websiteIn.sidebarLeft;
   delete websiteIn.sidebarRight;
   websiteIn.criticalCss = foundationCriticalCss(colors['base-200']);
@@ -292,7 +319,11 @@ export function applyFoundation(input: FoundationInput): FoundationResult {
   websiteIn.footer = nativeFooter(identity);
   const website = WebsiteSettingsSchema.parse(websiteIn);
 
-  configurePageNav(input.pages);
+  configurePageNav(input.pages, identity.name);
+
+  if (hadSidebar) {
+    diagnostics.push({ code: 'sidebar-discarded', message: 'foreign sidebar/off-canvas removed — rebuild it natively if the design needs it (author rule R28)' });
+  }
 
   const fontNote = extractedTypo.heading || extractedTypo.body ? 'fonts' : 'no-fonts';
   const colorNote = Object.keys(extractedColors).join('/') || 'defaults';

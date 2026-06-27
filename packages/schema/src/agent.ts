@@ -606,8 +606,16 @@ SAFETY: <script> tags were REMOVED and <form>s converted to inert <div>s on impo
 JavaScript — rebuild interactivity with platform components (step 5) and real Forms (create a form entity,
 embed with {{sw-form}}).
 
-WHEN A PAGE IS DONE: set page.data.swImport.rewritten:true (or remove the marker) and flip its
-status to "published".
+VERIFY AGAINST THE SOURCE (mandatory — do NOT trust your own render): after authoring a page, call
+compare_to_source(pageId). It returns YOUR BUILD and the ORIGINAL site SIDE-BY-SIDE at desktop + mobile.
+Go region by region — header, every section/tile, tabs + their inner media, accordion, footer/sub-footer
+— and match background, borders, colours, type sizes, layout and content to the source. Fix the
+differences and call it AGAIN. Keep iterating until the build matches the original; a page is NOT done
+because your own screenshot looks fine. Work ONE page at a time so conventions (theme tokens, datasets,
+chrome) carry across the site.
+
+WHEN A PAGE IS DONE (i.e. compare_to_source shows it matching the original): set
+page.data.swImport.rewritten:true (or remove the marker) and flip its status to "published".
 `,
   },
 } as const;
@@ -658,6 +666,7 @@ export const MCP_TOOL_CATALOG: readonly McpToolMeta[] = [
   { name: 'list_content', description: "List all entities of a content kind." },
   { name: 'get_content', description: "Get one content entity by kind + id." },
   { name: 'preview_page', description: "Render a (possibly unsaved) page and return desktop + mobile SCREENSHOTS (+ HTML on request), without saving — so you can SEE your work." },
+  { name: 'compare_to_source', description: "Screenshot an imported page's BUILD and its ORIGINAL source side-by-side, to see and fix how the build differs from the real site.", capability: 'content:read' },
   { name: 'get_publish_status', description: "Read the project's latest published release (or null)." },
   { name: 'list_submissions', description: "List form submissions (newest first; optional formId + pagination).", capability: 'content:read' },
   { name: 'list_stock_providers', description: "List configured stock-image providers and whether each is available.", capability: 'content:read' },

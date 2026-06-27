@@ -53,6 +53,14 @@ export interface PreviewResult {
   screenshots?: Partial<Record<ScreenshotViewportName, PreviewShot>>;
 }
 
+/** Build-vs-source screenshots for an imported page (the `compare_to_source` payload). */
+export interface CompareResult {
+  sourceUrl: string;
+  route: string;
+  build: Partial<Record<ScreenshotViewportName, PreviewShot>>;
+  source: Partial<Record<ScreenshotViewportName, PreviewShot>>;
+}
+
 export class SitewrightClient {
   private scope: Scope | undefined;
   private readonly baseUrl: string;
@@ -206,6 +214,12 @@ export class SitewrightClient {
       path += `?screenshot=1${opts.viewports ? `&viewports=${encodeURIComponent(opts.viewports)}` : ''}`;
     }
     return this.request('POST', path, page);
+  }
+
+  /** Screenshot a page's BUILD + its imported SOURCE at the same viewports, for side-by-side comparison. */
+  async compareToSource(pageId: string, viewports?: string): Promise<CompareResult> {
+    const qs = viewports ? `?viewports=${encodeURIComponent(viewports)}` : '';
+    return this.request('GET', this.projectPath(`/compare/${encodeURIComponent(pageId)}${qs}`));
   }
 
   async publish(): Promise<unknown> {

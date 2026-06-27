@@ -20,6 +20,12 @@ function fakeClient(overrides: Partial<Record<keyof SitewrightClient, unknown>> 
     putContent: vi.fn(async (_k: string, _id: string, data: unknown) => data),
     deleteContent: vi.fn(async () => undefined),
     preview: vi.fn(async () => ({ html: '<html></html>', token: 'tok' })),
+    compareToSource: vi.fn(async () => ({
+      sourceUrl: 'https://orig.test/',
+      route: '',
+      build: { desktop: { base64: 'QUFB', mimeType: 'image/jpeg', width: 1280, height: 900 } },
+      source: { desktop: { base64: 'QkJC', mimeType: 'image/jpeg', width: 1280, height: 900 } },
+    })),
     publish: vi.fn(async () => ({ release: { routes: 1 }, url: '/sites/p/' })),
     publishStatus: vi.fn(async () => ({ release: null })),
     listSubmissions: vi.fn(async () => ({ items: [{ id: 's1', formId: 'contact', fields: { email: 'a@b.co' } }], total: 1 })),
@@ -195,6 +201,16 @@ describe('createSitewrightMcpServer — media tools', () => {
     const res = await w.callTool({ name: 'import_image', arguments: { url: 'https://example.com/a.jpg', folder: 'team' } });
     expect(res.isError).toBeFalsy();
     expect(callsOf(writer).importImageUrl).toHaveBeenCalledWith('https://example.com/a.jpg', 'team');
+  });
+
+  it('compare_to_source returns BUILD + SOURCE image blocks (content:read)', async () => {
+    const c = fakeClient();
+    const r = await connect(c, readScope);
+    const res = await r.callTool({ name: 'compare_to_source', arguments: { pageId: 'home' } });
+    expect(res.isError).toBeFalsy();
+    expect(callsOf(c).compareToSource).toHaveBeenCalledWith('home', undefined);
+    const blocks = res.content as Array<{ type: string }>;
+    expect(blocks.filter((b) => b.type === 'image').length).toBe(2); // one build + one source shot
   });
 
   it('list_media_folders is content:read', async () => {

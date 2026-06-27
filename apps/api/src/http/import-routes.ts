@@ -63,6 +63,14 @@ export function importMediaFolder(source: string, isImage: boolean): string {
   return pick ? `imported/${pick}` : `imported/${isImage ? 'images' : 'files'}`;
 }
 
+/** Opt-in `?foundation=1` (uniform across the crawl + multipart upload routes): run the deterministic
+ *  FOUNDATION extractor (native theme + captured fonts + data-driven chrome, foreign CSS/JS discarded)
+ *  instead of the raw foreign-CSS scaffold — the INGEST half of the AI-clone pipeline. */
+function wantsFoundation(req: FastifyRequest): boolean {
+  const q = (req.query as { foundation?: string } | undefined)?.foundation;
+  return q === '1' || q === 'true';
+}
+
 const ImportWebsiteBody = z.object({
   url: z.string().url().max(2048),
   maxPages: z.number().int().min(1).max(IMPORT_PAGE_CEIL).optional(),
@@ -292,9 +300,15 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
     media: MediaPort,
     onProgress: (e: unknown) => void,
     extra: { truncated: boolean; warnings: string[] },
+    foundation = false,
   ): Promise<Record<string, unknown>> {
     onProgress({ phase: 'transform', detail: `converting ${site.pages.length} pages` });
-    const result = await buildBundle(site, { media, onProgress, importedAt: new Date().toISOString() });
+    const result = await buildBundle(site, {
+      media,
+      onProgress,
+      importedAt: new Date().toISOString(),
+      ...(foundation ? { foundation: true } : {}),
+    });
     const bundle = result.bundles[0];
     if (!bundle) throw new Error('the import produced no content');
     if (result.diagnostics.some((d) => d.code === 'bundle-invalid')) throw new Error('the import produced an invalid bundle');
@@ -334,6 +348,7 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
     if (!/^https:\/\//i.test(url) || targetsPrivateHost(url)) return reply.code(400).send({ error: 'only public https URLs can be imported' });
 
     if (!acquireSlot(reply, project.id)) return;
+    const foundation = wantsFoundation(req);
     const maxPages = clamp(parsed.data.maxPages ?? IMPORT_DEFAULT_PAGES, 1, IMPORT_PAGE_CEIL);
     const maxDepth = clamp(parsed.data.maxDepth ?? IMPORT_DEFAULT_DEPTH, 0, IMPORT_DEPTH_CEIL);
     const abort = new AbortController();
@@ -358,7 +373,7 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
             },
           );
           if (crawlResult.site.pages.length === 0) throw new Error('no pages could be crawled from the URL');
-          return convertAndImport(ctx, project, crawlResult.site, media, onProgress, { truncated: crawlResult.truncated, warnings: crawlResult.warnings });
+          return convertAndImport(ctx, project, crawlResult.site, media, onProgress, { truncated: crawlResult.truncated, warnings: crawlResult.warnings }, foundation);
         },
         { projectId: project.id },
         log,
@@ -400,6 +415,7 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
     }
 
     if (!acquireSlot(reply, project.id)) return;
+    const foundation = wantsFoundation(req);
     const abort = new AbortController();
     req.raw.on('close', () => abort.abort());
 
@@ -409,7 +425,7 @@ export function registerImportRoutes(app: FastifyInstance, deps: ImportRouteDeps
         async (onProgress) => {
           const fetcher = makeFetcher(abort.signal);
           const media = makeMediaPort(ctx, project.slug, fetcher);
-          return convertAndImport(ctx, project, upload.site, media, onProgress, { truncated: false, warnings: upload.warnings });
+          return convertAndImport(ctx, project, upload.site, media, onProgress, { truncated: false, warnings: upload.warnings }, foundation);
         },
         { projectId: project.id },
         log,

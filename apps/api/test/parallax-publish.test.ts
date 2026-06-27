@@ -99,6 +99,24 @@ describe('parallax → publish + preview', () => {
     expect(index.body).toContain('<script defer src="parallax.js"></script>');
   });
 
+  it('serves the builder preview DOC as a sandboxed text/html route so the inline runtime can run', async () => {
+    // The editor loads THIS by iframe `src` (not srcDoc): the editor page's own CSP is `script-src
+    // 'self'`, which a srcDoc iframe inherits and which freezes the inline runtime. This route ships
+    // its OWN `sandbox allow-scripts` CSP → opaque origin where inline script runs, isolated.
+    const res = await client.get('/authoring/parallax-preview?speed=0.4&axis=x&opacity=0.2%2C1&blur=999%2C0');
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toContain('text/html');
+    expect(res.headers['content-security-policy']).toBe('sandbox allow-scripts');
+    expect(res.headers['x-frame-options']).toBe('SAMEORIGIN');
+    // the static-twin demo, the chosen channels, and the REAL runtime — with out-of-range params clamped
+    expect(res.body).toContain('class="box ref"');
+    expect(res.body).toContain('data-sw-parallax="0.4"');
+    expect(res.body).toContain('data-sw-parallax-axis="x"');
+    expect(res.body).toContain('data-sw-parallax-opacity="0.2,1"');
+    expect(res.body).toContain('data-sw-parallax-blur="40,0"'); // 999 clamped to PARALLAX_LIMITS.blur.max
+    expect(res.body).toContain('prefers-reduced-motion'); // the runtime is embedded
+  });
+
   it('ships NOTHING extra for a site that uses no parallax', async () => {
     const proj = client.project(projectId);
     const page = {

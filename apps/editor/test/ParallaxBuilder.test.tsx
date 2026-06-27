@@ -2,13 +2,9 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 import { LibraryPanel } from '../src/views/library/LibraryPanel';
 
-// The builder fetches the runtime for its preview iframe; stub it so the modal mounts cleanly.
+// The preview is now a same-origin iframe `src` (no fetch); just stub the clipboard for the copy test.
 beforeEach(() => {
   Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ css: '', js: '' }) } as Response),
-  );
 });
 
 async function openBuilder() {
@@ -40,15 +36,17 @@ describe('ParallaxBuilder', () => {
     expect(dialog).toHaveTextContent('data-sw-parallax-blur="8,0"');
   });
 
-  it('preview pits the parallax element against a STATIC twin (so the motion is legible) + notes reduced-motion', async () => {
+  it('preview loads the same-origin sandboxed route by src (NOT srcdoc) so the runtime runs under its CSP', async () => {
     const dialog = await openBuilder();
     const iframe = within(dialog).getByTitle('Parallax preview') as HTMLIFrameElement;
-    // srcdoc is built once the runtime fetch resolves.
-    await waitFor(() => expect(iframe.getAttribute('srcdoc') ?? '').toContain('class="box sample"'));
-    const doc = iframe.getAttribute('srcdoc')!;
-    expect(doc).toContain('class="box ref"'); // the un-animated reference twin to compare against
-    expect(doc).toContain('data-sw-parallax="0.3"'); // the sample carries the live attrs
-    expect(doc).toContain('reduced-motion setting'); // the human-readable note that explains a still preview
+    // srcDoc would inherit the editor's `script-src 'self'` CSP and freeze the runtime — must be `src`.
+    expect(iframe.getAttribute('srcdoc')).toBeNull();
+    const src = iframe.getAttribute('src') ?? '';
+    expect(src).toContain('/authoring/parallax-preview?');
+    expect(src).toContain('speed=0.3');
+    // toggling a channel threads it through the query string (server clamps + renders it)
+    fireEvent.click(within(dialog).getByLabelText('Opacity'));
+    await waitFor(() => expect(decodeURIComponent(iframe.getAttribute('src') ?? '')).toContain('opacity=0,1'));
   });
 
   it('switches the translate axis and copies the markup', async () => {

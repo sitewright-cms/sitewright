@@ -63,6 +63,7 @@ import {
   usesParallax,
   PARALLAX_CSS,
   PARALLAX_JS,
+  parallaxPreviewDoc,
   usesMarquee,
   MARQUEE_CSS,
   usesLazyload,
@@ -3945,9 +3946,36 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
   // baseline + every effect/shape/accent utility. STATIC platform CSS (brand-agnostic; the editor
   // injects the project's --sw-color-* into the preview iframe); computed once + cached.
   app.get('/authoring/button-preview-css', { config: rl(60) }, async () => ({ css: await buttonPreviewCss() }));
-  // The parallax / scroll-linked runtime (CSS + JS) for the Library "Parallax" builder's live preview.
-  // STATIC platform strings (no compile, no tenant data) — served verbatim for the sandboxed iframe.
-  app.get('/authoring/parallax-runtime', { config: rl(60) }, async () => ({ css: PARALLAX_CSS, js: PARALLAX_JS }));
+  // The Library "Parallax" builder's live preview DOCUMENT (the chosen element beside a static twin,
+  // driven by the REAL runtime). Served as text/html under `Content-Security-Policy: sandbox
+  // allow-scripts` so the inline runtime RUNS in an opaque, isolated origin — the editor's own CSP
+  // (`script-src 'self'`) would block an inline script in a `srcdoc` iframe, so the editor points the
+  // iframe `src` HERE instead. Only clamped numeric/enum channel params reach the markup (no tenant
+  // strings, no brand vars) → no injection surface. STATIC apart from the query knobs; rate-limited.
+  app.get<{ Querystring: Record<string, string | undefined> }>(
+    '/authoring/parallax-preview',
+    { config: rl(60) },
+    async (req, reply) => {
+      const q = req.query;
+      const numPair = (v: string | undefined): [number, number] | null => {
+        if (typeof v !== 'string') return null;
+        const parts = v.split(',').map(Number);
+        return parts.length === 2 && Number.isFinite(parts[0]) && Number.isFinite(parts[1]) ? [parts[0]!, parts[1]!] : null;
+      };
+      const html = parallaxPreviewDoc({
+        speed: q.speed !== undefined ? Number(q.speed) : undefined,
+        axis: q.axis === 'x' ? 'x' : 'y',
+        opacity: numPair(q.opacity),
+        scale: numPair(q.scale),
+        blur: numPair(q.blur),
+      });
+      return reply
+        .header('content-security-policy', 'sandbox allow-scripts')
+        .header('x-frame-options', 'SAMEORIGIN')
+        .type('text/html')
+        .send(html);
+    },
+  );
 
   // The system WIDGET catalog — managed, data-backed drop-ins (hero-slider, …) the editor's Widgets
   // rail browses and inserts as {{> name}}. STATIC platform metadata (no tenant data): name/label/

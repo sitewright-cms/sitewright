@@ -664,8 +664,10 @@ export const api = {
   listEffectForks: () => request<EffectForks>('GET', '/authoring/effect-forks'),
   /** The compiled button-preview stylesheet (.btn baseline + all effect/shape/accent utilities) for the Button-effects modal. */
   buttonPreviewCss: () => request<{ css: string }>('GET', '/authoring/button-preview-css'),
-  /** The parallax runtime (CSS + JS) for the Library "Parallax" builder's live scrolling preview. */
-  parallaxRuntime: () => request<{ css: string; js: string }>('GET', '/authoring/parallax-runtime'),
+  /** Same-origin URL of the Library "Parallax" builder's live preview DOCUMENT, used as the iframe
+   *  `src` (NOT srcDoc) so it loads under the route's `sandbox allow-scripts` CSP and the runtime
+   *  actually runs. `query` is a pre-built, encoded query string (the channel knobs). */
+  parallaxPreviewUrl: (query: string) => `${BASE}/authoring/parallax-preview${query ? `?${query}` : ''}`,
 
   listGlobalTemplates: () => request<{ items: Template[] }>('GET', '/global/template'),
   putGlobalTemplate: (template: Template) =>

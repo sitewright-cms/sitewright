@@ -396,13 +396,6 @@ img, video { max-width: 100%; height: auto; }
 @media (prefers-reduced-motion: no-preference) { .btn .sw-btn-ripple { animation: sw-btn-ripple .6s ease-out forwards; } }
 @keyframes sw-btn-ripple { to { transform: translate(-50%, -50%) scale(1); opacity: 0; } }
 
-/* Reserve a STABLE scrollbar gutter on the scroll root so the brand scrollbar renders the SAME
-   in a top-level published tab AND inside the sandboxed preview iframe. daisyUI 5 ships a
-   conditional \`:root{scrollbar-gutter:if(style(--page-has-scrollbar))}\` whose if()/custom-property
-   resolution differs in an opaque sub-frame (the preview), degrading the classic brand bar to an
-   auto-hiding overlay there. This unlayered rule wins over daisyUI's layered one, so both match. */
-html { scrollbar-gutter: stable; }
-
 /* Solid scrollbars (NO transparency anywhere): a solid track in the page
    background colour (so it blends with the page) and a solid brand-primary thumb
    that darkens while grabbed; no stepper arrows. WebKit/Blink (Chrome/Safari/Edge)
@@ -416,9 +409,7 @@ html { scrollbar-gutter: stable; }
    a differently-coloured section the track keeps the page background colour — a
    colour-fill (non-overlay) scrollbar cannot be per-section transparent. */
 @supports selector(::-webkit-scrollbar) {
-  /* !important so daisyUI's layered :root{scrollbar-color} can never re-disable the brand pseudos
-     in the sandboxed preview sub-frame (where the cascade resolves differently than top-level). */
-  html:root { scrollbar-color: auto !important; scrollbar-width: auto !important; }
+  html:root { scrollbar-color: auto; scrollbar-width: auto; }
   /* solid track = page background (blends in) */
   *::-webkit-scrollbar { width: 8px; height: 8px; background: var(--sw-color-base-100, #ffffff); }
   *::-webkit-scrollbar-track,

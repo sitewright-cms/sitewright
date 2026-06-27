@@ -8,6 +8,7 @@ import type { Database } from '../src/db/client.js';
 import { makeTestDb } from './helpers.js';
 import { createApp } from '../src/http/app.js';
 import { registerAccount } from '../src/repo/accounts.js';
+import { PREVIEW_SITE_RUNTIME_JS } from '../src/http/preview-site-runtime.js';
 import { buildSite } from '../src/publish/build.js';
 
 // ---------------------------------------------------------------------------
@@ -64,6 +65,19 @@ describe('buildSite preview options', () => {
     });
     const home = await readFile(join(outDir, 'index.html'), 'utf8');
     expect(home).toContain('window.__SW_PREVIEW_MARKER__=1;');
+  });
+
+  it('a preview build scrolls on <body> (real sub-frame scrollbar); a published build scrolls the viewport', async () => {
+    const onePage = [{ id: 'home', path: '', title: 'Home', source: '<h1>Hi</h1>' }] as unknown as ProjectBundle['pages'];
+    // Published → viewport scroll, no body-scroll override.
+    await buildSite({ publishedAt: '2026-05-29T00:00:00.000Z', outDir, bundle: bundle(onePage) });
+    expect(await readFile(join(outDir, 'index.html'), 'utf8')).not.toContain('overflow-y:auto');
+    // Preview → <html> clipped, <body> the scroll container; the runtime bridges window scroll to it.
+    await buildSite({ publishedAt: '2026-05-29T00:00:00.000Z', outDir, previewRuntime: PREVIEW_SITE_RUNTIME_JS, bundle: bundle(onePage) });
+    const preview = await readFile(join(outDir, 'index.html'), 'utf8');
+    expect(preview).toContain('body{height:100%;min-height:0;overflow-y:auto;scrollbar-width:auto;');
+    expect(preview).toContain('scrollbar-color:var(--sw-color-primary,#4f46e5) var(--sw-color-base-100,#ffffff)}');
+    expect(preview).toContain('bridgeScroll'); // the window→body scroll bridge ships with the preview runtime
   });
 
   it('omits the preloader overlay from a preview build (the published build keeps it)', async () => {

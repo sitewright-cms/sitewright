@@ -64,6 +64,17 @@ describe('renderDocument — document shell', () => {
     expect(head.indexOf('@layer sw-normalize')).toBeLessThan(head.indexOf('body{margin:0;min-height:100vh'));
   });
 
+  it('previewScroll moves the scroll onto <body> ONLY in preview (so the sub-frame shows a real scrollbar)', () => {
+    // Publish (default): the viewport scrolls — no body-scroll override.
+    expect(renderDocument(page, { brand })).not.toContain('body{height:100%;min-height:0;overflow-y:auto');
+    // Preview: <html> is clipped and <body> becomes the scroll container, with an OPAQUE brand
+    // scrollbar-color (overriding daisyUI's translucent one) so the bar is visible in the sub-frame.
+    const preview = renderDocument(page, { brand, previewScroll: true });
+    expect(preview).toContain('html{height:100%;overflow:hidden}');
+    expect(preview).toContain('body{height:100%;min-height:0;overflow-y:auto;scrollbar-width:auto;');
+    expect(preview).toContain('scrollbar-color:var(--sw-color-primary,#4f46e5) var(--sw-color-base-100,#ffffff)}');
+  });
+
   it('lays the page out as a sticky-footer flex column (no page background under the footer)', () => {
     const doc = renderDocument(page, { brand });
     const head = doc.slice(0, doc.indexOf('</head>'));

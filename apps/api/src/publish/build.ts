@@ -799,6 +799,10 @@ export async function buildSite(opts: BuildSiteOptions): Promise<ReleaseManifest
           // PREVIEW only: the parent-bridge runtime (reports this iframe's location to the editor
           // shell for auto-reload / auto-navigate). First-party + audited; never set in a publish.
           inlineScripts: opts.previewRuntime ? [opts.previewRuntime] : undefined,
+          // PREVIEW only: scroll on <body> so the sandboxed sub-frame shows a real (classic) scrollbar
+          // — its viewport scrollbar is an auto-hiding overlay in Chrome. The preview runtime bridges
+          // window scroll to the body so scroll-linked JS keeps working.
+          previewScroll: previewMode,
         });
         // Rewrite editor media URLs (`/media/<projectSlug>/<assetId>/…`) to the page-relative
         // bundled path (`<siteRoot>_assets/<assetId>/…`) — across ANY attribute (src, data-src,

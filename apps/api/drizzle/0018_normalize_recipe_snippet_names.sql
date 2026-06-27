@@ -12,7 +12,10 @@ SET `entity_id` = substr(`entity_id`, 8),
       '$.id', substr(json_extract(`data`, '$.id'), 8),
       '$.name', substr(json_extract(`data`, '$.name'), 8))
 WHERE `project_id` = '__global__' AND `kind` = 'snippet'
-  AND `entity_id` IN ('recipe-dataset-grid', 'recipe-folder-gallery', 'recipe-i18n', 'recipe-page-vars');
+  AND `entity_id` IN ('recipe-dataset-grid', 'recipe-folder-gallery', 'recipe-i18n', 'recipe-page-vars')
+  -- only rewrite rows that actually carry both JSON fields, so a malformed blob is skipped whole
+  -- rather than having $.id/$.name set to NULL by substr(NULL, 8).
+  AND json_extract(`data`, '$.id') IS NOT NULL AND json_extract(`data`, '$.name') IS NOT NULL;
 --> statement-breakpoint
 UPDATE `content_revisions`
 SET `entity_id` = substr(`entity_id`, 8),
@@ -20,4 +23,7 @@ SET `entity_id` = substr(`entity_id`, 8),
       '$.id', substr(json_extract(`data`, '$.id'), 8),
       '$.name', substr(json_extract(`data`, '$.name'), 8))
 WHERE `project_id` = '__global__' AND `kind` = 'snippet'
-  AND `entity_id` IN ('recipe-dataset-grid', 'recipe-folder-gallery', 'recipe-i18n', 'recipe-page-vars');
+  AND `entity_id` IN ('recipe-dataset-grid', 'recipe-folder-gallery', 'recipe-i18n', 'recipe-page-vars')
+  -- only rewrite rows that actually carry both JSON fields, so a malformed blob is skipped whole
+  -- rather than having $.id/$.name set to NULL by substr(NULL, 8).
+  AND json_extract(`data`, '$.id') IS NOT NULL AND json_extract(`data`, '$.name') IS NOT NULL;

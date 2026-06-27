@@ -66,3 +66,23 @@ tailwind, then green.) Full site-import suite **222 passed**, typecheck clean.
 **Steps 1 + 2 DONE on `nativize/clone-pipeline-current` (off current origin/main).**
 
 **Next:** Step 3 — agent tooling via MCP (media-management tools + headless service-token auth).
+
+---
+
+## 2026-06-27 — Step 3 recon (MCP surface)
+
+MCP tools live in `packages/mcp/src/server.ts` (+ `client.ts`) over `apps/api/src/http/mcp-routes.ts`.
+Findings:
+- **Headless auth is ALREADY solved** — `packages/mcp/src/auth.ts` `staticAuth(token)` boots the bridge
+  non-interactively from a fixed bearer (a project API key / PAT). So the "headless service-token auth"
+  gap is effectively closed; the clone agents connect with a scoped project key. (No new auth work needed.)
+- **Agent toolset already present:** whoami, get_components, get_guide, get_reference, list_pages,
+  get_page, get_content/list_content, put_page, put_content, preview_page (the multi-device screenshotter),
+  list_media, import_image_url (takes a `folder`), import_stock_image, revisions, get_published.
+- **The real Step-3 gap = media MANAGEMENT tools:** there is NO MCP tool to create/rename a media folder
+  or move/rename an existing asset (only list + import). These are needed for the per-page asset-org
+  (Step 4). The HTTP side already has `/media/folders` (create/rename/copy) + `/media/:id/copy`; need to
+  confirm an asset move/rename endpoint, add `client.ts` methods, and `registerTool` wrappers
+  (e.g. `create_media_folder`, `move_media`, `rename_media`), gated `content:write`.
+
+Step 3 narrows to: add the media-management MCP tools (+ any missing HTTP endpoint) with tests.

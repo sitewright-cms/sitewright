@@ -21,7 +21,10 @@ body{background-color:#e6e6e9;background-image:url("data:image/svg+xml,…fracta
 Mapping rule: read the foreign CSS — headings use `var(--primary-font)`, body uses `var(--text-font)`;
 CI colors from `--primary-color`/`--secondary-color` → `identity.colors`.
 
-## F2 · Foundation: data-driven nav (chrome `topNav` slot) — R13
+## F2 · Foundation: data-driven nav (chrome `mainNav` slot, → `<nav id="main-nav">`) — R13
+<!-- NB: since #486 there is a SINGLE `website.mainNav` slot (was topNav/mobileNav). The live
+     foundation code (transform/foundation.ts `nativeMainNav`) targets `mainNav`; the markup below is
+     illustrative — model it on the global `navbar` recipe (.navbar + .menu.menu-horizontal + .dropdown-hover). -->
 ```hbs
 <div class="bg-base-100 shadow-md"><div class="navbar mx-auto min-h-0 max-w-screen-xl px-3 py-1.5 sm:px-6">
   <div class="flex-1"><a href="/" class="flex items-center gap-2 no-underline"><img src="<LOGO>" class="h-12 w-auto" alt="…"/>…</a></div>

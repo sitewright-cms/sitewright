@@ -681,7 +681,7 @@ describe('api client', () => {
     await api.importWebsiteStream('p', { url: 'https://x.com', maxPages: 10 }, { onProgress: (e) => progress.push(e), onDone: (r) => (report = r) });
 
     const [url, init] = fetchMock.mock.calls[0]!;
-    expect(url).toBe('/projects/p/import/website/stream');
+    expect(url).toBe('/projects/p/import/website/stream?foundation=1'); // AI-clone flow → foundation pipeline
     expect(init.method).toBe('POST');
     expect(JSON.parse(init.body as string)).toEqual({ url: 'https://x.com', maxPages: 10 });
     expect(progress).toEqual([{ phase: 'crawl', fetched: 1 }]);
@@ -701,7 +701,7 @@ describe('api client', () => {
     let report: { pagesImported?: number } | undefined;
     await api.importUploadStream('p', new File(['PK'], 'site.zip', { type: 'application/zip' }), { onDone: (r) => (report = r) });
     const [url, init] = fetchMock.mock.calls[0]!;
-    expect(url).toBe('/projects/p/import/upload/stream');
+    expect(url).toBe('/projects/p/import/upload/stream?foundation=1'); // AI-clone flow → foundation pipeline
     expect(init.method).toBe('POST');
     expect(init.body).toBeInstanceOf(FormData);
     expect((init.body as FormData).get('file')).toBeInstanceOf(File);

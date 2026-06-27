@@ -129,3 +129,30 @@ slated for retirement in Step 5.
   defect-report pass feeding the prompt loop — not completable purely in-repo.
 
 These match the user's "stop for meaningful decisions / blockers" bar — surfaced for direction.
+
+## 2026-06-27 — Step 5 DONE (decisions taken)
+
+User decisions: (1) post-clone = **AI handoff message now, but lay foundations for a future in-app AI
+agent / dedicated AI-runner container** (claude-cli/codex on cheaper subscription tokens); (2) mechanical
+nativizer = **hide UI, keep route dormant, delete after Step 6**.
+
+Shipped:
+- `feat(api) 2691846` — opt-in `?foundation=1` on the crawl + upload import routes → runs the foundation
+  pipeline end-to-end (default off → raw import unchanged). +2 tests.
+- `feat(editor) bb56320` — menu + modal renamed **"Clone a website with AI"**; the import always sends
+  `?foundation=1`; the mechanical **Nativize step removed** from the modal; report step ends on an
+  `Author with AI` handoff (`NextStepAuthorWithAI` — the documented seam for a future in-app runner). The
+  `/nativize/stream` route + `nativizeProject` stay registered-but-unreachable (dormant). Tests updated.
+- `docs(pipeline) §5` — records both decisions + the in-app-runner roadmap/seam.
+
+Verified: site-import 222, schema 240, mcp 76, api import-routes 23, editor modal+app 17 — all green;
+schema/mcp/api/editor typecheck clean.
+
+**Steps 1–5 DONE on `nativize/clone-pipeline-current`.**
+
+## Step 6 — end-to-end validation (needs a live instance)
+
+Not completable purely in-repo: needs a running instance, a real target site, a `?foundation=1` clone,
+an AUTHOR-agent pass over the imported pages via MCP, then a render-diff/defect audit feeding the
+prompt loop. The reusable spike harness (`_render.mjs` etc., §8) + the burmeister reference remain the
+template. Pending a live environment (shared DinD :2003 redeploy or local) to run against.

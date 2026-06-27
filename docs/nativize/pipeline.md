@@ -106,6 +106,21 @@ AI clone:
 - **Deprecate** the mechanical per-page nativizer (`render/nativize-project`); keep only the ingest half.
 - Import endpoints remain, used internally by the clone pipeline.
 
+**SHIPPED (Step 5).** The editor menu + modal are now "Clone a website with AI"; the import always runs
+the foundation pipeline (`?foundation=1` on both the crawl + upload routes). The mechanical `Nativize`
+step is removed from the modal — the `/nativize/stream` route + `render/nativize-project.ts` stay
+*registered but UI-unreachable* (dormant), to be **deleted in a follow-up after end-to-end validation**
+(Step 6), per the hide-not-delete decision.
+
+**Post-clone = AI handoff today, in-app runner tomorrow (decided).** The modal's report step ends on an
+`Author with AI` block (`NextStepAuthorWithAI`) that guides the user to their OWN connected AI assistant
+(the platform has no in-app agent runtime). That block is the deliberate **seam** for the chosen future
+direction: an in-app AI agent — or a dedicated **AI-runner container** (claude-cli / codex / others,
+driven on cheaper subscription tokens) — that runs the AUTHOR agents *inside* the platform against the
+same MCP toolset. The foundations for that are already in place (the MCP toolset + the deterministic
+foundation pipeline); only the orchestrator/runner is future work. Do NOT hardcode "external assistant"
+anywhere that would block swapping in an in-app runner at that seam.
+
 ## 6. Prompt-improvement loop (quality compounds across sites)
 
 See [author-brief.md](./author-brief.md) + [defect-taxonomy.md](./defect-taxonomy.md). Mechanism:

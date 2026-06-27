@@ -200,7 +200,7 @@ describe('POST /projects/:id/import/website/stream', () => {
       stats: { pages: 1, imagesHosted: 0, scriptsDropped: 0, chromeExtracted: false },
     });
     const buildBundle = (async () => okBundle()) as never;
-    const cacheSourceRefs = vi.fn(async () => ({ captured: 1, total: 1, capped: false }));
+    const cacheSourceRefs = vi.fn(async (_slug: string, _pages: unknown[], _op: (e: unknown) => void, _s: AbortSignal) => ({ captured: 1, total: 1, capped: false }));
 
     // foundation import → references captured, count surfaced in the SSE `done` report.
     const on = track(makeApp({ buildBundle, cacheSourceRefs }));

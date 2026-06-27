@@ -67,6 +67,11 @@ desktop AND mobile, (3) uses SW primitives, (4) content client-editable, (5) res
   `slider-*`; galleries → `gallery-*`; modal → `modal-*`; forms → `form-embed`/`form-custom`; dataset
   card grid → `recipe-dataset-grid`; nav/footer → `nav-header`/`nav-footer`. DaisyUI is the fallback,
   not the default.
+- **R13b** Use each page's NAV LABEL + page SETTINGS — don't hardcode menu text. The nav renders
+  `{{sw-label}}`, which reads the page's nav label; set a clean per-page nav label (e.g. `Why eTaxi`),
+  not the raw `<title>` (which may carry a `| Site Name` suffix). Likewise populate the other available
+  page settings from the original — menu order, dropdown/parent placement, `newTab`, SEO title +
+  meta description, and the slug. The original's menu order and labels are part of fidelity.
 - **R14** Helpers: `{{sw-url x}}` REQUIRED for any dynamic href/src; `{{sw-html x}}` for rich HTML;
   `{{sw-icon "name" "h-4 w-4"}}` (Lucide). Inside a `{{#each}}` fields are bare (`{{title}}`).
 - **R15** Galleries → the **Lightbox** component (`data-sw-component="lightbox"` over `<a href><img></a>`
@@ -137,6 +142,7 @@ desktop AND mobile, (3) uses SW primitives, (4) content client-editable, (5) res
 - [ ] Copy wrapped in `data-sw-text/html` (R19); cards/images have `bp-card` (R23)
 - [ ] Assets referenced by organized name, not UUID (R21); foreign CSS/JS/icon-font files DELETED (R30)
 - [ ] Nav + footer use `nav-header`/`nav-footer` snippets, data-driven, no hardcoded items/hrefs (R13)
+- [ ] Per-page nav LABELS + page settings set (label, order, SEO title/desc, slug) — not hardcoded (R13b)
 - [ ] SW snippet used where one exists (tabs/slider/gallery/modal/form) — not DaisyUI/hand-rolled (R13a)
 - [ ] NO invented sections, NO `href="#"`/placeholder/lorem (R24); every section traces to the original
 - [ ] Each section's bg/tile-fill/border/alignment/icons MATCH the original, not a default (R25,R26,R32)
@@ -164,5 +170,6 @@ Be honest about `faithful`/`defects`. Do not claim faithful without rendering an
   surface/alignment (R25), capture icons (R26), keep in-component media (R27), reproduce the sidebar (R28),
   name datasets (R29), delete foreign files (R30), faithful+editable legal pages (R31), header-bar fidelity
   (R32). R13 now mandates the `nav-header`/`nav-footer` snippets (data-driven, never hand-rolled) + R13a
-  snippet-first over DaisyUI. Root cause was non-compliance with the EXISTING loop/R13/registry rules as
-  much as missing rules — hence the hardened, enumerated verification.
+  snippet-first over DaisyUI + R13b use per-page nav LABELS + page settings (order/SEO/slug), not
+  hardcoded text or the raw title. Root cause was non-compliance with the EXISTING loop/R13/registry rules
+  as much as missing rules — hence the hardened, enumerated verification.

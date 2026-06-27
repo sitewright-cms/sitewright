@@ -18,7 +18,7 @@ For each defect found in the VERIFY phase, record: `{category, ruleId, page, sev
 | **C-VALIDATION** | Landmark tags / `{{{raw}}}` / inline style-script / foreign classes | R1, R2 | imported bodies full of `fa fa-*`, `d-md-none`, `container` |
 | **C-TYPO** | Wrong/uncaptured fonts; sizes too small | R6, R7 | body `text-sm`/captions `text-xs`; platform default serif used instead of the brand woff (`primary-font`/`secondary-font`) |
 | **C-COLOR** | CI colors unset or hardcoded hex | R4, R5 | secondary left at default blue instead of `#565656` |
-| **C-NAV** | Nav hardcoded instead of `{{#each nav.header}}` | R13 | round-2 chrome hand-listed the menu links |
+| **C-NAV** | Nav hardcoded instead of `{{#each nav.header}}`; per-page nav labels / page settings unused | R13, R13b | round-2 chrome hand-listed the menu links; **etaxi: nav `<li>`s hardcoded + labels not from each page's nav-label setting (raw `\| eTaxi Worldwide` title leaked); menu order/SEO/slug settings ignored** |
 | **C-WHITESPACE** | Empty bands, seam gaps, side gutters, framed boxes, footer gap | R9–R12 | about page empty band where the original has a map; Facebook-iframe blue block; service white area showing grey |
 | **C-COMPONENT** | Hand-rolled where a primitive exists (gallery, slider, modal) | R15, R16, R17 | inauguration as a static grid (should be Lightbox) then a generic carousel (should be `{{> hero-slider}}`); project rows missing the View→PDF modal |
 | **C-FORM** | Dead `<form>` instead of functional `{{sw-form}}` | R18 | contact form had no endpoint until `{{sw-form "contact"}}` |

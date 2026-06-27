@@ -86,17 +86,32 @@ export function ParallaxBuilder({ onClose }: ParallaxBuilderProps) {
     .join(' ');
   const code = `<div ${attrs}>\n  <!-- your content -->\n</div>`;
 
-  // A tall, scrollable preview: the runtime drives the sample as the iframe scrolls (the real engine,
-  // so it bails under YOUR reduced-motion setting — matching a published page). sandbox: allow-scripts.
+  // A tall, scrollable preview driven by the REAL runtime (so it bails under YOUR reduced-motion setting,
+  // matching a published page). The sample sits beside a STATIC twin: parallax displacement is subtle
+  // against the box's own scroll travel, so the side-by-side makes the differential motion legible — the
+  // "Parallax" box visibly shifts / fades / scales / blurs relative to the un-animated "Static" one. A
+  // tiny inline script swaps the hint when reduced-motion suppresses the effect, so "no action" is never
+  // mistaken for a bug. sandbox: allow-scripts.
   const srcDoc = rt
     ? `<!doctype html><html><head><meta charset="utf-8"><style>:root{${brandVars}}` +
-      `html{scroll-behavior:auto}body{margin:0;font-family:system-ui,sans-serif;background:var(--sw-color-base-100,#fff)}` +
-      `.pad{height:120vh;display:grid;place-items:center;color:var(--sw-color-base-content,#1a1a23);opacity:.45;font-size:13px}` +
-      `.sample{display:grid;place-items:center;min-height:120px;padding:2rem;border-radius:18px;font-weight:700;` +
-      `color:var(--sw-color-primary-content,#fff);background:linear-gradient(135deg,var(--sw-color-primary,#4f46e5),var(--sw-color-secondary,#0ea5e9));` +
-      `box-shadow:0 18px 50px rgba(0,0,0,.2);margin:0 1.5rem}` +
+      `html{scroll-behavior:auto}body{margin:0;font-family:system-ui,sans-serif;background:var(--sw-color-base-100,#fff);color:var(--sw-color-base-content,#1a1a23)}` +
+      `.hint{position:sticky;top:0;z-index:2;text-align:center;font-size:12px;font-weight:600;padding:8px 10px;` +
+      `background:color-mix(in srgb,var(--sw-color-base-100,#fff) 86%,transparent);backdrop-filter:blur(4px);` +
+      `border-bottom:1px solid color-mix(in srgb,var(--sw-color-base-content,#1a1a23) 12%,transparent)}` +
+      `.pad{height:90vh}` +
+      `.row{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:center;margin:0 1.5rem}` +
+      `.box{display:grid;place-items:center;min-height:120px;padding:1.25rem;border-radius:18px;font-weight:700;text-align:center;line-height:1.25}` +
+      `.box small{display:block;font-size:11px;font-weight:600;opacity:.7;margin-top:4px}` +
+      `.ref{background:transparent;color:var(--sw-color-base-content,#1a1a23);border:2px dashed color-mix(in srgb,var(--sw-color-base-content,#1a1a23) 28%,transparent)}` +
+      `.sample{color:var(--sw-color-primary-content,#fff);background:linear-gradient(135deg,var(--sw-color-primary,#4f46e5),var(--sw-color-secondary,#0ea5e9));` +
+      `box-shadow:0 18px 50px rgba(0,0,0,.2)}` +
       `${rt.css}</style></head><body>` +
-      `<div class="pad">↓ scroll ↓</div><div class="sample" ${attrs}>Scroll me</div><div class="pad">↑ scroll ↑</div>` +
+      `<div class="hint">↕ Scroll inside this frame — watch “Parallax” shift against “Static”</div>` +
+      `<div class="pad"></div>` +
+      `<div class="row"><div class="box ref">Static<small>no effect</small></div>` +
+      `<div class="box sample" ${attrs}>Parallax<small>this element</small></div></div>` +
+      `<div class="pad"></div>` +
+      `<script>if(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches){var h=document.querySelector('.hint');if(h)h.textContent='Motion is off under your system reduced-motion setting — visitors with it see no parallax.';}</script>` +
       `<script>${rt.js}</script></body></html>`
     : '';
 
@@ -127,7 +142,7 @@ export function ParallaxBuilder({ onClose }: ParallaxBuilderProps) {
 
   return (
     <Modal title="Parallax builder" size="full" onClose={onClose}>
-      <div className="grid gap-6 md:grid-cols-[minmax(0,320px)_1fr]">
+      <div className="grid gap-6 p-5 md:grid-cols-[minmax(0,320px)_1fr]">
         {/* controls */}
         <div className="flex flex-col gap-4">
           <Range label="Speed" value={speed} set={setSpeed} lo={PARALLAX_LIMITS.speed.min} hi={PARALLAX_LIMITS.speed.max} step={0.05} />

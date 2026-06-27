@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 import { LibraryPanel } from '../src/views/library/LibraryPanel';
 
 // The builder fetches the runtime for its preview iframe; stub it so the modal mounts cleanly.
@@ -38,6 +38,17 @@ describe('ParallaxBuilder', () => {
     // toggle blur → appears too (composable)
     fireEvent.click(within(dialog).getByLabelText('Blur (px)'));
     expect(dialog).toHaveTextContent('data-sw-parallax-blur="8,0"');
+  });
+
+  it('preview pits the parallax element against a STATIC twin (so the motion is legible) + notes reduced-motion', async () => {
+    const dialog = await openBuilder();
+    const iframe = within(dialog).getByTitle('Parallax preview') as HTMLIFrameElement;
+    // srcdoc is built once the runtime fetch resolves.
+    await waitFor(() => expect(iframe.getAttribute('srcdoc') ?? '').toContain('class="box sample"'));
+    const doc = iframe.getAttribute('srcdoc')!;
+    expect(doc).toContain('class="box ref"'); // the un-animated reference twin to compare against
+    expect(doc).toContain('data-sw-parallax="0.3"'); // the sample carries the live attrs
+    expect(doc).toContain('reduced-motion setting'); // the human-readable note that explains a still preview
   });
 
   it('switches the translate axis and copies the markup', async () => {

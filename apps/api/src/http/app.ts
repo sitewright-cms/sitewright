@@ -232,6 +232,7 @@ import {
 } from '../repo/context.js';
 import { RenderPool, RenderUnavailableError } from '../render/render-pool.js';
 import { captureScreenshots, closeScreenshotBrowser, type ViewportName, type Shot } from '../render/screenshot.js';
+import { captureUrlShots, compareTargets, type ComparePageInput } from '../render/compare.js';
 import { API_KEY_CAPABILITIES, type ApiKeyCapability, type ContentKind } from '../db/schema.js';
 
 const SESSION_COOKIE = 'sw_session';
@@ -3745,6 +3746,38 @@ export async function createApp(opts: AppOptions): Promise<FastifyInstance> {
       async (req, reply) => {
         const { project } = await resolveProject(req, 'content:read');
         return reply.send({ base: `/preview-site/${project.id}/${signPreview(project.id, currentCookieSecret)}/` });
+      },
+    );
+
+    // compare-to-source: screenshot the page's BUILD (its loopback preview) AND its imported SOURCE (the
+    // live original, via the SSRF-pinned browser) at the same viewports, so an agent gets both side-by-side
+    // and self-corrects against the real site. Owner/member (content:read); the page must carry an import
+    // source (`data.swImport.sourceUrl`).
+    app.get<{ Params: { projectId: string; pageId: string } }>(
+      '/projects/:projectId/compare/:pageId',
+      { config: rl(10) },
+      async (req, reply) => {
+        const { ctx, project } = await resolveProject(req, 'content:read');
+        const page = (await contentRepo.get(ctx, 'page', req.params.pageId).catch(() => null)) as ComparePageInput | null;
+        const port = req.socket.localPort ?? (Number(process.env.PORT) || 80);
+        const target = compareTargets({
+          page,
+          projectId: project.id,
+          sig: signPreview(project.id, currentCookieSecret),
+          originHostPort: `127.0.0.1:${port}`,
+          viewports: (req.query as { viewports?: string } | undefined)?.viewports,
+        });
+        if ('error' in target) {
+          if (target.error === 'not-found') throw new NotFoundError('page not found');
+          return reply.code(400).send({ error: 'this page has no imported source URL to compare against' });
+        }
+        const abort = new AbortController();
+        req.raw.on('close', () => abort.abort());
+        const [build, source] = await Promise.all([
+          captureUrlShots(target.buildUrl, { mode: 'loopback', viewports: target.viewports, signal: abort.signal }).catch(() => ({})),
+          captureUrlShots(target.sourceUrl, { mode: 'pinned', viewports: target.viewports, signal: abort.signal }).catch(() => ({})),
+        ]);
+        return reply.send({ sourceUrl: target.sourceUrl, route: target.route, build, source });
       },
     );
 

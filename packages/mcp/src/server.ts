@@ -342,6 +342,50 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
   );
 
   server.registerTool(
+    'compare_to_source',
+    {
+      description:
+        `Screenshot an imported page's BUILD and its ORIGINAL source at the same viewports and return them SIDE-BY-SIDE, so you can see exactly how your build differs from the real site and fix it. Use this after authoring an imported page and ITERATE until the build matches the source — never call a page done from your own render alone; the source pair here is the ground truth. The page must have an import source. Pass viewports (any of: ${SCREENSHOT_VIEWPORT_NAMES.join(', ')}) to focus breakpoints.`,
+      inputSchema: { pageId: z.string(), viewports: z.array(ScreenshotViewportNameSchema).optional() },
+    },
+    async ({ pageId, viewports }: { pageId: string; viewports?: ScreenshotViewportName[] }): Promise<ToolResult> => {
+      if (!holder.scope) return toolError('Not connected. Use the `login` tool, approve in your browser, then retry this action.');
+      if (!holder.scope.capabilities.includes('content:read')) {
+        return toolError(`Your connection to project ${holder.scope.projectId} lacks the “content:read” capability.`);
+      }
+      try {
+        const res = await client.compareToSource(pageId, viewports?.length ? viewports.join(',') : undefined);
+        const names = Object.keys(res.build) as ScreenshotViewportName[];
+        const content: ContentBlock[] = [
+          {
+            type: 'text',
+            text: `BUILD vs SOURCE for page “${pageId}” (original: ${res.sourceUrl}). For EACH viewport below you get YOUR BUILD then the ORIGINAL. Compare them region by region — header, every section/tile, tabs + their inner media, accordion, footer/sub-footer — and match background, borders, colours, type sizes, layout and content. Fix the differences and run this again. Do NOT call the page faithful from your own render; the source here is the ground truth.`,
+          },
+        ];
+        for (const vp of names) {
+          const b = res.build[vp];
+          const s = res.source[vp];
+          if (b) {
+            content.push({ type: 'text', text: `— ${vp} · YOUR BUILD (${b.width}×${b.height}) —` });
+            content.push({ type: 'image', data: b.base64, mimeType: b.mimeType });
+          }
+          if (s) {
+            content.push({ type: 'text', text: `— ${vp} · ORIGINAL SOURCE (${s.width}×${s.height}) —` });
+            content.push({ type: 'image', data: s.base64, mimeType: s.mimeType });
+          }
+        }
+        if (names.length === 0) {
+          content.push({ type: 'text', text: 'No screenshots could be captured (no Chromium on this server, or neither the build nor the source rendered).' });
+        }
+        return { content };
+      } catch (err) {
+        if (err instanceof SitewrightApiError) return toolError(`Error ${err.status}: ${err.message}`);
+        return toolError(`Error: ${err instanceof Error ? err.message : 'compare failed'}`);
+      }
+    },
+  );
+
+  server.registerTool(
     'get_publish_status',
     { description: 'Read the project’s latest published release (or null if never published).' },
     gate(null, () => client.publishStatus()),

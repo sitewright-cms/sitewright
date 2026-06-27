@@ -15,14 +15,16 @@ desktop AND mobile, (3) uses SW primitives, (4) content client-editable, (5) res
 3. **Check the primitive registry** before hand-rolling anything: `get_components` (COMPONENT_CATALOG),
    `get_reference` (authoring-reference), `get_guide`. Prefer a documented primitive over custom markup.
 4. **Author** the page body; create datasets/templates/forms as needed.
-5. **Screenshot** your page at desktop + mobile (the multi-device screenshotter).
-6. **Self-lint** against the checklist below; **render-diff PER SECTION** vs the original — enumerate the
-   original's sections/elements top-to-bottom (header, hero, each band, each tile, tabs+their inner media,
-   accordion, footer, sub-footer, sidebar) and confirm EACH is reproduced with matching layout, background,
-   borders, alignment, icons and content. "Looks about right" is not verification. List every difference
-   YOURSELF; fix; repeat until faithful at both breakpoints.
-7. **Return** the structured report (output contract below). Be honest — an independent auditor re-renders.
-   `faithful:true` is a claim you must have EARNED with a per-section diff, not a glance.
+5. **`compare_to_source(pageId)`** — the mandatory verification. It returns YOUR BUILD next to the
+   ORIGINAL site, desktop + mobile. This is the ground truth — NOT your own `preview_page` render.
+6. **Self-lint** against the checklist; then **diff the compare_to_source pair PER SECTION** —
+   header, hero, each band, each tile, tabs+their inner media, accordion, footer, sub-footer, sidebar —
+   matching background, borders, alignment, type sizes, icons and content. List every difference; fix;
+   call `compare_to_source` AGAIN; repeat until the build matches the original at both breakpoints.
+   "Looks about right" / your own screenshot is NOT verification.
+7. **Return** the structured report (output contract below). `faithful:true` is earned ONLY when
+   `compare_to_source` shows the build matching the original — never from your own render. An independent
+   auditor re-runs compare_to_source.
 
 ## Rules
 

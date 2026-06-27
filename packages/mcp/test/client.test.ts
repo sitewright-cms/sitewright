@@ -279,4 +279,15 @@ describe('SitewrightClient', () => {
     expect(`${calls[1]!.init?.method} ${calls[1]!.input}`).toBe('PATCH https://cms.test/projects/p1/media/m1');
     expect(JSON.parse(calls[1]!.init!.body!)).toEqual({ folder: 'Main', filename: 'logo.svg' });
   });
+
+  it('compareToSource GETs /compare/:id (encoded) with optional viewports', async () => {
+    const payload = { sourceUrl: 'https://x.test/', route: '', build: {}, source: {} };
+    const { client, calls } = await introspected((input) =>
+      input.endsWith('/api-key/self') ? { status: 200, body: JSON.stringify(scope) } : { status: 200, body: JSON.stringify(payload) },
+    );
+    await client.compareToSource('home');
+    expect(`${calls[1]!.init?.method} ${calls[1]!.input}`).toBe('GET https://cms.test/projects/p1/compare/home');
+    await client.compareToSource('about us', 'desktop,mobile');
+    expect(calls[2]!.input).toBe('https://cms.test/projects/p1/compare/about%20us?viewports=desktop%2Cmobile');
+  });
 });

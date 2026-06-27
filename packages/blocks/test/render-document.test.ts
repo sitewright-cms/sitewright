@@ -71,7 +71,7 @@ describe('renderDocument — document shell', () => {
     // scrollbar-color (overriding daisyUI's translucent one) so the bar is visible in the sub-frame.
     const preview = renderDocument(page, { brand, previewScroll: true });
     expect(preview).toContain('html{height:100%;overflow:hidden}');
-    expect(preview).toContain('body{height:100%;min-height:0;overflow-y:auto;scrollbar-width:auto;');
+    expect(preview).toContain('body{height:100%;min-height:0;overflow-y:auto;scrollbar-width:thin;');
     expect(preview).toContain('scrollbar-color:var(--sw-color-primary,#4f46e5) var(--sw-color-base-100,#ffffff)}');
   });
 

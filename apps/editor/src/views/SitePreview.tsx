@@ -55,6 +55,18 @@ export function SitePreview({ target }: { target: PreviewTarget }) {
     };
   }, [projectId, target.path]);
 
+  // This shell fills the window (the iframe owns all scrolling), but the app-wide
+  // `html{scrollbar-gutter:stable}` (styles.css) still reserves an empty gutter strip beside the
+  // iframe's own scrollbar. Drop it while the preview is mounted; restore it on the way out.
+  useEffect(() => {
+    const html = document.documentElement;
+    const prev = html.style.scrollbarGutter;
+    html.style.scrollbarGutter = 'auto';
+    return () => {
+      html.style.scrollbarGutter = prev;
+    };
+  }, []);
+
   // Navigate the embedded iframe to a preview route (home = '').
   const go = useCallback((path: string) => {
     if (!baseRef.current) return;

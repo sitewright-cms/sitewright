@@ -246,12 +246,13 @@ export function renderDocument(page: Page, opts: RenderDocumentOptions): string 
   //   2. daisyUI's styles.css sets `:root{scrollbar-color: <translucent> transparent}`, which both puts
   //      Chrome in STANDARD-scrollbar mode (so the brand `::-webkit-scrollbar` pseudo never paints in the
   //      sub-frame) AND makes that standard bar see-through. So colour the standard scrollbar with the
-  //      OPAQUE brand tokens here — a visible indigo thumb on a page-coloured track.
+  //      OPAQUE brand tokens here — a visible indigo thumb on a page-coloured track. `scrollbar-width:thin`
+  //      keeps it slim (like the editor's own bars) so the track isn't the wide OS default.
   // Appended LAST so it wins over previewStyles' `body{min-height:100dvh}`. The preview runtime bridges
   // window scroll → the body so scroll-linked page JS keeps working. NEVER emitted on publish.
   const previewScrollCss = previewScroll
     ? '\nhtml{height:100%;overflow:hidden}' +
-      '\nbody{height:100%;min-height:0;overflow-y:auto;scrollbar-width:auto;' +
+      '\nbody{height:100%;min-height:0;overflow-y:auto;scrollbar-width:thin;' +
       'scrollbar-color:var(--sw-color-primary,#4f46e5) var(--sw-color-base-100,#ffffff)}'
     : '';
   const css = `${baseStyles()}\n${previewStyles()}\n${brandToCss(brand)}${

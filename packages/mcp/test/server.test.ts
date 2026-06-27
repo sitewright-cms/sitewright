@@ -244,6 +244,15 @@ describe('createSitewrightMcpServer — media tools', () => {
     expect(callsOf(writer).updateMedia).toHaveBeenCalledWith('m1', { filename: 'logo.svg' });
   });
 
+  it('move_media errors (no client call) when neither folder nor filename is given', async () => {
+    const writer = fakeClient();
+    const w = await connect(writer, writeScope);
+    const res = await w.callTool({ name: 'move_media', arguments: { id: 'm1' } });
+    expect(res.isError).toBe(true);
+    expect(text(res)).toMatch(/at least one/i);
+    expect(callsOf(writer).updateMedia).not.toHaveBeenCalled();
+  });
+
   it('move_media rejects an invalid folder segment (schema-validated input)', async () => {
     const writer = fakeClient();
     const w = await connect(writer, writeScope);

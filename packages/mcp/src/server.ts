@@ -493,12 +493,15 @@ export function createSitewrightMcpServer(client: SitewrightClient, holder: Scop
         filename: z.string().min(1).max(255).optional(),
       },
     },
-    gate('content:write', ({ id, folder, filename }) =>
-      client.updateMedia(id, {
+    gate('content:write', ({ id, folder, filename }) => {
+      if (folder === undefined && filename === undefined) {
+        throw new Error('move_media needs at least one of `folder` or `filename`.');
+      }
+      return client.updateMedia(id, {
         ...(folder !== undefined ? { folder } : {}),
         ...(filename !== undefined ? { filename } : {}),
-      }),
-    ),
+      });
+    }),
   );
 
   // ---------------------------------------------------------------- publish (publish)

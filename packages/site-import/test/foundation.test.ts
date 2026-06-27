@@ -49,6 +49,7 @@ describe('extractColors', () => {
     expect(c.secondary).toBe('#565656');
     expect(c.accent).toBe('#880088'); // tertiary → accent
     expect(c['base-content']).toBe('#222222'); // text → base-content
+    expect(c['base-200']).toBe('#e8e8ea'); // bg → base-200
   });
   it('ignores non-colors and transparent/inherit', () => {
     expect(extractColors('--primary-color:inherit;--secondary-color:var(--x)')).toEqual({});
@@ -142,6 +143,7 @@ describe('applyFoundation', () => {
     expect(r.website.scripts ?? '').toBe('');
     expect(r.website.mainNav).toContain('{{#each nav.header}}');
     expect(r.website.criticalCss).toContain('.bp-hero');
+    expect(r.website.criticalCss).toContain('#e8e8ea'); // the captured foreign bg flows into the body rule
     // page nav configured
     expect(pages.find((p) => p.id === 'home')!.nav).toMatchObject({ title: 'Home' });
     expect(r.diagnostics[0]!.code).toBe('foundation-applied');

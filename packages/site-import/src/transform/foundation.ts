@@ -49,6 +49,7 @@ const COLOR_VAR_MAP: ReadonlyArray<readonly [RegExp, string]> = [
   [/^(secondary-color|color-secondary|secondary)$/, 'secondary'],
   [/^(accent-color|color-accent|accent|tertiary-color|tertiary)$/, 'accent'],
   [/^(text-color|color-text|body-color|foreground|fg|ink)$/, 'base-content'],
+  [/^(bg-color|color-bg|background-color|background|page-bg|body-bg)$/, 'base-200'],
 ];
 
 /** Map the foreign palette (CSS custom props) to Sitewright color tokens. */
@@ -244,7 +245,8 @@ export interface FoundationResult {
 /** Apply the full foundation: theme + fonts + native chrome + page nav, discarding foreign CSS/JS. */
 export function applyFoundation(input: FoundationInput): FoundationResult {
   const diagnostics: ImportDiagnostic[] = [];
-  const colors = { ...input.identity.colors, ...extractColors(input.cssText) };
+  const extractedColors = extractColors(input.cssText); // parse the foreign CSS palette once
+  const colors = { ...input.identity.colors, ...extractedColors };
   const extractedTypo = extractTypography(input.cssText, input.hostedFonts);
   const typography = { ...input.identity.typography, ...extractedTypo };
   const identity = CorporateIdentitySchema.parse({ ...input.identity, colors, typography });
@@ -262,7 +264,7 @@ export function applyFoundation(input: FoundationInput): FoundationResult {
   configurePageNav(input.pages);
 
   const fontNote = extractedTypo.heading || extractedTypo.body ? 'fonts' : 'no-fonts';
-  const colorNote = Object.keys(extractColors(input.cssText)).join('/') || 'defaults';
+  const colorNote = Object.keys(extractedColors).join('/') || 'defaults';
   diagnostics.push({ code: 'foundation-applied', message: `native foundation: colors=${colorNote}, ${fontNote}, data-driven nav + footer, foreign css/js discarded` });
   return { identity, website, pages: input.pages, diagnostics };
 }

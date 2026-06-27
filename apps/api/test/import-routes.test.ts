@@ -180,17 +180,16 @@ describe('POST /projects/:id/import/website/stream', () => {
       diagnostics: [] as [],
       stats: { pages: 1, imagesHosted: 0, scriptsDropped: 0, chromeExtracted: false },
     });
-    let seen: { foundation?: boolean } | undefined;
-    const buildBundle = (async (_site: unknown, opts: { foundation?: boolean }) => { seen = opts; return okBundle(); }) as never;
+    const seen: Array<{ foundation?: boolean }> = [];
+    const buildBundle = (async (_site: unknown, opts: { foundation?: boolean }) => { seen.push(opts); return okBundle(); }) as never;
 
     const on = track(makeApp({ buildBundle }));
     await on.app.inject({ method: 'POST', url: '/projects/pa/import/website/stream?foundation=1', payload: { url: 'https://ex.com/' } });
-    expect(seen?.foundation).toBe(true);
+    expect(seen[0]?.foundation).toBe(true);
 
-    seen = undefined;
     const off = track(makeApp({ buildBundle }));
     await off.app.inject({ method: 'POST', url: '/projects/pa/import/website/stream', payload: { url: 'https://ex.com/' } });
-    expect(seen?.foundation).toBeUndefined();
+    expect(seen[1]?.foundation).toBeUndefined();
   });
 
   it('self-hosts an image whose bytes are already captured (no fetch)', async () => {
